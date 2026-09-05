@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from saga2d import Game
+from saga2d.synth import pan, tone
 from warband import sound
 from warband.sound import SoundBank
 
@@ -14,7 +15,7 @@ from warband.sound import SoundBank
 @pytest.fixture(scope="session")
 def generated(tmp_path_factory) -> Path:
     root = tmp_path_factory.mktemp("warband")
-    sound.synth.generate(root, sound.SOUND_VERSION, sound.SOUNDS, {"march": sound.march, "vigil": sound.vigil})
+    sound.generate(root, sound.SOUND_VERSION, sound.SOUNDS, {"march": sound.march, "vigil": sound.vigil})
     return root
 
 
@@ -23,6 +24,11 @@ def game():
     g = Game("Warband Sound", backend="mock")
     yield g
     g._teardown()
+
+
+@pytest.fixture
+def backend(game):
+    return game.backend
 
 
 def read_wav(path: Path) -> tuple[np.ndarray, int]:
@@ -63,3 +69,29 @@ def test_install_routes_scene_events_to_the_bank(game: Game, generated: Path, mo
     assert game.backend.sounds_played[-1]["handle"] == game.backend.load_sound(str(generated / "sounds" / "hit.wav"))
     bank.start_music()
     assert bank.music_playing == "march"
+
+
+def test_bank_generates_once_regenerates_on_a_new_version_and_plays(game: Game, backend, tmp_path: Path) -> None:
+    sounds = {"ping": lambda: tone("A5", 0.05), "pong": lambda: tone("E5", 0.05)}
+    music = {"loop": lambda: pan(tone("A3", 0.3), 0.0)}
+    bank = sound.SynthBank(game, tmp_path, version="1", sounds=sounds, music=music, aliases={"click": "ping"})
+    files = sound.sound_files(tmp_path, sounds, music)
+    assert all(f.exists() for f in files) and (tmp_path / "sounds" / "VERSION").read_text() == "1"
+    stamps = {f: f.stat().st_mtime_ns for f in files}
+    sound.SynthBank(game, tmp_path, version="1", sounds=sounds, music=music)
+    assert {f: f.stat().st_mtime_ns for f in files} == stamps
+    bank.play("click", pitch_variation=0.1)
+    assert backend.sounds_played[-1]["handle"] == backend.load_sound(str(tmp_path / "sounds" / "ping.wav"))
+    assert 0.9 <= backend.sounds_played[-1]["pitch"] <= 1.1
+    with pytest.raises(KeyError, match="Unknown sound"):
+        bank.play("bang")
+    bank.start_music("loop")
+    bank.start_music("loop")
+    assert bank.music_playing == "loop" and backend.music_playing is not None
+    with pytest.raises(KeyError, match="Unknown track"):
+        bank.start_music("nope")
+    bank.stop_music()
+    assert bank.music_playing is None
+    (tmp_path / "sounds" / "ping.wav").write_bytes(b"stale")
+    sound.SynthBank(game, tmp_path, version="2", sounds=sounds, music=music)
+    assert (tmp_path / "sounds" / "VERSION").read_text() == "2" and (tmp_path / "sounds" / "ping.wav").stat().st_size > 100
