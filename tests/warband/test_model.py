@@ -78,6 +78,25 @@ def test_a_unit_at_a_building_corner_still_reaches_a_target_around_it() -> None:
         raise AssertionError(f"the scout never reached the peasant, standing at {scout.pos}")
 
 
+def test_a_walk_ends_when_a_crowd_keeps_the_unit_from_the_exact_spot() -> None:
+    # Fuzz seed 2016, the tiles and positions as found: two idle footmen pinned against the trees
+    # above and to the right of the spot push the archer back exactly as far as it walks up each
+    # tick, so it stood "walking" for the rest of the match.
+    world = flat_world()
+    rows = ("#######..", "##..####.", "#....###.", ".....##..", ".....##..")
+    for j, row in enumerate(rows):
+        for i, cell in enumerate(row):
+            if cell == "#":
+                world.terrain[10 + j][5 + i] = Terrain.TREES
+                world._blocked[(10 + j) * world.width + 5 + i] = 1
+    world.spawn_unit(0, UnitType.FOOTMAN, (9.999, 12.283))
+    world.spawn_unit(0, UnitType.FOOTMAN, (9.999, 12.015))
+    archer = world.spawn_unit(0, UnitType.ARCHER, (9.984, 12.67))
+    world.attack_move([archer.id], (9.9846, 12.2515))
+    run_until(world, lambda: not archer.orders, 8)
+    assert archer.state == "idle" and dist(archer.pos, (9.9846, 12.2515)) < 1.0
+
+
 def test_units_ordered_to_one_spot_spread_out_instead_of_stacking() -> None:
     world = flat_world()
     ids = [world.spawn_unit(0, UnitType.FOOTMAN, (2.5 + i, 2.5)).id for i in range(4)]

@@ -38,6 +38,7 @@ STUCK_AFTER = 0.8  # seconds without progress before a unit paths again around t
 REPLAN_EVERY = 0.6  # a unit plans at most this often unless it gets a new order (a melee would otherwise plan every tick)
 STEER_RANGE = 4.0  # within this many tiles a unit walks straight at its target when the line is clear, without A*
 LOCAL_EXPANSIONS = 700  # A* budget for the detours around other units; those goals are close
+SETTLE_WITHIN = 1.0  # a plain walk counts as arrived when a crowd keeps the unit this close to its spot without progress
 MINE_CLEARANCE = 2  # tiles kept free around a gold mine so peasants can get in and out
 SIDESTEP = 0.6  # lateral share of the push when walking units collide
 
@@ -1034,7 +1035,7 @@ class World:
             u.state = "attack"
 
     def _do_move(self, u: Unit, order: Move, dt: float) -> None:
-        if self._walk_to(u, order.target, dt):
+        if self._walk_to(u, order.target, dt, settle=True):
             self._finish_order(u)
 
     def _engage(self, u: Unit) -> bool:
@@ -1058,13 +1059,13 @@ class World:
     def _do_attack_move(self, u: Unit, order: AttackMove, dt: float) -> None:
         if self._engage(u):
             return
-        if self._walk_to(u, order.target, dt):
+        if self._walk_to(u, order.target, dt, settle=True):
             self._finish_order(u)
 
     def _do_patrol(self, u: Unit, order: Patrol, dt: float) -> None:
         if self._engage(u):
             return
-        if self._walk_to(u, order.end if order.outbound else order.start, dt):
+        if self._walk_to(u, order.end if order.outbound else order.start, dt, settle=True):
             order.outbound = not order.outbound
             u.path = []
             u.path_goal = None
@@ -1270,15 +1271,17 @@ class World:
             if reached and self.passable(*goal_tile):
                 u.exact = exact
 
-    def _walk_to(self, u: Unit, target: Point, dt: float) -> bool:
-        """Move towards *target*; True once there is nothing left to walk (arrived, or as near as the map allows)."""
-        return self._approach(u, (int(target[0]), int(target[1])), target, dt)
+    def _walk_to(self, u: Unit, target: Point, dt: float, *, settle: bool = False) -> bool:
+        """Move towards *target*; True once there is nothing left to walk (arrived, or as near as the
+        map allows).  With *settle*, a crowd holding the unit within SETTLE_WITHIN of the spot also
+        counts as arrived: a plain walk ends there, while a peasant keeps pressing for its mine."""
+        return self._approach(u, (int(target[0]), int(target[1])), target, dt, settle=settle)
 
-    def _approach(self, u: Unit, goal: Pos, exact: Point, dt: float) -> bool:
+    def _approach(self, u: Unit, goal: Pos, exact: Point, dt: float, *, settle: bool = False) -> bool:
         """Plan (once) and walk towards *goal*; True when the path is exhausted."""
         if u.path_goal != goal:
             self._plan(u, goal, exact)
-        return self._follow(u, dt)
+        return self._follow(u, dt, settle=settle)
 
     def _next_waypoint(self, u: Unit) -> Point | None:
         if u.path:
@@ -1289,7 +1292,7 @@ class World:
             return u.exact
         return None
 
-    def _follow(self, u: Unit, dt: float) -> bool:
+    def _follow(self, u: Unit, dt: float, *, settle: bool = False) -> bool:
         """Step along the path; True when there was nothing left to walk."""
         waypoint = self._next_waypoint(u)
         if waypoint is None:
@@ -1332,9 +1335,15 @@ class World:
             u.progress = 0.0
         else:
             u.progress += dt
-            if u.progress >= STUCK_AFTER and u.path_goal is not None and self.time >= u.replan_at:
-                self._plan(u, u.path_goal, u.exact, around_units=True)
-                u.last_distance = remaining
+            if u.progress >= STUCK_AFTER and u.path_goal is not None:
+                if settle and remaining <= SETTLE_WITHIN:
+                    u.path = []
+                    u.exact = None
+                    u.state = "idle"
+                    return True
+                if self.time >= u.replan_at:
+                    self._plan(u, u.path_goal, u.exact, around_units=True)
+                    u.last_distance = remaining
         return False
 
     def _line_clear(self, a: Point, b: Point) -> bool:
