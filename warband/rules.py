@@ -114,9 +114,10 @@ BUILDINGS: dict[BuildingType, BuildingInfo] = {
 
 GOLD_PER_TRIP = 100
 LUMBER_PER_TRIP = 100
-MINE_TIME = 3.0  # seconds a peasant spends inside a mine per trip
+MINE_TIME = 5.0  # seconds a peasant spends inside a mine per trip
 CHOP_TIME = 5.0  # seconds to fell a tree
-MINE_GOLD = 12_000
+MINE_GOLD = 50_000  # a base mine; expansion mines hold EXPANSION_GOLD
+EXPANSION_GOLD = 30_000
 STARTING_GOLD = 1000
 STARTING_LUMBER = 500
 UNIT_RADIUS = 0.35

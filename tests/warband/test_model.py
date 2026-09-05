@@ -7,7 +7,8 @@ import pytest
 from warband import mapgen
 from warband.model import Attack, Deposit, Harvest, Move, RuleError, World, dist, tile_center
 from warband.rules import (
-    BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_TIME, SIM_DT, UNITS, BuildingType, Resource, Terrain, UnitType,
+    BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, SIM_DT, UNITS, BuildingType, Resource, Terrain,
+    UnitType,
 )
 
 
@@ -198,7 +199,7 @@ def test_peasants_mine_gold_and_bring_it_home_again_and_again() -> None:
     run_until(world, lambda: peasant.inside is None, MINE_TIME + 0.2)
     assert peasant.carrying is Resource.GOLD and peasant.carry == GOLD_PER_TRIP
     assert isinstance(peasant.order, Deposit) and isinstance(peasant.orders[1], Harvest)
-    assert mine.gold == 12_000 - GOLD_PER_TRIP
+    assert mine.gold == MINE_GOLD - GOLD_PER_TRIP
     run_until(world, lambda: world.players[0].gold > gold, 4.0)
     assert world.players[0].gold == gold + GOLD_PER_TRIP and peasant.carrying is None
     deposits = events(world, "deposit")

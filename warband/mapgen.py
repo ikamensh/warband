@@ -9,7 +9,7 @@ import random
 from collections import deque
 
 from warband.model import Pos, World, tile_center
-from warband.rules import BuildingType, Terrain, UnitType
+from warband.rules import EXPANSION_GOLD, BuildingType, Terrain, UnitType
 
 SIZES: dict[str, tuple[int, int]] = {"Small": (40, 32), "Medium": (48, 40), "Large": (64, 48)}
 _BASE_MARGIN = 7  # tiles from the map edge to the hall's top-left
@@ -209,6 +209,7 @@ def _expansion_mines(world: World, rng: random.Random, halls: list[Pos]) -> None
             world.terrain[y][x] = Terrain.GRASS
             world._blocked[y * world.width + x] = 0
         mine = world.place_building(None, BuildingType.GOLD_MINE, pos)
+        mine.gold = EXPANSION_GOLD
         placed.append(pos)
         mine_door = world.free_tile_near(mine.rect)
         assert mine_door is not None

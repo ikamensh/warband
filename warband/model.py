@@ -35,6 +35,7 @@ ARRIVE = 0.12  # a unit is "there" within this many tiles of its target point
 TOUCH = 0.4  # gap at which a peasant can enter a mine, deliver, or start building (a diagonal neighbour counts)
 STUCK_AFTER = 0.8  # seconds without progress before a unit paths again around the units in its way
 MINE_CLEARANCE = 2  # tiles kept free around a gold mine so peasants can get in and out
+SIDESTEP = 0.6  # lateral share of the push when walking units collide
 
 
 class RuleError(Exception):
@@ -644,6 +645,11 @@ class World:
             building.gold = MINE_GOLD
         self.buildings[building.id] = building
         self._set_blocked(building, True)
+        footprint = set(building.tiles())
+        for unit in self.units.values():
+            if any(tile in footprint for tile in unit.path):
+                unit.path = []
+                unit.path_goal = None  # the order plans again on its next step
         return building
 
     def _set_blocked(self, building: Building, flag: bool) -> None:
@@ -888,7 +894,7 @@ class World:
         if isinstance(order.target, int):
             mine = self.buildings.get(order.target)
             if mine is None or mine.gold <= 0:
-                replacement = self._nearest_mine(u.pos)
+                replacement = self._nearest_mine(u.pos, math.inf)  # any mine left on the map beats idling
                 if replacement is None:
                     self._finish_order(u)
                     return
@@ -1061,6 +1067,9 @@ class World:
             u.state = "idle"
             return True
         u.state = "move"
+        if u.path and not self.passable(*u.path[0]) and u.path_goal is not None:
+            self._plan(u, u.path_goal, u.exact, around_units=True)  # something was built across the path
+            return False
         dx, dy = waypoint[0] - u.x, waypoint[1] - u.y
         d = math.hypot(dx, dy)
         step = u.info.speed * dt
@@ -1074,8 +1083,11 @@ class World:
             return False
         u.facing = math.atan2(dy, dx)
         nx, ny = u.x + dx / d * step, u.y + dy / d * step
-        if not self.passable(int(nx), int(ny)):
-            self._plan(u, u.path_goal, u.exact, around_units=True)  # something was built across the path
+        if not self.passable(int(nx), int(ny)) and self.passable(*u.tile):
+            # Pushed off course so that the straight line to the next tile crosses a blocked
+            # one: go back to this tile's centre first, which is always possible.
+            if not (u.path and u.path[0] == u.tile):
+                u.path.insert(0, u.tile)
             return False
         u.x, u.y = nx, ny
         # Progress watchdog: pushed off course and blocked, path again around the units in the way.
@@ -1109,6 +1121,12 @@ class World:
                 weight = 0.5 if v.state == "move" or u.state != "move" else 0.2
                 px += dx / d * overlap * weight
                 py += dy / d * overlap * weight
+                if u.state == "move":
+                    # Walking units also step to their own right, so two meeting head-on pass
+                    # each other instead of pushing each other back along the same line forever.
+                    hx, hy = math.cos(u.facing), math.sin(u.facing)
+                    px += -hy * overlap * SIDESTEP
+                    py += hx * overlap * SIDESTEP
             if px or py:
                 moves[u.id] = (px, py)
         for uid, (px, py) in moves.items():
