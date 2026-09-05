@@ -56,3 +56,21 @@ A gate is incomplete until evidence below proves it.
   `tools/map_report.py`; README covers the whole game.  Inspected
   artefacts: build menu at 1280×800, three water phases side by side, a
   smoking and a burning building, a 72-frame battle capture.
+
+## Reproducing the evidence
+
+Every number above comes from one of these, run from the repository root
+with the display awake (`caffeinate -u -t 3` wakes it):
+
+```bash
+uv run python -m pytest tests -q                                   # W11
+uv run python -u tools/fuzz_warband.py --games 300 --monkey 0 --seed 3000   # W10 matches
+uv run python -u tools/fuzz_warband.py --games 0 --monkey 100 --steps 1000 --seed 1000  # W10 monkey
+uv run python tools/soak_warband.py --minutes 30 --out /tmp/warband_soak    # W10 soak
+uv run python tools/perf_warband.py                                # W10 frame times
+uv run python tools/verify_warband.py /tmp/warband_verify          # W01/W05 real input, frames to look at
+uv run python tools/ai_report.py --seeds 6 --decide 20 --ladder 4  # W01/W04
+uv run python tools/map_report.py --seeds 100                      # W03
+uv run --with pyinstaller python tools/build_warband.py            # W13
+uv run python -m warband --selftest /tmp/selftest.png              # a packaged build's self-check
+```
