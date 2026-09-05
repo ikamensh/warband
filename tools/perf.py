@@ -14,17 +14,16 @@ The display must be awake.
 from __future__ import annotations
 
 import argparse
-import collections
 import cProfile
 import os
 import statistics
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from saga2d import Game, fonts  # noqa: E402
+from saga2d.testing import FrameTimer  # noqa: E402
 from warband import path as pathing  # noqa: E402
 from warband import textures  # noqa: E402
 from warband.model import tile_center  # noqa: E402
@@ -67,57 +66,32 @@ def main() -> None:
     game = Game("Warband perf", resolution=(1280, 800), backend="pyglet", visible=False, theme=build_theme())
     fonts.load(game)
     scene = battle(game)
-    timers: dict[str, float] = collections.defaultdict(float)
-    counts: collections.Counter[str] = collections.Counter()
-
-    def wrap(obj, name: str, label: str) -> None:
-        fn = getattr(obj, name)
-
-        def timed(*a, **k):
-            t0 = time.perf_counter()
-            try:
-                return fn(*a, **k)
-            finally:
-                timers[label] += time.perf_counter() - t0
-                counts[label] += 1
-
-        setattr(obj, name, timed)
-
-    wrap(scene.world, "step", "world.step")
-    wrap(scene.view, "sync", "view.sync")
-    wrap(scene, "draw", "scene.draw")
-    wrap(scene.ui, "draw", "ui.draw")
-    wrap(scene.effects, "update", "effects.update")
-    wrap(game.backend, "end_frame", "backend.end_frame")
-    wrap(game.backend.batch, "draw", "batch.draw")
-    wrap(game.backend.window, "flip", "window.flip")
-    wrap(pathing, "find_path_grid", "find_path_grid")
-
-    t0 = time.perf_counter()
-    game.tick(1 / 60)  # the first frame builds the sprites, domains and atlas; a match never sees it in one go
-    setup_ms = (time.perf_counter() - t0) * 1000
-    timers.clear()
-    counts.clear()
-    frames: list[float] = []
+    timer = FrameTimer()
+    timer.wrap(scene.world, "step", "world.step")
+    timer.wrap(scene.view, "sync", "view.sync")
+    timer.wrap(scene, "draw", "scene.draw")
+    timer.wrap(scene.ui, "draw", "ui.draw")
+    timer.wrap(scene.effects, "update", "effects.update")
+    timer.wrap(game.backend, "end_frame", "backend.end_frame")
+    timer.wrap(game.backend.batch, "draw", "batch.draw")
+    timer.wrap(game.backend.window, "flip", "window.flip")
+    timer.wrap(pathing, "find_path_grid", "find_path_grid")
+    setup_ms = timer.frame(lambda: game.tick(1 / 60))  # the first frame builds the sprites, domains and atlas; a match never sees it in one go
+    timer.frames.clear()
+    timer.seconds.clear()
+    timer.calls.clear()
     profiler = cProfile.Profile() if args.profile else None
     for i in range(args.frames):
         if profiler is not None and i == args.frames - 120:
             profiler.enable()
-        t0 = time.perf_counter()
-        game.tick(1 / 60)
-        frames.append((time.perf_counter() - t0) * 1000)
+        timer.frame(lambda: game.tick(1 / 60))
     if profiler is not None:
         profiler.disable()
         profiler.dump_stats(args.profile)
-    ordered = sorted(frames)
-    late = sorted(frames[-120:])
-    print(f"setup frame {setup_ms:.0f} ms; {len(scene.world.units)} units alive at the end; {len(frames)} frames: p50 {statistics.median(frames):.1f} ms, "
-          f"p95 {ordered[int(0.95 * len(ordered))]:.1f} ms, max {max(frames):.1f} ms; last 120 frames: "
-          f"p50 {statistics.median(late):.1f} ms, p95 {late[114]:.1f} ms, max {late[-1]:.1f} ms")
-    total = sum(frames) / 1000
-    print(f"where {total:.2f} s of frames went:")
-    for label, seconds in sorted(timers.items(), key=lambda kv: -kv[1]):
-        print(f"  {label:18s} {seconds * 1000:8.0f} ms  {100 * seconds / total:5.1f}%  {counts[label]} calls, {seconds * 1000 / max(1, counts[label]):.2f} ms each")
+    late = sorted(timer.frames[-120:])
+    p95 = late[min(len(late) - 1, int(0.95 * len(late)))]
+    print(f"setup frame {setup_ms:.0f} ms; {len(scene.world.units)} units alive at the end; last {len(late)} frames: p50 {statistics.median(late):.1f} ms, p95 {p95:.1f} ms, max {late[-1]:.1f} ms")
+    print(timer.report())
     game._teardown()
     game.backend.quit()
 
