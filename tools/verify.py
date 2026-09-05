@@ -99,7 +99,7 @@ def main(out: Path) -> None:
     shot("04_build_ghost")
     click((site[0] + 1, site[1] + 1))
     assert isinstance(peasants[1].order, Build), peasants[1].order
-    frames(120)
+    frames(400)  # the builder walks over from the mine first
     assert any(b.type is BuildingType.FARM for b in world.player_buildings(scene.human))
     shot("05_farm_site")
 
