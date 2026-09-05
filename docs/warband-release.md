@@ -29,16 +29,16 @@ See the in-game help (F1) and codex (F2). Summary:
 
 | Action | Keys |
 |---|---|
-| Select | click, drag a box, double-click or Ctrl-click for a type, Ctrl+A for the army, 1–9 groups (Ctrl+1–9 to set) |
+| Select | click, drag a box, double-click or Ctrl-click for a type, Ctrl+A for the army, 1–9 groups (Ctrl+1–9 to set), Tab / . next idle peasant / soldier |
 | Order | right-click (move, harvest, attack, resume building, rally), A attack-move, P patrol, S stop, H hold, M move |
 | Build | B then F farm, B barracks, H town hall, T tower, M lumber mill, K blacksmith, S stables, W workshop, C church |
 | Train / research | the letters on the command card when a building is selected |
-| Camera | arrows, screen edges, middle-drag, wheel zoom, F6–F8 bookmarks (Ctrl to set), Space jumps to the last alert, Home to the base |
-| Game | F3 pause, F5 quicksave, F9 quickload, F10 menu (saves, settings), Esc cancel |
+| Camera | arrows, screen edges, middle-drag, wheel or + / − zoom, F6–F8 bookmarks (Ctrl to set), Space jumps to the last alert, Home or Backspace to the base |
+| Game | F3 pause, F4 hide the tutorial strip, F5 quicksave, F9 quickload, F10 menu (saves, settings), Esc cancel, deselect, then the menu |
 
 ## Known issues in this candidate
 
-- Water is not animated; units have four animation frames.
+- Water is not animated; units have four animation frames; buildings smoke when damaged but do not burn.
 - The AI does not repair buildings, and neither can you.
 - Large maps with three or four players can run past twenty minutes without a decision.
 - Windows and Linux builds have not been produced or tested; the macOS build has been self-tested, not played by a second person.
@@ -64,4 +64,7 @@ in `~/.warband` (`settings.json`, `saves/`, generated `sounds/` and
 ## Version
 
 Candidate built from the `warband` branch; the build script prints the
-executable's size, hash and platform (`tools/build_warband.py`).
+executable's size, hash and platform (`tools/build_warband.py`). Audited
+against the code on 2026-09-05: every control in the table above is bound
+in `warband/scene.py` (`controls`, the command card and `HELP_KEYS`), and
+the content counts match `warband/rules.py`.

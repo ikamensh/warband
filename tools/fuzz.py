@@ -183,10 +183,11 @@ def main() -> None:
     parser.add_argument("--games", type=int, default=12)
     parser.add_argument("--monkey", type=int, default=12)
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--steps", type=int, default=500, help="random inputs per monkey run")
     args = parser.parse_args()
     failures = ai_games(range(args.seed, args.seed + args.games))
     if args.monkey:
-        failures += monkey_runs(range(args.seed, args.seed + args.monkey))
+        failures += monkey_runs(range(args.seed, args.seed + args.monkey), steps=args.steps)
     sys.exit(1 if failures else 0)
 
 
