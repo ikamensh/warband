@@ -4,8 +4,8 @@ import pytest
 
 from saga2d import Game
 from warband.model import Attack, AttackMove, Build, Harvest, Move, tile_center
-from warband.rules import SIM_DT, UNITS, BuildingType, UnitType
-from warband.scene import GameOverScene, GameScene, HelpScene, PauseScene, SettingsScene, new_game
+from warband.rules import BUILDINGS, SIM_DT, UNITS, BuildingType, UnitType
+from warband.scene import CARD_NAMES, GameOverScene, GameScene, HelpScene, PauseScene, SettingsScene, new_game
 from warband.style import build_theme
 from warband.title import NewGameScene, TitleScene
 
@@ -138,7 +138,9 @@ def test_build_menu_places_a_farm_where_the_mouse_is(play) -> None:
     peasant = peasants_of(scene)[0]
     scene.select([peasant.id])
     press(game, "b")
-    assert scene.build_menu and [c.label for c in scene._card][:4] == ["Farm", "Barracks", "Town Hall", "Guard Tower"]
+    assert scene.build_menu and [c.label for c in scene._card] == [
+        "Farm", "Barracks", "Hall", "Tower", "Mill", "Smith", "Stables", "Workshop", "Church", "Back",
+    ]
     press(game, "f")
     assert scene.pending == "build:farm"
     site = (hall_of(scene).x + 5, hall_of(scene).y + 4)
@@ -149,6 +151,19 @@ def test_build_menu_places_a_farm_where_the_mouse_is(play) -> None:
     assert isinstance(peasant.order, Build) and peasant.order.type is BuildingType.FARM and peasant.order.pos == site
     tick(game, 3.0)
     assert any(b.type is BuildingType.FARM for b in world.player_buildings(scene.human))
+
+
+def test_every_building_is_on_the_build_menu_with_its_hotkey_and_its_reason_when_locked(play) -> None:
+    # The card once offered only the four opening buildings, so a player could never raise the tech chain.
+    game, scene = play
+    scene.select([peasants_of(scene)[0].id])
+    press(game, "b")
+    hotkeys = {c.label: c.hotkey for c in scene._card}
+    assert hotkeys == {CARD_NAMES.get(bt, BUILDINGS[bt].name): BUILDINGS[bt].hotkey.upper() for bt in BuildingType if bt is not BuildingType.GOLD_MINE} | {"Back": "Esc"}
+    press(game, "k")  # a blacksmith needs a barracks first
+    assert scene.pending is None and scene.status == "Requires a Barracks"
+    press(game, "m")  # a lumber mill only needs the town hall
+    assert scene.pending == "build:lumber_mill"
 
 
 def test_the_town_hall_trains_a_peasant_with_p_and_the_rally_point_by_right_click(play) -> None:

@@ -41,7 +41,12 @@ KEY_SPEED = 800
 DRAG_THRESHOLD = 5
 GROUP_KEYS = "123456789"
 CARD_COLS = 3
-CARD_WIDTH = 108
+#: The build menu's order: the opening buildings first, then the tech chain as it unlocks.
+BUILD_ORDER = (BuildingType.FARM, BuildingType.BARRACKS, BuildingType.TOWN_HALL, BuildingType.TOWER, BuildingType.LUMBER_MILL,
+               BuildingType.BLACKSMITH, BuildingType.STABLES, BuildingType.WORKSHOP, BuildingType.CHURCH)
+#: Names that fit a card button; the tooltip and the codex use the full ones.
+CARD_NAMES = {BuildingType.TOWN_HALL: "Hall", BuildingType.TOWER: "Tower", BuildingType.LUMBER_MILL: "Mill", BuildingType.BLACKSMITH: "Smith"}
+CARD_WIDTH = 116
 MINIMAP_WIDTH = 200
 SELECTION_WIDTH = 470
 SELECTION_HEIGHT = 128
@@ -254,7 +259,7 @@ class GameScene(Scene):
         if self.pending is not None:
             return [("Click", "target"), ("Right click", "cancel"), ("Shift", "queue / keep placing")]
         if self.build_menu:
-            return [("F B H T", "choose a building"), ("Esc", "back")]
+            return [("F B H T M K S W C", "choose a building"), ("Esc", "back")]
         if self._own_units():
             return [("Right click", "move / harvest / attack"), ("A", "attack-move"), ("P", "patrol"), ("S", "stop"), ("Ctrl+1-9", "group"), ("Esc", "deselect")]
         building = self._own_building()
@@ -527,10 +532,10 @@ class GameScene(Scene):
         units = self._own_units()
         if self.build_menu and any(u.is_worker for u in units):
             commands = []
-            for building_type in (BuildingType.FARM, BuildingType.BARRACKS, BuildingType.TOWN_HALL, BuildingType.TOWER):
+            for building_type in BUILD_ORDER:
                 info = BUILDINGS[building_type]
                 commands.append(Command(
-                    info.name, info.hotkey.upper(), lambda bt=building_type: self.start_pending(f"build:{bt.value}"),
+                    CARD_NAMES.get(building_type, info.name), info.hotkey.upper(), lambda bt=building_type: self.start_pending(f"build:{bt.value}"),
                     tooltip=f"{info.name} — {info.cost} · {info.summary}", blocked=lambda bt=building_type: self._build_blocked(bt),
                 ))
             commands.append(Command("Back", "Esc", self.close_build_menu, tooltip="Back to the unit commands"))
@@ -544,7 +549,7 @@ class GameScene(Scene):
                 Command("Patrol", "P", lambda: self.start_pending("patrol"), tooltip="Walk between here and a spot, fighting whatever turns up"),
             ]
             if any(u.is_worker for u in units):
-                commands.append(Command("Build", "B", self.open_build_menu, tooltip="Farm, barracks, town hall or tower", style=ACTION_BUTTON))
+                commands.append(Command("Build", "B", self.open_build_menu, tooltip="Farms, barracks, halls, towers and the tech buildings", style=ACTION_BUTTON))
             return commands
         building = self._own_building()
         if building is not None:
@@ -1315,7 +1320,7 @@ HELP_KEYS = (
     ("Double-click / Ctrl-click", "select every unit of that type on screen;  Ctrl+A: the whole army"),
     ("A / P", "attack-move: fight everything on the way / patrol between two spots"),
     ("S / H", "stop / hold position"),
-    ("B", "build (peasants): F farm, B barracks, H town hall, T tower"),
+    ("B", "build (peasants): F farm, B barracks, H town hall, T tower, M mill, K smith, S stables, W workshop, C church"),
     ("P / F / A / K", "train peasant / footman / archer / knight in the selected building"),
     ("Ctrl+1-9 / 1-9", "assign / recall a control group"),
     ("Tab / .", "next idle peasant / soldier"),
