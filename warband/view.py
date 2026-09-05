@@ -13,6 +13,7 @@ draws in screen space.
 from __future__ import annotations
 
 import math
+from typing import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -249,26 +250,22 @@ class MapView:
         seen = b.done and b.type is not BuildingType.GOLD_MINE and self.world.is_visible(self.player, (int(b.center[0]), int(b.center[1])))
         wx, wy = to_world(b.center)
         roof = (wx, wy - b.size * TILE * 0.5)
-        smoking = seen and b.hp < b.max_hp / 2
-        emitter = self._smoke.get(b.id)
-        if smoking and emitter is None:
-            emitter = ParticleEmitter("smoke", position=roof, speed=(8, 26), direction=(250, 290), lifetime=(1.2, 2.2),
-                                      size=(18, 18), fade_out=True, layer=RenderLayer.EFFECTS)
-            emitter.continuous(rate=3 + 3 * (1 - b.hp / max(1, b.max_hp)))
-            self._smoke[b.id] = self.scene.add_emitter(emitter)
-        elif not smoking and emitter is not None:
+        self._toggle_emitter(self._smoke, b.id, seen and b.hp < b.max_hp / 2, lambda: ParticleEmitter(
+            "smoke", position=roof, speed=(8, 26), direction=(250, 290), lifetime=(1.2, 2.2), size=(18, 18), fade_out=True, layer=RenderLayer.EFFECTS,
+        ).continuous(rate=3 + 3 * (1 - b.hp / max(1, b.max_hp))))
+        self._toggle_emitter(self._fire, b.id, seen and b.hp < b.max_hp / 4, lambda: ParticleEmitter(
+            "spark", position=(roof[0], roof[1] + TILE * 0.35), speed=(25, 60), direction=(250, 290), lifetime=(0.4, 0.8),
+            size=(16, 26), fade_out=True, tint=(1.0, 0.45, 0.1), layer=RenderLayer.EFFECTS,
+        ).continuous(rate=26))
+
+    def _toggle_emitter(self, store: dict[int, ParticleEmitter], key: int, wanted: bool, make: Callable[[], ParticleEmitter]) -> None:
+        """Keep exactly one emitter in *store* under *key* while *wanted*."""
+        emitter = store.get(key)
+        if wanted and emitter is None:
+            store[key] = self.scene.add_emitter(make())
+        elif not wanted and emitter is not None:
             emitter.remove()
-            del self._smoke[b.id]
-        blazing = seen and b.hp < b.max_hp / 4
-        fire = self._fire.get(b.id)
-        if blazing and fire is None:
-            fire = ParticleEmitter("spark", position=(roof[0], roof[1] + TILE * 0.35), speed=(25, 60), direction=(250, 290), lifetime=(0.4, 0.8),
-                                   size=(16, 26), fade_out=True, tint=(1.0, 0.45, 0.1), layer=RenderLayer.EFFECTS)
-            fire.continuous(rate=26)
-            self._fire[b.id] = self.scene.add_emitter(fire)
-        elif not blazing and fire is not None:
-            fire.remove()
-            del self._fire[b.id]
+            del store[key]
 
     def _frame(self, u: Unit) -> str:
         if u.state == "move":
