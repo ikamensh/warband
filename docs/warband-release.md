@@ -38,7 +38,7 @@ See the in-game help (F1) and codex (F2). Summary:
 
 ## Known issues in this candidate
 
-- Units have four animation frames; buildings smoke when damaged but do not burn.
+- Units have four animation frames.
 - The AI does not repair buildings, and neither can you.
 - Large maps with three or four players can run past twenty minutes without a decision.
 - Windows and Linux builds have not been produced or tested; the macOS build has been self-tested, not played by a second person.
