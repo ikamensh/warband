@@ -99,6 +99,36 @@ def test_a_walk_ends_when_a_crowd_keeps_the_unit_from_the_exact_spot() -> None:
     assert archer.state == "idle" and dist(archer.pos, (9.9846, 12.2515)) < 1.0
 
 
+def test_a_crowd_cannot_shove_a_unit_through_a_tree_wall() -> None:
+    # Fuzz seed 2203: eight overlapping units summed a push of over a tile, and the nudge only checked
+    # the destination tile, so units jumped across the forest into an isolated clearing.
+    world = flat_world()
+    for x in range(3, 10):
+        for y in (2, 3, 4):
+            if (x, y) != (6, 3):  # a one-tile clearing inside the wood
+                world.terrain[y][x] = Terrain.TREES
+                world._blocked[y * world.width + x] = 1
+    units = [world.spawn_unit(0, UnitType.FOOTMAN, (6.0 + 0.01 * i, 5.05)) for i in range(10)]
+    world.move([u.id for u in units], (6.5, 5.2))
+    for _ in range(int(4 / SIM_DT)):
+        world.step()
+        for u in units:
+            assert u.tile != (6, 3) and u.y >= 5.0, (u.id, u.pos)
+
+
+def test_a_unit_pushed_into_a_corner_walks_back_to_its_tile_centre_before_the_exact_spot() -> None:
+    # The same seed, the other half: a detour to the unit's own tile was inserted into the path, but
+    # the waypoint rule still aimed at the exact point across the tree, so every step was refused.
+    world = flat_world()
+    world.terrain[5][4] = Terrain.TREES
+    world._blocked[5 * world.width + 4] = 1
+    unit = world.spawn_unit(0, UnitType.FOOTMAN, (5.02, 5.5))
+    world.move([unit.id], (4.5, 6.9))
+    unit.path, unit.exact, unit.path_goal = [(5, 5)], (4.5, 6.9), (4, 6)  # the state a crowd leaves behind
+    run_until(world, lambda: not unit.orders, 6)
+    assert dist(unit.pos, (4.5, 6.9)) < 0.2
+
+
 def test_units_ordered_to_one_spot_spread_out_instead_of_stacking() -> None:
     world = flat_world()
     ids = [world.spawn_unit(0, UnitType.FOOTMAN, (2.5 + i, 2.5)).id for i in range(4)]

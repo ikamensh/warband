@@ -42,6 +42,7 @@ LOCAL_EXPANSIONS = 700  # A* budget for the detours around other units; those go
 SETTLE_WITHIN = 1.0  # a plain walk counts as arrived when a crowd keeps the unit this close to its spot without progress
 MINE_CLEARANCE = 2  # tiles kept free around a gold mine so peasants can get in and out
 SIDESTEP = 0.6  # lateral share of the push when walking units collide
+MAX_PUSH = 0.25  # tiles a crowd can shove a unit in one step; eight overlapping units once summed to a jump over a tree wall
 
 
 class RuleError(Exception):
@@ -1346,9 +1347,9 @@ class World:
 
     def _next_waypoint(self, u: Unit) -> Point | None:
         if u.path:
-            if len(u.path) == 1 and u.exact is not None:
+            if len(u.path) == 1 and u.exact is not None and u.path[0] != u.tile:
                 return u.exact
-            return tile_center(u.path[0])
+            return tile_center(u.path[0])  # a detour back to the unit's own tile centre is walked first
         if u.exact is not None and dist(u.pos, u.exact) > ARRIVE:
             return u.exact
         return None
@@ -1382,10 +1383,15 @@ class World:
         u.facing = math.atan2(dy, dx)
         nx, ny = u.x + dx / d * step, u.y + dy / d * step
         if not self.passable(int(nx), int(ny)) and self.passable(*u.tile):
-            # Pushed off course so that the straight line to the next tile crosses a blocked
-            # one: go back to this tile's centre first, which is always possible.
-            if not (u.path and u.path[0] == u.tile):
+            if u.path and u.path[0] != u.tile:
+                # Pushed off course so that the straight line to the next tile crosses a blocked
+                # one: go back to this tile's centre first, which is always possible.
                 u.path.insert(0, u.tile)
+            elif u.path_goal is not None and self.time >= u.replan_at:
+                # Even from the centre the straight step to the exact spot crosses a blocked tile: it
+                # lies across a corner.  Plan again; the planner never cuts corners, so the path comes
+                # in from an open side, or there is none and the walk ends here.
+                self._plan(u, u.path_goal, u.exact)
             return False
         u.x, u.y = nx, ny
         # Progress watchdog: closing on the goal resets it; a stretch without progress paths
@@ -1490,9 +1496,14 @@ class World:
             self._nudge(u, px, py)
 
     def _nudge(self, u: Unit, px: float, py: float) -> None:
+        """Shove *u* by at most MAX_PUSH, never through a blocked tile or across a blocked corner."""
+        length = math.hypot(px, py)
+        if length > MAX_PUSH:
+            px, py = px / length * MAX_PUSH, py / length * MAX_PUSH
+        own_tile_open = self.passable(*u.tile)
         for dx, dy in ((px, py), (px, 0.0), (0.0, py)):
             nx, ny = self._clamp((u.x + dx, u.y + dy))
-            if self.passable(int(nx), int(ny)):
+            if self._line_clear(u.pos, (nx, ny)) if own_tile_open else self.passable(int(nx), int(ny)):
                 u.x, u.y = nx, ny
                 return
 
