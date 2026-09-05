@@ -61,6 +61,23 @@ def test_units_path_around_trees_and_never_stand_in_them() -> None:
     assert dist(unit.pos, (18.5, 2.5)) < 0.2
 
 
+def test_a_unit_at_a_building_corner_still_reaches_a_target_around_it() -> None:
+    # Fuzz seed 203: the scout stood just below a lumber mill's corner with the peasant just left of
+    # it; the straight line looked clear when sampled, but every step entered the mill's tile.
+    world = flat_world()
+    world.place_building(0, BuildingType.LUMBER_MILL, (4, 4))  # tiles 4..6 x 4..6
+    peasant = world.spawn_unit(0, UnitType.PEASANT, (3.239, 5.354))
+    scout = world.spawn_unit(1, UnitType.SCOUT, (4.105, 7.123))
+    world.attack([scout.id], peasant.id)
+    for _ in range(int(10 / SIM_DT)):
+        world.step()
+        assert world.passable(*scout.tile), scout.pos
+        if peasant.hp < UNITS[UnitType.PEASANT].hp:
+            break
+    else:
+        raise AssertionError(f"the scout never reached the peasant, standing at {scout.pos}")
+
+
 def test_units_ordered_to_one_spot_spread_out_instead_of_stacking() -> None:
     world = flat_world()
     ids = [world.spawn_unit(0, UnitType.FOOTMAN, (2.5 + i, 2.5)).id for i in range(4)]

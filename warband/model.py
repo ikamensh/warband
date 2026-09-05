@@ -1338,32 +1338,52 @@ class World:
         return False
 
     def _line_clear(self, a: Point, b: Point) -> bool:
-        """No blocked tile on the straight line from *a* to *b* (sampled every quarter tile)."""
-        d = dist(a, b)
-        steps = max(1, int(d / 0.25))
-        for i in range(1, steps + 1):
-            t = i / steps
-            if not self.passable(int(a[0] + (b[0] - a[0]) * t), int(a[1] + (b[1] - a[1]) * t)):
+        """No blocked tile on the straight line from *a* to *b*.
+
+        Every tile the segment crosses is visited (a grid walk, not sampling: a
+        sample every quarter tile can skip the corner tile a unit standing at a
+        building's corner would step into).  Passing exactly through a corner
+        needs both tiles beside it free, as a diagonal step in the pathfinder does.
+        """
+        x, y = int(a[0]), int(a[1])
+        end_x, end_y = int(b[0]), int(b[1])
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        step_x, step_y = (1 if dx > 0 else -1), (1 if dy > 0 else -1)
+        # Fraction of the segment at which the next vertical / horizontal grid line is crossed.
+        next_x = ((x + (step_x > 0)) - a[0]) / dx if dx else math.inf
+        next_y = ((y + (step_y > 0)) - a[1]) / dy if dy else math.inf
+        per_x, per_y = (abs(1 / dx) if dx else math.inf), (abs(1 / dy) if dy else math.inf)
+        passable = self.passable
+        for _ in range(abs(end_x - x) + abs(end_y - y) + 1):
+            if not passable(x, y):
                 return False
-        return True
+            if x == end_x and y == end_y:
+                return True
+            if abs(next_x - next_y) < 1e-9:
+                if not (passable(x + step_x, y) and passable(x, y + step_y)):
+                    return False
+                x, y = x + step_x, y + step_y
+                next_x, next_y = next_x + per_x, next_y + per_y
+            elif next_x < next_y:
+                x, next_x = x + step_x, next_x + per_x
+            else:
+                y, next_y = y + step_y, next_y + per_y
+        return passable(x, y)
 
     def _steer(self, u: Unit, target: Point, dt: float) -> bool:
         """Walk straight at *target* when it is near and the line is clear; True if that was possible."""
         if dist(u.pos, target) > STEER_RANGE or not self._line_clear(u.pos, target):
             return False
+        dx, dy = target[0] - u.x, target[1] - u.y
+        d = math.hypot(dx, dy)
+        if d >= 1e-6:
+            step = min(d, self.speed_of(u) * dt)
+            u.facing = math.atan2(dy, dx)
+            u.x, u.y = u.x + dx / d * step, u.y + dy / d * step  # on the segment, so on a tile just checked
         u.path = []
         u.path_goal = None
         u.exact = None
         u.state = "move"
-        dx, dy = target[0] - u.x, target[1] - u.y
-        d = math.hypot(dx, dy)
-        if d < 1e-6:
-            return True
-        step = min(d, self.speed_of(u) * dt)
-        u.facing = math.atan2(dy, dx)
-        nx, ny = u.x + dx / d * step, u.y + dy / d * step
-        if self.passable(int(nx), int(ny)):
-            u.x, u.y = nx, ny
         return True
 
     def _separate(self) -> None:
