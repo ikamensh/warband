@@ -81,6 +81,9 @@ class GameScene(Scene):
         "minus": "zoom_out",
         "tab": "next_idle_peasant",
         "period": "next_idle_soldier",
+        "ctrl+a": "select_army",
+        "f6": "recall_bookmark_1", "f7": "recall_bookmark_2", "f8": "recall_bookmark_3",
+        "ctrl+f6": "set_bookmark_1", "ctrl+f7": "set_bookmark_2", "ctrl+f8": "set_bookmark_3",
     }
 
     def __init__(self, world: World, seed: int, *, difficulty: Difficulty = Difficulty.NORMAL, settings: dict[str, Any] | None = None,
@@ -116,6 +119,8 @@ class GameScene(Scene):
         self._card_buttons: list[Button] = []
         self._portraits: list[tuple[int, tuple[int, int, int, int]]] = []
         self._sound_times: dict[str, float] = {}
+        self._last_click: tuple[float, int | None] = (-10.0, None)
+        self.bookmarks: dict[int, tuple[float, float]] = {}
 
     # -- Lifecycle -------------------------------------------------------------
 
@@ -164,6 +169,7 @@ class GameScene(Scene):
             Label(supply_text, text_style="hud"),
             Label(lambda: _clock(world.time), text_style="sub"),
             Label(lambda: "Paused" if self.paused else f"×{self.speed:g}" if self.speed != 1 else "", text_style="hud", text_color=BAD),
+            self._idle_button(),
             Button("Menu", hotkey="F10", on_click=self.open_menu, style=GHOST_BUTTON),
         ]))
         world_w, world_h = self.world.width * TILE, self.world.height * TILE
@@ -179,13 +185,20 @@ class GameScene(Scene):
         self.ui.add(Label(lambda: self.status if self.status_timer > 0 else "", text_style="hud", anchor=Anchor.TOP_CENTER, margin=(0, 70), text_color=GOLD))
         self._refresh_card()
 
+    def _idle_button(self) -> Button:
+        self.idle_button = Button(lambda: f"Idle {self._idle_peasant_count()}", hotkey="Tab", on_click=self.next_idle_peasant, style=ACTION_BUTTON)
+        return self.idle_button
+
+    def _idle_peasant_count(self) -> int:
+        return sum(1 for u in self.world.player_units(self.human) if u.is_worker and not u.orders and not u.hidden)
+
     def _hint(self) -> list[tuple[str, str]]:
         if self.pending is not None:
             return [("Click", "target"), ("Right click", "cancel"), ("Shift", "queue / keep placing")]
         if self.build_menu:
             return [("F B H T", "choose a building"), ("Esc", "back")]
         if self._own_units():
-            return [("Right click", "move / harvest / attack"), ("A", "attack-move"), ("S", "stop"), ("Ctrl+1-9", "group"), ("Esc", "deselect")]
+            return [("Right click", "move / harvest / attack"), ("A", "attack-move"), ("P", "patrol"), ("S", "stop"), ("Ctrl+1-9", "group"), ("Esc", "deselect")]
         building = self._own_building()
         if building is not None:
             keys = " ".join(dict.fromkeys(c.hotkey for c in self._card if c.hotkey not in ("X", "C")))
@@ -232,16 +245,34 @@ class GameScene(Scene):
         if self.selection != before:
             self._refresh_card()
 
-    def click_select(self, point: tuple[float, float], shift: bool) -> None:
+    def click_select(self, point: tuple[float, float], shift: bool, ctrl: bool = False) -> None:
         entity = self.world.entity_at(point, visible_to=self.human)
         if entity is None:
             if not shift:
                 self.select([])
             return
-        if shift and entity.player == self.human:
+        last_time, last_id = self._last_click
+        double = last_id == entity.id and self.clock - last_time < 0.4
+        self._last_click = (self.clock, entity.id)
+        if (double or ctrl) and isinstance(entity, Unit) and entity.player == self.human:
+            self.select_same_type(entity, add=shift)
+        elif shift and entity.player == self.human:
             self.select([entity.id], add=True)
         else:
             self.select([entity.id])
+
+    def select_same_type(self, unit: Unit, *, add: bool = False) -> None:
+        """Every unit of *unit*'s type that is on screen (a double-click or ctrl-click)."""
+        left, top, right, bottom = self.camera.visible_world_rect()
+        same = [u.id for u in self.world.units_in_rect(*to_tiles(left, top), *to_tiles(right, bottom), player=self.human) if u.type is unit.type]
+        self.select(same if not add else [i for i in same if i not in self.selection], add=add)
+
+    def select_army(self) -> None:
+        soldiers = [u.id for u in self.world.player_units(self.human) if not u.is_worker and not u.hidden]
+        if soldiers:
+            self.select(soldiers)
+        else:
+            self.say("No soldiers yet")
 
     def box_select(self, a: tuple[float, float], b: tuple[float, float], shift: bool) -> None:
         units = self.world.units_in_rect(a[0], a[1], b[0], b[1], player=self.human)
@@ -317,6 +348,13 @@ class GameScene(Scene):
             return
         self._marker(point, (255, 80, 70, 220))
         self.sfx("attack_command")
+
+    def command_patrol(self, point: tuple[float, float], *, queue: bool = False) -> None:
+        units = self._own_units()
+        if units:
+            self.world.patrol([u.id for u in units], point, queue=queue)
+            self._marker(point, (120, 200, 255, 220))
+            self.sfx("command")
 
     def command_stop(self) -> None:
         units = self._own_units()
@@ -445,6 +483,7 @@ class GameScene(Scene):
                 Command("Stop", "S", self.command_stop, tooltip="Drop every order"),
                 Command("Attack", "A", lambda: self.start_pending("attack"), tooltip="Attack a target, or attack-move: fight everything on the way", style=DANGER_BUTTON),
                 Command("Hold", "H", self.command_hold, tooltip="Stand here; fight what comes in range but never chase"),
+                Command("Patrol", "P", lambda: self.start_pending("patrol"), tooltip="Walk between here and a spot, fighting whatever turns up"),
             ]
             if any(u.is_worker for u in units):
                 commands.append(Command("Build", "B", self.open_build_menu, tooltip="Farm, barracks, town hall or tower", style=ACTION_BUTTON))
@@ -553,6 +592,35 @@ class GameScene(Scene):
         if self.last_alert is not None:
             self.camera.pan_to(*to_world(self.last_alert), duration=0.25)
 
+    def _set_bookmark(self, slot: int) -> None:
+        self.bookmarks[slot] = self.camera.center
+        self.say(f"Camera bookmark {slot} set (F{5 + slot} to return)")
+        self.sfx("button")
+
+    def _recall_bookmark(self, slot: int) -> None:
+        if slot in self.bookmarks:
+            self.camera.pan_to(*self.bookmarks[slot], duration=0.2)
+        else:
+            self.say(f"No bookmark {slot}: Ctrl+F{5 + slot} sets one here")
+
+    def set_bookmark_1(self) -> None:
+        self._set_bookmark(1)
+
+    def set_bookmark_2(self) -> None:
+        self._set_bookmark(2)
+
+    def set_bookmark_3(self) -> None:
+        self._set_bookmark(3)
+
+    def recall_bookmark_1(self) -> None:
+        self._recall_bookmark(1)
+
+    def recall_bookmark_2(self) -> None:
+        self._recall_bookmark(2)
+
+    def recall_bookmark_3(self) -> None:
+        self._recall_bookmark(3)
+
     def minimap_click(self, wx: float, wy: float, button: str) -> None:
         if button == "right":
             self.command_smart(to_tiles(wx, wy))
@@ -630,7 +698,7 @@ class GameScene(Scene):
             start, end = self._drag_start, self._drag_end or self._drag_start
             self._drag_start = self._drag_end = None
             if math.dist(start, end) < DRAG_THRESHOLD:
-                self.click_select(point, event.shift)
+                self.click_select(point, event.shift, event.ctrl or event.meta)
             else:
                 self.box_select(to_tiles(*self.camera.screen_to_world(*start)), to_tiles(*self.camera.screen_to_world(*end)), event.shift)
             return True
@@ -659,6 +727,8 @@ class GameScene(Scene):
             self.command_move(point, queue=keep)
         elif mode == "attack":
             self.command_attack(point, queue=keep)
+        elif mode == "patrol":
+            self.command_patrol(point, queue=keep)
         elif mode is not None and mode.startswith("build:"):
             self.place_building(BuildingType(mode[6:]), point, keep=keep)
             return
@@ -687,6 +757,7 @@ class GameScene(Scene):
         self.effects.update(dt)
         self.view.sync(dt)
         self._update_card()
+        self.idle_button.visible = self._idle_peasant_count() > 0
         self._check_game_over()
 
     def _handle_events(self, events: list[Event]) -> None:
@@ -908,7 +979,8 @@ class GameScene(Scene):
                 lines.append(f"Carrying {entity.carry} {entity.carrying.value}")
             elif order is not None:
                 lines.append(type(order).__name__.replace("AttackMove", "Attack-moving").replace("Move", "Moving").replace("Attack", "Attacking")
-                             .replace("Harvest", "Harvesting").replace("Build", "Going to build").replace("Hold", "Holding position").replace("Heal", "Healing"))
+                             .replace("Harvest", "Harvesting").replace("Build", "Going to build").replace("Hold", "Holding position").replace("Heal", "Healing")
+                             .replace("Patrol", "Patrolling"))
             else:
                 lines.append("Idle")
         elif isinstance(entity, Building):
@@ -1081,13 +1153,14 @@ HELP_KEYS = (
     ("Left click / drag", "select a unit, a building, or every unit in the box"),
     ("Right click", "move, harvest, attack or resume building — the sensible thing for the target"),
     ("Shift", "add to the selection, or queue an order after the current one"),
-    ("A", "attack-move: fight everything on the way"),
+    ("Double-click / Ctrl-click", "select every unit of that type on screen;  Ctrl+A: the whole army"),
+    ("A / P", "attack-move: fight everything on the way / patrol between two spots"),
     ("S / H", "stop / hold position"),
     ("B", "build (peasants): F farm, B barracks, H town hall, T tower"),
     ("P / F / A / K", "train peasant / footman / archer / knight in the selected building"),
     ("Ctrl+1-9 / 1-9", "assign / recall a control group"),
     ("Tab / .", "next idle peasant / soldier"),
-    ("Space", "jump to the last alert"),
+    ("Space", "jump to the last alert;  Ctrl+F6-F8 / F6-F8: set / return to a camera bookmark"),
     ("Arrows / edges / middle-drag", "scroll the map;  wheel / + / −  zoom"),
     ("Minimap", "left-click to look, right-click to send the selection there"),
     ("F3 / F5 / F9", "pause / save / load"),

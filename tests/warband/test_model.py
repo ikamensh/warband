@@ -382,3 +382,15 @@ def test_a_generated_map_round_trips_through_json_mid_action() -> None:
     run(copy, 10.0)
     assert world.to_dict() == copy.to_dict()
     assert world.players[0].gold > 1000 or any(u.carrying for u in world.units.values())
+
+
+def test_patrol_walks_back_and_forth_and_fights_what_it_meets() -> None:
+    world = flat_world(30, 10)
+    knight = world.spawn_unit(0, UnitType.KNIGHT, (2.5, 5.5))
+    world.patrol([knight.id], (12.5, 5.5))
+    run_until(world, lambda: knight.x > 12.0, 8.0)
+    run_until(world, lambda: knight.x < 3.0, 8.0)
+    assert isinstance(knight.order, __import__("warband.model", fromlist=["Patrol"]).Patrol)
+    victim = world.spawn_unit(1, UnitType.PEASANT, (8.5, 5.5))
+    run_until(world, lambda: victim.id not in world.units, 15.0)
+    run_until(world, lambda: knight.x > 12.0, 10.0)  # and carries on patrolling

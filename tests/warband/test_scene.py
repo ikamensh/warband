@@ -78,7 +78,7 @@ def test_clicking_a_peasant_selects_it_and_shows_its_card(play) -> None:
     assert scene.selection == [peasant.id]
     shown = texts(game)
     assert "Peasant" in shown and any(t.startswith("Damage 3") for t in shown)
-    assert [c.label for c in scene._card] == ["Move", "Stop", "Attack", "Hold", "Build"]
+    assert [c.label for c in scene._card] == ["Move", "Stop", "Attack", "Hold", "Patrol", "Build"]
     assert "select" in scene.recent_sounds
 
 
@@ -415,3 +415,48 @@ def test_the_title_offers_three_difficulties_and_saves_keep_it(game) -> None:
     game.tick(1 / 60)
     press(game, "c")
     assert game.scene.difficulty is Difficulty.HARD
+
+
+def test_double_click_and_ctrl_click_select_every_unit_of_a_type_on_screen(play) -> None:
+    game, scene = play
+    ps = peasants_of(scene)
+    hall = hall_of(scene)
+    footman = scene.world.spawn_unit(scene.human, UnitType.FOOTMAN, tile_center((hall.x + 4, hall.y + 4)))
+    game.tick(1 / 60)
+    click(game, scene, ps[0].pos)
+    click(game, scene, ps[0].pos)
+    assert sorted(scene.selection) == sorted(p.id for p in ps)
+    click(game, scene, footman.pos, ctrl=True)
+    assert scene.selection == [footman.id]
+    press(game, "a", ctrl=True)
+    assert scene.selection == [footman.id]
+
+
+def test_patrol_button_and_camera_bookmarks(play) -> None:
+    from warband.model import Patrol
+
+    game, scene = play
+    hall = hall_of(scene)
+    footman = scene.world.spawn_unit(scene.human, UnitType.FOOTMAN, tile_center((hall.x + 4, hall.y + 4)))
+    game.tick(1 / 60)
+    scene.select([footman.id])
+    press(game, "p")
+    assert scene.pending == "patrol"
+    click(game, scene, (hall.x + 8, hall.y + 4))
+    assert isinstance(footman.order, Patrol)
+    here = scene.camera.center
+    press(game, "f6", ctrl=True)
+    scene.camera.center_on(here[0] + 400, here[1] + 300)
+    press(game, "f6")
+    tick(game, 0.4)
+    assert scene.camera.center == pytest.approx(here, abs=1.0)
+    press(game, "f7")
+    assert any("No bookmark 2" in t for t in texts(game))
+
+
+def test_the_idle_button_shows_only_while_a_peasant_idles(play) -> None:
+    game, scene = play
+    assert scene.idle_button.visible and "Idle 3" in texts(game)
+    scene.world.harvest([p.id for p in peasants_of(scene)], scene.world.mines()[0].id)
+    game.tick(1 / 60)
+    assert not scene.idle_button.visible

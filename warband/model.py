@@ -90,9 +90,18 @@ class Heal:
     auto: bool = False
 
 
-Order = Move | AttackMove | Attack | Harvest | Deposit | Build | Hold | Heal
+@dataclass
+class Patrol:
+    """Walk between two points forever, fighting (or healing) whatever turns up."""
 
-_ORDER_TYPES: dict[str, type] = {cls.__name__: cls for cls in (Move, AttackMove, Attack, Harvest, Deposit, Build, Hold, Heal)}
+    start: Point
+    end: Point
+    outbound: bool = True
+
+
+Order = Move | AttackMove | Attack | Harvest | Deposit | Build | Hold | Heal | Patrol
+
+_ORDER_TYPES: dict[str, type] = {cls.__name__: cls for cls in (Move, AttackMove, Attack, Harvest, Deposit, Build, Hold, Heal, Patrol)}
 
 
 # -- Entities ------------------------------------------------------------------
@@ -625,6 +634,15 @@ class World:
         for unit in self._own_units(unit_ids):
             self._issue(unit, AttackMove(target) if not unit.is_worker else Move(target), queue=queue)
 
+    def patrol(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
+        """Patrol between where each unit stands and *target*."""
+        target = self._clamp(target)
+        for unit in self._own_units(unit_ids):
+            if unit.is_worker:
+                self._issue(unit, Move(target), queue=queue)
+            else:
+                self._issue(unit, Patrol(unit.pos, target), queue=queue)
+
     def attack(self, unit_ids: list[int], target_id: int, *, queue: bool = False) -> None:
         target = self.entity(target_id)
         if target is None:
@@ -924,6 +942,8 @@ class World:
             self._do_hold(u)
         elif isinstance(order, Heal):
             self._do_heal(u, order, dt)
+        elif isinstance(order, Patrol):
+            self._do_patrol(u, order, dt)
 
     def _finish_order(self, u: Unit) -> None:
         if u.orders:
@@ -1011,24 +1031,38 @@ class World:
         if self._walk_to(u, order.target, dt):
             self._finish_order(u)
 
+    def _engage(self, u: Unit) -> bool:
+        """Pick up a fight (or a patient) in sight while on the move; True if one was found."""
+        if self.tick % 5:
+            return False
+        if u.info.heal:
+            patient = self._nearest_wounded(u, u.info.sight)
+            if patient is None:
+                return False
+            u.orders.appendleft(Heal(patient.id))
+        else:
+            target = self._nearest_enemy(u.player, u.pos, u.info.sight)
+            if target is None:
+                return False
+            u.orders.appendleft(Attack(target.id))
+        u.path = []
+        u.path_goal = None
+        return True
+
     def _do_attack_move(self, u: Unit, order: AttackMove, dt: float) -> None:
-        if self.tick % 5 == 0:
-            if u.info.heal:
-                patient = self._nearest_wounded(u, u.info.sight)
-                if patient is not None:
-                    u.orders.appendleft(Heal(patient.id))
-                    u.path = []
-                    u.path_goal = None
-                    return
-            else:
-                target = self._nearest_enemy(u.player, u.pos, u.info.sight)
-                if target is not None:
-                    u.orders.appendleft(Attack(target.id))
-                    u.path = []
-                    u.path_goal = None
-                    return
+        if self._engage(u):
+            return
         if self._walk_to(u, order.target, dt):
             self._finish_order(u)
+
+    def _do_patrol(self, u: Unit, order: Patrol, dt: float) -> None:
+        if self._engage(u):
+            return
+        if self._walk_to(u, order.end if order.outbound else order.start, dt):
+            order.outbound = not order.outbound
+            u.path = []
+            u.path_goal = None
+            u.exact = None
 
     def _do_attack(self, u: Unit, order: Attack, dt: float) -> None:
         target = self.entity(order.target)
@@ -1527,6 +1561,8 @@ def _order_from_dict(d: dict[str, Any]) -> Order:
         fields["target"] = tuple(fields["target"])
     elif kind in (Move, AttackMove):
         fields["target"] = tuple(fields["target"])
+    elif kind is Patrol:
+        fields["start"], fields["end"] = tuple(fields["start"]), tuple(fields["end"])
     return kind(**fields)
 
 
