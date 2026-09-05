@@ -113,7 +113,7 @@ MELEE = 0.45  # reach of a melee unit: it strikes from the next tile over, diago
 
 UNITS: dict[UnitType, UnitInfo] = {
     UnitType.PEASANT: UnitInfo("Peasant", Cost(400), 30, 3, 0, MELEE, 1.0, 2.4, 4, 12.0, BuildingType.TOWN_HALL, "p",
-                               "Mines gold, chops lumber, builds"),
+                               "Mines gold, chops lumber, builds and repairs"),
     UnitType.FOOTMAN: UnitInfo("Footman", Cost(600), 60, 7, 2, MELEE, 1.0, 2.4, 5, 15.0, BuildingType.BARRACKS, "f",
                                "Sturdy swordsman; the line of any army"),
     UnitType.ARCHER: UnitInfo("Archer", Cost(500, 50), 40, 5, 0, 4.0, 1.3, 2.4, 6, 14.0, BuildingType.BARRACKS, "a",
