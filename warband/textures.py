@@ -280,12 +280,13 @@ def _building(building_type: BuildingType, player: int) -> Mesh:
         fence += r3.box((-0.1, 0.92, 0.16), (1.7, 0.03, 0.04), WOOD)
         return house + roof + rows + fence + _door(-0.42, 0.08, 0.2, 0.3, 0.4) + r3.facing(_facing_quad((-0.42, 0.09, 0.62), 0.14, 0.1), team, VIEW)
     if building_type is BuildingType.TOWER:
-        body = r3.cylinder((0, 0, 0), 0.6, 1.7, STONE, sides=10)
+        plinth = r3.box((0, 0, 0.1), (1.8, 1.8, 0.2), STONE_DARK)
+        body = r3.cylinder((0, 0, 0.2), 0.68, 1.6, STONE, sides=10)
         crown: Mesh = []
-        for i in range(6):
-            a = 2 * math.pi * i / 6
-            crown += r3.box((0.52 * math.cos(a), 0.52 * math.sin(a), 1.8), (0.2, 0.2, 0.22), STONE_DARK)
-        return body + crown + r3.facing(_facing_quad((0, 0.61, 1.35), 0.12, 0.16), INK, VIEW) + _pennant(0, 0, 1.7, 0.6, team)
+        for i in range(7):
+            a = 2 * math.pi * i / 7
+            crown += r3.box((0.6 * math.cos(a), 0.6 * math.sin(a), 1.9), (0.2, 0.2, 0.22), STONE_DARK)
+        return plinth + body + crown + r3.facing(_facing_quad((0, 0.69, 1.4), 0.12, 0.16), INK, VIEW) + _pennant(0, 0, 1.8, 0.6, team)
     raise ValueError(building_type)
 
 

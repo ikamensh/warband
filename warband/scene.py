@@ -55,7 +55,7 @@ class Command:
     hotkey: str
     action: Callable[[], None]
     tooltip: str = ""
-    enabled: Callable[[], bool] = field(default=lambda: True)
+    blocked: Callable[[], str | None] = field(default=lambda: None)  # why it cannot be used right now
     style: Style = field(default_factory=lambda: CARD_BUTTON)
 
     @property
@@ -413,9 +413,7 @@ class GameScene(Scene):
                 info = BUILDINGS[building_type]
                 commands.append(Command(
                     info.name, info.hotkey.upper(), lambda bt=building_type: self.start_pending(f"build:{bt.value}"),
-                    tooltip=f"{info.name} — {info.cost} · {info.summary}",
-                    enabled=lambda bt=building_type: world.can_afford(self.human, BUILDINGS[bt].cost) is None
-                    and (BUILDINGS[bt].requires is None or bool(world.player_buildings(self.human, BUILDINGS[bt].requires, done=True))),
+                    tooltip=f"{info.name} — {info.cost} · {info.summary}", blocked=lambda bt=building_type: self._build_blocked(bt),
                 ))
             commands.append(Command("Back", "Esc", self.close_build_menu, tooltip="Back to the unit commands"))
             return commands
@@ -438,12 +436,18 @@ class GameScene(Scene):
                 info = UNITS[unit_type]
                 commands.append(Command(info.name, info.hotkey.upper(), lambda ut=unit_type: self.train(ut),
                                         tooltip=f"{info.name} — {info.cost} · {info.summary}",
-                                        enabled=lambda ut=unit_type, b=building: world.can_train(b, ut) is None))
+                                        blocked=lambda ut=unit_type, b=building: world.can_train(b, ut)))
             if building.info.trains:
                 commands.append(Command("Cancel", "X", self.cancel_train, tooltip="Cancel the last unit in the queue",
-                                        enabled=lambda b=building: bool(b.queue)))
+                                        blocked=lambda b=building: None if b.queue else "Nothing queued"))
             return commands
         return []
+
+    def _build_blocked(self, building_type: BuildingType) -> str | None:
+        info = BUILDINGS[building_type]
+        if info.requires is not None and not self.world.player_buildings(self.human, info.requires, done=True):
+            return f"Requires a {BUILDINGS[info.requires].name}"
+        return self.world.can_afford(self.human, info.cost)
 
     def _refresh_card(self) -> None:
         commands = self._commands()
@@ -471,14 +475,19 @@ class GameScene(Scene):
     def _update_card(self) -> None:
         self.tooltip = ""
         for command, button in zip(self._card, self._card_buttons):
-            button.enabled = command.enabled()
+            blocked = command.blocked()
+            button.enabled = blocked is None
             if button.state == "hovered":
-                self.tooltip = command.tooltip
+                self.tooltip = command.tooltip + (f"  ({blocked})" if blocked else "")
 
     def _press_card_key(self, key: str) -> bool:
         for command in self._card:
-            if command.key == key and command.enabled():
-                command.action()
+            if command.key == key:
+                blocked = command.blocked()
+                if blocked is None:
+                    command.action()
+                else:
+                    self.warn(blocked)
                 return True
         return False
 
