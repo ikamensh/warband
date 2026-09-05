@@ -243,3 +243,9 @@ class Difficulty(Enum):
     EASY = "easy"
     NORMAL = "normal"
     HARD = "hard"
+
+
+class MapTheme(Enum):
+    SUMMER = "summer"
+    WINTER = "winter"
+    WASTELAND = "wasteland"

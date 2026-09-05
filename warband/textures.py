@@ -25,7 +25,7 @@ from PIL import Image, ImageDraw
 from saga2d import Game
 from saga2d import render3d as r3
 from saga2d.render3d import Mesh
-from warband.rules import BUILDINGS, PLAYERS, BuildingType, Resource, Terrain, UnitType
+from warband.rules import BUILDINGS, PLAYERS, BuildingType, MapTheme, Resource, Terrain, UnitType
 
 TILE = 32
 ELEVATION = 50.0
@@ -39,16 +39,48 @@ FRAMES = ("stand", "walk1", "walk2", "attack")
 TREE_VARIANTS = 3
 ROCK_VARIANTS = 2
 
-GRASS = (108, 162, 78)
-FOREST_FLOOR = ((76, 118, 58), (80, 122, 60), (72, 112, 54))
-WATER = (52, 110, 170)
-WATER_RIPPLE = (120, 170, 220)
-SAND = (198, 182, 134)
-ROCK_GROUND = (118, 140, 90)
-TRUNK = (98, 70, 46)
-LEAF = ((44, 110, 58), (56, 126, 66), (38, 98, 52))
-LEAF_LIGHT = ((70, 140, 76), (84, 156, 84), (62, 128, 70))
-ROCK = (132, 130, 126)
+Color = tuple[int, int, int]
+
+
+@dataclass(frozen=True)
+class Palette:
+    """The colours of one map theme."""
+
+    grass: Color
+    floor: tuple[Color, ...]
+    water: Color
+    ripple: Color
+    sand: Color
+    rock_ground: Color
+    trunk: Color
+    leaf: tuple[Color, ...]
+    leaf_light: tuple[Color, ...]
+    rock: Color
+    snow: bool = False  # snow caps on the trees
+    bare: bool = False  # dead trees: trunk and branches, no canopy
+    minimap: dict[Terrain, Color] = None  # type: ignore[assignment]
+
+
+PALETTES: dict[MapTheme, Palette] = {
+    MapTheme.SUMMER: Palette(
+        grass=(108, 162, 78), floor=((76, 118, 58), (80, 122, 60), (72, 112, 54)), water=(52, 110, 170), ripple=(120, 170, 220),
+        sand=(198, 182, 134), rock_ground=(118, 140, 90), trunk=(98, 70, 46),
+        leaf=((44, 110, 58), (56, 126, 66), (38, 98, 52)), leaf_light=((70, 140, 76), (84, 156, 84), (62, 128, 70)), rock=(132, 130, 126),
+        minimap={Terrain.GRASS: (96, 142, 70), Terrain.WATER: (46, 96, 156), Terrain.TREES: (44, 86, 46), Terrain.ROCK: (108, 118, 92)},
+    ),
+    MapTheme.WINTER: Palette(
+        grass=(222, 228, 236), floor=((196, 204, 214), (202, 210, 220), (190, 198, 208)), water=(150, 188, 222), ripple=(226, 240, 250),
+        sand=(206, 218, 230), rock_ground=(184, 188, 196), trunk=(78, 58, 44),
+        leaf=((34, 76, 58), (40, 84, 64), (30, 68, 52)), leaf_light=((52, 98, 74), (60, 108, 80), (46, 90, 68)), rock=(140, 146, 156), snow=True,
+        minimap={Terrain.GRASS: (200, 208, 218), Terrain.WATER: (140, 176, 210), Terrain.TREES: (52, 90, 70), Terrain.ROCK: (130, 136, 146)},
+    ),
+    MapTheme.WASTELAND: Palette(
+        grass=(178, 150, 96), floor=((136, 108, 68), (142, 114, 72), (130, 102, 64)), water=(88, 112, 98), ripple=(124, 150, 132),
+        sand=(154, 124, 74), rock_ground=(150, 118, 84), trunk=(96, 76, 56),
+        leaf=((92, 78, 52), (84, 70, 48), (98, 84, 58)), leaf_light=((110, 94, 64), (104, 88, 60), (116, 100, 70)), rock=(150, 118, 100), bare=True,
+        minimap={Terrain.GRASS: (160, 134, 84), Terrain.WATER: (78, 100, 88), Terrain.TREES: (98, 78, 52), Terrain.ROCK: (134, 106, 90)},
+    ),
+}
 STONE = (172, 164, 154)
 STONE_DARK = (128, 122, 114)
 WOOD = (152, 110, 66)
@@ -63,8 +95,8 @@ GOLD = (240, 198, 64)
 EARTH = (146, 116, 84)
 SHADOW = (0, 0, 0, 90)
 WHITE = (255, 255, 255)
-
-Color = tuple[int, int, int]
+SNOW = (240, 244, 250)
+TRUNK = PALETTES[MapTheme.SUMMER].trunk
 
 
 @dataclass(frozen=True)
@@ -107,9 +139,11 @@ def grass_tint(x: int, y: int, cell: int = 5) -> float:
     return 0.9 + 0.2 * v
 
 
-def ground_chunk(terrain_at, in_bounds, cx: int, cy: int, scale: float) -> Image.Image:
+def ground_chunk(terrain_at, in_bounds, cx: int, cy: int, scale: float, theme: MapTheme = MapTheme.SUMMER) -> Image.Image:
     """Paint the chunk at chunk coordinates ``(cx, cy)`` with a tile of margin
     around it; *terrain_at(pos)* and *in_bounds(pos)* read the map."""
+    pal = PALETTES[theme]
+    GRASS, FOREST_FLOOR, WATER, WATER_RIPPLE, SAND, ROCK_GROUND = pal.grass, pal.floor, pal.water, pal.ripple, pal.sand, pal.rock_ground
     px = TILE * scale
     n = CHUNK + 2
     image = Image.new("RGBA", (round(n * px), round(n * px)), (*GRASS, 255))
@@ -208,18 +242,30 @@ def _facing_quad(center: r3.Vec3, half_w: float, half_h: float) -> list[r3.Vec3]
     return [(cx - half_w, cy, cz - half_h), (cx + half_w, cy, cz - half_h), (cx + half_w, cy, cz + half_h), (cx - half_w, cy, cz + half_h)]
 
 
-def _tree(variant: int) -> Mesh:
-    leaf, light = LEAF[variant], LEAF_LIGHT[variant]
+def _tree(variant: int, theme: MapTheme = MapTheme.SUMMER) -> Mesh:
+    pal = PALETTES[theme]
+    leaf, light = pal.leaf[variant], pal.leaf_light[variant]
     tilt = (0.04, -0.03) if variant == 0 else (-0.03, 0.02) if variant == 1 else (0.0, 0.04)
-    return (
+    if pal.bare:
+        trunk = r3.cylinder((0, 0, 0), 0.07, 0.75 + 0.1 * variant, pal.trunk, sides=6)
+        branches = (r3.rotate_z(r3.box((0.16, 0, 0.6 + 0.05 * variant), (0.3, 0.05, 0.05), pal.trunk), 20 + 40 * variant)
+                    + r3.rotate_z(r3.box((-0.14, 0.02, 0.5), (0.26, 0.05, 0.05), darker(pal.trunk, 0.9)), -30 - 30 * variant))
+        crown = r3.sphere((0.05, 0, 0.82 + 0.1 * variant), 0.14, leaf, rings=3, sides=6)
+        return _shadow(0.22) + trunk + branches + crown
+    mesh = (
         _shadow(0.34)
-        + r3.cylinder((0, 0, 0), 0.07, 0.26, TRUNK, sides=6)
+        + r3.cylinder((0, 0, 0), 0.07, 0.26, pal.trunk, sides=6)
         + r3.cone((0, 0, 0.18), 0.42, 0.55, leaf, sides=8, rotation=0.2 * variant)
         + r3.cone((tilt[0], tilt[1], 0.5), 0.3, 0.5, light, sides=8, rotation=0.6 + 0.2 * variant)
     )
+    if pal.snow:
+        mesh += r3.cone((tilt[0], tilt[1], 0.78), 0.16, 0.24, SNOW, sides=8, rotation=0.6 + 0.2 * variant)
+        mesh += r3.cone((0, 0, 0.5), 0.2, 0.14, SNOW, sides=8, rotation=0.2 * variant)
+    return mesh
 
 
-def _rock(variant: int) -> Mesh:
+def _rock(variant: int, theme: MapTheme = MapTheme.SUMMER) -> Mesh:
+    ROCK = PALETTES[theme].rock
     if variant == 0:
         return _shadow(0.3) + r3.pyramid((0.05, 0.02, 0), (0.5, 0.42), 0.34, ROCK, apex_shift=(-0.08, 0.04)) + r3.pyramid((-0.22, -0.1, 0), (0.28, 0.24), 0.18, darker(ROCK, 0.85))
     return _shadow(0.3) + r3.box((0, 0, 0.12), (0.5, 0.36, 0.24), ROCK) + r3.pyramid((0.05, 0, 0.24), (0.42, 0.3), 0.2, darker(ROCK, 0.9), apex_shift=(0.08, 0.02))
@@ -558,16 +604,26 @@ def _arrow(scale: float) -> Image.Image:
 # -- Registration -----------------------------------------------------------------------
 
 
+def register_theme(game: Game, theme: MapTheme) -> None:
+    """The trees and rocks of one theme (once per game)."""
+    scale = game.backend.scale_factor
+    assets = game.assets
+    if assets.has_image(f"tree.{theme.value}.0"):
+        return
+    for i in range(TREE_VARIANTS):
+        key = f"tree.{theme.value}.{i}"
+        assets.image_from_pil(key, _prop(key, _tree(i, theme), DROP_TREE, scale))
+    for i in range(ROCK_VARIANTS):
+        key = f"rock.{theme.value}.{i}"
+        assets.image_from_pil(key, _prop(key, _rock(i, theme), DROP_TREE, scale))
+
+
 def register_static(game: Game) -> None:
-    """Trees, rocks, the mine, construction sites and effect images (once per game)."""
+    """The mine, construction sites and effect images (once per game)."""
     if game.assets.has_image("mine"):
         return
     scale = game.backend.scale_factor
     assets = game.assets
-    for i in range(TREE_VARIANTS):
-        assets.image_from_pil(f"tree.{i}", _prop(f"tree.{i}", _tree(i), DROP_TREE, scale))
-    for i in range(ROCK_VARIANTS):
-        assets.image_from_pil(f"rock.{i}", _prop(f"rock.{i}", _rock(i), DROP_TREE, scale))
     assets.image_from_pil("mine", _prop("mine", _mine(), 1.5 * TILE + PAD, scale))
     for size in {info.size for info in BUILDINGS.values()}:
         assets.image_from_pil(f"site.{size}", _prop(f"site.{size}", _site(size), size / 2 * TILE + PAD, scale))

@@ -11,7 +11,7 @@ from typing import Any
 
 from saga2d import Anchor, Button, Camera, Column, Label, Row, Scene
 from warband import mapgen
-from warband.rules import Difficulty
+from warband.rules import Difficulty, MapTheme
 from warband.scene import HelpScene, load_game, new_game
 from warband.sound import play_sound
 from warband.style import ACTION_BUTTON, GHOST_BUTTON, MENU_BUTTON, OVERLAY_STYLE
@@ -27,10 +27,12 @@ class TitleScene(Scene):
     background_color = (8, 10, 14, 255)
     controls = {("n", "return"): "new_game", "c": "continue_game", "h": "how_to_play", "q": "quit"}
 
-    def __init__(self, *, size: str = "Medium", players: int = 2, difficulty: Difficulty = Difficulty.NORMAL, settings: dict[str, Any] | None = None) -> None:
+    def __init__(self, *, size: str = "Medium", players: int = 2, difficulty: Difficulty = Difficulty.NORMAL, theme: MapTheme = MapTheme.SUMMER,
+                 settings: dict[str, Any] | None = None) -> None:
         self.size = size
         self.players = players
         self.difficulty = difficulty
+        self.theme = theme
         self.settings = settings
         self.time = 0.0
         self._stop = 0
@@ -38,7 +40,7 @@ class TitleScene(Scene):
     def on_enter(self) -> None:
         seed = random.randrange(1, 10_000)
         width, height = mapgen.SIZES["Medium"]
-        self.backdrop = mapgen.generate(seed=seed, width=width, height=height, players=2)
+        self.backdrop = mapgen.generate(seed=seed, width=width, height=height, players=2, theme=random.choice(list(MapTheme)))
         self.backdrop.reveal_all(0)
         self.view = MapView(self, self.backdrop, 0)
         w, h = self.game.resolution
@@ -111,14 +113,16 @@ class NewGameScene(Scene):
     pause_below = False
     pop_on_cancel = True
     controls = {"s": "size_small", "m": "size_medium", "l": "size_large", "2": "players_2", "3": "players_3", "4": "players_4",
-                "e": "easy", "n": "normal", "h": "hard", "r": "reroll", ("return", "space"): "start"}
+                "e": "easy", "n": "normal", "h": "hard", "g": "summer", "w": "winter", "d": "wasteland", "r": "reroll", ("return", "space"): "start"}
 
     def __init__(self, title: TitleScene) -> None:
         self.title = title
         self.size = title.size
         self.players = title.players
         self.difficulty = title.difficulty
+        self.theme = title.theme
         self.seed = random.randrange(1, 10_000)
+        self._theme_buttons: dict[MapTheme, Button] = {}
         self._size_buttons: dict[str, Button] = {}
         self._player_buttons: dict[int, Button] = {}
         self._difficulty_buttons: dict[Difficulty, Button] = {}
@@ -145,6 +149,12 @@ class NewGameScene(Scene):
             self._difficulty_buttons[difficulty] = button
             difficulty_row.add(button)
         panel.add(difficulty_row)
+        theme_row = Row(Label("Land", text_style="body", width=90), spacing=8)
+        for theme, key in ((MapTheme.SUMMER, "G"), (MapTheme.WINTER, "W"), (MapTheme.WASTELAND, "D")):
+            button = Button(theme.value.title(), hotkey=key, on_click=lambda t=theme: self.set_theme(t), style=GHOST_BUTTON, width=OPTION_WIDTH)
+            self._theme_buttons[theme] = button
+            theme_row.add(button)
+        panel.add(theme_row)
         panel.add(Row(Label(lambda: f"Seed {self.seed}", text_style="body", width=90 + 8 + OPTION_WIDTH),
                       Button("Reroll", hotkey="R", on_click=self.reroll, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
         panel.add(Row(Button("Start", hotkey="Enter", on_click=self.start, style=ACTION_BUTTON, width=2 * OPTION_WIDTH + 8),
@@ -159,6 +169,8 @@ class NewGameScene(Scene):
             button.style = ACTION_BUTTON if count == self.players else GHOST_BUTTON
         for difficulty, button in self._difficulty_buttons.items():
             button.style = ACTION_BUTTON if difficulty == self.difficulty else GHOST_BUTTON
+        for theme, button in self._theme_buttons.items():
+            button.style = ACTION_BUTTON if theme == self.theme else GHOST_BUTTON
 
     def draw(self) -> None:
         w, h = self.game.resolution
@@ -178,6 +190,20 @@ class NewGameScene(Scene):
         self.difficulty = difficulty
         self.title.sfx("button")
         self._restyle()
+
+    def set_theme(self, theme: MapTheme) -> None:
+        self.theme = theme
+        self.title.sfx("button")
+        self._restyle()
+
+    def summer(self) -> None:
+        self.set_theme(MapTheme.SUMMER)
+
+    def winter(self) -> None:
+        self.set_theme(MapTheme.WINTER)
+
+    def wasteland(self) -> None:
+        self.set_theme(MapTheme.WASTELAND)
 
     def easy(self) -> None:
         self.set_difficulty(Difficulty.EASY)
@@ -213,4 +239,5 @@ class NewGameScene(Scene):
     def start(self) -> None:
         self.title.sfx("button")
         width, height = mapgen.SIZES[self.size]
-        self.game.clear_and_push(new_game(self.seed, width=width, height=height, players=self.players, difficulty=self.difficulty, settings=self.title.settings))
+        self.game.clear_and_push(new_game(self.seed, width=width, height=height, players=self.players, difficulty=self.difficulty, theme=self.theme,
+                                          settings=self.title.settings))

@@ -7,7 +7,7 @@ from PIL import Image
 from saga2d import Game
 from warband import textures
 from warband.model import tile_center
-from warband.rules import BuildingType, Terrain, UnitType
+from warband.rules import BuildingType, MapTheme, Terrain, UnitType
 from warband.scene import new_game
 from warband.style import build_theme
 from warband.textures import TILE
@@ -133,7 +133,8 @@ def test_ground_chunks_cover_the_map_with_a_margin_and_sand_meets_water() -> Non
     img = textures.ground_chunk(world.terrain_at, world.in_bounds, cx, cy, 1.0)
     colours = {img.getpixel((px, py))[:3] for px in range((x - cx * textures.CHUNK) * TILE, (x - cx * textures.CHUNK + 3) * TILE)
                for py in range((y - cy * textures.CHUNK + 1) * TILE, (y - cy * textures.CHUNK + 2) * TILE)}
-    assert textures.SAND in colours and textures.WATER in colours
+    palette = textures.PALETTES[MapTheme.SUMMER]
+    assert palette.sand in colours and palette.water in colours
 
 
 def test_portraits_are_tightly_framed_pictures(play) -> None:

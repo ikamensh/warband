@@ -9,7 +9,7 @@ import random
 from collections import deque
 
 from warband.model import Pos, World, tile_center
-from warband.rules import EXPANSION_GOLD, BuildingType, Terrain, UnitType
+from warband.rules import EXPANSION_GOLD, BuildingType, MapTheme, Terrain, UnitType
 
 SIZES: dict[str, tuple[int, int]] = {"Small": (40, 32), "Medium": (48, 40), "Large": (64, 48)}
 _BASE_MARGIN = 7  # tiles from the map edge to the hall's top-left
@@ -18,11 +18,19 @@ _CORNERS = ((0, 0), (1, 1), (1, 0), (0, 1))  # player order: opposite corners fi
 _EXPANSION_MINES = {2: 2, 3: 2, 4: 3}
 
 
-def generate(seed: int, width: int = 48, height: int = 40, players: int = 2, human: int | None = 0) -> World:
+#: Per theme: tree threshold (lower = denser woods), water threshold, rock threshold.
+THRESHOLDS: dict[MapTheme, tuple[float, float, float]] = {
+    MapTheme.SUMMER: (0.62, 0.74, 0.86),
+    MapTheme.WINTER: (0.60, 0.72, 0.84),
+    MapTheme.WASTELAND: (0.70, 0.84, 0.74),
+}
+
+
+def generate(seed: int, width: int = 48, height: int = 40, players: int = 2, human: int | None = 0, theme: MapTheme = MapTheme.SUMMER) -> World:
     if not 2 <= players <= 4:
         raise ValueError("2 to 4 players")
     rng = random.Random(seed)
-    terrain = _terrain(rng, width, height)
+    terrain = _terrain(rng, width, height, theme)
     bases = [_base(width, height, corner) for corner in _CORNERS[:players]]
     for hall, mine, wood in bases:
         _clear(terrain, (hall[0] + 1, hall[1] + 1), _BASE_CLEARING)
@@ -31,7 +39,7 @@ def generate(seed: int, width: int = 48, height: int = 40, players: int = 2, hum
             terrain[pos[1]][pos[0]] = Terrain.GRASS
         for pos in _ring(mine, 3, 1):
             terrain[pos[1]][pos[0]] = Terrain.GRASS
-    world = World(width, height, terrain, players, human=human, rng=random.Random(seed))
+    world = World(width, height, terrain, players, human=human, rng=random.Random(seed), theme=theme)
     for player, (hall, mine, _wood) in enumerate(bases):
         world.place_building(player, BuildingType.TOWN_HALL, hall)
         world.place_building(None, BuildingType.GOLD_MINE, mine)
@@ -88,7 +96,8 @@ def _noise(rng: random.Random, width: int, height: int, cell: int) -> list[list[
     return out
 
 
-def _terrain(rng: random.Random, width: int, height: int) -> list[list[Terrain]]:
+def _terrain(rng: random.Random, width: int, height: int, theme: MapTheme) -> list[list[Terrain]]:
+    tree_level, water_level, rock_level = THRESHOLDS[theme]
     trees = _noise(rng, width, height, 5)
     fine = _noise(rng, width, height, 2)
     water = _noise(rng, width, height, 9)
@@ -98,11 +107,11 @@ def _terrain(rng: random.Random, width: int, height: int) -> list[list[Terrain]]
         for x in range(width):
             edge = min(x, y, width - 1 - x, height - 1 - y)
             t = trees[y][x] * 0.7 + fine[y][x] * 0.3
-            if edge == 0 or t > 0.62 - (0.25 if edge < 3 else 0.0):
+            if edge == 0 or t > tree_level - (0.25 if edge < 3 else 0.0):
                 terrain[y][x] = Terrain.TREES
-            elif water[y][x] > 0.74 and edge > 3:
+            elif water[y][x] > water_level and edge > 3:
                 terrain[y][x] = Terrain.WATER
-            elif rocks[y][x] > 0.86 and fine[y][x] > 0.5:
+            elif rocks[y][x] > rock_level and fine[y][x] > 0.5:
                 terrain[y][x] = Terrain.ROCK
     return terrain
 

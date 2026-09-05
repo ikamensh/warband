@@ -25,7 +25,7 @@ from warband.rules import (
     ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLESSING_BONUS, BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS,
     LEASH, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, PLAYERS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION,
     STARTING_GOLD, STARTING_LUMBER, UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo,
-    BuildingType, Cost, Resource, Terrain, UnitInfo, UnitType, Upgrade,
+    BuildingType, Cost, MapTheme, Resource, Terrain, UnitInfo, UnitType, Upgrade,
 )
 
 Pos = tuple[int, int]
@@ -285,12 +285,13 @@ def sight_offsets(radius: int) -> list[Pos]:
 
 class World:
     def __init__(self, width: int, height: int, terrain: list[list[Terrain]], player_count: int, *,
-                 human: int | None = 0, rng: random.Random | None = None) -> None:
+                 human: int | None = 0, rng: random.Random | None = None, theme: MapTheme = MapTheme.SUMMER) -> None:
         if len(terrain) != height or any(len(row) != width for row in terrain):
             raise ValueError("terrain must be height rows of width tiles")
         self.width = width
         self.height = height
         self.terrain = terrain
+        self.theme = theme
         self.players = [Player(i, PLAYERS[i].name, PLAYERS[i].color, human=(i == human)) for i in range(player_count)]
         self.units: dict[int, Unit] = {}
         self.buildings: dict[int, Building] = {}
@@ -1473,7 +1474,7 @@ class World:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "width": self.width, "height": self.height,
+            "width": self.width, "height": self.height, "theme": self.theme.value,
             "terrain": ["".join(t.value[0] for t in row) for row in self.terrain],
             "players": [{"id": p.id, "human": p.human, "gold": p.gold, "lumber": p.lumber, "alive": p.alive, "last_alert": p.last_alert,
                          "upgrades": sorted(u.value for u in p.upgrades)} for p in self.players],
@@ -1489,7 +1490,7 @@ class World:
         letters = {t.value[0]: t for t in Terrain}
         terrain = [[letters[c] for c in row] for row in data["terrain"]]
         human = next((p["id"] for p in data["players"] if p["human"]), None)
-        world = cls(data["width"], data["height"], terrain, len(data["players"]), human=human)
+        world = cls(data["width"], data["height"], terrain, len(data["players"]), human=human, theme=MapTheme(data["theme"]))
         for p, saved in zip(world.players, data["players"]):
             p.gold, p.lumber, p.alive, p.last_alert = saved["gold"], saved["lumber"], saved["alive"], saved["last_alert"]
             p.upgrades = {Upgrade(u) for u in saved["upgrades"]}

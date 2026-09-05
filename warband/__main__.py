@@ -11,7 +11,7 @@ import argparse
 
 from saga2d import Game, fonts
 from warband import mapgen, sound
-from warband.rules import Difficulty
+from warband.rules import Difficulty, MapTheme
 from warband.scene import new_game
 from warband.style import build_theme
 from warband.title import TitleScene
@@ -23,6 +23,7 @@ def main() -> None:
     parser.add_argument("--size", choices=list(mapgen.SIZES), default="Medium")
     parser.add_argument("--players", type=int, default=2, choices=(2, 3, 4))
     parser.add_argument("--difficulty", choices=[d.value for d in Difficulty], default="normal")
+    parser.add_argument("--theme", choices=[t.value for t in MapTheme], default="summer")
     parser.add_argument("--fullscreen", action="store_true")
     args = parser.parse_args()
     game = Game("Warband", resolution=None, fullscreen=args.fullscreen, theme=build_theme())
@@ -30,9 +31,9 @@ def main() -> None:
     sound.install(game)
     if args.seed is not None:
         width, height = mapgen.SIZES[args.size]
-        game.run(new_game(args.seed, width=width, height=height, players=args.players, difficulty=Difficulty(args.difficulty)))
+        game.run(new_game(args.seed, width=width, height=height, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme)))
     else:
-        game.run(TitleScene(size=args.size, players=args.players, difficulty=Difficulty(args.difficulty)))
+        game.run(TitleScene(size=args.size, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme)))
 
 
 if __name__ == "__main__":

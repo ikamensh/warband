@@ -16,7 +16,7 @@ from saga2d.effects import Banner, Burst, Dissolve, Effects, FloatingText, HitRe
 from warband import mapgen
 from warband.ai import Brain
 from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
-from warband.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, UnitType, Upgrade
+from warband.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, MapTheme, UnitType, Upgrade
 from warband.sound import apply_volumes, play_sound
 from warband.style import ACTION_BUTTON, BAD, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE
 from warband.textures import TILE
@@ -1017,7 +1017,7 @@ class PauseScene(_Overlay):
     def new_game(self) -> None:
         scene = self.game_scene
         self.game.clear_and_push(new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players),
-                                          difficulty=scene.difficulty, settings=scene.settings))
+                                          difficulty=scene.difficulty, theme=scene.world.theme, settings=scene.settings))
 
     def back_to_title(self) -> None:
         from warband.title import TitleScene
@@ -1204,7 +1204,7 @@ class GameOverScene(_Overlay):
     def new_game(self) -> None:
         scene = self.game_scene
         self.game.clear_and_push(new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players),
-                                          difficulty=scene.difficulty, settings=scene.settings))
+                                          difficulty=scene.difficulty, theme=scene.world.theme, settings=scene.settings))
 
     def back_to_title(self) -> None:
         from warband.title import TitleScene
@@ -1216,8 +1216,8 @@ class GameOverScene(_Overlay):
 
 
 def new_game(seed: int, width: int = 48, height: int = 40, players: int = 2, *, difficulty: Difficulty = Difficulty.NORMAL,
-             settings: dict[str, Any] | None = None) -> GameScene:
-    return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players), seed, difficulty=difficulty, settings=settings)
+             theme: MapTheme = MapTheme.SUMMER, settings: dict[str, Any] | None = None) -> GameScene:
+    return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players, theme=theme), seed, difficulty=difficulty, settings=settings)
 
 
 def load_game(state: dict[str, Any], *, settings: dict[str, Any] | None = None) -> GameScene:

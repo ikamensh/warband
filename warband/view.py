@@ -28,7 +28,6 @@ Color = tuple[int, int, int, int]
 FOG_COLOR = (10, 12, 20)
 FOG_EXPLORED = 150
 MINIMAP_SCALE = 2
-MINIMAP_TERRAIN = {Terrain.GRASS: (96, 142, 70), Terrain.WATER: (46, 96, 156), Terrain.TREES: (44, 86, 46), Terrain.ROCK: (108, 118, 92)}
 
 
 def rgba(color: tuple[int, int, int], alpha: int = 255) -> Color:
@@ -62,6 +61,7 @@ class MapView:
         self.game: Game = scene.game
         self.time = 0.0
         textures.register_static(self.game)
+        textures.register_theme(self.game, world.theme)
         self.scale = self.game.backend.scale_factor
         self._ground: list[Sprite] = []
         self._trees: dict[Pos, Sprite] = {}
@@ -97,7 +97,7 @@ class MapView:
         for cy in range(rows):
             for cx in range(cols):
                 key = f"ground.{cy * cols + cx}.{world.width}x{world.height}"
-                self._register(key, textures.ground_chunk(world.terrain_at, world.in_bounds, cx, cy, self.scale))
+                self._register(key, textures.ground_chunk(world.terrain_at, world.in_bounds, cx, cy, self.scale, world.theme))
                 self._ground.append(self.scene.add_sprite(Sprite(
                     key, position=((cx * CHUNK - 1) * TILE, (cy * CHUNK - 1) * TILE), size=(CHUNK_PX, CHUNK_PX),
                     anchor=SpriteAnchor.TOP_LEFT, layer=RenderLayer.BACKGROUND,
@@ -115,9 +115,9 @@ class MapView:
             for x in range(world.width):
                 terrain = world.terrain[y][x]
                 if terrain is Terrain.TREES:
-                    self._trees[(x, y)] = self._prop(f"tree.{textures.scatter(x, y, 3) % textures.TREE_VARIANTS}", (x + 0.5, y + 0.5))
+                    self._trees[(x, y)] = self._prop(f"tree.{world.theme.value}.{textures.scatter(x, y, 3) % textures.TREE_VARIANTS}", (x + 0.5, y + 0.5))
                 elif terrain is Terrain.ROCK:
-                    self._rocks[(x, y)] = self._prop(f"rock.{textures.scatter(x, y, 4) % textures.ROCK_VARIANTS}", (x + 0.5, y + 0.5))
+                    self._rocks[(x, y)] = self._prop(f"rock.{world.theme.value}.{textures.scatter(x, y, 4) % textures.ROCK_VARIANTS}", (x + 0.5, y + 0.5))
 
     def reset(self, world: World) -> None:
         """Point the view at another world of the same size (after loading a save)."""
@@ -130,11 +130,12 @@ class MapView:
         self._building_keys.clear()
         self._unit_keys.clear()
         self.world = world
+        textures.register_theme(self.game, world.theme)
         self._vision_tick = -1
         self._minimap_time = -1.0
         for i, sprite in enumerate(self._ground):
             cols = math.ceil(world.width / CHUNK)
-            self.game.assets.update_image(sprite.image, textures.ground_chunk(world.terrain_at, world.in_bounds, i % cols, i // cols, self.scale))
+            self.game.assets.update_image(sprite.image, textures.ground_chunk(world.terrain_at, world.in_bounds, i % cols, i // cols, self.scale, world.theme))
         self._build_props()
         self.sync()
 
@@ -246,10 +247,11 @@ class MapView:
 
     def _minimap_terrain(self) -> np.ndarray:
         world = self.world
+        colours = textures.PALETTES[world.theme].minimap
         base = np.zeros((world.height, world.width, 3), dtype=np.float32)
         for y in range(world.height):
             for x in range(world.width):
-                base[y, x] = MINIMAP_TERRAIN[world.terrain[y][x]]
+                base[y, x] = colours[world.terrain[y][x]]
         return base
 
     def _minimap_image(self) -> Image.Image:
