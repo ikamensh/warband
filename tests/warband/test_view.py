@@ -8,7 +8,9 @@ from saga2d import Game
 from warband import textures
 from warband.model import tile_center
 from warband.rules import BuildingType, MapTheme, Resource, Terrain, UnitType
-from warband.scene import new_game
+from warband.scene import GameScene, new_game
+from warband.view import WATER_PERIOD
+from warband import mapgen
 from warband.style import build_theme
 from warband.textures import TILE
 
@@ -185,3 +187,39 @@ def test_a_site_shows_the_building_rising_and_a_battered_building_smokes(play) -
     site.hp = site.max_hp
     game.tick(1 / 60)
     assert site.id not in view._smoke
+
+
+def flood(world, x0: int, y0: int, size: int = 3) -> None:
+    for y in range(y0, y0 + size):
+        for x in range(x0, x0 + size):
+            world.terrain[y][x] = Terrain.WATER
+            world._blocked[y * world.width + x] = 1
+
+
+def test_water_moves_once_its_phases_are_painted_while_land_stays_still() -> None:
+    game = Game("Warband View", backend="mock", resolution=(1280, 800), theme=build_theme())
+    world = mapgen.generate(seed=5, width=48, height=40, players=2)
+    flood(world, 2, 2)
+    scene = GameScene(world, 5)
+    game.push(scene)
+    game.tick(1 / 60)
+    view = scene.view
+    assert view._chunk_has_water(0) and len(view._ground_keys[0]) == textures.WATER_PHASES
+    land = next(i for i, keys in enumerate(view._ground_keys) if len(keys) == 1)
+    first = view._ground[0].image
+    while view._water_pending:  # the other phases are painted one per frame; the water waits on phase 0 meanwhile
+        assert view._ground[0].image == first
+        game.tick(1 / 60)
+    assert all(game.assets.has_image(key) for key in view._ground_keys[0])
+    for _ in range(int(WATER_PERIOD * 60) + 2):
+        game.tick(1 / 60)
+    assert view._ground[0].image != first and view._ground[0].image in view._ground_keys[0]
+    assert view._ground[land].image == view._ground_keys[land][0]
+    # A loaded map of the same size may have its water elsewhere: the chunks are classified again.
+    other = mapgen.generate(seed=6, width=48, height=40, players=2)
+    flood(other, 20, 20)
+    view.reset(other)
+    for index, keys in enumerate(view._ground_keys):
+        assert (len(keys) > 1) == view._chunk_has_water(index)
+    assert len(view._ground_keys[view._ground_keys.index(view._chunk_keys(2 * 6 + 2))]) == textures.WATER_PHASES  # chunk (2, 2) holds (20, 20)
+    game._teardown()

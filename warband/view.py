@@ -24,6 +24,9 @@ from warband.model import Building, Entity, Pos, Unit, World
 from warband.rules import BUILDINGS, VISION_EVERY, BuildingType, Terrain
 from warband.textures import CHUNK, CHUNK_PX, DROP_TREE, DROP_UNIT, TILE
 
+WATER_PERIOD = 0.45  # seconds between water phase changes
+WATER_CYCLE = (0, 1, 2, 1)  # ping-pong through the phases so the ripples never jump
+
 Color = tuple[int, int, int, int]
 FOG_COLOR = (10, 12, 20)
 FOG_EXPLORED = 150
@@ -64,6 +67,10 @@ class MapView:
         textures.register_theme(self.game, world.theme)
         self.scale = self.game.backend.scale_factor
         self._ground: list[Sprite] = []
+        self._ground_keys: list[list[str]] = []  # per chunk: one image, or WATER_PHASES of them when it holds water
+        self._water_pending: list[tuple[int, int]] = []  # (chunk, phase) images still to paint, one per frame
+        self._water_time = 0.0
+        self._water_step = 0
         self._trees: dict[Pos, Sprite] = {}
         self._rocks: dict[Pos, Sprite] = {}
         self._buildings: dict[int, Sprite] = {}
@@ -92,17 +99,51 @@ class MapView:
         else:
             self.game.assets.image_from_pil(key, image)
 
+    def _chunk_has_water(self, index: int) -> bool:
+        world = self.world
+        cols = math.ceil(world.width / CHUNK)
+        cx, cy = index % cols, index // cols
+        return any(world.in_bounds((x, y)) and world.terrain_at((x, y)) is Terrain.WATER
+                   for y in range(cy * CHUNK - 1, (cy + 1) * CHUNK + 1) for x in range(cx * CHUNK - 1, (cx + 1) * CHUNK + 1))
+
+    def _chunk_keys(self, index: int) -> list[str]:
+        world = self.world
+        phases = textures.WATER_PHASES if self._chunk_has_water(index) else 1
+        return [f"ground.{index}.{world.width}x{world.height}.{phase}" for phase in range(phases)]
+
+    def _paint_chunk(self, index: int, phase: int) -> None:
+        world = self.world
+        cols = math.ceil(world.width / CHUNK)
+        self._register(self._ground_keys[index][phase], textures.ground_chunk(world.terrain_at, world.in_bounds, index % cols, index // cols, self.scale, world.theme, phase))
+
     def _build_ground(self) -> None:
         world = self.world
         cols, rows = math.ceil(world.width / CHUNK), math.ceil(world.height / CHUNK)
-        for cy in range(rows):
-            for cx in range(cols):
-                key = f"ground.{cy * cols + cx}.{world.width}x{world.height}"
-                self._register(key, textures.ground_chunk(world.terrain_at, world.in_bounds, cx, cy, self.scale, world.theme))
-                self._ground.append(self.scene.add_sprite(Sprite(
-                    key, position=((cx * CHUNK - 1) * TILE, (cy * CHUNK - 1) * TILE), size=(CHUNK_PX, CHUNK_PX),
-                    anchor=SpriteAnchor.TOP_LEFT, layer=RenderLayer.BACKGROUND,
-                )))
+        for index in range(cols * rows):
+            cx, cy = index % cols, index // cols
+            self._ground_keys.append(self._chunk_keys(index))
+            self._paint_chunk(index, 0)
+            # The other phases are painted over the first frames rather than delaying the match.
+            self._water_pending.extend((index, phase) for phase in range(1, len(self._ground_keys[index])))
+            self._ground.append(self.scene.add_sprite(Sprite(
+                self._ground_keys[index][0], position=((cx * CHUNK - 1) * TILE, (cy * CHUNK - 1) * TILE), size=(CHUNK_PX, CHUNK_PX),
+                anchor=SpriteAnchor.TOP_LEFT, layer=RenderLayer.BACKGROUND,
+            )))
+
+    def _animate_water(self, dt: float) -> None:
+        """Paint one pending phase image per frame; once all exist, cycle the water chunks through them."""
+        if self._water_pending:
+            self._paint_chunk(*self._water_pending.pop(0))
+            return
+        self._water_time += dt
+        if self._water_time < WATER_PERIOD:
+            return
+        self._water_time = 0.0
+        self._water_step += 1
+        phase = WATER_CYCLE[self._water_step % len(WATER_CYCLE)]
+        for sprite, keys in zip(self._ground, self._ground_keys):
+            if len(keys) > 1:
+                sprite.image = keys[phase]
 
     def _prop(self, key: str, point: tuple[float, float], **kwargs) -> Sprite:
         placement = textures.placements[key]
@@ -137,9 +178,13 @@ class MapView:
         textures.register_theme(self.game, world.theme)
         self._vision_tick = -1
         self._minimap_time = -1.0
-        for i, sprite in enumerate(self._ground):
-            cols = math.ceil(world.width / CHUNK)
-            self.game.assets.update_image(sprite.image, textures.ground_chunk(world.terrain_at, world.in_bounds, i % cols, i // cols, self.scale, world.theme))
+        self._water_pending.clear()
+        self._water_step = 0
+        for index, sprite in enumerate(self._ground):
+            keys = self._ground_keys[index] = self._chunk_keys(index)  # the water may lie elsewhere on this map
+            self._paint_chunk(index, 0)
+            sprite.image = keys[0]
+            self._water_pending.extend((index, phase) for phase in range(1, len(keys)))
         self._build_props()
         self.sync()
 
@@ -148,6 +193,7 @@ class MapView:
     def sync(self, dt: float = 0.0) -> None:
         self.time += dt
         world = self.world
+        self._animate_water(dt)
         for pos in list(self._trees):
             if world.terrain_at(pos) is not Terrain.TREES:
                 self._trees.pop(pos).remove()

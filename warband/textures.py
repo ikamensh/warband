@@ -32,6 +32,7 @@ ELEVATION = 50.0
 PROJECTION = r3.Projection.front(TILE, ELEVATION)
 VIEW = PROJECTION.view
 CHUNK = 8  # ground tiles per chunk image (plus one tile of margin all round to hide the seams)
+WATER_PHASES = 3  # a chunk with water is painted this many times, ripples and shoreline lapping shifted per phase
 CHUNK_PX = (CHUNK + 2) * TILE
 PAD = 2
 FACINGS = 8
@@ -140,9 +141,11 @@ def grass_tint(x: int, y: int, cell: int = 5) -> float:
     return 0.9 + 0.2 * v
 
 
-def ground_chunk(terrain_at, in_bounds, cx: int, cy: int, scale: float, theme: MapTheme = MapTheme.SUMMER) -> Image.Image:
+def ground_chunk(terrain_at, in_bounds, cx: int, cy: int, scale: float, theme: MapTheme = MapTheme.SUMMER, phase: int = 0) -> Image.Image:
     """Paint the chunk at chunk coordinates ``(cx, cy)`` with a tile of margin
-    around it; *terrain_at(pos)* and *in_bounds(pos)* read the map."""
+    around it; *terrain_at(pos)* and *in_bounds(pos)* read the map.  *phase*
+    (0 to ``WATER_PHASES - 1``) shifts the ripples and the shoreline so a
+    view can cycle the images and the water moves."""
     pal = PALETTES[theme]
     GRASS, FOREST_FLOOR, WATER, WATER_RIPPLE, SAND, ROCK_GROUND = pal.grass, pal.floor, pal.water, pal.ripple, pal.sand, pal.rock_ground
     px = TILE * scale
@@ -177,8 +180,10 @@ def ground_chunk(terrain_at, in_bounds, cx: int, cy: int, scale: float, theme: M
                     dx, dy, r = (s & 0xFF) / 255 * px, ((s >> 8) & 0xFF) / 255 * px, px * (0.05 + 0.04 * (k % 3))
                     shade = darker(base, 0.9) if k == 0 else tuple(min(255, int(c * 1.07)) for c in base) if k == 1 else darker(base, 0.95)
                     draw.ellipse((left + dx - r, top + dy - r, left + dx + r, top + dy + r), fill=shade)
-    # Shores: sand on the land side of every grass/water edge, a pale rim on the water side.
+    # Shores: sand on the land side of every grass/water edge, a pale rim on the water side
+    # that laps a little further up the beach with each phase.
     band = px * 0.22
+    rim = band * (0.4 + 0.14 * phase)
     for j in range(n):
         for i in range(n):
             tx, ty = x0 + i, y0 + j
@@ -190,16 +195,16 @@ def ground_chunk(terrain_at, in_bounds, cx: int, cy: int, scale: float, theme: M
                     continue
                 if dx == 1:
                     draw.rectangle((left + px, top, left + px + band, top + px), fill=SAND)
-                    draw.rectangle((left + px - band * 0.4, top, left + px, top + px), fill=WATER_RIPPLE)
+                    draw.rectangle((left + px - rim, top, left + px, top + px), fill=WATER_RIPPLE)
                 elif dx == -1:
                     draw.rectangle((left - band, top, left, top + px), fill=SAND)
-                    draw.rectangle((left, top, left + band * 0.4, top + px), fill=WATER_RIPPLE)
+                    draw.rectangle((left, top, left + rim, top + px), fill=WATER_RIPPLE)
                 elif dy == 1:
                     draw.rectangle((left, top + px, left + px, top + px + band), fill=SAND)
-                    draw.rectangle((left, top + px - band * 0.4, left + px, top + px), fill=WATER_RIPPLE)
+                    draw.rectangle((left, top + px - rim, left + px, top + px), fill=WATER_RIPPLE)
                 else:
                     draw.rectangle((left, top - band, left + px, top), fill=SAND)
-                    draw.rectangle((left, top, left + px, top + band * 0.4), fill=WATER_RIPPLE)
+                    draw.rectangle((left, top, left + px, top + rim), fill=WATER_RIPPLE)
     for j in range(n):
         for i in range(n):
             tx, ty = x0 + i, y0 + j
@@ -207,7 +212,7 @@ def ground_chunk(terrain_at, in_bounds, cx: int, cy: int, scale: float, theme: M
                 left, top = i * px, j * px
                 s = scatter(tx, ty, 7)
                 for k in range(2):
-                    rx = left + px * (0.15 + 0.5 * ((s >> (k * 4)) & 0xF) / 15)
+                    rx = left + px * (0.15 + 0.5 * ((s >> (k * 4)) & 0xF) / 15 + 0.07 * phase)  # drifts with the phase
                     ry = top + px * (0.2 + 0.6 * ((s >> (k * 4 + 8)) & 0xF) / 15)
                     draw.line([(rx, ry), (rx + px * 0.12, ry - px * 0.03), (rx + px * 0.24, ry)], fill=WATER_RIPPLE, width=max(1, round(1.2 * scale)))
     return image
