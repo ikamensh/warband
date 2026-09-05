@@ -47,8 +47,9 @@ class Profile:
 PROFILES: dict[Difficulty, Profile] = {
     Difficulty.EASY: Profile(peasants=7, think_every=2.0, first_wave=10, wave_growth=2, barracks=1, towers=0, tech=False, siege=False,
                              clerics=False, harass=False, reserve=1500, repair=False),
-    Difficulty.NORMAL: Profile(peasants=10, think_every=1.0, first_wave=8, wave_growth=3, barracks=2, towers=2, tech=True, siege=True,
-                               clerics=False, harass=False, reserve=800, repair=True),
+    # Normal is the coin flip against a plain, competent opening; it thinks slower, waits for a bigger first wave and skips siege.
+    Difficulty.NORMAL: Profile(peasants=9, think_every=1.5, first_wave=10, wave_growth=3, barracks=2, towers=1, tech=True, siege=False,
+                               clerics=False, harass=False, reserve=1000, repair=True),
     Difficulty.HARD: Profile(peasants=14, think_every=0.5, first_wave=8, wave_growth=4, barracks=3, towers=3, tech=True, siege=True,
                              clerics=True, harass=True, reserve=500, repair=True),
 }
