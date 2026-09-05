@@ -3,6 +3,15 @@
 Criteria: [warband-early-access-criteria.md](warband-early-access-criteria.md).
 A gate is incomplete until evidence below proves it.
 
+## Where it stands — 2026-09-06
+
+Evidence in place: W01, W02, W03, W04, W05, W07, W08, W09, W10 (frame
+times, monkey; the 300-match fuzz and the 30-minute soak are running on
+the final code), W13 (macOS), W14. Ongoing by nature: W11, W12. Open:
+W06 needs first-run walkthroughs by people, W13 has no Windows build,
+W15 needs an independent review and the user's playtest of the
+candidate. Nothing found in the last audit blocks a playtest.
+
 ## Baseline audit — 2026-09-05, commit `575bb32`
 
 - Playable slice: 4 units, 4 buildings, one AI, procedural summer maps, fog,
