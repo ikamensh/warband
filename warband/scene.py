@@ -12,6 +12,7 @@ from saga2d import (
     Anchor, Button, Camera, Column, InputEvent, KeyHints, Label, Layout, Minimap, MoveTo, Panel, Remove, RenderLayer, Row, Scene,
     Sequence, Sprite, Style,
 )
+from saga2d import SaveError
 from saga2d.effects import Banner, Burst, Dissolve, Effects, FloatingText, HitReaction, Pulse, Toast
 from warband import mapgen
 from warband.ai import Brain
@@ -20,9 +21,14 @@ from warband.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Diff
 from warband.sound import apply_volumes, play_sound
 from warband.style import ACTION_BUTTON, BAD, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE
 from warband.textures import TILE
+from warband.tutorial import OBJECTIVES, Tutorial
 from warband.view import MapView, Overlay, rgba, to_tiles, to_world
 
-DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8}
+DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True}
+SAVE_VERSION = 1
+SAVE_SLOTS = 3
+AUTOSAVE_EVERY = 120.0  # seconds of match time
+TOAST_TOP = 150  # below the objectives strip
 HINT_BAR = 28
 PANEL_MARGIN = (12, HINT_BAR + 10)
 MAX_STEPS_PER_FRAME = 6
@@ -72,6 +78,7 @@ class GameScene(Scene):
         "f1": "open_help",
         "f2": "open_codex",
         "f3": "toggle_pause",
+        "f4": "hide_tutorial",
         "f5": "quick_save",
         "f9": "quick_load",
         "f10": "open_menu",
@@ -94,8 +101,12 @@ class GameScene(Scene):
         self.human = next(p.id for p in world.players if p.human)
         self.brains = [Brain(p.id, difficulty) for p in world.players if not p.human]
         self.rng = random.Random(seed)
-        self.settings: dict[str, Any] = {**DEFAULT_SETTINGS, **(settings or {})}
+        self.settings = settings if settings is not None else dict(DEFAULT_SETTINGS)  # a saga2d Settings when the game runs
+        for key, value in DEFAULT_SETTINGS.items():
+            self.settings.setdefault(key, value)
         self.stats: dict[str, int] = {"units_lost": 0, "units_killed": 0, "buildings_lost": 0, "buildings_razed": 0, **(stats or {})}
+        self.tutorial = Tutorial() if self.settings["tutorial"] else None
+        self._autosave_at = AUTOSAVE_EVERY
         self.selection: list[int] = []
         self.groups: dict[str, list[int]] = {}
         self.pending: str | None = None  # "move" | "attack" | "build:<type>"
@@ -125,9 +136,9 @@ class GameScene(Scene):
     # -- Lifecycle -------------------------------------------------------------
 
     def on_enter(self) -> None:
-        apply_volumes(self.settings["music"], self.settings["sfx"])
         self.view = MapView(self, self.world, self.human)
         self._setup_camera()
+        self.apply_settings()
         self._build_hud()
         self.center_base(instant=True)
         self.effects.add(Banner("Warband", subtitle=f"{self.player.name} against {', '.join(p.name for p in self.world.players if p.id != self.human)}",
@@ -138,7 +149,21 @@ class GameScene(Scene):
         world_w, world_h = self.world.width * TILE, self.world.height * TILE
         self.camera = Camera((w, h), world_bounds=(-TILE, -TILE, world_w + TILE, world_h + SELECTION_HEIGHT + 3 * TILE), zoom=1.0, min_zoom=0.75, max_zoom=2.0)
         self.camera.enable_key_scroll(speed=KEY_SPEED)
-        self.camera.enable_edge_scroll(EDGE_MARGIN, EDGE_SPEED)
+
+    def apply_settings(self) -> None:
+        """Push the settings into the things they control; called on entry and after the settings screen."""
+        apply_volumes(self.settings["music"], self.settings["sfx"])
+        speed = float(self.settings["scroll_speed"])
+        self.camera.enable_key_scroll(speed=KEY_SPEED * speed)
+        if self.settings["edge_scroll"]:
+            self.camera.enable_edge_scroll(EDGE_MARGIN, EDGE_SPEED * speed)
+        else:
+            self.camera.disable_edge_scroll()
+        self.game.set_fullscreen(bool(self.settings["fullscreen"]))
+        if self.tutorial is not None and not self.settings["tutorial"]:
+            self.tutorial = None
+        if hasattr(self.settings, "save"):
+            self.settings.save()
 
     @property
     def player(self):
@@ -183,7 +208,35 @@ class GameScene(Scene):
         self.ui.add(self.card_panel)
         self.ui.add(KeyHints(self._hint, anchor=Anchor.BOTTOM_CENTER, margin=5))
         self.ui.add(Label(lambda: self.status if self.status_timer > 0 else "", text_style="hud", anchor=Anchor.TOP_CENTER, margin=(0, 70), text_color=GOLD))
+        self.objectives = Column(spacing=4, anchor=Anchor.TOP_RIGHT, margin=12, style=PANEL_STYLE)
+        self.objectives.add(Row(Label("Getting started", text_style="heading", width=250),
+                                Button("Hide", hotkey="F4", on_click=self.hide_tutorial, style=GHOST_BUTTON, width=90), spacing=8))
+        self.objective_label = Label("", text_style="body", width=350)
+        self.objective_done = Label("", text_style="sub", width=350)
+        self.objectives.add(self.objective_label)
+        self.objectives.add(self.objective_done)
+        self.objectives.visible = self.tutorial is not None
+        self.ui.add(self.objectives)
         self._refresh_card()
+
+    def hide_tutorial(self) -> None:
+        self.tutorial = None
+        self.objectives.visible = False
+        self.sfx("button")
+
+    def _update_tutorial(self) -> None:
+        if self.tutorial is None:
+            self.objectives.visible = False
+            return
+        if self.tutorial.update(self):
+            self.sfx("built")
+            if self.tutorial.finished:
+                self.settings["tutorial"] = False
+                if hasattr(self.settings, "save"):
+                    self.settings.save()
+        current = self.tutorial.current
+        self.objective_label.text = f"{self.tutorial.step + 1}. {current.text}" if current is not None else ""
+        self.objective_done.text = f"{self.tutorial.step} of {len(OBJECTIVES) - 1} done" if self.tutorial.step else "F4 hides this; the settings switch it off"
 
     def _idle_button(self) -> Button:
         self.idle_button = Button(lambda: f"Idle {self._idle_peasant_count()}", hotkey="Tab", on_click=self.next_idle_peasant, style=ACTION_BUTTON)
@@ -653,13 +706,25 @@ class GameScene(Scene):
         self.game.push(CodexScene(self.world, self.human))
 
     def quick_save(self) -> None:
-        self.game.save(1, scene=self)
-        self.say("Saved to slot 1")
-        self.sfx("button")
+        self.save_to("quick")
 
     def quick_load(self) -> None:
-        if self.game.load(1, scene=self) is None:
-            self.warn("No save in slot 1")
+        self.load_from("quick")
+
+    def save_to(self, slot: int | str) -> None:
+        self.game.save(slot, scene=self)
+        self.say("Quicksaved (F9 loads it)" if slot == "quick" else f"Saved to slot {slot}")
+        self.sfx("button")
+
+    def load_from(self, slot: int | str) -> None:
+        try:
+            if self.game.load(slot, scene=self) is None:
+                self.warn("Nothing saved there" if slot != "quick" else "No quicksave yet — F5 makes one")
+        except SaveError as exc:
+            self.warn(f"Could not load: {exc}")
+
+    def open_saves(self, mode: str) -> None:
+        self.game.push(SaveBrowserScene(self.game, mode, on_pick=self.save_to if mode == "save" else self.load_from))
 
     # -- Raw input ----------------------------------------------------------------------
 
@@ -758,6 +823,11 @@ class GameScene(Scene):
         self.view.sync(dt)
         self._update_card()
         self.idle_button.visible = self._idle_peasant_count() > 0
+        self._update_tutorial()
+        if self.world.time >= self._autosave_at and not self._game_over:
+            self._autosave_at += AUTOSAVE_EVERY
+            self.game.save("autosave", scene=self)
+            self.say("Autosaved")
         self._check_game_over()
 
     def _handle_events(self, events: list[Event]) -> None:
@@ -793,12 +863,12 @@ class GameScene(Scene):
             elif e.kind == "under_attack" and mine:
                 self.last_alert = e.pos
                 self.minimap.ping(*to_world(e.pos))
-                self.effects.add(Toast("Under attack!", ["Press Space to look"], hold=3.0))
+                self.effects.add(Toast("Under attack!", ["Press Space to look"], hold=3.0, top=TOAST_TOP))
                 self.sfx("under_attack")
             elif e.kind == "refused" and mine:
                 self.warn(e.text)
             elif e.kind == "eliminated" and not mine:
-                self.effects.add(Toast("A rival falls", [e.text], accent=GOOD, hold=4.0))
+                self.effects.add(Toast("A rival falls", [e.text], accent=GOOD, hold=4.0, top=TOAST_TOP))
             elif e.kind == "exhausted":
                 self.effects.add(FloatingText("Mine exhausted", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), MUTED, rise=20, duration=1.5))
         _ = (world, view)
@@ -865,7 +935,7 @@ class GameScene(Scene):
     def _show_destroyed(self, e: Event) -> None:
         if e.player == self.human:
             self.stats["buildings_lost"] += 1
-            self.effects.add(Toast("Building lost", [f"Your {BUILDINGS[BuildingType(e.text)].name.lower()} was destroyed"], hold=4.0))
+            self.effects.add(Toast("Building lost", [f"Your {BUILDINGS[BuildingType(e.text)].name.lower()} was destroyed"], hold=4.0, top=TOAST_TOP))
         elif e.player is not None:
             self.stats["buildings_razed"] += 1
         if self._visible(e.pos):
@@ -1009,11 +1079,17 @@ class GameScene(Scene):
     # -- Save / load ------------------------------------------------------------------------
 
     def get_save_state(self) -> dict:
-        return {"seed": self.seed, "difficulty": self.difficulty.value, "world": self.world.to_dict(), "stats": self.stats,
-                "settings": self.settings, "groups": self.groups}
+        return {"version": SAVE_VERSION, "seed": self.seed, "difficulty": self.difficulty.value, "world": self.world.to_dict(), "stats": self.stats,
+                "groups": self.groups, "tutorial": self.tutorial.step if self.tutorial is not None else None}
+
+    def get_save_summary(self) -> dict:
+        world = self.world
+        size = next((name for name, (w, h) in mapgen.SIZES.items() if (w, h) == (world.width, world.height)), f"{world.width}×{world.height}")
+        return {"map": f"{size} {world.theme.value}", "players": len(world.players), "difficulty": self.difficulty.value, "clock": _clock(world.time),
+                "player": self.player.name}
 
     def load_save_state(self, state: dict) -> None:
-        world = World.from_dict(state["world"])
+        world = check_save(state)
         if (world.width, world.height) != (self.world.width, self.world.height):
             self.game.clear_and_push(load_game(state, settings=self.settings))
             return
@@ -1022,8 +1098,11 @@ class GameScene(Scene):
         self.difficulty = Difficulty(state["difficulty"])
         self.brains = [Brain(p.id, self.difficulty) for p in world.players if not p.human]
         self.stats = {**self.stats, **state.get("stats", {})}
-        self.settings = {**self.settings, **state.get("settings", {})}
         self.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
+        self.tutorial = Tutorial() if state.get("tutorial") is not None and self.settings["tutorial"] else None
+        if self.tutorial is not None:
+            self.tutorial.step = state["tutorial"]
+        self._autosave_at = (world.time // AUTOSAVE_EVERY + 1) * AUTOSAVE_EVERY
         self.effects.clear()
         self.selection = []
         self.pending = None
@@ -1033,7 +1112,7 @@ class GameScene(Scene):
         self.ui.clear()
         self._build_hud()
         self.center_base(instant=True)
-        self.say("Loaded slot 1")
+        self.say("Loaded")
 
 
 class _Overlay(Scene):
@@ -1064,8 +1143,8 @@ class PauseScene(_Overlay):
     def on_enter(self) -> None:
         panel = self.panel("Paused")
         panel.add(Button("Resume", hotkey="Esc", on_click=self.game.pop, style=ACTION_BUTTON, width=260))
-        panel.add(Button("Save", hotkey="F5", on_click=self.save, style=GHOST_BUTTON, width=260))
-        panel.add(Button("Load", hotkey="F9", on_click=self.load, style=GHOST_BUTTON, width=260))
+        panel.add(Button("Save game…", hotkey="F5", on_click=self.save, style=GHOST_BUTTON, width=260))
+        panel.add(Button("Load game…", hotkey="F9", on_click=self.load, style=GHOST_BUTTON, width=260))
         panel.add(Button("Settings", hotkey="S", on_click=self.settings, style=GHOST_BUTTON, width=260))
         panel.add(Button("How to play", hotkey="F1", on_click=self.help, style=GHOST_BUTTON, width=260))
         panel.add(Button("New game", hotkey="N", on_click=self.new_game, style=GHOST_BUTTON, width=260))
@@ -1074,11 +1153,11 @@ class PauseScene(_Overlay):
 
     def save(self) -> None:
         self.game.pop()
-        self.game_scene.quick_save()
+        self.game_scene.open_saves("save")
 
     def load(self) -> None:
         self.game.pop()
-        self.game_scene.quick_load()
+        self.game_scene.open_saves("load")
 
     def settings(self) -> None:
         self.game.push(SettingsScene(self.game_scene))
@@ -1101,11 +1180,14 @@ class PauseScene(_Overlay):
 
 
 class SettingsScene(_Overlay):
-    """Keyboard-navigable options: ↑↓ pick a row, ←→ adjust."""
+    """Keyboard-navigable options: ↑↓ pick a row, ←→ adjust or toggle.  Saved to the settings file."""
 
     pause_below = True
-    controls = {"up": "focus_up", "down": "focus_down", "left": "decrease", "right": "increase"}
-    ROWS = (("Music volume", "music"), ("Sound volume", "sfx"))
+    controls = {"up": "focus_up", "down": "focus_down", "left": "decrease", "right": "increase", ("return", "space"): "increase"}
+    ROWS: tuple[tuple[str, str, str], ...] = (
+        ("Music volume", "music", "percent"), ("Sound volume", "sfx", "percent"), ("Edge scrolling", "edge_scroll", "toggle"),
+        ("Scroll speed", "scroll_speed", "speed"), ("Fullscreen", "fullscreen", "toggle"), ("Tutorial", "tutorial", "toggle"),
+    )
 
     def __init__(self, game_scene: GameScene) -> None:
         self.game_scene = game_scene
@@ -1115,22 +1197,40 @@ class SettingsScene(_Overlay):
     def settings(self) -> dict[str, Any]:
         return self.game_scene.settings
 
+    def _shown(self, key: str, kind: str) -> str:
+        value = self.settings[key]
+        if kind == "percent":
+            return f"{round(value * 100)}%"
+        if kind == "speed":
+            return f"×{value:g}"
+        return "On" if value else "Off"
+
     def on_enter(self) -> None:
         panel = self.panel("Settings")
-        for index, (name, key) in enumerate(self.ROWS):
+        for index, (name, key, kind) in enumerate(self.ROWS):
             marker = Label(lambda i=index: "›" if self.focus == i else "", text_style="hud", width=18, text_color=GOLD)
             panel.add(Row(marker, Label(name, text_style="body", width=170), Row(
-                Button("−", on_click=lambda k=key: self._adjust(k, -0.1), style=GHOST_BUTTON, width=48),
-                Label(lambda k=key: f"{round(self.settings[k] * 100)}%", text_style="hud", width=70, align="center"),
-                Button("+", on_click=lambda k=key: self._adjust(k, 0.1), style=GHOST_BUTTON, width=48),
+                Button("−", on_click=lambda k=key: self._adjust(k, -1), style=GHOST_BUTTON, width=48),
+                Label(lambda k=key, kd=kind: self._shown(k, kd), text_style="hud", width=70, align="center"),
+                Button("+", on_click=lambda k=key: self._adjust(k, 1), style=GHOST_BUTTON, width=48),
                 spacing=8,
             ), spacing=12))
+        panel.add(Label("Settings are saved when you leave this screen.", text_style="sub"))
         panel.add(KeyHints([("↑↓", "select"), ("←→", "adjust"), ("Esc", "close")]))
 
-    def _adjust(self, key: str, delta: float) -> None:
-        self.settings[key] = round(max(0.0, min(1.0, self.settings[key] + delta)), 2)
-        apply_volumes(self.settings["music"], self.settings["sfx"])
+    def _adjust(self, key: str, direction: int) -> None:
+        kind = next(k for _n, k2, k in self.ROWS if k2 == key)
+        if kind == "percent":
+            self.settings[key] = round(max(0.0, min(1.0, self.settings[key] + 0.1 * direction)), 2)
+            apply_volumes(self.settings["music"], self.settings["sfx"])
+        elif kind == "speed":
+            self.settings[key] = round(max(0.5, min(2.0, self.settings[key] + 0.25 * direction)), 2)
+        else:
+            self.settings[key] = not self.settings[key]
         self.game_scene.sfx("button")
+
+    def on_exit(self) -> None:
+        self.game_scene.apply_settings()
 
     def focus_up(self) -> None:
         self.focus = (self.focus - 1) % len(self.ROWS)
@@ -1139,10 +1239,59 @@ class SettingsScene(_Overlay):
         self.focus = (self.focus + 1) % len(self.ROWS)
 
     def decrease(self) -> None:
-        self._adjust(self.ROWS[self.focus][1], -0.1)
+        self._adjust(self.ROWS[self.focus][1], -1)
 
     def increase(self) -> None:
-        self._adjust(self.ROWS[self.focus][1], 0.1)
+        self._adjust(self.ROWS[self.focus][1], 1)
+
+
+class SaveBrowserScene(_Overlay):
+    """Three manual slots, the quicksave and the autosave with what they hold; a key or a click picks one."""
+
+    pause_below = True
+    controls = {"1": "pick_1", "2": "pick_2", "3": "pick_3", "q": "pick_quick", "a": "pick_auto"}
+
+    def __init__(self, game: Any, mode: str, *, on_pick: Callable[[int | str], None]) -> None:
+        self.mode = mode
+        self.on_pick = on_pick
+        self.listing = game.save_manager.list_slots(SAVE_SLOTS, names=("quick", "autosave"))
+
+    def on_enter(self) -> None:
+        panel = self.panel("Save game" if self.mode == "save" else "Load game")
+        for entry, slot, key in zip(self.listing, [*range(1, SAVE_SLOTS + 1), "quick", "autosave"], ("1", "2", "3", "Q", "A")):
+            name = f"Slot {slot}" if isinstance(slot, int) else slot.title()
+            if entry is None:
+                detail, ok = "empty", self.mode == "save"
+            elif "error" in entry:
+                detail, ok = "corrupt file — cannot be loaded", self.mode == "save"
+            else:
+                s = entry["summary"]
+                detail = f"{s.get('player', '')} · {s.get('map', '')} · {s.get('players', '?')} players · {s.get('difficulty', '')} · {s.get('clock', '')} · {entry['timestamp'][:16].replace('T', ' ')}"
+                ok = True
+            button = Button(name, hotkey=key, on_click=lambda sl=slot: self.pick(sl), style=ACTION_BUTTON if ok else GHOST_BUTTON, width=150)
+            button.enabled = ok and not (self.mode == "save" and slot == "autosave")
+            panel.add(Row(button, Label(detail, text_style="body", width=520), spacing=12))
+        panel.add(KeyHints([("1 2 3 Q A", "pick"), ("Esc", "back")]))
+
+    def pick(self, slot: int | str) -> None:
+        self.game.pop()
+        self.on_pick(slot)
+
+    def pick_1(self) -> None:
+        self.pick(1)
+
+    def pick_2(self) -> None:
+        self.pick(2)
+
+    def pick_3(self) -> None:
+        self.pick(3)
+
+    def pick_quick(self) -> None:
+        self.pick("quick")
+
+    def pick_auto(self) -> None:
+        if self.mode == "load":
+            self.pick("autosave")
 
 
 HELP_INTRO = (
@@ -1293,9 +1442,26 @@ def new_game(seed: int, width: int = 48, height: int = 40, players: int = 2, *, 
     return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players, theme=theme), seed, difficulty=difficulty, settings=settings)
 
 
+def check_save(state: dict[str, Any]) -> World:
+    """The world in a save's ``state``, or a SaveError saying what is wrong with it."""
+    if not isinstance(state, dict) or state.get("version") != SAVE_VERSION:
+        raise SaveError(f"this save is from another version of Warband (format {state.get('version') if isinstance(state, dict) else '?'}, expected {SAVE_VERSION})")
+    try:
+        world = World.from_dict(state["world"])
+        Difficulty(state["difficulty"])
+    except (KeyError, ValueError, TypeError, IndexError) as exc:
+        raise SaveError(f"the save file is damaged ({type(exc).__name__}: {exc})") from exc
+    if not any(p.human for p in world.players):
+        raise SaveError("the save has no human player")
+    return world
+
+
 def load_game(state: dict[str, Any], *, settings: dict[str, Any] | None = None) -> GameScene:
     """A game scene from a save slot's ``state`` (see :meth:`GameScene.get_save_state`)."""
-    scene = GameScene(World.from_dict(state["world"]), state["seed"], difficulty=Difficulty(state["difficulty"]),
-                      settings={**state.get("settings", {}), **(settings or {})}, stats=state.get("stats"))
+    world = check_save(state)
+    scene = GameScene(world, state["seed"], difficulty=Difficulty(state["difficulty"]), settings=settings, stats=state.get("stats"))
     scene.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
+    if state.get("tutorial") is not None and scene.tutorial is not None:
+        scene.tutorial.step = state["tutorial"]
+    scene._autosave_at = (world.time // AUTOSAVE_EVERY + 1) * AUTOSAVE_EVERY
     return scene

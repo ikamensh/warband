@@ -9,10 +9,10 @@ from __future__ import annotations
 import random
 from typing import Any
 
-from saga2d import Anchor, Button, Camera, Column, Label, Row, Scene
+from saga2d import Anchor, Button, Camera, Column, Label, Row, SaveError, Scene
 from warband import mapgen
 from warband.rules import Difficulty, MapTheme
-from warband.scene import HelpScene, load_game, new_game
+from warband.scene import SAVE_SLOTS, HelpScene, SaveBrowserScene, load_game, new_game
 from warband.sound import play_sound
 from warband.style import ACTION_BUTTON, GHOST_BUTTON, MENU_BUTTON, OVERLAY_STYLE
 from warband.textures import TILE
@@ -25,7 +25,7 @@ DRIFT_SECONDS = 24.0
 
 class TitleScene(Scene):
     background_color = (8, 10, 14, 255)
-    controls = {("n", "return"): "new_game", "c": "continue_game", "h": "how_to_play", "q": "quit"}
+    controls = {("n", "return"): "new_game", "c": "continue_game", "l": "load_game", "h": "how_to_play", "q": "quit"}
 
     def __init__(self, *, size: str = "Medium", players: int = 2, difficulty: Difficulty = Difficulty.NORMAL, theme: MapTheme = MapTheme.SUMMER,
                  settings: dict[str, Any] | None = None) -> None:
@@ -36,6 +36,7 @@ class TitleScene(Scene):
         self.settings = settings
         self.time = 0.0
         self._stop = 0
+        self.notice = ""
 
     def on_enter(self) -> None:
         seed = random.randrange(1, 10_000)
@@ -55,17 +56,24 @@ class TitleScene(Scene):
         self.camera.pan_to(*self._stops[self._stop], duration=DRIFT_SECONDS)
         self.after(DRIFT_SECONDS, self._drift)
 
+    def _newest_save(self) -> int | str | None:
+        """The slot saved most recently, whatever kind it is."""
+        entries = [e for e in self.game.save_manager.list_slots(SAVE_SLOTS, names=("quick", "autosave")) if e is not None and "error" not in e]
+        return max(entries, key=lambda e: e["timestamp"])["slot"] if entries else None
+
     def _build_menu(self) -> None:
-        has_save = self.game.save_manager.load(1) is not None
+        newest = self._newest_save()
         menu = Column(spacing=10, anchor=Anchor.CENTER, margin=0)
         menu.add(Label("", height=150))
         menu.add(Button("New game", hotkey="N", on_click=self.new_game, style=ACTION_BUTTON, width=300))
         cont = Button("Continue", hotkey="C", on_click=self.continue_game, style=MENU_BUTTON, width=300)
-        cont.enabled = has_save
+        cont.enabled = newest is not None
         menu.add(cont)
+        menu.add(Button("Load game", hotkey="L", on_click=self.load_game, style=MENU_BUTTON, width=300))
         menu.add(Button("How to play", hotkey="H", on_click=self.how_to_play, style=MENU_BUTTON, width=300))
         menu.add(Button("Quit", hotkey="Q", on_click=self.quit, style=MENU_BUTTON, width=300))
-        menu.add(Label("Continue resumes save slot 1" if has_save else "No saved game yet — F5 saves during play", text_style="caption"))
+        where = f"slot {newest}" if isinstance(newest, int) else f"the {newest}" if newest else None
+        menu.add(Label(f"Continue resumes {where}" if where else "No saved game yet — the match autosaves every two minutes", text_style="caption"))
         self.ui.add(menu)
         self.ui.add(Label("Every command has a hotkey — the keycaps show them · F1 in game for help", text_style="caption", anchor=Anchor.BOTTOM_CENTER, margin=12))
 
@@ -81,6 +89,8 @@ class TitleScene(Scene):
             self.draw_text("WARBAND", w / 2 + spread, cy + spread, style="hero", color=(0, 0, 0, alpha), anchor_x="center", anchor_y="center")
         self.draw_text("WARBAND", w / 2, cy, style="hero", anchor_x="center", anchor_y="center")
         self.draw_text("Gather · Build · Train · Conquer", w / 2, cy + 60, style="hero_sub", anchor_x="center", anchor_y="center")
+        if self.notice:
+            self.draw_text(self.notice, w / 2, h - 60, style="hud", color=(240, 130, 110, 255), anchor_x="center", anchor_y="center")
 
     def sfx(self, name: str) -> None:
         if self.settings is None or self.settings["sfx"] > 0:
@@ -91,12 +101,28 @@ class TitleScene(Scene):
         self.game.push(NewGameScene(self))
 
     def continue_game(self) -> None:
-        save = self.game.save_manager.load(1)
-        if save is None:
+        newest = self._newest_save()
+        if newest is None:
             self.sfx("error")
             return
+        self.load_slot(newest)
+
+    def load_game(self) -> None:
         self.sfx("button")
-        self.game.clear_and_push(load_game(save["state"], settings=self.settings))
+        self.game.push(SaveBrowserScene(self.game, "load", on_pick=self.load_slot))
+
+    def load_slot(self, slot: int | str) -> None:
+        try:
+            save = self.game.save_manager.load(slot)
+            if save is None:
+                raise SaveError("that slot is empty")
+            scene = load_game(save["state"], settings=self.settings)
+        except SaveError as exc:
+            self.sfx("error")
+            self.notice = f"Could not load: {exc}"
+            return
+        self.sfx("button")
+        self.game.clear_and_push(scene)
 
     def how_to_play(self) -> None:
         self.sfx("button")

@@ -224,13 +224,17 @@ def test_escape_opens_the_menu_and_save_load_round_trips(play) -> None:
 
 
 def test_pause_menu_save_and_load_work_despite_the_deferred_pop(play) -> None:
+    """Regression: the pause menu's pop is deferred, so saving through it used to
+    store the (empty) PauseScene state and loading through it did nothing."""
     game, scene = play
     press(game, "escape")
     press(game, "f5")
+    press(game, "1")
     assert game.scene is scene and game.save_manager.load(1)["scene_class"] == "GameScene"
     scene.player.gold = 9999
     press(game, "escape")
     press(game, "f9")
+    press(game, "1")
     assert game.scene is scene and scene.player.gold == 1000
 
 

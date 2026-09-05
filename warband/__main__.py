@@ -12,7 +12,7 @@ import argparse
 from saga2d import Game, fonts
 from warband import mapgen, sound
 from warband.rules import Difficulty, MapTheme
-from warband.scene import new_game
+from warband.scene import DEFAULT_SETTINGS, new_game
 from warband.style import build_theme
 from warband.title import TitleScene
 
@@ -27,13 +27,18 @@ def main() -> None:
     parser.add_argument("--fullscreen", action="store_true")
     args = parser.parse_args()
     game = Game("Warband", resolution=None, fullscreen=args.fullscreen, theme=build_theme())
+    settings = game.settings(DEFAULT_SETTINGS)
+    if args.fullscreen:
+        settings["fullscreen"] = True
     fonts.load(game)
     sound.install(game)
+    sound.apply_volumes(settings["music"], settings["sfx"])
     if args.seed is not None:
         width, height = mapgen.SIZES[args.size]
-        game.run(new_game(args.seed, width=width, height=height, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme)))
+        game.run(new_game(args.seed, width=width, height=height, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme),
+                          settings=settings))
     else:
-        game.run(TitleScene(size=args.size, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme)))
+        game.run(TitleScene(size=args.size, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme), settings=settings))
 
 
 if __name__ == "__main__":
