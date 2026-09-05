@@ -164,7 +164,7 @@ def test_a_new_map_of_the_same_size_reuses_the_ground_fog_and_minimap_images(pla
     assert Image  # the PIL import is what the view feeds update_image
 
 
-def test_a_site_shows_the_building_rising_and_a_battered_building_smokes(play) -> None:
+def test_a_site_shows_the_building_rising_and_a_battered_building_smokes_then_burns(play) -> None:
     game, scene = play
     world, view = scene.world, scene.view
     hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
@@ -183,10 +183,14 @@ def test_a_site_shows_the_building_rising_and_a_battered_building_smokes(play) -
     assert site.id in view._smoke
     for _ in range(30):
         game.tick(1 / 60)
-    assert view._smoke[site.id].particle_count > 0
+    assert view._smoke[site.id].particle_count > 0 and site.id not in view._fire
+    site.hp = site.max_hp // 5  # under a quarter it blazes as well
+    for _ in range(30):
+        game.tick(1 / 60)
+    assert site.id in view._fire and view._fire[site.id].particle_count > 0
     site.hp = site.max_hp
     game.tick(1 / 60)
-    assert site.id not in view._smoke
+    assert site.id not in view._smoke and site.id not in view._fire
 
 
 def flood(world, x0: int, y0: int, size: int = 3) -> None:

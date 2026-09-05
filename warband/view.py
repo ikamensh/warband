@@ -78,6 +78,7 @@ class MapView:
         self._units: dict[int, Sprite] = {}
         self._unit_keys: dict[int, str] = {}
         self._smoke: dict[int, ParticleEmitter] = {}
+        self._fire: dict[int, ParticleEmitter] = {}
         self._vision_tick = -1
         self._minimap_time = -1.0
         self.fog_key = f"fog.{world.width}x{world.height}"
@@ -169,9 +170,10 @@ class MapView:
             for sprite in group.values():
                 sprite.remove()
             group.clear()
-        for emitter in self._smoke.values():
-            emitter.remove()
-        self._smoke.clear()
+        for burning in (self._smoke, self._fire):
+            for emitter in burning.values():
+                emitter.remove()
+            burning.clear()
         self._building_keys.clear()
         self._unit_keys.clear()
         self.world = world
@@ -216,9 +218,10 @@ class MapView:
                 sprite.remove()
                 del self._buildings[bid]
                 del self._building_keys[bid]
-                smoke = self._smoke.pop(bid, None)
-                if smoke is not None:
-                    smoke.remove()
+                for burning in (self._smoke, self._fire):
+                    emitter = burning.pop(bid, None)
+                    if emitter is not None:
+                        emitter.remove()
         for b in world.buildings.values():
             if not self._known(b):
                 continue
@@ -241,18 +244,31 @@ class MapView:
             self._sync_smoke(b, sprite)
 
     def _sync_smoke(self, b: Building, sprite: Sprite) -> None:
-        """A damaged building smoulders: smoke rises from its roof while it is under half health."""
-        burning = b.done and b.type is not BuildingType.GOLD_MINE and b.hp < b.max_hp / 2 and self.world.is_visible(self.player, (int(b.center[0]), int(b.center[1])))
+        """A damaged building smoulders under half health and burns under a quarter: smoke from the
+        roof, then flames licking up from it."""
+        seen = b.done and b.type is not BuildingType.GOLD_MINE and self.world.is_visible(self.player, (int(b.center[0]), int(b.center[1])))
+        wx, wy = to_world(b.center)
+        roof = (wx, wy - b.size * TILE * 0.5)
+        smoking = seen and b.hp < b.max_hp / 2
         emitter = self._smoke.get(b.id)
-        if burning and emitter is None:
-            wx, wy = to_world(b.center)
-            emitter = ParticleEmitter("smoke", position=(wx, wy - b.size * TILE * 0.5), speed=(8, 26), direction=(250, 290), lifetime=(1.2, 2.2),
+        if smoking and emitter is None:
+            emitter = ParticleEmitter("smoke", position=roof, speed=(8, 26), direction=(250, 290), lifetime=(1.2, 2.2),
                                       size=(18, 18), fade_out=True, layer=RenderLayer.EFFECTS)
             emitter.continuous(rate=3 + 3 * (1 - b.hp / max(1, b.max_hp)))
             self._smoke[b.id] = self.scene.add_emitter(emitter)
-        elif not burning and emitter is not None:
+        elif not smoking and emitter is not None:
             emitter.remove()
             del self._smoke[b.id]
+        blazing = seen and b.hp < b.max_hp / 4
+        fire = self._fire.get(b.id)
+        if blazing and fire is None:
+            fire = ParticleEmitter("spark", position=(roof[0], roof[1] + TILE * 0.35), speed=(25, 60), direction=(250, 290), lifetime=(0.4, 0.8),
+                                   size=(16, 26), fade_out=True, tint=(1.0, 0.45, 0.1), layer=RenderLayer.EFFECTS)
+            fire.continuous(rate=26)
+            self._fire[b.id] = self.scene.add_emitter(fire)
+        elif not blazing and fire is not None:
+            fire.remove()
+            del self._fire[b.id]
 
     def _frame(self, u: Unit) -> str:
         if u.state == "move":
