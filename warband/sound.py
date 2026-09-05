@@ -1,21 +1,31 @@
-"""Where Warband's sound events go.
+"""Procedural sound for Warband: effects and a marching loop synthesised
+with :mod:`saga2d.synth` on first run and cached under ``~/.warband``.
 
 The scene calls :func:`play_sound` with an event name; ``__main__`` points
-:data:`sound_hook` at a bank so it is heard, while tests leave it ``None``.
+:data:`sound_hook` at a :class:`SoundBank` so it is heard, while tests
+leave it ``None``.  Everything sits in A minor: hits and chops are
+percussive noise, the economy clinks in bells, alarms are brass, and
+the loop is a slow drum march under a drone.
 """
 
 from __future__ import annotations
 
+import random
+from pathlib import Path
 from typing import Callable
+
+import numpy as np
+
+from saga2d import Game, synth
+from saga2d.synth import BELL, BRASS, DARK, GLASS, SOFT, hz, level, mix, noise, pan, thump, tone
+from saga2d.synth import seconds as sample_times
+
+SOUND_VERSION = "1"
+MUSIC = "march"
 
 #: ``play_sound(name)`` forwards here when set; ``None`` is silent.
 sound_hook: Callable[[str], None] | None = None
 volume_hook: Callable[[str, float], None] | None = None
-
-EVENTS = (
-    "select", "command", "attack_command", "hit", "arrow", "death", "chop", "gold", "build_start", "built", "trained",
-    "under_attack", "error", "button", "victory", "defeat", "destroyed",
-)
 
 
 def play_sound(name: str) -> None:
@@ -27,3 +37,198 @@ def apply_volumes(music: float, sfx: float) -> None:
     if volume_hook is not None:
         volume_hook("music", music)
         volume_hook("sfx", sfx)
+
+
+# -- Effects (mono, 50–700 ms, A minor) ----------------------------------------
+
+
+def select() -> np.ndarray:
+    return level(mix(tone("E5", 0.08, tau=0.04), (0.05, tone("A5", 0.12, tau=0.06))), 0.5)
+
+
+def command() -> np.ndarray:
+    """A short affirmative: two rising blips."""
+    return level(mix(tone("A4", 0.07, tau=0.035, partials=GLASS), (0.06, tone("C5", 0.1, tau=0.05, partials=GLASS))), 0.5)
+
+
+def attack_command() -> np.ndarray:
+    """Harsher: a low pluck and a snare-like rasp."""
+    return level(mix(tone("A3", 0.16, tau=0.07, partials=DARK), noise(0.06, 900, 5000, tau=0.02, seed=3) * 0.6), 0.6)
+
+
+def button() -> np.ndarray:
+    return level(mix(noise(0.03, 1800, 7000, tau=0.01, seed=1) * 0.5, tone("A5", 0.05, tau=0.018)), 0.45)
+
+
+def error() -> np.ndarray:
+    return level(mix(tone("C4", 0.12, attack=0.01, tau=0.06, partials=DARK), (0.1, tone("A3", 0.16, attack=0.01, tau=0.08, partials=DARK))), 0.45)
+
+
+def hit() -> np.ndarray:
+    """Steel on steel: a bright clank over a dull thud."""
+    return level(mix(
+        thump(180, 60, 0.14, tau=0.05),
+        noise(0.08, 1500, 8000, tau=0.02, seed=20) * 0.7,
+        (0.004, tone(hz("E6") * 1.02, 0.12, tau=0.03, partials=BELL) * 0.35),
+    ), 0.85)
+
+
+def arrow() -> np.ndarray:
+    """A whoosh and a thock."""
+    return level(mix(noise(0.16, 1200, 6000, attack=0.05, tau=0.05, seed=21) * 0.6, (0.14, thump(320, 140, 0.06, tau=0.02) * 0.8)), 0.6)
+
+
+def death() -> np.ndarray:
+    """A falling minor third over a low swell."""
+    return level(mix(
+        tone("E4", 0.26, attack=0.01, tau=0.12),
+        (0.12, tone("C4", 0.3, attack=0.01, tau=0.14, partials=DARK)),
+        noise(0.4, 90, 500, attack=0.1, tau=0.12, seed=30) * 0.35,
+    ), 0.6)
+
+
+def chop() -> np.ndarray:
+    """An axe biting wood."""
+    return level(mix(thump(240, 110, 0.07, tau=0.025), noise(0.09, 300, 2500, tau=0.03, seed=40) * 0.8), 0.7)
+
+
+def gold() -> np.ndarray:
+    """Coins: three quick bell taps."""
+    return level(mix(*[(i * 0.045, tone(note, 0.16, tau=0.05, partials=BELL) * (1 - 0.2 * i)) for i, note in enumerate(("A6", "E7", "A7"))]), 0.5)
+
+
+def build_start() -> np.ndarray:
+    """Hammer taps."""
+    return level(mix(*[(i * 0.11, mix(noise(0.05, 1000, 5000, tau=0.014, seed=50 + i) * 0.7, thump(400, 180, 0.05, tau=0.02) * 0.5)) for i in range(3)]), 0.6)
+
+
+def built() -> np.ndarray:
+    """A short rising fanfare in A."""
+    layers = [(start, tone(note, 0.22, tau=0.1, partials=GLASS)) for note, start in (("A4", 0.0), ("C5", 0.09), ("E5", 0.18))]
+    layers.append((0.27, tone("A5", 0.3, attack=0.01, tau=0.18, partials=GLASS) * 0.8))
+    return level(mix(*layers), 0.7)
+
+
+def trained() -> np.ndarray:
+    """Ready: a two-note call."""
+    return level(mix(tone("E5", 0.14, attack=0.01, tau=0.08, partials=BRASS) * 0.6, (0.12, tone("A5", 0.22, attack=0.01, tau=0.12, partials=BRASS) * 0.6)), 0.55)
+
+
+def under_attack() -> np.ndarray:
+    """A horn: low fifth, held."""
+    return level(mix(tone("A3", 0.6, attack=0.05, tau=0.4, partials=BRASS), tone("E4", 0.6, attack=0.06, tau=0.35, partials=BRASS) * 0.7), 0.7)
+
+
+def destroyed() -> np.ndarray:
+    """Timber and stone coming down."""
+    return level(mix(
+        thump(120, 35, 0.5, tau=0.18),
+        noise(0.45, 80, 900, attack=0.02, tau=0.16, seed=60),
+        (0.08, noise(0.3, 400, 3000, attack=0.01, tau=0.1, seed=61) * 0.5),
+    ), 0.85)
+
+
+def victory() -> np.ndarray:
+    layers = [(start, tone(note, 0.24, tau=0.1, partials=BRASS) * 0.7) for note, start in (("A4", 0.0), ("C5", 0.1), ("E5", 0.2), ("A5", 0.3))]
+    layers += [(0.42, tone(note, 0.4, attack=0.02, tau=0.24, partials=BRASS) * gain) for note, gain in (("A4", 0.5), ("C5", 0.45), ("E5", 0.45), ("A5", 0.4))]
+    return level(mix(*layers), 0.85)
+
+
+def defeat() -> np.ndarray:
+    return level(mix(
+        tone("E4", 0.3, attack=0.02, tau=0.15, partials=DARK),
+        (0.2, tone("D#4", 0.3, attack=0.02, tau=0.15, partials=DARK)),
+        (0.4, tone("A3", 0.4, attack=0.02, tau=0.2, partials=DARK)),
+        noise(0.6, 70, 350, attack=0.15, tau=0.2, seed=80) * 0.3,
+    ), 0.65)
+
+
+SOUNDS: dict[str, Callable[[], np.ndarray]] = {
+    "select": select, "command": command, "attack_command": attack_command, "button": button, "error": error,
+    "hit": hit, "arrow": arrow, "death": death, "chop": chop, "gold": gold, "build_start": build_start, "built": built,
+    "trained": trained, "under_attack": under_attack, "destroyed": destroyed, "victory": victory, "defeat": defeat,
+}
+
+# -- Music -------------------------------------------------------------------
+
+BPM = 88
+BEAT = 60 / BPM
+BAR = 4 * BEAT
+BARS = 16
+LOOP_SECONDS = BARS * BAR
+_DRONE: tuple[tuple[int, tuple[str, ...]], ...] = (  # (bars, chord)
+    (4, ("A2", "E3", "A3", "C4")), (2, ("F2", "C3", "F3", "A3")), (2, ("G2", "D3", "G3", "B3")),
+    (4, ("A2", "E3", "A3", "C4")), (2, ("D3", "A3", "D4", "F4")), (2, ("E2", "B2", "E3", "G#3")),
+)
+
+
+def _add_wrapped(out: np.ndarray, clip: np.ndarray, start_seconds: float) -> None:
+    n = len(out)
+    start = int(round(start_seconds * synth.SAMPLE_RATE)) % n
+    first = min(len(clip), n - start)
+    out[start:start + first] += clip[:first]
+    out[:len(clip) - first] += clip[first:]
+
+
+def _drone(chord: tuple[str, ...], length: float) -> np.ndarray:
+    t = sample_times(length)
+    fade = 1.2
+    env = np.sin(np.minimum(1.0, t / fade) * np.pi / 2) * np.sin(np.minimum(1.0, (length - t) / fade) * np.pi / 2)
+    out = np.zeros((len(t), 2))
+    for note in chord:
+        freq = hz(note)
+        for channel, detune in ((0, 1.002), (1, 0.998)):
+            out[:, channel] += np.sin(2 * np.pi * freq * detune * t) + 0.3 * np.sin(2 * np.pi * freq * 2 * detune * t)
+    return out * (env / len(chord))[:, None]
+
+
+def march() -> np.ndarray:
+    """A slow drum march under a detuned drone, with a sparse horn line."""
+    n = int(round(LOOP_SECONDS * synth.SAMPLE_RATE))
+    out = np.zeros((n, 2))
+    rng = random.Random(3)
+    start = 0.0
+    for bars, chord in _DRONE:
+        length = bars * BAR
+        _add_wrapped(out, 0.5 * _drone(chord, length + 1.2), start - 0.6)
+        start += length
+    kick = thump(110, 45, 0.25, tau=0.09)
+    snare = mix(noise(0.14, 600, 4000, tau=0.045, seed=90), thump(200, 120, 0.08, tau=0.03) * 0.5)
+    for beat in range(BARS * 4):
+        when = beat * BEAT
+        if beat % 4 in (0, 2):
+            _add_wrapped(out, pan(kick * 0.9, 0.0), when)
+        if beat % 4 == 2 or (beat % 8 == 7 and rng.random() < 0.7):
+            _add_wrapped(out, pan(snare * 0.35, 0.3), when)
+        if beat % 8 == 7:
+            _add_wrapped(out, pan(snare * 0.2, -0.3), when + BEAT / 2)
+    horn_line = (("E4", 0), ("A4", 3), ("C5", 6), ("B4", 7), ("A4", 9), ("G4", 11), ("E4", 12))
+    for note, bar in horn_line:
+        clip = tone(note, 1.6, attack=0.08, tau=0.9, partials=BRASS) * 0.22
+        _add_wrapped(out, pan(clip, 0.15 * (-1) ** bar), bar * BAR)
+    swell = 0.9 + 0.1 * np.sin(2 * np.pi * sample_times(LOOP_SECONDS) / (LOOP_SECONDS / 2))
+    return level(out * swell[:, None], 0.45)
+
+
+# -- Bank --------------------------------------------------------------------
+
+
+class SoundBank(synth.SynthBank):
+    """Warband's sounds; *data_dir* defaults to ``~/.warband``."""
+
+    def __init__(self, game: Game, data_dir: Path | str | None = None) -> None:
+        super().__init__(game, data_dir if data_dir is not None else Path.home() / ".warband", version=SOUND_VERSION,
+                         sounds=SOUNDS, music={MUSIC: march})
+
+    def start_music(self, name: str = MUSIC) -> None:  # type: ignore[override]
+        super().start_music(name)
+
+
+def install(game: Game) -> SoundBank:
+    """Create the bank, route the game's sound events to it and start the music."""
+    global sound_hook, volume_hook
+    bank = SoundBank(game)
+    sound_hook = lambda name: bank.play(name, pitch_variation=0.05 if name in ("hit", "arrow", "chop", "death") else 0.0)  # noqa: E731
+    volume_hook = bank.set_volume
+    bank.start_music()
+    return bank

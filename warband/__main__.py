@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 
 from saga2d import Game, fonts
-from warband import mapgen
+from warband import mapgen, sound
 from warband.scene import new_game
 from warband.style import build_theme
 from warband.title import TitleScene
@@ -25,6 +25,7 @@ def main() -> None:
     args = parser.parse_args()
     game = Game("Warband", resolution=None, fullscreen=args.fullscreen, theme=build_theme())
     fonts.load(game)
+    sound.install(game)
     if args.seed is not None:
         width, height = mapgen.SIZES[args.size]
         game.run(new_game(args.seed, width=width, height=height, players=args.players))
