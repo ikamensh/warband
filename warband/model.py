@@ -416,8 +416,10 @@ class World:
                 visible[y * width + x] = 1
 
     def reveal_all(self, player: int) -> None:
+        """Explore (and, until the next vision update, see) the whole map."""
         for i in range(self.width * self.height):
             self.explored[player][i] = 1
+            self.visible[player][i] = 1
 
     # -- Economy queries -----------------------------------------------------------
 
@@ -615,6 +617,11 @@ class World:
             return "attack"
         workers = [u.id for u in units if u.is_worker]
         others = [u.id for u in units if not u.is_worker]
+        if workers and isinstance(target, Building) and target.player == player and not target.done:
+            self.resume_construction(workers, target.id)
+            if others:
+                self.move(others, point, queue=queue)
+            return "build"
         if workers and isinstance(target, Building) and target.type is BuildingType.GOLD_MINE:
             self.harvest(workers, target.id, queue=queue)
             if others:
@@ -1067,9 +1074,12 @@ class World:
             u.state = "idle"
             return True
         u.state = "move"
-        if u.path and not self.passable(*u.path[0]) and u.path_goal is not None:
-            self._plan(u, u.path_goal, u.exact, around_units=True)  # something was built across the path
-            return False
+        if u.path and u.path_goal is not None:
+            tx, ty = u.tile
+            if not self.passable(*u.path[0]) or max(abs(u.path[0][0] - tx), abs(u.path[0][1] - ty)) > 1:
+                # Something was built across the path, or a crowd pushed the unit off it.
+                self._plan(u, u.path_goal, u.exact, around_units=True)
+                return False
         dx, dy = waypoint[0] - u.x, waypoint[1] - u.y
         d = math.hypot(dx, dy)
         step = u.info.speed * dt
@@ -1090,14 +1100,17 @@ class World:
                 u.path.insert(0, u.tile)
             return False
         u.x, u.y = nx, ny
-        # Progress watchdog: pushed off course and blocked, path again around the units in the way.
-        if d < u.last_distance - 0.02:
-            u.last_distance = d
+        # Progress watchdog: closing on the goal resets it; a stretch without progress paths
+        # again around the units in the way.
+        remaining = dist(u.pos, u.exact if u.exact is not None else tile_center(u.path_goal)) if u.path_goal is not None else 0.0
+        if remaining < u.last_distance - 0.02:
+            u.last_distance = remaining
             u.progress = 0.0
         else:
             u.progress += dt
             if u.progress >= STUCK_AFTER and u.path_goal is not None:
                 self._plan(u, u.path_goal, u.exact, around_units=True)
+                u.last_distance = remaining
         return False
 
     def _separate(self) -> None:

@@ -1,0 +1,1075 @@
+"""saga2d scenes for Warband: the match, its HUD, and the overlays stacked on it."""
+
+from __future__ import annotations
+
+import math
+import random
+from collections import deque
+from dataclasses import dataclass, field
+from typing import Any, Callable
+
+from saga2d import (
+    Anchor, Button, Camera, Column, InputEvent, KeyHints, Label, Layout, Minimap, MoveTo, Panel, Remove, RenderLayer, Row, Scene,
+    Sequence, Sprite, Style,
+)
+from saga2d.effects import Banner, Burst, Dissolve, Effects, FloatingText, HitReaction, Pulse, Toast
+from warband import mapgen
+from warband.ai import Brain
+from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
+from warband.rules import BUILDINGS, SIM_DT, UNITS, BuildingType, UnitType
+from warband.sound import apply_volumes, play_sound
+from warband.style import ACTION_BUTTON, BAD, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE
+from warband.textures import TILE
+from warband.view import MapView, Overlay, rgba, to_tiles, to_world
+
+DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8}
+HINT_BAR = 28
+PANEL_MARGIN = (12, HINT_BAR + 10)
+MAX_STEPS_PER_FRAME = 6
+ZOOM_PER_LINE = 1.06
+ZOOM_PER_KEY = 1.25
+MAX_LINES_PER_EVENT = 4.0
+EDGE_MARGIN = 12
+EDGE_SPEED = 900
+KEY_SPEED = 800
+DRAG_THRESHOLD = 5
+GROUP_KEYS = "123456789"
+CARD_COLS = 3
+CARD_WIDTH = 108
+MINIMAP_WIDTH = 200
+SELECTION_WIDTH = 470
+SELECTION_HEIGHT = 128
+MAX_PORTRAITS = 12
+SOUND_GAP = 0.08  # seconds between repeats of the same battle sound
+
+
+def _clock(seconds: float) -> str:
+    return f"{int(seconds // 60):02d}:{int(seconds % 60):02d}"
+
+
+@dataclass
+class Command:
+    """One command-card button."""
+
+    label: str
+    hotkey: str
+    action: Callable[[], None]
+    tooltip: str = ""
+    enabled: Callable[[], bool] = field(default=lambda: True)
+    style: Style = field(default_factory=lambda: CARD_BUTTON)
+
+    @property
+    def key(self) -> str:
+        return {"Esc": "escape"}.get(self.hotkey, self.hotkey.lower())
+
+
+class GameScene(Scene):
+    """The whole match: map, selection, orders, HUD, the AI's turns and the game clock."""
+
+    background_color = (8, 10, 14, 255)
+    controls = {
+        "escape": "cancel",
+        "f1": "open_help",
+        "f3": "toggle_pause",
+        "f5": "quick_save",
+        "f9": "quick_load",
+        "f10": "open_menu",
+        "space": "jump_to_alert",
+        ("home", "backspace"): "center_base",
+        ("equal", "plus"): "zoom_in",
+        "minus": "zoom_out",
+        "tab": "next_idle_peasant",
+        "period": "next_idle_soldier",
+    }
+
+    def __init__(self, world: World, seed: int, *, settings: dict[str, Any] | None = None, stats: dict[str, int] | None = None) -> None:
+        self.world = world
+        self.seed = seed
+        self.human = next(p.id for p in world.players if p.human)
+        self.brains = [Brain(p.id) for p in world.players if not p.human]
+        self.rng = random.Random(seed)
+        self.settings: dict[str, Any] = {**DEFAULT_SETTINGS, **(settings or {})}
+        self.stats: dict[str, int] = {"units_lost": 0, "units_killed": 0, "buildings_lost": 0, "buildings_razed": 0, **(stats or {})}
+        self.selection: list[int] = []
+        self.groups: dict[str, list[int]] = {}
+        self.pending: str | None = None  # "move" | "attack" | "build:<type>"
+        self.build_menu = False
+        self.paused = False
+        self.speed = 1.0
+        self.clock = 0.0
+        self.effects = Effects()
+        self.recent_sounds: deque[str] = deque(maxlen=48)
+        self.status = ""
+        self.status_timer = 0.0
+        self.tooltip = ""
+        self.mouse = (0, 0)
+        self.hover: tuple[float, float] = (0.0, 0.0)  # in tiles
+        self.last_alert: tuple[float, float] | None = None
+        self._acc = 0.0
+        self._drag_start: tuple[int, int] | None = None
+        self._drag_end: tuple[int, int] | None = None
+        self._game_over = False
+        self._card: list[Command] = []
+        self._card_buttons: list[Button] = []
+        self._portraits: list[tuple[int, tuple[int, int, int, int]]] = []
+        self._sound_times: dict[str, float] = {}
+
+    # -- Lifecycle -------------------------------------------------------------
+
+    def on_enter(self) -> None:
+        apply_volumes(self.settings["music"], self.settings["sfx"])
+        self.view = MapView(self, self.world, self.human)
+        self._setup_camera()
+        self._build_hud()
+        self.center_base(instant=True)
+        self.effects.add(Banner("Warband", subtitle=f"{self.player.name} against {', '.join(p.name for p in self.world.players if p.id != self.human)}",
+                                accent=rgba(self.player.color)))
+
+    def _setup_camera(self) -> None:
+        w, h = self.game.resolution
+        world_w, world_h = self.world.width * TILE, self.world.height * TILE
+        self.camera = Camera((w, h), world_bounds=(-TILE, -TILE, world_w + TILE, world_h + SELECTION_HEIGHT + 3 * TILE), zoom=1.0, min_zoom=0.75, max_zoom=2.0)
+        self.camera.enable_key_scroll(speed=KEY_SPEED)
+        self.camera.enable_edge_scroll(EDGE_MARGIN, EDGE_SPEED)
+
+    @property
+    def player(self):
+        return self.world.players[self.human]
+
+    def sfx(self, name: str, *, gap: float = 0.0) -> None:
+        """Every sound event passes through here; *gap* rate-limits battle noise."""
+        if gap and self.clock - self._sound_times.get(name, -1.0) < gap:
+            return
+        self._sound_times[name] = self.clock
+        self.recent_sounds.append(name)
+        if self.settings["sfx"] > 0:
+            play_sound(name)
+
+    # -- HUD ---------------------------------------------------------------------
+
+    def _build_hud(self) -> None:
+        world, player = self.world, self.player
+
+        def supply_text() -> str:
+            used, cap = world.supply(self.human)
+            return f"Supply {used}/{cap}"
+
+        self.ui.add(Panel(anchor=Anchor.TOP_LEFT, margin=12, layout=Layout.HORIZONTAL, spacing=18, style=PANEL_STYLE, children=[
+            Label(player.name, text_style="title", text_color=rgba(player.color)),
+            Label(lambda: f"Gold {player.gold}", text_style="hud", text_color=GOLD),
+            Label(lambda: f"Lumber {player.lumber}", text_style="hud", text_color=LUMBER),
+            Label(supply_text, text_style="hud"),
+            Label(lambda: _clock(world.time), text_style="sub"),
+            Label(lambda: "Paused" if self.paused else f"×{self.speed:g}" if self.speed != 1 else "", text_style="hud", text_color=BAD),
+            Button("Menu", hotkey="F10", on_click=self.open_menu, style=GHOST_BUTTON),
+        ]))
+        world_w, world_h = self.world.width * TILE, self.world.height * TILE
+        self.minimap = Minimap(self.view.minimap_key, (world_w, world_h), self.camera, width=MINIMAP_WIDTH,
+                               height=round(MINIMAP_WIDTH * world_h / world_w), on_click=self.minimap_click,
+                               anchor=Anchor.BOTTOM_LEFT, margin=PANEL_MARGIN, style=PANEL_STYLE)
+        self.ui.add(self.minimap)
+        self.selection_panel = Panel(width=SELECTION_WIDTH, height=SELECTION_HEIGHT, anchor=Anchor.BOTTOM_CENTER, margin=PANEL_MARGIN, style=PANEL_STYLE)
+        self.ui.add(self.selection_panel)
+        self.card_panel = Column(spacing=6, anchor=Anchor.BOTTOM_RIGHT, margin=PANEL_MARGIN, style=PANEL_STYLE)
+        self.ui.add(self.card_panel)
+        self.ui.add(KeyHints(self._hint, anchor=Anchor.BOTTOM_CENTER, margin=5))
+        self.ui.add(Label(lambda: self.status if self.status_timer > 0 else "", text_style="hud", anchor=Anchor.TOP_CENTER, margin=(0, 70), text_color=GOLD))
+        self._refresh_card()
+
+    def _hint(self) -> list[tuple[str, str]]:
+        if self.pending is not None:
+            return [("Click", "target"), ("Right click", "cancel"), ("Shift", "queue / keep placing")]
+        if self.build_menu:
+            return [("F B H T", "choose a building"), ("Esc", "back")]
+        if self._own_units():
+            return [("Right click", "move / harvest / attack"), ("A", "attack-move"), ("S", "stop"), ("Ctrl+1-9", "group"), ("Esc", "deselect")]
+        if self._own_building() is not None:
+            return [("P F A K", "train"), ("Right click", "rally point"), ("Esc", "deselect")]
+        return [("Drag", "select"), ("Tab", "idle peasant"), ("Space", "last alert"), ("Arrows", "scroll"), ("Wheel", "zoom"), ("F3", "pause"), ("F1", "help")]
+
+    # -- Selection -----------------------------------------------------------------
+
+    def _own_units(self) -> list[Unit]:
+        return [u for u in (self.world.units.get(i) for i in self.selection) if u is not None and u.player == self.human]
+
+    def _own_building(self) -> Building | None:
+        if len(self.selection) == 1:
+            b = self.world.buildings.get(self.selection[0])
+            if b is not None and b.player == self.human:
+                return b
+        return None
+
+    def select(self, ids: list[int], *, add: bool = False, quiet: bool = False) -> None:
+        alive = [i for i in ids if self.world.entity(i) is not None]
+        if add:
+            merged = list(self.selection)
+            for i in alive:
+                if i in merged:
+                    merged.remove(i)
+                else:
+                    merged.append(i)
+            alive = merged
+        own = [i for i in alive if getattr(self.world.entity(i), "player", None) == self.human]
+        if own and len(alive) > len(own):
+            alive = own  # mixing in enemies makes no sense; keep what is ours
+        if len(alive) > 1:
+            alive = [i for i in alive if isinstance(self.world.entity(i), Unit)]  # buildings are selected alone
+        self.selection = alive
+        self.pending = None
+        self.build_menu = False
+        self._refresh_card()
+        if alive and not quiet:
+            self.sfx("select")
+
+    def _prune_selection(self) -> None:
+        before = list(self.selection)
+        self.selection = [i for i in self.selection if self.world.entity(i) is not None]
+        if self.selection != before:
+            self._refresh_card()
+
+    def click_select(self, point: tuple[float, float], shift: bool) -> None:
+        entity = self.world.entity_at(point, visible_to=self.human)
+        if entity is None:
+            if not shift:
+                self.select([])
+            return
+        if shift and entity.player == self.human:
+            self.select([entity.id], add=True)
+        else:
+            self.select([entity.id])
+
+    def box_select(self, a: tuple[float, float], b: tuple[float, float], shift: bool) -> None:
+        units = self.world.units_in_rect(a[0], a[1], b[0], b[1], player=self.human)
+        if units:
+            self.select([u.id for u in units], add=shift)
+        elif not shift:
+            self.select([])
+
+    def next_idle_peasant(self) -> None:
+        self._cycle_idle(lambda u: u.is_worker, "No idle peasants")
+
+    def next_idle_soldier(self) -> None:
+        self._cycle_idle(lambda u: not u.is_worker, "No idle soldiers")
+
+    def _cycle_idle(self, wanted: Callable[[Unit], bool], nothing: str) -> None:
+        idle = sorted((u for u in self.world.player_units(self.human) if wanted(u) and not u.orders and not u.hidden), key=lambda u: u.id)
+        if not idle:
+            self.say(nothing)
+            return
+        ids = [u.id for u in idle]
+        current = self.selection[0] if len(self.selection) == 1 and self.selection[0] in ids else None
+        unit = idle[(ids.index(current) + 1) % len(ids)] if current is not None else idle[0]
+        self.select([unit.id])
+        self.camera.pan_to(*to_world(unit.pos), duration=0.25)
+
+    # -- Orders ---------------------------------------------------------------------
+
+    def say(self, text: str) -> None:
+        self.status = text
+        self.status_timer = 3.0
+
+    def warn(self, text: str) -> None:
+        self.say(text)
+        self.sfx("error")
+
+    def _marker(self, point: tuple[float, float], color: tuple[int, int, int, int]) -> None:
+        wx, wy = to_world(point)
+        self.effects.add(Pulse((wx, wy), color, radius=(4, 18), rings=2, duration=0.5))
+
+    def command_smart(self, point: tuple[float, float], *, queue: bool = False) -> None:
+        units = self._own_units()
+        if units:
+            verb = self.world.smart([u.id for u in units], point, queue=queue)
+            self._marker(point, (255, 80, 70, 220) if verb == "attack" else (120, 255, 140, 220))
+            self.sfx("attack_command" if verb == "attack" else "command")
+            return
+        building = self._own_building()
+        if building is not None and building.done:
+            self.world.set_rally(building.id, point)
+            self._marker(point, (255, 214, 110, 220))
+            self.sfx("command")
+
+    def command_move(self, point: tuple[float, float], *, queue: bool = False) -> None:
+        units = self._own_units()
+        if units:
+            self.world.move([u.id for u in units], point, queue=queue)
+            self._marker(point, (120, 255, 140, 220))
+            self.sfx("command")
+
+    def command_attack(self, point: tuple[float, float], *, queue: bool = False) -> None:
+        units = self._own_units()
+        if not units:
+            return
+        ids = [u.id for u in units]
+        target = self.world.entity_at(point, visible_to=self.human)
+        try:
+            if target is not None and target.player is not None and target.player != self.human:
+                self.world.attack(ids, target.id, queue=queue)
+            else:
+                self.world.attack_move(ids, point, queue=queue)
+        except RuleError as exc:
+            self.warn(str(exc))
+            return
+        self._marker(point, (255, 80, 70, 220))
+        self.sfx("attack_command")
+
+    def command_stop(self) -> None:
+        units = self._own_units()
+        if units:
+            self.world.stop([u.id for u in units])
+            self.sfx("command")
+
+    def command_hold(self) -> None:
+        units = self._own_units()
+        if units:
+            self.world.hold([u.id for u in units])
+            self.sfx("command")
+
+    def start_pending(self, mode: str) -> None:
+        self.pending = mode
+        self.build_menu = False
+        self._refresh_card()
+
+    def open_build_menu(self) -> None:
+        self.build_menu = True
+        self.pending = None
+        self._refresh_card()
+
+    def close_build_menu(self) -> None:
+        self.build_menu = False
+        self._refresh_card()
+
+    def _ghost_site(self, building_type: BuildingType) -> Pos:
+        size = BUILDINGS[building_type].size
+        return (int(math.floor(self.hover[0] - size / 2 + 0.5)), int(math.floor(self.hover[1] - size / 2 + 0.5)))
+
+    def place_building(self, building_type: BuildingType, point: tuple[float, float], *, keep: bool = False) -> None:
+        peasants = [u for u in self._own_units() if u.is_worker]
+        if not peasants:
+            self.warn("Select a peasant to build")
+            return
+        size = BUILDINGS[building_type].size
+        site = (int(math.floor(point[0] - size / 2 + 0.5)), int(math.floor(point[1] - size / 2 + 0.5)))
+        builder = min(peasants, key=lambda u: (u.hidden, math.dist(u.pos, point)))
+        try:
+            self.world.build(builder.id, building_type, site, queue=keep)
+        except RuleError as exc:
+            self.warn(str(exc))
+            return
+        self.sfx("command")
+        self._marker((site[0] + size / 2, site[1] + size / 2), (255, 214, 110, 220))
+        if not keep:
+            self.pending = None
+            self._refresh_card()
+
+    def train(self, unit_type: UnitType) -> None:
+        building = self._own_building()
+        if building is None:
+            return
+        try:
+            self.world.train(building.id, unit_type)
+        except RuleError as exc:
+            self.warn(str(exc))
+            return
+        self.sfx("button")
+        self._refresh_card()
+
+    def cancel_train(self) -> None:
+        building = self._own_building()
+        if building is None or not building.queue:
+            return
+        self.world.cancel_train(building.id)
+        self.sfx("button")
+        self._refresh_card()
+
+    def cancel_construction(self) -> None:
+        building = self._own_building()
+        if building is None or building.done:
+            return
+        self.world.cancel_building(building.id)
+        self.say(f"{building.info.name} cancelled, cost refunded")
+        self.sfx("button")
+        self.select([])
+
+    def cancel(self) -> None:
+        if self.pending is not None:
+            self.pending = None
+            self._refresh_card()
+        elif self.build_menu:
+            self.close_build_menu()
+        elif self.selection:
+            self.select([])
+        else:
+            self.open_menu()
+
+    # -- Command card ----------------------------------------------------------------
+
+    def _commands(self) -> list[Command]:
+        world = self.world
+        units = self._own_units()
+        if self.build_menu and any(u.is_worker for u in units):
+            commands = []
+            for building_type in (BuildingType.FARM, BuildingType.BARRACKS, BuildingType.TOWN_HALL, BuildingType.TOWER):
+                info = BUILDINGS[building_type]
+                commands.append(Command(
+                    info.name, info.hotkey.upper(), lambda bt=building_type: self.start_pending(f"build:{bt.value}"),
+                    tooltip=f"{info.name} — {info.cost} · {info.summary}",
+                    enabled=lambda bt=building_type: world.can_afford(self.human, BUILDINGS[bt].cost) is None
+                    and (BUILDINGS[bt].requires is None or bool(world.player_buildings(self.human, BUILDINGS[bt].requires, done=True))),
+                ))
+            commands.append(Command("Back", "Esc", self.close_build_menu, tooltip="Back to the unit commands"))
+            return commands
+        if units:
+            commands = [
+                Command("Move", "M", lambda: self.start_pending("move"), tooltip="Move to a spot (right-click does this too)"),
+                Command("Stop", "S", self.command_stop, tooltip="Drop every order"),
+                Command("Attack", "A", lambda: self.start_pending("attack"), tooltip="Attack a target, or attack-move: fight everything on the way", style=DANGER_BUTTON),
+                Command("Hold", "H", self.command_hold, tooltip="Stand here; fight what comes in range but never chase"),
+            ]
+            if any(u.is_worker for u in units):
+                commands.append(Command("Build", "B", self.open_build_menu, tooltip="Farm, barracks, town hall or tower", style=ACTION_BUTTON))
+            return commands
+        building = self._own_building()
+        if building is not None:
+            if not building.done:
+                return [Command("Cancel", "C", self.cancel_construction, tooltip="Tear the site down; the cost comes back", style=DANGER_BUTTON)]
+            commands = []
+            for unit_type in building.info.trains:
+                info = UNITS[unit_type]
+                commands.append(Command(info.name, info.hotkey.upper(), lambda ut=unit_type: self.train(ut),
+                                        tooltip=f"{info.name} — {info.cost} · {info.summary}",
+                                        enabled=lambda ut=unit_type, b=building: world.can_train(b, ut) is None))
+            if building.info.trains:
+                commands.append(Command("Cancel", "X", self.cancel_train, tooltip="Cancel the last unit in the queue",
+                                        enabled=lambda b=building: bool(b.queue)))
+            return commands
+        return []
+
+    def _refresh_card(self) -> None:
+        commands = self._commands()
+        signature = [(c.label, c.hotkey) for c in commands]
+        if signature == [(c.label, c.hotkey) for c in self._card]:
+            self._card = commands
+            for command, button in zip(commands, self._card_buttons):
+                button.on_click = command.action
+            return
+        self._card = commands
+        self._card_buttons = []
+        self.card_panel.clear()
+        if not commands:
+            self.card_panel.visible = False
+            return
+        self.card_panel.visible = True
+        for start in range(0, len(commands), CARD_COLS):
+            row = Row(spacing=6)
+            for command in commands[start:start + CARD_COLS]:
+                button = Button(command.label, hotkey=command.hotkey, on_click=command.action, style=command.style, width=CARD_WIDTH)
+                self._card_buttons.append(button)
+                row.add(button)
+            self.card_panel.add(row)
+
+    def _update_card(self) -> None:
+        self.tooltip = ""
+        for command, button in zip(self._card, self._card_buttons):
+            button.enabled = command.enabled()
+            if button.state == "hovered":
+                self.tooltip = command.tooltip
+
+    def _press_card_key(self, key: str) -> bool:
+        for command in self._card:
+            if command.key == key and command.enabled():
+                command.action()
+                return True
+        return False
+
+    # -- Groups ----------------------------------------------------------------------
+
+    def _group(self, key: str, *, assign: bool, add: bool) -> None:
+        if assign:
+            units = [u.id for u in self._own_units()]
+            if units:
+                self.groups[key] = units
+                self.say(f"Group {key}: {len(units)} units")
+                self.sfx("button")
+            return
+        ids = [i for i in self.groups.get(key, []) if i in self.world.units]
+        self.groups[key] = ids
+        if ids:
+            self.select(ids, add=add)
+
+    # -- Navigation ---------------------------------------------------------------------
+
+    def center_base(self, instant: bool = False) -> None:
+        halls = self.world.player_buildings(self.human, BuildingType.TOWN_HALL)
+        target = halls[0].center if halls else next((u.pos for u in self.world.player_units(self.human)), (self.world.width / 2, self.world.height / 2))
+        if instant:
+            self.camera.center_on(*to_world(target))
+        else:
+            self.camera.pan_to(*to_world(target), duration=0.3)
+
+    def jump_to_alert(self) -> None:
+        if self.last_alert is not None:
+            self.camera.pan_to(*to_world(self.last_alert), duration=0.25)
+
+    def minimap_click(self, wx: float, wy: float, button: str) -> None:
+        if button == "right":
+            self.command_smart(to_tiles(wx, wy))
+        else:
+            self.camera.center_on(wx, wy)
+
+    def zoom_in(self) -> None:
+        self._zoom_by(ZOOM_PER_KEY)
+
+    def zoom_out(self) -> None:
+        self._zoom_by(1 / ZOOM_PER_KEY)
+
+    def _zoom_by(self, factor: float, at: tuple[float, float] | None = None) -> None:
+        if at is None:
+            w, h = self.game.resolution
+            at = (w / 2, h / 2)
+        self.camera.zoom_toward(self.camera.zoom_target * factor, *at)
+
+    def toggle_pause(self) -> None:
+        self.paused = not self.paused
+        self.sfx("button")
+
+    def open_menu(self) -> None:
+        self.game.push(PauseScene(self))
+
+    def open_help(self) -> None:
+        self.game.push(HelpScene())
+
+    def quick_save(self) -> None:
+        self.game.save(1, scene=self)
+        self.say("Saved to slot 1")
+        self.sfx("button")
+
+    def quick_load(self) -> None:
+        if self.game.load(1, scene=self) is None:
+            self.warn("No save in slot 1")
+
+    # -- Raw input ----------------------------------------------------------------------
+
+    def _over_ui(self, x: float, y: float) -> bool:
+        return any(child.visible and child.hit_test(x, y) for child in self.ui.children)
+
+    def handle_input(self, event: InputEvent) -> bool:
+        if event.type == "key_press" and event.key is not None:
+            if event.key in GROUP_KEYS:
+                self._group(event.key, assign=event.ctrl or event.meta, add=event.shift)
+                return True
+            return self._press_card_key(event.key)
+        if not event.is_mouse:
+            return False
+        point = to_tiles(event.world_x, event.world_y)  # type: ignore[arg-type]
+        if event.type == "move":
+            self.mouse = (event.x, event.y)
+            self.hover = point
+            return True
+        if event.type == "click" and event.button == "left":
+            if self._over_ui(event.x, event.y):
+                return False
+            if self.pending is not None:
+                self._execute_pending(point, keep=event.shift)
+                return True
+            self._drag_start = self._drag_end = (event.x, event.y)
+            return True
+        if event.type == "drag" and event.button == "left":
+            if self._drag_start is not None:
+                self._drag_end = (event.x, event.y)
+                self.mouse = (event.x, event.y)
+            return True
+        if event.type == "release" and event.button == "left":
+            if self._drag_start is None:
+                return True
+            start, end = self._drag_start, self._drag_end or self._drag_start
+            self._drag_start = self._drag_end = None
+            if math.dist(start, end) < DRAG_THRESHOLD:
+                self.click_select(point, event.shift)
+            else:
+                self.box_select(to_tiles(*self.camera.screen_to_world(*start)), to_tiles(*self.camera.screen_to_world(*end)), event.shift)
+            return True
+        if event.type == "click" and event.button == "right":
+            if self._over_ui(event.x, event.y):
+                return False
+            if self.pending is not None or self.build_menu:
+                self.pending = None
+                self.build_menu = False
+                self._refresh_card()
+            else:
+                self.command_smart(point, queue=event.shift)
+            return True
+        if event.type == "drag" and event.button == "middle":
+            self.camera.scroll(-event.dx / self.camera.zoom, -event.dy / self.camera.zoom)
+            return True
+        if event.type == "scroll":
+            lines = max(-MAX_LINES_PER_EVENT, min(MAX_LINES_PER_EVENT, event.dy))
+            self._zoom_by(ZOOM_PER_LINE ** lines, (event.x, event.y))
+            return True
+        return False
+
+    def _execute_pending(self, point: tuple[float, float], *, keep: bool) -> None:
+        mode = self.pending
+        if mode == "move":
+            self.command_move(point, queue=keep)
+        elif mode == "attack":
+            self.command_attack(point, queue=keep)
+        elif mode is not None and mode.startswith("build:"):
+            self.place_building(BuildingType(mode[6:]), point, keep=keep)
+            return
+        if not keep:
+            self.pending = None
+        self._refresh_card()
+
+    # -- Frame ---------------------------------------------------------------------------
+
+    def update(self, dt: float) -> None:
+        self.clock += dt
+        self.status_timer = max(0.0, self.status_timer - dt)
+        if not self.paused and not self._game_over:
+            self._acc += min(dt, 0.25) * self.speed
+            steps = 0
+            while self._acc >= SIM_DT and steps < MAX_STEPS_PER_FRAME:
+                for brain in self.brains:
+                    brain.think(self.world, self.rng)
+                self.world.step()
+                self._acc -= SIM_DT
+                steps += 1
+            if steps == MAX_STEPS_PER_FRAME:
+                self._acc = 0.0
+        self._handle_events(self.world.take_events())
+        self._prune_selection()
+        self.effects.update(dt)
+        self.view.sync(dt)
+        self._update_card()
+        self._check_game_over()
+
+    def _handle_events(self, events: list[Event]) -> None:
+        world, view = self.world, self.view
+        for e in events:
+            mine = e.player == self.human
+            if e.kind == "hit":
+                self._show_hit(e)
+            elif e.kind == "death":
+                self._show_death(e)
+            elif e.kind == "destroyed":
+                self._show_destroyed(e)
+            elif e.kind == "trained" and mine:
+                self.sfx("trained", gap=0.5)
+                self.effects.add(Pulse(to_world(e.pos), rgba(self.player.color, 160), radius=(6, 22), rings=1, duration=0.5))
+            elif e.kind == "built" and mine:
+                self.sfx("built")
+                wx, wy = to_world(e.pos)
+                self.effects.add(FloatingText(e.text, (wx, wy - TILE), GOLD, rise=26, duration=1.6))
+            elif e.kind == "construction" and mine:
+                self.sfx("build_start")
+            elif e.kind == "tree_felled" and mine:
+                self.sfx("chop", gap=0.3)
+            elif e.kind == "deposit" and mine and e.text == "gold":
+                self.sfx("gold", gap=0.6)
+            elif e.kind == "under_attack" and mine:
+                self.last_alert = e.pos
+                self.minimap.ping(*to_world(e.pos))
+                self.effects.add(Toast("Under attack!", ["Press Space to look"], hold=3.0))
+                self.sfx("under_attack")
+            elif e.kind == "refused" and mine:
+                self.warn(e.text)
+            elif e.kind == "eliminated" and not mine:
+                self.effects.add(Toast("A rival falls", [e.text], accent=GOOD, hold=4.0))
+            elif e.kind == "exhausted":
+                self.effects.add(FloatingText("Mine exhausted", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), MUTED, rise=20, duration=1.5))
+        _ = (world, view)
+
+    def _visible(self, point: tuple[float, float]) -> bool:
+        return self.world.is_visible(self.human, (int(point[0]), int(point[1])))
+
+    def _show_hit(self, e: Event) -> None:
+        if not self._visible(e.pos):
+            return
+        target = self.world.entity(e.other) if e.other is not None else None
+        if isinstance(target, Unit):
+            sprite = self.view.unit_sprite(target.id)
+            if sprite is not None and sprite.visible:
+                self.effects.add(HitReaction(sprite, (1.0, 1.0, 1.0), knockback=0.0, wobble=6.0, duration=0.2))
+        source = self.world.entity(e.entity) if e.entity is not None else None
+        if e.text == "ranged" and source is not None:
+            self._arrow(source, e.pos)
+            self.sfx("arrow", gap=SOUND_GAP)
+        else:
+            self.sfx("hit", gap=SOUND_GAP)
+
+    def _arrow(self, source: Entity, target: tuple[float, float]) -> None:
+        sx, sy = to_world(source.pos if isinstance(source, Unit) else source.center)
+        tx, ty = to_world(target)
+        sy -= TILE * 0.5
+        ty -= TILE * 0.4
+        if isinstance(source, Building):
+            sy -= TILE * 1.2
+        arrow = self.add_sprite(Sprite("arrow", position=(sx, sy), size=(22, 6), layer=RenderLayer.EFFECTS, rotation=math.degrees(math.atan2(ty - sy, tx - sx))))
+        arrow.do(Sequence(MoveTo((tx, ty), speed=520), Remove()))
+
+    def _show_death(self, e: Event) -> None:
+        if e.player == self.human:
+            self.stats["units_lost"] += 1
+        else:
+            self.stats["units_killed"] += 1
+        if not self._visible(e.pos):
+            return
+        sprite = self.view.release_unit_sprite(e.entity) if e.entity is not None else None
+        if sprite is not None:
+            self.add_sprite(sprite)
+            self.effects.add(Dissolve(sprite, duration=0.5))
+        color = self.world.players[e.player].color if e.player is not None else (200, 200, 200)
+        self.effects.add(Burst(to_world(e.pos), rgba(color), 10, rng=self.rng, size=10))
+        self.sfx("death", gap=SOUND_GAP)
+
+    def _show_destroyed(self, e: Event) -> None:
+        if e.player == self.human:
+            self.stats["buildings_lost"] += 1
+            self.effects.add(Toast("Building lost", [f"Your {BUILDINGS[BuildingType(e.text)].name.lower()} was destroyed"], hold=4.0))
+        elif e.player is not None:
+            self.stats["buildings_razed"] += 1
+        if self._visible(e.pos):
+            wx, wy = to_world(e.pos)
+            self.effects.add(Burst((wx, wy), (255, 160, 80, 255), 18, rng=self.rng, size=16, speed=(40, 160)))
+            self.effects.add(Burst((wx, wy - 10), (60, 60, 64, 255), 14, rng=self.rng, image="smoke", size=28, speed=(10, 50)))
+            self.camera.shake(4, 0.3)
+            self.sfx("destroyed")
+
+    def _check_game_over(self) -> None:
+        if self._game_over:
+            return
+        if self.world.winner is not None or not self.player.alive:
+            self._game_over = True
+            won = self.world.winner == self.human
+            self.sfx("victory" if won else "defeat")
+            self.game.push(GameOverScene(self, won))
+
+    # -- Drawing ---------------------------------------------------------------------------
+
+    def _ghost(self) -> tuple[BuildingType, Pos, bool] | None:
+        if self.pending is None or not self.pending.startswith("build:") or self._over_ui(*self.mouse):
+            return None
+        building_type = BuildingType(self.pending[6:])
+        site = self._ghost_site(building_type)
+        builder = next((u.id for u in self._own_units() if u.is_worker), None)
+        ok = self.world.can_place(building_type, site, self.human, builder=builder) is None
+        return (building_type, site, ok)
+
+    def draw(self) -> None:
+        hovered = None
+        if not self._over_ui(*self.mouse) and self.pending is None:
+            entity = self.world.entity_at(self.hover, visible_to=self.human)
+            hovered = entity.id if entity is not None else None
+        self.view.draw(Overlay(selected=list(self.selection), hovered=hovered, ghost=self._ghost(),
+                               rally_for=[b.id for b in [self._own_building()] if b is not None]))
+        if self._drag_start is not None and self._drag_end is not None and math.dist(self._drag_start, self._drag_end) >= DRAG_THRESHOLD:
+            (x0, y0), (x1, y1) = self._drag_start, self._drag_end
+            self.draw_rect(min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0), (120, 255, 140, 40), border_color=(120, 255, 140, 220), border_width=1)
+        w, h = self.game.resolution
+        self.draw_rect(0, h - HINT_BAR, w, HINT_BAR, (8, 10, 14, 180))
+        self._draw_selection_panel()
+        self.effects.draw(self)
+
+    def _draw_selection_panel(self) -> None:
+        panel = self.selection_panel
+        x, y, w, h = panel.bounds
+        self._portraits = []
+        entities = [e for e in (self.world.entity(i) for i in self.selection) if e is not None]
+        if not entities:
+            tile = (int(self.hover[0]), int(self.hover[1]))
+            text = "Nothing selected"
+            if self.world.in_bounds(tile) and self.world.is_explored(self.human, tile):
+                text = f"{self.world.terrain_at(tile).value.title()} ({tile[0]}, {tile[1]})"
+            self.draw_text(text, x + 16, y + 30, style="heading")
+            self.draw_text(self.tooltip or "Drag to select units · right-click to order them", x + 16, y + 58, style="sub")
+            return
+        if len(entities) == 1:
+            self._draw_entity_card(entities[0], x + 16, y + 14)
+        else:
+            self.draw_text(f"{len(entities)} units", x + 16, y + 30, style="heading")
+            size, gap = 34, 4
+            for i, entity in enumerate(entities[:MAX_PORTRAITS]):
+                px, py = x + 16 + i * (size + gap), y + 46
+                self._portraits.append((entity.id, (px, py, size, size)))
+                self.draw_rect(px, py, size, size, (255, 255, 255, 18), border_color=(255, 255, 255, 40), border_width=1, radius=4)
+                self._portrait(entity, px + 3, py + 2, size - 6)
+                frac = entity.hp / max(1, entity.max_hp)
+                self.draw_rect(px, py + size + 3, size, 3, (0, 0, 0, 160))
+                self.draw_rect(px, py + size + 3, size * frac, 3, GOOD if frac > 0.5 else BAD)
+        self.draw_text(self.tooltip, x + 16, y + h - 16, style="sub", color=GOLD)
+
+    def _portrait(self, entity: Entity, x: float, y: float, size: float) -> None:
+        from warband import textures
+
+        key = textures.portrait_image(self.game, entity.type, entity.player)
+        pw, ph = self.game.backend.get_image_size(self.game.assets.image(key))
+        scale = min(size / pw, size / ph)
+        self.draw_image(key, x + (size - pw * scale) / 2, y + (size - ph * scale) / 2, pw * scale, ph * scale)
+
+    def _draw_entity_card(self, entity: Entity, x: float, y: float) -> None:
+        world = self.world
+        self.draw_rect(x, y, 72, 72, (255, 255, 255, 16), border_color=(255, 255, 255, 40), border_width=1, radius=6)
+        self._portrait(entity, x + 4, y + 4, 64)
+        tx = x + 88
+        owner = world.players[entity.player].name if entity.player is not None else "Neutral"
+        name = entity.info.name
+        self.draw_text(f"{name}", tx, y + 16, style="heading")
+        color = rgba(world.players[entity.player].color) if entity.player is not None else GOLD
+        self.draw_text(owner, tx + 6 + self.game.backend.measure_text(name, 17, "Nunito SemiBold")[0], y + 16, style="sub", color=color)
+        lines: list[str] = []
+        if isinstance(entity, Building) and entity.type is BuildingType.GOLD_MINE:
+            lines.append(f"{entity.gold} gold left")
+        else:
+            self.draw_rect(tx, y + 26, 180, 8, (0, 0, 0, 160), radius=3)
+            frac = entity.hp / max(1, entity.max_hp)
+            self.draw_rect(tx, y + 26, 180 * frac, 8, GOOD if frac > 0.5 else (240, 200, 80, 255) if frac > 0.25 else BAD, radius=3)
+            self.draw_text(f"{entity.hp}/{entity.max_hp}", tx + 188, y + 34, style="sub")
+        if isinstance(entity, Unit):
+            info = entity.info
+            lines.append(f"Damage {info.damage}  Armor {info.armor}  Range {info.range:g}  Speed {info.speed:g}")
+            order = entity.order
+            if entity.inside is not None:
+                lines.append("Mining")
+            elif entity.constructing is not None:
+                lines.append("Building")
+            elif entity.carrying is not None:
+                lines.append(f"Carrying {entity.carry} {entity.carrying.value}")
+            elif order is not None:
+                lines.append(type(order).__name__.replace("AttackMove", "Attack-moving").replace("Move", "Moving").replace("Attack", "Attacking")
+                             .replace("Harvest", "Harvesting").replace("Build", "Going to build").replace("Hold", "Holding position"))
+            else:
+                lines.append("Idle")
+        elif isinstance(entity, Building):
+            if not entity.done:
+                frac = entity.progress / entity.info.build_time
+                lines.append(f"Under construction {int(frac * 100)}%" + ("" if entity.builder is not None else " — no builder: right-click it with a peasant"))
+            elif entity.queue:
+                progress = entity.train_progress / UNITS[entity.queue[0]].build_time
+                lines.append(f"Training {UNITS[entity.queue[0]].name} {int(progress * 100)}%" + (f" (+{len(entity.queue) - 1} queued)" if len(entity.queue) > 1 else ""))
+                self.draw_rect(tx, y + 62, 180, 6, (0, 0, 0, 160), radius=3)
+                self.draw_rect(tx, y + 62, 180 * progress, 6, GOLD, radius=3)
+            elif entity.player == self.human:
+                lines.append(entity.info.summary)
+            if entity.type is BuildingType.TOWN_HALL and entity.player == self.human:
+                lines.append("Rally point set" if entity.rally is not None else "Right-click the map to set a rally point")
+        ly = y + 50
+        for line in lines[:2]:
+            self.draw_text(line, tx, ly, style="body")
+            ly += 22
+
+    # -- Save / load ------------------------------------------------------------------------
+
+    def get_save_state(self) -> dict:
+        return {"seed": self.seed, "world": self.world.to_dict(), "stats": self.stats, "settings": self.settings, "groups": self.groups}
+
+    def load_save_state(self, state: dict) -> None:
+        world = World.from_dict(state["world"])
+        if (world.width, world.height) != (self.world.width, self.world.height):
+            self.game.clear_and_push(load_game(state, settings=self.settings))
+            return
+        self.world = world
+        self.seed = state["seed"]
+        self.brains = [Brain(p.id) for p in world.players if not p.human]
+        self.stats = {**self.stats, **state.get("stats", {})}
+        self.settings = {**self.settings, **state.get("settings", {})}
+        self.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
+        self.effects.clear()
+        self.selection = []
+        self.pending = None
+        self.build_menu = False
+        self._game_over = False
+        self.view.reset(world)
+        self.ui.clear()
+        self._build_hud()
+        self.center_base(instant=True)
+        self.say("Loaded slot 1")
+
+
+class _Overlay(Scene):
+    """Transparent modal panel; Escape closes.  The match keeps running below unless it pauses it."""
+
+    transparent = True
+    pause_below = False
+    pop_on_cancel = True
+
+    def panel(self, title: str) -> Column:
+        panel = Column(spacing=10, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
+        panel.add(Label(title, text_style="title"))
+        self.ui.add(panel)
+        return panel
+
+    def draw(self) -> None:
+        w, h = self.game.resolution
+        self.draw_rect(0, 0, w, h, (4, 6, 12, 150))
+
+
+class PauseScene(_Overlay):
+    pause_below = True
+    controls = {"n": "new_game", "q": "quit", "f5": "save", "f9": "load", "s": "settings", "t": "back_to_title", "f1": "help"}
+
+    def __init__(self, game_scene: GameScene) -> None:
+        self.game_scene = game_scene
+
+    def on_enter(self) -> None:
+        panel = self.panel("Paused")
+        panel.add(Button("Resume", hotkey="Esc", on_click=self.game.pop, style=ACTION_BUTTON, width=260))
+        panel.add(Button("Save", hotkey="F5", on_click=self.save, style=GHOST_BUTTON, width=260))
+        panel.add(Button("Load", hotkey="F9", on_click=self.load, style=GHOST_BUTTON, width=260))
+        panel.add(Button("Settings", hotkey="S", on_click=self.settings, style=GHOST_BUTTON, width=260))
+        panel.add(Button("How to play", hotkey="F1", on_click=self.help, style=GHOST_BUTTON, width=260))
+        panel.add(Button("New game", hotkey="N", on_click=self.new_game, style=GHOST_BUTTON, width=260))
+        panel.add(Button("Back to title", hotkey="T", on_click=self.back_to_title, style=GHOST_BUTTON, width=260))
+        panel.add(Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=260))
+
+    def save(self) -> None:
+        self.game.pop()
+        self.game_scene.quick_save()
+
+    def load(self) -> None:
+        self.game.pop()
+        self.game_scene.quick_load()
+
+    def settings(self) -> None:
+        self.game.push(SettingsScene(self.game_scene))
+
+    def help(self) -> None:
+        self.game.push(HelpScene())
+
+    def new_game(self) -> None:
+        scene = self.game_scene
+        self.game.clear_and_push(new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players), settings=scene.settings))
+
+    def back_to_title(self) -> None:
+        from warband.title import TitleScene
+
+        self.game.clear_and_push(TitleScene(settings=self.game_scene.settings))
+
+    def quit(self) -> None:
+        self.game.quit()
+
+
+class SettingsScene(_Overlay):
+    """Keyboard-navigable options: ↑↓ pick a row, ←→ adjust."""
+
+    pause_below = True
+    controls = {"up": "focus_up", "down": "focus_down", "left": "decrease", "right": "increase"}
+    ROWS = (("Music volume", "music"), ("Sound volume", "sfx"))
+
+    def __init__(self, game_scene: GameScene) -> None:
+        self.game_scene = game_scene
+        self.focus = 0
+
+    @property
+    def settings(self) -> dict[str, Any]:
+        return self.game_scene.settings
+
+    def on_enter(self) -> None:
+        panel = self.panel("Settings")
+        for index, (name, key) in enumerate(self.ROWS):
+            marker = Label(lambda i=index: "›" if self.focus == i else "", text_style="hud", width=18, text_color=GOLD)
+            panel.add(Row(marker, Label(name, text_style="body", width=170), Row(
+                Button("−", on_click=lambda k=key: self._adjust(k, -0.1), style=GHOST_BUTTON, width=48),
+                Label(lambda k=key: f"{round(self.settings[k] * 100)}%", text_style="hud", width=70, align="center"),
+                Button("+", on_click=lambda k=key: self._adjust(k, 0.1), style=GHOST_BUTTON, width=48),
+                spacing=8,
+            ), spacing=12))
+        panel.add(KeyHints([("↑↓", "select"), ("←→", "adjust"), ("Esc", "close")]))
+
+    def _adjust(self, key: str, delta: float) -> None:
+        self.settings[key] = round(max(0.0, min(1.0, self.settings[key] + delta)), 2)
+        apply_volumes(self.settings["music"], self.settings["sfx"])
+        self.game_scene.sfx("button")
+
+    def focus_up(self) -> None:
+        self.focus = (self.focus - 1) % len(self.ROWS)
+
+    def focus_down(self) -> None:
+        self.focus = (self.focus + 1) % len(self.ROWS)
+
+    def decrease(self) -> None:
+        self._adjust(self.ROWS[self.focus][1], -0.1)
+
+    def increase(self) -> None:
+        self._adjust(self.ROWS[self.focus][1], 0.1)
+
+
+HELP_INTRO = (
+    "Mine gold and chop lumber with peasants, build farms for supply and a barracks for soldiers,",
+    "then raze every enemy building and hunt down what is left.",
+)
+HELP_KEYS = (
+    ("Left click / drag", "select a unit, a building, or every unit in the box"),
+    ("Right click", "move, harvest, attack or resume building — the sensible thing for the target"),
+    ("Shift", "add to the selection, or queue an order after the current one"),
+    ("A", "attack-move: fight everything on the way"),
+    ("S / H", "stop / hold position"),
+    ("B", "build (peasants): F farm, B barracks, H town hall, T tower"),
+    ("P / F / A / K", "train peasant / footman / archer / knight in the selected building"),
+    ("Ctrl+1-9 / 1-9", "assign / recall a control group"),
+    ("Tab / .", "next idle peasant / soldier"),
+    ("Space", "jump to the last alert"),
+    ("Arrows / edges / middle-drag", "scroll the map;  wheel / + / −  zoom"),
+    ("Minimap", "left-click to look, right-click to send the selection there"),
+    ("F3 / F5 / F9", "pause / save / load"),
+    ("Esc", "cancel, deselect, then the menu"),
+)
+
+
+class HelpScene(_Overlay):
+    pause_below = True
+
+    def on_enter(self) -> None:
+        panel = self.panel("How to play")
+        for line in HELP_INTRO:
+            panel.add(Label(line, text_style="body", width=700))
+        table = Column(spacing=4)
+        for keys, what in HELP_KEYS:
+            table.add(Row(Label(keys, text_style="hud", width=250, align="right", text_color=GOLD), Label(what, text_style="body", width=520), spacing=14))
+        panel.add(table)
+        panel.add(KeyHints([("Esc", "close")]))
+
+
+class GameOverScene(_Overlay):
+    pause_below = True
+    pop_on_cancel = False
+    controls = {"n": "new_game", "q": "quit", ("t", "escape"): "back_to_title"}
+
+    def __init__(self, game_scene: GameScene, won: bool) -> None:
+        self.game_scene = game_scene
+        self.won = won
+
+    def on_enter(self) -> None:
+        scene = self.game_scene
+        world = scene.world
+        winner = world.players[world.winner].name if world.winner is not None else "Nobody yet"
+        panel = self.panel("Victory!" if self.won else f"Defeat — {winner} prevails")
+        stats = scene.stats
+        panel.add(Label(f"{_clock(world.time)} played · {stats['units_killed']} kills · {stats['units_lost']} units lost · "
+                        f"{stats['buildings_razed']} buildings razed · {stats['buildings_lost']} lost", text_style="body"))
+        panel.add(Button("New game", hotkey="N", on_click=self.new_game, style=ACTION_BUTTON, width=260))
+        panel.add(Button("Back to title", hotkey="T", on_click=self.back_to_title, style=GHOST_BUTTON, width=260))
+        panel.add(Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=260))
+
+    def new_game(self) -> None:
+        scene = self.game_scene
+        self.game.clear_and_push(new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players), settings=scene.settings))
+
+    def back_to_title(self) -> None:
+        from warband.title import TitleScene
+
+        self.game.clear_and_push(TitleScene(settings=self.game_scene.settings))
+
+    def quit(self) -> None:
+        self.game.quit()
+
+
+def new_game(seed: int, width: int = 48, height: int = 40, players: int = 2, *, settings: dict[str, Any] | None = None) -> GameScene:
+    return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players), seed, settings=settings)
+
+
+def load_game(state: dict[str, Any], *, settings: dict[str, Any] | None = None) -> GameScene:
+    """A game scene from a save slot's ``state`` (see :meth:`GameScene.get_save_state`)."""
+    scene = GameScene(World.from_dict(state["world"]), state["seed"], settings={**state.get("settings", {}), **(settings or {})}, stats=state.get("stats"))
+    scene.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
+    return scene
