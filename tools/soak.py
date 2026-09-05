@@ -30,6 +30,9 @@ from warband.scene import DEFAULT_SETTINGS, GameOverScene, GameScene, new_game  
 from warband.style import build_theme  # noqa: E402
 
 
+MATCH_MINUTES = 20  # an undecided match is reported and the next one starts
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--minutes", type=float, default=30.0)
@@ -59,7 +62,7 @@ def main() -> None:
         scene.brains.append(Brain(scene.human, Difficulty.NORMAL))  # the human side plays itself
         scene.speed = 1.0
         frames: list[float] = []
-        while not isinstance(game.scene, GameOverScene) and time.time() - started < args.minutes * 60:
+        while not isinstance(game.scene, GameOverScene) and time.time() - started < args.minutes * 60 and scene.world.time < MATCH_MINUTES * 60:
             t0 = time.perf_counter()
             game.tick(1 / 60)
             frames.append((time.perf_counter() - t0) * 1000)

@@ -4,6 +4,7 @@ import pytest
 
 from warband import mapgen
 from warband.mapgen import audit as fairness
+from warband.model import World
 from warband.rules import BuildingType, MapTheme, Terrain, UnitType
 
 SEEDS = range(1, 41)
