@@ -236,6 +236,12 @@ def _mine() -> Mesh:
     return mound + entrance + beams + nuggets
 
 
+def _octagon(center: r3.Vec3, radius: float) -> list[r3.Vec3]:
+    """A regular octagon in a vertical plane facing the camera."""
+    cx, cy, cz = center
+    return [(cx + radius * math.cos(a), cy, cz + radius * math.sin(a)) for a in (math.radians(22.5 + 45 * i) for i in range(8))]
+
+
 def _door(x: float, y: float, z: float, w: float, h: float) -> Mesh:
     return r3.facing(_facing_quad((x, y, z), w / 2, h / 2), INK, VIEW)
 
@@ -287,6 +293,55 @@ def _building(building_type: BuildingType, player: int) -> Mesh:
             a = 2 * math.pi * i / 7
             crown += r3.box((0.6 * math.cos(a), 0.6 * math.sin(a), 1.9), (0.2, 0.2, 0.22), STONE_DARK)
         return plinth + body + crown + r3.facing(_facing_quad((0, 0.69, 1.4), 0.12, 0.16), INK, VIEW) + _pennant(0, 0, 1.8, 0.6, team)
+    if building_type is BuildingType.LUMBER_MILL:
+        shed = r3.box((0.3, -0.1, 0.42), (1.9, 1.5, 0.84), WOOD)
+        roof = r3.rotate_z(r3.gable_roof((0.3, -0.1, 0.84), (1.7, 2.1), 0.45, WOOD_DARK), 90, about=(0.3, -0.1))
+        gable = r3.facing([(-0.75, 0.96, 0.84), (1.35, 0.96, 0.84), (0.3, 0.96, 1.29)], THATCH, VIEW)
+        saw = r3.facing(_octagon((0.95, 0.97, 0.5), 0.34), IRON, VIEW) + r3.facing(_octagon((0.95, 0.98, 0.5), 0.08), INK, VIEW)
+        logs: Mesh = []
+        for i, (y, z) in enumerate(((0.25, 0.12), (0.6, 0.12), (0.42, 0.34))):
+            logs += r3.box((-1.05, y, z), (0.9, 0.24, 0.24), TRUNK if i % 2 else darker(TRUNK, 0.85))
+        return shed + roof + gable + saw + logs + r3.box((-0.35, 1.05, 0.14), (0.5, 0.3, 0.28), darker(WOOD, 0.9))
+    if building_type is BuildingType.BLACKSMITH:
+        base = r3.box((0, 0.05, 0.5), (2.0, 1.7, 1.0), STONE_DARK)
+        roof = r3.rotate_z(r3.gable_roof((0, 0.05, 1.0), (1.9, 2.3), 0.45, SLATE), 90)
+        gable = r3.facing([(-0.95, 1.21, 1.0), (0.95, 1.21, 1.0), (0, 1.21, 1.45)], STONE, VIEW)
+        chimney = r3.box((-0.6, -0.5, 1.45), (0.3, 0.3, 1.1), darker(STONE_DARK, 0.8))
+        anvil = r3.box((0.75, 1.25, 0.3), (0.5, 0.25, 0.14), INK) + r3.box((0.75, 1.25, 0.12), (0.2, 0.2, 0.24), INK)
+        ember = r3.facing(_facing_quad((-0.1, 1.06, 0.36), 0.28, 0.28), (255, 130, 40), VIEW)
+        return base + roof + gable + chimney + anvil + ember + r3.facing(_facing_quad((-0.1, 1.06, 0.48), 0.2, 0.12), (255, 220, 120), VIEW)
+    if building_type is BuildingType.STABLES:
+        barn = r3.box((0, -0.55, 0.4), (2.6, 1.0, 0.8), WOOD)
+        roof = r3.gable_roof((0, -0.55, 0.8), (2.8, 1.2), 0.5, THATCH)
+        doors = r3.facing(_facing_quad((-0.7, -0.04, 0.35), 0.28, 0.32), INK, VIEW) + r3.facing(_facing_quad((0.7, -0.04, 0.35), 0.28, 0.32), INK, VIEW)
+        fence: Mesh = []
+        for x in (-1.25, -0.65, 0.05, 0.65, 1.25):
+            fence += r3.box((x, 1.2, 0.14), (0.07, 0.07, 0.28), WOOD_DARK)
+        fence += r3.box((0, 1.2, 0.22), (2.55, 0.04, 0.05), WOOD_DARK)
+        for y in (0.2, 0.7):
+            fence += r3.box((-1.25, y, 0.14), (0.07, 0.07, 0.28), WOOD_DARK) + r3.box((1.25, y, 0.14), (0.07, 0.07, 0.28), WOOD_DARK)
+        horse = (92, 66, 48)
+        pony = r3.box((0.5, 0.55, 0.36), (0.32, 0.62, 0.26), horse) + r3.box((0.5, 0.95, 0.52), (0.16, 0.22, 0.2), horse)
+        for x, y in ((0.4, 0.35), (0.6, 0.35), (0.4, 0.78), (0.6, 0.78)):
+            pony += r3.box((x, y, 0.12), (0.07, 0.07, 0.24), horse)
+        return barn + roof + doors + fence + pony + r3.facing(_facing_quad((0, -0.04, 0.95), 0.26, 0.14), team, VIEW)
+    if building_type is BuildingType.WORKSHOP:
+        base = r3.box((-0.2, 0.1, 0.45), (2.0, 1.8, 0.9), WOOD_DARK)
+        top = r3.box((-0.2, 0.1, 0.95), (2.1, 1.9, 0.1), darker(WOOD, 0.8))
+        post = r3.box((0.95, -0.4, 0.9), (0.14, 0.14, 1.8), WOOD)
+        beam = r3.box((0.95, 0.35, 1.75), (0.12, 1.5, 0.12), WOOD)
+        rope = r3.box((0.95, 1.0, 1.35), (0.03, 0.03, 0.7), INK)
+        crate = r3.box((0.95, 1.0, 0.16), (0.3, 0.3, 0.3), WOOD)
+        gear = r3.facing(_octagon((-0.2, 1.01, 0.5), 0.3), IRON, VIEW) + r3.facing(_octagon((-0.2, 1.02, 0.5), 0.07), INK, VIEW)
+        return base + top + post + beam + rope + crate + gear + _pennant(-1.05, -0.65, 1.0, 0.5, team)
+    if building_type is BuildingType.CHURCH:
+        nave = r3.box((0.15, 0.2, 0.5), (1.5, 2.0, 1.0), PLASTER)
+        roof = r3.rotate_z(r3.gable_roof((0.15, 0.2, 1.0), (2.2, 1.6), 0.8, SLATE), 90, about=(0.15, 0.2))
+        gable = r3.facing([(-0.65, 1.31, 1.0), (0.95, 1.31, 1.0), (0.15, 1.31, 1.8)], PLASTER, VIEW)
+        tower = r3.box((-0.9, -0.55, 1.05), (0.6, 0.6, 2.1), PLASTER) + r3.pyramid((-0.9, -0.55, 2.1), (0.7, 0.7), 0.5, SLATE)
+        cross = r3.box((-0.9, -0.55, 2.85), (0.05, 0.05, 0.5), GOLD) + r3.box((-0.9, -0.55, 2.95), (0.28, 0.05, 0.05), GOLD)
+        window = r3.facing(_facing_quad((0.15, 1.32, 1.3), 0.14, 0.3), team, VIEW)
+        return nave + roof + gable + tower + cross + window + _door(0.15, 1.32, 0.35, 0.4, 0.7)
     raise ValueError(building_type)
 
 
@@ -376,6 +431,41 @@ def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource 
         mesh += r3.cone((0, -0.05, 1.2), 0.17, 0.16, IRON, sides=8) + r3.box((-0.28, 0, 0.9), (0.06, 0.3, 0.36), trim)
         lance_y = 0.55 if frame == "attack" else 0.1
         mesh += r3.box((0.28, lance_y, 1.0), (0.05, 1.2, 0.05), IRON) + r3.facing([(0.28, lance_y + 0.55, 1.03), (0.28, lance_y + 0.35, 1.13), (0.28, lance_y + 0.35, 1.0)], team, VIEW)
+        return mesh
+    if unit_type is UnitType.SCOUT:
+        horse = (150, 116, 80)
+        swing = {"walk1": 0.1, "walk2": -0.1}.get(frame, 0.0)
+        mesh = _shadow(0.38, 0.06, 0.02)
+        for x, y in ((-0.13, -0.22), (0.13, -0.22), (-0.13, 0.22), (0.13, 0.22)):
+            mesh += r3.box((x, y + (swing if (x < 0) == (y < 0) else -swing), 0.14), (0.08, 0.08, 0.28), horse)
+        mesh += r3.box((0, 0, 0.4), (0.32, 0.8, 0.26), horse)
+        mesh += r3.box((0, 0.5, 0.6), (0.16, 0.26, 0.2), horse) + r3.box((0, 0.38, 0.55), (0.12, 0.14, 0.26), horse)
+        mesh += r3.box((0, 0, 0.55), (0.34, 0.5, 0.06), team)  # saddle cloth
+        mesh += r3.cylinder((0, -0.05, 0.58), 0.14, 0.3, team, sides=8) + r3.sphere((0, -0.05, 1.0), 0.14, SKIN, rings=4, sides=8)
+        mesh += r3.sphere((0, -0.08, 1.06), 0.13, darker(WOOD, 0.8), rings=3, sides=8)  # cap
+        spear_y = 0.5 if frame == "attack" else 0.05
+        mesh += r3.box((0.24, spear_y, 0.85), (0.04, 0.9, 0.04), WOOD) + r3.box((0.24, spear_y + 0.47, 0.85), (0.05, 0.16, 0.05), IRON)
+        return mesh
+    if unit_type is UnitType.CATAPULT:
+        wood, dark = WOOD, WOOD_DARK
+        arm_y = 0.25 if frame == "attack" else -0.25
+        mesh = _shadow(0.45, 0.05, 0.03)
+        mesh += r3.box((0, 0, 0.22), (0.7, 0.9, 0.14), dark)
+        for x in (-0.42, 0.42):
+            for y in (-0.32, 0.32):
+                mesh += r3.box((x, y, 0.18), (0.08, 0.3, 0.32), darker(wood, 0.7))
+        mesh += r3.box((0, -0.15, 0.55), (0.5, 0.08, 0.5), wood)  # frame upright
+        mesh += r3.box((0, arm_y, 0.8), (0.07, 0.9, 0.07), wood)  # throwing arm
+        mesh += r3.box((0, arm_y - 0.42, 0.86), (0.22, 0.2, 0.14), dark)  # bucket
+        mesh += r3.sphere((0, arm_y - 0.42, 0.98), 0.09, ROCK, rings=3, sides=6)
+        mesh += r3.box((0, 0.2, 0.34), (0.3, 0.06, 0.1), team)
+        return mesh
+    if unit_type is UnitType.CLERIC:
+        robe = PLASTER
+        mesh = _shadow(0.3) + r3.cylinder((0, 0, 0), 0.2, 0.55, robe, sides=8) + r3.box((0.06, 0.1, 0.35), (0.1, 0.24, 0.5), team)  # sash
+        mesh += r3.sphere((0, 0, 0.72), 0.17, SKIN, rings=5, sides=8) + r3.sphere((0, -0.05, 0.78), 0.17, robe, rings=4, sides=8)  # hood
+        staff_z = 0.85 if frame == "attack" else 0.6
+        mesh += r3.box((-0.3, 0.05, staff_z), (0.04, 0.04, 1.0), WOOD) + r3.sphere((-0.3, 0.05, staff_z + 0.55), 0.09, GOLD, rings=3, sides=6)
         return mesh
     raise ValueError(unit_type)
 
@@ -488,3 +578,4 @@ def register_static(game: Game) -> None:
     assets.image_from_pil("smoke", _glow(px, 0.3, (40, 40, 44, 200), 0.2))
     assets.image_from_pil("blank", Image.new("RGBA", (px, px), (*WHITE, 255)))
     assets.image_from_pil("arrow", _arrow(scale))
+    assets.image_from_pil("stone", _glow(int(px * 0.4), 0.36, (150, 140, 128, 255), 0.06))

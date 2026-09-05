@@ -4,7 +4,7 @@ import pytest
 
 from saga2d import Game
 from warband.model import Attack, AttackMove, Build, Harvest, Move, tile_center
-from warband.rules import SIM_DT, BuildingType, UnitType
+from warband.rules import SIM_DT, UNITS, BuildingType, UnitType
 from warband.scene import GameOverScene, GameScene, HelpScene, PauseScene, SettingsScene, new_game
 from warband.style import build_theme
 from warband.title import NewGameScene, TitleScene
@@ -350,3 +350,68 @@ def test_title_continue_loads_the_saved_match(game) -> None:
     press(game, "c")
     scene = game.scene
     assert isinstance(scene, GameScene) and scene.seed == 11 and scene.player.gold == 4242 and scene.world.width == 40
+
+
+# -- Content through the UI ------------------------------------------------------------------
+
+
+def test_a_blacksmith_researches_with_a_hotkey_and_the_panel_shows_progress(play) -> None:
+    from warband.rules import Upgrade
+
+    game, scene = play
+    world = scene.world
+    hall = hall_of(scene)
+    world.reveal_all(scene.human)
+    world.place_building(scene.human, BuildingType.BARRACKS, (hall.x + 5, hall.y))
+    smith = world.place_building(scene.human, BuildingType.BLACKSMITH, (hall.x + 5, hall.y + 4))
+    scene.player.gold, scene.player.lumber = 5000, 5000
+    game.tick(1 / 60)
+    click(game, scene, smith.center)
+    labels = [c.label for c in scene._card]
+    assert labels == ["Sharpened Blades", "Plate Armour", "Cancel"]  # tier two waits for tier one
+    press(game, "b")
+    assert smith.research is Upgrade.BLADES_1
+    game.tick(1 / 60)
+    assert any(t.startswith("Researching Sharpened Blades") for t in texts(game))
+    press(game, "x")
+    assert smith.research is None
+    scene.player.upgrades.add(Upgrade.BLADES_1)
+    scene.select([smith.id])
+    assert [c.label for c in scene._card][0] == "Tempered Blades"
+
+
+def test_the_codex_lists_every_unit_building_and_upgrade(play) -> None:
+    from warband.scene import CodexScene
+
+    game, scene = play
+    press(game, "f2")
+    assert isinstance(game.scene, CodexScene)
+    shown = texts(game)
+    for unit_type in UnitType:
+        assert UNITS[unit_type].name in shown
+    press(game, "2")
+    shown = texts(game)
+    assert "Lumber Mill" in shown and "Church" in shown
+    press(game, "tab")
+    shown = texts(game)
+    assert "Siege Engineering" in shown and "Blessing" in shown
+    press(game, "escape")
+    assert game.scene is scene
+
+
+def test_the_title_offers_three_difficulties_and_saves_keep_it(game) -> None:
+    from warband.rules import Difficulty
+
+    game.push(TitleScene())
+    game.tick(1 / 60)
+    press(game, "n")
+    press(game, "h")
+    assert game.scene.difficulty is Difficulty.HARD
+    press(game, "return")
+    scene = game.scene
+    assert isinstance(scene, GameScene) and scene.difficulty is Difficulty.HARD and all(b.difficulty is Difficulty.HARD for b in scene.brains)
+    press(game, "f5")
+    game.clear_and_push(TitleScene())
+    game.tick(1 / 60)
+    press(game, "c")
+    assert game.scene.difficulty is Difficulty.HARD

@@ -13,17 +13,44 @@ from __future__ import annotations
 import math
 import random
 
-from warband.model import Attack, AttackMove, Building, Deposit, Harvest, Point, Pos, Unit, World, dist
-from warband.rules import BUILDINGS, UNITS, BuildingType, Resource, UnitType
+from dataclasses import dataclass
 
-THINK_EVERY = 1.0
-TARGET_PEASANTS = 10
+from warband.model import Attack, AttackMove, Building, Deposit, Harvest, Point, Pos, Unit, World, dist
+from warband.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Difficulty, Resource, UnitType, Upgrade
+
 EXPAND_DISTANCE = 14.0  # a mine farther than this from the hall gets a hall of its own
-FIRST_WAVE = 6
-WAVE_GROWTH = 2
 DEFEND_RADIUS = 9.0
 BUILD_MIN_DISTANCE = 2
 BUILD_MAX_DISTANCE = 11
+RESEARCH_ORDER = (Upgrade.BLADES_1, Upgrade.ARMOR_1, Upgrade.ARROWS_1, Upgrade.HORSES, Upgrade.BLADES_2, Upgrade.ARMOR_2,
+                  Upgrade.ARROWS_2, Upgrade.SIEGE, Upgrade.BLESSING)
+
+
+@dataclass(frozen=True)
+class Profile:
+    """How a difficulty plays: economy size, tempo and which parts of the tech tree it uses."""
+
+    peasants: int
+    think_every: float
+    first_wave: int
+    wave_growth: int
+    barracks: int
+    towers: int
+    tech: bool  # mill, blacksmith, stables, upgrades
+    siege: bool  # workshop and catapults
+    clerics: bool  # church and clerics
+    harass: bool  # early scouts sent at the enemy's peasants
+    reserve: int  # gold kept back before research
+
+
+PROFILES: dict[Difficulty, Profile] = {
+    Difficulty.EASY: Profile(peasants=7, think_every=2.0, first_wave=10, wave_growth=2, barracks=1, towers=0, tech=False, siege=False,
+                             clerics=False, harass=False, reserve=1500),
+    Difficulty.NORMAL: Profile(peasants=10, think_every=1.0, first_wave=8, wave_growth=3, barracks=2, towers=2, tech=True, siege=True,
+                               clerics=False, harass=False, reserve=800),
+    Difficulty.HARD: Profile(peasants=14, think_every=0.5, first_wave=8, wave_growth=4, barracks=3, towers=3, tech=True, siege=True,
+                             clerics=True, harass=True, reserve=500),
+}
 
 
 def lumber_rich(lumber: int) -> bool:
@@ -31,21 +58,29 @@ def lumber_rich(lumber: int) -> bool:
 
 
 class Brain:
-    def __init__(self, player: int) -> None:
+    def __init__(self, player: int, difficulty: Difficulty = Difficulty.NORMAL) -> None:
         self.player = player
+        self.difficulty = difficulty
+        self.profile = PROFILES[difficulty]
         self.next_think = 0.0
-        self.wave = FIRST_WAVE
+        self.wave = self.profile.first_wave
         self.attacking = False
         self.unit_toggle = 0
+        self.raiders: list[int] = []
+        self.log: list[tuple[float, str]] = []  # (time, what) — the evidence of how it plays
+
+    def note(self, world: World, what: str) -> None:
+        self.log.append((world.time, what))
 
     def think(self, world: World, rng: random.Random) -> None:
         """Act if a think is due; call this every simulation step."""
         if world.time < self.next_think or not world.players[self.player].alive or world.winner is not None:
             return
-        self.next_think = world.time + THINK_EVERY
+        self.next_think = world.time + self.profile.think_every
         self._economy(world)
         self._construction(world, rng)
         self._training(world)
+        self._research(world)
         self._military(world, rng)
 
     # -- Helpers -----------------------------------------------------------------
@@ -88,7 +123,7 @@ class Brain:
         mine = world._nearest_mine(hall.center, math.inf)
         tree = world.nearest_tree(hall.center, 14)
         # Lumber piles up faster than it is spent: keep the wood crew small, and send it mining when the pile is high.
-        want_choppers = 0 if lumber_rich(player.lumber) or tree is None else 3 if player.gold > 2000 or player.lumber < 400 else 2
+        want_choppers = 0 if lumber_rich(player.lumber) or tree is None else 4 if player.gold > 2000 or player.lumber < 400 else 3
         choppers = [p for p in peasants if self._job(p) is Resource.LUMBER and not p.hidden]
         if len(choppers) > want_choppers and mine is not None:
             spare = [c for c in choppers if c.carrying is None]
@@ -124,30 +159,41 @@ class Brain:
             return
         builder = min(peasants, key=lambda p: (self._job(p) is Resource.GOLD, dist(p.pos, (site[0], site[1]))))
         world.build(builder.id, wanted, site)
+        self.note(world, f"build {wanted.value} at {site}")
 
     def _next_building(self, world: World, hall: Building | None, fallback: Point) -> tuple[BuildingType, Point] | None:
         """``(what to build, where near)`` or None."""
         player = self.player
+        profile = self.profile
         gold = world.players[player].gold
         mine = world._nearest_mine(hall.center if hall is not None else fallback, math.inf)
         if hall is None:
             wanted, anchor = BuildingType.TOWN_HALL, (mine.center if mine is not None else fallback)
         else:
             used, cap = world.supply(player)
-            barracks = world.player_buildings(player, BuildingType.BARRACKS, done=True)
-            farms = world.player_buildings(player, BuildingType.FARM, done=True)
-            towers = world.player_buildings(player, BuildingType.TOWER, done=True)
+            have = lambda t: len(world.player_buildings(player, t, done=True))  # noqa: E731
+            army = len(self._army(world))
             anchor = hall.center
             if used + 2 > cap:
                 wanted = BuildingType.FARM
-            elif not barracks:
+            elif not have(BuildingType.BARRACKS):
                 wanted = BuildingType.BARRACKS
+            elif profile.tech and not have(BuildingType.LUMBER_MILL):
+                wanted = BuildingType.LUMBER_MILL
+            elif profile.tech and not have(BuildingType.BLACKSMITH) and gold > 900:
+                wanted = BuildingType.BLACKSMITH
             elif mine is not None and dist(mine.center, hall.center) > EXPAND_DISTANCE and not world.player_buildings(player, BuildingType.TOWN_HALL, done=False):
                 wanted, anchor = BuildingType.TOWN_HALL, mine.center
-            elif len(self._army(world)) >= 6 and len(towers) < 2 and gold > 1200:
-                wanted = BuildingType.TOWER
-            elif len(farms) >= 3 and len(barracks) < 2 and gold > 1500:
+            elif profile.tech and not have(BuildingType.STABLES) and gold > 1200:
+                wanted = BuildingType.STABLES
+            elif have(BuildingType.BARRACKS) < profile.barracks and gold > 1500:
                 wanted = BuildingType.BARRACKS
+            elif profile.siege and have(BuildingType.BLACKSMITH) and not have(BuildingType.WORKSHOP) and gold > 1400:
+                wanted = BuildingType.WORKSHOP
+            elif profile.clerics and not have(BuildingType.CHURCH) and gold > 1400:
+                wanted = BuildingType.CHURCH
+            elif army >= 6 and have(BuildingType.TOWER) < profile.towers and gold > 1200:
+                wanted = BuildingType.TOWER
             else:
                 return None
         if world.can_afford(player, BUILDINGS[wanted].cost) is not None:
@@ -183,23 +229,56 @@ class Brain:
 
     def _training(self, world: World) -> None:
         player = self.player
+        profile = self.profile
         hall = self._hall(world)
-        if hall is not None and not hall.queue and len(self._peasants(world)) < TARGET_PEASANTS:
+        if hall is not None and not hall.queue and len(self._peasants(world)) < profile.peasants:
             if world.can_train(hall, UnitType.PEASANT) is None:
                 world.train(hall.id, UnitType.PEASANT)
-        for barracks in world.player_buildings(player, BuildingType.BARRACKS, done=True):
-            if barracks.rally is None and hall is not None:
-                world.set_rally(barracks.id, self._muster_point(world, hall))
-            if barracks.queue:
+        army = self._army(world)
+        counts = {t: sum(1 for u in army if u.type is t) for t in UnitType}
+        for building in world.player_buildings(player, done=True):
+            if not building.info.trains or building.type is BuildingType.TOWN_HALL:
                 continue
-            gold = world.players[player].gold
-            choice = UnitType.KNIGHT if gold > 1600 and self.unit_toggle % 3 == 2 else UnitType.ARCHER if self.unit_toggle % 2 else UnitType.FOOTMAN
-            if world.can_train(barracks, choice) is None:
-                world.train(barracks.id, choice)
+            if building.rally is None and hall is not None:
+                world.set_rally(building.id, self._muster_point(world, hall))
+            if building.queue or building.research is not None:
+                continue
+            choice = self._choose_unit(world, building, counts)
+            if choice is not None and world.can_train(building, choice) is None:
+                world.train(building.id, choice)
+                counts[choice] += 1
                 self.unit_toggle += 1
-            elif choice is not UnitType.FOOTMAN and world.can_train(barracks, UnitType.FOOTMAN) is None:
-                world.train(barracks.id, UnitType.FOOTMAN)
-                self.unit_toggle += 1
+                self.note(world, f"train {choice.value}")
+
+    def _choose_unit(self, world: World, building: Building, counts: dict[UnitType, int]) -> UnitType | None:
+        gold = world.players[self.player].gold
+        soldiers = sum(counts.values())
+        if building.type is BuildingType.BARRACKS:
+            return UnitType.ARCHER if self.unit_toggle % 2 else UnitType.FOOTMAN
+        if building.type is BuildingType.STABLES:
+            if self.profile.harass and counts[UnitType.SCOUT] < 2:
+                return UnitType.SCOUT
+            return UnitType.KNIGHT if gold > 1000 else None
+        if building.type is BuildingType.WORKSHOP:
+            return UnitType.CATAPULT if soldiers >= 6 and counts[UnitType.CATAPULT] < 2 and gold > 1200 else None
+        if building.type is BuildingType.CHURCH:
+            return UnitType.CLERIC if soldiers >= 6 and counts[UnitType.CLERIC] * 6 < soldiers and gold > 1000 else None
+        return None
+
+    def _research(self, world: World) -> None:
+        if not self.profile.tech:
+            return
+        player = world.players[self.player]
+        if player.gold < self.profile.reserve:
+            return
+        for upgrade in RESEARCH_ORDER:
+            if upgrade in player.upgrades:
+                continue
+            for building in world.player_buildings(self.player, done=True):
+                if upgrade in building.info.researches and world.can_research(building, upgrade) is None:
+                    world.research(building.id, upgrade)
+                    self.note(world, f"research {upgrade.value}")
+                    return
 
     def _muster_point(self, world: World, hall: Building) -> Point:
         """Between the hall and the map centre: the side the enemy comes from."""
@@ -212,6 +291,9 @@ class Brain:
 
     def _military(self, world: World, rng: random.Random) -> None:
         army = self._army(world)
+        if self.profile.harass:
+            self._raid(world)
+            army = [u for u in army if u.id not in self.raiders]
         threat = self._threat(world)
         if threat is not None:
             self.attacking = False
@@ -236,10 +318,28 @@ class Brain:
             return
         if len(army) >= self.wave:
             self.attacking = True
-            self.wave += WAVE_GROWTH
+            self.wave += self.profile.wave_growth
             hall = self._hall(world)
             origin = hall.center if hall is not None else army[0].pos
-            world.attack_move([u.id for u in army], min(targets, key=lambda t: dist(t, origin)))
+            target = min(targets, key=lambda t: dist(t, origin))
+            world.attack_move([u.id for u in army], target)
+            self.note(world, f"attack with {len(army)} towards {tuple(round(c) for c in target)}")
+
+    def _raid(self, world: World) -> None:
+        """The first two scouts go for the enemy's peasants and keep at it."""
+        self.raiders = [i for i in self.raiders if i in world.units]
+        scouts = [u for u in self._army(world) if u.type is UnitType.SCOUT and u.id not in self.raiders]
+        while len(self.raiders) < 2 and scouts:
+            self.raiders.append(scouts.pop().id)
+        idle = [i for i in self.raiders if not world.units[i].orders]
+        if not idle:
+            return
+        mines = [m.center for m in world.mines() if any(u.player != self.player and dist(u.pos, m.center) < 8 for u in world.units.values() if u.is_worker)]
+        prey = mines or [u.pos for u in world.units.values() if u.player != self.player and u.is_worker and not u.hidden]
+        if prey:
+            target = min(prey, key=lambda p: dist(p, world.units[idle[0]].pos))
+            world.attack_move(idle, target)
+            self.note(world, f"raid towards {tuple(round(c) for c in target)}")
 
     def _enemy_targets(self, world: World) -> list[Point]:
         """Enemy buildings; once those are gone, whatever enemy units remain."""

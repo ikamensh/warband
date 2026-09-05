@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from warband import mapgen  # noqa: E402
 from warband.ai import Brain  # noqa: E402
 from warband.model import BLOCKING, World  # noqa: E402
-from warband.rules import BUILDINGS, SIM_DT, BuildingType  # noqa: E402
+from warband.rules import BUILDINGS, SIM_DT, BuildingType, Difficulty  # noqa: E402
 
 GAME_MINUTES = 15
 
@@ -97,7 +97,7 @@ def ai_games(seeds: range) -> int:
         width, height = rng.choice(list(mapgen.SIZES.values()))
         try:
             world = mapgen.generate(seed=seed, width=width, height=height, players=players, human=None)
-            brains = [Brain(p.id) for p in world.players]
+            brains = [Brain(p.id, rng.choice(list(Difficulty))) for p in world.players]
             check_world(world)
             stalled: dict[int, tuple[tuple[float, float], float]] = {}
             for tick in range(int(GAME_MINUTES * 60 / SIM_DT)):
@@ -116,7 +116,8 @@ def ai_games(seeds: range) -> int:
             assert any(len(world.player_buildings(p.id, BuildingType.BARRACKS)) for p in world.players), "nobody built a barracks"
             assert sum(armies) > 0 or kills, "nobody trained an army"
             outcomes["decided" if world.winner is not None else "eliminations" if kills else "undecided"] += 1
-            print(f"  seed {seed}: {players} players {width}x{height} → {world.time / 60:.1f} min, winner {world.winner}, armies {armies}, buildings {buildings}")
+            levels = "/".join(b.difficulty.value[0] for b in brains)
+            print(f"  seed {seed}: {players} players {width}x{height} [{levels}] → {world.time / 60:.1f} min, winner {world.winner}, armies {armies}, buildings {buildings}")
         except Exception:
             failures += 1
             print(f"AI game seed {seed} ({players} players, {width}x{height}):")

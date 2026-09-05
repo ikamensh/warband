@@ -22,9 +22,10 @@ from typing import Any, Iterator
 
 from warband import path as pathing
 from warband.rules import (
-    BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, HIT_VARIANCE, LEASH, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, PLAYERS, SIM_DT,
-    STARTING_GOLD, STARTING_LUMBER, UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, VISION_EVERY, BuildingInfo, BuildingType,
-    Cost, Resource, Terrain, UnitInfo, UnitType,
+    ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLESSING_BONUS, BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS,
+    LEASH, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, PLAYERS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION,
+    STARTING_GOLD, STARTING_LUMBER, UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo,
+    BuildingType, Cost, Resource, Terrain, UnitInfo, UnitType, Upgrade,
 )
 
 Pos = tuple[int, int]
@@ -83,9 +84,15 @@ class Hold:
     """Stand here; fight what comes in range but never chase."""
 
 
-Order = Move | AttackMove | Attack | Harvest | Deposit | Build | Hold
+@dataclass
+class Heal:
+    target: int
+    auto: bool = False
 
-_ORDER_TYPES: dict[str, type] = {cls.__name__: cls for cls in (Move, AttackMove, Attack, Harvest, Deposit, Build, Hold)}
+
+Order = Move | AttackMove | Attack | Harvest | Deposit | Build | Hold | Heal
+
+_ORDER_TYPES: dict[str, type] = {cls.__name__: cls for cls in (Move, AttackMove, Attack, Harvest, Deposit, Build, Hold, Heal)}
 
 
 # -- Entities ------------------------------------------------------------------
@@ -101,6 +108,7 @@ class Player:
     lumber: int = STARTING_LUMBER
     alive: bool = True
     last_alert: float = -1000.0
+    upgrades: set[Upgrade] = field(default_factory=set)
 
 
 @dataclass
@@ -126,6 +134,7 @@ class Unit:
     state: str = "idle"  # idle | move | attack | chop | build
     progress: float = 0.0
     last_distance: float = math.inf
+    charge: float = 0.0  # healing accumulated below one hit point
 
     @property
     def pos(self) -> Point:
@@ -176,6 +185,8 @@ class Building:
     gold: int = 0
     builder: int | None = None
     cooldown: float = 0.0
+    research: Upgrade | None = None
+    research_progress: float = 0.0
 
     @property
     def info(self) -> BuildingInfo:
@@ -421,6 +432,49 @@ class World:
             self.explored[player][i] = 1
             self.visible[player][i] = 1
 
+    # -- Stats with upgrades applied ----------------------------------------------------
+
+    def _has(self, player: int | None, upgrade: Upgrade) -> bool:
+        return player is not None and upgrade in self.players[player].upgrades
+
+    def damage_of(self, entity: Entity) -> int:
+        """Listed damage plus every upgrade its owner has researched."""
+        info = entity.info
+        damage = info.damage
+        if damage == 0:
+            return 0
+        if isinstance(entity, Unit) and info.melee and not entity.is_worker:
+            damage += BLADES_BONUS * (self._has(entity.player, Upgrade.BLADES_1) + self._has(entity.player, Upgrade.BLADES_2))
+        if (isinstance(entity, Building) or info.ranged) and entity.type is not UnitType.CATAPULT:
+            damage += ARROWS_BONUS * (self._has(entity.player, Upgrade.ARROWS_1) + self._has(entity.player, Upgrade.ARROWS_2))
+        if isinstance(entity, Unit) and entity.type is UnitType.CATAPULT and self._has(entity.player, Upgrade.SIEGE):
+            damage = int(round(damage * SIEGE_DAMAGE_BONUS))
+        return damage
+
+    def armor_of(self, entity: Entity) -> int:
+        armor = entity.info.armor
+        if isinstance(entity, Unit) and not entity.is_worker:
+            armor += ARMOR_BONUS * (self._has(entity.player, Upgrade.ARMOR_1) + self._has(entity.player, Upgrade.ARMOR_2))
+        return armor
+
+    def range_of(self, unit: Unit) -> float:
+        reach = unit.info.range
+        if unit.type is UnitType.CATAPULT and self._has(unit.player, Upgrade.SIEGE):
+            reach += SIEGE_RANGE_BONUS
+        return reach
+
+    def speed_of(self, unit: Unit) -> float:
+        speed = unit.info.speed
+        if unit.info.mounted and self._has(unit.player, Upgrade.HORSES):
+            speed += HORSES_BONUS
+        return speed
+
+    def heal_rate(self, unit: Unit) -> float:
+        rate = float(unit.info.heal)
+        if rate and self._has(unit.player, Upgrade.BLESSING):
+            rate *= BLESSING_BONUS
+        return rate
+
     # -- Economy queries -----------------------------------------------------------
 
     def can_afford(self, player: int, cost: Cost) -> str | None:
@@ -455,6 +509,8 @@ class World:
             return f"{info.name}s are trained at the {BUILDINGS[info.trained_at].name}"
         if len(building.queue) >= 5:
             return "Queue is full"
+        if building.research is not None:
+            return f"Researching {UPGRADES[building.research].name}"
         reason = self.can_afford(building.player, info.cost)
         if reason is not None:
             return reason
@@ -462,6 +518,46 @@ class World:
         if used + 1 > cap:
             return "Not enough farms"
         return None
+
+    def can_research(self, building: Building, upgrade: Upgrade) -> str | None:
+        info = UPGRADES[upgrade]
+        if building.player is None or not building.done:
+            return "Still under construction"
+        if upgrade not in building.info.researches:
+            return f"{info.name} is not researched here"
+        player = self.players[building.player]
+        if upgrade in player.upgrades:
+            return "Already researched"
+        if any(b.research is upgrade for b in self.player_buildings(building.player)):
+            return "Already being researched"
+        if info.requires is not None and info.requires not in player.upgrades:
+            return f"Requires {UPGRADES[info.requires].name}"
+        if building.research is not None:
+            return f"Researching {UPGRADES[building.research].name}"
+        if building.queue:
+            return "Training in progress"
+        return self.can_afford(building.player, info.cost)
+
+    def research(self, building_id: int, upgrade: Upgrade) -> None:
+        building = self.buildings.get(building_id)
+        if building is None:
+            raise RuleError("No such building")
+        reason = self.can_research(building, upgrade)
+        if reason is not None:
+            raise RuleError(reason)
+        assert building.player is not None
+        self._pay(building.player, UPGRADES[upgrade].cost)
+        building.research = upgrade
+        building.research_progress = 0.0
+
+    def cancel_research(self, building_id: int) -> None:
+        building = self.buildings.get(building_id)
+        if building is None or building.research is None:
+            raise RuleError("Nothing to cancel")
+        assert building.player is not None
+        self._refund(building.player, UPGRADES[building.research].cost)
+        building.research = None
+        building.research_progress = 0.0
 
     def can_place(self, building_type: BuildingType, pos: Pos, player: int, *, builder: int | None = None) -> str | None:
         info = BUILDINGS[building_type]
@@ -537,7 +633,10 @@ class World:
         for unit in self._own_units(unit_ids):
             if target.player == unit.player:
                 raise RuleError("Cannot attack your own")
-            self._issue(unit, Attack(target_id), queue=queue)
+            if unit.info.damage == 0:
+                self._issue(unit, Move(self._target_point(target)), queue=queue)  # a healer follows the fight instead
+            else:
+                self._issue(unit, Attack(target_id), queue=queue)
 
     def stop(self, unit_ids: list[int]) -> None:
         for unit in self._own_units(unit_ids):
@@ -719,6 +818,12 @@ class World:
                 b.queue.pop(0)
                 b.train_progress = 0.0
                 self._deliver_unit(b, unit_type)
+        elif b.research is not None:
+            b.research_progress += dt
+            if b.research_progress >= UPGRADES[b.research].time:
+                upgrade, b.research, b.research_progress = b.research, None, 0.0
+                self.players[b.player].upgrades.add(upgrade)
+                self.events.append(Event("researched", b.center, player=b.player, entity=b.id, text=UPGRADES[upgrade].name))
         if info.damage:
             self._tower_shoot(b, dt)
 
@@ -751,7 +856,7 @@ class World:
         target = self._nearest_enemy(b.player, b.center, info.range + b.size / 2, units_only=True)  # type: ignore[arg-type]
         if target is None:
             return
-        self._hit(b, target, info.damage)
+        self._hit(b, target, self.damage_of(b))
         b.cooldown = info.cooldown
 
     def _abandon_construction(self, unit: Unit) -> None:
@@ -816,6 +921,8 @@ class World:
             self._do_build(u, order, dt)
         elif isinstance(order, Hold):
             self._do_hold(u)
+        elif isinstance(order, Heal):
+            self._do_heal(u, order, dt)
 
     def _finish_order(self, u: Unit) -> None:
         if u.orders:
@@ -831,21 +938,71 @@ class World:
         u.state = "idle"
         if u.is_worker or self.tick % 5:
             return
+        if u.info.heal:
+            patient = self._nearest_wounded(u, u.info.sight)
+            if patient is not None:
+                u.home = u.pos
+                u.orders.appendleft(Heal(patient.id, auto=True))
+            return
         target = self._nearest_enemy(u.player, u.pos, u.info.sight)
         if target is not None:
             u.home = u.pos
             u.orders.appendleft(Attack(target.id, auto=True))
+
+    def _nearest_wounded(self, healer: Unit, radius: float) -> Unit | None:
+        best, best_d = None, math.inf
+        for unit in self.units_near(healer.pos, radius + UNIT_RADIUS):
+            if unit is healer or unit.player != healer.player or unit.hidden or unit.hp >= unit.max_hp or unit.hp <= 0:
+                continue
+            d = dist(healer.pos, unit.pos)
+            if d < best_d:
+                best, best_d = unit, d
+        return best
+
+    def _do_heal(self, u: Unit, order: Heal, dt: float) -> None:
+        patient = self.units.get(order.target)
+        if patient is None or patient.hp <= 0 or patient.hp >= patient.max_hp or patient.hidden:
+            self._finish_order(u)
+            if order.auto and u.home is not None and not u.orders and dist(u.pos, u.home) > 1.0:
+                u.orders.append(Move(u.home))
+            return
+        if order.auto and u.home is not None and dist(u.pos, u.home) > LEASH:
+            self._finish_order(u)
+            u.orders.appendleft(Move(u.home))
+            return
+        if self._gap(u, patient) <= self.range_of(u) + 0.05:
+            u.path = []
+            u.path_goal = None
+            self._face(u, patient.pos)
+            u.state = "attack"
+            u.charge += self.heal_rate(u) * dt
+            u.timer += dt
+            if u.charge >= 1.0:
+                amount = min(int(u.charge), patient.max_hp - patient.hp)
+                u.charge -= int(u.charge)
+                patient.hp += amount
+                if u.timer >= 0.5:
+                    u.timer = 0.0
+                    self.events.append(Event("heal", patient.pos, player=u.player, entity=u.id, other=patient.id, amount=amount))
+            return
+        goal = patient.tile
+        if u.path_goal is None or dist(tile_center(u.path_goal), tile_center(goal)) > 1.5:
+            self._plan(u, goal, patient.pos)
+        if self._follow(u, dt) and u.path_goal != goal:
+            self._plan(u, goal, patient.pos)
 
     def _do_hold(self, u: Unit) -> None:
         u.state = "idle"
         u.path = []
         if u.is_worker or self.tick % 5:
             return
-        target = self._nearest_enemy(u.player, u.pos, u.info.range + 1.0)
+        if u.info.damage == 0:
+            return
+        target = self._nearest_enemy(u.player, u.pos, self.range_of(u) + 1.0)
         if target is not None and self._in_range(u, target):
             self._face(u, self._target_point(target))
             if u.cooldown <= 0:
-                self._hit(u, target, u.info.damage)
+                self._strike(u, target)
                 u.cooldown = u.info.cooldown
             u.state = "attack"
 
@@ -855,12 +1012,20 @@ class World:
 
     def _do_attack_move(self, u: Unit, order: AttackMove, dt: float) -> None:
         if self.tick % 5 == 0:
-            target = self._nearest_enemy(u.player, u.pos, u.info.sight)
-            if target is not None:
-                u.orders.appendleft(Attack(target.id))
-                u.path = []
-                u.path_goal = None
-                return
+            if u.info.heal:
+                patient = self._nearest_wounded(u, u.info.sight)
+                if patient is not None:
+                    u.orders.appendleft(Heal(patient.id))
+                    u.path = []
+                    u.path_goal = None
+                    return
+            else:
+                target = self._nearest_enemy(u.player, u.pos, u.info.sight)
+                if target is not None:
+                    u.orders.appendleft(Attack(target.id))
+                    u.path = []
+                    u.path_goal = None
+                    return
         if self._walk_to(u, order.target, dt):
             self._finish_order(u)
 
@@ -881,7 +1046,7 @@ class World:
             self._face(u, self._target_point(target))
             u.state = "attack"
             if u.cooldown <= 0:
-                self._hit(u, target, u.info.damage)
+                self._strike(u, target)
                 u.cooldown = u.info.cooldown
             return
         goal_tile = (int(self._target_point(target)[0]), int(self._target_point(target)[1]))
@@ -955,7 +1120,7 @@ class World:
         mine.gold -= taken
         u.carrying, u.carry = Resource.GOLD, taken
         u.inside = None
-        hall = self._nearest_hall(u.player, mine.center)
+        hall = self._nearest_depot(u.player, mine.center, Resource.GOLD)
         spot = self.free_tile_near(mine.rect, prefer=hall.center if hall is not None else None)
         if spot is not None:
             u.x, u.y = tile_center(spot)
@@ -967,7 +1132,7 @@ class World:
         if u.carrying is None:
             self._finish_order(u)
             return
-        hall = self._nearest_hall(u.player, u.pos)
+        hall = self._nearest_depot(u.player, u.pos, u.carrying)
         if hall is None:
             u.state = "idle"
             return
@@ -1082,7 +1247,7 @@ class World:
                 return False
         dx, dy = waypoint[0] - u.x, waypoint[1] - u.y
         d = math.hypot(dx, dy)
-        step = u.info.speed * dt
+        step = self.speed_of(u) * dt
         if d <= step or d <= ARRIVE:
             u.x, u.y = waypoint
             if u.path:
@@ -1176,7 +1341,7 @@ class World:
     def _in_range(self, u: Unit, target: Entity) -> bool:
         if isinstance(target, Unit) and target.hidden:
             return False
-        return self._gap(u, target) <= u.info.range + 0.05
+        return self._gap(u, target) <= self.range_of(u) + 0.05
 
     def _nearest_enemy(self, player: int, point: Point, radius: float, *, units_only: bool = False) -> Entity | None:
         best: Entity | None = None
@@ -1197,8 +1362,30 @@ class World:
                 best, best_d = building, d + 0.5
         return best
 
+    def _strike(self, u: Unit, target: Entity) -> None:
+        """One blow (or shot) from *u* at *target*, with splash for siege engines."""
+        damage = self.damage_of(u)
+        self._hit(u, target, damage)
+        if u.info.splash > 0:
+            centre = self._impact_point(u, target)
+            for other in list(self.units_near(centre, u.info.splash + UNIT_RADIUS)):
+                if other is not target and other.player != u.player and not other.hidden and other.hp > 0:
+                    self._hit(u, other, int(damage * SPLASH_FRACTION))
+            for building in list(self.buildings.values()):
+                if building is not target and building.player not in (None, u.player) and building.hp > 0 and rect_gap(centre, building.rect) <= u.info.splash:
+                    self._hit(u, building, int(damage * SPLASH_FRACTION))
+
+    def _impact_point(self, u: Unit, target: Entity) -> Point:
+        """Where a shot lands: on a unit, or on the wall of a building nearest the shooter."""
+        if isinstance(target, Unit):
+            return target.pos
+        x, y, w, h = target.rect
+        return (min(max(u.x, x), x + w), min(max(u.y, y), y + h))
+
     def _hit(self, source: Entity, target: Entity, damage: int) -> None:
-        armor = target.info.armor
+        armor = self.armor_of(target)
+        if isinstance(source, Unit) and isinstance(target, Building):
+            damage = int(round(damage * source.info.siege))
         roll = damage * self.rng.uniform(1 - HIT_VARIANCE, 1 + HIT_VARIANCE)
         dealt = max(1, int(round(roll)) - armor)
         target.hp -= dealt
@@ -1210,7 +1397,7 @@ class World:
             if self.time - victim.last_alert >= UNDER_ATTACK_COOLDOWN:
                 victim.last_alert = self.time
                 self.events.append(Event("under_attack", self._target_point(target), player=target.player, entity=target.id))
-        if isinstance(target, Unit) and target.hp > 0 and not target.orders and not target.is_worker:
+        if isinstance(target, Unit) and target.hp > 0 and not target.orders and not target.is_worker and target.info.damage > 0:
             attacker_alive = source.id in self.units or source.id in self.buildings
             if attacker_alive and not (isinstance(source, Building)):
                 target.home = target.pos
@@ -1245,9 +1432,10 @@ class World:
 
     # -- Helpers for orders ----------------------------------------------------------
 
-    def _nearest_hall(self, player: int, point: Point) -> Building | None:
-        halls = self.player_buildings(player, BuildingType.TOWN_HALL, done=True)
-        return min(halls, key=lambda h: dist(h.center, point)) if halls else None
+    def _nearest_depot(self, player: int, point: Point, resource: Resource) -> Building | None:
+        """The finished building nearest *point* that accepts *resource* (halls take both, mills lumber)."""
+        depots = [b for b in self.player_buildings(player, done=True) if resource in b.info.deposits]
+        return min(depots, key=lambda b: dist(b.center, point)) if depots else None
 
     def _nearest_mine(self, point: Point, max_distance: float = 14.0) -> Building | None:
         mines = [m for m in self.mines() if m.gold > 0 and dist(m.center, point) <= max_distance]
@@ -1287,8 +1475,8 @@ class World:
         return {
             "width": self.width, "height": self.height,
             "terrain": ["".join(t.value[0] for t in row) for row in self.terrain],
-            "players": [{"id": p.id, "human": p.human, "gold": p.gold, "lumber": p.lumber, "alive": p.alive, "last_alert": p.last_alert}
-                        for p in self.players],
+            "players": [{"id": p.id, "human": p.human, "gold": p.gold, "lumber": p.lumber, "alive": p.alive, "last_alert": p.last_alert,
+                         "upgrades": sorted(u.value for u in p.upgrades)} for p in self.players],
             "units": [_unit_to_dict(u) for u in self.units.values()],
             "buildings": [_building_to_dict(b) for b in self.buildings.values()],
             "explored": [bytes(e).hex() for e in self.explored],
@@ -1304,6 +1492,7 @@ class World:
         world = cls(data["width"], data["height"], terrain, len(data["players"]), human=human)
         for p, saved in zip(world.players, data["players"]):
             p.gold, p.lumber, p.alive, p.last_alert = saved["gold"], saved["lumber"], saved["alive"], saved["last_alert"]
+            p.upgrades = {Upgrade(u) for u in saved["upgrades"]}
         for saved in data["buildings"]:
             b = _building_from_dict(saved)
             world.buildings[b.id] = b
@@ -1346,13 +1535,15 @@ def _unit_to_dict(u: Unit) -> dict[str, Any]:
         "orders": [_order_to_dict(o) for o in u.orders], "cooldown": u.cooldown,
         "carrying": u.carrying.value if u.carrying else None, "carry": u.carry, "timer": u.timer,
         "inside": u.inside, "constructing": u.constructing, "home": list(u.home) if u.home else None, "state": u.state,
+        "charge": u.charge,
     }
 
 
 def _unit_from_dict(d: dict[str, Any]) -> Unit:
     u = Unit(d["id"], UnitType(d["type"]), d["player"], d["x"], d["y"], d["hp"], facing=d["facing"], cooldown=d["cooldown"],
              carrying=Resource(d["carrying"]) if d["carrying"] else None, carry=d["carry"], timer=d["timer"],
-             inside=d["inside"], constructing=d["constructing"], home=tuple(d["home"]) if d["home"] else None, state=d["state"])
+             inside=d["inside"], constructing=d["constructing"], home=tuple(d["home"]) if d["home"] else None, state=d["state"],
+             charge=d["charge"])
     u.orders = deque(_order_from_dict(o) for o in d["orders"])
     return u
 
@@ -1362,10 +1553,12 @@ def _building_to_dict(b: Building) -> dict[str, Any]:
         "id": b.id, "type": b.type.value, "player": b.player, "x": b.x, "y": b.y, "hp": b.hp, "progress": b.progress,
         "queue": [t.value for t in b.queue], "train_progress": b.train_progress, "rally": list(b.rally) if b.rally else None,
         "gold": b.gold, "builder": b.builder, "cooldown": b.cooldown,
+        "research": b.research.value if b.research else None, "research_progress": b.research_progress,
     }
 
 
 def _building_from_dict(d: dict[str, Any]) -> Building:
     return Building(d["id"], BuildingType(d["type"]), d["player"], d["x"], d["y"], d["hp"], progress=d["progress"],
                     queue=[UnitType(t) for t in d["queue"]], train_progress=d["train_progress"],
-                    rally=tuple(d["rally"]) if d["rally"] else None, gold=d["gold"], builder=d["builder"], cooldown=d["cooldown"])
+                    rally=tuple(d["rally"]) if d["rally"] else None, gold=d["gold"], builder=d["builder"], cooldown=d["cooldown"],
+                    research=Upgrade(d["research"]) if d["research"] else None, research_progress=d["research_progress"])

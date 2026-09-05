@@ -11,6 +11,7 @@ from typing import Any
 
 from saga2d import Anchor, Button, Camera, Column, Label, Row, Scene
 from warband import mapgen
+from warband.rules import Difficulty
 from warband.scene import HelpScene, load_game, new_game
 from warband.sound import play_sound
 from warband.style import ACTION_BUTTON, GHOST_BUTTON, MENU_BUTTON, OVERLAY_STYLE
@@ -26,9 +27,10 @@ class TitleScene(Scene):
     background_color = (8, 10, 14, 255)
     controls = {("n", "return"): "new_game", "c": "continue_game", "h": "how_to_play", "q": "quit"}
 
-    def __init__(self, *, size: str = "Medium", players: int = 2, settings: dict[str, Any] | None = None) -> None:
+    def __init__(self, *, size: str = "Medium", players: int = 2, difficulty: Difficulty = Difficulty.NORMAL, settings: dict[str, Any] | None = None) -> None:
         self.size = size
         self.players = players
+        self.difficulty = difficulty
         self.settings = settings
         self.time = 0.0
         self._stop = 0
@@ -109,15 +111,17 @@ class NewGameScene(Scene):
     pause_below = False
     pop_on_cancel = True
     controls = {"s": "size_small", "m": "size_medium", "l": "size_large", "2": "players_2", "3": "players_3", "4": "players_4",
-                "r": "reroll", ("return", "space"): "start"}
+                "e": "easy", "n": "normal", "h": "hard", "r": "reroll", ("return", "space"): "start"}
 
     def __init__(self, title: TitleScene) -> None:
         self.title = title
         self.size = title.size
         self.players = title.players
+        self.difficulty = title.difficulty
         self.seed = random.randrange(1, 10_000)
         self._size_buttons: dict[str, Button] = {}
         self._player_buttons: dict[int, Button] = {}
+        self._difficulty_buttons: dict[Difficulty, Button] = {}
 
     def on_enter(self) -> None:
         panel = Column(spacing=12, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
@@ -134,6 +138,13 @@ class NewGameScene(Scene):
             self._player_buttons[count] = button
             player_row.add(button)
         panel.add(player_row)
+        difficulty_row = Row(Label("AI", text_style="body", width=90), spacing=8)
+        for difficulty in Difficulty:
+            button = Button(difficulty.value.title(), hotkey=difficulty.value[0].upper(), on_click=lambda d=difficulty: self.set_difficulty(d),
+                            style=GHOST_BUTTON, width=OPTION_WIDTH)
+            self._difficulty_buttons[difficulty] = button
+            difficulty_row.add(button)
+        panel.add(difficulty_row)
         panel.add(Row(Label(lambda: f"Seed {self.seed}", text_style="body", width=90 + 8 + OPTION_WIDTH),
                       Button("Reroll", hotkey="R", on_click=self.reroll, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
         panel.add(Row(Button("Start", hotkey="Enter", on_click=self.start, style=ACTION_BUTTON, width=2 * OPTION_WIDTH + 8),
@@ -146,6 +157,8 @@ class NewGameScene(Scene):
             button.style = ACTION_BUTTON if name == self.size else GHOST_BUTTON
         for count, button in self._player_buttons.items():
             button.style = ACTION_BUTTON if count == self.players else GHOST_BUTTON
+        for difficulty, button in self._difficulty_buttons.items():
+            button.style = ACTION_BUTTON if difficulty == self.difficulty else GHOST_BUTTON
 
     def draw(self) -> None:
         w, h = self.game.resolution
@@ -160,6 +173,20 @@ class NewGameScene(Scene):
         self.players = count
         self.title.sfx("button")
         self._restyle()
+
+    def set_difficulty(self, difficulty: Difficulty) -> None:
+        self.difficulty = difficulty
+        self.title.sfx("button")
+        self._restyle()
+
+    def easy(self) -> None:
+        self.set_difficulty(Difficulty.EASY)
+
+    def normal(self) -> None:
+        self.set_difficulty(Difficulty.NORMAL)
+
+    def hard(self) -> None:
+        self.set_difficulty(Difficulty.HARD)
 
     def size_small(self) -> None:
         self.set_size("Small")
@@ -186,4 +213,4 @@ class NewGameScene(Scene):
     def start(self) -> None:
         self.title.sfx("button")
         width, height = mapgen.SIZES[self.size]
-        self.game.clear_and_push(new_game(self.seed, width=width, height=height, players=self.players, settings=self.title.settings))
+        self.game.clear_and_push(new_game(self.seed, width=width, height=height, players=self.players, difficulty=self.difficulty, settings=self.title.settings))

@@ -11,6 +11,7 @@ import argparse
 
 from saga2d import Game, fonts
 from warband import mapgen, sound
+from warband.rules import Difficulty
 from warband.scene import new_game
 from warband.style import build_theme
 from warband.title import TitleScene
@@ -21,6 +22,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=None, help="start this map directly, skipping the title screen")
     parser.add_argument("--size", choices=list(mapgen.SIZES), default="Medium")
     parser.add_argument("--players", type=int, default=2, choices=(2, 3, 4))
+    parser.add_argument("--difficulty", choices=[d.value for d in Difficulty], default="normal")
     parser.add_argument("--fullscreen", action="store_true")
     args = parser.parse_args()
     game = Game("Warband", resolution=None, fullscreen=args.fullscreen, theme=build_theme())
@@ -28,9 +30,9 @@ def main() -> None:
     sound.install(game)
     if args.seed is not None:
         width, height = mapgen.SIZES[args.size]
-        game.run(new_game(args.seed, width=width, height=height, players=args.players))
+        game.run(new_game(args.seed, width=width, height=height, players=args.players, difficulty=Difficulty(args.difficulty)))
     else:
-        game.run(TitleScene(size=args.size, players=args.players))
+        game.run(TitleScene(size=args.size, players=args.players, difficulty=Difficulty(args.difficulty)))
 
 
 if __name__ == "__main__":

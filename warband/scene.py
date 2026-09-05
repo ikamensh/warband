@@ -16,7 +16,7 @@ from saga2d.effects import Banner, Burst, Dissolve, Effects, FloatingText, HitRe
 from warband import mapgen
 from warband.ai import Brain
 from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
-from warband.rules import BUILDINGS, SIM_DT, UNITS, BuildingType, UnitType
+from warband.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, UnitType, Upgrade
 from warband.sound import apply_volumes, play_sound
 from warband.style import ACTION_BUTTON, BAD, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE
 from warband.textures import TILE
@@ -70,6 +70,7 @@ class GameScene(Scene):
     controls = {
         "escape": "cancel",
         "f1": "open_help",
+        "f2": "open_codex",
         "f3": "toggle_pause",
         "f5": "quick_save",
         "f9": "quick_load",
@@ -82,11 +83,13 @@ class GameScene(Scene):
         "period": "next_idle_soldier",
     }
 
-    def __init__(self, world: World, seed: int, *, settings: dict[str, Any] | None = None, stats: dict[str, int] | None = None) -> None:
+    def __init__(self, world: World, seed: int, *, difficulty: Difficulty = Difficulty.NORMAL, settings: dict[str, Any] | None = None,
+                 stats: dict[str, int] | None = None) -> None:
         self.world = world
         self.seed = seed
+        self.difficulty = difficulty
         self.human = next(p.id for p in world.players if p.human)
-        self.brains = [Brain(p.id) for p in world.players if not p.human]
+        self.brains = [Brain(p.id, difficulty) for p in world.players if not p.human]
         self.rng = random.Random(seed)
         self.settings: dict[str, Any] = {**DEFAULT_SETTINGS, **(settings or {})}
         self.stats: dict[str, int] = {"units_lost": 0, "units_killed": 0, "buildings_lost": 0, "buildings_razed": 0, **(stats or {})}
@@ -183,9 +186,11 @@ class GameScene(Scene):
             return [("F B H T", "choose a building"), ("Esc", "back")]
         if self._own_units():
             return [("Right click", "move / harvest / attack"), ("A", "attack-move"), ("S", "stop"), ("Ctrl+1-9", "group"), ("Esc", "deselect")]
-        if self._own_building() is not None:
-            return [("P F A K", "train"), ("Right click", "rally point"), ("Esc", "deselect")]
-        return [("Drag", "select"), ("Tab", "idle peasant"), ("Space", "last alert"), ("Arrows", "scroll"), ("Wheel", "zoom"), ("F3", "pause"), ("F1", "help")]
+        building = self._own_building()
+        if building is not None:
+            keys = " ".join(dict.fromkeys(c.hotkey for c in self._card if c.hotkey not in ("X", "C")))
+            return ([(keys, "train / research")] if keys else []) + [("Right click", "rally point"), ("F2", "codex"), ("Esc", "deselect")]
+        return [("Drag", "select"), ("Tab", "idle peasant"), ("Space", "last alert"), ("Arrows", "scroll"), ("Wheel", "zoom"), ("F3", "pause"), ("F1", "help"), ("F2", "codex")]
 
     # -- Selection -----------------------------------------------------------------
 
@@ -374,11 +379,28 @@ class GameScene(Scene):
         self.sfx("button")
         self._refresh_card()
 
-    def cancel_train(self) -> None:
+    def cancel_work(self) -> None:
         building = self._own_building()
-        if building is None or not building.queue:
+        if building is None:
             return
-        self.world.cancel_train(building.id)
+        if building.queue:
+            self.world.cancel_train(building.id)
+        elif building.research is not None:
+            self.world.cancel_research(building.id)
+        else:
+            return
+        self.sfx("button")
+        self._refresh_card()
+
+    def research(self, upgrade: Upgrade) -> None:
+        building = self._own_building()
+        if building is None:
+            return
+        try:
+            self.world.research(building.id, upgrade)
+        except RuleError as exc:
+            self.warn(str(exc))
+            return
         self.sfx("button")
         self._refresh_card()
 
@@ -437,9 +459,20 @@ class GameScene(Scene):
                 commands.append(Command(info.name, info.hotkey.upper(), lambda ut=unit_type: self.train(ut),
                                         tooltip=f"{info.name} — {info.cost} · {info.summary}",
                                         blocked=lambda ut=unit_type, b=building: world.can_train(b, ut)))
-            if building.info.trains:
-                commands.append(Command("Cancel", "X", self.cancel_train, tooltip="Cancel the last unit in the queue",
-                                        blocked=lambda b=building: None if b.queue else "Nothing queued"))
+            for upgrade in building.info.researches:
+                info = UPGRADES[upgrade]
+                if upgrade in self.player.upgrades:
+                    continue
+                if info.requires is not None and info.requires not in self.player.upgrades and any(
+                        UPGRADES[u].requires is None and u not in self.player.upgrades and u in building.info.researches and UPGRADES[u].hotkey == info.hotkey
+                        for u in building.info.researches):
+                    continue  # the tier below has the same key; show it once its prerequisite is done
+                commands.append(Command(info.name, info.hotkey.upper(), lambda up=upgrade: self.research(up),
+                                        tooltip=f"{info.name} — {info.cost} · {info.summary}",
+                                        blocked=lambda up=upgrade, b=building: world.can_research(b, up)))
+            if building.info.trains or building.info.researches:
+                commands.append(Command("Cancel", "X", self.cancel_work, tooltip="Cancel the last unit queued, or the research",
+                                        blocked=lambda b=building: None if b.queue or b.research is not None else "Nothing in progress"))
             return commands
         return []
 
@@ -547,6 +580,9 @@ class GameScene(Scene):
 
     def open_help(self) -> None:
         self.game.push(HelpScene())
+
+    def open_codex(self) -> None:
+        self.game.push(CodexScene(self.world, self.human))
 
     def quick_save(self) -> None:
         self.game.save(1, scene=self)
@@ -672,6 +708,13 @@ class GameScene(Scene):
                 self.effects.add(FloatingText(e.text, (wx, wy - TILE), GOLD, rise=26, duration=1.6))
             elif e.kind == "construction" and mine:
                 self.sfx("build_start")
+            elif e.kind == "researched" and mine:
+                self.sfx("built")
+                wx, wy = to_world(e.pos)
+                self.effects.add(FloatingText(f"{e.text} researched", (wx, wy - TILE), GOLD, rise=26, duration=1.8))
+                self._refresh_card()
+            elif e.kind == "heal" and self._visible(e.pos):
+                self.effects.add(Pulse(to_world(e.pos), (140, 255, 160, 200), radius=(4, 16), rings=1, duration=0.4))
             elif e.kind == "tree_felled" and mine:
                 self.sfx("chop", gap=0.3)
             elif e.kind == "deposit" and mine and e.text == "gold":
@@ -702,8 +745,11 @@ class GameScene(Scene):
                 self.effects.add(HitReaction(sprite, (1.0, 1.0, 1.0), knockback=0.0, wobble=6.0, duration=0.2))
         source = self.world.entity(e.entity) if e.entity is not None else None
         if e.text == "ranged" and source is not None:
-            self._arrow(source, e.pos)
-            self.sfx("arrow", gap=SOUND_GAP)
+            if isinstance(source, Unit) and source.info.splash > 0:
+                self._stone(source, e.pos)
+            else:
+                self._arrow(source, e.pos)
+                self.sfx("arrow", gap=SOUND_GAP)
         else:
             self.sfx("hit", gap=SOUND_GAP)
 
@@ -716,6 +762,19 @@ class GameScene(Scene):
             sy -= TILE * 1.2
         arrow = self.add_sprite(Sprite("arrow", position=(sx, sy), size=(22, 6), layer=RenderLayer.EFFECTS, rotation=math.degrees(math.atan2(ty - sy, tx - sx))))
         arrow.do(Sequence(MoveTo((tx, ty), speed=520), Remove()))
+
+    def _stone(self, source: Unit, target: tuple[float, float]) -> None:
+        """A catapult stone: lobbed slowly, bursting where it lands (one per volley)."""
+        if self.clock - self._sound_times.get("stone", -1.0) < 0.3:
+            return
+        self._sound_times["stone"] = self.clock
+        sx, sy = to_world(source.pos)
+        tx, ty = to_world(target)
+        stone = self.add_sprite(Sprite("stone", position=(sx, sy - TILE * 0.8), size=(12, 12), layer=RenderLayer.EFFECTS))
+        stone.do(Sequence(MoveTo((tx, ty - TILE * 0.2), speed=330), Remove()))
+        flight = math.dist((sx, sy), (tx, ty)) / 330
+        self.effects.add(Burst((tx, ty), (200, 190, 170, 255), 12, rng=self.rng, size=12, speed=(40, 140), delay=flight))
+        self.after(flight, lambda: self.sfx("destroyed", gap=0.3))
 
     def _show_death(self, e: Event) -> None:
         if e.player == self.human:
@@ -836,7 +895,10 @@ class GameScene(Scene):
             self.draw_text(f"{entity.hp}/{entity.max_hp}", tx + 188, y + 34, style="sub")
         if isinstance(entity, Unit):
             info = entity.info
-            lines.append(f"Damage {info.damage}  Armor {info.armor}  Range {info.range:g}  Speed {info.speed:g}")
+            if info.heal:
+                lines.append(f"Heals {world.heal_rate(entity):g}/s  Range {info.range:g}  Armor {world.armor_of(entity)}  Speed {world.speed_of(entity):g}")
+            else:
+                lines.append(f"Damage {world.damage_of(entity)}  Armor {world.armor_of(entity)}  Range {world.range_of(entity):g}  Speed {world.speed_of(entity):g}")
             order = entity.order
             if entity.inside is not None:
                 lines.append("Mining")
@@ -846,7 +908,7 @@ class GameScene(Scene):
                 lines.append(f"Carrying {entity.carry} {entity.carrying.value}")
             elif order is not None:
                 lines.append(type(order).__name__.replace("AttackMove", "Attack-moving").replace("Move", "Moving").replace("Attack", "Attacking")
-                             .replace("Harvest", "Harvesting").replace("Build", "Going to build").replace("Hold", "Holding position"))
+                             .replace("Harvest", "Harvesting").replace("Build", "Going to build").replace("Hold", "Holding position").replace("Heal", "Healing"))
             else:
                 lines.append("Idle")
         elif isinstance(entity, Building):
@@ -856,6 +918,11 @@ class GameScene(Scene):
             elif entity.queue:
                 progress = entity.train_progress / UNITS[entity.queue[0]].build_time
                 lines.append(f"Training {UNITS[entity.queue[0]].name} {int(progress * 100)}%" + (f" (+{len(entity.queue) - 1} queued)" if len(entity.queue) > 1 else ""))
+                self.draw_rect(tx, y + 62, 180, 6, (0, 0, 0, 160), radius=3)
+                self.draw_rect(tx, y + 62, 180 * progress, 6, GOLD, radius=3)
+            elif entity.research is not None:
+                progress = entity.research_progress / UPGRADES[entity.research].time
+                lines.append(f"Researching {UPGRADES[entity.research].name} {int(progress * 100)}%")
                 self.draw_rect(tx, y + 62, 180, 6, (0, 0, 0, 160), radius=3)
                 self.draw_rect(tx, y + 62, 180 * progress, 6, GOLD, radius=3)
             elif entity.player == self.human:
@@ -870,7 +937,8 @@ class GameScene(Scene):
     # -- Save / load ------------------------------------------------------------------------
 
     def get_save_state(self) -> dict:
-        return {"seed": self.seed, "world": self.world.to_dict(), "stats": self.stats, "settings": self.settings, "groups": self.groups}
+        return {"seed": self.seed, "difficulty": self.difficulty.value, "world": self.world.to_dict(), "stats": self.stats,
+                "settings": self.settings, "groups": self.groups}
 
     def load_save_state(self, state: dict) -> None:
         world = World.from_dict(state["world"])
@@ -879,7 +947,8 @@ class GameScene(Scene):
             return
         self.world = world
         self.seed = state["seed"]
-        self.brains = [Brain(p.id) for p in world.players if not p.human]
+        self.difficulty = Difficulty(state["difficulty"])
+        self.brains = [Brain(p.id, self.difficulty) for p in world.players if not p.human]
         self.stats = {**self.stats, **state.get("stats", {})}
         self.settings = {**self.settings, **state.get("settings", {})}
         self.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
@@ -947,7 +1016,8 @@ class PauseScene(_Overlay):
 
     def new_game(self) -> None:
         scene = self.game_scene
-        self.game.clear_and_push(new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players), settings=scene.settings))
+        self.game.clear_and_push(new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players),
+                                          difficulty=scene.difficulty, settings=scene.settings))
 
     def back_to_title(self) -> None:
         from warband.title import TitleScene
@@ -1021,6 +1091,7 @@ HELP_KEYS = (
     ("Arrows / edges / middle-drag", "scroll the map;  wheel / + / −  zoom"),
     ("Minimap", "left-click to look, right-click to send the selection there"),
     ("F3 / F5 / F9", "pause / save / load"),
+    ("F2", "codex: every unit, building and upgrade"),
     ("Esc", "cancel, deselect, then the menu"),
 )
 
@@ -1037,6 +1108,76 @@ class HelpScene(_Overlay):
             table.add(Row(Label(keys, text_style="hud", width=250, align="right", text_color=GOLD), Label(what, text_style="body", width=520), spacing=14))
         panel.add(table)
         panel.add(KeyHints([("Esc", "close")]))
+
+
+CODEX_PAGES = ("Units", "Buildings", "Upgrades")
+
+
+class CodexScene(_Overlay):
+    """Every unit, building and upgrade with its numbers; 1/2/3 or Tab switch pages."""
+
+    pause_below = True
+    controls = {"1": "page_units", "2": "page_buildings", "3": "page_upgrades", "tab": "next_page", "f2": "close"}
+
+    def __init__(self, world: World, player: int, page: int = 0) -> None:
+        self.world = world
+        self.player = player
+        self.page = page
+
+    def on_enter(self) -> None:
+        panel = self.panel("Codex")
+        tabs = Row(spacing=8)
+        for i, name in enumerate(CODEX_PAGES):
+            tabs.add(Button(name, hotkey=str(i + 1), on_click=lambda i=i: self.show(i), style=ACTION_BUTTON if i == self.page else GHOST_BUTTON, width=150))
+        panel.add(tabs)
+        table = Column(spacing=3)
+        for cells in self._rows():
+            table.add(Row(*[Label(text, text_style="hud" if i == 0 else "body", width=width, text_color=GOLD if i == 0 else None)
+                            for i, (text, width) in enumerate(cells)], spacing=10))
+        panel.add(table)
+        panel.add(KeyHints([("1 2 3", "page"), ("Tab", "next"), ("Esc", "close")]))
+
+    def _rows(self) -> list[list[tuple[str, int]]]:
+        have = self.world.players[self.player].upgrades
+        if self.page == 0:
+            rows = [[("Unit", 110), ("Cost", 150), ("HP", 50), ("Dmg", 50), ("Arm", 50), ("Rng", 50), ("Spd", 50), ("Trained at", 120), ("Role", 330)]]
+            for unit_type, info in UNITS.items():
+                rows.append([(info.name, 110), (str(info.cost), 150), (str(info.hp), 50), (str(info.damage) if info.damage else f"heal {info.heal}", 50),
+                             (str(info.armor), 50), ("melee" if info.range < 1 else f"{info.range:g}", 50), (f"{info.speed:g}", 50),
+                             (BUILDINGS[info.trained_at].name, 120), (info.summary, 330)])
+            return rows
+        if self.page == 1:
+            rows = [[("Building", 120), ("Cost", 150), ("HP", 50), ("Size", 50), ("Time", 50), ("Requires", 110), ("What it does", 430)]]
+            for building_type, info in BUILDINGS.items():
+                if building_type is BuildingType.GOLD_MINE:
+                    continue
+                rows.append([(info.name, 120), (str(info.cost), 150), (str(info.hp), 50), (f"{info.size}×{info.size}", 50), (f"{info.build_time:g}s", 50),
+                             (BUILDINGS[info.requires].name if info.requires else "—", 110), (info.summary + (f" · supply +{info.supply}" if info.supply else ""), 430)])
+            return rows
+        rows = [[("Upgrade", 160), ("Cost", 150), ("Time", 50), ("Where", 110), ("Requires", 150), ("Effect", 320)]]
+        for upgrade, info in UPGRADES.items():
+            where = next(b for b, binfo in BUILDINGS.items() if upgrade in binfo.researches)
+            rows.append([(info.name + (" ✓" if upgrade in have else ""), 160), (str(info.cost), 150), (f"{info.time:g}s", 50), (BUILDINGS[where].name, 110),
+                         (UPGRADES[info.requires].name if info.requires else "—", 150), (info.summary, 320)])
+        return rows
+
+    def show(self, page: int) -> None:
+        self.game.replace(CodexScene(self.world, self.player, page))
+
+    def page_units(self) -> None:
+        self.show(0)
+
+    def page_buildings(self) -> None:
+        self.show(1)
+
+    def page_upgrades(self) -> None:
+        self.show(2)
+
+    def next_page(self) -> None:
+        self.show((self.page + 1) % len(CODEX_PAGES))
+
+    def close(self) -> None:
+        self.game.pop()
 
 
 class GameOverScene(_Overlay):
@@ -1062,7 +1203,8 @@ class GameOverScene(_Overlay):
 
     def new_game(self) -> None:
         scene = self.game_scene
-        self.game.clear_and_push(new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players), settings=scene.settings))
+        self.game.clear_and_push(new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players),
+                                          difficulty=scene.difficulty, settings=scene.settings))
 
     def back_to_title(self) -> None:
         from warband.title import TitleScene
@@ -1073,12 +1215,14 @@ class GameOverScene(_Overlay):
         self.game.quit()
 
 
-def new_game(seed: int, width: int = 48, height: int = 40, players: int = 2, *, settings: dict[str, Any] | None = None) -> GameScene:
-    return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players), seed, settings=settings)
+def new_game(seed: int, width: int = 48, height: int = 40, players: int = 2, *, difficulty: Difficulty = Difficulty.NORMAL,
+             settings: dict[str, Any] | None = None) -> GameScene:
+    return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players), seed, difficulty=difficulty, settings=settings)
 
 
 def load_game(state: dict[str, Any], *, settings: dict[str, Any] | None = None) -> GameScene:
     """A game scene from a save slot's ``state`` (see :meth:`GameScene.get_save_state`)."""
-    scene = GameScene(World.from_dict(state["world"]), state["seed"], settings={**state.get("settings", {}), **(settings or {})}, stats=state.get("stats"))
+    scene = GameScene(World.from_dict(state["world"]), state["seed"], difficulty=Difficulty(state["difficulty"]),
+                      settings={**state.get("settings", {}), **(settings or {})}, stats=state.get("stats"))
     scene.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
     return scene
