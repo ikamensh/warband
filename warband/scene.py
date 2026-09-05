@@ -114,7 +114,7 @@ class GameScene(Scene):
         self._autosave_at = AUTOSAVE_EVERY
         self.selection: list[int] = []
         self.groups: dict[str, list[int]] = {}
-        self.pending: str | None = None  # "move" | "attack" | "build:<type>"
+        self.pending: str | None = None  # "move" | "attack" | "patrol" | "repair" | "build:<type>"
         self.build_menu = False
         self.paused = False
         self.speed = 1.0
@@ -261,7 +261,10 @@ class GameScene(Scene):
         if self.build_menu:
             return [("F B H T M K S W C", "choose a building"), ("Esc", "back")]
         if self._own_units():
-            return [("Right click", "move / harvest / attack"), ("A", "attack-move"), ("P", "patrol"), ("S", "stop"), ("Ctrl+1-9", "group"), ("Esc", "deselect")]
+            hints = [("Right click", "move / harvest / attack / repair"), ("A", "attack-move"), ("P", "patrol"), ("S", "stop")]
+            if any(u.is_worker for u in self._own_units()):
+                hints.append(("B / R", "build / repair"))
+            return hints + [("Ctrl+1-9", "group"), ("Esc", "deselect")]
         building = self._own_building()
         if building is not None:
             keys = " ".join(dict.fromkeys(c.hotkey for c in self._card if c.hotkey not in ("X", "C")))
@@ -387,6 +390,20 @@ class GameScene(Scene):
             self.world.set_rally(building.id, point)
             self._marker(point, (255, 214, 110, 220))
             self.sfx("command")
+
+    def command_repair(self, point: tuple[float, float], *, queue: bool = False) -> None:
+        workers = [u.id for u in self._own_units() if u.is_worker]
+        target = self.world.entity_at(point, visible_to=self.human)
+        if not workers or not isinstance(target, Building):
+            self.warn("Click one of your damaged buildings")
+            return
+        try:
+            self.world.repair(workers, target.id, queue=queue)
+        except RuleError as exc:
+            self.warn(str(exc))
+            return
+        self._marker(point, (120, 255, 140, 220))
+        self.sfx("command")
 
     def command_move(self, point: tuple[float, float], *, queue: bool = False) -> None:
         units = self._own_units()
@@ -550,6 +567,7 @@ class GameScene(Scene):
             ]
             if any(u.is_worker for u in units):
                 commands.append(Command("Build", "B", self.open_build_menu, tooltip="Farms, barracks, halls, towers and the tech buildings", style=ACTION_BUTTON))
+                commands.append(Command("Repair", "R", lambda: self.start_pending("repair"), tooltip="Mend one of your damaged buildings; a full repair costs half its price"))
             return commands
         building = self._own_building()
         if building is not None:
@@ -804,6 +822,8 @@ class GameScene(Scene):
             self.command_attack(point, queue=keep)
         elif mode == "patrol":
             self.command_patrol(point, queue=keep)
+        elif mode == "repair":
+            self.command_repair(point, queue=keep)
         elif mode is not None and mode.startswith("build:"):
             self.place_building(BuildingType(mode[6:]), point, keep=keep)
             return
@@ -1321,6 +1341,7 @@ HELP_KEYS = (
     ("A / P", "attack-move: fight everything on the way / patrol between two spots"),
     ("S / H", "stop / hold position"),
     ("B", "build (peasants): F farm, B barracks, H town hall, T tower, M mill, K smith, S stables, W workshop, C church"),
+    ("R", "repair (peasants): click one of your damaged buildings; a right-click on it does the same"),
     ("P / F / A / K", "train peasant / footman / archer / knight in the selected building"),
     ("Ctrl+1-9 / 1-9", "assign / recall a control group"),
     ("Tab / .", "next idle peasant / soldier"),

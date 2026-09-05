@@ -22,6 +22,7 @@ from typing import Any, Iterator
 
 from warband import path as pathing
 from warband.rules import (
+    REPAIR_CHUNK, REPAIR_RATE, repair_cost,
     ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLESSING_BONUS, BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS,
     LEASH, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, PLAYERS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION,
     STARTING_GOLD, STARTING_LUMBER, UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo,
@@ -95,6 +96,11 @@ class Heal:
 
 
 @dataclass
+class Repair:
+    target: int  # the building
+
+
+@dataclass
 class Patrol:
     """Walk between two points forever, fighting (or healing) whatever turns up."""
 
@@ -103,9 +109,9 @@ class Patrol:
     outbound: bool = True
 
 
-Order = Move | AttackMove | Attack | Harvest | Deposit | Build | Hold | Heal | Patrol
+Order = Move | AttackMove | Attack | Harvest | Deposit | Build | Hold | Heal | Patrol | Repair
 
-_ORDER_TYPES: dict[str, type] = {cls.__name__: cls for cls in (Move, AttackMove, Attack, Harvest, Deposit, Build, Hold, Heal, Patrol)}
+_ORDER_TYPES: dict[str, type] = {cls.__name__: cls for cls in (Move, AttackMove, Attack, Harvest, Deposit, Build, Hold, Heal, Patrol, Repair)}
 
 
 # -- Entities ------------------------------------------------------------------
@@ -700,6 +706,21 @@ class World:
             raise RuleError(reason)
         self._issue(unit, Build(building_type, pos), queue=queue)
 
+    def repair(self, unit_ids: list[int], building_id: int, *, queue: bool = False) -> None:
+        """Peasants among *unit_ids* mend one of their own finished, damaged buildings."""
+        workers = [u for u in self._own_units(unit_ids) if u.is_worker]
+        if not workers:
+            raise RuleError("Only peasants can repair")
+        b = self.buildings.get(building_id)
+        if b is None or b.player != workers[0].player or b.type is BuildingType.GOLD_MINE:
+            raise RuleError("Peasants repair your own buildings")
+        if not b.done:
+            raise RuleError("Finish building it first")
+        if b.hp >= b.max_hp:
+            raise RuleError("Nothing to repair")
+        for u in workers:
+            self._issue(u, Repair(b.id), queue=queue)
+
     def train(self, building_id: int, unit_type: UnitType) -> None:
         building = self.buildings.get(building_id)
         if building is None:
@@ -745,6 +766,11 @@ class World:
             if others:
                 self.move(others, point, queue=queue)
             return "build"
+        if workers and isinstance(target, Building) and target.player == player and target.done and target.hp < target.max_hp and target.type is not BuildingType.GOLD_MINE:
+            self.repair(workers, target.id, queue=queue)
+            if others:
+                self.move(others, point, queue=queue)
+            return "repair"
         if workers and isinstance(target, Building) and target.type is BuildingType.GOLD_MINE:
             self.harvest(workers, target.id, queue=queue)
             if others:
@@ -949,6 +975,8 @@ class World:
             self._do_heal(u, order, dt)
         elif isinstance(order, Patrol):
             self._do_patrol(u, order, dt)
+        elif isinstance(order, Repair):
+            self._do_repair(u, order, dt)
 
     def _finish_order(self, u: Unit) -> None:
         if u.orders:
@@ -1225,6 +1253,39 @@ class World:
             self.events.append(Event("refused", u.pos, player=u.player, entity=u.id, text="Cannot reach the building site"))
             self._finish_order(u)
 
+    def _do_repair(self, u: Unit, order: Repair, dt: float) -> None:
+        b = self.buildings.get(order.target)
+        if b is None or not b.done or b.hp >= b.max_hp:
+            u.charge = 0.0
+            self._finish_order(u)
+            return
+        if rect_gap(u.pos, b.rect) - u.radius > TOUCH:
+            if self._approach(u, (b.x + b.size // 2, b.y + b.size // 2), b.center, dt):
+                self.events.append(Event("refused", u.pos, player=u.player, entity=u.id, text="Cannot reach the building"))
+                self._finish_order(u)
+            return
+        u.path = []
+        u.path_goal = None
+        u.state = "repair"
+        self._face(u, b.center)
+        u.charge += REPAIR_RATE * dt
+        if u.charge < REPAIR_CHUNK:
+            return
+        u.charge -= REPAIR_CHUNK
+        amount = min(REPAIR_CHUNK, b.max_hp - b.hp)
+        cost = repair_cost(b.info, amount, b.max_hp)
+        reason = self.can_afford(u.player, cost)
+        if reason is not None:
+            self.events.append(Event("refused", u.pos, player=u.player, entity=u.id, text=f"Cannot repair: {reason}"))
+            u.charge = 0.0
+            self._finish_order(u)
+            return
+        self._pay(u.player, cost)
+        b.hp += amount
+        if b.hp >= b.max_hp:
+            u.charge = 0.0
+            self._finish_order(u)
+
     def _start_building(self, u: Unit, b: Building) -> None:
         b.builder = u.id
         u.constructing = b.id
@@ -1254,7 +1315,7 @@ class World:
             blocked = bytearray(self._blocked)
             width = self.width
             for v in self.units.values():
-                if v is not u and not v.hidden and v.state in ("idle", "attack", "chop"):
+                if v is not u and not v.hidden and v.state in ("idle", "attack", "chop", "repair"):
                     tx, ty = v.tile
                     if (tx, ty) != target and 0 <= tx < width and 0 <= ty < self.height:
                         blocked[ty * width + tx] = 1

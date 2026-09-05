@@ -272,7 +272,7 @@ class MapView:
             return "walk1" if int(self.time * 5 + u.id) % 2 == 0 else "walk2"
         if u.state == "attack":
             return "attack" if u.cooldown > u.info.cooldown - 0.3 else "stand"
-        if u.state == "chop":
+        if u.state in ("chop", "repair"):
             return "attack" if (self.time * 2 + u.id * 0.37) % 1.0 < 0.35 else "stand"
         return "stand"
 

@@ -15,7 +15,7 @@ import random
 
 from dataclasses import dataclass
 
-from warband.model import Attack, AttackMove, Building, Deposit, Harvest, Point, Pos, Unit, World, dist
+from warband.model import Attack, AttackMove, Build, Building, Deposit, Harvest, Point, Pos, Repair, Unit, World, dist
 from warband.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Difficulty, Resource, UnitType, Upgrade
 
 EXPAND_DISTANCE = 14.0  # a mine farther than this from the hall gets a hall of its own
@@ -41,15 +41,16 @@ class Profile:
     clerics: bool  # church and clerics
     harass: bool  # early scouts sent at the enemy's peasants
     reserve: int  # gold kept back before research
+    repair: bool  # peasants mend damaged buildings once the fighting there is over
 
 
 PROFILES: dict[Difficulty, Profile] = {
     Difficulty.EASY: Profile(peasants=7, think_every=2.0, first_wave=10, wave_growth=2, barracks=1, towers=0, tech=False, siege=False,
-                             clerics=False, harass=False, reserve=1500),
+                             clerics=False, harass=False, reserve=1500, repair=False),
     Difficulty.NORMAL: Profile(peasants=10, think_every=1.0, first_wave=8, wave_growth=3, barracks=2, towers=2, tech=True, siege=True,
-                               clerics=False, harass=False, reserve=800),
+                               clerics=False, harass=False, reserve=800, repair=True),
     Difficulty.HARD: Profile(peasants=14, think_every=0.5, first_wave=8, wave_growth=4, barracks=3, towers=3, tech=True, siege=True,
-                             clerics=True, harass=True, reserve=500),
+                             clerics=True, harass=True, reserve=500, repair=True),
 }
 
 
@@ -78,6 +79,7 @@ class Brain:
             return
         self.next_think = world.time + self.profile.think_every
         self._economy(world)
+        self._repairs(world)
         self._construction(world, rng)
         self._training(world)
         self._research(world)
@@ -141,12 +143,29 @@ class Brain:
             elif tree is not None:
                 world.harvest([peasant.id], tree)
 
+    def _repairs(self, world: World) -> None:
+        """One peasant mends the most damaged building, once no enemy is near it."""
+        if not self.profile.repair or any(isinstance(p.order, Repair) for p in self._peasants(world)):
+            return
+        damaged = [b for b in world.player_buildings(self.player, done=True) if b.hp < b.max_hp * 0.7 and b.type is not BuildingType.GOLD_MINE]
+        if not damaged:
+            return
+        b = min(damaged, key=lambda b: b.hp / b.max_hp)
+        if world._nearest_enemy(self.player, b.center, 8.0) is not None:
+            return
+        spare = [p for p in self._peasants(world) if not p.hidden and p.carrying is None and not isinstance(p.order, Build)]
+        if not spare:
+            return
+        peasant = min(spare, key=lambda p: dist(p.pos, b.center))
+        world.repair([peasant.id], b.id)
+        self.log.append((world.time, f"repair {b.type.value} at {b.hp}/{b.max_hp}"))
+
     # -- Construction -----------------------------------------------------------------
 
     def _construction(self, world: World, rng: random.Random) -> None:
         if any(not b.done for b in world.player_buildings(self.player)):
             return  # one site at a time; a builder in trouble would otherwise stall the whole plan
-        peasants = [p for p in self._peasants(world) if not p.hidden and p.carrying is None]
+        peasants = [p for p in self._peasants(world) if not p.hidden and p.carrying is None and not isinstance(p.order, Repair)]
         if not peasants:
             return
         hall = self._hall(world)

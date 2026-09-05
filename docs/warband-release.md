@@ -10,7 +10,8 @@ strategy, on procedural maps that change your opening.
 - Seven units with real roles: peasants, footmen, archers, scouts, knights,
   catapults that batter walls with splash damage, and clerics who heal.
 - Nine buildings and a short tech chain: farms, barracks, lumber mill,
-  blacksmith, stables, workshop, church and guard towers; nine upgrades.
+  blacksmith, stables, workshop, church and guard towers; nine upgrades;
+  peasants repair what the enemy leaves standing.
 - Three AI difficulties that build, expand, upgrade, raid and attack in
   growing waves.
 - Procedural maps in three sizes and three lands — summer, winter and
@@ -30,7 +31,7 @@ See the in-game help (F1) and codex (F2). Summary:
 | Action | Keys |
 |---|---|
 | Select | click, drag a box, double-click or Ctrl-click for a type, Ctrl+A for the army, 1–9 groups (Ctrl+1–9 to set), Tab / . next idle peasant / soldier |
-| Order | right-click (move, harvest, attack, resume building, rally), A attack-move, P patrol, S stop, H hold, M move |
+| Order | right-click (move, harvest, attack, repair, resume building, rally), A attack-move, P patrol, S stop, H hold, M move, R repair |
 | Build | B then F farm, B barracks, H town hall, T tower, M lumber mill, K blacksmith, S stables, W workshop, C church |
 | Train / research | the letters on the command card when a building is selected |
 | Camera | arrows, screen edges, middle-drag, wheel or + / − zoom, F6–F8 bookmarks (Ctrl to set), Space jumps to the last alert, Home or Backspace to the base |
@@ -39,7 +40,6 @@ See the in-game help (F1) and codex (F2). Summary:
 ## Known issues in this candidate
 
 - Units have four animation frames.
-- The AI does not repair buildings, and neither can you.
 - Large maps with three or four players can run past twenty minutes without a decision.
 - Windows and Linux builds have not been produced or tested; the macOS build has been self-tested, not played by a second person.
 - No localisation; English only.

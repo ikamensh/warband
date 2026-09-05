@@ -5,9 +5,11 @@ import random
 import pytest
 
 from warband import mapgen
-from warband.model import Attack, Deposit, Harvest, Move, RuleError, World, dist, tile_center
+import math
+
+from warband.model import Attack, Deposit, Harvest, Move, Repair, RuleError, World, dist, tile_center
 from warband.rules import (
-    BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, SIM_DT, UNITS, BuildingType, Resource, Terrain,
+    BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, REPAIR_COST, SIM_DT, UNITS, BuildingType, Resource, Terrain,
     UnitType,
 )
 
@@ -349,6 +351,36 @@ def test_an_interrupted_site_can_be_cancelled_for_a_refund_or_resumed() -> None:
     world.cancel_building(farm.id)
     assert farm.id not in world.buildings and world.players[0].gold == gold + 500
     assert b.constructing is None and not b.orders
+
+
+def test_peasants_repair_damaged_buildings_for_a_share_of_the_price() -> None:
+    world, hall_id = base_world()
+    hall = world.buildings[hall_id]
+    farm = world.place_building(0, BuildingType.FARM, (hall.x + 5, hall.y + 4))
+    peasant = world.spawn_unit(0, UnitType.PEASANT, (hall.x + 4.5, hall.y + 4.5))
+    footman = world.spawn_unit(0, UnitType.FOOTMAN, (hall.x + 4.5, hall.y + 6.5))
+    with pytest.raises(RuleError, match="Nothing to repair"):
+        world.repair([peasant.id], farm.id)
+    farm.hp = 100
+    with pytest.raises(RuleError, match="Only peasants"):
+        world.repair([footman.id], farm.id)
+    gold, lumber = world.players[0].gold, world.players[0].lumber
+    assert world.smart([peasant.id, footman.id], farm.center) == "repair"
+    assert isinstance(peasant.order, Repair) and isinstance(footman.order, Move)
+    run(world, 2.0)  # ten hit points are paid for at a time
+    assert peasant.state == "repair" and farm.hp > 100
+    run_until(world, lambda: farm.hp >= farm.max_hp, 60.0)
+    assert not peasant.orders and peasant.state == "idle"
+    least = math.ceil(BUILDINGS[BuildingType.FARM].cost.gold * REPAIR_COST * 300 / farm.max_hp)
+    assert least <= gold - world.players[0].gold <= least + 30 and lumber - world.players[0].lumber > 0  # paid per ten hit points, rounded up
+    farm.hp = 50
+    world.players[0].gold = 0
+    world.repair([peasant.id], farm.id)
+    run(world, 3.0)
+    assert any(e.text.startswith("Cannot repair") for e in events(world, "refused")) and not peasant.orders and farm.hp <= 60
+    world.players[0].gold = 1000
+    world.repair([peasant.id], farm.id)
+    assert isinstance(World.from_dict(world.to_dict()).units[peasant.id].order, Repair)
 
 
 def test_training_costs_gold_takes_time_and_needs_farms() -> None:

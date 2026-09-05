@@ -20,6 +20,7 @@ Balance in one table (base values; upgrades in :data:`UPGRADES`):
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from enum import Enum
 
 
@@ -213,6 +214,15 @@ GOLD_PER_TRIP = 100
 LUMBER_PER_TRIP = 100
 MINE_TIME = 5.0  # seconds a peasant spends inside a mine per trip
 CHOP_TIME = 5.0  # seconds to fell a tree
+REPAIR_RATE = 8.0  # hit points a peasant mends per second
+REPAIR_CHUNK = 10  # hit points paid for at a time while repairing
+REPAIR_COST = 0.5  # share of a building's price that mending all of its hit points costs
+
+
+def repair_cost(info: BuildingInfo, amount: int, max_hp: int) -> Cost:
+    """What mending *amount* of a building's *max_hp* hit points costs: REPAIR_COST of its price, pro rata."""
+    share = REPAIR_COST * amount / max_hp
+    return Cost(math.ceil(info.cost.gold * share), math.ceil(info.cost.lumber * share))
 MINE_GOLD = 50_000  # a base mine; expansion mines hold EXPANSION_GOLD
 EXPANSION_GOLD = 30_000
 STARTING_GOLD = 1000

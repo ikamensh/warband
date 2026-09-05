@@ -3,7 +3,7 @@
 import pytest
 
 from saga2d import Game
-from warband.model import Attack, AttackMove, Build, Harvest, Move, tile_center
+from warband.model import Repair, Attack, AttackMove, Build, Harvest, Move, tile_center
 from warband.rules import BUILDINGS, SIM_DT, UNITS, BuildingType, UnitType
 from warband.scene import CARD_NAMES, GameOverScene, GameScene, HelpScene, PauseScene, SettingsScene, new_game
 from warband.style import build_theme
@@ -78,7 +78,7 @@ def test_clicking_a_peasant_selects_it_and_shows_its_card(play) -> None:
     assert scene.selection == [peasant.id]
     shown = texts(game)
     assert "Peasant" in shown and any(t.startswith("Damage 3") for t in shown)
-    assert [c.label for c in scene._card] == ["Move", "Stop", "Attack", "Hold", "Patrol", "Build"]
+    assert [c.label for c in scene._card] == ["Move", "Stop", "Attack", "Hold", "Patrol", "Build", "Repair"]
     assert "select" in scene.recent_sounds
 
 
@@ -164,6 +164,25 @@ def test_every_building_is_on_the_build_menu_with_its_hotkey_and_its_reason_when
     assert scene.pending is None and scene.status == "Requires a Barracks"
     press(game, "m")  # a lumber mill only needs the town hall
     assert scene.pending == "build:lumber_mill"
+
+
+def test_r_then_a_click_on_a_damaged_building_sends_the_peasants_to_repair_it(play) -> None:
+    game, scene = play
+    world = scene.world
+    hall = hall_of(scene)
+    farm = world.place_building(scene.human, BuildingType.FARM, (hall.x + 5, hall.y + 4))
+    peasant = peasants_of(scene)[0]
+    scene.select([peasant.id])
+    press(game, "r")
+    assert scene.pending == "repair"
+    click(game, scene, farm.center)
+    assert scene.pending is None and scene.status == "Nothing to repair"
+    farm.hp = 100
+    press(game, "r")
+    click(game, scene, farm.center)
+    assert isinstance(peasant.order, Repair)
+    scene.select([peasant.id])
+    assert ("B / R", "build / repair") in scene._hint()
 
 
 def test_the_town_hall_trains_a_peasant_with_p_and_the_rally_point_by_right_click(play) -> None:
