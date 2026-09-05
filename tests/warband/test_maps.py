@@ -1,47 +1,12 @@
 """Fairness across seeds, sizes and themes: every base can play the same opening."""
 
-from collections import deque
-
 import pytest
 
 from warband import mapgen
-from warband.model import World
+from warband.mapgen import audit as fairness
 from warband.rules import BuildingType, MapTheme, Terrain, UnitType
 
 SEEDS = range(1, 41)
-
-
-def reachable(world: World, start) -> set:
-    seen = {start}
-    queue = deque([start])
-    while queue:
-        x, y = queue.popleft()
-        for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
-            if n not in seen and world.passable(*n):
-                seen.add(n)
-                queue.append(n)
-    return seen
-
-
-def fairness(world: World) -> dict:
-    """The numbers a base needs; every failure message names the seed's problem."""
-    halls = world.player_buildings(None) if False else [b for b in world.buildings.values() if b.type is BuildingType.TOWN_HALL]
-    doors = [world.free_tile_near(h.rect) for h in halls]
-    region = reachable(world, doors[0])
-    report = {"players": len(halls), "open": [], "mine": [], "wood": []}
-    for hall in halls:
-        cx, cy = int(hall.center[0]), int(hall.center[1])
-        open_ground = sum(1 for dx in range(-6, 7) for dy in range(-6, 7) if world.passable(cx + dx, cy + dy))
-        report["open"].append(open_ground)
-        report["mine"].append(min(max(abs(m.center[0] - hall.center[0]), abs(m.center[1] - hall.center[1])) for m in world.mines()))
-        tree = world.nearest_tree(hall.center, 12)
-        report["wood"].append(None if tree is None else max(abs(tree[0] - cx), abs(tree[1] - cy)))
-    report["connected"] = all(d in region for d in doors) and all(world.free_tile_near(m.rect) in region for m in world.mines())
-    report["expansions"] = len(world.mines()) - len(halls)
-    total = world.width * world.height
-    report["trees"] = sum(1 for row in world.terrain for t in row if t is Terrain.TREES) / total
-    report["water"] = sum(1 for row in world.terrain for t in row if t is Terrain.WATER) / total
-    return report
 
 
 @pytest.mark.parametrize("theme", list(MapTheme))
