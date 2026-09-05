@@ -96,6 +96,7 @@ EARTH = (146, 116, 84)
 SHADOW = (0, 0, 0, 90)
 WHITE = (255, 255, 255)
 SNOW = (240, 244, 250)
+BOULDER = (132, 130, 126)  # the stone a catapult throws
 TRUNK = PALETTES[MapTheme.SUMMER].trunk
 
 
@@ -503,7 +504,7 @@ def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource 
         mesh += r3.box((0, -0.15, 0.55), (0.5, 0.08, 0.5), wood)  # frame upright
         mesh += r3.box((0, arm_y, 0.8), (0.07, 0.9, 0.07), wood)  # throwing arm
         mesh += r3.box((0, arm_y - 0.42, 0.86), (0.22, 0.2, 0.14), dark)  # bucket
-        mesh += r3.sphere((0, arm_y - 0.42, 0.98), 0.09, ROCK, rings=3, sides=6)
+        mesh += r3.sphere((0, arm_y - 0.42, 0.98), 0.09, BOULDER, rings=3, sides=6)
         mesh += r3.box((0, 0.2, 0.34), (0.3, 0.06, 0.1), team)
         return mesh
     if unit_type is UnitType.CLERIC:

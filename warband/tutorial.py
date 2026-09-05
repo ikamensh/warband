@@ -44,14 +44,14 @@ def _harvesting(scene: GameScene, gold: bool) -> bool:
 
 
 OBJECTIVES: tuple[Objective, ...] = (
-    Objective("Select a peasant: click one, or drag a box around them", lambda s: any(isinstance(s.world.units.get(i), object) and s.world.units[i].is_worker for i in s.selection if i in s.world.units)),
-    Objective("Send peasants to the gold mine: right-click the mine", lambda s: _harvesting(s, gold=True)),
-    Objective("Put a peasant on lumber: right-click a tree", lambda s: _harvesting(s, gold=False)),
-    Objective("Build a farm for supply: select a peasant, press B then F, click open ground", lambda s: bool(_buildings(s, BuildingType.FARM))),
-    Objective("Build a barracks: B then B", lambda s: bool(_buildings(s, BuildingType.BARRACKS))),
+    Objective("Select a peasant: click one (or drag a box)", lambda s: any(isinstance(s.world.units.get(i), object) and s.world.units[i].is_worker for i in s.selection if i in s.world.units)),
+    Objective("Right-click the gold mine to send it mining", lambda s: _harvesting(s, gold=True)),
+    Objective("Right-click a tree with another peasant for lumber", lambda s: _harvesting(s, gold=False)),
+    Objective("Build a farm: select a peasant, B then F, click open ground", lambda s: bool(_buildings(s, BuildingType.FARM))),
+    Objective("Build a barracks the same way: B then B", lambda s: bool(_buildings(s, BuildingType.BARRACKS))),
     Objective("Train a footman: select the barracks, press F", lambda s: any(u.type is UnitType.FOOTMAN for u in _units(s)) or any(b.queue for b in _buildings(s, BuildingType.BARRACKS, done=True))),
-    Objective("Gather your army (Ctrl+A) and attack-move (A) towards the enemy", lambda s: any(isinstance(o, (AttackMove, Patrol)) for u in _units(s) for o in u.orders) or s.stats["buildings_razed"] > 0),
-    Objective("Raze every enemy building to win — F2 opens the codex, F1 the controls", lambda s: False),
+    Objective("Gather the army (Ctrl+A), press A and click towards the enemy", lambda s: any(isinstance(o, (AttackMove, Patrol)) for u in _units(s) for o in u.orders) or s.stats["buildings_razed"] > 0),
+    Objective("Raze every enemy building to win.  F2: codex, F1: controls", lambda s: False),
 )
 
 

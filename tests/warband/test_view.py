@@ -7,7 +7,7 @@ from PIL import Image
 from saga2d import Game
 from warband import textures
 from warband.model import tile_center
-from warband.rules import BuildingType, MapTheme, Terrain, UnitType
+from warband.rules import BuildingType, MapTheme, Resource, Terrain, UnitType
 from warband.scene import new_game
 from warband.style import build_theme
 from warband.textures import TILE
@@ -111,6 +111,13 @@ def test_unit_images_are_rendered_on_demand_per_facing_and_frame(play) -> None:
     game, scene = play
     key = textures.unit_image(game, UnitType.KNIGHT, 1, 6, "attack")
     assert game.assets.has_image(key) and textures.placements[key].drop == textures.DROP_UNIT
+    for unit_type in UnitType:  # every unit, frame and carry variant renders (a missing colour name would raise here)
+        for frame in textures.FRAMES:
+            textures.unit_image(game, unit_type, 1, 3, frame)
+    for carrying in (Resource.GOLD, Resource.LUMBER):
+        textures.unit_image(game, UnitType.PEASANT, 0, 2, "walk1", carrying)
+    for theme in MapTheme:
+        textures.register_theme(game, theme)
     assert textures.facing_index(0.0) == 0 and textures.facing_index(3.1416 / 2) == 2 and textures.facing_index(-3.1416 / 2) == 6
     other = textures.unit_image(game, UnitType.KNIGHT, 1, 6, "attack")
     assert other == key

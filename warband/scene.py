@@ -209,10 +209,10 @@ class GameScene(Scene):
         self.ui.add(KeyHints(self._hint, anchor=Anchor.BOTTOM_CENTER, margin=5))
         self.ui.add(Label(lambda: self.status if self.status_timer > 0 else "", text_style="hud", anchor=Anchor.TOP_CENTER, margin=(0, 70), text_color=GOLD))
         self.objectives = Column(spacing=4, anchor=Anchor.TOP_RIGHT, margin=12, style=PANEL_STYLE)
-        self.objectives.add(Row(Label("Getting started", text_style="heading", width=250),
+        self.objectives.add(Row(Label("Getting started", text_style="heading", width=290),
                                 Button("Hide", hotkey="F4", on_click=self.hide_tutorial, style=GHOST_BUTTON, width=90), spacing=8))
-        self.objective_label = Label("", text_style="body", width=350)
-        self.objective_done = Label("", text_style="sub", width=350)
+        self.objective_label = Label("", text_style="body", width=390)
+        self.objective_done = Label("", text_style="sub", width=390)
         self.objectives.add(self.objective_label)
         self.objectives.add(self.objective_done)
         self.objectives.visible = self.tutorial is not None
