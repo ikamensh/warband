@@ -46,3 +46,13 @@ A gate is incomplete until evidence below proves it.
   track, `--selftest`, build/report/soak tools, release pack; `76619dd` merge
   with main's hardened saves; `bbdbd53` corner-steering deadlock from fuzz
   seed 203.
+- 2026-09-05/06: `d270bbb` the build menu offers all nine buildings (the
+  player could not raise the tech chain before); `0630136` frame times
+  under 16 ms (GL checks off, pooled immediate images, change-only
+  setters, `tools/perf_warband.py`); `32e05a8` moving water; `029a61b`
+  burning buildings; `7c7f3cd` walks settle against a pinned crowd (fuzz
+  seed 2016); `08b45ca` difficulty ladder; `d3be67f`
+  `saga2d.testing.FrameTimer`; `1e9a07c` map audit in mapgen and
+  `tools/map_report.py`; README covers the whole game.  Inspected
+  artefacts: build menu at 1280×800, three water phases side by side, a
+  smoking and a burning building, a 72-frame battle capture.
