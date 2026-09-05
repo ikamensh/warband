@@ -2,6 +2,7 @@
 
     uv run python tools/ai_report.py                 # 3 difficulties × 4 seeds against the script, 8 Normal-vs-Normal matches
     uv run python tools/ai_report.py --seeds 8 --decide 20
+    uv run python tools/ai_report.py --seeds 0 --decide 0 --ladder 4   # every pair of difficulties head to head, sides swapped per seed
 
 The script plays a plain human opening through World commands: peasants
 mine and chop, farms keep supply ahead, a barracks then a second one, a
@@ -110,10 +111,11 @@ def match(seed: int, difficulty: Difficulty, *, minutes: int = MINUTES) -> tuple
     return world.winner, world.time, {"armies": armies, "buildings": {p.id: len(world.player_buildings(p.id)) for p in world.players}, "attacks": script.attacked}
 
 
-def ai_vs_ai(seed: int, difficulty: Difficulty, *, minutes: int) -> tuple[int | None, float]:
+def ai_vs_ai(seed: int, difficulty: Difficulty, other: Difficulty | None = None, *, minutes: int) -> tuple[int | None, float]:
+    """Player 0 plays *difficulty*, player 1 plays *other* (the same difficulty by default)."""
     rng = random.Random(seed)
     world = mapgen.generate(seed=seed, players=2, human=None)
-    brains = [Brain(0, difficulty), Brain(1, difficulty)]
+    brains = [Brain(0, difficulty), Brain(1, other or difficulty)]
     for _ in range(int(minutes * 60 / SIM_DT)):
         if world.winner is not None:
             break
@@ -128,6 +130,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--seeds", type=int, default=4)
     parser.add_argument("--decide", type=int, default=8, help="Normal-vs-Normal matches on Medium for the decided-within-20-minutes rate")
+    parser.add_argument("--ladder", type=int, default=0, help="seeds per pair of difficulties, each played from both sides")
     args = parser.parse_args()
     print("Scripted opening against each difficulty (winner 0 = the script):")
     for difficulty in Difficulty:
@@ -144,7 +147,20 @@ def main() -> None:
         decided += winner is not None
         times.append(t / 60)
         print(f"  normal vs normal seed {seed}: winner {winner} at {t / 60:.1f} min")
-    print(f"Normal vs Normal on Medium: {decided}/{args.decide} decided within {MINUTES} minutes; mean {sum(times) / len(times):.1f} min")
+    if args.decide:
+        print(f"Normal vs Normal on Medium: {decided}/{args.decide} decided within {MINUTES} minutes; mean {sum(times) / len(times):.1f} min")
+    levels = list(Difficulty)
+    for i, weaker in enumerate(levels):
+        for stronger in levels[i + 1:]:
+            wins = 0
+            for seed in range(201, 201 + args.ladder):
+                for side in (0, 1):  # the stronger brain plays each seed from both sides
+                    pair = (stronger, weaker) if side == 0 else (weaker, stronger)
+                    winner, t = ai_vs_ai(seed, pair[0], pair[1], minutes=MINUTES)
+                    wins += winner == side
+                    print(f"  {stronger.value} (player {side}) vs {weaker.value} seed {seed}: winner {winner} at {t / 60:.1f} min")
+            if args.ladder:
+                print(f"  → {stronger.value} won {wins}/{2 * args.ladder} against {weaker.value}")
 
 
 if __name__ == "__main__":
