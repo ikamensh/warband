@@ -63,8 +63,9 @@ in `~/.warband` (`settings.json`, `saves/`, generated `sounds/` and
 
 ## Version
 
-Candidate built from the `warband` branch; the build script prints the
-executable's size, hash and platform (`tools/build_warband.py`). Audited
+Candidate built from the `warband` branch on 2026-09-06 (sha256 `15366f1f39a15eff`,
+macOS arm64); the build script prints the executable's size, hash and
+platform (`tools/build_warband.py`). Audited
 against the code on 2026-09-05: every control in the table above is bound
 in `warband/scene.py` (`controls`, the command card and `HELP_KEYS`), and
 the content counts match `warband/rules.py`.
