@@ -14,7 +14,7 @@ from warband.sound import SoundBank
 @pytest.fixture(scope="session")
 def generated(tmp_path_factory) -> Path:
     root = tmp_path_factory.mktemp("warband")
-    sound.synth.generate(root, sound.SOUND_VERSION, sound.SOUNDS, {sound.MUSIC: sound.march})
+    sound.synth.generate(root, sound.SOUND_VERSION, sound.SOUNDS, {"march": sound.march, "vigil": sound.vigil})
     return root
 
 
@@ -47,8 +47,9 @@ def test_every_scene_event_has_an_effect_that_is_normalised_and_click_free(gener
         assert np.abs(np.diff(mono)).max() < 0.5, name
 
 
-def test_the_march_is_stereo_quiet_and_loops_seamlessly(generated: Path) -> None:
-    data, rate = read_wav(generated / "music" / "march.wav")
+@pytest.mark.parametrize("track", ("march", "vigil"))
+def test_the_tracks_are_stereo_quiet_and_loop_seamlessly(generated: Path, track: str) -> None:
+    data, rate = read_wav(generated / "music" / f"{track}.wav")
     assert data.shape[1] == 2 and 40 <= len(data) / rate <= 46
     assert 0.3 <= np.abs(data).max() <= 0.6
     assert np.abs(data[-1] - data[0]).max() <= np.abs(np.diff(data, axis=0)).max()

@@ -160,3 +160,28 @@ def test_a_new_map_of_the_same_size_reuses_the_ground_fog_and_minimap_images(pla
     game.tick(1 / 60)
     assert len(game.backend._image_sizes) == before
     assert Image  # the PIL import is what the view feeds update_image
+
+
+def test_a_site_shows_the_building_rising_and_a_battered_building_smokes(play) -> None:
+    game, scene = play
+    world, view = scene.world, scene.view
+    hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    site = world.place_building(scene.human, BuildingType.FARM, (hall.x + 5, hall.y + 4), done=False)
+    game.tick(1 / 60)
+    assert view._building_keys[site.id] == "site.2"
+    site.progress = site.info.build_time * 0.6
+    game.tick(1 / 60)
+    assert view._building_keys[site.id] == textures.building_key(BuildingType.FARM, scene.human) and view.building_sprite(site.id).opacity == 150
+    site.progress = site.info.build_time
+    site.hp = site.max_hp
+    game.tick(1 / 60)
+    assert view.building_sprite(site.id).opacity == 255 and site.id not in view._smoke
+    site.hp = site.max_hp // 3
+    game.tick(1 / 60)
+    assert site.id in view._smoke
+    for _ in range(30):
+        game.tick(1 / 60)
+    assert view._smoke[site.id].particle_count > 0
+    site.hp = site.max_hp
+    game.tick(1 / 60)
+    assert site.id not in view._smoke

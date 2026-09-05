@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from PIL import Image
 
-from saga2d import Game, RenderLayer, Scene, Sprite, SpriteAnchor
+from saga2d import Game, ParticleEmitter, RenderLayer, Scene, Sprite, SpriteAnchor
 from warband import textures
 from warband.model import Building, Entity, Pos, Unit, World
 from warband.rules import BUILDINGS, VISION_EVERY, BuildingType, Terrain
@@ -70,6 +70,7 @@ class MapView:
         self._building_keys: dict[int, str] = {}
         self._units: dict[int, Sprite] = {}
         self._unit_keys: dict[int, str] = {}
+        self._smoke: dict[int, ParticleEmitter] = {}
         self._vision_tick = -1
         self._minimap_time = -1.0
         self.fog_key = f"fog.{world.width}x{world.height}"
@@ -127,6 +128,9 @@ class MapView:
             for sprite in group.values():
                 sprite.remove()
             group.clear()
+        for emitter in self._smoke.values():
+            emitter.remove()
+        self._smoke.clear()
         self._building_keys.clear()
         self._unit_keys.clear()
         self.world = world
@@ -166,23 +170,43 @@ class MapView:
                 sprite.remove()
                 del self._buildings[bid]
                 del self._building_keys[bid]
+                smoke = self._smoke.pop(bid, None)
+                if smoke is not None:
+                    smoke.remove()
         for b in world.buildings.values():
             if not self._known(b):
                 continue
+            rising = not b.done and b.progress >= b.info.build_time / 2  # the second half of construction shows the building going up
             if b.type is BuildingType.GOLD_MINE:
                 key = "mine"
-            elif b.done:
+            elif b.done or rising:
                 key = textures.building_image(self.game, b.type, b.player)  # type: ignore[arg-type]
             else:
                 key = f"site.{b.size}"
             sprite = self._buildings.get(b.id)
             if sprite is None:
-                self._buildings[b.id] = self._prop(key, b.center)
+                sprite = self._buildings[b.id] = self._prop(key, b.center)
                 self._building_keys[b.id] = key
             elif self._building_keys[b.id] != key:
                 sprite.image = key
                 sprite.size = textures.placements[key].size
                 self._building_keys[b.id] = key
+            sprite.opacity = 150 if rising else 255
+            self._sync_smoke(b, sprite)
+
+    def _sync_smoke(self, b: Building, sprite: Sprite) -> None:
+        """A damaged building smoulders: smoke rises from its roof while it is under half health."""
+        burning = b.done and b.type is not BuildingType.GOLD_MINE and b.hp < b.max_hp / 2 and self.world.is_visible(self.player, (int(b.center[0]), int(b.center[1])))
+        emitter = self._smoke.get(b.id)
+        if burning and emitter is None:
+            wx, wy = to_world(b.center)
+            emitter = ParticleEmitter("smoke", position=(wx, wy - b.size * TILE * 0.5), speed=(8, 26), direction=(250, 290), lifetime=(1.2, 2.2),
+                                      size=(18, 18), fade_out=True, layer=RenderLayer.EFFECTS)
+            emitter.continuous(rate=3 + 3 * (1 - b.hp / max(1, b.max_hp)))
+            self._smoke[b.id] = self.scene.add_emitter(emitter)
+        elif not burning and emitter is not None:
+            emitter.remove()
+            del self._smoke[b.id]
 
     def _frame(self, u: Unit) -> str:
         if u.state == "move":

@@ -35,6 +35,9 @@ BLOCKING = frozenset({Terrain.WATER, Terrain.TREES, Terrain.ROCK})
 ARRIVE = 0.12  # a unit is "there" within this many tiles of its target point
 TOUCH = 0.4  # gap at which a peasant can enter a mine, deliver, or start building (a diagonal neighbour counts)
 STUCK_AFTER = 0.8  # seconds without progress before a unit paths again around the units in its way
+REPLAN_EVERY = 0.6  # a unit plans at most this often unless it gets a new order (a melee would otherwise plan every tick)
+STEER_RANGE = 4.0  # within this many tiles a unit walks straight at its target when the line is clear, without A*
+LOCAL_EXPANSIONS = 700  # A* budget for the detours around other units; those goals are close
 MINE_CLEARANCE = 2  # tiles kept free around a gold mine so peasants can get in and out
 SIDESTEP = 0.6  # lateral share of the push when walking units collide
 
@@ -144,6 +147,7 @@ class Unit:
     progress: float = 0.0
     last_distance: float = math.inf
     charge: float = 0.0  # healing accumulated below one hit point
+    replan_at: float = 0.0  # simulation time from which the unit may plan again
 
     @property
     def pos(self) -> Point:
@@ -1006,10 +1010,12 @@ class World:
                     u.timer = 0.0
                     self.events.append(Event("heal", patient.pos, player=u.player, entity=u.id, other=patient.id, amount=amount))
             return
+        if self._steer(u, patient.pos, dt):
+            return
         goal = patient.tile
-        if u.path_goal is None or dist(tile_center(u.path_goal), tile_center(goal)) > 1.5:
+        if u.path_goal is None or (dist(tile_center(u.path_goal), tile_center(goal)) > 1.5 and self.time >= u.replan_at):
             self._plan(u, goal, patient.pos)
-        if self._follow(u, dt) and u.path_goal != goal:
+        if self._follow(u, dt) and u.path_goal != goal and self.time >= u.replan_at:
             self._plan(u, goal, patient.pos)
 
     def _do_hold(self, u: Unit) -> None:
@@ -1084,13 +1090,17 @@ class World:
                 self._strike(u, target)
                 u.cooldown = u.info.cooldown
             return
-        goal_tile = (int(self._target_point(target)[0]), int(self._target_point(target)[1]))
+        aim = self._target_point(target)
         if isinstance(target, Building):
-            goal_tile = (target.x + target.size // 2, target.y + target.size // 2)
-        if u.path_goal is None or dist(tile_center(u.path_goal), tile_center(goal_tile)) > 1.5:
-            self._plan(u, goal_tile, self._target_point(target))
-        if self._follow(u, dt) and u.path_goal != goal_tile:
-            self._plan(u, goal_tile, self._target_point(target))
+            x, y, w, h = target.rect
+            aim = (min(max(u.x, x + 0.5), x + w - 0.5), min(max(u.y, y + 0.5), y + h - 0.5))  # the nearest wall
+        if self._steer(u, aim, dt):
+            return
+        goal_tile = (int(aim[0]), int(aim[1]))
+        if u.path_goal is None or (dist(tile_center(u.path_goal), tile_center(goal_tile)) > 1.5 and self.time >= u.replan_at):
+            self._plan(u, goal_tile, aim)
+        if self._follow(u, dt) and u.path_goal != goal_tile and self.time >= u.replan_at:
+            self._plan(u, goal_tile, aim)
 
     def _do_harvest(self, u: Unit, order: Harvest, dt: float) -> None:
         if u.carrying is not None:
@@ -1231,14 +1241,26 @@ class World:
             nearest = pathing.nearest_passable(start, self.passable)
             if nearest is not None:
                 start = nearest
+        target = goal
+        if not self.passable(*goal):
+            # A blocked goal (a building, a tree, water) would make A* explore everything it can reach
+            # before settling for the nearest tile; aim at that tile from the start.
+            nearest = pathing.nearest_passable(goal, self.passable, prefer=start)
+            if nearest is not None:
+                target = nearest
+        u.replan_at = self.time + REPLAN_EVERY
         if around_units:
-            occupied = {v.tile for v in self.units.values() if v is not u and not v.hidden and v.state in ("idle", "attack", "chop")}
-            occupied.discard(goal)
-            passable = lambda x, y: self.passable(x, y) and (x, y) not in occupied  # noqa: E731
+            blocked = bytearray(self._blocked)
+            width = self.width
+            for v in self.units.values():
+                if v is not u and not v.hidden and v.state in ("idle", "attack", "chop"):
+                    tx, ty = v.tile
+                    if (tx, ty) != target and 0 <= tx < width and 0 <= ty < self.height:
+                        blocked[ty * width + tx] = 1
+            u.path = pathing.find_path_grid(start, target, blocked, width, self.height, max_expansions=LOCAL_EXPANSIONS)
         else:
-            passable = self.passable
-        u.path = pathing.find_path(start, goal, passable)
-        u.path_goal = goal
+            u.path = pathing.find_path_grid(start, target, self._blocked, self.width, self.height)
+        u.path_goal = goal  # the goal as asked, so a repeated request is recognised
         u.last_distance = math.inf
         u.progress = 0.0
         u.exact = None
@@ -1278,8 +1300,10 @@ class World:
             tx, ty = u.tile
             if not self.passable(*u.path[0]) or max(abs(u.path[0][0] - tx), abs(u.path[0][1] - ty)) > 1:
                 # Something was built across the path, or a crowd pushed the unit off it.
-                self._plan(u, u.path_goal, u.exact, around_units=True)
-                return False
+                if self.time >= u.replan_at:
+                    self._plan(u, u.path_goal, u.exact, around_units=True)
+                    return False
+                u.path.insert(0, u.tile)
         dx, dy = waypoint[0] - u.x, waypoint[1] - u.y
         d = math.hypot(dx, dy)
         step = self.speed_of(u) * dt
@@ -1308,10 +1332,39 @@ class World:
             u.progress = 0.0
         else:
             u.progress += dt
-            if u.progress >= STUCK_AFTER and u.path_goal is not None:
+            if u.progress >= STUCK_AFTER and u.path_goal is not None and self.time >= u.replan_at:
                 self._plan(u, u.path_goal, u.exact, around_units=True)
                 u.last_distance = remaining
         return False
+
+    def _line_clear(self, a: Point, b: Point) -> bool:
+        """No blocked tile on the straight line from *a* to *b* (sampled every quarter tile)."""
+        d = dist(a, b)
+        steps = max(1, int(d / 0.25))
+        for i in range(1, steps + 1):
+            t = i / steps
+            if not self.passable(int(a[0] + (b[0] - a[0]) * t), int(a[1] + (b[1] - a[1]) * t)):
+                return False
+        return True
+
+    def _steer(self, u: Unit, target: Point, dt: float) -> bool:
+        """Walk straight at *target* when it is near and the line is clear; True if that was possible."""
+        if dist(u.pos, target) > STEER_RANGE or not self._line_clear(u.pos, target):
+            return False
+        u.path = []
+        u.path_goal = None
+        u.exact = None
+        u.state = "move"
+        dx, dy = target[0] - u.x, target[1] - u.y
+        d = math.hypot(dx, dy)
+        if d < 1e-6:
+            return True
+        step = min(d, self.speed_of(u) * dt)
+        u.facing = math.atan2(dy, dx)
+        nx, ny = u.x + dx / d * step, u.y + dy / d * step
+        if self.passable(int(nx), int(ny)):
+            u.x, u.y = nx, ny
+        return True
 
     def _separate(self) -> None:
         """Push overlapping units apart, never into blocked tiles."""

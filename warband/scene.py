@@ -18,7 +18,7 @@ from warband import mapgen
 from warband.ai import Brain
 from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
 from warband.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, MapTheme, UnitType, Upgrade
-from warband.sound import apply_volumes, play_sound
+from warband.sound import TRACKS, apply_volumes, play_music, play_sound
 from warband.style import ACTION_BUTTON, BAD, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE
 from warband.textures import TILE
 from warband.tutorial import OBJECTIVES, Tutorial
@@ -132,6 +132,7 @@ class GameScene(Scene):
         self._sound_times: dict[str, float] = {}
         self._last_click: tuple[float, int | None] = (-10.0, None)
         self.bookmarks: dict[int, tuple[float, float]] = {}
+        self._warm = None  # renders the unit images over the first frames
 
     # -- Lifecycle -------------------------------------------------------------
 
@@ -143,6 +144,10 @@ class GameScene(Scene):
         self.center_base(instant=True)
         self.effects.add(Banner("Warband", subtitle=f"{self.player.name} against {', '.join(p.name for p in self.world.players if p.id != self.human)}",
                                 accent=rgba(self.player.color)))
+        from warband import textures
+
+        self._warm = textures.warm_units(self.game, [p.id for p in self.world.players])
+        play_music(TRACKS[self.seed % len(TRACKS)])  # matches alternate between the march and the vigil
 
     def _setup_camera(self) -> None:
         w, h = self.game.resolution
@@ -806,6 +811,11 @@ class GameScene(Scene):
     def update(self, dt: float) -> None:
         self.clock += dt
         self.status_timer = max(0.0, self.status_timer - dt)
+        if self._warm is not None:
+            for _ in range(6):
+                if next(self._warm, None) is None:
+                    self._warm = None
+                    break
         if not self.paused and not self._game_over:
             self._acc += min(dt, 0.25) * self.speed
             steps = 0

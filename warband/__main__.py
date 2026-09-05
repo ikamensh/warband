@@ -25,7 +25,11 @@ def main() -> None:
     parser.add_argument("--difficulty", choices=[d.value for d in Difficulty], default="normal")
     parser.add_argument("--theme", choices=[t.value for t in MapTheme], default="summer")
     parser.add_argument("--fullscreen", action="store_true")
+    parser.add_argument("--selftest", metavar="PNG", help="start a match in a hidden window, save one frame to PNG and exit (for packaged builds)")
     args = parser.parse_args()
+    if args.selftest:
+        selftest(args.selftest)
+        return
     game = Game("Warband", resolution=None, fullscreen=args.fullscreen, theme=build_theme())
     settings = game.settings(DEFAULT_SETTINGS)
     if args.fullscreen:
@@ -39,6 +43,23 @@ def main() -> None:
                           settings=settings))
     else:
         game.run(TitleScene(size=args.size, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme), settings=settings))
+
+
+def selftest(png: str) -> None:
+    """Prove a build works without a screen: fonts, art, sound files and a rendered frame."""
+    import os
+
+    os.environ["SAGA2D_SILENT"] = "1"
+    game = Game("Warband", resolution=(1280, 800), visible=False, theme=build_theme())
+    fonts.load(game)
+    bank = sound.install(game)
+    game.push(new_game(1, settings=game.settings(DEFAULT_SETTINGS)))
+    for _ in range(5):
+        game.tick(1 / 60)
+    game.backend.capture_frame().save(png)
+    print(f"warband selftest: {len(bank.names)} sounds, frame written to {png}")
+    game._teardown()
+    game.backend.quit()
 
 
 if __name__ == "__main__":

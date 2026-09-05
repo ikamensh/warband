@@ -20,8 +20,9 @@ from saga2d import Game, synth
 from saga2d.synth import BELL, BRASS, DARK, GLASS, SOFT, hz, level, mix, noise, pan, thump, tone
 from saga2d.synth import seconds as sample_times
 
-SOUND_VERSION = "1"
+SOUND_VERSION = "2"
 MUSIC = "march"
+TRACKS = ("march", "vigil")
 
 #: ``play_sound(name)`` forwards here when set; ``None`` is silent.
 sound_hook: Callable[[str], None] | None = None
@@ -210,6 +211,29 @@ def march() -> np.ndarray:
     return level(out * swell[:, None], 0.45)
 
 
+_VIGIL: tuple[tuple[int, tuple[str, ...]], ...] = (
+    (4, ("D3", "A3", "D4", "F4")), (4, ("A#2", "F3", "A#3", "D4")), (4, ("C3", "G3", "C4", "E4")), (4, ("D3", "A3", "D4", "F4")),
+)
+
+
+def vigil() -> np.ndarray:
+    """The quieter track: a slow D-minor drone with a bell every few bars and no drums — the night watch."""
+    n = int(round(LOOP_SECONDS * synth.SAMPLE_RATE))
+    out = np.zeros((n, 2))
+    start = 0.0
+    for bars, chord in _VIGIL:
+        length = bars * BAR
+        _add_wrapped(out, 0.55 * _drone(chord, length + 1.2), start - 0.6)
+        start += length
+    rng = random.Random(11)
+    for bar in range(BARS):
+        if bar % 2 == 0:
+            note = rng.choice(("D5", "F5", "A5", "D6"))
+            _add_wrapped(out, pan(tone(note, 2.2, attack=0.02, tau=1.1, partials=BELL) * 0.16, rng.uniform(-0.5, 0.5)), bar * BAR + rng.uniform(0, BEAT))
+    swell = 0.85 + 0.15 * np.sin(2 * np.pi * sample_times(LOOP_SECONDS) / (LOOP_SECONDS / 3))
+    return level(out * swell[:, None], 0.4)
+
+
 # -- Bank --------------------------------------------------------------------
 
 
@@ -218,17 +242,27 @@ class SoundBank(synth.SynthBank):
 
     def __init__(self, game: Game, data_dir: Path | str | None = None) -> None:
         super().__init__(game, data_dir if data_dir is not None else Path.home() / ".warband", version=SOUND_VERSION,
-                         sounds=SOUNDS, music={MUSIC: march})
+                         sounds=SOUNDS, music={"march": march, "vigil": vigil})
 
     def start_music(self, name: str = MUSIC) -> None:  # type: ignore[override]
         super().start_music(name)
 
 
+#: ``play_music(name)`` forwards here when set; the match alternates the tracks.
+music_hook: Callable[[str], None] | None = None
+
+
+def play_music(name: str) -> None:
+    if music_hook is not None:
+        music_hook(name)
+
+
 def install(game: Game) -> SoundBank:
-    """Create the bank, route the game's sound events to it and start the music."""
-    global sound_hook, volume_hook
+    """Create the bank, route the game's sound and music events to it and start the music."""
+    global sound_hook, volume_hook, music_hook
     bank = SoundBank(game)
     sound_hook = lambda name: bank.play(name, pitch_variation=0.05 if name in ("hit", "arrow", "chop", "death") else 0.0)  # noqa: E731
     volume_hook = bank.set_volume
+    music_hook = bank.start_music
     bank.start_music()
     return bank

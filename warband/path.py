@@ -20,7 +20,7 @@ _STEPS: tuple[tuple[int, int, float], ...] = (
     (1, 0, 1.0), (-1, 0, 1.0), (0, 1, 1.0), (0, -1, 1.0),
     (1, 1, SQRT2), (1, -1, SQRT2), (-1, 1, SQRT2), (-1, -1, SQRT2),
 )
-MAX_EXPANSIONS = 6000
+MAX_EXPANSIONS = 3000
 
 
 def octile(a: Pos, b: Pos) -> float:
@@ -69,6 +69,62 @@ def find_path(start: Pos, goal: Pos, passable: Passable, *, max_expansions: int 
                 if h < best_h or (h == best_h and ng < g_score[best]):
                     best, best_h = nxt, h
                 heapq.heappush(frontier, (ng + h, ng, nxt))
+    path: list[Pos] = []
+    node = best
+    while node != start:
+        path.append(node)
+        node = parent[node]
+    path.reverse()
+    return path
+
+
+def find_path_grid(start: Pos, goal: Pos, blocked: bytes | bytearray, width: int, height: int, *, max_expansions: int = MAX_EXPANSIONS) -> list[Pos]:
+    """:func:`find_path` over a row-major ``blocked`` byte grid, inlined for speed (the model's hot path)."""
+    if start == goal:
+        return []
+    sx, sy = start
+    gx, gy = goal
+    g_score: dict[Pos, float] = {start: 0.0}
+    parent: dict[Pos, Pos] = {}
+    best, best_h = start, octile(start, goal)
+    frontier: list[tuple[float, float, int, int]] = [(best_h, 0.0, sx, sy)]
+    closed: set[Pos] = set()
+    expansions = 0
+    push, pop = heapq.heappush, heapq.heappop
+    while frontier and expansions < max_expansions:
+        _f, g, x, y = pop(frontier)
+        current = (x, y)
+        if current in closed:
+            continue
+        closed.add(current)
+        expansions += 1
+        if x == gx and y == gy:
+            best = current
+            break
+        row = y * width
+        east = x + 1 < width and not blocked[row + x + 1]
+        west = x > 0 and not blocked[row + x - 1]
+        south = y + 1 < height and not blocked[row + width + x]
+        north = y > 0 and not blocked[row - width + x]
+        for nx, ny, cost, ok in (
+            (x + 1, y, 1.0, east), (x - 1, y, 1.0, west), (x, y + 1, 1.0, south), (x, y - 1, 1.0, north),
+            (x + 1, y + 1, SQRT2, east and south and not blocked[row + width + x + 1]),
+            (x + 1, y - 1, SQRT2, east and north and not blocked[row - width + x + 1]),
+            (x - 1, y + 1, SQRT2, west and south and not blocked[row + width + x - 1]),
+            (x - 1, y - 1, SQRT2, west and north and not blocked[row - width + x - 1]),
+        ):
+            if not ok:
+                continue
+            nxt = (nx, ny)
+            ng = g + cost
+            if ng < g_score.get(nxt, math.inf):
+                g_score[nxt] = ng
+                parent[nxt] = current
+                dx, dy = abs(nx - gx), abs(ny - gy)
+                h = (dx + dy + (SQRT2 - 2) * dy) if dx > dy else (dx + dy + (SQRT2 - 2) * dx)
+                if h < best_h or (h == best_h and ng < g_score[best]):
+                    best, best_h = nxt, h
+                push(frontier, (ng + h, ng, nx, ny))
     path: list[Pos] = []
     node = best
     while node != start:

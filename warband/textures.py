@@ -553,6 +553,19 @@ def portrait_image(game: Game, subject: UnitType | BuildingType, player: int | N
     return key
 
 
+def warm_units(game: Game, players: list[int]):
+    """A generator that renders every unit image the match may need, one per step, so the
+    scene can spread the cost over its first frames instead of hitching in the first battle."""
+    for player in players:
+        for unit_type in UnitType:
+            carries: tuple[Resource | None, ...] = (None, Resource.GOLD, Resource.LUMBER) if unit_type is UnitType.PEASANT else (None,)
+            for carrying in carries:
+                for facing in range(FACINGS):
+                    for frame in FRAMES:
+                        unit_image(game, unit_type, player, facing, frame, carrying)
+                        yield
+
+
 def building_key(building_type: BuildingType, player: int) -> str:
     return f"building.{building_type.value}.{player}"
 
