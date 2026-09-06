@@ -65,7 +65,7 @@ in `~/.warband` (`settings.json`, `saves/`, generated `sounds/` and
 
 ## Version
 
-Candidate built from the `warband` branch on 2026-09-06 (sha256 `4c9b308c21282304`,
+Candidate built from the `warband` branch on 2026-09-06 (sha256 `425ad14acdbdd493`,
 macOS arm64); the build script prints the executable's size, hash and
 platform (`tools/build_warband.py`). Audited
 against the code on 2026-09-05: every control in the table above is bound
