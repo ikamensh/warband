@@ -27,6 +27,7 @@ from warband import mapgen  # noqa: E402
 from warband.ai import Brain  # noqa: E402
 from warband.model import BLOCKING, World  # noqa: E402
 from warband.rules import BUILDINGS, SIM_DT, BuildingType, Difficulty  # noqa: E402
+from tools.cpu_budget import CpuBudget  # noqa: E402
 
 GAME_MINUTES = 15
 
@@ -88,7 +89,7 @@ def check_progress(world: World, stalled: dict[int, tuple[tuple[float, float], f
             raise AssertionError(f"unit {u.id} ({u.type.value}) stalled for {STALL_SECONDS}s at {pos} with {u.orders[0]} path {u.path[:3]}")
 
 
-def ai_games(seeds: range) -> int:
+def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
     failures = 0
     outcomes: Counter[str] = Counter()
     for seed in seeds:
@@ -101,6 +102,8 @@ def ai_games(seeds: range) -> int:
             check_world(world)
             stalled: dict[int, tuple[tuple[float, float], float]] = {}
             for tick in range(int(GAME_MINUTES * 60 / SIM_DT)):
+                if budget:
+                    budget.checkpoint()
                 if world.winner is not None:
                     break
                 for brain in brains:
@@ -126,7 +129,7 @@ def ai_games(seeds: range) -> int:
     return failures
 
 
-def monkey_runs(seeds: range, steps: int = 500) -> int:
+def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = None) -> int:
     from saga2d import Game
     from warband.scene import GameScene, new_game
     from warband.style import build_theme
@@ -162,6 +165,8 @@ def monkey_runs(seeds: range, steps: int = 500) -> int:
                         game.backend.inject_scroll(rng.randrange(1280), rng.randrange(800), 0, rng.uniform(-5, 5))
                     for _ in range(rng.choice((1, 1, 2, 12))):
                         game.tick(1 / 60)
+                        if budget:
+                            budget.checkpoint()
                     if game.scene is None:
                         break
                 assert len(game.scenes) <= 3, ("scene stack grew", [type(s).__name__ for s in game.scenes])
@@ -173,7 +178,7 @@ def monkey_runs(seeds: range, steps: int = 500) -> int:
                 print(f"monkey seed {seed}, stack {[type(s).__name__ for s in game.scenes]}:")
                 traceback.print_exc(limit=6)
             finally:
-                game._teardown()
+                game.close()
     print(f"monkey runs: {len(seeds)} played, {failures} failed")
     return failures
 
@@ -184,10 +189,16 @@ def main() -> None:
     parser.add_argument("--monkey", type=int, default=12)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--steps", type=int, default=500, help="random inputs per monkey run")
+    parser.add_argument("--cpu-percent", type=float, default=25, help="CPU allowance, percent of one core")
     args = parser.parse_args()
-    failures = ai_games(range(args.seed, args.seed + args.games))
+    try:
+        budget = CpuBudget(args.cpu_percent)
+    except ValueError as error:
+        parser.error(str(error))
+    failures = ai_games(range(args.seed, args.seed + args.games), budget=budget)
     if args.monkey:
-        failures += monkey_runs(range(args.seed, args.seed + args.monkey), steps=args.steps)
+        failures += monkey_runs(range(args.seed, args.seed + args.monkey), steps=args.steps, budget=budget)
+    budget.checkpoint()
     sys.exit(1 if failures else 0)
 
 

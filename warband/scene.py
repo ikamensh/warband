@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from saga2d import (
-    Anchor, Button, Camera, Column, InputEvent, KeyHints, Label, Layout, Minimap, MoveTo, Panel, Remove, RenderLayer, Row, Scene,
+    Anchor, Button, Camera, Column, Component, InputEvent, KeyHints, Label, Layout, Minimap, MoveTo, Panel, Remove, RenderLayer, Row, Scene,
     Sequence, Sprite, Style,
 )
 from saga2d import SaveError
@@ -99,11 +99,11 @@ class GameScene(Scene):
     }
 
     def __init__(self, world: World, seed: int, *, difficulty: Difficulty = Difficulty.NORMAL, settings: dict[str, Any] | None = None,
-                 stats: dict[str, int] | None = None) -> None:
+                 stats: dict[str, int] | None = None, player: int | None = None) -> None:
         self.world = world
         self.seed = seed
         self.difficulty = difficulty
-        self.human = next(p.id for p in world.players if p.human)
+        self.human = next(p.id for p in world.players if p.human) if player is None else player
         self.brains = [Brain(p.id, difficulty) for p in world.players if not p.human]
         self.rng = random.Random(seed)
         self.settings = settings if settings is not None else dict(DEFAULT_SETTINGS)  # a saga2d Settings when the game runs
@@ -212,7 +212,7 @@ class GameScene(Scene):
                                height=round(MINIMAP_WIDTH * world_h / world_w), on_click=self.minimap_click,
                                anchor=Anchor.BOTTOM_LEFT, margin=PANEL_MARGIN, style=PANEL_STYLE)
         self.ui.add(self.minimap)
-        self.selection_panel = Panel(width=SELECTION_WIDTH, height=SELECTION_HEIGHT, anchor=Anchor.BOTTOM_CENTER, margin=PANEL_MARGIN, style=PANEL_STYLE)
+        self.selection_panel = Component(width=SELECTION_WIDTH, height=SELECTION_HEIGHT, anchor=Anchor.BOTTOM_CENTER, margin=PANEL_MARGIN)
         self.ui.add(self.selection_panel)
         self.card_panel = Column(spacing=6, anchor=Anchor.BOTTOM_RIGHT, margin=PANEL_MARGIN, style=PANEL_STYLE)
         self.ui.add(self.card_panel)
@@ -378,16 +378,19 @@ class GameScene(Scene):
         wx, wy = to_world(point)
         self.effects.add(Pulse((wx, wy), color, radius=(4, 18), rings=2, duration=0.5))
 
+    def order(self, action, *args, **kwargs):
+        return getattr(self.world, action)(*args, **kwargs)
+
     def command_smart(self, point: tuple[float, float], *, queue: bool = False) -> None:
         units = self._own_units()
         if units:
-            verb = self.world.smart([u.id for u in units], point, queue=queue)
+            verb = self.order("smart", [u.id for u in units], point, queue=queue)
             self._marker(point, (255, 80, 70, 220) if verb == "attack" else (120, 255, 140, 220))
             self.sfx("attack_command" if verb == "attack" else "command")
             return
         building = self._own_building()
         if building is not None and building.done:
-            self.world.set_rally(building.id, point)
+            self.order("set_rally", building.id, point)
             self._marker(point, (255, 214, 110, 220))
             self.sfx("command")
 
@@ -398,7 +401,7 @@ class GameScene(Scene):
             self.warn("Click one of your damaged buildings")
             return
         try:
-            self.world.repair(workers, target.id, queue=queue)
+            self.order("repair", workers, target.id, queue=queue)
         except RuleError as exc:
             self.warn(str(exc))
             return
@@ -408,7 +411,7 @@ class GameScene(Scene):
     def command_move(self, point: tuple[float, float], *, queue: bool = False) -> None:
         units = self._own_units()
         if units:
-            self.world.move([u.id for u in units], point, queue=queue)
+            self.order("move", [u.id for u in units], point, queue=queue)
             self._marker(point, (120, 255, 140, 220))
             self.sfx("command")
 
@@ -420,9 +423,9 @@ class GameScene(Scene):
         target = self.world.entity_at(point, visible_to=self.human)
         try:
             if target is not None and target.player is not None and target.player != self.human:
-                self.world.attack(ids, target.id, queue=queue)
+                self.order("attack", ids, target.id, queue=queue)
             else:
-                self.world.attack_move(ids, point, queue=queue)
+                self.order("attack_move", ids, point, queue=queue)
         except RuleError as exc:
             self.warn(str(exc))
             return
@@ -432,20 +435,20 @@ class GameScene(Scene):
     def command_patrol(self, point: tuple[float, float], *, queue: bool = False) -> None:
         units = self._own_units()
         if units:
-            self.world.patrol([u.id for u in units], point, queue=queue)
+            self.order("patrol", [u.id for u in units], point, queue=queue)
             self._marker(point, (120, 200, 255, 220))
             self.sfx("command")
 
     def command_stop(self) -> None:
         units = self._own_units()
         if units:
-            self.world.stop([u.id for u in units])
+            self.order("stop", [u.id for u in units])
             self.sfx("command")
 
     def command_hold(self) -> None:
         units = self._own_units()
         if units:
-            self.world.hold([u.id for u in units])
+            self.order("hold", [u.id for u in units])
             self.sfx("command")
 
     def start_pending(self, mode: str) -> None:
@@ -475,7 +478,7 @@ class GameScene(Scene):
         site = (int(math.floor(point[0] - size / 2 + 0.5)), int(math.floor(point[1] - size / 2 + 0.5)))
         builder = min(peasants, key=lambda u: (u.hidden, math.dist(u.pos, point)))
         try:
-            self.world.build(builder.id, building_type, site, queue=keep)
+            self.order("build", builder.id, building_type, site, queue=keep)
         except RuleError as exc:
             self.warn(str(exc))
             return
@@ -490,7 +493,7 @@ class GameScene(Scene):
         if building is None:
             return
         try:
-            self.world.train(building.id, unit_type)
+            self.order("train", building.id, unit_type)
         except RuleError as exc:
             self.warn(str(exc))
             return
@@ -502,9 +505,9 @@ class GameScene(Scene):
         if building is None:
             return
         if building.queue:
-            self.world.cancel_train(building.id)
+            self.order("cancel_train", building.id)
         elif building.research is not None:
-            self.world.cancel_research(building.id)
+            self.order("cancel_research", building.id)
         else:
             return
         self.sfx("button")
@@ -515,7 +518,7 @@ class GameScene(Scene):
         if building is None:
             return
         try:
-            self.world.research(building.id, upgrade)
+            self.order("research", building.id, upgrade)
         except RuleError as exc:
             self.warn(str(exc))
             return
@@ -526,7 +529,7 @@ class GameScene(Scene):
         building = self._own_building()
         if building is None or building.done:
             return
-        self.world.cancel_building(building.id)
+        self.order("cancel_building", building.id)
         self.say(f"{building.info.name} cancelled, cost refunded")
         self.sfx("button")
         self.select([])
@@ -841,17 +844,7 @@ class GameScene(Scene):
                 if next(self._warm, None) is None:
                     self._warm = None
                     break
-        if not self.paused and not self._game_over:
-            self._acc += min(dt, 0.25) * self.speed
-            steps = 0
-            while self._acc >= SIM_DT and steps < MAX_STEPS_PER_FRAME:
-                for brain in self.brains:
-                    brain.think(self.world, self.rng)
-                self.world.step()
-                self._acc -= SIM_DT
-                steps += 1
-            if steps == MAX_STEPS_PER_FRAME:
-                self._acc = 0.0
+        self._advance(dt)
         self._handle_events(self.world.take_events())
         self._prune_selection()
         self.effects.update(dt)
@@ -864,6 +857,19 @@ class GameScene(Scene):
             self.game.save("autosave", scene=self)
             self.say("Autosaved")
         self._check_game_over()
+
+    def _advance(self, dt: float) -> None:
+        if not self.paused and not self._game_over:
+            self._acc += min(dt, 0.25) * self.speed
+            steps = 0
+            while self._acc >= SIM_DT and steps < MAX_STEPS_PER_FRAME:
+                for brain in self.brains:
+                    brain.think(self.world, self.rng)
+                self.world.step()
+                self._acc -= SIM_DT
+                steps += 1
+            if steps == MAX_STEPS_PER_FRAME:
+                self._acc = 0.0
 
     def _handle_events(self, events: list[Event]) -> None:
         world, view = self.world, self.view
@@ -1018,6 +1024,8 @@ class GameScene(Scene):
     def _draw_selection_panel(self) -> None:
         panel = self.selection_panel
         x, y, w, h = panel.bounds
+        self.draw_rect(x, y, w, h, PANEL_STYLE.background_color, border_color=PANEL_STYLE.border_color,
+                       border_width=1, radius=10)
         self._portraits = []
         entities = [e for e in (self.world.entity(i) for i in self.selection) if e is not None]
         if not entities:

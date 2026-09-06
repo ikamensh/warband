@@ -1680,6 +1680,7 @@ class World:
         human = next((p["id"] for p in data["players"] if p["human"]), None)
         world = cls(data["width"], data["height"], terrain, len(data["players"]), human=human, theme=MapTheme(data["theme"]))
         for p, saved in zip(world.players, data["players"]):
+            p.human = saved["human"]
             p.gold, p.lumber, p.alive, p.last_alert = saved["gold"], saved["lumber"], saved["alive"], saved["last_alert"]
             p.upgrades = {Upgrade(u) for u in saved["upgrades"]}
         for saved in data["buildings"]:

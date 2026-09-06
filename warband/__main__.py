@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 
+from saga2d import add_match_arguments, match_from_arguments
 from saga2d import Game, fonts
 from warband import mapgen, sound
 from warband.rules import Difficulty, MapTheme
@@ -26,6 +27,7 @@ def main() -> None:
     parser.add_argument("--theme", choices=[t.value for t in MapTheme], default="summer")
     parser.add_argument("--fullscreen", action="store_true")
     parser.add_argument("--selftest", metavar="PNG", help="start a match in a hidden window, save one frame to PNG and exit (for packaged builds)")
+    add_match_arguments(parser)
     args = parser.parse_args()
     if args.selftest:
         selftest(args.selftest)
@@ -37,6 +39,12 @@ def main() -> None:
     fonts.load(game)
     sound.install(game)
     sound.apply_volumes(settings["music"], settings["sfx"])
+    from warband.multiplayer import NetworkGameScene, WarbandMatch
+    lobby = match_from_arguments(args, parser, title="Warband", game_id="warband-v1",
+                                 create_match=lambda: WarbandMatch(args.seed if args.seed is not None else 3, *mapgen.SIZES[args.size], theme=MapTheme(args.theme)), create_scene=lambda session, match: NetworkGameScene(session, match, settings=settings))
+    if lobby is not None:
+        game.run(lobby)
+        return
     if args.seed is not None:
         width, height = mapgen.SIZES[args.size]
         game.run(new_game(args.seed, width=width, height=height, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme),

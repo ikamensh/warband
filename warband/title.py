@@ -69,6 +69,7 @@ class TitleScene(Scene):
         cont = Button("Continue", hotkey="C", on_click=self.continue_game, style=MENU_BUTTON, width=300)
         cont.enabled = newest is not None
         menu.add(cont)
+        menu.add(Button("Multiplayer", shortcut="M", on_click=self.multiplayer, style=MENU_BUTTON, width=300))
         menu.add(Button("Load game", hotkey="L", on_click=self.load_game, style=MENU_BUTTON, width=300))
         menu.add(Button("How to play", hotkey="H", on_click=self.how_to_play, style=MENU_BUTTON, width=300))
         menu.add(Button("Quit", hotkey="Q", on_click=self.quit, style=MENU_BUTTON, width=300))
@@ -95,6 +96,11 @@ class TitleScene(Scene):
     def sfx(self, name: str) -> None:
         if self.settings is None or self.settings["sfx"] > 0:
             play_sound(name)
+
+    def multiplayer(self) -> None:
+        from saga2d import MatchMenu
+        from warband.multiplayer import WarbandMatch, NetworkGameScene
+        self.game.push(MatchMenu("Warband multiplayer", "warband-v1", WarbandMatch, NetworkGameScene))
 
     def new_game(self) -> None:
         self.sfx("button")
