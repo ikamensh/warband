@@ -34,6 +34,7 @@ See the in-game help (F1) and codex (F2). Summary:
 | Order | right-click (move, harvest, attack, repair, resume building, rally), A attack-move, P patrol, S stop, H hold, M move, R repair |
 | Build | B then F farm, B barracks, H town hall, T tower, M lumber mill, K blacksmith, S stables, W workshop, C church |
 | Train / research | the letters on the command card when a building is selected |
+| Mac trackpad | two-finger click or Ctrl+click is the right-click; Cmd-click selects every unit of a type |
 | Camera | arrows, screen edges, middle-drag, wheel or + / − zoom, F6–F8 bookmarks (Ctrl to set), Space jumps to the last alert, Home or Backspace to the base |
 | Game | F3 pause, F4 hide the tutorial strip, F5 quicksave, F9 quickload, F10 menu (saves, settings), Esc cancel, deselect, then the menu |
 

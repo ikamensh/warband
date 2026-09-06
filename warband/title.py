@@ -84,11 +84,11 @@ class TitleScene(Scene):
     def draw(self) -> None:
         w, h = self.game.resolution
         self.draw_rect(0, 0, w, h, (6, 8, 14, 150))
-        cy = h / 2 - 120
+        cy = h / 2 - 190  # the title and its tagline sit above the menu, which is centred and 150 px shorter than its spacer suggests
         for spread, alpha in ((3, 50), (2, 80)):
             self.draw_text("WARBAND", w / 2 + spread, cy + spread, style="hero", color=(0, 0, 0, alpha), anchor_x="center", anchor_y="center")
         self.draw_text("WARBAND", w / 2, cy, style="hero", anchor_x="center", anchor_y="center")
-        self.draw_text("Gather · Build · Train · Conquer", w / 2, cy + 60, style="hero_sub", anchor_x="center", anchor_y="center")
+        self.draw_text("Gather · Build · Train · Conquer", w / 2, cy + 74, style="hero_sub", anchor_x="center", anchor_y="center")
         if self.notice:
             self.draw_text(self.notice, w / 2, h - 60, style="hud", color=(240, 130, 110, 255), anchor_x="center", anchor_y="center")
 

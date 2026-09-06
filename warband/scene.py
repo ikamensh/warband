@@ -1337,7 +1337,8 @@ HELP_KEYS = (
     ("Left click / drag", "select a unit, a building, or every unit in the box"),
     ("Right click", "move, harvest, attack or resume building — the sensible thing for the target"),
     ("Shift", "add to the selection, or queue an order after the current one"),
-    ("Double-click / Ctrl-click", "select every unit of that type on screen;  Ctrl+A: the whole army"),
+    ("Double-click / Ctrl-click", "select every unit of that type on screen;  Ctrl+A: the whole army (Cmd-click on a Mac)"),
+    ("Mac trackpad", "two-finger click or Ctrl+click is the right-click"),
     ("A / P", "attack-move: fight everything on the way / patrol between two spots"),
     ("S / H", "stop / hold position"),
     ("B", "build (peasants): F farm, B barracks, H town hall, T tower, M mill, K smith, S stables, W workshop, C church"),
@@ -1400,7 +1401,7 @@ class CodexScene(_Overlay):
         if self.page == 0:
             rows = [[("Unit", 110), ("Cost", 150), ("HP", 50), ("Dmg", 50), ("Arm", 50), ("Rng", 50), ("Spd", 50), ("Trained at", 120), ("Role", 330)]]
             for unit_type, info in UNITS.items():
-                rows.append([(info.name, 110), (str(info.cost), 150), (str(info.hp), 50), (str(info.damage) if info.damage else f"heal {info.heal}", 50),
+                rows.append([(info.name, 110), (str(info.cost), 190), (str(info.hp), 50), (str(info.damage) if info.damage else f"heal {info.heal}", 50),
                              (str(info.armor), 50), ("melee" if info.range < 1 else f"{info.range:g}", 50), (f"{info.speed:g}", 50),
                              (BUILDINGS[info.trained_at].name, 120), (info.summary, 330)])
             return rows
@@ -1409,13 +1410,13 @@ class CodexScene(_Overlay):
             for building_type, info in BUILDINGS.items():
                 if building_type is BuildingType.GOLD_MINE:
                     continue
-                rows.append([(info.name, 120), (str(info.cost), 150), (str(info.hp), 50), (f"{info.size}×{info.size}", 50), (f"{info.build_time:g}s", 50),
+                rows.append([(info.name, 120), (str(info.cost), 190), (str(info.hp), 50), (f"{info.size}×{info.size}", 50), (f"{info.build_time:g}s", 50),
                              (BUILDINGS[info.requires].name if info.requires else "—", 110), (info.summary + (f" · supply +{info.supply}" if info.supply else ""), 430)])
             return rows
         rows = [[("Upgrade", 160), ("Cost", 150), ("Time", 50), ("Where", 110), ("Requires", 150), ("Effect", 320)]]
         for upgrade, info in UPGRADES.items():
             where = next(b for b, binfo in BUILDINGS.items() if upgrade in binfo.researches)
-            rows.append([(info.name + (" ✓" if upgrade in have else ""), 160), (str(info.cost), 150), (f"{info.time:g}s", 50), (BUILDINGS[where].name, 110),
+            rows.append([(info.name + (" ✓" if upgrade in have else ""), 160), (str(info.cost), 190), (f"{info.time:g}s", 50), (BUILDINGS[where].name, 110),
                          (UPGRADES[info.requires].name if info.requires else "—", 150), (info.summary, 320)])
         return rows
 
