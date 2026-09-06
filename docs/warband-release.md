@@ -41,6 +41,7 @@ See the in-game help (F1) and codex (F2). Summary:
 ## Known issues in this candidate
 
 - Units have four animation frames.
+- The HUD is laid out for windows at least 1280 pixels wide; on a smaller screen the panels overlap.
 - Large maps with three or four players can run past twenty minutes without a decision.
 - Windows and Linux builds have not been produced or tested; the macOS build has been self-tested, not played by a second person.
 - No localisation; English only.
@@ -64,7 +65,7 @@ in `~/.warband` (`settings.json`, `saves/`, generated `sounds/` and
 
 ## Version
 
-Candidate built from the `warband` branch on 2026-09-06 (sha256 `3b1beceaf3ce1a61`,
+Candidate built from the `warband` branch on 2026-09-06 (sha256 `4c9b308c21282304`,
 macOS arm64); the build script prints the executable's size, hash and
 platform (`tools/build_warband.py`). Audited
 against the code on 2026-09-05: every control in the table above is bound
