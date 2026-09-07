@@ -12,6 +12,7 @@ from warband.rules import BuildingType, UnitType, Upgrade, SIM_DT, MapTheme
 GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'stop', 'hold'}
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building'}
 ORDERS = GROUP_ORDERS | BUILDING_ORDERS | {'build'}
+HIT_AUDIO_FIELDS = frozenset({'source_type', 'target_type', 'target_armor', 'target_complete'})
 
 
 class WarbandMatch:
@@ -109,6 +110,7 @@ class NetworkGameScene(GameScene):
         self.session, self.match = session, match
         self._revision = session.revision
         self._event_id = 0
+        self._basic_audio_notice = False
         self._network_steps = 0
         self._last_time = time.monotonic()
         self._elapsed = 0.
@@ -166,6 +168,15 @@ class NetworkGameScene(GameScene):
         events = []
         for index, event in data['events']:
             if index > self._event_id:
+                if event['kind'] == 'hit':
+                    audio_fields = HIT_AUDIO_FIELDS.intersection(event)
+                    if not audio_fields:
+                        event = {**event, 'source_type': 'unknown', 'target_type': 'unknown'}
+                        if not self._basic_audio_notice:
+                            self.say('Server uses basic battle audio; update the server for weapon and material sounds.')
+                            self._basic_audio_notice = True
+                    elif audio_fields != HIT_AUDIO_FIELDS:
+                        raise ValueError('Hit event has incomplete battle audio metadata.')
                 events.append(Event(**{**event, 'pos': tuple(event['pos'])}))
                 self._event_id = index
         self._handle_events(events)

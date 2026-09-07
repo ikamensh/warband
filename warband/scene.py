@@ -18,7 +18,7 @@ from warband import mapgen
 from warband.ai import Brain
 from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
 from warband.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, MapTheme, UnitType, Upgrade
-from warband.sound import TRACKS, apply_volumes, play_music, play_sound
+from warband.sound import IMPACTS, TRACKS, apply_volumes, impact_sound, play_music, play_sound
 from warband.style import ACTION_BUTTON, BAD, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE
 from warband.textures import TILE
 from warband.tutorial import OBJECTIVES, Tutorial
@@ -51,7 +51,6 @@ MINIMAP_WIDTH = 200
 SELECTION_WIDTH = 470
 SELECTION_HEIGHT = 128
 MAX_PORTRAITS = 12
-SOUND_GAP = 0.08  # seconds between repeats of the same battle sound
 
 
 def _clock(seconds: float) -> str:
@@ -135,6 +134,7 @@ class GameScene(Scene):
         self._card_buttons: list[Button] = []
         self._portraits: list[tuple[int, tuple[int, int, int, int]]] = []
         self._sound_times: dict[str, float] = {}
+        self._battle_voices: deque[float] = deque()
         self._last_click: tuple[float, int | None] = (-10.0, None)
         self.bookmarks: dict[int, tuple[float, float]] = {}
         self._warm = None  # renders the unit images over the first frames
@@ -180,10 +180,20 @@ class GameScene(Scene):
         return self.world.players[self.human]
 
     def sfx(self, name: str, *, gap: float = 0.0) -> None:
-        """Every sound event passes through here; *gap* rate-limits battle noise."""
-        if gap and self.clock - self._sound_times.get(name, -1.0) < gap:
+        """Bound battle density across materials/takes; alerts bypass that budget."""
+        combat = name in IMPACTS or name in ("impact", "death")
+        key = "siege_impact" if name.startswith("stone_") else name
+        if combat:
+            gap = max(gap, 0.3 if key == "siege_impact" else 0.09)
+        if gap and self.clock - self._sound_times.get(key, -math.inf) < gap:
             return
-        self._sound_times[name] = self.clock
+        if combat:
+            while self._battle_voices and self.clock - self._battle_voices[0] >= 0.5:
+                self._battle_voices.popleft()
+            if len(self._battle_voices) >= 8 or sum(self.clock - t < 0.12 for t in self._battle_voices) >= 4:
+                return
+            self._battle_voices.append(self.clock)
+        self._sound_times[key] = self.clock
         self.recent_sounds.append(name)
         if self.settings["sfx"] > 0:
             play_sound(name)
@@ -897,8 +907,8 @@ class GameScene(Scene):
                 self._refresh_card()
             elif e.kind == "heal" and self._visible(e.pos):
                 self.effects.add(Pulse(to_world(e.pos), (140, 255, 160, 200), radius=(4, 16), rings=1, duration=0.4))
-            elif e.kind == "tree_felled" and mine:
-                self.sfx("chop", gap=0.3)
+            elif e.kind == "tree_felled" and mine and self._audible(e.pos):
+                self.sfx("chop", gap=2.5)
             elif e.kind == "under_attack" and mine:
                 self.last_alert = e.pos
                 self.minimap.ping(*to_world(e.pos))
@@ -915,6 +925,12 @@ class GameScene(Scene):
     def _visible(self, point: tuple[float, float]) -> bool:
         return self.world.is_visible(self.human, (int(point[0]), int(point[1])))
 
+    def _audible(self, point: tuple[float, float]) -> bool:
+        """Local action stays near the camera; strategic warnings bypass this check."""
+        x, y = self.camera.world_to_screen(*to_world(point))
+        width, height = self.game.resolution
+        return self._visible(point) and 0 <= x <= width and 0 <= y <= height - SELECTION_HEIGHT
+
     def _show_hit(self, e: Event) -> None:
         if not self._visible(e.pos):
             return
@@ -926,14 +942,19 @@ class GameScene(Scene):
         source = self.world.entity(e.entity) if e.entity is not None else None
         if e.text == "ranged" and source is not None:
             if isinstance(source, Unit) and source.info.splash > 0:
-                self._stone(source, e.pos)
+                flight = self._stone(source, e.pos)
             else:
-                self._arrow(source, e.pos)
-                self.sfx("arrow", gap=SOUND_GAP)
+                flight = self._arrow(source, e.pos)
+            if flight is not None:
+                self.after(flight, lambda: self._sound_hit(e))
         else:
-            self.sfx("hit", gap=SOUND_GAP)
+            self._sound_hit(e)
 
-    def _arrow(self, source: Entity, target: tuple[float, float]) -> None:
+    def _sound_hit(self, event: Event) -> None:
+        if self._audible(event.pos):
+            self.sfx(impact_sound(event))
+
+    def _arrow(self, source: Entity, target: tuple[float, float]) -> float:
         sx, sy = to_world(source.pos if isinstance(source, Unit) else source.center)
         tx, ty = to_world(target)
         sy -= TILE * 0.5
@@ -942,8 +963,9 @@ class GameScene(Scene):
             sy -= TILE * 1.2
         arrow = self.add_sprite(Sprite("arrow", position=(sx, sy), size=(22, 6), layer=RenderLayer.EFFECTS, rotation=math.degrees(math.atan2(ty - sy, tx - sx))))
         arrow.do(Sequence(MoveTo((tx, ty), speed=520), Remove()))
+        return math.dist((sx, sy), (tx, ty)) / 520
 
-    def _stone(self, source: Unit, target: tuple[float, float]) -> None:
+    def _stone(self, source: Unit, target: tuple[float, float]) -> float | None:
         """A catapult stone: lobbed slowly, bursting where it lands (one per volley)."""
         if self.clock - self._sound_times.get("stone", -1.0) < 0.3:
             return
@@ -954,7 +976,7 @@ class GameScene(Scene):
         stone.do(Sequence(MoveTo((tx, ty - TILE * 0.2), speed=330), Remove()))
         flight = math.dist((sx, sy), (tx, ty)) / 330
         self.effects.add(Burst((tx, ty), (200, 190, 170, 255), 12, rng=self.rng, size=12, speed=(40, 140), delay=flight))
-        self.after(flight, lambda: self.sfx("destroyed", gap=0.3))
+        return flight
 
     def _show_death(self, e: Event) -> None:
         if e.player == self.human:
@@ -969,7 +991,8 @@ class GameScene(Scene):
             self.effects.add(Dissolve(sprite, duration=0.5))
         color = self.world.players[e.player].color if e.player is not None else (200, 200, 200)
         self.effects.add(Burst(to_world(e.pos), rgba(color), 10, rng=self.rng, size=10))
-        self.sfx("death", gap=SOUND_GAP)
+        if self._audible(e.pos):
+            self.sfx("death")
 
     def _show_destroyed(self, e: Event) -> None:
         if e.player == self.human:
@@ -982,7 +1005,8 @@ class GameScene(Scene):
             self.effects.add(Burst((wx, wy), (255, 160, 80, 255), 18, rng=self.rng, size=16, speed=(40, 160)))
             self.effects.add(Burst((wx, wy - 10), (60, 60, 64, 255), 14, rng=self.rng, image="smoke", size=28, speed=(10, 50)))
             self.camera.shake(4, 0.3)
-            self.sfx("destroyed")
+            if self._audible(e.pos):
+                self.sfx("destroyed", gap=0.3)
 
     def _check_game_over(self) -> None:
         if self._game_over:

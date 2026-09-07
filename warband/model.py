@@ -260,6 +260,11 @@ class Event:
     other: int | None = None
     amount: int = 0
     text: str = ""
+    # Strike-time facts survive removal of either participant and network snapshots.
+    source_type: str = ""
+    target_type: str = ""
+    target_armor: int = 0
+    target_complete: bool = True
 
 
 # -- Geometry helpers ------------------------------------------------------------
@@ -1578,9 +1583,11 @@ class World:
         roll = damage * self.rng.uniform(1 - HIT_VARIANCE, 1 + HIT_VARIANCE)
         dealt = max(1, int(round(roll)) - armor)
         target.hp -= dealt
-        ranged = (source.info.range if isinstance(source, Unit) else source.info.range) >= 1
+        ranged = source.info.range >= 1
         self.events.append(Event("hit", self._target_point(target), player=target.player, entity=source.id, other=target.id,
-                                 amount=dealt, text="ranged" if ranged else "melee"))
+                                 amount=dealt, text="ranged" if ranged else "melee", source_type=source.type.value,
+                                 target_type=target.type.value, target_armor=armor,
+                                 target_complete=not isinstance(target, Building) or target.done))
         if target.player is not None:
             victim = self.players[target.player]
             if self.time - victim.last_alert >= UNDER_ATTACK_COOLDOWN:

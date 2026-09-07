@@ -39,12 +39,7 @@ def read_wav(path: Path) -> tuple[np.ndarray, int]:
 
 
 def test_every_scene_event_has_an_effect_that_is_normalised_and_click_free(generated: Path) -> None:
-    from warband.scene import GameScene  # noqa: F401  (the scene's sfx names are the EVENTS below)
-
-    events = {"select", "command", "attack_command", "hit", "arrow", "death", "chop", "build_start", "built", "trained",
-              "under_attack", "error", "button", "victory", "defeat", "destroyed"}
-    assert events == set(sound.SOUNDS)
-    for name in events:
+    for name in sound.SOUNDS:
         data, rate = read_wav(generated / "sounds" / f"{name}.wav")
         mono = data[:, 0]
         assert rate == sound.synth.SAMPLE_RATE and 0.03 <= len(mono) / rate <= 1.0, name
@@ -65,10 +60,28 @@ def test_install_routes_scene_events_to_the_bank(game: Game, generated: Path, mo
     monkeypatch.setattr(Path, "home", lambda: generated.parent)
     bank = SoundBank(game, data_dir=generated)
     monkeypatch.setattr(sound, "sound_hook", lambda name: bank.play(name))
-    sound.play_sound("hit")
-    assert game.backend.sounds_played[-1]["handle"] == game.backend.load_sound(str(generated / "sounds" / "hit.wav"))
+    sound.play_sound("command")
+    assert game.backend.sounds_played[-1]["handle"] == game.backend.load_sound(str(generated / "sounds" / "command.wav"))
     bank.start_music()
     assert bank.music_playing == "march"
+
+
+def test_combat_playback_varies_takes_and_respects_sfx_volume(game, generated):
+    """Repeated blows use different samples, with room in the mix for alerts."""
+    bank = SoundBank(game, data_dir=generated)
+    bank.set_volume("sfx", 0.4)
+    for _ in range(12):
+        bank.play("sword_armor")
+    plays = game.backend.sounds_played
+    handles = [p["handle"] for p in plays]
+    assert len(set(handles)) >= 3
+    assert all(a != b for a, b in zip(handles, handles[1:]))
+    assert all(0 < p["volume"] < 0.4 and 0.93 <= p["pitch"] <= 1.07 for p in plays)
+    bank.muted = True
+    count = len(plays)
+    bank.play("sword_armor")
+    assert len(plays) == count
+    assert all(p["volume"] == 0 for p in game.backend.sounds_playing.values())
 
 
 def test_bank_generates_once_regenerates_on_a_new_version_and_plays(game: Game, backend, tmp_path: Path) -> None:

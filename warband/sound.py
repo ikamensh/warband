@@ -3,9 +3,9 @@ with :mod:`saga2d.synth` on first run and cached under ``~/.warband``.
 
 The scene calls :func:`play_sound` with an event name; ``__main__`` points
 :data:`sound_hook` at a :class:`SoundBank` so it is heard, while tests
-leave it ``None``.  Everything sits in A minor: hits and chops are
-percussive noise, the economy clinks in bells, alarms are brass, and
-the loop is a slow drum march under a drone.
+leave it ``None``. Combat uses layered weapon/material Foley; routine
+deliveries stay silent. Alarms are brass and the music is a slow drum
+march under an A-minor drone.
 """
 
 from __future__ import annotations
@@ -17,10 +17,41 @@ from collections.abc import Callable, Mapping
 import numpy as np
 
 from saga2d import AssetManager, AudioManager, Game, synth
-from saga2d.synth import BELL, BRASS, DARK, GLASS, SOFT, hz, level, mix, noise, pan, thump, tone, write_wav
+from saga2d.synth import BELL, BRASS, DARK, GLASS, hz, level, mix, noise, pan, thump, tone, write_wav
 from saga2d.synth import seconds as sample_times
+from warband import combat_sound
+from warband.model import Event
+from warband.rules import BuildingType, UnitType
 
 Generator = Callable[[], np.ndarray]
+IMPACTS = frozenset(f"{weapon}_{material}" for weapon in combat_sound.WEAPONS for material in combat_sound.MATERIALS)
+
+_WEAPONS = {
+    UnitType.PEASANT.value: "axe", UnitType.FOOTMAN.value: "sword",
+    UnitType.SCOUT.value: "spear", UnitType.KNIGHT.value: "lance",
+    UnitType.ARCHER.value: "arrow", UnitType.CATAPULT.value: "stone",
+    BuildingType.TOWER.value: "arrow",
+}
+_BUILDING_MATERIALS = {
+    BuildingType.TOWN_HALL.value: "stone", BuildingType.TOWER.value: "stone",
+    BuildingType.BLACKSMITH.value: "stone", BuildingType.CHURCH.value: "stone",
+    BuildingType.FARM.value: "wood", BuildingType.BARRACKS.value: "wood",
+    BuildingType.LUMBER_MILL.value: "wood", BuildingType.STABLES.value: "wood",
+    BuildingType.WORKSHOP.value: "wood",
+}
+
+
+def impact_sound(event: Event) -> str:
+    """Choose an impact from strike-time facts, even after the victim has died."""
+    if event.source_type == event.target_type == "unknown":
+        return "impact"  # an explicitly identified older multiplayer event schema
+    if event.target_type in _BUILDING_MATERIALS:
+        material = _BUILDING_MATERIALS[event.target_type] if event.target_complete else "wood"
+    elif UnitType(event.target_type) is UnitType.CATAPULT:
+        material = "wood"
+    else:
+        material = "armor" if event.target_armor > 0 else "flesh"
+    return f"{_WEAPONS[event.source_type]}_{material}"
 
 
 def sound_files(data_dir: Path, sounds: Mapping[str, Generator], music: Mapping[str, Generator]) -> list[Path]:
@@ -112,7 +143,7 @@ class SynthBank:
         self._audio.muted = value
 
 
-SOUND_VERSION = "2"
+SOUND_VERSION = "3"
 MUSIC = "march"
 TRACKS = ("march", "vigil")
 
@@ -157,27 +188,19 @@ def error() -> np.ndarray:
     return level(mix(tone("C4", 0.12, attack=0.01, tau=0.06, partials=DARK), (0.1, tone("A3", 0.16, attack=0.01, tau=0.08, partials=DARK))), 0.45)
 
 
-def hit() -> np.ndarray:
-    """Steel on steel: a bright clank over a dull thud."""
-    return level(mix(
-        thump(180, 60, 0.14, tau=0.05),
-        noise(0.08, 1500, 8000, tau=0.02, seed=20) * 0.7,
-        (0.004, tone(hz("E6") * 1.02, 0.12, tau=0.03, partials=BELL) * 0.35),
-    ), 0.85)
-
-
-def arrow() -> np.ndarray:
-    """A whoosh and a thock."""
-    return level(mix(noise(0.16, 1200, 6000, attack=0.05, tau=0.05, seed=21) * 0.6, (0.14, thump(320, 140, 0.06, tau=0.02) * 0.8)), 0.6)
-
-
 def death() -> np.ndarray:
-    """A falling minor third over a low swell."""
+    """A body falling with cloth and equipment settling, without a musical cue."""
     return level(mix(
-        tone("E4", 0.26, attack=0.01, tau=0.12),
-        (0.12, tone("C4", 0.3, attack=0.01, tau=0.14, partials=DARK)),
-        noise(0.4, 90, 500, attack=0.1, tau=0.12, seed=30) * 0.35,
+        noise(0.16, 180, 1400, attack=0.03, tau=0.055, seed=30) * 0.4,
+        (0.06, thump(140, 48, 0.28, attack=0.008, tau=0.065)),
+        (0.08, noise(0.23, 90, 750, attack=0.008, tau=0.07, seed=31) * 0.65),
+        (0.14, noise(0.16, 800, 3000, tau=0.035, seed=32) * 0.12),
     ), 0.6)
+
+
+def impact() -> np.ndarray:
+    """Neutral contact for servers that supply no weapon or material information."""
+    return level(mix(thump(180, 70, 0.14, tau=0.04), noise(0.1, 250, 2400, tau=0.025, seed=22) * 0.6), 0.6)
 
 
 def chop() -> np.ndarray:
@@ -233,8 +256,9 @@ def defeat() -> np.ndarray:
 
 SOUNDS: dict[str, Callable[[], np.ndarray]] = {
     "select": select, "command": command, "attack_command": attack_command, "button": button, "error": error,
-    "hit": hit, "arrow": arrow, "death": death, "chop": chop, "build_start": build_start, "built": built,
+    "impact": impact, "death": death, "chop": chop, "build_start": build_start, "built": built,
     "trained": trained, "under_attack": under_attack, "destroyed": destroyed, "victory": victory, "defeat": defeat,
+    **combat_sound.SOUNDS,
 }
 
 # -- Music -------------------------------------------------------------------
@@ -330,6 +354,23 @@ class SoundBank(SynthBank):
     def __init__(self, game: Game, data_dir: Path | str | None = None) -> None:
         super().__init__(game, data_dir if data_dir is not None else Path.home() / ".warband", version=SOUND_VERSION,
                          sounds=SOUNDS, music={"march": march, "vigil": vigil})
+        self._last_take: dict[str, int] = {}
+
+    def play(self, name: str, *, pitch_variation: float = 0.0, volume: float = 1.0) -> None:
+        if name in IMPACTS:
+            choices = [take for take in range(combat_sound.VARIANTS) if take != self._last_take.get(name)]
+            take = self._rng.choice(choices)
+            self._last_take[name] = take
+            name = f"{name}_{take}"
+            pitch_variation = pitch_variation or 0.045
+            volume *= 0.65
+        elif name in ("chop", "death"):
+            pitch_variation = pitch_variation or 0.05
+            volume *= 0.25 if name == "chop" else 0.4
+        elif name == "impact":
+            pitch_variation = pitch_variation or 0.045
+            volume *= 0.65
+        super().play(name, pitch_variation=pitch_variation, volume=volume)
 
     def start_music(self, name: str = MUSIC) -> None:  # type: ignore[override]
         super().start_music(name)
@@ -348,7 +389,7 @@ def install(game: Game) -> SoundBank:
     """Create the bank, route the game's sound and music events to it and start the music."""
     global sound_hook, volume_hook, music_hook
     bank = SoundBank(game)
-    sound_hook = lambda name: bank.play(name, pitch_variation=0.05 if name in ("hit", "arrow", "chop", "death") else 0.0)  # noqa: E731
+    sound_hook = bank.play
     volume_hook = bank.set_volume
     music_hook = bank.start_music
     bank.start_music()
