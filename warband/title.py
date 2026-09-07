@@ -100,8 +100,12 @@ class TitleScene(Scene):
     def multiplayer(self) -> None:
         from saga2d import MatchMenu
         from warband.multiplayer import WarbandMatch, NetworkGameScene
-        self.game.push(MatchMenu("Warband multiplayer", "warband-v1", WarbandMatch,
-                                lambda session, match: NetworkGameScene(session, match, settings=self.settings)))
+        width, height = mapgen.SIZES[self.size]
+        self.game.push(MatchMenu("Warband multiplayer", "warband-v1",
+                                lambda: WarbandMatch(3, width, height, self.theme),
+                                lambda session, match: NetworkGameScene(session, match, settings=self.settings),
+                                create_options=lambda: {'seed': 3, 'width': width, 'height': height,
+                                                        'theme': self.theme.value}))
 
     def new_game(self) -> None:
         self.sfx("button")

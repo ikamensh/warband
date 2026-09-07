@@ -149,8 +149,11 @@ class NetworkGameScene(GameScene):
             self.say(self.session.error)
             self.session.error = ""
         if not self.session.ready:
-            self.say('Match paused — waiting for your partner.' if self.session.player == 0 else
-                     'Disconnected — return to the title and rejoin the host.')
+            if getattr(self.session, 'online', False):
+                self.say(self.session.error or 'Match paused — waiting for your partner to reconnect.')
+            else:
+                self.say('Match paused — waiting for your partner.' if self.session.player == 0 else
+                         'Disconnected — return to the title and rejoin the host.')
         if self._revision == self.session.revision:
             return
         self._revision = self.session.revision
@@ -183,7 +186,8 @@ class NetworkGameScene(GameScene):
         self.say('Online matches continue while menus are open.')
 
     def save_to(self, slot):
-        self.say('Multiplayer runs live on the host; offline saves are separate.')
+        self.say('This multiplayer match runs live; offline saves are separate.')
 
     def load_from(self, slot):
-        self.say('Rejoin the host to resume this multiplayer match.')
+        self.say('Use Multiplayer → Rejoin last room to resume online play.' if getattr(self.session, 'online', False)
+                 else 'Rejoin the host to resume this multiplayer match.')

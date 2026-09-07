@@ -40,8 +40,13 @@ def main() -> None:
     sound.install(game)
     sound.apply_volumes(settings["music"], settings["sfx"])
     from warband.multiplayer import NetworkGameScene, WarbandMatch
+    width, height = mapgen.SIZES[args.size]
+    options = {'seed': args.seed if args.seed is not None else 3, 'width': width,
+               'height': height, 'theme': args.theme}
     lobby = match_from_arguments(args, parser, title="Warband", game_id="warband-v1",
-                                 create_match=lambda: WarbandMatch(args.seed if args.seed is not None else 3, *mapgen.SIZES[args.size], theme=MapTheme(args.theme)), create_scene=lambda session, match: NetworkGameScene(session, match, settings=settings))
+                                 create_match=lambda: WarbandMatch(**{**options, 'theme': MapTheme(args.theme)}),
+                                 create_scene=lambda session, match: NetworkGameScene(session, match, settings=settings),
+                                 create_options=lambda: options, game=game)
     if lobby is not None:
         game.run(lobby)
         return
