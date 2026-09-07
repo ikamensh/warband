@@ -41,7 +41,7 @@ def read_wav(path: Path) -> tuple[np.ndarray, int]:
 def test_every_scene_event_has_an_effect_that_is_normalised_and_click_free(generated: Path) -> None:
     from warband.scene import GameScene  # noqa: F401  (the scene's sfx names are the EVENTS below)
 
-    events = {"select", "command", "attack_command", "hit", "arrow", "death", "chop", "gold", "build_start", "built", "trained",
+    events = {"select", "command", "attack_command", "hit", "arrow", "death", "chop", "build_start", "built", "trained",
               "under_attack", "error", "button", "victory", "defeat", "destroyed"}
     assert events == set(sound.SOUNDS)
     for name in events:

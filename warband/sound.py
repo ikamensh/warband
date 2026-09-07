@@ -185,11 +185,6 @@ def chop() -> np.ndarray:
     return level(mix(thump(240, 110, 0.07, tau=0.025), noise(0.09, 300, 2500, tau=0.03, seed=40) * 0.8), 0.7)
 
 
-def gold() -> np.ndarray:
-    """Coins: three quick bell taps."""
-    return level(mix(*[(i * 0.045, tone(note, 0.16, tau=0.05, partials=BELL) * (1 - 0.2 * i)) for i, note in enumerate(("A6", "E7", "A7"))]), 0.5)
-
-
 def build_start() -> np.ndarray:
     """Hammer taps."""
     return level(mix(*[(i * 0.11, mix(noise(0.05, 1000, 5000, tau=0.014, seed=50 + i) * 0.7, thump(400, 180, 0.05, tau=0.02) * 0.5)) for i in range(3)]), 0.6)
@@ -238,7 +233,7 @@ def defeat() -> np.ndarray:
 
 SOUNDS: dict[str, Callable[[], np.ndarray]] = {
     "select": select, "command": command, "attack_command": attack_command, "button": button, "error": error,
-    "hit": hit, "arrow": arrow, "death": death, "chop": chop, "gold": gold, "build_start": build_start, "built": built,
+    "hit": hit, "arrow": arrow, "death": death, "chop": chop, "build_start": build_start, "built": built,
     "trained": trained, "under_attack": under_attack, "destroyed": destroyed, "victory": victory, "defeat": defeat,
 }
 

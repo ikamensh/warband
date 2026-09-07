@@ -899,8 +899,6 @@ class GameScene(Scene):
                 self.effects.add(Pulse(to_world(e.pos), (140, 255, 160, 200), radius=(4, 16), rings=1, duration=0.4))
             elif e.kind == "tree_felled" and mine:
                 self.sfx("chop", gap=0.3)
-            elif e.kind == "deposit" and mine and e.text == "gold":
-                self.sfx("gold", gap=0.6)
             elif e.kind == "under_attack" and mine:
                 self.last_alert = e.pos
                 self.minimap.ping(*to_world(e.pos))
