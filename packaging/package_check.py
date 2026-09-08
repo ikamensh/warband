@@ -123,7 +123,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
     from saga2d.multiplayer_ui import MatchLobby
     from saga2d.online import OnlineClient
     from warband import sound
-    from warband.scene import DEFAULT_SETTINGS, new_game
+    from warband.scene import DEFAULT_SETTINGS, SettlementPlansScene, new_game
     from warband.style import build_theme
     from warband.title import TitleScene
     from warband.multiplayer import NetworkGameScene, NetworkMenuScene
@@ -204,6 +204,17 @@ def native_smoke(output: Path, endpoint: str) -> dict:
             live = game.scene
             wait(lambda: live.world.time >= 2)
             capture("-online-match")
+            assert live.selection == []
+            click("Train")
+            capture("-settlement-train")
+            click("Footman")
+            wait(lambda: any(plan.kind == "unit" for plan in live.world.player_plans(live.human)))
+            click(f"Plans ({live._plan_count()})")
+            assert isinstance(game.scene, SettlementPlansScene)
+            capture("-settlement-plans")
+            click("Cancel")
+            wait(lambda: not live.world.player_plans(live.human))
+            click("Back")
             press(key.F10)
             assert isinstance(game.scene, NetworkMenuScene)
             before = live.world.time
@@ -218,7 +229,8 @@ def native_smoke(output: Path, endpoint: str) -> dict:
                     "executable": info["executable"], "executable_sha256": info["executable_sha256"],
                     "renderer": gl.gl_info.get_renderer(), "opengl_version": gl.gl_info.get_version_string(), "vendor": gl.gl_info.get_vendor(),
                     "backend": "pyglet", "native_multiplayer_input": True, "native_clipboard_join": True,
-                    "live_match_menu": True, "sound_catalogue": len(bank.names), "images": images}
+                    "live_match_menu": True, "native_settlement_planning": True,
+                    "sound_catalogue": len(bank.names), "images": images}
         finally:
             game.backend.set_clipboard_text(clipboard)
             game.close()
