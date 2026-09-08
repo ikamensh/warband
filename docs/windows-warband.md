@@ -53,10 +53,18 @@ check records its endpoint and results in `verification.json` and creates one
 short-lived room on the hosted service. Omit `--public-server` for a local-only
 verification run.
 
-Native title, multiplayer input and match rendering are attempted separately.
-Known missing graphics-context errors produce an explicit unsupported-runner
-receipt. Other rendering, import or asset errors fail verification. The PNGs
-and all diagnostic JSON/logs are retained in the CI artifact for 30 days.
+Native title, multiplayer input and match rendering must also pass. Because
+the Windows runner has only Microsoft's legacy OpenGL driver, CI supplies
+[Mesa llvmpipe](https://docs.mesa3d.org/drivers/llvmpipe.html) for the native
+test using the SHA-256-pinned
+[26.2.0 Windows build](https://github.com/pal1000/mesa-dist-win/releases/tag/26.2.0).
+Its two WGL DLLs are placed beside the installed EXE only for this check and
+removed afterward. They are absent from the installer and portable ZIP.
+The receipt records the exact EXE hash, actual GL renderer/version and both
+test DLL hashes; `mesa-test-context.json` records download provenance.
+To reproduce this setup, add `--mesa-dir PATH` pointing to those x64 DLLs.
+Any native rendering failure fails CI. The PNGs and all diagnostic JSON/logs
+are retained in the CI artifact for 30 days.
 These checks cover the recorded runner; real Windows GPU/audio playtesting
 and a match against the remote AI are separate evidence.
 

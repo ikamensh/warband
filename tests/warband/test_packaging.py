@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from tools.build_warband import version
-from tools.verify_warband_package import isolated_environment, local_server, verify
+from tools.verify_warband_package import isolated_environment, local_server, mesa_test_context, verify
 
 
 def test_shipped_online_smoke_accepts_authority_movement_and_seat_rejoin():
@@ -55,3 +55,21 @@ def test_public_acceptance_requires_tls(tmp_path):
     """Public acceptance must exercise TLS rather than accidentally testing loopback."""
     with pytest.raises(ValueError, match="TLS endpoint"):
         verify(tmp_path, public_server="ws://127.0.0.1/play")
+
+
+def test_mesa_context_is_temporary_and_preserves_the_shipping_executable(tmp_path):
+    """A failed native check must still remove only its test DLLs and keep app bytes."""
+    installed, mesa = tmp_path / "installed", tmp_path / "mesa"
+    installed.mkdir()
+    mesa.mkdir()
+    executable = installed / "Warband.exe"
+    executable.write_bytes(b"shipping executable")
+    for name in ("opengl32.dll", "libgallium_wgl.dll"):
+        (mesa / name).write_bytes(name.encode())
+    with pytest.raises(RuntimeError, match="native failure"):
+        with mesa_test_context(executable, mesa) as receipt:
+            assert set(receipt["dll_sha256"]) == {"opengl32.dll", "libgallium_wgl.dll"}
+            assert (installed / "opengl32.dll").read_bytes() == (mesa / "opengl32.dll").read_bytes()
+            raise RuntimeError("native failure")
+    assert list(installed.iterdir()) == [executable]
+    assert executable.read_bytes() == b"shipping executable"

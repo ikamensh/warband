@@ -1,6 +1,7 @@
 """Diagnostics executed inside the frozen application, without a source checkout."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -69,7 +70,11 @@ def online_smoke(endpoint: str) -> dict:
 def build_info() -> dict:
     if not getattr(sys, "frozen", False):
         raise RuntimeError("Package acceptance must run the frozen executable")
-    return json.loads((Path(sys._MEIPASS) / "release" / "build-info.json").read_text(encoding="utf-8"))
+    info = json.loads((Path(sys._MEIPASS) / "release" / "build-info.json").read_text(encoding="utf-8"))
+    with Path(sys.executable).open("rb") as stream:
+        info["executable_sha256"] = hashlib.file_digest(stream, "sha256").hexdigest()
+    info["executable"] = str(Path(sys.executable).resolve())
+    return info
 
 
 def smoke(endpoint: str) -> dict:
@@ -78,6 +83,7 @@ def smoke(endpoint: str) -> dict:
     for filename in (*fonts.FILES.values(), "OFL.txt"):
         assert (fonts.FONT_DIR / filename).is_file(), filename
     return {"passed": True, "source_commit": info["source_commit"], "version": info["version"], "frozen": True,
+            "executable": info["executable"], "executable_sha256": info["executable_sha256"],
             "bundled_fonts": True, "online": online_smoke(endpoint)}
 
 
@@ -86,6 +92,7 @@ def native_smoke(output: Path) -> dict:
     os.environ["SAGA2D_SILENT"] = "1"
     os.environ["SAGA2D_HEADLESS"] = "1"
     from PIL import ImageStat
+    from pyglet import gl
     from pyglet.window import key
     from saga2d import Game, MatchMenu, fonts
     from warband import sound
@@ -127,6 +134,8 @@ def native_smoke(output: Path) -> dict:
             capture("")
             assert game.scene.world.units and game.scene.world.buildings
             return {"passed": True, "source_commit": info["source_commit"], "version": info["version"],
+                    "executable": info["executable"], "executable_sha256": info["executable_sha256"],
+                    "renderer": gl.gl_info.get_renderer(), "opengl_version": gl.gl_info.get_version_string(), "vendor": gl.gl_info.get_vendor(),
                     "backend": "pyglet", "native_multiplayer_input": True, "sound_catalogue": len(bank.names), "images": images}
         finally:
             game.close()
