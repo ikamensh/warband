@@ -13,9 +13,10 @@ installation and play instructions.
 ## Changes in preview.3
 
 - Restored automatic worker gathering from the earlier app: idle peasants
-  balance needed gold and lumber, use known safe resources and routes, and
-  respect manual and queued orders. Stop or Hold parks a worker until another
-  order enables automatic work again.
+  balance needed gold and lumber and use known safe resources and routes.
+  Construction plans can borrow gatherers after cargo delivery; movement,
+  building, repair and patrol orders retain priority. Stop or Hold parks a
+  worker until another order enables automatic work again.
 - Meadows, woodland groves, ponds and rocky regions give maps distinct areas
   while preserving accessible bases and connecting routes.
 - Every newly created online room receives a fresh map seed. Command-line
@@ -30,8 +31,8 @@ installation and play instructions.
   progress and cancellation.
 
 The [independent native visual review](evidence/warband-map-workers-2026-09-08/visual-review.md)
-records map appearance across all three themes. Gameplay UI inspection and
-packaged preview.3 acceptance remain pending.
+records the final map appearance across all three themes and Settlement UI
+captures. Packaged preview.3 acceptance remains pending.
 
 Preview.2's room-code copy/paste buttons, keyboard paste and live multiplayer
 menus remain included. Historical validation below is scoped to those earlier
@@ -54,10 +55,11 @@ strategy, on procedural maps that change your opening.
 - Procedural maps in three sizes and three lands — summer, winter and
   wasteland — with regional meadows, groves, ponds and stone. Offline games
   support two to four factions; internet rooms have two player seats.
-- Idle peasants find known safe work automatically; manual orders and
-  queued construction take priority, and Stop or Hold keeps a worker parked.
-- Everything has a hotkey, and the game shows them as keycaps: drag or click
-  to select, right-click to order, attack-move, patrol, hold, rally points,
+- Idle peasants find known safe work automatically; construction plans can
+  borrow gatherers after cargo delivery. Other tasks keep priority, and Stop
+  or Hold keeps a worker parked.
+- Mouse controls and keyboard shortcuts support drag or click to select,
+  right-click to order, attack-move, patrol, hold, rally points,
   control groups, camera bookmarks, a minimap that pans and orders.
 - A tutorial strip and saves with an autosave every two minutes for offline
   matches; a codex, persistent settings, fullscreen and online seat reconnects.
@@ -85,7 +87,7 @@ See the in-game help (F1) and codex (F2). Summary:
 ## Known issues in this preview
 
 - Units use discrete animation poses; workers have four additional chopping poses with coordinated axe and body motion.
-- The HUD can overlap on small logical display sizes. Fullscreen helps readability but scaling the window does not rearrange its panels.
+- The layout uses a fixed logical canvas. Fullscreen helps readability; scaling the window does not rearrange its panels.
 - Large maps with three or four players can run past twenty minutes without a decision.
 - Preview.3 package checks are pending. Earlier Windows releases passed automated checks on the recorded CI runner using a test-only Mesa driver for native rendering; physical Windows GPU performance and audio remain unverified. Preview installers are unsigned.
 - Earlier macOS releases passed automated native and network checks on Apple M4. Mac packages use ad-hoc signatures without Developer ID notarization. Independent playtesting and a complete human-versus-human match remain open.

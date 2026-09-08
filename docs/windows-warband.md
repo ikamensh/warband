@@ -17,16 +17,18 @@ includes an Apple Silicon Mac companion. See the
 first-launch prompts and reconnecting.
 
 Preview.3 restores automatic worker gathering: idle peasants choose known
-safe resources, respect your manual and queued orders, and stay parked after
-Stop or Hold until you give another order. Maps have broad meadows, groves,
+safe resources. Construction plans can borrow gatherers after cargo delivery;
+movement, building, repair and patrol orders retain priority. Stop or Hold
+keeps a worker parked until another order. Maps have broad meadows, groves,
 ponds and rocky regions; new online rooms choose fresh maps. A stone rim and
 corrected fog coverage contain the map artwork at its edge.
 The new **Settlement** row lets you plan buildings, units and upgrades
 without selecting a worker or building. **Plans** shows waiting reasons,
 progress and cancellation; **Assembly point** sets where new soldiers gather.
 Ground seam corrections have an independent
-[native visual review](evidence/warband-map-workers-2026-09-08/visual-review.md);
-the new gameplay layout and preview.3 package acceptance remain pending.
+[native visual review](evidence/warband-map-workers-2026-09-08/visual-review.md),
+including the final Settlement layout. Preview.3 package acceptance remains
+pending.
 
 Historical acceptance remains available separately. **Preview.2** passed
 [Windows CI run 34208548272](https://github.com/ikamensh/saga2d/actions/runs/34208548272),

@@ -139,8 +139,10 @@ select a peasant and press **B**, then **F**, to order that worker to build a
 Farm directly. These command buttons change with the selection; hover to
 see costs, prerequisites and why an action is unavailable.
 
-Automatic gathering respects your movement and Shift-queued jobs, including
-after construction. Settlement building plans may borrow a gathering worker.
+Movement, building, repair and patrol orders, including Shift-queued tasks,
+keep priority. Settlement construction may borrow a gatherer, even one you
+sent to a particular resource, after it delivers its cargo. Workers return
+to automatic gathering when their other jobs are complete.
 To keep a worker where you put it, select it and use **Stop (S)** or
 **Hold (H)**; this switches off its automatic work and prevents assignment
 to a settlement plan until you give it another order. A worker with no known
