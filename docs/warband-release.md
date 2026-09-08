@@ -1,8 +1,9 @@
-# Warband — release pack (0.1.0-preview.1 candidate)
+# Warband — release pack (0.1.0-preview.1)
 
-The Windows package is a **CI-verified candidate** as of 2026-09-08.
-Publication of the [planned prerelease](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.1)
-is pending; the verification scope and exact source are recorded below.
+The [0.1.0-preview.1 prerelease](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.1)
+was published on 2026-09-08 with the CI-verified Windows installer/portable
+package and a matching macOS arm64 app archive. Verification scope and exact
+source are recorded below.
 
 ## Store description (draft)
 
@@ -42,13 +43,13 @@ See the in-game help (F1) and codex (F2). Summary:
 | Camera | arrows, screen edges, middle-drag, wheel or + / − zoom, F6–F8 bookmarks (Ctrl to set), Space jumps to the last alert, Home or Backspace to the base |
 | Game | F3 pause, F4 hide the tutorial strip, F5 quicksave, F9 quickload, F10 menu (saves, settings), Esc cancel, deselect, then the menu |
 
-## Known issues in this candidate
+## Known issues in this preview
 
 - Units use discrete animation poses; workers have four additional chopping poses with coordinated axe and body motion.
 - The HUD is laid out for windows at least 1280 pixels wide; on a smaller screen the panels overlap.
 - Large maps with three or four players can run past twenty minutes without a decision.
 - Windows installer and portable builds passed automated checks on the recorded CI runner. Native rendering used a test-only Mesa software driver; performance and audio quality on physical Windows PCs remain unverified. The installer is unsigned.
-- The macOS package passed automated native and network checks. Independent playtesting and a complete human-versus-human match remain open.
+- The macOS package passed automated native and network checks on Apple M4. It is ad-hoc signed, without a Developer ID signature or notarization. Independent playtesting and a complete human-versus-human match remain open.
 - No standalone Linux package has been produced or verified. Running the server and headless AI on Linux does not establish desktop-package compatibility.
 - No localisation; English only.
 
@@ -71,7 +72,7 @@ in `~/.warband` (`settings.json`, `saves/`, generated `sounds/` and
 
 ## Version
 
-Windows candidate **0.1.0-preview.1** was built from immutable commit
+Windows release **0.1.0-preview.1** was built from immutable commit
 `fd6e0c911fa68aa0355d4b56dd8e4f0885c739d8` on 2026-09-08.
 [CI run 34202934123](https://github.com/ikamensh/saga2d/actions/runs/34202934123)
 passed regression tests, pinned packaging, extracted and installed executable
@@ -85,18 +86,21 @@ runner. Those test DLLs are absent from the shipping installer and ZIP.
 Generation/loading of the 87-sound catalog was checked with audio muted;
 this is not a listening test. See [Windows verification details](windows-warband.md).
 
-Exact candidate artifacts:
+Exact published artifacts:
 
 | File | SHA-256 |
 |---|---|
 | `Warband-0.1.0-preview.1-windows-x64-setup.exe` | `f2fcabad5bb14dde52630246005f900c37c0f80d2d46d12d433966c1e603500b` |
 | `Warband-0.1.0-preview.1-windows-x64-portable.zip` | `65168d56f015a7caeaa5774d2ab6e50d62f34118375cc1f9645a0d7808675368` |
+| `Warband-0.1.0-preview.1-darwin-arm64-app.zip` | `5d918cf308436c0f6e81f7b6893e8cf50b529842740e2075f08b95742867dedf` |
 
-The same version's macOS arm64 package was built from
-`90f30676de97d8bda327ef4fbd50b1149b7715ce`; its isolated launch, fonts,
-native input/rendering and local/public network receipts are retained in the
-[Mac package evidence](evidence/warband-internet-2026-09-08/mac-package/README.md).
-These are separate platform builds with explicitly recorded commits.
+The macOS arm64 companion was built from the same immutable `fd6e0c9` source.
+Its portable executable passed isolated launch, fonts, native input/rendering
+and local network checks. The final `.app` separately passed public TLS and
+native rendering on Apple M4; archive extraction preserved the executable
+hash and passed deep, strict ad-hoc signature verification. See the
+[final Mac package evidence](evidence/warband-internet-2026-09-08/mac-release/README.md).
+This delivered build supersedes the earlier Mac candidate at `90f3067`.
 
 `build-manifest.json` records build provenance; `verification.json` records
 runtime acceptance. Neither replaces testing on players' hardware or an
