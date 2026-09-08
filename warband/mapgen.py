@@ -5,6 +5,7 @@ lakes and forests in between, and every base reachable from every other.
 from __future__ import annotations
 
 import heapq
+import math
 import random
 from collections import deque
 
@@ -24,6 +25,11 @@ THRESHOLDS: dict[MapTheme, tuple[float, float, float]] = {
     MapTheme.WINTER: (0.60, 0.72, 0.84),
     MapTheme.WASTELAND: (0.70, 0.84, 0.74),
 }
+
+
+def fresh_seed() -> int:
+    """Choose a new map seed within the online protocol's signed 32-bit range."""
+    return random.randrange(1, 2**31)
 
 
 def generate(seed: int, width: int = 48, height: int = 40, players: int = 2, human: int | None = 0, theme: MapTheme = MapTheme.SUMMER) -> World:
@@ -80,16 +86,18 @@ def _ring(pos: Pos, size: int, gap: int) -> list[Pos]:
 
 
 def _noise(rng: random.Random, width: int, height: int, cell: int) -> list[list[float]]:
-    """Bilinear value noise with control points every *cell* tiles."""
+    """Smooth value noise with control points every *cell* tiles."""
     cols, rows = width // cell + 2, height // cell + 2
     grid = [[rng.random() for _ in range(cols)] for _ in range(rows)]
     out = [[0.0] * width for _ in range(height)]
     for y in range(height):
         gy, fy = divmod(y, cell)
         ty = fy / cell
+        ty = ty * ty * (3 - 2 * ty)
         for x in range(width):
             gx, fx = divmod(x, cell)
             tx = fx / cell
+            tx = tx * tx * (3 - 2 * tx)
             a, b = grid[gy][gx], grid[gy][gx + 1]
             c, d = grid[gy + 1][gx], grid[gy + 1][gx + 1]
             out[y][x] = (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty
@@ -97,22 +105,50 @@ def _noise(rng: random.Random, width: int, height: int, cell: int) -> list[list[
 
 
 def _terrain(rng: random.Random, width: int, height: int, theme: MapTheme) -> list[list[Terrain]]:
+    """Warp broad meadow, woodland, wetland and rocky regions into irregular terrain.
+
+    Region centres sit between the corner bases. Their cores remain recognizable,
+    while two scales of noise shape the edges, forest clearings and smaller groves.
+    Protected starts and routes are applied afterwards by ``generate``.
+    """
     tree_level, water_level, rock_level = THRESHOLDS[theme]
-    trees = _noise(rng, width, height, 5)
-    fine = _noise(rng, width, height, 2)
-    water = _noise(rng, width, height, 9)
-    rocks = _noise(rng, width, height, 3)
+    warp_x = _noise(rng, width, height, 8)
+    warp_y = _noise(rng, width, height, 6)
+    fine = _noise(rng, width, height, 3)
+    kinds = [Terrain.GRASS, Terrain.TREES, Terrain.WATER, Terrain.ROCK]
+    rng.shuffle(kinds)
+    regions = []
+    for kind, (cx, cy) in zip(kinds, ((0.5, 0.24), (0.75, 0.5), (0.5, 0.76), (0.25, 0.5))):
+        angle = rng.uniform(-math.pi, math.pi)
+        regions.append((kind, width * (cx + rng.uniform(-0.04, 0.04)),
+                        height * (cy + rng.uniform(-0.04, 0.04)),
+                        width * rng.uniform(0.18, 0.29), height * rng.uniform(0.16, 0.24),
+                        math.cos(angle), math.sin(angle)))
+    warp = min(width, height) * 0.12
     terrain = [[Terrain.GRASS] * width for _ in range(height)]
     for y in range(height):
         for x in range(width):
             edge = min(x, y, width - 1 - x, height - 1 - y)
-            t = trees[y][x] * 0.7 + fine[y][x] * 0.3
-            if edge == 0 or t > tree_level - (0.25 if edge < 3 else 0.0):
+            if edge == 0 or (edge < 3 and warp_x[y][x] > tree_level - 0.25):
                 terrain[y][x] = Terrain.TREES
-            elif water[y][x] > water_level and edge > 3:
+                continue
+            px, py = x + (warp_x[y][x] - 0.5) * warp, y + (warp_y[y][x] - 0.5) * warp
+            region, strength = Terrain.GRASS, 0.0
+            for kind, cx, cy, rx, ry, cosine, sine in regions:
+                dx, dy = px - cx, py - cy
+                u, v = dx * cosine + dy * sine, dy * cosine - dx * sine
+                influence = 1 - (u / rx) ** 2 - (v / ry) ** 2
+                if influence > strength:
+                    region, strength = kind, influence
+            detail = fine[y][x]
+            if region is Terrain.TREES and detail + strength * 0.6 > tree_level:
+                terrain[y][x] = Terrain.TREES
+            elif region is Terrain.WATER and strength * 0.75 + detail * 0.25 > water_level - 0.25 and edge > 3:
                 terrain[y][x] = Terrain.WATER
-            elif rocks[y][x] > rock_level and fine[y][x] > 0.5:
+            elif region is Terrain.ROCK and strength * 0.75 + detail * 0.25 > rock_level - 0.25:
                 terrain[y][x] = Terrain.ROCK
+            elif region is Terrain.WATER and detail > tree_level + 0.05:
+                terrain[y][x] = Terrain.TREES
     return terrain
 
 

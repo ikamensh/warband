@@ -39,7 +39,7 @@ class TitleScene(Scene):
         self.notice = ""
 
     def on_enter(self) -> None:
-        seed = random.randrange(1, 10_000)
+        seed = mapgen.fresh_seed()
         width, height = mapgen.SIZES["Medium"]
         self.backdrop = mapgen.generate(seed=seed, width=width, height=height, players=2, theme=random.choice(list(MapTheme)))
         self.backdrop.reveal_all(0)
@@ -102,9 +102,9 @@ class TitleScene(Scene):
         from warband.multiplayer import WarbandMatch, NetworkGameScene
         width, height = mapgen.SIZES[self.size]
         self.game.push(MatchMenu("Warband multiplayer", "warband-v1",
-                                lambda: WarbandMatch(3, width, height, self.theme),
+                                lambda: WarbandMatch(mapgen.fresh_seed(), width, height, self.theme),
                                 lambda session, match: NetworkGameScene(session, match, settings=self.settings),
-                                create_options=lambda: {'seed': 3, 'width': width, 'height': height,
+                                create_options=lambda: {'seed': mapgen.fresh_seed(), 'width': width, 'height': height,
                                                         'theme': self.theme.value}))
 
     def new_game(self) -> None:
@@ -158,7 +158,7 @@ class NewGameScene(Scene):
         self.players = title.players
         self.difficulty = title.difficulty
         self.theme = title.theme
-        self.seed = random.randrange(1, 10_000)
+        self.seed = mapgen.fresh_seed()
         self._theme_buttons: dict[MapTheme, Button] = {}
         self._size_buttons: dict[str, Button] = {}
         self._player_buttons: dict[int, Button] = {}
@@ -270,7 +270,7 @@ class NewGameScene(Scene):
         self.set_players(4)
 
     def reroll(self) -> None:
-        self.seed = random.randrange(1, 10_000)
+        self.seed = mapgen.fresh_seed()
         self.title.sfx("button")
 
     def start(self) -> None:

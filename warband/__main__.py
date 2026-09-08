@@ -41,7 +41,7 @@ def main() -> None:
     sound.apply_volumes(settings["music"], settings["sfx"])
     from warband.multiplayer import NetworkGameScene, WarbandMatch
     width, height = mapgen.SIZES[args.size]
-    options = {'seed': args.seed if args.seed is not None else 3, 'width': width,
+    options = {'seed': args.seed if args.seed is not None else mapgen.fresh_seed(), 'width': width,
                'height': height, 'theme': args.theme}
     lobby = match_from_arguments(args, parser, title="Warband", game_id="warband-v1",
                                  create_match=lambda: WarbandMatch(**{**options, 'theme': MapTheme(args.theme)}),
