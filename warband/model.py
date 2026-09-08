@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterator
 
 from warband import path as pathing
+from warband.settlement import Plan, Settlement
 from warband.worker_knowledge import WorkerKnowledge
 from warband.rules import (
     REPAIR_CHUNK, REPAIR_RATE, repair_cost,
@@ -134,6 +135,7 @@ class Player:
     alive: bool = True
     last_alert: float = -1000.0
     upgrades: set[Upgrade] = field(default_factory=set)
+    assembly: Point | None = None
 
 
 @dataclass
@@ -345,6 +347,7 @@ class World:
         self._worker_ai_checks: dict[int, int] = {}
         self._worker_ai_views: dict[int, tuple[int, Any]] = {}
         self._worker_ai_navigation: dict[int, tuple[int, bytearray]] = {}
+        self.settlement = Settlement(self)
 
     # -- Ids and lookups -----------------------------------------------------------
 
@@ -606,7 +609,11 @@ class World:
         info = BUILDINGS[building_type]
         if info.requires is not None and not self.player_buildings(player, info.requires, done=True):
             return f"Requires a {BUILDINGS[info.requires].name}"
-        size = info.size
+        return self._placement_reason(building_type, pos, player, builder=builder)
+
+    def _placement_reason(self, building_type: BuildingType, pos: Pos, player: int, *,
+                          builder: int | None = None, ignore_units: bool = False) -> str | None:
+        size = BUILDINGS[building_type].size
         for dy in range(size):
             for dx in range(size):
                 tile = (pos[0] + dx, pos[1] + dy)
@@ -619,7 +626,7 @@ class World:
                 if not self.is_explored(player, tile):
                     return "Unexplored"
         for unit in self.units.values():
-            if unit.id == builder or unit.hidden:
+            if ignore_units or unit.id == builder or unit.hidden:
                 continue
             if pos[0] - unit.radius < unit.x < pos[0] + size + unit.radius and pos[1] - unit.radius < unit.y < pos[1] + size + unit.radius:
                 return "A unit is in the way"
@@ -627,6 +634,34 @@ class World:
             if rects_gap((pos[0], pos[1], size, size), mine.rect) < MINE_CLEARANCE:
                 return "Too close to the gold mine"
         return None
+
+    def can_plan_building(self, building_type: BuildingType, pos: Pos, player: int) -> str | None:
+        """Check a blueprint's ground; resources, prerequisites and workers may arrive later."""
+        return self.settlement.can_plan_building(building_type, pos, player)
+
+    def plan_building(self, player: int, building_type: BuildingType, pos: Pos) -> int:
+        """Schedule construction without selecting a worker; pay when construction starts."""
+        return self.settlement.plan_building(player, building_type, pos)
+
+    def player_plans(self, player: int) -> list[Plan]:
+        """Pending settlement requests and active construction, in request order."""
+        return self.settlement.player_plans(player)
+
+    def order_unit(self, player: int, unit_type: UnitType) -> int:
+        """Request a recruit; an available compatible producer is chosen automatically."""
+        return self.settlement.order_unit(player, unit_type)
+
+    def order_upgrade(self, player: int, upgrade: Upgrade) -> int:
+        """Request research; prerequisites, resources and a free researcher may arrive later."""
+        return self.settlement.order_upgrade(player, upgrade)
+
+    def cancel_plan(self, player: int, plan_id: int) -> None:
+        """Cancel pending work or refund an unfinished planned building at the normal rate."""
+        self.settlement.cancel_plan(player, plan_id)
+
+    def set_assembly(self, player: int, point: Point | None) -> None:
+        """Set the fallback destination for new combat recruits across the settlement."""
+        self.players[player].assembly = self._clamp(point) if point is not None else None
 
     # -- Commands ------------------------------------------------------------------
 
@@ -855,6 +890,7 @@ class World:
         self.time += dt
         self.tick += 1
         self._index_units()
+        self.settlement.update()
         for building in list(self.buildings.values()):
             self._update_building(building, dt)
         for unit in list(self.units.values()):
@@ -914,13 +950,16 @@ class World:
 
     def _deliver_unit(self, b: Building, unit_type: UnitType) -> None:
         assert b.player is not None
-        spot = self.free_tile_near(b.rect, prefer=b.rally)
+        assembly = self.players[b.player].assembly if unit_type is not UnitType.PEASANT else None
+        spot = self.free_tile_near(b.rect, prefer=b.rally if b.rally is not None else assembly)
         if spot is None:
             spot = (b.x, b.y + b.size)
         unit = self.spawn_unit(b.player, unit_type, tile_center(spot))
         self.events.append(Event("trained", unit.pos, player=b.player, entity=unit.id, other=b.id, text=f"{unit.info.name} ready"))
         if b.rally is not None:
             self.smart([unit.id], b.rally)
+        elif assembly is not None:
+            self.move([unit.id], assembly)
 
     def _tower_shoot(self, b: Building, dt: float) -> None:
         b.cooldown = max(0.0, b.cooldown - dt)
@@ -1792,11 +1831,13 @@ class World:
             "width": self.width, "height": self.height, "theme": self.theme.value,
             "terrain": ["".join(t.value[0] for t in row) for row in self.terrain],
             "players": [{"id": p.id, "human": p.human, "gold": p.gold, "lumber": p.lumber, "alive": p.alive, "last_alert": p.last_alert,
-                         "upgrades": sorted(u.value for u in p.upgrades)} for p in self.players],
+                         "upgrades": sorted(u.value for u in p.upgrades),
+                         "assembly": list(p.assembly) if p.assembly is not None else None} for p in self.players],
             "units": [_unit_to_dict(u) for u in self.units.values()],
             "buildings": [_building_to_dict(b) for b in self.buildings.values()],
             "explored": [bytes(e).hex() for e in self.explored],
             "worker_knowledge": [knowledge.to_dict() for knowledge in self.worker_knowledge],
+            "settlement": self.settlement.to_dict(),
             "time": self.time, "tick": self.tick, "next_id": self._next_id, "winner": self.winner,
             "rng": self.rng.getstate(),
         }
@@ -1811,6 +1852,7 @@ class World:
             p.human = saved["human"]
             p.gold, p.lumber, p.alive, p.last_alert = saved["gold"], saved["lumber"], saved["alive"], saved["last_alert"]
             p.upgrades = {Upgrade(u) for u in saved["upgrades"]}
+            p.assembly = tuple(saved["assembly"]) if saved.get("assembly") is not None else None
         for saved in data["buildings"]:
             b = _building_from_dict(saved)
             world.buildings[b.id] = b
@@ -1821,6 +1863,8 @@ class World:
         world.explored = [bytearray(bytes.fromhex(e)) for e in data["explored"]]
         if "worker_knowledge" in data:
             world.worker_knowledge = [WorkerKnowledge.from_dict(knowledge) for knowledge in data["worker_knowledge"]]
+        if "settlement" in data:
+            world.settlement.restore(data["settlement"])
         world.time, world.tick, world._next_id, world.winner = data["time"], data["tick"], data["next_id"], data["winner"]
         state = data["rng"]
         world.rng.setstate((state[0], tuple(state[1]), state[2]))
