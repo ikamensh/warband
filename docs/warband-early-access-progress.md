@@ -3,13 +3,19 @@
 Criteria: [warband-early-access-criteria.md](warband-early-access-criteria.md).
 A gate is incomplete until evidence below proves it.
 
-## Where it stands — 2026-09-06
+## Where it stands — 2026-09-08
 
 Evidence in place: W01, W02, W03, W04, W05, W07, W08, W09, W10 (frame
-times, monkey, the 300-match fuzz and the 30-minute soak), W13 (macOS), W14. Ongoing by nature: W11, W12. Open:
-W06 needs first-run walkthroughs by people, W13 has no Windows build,
-W15 needs an independent review and the user's playtest of the
-candidate. Nothing found in the last audit blocks a playtest.
+times, monkey, the 300-match fuzz and the 30-minute soak), W13 (automated
+macOS and Windows packaging checks), W14. Ongoing by nature: W11, W12. Open:
+W06 needs first-run walkthroughs by people; physical Windows GPU/audio
+playtesting and a Linux desktop package remain unverified. W15 needs an
+independent review and the user's playtest, including a complete
+human-versus-human match. The Windows `0.1.0-preview.1` package is a
+CI-verified candidate; prerelease publication is pending.
+
+Earlier performance, balance and soak results below retain their recorded
+dates and commits; the new packaging evidence does not rerun those gates.
 
 ## Baseline audit — 2026-09-05, commit `575bb32`
 
@@ -37,9 +43,37 @@ candidate. Nothing found in the last audit blocks a playtest.
 | W10 stability, performance | **evidence in place** (300-match run and soak in progress) | Fuzz across the increments: 120 AI matches and 182 monkey runs; five movement deadlocks found and fixed with regression tests (head-on separation `feb8046`; corner steering `bbdbd53`; a walk held short of its spot by a pinned crowd `7c7f3cd`; a crowd shoving units through a tree wall into an isolated clearing, and a detour that kept aiming at a spot across a blocked corner, `1b46664` — seeds 2203 and 2277 of the 300-match run, each replayed clean on the run's own code with the fix swapped in). Monkey: `tools/fuzz_warband.py --games 0 --monkey 100 --steps 1000 --seed 1000` → 100 played, 0 failed. Frame times from `tools/perf_warband.py` (150 units of six types between twelve farms, real backend, images pre-rendered as after the opening's warm-up): final code, 2026-09-06, load average 5 from other work: `720 frames: p50 5.2 ms, p95 10.9 ms, max 29.8 ms; last 120 frames: p50 4.7 ms, p95 9.5 ms, max 19.2 ms` (the 2026-09-05 run on the same Mac gave p95 13.1 ms; a run alongside two other CPU-bound processes gave 17–20 ms). The gate is met on an idle reference Mac. Cuts that got there: GL error checking off, pooled `draw_image` sprites, appearance setters that skip unchanged values, `Y_SORT_STEP` groups, grid A*, direct steering, cached panel geometry. The earlier 126 ms p95 figure was measured under `tracemalloc`, which the tool avoids. 300-match run (`--seed 2000`, pre-fix code): 300 played, 2 failed (the two clearing deadlocks above), 229 decided, 37 eliminations, 32 undecided. Soak (`tools/soak_warband.py --minutes 30`, real backend, the human side played by a brain, on a loaded machine): 4 matches, no crash, heap growth −0.2 MB, p50 9–14 ms, p95 16–26 ms, worst frame 384 ms at a match start; frames saved per match and inspected. Final 300-match run on the current code (`--seed 3000`, after the clearing fixes, repair and the merges): 300 played, 0 failed, 216 decided, 39 eliminations, 45 undecided. Queued on the final code: the AI report and an idle-machine perf run. |
 | W11 tests | ongoing | 607 tests green at `7e36c4b` (Warband 118, after merging main's audio lifecycle and button shortcuts); CI runs `uv run pytest`. Each fuzz finding has a named regression test built from the seed's exact tiles and positions. |
 | W12 framework split | ongoing | Additions in this phase: `saga2d.settings`, named save slots with summaries and `get_save_summary` (merged with main's validated envelopes and backups in `76619dd`), `Game.data_dir`/`settings`, backend fullscreen toggle, `Toast(top=)`, `render3d.scale`, `Y_SORT_STEP` grouping and view-matrix caching, GL error checking off, pooled immediate images, change-only sprite setters, a pixel-level pyglet backend test, and `saga2d.testing.FrameTimer`. Each is used by Warband and offered to Tribes/Shardbound (see `docs/coordination.md`). |
-| W13 packaging | **evidence in place (macOS)** | `tools/build_warband.py` builds `dist/Warband` with PyInstaller and launches it with `--selftest` from a clean home: fonts, generated art, generated sounds and a rendered frame outside the repository. Rebuilt 2026-09-06 from the final code (repair, water, fire, movement fixes, the Normal balance, main merged through its display API): 7.2 MB executable, sha256 `425ad14acdbdd493` (after the title, codex and Mac click fixes and the merge of main's draw-order scheme), macOS 26 arm64, selftest passed with 17 sounds from a clean home. Windows/Linux not produced. |
-| W14 release pack | **evidence in place** | `docs/warband-release.md`: store description, controls, known issues (no repair, long 4-player games, macOS only, English only), credits and provenance (all art and audio generated in-repo; Nunito under OFL). Audited 2026-09-05 against the bindings in `warband/scene.py` and the counts in `warband/rules.py`; the build was refreshed on 2026-09-06 (`425ad14acdbdd493`). |
+| W13 packaging | **automated evidence in place (macOS and Windows)** | Windows `0.1.0-preview.1` at `fd6e0c9` passed [CI run 34202934123](https://github.com/ikamensh/saga2d/actions/runs/34202934123): regressions, installer/portable builds, isolated frozen executables over local sockets, installed public TLS, native input/rendering with test-only Mesa, shortcut and uninstall checks. macOS arm64 at `90f3067` passed isolated fonts, native rendering/input, and local/public network checks for the executable and `.app`; [receipts](evidence/warband-internet-2026-09-08/mac-package/README.md). Audio generation/loading was checked muted; audible quality and physical Windows GPUs still need playtests. No verified standalone Linux package. See the scope below. |
+| W14 release pack | **evidence in place** | [Release pack](warband-release.md): store description, controls, known issues, credits and provenance (art/audio generated in-repo; Nunito under OFL). Updated 2026-09-08 with exact Windows candidate source/artifact hashes, macOS evidence and platform limitations. Original controls/content audit: 2026-09-05 against `warband/scene.py` and `warband/rules.py`. |
 | W15 review | incomplete | |
+
+## W13 packaging scope — 2026-09-08
+
+The Windows candidate is version `0.1.0-preview.1`, built at
+`fd6e0c911fa68aa0355d4b56dd8e4f0885c739d8`. The successful
+[Windows run](https://github.com/ikamensh/saga2d/actions/runs/34202934123)
+records provenance in `build-manifest.json` and `workflow-build.json`, and
+runtime acceptance in `verification.json`. Both extracted and installed EXEs
+created/joined rooms, moved authoritative units, rejected foreign orders and
+reclaimed private seats over local sockets; the installed EXE repeated those
+checks over the public TLS endpoint. Installation, Start menu shortcut and
+uninstallation also passed.
+
+Native title, multiplayer input and match rendering passed on the Windows
+Server 2025 runner using Mesa 26.2.0 llvmpipe. The two driver DLLs were provided
+only for CI and are absent from the setup EXE and portable ZIP. The check
+loaded/generated 87 sounds with audio muted. It establishes neither audible
+quality nor GPU coverage beyond the recorded software renderer. See
+[Windows package verification](windows-warband.md) and the
+[candidate artifact hashes](warband-release.md#version).
+
+The planned [prerelease](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.1)
+is pending publication. The separately built macOS candidate at `90f3067`
+has [native and public-network evidence](evidence/warband-internet-2026-09-08/mac-package/README.md).
+The [Mac-to-remote-AI run](evidence/warband-internet-2026-09-08/README.md)
+proves public connection and early economic orders, not a complete
+human-versus-human match. Linux server/headless-client operation is separate
+from desktop packaging; no standalone Linux release has been verified.
 
 ## Increments
 

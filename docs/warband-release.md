@@ -1,4 +1,8 @@
-# Warband — release pack (draft, describes the current candidate only)
+# Warband — release pack (0.1.0-preview.1 candidate)
+
+The Windows package is a **CI-verified candidate** as of 2026-09-08.
+Publication of the [planned prerelease](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.1)
+is pending; the verification scope and exact source are recorded below.
 
 ## Store description (draft)
 
@@ -40,10 +44,12 @@ See the in-game help (F1) and codex (F2). Summary:
 
 ## Known issues in this candidate
 
-- Units have four animation frames.
+- Units use discrete animation poses; workers have four additional chopping poses with coordinated axe and body motion.
 - The HUD is laid out for windows at least 1280 pixels wide; on a smaller screen the panels overlap.
 - Large maps with three or four players can run past twenty minutes without a decision.
-- Windows and Linux builds have not been produced or tested; the macOS build has been self-tested, not played by a second person.
+- Windows installer and portable builds passed automated checks on the recorded CI runner. Native rendering used a test-only Mesa software driver; performance and audio quality on physical Windows PCs remain unverified. The installer is unsigned.
+- The macOS package passed automated native and network checks. Independent playtesting and a complete human-versus-human match remain open.
+- No standalone Linux package has been produced or verified. Running the server and headless AI on Linux does not establish desktop-package compatibility.
 - No localisation; English only.
 
 ## Credits and provenance
@@ -65,9 +71,33 @@ in `~/.warband` (`settings.json`, `saves/`, generated `sounds/` and
 
 ## Version
 
-Candidate built from the `warband` branch on 2026-09-06 (sha256 `425ad14acdbdd493`,
-macOS arm64); the build script prints the executable's size, hash and
-platform (`tools/build_warband.py`). Audited
-against the code on 2026-09-05: every control in the table above is bound
-in `warband/scene.py` (`controls`, the command card and `HELP_KEYS`), and
-the content counts match `warband/rules.py`.
+Windows candidate **0.1.0-preview.1** was built from immutable commit
+`fd6e0c911fa68aa0355d4b56dd8e4f0885c739d8` on 2026-09-08.
+[CI run 34202934123](https://github.com/ikamensh/saga2d/actions/runs/34202934123)
+passed regression tests, pinned packaging, extracted and installed executable
+checks over real local sockets, installed-executable checks against the public
+TLS server, native title/menu/match rendering, Start menu shortcut creation
+and uninstall. The runtime checks include accepted movement, rejected foreign
+orders and private-seat reconnection.
+
+The native Windows check used Mesa 26.2.0 llvmpipe on the Windows Server 2025
+runner. Those test DLLs are absent from the shipping installer and ZIP.
+Generation/loading of the 87-sound catalog was checked with audio muted;
+this is not a listening test. See [Windows verification details](windows-warband.md).
+
+Exact candidate artifacts:
+
+| File | SHA-256 |
+|---|---|
+| `Warband-0.1.0-preview.1-windows-x64-setup.exe` | `f2fcabad5bb14dde52630246005f900c37c0f80d2d46d12d433966c1e603500b` |
+| `Warband-0.1.0-preview.1-windows-x64-portable.zip` | `65168d56f015a7caeaa5774d2ab6e50d62f34118375cc1f9645a0d7808675368` |
+
+The same version's macOS arm64 package was built from
+`90f30676de97d8bda327ef4fbd50b1149b7715ce`; its isolated launch, fonts,
+native input/rendering and local/public network receipts are retained in the
+[Mac package evidence](evidence/warband-internet-2026-09-08/mac-package/README.md).
+These are separate platform builds with explicitly recorded commits.
+
+`build-manifest.json` records build provenance; `verification.json` records
+runtime acceptance. Neither replaces testing on players' hardware or an
+independent multiplayer playtest.
