@@ -3,14 +3,13 @@
 import json
 import os
 from pathlib import Path
-import select
 import subprocess
 import sys
 
 import pytest
 from websockets.sync.client import connect
 
-from tests.test_online_server import handshake, receive, server_url
+from tests.test_online_server import first_stdout_line, handshake, receive, server_url
 
 
 def test_headless_opponent_joins_and_its_orders_reach_the_authoritative_world(server_url):
@@ -49,9 +48,7 @@ def test_headless_creator_announces_a_room_before_a_human_joins(server_url):
         cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
     try:
-        readable, _, _ = select.select([process.stdout, process.stderr], [], [], 5)
-        assert process.stdout in readable, "Bot did not announce its room before a player joined."
-        announced = json.loads(process.stdout.readline())
+        announced = json.loads(first_stdout_line(process, timeout=5))
         assert announced["event"] == "created" and announced["player"] == 0
         with connect(server_url, proxy=None) as human:
             joined = handshake(human, "join", game="warband-v1", room=announced["room"])
