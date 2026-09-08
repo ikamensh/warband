@@ -2,7 +2,7 @@
 
 `warband/textures.py` owns the art recipes. All geometry is rasterized once
 through Saga2D's existing low-poly renderer and then drawn as atlas sprites.
-No image files, new runtime dependencies, or simulation/save fields are needed.
+No source image files, new runtime dependencies, or simulation/save fields are needed.
 
 ## Resource scenery
 

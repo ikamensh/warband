@@ -1140,8 +1140,8 @@ def warm_units(game: Game, players: list[int]):
         for unit_type in UnitType:
             carries: tuple[Resource | None, ...] = (None, Resource.GOLD, Resource.LUMBER) if unit_type is UnitType.PEASANT else (None,)
             for carrying in carries:
+                frames = FRAMES + CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else FRAMES
                 for facing in range(FACINGS):
-                    frames = FRAMES + CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else FRAMES
                     for frame in frames:
                         yield unit_image(game, unit_type, player, facing, frame, carrying)
 

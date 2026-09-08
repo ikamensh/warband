@@ -23,7 +23,7 @@ from saga2d import Game, ParticleEmitter, RenderLayer, Scene, Sprite, SpriteAnch
 from warband import textures
 from warband.model import Building, Entity, Pos, Unit, World
 from warband.rules import BUILDINGS, VISION_EVERY, BuildingType, Terrain
-from warband.textures import CHUNK, CHUNK_PX, DROP_TREE, DROP_UNIT, TILE
+from warband.textures import CHUNK, CHUNK_PX, DROP_UNIT, TILE
 
 WATER_PERIOD = 0.45  # seconds between water phase changes
 WATER_CYCLE = (0, 1, 2, 1)  # ping-pong through the phases so the ripples never jump
