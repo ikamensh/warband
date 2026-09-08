@@ -16,6 +16,7 @@ def online_smoke(endpoint: str) -> dict:
         raise ValueError("The package smoke check requires an explicit --endpoint")
     from saga2d.online import OnlineClient
     from warband.model import World
+    from warband.rules import BuildingType
 
     clients = []
 
@@ -61,7 +62,28 @@ def online_smoke(endpoint: str) -> dict:
         clients.append(resumed)
         wait(lambda: resumed.ready and guest.ready)
         assert resumed.player == 0 and moved(resumed)
-        return {"create_join": True, "foreign_order_rejected": True, "authoritative_movement": True, "private_seat_rejoin": True}
+        # Exercise the settlement interface from inside the frozen client too.
+        # No worker or producer selection is supplied by either peer.
+        resumed.submit({"action": "order_unit", "args": [0, "footman"]})
+        resumed.submit({"action": "order_upgrade", "args": [0, "blades_1"]})
+        resumed.submit({"action": "set_assembly", "args": [0, list(target)]})
+
+        def plans():
+            return World.from_dict(resumed.state["world"]).player_plans(0)
+
+        wait(lambda: {plan.kind for plan in plans()} == {"unit", "upgrade"})
+        wait(lambda: World.from_dict(resumed.state["world"]).players[0].assembly == target)
+        world = World.from_dict(resumed.state["world"])
+        pos = next((x, y) for y in range(world.height) for x in range(world.width)
+                   if world.can_plan_building(BuildingType.FARM, (x, y), 0) is None)
+        resumed.submit({"action": "plan_building", "args": [0, "farm", pos]})
+        wait(lambda: any(plan.kind == "building" and plan.worker is not None for plan in plans()))
+        for plan in plans():
+            resumed.submit({"action": "cancel_plan", "args": [0, plan.id]})
+        wait(lambda: not plans())
+        return {"create_join": True, "foreign_order_rejected": True, "authoritative_movement": True,
+                "private_seat_rejoin": True, "global_production": True, "automatic_plan_builder": True,
+                "assembly_point": True, "cancel_plans": True}
     finally:
         for client in clients:
             client.close()

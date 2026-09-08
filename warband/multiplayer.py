@@ -11,7 +11,8 @@ from warband.rules import BuildingType, UnitType, Upgrade, SIM_DT, MapTheme
 
 GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'stop', 'hold'}
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building'}
-ORDERS = GROUP_ORDERS | BUILDING_ORDERS | {'build'}
+SETTLEMENT_ORDERS = {'plan_building', 'order_unit', 'order_upgrade', 'set_assembly', 'cancel_plan'}
+ORDERS = GROUP_ORDERS | BUILDING_ORDERS | SETTLEMENT_ORDERS | {'build'}
 HIT_AUDIO_FIELDS = frozenset({'source_type', 'target_type', 'target_armor', 'target_complete'})
 
 
@@ -54,7 +55,10 @@ class WarbandMatch:
             entity = collection.get(entity_id) if type(entity_id) is int else None
             if entity is None or entity.player != player:
                 raise CommandError('You can only order your own units and buildings.')
-        if action in GROUP_ORDERS:
+        if action in SETTLEMENT_ORDERS:
+            if type(values['player']) is not int or values['player'] != player:
+                raise CommandError('You can only order your own settlement.')
+        elif action in GROUP_ORDERS:
             ids = values['unit_ids']
             if not isinstance(ids, list) or not 1 <= len(ids) <= 256:
                 raise CommandError('Select between one and 256 units.')
@@ -69,15 +73,15 @@ class WarbandMatch:
             if field not in values:
                 continue
             point = values[field]
-            if point is None and action == 'set_rally':
+            if point is None and action in ('set_rally', 'set_assembly'):
                 continue
             if (not isinstance(point, (tuple, list)) or len(point) != 2
                     or any(type(n) not in (int, float) or not math.isfinite(n) for n in point)
                     or not (0 <= point[0] < self.world.width and 0 <= point[1] < self.world.height)
-                    or (action == 'build' and any(type(n) is not int for n in point))):
+                    or (action in ('build', 'plan_building') and any(type(n) is not int for n in point))):
                 raise CommandError('Choose a position inside the map.')
             values[field] = tuple(point)
-        for field in ('target_id', 'building_id'):
+        for field in ('target_id', 'building_id', 'plan_id'):
             if field in values and type(values[field]) is not int:
                 raise CommandError('Invalid target.')
         if action == 'cancel_train':

@@ -20,7 +20,9 @@ def test_shipped_online_smoke_accepts_authority_movement_and_seat_rejoin():
     spec.loader.exec_module(checker)
     with local_server() as endpoint:
         result = checker.online_smoke(endpoint)
-    assert result == {"create_join": True, "foreign_order_rejected": True, "authoritative_movement": True, "private_seat_rejoin": True}
+    assert result == {"create_join": True, "foreign_order_rejected": True, "authoritative_movement": True,
+                      "private_seat_rejoin": True, "global_production": True, "automatic_plan_builder": True,
+                      "assembly_point": True, "cancel_plans": True}
 
 
 def test_isolated_package_profile_preserves_windows_dll_environment(tmp_path):
