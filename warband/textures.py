@@ -154,10 +154,12 @@ def ground_chunk(terrain_at, in_bounds, cx: int, cy: int, scale: float, theme: M
     pal = PALETTES[theme]
     GRASS, WATER, WATER_RIPPLE, SAND, ROCK_GROUND = pal.grass, pal.water, pal.ripple, pal.sand, pal.rock_ground
     px = TILE * scale
-    n = CHUNK + 2
+    # Paint an extra tile of context, then trim it. Shores and grass details
+    # from neighbours must agree throughout the visible overlap of two chunks.
+    n = CHUNK + 4
     image = Image.new("RGBA", (round(n * px), round(n * px)), (*GRASS, 255))
     draw = ImageDraw.Draw(image)
-    x0, y0 = cx * CHUNK - 1, cy * CHUNK - 1
+    x0, y0 = cx * CHUNK - 2, cy * CHUNK - 2
 
     def kind(tx: int, ty: int) -> Terrain:
         return terrain_at((tx, ty)) if in_bounds((tx, ty)) else Terrain.TREES
@@ -214,7 +216,49 @@ def ground_chunk(terrain_at, in_bounds, cx: int, cy: int, scale: float, theme: M
                 for k in range(2):
                     rx = left + px * (0.15 + 0.5 * ((s >> (k * 4)) & 0xF) / 15 + 0.07 * phase)  # drifts with the phase
                     ry = top + px * (0.2 + 0.6 * ((s >> (k * 4 + 8)) & 0xF) / 15)
-                    draw.line([(rx, ry), (rx + px * 0.12, ry - px * 0.03), (rx + px * 0.24, ry)], fill=WATER_RIPPLE, width=max(1, round(1.2 * scale)))
+                    points = [(rx, ry), (rx + px * 0.12, ry - px * 0.03), (rx + px * 0.24, ry)]
+                    draw.line([(round(x), round(y)) for x, y in points], fill=WATER_RIPPLE, width=max(1, round(1.2 * scale)))
+    # Margins overlap neighbouring chunks, but must never invent land outside
+    # the playable rectangle. Clear after shores so they cannot bleed past it.
+    for j in range(n):
+        for i in range(n):
+            if not in_bounds((x0 + i, y0 + j)):
+                draw.rectangle((round(i * px), round(j * px), round((i + 1) * px) - 1, round((j + 1) * px) - 1), fill=(0, 0, 0, 0))
+    start, size = round(px), round(CHUNK_PX * scale)
+    return image.crop((start, start, start + size, start + size))
+
+
+def map_edge(length: int, scale: float, theme: MapTheme) -> Image.Image:
+    """A narrow exposed stone rim; the playable map meets its bottom edge.
+
+    Layered slate, chipped seams and a worn earth cap make the board boundary
+    readable even beside unexplored fog. The view rotates it for each side.
+    """
+    pal = PALETTES[theme]
+    width, height = round(length * TILE * scale), round(TILE * scale)
+    image = Image.new("RGBA", (width, height), (10, 12, 20, 255))
+    draw = ImageDraw.Draw(image)
+    rock = tuple(round(c * 0.48) for c in pal.rock)
+    cap = tuple(round(c * 0.53) for c in pal.sand)
+    for row, (top, bottom, factor) in enumerate(((0.13, 0.48, 0.68), (0.48, 0.79, 0.88), (0.79, 1.0, 1.16))):
+        step = TILE * scale * (1.15 if row == 1 else 0.85)
+        for index in range(-1, math.ceil(width / step) + 1):
+            seed = scatter(index, row, 27)
+            left = (index + row * 0.31) * step
+            right = left + step
+            y = height * top
+            chip = height * (0.035 + (seed & 15) / 400)
+            shade = tuple(round(c * factor * (0.88 + ((seed >> 4) & 15) / 75)) for c in rock)
+            draw.polygon([(left + scale, y + chip), (right - 3 * scale, y),
+                          (right - scale, height * bottom - scale), (left + 2 * scale, height * bottom)], fill=shade)
+            draw.line([(left + 3 * scale, y + chip), (right - 4 * scale, y + scale)],
+                      fill=tuple(round(c * 1.2) for c in shade), width=max(1, round(scale)))
+            if seed & 1:
+                mid = left + step * (0.3 + ((seed >> 8) & 15) / 40)
+                draw.line([(mid, y + chip), (mid - 3 * scale, height * (top + bottom) / 2),
+                           (mid + scale, height * bottom)], fill=darker(shade, 0.55), width=max(1, round(scale)))
+    draw.rectangle((0, height - 3 * scale, width, height), fill=cap)
+    draw.line([(0, height - scale), (width, height - scale)], fill=darker(cap, 1.3), width=max(1, round(scale)))
     return image
 
 

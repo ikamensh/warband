@@ -9,7 +9,7 @@ from warband import textures
 from warband.model import tile_center
 from warband.rules import BuildingType, MapTheme, Resource, Terrain, UnitType
 from warband.scene import GameScene, new_game
-from warband.view import WATER_PERIOD
+from warband.view import FOG_MARGIN, WATER_PERIOD
 from warband import mapgen
 from warband.style import build_theme
 from warband.textures import TILE
@@ -147,7 +147,7 @@ def test_enemies_are_shown_only_where_the_player_can_see(play) -> None:
 def test_fog_image_is_clear_where_seen_dim_where_explored_and_black_elsewhere(play) -> None:
     game, scene = play
     world, view = scene.world, scene.view
-    fog = np.asarray(view._fog_image())
+    fog = np.asarray(view._fog_image())[FOG_MARGIN:-FOG_MARGIN, FOG_MARGIN:-FOG_MARGIN]
     hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
     hx, hy = int(hall.center[0]), int(hall.center[1])
     assert fog[hy, hx, 3] == 0
@@ -157,7 +157,12 @@ def test_fog_image_is_clear_where_seen_dim_where_explored_and_black_elsewhere(pl
     world.update_vision()
     unit.x, unit.y = hall.center[0], hall.center[1]
     world.update_vision()
-    fog = np.asarray(view._fog_image())
+    image = np.asarray(view._fog_image())
+    assert np.all(image[:FOG_MARGIN, :, 3] == 255)
+    assert np.all(image[-FOG_MARGIN:, :, 3] == 255)
+    assert np.all(image[:, :FOG_MARGIN, 3] == 255)
+    assert np.all(image[:, -FOG_MARGIN:, 3] == 255)
+    fog = image[FOG_MARGIN:-FOG_MARGIN, FOG_MARGIN:-FOG_MARGIN]
     assert fog[hy, hx + 12, 3] not in (0, 255)
     updates_before = game.backend.image_updates.get(game.assets.image(view.fog_key), 0)
     for _ in range(20):
@@ -213,6 +218,36 @@ def test_ground_chunks_cover_the_map_with_a_margin_and_sand_meets_water() -> Non
                for py in range((y - cy * textures.CHUNK + 1) * TILE, (y - cy * textures.CHUNK + 2) * TILE)}
     palette = textures.PALETTES[MapTheme.SUMMER]
     assert palette.sand in colours and palette.water in colours
+
+
+@pytest.mark.parametrize("scale", [0.85375, 1.0, 2.0])
+def test_chunk_padding_does_not_paint_grass_beyond_the_playable_map(scale) -> None:
+    """The renderer's overlapping chunks must not create a bright strip outside fog."""
+    world = mapgen.generate(seed=3, width=27, height=25)
+    for cx, cy in ((0, 0), (3, 0), (0, 3), (3, 3)):
+        image = textures.ground_chunk(world.terrain_at, world.in_bounds, cx, cy, scale)
+        assert image.size == (round(textures.CHUNK_PX * scale),) * 2
+        for y in range(textures.CHUNK + 2):
+            for x in range(textures.CHUNK + 2):
+                tile = (cx * textures.CHUNK - 1 + x, cy * textures.CHUNK - 1 + y)
+                alpha = image.getpixel((round((x + 0.5) * TILE * scale), round((y + 0.5) * TILE * scale)))[3]
+                assert alpha == (255 if world.in_bounds(tile) else 0)
+
+
+@pytest.mark.parametrize("scale", [1.0, 1.25, 2.0])
+def test_overlapping_ground_chunks_agree_at_horizontal_and_vertical_seams(scale) -> None:
+    """Panning must not expose lines where independently painted chunks overlap."""
+    world = mapgen.generate(seed=3)
+    # Include a shore across both chunk edges, not just uniform meadow.
+    for y in range(6, 10):
+        for x in range(6, 10):
+            world.terrain[y][x] = Terrain.WATER
+    for phase in range(textures.WATER_PHASES):
+        a, right, below = [np.asarray(textures.ground_chunk(world.terrain_at, world.in_bounds, cx, cy, scale, phase=phase))
+                           for cx, cy in ((0, 0), (1, 0), (0, 1))]
+        overlap = round(2 * TILE * scale)
+        np.testing.assert_array_equal(a[:, -overlap:], right[:, :overlap])
+        np.testing.assert_array_equal(a[-overlap:, :], below[:overlap, :])
 
 
 @pytest.mark.parametrize("theme", list(MapTheme))

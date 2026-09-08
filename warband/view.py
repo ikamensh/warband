@@ -32,6 +32,7 @@ CHOP_PERIOD = 0.8
 Color = tuple[int, int, int, int]
 FOG_COLOR = (10, 12, 20)
 FOG_EXPLORED = 150
+FOG_MARGIN = 4  # Hide prop overhang beyond the board; the stone rim sits above it.
 MINIMAP_SCALE = 2
 
 
@@ -69,6 +70,7 @@ class MapView:
         textures.register_theme(self.game, world.theme)
         self.scale = self.game.backend.scale_factor
         self._ground: list[Sprite] = []
+        self._edge: list[Sprite] = []
         self._ground_keys: list[list[str]] = []  # per chunk: one image, or WATER_PHASES of them when it holds water
         self._water_pending: list[tuple[int, int]] = []  # (chunk, phase) images still to paint, one per frame
         self._water_time = 0.0
@@ -87,9 +89,11 @@ class MapView:
         self.minimap_key = f"minimap.{world.width}x{world.height}"
         self._register(self.fog_key, self._fog_image())
         self._register(self.minimap_key, self._minimap_image())
-        self._fog = scene.add_sprite(Sprite(self.fog_key, position=(0, 0), size=(world.width * TILE, world.height * TILE),
+        self._fog = scene.add_sprite(Sprite(self.fog_key, position=(-FOG_MARGIN * TILE, -FOG_MARGIN * TILE),
+                                            size=((world.width + 2 * FOG_MARGIN) * TILE, (world.height + 2 * FOG_MARGIN) * TILE),
                                             anchor=SpriteAnchor.TOP_LEFT, layer=RenderLayer.EFFECTS, y_sort=True))
         self._build_ground()
+        self._build_edge()
         self._build_props()
         self.sync()
 
@@ -148,6 +152,24 @@ class MapView:
             if len(keys) > 1:
                 sprite.image = keys[phase]
 
+    def _build_edge(self) -> None:
+        world = self.world
+        horizontal = textures.map_edge(world.width + 2, self.scale, world.theme)
+        vertical = textures.map_edge(world.height, self.scale, world.theme)
+        sides = (
+            ("top", horizontal, (-TILE, -TILE)),
+            ("bottom", horizontal.transpose(Image.Transpose.FLIP_TOP_BOTTOM), (-TILE, world.height * TILE)),
+            ("left", vertical.transpose(Image.Transpose.ROTATE_90), (-TILE, 0)),
+            ("right", vertical.transpose(Image.Transpose.ROTATE_270), (world.width * TILE, 0)),
+        )
+        for side, image, position in sides:
+            key = f"edge.{side}.{world.width}x{world.height}"
+            self._register(key, image)
+            if len(self._edge) < 4:
+                self._edge.append(self.scene.add_sprite(Sprite(key, position=position,
+                    size=(image.width / self.scale, image.height / self.scale), anchor=SpriteAnchor.TOP_LEFT,
+                    layer=RenderLayer.UI_WORLD)))
+
     def _prop(self, key: str, point: tuple[float, float], **kwargs) -> Sprite:
         placement = textures.placements[key]
         wx, wy = to_world(point)
@@ -180,6 +202,7 @@ class MapView:
         self._unit_keys.clear()
         self.world = world
         textures.register_theme(self.game, world.theme)
+        self._build_edge()
         self._vision_tick = -1
         self._minimap_time = -1.0
         self._water_pending.clear()
@@ -332,7 +355,9 @@ class MapView:
         rgba = np.empty((*shape, 4), dtype=np.uint8)
         rgba[..., 0], rgba[..., 1], rgba[..., 2] = FOG_COLOR
         rgba[..., 3] = alpha
-        return Image.fromarray(rgba, "RGBA")
+        image = Image.new("RGBA", (world.width + 2 * FOG_MARGIN, world.height + 2 * FOG_MARGIN), (*FOG_COLOR, 255))
+        image.paste(Image.fromarray(rgba, "RGBA"), (FOG_MARGIN, FOG_MARGIN))
+        return image
 
     def _minimap_terrain(self) -> np.ndarray:
         world = self.world
