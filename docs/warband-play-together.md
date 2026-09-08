@@ -4,15 +4,15 @@ One of you creates a room; the other joins with its code. You play against
 each other in a two-player real-time match. Both players need Warband
 **0.1.0-preview.3** and an internet connection. There is no account to create.
 
-**Preview.3 is being prepared.** Its download links below will become
-available after package verification and publication. The currently published
-release is [preview.2](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.2).
+Download the packages from the published
+[preview.3 release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.3).
 
 ## 1. Open the game on your Mac
 
 **On Ilya's Mac:** open **Warband** from the Dock or **Finder → Applications →
 Warband**. Updates use the existing `/Applications/Warband.app` location.
-The preview.3 installation will be confirmed when its package is ready.
+Preview.3 is installed and verified there. Quit and reopen Warband if an
+older session is still open; your settings and saved games are preserved.
 
 For a fresh installation on another **Apple Silicon Mac** (M1 or later):
 

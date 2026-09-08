@@ -1,9 +1,6 @@
 # Warband for Windows
 
-**0.1.0-preview.3 is being prepared; package verification and publication
-are pending.** The [preview.3 Windows installer](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.3/Warband-0.1.0-preview.3-windows-x64-setup.exe)
-will become available when that release is published. The currently published
-release is [preview.2](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.2).
+Download the [0.1.0-preview.3 Windows installer](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.3/Warband-0.1.0-preview.3-windows-x64-setup.exe).
 
 Run the setup EXE and launch
 **Warband** from the Start menu. The installer includes Python and all runtime
@@ -11,7 +8,7 @@ dependencies, installs for your account, and requires no administrator prompt.
 The portable ZIP is an alternative: extract the entire `Warband` folder and
 open `Warband.exe`, keeping its `_internal` folder beside it.
 
-The planned [preview.3 release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.3)
+The [preview.3 release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.3)
 includes an Apple Silicon Mac companion. See the
 [Mac and Windows player guide](warband-play-together.md) for setup, controls,
 first-launch prompts and reconnecting.
@@ -27,8 +24,18 @@ without selecting a worker or building. **Plans** shows waiting reasons,
 progress and cancellation; **Assembly point** sets where new soldiers gather.
 Ground seam corrections have an independent
 [native visual review](evidence/warband-map-workers-2026-09-08/visual-review.md),
-including the final Settlement layout. Preview.3 package acceptance remains
-pending.
+including the final Settlement layout.
+
+Preview.3 was built from `85becd0fda8493fffc14ad33baee32f4fccdee64`.
+[Windows CI run 34216123836](https://github.com/ikamensh/saga2d/actions/runs/34216123836)
+passed 357 scoped regression tests, extracted and installed executable checks,
+public TLS multiplayer, native clipboard and settlement-planning input,
+Start menu shortcut creation and uninstall. All nine native screenshots were
+inspected. The [Windows evidence](evidence/warband-map-workers-2026-09-08/windows-package/README.md)
+records exact hashes and test scope. Native CI used a test-only Mesa driver;
+physical Windows GPU performance and audible sound quality remain unverified.
+The [public download receipt](evidence/warband-map-workers-2026-09-08/published-release.json)
+records the independently downloaded shipping files.
 
 Historical acceptance remains available separately. **Preview.2** passed
 [Windows CI run 34208548272](https://github.com/ikamensh/saga2d/actions/runs/34208548272),

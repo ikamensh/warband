@@ -1,12 +1,9 @@
 # Warband — release pack (0.1.0-preview.3)
 
-**Preview.3 is in preparation.** Its final source, package acceptance and
-publication are pending. The planned
-[preview.3 release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.3)
-will contain the [Windows installer](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.3/Warband-0.1.0-preview.3-windows-x64-setup.exe)
-and [Apple Silicon Mac app](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.3/Warband-0.1.0-preview.3-darwin-arm64-app.zip).
-The currently published release is
-[preview.2](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.2).
+The published [preview.3 release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.3)
+includes the [Windows installer](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.3/Warband-0.1.0-preview.3-windows-x64-setup.exe)
+and [Apple Silicon Mac app](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.3/Warband-0.1.0-preview.3-darwin-arm64-app.zip),
+built from `85becd0fda8493fffc14ad33baee32f4fccdee64`.
 See the [Mac and Windows player guide](warband-play-together.md) for practical
 installation and play instructions.
 
@@ -29,10 +26,12 @@ installation and play instructions.
   point without a selection. Requests wait for resources, prerequisites,
   workers, production capacity and supply; the live Plans panel shows
   progress and cancellation.
+- Transparent panels retain the map's camera position and zoom, including
+  when the second player opens Plans or the Match menu.
 
 The [independent native visual review](evidence/warband-map-workers-2026-09-08/visual-review.md)
 records the final map appearance across all three themes and Settlement UI
-captures. Packaged preview.3 acceptance remains pending.
+captures. Package acceptance is recorded below.
 
 Preview.2's room-code copy/paste buttons, keyboard paste and live multiplayer
 menus remain included. Historical validation below is scoped to those earlier
@@ -89,8 +88,8 @@ See the in-game help (F1) and codex (F2). Summary:
 - Units use discrete animation poses; workers have four additional chopping poses with coordinated axe and body motion.
 - The layout uses a fixed logical canvas. Fullscreen helps readability; scaling the window does not rearrange its panels.
 - Large maps with three or four players can run past twenty minutes without a decision.
-- Preview.3 package checks are pending. Earlier Windows releases passed automated checks on the recorded CI runner using a test-only Mesa driver for native rendering; physical Windows GPU performance and audio remain unverified. Preview installers are unsigned.
-- Earlier macOS releases passed automated native and network checks on Apple M4. Mac packages use ad-hoc signatures without Developer ID notarization. Independent playtesting and a complete human-versus-human match remain open.
+- Preview.3 passed automated Windows package, native input and public multiplayer checks with a test-only Mesa driver. Physical Windows GPU performance and audible sound quality remain unverified. The installer is unsigned.
+- Preview.3 passed macOS native input/rendering and public multiplayer checks on Apple M4. The Mac app uses ad-hoc signatures without Developer ID notarization. Independent playtesting and a complete human-versus-human match remain open.
 - No standalone Linux package has been produced or verified. Running the server and headless AI on Linux does not establish desktop-package compatibility.
 - No localisation; English only.
 
@@ -110,6 +109,43 @@ See the in-game help (F1) and codex (F2). Summary:
 Issues and feedback: the repository's issue tracker. Saves and settings live
 in `~/.warband` (`settings.json`, `saves/`, generated `sounds/` and
 `music/`); deleting the folder resets the game.
+
+## Acceptance: preview.3
+
+Source: `85becd0fda8493fffc14ad33baee32f4fccdee64`.
+
+[Windows CI run 34216123836](https://github.com/ikamensh/saga2d/actions/runs/34216123836)
+passed 357 scoped regression tests and checks of the extracted portable and
+installed executables. Public TLS multiplayer, native clipboard and planning
+input, Start menu shortcut creation and uninstall passed. All nine native
+frames were visually inspected. Test-only Mesa DLLs are absent from both
+shipping packages. [Windows acceptance evidence](evidence/warband-map-workers-2026-09-08/windows-package/README.md).
+
+The Mac portable executable passed loopback socket and native checks. The
+final `/Applications/Warband.app` separately passed public TLS multiplayer
+and native input/rendering on Apple M4. Checks included automatic builder
+assignment, global unit/upgrade plans, assembly, cancellation and seat rejoin.
+All nine portable and nine installed native frames were inspected. Extracting
+the app archive preserved the installed executable hash and passed deep,
+strict ad-hoc signature verification. The previous installed app is backed up;
+settings and saves were preserved.
+[Mac acceptance evidence](evidence/warband-map-workers-2026-09-08/mac-package/README.md).
+
+All three public downloads were retrieved without authentication and matched
+the tested artifacts, checksum file, manifests and GitHub release digests.
+The [delivery receipt](evidence/warband-map-workers-2026-09-08/published-release.json)
+records source, publication time, sizes and hashes.
+
+| File | SHA-256 |
+|---|---|
+| `Warband-0.1.0-preview.3-windows-x64-setup.exe` | `10a1a78748f9b2954fa3a18119dee359d8254d4e36efb8226032e1fd1d190a26` |
+| `Warband-0.1.0-preview.3-windows-x64-portable.zip` | `945fcccc5055781d43c6c725b4c0da94bcff1ca406e90fa17ef8bb172bae2de7` |
+| `Warband-0.1.0-preview.3-darwin-arm64-app.zip` | `4b968c2d3f1aea2c06c0dae2e1916585dc32256340757ac5baf6528f1688c356` |
+
+Creating the release tag triggered a redundant build at the same source.
+Its build and verification passed; publication stopped because this immutable
+release already existed. The shipping files above come from the accepted
+manual run and Mac build, and were not replaced by that duplicate run.
 
 ## Historical acceptance: preview.2
 
