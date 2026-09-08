@@ -1,27 +1,46 @@
 # Warband for Windows
 
-Download the [0.1.0-preview.1 Windows installer](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.1/Warband-0.1.0-preview.1-windows-x64-setup.exe).
-Run it and launch
+**0.1.0-preview.3 is being prepared; package verification and publication
+are pending.** The [preview.3 Windows installer](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.3/Warband-0.1.0-preview.3-windows-x64-setup.exe)
+will become available when that release is published. The currently published
+release is [preview.2](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.2).
+
+Run the setup EXE and launch
 **Warband** from the Start menu. The installer includes Python and all runtime
 dependencies, installs for your account, and requires no administrator prompt.
 The portable ZIP is an alternative: extract the entire `Warband` folder and
 open `Warband.exe`, keeping its `_internal` folder beside it.
 
-The [preview release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.1)
-also includes an Apple Silicon Mac app for your partner, exact checksums and
-verification receipts. The installer passed [Windows CI run 34202934123](https://github.com/ikamensh/saga2d/actions/runs/34202934123),
-including 285 scoped tests, public multiplayer, native rendering and uninstall.
-The [retained evidence](evidence/warband-internet-2026-09-08/windows-package/README.md)
-records what was checked. All three published application downloads were
-downloaded without authentication and matched the inspected artifact hashes.
+The planned [preview.3 release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.3)
+includes an Apple Silicon Mac companion. See the
+[Mac and Windows player guide](warband-play-together.md) for setup, controls,
+first-launch prompts and reconnecting.
 
-Choose **Multiplayer → Create room** and share the room code with your partner.
-They choose **Multiplayer → Join room**. Internet matches use the default
+Preview.3 restores automatic worker gathering: idle peasants choose known
+safe resources, respect your manual and queued orders, and stay parked after
+Stop or Hold until you give another order. Maps have broad meadows, groves,
+ponds and rocky regions; new online rooms choose fresh maps. A stone rim and
+corrected fog coverage contain the map artwork at its edge.
+
+Historical acceptance remains available separately. **Preview.2** passed
+[Windows CI run 34208548272](https://github.com/ikamensh/saga2d/actions/runs/34208548272),
+including package, public multiplayer, native clipboard/menu and uninstall
+checks. Its three published downloads passed an independent
+[public download/hash check](evidence/warband-easy-online-2026-09-08/published-release.json).
+**Preview.1** passed 285 scoped tests and package/native checks in
+[CI run 34202934123](https://github.com/ikamensh/saga2d/actions/runs/34202934123);
+its [retained evidence](evidence/warband-internet-2026-09-08/windows-package/README.md)
+records the scope. These results do not establish preview.3 acceptance.
+
+Choose **Multiplayer → Create room → Copy room code** and send it to your partner.
+They choose **Multiplayer → Paste code → Join room**. Internet matches use the default
 hosted server; no router configuration or incoming firewall rule is needed.
 Use **Rejoin last room** after a disconnect while the room remains available.
+The match continues while its **Match menu** is open; use **Leave match**
+to return to the title.
 
 Windows 10/11 with x64 application support and a pyglet-compatible OpenGL
-driver are the intended target. The current installer is unsigned; Windows
+driver are the intended target. Preview installers are unsigned; Windows
 may display an unknown-publisher warning. Save files, settings and generated
 sound assets live under `%USERPROFILE%\.warband`. Uninstall through Windows
 Installed apps; your saved games remain available for a later reinstall.
@@ -37,7 +56,7 @@ to resolve to the dispatched commit. Existing releases are never overwritten.
 The local Windows build commands are:
 
 ```powershell
-uv run --locked --isolated --python 3.13.2 --with-requirements packaging/requirements.txt python tools/build_warband.py --version 0.1.0-preview.1 --installer --require-clean
+uv run --locked --isolated --python 3.13.2 --with-requirements packaging/requirements.txt python tools/build_warband.py --version 0.1.0-preview.3 --installer --require-clean
 uv run --locked --python 3.13.2 python tools/verify_warband_package.py dist/warband --native --public-server wss://games.tachyon-ai.eu/play
 ```
 
