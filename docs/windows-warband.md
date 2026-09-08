@@ -1,11 +1,19 @@
 # Warband for Windows
 
-Download `Warband-VERSION-windows-x64-setup.exe` from the repository's
-[releases](https://github.com/ikamensh/saga2d/releases). Run it and launch
+Download the [0.1.0-preview.1 Windows installer](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.1/Warband-0.1.0-preview.1-windows-x64-setup.exe).
+Run it and launch
 **Warband** from the Start menu. The installer includes Python and all runtime
 dependencies, installs for your account, and requires no administrator prompt.
 The portable ZIP is an alternative: extract the entire `Warband` folder and
 open `Warband.exe`, keeping its `_internal` folder beside it.
+
+The [preview release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.1)
+also includes an Apple Silicon Mac app for your partner, exact checksums and
+verification receipts. The installer passed [Windows CI run 34202934123](https://github.com/ikamensh/saga2d/actions/runs/34202934123),
+including 285 scoped tests, public multiplayer, native rendering and uninstall.
+The [retained evidence](evidence/warband-internet-2026-09-08/windows-package/README.md)
+records what was checked. All three published application downloads were
+downloaded without authentication and matched the inspected artifact hashes.
 
 Choose **Multiplayer → Create room** and share the room code with your partner.
 They choose **Multiplayer → Join room**. Internet matches use the default
