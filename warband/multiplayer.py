@@ -76,7 +76,7 @@ class WarbandMatch:
             if point is None and action in ('set_rally', 'set_assembly'):
                 continue
             if (not isinstance(point, (tuple, list)) or len(point) != 2
-                    or any(type(n) not in (int, float) or not math.isfinite(n) for n in point)
+                    or any(type(n) not in (int, float) for n in point)
                     or not (0 <= point[0] < self.world.width and 0 <= point[1] < self.world.height)
                     or (action in ('build', 'plan_building') and any(type(n) is not int for n in point))):
                 raise CommandError('Choose a position inside the map.')
@@ -200,6 +200,9 @@ class NetworkGameScene(GameScene):
 
     def open_menu(self):
         self.game.push(NetworkMenuScene(self))
+
+    def _hint(self):
+        return [(key, label) for key, label in super()._hint() if key != 'F3']
 
     def _check_game_over(self):
         if self._game_over:

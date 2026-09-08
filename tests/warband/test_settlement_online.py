@@ -52,6 +52,9 @@ def test_online_global_production_assembly_and_cancellation_are_owned_by_the_pla
             {"action": "plan_building", "args": [0, "farm", [7.5, 12]]},
             {"action": "order_unit", "args": [True, "footman"]},
             {"action": "cancel_plan", "args": [0, "1"]},
+            {"action": "set_assembly", "args": [0, [10 ** 400, 4]]},
         ):
             command(host, payload)
             assert receive(host, "error")["error"]
+        command(host, {"action": "set_assembly", "args": [0, None]})
+        receive(host, predicate=lambda message: message["state"]["world"]["players"][0]["assembly"] is None)
