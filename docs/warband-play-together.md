@@ -2,21 +2,23 @@
 
 One of you creates a room; the other joins with its code. You play against
 each other in a two-player real-time match. Both players need Warband
-**0.1.0-preview.3** and an internet connection. There is no account to create.
+**0.1.0-preview.4** and an internet connection. There is no account to create.
 
-Download the packages from the published
-[preview.3 release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.3).
+Download the packages from the [Warband page](https://games.tachyon-ai.eu/warband/)
+or the published [preview.4 release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.4).
+The website also explains installation, shows the service status and turns an
+invite link into the room code and download for a friend who has nothing installed.
 
 ## 1. Open the game on your Mac
 
 **On Ilya's Mac:** open **Warband** from the Dock or **Finder → Applications →
 Warband**. Updates use the existing `/Applications/Warband.app` location.
-Preview.3 is installed and verified there. Quit and reopen Warband if an
+Preview.4 is installed and verified there. Quit and reopen Warband if an
 older session is still open; your settings and saved games are preserved.
 
 For a fresh installation on another **Apple Silicon Mac** (M1 or later):
 
-1. Download the [Mac app](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.3/Warband-0.1.0-preview.3-darwin-arm64-app.zip).
+1. Download the [Mac app](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.4/Warband-0.1.0-preview.4-darwin-arm64-app.zip).
 2. In Finder, open **Downloads** and double-click the ZIP to extract
    **Warband.app**.
 3. Drag **Warband.app** into **Applications** in the Finder sidebar. Replace
@@ -35,8 +37,8 @@ damaged or contains malware is a different problem; see troubleshooting below.
 
 This download is for a Windows 10/11 PC with x64 application support.
 
-1. Download the [Windows installer](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.3/Warband-0.1.0-preview.3-windows-x64-setup.exe).
-2. Open the downloaded **Warband-0.1.0-preview.3-windows-x64-setup.exe**.
+1. Download the [Windows installer](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.4/Warband-0.1.0-preview.4-windows-x64-setup.exe).
+2. Open the downloaded **Warband-0.1.0-preview.4-windows-x64-setup.exe**.
 3. Follow the installer with its default folder. A desktop shortcut is
    optional. Leave **Play Warband** selected on the last page to open the game.
 4. For later sessions, open Start, type **Warband**, and select it.
@@ -59,12 +61,14 @@ room; these steps use the Mac player as the creator.
 1. **Both players:** click **Multiplayer** on the title screen. Leave
    **Online · selected** as it is.
 2. **Mac player:** click **Create room**. Wait for **Waiting for your partner**
-   and **Room code: …**. Click **Copy room code**, paste it into your chat with
-   your friend, and send it. Leave the game open on this screen.
-3. **Windows player:** copy that code from the chat, click **Paste code** in
-   Warband, then click **Join room**. You can also enter the code by hand;
-   letter case does not matter. The keyboard paste shortcut is **Ctrl+V** on
-   Windows or **Cmd+V** on a Mac.
+   and **Room code: …**. Click **Copy invite link**, paste it into your chat with
+   your friend, and send it. The link opens a page with the code, the joining
+   steps and the download. **Copy room code** copies just the code instead.
+   Leave the game open on this screen.
+3. **Windows player:** copy the room code from the chat or the invite page,
+   click **Paste code** in Warband, then click **Join room**. You can also
+   enter the code by hand; letter case does not matter. The keyboard paste
+   shortcut is **Ctrl+V** on Windows or **Cmd+V** on a Mac.
 4. **Both players:** the match opens automatically when the second player
    connects. There is no separate Ready or Start button, so be ready to play
    before joining.
@@ -190,7 +194,10 @@ CODE**. Use that button for your existing seat rather than entering the code
 as a new guest. Your friend should remain in the room or use their own
 **Rejoin last room** button.
 
-Return promptly: rooms expire after about **15 minutes without both players**.
+Return promptly: rooms expire after about **15 minutes without both players**,
+as the waiting screen states. When a newer Warband is published, the
+Multiplayer screen shows **Update available** with an **Open download page**
+button; both players need the same version.
 Creating or joining a different room replaces the room remembered on that
 computer. After reconnecting, check your units before repeating an order;
 orders interrupted by the lost connection are not automatically resent.
