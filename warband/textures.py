@@ -7,8 +7,10 @@ is a low-poly mesh rendered with :mod:`saga2d.render3d` through a 3/4 camera
 whose tile footprints stay square (:meth:`Projection.front`), so a 3×3
 building covers exactly 3×3 tiles on screen and still shows lit walls.
 
+Trees grow twenty seeded branching skeletons per theme; crystal colonies and
+gold outcrops each have twenty forms. Tile coordinates choose stable variants.
 Units face eight ways and have four frames (stand, two walking, attack);
-peasants add carrying variants.  Those images are rendered on demand
+peasants add carrying variants and four articulated chopping poses. Images are rendered on demand
 (:func:`unit_image`) because a match uses only a fraction of the
 combinations.  Sprites are anchored at the bottom centre; :data:`placements`
 records each image's logical size and *drop* — how far its bottom edge lies
@@ -18,7 +20,9 @@ below the point it is placed at — like Tribes.
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass
+from functools import lru_cache
 
 from PIL import Image, ImageDraw
 
@@ -37,8 +41,10 @@ CHUNK_PX = (CHUNK + 2) * TILE
 PAD = 2
 FACINGS = 8
 FRAMES = ("stand", "walk1", "walk2", "attack")
-TREE_VARIANTS = 3
-ROCK_VARIANTS = 2
+CHOP_FRAMES = ("chop1", "chop2", "chop3", "chop4")
+TREE_VARIANTS = 20
+ROCK_VARIANTS = 20
+MINE_VARIANTS = 20
 
 Color = tuple[int, int, int]
 
@@ -248,44 +254,157 @@ def _facing_quad(center: r3.Vec3, half_w: float, half_h: float) -> list[r3.Vec3]
     return [(cx - half_w, cy, cz - half_h), (cx + half_w, cy, cz - half_h), (cx + half_w, cy, cz + half_h), (cx - half_w, cy, cz + half_h)]
 
 
+def _branch(start: r3.Vec3, end: r3.Vec3, radius: float, tip_radius: float, color: Color) -> Mesh:
+    """A tapered six-sided growth segment, including leaning trunks and roots."""
+    dx, dy, dz = (end[i] - start[i] for i in range(3))
+    length = math.sqrt(dx * dx + dy * dy + dz * dz)
+    axis = (dx / length, dy / length, dz / length)
+    # A perpendicular frame gives each fork a round cross section.
+    side = (-axis[1], axis[0], 0.0) if abs(axis[2]) < 0.99 else (1.0, 0.0, 0.0)
+    norm = math.sqrt(sum(v * v for v in side))
+    side = tuple(v / norm for v in side)
+    up = (axis[1] * side[2] - axis[2] * side[1], axis[2] * side[0] - axis[0] * side[2], axis[0] * side[1] - axis[1] * side[0])
+    rings = []
+    for center, r in ((start, radius), (end, tip_radius)):
+        rings.append([tuple(center[j] + r * (side[j] * math.cos(i * math.tau / 6) + up[j] * math.sin(i * math.tau / 6)) for j in range(3)) for i in range(6)])
+    bottom, top = rings
+    return [r3.Face(tuple(reversed(bottom)), color), r3.Face(tuple(top), color)] + [
+        r3.Face((bottom[i], bottom[(i + 1) % 6], top[(i + 1) % 6], top[i]), color) for i in range(6)
+    ]
+
+
 def _tree(variant: int, theme: MapTheme = MapTheme.SUMMER) -> Mesh:
+    """Twenty seeded trees: whorled fir/spruce and recursively forked oak/birch.
+
+    Forks shrink at each generation; their terminal buds grow irregular crowns.
+    Winter keeps the same skeleton under snow; wasteland exposes its branching.
+    """
+    rng = random.Random(8309 + variant * 7919)
     pal = PALETTES[theme]
-    leaf, light = pal.leaf[variant], pal.leaf_light[variant]
-    tilt = (0.04, -0.03) if variant == 0 else (-0.03, 0.02) if variant == 1 else (0.0, 0.04)
-    if pal.bare:
-        trunk = r3.cylinder((0, 0, 0), 0.07, 0.75 + 0.1 * variant, pal.trunk, sides=6)
-        branches = (r3.rotate_z(r3.box((0.16, 0, 0.6 + 0.05 * variant), (0.3, 0.05, 0.05), pal.trunk), 20 + 40 * variant)
-                    + r3.rotate_z(r3.box((-0.14, 0.02, 0.5), (0.26, 0.05, 0.05), darker(pal.trunk, 0.9)), -30 - 30 * variant))
-        crown = r3.sphere((0.05, 0, 0.82 + 0.1 * variant), 0.14, leaf, rings=3, sides=6)
-        return _shadow(0.22) + trunk + branches + crown
-    mesh = (
-        _shadow(0.34)
-        + r3.cylinder((0, 0, 0), 0.07, 0.26, pal.trunk, sides=6)
-        + r3.cone((0, 0, 0.18), 0.42, 0.55, leaf, sides=8, rotation=0.2 * variant)
-        + r3.cone((tilt[0], tilt[1], 0.5), 0.3, 0.5, light, sides=8, rotation=0.6 + 0.2 * variant)
-    )
-    if pal.snow:
-        mesh += r3.cone((tilt[0], tilt[1], 0.78), 0.16, 0.24, SNOW, sides=8, rotation=0.6 + 0.2 * variant)
-        mesh += r3.cone((0, 0, 0.5), 0.2, 0.14, SNOW, sides=8, rotation=0.2 * variant)
+    species = variant % 4
+    height = rng.uniform(1.5, 2.1) * (1.12 if species == 1 else 1)
+    leaf = pal.leaf[variant % len(pal.leaf)]
+    light = pal.leaf_light[variant % len(pal.leaf_light)]
+    bark = (204, 204, 182) if species == 3 and not pal.bare else pal.trunk
+    lean = (rng.uniform(-0.12, 0.12), rng.uniform(-0.09, 0.09))
+    mesh = _shadow(0.4)
+    for i in range(5):
+        angle = i * math.tau / 5 + rng.random() * 0.3
+        mesh += _branch((math.cos(angle) * 0.26, math.sin(angle) * 0.26, 0.01), (0, 0, 0.24), 0.025, 0.065, darker(bark, 0.78))
+    mesh += _branch((0, 0, 0.02), (lean[0], lean[1], height), 0.085, 0.012, bark)
+    if species < 2 and not pal.bare:
+        # Apical growth: staggered branch whorls get shorter towards the leader.
+        for level in range(6):
+            fraction = level / 6
+            z = height * (0.24 + 0.66 * fraction)
+            reach = (0.42 if species == 0 else 0.35) * (1 - fraction * 0.74)
+            angle = rng.uniform(0, math.tau)
+            for i in range(5):
+                a = angle + i * math.tau / 5
+                end = (lean[0] * fraction + math.cos(a) * reach, lean[1] * fraction + math.sin(a) * reach, z - 0.09)
+                mesh += _branch((lean[0] * fraction, lean[1] * fraction, z + 0.09), end, 0.023, 0.006, bark)
+                # Overlapping needle fans break the outline into branch tips.
+                mesh += r3.cone(end, reach * rng.uniform(0.43, 0.58), height * 0.19, leaf if i % 2 else light, sides=5, rotation=a)
+                if pal.snow:
+                    mesh += r3.cone((end[0], end[1], end[2] + height * 0.08), reach * 0.36, height * 0.115, SNOW, sides=5, rotation=a)
+            mesh += r3.cone((lean[0] * fraction, lean[1] * fraction, z), reach * 0.7, height * 0.25, light if level % 2 else leaf, sides=7, rotation=angle)
+        mesh += r3.cone((lean[0], lean[1], height * 0.85), 0.12, height * 0.21, SNOW if pal.snow else light, sides=6)
+    else:
+        def grow(start: r3.Vec3, angle: float, reach: float, rise: float, depth: int) -> None:
+            nonlocal mesh
+            end = (start[0] + math.cos(angle) * reach, start[1] + math.sin(angle) * reach, start[2] + rise)
+            mesh += _branch(start, end, 0.022 * (depth + 1), 0.012 * (depth + 1), bark)
+            if depth:
+                for turn in (-0.65, 0.65):
+                    grow(end, angle + turn + rng.uniform(-0.2, 0.2), reach * 0.56, rise * 0.65, depth - 1)
+            elif not pal.bare:
+                radius = rng.uniform(0.20, 0.29) if species == 2 else rng.uniform(0.16, 0.23)
+                mesh += r3.sphere(end, radius, light if rng.random() < 0.4 else leaf, rings=3, sides=7)
+                mesh += r3.sphere((end[0] - 0.04, end[1] - 0.02, end[2] + radius * 0.4), radius * 0.75, SNOW if pal.snow else light, rings=3, sides=6)
+        for i in range(6):
+            z = height * (0.38 + i * 0.07)
+            grow((lean[0] * z / height, lean[1] * z / height, z), i * 2.39996 + rng.random() * 0.3, rng.uniform(0.15, 0.24), height * rng.uniform(0.12, 0.20), 2)
+        if species == 3:
+            for i in range(5):
+                z = 0.2 + i * height * 0.12
+                mesh += r3.box((lean[0] * z / height, lean[1] * z / height + 0.065, z), (0.095, 0.018, 0.025), darker(pal.trunk, 0.7))
+    return mesh
+
+
+def _crystal(base: r3.Vec3, radius: float, height: float, lean: tuple[float, float], color: Color, rotation: float) -> Mesh:
+    """A six-sided mineral prism with split bright/dark terminal facets."""
+    x, y, z = base
+    bottom = [(x + radius * math.cos(rotation + i * math.tau / 6), y + radius * math.sin(rotation + i * math.tau / 6), z) for i in range(6)]
+    shoulder = [(px + lean[0] * 0.7, py + lean[1] * 0.7, z + height * 0.72) for px, py, _ in bottom]
+    tip = (x + lean[0], y + lean[1], z + height)
+    mesh: Mesh = []
+    for i in range(6):
+        nxt = (i + 1) % 6
+        tint = tuple(min(255, round(c * (0.78, 1.12, 0.94, 0.72, 0.88, 1.2)[i])) for c in color)
+        mesh.append(r3.Face((bottom[i], bottom[nxt], shoulder[nxt], shoulder[i]), tint))
+        mesh.append(r3.Face((shoulder[i], shoulder[nxt], tip), tuple(min(255, round(c * 1.17)) for c in tint)))
     return mesh
 
 
 def _rock(variant: int, theme: MapTheme = MapTheme.SUMMER) -> Mesh:
-    ROCK = PALETTES[theme].rock
-    if variant == 0:
-        return _shadow(0.3) + r3.pyramid((0.05, 0.02, 0), (0.5, 0.42), 0.34, ROCK, apex_shift=(-0.08, 0.04)) + r3.pyramid((-0.22, -0.1, 0), (0.28, 0.24), 0.18, darker(ROCK, 0.85))
-    return _shadow(0.3) + r3.box((0, 0, 0.12), (0.5, 0.36, 0.24), ROCK) + r3.pyramid((0.05, 0, 0.24), (0.42, 0.3), 0.2, darker(ROCK, 0.9), apex_shift=(0.08, 0.02))
+    """Seeded crystal colonies: a dominant growth axis with smaller satellite buds."""
+    rng = random.Random(1907 + variant * 3571)
+    pal = PALETTES[theme]
+    crystal = ((78, 177, 190), (126, 148, 212), (115, 188, 173), (158, 137, 201))[variant % 4]
+    mesh = _shadow(0.4)
+    mesh += r3.sphere((0, 0, 0.1), 0.33, pal.rock, rings=3, sides=7)
+    for i in range(rng.randint(4, 7)):
+        angle = i * 2.39996 + rng.uniform(-0.3, 0.3)
+        reach = 0.0 if i == 0 else rng.uniform(0.15, 0.31)
+        x, y = math.cos(angle) * reach, math.sin(angle) * reach
+        height = rng.uniform(0.62, 0.92) if i == 0 else rng.uniform(0.27, 0.63)
+        mesh += _crystal((x, y, 0.1), rng.uniform(0.08, 0.14), height, (x * 0.4, y * 0.4), crystal, angle)
+    if pal.snow:
+        mesh += r3.sphere((-0.15, 0.13, 0.13), 0.19, SNOW, rings=3, sides=6)
+    return mesh
 
 
-def _mine() -> Mesh:
-    mound = r3.pyramid((0, -0.1, 0), (2.6, 2.4), 1.0, EARTH, apex_shift=(0.0, -0.35))
-    entrance = r3.facing(_facing_quad((0, 1.02, 0.24), 0.36, 0.24), INK, VIEW)
-    beams = r3.box((-0.42, 1.06, 0.26), (0.1, 0.1, 0.52), WOOD_DARK) + r3.box((0.42, 1.06, 0.26), (0.1, 0.1, 0.52), WOOD_DARK)
-    beams += r3.box((0, 1.06, 0.52), (0.98, 0.1, 0.1), WOOD_DARK)
-    nuggets: Mesh = []
-    for x, y, r in ((-0.72, 0.92, 0.1), (0.66, 0.98, 0.12), (0.2, 1.18, 0.08), (-0.35, 1.2, 0.07)):
-        nuggets += r3.sphere((x, y, r), r, GOLD, rings=3, sides=6)
-    return mound + entrance + beams + nuggets
+def _mine(variant: int = 0) -> Mesh:
+    """Gold-bearing crystal outcrop with a readable timbered mine entrance."""
+    rng = random.Random(6173 + variant * 1049)
+    mesh = _shadow(1.22)
+    for i in range(9):
+        angle = i * math.tau / 9
+        x, y = math.cos(angle) * rng.uniform(0.45, 0.87), math.sin(angle) * rng.uniform(0.4, 0.75) - 0.22
+        mesh += r3.sphere((x, y, rng.uniform(0.12, 0.23)), rng.uniform(0.36, 0.55), (112, 113, 124), rings=3, sides=6)
+    for i in range(8):
+        x, y = rng.uniform(-0.95, 0.95), rng.uniform(-0.9, 0.0)
+        height = rng.uniform(0.75, 1.65)
+        mesh += _crystal((x, y, 0.25), rng.uniform(0.16, 0.27), height, (x * 0.24, y * 0.18), (234, 176 + i * 5, 66), rng.random() * math.tau)
+    # Recessed opening, strong beams and a short cart track are visible from above.
+    mesh += r3.box((0, 0.53, 0.2), (0.84, 0.95, 0.4), INK)
+    for x in (-0.49, 0.49):
+        mesh += r3.box((x, 0.65, 0.31), (0.15, 0.7, 0.62), WOOD_DARK)
+        mesh += r3.box((x, 0.97, 0.3), (0.18, 0.13, 0.6), WOOD)
+    mesh += r3.box((0, 0.85, 0.67), (1.16, 0.45, 0.17), WOOD)
+    for y in (1.06, 1.22, 1.38):
+        mesh += r3.box((0, y, 0.025), (0.68, 0.075, 0.05), WOOD_DARK)
+    for x in (-0.22, 0.22):
+        mesh += r3.box((x, 1.18, 0.06), (0.035, 0.58, 0.035), IRON)
+    mesh += _crystal((-0.87, 0.8, 0.04), 0.15, 0.48, (-0.07, 0), GOLD, 0.4)
+    mesh += _crystal((0.84, 0.94, 0.04), 0.12, 0.35, (0.05, 0), GOLD, 0.1)
+    return mesh
+
+
+@lru_cache(maxsize=240)
+def _resource_image(kind: str, variant: int, theme: MapTheme, scale: float) -> Image.Image:
+    """Reuse immutable pre-renders across matches; gameplay never grows geometry."""
+    if kind == "mine":
+        return _prop(f"mine.{variant}", _mine(variant), 1.5 * TILE + PAD, scale)
+    mesh = {"tree": _tree, "rock": _rock}[kind](variant, theme)
+    return _prop(f"{kind}.{theme.value}.{variant}", mesh, DROP_TREE, scale)
+
+
+def mine_image(game: Game, variant: int) -> str:
+    key = f"mine.{variant}"
+    if not game.assets.has_image(key):
+        game.assets.image_from_pil(key, _resource_image("mine", variant, MapTheme.SUMMER, game.backend.scale_factor))
+    return key
 
 
 def _octagon(center: r3.Vec3, radius: float) -> list[r3.Vec3]:
@@ -299,101 +418,363 @@ def _door(x: float, y: float, z: float, w: float, h: float) -> Mesh:
 
 
 def _pennant(x: float, y: float, z: float, height: float, color: Color) -> Mesh:
-    pole = r3.box((x, y, z + height / 2), (0.04, 0.04, height), INK)
-    flag = r3.facing([(x, y, z + height), (x + 0.3, y, z + height - 0.08), (x, y, z + height - 0.18)], color, VIEW)
+    pole = r3.box((x, y, z + height / 2), (0.04, 0.04, height), WOOD_DARK)
+    flag = r3.facing([(x, y, z + height), (x + 0.42, y, z + height - 0.06), (x + 0.32, y, z + height - 0.2), (x, y, z + height - 0.24)], color, VIEW)
     return pole + flag
 
 
+def _timber(start: r3.Vec3, end: r3.Vec3, radius: float, color: Color = WOOD_DARK, sides: int = 6) -> Mesh:
+    """A beam or log with a true axis and outward-facing end caps."""
+    dx, dy, dz = (b - a for a, b in zip(start, end))
+    length = math.sqrt(dx * dx + dy * dy + dz * dz)
+    axis = (dx / length, dy / length, dz / length)
+    horizontal = math.hypot(dx, dy)
+    u = (-dy / horizontal, dx / horizontal, 0.0) if horizontal else (1.0, 0.0, 0.0)
+    v = (axis[1] * u[2] - axis[2] * u[1], axis[2] * u[0] - axis[0] * u[2], axis[0] * u[1] - axis[1] * u[0])
+    rings = [tuple(tuple(p[j] + radius * (u[j] * math.cos(i * math.tau / sides) + v[j] * math.sin(i * math.tau / sides)) for j in range(3)) for i in range(sides)) for p in (start, end)]
+    # u × v points along the axis, so the two caps face outwards.
+    mesh = [r3.Face(rings[0][::-1], color), r3.Face(rings[1], color)]
+    mesh += [r3.Face((rings[0][i], rings[0][(i + 1) % sides], rings[1][(i + 1) % sides], rings[1][i]), color) for i in range(sides)]
+    return mesh
+
+
+def _yard(size: float, color: Color) -> Mesh:
+    h, cut = size / 2 - 0.1, 0.18
+    outline = [(-h + cut, -h), (h - cut, -h), (h, -h + cut), (h, h - cut), (h - cut, h), (-h + cut, h), (-h, h - cut), (-h, -h + cut)]
+    return r3.flat(outline, 0.025, darker(color, 0.78)) + r3.flat([(x * 0.95, y * 0.95) for x, y in outline], 0.035, color)
+
+
+def _banner(x: float, y: float, z: float, w: float, h: float, team: Color) -> Mesh:
+    points = [(x - w / 2, y, z + h / 2), (x + w / 2, y, z + h / 2), (x + w / 2, y, z - h / 3), (x, y, z - h / 2), (x - w / 2, y, z - h / 3)]
+    return r3.facing(points, team, VIEW) + r3.facing(_facing_quad((x, y + 0.012, z + h * 0.1), w * 0.11, h * 0.18), GOLD, VIEW)
+
+
+def _arch(x: float, y: float, base: float, width: float, height: float, color: Color = INK) -> Mesh:
+    points = [(x - width / 2, y, base), (x + width / 2, y, base), (x + width / 2, y, base + height * 0.66), (x + width * 0.34, y, base + height * 0.88), (x, y, base + height), (x - width * 0.34, y, base + height * 0.88), (x - width / 2, y, base + height * 0.66)]
+    return r3.facing(points, color, VIEW)
+
+
+def _inset_arch(x: float, y: float, base: float, width: float, height: float, border: Color, inside: Color, thickness: float = 0.09) -> Mesh:
+    """Stone surround with a real opening, so painter sorting cannot cover its inset."""
+    outer = _arch(x, y, base, width, height, border)[0].points
+    inner = _arch(x, y, base, width - 2 * thickness, height - thickness, inside)[0].points
+    mesh = [r3.Face(inner, inside)]
+    for i in range(len(outer)):
+        j = (i + 1) % len(outer)
+        if outer[i][2] == inner[i][2] == outer[j][2] == inner[j][2]:
+            continue
+        mesh += r3.facing([outer[i], outer[j], inner[j], inner[i]], border, VIEW)
+    return mesh
+
+
+def _battlement(x: float, y: float, z: float, radius: float, height: float) -> Mesh:
+    mesh = r3.cylinder((x, y, z), radius, height, STONE, sides=8, rotation=math.pi / 8)
+    mesh += r3.cylinder((x, y, z + height - 0.16), radius + 0.08, 0.14, STONE_DARK, sides=8, rotation=math.pi / 8)
+    mesh += r3.cylinder((x, y, z + height - 0.015), radius + 0.1, 0.12, STONE, sides=8, rotation=math.pi / 8)
+    mesh += r3.cylinder((x, y, z + height + 0.11), radius * 0.76, 0.015, INK, sides=8)
+    for i in range(8):
+        a = math.tau * i / 8
+        mesh += r3.rotate_z(r3.box((x + radius * math.cos(a), y + radius * math.sin(a), z + height + 0.22), (radius * 0.56, radius * 0.34, 0.26), STONE), math.degrees(a), about=(x + radius * math.cos(a), y + radius * math.sin(a)))
+    return mesh
+
+
+def _fence(start: tuple[float, float], end: tuple[float, float], count: int = 5) -> Mesh:
+    mesh: Mesh = []
+    for i in range(count):
+        x, y = (a + (b - a) * i / (count - 1) for a, b in zip(start, end))
+        mesh += r3.box((x, y, 0.27), (0.075, 0.075, 0.48), WOOD)
+        mesh += r3.pyramid((x, y, 0.51), (0.08, 0.08), 0.06, WOOD_DARK)
+    for z in (0.19, 0.4):
+        mesh += _timber((*start, z), (*end, z), 0.034, WOOD)
+    return mesh
+
+
+def _roofed_walls(center: r3.Vec3, size: r3.Vec3, color: Color) -> Mesh:
+    """Walls closed by their pitched roof, without a hidden overlapping flat top."""
+    top = center[2] + size[2] / 2
+    return [face for face in r3.box(center, size, color) if not all(p[2] == top for p in face.points)]
+
+
+def _roof_tiles(mesh: Mesh) -> Mesh:
+    """Small independently shaded roof faces give slate/thatch visible courses.
+
+    Splitting the slopes also lets the software painter sort a dormer or
+    chimney against its actual patch of roof instead of one enormous face.
+    """
+    tiled: Mesh = []
+    for face in mesh:
+        pts = face.points
+        if max(p[2] for p in pts) == min(p[2] for p in pts):
+            continue  # the underside is hidden by the building
+        if len(pts) == 3:
+            # Pyramid hips split into courses running up to their apex;
+            # gable ends are kept as a clean triangular fascia.
+            a, b, c = pts
+            if a[0] == b[0] == c[0] or a[1] == b[1] == c[1]:
+                tiled.append(face)
+                continue
+            rows = 6
+            for row in range(rows):
+                low, high = row / rows, (row + 1) / rows
+                left = tuple(a[k] + (c[k] - a[k]) * low for k in range(3))
+                right = tuple(b[k] + (c[k] - b[k]) * low for k in range(3))
+                upper_left = tuple(a[k] + (c[k] - a[k]) * high for k in range(3))
+                upper_right = tuple(b[k] + (c[k] - b[k]) * high for k in range(3))
+                points = (left, right, upper_right) if row == rows - 1 else (left, right, upper_right, upper_left)
+                tiled.append(r3.Face(points, darker(face.color, 0.92 + 0.08 * (row % 2))))
+            continue
+        cols, rows = 10, 4
+        def point(u: float, v: float) -> r3.Vec3:
+            return tuple((pts[0][k] * (1 - u) + pts[1][k] * u) * (1 - v) + (pts[3][k] * (1 - u) + pts[2][k] * u) * v for k in range(3))
+        for row in range(rows):
+            for col in range(cols):
+                factor = 0.89 + 0.11 * (scatter(col, row, 71) % 7) / 6
+                tiled.append(r3.Face((point(col / cols, row / rows), point((col + 1) / cols, row / rows), point((col + 1) / cols, (row + 1) / rows), point(col / cols, (row + 1) / rows)), darker(face.color, factor)))
+    return tiled
+
+
 def _building(building_type: BuildingType, player: int) -> Mesh:
+    """Purpose-led silhouettes: a yard's machinery matters as much as its walls."""
     team = team_color(player)
-    trim = darker(team, 0.75)
+    trim = darker(team, 0.68)
     if building_type is BuildingType.TOWN_HALL:
-        roof_color = darker(team, 0.82)
-        plinth = r3.box((0.15, 0.15, 0.08), (2.6, 2.3, 0.16), STONE_DARK)
-        base = r3.box((0.15, 0.15, 0.7), (2.2, 2.0, 1.1), STONE)
-        # The ridge runs towards the camera: a plaster gable in front, two slopes lit differently.
-        roof = r3.rotate_z(r3.gable_roof((0.15, 0.15, 1.25), (2.25, 2.4), 0.62, roof_color), 90, about=(0.15, 0.15))
-        gable = r3.facing([(-0.95, 1.36, 1.25), (1.25, 1.36, 1.25), (0.15, 1.36, 1.87)], PLASTER, VIEW)
-        windows = r3.facing(_facing_quad((-0.4, 1.17, 0.8), 0.1, 0.14), INK, VIEW) + r3.facing(_facing_quad((0.75, 1.17, 0.8), 0.1, 0.14), INK, VIEW)
-        tower = r3.box((-0.85, -0.6, 1.0), (0.7, 0.7, 2.0), STONE_DARK)
-        cap = r3.pyramid((-0.85, -0.6, 2.0), (0.88, 0.88), 0.5, trim)
-        return plinth + base + roof + gable + windows + tower + cap + _door(0.15, 1.17, 0.32, 0.5, 0.64) + _pennant(-0.85, -0.6, 2.5, 0.55, team)
+        mesh = _yard(3, (168, 157, 136))
+        mesh += _roofed_walls((0, -0.32, 0.8), (2.05, 1.62, 1.5), STONE)
+        for x in (-1.045, 1.045):
+            mesh += r3.box((x, -0.32, 1.51), (0.09, 1.76, 0.16), PLASTER)
+        for y in (-1.155, 0.515):
+            mesh += r3.box((0, y, 1.51), (2.18, 0.09, 0.16), PLASTER)
+        mesh += _roof_tiles(r3.pyramid((0, -0.32, 1.6), (2.25, 1.85), 0.83, trim))
+        mesh += _roofed_walls((0, -0.36, 2.05), (0.76, 0.66, 0.82), STONE)
+        mesh += _roof_tiles(r3.pyramid((0, -0.36, 2.46), (0.92, 0.82), 0.42, team))
+        mesh += _arch(0, -0.018, 2.12, 0.27, 0.29, GOLD)
+        mesh += _pennant(0, -0.36, 2.88, 0.56, team)
+        # Twin gate towers and their connecting wall form a civic fortress.
+        mesh += r3.box((0, 0.71, 0.53), (1.8, 0.32, 0.94), STONE_DARK)
+        for x in (-0.92, 0.92):
+            mesh += _battlement(x, 0.62, 0.08, 0.36, 1.45)
+            mesh += _arch(x, 0.962, 0.83, 0.105, 0.38)
+            mesh += _banner(x, 1.005, 0.54, 0.28, 0.38, team)
+        mesh += _inset_arch(0, 0.895, 0.08, 0.8, 1.1, PLASTER, INK, 0.11)
+        for x in (-0.19, 0, 0.19):
+            mesh += r3.box((x, 0.91, 0.44), (0.035, 0.025, 0.69), WOOD)
+        mesh += r3.box((0, 1.06, 0.09), (0.87, 0.37, 0.16), STONE)
+        mesh += r3.box((0, 1.28, 0.045), (1.05, 0.19, 0.09), STONE_DARK)
+        return mesh
     if building_type is BuildingType.BARRACKS:
-        base = r3.box((0, 0.05, 0.5), (2.5, 1.9, 1.0), WOOD)
-        roof = r3.rotate_z(r3.gable_roof((0, 0.05, 1.0), (2.1, 2.7), 0.5, SLATE), 90)
-        roof += r3.facing([(-1.05, 1.41, 1.0), (1.05, 1.41, 1.0), (0, 1.41, 1.5)], WOOD_DARK, VIEW)
-        wall = r3.box((0, 1.15, 0.18), (2.5, 0.28, 0.36), STONE_DARK)
-        banners = r3.facing(_facing_quad((-0.8, 1.02, 0.75), 0.16, 0.34), team, VIEW) + r3.facing(_facing_quad((0.8, 1.02, 0.75), 0.16, 0.34), team, VIEW)
-        return base + roof + wall + banners + _door(0, 1.01, 0.32, 0.5, 0.6)
+        mesh = _yard(3, (154, 131, 98))
+        mesh += _roofed_walls((0, -0.65, 0.55), (2.5, 1.05, 1.03), STONE_DARK)
+        mesh += _roof_tiles(r3.gable_roof((0, -0.65, 1.07), (2.73, 1.35), 0.54, (98, 104, 119)))
+        mesh += r3.box((0, -0.65, 1.61), (2.82, 0.1, 0.1), WOOD_DARK)
+        for x in (-1.12, -0.56, 0.56, 1.12):
+            mesh += r3.box((x, -0.11, 0.57), (0.1, 0.1, 1.05), WOOD_DARK)
+        mesh += _arch(0, -0.102, 0.05, 0.69, 0.9)
+        for x in (-0.86, 0.86):
+            mesh += _banner(x, -0.035, 0.72, 0.34, 0.64, team)
+        # Open parade ground, palisade wings and obvious military equipment.
+        for x in (-1.24, 1.24):
+            for y in (0.12, 0.4, 0.68, 0.96, 1.22):
+                mesh += r3.box((x, y, 0.34), (0.13, 0.2, 0.57), WOOD)
+                mesh += r3.pyramid((x, y, 0.625), (0.13, 0.2), 0.13, WOOD)
+        for x in (-0.79, 0.73):
+            mesh += _timber((x, 0.5, 0.06), (x, 0.5, 0.96), 0.053)
+            mesh += _timber((x - 0.27, 0.5, 0.71), (x + 0.27, 0.5, 0.71), 0.046)
+            mesh += r3.facing(_octagon((x, 0.59, 0.7), 0.21), team, VIEW)
+            mesh += r3.facing(_octagon((x, 0.603, 0.7), 0.08), GOLD, VIEW)
+        for x in (-0.98, -0.72, -0.46):
+            mesh += _timber((x, 1.03, 0.12), (x + 0.04, 1.02, 1.0), 0.025, WOOD)
+            mesh += r3.cone((x + 0.04, 1.02, 1.0), 0.075, 0.18, IRON, sides=4)
+        mesh += _timber((-1.1, 1.06, 0.48), (-0.34, 1.06, 0.48), 0.05)
+        mesh += _pennant(1.1, -1.0, 1.2, 0.96, team)
+        return mesh
     if building_type is BuildingType.FARM:
-        house = r3.box((-0.42, -0.35, 0.28), (1.0, 0.85, 0.56), PLASTER)
-        roof = r3.gable_roof((-0.42, -0.35, 0.56), (1.15, 1.0), 0.45, THATCH)
-        rows: Mesh = []
-        for k in range(4):
-            rows += r3.box((0.45, -0.62 + k * 0.4, 0.03), (0.85, 0.16, 0.06), darker(EARTH, 0.9))
-            rows += r3.box((0.45, -0.62 + k * 0.4, 0.09), (0.8, 0.1, 0.06), (150, 170, 70))
-        fence: Mesh = []
-        for x in (-0.9, -0.5, -0.1, 0.3, 0.7):
-            fence += r3.box((x, 0.92, 0.1), (0.06, 0.06, 0.2), WOOD)
-        fence += r3.box((-0.1, 0.92, 0.16), (1.7, 0.03, 0.04), WOOD)
-        return house + roof + rows + fence + _door(-0.42, 0.08, 0.2, 0.3, 0.4) + r3.facing(_facing_quad((-0.42, 0.09, 0.62), 0.14, 0.1), team, VIEW)
+        mesh = _yard(2, (150, 115, 70))
+        mesh += _roofed_walls((-0.47, -0.51, 0.31), (0.75, 0.67, 0.56), PLASTER)
+        mesh += _roof_tiles(r3.gable_roof((-0.47, -0.51, 0.59), (0.93, 0.87), 0.43, THATCH))
+        mesh += r3.box((-0.47, -0.51, 1.025), (1.0, 0.07, 0.07), WOOD_DARK)
+        mesh += _door(-0.46, -0.168, 0.25, 0.26, 0.42)
+        mesh += _banner(-0.75, -0.161, 0.37, 0.14, 0.26, team)
+        for row in range(5):
+            y = -0.71 + row * 0.31
+            mesh += r3.box((0.4, y, 0.055), (0.87, 0.22, 0.07), (101, 77, 44))
+            for k in range(6):
+                x = 0.04 + k * 0.145
+                h = 0.21 + 0.07 * ((row * 5 + k * 3) % 4) / 3
+                mesh += _timber((x, y, 0.09), (x + 0.025, y, h + 0.09), 0.017, (189, 161, 63), sides=4)
+                mesh += r3.sphere((x + 0.025, y, h + 0.08), 0.047, (238, 201 - row * 5, 93), rings=3, sides=5)
+        mesh += _fence((-0.86, 0.87), (0.86, 0.87), 5)
+        mesh += r3.cylinder((-0.55, 0.34, 0.04), 0.22, 0.31, THATCH, sides=8)
+        mesh += r3.cylinder((-0.55, 0.34, 0.16), 0.225, 0.045, WOOD_DARK, sides=8)
+        return mesh
     if building_type is BuildingType.TOWER:
-        plinth = r3.box((0, 0, 0.1), (1.8, 1.8, 0.2), STONE_DARK)
-        body = r3.cylinder((0, 0, 0.2), 0.68, 1.6, STONE, sides=10)
-        crown: Mesh = []
-        for i in range(7):
-            a = 2 * math.pi * i / 7
-            crown += r3.box((0.6 * math.cos(a), 0.6 * math.sin(a), 1.9), (0.2, 0.2, 0.22), STONE_DARK)
-        return plinth + body + crown + r3.facing(_facing_quad((0, 0.69, 1.4), 0.12, 0.16), INK, VIEW) + _pennant(0, 0, 1.8, 0.6, team)
+        mesh = _yard(2, (155, 151, 139))
+        mesh += r3.cylinder((0, 0, 0.05), 0.77, 0.27, STONE_DARK, sides=8, rotation=math.pi / 8)
+        mesh += _battlement(0, 0, 0.32, 0.53, 2.05)
+        for z in (0.65, 1.26, 1.87):
+            mesh += r3.cylinder((0, 0, z), 0.554, 0.085, STONE_DARK, sides=8, rotation=math.pi / 8)
+        for x in (-0.29, 0.29):
+            mesh += _arch(x, 0.495, 1.43, 0.1, 0.38)
+        mesh += _arch(0, 0.525, 0.25, 0.24, 0.56)
+        mesh += _banner(0, 0.565, 1.06, 0.36, 0.56, team)
+        for x in (-0.62, 0.62):
+            mesh += r3.box((x, 0.12, 0.45), (0.2, 0.6, 0.65), STONE_DARK)
+            mesh += r3.pyramid((x, 0.12, 0.775), (0.2, 0.6), 0.25, STONE)
+        mesh += _pennant(0, -0.1, 2.48, 0.7, team)
+        return mesh
     if building_type is BuildingType.LUMBER_MILL:
-        shed = r3.box((0.3, -0.1, 0.42), (1.9, 1.5, 0.84), WOOD)
-        roof = r3.rotate_z(r3.gable_roof((0.3, -0.1, 0.84), (1.7, 2.1), 0.45, WOOD_DARK), 90, about=(0.3, -0.1))
-        gable = r3.facing([(-0.75, 0.96, 0.84), (1.35, 0.96, 0.84), (0.3, 0.96, 1.29)], THATCH, VIEW)
-        saw = r3.facing(_octagon((0.95, 0.97, 0.5), 0.34), IRON, VIEW) + r3.facing(_octagon((0.95, 0.98, 0.5), 0.08), INK, VIEW)
-        logs: Mesh = []
-        for i, (y, z) in enumerate(((0.25, 0.12), (0.6, 0.12), (0.42, 0.34))):
-            logs += r3.box((-1.05, y, z), (0.9, 0.24, 0.24), TRUNK if i % 2 else darker(TRUNK, 0.85))
-        return shed + roof + gable + saw + logs + r3.box((-0.35, 1.05, 0.14), (0.5, 0.3, 0.28), darker(WOOD, 0.9))
+        mesh = _yard(3, (157, 121, 78))
+        # Open saw shed: its machinery and log deck remain visible from above.
+        for x in (-1.08, 0.14):
+            for y in (-1.06, 0.27):
+                mesh += r3.box((x, y, 0.63), (0.15, 0.15, 1.19), WOOD_DARK)
+        mesh += _roof_tiles(r3.gable_roof((-0.47, -0.46, 1.24), (1.57, 1.59), 0.45, (178, 117, 61)))
+        for y in (-0.96, -0.69, -0.42, -0.15, 0.12):
+            z = 1.24 + 0.45 * (1 - abs(y + 0.46) / 0.795)
+            mesh += r3.box((-0.47, y, z + 0.025), (1.58, 0.028, 0.04), WOOD_DARK)
+        mesh += r3.box((-0.47, 0.32, 1.15), (1.42, 0.13, 0.18), WOOD_DARK)
+        mesh += _banner(-0.48, 0.392, 1.08, 0.31, 0.35, team)
+        # Stockpile rounds and pale end grain give logs a readable identity.
+        for x, z in ((0.65, 0.2), (1.05, 0.2), (0.85, 0.52)):
+            mesh += _timber((x, -1.03, z), (x, 0.02, z), 0.2, (101, 65, 38), sides=9)
+            mesh += r3.facing(_octagon((x, 0.031, z), 0.164), (211, 167, 101), VIEW)
+            mesh += r3.facing(_octagon((x, 0.045, z), 0.076), (169, 120, 67), VIEW)
+        mesh += r3.box((0, 0.9, 0.26), (2.28, 0.48, 0.13), WOOD_DARK)
+        mesh += _timber((-1.04, 0.88, 0.45), (0.92, 0.88, 0.45), 0.18, (125, 84, 45), sides=9)
+        # Large steel saw, with a serrated edge and a bolted hub.
+        points = [(0.42 + (0.49 if i % 2 == 0 else 0.40) * math.cos(i * math.tau / 32), 0.79, 0.79 + (0.49 if i % 2 == 0 else 0.40) * math.sin(i * math.tau / 32)) for i in range(32)]
+        mesh += r3.facing(points, IRON, VIEW)
+        mesh += r3.facing(_octagon((0.42, 0.803, 0.79), 0.14), WOOD_DARK, VIEW)
+        mesh += r3.facing(_octagon((0.42, 0.815, 0.79), 0.055), GOLD, VIEW)
+        for x in (-0.94, 0.96):
+            mesh += r3.box((x, 0.91, 0.15), (0.12, 0.43, 0.3), WOOD)
+        return mesh
     if building_type is BuildingType.BLACKSMITH:
-        base = r3.box((0, 0.05, 0.5), (2.0, 1.7, 1.0), STONE_DARK)
-        roof = r3.rotate_z(r3.gable_roof((0, 0.05, 1.0), (1.9, 2.3), 0.45, SLATE), 90)
-        gable = r3.facing([(-0.95, 1.21, 1.0), (0.95, 1.21, 1.0), (0, 1.21, 1.45)], STONE, VIEW)
-        chimney = r3.box((-0.6, -0.5, 1.45), (0.3, 0.3, 1.1), darker(STONE_DARK, 0.8))
-        anvil = r3.box((0.75, 1.25, 0.3), (0.5, 0.25, 0.14), INK) + r3.box((0.75, 1.25, 0.12), (0.2, 0.2, 0.24), INK)
-        ember = r3.facing(_facing_quad((-0.1, 1.06, 0.36), 0.28, 0.28), (255, 130, 40), VIEW)
-        return base + roof + gable + chimney + anvil + ember + r3.facing(_facing_quad((-0.1, 1.06, 0.48), 0.2, 0.12), (255, 220, 120), VIEW)
+        mesh = _yard(3, (118, 113, 106))
+        brick = (134, 82, 58)
+        mesh += r3.box((-0.8, -0.64, 0.66), (0.82, 1.19, 1.23), brick)
+        for x in (-1.14, -0.46):
+            mesh += r3.box((x, 0.095, 0.66), (0.14, 0.28, 1.23), brick)
+        mesh += r3.box((-0.8, 0.095, 1.17), (0.82, 0.28, 0.21), brick)
+        mesh += r3.box((-0.78, -0.57, 1.75), (0.56, 0.63, 1.26), brick)
+        for z in (1.3, 1.65, 2.0, 2.33):
+            mesh += r3.box((-0.78, -0.57, z), (0.64, 0.72, 0.1), STONE_DARK)
+        mesh += r3.box((-0.78, -0.57, 2.39), (0.41, 0.49, 0.015), INK)
+        mesh += r3.box((0.34, -0.87, 0.57), (1.46, 0.29, 1.03), STONE_DARK)
+        for x in (-0.25, 1.04):
+            mesh += r3.box((x, 0.14, 0.58), (0.12, 0.12, 1.09), WOOD_DARK)
+        mesh += _roof_tiles(r3.gable_roof((0.35, -0.53, 1.14), (1.6, 1.49), 0.34, (68, 80, 91)))
+        # Furnace mouth is a dark arch containing nested hot coals.
+        mesh += _inset_arch(-0.8, 0.245, 0.17, 0.67, 0.92, STONE_DARK, (56, 35, 29), 0.065)
+        for x, z, h in ((-0.98, 0.44, 0.47), (-0.8, 0.47, 0.7), (-0.63, 0.44, 0.42)):
+            mesh += r3.facing([(x - 0.09, 0.43, z), (x + 0.1, 0.43, z), (x + 0.015, 0.43, z + h)], (255, 115, 27), VIEW)
+            mesh += r3.facing([(x - 0.04, 0.45, z + 0.15), (x + 0.06, 0.45, z + 0.15), (x, 0.45, z + h * 0.82)], (255, 219, 91), VIEW)
+        mesh += r3.box((-0.8, 0.43, 0.14), (0.71, 0.41, 0.19), STONE_DARK)
+        for x in (-0.96, -0.8, -0.64):
+            mesh += r3.box((x, 0.31, 0.25), (0.035, 0.12, 0.22), INK)
+        # An oversized horned anvil occupies the uncovered working apron.
+        mesh += r3.cylinder((0.49, 0.85, 0.055), 0.3, 0.26, WOOD_DARK, sides=8)
+        mesh += r3.box((0.49, 0.85, 0.36), (0.39, 0.28, 0.16), (54, 63, 70))
+        mesh += r3.box((0.49, 0.85, 0.51), (0.64, 0.36, 0.13), IRON)
+        mesh += r3.facing([(0.8, 1.035, 0.58), (1.11, 1.035, 0.5), (0.8, 1.035, 0.45)], IRON, VIEW)
+        mesh += _timber((0.16, 0.9, 0.63), (0.48, 0.9, 0.68), 0.035, WOOD)
+        mesh += r3.box((0.16, 0.9, 0.66), (0.11, 0.12, 0.16), INK)
+        mesh += _banner(0.46, 0.234, 1.13, 0.36, 0.39, team)
+        mesh += r3.cylinder((-0.59, 1.03, 0.045), 0.23, 0.31, WOOD, sides=8)
+        mesh += r3.cylinder((-0.59, 1.03, 0.353), 0.19, 0.01, (64, 108, 127), sides=8)
+        return mesh
     if building_type is BuildingType.STABLES:
-        barn = r3.box((0, -0.55, 0.4), (2.6, 1.0, 0.8), WOOD)
-        roof = r3.gable_roof((0, -0.55, 0.8), (2.8, 1.2), 0.5, THATCH)
-        doors = r3.facing(_facing_quad((-0.7, -0.04, 0.35), 0.28, 0.32), INK, VIEW) + r3.facing(_facing_quad((0.7, -0.04, 0.35), 0.28, 0.32), INK, VIEW)
-        fence: Mesh = []
-        for x in (-1.25, -0.65, 0.05, 0.65, 1.25):
-            fence += r3.box((x, 1.2, 0.14), (0.07, 0.07, 0.28), WOOD_DARK)
-        fence += r3.box((0, 1.2, 0.22), (2.55, 0.04, 0.05), WOOD_DARK)
-        for y in (0.2, 0.7):
-            fence += r3.box((-1.25, y, 0.14), (0.07, 0.07, 0.28), WOOD_DARK) + r3.box((1.25, y, 0.14), (0.07, 0.07, 0.28), WOOD_DARK)
-        horse = (92, 66, 48)
-        pony = r3.box((0.5, 0.55, 0.36), (0.32, 0.62, 0.26), horse) + r3.box((0.5, 0.95, 0.52), (0.16, 0.22, 0.2), horse)
-        for x, y in ((0.4, 0.35), (0.6, 0.35), (0.4, 0.78), (0.6, 0.78)):
-            pony += r3.box((x, y, 0.12), (0.07, 0.07, 0.24), horse)
-        return barn + roof + doors + fence + pony + r3.facing(_facing_quad((0, -0.04, 0.95), 0.26, 0.14), team, VIEW)
+        mesh = _yard(3, (167, 140, 94))
+        mesh += _roofed_walls((0, -0.73, 0.47), (2.48, 0.83, 0.86), WOOD)
+        mesh += _roof_tiles(r3.gable_roof((0, -0.73, 0.93), (2.74, 1.08), 0.54, (180, 139, 72)))
+        mesh += r3.box((0, -0.73, 1.48), (2.83, 0.09, 0.07), WOOD_DARK)
+        for x in (-0.83, 0, 0.83):
+            mesh += _arch(x, -0.304, 0.09, 0.54, 0.7)
+            mesh += r3.box((x, -0.27, 0.26), (0.55, 0.07, 0.32), WOOD_DARK)
+            mesh += r3.box((x, -0.222, 0.34), (0.59, 0.035, 0.045), THATCH)
+        for x in (-1.15, -0.42, 0.42, 1.15):
+            mesh += r3.box((x, -0.29, 0.53), (0.1, 0.1, 0.88), WOOD_DARK)
+        mesh += _fence((-1.2, -0.1), (-1.2, 1.19), 4) + _fence((1.2, -0.1), (1.2, 1.19), 4)
+        mesh += _fence((-1.2, 1.19), (0.08, 1.19), 4)
+        mesh += _fence((0.72, 1.19), (1.2, 1.19), 2)
+        # A side-on horse keeps the long neck, muzzle and four legs legible.
+        horse = (110, 69, 43)
+        mesh += r3.box((0.1, 0.55, 0.58), (0.87, 0.3, 0.33), horse)
+        for x in (-0.23, 0.43):
+            for y in (0.44, 0.65):
+                mesh += _timber((x, y, 0.1), (x + 0.035, y, 0.48), 0.045, horse)
+                mesh += r3.box((x + 0.02, y, 0.09), (0.12, 0.085, 0.095), INK)
+        mesh += _timber((0.43, 0.56, 0.62), (0.61, 0.56, 1.04), 0.125, horse)
+        mesh += r3.box((0.74, 0.56, 1.01), (0.36, 0.2, 0.21), horse)
+        mesh += r3.box((0.85, 0.56, 0.985), (0.15, 0.205, 0.15), (169, 126, 88))
+        for y in (0.5, 0.63):
+            mesh += r3.cone((0.62, y, 1.105), 0.045, 0.16, horse, sides=4)
+        mesh += _timber((-0.35, 0.55, 0.66), (-0.54, 0.55, 0.28), 0.06, INK)
+        mesh += _timber((0.43, 0.55, 0.76), (0.53, 0.55, 1.13), 0.045, INK)
+        mesh += r3.box((0.03, 0.55, 0.765), (0.34, 0.37, 0.055), team)
+        mesh += _banner(0, -0.168, 1.22, 0.32, 0.42, team)
+        mesh += r3.box((-0.77, 0.45, 0.2), (0.35, 0.64, 0.26), WOOD_DARK)
+        mesh += r3.box((-0.77, 0.45, 0.34), (0.28, 0.55, 0.035), (205, 177, 98))
+        return mesh
     if building_type is BuildingType.WORKSHOP:
-        base = r3.box((-0.2, 0.1, 0.45), (2.0, 1.8, 0.9), WOOD_DARK)
-        top = r3.box((-0.2, 0.1, 0.95), (2.1, 1.9, 0.1), darker(WOOD, 0.8))
-        post = r3.box((0.95, -0.4, 0.9), (0.14, 0.14, 1.8), WOOD)
-        beam = r3.box((0.95, 0.35, 1.75), (0.12, 1.5, 0.12), WOOD)
-        rope = r3.box((0.95, 1.0, 1.35), (0.03, 0.03, 0.7), INK)
-        crate = r3.box((0.95, 1.0, 0.16), (0.3, 0.3, 0.3), WOOD)
-        gear = r3.facing(_octagon((-0.2, 1.01, 0.5), 0.3), IRON, VIEW) + r3.facing(_octagon((-0.2, 1.02, 0.5), 0.07), INK, VIEW)
-        return base + top + post + beam + rope + crate + gear + _pennant(-1.05, -0.65, 1.0, 0.5, team)
+        mesh = _yard(3, (130, 116, 94))
+        # A roofless engineering yard and tall timber crane replace a house.
+        mesh += r3.box((-0.65, -0.84, 0.42), (1.3, 0.65, 0.74), WOOD_DARK)
+        mesh += r3.box((-0.65, -0.84, 0.82), (1.43, 0.74, 0.12), WOOD)
+        for x in (-1.0, -0.74, -0.48, -0.22):
+            mesh += r3.box((x, -0.84, 0.9), (0.2, 0.63, 0.07), (175, 131, 77))
+        for x in (0.54, 1.03):
+            mesh += _timber((x, -0.85, 0.07), (0.8, -0.64, 2.11), 0.085, WOOD)
+        mesh += _timber((0.8, -0.64, 2.05), (-0.8, 0.69, 2.05), 0.095, WOOD)
+        mesh += _timber((0.8, -0.64, 1.27), (-0.4, 0.36, 2.05), 0.06, WOOD_DARK)
+        mesh += _timber((0.8, -0.64, 2.06), (1.23, -1.03, 2.06), 0.08, WOOD_DARK)
+        mesh += r3.box((1.19, -0.99, 1.82), (0.3, 0.28, 0.39), STONE_DARK)
+        mesh += _timber((-0.69, 0.6, 2.05), (-0.69, 0.6, 0.93), 0.023, INK)
+        mesh += r3.box((-0.69, 0.6, 0.77), (0.43, 0.42, 0.35), WOOD)
+        for x in (-0.83, -0.55):
+            mesh += r3.box((x, 0.819, 0.77), (0.04, 0.025, 0.35), WOOD_DARK)
+        # Siege chassis under assembly: iron-rim wheels and raised throwing arm.
+        mesh += r3.box((0.38, 0.76, 0.37), (0.74, 0.76, 0.18), WOOD_DARK)
+        for x in (-0.08, 0.84):
+            for y in (0.43, 1.09):
+                wheel = _timber((x - 0.065, y, 0.27), (x + 0.065, y, 0.27), 0.24, INK, sides=10)
+                wheel += _timber((x - 0.072, y, 0.27), (x + 0.072, y, 0.27), 0.18, WOOD, sides=8)
+                mesh += wheel
+        mesh += _timber((0.12, 0.67, 0.4), (0.37, 0.67, 1.13), 0.06, WOOD)
+        mesh += _timber((0.64, 0.67, 0.4), (0.37, 0.67, 1.13), 0.06, WOOD)
+        mesh += _timber((0.37, 0.38, 0.78), (0.37, 1.02, 1.44), 0.052, WOOD)
+        mesh += r3.box((0.37, 1.02, 1.43), (0.29, 0.24, 0.11), WOOD_DARK)
+        mesh += _banner(-0.64, -0.491, 0.54, 0.39, 0.39, team)
+        mesh += _pennant(0.8, -0.64, 2.16, 0.52, team)
+        return mesh
     if building_type is BuildingType.CHURCH:
-        nave = r3.box((0.15, 0.2, 0.5), (1.5, 2.0, 1.0), PLASTER)
-        roof = r3.rotate_z(r3.gable_roof((0.15, 0.2, 1.0), (2.2, 1.6), 0.8, SLATE), 90, about=(0.15, 0.2))
-        gable = r3.facing([(-0.65, 1.31, 1.0), (0.95, 1.31, 1.0), (0.15, 1.31, 1.8)], PLASTER, VIEW)
-        tower = r3.box((-0.9, -0.55, 1.05), (0.6, 0.6, 2.1), PLASTER) + r3.pyramid((-0.9, -0.55, 2.1), (0.7, 0.7), 0.5, SLATE)
-        cross = r3.box((-0.9, -0.55, 2.85), (0.05, 0.05, 0.5), GOLD) + r3.box((-0.9, -0.55, 2.95), (0.28, 0.05, 0.05), GOLD)
-        window = r3.facing(_facing_quad((0.15, 1.32, 1.3), 0.14, 0.3), team, VIEW)
-        return nave + roof + gable + tower + cross + window + _door(0.15, 1.32, 0.35, 0.4, 0.7)
+        mesh = _yard(3, (183, 179, 160))
+        roof = (68, 111, 123)
+        mesh += _roofed_walls((0.1, -0.2, 0.73), (1.22, 2.03, 1.38), PLASTER)
+        mesh += _roofed_walls((0.1, -0.38, 0.51), (2.35, 0.72, 0.94), STONE)
+        mesh += r3.rotate_z(r3.gable_roof((0.1, -0.2, 1.43), (2.21, 1.4), 0.85, roof), 90, about=(0.1, -0.2))
+        mesh += r3.gable_roof((0.1, -0.38, 1.02), (2.57, 0.89), 0.52, roof)
+        mesh += r3.box((0.1, -0.2, 2.29), (0.055, 2.23, 0.055), darker(roof, 0.8))
+        # An attached octagonal bell tower rises above the cross-shaped nave.
+        mesh += r3.cylinder((-0.9, -0.68, 0.05), 0.34, 2.22, STONE, sides=8, rotation=math.pi / 8)
+        mesh += r3.cylinder((-0.9, -0.68, 1.79), 0.39, 0.12, PLASTER, sides=8, rotation=math.pi / 8)
+        mesh += _arch(-0.9, -0.361, 1.89, 0.24, 0.35)
+        mesh += r3.cone((-0.9, -0.68, 2.28), 0.49, 1.0, roof, sides=8, rotation=math.pi / 8)
+        mesh += r3.box((-0.9, -0.68, 3.42), (0.055, 0.055, 0.42), GOLD)
+        mesh += r3.box((-0.9, -0.68, 3.48), (0.27, 0.055, 0.055), GOLD)
+        mesh += r3.facing([(-0.6, 0.911, 1.43), (0.8, 0.911, 1.43), (0.1, 0.911, 2.28)], PLASTER, VIEW)
+        for x in (-0.66, 0.86):
+            mesh += r3.box((x, 0.78, 0.58), (0.23, 0.52, 1.07), STONE)
+            mesh += r3.pyramid((x, 0.78, 1.115), (0.25, 0.54), 0.25, PLASTER)
+        mesh += _inset_arch(0.1, 0.945, 0.12, 0.67, 1.07, STONE_DARK, (81, 61, 51), 0.1)
+        mesh += r3.box((0.1, 0.963, 0.43), (0.029, 0.02, 0.59), GOLD)
+        mesh += _inset_arch(0.1, 0.947, 1.3, 0.44, 0.61, STONE_DARK, (100, 184, 209), 0.07)
+        mesh += r3.box((0.1, 0.96, 1.56), (0.035, 0.025, 0.38), GOLD)
+        mesh += r3.box((0.1, 0.96, 1.53), (0.28, 0.025, 0.035), GOLD)
+        for x in (-0.91, 1.1):
+            mesh += _banner(x, 0.017, 0.78, 0.26, 0.44, team)
+        mesh += r3.box((0.1, 1.13, 0.1), (0.88, 0.31, 0.18), STONE)
+        mesh += r3.box((0.1, 1.31, 0.055), (1.03, 0.19, 0.09), STONE_DARK)
+        return mesh
     raise ValueError(building_type)
 
 
@@ -414,26 +795,129 @@ def _site(size: int) -> Mesh:
 
 
 def _legs(frame: str, color: Color, spread: float = 0.09) -> Mesh:
-    swing = {"walk1": 0.09, "walk2": -0.09}.get(frame, 0.0)
-    return (
-        r3.cylinder((-spread, swing, 0), 0.07, 0.2, color, sides=6)
-        + r3.cylinder((spread, -swing, 0), 0.07, 0.2, color, sides=6)
-    )
+    swing = {"walk1": 0.11, "walk2": -0.11}.get(frame, 0.0)
+    mesh: Mesh = []
+    for x, step in ((-spread, swing), (spread, -swing)):
+        mesh += _unit_rod((x, 0, 0.28), (x, step, 0.08), 0.065, color)
+        mesh += r3.box((x, step + 0.035, 0.065), (0.13, 0.2, 0.13), INK)
+    return mesh
 
 
-def _body(tunic: Color, frame: str, head: Color = SKIN, body_r: float = 0.21, body_h: float = 0.42) -> Mesh:
+def _unit_rod(start: r3.Vec3, end: r3.Vec3, radius: float, color: Color, sides: int = 6) -> Mesh:
+    """A solid limb, handle or strut between two joints."""
+    delta = tuple(b - a for a, b in zip(start, end))
+    length = math.sqrt(sum(d * d for d in delta))
+    dx, dy, dz = (d / length for d in delta)
+    across_length = math.hypot(dx, dz)
+    u = (dz / across_length, 0.0, -dx / across_length) if across_length else (1.0, 0.0, 0.0)
+    v = (dy * u[2], dz * u[0] - dx * u[2], -dy * u[0])
+    return [r3.Face(tuple((start[0] + x * u[0] + y * v[0] + z * dx,
+                          start[1] + x * u[1] + y * v[1] + z * dy,
+                          start[2] + x * u[2] + y * v[2] + z * dz)
+                         for x, y, z in face.points), face.color)
+            for face in r3.cylinder((0, 0, 0), radius, length, color, sides=sides)]
+
+
+def _unit_pitch(mesh: Mesh, angle: float, pivot: r3.Vec3) -> Mesh:
+    """Rotate a tool around its grip, through the local forward/up plane."""
+    sine, cosine = math.sin(math.radians(angle)), math.cos(math.radians(angle))
+    _, py, pz = pivot
+    return [r3.Face(tuple((x, py + (y - py) * cosine - (z - pz) * sine,
+                          pz + (y - py) * sine + (z - pz) * cosine)
+                         for x, y, z in face.points), face.color) for face in mesh]
+
+
+def _unit_panel(points: list[r3.Vec3], color: Color) -> Mesh:
+    """Two-sided cloth or sheet metal, visible from every unit heading."""
+    return [r3.Face(tuple(points), color), r3.Face(tuple(reversed(points)), color)]
+
+
+def _unit_head(center: r3.Vec3, radius: float = 0.16) -> Mesh:
+    x, y, z = center
+    return (r3.sphere(center, radius, SKIN, rings=4, sides=8)
+            + r3.box((x, y + radius * 0.91, z), (0.065, 0.055, 0.07), SKIN)
+            + r3.box((x, y + radius * 0.9, z + 0.045), (0.15, 0.022, 0.026), INK))
+
+
+def _body(tunic: Color, frame: str, body_r: float = 0.21, body_h: float = 0.42) -> Mesh:
     bob = 0.02 if frame == "walk1" else 0.0
     return (
         _legs(frame, (72, 62, 58))
-        + r3.cylinder((0, 0, 0.18 + bob), body_r, body_h, tunic, sides=8)
-        + r3.sphere((0, 0, 0.18 + bob + body_h + 0.15), 0.17, head, rings=5, sides=8)
+        + r3.cylinder((0, 0, 0.23 + bob), body_r, body_h, tunic, sides=8)
+        + r3.cylinder((0, 0, 0.33 + bob), body_r + 0.01, 0.055, WOOD_DARK, sides=8)
+        + _unit_head((0, 0, 0.23 + bob + body_h + 0.14))
     )
 
 
 def _sword(frame: str) -> Mesh:
-    if frame == "attack":
-        return r3.box((0.3, 0.42, 0.62), (0.06, 0.66, 0.06), IRON) + r3.box((0.3, 0.1, 0.62), (0.2, 0.06, 0.06), WOOD_DARK)
-    return r3.box((0.3, 0.06, 0.66), (0.06, 0.06, 0.62), IRON) + r3.box((0.3, 0.06, 0.4), (0.2, 0.06, 0.06), WOOD_DARK)
+    grip = (0.32, 0.13, 0.5)
+    blade = (r3.box((0.32, 0.13, 0.85), (0.08, 0.055, 0.59), IRON)
+             + r3.pyramid((0.32, 0.13, 1.145), (0.08, 0.055), 0.14, IRON)
+             + r3.box((0.32, 0.13, 0.57), (0.27, 0.09, 0.06), GOLD)
+             + _unit_rod((0.32, 0.13, 0.4), (0.32, 0.13, 0.55), 0.043, WOOD_DARK))
+    return _unit_pitch(blade, -85 if frame == "attack" else -12, grip)
+
+
+_WORKER_SWING = {"chop1": 35, "chop2": -28, "chop3": -96, "chop4": -48, "attack": -96}
+
+
+def _worker_axe(frame: str) -> Mesh:
+    # Fixed grip: the head sweeps from behind the shoulder into the tree.
+    # chop1 = raised, chop2 = fast downswing, chop3 = contact, chop4 = recovery.
+    angle = _WORKER_SWING.get(frame, -12)
+    grip = (0.29, 0.16, 0.55)
+    axe = _unit_rod((0.29, 0.16, 0.35), (0.29, 0.16, 1.17), 0.035, WOOD)
+    # Broad wedge and bright cutting edge are readable even at normal zoom.
+    axe += r3.box((0.29, 0.17, 1.1), (0.105, 0.16, 0.14), WOOD_DARK)
+    for x in (0.235, 0.345):
+        axe += _unit_panel([(x, 0.19, 1.16), (x, 0.41, 1.22),
+                            (x, 0.43, 0.98), (x, 0.19, 1.03)], IRON)
+    axe += _unit_rod((0.29, 0.42, 0.99), (0.29, 0.4, 1.21), 0.045, (228, 234, 242))
+    return _unit_pitch(axe, angle, grip)
+
+
+def _shield(x: float, y: float, z: float, team: Color, size: float = 1.0) -> Mesh:
+    outline = [(-0.23, 0.26), (0.23, 0.26), (0.24, -0.05), (0, -0.34), (-0.24, -0.05)]
+    mesh: Mesh = []
+    for offset, factor, color in ((0, 1.0, IRON), (0.025, 0.8, team)):
+        mesh += _unit_panel([(x + dx * size * factor, y + offset, z + dz * size * factor)
+                             for dx, dz in outline], color)
+    mesh += r3.box((x, y + 0.035, z - 0.015), (0.055 * size, 0.06, 0.34 * size), GOLD)
+    mesh += r3.box((x, y + 0.04, z + 0.075), (0.23 * size, 0.06, 0.055 * size), GOLD)
+    return mesh
+
+
+def _horse(frame: str, heavy: bool, team: Color) -> Mesh:
+    coat = (78, 65, 65) if heavy else (174, 123, 68)
+    size = 1.08 if heavy else 0.92
+    swing = {"walk1": 0.12, "walk2": -0.12}.get(frame, 0.0)
+    mesh = _shadow(0.44)
+    for x, y in ((-0.17, -0.28), (0.17, -0.28), (-0.17, 0.29), (0.17, 0.29)):
+        stride = swing if (x < 0) == (y < 0) else -swing
+        mesh += _unit_rod((x, y, 0.48), (x, y + stride, 0.1), 0.065, coat)
+        mesh += r3.box((x, y + stride + 0.025, 0.065), (0.125, 0.16, 0.13), INK)
+    mesh += r3.box((0, -0.025, 0.48), (0.43, 0.78, 0.32), coat)
+    mesh += _unit_rod((0, 0.25, 0.48), (0, 0.4, 0.87), 0.135, coat)
+    mesh += r3.box((0, 0.49, 0.83), (0.22, 0.36, 0.21), coat)
+    mesh += r3.box((0, 0.66, 0.79), (0.2, 0.12, 0.13), darker(coat, 0.65))
+    for x in (-0.08, 0.08):
+        mesh += r3.cone((x, 0.39, 0.92), 0.05, 0.16, coat, sides=4)
+    mesh += _unit_rod((0, -0.36, 0.54), (0, -0.57, 0.22), 0.065, INK)
+    mesh += _unit_rod((0, 0.28, 0.59), (0, 0.31, 0.94), 0.065, INK)
+    mesh += r3.box((0, -0.07, 0.66), (0.47, 0.42, 0.07), WOOD_DARK)
+    # Reins and bridle break up the horse's head and point out its facing.
+    mesh += r3.box((0, 0.56, 0.84), (0.24, 0.035, 0.23), WOOD_DARK)
+    for x in (-0.13, 0.13):
+        mesh += _unit_rod((x, 0.57, 0.86), (x, -0.02, 0.86), 0.014, WOOD_DARK)
+    if heavy:
+        for x in (-0.235, 0.235):
+            mesh += _unit_panel([(x, -0.37, 0.62), (x, 0.27, 0.62),
+                                 (x, 0.26, 0.26), (x, 0.02, 0.32), (x, -0.37, 0.26)], team)
+        mesh += r3.box((0, 0.53, 0.95), (0.22, 0.29, 0.055), IRON)
+        mesh += r3.box((0, 0.29, 0.68), (0.46, 0.2, 0.11), IRON)
+    else:
+        mesh += r3.box((0, -0.07, 0.615), (0.46, 0.44, 0.085), team)
+    return r3.scale(mesh, size)
 
 
 UNIT_SCALE = 1.4  # figures are modelled at chibi size and blown up so they read from the usual zoom
@@ -447,77 +931,160 @@ def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource 
     team = team_color(player)
     trim = darker(team, 0.7)
     if unit_type is UnitType.PEASANT:
-        mesh = _shadow(0.3) + _body(team, frame)
+        mesh = _shadow(0.3) + _body((186, 159, 106), frame, body_r=0.185, body_h=0.36)
+        # Broad straw hat, team shirt sleeves and a leather carpenter's apron.
+        mesh += r3.cylinder((0, 0, 0.88), 0.28, 0.045, THATCH, sides=10)
+        mesh += r3.cone((0, 0, 0.92), 0.17, 0.16, THATCH, sides=8)
+        mesh += r3.cylinder((0, 0, 0.92), 0.174, 0.035, team, sides=8)
+        mesh += r3.box((0, 0.183, 0.42), (0.25, 0.045, 0.34), (114, 72, 41))
+        mesh += r3.box((0, 0.212, 0.36), (0.15, 0.025, 0.09), (159, 105, 57))
+        mesh += r3.box((0, 0.215, 0.55), (0.065, 0.025, 0.045), GOLD)
+        for x in (-0.21, 0.21):
+            mesh += _unit_rod((x, 0, 0.55), (x * 1.15, 0.08, 0.45), 0.075, team)
+        mesh += _unit_rod((0.24, 0.08, 0.45), (0.29, 0.16, 0.55), 0.05, SKIN)
         if carrying is Resource.GOLD:
-            mesh += r3.sphere((-0.28, 0.02, 0.62), 0.17, GOLD, rings=4, sides=8)
+            mesh += r3.sphere((-0.28, 0.13, 0.48), 0.2, (113, 80, 48), rings=4, sides=8)
+            mesh += r3.cone((-0.28, 0.13, 0.62), 0.15, 0.11, GOLD, sides=5)
+            mesh += r3.cylinder((-0.28, 0.13, 0.65), 0.07, 0.045, WOOD_DARK, sides=6)
         elif carrying is Resource.LUMBER:
-            mesh += r3.box((0, 0.02, 0.98), (0.2, 0.9, 0.18), TRUNK)
+            for y, z in ((-0.05, 0.98), (0.12, 0.98), (0.035, 1.12)):
+                mesh += _unit_rod((-0.48, y, z), (0.48, y, z), 0.095, TRUNK)
+                mesh += _unit_rod((0.478, y, z), (0.495, y, z), 0.072, THATCH)
+            mesh += r3.box((0.12, 0.035, 1.06), (0.05, 0.37, 0.32), WOOD_DARK)
         else:
-            lift = 0.3 if frame == "attack" else 0.0
-            mesh += r3.box((0.3, 0.04, 0.5 + lift), (0.05, 0.05, 0.55), WOOD) + r3.box((0.3, 0.04, 0.78 + lift), (0.26, 0.06, 0.07), IRON)
+            mesh += _worker_axe(frame)
+            angle = math.radians(_WORKER_SWING.get(frame, -12))
+            lower_grip = (0.29, 0.16 + 0.12 * math.sin(angle), 0.55 - 0.12 * math.cos(angle))
+            mesh += _unit_rod((-0.24, 0.08, 0.45), lower_grip, 0.045, SKIN)
         return mesh
     if unit_type is UnitType.FOOTMAN:
-        helmet = r3.cone((0, 0, 0.86), 0.19, 0.16, IRON, sides=8)
-        shield = r3.box((-0.32, 0.04, 0.5), (0.07, 0.36, 0.42), trim) + r3.box((-0.36, 0.04, 0.5), (0.02, 0.12, 0.14), IRON)
-        return _shadow(0.32) + _body(team, frame) + helmet + shield + _sword(frame)
+        mesh = _shadow(0.34) + _body(team, frame, body_r=0.23)
+        mesh += r3.box((0, 0.18, 0.59), (0.34, 0.12, 0.28), IRON)
+        for x in (-0.255, 0.255):
+            mesh += r3.sphere((x, 0, 0.66), 0.115, IRON, rings=3, sides=6)
+            mesh += _unit_rod((x, 0, 0.6), (x * 1.2, 0.13, 0.45), 0.065, IRON)
+        mesh += r3.cylinder((0, 0, 0.79), 0.19, 0.17, IRON, sides=8)
+        mesh += r3.cone((0, 0, 0.96), 0.19, 0.1, IRON, sides=8)
+        mesh += r3.box((0, 0.181, 0.865), (0.28, 0.04, 0.048), INK)
+        mesh += r3.box((0, 0.211, 0.825), (0.045, 0.035, 0.17), IRON)
+        mesh += r3.box((0, 0, 1.055), (0.07, 0.29, 0.09), team)
+        return mesh + _shield(-0.32, 0.21, 0.48, team) + _sword(frame)
     if unit_type is UnitType.ARCHER:
-        hood = r3.sphere((0, 0, 0.78), 0.19, (60, 74, 62), rings=4, sides=8)
-        quiver = r3.box((-0.2, -0.22, 0.6), (0.1, 0.1, 0.4), WOOD_DARK)
-        bow: Mesh = []
-        for a0, a1 in zip(range(-60, 60, 15), range(-45, 75, 15)):
-            p0 = (0.3, 0.28 * math.sin(math.radians(a0)), 0.62 + 0.3 * math.cos(math.radians(a0)))
-            p1 = (0.3, 0.28 * math.sin(math.radians(a1)), 0.62 + 0.3 * math.cos(math.radians(a1)))
-            bow += r3.box(((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2, (p0[2] + p1[2]) / 2), (0.04, abs(p1[1] - p0[1]) + 0.03, abs(p1[2] - p0[2]) + 0.03), WOOD)
-        arrow = r3.box((0.3, 0.42, 0.62), (0.03, 0.5, 0.03), IRON) if frame == "attack" else []
-        return _shadow(0.3) + _body(team, frame) + hood + quiver + bow + arrow
+        green = (52, 88, 67)
+        mesh = _shadow(0.3) + _body(team, frame, body_r=0.17, body_h=0.36)
+        mesh += _unit_panel([(-0.18, -0.1, 0.7), (0.18, -0.1, 0.7),
+                             (0.27, -0.28, 0.2), (-0.25, -0.28, 0.2)], green)
+        mesh += r3.sphere((0, -0.055, 0.81), 0.2, green, rings=4, sides=8)
+        mesh += r3.cone((0, -0.04, 0.93), 0.14, 0.18, green, sides=6)
+        mesh += _unit_head((0, 0.075, 0.76), 0.13)
+        mesh += _unit_rod((-0.19, -0.23, 0.35), (-0.27, -0.23, 0.79), 0.085, WOOD_DARK)
+        for x in (-0.32, -0.26, -0.2):
+            mesh += _unit_rod((x, -0.23, 0.67), (x - 0.03, -0.23, 1.03), 0.014, THATCH)
+            mesh += r3.box((x - 0.03, -0.23, 0.97), (0.05, 0.05, 0.09), PLASTER)
+        bow_y = 0.36 if frame == "attack" else 0.18
+        path = [(0.32, bow_y, 0.16), (0.32, bow_y + 0.17, 0.35),
+                (0.32, bow_y + 0.23, 0.64), (0.32, bow_y + 0.17, 0.94), (0.32, bow_y, 1.12)]
+        for start, end in zip(path, path[1:]):
+            mesh += _unit_rod(start, end, 0.035, (201, 145, 76))
+        draw_y = bow_y - 0.27 if frame == "attack" else bow_y
+        mesh += _unit_rod(path[0], (0.32, draw_y, 0.64), 0.01, PLASTER)
+        mesh += _unit_rod((0.32, draw_y, 0.64), path[-1], 0.01, PLASTER)
+        mesh += _unit_rod((0.17, 0, 0.58), (0.32, bow_y + 0.2, 0.64), 0.048, SKIN)
+        mesh += _unit_rod((-0.17, 0, 0.57), (0.32, draw_y, 0.64), 0.048, SKIN)
+        if frame == "attack":
+            mesh += _unit_rod((0.32, draw_y, 0.64), (0.32, bow_y + 0.66, 0.64), 0.018, THATCH)
+            mesh += r3.box((0.32, bow_y + 0.64, 0.64), (0.055, 0.13, 0.045), IRON)
+        return mesh
     if unit_type is UnitType.KNIGHT:
-        horse = (72, 52, 40)
-        swing = {"walk1": 0.08, "walk2": -0.08}.get(frame, 0.0)
-        mesh = _shadow(0.42, 0.06, 0.02)
-        for x, y in ((-0.16, -0.26), (0.16, -0.26), (-0.16, 0.26), (0.16, 0.26)):
-            mesh += r3.box((x, y + (swing if (x < 0) == (y < 0) else -swing), 0.15), (0.1, 0.1, 0.3), horse)
-        mesh += r3.box((0, 0, 0.44), (0.4, 0.9, 0.3), horse)
-        mesh += r3.box((0, 0.55, 0.66), (0.2, 0.3, 0.24), horse) + r3.box((0, 0.42, 0.6), (0.16, 0.16, 0.3), horse)
-        mesh += r3.box((0, 0, 0.62), (0.44, 0.7, 0.08), team)  # caparison
-        mesh += r3.cylinder((0, -0.05, 0.66), 0.17, 0.34, team, sides=8) + r3.sphere((0, -0.05, 1.13), 0.15, SKIN, rings=4, sides=8)
-        mesh += r3.cone((0, -0.05, 1.2), 0.17, 0.16, IRON, sides=8) + r3.box((-0.28, 0, 0.9), (0.06, 0.3, 0.36), trim)
-        lance_y = 0.55 if frame == "attack" else 0.1
-        mesh += r3.box((0.28, lance_y, 1.0), (0.05, 1.2, 0.05), IRON) + r3.facing([(0.28, lance_y + 0.55, 1.03), (0.28, lance_y + 0.35, 1.13), (0.28, lance_y + 0.35, 1.0)], team, VIEW)
+        mesh = _horse(frame, True, team)
+        mesh += r3.cylinder((0, -0.11, 0.73), 0.21, 0.34, IRON, sides=8)
+        mesh += _unit_panel([(-0.21, -0.19, 1.07), (0.21, -0.19, 1.07),
+                             (0.28, -0.45, 0.54), (-0.28, -0.45, 0.54)], trim)
+        for x in (-0.24, 0.24):
+            mesh += _unit_rod((x, -0.1, 0.76), (x * 1.12, 0.03, 0.47), 0.075, IRON)
+            mesh += r3.sphere((x, -0.09, 1.02), 0.13, IRON, rings=3, sides=6)
+        mesh += r3.cylinder((0, -0.11, 1.13), 0.18, 0.24, IRON, sides=8)
+        mesh += r3.cone((0, -0.11, 1.37), 0.18, 0.11, IRON, sides=8)
+        mesh += r3.box((0, 0.065, 1.27), (0.29, 0.05, 0.045), INK)
+        mesh += r3.box((0, 0.075, 1.18), (0.045, 0.05, 0.22), GOLD)
+        mesh += _unit_rod((0, -0.1, 1.45), (0, -0.31, 1.62), 0.1, team)
+        mesh += r3.cone((0, -0.32, 1.56), 0.13, 0.14, team, sides=6)
+        mesh += _shield(-0.33, 0.11, 0.94, team, 0.92)
+        grip = (0.34, 0.05, 1.0)
+        lance = _unit_rod((0.34, 0.05, 0.67), (0.34, 0.05, 1.92), 0.036, THATCH)
+        lance += r3.cone((0.34, 0.05, 1.9), 0.085, 0.2, IRON, sides=4)
+        lance += _unit_panel([(0.34, 0.05, 1.83), (0.34, -0.29, 1.7), (0.34, 0.05, 1.59)], team)
+        mesh += _unit_pitch(lance, -82 if frame == "attack" else -38, grip)
         return mesh
     if unit_type is UnitType.SCOUT:
-        horse = (150, 116, 80)
-        swing = {"walk1": 0.1, "walk2": -0.1}.get(frame, 0.0)
-        mesh = _shadow(0.38, 0.06, 0.02)
-        for x, y in ((-0.13, -0.22), (0.13, -0.22), (-0.13, 0.22), (0.13, 0.22)):
-            mesh += r3.box((x, y + (swing if (x < 0) == (y < 0) else -swing), 0.14), (0.08, 0.08, 0.28), horse)
-        mesh += r3.box((0, 0, 0.4), (0.32, 0.8, 0.26), horse)
-        mesh += r3.box((0, 0.5, 0.6), (0.16, 0.26, 0.2), horse) + r3.box((0, 0.38, 0.55), (0.12, 0.14, 0.26), horse)
-        mesh += r3.box((0, 0, 0.55), (0.34, 0.5, 0.06), team)  # saddle cloth
-        mesh += r3.cylinder((0, -0.05, 0.58), 0.14, 0.3, team, sides=8) + r3.sphere((0, -0.05, 1.0), 0.14, SKIN, rings=4, sides=8)
-        mesh += r3.sphere((0, -0.08, 1.06), 0.13, darker(WOOD, 0.8), rings=3, sides=8)  # cap
-        spear_y = 0.5 if frame == "attack" else 0.05
-        mesh += r3.box((0.24, spear_y, 0.85), (0.04, 0.9, 0.04), WOOD) + r3.box((0.24, spear_y + 0.47, 0.85), (0.05, 0.16, 0.05), IRON)
+        mesh = _horse(frame, False, team)
+        mesh += r3.cylinder((0, -0.1, 0.63), 0.15, 0.29, (97, 78, 52), sides=6)
+        mesh += _unit_panel([(-0.18, -0.16, 0.92), (0.18, -0.16, 0.92),
+                             (0.2, -0.57, 0.54), (0, -0.48, 0.59), (-0.2, -0.57, 0.54)], team)
+        mesh += _unit_head((0, -0.085, 1.06), 0.14)
+        mesh += r3.cone((0, -0.095, 1.15), 0.2, 0.13, (73, 93, 64), sides=6)
+        mesh += _unit_rod((-0.1, -0.11, 1.21), (-0.16, -0.23, 1.43), 0.032, PLASTER)
+        for x in (-0.19, 0.19):
+            mesh += _unit_rod((x, -0.06, 0.74), (x * 1.15, 0.06, 0.43), 0.058, WOOD_DARK)
+            mesh += _unit_rod((x, -0.08, 0.86), (x, 0.12, 0.82), 0.045, SKIN)
+        grip = (0.27, 0.07, 0.9)
+        spear = _unit_rod((0.27, 0.07, 0.55), (0.27, 0.07, 1.65), 0.024, WOOD)
+        spear += r3.cone((0.27, 0.07, 1.63), 0.06, 0.18, IRON, sides=4)
+        mesh += _unit_pitch(spear, -84 if frame == "attack" else -8, grip)
         return mesh
     if unit_type is UnitType.CATAPULT:
-        wood, dark = WOOD, WOOD_DARK
-        arm_y = 0.25 if frame == "attack" else -0.25
-        mesh = _shadow(0.45, 0.05, 0.03)
-        mesh += r3.box((0, 0, 0.22), (0.7, 0.9, 0.14), dark)
-        for x in (-0.42, 0.42):
+        mesh = _shadow(0.51, 0.05, 0.03)
+        for x in (-0.27, 0.27):
+            mesh += r3.box((x, 0, 0.27), (0.11, 0.96, 0.13), WOOD_DARK)
+            mesh += _unit_rod((x, -0.38, 0.3), (x, -0.04, 0.83), 0.055, WOOD)
+            mesh += _unit_rod((x, 0.37, 0.3), (x, -0.04, 0.83), 0.055, WOOD)
+        for y in (-0.32, 0.32):
+            mesh += _unit_rod((-0.5, y, 0.23), (0.5, y, 0.23), 0.055, IRON)
+        wheel_turn = {"walk1": 20, "walk2": -20}.get(frame, 0)
+        for x in (-0.44, 0.44):
             for y in (-0.32, 0.32):
-                mesh += r3.box((x, y, 0.18), (0.08, 0.3, 0.32), darker(wood, 0.7))
-        mesh += r3.box((0, -0.15, 0.55), (0.5, 0.08, 0.5), wood)  # frame upright
-        mesh += r3.box((0, arm_y, 0.8), (0.07, 0.9, 0.07), wood)  # throwing arm
-        mesh += r3.box((0, arm_y - 0.42, 0.86), (0.22, 0.2, 0.14), dark)  # bucket
-        mesh += r3.sphere((0, arm_y - 0.42, 0.98), 0.09, BOULDER, rings=3, sides=6)
-        mesh += r3.box((0, 0.2, 0.34), (0.3, 0.06, 0.1), team)
+                mesh += _unit_rod((x - 0.05, y, 0.23), (x + 0.05, y, 0.23), 0.225, INK, sides=10)
+                outer = x + (0.055 if x > 0 else -0.055)
+                mesh += _unit_rod((x, y, 0.23), (outer, y, 0.23), 0.18, WOOD_DARK, sides=10)
+                for degrees in range(wheel_turn, wheel_turn + 360, 60):
+                    angle = math.radians(degrees)
+                    mesh += _unit_rod((outer, y, 0.23),
+                                      (outer, y + 0.18 * math.cos(angle), 0.23 + 0.18 * math.sin(angle)), 0.019, THATCH)
+                mesh += _unit_rod((x, y, 0.23), (outer * 1.045, y, 0.23), 0.055, IRON)
+        mesh += _unit_rod((-0.34, -0.04, 0.8), (0.34, -0.04, 0.8), 0.08, IRON)
+        pivot = (0, -0.04, 0.65)
+        arm = _unit_rod((0, -0.04, 0.44), (0, -0.04, 1.43), 0.055, WOOD)
+        arm += r3.cylinder((0, -0.04, 1.33), 0.16, 0.13, WOOD_DARK, sides=8)
+        arm += r3.cylinder((0, -0.04, 1.45), 0.175, 0.035, IRON, sides=8)
+        if frame != "attack":
+            arm += r3.sphere((0, -0.04, 1.5), 0.125, BOULDER, rings=3, sides=6)
+        mesh += _unit_pitch(arm, -52 if frame == "attack" else 66, pivot)
+        mesh += r3.box((0, 0.29, 0.35), (0.58, 0.13, 0.15), WOOD)
+        mesh += _unit_panel([(-0.2, 0.365, 0.4), (0.2, 0.365, 0.4),
+                             (0.2, 0.365, 0.22), (0, 0.365, 0.17), (-0.2, 0.365, 0.22)], team)
         return mesh
     if unit_type is UnitType.CLERIC:
-        robe = PLASTER
-        mesh = _shadow(0.3) + r3.cylinder((0, 0, 0), 0.2, 0.55, robe, sides=8) + r3.box((0.06, 0.1, 0.35), (0.1, 0.24, 0.5), team)  # sash
-        mesh += r3.sphere((0, 0, 0.72), 0.17, SKIN, rings=5, sides=8) + r3.sphere((0, -0.05, 0.78), 0.17, robe, rings=4, sides=8)  # hood
-        staff_z = 0.85 if frame == "attack" else 0.6
-        mesh += r3.box((-0.3, 0.05, staff_z), (0.04, 0.04, 1.0), WOOD) + r3.sphere((-0.3, 0.05, staff_z + 0.55), 0.09, GOLD, rings=3, sides=6)
+        bob = 0.025 if frame == "walk1" else 0
+        mesh = _shadow(0.3) + _legs(frame, PLASTER)
+        mesh += r3.cone((0, 0, 0.08), 0.29, 0.84, PLASTER, sides=8)
+        mesh += r3.cylinder((0, 0, 0.38 + bob), 0.185, 0.32, PLASTER, sides=8)
+        for x in (-0.095, 0.095):
+            mesh += _unit_panel([(x - 0.04, 0.178, 0.68), (x + 0.04, 0.178, 0.68),
+                                 (x + 0.055, 0.254, 0.13), (x - 0.055, 0.254, 0.13)], team)
+            mesh += r3.box((x, 0.262, 0.2), (0.09, 0.025, 0.035), GOLD)
+        mesh += _unit_head((0, 0.01, 0.83 + bob), 0.155)
+        mesh += r3.pyramid((0, 0, 0.96 + bob), (0.29, 0.22), 0.31, PLASTER)
+        mesh += r3.box((0, 0, 0.99 + bob), (0.3, 0.235, 0.06), GOLD)
+        mesh += r3.box((0, 0.074, 1.095 + bob), (0.055, 0.075, 0.18), team)
+        mesh += _unit_rod((-0.2, 0, 0.64), (-0.34, 0.12, 0.57), 0.08, PLASTER)
+        mesh += _unit_rod((0.2, 0, 0.64), (0.3, 0.18, 0.7 if frame == "attack" else 0.49), 0.075, PLASTER)
+        # Tall gilded sun staff gives the healer an unmistakable asymmetric silhouette.
+        lift = 0.15 if frame == "attack" else 0
+        mesh += _unit_rod((-0.36, 0.12, 0.12 + lift), (-0.36, 0.12, 1.3 + lift), 0.032, WOOD)
+        mesh += r3.sphere((-0.36, 0.12, 1.34 + lift), 0.125, GOLD, rings=3, sides=8)
+        mesh += r3.box((-0.36, 0.13, 1.36 + lift), (0.34, 0.055, 0.055), GOLD)
+        mesh += r3.box((-0.36, 0.12, 1.39 + lift), (0.055, 0.055, 0.36), GOLD)
+        mesh += r3.sphere((-0.36, 0.19, 1.35 + lift), 0.064, (143, 221, 246), rings=3, sides=6)
         return mesh
     raise ValueError(unit_type)
 
@@ -525,6 +1092,14 @@ def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource 
 def facing_index(angle: float) -> int:
     """0..7 from a radian heading (0 = +x, quarter turns clockwise on screen)."""
     return int(round(angle / (math.pi / 4))) % FACINGS
+
+
+def chop_contact_offset(facing: int) -> tuple[float, float]:
+    """Projected cutting edge of the worker's contact pose, relative to its feet."""
+    x, y, z = (0.29 * UNIT_SCALE, 0.79 * UNIT_SCALE, 0.22 * UNIT_SCALE)
+    angle = math.radians(facing * 45 - 90)
+    c, s = math.cos(angle), math.sin(angle)
+    return PROJECTION.project((x * c - y * s, x * s + y * c, z))
 
 
 def unit_key(unit_type: UnitType, player: int, facing: int, frame: str, carrying: Resource | None = None) -> str:
@@ -566,9 +1141,9 @@ def warm_units(game: Game, players: list[int]):
             carries: tuple[Resource | None, ...] = (None, Resource.GOLD, Resource.LUMBER) if unit_type is UnitType.PEASANT else (None,)
             for carrying in carries:
                 for facing in range(FACINGS):
-                    for frame in FRAMES:
-                        unit_image(game, unit_type, player, facing, frame, carrying)
-                        yield
+                    frames = FRAMES + CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else FRAMES
+                    for frame in frames:
+                        yield unit_image(game, unit_type, player, facing, frame, carrying)
 
 
 def building_key(building_type: BuildingType, player: int) -> str:
@@ -631,19 +1206,18 @@ def register_theme(game: Game, theme: MapTheme) -> None:
         return
     for i in range(TREE_VARIANTS):
         key = f"tree.{theme.value}.{i}"
-        assets.image_from_pil(key, _prop(key, _tree(i, theme), DROP_TREE, scale))
+        assets.image_from_pil(key, _resource_image("tree", i, theme, scale))
     for i in range(ROCK_VARIANTS):
         key = f"rock.{theme.value}.{i}"
-        assets.image_from_pil(key, _prop(key, _rock(i, theme), DROP_TREE, scale))
+        assets.image_from_pil(key, _resource_image("rock", i, theme, scale))
 
 
 def register_static(game: Game) -> None:
-    """The mine, construction sites and effect images (once per game)."""
-    if game.assets.has_image("mine"):
+    """Construction sites and effect images (once per game); mines load on demand."""
+    if game.assets.has_image("glow"):
         return
     scale = game.backend.scale_factor
     assets = game.assets
-    assets.image_from_pil("mine", _prop("mine", _mine(), 1.5 * TILE + PAD, scale))
     for size in {info.size for info in BUILDINGS.values()}:
         assets.image_from_pil(f"site.{size}", _prop(f"site.{size}", _site(size), size / 2 * TILE + PAD, scale))
     px = int(TILE * scale)

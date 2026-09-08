@@ -27,6 +27,7 @@ from warband.textures import CHUNK, CHUNK_PX, DROP_TREE, DROP_UNIT, TILE
 
 WATER_PERIOD = 0.45  # seconds between water phase changes
 WATER_CYCLE = (0, 1, 2, 1)  # ping-pong through the phases so the ripples never jump
+CHOP_PERIOD = 0.8
 
 Color = tuple[int, int, int, int]
 FOG_COLOR = (10, 12, 20)
@@ -228,7 +229,7 @@ class MapView:
                 continue
             rising = not b.done and b.progress >= b.info.build_time / 2  # the second half of construction shows the building going up
             if b.type is BuildingType.GOLD_MINE:
-                key = "mine"
+                key = textures.mine_image(self.game, textures.scatter(b.x, b.y, 8) % textures.MINE_VARIANTS)
             elif b.done or rising:
                 key = textures.building_image(self.game, b.type, b.player)  # type: ignore[arg-type]
             else:
@@ -272,7 +273,12 @@ class MapView:
             return "walk1" if int(self.time * 5 + u.id) % 2 == 0 else "walk2"
         if u.state == "attack":
             return "attack" if u.cooldown > u.info.cooldown - 0.3 else "stand"
-        if u.state in ("chop", "repair"):
+        if u.state == "chop":
+            if u.carrying is not None:
+                return "stand"
+            phase = (u.timer / CHOP_PERIOD) % 1.0
+            return textures.CHOP_FRAMES[0 if phase < 0.25 else 1 if phase < 0.45 else 2 if phase < 0.7 else 3]
+        if u.state == "repair":
             return "attack" if (self.time * 2 + u.id * 0.37) % 1.0 < 0.35 else "stand"
         return "stand"
 
@@ -382,6 +388,7 @@ class MapView:
 
     def draw(self, overlay: Overlay) -> None:
         world, scene = self.world, self.scene
+        self._draw_wood_chips()
         for eid in overlay.selected + ([overlay.hovered] if overlay.hovered is not None and overlay.hovered not in overlay.selected else []):
             entity = world.entity(eid)
             if entity is None:
@@ -425,3 +432,23 @@ class MapView:
             cx, cy = (gx + size / 2) * TILE, (gy + size / 2) * TILE
             w, h = placement.size
             scene.draw_image(key, cx - w / 2, cy + placement.drop - h, w, h, opacity=0.55 if ok else 0.3, space="world", layer=RenderLayer.UI_WORLD)
+
+    def _draw_wood_chips(self) -> None:
+        """A short burst at axe contact, driven by the same harvest clock as the pose."""
+        for u in self.world.units.values():
+            sprite = self.unit_sprite(u.id)
+            if u.state != "chop" or u.carrying is not None or sprite is None or not sprite.visible:
+                continue
+            phase = (u.timer / CHOP_PERIOD) % 1.0
+            if not 0.45 <= phase < 0.9:
+                continue
+            t = (phase - 0.45) / 0.45
+            wx, wy = to_world(u.pos)
+            dx, dy = textures.chop_contact_offset(textures.facing_index(u.facing))
+            wx, wy = wx + dx, wy + dy
+            for i in range(5):
+                side = (i - 2) * 4.0
+                x = wx + side * t
+                y = wy - (10 + i % 3 * 4) * t + 20 * t * t
+                self.scene.draw_line(x, y, x + 2 + i % 2, y - 1.5, (238, 202, 139, round(235 * (1 - t))), 1.5,
+                                     space="world", layer=RenderLayer.EFFECTS)

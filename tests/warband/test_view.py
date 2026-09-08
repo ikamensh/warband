@@ -41,6 +41,73 @@ def test_every_tree_and_building_has_a_sprite_and_a_felled_tree_loses_it(play) -
     assert pos not in view._trees
 
 
+def test_forest_uses_twenty_stable_variants_across_save_reload(play) -> None:
+    """A real map uses the full forest asset bank without reshuffling on load."""
+    game, scene = play
+    before = {pos: sprite.image for pos, sprite in scene.view._trees.items()}
+    assert len(set(before.values())) >= 20
+    scene.view.reset(scene.world.from_dict(scene.world.to_dict()))
+    assert {pos: sprite.image for pos, sprite in scene.view._trees.items()} == before
+
+
+def test_harvesting_worker_swings_axe_then_carries_wood(play) -> None:
+    """Harvest orders drive all swing poses, face the tree, then show carried logs."""
+    game, scene = play
+    world = scene.world
+    tree, approach = next(
+        (pos, (pos[0] + dx, pos[1] + dy))
+        for pos in scene.view._trees for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+        if world.passable(pos[0] + dx, pos[1] + dy)
+    )
+    worker = world.spawn_unit(scene.human, UnitType.PEASANT, tile_center(approach))
+    world.harvest([worker.id], tree)
+    poses = set()
+    checked_pause = False
+    for _ in range(420):
+        game.tick(1 / 60)
+        sprite = scene.view.unit_sprite(worker.id)
+        if worker.state == "chop" and worker.carrying is None:
+            poses.add(sprite.image.rsplit(".", 1)[-1])
+            if not checked_pause:
+                before = sprite.image
+                scene.paused = True
+                for _ in range(20):
+                    game.tick(1 / 60)
+                assert sprite.image == before
+                scene.paused = False
+                checked_pause = True
+        if worker.carrying is Resource.LUMBER:
+            assert ".lumber." in sprite.image
+            assert sprite.image.rsplit(".", 1)[-1] in textures.FRAMES
+            break
+    assert worker.carrying is Resource.LUMBER
+    assert poses == set(textures.CHOP_FRAMES)
+    assert world.terrain_at(tree) is Terrain.GRASS
+
+
+def test_idle_opening_prepares_later_animation_images(play) -> None:
+    """The incremental warmer advances beyond its first yielded image."""
+    game, scene = play
+    key = textures.unit_key(UnitType.PEASANT, 0, 1, "walk2")
+    for _ in range(10):
+        game.tick(1 / 60)
+    assert game.assets.has_image(key)
+
+
+def test_crystal_mines_render_all_variants_and_keep_their_variant_on_reload(play) -> None:
+    """Every mine variant can enter the atlas, with placement stable across saves."""
+    game, scene = play
+    keys = {textures.mine_image(game, i) for i in range(20)}
+    assert len(keys) == 20
+    for key in keys:
+        width, height = game.backend.get_image_size(game.assets.image(key))
+        assert width >= TILE * 2 and height >= TILE * 2
+    mines = scene.world.mines()
+    before = {mine.id: scene.view.building_sprite(mine.id).image for mine in mines if scene.view.building_sprite(mine.id)}
+    scene.view.reset(scene.world.from_dict(scene.world.to_dict()))
+    assert {bid: scene.view.building_sprite(bid).image for bid in before} == before
+
+
 def test_units_draw_in_front_of_what_stands_behind_them(play) -> None:
     game, scene = play
     world, view = scene.world, scene.view
@@ -157,10 +224,13 @@ def test_portraits_are_tightly_framed_pictures(play) -> None:
 def test_a_new_map_of_the_same_size_reuses_the_ground_fog_and_minimap_images(play) -> None:
     game, scene = play
     before = len(game.backend._image_sizes)
+    keys = [sprite.image for sprite in scene.view._ground] + [scene.view.fog_key, scene.view.minimap_key]
+    handles = [game.assets.image(key) for key in keys]
     scene.world = scene.world.from_dict(scene.world.to_dict())
     scene.view.reset(scene.world)
-    game.tick(1 / 60)
     assert len(game.backend._image_sizes) == before
+    game.tick(1 / 60)  # the unit warmer may now add animation frames
+    assert [game.assets.image(key) for key in keys] == handles
     assert Image  # the PIL import is what the view feeds update_image
 
 
