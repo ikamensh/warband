@@ -4,8 +4,8 @@ train soldiers without pause, defend the base and attack in growing waves.
 One :class:`Brain` per AI player thinks once a second of simulation
 time; everything it does goes through :class:`World` commands, checked
 with the matching ``can_*`` query first, so the model never raises here.
-The brain knows where the enemy's buildings are (as Warcraft's AI did);
-everything else it does is what a player could do.
+Strategic expansion and military decisions retain their previous map knowledge.
+Workers share the model's automatic policy, limited to known safe resources.
 """
 
 from __future__ import annotations
@@ -53,10 +53,6 @@ PROFILES: dict[Difficulty, Profile] = {
     Difficulty.HARD: Profile(peasants=14, think_every=0.5, first_wave=8, wave_growth=4, barracks=3, towers=3, tech=True, siege=True,
                              clerics=True, harass=True, reserve=500, repair=True),
 }
-
-
-def lumber_rich(lumber: int) -> bool:
-    return lumber > 3000
 
 
 class Brain:
@@ -118,31 +114,9 @@ class Brain:
     # -- Economy -----------------------------------------------------------------
 
     def _economy(self, world: World) -> None:
-        hall = self._hall(world)
-        if hall is None:
-            return
-        player = world.players[self.player]
-        peasants = self._peasants(world)
-        mine = world._nearest_mine(hall.center, math.inf)
-        tree = world.nearest_tree(hall.center, 14)
-        # Lumber piles up faster than it is spent: keep the wood crew small, and send it mining when the pile is high.
-        want_choppers = 0 if lumber_rich(player.lumber) or tree is None else 4 if player.gold > 2000 or player.lumber < 400 else 3
-        choppers = [p for p in peasants if self._job(p) is Resource.LUMBER and not p.hidden]
-        if len(choppers) > want_choppers and mine is not None:
-            spare = [c for c in choppers if c.carrying is None]
-            if spare:
-                world.harvest([spare[0].id], mine.id)
-                choppers.remove(spare[0])
-        for peasant in peasants:
-            if peasant.orders or peasant.hidden:
-                continue
-            if len(choppers) < want_choppers and tree is not None:
-                world.harvest([peasant.id], tree)
-                choppers.append(peasant)
-            elif mine is not None:
-                world.harvest([peasant.id], mine.id)
-            elif tree is not None:
-                world.harvest([peasant.id], tree)
+        from warband.worker_ai import assign_idle_workers
+
+        assign_idle_workers(world, self.player)
 
     def _repairs(self, world: World) -> None:
         """One peasant mends the most damaged building, once no enemy is near it."""

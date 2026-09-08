@@ -144,3 +144,44 @@ def nearest_passable(origin: Pos, passable: Passable, *, max_radius: int = 12, p
                 return min(candidates, key=lambda p: (p[0] - origin[0]) ** 2 + (p[1] - origin[1]) ** 2)
             return min(candidates, key=lambda p: (p[0] - prefer[0]) ** 2 + (p[1] - prefer[1]) ** 2)
     return None
+
+
+def find_work_path(start: Pos, goals: dict[Pos, float], blocked: bytes | bytearray,
+                   width: int, height: int) -> list[Pos] | None:
+    """Shortest route to an interaction tile, including its crowding penalty.
+
+    Unlike movement A*, this must reach a real goal: a closest partial path
+    cannot deliver cargo or harvest a resource. None means no reachable goal;
+    an empty path means the worker already occupies the chosen goal.
+    """
+    if not goals:
+        return None
+    def passable(x: int, y: int) -> bool:
+        return 0 <= x < width and 0 <= y < height and not blocked[y * width + x]
+
+    costs = {start: 0.0}
+    parents: dict[Pos, Pos] = {}
+    frontier = [(0.0, start)]
+    best, best_cost = None, math.inf
+    while frontier:
+        cost, current = heapq.heappop(frontier)
+        if cost >= best_cost:
+            break
+        if cost != costs[current]:
+            continue
+        if current in goals and cost + goals[current] < best_cost:
+            best, best_cost = current, cost + goals[current]
+        for nxt, step in neighbours(current, passable):
+            total = cost + step
+            if total < costs.get(nxt, math.inf):
+                costs[nxt] = total
+                parents[nxt] = current
+                heapq.heappush(frontier, (total, nxt))
+    if best is None:
+        return None
+    route = []
+    while best != start:
+        route.append(best)
+        best = parents[best]
+    route.reverse()
+    return route

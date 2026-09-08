@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterator
 
 from warband import path as pathing
+from warband.worker_knowledge import WorkerKnowledge
 from warband.rules import (
     REPAIR_CHUNK, REPAIR_RATE, repair_cost,
     ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLESSING_BONUS, BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS,
@@ -71,11 +72,15 @@ class Attack:
 @dataclass
 class Harvest:
     target: int | Pos  # a gold mine's id, or a tree tile
+    auto: bool = False  # Automatic jobs use known safe ground for both trips.
 
 
 @dataclass
 class Deposit:
-    """Carry the load to the nearest town hall (the simulation queues it)."""
+    """Carry the load to a reachable depot (the simulation queues it)."""
+
+    target: int | None = None
+    auto: bool = False
 
 
 @dataclass
@@ -156,6 +161,7 @@ class Unit:
     last_distance: float = math.inf
     charge: float = 0.0  # healing accumulated below one hit point
     replan_at: float = 0.0  # simulation time from which the unit may plan again
+    auto_work: bool = True  # Stop/Hold parks a worker until another order is given.
 
     @property
     def pos(self) -> Point:
@@ -335,6 +341,10 @@ class World:
         self.explored = [bytearray(width * height) for _ in self.players]
         self.visible = [bytearray(width * height) for _ in self.players]
         self._buckets: dict[Pos, list[Unit]] = {}
+        self.worker_knowledge = [WorkerKnowledge(width, height) for _ in self.players]
+        self._worker_ai_checks: dict[int, int] = {}
+        self._worker_ai_views: dict[int, tuple[int, Any]] = {}
+        self._worker_ai_navigation: dict[int, tuple[int, bytearray]] = {}
 
     # -- Ids and lookups -----------------------------------------------------------
 
@@ -428,6 +438,8 @@ class World:
         return self.in_bounds(pos) and bool(self.explored[player][pos[1] * self.width + pos[0]])
 
     def update_vision(self) -> None:
+        self._worker_ai_views.clear()
+        self._worker_ai_navigation.clear()
         width, height = self.width, self.height
         for player in self.players:
             visible = self.visible[player.id]
@@ -444,6 +456,7 @@ class World:
             for i in range(width * height):
                 if visible[i]:
                     explored[i] = 1
+            self.worker_knowledge[player.id].refresh(self, player.id)
 
     def _reveal(self, visible: bytearray, at: Pos, radius: int) -> None:
         width, height = self.width, self.height
@@ -455,9 +468,12 @@ class World:
 
     def reveal_all(self, player: int) -> None:
         """Explore (and, until the next vision update, see) the whole map."""
+        self._worker_ai_views.pop(player, None)
+        self._worker_ai_navigation.pop(player, None)
         for i in range(self.width * self.height):
             self.explored[player][i] = 1
             self.visible[player][i] = 1
+        self.worker_knowledge[player].refresh(self, player)
 
     # -- Stats with upgrades applied ----------------------------------------------------
 
@@ -629,10 +645,11 @@ class World:
         return (min(max(point[0], 0.05), self.width - 0.05), min(max(point[1], 0.05), self.height - 0.05))
 
     def _issue(self, unit: Unit, order: Order, *, queue: bool = False) -> None:
-        if unit.inside is not None:
-            return  # it will get the order when it comes out; a miner keeps mining
+        if unit.inside is not None and queue and isinstance(unit.order, Harvest):
+            unit.orders.popleft()  # Finish this trip, then obey the pending manual command.
         if unit.constructing is not None:
             self._abandon_construction(unit)
+        unit.auto_work = not isinstance(order, Hold)
         if not queue:
             unit.orders.clear()
             unit.path = []
@@ -676,6 +693,7 @@ class World:
 
     def stop(self, unit_ids: list[int]) -> None:
         for unit in self._own_units(unit_ids):
+            unit.auto_work = False
             if unit.constructing is not None:
                 self._abandon_construction(unit)
             unit.orders.clear()
@@ -996,7 +1014,13 @@ class World:
 
     def _idle(self, u: Unit) -> None:
         u.state = "idle"
-        if u.is_worker or self.tick % 5:
+        if u.is_worker:
+            if u.auto_work and self.tick % round(1 / SIM_DT) == 0:
+                from warband.worker_ai import assign_idle_workers
+
+                assign_idle_workers(self, u.player)
+            return
+        if self.tick % 5:
             return
         if u.info.heal:
             patient = self._nearest_wounded(u, u.info.sight)
@@ -1143,35 +1167,52 @@ class World:
             u.path = []
             u.path_goal = None
             return
+        remembered = self.worker_knowledge[u.player].resource_rect(order.target)
+        if remembered is not None:
+            x, y, width, height = remembered
+            if not any(self.is_visible(u.player, (tx, ty)) for ty in range(y, y + height) for tx in range(x, x + width)):
+                # Revisit the last observed site before discovering a depleted
+                # mine or felled tree. Hidden changes cannot alter this route.
+                if self._approach_work(u, remembered, dt, self._worker_navigation(u)):
+                    self._finish_order(u)
+                return
         if isinstance(order.target, int):
             mine = self.buildings.get(order.target)
             if mine is None or mine.gold <= 0:
-                replacement = self._nearest_mine(u.pos, math.inf)  # any mine left on the map beats idling
+                from warband.worker_ai import choose_replacement
+                replacement = choose_replacement(self, u, Resource.GOLD)
                 if replacement is None:
                     self._finish_order(u)
                     return
-                order.target = replacement.id
-                mine = replacement
-            if rect_gap(u.pos, mine.rect) - u.radius <= TOUCH:
+                order.target, order.auto = replacement, True
+                u.path_goal = None
+                return  # a remembered replacement may still be hidden by fog
+            navigation = self._worker_navigation(u)
+            if rect_gap(u.pos, mine.rect) - u.radius <= TOUCH and not navigation[u.tile[1] * self.width + u.tile[0]]:
                 u.inside = mine.id
                 u.timer = MINE_TIME
                 u.path = []
                 u.path_goal = None
                 u.state = "idle"
                 return
-            if self._approach(u, (mine.x + 1, mine.y + 1), mine.center, dt):
+            if self._approach_work(u, mine.rect, dt, navigation):
                 self._finish_order(u)
             return
         tile = order.target
         if self.terrain_at(tile) is not Terrain.TREES:
-            replacement = self.nearest_tree(tile_center(tile), 8)
+            from warband.worker_ai import choose_replacement
+            replacement = choose_replacement(self, u, Resource.LUMBER)
             if replacement is None:
                 self._finish_order(u)
                 return
             order.target = tile = replacement
+            order.auto = True
             u.path = []
             u.path_goal = None
-        if rect_gap(u.pos, (tile[0], tile[1], 1, 1)) - u.radius <= TOUCH:
+            return
+        navigation = self._worker_navigation(u)
+        rect = (tile[0], tile[1], 1, 1)
+        if rect_gap(u.pos, rect) - u.radius <= TOUCH and not navigation[u.tile[1] * self.width + u.tile[0]]:
             u.path = []
             u.state = "chop"
             self._face(u, tile_center(tile))
@@ -1185,7 +1226,7 @@ class World:
                 u.orders.appendleft(Deposit())
             return
         u.timer = 0.0
-        if self._approach(u, tile, tile_center(tile), dt):
+        if self._approach_work(u, rect, dt, navigation):
             self._finish_order(u)
 
     def _mine_inside(self, u: Unit, dt: float) -> None:
@@ -1200,11 +1241,12 @@ class World:
         mine.gold -= taken
         u.carrying, u.carry = Resource.GOLD, taken
         u.inside = None
-        hall = self._nearest_depot(u.player, mine.center, Resource.GOLD)
-        spot = self.free_tile_near(mine.rect, prefer=hall.center if hall is not None else None)
-        if spot is not None:
-            u.x, u.y = tile_center(spot)
-        u.orders.appendleft(Deposit())
+        # Emerge where this worker entered. Teleporting every miner to the same
+        # depot-facing tile creates a pile-up and can cross a separating wall.
+        if not u.orders and u.auto_work:
+            u.orders.append(Deposit(auto=True))
+        elif isinstance(u.order, Harvest):
+            u.orders.appendleft(Deposit(auto=u.order.auto))
         if mine.gold <= 0:
             self._remove_building(mine, reason="exhausted")
 
@@ -1212,7 +1254,17 @@ class World:
         if u.carrying is None:
             self._finish_order(u)
             return
-        hall = self._nearest_depot(u.player, u.pos, u.carrying)
+        order = u.orders[0]
+        assert isinstance(order, Deposit)
+        navigation = self._worker_navigation(u)
+        hall = self.buildings.get(order.target)
+        if hall is None or not hall.done or u.carrying not in hall.info.deposits or u.path_goal is None:
+            if self.time < u.replan_at:
+                u.state = "idle"
+                return
+            depots = {b.id: b.rect for b in self.player_buildings(u.player, done=True) if u.carrying in b.info.deposits}
+            order.target = self._plan_work_route(u, depots, navigation)
+            hall = self.buildings.get(order.target)
         if hall is None:
             u.state = "idle"
             return
@@ -1226,8 +1278,59 @@ class World:
             u.carrying, u.carry = None, 0
             self._finish_order(u)
             return
-        if self._approach(u, (hall.x + 1, hall.y + 1), hall.center, dt):
-            u.state = "idle"  # no way to the hall from here; wait for one
+        if self._approach_work(u, hall.rect, dt, navigation):
+            order.target = None  # a new wall or threat may require another depot
+
+    def _worker_navigation(self, u: Unit) -> bytearray:
+        if any(isinstance(order, (Harvest, Deposit)) and order.auto for order in u.orders):
+            from warband.worker_ai import safe_navigation
+            return safe_navigation(self, u.player)
+        return self._blocked
+
+
+    def _plan_work_route(self, u: Unit, targets: dict[int, tuple[int, int, int, int]],
+                         navigation: bytearray) -> int | None:
+        """Choose a reachable interaction edge by travel distance and local crowding."""
+        owners: dict[Pos, int] = {}
+        costs: dict[Pos, float] = {}
+        for target, rect in targets.items():
+            x, y, w, h = rect
+            for ty in range(max(0, y - 1), min(self.height, y + h + 1)):
+                for tx in range(max(0, x - 1), min(self.width, x + w + 1)):
+                    tile = (tx, ty)
+                    point = tile_center(tile)
+                    if navigation[ty * self.width + tx] or rect_gap(point, rect) - u.radius > TOUCH:
+                        continue
+                    owners[tile] = target
+                    costs[tile] = sum(max(0.0, 1.0 - dist(v.pos, point)) * 2
+                                      for v in self.units_near(point, 1.0)
+                                      if v is not u and not v.hidden and v.player == u.player)
+        route = pathing.find_work_path(u.tile, costs, navigation, self.width, self.height)
+        u.replan_at = self.time + REPLAN_EVERY
+        u.progress, u.last_distance = 0.0, math.inf
+        u.path, u.path_goal, u.exact = [], None, None
+        if route is None:
+            return None
+        goal = route[-1] if route else u.tile
+        u.path, u.path_goal, u.exact = route, goal, tile_center(goal)
+        return owners[goal]
+
+
+    def _approach_work(self, u: Unit, rect: tuple[int, int, int, int], dt: float,
+                       navigation: bytearray) -> bool:
+        """Walk to a useful work position; True only when no route exists."""
+        goal = u.path_goal
+        if (goal is None or navigation[goal[1] * self.width + goal[0]]
+                or rect_gap(tile_center(goal), rect) - u.radius > TOUCH or self._next_waypoint(u, precise=True) is None):
+            if self.time < u.replan_at:
+                u.state = "idle"
+                return False
+            if self._plan_work_route(u, {0: rect}, navigation) is None:
+                u.state = "idle"
+                return True
+        self._follow(u, dt, navigation=navigation, precise=True)
+        return False
+
 
     def _do_build(self, u: Unit, order: Build, dt: float) -> None:
         if order.building is not None:
@@ -1302,32 +1405,36 @@ class World:
 
     # -- Movement --------------------------------------------------------------------
 
-    def _plan(self, u: Unit, goal: Pos, exact: Point | None = None, *, around_units: bool = False) -> None:
+    def _plan(self, u: Unit, goal: Pos, exact: Point | None = None, *, around_units: bool = False,
+              navigation: bytearray | None = None) -> None:
         """Path from the unit's tile to *goal*; the last step aims at *exact* when the goal tile is open."""
         start = u.tile
-        if not self.passable(*start):
-            nearest = pathing.nearest_passable(start, self.passable)
+        grid = self._blocked if navigation is None else navigation
+        def passable(x: int, y: int) -> bool:
+            return 0 <= x < self.width and 0 <= y < self.height and not grid[y * self.width + x]
+        if not passable(*start):
+            nearest = pathing.nearest_passable(start, passable)
             if nearest is not None:
                 start = nearest
         target = goal
-        if not self.passable(*goal):
+        if not passable(*goal):
             # A blocked goal (a building, a tree, water) would make A* explore everything it can reach
             # before settling for the nearest tile; aim at that tile from the start.
-            nearest = pathing.nearest_passable(goal, self.passable, prefer=start)
+            nearest = pathing.nearest_passable(goal, passable, prefer=start)
             if nearest is not None:
                 target = nearest
         u.replan_at = self.time + REPLAN_EVERY
         if around_units:
-            blocked = bytearray(self._blocked)
+            blocked = bytearray(grid)
             width = self.width
             for v in self.units.values():
-                if v is not u and not v.hidden and v.state in ("idle", "attack", "chop", "repair"):
+                if v is not u and not v.hidden and v.state in ("idle", "attack", "chop", "repair") and (navigation is None or v.player == u.player or self.is_visible(u.player, v.tile)):
                     tx, ty = v.tile
                     if (tx, ty) != target and 0 <= tx < width and 0 <= ty < self.height:
                         blocked[ty * width + tx] = 1
             u.path = pathing.find_path_grid(start, target, blocked, width, self.height, max_expansions=LOCAL_EXPANSIONS)
         else:
-            u.path = pathing.find_path_grid(start, target, self._blocked, self.width, self.height)
+            u.path = pathing.find_path_grid(start, target, grid, self.width, self.height)
         u.path_goal = goal  # the goal as asked, so a repeated request is recognised
         u.last_distance = math.inf
         u.progress = 0.0
@@ -1335,7 +1442,7 @@ class World:
         if exact is not None:
             goal_tile = (int(exact[0]), int(exact[1]))
             reached = (u.path[-1] if u.path else start) == goal_tile
-            if reached and self.passable(*goal_tile):
+            if reached and passable(*goal_tile):
                 u.exact = exact
 
     def _walk_to(self, u: Unit, target: Point, dt: float, *, settle: bool = False) -> bool:
@@ -1350,34 +1457,41 @@ class World:
             self._plan(u, goal, exact)
         return self._follow(u, dt, settle=settle)
 
-    def _next_waypoint(self, u: Unit) -> Point | None:
+    def _next_waypoint(self, u: Unit, *, precise: bool = False) -> Point | None:
         if u.path:
             if len(u.path) == 1 and u.exact is not None and u.path[0] != u.tile:
                 return u.exact
             return tile_center(u.path[0])  # a detour back to the unit's own tile centre is walked first
-        if u.exact is not None and dist(u.pos, u.exact) > ARRIVE:
+        # Work requires contact, so the walking tolerance cannot discard a
+        # final step that would put the worker inside interaction range.
+        if u.exact is not None and dist(u.pos, u.exact) > (1e-6 if precise else ARRIVE):
             return u.exact
         return None
 
-    def _follow(self, u: Unit, dt: float, *, settle: bool = False) -> bool:
+    def _follow(self, u: Unit, dt: float, *, settle: bool = False, navigation: bytearray | None = None,
+                precise: bool = False) -> bool:
         """Step along the path; True when there was nothing left to walk."""
-        waypoint = self._next_waypoint(u)
+        waypoint = self._next_waypoint(u, precise=precise)
         if waypoint is None:
             u.state = "idle"
             return True
         u.state = "move"
+        grid = self._blocked if navigation is None else navigation
         if u.path and u.path_goal is not None:
             tx, ty = u.tile
-            if not self.passable(*u.path[0]) or max(abs(u.path[0][0] - tx), abs(u.path[0][1] - ty)) > 1:
+            if grid[u.path[0][1] * self.width + u.path[0][0]] or max(abs(u.path[0][0] - tx), abs(u.path[0][1] - ty)) > 1:
                 # Something was built across the path, or a crowd pushed the unit off it.
                 if self.time >= u.replan_at:
-                    self._plan(u, u.path_goal, u.exact, around_units=True)
+                    self._plan(u, u.path_goal, u.exact, around_units=True, navigation=navigation)
                     return False
                 u.path.insert(0, u.tile)
         dx, dy = waypoint[0] - u.x, waypoint[1] - u.y
         d = math.hypot(dx, dy)
         step = self.speed_of(u) * dt
         if d <= step or d <= ARRIVE:
+            if navigation is not None and not self._line_clear(u.pos, waypoint, navigation=navigation):
+                u.path_goal = None
+                return False
             u.x, u.y = waypoint
             if u.path:
                 u.path.pop(0)
@@ -1387,7 +1501,7 @@ class World:
             return False
         u.facing = math.atan2(dy, dx)
         nx, ny = u.x + dx / d * step, u.y + dy / d * step
-        if not self.passable(int(nx), int(ny)) and self.passable(*u.tile):
+        if (grid[int(ny) * self.width + int(nx)] or (navigation is not None and not self._line_clear(u.pos, (nx, ny), navigation=navigation))) and self.passable(*u.tile):
             if u.path and u.path[0] != u.tile:
                 # Pushed off course so that the straight line to the next tile crosses a blocked
                 # one: go back to this tile's centre first, which is always possible.
@@ -1396,7 +1510,7 @@ class World:
                 # Even from the centre the straight step to the exact spot crosses a blocked tile: it
                 # lies across a corner.  Plan again; the planner never cuts corners, so the path comes
                 # in from an open side, or there is none and the walk ends here.
-                self._plan(u, u.path_goal, u.exact)
+                self._plan(u, u.path_goal, u.exact, navigation=navigation)
             return False
         u.x, u.y = nx, ny
         # Progress watchdog: closing on the goal resets it; a stretch without progress paths
@@ -1414,11 +1528,11 @@ class World:
                     u.state = "idle"
                     return True
                 if self.time >= u.replan_at:
-                    self._plan(u, u.path_goal, u.exact, around_units=True)
+                    self._plan(u, u.path_goal, u.exact, around_units=True, navigation=navigation)
                     u.last_distance = remaining
         return False
 
-    def _line_clear(self, a: Point, b: Point) -> bool:
+    def _line_clear(self, a: Point, b: Point, *, navigation: bytearray | None = None) -> bool:
         """No blocked tile on the straight line from *a* to *b*.
 
         Every tile the segment crosses is visited (a grid walk, not sampling: a
@@ -1426,6 +1540,10 @@ class World:
         building's corner would step into).  Passing exactly through a corner
         needs both tiles beside it free, as a diagonal step in the pathfinder does.
         """
+        # Check continuous coordinates before int() can turn -0.1 into tile zero.
+        if not (0 <= a[0] < self.width and 0 <= a[1] < self.height
+                and 0 <= b[0] < self.width and 0 <= b[1] < self.height):
+            return False
         x, y = int(a[0]), int(a[1])
         end_x, end_y = int(b[0]), int(b[1])
         dx, dy = b[0] - a[0], b[1] - a[1]
@@ -1434,7 +1552,11 @@ class World:
         next_x = ((x + (step_x > 0)) - a[0]) / dx if dx else math.inf
         next_y = ((y + (step_y > 0)) - a[1]) / dy if dy else math.inf
         per_x, per_y = (abs(1 / dx) if dx else math.inf), (abs(1 / dy) if dy else math.inf)
-        passable = self.passable
+        if navigation is None:
+            passable = self.passable
+        else:
+            def passable(x: int, y: int) -> bool:
+                return 0 <= x < self.width and 0 <= y < self.height and not navigation[y * self.width + x]
         for _ in range(abs(end_x - x) + abs(end_y - y) + 1):
             if not passable(x, y):
                 return False
@@ -1628,10 +1750,6 @@ class World:
 
     # -- Helpers for orders ----------------------------------------------------------
 
-    def _nearest_depot(self, player: int, point: Point, resource: Resource) -> Building | None:
-        """The finished building nearest *point* that accepts *resource* (halls take both, mills lumber)."""
-        depots = [b for b in self.player_buildings(player, done=True) if resource in b.info.deposits]
-        return min(depots, key=lambda b: dist(b.center, point)) if depots else None
 
     def _nearest_mine(self, point: Point, max_distance: float = 14.0) -> Building | None:
         mines = [m for m in self.mines() if m.gold > 0 and dist(m.center, point) <= max_distance]
@@ -1676,6 +1794,7 @@ class World:
             "units": [_unit_to_dict(u) for u in self.units.values()],
             "buildings": [_building_to_dict(b) for b in self.buildings.values()],
             "explored": [bytes(e).hex() for e in self.explored],
+            "worker_knowledge": [knowledge.to_dict() for knowledge in self.worker_knowledge],
             "time": self.time, "tick": self.tick, "next_id": self._next_id, "winner": self.winner,
             "rng": self.rng.getstate(),
         }
@@ -1698,6 +1817,8 @@ class World:
             u = _unit_from_dict(saved)
             world.units[u.id] = u
         world.explored = [bytearray(bytes.fromhex(e)) for e in data["explored"]]
+        if "worker_knowledge" in data:
+            world.worker_knowledge = [WorkerKnowledge.from_dict(knowledge) for knowledge in data["worker_knowledge"]]
         world.time, world.tick, world._next_id, world.winner = data["time"], data["tick"], data["next_id"], data["winner"]
         state = data["rng"]
         world.rng.setstate((state[0], tuple(state[1]), state[2]))
@@ -1707,6 +1828,12 @@ class World:
 
 
 def _order_to_dict(order: Order) -> dict[str, Any]:
+    # Keep player-order fields compatible with existing warband-v1 clients.
+    # Automatic routing metadata lives beside the queue in each unit record.
+    if isinstance(order, Harvest):
+        return {"kind": "Harvest", "target": list(order.target) if isinstance(order.target, tuple) else order.target}
+    if isinstance(order, Deposit):
+        return {"kind": "Deposit"}
     d: dict[str, Any] = {"kind": type(order).__name__}
     for key, value in vars(order).items():
         d[key] = value.value if hasattr(value, "value") else (list(value) if isinstance(value, tuple) else value)
@@ -1732,9 +1859,12 @@ def _unit_to_dict(u: Unit) -> dict[str, Any]:
     return {
         "id": u.id, "type": u.type.value, "player": u.player, "x": u.x, "y": u.y, "hp": u.hp, "facing": u.facing,
         "orders": [_order_to_dict(o) for o in u.orders], "cooldown": u.cooldown,
+        "worker_orders": [{"index": index, "auto": order.auto,
+                           **({"target": order.target} if isinstance(order, Deposit) else {})}
+                          for index, order in enumerate(u.orders) if isinstance(order, (Harvest, Deposit))],
         "carrying": u.carrying.value if u.carrying else None, "carry": u.carry, "timer": u.timer,
         "inside": u.inside, "constructing": u.constructing, "home": list(u.home) if u.home else None, "state": u.state,
-        "charge": u.charge,
+        "charge": u.charge, "auto_work": u.auto_work,
     }
 
 
@@ -1742,8 +1872,15 @@ def _unit_from_dict(d: dict[str, Any]) -> Unit:
     u = Unit(d["id"], UnitType(d["type"]), d["player"], d["x"], d["y"], d["hp"], facing=d["facing"], cooldown=d["cooldown"],
              carrying=Resource(d["carrying"]) if d["carrying"] else None, carry=d["carry"], timer=d["timer"],
              inside=d["inside"], constructing=d["constructing"], home=tuple(d["home"]) if d["home"] else None, state=d["state"],
-             charge=d["charge"])
+             charge=d["charge"], auto_work=d.get("auto_work", True))
     u.orders = deque(_order_from_dict(o) for o in d["orders"])
+    for state in d.get("worker_orders", []):
+        order = u.orders[state["index"]]
+        if not isinstance(order, (Harvest, Deposit)):
+            raise ValueError("Worker metadata must refer to a harvest or deposit order")
+        order.auto = state["auto"]
+        if isinstance(order, Deposit):
+            order.target = state["target"]
     return u
 
 
