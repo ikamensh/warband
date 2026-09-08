@@ -166,6 +166,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
                 x, y, w, h = button.bounds
                 px = int((x + w / 2) * game.backend.scale_factor + game.backend.offset_x)
                 py = int((game.height - y - h / 2) * game.backend.scale_factor + game.backend.offset_y)
+                game.backend.window.dispatch_event("on_mouse_motion", px, py, 0, 0)
                 game.backend.window.dispatch_event("on_mouse_press", px, py, mouse.LEFT, 0)
                 game.backend.window.dispatch_event("on_mouse_release", px, py, mouse.LEFT, 0)
                 frames()
@@ -209,9 +210,11 @@ def native_smoke(output: Path, endpoint: str) -> dict:
             capture("-settlement-train")
             click("Footman")
             wait(lambda: any(plan.kind == "unit" for plan in live.world.player_plans(live.human)))
+            camera_before = (*live.camera.offset, live.camera.zoom)
             click(f"Plans ({live._plan_count()})")
             assert isinstance(game.scene, SettlementPlansScene)
             capture("-settlement-plans")
+            assert (*live.camera.offset, live.camera.zoom) == camera_before
             click("Cancel")
             wait(lambda: not live.world.player_plans(live.human))
             click("Back")
