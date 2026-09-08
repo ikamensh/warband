@@ -86,32 +86,65 @@ job. They choose resources and routes your faction knows about, avoiding
 known danger. You can leave routine gathering to them and focus on building
 and soldiers, or give a specific gathering order yourself.
 
-1. Select one **Peasant** and right-click the nearby **Gold Mine**. The
-   peasant enters it, then returns with gold automatically.
-2. Send another peasant to a tree for lumber. The worker chops and carries
-   the wood back automatically. Gold and lumber totals are at the top.
-3. Select a peasant, click **Build**, then **Farm**, and click a clear patch
-   of ground. The shortcut is **B**, then **F**. A green placement outline
-   means the location is valid. Let that peasant finish construction.
-4. Build a **Barracks** the same way: **B**, then **B**. When it is finished,
-   select it and click **Footman** or press **F** to train a soldier.
-5. Keep gathering. Select the **Town Hall** and click **Peasant** or press
-   **P** to train another worker. Build more farms when supply is full.
+1. Let the peasants begin gathering. Gold and lumber totals are at the top.
+   To choose a resource yourself, select a **Peasant** and right-click the
+   nearby **Gold Mine** or a tree. The worker gathers and returns the load
+   automatically; lumber workers swing their axes while chopping.
+2. In the **Settlement** row, click **Build → Farm**, then click clear ground
+   near your base. A green placement outline means the location is valid.
+   You do not need to select a worker; an available peasant takes the job.
+3. Click **Build → Barracks** and place it nearby. Click **Train → Footman**
+   to order a soldier. You can order it before the Barracks finishes; the
+   request waits until training becomes possible.
+4. Click **Train → Peasant** to order another worker. Build more farms when
+   supply is full. Open **Plans** to see progress or what a request needs.
+5. Click **Assembly point**, then a clear spot near your base. New soldiers
+   move there when trained; new peasants find work.
 6. Select your soldiers, press **A**, then click towards the enemy. This
    attack-move order fights enemies along the route. Right-clicking empty
    ground gives a movement order instead.
 
-The command buttons change with your selection. Hover over them to see costs
-and prerequisites. A greyed-out action may need resources, supply, a completed
-building, or a prerequisite. Your aim is to eliminate **all enemy units and
-buildings**.
+Your aim is to eliminate **all enemy units and buildings**.
 
-Your orders take priority over automatic work. Workers complete manual and
-Shift-queued orders before looking for another gathering job, including after
-finishing construction. To keep a worker where you put it, select it and use
-**Stop (S)** or **Hold (H)**; this switches off its automatic work until you
-give it another order. A worker with no known safe work may wait for you to
-explore or clear the route.
+## Plan your settlement
+
+The **Settlement** row is always available. **Build**, **Train** and
+**Upgrade** open a catalogue at the lower-right, even with nothing selected.
+Each item shows its cost as **gold / lumber**, with **paid when work starts**.
+You can request something before you can afford it. Plans wait for resources,
+prerequisites, a suitable worker or production building, and available supply.
+If a plan needs a Barracks, Farm or earlier upgrade, request that separately;
+it does not create its own prerequisites.
+
+For buildings, choose a type and click a valid spot on explored ground.
+Hold **Shift** while placing to keep placing that type. **Right-click** or
+**Esc** cancels placement. A planned building can receive a replacement
+worker if its original builder becomes unavailable.
+
+Open **Plans** to see **Plans & production**; the button's number counts
+requested and active work. Each row shows its waiting reason or progress
+and a **Cancel** button. A building's active training queue has **Cancel last**,
+which removes its last queued unit. Use
+**Previous** and **Next** for more rows, then **Back** or **Esc** to close.
+**The match continues while this panel is open.**
+
+**Assembly point** sets a shared destination for newly trained soldiers.
+Choose it, then click the map. A training building's own rally point takes
+priority; select that building and right-click to set one. Peasants keep
+working instead of marching to the assembly point. To remove the shared
+destination, open **Plans → Clear assembly point**.
+
+You can still give orders through selected units and buildings. For example,
+select a peasant and press **B**, then **F**, to order that worker to build a
+Farm directly. These command buttons change with the selection; hover to
+see costs, prerequisites and why an action is unavailable.
+
+Automatic gathering respects your movement and Shift-queued jobs, including
+after construction. Settlement building plans may borrow a gathering worker.
+To keep a worker where you put it, select it and use **Stop (S)** or
+**Hold (H)**; this switches off its automatic work and prevents assignment
+to a settlement plan until you give it another order. A worker with no known
+safe work may wait for you to explore or clear the route.
 
 ## Useful controls
 
@@ -124,7 +157,9 @@ explore or clear the route.
 | Queue another order | Hold Shift while giving it |
 | Attack-move / stop / hold position | A, then a destination / S / H |
 | Park a worker without automatic gathering | S or H; another order enables automatic work again |
-| Set where new units gather | Select their training building, then right-click a destination |
+| Plan buildings, units or upgrades | Settlement → Build / Train / Upgrade; no selection needed |
+| See or cancel requested work | Plans; the match continues while it is open |
+| Set where new soldiers gather | Assembly point, then a map location; a building's own right-click rally point takes priority |
 | Move the camera | Arrow keys, screen edges, or left-click the minimap |
 | Return to your base | Home or Backspace; the Mac Delete key sends Backspace |
 | Zoom | Mouse wheel or trackpad scroll; + and − also work |
@@ -175,7 +210,8 @@ new room and share its new code.
 | **Connection lost — reconnecting to your room…** | Give the automatic reconnect a moment; if it fails, use Rejoin last room on the same computer. |
 | The worker walks instead of gathering | Select a Peasant and right-click directly on the mine or tree. Right-clicking bare ground orders movement. |
 | A worker waits instead of finding a job | Stop/Hold may have parked it. Give another order, or explore a safe resource and route. Automatic work does not scout through unknown terrain. |
-| A construction site has no builder | Select a Peasant and right-click the unfinished building. |
+| A plan is waiting | Open Plans and read its reason. Order any missing prerequisite, add a Farm for supply, or make a worker and safe route available. |
+| A construction site has no builder | A settlement plan can assign another available worker. To choose one yourself, select a Peasant and right-click the unfinished building. |
 | Text is too small | Open F10 → Settings, use **+** beside **Fullscreen** to set it to **On**, then press Esc to apply it. |
 | Panels overlap even in fullscreen | Send a screenshot and your display size with the report. Resizing the window scales the layout and may not fix an overlap. |
 | The Mac app says damaged, or Windows reports malware | Download a fresh copy from the release linked above. If the alert persists, stop and report its exact wording. |

@@ -22,7 +22,16 @@ installation and play instructions.
   hosting also chooses a fresh seed when none is supplied; an explicit
   `--seed` remains reproducible.
 - A stone rim and corrected fog coverage prevent map artwork from spilling
-  beyond the playable edge.
+  beyond the playable edge. Extruded atlas padding and consistent ground
+  overlap remove straight seams between terrain chunks.
+- The global Settlement row offers Build, Train, Upgrade, Plans and Assembly
+  point without a selection. Requests wait for resources, prerequisites,
+  workers, production capacity and supply; the live Plans panel shows
+  progress and cancellation.
+
+The [independent native visual review](evidence/warband-map-workers-2026-09-08/visual-review.md)
+records map appearance across all three themes. Gameplay UI inspection and
+packaged preview.3 acceptance remain pending.
 
 Preview.2's room-code copy/paste buttons, keyboard paste and live multiplayer
 menus remain included. Historical validation below is scoped to those earlier
@@ -63,8 +72,10 @@ See the in-game help (F1) and codex (F2). Summary:
 |---|---|
 | Select | click, drag a box, double-click or Ctrl-click for a type, Ctrl+A for the army, 1–9 groups (Ctrl+1–9 to set), Tab / . next idle peasant / soldier |
 | Order | right-click (move, harvest, attack, repair, resume building, rally), A attack-move, P patrol, S stop, H hold, M move, R repair |
-| Build | B then F farm, B barracks, H town hall, T tower, M lumber mill, K blacksmith, S stables, W workshop, C church |
-| Train / research | the letters on the command card when a building is selected |
+| Plan without a selection | Settlement → Build / Train / Upgrade; Plans shows waiting work, progress and cancellation |
+| Build with a selected worker | B then F farm, B barracks, H town hall, T tower, M lumber mill, K blacksmith, S stables, W workshop, C church |
+| Train / research directly | the letters on the command card when a building is selected |
+| Gather new soldiers | Assembly point, then click the map; a building-specific rally point takes priority |
 | Park an automatic worker | S or H; another order enables automatic work again |
 | Mac trackpad | two-finger click or Ctrl+click is the right-click; Cmd-click selects every unit of a type |
 | Camera | arrows, screen edges, middle-drag, wheel or + / − zoom, F6–F8 bookmarks (Ctrl to set), Space jumps to the last alert, Home or Backspace to the base |
