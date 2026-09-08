@@ -30,7 +30,7 @@ The local Windows build commands are:
 
 ```powershell
 uv run --locked --isolated --python 3.13.2 --with-requirements packaging/requirements.txt python tools/build_warband.py --version 0.1.0-preview.1 --installer --require-clean
-uv run --locked --python 3.13.2 python tools/verify_warband_package.py dist/warband --native
+uv run --locked --python 3.13.2 python tools/verify_warband_package.py dist/warband --native --public-server wss://games.tachyon-ai.eu/play
 ```
 
 The builder snapshots source files, records their hashes and exact Git commit,
@@ -47,12 +47,18 @@ private seat. CI also installs the EXE, checks its Start menu shortcut, repeats
 the executable check, uninstalls, and checks that the program and shortcut are
 removed. These checks use the production room handler and simulation.
 
+Before uninstalling, CI repeats the installed executable's multiplayer checks
+over TLS against `wss://games.tachyon-ai.eu/play`. This required public-server
+check records its endpoint and results in `verification.json` and creates one
+short-lived room on the hosted service. Omit `--public-server` for a local-only
+verification run.
+
 Native title, multiplayer input and match rendering are attempted separately.
 Known missing graphics-context errors produce an explicit unsupported-runner
 receipt. Other rendering, import or asset errors fail verification. The PNGs
 and all diagnostic JSON/logs are retained in the CI artifact for 30 days.
 These checks cover the recorded runner; real Windows GPU/audio playtesting
-and public-server gameplay verification are separate evidence.
+and a match against the remote AI are separate evidence.
 
 Inno Setup's [non-administrator setting](https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm),
 [installer parameters](https://jrsoftware.org/ishelp/topic_setupcmdline.htm)

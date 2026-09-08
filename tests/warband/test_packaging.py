@@ -1,13 +1,15 @@
 """Release smoke logic crosses real sockets before it is run inside PyInstaller."""
 import argparse
+import hashlib
 import importlib.util
+import json
 import os
 from pathlib import Path
 
 import pytest
 
 from tools.build_warband import version
-from tools.verify_warband_package import isolated_environment, local_server
+from tools.verify_warband_package import isolated_environment, local_server, verify
 
 
 def test_shipped_online_smoke_accepts_authority_movement_and_seat_rejoin():
@@ -36,3 +38,20 @@ def test_release_identity_rejects_unsafe_or_non_numeric_installer_versions(value
     """An explicit release version must fit both the artifact filename and Windows metadata."""
     with pytest.raises(argparse.ArgumentTypeError):
         version(value)
+
+
+def test_public_acceptance_cannot_succeed_without_an_installer(tmp_path):
+    """An explicit installed-client check must not silently become a portable-only run."""
+    archive = tmp_path / "Warband-portable.zip"
+    archive.write_bytes(b"fixture")
+    manifest = {"artifacts": [{"file": archive.name, "bytes": archive.stat().st_size,
+                               "sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}]}
+    (tmp_path / "build-manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="requires the Windows installer"):
+        verify(tmp_path, public_server="wss://games.tachyon-ai.eu/play")
+
+
+def test_public_acceptance_requires_tls(tmp_path):
+    """Public acceptance must exercise TLS rather than accidentally testing loopback."""
+    with pytest.raises(ValueError, match="TLS endpoint"):
+        verify(tmp_path, public_server="ws://127.0.0.1/play")
