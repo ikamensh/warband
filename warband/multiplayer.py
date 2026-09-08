@@ -4,7 +4,7 @@ import math
 import time
 from copy import deepcopy
 
-from saga2d import CommandError
+from saga2d import Button, CommandError, Label
 from warband import mapgen
 from warband.model import World, RuleError, Event
 from warband.rules import BuildingType, UnitType, Upgrade, SIM_DT, MapTheme
@@ -102,7 +102,8 @@ class WarbandMatch:
         self._events()
 
 
-from warband.scene import GameScene
+from warband.scene import GameScene, HelpScene, SettingsScene, _Overlay, _clock
+from warband.style import ACTION_BUTTON, GHOST_BUTTON
 
 
 class NetworkGameScene(GameScene):
@@ -193,6 +194,18 @@ class NetworkGameScene(GameScene):
             self.warn(str(exc))
         return 'move' if action == 'smart' else None
 
+    def open_menu(self):
+        self.game.push(NetworkMenuScene(self))
+
+    def _check_game_over(self):
+        if self._game_over:
+            return
+        if self.world.winner is not None or not self.player.alive:
+            self._game_over = True
+            won = self.world.winner == self.human
+            self.sfx("victory" if won else "defeat")
+            self.game.push(NetworkResultScene(self, won))
+
     def toggle_pause(self):
         self.say('Online matches continue while menus are open.')
 
@@ -202,3 +215,60 @@ class NetworkGameScene(GameScene):
     def load_from(self, slot):
         self.say('Use Multiplayer → Rejoin last room to resume online play.' if getattr(self.session, 'online', False)
                  else 'Rejoin the host to resume this multiplayer match.')
+
+
+class NetworkMenuScene(_Overlay):
+    """A live match menu: local preferences and explicit room departure only."""
+
+    controls = {"s": "settings", "f1": "help", "t": "leave_match", "q": "quit"}
+
+    def __init__(self, game_scene):
+        self.game_scene = game_scene
+
+    def on_enter(self):
+        panel = self.panel("Match menu")
+        panel.add(Label("The match continues while this menu is open.", text_style="body"))
+        rejoin = ("Rejoin from Multiplayer → Rejoin last room." if getattr(self.game_scene.session, "online", False)
+                  else "Rejoin the host from Multiplayer → LAN.")
+        panel.add(Label(rejoin, text_style="sub"))
+        panel.add(Button("Return to match", hotkey="Esc", on_click=self.game.pop, style=ACTION_BUTTON, width=280))
+        panel.add(Button("Settings", hotkey="S", on_click=self.settings, style=GHOST_BUTTON, width=280))
+        panel.add(Button("How to play", hotkey="F1", on_click=self.help, style=GHOST_BUTTON, width=280))
+        panel.add(Button("Leave match", hotkey="T", on_click=self.leave_match, style=GHOST_BUTTON, width=280))
+        panel.add(Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=280))
+
+    def settings(self):
+        self.game.push(SettingsScene(self.game_scene))
+
+    def help(self):
+        self.game.push(HelpScene())
+
+    def leave_match(self):
+        from warband.title import TitleScene
+
+        self.game.clear_and_push(TitleScene(settings=self.game_scene.settings))
+
+    def quit(self):
+        self.game.quit()
+
+
+class NetworkResultScene(NetworkMenuScene):
+    """A finished online match leads back to multiplayer, never to a solo rematch."""
+
+    pop_on_cancel = False
+    controls = {("t", "escape"): "leave_match", "q": "quit"}
+
+    def __init__(self, game_scene, won):
+        super().__init__(game_scene)
+        self.won = won
+
+    def on_enter(self):
+        scene = self.game_scene
+        winner = scene.world.players[scene.world.winner].name if scene.world.winner is not None else "Nobody yet"
+        panel = self.panel("Victory!" if self.won else f"Defeat — {winner} prevails")
+        stats = scene.stats
+        panel.add(Label(f"{_clock(scene.world.time)} played · {stats['units_killed']} kills · "
+                        f"{stats['units_lost']} units lost", text_style="body"))
+        panel.add(Label("For another match, choose Multiplayer on the title screen.", text_style="sub"))
+        panel.add(Button("Back to title", hotkey="T", on_click=self.leave_match, style=ACTION_BUTTON, width=280))
+        panel.add(Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=280))
