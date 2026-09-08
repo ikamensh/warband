@@ -1259,12 +1259,14 @@ class World:
         navigation = self._worker_navigation(u)
         hall = self.buildings.get(order.target)
         if hall is None or not hall.done or u.carrying not in hall.info.deposits or u.path_goal is None:
-            if self.time < u.replan_at:
-                u.state = "idle"
-                return
-            depots = {b.id: b.rect for b in self.player_buildings(u.player, done=True) if u.carrying in b.info.deposits}
-            order.target = self._plan_work_route(u, depots, navigation)
-            hall = self.buildings.get(order.target)
+            depots = [b for b in self.player_buildings(u.player, done=True) if u.carrying in b.info.deposits]
+            hall = next((b for b in depots if rect_gap(u.pos, b.rect) - u.radius <= TOUCH), None)
+            if hall is None:
+                if self.time < u.replan_at:
+                    u.state = "idle"
+                    return
+                order.target = self._plan_work_route(u, {b.id: b.rect for b in depots}, navigation)
+                hall = self.buildings.get(order.target)
         if hall is None:
             u.state = "idle"
             return

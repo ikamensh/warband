@@ -352,7 +352,8 @@ def test_a_peasant_builds_a_farm_which_then_feeds_more_units() -> None:
     assert events(world, "construction")
     run(world, BUILDINGS[BuildingType.FARM].build_time + 0.5)
     assert farm.done and farm.hp == farm.max_hp
-    assert peasant.constructing is None and not peasant.hidden and not peasant.orders
+    assert peasant.constructing is None and not peasant.hidden
+    assert isinstance(peasant.order, Harvest) and peasant.order.auto
     assert world.passable(*peasant.tile) and world.building_at(peasant.tile) is None
     assert world.supply(0)[1] == BUILDINGS[BuildingType.TOWN_HALL].supply + 4
     assert events(world, "built")
@@ -375,7 +376,7 @@ def test_an_interrupted_site_can_be_cancelled_for_a_refund_or_resumed() -> None:
     run(world, 2.0)
     assert farm.progress == progress
     world.resume_construction([b.id], farm.id)
-    run(world, 4.0)
+    run_until(world, lambda: farm.builder == b.id and farm.progress > progress, 15.0)
     assert farm.builder == b.id and farm.progress > progress
     gold = world.players[0].gold
     world.cancel_building(farm.id)
@@ -407,7 +408,8 @@ def test_peasants_repair_damaged_buildings_for_a_share_of_the_price() -> None:
     world.players[0].gold = 0
     world.repair([peasant.id], farm.id)
     run(world, 3.0)
-    assert any(e.text.startswith("Cannot repair") for e in events(world, "refused")) and not peasant.orders and farm.hp <= 60
+    assert any(e.text.startswith("Cannot repair") for e in events(world, "refused")) and farm.hp <= 60
+    assert isinstance(peasant.order, Harvest) and peasant.order.auto
     world.players[0].gold = 1000
     world.repair([peasant.id], farm.id)
     assert isinstance(World.from_dict(world.to_dict()).units[peasant.id].order, Repair)

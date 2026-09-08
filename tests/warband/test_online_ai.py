@@ -53,7 +53,7 @@ def test_headless_creator_announces_a_room_before_a_human_joins(server_url):
         with connect(server_url, proxy=None) as human:
             joined = handshake(human, "join", game="warband-v1", room=announced["room"])
             assert joined["player"] == 1
-            state = receive(human, predicate=lambda message: message["state"]["world"]["tick"] >= 12)
+            state = receive(human, predicate=lambda message: message["state"]["world"]["tick"] >= 22)
             assert any(unit["player"] == 0 and unit["orders"] for unit in state["state"]["world"]["units"])
             assert process.wait(timeout=6) == 0, process.stderr.read()
         evidence = [json.loads(line) for line in process.stdout.read().splitlines()]

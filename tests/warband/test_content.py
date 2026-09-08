@@ -4,7 +4,7 @@ import random
 
 import pytest
 
-from warband.model import Attack, Heal, Move, RuleError, World, dist, tile_center
+from warband.model import Attack, Deposit, Heal, Move, RuleError, World, dist, tile_center
 from warband.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Resource, Terrain, UnitType, Upgrade
 
 
@@ -173,7 +173,7 @@ def test_scouts_are_fast_and_knights_faster_with_horses() -> None:
 
 def test_lumber_goes_to_the_nearest_mill_and_gold_only_to_a_hall() -> None:
     world = flat_world(40, 20)
-    world.place_building(0, BuildingType.TOWN_HALL, (2, 8))
+    hall = world.place_building(0, BuildingType.TOWN_HALL, (2, 8))
     mill = world.place_building(0, BuildingType.LUMBER_MILL, (26, 8))
     for x in range(32, 35):
         for y in range(7, 12):
@@ -185,7 +185,16 @@ def test_lumber_goes_to_the_nearest_mill_and_gold_only_to_a_hall() -> None:
     run_until(world, lambda: peasant.carrying is None, 6.0)  # far too soon to have reached the hall 28 tiles away
     assert world.players[0].lumber == 20_100
     assert any(e.kind == "deposit" and dist(e.pos, mill.center) < 4 for e in world.events)
-    assert world._nearest_depot(0, peasant.pos, Resource.GOLD).type is BuildingType.TOWN_HALL
+    world.stop([peasant.id])
+    courier = world.spawn_unit(0, UnitType.PEASANT, (30.5, 9.5))
+    courier.carrying, courier.carry = Resource.GOLD, 100
+    courier.orders.append(Deposit())
+    gold = world.players[0].gold
+    run(world, 6.0)
+    assert courier.carrying is Resource.GOLD  # the nearby mill cannot take crystals
+    run_until(world, lambda: courier.carrying is None, 25.0)
+    assert world.players[0].gold == gold + 100
+    assert any(e.kind == "deposit" and e.text == "gold" and dist(e.pos, hall.center) < 4 for e in world.events)
 
 
 def test_research_and_upgrades_survive_a_save(tmp_path) -> None:
