@@ -36,9 +36,11 @@ def test_every_tree_and_building_has_a_sprite_and_a_felled_tree_loses_it(play) -
     assert len(view._trees) == trees
     assert set(view._buildings) == {b.id for b in world.buildings.values() if view._known(b)}
     pos = next(p for p in view._trees)
+    tree_sprite_id = view._trees[pos].sprite_id
     world.terrain[pos[1]][pos[0]] = Terrain.GRASS
     game.tick(1 / 60)
     assert pos not in view._trees
+    assert tree_sprite_id not in game.backend.sprites  # Includes its baked shade and litter.
 
 
 def test_forest_uses_twenty_stable_variants_across_save_reload(play) -> None:
@@ -211,6 +213,24 @@ def test_ground_chunks_cover_the_map_with_a_margin_and_sand_meets_water() -> Non
                for py in range((y - cy * textures.CHUNK + 1) * TILE, (y - cy * textures.CHUNK + 2) * TILE)}
     palette = textures.PALETTES[MapTheme.SUMMER]
     assert palette.sand in colours and palette.water in colours
+
+
+@pytest.mark.parametrize("theme", list(MapTheme))
+@pytest.mark.parametrize("scale", [1.0, 2.0])
+def test_forest_and_clearing_share_the_same_ground_across_chunk_edges(theme, scale) -> None:
+    """Felling removes the tree sprite, leaving grass rather than a baked dark square."""
+    world = mapgen.generate(seed=3, width=24, height=24, theme=theme)
+    forest = [textures.ground_chunk(world.terrain_at, world.in_bounds, cx, cy, scale, theme)
+              for cx, cy in ((0, 0), (1, 0), (1, 1))]
+    assert any(terrain is Terrain.TREES for row in world.terrain for terrain in row)
+    for row in world.terrain:
+        for x, terrain in enumerate(row):
+            if terrain is Terrain.TREES:
+                row[x] = Terrain.GRASS
+    cleared = [textures.ground_chunk(world.terrain_at, world.in_bounds, cx, cy, scale, theme)
+               for cx, cy in ((0, 0), (1, 0), (1, 1))]
+    for before, after in zip(forest, cleared):
+        np.testing.assert_array_equal(np.asarray(before), np.asarray(after))
 
 
 def test_portraits_are_tightly_framed_pictures(play) -> None:

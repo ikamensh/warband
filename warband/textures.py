@@ -1,7 +1,7 @@
 """Warband's art, all procedural.
 
 The ground is painted with Pillow in chunks of ``CHUNK``×``CHUNK`` tiles
-(grass dapples, forest floor, water with ripples, sand along the shore).
+(continuous grass, water with ripples, sand along the shore).
 Everything that stands on it — trees, rocks, gold mines, buildings, units —
 is a low-poly mesh rendered with :mod:`saga2d.render3d` through a 3/4 camera
 whose tile footprints stay square (:meth:`Projection.front`), so a 3×3
@@ -24,7 +24,7 @@ import random
 from dataclasses import dataclass
 from functools import lru_cache
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 from saga2d import Game
 from saga2d import render3d as r3
@@ -54,7 +54,6 @@ class Palette:
     """The colours of one map theme."""
 
     grass: Color
-    floor: tuple[Color, ...]
     water: Color
     ripple: Color
     sand: Color
@@ -70,19 +69,19 @@ class Palette:
 
 PALETTES: dict[MapTheme, Palette] = {
     MapTheme.SUMMER: Palette(
-        grass=(108, 162, 78), floor=((76, 118, 58), (80, 122, 60), (72, 112, 54)), water=(52, 110, 170), ripple=(120, 170, 220),
+        grass=(108, 162, 78), water=(52, 110, 170), ripple=(120, 170, 220),
         sand=(198, 182, 134), rock_ground=(118, 140, 90), trunk=(98, 70, 46),
         leaf=((44, 110, 58), (56, 126, 66), (38, 98, 52)), leaf_light=((70, 140, 76), (84, 156, 84), (62, 128, 70)), rock=(132, 130, 126),
         minimap={Terrain.GRASS: (96, 142, 70), Terrain.WATER: (46, 96, 156), Terrain.TREES: (44, 86, 46), Terrain.ROCK: (108, 118, 92)},
     ),
     MapTheme.WINTER: Palette(
-        grass=(222, 228, 236), floor=((196, 204, 214), (202, 210, 220), (190, 198, 208)), water=(150, 188, 222), ripple=(226, 240, 250),
+        grass=(222, 228, 236), water=(150, 188, 222), ripple=(226, 240, 250),
         sand=(206, 218, 230), rock_ground=(184, 188, 196), trunk=(78, 58, 44),
         leaf=((34, 76, 58), (40, 84, 64), (30, 68, 52)), leaf_light=((52, 98, 74), (60, 108, 80), (46, 90, 68)), rock=(140, 146, 156), snow=True,
         minimap={Terrain.GRASS: (200, 208, 218), Terrain.WATER: (140, 176, 210), Terrain.TREES: (52, 90, 70), Terrain.ROCK: (130, 136, 146)},
     ),
     MapTheme.WASTELAND: Palette(
-        grass=(178, 150, 96), floor=((136, 108, 68), (142, 114, 72), (130, 102, 64)), water=(88, 112, 98), ripple=(124, 150, 132),
+        grass=(178, 150, 96), water=(88, 112, 98), ripple=(124, 150, 132),
         sand=(154, 124, 74), rock_ground=(150, 118, 84), trunk=(96, 76, 56),
         leaf=((92, 78, 52), (84, 70, 48), (98, 84, 58)), leaf_light=((110, 94, 64), (104, 88, 60), (116, 100, 70)), rock=(150, 118, 100), bare=True,
         minimap={Terrain.GRASS: (160, 134, 84), Terrain.WATER: (78, 100, 88), Terrain.TREES: (98, 78, 52), Terrain.ROCK: (134, 106, 90)},
@@ -153,7 +152,7 @@ def ground_chunk(terrain_at, in_bounds, cx: int, cy: int, scale: float, theme: M
     (0 to ``WATER_PHASES - 1``) shifts the ripples and the shoreline so a
     view can cycle the images and the water moves."""
     pal = PALETTES[theme]
-    GRASS, FOREST_FLOOR, WATER, WATER_RIPPLE, SAND, ROCK_GROUND = pal.grass, pal.floor, pal.water, pal.ripple, pal.sand, pal.rock_ground
+    GRASS, WATER, WATER_RIPPLE, SAND, ROCK_GROUND = pal.grass, pal.water, pal.ripple, pal.sand, pal.rock_ground
     px = TILE * scale
     n = CHUNK + 2
     image = Image.new("RGBA", (round(n * px), round(n * px)), (*GRASS, 255))
@@ -170,11 +169,6 @@ def ground_chunk(terrain_at, in_bounds, cx: int, cy: int, scale: float, theme: M
             left, top = i * px, j * px
             if terrain is Terrain.WATER:
                 draw.rectangle((left, top, left + px, top + px), fill=WATER)
-            elif terrain is Terrain.TREES:
-                draw.rectangle((left, top, left + px, top + px), fill=FOREST_FLOOR[scatter(tx, ty) % len(FOREST_FLOOR)])
-                s = scatter(tx, ty, 5)
-                dx, dy, r = (s & 0xFF) / 255 * px, ((s >> 8) & 0xFF) / 255 * px, px * 0.08
-                draw.ellipse((left + dx - r, top + dy - r, left + dx + r, top + dy + r), fill=darker(FOREST_FLOOR[0], 0.9))
             elif terrain is Terrain.ROCK:
                 draw.rectangle((left, top, left + px, top + px), fill=ROCK_GROUND)
             else:
@@ -227,11 +221,11 @@ def ground_chunk(terrain_at, in_bounds, cx: int, cy: int, scale: float, theme: M
 # -- Props --------------------------------------------------------------------------
 
 
-def _prop(key: str, mesh: Mesh, drop: float, scale: float) -> Image.Image:
+def _prop(key: str, mesh: Mesh, drop: float, scale: float, *, min_width: float = 0) -> Image.Image:
     """Render *mesh* into a canvas symmetric about the model origin whose bottom is
     *drop* below it, and record the placement."""
     min_x, min_y, max_x, max_y = r3.bounds(mesh, PROJECTION)
-    half_w = math.ceil(max(-min_x, max_x) + PAD)
+    half_w = math.ceil(max(-min_x, max_x, min_width / 2) + PAD)
     top = math.ceil(-min_y + PAD)
     if max_y + PAD > drop:
         raise ValueError(f"{key}: mesh extends {max_y:.1f} below its anchor, more than its drop of {drop}")
@@ -287,7 +281,7 @@ def _tree(variant: int, theme: MapTheme = MapTheme.SUMMER) -> Mesh:
     light = pal.leaf_light[variant % len(pal.leaf_light)]
     bark = (204, 204, 182) if species == 3 and not pal.bare else pal.trunk
     lean = (rng.uniform(-0.12, 0.12), rng.uniform(-0.09, 0.09))
-    mesh = _shadow(0.4)
+    mesh: Mesh = []  # The feathered ground contact is composited into the sprite below.
     for i in range(5):
         angle = i * math.tau / 5 + rng.random() * 0.3
         mesh += _branch((math.cos(angle) * 0.26, math.sin(angle) * 0.26, 0.01), (0, 0, 0.24), 0.025, 0.065, darker(bark, 0.78))
@@ -391,13 +385,39 @@ def _mine(variant: int = 0) -> Mesh:
     return mesh
 
 
+def _tree_ground(image: Image.Image, variant: int, theme: MapTheme, scale: float) -> Image.Image:
+    """Local shade and litter leave with the tree, revealing unchanged grass."""
+    pal = PALETTES[theme]
+    rng = random.Random(4127 + variant * 977)
+    cx, cy = image.width / 2, image.height - DROP_TREE * scale
+    ground = Image.new("RGBA", image.size)
+    draw = ImageDraw.Draw(ground)
+    rx, ry = (9 + variant % 4 * 0.5) * scale, 6.5 * scale
+    draw.ellipse((cx + scale - rx, cy + scale - ry, cx + scale + rx, cy + scale + ry), fill=(0, 0, 0, 46))
+    ground = ground.filter(ImageFilter.GaussianBlur(2.0 * scale))
+    draw = ImageDraw.Draw(ground)
+    count = 3 if pal.snow or pal.bare else 9
+    # Tiny ochre/olive fragments, with mostly buried litter in winter.
+    color = tuple(round(a * 0.65 + b * 0.35) for a, b in zip(pal.grass, pal.trunk))
+    alpha = 46 if pal.snow else 110
+    for _ in range(count):
+        angle, radius = rng.uniform(0, math.tau), rng.uniform(0.16, 0.37) * TILE * scale
+        x, y = cx + math.cos(angle) * radius, cy + math.sin(angle) * radius * 0.65
+        length = rng.uniform(0.7, 1.3) * scale
+        draw.line((x, y, x + math.cos(angle + 0.8) * length, y + math.sin(angle + 0.8) * length),
+                  fill=(*color, alpha), width=max(1, round(scale)))
+    ground.alpha_composite(image)
+    return ground
+
+
 @lru_cache(maxsize=240)
 def _resource_image(kind: str, variant: int, theme: MapTheme, scale: float) -> Image.Image:
     """Reuse immutable pre-renders across matches; gameplay never grows geometry."""
     if kind == "mine":
         return _prop(f"mine.{variant}", _mine(variant), 1.5 * TILE + PAD, scale)
     mesh = {"tree": _tree, "rock": _rock}[kind](variant, theme)
-    return _prop(f"{kind}.{theme.value}.{variant}", mesh, DROP_TREE, scale)
+    image = _prop(f"{kind}.{theme.value}.{variant}", mesh, DROP_TREE, scale, min_width=40 if kind == "tree" else 0)
+    return _tree_ground(image, variant, theme, scale) if kind == "tree" else image
 
 
 def mine_image(game: Game, variant: int) -> str:
@@ -839,10 +859,10 @@ def _unit_head(center: r3.Vec3, radius: float = 0.16) -> Mesh:
             + r3.box((x, y + radius * 0.9, z + 0.045), (0.15, 0.022, 0.026), INK))
 
 
-def _body(tunic: Color, frame: str, body_r: float = 0.21, body_h: float = 0.42) -> Mesh:
+def _body(tunic: Color, frame: str, body_r: float = 0.21, body_h: float = 0.42, *, include_legs: bool = True) -> Mesh:
     bob = 0.02 if frame == "walk1" else 0.0
     return (
-        _legs(frame, (72, 62, 58))
+        (_legs(frame, (72, 62, 58)) if include_legs else [])
         + r3.cylinder((0, 0, 0.23 + bob), body_r, body_h, tunic, sides=8)
         + r3.cylinder((0, 0, 0.33 + bob), body_r + 0.01, 0.055, WOOD_DARK, sides=8)
         + _unit_head((0, 0, 0.23 + bob + body_h + 0.14))
@@ -859,21 +879,28 @@ def _sword(frame: str) -> Mesh:
 
 
 _WORKER_SWING = {"chop1": 35, "chop2": -28, "chop3": -96, "chop4": -48, "attack": -96}
+_WORKER_LEAN = {"chop1": 12, "chop2": -5, "chop3": -18, "chop4": -6}
+_WORKER_HIP = (0.0, 0.0, 0.26)
+_WORKER_GRIP = (0.29, 0.16, 0.55)
+_WORKER_AXE_EDGE = ((0.29, 0.42, 0.99), (0.29, 0.4, 1.21))
+
+
+def _worker_axe_angle(frame: str) -> float:
+    # Counter the torso bend so the blade keeps its intended cutting direction.
+    return _WORKER_SWING.get(frame, -12) - _WORKER_LEAN.get(frame, 0)
 
 
 def _worker_axe(frame: str) -> Mesh:
-    # Fixed grip: the head sweeps from behind the shoulder into the tree.
+    # The grip follows the torso; the head sweeps from behind the shoulder into the tree.
     # chop1 = raised, chop2 = fast downswing, chop3 = contact, chop4 = recovery.
-    angle = _WORKER_SWING.get(frame, -12)
-    grip = (0.29, 0.16, 0.55)
     axe = _unit_rod((0.29, 0.16, 0.35), (0.29, 0.16, 1.17), 0.035, WOOD)
     # Broad wedge and bright cutting edge are readable even at normal zoom.
     axe += r3.box((0.29, 0.17, 1.1), (0.105, 0.16, 0.14), WOOD_DARK)
     for x in (0.235, 0.345):
         axe += _unit_panel([(x, 0.19, 1.16), (x, 0.41, 1.22),
                             (x, 0.43, 0.98), (x, 0.19, 1.03)], IRON)
-    axe += _unit_rod((0.29, 0.42, 0.99), (0.29, 0.4, 1.21), 0.045, (228, 234, 242))
-    return _unit_pitch(axe, angle, grip)
+    axe += _unit_rod(*_WORKER_AXE_EDGE, 0.045, (228, 234, 242))
+    return _unit_pitch(axe, _worker_axe_angle(frame), _WORKER_GRIP)
 
 
 def _shield(x: float, y: float, z: float, team: Color, size: float = 1.0) -> Mesh:
@@ -931,7 +958,8 @@ def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource 
     team = team_color(player)
     trim = darker(team, 0.7)
     if unit_type is UnitType.PEASANT:
-        mesh = _shadow(0.3) + _body((186, 159, 106), frame, body_r=0.185, body_h=0.36)
+        planted = _shadow(0.3) + _legs(frame, (72, 62, 58))
+        mesh = _body((186, 159, 106), frame, body_r=0.185, body_h=0.36, include_legs=False)
         # Broad straw hat, team shirt sleeves and a leather carpenter's apron.
         mesh += r3.cylinder((0, 0, 0.88), 0.28, 0.045, THATCH, sides=10)
         mesh += r3.cone((0, 0, 0.92), 0.17, 0.16, THATCH, sides=8)
@@ -953,10 +981,13 @@ def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource 
             mesh += r3.box((0.12, 0.035, 1.06), (0.05, 0.37, 0.32), WOOD_DARK)
         else:
             mesh += _worker_axe(frame)
-            angle = math.radians(_WORKER_SWING.get(frame, -12))
-            lower_grip = (0.29, 0.16 + 0.12 * math.sin(angle), 0.55 - 0.12 * math.cos(angle))
+            angle = math.radians(_worker_axe_angle(frame))
+            gx, gy, gz = _WORKER_GRIP
+            lower_grip = (gx, gy + 0.12 * math.sin(angle), gz - 0.12 * math.cos(angle))
             mesh += _unit_rod((-0.24, 0.08, 0.45), lower_grip, 0.045, SKIN)
-        return mesh
+        if carrying is None and frame in _WORKER_LEAN:
+            mesh = _unit_pitch(mesh, _WORKER_LEAN[frame], _WORKER_HIP)
+        return planted + mesh
     if unit_type is UnitType.FOOTMAN:
         mesh = _shadow(0.34) + _body(team, frame, body_r=0.23)
         mesh += r3.box((0, 0.18, 0.59), (0.34, 0.12, 0.28), IRON)
@@ -1096,7 +1127,18 @@ def facing_index(angle: float) -> int:
 
 def chop_contact_offset(facing: int) -> tuple[float, float]:
     """Projected cutting edge of the worker's contact pose, relative to its feet."""
-    x, y, z = (0.29 * UNIT_SCALE, 0.79 * UNIT_SCALE, 0.22 * UNIT_SCALE)
+    lean = math.radians(_WORKER_LEAN["chop3"])
+    swing = math.radians(_WORKER_SWING["chop3"])
+    _, gy, gz = _WORKER_GRIP
+    _, hy, hz = _WORKER_HIP
+    # Tool articulation counters the body bend: pitch the grip with the torso,
+    # then pitch the blade relative to that grip by its absolute swing angle.
+    bent_y = hy + (gy - hy) * math.cos(lean) - (gz - hz) * math.sin(lean)
+    bent_z = hz + (gy - hy) * math.sin(lean) + (gz - hz) * math.cos(lean)
+    edge_x, edge_y, edge_z = _WORKER_AXE_EDGE[1]
+    x = edge_x * UNIT_SCALE
+    y = (bent_y + (edge_y - gy) * math.cos(swing) - (edge_z - gz) * math.sin(swing)) * UNIT_SCALE
+    z = (bent_z + (edge_y - gy) * math.sin(swing) + (edge_z - gz) * math.cos(swing)) * UNIT_SCALE
     angle = math.radians(facing * 45 - 90)
     c, s = math.cos(angle), math.sin(angle)
     return PROJECTION.project((x * c - y * s, x * s + y * c, z))
@@ -1166,7 +1208,6 @@ DROP_UNIT = TILE * 1.25 + PAD  # a lance pointed at the camera reaches well belo
 
 
 def _glow(size: int, radius_frac: float, color: tuple[int, int, int, int], blur_frac: float = 0.18) -> Image.Image:
-    from PIL import ImageFilter
 
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)

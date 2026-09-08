@@ -23,6 +23,11 @@ Tile-coordinate hashes choose variants without touching the simulation RNG.
 A save reload therefore reconstructs the same scenery. The bounded resource
 image cache reuses immutable renders across matches; mines register on demand.
 
+Forests share their ground texture with clear land. Each tree sprite carries
+a small feathered shadow and sparse leaf litter, with less litter on snow
+and wasteland. Felling removes this local shading along with the tree, so
+neither forest edges nor cleared tiles reveal dark ground squares.
+
 ## Readable roles
 
 Town halls use twin gate towers and a civic roof; barracks expose a training
@@ -38,8 +43,10 @@ quivers and longbows. Scouts ride light horses under cloaks, knights ride
 armored horses with lances and plumes, catapults have spoked wheels and a
 throwing spoon, and clerics wear white robes with a mitre and sun staff.
 
-Workers rotate an axe and gripping hand through four chopping poses. The
-view uses the authoritative harvest timer for the swing and contact chips,
+Workers lean back for the wind-up and bend into the strike through four
+chopping poses. Their head, torso, arms and axe move together around the
+hips while their feet stay planted. Blade contact positions follow the same
+transforms. The view uses the authoritative harvest timer for the swing and contact chips,
 so pausing freezes the action and carrying wood replaces the tool. Animation
 images warm incrementally during the match opening.
 
@@ -48,10 +55,14 @@ images warm incrementally during the match opening.
 ```sh
 uv run python -m pytest tests/warband tests/framework/test_render3d.py -q
 uv run python tools/verify_warband_art.py /tmp/warband-art
+uv run python tools/verify_warband_forest.py /tmp/warband-forest
 ```
 
 The native verifier uses the same registered images and MapView as gameplay.
 Inspect the generated catalogs, settlement screenshots and chopping animation
 after changing a recipe. Mock tests cover image registration, stable variant
 selection through save/load, harvesting poses, carried logs, pause behavior,
-and incremental warm-up; the PNGs establish visual quality.
+incremental warm-up, and unchanged ground after felling across all themes
+and chunk boundaries; the PNGs establish visual quality. The forest verifier
+captures all three themes, a live chopping cycle from three directions and
+the resulting clearing.
