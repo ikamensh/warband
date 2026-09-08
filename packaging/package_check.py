@@ -87,23 +87,31 @@ def smoke(endpoint: str) -> dict:
             "bundled_fonts": True, "online": online_smoke(endpoint)}
 
 
-def native_smoke(output: Path) -> dict:
-    """Exercise title, native multiplayer input and a rendered match in the package."""
+def native_smoke(output: Path, endpoint: str) -> dict:
+    """Use native clipboard/buttons to create and join a real online match in the package."""
+    if not endpoint:
+        raise ValueError("Native multiplayer acceptance requires an explicit --endpoint")
     os.environ["SAGA2D_SILENT"] = "1"
     os.environ["SAGA2D_HEADLESS"] = "1"
+    os.environ["SAGA2D_SERVER_URL"] = endpoint
     from PIL import ImageStat
     from pyglet import gl
     from pyglet.window import key
     from saga2d import Game, MatchMenu, fonts
+    from saga2d.multiplayer_ui import MatchLobby
+    from saga2d.online import OnlineClient
     from warband import sound
     from warband.scene import DEFAULT_SETTINGS, new_game
     from warband.style import build_theme
     from warband.title import TitleScene
+    from warband.multiplayer import NetworkGameScene, NetworkMenuScene
 
     info = build_info()
     images = []
     with tempfile.TemporaryDirectory(prefix="warband-native-") as profile:
         game = Game("Warband", resolution=(1280, 800), visible=False, save_dir=Path(profile) / "saves", theme=build_theme())
+        creator = None
+        clipboard = game.backend.get_clipboard_text()
         try:
             fonts.load(game)
             bank = sound.install(game)
@@ -113,7 +121,32 @@ def native_smoke(output: Path) -> dict:
                 for _ in range(count):
                     started = time.monotonic()
                     game.tick(1 / 30)
+                    if creator is not None:
+                        creator.poll()
                     time.sleep(max(0, 1 / 30 - (time.monotonic() - started)))
+
+            def wait(condition):
+                deadline = time.monotonic() + 20
+                while time.monotonic() < deadline:
+                    frames(1)
+                    if condition():
+                        return
+                raise AssertionError(f"Native online flow stopped at {type(game.scene).__name__}")
+
+            def press(symbol, modifiers=0):
+                game.backend.window.dispatch_event("on_key_press", symbol, modifiers)
+                game.backend.window.dispatch_event("on_key_release", symbol, modifiers)
+                frames()
+
+            def click(text):
+                from pyglet.window import mouse
+                button = next(b for b in game.scene.ui.walk() if getattr(b, "text", "") == text)
+                x, y, w, h = button.bounds
+                px = int((x + w / 2) * game.backend.scale_factor + game.backend.offset_x)
+                py = int((game.height - y - h / 2) * game.backend.scale_factor + game.backend.offset_y)
+                game.backend.window.dispatch_event("on_mouse_press", px, py, mouse.LEFT, 0)
+                game.backend.window.dispatch_event("on_mouse_release", px, py, mouse.LEFT, 0)
+                frames()
 
             def capture(suffix):
                 frames()
@@ -125,17 +158,47 @@ def native_smoke(output: Path) -> dict:
 
             game.push(TitleScene(settings=settings))
             capture("-title")
-            game.backend.window.dispatch_event("on_key_press", key.M, 0)
-            game.backend.window.dispatch_event("on_key_release", key.M, 0)
-            frames()
+            press(key.M)
             assert isinstance(game.scene, MatchMenu)
             capture("-multiplayer")
+            click("Create room")
+            wait(lambda: isinstance(game.scene, MatchLobby) and game.scene.session.state is not None)
+            session = game.scene.session
+            room, token = session.room, session.resume_token
+            click("Copy room code")
+            assert game.backend.get_clipboard_text() == room
+            capture("-room-code")
+            click("Cancel")
+            creator = OnlineClient("warband-v1", endpoint=endpoint, room=room, resume_token=token)
+            wait(lambda: creator.state is not None)
+            click("Paste code")
+            assert game.scene.fields[2] == room.upper()
+            # Exercise the native platform shortcut as well as the visible button.
+            press(key.V, key.MOD_COMMAND if sys.platform == "darwin" else key.MOD_CTRL)
+            assert game.scene.fields[2] == room.upper()
+            capture("-paste-code")
+            press(key.ENTER)
+            wait(lambda: isinstance(game.scene, NetworkGameScene) and game.scene.session.ready)
+            live = game.scene
+            wait(lambda: live.world.time >= 2)
+            capture("-online-match")
+            press(key.F10)
+            assert isinstance(game.scene, NetworkMenuScene)
+            before = live.world.time
+            wait(lambda: live.world.time > before)
+            capture("-match-menu")
+            click("Leave match")
+            assert isinstance(game.scene, TitleScene)
             game.clear_and_push(new_game(3, width=40, height=32, settings=settings))
             capture("")
             assert game.scene.world.units and game.scene.world.buildings
             return {"passed": True, "source_commit": info["source_commit"], "version": info["version"],
                     "executable": info["executable"], "executable_sha256": info["executable_sha256"],
                     "renderer": gl.gl_info.get_renderer(), "opengl_version": gl.gl_info.get_version_string(), "vendor": gl.gl_info.get_vendor(),
-                    "backend": "pyglet", "native_multiplayer_input": True, "sound_catalogue": len(bank.names), "images": images}
+                    "backend": "pyglet", "native_multiplayer_input": True, "native_clipboard_join": True,
+                    "live_match_menu": True, "sound_catalogue": len(bank.names), "images": images}
         finally:
+            game.backend.set_clipboard_text(clipboard)
             game.close()
+            if creator is not None:
+                creator.close()
