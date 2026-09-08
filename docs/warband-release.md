@@ -1,13 +1,56 @@
-# Warband — release pack (0.1.0-preview.3)
+# Warband — release pack (0.1.0-preview.4)
 
-The published [preview.3 release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.3)
-includes the [Windows installer](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.3/Warband-0.1.0-preview.3-windows-x64-setup.exe)
-and [Apple Silicon Mac app](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.3/Warband-0.1.0-preview.3-darwin-arm64-app.zip),
-built from `85becd0fda8493fffc14ad33baee32f4fccdee64`.
+The [Warband page](https://games.tachyon-ai.eu/warband/) offers the current
+downloads with installation steps; the same files are on the published
+[preview.4 release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.4):
+the [Windows installer](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.4/Warband-0.1.0-preview.4-windows-x64-setup.exe)
+and [Apple Silicon Mac app](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.4/Warband-0.1.0-preview.4-darwin-arm64-app.zip),
+built from `6f58eca12b7f4a969a063227267637256413c8ae`.
 See the [Mac and Windows player guide](warband-play-together.md) for practical
 installation and play instructions.
 
-## Changes in preview.3
+## Changes in preview.4
+
+- The waiting screen offers **Copy invite link** beside **Copy room code**.
+  The link opens `https://games.tachyon-ai.eu/join/warband-v1/<code>`, which
+  shows the code, the joining steps and the download for a friend without
+  the game. It never contains the private seat.
+- The waiting screen states how long the seats are kept without both players.
+- Multiplayer checks the published release catalog and shows **Update
+  available** with an **Open download page** button when a newer build
+  exists. A client the server no longer accepts sees **Update required** with
+  the same button instead of a bare error.
+- Gameplay, art and rules are unchanged from preview.3.
+
+## Acceptance: preview.4
+
+Source: `6f58eca12b7f4a969a063227267637256413c8ae`.
+
+[Windows CI run 34229830340](https://github.com/ikamensh/saga2d/actions/runs/34229830340)
+built the installer and portable ZIP, passed the scoped regression tests and the
+extracted, installed, public TLS and native (test-only Mesa) package checks,
+Start menu shortcut creation and uninstall, then published the release. The Mac
+portable executable passed loopback socket and native checks on Apple M4,
+including the new invite-link button; the installed `/Applications/Warband.app`
+passed the online diagnostics against `wss://games.tachyon-ai.eu/play`. All
+three public downloads were fetched without authentication and matched the
+manifests. Evidence: [warband-distribution-2026-09-08](evidence/warband-distribution-2026-09-08/).
+
+| File | SHA-256 |
+|---|---|
+| `Warband-0.1.0-preview.4-windows-x64-setup.exe` | `d03cc766d54b264de41b771a975881b82a4a1d061157fb483647d262a6fd8e53` |
+| `Warband-0.1.0-preview.4-windows-x64-portable.zip` | `64b878f94e52cf0a72289a53053a3716e0bc1010cfbd3abd54ea411e5bf88f9e` |
+| `Warband-0.1.0-preview.4-darwin-arm64-app.zip` | `03ab70b254f76897cd252a54612fab1a8599ec13786e5e16b888828e39e3b81a` |
+
+The remaining preview limits are unchanged: unsigned Windows installer,
+ad-hoc signed Mac app, and no complete human-versus-human playtest.
+
+## Historical: preview.3
+
+[Preview.3](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.3)
+was built from `85becd0fda8493fffc14ad33baee32f4fccdee64`.
+
+### Changes in preview.3
 
 - Restored automatic worker gathering from the earlier app: idle peasants
   balance needed gold and lumber and use known safe resources and routes.
@@ -110,7 +153,7 @@ Issues and feedback: the repository's issue tracker. Saves and settings live
 in `~/.warband` (`settings.json`, `saves/`, generated `sounds/` and
 `music/`); deleting the folder resets the game.
 
-## Acceptance: preview.3
+### Acceptance: preview.3
 
 Source: `85becd0fda8493fffc14ad33baee32f4fccdee64`.
 

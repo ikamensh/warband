@@ -1,6 +1,8 @@
 # Warband for Windows
 
-Download the [0.1.0-preview.3 Windows installer](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.3/Warband-0.1.0-preview.3-windows-x64-setup.exe).
+Download the [0.1.0-preview.4 Windows installer](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.4/Warband-0.1.0-preview.4-windows-x64-setup.exe)
+from the [Warband page](https://games.tachyon-ai.eu/warband/), which also has
+the installation steps and service status.
 
 Run the setup EXE and launch
 **Warband** from the Start menu. The installer includes Python and all runtime
@@ -8,8 +10,9 @@ dependencies, installs for your account, and requires no administrator prompt.
 The portable ZIP is an alternative: extract the entire `Warband` folder and
 open `Warband.exe`, keeping its `_internal` folder beside it.
 
-The [preview.3 release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.3)
-includes an Apple Silicon Mac companion. See the
+The [preview.4 release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.4)
+includes an Apple Silicon Mac companion and adds invite links and update
+notices; its acceptance is recorded in [warband-release.md](warband-release.md). See the
 [Mac and Windows player guide](warband-play-together.md) for setup, controls,
 first-launch prompts and reconnecting.
 
