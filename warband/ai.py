@@ -15,7 +15,7 @@ import random
 
 from dataclasses import dataclass
 
-from warband.model import Attack, Build, Building, Deposit, Harvest, Point, Pos, Repair, Unit, World, dist
+from warband.model import Attack, AttackMove, Build, Building, Deposit, Harvest, Point, Pos, Repair, Unit, World, dist
 from warband.races import RACES
 from warband.rules import BUILDINGS, BuildingType, Difficulty, Resource, UnitType, Upgrade
 
@@ -69,6 +69,7 @@ class Brain:
         self.unit_toggle = 0
         self.raiders: list[int] = []
         self.log: list[tuple[float, str]] = []  # (time, what) — the evidence of how it plays
+        self._last_defend = 0  # threat size of the last logged "defend with" line
 
     def note(self, world: World, what: str) -> None:
         self.log.append((world.time, what))
@@ -312,13 +313,33 @@ class Brain:
         if self.profile.harass:
             self._raid(world)
             army = [u for u in army if u.id not in self.raiders]
-        threat = self._threat(world)
-        if threat is not None:
-            self.attacking = False
-            for unit in army:
-                if not isinstance(unit.order, Attack):
+        threats = self._threats(world)
+        if threats:
+            threat = self._threat_point(world, threats)
+            size = len(threats)
+            if 2 * size >= len(army):
+                self.attacking = False
+                for unit in army:
+                    if not isinstance(unit.order, Attack):
+                        world.attack_move([unit.id], threat)
+                if size != self._last_defend:
+                    self.note(world, f"defend with {len(army)} against {size}")
+                    self._last_defend = size
+                return
+            want = min(len(army), max(2, math.ceil(1.5 * size)))
+            engaged_ids = {u.id for u in army if self._aimed_at(world, u, threat)}
+            responders = len(engaged_ids)
+            if responders < want:
+                rest = [u for u in army if u.id not in engaged_ids]
+                rest.sort(key=lambda u: dist(u.pos, threat))
+                for unit in rest[: want - responders]:
                     world.attack_move([unit.id], threat)
+                    responders += 1
+            if size != self._last_defend:
+                self.note(world, f"defend with {responders} against {size}")
+                self._last_defend = size
             return
+        self._last_defend = 0
         targets = self._enemy_targets(world)
         if not targets:
             return
@@ -366,14 +387,42 @@ class Brain:
             return buildings
         return [u.pos for u in world.units.values() if u.player != self.player and world.players[u.player].alive]
 
-    def _threat(self, world: World) -> Point | None:
-        """The nearest visible enemy close to one of our buildings."""
-        best, best_d = None, math.inf
+    def _threats(self, world: World) -> list[Unit]:
+        """Visible enemies within DEFEND_RADIUS of one of our buildings."""
+        own = world.player_buildings(self.player)
+        out: list[Unit] = []
         for unit in world.units.values():
             if unit.player == self.player or unit.hidden or not world.is_visible(self.player, unit.tile):
                 continue
-            for b in world.player_buildings(self.player):
-                d = dist(unit.pos, b.center)
-                if d < DEFEND_RADIUS and d < best_d:
-                    best, best_d = unit.pos, d
-        return best
+            for b in own:
+                if dist(unit.pos, b.center) < DEFEND_RADIUS:
+                    out.append(unit)
+                    break
+        return out
+
+    def _threat_point(self, world: World, threats: list[Unit]) -> Point:
+        """Where to answer: the position of the threat nearest to one of our buildings."""
+        buildings = world.player_buildings(self.player)
+        return min(threats, key=lambda u: min(dist(u.pos, b.center) for b in buildings)).pos
+
+    @staticmethod
+    def _aimed_at(world: World, unit: Unit, point: Point) -> bool:
+        """Whether the soldier's current order already answers the threat point."""
+        order = unit.order
+        if isinstance(order, AttackMove):
+            return dist(order.target, point) <= DEFEND_RADIUS
+        if isinstance(order, Attack):
+            target = world.units.get(order.target)
+            pos = target.pos if target is not None else None
+            if pos is None:
+                building = world.buildings.get(order.target)
+                pos = building.center if building is not None else None
+            return pos is not None and dist(pos, point) <= DEFEND_RADIUS
+        return False
+
+    def _threat(self, world: World) -> Point | None:
+        """The nearest visible enemy close to one of our buildings."""
+        threats = self._threats(world)
+        if not threats:
+            return None
+        return self._threat_point(world, threats)
