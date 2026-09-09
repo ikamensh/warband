@@ -1132,7 +1132,7 @@ class World:
         if self.tick % 5:
             return
         if u.info.heal:
-            patient = self._nearest_wounded(u, u.info.sight)
+            patient = self._healing_patient(u, u.info.sight)
             if patient is not None:
                 u.home = u.pos
                 u.orders.appendleft(Heal(patient.id, auto=True))
@@ -1142,15 +1142,32 @@ class World:
             u.home = u.pos
             u.orders.appendleft(Attack(target.id, auto=True))
 
-    def _nearest_wounded(self, healer: Unit, radius: float) -> Unit | None:
-        best, best_d = None, math.inf
-        for unit in self.units_near(healer.pos, radius + UNIT_RADIUS):
-            if unit is healer or unit.player != healer.player or unit.hidden or unit.hp >= unit.max_hp or unit.hp <= 0:
+    def _healing_priority(self, healer: Unit, patient: Unit) -> float:
+        """Weigh missing health and visible pressure against travel before treatment."""
+        danger = 0.0
+        for enemy in self.units_near(patient.pos, 9):
+            if enemy.player == healer.player or enemy.hidden or enemy.hp <= 0 or not self.is_visible(healer.player, enemy.tile):
                 continue
-            d = dist(healer.pos, unit.pos)
-            if d < best_d:
-                best, best_d = unit, d
-        return best
+            if enemy.info.damage and self._gap(enemy, patient) <= self.range_of(enemy) + .75:
+                danger += max(1, self.damage_of(enemy) - self.armor_of(patient)) / enemy.info.cooldown
+        for tower in self.buildings.values():
+            if tower.player in (None, healer.player) or not tower.done or not tower.info.damage:
+                continue
+            if any(self.is_visible(healer.player, tile) for tile in tower.tiles()) and self._gap(tower, patient) <= self.building_range(tower) + .75:
+                danger += max(1, self.damage_of(tower) - self.armor_of(patient)) / tower.info.cooldown
+        value = self.damage_of(patient) / patient.info.cooldown + self.heal_rate(patient) + 1
+        missing_fraction = (patient.max_hp - patient.hp) / patient.max_hp
+        urgency = 1 + min(3, 4 * danger / patient.hp)
+        travel = max(0, self._gap(healer, patient) - self.range_of(healer)) / self.speed_of(healer)
+        return value * (.25 + missing_fraction) * urgency / (1 + travel)
+
+    def _healing_patient(self, healer: Unit, radius: float, *, local: bool = False) -> Unit | None:
+        """The wounded ally most worth treating: under fire first, then the most hurt, then the nearest."""
+        patients = [unit for unit in self.units_near(healer.pos, radius + UNIT_RADIUS)
+                    if unit is not healer and unit.player == healer.player and not unit.hidden
+                    and 0 < unit.hp < unit.max_hp
+                    and (not local or self._gap(healer, unit) <= self.range_of(healer) + .05)]
+        return max(patients, key=lambda unit: (self._healing_priority(healer, unit), -dist(healer.pos, unit.pos), -unit.id), default=None)
 
     def _do_heal(self, u: Unit, order: Heal, dt: float) -> None:
         patient = self.units.get(order.target)
@@ -1159,6 +1176,10 @@ class World:
             if order.auto and u.home is not None and not u.orders and dist(u.pos, u.home) > 1.0:
                 u.orders.append(Move(u.home))
             return
+        if order.auto and self.tick % 5 == 0:
+            nearby = self._healing_patient(u, u.info.sight, local=True)
+            if nearby is not None and nearby is not patient and self._healing_priority(u, nearby) > self._healing_priority(u, patient) * 1.25:
+                order.target, patient = nearby.id, nearby
         if order.auto and u.home is not None and dist(u.pos, u.home) > LEASH:
             self._finish_order(u)
             u.orders.appendleft(Move(u.home))
@@ -1210,15 +1231,15 @@ class World:
         if self.tick % 5:
             return False
         if u.info.heal:
-            patient = self._nearest_wounded(u, u.info.sight)
+            patient = self._healing_patient(u, u.info.sight)
             if patient is None:
                 return False
-            u.orders.appendleft(Heal(patient.id))
+            u.orders.appendleft(Heal(patient.id, auto=True))
         else:
             target = self._nearest_enemy(u.player, u.pos, u.info.sight)
             if target is None:
                 return False
-            u.orders.appendleft(Attack(target.id))
+            u.orders.appendleft(Attack(target.id, auto=True))
         u.path = []
         u.path_goal = None
         return True
@@ -1240,7 +1261,8 @@ class World:
 
     def _do_attack(self, u: Unit, order: Attack, dt: float) -> None:
         target = self.entity(order.target)
-        if target is None or target.hp <= 0 or (isinstance(target, Building) and target.type is BuildingType.GOLD_MINE):
+        if (target is None or target.hp <= 0 or (isinstance(target, Unit) and target.hidden)
+                or (isinstance(target, Building) and target.type is BuildingType.GOLD_MINE)):
             self._finish_order(u)
             if order.auto and u.home is not None and not u.orders:
                 u.orders.append(Move(u.home))
@@ -1249,6 +1271,15 @@ class World:
             self._finish_order(u)
             u.orders.appendleft(Move(u.home))
             return
+        if order.auto and u.type is UnitType.ARCHER and u.cooldown > 0 and self._ranged_retreat(u, target, dt):
+            return
+        if order.auto and u.cooldown <= 0 and self.range_of(u) < 1:
+            # Finish a reachable wounded opponent when ready to strike.  Keep the target
+            # during recovery, and preserve explicit focus fire.
+            nearby = self._melee_opponent(u)
+            if nearby is not None and self._in_range(u, nearby):
+                target = nearby
+                order.target = target.id
         if self._in_range(u, target):
             u.path = []
             u.path_goal = None
@@ -1259,7 +1290,9 @@ class World:
                 u.cooldown = u.info.cooldown
             return
         aim = self._target_point(target)
-        if isinstance(target, Building):
+        if self.range_of(u) < 1:
+            aim = self._melee_position(u, target)
+        elif isinstance(target, Building):
             x, y, w, h = target.rect
             aim = (min(max(u.x, x + 0.5), x + w - 0.5), min(max(u.y, y + 0.5), y + h - 0.5))  # the nearest wall
         if self._steer(u, aim, dt):
@@ -1269,6 +1302,61 @@ class World:
             self._plan(u, goal_tile, aim)
         if self._follow(u, dt) and u.path_goal != goal_tile and self.time >= u.replan_at:
             self._plan(u, goal_tile, aim)
+
+    def _ranged_retreat(self, u: Unit, target: Entity, dt: float) -> bool:
+        """An automatic archer recovering its shot steps away from visible melee, keeping the target in range."""
+        if not isinstance(target, Unit) or not self.is_visible(u.player, target.tile) or not self._in_range(u, target):
+            return False
+        threats = [enemy for enemy in self.units_near(u.pos, 4.75)
+                   if enemy.player != u.player and not enemy.hidden and enemy.hp > 0
+                   and self.is_visible(u.player, enemy.tile) and enemy.info.damage > 0 and self.range_of(enemy) < 1]
+        if not threats:
+            return False
+        nearest = min(threats, key=lambda enemy: (self._gap(u, enemy), enemy.id))
+        clearance = self._gap(u, nearest)
+        if clearance >= 2.75:
+            return False
+        angle = math.atan2(u.y - nearest.y, u.x - nearest.x)
+        allies = [ally for ally in self.units_near(u.pos, 2) if ally is not u and ally.player == u.player and not ally.hidden]
+        known = self.worker_knowledge[u.player].blocked
+        best, best_score = None, clearance + .1
+        for offset in (0, math.pi / 4, -math.pi / 4, math.pi / 2, -math.pi / 2):
+            point = (u.x + math.cos(angle + offset) * .85, u.y + math.sin(angle + offset) * .85)
+            if not self.is_visible(u.player, (int(point[0]), int(point[1]))) or not self._line_clear(u.pos, point, navigation=known):
+                continue
+            if u.home is not None and dist(point, u.home) > LEASH:
+                continue
+            if dist(point, target.pos) - u.radius - target.radius > self.range_of(u):
+                continue
+            gap = min(dist(point, enemy.pos) - u.radius - enemy.radius for enemy in threats)
+            crowd = sum(max(0, u.radius + ally.radius + .2 - dist(point, ally.pos)) for ally in allies)
+            score = gap - 1.5 * crowd
+            if score > best_score:
+                best, best_score = point, score
+        return best is not None and self._steer(u, best, dt)
+
+    def _melee_position(self, u: Unit, target: Entity) -> Point:
+        """Aim for contact in open ground, rather than the occupied target tile."""
+        if isinstance(target, Building):
+            x, y, w, h = target.rect
+            point = (min(max(u.x, x), x + w), min(max(u.y, y), y + h))
+            radius = 0.0
+        else:
+            point, radius = target.pos, target.radius
+        dx, dy = u.x - point[0], u.y - point[1]
+        distance = math.hypot(dx, dy) or 1e-6
+        reach = radius + u.radius + self.range_of(u) * .8
+        return point[0] + dx / distance * reach, point[1] + dy / distance * reach
+
+    def _melee_opponent(self, u: Unit) -> Entity | None:
+        """Finish visible opponents already in reach before pursuing another target."""
+        radius = self.range_of(u) + u.radius + UNIT_RADIUS + .05
+        opponents = [enemy for enemy in self.units_near(u.pos, radius)
+                     if enemy.player != u.player and not enemy.hidden and enemy.hp > 0
+                     and self.is_visible(u.player, enemy.tile) and self._in_range(u, enemy)]
+        if opponents:
+            return min(opponents, key=lambda enemy: (enemy.hp, dist(u.pos, enemy.pos), enemy.id))
+        return self._nearest_enemy(u.player, u.pos, self.range_of(u) + u.radius + .05)
 
     def _do_harvest(self, u: Unit, order: Harvest, dt: float) -> None:
         if u.carrying is not None:
@@ -1799,7 +1887,7 @@ class World:
         best: Entity | None = None
         best_d = math.inf
         for unit in self.units_near(point, radius + UNIT_RADIUS):
-            if unit.player == player or unit.hidden or unit.hp <= 0:
+            if unit.player == player or unit.hidden or unit.hp <= 0 or not self.is_visible(player, unit.tile):
                 continue
             d = dist(point, unit.pos)
             if d <= radius + unit.radius and d < best_d:
@@ -1810,8 +1898,8 @@ class World:
             if building.player is None or building.player == player or building.hp <= 0:
                 continue
             d = rect_gap(point, building.rect)
-            if d <= radius and d + 0.5 < best_d:  # a unit in reach beats a building
-                best, best_d = building, d + 0.5
+            if d <= radius and d + 0.5 < best_d and any(self.is_visible(player, tile) for tile in building.tiles()):
+                best, best_d = building, d + 0.5  # a visible unit in reach beats a visible building
         return best
 
     def _strike(self, u: Unit, target: Entity) -> None:
