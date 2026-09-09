@@ -149,7 +149,7 @@ uv run python tools/perf_warband.py                                # W10 frame t
 uv run python tools/verify_warband.py /tmp/warband_verify          # W01/W05 real input, frames to look at
 uv run python tools/ai_report.py --seeds 6 --decide 20 --ladder 4  # W01/W04
 uv run python tools/map_report.py --seeds 100                      # W03
-uv run --locked --isolated --python 3.13.2 --with-requirements packaging/requirements.txt python tools/build_game.py warband --version 0.1.0-preview.4  # W13; add --installer on Windows
-uv run python tools/verify_game_package.py warband dist/warband --native
+uv run --extra package python tools/package.py build --version 0.1.0-preview.4  # W13; add --installer on Windows
+uv run --extra package python tools/package.py verify dist/warband --native
 uv run python -m warband --selftest /tmp/selftest.png              # a packaged build's self-check
 ```

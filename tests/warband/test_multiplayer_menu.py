@@ -5,7 +5,9 @@ import pytest
 
 from saga2d import Button, Game, MatchMenu
 from saga2d.online import OnlineClient
-from tests.test_online_server import server_url
+from saga2d.testing.online import server_fixture
+
+server_url = server_fixture('warband.multiplayer:ONLINE')
 from warband.multiplayer import NetworkGameScene
 from warband.scene import SettingsScene
 from warband.style import build_theme
@@ -94,7 +96,7 @@ def test_online_menu_keeps_play_live_and_leaving_preserves_rejoin(online_game):
 def test_network_result_has_no_solo_rematch_and_escape_leaves(tmp_path, winner):
     """An authoritative victory or defeat ends at the title, never a new local match."""
     from saga2d import MatchClient, MatchHost
-    from tests.test_multiplayer_games import converge
+    from tests.warband.test_multiplayer import converge
     from warband.model import World
     from warband.multiplayer import WarbandMatch
     from warband.rules import Terrain, UnitType

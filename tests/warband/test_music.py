@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from saga2d import Game
-from saga2d.synth import SAMPLE_RATE, pan, tone
+from sagaforge.synth import SAMPLE_RATE, pan, tone
 from warband import music, sound
 from warband.instruments import bell
 from warband.model import World

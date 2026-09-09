@@ -25,8 +25,8 @@ os.environ["SAGA2D_HEADLESS"] = "1"
 import numpy as np
 
 from saga2d import Game, fonts
-from saga2d.synth import SAMPLE_RATE, mix, write_wav
-from tools.native_frames import tick
+from sagaforge.synth import SAMPLE_RATE, mix, write_wav
+from saga2d.testing.native_frames import tick
 from warband import combat_sound, sound
 from warband.model import World
 from warband.rules import BuildingType, Terrain, UnitType

@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from PIL import Image  # noqa: E402
 
 from saga2d import Game, Scene, fonts  # noqa: E402
-from tools.native_frames import tick  # noqa: E402
+from saga2d.testing.native_frames import tick  # noqa: E402
 from warband import textures  # noqa: E402
 from warband.model import Harvest, Unit, World  # noqa: E402
 from warband.rules import BUILDINGS, UNITS, BuildingType, MapTheme, Resource, Terrain, UnitType  # noqa: E402

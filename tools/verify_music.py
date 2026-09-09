@@ -26,7 +26,7 @@ os.environ["SAGA2D_SILENT"] = "1"
 os.environ["SAGA2D_HEADLESS"] = "1"
 
 from saga2d import Game, fonts  # noqa: E402
-from tools.native_frames import tick  # noqa: E402
+from saga2d.testing.native_frames import tick  # noqa: E402
 from warband import sound  # noqa: E402
 from warband.model import World  # noqa: E402
 from warband.rules import BuildingType, Race, Terrain, UnitType  # noqa: E402

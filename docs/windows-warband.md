@@ -74,8 +74,8 @@ to resolve to the dispatched commit. Existing releases are never overwritten.
 The local Windows build commands are:
 
 ```powershell
-uv run --locked --isolated --python 3.13.2 --with-requirements packaging/requirements.txt python tools/build_game.py warband --version 0.1.0-preview.4 --installer --require-clean
-uv run --locked --python 3.13.2 python tools/verify_game_package.py warband dist/warband --native --public-server wss://games.tachyon-ai.eu/play
+uv run --extra package python tools/package.py build --version 0.1.0-preview.4 --installer --require-clean
+uv run --extra package python tools/package.py verify dist/warband --native --public-server wss://games.tachyon-ai.eu/play
 ```
 
 The builder snapshots source files, records their hashes and exact Git commit,

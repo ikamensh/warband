@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from saga2d import synth
+from sagaforge import synth
 from warband import combat_sound
 
 

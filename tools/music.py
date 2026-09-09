@@ -24,7 +24,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from saga2d.synth import SAMPLE_RATE, write_wav  # noqa: E402
+from sagaforge.synth import SAMPLE_RATE, write_wav  # noqa: E402
 from warband import music  # noqa: E402
 
 

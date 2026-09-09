@@ -1,5 +1,5 @@
 """Warband's music: a suite for each race, the title's night watch and two endings, composed
-with :mod:`warband.instruments` and :mod:`saga2d.synth`.
+with :mod:`warband.instruments` and :mod:`sagaforge.synth`.
 
 Each race has two peaceful pieces, which alternate while the player builds, and one battle
 piece that takes over when their army is fighting.  A piece is a :class:`Score` of 4/4 bars
@@ -18,7 +18,7 @@ import random
 
 import numpy as np
 
-from saga2d.synth import SAMPLE_RATE, highpass, loop_add, pan, reverb, soft_clip
+from sagaforge.synth import SAMPLE_RATE, highpass, loop_add, pan, reverb, soft_clip
 from warband import instruments as inst
 from warband.rules import Race
 

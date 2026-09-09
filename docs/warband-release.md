@@ -11,7 +11,7 @@ installation and play instructions.
 
 ## Local install on this Mac
 
-`uv run python tools/install_game.py warband` builds the app from the clean
+`uv run --extra package python tools/package.py install` builds the app from the clean
 working tree under the pinned packaging environment (version
 `<project version>-local.<commit>`), self-tests the fresh bundle, backs the
 installed `/Applications/Warband.app` up under `dist/local-app-backups/`,

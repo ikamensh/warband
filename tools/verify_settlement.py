@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from pyglet.window import mouse  # noqa: E402
 
 from saga2d import Button, Game, Label, Row, fonts  # noqa: E402
-from tools.native_frames import tick  # noqa: E402
+from saga2d.testing.native_frames import tick  # noqa: E402
 from warband.rules import BUILDINGS, BuildingType, UnitType, Upgrade  # noqa: E402
 from warband.scene import SettlementPlansScene, new_game  # noqa: E402
 from warband.style import build_theme  # noqa: E402

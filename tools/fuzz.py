@@ -27,7 +27,7 @@ from warband import mapgen  # noqa: E402
 from warband.ai import Brain  # noqa: E402
 from warband.model import BLOCKING, World  # noqa: E402
 from warband.rules import BUILDINGS, SIM_DT, BuildingType, Difficulty  # noqa: E402
-from tools.cpu_budget import CpuBudget  # noqa: E402
+from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
 
 GAME_MINUTES = 15
 

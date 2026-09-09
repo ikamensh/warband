@@ -12,7 +12,7 @@ from functools import partial
 
 import numpy as np
 
-from saga2d.synth import level, mix, noise, thump, tone
+from sagaforge.synth import level, mix, noise, thump, tone
 
 WEAPONS = ("sword", "axe", "spear", "lance", "arrow", "stone", "hammer")
 MATERIALS = ("flesh", "armor", "wood", "stone")

@@ -6,8 +6,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from saga2d import Game, synth
-from saga2d.synth import pan, tone
+from saga2d import Game
+from sagaforge import synth
+from sagaforge.synth import pan, tone
 from warband import music, sound
 from warband.rules import Race
 from warband.sound import SoundBank

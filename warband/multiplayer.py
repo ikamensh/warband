@@ -7,7 +7,8 @@ from copy import deepcopy
 from saga2d import Button, CommandError, Label
 from warband import mapgen
 from warband.model import World, RuleError, Event
-from warband.rules import BuildingType, UnitType, Upgrade, SIM_DT, MapTheme
+from saga2d.server.games import GameSpec, option_choice, option_int, option_keys, option_seed
+from warband.rules import BuildingType, UnitType, Upgrade, SIM_DT, MapTheme, Race
 
 GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'stop', 'hold'}
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building'}
@@ -105,6 +106,35 @@ class WarbandMatch:
             raise CommandError(str(exc)) from exc
         self.world = trial
         self._events()
+
+
+def _create(options):
+    """Validate resource-bounded creation options before generating any map."""
+    option_keys(options, {'seed', 'width', 'height', 'theme', 'races'})
+    races = options.get('races', [None, None])
+    if (not isinstance(races, list) or len(races) != 2
+            or any(race is not None and (not isinstance(race, str) or race not in {r.value for r in Race})
+                   for race in races)):
+        raise CommandError('races must name two seats, each a race or null.')
+    return WarbandMatch(option_seed(options, 3), width=option_int(options, 'width', 48, 40, 64),
+                        height=option_int(options, 'height', 40, 32, 48),
+                        theme=MapTheme(option_choice(options, 'theme', 'summer', {t.value for t in MapTheme})),
+                        races=[Race(race) if race is not None else None for race in races])
+
+
+def _checkpoint(match):
+    return {'seed': match.seed, 'world': deepcopy(match.world.to_dict()), 'events': deepcopy(match.events)}
+
+
+def _restore(snapshot):
+    match = WarbandMatch.__new__(WarbandMatch)
+    match.seed, match.world = snapshot['seed'], World.from_dict(snapshot['world'])
+    match.events = snapshot['events']
+    match.event_id = max((event[0] for event in match.events), default=0)
+    return match
+
+
+ONLINE = {'warband-v1': GameSpec(_create, _checkpoint, _restore, realtime=True)}
 
 
 from warband.scene import GameScene, HelpScene, SettingsScene, _Overlay, _clock

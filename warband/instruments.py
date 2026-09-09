@@ -1,4 +1,4 @@
-"""Warband's orchestra: pitched voices and a drum kit, each a mono clip built on :mod:`saga2d.synth`.
+"""Warband's orchestra: pitched voices and a drum kit, each a mono clip built on :mod:`sagaforge.synth`.
 
 Voices take a note name or a frequency and a length in seconds and return a clip whose
 peak is near one; the score sets the gain.  Drums take no pitch.  Every function is
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from saga2d.synth import AH, BELL, BRASS, GLASS, OH, formant, hz, level, lowpass, mix, noise, pluck, seconds, sustained, thump, tone
+from sagaforge.synth import AH, BELL, BRASS, GLASS, OH, formant, hz, level, lowpass, mix, noise, pluck, seconds, sustained, thump, tone
 
 SAW = tuple((k, 1 / k) for k in range(1, 13))
 REED = tuple((k, 1 / k) for k in range(1, 12, 2))  # odd harmonics: a chanter, a clarinet

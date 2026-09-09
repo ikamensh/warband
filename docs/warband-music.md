@@ -2,7 +2,7 @@
 
 Warband's music is composed, not recorded: fifteen original pieces synthesised
 by `warband/music.py` with the orchestra in `warband/instruments.py` on top of
-`saga2d.synth`.  Nothing is downloaded or licensed; the WAVs are rendered on the
+`sagaforge.synth`.  Nothing is downloaded or licensed; the WAVs are rendered on the
 player's machine and cached under `~/.warband/music/` (about 170 MB for the
 whole catalogue).
 

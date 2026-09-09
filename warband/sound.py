@@ -1,4 +1,4 @@
-"""Procedural sound for Warband: effects and music synthesised with :mod:`saga2d.synth`
+"""Procedural sound for Warband: effects and music synthesised with :mod:`sagaforge.synth`
 and cached under ``~/.warband``.
 
 The scene calls :func:`play_sound` with an event name and :func:`play_music` with a mood;
@@ -25,7 +25,7 @@ import time
 import numpy as np
 
 from saga2d import Game
-from saga2d.synth import BRASS, DARK, GLASS, level, mix, noise, thump, tone, write_wav
+from sagaforge.synth import BRASS, DARK, GLASS, level, mix, noise, thump, tone, write_wav
 from warband import combat_sound, music, voices
 from warband.model import Event
 from warband.music import Director

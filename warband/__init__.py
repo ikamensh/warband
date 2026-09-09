@@ -7,7 +7,7 @@
 * ``model``    — the world state, orders and the fixed-step simulation.
 * ``mapgen``   — procedural maps with two bases, gold mines and forests.
 * ``ai``       — the computer opponent.
-* ``textures`` — ground, trees, buildings and units pre-rendered with ``saga2d.render3d``.
+* ``textures`` — ground, trees, buildings and units pre-rendered with ``sagaforge.render3d``.
 * ``view``     — sprite reconciliation, fog of war and the world-space overlays.
 * ``scene``    — saga2d scenes: the game, its HUD and command card, pause and help.
 * ``title``    — title screen and match setup.

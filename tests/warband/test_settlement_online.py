@@ -2,7 +2,9 @@
 
 from websockets.sync.client import connect
 
-from tests.test_online_server import command, handshake, receive, server_url
+from saga2d.testing.online import command, handshake, receive, server_fixture
+
+server_url = server_fixture('warband.multiplayer:ONLINE')
 from warband.model import World
 from warband.rules import BuildingType
 

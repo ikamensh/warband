@@ -3,7 +3,7 @@
 The ground is painted with Pillow in chunks of ``CHUNK``×``CHUNK`` tiles
 (continuous grass, water with ripples, sand along the shore).
 Everything that stands on it — trees, rocks, gold mines, buildings, units —
-is a low-poly mesh rendered with :mod:`saga2d.render3d` through a 3/4 camera
+is a low-poly mesh rendered with :mod:`sagaforge.render3d` through a 3/4 camera
 whose tile footprints stay square (:meth:`Projection.front`), so a 3×3
 building covers exactly 3×3 tiles on screen and still shows lit walls.
 
@@ -27,8 +27,8 @@ from functools import lru_cache
 from PIL import Image, ImageDraw, ImageFilter
 
 from saga2d import Game
-from saga2d import render3d as r3
-from saga2d.render3d import Mesh
+from sagaforge import render3d as r3
+from sagaforge.render3d import Mesh
 from warband.rules import BUILDINGS, PLAYERS, BuildingType, MapTheme, Race, Resource, Terrain, UnitType
 
 TILE = 32

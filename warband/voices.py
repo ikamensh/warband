@@ -9,7 +9,7 @@ from collections.abc import Callable
 
 import numpy as np
 
-from saga2d.synth import BELL, BRASS, DARK, GLASS, SOFT, level, mix, noise, thump, tone
+from sagaforge.synth import BELL, BRASS, DARK, GLASS, SOFT, level, mix, noise, thump, tone
 from warband.rules import Race
 
 CUES = ("select", "command", "attack_command", "trained", "built", "under_attack")
