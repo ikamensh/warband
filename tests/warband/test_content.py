@@ -162,7 +162,8 @@ def test_scouts_are_fast_and_knights_faster_with_horses() -> None:
     world = flat_world(60, 10)
     scout = world.spawn_unit(0, UnitType.SCOUT, (2.5, 5.5))
     knight = world.spawn_unit(0, UnitType.KNIGHT, (2.5, 3.5))
-    world.move([scout.id, knight.id], (58.5, 4.5))
+    world.move([scout.id], (58.5, 4.5))
+    world.move([knight.id], (58.5, 4.5))
     run(world, 5.0)
     assert scout.x > knight.x + 3
     assert UNITS[UnitType.SCOUT].sight > UNITS[UnitType.KNIGHT].sight

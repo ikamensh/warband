@@ -59,11 +59,13 @@ class RuleError(Exception):
 @dataclass
 class Move:
     target: Point
+    pace: float | None = None  # slowest speed_of in the group at issue time; None: walk at full speed
 
 
 @dataclass
 class AttackMove:
     target: Point
+    pace: float | None = None  # as Move.pace
 
 
 @dataclass
@@ -781,13 +783,17 @@ class World:
 
     def move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         target = self._clamp(target)
-        for unit in self._own_units(unit_ids):
-            self._issue(unit, Move(target), queue=queue)
+        units = self._own_units(unit_ids)
+        pace = min((self.speed_of(u) for u in units), default=None) if len(units) > 1 and not queue else None
+        for unit in units:
+            self._issue(unit, Move(target, pace=pace), queue=queue)
 
     def attack_move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         target = self._clamp(target)
-        for unit in self._own_units(unit_ids):
-            self._issue(unit, AttackMove(target) if not unit.is_worker else Move(target), queue=queue)
+        units = self._own_units(unit_ids)
+        pace = min((self.speed_of(u) for u in units), default=None) if len(units) > 1 and not queue else None
+        for unit in units:
+            self._issue(unit, AttackMove(target, pace=pace) if not unit.is_worker else Move(target, pace=pace), queue=queue)
 
     def patrol(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         """Patrol between where each unit stands and *target*."""
@@ -1708,6 +1714,39 @@ class World:
         route = pathing.find_path_grid(start, nearest, self._blocked, self.width, self.height, max_expansions=LOCAL_EXPANSIONS)
         return route if route and route[-1] == nearest else None
 
+    def _effective_speed(self, u: Unit) -> float:
+        """How fast *u* walks right now: its own speed, capped to its order's group pace.
+
+        The cap holds only while a paced Move/AttackMove is the current order (an
+        engaged unit fights at full speed), and releases once the group stretches
+        more than 6 tiles from its leading unit, so a stuck unit never holds the rest.
+        """
+        base = self.speed_of(u)
+        order = u.order
+        if not isinstance(order, (Move, AttackMove)) or order.pace is None:
+            return base
+        if order.pace >= base:
+            return base
+        target, pace = order.target, order.pace
+        leader_pos, leader_d = u.pos, dist(u.pos, target)
+        mates: list[Unit] = [u]
+        for v in self.units.values():
+            if v is u or v.player != u.player or v.hidden or v.hp <= 0:
+                continue
+            vo = v.order
+            if not isinstance(vo, (Move, AttackMove)) or vo.pace is None:
+                continue
+            if vo.pace != pace or vo.target != target:
+                continue
+            mates.append(v)
+            d = dist(v.pos, target)
+            if d < leader_d:
+                leader_d, leader_pos = d, v.pos
+        for m in mates:
+            if dist(m.pos, leader_pos) > 6.0:
+                return base
+        return min(base, pace)
+
     def _walk_to(self, u: Unit, target: Point, dt: float, *, settle: bool = False) -> bool:
         """Move towards *target*; True once there is nothing left to walk (arrived, or as near as the
         map allows).  With *settle*, a crowd holding the unit within SETTLE_WITHIN of the spot also
@@ -1752,7 +1791,7 @@ class World:
                 u.path.insert(0, u.tile)
         dx, dy = waypoint[0] - u.x, waypoint[1] - u.y
         d = math.hypot(dx, dy)
-        step = self.speed_of(u) * dt
+        step = self._effective_speed(u) * dt
         if d <= step or d <= ARRIVE:
             if navigation is not None and not self._line_clear(u.pos, waypoint, navigation=navigation):
                 u.path_goal = None
@@ -1845,7 +1884,7 @@ class World:
         dx, dy = target[0] - u.x, target[1] - u.y
         d = math.hypot(dx, dy)
         if d >= 1e-6:
-            step = min(d, self.speed_of(u) * dt)
+            step = min(d, self._effective_speed(u) * dt)
             u.facing = math.atan2(dy, dx)
             u.x, u.y = u.x + dx / d * step, u.y + dy / d * step  # on the segment, so on a tile just checked
         u.path = []
@@ -2176,6 +2215,7 @@ def _order_from_dict(d: dict[str, Any]) -> Order:
         fields["target"] = tuple(fields["target"])
     elif kind in (Move, AttackMove):
         fields["target"] = tuple(fields["target"])
+        fields.setdefault("pace", None)  # saves from before the group pace existed
     elif kind is Patrol:
         fields["start"], fields["end"] = tuple(fields["start"]), tuple(fields["end"])
     return kind(**fields)
