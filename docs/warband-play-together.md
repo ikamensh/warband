@@ -102,7 +102,7 @@ and soldiers, or give a specific gathering order yourself.
    request waits until training becomes possible.
 4. Click **Train → Peasant** to order another worker. Build more farms when
    supply is full. Open **Plans** to see progress or what a request needs.
-5. Click **Assembly point**, then a clear spot near your base. New soldiers
+5. Click **Assembly**, then a clear spot near your base. New soldiers
    move there when trained; new peasants find work.
 6. Select your soldiers, press **A**, then click towards the enemy. This
    attack-move order fights enemies along the route. Right-clicking empty
@@ -132,7 +132,7 @@ which removes its last queued unit. Use
 **Previous** and **Next** for more rows, then **Back** or **Esc** to close.
 **The match continues while this panel is open.**
 
-**Assembly point** sets a shared destination for newly trained soldiers.
+**Assembly** sets a shared destination for newly trained soldiers.
 Choose it, then click the map. A training building's own rally point takes
 priority; select that building and right-click to set one. Peasants keep
 working instead of marching to the assembly point. To remove the shared
@@ -165,7 +165,7 @@ safe work may wait for you to explore or clear the route.
 | Park a worker without automatic gathering | S or H; another order enables automatic work again |
 | Plan buildings, units or upgrades | Settlement → Build / Train / Upgrade; no selection needed |
 | See or cancel requested work | Plans; the match continues while it is open |
-| Set where new soldiers gather | Assembly point, then a map location; a building's own right-click rally point takes priority |
+| Set where new soldiers gather | Assembly, then a map location; a building's own right-click rally point takes priority |
 | Move the camera | Arrow keys, screen edges, or left-click the minimap |
 | Return to your base | Home or Backspace; the Mac Delete key sends Backspace |
 | Zoom | Mouse wheel or trackpad scroll; + and − also work |

@@ -130,7 +130,7 @@ See the in-game help (F1) and codex (F2). Summary:
 | Plan without a selection | Settlement → Build / Train / Upgrade (Ctrl+B / Ctrl+T / Ctrl+U, Shift+letter orders five in Train); Ctrl+P Plans shows waiting work, progress and cancellation; Ctrl+G assembly point |
 | Build with a selected worker | B then F farm, B barracks, H town hall, T tower, M lumber mill, K blacksmith, S stables, W workshop, C church |
 | Train / research directly | the letters on the command card when a building is selected |
-| Gather new soldiers | Assembly point, then click the map; a building-specific rally point takes priority |
+| Gather new soldiers | Assembly (Ctrl+G), then click the map; a building-specific rally point takes priority |
 | Park an automatic worker | S or H; another order enables automatic work again |
 | Mac trackpad | two-finger click or Ctrl+click is the right-click; Cmd-click selects every unit of a type |
 | Camera | arrows, screen edges, middle-drag, wheel or + / − zoom, F6–F8 bookmarks (Ctrl to set), Space jumps to the last alert, Home or Backspace to the base |

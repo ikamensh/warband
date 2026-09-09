@@ -135,7 +135,7 @@ def verify(out: Path, save_dir: Path) -> None:
         assert len(world.player_plans(scene.human)) == 3
         shot("06-plan-cancelled")
         click("Back")
-        click("Assembly point")
+        click("Assembly")
         target = world.player_units(scene.human)[0].pos
         click_screen(*screen_point(target))
         assert player.assembly is not None and math.dist(player.assembly, target) < 0.1

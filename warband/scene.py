@@ -1744,7 +1744,7 @@ HELP_INTRO = (
 )
 HELP_KEYS = (
     ("Settlement", "Ctrl+B build, Ctrl+T train, Ctrl+U upgrade without a selection; Ctrl+P Plans, Ctrl+G assembly; Shift+letter orders five in Train"),
-    ("Assembly point", "choose a destination for new soldiers; workers keep working"),
+    ("Assembly (Ctrl+G)", "choose a destination for new soldiers; workers keep working"),
     ("Left click / drag", "select a unit, a building, or every unit in the box"),
     ("Right click", "move, harvest, attack or resume building — the sensible thing for the target"),
     ("Shift", "add to the selection, or queue an order after the current one"),
