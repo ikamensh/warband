@@ -86,8 +86,10 @@ AI, sides swapped per seed.  With the Hard AI on Medium maps, two seeds per
 pair (twelve matches per race, all decided within twenty minutes), the first
 run gave Humans 8–4, Dwarves 7–5, Orcs 5–7 and Elves 4–8; the map side decided
 more pairs than the race did.  The elven hit-point penalty was eased from 10 %
-to 5 % after that run.  The AI plays every race the same way, so this measures
-the rules, not race-specific play.
+to 5 % after that run; the rerun gave Humans 8–4, Orcs 6–6, Dwarves 5–6 and
+Elves 4–7 with one match undecided.  The AI plays every race the same way, so
+this measures the rules, not race-specific play; Drill (faster training) suits
+an AI that trains without pause, which is the likely source of the human edge.
 
 ## Verification
 
