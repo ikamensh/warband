@@ -21,6 +21,7 @@ this is written; the rest need the owner, the framework or a stronger agent.
 | 5 | The AI plays every race the same way (recorded in `warband-races.md`), so races differ in look, not in the fight. | `Brain._choose_unit` alternates footman/archer. | `ai-race-play` |
 | 6 | The new-game screen shows a seed number; the map is a surprise. | `NewGameScene`. | `map-preview` |
 | 7 | Mixed groups string out: knights arrive alone and die. | `World.move`/`attack_move` pace each unit by its own speed. | `group-move` |
+| 8 | The Settlement row (Build, Train, Upgrade, Plans, Assembly) is mouse-only; the user asked for keyboard scheduling. | `GameScene.on_enter` settlement `Row`. | `settlement-hotkeys` (appended, `docs/hive/warband-plan-2026-09-09-settlement-hotkeys.toml`) |
 
 ## Not scheduled
 

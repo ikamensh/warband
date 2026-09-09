@@ -1,0 +1,53 @@
+version = 1
+plan_id = "514bec3ae861"
+revision = 2
+goal = "Warband, the RTS reference game in this repository, gains the depth a skirmish player expects: a way to concede, a computer opponent that defends in proportion, finishes matches, grows its economy with its halls and plays its race, a map preview before starting, and armies that move together. Every change is covered by mock-backend tests and lands with the Warband suite green."
+
+[[items]]
+key = "settlement-hotkeys"
+repo = "https://github.com/ikamensh/saga2d.git"
+title = "Global hotkeys for settlement production and training"
+story = "A player schedules production without the mouse: Ctrl+B, Ctrl+T and Ctrl+U open the settlement Build, Train and Upgrade menus from anywhere, Ctrl+P opens Plans, Ctrl+G starts placing the assembly point, and inside Train the unit letters order one unit while Shift+letter orders five, so filling a barracks queue is a few keystrokes."
+constraints = "Change only warband/scene.py, tests/warband/test_settlement_ui.py, the HELP_KEYS text in warband/scene.py and the Controls table in docs/warband-release.md. No framework change: saga2d's Button already supports modifier shortcuts (`Button(..., shortcut=\"Ctrl+T\")`, see docs/framework-button-shortcuts.md). The keys must work with or without a selection, offline and in NetworkGameScene, and must not take Ctrl+A, Ctrl+1 to Ctrl+9 or Ctrl+F6 to Ctrl+F8."
+notes = """
+Today the Settlement row built in `GameScene.on_enter` (warband/scene.py: `Row(Label("Settlement", ...),
+Button("Build", ...), Button("Train", ...), Button("Upgrade", ...), Button(lambda: f"Plans ({...})", ...),
+Button("Assembly point", ...))`) is mouse-only; the only keys are the letters inside an open menu
+(`_settlement_commands`, built from `race.units`, `BUILD_ORDER` and `_upgrades()`), dispatched by
+the command-card key handling (search scene.py for where `command.hotkey` is matched against a key).
+
+- Give the five buttons shortcuts: Build `Ctrl+B`, Train `Ctrl+T`, Upgrade `Ctrl+U`,
+  Plans `Ctrl+P`, Assembly point `Ctrl+G`, using `Button(..., shortcut="Ctrl+B", ...)` so the
+  keycap is drawn and the chord activates `on_click`. The framework matches chords exactly, so a
+  bare `B` with a selected peasant still opens the worker build menu. If the row no longer fits
+  beside the resource panel at 1280x720, shorten "Assembly point" to "Assembly" and adjust the
+  widths; tests/warband/test_settlement_ui.py and tests/warband/test_layout.py run at 1280x800
+  and 1280x720 and must stay green.
+- The shortcut of a menu that is already open closes it (`open_settlement(None)`); another one
+  switches menus. Esc keeps closing through the existing `cancel`.
+- Inside the Train menu, `Shift+<letter>` orders five of that unit: `order_production` five
+  times with one `say` line ("5 x Footman ordered - pay when work starts - manage in Plans")
+  and one sound. Upgrades cannot be ordered twice (`_upgrade_planned`), so Shift there behaves
+  like the plain key; Build keeps its single placement. Implement this where card hotkeys are
+  dispatched, not by adding a second set of Command entries.
+- `HELP_KEYS` in warband/scene.py: extend the "Settlement" line with the keys and the Shift rule.
+  docs/warband-release.md, Controls table, row "Plan without a selection": the same.
+
+Tests (tests/warband/test_settlement_ui.py, with its `settlement` fixture;
+`game.backend.inject_key("t", ctrl=True)` then `game.tick(1 / 30)`):
+- Ctrl+T sets `scene.settlement_menu == "train"` and the card shows the unit names; "f" adds
+  one footman plan to `world.player_plans(scene.human)`; Shift+F adds five more; Ctrl+T again
+  closes the menu.
+- Ctrl+B then "f" starts the pending farm placement (`scene.pending` starts with "plan:");
+  Ctrl+U opens the upgrade menu; Ctrl+P pushes a `SettlementPlansScene`; Ctrl+G sets
+  `scene.pending == "assembly"`.
+- With a peasant selected (`scene.selection = [unit.id]`), Ctrl+T still opens the train menu
+  and the selection is unchanged; a bare "b" with that peasant selected opens the worker build
+  menu (`scene.build_menu`) as before.
+- After a tick, the Settlement row draws its keycaps: check what text the mock backend records
+  for a keycap (see how `draw_keycap` in saga2d/ui draws its label) and assert the Train
+  button's chord appears.
+- NetworkGameScene inherits GameScene; if tests/warband/test_settlement_online.py has a cheap
+  fixture, add one check that Ctrl+T opens the train menu online too; otherwise say in the
+  commit message that the path is shared.
+"""
