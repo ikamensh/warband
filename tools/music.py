@@ -1,7 +1,7 @@
 """Render Warband's music to look at and listen to.
 
-    uv run python tools/music_warband.py render DIR [--tracks a,b]   # WAV, spectrogram PNG and a stats table per track
-    uv run python tools/music_warband.py sampler DIR [--seconds 12]  # an excerpt of every track in one WAV (M4A too when afconvert exists)
+    uv run python tools/music.py render DIR [--tracks a,b]   # WAV, spectrogram PNG and a stats table per track
+    uv run python tools/music.py sampler DIR [--seconds 12]  # an excerpt of every track in one WAV (M4A too when afconvert exists)
 
 The spectrogram shows 40 Hz–12 kHz on a log axis over the whole track, with the
 loudness envelope above it and a bar grid, so an arrangement can be checked at a

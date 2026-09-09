@@ -1,6 +1,6 @@
 """Drive Warband through the real pyglet backend and save frames to look at.
 
-    uv run python tools/verify_warband.py /tmp/warband_shots
+    uv run python tools/verify.py /tmp/warband_shots
 
 Real window events are dispatched (mouse presses, drags, key presses and a
 wheel scroll), so this exercises the pyglet event handlers and the GPU
@@ -127,7 +127,7 @@ def main(out: Path) -> None:
     assert isinstance(game.scene, GameScene)
     game._teardown()
     backend.quit()
-    print("verify_warband: all steps passed")
+    print("verify: all steps passed")
 
 
 if __name__ == "__main__":

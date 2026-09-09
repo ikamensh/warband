@@ -1,6 +1,6 @@
 """Inspect the native map rim, fog and seeded terrain regions.
 
-    uv run python tools/verify_warband_map.py /tmp/warband-map
+    uv run python tools/verify_map.py /tmp/warband-map
 
 Captures an ordinary fogged game at opposite corners, then fully revealed
 survey views using the same MapView assets. Surveys freeze simulation and

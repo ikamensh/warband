@@ -2,11 +2,11 @@
 import importlib.util
 
 from saga2d.packaging.verify import local_server
-from tools.package_warband import PACKAGE
+from tools.package import PACKAGE
 
 
 def package_check():
-    spec = importlib.util.spec_from_file_location("warband_package_check", PACKAGE.check)
+    spec = importlib.util.spec_from_file_location("package_check", PACKAGE.check)
     checker = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(checker)
     return checker

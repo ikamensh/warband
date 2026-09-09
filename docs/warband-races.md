@@ -104,5 +104,5 @@ to 5 % after that run; the rerun gave Humans 8–4, Orcs 6–6, Dwarves 5–6 an
 `test_race_ui.py` the title choice, cards, codex, regrowth sprites and room
 options, `test_race_sound.py` the voices, weapons and tracks.  Real pyglet
 frames of a settlement per race were rendered and inspected while the art was
-made (`saga2d.testing.render_scene`); `tools/fuzz_warband.py` plays AI matches
+made (`saga2d.testing.render_scene`); `tools/fuzz.py` plays AI matches
 with seed-drawn races.

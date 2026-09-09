@@ -54,8 +54,8 @@ images warm incrementally during the match opening.
 
 ```sh
 uv run python -m pytest tests/warband tests/framework/test_render3d.py -q
-uv run python tools/verify_warband_art.py /tmp/warband-art
-uv run python tools/verify_warband_forest.py /tmp/warband-forest
+uv run python tools/verify_art.py /tmp/warband-art
+uv run python tools/verify_forest.py /tmp/warband-forest
 ```
 
 The native verifier uses the same registered images and MapView as gameplay.

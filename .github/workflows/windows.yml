@@ -1,21 +1,16 @@
-name: Game Windows installer
+name: Windows installer
 
 on:
   push:
-    tags: ['tribes-v*', 'warband-v*']
+    tags: ['v*']
   workflow_dispatch:
     inputs:
-      game:
-        description: 'Game to package'
-        required: true
-        type: choice
-        options: [tribes, warband]
       version:
         description: 'Explicit version, for example 0.1.0-preview.1'
         required: true
         type: string
       publish:
-        description: 'Publish the matching existing GAME-vVERSION tag after verification'
+        description: 'Publish the matching existing vVERSION tag after verification'
         type: boolean
         default: false
 
@@ -23,67 +18,64 @@ permissions:
   contents: read
 
 concurrency:
-  group: game-windows-${{ github.ref }}
+  group: windows-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 40
-    outputs:
-      game: ${{ steps.identity.outputs.game }}
     defaults:
       run:
         shell: pwsh
+        working-directory: warband
     env:
       UV_PYTHON_PREFERENCE: only-managed
-      REQUESTED_GAME: ${{ inputs.game }}
       REQUESTED_VERSION: ${{ inputs.version }}
       REQUESTED_PUBLISH: ${{ inputs.publish }}
     steps:
       - name: Preserve source bytes
         run: git config --global core.autocrlf false
+        working-directory: .
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
+          path: warband
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ikamensh/saga2d-framework
+          path: saga2d
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ikamensh/sagaforge
+          path: sagaforge
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: '0.12.10'
           python-version: '3.13.2'
           enable-cache: false
       - name: Resolve exact release identity
-        id: identity
         run: |
-          $game = $env:REQUESTED_GAME
           $version = $env:REQUESTED_VERSION
-          if ($env:GITHUB_REF_TYPE -eq 'tag') {
-            if ($env:GITHUB_REF_NAME -notmatch '^(tribes|warband)-v(.+)$') { throw "Unexpected release tag $env:GITHUB_REF_NAME" }
-            $game = $Matches[1]
-            $version = $Matches[2]
-          }
-          $version = uv run --locked --python 3.13.2 python -c 'import sys; from tools.build_game import version; print(version(sys.argv[1]))' $version
+          if ($env:GITHUB_REF_TYPE -eq 'tag') { $version = $env:GITHUB_REF_NAME -replace '^v', '' }
+          $version = uv run --locked --python 3.13.2 python -c 'import sys; from saga2d.packaging import version; print(version(sys.argv[1]))' $version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $product = uv run --locked --python 3.13.2 python -c 'import sys; from tools.build_game import GAMES; print(GAMES[sys.argv[1]]["product"])' $game
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          "GAME=$game" | Add-Content $env:GITHUB_ENV
-          "game=$game" | Add-Content $env:GITHUB_OUTPUT
-          "PRODUCT=$product" | Add-Content $env:GITHUB_ENV
           "GAME_VERSION=$version" | Add-Content $env:GITHUB_ENV
           if ($env:GITHUB_REF_TYPE -eq 'tag' -or $env:REQUESTED_PUBLISH -eq 'true') {
-            $revision = git rev-parse "refs/tags/$game-v$version^{commit}"
+            $revision = git rev-parse "refs/tags/v$version^{commit}"
             if ($LASTEXITCODE -ne 0 -or $revision -ne $env:GITHUB_SHA) { throw 'Publishing requires an existing version tag at the dispatched commit.' }
           }
-      - name: Run the game's and shared transport regression tests
+      - name: Run the regression suite
         run: |
-          uv run --locked --python 3.13.2 --extra dev python -m pytest tests/$env:GAME tests/packaging/test_game_packaging.py tests/framework/test_render3d.py tests/framework/test_network.py tests/test_multiplayer_games.py tests/test_online_menu.py tests/test_release.py -q
+          uv run --locked --python 3.13.2 --extra dev python -m pytest tests -q
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build pinned runtime, portable ZIP and per-user installer
         run: |
           $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
           if (-not (Test-Path $compiler)) { throw 'The Windows runner is missing its documented Inno Setup compiler.' }
-          uv run --locked --isolated --python 3.13.2 --with-requirements packaging/requirements.txt python tools/build_game.py $env:GAME --version $env:GAME_VERSION --installer --iscc $compiler --require-clean
+          uv run --locked --python 3.13.2 --extra package python tools/package.py build --version $env:GAME_VERSION --installer --iscc $compiler --require-clean
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           @{
             run_url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
@@ -91,7 +83,7 @@ jobs:
             runner_image = $env:ImageOS
             runner_image_version = $env:ImageVersion
             inno_setup = (Get-Item $compiler).VersionInfo.ProductVersion
-          } | ConvertTo-Json | Set-Content dist/$env:GAME/workflow-build.json -Encoding utf8
+          } | ConvertTo-Json | Set-Content dist/warband/workflow-build.json -Encoding utf8
       - name: Prepare pinned Mesa WGL driver for native CI checks only
         run: |
           $url = 'https://github.com/pal1000/mesa-dist-win/releases/download/26.2.0/mesa3d-26.2.0-release-msvc.7z'
@@ -109,64 +101,62 @@ jobs:
             source = $url
             archive_sha256 = $digest
             scope = 'Software WGL driver for native CI only; absent from shipping ZIP and installer.'
-          } | ConvertTo-Json | Set-Content dist/$env:GAME/mesa-test-context.json -Encoding utf8
+          } | ConvertTo-Json | Set-Content dist/warband/mesa-test-context.json -Encoding utf8
       - name: Verify extracted and installed executables over real sockets
         run: |
-          uv run --locked --python 3.13.2 python tools/verify_game_package.py $env:GAME dist/$env:GAME --native --mesa-dir $env:GAME_TEST_MESA --public-server wss://games.tachyon-ai.eu/play
+          uv run --locked --python 3.13.2 --extra package python tools/package.py verify dist/warband --native --mesa-dir $env:GAME_TEST_MESA --public-server wss://games.tachyon-ai.eu/play
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $result = Get-Content dist/$env:GAME/verification.json -Raw | ConvertFrom-Json
+          $result = Get-Content dist/warband/verification.json -Raw | ConvertFrom-Json
           if (-not $result.passed -or -not $result.install_shortcut_uninstall -or -not $result.public_server.passed -or -not $result.native.passed -or $result.source_commit -ne $env:GITHUB_SHA) {
             throw 'Package verification did not accept the dispatched build.'
           }
           @(
-            "$env:PRODUCT $env:GAME_VERSION"
+            "Warband $env:GAME_VERSION"
             ''
             "Source: $env:GITHUB_SHA"
             ''
-            "Download the setup EXE, run it, and launch $env:PRODUCT from the Start menu. No Python or administrator account is required."
-            "For internet play choose Multiplayer, create a room, and send the invite link. Installation steps: https://games.tachyon-ai.eu/$env:GAME/"
+            "Download the setup EXE, run it, and launch Warband from the Start menu. No Python or administrator account is required."
+            "For internet play choose Multiplayer, create a room, and send the invite link. Installation steps: https://games.tachyon-ai.eu/warband/"
             ''
             'CI verified the extracted and installed applications against an authoritative WebSocket server, including accepted and rejected orders and seat reconnection; shortcut creation and uninstall also passed.'
             "The installed Windows executable also passed those multiplayer checks over TLS against $($result.public_server.endpoint)."
             "Native title, multiplayer input and match rendering passed with the test-only software driver: $($result.native.renderer), $($result.native.opengl_version)."
             'The installer is unsigned. CI host checks are recorded in verification.json; they do not establish GPU or audio quality on every Windows PC.'
-          ) | Set-Content dist/$env:GAME/release-notes.md -Encoding utf8
+          ) | Set-Content dist/warband/release-notes.md -Encoding utf8
       - name: Retain build and verification evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ env.GAME }}-windows-${{ github.sha }}-${{ github.run_attempt }}
+          name: warband-windows-${{ github.sha }}-${{ github.run_attempt }}
           path: |
-            dist/${{ env.GAME }}/*-setup.exe
-            dist/${{ env.GAME }}/*-portable.zip
-            dist/${{ env.GAME }}/*.json
-            dist/${{ env.GAME }}/SHA256SUMS
-            dist/${{ env.GAME }}/release-notes.md
-            dist/${{ env.GAME }}/verification/
+            warband/dist/warband/*-setup.exe
+            warband/dist/warband/*-portable.zip
+            warband/dist/warband/*.json
+            warband/dist/warband/SHA256SUMS
+            warband/dist/warband/release-notes.md
+            warband/dist/warband/verification/
           if-no-files-found: warn
           compression-level: 0
           retention-days: 30
 
   publish:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/') || inputs.publish
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v5
         with:
-          name: ${{ needs.build.outputs.game }}-windows-${{ github.sha }}-${{ github.run_attempt }}
+          name: warband-windows-${{ github.sha }}-${{ github.run_attempt }}
           path: release
       - name: Publish the verified version without replacing existing assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          game=$(python -c 'import json; print(json.load(open("release/build-manifest.json"))["game"])')
-          product=$(python -c 'import json; print(json.load(open("release/build-manifest.json"))["product"])')
           version=$(python -c 'import json; print(json.load(open("release/build-manifest.json"))["version"])')
           flags=()
           if [[ "$version" == *-* ]]; then flags+=(--prerelease); fi
-          gh release create "$game-v$version" --verify-tag --title "$product $version" --notes-file release/release-notes.md "${flags[@]}" \
+          gh release create "v$version" --verify-tag --title "Warband $version" --notes-file release/release-notes.md "${flags[@]}" \
             release/*-setup.exe release/*-portable.zip release/SHA256SUMS release/build-manifest.json release/verification.json release/workflow-build.json release/mesa-test-context.json

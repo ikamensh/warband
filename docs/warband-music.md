@@ -67,9 +67,9 @@ paced 30 FPS loop dipping to roughly 18–25 FPS during the heaviest pieces.
 ## Looking and listening
 
 ```bash
-uv run python tools/music_warband.py render /tmp/warband-music     # WAV + spectrogram PNG + stats per piece
-uv run python tools/music_warband.py sampler /tmp/warband-music    # 12 s of every piece in one WAV (and M4A)
-uv run python tools/verify_warband_music.py /tmp/warband-music     # the director on the real backend, silent driver
+uv run python tools/music.py render /tmp/warband-music     # WAV + spectrogram PNG + stats per piece
+uv run python tools/music.py sampler /tmp/warband-music    # 12 s of every piece in one WAV (and M4A)
+uv run python tools/verify_music.py /tmp/warband-music     # the director on the real backend, silent driver
 uv run python -m pytest tests/warband/test_music.py -q
 ```
 

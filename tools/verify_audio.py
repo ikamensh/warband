@@ -1,7 +1,7 @@
 """Write a labeled combat comparison and verify hidden, silent native playback.
 
-    uv run python tools/verify_warband_audio.py /tmp/warband-audio
-    uv run python tools/verify_warband_audio.py --preview-only
+    uv run python tools/verify_audio.py /tmp/warband-audio
+    uv run python tools/verify_audio.py --preview-only
 
 Native verification uses pyglet's silent driver, never the speakers. It checks
 the actual player's start, natural end-of-source event, and resource release.

@@ -5,7 +5,7 @@ goal = "Warband, the RTS reference game in this repository, gains the depth a sk
 
 [[items]]
 key = "settlement-hotkeys"
-repo = "https://github.com/ikamensh/saga2d.git"
+repo = "https://github.com/ikamensh/warband.git"
 title = "Global hotkeys for settlement production and training"
 story = "A player schedules production without the mouse: Ctrl+B, Ctrl+T and Ctrl+U open the settlement Build, Train and Upgrade menus from anywhere, Ctrl+P opens Plans, Ctrl+G starts placing the assembly point, and inside Train the unit letters order one unit while Shift+letter orders five, so filling a barracks queue is a few keystrokes."
 constraints = "Change only warband/scene.py, tests/warband/test_settlement_ui.py, the HELP_KEYS text in warband/scene.py and the Controls table in docs/warband-release.md. No framework change: saga2d's Button already supports modifier shortcuts (`Button(..., shortcut=\"Ctrl+T\")`, see docs/framework-button-shortcuts.md). The keys must work with or without a selection, offline and in NetworkGameScene, and must not take Ctrl+A, Ctrl+1 to Ctrl+9 or Ctrl+F6 to Ctrl+F8."

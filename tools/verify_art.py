@@ -1,6 +1,6 @@
 """Capture Warband's registered art and real lumber harvesting through pyglet.
 
-    uv run python tools/verify_warband_art.py /tmp/warband_art
+    uv run python tools/verify_art.py /tmp/warband_art
 
 Produces labeled asset sheets, settlement views at normal and close zoom,
 and four chopping stills plus a GIF from actual World.harvest orders. All

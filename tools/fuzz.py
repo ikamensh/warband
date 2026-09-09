@@ -1,7 +1,7 @@
 """Random play against Warband's rules and scene; any exception or broken invariant is a bug.
 
-    uv run python tools/fuzz_warband.py                 # 12 AI-vs-AI games and 12 random-input scene runs
-    uv run python tools/fuzz_warband.py --games 40 --monkey 0
+    uv run python tools/fuzz.py                 # 12 AI-vs-AI games and 12 random-input scene runs
+    uv run python tools/fuzz.py --games 40 --monkey 0
 
 AI games run brains against each other for up to fifteen simulated minutes,
 checking the world every simulated second: units stand on open ground,

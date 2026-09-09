@@ -56,11 +56,11 @@ enemy deaths to the player.
 ## Verification
 
 `uv run python -m pytest tests/warband -q` exercises the model, AI, persisted
-records and scene transitions. `tools/fuzz_warband.py` runs randomized games
+records and scene transitions. `tools/fuzz.py` runs randomized games
 and UI input at a default 25% CPU allowance. The native screenshot playback is:
 
 ```sh
-uv run python tools/verify_warband_scores.py /tmp/warband-score-shots
+uv run python tools/verify_scores.py /tmp/warband-score-shots
 ```
 
 It covers victory, ten-row rankings, empty boards, title access, a defeat while

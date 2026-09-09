@@ -59,7 +59,7 @@ understand the additional event fields.
 ## Preview and verification
 
 ```sh
-uv run python tools/verify_warband_audio.py /tmp/warband-audio
+uv run python tools/verify_audio.py /tmp/warband-audio
 ```
 
 The tool writes `comparison.wav`, a timestamped `comparison.txt` and matching

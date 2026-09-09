@@ -1,6 +1,6 @@
 """Native results/leaderboard playback, isolated from the player's saves.
 
-Run: uv run python tools/verify_warband_scores.py /tmp/warband-score-shots
+Run: uv run python tools/verify_scores.py /tmp/warband-score-shots
 Uses completed battle fixtures and real pyglet keyboard/mouse events. The
 model integration tests cover combat attribution and recovery decisions.
 """

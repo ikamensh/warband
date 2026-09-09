@@ -4,7 +4,7 @@ revision = 0
 goal = "Warband, the RTS reference game in this repository, gains the depth a skirmish player expects: a way to concede, a computer opponent that defends in proportion, finishes matches, grows its economy with its halls and plays its race, a map preview before starting, and armies that move together. Every change is covered by mock-backend tests and lands with the Warband suite green."
 
 [repo_baselines]
-"https://github.com/ikamensh/saga2d.git" = "41ee08f"
+"https://github.com/ikamensh/warband.git" = "41ee08f"
 
 [context_documents]
 "working-agreement.md" = """
@@ -21,7 +21,7 @@ files you touch before changing anything.
   414 tests, mock backend, no display needed. It must stay green; it is also the
   landing validation.
 - `uv run python -m pytest tests/warband/test_ai.py -q` — one file while iterating.
-- `uv run python -u tools/fuzz_warband.py --games 2 --monkey 2 --steps 200 --seed 11 --cpu-percent 100`
+- `uv run python -u tools/fuzz.py --games 2 --monkey 2 --steps 200 --seed 11 --cpu-percent 100`
   — a bounded AI-versus-AI and random-input check with a stall invariant. Run it
   after changing rules, the AI or scene input. It must print 0 failed.
 
@@ -59,7 +59,7 @@ files you touch before changing anything.
 
 [[items]]
 key = "ai-defence"
-repo = "https://github.com/ikamensh/saga2d.git"
+repo = "https://github.com/ikamensh/warband.git"
 title = "The AI defends in proportion to the threat and keeps its attack going"
 story = "A lone enemy scout at a farm no longer recalls the computer's whole army from its attack: the AI answers each threat with a few nearby soldiers sized to the threat, and abandons an attack only when the raid on its base is serious."
 constraints = "Change only warband/ai.py and tests/warband/test_ai.py. Decisions stay observable in Brain.log."
@@ -96,13 +96,13 @@ or step the world so a think is due):
 - Six enemy footmen at the farm against the same eight: every footman responds and
   `brain.attacking` is False.
 - A second think with the same scout still there adds no second "defend with" line.
-Afterwards run `uv run python -u tools/fuzz_warband.py --games 2 --monkey 0 --seed 21 --cpu-percent 100`;
+Afterwards run `uv run python -u tools/fuzz.py --games 2 --monkey 0 --seed 21 --cpu-percent 100`;
 it must report 0 failed.
 """
 
 [[items]]
 key = "ai-economy"
-repo = "https://github.com/ikamensh/saga2d.git"
+repo = "https://github.com/ikamensh/warband.git"
 title = "The AI's economy grows with its halls"
 story = "A computer player that expands to a second mine also grows its workforce: peasants are trained from every hall up to a target that rises with each completed hall, and the new hall's workers mine its own nearest mine, so the AI's late-game income matches its army ambitions."
 constraints = "Change only warband/ai.py, warband/worker_ai.py if the tests show it is needed, and tests/warband/test_ai.py and tests/warband/test_worker_ai.py."
@@ -129,13 +129,13 @@ to a far mine (`world.place_building(0, BuildingType.TOWN_HALL, pos)` beside one
 `world.mines()`) and gold to spare: after 90 simulated seconds of think and step it has
 more peasants than `PROFILES[Difficulty.NORMAL].peasants` and at least one peasant
 harvesting the far mine; with one hall the count stays at the profile value.
-Run `uv run python -u tools/fuzz_warband.py --games 2 --monkey 0 --seed 41 --cpu-percent 100`:
+Run `uv run python -u tools/fuzz.py --games 2 --monkey 0 --seed 41 --cpu-percent 100`:
 0 failed.
 """
 
 [[items]]
 key = "ai-race-play"
-repo = "https://github.com/ikamensh/saga2d.git"
+repo = "https://github.com/ikamensh/warband.git"
 title = "Each race's AI builds the army its race is good at, and counters what it sees"
 story = "Orcs field grunts and ogres, Elves lean on rangers and outriders, Dwarves bring crossbows and mortars early, Humans stay balanced, and every computer player shifts its training towards counters of the enemy composition it has seen, so the four races feel different to fight."
 constraints = "Change only warband/ai.py, tests/warband/test_ai.py and the sentence in docs/warband-races.md that says the AI plays every race the same way. Race data stays in warband/races.py; warband/rules.py is untouched."
@@ -168,13 +168,13 @@ brain's barracks trains FOOTMAN and an Elf brain's trains ARCHER (set player 0's
 through `mapgen.generate(..., races=[race, None])`); a Human brain facing six visible enemy
 archers and no melee picks SCOUT or KNIGHT at a stables; after 6 simulated minutes on seed
 5 with Hard brains, the Elf army's archer share exceeds the Orc army's.
-Run `uv run python -u tools/fuzz_warband.py --games 2 --monkey 0 --seed 61 --cpu-percent 100`:
+Run `uv run python -u tools/fuzz.py --games 2 --monkey 0 --seed 61 --cpu-percent 100`:
 0 failed.
 """
 
 [[items]]
 key = "ai-endgame"
-repo = "https://github.com/ikamensh/saga2d.git"
+repo = "https://github.com/ikamensh/warband.git"
 title = "Decisive endgames: bounded waves, pressing the advantage, last stand revealed"
 story = "Matches on large maps end: the computer never waits for an army larger than its farms can feed, it presses the attack while the enemy has no army, and a player who has lost every hall and production building has their remaining buildings revealed to everyone, so the last farm can be found."
 constraints = "Change warband/ai.py, warband/model.py, warband/scene.py (one toast) and tests under tests/warband/. Do not change map generation or unit rules."
@@ -225,7 +225,7 @@ Tests:
   appears exactly once across several steps and not again after
   `World.from_dict(world.to_dict())`.
 - tests/warband/test_scene.py: the toast text appears when the event fires.
-Run `uv run python -u tools/fuzz_warband.py --games 3 --monkey 0 --seed 31 --cpu-percent 100`:
+Run `uv run python -u tools/fuzz.py --games 3 --monkey 0 --seed 31 --cpu-percent 100`:
 0 failed. If time allows, `uv run python tools/ai_report.py --seeds 1 --decide 4` prints how
 many Normal-versus-Normal Medium matches end within 20 minutes; put that number in the
 commit message, not in the docs.
@@ -233,7 +233,7 @@ commit message, not in the docs.
 
 [[items]]
 key = "group-move"
-repo = "https://github.com/ikamensh/saga2d.git"
+repo = "https://github.com/ikamensh/warband.git"
 title = "Units ordered together move together"
 story = "When a mixed group is sent somewhere, the fast riders no longer arrive alone: a move or attack-move given to several units paces them to the slowest unit in the group, so the army reaches the fight as one."
 constraints = "Change only warband/model.py and tests/warband/test_model.py. Movement code is deadlock-sensitive: single-unit orders must be unchanged and the fuzz run in the notes must pass."
@@ -255,13 +255,13 @@ across 20 tiles arrive within 1.5 tiles of each other, and both within the footm
 travel time plus 10 percent; the knight ordered alone arrives in its own time; a footman
 held back by a wall of idle units does not slow the others beyond the 6-tile release;
 `World.from_dict(world.to_dict())` preserves the pace.
-Run `uv run python -u tools/fuzz_warband.py --games 3 --monkey 3 --steps 300 --seed 51 --cpu-percent 100`:
+Run `uv run python -u tools/fuzz.py --games 3 --monkey 3 --steps 300 --seed 51 --cpu-percent 100`:
 0 failed.
 """
 
 [[items]]
 key = "map-preview"
-repo = "https://github.com/ikamensh/saga2d.git"
+repo = "https://github.com/ikamensh/warband.git"
 title = "Map preview on the new-game screen"
 story = "Before starting, the player sees a small picture of the map the seed produces, with terrain, water, trees, mines and every start position in its player colour, plus the opponents' races, and can reroll or change size, land and players until it looks right."
 constraints = "Change only warband/title.py, warband/view.py (only to share the terrain colouring) and tests under tests/warband/. The preview must fit the existing panel at 1280x720; tests/warband/test_layout.py checks the new-game screen at five sizes."
@@ -295,7 +295,7 @@ under 1.0 s measured with `time.perf_counter`. tests/warband/test_layout.py stay
 
 [[items]]
 key = "resign"
-repo = "https://github.com/ikamensh/saga2d.git"
+repo = "https://github.com/ikamensh/warband.git"
 title = "Resign from the pause menu"
 story = "A player who is losing can concede: the pause menu offers Resign (hotkey R); the match ends at once with the Defeat screen, and the remaining players are credited with the win."
 constraints = "Single-player only: NetworkGameScene in warband/multiplayer.py keeps its own Leave match button and must not change. Change only warband/model.py, warband/scene.py, tests/warband/test_model.py and tests/warband/test_scene.py. No new saved state."

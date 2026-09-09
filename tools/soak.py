@@ -1,6 +1,6 @@
 """Soak Warband on the real backend: whole matches rendered frame by frame, with frame-time and memory reports.
 
-    uv run python tools/soak_warband.py --minutes 30 [--seed 1] [--out DIR]
+    uv run python tools/soak.py --minutes 30 [--seed 1] [--out DIR]
 
 An AI brain plays the human side too, so the match runs itself through the
 real GameScene (HUD, effects, fog, minimap, sounds through the silent

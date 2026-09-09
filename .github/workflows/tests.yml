@@ -1,0 +1,31 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: warband
+      - uses: actions/checkout@v4
+        with:
+          repository: ikamensh/saga2d-framework
+          path: saga2d
+      - uses: actions/checkout@v4
+        with:
+          repository: ikamensh/sagaforge
+          path: sagaforge
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync --extra dev
+        working-directory: warband
+      - name: Run tests
+        run: uv run pytest -q
+        working-directory: warband

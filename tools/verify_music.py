@@ -1,6 +1,6 @@
 """Play Warband's music director through the real pyglet backend and report what it did.
 
-    uv run python tools/verify_warband_music.py DIR
+    uv run python tools/verify_music.py DIR
 
 Uses pyglet's silent audio driver in a hidden window, so nothing is heard and no
 display is needed beyond being awake.  The bank composes the catalogue in the

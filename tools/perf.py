@@ -1,6 +1,6 @@
 """Frame times of a 150-unit battle on the real backend, with a breakdown of where a frame goes.
 
-    uv run python tools/perf_warband.py [--frames 720] [--profile late.prof]
+    uv run python tools/perf.py [--frames 720] [--profile late.prof]
 
 Two armies of six unit types meet between twelve farms on a large map,
 every unit image already rendered (as after the opening's warm-up).  Each

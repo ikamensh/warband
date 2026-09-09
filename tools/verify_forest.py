@@ -1,6 +1,6 @@
 """Inspect forest ground and the real chopping cycle, including the cleared ground.
 
-    uv run python tools/verify_warband_forest.py /tmp/warband-forest
+    uv run python tools/verify_forest.py /tmp/warband-forest
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from PIL import Image  # noqa: E402
 from saga2d import Game, fonts  # noqa: E402
 from saga2d.testing.native_frames import tick  # noqa: E402
-from tools.verify_warband_art import settlement  # noqa: E402
+from tools.verify_art import settlement  # noqa: E402
 from warband import textures  # noqa: E402
 from warband.rules import MapTheme, Resource, Terrain  # noqa: E402
 from warband.style import build_theme  # noqa: E402

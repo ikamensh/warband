@@ -1,6 +1,6 @@
 """Exercise settlement planning with real native mouse events and inspectable frames.
 
-    SAGA2D_SILENT=1 uv run python tools/verify_warband_settlement.py /tmp/warband-settlement
+    SAGA2D_SILENT=1 uv run python tools/verify_settlement.py /tmp/warband-settlement
 
 The fixture starts with empty coffers, then grants resources to demonstrate that
 waiting plans become real construction and production. Rendering is capped at
@@ -166,7 +166,7 @@ def verify(out: Path, save_dir: Path) -> None:
                   "farm_foundation_ids": [b.id for b in foundations], "world_time": world.time,
                   "captures": captures, "result": "passed"}
         (out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
-        print("verify_warband_settlement: all steps passed", flush=True)
+        print("verify_settlement: all steps passed", flush=True)
     finally:
         game.close()
 
