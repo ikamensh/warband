@@ -127,7 +127,7 @@ See the in-game help (F1) and codex (F2). Summary:
 |---|---|
 | Select | click, drag a box, double-click or Ctrl-click for a type, Ctrl+A for the army, 1–9 groups (Ctrl+1–9 to set), Tab / . next idle peasant / soldier |
 | Order | right-click (move, harvest, attack, repair, resume building, rally), A attack-move, P patrol, S stop, H hold, M move, R repair |
-| Plan without a selection | Settlement → Build / Train / Upgrade; Plans shows waiting work, progress and cancellation |
+| Plan without a selection | Settlement → Build / Train / Upgrade (Ctrl+B / Ctrl+T / Ctrl+U, Shift+letter orders five in Train); Ctrl+P Plans shows waiting work, progress and cancellation; Ctrl+G assembly point |
 | Build with a selected worker | B then F farm, B barracks, H town hall, T tower, M lumber mill, K blacksmith, S stables, W workshop, C church |
 | Train / research directly | the letters on the command card when a building is selected |
 | Gather new soldiers | Assembly point, then click the map; a building-specific rally point takes priority |

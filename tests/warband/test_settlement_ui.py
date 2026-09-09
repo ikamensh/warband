@@ -67,7 +67,7 @@ def test_settlement_controls_are_available_without_selection(settlement):
     game, scene = settlement
     assert scene.selection == []
     labels = {b.text for b in scene.ui.walk() if isinstance(b, Button)}
-    assert {"Build", "Train", "Upgrade", "Plans (0)", "Assembly point"} <= labels
+    assert {"Build", "Train", "Upgrade", "Plans (0)", "Assembly"} <= labels
     assert_no_text_overlap(game)
 
 
@@ -101,7 +101,7 @@ def test_empty_selection_can_plan_wait_cancel_and_set_assembly(settlement):
     click_button(game, next(b for b in row.walk() if isinstance(b, Button) and b.text == "Cancel"))
     assert {p.type for p in world.player_plans(scene.human)} == {BuildingType.FARM, UnitType.FOOTMAN}
     click(game, "Back")
-    click(game, "Assembly point")
+    click(game, "Assembly")
     target = world.player_units(scene.human)[0].pos
     x, y = scene.camera.world_to_screen(target[0] * TILE, target[1] * TILE)
     game.backend.inject_click(x, y)
@@ -131,6 +131,80 @@ def test_global_unit_request_starts_when_funded_and_active_queue_can_be_cancelle
     assert "Training" in "\n".join(item["text"] for item in game.backend.texts)
     click(game, "Cancel last")
     assert not hall.queue and scene.selection == []
+
+
+def test_ctrl_t_trains_one_then_five_and_toggles_shut(settlement):
+    """Ctrl+T opens the train menu, F orders one, Shift+F five more, Ctrl+T closes."""
+    game, scene = settlement
+    game.backend.inject_key("t", ctrl=True)
+    game.tick(1 / 30)
+    assert scene.settlement_menu == "train"
+    assert "Footman" in [c.label for c in scene._card]
+    game.backend.inject_key("f")
+    game.tick(1 / 30)
+    assert len(scene.world.player_plans(scene.human)) == 1
+    sounds = len(scene.recent_sounds)
+    game.backend.inject_key("f", shift=True)
+    game.tick(1 / 30)
+    assert len(scene.world.player_plans(scene.human)) == 6
+    assert scene.status == "5 x Footman ordered - pay when work starts - manage in Plans"
+    assert list(scene.recent_sounds)[sounds:] == ["button"]
+    game.backend.inject_key("t", ctrl=True)
+    game.tick(1 / 30)
+    assert scene.settlement_menu is None
+
+
+def test_settlement_shortcuts_switch_menus_plan_and_assembly(settlement):
+    """Ctrl+B/U switch menus, Ctrl+B then F queues a farm site, Ctrl+P/U/G do their jobs."""
+    game, scene = settlement
+    game.backend.inject_key("b", ctrl=True)
+    game.tick(1 / 30)
+    assert scene.settlement_menu == "build"
+    game.backend.inject_key("u", ctrl=True)
+    game.tick(1 / 30)
+    assert scene.settlement_menu == "upgrade"
+    game.backend.inject_key("b", ctrl=True)
+    game.tick(1 / 30)
+    assert scene.settlement_menu == "build"
+    game.backend.inject_key("f")
+    game.tick(1 / 30)
+    assert scene.pending.startswith("plan:")
+    game.backend.inject_key("u", ctrl=True)
+    game.tick(1 / 30)
+    assert scene.settlement_menu == "upgrade"
+    game.backend.inject_key("p", ctrl=True)
+    game.tick(1 / 30)
+    assert isinstance(game.scene, SettlementPlansScene)
+    game.pop()
+    game.tick(1 / 30)
+    game.backend.inject_key("g", ctrl=True)
+    game.tick(1 / 30)
+    assert scene.pending == "assembly"
+
+
+def test_settlement_shortcuts_work_with_a_peasant_selected(settlement):
+    """Ctrl+T opens Train without dropping the selection; bare B still opens the worker menu."""
+    game, scene = settlement
+    peasant = next(u for u in scene.world.player_units(scene.human) if u.is_worker)
+    scene.select([peasant.id])
+    game.backend.inject_key("t", ctrl=True)
+    game.tick(1 / 30)
+    assert scene.settlement_menu == "train"
+    assert scene.selection == [peasant.id]
+    game.backend.inject_key("t", ctrl=True)
+    game.tick(1 / 30)
+    assert scene.settlement_menu is None
+    game.backend.inject_key("b")
+    game.tick(1 / 30)
+    assert scene.build_menu is True
+
+
+def test_settlement_row_draws_shortcut_keycaps(settlement):
+    """The Settlement buttons draw their Ctrl chords as keycaps (mock records the cap text)."""
+    game, scene = settlement
+    texts = [item["text"] for item in game.backend.texts]
+    for chord in ("Ctrl+B", "Ctrl+T", "Ctrl+U", "Ctrl+P", "Ctrl+G"):
+        assert chord in texts
 
 
 def test_long_plan_list_pages_and_keeps_cancellation_visible(settlement):
