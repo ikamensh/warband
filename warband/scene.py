@@ -1113,6 +1113,8 @@ class GameScene(Scene):
                 self.warn(e.text)
             elif e.kind in ("eliminated", "surrendered") and not mine:
                 self.effects.add(Toast("A rival falls", [e.text], accent=GOOD, hold=4.0, top=TOAST_TOP))
+            elif e.kind == "exposed":
+                self.effects.add(Toast(f"{e.text}'s last holdings are revealed", [e.text], hold=4.0, top=TOAST_TOP))
             elif e.kind == "exhausted":
                 self.effects.add(FloatingText("Mine exhausted", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), MUTED, rise=20, duration=1.5))
             elif e.kind == "plunder" and mine:

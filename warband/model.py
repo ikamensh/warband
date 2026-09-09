@@ -362,6 +362,7 @@ class World:
         self._worker_ai_views: dict[int, tuple[int, Any]] = {}
         self._worker_ai_navigation: dict[int, tuple[int, bytearray]] = {}
         self.settlement = Settlement(self)
+        self._exposed: set[int] = set()  # players whose last holdings stand revealed
 
     # -- Ids and lookups -----------------------------------------------------------
 
@@ -474,6 +475,42 @@ class World:
                 if visible[i]:
                     explored[i] = 1
             self.worker_knowledge[player.id].refresh(self, player.id)
+        self._reveal_last_standings()
+
+    def _is_exposed(self, player_id: int) -> bool:
+        """Alive but with no completed hall and no completed building that trains units."""
+        player = self.players[player_id]
+        if not player.alive:
+            return False
+        for b in self.buildings.values():
+            if b.player == player_id and b.done:
+                if b.type is BuildingType.TOWN_HALL or b.info.trains:
+                    return False
+        return any(b.player == player_id for b in self.buildings.values())
+
+    def _exposed_players(self) -> set[int]:
+        return {p.id for p in self.players if self._is_exposed(p.id)}
+
+    def _reveal_last_standings(self) -> None:
+        for exposed_id in sorted(self._exposed_players()):
+            holdings = [b for b in self.buildings.values() if b.player == exposed_id]
+            if not holdings:
+                continue
+            for viewer in self.players:
+                if viewer.id == exposed_id:
+                    continue
+                visible = self.visible[viewer.id]
+                explored = self.explored[viewer.id]
+                for b in holdings:
+                    for tile in b.tiles():
+                        self._reveal(visible, tile, 1)
+                for i in range(self.width * self.height):
+                    if visible[i]:
+                        explored[i] = 1
+            if exposed_id not in self._exposed:
+                self._exposed.add(exposed_id)
+                self.events.append(Event("exposed", holdings[0].center, player=exposed_id,
+                                         text=self.players[exposed_id].name))
 
     def _reveal(self, visible: bytearray, at: Pos, radius: int) -> None:
         width, height = self.width, self.height
@@ -2110,7 +2147,9 @@ class World:
         state = data["rng"]
         world.rng.setstate((state[0], tuple(state[1]), state[2]))
         world._index_units()
+        world._exposed = world._exposed_players()
         world.update_vision()
+        world.events.clear()
         return world
 
 

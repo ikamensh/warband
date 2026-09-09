@@ -495,3 +495,33 @@ def test_patrol_walks_back_and_forth_and_fights_what_it_meets() -> None:
     victim = world.spawn_unit(1, UnitType.PEASANT, (8.5, 5.5))
     run_until(world, lambda: victim.id not in world.units, 15.0)
     run_until(world, lambda: knight.x > 12.0, 10.0)  # and carries on patrolling
+
+
+def test_a_hall_less_player_has_its_last_holdings_revealed_once() -> None:
+    world = flat_world()
+    world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
+    hall = world.place_building(1, BuildingType.TOWN_HALL, (18, 14))
+    barracks = world.place_building(1, BuildingType.BARRACKS, (14, 14))
+    farm = world.place_building(1, BuildingType.FARM, (19, 10))
+    tower = world.place_building(1, BuildingType.TOWER, (21, 10))
+    world.spawn_unit(1, UnitType.PEASANT, (17.5, 12.5))
+    world.update_vision()
+    assert not world.is_visible(0, (farm.x, farm.y))
+    assert not events(world, "exposed")
+    world._remove_building(barracks, reason="destroyed")
+    world.update_vision()
+    assert not world.is_visible(0, (farm.x, farm.y))  # the barracks still trains
+    assert not events(world, "exposed")
+    world._remove_building(hall, reason="destroyed")
+    world.update_vision()
+    assert world.is_visible(0, (farm.x, farm.y))
+    assert world.is_visible(0, (tower.x, tower.y))
+    exposed = events(world, "exposed")
+    assert len(exposed) == 1 and exposed[0].player == 1
+    assert exposed[0].text == world.players[1].name
+    run(world, 3.0)
+    assert len(events(world, "exposed")) == 1  # exactly once across several steps
+    copy = World.from_dict(world.to_dict())
+    assert not events(copy, "exposed")
+    run(copy, 3.0)
+    assert not events(copy, "exposed")  # the loaded world already knows they stand revealed
