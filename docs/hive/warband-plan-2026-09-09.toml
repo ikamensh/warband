@@ -1,0 +1,335 @@
+version = 1
+plan_id = ""
+revision = 0
+goal = "Warband, the RTS reference game in this repository, gains the depth a skirmish player expects: a way to concede, a computer opponent that defends in proportion, finishes matches, grows its economy with its halls and plays its race, a map preview before starting, and armies that move together. Every change is covered by mock-backend tests and lands with the Warband suite green."
+
+[repo_baselines]
+"https://github.com/ikamensh/saga2d.git" = "41ee08f"
+
+[context_documents]
+"working-agreement.md" = """
+# Working agreement for Warband tasks
+
+Repository: https://github.com/ikamensh/saga2d (Python 3.13, run everything with `uv run`).
+The framework is `saga2d/`; the game is `warband/`; its tests are `tests/warband/`.
+Read the root `CLAUDE.md`, `docs/warband-races.md` and the module docstrings of the
+files you touch before changing anything.
+
+## Commands
+
+- `uv run python -m pytest tests/warband -q` — the Warband suite: about 4 minutes,
+  414 tests, mock backend, no display needed. It must stay green; it is also the
+  landing validation.
+- `uv run python -m pytest tests/warband/test_ai.py -q` — one file while iterating.
+- `uv run python -u tools/fuzz_warband.py --games 2 --monkey 2 --steps 200 --seed 11 --cpu-percent 100`
+  — a bounded AI-versus-AI and random-input check with a stall invariant. Run it
+  after changing rules, the AI or scene input. It must print 0 failed.
+
+## Rules
+
+- Change only `warband/` and `tests/warband/` unless the task names other files.
+  Never edit `saga2d/`. Game code imports from `saga2d` only, never `saga2d.backends`.
+- Tests use the mock backend:
+  `Game("t", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path)`,
+  `game.push(scene)`, `game.tick(1 / 60)`, `game.backend.inject_key("r")`,
+  `game.backend.inject_click(x, y)`; assert on `game.backend.texts` (dicts with a
+  "text" key) and on model state. `tests/warband/test_scene.py` has the helpers
+  `press`, `tick`, `texts`, `click`; `tests/warband/test_model.py` has `flat_world`,
+  `run`, `run_until`, `events`; `tests/warband/test_ai.py` shows how to drive a
+  `Brain` against `mapgen.generate(seed=5, players=2, human=None)`.
+- The model (`warband/model.py`) is a 20 Hz fixed-step simulation (`SIM_DT` in
+  `warband/rules.py`). Orders are dataclasses in a deque per unit. Every command
+  has a `can_*` query that returns a reason string or None, and the command raises
+  `RuleError` when misused. Clear exceptions over silent fallbacks: never make the
+  model swallow an error or invent a default for a real mistake.
+- Saves: `World.to_dict`/`from_dict` must round-trip every new field. The scene's
+  `SAVE_VERSION` (warband/scene.py) guards the schema. A new field that older saves
+  lack loads with a sensible default through `saved.get(...)`, and a test must load
+  a dict without the field.
+- Multiplayer sends `World.to_dict()` snapshots (warband/multiplayer.py), so new
+  World state must be plain JSON data (ints, floats, strings, lists, dicts).
+- Delete rather than deprecate: no compatibility shims, no dead code, no TODO
+  comments, no commented-out code.
+- Keep the docs honest: when behaviour described in `docs/warband-races.md` or a
+  module docstring changes, update that text. Do not write evidence claims for runs
+  you did not do; put measured numbers in the commit message.
+- Commit with a message that says what changed and why. Do not push to main
+  yourself; the pipeline lands the reviewed commit.
+"""
+
+[[items]]
+key = "ai-defence"
+repo = "https://github.com/ikamensh/saga2d.git"
+title = "The AI defends in proportion to the threat and keeps its attack going"
+story = "A lone enemy scout at a farm no longer recalls the computer's whole army from its attack: the AI answers each threat with a few nearby soldiers sized to the threat, and abandons an attack only when the raid on its base is serious."
+constraints = "Change only warband/ai.py and tests/warband/test_ai.py. Decisions stay observable in Brain.log."
+notes = """
+Today `Brain._military` (warband/ai.py) reacts to `_threat` (the nearest visible enemy
+within DEFEND_RADIUS of any own building) by setting `attacking = False` and sending
+every soldier there, then returning.
+
+New behaviour:
+- `_threats(world) -> list[Unit]`: the visible enemy units (not hidden,
+  `world.is_visible(self.player, unit.tile)`) within DEFEND_RADIUS of an own building.
+  The threat point is the position of the nearest of them, as `_threat` computes today.
+- Responders: the soldiers nearest to the threat point, excluding raiders,
+  `min(len(army), max(2, ceil(1.5 * len(threats))))` of them. Only they receive
+  `attack_move` to the threat point; every other soldier keeps its orders. A soldier
+  whose current order is already an Attack or AttackMove aimed within DEFEND_RADIUS of
+  the threat point counts as a responder and is not re-ordered.
+- `attacking` is cleared only when the threat is at least half the army
+  (`2 * len(threats) >= len(army)`); then the whole army responds, as today.
+- Log `defend with N against M` when a threat first appears or its size changes; not on
+  every think while the same threat persists (remember the last logged count).
+- Once no threat remains, the existing paths (idle soldiers rejoin the attack, or the
+  army musters) stay as they are.
+
+Tests (tests/warband/test_ai.py), driving a `Brain` on
+`mapgen.generate(seed=5, players=2, human=None)` with `world.spawn_unit(player, UnitType.X, point)`,
+`world.update_vision()` and single `brain.think(world, rng)` calls (advance `world.time`
+or step the world so a think is due):
+- Eight own footmen near the hall ordered `attack_move` towards the enemy hall with
+  `brain.attacking = True`; one enemy scout spawned two tiles from an own farm. After the
+  think, at most three footmen have an order aimed within DEFEND_RADIUS of the scout, at
+  least five still carry the original target, `brain.attacking` is True, and the log has
+  exactly one "defend with" line.
+- Six enemy footmen at the farm against the same eight: every footman responds and
+  `brain.attacking` is False.
+- A second think with the same scout still there adds no second "defend with" line.
+Afterwards run `uv run python -u tools/fuzz_warband.py --games 2 --monkey 0 --seed 21 --cpu-percent 100`;
+it must report 0 failed.
+"""
+
+[[items]]
+key = "ai-economy"
+repo = "https://github.com/ikamensh/saga2d.git"
+title = "The AI's economy grows with its halls"
+story = "A computer player that expands to a second mine also grows its workforce: peasants are trained from every hall up to a target that rises with each completed hall, and the new hall's workers mine its own nearest mine, so the AI's late-game income matches its army ambitions."
+constraints = "Change only warband/ai.py, warband/worker_ai.py if the tests show it is needed, and tests/warband/test_ai.py and tests/warband/test_worker_ai.py."
+notes = """
+Today `Brain._training` trains peasants from `_hall()` (the first completed hall) only
+while `len(peasants) < profile.peasants`, so an expansion hall adds no workers.
+`assign_idle_workers` in warband/worker_ai.py decides where idle workers go; read it
+before changing anything.
+
+- Workforce target: `profile.peasants + 5 * (completed halls - 1)`, capped by the supply
+  cap minus the soldiers the brain wants for its next wave (`self.wave`), never below
+  `profile.peasants`.
+- Every completed hall with an empty queue trains a peasant while the workforce is below
+  target, not only the first hall.
+- A peasant delivered at an expansion hall should gather at that hall's nearest mine or
+  nearest trees. If `assign_idle_workers` already prefers the nearest deposit, no change
+  is needed there; if it sends everyone to the first hall's mine, fix it in
+  warband/worker_ai.py with a test in tests/warband/test_worker_ai.py.
+- Log "workforce target N" whenever the target changes.
+
+Tests (tests/warband/test_ai.py): a Normal brain on
+`mapgen.generate(seed=5, players=2, human=None)` with a second completed hall placed next
+to a far mine (`world.place_building(0, BuildingType.TOWN_HALL, pos)` beside one of
+`world.mines()`) and gold to spare: after 90 simulated seconds of think and step it has
+more peasants than `PROFILES[Difficulty.NORMAL].peasants` and at least one peasant
+harvesting the far mine; with one hall the count stays at the profile value.
+Run `uv run python -u tools/fuzz_warband.py --games 2 --monkey 0 --seed 41 --cpu-percent 100`:
+0 failed.
+"""
+
+[[items]]
+key = "ai-race-play"
+repo = "https://github.com/ikamensh/saga2d.git"
+title = "Each race's AI builds the army its race is good at, and counters what it sees"
+story = "Orcs field grunts and ogres, Elves lean on rangers and outriders, Dwarves bring crossbows and mortars early, Humans stay balanced, and every computer player shifts its training towards counters of the enemy composition it has seen, so the four races feel different to fight."
+constraints = "Change only warband/ai.py, tests/warband/test_ai.py and the sentence in docs/warband-races.md that says the AI plays every race the same way. Race data stays in warband/races.py; warband/rules.py is untouched."
+notes = """
+`Brain._choose_unit` (warband/ai.py) alternates footman/archer by `unit_toggle`, buys
+knights when gold > 1000, catapults after 6 soldiers and clerics at one per six;
+`RESEARCH_ORDER` is shared.
+
+- Add `ARMY_PLANS: dict[Race, dict[UnitType, float]]`, target shares of the army by
+  skeleton type (rules.UnitType: FOOTMAN line, ARCHER ranged, SCOUT raider, KNIGHT shock,
+  CATAPULT siege, CLERIC healer). Humans 0.35/0.30/0.05/0.20/0.05/0.05;
+  Orcs 0.45/0.15/0.05/0.30/0.05/0.00; Elves 0.25/0.45/0.15/0.10/0.05/0.00;
+  Dwarves 0.40/0.35/0.00/0.05/0.15/0.05. Shares of types the profile does not use
+  (`tech`, `siege`, `clerics`) are dropped and the rest renormalised.
+- Counter shift, from visible enemy soldiers (`world.is_visible(self.player, u.tile)`):
+  if enemy archers outnumber enemy melee two to one, move 0.15 of share from FOOTMAN to
+  SCOUT and KNIGHT; if the enemy has three or more knights, move 0.15 from SCOUT and
+  KNIGHT to FOOTMAN and ARCHER.
+- Choice: among the types the building can train and the player can afford
+  (`world.can_train(building, t) is None`), pick the one whose current share of the army
+  (from `counts`) is furthest below its target; ties in the plan's order. Delete
+  `unit_toggle`. Keep the raid rule (the first two scouts) and let Dwarves start siege
+  from 4 soldiers instead of 6.
+- Research stays as it is; the race arts already follow `RESEARCH_ORDER` filtered by
+  `RACES[race].upgrade_allowed`.
+- Log "army plan <race>" at the first think.
+
+Tests (tests/warband/test_ai.py): with equal counts and gold for everything, an Orc
+brain's barracks trains FOOTMAN and an Elf brain's trains ARCHER (set player 0's race
+through `mapgen.generate(..., races=[race, None])`); a Human brain facing six visible enemy
+archers and no melee picks SCOUT or KNIGHT at a stables; after 6 simulated minutes on seed
+5 with Hard brains, the Elf army's archer share exceeds the Orc army's.
+Run `uv run python -u tools/fuzz_warband.py --games 2 --monkey 0 --seed 61 --cpu-percent 100`:
+0 failed.
+"""
+
+[[items]]
+key = "ai-endgame"
+repo = "https://github.com/ikamensh/saga2d.git"
+title = "Decisive endgames: bounded waves, pressing the advantage, last stand revealed"
+story = "Matches on large maps end: the computer never waits for an army larger than its farms can feed, it presses the attack while the enemy has no army, and a player who has lost every hall and production building has their remaining buildings revealed to everyone, so the last farm can be found."
+constraints = "Change warband/ai.py, warband/model.py, warband/scene.py (one toast) and tests under tests/warband/. Do not change map generation or unit rules."
+notes = """
+Why matches stall: `Brain._military` attacks only when `len(army) >= self.wave`, and
+`self.wave` grows by `profile.wave_growth` after every wave without bound, while
+`World.supply(player)` caps units at what farms and halls feed; after a few waves the
+required army can never exist. docs/warband-release.md lists "Large maps with three or
+four players can run past twenty minutes without a decision" as a known issue.
+
+AI (warband/ai.py):
+- Wave bound: the army the brain waits for is `min(self.wave, cap - peasants - 2)` where
+  `(used, cap) = world.supply(self.player)` and peasants is `len(self._peasants(world))`,
+  never below `profile.first_wave // 2`. Log "wave capped at N" the first time the cap
+  applies.
+- Press the advantage: `_enemy_soldiers(world)` counts living enemy soldiers (units that
+  are not workers) of alive players. When it is below 3 and the brain has at least 3
+  soldiers, attack now without waiting for the wave, and stay attacking while that holds
+  (the existing `len(army) < 3` retreat still applies).
+- Hunting: while attacking, idle soldiers already go to the nearest enemy building; make
+  `_enemy_targets` prefer buildings of alive players and keep the fall-through to units.
+
+Model (warband/model.py):
+- Last stand: a player who is alive but has no completed hall (`BuildingType.TOWN_HALL`)
+  and no completed building that trains units (`info.trains` non-empty) is exposed. In
+  `update_vision`, after normal vision, reveal every remaining building of an exposed
+  player to every other player through `_reveal` on that player's visibility array with
+  radius 1 around each building tile (read how `update_vision` fills the per-player
+  arrays that `is_visible` reads, and reuse them).
+- Emit `Event("exposed", centre of one remaining building, player=id, text=name)` once,
+  the first step a player becomes exposed. Keep a set of exposed player ids; it is
+  derived from buildings, so saves need nothing new, but recompute the set in `from_dict`
+  so the event does not repeat after loading.
+
+Scene (warband/scene.py): on the "exposed" event show a toast
+"<name>'s last holdings are revealed" the way the scene turns other events into toasts
+(search for how "victory" or "under attack" is handled).
+
+Tests:
+- tests/warband/test_ai.py: a Hard brain with `brain.wave = 60`, 12 soldiers, 14 peasants
+  and a supply cap of 40 (place farms with `world.place_building`) attacks within three
+  thinks; a Normal brain with 5 soldiers attacks when the enemy has no soldiers and two
+  farms left even though `brain.wave` is 10.
+- tests/warband/test_model.py: in a two-player `flat_world`, give player 1 a hall, a
+  barracks, a farm and a tower far from player 0; remove the hall and barracks (set hp to
+  0 and step, or `_remove_building`): after `update_vision` player 0 sees the farm's tiles
+  though it has nothing near; with the barracks present it does not; the "exposed" event
+  appears exactly once across several steps and not again after
+  `World.from_dict(world.to_dict())`.
+- tests/warband/test_scene.py: the toast text appears when the event fires.
+Run `uv run python -u tools/fuzz_warband.py --games 3 --monkey 0 --seed 31 --cpu-percent 100`:
+0 failed. If time allows, `uv run python tools/ai_report.py --seeds 1 --decide 4` prints how
+many Normal-versus-Normal Medium matches end within 20 minutes; put that number in the
+commit message, not in the docs.
+"""
+
+[[items]]
+key = "group-move"
+repo = "https://github.com/ikamensh/saga2d.git"
+title = "Units ordered together move together"
+story = "When a mixed group is sent somewhere, the fast riders no longer arrive alone: a move or attack-move given to several units paces them to the slowest unit in the group, so the army reaches the fight as one."
+constraints = "Change only warband/model.py and tests/warband/test_model.py. Movement code is deadlock-sensitive: single-unit orders must be unchanged and the fuzz run in the notes must pass."
+notes = """
+- `World.move` and `World.attack_move` (warband/model.py) take a list of unit ids. When the
+  list has more than one unit, record the group's pace on each issued order (a
+  `pace: float | None` field on `Move` and `AttackMove`, the slowest `speed_of` in the
+  group at issue time) and make the walking code (`_walk_to`, `_follow`, `_steer`) use
+  `min(speed_of(u), order.pace)` while that order is the unit's current order.
+- A unit more than 6 tiles behind the group's leading unit releases the cap, so a stuck
+  unit never holds the rest. A unit that is engaged (`_engage`) fights at full speed.
+- Queued orders (`queue=True`) and single-unit orders carry no pace. Patrol, harvest,
+  build and repair are unaffected.
+- Orders are serialised in `to_dict`/`from_dict`; add the field there so saves and network
+  snapshots round-trip it, and a save without it loads with `None`.
+
+Tests (tests/warband/test_model.py, `flat_world`): a knight and a footman ordered together
+across 20 tiles arrive within 1.5 tiles of each other, and both within the footman's own
+travel time plus 10 percent; the knight ordered alone arrives in its own time; a footman
+held back by a wall of idle units does not slow the others beyond the 6-tile release;
+`World.from_dict(world.to_dict())` preserves the pace.
+Run `uv run python -u tools/fuzz_warband.py --games 3 --monkey 3 --steps 300 --seed 51 --cpu-percent 100`:
+0 failed.
+"""
+
+[[items]]
+key = "map-preview"
+repo = "https://github.com/ikamensh/saga2d.git"
+title = "Map preview on the new-game screen"
+story = "Before starting, the player sees a small picture of the map the seed produces, with terrain, water, trees, mines and every start position in its player colour, plus the opponents' races, and can reroll or change size, land and players until it looks right."
+constraints = "Change only warband/title.py, warband/view.py (only to share the terrain colouring) and tests under tests/warband/. The preview must fit the existing panel at 1280x720; tests/warband/test_layout.py checks the new-game screen at five sizes."
+notes = """
+- `MapView._minimap_terrain` in warband/view.py colours tiles from
+  `textures.PALETTES[theme].minimap`. Move that colouring into a module-level function
+  `minimap_terrain(world) -> np.ndarray` used by MapView and by the preview.
+- `NewGameScene` (warband/title.py) generates the world for the current seed, size,
+  players, theme and race with
+  `mapgen.generate(seed, w, h, players, theme=theme, races=[race] + [None] * (players - 1))`,
+  draws terrain, a 3x3 block per start hall in the owner's colour (`world.players[i].color`)
+  and mines in gold into a PIL image at 4 pixels per tile (Large is 64x48 tiles, so
+  256x192), registers it with `self.game.assets.image_from_pil(key, image)` the first time
+  and `self.game.assets.update_image(key, image)` afterwards (see `MapView._register` and
+  `saga2d/assets.py`), and shows it with the `Image` component from
+  `saga2d/ui/components.py` (`Image(key, width=256, height=192)`) placed below the seed
+  row or beside the option rows, whichever keeps the panel inside 1280x720.
+- Regenerate whenever size, players, theme, race or seed change (`set_size`,
+  `set_players`, `set_theme`, `set_race`, `reroll`), reusing one asset key. Generation
+  is synchronous; keep it well under a second for Large.
+- Under the preview, a label "Opponents: Orcs, Dwarves" from
+  `RACES[p.race].name for p in world.players[1:]`.
+
+Tests: a new tests/warband/test_new_game_preview.py. Opening NewGameScene draws the
+preview image (look for the asset key in `game.backend.sprites` or the drawn images the
+mock backend records) and lists the opponents' races; pressing "r" (reroll) changes the
+seed and the image bytes; pressing "l" (Large) changes the image to 256x192; the opponent
+line matches `mapgen.generate` for the same seed; generating the Large preview takes
+under 1.0 s measured with `time.perf_counter`. tests/warband/test_layout.py stays green.
+"""
+
+[[items]]
+key = "resign"
+repo = "https://github.com/ikamensh/saga2d.git"
+title = "Resign from the pause menu"
+story = "A player who is losing can concede: the pause menu offers Resign (hotkey R); the match ends at once with the Defeat screen, and the remaining players are credited with the win."
+constraints = "Single-player only: NetworkGameScene in warband/multiplayer.py keeps its own Leave match button and must not change. Change only warband/model.py, warband/scene.py, tests/warband/test_model.py and tests/warband/test_scene.py. No new saved state."
+notes = """
+Model (warband/model.py):
+- Add `World.can_resign(player: int) -> str | None` with the reasons "the match is over"
+  (`self.winner is not None`) and "<name> is already out" (`not self.players[player].alive`),
+  and `World.resign(player: int)` which raises `RuleError(reason)` when `can_resign` returns one.
+- Resigning removes every unit of that player through `_remove_unit` and every building
+  through `_remove_building(b, reason="resigned")` (gold mines are neutral, `b.player is None`,
+  and stay). Then append `Event("resigned", <the hall's centre, or the first building's, or
+  the first unit's position>, player=player, text=self.players[player].name)` and call
+  `_check_elimination()` so the player is marked dead and, when one player is left,
+  `winner` is set and the existing "victory" event fires.
+
+Scene (warband/scene.py):
+- `PauseScene.controls` gains `"r": "resign"` and the panel gains
+  `Button("Resign", hotkey="R", on_click=self.resign, style=GHOST_BUTTON, width=260)`
+  after "How to play". `resign()` pops the pause menu, then calls
+  `self.game_scene.world.resign(self.game_scene.human)`.
+- The existing game-over hook in `GameScene` (search for `self.game.push(GameOverScene(self, won))`)
+  shows Defeat on the next update. Check that it fires when the human is dead in a
+  three- or four-player match where `world.winner` is still None; if it only fires on
+  `world.winner`, make it also fire when `world.players[self.human].alive` is False.
+- `GameScene.controls` binds F3 to `toggle_pause`; use that in the scene test.
+
+Tests:
+- tests/warband/test_model.py: resigning in a two-player world removes the player's
+  units and buildings, leaves the mines, marks the player dead, sets `winner` to the
+  other player and emits "resigned" then "victory" events; resigning twice or after
+  the match is over raises RuleError; in a three-player world the resigned player is
+  dead and `winner` stays None.
+- tests/warband/test_scene.py: press "f3", press "r", tick: the top scene is a
+  `GameOverScene`, the texts contain "Defeat", and `world.players[scene.human].alive`
+  is False. Also: with `world.winner` already set, the Resign button does nothing harmful
+  (RuleError is not raised into the UI — check `can_resign` first and skip).
+"""
