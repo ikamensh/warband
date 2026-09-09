@@ -15,7 +15,7 @@ from warband.title import RACE_KEYS, TitleScene
 
 @pytest.fixture
 def game(tmp_path):
-    g = Game("Warband Races", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path)
+    g = Game("Warband Races", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     yield g
     g._teardown()
 

@@ -23,7 +23,7 @@ def battle(tmp_path, audio_files, monkeypatch):
     world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2, rng=random.Random(1))
     world.place_building(0, BuildingType.TOWN_HALL, (4, 4))
     world.place_building(1, BuildingType.TOWN_HALL, (25, 18))
-    game = Game("Battle audio", backend="mock", save_dir=tmp_path)
+    game = Game("Battle audio", backend="mock", save_dir=tmp_path / "saves")
     bank = sound.SoundBank(game, audio_files)
     monkeypatch.setattr(sound, "sound_hook", bank.play)
     scene = GameScene(world, seed=1, settings={"tutorial": False})
@@ -71,6 +71,7 @@ def test_killing_blow_keeps_the_targets_material(battle, target_type, material, 
     else:
         target = world.place_building(1, target_type, (11, 10))
     target.hp = 1
+    world.update_vision()  # a tower shoots only what its owner can see
     if isinstance(attacker_type, UnitType):
         world.attack([attacker.id], target.id)
     game.tick(0.2)

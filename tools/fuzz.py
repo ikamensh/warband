@@ -140,7 +140,7 @@ def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = No
     for seed in seeds:
         rng = random.Random(seed)
         with tempfile.TemporaryDirectory() as save_dir:
-            game = Game("Monkey", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=save_dir)
+            game = Game("Monkey", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=Path(save_dir) / "saves")  # high scores stay in the temp dir too
             try:
                 game.push(TitleScene())
                 game.tick(1 / 60)

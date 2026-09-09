@@ -32,7 +32,7 @@ def test_cues_are_voiced_for_every_race_but_humans_and_impacts_follow_the_strike
 
 @pytest.fixture
 def game(tmp_path):
-    g = Game("Race sound", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path)
+    g = Game("Race sound", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     yield g
     g._teardown()
 

@@ -79,12 +79,33 @@ class Brain:
         if world.time < self.next_think or not world.players[self.player].alive or world.winner is not None:
             return
         self.next_think = world.time + self.profile.think_every
+        if not self._units(world):
+            self._recover(world)
+            return
         self._economy(world)
         self._repairs(world)
         self._construction(world, rng)
         self._training(world)
         self._research(world)
         self._military(world, rng)
+
+    def _recover(self, world: World) -> None:
+        """With no units left, spend refundable work on a recruit before resuming the normal plan."""
+        buildings = world.player_buildings(self.player)
+        if any(b.done and b.queue for b in buildings):
+            return
+        recruit = world.recovery_recruit(self.player)
+        if recruit is None:
+            return  # the next simulation step resolves surrender
+        building, unit_type = recruit
+        if world.can_train(building, unit_type) is not None:
+            for b in buildings:
+                if not b.done:
+                    world.cancel_building(b.id)
+                elif b.research is not None:
+                    world.cancel_research(b.id)
+        world.train(building.id, unit_type)
+        self.note(world, f"recover with {unit_type.value}")
 
     # -- Helpers -----------------------------------------------------------------
 

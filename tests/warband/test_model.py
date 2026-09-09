@@ -236,6 +236,7 @@ def test_being_hit_raises_one_under_attack_alert_per_cooldown() -> None:
     world.spawn_unit(0, UnitType.FOOTMAN, (2.5, 2.5))
     world.spawn_unit(0, UnitType.FOOTMAN, (2.5, 3.5))
     world.place_building(1, BuildingType.FARM, (5, 2))
+    world.spawn_unit(1, UnitType.PEASANT, (20.5, 17.5))  # keeps the AI in the fight while its farm is attacked
     run(world, 6.0)
     alerts = [e for e in world.events if e.kind == "under_attack" and e.player == 1]
     assert len(alerts) == 1

@@ -21,6 +21,7 @@ ENEMY: Color = (255, 90, 80, 255)
 
 PANEL_STYLE = Style(background_color=PANEL_BG, border_color=HAIRLINE, border_width=1, padding=12, radius=10)
 OVERLAY_STYLE = Style(background_color=(22, 20, 24, 244), border_color=HAIRLINE, border_width=1, padding=22, radius=14)
+RESULTS_STYLE = Style(background_color=(22, 20, 24, 255), border_color=HAIRLINE, border_width=1, padding=22, radius=14)
 GHOST_BUTTON = Style(font=fonts.SEMIBOLD, background_color=(255, 255, 255, 20), hover_color=(255, 255, 255, 46), press_color=(255, 255, 255, 84),
                      border_color=(255, 255, 255, 40), border_width=1, padding=7, radius=7)
 ACTION_BUTTON = Style(font=fonts.SEMIBOLD, background_color=(70, 118, 200, 255), hover_color=(96, 146, 230, 255), press_color=(150, 190, 255, 255),

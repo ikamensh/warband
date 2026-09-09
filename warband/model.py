@@ -135,10 +135,14 @@ class Player:
     gold: int = STARTING_GOLD
     lumber: int = STARTING_LUMBER
     alive: bool = True
+    surrendered: bool = False
     last_alert: float = -1000.0
     upgrades: set[Upgrade] = field(default_factory=set)
     assembly: Point | None = None
     race: Race = Race.HUMAN
+    stats: dict[str, int] = field(default_factory=lambda: {
+        "units_killed": 0, "units_lost": 0, "buildings_razed": 0, "buildings_lost": 0, "destroyed_value": 0,
+    })  # the battle record; kills belong to the force that struck the lethal blow
 
 
 @dataclass
@@ -1924,12 +1928,18 @@ class World:
         return (min(max(u.x, x), x + w), min(max(u.y, y), y + h))
 
     def _hit(self, source: Entity, target: Entity, damage: int) -> None:
+        if target.hp <= 0:
+            return  # already down this step (a siege splash after the killing blow)
         armor = self.armor_of(target)
         if isinstance(source, Unit) and isinstance(target, Building):
             damage = int(round(damage * source.info.siege))
         roll = damage * self.rng.uniform(1 - HIT_VARIANCE, 1 + HIT_VARIANCE)
         dealt = max(1, int(round(roll)) - armor)
         target.hp -= dealt
+        if target.hp <= 0 and source.player is not None and target.player not in (None, source.player):
+            stats = self.players[source.player].stats
+            stats["units_killed" if isinstance(target, Unit) else "buildings_razed"] += 1
+            stats["destroyed_value"] += target.info.cost.gold + target.info.cost.lumber
         ranged = source.info.range >= 1
         self.events.append(Event("hit", self._target_point(target), player=target.player, entity=source.id, other=target.id,
                                  amount=dealt, text="ranged" if ranged else "melee", source_type=source.type.value,
@@ -1959,6 +1969,7 @@ class World:
 
     def _remove_unit(self, unit: Unit) -> None:
         del self.units[unit.id]
+        self.players[unit.player].stats["units_lost"] += 1
         if unit.constructing is not None:
             b = self.buildings.get(unit.constructing)
             if b is not None and b.builder == unit.id:
@@ -1967,6 +1978,8 @@ class World:
 
     def _remove_building(self, b: Building, *, reason: str) -> None:
         del self.buildings[b.id]
+        if reason == "destroyed" and b.player is not None:
+            self.players[b.player].stats["buildings_lost"] += 1
         self._set_blocked(b, False)
         for unit in self.units.values():
             if unit.inside == b.id:
@@ -2003,11 +2016,42 @@ class World:
 
     # -- Outcome ---------------------------------------------------------------------
 
+    def recovery_recruit(self, player: int) -> tuple[Building, UnitType] | None:
+        """A recruit affordable after cancelling unfinished work, with existing supply.
+
+        Used only for a player without units: there is no worker to earn more or
+        finish construction.  Prefer a worker to restart the economy.
+        """
+        owner = self.players[player]
+        buildings = self.player_buildings(player)
+        refunds = [b.info.cost for b in buildings if not b.done]
+        refunds += [UPGRADES[b.research].cost for b in buildings if b.research is not None]
+        gold = owner.gold + sum(c.gold for c in refunds)
+        lumber = owner.lumber + sum(c.lumber for c in refunds)
+        used, cap = self.supply(player)
+        if used >= cap:
+            return None
+        candidates = [(b, u) for b in buildings if b.done for u in b.info.trains
+                      if UNITS[u].cost.gold <= gold and UNITS[u].cost.lumber <= lumber]
+        return min(candidates, key=lambda pair: (pair[1] is not UnitType.PEASANT,
+                   UNITS[pair[1]].cost.gold + UNITS[pair[1]].cost.lumber, pair[0].id)) if candidates else None
+
     def _check_elimination(self) -> None:
         for player in self.players:
-            if player.alive and not self.player_units(player.id) and not self.player_buildings(player.id):
+            if not player.alive or self.player_units(player.id):
+                continue
+            buildings = self.player_buildings(player.id)
+            if not buildings:
                 player.alive = False
                 self.events.append(Event("eliminated", (0.0, 0.0), player=player.id, text=f"{player.name} has fallen"))
+            elif not player.human and not any(b.done and b.queue for b in buildings) and self.recovery_recruit(player.id) is None:
+                # An AI with no units, nothing in training and no affordable recruit cannot come back.
+                player.alive = False
+                player.surrendered = True
+                for building in buildings:
+                    self._remove_building(building, reason="abandoned")
+                self.events.append(Event("surrendered", (0.0, 0.0), player=player.id,
+                                         text=f"{player.name} surrenders: no units and no way to recruit"))
         alive = [p for p in self.players if p.alive]
         if self.winner is None and len(alive) == 1 and len(self.players) > 1:
             self.winner = alive[0].id
@@ -2020,7 +2064,8 @@ class World:
             "width": self.width, "height": self.height, "theme": self.theme.value,
             "terrain": ["".join(t.value[0] for t in row) for row in self.terrain],
             "players": [{"id": p.id, "human": p.human, "race": p.race.value, "gold": p.gold, "lumber": p.lumber, "alive": p.alive,
-                         "last_alert": p.last_alert, "upgrades": sorted(u.value for u in p.upgrades),
+                         "surrendered": p.surrendered, "stats": dict(p.stats), "last_alert": p.last_alert,
+                         "upgrades": sorted(u.value for u in p.upgrades),
                          "assembly": list(p.assembly) if p.assembly is not None else None} for p in self.players],
             "regrowth": [[list(tile), when] for tile, when in self.regrowth],
             "units": [_unit_to_dict(u) for u in self.units.values()],
@@ -2045,6 +2090,8 @@ class World:
             p.gold, p.lumber, p.alive, p.last_alert = saved["gold"], saved["lumber"], saved["alive"], saved["last_alert"]
             p.upgrades = {Upgrade(u) for u in saved["upgrades"]}
             p.assembly = tuple(saved["assembly"]) if saved.get("assembly") is not None else None
+            p.surrendered = saved.get("surrendered", False)
+            p.stats.update(saved.get("stats", {}))
         for saved in data["buildings"]:
             b = _building_from_dict(saved)
             b.race = world.race_of(b.player)

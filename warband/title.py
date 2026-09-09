@@ -28,7 +28,7 @@ DRIFT_SECONDS = 24.0
 
 class TitleScene(Scene):
     background_color = (8, 10, 14, 255)
-    controls = {("n", "return"): "new_game", "c": "continue_game", "l": "load_game", "h": "how_to_play", "q": "quit"}
+    controls = {("n", "return"): "new_game", "c": "continue_game", "l": "load_game", "b": "high_scores", "h": "how_to_play", "q": "quit"}
 
     def __init__(self, *, size: str = "Medium", players: int = 2, difficulty: Difficulty = Difficulty.NORMAL, theme: MapTheme = MapTheme.SUMMER,
                  race: Race = Race.HUMAN, settings: dict[str, Any] | None = None) -> None:
@@ -76,6 +76,7 @@ class TitleScene(Scene):
         menu.add(cont)
         menu.add(Button("Multiplayer", shortcut="M", on_click=self.multiplayer, style=MENU_BUTTON, width=300))
         menu.add(Button("Load game", hotkey="L", on_click=self.load_game, style=MENU_BUTTON, width=300))
+        menu.add(Button("High scores", hotkey="B", on_click=self.high_scores, style=MENU_BUTTON, width=300))
         menu.add(Button("How to play", hotkey="H", on_click=self.how_to_play, style=MENU_BUTTON, width=300))
         menu.add(Button("Quit", hotkey="Q", on_click=self.quit, style=MENU_BUTTON, width=300))
         where = f"slot {newest}" if isinstance(newest, int) else f"the {newest}" if newest else None
@@ -144,6 +145,12 @@ class TitleScene(Scene):
     def how_to_play(self) -> None:
         self.sfx("button")
         self.game.push(HelpScene())
+
+    def high_scores(self) -> None:
+        from warband.score_scene import HighScoreScene
+
+        self.sfx("button")
+        self.game.push(HighScoreScene(difficulty=self.difficulty, size=mapgen.SIZES[self.size], players=self.players))
 
     def quit(self) -> None:
         self.game.quit()
