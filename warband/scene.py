@@ -1570,7 +1570,7 @@ class SettlementPlansScene(_Overlay):
 
 class PauseScene(_Overlay):
     pause_below = True
-    controls = {"n": "new_game", "q": "quit", "f5": "save", "f9": "load", "s": "settings", "t": "back_to_title", "f1": "help"}
+    controls = {"n": "new_game", "q": "quit", "f5": "save", "f9": "load", "s": "settings", "t": "back_to_title", "f1": "help", "r": "resign"}
 
     def __init__(self, game_scene: GameScene) -> None:
         self.game_scene = game_scene
@@ -1582,6 +1582,7 @@ class PauseScene(_Overlay):
         panel.add(Button("Load game…", hotkey="F9", on_click=self.load, style=GHOST_BUTTON, width=260))
         panel.add(Button("Settings", hotkey="S", on_click=self.settings, style=GHOST_BUTTON, width=260))
         panel.add(Button("How to play", hotkey="F1", on_click=self.help, style=GHOST_BUTTON, width=260))
+        panel.add(Button("Resign", hotkey="R", on_click=self.resign, style=GHOST_BUTTON, width=260))
         panel.add(Button("New game", hotkey="N", on_click=self.new_game, style=GHOST_BUTTON, width=260))
         panel.add(Button("Back to title", hotkey="T", on_click=self.back_to_title, style=GHOST_BUTTON, width=260))
         panel.add(Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=260))
@@ -1599,6 +1600,13 @@ class PauseScene(_Overlay):
 
     def help(self) -> None:
         self.game.push(HelpScene())
+
+    def resign(self) -> None:
+        scene = self.game_scene
+        if scene.world.can_resign(scene.human) is not None:
+            return
+        self.game.pop()
+        scene.world.resign(scene.human)
 
     def new_game(self) -> None:
         scene = self.game_scene

@@ -524,3 +524,26 @@ def test_the_idle_button_shows_only_while_a_peasant_idles(play) -> None:
     scene.world.harvest([p.id for p in peasants_of(scene)], scene.world.mines()[0].id)
     game.tick(1 / 60)
     assert not scene.idle_button.visible
+
+
+def test_resigning_from_the_pause_menu_ends_in_defeat(play) -> None:
+    game, scene = play
+    press(game, "f3")  # freeze the simulation while conceding
+    press(game, "escape")
+    assert isinstance(game.scene, PauseScene)
+    press(game, "r")
+    tick(game, 0.5)
+    assert isinstance(game.scene, GameOverScene)
+    assert any("Defeat" in t for t in texts(game))
+    assert not scene.world.players[scene.human].alive
+
+
+def test_resign_does_nothing_once_the_match_is_over(play) -> None:
+    game, scene = play
+    press(game, "escape")
+    assert isinstance(game.scene, PauseScene)
+    scene.world.winner = 1
+    press(game, "r")
+    tick(game, 0.2)
+    assert isinstance(game.scene, PauseScene)
+    assert scene.world.players[scene.human].alive
