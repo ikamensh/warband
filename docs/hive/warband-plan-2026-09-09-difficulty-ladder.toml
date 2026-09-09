@@ -1,0 +1,36 @@
+version = 1
+plan_id = ""
+revision = 0
+goal = "Warband's three difficulties mean what the criteria say again after the AI grew stronger: a plain scripted opening beats Easy on most seeds, Normal is a coin flip, Hard wins, the ladder Easy < Normal < Hard holds head to head, and Normal-versus-Normal matches still end within twenty minutes, with tools/ai_report.py output in the commit message."
+
+[[items]]
+key = "difficulty-ladder"
+repo = "https://github.com/ikamensh/saga2d.git"
+title = "Retune the difficulty profiles to the W01 ladder"
+story = "docs/warband-early-access-criteria.md gate W01 requires that Easy loses to a scripted human opening, Hard beats it and Normal is the coin flip. After the proportional-defence, economy, race-plan, endgame and group-pace items the whole AI is stronger: tools/ai_report.py shows the scripted opening losing to Easy on seed 1 (4/6 across seeds 1 to 6) and 0/6 to Normal, where the recorded evidence was 5/6 and 2/6. Retune the profiles so the ladder means what it says while keeping the new behaviour."
+constraints = "Change only the PROFILES table and profile-gated branches in warband/ai.py, tests/warband/test_ai.py, and the W01 row of docs/warband-early-access-progress.md. Do not change rules.py, races.py, the wave cap, the last-stand reveal, race army plans or group pacing. Measured numbers go in the commit message and the W01 row."
+notes = """
+Levers, in this order, each a profile field in `PROFILES` (warband/ai.py) or a branch gated on one:
+- Easy: `first_wave` 10 -> 14, `think_every` 2.0 -> 3.0, `peasants` 7 -> 6, `wave_growth` 2, and
+  no counter shift in `_choose_unit` (race plans without the visible-enemy adjustment); Easy never
+  presses the advantage (already gated).
+- Normal: `first_wave` 10 -> 12 and `think_every` 1.5 -> 2.0; keep tech and repair.
+- Hard: unchanged.
+Change one lever at a time and measure; stop at the first configuration that meets the targets.
+
+Evidence, `uv run python tools/ai_report.py --seeds 6 --decide 4 --ladder 2` (about twenty to
+thirty minutes; run it once at the end, and use `--seeds 3 --decide 0` while iterating):
+- script beats Easy on at least 4 of 6 seeds;
+- script beats Normal on 2 to 4 of 6 seeds;
+- script beats Hard on at most 1 of 6 seeds;
+- ladder: Normal beats Easy and Hard beats Normal in at least 3 of 4 matches each;
+- "Normal vs Normal on Medium: 4/4 decided within 20 minutes".
+Paste the report into the commit message and update the W01 row of
+docs/warband-early-access-progress.md with the new numbers, the commit and the date.
+
+Tests (tests/warband/test_ai.py): a test that pins the ladder's structural facts rather than
+match outcomes: Easy's first wave is larger than Normal's which is not larger than Hard's; Easy
+thinks less often than Normal; Easy's `_choose_unit` ignores visible enemy composition (spawn
+six visible enemy archers, Easy's stables still follows its plain plan) while Normal's does not.
+Run `uv run python -u tools/fuzz_warband.py --games 2 --monkey 0 --seed 81 --cpu-percent 100`: 0 failed.
+"""
