@@ -104,6 +104,7 @@ class Brain:
         self.raiders: list[int] = []
         self.log: list[tuple[float, str]] = []  # (time, what) — the evidence of how it plays
         self._last_defend = 0  # threat size of the last logged "defend with" line
+        self._wave_capped = False
         self._last_workforce_target: int | None = None
         self._plan_logged = False
 
@@ -399,6 +400,24 @@ class Brain:
         d = dist((hx, hy), (cx, cy)) or 1.0
         return (hx + (cx - hx) / d * 6, hy + (cy - hy) / d * 6)
 
+    def _required_wave(self, world: World) -> int:
+        """The army the brain waits for: the wave, bounded by what farms and halls can feed."""
+        _used, cap = world.supply(self.player)
+        bound = cap - len(self._peasants(world)) - 2
+        floor = self.profile.first_wave // 2
+        required = min(self.wave, bound)
+        if required < floor:
+            required = floor
+        elif bound < self.wave and not self._wave_capped:
+            self._wave_capped = True
+            self.note(world, f"wave capped at {required}")
+        return required
+
+    def _enemy_soldiers(self, world: World) -> int:
+        """Living enemy soldiers (units that are not workers) of alive players."""
+        return sum(1 for u in world.units.values() if u.player != self.player and world.players[u.player].alive
+                   and not u.is_worker and u.hp > 0 and not u.hidden)
+
     # -- Military --------------------------------------------------------------------
 
     def _military(self, world: World, rng: random.Random) -> None:
@@ -436,6 +455,7 @@ class Brain:
         targets = self._enemy_targets(world)
         if not targets:
             return
+        required = self._required_wave(world)
         if self.attacking:
             if len(army) < 3:
                 self.attacking = False
@@ -448,7 +468,15 @@ class Brain:
                 target = min(targets, key=lambda t: dist(t, idle[0].pos))
                 world.attack_move([u.id for u in idle], target)
             return
-        if len(army) >= self.wave:
+        if len(army) >= 3 and self._enemy_soldiers(world) < 3:
+            self.attacking = True
+            hall = self._hall(world)
+            origin = hall.center if hall is not None else army[0].pos
+            target = min(targets, key=lambda t: dist(t, origin))
+            world.attack_move([u.id for u in army], target)
+            self.note(world, f"attack with {len(army)} towards {tuple(round(c) for c in target)}")
+            return
+        if len(army) >= required:
             self.attacking = True
             self.wave += self.profile.wave_growth
             hall = self._hall(world)
@@ -474,8 +502,9 @@ class Brain:
             self.note(world, f"raid towards {tuple(round(c) for c in target)}")
 
     def _enemy_targets(self, world: World) -> list[Point]:
-        """Enemy buildings; once those are gone, whatever enemy units remain."""
-        buildings = [b.center for b in world.buildings.values() if b.player is not None and b.player != self.player]
+        """Enemy buildings of alive players; once those are gone, whatever enemy units remain."""
+        buildings = [b.center for b in world.buildings.values() if b.player is not None and b.player != self.player
+                     and world.players[b.player].alive]
         if buildings:
             return buildings
         return [u.pos for u in world.units.values() if u.player != self.player and world.players[u.player].alive]

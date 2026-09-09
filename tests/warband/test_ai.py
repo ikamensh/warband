@@ -4,8 +4,8 @@ import random
 
 from warband import mapgen
 from warband.ai import DEFEND_RADIUS, PROFILES, Brain
-from warband.model import AttackMove, Harvest, Repair, dist
-from warband.rules import SIM_DT, BuildingType, Difficulty, Race, UnitType
+from warband.model import AttackMove, Harvest, Repair, World, dist, tile_center
+from warband.rules import SIM_DT, BuildingType, Difficulty, Race, Terrain, UnitType
 
 
 def test_normal_and_hard_send_a_peasant_to_mend_a_damaged_building_but_easy_does_not() -> None:
@@ -216,6 +216,15 @@ def _archer_share(world, player) -> float:
     return sum(1 for u in army if u.type is UnitType.ARCHER) / len(army)
 
 
+def _trained_archer_share(brain: Brain) -> float:
+    """Share of archers among the soldiers the brain trained: what its race plan asked for,
+    whatever the fighting since did to the survivors."""
+    trained = [what.split("train ", 1)[1] for _, what in brain.log if what.startswith("train ")]
+    if not trained:
+        return 0.0
+    return sum(1 for name in trained if name == UnitType.ARCHER.value) / len(trained)
+
+
 def test_hard_elf_and_orc_armies_grow_towards_their_race_plans() -> None:
     world = mapgen.generate(seed=5, players=2, human=None, races=[Race.ELF, Race.ORC])
     brains = [Brain(0, Difficulty.HARD), Brain(1, Difficulty.HARD)]
@@ -228,6 +237,80 @@ def test_hard_elf_and_orc_armies_grow_towards_their_race_plans() -> None:
             break
     assert len([u for u in world.player_units(0) if not u.is_worker]) > 0
     assert len([u for u in world.player_units(1) if not u.is_worker]) > 0
-    assert _archer_share(world, 0) > _archer_share(world, 1)
+    assert _trained_archer_share(brains[0]) > _trained_archer_share(brains[1])
     assert any("army plan elf" in what for _, what in brains[0].log)
     assert any("army plan orc" in what for _, what in brains[1].log)
+
+
+def _open_world() -> World:
+    terrain = [[Terrain.GRASS] * 40 for _ in range(40)]
+    return World(40, 40, terrain, 2, human=None, rng=random.Random(3))
+
+
+def _place_near(world: World, player: int, building_type: BuildingType, anchor) -> None:
+    ax, ay = int(anchor[0]), int(anchor[1])
+    for radius in range(4, 30):
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                if max(abs(dx), abs(dy)) != radius:
+                    continue
+                pos = (ax + dx, ay + dy)
+                if world.can_place(building_type, pos, player) is None:
+                    world.place_building(player, building_type, pos)
+                    return
+    raise AssertionError(f"no room for {building_type}")
+
+
+def test_a_hard_brain_caps_its_wave_at_what_the_farms_feed() -> None:
+    world = _open_world()
+    hall = world.place_building(0, BuildingType.TOWN_HALL, (2, 2))
+    world.place_building(1, BuildingType.TOWN_HALL, (33, 33))
+    world.reveal_all(0)
+    for _ in range(3):
+        _place_near(world, 0, BuildingType.TOWN_HALL, hall.center)
+    for _ in range(5):
+        _place_near(world, 0, BuildingType.FARM, hall.center)
+    _used, cap = world.supply(0)
+    assert cap == 40
+    for i in range(14):
+        world.spawn_unit(0, UnitType.PEASANT, (hall.center[0] + 0.5 * (i % 4), hall.center[1] + 4 + 0.5 * (i // 4)))
+    for i in range(12):
+        world.spawn_unit(0, UnitType.FOOTMAN, (hall.center[0] + 0.5 * (i % 4), hall.center[1] + 6 + 0.5 * (i // 4)))
+    for i in range(3):
+        world.spawn_unit(1, UnitType.PEASANT, (34.5 + 0.5 * i, 37.5))
+    world.update_vision()
+    brain = Brain(0, Difficulty.HARD)
+    brain.wave = 60
+    rng = random.Random(1)
+    for _ in range(3):
+        brain.think(world, rng)
+        world.time += brain.profile.think_every + 0.1
+        if brain.attacking:
+            break
+    assert brain.attacking
+    assert any("wave capped at 24" in what for _, what in brain.log)
+
+
+def test_a_normal_brain_presses_the_attack_against_a_hall_less_enemy() -> None:
+    world = _open_world()
+    hall = world.place_building(0, BuildingType.TOWN_HALL, (2, 2))
+    enemy_hall = world.place_building(1, BuildingType.TOWN_HALL, (33, 33))
+    world.reveal_all(0)
+    world.reveal_all(1)
+    _place_near(world, 1, BuildingType.FARM, enemy_hall.center)
+    _place_near(world, 1, BuildingType.FARM, enemy_hall.center)
+    world._remove_building(enemy_hall, reason="destroyed")
+    for i in range(2):
+        world.spawn_unit(1, UnitType.PEASANT, (34.5 + 0.5 * i, 37.5))
+    for i in range(5):
+        world.spawn_unit(0, UnitType.FOOTMAN, (hall.center[0] + 0.5 * i, hall.center[1] + 4))
+    world.update_vision()
+    brain = Brain(0, Difficulty.NORMAL)
+    brain.wave = 10
+    rng = random.Random(1)
+    for _ in range(3):
+        brain.think(world, rng)
+        world.time += brain.profile.think_every + 0.1
+        if brain.attacking:
+            break
+    assert brain.attacking  # five soldiers beat the wave of ten while the enemy has no army

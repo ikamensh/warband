@@ -3,7 +3,7 @@
 import pytest
 
 from saga2d import Game
-from warband.model import Repair, Attack, AttackMove, Build, Harvest, Move, tile_center
+from warband.model import Event, Repair, Attack, AttackMove, Build, Harvest, Move, tile_center
 from warband.rules import BUILDINGS, SIM_DT, UNITS, BuildingType, UnitType
 from warband.races import RACES
 from warband.rules import Race
@@ -324,6 +324,15 @@ def test_an_attack_on_the_base_raises_an_alert_that_space_jumps_to(play) -> None
     tick(game, 0.5)
     left, top, right, bottom = scene.camera.visible_world_rect()
     assert left < scene.last_alert[0] * 32 < right and top < scene.last_alert[1] * 32 < bottom
+
+
+def test_an_exposed_rival_shows_where_their_last_holdings_are(play) -> None:
+    game, scene = play
+    world = scene.world
+    name = world.players[1].name
+    world.events.append(Event("exposed", (10.5, 10.5), player=1, text=name))
+    tick(game, 0.5)
+    assert any(f"{name}'s last holdings are revealed" in t for t in texts(game))
 
 
 def test_a_kill_leaves_a_body_lying_that_fades_and_is_removed(play) -> None:
