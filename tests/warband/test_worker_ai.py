@@ -267,3 +267,24 @@ def test_worker_metadata_preserves_existing_online_order_dictionaries():
     unit = next(item for item in saved['units'] if item['id'] == worker.id)
     assert unit['orders'][0] == {'kind': 'Deposit'}
     assert World.from_dict(saved).units[worker.id].order.auto
+
+
+def test_a_worker_caught_inside_enemy_range_walks_out_instead_of_freezing():
+    """Fuzz seed 7 (3 players, 40×32, minute 11): a peon carrying gold stood on ground its safe route
+    map had just marked dangerous, its route began two tiles away and every step, even inside its own
+    tile, was refused against that map.  A worker in danger must be allowed to walk out over real ground."""
+    world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2)
+    world.place_building(0, BuildingType.TOWN_HALL, (1, 10))
+    world.place_building(1, BuildingType.TOWN_HALL, (27, 19))
+    worker = world.spawn_unit(0, UnitType.PEASANT, (12.5, 11.5))
+    worker.carrying, worker.carry = Resource.GOLD, GOLD_PER_TRIP
+    worker.orders.append(Deposit(auto=True))
+    archer = world.spawn_unit(1, UnitType.ARCHER, (13.5, 9.5))  # already within its reach; it will shoot
+    world.hold([archer.id])
+    world.reveal_all(0)
+    world.update_vision()
+    start = worker.pos
+    run(world, 3.0)
+    assert dist(worker.pos, start) > 2.0, (worker.pos, worker.path, worker.state)
+    run(world, 20.0)
+    assert worker.carrying is None and world.players[0].gold == 1000 + GOLD_PER_TRIP

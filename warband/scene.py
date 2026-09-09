@@ -17,7 +17,8 @@ from saga2d.effects import Banner, Burst, Dissolve, Effects, FloatingText, HitRe
 from warband import mapgen
 from warband.ai import Brain
 from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
-from warband.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, MapTheme, UnitType, Upgrade
+from warband.races import RACES, RaceInfo
+from warband.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, MapTheme, Race, UnitType, Upgrade
 from warband.sound import IMPACTS, TRACKS, apply_volumes, impact_sound, play_music, play_sound
 from warband.style import ACTION_BUTTON, BAD, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE
 from warband.textures import TILE
@@ -44,10 +45,11 @@ CARD_COLS = 3
 #: The build menu's order: the opening buildings first, then the tech chain as it unlocks.
 BUILD_ORDER = (BuildingType.FARM, BuildingType.BARRACKS, BuildingType.TOWN_HALL, BuildingType.TOWER, BuildingType.LUMBER_MILL,
                BuildingType.BLACKSMITH, BuildingType.STABLES, BuildingType.WORKSHOP, BuildingType.CHURCH)
-#: Names that fit a card button; the tooltip and the codex use the full ones.
-CARD_NAMES = {BuildingType.TOWN_HALL: "Hall", BuildingType.TOWER: "Tower", BuildingType.LUMBER_MILL: "Mill", BuildingType.BLACKSMITH: "Smith"}
+#: Names that fit a card button (each race's are in :mod:`warband.races`); the tooltip and the codex use the full ones.
 UPGRADE_NAMES = {Upgrade.BLADES_1: "Blades I", Upgrade.BLADES_2: "Blades II", Upgrade.ARMOR_1: "Armour I", Upgrade.ARMOR_2: "Armour II",
-                 Upgrade.ARROWS_1: "Arrows I", Upgrade.ARROWS_2: "Arrows II", Upgrade.HORSES: "Horses", Upgrade.SIEGE: "Siege", Upgrade.BLESSING: "Blessing"}
+                 Upgrade.ARROWS_1: "Arrows I", Upgrade.ARROWS_2: "Arrows II", Upgrade.HORSES: "Horses", Upgrade.SIEGE: "Siege", Upgrade.BLESSING: "Blessing",
+                 Upgrade.BLOODLUST: "Bloodlust", Upgrade.PLUNDER: "Plunder", Upgrade.LONGBOWS: "Longbows", Upgrade.REGROWTH: "Regrowth",
+                 Upgrade.DEEP_MINING: "Mining", Upgrade.BLASTING_POWDER: "Powder"}
 CARD_WIDTH = 116
 MINIMAP_WIDTH = 200
 SELECTION_WIDTH = 470
@@ -151,11 +153,11 @@ class GameScene(Scene):
         self.apply_settings()
         self._build_hud()
         self.center_base(instant=True)
-        self.effects.add(Banner("Warband", subtitle=f"{self.player.name} against {', '.join(p.name for p in self.world.players if p.id != self.human)}",
-                                accent=rgba(self.player.color)))
+        rivals = ", ".join(f"the {RACES[p.race].name} of {p.name}" for p in self.world.players if p.id != self.human)
+        self.effects.add(Banner("Warband", subtitle=f"The {self.race.name} of {self.player.name} against {rivals}", accent=rgba(self.player.color)))
         from warband import textures
 
-        self._warm = textures.warm_units(self.game, [p.id for p in self.world.players])
+        self._warm = textures.warm_units(self.game, [p.id for p in self.world.players], [p.race for p in self.world.players])
         play_music(TRACKS[self.seed % len(TRACKS)])  # matches alternate between the march and the vigil
 
     def _setup_camera(self) -> None:
@@ -182,6 +184,11 @@ class GameScene(Scene):
     @property
     def player(self):
         return self.world.players[self.human]
+
+    @property
+    def race(self) -> RaceInfo:
+        """The human player's race: its names and numbers are what the HUD shows."""
+        return RACES[self.player.race]
 
     def sfx(self, name: str, *, gap: float = 0.0) -> None:
         """Bound battle density across materials/takes; alerts bypass that budget."""
@@ -213,6 +220,7 @@ class GameScene(Scene):
 
         self.ui.add(Panel(anchor=Anchor.TOP_LEFT, margin=12, layout=Layout.HORIZONTAL, spacing=12, style=PANEL_STYLE, children=[
             Label(player.name, text_style="title", text_color=rgba(player.color)),
+            Label(self.race.name, text_style="sub"),
             Label(lambda: f"Gold {player.gold}", text_style="hud", text_color=GOLD),
             Label(lambda: f"Lumber {player.lumber}", text_style="hud", text_color=LUMBER),
             Label(supply_text, text_style="hud"),
@@ -516,6 +524,12 @@ class GameScene(Scene):
             self.pending = None
             self._refresh_card()
 
+    def unit_name(self, unit_type: UnitType) -> str:
+        return self.race.units[unit_type].name
+
+    def building_name(self, building_type: BuildingType) -> str:
+        return self.race.buildings[building_type].name
+
     def train(self, unit_type: UnitType) -> None:
         building = self._own_building()
         if building is None:
@@ -596,7 +610,7 @@ class GameScene(Scene):
         except RuleError as exc:
             self.warn(str(exc))
             return
-        info = UNITS[item] if kind == "train" else UPGRADES[item]
+        info = self.race.units[item] if kind == "train" else UPGRADES[item]
         self.say(f"{info.name} ordered · pay when work starts · manage in Plans")
         self.sfx("button")
 
@@ -608,7 +622,7 @@ class GameScene(Scene):
         except RuleError as exc:
             self.warn(str(exc))
             return
-        self.say(f"{BUILDINGS[building_type].name} planned · a worker will build when ready")
+        self.say(f"{self.building_name(building_type)} planned · a worker will build when ready")
         self.sfx("command")
         if not keep:
             self.pending = None
@@ -631,13 +645,18 @@ class GameScene(Scene):
             return "Already ordered"
         return None
 
+    def _upgrades(self) -> list[Upgrade]:
+        """The shared upgrades and the player's race arts, in the order of the table."""
+        return [u for u in Upgrade if self.race.upgrade_allowed(u)]
+
     def _settlement_commands(self) -> list[Command]:
         commands = []
-        catalogue = ((bt, BUILDINGS[bt]) for bt in BUILD_ORDER) if self.settlement_menu == "build" else (
-            UNITS.items() if self.settlement_menu == "train" else UPGRADES.items())
+        race = self.race
+        catalogue = ((bt, race.buildings[bt]) for bt in BUILD_ORDER) if self.settlement_menu == "build" else (
+            race.units.items() if self.settlement_menu == "train" else ((u, UPGRADES[u]) for u in self._upgrades()))
         for item, info in catalogue:
             if self.settlement_menu == "build":
-                name, key = CARD_NAMES.get(item, info.name), info.hotkey.upper()
+                name, key = race.cards[item], info.hotkey.upper()
                 action = lambda bt=item: self.start_pending(f"plan:{bt.value}")
             elif self.settlement_menu == "train":
                 name, key = info.name, info.hotkey.upper()
@@ -661,9 +680,9 @@ class GameScene(Scene):
         if self.build_menu and any(u.is_worker for u in units):
             commands = []
             for building_type in BUILD_ORDER:
-                info = BUILDINGS[building_type]
+                info = self.race.buildings[building_type]
                 commands.append(Command(
-                    CARD_NAMES.get(building_type, info.name), info.hotkey.upper(), lambda bt=building_type: self.start_pending(f"build:{bt.value}"),
+                    self.race.cards[building_type], info.hotkey.upper(), lambda bt=building_type: self.start_pending(f"build:{bt.value}"),
                     tooltip=f"{info.name} — {info.cost} · {info.summary}", blocked=lambda bt=building_type: self._build_blocked(bt),
                 ))
             commands.append(Command("Back", "Esc", self.close_build_menu, tooltip="Back to the unit commands"))
@@ -686,13 +705,13 @@ class GameScene(Scene):
                 return [Command("Cancel", "C", self.cancel_construction, tooltip="Tear the site down; the cost comes back", style=DANGER_BUTTON)]
             commands = []
             for unit_type in building.info.trains:
-                info = UNITS[unit_type]
+                info = self.race.units[unit_type]
                 commands.append(Command(info.name, info.hotkey.upper(), lambda ut=unit_type: self.train(ut),
                                         tooltip=f"{info.name} — {info.cost} · {info.summary}",
                                         blocked=lambda ut=unit_type, b=building: world.can_train(b, ut)))
             for upgrade in building.info.researches:
                 info = UPGRADES[upgrade]
-                if upgrade in self.player.upgrades:
+                if upgrade in self.player.upgrades or not self.race.upgrade_allowed(upgrade):
                     continue
                 if info.requires is not None and info.requires not in self.player.upgrades and any(
                         UPGRADES[u].requires is None and u not in self.player.upgrades and u in building.info.researches and UPGRADES[u].hotkey == info.hotkey
@@ -710,7 +729,7 @@ class GameScene(Scene):
     def _build_blocked(self, building_type: BuildingType) -> str | None:
         info = BUILDINGS[building_type]
         if info.requires is not None and not self.world.player_buildings(self.human, info.requires, done=True):
-            return f"Requires a {BUILDINGS[info.requires].name}"
+            return f"Requires a {self.building_name(info.requires)}"
         return self.world.can_afford(self.human, info.cost)
 
     def _refresh_card(self) -> None:
@@ -738,7 +757,7 @@ class GameScene(Scene):
                 # Long catalogue names keep their keyboard action but leave out
                 # the badge when text, keycap, gap and padding would not fit.
                 hotkey = command.hotkey or None
-                if self.settlement_menu is not None and self.game.backend.measure_text(command.label, 14, CARD_BUTTON.font)[0] > CARD_WIDTH - 42:
+                if hotkey and self.game.backend.measure_text(command.label, 14, CARD_BUTTON.font)[0] > CARD_WIDTH - 42:
                     hotkey = None
                 button = Button(command.label, hotkey=hotkey, on_click=command.action, style=command.style, width=CARD_WIDTH)
                 self._card_buttons.append(button)
@@ -1036,7 +1055,10 @@ class GameScene(Scene):
                 self.effects.add(Toast("A rival falls", [e.text], accent=GOOD, hold=4.0, top=TOAST_TOP))
             elif e.kind == "exhausted":
                 self.effects.add(FloatingText("Mine exhausted", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), MUTED, rise=20, duration=1.5))
-        _ = (world, view)
+            elif e.kind == "plunder" and mine:
+                self.effects.add(FloatingText(f"+{e.amount} gold plundered", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), GOLD, rise=26, duration=1.8))
+            elif e.kind == "tree_grown":
+                view.tree_grown((int(e.pos[0]), int(e.pos[1])))
 
     def _visible(self, point: tuple[float, float]) -> bool:
         return self.world.is_visible(self.human, (int(point[0]), int(point[1])))
@@ -1113,7 +1135,7 @@ class GameScene(Scene):
     def _show_destroyed(self, e: Event) -> None:
         if e.player == self.human:
             self.stats["buildings_lost"] += 1
-            self.effects.add(Toast("Building lost", [f"Your {BUILDINGS[BuildingType(e.text)].name.lower()} was destroyed"], hold=4.0, top=TOAST_TOP))
+            self.effects.add(Toast("Building lost", [f"Your {self.building_name(BuildingType(e.text)).lower()} was destroyed"], hold=4.0, top=TOAST_TOP))
         elif e.player is not None:
             self.stats["buildings_razed"] += 1
         if self._visible(e.pos):
@@ -1169,7 +1191,7 @@ class GameScene(Scene):
             x, y = to_world(plan.pos)
             size = BUILDINGS[plan.type].size * TILE
             self.draw_rect(x, y, size, size, (110, 190, 255, 28), border_color=(150, 210, 255, 220), border_width=2, space="world")
-            self.draw_text(f"Planned {BUILDINGS[plan.type].name}", x + size / 2, y - 5, style="caption",
+            self.draw_text(f"Planned {self.building_name(plan.type)}", x + size / 2, y - 5, style="caption",
                            color=(180, 220, 255, 255), anchor_x="center", space="world")
         if self.player.assembly is not None:
             x, y = to_world(self.player.assembly)
@@ -1216,7 +1238,7 @@ class GameScene(Scene):
     def _portrait(self, entity: Entity, x: float, y: float, size: float) -> None:
         from warband import textures
 
-        key = textures.portrait_image(self.game, entity.type, entity.player)
+        key = textures.portrait_image(self.game, entity.type, entity.player, entity.race)
         pw, ph = self.game.backend.get_image_size(self.game.assets.image(key))
         scale = min(size / pw, size / ph)
         self.draw_image(key, x + (size - pw * scale) / 2, y + (size - ph * scale) / 2, pw * scale, ph * scale)
@@ -1244,7 +1266,8 @@ class GameScene(Scene):
             if info.heal:
                 lines.append(f"Heals {world.heal_rate(entity):g}/s  Range {info.range:g}  Armor {world.armor_of(entity)}  Speed {world.speed_of(entity):g}")
             else:
-                lines.append(f"Damage {world.damage_of(entity)}  Armor {world.armor_of(entity)}  Range {world.range_of(entity):g}  Speed {world.speed_of(entity):g}")
+                lines.append(f"Damage {world.damage_of(entity)}  Armor {world.armor_of(entity)}  Range {world.range_of(entity):g}  Speed {world.speed_of(entity):g}"
+                             + ("  · Frenzy!" if world.frenzied(entity) else ""))
             order = entity.order
             if entity.inside is not None:
                 lines.append("Mining")
@@ -1263,8 +1286,9 @@ class GameScene(Scene):
                 frac = entity.progress / entity.info.build_time
                 lines.append(f"Under construction {int(frac * 100)}%" + ("" if entity.builder is not None else " — no builder: right-click it with a peasant"))
             elif entity.queue:
-                progress = entity.train_progress / UNITS[entity.queue[0]].build_time
-                lines.append(f"Training {UNITS[entity.queue[0]].name} {int(progress * 100)}%" + (f" (+{len(entity.queue) - 1} queued)" if len(entity.queue) > 1 else ""))
+                training = world.unit_info(entity.player, entity.queue[0])
+                progress = entity.train_progress / training.build_time
+                lines.append(f"Training {training.name} {int(progress * 100)}%" + (f" (+{len(entity.queue) - 1} queued)" if len(entity.queue) > 1 else ""))
                 self.draw_rect(tx, y + 62, 180, 6, (0, 0, 0, 160), radius=3)
                 self.draw_rect(tx, y + 62, 180 * progress, 6, GOLD, radius=3)
             elif entity.research is not None:
@@ -1291,7 +1315,7 @@ class GameScene(Scene):
         world = self.world
         size = next((name for name, (w, h) in mapgen.SIZES.items() if (w, h) == (world.width, world.height)), f"{world.width}×{world.height}")
         return {"map": f"{size} {world.theme.value}", "players": len(world.players), "difficulty": self.difficulty.value, "clock": _clock(world.time),
-                "player": self.player.name}
+                "player": f"{self.player.name} ({self.race.name})"}
 
     def load_save_state(self, state: dict) -> None:
         world = check_save(state)
@@ -1386,8 +1410,9 @@ class SettlementPlansScene(_Overlay):
     def _entries(self):
         world, human = self.game_scene.world, self.game_scene.human
         entries = []
+        race = self.game_scene.race
         for plan in world.player_plans(human):
-            catalogue = {"building": BUILDINGS, "unit": UNITS, "upgrade": UPGRADES}[plan.kind]
+            catalogue = {"building": race.buildings, "unit": race.units, "upgrade": UPGRADES}[plan.kind]
             info = catalogue[plan.type]
             building = world.buildings.get(plan.building)
             status = plan.status
@@ -1398,7 +1423,7 @@ class SettlementPlansScene(_Overlay):
                             lambda pid=plan.id: self._cancel("cancel_plan", human, pid)))
         for building in world.player_buildings(human):
             if building.queue:
-                info = UNITS[building.queue[0]]
+                info = race.units[building.queue[0]]
                 progress = int(100 * building.train_progress / info.build_time)
                 entries.append((("train", building.id), f"{building.info.name}: {info.name}",
                                 f"Training {progress}% · {len(building.queue)} in queue · current cost {info.cost} paid", "Cancel last",
@@ -1474,7 +1499,8 @@ class PauseScene(_Overlay):
     def new_game(self) -> None:
         scene = self.game_scene
         self.game.clear_and_push(new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players),
-                                          difficulty=scene.difficulty, theme=scene.world.theme, settings=scene.settings))
+                                          difficulty=scene.difficulty, theme=scene.world.theme, settings=scene.settings,
+                                          races=[p.race for p in scene.world.players]))
 
     def back_to_title(self) -> None:
         from warband.title import TitleScene
@@ -1642,14 +1668,15 @@ class HelpScene(_Overlay):
         panel.add(KeyHints([("Esc", "close")]))
 
 
-CODEX_PAGES = ("Units", "Buildings", "Upgrades")
+CODEX_PAGES = ("Units", "Buildings", "Upgrades", "Races")
 
 
 class CodexScene(_Overlay):
-    """Every unit, building and upgrade with its numbers; 1/2/3 or Tab switch pages."""
+    """The player's race: every unit, building and upgrade with its numbers, then the four races side by side;
+    1/2/3/4 or Tab switch pages."""
 
     pause_below = True
-    controls = {"1": "page_units", "2": "page_buildings", "3": "page_upgrades", "tab": "next_page", "f2": "close"}
+    controls = {"1": "page_units", "2": "page_buildings", "3": "page_upgrades", "4": "page_races", "tab": "next_page", "f2": "close"}
 
     def __init__(self, world: World, player: int, page: int = 0) -> None:
         self.world = world
@@ -1657,41 +1684,67 @@ class CodexScene(_Overlay):
         self.page = page
 
     def on_enter(self) -> None:
-        panel = self.panel("Codex")
+        race = RACES[self.world.players[self.player].race]
+        panel = self.panel(f"Codex — the {race.name}" if self.page < 3 else "Codex — the four races")
         tabs = Row(spacing=8)
         for i, name in enumerate(CODEX_PAGES):
             tabs.add(Button(name, hotkey=str(i + 1), on_click=lambda i=i: self.show(i), style=ACTION_BUTTON if i == self.page else GHOST_BUTTON, width=150))
         panel.add(tabs)
         table = Column(spacing=3)
-        for cells in self._rows():
-            table.add(Row(*[Label(text, text_style="hud" if i == 0 else "body", width=width, text_color=GOLD if i == 0 else None)
-                            for i, (text, width) in enumerate(cells)], spacing=10))
+        if self.page == 3:
+            table = self._race_table(race.name)
+        else:
+            for cells in self._rows():
+                table.add(Row(*[Label(text, text_style="hud" if i == 0 else "body", width=width, text_color=GOLD if i == 0 else None)
+                                for i, (text, width) in enumerate(cells)], spacing=10))
         panel.add(table)
-        panel.add(KeyHints([("1 2 3", "page"), ("Tab", "next"), ("Esc", "close")]))
+        panel.add(KeyHints([("1 2 3 4", "page"), ("Tab", "next"), ("Esc", "close")]))
+
+    def _race_table(self, own: str) -> Column:
+        """The four races side by side: character, passive and arts, wrapped so every window fits."""
+        table = Column(spacing=8)
+        for race in Race:
+            info = RACES[race]
+            block = Column(spacing=2)
+            block.add(Row(Label(info.name + (" ✓" if info.name == own else ""), text_style="hud", width=120, text_color=GOLD),
+                          Label(info.tagline, text_style="body", width=700), spacing=10))
+            block.add(Row(Label("", width=120), Label(info.passive, text_style="body", width=700, wrap=True), spacing=10))
+            for art in info.arts:
+                block.add(Row(Label("", width=120), Label(f"{UPGRADES[art].name} — {UPGRADES[art].summary}", text_style="sub", width=700, wrap=True), spacing=10))
+            table.add(block)
+        return table
 
     def _rows(self) -> list[list[tuple[str, int]]]:
-        have = self.world.players[self.player].upgrades
+        player = self.world.players[self.player]
+        have = player.upgrades
+        race = RACES[player.race]
         if self.page == 0:
-            rows = [[("Unit", 110), ("Cost", 150), ("HP", 50), ("Dmg", 50), ("Arm", 50), ("Rng", 50), ("Spd", 50), ("Trained at", 120), ("Role", 330)]]
-            for unit_type, info in UNITS.items():
-                rows.append([(info.name, 110), (str(info.cost), 190), (str(info.hp), 50), (str(info.damage) if info.damage else f"heal {info.heal}", 50),
+            rows = [[("Unit", 120), ("Cost", 150), ("HP", 50), ("Dmg", 50), ("Arm", 50), ("Rng", 50), ("Spd", 50), ("Trained at", 120), ("Role", 320)]]
+            for unit_type, info in race.units.items():
+                rows.append([(info.name, 120), (str(info.cost), 190), (str(info.hp), 50), (str(info.damage) if info.damage else f"heal {info.heal}", 50),
                              (str(info.armor), 50), ("melee" if info.range < 1 else f"{info.range:g}", 50), (f"{info.speed:g}", 50),
-                             (BUILDINGS[info.trained_at].name, 120), (info.summary, 330)])
+                             (race.buildings[info.trained_at].name, 120), (info.summary, 320)])
             return rows
         if self.page == 1:
-            rows = [[("Building", 120), ("Cost", 150), ("HP", 50), ("Size", 50), ("Time", 50), ("Requires", 110), ("What it does", 430)]]
-            for building_type, info in BUILDINGS.items():
+            rows = [[("Building", 120), ("Cost", 150), ("HP", 50), ("Arm", 50), ("Size", 50), ("Time", 50), ("Requires", 110), ("What it does", 400)]]
+            for building_type, info in race.buildings.items():
                 if building_type is BuildingType.GOLD_MINE:
                     continue
-                rows.append([(info.name, 120), (str(info.cost), 190), (str(info.hp), 50), (f"{info.size}×{info.size}", 50), (f"{info.build_time:g}s", 50),
-                             (BUILDINGS[info.requires].name if info.requires else "—", 110), (info.summary + (f" · supply +{info.supply}" if info.supply else ""), 430)])
+                rows.append([(info.name, 120), (str(info.cost), 190), (str(info.hp), 50), (str(info.armor), 50), (f"{info.size}×{info.size}", 50),
+                             (f"{info.build_time:g}s", 50), (race.buildings[info.requires].name if info.requires else "—", 110),
+                             (info.summary + (f" · supply +{info.supply}" if info.supply else ""), 400)])
             return rows
-        rows = [[("Upgrade", 160), ("Cost", 150), ("Time", 50), ("Where", 110), ("Requires", 150), ("Effect", 320)]]
-        for upgrade, info in UPGRADES.items():
-            where = next(b for b, binfo in BUILDINGS.items() if upgrade in binfo.researches)
-            rows.append([(info.name + (" ✓" if upgrade in have else ""), 160), (str(info.cost), 190), (f"{info.time:g}s", 50), (BUILDINGS[where].name, 110),
-                         (UPGRADES[info.requires].name if info.requires else "—", 150), (info.summary, 320)])
-        return rows
+        if self.page == 2:
+            rows = [[("Upgrade", 160), ("Cost", 150), ("Time", 50), ("Where", 110), ("Requires", 150), ("Effect", 320)]]
+            for upgrade, info in UPGRADES.items():
+                if not race.upgrade_allowed(upgrade):
+                    continue
+                where = next(b for b, binfo in BUILDINGS.items() if upgrade in binfo.researches)
+                requires = UPGRADES[info.requires].name if info.requires else f"{race.adjective} art" if info.race is not None else "—"
+                rows.append([(info.name + (" ✓" if upgrade in have else ""), 160), (str(info.cost), 190), (f"{info.time:g}s", 50),
+                             (race.buildings[where].name, 110), (requires, 150), (info.summary, 320)])
+            return rows
+        raise ValueError(f"no table for page {self.page}")
 
     def show(self, page: int) -> None:
         self.game.replace(CodexScene(self.world, self.player, page))
@@ -1704,6 +1757,9 @@ class CodexScene(_Overlay):
 
     def page_upgrades(self) -> None:
         self.show(2)
+
+    def page_races(self) -> None:
+        self.show(3)
 
     def next_page(self) -> None:
         self.show((self.page + 1) % len(CODEX_PAGES))
@@ -1736,7 +1792,8 @@ class GameOverScene(_Overlay):
     def new_game(self) -> None:
         scene = self.game_scene
         self.game.clear_and_push(new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players),
-                                          difficulty=scene.difficulty, theme=scene.world.theme, settings=scene.settings))
+                                          difficulty=scene.difficulty, theme=scene.world.theme, settings=scene.settings,
+                                          races=[p.race for p in scene.world.players]))
 
     def back_to_title(self) -> None:
         from warband.title import TitleScene
@@ -1748,8 +1805,9 @@ class GameOverScene(_Overlay):
 
 
 def new_game(seed: int, width: int = 48, height: int = 40, players: int = 2, *, difficulty: Difficulty = Difficulty.NORMAL,
-             theme: MapTheme = MapTheme.SUMMER, settings: dict[str, Any] | None = None) -> GameScene:
-    return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players, theme=theme), seed, difficulty=difficulty, settings=settings)
+             theme: MapTheme = MapTheme.SUMMER, settings: dict[str, Any] | None = None, races: list[Race | None] | None = None) -> GameScene:
+    return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players, theme=theme, races=races), seed, difficulty=difficulty,
+                     settings=settings)
 
 
 def check_save(state: dict[str, Any]) -> World:

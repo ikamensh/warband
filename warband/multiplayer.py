@@ -7,7 +7,7 @@ from copy import deepcopy
 from saga2d import Button, CommandError, Label
 from warband import mapgen
 from warband.model import World, RuleError, Event
-from warband.rules import BuildingType, UnitType, Upgrade, SIM_DT, MapTheme
+from warband.rules import BuildingType, Race, UnitType, Upgrade, SIM_DT, MapTheme
 
 GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'stop', 'hold'}
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building'}
@@ -17,9 +17,10 @@ HIT_AUDIO_FIELDS = frozenset({'source_type', 'target_type', 'target_armor', 'tar
 
 
 class WarbandMatch:
-    def __init__(self, seed=3, width=48, height=40, theme=MapTheme.SUMMER):
+    def __init__(self, seed=3, width=48, height=40, theme=MapTheme.SUMMER, races=None):
+        """*races* names the two seats' races; a ``None`` seat is drawn from the seed."""
         self.seed = seed
-        self.world = mapgen.generate(seed, width, height, players=2, theme=theme)
+        self.world = mapgen.generate(seed, width, height, players=2, theme=theme, races=races)
         for player in self.world.players:
             player.human = True
         self.events = []

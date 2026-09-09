@@ -16,14 +16,17 @@ import random
 from dataclasses import dataclass
 
 from warband.model import Attack, AttackMove, Build, Building, Deposit, Harvest, Point, Pos, Repair, Unit, World, dist
+from warband.races import RACES
 from warband.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Difficulty, Resource, UnitType, Upgrade
 
 EXPAND_DISTANCE = 14.0  # a mine farther than this from the hall gets a hall of its own
 DEFEND_RADIUS = 9.0
 BUILD_MIN_DISTANCE = 2
 BUILD_MAX_DISTANCE = 11
-RESEARCH_ORDER = (Upgrade.BLADES_1, Upgrade.ARMOR_1, Upgrade.ARROWS_1, Upgrade.HORSES, Upgrade.BLADES_2, Upgrade.ARMOR_2,
-                  Upgrade.ARROWS_2, Upgrade.SIEGE, Upgrade.BLESSING)
+#: Shared upgrades first, then whatever arts the brain's race has (see :mod:`warband.races`).
+RESEARCH_ORDER = (Upgrade.BLADES_1, Upgrade.ARMOR_1, Upgrade.ARROWS_1, Upgrade.HORSES, Upgrade.PLUNDER, Upgrade.DEEP_MINING, Upgrade.LONGBOWS,
+                  Upgrade.BLADES_2, Upgrade.ARMOR_2, Upgrade.ARROWS_2, Upgrade.SIEGE, Upgrade.BLESSING, Upgrade.BLOODLUST, Upgrade.REGROWTH,
+                  Upgrade.BLASTING_POWDER)
 
 
 @dataclass(frozen=True)
@@ -266,7 +269,7 @@ class Brain:
         if player.gold < self.profile.reserve:
             return
         for upgrade in RESEARCH_ORDER:
-            if upgrade in player.upgrades:
+            if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):
                 continue
             for building in world.player_buildings(self.player, done=True):
                 if upgrade in building.info.researches and world.can_research(building, upgrade) is None:

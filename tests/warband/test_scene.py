@@ -5,7 +5,9 @@ import pytest
 from saga2d import Game
 from warband.model import Repair, Attack, AttackMove, Build, Harvest, Move, tile_center
 from warband.rules import BUILDINGS, SIM_DT, UNITS, BuildingType, UnitType
-from warband.scene import CARD_NAMES, GameOverScene, GameScene, HelpScene, PauseScene, SettingsScene, new_game
+from warband.races import RACES
+from warband.rules import Race
+from warband.scene import GameOverScene, GameScene, HelpScene, PauseScene, SettingsScene, new_game
 from warband.style import build_theme
 from warband.title import NewGameScene, TitleScene
 
@@ -159,7 +161,7 @@ def test_every_building_is_on_the_build_menu_with_its_hotkey_and_its_reason_when
     scene.select([peasants_of(scene)[0].id])
     press(game, "b")
     hotkeys = {c.label: c.hotkey for c in scene._card}
-    assert hotkeys == {CARD_NAMES.get(bt, BUILDINGS[bt].name): BUILDINGS[bt].hotkey.upper() for bt in BuildingType if bt is not BuildingType.GOLD_MINE} | {"Back": "Esc"}
+    assert hotkeys == {RACES[Race.HUMAN].cards[bt]: BUILDINGS[bt].hotkey.upper() for bt in BuildingType if bt is not BuildingType.GOLD_MINE} | {"Back": "Esc"}
     press(game, "k")  # a blacksmith needs a barracks first
     assert scene.pending is None and scene.status == "Requires a Barracks"
     press(game, "m")  # a lumber mill only needs the town hall

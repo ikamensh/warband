@@ -68,6 +68,16 @@ class BuildingType(Enum):
     GOLD_MINE = "gold_mine"
 
 
+class Race(Enum):
+    """Who a player leads.  The tech skeleton (unit roles, buildings, hotkeys, costs) is shared;
+    :mod:`warband.races` gives each race its names, numbers, upgrades and mechanics."""
+
+    HUMAN = "human"
+    ORC = "orc"
+    ELF = "elf"
+    DWARF = "dwarf"
+
+
 class Upgrade(Enum):
     BLADES_1 = "blades_1"
     BLADES_2 = "blades_2"
@@ -75,9 +85,16 @@ class Upgrade(Enum):
     ARMOR_2 = "armor_2"
     ARROWS_1 = "arrows_1"
     ARROWS_2 = "arrows_2"
-    HORSES = "horses"
     SIEGE = "siege"
+    # Race arts: only that race researches them.
+    HORSES = "horses"
     BLESSING = "blessing"
+    BLOODLUST = "bloodlust"
+    PLUNDER = "plunder"
+    LONGBOWS = "longbows"
+    REGROWTH = "regrowth"
+    DEEP_MINING = "deep_mining"
+    BLASTING_POWDER = "blasting_powder"
 
 
 @dataclass(frozen=True)
@@ -161,17 +178,20 @@ BUILDINGS: dict[BuildingType, BuildingInfo] = {
                                      requires=BuildingType.BARRACKS, damage=8, range=6.0, cooldown=1.5),
     BuildingType.LUMBER_MILL: BuildingInfo("Lumber Mill", Cost(600, 450), 600, 2, 3, 35.0, 4, 0, "m",
                                            "Lumber is delivered here; researches better arrows",
-                                           researches=(Upgrade.ARROWS_1, Upgrade.ARROWS_2), requires=BuildingType.TOWN_HALL,
-                                           deposits=frozenset({Resource.LUMBER})),
+                                           researches=(Upgrade.ARROWS_1, Upgrade.ARROWS_2, Upgrade.LONGBOWS, Upgrade.REGROWTH),
+                                           requires=BuildingType.TOWN_HALL, deposits=frozenset({Resource.LUMBER})),
     BuildingType.BLACKSMITH: BuildingInfo("Blacksmith", Cost(800, 450), 600, 3, 3, 40.0, 4, 0, "k",
                                           "Researches sharper blades and plate armour",
-                                          researches=(Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.ARMOR_1, Upgrade.ARMOR_2), requires=BuildingType.BARRACKS),
+                                          researches=(Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.ARMOR_1, Upgrade.ARMOR_2, Upgrade.BLOODLUST,
+                                                      Upgrade.DEEP_MINING),
+                                          requires=BuildingType.BARRACKS),
     BuildingType.STABLES: BuildingInfo("Stables", Cost(1000, 300), 700, 3, 3, 45.0, 4, 0, "s",
                                        "Trains scouts and knights; breeds faster horses",
-                                       trains=(UnitType.SCOUT, UnitType.KNIGHT), researches=(Upgrade.HORSES,), requires=BuildingType.BARRACKS),
+                                       trains=(UnitType.SCOUT, UnitType.KNIGHT), researches=(Upgrade.HORSES, Upgrade.PLUNDER),
+                                       requires=BuildingType.BARRACKS),
     BuildingType.WORKSHOP: BuildingInfo("Workshop", Cost(900, 500), 600, 3, 3, 45.0, 4, 0, "w",
                                         "Builds catapults; improves siege engines",
-                                        trains=(UnitType.CATAPULT,), researches=(Upgrade.SIEGE,), requires=BuildingType.BLACKSMITH),
+                                        trains=(UnitType.CATAPULT,), researches=(Upgrade.SIEGE, Upgrade.BLASTING_POWDER), requires=BuildingType.BLACKSMITH),
     BuildingType.CHURCH: BuildingInfo("Church", Cost(900, 400), 600, 3, 3, 45.0, 5, 0, "c",
                                       "Trains clerics; blesses their healing",
                                       trains=(UnitType.CLERIC,), researches=(Upgrade.BLESSING,), requires=BuildingType.BARRACKS),
@@ -187,6 +207,7 @@ class UpgradeInfo:
     hotkey: str
     summary: str
     requires: Upgrade | None = None
+    race: Race | None = None  # a race art: nobody else can research it
 
 
 UPGRADES: dict[Upgrade, UpgradeInfo] = {
@@ -196,9 +217,15 @@ UPGRADES: dict[Upgrade, UpgradeInfo] = {
     Upgrade.ARMOR_2: UpgradeInfo("Heavy Plate", Cost(900, 500), 60.0, "a", "+1 more armour for soldiers", requires=Upgrade.ARMOR_1),
     Upgrade.ARROWS_1: UpgradeInfo("Bodkin Arrows", Cost(300, 300), 40.0, "r", "+2 damage for archers and towers"),
     Upgrade.ARROWS_2: UpgradeInfo("Broadhead Arrows", Cost(900, 500), 60.0, "r", "+2 more damage for archers and towers", requires=Upgrade.ARROWS_1),
-    Upgrade.HORSES: UpgradeInfo("Horse Breeding", Cost(900, 300), 50.0, "h", "+0.8 speed for scouts and knights"),
-    Upgrade.SIEGE: UpgradeInfo("Siege Engineering", Cost(1000, 500), 60.0, "e", "+1 range and +25 % damage for catapults"),
-    Upgrade.BLESSING: UpgradeInfo("Blessing", Cost(800, 400), 50.0, "l", "Clerics heal half again as fast"),
+    Upgrade.SIEGE: UpgradeInfo("Siege Engineering", Cost(1000, 500), 60.0, "e", "+1 range and +25 % damage for siege engines"),
+    Upgrade.HORSES: UpgradeInfo("Horse Breeding", Cost(900, 300), 50.0, "h", "+0.8 speed for scouts and knights", race=Race.HUMAN),
+    Upgrade.BLESSING: UpgradeInfo("Blessing", Cost(800, 400), 50.0, "l", "Clerics heal half again as fast", race=Race.HUMAN),
+    Upgrade.BLOODLUST: UpgradeInfo("Bloodlust", Cost(700, 300), 50.0, "l", "Frenzy doubles: wounded orcs deal +50 % damage", race=Race.ORC),
+    Upgrade.PLUNDER: UpgradeInfo("Plunder", Cost(600, 200), 45.0, "h", "Razing a building loots a fifth of its gold", race=Race.ORC),
+    Upgrade.LONGBOWS: UpgradeInfo("Longbows", Cost(700, 400), 50.0, "l", "+1 range for rangers and towers", race=Race.ELF),
+    Upgrade.REGROWTH: UpgradeInfo("Regrowth", Cost(500, 500), 45.0, "g", "Trees felled by elves grow back after a minute", race=Race.ELF),
+    Upgrade.DEEP_MINING: UpgradeInfo("Deep Mining", Cost(600, 300), 45.0, "d", "Miners bring 150 gold per trip", race=Race.DWARF),
+    Upgrade.BLASTING_POWDER: UpgradeInfo("Blasting Powder", Cost(900, 400), 50.0, "p", "Mortar splash reaches half again as far", race=Race.DWARF),
 }
 
 BLADES_BONUS = 2
@@ -208,6 +235,13 @@ HORSES_BONUS = 0.8
 SIEGE_RANGE_BONUS = 1.0
 SIEGE_DAMAGE_BONUS = 1.25
 BLESSING_BONUS = 1.5
+FRENZY_BONUS = 1.25  # an orc below half health hits this much harder…
+BLOODLUST_BONUS = 1.5  # …and this much with Bloodlust
+PLUNDER_SHARE = 0.2  # of a razed building's gold cost
+LONGBOWS_BONUS = 1.0
+REGROWTH_SECONDS = 60.0
+DEEP_MINING_TRIP = 150
+BLASTING_POWDER_BONUS = 1.5
 SPLASH_FRACTION = 0.6  # share of the damage dealt to others inside the splash radius
 
 GOLD_PER_TRIP = 100

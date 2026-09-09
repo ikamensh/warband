@@ -11,7 +11,8 @@ from typing import Any
 
 from saga2d import Anchor, Button, Camera, Column, Label, Row, SaveError, Scene
 from warband import mapgen
-from warband.rules import Difficulty, MapTheme
+from warband.races import RACES
+from warband.rules import Difficulty, MapTheme, Race
 from warband.scene import SAVE_SLOTS, HelpScene, SaveBrowserScene, load_game, new_game
 from warband.sound import play_sound
 from warband.style import ACTION_BUTTON, GHOST_BUTTON, MENU_BUTTON, OVERLAY_STYLE
@@ -20,6 +21,8 @@ from warband.view import MapView, to_world
 
 PLAYER_COUNTS = (2, 3, 4)
 OPTION_WIDTH = 170
+RACE_WIDTH = 125
+RACE_KEYS = {Race.HUMAN: "U", Race.ORC: "O", Race.ELF: "V", Race.DWARF: "A"}
 DRIFT_SECONDS = 24.0
 
 
@@ -28,11 +31,12 @@ class TitleScene(Scene):
     controls = {("n", "return"): "new_game", "c": "continue_game", "l": "load_game", "h": "how_to_play", "q": "quit"}
 
     def __init__(self, *, size: str = "Medium", players: int = 2, difficulty: Difficulty = Difficulty.NORMAL, theme: MapTheme = MapTheme.SUMMER,
-                 settings: dict[str, Any] | None = None) -> None:
+                 race: Race = Race.HUMAN, settings: dict[str, Any] | None = None) -> None:
         self.size = size
         self.players = players
         self.difficulty = difficulty
         self.theme = theme
+        self.race = race
         self.settings = settings
         self.time = 0.0
         self._stop = 0
@@ -101,11 +105,12 @@ class TitleScene(Scene):
         from saga2d import MatchMenu
         from warband.multiplayer import WarbandMatch, NetworkGameScene
         width, height = mapgen.SIZES[self.size]
+        # The room's creator leads the race chosen under New game; the guest's is drawn from the seed.
         self.game.push(MatchMenu("Warband multiplayer", "warband-v1",
-                                lambda: WarbandMatch(mapgen.fresh_seed(), width, height, self.theme),
+                                lambda: WarbandMatch(mapgen.fresh_seed(), width, height, self.theme, races=(self.race, None)),
                                 lambda session, match: NetworkGameScene(session, match, settings=self.settings),
                                 create_options=lambda: {'seed': mapgen.fresh_seed(), 'width': width, 'height': height,
-                                                        'theme': self.theme.value}))
+                                                        'theme': self.theme.value, 'races': [self.race.value, None]}))
 
     def new_game(self) -> None:
         self.sfx("button")
@@ -144,13 +149,14 @@ class TitleScene(Scene):
 
 
 class NewGameScene(Scene):
-    """Map size, number of players, the seed, then Start."""
+    """Map size, number of players, your race, the seed, then Start.  The computer players' races are drawn from the seed."""
 
     transparent = True
     pause_below = False
     pop_on_cancel = True
     controls = {"s": "size_small", "m": "size_medium", "l": "size_large", "2": "players_2", "3": "players_3", "4": "players_4",
-                "e": "easy", "n": "normal", "h": "hard", "g": "summer", "w": "winter", "d": "wasteland", "r": "reroll", ("return", "space"): "start"}
+                "e": "easy", "n": "normal", "h": "hard", "g": "summer", "w": "winter", "d": "wasteland", "r": "reroll", ("return", "space"): "start",
+                "u": "humans", "o": "orcs", "v": "elves", "a": "dwarves"}
 
     def __init__(self, title: TitleScene) -> None:
         self.title = title
@@ -158,11 +164,13 @@ class NewGameScene(Scene):
         self.players = title.players
         self.difficulty = title.difficulty
         self.theme = title.theme
+        self.race = title.race
         self.seed = mapgen.fresh_seed()
         self._theme_buttons: dict[MapTheme, Button] = {}
         self._size_buttons: dict[str, Button] = {}
         self._player_buttons: dict[int, Button] = {}
         self._difficulty_buttons: dict[Difficulty, Button] = {}
+        self._race_buttons: dict[Race, Button] = {}
 
     def on_enter(self) -> None:
         panel = Column(spacing=12, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
@@ -192,6 +200,13 @@ class NewGameScene(Scene):
             self._theme_buttons[theme] = button
             theme_row.add(button)
         panel.add(theme_row)
+        race_row = Row(Label("Race", text_style="body", width=90), spacing=8)
+        for race, key in RACE_KEYS.items():
+            button = Button(RACES[race].name, hotkey=key, on_click=lambda r=race: self.set_race(r), style=GHOST_BUTTON, width=RACE_WIDTH)
+            self._race_buttons[race] = button
+            race_row.add(button)
+        panel.add(race_row)
+        panel.add(Label(lambda: f"{RACES[self.race].tagline} · {RACES[self.race].passive}", text_style="sub", width=3 * OPTION_WIDTH + 90 + 24))
         panel.add(Row(Label(lambda: f"Seed {self.seed}", text_style="body", width=90 + 8 + OPTION_WIDTH),
                       Button("Reroll", hotkey="R", on_click=self.reroll, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
         panel.add(Row(Button("Start", hotkey="Enter", on_click=self.start, style=ACTION_BUTTON, width=2 * OPTION_WIDTH + 8),
@@ -208,6 +223,8 @@ class NewGameScene(Scene):
             button.style = ACTION_BUTTON if difficulty == self.difficulty else GHOST_BUTTON
         for theme, button in self._theme_buttons.items():
             button.style = ACTION_BUTTON if theme == self.theme else GHOST_BUTTON
+        for race, button in self._race_buttons.items():
+            button.style = ACTION_BUTTON if race == self.race else GHOST_BUTTON
 
     def draw(self) -> None:
         w, h = self.game.resolution
@@ -232,6 +249,24 @@ class NewGameScene(Scene):
         self.theme = theme
         self.title.sfx("button")
         self._restyle()
+
+    def set_race(self, race: Race) -> None:
+        self.race = race
+        self.title.race = race  # multiplayer rooms lead the race chosen here
+        self.title.sfx("button")
+        self._restyle()
+
+    def humans(self) -> None:
+        self.set_race(Race.HUMAN)
+
+    def orcs(self) -> None:
+        self.set_race(Race.ORC)
+
+    def elves(self) -> None:
+        self.set_race(Race.ELF)
+
+    def dwarves(self) -> None:
+        self.set_race(Race.DWARF)
 
     def summer(self) -> None:
         self.set_theme(MapTheme.SUMMER)
@@ -277,4 +312,4 @@ class NewGameScene(Scene):
         self.title.sfx("button")
         width, height = mapgen.SIZES[self.size]
         self.game.clear_and_push(new_game(self.seed, width=width, height=height, players=self.players, difficulty=self.difficulty, theme=self.theme,
-                                          settings=self.title.settings))
+                                          settings=self.title.settings, races=[self.race] + [None] * (self.players - 1)))

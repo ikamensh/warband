@@ -217,6 +217,11 @@ class MapView:
 
     # -- Sync ----------------------------------------------------------------------------
 
+    def tree_grown(self, pos: Pos) -> None:
+        """A felled tree has grown back (the elven art): give it a sprite like the original."""
+        if pos not in self._trees and self.world.terrain_at(pos) is Terrain.TREES:
+            self._trees[pos] = self._prop(f"tree.{self.world.theme.value}.{textures.scatter(*pos, 3) % textures.TREE_VARIANTS}", (pos[0] + 0.5, pos[1] + 0.5))
+
     def sync(self, dt: float = 0.0) -> None:
         self.time += dt
         world = self.world
@@ -254,7 +259,7 @@ class MapView:
             if b.type is BuildingType.GOLD_MINE:
                 key = textures.mine_image(self.game, textures.scatter(b.x, b.y, 8) % textures.MINE_VARIANTS)
             elif b.done or rising:
-                key = textures.building_image(self.game, b.type, b.player)  # type: ignore[arg-type]
+                key = textures.building_image(self.game, b.type, b.player, b.race)  # type: ignore[arg-type]
             else:
                 key = f"site.{b.size}"
             sprite = self._buildings.get(b.id)
@@ -319,7 +324,7 @@ class MapView:
                 if sprite is not None:
                     sprite.visible = False
                 continue
-            key = textures.unit_image(self.game, u.type, u.player, textures.facing_index(u.facing), self._frame(u), u.carrying)
+            key = textures.unit_image(self.game, u.type, u.player, textures.facing_index(u.facing), self._frame(u), u.carrying, race=u.race)
             if sprite is None:
                 sprite = self._units[u.id] = self._prop(key, u.pos)
                 self._unit_keys[u.id] = key
@@ -452,7 +457,7 @@ class MapView:
             for ty in range(size):
                 for tx in range(size):
                     scene.draw_rect((gx + tx) * TILE + 1, (gy + ty) * TILE + 1, TILE - 2, TILE - 2, tint, space="world", layer=RenderLayer.UI_WORLD)
-            key = textures.building_image(self.game, building_type, self.player)
+            key = textures.building_image(self.game, building_type, self.player, world.players[self.player].race)
             placement = textures.placements[key]
             cx, cy = (gx + size / 2) * TILE, (gy + size / 2) * TILE
             w, h = placement.size

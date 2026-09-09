@@ -76,7 +76,7 @@ def test_save_browser_writes_slots_with_summaries_and_loads_them(game) -> None:
     press(game, "2")
     assert game.scene is scene and any("Saved to slot 2" in t for t in texts(game))
     entry = game.save_manager.list_slots(3)[1]
-    assert entry["summary"]["players"] == 3 and entry["summary"]["map"].startswith("Medium") and entry["summary"]["player"] == "Azure"
+    assert entry["summary"]["players"] == 3 and entry["summary"]["map"].startswith("Medium") and entry["summary"]["player"] == "Azure (Humans)"
     scene.player.gold = 77
     press(game, "escape")
     press(game, "f9")

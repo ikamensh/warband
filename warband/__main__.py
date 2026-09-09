@@ -12,7 +12,7 @@ import argparse
 from saga2d import add_match_arguments, match_from_arguments
 from saga2d import Game, fonts
 from warband import mapgen, sound
-from warband.rules import Difficulty, MapTheme
+from warband.rules import Difficulty, MapTheme, Race
 from warband.scene import DEFAULT_SETTINGS, new_game
 from warband.style import build_theme
 from warband.title import TitleScene
@@ -25,6 +25,7 @@ def main() -> None:
     parser.add_argument("--players", type=int, default=2, choices=(2, 3, 4))
     parser.add_argument("--difficulty", choices=[d.value for d in Difficulty], default="normal")
     parser.add_argument("--theme", choices=[t.value for t in MapTheme], default="summer")
+    parser.add_argument("--race", choices=[r.value for r in Race], default="human", help="your race; the computer players' are drawn from the seed")
     parser.add_argument("--fullscreen", action="store_true")
     parser.add_argument("--selftest", metavar="PNG", help="start a match in a hidden window, save one frame to PNG and exit (for packaged builds)")
     add_match_arguments(parser)
@@ -42,9 +43,9 @@ def main() -> None:
     from warband.multiplayer import NetworkGameScene, WarbandMatch
     width, height = mapgen.SIZES[args.size]
     options = {'seed': args.seed if args.seed is not None else mapgen.fresh_seed(), 'width': width,
-               'height': height, 'theme': args.theme}
+               'height': height, 'theme': args.theme, 'races': [args.race, None]}
     lobby = match_from_arguments(args, parser, title="Warband", game_id="warband-v1",
-                                 create_match=lambda: WarbandMatch(**{**options, 'theme': MapTheme(args.theme)}),
+                                 create_match=lambda: WarbandMatch(**{**options, 'theme': MapTheme(args.theme), 'races': (Race(args.race), None)}),
                                  create_scene=lambda session, match: NetworkGameScene(session, match, settings=settings),
                                  create_options=lambda: options, game=game)
     if lobby is not None:
@@ -53,9 +54,10 @@ def main() -> None:
     if args.seed is not None:
         width, height = mapgen.SIZES[args.size]
         game.run(new_game(args.seed, width=width, height=height, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme),
-                          settings=settings))
+                          settings=settings, races=[Race(args.race)] + [None] * (args.players - 1)))
     else:
-        game.run(TitleScene(size=args.size, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme), settings=settings))
+        game.run(TitleScene(size=args.size, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme), race=Race(args.race),
+                            settings=settings))
 
 
 def selftest(png: str) -> None:

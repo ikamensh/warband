@@ -21,14 +21,16 @@ from dataclasses import dataclass, field
 from typing import Any, Iterator
 
 from warband import path as pathing
+from warband.races import RACES
 from warband.settlement import Plan, Settlement
 from warband.worker_knowledge import WorkerKnowledge
 from warband.rules import (
     REPAIR_CHUNK, REPAIR_RATE, repair_cost,
-    ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLESSING_BONUS, BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS,
-    LEASH, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, PLAYERS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION,
-    STARTING_GOLD, STARTING_LUMBER, UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo,
-    BuildingType, Cost, MapTheme, Resource, Terrain, UnitInfo, UnitType, Upgrade,
+    ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLASTING_POWDER_BONUS, BLESSING_BONUS, BLOODLUST_BONUS, BUILDINGS, CHOP_TIME, DEEP_MINING_TRIP,
+    FRENZY_BONUS, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, PLAYERS,
+    PLUNDER_SHARE, REGROWTH_SECONDS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION, STARTING_GOLD, STARTING_LUMBER,
+    UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
+    Terrain, UnitInfo, UnitType, Upgrade,
 )
 
 Pos = tuple[int, int]
@@ -136,6 +138,7 @@ class Player:
     last_alert: float = -1000.0
     upgrades: set[Upgrade] = field(default_factory=set)
     assembly: Point | None = None
+    race: Race = Race.HUMAN
 
 
 @dataclass
@@ -146,6 +149,7 @@ class Unit:
     x: float
     y: float
     hp: int
+    race: Race = Race.HUMAN  # its owner's; the race's UnitInfo is what this unit reports
     facing: float = math.pi / 2  # radians, 0 = +x, pi/2 = +y (down the screen)
     orders: deque[Order] = field(default_factory=deque)
     path: list[Pos] = field(default_factory=list)
@@ -175,7 +179,7 @@ class Unit:
 
     @property
     def info(self) -> UnitInfo:
-        return UNITS[self.type]
+        return RACES[self.race].units[self.type]
 
     @property
     def max_hp(self) -> int:
@@ -216,10 +220,11 @@ class Building:
     cooldown: float = 0.0
     research: Upgrade | None = None
     research_progress: float = 0.0
+    race: Race = Race.HUMAN  # its owner's; a gold mine is nobody's
 
     @property
     def info(self) -> BuildingInfo:
-        return BUILDINGS[self.type]
+        return RACES[self.race].buildings[self.type]
 
     @property
     def size(self) -> int:
@@ -319,14 +324,19 @@ def sight_offsets(radius: int) -> list[Pos]:
 
 class World:
     def __init__(self, width: int, height: int, terrain: list[list[Terrain]], player_count: int, *,
-                 human: int | None = 0, rng: random.Random | None = None, theme: MapTheme = MapTheme.SUMMER) -> None:
+                 human: int | None = 0, rng: random.Random | None = None, theme: MapTheme = MapTheme.SUMMER,
+                 races: list[Race] | tuple[Race, ...] | None = None) -> None:
         if len(terrain) != height or any(len(row) != width for row in terrain):
             raise ValueError("terrain must be height rows of width tiles")
+        if races is not None and len(races) != player_count:
+            raise ValueError(f"{player_count} players need {player_count} races, not {len(races)}")
         self.width = width
         self.height = height
         self.terrain = terrain
         self.theme = theme
-        self.players = [Player(i, PLAYERS[i].name, PLAYERS[i].color, human=(i == human)) for i in range(player_count)]
+        self.players = [Player(i, PLAYERS[i].name, PLAYERS[i].color, human=(i == human), race=races[i] if races is not None else Race.HUMAN)
+                        for i in range(player_count)]
+        self.regrowth: list[tuple[Pos, float]] = []  # (felled tree tile, simulation time it grows back) — the elven art
         self.units: dict[int, Unit] = {}
         self.buildings: dict[int, Building] = {}
         self.rng = rng if rng is not None else random.Random(0)
@@ -483,8 +493,18 @@ class World:
     def _has(self, player: int | None, upgrade: Upgrade) -> bool:
         return player is not None and upgrade in self.players[player].upgrades
 
+    def race_of(self, player: int | None) -> Race:
+        return self.players[player].race if player is not None else Race.HUMAN
+
+    def unit_info(self, player: int | None, unit_type: UnitType) -> UnitInfo:
+        """What *unit_type* is for *player*'s race: its name, numbers and training time."""
+        return RACES[self.race_of(player)].units[unit_type]
+
+    def building_info(self, player: int | None, building_type: BuildingType) -> BuildingInfo:
+        return RACES[self.race_of(player)].buildings[building_type]
+
     def damage_of(self, entity: Entity) -> int:
-        """Listed damage plus every upgrade its owner has researched."""
+        """Listed damage plus every upgrade its owner has researched, and an orc's frenzy."""
         info = entity.info
         damage = info.damage
         if damage == 0:
@@ -495,7 +515,13 @@ class World:
             damage += ARROWS_BONUS * (self._has(entity.player, Upgrade.ARROWS_1) + self._has(entity.player, Upgrade.ARROWS_2))
         if isinstance(entity, Unit) and entity.type is UnitType.CATAPULT and self._has(entity.player, Upgrade.SIEGE):
             damage = int(round(damage * SIEGE_DAMAGE_BONUS))
+        if isinstance(entity, Unit) and self.frenzied(entity):
+            damage = int(round(damage * (BLOODLUST_BONUS if self._has(entity.player, Upgrade.BLOODLUST) else FRENZY_BONUS)))
         return damage
+
+    def frenzied(self, unit: Unit) -> bool:
+        """An orc soldier below half health fights in a frenzy."""
+        return unit.race is Race.ORC and not unit.is_worker and unit.info.damage > 0 and unit.hp * 2 < unit.max_hp
 
     def armor_of(self, entity: Entity) -> int:
         armor = entity.info.armor
@@ -507,7 +533,24 @@ class World:
         reach = unit.info.range
         if unit.type is UnitType.CATAPULT and self._has(unit.player, Upgrade.SIEGE):
             reach += SIEGE_RANGE_BONUS
+        if unit.type is UnitType.ARCHER and self._has(unit.player, Upgrade.LONGBOWS):
+            reach += LONGBOWS_BONUS
         return reach
+
+    def building_range(self, building: Building) -> float:
+        reach = building.info.range
+        if reach and self._has(building.player, Upgrade.LONGBOWS):
+            reach += LONGBOWS_BONUS
+        return reach
+
+    def splash_of(self, unit: Unit) -> float:
+        radius = unit.info.splash
+        if radius and self._has(unit.player, Upgrade.BLASTING_POWDER):
+            radius *= BLASTING_POWDER_BONUS
+        return radius
+
+    def gold_per_trip(self, player: int) -> int:
+        return DEEP_MINING_TRIP if self._has(player, Upgrade.DEEP_MINING) else GOLD_PER_TRIP
 
     def speed_of(self, unit: Unit) -> float:
         speed = unit.info.speed
@@ -548,11 +591,11 @@ class World:
         return used, cap
 
     def can_train(self, building: Building, unit_type: UnitType) -> str | None:
-        info = UNITS[unit_type]
+        info = self.unit_info(building.player, unit_type)
         if building.player is None or not building.done:
             return "Still under construction"
         if info.trained_at is not building.type:
-            return f"{info.name}s are trained at the {BUILDINGS[info.trained_at].name}"
+            return f"{info.name}s are trained at the {self.building_info(building.player, info.trained_at).name}"
         if len(building.queue) >= 5:
             return "Queue is full"
         if building.research is not None:
@@ -572,6 +615,8 @@ class World:
         if upgrade not in building.info.researches:
             return f"{info.name} is not researched here"
         player = self.players[building.player]
+        if not RACES[player.race].upgrade_allowed(upgrade):
+            return f"{info.name} is a {RACES[info.race].adjective} art"  # type: ignore[index]
         if upgrade in player.upgrades:
             return "Already researched"
         if any(b.research is upgrade for b in self.player_buildings(building.player)):
@@ -608,7 +653,7 @@ class World:
     def can_place(self, building_type: BuildingType, pos: Pos, player: int, *, builder: int | None = None) -> str | None:
         info = BUILDINGS[building_type]
         if info.requires is not None and not self.player_buildings(player, info.requires, done=True):
-            return f"Requires a {BUILDINGS[info.requires].name}"
+            return f"Requires a {self.building_info(player, info.requires).name}"
         return self._placement_reason(building_type, pos, player, builder=builder)
 
     def _placement_reason(self, building_type: BuildingType, pos: Pos, player: int, *,
@@ -846,14 +891,16 @@ class World:
     # -- Spawning ------------------------------------------------------------------
 
     def spawn_unit(self, player: int, unit_type: UnitType, point: Point) -> Unit:
-        unit = Unit(self._new_id(), unit_type, player, point[0], point[1], UNITS[unit_type].hp)
+        race = self.race_of(player)
+        unit = Unit(self._new_id(), unit_type, player, point[0], point[1], RACES[race].units[unit_type].hp, race=race)
         self.units[unit.id] = unit
         self._buckets.setdefault(unit.tile, []).append(unit)
         return unit
 
     def place_building(self, player: int | None, building_type: BuildingType, pos: Pos, *, done: bool = True) -> Building:
-        info = BUILDINGS[building_type]
-        building = Building(self._new_id(), building_type, player, pos[0], pos[1], info.hp if done else max(1, info.hp // 10))
+        race = self.race_of(player)
+        info = RACES[race].buildings[building_type]
+        building = Building(self._new_id(), building_type, player, pos[0], pos[1], info.hp if done else max(1, info.hp // 10), race=race)
         if done:
             building.progress = info.build_time
         if building_type is BuildingType.GOLD_MINE:
@@ -898,9 +945,32 @@ class World:
                 self._update_unit(unit, dt)
         self._separate()
         self._bury_the_dead()
+        if self.regrowth and self.tick % round(1 / SIM_DT) == 0:
+            self._regrow()
         if self.tick % VISION_EVERY == 0:
             self.update_vision()
         self._check_elimination()
+
+    def _regrow(self) -> None:
+        """Trees the elves felled grow back once their time is up, unless something stands there."""
+        pending = []
+        for tile, when in self.regrowth:
+            x, y = tile
+            if self.time < when:
+                pending.append((tile, when))
+                continue
+            if self.terrain[y][x] is not Terrain.GRASS or self._blocked[y * self.width + x] or any(
+                    not u.hidden and u.tile == tile for u in self.units_near(tile_center(tile), 1.0)):
+                pending.append((tile, self.time + 5.0))  # try again shortly
+                continue
+            self.terrain[y][x] = Terrain.TREES
+            self._blocked[y * self.width + x] = 1
+            for unit in self.units.values():
+                if tile in unit.path:
+                    unit.path = []
+                    unit.path_goal = None  # the order plans again on its next step
+            self.events.append(Event("tree_grown", tile_center(tile)))
+        self.regrowth = pending
 
     def take_events(self) -> list[Event]:
         events, self.events = self.events, []
@@ -924,7 +994,7 @@ class World:
         if b.queue:
             unit_type = b.queue[0]
             b.train_progress += dt
-            if b.train_progress >= UNITS[unit_type].build_time:
+            if b.train_progress >= self.unit_info(b.player, unit_type).build_time:
                 b.queue.pop(0)
                 b.train_progress = 0.0
                 self._deliver_unit(b, unit_type)
@@ -966,7 +1036,7 @@ class World:
         if b.cooldown > 0:
             return
         info = b.info
-        target = self._nearest_enemy(b.player, b.center, info.range + b.size / 2, units_only=True)  # type: ignore[arg-type]
+        target = self._nearest_enemy(b.player, b.center, self.building_range(b) + b.size / 2, units_only=True)  # type: ignore[arg-type]
         if target is None:
             return
         self._hit(b, target, self.damage_of(b))
@@ -1261,6 +1331,8 @@ class World:
                 self.terrain[tile[1]][tile[0]] = Terrain.GRASS
                 self._blocked[tile[1] * self.width + tile[0]] = 0
                 u.carrying, u.carry = Resource.LUMBER, LUMBER_PER_TRIP
+                if self._has(u.player, Upgrade.REGROWTH):
+                    self.regrowth.append((tile, self.time + REGROWTH_SECONDS))
                 self.events.append(Event("tree_felled", tile_center(tile), player=u.player, entity=u.id))
                 u.orders.appendleft(Deposit())
             return
@@ -1276,7 +1348,7 @@ class World:
             return
         if u.timer > 0:
             return
-        taken = min(GOLD_PER_TRIP, mine.gold)
+        taken = min(self.gold_per_trip(u.player), mine.gold)
         mine.gold -= taken
         u.carrying, u.carry = Resource.GOLD, taken
         u.inside = None
@@ -1346,12 +1418,20 @@ class World:
                     costs[tile] = sum(max(0.0, 1.0 - dist(v.pos, point)) * 2
                                       for v in self.units_near(point, 1.0)
                                       if v is not u and not v.hidden and v.player == u.player)
-        route = pathing.find_work_path(u.tile, costs, navigation, self.width, self.height)
+        start, escape = u.tile, []
+        if navigation[start[1] * self.width + start[0]]:
+            def allowed(x: int, y: int) -> bool:
+                return 0 <= x < self.width and 0 <= y < self.height and not navigation[y * self.width + x]
+            nearest = pathing.nearest_passable(start, allowed)
+            if nearest is not None:
+                escape, start = self._escape(start, nearest), nearest
+        route = pathing.find_work_path(start, costs, navigation, self.width, self.height)
         u.replan_at = self.time + REPLAN_EVERY
         u.progress, u.last_distance = 0.0, math.inf
         u.path, u.path_goal, u.exact = [], None, None
         if route is None:
             return None
+        route = escape + route
         goal = route[-1] if route else u.tile
         u.path, u.path_goal, u.exact = route, goal, tile_center(goal)
         return owners[goal]
@@ -1453,9 +1533,12 @@ class World:
         grid = self._blocked if navigation is None else navigation
         def passable(x: int, y: int) -> bool:
             return 0 <= x < self.width and 0 <= y < self.height and not grid[y * self.width + x]
+        escape: list[Pos] = []
         if not passable(*start):
             nearest = pathing.nearest_passable(start, passable)
             if nearest is not None:
+                if navigation is not None:
+                    escape = self._escape(start, nearest)
                 start = nearest
         target = goal
         if not passable(*goal):
@@ -1473,9 +1556,9 @@ class World:
                     tx, ty = v.tile
                     if (tx, ty) != target and 0 <= tx < width and 0 <= ty < self.height:
                         blocked[ty * width + tx] = 1
-            u.path = pathing.find_path_grid(start, target, blocked, width, self.height, max_expansions=LOCAL_EXPANSIONS)
+            u.path = escape + pathing.find_path_grid(start, target, blocked, width, self.height, max_expansions=LOCAL_EXPANSIONS)
         else:
-            u.path = pathing.find_path_grid(start, target, grid, self.width, self.height)
+            u.path = escape + pathing.find_path_grid(start, target, grid, self.width, self.height)
         u.path_goal = goal  # the goal as asked, so a repeated request is recognised
         u.last_distance = math.inf
         u.progress = 0.0
@@ -1485,6 +1568,12 @@ class World:
             reached = (u.path[-1] if u.path else start) == goal_tile
             if reached and passable(*goal_tile):
                 u.exact = exact
+
+    def _escape(self, start: Pos, nearest: Pos) -> list[Pos]:
+        """Real-ground steps from *start*, which the safe map forbids (an enemy came close), to *nearest*, which it allows."""
+        if not self.passable(*start):
+            return []
+        return pathing.find_path_grid(start, nearest, self._blocked, self.width, self.height, max_expansions=LOCAL_EXPANSIONS)
 
     def _walk_to(self, u: Unit, target: Point, dt: float, *, settle: bool = False) -> bool:
         """Move towards *target*; True once there is nothing left to walk (arrived, or as near as the
@@ -1517,6 +1606,8 @@ class World:
             u.state = "idle"
             return True
         u.state = "move"
+        if navigation is not None and navigation[u.tile[1] * self.width + u.tile[0]]:
+            navigation = None  # caught on forbidden ground: any real step out is better than standing still
         grid = self._blocked if navigation is None else navigation
         if u.path and u.path_goal is not None:
             tx, ty = u.tile
@@ -1723,13 +1814,14 @@ class World:
         """One blow (or shot) from *u* at *target*, with splash for siege engines."""
         damage = self.damage_of(u)
         self._hit(u, target, damage)
-        if u.info.splash > 0:
+        splash = self.splash_of(u)
+        if splash > 0:
             centre = self._impact_point(u, target)
-            for other in list(self.units_near(centre, u.info.splash + UNIT_RADIUS)):
+            for other in list(self.units_near(centre, splash + UNIT_RADIUS)):
                 if other is not target and other.player != u.player and not other.hidden and other.hp > 0:
                     self._hit(u, other, int(damage * SPLASH_FRACTION))
             for building in list(self.buildings.values()):
-                if building is not target and building.player not in (None, u.player) and building.hp > 0 and rect_gap(centre, building.rect) <= u.info.splash:
+                if building is not target and building.player not in (None, u.player) and building.hp > 0 and rect_gap(centre, building.rect) <= splash:
                     self._hit(u, building, int(damage * SPLASH_FRACTION))
 
     def _impact_point(self, u: Unit, target: Entity) -> Point:
@@ -1756,6 +1848,11 @@ class World:
             if self.time - victim.last_alert >= UNDER_ATTACK_COOLDOWN:
                 victim.last_alert = self.time
                 self.events.append(Event("under_attack", self._target_point(target), player=target.player, entity=target.id))
+        if isinstance(target, Building) and target.hp <= 0 and isinstance(source, Unit) and self._has(source.player, Upgrade.PLUNDER):
+            loot = int(target.info.cost.gold * PLUNDER_SHARE)
+            if loot:
+                self.players[source.player].gold += loot
+                self.events.append(Event("plunder", target.center, player=source.player, entity=source.id, other=target.id, amount=loot))
         if isinstance(target, Unit) and target.hp > 0 and not target.orders and not target.is_worker and target.info.damage > 0:
             attacker_alive = source.id in self.units or source.id in self.buildings
             if attacker_alive and not (isinstance(source, Building)):
@@ -1830,9 +1927,10 @@ class World:
         return {
             "width": self.width, "height": self.height, "theme": self.theme.value,
             "terrain": ["".join(t.value[0] for t in row) for row in self.terrain],
-            "players": [{"id": p.id, "human": p.human, "gold": p.gold, "lumber": p.lumber, "alive": p.alive, "last_alert": p.last_alert,
-                         "upgrades": sorted(u.value for u in p.upgrades),
+            "players": [{"id": p.id, "human": p.human, "race": p.race.value, "gold": p.gold, "lumber": p.lumber, "alive": p.alive,
+                         "last_alert": p.last_alert, "upgrades": sorted(u.value for u in p.upgrades),
                          "assembly": list(p.assembly) if p.assembly is not None else None} for p in self.players],
+            "regrowth": [[list(tile), when] for tile, when in self.regrowth],
             "units": [_unit_to_dict(u) for u in self.units.values()],
             "buildings": [_building_to_dict(b) for b in self.buildings.values()],
             "explored": [bytes(e).hex() for e in self.explored],
@@ -1847,7 +1945,9 @@ class World:
         letters = {t.value[0]: t for t in Terrain}
         terrain = [[letters[c] for c in row] for row in data["terrain"]]
         human = next((p["id"] for p in data["players"] if p["human"]), None)
-        world = cls(data["width"], data["height"], terrain, len(data["players"]), human=human, theme=MapTheme(data["theme"]))
+        world = cls(data["width"], data["height"], terrain, len(data["players"]), human=human, theme=MapTheme(data["theme"]),
+                    races=[Race(p.get("race", Race.HUMAN.value)) for p in data["players"]])
+        world.regrowth = [((tile[0], tile[1]), when) for tile, when in data.get("regrowth", [])]
         for p, saved in zip(world.players, data["players"]):
             p.human = saved["human"]
             p.gold, p.lumber, p.alive, p.last_alert = saved["gold"], saved["lumber"], saved["alive"], saved["last_alert"]
@@ -1855,10 +1955,12 @@ class World:
             p.assembly = tuple(saved["assembly"]) if saved.get("assembly") is not None else None
         for saved in data["buildings"]:
             b = _building_from_dict(saved)
+            b.race = world.race_of(b.player)
             world.buildings[b.id] = b
             world._set_blocked(b, True)
         for saved in data["units"]:
             u = _unit_from_dict(saved)
+            u.race = world.race_of(u.player)
             world.units[u.id] = u
         world.explored = [bytearray(bytes.fromhex(e)) for e in data["explored"]]
         if "worker_knowledge" in data:

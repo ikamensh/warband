@@ -4,7 +4,7 @@ import pytest
 
 from saga2d import Game
 from saga2d.testing import assert_no_text_overlap
-from warband.rules import BuildingType, UnitType
+from warband.rules import BuildingType, Race, UnitType
 from warband.model import tile_center
 from warband.scene import CodexScene, GameOverScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game
 from warband.style import build_theme
@@ -18,8 +18,8 @@ def settle(game: Game, frames: int = 6) -> None:
         game.tick(1 / 60)
 
 
-def match(game: Game):
-    scene = new_game(seed=5)
+def match(game: Game, races=None):
+    scene = new_game(seed=5, races=races)
     game.push(scene)
     settle(game)
     world = scene.world
@@ -43,6 +43,9 @@ SCREENS = {
     "codex units": lambda game: (s := match(game), game.push(CodexScene(s.world, s.human, 0))),
     "codex buildings": lambda game: (s := match(game), game.push(CodexScene(s.world, s.human, 1))),
     "codex upgrades": lambda game: (s := match(game), game.push(CodexScene(s.world, s.human, 2))),
+    "codex races": lambda game: (s := match(game), game.push(CodexScene(s.world, s.human, 3))),
+    "orc match, build menu": lambda game: (match(game, races=[Race.ORC, None]), game.scene.select([next(u.id for u in game.scene.world.player_units(game.scene.human) if u.is_worker)]), game.scene.open_build_menu()),
+    "dwarf codex": lambda game: (s := match(game, races=[Race.DWARF, None]), game.push(CodexScene(s.world, s.human, 0))),
     "save browser": lambda game: (match(game), game.push(SaveBrowserScene(game, "save", on_pick=lambda slot: None))),
     "victory": lambda game: game.push(GameOverScene(match(game), True)),
     "defeat": lambda game: game.push(GameOverScene(match(game), False)),

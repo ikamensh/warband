@@ -8,9 +8,10 @@ import heapq
 import math
 import random
 from collections import deque
+from collections.abc import Sequence
 
 from warband.model import Pos, World, tile_center
-from warband.rules import EXPANSION_GOLD, BuildingType, MapTheme, Terrain, UnitType
+from warband.rules import EXPANSION_GOLD, BuildingType, MapTheme, Race, Terrain, UnitType
 
 SIZES: dict[str, tuple[int, int]] = {"Small": (40, 32), "Medium": (48, 40), "Large": (64, 48)}
 _BASE_MARGIN = 7  # tiles from the map edge to the hall's top-left
@@ -32,11 +33,19 @@ def fresh_seed() -> int:
     return random.randrange(1, 2**31)
 
 
-def generate(seed: int, width: int = 48, height: int = 40, players: int = 2, human: int | None = 0, theme: MapTheme = MapTheme.SUMMER) -> World:
+def generate(seed: int, width: int = 48, height: int = 40, players: int = 2, human: int | None = 0, theme: MapTheme = MapTheme.SUMMER,
+             races: Sequence[Race | None] | None = None) -> World:
+    """*races* names each player's race; ``None`` entries are drawn from the seed, so a seed reproduces
+    the whole match.  Without a list the *human* leads Humans and the computer players are drawn.
+    Drawn races avoid repeating one already on the map while they can."""
     if not 2 <= players <= 4:
         raise ValueError("2 to 4 players")
+    if races is not None and len(races) != players:
+        raise ValueError(f"{players} players need {players} races, not {len(races)}")
     rng = random.Random(seed)
     terrain = _terrain(rng, width, height, theme)
+    wanted: list[Race | None] = list(races) if races is not None else [Race.HUMAN if i == human else None for i in range(players)]
+    chosen = draw_races(wanted, random.Random(seed ^ 0x5ACE))
     bases = [_base(width, height, corner) for corner in _CORNERS[:players]]
     for hall, mine, wood in bases:
         _clear(terrain, (hall[0] + 1, hall[1] + 1), _BASE_CLEARING)
@@ -45,7 +54,7 @@ def generate(seed: int, width: int = 48, height: int = 40, players: int = 2, hum
             terrain[pos[1]][pos[0]] = Terrain.GRASS
         for pos in _ring(mine, 3, 1):
             terrain[pos[1]][pos[0]] = Terrain.GRASS
-    world = World(width, height, terrain, players, human=human, rng=random.Random(seed), theme=theme)
+    world = World(width, height, terrain, players, human=human, rng=random.Random(seed), theme=theme, races=chosen)
     for player, (hall, mine, _wood) in enumerate(bases):
         world.place_building(player, BuildingType.TOWN_HALL, hall)
         world.place_building(None, BuildingType.GOLD_MINE, mine)
@@ -56,6 +65,17 @@ def generate(seed: int, width: int = 48, height: int = 40, players: int = 2, hum
     _expansion_mines(world, rng, [hall for hall, _m, _w in bases])
     world.update_vision()
     return world
+
+
+def draw_races(races: list[Race | None], rng: random.Random) -> list[Race]:
+    """Fill the ``None`` entries: each draw avoids races already on the map until all four are taken."""
+    chosen = list(races)
+    for i, race in enumerate(chosen):
+        if race is None:
+            taken = {r for r in chosen if r is not None}
+            pool = [r for r in Race if r not in taken] or list(Race)
+            chosen[i] = rng.choice(pool)
+    return chosen  # type: ignore[return-value]
 
 
 # -- Layout ----------------------------------------------------------------------

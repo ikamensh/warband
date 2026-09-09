@@ -29,7 +29,7 @@ from PIL import Image, ImageDraw, ImageFilter
 from saga2d import Game
 from saga2d import render3d as r3
 from saga2d.render3d import Mesh
-from warband.rules import BUILDINGS, PLAYERS, BuildingType, MapTheme, Resource, Terrain, UnitType
+from warband.rules import BUILDINGS, PLAYERS, BuildingType, MapTheme, Race, Resource, Terrain, UnitType
 
 TILE = 32
 ELEVATION = 50.0
@@ -597,7 +597,7 @@ def _roof_tiles(mesh: Mesh) -> Mesh:
     return tiled
 
 
-def _building(building_type: BuildingType, player: int) -> Mesh:
+def _building(building_type: BuildingType, player: int, race: Race = Race.HUMAN) -> Mesh:
     """Purpose-led silhouettes: a yard's machinery matters as much as its walls."""
     team = team_color(player)
     trim = darker(team, 0.68)
@@ -994,11 +994,11 @@ def _horse(frame: str, heavy: bool, team: Color) -> Mesh:
 UNIT_SCALE = 1.4  # figures are modelled at chibi size and blown up so they read from the usual zoom
 
 
-def _unit(unit_type: UnitType, player: int, frame: str, carrying: Resource | None) -> Mesh:
-    return r3.scale(_unit_mesh(unit_type, player, frame, carrying), UNIT_SCALE)
+def _unit(unit_type: UnitType, player: int, frame: str, carrying: Resource | None, race: Race = Race.HUMAN) -> Mesh:
+    return r3.scale(_unit_mesh(unit_type, player, frame, carrying, race), UNIT_SCALE)
 
 
-def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource | None) -> Mesh:
+def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource | None, race: Race = Race.HUMAN) -> Mesh:
     team = team_color(player)
     trim = darker(team, 0.7)
     if unit_type is UnitType.PEASANT:
@@ -1188,30 +1188,31 @@ def chop_contact_offset(facing: int) -> tuple[float, float]:
     return PROJECTION.project((x * c - y * s, x * s + y * c, z))
 
 
-def unit_key(unit_type: UnitType, player: int, facing: int, frame: str, carrying: Resource | None = None) -> str:
+def unit_key(unit_type: UnitType, player: int, facing: int, frame: str, carrying: Resource | None = None, race: Race = Race.HUMAN) -> str:
     carry = f".{carrying.value}" if carrying is not None else ""
-    return f"unit.{unit_type.value}{carry}.{player}.{facing}.{frame}"
+    return f"unit.{race.value}.{unit_type.value}{carry}.{player}.{facing}.{frame}"
 
 
-def unit_image(game: Game, unit_type: UnitType, player: int, facing: int, frame: str, carrying: Resource | None = None) -> str:
+def unit_image(game: Game, unit_type: UnitType, player: int, facing: int, frame: str, carrying: Resource | None = None, *,
+               race: Race = Race.HUMAN) -> str:
     """Register (once) and return the key of one unit image."""
-    key = unit_key(unit_type, player, facing, frame, carrying)
+    key = unit_key(unit_type, player, facing, frame, carrying, race)
     if not game.assets.has_image(key):
-        mesh = r3.rotate_z(_unit(unit_type, player, frame, carrying), facing * 45 - 90)
+        mesh = r3.rotate_z(_unit(unit_type, player, frame, carrying, race), facing * 45 - 90)
         game.assets.image_from_pil(key, _prop(key, mesh, DROP_UNIT, game.backend.scale_factor))
     return key
 
 
-def portrait_image(game: Game, subject: UnitType | BuildingType, player: int | None) -> str:
+def portrait_image(game: Game, subject: UnitType | BuildingType, player: int | None, race: Race = Race.HUMAN) -> str:
     """A tightly framed picture of a unit or building, for the selection panel."""
-    key = f"portrait.{subject.value}.{player}"
+    key = f"portrait.{race.value}.{subject.value}.{player}"
     if not game.assets.has_image(key):
         if isinstance(subject, UnitType):
-            mesh = r3.rotate_z(_unit(subject, player or 0, "stand", None), 0)
+            mesh = r3.rotate_z(_unit(subject, player or 0, "stand", None, race), 0)
         elif subject is BuildingType.GOLD_MINE:
             mesh = _mine()
         else:
-            mesh = _building(subject, player or 0)
+            mesh = _building(subject, player or 0, race)
         min_x, min_y, max_x, max_y = r3.bounds(mesh, PROJECTION)
         w, h = max_x - min_x + 2 * PAD, max_y - min_y + 2 * PAD
         px = 128 * game.backend.scale_factor / max(w, h)
@@ -1219,28 +1220,29 @@ def portrait_image(game: Game, subject: UnitType | BuildingType, player: int | N
     return key
 
 
-def warm_units(game: Game, players: list[int]):
+def warm_units(game: Game, players: list[int], races: list[Race] | None = None):
     """A generator that renders every unit image the match may need, one per step, so the
     scene can spread the cost over its first frames instead of hitching in the first battle."""
-    for player in players:
+    for index, player in enumerate(players):
+        race = races[index] if races is not None else Race.HUMAN
         for unit_type in UnitType:
             carries: tuple[Resource | None, ...] = (None, Resource.GOLD, Resource.LUMBER) if unit_type is UnitType.PEASANT else (None,)
             for carrying in carries:
                 frames = FRAMES + CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else FRAMES
                 for facing in range(FACINGS):
                     for frame in frames:
-                        yield unit_image(game, unit_type, player, facing, frame, carrying)
+                        yield unit_image(game, unit_type, player, facing, frame, carrying, race=race)
 
 
-def building_key(building_type: BuildingType, player: int) -> str:
-    return f"building.{building_type.value}.{player}"
+def building_key(building_type: BuildingType, player: int, race: Race = Race.HUMAN) -> str:
+    return f"building.{race.value}.{building_type.value}.{player}"
 
 
-def building_image(game: Game, building_type: BuildingType, player: int) -> str:
-    key = building_key(building_type, player)
+def building_image(game: Game, building_type: BuildingType, player: int, race: Race = Race.HUMAN) -> str:
+    key = building_key(building_type, player, race)
     if not game.assets.has_image(key):
         size = BUILDINGS[building_type].size
-        game.assets.image_from_pil(key, _prop(key, _building(building_type, player), size / 2 * TILE + PAD, game.backend.scale_factor))
+        game.assets.image_from_pil(key, _prop(key, _building(building_type, player, race), size / 2 * TILE + PAD, game.backend.scale_factor))
     return key
 
 
