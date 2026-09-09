@@ -14,7 +14,7 @@ import numpy as np
 
 from saga2d.synth import level, mix, noise, thump, tone
 
-WEAPONS = ("sword", "axe", "spear", "lance", "arrow", "stone")
+WEAPONS = ("sword", "axe", "spear", "lance", "arrow", "stone", "hammer")
 MATERIALS = ("flesh", "armor", "wood", "stone")
 VARIANTS = 3
 
@@ -36,6 +36,7 @@ _WEAPONS = {
     "lance": _Weapon(0.051, (400, 2400), (145, 60), 0.78, 0.29, 0.70),
     "arrow": _Weapon(0.025, (1900, 5100), (360, 150), 0.20, 0.115, 0.55),
     "stone": _Weapon(0.050, (100, 950), (90, 32), 1.80, 0.52, 0.78),
+    "hammer": _Weapon(0.060, (180, 1600), (120, 42), 1.25, 0.34, 0.74),  # dwarven war hammers and the ogre's club
 }
 
 
@@ -122,6 +123,9 @@ def _impact(weapon: str, material: str, variant: int) -> np.ndarray:
             tone(530 * pitch, 0.11, tau=0.022, partials=((1, 1), (2.7, 0.24))),
             noise(0.06, 450, 2300, tau=0.016, seed=int(rng.integers(2**31))) * 0.45,
         ) * (0.28 if weapon == "lance" else 0.13)))
+    elif weapon == "hammer":
+        # A blunt head follows through with a second, deeper knock.
+        layers.append((contact + rng.uniform(0.018, 0.028), thump(72 * pitch, 34 * pitch, 0.22, tau=0.07) * 0.5))
     else:
         # Siege stones sustain a low, irregular rumble after the initial hit.
         layers.append((contact + 0.015, noise(

@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from saga2d import Game
+from saga2d import Game, synth
 from saga2d.synth import pan, tone
 from warband import sound
 from warband.sound import SoundBank
@@ -15,7 +15,7 @@ from warband.sound import SoundBank
 @pytest.fixture(scope="session")
 def generated(tmp_path_factory) -> Path:
     root = tmp_path_factory.mktemp("warband")
-    sound.generate(root, sound.SOUND_VERSION, sound.SOUNDS, {"march": sound.march, "vigil": sound.vigil})
+    sound.generate(root, sound.SOUND_VERSION, sound.SOUNDS, sound.MUSIC)
     return root
 
 
@@ -42,13 +42,13 @@ def test_every_scene_event_has_an_effect_that_is_normalised_and_click_free(gener
     for name in sound.SOUNDS:
         data, rate = read_wav(generated / "sounds" / f"{name}.wav")
         mono = data[:, 0]
-        assert rate == sound.synth.SAMPLE_RATE and 0.03 <= len(mono) / rate <= 1.0, name
+        assert rate == synth.SAMPLE_RATE and 0.03 <= len(mono) / rate <= 1.0, name
         assert 0.15 <= np.abs(mono).max() <= 0.95, name
         assert abs(mono[0]) < 0.01 and abs(mono[-1]) < 0.01, name
         assert np.abs(np.diff(mono)).max() < 0.5, name
 
 
-@pytest.mark.parametrize("track", ("march", "vigil"))
+@pytest.mark.parametrize("track", sorted(sound.MUSIC))
 def test_the_tracks_are_stereo_quiet_and_loop_seamlessly(generated: Path, track: str) -> None:
     data, rate = read_wav(generated / "music" / f"{track}.wav")
     assert data.shape[1] == 2 and 40 <= len(data) / rate <= 46
@@ -63,7 +63,7 @@ def test_install_routes_scene_events_to_the_bank(game: Game, generated: Path, mo
     sound.play_sound("command")
     assert game.backend.sounds_played[-1]["handle"] == game.backend.load_sound(str(generated / "sounds" / "command.wav"))
     bank.start_music()
-    assert bank.music_playing == "march"
+    assert bank.music_playing == "vigil"  # the title's night watch; a match starts its race's march
 
 
 def test_combat_playback_varies_takes_and_respects_sfx_volume(game, generated):

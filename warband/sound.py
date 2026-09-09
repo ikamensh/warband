@@ -1,11 +1,12 @@
-"""Procedural sound for Warband: effects and a marching loop synthesised
-with :mod:`saga2d.synth` on first run and cached under ``~/.warband``.
+"""Procedural sound for Warband: effects and the marches synthesised with
+:mod:`saga2d.synth` on first run and cached under ``~/.warband``.
 
 The scene calls :func:`play_sound` with an event name; ``__main__`` points
 :data:`sound_hook` at a :class:`SoundBank` so it is heard, while tests
-leave it ``None``. Combat uses layered weapon/material Foley; routine
-deliveries stay silent. Alarms are brass and the music is a slow drum
-march under an A-minor drone.
+leave it ``None``. Combat uses layered weapon/material Foley
+(:mod:`warband.combat_sound`); routine deliveries stay silent.  A player's
+own cues come in their race's voice (:mod:`warband.voices`) and each race
+marches to its own track (:mod:`warband.music`); the title keeps the night watch.
 """
 
 from __future__ import annotations
@@ -16,12 +17,11 @@ from collections.abc import Callable, Mapping
 
 import numpy as np
 
-from saga2d import AssetManager, AudioManager, Game, synth
-from saga2d.synth import BELL, BRASS, DARK, GLASS, hz, level, mix, noise, pan, thump, tone, write_wav
-from saga2d.synth import seconds as sample_times
-from warband import combat_sound
+from saga2d import AssetManager, AudioManager, Game
+from saga2d.synth import BRASS, DARK, GLASS, level, mix, noise, thump, tone, write_wav
+from warband import combat_sound, music, voices
 from warband.model import Event
-from warband.rules import BuildingType, UnitType
+from warband.rules import BuildingType, Race, UnitType
 
 Generator = Callable[[], np.ndarray]
 IMPACTS = frozenset(f"{weapon}_{material}" for weapon in combat_sound.WEAPONS for material in combat_sound.MATERIALS)
@@ -32,6 +32,12 @@ _WEAPONS = {
     UnitType.ARCHER.value: "arrow", UnitType.CATAPULT.value: "stone",
     BuildingType.TOWER.value: "arrow",
 }
+#: Where a race arms a role differently: orc grunts and axethrowers swing axes and the ogre a club,
+#: dwarven ironguards carry axes and bear riders war hammers.  Every other role keeps the common Foley.
+_RACE_WEAPONS = {
+    Race.ORC: {UnitType.FOOTMAN.value: "axe", UnitType.ARCHER.value: "axe", UnitType.KNIGHT.value: "hammer"},
+    Race.DWARF: {UnitType.FOOTMAN.value: "axe", UnitType.KNIGHT.value: "hammer"},
+}
 _BUILDING_MATERIALS = {
     BuildingType.TOWN_HALL.value: "stone", BuildingType.TOWER.value: "stone",
     BuildingType.BLACKSMITH.value: "stone", BuildingType.CHURCH.value: "stone",
@@ -41,8 +47,8 @@ _BUILDING_MATERIALS = {
 }
 
 
-def impact_sound(event: Event) -> str:
-    """Choose an impact from strike-time facts, even after the victim has died."""
+def impact_sound(event: Event, race: Race = Race.HUMAN) -> str:
+    """Choose an impact from strike-time facts, even after the victim has died; *race* is the striker's."""
     if event.source_type == event.target_type == "unknown":
         return "impact"  # an explicitly identified older multiplayer event schema
     if event.target_type in _BUILDING_MATERIALS:
@@ -51,7 +57,8 @@ def impact_sound(event: Event) -> str:
         material = "wood"
     else:
         material = "armor" if event.target_armor > 0 else "flesh"
-    return f"{_WEAPONS[event.source_type]}_{material}"
+    weapon = _RACE_WEAPONS.get(race, {}).get(event.source_type) or _WEAPONS[event.source_type]
+    return f"{weapon}_{material}"
 
 
 def sound_files(data_dir: Path, sounds: Mapping[str, Generator], music: Mapping[str, Generator]) -> list[Path]:
@@ -143,9 +150,8 @@ class SynthBank:
         self._audio.muted = value
 
 
-SOUND_VERSION = "3"
-MUSIC = "march"
-TRACKS = ("march", "vigil")
+SOUND_VERSION = "4"
+MUSIC = music.TRACKS
 
 #: ``play_sound(name)`` forwards here when set; ``None`` is silent.
 sound_hook: Callable[[str], None] | None = None
@@ -259,91 +265,8 @@ SOUNDS: dict[str, Callable[[], np.ndarray]] = {
     "impact": impact, "death": death, "chop": chop, "build_start": build_start, "built": built,
     "trained": trained, "under_attack": under_attack, "destroyed": destroyed, "victory": victory, "defeat": defeat,
     **combat_sound.SOUNDS,
+    **voices.SOUNDS,
 }
-
-# -- Music -------------------------------------------------------------------
-
-BPM = 88
-BEAT = 60 / BPM
-BAR = 4 * BEAT
-BARS = 16
-LOOP_SECONDS = BARS * BAR
-_DRONE: tuple[tuple[int, tuple[str, ...]], ...] = (  # (bars, chord)
-    (4, ("A2", "E3", "A3", "C4")), (2, ("F2", "C3", "F3", "A3")), (2, ("G2", "D3", "G3", "B3")),
-    (4, ("A2", "E3", "A3", "C4")), (2, ("D3", "A3", "D4", "F4")), (2, ("E2", "B2", "E3", "G#3")),
-)
-
-
-def _add_wrapped(out: np.ndarray, clip: np.ndarray, start_seconds: float) -> None:
-    n = len(out)
-    start = int(round(start_seconds * synth.SAMPLE_RATE)) % n
-    first = min(len(clip), n - start)
-    out[start:start + first] += clip[:first]
-    out[:len(clip) - first] += clip[first:]
-
-
-def _drone(chord: tuple[str, ...], length: float) -> np.ndarray:
-    t = sample_times(length)
-    fade = 1.2
-    env = np.sin(np.minimum(1.0, t / fade) * np.pi / 2) * np.sin(np.minimum(1.0, (length - t) / fade) * np.pi / 2)
-    out = np.zeros((len(t), 2))
-    for note in chord:
-        freq = hz(note)
-        for channel, detune in ((0, 1.002), (1, 0.998)):
-            out[:, channel] += np.sin(2 * np.pi * freq * detune * t) + 0.3 * np.sin(2 * np.pi * freq * 2 * detune * t)
-    return out * (env / len(chord))[:, None]
-
-
-def march() -> np.ndarray:
-    """A slow drum march under a detuned drone, with a sparse horn line."""
-    n = int(round(LOOP_SECONDS * synth.SAMPLE_RATE))
-    out = np.zeros((n, 2))
-    rng = random.Random(3)
-    start = 0.0
-    for bars, chord in _DRONE:
-        length = bars * BAR
-        _add_wrapped(out, 0.5 * _drone(chord, length + 1.2), start - 0.6)
-        start += length
-    kick = thump(110, 45, 0.25, tau=0.09)
-    snare = mix(noise(0.14, 600, 4000, tau=0.045, seed=90), thump(200, 120, 0.08, tau=0.03) * 0.5)
-    for beat in range(BARS * 4):
-        when = beat * BEAT
-        if beat % 4 in (0, 2):
-            _add_wrapped(out, pan(kick * 0.9, 0.0), when)
-        if beat % 4 == 2 or (beat % 8 == 7 and rng.random() < 0.7):
-            _add_wrapped(out, pan(snare * 0.35, 0.3), when)
-        if beat % 8 == 7:
-            _add_wrapped(out, pan(snare * 0.2, -0.3), when + BEAT / 2)
-    horn_line = (("E4", 0), ("A4", 3), ("C5", 6), ("B4", 7), ("A4", 9), ("G4", 11), ("E4", 12))
-    for note, bar in horn_line:
-        clip = tone(note, 1.6, attack=0.08, tau=0.9, partials=BRASS) * 0.22
-        _add_wrapped(out, pan(clip, 0.15 * (-1) ** bar), bar * BAR)
-    swell = 0.9 + 0.1 * np.sin(2 * np.pi * sample_times(LOOP_SECONDS) / (LOOP_SECONDS / 2))
-    return level(out * swell[:, None], 0.45)
-
-
-_VIGIL: tuple[tuple[int, tuple[str, ...]], ...] = (
-    (4, ("D3", "A3", "D4", "F4")), (4, ("A#2", "F3", "A#3", "D4")), (4, ("C3", "G3", "C4", "E4")), (4, ("D3", "A3", "D4", "F4")),
-)
-
-
-def vigil() -> np.ndarray:
-    """The quieter track: a slow D-minor drone with a bell every few bars and no drums — the night watch."""
-    n = int(round(LOOP_SECONDS * synth.SAMPLE_RATE))
-    out = np.zeros((n, 2))
-    start = 0.0
-    for bars, chord in _VIGIL:
-        length = bars * BAR
-        _add_wrapped(out, 0.55 * _drone(chord, length + 1.2), start - 0.6)
-        start += length
-    rng = random.Random(11)
-    for bar in range(BARS):
-        if bar % 2 == 0:
-            note = rng.choice(("D5", "F5", "A5", "D6"))
-            _add_wrapped(out, pan(tone(note, 2.2, attack=0.02, tau=1.1, partials=BELL) * 0.16, rng.uniform(-0.5, 0.5)), bar * BAR + rng.uniform(0, BEAT))
-    swell = 0.85 + 0.15 * np.sin(2 * np.pi * sample_times(LOOP_SECONDS) / (LOOP_SECONDS / 3))
-    return level(out * swell[:, None], 0.4)
-
 
 # -- Bank --------------------------------------------------------------------
 
@@ -353,7 +276,7 @@ class SoundBank(SynthBank):
 
     def __init__(self, game: Game, data_dir: Path | str | None = None) -> None:
         super().__init__(game, data_dir if data_dir is not None else Path.home() / ".warband", version=SOUND_VERSION,
-                         sounds=SOUNDS, music={"march": march, "vigil": vigil})
+                         sounds=SOUNDS, music=MUSIC)
         self._last_take: dict[str, int] = {}
 
     def play(self, name: str, *, pitch_variation: float = 0.0, volume: float = 1.0) -> None:
@@ -372,11 +295,11 @@ class SoundBank(SynthBank):
             volume *= 0.65
         super().play(name, pitch_variation=pitch_variation, volume=volume)
 
-    def start_music(self, name: str = MUSIC) -> None:  # type: ignore[override]
+    def start_music(self, name: str = music.TITLE_TRACK) -> None:  # type: ignore[override]
         super().start_music(name)
 
 
-#: ``play_music(name)`` forwards here when set; the match alternates the tracks.
+#: ``play_music(name)`` forwards here when set; a match plays its player's race track, the title the night watch.
 music_hook: Callable[[str], None] | None = None
 
 
@@ -386,7 +309,7 @@ def play_music(name: str) -> None:
 
 
 def install(game: Game) -> SoundBank:
-    """Create the bank, route the game's sound and music events to it and start the music."""
+    """Create the bank, route the game's sound and music events to it and start the title's music."""
     global sound_hook, volume_hook, music_hook
     bank = SoundBank(game)
     sound_hook = bank.play

@@ -14,7 +14,8 @@ from warband import mapgen
 from warband.races import RACES
 from warband.rules import Difficulty, MapTheme, Race
 from warband.scene import SAVE_SLOTS, HelpScene, SaveBrowserScene, load_game, new_game
-from warband.sound import play_sound
+from warband.music import TITLE_TRACK
+from warband.sound import play_music, play_sound
 from warband.style import ACTION_BUTTON, GHOST_BUTTON, MENU_BUTTON, OVERLAY_STYLE
 from warband.textures import TILE
 from warband.view import MapView, to_world
@@ -54,6 +55,7 @@ class TitleScene(Scene):
         self.camera.center_on(*self._stops[0])
         self._drift()
         self._build_menu()
+        play_music(TITLE_TRACK)
 
     def _drift(self) -> None:
         self._stop = (self._stop + 1) % len(self._stops)

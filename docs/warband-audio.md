@@ -18,6 +18,16 @@ Impacts play at 65% gain to leave room for a busy battle and alerts.
 | Knight | Lance |
 | Archer, guard tower | Arrow |
 | Catapult | Siege stone |
+| Orc grunt and axethrower, dwarven ironguard | Axe |
+| Ogre, dwarven bear rider | Hammer (blunt, with a second deep knock) |
+
+The weapon follows the striker's race; a striker that died with its blow
+keeps the common weapon.  Every other role uses the table above whatever its
+race.  A player's own cues — select, command, attack, trained, built, under
+attack — play in the race's voice (`warband/voices.py`): drums and growls for
+orcs, bells, harp and flute for elves, anvil and horn for dwarves.  Each race
+marches to its own track (`warband/music.py`); the title plays the night
+watch.  See [warband-races.md](warband-races.md).
 
 | Target | Material |
 | --- | --- |

@@ -14,7 +14,7 @@ from warband.scene import GameScene
 @pytest.fixture(scope="module")
 def audio_files(tmp_path_factory):
     root = tmp_path_factory.mktemp("battle-audio")
-    sound.generate(root, sound.SOUND_VERSION, sound.SOUNDS, {"march": sound.march, "vigil": sound.vigil})
+    sound.generate(root, sound.SOUND_VERSION, sound.SOUNDS, sound.MUSIC)
     return root
 
 

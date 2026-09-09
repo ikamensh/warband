@@ -185,6 +185,3 @@ RACES: dict[Race, RaceInfo] = {
                       _DWARF_BUILDINGS),
 }
 
-
-def race_of_upgrade(upgrade: Upgrade) -> Race | None:
-    return UPGRADES[upgrade].race

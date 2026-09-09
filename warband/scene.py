@@ -19,7 +19,9 @@ from warband.ai import Brain
 from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
 from warband.races import RACES, RaceInfo
 from warband.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, MapTheme, Race, UnitType, Upgrade
-from warband.sound import IMPACTS, TRACKS, apply_volumes, impact_sound, play_music, play_sound
+from warband.music import RACE_TRACKS
+from warband.sound import IMPACTS, apply_volumes, impact_sound, play_music, play_sound
+from warband.voices import voiced
 from warband.style import ACTION_BUTTON, BAD, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE
 from warband.textures import TILE
 from warband.tutorial import OBJECTIVES, Tutorial
@@ -158,7 +160,7 @@ class GameScene(Scene):
         from warband import textures
 
         self._warm = textures.warm_units(self.game, [p.id for p in self.world.players], [p.race for p in self.world.players])
-        play_music(TRACKS[self.seed % len(TRACKS)])  # matches alternate between the march and the vigil
+        play_music(RACE_TRACKS[self.player.race])
 
     def _setup_camera(self) -> None:
         w, h = self.game.resolution
@@ -191,7 +193,8 @@ class GameScene(Scene):
         return RACES[self.player.race]
 
     def sfx(self, name: str, *, gap: float = 0.0) -> None:
-        """Bound battle density across materials/takes; alerts bypass that budget."""
+        """Bound battle density across materials/takes; alerts bypass that budget.  Cues speak in the player's race's voice."""
+        name = voiced(name, self.player.race)
         combat = name in IMPACTS or name in ("impact", "death")
         key = "siege_impact" if name.startswith("stone_") else name
         if combat:
@@ -1090,7 +1093,8 @@ class GameScene(Scene):
 
     def _sound_hit(self, event: Event) -> None:
         if self._audible(event.pos):
-            self.sfx(impact_sound(event))
+            source = self.world.entity(event.entity) if event.entity is not None else None
+            self.sfx(impact_sound(event, source.race if source is not None else Race.HUMAN))  # a striker dead with its blow keeps the common Foley
 
     def _arrow(self, source: Entity, target: tuple[float, float]) -> float:
         sx, sy = to_world(source.pos if isinstance(source, Unit) else source.center)
