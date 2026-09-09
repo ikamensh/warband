@@ -621,3 +621,54 @@ def test_group_pace_round_trips_through_saves() -> None:
             order.pop("pace", None)  # saves from before the group pace existed
     legacy = World.from_dict(data)
     assert legacy.units[knight.id].order is not None and legacy.units[knight.id].order.pace is None  # type: ignore[attr-defined]
+
+
+# -- Resign --------------------------------------------------------------------------
+
+
+def test_resigning_concedes_the_match_to_the_other_player() -> None:
+    world = flat_world()
+    hall = world.place_building(0, BuildingType.TOWN_HALL, (2, 8))
+    world.place_building(0, BuildingType.FARM, (6, 8))
+    world.place_building(1, BuildingType.TOWN_HALL, (14, 8))
+    world.spawn_unit(0, UnitType.PEASANT, (2.5, 2.5))
+    world.spawn_unit(0, UnitType.FOOTMAN, (3.5, 2.5))
+    mine = world.place_building(None, BuildingType.GOLD_MINE, (10, 2))
+    world.events.clear()
+    assert world.can_resign(0) is None
+    world.resign(0)
+    assert world.player_units(0) == [] and world.player_buildings(0) == []
+    assert mine.id in world.buildings  # neutral mines stay
+    assert not world.players[0].alive and world.winner == 1
+    main = [e for e in world.events if e.kind == "resigned" and e.entity is None]
+    assert len(main) == 1 and main[0].pos == hall.center and main[0].player == 0
+    assert main[0].text == world.players[0].name
+    kinds = [e.kind for e in world.events]
+    assert kinds.index("resigned") < kinds.index("victory")
+
+
+def test_resigning_twice_or_after_the_match_is_over_is_forbidden() -> None:
+    world = flat_world(players=3)
+    world.place_building(0, BuildingType.TOWN_HALL, (2, 8))
+    world.place_building(1, BuildingType.TOWN_HALL, (10, 8))
+    world.place_building(2, BuildingType.TOWN_HALL, (16, 8))
+    world.resign(0)
+    assert world.winner is None
+    with pytest.raises(RuleError, match="already out"):
+        world.resign(0)
+    assert "already out" in (world.can_resign(0) or "")
+    world.resign(1)
+    with pytest.raises(RuleError, match="the match is over"):
+        world.resign(2)
+    assert world.can_resign(2) == "the match is over"
+
+
+def test_resigning_in_a_three_player_match_leaves_no_winner() -> None:
+    world = flat_world(players=3)
+    world.place_building(0, BuildingType.TOWN_HALL, (2, 8))
+    world.place_building(1, BuildingType.TOWN_HALL, (10, 8))
+    world.place_building(2, BuildingType.TOWN_HALL, (16, 8))
+    world.spawn_unit(0, UnitType.PEASANT, (2.5, 2.5))
+    world.resign(0)
+    assert not world.players[0].alive and world.winner is None
+    assert world.players[1].alive and world.players[2].alive

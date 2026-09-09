@@ -2112,6 +2112,37 @@ class World:
         return min(candidates, key=lambda pair: (pair[1] is not UnitType.PEASANT,
                    UNITS[pair[1]].cost.gold + UNITS[pair[1]].cost.lumber, pair[0].id)) if candidates else None
 
+    def can_resign(self, player: int) -> str | None:
+        """Why *player* cannot concede, or None when resigning is allowed."""
+        if self.winner is not None:
+            return "the match is over"
+        if not self.players[player].alive:
+            return f"{self.players[player].name} is already out"
+        return None
+
+    def resign(self, player: int) -> None:
+        """Concede the match: remove everything *player* owns, then eliminate them."""
+        reason = self.can_resign(player)
+        if reason is not None:
+            raise RuleError(reason)
+        halls = self.player_buildings(player, BuildingType.TOWN_HALL)
+        owned = self.player_buildings(player)
+        units = self.player_units(player)
+        if halls:
+            pos = halls[0].center
+        elif owned:
+            pos = owned[0].center
+        elif units:
+            pos = units[0].pos
+        else:
+            pos = (0.0, 0.0)
+        for unit in units:
+            self._remove_unit(unit)
+        for building in owned:
+            self._remove_building(building, reason="resigned")
+        self.events.append(Event("resigned", pos, player=player, text=self.players[player].name))
+        self._check_elimination()
+
     def _check_elimination(self) -> None:
         for player in self.players:
             if not player.alive or self.player_units(player.id):
