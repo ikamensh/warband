@@ -281,6 +281,7 @@ def test_a_hard_brain_caps_its_wave_at_what_the_farms_feed() -> None:
     world.update_vision()
     brain = Brain(0, Difficulty.HARD)
     brain.wave = 60
+    brain.waves_sent = 1
     rng = random.Random(1)
     for _ in range(3):
         brain.think(world, rng)
@@ -307,6 +308,7 @@ def test_a_normal_brain_presses_the_attack_against_a_hall_less_enemy() -> None:
     world.update_vision()
     brain = Brain(0, Difficulty.NORMAL)
     brain.wave = 10
+    brain.waves_sent = 1
     rng = random.Random(1)
     for _ in range(3):
         brain.think(world, rng)
@@ -314,3 +316,58 @@ def test_a_normal_brain_presses_the_attack_against_a_hall_less_enemy() -> None:
         if brain.attacking:
             break
     assert brain.attacking  # five soldiers beat the wave of ten while the enemy has no army
+
+
+def _press_world(difficulty: Difficulty):
+    """Five own footmen against an enemy with buildings but no soldiers."""
+    world = _open_world()
+    hall = world.place_building(0, BuildingType.TOWN_HALL, (2, 2))
+    enemy_hall = world.place_building(1, BuildingType.TOWN_HALL, (33, 33))
+    world.reveal_all(0)
+    world.reveal_all(1)
+    _place_near(world, 1, BuildingType.FARM, enemy_hall.center)
+    _place_near(world, 1, BuildingType.FARM, enemy_hall.center)
+    world._remove_building(enemy_hall, reason="destroyed")
+    for i in range(2):
+        world.spawn_unit(1, UnitType.PEASANT, (34.5 + 0.5 * i, 37.5))
+    for i in range(5):
+        world.spawn_unit(0, UnitType.FOOTMAN, (hall.center[0] + 0.5 * i, hall.center[1] + 4))
+    world.update_vision()
+    brain = Brain(0, difficulty)
+    brain.wave = 10
+    return world, brain
+
+
+def _attacks(brain: Brain) -> list[str]:
+    return [what for _, what in brain.log if "attack with" in what]
+
+
+def test_a_normal_brain_holds_its_first_wave_until_it_is_full() -> None:
+    world, brain = _press_world(Difficulty.NORMAL)
+    rng = random.Random(1)
+    for _ in range(3):
+        brain.think(world, rng)
+        world.time += brain.profile.think_every + 0.1
+    assert not brain.attacking
+    assert _attacks(brain) == []
+    brain.waves_sent = 1
+    for _ in range(3):
+        brain.think(world, rng)
+        world.time += brain.profile.think_every + 0.1
+        if brain.attacking:
+            break
+    assert brain.attacking
+    assert _attacks(brain) != []
+
+
+def test_a_hard_brain_presses_even_before_its_first_wave() -> None:
+    world, brain = _press_world(Difficulty.HARD)
+    assert brain.waves_sent == 0
+    rng = random.Random(1)
+    for _ in range(3):
+        brain.think(world, rng)
+        world.time += brain.profile.think_every + 0.1
+        if brain.attacking:
+            break
+    assert brain.attacking
+    assert _attacks(brain) != []

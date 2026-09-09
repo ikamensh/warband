@@ -100,6 +100,7 @@ class Brain:
         self.profile = PROFILES[difficulty]
         self.next_think = 0.0
         self.wave = self.profile.first_wave
+        self.waves_sent = 0
         self.attacking = False
         self.raiders: list[int] = []
         self.log: list[tuple[float, str]] = []  # (time, what) — the evidence of how it plays
@@ -402,6 +403,8 @@ class Brain:
 
     def _required_wave(self, world: World) -> int:
         """The army the brain waits for: the wave, bounded by what farms and halls can feed."""
+        if self.waves_sent == 0:
+            return self.profile.first_wave
         _used, cap = world.supply(self.player)
         bound = cap - len(self._peasants(world)) - 2
         floor = self.profile.first_wave // 2
@@ -468,8 +471,11 @@ class Brain:
                 target = min(targets, key=lambda t: dist(t, idle[0].pos))
                 world.attack_move([u.id for u in idle], target)
             return
-        if len(army) >= 3 and self._enemy_soldiers(world) < 3:
+        if len(army) >= 3 and self._enemy_soldiers(world) < 3 and (
+            self.profile.harass or (self.profile.tech and self.waves_sent > 0)
+        ):
             self.attacking = True
+            self.waves_sent += 1
             hall = self._hall(world)
             origin = hall.center if hall is not None else army[0].pos
             target = min(targets, key=lambda t: dist(t, origin))
@@ -478,6 +484,7 @@ class Brain:
             return
         if len(army) >= required:
             self.attacking = True
+            self.waves_sent += 1
             self.wave += self.profile.wave_growth
             hall = self._hall(world)
             origin = hall.center if hall is not None else army[0].pos
