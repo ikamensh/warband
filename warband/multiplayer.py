@@ -7,7 +7,7 @@ from copy import deepcopy
 from saga2d import Button, CommandError, Label
 from warband import mapgen
 from warband.model import World, RuleError, Event
-from warband.rules import BuildingType, Race, UnitType, Upgrade, SIM_DT, MapTheme
+from warband.rules import BuildingType, UnitType, Upgrade, SIM_DT, MapTheme
 
 GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'stop', 'hold'}
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building'}

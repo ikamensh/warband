@@ -18,7 +18,7 @@ from warband import mapgen
 from warband.ai import Brain
 from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
 from warband.races import RACES, RaceInfo
-from warband.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, MapTheme, Race, UnitType, Upgrade
+from warband.rules import BUILDINGS, SIM_DT, UPGRADES, BuildingType, Difficulty, MapTheme, Race, UnitType, Upgrade
 from warband.music import RACE_TRACKS
 from warband.sound import IMPACTS, apply_volumes, impact_sound, play_music, play_sound
 from warband.voices import voiced
@@ -1020,7 +1020,7 @@ class GameScene(Scene):
                 self._acc = 0.0
 
     def _handle_events(self, events: list[Event]) -> None:
-        world, view = self.world, self.view
+        view = self.view
         for e in events:
             mine = e.player == self.human
             if e.kind == "hit":

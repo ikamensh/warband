@@ -15,9 +15,9 @@ import random
 
 from dataclasses import dataclass
 
-from warband.model import Attack, AttackMove, Build, Building, Deposit, Harvest, Point, Pos, Repair, Unit, World, dist
+from warband.model import Attack, Build, Building, Deposit, Harvest, Point, Pos, Repair, Unit, World, dist
 from warband.races import RACES
-from warband.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Difficulty, Resource, UnitType, Upgrade
+from warband.rules import BUILDINGS, BuildingType, Difficulty, Resource, UnitType, Upgrade
 
 EXPAND_DISTANCE = 14.0  # a mine farther than this from the hall gets a hall of its own
 DEFEND_RADIUS = 9.0
