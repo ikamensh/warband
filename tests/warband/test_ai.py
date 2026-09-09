@@ -5,7 +5,7 @@ import random
 from warband import mapgen
 from warband.ai import DEFEND_RADIUS, PROFILES, Brain
 from warband.model import AttackMove, Harvest, Repair, dist
-from warband.rules import SIM_DT, BuildingType, Difficulty, UnitType
+from warband.rules import SIM_DT, BuildingType, Difficulty, Race, UnitType
 
 
 def test_normal_and_hard_send_a_peasant_to_mend_a_damaged_building_but_easy_does_not() -> None:
@@ -151,3 +151,83 @@ def test_one_hall_holds_the_workforce_at_the_profile_value() -> None:
     _run_brain(world)
     peasants = [u for u in world.player_units(0) if u.is_worker]
     assert len(peasants) == PROFILES[Difficulty.NORMAL].peasants
+
+
+def _military_building(world, player, building_type):
+    """A completed production building near the player's first hall."""
+    hall = world.player_buildings(player, BuildingType.TOWN_HALL)[0]
+    for radius in range(4, 13):
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                if max(abs(dx), abs(dy)) != radius:
+                    continue
+                pos = (hall.x + dx, hall.y + dy)
+                if world.can_place(building_type, pos, player) is None:
+                    return world.place_building(player, building_type, pos)
+    raise AssertionError(f"no room for {building_type}")
+
+
+def _rich(world, player=0):
+    world.players[player].gold = 20000
+    world.players[player].lumber = 5000
+
+
+def test_orc_barracks_trains_grunts_and_elf_barracks_trains_rangers() -> None:
+    for race, expected in ((Race.ORC, UnitType.FOOTMAN), (Race.ELF, UnitType.ARCHER)):
+        world = mapgen.generate(seed=5, players=2, human=None, races=[race, None])
+        _rich(world)
+        barracks = _military_building(world, 0, BuildingType.BARRACKS)
+        world.update_vision()
+        brain = Brain(0, Difficulty.HARD)
+        assert brain._choose_unit(world, barracks, {t: 2 for t in UnitType}) is expected, race
+
+
+def test_human_answers_a_visible_archer_mass_with_cavalry() -> None:
+    world = mapgen.generate(seed=5, players=2, human=None, races=[Race.HUMAN, None])
+    _rich(world)
+    _military_building(world, 0, BuildingType.BARRACKS)
+    stables = _military_building(world, 0, BuildingType.STABLES)
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    for i in range(6):
+        world.spawn_unit(1, UnitType.ARCHER, (hall.center[0] + 2, hall.center[1] + i * 0.7))
+    world.update_vision()
+    brain = Brain(0, Difficulty.HARD)
+    assert brain._choose_unit(world, stables, {t: 2 for t in UnitType}) in (UnitType.SCOUT, UnitType.KNIGHT)
+
+
+def test_dwarf_workshop_starts_siege_with_four_soldiers() -> None:
+    for race, soldiers, expected in ((Race.DWARF, 4, UnitType.CATAPULT), (Race.HUMAN, 4, None), (Race.HUMAN, 6, UnitType.CATAPULT)):
+        world = mapgen.generate(seed=5, players=2, human=None, races=[race, None])
+        _rich(world)
+        _military_building(world, 0, BuildingType.BARRACKS)
+        _military_building(world, 0, BuildingType.BLACKSMITH)
+        workshop = _military_building(world, 0, BuildingType.WORKSHOP)
+        world.update_vision()
+        brain = Brain(0, Difficulty.HARD)
+        counts = {t: 0 for t in UnitType}
+        counts[UnitType.FOOTMAN] = soldiers
+        assert brain._choose_unit(world, workshop, counts) is expected, (race, soldiers)
+
+
+def _archer_share(world, player) -> float:
+    army = [u for u in world.player_units(player) if not u.is_worker]
+    if not army:
+        return 0.0
+    return sum(1 for u in army if u.type is UnitType.ARCHER) / len(army)
+
+
+def test_hard_elf_and_orc_armies_grow_towards_their_race_plans() -> None:
+    world = mapgen.generate(seed=5, players=2, human=None, races=[Race.ELF, Race.ORC])
+    brains = [Brain(0, Difficulty.HARD), Brain(1, Difficulty.HARD)]
+    rng = random.Random(1)
+    for _ in range(int(360 / SIM_DT)):
+        for brain in brains:
+            brain.think(world, rng)
+        world.step()
+        if world.winner is not None:
+            break
+    assert len([u for u in world.player_units(0) if not u.is_worker]) > 0
+    assert len([u for u in world.player_units(1) if not u.is_worker]) > 0
+    assert _archer_share(world, 0) > _archer_share(world, 1)
+    assert any("army plan elf" in what for _, what in brains[0].log)
+    assert any("army plan orc" in what for _, what in brains[1].log)

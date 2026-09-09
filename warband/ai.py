@@ -4,7 +4,9 @@ train soldiers without pause, defend the base and attack in growing waves.
 One :class:`Brain` per AI player thinks once a second of simulation
 time; everything it does goes through :class:`World` commands, checked
 with the matching ``can_*`` query first, so the model never raises here.
-Strategic expansion and military decisions retain their previous map knowledge.
+Each brain plays its race's army plan (see :data:`ARMY_PLANS`), shifted
+towards counters of the enemy composition it can see. Strategic expansion
+and military decisions retain their previous map knowledge.
 Workers share the model's automatic policy, limited to known safe resources.
 """
 
@@ -17,7 +19,7 @@ from dataclasses import dataclass
 
 from warband.model import Attack, AttackMove, Build, Building, Deposit, Harvest, Point, Pos, Repair, Unit, World, dist
 from warband.races import RACES
-from warband.rules import BUILDINGS, BuildingType, Difficulty, Resource, UnitType, Upgrade
+from warband.rules import BUILDINGS, BuildingType, Difficulty, Race, Resource, UnitType, Upgrade
 
 EXPAND_DISTANCE = 14.0  # a mine farther than this from the hall gets a hall of its own
 DEFEND_RADIUS = 9.0
@@ -27,6 +29,39 @@ BUILD_MAX_DISTANCE = 11
 RESEARCH_ORDER = (Upgrade.BLADES_1, Upgrade.ARMOR_1, Upgrade.ARROWS_1, Upgrade.HORSES, Upgrade.PLUNDER, Upgrade.DEEP_MINING, Upgrade.LONGBOWS,
                   Upgrade.BLADES_2, Upgrade.ARMOR_2, Upgrade.ARROWS_2, Upgrade.SIEGE, Upgrade.BLESSING, Upgrade.BLOODLUST, Upgrade.REGROWTH,
                   Upgrade.BLASTING_POWDER)
+
+#: Target shares of the army by skeleton type: FOOTMAN line, ARCHER ranged,
+#: SCOUT raider, KNIGHT shock, CATAPULT siege, CLERIC healer.  Shares of types
+#: the difficulty profile does not use (cavalry without tech, siege without
+#: siege, healers without clerics) are dropped and the rest renormalised.
+ARMY_PLANS: dict[Race, dict[UnitType, float]] = {
+    Race.HUMAN: {UnitType.FOOTMAN: 0.35, UnitType.ARCHER: 0.30, UnitType.SCOUT: 0.05, UnitType.KNIGHT: 0.20,
+                 UnitType.CATAPULT: 0.05, UnitType.CLERIC: 0.05},
+    Race.ORC: {UnitType.FOOTMAN: 0.45, UnitType.ARCHER: 0.15, UnitType.SCOUT: 0.05, UnitType.KNIGHT: 0.30,
+               UnitType.CATAPULT: 0.05, UnitType.CLERIC: 0.00},
+    Race.ELF: {UnitType.FOOTMAN: 0.25, UnitType.ARCHER: 0.45, UnitType.SCOUT: 0.15, UnitType.KNIGHT: 0.10,
+               UnitType.CATAPULT: 0.05, UnitType.CLERIC: 0.00},
+    Race.DWARF: {UnitType.FOOTMAN: 0.40, UnitType.ARCHER: 0.35, UnitType.SCOUT: 0.00, UnitType.KNIGHT: 0.05,
+                 UnitType.CATAPULT: 0.15, UnitType.CLERIC: 0.05},
+}
+
+_MELEE_TYPES = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
+
+
+def _shift(plan: dict[UnitType, float], deltas: dict[UnitType, float]) -> None:
+    """Move share between plan entries in place.  A shift whose types are not
+    all in the plan is skipped; the survivors are clamped at zero and
+    renormalised so the shares still add up to one."""
+    if any(t not in plan for t in deltas):
+        return
+    for unit_type, delta in deltas.items():
+        plan[unit_type] += delta
+    for unit_type in plan:
+        plan[unit_type] = max(0.0, plan[unit_type])
+    total = sum(plan.values())
+    if total > 0:
+        for unit_type in plan:
+            plan[unit_type] /= total
 
 
 @dataclass(frozen=True)
@@ -66,11 +101,11 @@ class Brain:
         self.next_think = 0.0
         self.wave = self.profile.first_wave
         self.attacking = False
-        self.unit_toggle = 0
         self.raiders: list[int] = []
         self.log: list[tuple[float, str]] = []  # (time, what) — the evidence of how it plays
         self._last_defend = 0  # threat size of the last logged "defend with" line
         self._last_workforce_target: int | None = None
+        self._plan_logged = False
 
     def note(self, world: World, what: str) -> None:
         self.log.append((world.time, what))
@@ -80,6 +115,9 @@ class Brain:
         if world.time < self.next_think or not world.players[self.player].alive or world.winner is not None:
             return
         self.next_think = world.time + self.profile.think_every
+        if not self._plan_logged:
+            self._plan_logged = True
+            self.note(world, f"army plan {world.players[self.player].race.value}")
         if not self._units(world):
             self._recover(world)
             return
@@ -281,24 +319,63 @@ class Brain:
             choice = self._choose_unit(world, building, counts)
             if choice is not None and world.can_train(building, choice) is None:
                 world.train(building.id, choice)
-                counts[choice] += 1
-                self.unit_toggle += 1
+                counts[choice] = counts.get(choice, 0) + 1
                 self.note(world, f"train {choice.value}")
 
+    def _army_targets(self, world: World) -> dict[UnitType, float]:
+        """Target army shares for the brain's race, renormalised to what the
+        difficulty profile uses and shifted towards counters of the visible
+        enemy soldiers: raiders and shock against archer masses, line and
+        ranged against knights."""
+        plan = dict(ARMY_PLANS[world.players[self.player].race])
+        if not self.profile.tech:
+            plan.pop(UnitType.SCOUT, None)
+            plan.pop(UnitType.KNIGHT, None)
+        if not self.profile.siege:
+            plan.pop(UnitType.CATAPULT, None)
+        if not self.profile.clerics:
+            plan.pop(UnitType.CLERIC, None)
+        total = sum(plan.values())
+        if total > 0:
+            plan = {unit_type: share / total for unit_type, share in plan.items()}
+        archers = melee = knights = 0
+        for unit in world.units.values():
+            if unit.player == self.player or unit.is_worker or unit.hidden or unit.hp <= 0:
+                continue
+            if not world.is_visible(self.player, unit.tile):
+                continue
+            if unit.type is UnitType.ARCHER:
+                archers += 1
+            if unit.type in _MELEE_TYPES:
+                melee += 1
+            if unit.type is UnitType.KNIGHT:
+                knights += 1
+        if archers > 0 and archers >= 2 * melee:
+            _shift(plan, {UnitType.FOOTMAN: -0.15, UnitType.SCOUT: 0.075, UnitType.KNIGHT: 0.075})
+        if knights >= 3:
+            _shift(plan, {UnitType.SCOUT: -0.075, UnitType.KNIGHT: -0.075, UnitType.FOOTMAN: 0.075, UnitType.ARCHER: 0.075})
+        return plan
+
     def _choose_unit(self, world: World, building: Building, counts: dict[UnitType, int]) -> UnitType | None:
-        gold = world.players[self.player].gold
         soldiers = sum(counts.values())
-        if building.type is BuildingType.BARRACKS:
-            return UnitType.ARCHER if self.unit_toggle % 2 else UnitType.FOOTMAN
         if building.type is BuildingType.STABLES:
-            if self.profile.harass and counts[UnitType.SCOUT] < 2:
+            if self.profile.harass and counts.get(UnitType.SCOUT, 0) < 2:
                 return UnitType.SCOUT
-            return UnitType.KNIGHT if gold > 1000 else None
         if building.type is BuildingType.WORKSHOP:
-            return UnitType.CATAPULT if soldiers >= 6 and counts[UnitType.CATAPULT] < 2 and gold > 1200 else None
-        if building.type is BuildingType.CHURCH:
-            return UnitType.CLERIC if soldiers >= 6 and counts[UnitType.CLERIC] * 6 < soldiers and gold > 1000 else None
-        return None
+            threshold = 4 if world.players[self.player].race is Race.DWARF else 6
+            if soldiers < threshold:
+                return None
+        targets = self._army_targets(world)
+        best: UnitType | None = None
+        best_gap = -math.inf
+        for unit_type in targets:
+            if unit_type not in building.info.trains:
+                continue
+            if world.can_train(building, unit_type) is None:
+                share = counts.get(unit_type, 0) / soldiers if soldiers else 0.0
+                if targets[unit_type] - share > best_gap:
+                    best, best_gap = unit_type, targets[unit_type] - share
+        return best
 
     def _research(self, world: World) -> None:
         if not self.profile.tech:
