@@ -1419,16 +1419,18 @@ class World:
                                       for v in self.units_near(point, 1.0)
                                       if v is not u and not v.hidden and v.player == u.player)
         start, escape = u.tile, []
+        u.replan_at = self.time + REPLAN_EVERY
+        u.progress, u.last_distance = 0.0, math.inf
+        u.path, u.path_goal, u.exact = [], None, None
         if navigation[start[1] * self.width + start[0]]:
             def allowed(x: int, y: int) -> bool:
                 return 0 <= x < self.width and 0 <= y < self.height and not navigation[y * self.width + x]
             nearest = pathing.nearest_passable(start, allowed)
-            if nearest is not None:
-                escape, start = self._escape(start, nearest), nearest
+            found = self._escape(start, nearest) if nearest is not None else None
+            if found is None:
+                return None  # forbidden ground with no way out: wait for the danger to pass
+            escape, start = found, nearest
         route = pathing.find_work_path(start, costs, navigation, self.width, self.height)
-        u.replan_at = self.time + REPLAN_EVERY
-        u.progress, u.last_distance = 0.0, math.inf
-        u.path, u.path_goal, u.exact = [], None, None
         if route is None:
             return None
         route = escape + route
@@ -1538,7 +1540,7 @@ class World:
             nearest = pathing.nearest_passable(start, passable)
             if nearest is not None:
                 if navigation is not None:
-                    escape = self._escape(start, nearest)
+                    escape = self._escape(start, nearest) or []
                 start = nearest
         target = goal
         if not passable(*goal):
@@ -1569,11 +1571,13 @@ class World:
             if reached and passable(*goal_tile):
                 u.exact = exact
 
-    def _escape(self, start: Pos, nearest: Pos) -> list[Pos]:
-        """Real-ground steps from *start*, which the safe map forbids (an enemy came close), to *nearest*, which it allows."""
+    def _escape(self, start: Pos, nearest: Pos) -> list[Pos] | None:
+        """Real-ground steps from *start*, which the safe map forbids (an enemy came close), to *nearest*, which it
+        allows; None when real ground does not lead there (a wall between, or too far for the local budget)."""
         if not self.passable(*start):
-            return []
-        return pathing.find_path_grid(start, nearest, self._blocked, self.width, self.height, max_expansions=LOCAL_EXPANSIONS)
+            return None
+        route = pathing.find_path_grid(start, nearest, self._blocked, self.width, self.height, max_expansions=LOCAL_EXPANSIONS)
+        return route if route and route[-1] == nearest else None
 
     def _walk_to(self, u: Unit, target: Point, dt: float, *, settle: bool = False) -> bool:
         """Move towards *target*; True once there is nothing left to walk (arrived, or as near as the

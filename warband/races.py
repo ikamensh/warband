@@ -132,13 +132,13 @@ _ORC_BUILDINGS = {
 }
 
 _ELF_UNITS = {
-    UnitType.PEASANT: UnitTweak("Gatherer", "Mines gold, fells trees, builds and repairs", hp=0.9, speed=0.3, sight=2),
-    UnitType.FOOTMAN: UnitTweak("Sentinel", "Light swordsman; quick on their feet", hp=0.9, speed=0.3, sight=2),
-    UnitType.ARCHER: UnitTweak("Ranger", "Shoots from five tiles away; fragile up close", hp=0.9, range=1.0, speed=0.3, sight=2),
-    UnitType.SCOUT: UnitTweak("Outrider", "Fleet deer rider who sees farthest of all", hp=0.9, speed=0.3, sight=2),
-    UnitType.KNIGHT: UnitTweak("Stag Knight", "Antlered shock cavalry, swift but lightly built", hp=0.9, speed=0.3, sight=2),
-    UnitType.CATAPULT: UnitTweak("Ballista", "Siege engine of living wood: splash damage, ×1.5 against buildings", hp=0.9, speed=0.3, sight=2),
-    UnitType.CLERIC: UnitTweak("Druid", "Heals wounded allies nearby; cannot fight", hp=0.9, speed=0.3, sight=2),
+    UnitType.PEASANT: UnitTweak("Gatherer", "Mines gold, fells trees, builds and repairs", hp=0.95, speed=0.3, sight=2),
+    UnitType.FOOTMAN: UnitTweak("Sentinel", "Light swordsman; quick on their feet", hp=0.95, speed=0.3, sight=2),
+    UnitType.ARCHER: UnitTweak("Ranger", "Shoots from five tiles away; fragile up close", hp=0.95, range=1.0, speed=0.3, sight=2),
+    UnitType.SCOUT: UnitTweak("Outrider", "Fleet deer rider who sees farthest of all", hp=0.95, speed=0.3, sight=2),
+    UnitType.KNIGHT: UnitTweak("Stag Knight", "Antlered shock cavalry, swift but lightly built", hp=0.95, speed=0.3, sight=2),
+    UnitType.CATAPULT: UnitTweak("Ballista", "Siege engine of living wood: splash damage, ×1.5 against buildings", hp=0.95, speed=0.3, sight=2),
+    UnitType.CLERIC: UnitTweak("Druid", "Heals wounded allies nearby; cannot fight", hp=0.95, speed=0.3, sight=2),
 }
 _ELF_BUILDINGS = {
     BuildingType.TOWN_HALL: BuildingTweak("Moon Hall", "Hall", "Trains gatherers; gold and lumber are delivered here"),

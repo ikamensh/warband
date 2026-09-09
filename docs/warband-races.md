@@ -42,7 +42,7 @@ holds the skeleton and the arts.
 
 The numbers: orc units have +15 % hit points (the ogre +20 %), the grunt and
 ogre +10 % damage and −1 / −2 armour, and all orc soldiers train 10 % slower;
-elf units have −10 % hit points, +0.3 speed and +2 sight, and the ranger one
+elf units have −5 % hit points, +0.3 speed and +2 sight, and the ranger one
 more tile of range; dwarf units have +10 % hit points and −0.3 speed, the
 ironguard and bear rider +1 armour.  The codex (F2) shows the player's race's
 tables and a fourth page comparing the races.
@@ -78,6 +78,16 @@ swing axes, the ogre and the bear rider hit with a blunt "hammer" weapon,
 dwarven ironguards use axes.  Each race marches to its own track
 (`warband/music.py`: `march`, `warpath`, `moonlight`, `anvil`); the title
 plays the night watch (`vigil`).
+
+## Balance
+
+`tools/race_report.py` plays every pair of races head to head under the same
+AI, sides swapped per seed.  With the Hard AI on Medium maps, two seeds per
+pair (twelve matches per race, all decided within twenty minutes), the first
+run gave Humans 8–4, Dwarves 7–5, Orcs 5–7 and Elves 4–8; the map side decided
+more pairs than the race did.  The elven hit-point penalty was eased from 10 %
+to 5 % after that run.  The AI plays every race the same way, so this measures
+the rules, not race-specific play.
 
 ## Verification
 

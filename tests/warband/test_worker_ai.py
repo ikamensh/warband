@@ -288,3 +288,29 @@ def test_a_worker_caught_inside_enemy_range_walks_out_instead_of_freezing():
     assert dist(worker.pos, start) > 2.0, (worker.pos, worker.path, worker.state)
     run(world, 20.0)
     assert worker.carrying is None and world.players[0].gold == 1000 + GOLD_PER_TRIP
+
+
+def test_a_worker_walled_in_with_the_danger_waits_instead_of_crashing():
+    """A partial escape must not be glued onto a route from elsewhere (race report, seed 1): when real
+    ground does not lead to the nearest safe tile, the worker waits for the danger to pass."""
+    terrain = [[Terrain.GRASS] * 32 for _ in range(24)]
+    for y in range(24):
+        terrain[y][8] = Terrain.ROCK  # a wall; everything left of it lies inside the archer's reach
+    world = World(32, 24, terrain, 2)
+    world.place_building(0, BuildingType.TOWN_HALL, (14, 10))
+    world.place_building(1, BuildingType.TOWN_HALL, (27, 19))
+    worker = world.spawn_unit(0, UnitType.PEASANT, (3.5, 11.5))
+    worker.carrying, worker.carry = Resource.GOLD, GOLD_PER_TRIP
+    worker.orders.append(Deposit(auto=True))
+    archer = world.spawn_unit(1, UnitType.ARCHER, (4.5, 9.5))
+    archer.hp = 10_000
+    world.hold([archer.id])
+    world.reveal_all(0)
+    world.update_vision()
+    run(world, 4.0)
+    assert worker.id in world.units and worker.carrying is Resource.GOLD and not worker.path
+    del world.units[archer.id]
+    world.terrain[11][8] = Terrain.GRASS  # the danger gone and a gate opened, the trip completes
+    world._blocked[11 * world.width + 8] = 0
+    run(world, 30.0)
+    assert worker.carrying is None and world.players[0].gold == 1000 + GOLD_PER_TRIP
