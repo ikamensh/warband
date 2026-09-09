@@ -1,0 +1,35 @@
+version = 1
+plan_id = ""
+revision = 0
+goal = "Warband's computer opponent keeps its new decisive endgame without rushing the opening: a plain human opening beats Easy again, Normal stays a coin flip, Hard wins, and Normal-versus-Normal matches still end within twenty minutes, with the evidence from tools/ai_report.py in the commit message."
+
+[[items]]
+key = "ai-opening-balance"
+repo = "https://github.com/ikamensh/saga2d.git"
+title = "The endgame rules stay out of the opening: Easy loses to a plain opening again"
+story = "The decisive-endgames item made every difficulty rush at minute five: tools/ai_report.py now shows the scripted plain opening losing to Easy at 6.4 minutes with zero attacks of its own (it beat Easy 5/6 and Normal 2/6 before). The two new rules must apply only once the first wave has gone out, so a new player can still beat Easy while matches keep ending: Normal-versus-Normal stays 4/4 decided within 20 minutes."
+constraints = "Change only warband/ai.py and tests/warband/test_ai.py. Keep the last-stand reveal, the retreat below three soldiers and the hunting of alive players' buildings. Evidence goes in the commit message, not in docs."
+notes = """
+Two rules in `Brain._military` (warband/ai.py) now fire in the opening:
+- the wave cap `min(self.wave, cap - peasants - 2)` floored at `first_wave // 2`: with the
+  opening supply (hall 5 + one farm 4 = 9) and seven peasants the cap is 0, so the floor makes
+  Easy attack with 5 soldiers instead of its profile's 10;
+- "press the advantage" (`_enemy_soldiers(world) < 3` and 3+ own soldiers): at minute five a
+  human who is still building has no soldiers, so every difficulty rushes.
+
+Fix:
+- Add `self.waves_sent` to `Brain`, incremented where a wave launches (the branch that sets
+  `attacking = True` and logs "attack with N"). While `waves_sent == 0` the brain waits for
+  exactly `profile.first_wave` soldiers: no cap, no pressing. From the second wave on, the cap
+  and the pressing apply as they do now. Hard (`profile.harass`) may press from the start.
+- Tests (tests/warband/test_ai.py): adjust the existing cap and press tests to set
+  `brain.waves_sent = 1`; add one test that a Normal brain with 5 soldiers against an enemy with
+  0 soldiers does not attack while `waves_sent == 0` (no "attack with" line) and does once
+  `waves_sent` is 1; and one that a Hard brain presses even with `waves_sent == 0`.
+- Run `uv run python tools/ai_report.py --seeds 1 --decide 4` (about ten minutes) and paste its
+  output into the commit message. Required: "script won 1/1 against easy", Hard beats the script,
+  and "Normal vs Normal on Medium: 4/4 decided within 20 minutes". If Easy still wins, also make
+  Easy ignore pressing entirely (`profile.harass` or `profile.tech` gates it) and say so.
+- Run `uv run python -u tools/fuzz_warband.py --games 2 --monkey 0 --seed 71 --cpu-percent 100`:
+  0 failed.
+"""
