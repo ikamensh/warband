@@ -7,7 +7,7 @@ import pytest
 from warband import mapgen
 import math
 
-from warband.model import Attack, Deposit, Harvest, Move, Repair, RuleError, World, dist, tile_center
+from warband.model import Attack, AttackMove, Deposit, Harvest, Move, Repair, RuleError, World, dist, tile_center
 from warband.rules import (
     BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, REPAIR_COST, SIM_DT, UNITS, BuildingType, Resource, Terrain,
     UnitType,
@@ -525,3 +525,99 @@ def test_a_hall_less_player_has_its_last_holdings_revealed_once() -> None:
     assert not events(copy, "exposed")
     run(copy, 3.0)
     assert not events(copy, "exposed")  # the loaded world already knows they stand revealed
+
+
+# -- Group pace ---------------------------------------------------------------------
+
+
+def _time_until_within(world: World, ids: list[int], target: tuple[float, float], max_seconds: float) -> float:
+    run_until(world, lambda: all(dist(world.units[i].pos, target) < 1.5 for i in ids), max_seconds)
+    return world.time
+
+
+def test_units_ordered_together_move_at_the_slowest_pace() -> None:
+    target = (22.5, 7.5)
+    solo = flat_world(30, 15)
+    solo_footman = solo.spawn_unit(0, UnitType.FOOTMAN, (2.5, 8.2))
+    solo.move([solo_footman.id], target)
+    solo_footman_time = _time_until_within(solo, [solo_footman.id], target, 30.0)
+
+    solo_knight_world = flat_world(30, 15)
+    solo_knight = solo_knight_world.spawn_unit(0, UnitType.KNIGHT, (2.5, 7.5))
+    solo_knight_world.move([solo_knight.id], target)
+    assert solo_knight.order is not None and getattr(solo_knight.order, "pace", None) is None
+    solo_knight_time = _time_until_within(solo_knight_world, [solo_knight.id], target, 30.0)
+    assert solo_knight_time < solo_footman_time - 1.0  # the knight alone arrives in its own time
+
+    world = flat_world(30, 15)
+    knight = world.spawn_unit(0, UnitType.KNIGHT, (2.5, 7.5))
+    footman = world.spawn_unit(0, UnitType.FOOTMAN, (2.5, 8.2))
+    world.move([knight.id, footman.id], target)
+    assert isinstance(knight.order, Move) and isinstance(footman.order, Move)
+    assert knight.order.pace == min(world.speed_of(knight), world.speed_of(footman))
+    assert footman.order.pace == knight.order.pace
+    grouped_time = _time_until_within(world, [knight.id, footman.id], target, 30.0)
+    assert grouped_time <= solo_footman_time * 1.1
+    assert dist(knight.pos, footman.pos) < 1.5
+    assert dist(knight.pos, target) < 1.5 and dist(footman.pos, target) < 1.5
+
+    attack_world = flat_world(30, 15)
+    a_knight = attack_world.spawn_unit(0, UnitType.KNIGHT, (2.5, 7.5))
+    a_footman = attack_world.spawn_unit(0, UnitType.FOOTMAN, (2.5, 8.2))
+    attack_world.attack_move([a_knight.id, a_footman.id], target)
+    assert isinstance(a_knight.order, AttackMove) and isinstance(a_footman.order, AttackMove)
+    assert a_knight.order.pace == min(attack_world.speed_of(a_knight), attack_world.speed_of(a_footman))
+
+
+def test_single_and_queued_orders_carry_no_pace() -> None:
+    world = flat_world()
+    knight = world.spawn_unit(0, UnitType.KNIGHT, (2.5, 2.5))
+    footman = world.spawn_unit(0, UnitType.FOOTMAN, (2.5, 3.5))
+    world.move([knight.id, footman.id], (10.5, 2.5))
+    assert knight.order is not None and knight.order.pace is not None  # type: ignore[attr-defined]
+    world.move([knight.id], (12.5, 2.5))
+    assert knight.order is not None and knight.order.pace is None  # type: ignore[attr-defined]
+    world.move([knight.id, footman.id], (10.5, 2.5))
+    world.move([knight.id, footman.id], (12.5, 2.5), queue=True)
+    assert len(knight.orders) == 2
+    assert knight.orders[1].pace is None  # type: ignore[attr-defined]
+    world.attack_move([knight.id], (12.5, 5.5))
+    assert knight.orders[0].pace is None  # type: ignore[attr-defined]
+
+
+def test_a_stuck_unit_releases_the_group_after_six_tiles() -> None:
+    target = (25.5, 7.5)
+    world = flat_world(30, 15)
+    footman = world.spawn_unit(0, UnitType.FOOTMAN, (4.5, 7.5))
+    for i in range(8):  # a wall of idle units around the footman
+        angle = i / 8 * 2 * math.pi
+        blocker = world.spawn_unit(0, UnitType.FOOTMAN, (4.5 + 0.7 * math.cos(angle), 7.5 + 0.7 * math.sin(angle)))
+        world.hold([blocker.id])
+    knight_a = world.spawn_unit(0, UnitType.KNIGHT, (12.5, 7.0))
+    knight_b = world.spawn_unit(0, UnitType.KNIGHT, (12.5, 8.0))
+    world.move([knight_a.id, knight_b.id, footman.id], target)
+    run_until(world, lambda: dist(knight_a.pos, target) < 1.5 and dist(knight_b.pos, target) < 1.5, 15.0)
+    assert dist(footman.pos, target) > 6.0  # the footman is still held back
+    knights_time = world.time
+
+    solo = flat_world(30, 15)
+    solo_knight = solo.spawn_unit(0, UnitType.KNIGHT, (12.5, 7.5))
+    solo.move([solo_knight.id], target)
+    solo_time = _time_until_within(solo, [solo_knight.id], target, 15.0)
+    assert knights_time <= solo_time + 1.5  # the wall did not hold the knights to the footman's pace
+
+
+def test_group_pace_round_trips_through_saves() -> None:
+    world = flat_world()
+    knight = world.spawn_unit(0, UnitType.KNIGHT, (2.5, 2.5))
+    footman = world.spawn_unit(0, UnitType.FOOTMAN, (2.5, 3.5))
+    world.move([knight.id, footman.id], (10.5, 2.5))
+    copy = World.from_dict(world.to_dict())
+    assert copy.units[knight.id].order is not None and copy.units[knight.id].order.pace == knight.order.pace  # type: ignore[attr-defined]
+    assert copy.units[footman.id].order is not None and copy.units[footman.id].order.pace == footman.order.pace  # type: ignore[attr-defined]
+    data = world.to_dict()
+    for record in data["units"]:
+        for order in record["orders"]:
+            order.pop("pace", None)  # saves from before the group pace existed
+    legacy = World.from_dict(data)
+    assert legacy.units[knight.id].order is not None and legacy.units[knight.id].order.pace is None  # type: ignore[attr-defined]
