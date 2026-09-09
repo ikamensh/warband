@@ -9,6 +9,17 @@ built from `6f58eca12b7f4a969a063227267637256413c8ae`.
 See the [Mac and Windows player guide](warband-play-together.md) for practical
 installation and play instructions.
 
+## Local install on this Mac
+
+`uv run python tools/install_game.py warband` builds the app from the clean
+working tree under the pinned packaging environment (version
+`<project version>-local.<commit>`), self-tests the fresh bundle, backs the
+installed `/Applications/Warband.app` up under `dist/local-app-backups/`,
+copies the new bundle in with `ditto` and self-tests it again; a receipt with
+the commit and executable hash lands in `dist/warband-local/`.  `--skip-build
+--output DIR` installs a bundle already built there; `--allow-dirty` builds an
+uncommitted tree.  The same script installs Tribes.
+
 ## Changes in preview.4
 
 - The waiting screen offers **Copy invite link** beside **Copy room code**.
