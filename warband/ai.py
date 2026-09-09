@@ -70,6 +70,7 @@ class Brain:
         self.raiders: list[int] = []
         self.log: list[tuple[float, str]] = []  # (time, what) — the evidence of how it plays
         self._last_defend = 0  # threat size of the last logged "defend with" line
+        self._last_workforce_target: int | None = None
 
     def note(self, world: World, what: str) -> None:
         self.log.append((world.time, what))
@@ -246,13 +247,28 @@ class Brain:
 
     # -- Training ------------------------------------------------------------------
 
+    def _workforce_target(self, world: World) -> int:
+        """Peasants wanted: the profile plus five per extra hall, capped by supply
+        left after reserving the next wave, never below the profile."""
+        halls = len(world.player_buildings(self.player, BuildingType.TOWN_HALL, done=True))
+        base = self.profile.peasants + 5 * max(0, halls - 1)
+        _used, cap = world.supply(self.player)
+        return max(self.profile.peasants, min(base, cap - self.wave))
+
     def _training(self, world: World) -> None:
         player = self.player
-        profile = self.profile
-        hall = self._hall(world)
-        if hall is not None and not hall.queue and len(self._peasants(world)) < profile.peasants:
-            if world.can_train(hall, UnitType.PEASANT) is None:
+        halls = world.player_buildings(player, BuildingType.TOWN_HALL, done=True)
+        target = self._workforce_target(world)
+        if target != self._last_workforce_target:
+            self.note(world, f"workforce target {target}")
+            self._last_workforce_target = target
+        peasants = len(self._peasants(world))
+        for hall in halls:
+            if peasants >= target:
+                break
+            if not hall.queue and world.can_train(hall, UnitType.PEASANT) is None:
                 world.train(hall.id, UnitType.PEASANT)
+        hall = halls[0] if halls else None
         army = self._army(world)
         counts = {t: sum(1 for u in army if u.type is t) for t in UnitType}
         for building in world.player_buildings(player, done=True):
