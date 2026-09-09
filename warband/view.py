@@ -59,6 +59,21 @@ class Overlay:
     rally_for: list[int] = field(default_factory=list)
 
 
+def minimap_terrain(world: World) -> np.ndarray:
+    """Terrain colours for *world* from ``textures.PALETTES[theme].minimap``.
+
+    A ``(height, width, 3)`` float array shared by the HUD minimap and the
+    new-game preview, so both pictures agree on what grass, water, trees
+    and rock look like.
+    """
+    colours = textures.PALETTES[world.theme].minimap
+    base = np.zeros((world.height, world.width, 3), dtype=np.float32)
+    for y in range(world.height):
+        for x in range(world.width):
+            base[y, x] = colours[world.terrain[y][x]]
+    return base
+
+
 class MapView:
     def __init__(self, scene: Scene, world: World, player: int) -> None:
         self.scene = scene
@@ -365,13 +380,7 @@ class MapView:
         return image
 
     def _minimap_terrain(self) -> np.ndarray:
-        world = self.world
-        colours = textures.PALETTES[world.theme].minimap
-        base = np.zeros((world.height, world.width, 3), dtype=np.float32)
-        for y in range(world.height):
-            for x in range(world.width):
-                base[y, x] = colours[world.terrain[y][x]]
-        return base
+        return minimap_terrain(self.world)
 
     def _minimap_image(self) -> Image.Image:
         world = self.world

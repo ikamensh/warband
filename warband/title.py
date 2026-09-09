@@ -9,20 +9,40 @@ from __future__ import annotations
 import random
 from typing import Any
 
-from saga2d import Anchor, Button, Camera, Column, Label, Row, SaveError, Scene
+import numpy as np
+from PIL import Image as PilImage
+
+from saga2d import Anchor, Button, Camera, Column, Image, Label, Row, SaveError, Scene
 from warband import mapgen
+from warband.model import World
 from warband.races import RACES
-from warband.rules import Difficulty, MapTheme, Race
+from warband.rules import BuildingType, Difficulty, MapTheme, Race
 from warband.scene import SAVE_SLOTS, HelpScene, SaveBrowserScene, load_game, new_game
 from warband.sound import play_music, play_sound
 from warband.style import ACTION_BUTTON, GHOST_BUTTON, MENU_BUTTON, OVERLAY_STYLE
 from warband.textures import TILE
-from warband.view import MapView, to_world
+from warband.view import MapView, minimap_terrain, to_world
 
 PLAYER_COUNTS = (2, 3, 4)
 OPTION_WIDTH = 170
 RACE_WIDTH = 125
 RACE_KEYS = {Race.HUMAN: "U", Race.ORC: "O", Race.ELF: "V", Race.DWARF: "A"}
+PREVIEW_KEY = "newgame.preview"
+PREVIEW_PX = 4  # pixels per tile; Large (64x48) renders at 256x192
+PREVIEW_MINE = (232, 196, 70)
+
+
+def preview_image(world: World) -> PilImage.Image:
+    """A small picture of *world*: terrain, a 3x3 block per start hall in the
+    owner's colour and every mine in gold, at ``PREVIEW_PX`` pixels per tile."""
+    img = minimap_terrain(world)
+    for b in world.buildings.values():
+        if b.type is BuildingType.TOWN_HALL and b.player is not None:
+            img[b.y:b.y + b.size, b.x:b.x + b.size] = world.players[b.player].color
+        elif b.type is BuildingType.GOLD_MINE:
+            img[b.y:b.y + b.size, b.x:b.x + b.size] = PREVIEW_MINE
+    pixels = np.repeat(np.repeat(img.clip(0, 255).astype(np.uint8), PREVIEW_PX, 0), PREVIEW_PX, 1)
+    return PilImage.fromarray(pixels, "RGB")
 DRIFT_SECONDS = 24.0
 
 
@@ -174,13 +194,44 @@ class NewGameScene(Scene):
         self.theme = title.theme
         self.race = title.race
         self.seed = mapgen.fresh_seed()
+        self._preview_key = PREVIEW_KEY
+        self._preview_world: World | None = None
+        self._preview_pil: PilImage.Image | None = None
         self._theme_buttons: dict[MapTheme, Button] = {}
         self._size_buttons: dict[str, Button] = {}
         self._player_buttons: dict[int, Button] = {}
         self._difficulty_buttons: dict[Difficulty, Button] = {}
         self._race_buttons: dict[Race, Button] = {}
 
+    def _preview_races(self) -> list[Race | None]:
+        return [self.race] + [None] * (self.players - 1)
+
+    def _opponents_text(self) -> str:
+        if self._preview_world is None:
+            return "Opponents: …"
+        return "Opponents: " + ", ".join(RACES[p.race].name for p in self._preview_world.players[1:])
+
+    def _refresh_preview(self) -> None:
+        """Regenerate the preview world and its image under one asset key."""
+        if getattr(self, "game", None) is None:
+            return
+        width, height = mapgen.SIZES[self.size]
+        world = mapgen.generate(self.seed, width, height, self.players, theme=self.theme, races=self._preview_races())
+        self._preview_world = world
+        image = preview_image(world)
+        self._preview_pil = image
+        if self.game.assets.has_image(self._preview_key):
+            try:
+                self.game.assets.update_image(self._preview_key, image)
+            except ValueError:
+                # The map size changed, so the image changed size too: re-register under the same key.
+                del self.game.assets._images[self._preview_key]
+                self.game.assets.image_from_pil(self._preview_key, image)
+        else:
+            self.game.assets.image_from_pil(self._preview_key, image)
+
     def on_enter(self) -> None:
+        self._refresh_preview()
         panel = Column(spacing=12, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
         panel.add(Label("New game", text_style="title"))
         size_row = Row(Label("Map size", text_style="body", width=90), spacing=8)
@@ -217,6 +268,8 @@ class NewGameScene(Scene):
         panel.add(Label(lambda: f"{RACES[self.race].tagline} · {RACES[self.race].passive}", text_style="sub", width=3 * OPTION_WIDTH + 90 + 24))
         panel.add(Row(Label(lambda: f"Seed {self.seed}", text_style="body", width=90 + 8 + OPTION_WIDTH),
                       Button("Reroll", hotkey="R", on_click=self.reroll, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
+        panel.add(Image(self._preview_key, width=256, height=192))
+        panel.add(Label(lambda: self._opponents_text(), text_style="sub"))
         panel.add(Row(Button("Start", hotkey="Enter", on_click=self.start, style=ACTION_BUTTON, width=2 * OPTION_WIDTH + 8),
                       Button("Back", hotkey="Esc", on_click=self.game.pop, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
         self.ui.add(panel)
@@ -242,11 +295,13 @@ class NewGameScene(Scene):
         self.size = name
         self.title.sfx("button")
         self._restyle()
+        self._refresh_preview()
 
     def set_players(self, count: int) -> None:
         self.players = count
         self.title.sfx("button")
         self._restyle()
+        self._refresh_preview()
 
     def set_difficulty(self, difficulty: Difficulty) -> None:
         self.difficulty = difficulty
@@ -257,12 +312,14 @@ class NewGameScene(Scene):
         self.theme = theme
         self.title.sfx("button")
         self._restyle()
+        self._refresh_preview()
 
     def set_race(self, race: Race) -> None:
         self.race = race
         self.title.race = race  # multiplayer rooms lead the race chosen here
         self.title.sfx("button")
         self._restyle()
+        self._refresh_preview()
 
     def humans(self) -> None:
         self.set_race(Race.HUMAN)
@@ -315,6 +372,7 @@ class NewGameScene(Scene):
     def reroll(self) -> None:
         self.seed = mapgen.fresh_seed()
         self.title.sfx("button")
+        self._refresh_preview()
 
     def start(self) -> None:
         self.title.sfx("button")
