@@ -290,6 +290,24 @@ def test_a_worker_caught_inside_enemy_range_walks_out_instead_of_freezing():
     assert worker.carrying is None and world.players[0].gold == 1000 + GOLD_PER_TRIP
 
 
+def test_expansion_worker_prefers_its_own_halls_mine():
+    """A peasant delivered at an expansion hall mines that hall's nearest mine, not the first hall's."""
+    world = World(32, 20, [[Terrain.GRASS] * 32 for _ in range(20)], 2)
+    world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
+    world.place_building(0, BuildingType.TOWN_HALL, (25, 14))
+    home_mine = world.place_building(None, BuildingType.GOLD_MINE, (7, 3))
+    far_mine = world.place_building(None, BuildingType.GOLD_MINE, (20, 12))
+    assert dist(home_mine.center, (2.5, 2.5)) < dist(far_mine.center, (2.5, 2.5))
+    spot = world.free_tile_near((25, 14, 3, 3))
+    assert spot is not None
+    worker = world.spawn_unit(0, UnitType.PEASANT, ((spot[0] + 0.5), (spot[1] + 0.5)))
+    world.players[0].gold, world.players[0].lumber = 0, 1000
+    world.reveal_all(0)
+    world.update_vision()
+    run(world, 1.5)
+    assert isinstance(worker.order, Harvest) and worker.order.target == far_mine.id
+
+
 def test_a_worker_walled_in_with_the_danger_waits_instead_of_crashing():
     """A partial escape must not be glued onto a route from elsewhere (race report, seed 1): when real
     ground does not lead to the nearest safe tile, the worker waits for the danger to pass."""
