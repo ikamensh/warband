@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import math
 import random
 from collections import deque
+from uuid import NAMESPACE_URL, uuid4, uuid5
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -13,16 +15,21 @@ from saga2d import (
     Sequence, Sprite, Style,
 )
 from saga2d import SaveError
-from saga2d.effects import Banner, Burst, Dissolve, Effects, FloatingText, HitReaction, Pulse, Toast
-from warband import mapgen
+from saga2d.effects import Banner, Burst, Effects, FloatingText, HitReaction, Pulse, Toast
+from warband import ambience, mapgen
 from warband.ai import Brain
+from warband.effects import UnitDeath
+from warband.icons import Icon, draw_icon
 from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
 from warband.production import ProductionButton, ProductionTarget, draw_production_icon
 from warband.races import RACES, RaceInfo
 from warband.rules import BUILDINGS, SIM_DT, UPGRADES, BuildingType, Difficulty, MapTheme, Race, UnitType, Upgrade
+from warband.scores import HighScores, score_breakdown
 from warband.sound import IMPACTS, apply_volumes, impact_sound, play_music, play_sound
 from warband.voices import voiced
-from warband.style import ACTION_BUTTON, BAD, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE
+from warband.style import (
+    ACTION_BUTTON, BAD, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE, RESULTS_STYLE,
+)
 from warband.textures import TILE
 from warband.tutorial import OBJECTIVES, Tutorial
 from warband.view import MapView, Overlay, rgba, to_tiles, to_world
@@ -107,8 +114,10 @@ class GameScene(Scene):
     }
 
     def __init__(self, world: World, seed: int, *, difficulty: Difficulty = Difficulty.NORMAL, settings: dict[str, Any] | None = None,
-                 stats: dict[str, int] | None = None, player: int | None = None) -> None:
+                 player: int | None = None, run_id: str | None = None, ranked: bool = True) -> None:
         self.world = world
+        self.run_id = run_id if run_id is not None else str(uuid4())  # one leaderboard row per match, however often it is reloaded
+        self.ranked = ranked
         self.seed = seed
         self.difficulty = difficulty
         self.human = next(p.id for p in world.players if p.human) if player is None else player
@@ -117,7 +126,6 @@ class GameScene(Scene):
         self.settings = settings if settings is not None else dict(DEFAULT_SETTINGS)  # a saga2d Settings when the game runs
         for key, value in DEFAULT_SETTINGS.items():
             self.settings.setdefault(key, value)
-        self.stats: dict[str, int] = {"units_lost": 0, "units_killed": 0, "buildings_lost": 0, "buildings_razed": 0, **(stats or {})}
         self.tutorial = Tutorial() if self.settings["tutorial"] else None
         self._autosave_at = AUTOSAVE_EVERY
         self.selection: list[int] = []
@@ -196,6 +204,11 @@ class GameScene(Scene):
         """The human player's race: its names and numbers are what the HUD shows."""
         return RACES[self.player.race]
 
+    @property
+    def stats(self) -> dict[str, int]:
+        """The player's battle record, kept by the simulation so kills are attributed to the striker."""
+        return self.player.stats
+
     def sfx(self, name: str, *, gap: float = 0.0) -> None:
         """Bound battle density across materials/takes; alerts bypass that budget.  Cues speak in the player's race's voice."""
         name = voiced(name, self.player.race)
@@ -223,14 +236,21 @@ class GameScene(Scene):
 
         def supply_text() -> str:
             used, cap = world.supply(self.human)
-            return f"Supply {used}/{cap}"
+            return f"{used}/{cap}"
 
+        # Resources as symbol + number; hovering a symbol names it in the tooltip panel.
+        self._resource_rows = [
+            (Row(Icon("gold", size=22), Label(lambda: str(player.gold), text_style="hud", text_color=GOLD), spacing=6),
+             "Gold — mined by workers; every unit, building and upgrade costs some"),
+            (Row(Icon("lumber", size=22), Label(lambda: str(player.lumber), text_style="hud", text_color=LUMBER), spacing=6),
+             "Lumber — felled by workers; buildings, upgrades and engines need it"),
+            (Row(Icon("supply", size=22), Label(supply_text, text_style="hud"), spacing=6),
+             "Supply used / capacity — farms and halls feed the army"),
+        ]
         self.ui.add(Panel(anchor=Anchor.TOP_LEFT, margin=12, layout=Layout.HORIZONTAL, spacing=12, style=PANEL_STYLE, children=[
             Label(player.name, text_style="title", text_color=rgba(player.color)),
             Label(self.race.name, text_style="sub"),
-            Label(lambda: f"Gold {player.gold}", text_style="hud", text_color=GOLD),
-            Label(lambda: f"Lumber {player.lumber}", text_style="hud", text_color=LUMBER),
-            Label(supply_text, text_style="hud"),
+            *(row for row, _hint in self._resource_rows),
             Label(lambda: _clock(world.time), text_style="sub"),
             Label(lambda: "Paused" if self.paused else f"×{self.speed:g}" if self.speed != 1 else "", text_style="hud", text_color=BAD),
             self._idle_button(),
@@ -785,8 +805,8 @@ class GameScene(Scene):
             self.card_panel.add(row)
 
     def _update_card(self) -> None:
-        self.tooltip = ""
         mx, my = self.mouse
+        self.tooltip = next((hint for row, hint in self._resource_rows if row.hit_test(mx, my)), "")
         for command, button in zip(self._card, self._card_buttons):
             blocked = command.blocked()
             button.enabled = blocked is None
@@ -1025,7 +1045,7 @@ class GameScene(Scene):
         self._check_game_over()
 
     def _advance(self, dt: float) -> None:
-        if not self.paused and not self._game_over:
+        if not self.paused and not self._game_over and self.world.winner is None and self.player.alive:  # a decided match stays frozen
             self._acc += min(dt, 0.25) * self.speed
             steps = 0
             while self._acc >= SIM_DT and steps < MAX_STEPS_PER_FRAME:
@@ -1091,7 +1111,7 @@ class GameScene(Scene):
                 self.sfx("under_attack")
             elif e.kind == "refused" and mine:
                 self.warn(e.text)
-            elif e.kind == "eliminated" and not mine:
+            elif e.kind in ("eliminated", "surrendered") and not mine:
                 self.effects.add(Toast("A rival falls", [e.text], accent=GOOD, hold=4.0, top=TOAST_TOP))
             elif e.kind == "exhausted":
                 self.effects.add(FloatingText("Mine exhausted", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), MUTED, rise=20, duration=1.5))
@@ -1158,16 +1178,12 @@ class GameScene(Scene):
         return flight
 
     def _show_death(self, e: Event) -> None:
-        if e.player == self.human:
-            self.stats["units_lost"] += 1
-        else:
-            self.stats["units_killed"] += 1
         if not self._visible(e.pos):
             return
         sprite = self.view.release_unit_sprite(e.entity) if e.entity is not None else None
         if sprite is not None:
             self.add_sprite(sprite)
-            self.effects.add(Dissolve(sprite, duration=0.5))
+            self.effects.add(UnitDeath(sprite, to_world(e.pos)))  # the body falls and lies there a while
         color = self.world.players[e.player].color if e.player is not None else (200, 200, 200)
         self.effects.add(Burst(to_world(e.pos), rgba(color), 10, rng=self.rng, size=10))
         if self._audible(e.pos):
@@ -1175,10 +1191,7 @@ class GameScene(Scene):
 
     def _show_destroyed(self, e: Event) -> None:
         if e.player == self.human:
-            self.stats["buildings_lost"] += 1
             self.effects.add(Toast("Building lost", [f"Your {self.building_name(BuildingType(e.text)).lower()} was destroyed"], hold=4.0, top=TOAST_TOP))
-        elif e.player is not None:
-            self.stats["buildings_razed"] += 1
         if self._visible(e.pos):
             wx, wy = to_world(e.pos)
             self.effects.add(Burst((wx, wy), (255, 160, 80, 255), 18, rng=self.rng, size=16, speed=(40, 160)))
@@ -1193,7 +1206,7 @@ class GameScene(Scene):
         if self.world.winner is not None or not self.player.alive:
             won = self.world.winner == self.human
             self._finish(won)
-            self.game.push(GameOverScene(self, won))
+            self.game.push(GameOverScene(self))
 
     def _finish(self, won: bool) -> None:
         self._game_over = True
@@ -1220,6 +1233,7 @@ class GameScene(Scene):
             hovered = entity.id if entity is not None else None
         self.view.draw(Overlay(selected=list(self.selection), hovered=hovered, ghost=self._ghost(),
                                rally_for=[b.id for b in [self._own_building()] if b is not None]))
+        ambience.draw(self, self.world, self.human)
         self._draw_settlement_markers()
         if self._drag_start is not None and self._drag_end is not None and math.dist(self._drag_start, self._drag_end) >= DRAG_THRESHOLD:
             (x0, y0), (x1, y1) = self._drag_start, self._drag_end
@@ -1332,11 +1346,20 @@ class GameScene(Scene):
             self.draw_text(f"{entity.hp}/{entity.max_hp}", tx + 188, y + 34, style="sub")
         if isinstance(entity, Unit):
             info = entity.info
-            if info.heal:
-                lines.append(f"Heals {world.heal_rate(entity):g}/s  Range {info.range:g}  Armor {world.armor_of(entity)}  Speed {world.speed_of(entity):g}")
-            else:
-                lines.append(f"Damage {world.damage_of(entity)}  Armor {world.armor_of(entity)}  Range {world.range_of(entity):g}  Speed {world.speed_of(entity):g}"
-                             + ("  · Frenzy!" if world.frenzied(entity) else ""))
+            primary = (("health", f"{world.heal_rate(entity):g}/s", "Healing restored per second") if info.heal
+                       else ("damage", str(world.damage_of(entity)), "Damage per strike"))
+            stats = [primary, ("armor", str(world.armor_of(entity)), "Armour, subtracted from every blow"),
+                     ("range", f"{world.range_of(entity):g}", "Healing range in tiles" if info.heal else "Attack range in tiles"),
+                     ("speed", f"{world.speed_of(entity):g}", "Speed in tiles per second")]
+            mx, my = self.mouse
+            for i, (icon, value, hint) in enumerate(stats):
+                sx = tx + i * 78
+                draw_icon(self, icon, sx, y + 45, 19)
+                self.draw_text(value, sx + 24, y + 60, style="body")
+                if sx <= mx < sx + 74 and y + 42 <= my < y + 64:
+                    self.tooltip = hint
+            if world.frenzied(entity):
+                self.draw_text("Frenzy!", tx + 4 * 78, y + 60, style="body", color=BAD)
             order = entity.order
             if entity.inside is not None:
                 lines.append("Mining")
@@ -1360,7 +1383,7 @@ class GameScene(Scene):
                 lines.append(entity.info.summary)
                 if entity.type is BuildingType.TOWN_HALL:
                     lines.append("Rally point set" if entity.rally is not None else "Right-click the map to set a rally point")
-        ly = y + 50
+        ly = y + 82 if isinstance(entity, Unit) else y + 50
         for line in lines[:2]:
             self.draw_text(line, tx, ly, style="body")
             ly += 22
@@ -1368,7 +1391,8 @@ class GameScene(Scene):
     # -- Save / load ------------------------------------------------------------------------
 
     def get_save_state(self) -> dict:
-        return {"version": SAVE_VERSION, "seed": self.seed, "difficulty": self.difficulty.value, "world": self.world.to_dict(), "stats": self.stats,
+        return {"version": SAVE_VERSION, "seed": self.seed, "difficulty": self.difficulty.value, "world": self.world.to_dict(),
+                "run_id": self.run_id, "ranked": self.ranked,
                 "groups": self.groups, "tutorial": self.tutorial.step if self.tutorial is not None else None}
 
     def get_save_summary(self) -> dict:
@@ -1383,10 +1407,12 @@ class GameScene(Scene):
             self.game.clear_and_push(load_game(state, settings=self.settings))
             return
         self.world = world
+        self.human = next(p.id for p in world.players if p.human)
+        self.run_id = _saved_run_id(state)
+        self.ranked = state.get("ranked", True)
         self.seed = state["seed"]
         self.difficulty = Difficulty(state["difficulty"])
         self.brains = [Brain(p.id, self.difficulty) for p in world.players if not p.human]
-        self.stats = {**self.stats, **state.get("stats", {})}
         self.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
         self.tutorial = Tutorial() if state.get("tutorial") is not None and self.settings["tutorial"] else None
         if self.tutorial is not None:
@@ -1829,25 +1855,65 @@ class CodexScene(_Overlay):
 
 
 class GameOverScene(_Overlay):
+    """The result: the score and how it was earned, the battle record, every warband's fate, and the local rank."""
+
     pause_below = True
     pop_on_cancel = False
-    controls = {"n": "new_game", "q": "quit", ("t", "escape"): "back_to_title"}
+    controls = {"n": "new_game", "b": "high_scores", "q": "quit", ("t", "escape"): "back_to_title"}
 
-    def __init__(self, game_scene: GameScene, won: bool) -> None:
+    def __init__(self, game_scene: GameScene) -> None:
         self.game_scene = game_scene
-        self.won = won
+        self.won = game_scene.world.winner == game_scene.human
+        self.score_error = ""
 
     def on_enter(self) -> None:
         scene = self.game_scene
         world = scene.world
-        winner = world.players[world.winner].name if world.winner is not None else "Nobody yet"
-        panel = self.panel("Victory!" if self.won else f"Defeat — {winner} prevails")
+        points = score_breakdown(world, scene.human)
+        panel = self.panel("Victory!" if self.won else "Defeat")
+        panel.style = RESULTS_STYLE
+        panel.add(Label(f"{scene.race.name} · {scene.difficulty.value.title()} AI · {world.width}×{world.height} · {len(world.players)} players · "
+                        f"{world.theme.value.title()} · Seed {scene.seed}", text_style="body"))
+        score = Column(spacing=10, width=420)
+        score.add(Label(f"{sum(points.values()):,} points", text_style="banner"))
+        for name, value in points.items():
+            score.add(Row(Label(name, text_style="body", width=300), Label(f"{value:,}", text_style="heading", width=100), spacing=12))
+        score.add(Label("Combat: 1 point per 10 resources destroyed.\nSurvivors: 1 per 20; research: 1 per 10.\nSwift victory: 2 per second before 20:00.",
+                        text_style="sub", width=420, wrap=True))
+        summary = Column(spacing=12, width=420)
+        summary.add(Label(f"Battle record · {_clock(world.time)}", text_style="heading"))
         stats = scene.stats
-        panel.add(Label(f"{_clock(world.time)} played · {stats['units_killed']} kills · {stats['units_lost']} units lost · "
-                        f"{stats['buildings_razed']} buildings razed · {stats['buildings_lost']} lost", text_style="body"))
-        panel.add(Button("New game", hotkey="N", on_click=self.new_game, style=ACTION_BUTTON, width=260))
-        panel.add(Button("Back to title", hotkey="T", on_click=self.back_to_title, style=GHOST_BUTTON, width=260))
-        panel.add(Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=260))
+        summary.add(Label(f"{stats['units_killed']} enemy units defeated · {stats['units_lost']} units lost", text_style="body"))
+        summary.add(Label(f"{stats['buildings_razed']} buildings razed · {stats['buildings_lost']} lost", text_style="body"))
+        summary.add(Label("Warbands", text_style="heading"))
+        for player in world.players:
+            status = ("Victorious" if world.winner == player.id else "Surrendered" if player.surrendered
+                      else "Still fighting" if player.alive else "Eliminated")
+            summary.add(Row(Label(f"{player.name} · {RACES[player.race].name}", text_style="body", width=200),
+                            Label(status, text_style="body", text_color=GOOD if player.id == world.winner else MUTED), spacing=10))
+        if any(p.surrendered for p in world.players):
+            summary.add(Label("Surrender: no units or queued recruits,\nand no affordable way to train another.", text_style="sub", width=420, wrap=True))
+        panel.add(Row(score, summary, spacing=28))
+        notice = "Demo battle · not ranked"
+        if scene.ranked:
+            try:
+                rank = HighScores(self.game.data_dir).record(world, player=scene.human, seed=scene.seed, difficulty=scene.difficulty, run_id=scene.run_id)
+                notice = f"Your best finish ranks #{rank} on this local board" if rank else "Outside this board's top 10"
+            except SaveError as error:
+                self.score_error = str(error)
+                notice = "High score could not be saved · open High scores for the error"
+        panel.add(Label(notice, text_style="body", text_color=GOLD))
+        panel.add(Row(Button("New game", hotkey="N", on_click=self.new_game, style=ACTION_BUTTON, width=210),
+                      Button("High scores", hotkey="B", on_click=self.high_scores, style=GHOST_BUTTON, width=210),
+                      Button("Back to title", hotkey="T", on_click=self.back_to_title, style=GHOST_BUTTON, width=210),
+                      Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=190), spacing=12))
+
+    def high_scores(self) -> None:
+        from warband.score_scene import HighScoreScene
+
+        scene = self.game_scene
+        self.game.push(HighScoreScene(difficulty=scene.difficulty, size=(scene.world.width, scene.world.height),
+                                      players=len(scene.world.players), run_id=scene.run_id, error=self.score_error))
 
     def new_game(self) -> None:
         scene = self.game_scene
@@ -1858,7 +1924,10 @@ class GameOverScene(_Overlay):
     def back_to_title(self) -> None:
         from warband.title import TitleScene
 
-        self.game.clear_and_push(TitleScene(settings=self.game_scene.settings))
+        scene = self.game_scene
+        size = next((name for name, dimensions in mapgen.SIZES.items() if dimensions == (scene.world.width, scene.world.height)), "Medium")
+        self.game.clear_and_push(TitleScene(size=size, players=len(scene.world.players), difficulty=scene.difficulty, theme=scene.world.theme,
+                                           race=scene.player.race, settings=scene.settings))
 
     def quit(self) -> None:
         self.game.quit()
@@ -1877,6 +1946,12 @@ def check_save(state: dict[str, Any]) -> World:
     try:
         world = World.from_dict(state["world"])
         Difficulty(state["difficulty"])
+        if "run_id" in state and (not isinstance(state["run_id"], str) or not state["run_id"].strip()):
+            raise ValueError("run_id must be nonempty text")
+        if "ranked" in state and type(state["ranked"]) is not bool:
+            raise ValueError("ranked must be a boolean")
+        if any(type(value) is not int or value < 0 for player in world.players for value in player.stats.values()):
+            raise ValueError("battle statistics must be nonnegative integers")
     except (KeyError, ValueError, TypeError, IndexError) as exc:
         raise SaveError(f"the save file is damaged ({type(exc).__name__}: {exc})") from exc
     if not any(p.human for p in world.players):
@@ -1884,10 +1959,16 @@ def check_save(state: dict[str, Any]) -> World:
     return world
 
 
+def _saved_run_id(state: dict[str, Any]) -> str:
+    # Saves from before scoring carry no match ID; the same old save reopened still counts once.
+    return state["run_id"] if "run_id" in state else str(uuid5(NAMESPACE_URL, "warband:" + json.dumps(state, sort_keys=True)))
+
+
 def load_game(state: dict[str, Any], *, settings: dict[str, Any] | None = None) -> GameScene:
     """A game scene from a save slot's ``state`` (see :meth:`GameScene.get_save_state`)."""
     world = check_save(state)
-    scene = GameScene(world, state["seed"], difficulty=Difficulty(state["difficulty"]), settings=settings, stats=state.get("stats"))
+    scene = GameScene(world, state["seed"], difficulty=Difficulty(state["difficulty"]), settings=settings,
+                      run_id=_saved_run_id(state), ranked=state.get("ranked", True))
     scene.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
     if state.get("tutorial") is not None and scene.tutorial is not None:
         scene.tutorial.step = state["tutorial"]

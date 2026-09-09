@@ -7,6 +7,7 @@ from saga2d.testing import assert_no_text_overlap
 from warband.rules import BuildingType, Race, UnitType
 from warband.model import tile_center
 from warband.scene import CodexScene, GameOverScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game
+from warband.score_scene import HighScoreScene
 from warband.style import build_theme
 from warband.title import NewGameScene, TitleScene
 
@@ -47,8 +48,9 @@ SCREENS = {
     "orc match, build menu": lambda game: (match(game, races=[Race.ORC, None]), game.scene.select([next(u.id for u in game.scene.world.player_units(game.scene.human) if u.is_worker)]), game.scene.open_build_menu()),
     "dwarf codex": lambda game: (s := match(game, races=[Race.DWARF, None]), game.push(CodexScene(s.world, s.human, 0))),
     "save browser": lambda game: (match(game), game.push(SaveBrowserScene(game, "save", on_pick=lambda slot: None))),
-    "victory": lambda game: game.push(GameOverScene(match(game), True)),
-    "defeat": lambda game: game.push(GameOverScene(match(game), False)),
+    "victory": lambda game: (s := match(game), setattr(s.world, "winner", s.human), game.push(GameOverScene(s))),
+    "defeat": lambda game: (s := match(game), setattr(s.world.players[s.human], "alive", False), game.push(GameOverScene(s))),
+    "high scores": lambda game: (s := match(game), game.push(HighScoreScene(size=(s.world.width, s.world.height)))),
 }
 
 

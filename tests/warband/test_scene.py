@@ -14,7 +14,7 @@ from warband.title import NewGameScene, TitleScene
 
 @pytest.fixture
 def game(tmp_path):
-    g = Game("Warband Test", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path)
+    g = Game("Warband Test", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     yield g
     g._teardown()
 
@@ -88,7 +88,7 @@ def test_clicking_a_peasant_selects_it_and_shows_its_card(play) -> None:
     click(game, scene, peasant.pos)
     assert scene.selection == [peasant.id]
     shown = texts(game)
-    assert "Peasant" in shown and any(t.startswith("Damage 3") for t in shown)
+    assert "Peasant" in shown and {"3", "0", "0.45", "2.4"} <= set(shown)  # damage, armour, range and speed beside their symbols
     assert [c.label for c in scene._card] == ["Move", "Stop", "Attack", "Hold", "Patrol", "Build", "Repair"]
     assert "select" in scene.recent_sounds
 
@@ -326,7 +326,9 @@ def test_an_attack_on_the_base_raises_an_alert_that_space_jumps_to(play) -> None
     assert left < scene.last_alert[0] * 32 < right and top < scene.last_alert[1] * 32 < bottom
 
 
-def test_a_kill_leaves_a_dissolving_sprite_that_is_removed(play) -> None:
+def test_a_kill_leaves_a_body_lying_that_fades_and_is_removed(play) -> None:
+    from warband.effects import UnitDeath
+
     game, scene = play
     world = scene.world
     hall = hall_of(scene)
@@ -336,9 +338,12 @@ def test_a_kill_leaves_a_dissolving_sprite_that_is_removed(play) -> None:
     world.attack([knight.id], victim.id)
     tick(game, 1.5)
     assert victim.id not in world.units and scene.stats["units_killed"] == 1
-    tick(game, 1.5)
-    assert len(scene.effects) == 0
-    assert not any(s["image"] == game.assets.image(scene.view._unit_keys.get(victim.id, "")) for s in game.backend.sprites.values() if victim.id in scene.view._unit_keys)
+    death = next(e for e in scene.effects._items if isinstance(e, UnitDeath))
+    assert abs(death.sprite.rotation) > 80 and death.sprite.opacity == 255  # fallen, and lying there
+    tick(game, 3.0)
+    assert not death.done and death.sprite.opacity == 255
+    tick(game, UnitDeath.HOLD + UnitDeath.FADE)
+    assert death.done and death.sprite.is_removed and not any(isinstance(e, UnitDeath) for e in scene.effects._items)
 
 
 # -- Minimap and camera ---------------------------------------------------------------

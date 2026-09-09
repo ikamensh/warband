@@ -21,7 +21,7 @@ def components(parent):
 @pytest.mark.parametrize("race", list(Race))
 def test_every_production_target_has_a_distinct_renderable_icon(tmp_path, race) -> None:
     """Units, buildings and every upgrade (race arts included) render inside their buttons under stable keys."""
-    game = Game("Production icons", backend="mock", resolution=(1920, 800), theme=build_theme(), save_dir=tmp_path)
+    game = Game("Production icons", backend="mock", resolution=(1920, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     try:
         scene = Scene()
         game.push(scene)
@@ -43,7 +43,7 @@ def test_every_production_target_has_a_distinct_renderable_icon(tmp_path, race) 
 
 def test_portrait_and_keycap_clicks_use_normal_button_enabled_behaviour(tmp_path) -> None:
     """Icon children never swallow clicks, and a disabled portrait stays blocked and dims."""
-    game = Game("Production clicks", backend="mock", theme=build_theme(), save_dir=tmp_path)
+    game = Game("Production clicks", backend="mock", theme=build_theme(), save_dir=tmp_path / "saves")
     try:
         scene = Scene()
         game.push(scene)
@@ -72,7 +72,7 @@ def test_portrait_and_keycap_clicks_use_normal_button_enabled_behaviour(tmp_path
 
 @pytest.fixture(params=[Race.HUMAN, Race.DWARF], ids=["humans", "dwarves"])
 def play(tmp_path, request):
-    game = Game("Production UI", backend="mock", resolution=(1280, 720), theme=build_theme(), save_dir=tmp_path)
+    game = Game("Production UI", backend="mock", resolution=(1280, 720), theme=build_theme(), save_dir=tmp_path / "saves")
     scene = new_game(seed=3, races=[request.param, None])
     game.push(scene)
     scene.paused = True

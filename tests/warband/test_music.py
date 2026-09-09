@@ -104,7 +104,7 @@ def test_peaceful_pieces_alternate_at_their_loop_points_with_a_long_crossfade() 
 
 @pytest.fixture
 def game(tmp_path):
-    g = Game("Warband music", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path)
+    g = Game("Warband music", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     yield g
     g._teardown()
 

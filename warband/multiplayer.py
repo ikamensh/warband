@@ -121,7 +121,7 @@ class NetworkGameScene(GameScene):
         self._last_time = time.monotonic()
         self._elapsed = 0.
         data = session.state
-        super().__init__(World.from_dict(data['world']), data['seed'], settings=settings, player=session.player)
+        super().__init__(World.from_dict(data['world']), data['seed'], settings=settings, player=session.player, ranked=False)
         self.brains = []
         self.tutorial = None
         self._autosave_at = math.inf
