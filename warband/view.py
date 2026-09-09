@@ -474,7 +474,7 @@ class MapView:
                 continue
             t = (phase - 0.45) / 0.45
             wx, wy = to_world(u.pos)
-            dx, dy = textures.chop_contact_offset(textures.facing_index(u.facing))
+            dx, dy = textures.chop_contact_offset(textures.facing_index(u.facing), u.race)
             wx, wy = wx + dx, wy + dy
             for i in range(5):
                 side = (i - 2) * 4.0

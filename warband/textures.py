@@ -597,92 +597,229 @@ def _roof_tiles(mesh: Mesh) -> Mesh:
     return tiled
 
 
+@dataclass(frozen=True)
+class Materials:
+    """What a race builds with; roof colours pass through :meth:`roof`."""
+
+    stone: Color
+    stone_dark: Color
+    wood: Color
+    wood_dark: Color
+    plaster: Color
+    thatch: Color
+    roof_tint: Color | None  # blended into every roof; None keeps the building's own colour
+    roof_blend: float = 0.5
+
+    def roof(self, color: Color) -> Color:
+        if self.roof_tint is None:
+            return color
+        return tuple(round(c * (1 - self.roof_blend) + t * self.roof_blend) for c, t in zip(color, self.roof_tint))  # type: ignore[return-value]
+
+
+MATERIALS: dict[Race, Materials] = {
+    Race.HUMAN: Materials(STONE, STONE_DARK, WOOD, WOOD_DARK, PLASTER, THATCH, None),
+    Race.ORC: Materials((122, 108, 94), (84, 74, 66), (112, 78, 48), (72, 50, 34), (152, 118, 84), (124, 92, 56), (96, 40, 30), 0.55),
+    Race.ELF: Materials((200, 204, 194), (152, 158, 148), (212, 194, 152), (162, 144, 106), (238, 234, 220), (136, 178, 108), (70, 150, 110), 0.55),
+    Race.DWARF: Materials((150, 148, 146), (104, 102, 100), (128, 96, 62), (90, 64, 40), (172, 168, 162), (118, 108, 100), (88, 92, 106), 0.6),
+}
+COPPER = (190, 120, 70)
+
+
 def _building(building_type: BuildingType, player: int, race: Race = Race.HUMAN) -> Mesh:
-    """Purpose-led silhouettes: a yard's machinery matters as much as its walls."""
+    """Purpose-led silhouettes: a yard's machinery matters as much as its walls.  A race changes the
+    materials and roof colours throughout, redraws the hall, farm and tower it is known by, and dresses
+    every yard with its own ornaments (see :func:`_dressing`)."""
+    m = MATERIALS[race]
+    roof = m.roof
+    mesh = _building_body(building_type, player, race, m, roof)
+    return mesh + _dressing(building_type, race, team_color(player))
+
+
+def _building_body(building_type: BuildingType, player: int, race: Race, m: Materials, roof) -> Mesh:
     team = team_color(player)
     trim = darker(team, 0.68)
     if building_type is BuildingType.TOWN_HALL:
         mesh = _yard(3, (168, 157, 136))
-        mesh += _roofed_walls((0, -0.32, 0.8), (2.05, 1.62, 1.5), STONE)
+        mesh += _roofed_walls((0, -0.32, 0.8), (2.05, 1.62, 1.5), m.stone)
         for x in (-1.045, 1.045):
-            mesh += r3.box((x, -0.32, 1.51), (0.09, 1.76, 0.16), PLASTER)
+            mesh += r3.box((x, -0.32, 1.51), (0.09, 1.76, 0.16), m.plaster)
         for y in (-1.155, 0.515):
-            mesh += r3.box((0, y, 1.51), (2.18, 0.09, 0.16), PLASTER)
-        mesh += _roof_tiles(r3.pyramid((0, -0.32, 1.6), (2.25, 1.85), 0.83, trim))
-        mesh += _roofed_walls((0, -0.36, 2.05), (0.76, 0.66, 0.82), STONE)
-        mesh += _roof_tiles(r3.pyramid((0, -0.36, 2.46), (0.92, 0.82), 0.42, team))
-        mesh += _arch(0, -0.018, 2.12, 0.27, 0.29, GOLD)
-        mesh += _pennant(0, -0.36, 2.88, 0.56, team)
+            mesh += r3.box((0, y, 1.51), (2.18, 0.09, 0.16), m.plaster)
+        if race is Race.ORC:
+            # A hide dome stretched over the hall, ribbed with bone and crowned with a skull.
+            mesh += r3.sphere((0, -0.32, 1.45), 1.12, m.roof((150, 118, 84)), rings=5, sides=10)
+            for i in range(6):
+                a = i * math.tau / 6
+                mesh += r3.cone((math.cos(a) * 0.95, -0.32 + math.sin(a) * 0.8, 2.0), 0.07, 0.34, BONE, sides=4)
+            mesh += r3.sphere((0, -0.32, 2.62), 0.16, BONE, rings=3, sides=6)
+            mesh += _pennant(0.5, -0.9, 2.3, 0.7, team)
+        elif race is Race.ELF:
+            # A tall pointed roof with a living crown of leaves growing through it.
+            mesh += _roof_tiles(r3.pyramid((0, -0.32, 1.6), (2.25, 1.85), 1.35, trim))
+            for x, y, radius in ((-0.6, -0.7, 0.42), (0.55, -0.55, 0.38), (0.0, 0.05, 0.36), (-0.2, -1.0, 0.3)):
+                mesh += r3.sphere((x, y, 2.35 + radius * 0.6), radius, (86, 150, 96), rings=3, sides=7)
+                mesh += r3.sphere((x - 0.08, y - 0.04, 2.35 + radius * 1.1), radius * 0.6, (118, 178, 112), rings=3, sides=6)
+            mesh += _pennant(0, -0.32, 2.97, 0.5, team)
+        elif race is Race.DWARF:
+            # A flat stone top with battlements and a copper dome.
+            mesh += r3.box((0, -0.32, 1.66), (2.2, 1.8, 0.12), m.stone_dark)
+            for x in (-1.0, 1.0):
+                for y in (-1.15, 0.5):
+                    mesh += r3.box((x, y, 1.84), (0.22, 0.22, 0.26), m.stone)
+            mesh += r3.cylinder((0, -0.32, 1.72), 0.62, 0.3, m.stone, sides=8, rotation=math.pi / 8)
+            mesh += r3.sphere((0, -0.32, 2.02), 0.6, COPPER, rings=4, sides=10)
+            mesh += r3.cylinder((0, -0.32, 2.58), 0.08, 0.3, GOLD, sides=6)
+            mesh += _pennant(0.9, -1.15, 2.1, 0.5, team)
+        else:
+            mesh += _roof_tiles(r3.pyramid((0, -0.32, 1.6), (2.25, 1.85), 0.83, trim))
+            mesh += _roofed_walls((0, -0.36, 2.05), (0.76, 0.66, 0.82), m.stone)
+            mesh += _roof_tiles(r3.pyramid((0, -0.36, 2.46), (0.92, 0.82), 0.42, team))
+            mesh += _arch(0, -0.018, 2.12, 0.27, 0.29, GOLD)
+            mesh += _pennant(0, -0.36, 2.88, 0.56, team)
         # Twin gate towers and their connecting wall form a civic fortress.
-        mesh += r3.box((0, 0.71, 0.53), (1.8, 0.32, 0.94), STONE_DARK)
+        mesh += r3.box((0, 0.71, 0.53), (1.8, 0.32, 0.94), m.stone_dark)
         for x in (-0.92, 0.92):
             mesh += _battlement(x, 0.62, 0.08, 0.36, 1.45)
             mesh += _arch(x, 0.962, 0.83, 0.105, 0.38)
             mesh += _banner(x, 1.005, 0.54, 0.28, 0.38, team)
-        mesh += _inset_arch(0, 0.895, 0.08, 0.8, 1.1, PLASTER, INK, 0.11)
+        mesh += _inset_arch(0, 0.895, 0.08, 0.8, 1.1, m.plaster, INK, 0.11)
         for x in (-0.19, 0, 0.19):
-            mesh += r3.box((x, 0.91, 0.44), (0.035, 0.025, 0.69), WOOD)
-        mesh += r3.box((0, 1.06, 0.09), (0.87, 0.37, 0.16), STONE)
-        mesh += r3.box((0, 1.28, 0.045), (1.05, 0.19, 0.09), STONE_DARK)
+            mesh += r3.box((x, 0.91, 0.44), (0.035, 0.025, 0.69), m.wood)
+        mesh += r3.box((0, 1.06, 0.09), (0.87, 0.37, 0.16), m.stone)
+        mesh += r3.box((0, 1.28, 0.045), (1.05, 0.19, 0.09), m.stone_dark)
         return mesh
     if building_type is BuildingType.BARRACKS:
         mesh = _yard(3, (154, 131, 98))
-        mesh += _roofed_walls((0, -0.65, 0.55), (2.5, 1.05, 1.03), STONE_DARK)
-        mesh += _roof_tiles(r3.gable_roof((0, -0.65, 1.07), (2.73, 1.35), 0.54, (98, 104, 119)))
-        mesh += r3.box((0, -0.65, 1.61), (2.82, 0.1, 0.1), WOOD_DARK)
+        mesh += _roofed_walls((0, -0.65, 0.55), (2.5, 1.05, 1.03), m.stone_dark)
+        mesh += _roof_tiles(r3.gable_roof((0, -0.65, 1.07), (2.73, 1.35), 0.54, roof((98, 104, 119))))
+        mesh += r3.box((0, -0.65, 1.61), (2.82, 0.1, 0.1), m.wood_dark)
         for x in (-1.12, -0.56, 0.56, 1.12):
-            mesh += r3.box((x, -0.11, 0.57), (0.1, 0.1, 1.05), WOOD_DARK)
+            mesh += r3.box((x, -0.11, 0.57), (0.1, 0.1, 1.05), m.wood_dark)
         mesh += _arch(0, -0.102, 0.05, 0.69, 0.9)
         for x in (-0.86, 0.86):
             mesh += _banner(x, -0.035, 0.72, 0.34, 0.64, team)
         # Open parade ground, palisade wings and obvious military equipment.
         for x in (-1.24, 1.24):
             for y in (0.12, 0.4, 0.68, 0.96, 1.22):
-                mesh += r3.box((x, y, 0.34), (0.13, 0.2, 0.57), WOOD)
-                mesh += r3.pyramid((x, y, 0.625), (0.13, 0.2), 0.13, WOOD)
+                mesh += r3.box((x, y, 0.34), (0.13, 0.2, 0.57), m.wood)
+                mesh += r3.pyramid((x, y, 0.625), (0.13, 0.2), 0.13, m.wood)
         for x in (-0.79, 0.73):
             mesh += _timber((x, 0.5, 0.06), (x, 0.5, 0.96), 0.053)
             mesh += _timber((x - 0.27, 0.5, 0.71), (x + 0.27, 0.5, 0.71), 0.046)
             mesh += r3.facing(_octagon((x, 0.59, 0.7), 0.21), team, VIEW)
             mesh += r3.facing(_octagon((x, 0.603, 0.7), 0.08), GOLD, VIEW)
         for x in (-0.98, -0.72, -0.46):
-            mesh += _timber((x, 1.03, 0.12), (x + 0.04, 1.02, 1.0), 0.025, WOOD)
+            mesh += _timber((x, 1.03, 0.12), (x + 0.04, 1.02, 1.0), 0.025, m.wood)
             mesh += r3.cone((x + 0.04, 1.02, 1.0), 0.075, 0.18, IRON, sides=4)
         mesh += _timber((-1.1, 1.06, 0.48), (-0.34, 1.06, 0.48), 0.05)
         mesh += _pennant(1.1, -1.0, 1.2, 0.96, team)
         return mesh
     if building_type is BuildingType.FARM:
         mesh = _yard(2, (150, 115, 70))
-        mesh += _roofed_walls((-0.47, -0.51, 0.31), (0.75, 0.67, 0.56), PLASTER)
-        mesh += _roof_tiles(r3.gable_roof((-0.47, -0.51, 0.59), (0.93, 0.87), 0.43, THATCH))
-        mesh += r3.box((-0.47, -0.51, 1.025), (1.0, 0.07, 0.07), WOOD_DARK)
+        mesh += _roofed_walls((-0.47, -0.51, 0.31), (0.75, 0.67, 0.56), m.plaster)
+        mesh += _roof_tiles(r3.gable_roof((-0.47, -0.51, 0.59), (0.93, 0.87), 0.43, m.thatch))
+        mesh += r3.box((-0.47, -0.51, 1.025), (1.0, 0.07, 0.07), m.wood_dark)
         mesh += _door(-0.46, -0.168, 0.25, 0.26, 0.42)
         mesh += _banner(-0.75, -0.161, 0.37, 0.14, 0.26, team)
-        for row in range(5):
-            y = -0.71 + row * 0.31
-            mesh += r3.box((0.4, y, 0.055), (0.87, 0.22, 0.07), (101, 77, 44))
-            for k in range(6):
-                x = 0.04 + k * 0.145
-                h = 0.21 + 0.07 * ((row * 5 + k * 3) % 4) / 3
-                mesh += _timber((x, y, 0.09), (x + 0.025, y, h + 0.09), 0.017, (189, 161, 63), sides=4)
-                mesh += r3.sphere((x + 0.025, y, h + 0.08), 0.047, (238, 201 - row * 5, 93), rings=3, sides=5)
+        if race is Race.ORC:
+            # A muddy pen with three pigs.
+            mesh += r3.flat([(-0.02, -0.82), (0.84, -0.82), (0.84, 0.08), (-0.02, 0.08)], 0.045, (118, 88, 58))
+            mesh += _fence((-0.02, -0.82), (0.84, -0.82), 4) + _fence((0.84, -0.82), (0.84, 0.08), 3)
+            for x, y, a in ((0.22, -0.58, 0.3), (0.6, -0.22, 2.1), (0.4, -0.5, 4.0)):
+                pig = r3.box((x, y, 0.17), (0.4, 0.26, 0.24), (226, 166, 156)) + r3.box((x + 0.25, y, 0.2), (0.16, 0.18, 0.17), (214, 150, 144))
+                pig += r3.box((x + 0.34, y, 0.18), (0.04, 0.09, 0.07), (160, 96, 100))
+                for side in (-1, 1):
+                    pig += r3.cone((x + 0.27, y + side * 0.07, 0.28), 0.03, 0.08, (214, 150, 144), sides=4)
+                mesh += r3.rotate_z(pig, math.degrees(a), about=(x, y))
+        elif race is Race.ELF:
+            # An orchard of small fruit trees.
+            for x, y in ((0.15, -0.6), (0.6, -0.55), (0.35, -0.15), (0.75, -0.1), (0.15, 0.3)):
+                mesh += _timber((x, y, 0.05), (x, y, 0.36), 0.035, m.wood_dark, sides=5)
+                mesh += r3.sphere((x, y, 0.5), 0.2, (92, 156, 98), rings=3, sides=6)
+                mesh += r3.sphere((x + 0.08, y - 0.1, 0.55), 0.06, (230, 90, 80), rings=2, sides=5)
+        elif race is Race.DWARF:
+            # A brewhouse: kegs by the door and a stout stone chimney.
+            for x, y in ((0.2, -0.65), (0.5, -0.65), (0.35, -0.42), (0.7, -0.3)):
+                mesh += r3.cylinder((x, y, 0.05), 0.13, 0.28, m.wood, sides=8)
+                for z in (0.1, 0.26):
+                    mesh += r3.cylinder((x, y, z), 0.135, 0.03, m.wood_dark, sides=8)
+            mesh += r3.box((-0.7, -0.75, 0.9), (0.2, 0.2, 0.7), m.stone_dark)
+            mesh += r3.box((-0.7, -0.75, 1.27), (0.26, 0.26, 0.06), m.stone)
+        else:
+            for row in range(5):
+                y = -0.71 + row * 0.31
+                mesh += r3.box((0.4, y, 0.055), (0.87, 0.22, 0.07), (101, 77, 44))
+                for k in range(6):
+                    x = 0.04 + k * 0.145
+                    h = 0.21 + 0.07 * ((row * 5 + k * 3) % 4) / 3
+                    mesh += _timber((x, y, 0.09), (x + 0.025, y, h + 0.09), 0.017, (189, 161, 63), sides=4)
+                    mesh += r3.sphere((x + 0.025, y, h + 0.08), 0.047, (238, 201 - row * 5, 93), rings=3, sides=5)
         mesh += _fence((-0.86, 0.87), (0.86, 0.87), 5)
-        mesh += r3.cylinder((-0.55, 0.34, 0.04), 0.22, 0.31, THATCH, sides=8)
-        mesh += r3.cylinder((-0.55, 0.34, 0.16), 0.225, 0.045, WOOD_DARK, sides=8)
+        mesh += r3.cylinder((-0.55, 0.34, 0.04), 0.22, 0.31, m.thatch, sides=8)
+        mesh += r3.cylinder((-0.55, 0.34, 0.16), 0.225, 0.045, m.wood_dark, sides=8)
+        return mesh
+    if building_type is BuildingType.TOWER and race is Race.ORC:
+        # A timber watchtower: four leaning posts, a platform, a hide roof and spikes.
+        mesh = _yard(2, (128, 112, 92))
+        for x, y in ((-0.55, -0.55), (0.55, -0.55), (-0.55, 0.55), (0.55, 0.55)):
+            mesh += _timber((x, y, 0.05), (x * 0.7, y * 0.7, 1.7), 0.09, m.wood_dark)
+        for z in (0.6, 1.2):
+            for (x0, y0), (x1, y1) in (((-0.55, -0.55), (0.55, -0.55)), ((-0.55, 0.55), (0.55, 0.55)), ((-0.55, -0.55), (-0.55, 0.55)), ((0.55, -0.55), (0.55, 0.55))):
+                f = 1 - 0.3 * z / 1.7
+                mesh += _timber((x0 * f, y0 * f, z), (x1 * f, y1 * f, z), 0.04, m.wood)
+        mesh += r3.box((0, 0, 1.72), (1.0, 1.0, 0.1), m.wood)
+        mesh += r3.box((0, 0, 1.92), (0.7, 0.7, 0.32), m.wood_dark)
+        mesh += r3.pyramid((0, 0, 2.08), (1.1, 1.1), 0.5, m.roof((150, 118, 84)))
+        for x, y in ((-0.45, -0.45), (0.45, -0.45), (-0.45, 0.45), (0.45, 0.45)):
+            mesh += r3.cone((x, y, 2.05), 0.05, 0.3, BONE, sides=4)
+        mesh += r3.sphere((0, 0, 2.66), 0.13, BONE, rings=3, sides=6)
+        mesh += _banner(0, 0.36, 1.95, 0.4, 0.4, team)
+        return mesh
+    if building_type is BuildingType.TOWER and race is Race.ELF:
+        # A watch tree: a great trunk with a railed platform in its crown.
+        mesh = _yard(2, (150, 170, 130))
+        mesh += _branch((0, 0, 0.03), (0.05, -0.05, 2.1), 0.32, 0.18, (150, 122, 88))
+        for i in range(5):
+            a = i * math.tau / 5 + 0.4
+            mesh += _branch((math.cos(a) * 0.4, math.sin(a) * 0.4, 0.02), (0, 0, 0.5), 0.05, 0.12, (128, 102, 72))
+        mesh += r3.cylinder((0.05, -0.05, 2.05), 0.62, 0.1, m.wood, sides=8)
+        for i in range(8):
+            a = i * math.tau / 8
+            mesh += r3.box((0.05 + math.cos(a) * 0.58, -0.05 + math.sin(a) * 0.58, 2.3), (0.06, 0.06, 0.4), m.wood_dark)
+        mesh += r3.cylinder((0.05, -0.05, 2.48), 0.62, 0.04, m.wood_dark, sides=8)
+        for x, y, radius in ((0.5, 0.2, 0.42), (-0.45, -0.3, 0.4), (0.1, -0.55, 0.36), (0.0, 0.1, 0.5)):
+            mesh += r3.sphere((x, y, 2.75 + radius * 0.4), radius, (86, 150, 96), rings=3, sides=7)
+        mesh += _banner(0.05, 0.6, 2.28, 0.34, 0.4, team)
+        return mesh
+    if building_type is BuildingType.TOWER and race is Race.DWARF:
+        # A squat granite bolt tower with a crossbow engine on its roof.
+        mesh = _yard(2, (140, 138, 134))
+        mesh += r3.cylinder((0, 0, 0.05), 0.8, 0.3, m.stone_dark, sides=8, rotation=math.pi / 8)
+        mesh += r3.cylinder((0, 0, 0.35), 0.66, 1.2, m.stone, sides=8, rotation=math.pi / 8)
+        mesh += r3.cylinder((0, 0, 1.5), 0.74, 0.16, m.stone_dark, sides=8, rotation=math.pi / 8)
+        for i in range(8):
+            a = math.tau * i / 8
+            mesh += r3.box((0.7 * math.cos(a), 0.7 * math.sin(a), 1.76), (0.22, 0.22, 0.24), m.stone)
+        mesh += r3.box((0, 0, 1.82), (0.32, 0.5, 0.28), m.wood_dark)
+        mesh += _timber((-0.55, 0.25, 2.0), (0.55, 0.25, 2.0), 0.045, COPPER)
+        mesh += _timber((0, -0.35, 2.02), (0, 0.55, 2.02), 0.04, m.wood)
+        mesh += _timber((-0.55, 0.25, 2.0), (0, -0.2, 2.0), 0.012, PLASTER) + _timber((0.55, 0.25, 2.0), (0, -0.2, 2.0), 0.012, PLASTER)
+        mesh += _arch(0, 0.665, 0.25, 0.24, 0.5)
+        mesh += _banner(0, 0.7, 1.05, 0.36, 0.5, team)
         return mesh
     if building_type is BuildingType.TOWER:
         mesh = _yard(2, (155, 151, 139))
-        mesh += r3.cylinder((0, 0, 0.05), 0.77, 0.27, STONE_DARK, sides=8, rotation=math.pi / 8)
+        mesh += r3.cylinder((0, 0, 0.05), 0.77, 0.27, m.stone_dark, sides=8, rotation=math.pi / 8)
         mesh += _battlement(0, 0, 0.32, 0.53, 2.05)
         for z in (0.65, 1.26, 1.87):
-            mesh += r3.cylinder((0, 0, z), 0.554, 0.085, STONE_DARK, sides=8, rotation=math.pi / 8)
+            mesh += r3.cylinder((0, 0, z), 0.554, 0.085, m.stone_dark, sides=8, rotation=math.pi / 8)
         for x in (-0.29, 0.29):
             mesh += _arch(x, 0.495, 1.43, 0.1, 0.38)
         mesh += _arch(0, 0.525, 0.25, 0.24, 0.56)
         mesh += _banner(0, 0.565, 1.06, 0.36, 0.56, team)
         for x in (-0.62, 0.62):
-            mesh += r3.box((x, 0.12, 0.45), (0.2, 0.6, 0.65), STONE_DARK)
-            mesh += r3.pyramid((x, 0.12, 0.775), (0.2, 0.6), 0.25, STONE)
+            mesh += r3.box((x, 0.12, 0.45), (0.2, 0.6, 0.65), m.stone_dark)
+            mesh += r3.pyramid((x, 0.12, 0.775), (0.2, 0.6), 0.25, m.stone)
         mesh += _pennant(0, -0.1, 2.48, 0.7, team)
         return mesh
     if building_type is BuildingType.LUMBER_MILL:
@@ -690,27 +827,27 @@ def _building(building_type: BuildingType, player: int, race: Race = Race.HUMAN)
         # Open saw shed: its machinery and log deck remain visible from above.
         for x in (-1.08, 0.14):
             for y in (-1.06, 0.27):
-                mesh += r3.box((x, y, 0.63), (0.15, 0.15, 1.19), WOOD_DARK)
-        mesh += _roof_tiles(r3.gable_roof((-0.47, -0.46, 1.24), (1.57, 1.59), 0.45, (178, 117, 61)))
+                mesh += r3.box((x, y, 0.63), (0.15, 0.15, 1.19), m.wood_dark)
+        mesh += _roof_tiles(r3.gable_roof((-0.47, -0.46, 1.24), (1.57, 1.59), 0.45, roof((178, 117, 61))))
         for y in (-0.96, -0.69, -0.42, -0.15, 0.12):
             z = 1.24 + 0.45 * (1 - abs(y + 0.46) / 0.795)
-            mesh += r3.box((-0.47, y, z + 0.025), (1.58, 0.028, 0.04), WOOD_DARK)
-        mesh += r3.box((-0.47, 0.32, 1.15), (1.42, 0.13, 0.18), WOOD_DARK)
+            mesh += r3.box((-0.47, y, z + 0.025), (1.58, 0.028, 0.04), m.wood_dark)
+        mesh += r3.box((-0.47, 0.32, 1.15), (1.42, 0.13, 0.18), m.wood_dark)
         mesh += _banner(-0.48, 0.392, 1.08, 0.31, 0.35, team)
         # Stockpile rounds and pale end grain give logs a readable identity.
         for x, z in ((0.65, 0.2), (1.05, 0.2), (0.85, 0.52)):
             mesh += _timber((x, -1.03, z), (x, 0.02, z), 0.2, (101, 65, 38), sides=9)
             mesh += r3.facing(_octagon((x, 0.031, z), 0.164), (211, 167, 101), VIEW)
             mesh += r3.facing(_octagon((x, 0.045, z), 0.076), (169, 120, 67), VIEW)
-        mesh += r3.box((0, 0.9, 0.26), (2.28, 0.48, 0.13), WOOD_DARK)
+        mesh += r3.box((0, 0.9, 0.26), (2.28, 0.48, 0.13), m.wood_dark)
         mesh += _timber((-1.04, 0.88, 0.45), (0.92, 0.88, 0.45), 0.18, (125, 84, 45), sides=9)
         # Large steel saw, with a serrated edge and a bolted hub.
         points = [(0.42 + (0.49 if i % 2 == 0 else 0.40) * math.cos(i * math.tau / 32), 0.79, 0.79 + (0.49 if i % 2 == 0 else 0.40) * math.sin(i * math.tau / 32)) for i in range(32)]
         mesh += r3.facing(points, IRON, VIEW)
-        mesh += r3.facing(_octagon((0.42, 0.803, 0.79), 0.14), WOOD_DARK, VIEW)
+        mesh += r3.facing(_octagon((0.42, 0.803, 0.79), 0.14), m.wood_dark, VIEW)
         mesh += r3.facing(_octagon((0.42, 0.815, 0.79), 0.055), GOLD, VIEW)
         for x in (-0.94, 0.96):
-            mesh += r3.box((x, 0.91, 0.15), (0.12, 0.43, 0.3), WOOD)
+            mesh += r3.box((x, 0.91, 0.15), (0.12, 0.43, 0.3), m.wood)
         return mesh
     if building_type is BuildingType.BLACKSMITH:
         mesh = _yard(3, (118, 113, 106))
@@ -721,45 +858,53 @@ def _building(building_type: BuildingType, player: int, race: Race = Race.HUMAN)
         mesh += r3.box((-0.8, 0.095, 1.17), (0.82, 0.28, 0.21), brick)
         mesh += r3.box((-0.78, -0.57, 1.75), (0.56, 0.63, 1.26), brick)
         for z in (1.3, 1.65, 2.0, 2.33):
-            mesh += r3.box((-0.78, -0.57, z), (0.64, 0.72, 0.1), STONE_DARK)
+            mesh += r3.box((-0.78, -0.57, z), (0.64, 0.72, 0.1), m.stone_dark)
         mesh += r3.box((-0.78, -0.57, 2.39), (0.41, 0.49, 0.015), INK)
-        mesh += r3.box((0.34, -0.87, 0.57), (1.46, 0.29, 1.03), STONE_DARK)
+        mesh += r3.box((0.34, -0.87, 0.57), (1.46, 0.29, 1.03), m.stone_dark)
         for x in (-0.25, 1.04):
-            mesh += r3.box((x, 0.14, 0.58), (0.12, 0.12, 1.09), WOOD_DARK)
-        mesh += _roof_tiles(r3.gable_roof((0.35, -0.53, 1.14), (1.6, 1.49), 0.34, (68, 80, 91)))
+            mesh += r3.box((x, 0.14, 0.58), (0.12, 0.12, 1.09), m.wood_dark)
+        mesh += _roof_tiles(r3.gable_roof((0.35, -0.53, 1.14), (1.6, 1.49), 0.34, roof((68, 80, 91))))
         # Furnace mouth is a dark arch containing nested hot coals.
-        mesh += _inset_arch(-0.8, 0.245, 0.17, 0.67, 0.92, STONE_DARK, (56, 35, 29), 0.065)
+        mesh += _inset_arch(-0.8, 0.245, 0.17, 0.67, 0.92, m.stone_dark, (56, 35, 29), 0.065)
         for x, z, h in ((-0.98, 0.44, 0.47), (-0.8, 0.47, 0.7), (-0.63, 0.44, 0.42)):
             mesh += r3.facing([(x - 0.09, 0.43, z), (x + 0.1, 0.43, z), (x + 0.015, 0.43, z + h)], (255, 115, 27), VIEW)
             mesh += r3.facing([(x - 0.04, 0.45, z + 0.15), (x + 0.06, 0.45, z + 0.15), (x, 0.45, z + h * 0.82)], (255, 219, 91), VIEW)
-        mesh += r3.box((-0.8, 0.43, 0.14), (0.71, 0.41, 0.19), STONE_DARK)
+        mesh += r3.box((-0.8, 0.43, 0.14), (0.71, 0.41, 0.19), m.stone_dark)
         for x in (-0.96, -0.8, -0.64):
             mesh += r3.box((x, 0.31, 0.25), (0.035, 0.12, 0.22), INK)
         # An oversized horned anvil occupies the uncovered working apron.
-        mesh += r3.cylinder((0.49, 0.85, 0.055), 0.3, 0.26, WOOD_DARK, sides=8)
+        mesh += r3.cylinder((0.49, 0.85, 0.055), 0.3, 0.26, m.wood_dark, sides=8)
         mesh += r3.box((0.49, 0.85, 0.36), (0.39, 0.28, 0.16), (54, 63, 70))
         mesh += r3.box((0.49, 0.85, 0.51), (0.64, 0.36, 0.13), IRON)
         mesh += r3.facing([(0.8, 1.035, 0.58), (1.11, 1.035, 0.5), (0.8, 1.035, 0.45)], IRON, VIEW)
-        mesh += _timber((0.16, 0.9, 0.63), (0.48, 0.9, 0.68), 0.035, WOOD)
+        mesh += _timber((0.16, 0.9, 0.63), (0.48, 0.9, 0.68), 0.035, m.wood)
         mesh += r3.box((0.16, 0.9, 0.66), (0.11, 0.12, 0.16), INK)
         mesh += _banner(0.46, 0.234, 1.13, 0.36, 0.39, team)
-        mesh += r3.cylinder((-0.59, 1.03, 0.045), 0.23, 0.31, WOOD, sides=8)
+        mesh += r3.cylinder((-0.59, 1.03, 0.045), 0.23, 0.31, m.wood, sides=8)
         mesh += r3.cylinder((-0.59, 1.03, 0.353), 0.19, 0.01, (64, 108, 127), sides=8)
         return mesh
     if building_type is BuildingType.STABLES:
         mesh = _yard(3, (167, 140, 94))
-        mesh += _roofed_walls((0, -0.73, 0.47), (2.48, 0.83, 0.86), WOOD)
-        mesh += _roof_tiles(r3.gable_roof((0, -0.73, 0.93), (2.74, 1.08), 0.54, (180, 139, 72)))
-        mesh += r3.box((0, -0.73, 1.48), (2.83, 0.09, 0.07), WOOD_DARK)
+        mesh += _roofed_walls((0, -0.73, 0.47), (2.48, 0.83, 0.86), m.wood)
+        mesh += _roof_tiles(r3.gable_roof((0, -0.73, 0.93), (2.74, 1.08), 0.54, roof((180, 139, 72))))
+        mesh += r3.box((0, -0.73, 1.48), (2.83, 0.09, 0.07), m.wood_dark)
         for x in (-0.83, 0, 0.83):
             mesh += _arch(x, -0.304, 0.09, 0.54, 0.7)
-            mesh += r3.box((x, -0.27, 0.26), (0.55, 0.07, 0.32), WOOD_DARK)
-            mesh += r3.box((x, -0.222, 0.34), (0.59, 0.035, 0.045), THATCH)
+            mesh += r3.box((x, -0.27, 0.26), (0.55, 0.07, 0.32), m.wood_dark)
+            mesh += r3.box((x, -0.222, 0.34), (0.59, 0.035, 0.045), m.thatch)
         for x in (-1.15, -0.42, 0.42, 1.15):
-            mesh += r3.box((x, -0.29, 0.53), (0.1, 0.1, 0.88), WOOD_DARK)
+            mesh += r3.box((x, -0.29, 0.53), (0.1, 0.1, 0.88), m.wood_dark)
         mesh += _fence((-1.2, -0.1), (-1.2, 1.19), 4) + _fence((1.2, -0.1), (1.2, 1.19), 4)
         mesh += _fence((-1.2, 1.19), (0.08, 1.19), 4)
         mesh += _fence((0.72, 1.19), (1.2, 1.19), 2)
+        if race is not Race.HUMAN:
+            # The race's own beast, saddled and side-on in the yard.
+            beast = [face for face in _mount("stand", race is Race.DWARF, team, race) if face.color != SHADOW]
+            mesh += _shift(r3.scale(r3.rotate_z(beast, 90), 0.62), (0.1, 0.55, 0.05))
+            mesh += _banner(0, -0.168, 1.22, 0.32, 0.42, team)
+            mesh += r3.box((-0.77, 0.45, 0.2), (0.35, 0.64, 0.26), m.wood_dark)
+            mesh += r3.box((-0.77, 0.45, 0.34), (0.28, 0.55, 0.035), (205, 177, 98))
+            return mesh
         # A side-on horse keeps the long neck, muzzle and four legs legible.
         horse = (110, 69, 43)
         mesh += r3.box((0.1, 0.55, 0.58), (0.87, 0.3, 0.33), horse)
@@ -776,71 +921,116 @@ def _building(building_type: BuildingType, player: int, race: Race = Race.HUMAN)
         mesh += _timber((0.43, 0.55, 0.76), (0.53, 0.55, 1.13), 0.045, INK)
         mesh += r3.box((0.03, 0.55, 0.765), (0.34, 0.37, 0.055), team)
         mesh += _banner(0, -0.168, 1.22, 0.32, 0.42, team)
-        mesh += r3.box((-0.77, 0.45, 0.2), (0.35, 0.64, 0.26), WOOD_DARK)
+        mesh += r3.box((-0.77, 0.45, 0.2), (0.35, 0.64, 0.26), m.wood_dark)
         mesh += r3.box((-0.77, 0.45, 0.34), (0.28, 0.55, 0.035), (205, 177, 98))
         return mesh
     if building_type is BuildingType.WORKSHOP:
         mesh = _yard(3, (130, 116, 94))
         # A roofless engineering yard and tall timber crane replace a house.
-        mesh += r3.box((-0.65, -0.84, 0.42), (1.3, 0.65, 0.74), WOOD_DARK)
-        mesh += r3.box((-0.65, -0.84, 0.82), (1.43, 0.74, 0.12), WOOD)
+        mesh += r3.box((-0.65, -0.84, 0.42), (1.3, 0.65, 0.74), m.wood_dark)
+        mesh += r3.box((-0.65, -0.84, 0.82), (1.43, 0.74, 0.12), m.wood)
         for x in (-1.0, -0.74, -0.48, -0.22):
             mesh += r3.box((x, -0.84, 0.9), (0.2, 0.63, 0.07), (175, 131, 77))
         for x in (0.54, 1.03):
-            mesh += _timber((x, -0.85, 0.07), (0.8, -0.64, 2.11), 0.085, WOOD)
-        mesh += _timber((0.8, -0.64, 2.05), (-0.8, 0.69, 2.05), 0.095, WOOD)
-        mesh += _timber((0.8, -0.64, 1.27), (-0.4, 0.36, 2.05), 0.06, WOOD_DARK)
-        mesh += _timber((0.8, -0.64, 2.06), (1.23, -1.03, 2.06), 0.08, WOOD_DARK)
-        mesh += r3.box((1.19, -0.99, 1.82), (0.3, 0.28, 0.39), STONE_DARK)
+            mesh += _timber((x, -0.85, 0.07), (0.8, -0.64, 2.11), 0.085, m.wood)
+        mesh += _timber((0.8, -0.64, 2.05), (-0.8, 0.69, 2.05), 0.095, m.wood)
+        mesh += _timber((0.8, -0.64, 1.27), (-0.4, 0.36, 2.05), 0.06, m.wood_dark)
+        mesh += _timber((0.8, -0.64, 2.06), (1.23, -1.03, 2.06), 0.08, m.wood_dark)
+        mesh += r3.box((1.19, -0.99, 1.82), (0.3, 0.28, 0.39), m.stone_dark)
         mesh += _timber((-0.69, 0.6, 2.05), (-0.69, 0.6, 0.93), 0.023, INK)
-        mesh += r3.box((-0.69, 0.6, 0.77), (0.43, 0.42, 0.35), WOOD)
+        mesh += r3.box((-0.69, 0.6, 0.77), (0.43, 0.42, 0.35), m.wood)
         for x in (-0.83, -0.55):
-            mesh += r3.box((x, 0.819, 0.77), (0.04, 0.025, 0.35), WOOD_DARK)
+            mesh += r3.box((x, 0.819, 0.77), (0.04, 0.025, 0.35), m.wood_dark)
         # Siege chassis under assembly: iron-rim wheels and raised throwing arm.
-        mesh += r3.box((0.38, 0.76, 0.37), (0.74, 0.76, 0.18), WOOD_DARK)
+        mesh += r3.box((0.38, 0.76, 0.37), (0.74, 0.76, 0.18), m.wood_dark)
         for x in (-0.08, 0.84):
             for y in (0.43, 1.09):
                 wheel = _timber((x - 0.065, y, 0.27), (x + 0.065, y, 0.27), 0.24, INK, sides=10)
-                wheel += _timber((x - 0.072, y, 0.27), (x + 0.072, y, 0.27), 0.18, WOOD, sides=8)
+                wheel += _timber((x - 0.072, y, 0.27), (x + 0.072, y, 0.27), 0.18, m.wood, sides=8)
                 mesh += wheel
-        mesh += _timber((0.12, 0.67, 0.4), (0.37, 0.67, 1.13), 0.06, WOOD)
-        mesh += _timber((0.64, 0.67, 0.4), (0.37, 0.67, 1.13), 0.06, WOOD)
-        mesh += _timber((0.37, 0.38, 0.78), (0.37, 1.02, 1.44), 0.052, WOOD)
-        mesh += r3.box((0.37, 1.02, 1.43), (0.29, 0.24, 0.11), WOOD_DARK)
+        mesh += _timber((0.12, 0.67, 0.4), (0.37, 0.67, 1.13), 0.06, m.wood)
+        mesh += _timber((0.64, 0.67, 0.4), (0.37, 0.67, 1.13), 0.06, m.wood)
+        mesh += _timber((0.37, 0.38, 0.78), (0.37, 1.02, 1.44), 0.052, m.wood)
+        mesh += r3.box((0.37, 1.02, 1.43), (0.29, 0.24, 0.11), m.wood_dark)
         mesh += _banner(-0.64, -0.491, 0.54, 0.39, 0.39, team)
         mesh += _pennant(0.8, -0.64, 2.16, 0.52, team)
         return mesh
     if building_type is BuildingType.CHURCH:
         mesh = _yard(3, (183, 179, 160))
-        roof = (68, 111, 123)
-        mesh += _roofed_walls((0.1, -0.2, 0.73), (1.22, 2.03, 1.38), PLASTER)
-        mesh += _roofed_walls((0.1, -0.38, 0.51), (2.35, 0.72, 0.94), STONE)
-        mesh += r3.rotate_z(r3.gable_roof((0.1, -0.2, 1.43), (2.21, 1.4), 0.85, roof), 90, about=(0.1, -0.2))
-        mesh += r3.gable_roof((0.1, -0.38, 1.02), (2.57, 0.89), 0.52, roof)
-        mesh += r3.box((0.1, -0.2, 2.29), (0.055, 2.23, 0.055), darker(roof, 0.8))
+        shingle = roof((68, 111, 123))
+        mesh += _roofed_walls((0.1, -0.2, 0.73), (1.22, 2.03, 1.38), m.plaster)
+        mesh += _roofed_walls((0.1, -0.38, 0.51), (2.35, 0.72, 0.94), m.stone)
+        mesh += r3.rotate_z(r3.gable_roof((0.1, -0.2, 1.43), (2.21, 1.4), 0.85, shingle), 90, about=(0.1, -0.2))
+        mesh += r3.gable_roof((0.1, -0.38, 1.02), (2.57, 0.89), 0.52, shingle)
+        mesh += r3.box((0.1, -0.2, 2.29), (0.055, 2.23, 0.055), darker(shingle, 0.8))
         # An attached octagonal bell tower rises above the cross-shaped nave.
-        mesh += r3.cylinder((-0.9, -0.68, 0.05), 0.34, 2.22, STONE, sides=8, rotation=math.pi / 8)
-        mesh += r3.cylinder((-0.9, -0.68, 1.79), 0.39, 0.12, PLASTER, sides=8, rotation=math.pi / 8)
+        mesh += r3.cylinder((-0.9, -0.68, 0.05), 0.34, 2.22, m.stone, sides=8, rotation=math.pi / 8)
+        mesh += r3.cylinder((-0.9, -0.68, 1.79), 0.39, 0.12, m.plaster, sides=8, rotation=math.pi / 8)
         mesh += _arch(-0.9, -0.361, 1.89, 0.24, 0.35)
-        mesh += r3.cone((-0.9, -0.68, 2.28), 0.49, 1.0, roof, sides=8, rotation=math.pi / 8)
-        mesh += r3.box((-0.9, -0.68, 3.42), (0.055, 0.055, 0.42), GOLD)
-        mesh += r3.box((-0.9, -0.68, 3.48), (0.27, 0.055, 0.055), GOLD)
-        mesh += r3.facing([(-0.6, 0.911, 1.43), (0.8, 0.911, 1.43), (0.1, 0.911, 2.28)], PLASTER, VIEW)
+        mesh += r3.cone((-0.9, -0.68, 2.28), 0.49, 1.0, shingle, sides=8, rotation=math.pi / 8)
+        if race is Race.ORC:
+            mesh += _timber((-0.9, -0.68, 3.2), (-0.9, -0.68, 3.55), 0.04, m.wood_dark)
+            mesh += r3.sphere((-0.9, -0.68, 3.62), 0.15, BONE, rings=3, sides=6)
+            for x in (-1.08, -0.72):
+                mesh += r3.cone((x, -0.68, 3.28), 0.04, 0.3, BONE, sides=4)
+        elif race is Race.ELF:
+            mesh += r3.box((-0.9, -0.68, 3.42), (0.045, 0.045, 0.4), GOLD)
+            crescent = [(-0.9 + 0.2 * math.cos(a), -0.68, 3.75 + 0.2 * math.sin(a)) for a in (i * math.pi / 5 - math.pi / 2 for i in range(11))]
+            mesh += _unit_panel(crescent + [(-0.9 + 0.1 * math.cos(a), -0.68, 3.75 + 0.1 * math.sin(a)) for a in (i * math.pi / 5 - math.pi / 2 for i in reversed(range(11)))], GOLD)
+        elif race is Race.DWARF:
+            mesh += r3.box((-0.9, -0.68, 3.4), (0.055, 0.055, 0.34), COPPER)
+            mesh += r3.box((-0.9, -0.68, 3.62), (0.3, 0.18, 0.16), COPPER)
+        else:
+            mesh += r3.box((-0.9, -0.68, 3.42), (0.055, 0.055, 0.42), GOLD)
+            mesh += r3.box((-0.9, -0.68, 3.48), (0.27, 0.055, 0.055), GOLD)
+        mesh += r3.facing([(-0.6, 0.911, 1.43), (0.8, 0.911, 1.43), (0.1, 0.911, 2.28)], m.plaster, VIEW)
         for x in (-0.66, 0.86):
-            mesh += r3.box((x, 0.78, 0.58), (0.23, 0.52, 1.07), STONE)
-            mesh += r3.pyramid((x, 0.78, 1.115), (0.25, 0.54), 0.25, PLASTER)
-        mesh += _inset_arch(0.1, 0.945, 0.12, 0.67, 1.07, STONE_DARK, (81, 61, 51), 0.1)
-        mesh += r3.box((0.1, 0.963, 0.43), (0.029, 0.02, 0.59), GOLD)
-        mesh += _inset_arch(0.1, 0.947, 1.3, 0.44, 0.61, STONE_DARK, (100, 184, 209), 0.07)
-        mesh += r3.box((0.1, 0.96, 1.56), (0.035, 0.025, 0.38), GOLD)
-        mesh += r3.box((0.1, 0.96, 1.53), (0.28, 0.025, 0.035), GOLD)
+            mesh += r3.box((x, 0.78, 0.58), (0.23, 0.52, 1.07), m.stone)
+            mesh += r3.pyramid((x, 0.78, 1.115), (0.25, 0.54), 0.25, m.plaster)
+        mesh += _inset_arch(0.1, 0.945, 0.12, 0.67, 1.07, m.stone_dark, (81, 61, 51), 0.1)
+        mesh += _inset_arch(0.1, 0.947, 1.3, 0.44, 0.61, m.stone_dark, (100, 184, 209) if race is not Race.ORC else (200, 90, 40), 0.07)
+        if race is Race.HUMAN:
+            mesh += r3.box((0.1, 0.963, 0.43), (0.029, 0.02, 0.59), GOLD)
+            mesh += r3.box((0.1, 0.96, 1.56), (0.035, 0.025, 0.38), GOLD)
+            mesh += r3.box((0.1, 0.96, 1.53), (0.28, 0.025, 0.035), GOLD)
+        elif race is Race.DWARF:
+            mesh += r3.box((0.1, 0.96, 1.55), (0.3, 0.025, 0.06), GOLD)
         for x in (-0.91, 1.1):
             mesh += _banner(x, 0.017, 0.78, 0.26, 0.44, team)
-        mesh += r3.box((0.1, 1.13, 0.1), (0.88, 0.31, 0.18), STONE)
-        mesh += r3.box((0.1, 1.31, 0.055), (1.03, 0.19, 0.09), STONE_DARK)
+        mesh += r3.box((0.1, 1.13, 0.1), (0.88, 0.31, 0.18), m.stone)
+        mesh += r3.box((0.1, 1.31, 0.055), (1.03, 0.19, 0.09), m.stone_dark)
         return mesh
     raise ValueError(building_type)
 
+
+
+
+def _dressing(building_type: BuildingType, race: Race, team: Color) -> Mesh:
+    """Race ornaments around every yard: orc bone spikes and a skull pole, elf saplings and a moon
+    standard, dwarf rune pillars with copper caps.  Humans keep their plain yards."""
+    size = BUILDINGS[building_type].size
+    h = size / 2 - 0.22
+    mesh: Mesh = []
+    if race is Race.ORC:
+        for x, y in ((-h, -h), (h, -h), (-h, h), (h, h)):
+            mesh += r3.cone((x, y, 0.03), 0.06, 0.55, BONE, sides=4)
+        mesh += _timber((h - 0.1, h - 0.05, 0.05), (h - 0.1, h - 0.05, 1.3), 0.05, WOOD_DARK)
+        mesh += r3.sphere((h - 0.1, h - 0.05, 1.38), 0.13, BONE, rings=3, sides=6)
+        mesh += _unit_panel([(h - 0.1, h - 0.05, 1.25), (h - 0.1, h - 0.4, 1.15), (h - 0.1, h - 0.05, 0.95)], team)
+    elif race is Race.ELF:
+        for x, y in ((-h, h - 0.1), (h, -h + 0.1)):
+            mesh += _timber((x, y, 0.03), (x, y, 0.55), 0.035, (150, 122, 88), sides=5)
+            mesh += r3.sphere((x, y, 0.72), 0.24, (92, 156, 98), rings=3, sides=6)
+            mesh += r3.sphere((x - 0.06, y - 0.04, 0.9), 0.14, (118, 178, 112), rings=3, sides=5)
+        mesh += _timber((h - 0.05, h - 0.05, 0.05), (h - 0.05, h - 0.05, 1.4), 0.03, (222, 206, 168))
+        crescent = [(h - 0.05 + 0.16 * math.cos(a), h - 0.05, 1.5 + 0.16 * math.sin(a)) for a in (i * math.pi / 5 - math.pi / 2 for i in range(11))]
+        mesh += _unit_panel(crescent + [(h - 0.05 + 0.08 * math.cos(a), h - 0.05, 1.5 + 0.08 * math.sin(a)) for a in (i * math.pi / 5 - math.pi / 2 for i in reversed(range(11)))], GOLD)
+    elif race is Race.DWARF:
+        for x, y in ((-h, h), (h, h)):
+            mesh += r3.box((x, y, 0.32), (0.26, 0.26, 0.64), (104, 102, 100))
+            mesh += r3.pyramid((x, y, 0.64), (0.3, 0.3), 0.16, COPPER)
+            mesh += r3.box((x, y + 0.135, 0.36), (0.1, 0.01, 0.16), GOLD)
+    return mesh
 
 def _site(size: int) -> Mesh:
     """A building under construction: corner posts, beams and a pile of planks."""
@@ -856,6 +1046,40 @@ def _site(size: int) -> Mesh:
 
 
 # -- Units ----------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Look:
+    """The colours and proportions that make one race's figures its own.  Every role keeps
+    the same pose and articulation; the look supplies skin, hair, metal, cloth, and the
+    stretch that makes a dwarf squat and an orc broad."""
+
+    skin: Color
+    hair: Color
+    metal: Color
+    metal_dark: Color
+    cloth: Color  # robes, hoods and cloth that is not the team colour
+    leather: Color
+    stretch: tuple[float, float]  # (across, tall) applied to the whole figure
+
+
+LOOKS: dict[Race, Look] = {
+    Race.HUMAN: Look(SKIN, (120, 84, 50), IRON, (120, 124, 134), PLASTER, (114, 72, 41), (1.0, 1.0)),
+    Race.ORC: Look((98, 142, 76), (36, 32, 34), (112, 104, 96), (66, 60, 58), (150, 58, 48), (96, 62, 40), (1.16, 1.06)),
+    Race.ELF: Look((242, 224, 204), (228, 210, 138), (216, 222, 210), (150, 162, 152), (58, 122, 82), (112, 132, 92), (0.92, 1.08)),
+    Race.DWARF: Look((226, 182, 146), (176, 74, 40), (198, 148, 86), (128, 94, 56), (148, 148, 156), (102, 72, 46), (1.16, 0.82)),
+}
+TUSK = (236, 228, 208)
+BONE = (222, 214, 190)
+FUR_WOLF = (112, 108, 104)
+FUR_STAG = (168, 128, 82)
+FUR_RAM = (214, 206, 190)
+FUR_BEAR = (98, 68, 44)
+
+
+def _stretch(mesh: Mesh, across: float, tall: float) -> Mesh:
+    """Scale a figure horizontally and vertically about the origin (its feet stay on the ground)."""
+    return [r3.Face(tuple((x * across, y * across, z * tall) for x, y, z in face.points), face.color) for face in mesh]
 
 
 def _legs(frame: str, color: Color, spread: float = 0.09) -> Mesh:
@@ -896,30 +1120,86 @@ def _unit_panel(points: list[r3.Vec3], color: Color) -> Mesh:
     return [r3.Face(tuple(points), color), r3.Face(tuple(reversed(points)), color)]
 
 
-def _unit_head(center: r3.Vec3, radius: float = 0.16) -> Mesh:
+def _unit_head(center: r3.Vec3, radius: float = 0.16, race: Race = Race.HUMAN) -> Mesh:
+    """A head with the race's features: orc tusks and topknot, elf ears, dwarf beard and nose."""
+    look = LOOKS[race]
     x, y, z = center
-    return (r3.sphere(center, radius, SKIN, rings=4, sides=8)
-            + r3.box((x, y + radius * 0.91, z), (0.065, 0.055, 0.07), SKIN)
+    mesh = (r3.sphere(center, radius, look.skin, rings=4, sides=8)
+            + r3.box((x, y + radius * 0.91, z), (0.065, 0.055, 0.07), look.skin)
             + r3.box((x, y + radius * 0.9, z + 0.045), (0.15, 0.022, 0.026), INK))
+    if race is Race.ORC:
+        for side in (-1, 1):
+            mesh += r3.cone((x + side * radius * 0.42, y + radius * 0.82, z - radius * 0.42), 0.032, 0.13, TUSK, sides=4)
+        mesh += r3.cone((x, y - 0.02, z + radius * 0.85), 0.07, 0.2, look.hair, sides=5)
+    elif race is Race.ELF:
+        for side in (-1, 1):
+            mesh += _unit_rod((x + side * radius * 0.7, y - 0.01, z + 0.01), (x + side * radius * 1.75, y - 0.06, z + 0.12), 0.03, look.skin, sides=4)
+    elif race is Race.DWARF:
+        mesh += r3.box((x, y + radius * 0.98, z - 0.02), (0.085, 0.07, 0.085), look.skin)  # a big nose
+        mesh += r3.sphere((x, y + radius * 0.55, z - radius * 0.7), radius * 0.62, look.hair, rings=3, sides=7)
+        mesh += r3.cone((x, y + radius * 0.6, z - radius * 0.9), radius * 0.5, -radius * 1.5, look.hair, sides=6)
+        mesh += r3.box((x, y + radius * 0.95, z - radius * 0.32), (0.2, 0.05, 0.05), look.hair)  # moustache
+    return mesh
 
 
-def _body(tunic: Color, frame: str, body_r: float = 0.21, body_h: float = 0.42, *, include_legs: bool = True) -> Mesh:
+def _body(tunic: Color, frame: str, body_r: float = 0.21, body_h: float = 0.42, *, include_legs: bool = True, race: Race = Race.HUMAN) -> Mesh:
     bob = 0.02 if frame == "walk1" else 0.0
     return (
         (_legs(frame, (72, 62, 58)) if include_legs else [])
         + r3.cylinder((0, 0, 0.23 + bob), body_r, body_h, tunic, sides=8)
         + r3.cylinder((0, 0, 0.33 + bob), body_r + 0.01, 0.055, WOOD_DARK, sides=8)
-        + _unit_head((0, 0, 0.23 + bob + body_h + 0.14))
+        + _unit_head((0, 0, 0.23 + bob + body_h + 0.14), race=race)
     )
 
 
-def _sword(frame: str) -> Mesh:
+def _helm(z: float, race: Race, team: Color, radius: float = 0.19) -> Mesh:
+    """Headgear at a head's top: a conical helm, a spiked cap, a winged leaf helm or a nasal helm with horns."""
+    look = LOOKS[race]
+    if race is Race.HUMAN:
+        return (r3.cylinder((0, 0, z), radius, 0.17, look.metal, sides=8) + r3.cone((0, 0, z + 0.17), radius, 0.1, look.metal, sides=8)
+                + r3.box((0, 0.181, z + 0.075), (0.28, 0.04, 0.048), INK) + r3.box((0, 0.211, z + 0.035), (0.045, 0.035, 0.17), look.metal)
+                + r3.box((0, 0, z + 0.265), (0.07, 0.29, 0.09), team))
+    if race is Race.ORC:
+        mesh = r3.cylinder((0, 0, z - 0.03), radius * 1.04, 0.13, look.metal_dark, sides=7)
+        mesh += r3.sphere((0, 0, z + 0.1), radius * 1.02, look.metal_dark, rings=3, sides=7)
+        for x in (-0.16, 0.16):
+            mesh += r3.cone((x, 0.02, z + 0.1), 0.045, 0.19, BONE, sides=4)
+        return mesh + r3.cone((0, 0, z + 0.27), 0.04, 0.12, look.metal, sides=4)
+    if race is Race.ELF:
+        mesh = r3.cylinder((0, 0, z), radius * 0.95, 0.12, look.metal, sides=8)
+        mesh += r3.cone((0, 0.02, z + 0.12), radius * 0.95, 0.24, look.metal, sides=8)
+        for side in (-1, 1):
+            mesh += _unit_panel([(side * 0.17, 0.0, z + 0.1), (side * 0.36, -0.12, z + 0.3), (side * 0.18, -0.02, z + 0.22)], look.metal)
+        return mesh + r3.box((0, 0.17, z + 0.06), (0.05, 0.03, 0.14), team)
+    mesh = r3.sphere((0, 0, z + 0.05), radius * 1.05, look.metal, rings=3, sides=8)
+    mesh += r3.cylinder((0, 0, z - 0.02), radius * 1.08, 0.07, look.metal_dark, sides=8)
+    mesh += r3.box((0, 0.2, z + 0.02), (0.045, 0.03, 0.17), look.metal_dark)  # nasal
+    for side in (-1, 1):
+        mesh += _unit_rod((side * 0.17, 0.02, z + 0.12), (side * 0.3, -0.05, z + 0.22), 0.035, BONE, sides=4)
+    return mesh + r3.box((0, 0, z + 0.2), (0.05, 0.22, 0.07), team)
+
+
+def _sword(frame: str, race: Race = Race.HUMAN) -> Mesh:
+    """The race's hand weapon in the right hand: sword, cleaver, curved blade or axe."""
+    look = LOOKS[race]
     grip = (0.32, 0.13, 0.5)
-    blade = (r3.box((0.32, 0.13, 0.85), (0.08, 0.055, 0.59), IRON)
-             + r3.pyramid((0.32, 0.13, 1.145), (0.08, 0.055), 0.14, IRON)
-             + r3.box((0.32, 0.13, 0.57), (0.27, 0.09, 0.06), GOLD)
-             + _unit_rod((0.32, 0.13, 0.4), (0.32, 0.13, 0.55), 0.043, WOOD_DARK))
-    return _unit_pitch(blade, -85 if frame == "attack" else -12, grip)
+    handle = _unit_rod((0.32, 0.13, 0.4), (0.32, 0.13, 0.55), 0.043, WOOD_DARK)
+    if race is Race.ORC:
+        blade = (_unit_rod((0.32, 0.13, 0.55), (0.32, 0.13, 1.12), 0.04, WOOD_DARK)
+                 + _unit_panel([(0.32, 0.16, 0.78), (0.32, 0.5, 0.86), (0.32, 0.46, 1.2), (0.32, 0.16, 1.14)], look.metal)
+                 + r3.cone((0.32, 0.1, 1.12), 0.045, 0.12, look.metal, sides=4))
+    elif race is Race.ELF:
+        blade = (r3.box((0.32, 0.13, 0.57), (0.22, 0.07, 0.05), look.hair)
+                 + _unit_panel([(0.32, 0.1, 0.6), (0.32, 0.17, 0.6), (0.32, 0.3, 1.0), (0.32, 0.2, 1.24), (0.32, 0.08, 1.0)], look.metal))
+    elif race is Race.DWARF:
+        blade = (_unit_rod((0.32, 0.13, 0.55), (0.32, 0.13, 1.05), 0.04, WOOD)
+                 + r3.box((0.32, 0.13, 0.98), (0.09, 0.14, 0.13), look.metal_dark)
+                 + _unit_panel([(0.26, 0.2, 0.9), (0.26, 0.42, 0.84), (0.26, 0.42, 1.14), (0.26, 0.2, 1.08)], look.metal)
+                 + _unit_panel([(0.38, 0.2, 0.9), (0.38, 0.42, 0.84), (0.38, 0.42, 1.14), (0.38, 0.2, 1.08)], look.metal))
+    else:
+        blade = (r3.box((0.32, 0.13, 0.85), (0.08, 0.055, 0.59), look.metal) + r3.pyramid((0.32, 0.13, 1.145), (0.08, 0.055), 0.14, look.metal)
+                 + r3.box((0.32, 0.13, 0.57), (0.27, 0.09, 0.06), GOLD))
+    return _unit_pitch(blade + handle, -85 if frame == "attack" else -12, grip)
 
 
 _WORKER_SWING = {"chop1": 35, "chop2": -28, "chop3": -96, "chop4": -48, "attack": -96}
@@ -934,23 +1214,41 @@ def _worker_axe_angle(frame: str) -> float:
     return _WORKER_SWING.get(frame, -12) - _WORKER_LEAN.get(frame, 0)
 
 
-def _worker_axe(frame: str) -> Mesh:
+def _worker_axe(frame: str, race: Race = Race.HUMAN) -> Mesh:
     # The grip follows the torso; the head sweeps from behind the shoulder into the tree.
     # chop1 = raised, chop2 = fast downswing, chop3 = contact, chop4 = recovery.
+    metal = LOOKS[race].metal
     axe = _unit_rod((0.29, 0.16, 0.35), (0.29, 0.16, 1.17), 0.035, WOOD)
     # Broad wedge and bright cutting edge are readable even at normal zoom.
     axe += r3.box((0.29, 0.17, 1.1), (0.105, 0.16, 0.14), WOOD_DARK)
     for x in (0.235, 0.345):
         axe += _unit_panel([(x, 0.19, 1.16), (x, 0.41, 1.22),
-                            (x, 0.43, 0.98), (x, 0.19, 1.03)], IRON)
+                            (x, 0.43, 0.98), (x, 0.19, 1.03)], metal)
     axe += _unit_rod(*_WORKER_AXE_EDGE, 0.045, (228, 234, 242))
     return _unit_pitch(axe, _worker_axe_angle(frame), _WORKER_GRIP)
 
 
-def _shield(x: float, y: float, z: float, team: Color, size: float = 1.0) -> Mesh:
-    outline = [(-0.23, 0.26), (0.23, 0.26), (0.24, -0.05), (0, -0.34), (-0.24, -0.05)]
+def _shield(x: float, y: float, z: float, team: Color, size: float = 1.0, race: Race = Race.HUMAN) -> Mesh:
+    """A heater shield; orcs carry a hide-bound round shield, dwarves a bossed round shield, elves a leaf-shaped buckler."""
+    look = LOOKS[race]
     mesh: Mesh = []
-    for offset, factor, color in ((0, 1.0, IRON), (0.025, 0.8, team)):
+    if race in (Race.ORC, Race.DWARF):
+        radius = 0.3 * size if race is Race.ORC else 0.27 * size
+        for offset, factor, color in ((0, 1.0, look.metal_dark if race is Race.ORC else look.metal), (0.025, 0.78, team)):
+            ring = [(x + radius * factor * math.cos(a), y + offset, z + radius * factor * math.sin(a)) for a in (i * math.tau / 8 for i in range(8))]
+            mesh += _unit_panel(ring, color)
+        mesh += r3.sphere((x, y + 0.04, z), 0.07 * size, look.metal, rings=3, sides=6)
+        if race is Race.ORC:
+            for a in (0.4, 2.5, 4.4):
+                mesh += r3.cone((x + radius * 0.75 * math.cos(a), y + 0.03, z + radius * 0.75 * math.sin(a)), 0.03, 0.09, BONE, sides=4)
+        return mesh
+    if race is Race.ELF:
+        outline = [(-0.16, 0.3), (0.16, 0.3), (0.2, 0.0), (0, -0.36), (-0.2, 0.0)]
+        for offset, factor, color in ((0, 1.0, look.metal), (0.025, 0.7, team)):
+            mesh += _unit_panel([(x + dx * size * factor, y + offset, z + dz * size * factor) for dx, dz in outline], color)
+        return mesh + r3.box((x, y + 0.035, z + 0.02), (0.045 * size, 0.06, 0.3 * size), look.hair)
+    outline = [(-0.23, 0.26), (0.23, 0.26), (0.24, -0.05), (0, -0.34), (-0.24, -0.05)]
+    for offset, factor, color in ((0, 1.0, look.metal), (0.025, 0.8, team)):
         mesh += _unit_panel([(x + dx * size * factor, y + offset, z + dz * size * factor)
                              for dx, dz in outline], color)
     mesh += r3.box((x, y + 0.035, z - 0.015), (0.055 * size, 0.06, 0.34 * size), GOLD)
@@ -958,36 +1256,91 @@ def _shield(x: float, y: float, z: float, team: Color, size: float = 1.0) -> Mes
     return mesh
 
 
-def _horse(frame: str, heavy: bool, team: Color) -> Mesh:
-    coat = (78, 65, 65) if heavy else (174, 123, 68)
-    size = 1.08 if heavy else 0.92
+def _mount(frame: str, heavy: bool, team: Color, race: Race = Race.HUMAN) -> Mesh:
+    """The race's steed on the same four-legged rig: horse, wolf, deer or stag, ram or bear."""
     swing = {"walk1": 0.12, "walk2": -0.12}.get(frame, 0.0)
+    if race is Race.HUMAN:
+        coat = (78, 65, 65) if heavy else (174, 123, 68)
+    elif race is Race.ORC:
+        coat = (74, 70, 68) if heavy else FUR_WOLF
+    elif race is Race.ELF:
+        coat = FUR_STAG if heavy else (188, 150, 100)
+    else:
+        coat = FUR_BEAR if heavy else FUR_RAM
+    size = 1.08 if heavy else 0.92
+    body_h, head_z = (0.48, 0.83), (0.48, 0.83)
+    if race is Race.ORC:
+        body_h, head_z = (0.42, 0.62), (0.42, 0.62)  # a wolf runs low
+    elif race is Race.DWARF and heavy:
+        body_h, head_z = (0.5, 0.74), (0.5, 0.74)
+    bz, hz = body_h[0], head_z[1]
     mesh = _shadow(0.44)
     for x, y in ((-0.17, -0.28), (0.17, -0.28), (-0.17, 0.29), (0.17, 0.29)):
         stride = swing if (x < 0) == (y < 0) else -swing
-        mesh += _unit_rod((x, y, 0.48), (x, y + stride, 0.1), 0.065, coat)
+        mesh += _unit_rod((x, y, bz), (x, y + stride, 0.1), 0.065 if race is not Race.DWARF else 0.085, coat)
         mesh += r3.box((x, y + stride + 0.025, 0.065), (0.125, 0.16, 0.13), INK)
-    mesh += r3.box((0, -0.025, 0.48), (0.43, 0.78, 0.32), coat)
-    mesh += _unit_rod((0, 0.25, 0.48), (0, 0.4, 0.87), 0.135, coat)
-    mesh += r3.box((0, 0.49, 0.83), (0.22, 0.36, 0.21), coat)
-    mesh += r3.box((0, 0.66, 0.79), (0.2, 0.12, 0.13), darker(coat, 0.65))
-    for x in (-0.08, 0.08):
-        mesh += r3.cone((x, 0.39, 0.92), 0.05, 0.16, coat, sides=4)
-    mesh += _unit_rod((0, -0.36, 0.54), (0, -0.57, 0.22), 0.065, INK)
-    mesh += _unit_rod((0, 0.28, 0.59), (0, 0.31, 0.94), 0.065, INK)
-    mesh += r3.box((0, -0.07, 0.66), (0.47, 0.42, 0.07), WOOD_DARK)
-    # Reins and bridle break up the horse's head and point out its facing.
-    mesh += r3.box((0, 0.56, 0.84), (0.24, 0.035, 0.23), WOOD_DARK)
+    if race is Race.DWARF and heavy:
+        mesh += r3.sphere((0, -0.025, bz + 0.05), 0.42, coat, rings=4, sides=8)  # a bear's bulk
+        mesh += r3.box((0, -0.025, bz), (0.46, 0.8, 0.34), coat)
+    else:
+        mesh += r3.box((0, -0.025, bz), (0.43, 0.78, 0.32), coat)
+    if race is Race.ORC:
+        mesh += _unit_rod((0, 0.25, bz), (0, 0.42, bz + 0.22), 0.13, coat)
+        mesh += r3.box((0, 0.5, hz), (0.2, 0.34, 0.2), coat)
+        mesh += r3.box((0, 0.7, hz - 0.05), (0.15, 0.22, 0.11), darker(coat, 0.7))  # long snout
+        for side in (-1, 1):
+            mesh += r3.cone((side * 0.07, 0.37, hz + 0.1), 0.04, 0.14, coat, sides=4)  # pricked ears
+            mesh += r3.cone((side * 0.045, 0.79, hz - 0.13), 0.018, -0.06, TUSK, sides=4)  # fangs
+        mesh += _unit_rod((0, -0.38, bz + 0.1), (0, -0.66, bz + 0.05), 0.07, coat)  # a straight tail
+    elif race is Race.ELF:
+        mesh += _unit_rod((0, 0.25, bz), (0, 0.42, hz + 0.05), 0.1, coat)
+        mesh += r3.box((0, 0.5, hz + 0.02), (0.18, 0.34, 0.19), coat)
+        mesh += r3.box((0, 0.66, hz - 0.03), (0.14, 0.12, 0.11), darker(coat, 0.65))
+        for side in (-1, 1):
+            mesh += r3.cone((side * 0.085, 0.38, hz + 0.1), 0.04, 0.15, coat, sides=4)
+            if heavy:  # antlers
+                base = (side * 0.07, 0.4, hz + 0.12)
+                for tip in ((side * 0.28, 0.32, hz + 0.5), (side * 0.16, 0.24, hz + 0.44), (side * 0.36, 0.42, hz + 0.34)):
+                    mesh += _unit_rod(base, tip, 0.022, BONE, sides=4)
+        mesh += _unit_rod((0, -0.36, bz + 0.06), (0, -0.48, bz - 0.02), 0.04, PLASTER)
+    elif race is Race.DWARF:
+        if heavy:
+            mesh += _unit_rod((0, 0.25, bz + 0.05), (0, 0.4, hz), 0.17, coat)
+            mesh += r3.box((0, 0.52, hz), (0.28, 0.34, 0.26), coat)
+            mesh += r3.box((0, 0.7, hz - 0.04), (0.16, 0.14, 0.13), darker(coat, 0.7))
+            for side in (-1, 1):
+                mesh += r3.sphere((side * 0.12, 0.4, hz + 0.15), 0.05, coat, rings=3, sides=5)  # round ears
+        else:
+            mesh += _unit_rod((0, 0.25, bz), (0, 0.4, hz - 0.02), 0.13, coat)
+            mesh += r3.box((0, 0.5, hz - 0.02), (0.22, 0.32, 0.22), coat)
+            mesh += r3.box((0, 0.68, hz - 0.08), (0.16, 0.12, 0.12), darker(coat, 0.75))
+            for side in (-1, 1):  # curled horns
+                for i, angle in enumerate((0.0, 1.0, 2.0, 3.0)):
+                    x, z = side * (0.13 + 0.06 * math.cos(angle)), hz + 0.08 + 0.09 * math.sin(angle) - 0.03 * i
+                    mesh += r3.sphere((x, 0.42 - 0.03 * i, z), 0.045 - 0.006 * i, BONE, rings=3, sides=5)
+        mesh += _unit_rod((0, -0.36, bz + 0.02), (0, -0.46, bz - 0.06), 0.05, coat)
+    else:
+        mesh += _unit_rod((0, 0.25, bz), (0, 0.4, 0.87), 0.135, coat)
+        mesh += r3.box((0, 0.49, 0.83), (0.22, 0.36, 0.21), coat)
+        mesh += r3.box((0, 0.66, 0.79), (0.2, 0.12, 0.13), darker(coat, 0.65))
+        for x in (-0.08, 0.08):
+            mesh += r3.cone((x, 0.39, 0.92), 0.05, 0.16, coat, sides=4)
+        mesh += _unit_rod((0, -0.36, 0.54), (0, -0.57, 0.22), 0.065, INK)
+        mesh += _unit_rod((0, 0.28, 0.59), (0, 0.31, 0.94), 0.065, INK)
+    mesh += r3.box((0, -0.07, bz + 0.18), (0.47, 0.42, 0.07), WOOD_DARK)  # saddle
+    # Reins and bridle break up the head and point out its facing.
+    mesh += r3.box((0, 0.56, hz + 0.01), (0.24, 0.035, 0.23), WOOD_DARK)
     for x in (-0.13, 0.13):
-        mesh += _unit_rod((x, 0.57, 0.86), (x, -0.02, 0.86), 0.014, WOOD_DARK)
+        mesh += _unit_rod((x, 0.57, hz + 0.03), (x, -0.02, hz + 0.03), 0.014, WOOD_DARK)
+    look = LOOKS[race]
     if heavy:
         for x in (-0.235, 0.235):
-            mesh += _unit_panel([(x, -0.37, 0.62), (x, 0.27, 0.62),
-                                 (x, 0.26, 0.26), (x, 0.02, 0.32), (x, -0.37, 0.26)], team)
-        mesh += r3.box((0, 0.53, 0.95), (0.22, 0.29, 0.055), IRON)
-        mesh += r3.box((0, 0.29, 0.68), (0.46, 0.2, 0.11), IRON)
+            mesh += _unit_panel([(x, -0.37, bz + 0.14), (x, 0.27, bz + 0.14),
+                                 (x, 0.26, bz - 0.22), (x, 0.02, bz - 0.16), (x, -0.37, bz - 0.22)], team)
+        mesh += r3.box((0, 0.53, hz + 0.12), (0.22, 0.29, 0.055), look.metal)
+        mesh += r3.box((0, 0.29, bz + 0.2), (0.46, 0.2, 0.11), look.metal)
     else:
-        mesh += r3.box((0, -0.07, 0.615), (0.46, 0.44, 0.085), team)
+        mesh += r3.box((0, -0.07, bz + 0.135), (0.46, 0.44, 0.085), team)
     return r3.scale(mesh, size)
 
 
@@ -995,172 +1348,364 @@ UNIT_SCALE = 1.4  # figures are modelled at chibi size and blown up so they read
 
 
 def _unit(unit_type: UnitType, player: int, frame: str, carrying: Resource | None, race: Race = Race.HUMAN) -> Mesh:
-    return r3.scale(_unit_mesh(unit_type, player, frame, carrying, race), UNIT_SCALE)
+    mesh = _unit_mesh(unit_type, player, frame, carrying, race)
+    if unit_type is not UnitType.CATAPULT:
+        mesh = _stretch(mesh, *LOOKS[race].stretch)
+    return r3.scale(mesh, UNIT_SCALE)
 
 
-def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource | None, race: Race = Race.HUMAN) -> Mesh:
+def _worker(player: int, frame: str, carrying: Resource | None, race: Race) -> Mesh:
     team = team_color(player)
-    trim = darker(team, 0.7)
-    if unit_type is UnitType.PEASANT:
-        planted = _shadow(0.3) + _legs(frame, (72, 62, 58))
-        mesh = _body((186, 159, 106), frame, body_r=0.185, body_h=0.36, include_legs=False)
+    look = LOOKS[race]
+    planted = _shadow(0.3) + _legs(frame, (72, 62, 58))
+    shirt = look.skin if race is Race.ORC else (186, 159, 106) if race is Race.HUMAN else look.cloth if race is Race.ELF else (158, 132, 96)
+    mesh = _body(shirt, frame, body_r=0.185, body_h=0.36, include_legs=False, race=race)
+    head_z = 0.23 + 0.36 + 0.14
+    if race is Race.HUMAN:
         # Broad straw hat, team shirt sleeves and a leather carpenter's apron.
         mesh += r3.cylinder((0, 0, 0.88), 0.28, 0.045, THATCH, sides=10)
         mesh += r3.cone((0, 0, 0.92), 0.17, 0.16, THATCH, sides=8)
         mesh += r3.cylinder((0, 0, 0.92), 0.174, 0.035, team, sides=8)
-        mesh += r3.box((0, 0.183, 0.42), (0.25, 0.045, 0.34), (114, 72, 41))
+    elif race is Race.ORC:
+        mesh += r3.box((0, 0.183, 0.42), (0.28, 0.045, 0.2), team)  # a team loincloth over bare green
+        mesh += r3.box((0, 0, 0.62), (0.2, 0.4, 0.05), look.leather)  # a rope belt
+    elif race is Race.ELF:
+        mesh += r3.cone((0, -0.02, head_z - 0.05), 0.2, 0.26, team, sides=8)  # a hood
+        mesh += r3.cylinder((0, -0.02, head_z - 0.06), 0.205, 0.04, darker(team, 0.75), sides=8)
+    else:
+        mesh += r3.sphere((0, 0, head_z + 0.06), 0.185, look.metal_dark, rings=3, sides=8)  # a miner's helmet with a lamp
+        mesh += r3.cylinder((0, 0.17, head_z + 0.1), 0.05, 0.05, GOLD, sides=6)
+        mesh += r3.box((0, 0, head_z + 0.08), (0.05, 0.2, 0.07), team)
+    if race is not Race.ORC:
+        mesh += r3.box((0, 0.183, 0.42), (0.25, 0.045, 0.34), look.leather)
         mesh += r3.box((0, 0.212, 0.36), (0.15, 0.025, 0.09), (159, 105, 57))
         mesh += r3.box((0, 0.215, 0.55), (0.065, 0.025, 0.045), GOLD)
-        for x in (-0.21, 0.21):
-            mesh += _unit_rod((x, 0, 0.55), (x * 1.15, 0.08, 0.45), 0.075, team)
-        mesh += _unit_rod((0.24, 0.08, 0.45), (0.29, 0.16, 0.55), 0.05, SKIN)
-        if carrying is Resource.GOLD:
-            mesh += r3.sphere((-0.28, 0.13, 0.48), 0.2, (113, 80, 48), rings=4, sides=8)
-            mesh += r3.cone((-0.28, 0.13, 0.62), 0.15, 0.11, GOLD, sides=5)
-            mesh += r3.cylinder((-0.28, 0.13, 0.65), 0.07, 0.045, WOOD_DARK, sides=6)
-        elif carrying is Resource.LUMBER:
-            for y, z in ((-0.05, 0.98), (0.12, 0.98), (0.035, 1.12)):
-                mesh += _unit_rod((-0.48, y, z), (0.48, y, z), 0.095, TRUNK)
-                mesh += _unit_rod((0.478, y, z), (0.495, y, z), 0.072, THATCH)
-            mesh += r3.box((0.12, 0.035, 1.06), (0.05, 0.37, 0.32), WOOD_DARK)
+    for x in (-0.21, 0.21):
+        mesh += _unit_rod((x, 0, 0.55), (x * 1.15, 0.08, 0.45), 0.075, look.skin if race is Race.ORC else team)
+    mesh += _unit_rod((0.24, 0.08, 0.45), (0.29, 0.16, 0.55), 0.05, look.skin)
+    if carrying is Resource.GOLD:
+        mesh += r3.sphere((-0.28, 0.13, 0.48), 0.2, (113, 80, 48), rings=4, sides=8)
+        mesh += r3.cone((-0.28, 0.13, 0.62), 0.15, 0.11, GOLD, sides=5)
+        mesh += r3.cylinder((-0.28, 0.13, 0.65), 0.07, 0.045, WOOD_DARK, sides=6)
+    elif carrying is Resource.LUMBER:
+        for y, z in ((-0.05, 0.98), (0.12, 0.98), (0.035, 1.12)):
+            mesh += _unit_rod((-0.48, y, z), (0.48, y, z), 0.095, TRUNK)
+            mesh += _unit_rod((0.478, y, z), (0.495, y, z), 0.072, THATCH)
+        mesh += r3.box((0.12, 0.035, 1.06), (0.05, 0.37, 0.32), WOOD_DARK)
+    else:
+        mesh += _worker_axe(frame, race)
+        angle = math.radians(_worker_axe_angle(frame))
+        gx, gy, gz = _WORKER_GRIP
+        lower_grip = (gx, gy + 0.12 * math.sin(angle), gz - 0.12 * math.cos(angle))
+        mesh += _unit_rod((-0.24, 0.08, 0.45), lower_grip, 0.045, look.skin)
+    if carrying is None and frame in _WORKER_LEAN:
+        mesh = _unit_pitch(mesh, _WORKER_LEAN[frame], _WORKER_HIP)
+    return planted + mesh
+
+
+def _footman(player: int, frame: str, race: Race) -> Mesh:
+    team = team_color(player)
+    look = LOOKS[race]
+    mesh = _shadow(0.34) + _body(team, frame, body_r=0.23, race=race)
+    mesh += r3.box((0, 0.18, 0.59), (0.34, 0.12, 0.28), look.metal)
+    for x in (-0.255, 0.255):
+        if race is Race.ORC:
+            mesh += r3.box((x, 0, 0.66), (0.16, 0.18, 0.1), look.metal_dark)
+            mesh += r3.cone((x * 1.15, 0, 0.71), 0.045, 0.16, BONE, sides=4)  # a spiked pauldron
         else:
-            mesh += _worker_axe(frame)
-            angle = math.radians(_worker_axe_angle(frame))
-            gx, gy, gz = _WORKER_GRIP
-            lower_grip = (gx, gy + 0.12 * math.sin(angle), gz - 0.12 * math.cos(angle))
-            mesh += _unit_rod((-0.24, 0.08, 0.45), lower_grip, 0.045, SKIN)
-        if carrying is None and frame in _WORKER_LEAN:
-            mesh = _unit_pitch(mesh, _WORKER_LEAN[frame], _WORKER_HIP)
-        return planted + mesh
-    if unit_type is UnitType.FOOTMAN:
-        mesh = _shadow(0.34) + _body(team, frame, body_r=0.23)
-        mesh += r3.box((0, 0.18, 0.59), (0.34, 0.12, 0.28), IRON)
-        for x in (-0.255, 0.255):
-            mesh += r3.sphere((x, 0, 0.66), 0.115, IRON, rings=3, sides=6)
-            mesh += _unit_rod((x, 0, 0.6), (x * 1.2, 0.13, 0.45), 0.065, IRON)
-        mesh += r3.cylinder((0, 0, 0.79), 0.19, 0.17, IRON, sides=8)
-        mesh += r3.cone((0, 0, 0.96), 0.19, 0.1, IRON, sides=8)
-        mesh += r3.box((0, 0.181, 0.865), (0.28, 0.04, 0.048), INK)
-        mesh += r3.box((0, 0.211, 0.825), (0.045, 0.035, 0.17), IRON)
-        mesh += r3.box((0, 0, 1.055), (0.07, 0.29, 0.09), team)
-        return mesh + _shield(-0.32, 0.21, 0.48, team) + _sword(frame)
-    if unit_type is UnitType.ARCHER:
-        green = (52, 88, 67)
-        mesh = _shadow(0.3) + _body(team, frame, body_r=0.17, body_h=0.36)
-        mesh += _unit_panel([(-0.18, -0.1, 0.7), (0.18, -0.1, 0.7),
-                             (0.27, -0.28, 0.2), (-0.25, -0.28, 0.2)], green)
-        mesh += r3.sphere((0, -0.055, 0.81), 0.2, green, rings=4, sides=8)
-        mesh += r3.cone((0, -0.04, 0.93), 0.14, 0.18, green, sides=6)
-        mesh += _unit_head((0, 0.075, 0.76), 0.13)
-        mesh += _unit_rod((-0.19, -0.23, 0.35), (-0.27, -0.23, 0.79), 0.085, WOOD_DARK)
-        for x in (-0.32, -0.26, -0.2):
-            mesh += _unit_rod((x, -0.23, 0.67), (x - 0.03, -0.23, 1.03), 0.014, THATCH)
-            mesh += r3.box((x - 0.03, -0.23, 0.97), (0.05, 0.05, 0.09), PLASTER)
-        bow_y = 0.36 if frame == "attack" else 0.18
-        path = [(0.32, bow_y, 0.16), (0.32, bow_y + 0.17, 0.35),
-                (0.32, bow_y + 0.23, 0.64), (0.32, bow_y + 0.17, 0.94), (0.32, bow_y, 1.12)]
-        for start, end in zip(path, path[1:]):
-            mesh += _unit_rod(start, end, 0.035, (201, 145, 76))
-        draw_y = bow_y - 0.27 if frame == "attack" else bow_y
-        mesh += _unit_rod(path[0], (0.32, draw_y, 0.64), 0.01, PLASTER)
-        mesh += _unit_rod((0.32, draw_y, 0.64), path[-1], 0.01, PLASTER)
-        mesh += _unit_rod((0.17, 0, 0.58), (0.32, bow_y + 0.2, 0.64), 0.048, SKIN)
-        mesh += _unit_rod((-0.17, 0, 0.57), (0.32, draw_y, 0.64), 0.048, SKIN)
+            mesh += r3.sphere((x, 0, 0.66), 0.115, look.metal, rings=3, sides=6)
+        mesh += _unit_rod((x, 0, 0.6), (x * 1.2, 0.13, 0.45), 0.065, look.metal if race is not Race.ORC else look.skin)
+    mesh += _helm(0.79, race, team)
+    return mesh + _shield(-0.32, 0.21, 0.48, team, race=race) + _sword(frame, race)
+
+
+def _archer(player: int, frame: str, race: Race) -> Mesh:
+    team = team_color(player)
+    look = LOOKS[race]
+    green = look.cloth if race is not Race.HUMAN else (52, 88, 67)
+    mesh = _shadow(0.3) + _body(team, frame, body_r=0.17, body_h=0.36, race=race)
+    mesh += _unit_panel([(-0.18, -0.1, 0.7), (0.18, -0.1, 0.7),
+                         (0.27, -0.28, 0.2), (-0.25, -0.28, 0.2)], green)
+    if race is Race.ORC:
+        mesh += r3.box((0, -0.12, 0.62), (0.28, 0.12, 0.34), look.leather)  # a quiver of throwing axes on the back
+        for x in (-0.09, 0.0, 0.09):
+            mesh += _unit_rod((x, -0.14, 0.75), (x, -0.16, 1.0), 0.02, WOOD)
+            mesh += r3.box((x, -0.14, 0.99), (0.06, 0.05, 0.08), look.metal)
+        mesh += _helm(0.79, race, team)
+        raised = frame == "attack"
+        hand = (0.34, 0.36 if raised else 0.14, 1.05 if raised else 0.6)
+        mesh += _unit_rod((0.17, 0, 0.58), hand, 0.05, look.skin)
+        axe = _unit_rod(hand, (hand[0], hand[1] + 0.04, hand[2] + 0.36), 0.025, WOOD)
+        axe += _unit_panel([(hand[0], hand[1] + 0.02, hand[2] + 0.3), (hand[0], hand[1] + 0.22, hand[2] + 0.26),
+                            (hand[0], hand[1] + 0.2, hand[2] + 0.44), (hand[0], hand[1] + 0.02, hand[2] + 0.4)], look.metal)
+        mesh += axe
+        mesh += _unit_rod((-0.17, 0, 0.57), (-0.3, 0.14, 0.44), 0.048, look.skin)
+        return mesh
+    mesh += r3.sphere((0, -0.055, 0.81), 0.2, green, rings=4, sides=8)
+    mesh += r3.cone((0, -0.04, 0.93), 0.14, 0.18 if race is not Race.ELF else 0.3, green, sides=6)
+    mesh += _unit_head((0, 0.075, 0.76), 0.13, race=race)
+    mesh += _unit_rod((-0.19, -0.23, 0.35), (-0.27, -0.23, 0.79), 0.085, WOOD_DARK)
+    for x in (-0.32, -0.26, -0.2):
+        mesh += _unit_rod((x, -0.23, 0.67), (x - 0.03, -0.23, 1.03), 0.014, THATCH)
+        mesh += r3.box((x - 0.03, -0.23, 0.97), (0.05, 0.05, 0.09), PLASTER)
+    bow_y = 0.36 if frame == "attack" else 0.18
+    if race is Race.DWARF:
+        # A crossbow held level: a stock, a short steel bow and a bolt on top.
+        stock = (0.3, bow_y + 0.05, 0.62)
+        mesh += _unit_rod((stock[0], stock[1] - 0.25, stock[2]), (stock[0], stock[1] + 0.35, stock[2]), 0.035, WOOD_DARK)
+        mesh += _unit_rod((stock[0] - 0.28, stock[1] + 0.3, stock[2]), (stock[0] + 0.28, stock[1] + 0.34, stock[2]), 0.025, look.metal)
+        mesh += _unit_rod((stock[0] - 0.28, stock[1] + 0.3, stock[2]), (stock[0], stock[1] - 0.05, stock[2]), 0.01, PLASTER)
+        mesh += _unit_rod((stock[0] + 0.28, stock[1] + 0.34, stock[2]), (stock[0], stock[1] - 0.05, stock[2]), 0.01, PLASTER)
+        mesh += _unit_rod((0.17, 0, 0.58), (stock[0], stock[1] - 0.1, stock[2]), 0.048, look.skin)
+        mesh += _unit_rod((-0.17, 0, 0.57), (stock[0] - 0.02, stock[1] + 0.15, stock[2] - 0.02), 0.048, look.skin)
         if frame == "attack":
-            mesh += _unit_rod((0.32, draw_y, 0.64), (0.32, bow_y + 0.66, 0.64), 0.018, THATCH)
-            mesh += r3.box((0.32, bow_y + 0.64, 0.64), (0.055, 0.13, 0.045), IRON)
+            mesh += _unit_rod((stock[0], stock[1] - 0.05, stock[2] + 0.03), (stock[0], stock[1] + 0.5, stock[2] + 0.03), 0.015, THATCH)
         return mesh
-    if unit_type is UnitType.KNIGHT:
-        mesh = _horse(frame, True, team)
-        mesh += r3.cylinder((0, -0.11, 0.73), 0.21, 0.34, IRON, sides=8)
-        mesh += _unit_panel([(-0.21, -0.19, 1.07), (0.21, -0.19, 1.07),
-                             (0.28, -0.45, 0.54), (-0.28, -0.45, 0.54)], trim)
-        for x in (-0.24, 0.24):
-            mesh += _unit_rod((x, -0.1, 0.76), (x * 1.12, 0.03, 0.47), 0.075, IRON)
-            mesh += r3.sphere((x, -0.09, 1.02), 0.13, IRON, rings=3, sides=6)
-        mesh += r3.cylinder((0, -0.11, 1.13), 0.18, 0.24, IRON, sides=8)
-        mesh += r3.cone((0, -0.11, 1.37), 0.18, 0.11, IRON, sides=8)
-        mesh += r3.box((0, 0.065, 1.27), (0.29, 0.05, 0.045), INK)
-        mesh += r3.box((0, 0.075, 1.18), (0.045, 0.05, 0.22), GOLD)
-        mesh += _unit_rod((0, -0.1, 1.45), (0, -0.31, 1.62), 0.1, team)
-        mesh += r3.cone((0, -0.32, 1.56), 0.13, 0.14, team, sides=6)
-        mesh += _shield(-0.33, 0.11, 0.94, team, 0.92)
-        grip = (0.34, 0.05, 1.0)
-        lance = _unit_rod((0.34, 0.05, 0.67), (0.34, 0.05, 1.92), 0.036, THATCH)
-        lance += r3.cone((0.34, 0.05, 1.9), 0.085, 0.2, IRON, sides=4)
-        lance += _unit_panel([(0.34, 0.05, 1.83), (0.34, -0.29, 1.7), (0.34, 0.05, 1.59)], team)
-        mesh += _unit_pitch(lance, -82 if frame == "attack" else -38, grip)
+    tall = 1.28 if race is Race.ELF else 1.12
+    path = [(0.32, bow_y, 0.12), (0.32, bow_y + 0.17, 0.35),
+            (0.32, bow_y + 0.23, 0.64), (0.32, bow_y + 0.17, 0.94), (0.32, bow_y, tall)]
+    for start, end in zip(path, path[1:]):
+        mesh += _unit_rod(start, end, 0.035, (201, 145, 76) if race is Race.HUMAN else (222, 206, 168))
+    draw_y = bow_y - 0.27 if frame == "attack" else bow_y
+    mesh += _unit_rod(path[0], (0.32, draw_y, 0.64), 0.01, PLASTER)
+    mesh += _unit_rod((0.32, draw_y, 0.64), path[-1], 0.01, PLASTER)
+    mesh += _unit_rod((0.17, 0, 0.58), (0.32, bow_y + 0.2, 0.64), 0.048, look.skin)
+    mesh += _unit_rod((-0.17, 0, 0.57), (0.32, draw_y, 0.64), 0.048, look.skin)
+    if frame == "attack":
+        mesh += _unit_rod((0.32, draw_y, 0.64), (0.32, bow_y + 0.66, 0.64), 0.018, THATCH)
+        mesh += r3.box((0.32, bow_y + 0.64, 0.64), (0.055, 0.13, 0.045), look.metal)
+    return mesh
+
+
+def _knight(player: int, frame: str, race: Race) -> Mesh:
+    team = team_color(player)
+    look = LOOKS[race]
+    trim = darker(team, 0.7)
+    if race is Race.ORC:
+        # An ogre: two heads, a club, no mount and no manners.
+        mesh = _shadow(0.42) + _legs(frame, look.skin, spread=0.16)
+        mesh += r3.cylinder((0, 0, 0.26), 0.34, 0.62, look.skin, sides=8)
+        mesh += r3.box((0, 0.2, 0.46), (0.5, 0.2, 0.3), team)  # a team-dyed loincloth and belt
+        mesh += r3.cylinder((0, 0, 0.45), 0.35, 0.07, look.leather, sides=8)
+        for x in (-0.36, 0.36):
+            mesh += r3.sphere((x, 0, 0.82), 0.14, look.skin, rings=3, sides=6)
+        mesh += _unit_head((-0.17, 0.02, 1.02), 0.15, race=Race.ORC)
+        mesh += _unit_head((0.17, 0.02, 1.0), 0.14, race=Race.ORC)
+        mesh += r3.box((-0.17, 0.02, 1.16), (0.18, 0.18, 0.06), look.metal_dark)
+        mesh += _unit_rod((-0.34, 0, 0.78), (-0.5, 0.2, 0.6), 0.09, look.skin)
+        grip = (0.44, 0.16, 0.66)
+        mesh += _unit_rod((0.34, 0, 0.78), grip, 0.09, look.skin)
+        club = _unit_rod((0.44, 0.16, 0.5), (0.44, 0.16, 1.2), 0.05, WOOD_DARK)
+        club += r3.sphere((0.44, 0.16, 1.24), 0.17, WOOD_DARK, rings=3, sides=7)
+        for a in (0.3, 1.6, 2.9, 4.2, 5.5):
+            club += r3.cone((0.44 + 0.15 * math.cos(a), 0.16 + 0.15 * math.sin(a), 1.24), 0.03, 0.1, look.metal, sides=4)
+        mesh += _unit_pitch(club, -95 if frame == "attack" else -20, grip)
         return mesh
-    if unit_type is UnitType.SCOUT:
-        mesh = _horse(frame, False, team)
-        mesh += r3.cylinder((0, -0.1, 0.63), 0.15, 0.29, (97, 78, 52), sides=6)
-        mesh += _unit_panel([(-0.18, -0.16, 0.92), (0.18, -0.16, 0.92),
-                             (0.2, -0.57, 0.54), (0, -0.48, 0.59), (-0.2, -0.57, 0.54)], team)
-        mesh += _unit_head((0, -0.085, 1.06), 0.14)
-        mesh += r3.cone((0, -0.095, 1.15), 0.2, 0.13, (73, 93, 64), sides=6)
-        mesh += _unit_rod((-0.1, -0.11, 1.21), (-0.16, -0.23, 1.43), 0.032, PLASTER)
-        for x in (-0.19, 0.19):
-            mesh += _unit_rod((x, -0.06, 0.74), (x * 1.15, 0.06, 0.43), 0.058, WOOD_DARK)
-            mesh += _unit_rod((x, -0.08, 0.86), (x, 0.12, 0.82), 0.045, SKIN)
-        grip = (0.27, 0.07, 0.9)
-        spear = _unit_rod((0.27, 0.07, 0.55), (0.27, 0.07, 1.65), 0.024, WOOD)
-        spear += r3.cone((0.27, 0.07, 1.63), 0.06, 0.18, IRON, sides=4)
-        mesh += _unit_pitch(spear, -84 if frame == "attack" else -8, grip)
-        return mesh
-    if unit_type is UnitType.CATAPULT:
-        mesh = _shadow(0.51, 0.05, 0.03)
-        for x in (-0.27, 0.27):
-            mesh += r3.box((x, 0, 0.27), (0.11, 0.96, 0.13), WOOD_DARK)
-            mesh += _unit_rod((x, -0.38, 0.3), (x, -0.04, 0.83), 0.055, WOOD)
-            mesh += _unit_rod((x, 0.37, 0.3), (x, -0.04, 0.83), 0.055, WOOD)
+    mesh = _mount(frame, True, team, race)
+    rider_z = 0.73 if race is not Race.DWARF else 0.68
+    mesh += r3.cylinder((0, -0.11, rider_z), 0.21, 0.34, look.metal, sides=8)
+    mesh += _unit_panel([(-0.21, -0.19, rider_z + 0.34), (0.21, -0.19, rider_z + 0.34),
+                         (0.28, -0.45, rider_z - 0.19), (-0.28, -0.45, rider_z - 0.19)], trim)
+    for x in (-0.24, 0.24):
+        mesh += _unit_rod((x, -0.1, rider_z + 0.03), (x * 1.12, 0.03, rider_z - 0.26), 0.075, look.metal)
+        mesh += r3.sphere((x, -0.09, rider_z + 0.29), 0.13, look.metal, rings=3, sides=6)
+    head = (0, -0.11, rider_z + 0.4)
+    if race is Race.DWARF:
+        mesh += _unit_head((head[0], head[1], head[2] + 0.12), 0.16, race=race)
+        mesh += _shift(_helm(0.0, race, team), (0, -0.11, rider_z + 0.6))
+    else:
+        mesh += r3.cylinder(head, 0.18, 0.24, look.metal, sides=8)
+        mesh += r3.cone((head[0], head[1], head[2] + 0.24), 0.18, 0.11 if race is Race.HUMAN else 0.2, look.metal, sides=8)
+        mesh += r3.box((0, 0.065, rider_z + 0.54), (0.29, 0.05, 0.045), INK)
+        mesh += r3.box((0, 0.075, rider_z + 0.45), (0.045, 0.05, 0.22), GOLD if race is Race.HUMAN else look.hair)
+        if race is Race.ELF:
+            for side in (-1, 1):
+                mesh += _unit_panel([(side * 0.17, -0.11, rider_z + 0.5), (side * 0.38, -0.25, rider_z + 0.72), (side * 0.18, -0.13, rider_z + 0.63)], look.metal)
+        else:
+            mesh += _unit_rod((0, -0.1, rider_z + 0.72), (0, -0.31, rider_z + 0.89), 0.1, team)
+            mesh += r3.cone((0, -0.32, rider_z + 0.83), 0.13, 0.14, team, sides=6)
+    mesh += _shield(-0.33, 0.11, rider_z + 0.21, team, 0.92, race=race)
+    grip = (0.34, 0.05, rider_z + 0.27)
+    if race is Race.DWARF:
+        lance = _unit_rod((0.34, 0.05, rider_z), (0.34, 0.05, rider_z + 0.95), 0.036, WOOD)
+        lance += r3.box((0.34, 0.05, rider_z + 0.9), (0.12, 0.22, 0.16), look.metal)  # a war hammer's head
+        lance += r3.cone((0.34, 0.17, rider_z + 0.9), 0.05, 0.14, look.metal_dark, sides=4)
+    else:
+        lance = _unit_rod((0.34, 0.05, rider_z - 0.06), (0.34, 0.05, rider_z + 1.19), 0.036, THATCH if race is Race.HUMAN else (222, 206, 168))
+        lance += r3.cone((0.34, 0.05, rider_z + 1.17), 0.085, 0.2, look.metal, sides=4)
+        lance += _unit_panel([(0.34, 0.05, rider_z + 1.1), (0.34, -0.29, rider_z + 0.97), (0.34, 0.05, rider_z + 0.86)], team)
+    mesh += _unit_pitch(lance, -82 if frame == "attack" else -38, grip)
+    return mesh
+
+
+def _shift(mesh: Mesh, offset: r3.Vec3) -> Mesh:
+    ox, oy, oz = offset
+    return [r3.Face(tuple((x + ox, y + oy, z + oz) for x, y, z in face.points), face.color) for face in mesh]
+
+
+def _scout(player: int, frame: str, race: Race) -> Mesh:
+    team = team_color(player)
+    look = LOOKS[race]
+    mesh = _mount(frame, False, team, race)
+    rider_z = 0.63 if race is not Race.ORC else 0.5
+    mesh += r3.cylinder((0, -0.1, rider_z), 0.15, 0.29, look.leather, sides=6)
+    mesh += _unit_panel([(-0.18, -0.16, rider_z + 0.29), (0.18, -0.16, rider_z + 0.29),
+                         (0.2, -0.57, rider_z - 0.09), (0, -0.48, rider_z - 0.04), (-0.2, -0.57, rider_z - 0.09)], team)
+    mesh += _unit_head((0, -0.085, rider_z + 0.43), 0.14, race=race)
+    if race is Race.HUMAN:
+        mesh += r3.cone((0, -0.095, rider_z + 0.52), 0.2, 0.13, (73, 93, 64), sides=6)
+        mesh += _unit_rod((-0.1, -0.11, rider_z + 0.58), (-0.16, -0.23, rider_z + 0.8), 0.032, PLASTER)
+    elif race is Race.ORC:
+        mesh += r3.sphere((0, -0.09, rider_z + 0.52), 0.15, look.metal_dark, rings=3, sides=6)
+        mesh += r3.cone((0, -0.09, rider_z + 0.62), 0.04, 0.14, BONE, sides=4)
+    elif race is Race.ELF:
+        mesh += r3.cone((0, -0.1, rider_z + 0.5), 0.17, 0.25, look.cloth, sides=7)
+    else:
+        mesh += r3.sphere((0, -0.09, rider_z + 0.5), 0.16, look.metal, rings=3, sides=7)
+    for x in (-0.19, 0.19):
+        mesh += _unit_rod((x, -0.06, rider_z + 0.11), (x * 1.15, 0.06, rider_z - 0.2), 0.058, WOOD_DARK)
+        mesh += _unit_rod((x, -0.08, rider_z + 0.23), (x, 0.12, rider_z + 0.19), 0.045, look.skin)
+    grip = (0.27, 0.07, rider_z + 0.27)
+    spear = _unit_rod((0.27, 0.07, rider_z - 0.08), (0.27, 0.07, rider_z + 1.02), 0.024, WOOD)
+    spear += r3.cone((0.27, 0.07, rider_z + 1.0), 0.06, 0.18, look.metal, sides=4)
+    if race is Race.ORC:
+        spear += r3.cone((0.27, 0.07, rider_z + 0.85), 0.05, -0.1, BONE, sides=4)
+    mesh += _unit_pitch(spear, -84 if frame == "attack" else -8, grip)
+    return mesh
+
+
+def _siege(player: int, frame: str, race: Race) -> Mesh:
+    team = team_color(player)
+    look = LOOKS[race]
+    wood, wood_dark = (WOOD, WOOD_DARK) if race is not Race.ELF else ((196, 186, 150), (150, 140, 104))
+    mesh = _shadow(0.51, 0.05, 0.03)
+    for x in (-0.27, 0.27):
+        mesh += r3.box((x, 0, 0.27), (0.11, 0.96, 0.13), wood_dark)
+        mesh += _unit_rod((x, -0.38, 0.3), (x, -0.04, 0.83), 0.055, wood)
+        mesh += _unit_rod((x, 0.37, 0.3), (x, -0.04, 0.83), 0.055, wood)
+    for y in (-0.32, 0.32):
+        mesh += _unit_rod((-0.5, y, 0.23), (0.5, y, 0.23), 0.055, look.metal)
+    wheel_turn = {"walk1": 20, "walk2": -20}.get(frame, 0)
+    for x in (-0.44, 0.44):
         for y in (-0.32, 0.32):
-            mesh += _unit_rod((-0.5, y, 0.23), (0.5, y, 0.23), 0.055, IRON)
-        wheel_turn = {"walk1": 20, "walk2": -20}.get(frame, 0)
-        for x in (-0.44, 0.44):
-            for y in (-0.32, 0.32):
-                mesh += _unit_rod((x - 0.05, y, 0.23), (x + 0.05, y, 0.23), 0.225, INK, sides=10)
-                outer = x + (0.055 if x > 0 else -0.055)
-                mesh += _unit_rod((x, y, 0.23), (outer, y, 0.23), 0.18, WOOD_DARK, sides=10)
-                for degrees in range(wheel_turn, wheel_turn + 360, 60):
-                    angle = math.radians(degrees)
-                    mesh += _unit_rod((outer, y, 0.23),
-                                      (outer, y + 0.18 * math.cos(angle), 0.23 + 0.18 * math.sin(angle)), 0.019, THATCH)
-                mesh += _unit_rod((x, y, 0.23), (outer * 1.045, y, 0.23), 0.055, IRON)
-        mesh += _unit_rod((-0.34, -0.04, 0.8), (0.34, -0.04, 0.8), 0.08, IRON)
+            mesh += _unit_rod((x - 0.05, y, 0.23), (x + 0.05, y, 0.23), 0.225, INK, sides=10)
+            outer = x + (0.055 if x > 0 else -0.055)
+            mesh += _unit_rod((x, y, 0.23), (outer, y, 0.23), 0.18, wood_dark, sides=10)
+            for degrees in range(wheel_turn, wheel_turn + 360, 60):
+                angle = math.radians(degrees)
+                mesh += _unit_rod((outer, y, 0.23),
+                                  (outer, y + 0.18 * math.cos(angle), 0.23 + 0.18 * math.sin(angle)), 0.019, THATCH)
+            mesh += _unit_rod((x, y, 0.23), (outer * 1.045, y, 0.23), 0.055, look.metal)
+    mesh += _unit_rod((-0.34, -0.04, 0.8), (0.34, -0.04, 0.8), 0.08, look.metal)
+    if race is Race.DWARF:
+        # A mortar: a short iron barrel on the chassis, tipped back to lob.
+        pivot = (0, -0.04, 0.6)
+        barrel = _unit_rod((0, -0.04, 0.45), (0, -0.04, 1.05), 0.17, look.metal_dark, sides=8)
+        barrel += _unit_rod((0, -0.04, 1.0), (0, -0.04, 1.08), 0.19, look.metal, sides=8)
+        barrel += _unit_rod((0, -0.04, 0.5), (0, -0.04, 0.58), 0.19, look.metal, sides=8)
+        barrel += r3.cylinder((0, -0.04, 1.06), 0.11, 0.03, INK, sides=8)
+        mesh += _unit_pitch(barrel, -20 if frame == "attack" else 42, pivot)
+        for x in (-0.2, 0.2):
+            mesh += r3.sphere((x, 0.36, 0.45), 0.09, BOULDER, rings=3, sides=6)  # shot
+        mesh += r3.box((0, 0.29, 0.35), (0.58, 0.13, 0.15), wood)
+    elif race is Race.ELF:
+        # A ballista: a great horizontal bow on the front and a bolt in the groove.
         pivot = (0, -0.04, 0.65)
-        arm = _unit_rod((0, -0.04, 0.44), (0, -0.04, 1.43), 0.055, WOOD)
-        arm += r3.cylinder((0, -0.04, 1.33), 0.16, 0.13, WOOD_DARK, sides=8)
-        arm += r3.cylinder((0, -0.04, 1.45), 0.175, 0.035, IRON, sides=8)
+        arm = _unit_rod((0, -0.5, 0.72), (0, 0.42, 0.72), 0.05, wood)
+        for side in (-1, 1):
+            arm += _unit_rod((0, 0.42, 0.72), (side * 0.62, 0.3, 0.72), 0.03, wood_dark)
+            arm += _unit_rod((side * 0.62, 0.3, 0.72), (0, 0.02 if frame == "attack" else -0.16, 0.72), 0.012, PLASTER)
+        arm += _unit_rod((0, -0.16, 0.75), (0, 0.6, 0.75), 0.02, wood_dark)
+        arm += _unit_rod((0, 0.58, 0.75), (0, 0.74, 0.75), 0.045, look.metal, sides=4)  # the bolt's head
+        mesh += _unit_pitch(arm, -30 if frame == "attack" else -12, pivot)
+        mesh += r3.sphere((0, -0.34, 0.92), 0.16, (86, 150, 96), rings=3, sides=6)  # living wood leafs at the tail
+    else:
+        pivot = (0, -0.04, 0.65)
+        arm = _unit_rod((0, -0.04, 0.44), (0, -0.04, 1.43), 0.055, wood)
+        arm += r3.cylinder((0, -0.04, 1.33), 0.16, 0.13, wood_dark, sides=8)
+        arm += r3.cylinder((0, -0.04, 1.45), 0.175, 0.035, look.metal, sides=8)
         if frame != "attack":
             arm += r3.sphere((0, -0.04, 1.5), 0.125, BOULDER, rings=3, sides=6)
         mesh += _unit_pitch(arm, -52 if frame == "attack" else 66, pivot)
-        mesh += r3.box((0, 0.29, 0.35), (0.58, 0.13, 0.15), WOOD)
-        mesh += _unit_panel([(-0.2, 0.365, 0.4), (0.2, 0.365, 0.4),
-                             (0.2, 0.365, 0.22), (0, 0.365, 0.17), (-0.2, 0.365, 0.22)], team)
-        return mesh
-    if unit_type is UnitType.CLERIC:
-        bob = 0.025 if frame == "walk1" else 0
-        mesh = _shadow(0.3) + _legs(frame, PLASTER)
-        mesh += r3.cone((0, 0, 0.08), 0.29, 0.84, PLASTER, sides=8)
-        mesh += r3.cylinder((0, 0, 0.38 + bob), 0.185, 0.32, PLASTER, sides=8)
-        for x in (-0.095, 0.095):
-            mesh += _unit_panel([(x - 0.04, 0.178, 0.68), (x + 0.04, 0.178, 0.68),
-                                 (x + 0.055, 0.254, 0.13), (x - 0.055, 0.254, 0.13)], team)
-            mesh += r3.box((x, 0.262, 0.2), (0.09, 0.025, 0.035), GOLD)
-        mesh += _unit_head((0, 0.01, 0.83 + bob), 0.155)
+        if race is Race.ORC:
+            for x in (-0.3, 0.3):
+                mesh += r3.cone((x, -0.4, 0.83), 0.05, 0.2, BONE, sides=4)
+            mesh += r3.sphere((0, 0.5, 0.42), 0.09, BONE, rings=3, sides=6)  # a skull on the frame
+        mesh += r3.box((0, 0.29, 0.35), (0.58, 0.13, 0.15), wood)
+    mesh += _unit_panel([(-0.2, 0.365, 0.4), (0.2, 0.365, 0.4),
+                         (0.2, 0.365, 0.22), (0, 0.365, 0.17), (-0.2, 0.365, 0.22)], team)
+    return mesh
+
+
+def _healer(player: int, frame: str, race: Race) -> Mesh:
+    team = team_color(player)
+    look = LOOKS[race]
+    robe = PLASTER if race is Race.HUMAN else look.cloth if race is not Race.ORC else (78, 52, 40)
+    bob = 0.025 if frame == "walk1" else 0
+    mesh = _shadow(0.3) + _legs(frame, robe)
+    mesh += r3.cone((0, 0, 0.08), 0.29, 0.84, robe, sides=8)
+    mesh += r3.cylinder((0, 0, 0.38 + bob), 0.185, 0.32, robe, sides=8)
+    for x in (-0.095, 0.095):
+        mesh += _unit_panel([(x - 0.04, 0.178, 0.68), (x + 0.04, 0.178, 0.68),
+                             (x + 0.055, 0.254, 0.13), (x - 0.055, 0.254, 0.13)], team)
+        mesh += r3.box((x, 0.262, 0.2), (0.09, 0.025, 0.035), GOLD if race is not Race.ORC else BONE)
+    mesh += _unit_head((0, 0.01, 0.83 + bob), 0.155, race=race)
+    if race is Race.HUMAN:
         mesh += r3.pyramid((0, 0, 0.96 + bob), (0.29, 0.22), 0.31, PLASTER)
         mesh += r3.box((0, 0, 0.99 + bob), (0.3, 0.235, 0.06), GOLD)
         mesh += r3.box((0, 0.074, 1.095 + bob), (0.055, 0.075, 0.18), team)
-        mesh += _unit_rod((-0.2, 0, 0.64), (-0.34, 0.12, 0.57), 0.08, PLASTER)
-        mesh += _unit_rod((0.2, 0, 0.64), (0.3, 0.18, 0.7 if frame == "attack" else 0.49), 0.075, PLASTER)
+    elif race is Race.ORC:
+        # A wooden mask with feathers.
+        mesh += _unit_panel([(-0.15, 0.16, 0.72 + bob), (0.15, 0.16, 0.72 + bob), (0.12, 0.16, 1.0 + bob), (-0.12, 0.16, 1.0 + bob)], WOOD)
+        for x in (-0.06, 0.06):
+            mesh += r3.box((x, 0.17, 0.88 + bob), (0.04, 0.02, 0.04), INK)
+        for x, tilt in ((-0.1, -0.25), (0.0, 0.0), (0.1, 0.25)):
+            mesh += _unit_rod((x, 0.1, 0.98 + bob), (x + tilt, 0.05, 1.28 + bob), 0.025, team)
+    elif race is Race.ELF:
+        mesh += r3.cone((0, -0.02, 0.9 + bob), 0.2, 0.3, look.cloth, sides=8)  # a hood
+        mesh += r3.cylinder((0, 0, 1.0 + bob), 0.06, 0.02, look.hair, sides=6)
+    else:
+        mesh += r3.sphere((0, 0, 0.95 + bob), 0.17, look.metal_dark, rings=3, sides=7)  # a runed skullcap
+        mesh += r3.box((0, 0.16, 0.98 + bob), (0.07, 0.03, 0.07), GOLD)
+    mesh += _unit_rod((-0.2, 0, 0.64), (-0.34, 0.12, 0.57), 0.08, robe)
+    mesh += _unit_rod((0.2, 0, 0.64), (0.3, 0.18, 0.7 if frame == "attack" else 0.49), 0.075, robe)
+    lift = 0.15 if frame == "attack" else 0
+    staff = _unit_rod((-0.36, 0.12, 0.12 + lift), (-0.36, 0.12, 1.3 + lift), 0.032, WOOD)
+    if race is Race.HUMAN:
         # Tall gilded sun staff gives the healer an unmistakable asymmetric silhouette.
-        lift = 0.15 if frame == "attack" else 0
-        mesh += _unit_rod((-0.36, 0.12, 0.12 + lift), (-0.36, 0.12, 1.3 + lift), 0.032, WOOD)
-        mesh += r3.sphere((-0.36, 0.12, 1.34 + lift), 0.125, GOLD, rings=3, sides=8)
-        mesh += r3.box((-0.36, 0.13, 1.36 + lift), (0.34, 0.055, 0.055), GOLD)
-        mesh += r3.box((-0.36, 0.12, 1.39 + lift), (0.055, 0.055, 0.36), GOLD)
-        mesh += r3.sphere((-0.36, 0.19, 1.35 + lift), 0.064, (143, 221, 246), rings=3, sides=6)
-        return mesh
+        staff += r3.sphere((-0.36, 0.12, 1.34 + lift), 0.125, GOLD, rings=3, sides=8)
+        staff += r3.box((-0.36, 0.13, 1.36 + lift), (0.34, 0.055, 0.055), GOLD)
+        staff += r3.box((-0.36, 0.12, 1.39 + lift), (0.055, 0.055, 0.36), GOLD)
+        staff += r3.sphere((-0.36, 0.19, 1.35 + lift), 0.064, (143, 221, 246), rings=3, sides=6)
+    elif race is Race.ORC:
+        staff += r3.sphere((-0.36, 0.12, 1.36 + lift), 0.11, BONE, rings=3, sides=6)  # a skull totem
+        for x, tilt in ((-0.44, -0.2), (-0.28, 0.2)):
+            staff += _unit_rod((x, 0.12, 1.4 + lift), (x + tilt, 0.05, 1.62 + lift), 0.02, team)
+    elif race is Race.ELF:
+        for tip in ((-0.52, 0.06, 1.58 + lift), (-0.2, 0.06, 1.6 + lift), (-0.42, 0.2, 1.5 + lift), (-0.3, 0.2, 1.52 + lift)):
+            staff += _unit_rod((-0.36, 0.12, 1.3 + lift), tip, 0.022, BONE)  # antlers
+        staff += r3.sphere((-0.36, 0.12, 1.42 + lift), 0.07, (150, 240, 190), rings=3, sides=6)
+    else:
+        staff += r3.box((-0.36, 0.12, 1.36 + lift), (0.16, 0.24, 0.16), look.metal)  # a rune hammer
+        staff += r3.box((-0.36, 0.245, 1.36 + lift), (0.07, 0.01, 0.07), GOLD)
+    return mesh + staff
+
+
+def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource | None, race: Race = Race.HUMAN) -> Mesh:
+    if unit_type is UnitType.PEASANT:
+        return _worker(player, frame, carrying, race)
+    if unit_type is UnitType.FOOTMAN:
+        return _footman(player, frame, race)
+    if unit_type is UnitType.ARCHER:
+        return _archer(player, frame, race)
+    if unit_type is UnitType.KNIGHT:
+        return _knight(player, frame, race)
+    if unit_type is UnitType.SCOUT:
+        return _scout(player, frame, race)
+    if unit_type is UnitType.CATAPULT:
+        return _siege(player, frame, race)
+    if unit_type is UnitType.CLERIC:
+        return _healer(player, frame, race)
     raise ValueError(unit_type)
 
 
@@ -1169,8 +1714,9 @@ def facing_index(angle: float) -> int:
     return int(round(angle / (math.pi / 4))) % FACINGS
 
 
-def chop_contact_offset(facing: int) -> tuple[float, float]:
+def chop_contact_offset(facing: int, race: Race = Race.HUMAN) -> tuple[float, float]:
     """Projected cutting edge of the worker's contact pose, relative to its feet."""
+    across, tall = LOOKS[race].stretch
     lean = math.radians(_WORKER_LEAN["chop3"])
     swing = math.radians(_WORKER_SWING["chop3"])
     _, gy, gz = _WORKER_GRIP
@@ -1180,9 +1726,9 @@ def chop_contact_offset(facing: int) -> tuple[float, float]:
     bent_y = hy + (gy - hy) * math.cos(lean) - (gz - hz) * math.sin(lean)
     bent_z = hz + (gy - hy) * math.sin(lean) + (gz - hz) * math.cos(lean)
     edge_x, edge_y, edge_z = _WORKER_AXE_EDGE[1]
-    x = edge_x * UNIT_SCALE
-    y = (bent_y + (edge_y - gy) * math.cos(swing) - (edge_z - gz) * math.sin(swing)) * UNIT_SCALE
-    z = (bent_z + (edge_y - gy) * math.sin(swing) + (edge_z - gz) * math.cos(swing)) * UNIT_SCALE
+    x = edge_x * across * UNIT_SCALE
+    y = (bent_y + (edge_y - gy) * math.cos(swing) - (edge_z - gz) * math.sin(swing)) * across * UNIT_SCALE
+    z = (bent_z + (edge_y - gy) * math.sin(swing) + (edge_z - gz) * math.cos(swing)) * tall * UNIT_SCALE
     angle = math.radians(facing * 45 - 90)
     c, s = math.cos(angle), math.sin(angle)
     return PROJECTION.project((x * c - y * s, x * s + y * c, z))
@@ -1247,7 +1793,7 @@ def building_image(game: Game, building_type: BuildingType, player: int, race: R
 
 
 DROP_TREE = TILE / 2 + PAD  # a tree is placed at its tile's centre; its image reaches the tile's front edge
-DROP_UNIT = TILE * 1.25 + PAD  # a lance pointed at the camera reaches well below the feet
+DROP_UNIT = TILE * 1.5 + PAD  # a lance pointed at the camera, or a broad dwarf's axe at the foot of its swing, reaches well below the feet
 
 
 # -- 2-D effect images ----------------------------------------------------------------
