@@ -257,11 +257,11 @@ class GameScene(Scene):
             Button("Menu", hotkey="F10", on_click=self.open_menu, style=GHOST_BUTTON),
         ]))
         self.ui.add(Row(Label("Settlement", text_style="heading", width=124),
-                        Button("Build", on_click=lambda: self.open_settlement("build"), style=GHOST_BUTTON, width=84),
-                        Button("Train", on_click=lambda: self.open_settlement("train"), style=GHOST_BUTTON, width=84),
-                        Button("Upgrade", on_click=lambda: self.open_settlement("upgrade"), style=GHOST_BUTTON, width=90),
-                        Button(lambda: f"Plans ({self._plan_count()})", on_click=self.open_plans, style=GHOST_BUTTON, width=104),
-                        Button("Assembly point", on_click=lambda: self.start_pending("assembly"), style=GHOST_BUTTON, width=140),
+                        Button("Build", shortcut="Ctrl+B", on_click=lambda: self.open_settlement(None if self.settlement_menu == "build" else "build"), style=GHOST_BUTTON, width=132),
+                        Button("Train", shortcut="Ctrl+T", on_click=lambda: self.open_settlement(None if self.settlement_menu == "train" else "train"), style=GHOST_BUTTON, width=132),
+                        Button("Upgrade", shortcut="Ctrl+U", on_click=lambda: self.open_settlement(None if self.settlement_menu == "upgrade" else "upgrade"), style=GHOST_BUTTON, width=142),
+                        Button(lambda: f"Plans ({self._plan_count()})", shortcut="Ctrl+P", on_click=self.open_plans, style=GHOST_BUTTON, width=152),
+                        Button("Assembly", shortcut="Ctrl+G", on_click=lambda: self.start_pending("assembly"), style=GHOST_BUTTON, width=152),
                         spacing=8, anchor=Anchor.TOP_LEFT, margin=(12, 84), style=PANEL_STYLE))
         world_w, world_h = self.world.width * TILE, self.world.height * TILE
         self.minimap = Minimap(self.view.minimap_key, (world_w, world_h), self.camera, width=MINIMAP_WIDTH,
@@ -814,9 +814,23 @@ class GameScene(Scene):
             if x <= mx < x + w and y <= my < y + h:  # a disabled button still explains itself
                 self.tooltip = command.tooltip + (f"  ({blocked})" if blocked else "")
 
-    def _press_card_key(self, key: str) -> bool:
+    def _press_card_key(self, key: str, *, shift: bool = False) -> bool:
         for command in self._card:
             if command.key == key:
+                if shift and self.settlement_menu == "train" and command.target is not None:
+                    blocked = command.blocked()
+                    if blocked is not None:
+                        self.warn(blocked)
+                        return True
+                    try:
+                        for _ in range(5):
+                            self.order("order_unit", self.human, command.target)
+                    except RuleError as exc:
+                        self.warn(str(exc))
+                        return True
+                    self.say(f"5 x {self.race.units[command.target].name} ordered - pay when work starts - manage in Plans")
+                    self.sfx("button")
+                    return True
                 blocked = command.blocked()
                 if blocked is None:
                     command.action()
@@ -945,7 +959,9 @@ class GameScene(Scene):
             if event.key in GROUP_KEYS:
                 self._group(event.key, assign=event.ctrl or event.meta, add=event.shift)
                 return True
-            return self._press_card_key(event.key)
+            if event.ctrl or event.meta or event.alt:
+                return False
+            return self._press_card_key(event.key, shift=event.shift)
         if not event.is_mouse:
             return False
         point = to_tiles(event.world_x, event.world_y)  # type: ignore[arg-type]
@@ -1719,7 +1735,7 @@ HELP_INTRO = (
     "Plans wait for money and prerequisites. Defeat the enemy by destroying its buildings and units.",
 )
 HELP_KEYS = (
-    ("Settlement", "Build, Train, Upgrade without a selection; Plans shows work and Cancel"),
+    ("Settlement", "Ctrl+B build, Ctrl+T train, Ctrl+U upgrade without a selection; Ctrl+P Plans, Ctrl+G assembly; Shift+letter orders five in Train"),
     ("Assembly point", "choose a destination for new soldiers; workers keep working"),
     ("Left click / drag", "select a unit, a building, or every unit in the box"),
     ("Right click", "move, harvest, attack or resume building — the sensible thing for the target"),
