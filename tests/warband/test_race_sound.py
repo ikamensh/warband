@@ -27,7 +27,7 @@ def test_cues_are_voiced_for_every_race_but_humans_and_impacts_follow_the_strike
     assert sound.impact_sound(swing, Race.ORC) == "axe_flesh" and sound.impact_sound(swing, Race.DWARF) == "axe_flesh"
     assert sound.impact_sound(swing, Race.HUMAN) == "sword_flesh"
     assert "hammer" in sound.combat_sound.WEAPONS and all(f"hammer_{m}_0" in sound.SOUNDS for m in sound.combat_sound.MATERIALS)
-    assert set(music.RACE_TRACKS.values()) | {music.TITLE_TRACK} == set(music.TRACKS) and len(set(music.RACE_TRACKS.values())) == 4
+    assert {suite.battle for suite in music.SUITES.values()} | {music.TITLE_TRACK} <= set(music.TRACKS) and len(music.SUITES) == 4
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ def game(tmp_path):
 
 def test_a_match_speaks_and_marches_in_the_players_race(game, monkeypatch) -> None:
     played = []
-    monkeypatch.setattr(sound, "music_hook", played.append)
+    monkeypatch.setattr(sound, "music_hook", lambda mood, race: played.append((mood, race)))
     world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2, rng=random.Random(1), races=(Race.DWARF, Race.ORC))
     world.place_building(0, BuildingType.TOWN_HALL, (4, 4))
     world.place_building(1, BuildingType.TOWN_HALL, (25, 18))
@@ -47,7 +47,7 @@ def test_a_match_speaks_and_marches_in_the_players_race(game, monkeypatch) -> No
     scene.brains = []
     game.push(scene)
     game.tick(1 / 60)
-    assert played == ["anvil"]
+    assert set(played) == {("peace", Race.DWARF)}  # asked on entry and again every frame, so a fight can change it
     scene.sfx("command")
     scene.sfx("sword_flesh")
     assert list(scene.recent_sounds) == ["dwarf_command", "sword_flesh"]
@@ -61,7 +61,7 @@ def test_a_match_speaks_and_marches_in_the_players_race(game, monkeypatch) -> No
     assert "dwarf_under_attack" in scene.recent_sounds
     game.clear_and_push(TitleScene())
     game.tick(1 / 60)
-    assert played[-1] == "vigil"
+    assert played[-1] == ("title", None)
     game.clear_and_push(new_game(seed=2, races=[Race.ELF, None]))
     game.tick(1 / 60)
-    assert played[-1] == "moonlight"
+    assert played[-1] == ("peace", Race.ELF)

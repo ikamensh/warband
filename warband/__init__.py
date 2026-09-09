@@ -11,5 +11,7 @@
 * ``view``     — sprite reconciliation, fog of war and the world-space overlays.
 * ``scene``    — saga2d scenes: the game, its HUD and command card, pause and help.
 * ``title``    — title screen and match setup.
-* ``sound``    — procedurally synthesised effects.
+* ``sound``    — the sound bank: synthesised effects, cached music, the hooks scenes call.
+* ``music``    — the score: a suite per race, the title's night watch, two endings, and the director that plays them by mood.
+* ``instruments`` — the orchestra the music is written for.
 """

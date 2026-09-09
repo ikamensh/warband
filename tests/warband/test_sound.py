@@ -8,7 +8,8 @@ import pytest
 
 from saga2d import Game, synth
 from saga2d.synth import pan, tone
-from warband import sound
+from warband import music, sound
+from warband.rules import Race
 from warband.sound import SoundBank
 
 
@@ -48,22 +49,24 @@ def test_every_scene_event_has_an_effect_that_is_normalised_and_click_free(gener
         assert np.abs(np.diff(mono)).max() < 0.5, name
 
 
-@pytest.mark.parametrize("track", sorted(sound.MUSIC))
-def test_the_tracks_are_stereo_quiet_and_loop_seamlessly(generated: Path, track: str) -> None:
-    data, rate = read_wav(generated / "music" / f"{track}.wav")
-    assert data.shape[1] == 2 and 40 <= len(data) / rate <= 46
-    assert 0.3 <= np.abs(data).max() <= 0.6
-    assert np.abs(data[-1] - data[0]).max() <= np.abs(np.diff(data, axis=0)).max()
+def test_the_cached_tracks_are_the_catalogue_stereo_and_quiet(generated: Path) -> None:
+    for track, piece in music.PIECES.items():
+        data, rate = read_wav(generated / "music" / f"{track}.wav")
+        assert data.shape == (round(piece.seconds * rate), 2), track
+        assert 0.4 <= np.abs(data).max() <= 0.8, track
 
 
 def test_install_routes_scene_events_to_the_bank(game: Game, generated: Path, monkeypatch) -> None:
     monkeypatch.setattr(Path, "home", lambda: generated.parent)
     bank = SoundBank(game, data_dir=generated)
     monkeypatch.setattr(sound, "sound_hook", lambda name: bank.play(name))
+    monkeypatch.setattr(sound, "music_hook", bank.music)
     sound.play_sound("command")
     assert game.backend.sounds_played[-1]["handle"] == game.backend.load_sound(str(generated / "sounds" / "command.wav"))
-    bank.start_music()
-    assert bank.music_playing == "vigil"  # the title's night watch; a match starts its race's march
+    sound.play_music("title")
+    assert bank.music_playing == "vigil"  # the title's night watch; a match starts its race's suite
+    sound.play_music("peace", Race.DWARF)
+    assert bank.music_playing == "deepforge"
 
 
 def test_combat_playback_varies_takes_and_respects_sfx_volume(game, generated):
@@ -88,8 +91,9 @@ def test_bank_generates_once_regenerates_on_a_new_version_and_plays(game: Game, 
     sounds = {"ping": lambda: tone("A5", 0.05), "pong": lambda: tone("E5", 0.05)}
     music = {"loop": lambda: pan(tone("A3", 0.3), 0.0)}
     bank = sound.SynthBank(game, tmp_path, version="1", sounds=sounds, music=music, aliases={"click": "ping"})
-    files = sound.sound_files(tmp_path, sounds, music)
+    files = sound.sound_files(tmp_path, sounds, {})
     assert all(f.exists() for f in files) and (tmp_path / "sounds" / "VERSION").read_text() == "1"
+    assert not (tmp_path / "music" / "loop.wav").exists()  # tracks are composed when wanted
     stamps = {f: f.stat().st_mtime_ns for f in files}
     sound.SynthBank(game, tmp_path, version="1", sounds=sounds, music=music)
     assert {f: f.stat().st_mtime_ns for f in files} == stamps
@@ -100,7 +104,7 @@ def test_bank_generates_once_regenerates_on_a_new_version_and_plays(game: Game, 
         bank.play("bang")
     bank.start_music("loop")
     bank.start_music("loop")
-    assert bank.music_playing == "loop" and backend.music_playing is not None
+    assert bank.music_playing == "loop" and backend.music_playing is not None and len(backend.music_players) == 1
     with pytest.raises(KeyError, match="Unknown track"):
         bank.start_music("nope")
     bank.stop_music()
@@ -108,3 +112,4 @@ def test_bank_generates_once_regenerates_on_a_new_version_and_plays(game: Game, 
     (tmp_path / "sounds" / "ping.wav").write_bytes(b"stale")
     sound.SynthBank(game, tmp_path, version="2", sounds=sounds, music=music)
     assert (tmp_path / "sounds" / "VERSION").read_text() == "2" and (tmp_path / "sounds" / "ping.wav").stat().st_size > 100
+    assert not (tmp_path / "music" / "loop.wav").exists()  # a new version throws the cached tracks away too

@@ -72,7 +72,8 @@ def selftest(png: str) -> None:
     for _ in range(5):
         game.tick(1 / 60)
     game.backend.capture_frame().save(png)
-    print(f"warband selftest: {len(bank.names)} sounds, frame written to {png}")
+    bank.wait()
+    print(f"warband selftest: {len(bank.names)} sounds, {len(bank.ready)} tracks, frame written to {png}")
     game._teardown()
     game.backend.quit()
 

@@ -137,6 +137,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
         try:
             fonts.load(game)
             bank = sound.install(game)
+            bank.wait()  # the whole catalogue must compose in the packaged build; keep the frames below undisturbed
             settings = game.settings(DEFAULT_SETTINGS)
 
             def frames(count=3):

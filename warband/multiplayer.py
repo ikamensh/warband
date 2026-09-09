@@ -209,9 +209,8 @@ class NetworkGameScene(GameScene):
         if self._game_over:
             return
         if self.world.winner is not None or not self.player.alive:
-            self._game_over = True
             won = self.world.winner == self.human
-            self.sfx("victory" if won else "defeat")
+            self._finish(won)
             self.game.push(NetworkResultScene(self, won))
 
     def toggle_pause(self):

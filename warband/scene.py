@@ -19,7 +19,6 @@ from warband.ai import Brain
 from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
 from warband.races import RACES, RaceInfo
 from warband.rules import BUILDINGS, SIM_DT, UPGRADES, BuildingType, Difficulty, MapTheme, Race, UnitType, Upgrade
-from warband.music import RACE_TRACKS
 from warband.sound import IMPACTS, apply_volumes, impact_sound, play_music, play_sound
 from warband.voices import voiced
 from warband.style import ACTION_BUTTON, BAD, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE
@@ -143,6 +142,8 @@ class GameScene(Scene):
         self._portraits: list[tuple[int, tuple[int, int, int, int]]] = []
         self._sound_times: dict[str, float] = {}
         self._battle_voices: deque[float] = deque()
+        self._fights: deque[float] = deque()
+        self._battle_until = -math.inf
         self._last_click: tuple[float, int | None] = (-10.0, None)
         self.bookmarks: dict[int, tuple[float, float]] = {}
         self._warm = None  # renders the unit images over the first frames
@@ -160,7 +161,7 @@ class GameScene(Scene):
         from warband import textures
 
         self._warm = textures.warm_units(self.game, [p.id for p in self.world.players], [p.race for p in self.world.players])
-        play_music(RACE_TRACKS[self.player.race])
+        play_music("peace", self.player.race)
 
     def _setup_camera(self) -> None:
         w, h = self.game.resolution
@@ -994,6 +995,8 @@ class GameScene(Scene):
                     break
         self._advance(dt)
         self._handle_events(self.world.take_events())
+        if not self._game_over:
+            play_music(self.mood, self.player.race)
         self._prune_selection()
         self.effects.update(dt)
         self.view.sync(dt)
@@ -1019,11 +1022,30 @@ class GameScene(Scene):
             if steps == MAX_STEPS_PER_FRAME:
                 self._acc = 0.0
 
+    @property
+    def mood(self) -> str:
+        """``"battle"`` after three blows struck by or on the player's forces within three
+        seconds, and for ten seconds past the last; otherwise ``"peace"``."""
+        while self._fights and self.clock - self._fights[0] > 3.0:
+            self._fights.popleft()
+        if len(self._fights) >= 3:
+            self._battle_until = self.clock + 10.0
+        return "battle" if self.clock < self._battle_until else "peace"
+
+    def _mine(self, event: Event) -> bool:
+        """Whether the player's forces struck or took this blow."""
+        if event.player == self.human:
+            return True
+        striker = self.world.entity(event.entity) if event.entity is not None else None
+        return striker is not None and striker.player == self.human
+
     def _handle_events(self, events: list[Event]) -> None:
         view = self.view
         for e in events:
             mine = e.player == self.human
             if e.kind == "hit":
+                if self._mine(e):
+                    self._fights.append(self.clock)
                 self._show_hit(e)
             elif e.kind == "death":
                 self._show_death(e)
@@ -1154,10 +1176,14 @@ class GameScene(Scene):
         if self._game_over:
             return
         if self.world.winner is not None or not self.player.alive:
-            self._game_over = True
             won = self.world.winner == self.human
-            self.sfx("victory" if won else "defeat")
+            self._finish(won)
             self.game.push(GameOverScene(self, won))
+
+    def _finish(self, won: bool) -> None:
+        self._game_over = True
+        self.sfx("victory" if won else "defeat")
+        play_music("victory" if won else "defeat")
 
     # -- Drawing ---------------------------------------------------------------------------
 
