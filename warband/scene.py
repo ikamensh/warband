@@ -17,6 +17,7 @@ from saga2d.effects import Banner, Burst, Dissolve, Effects, FloatingText, HitRe
 from warband import mapgen
 from warband.ai import Brain
 from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
+from warband.production import ProductionButton, ProductionTarget, draw_production_icon
 from warband.races import RACES, RaceInfo
 from warband.rules import BUILDINGS, SIM_DT, UPGRADES, BuildingType, Difficulty, MapTheme, Race, UnitType, Upgrade
 from warband.sound import IMPACTS, apply_volumes, impact_sound, play_music, play_sound
@@ -52,6 +53,7 @@ UPGRADE_NAMES = {Upgrade.BLADES_1: "Blades I", Upgrade.BLADES_2: "Blades II", Up
                  Upgrade.BLOODLUST: "Bloodlust", Upgrade.PLUNDER: "Plunder", Upgrade.LONGBOWS: "Longbows", Upgrade.REGROWTH: "Regrowth",
                  Upgrade.DEEP_MINING: "Mining", Upgrade.BLASTING_POWDER: "Powder"}
 CARD_WIDTH = 116
+CARD_ICON = 58  # height of a portrait button; the name sits under it
 MINIMAP_WIDTH = 200
 SELECTION_WIDTH = 470
 SELECTION_HEIGHT = 128
@@ -73,6 +75,7 @@ class Command:
     cost: str = ""
     blocked: Callable[[], str | None] = field(default=lambda: None)  # why it cannot be used right now
     style: Style = field(default_factory=lambda: CARD_BUTTON)
+    target: ProductionTarget | None = None  # a unit, building or upgrade: the button shows its portrait or emblem
 
     @property
     def key(self) -> str:
@@ -249,6 +252,11 @@ class GameScene(Scene):
         self.ui.add(self.selection_panel)
         self.card_panel = Column(spacing=6, anchor=Anchor.BOTTOM_RIGHT, margin=PANEL_MARGIN, style=PANEL_STYLE)
         self.ui.add(self.card_panel)
+        # What a hovered command or queued job is, wrapped above the selection panel where a long line fits.
+        self.command_tooltip = Panel(anchor=Anchor.BOTTOM_CENTER, margin=(0, PANEL_MARGIN[1] + SELECTION_HEIGHT + 8), layout=Layout.VERTICAL,
+                                     style=PANEL_STYLE, visible=False,
+                                     children=[Label(lambda: self.tooltip, text_style="body", wrap=True, width=SELECTION_WIDTH - 24)])
+        self.ui.add(self.command_tooltip)
         self.ui.add(KeyHints(self._hint, anchor=Anchor.BOTTOM_CENTER, margin=5))
         self.ui.add(Label(lambda: self.status if self.status_timer > 0 else "", text_style="hud", anchor=Anchor.TOP_LEFT,
                           margin=(12, 146), width=760, wrap=True, text_color=GOLD))
@@ -670,7 +678,8 @@ class GameScene(Scene):
                 action = lambda up=item: self.order_production("upgrade", up)
             commands.append(Command(name, key, action, tooltip=f"{info.name} — {info.cost} · {info.summary}",
                                     cost=f"{info.cost.gold} / {info.cost.lumber}",
-                                    blocked=(lambda up=item: self._upgrade_planned(up)) if self.settlement_menu == "upgrade" else lambda: None))
+                                    blocked=(lambda up=item: self._upgrade_planned(up)) if self.settlement_menu == "upgrade" else lambda: None,
+                                    target=item))
         commands.append(Command("Back", "Esc", lambda: self.open_settlement(None), tooltip="Back to selection commands"))
         return commands
 
@@ -688,6 +697,7 @@ class GameScene(Scene):
                 commands.append(Command(
                     self.race.cards[building_type], info.hotkey.upper(), lambda bt=building_type: self.start_pending(f"build:{bt.value}"),
                     tooltip=f"{info.name} — {info.cost} · {info.summary}", blocked=lambda bt=building_type: self._build_blocked(bt),
+                    target=building_type,
                 ))
             commands.append(Command("Back", "Esc", self.close_build_menu, tooltip="Back to the unit commands"))
             return commands
@@ -712,7 +722,7 @@ class GameScene(Scene):
                 info = self.race.units[unit_type]
                 commands.append(Command(info.name, info.hotkey.upper(), lambda ut=unit_type: self.train(ut),
                                         tooltip=f"{info.name} — {info.cost} · {info.summary}",
-                                        blocked=lambda ut=unit_type, b=building: world.can_train(b, ut)))
+                                        blocked=lambda ut=unit_type, b=building: world.can_train(b, ut), target=unit_type))
             for upgrade in building.info.researches:
                 info = UPGRADES[upgrade]
                 if upgrade in self.player.upgrades or not self.race.upgrade_allowed(upgrade):
@@ -721,9 +731,9 @@ class GameScene(Scene):
                         UPGRADES[u].requires is None and u not in self.player.upgrades and u in building.info.researches and UPGRADES[u].hotkey == info.hotkey
                         for u in building.info.researches):
                     continue  # the tier below has the same key; show it once its prerequisite is done
-                commands.append(Command(info.name, info.hotkey.upper(), lambda up=upgrade: self.research(up),
+                commands.append(Command(UPGRADE_NAMES[upgrade], info.hotkey.upper(), lambda up=upgrade: self.research(up),
                                         tooltip=f"{info.name} — {info.cost} · {info.summary}",
-                                        blocked=lambda up=upgrade, b=building: world.can_research(b, up)))
+                                        blocked=lambda up=upgrade, b=building: world.can_research(b, up), target=upgrade))
             if building.info.trains or building.info.researches:
                 commands.append(Command("Cancel", "X", self.cancel_work, tooltip="Cancel the last unit queued, or the research",
                                         blocked=lambda b=building: None if b.queue or b.research is not None else "Nothing in progress"))
@@ -739,8 +749,8 @@ class GameScene(Scene):
     def _refresh_card(self) -> None:
         commands = self._commands()
         self.card_panel.visible = bool(commands)
-        signature = [(c.label, c.hotkey, c.cost) for c in commands]
-        if signature == [(c.label, c.hotkey, c.cost) for c in self._card]:
+        signature = [(c.label, c.hotkey, c.cost, c.target) for c in commands]
+        if signature == [(c.label, c.hotkey, c.cost, c.target) for c in self._card]:
             self._card = commands
             for command, button in zip(commands, self._card_buttons):
                 button.on_click = command.action
@@ -755,28 +765,33 @@ class GameScene(Scene):
         if self.settlement_menu is not None:
             self.card_panel.add(Label(f"{self.settlement_menu.title()} plans", text_style="heading"))
             self.card_panel.add(Label("Cost: gold / lumber · paid when work starts", text_style="caption", width=360, wrap=True))
+        portraits = any(c.target is not None for c in commands)
         for start in range(0, len(commands), CARD_COLS):
             row = Row(spacing=6)
             for command in commands[start:start + CARD_COLS]:
-                # Long catalogue names keep their keyboard action but leave out
-                # the badge when text, keycap, gap and padding would not fit.
-                hotkey = command.hotkey or None
-                if hotkey and self.game.backend.measure_text(command.label, 14, CARD_BUTTON.font)[0] > CARD_WIDTH - 42:
-                    hotkey = None
-                button = Button(command.label, hotkey=hotkey, on_click=command.action, style=command.style, width=CARD_WIDTH)
-                self._card_buttons.append(button)
-                if command.cost:
-                    row.add(Column(button, Label(command.cost, text_style="caption", width=CARD_WIDTH, align="center"), spacing=3))
+                captions = []
+                if command.target is not None:
+                    # A portrait or emblem with the hotkey in its corner; the name and any cost sit under it.
+                    button = ProductionButton(command.target, self.human, self.player.race, hotkey=command.hotkey or None, on_click=command.action,
+                                              style=command.style, width=CARD_WIDTH, height=CARD_ICON)
+                    captions.append(Label(command.label, text_style="caption", width=CARD_WIDTH, align="center"))
                 else:
-                    row.add(button)
+                    button = Button(command.label, hotkey=command.hotkey or None, on_click=command.action, style=command.style, width=CARD_WIDTH,
+                                    height=CARD_ICON if portraits else None)
+                if command.cost:
+                    captions.append(Label(command.cost, text_style="caption", width=CARD_WIDTH, align="center"))
+                self._card_buttons.append(button)
+                row.add(Column(button, *captions, spacing=3) if captions else button)
             self.card_panel.add(row)
 
     def _update_card(self) -> None:
         self.tooltip = ""
+        mx, my = self.mouse
         for command, button in zip(self._card, self._card_buttons):
             blocked = command.blocked()
             button.enabled = blocked is None
-            if button.state == "hovered":
+            x, y, w, h = button.bounds
+            if x <= mx < x + w and y <= my < y + h:  # a disabled button still explains itself
                 self.tooltip = command.tooltip + (f"  ({blocked})" if blocked else "")
 
     def _press_card_key(self, key: str) -> bool:
@@ -1233,13 +1248,14 @@ class GameScene(Scene):
     def _draw_selection_panel(self) -> None:
         panel = self.selection_panel
         x, y, w, h = panel.bounds
+        self.command_tooltip.visible = bool(self.tooltip)  # set again below: the production readout adds hover hints while drawing
         self.draw_rect(x, y, w, h, PANEL_STYLE.background_color, border_color=PANEL_STYLE.border_color,
                        border_width=1, radius=10)
         self._portraits = []
         if self.settlement_menu is not None:
             self.draw_text(f"{self.settlement_menu.title()} plans", x + 16, y + 30, style="heading")
-            text = self.tooltip or "Choose a plan without selecting a worker or building. Plans wait for resources and prerequisites."
-            self.draw_paragraph(text, x + 16, y + 46, w - 32, style="body")
+            self.draw_paragraph("Choose a plan without selecting a worker or building. Plans wait for resources and prerequisites.",
+                                x + 16, y + 46, w - 32, style="body")
             return
         entities = [e for e in (self.world.entity(i) for i in self.selection) if e is not None]
         if not entities:
@@ -1248,7 +1264,7 @@ class GameScene(Scene):
             if self.world.in_bounds(tile) and self.world.is_explored(self.human, tile):
                 text = f"{self.world.terrain_at(tile).value.title()} ({tile[0]}, {tile[1]})"
             self.draw_text(text, x + 16, y + 30, style="heading")
-            self.draw_text(self.tooltip or "Drag to select units · right-click to order them", x + 16, y + 58, style="sub")
+            self.draw_text("Drag to select units · right-click to order them", x + 16, y + 58, style="sub")
             return
         if len(entities) == 1:
             self._draw_entity_card(entities[0], x + 16, y + 14)
@@ -1263,15 +1279,38 @@ class GameScene(Scene):
                 frac = entity.hp / max(1, entity.max_hp)
                 self.draw_rect(px, py + size + 3, size, 3, (0, 0, 0, 160))
                 self.draw_rect(px, py + size + 3, size * frac, 3, GOOD if frac > 0.5 else BAD)
-        self.draw_text(self.tooltip, x + 16, y + h - 16, style="sub", color=GOLD)
+        self.command_tooltip.visible = bool(self.tooltip)
 
     def _portrait(self, entity: Entity, x: float, y: float, size: float) -> None:
-        from warband import textures
+        draw_production_icon(self, entity.type, entity.player, entity.race, x, y, size)
 
-        key = textures.portrait_image(self.game, entity.type, entity.player, entity.race)
-        pw, ph = self.game.backend.get_image_size(self.game.assets.image(key))
-        scale = min(size / pw, size / ph)
-        self.draw_image(key, x + (size - pw * scale) / 2, y + (size - ph * scale) / 2, pw * scale, ph * scale)
+    def _draw_production(self, building: Building, x: float, y: float) -> None:
+        """What a building is making: the target's portrait with its progress, then the queue's portraits."""
+        world = self.world
+        if building.queue:
+            target = building.queue[0]
+            info = world.unit_info(building.player, target)
+            progress, hint = building.train_progress / info.build_time, f"Training {info.name}"
+        else:
+            target = building.research
+            assert target is not None
+            progress, hint = building.research_progress / UPGRADES[target].time, f"Researching {UPGRADES[target].name}"
+        self.draw_rect(x, y, 36, 36, (255, 214, 110, 18), border_color=(255, 214, 110, 140), border_width=1, radius=5)
+        draw_production_icon(self, target, building.player, building.race, x + 3, y + 3, 30)
+        self.draw_text(f"{int(progress * 100)}%", x + 44, y + 15, style="body")
+        self.draw_rect(x + 44, y + 24, 94, 6, (0, 0, 0, 160), radius=3)
+        self.draw_rect(x + 44, y + 24, 94 * progress, 6, GOLD, radius=3)
+        mx, my = self.mouse
+        if x <= mx < x + 138 and y <= my < y + 36:
+            self.tooltip = f"{hint} · {int(progress * 100)}%"
+        if len(building.queue) > 1:
+            self.draw_text("›", x + 144, y + 25, style="heading")
+        for i, queued in enumerate(building.queue[1:]):
+            qx, qy = x + 164 + i * 40, y + 3
+            self.draw_rect(qx, qy, 30, 30, (255, 255, 255, 12), border_color=(255, 255, 255, 40), border_width=1, radius=4)
+            draw_production_icon(self, queued, building.player, building.race, qx + 2, qy + 2, 26)
+            if qx <= mx < qx + 30 and qy <= my < qy + 30:
+                self.tooltip = f"Queued {i + 1}: {world.unit_info(building.player, queued).name}"
 
     def _draw_entity_card(self, entity: Entity, x: float, y: float) -> None:
         world = self.world
@@ -1315,21 +1354,12 @@ class GameScene(Scene):
             if not entity.done:
                 frac = entity.progress / entity.info.build_time
                 lines.append(f"Under construction {int(frac * 100)}%" + ("" if entity.builder is not None else " — no builder: right-click it with a peasant"))
-            elif entity.queue:
-                training = world.unit_info(entity.player, entity.queue[0])
-                progress = entity.train_progress / training.build_time
-                lines.append(f"Training {training.name} {int(progress * 100)}%" + (f" (+{len(entity.queue) - 1} queued)" if len(entity.queue) > 1 else ""))
-                self.draw_rect(tx, y + 62, 180, 6, (0, 0, 0, 160), radius=3)
-                self.draw_rect(tx, y + 62, 180 * progress, 6, GOLD, radius=3)
-            elif entity.research is not None:
-                progress = entity.research_progress / UPGRADES[entity.research].time
-                lines.append(f"Researching {UPGRADES[entity.research].name} {int(progress * 100)}%")
-                self.draw_rect(tx, y + 62, 180, 6, (0, 0, 0, 160), radius=3)
-                self.draw_rect(tx, y + 62, 180 * progress, 6, GOLD, radius=3)
+            elif entity.queue or entity.research is not None:
+                self._draw_production(entity, tx, y + 44)
             elif entity.player == self.human:
                 lines.append(entity.info.summary)
-            if entity.type is BuildingType.TOWN_HALL and entity.player == self.human:
-                lines.append("Rally point set" if entity.rally is not None else "Right-click the map to set a rally point")
+                if entity.type is BuildingType.TOWN_HALL:
+                    lines.append("Rally point set" if entity.rally is not None else "Right-click the map to set a rally point")
         ly = y + 50
         for line in lines[:2]:
             self.draw_text(line, tx, ly, style="body")

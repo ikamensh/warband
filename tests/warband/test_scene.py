@@ -62,6 +62,15 @@ def drag_box(game: Game, scene: GameScene, a, b) -> None:
     game.tick(1 / 60)
 
 
+def production_shown(game: Game, scene: GameScene, target) -> bool:
+    """The selection panel draws *target*'s portrait or emblem (the building is making it)."""
+    from warband.production import production_image
+
+    handle = game.assets.image(production_image(game, target, scene.human, scene.player.race))
+    px, py, pw, ph = scene.selection_panel.bounds
+    return any(i["image"] == handle and px <= i["x"] < px + pw and py <= i["y"] < py + ph for i in game.backend.images)
+
+
 def hall_of(scene: GameScene):
     return scene.world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
 
@@ -196,7 +205,7 @@ def test_the_town_hall_trains_a_peasant_with_p_and_the_rally_point_by_right_clic
     gold = scene.player.gold
     press(game, "p")
     assert hall.queue == [UnitType.PEASANT] and scene.player.gold == gold - 400
-    assert any(t.startswith("Training Peasant") for t in texts(game))
+    assert production_shown(game, scene, UnitType.PEASANT) and "0%" in texts(game)
     click(game, scene, world.mines()[0].center, "right")
     assert hall.rally == world.mines()[0].center
     press(game, "x")
@@ -408,16 +417,17 @@ def test_a_blacksmith_researches_with_a_hotkey_and_the_panel_shows_progress(play
     game.tick(1 / 60)
     click(game, scene, smith.center)
     labels = [c.label for c in scene._card]
-    assert labels == ["Sharpened Blades", "Plate Armour", "Cancel"]  # tier two waits for tier one
+    assert labels == ["Blades I", "Armour I", "Cancel"]  # tier two waits for tier one
+    assert [c.target for c in scene._card][:2] == [Upgrade.BLADES_1, Upgrade.ARMOR_1]
     press(game, "b")
     assert smith.research is Upgrade.BLADES_1
     game.tick(1 / 60)
-    assert any(t.startswith("Researching Sharpened Blades") for t in texts(game))
+    assert production_shown(game, scene, Upgrade.BLADES_1) and "0%" in texts(game)
     press(game, "x")
     assert smith.research is None
     scene.player.upgrades.add(Upgrade.BLADES_1)
     scene.select([smith.id])
-    assert [c.label for c in scene._card][0] == "Tempered Blades"
+    assert [c.label for c in scene._card][0] == "Blades II" and scene._card[0].tooltip.startswith("Tempered Blades")
 
 
 def test_the_codex_lists_every_unit_building_and_upgrade(play) -> None:

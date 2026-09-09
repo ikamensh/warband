@@ -29,7 +29,10 @@ def settlement(tmp_path, request):
 
 
 def click(game, text):
-    button = next(b for b in game.scene.ui.walk() if isinstance(b, Button) and b.text == text)
+    """Click a labelled button, or a command-card portrait by the caption under it."""
+    button = next((b for b in game.scene.ui.walk() if isinstance(b, Button) and b.text == text), None)
+    if button is None:
+        button = next(b for c, b in zip(game.scene._card, game.scene._card_buttons) if c.label == text)
     click_button(game, button)
 
 

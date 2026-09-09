@@ -70,6 +70,12 @@ and roof tints, race dressing around every yard (bone spikes and a skull pole,
 saplings and a moon standard, rune pillars with copper caps) and their own
 hall, supply building, tower, stable beast and shrine ornament.
 
+The command card shows a portrait for every unit and building and a painted
+emblem for every upgrade (`warband/production.py`), with the hotkey in the
+corner and the name and cost under it; a selected building shows what it is
+making as a portrait with its progress, then the portraits of its queue.  This
+UI was first built on the unmerged `warband` branch and ported onto the races.
+
 The player's own cues — select, command, attack, trained, built, under
 attack — play in the race's voice (`warband/voices.py`): drums and growls for
 orcs, bells, harp and flute for elves, anvil and horn for dwarves; humans keep

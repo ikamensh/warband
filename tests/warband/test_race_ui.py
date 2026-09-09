@@ -82,7 +82,9 @@ def test_buildings_offer_the_race_units_and_only_its_own_arts(game) -> None:
     press(game, "h")
     assert kennels.research is Upgrade.PLUNDER
     game.tick(1 / 60)
-    assert any(t.startswith("Researching Plunder") for t in texts(game))
+    scene.mouse = (scene.selection_panel.bounds[0] + 120, scene.selection_panel.bounds[1] + 70)  # over the readout
+    game.tick(1 / 60)
+    assert scene.tooltip.startswith("Researching Plunder")
     scene.select([])
     scene.open_settlement("upgrade")
     labels = [c.label for c in scene._card]

@@ -90,43 +90,43 @@ def _race(name: str, adjective: str, tagline: str, passive: str, arts: tuple[Upg
 
 
 _HUMAN_UNITS = {
-    UnitType.PEASANT: UnitTweak("Peasant", "Mines gold, chops lumber, builds and repairs", build_time=0.85),
+    UnitType.PEASANT: UnitTweak("Peasant", "Mines gold, chops lumber, builds, repairs", build_time=0.85),
     UnitType.FOOTMAN: UnitTweak("Footman", "Sturdy swordsman; the line of any army", build_time=0.85),
-    UnitType.ARCHER: UnitTweak("Archer", "Shoots from four tiles away; fragile up close", build_time=0.85),
-    UnitType.SCOUT: UnitTweak("Scout", "Fast rider who sees far; raids peasants and archers", build_time=0.85),
+    UnitType.ARCHER: UnitTweak("Archer", "Shoots from four tiles; fragile up close", build_time=0.85),
+    UnitType.SCOUT: UnitTweak("Scout", "Fast rider who sees far; raids workers", build_time=0.85),
     UnitType.KNIGHT: UnitTweak("Knight", "Fast, heavily armoured shock cavalry", build_time=0.85),
-    UnitType.CATAPULT: UnitTweak("Catapult", "Slow siege engine: splash damage, ×1.5 against buildings", build_time=0.85),
+    UnitType.CATAPULT: UnitTweak("Catapult", "Siege engine: splash, ×1.5 vs buildings", build_time=0.85),
     UnitType.CLERIC: UnitTweak("Cleric", "Heals wounded allies nearby; cannot fight", build_time=0.85),
 }
 _HUMAN_BUILDINGS = {
-    BuildingType.TOWN_HALL: BuildingTweak("Town Hall", "Hall", "Trains peasants; gold and lumber are delivered here"),
+    BuildingType.TOWN_HALL: BuildingTweak("Town Hall", "Hall", "Trains peasants; takes gold and lumber"),
     BuildingType.FARM: BuildingTweak("Farm", "Farm", "Feeds four units"),
     BuildingType.BARRACKS: BuildingTweak("Barracks", "Barracks", "Trains footmen and archers"),
     BuildingType.TOWER: BuildingTweak("Guard Tower", "Tower", "Shoots at enemies six tiles away"),
-    BuildingType.LUMBER_MILL: BuildingTweak("Lumber Mill", "Mill", "Lumber is delivered here; researches better arrows"),
+    BuildingType.LUMBER_MILL: BuildingTweak("Lumber Mill", "Mill", "Takes lumber; researches better arrows"),
     BuildingType.BLACKSMITH: BuildingTweak("Blacksmith", "Smith", "Researches sharper blades and plate armour"),
-    BuildingType.STABLES: BuildingTweak("Stables", "Stables", "Trains scouts and knights; breeds faster horses"),
+    BuildingType.STABLES: BuildingTweak("Stables", "Stables", "Trains scouts and knights; breeds horses"),
     BuildingType.WORKSHOP: BuildingTweak("Workshop", "Workshop", "Builds catapults; improves siege engines"),
     BuildingType.CHURCH: BuildingTweak("Church", "Church", "Trains clerics; blesses their healing"),
 }
 
 _ORC_UNITS = {
     UnitType.PEASANT: UnitTweak("Peon", "Digs gold, hacks lumber, builds and repairs", hp=1.15),
-    UnitType.FOOTMAN: UnitTweak("Grunt", "Brutal axeman; hits harder the more it bleeds", hp=1.15, damage=1.1, armor=-1, build_time=1.1),
-    UnitType.ARCHER: UnitTweak("Axethrower", "Hurls axes from four tiles away; tougher than a bowman", hp=1.15, build_time=1.1),
-    UnitType.SCOUT: UnitTweak("Wolf Rider", "Fast wolf and rider who see far; hunt peons and throwers", hp=1.15, build_time=1.1),
-    UnitType.KNIGHT: UnitTweak("Ogre", "Two-headed brute; no horse, no armour to speak of, and a frenzy to fear", hp=1.2, damage=1.1, armor=-2, build_time=1.1),
-    UnitType.CATAPULT: UnitTweak("Catapult", "Skull-crested siege engine: splash damage, ×1.5 against buildings", hp=1.15, build_time=1.1),
+    UnitType.FOOTMAN: UnitTweak("Grunt", "Brutal axeman; hits harder as it bleeds", hp=1.15, damage=1.1, armor=-1, build_time=1.1),
+    UnitType.ARCHER: UnitTweak("Axethrower", "Throws axes four tiles; a sturdy shooter", hp=1.15, build_time=1.1),
+    UnitType.SCOUT: UnitTweak("Wolf Rider", "Fast wolf rider; hunts peons and throwers", hp=1.15, build_time=1.1),
+    UnitType.KNIGHT: UnitTweak("Ogre", "Two-headed brute; no armour, all frenzy", hp=1.2, damage=1.1, armor=-2, build_time=1.1),
+    UnitType.CATAPULT: UnitTweak("Catapult", "Skulled siege engine: splash, ×1.5 vs walls", hp=1.15, build_time=1.1),
     UnitType.CLERIC: UnitTweak("Shaman", "Mends wounded allies nearby; cannot fight", hp=1.15, build_time=1.1),
 }
 _ORC_BUILDINGS = {
-    BuildingType.TOWN_HALL: BuildingTweak("Great Hall", "Hall", "Trains peons; gold and lumber are delivered here"),
+    BuildingType.TOWN_HALL: BuildingTweak("Great Hall", "Hall", "Trains peons; takes gold and lumber"),
     BuildingType.FARM: BuildingTweak("Pig Farm", "Pig Farm", "Feeds four units"),
     BuildingType.BARRACKS: BuildingTweak("War Camp", "War Camp", "Trains grunts and axethrowers"),
     BuildingType.TOWER: BuildingTweak("Watch Tower", "Tower", "Hurls axes at enemies six tiles away"),
-    BuildingType.LUMBER_MILL: BuildingTweak("Sawmill", "Sawmill", "Lumber is delivered here; researches heavier axes"),
-    BuildingType.BLACKSMITH: BuildingTweak("Forge", "Forge", "Researches crueller blades, hide armour and Bloodlust"),
-    BuildingType.STABLES: BuildingTweak("Kennels", "Kennels", "Trains wolf riders and ogres; teaches Plunder"),
+    BuildingType.LUMBER_MILL: BuildingTweak("Sawmill", "Sawmill", "Takes lumber; researches heavier axes"),
+    BuildingType.BLACKSMITH: BuildingTweak("Forge", "Forge", "Researches blades, hide armour, Bloodlust"),
+    BuildingType.STABLES: BuildingTweak("Kennels", "Kennels", "Trains wolf riders and ogres; Plunder"),
     BuildingType.WORKSHOP: BuildingTweak("Siege Yard", "Yard", "Builds catapults; improves siege engines"),
     BuildingType.CHURCH: BuildingTweak("Altar", "Altar", "Trains shamans"),
 }
@@ -134,18 +134,18 @@ _ORC_BUILDINGS = {
 _ELF_UNITS = {
     UnitType.PEASANT: UnitTweak("Gatherer", "Mines gold, fells trees, builds and repairs", hp=0.95, speed=0.3, sight=2),
     UnitType.FOOTMAN: UnitTweak("Sentinel", "Light swordsman; quick on their feet", hp=0.95, speed=0.3, sight=2),
-    UnitType.ARCHER: UnitTweak("Ranger", "Shoots from five tiles away; fragile up close", hp=0.95, range=1.0, speed=0.3, sight=2),
+    UnitType.ARCHER: UnitTweak("Ranger", "Shoots from five tiles; fragile up close", hp=0.95, range=1.0, speed=0.3, sight=2),
     UnitType.SCOUT: UnitTweak("Outrider", "Fleet deer rider who sees farthest of all", hp=0.95, speed=0.3, sight=2),
-    UnitType.KNIGHT: UnitTweak("Stag Knight", "Antlered shock cavalry, swift but lightly built", hp=0.95, speed=0.3, sight=2),
-    UnitType.CATAPULT: UnitTweak("Ballista", "Siege engine of living wood: splash damage, ×1.5 against buildings", hp=0.95, speed=0.3, sight=2),
+    UnitType.KNIGHT: UnitTweak("Stag Knight", "Antlered shock cavalry, swift but light", hp=0.95, speed=0.3, sight=2),
+    UnitType.CATAPULT: UnitTweak("Ballista", "Living-wood siege engine: splash, ×1.5", hp=0.95, speed=0.3, sight=2),
     UnitType.CLERIC: UnitTweak("Druid", "Heals wounded allies nearby; cannot fight", hp=0.95, speed=0.3, sight=2),
 }
 _ELF_BUILDINGS = {
-    BuildingType.TOWN_HALL: BuildingTweak("Moon Hall", "Hall", "Trains gatherers; gold and lumber are delivered here"),
+    BuildingType.TOWN_HALL: BuildingTweak("Moon Hall", "Hall", "Trains gatherers; takes gold and lumber"),
     BuildingType.FARM: BuildingTweak("Orchard", "Orchard", "Feeds four units"),
     BuildingType.BARRACKS: BuildingTweak("Warden Lodge", "Lodge", "Trains sentinels and rangers"),
     BuildingType.TOWER: BuildingTweak("Watch Tree", "Eyrie", "Shoots at enemies six tiles away"),
-    BuildingType.LUMBER_MILL: BuildingTweak("Grove Mill", "Mill", "Lumber is delivered here; researches arrows, Longbows and Regrowth"),
+    BuildingType.LUMBER_MILL: BuildingTweak("Grove Mill", "Mill", "Takes lumber; arrows, Longbows and Regrowth"),
     BuildingType.BLACKSMITH: BuildingTweak("Silversmith", "Smith", "Researches keener blades and silver mail"),
     BuildingType.STABLES: BuildingTweak("Stag Pens", "Pens", "Trains outriders and stag knights"),
     BuildingType.WORKSHOP: BuildingTweak("Siege Bower", "Bower", "Builds ballistae; improves siege engines"),
@@ -153,23 +153,23 @@ _ELF_BUILDINGS = {
 }
 
 _DWARF_UNITS = {
-    UnitType.PEASANT: UnitTweak("Miner", "Mines gold, chops lumber, builds and repairs", hp=1.1, speed=-0.3),
+    UnitType.PEASANT: UnitTweak("Miner", "Mines gold, chops lumber, builds, repairs", hp=1.1, speed=-0.3),
     UnitType.FOOTMAN: UnitTweak("Ironguard", "Armoured axeman behind a round shield", hp=1.1, armor=1, speed=-0.3),
-    UnitType.ARCHER: UnitTweak("Crossbowman", "Shoots from four tiles away; hardier than a bowman", hp=1.1, speed=-0.3),
-    UnitType.SCOUT: UnitTweak("Ram Rider", "Fast ram and rider who see far; raid miners and crossbows", hp=1.1, speed=-0.3),
-    UnitType.KNIGHT: UnitTweak("Bear Rider", "Heavily armoured shock cavalry on a war bear", hp=1.1, armor=1, speed=-0.3),
-    UnitType.CATAPULT: UnitTweak("Mortar", "Iron siege gun: wide splash, ×1.5 against buildings", hp=1.1, speed=-0.3),
+    UnitType.ARCHER: UnitTweak("Crossbowman", "Shoots from four tiles; hardy for a shooter", hp=1.1, speed=-0.3),
+    UnitType.SCOUT: UnitTweak("Ram Rider", "Fast ram rider; raids miners and crossbows", hp=1.1, speed=-0.3),
+    UnitType.KNIGHT: UnitTweak("Bear Rider", "Armoured shock cavalry on a war bear", hp=1.1, armor=1, speed=-0.3),
+    UnitType.CATAPULT: UnitTweak("Mortar", "Iron mortar: wide splash, ×1.5 vs buildings", hp=1.1, speed=-0.3),
     UnitType.CLERIC: UnitTweak("Runepriest", "Heals wounded allies nearby; cannot fight", hp=1.1, speed=-0.3),
 }
 _DWARF_BUILDINGS = {
-    BuildingType.TOWN_HALL: BuildingTweak("Deep Hold", "Hold", "Trains miners; gold and lumber are delivered here", hp=1.25, armor=2),
+    BuildingType.TOWN_HALL: BuildingTweak("Deep Hold", "Hold", "Trains miners; takes gold and lumber", hp=1.25, armor=2),
     BuildingType.FARM: BuildingTweak("Brewhouse", "Brewery", "Feeds four units", hp=1.25, armor=2),
     BuildingType.BARRACKS: BuildingTweak("Guard Hall", "Barracks", "Trains ironguards and crossbowmen", hp=1.25, armor=2),
     BuildingType.TOWER: BuildingTweak("Bolt Tower", "Tower", "Shoots at enemies six tiles away", hp=1.25, armor=2),
-    BuildingType.LUMBER_MILL: BuildingTweak("Timber Works", "Timber", "Lumber is delivered here; researches better bolts", hp=1.25, armor=2),
-    BuildingType.BLACKSMITH: BuildingTweak("Forge", "Forge", "Researches sharper axes, heavier plate and Deep Mining", hp=1.25, armor=2),
+    BuildingType.LUMBER_MILL: BuildingTweak("Timber Works", "Timber", "Takes lumber; researches better bolts", hp=1.25, armor=2),
+    BuildingType.BLACKSMITH: BuildingTweak("Forge", "Forge", "Researches axes, plate and Deep Mining", hp=1.25, armor=2),
     BuildingType.STABLES: BuildingTweak("Beast Pens", "Pens", "Trains ram riders and bear riders", hp=1.25, armor=2),
-    BuildingType.WORKSHOP: BuildingTweak("Engine Works", "Engines", "Builds mortars; improves them and Blasting Powder", hp=1.25, armor=2),
+    BuildingType.WORKSHOP: BuildingTweak("Engine Works", "Engines", "Builds mortars; siege and Blasting Powder", hp=1.25, armor=2),
     BuildingType.CHURCH: BuildingTweak("Rune Shrine", "Shrine", "Trains runepriests", hp=1.25, armor=2),
 }
 
