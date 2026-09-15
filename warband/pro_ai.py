@@ -82,6 +82,7 @@ class ProProfile:
     scout_from: float = 50.0           # send the first pair of eyes out at this many seconds
     stale_seconds: float = 25.0        # a sighting older than this is not worth attacking on
     symmetry_prior: float = 1.0        # an unlooked-at opponent is assumed to be doing as well as we are
+    ffa_caution: float = 0.25          # extra margin demanded per opponent who could profit from the fight
     expand: bool = True
     expand_early: bool = False        # a second mine before production has saturated
     reserve: int = 0                   # gold held back from unit production for buildings and research
@@ -166,8 +167,8 @@ class ProBrain:
         self._hurt: set[int] = set()  # soldiers pulled out to heal
         self.log: list[tuple[float, str]] = []
         self._focus: dict[int, int] = {}      # unit id → the target it was last pointed at
-        self._enemy_seen: dict[UnitType, float] = {}  # decaying memory of what the enemy fields
-        self._last_seen_at = 0.0
+        self._seen: dict[int, dict[UnitType, float]] = {}  # per opponent: most of each kind ever seen at once
+        self._seen_at: dict[int, float] = {}               # …and when that opponent was last looked at
 
     def note(self, world: World, what: str) -> None:
         self.log.append((world.time, what))
@@ -243,16 +244,37 @@ class ProBrain:
         roughly ten times the army that is actually there, and a brain that
         believes it is always outnumbered never attacks at all.
         """
-        current: dict[UnitType, float] = {}
+        current: dict[int, dict[UnitType, float]] = {}
         for unit in self._enemies(world):
             if not unit.is_worker:
-                current[unit.type] = current.get(unit.type, 0.0) + 1.0
-        if current:
-            self._last_seen_at = world.time
+                seen = current.setdefault(unit.player, {})
+                seen[unit.type] = seen.get(unit.type, 0.0) + 1.0
         fade = 0.99 ** (self.profile.think_every / 0.4)
-        for unit_type in set(self._enemy_seen) | set(current):
-            faded = self._enemy_seen.get(unit_type, 0.0) * fade
-            self._enemy_seen[unit_type] = max(faded, current.get(unit_type, 0.0))
+        for player in world.players:
+            if player.id == self.player or not player.alive:
+                continue
+            now = current.get(player.id, {})
+            if now:
+                self._seen_at[player.id] = world.time
+            memory = self._seen.setdefault(player.id, {})
+            for unit_type in set(memory) | set(now):
+                memory[unit_type] = max(memory.get(unit_type, 0.0) * fade, now.get(unit_type, 0.0))
+
+    def remembered(self, player: int | None = None) -> dict[UnitType, float]:
+        """How many of each kind *player* was last seen with; every opponent's, added, if None."""
+        if player is not None:
+            return dict(self._seen.get(player, {}))
+        out: dict[UnitType, float] = {}
+        for memory in self._seen.values():
+            for unit_type, count in memory.items():
+                out[unit_type] = out.get(unit_type, 0.0) + count
+        return out
+
+    def last_seen(self, player: int | None = None) -> float:
+        """When an opponent was last looked at; the most recent look at anyone if None."""
+        if player is not None:
+            return self._seen_at.get(player, -math.inf)
+        return max(self._seen_at.values(), default=-math.inf)
 
     # -- Economy -------------------------------------------------------------------
 
@@ -461,7 +483,7 @@ class ProBrain:
         total = sum(plan.values())
         if total > 0:
             plan = {t: share / total for t, share in plan.items()}
-        seen = self._enemy_seen
+        seen = self.remembered()
         archers = seen.get(UnitType.ARCHER, 0.0)
         knights = seen.get(UnitType.KNIGHT, 0.0)
         melee = sum(seen.get(t, 0.0) for t in _MELEE_TYPES)
@@ -573,7 +595,9 @@ class ProBrain:
             return
         target = min(targets, key=lambda t: dist(t, origin))
         theirs = self._defenders_near(world, target)
-        if mine >= self.profile.attack_ratio * theirs:
+        bystanders = sum(1 for p in world.players if p.id != self.player and p.alive) - 1
+        needed = self.profile.attack_ratio * (1.0 + self.profile.ffa_caution * bystanders)
+        if mine >= needed * theirs:
             self.attacking = True
             self.target = target
             self.commit_strength = mine
@@ -609,10 +633,12 @@ class ProBrain:
         simply be priced at what one of ours is worth.
         """
         near = [u for u in self._enemies(world) if not u.is_worker and dist(u.pos, point) < radius]
-        hidden = max(0.0, sum(self._enemy_seen.values()) - len(near))
+        owner = self._owner_of(world, point)
+        counted = sum(self.remembered(owner).values()) if owner is not None else sum(self.remembered().values())
+        hidden = max(0.0, counted - len(near))
         seen = (strength(world, near) + _tower_strength(world, self.player, point)
                 + 0.5 * hidden * self._typical_soldier(world))
-        if world.time - self._last_seen_at > self.profile.stale_seconds:
+        if world.time - self.last_seen(owner) > self.profile.stale_seconds:
             # Nobody has looked at them lately. An enemy nobody has looked at is not
             # an enemy of zero strength — assuming so is how an army of ten walks
             # into a defended base and dies. Until a scout says otherwise, credit
@@ -621,22 +647,44 @@ class ProBrain:
             seen = max(seen, self.profile.symmetry_prior * strength(world, self._army(world)))
         return seen
 
+    def _owner_of(self, world: World, point: Point) -> int | None:
+        """Whose ground *point* is: the player owning the nearest building to it."""
+        owned = [b for b in world.buildings.values() if b.player not in (None, self.player) and b.hp > 0]
+        if not owned:
+            return None
+        return min(owned, key=lambda b: dist(b.center, point)).player
+
     def _typical_soldier(self, world: World) -> float:
         """What one average soldier of ours is worth, as a yardstick for unseen enemies."""
         army = [u for u in self._army(world) if u.info.damage > 0]
         return strength(world, army) / len(army) if army else 20.0
 
+    def _victim(self, world: World) -> int | None:
+        """Which opponent to go after: the one we believe is weakest.
+
+        With two players this is the only opponent there is. With three or four
+        it is the whole game — walking at the nearest neighbour while a third
+        player grows is how a free-for-all is lost by the one who started it.
+        """
+        living = [p.id for p in world.players if p.id != self.player and p.alive
+                  and any(b.player == p.id and b.hp > 0 for b in world.buildings.values())]
+        if not living:
+            return None
+        return min(living, key=lambda p: sum(self.remembered(p).values()))
+
     def _attack_targets(self, world: World) -> list[Point]:
-        """What is worth walking to: production first, then anything of theirs."""
+        """What is worth walking to: the weakest opponent's production, then anything of theirs."""
         wanted = (BuildingType.BARRACKS, BuildingType.STABLES, BuildingType.WORKSHOP,
                   BuildingType.CHURCH, BuildingType.TOWN_HALL)
+        victim = self._victim(world)
         buildings = [b for b in world.buildings.values()
                      if b.player is not None and b.player != self.player and world.players[b.player].alive and b.hp > 0]
-        production = [b.center for b in buildings if b.type in wanted]
+        theirs = [b for b in buildings if b.player == victim] or buildings
+        production = [b.center for b in theirs if b.type in wanted]
         if production:
             return production
-        if buildings:
-            return [b.center for b in buildings]
+        if theirs:
+            return [b.center for b in theirs]
         return [u.pos for u in world.units.values()
                 if u.player != self.player and u.hp > 0 and world.players[u.player].alive]
 

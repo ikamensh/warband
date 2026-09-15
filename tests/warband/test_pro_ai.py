@@ -64,7 +64,7 @@ def test_the_enemy_memory_counts_soldiers_rather_than_sightings():
     _spawn(world, 1, UnitType.ARCHER, 2, 3)
     for _ in range(40):
         brain._observe(world)
-    assert brain._enemy_seen[UnitType.ARCHER] == 3
+    assert brain.remembered(1)[UnitType.ARCHER] == 3
 
 
 def test_a_sighting_fades_once_the_enemy_is_out_of_sight():
@@ -73,13 +73,13 @@ def test_a_sighting_fades_once_the_enemy_is_out_of_sight():
     archers = _spawn(world, 1, UnitType.ARCHER, 2, 3)
     for _ in range(10):
         brain._observe(world)
-    seen = brain._enemy_seen[UnitType.ARCHER]
+    seen = brain.remembered(1)[UnitType.ARCHER]
     for unit in archers:
         world.units.pop(unit.id)
     for _ in range(200):
         world.time += PRO.think_every
         brain._observe(world)
-    assert brain._enemy_seen[UnitType.ARCHER] < seen
+    assert brain.remembered(1)[UnitType.ARCHER] < seen
 
 
 def test_an_enemy_nobody_has_looked_at_is_not_assumed_to_be_harmless():
@@ -136,3 +136,38 @@ def test_the_brain_plays_a_match_without_raising_and_builds_an_army():
     for player in (0, 1):
         assert any(not u.is_worker for u in world.player_units(player)), f"player {player} trained nothing"
         assert len(world.player_buildings(player, done=True)) > 2
+
+
+# -- Free-for-all ----------------------------------------------------------------
+
+def test_the_weakest_opponent_is_the_one_attacked_not_the_nearest():
+    """In a three player game the neighbour is usually the wrong target: fighting
+    the strongest player is a gift to whoever is left over."""
+    world = mapgen.generate(seed=9, players=3, human=None)
+    brain = ProBrain(0, PRO)
+    world.reveal_all(0)
+    _spawn(world, 1, UnitType.FOOTMAN, 2, 8)
+    _spawn(world, 2, UnitType.FOOTMAN, 2, 1)
+    brain._observe(world)
+    assert brain._victim(world) == 2
+    weak_hall = world.player_buildings(2, BuildingType.TOWN_HALL)[0].center
+    targets = brain._attack_targets(world)
+    assert min(targets, key=lambda t: (t[0] - weak_hall[0]) ** 2 + (t[1] - weak_hall[1]) ** 2) in targets
+    assert all(brain._owner_of(world, t) == 2 for t in targets)
+
+
+def test_more_opponents_mean_a_bigger_margin_is_wanted_before_attacking():
+    """Every extra player is someone who profits from a fight you started."""
+    world = mapgen.generate(seed=9, players=3, human=None)
+    brain = ProBrain(0, PRO)
+    bystanders = sum(1 for p in world.players if p.id != 0 and p.alive) - 1
+    assert bystanders == 1
+    assert PRO.attack_ratio * (1 + PRO.ffa_caution * bystanders) > PRO.attack_ratio
+
+
+def test_a_free_for_all_runs_to_placements():
+    """Four brains, one map, and a finishing order rather than a winner."""
+    from warband.arena import MatchSpec, play
+    outcome = play(MatchSpec(seed=21, agents=("pro", "pro", "hard", "normal"), minutes=6, width=64, height=56))
+    assert len(outcome.placements) == 4
+    assert min(outcome.placements) == 1

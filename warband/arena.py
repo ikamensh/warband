@@ -336,6 +336,19 @@ def play(spec: MatchSpec) -> MatchResult:
                        minutes=world.time / 60, steps=steps, wall=time.perf_counter() - started)
 
 
+def register_profiles(profiles: Sequence[tuple[str, object]]) -> None:
+    """Pool initialiser: make agents that exist only for this run playable in a worker.
+
+    Agent names travel to workers as plain strings, so a profile invented by a
+    search has to be handed over separately — once per worker, at start-up.
+    """
+    from warband.pro_ai import ProBrain
+
+    for name, profile in profiles:
+        if name not in AGENTS:
+            register(name, lambda player, p=profile: ProBrain(player, p))
+
+
 def play_spec_tuple(packed: tuple) -> MatchResult:
     """``play`` behind a picklable single argument, for :mod:`multiprocessing` pools."""
     return play(MatchSpec(*packed))
