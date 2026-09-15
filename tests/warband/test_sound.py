@@ -9,7 +9,7 @@ import pytest
 from saga2d import Game
 from sagaforge import synth
 from sagaforge.synth import pan, tone
-from warband import deaths, music, sound
+from warband import deaths, music, sound, wreckage
 from warband.rules import Race
 from warband.sound import SoundBank
 
@@ -44,13 +44,14 @@ def test_every_scene_event_has_an_effect_that_is_normalised_and_click_free(gener
     for name in sound.SOUNDS:
         data, rate = read_wav(generated / "sounds" / f"{name}.wav")
         mono = data[:, 0]
-        longest = 3.5 if name in deaths.SOUNDS else 1.0  # a death is a cry and a fall; everything else is a blip
+        from_pieces = name in deaths.SOUNDS or name in wreckage.SOUNDS  # cues mixed from generated pieces; everything else is a blip
+        longest = 5.0 if name in wreckage.SOUNDS else 3.5 if name in deaths.SOUNDS else 1.0
         assert rate == synth.SAMPLE_RATE and 0.03 <= len(mono) / rate <= longest, name
         assert 0.15 <= np.abs(mono).max() <= 0.95, name
         assert abs(mono[0]) < 0.01 and abs(mono[-1]) < 0.01, name
-        # Generated impacts are band-limited to 9 kHz on import, so a step is a real attack, not a click;
-        # they still hit harder than anything the synth makes.
-        assert np.abs(np.diff(mono)).max() < (0.6 if name in deaths.SOUNDS else 0.5), name
+        # Generated pieces are band-limited to 9 kHz, so a step is a real attack, not a click: a click would be
+        # a near full-scale reversal, at least the peak in one sample.  They still hit harder than the synth.
+        assert np.abs(np.diff(mono)).max() < (0.85 * np.abs(mono).max() if from_pieces else 0.5), name
 
 
 def test_the_cached_tracks_are_the_catalogue_stereo_and_quiet(generated: Path) -> None:

@@ -1,0 +1,151 @@
+{
+ "generator": "stable-audio-3 medium (MLX)",
+ "license": "Stability AI Community License: outputs are owned by the licensee and free to commercialise; training data licensed by Stability AI",
+ "encoding": "16-bit PCM WAV, 44100 Hz, mono",
+ "pieces": {
+  "wood_crack_0": {
+   "name": "wood_crack_0",
+   "prompt": "a heavy wooden beam cracks and splinters under load, one loud crack, medieval, close, dry, no music, no reverb, no voice",
+   "seconds": 2.0,
+   "seed": 6000,
+   "steps": 8,
+   "shape": "impact",
+   "peak": 0.8,
+   "spec": "f5b93277a0e6f8d0",
+   "length": 0.99,
+   "sha256": "e4d0d0f7b0e53393161629a015ca42bfcd0b868696e04e04cfe0e0e1d87da0fd"
+  },
+  "wood_crack_1": {
+   "name": "wood_crack_1",
+   "prompt": "old timber creaks and snaps with a sharp crack, medieval, close, dry, no music, no reverb, no voice",
+   "seconds": 2.0,
+   "seed": 6001,
+   "steps": 8,
+   "shape": "impact",
+   "peak": 0.8,
+   "spec": "f8c677751ab4d847",
+   "length": 1.0,
+   "sha256": "064bcafd1e063caedd41f13b9b0da4f91619a98d6e7ab4236476e04db3daa2ed"
+  },
+  "stone_crack_0": {
+   "name": "stone_crack_0",
+   "prompt": "stone masonry cracks and grinds, one deep crack before a collapse, medieval, close, dry, no music, no reverb, no voice",
+   "seconds": 2.0,
+   "seed": 6010,
+   "steps": 8,
+   "shape": "impact",
+   "peak": 0.8,
+   "spec": "b532823e9c4e5630",
+   "length": 1.0,
+   "sha256": "de6dd191a599d97d5d7b7ad1336bb087fed90aef6bdd6bbf98bd8036cf1b4903"
+  },
+  "stone_crack_1": {
+   "name": "stone_crack_1",
+   "prompt": "a stone wall groans and splits with a sharp crack, medieval, close, dry, no music, no reverb, no voice",
+   "seconds": 2.0,
+   "seed": 6011,
+   "steps": 8,
+   "shape": "impact",
+   "peak": 0.8,
+   "spec": "41467896ab9d810f",
+   "length": 1.0,
+   "sha256": "0a033d6b14bc2a2058266f549d842edf1532909d796c3464273fc63eb7d0dd8e"
+  },
+  "wood_collapse_0": {
+   "name": "wood_collapse_0",
+   "prompt": "a wooden building collapses, timber and planks crashing down in a heap, medieval, close, dry, no music, no reverb, no voice",
+   "seconds": 3.0,
+   "seed": 6100,
+   "steps": 8,
+   "shape": "collapse",
+   "peak": 0.8,
+   "spec": "5dfce3b64a4aa9c6",
+   "length": 1.686,
+   "sha256": "ff6d28b8cbb46578a6ec963c3287b82220d09509a61c0b12c97cf5eb3dc3805b"
+  },
+  "wood_collapse_1": {
+   "name": "wood_collapse_1",
+   "prompt": "a wooden roof caves in, beams crashing and boards tumbling down, medieval, close, dry, no music, no reverb, no voice",
+   "seconds": 3.0,
+   "seed": 6101,
+   "steps": 8,
+   "shape": "collapse",
+   "peak": 0.8,
+   "spec": "8be82903b1f79a3f",
+   "length": 0.5,
+   "sha256": "7d773e9835aeb99a597abc63b0c970dfd554097922fb7a33ebc678d71d6a8eda"
+  },
+  "stone_collapse_0": {
+   "name": "stone_collapse_0",
+   "prompt": "a stone building collapses, heavy blocks crashing down with a deep rumble, medieval, close, dry, no music, no reverb, no voice",
+   "seconds": 3.0,
+   "seed": 6110,
+   "steps": 8,
+   "shape": "collapse",
+   "peak": 0.8,
+   "spec": "80a881e58acf2bfd",
+   "length": 1.815,
+   "sha256": "3f66001c2ac169ee85ba0509dafd539d8286e6943d699b81932297708ea26add"
+  },
+  "stone_collapse_1": {
+   "name": "stone_collapse_1",
+   "prompt": "a stone tower falls, masonry thundering down into a heap, medieval, close, dry, no music, no reverb, no voice",
+   "seconds": 3.0,
+   "seed": 6111,
+   "steps": 8,
+   "shape": "collapse",
+   "peak": 0.8,
+   "spec": "3c79c58482d0998e",
+   "length": 1.191,
+   "sha256": "4190f75204bcf5da3f125ba4e8cc928081e1b8f3c5fdc9e4812c5dcaef7ea1a3"
+  },
+  "wood_debris_0": {
+   "name": "wood_debris_0",
+   "prompt": "planks and boards clatter down and settle, a wooden bucket rolls away, medieval, close, dry, no music, no reverb, no voice",
+   "seconds": 3.0,
+   "seed": 6200,
+   "steps": 8,
+   "shape": "collapse",
+   "peak": 0.8,
+   "spec": "3e83d1eb936111bf",
+   "length": 1.838,
+   "sha256": "eeca7848bb655960df882b17f67e872cea4f50caa86312c2506a18b3558c5598"
+  },
+  "wood_debris_1": {
+   "name": "wood_debris_1",
+   "prompt": "loose timber settles, a few last boards fall, dust, medieval, close, dry, no music, no reverb, no voice",
+   "seconds": 3.0,
+   "seed": 6201,
+   "steps": 8,
+   "shape": "collapse",
+   "peak": 0.8,
+   "spec": "918d7d85e8159a5b",
+   "length": 0.5,
+   "sha256": "3cf1a1fa54f5d29e5d1d9ba0e5277d90531e983a6f6d5f2fbbe8a45d6f1403e7"
+  },
+  "stone_debris_0": {
+   "name": "stone_debris_0",
+   "prompt": "rubble and small stones tumble and settle with a dust hiss, medieval, close, dry, no music, no reverb, no voice",
+   "seconds": 3.0,
+   "seed": 6210,
+   "steps": 8,
+   "shape": "collapse",
+   "peak": 0.8,
+   "spec": "5b89be82c2a19ac0",
+   "length": 2.5,
+   "sha256": "a8739edd4e2f1a4ea41b5a448036f8959e87ee50ebd9cbd8f5adb1640c84725f"
+  },
+  "stone_debris_1": {
+   "name": "stone_debris_1",
+   "prompt": "loose stones roll off a rubble heap and settle, dust, medieval, close, dry, no music, no reverb, no voice",
+   "seconds": 3.0,
+   "seed": 6211,
+   "steps": 8,
+   "shape": "collapse",
+   "peak": 0.8,
+   "spec": "15adf16017cb4a1c",
+   "length": 2.5,
+   "sha256": "c8a632b2cf320a20d3026f1ccd611485749d14b56594461901714ac7acaac872"
+  }
+ }
+}

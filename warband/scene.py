@@ -16,7 +16,7 @@ from saga2d import (
 )
 from saga2d import SaveError
 from saga2d.effects import Banner, Burst, Effects, FloatingText, HitReaction, Pulse, Toast
-from warband import ambience, deaths, mapgen
+from warband import ambience, deaths, mapgen, wreckage
 from warband.ai import Brain
 from warband.effects import UnitDeath
 from warband.icons import Icon, draw_icon
@@ -238,7 +238,7 @@ class GameScene(Scene):
         """Bound battle density across materials/takes; alerts bypass that budget.  Cues speak in the player's race's voice."""
         name = voiced(name, self.player.race)
         combat = name in IMPACTS or name == "impact" or name in deaths.CUES
-        key = "siege_impact" if name.startswith("stone_") else name
+        key = "siege_impact" if name in IMPACTS and name.startswith("stone_") else name  # the siege family, not a stone building falling
         if combat:
             gap = max(gap, 0.3 if key == "siege_impact" else 0.09)
         if gap and self.clock - self._sound_times.get(key, -math.inf) < gap:
@@ -1364,7 +1364,7 @@ class GameScene(Scene):
             self.effects.add(Burst((wx, wy - 10), (60, 60, 64, 255), 14, rng=self.rng, image="smoke", size=28, speed=(10, 50)))
             self.camera.shake(4, 0.3)
             if self._audible(e.pos):
-                self.sfx("destroyed", gap=0.3)
+                self.sfx(wreckage.cue(wreckage.material(BuildingType(e.text))), gap=0.3)
 
     def _check_game_over(self) -> None:
         if self._game_over:

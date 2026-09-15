@@ -141,7 +141,7 @@ def test_siege_splash_is_one_weighty_impact_not_a_building_collapse(battle):
     for _ in range(6):
         game.tick(0.1)
     assert sum(name.startswith("stone_") for name in scene.recent_sounds) == 1
-    assert "destroyed" not in scene.recent_sounds
+    assert not any(name.endswith("_collapse") for name in scene.recent_sounds)
 
 
 def test_siege_impact_waits_for_the_visible_stone_to_land(battle):

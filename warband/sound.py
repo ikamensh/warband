@@ -26,7 +26,7 @@ import numpy as np
 
 from saga2d import Game
 from sagaforge.synth import BRASS, DARK, GLASS, level, mix, noise, thump, tone, write_wav
-from warband import combat_sound, deaths, music, voices
+from warband import combat_sound, deaths, music, voices, wreckage
 from warband.model import Event
 from warband.music import Director
 from warband.rules import BuildingType, Race, UnitType
@@ -46,21 +46,14 @@ _RACE_WEAPONS = {
     Race.ORC: {UnitType.FOOTMAN.value: "axe", UnitType.ARCHER.value: "axe", UnitType.KNIGHT.value: "hammer"},
     Race.DWARF: {UnitType.FOOTMAN.value: "axe", UnitType.KNIGHT.value: "hammer"},
 }
-_BUILDING_MATERIALS = {
-    BuildingType.TOWN_HALL.value: "stone", BuildingType.TOWER.value: "stone",
-    BuildingType.BLACKSMITH.value: "stone", BuildingType.CHURCH.value: "stone",
-    BuildingType.FARM.value: "wood", BuildingType.BARRACKS.value: "wood",
-    BuildingType.LUMBER_MILL.value: "wood", BuildingType.STABLES.value: "wood",
-    BuildingType.WORKSHOP.value: "wood",
-}
 
 
 def impact_sound(event: Event, race: Race = Race.HUMAN) -> str:
     """Choose an impact from strike-time facts, even after the victim has died; *race* is the striker's."""
     if event.source_type == event.target_type == "unknown":
         return "impact"  # an explicitly identified older multiplayer event schema
-    if event.target_type in _BUILDING_MATERIALS:
-        material = _BUILDING_MATERIALS[event.target_type] if event.target_complete else "wood"
+    if event.target_type in {building.value for building in wreckage.BUILDING_MATERIALS}:
+        material = wreckage.material(BuildingType(event.target_type), event.target_complete)
     elif UnitType(event.target_type) is UnitType.CATAPULT:
         material = "wood"
     else:
@@ -224,7 +217,7 @@ class SynthBank:
         self._audio.muted = value
 
 
-SOUND_VERSION = "7"
+SOUND_VERSION = "8"
 MUSIC = music.TRACKS
 
 #: ``play_sound(name)`` forwards here when set; ``None`` is silent.
@@ -308,15 +301,6 @@ def under_attack() -> np.ndarray:
     return level(mix(tone("A3", 0.6, attack=0.05, tau=0.4, partials=BRASS), tone("E4", 0.6, attack=0.06, tau=0.35, partials=BRASS) * 0.7), 0.7)
 
 
-def destroyed() -> np.ndarray:
-    """Timber and stone coming down."""
-    return level(mix(
-        thump(120, 35, 0.5, tau=0.18),
-        noise(0.45, 80, 900, attack=0.02, tau=0.16, seed=60),
-        (0.08, noise(0.3, 400, 3000, attack=0.01, tau=0.1, seed=61) * 0.5),
-    ), 0.85)
-
-
 def victory() -> np.ndarray:
     layers = [(start, tone(note, 0.24, tau=0.1, partials=BRASS) * 0.7) for note, start in (("A4", 0.0), ("C5", 0.1), ("E5", 0.2), ("A5", 0.3))]
     layers += [(0.42, tone(note, 0.4, attack=0.02, tau=0.24, partials=BRASS) * gain) for note, gain in (("A4", 0.5), ("C5", 0.45), ("E5", 0.45), ("A5", 0.4))]
@@ -335,10 +319,11 @@ def defeat() -> np.ndarray:
 SOUNDS: dict[str, Callable[[], np.ndarray]] = {
     "select": select, "command": command, "attack_command": attack_command, "button": button, "error": error,
     "impact": impact, "chop": chop, "build_start": build_start, "built": built,
-    "trained": trained, "under_attack": under_attack, "destroyed": destroyed, "victory": victory, "defeat": defeat,
+    "trained": trained, "under_attack": under_attack, "victory": victory, "defeat": defeat,
     **combat_sound.SOUNDS,
     **voices.SOUNDS,
     **deaths.SOUNDS,
+    **wreckage.SOUNDS,
 }
 
 # -- Bank --------------------------------------------------------------------
@@ -362,16 +347,18 @@ class SoundBank(SynthBank):
         self._started = 0.0
 
     def play(self, name: str, *, pitch_variation: float = 0.0, volume: float = 1.0) -> None:
-        takes = combat_sound.VARIANTS if name in IMPACTS else deaths.CUES.get(name, 0)
+        takes = combat_sound.VARIANTS if name in IMPACTS else deaths.CUES.get(name) or wreckage.CUES.get(name, 0)
         if takes:
-            # Never the same take twice in a row: the blow or the death that just sounded stays fresh.
+            # Never the same take twice in a row: the blow, death or collapse that just sounded stays fresh.
             choices = [take for take in range(takes) if take != self._last_take.get(name)]
             take = self._rng.choice(choices)
             self._last_take[name] = take
             if name in IMPACTS:
                 pitch_variation, volume = pitch_variation or 0.045, volume * 0.65
-            else:  # a voice keeps its pitch; deaths sit under the alerts
+            elif name in deaths.CUES:  # a voice keeps its pitch; deaths sit under the alerts
                 pitch_variation, volume = pitch_variation or 0.02, volume * 0.55
+            else:  # a building coming down is the loudest thing on the field
+                pitch_variation, volume = pitch_variation or 0.03, volume * 0.75
             name = f"{name}_{take}"
         elif name == "chop":
             pitch_variation = pitch_variation or 0.05

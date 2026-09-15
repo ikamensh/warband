@@ -18,7 +18,7 @@ uv run python tools/perf.py                      # frame times of a 150-unit bat
 uv run python tools/step_bench.py --repeat 3     # model step times of the same battle without a window, with --profile
 uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening; full report takes ~30 min
 uv run python tools/music.py render DIR          # WAV, spectrogram and stats per track
-uv run python tools/deaths.py refresh            # regenerate death pieces with Stable Audio 3 (needs STABLE_AUDIO_MLX; see docs/warband-deaths.md)
+uv run python tools/pieces.py refresh            # regenerate the death and wreckage pieces with Stable Audio 3 (needs STABLE_AUDIO_MLX; see docs/warband-pieces.md)
 uv run python tools/restyle.py refresh DIR          # painted unit and building sprites: the whole procedure; see ../sagaforge/docs/restyle.md
 uv run --extra package python tools/package.py build --version 0.1.0   # standalone build; verify DIR / install too
 ```
@@ -52,9 +52,11 @@ real breakdown.
 - `warband/sound.py`, `combat_sound.py`, `voices.py`, `ambience.py`,
   `instruments.py`, `music.py` — everything synthesised with `sagaforge.synth`;
   `music.Director` maps moods to tracks; the bank composes in a background thread.
-  `deaths.py` is the exception: it mixes each race's death cues from generated pieces
-  committed under `warband/assets/deaths/` (Stable Audio 3; provenance in the manifest
-  there, the procedure in `docs/warband-deaths.md`).
+  `deaths.py` and `wreckage.py` are the exceptions: they mix each race's death cues and
+  each material's building collapse from generated pieces committed under
+  `warband/assets/deaths/` and `assets/wreckage/` (Stable Audio 3 through
+  `sagaforge.foley`; `pieces.py` reads them; provenance in each folder's manifest, the
+  procedure in `docs/warband-pieces.md`).
 - `warband/scene.py`, `title.py`, `tutorial.py`, `icons.py`, `style.py`,
   `score_scene.py` — the saga2d scenes. `multiplayer.py` is the LAN/online
   match; its `ONLINE` table registers `warband-v1` with `saga2d.server`.

@@ -27,7 +27,7 @@ import numpy as np
 from saga2d import Game, fonts
 from sagaforge.synth import SAMPLE_RATE, mix, write_wav
 from saga2d.testing.native_frames import tick
-from warband import combat_sound, deaths, sound
+from warband import combat_sound, deaths, sound, wreckage
 from warband.model import World
 from warband.rules import BuildingType, Terrain, UnitType
 from warband.scene import GameScene
@@ -130,7 +130,7 @@ def verify_native(output: Path) -> dict:
             records.append({"sound": name, "player_id": player_id, "pitch": player.pitch, "volume": player.volume})
 
         def drain() -> None:
-            deadline = time.monotonic() + 4.0  # a death cue runs up to about three seconds
+            deadline = time.monotonic() + 6.0  # a collapse cue runs up to about five seconds
             while backend._players and time.monotonic() < deadline:
                 # dt=None also services pyglet's clock, which delivers silent-driver EOS.
                 tick(game, dt=None)
@@ -138,7 +138,7 @@ def verify_native(output: Path) -> dict:
             assert not backend._sound_players, "Finished sound handles were retained"
             assert {record["player_id"] for record in records} <= ended, "A natural EOS event was missing"
 
-        for name in sorted(sound.IMPACTS) + sorted(deaths.CUES):
+        for name in sorted(sound.IMPACTS) + sorted(deaths.CUES) + sorted(wreckage.CUES):
             route(name)
         drain()
 
@@ -165,7 +165,7 @@ def verify_native(output: Path) -> dict:
         drain()
         natural_count = len(records)
         route("stone_stone")  # Closing must also release an effect that is still playing.
-        report = {"driver": type(driver).__module__, "impact_families": sorted(sound.IMPACTS), "death_cues": sorted(deaths.CUES),
+        report = {"driver": type(driver).__module__, "impact_families": sorted(sound.IMPACTS), "death_cues": sorted(deaths.CUES), "collapse_cues": sorted(wreckage.CUES),
                   "scene_sounds": heard, "damage": damage, "native_plays": records,
                   "natural_eos_count": natural_count, "natural_players_released": True}
     finally:

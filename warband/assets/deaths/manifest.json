@@ -11,7 +11,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "c5593fa8e7c4c539",
+   "spec": "799a1b943cbdba0e",
    "length": 1.26,
    "sha256": "1cc4164155dc83d2b62acc502f0e836de5d05029597c8f6078177172d508c3bb"
   },
@@ -23,7 +23,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "dab24ccf8413465a",
+   "spec": "466a35135cb6f16a",
    "length": 1.338,
    "sha256": "fe7cf55ebeb708f7ef665959514dfb61eb4645cea94cd7804f25ac0b6fdc288b"
   },
@@ -35,7 +35,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "d7c5f0f45e7e2380",
+   "spec": "86dd1174a028fdaf",
    "length": 1.061,
    "sha256": "71f137120b2dbc2e24b866e1d17f259423d36868b0d1a7ab2b0a06cba2702589"
   },
@@ -47,7 +47,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "b1afcf10e514741b",
+   "spec": "adc958e1d63cded0",
    "length": 1.607,
    "sha256": "94cf5d24405c1178072631d999969935ca0a4cd06de1c8224bc08d23c9d57273"
   },
@@ -59,9 +59,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "faf11e015e7fadc4",
-   "length": 0.272,
-   "sha256": "3a38e5174a81de8b446d68041ec317db2ae495fdda9463c58c244f7ec8613fe7"
+   "spec": "090d1c87a0c87333",
+   "length": 0.326,
+   "sha256": "330abe95f18a7c8254ca22b9f3d3d5951069f976bd7d908ae2f04a579299327e"
   },
   "human_weapon_1": {
    "name": "human_weapon_1",
@@ -71,9 +71,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "41b0eb783ea0e74d",
-   "length": 0.25,
-   "sha256": "2ccf97a8a036c43d23f7efd427a56f60cc6d4152e724d21981d14dae3e653111"
+   "spec": "c6df9c6f55d18c6b",
+   "length": 0.462,
+   "sha256": "7ec17bf8a187afd444473e7276fa7be96f96646471d4c473dad030c82401b85a"
   },
   "human_body_0": {
    "name": "human_body_0",
@@ -83,9 +83,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "6de962bda2a3df24",
-   "length": 0.25,
-   "sha256": "cf5532b976dd0f6373511f2d5b2dca8e591e678fd5733e13bba5742ad8cec710"
+   "spec": "264103c5676b52a4",
+   "length": 0.271,
+   "sha256": "6510694faa866e1338e58a9de83c6278ecc94be31dc0c354bf9e387f7cd0f32f"
   },
   "human_body_1": {
    "name": "human_body_1",
@@ -95,9 +95,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "f3c614a7d5e94ea5",
-   "length": 0.751,
-   "sha256": "748b22832fe80d6ded83ed056202b567cb6cd384c8e1856f74bb9a17dfe01ad5"
+   "spec": "f6c43427cc0ef1a0",
+   "length": 0.839,
+   "sha256": "c19a34075158940715a3d85b752aec847afc851f3f8ab4e9dd7f4b0f5252dd01"
   },
   "human_settle_0": {
    "name": "human_settle_0",
@@ -107,9 +107,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "68b799fc17b61a33",
-   "length": 0.323,
-   "sha256": "cf8971363b21b4ae4d39ab9e05eef73f639626f9a58040e001e99efcadbd6f57"
+   "spec": "c09c4164e84dc660",
+   "length": 0.362,
+   "sha256": "139fd3d4d151e71ab5f31ed6faf88c09c72e64e81b2ca4b0739daeb5d87ef055"
   },
   "human_settle_1": {
    "name": "human_settle_1",
@@ -119,9 +119,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "87e17f81ff566d6f",
-   "length": 0.377,
-   "sha256": "4fd77ce3562d81fb7ef900d181543a748f35b9a4711de79ad0d3ca99c46b9c19"
+   "spec": "442787537d868462",
+   "length": 0.392,
+   "sha256": "df2c077fd7053202bf3757d4061a02cb3c6923586b26e46f0561a2c600fa23ae"
   },
   "orc_cry_0": {
    "name": "orc_cry_0",
@@ -131,7 +131,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "e638cb9886f35e2d",
+   "spec": "8ed6273467d445d6",
    "length": 1.373,
    "sha256": "0bf3cbe11d95155ccb3ee46925b8f90374b9957c0b45863b1237e066fdaf00d2"
   },
@@ -143,7 +143,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "b5c2523d43dc47a5",
+   "spec": "763944e9e0b79855",
    "length": 0.98,
    "sha256": "1be566657de9ec0fcb676a095f254915f15e546aacc9111b80d6253225f39d49"
   },
@@ -155,7 +155,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "9d73313fdfccf5e6",
+   "spec": "69bbba3c98dcb943",
    "length": 1.594,
    "sha256": "cef51b3c2aad1f007dd029722369581db2074fb066c5a0425e4a75b97a3aa1a4"
   },
@@ -167,7 +167,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "7b60d5df784ac1dd",
+   "spec": "6298865578c3f833",
    "length": 1.702,
    "sha256": "c106336d055c67a28950d40c064870a64d6a2f060e80a7bd1d22965c94b45318"
   },
@@ -179,9 +179,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "dd2436ec47bfb1e2",
-   "length": 0.25,
-   "sha256": "8f6660d805cddfe35f414159deec95add4f9c42c09dc782cdff1fc279974aad3"
+   "spec": "3015fe04ba538d25",
+   "length": 0.272,
+   "sha256": "07a3b3de32d8c50b2c5d4cca4e3b9e4eb27703988586e7e1171688891e06ab7b"
   },
   "orc_weapon_1": {
    "name": "orc_weapon_1",
@@ -191,9 +191,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "ac987bf9967f7542",
-   "length": 0.25,
-   "sha256": "2cfd65e95d61a585b3c962dd6fa2a262f758ddb1465cbddf3027b9b0b9a0973a"
+   "spec": "c0287b6a691f9823",
+   "length": 0.27,
+   "sha256": "c030a4d1ad8ccb66ee544a64f94c576c204afdf9d13617c2f1f79c8243b51ac7"
   },
   "orc_body_0": {
    "name": "orc_body_0",
@@ -203,9 +203,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "d19a7703ce38dcc8",
-   "length": 0.474,
-   "sha256": "d469ae0089ceaac623d30c8836df264eeda309c4769d3dc720efaaa35966588a"
+   "spec": "7daeb20ac5aa7918",
+   "length": 0.609,
+   "sha256": "1cb19ea4e9093b6c715864afa015b6e71fb0cd3ddb4e94627a110e0f1edcd789"
   },
   "orc_body_1": {
    "name": "orc_body_1",
@@ -215,9 +215,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "113664fe47541e08",
-   "length": 0.502,
-   "sha256": "1b7e4386d9d28eb3ad08578b0e95e3e534b7e65901708f56e971c1eebce48af0"
+   "spec": "08ab97cdb1017a7e",
+   "length": 0.635,
+   "sha256": "995db91e6f072af9752a6761bf004e60c20f2832d88ebff68f1cbe011bbcc7ee"
   },
   "orc_settle_0": {
    "name": "orc_settle_0",
@@ -227,9 +227,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "e44ad3054f22b627",
-   "length": 0.314,
-   "sha256": "a9e0a043ba9f98389a9dd9d0ebdbe542321ac6b702a9af006c7a5a4e73c7d9c7"
+   "spec": "e144b5f9dfc953b0",
+   "length": 1.0,
+   "sha256": "c0f4824d6bbc39f0876a1839df6c2f5b615293432ae0da40b32de410b8b03a27"
   },
   "orc_settle_1": {
    "name": "orc_settle_1",
@@ -239,9 +239,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "6565c633b99d6e0d",
-   "length": 0.25,
-   "sha256": "052195fd9ce0bcb115c335206e1df39b843316b8cd037e434b277676f2490988"
+   "spec": "968c0bc267d10c90",
+   "length": 0.866,
+   "sha256": "8bf2815ebb71586af70d79ed62e99827822a3ebcaa45885f33fcfb5b0ad43468"
   },
   "elf_cry_0": {
    "name": "elf_cry_0",
@@ -251,7 +251,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "1b6978bab3fe9c8c",
+   "spec": "70104990687478eb",
    "length": 1.218,
    "sha256": "7885963671c76bce5dc4632bbc2436ea5b0c316d665d48dbdff5ea9b924b3d31"
   },
@@ -263,7 +263,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "d44f38ac7600e77d",
+   "spec": "2eefad403399b107",
    "length": 1.897,
    "sha256": "9272e035e03f28f0eda2f81c1a2d4ae78de43cf9813a98ade637602a989abde9"
   },
@@ -275,7 +275,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "4c1dab75d370e5b3",
+   "spec": "2b8fb7fae68363b4",
    "length": 1.628,
    "sha256": "03146888af556a312d1e62b555c154bf74fa1af29263f327fc57ed5416b63876"
   },
@@ -287,7 +287,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "c9a02a7841671b4f",
+   "spec": "be669a5dbd44ba4a",
    "length": 1.448,
    "sha256": "c7dec328ba00f5bc0cee78c910da123debf42648f839c5459eb1d46bd421ceee"
   },
@@ -299,9 +299,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "688ded80ae10155b",
-   "length": 0.25,
-   "sha256": "462b99e0490e7de18685e72defa4a843586169498745141d77a669cbc2df611c"
+   "spec": "c02dcc65f82b92a4",
+   "length": 0.52,
+   "sha256": "a54d5fc6e4e29746206f0ef4b6f21d9f74fdf57f407675208662f3d0a31231fe"
   },
   "elf_weapon_1": {
    "name": "elf_weapon_1",
@@ -311,7 +311,7 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "9c7d1babcf05b5e1",
+   "spec": "86737d295fb3e25e",
    "length": 0.25,
    "sha256": "f04a3b308fcfc3dc8ffe8656c3dd31cf0e8026120e9d89d43e84aff3aec89e8f"
   },
@@ -323,9 +323,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "c2628d48eb2bc95c",
-   "length": 0.25,
-   "sha256": "ecad0e36bbfbb39f2bde9f3e60fd7940de9be4726892ee8ab39608897c0cce3e"
+   "spec": "7fd8e6cac476fc8f",
+   "length": 0.409,
+   "sha256": "c3b580e93cd37c046bc866a429cfe8ce9f4ca256494b95ab863cc008e959a537"
   },
   "elf_body_1": {
    "name": "elf_body_1",
@@ -335,9 +335,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "fc03c2b11af94492",
-   "length": 0.447,
-   "sha256": "964f4744bd46d51cede872e85e6b53066e0b79d15a7505afe7d334016049434d"
+   "spec": "56e24cc076047027",
+   "length": 0.916,
+   "sha256": "4482aceac804b05cf67eb923318b43269b6e875678b5cb8956f69b923e69fe9d"
   },
   "elf_settle_0": {
    "name": "elf_settle_0",
@@ -347,9 +347,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "806b2a4641c938eb",
-   "length": 0.331,
-   "sha256": "3d9bcfb34fdc2ae3ae61b6cef869a06e2a1ae31b99ff5d3eea02180123a7a130"
+   "spec": "c326569ec94e33ff",
+   "length": 0.367,
+   "sha256": "c9207f3f0eaaa48b4e2f68f9b69bf949bf5526ff7ab965710363d08ef2818b0d"
   },
   "elf_settle_1": {
    "name": "elf_settle_1",
@@ -359,9 +359,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "f98d3d96721135e9",
-   "length": 0.274,
-   "sha256": "9383dcb8186b6f82dfa28911432b01a013e181d15a29e63300408d382f2f0e07"
+   "spec": "b2f942020f149685",
+   "length": 0.285,
+   "sha256": "75aa088401a0c65c5bef9d5caad2c6b0f1e8b705bb54e702717f0fd654271574"
   },
   "dwarf_cry_0": {
    "name": "dwarf_cry_0",
@@ -371,7 +371,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "f72c9f717dee6d5b",
+   "spec": "ca93efafb1875327",
    "length": 1.325,
    "sha256": "99df599b3660c40f299ef17a200f3a93e6bce0d603f0b58734498e2d9ae41aa9"
   },
@@ -383,7 +383,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "c6eb57206d334fff",
+   "spec": "5b9adde44ff64d37",
    "length": 1.798,
    "sha256": "b3a9c5d8ddf69f385252dd52a5964e8175ff0122945af5041c4aa96d522e6499"
   },
@@ -395,7 +395,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "2707036e77cac3b7",
+   "spec": "5d621ab4eb898ec0",
    "length": 1.332,
    "sha256": "8c2528efa63c20687a44027db95fabfdcafee3a7cc56aa2c078b846cb27b5303"
   },
@@ -407,7 +407,7 @@
    "steps": 8,
    "shape": "voice",
    "peak": 0.72,
-   "spec": "3f65eedfa0c45969",
+   "spec": "f9274e4c0d970594",
    "length": 1.382,
    "sha256": "7618b5973cb498da5bc053e51dbb28780aeab0984cd41b00e5c45fd7bde4aac6"
   },
@@ -419,7 +419,7 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "49048e114c6c117c",
+   "spec": "5f6149f7a06cc2fc",
    "length": 0.25,
    "sha256": "16e990db907dfd39035a98e649cd757cb6c6c556bc4076c7cd09d6a07a193829"
   },
@@ -431,7 +431,7 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "d29b9c9056bc2448",
+   "spec": "cc7639e00cea14fa",
    "length": 0.25,
    "sha256": "4fde53d10083d30244c273d54c4fd5b4d2246f95752af91a53d1302163fd63c0"
   },
@@ -443,9 +443,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "bd274fce20e1764f",
-   "length": 0.283,
-   "sha256": "45e11ab0add4f02ab8539b61931fe4ec9bbf160594236188d5834c229da2bbbd"
+   "spec": "b46e061fcad38d26",
+   "length": 0.601,
+   "sha256": "85ff28e4bbb50286c3f6030c798278e68b83eea6612896e5de23045d466be3c6"
   },
   "dwarf_body_1": {
    "name": "dwarf_body_1",
@@ -455,9 +455,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "ecc434711f250db7",
-   "length": 0.282,
-   "sha256": "d7cf77f1c7db967254107f143a5b368e300272cb794bc9179eb7b97cd57b4ede"
+   "spec": "5bf7d86f23a2e806",
+   "length": 0.336,
+   "sha256": "48152d59d754164475af36549c6f5b4375ca3224d5fb97479f425f4c0c459eba"
   },
   "dwarf_settle_0": {
    "name": "dwarf_settle_0",
@@ -467,7 +467,7 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "420560adc205800a",
+   "spec": "41f99689ac303222",
    "length": 0.25,
    "sha256": "00ce7c5b67512c1214693e5dd373590f0f7274e65f7af26f07df6966a2aa5cce"
   },
@@ -479,9 +479,9 @@
    "steps": 8,
    "shape": "impact",
    "peak": 0.8,
-   "spec": "c3ab1a167c2c0c90",
-   "length": 0.383,
-   "sha256": "b78e98f76875e24724ba2bc9a7ebc073307c43de64daf0ed74c4b81fd5bbe4a6"
+   "spec": "a853abd5ff0f35d0",
+   "length": 0.945,
+   "sha256": "6d3bf3454c2bee7511928ea090147ac2473ec64b379a2b57a72228dff0e5ceca"
   }
  }
 }
