@@ -46,6 +46,9 @@ real breakdown.
 - `warband/sound.py`, `combat_sound.py`, `voices.py`, `ambience.py`,
   `instruments.py`, `music.py` — everything synthesised with `sagaforge.synth`;
   `music.Director` maps moods to tracks; the bank composes in a background thread.
+  `deaths.py` is the exception: it mixes each race's death cues from generated pieces
+  committed under `warband/assets/deaths/` (Stable Audio 3; provenance in the manifest
+  there, the procedure in `docs/warband-deaths.md`).
 - `warband/scene.py`, `title.py`, `tutorial.py`, `icons.py`, `style.py`,
   `score_scene.py` — the saga2d scenes. `multiplayer.py` is the LAN/online
   match; its `ONLINE` table registers `warband-v1` with `saga2d.server`.

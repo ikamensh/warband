@@ -16,7 +16,7 @@ from saga2d import (
 )
 from saga2d import SaveError
 from saga2d.effects import Banner, Burst, Effects, FloatingText, HitReaction, Pulse, Toast
-from warband import ambience, mapgen
+from warband import ambience, deaths, mapgen
 from warband.ai import Brain
 from warband.effects import UnitDeath
 from warband.icons import Icon, draw_icon
@@ -237,7 +237,7 @@ class GameScene(Scene):
     def sfx(self, name: str, *, gap: float = 0.0) -> None:
         """Bound battle density across materials/takes; alerts bypass that budget.  Cues speak in the player's race's voice."""
         name = voiced(name, self.player.race)
-        combat = name in IMPACTS or name in ("impact", "death")
+        combat = name in IMPACTS or name == "impact" or name in deaths.CUES
         key = "siege_impact" if name.startswith("stone_") else name
         if combat:
             gap = max(gap, 0.3 if key == "siege_impact" else 0.09)
@@ -1353,7 +1353,7 @@ class GameScene(Scene):
         color = self.world.players[e.player].color if e.player is not None else (200, 200, 200)
         self.effects.add(Burst(to_world(e.pos), rgba(color), 10, rng=self.rng, size=10))
         if self._audible(e.pos):
-            self.sfx("death")
+            self.sfx(deaths.cue(self.world.players[e.player].race))
 
     def _show_destroyed(self, e: Event) -> None:
         if e.player == self.human:

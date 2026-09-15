@@ -26,7 +26,7 @@ import numpy as np
 
 from saga2d import Game
 from sagaforge.synth import BRASS, DARK, GLASS, level, mix, noise, thump, tone, write_wav
-from warband import combat_sound, music, voices
+from warband import combat_sound, deaths, music, voices
 from warband.model import Event
 from warband.music import Director
 from warband.rules import BuildingType, Race, UnitType
@@ -224,7 +224,7 @@ class SynthBank:
         self._audio.muted = value
 
 
-SOUND_VERSION = "5"
+SOUND_VERSION = "6"
 MUSIC = music.TRACKS
 
 #: ``play_sound(name)`` forwards here when set; ``None`` is silent.
@@ -274,16 +274,6 @@ def button() -> np.ndarray:
 
 def error() -> np.ndarray:
     return level(mix(tone("C4", 0.12, attack=0.01, tau=0.06, partials=DARK), (0.1, tone("A3", 0.16, attack=0.01, tau=0.08, partials=DARK))), 0.45)
-
-
-def death() -> np.ndarray:
-    """A body falling with cloth and equipment settling, without a musical cue."""
-    return level(mix(
-        noise(0.16, 180, 1400, attack=0.03, tau=0.055, seed=30) * 0.4,
-        (0.06, thump(140, 48, 0.28, attack=0.008, tau=0.065)),
-        (0.08, noise(0.23, 90, 750, attack=0.008, tau=0.07, seed=31) * 0.65),
-        (0.14, noise(0.16, 800, 3000, tau=0.035, seed=32) * 0.12),
-    ), 0.6)
 
 
 def impact() -> np.ndarray:
@@ -344,10 +334,11 @@ def defeat() -> np.ndarray:
 
 SOUNDS: dict[str, Callable[[], np.ndarray]] = {
     "select": select, "command": command, "attack_command": attack_command, "button": button, "error": error,
-    "impact": impact, "death": death, "chop": chop, "build_start": build_start, "built": built,
+    "impact": impact, "chop": chop, "build_start": build_start, "built": built,
     "trained": trained, "under_attack": under_attack, "destroyed": destroyed, "victory": victory, "defeat": defeat,
     **combat_sound.SOUNDS,
     **voices.SOUNDS,
+    **deaths.SOUNDS,
 }
 
 # -- Bank --------------------------------------------------------------------
@@ -371,16 +362,20 @@ class SoundBank(SynthBank):
         self._started = 0.0
 
     def play(self, name: str, *, pitch_variation: float = 0.0, volume: float = 1.0) -> None:
-        if name in IMPACTS:
-            choices = [take for take in range(combat_sound.VARIANTS) if take != self._last_take.get(name)]
+        takes = combat_sound.VARIANTS if name in IMPACTS else deaths.CUES.get(name, 0)
+        if takes:
+            # Never the same take twice in a row: the blow or the death that just sounded stays fresh.
+            choices = [take for take in range(takes) if take != self._last_take.get(name)]
             take = self._rng.choice(choices)
             self._last_take[name] = take
+            if name in IMPACTS:
+                pitch_variation, volume = pitch_variation or 0.045, volume * 0.65
+            else:  # a voice keeps its pitch; deaths sit under the alerts
+                pitch_variation, volume = pitch_variation or 0.02, volume * 0.55
             name = f"{name}_{take}"
-            pitch_variation = pitch_variation or 0.045
-            volume *= 0.65
-        elif name in ("chop", "death"):
+        elif name == "chop":
             pitch_variation = pitch_variation or 0.05
-            volume *= 0.25 if name == "chop" else 0.4
+            volume *= 0.25
         elif name == "impact":
             pitch_variation = pitch_variation or 0.045
             volume *= 0.65
