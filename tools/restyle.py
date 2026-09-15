@@ -117,7 +117,8 @@ INVENTORY: dict[UnitType, str] = {
     UnitType.ARCHER: "one figure, exactly one bow (or a throwing axe in hand for orcs, a crossbow for dwarves), no shield",
     UnitType.KNIGHT: "one rider on one mount (the orc ogre: one two-headed giant on foot), one lance or club, at most one shield",
     UnitType.SCOUT: "one rider on one mount, one spear, no shield",
-    UnitType.CATAPULT: "one siege engine, one throwing arm or barrel, wheels, at most one projectile",
+    UnitType.CATAPULT: "one siege engine with exactly one throwing arm or exactly one barrel (one muzzle), wheels; a stone in the basket, "
+                       "a bolt in the groove or spare shot stacked on the carriage are fine in any number",
     UnitType.CLERIC: "one figure, one staff, no shield, no sword",
 }
 PLAUSIBLE = ("The reference is a rough low-poly stand-in. Where its construction is physically implausible (a load floating instead of "
