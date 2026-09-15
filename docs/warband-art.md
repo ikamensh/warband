@@ -50,6 +50,18 @@ transforms. The view uses the authoritative harvest timer for the swing and cont
 so pausing freezes the action and carrying wood replaces the tool. Animation
 images warm incrementally during the match opening.
 
+## Painted sheets
+
+The low-poly renders are stand-ins: `tools/restyle.py` repaints every unit and
+every race's nine buildings with an image model and installs the result under
+`warband/assets/restyled/` (the procedure is `../../sagaforge/docs/restyle.md`).
+Buildings come in three looks, each its own sheet per race: `intact`, `active`
+(lit windows and open doors while a building trains or researches) and
+`damaged` (holed roofs and scorched walls under half hit points, under the
+smoke and flames `view.py` already adds). The stand-ins keep the team hue off
+roofs, glass and water because the painted frames are recoloured by hue per
+player.
+
 ## Verification
 
 ```sh

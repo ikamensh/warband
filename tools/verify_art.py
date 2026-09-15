@@ -105,7 +105,7 @@ def capture_sheets(game: Game, output: Path) -> None:
           [Card(textures.building_image(game, kind, 0), BUILDINGS[kind].name, role) for kind, role in roles.items()], 3)
 
     cards = [Card(textures.unit_image(game, kind, 0, 2, frame), UNITS[kind].name, label)
-             for frame, label in (("stand", "At rest"), ("walk1", "On the move"), ("attack", "In action")) for kind in UnitType]
+             for frame, label in (("stand", "At rest"), ("walk1", "On the move"), ("strike", "In action")) for kind in UnitType]
     sheet("02_units", "Read the army at a glance", "Seven roles in their actual stand, movement and action poses.", cards, 7, 2.6)
 
     cards = [Card(textures.unit_image(game, UnitType.PEASANT, 0, 0, frame), label, "Lumber harvesting")

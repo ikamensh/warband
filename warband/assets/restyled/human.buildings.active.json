@@ -1,0 +1,97 @@
+{
+ "cell": [
+  255,
+  367
+ ],
+ "cols": 3,
+ "rows": 3,
+ "origin": [
+  127.5,
+  249.26552185297103
+ ],
+ "scale": 2.5,
+ "pad": [
+  0,
+  0
+ ],
+ "chroma": [
+  255,
+  0,
+  255
+ ],
+ "grid": false,
+ "cells": [
+  {
+   "key": "building.human.town_hall.active.0",
+   "col": 0,
+   "row": 0,
+   "tags": {
+    "building": "town_hall"
+   }
+  },
+  {
+   "key": "building.human.farm.active.0",
+   "col": 1,
+   "row": 0,
+   "tags": {
+    "building": "farm"
+   }
+  },
+  {
+   "key": "building.human.barracks.active.0",
+   "col": 2,
+   "row": 0,
+   "tags": {
+    "building": "barracks"
+   }
+  },
+  {
+   "key": "building.human.tower.active.0",
+   "col": 0,
+   "row": 1,
+   "tags": {
+    "building": "tower"
+   }
+  },
+  {
+   "key": "building.human.lumber_mill.active.0",
+   "col": 1,
+   "row": 1,
+   "tags": {
+    "building": "lumber_mill"
+   }
+  },
+  {
+   "key": "building.human.blacksmith.active.0",
+   "col": 2,
+   "row": 1,
+   "tags": {
+    "building": "blacksmith"
+   }
+  },
+  {
+   "key": "building.human.stables.active.0",
+   "col": 0,
+   "row": 2,
+   "tags": {
+    "building": "stables"
+   }
+  },
+  {
+   "key": "building.human.workshop.active.0",
+   "col": 1,
+   "row": 2,
+   "tags": {
+    "building": "workshop"
+   }
+  },
+  {
+   "key": "building.human.church.active.0",
+   "col": 2,
+   "row": 2,
+   "tags": {
+    "building": "church"
+   }
+  }
+ ]
+}

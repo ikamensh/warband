@@ -1,16 +1,22 @@
-"""Re-render Warband's unit sprites with an image model (see ``sagaforge.restyle``).
+"""Re-render Warband's unit and building sprites with an image model (see ``sagaforge.restyle``).
 
-    uv run python tools/restyle.py dump DIR                 # one sheet + prompt per unit
+    uv run python tools/restyle.py dump DIR                 # one sheet + prompt per subject
     uv run python tools/restyle.py render DIR               # repaint the sheets (Codex by default)
-    uv run python tools/restyle.py cut DIR                   # key, register, check; install into warband/assets/restyled
-    uv run python tools/restyle.py preview DIR OUT_DIR       # walk/attack GIFs, original above restyled
-    uv run python tools/restyle.py refresh DIR               # all four in a row; previews land in DIR/previews
-    uv run python tools/restyle.py check DIR [--fix]         # a vision judge compares every painted cell with its stand-in;
-                                                             # --fix re-renders a sheet with the complaints in its prompt
+    uv run python tools/restyle.py cut DIR                  # key, register, check; install into warband/assets/restyled
+    uv run python tools/restyle.py preview DIR OUT_DIR      # walk/attack GIFs and building strips, original above restyled
+    uv run python tools/restyle.py refresh DIR              # the whole procedure; previews land in DIR/previews
+    uv run python tools/restyle.py check DIR [--fix|--patch]  # a vision judge compares every painted cell with its stand-in;
+                                                            # --fix re-renders a sheet with the complaints in its prompt,
+                                                            # --patch only the rows with questioned cells
 
-``--race`` and ``--units`` narrow every step; ``render --provider openrouter --model ...``
-uses an OpenRouter image model instead of Codex's built-in tool.  The sheets are rendered
-for player 0; the game recolours them per player.
+A *subject* is one unit of one race (a carrying peasant is its own subject) or the nine
+buildings of one race in one look: ``intact`` is painted from the low-poly stand-ins;
+``active`` (producing) and ``damaged`` are painted from the installed intact painting, so
+a building keeps its identity across its looks.  ``--race`` picks the race; ``--units``
+and ``--buildings`` (with ``--looks``) narrow the subjects, which are all of the race by
+default.  ``render --provider openrouter --model ...`` uses an OpenRouter image model
+instead of Codex's built-in tool.  Sheets are rendered for player 0; the game recolours
+them per player.
 """
 
 from __future__ import annotations
@@ -19,6 +25,7 @@ import argparse
 import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -28,10 +35,12 @@ from PIL import Image  # noqa: E402
 from sagaforge import render3d as r3  # noqa: E402
 from sagaforge import restyle  # noqa: E402
 from warband import textures  # noqa: E402
-from warband.rules import Race, Resource, UnitType  # noqa: E402
+from warband.races import RACES  # noqa: E402
+from warband.rules import BuildingType, Race, Resource, UnitType  # noqa: E402
 
 RESTYLED = Path(__file__).resolve().parent.parent / "warband" / "assets" / "restyled"
-SCALE = 2.0  # sheet pixels per logical unit
+SCALE = 2.0  # sheet pixels per logical unit (units)
+BUILDING_SCALE = 2.5  # buildings are big and static, and nine of them fill Codex's output size at this scale
 MARGIN = 6  # empty pixels around the widest frame inside a cell
 
 STYLE = ("Re-render every cell as a polished, appealing game sprite in a rich hand-painted fantasy style "
@@ -117,85 +126,371 @@ INVENTORY: dict[UnitType, str] = {
     UnitType.ARCHER: "one figure, exactly one bow (or a throwing axe in hand for orcs, a crossbow for dwarves), no shield",
     UnitType.KNIGHT: "one rider on one mount (the orc ogre: one two-headed giant on foot), one lance or club, at most one shield",
     UnitType.SCOUT: "one rider on one mount, one spear, no shield",
-    UnitType.CATAPULT: "one siege engine with exactly one throwing arm or exactly one barrel (one muzzle), wheels; a stone in the basket, "
-                       "a bolt in the groove or spare shot stacked on the carriage are fine in any number",
+    UnitType.CATAPULT: "one siege engine, one throwing arm or barrel, wheels, at most one projectile",
     UnitType.CLERIC: "one figure, one staff, no shield, no sword",
 }
 PLAUSIBLE = ("The reference is a rough low-poly stand-in. Where its construction is physically implausible (a load floating instead of "
              "held, a prop attached instead of resting, a weapon beside a hand instead of in it), draw the plausible version in the same "
              "place, at the same size, without changing the pose or moving the feet.")
 
+# -- Buildings --------------------------------------------------------------------------
 
-def subject_name(race: Race, unit: UnitType, carrying: Resource | None) -> str:
-    return f"{race.value}.{unit.value}" + (f".{carrying.value}" if carrying else "")
+BUILDING_TYPES = [bt for bt in BuildingType if bt is not BuildingType.GOLD_MINE]
+LOOKS = textures.BUILDING_LOOKS  # intact, active, damaged
+ARCHITECTURE: dict[Race, str] = {
+    Race.HUMAN: "human: a medieval kingdom that builds in grey stone, oak timber and white plaster under thatch and grey slate",
+    Race.ORC: "orcish: crude dark timber and rough stone, hides stretched over frames, red-brown hide roofs, bone spikes at the corners "
+              "of every yard and a skull on a pole",
+    Race.ELF: "elven: pale stone and living wood with slender lines, leaf-green roofs, saplings at the corners of every yard and a gold moon standard",
+    Race.DWARF: "dwarven: heavy granite blocks and dark timber, dark grey slate roofs, copper caps and domes, and squat rune pillars "
+                "with copper caps at the corners of every yard",
+}
+_GATE = ("in front, twin round gate towers with battlements and blue banners flank an arched gate with a portcullis and steps")
+_FARMYARD = "a round haystack and a fence along the front"
+_STABLE = "a long timber stable with three arched stalls under a straw-coloured gable roof and a blue banner; a fenced paddock with {beast}, and a hay trough"
+_CHURCH = ("a cross-shaped nave under green-teal shingle roofs, an octagonal bell tower with a conical spire topped by {top}, "
+           "{window} arched window over the door, two blue banners, steps")
+#: What each building is, per race (the prompt prefixes the race's name for it).
+BUILDING_SUBJECTS: dict[tuple[Race, BuildingType], str] = {
+    (Race.HUMAN, BuildingType.TOWN_HALL): f"a square stone keep under a dark blue pyramid roof with a small blue-roofed turret and a pennant on top; {_GATE}",
+    (Race.ORC, BuildingType.TOWN_HALL): f"a square stone keep roofed by a hide dome ribbed with bone spikes and crowned with a skull, a pennant; {_GATE}",
+    (Race.ELF, BuildingType.TOWN_HALL): f"a square stone keep under a tall pointed dark blue roof with a crown of leaves growing through its top, a pennant; {_GATE}",
+    (Race.DWARF, BuildingType.TOWN_HALL): f"a square granite keep with a flat battlemented top carrying a copper dome with a gold finial, a pennant; {_GATE}",
+    (Race.HUMAN, BuildingType.FARM): f"a small plastered cottage with a thatched roof, a door and a blue banner; rows of ripe wheat beside it, {_FARMYARD}",
+    (Race.ORC, BuildingType.FARM): f"a small cottage with a hide roof, a door and a blue banner; a muddy fenced pen with three pink pigs beside it, {_FARMYARD}",
+    (Race.ELF, BuildingType.FARM): f"a small cottage with a leaf-green roof, a door and a blue banner; an orchard of five small fruit trees with red fruit beside it, {_FARMYARD}",
+    (Race.DWARF, BuildingType.FARM): f"a small stone cottage with a stout chimney, a door and a blue banner; wooden kegs stacked by the door, {_FARMYARD}",
+    (Race.HUMAN, BuildingType.TOWER): "a tall round stone tower with battlements, arrow slits, a door and a blue banner, two buttresses, a pennant on top",
+    (Race.ORC, BuildingType.TOWER): "a timber watchtower: four leaning posts cross-braced with beams carry a platform with a hide roof, bone spikes at its "
+                                    "corners and a skull on top, a blue banner on the platform",
+    (Race.ELF, BuildingType.TOWER): "a watch tree: a great living trunk carrying a railed wooden platform in its crown, leaves above it, a blue banner on the rail",
+    (Race.DWARF, BuildingType.TOWER): "a squat granite tower with a battlemented top carrying a crossbow engine, a door and a blue banner",
+    (Race.HUMAN, BuildingType.STABLES): _STABLE.format(beast="a brown horse standing side-on under a blue saddle blanket"),
+    (Race.ORC, BuildingType.STABLES): _STABLE.format(beast="a great grey wolf standing side-on, saddled"),
+    (Race.ELF, BuildingType.STABLES): _STABLE.format(beast="an antlered stag standing side-on, saddled"),
+    (Race.DWARF, BuildingType.STABLES): _STABLE.format(beast="an armoured war bear standing side-on, saddled"),
+    (Race.HUMAN, BuildingType.CHURCH): _CHURCH.format(top="a gold cross", window="an amber"),
+    (Race.ORC, BuildingType.CHURCH): _CHURCH.format(top="a skull on a pole between bone spikes", window="an orange-lit"),
+    (Race.ELF, BuildingType.CHURCH): _CHURCH.format(top="a gold crescent moon", window="an amber"),
+    (Race.DWARF, BuildingType.CHURCH): _CHURCH.format(top="a copper hammer", window="an amber"),
+}
+for _race in Race:  # the same in every race but its materials
+    BUILDING_SUBJECTS[(_race, BuildingType.BARRACKS)] = ("a long hall under a grey gable roof with an arched door between two blue banners; a palisade "
+                                                         "wing, two round archery targets on posts, a rack of spears, a pennant")
+    BUILDING_SUBJECTS[(_race, BuildingType.LUMBER_MILL)] = ("an open saw shed on four posts under an orange-brown gable roof with a blue banner; a stack "
+                                                            "of logs with pale end grain, a log deck carrying a great round steel saw blade and a log")
+    BUILDING_SUBJECTS[(_race, BuildingType.BLACKSMITH)] = ("a brick furnace house with a tall square chimney and a grey lean-to roof; the furnace mouth "
+                                                           "glows with coals, an anvil stands on a stump with a hammer beside it, a wooden quench tub, a blue banner")
+    BUILDING_SUBJECTS[(_race, BuildingType.WORKSHOP)] = ("a roofless engineering yard: a plank workbench, a tall timber crane with a stone counterweight, "
+                                                         "a siege chassis with iron-rimmed wheels and a raised throwing arm under assembly, a blue banner and a pennant")
+#: Where the stand-ins are physically dubious.
+BUILDING_FIXES: dict[BuildingType, str] = {
+    BuildingType.TOWN_HALL: "the gate towers stand on the ground in front of the keep and the portcullis hangs inside the gate arch",
+    BuildingType.FARM: "the crops, animals or kegs stand on the ground beside the cottage",
+    BuildingType.BARRACKS: "the targets stand on their posts and the spears lean in the rack",
+    BuildingType.TOWER: "the tower stands on its base and the banner hangs on the wall",
+    BuildingType.LUMBER_MILL: "the saw blade is mounted upright on the log deck and the logs lie on the ground",
+    BuildingType.BLACKSMITH: "the coals glow inside the furnace mouth and the anvil rests on its stump",
+    BuildingType.STABLES: "the animal stands on the ground inside the paddock, seen from the side",
+    BuildingType.WORKSHOP: "the crane's jib rests on its post and brace, and the siege chassis stands on its wheels",
+    BuildingType.CHURCH: "the bell tower is joined to the nave and the ornament on the spire stands upright",
+}
+#: How each building shows that it is at work (the *active* look).
+ACTIVE: dict[BuildingType, str] = {
+    BuildingType.TOWN_HALL: "the gate stands open with warm light inside and torches burn on the gate towers",
+    BuildingType.FARM: "the door stands open with warm light inside",
+    BuildingType.BARRACKS: "the door stands open with warm light inside, a brazier burns in the yard and the targets bristle with arrows",
+    BuildingType.TOWER: "a brazier burns on the top",
+    BuildingType.LUMBER_MILL: "the saw blade spins in a blur with sawdust flying and fresh planks lie stacked beside it",
+    BuildingType.BLACKSMITH: "the furnace roars bright, sparks fly from the anvil and the chimney top glows",
+    BuildingType.STABLES: "the stall doors stand open with warm light inside and the animal is saddled and bridled, ready to ride",
+    BuildingType.WORKSHOP: "the crane hoists a beam, lanterns burn and tools lie out on the bench",
+    BuildingType.CHURCH: "the window and door glow with warm light from inside and the bell swings in its tower",
+}
+#: How each building shows battle damage (the *damaged* look; the game adds smoke and flames).
+DAMAGED: dict[BuildingType, str] = {
+    BuildingType.TOWN_HALL: "the keep's roof is broken open, one gate tower has lost its battlements and the banners are torn",
+    BuildingType.FARM: "the roof is half caved in, the yard is trampled and the fence is broken",
+    BuildingType.BARRACKS: "the roof has a hole with rafters showing, a target is knocked over and the palisade is broken",
+    BuildingType.TOWER: "the battlements are shattered on one side and the wall is cracked",
+    BuildingType.LUMBER_MILL: "the shed roof is broken and the logs have tumbled",
+    BuildingType.BLACKSMITH: "the chimney is broken off short and the lean-to roof has collapsed",
+    BuildingType.STABLES: "the roof is broken open and the paddock fence is smashed; the animal is unhurt",
+    BuildingType.WORKSHOP: "the crane is broken, the siege chassis has lost a wheel and the bench is overturned",
+    BuildingType.CHURCH: "the spire is cracked and leaning, the roof is holed and the window is broken",
+}
+TEAM_BUILDINGS = ("Blue is the faction colour: it appears exactly where the stand-in has it (banners, pennants, flags, a saddle blanket, "
+                  "the hall's roof) and must stay this blue; put no blue anywhere else: roofs are grey, brown, green or red, windows amber, "
+                  "water dark green.")
+BUILDING_STYLE = ("Re-render every cell as a polished, appealing building sprite in a rich hand-painted fantasy style (Warcraft 2 / Heroes of "
+                  "Might and Magic feel): solid masonry and timber with visible texture, volumetric shading, light from the upper left, a soft "
+                  "dark shadow on the ground at the foot of the walls. Each building's patch of trodden ground is part of the sprite: keep it "
+                  "opaque and the same size and shape. Sprites will be shown at about a third of this size, so keep shapes bold, edges crisp "
+                  "and details large.")
+PLAUSIBLE_BUILDINGS = ("The reference is a rough low-poly stand-in. Where its construction is physically implausible (a beam floating, a roof "
+                       "without support, a prop hanging in the air), draw the plausible version in the same place, at the same size, without "
+                       "moving anything.")
+LOOK_BRIEF = {
+    "active": ("busy at work: windows and doorways glow with warm light from inside, doors and gates stand open, lanterns and torches are lit "
+               "and the work of the building is visible. The change must read at a third of this size, so bright warm light in the openings "
+               "is the main signal. No people, and no chimney smoke (smoke means damage in this game)."),
+    "damaged": ("battle-damaged: roofs broken open with rafters showing, cracked and scorched walls, rubble at the foot of the walls, banners "
+                "torn or fallen, dark scorch marks. The building must stay recognisable as the same building with the same footprint and "
+                "outline; no flames and no smoke (the game draws them), no people."),
+}
+LOOK_DETAILS = {"active": ACTIVE, "damaged": DAMAGED}
+BUILDING_JUDGE = """You are checking a repainted sprite sheet of buildings against its stand-ins. The image shows, for each row, the
+low-poly stand-in buildings above and the painted buildings below, labelled "row N: ..." (naming the building in each column) and "col N".
+
+Work cell by cell, painted row only. Compare each painted building with the stand-in directly above it and with its name. A cell is wrong if:
+- it is a different kind of building than the stand-in (a house where a tower is expected), or holds two buildings;
+- its footprint, height or silhouette differs clearly from the stand-in (a building that grew a storey, lost its tower, or left its ground patch);
+- a major part is missing or added: a tower, dome, spire or roof, the gate, the yard machinery (saw, anvil, crane, siege engine), the animal in the pen;
+- blue appears where the stand-in has none (a blue roof, blue water or glass), or a blue banner of the stand-in is missing or another colour;
+- it contains people, smoke, flames outside a furnace, or text.
+Style, material texture, proportion and detail may differ freely; the painter is allowed to make the building prettier.
+
+Reply with one JSON object and nothing else:
+{"cells": [{"row": 0, "col": 0, "banners": 2, "ok": true, "issue": ""}, ...]}
+List every cell of the rows shown. Keep issues short and concrete, like "lost the bell tower" or "roof is blue"."""
+LOOK_JUDGE = """You are checking a repainted sprite sheet of buildings against the painting it was made from. The image shows, for each row,
+the intact painted buildings above and the same buildings repainted in the "{look}" look below, labelled "row N: ..." (naming the building
+in each column) and "col N". The {look} look means: {brief}
+
+Work cell by cell, lower row only. A cell is wrong if:
+- it is not the same building as above (a different kind, footprint or silhouette beyond what the look changes);
+- the look is not visible: the cell looks the same as the intact painting above it;
+- it contains people, text, flames or smoke;
+- blue appears where the painting above has none.
+
+Reply with one JSON object and nothing else:
+{{"cells": [{{"row": 0, "col": 0, "ok": true, "issue": ""}}, ...]}}
+List every cell of the rows shown. Keep issues short and concrete."""
 
 
-def subjects(race: Race, units: list[UnitType]) -> list[tuple[UnitType, Resource | None]]:
-    out: list[tuple[UnitType, Resource | None]] = []
-    for unit in units:
-        out.append((unit, None))
-        if unit is UnitType.PEASANT:
-            out += [(unit, Resource.GOLD), (unit, Resource.LUMBER)]
-    return out
-
-
-def unit_frames(unit: UnitType, carrying: Resource | None) -> tuple[str, ...]:
-    return textures.FRAMES + textures.CHOP_FRAMES if unit is UnitType.PEASANT and carrying is None else textures.FRAMES
-
-
-def build_sheet(race: Race, unit: UnitType, carrying: Resource | None) -> tuple[restyle.Sheet, dict[str, Image.Image]]:
-    """The unit's frames laid out facings across, frames down, every frame's feet on the same point."""
-    frames = unit_frames(unit, carrying)
-    meshes = {(frame, facing): r3.rotate_z(textures._unit(unit, 0, frame, carrying, race), facing * 45 - 90)
-              for frame in frames for facing in range(textures.FACINGS)}
-    bounds = [r3.bounds(m, textures.PROJECTION) for m in meshes.values()]
-    half_w = max(max(-b[0], b[2]) for b in bounds)
-    top, below = max(-b[1] for b in bounds), max(b[3] for b in bounds)
-    cell = (int(2 * half_w * SCALE) + 2 * MARGIN, int((top + below) * SCALE) + 2 * MARGIN)
-    origin = (cell[0] / 2, MARGIN + top * SCALE)
-    keys = [(textures.unit_key(unit, 0, facing, frame, carrying, race), {"frame": frame, "facing": facing})
-            for frame in frames for facing in range(textures.FACINGS)]
-    sheet = restyle.Sheet.layout(keys, cols=textures.FACINGS, cell=cell, origin=origin, scale=SCALE)
-    images = {key: r3.render(meshes[(tags["frame"], tags["facing"])], textures.PROJECTION, scale=SCALE,
-                             canvas=(cell[0] / SCALE, cell[1] / SCALE), origin=(origin[0] / SCALE, origin[1] / SCALE))
-              for key, tags in keys}
-    return sheet, images
-
-
-def prompt(sheet: restyle.Sheet, race: Race, unit: UnitType, carrying: Resource | None, frames: tuple[str, ...] | None = None) -> str:
-    frames = unit_frames(unit, carrying) if frames is None else frames
-    rows = ", ".join(FRAME_NAMES[f] for f in frames)
+def geometry(sheet: restyle.Sheet, what: str) -> str:
     w, h = sheet.size
-    return (f"Edit target: the attached sprite sheet of one unit from a 2D real-time strategy game (Warcraft 2 style, "
-            f"3/4 top-down camera). It is {w}x{h} px: a grid of {sheet.rows} rows x {sheet.cols} columns of "
-            f"{sheet.cell[0]}x{sheet.cell[1]} px cells, surrounded by an empty margin, on a flat magenta #FF00FF background. "
-            f"Thin dark grey lines mark the cell borders; keep the lines and the margin exactly where they are, and keep each "
-            f"figure centred in its own cell exactly where it is now. Rows, top to bottom: {rows}. Columns, left to right: "
-            f"the unit facing {FACINGS}.\n\nThe unit is {SUBJECTS[(race, unit)]}{CARRY.get(carrying, '')}.\n\n{STYLE}\n\n"
-            f"{PLAUSIBLE} In particular: {RACE_FIXES.get((race, unit), FIXES[(unit, carrying)])}.\n\n"
-            f"Keep exactly: each figure's position, scale, pose, facing direction, lean, twist, limb and weapon placement, and feet position; "
-            f"the poses differ from row to row on purpose (a walk cycle and the phases of a blow), so each row must keep its own pose. "
-            f"Every cell keeps the flat #FF00FF background with nothing else on it: no gradients, glows, outlines, text, borders "
+    grid = f"a single row of {sheet.cols}" if sheet.rows == 1 else f"a grid of {sheet.rows} rows x {sheet.cols} columns of"
+    return (f"It is {w}x{h} px: {grid} {sheet.cell[0]}x{sheet.cell[1]} px cells, surrounded by an empty margin, on a flat magenta #FF00FF "
+            f"background. Thin dark grey lines mark the cell borders; keep the lines and the margin exactly where they are, and keep each "
+            f"{what} in its own cell exactly where it is now.")
+
+
+def background(sheet: restyle.Sheet) -> str:
+    w, h = sheet.size
+    return (f"Every cell keeps the flat #FF00FF background with nothing else on it: no gradients, glows, outlines, text, borders "
             f"or extra objects. Output the same {w}x{h} layout.")
 
 
-def selected(args: argparse.Namespace) -> list[tuple[Race, UnitType, Resource | None]]:
+@dataclass(frozen=True)
+class Unit:
+    """One unit of one race in every facing and frame (a carrying peasant is its own subject)."""
+
+    race: Race
+    unit: UnitType
+    carrying: Resource | None = None
+    stage = 0  # painted from the stand-ins
+    chunk = (2, 4)  # rows and columns per review image
+    judge = restyle.JUDGE_INSTRUCTIONS
+
+    @property
+    def name(self) -> str:
+        return f"{self.race.value}.{self.unit.value}" + (f".{self.carrying.value}" if self.carrying else "")
+
+    @property
+    def description(self) -> str:
+        return SUBJECTS[(self.race, self.unit)] + CARRY.get(self.carrying, "")
+
+    @property
+    def inventory(self) -> str:
+        return INVENTORY[self.unit]
+
+    def frames(self) -> tuple[str, ...]:
+        return textures.FRAMES + textures.CHOP_FRAMES if self.unit is UnitType.PEASANT and self.carrying is None else textures.FRAMES
+
+    def build_sheet(self) -> tuple[restyle.Sheet, dict[str, Image.Image]]:
+        """The unit's frames laid out facings across, frames down, every frame's feet on the same point."""
+        frames = self.frames()
+        meshes = {(frame, facing): r3.rotate_z(textures._unit(self.unit, 0, frame, self.carrying, self.race), facing * 45 - 90)
+                  for frame in frames for facing in range(textures.FACINGS)}
+        bounds = [r3.bounds(m, textures.PROJECTION) for m in meshes.values()]
+        half_w = max(max(-b[0], b[2]) for b in bounds)
+        top, below = max(-b[1] for b in bounds), max(b[3] for b in bounds)
+        cell = (int(2 * half_w * SCALE) + 2 * MARGIN, int((top + below) * SCALE) + 2 * MARGIN)
+        origin = (cell[0] / 2, MARGIN + top * SCALE)
+        keys = [(textures.unit_key(self.unit, 0, facing, frame, self.carrying, self.race), {"frame": frame, "facing": facing})
+                for frame in frames for facing in range(textures.FACINGS)]
+        sheet = restyle.Sheet.layout(keys, cols=textures.FACINGS, cell=cell, origin=origin, scale=SCALE)
+        images = {key: r3.render(meshes[(tags["frame"], tags["facing"])], textures.PROJECTION, scale=SCALE,
+                                 canvas=(cell[0] / SCALE, cell[1] / SCALE), origin=(origin[0] / SCALE, origin[1] / SCALE))
+                  for key, tags in keys}
+        return sheet, images
+
+    def prompt(self, sheet: restyle.Sheet) -> str:
+        rows = ", ".join(FRAME_NAMES[f] for f in dict.fromkeys(c.tags["frame"] for c in sheet.cells))
+        return (f"Edit target: the attached sprite sheet of one unit from a 2D real-time strategy game (Warcraft 2 style, 3/4 top-down camera). "
+                f"{geometry(sheet, 'figure centred')} Rows, top to bottom: {rows}. Columns, left to right: the unit facing {FACINGS}.\n\n"
+                f"The unit is {self.description}.\n\n{STYLE}\n\n"
+                f"{PLAUSIBLE} In particular: {RACE_FIXES.get((self.race, self.unit), FIXES[(self.unit, self.carrying)])}.\n\n"
+                f"Keep exactly: each figure's position, scale, pose, facing direction, lean, twist, limb and weapon placement, and feet position; "
+                f"the poses differ from row to row on purpose (a walk cycle and the phases of a blow), so each row must keep its own pose. "
+                f"{background(sheet)}")
+
+    def row_names(self, sheet: restyle.Sheet) -> list[str]:
+        carry = f", carrying {self.carrying.value} (no weapon out)" if self.carrying else ""
+        return [FRAME_NAMES[f] + carry for f in dict.fromkeys(c.tags["frame"] for c in sheet.cells)]
+
+    def cell_name(self, cell: restyle.Cell) -> str:
+        return f"row {cell.row} ({FRAME_NAMES[cell.tags['frame']]}), column {cell.col}"
+
+    def preview(self, sheet: restyle.Sheet, frames: dict[str, Image.Image], out: Path) -> Path:
+        """A GIF strip per facing: the walk, then the blow (and the chop), stand-ins above the painting."""
+        _, original = self.build_sheet()
+        sequence = list(textures.WALK_FRAMES) * 2 + ["stand", "wind", "wind", "strike", "follow", "recover", "stand"]
+        if self.unit is UnitType.PEASANT and self.carrying is None:
+            sequence += list(textures.CHOP_FRAMES) * 2
+        gif_frames = []
+        for frame in sequence:
+            keys = [sheet.find(frame=frame, facing=f).key for f in range(textures.FACINGS)]
+            gif_frames.append(stacked([restyle.strip(original, keys, scale=0.5), restyle.strip(frames, keys, scale=0.5)]))
+        path = out / f"{self.name}.gif"
+        restyle.gif(gif_frames, path, ms=180)
+        return path
+
+
+@dataclass(frozen=True)
+class Buildings:
+    """The nine buildings of one race in one look.  The intact look is painted from the low-poly
+    stand-ins; the other looks are painted from the installed intact painting."""
+
+    race: Race
+    look: str = "intact"
+    chunk = (1, 3)
+
+    @property
+    def stage(self) -> int:
+        return 0 if self.look == "intact" else 1
+
+    @property
+    def name(self) -> str:
+        return f"{self.race.value}.buildings.{self.look}"
+
+    @property
+    def description(self) -> str:
+        return f"the buildings of a faction that is {ARCHITECTURE[self.race]}"
+
+    @property
+    def inventory(self) -> str:
+        return "one building per cell, the one the row label names for that column, on its own patch of ground"
+
+    @property
+    def judge(self) -> str:
+        return BUILDING_JUDGE if self.look == "intact" else LOOK_JUDGE.format(look=self.look, brief=LOOK_BRIEF[self.look])
+
+    def building_name(self, cell: restyle.Cell) -> str:
+        return RACES[self.race].buildings[BuildingType(cell.tags["building"])].name
+
+    def build_sheet(self) -> tuple[restyle.Sheet, dict[str, Image.Image]]:
+        keys = [(textures.building_key(bt, 0, self.race, self.look), {"building": bt.value}) for bt in BUILDING_TYPES]
+        if self.look != "intact":
+            intact = Buildings(self.race)
+            if not restyle.file(RESTYLED / intact.name, "png").exists():
+                raise FileNotFoundError(f"{self.name} is painted from the intact painting: install {intact.name} first")
+            base, painted = restyle.load_frames(RESTYLED / intact.name)
+            sheet = restyle.Sheet.layout(keys, cols=base.cols, cell=base.cell, origin=base.origin, scale=base.scale)
+            return sheet, {key: painted[textures.building_key(bt, 0, self.race)] for (key, _), bt in zip(keys, BUILDING_TYPES)}
+        meshes = {bt: textures._building(bt, 0, self.race) for bt in BUILDING_TYPES}
+        bounds = [r3.bounds(m, textures.PROJECTION) for m in meshes.values()]
+        half_w = max(max(-b[0], b[2]) for b in bounds)
+        top, below = max(-b[1] for b in bounds), max(b[3] for b in bounds)
+        cell = (int(2 * half_w * BUILDING_SCALE) + 2 * MARGIN, int((top + below) * BUILDING_SCALE) + 2 * MARGIN)
+        origin = (cell[0] / 2, MARGIN + top * BUILDING_SCALE)
+        sheet = restyle.Sheet.layout(keys, cols=3, cell=cell, origin=origin, scale=BUILDING_SCALE)
+        images = {key: r3.render(meshes[bt], textures.PROJECTION, scale=BUILDING_SCALE, canvas=(cell[0] / BUILDING_SCALE, cell[1] / BUILDING_SCALE),
+                                 origin=(origin[0] / BUILDING_SCALE, origin[1] / BUILDING_SCALE))
+                  for (key, _), bt in zip(keys, BUILDING_TYPES)}
+        return sheet, images
+
+    def prompt(self, sheet: restyle.Sheet) -> str:
+        types = [BuildingType(c.tags["building"]) for c in sheet.cells]
+        names = [RACES[self.race].buildings[bt].name for bt in types]
+        head = (f"Edit target: the attached sprite sheet of {'the nine' if len(types) == 9 else len(types)} buildings of one faction from a 2D "
+                f"real-time strategy game (Warcraft 2 style, a 3/4 top-down camera on square ground tiles; each building stands on its own "
+                f"square patch of ground that is part of the sprite). {geometry(sheet, 'building')} The cells, row by row and left to right: ")
+        if self.look == "intact":
+            cells = "; ".join(f"{i + 1}, the {name}: {BUILDING_SUBJECTS[(self.race, bt)]}" for i, (bt, name) in enumerate(zip(types, names)))
+            fixes = "; ".join(f"the {name}: {BUILDING_FIXES[bt]}" for bt, name in zip(types, names))
+            return (f"{head}{cells}.\n\nThe faction is {ARCHITECTURE[self.race]}. {TEAM_BUILDINGS}\n\n{BUILDING_STYLE}\n\n"
+                    f"{PLAUSIBLE_BUILDINGS} In particular: {fixes}.\n\n"
+                    f"Keep exactly: each building's position, footprint and ground patch, overall height and silhouette, and where its doors, "
+                    f"towers, roofs, banners and yard equipment are. No people; animals only where the stand-in shows them; no smoke, fire or "
+                    f"text. {background(sheet)}")
+        cells = "; ".join(f"{i + 1}, the {name}" for i, name in enumerate(names))
+        details = "; ".join(f"the {name}: {LOOK_DETAILS[self.look][bt]}" for bt, name in zip(types, names))
+        return (f"{head}{cells}. The buildings are already painted.\n\n"
+                f"Repaint every building in exactly the same place, style, colours and shape, but {LOOK_BRIEF[self.look]} In particular: "
+                f"{details}.\n\nBlue is the faction colour and stays exactly where it is; put no blue anywhere else. {background(sheet)}")
+
+    def row_names(self, sheet: restyle.Sheet) -> list[str]:
+        return [", ".join(f"col {c.col} {self.building_name(c)}" for c in sheet.cells if c.row == row) for row in range(sheet.rows)]
+
+    def cell_name(self, cell: restyle.Cell) -> str:
+        return f"row {cell.row}, column {cell.col} (the {self.building_name(cell)})"
+
+    def preview(self, sheet: restyle.Sheet, frames: dict[str, Image.Image], out: Path) -> Path:
+        """One PNG: the originals (stand-ins, or the intact painting for a look), the painting, and the
+        painting recoloured to the second player, so a leaked team colour shows."""
+        _, original = self.build_sheet()
+        keys = [c.key for c in sheet.cells]
+        recoloured = {k: restyle.recolor(v, textures.team_color(0), textures.team_color(1)) for k, v in frames.items()}
+        path = out / f"{self.name}.png"
+        stacked([restyle.strip(original, keys, scale=0.5), restyle.strip(frames, keys, scale=0.5), restyle.strip(recoloured, keys, scale=0.5)]).save(path)
+        return path
+
+
+Subject = Unit | Buildings
+
+
+def stacked(strips: list[Image.Image]) -> Image.Image:
+    out = Image.new("RGBA", (max(s.width for s in strips), sum(s.height for s in strips)))
+    y = 0
+    for s in strips:
+        out.paste(s, (0, y))
+        y += s.height
+    return out
+
+
+def selected(args: argparse.Namespace) -> list[Subject]:
+    """The subjects the options name: every unit and building look of the race unless ``--units``
+    or ``--buildings`` narrows them."""
     race = Race(args.race)
-    units = [UnitType(u) for u in args.units.split(",")] if args.units else list(UnitType)
-    return [(race, unit, carrying) for unit, carrying in subjects(race, units)]
+    everything = args.units is None and not args.buildings
+    subjects: list[Subject] = []
+    if args.units is not None or everything:
+        units = list(UnitType) if args.units in (None, "all") else [UnitType(u) for u in args.units.split(",")]
+        for unit in units:
+            subjects.append(Unit(race, unit))
+            if unit is UnitType.PEASANT:
+                subjects += [Unit(race, unit, Resource.GOLD), Unit(race, unit, Resource.LUMBER)]
+    if args.buildings or everything:
+        looks = args.looks.split(",")
+        unknown = [look for look in looks if look not in LOOKS]
+        if unknown:
+            raise SystemExit(f"unknown look {unknown[0]!r}; the looks are {', '.join(LOOKS)}")
+        subjects += [Buildings(race, look) for look in looks]
+    return subjects
 
 
-def cmd_dump(args: argparse.Namespace) -> None:
+def cmd_dump(args: argparse.Namespace, subjects: list[Subject]) -> None:
     args.dir.mkdir(parents=True, exist_ok=True)
-    for race, unit, carrying in selected(args):
-        name = subject_name(race, unit, carrying)
-        sheet, images = build_sheet(race, unit, carrying)
-        sheet.save(args.dir / name, images)
-        (args.dir / f"{name}.prompt.txt").write_text(prompt(sheet, race, unit, carrying))
-        print(f"{name}: {sheet.size[0]}x{sheet.size[1]}, {len(sheet.cells)} cells of {sheet.cell[0]}x{sheet.cell[1]}")
+    for subject in subjects:
+        sheet, images = subject.build_sheet()
+        sheet.save(args.dir / subject.name, images)
+        (args.dir / f"{subject.name}.prompt.txt").write_text(subject.prompt(sheet))
+        print(f"{subject.name}: {sheet.size[0]}x{sheet.size[1]}, {len(sheet.cells)} cells of {sheet.cell[0]}x{sheet.cell[1]}")
 
 
-def cmd_render(args: argparse.Namespace) -> None:
+def cmd_render(args: argparse.Namespace, subjects: list[Subject]) -> None:
     def one(name: str) -> str:
         out = args.dir / name / f"{args.provider}.png"
         if out.exists() and not args.force:
@@ -208,16 +503,15 @@ def cmd_render(args: argparse.Namespace) -> None:
             (args.dir / name / "usage.json").write_text(json.dumps(usage, indent=1))
         return f"{name}: wrote {out}"
 
-    names = [subject_name(*s) for s in selected(args)]
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        for line in pool.map(one, names):
+        for line in pool.map(one, [subject.name for subject in subjects]):
             print(line)
 
 
-def cmd_cut(args: argparse.Namespace) -> None:
+def cmd_cut(args: argparse.Namespace, subjects: list[Subject]) -> None:
     RESTYLED.mkdir(parents=True, exist_ok=True)
-    for race, unit, carrying in selected(args):
-        name = subject_name(race, unit, carrying)
+    for subject in subjects:
+        name = subject.name
         rendered = args.dir / name / f"{args.provider}.png"
         if not rendered.exists():
             print(f"{name}: no {rendered.name} yet")
@@ -236,90 +530,46 @@ def cmd_cut(args: argparse.Namespace) -> None:
         print(f"   installed {RESTYLED / name}.png")
 
 
-def cmd_preview(args: argparse.Namespace) -> None:
+def cmd_preview(args: argparse.Namespace, subjects: list[Subject]) -> None:
     args.out.mkdir(parents=True, exist_ok=True)
-    for race, unit, carrying in selected(args):
-        name = subject_name(race, unit, carrying)
-        if not restyle.file(RESTYLED / name, "png").exists():
+    for subject in subjects:
+        if not restyle.file(RESTYLED / subject.name, "png").exists():
             continue
-        sheet, frames = restyle.load_frames(RESTYLED / name)
-        original_sheet, original = build_sheet(race, unit, carrying)
-        facings = range(textures.FACINGS)
-        sequence = list(textures.WALK_FRAMES) * 2 + ["stand", "wind", "wind", "strike", "follow", "recover", "stand"]
-        if unit is UnitType.PEASANT and carrying is None:
-            sequence += list(textures.CHOP_FRAMES) * 2
-        gif_frames = []
-        for frame in sequence:
-            keys = [sheet.find(frame=frame, facing=f).key for f in facings]
-            top = restyle.strip(original, keys, scale=0.5)
-            bottom = restyle.strip(frames, keys, scale=0.5)
-            both = Image.new("RGBA", (top.size[0], top.size[1] + bottom.size[1]))
-            both.paste(top, (0, 0))
-            both.paste(bottom, (0, top.size[1]))
-            gif_frames.append(both)
-        restyle.gif(gif_frames, args.out / f"{name}.gif", ms=180)
-        print(f"{name}: {args.out / name}.gif")
+        sheet, frames = restyle.load_frames(RESTYLED / subject.name)
+        print(f"{subject.name}: {subject.preview(sheet, frames, args.out)}")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--race", default="human")
-    parser.add_argument("--units", default=None, help="comma-separated unit types (default: all)")
-    sub = parser.add_subparsers(dest="command", required=True)
-    p = sub.add_parser("dump"); p.add_argument("dir", type=Path); p.set_defaults(run=cmd_dump)
-    p = sub.add_parser("render"); p.add_argument("dir", type=Path); p.add_argument("--provider", default="codex", choices=["codex", "openrouter"])
-    p.add_argument("--model", default="google/gemini-3.1-flash-image"); p.add_argument("--jobs", type=int, default=4)
-    p.add_argument("--force", action="store_true"); p.set_defaults(run=cmd_render)
-    p = sub.add_parser("cut"); p.add_argument("dir", type=Path); p.add_argument("--provider", default="codex")
-    p.add_argument("--tolerate", type=int, default=2, help="flagged cells allowed before a sheet is rejected"); p.set_defaults(run=cmd_cut)
-    p = sub.add_parser("preview"); p.add_argument("dir", type=Path); p.add_argument("out", type=Path); p.set_defaults(run=cmd_preview)
-    p = sub.add_parser("check"); p.add_argument("dir", type=Path); p.add_argument("--fix", action="store_true", help="re-render questioned sheets with the complaints in the prompt")
-    p.add_argument("--patch", action="store_true", help="re-render only the rows with questioned cells and splice in the clean ones")
-    p.add_argument("--rounds", type=int, default=3); p.add_argument("--max-bad", type=int, default=24, help="more questioned cells than this means the stand-in needs a look, not a re-roll (--patch ignores it)")
-    p.add_argument("--provider", default="codex"); p.add_argument("--tolerate", type=int, default=2); p.add_argument("--jobs", type=int, default=6)
-    p.add_argument("--sheets", type=Path, default=None, help="judge sheets in this folder instead of the installed ones")
-    p.set_defaults(run=cmd_check)
-    p = sub.add_parser("refresh"); p.add_argument("dir", type=Path); p.add_argument("--provider", default="codex", choices=["codex", "openrouter"])
-    p.add_argument("--model", default="google/gemini-3.1-flash-image"); p.add_argument("--jobs", type=int, default=4)
-    p.add_argument("--force", action="store_true"); p.add_argument("--tolerate", type=int, default=2); p.set_defaults(run=cmd_refresh)
-    p = sub.add_parser("showcase"); p.add_argument("out", type=Path); p.add_argument("--seconds", type=float, default=6.0)
-    p.add_argument("--zoom", type=float, default=1.5); p.add_argument("--races", default="human,human", help="the two players' races")
-    p.set_defaults(run=cmd_showcase)
-    args = parser.parse_args()
-    args.run(args)
+def complaints_text(verdicts: list[dict], sheet: restyle.Sheet, subject: Subject) -> str:
+    cells = {(c.row, c.col): c for c in sheet.cells}
+    return "; ".join(f"{subject.cell_name(cells[(v['row'], v['col'])])}: {v['issue']}" for v in questioned(verdicts))
 
 
-
-def complaints_text(verdicts: list[dict], sheet: restyle.Sheet) -> str:
-    bad = [v for v in verdicts if not v.get("ok", True)]
-    frames = {c.row: c.tags["frame"] for c in sheet.cells}
-    return "; ".join(f"row {v['row']} ({FRAME_NAMES.get(frames.get(v['row'], ''), '')}), column {v['col']}: {v['issue']}" for v in bad)
-
-
-def check_one(args: argparse.Namespace, race: Race, unit: UnitType, carrying: Resource | None, sheets: Path) -> list[dict]:
-    """Judge the sheet of one subject in *sheets* against its stand-ins; writes DIR/name/check.json
+def check_one(args: argparse.Namespace, subject: Subject, sheets: Path) -> list[dict]:
+    """Judge the sheet of one subject in *sheets* against its originals; writes DIR/name/check.json
     and returns the verdicts (empty when there is no sheet)."""
-    name = subject_name(race, unit, carrying)
+    name = subject.name
     if not restyle.file(sheets / name, "png").exists():
         print(f"{name}: no sheet in {sheets}")
         return []
     sheet, painted = restyle.load_frames(sheets / name)
-    _, originals = build_sheet(race, unit, carrying)
-    names = [FRAME_NAMES[f] + (f", carrying {carrying.value} (no weapon out)" if carrying else "") for f in unit_frames(unit, carrying)]
+    _, originals = subject.build_sheet()
+    names = subject.row_names(sheet)
     (args.dir / name).mkdir(parents=True, exist_ok=True)
-    chunks = [(list(range(r, min(r + 2, sheet.rows))), list(range(c, min(c + 4, sheet.cols))))
-              for r in range(0, sheet.rows, 2) for c in range(0, sheet.cols, 4)]
+    chunk_rows, chunk_cols = subject.chunk
+    chunks = [(list(range(r, min(r + chunk_rows, sheet.rows))), list(range(c, min(c + chunk_cols, sheet.cols))))
+              for r in range(0, sheet.rows, chunk_rows) for c in range(0, sheet.cols, chunk_cols)]
 
     def judge(chunk: tuple[list[int], list[int]]) -> list[dict]:
         rows, cols = chunk
         review_png = args.dir / name / f"review-{rows[0]}-{cols[0]}.png"
         restyle.review_image(sheet, originals, painted, rows=rows, cols=cols, row_names=names).convert("RGB").save(review_png)
-        return restyle.judge_with_codex(review_png, SUBJECTS[(race, unit)] + CARRY.get(carrying, ""), sheet, rows=rows, cols=cols, inventory=INVENTORY[unit])
+        return restyle.judge_with_codex(review_png, subject.description, sheet, rows=rows, cols=cols, inventory=subject.inventory,
+                                        instructions=subject.judge)
 
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         verdicts = [v for chunk in pool.map(judge, chunks) for v in chunk]
     (args.dir / name / "check.json").write_text(json.dumps(verdicts, indent=1))
-    bad = [v for v in verdicts if not v.get("ok", True)]
+    bad = questioned(verdicts)
     print(f"{name}: {len(bad)} of {len(verdicts)} cells questioned" + ("" if not bad else ":"))
     for v in bad:
         print(f"   row {v['row']} col {v['col']}: {v['issue']}")
@@ -330,13 +580,13 @@ def questioned(verdicts: list[dict]) -> list[dict]:
     return [v for v in verdicts if not v.get("ok", True)]
 
 
-def cmd_check(args: argparse.Namespace) -> None:
+def cmd_check(args: argparse.Namespace, subjects: list[Subject]) -> None:
     """Judge every selected sheet.  With --fix, re-render a questioned sheet with the complaints
     in its prompt and install the candidate only when the judge questions fewer of its cells;
-    the best of the rounds ends up installed."""
-    for race, unit, carrying in selected(args):
-        name = subject_name(race, unit, carrying)
-        verdicts = check_one(args, race, unit, carrying, args.sheets or RESTYLED)
+    the best of the rounds ends up installed.  With --patch, re-render only the questioned rows."""
+    for subject in subjects:
+        name = subject.name
+        verdicts = check_one(args, subject, args.sheets or RESTYLED)
         best = len(questioned(verdicts)) if verdicts else None
         if best is None or best == 0 or not (args.fix or args.patch):
             continue
@@ -346,8 +596,7 @@ def cmd_check(args: argparse.Namespace) -> None:
         sheet = restyle.Sheet.load(args.dir / name)
         prompt_text = (args.dir / f"{name}.prompt.txt").read_text()
         for attempt in range(1, (args.rounds if args.fix else 0) + 1):
-            feedback = complaints_text(verdicts, sheet)
-            text = prompt_text + f"\n\nA previous attempt got these cells wrong; do not repeat them: {feedback}."
+            text = prompt_text + f"\n\nA previous attempt got these cells wrong; do not repeat them: {complaints_text(verdicts, sheet, subject)}."
             print(f"   round {attempt}: re-rendering with the complaints in the prompt")
             candidate = args.dir / name / f"candidate-{attempt}"
             candidate.mkdir(parents=True, exist_ok=True)
@@ -357,7 +606,7 @@ def cmd_check(args: argparse.Namespace) -> None:
                 print(f"   the candidate failed the geometry checks ({len(result.flagged)} flagged)")
                 continue
             restyle.save_frames(result, sheet, candidate / name)
-            candidate_verdicts = check_one(args, race, unit, carrying, candidate)
+            candidate_verdicts = check_one(args, subject, candidate)
             count = len(questioned(candidate_verdicts))
             if count < best:
                 restyle.save_frames(result, sheet, RESTYLED / name)
@@ -370,44 +619,42 @@ def cmd_check(args: argparse.Namespace) -> None:
         if args.patch and best:
             for attempt in range(1, args.rounds + 1):
                 print(f"   patch round {attempt}: re-rendering the rows with questioned cells")
-                if not patch_cells(args, race, unit, carrying, verdicts):
+                if not patch_cells(args, subject, verdicts):
                     break
-                verdicts = check_one(args, race, unit, carrying, RESTYLED)
+                verdicts = check_one(args, subject, RESTYLED)
                 best = len(questioned(verdicts))
                 if best == 0:
                     break
 
 
-def patch_cells(args: argparse.Namespace, race: Race, unit: UnitType, carrying: Resource | None, verdicts: list[dict]) -> int:
+def patch_cells(args: argparse.Namespace, subject: Subject, verdicts: list[dict]) -> int:
     """Re-render only the rows that hold questioned cells, as one-row sheets, judge them, and
     splice in the questioned cells that come back clean.  Returns how many cells were replaced."""
-    name = subject_name(race, unit, carrying)
+    name = subject.name
     sheet, painted = restyle.load_frames(RESTYLED / name)
-    _, originals = build_sheet(race, unit, carrying)
+    _, originals = subject.build_sheet()
     replaced = 0
     for row in sorted({v["row"] for v in questioned(verdicts)}):
         cells = [c for c in sheet.cells if c.row == row]
-        frame = cells[0].tags["frame"]
         row_sheet = restyle.Sheet.layout([(c.key, dict(c.tags)) for c in cells], cols=sheet.cols, cell=sheet.cell, origin=sheet.origin, scale=sheet.scale)
         folder = args.dir / name / f"patch-row{row}"
         folder.mkdir(parents=True, exist_ok=True)
         row_sheet.save(folder / "row", {c.key: originals[c.key] for c in cells})
         wanted = [v for v in questioned(verdicts) if v["row"] == row]
-        text = prompt(row_sheet, race, unit, carrying, (frame,)).replace("a grid of 1 rows x", "a single row of")
+        text = subject.prompt(row_sheet)
         text += "\n\nIn a previous painting of this row these cells were wrong; do not repeat it: " + "; ".join(f"column {v['col']}: {v['issue']}" for v in wanted) + "."
         restyle.render_with_codex(folder / "row.png", text, folder / f"{args.provider}.png")
         result = restyle.cut(row_sheet, Image.open(folder / f"{args.provider}.png"), Image.open(folder / "row.png"))
         if len(result.flagged) > args.tolerate:
             print(f"   row {row}: the patch failed the geometry checks ({len(result.flagged)} flagged)")
             continue
-        review_png = folder / "review.png"
-        names = [FRAME_NAMES[frame]]
+        names = subject.row_names(row_sheet)
         clean: list[int] = []
-        for start in (0, 4):
-            cols = list(range(start, min(start + 4, sheet.cols)))
+        for start in range(0, sheet.cols, subject.chunk[1]):
+            cols = list(range(start, min(start + subject.chunk[1], sheet.cols)))
             restyle.review_image(row_sheet, originals, result.frames, rows=[0], cols=cols, row_names=names).convert("RGB").save(folder / f"review-{start}.png")
-            row_verdicts = restyle.judge_with_codex(folder / f"review-{start}.png", SUBJECTS[(race, unit)] + CARRY.get(carrying, ""), row_sheet,
-                                                    rows=[0], cols=cols, inventory=INVENTORY[unit])
+            row_verdicts = restyle.judge_with_codex(folder / f"review-{start}.png", subject.description, row_sheet, rows=[0], cols=cols,
+                                                    inventory=subject.inventory, instructions=subject.judge)
             clean += [v["col"] for v in row_verdicts if v.get("ok", True)]
         for v in wanted:
             key = next(c.key for c in cells if c.col == v["col"])
@@ -423,16 +670,19 @@ def patch_cells(args: argparse.Namespace, race: Race, unit: UnitType, carrying: 
     return replaced
 
 
-def cmd_refresh(args: argparse.Namespace) -> None:
-    """Dump, render, cut and preview in one go: the whole procedure for the selected subjects."""
-    cmd_dump(args)
-    cmd_render(args)
-    cmd_cut(args)
+def cmd_refresh(args: argparse.Namespace, subjects: list[Subject]) -> None:
+    """Dump, render, cut and preview in one go: the whole procedure for the selected subjects,
+    the looks painted from an intact painting after the intact paintings are installed."""
+    for stage in sorted({subject.stage for subject in subjects}):
+        staged = [subject for subject in subjects if subject.stage == stage]
+        cmd_dump(args, staged)
+        cmd_render(args, staged)
+        cmd_cut(args, staged)
     args.out = args.dir / "previews"
-    cmd_preview(args)
+    cmd_preview(args, subjects)
 
 
-def cmd_showcase(args: argparse.Namespace) -> None:
+def cmd_showcase(args: argparse.Namespace, subjects: list[Subject]) -> None:
     """A scripted skirmish through the real renderer, saved as a GIF: two armies (``--races``,
     the same race twice shows the recolouring) attack-move into each other while peasants
     chop the wood behind the line.  The display must be awake."""
@@ -485,6 +735,37 @@ def cmd_showcase(args: argparse.Namespace) -> None:
         print(f"wrote {args.out}: {len(frames)} frames of {frames[0].size[0]}x{frames[0].size[1]}")
     finally:
         game.close()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--race", default="human")
+    parser.add_argument("--units", default=None, help="comma-separated unit types, or 'all' (default with no --buildings: all)")
+    parser.add_argument("--buildings", action="store_true", help="the race's building sheets (default with no --units: yes)")
+    parser.add_argument("--looks", default=",".join(LOOKS), help=f"comma-separated building looks (default: {','.join(LOOKS)})")
+    sub = parser.add_subparsers(dest="command", required=True)
+    p = sub.add_parser("dump"); p.add_argument("dir", type=Path); p.set_defaults(run=cmd_dump)
+    p = sub.add_parser("render"); p.add_argument("dir", type=Path); p.add_argument("--provider", default="codex", choices=["codex", "openrouter"])
+    p.add_argument("--model", default="google/gemini-3.1-flash-image"); p.add_argument("--jobs", type=int, default=4)
+    p.add_argument("--force", action="store_true"); p.set_defaults(run=cmd_render)
+    p = sub.add_parser("cut"); p.add_argument("dir", type=Path); p.add_argument("--provider", default="codex")
+    p.add_argument("--tolerate", type=int, default=2, help="flagged cells allowed before a sheet is rejected"); p.set_defaults(run=cmd_cut)
+    p = sub.add_parser("preview"); p.add_argument("dir", type=Path); p.add_argument("out", type=Path); p.set_defaults(run=cmd_preview)
+    p = sub.add_parser("check"); p.add_argument("dir", type=Path); p.add_argument("--fix", action="store_true", help="re-render questioned sheets with the complaints in the prompt")
+    p.add_argument("--patch", action="store_true", help="re-render only the rows with questioned cells and splice in the clean ones")
+    p.add_argument("--rounds", type=int, default=3); p.add_argument("--max-bad", type=int, default=24, help="more questioned cells than this means the stand-in needs a look, not a re-roll (--patch ignores it)")
+    p.add_argument("--provider", default="codex"); p.add_argument("--tolerate", type=int, default=2); p.add_argument("--jobs", type=int, default=6)
+    p.add_argument("--sheets", type=Path, default=None, help="judge sheets in this folder instead of the installed ones")
+    p.set_defaults(run=cmd_check)
+    p = sub.add_parser("refresh"); p.add_argument("dir", type=Path); p.add_argument("--provider", default="codex", choices=["codex", "openrouter"])
+    p.add_argument("--model", default="google/gemini-3.1-flash-image"); p.add_argument("--jobs", type=int, default=4)
+    p.add_argument("--force", action="store_true"); p.add_argument("--tolerate", type=int, default=2); p.set_defaults(run=cmd_refresh)
+    p = sub.add_parser("showcase"); p.add_argument("out", type=Path); p.add_argument("--seconds", type=float, default=6.0)
+    p.add_argument("--zoom", type=float, default=1.5); p.add_argument("--races", default="human,human", help="the two players' races")
+    p.set_defaults(run=cmd_showcase)
+    args = parser.parse_args()
+    args.run(args, selected(args))
+
 
 if __name__ == "__main__":
     main()

@@ -40,6 +40,18 @@ def rgba(color: tuple[int, int, int], alpha: int = 255) -> Color:
     return (color[0], color[1], color[2], alpha)
 
 
+def building_look(b: Building) -> str:
+    """Which painted look a building wears: damaged under half its hit points, active while it
+    trains or researches, intact otherwise (and while it is still going up)."""
+    if not b.done:
+        return "intact"
+    if b.hp < b.max_hp / 2:
+        return "damaged"
+    if b.queue or b.research is not None:
+        return "active"
+    return "intact"
+
+
 def to_world(point: tuple[float, float]) -> tuple[float, float]:
     """Model tiles → world pixels."""
     return (point[0] * TILE, point[1] * TILE)
@@ -308,7 +320,7 @@ class MapView:
             if b.type is BuildingType.GOLD_MINE:
                 key = textures.mine_image(self.game, textures.scatter(b.x, b.y, 8) % textures.MINE_VARIANTS)
             elif b.done or rising:
-                key = textures.building_image(self.game, b.type, b.player, b.race)  # type: ignore[arg-type]
+                key = textures.building_image(self.game, b.type, b.player, b.race, building_look(b))  # type: ignore[arg-type]
             else:
                 key = f"site.{b.size}"
             sprite = self._buildings.get(b.id)

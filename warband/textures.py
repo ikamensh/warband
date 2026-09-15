@@ -1870,10 +1870,10 @@ def restyled_frames(race: Race, unit_type: UnitType, carrying: Resource | None) 
 
 
 @lru_cache(maxsize=None)
-def restyled_buildings(race: Race) -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
-    """The hand-painted buildings of one race (one frame per building type, the gold mine
-    excluded), or None."""
-    return _painted(f"{race.value}.buildings", [building_key(bt, 0, race) for bt in BuildingType if bt is not BuildingType.GOLD_MINE])
+def restyled_buildings(race: Race, look: str = "intact") -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
+    """The hand-painted buildings of one race in one look (one frame per building type, the
+    gold mine excluded), or None."""
+    return _painted(f"{race.value}.buildings.{look}", [building_key(bt, 0, race, look) for bt in BuildingType if bt is not BuildingType.GOLD_MINE])
 
 
 def _recoloured(image: Image.Image, player: int) -> Image.Image:
@@ -1921,7 +1921,8 @@ def portrait_image(game: Game, subject: UnitType | BuildingType, player: int | N
         if painted is not None:
             fit = 128 * game.backend.scale_factor / max(painted.size)
             game.assets.image_from_pil(key, painted.resize((max(1, round(painted.width * fit)), max(1, round(painted.height * fit))), Image.LANCZOS))
-        elif isinstance(subject, UnitType):
+            return key
+        if isinstance(subject, UnitType):
             mesh = r3.rotate_z(_unit(subject, player or 0, "stand", None, race), 0)
         elif subject is BuildingType.GOLD_MINE:
             mesh = _mine()
@@ -1948,23 +1949,33 @@ def warm_units(game: Game, players: list[int], races: list[Race] | None = None):
                         yield unit_image(game, unit_type, player, facing, frame, carrying, race=race)
 
 
-def building_key(building_type: BuildingType, player: int, race: Race = Race.HUMAN) -> str:
-    return f"building.{race.value}.{building_type.value}.{player}"
+#: The looks a finished building can wear: as built, busy training or researching, and under
+#: half its hit points.  Only painted sheets tell them apart; the low-poly render has one look.
+BUILDING_LOOKS = ("intact", "active", "damaged")
 
 
-def building_image(game: Game, building_type: BuildingType, player: int, race: Race = Race.HUMAN) -> str:
+def building_key(building_type: BuildingType, player: int, race: Race = Race.HUMAN, look: str = "intact") -> str:
+    return f"building.{race.value}.{building_type.value}.{look}.{player}"
+
+
+def building_image(game: Game, building_type: BuildingType, player: int, race: Race = Race.HUMAN, look: str = "intact") -> str:
     """Register (once) and return the key of one building image: the painted frame recoloured
-    to the player's team when the race's buildings were restyled, the low-poly render otherwise."""
-    key = building_key(building_type, player, race)
+    to the player's team when the race's buildings were restyled in that *look* (a look without
+    a painted sheet shows the intact painting), the low-poly render otherwise."""
+    if look not in BUILDING_LOOKS:
+        raise ValueError(f"unknown building look {look!r}")
+    if look != "intact" and restyled_buildings(race, look) is None:
+        look = "intact"
+    key = building_key(building_type, player, race, look)
     if not game.assets.has_image(key):
-        restyled = restyled_buildings(race)
+        restyled = restyled_buildings(race, look)
         if restyled is None:
             size = BUILDINGS[building_type].size
             game.assets.image_from_pil(key, _prop(key, _building(building_type, player, race), size / 2 * TILE + PAD, game.backend.scale_factor))
         else:
             sheet, frames = restyled
             placements[key] = Placement(sheet.logical_size, sheet.drop)
-            game.assets.image_from_pil(key, _recoloured(frames[building_key(building_type, 0, race)], player))
+            game.assets.image_from_pil(key, _recoloured(frames[building_key(building_type, 0, race, look)], player))
     return key
 
 
