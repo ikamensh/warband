@@ -185,7 +185,7 @@ def test_minimap_image_marks_terrain_buildings_and_units(play) -> None:
 
 def test_unit_images_are_rendered_on_demand_per_facing_and_frame(play) -> None:
     game, scene = play
-    key = textures.unit_image(game, UnitType.KNIGHT, 1, 6, "attack")
+    key = textures.unit_image(game, UnitType.KNIGHT, 1, 6, "strike")
     placement = textures.placements[key]
     assert game.assets.has_image(key) and 0 < placement.drop < placement.size[1]  # the feet lie inside the image
     for unit_type in UnitType:  # every unit, frame and carry variant renders (a missing colour name would raise here)
@@ -196,7 +196,7 @@ def test_unit_images_are_rendered_on_demand_per_facing_and_frame(play) -> None:
     for theme in MapTheme:
         textures.register_theme(game, theme)
     assert textures.facing_index(0.0) == 0 and textures.facing_index(3.1416 / 2) == 2 and textures.facing_index(-3.1416 / 2) == 6
-    other = textures.unit_image(game, UnitType.KNIGHT, 1, 6, "attack")
+    other = textures.unit_image(game, UnitType.KNIGHT, 1, 6, "strike")
     assert other == key
     for building_type in BuildingType:
         if building_type is not BuildingType.GOLD_MINE:
@@ -353,3 +353,52 @@ def test_water_moves_once_its_phases_are_painted_while_land_stays_still() -> Non
         assert (len(keys) > 1) == view._chunk_has_water(index)
     assert len(view._ground_keys[view._ground_keys.index(view._chunk_keys(2 * 6 + 2))]) == textures.WATER_PHASES  # chunk (2, 2) holds (20, 20)
     game._teardown()
+
+
+def test_walk_frames_follow_the_distance_walked_not_the_clock(play) -> None:
+    """Feet stay planted: a unit's walk frame advances with the ground it covers, so a fast unit
+    steps faster and a unit held in place keeps its frame."""
+    from warband.view import STRIDE, unit_frame
+
+    game, scene = play
+    u = scene.world.spawn_unit(scene.human, UnitType.FOOTMAN, (10.5, 10.5))
+    u.state = "move"
+    seen = [unit_frame(u, travel, 0.0) for travel in (0.0, STRIDE, 2 * STRIDE, 3 * STRIDE, 4 * STRIDE)]
+    assert seen == list(textures.WALK_FRAMES) + [textures.WALK_FRAMES[0]]
+    assert unit_frame(u, 0.5 * STRIDE, 0.0) == unit_frame(u, 0.5 * STRIDE, 9.0)  # the clock does not move the feet
+
+
+def test_a_blow_winds_up_before_it_lands_and_follows_through_after(play) -> None:
+    """Phases of one attack, read off the model's cooldown: guard, wind-up as the cooldown runs
+    out, then strike, follow-through and recovery right after the blow."""
+    from warband.view import FOLLOW, RECOVER, STRIKE, WIND_UP, unit_frame
+
+    game, scene = play
+    u = scene.world.spawn_unit(scene.human, UnitType.FOOTMAN, (10.5, 10.5))
+    u.state = "attack"
+    full = u.info.cooldown
+
+    def at(cooldown: float) -> str:
+        u.cooldown = cooldown
+        return unit_frame(u, 0.0, 0.0)
+
+    assert at(full) == "strike"  # the model has just landed the blow and reset the cooldown
+    assert at(full - STRIKE - FOLLOW / 2) == "follow"
+    assert at(full - STRIKE - FOLLOW - RECOVER / 2) == "recover"
+    assert at(full / 2) == "stand"
+    assert at(WIND_UP / 2) == "wind"  # the next blow is about to land
+    assert at(0.0) == "stand"  # nothing to wind up for: the model strikes as soon as it is in range
+
+
+def test_moving_units_walk_and_attacking_units_swing_on_screen(play) -> None:
+    """The view's sprites cycle through the walk frames while a unit travels and show the blow phases while it fights."""
+    game, scene = play
+    world = scene.world
+    walker = world.spawn_unit(scene.human, UnitType.FOOTMAN, (8.5, 8.5))
+    world.move([walker.id], (14.5, 8.5))
+    frames = set()
+    for _ in range(90):
+        game.tick(1 / 30)
+        if walker.state == "move":
+            frames.add(scene.view.unit_sprite(walker.id).image.rsplit(".", 1)[-1])
+    assert frames >= set(textures.WALK_FRAMES), frames

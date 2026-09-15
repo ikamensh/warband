@@ -13,3 +13,4 @@ dist/
 *.png
 *.gif
 docs/evidence/
+!warband/assets/restyled/*.png

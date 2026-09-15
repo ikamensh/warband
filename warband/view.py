@@ -74,6 +74,38 @@ def minimap_terrain(world: World) -> np.ndarray:
     return base
 
 
+STRIDE = 0.22  # tiles travelled per walk frame: feet stay planted instead of sliding, and faster units step faster
+WIND_UP = 0.2  # seconds before a blow lands in which the weapon is drawn back
+STRIKE, FOLLOW, RECOVER = 0.1, 0.16, 0.16  # seconds after the blow: driven forward, swept across, settling to guard
+
+
+def unit_frame(u: Unit, travel: float, time: float) -> str:
+    """Which of the unit's frames shows now.  Walking is driven by distance travelled, a blow
+    by the model's cooldown clock: the wind-up precedes the strike the model will land when the
+    cooldown runs out, and the strike, follow-through and recovery trail the blow it just landed."""
+    if u.state == "move":
+        return textures.WALK_FRAMES[int(travel / STRIDE) % len(textures.WALK_FRAMES)]
+    if u.state == "attack":
+        since = u.info.cooldown - u.cooldown
+        if since < STRIKE:
+            return "strike"
+        if since < STRIKE + FOLLOW:
+            return "follow"
+        if since < STRIKE + FOLLOW + RECOVER:
+            return "recover"
+        if 0 < u.cooldown <= WIND_UP:
+            return "wind"
+        return "stand"
+    if u.state == "chop":
+        if u.carrying is not None:
+            return "stand"
+        phase = (u.timer / CHOP_PERIOD) % 1.0
+        return textures.CHOP_FRAMES[0 if phase < 0.25 else 1 if phase < 0.45 else 2 if phase < 0.7 else 3]
+    if u.state == "repair":
+        return "strike" if (time * 2 + u.id * 0.37) % 1.0 < 0.35 else "stand"
+    return "stand"
+
+
 class MapView:
     def __init__(self, scene: Scene, world: World, player: int) -> None:
         self.scene = scene
@@ -95,6 +127,8 @@ class MapView:
         self._buildings: dict[int, Sprite] = {}
         self._building_keys: dict[int, str] = {}
         self._units: dict[int, Sprite] = {}
+        self._travel: dict[int, float] = {}  # distance each unit has walked, for its stride
+        self._last_pos: dict[int, tuple[float, float]] = {}
         self._unit_keys: dict[int, str] = {}
         self._smoke: dict[int, ParticleEmitter] = {}
         self._fire: dict[int, ParticleEmitter] = {}
@@ -312,18 +346,7 @@ class MapView:
             del store[key]
 
     def _frame(self, u: Unit) -> str:
-        if u.state == "move":
-            return "walk1" if int(self.time * 5 + u.id) % 2 == 0 else "walk2"
-        if u.state == "attack":
-            return "attack" if u.cooldown > u.info.cooldown - 0.3 else "stand"
-        if u.state == "chop":
-            if u.carrying is not None:
-                return "stand"
-            phase = (u.timer / CHOP_PERIOD) % 1.0
-            return textures.CHOP_FRAMES[0 if phase < 0.25 else 1 if phase < 0.45 else 2 if phase < 0.7 else 3]
-        if u.state == "repair":
-            return "attack" if (self.time * 2 + u.id * 0.37) % 1.0 < 0.35 else "stand"
-        return "stand"
+        return unit_frame(u, self._travel.get(u.id, 0.0), self.time)
 
     def _sync_units(self) -> None:
         world = self.world
@@ -332,7 +355,12 @@ class MapView:
                 sprite.remove()
                 del self._units[uid]
                 del self._unit_keys[uid]
+                self._travel.pop(uid, None)
+                self._last_pos.pop(uid, None)
         for u in world.units.values():
+            last = self._last_pos.get(u.id, u.pos)
+            self._travel[u.id] = self._travel.get(u.id, 0.0) + math.hypot(u.x - last[0], u.y - last[1])
+            self._last_pos[u.id] = u.pos
             sprite = self._units.get(u.id)
             shown = not u.hidden and (u.player == self.player or world.is_visible(self.player, u.tile))
             if not shown:

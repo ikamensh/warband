@@ -9,8 +9,11 @@ building covers exactly 3×3 tiles on screen and still shows lit walls.
 
 Trees grow twenty seeded branching skeletons per theme; crystal colonies and
 gold outcrops each have twenty forms. Tile coordinates choose stable variants.
-Units face eight ways and have four frames (stand, two walking, attack);
-peasants add carrying variants and four articulated chopping poses. Images are rendered on demand
+Units face eight ways and have nine frames: stand, a four-step walk (contact,
+passing, contact, passing) and a four-phase blow (wind-up, strike, follow-through,
+recover); peasants add carrying variants and four articulated chopping poses.
+:data:`POSES` leans, twists and lunges every figure per frame; weapons and legs
+have their own tables. Images are rendered on demand
 (:func:`unit_image`) because a match uses only a fraction of the
 combinations.  Sprites are anchored at the bottom centre; :data:`placements`
 records each image's logical size and *drop* — how far its bottom edge lies
@@ -22,6 +25,7 @@ from __future__ import annotations
 import math
 import os
 import random
+import warnings
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -43,7 +47,9 @@ WATER_PHASES = 3  # a chunk with water is painted this many times, ripples and s
 CHUNK_PX = (CHUNK + 2) * TILE
 PAD = 2
 FACINGS = 8
-FRAMES = ("stand", "walk1", "walk2", "attack")
+WALK_FRAMES = ("walk1", "walk2", "walk3", "walk4")
+ATTACK_FRAMES = ("wind", "strike", "follow", "recover")
+FRAMES = ("stand",) + WALK_FRAMES + ATTACK_FRAMES
 CHOP_FRAMES = ("chop1", "chop2", "chop3", "chop4")
 TREE_VARIANTS = 20
 ROCK_VARIANTS = 20
@@ -1085,12 +1091,26 @@ def _stretch(mesh: Mesh, across: float, tall: float) -> Mesh:
     return [r3.Face(tuple((x * across, y * across, z * tall) for x, y, z in face.points), face.color) for face in mesh]
 
 
+#: Forward swing of the left leg (the right swings the other way): contact poses stride,
+#: passing poses stand tall with the trailing foot lifted, a blow starts planted and lunges.
+_LEG_SWING = {"walk1": 0.19, "walk2": 0.0, "walk3": -0.19, "walk4": 0.0, "wind": -0.08, "strike": 0.15, "follow": 0.13, "recover": 0.05}
+_LEG_LIFT = {"walk2": (0.0, 0.11), "walk4": (0.11, 0.0)}  # (left, right) foot lifted while passing
+#: Vertical bob of the body: up on the passing frames, crouched into a blow.
+_BOB = {"walk2": 0.05, "walk4": 0.05, "wind": -0.02, "strike": -0.04, "follow": -0.02}
+
+
+def _striking(frame: str) -> bool:
+    """The frames in which a weapon is out: the blow itself and its follow-through."""
+    return frame in ("strike", "follow")
+
+
 def _legs(frame: str, color: Color, spread: float = 0.09) -> Mesh:
-    swing = {"walk1": 0.11, "walk2": -0.11}.get(frame, 0.0)
+    swing = _LEG_SWING.get(frame, 0.0)
+    lift = _LEG_LIFT.get(frame, (0.0, 0.0))
     mesh: Mesh = []
-    for x, step in ((-spread, swing), (spread, -swing)):
-        mesh += _unit_rod((x, 0, 0.28), (x, step, 0.08), 0.065, color)
-        mesh += r3.box((x, step + 0.035, 0.065), (0.13, 0.2, 0.13), INK)
+    for x, step, up in ((-spread, swing, lift[0]), (spread, -swing, lift[1])):
+        mesh += _unit_rod((x, 0, 0.28), (x, step, 0.08 + up), 0.065, color)
+        mesh += r3.box((x, step + 0.035, 0.065 + up), (0.13, 0.2, 0.13), INK)
     return mesh
 
 
@@ -1146,7 +1166,7 @@ def _unit_head(center: r3.Vec3, radius: float = 0.16, race: Race = Race.HUMAN) -
 
 
 def _body(tunic: Color, frame: str, body_r: float = 0.21, body_h: float = 0.42, *, include_legs: bool = True, race: Race = Race.HUMAN) -> Mesh:
-    bob = 0.02 if frame == "walk1" else 0.0
+    bob = _BOB.get(frame, 0.0)
     return (
         (_legs(frame, (72, 62, 58)) if include_legs else [])
         + r3.cylinder((0, 0, 0.23 + bob), body_r, body_h, tunic, sides=8)
@@ -1182,10 +1202,19 @@ def _helm(z: float, race: Race, team: Color, radius: float = 0.19) -> Mesh:
     return mesh + r3.box((0, 0, z + 0.2), (0.05, 0.22, 0.07), team)
 
 
+#: The hand weapon through a blow: pitched back over the shoulder, driven forward and down,
+#: swept across the body, then settling back to guard.  Walking swings it a little.
+_SWORD_PITCH = {"wind": 55, "strike": -100, "follow": -70, "recover": -35, "walk1": -28, "walk3": 4}
+_SWORD_YAW = {"wind": 15, "follow": -50}  # about the grip: out to the side, then across
+_SWORD_SHIFT = {"wind": (0.02, -0.08, 0.06), "strike": (0.0, 0.16, 0.04), "follow": (-0.06, 0.1, -0.02), "walk1": (0, 0.09, 0), "walk3": (0, -0.09, 0)}
+_SHIELD_SHIFT = {"wind": (0, 0.08, 0), "strike": (0.03, -0.05, -0.04), "follow": (0, 0.05, 0), "walk1": (0, -0.07, 0), "walk3": (0, 0.07, 0)}
+_SWORD_GRIP = (0.32, 0.13, 0.5)
+
+
 def _sword(frame: str, race: Race = Race.HUMAN) -> Mesh:
     """The race's hand weapon in the right hand: sword, cleaver, curved blade or axe."""
     look = LOOKS[race]
-    grip = (0.32, 0.13, 0.5)
+    grip = _SWORD_GRIP
     handle = _unit_rod((0.32, 0.13, 0.4), (0.32, 0.13, 0.55), 0.043, WOOD_DARK)
     if race is Race.ORC:
         blade = (_unit_rod((0.32, 0.13, 0.55), (0.32, 0.13, 1.12), 0.04, WOOD_DARK)
@@ -1202,10 +1231,12 @@ def _sword(frame: str, race: Race = Race.HUMAN) -> Mesh:
     else:
         blade = (r3.box((0.32, 0.13, 0.85), (0.08, 0.055, 0.59), look.metal) + r3.pyramid((0.32, 0.13, 1.145), (0.08, 0.055), 0.14, look.metal)
                  + r3.box((0.32, 0.13, 0.57), (0.27, 0.09, 0.06), GOLD))
-    return _unit_pitch(blade + handle, -85 if frame == "attack" else -12, grip)
+    mesh = _unit_pitch(blade + handle, _SWORD_PITCH.get(frame, -12), grip)
+    mesh = r3.rotate_z(mesh, _SWORD_YAW.get(frame, 0), about=(grip[0], grip[1]))
+    return _shift(mesh, _SWORD_SHIFT.get(frame, (0.0, 0.0, 0.0)))
 
 
-_WORKER_SWING = {"chop1": 35, "chop2": -28, "chop3": -96, "chop4": -48, "attack": -96}
+_WORKER_SWING = {"chop1": 35, "chop2": -28, "chop3": -96, "chop4": -48, "wind": 30, "strike": -96, "follow": -60, "recover": -30}
 _WORKER_LEAN = {"chop1": 12, "chop2": -5, "chop3": -18, "chop4": -6}
 _WORKER_HIP = (0.0, 0.0, 0.26)
 _WORKER_GRIP = (0.29, 0.16, 0.55)
@@ -1261,7 +1292,7 @@ def _shield(x: float, y: float, z: float, team: Color, size: float = 1.0, race: 
 
 def _mount(frame: str, heavy: bool, team: Color, race: Race = Race.HUMAN) -> Mesh:
     """The race's steed on the same four-legged rig: horse, wolf, deer or stag, ram or bear."""
-    swing = {"walk1": 0.12, "walk2": -0.12}.get(frame, 0.0)
+    swing = {"walk1": 0.12, "walk2": 0.03, "walk3": -0.12, "walk4": -0.03, "strike": 0.1, "follow": 0.08}.get(frame, 0.0)
     if race is Race.HUMAN:
         coat = (78, 65, 65) if heavy else (174, 123, 68)
     elif race is Race.ORC:
@@ -1350,8 +1381,48 @@ def _mount(frame: str, heavy: bool, team: Color, race: Race = Race.HUMAN) -> Mes
 UNIT_SCALE = 1.4  # figures are modelled at chibi size and blown up so they read from the usual zoom
 
 
+@dataclass(frozen=True)
+class Pose:
+    """How a whole figure carries itself in one frame: *lean* pitches the upper body forward
+    (degrees, about the hip), *twist* turns it about the spine (positive brings the weapon
+    side forward), *lunge* steps the figure towards its facing (model units)."""
+
+    lean: float = 0.0
+    twist: float = 0.0
+    lunge: float = 0.0
+    sway: float = 0.0  # sideways shift of the upper body, over the planted foot
+
+
+POSES: dict[str, Pose] = {
+    "walk1": Pose(7, 10, 0.0, -0.035), "walk2": Pose(7, 0), "walk3": Pose(7, -10, 0.0, 0.035), "walk4": Pose(7, 0),
+    "wind": Pose(-8, -22, -0.04), "strike": Pose(14, 12, 0.16), "follow": Pose(8, 30, 0.1), "recover": Pose(3, 6, 0.03),
+}
+HIP = 0.28  # the upper body pivots here; legs, feet and the shadow stay planted
+MOUNTED = (UnitType.KNIGHT, UnitType.SCOUT)
+
+
+def _posed(mesh: Mesh, frame: str, unit_type: UnitType) -> Mesh:
+    """Apply the frame's :class:`Pose`.  Riders and their mounts only lunge (a leaning horse
+    lifts its hooves); a catapult recoils instead of lunging."""
+    pose = POSES.get(frame)
+    if pose is None:
+        return mesh
+    if unit_type is UnitType.CATAPULT:
+        return _shift(mesh, (0.0, {"strike": -0.06, "follow": -0.03}.get(frame, 0.0), 0.0))
+    if unit_type in MOUNTED:  # the mount rocks over its hooves as it strides
+        hooves = [face for face in mesh if max(p[2] for p in face.points) <= 0.2]
+        body = _shift([face for face in mesh if max(p[2] for p in face.points) > 0.2], (0.0, 0.0, _BOB.get(frame, 0.0)))
+        mesh = hooves + body
+    else:
+        upper = [face for face in mesh if max(p[2] for p in face.points) > HIP + 0.02]
+        lower = [face for face in mesh if max(p[2] for p in face.points) <= HIP + 0.02]
+        upper = _shift(_unit_pitch(r3.rotate_z(upper, pose.twist), -pose.lean, (0.0, 0.0, HIP)), (pose.sway, 0.0, 0.0))
+        mesh = lower + upper
+    return _shift(mesh, (0.0, pose.lunge, 0.0))
+
+
 def _unit(unit_type: UnitType, player: int, frame: str, carrying: Resource | None, race: Race = Race.HUMAN) -> Mesh:
-    mesh = _unit_mesh(unit_type, player, frame, carrying, race)
+    mesh = _posed(_unit_mesh(unit_type, player, frame, carrying, race), frame, unit_type)
     if unit_type is not UnitType.CATAPULT:
         mesh = _stretch(mesh, *LOOKS[race].stretch)
     return r3.scale(mesh, UNIT_SCALE)
@@ -1383,18 +1454,28 @@ def _worker(player: int, frame: str, carrying: Resource | None, race: Race) -> M
         mesh += r3.box((0, 0.183, 0.42), (0.25, 0.045, 0.34), look.leather)
         mesh += r3.box((0, 0.212, 0.36), (0.15, 0.025, 0.09), (159, 105, 57))
         mesh += r3.box((0, 0.215, 0.55), (0.065, 0.025, 0.045), GOLD)
-    for x in (-0.21, 0.21):
-        mesh += _unit_rod((x, 0, 0.55), (x * 1.15, 0.08, 0.45), 0.075, look.skin if race is Race.ORC else team)
-    mesh += _unit_rod((0.24, 0.08, 0.45), (0.29, 0.16, 0.55), 0.05, look.skin)
+    sleeve = look.skin if race is Race.ORC else team
+    if carrying is Resource.LUMBER:  # both arms up, hands under the bundle on the shoulder
+        for x in (-0.21, 0.21):
+            mesh += _unit_rod((x, 0, 0.55), (x * 0.9, 0.1, 0.84), 0.075, sleeve)
+            mesh += r3.sphere((x * 0.9, 0.1, 0.87), 0.055, look.skin, rings=3, sides=6)
+    elif carrying is Resource.GOLD:  # the left arm cradles the sack, the right steadies it
+        mesh += _unit_rod((-0.21, 0, 0.55), (-0.3, 0.2, 0.4), 0.075, sleeve)
+        mesh += _unit_rod((0.21, 0, 0.55), (-0.08, 0.26, 0.5), 0.075, sleeve)
+        mesh += r3.sphere((-0.08, 0.28, 0.5), 0.055, look.skin, rings=3, sides=6)
+    else:
+        for x in (-0.21, 0.21):
+            mesh += _unit_rod((x, 0, 0.55), (x * 1.15, 0.08, 0.45), 0.075, sleeve)
+        mesh += _unit_rod((0.24, 0.08, 0.45), (0.29, 0.16, 0.55), 0.05, look.skin)
     if carrying is Resource.GOLD:
-        mesh += r3.sphere((-0.28, 0.13, 0.48), 0.2, (113, 80, 48), rings=4, sides=8)
-        mesh += r3.cone((-0.28, 0.13, 0.62), 0.15, 0.11, GOLD, sides=5)
-        mesh += r3.cylinder((-0.28, 0.13, 0.65), 0.07, 0.045, WOOD_DARK, sides=6)
-    elif carrying is Resource.LUMBER:
-        for y, z in ((-0.05, 0.98), (0.12, 0.98), (0.035, 1.12)):
+        mesh += r3.sphere((-0.22, 0.2, 0.48), 0.2, (113, 80, 48), rings=4, sides=8)
+        mesh += r3.cone((-0.22, 0.2, 0.62), 0.15, 0.11, GOLD, sides=5)
+        mesh += r3.cylinder((-0.22, 0.2, 0.65), 0.07, 0.045, WOOD_DARK, sides=6)
+    elif carrying is Resource.LUMBER:  # the bundle rests across the shoulders, held from below
+        for y, z in ((-0.02, 0.93), (0.15, 0.93), (0.065, 1.07)):
             mesh += _unit_rod((-0.48, y, z), (0.48, y, z), 0.095, TRUNK)
             mesh += _unit_rod((0.478, y, z), (0.495, y, z), 0.072, THATCH)
-        mesh += r3.box((0.12, 0.035, 1.06), (0.05, 0.37, 0.32), WOOD_DARK)
+        mesh += r3.box((0.12, 0.065, 1.0), (0.05, 0.37, 0.32), WOOD_DARK)
     else:
         mesh += _worker_axe(frame, race)
         angle = math.radians(_worker_axe_angle(frame))
@@ -1417,9 +1498,14 @@ def _footman(player: int, frame: str, race: Race) -> Mesh:
             mesh += r3.cone((x * 1.15, 0, 0.71), 0.045, 0.16, BONE, sides=4)  # a spiked pauldron
         else:
             mesh += r3.sphere((x, 0, 0.66), 0.115, look.metal, rings=3, sides=6)
-        mesh += _unit_rod((x, 0, 0.6), (x * 1.2, 0.13, 0.45), 0.065, look.metal if race is not Race.ORC else look.skin)
+        hand = (x * 1.2, 0.13, 0.45)
+        if x > 0:  # the sword arm reaches to wherever the grip went
+            sx, sy, sz = _SWORD_SHIFT.get(frame, (0.0, 0.0, 0.0))
+            hand = (_SWORD_GRIP[0] + sx - 0.02, _SWORD_GRIP[1] + sy, _SWORD_GRIP[2] + sz - 0.05)
+        mesh += _unit_rod((x, 0, 0.6), hand, 0.065, look.metal if race is not Race.ORC else look.skin)
     mesh += _helm(0.79, race, team)
-    return mesh + _shield(-0.32, 0.21, 0.48, team, race=race) + _sword(frame, race)
+    shield = _shift(_shield(-0.32, 0.21, 0.48, team, race=race), _SHIELD_SHIFT.get(frame, (0.0, 0.0, 0.0)))
+    return mesh + shield + _sword(frame, race)
 
 
 def _archer(player: int, frame: str, race: Race) -> Mesh:
@@ -1435,7 +1521,7 @@ def _archer(player: int, frame: str, race: Race) -> Mesh:
             mesh += _unit_rod((x, -0.14, 0.75), (x, -0.16, 1.0), 0.02, WOOD)
             mesh += r3.box((x, -0.14, 0.99), (0.06, 0.05, 0.08), look.metal)
         mesh += _helm(0.79, race, team)
-        raised = frame == "attack"
+        raised = _striking(frame)
         hand = (0.34, 0.36 if raised else 0.14, 1.05 if raised else 0.6)
         mesh += _unit_rod((0.17, 0, 0.58), hand, 0.05, look.skin)
         axe = _unit_rod(hand, (hand[0], hand[1] + 0.04, hand[2] + 0.36), 0.025, WOOD)
@@ -1451,7 +1537,7 @@ def _archer(player: int, frame: str, race: Race) -> Mesh:
     for x in (-0.32, -0.26, -0.2):
         mesh += _unit_rod((x, -0.23, 0.67), (x - 0.03, -0.23, 1.03), 0.014, THATCH)
         mesh += r3.box((x - 0.03, -0.23, 0.97), (0.05, 0.05, 0.09), PLASTER)
-    bow_y = 0.36 if frame == "attack" else 0.18
+    bow_y = 0.36 if _striking(frame) else 0.18
     if race is Race.DWARF:
         # A crossbow held level: a stock, a short steel bow and a bolt on top.
         stock = (0.3, bow_y + 0.05, 0.62)
@@ -1461,7 +1547,7 @@ def _archer(player: int, frame: str, race: Race) -> Mesh:
         mesh += _unit_rod((stock[0] + 0.28, stock[1] + 0.34, stock[2]), (stock[0], stock[1] - 0.05, stock[2]), 0.01, PLASTER)
         mesh += _unit_rod((0.17, 0, 0.58), (stock[0], stock[1] - 0.1, stock[2]), 0.048, look.skin)
         mesh += _unit_rod((-0.17, 0, 0.57), (stock[0] - 0.02, stock[1] + 0.15, stock[2] - 0.02), 0.048, look.skin)
-        if frame == "attack":
+        if _striking(frame):
             mesh += _unit_rod((stock[0], stock[1] - 0.05, stock[2] + 0.03), (stock[0], stock[1] + 0.5, stock[2] + 0.03), 0.015, THATCH)
         return mesh
     tall = 1.28 if race is Race.ELF else 1.12
@@ -1469,12 +1555,12 @@ def _archer(player: int, frame: str, race: Race) -> Mesh:
             (0.32, bow_y + 0.23, 0.64), (0.32, bow_y + 0.17, 0.94), (0.32, bow_y, tall)]
     for start, end in zip(path, path[1:]):
         mesh += _unit_rod(start, end, 0.035, (201, 145, 76) if race is Race.HUMAN else (222, 206, 168))
-    draw_y = bow_y - 0.27 if frame == "attack" else bow_y
+    draw_y = bow_y - 0.27 if _striking(frame) else bow_y
     mesh += _unit_rod(path[0], (0.32, draw_y, 0.64), 0.01, PLASTER)
     mesh += _unit_rod((0.32, draw_y, 0.64), path[-1], 0.01, PLASTER)
     mesh += _unit_rod((0.17, 0, 0.58), (0.32, bow_y + 0.2, 0.64), 0.048, look.skin)
     mesh += _unit_rod((-0.17, 0, 0.57), (0.32, draw_y, 0.64), 0.048, look.skin)
-    if frame == "attack":
+    if _striking(frame):
         mesh += _unit_rod((0.32, draw_y, 0.64), (0.32, bow_y + 0.66, 0.64), 0.018, THATCH)
         mesh += r3.box((0.32, bow_y + 0.64, 0.64), (0.055, 0.13, 0.045), look.metal)
     return mesh
@@ -1502,7 +1588,7 @@ def _knight(player: int, frame: str, race: Race) -> Mesh:
         club += r3.sphere((0.44, 0.16, 1.24), 0.17, WOOD_DARK, rings=3, sides=7)
         for a in (0.3, 1.6, 2.9, 4.2, 5.5):
             club += r3.cone((0.44 + 0.15 * math.cos(a), 0.16 + 0.15 * math.sin(a), 1.24), 0.03, 0.1, look.metal, sides=4)
-        mesh += _unit_pitch(club, -95 if frame == "attack" else -20, grip)
+        mesh += _unit_pitch(club, -95 if _striking(frame) else -20, grip)
         return mesh
     mesh = _mount(frame, True, team, race)
     rider_z = 0.73 if race is not Race.DWARF else 0.68
@@ -1537,7 +1623,7 @@ def _knight(player: int, frame: str, race: Race) -> Mesh:
         lance = _unit_rod((0.34, 0.05, rider_z - 0.06), (0.34, 0.05, rider_z + 1.19), 0.036, THATCH if race is Race.HUMAN else (222, 206, 168))
         lance += r3.cone((0.34, 0.05, rider_z + 1.17), 0.085, 0.2, look.metal, sides=4)
         lance += _unit_panel([(0.34, 0.05, rider_z + 1.1), (0.34, -0.29, rider_z + 0.97), (0.34, 0.05, rider_z + 0.86)], team)
-    mesh += _unit_pitch(lance, -82 if frame == "attack" else -38, grip)
+    mesh += _unit_pitch(lance, -82 if _striking(frame) else -38, grip)
     return mesh
 
 
@@ -1573,7 +1659,7 @@ def _scout(player: int, frame: str, race: Race) -> Mesh:
     spear += r3.cone((0.27, 0.07, rider_z + 1.0), 0.06, 0.18, look.metal, sides=4)
     if race is Race.ORC:
         spear += r3.cone((0.27, 0.07, rider_z + 0.85), 0.05, -0.1, BONE, sides=4)
-    mesh += _unit_pitch(spear, -84 if frame == "attack" else -8, grip)
+    mesh += _unit_pitch(spear, -84 if _striking(frame) else -8, grip)
     return mesh
 
 
@@ -1588,7 +1674,7 @@ def _siege(player: int, frame: str, race: Race) -> Mesh:
         mesh += _unit_rod((x, 0.37, 0.3), (x, -0.04, 0.83), 0.055, wood)
     for y in (-0.32, 0.32):
         mesh += _unit_rod((-0.5, y, 0.23), (0.5, y, 0.23), 0.055, look.metal)
-    wheel_turn = {"walk1": 20, "walk2": -20}.get(frame, 0)
+    wheel_turn = {"walk1": 0, "walk2": 22, "walk3": 45, "walk4": 67}.get(frame, 0)
     for x in (-0.44, 0.44):
         for y in (-0.32, 0.32):
             mesh += _unit_rod((x - 0.05, y, 0.23), (x + 0.05, y, 0.23), 0.225, INK, sides=10)
@@ -1607,7 +1693,7 @@ def _siege(player: int, frame: str, race: Race) -> Mesh:
         barrel += _unit_rod((0, -0.04, 1.0), (0, -0.04, 1.08), 0.19, look.metal, sides=8)
         barrel += _unit_rod((0, -0.04, 0.5), (0, -0.04, 0.58), 0.19, look.metal, sides=8)
         barrel += r3.cylinder((0, -0.04, 1.06), 0.11, 0.03, INK, sides=8)
-        mesh += _unit_pitch(barrel, -20 if frame == "attack" else 42, pivot)
+        mesh += _unit_pitch(barrel, -20 if _striking(frame) else 42, pivot)
         for x in (-0.2, 0.2):
             mesh += r3.sphere((x, 0.36, 0.45), 0.09, BOULDER, rings=3, sides=6)  # shot
         mesh += r3.box((0, 0.29, 0.35), (0.58, 0.13, 0.15), wood)
@@ -1617,19 +1703,19 @@ def _siege(player: int, frame: str, race: Race) -> Mesh:
         arm = _unit_rod((0, -0.5, 0.72), (0, 0.42, 0.72), 0.05, wood)
         for side in (-1, 1):
             arm += _unit_rod((0, 0.42, 0.72), (side * 0.62, 0.3, 0.72), 0.03, wood_dark)
-            arm += _unit_rod((side * 0.62, 0.3, 0.72), (0, 0.02 if frame == "attack" else -0.16, 0.72), 0.012, PLASTER)
+            arm += _unit_rod((side * 0.62, 0.3, 0.72), (0, 0.02 if _striking(frame) else -0.16, 0.72), 0.012, PLASTER)
         arm += _unit_rod((0, -0.16, 0.75), (0, 0.6, 0.75), 0.02, wood_dark)
         arm += _unit_rod((0, 0.58, 0.75), (0, 0.74, 0.75), 0.045, look.metal, sides=4)  # the bolt's head
-        mesh += _unit_pitch(arm, -30 if frame == "attack" else -12, pivot)
+        mesh += _unit_pitch(arm, -30 if _striking(frame) else -12, pivot)
         mesh += r3.sphere((0, -0.34, 0.92), 0.16, (86, 150, 96), rings=3, sides=6)  # living wood leafs at the tail
     else:
         pivot = (0, -0.04, 0.65)
-        arm = _unit_rod((0, -0.04, 0.44), (0, -0.04, 1.43), 0.055, wood)
-        arm += r3.cylinder((0, -0.04, 1.33), 0.16, 0.13, wood_dark, sides=8)
-        arm += r3.cylinder((0, -0.04, 1.45), 0.175, 0.035, look.metal, sides=8)
-        if frame != "attack":
-            arm += r3.sphere((0, -0.04, 1.5), 0.125, BOULDER, rings=3, sides=6)
-        mesh += _unit_pitch(arm, -52 if frame == "attack" else 66, pivot)
+        arm = _unit_rod((0, -0.04, 0.44), (0, -0.04, 1.3), 0.055, wood)
+        arm += r3.cylinder((0, -0.04, 1.26), 0.2, 0.2, wood_dark, sides=8)  # the sling basket the stone rides in
+        arm += r3.cylinder((0, -0.04, 1.44), 0.215, 0.035, look.metal, sides=8)  # its iron rim
+        if not _striking(frame):
+            arm += r3.sphere((0, -0.04, 1.4), 0.14, BOULDER, rings=3, sides=6)  # the stone sits inside, its top showing
+        mesh += _unit_pitch(arm, -52 if _striking(frame) else 66, pivot)
         if race is Race.ORC:
             for x in (-0.3, 0.3):
                 mesh += r3.cone((x, -0.4, 0.83), 0.05, 0.2, BONE, sides=4)
@@ -1644,7 +1730,7 @@ def _healer(player: int, frame: str, race: Race) -> Mesh:
     team = team_color(player)
     look = LOOKS[race]
     robe = PLASTER if race is Race.HUMAN else look.cloth if race is not Race.ORC else (78, 52, 40)
-    bob = 0.025 if frame == "walk1" else 0
+    bob = _BOB.get(frame, 0.0)
     mesh = _shadow(0.3) + _legs(frame, robe)
     mesh += r3.cone((0, 0, 0.08), 0.29, 0.84, robe, sides=8)
     mesh += r3.cylinder((0, 0, 0.38 + bob), 0.185, 0.32, robe, sides=8)
@@ -1671,8 +1757,8 @@ def _healer(player: int, frame: str, race: Race) -> Mesh:
         mesh += r3.sphere((0, 0, 0.95 + bob), 0.17, look.metal_dark, rings=3, sides=7)  # a runed skullcap
         mesh += r3.box((0, 0.16, 0.98 + bob), (0.07, 0.03, 0.07), GOLD)
     mesh += _unit_rod((-0.2, 0, 0.64), (-0.34, 0.12, 0.57), 0.08, robe)
-    mesh += _unit_rod((0.2, 0, 0.64), (0.3, 0.18, 0.7 if frame == "attack" else 0.49), 0.075, robe)
-    lift = 0.15 if frame == "attack" else 0
+    mesh += _unit_rod((0.2, 0, 0.64), (0.3, 0.18, 0.7 if _striking(frame) else 0.49), 0.075, robe)
+    lift = 0.15 if _striking(frame) else 0
     staff = _unit_rod((-0.36, 0.12, 0.12 + lift), (-0.36, 0.12, 1.3 + lift), 0.032, WOOD)
     if race is Race.HUMAN:
         # Tall gilded sun staff gives the healer an unmistakable asymmetric silhouette.
@@ -1754,7 +1840,14 @@ def restyled_frames(race: Race, unit_type: UnitType, carrying: Resource | None) 
     name = f"{race.value}.{unit_type.value}" + (f".{carrying.value}" if carrying else "")
     if not RESTYLED_ART or not restyle.file(RESTYLED / name, "png").exists():
         return None
-    return restyle.load_frames(RESTYLED / name)
+    sheet, frames = restyle.load_frames(RESTYLED / name)
+    wanted = FRAMES + CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else FRAMES
+    missing = [frame for frame in wanted if unit_key(unit_type, 0, 0, frame, carrying, race) not in frames]
+    if missing:
+        warnings.warn(f"painted sheet {name} is stale (no {missing[0]!r} frame) and is ignored; re-render it with tools/restyle.py",
+                      stacklevel=2)
+        return None
+    return sheet, frames
 
 
 def unit_image(game: Game, unit_type: UnitType, player: int, facing: int, frame: str, carrying: Resource | None = None, *,
@@ -1821,7 +1914,7 @@ def building_image(game: Game, building_type: BuildingType, player: int, race: R
 
 
 DROP_TREE = TILE / 2 + PAD  # a tree is placed at its tile's centre; its image reaches the tile's front edge
-DROP_UNIT = TILE * 1.5 + PAD  # a lance pointed at the camera, or a broad dwarf's axe at the foot of its swing, reaches well below the feet
+DROP_UNIT = TILE * 1.9 + PAD  # a lance pointed at the camera, or an orc's lunging strike, reaches well below the feet
 
 
 # -- 2-D effect images ----------------------------------------------------------------

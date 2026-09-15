@@ -37,7 +37,10 @@ STYLE = ("Re-render every cell as a polished, appealing game sprite in a rich ha
          "shown at about half this size, so keep shapes bold and edges crisp.")
 
 FACINGS = "right, down-right, down (towards the viewer), down-left, left, up-left, up (away from the viewer), up-right"
-FRAME_NAMES = {"stand": "standing", "walk1": "walk frame 1", "walk2": "walk frame 2", "attack": "attack",
+FRAME_NAMES = {"stand": "standing at guard", "walk1": "walking, left foot forward (contact)", "walk2": "walking, passing with the right knee lifted",
+               "walk3": "walking, right foot forward (contact)", "walk4": "walking, passing with the left knee lifted",
+               "wind": "wind-up: weapon drawn back, torso twisted away, weight back", "strike": "strike: lunging forward, weapon driven at the enemy",
+               "follow": "follow-through: weapon swept across the body, torso twisted the other way", "recover": "recovering back to guard",
                "chop1": "chopping a tree, axe raised", "chop2": "chopping, fast downswing", "chop3": "chopping, axe contact",
                "chop4": "chopping, recovery"}
 
@@ -58,6 +61,22 @@ SUBJECTS: dict[tuple[Race, UnitType], str] = {
                                    "stay this blue), holding a staff",
 }
 CARRY = {Resource.GOLD: ", carrying a heavy sack of gold", Resource.LUMBER: ", carrying a bundle of lumber on the shoulder"}
+
+#: Known shortcomings of the low-poly stand-ins that the painter is asked to correct in place.
+FIXES: dict[tuple[UnitType, Resource | None], str] = {
+    (UnitType.PEASANT, None): "the axe is gripped with both hands during the chop; the cap sits on the head",
+    (UnitType.PEASANT, Resource.LUMBER): "the bundle of logs rests across the shoulder and is held from below with both hands; it never floats above the head",
+    (UnitType.PEASANT, Resource.GOLD): "the sack is cradled in the arms against the chest, hands visible on it",
+    (UnitType.FOOTMAN, None): "the sword is gripped in the right hand, the shield is strapped to the left forearm and follows that arm",
+    (UnitType.ARCHER, None): "the bow is gripped in the left hand and the right hand draws the string with an arrow nocked in the wind-up and strike; the quiver hangs on the back",
+    (UnitType.KNIGHT, None): "the rider sits in a saddle with stirrups and holds the reins; the lance is gripped and couched under the arm in the strike, not floating beside the horse",
+    (UnitType.SCOUT, None): "the rider sits in a saddle and holds the reins; the spear is gripped",
+    (UnitType.CATAPULT, None): "the stone sits inside the sling basket at the end of the throwing arm (never on top of the arm like a mace head), the basket is empty after the throw, the wheels have spokes and the frame has a windlass with rope",
+    (UnitType.CLERIC, None): "the staff is gripped in one hand; the raised hand in the strike frames glows softly",
+}
+PLAUSIBLE = ("The reference is a rough low-poly stand-in. Where its construction is physically implausible (a load floating instead of "
+             "held, a prop attached instead of resting, a weapon beside a hand instead of in it), draw the plausible version in the same "
+             "place, at the same size, without changing the pose or moving the feet.")
 
 
 def subject_name(race: Race, unit: UnitType, carrying: Resource | None) -> str:
@@ -106,7 +125,9 @@ def prompt(sheet: restyle.Sheet, race: Race, unit: UnitType, carrying: Resource 
             f"Thin dark grey lines mark the cell borders; keep the lines and the margin exactly where they are, and keep each "
             f"figure centred in its own cell exactly where it is now. Rows, top to bottom: {rows}. Columns, left to right: "
             f"the unit facing {FACINGS}.\n\nThe unit is {SUBJECTS[(race, unit)]}{CARRY.get(carrying, '')}.\n\n{STYLE}\n\n"
-            f"Keep exactly: each figure's position, scale, pose, facing direction, limb and weapon placement, and feet position. "
+            f"{PLAUSIBLE} In particular: {FIXES[(unit, carrying)]}.\n\n"
+            f"Keep exactly: each figure's position, scale, pose, facing direction, lean, twist, limb and weapon placement, and feet position; "
+            f"the poses differ from row to row on purpose (a walk cycle and the phases of a blow), so each row must keep its own pose. "
             f"Every cell keeps the flat #FF00FF background with nothing else on it: no gradients, glows, outlines, text, borders "
             f"or extra objects. Output the same {w}x{h} layout.")
 
@@ -177,9 +198,9 @@ def cmd_preview(args: argparse.Namespace) -> None:
         sheet, frames = restyle.load_frames(RESTYLED / name)
         original_sheet, original = build_sheet(race, unit, carrying)
         facings = range(textures.FACINGS)
-        sequence = ["walk1", "walk2"] * 3 + ["stand", "attack", "attack", "stand"]
+        sequence = list(textures.WALK_FRAMES) * 2 + ["stand", "wind", "wind", "strike", "follow", "recover", "stand"]
         if unit is UnitType.PEASANT and carrying is None:
-            sequence += ["chop1", "chop2", "chop3", "chop4"] * 2
+            sequence += list(textures.CHOP_FRAMES) * 2
         gif_frames = []
         for frame in sequence:
             keys = [sheet.find(frame=frame, facing=f).key for f in facings]

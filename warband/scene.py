@@ -1151,11 +1151,17 @@ class GameScene(Scene):
         if not self._visible(e.pos):
             return
         target = self.world.entity(e.other) if e.other is not None else None
+        source = self.world.entity(e.entity) if e.entity is not None else None
         if isinstance(target, Unit):
             sprite = self.view.unit_sprite(target.id)
             if sprite is not None and sprite.visible:
-                self.effects.add(HitReaction(sprite, (1.0, 1.0, 1.0), knockback=0.0, wobble=6.0, duration=0.2))
-        source = self.world.entity(e.entity) if e.entity is not None else None
+                # The victim flinches away from the blow; a standing victim is shoved a little.
+                origin = to_world(source.pos if isinstance(source, Unit) else source.center) if source is not None else None
+                shove = 3.0 if target.state in ("idle", "attack", "hold") else 0.0
+                self.effects.add(HitReaction(sprite, (1.0, 1.0, 1.0), source=origin, knockback=shove, wobble=9.0, duration=0.22))
+            if e.text != "ranged":
+                wx, wy = to_world(e.pos)
+                self.effects.add(Burst((wx, wy - TILE * 0.45), (255, 236, 190, 255), 5, rng=self.rng, size=5, speed=(50, 140)))
         if e.text == "ranged" and source is not None:
             if isinstance(source, Unit) and source.info.splash > 0:
                 flight = self._stone(source, e.pos)
