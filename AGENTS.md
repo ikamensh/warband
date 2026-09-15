@@ -16,7 +16,11 @@ uv run python -u tools/fuzz.py --games 2 --monkey 0 --seed 81   # AI matches wit
 uv run python tools/verify.py DIR                # a match through real pyglet events, frames saved to look at
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms)
 uv run python tools/step_bench.py --repeat 3     # model step times of the same battle without a window, with --profile
-uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening; full report takes ~30 min
+uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening (the default report is about a minute)
+uv run python tools/arena.py ladder --agents hard,pro --seeds 40   # rate agents against each other, in parallel
+uv run python tools/arena.py report --seeds 24                     # 1v1, free-for-all and jittered-balance ladders
+uv run python tools/tune.py --rounds 12 --games 48                 # hill-climb a ProProfile's numbers
+uv run python tools/sim_fingerprint.py --check tools/sim_fingerprint.txt   # the simulation is bit-for-bit unchanged
 uv run python tools/music.py render DIR          # WAV, spectrogram and stats per track
 uv run python tools/pieces.py refresh            # regenerate the impact, death and wreckage pieces with Stable Audio 3 (needs STABLE_AUDIO_MLX; see docs/warband-pieces.md)
 uv run python tools/restyle.py refresh DIR          # painted unit and building sprites: the whole procedure; see ../sagaforge/docs/restyle.md
@@ -33,7 +37,10 @@ real breakdown.
   saga2d dependency, so rules are tested directly. `rules.py` holds the tables,
   `races.py` the four races' names, numbers and arts, `path.py` bounded A*,
   `mapgen.py` layout and fairness, `ai.py` a Brain per player from a profile
-  per difficulty (`PROFILES`), `worker_ai.py`/`worker_knowledge.py` the
+  per difficulty (`PROFILES`), `pro_ai.py` a stronger `ProBrain` driven by a
+  `ProProfile` of knobs, `arena.py` the ladder that rates them (1v1,
+  free-for-all placements, jittered rulebooks, Bradley-Terry ratings on the
+  Elo scale), `worker_ai.py`/`worker_knowledge.py` the
   automatic gatherers, `settlement.py`/`production.py` building plans and the
   command card, `scores.py` the local top ten.
 - `warband/textures.py` renders ground, props, buildings and units through
@@ -78,6 +85,14 @@ real breakdown.
 - After changing rules, the AI or scene input, run `tools/fuzz.py`; a bug
   found by fuzz gets a regression test built from the seed's exact tiles and
   unit positions (synthetic geometries kept passing on old code).
+- A change that is meant to be only a speed change must leave
+  `tools/sim_fingerprint.py --check` alone: lockstep online play needs the
+  simulation reproducible to the float bit. A deliberate rules or AI change
+  moves it, and the recorded hash is refreshed in the same commit.
+- Claims about an AI being stronger are settled by `tools/arena.py`, not by
+  watching a match. The same two brains on the same twelve seeds swing
+  between seven and eleven wins on the random stream alone, so nothing under
+  a few dozen games means anything; see `docs/ai-ladder.md`.
 - Check what the player can reach through the UI, not only what the rules
   allow (the build card once offered four of nine buildings while the model
   tests passed).

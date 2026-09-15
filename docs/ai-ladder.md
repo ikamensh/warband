@@ -61,6 +61,47 @@ rungs in between: `hard` against `pro` against a stronger `pro` gives a
 well-conditioned chain, where `hard` against the strongest alone would only
 say "it never lost".
 
+## Where the agents stand
+
+1v1, 25 seeds, every pairing from both corners, 300 games, `hard` anchored at 1000:
+
+| agent | Elo | 90% interval | score |
+|-------|-----|--------------|-------|
+| `pro` | 1391 | 1305 .. 1512 | 94.7% |
+| `hard` | 1000 | — | 50.7% |
+| `normal` | 952 | 888 .. 1018 | 44.0% |
+| `easy` | 691 | 598 .. 776 | 10.7% |
+
+`pro` takes 88% against `hard`, 96% against `normal` and 100% against `easy`.
+
+Two things are worth reading off that table. The three shipped difficulties
+span only about 300 Elo, and `hard` beats `normal` just 58% of the time — so
+"the current AI" is really one strength with three settings. And `pro`
+against `easy` is 100 games out of 100: this game has no floor of upsets
+that a strong player cannot escape, so the distance between two agents here
+is limited by the agents, not by the dice.
+
+## What each change was worth
+
+Every number below is a measured ladder result, and several of them
+contradicted the reasoning that produced the change:
+
+| change | effect |
+|--------|--------|
+| directing focus fire | **−109 Elo** — it switches off the model's own kiting and retargeting |
+| feeding the workforce in gradually | **−187 Elo** (1516 → 1329) against hiring it at once |
+| early towers | 68.8% against `hard` where every other variant took 100% |
+| answering a raid with just enough soldiers | 81% against `hard`, where sending everyone took 90% |
+| more production once gold piles up | +52 Elo |
+| pulling wounded soldiers out to heal | beat the baseline 68.8% |
+| counting build orders in flight | −18 points on its own, +good once the site limit was raised to match |
+
+The last one is the cautionary tale. The brain had been re-ordering the same
+barracks on every pass because a building does not exist until its peasant
+arrives; fixing that was plainly correct and immediately made the brain
+worse, because the double-ordering had been buying a build rate nothing else
+was configured for.
+
 ## The agents
 
 | agent | what it is |

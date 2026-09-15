@@ -38,9 +38,9 @@ import random
 from dataclasses import dataclass, field, replace
 
 from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift
-from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Unit, World, dist
+from warband.model import Attack, Build, Building, Point, Pos, Repair, Unit, World, dist
 from warband.races import RACES
-from warband.rules import BUILDINGS, BuildingType, Race, Resource, UnitType, Upgrade
+from warband.rules import BUILDINGS, BuildingType, UnitType
 
 _MELEE_TYPES = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
 BUILD_MIN_DISTANCE = 2
@@ -72,7 +72,6 @@ class ProProfile:
     min_army: int = 10                # never walk out with less than this, whatever the comparison says
     guards: int = 2                   # soldiers kept home against raiders, never sent out
     tower_count: int = 2
-    early_towers: int = 0             # towers put up before anything optional, to survive a rush
     retreat_wounded: bool = True       # pull a soldier out at this much health and let it heal…
     retreat_hp: float = 0.25
     rejoin_hp: float = 0.7             # …and send it back once it is this whole again
@@ -89,7 +88,6 @@ class ProProfile:
     ffa_caution: float = 0.25          # extra margin demanded per opponent who could profit from the fight
     expand: bool = True
     expand_early: bool = False        # a second mine before production has saturated
-    reserve: int = 0                   # gold held back from unit production for buildings and research
     siege: bool = True
     clerics: bool = True
     siege_share: float = 0.0          # if set, the share of the army that is catapults…
@@ -358,11 +356,6 @@ class ProBrain:
             wishes.append((BuildingType.BARRACKS, anchor))
         if count(BuildingType.LUMBER_MILL) < 1:
             wishes.append((BuildingType.LUMBER_MILL, anchor))
-        # Most of these games are decided inside eight minutes, so surviving the
-        # first push is worth more than anything it would otherwise buy: a tower
-        # outlasts three soldiers and never needs feeding.
-        if count(BuildingType.TOWER) < profile.early_towers and have(BuildingType.BARRACKS):
-            wishes.append((BuildingType.TOWER, self._front_point(world, hall)))
         # Everything past here is optional, and optional buildings are what lose games:
         # each one is an army that was not trained. They are unlocked only once the
         # production already standing cannot keep up with the money coming in.
@@ -572,8 +565,6 @@ class ProBrain:
 
     def _research(self, world: World) -> None:
         player = world.players[self.player]
-        if player.gold < self.profile.reserve:
-            return
         for upgrade in RESEARCH_ORDER:
             if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):
                 continue
