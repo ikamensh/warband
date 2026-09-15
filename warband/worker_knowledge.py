@@ -56,10 +56,19 @@ class WorkerKnowledge:
         self.terrain: list[Terrain | None] = [None] * (width * height)
         self.blocked = bytearray([1]) * (width * height)
         self.mines: dict[int, KnownMine] = {}
-        self.threats: tuple[_Building, ...] = ()  # last-observed armed structures; callers filter out their own
-        self._buildings: dict[int, _Building] = {}
+        self.buildings: dict[int, _Building] = {}  # last-observed footprint of every structure ever seen
+        self.threats: tuple[_Building, ...] = ()  # the armed ones among them; callers filter out their own
         self._terrain_blocked = bytearray([1]) * (width * height)  # the grid without any footprint stamped on it
         self._spans: dict[tuple[int, int, int], tuple[tuple[int, int], ...]] = {}
+        self._trees: set[int] = set()
+        self._tree_order: tuple[int, ...] | None = None
+
+    @property
+    def trees(self) -> tuple[int, ...]:
+        """Remembered tree tiles as flat indices in map order, so route plans consider them in a fixed order."""
+        if self._tree_order is None:
+            self._tree_order = tuple(sorted(self._trees))
+        return self._tree_order
 
     def spans(self, x: int, y: int, size: int) -> tuple[tuple[int, int], ...]:
         """One flat-index range per row of a footprint, clipped to the map. Footprints never move, so these are cached."""
@@ -83,16 +92,19 @@ class WorkerKnowledge:
         """Rebuild the public grid from the terrain layer with every remembered footprint blocked."""
         blocked = self.blocked
         blocked[:] = self._terrain_blocked
-        for building in self._buildings.values():
+        for building in self.buildings.values():
             for start, stop in self.spans(building.x, building.y, building.size):
                 blocked[start:stop] = b"\x01" * (stop - start)
-        self.threats = tuple(building for building in self._buildings.values() if building.threat_range > 0)
+        self.threats = tuple(building for building in self.buildings.values() if building.threat_range > 0)
 
     def _rebuild_grid(self) -> None:
         """Recompute the terrain layer from scratch; refresh() then keeps it current tile by tile."""
-        terrain_blocked = self._terrain_blocked
+        terrain_blocked, trees = self._terrain_blocked, set()
         for index, terrain in enumerate(self.terrain):
             terrain_blocked[index] = terrain is None or terrain in BLOCKING
+            if terrain is Terrain.TREES:
+                trees.add(index)
+        self._trees, self._tree_order = trees, None
         self._stamp_buildings()
 
     def refresh(self, world: World, player: int) -> None:
@@ -100,7 +112,7 @@ class WorkerKnowledge:
             raise ValueError("Worker knowledge dimensions must match the world")
         visible = world.visible[player]
         width = self.width
-        remembered, terrain_blocked = self.terrain, self._terrain_blocked
+        remembered, terrain_blocked, trees = self.terrain, self._terrain_blocked, self._trees
         for y, row in enumerate(world.terrain):
             base = y * width
             seen = visible[base:base + width]
@@ -112,17 +124,22 @@ class WorkerKnowledge:
                 if remembered[index] is not terrain:
                     remembered[index] = terrain
                     terrain_blocked[index] = terrain in BLOCKING
+                    if terrain is Terrain.TREES:
+                        trees.add(index)
+                    else:
+                        trees.discard(index)
+                    self._tree_order = None
         observed = {building.id: building for building in world.buildings.values()
                     if building.player == player or self.sees(visible, building.x, building.y, building.size)}
-        for bid, remembered_building in list(self._buildings.items()):
+        for bid, remembered_building in list(self.buildings.items()):
             if bid not in observed and (remembered_building.player == player
                                         or self.sees(visible, remembered_building.x, remembered_building.y,
                                                      remembered_building.size)):
-                del self._buildings[bid]
+                del self.buildings[bid]
                 self.mines.pop(bid, None)
         for building in observed.values():
             threat_range = building.info.range + 1.5 if building.done and building.info.damage else 0.0
-            self._buildings[building.id] = _Building(building.id, building.x, building.y, building.size, building.player, threat_range)
+            self.buildings[building.id] = _Building(building.id, building.x, building.y, building.size, building.player, threat_range)
             if building.type is BuildingType.GOLD_MINE:
                 self.mines[building.id] = KnownMine(building.id, building.x, building.y, building.size, building.gold)
             else:
@@ -141,7 +158,7 @@ class WorkerKnowledge:
     def to_dict(self) -> dict:
         return {"width": self.width, "height": self.height,
                 "terrain": [terrain.value if terrain is not None else None for terrain in self.terrain],
-                "buildings": [asdict(building) for building in self._buildings.values()],
+                "buildings": [asdict(building) for building in self.buildings.values()],
                 "mines": [asdict(mine) for mine in self.mines.values()]}
 
     @classmethod
@@ -150,7 +167,7 @@ class WorkerKnowledge:
         knowledge.terrain = [Terrain(value) if value is not None else None for value in data["terrain"]]
         if len(knowledge.terrain) != knowledge.width * knowledge.height:
             raise ValueError("Remembered terrain must match its map dimensions")
-        knowledge._buildings = {item["id"]: _Building(**item) for item in data["buildings"]}
+        knowledge.buildings = {item["id"]: _Building(**item) for item in data["buildings"]}
         knowledge.mines = {item["id"]: KnownMine(**item) for item in data["mines"]}
         knowledge._rebuild_grid()
         return knowledge
