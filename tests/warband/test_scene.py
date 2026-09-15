@@ -381,8 +381,23 @@ def test_scrolling_zooms_about_the_pointer_and_the_camera_stays_in_bounds(play) 
     tick(game, 0.5)
     assert camera.zoom > 1.0 and camera.screen_to_world(400, 300) == pytest.approx(under, abs=1e-6)
     camera.scroll(-100000, -100000)
-    left, top, _r, _b = camera.visible_world_rect()
-    assert left >= -32 and top >= -32
+    left, _t, _r, _b = camera.visible_world_rect()
+    assert left >= -32
+
+
+def test_every_map_edge_can_be_scrolled_clear_of_the_hud(play) -> None:
+    """A base at the map's top or bottom edge is not stuck under the HUD: the edge row scrolls past the panels at any zoom."""
+    game, scene = play
+    world, camera = scene.world, scene.camera
+    settlement_row = next(c for c in scene.ui.children if any(getattr(b, "text", None) == "Assembly" for b in c.walk()))
+    hud_top = settlement_row.bounds[1] + settlement_row.bounds[3]
+    hud_bottom = min(scene.selection_panel.bounds[1], scene.minimap.bounds[1])
+    for zoom in (0.75, 1.0, 2.0):
+        camera.zoom = zoom
+        camera.scroll(0, -100000)
+        assert camera.world_to_screen(0, 0)[1] >= hud_top
+        camera.scroll(0, 100000)
+        assert camera.world_to_screen(0, world.height * 32)[1] <= hud_bottom
 
 
 # -- Title ---------------------------------------------------------------------------------

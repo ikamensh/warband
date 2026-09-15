@@ -39,6 +39,7 @@ SAVE_VERSION = 1
 SAVE_SLOTS = 3
 AUTOSAVE_EVERY = 120.0  # seconds of match time
 TOAST_TOP = 280  # below the resource, settlement and objectives panels
+HUD_TOP = 146  # just under the Settlement row: the status line starts here, and the map can scroll clear of it
 HINT_BAR = 28
 PANEL_MARGIN = (12, HINT_BAR + 10)
 MAX_STEPS_PER_FRAME = 6
@@ -193,10 +194,16 @@ class GameScene(Scene):
         self._refresh_card()  # the Plans overlay may have cancelled what the card's keys and counts describe
 
     def _setup_camera(self) -> None:
+        """The map plus its rim, scrollable clear of the HUD: the top rows above, the selection panel and minimap below."""
         w, h = self.game.resolution
         world_w, world_h = self.world.width * TILE, self.world.height * TILE
-        self.camera = Camera((w, h), world_bounds=(-TILE, -TILE, world_w + TILE, world_h + SELECTION_HEIGHT + 3 * TILE), zoom=1.0, min_zoom=0.75, max_zoom=2.0)
+        hud_bottom = PANEL_MARGIN[1] + max(SELECTION_HEIGHT, self._minimap_height())
+        self.camera = Camera((w, h), world_bounds=(-TILE, -TILE, world_w + TILE, world_h + TILE), insets=(0, HUD_TOP, 0, hud_bottom),
+                             zoom=1.0, min_zoom=0.75, max_zoom=2.0)
         self.camera.enable_key_scroll(speed=KEY_SPEED)
+
+    def _minimap_height(self) -> int:
+        return round(MINIMAP_WIDTH * self.world.height / self.world.width)
 
     def apply_settings(self) -> None:
         """Push the settings into the things they control; called on entry and after the settings screen."""
@@ -285,7 +292,7 @@ class GameScene(Scene):
                         spacing=8, anchor=Anchor.TOP_LEFT, margin=(12, 84), style=PANEL_STYLE))
         world_w, world_h = self.world.width * TILE, self.world.height * TILE
         self.minimap = Minimap(self.view.minimap_key, (world_w, world_h), self.camera, width=MINIMAP_WIDTH,
-                               height=round(MINIMAP_WIDTH * world_h / world_w), on_click=self.minimap_click,
+                               height=self._minimap_height(), on_click=self.minimap_click,
                                anchor=Anchor.BOTTOM_LEFT, margin=PANEL_MARGIN, style=PANEL_STYLE)
         self.ui.add(self.minimap)
         self.selection_panel = Component(width=SELECTION_WIDTH, height=SELECTION_HEIGHT, anchor=Anchor.BOTTOM_CENTER, margin=PANEL_MARGIN)
@@ -299,8 +306,8 @@ class GameScene(Scene):
         self.ui.add(self.command_tooltip)
         self.ui.add(KeyHints(self._hint, anchor=Anchor.BOTTOM_CENTER, margin=5))
         self.ui.add(Label(lambda: self.status if self.status_timer > 0 else "", text_style="hud", anchor=Anchor.TOP_LEFT,
-                          margin=(12, 146), width=760, wrap=True, text_color=GOLD))
-        self.objectives = Column(spacing=4, anchor=Anchor.TOP_RIGHT, margin=(12, 146), style=PANEL_STYLE)
+                          margin=(12, HUD_TOP), width=760, wrap=True, text_color=GOLD))
+        self.objectives = Column(spacing=4, anchor=Anchor.TOP_RIGHT, margin=(12, HUD_TOP), style=PANEL_STYLE)
         self.objectives.add(Row(Label("Getting started", text_style="heading", width=290),
                                 Button("Hide", hotkey="F4", on_click=self.hide_tutorial, style=GHOST_BUTTON, width=90), spacing=8))
         self.objective_label = Label("", text_style="body", width=390)
