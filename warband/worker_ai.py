@@ -55,7 +55,7 @@ def _navigation(world: World, player: int) -> bytearray:
         info = unit.info
         if info.damage:
             threats.append(((unit.x, unit.y), max(2.5, info.range + 1.5), None))
-    # Footprints the remembered grid already blocks need no second stamp, which usually leaves none at all.
+    # Only a footprint the remembered grid does not already block still needs stamping, which is usually none.
     for bid in world.buildings.keys() - knowledge.buildings.keys():
         building = world.buildings[bid]
         x, y, size = building.x, building.y, building.size
@@ -160,10 +160,8 @@ class _View:
         goals, owners = {}, {}
         for site in self._sites_for(resource):
             target = site.target
-            if lumber and loads[target]:
-                continue
             if lumber:
-                if knowledge.terrain[target[1] * width + target[0]] is not Terrain.TREES:
+                if loads[target] or knowledge.terrain[target[1] * width + target[0]] is not Terrain.TREES:
                     continue
             else:
                 mine = knowledge.mines.get(target)
