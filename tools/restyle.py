@@ -4,6 +4,7 @@
     uv run python tools/restyle.py render DIR               # repaint the sheets (Codex by default)
     uv run python tools/restyle.py cut DIR                   # key, register, check; install into warband/assets/restyled
     uv run python tools/restyle.py preview DIR OUT_DIR       # walk/attack GIFs, original above restyled
+    uv run python tools/restyle.py refresh DIR               # all four in a row; previews land in DIR/previews
 
 ``--race`` and ``--units`` narrow every step; ``render --provider openrouter --model ...``
 uses an OpenRouter image model instead of Codex's built-in tool.  The sheets are rendered
@@ -226,11 +227,23 @@ def main() -> None:
     p = sub.add_parser("cut"); p.add_argument("dir", type=Path); p.add_argument("--provider", default="codex")
     p.add_argument("--tolerate", type=int, default=2, help="flagged cells allowed before a sheet is rejected"); p.set_defaults(run=cmd_cut)
     p = sub.add_parser("preview"); p.add_argument("dir", type=Path); p.add_argument("out", type=Path); p.set_defaults(run=cmd_preview)
+    p = sub.add_parser("refresh"); p.add_argument("dir", type=Path); p.add_argument("--provider", default="codex", choices=["codex", "openrouter"])
+    p.add_argument("--model", default="google/gemini-3.1-flash-image"); p.add_argument("--jobs", type=int, default=4)
+    p.add_argument("--force", action="store_true"); p.add_argument("--tolerate", type=int, default=2); p.set_defaults(run=cmd_refresh)
     p = sub.add_parser("showcase"); p.add_argument("out", type=Path); p.add_argument("--seconds", type=float, default=6.0)
     p.add_argument("--zoom", type=float, default=1.5); p.set_defaults(run=cmd_showcase)
     args = parser.parse_args()
     args.run(args)
 
+
+
+def cmd_refresh(args: argparse.Namespace) -> None:
+    """Dump, render, cut and preview in one go: the whole procedure for the selected subjects."""
+    cmd_dump(args)
+    cmd_render(args)
+    cmd_cut(args)
+    args.out = args.dir / "previews"
+    cmd_preview(args)
 
 
 def cmd_showcase(args: argparse.Namespace) -> None:

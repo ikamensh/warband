@@ -17,7 +17,7 @@ uv run python tools/verify.py DIR                # a match through real pyglet e
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms)
 uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening; full report takes ~30 min
 uv run python tools/music.py render DIR          # WAV, spectrogram and stats per track
-uv run python tools/restyle.py dump DIR          # painted unit sprites: dump, render (Codex), cut (installs), preview, showcase
+uv run python tools/restyle.py refresh DIR          # painted unit sprites: the whole procedure; see ../sagaforge/docs/restyle.md
 uv run --extra package python tools/package.py build --version 0.1.0   # standalone build; verify DIR / install too
 ```
 
