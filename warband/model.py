@@ -782,7 +782,7 @@ class World:
             for unit in self.units.values():
                 if unit.id == builder or unit.hidden:
                     continue
-                if left - UNIT_RADIUS < unit.x < left + size + UNIT_RADIUS and top - UNIT_RADIUS < unit.y < top + size + UNIT_RADIUS:
+                if left - unit.radius < unit.x < left + size + unit.radius and top - unit.radius < unit.y < top + size + unit.radius:
                     return "A unit is in the way"
         rect = (left, top, size, size)
         for mine in self.buildings.values():
@@ -1667,7 +1667,8 @@ class World:
         """Walk to a useful work position; True only when no route exists."""
         goal = u.path_goal
         if (goal is None or navigation[goal[1] * self.width + goal[0]]
-                or rect_gap(tile_center(goal), rect) - u.radius > TOUCH or self._next_waypoint(u, precise=True) is None):
+                or rect_gap((goal[0] + 0.5, goal[1] + 0.5), rect) - u.radius > TOUCH
+                or self._next_waypoint(u, precise=True) is None):
             if self.time < u.replan_at:
                 u.state = "idle"
                 return False

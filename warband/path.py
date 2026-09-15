@@ -139,6 +139,8 @@ def find_path_grid(start: Pos, goal: Pos, blocked: bytes | bytearray, width: int
                                        + 2 * (x > 0 and not blocked[current - 1])
                                        + 4 * (below < size and not blocked[below])
                                        + 8 * (above >= 0 and not blocked[above])]
+        # Orthogonal and diagonal steps are relaxed in two passes: the step cost differs, and
+        # only a diagonal still has to prove its own tile free.
         ng = g + 1.0
         for offset in orthogonals:
             nxt = current + offset
@@ -232,8 +234,8 @@ class Regions:
 
 def distance_field(starts: Iterable[int], blocked: bytes | bytearray, width: int, height: int) -> list[float]:
     """Walking distance from the nearest of the *starts* (flat indices) to every tile; infinity where
-    no walk leads.  The eight-way expansion is inlined as in :func:`find_path_grid`: this floods the
-    whole map."""
+    no walk leads.  This floods the whole map, so it expands tiles through :func:`step_offsets` the
+    way :func:`find_path_grid` does."""
     size = width * height
     distances = [math.inf] * size
     frontier = []
