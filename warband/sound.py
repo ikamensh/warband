@@ -217,7 +217,7 @@ class SynthBank:
         self._audio.muted = value
 
 
-SOUND_VERSION = "8"
+SOUND_VERSION = "9"
 MUSIC = music.TRACKS
 
 #: ``play_sound(name)`` forwards here when set; ``None`` is silent.

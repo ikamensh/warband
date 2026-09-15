@@ -1,4 +1,4 @@
-"""Generate Warband's sound pieces with Stable Audio 3: unit deaths and building wreckage, and files to listen to them.
+"""Generate Warband's sound pieces with Stable Audio 3: combat impacts, unit deaths and building wreckage, and files to listen to them.
 
     uv run python tools/pieces.py refresh              # generate what is missing or changed; manifests updated
     uv run python tools/pieces.py sampler DIR          # deaths.wav and wreckage.wav, every piece back to back, with label lists
@@ -21,10 +21,11 @@ from sagaforge.foley import BuildError, Piece, StableAudioMLX, build, sampler  #
 from warband.pieces import ROOT  # noqa: E402
 from warband.rules import Race  # noqa: E402
 
-# The game modules (warband.deaths, warband.wreckage) expect these folders and stage names; they are
+# The game modules (warband.combat_sound, deaths, wreckage) expect these folders and names; they are
 # spelled out here rather than imported because those modules refuse to load without their pieces.
 DEATHS, DEATH_STAGES = "deaths", ("weapon", "body", "settle")
 WRECKAGE, WRECK_STAGES, MATERIALS = "wreckage", ("crack", "collapse", "debris"), ("wood", "stone")
+IMPACTS, WEAPONS, TARGETS, IMPACT_TAKES = "impacts", ("sword", "axe", "spear", "lance", "arrow", "stone", "hammer"), ("flesh", "armor", "wood", "stone"), 3
 
 LICENSE = "Stability AI Community License: outputs are owned by the licensee and free to commercialise; training data licensed by Stability AI"
 CRY_STYLE = "medieval fantasy battlefield, close, dry, no music, no reverb"
@@ -66,7 +67,8 @@ FALLS = {
 }
 STAGE_TAKES = 2
 #: Seeds that produced a rejected piece, and the seed that replaced them.
-RESEEDED = {"elf_cry_2": 1122, "human_settle_1": 4311}
+RESEEDED = {"elf_cry_2": 1122, "human_settle_1": 4311,
+            "lance_flesh_1": 7351, "arrow_flesh_1": 7451}  # the first seeds gave bright hits on flesh, no contrast with armour
 
 
 def death_pieces() -> list[Piece]:
@@ -108,7 +110,40 @@ def wreckage_pieces() -> list[Piece]:
     return wanted
 
 
-FOLDERS = {DEATHS: death_pieces, WRECKAGE: wreckage_pieces}
+# -- Combat impacts: every weapon on every material, three phrasings each ---------------------------------
+
+IMPACT_STYLE = "one short hit then silence, close, dry, no music, no reverb, no voice"
+#: One verb phrase per take, so the three takes of a pair are three different blows.
+STRIKES = {
+    "sword": ["a steel sword swings and slashes into", "a sword blade hacks into", "a quick sword cut strikes"],
+    "axe": ["a heavy axe swings and chops into", "a broad axe blade bites into", "an axe hacks hard into"],
+    "spear": ["a spear thrusts and stabs into", "a spear point jabs into", "a spear thrust pierces"],
+    "lance": ["a charging knight's lance drives into", "a heavy lance slams into", "a lance thrust punches into"],
+    "arrow": ["a light arrow whistles in and strikes with a quick sharp thwack", "a thin arrow snaps into, a short sharp tick", "an arrow hits with a brief crisp thwack and sticks in"],
+    "stone": ["a massive catapult boulder crashes with a deep heavy thud into", "a huge siege stone slams with a low booming impact into", "a heavy boulder thunders down onto"],
+    "hammer": ["a war hammer swings and smashes into", "a heavy hammer head slams into", "a war hammer crushes"],
+}
+#: What is struck, in two wordings that alternate across takes.
+STRUCK = {
+    "flesh": ["a body, a wet meaty thump", "a man's body, a dull fleshy hit"],
+    "armor": ["chainmail and plate armor, a metallic clang", "steel armor plates, a ringing metallic hit"],
+    "wood": ["wooden planks, a splintering wooden crack", "a wooden wall, a hollow wooden thud and crack"],
+    "stone": ["stone masonry, a hard stone crack with chips flying", "a stone wall, a sharp stony crack"],
+}
+
+
+def impact_pieces() -> list[Piece]:
+    wanted = []
+    for w, weapon in enumerate(WEAPONS):
+        for m, target in enumerate(TARGETS):
+            for i in range(IMPACT_TAKES):
+                name = f"{weapon}_{target}_{i}"
+                prompt = f"{STRIKES[weapon][i]} {STRUCK[target][i % 2]}, {IMPACT_STYLE}"
+                wanted.append(Piece(name, prompt, seconds=1.6, seed=RESEEDED.get(name, 7000 + 100 * w + 10 * m + i), shape="impact", peak=0.75))
+    return wanted
+
+
+FOLDERS = {IMPACTS: impact_pieces, DEATHS: death_pieces, WRECKAGE: wreckage_pieces}
 
 
 def main() -> None:

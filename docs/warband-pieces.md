@@ -1,7 +1,14 @@
-# Generated sound pieces: unit deaths and building wreckage
+# Generated sound pieces: combat impacts, unit deaths and building wreckage
 
-Two Warband sounds are not synthesised: a unit's death and a building coming down.
-Both are cues mixed by the game from committed pieces (`warband/pieces.py` reads them):
+Three Warband sounds are not synthesised: a blow landing, a unit's death and a building
+coming down. All are cues mixed by the game from committed pieces (`warband/pieces.py`
+reads them):
+
+- `warband/combat_sound.py`, from `warband/assets/impacts/`: every weapon (sword, axe,
+  spear, lance, arrow, siege stone, hammer) on every material (flesh, armour, wood,
+  stone), three takes each; the cue is the piece itself, cut so the blow lands as it
+  starts. The scene picks weapon and material from the strike (`sound.impact_sound`),
+  the bank rotates takes and adds a little pitch variation.
 
 - `warband/deaths.py`, from `warband/assets/deaths/`: a cry, then the weapon hitting the
   ground, the body landing and the gear settling; one cue per race and take. The bank
@@ -31,6 +38,10 @@ piece can be regenerated or challenged.
   each, 1.6 s requested, one prompt per stage and race (a sword on stone and mail
   settling for humans, an axe and a shield for orcs, a bow and a quiver for elves, a
   hammer and a helmet for dwarves).
+- `<weapon>_<material>_<n>.wav` under `assets/impacts/`: three takes each, 1.6 s requested,
+  the `impact` shape; each take is a different verb phrase for the weapon and one of two
+  wordings for what it hits, since a shared prompt with three seeds gives three near-identical
+  blows.
 - `<material>_crack_<n>.wav`, `<material>_collapse_<n>.wav`, `<material>_debris_<n>.wav`
   under `assets/wreckage/`: two takes each. The crack is an `impact` (2 s requested);
   the collapse and the debris use foley's `collapse` shape (3 s requested, kept up to
@@ -65,14 +76,14 @@ prompting lessons):
 
 ```bash
 export STABLE_AUDIO_MLX=~/stable-audio-3/optimized/mlx
-uv run python tools/pieces.py refresh           # generates what is missing or whose spec changed, both folders
-uv run python tools/pieces.py sampler /tmp/pieces   # deaths.wav and wreckage.wav, every piece back to back
+uv run python tools/pieces.py refresh           # generates what is missing or whose spec changed, all three folders
+uv run python tools/pieces.py sampler /tmp/pieces   # impacts.wav, deaths.wav and wreckage.wav, every piece back to back
 ```
 
 Change a prompt or a seed in the tool and refresh: only that piece is regenerated, the
 manifest follows. A rejected generation (silent, or a click) is named at the end; give it a
 new seed in `RESEEDED`. After a refresh bump `SOUND_VERSION` in `warband/sound.py` so the
 cached cues are mixed again, and keep `tests/warband/test_deaths.py` and `test_sound.py`
-green, with `test_wreckage.py`: they hold the fall after the cry, the collapse longer than any one stage, the level, the length and the absence of clicks.
+green, with `test_wreckage.py` and `test_combat_sound.py`: they hold the fall after the cry, the collapse longer than any one stage, armour ringing brighter than flesh and siege stones carrying more bass, the level, the length and the absence of clicks.
 The same seed reproduces the same clip on the same machine, so the committed WAVs and the
 tool agree; the manifest's hashes are the check.
