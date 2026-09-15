@@ -52,7 +52,8 @@ real breakdown.
   `online_ai.py` is the headless AI client that can sit in a room.
 - `packaging/package_check.py` — the diagnostics the frozen app runs.
 - `docs/` — Early Access criteria and progress (`warband-early-access-*.md`),
-  design notes per feature, the play-together and Windows guides, and
+  design notes per feature (`unit-motion.md`: why units looked timid, the nine-frame
+  rig and its timing, what cinematic motion still needs), the play-together and Windows guides, and
   `docs/hive/` plans for the hive orchestrator (`iteration-plan.toml` is the
   hive's working file at the root).
 
