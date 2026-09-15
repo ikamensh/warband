@@ -5,6 +5,8 @@
     uv run python tools/restyle.py cut DIR                   # key, register, check; install into warband/assets/restyled
     uv run python tools/restyle.py preview DIR OUT_DIR       # walk/attack GIFs, original above restyled
     uv run python tools/restyle.py refresh DIR               # all four in a row; previews land in DIR/previews
+    uv run python tools/restyle.py check DIR [--fix]         # a vision judge compares every painted cell with its stand-in;
+                                                             # --fix re-renders a sheet with the complaints in its prompt
 
 ``--race`` and ``--units`` narrow every step; ``render --provider openrouter --model ...``
 uses an OpenRouter image model instead of Codex's built-in tool.  The sheets are rendered
@@ -49,7 +51,7 @@ TEAM = "blue is the team colour and must stay this blue"
 SUBJECTS: dict[tuple[Race, UnitType], str] = {
     (Race.HUMAN, UnitType.PEASANT): f"a human peasant worker in a blue tunic ({TEAM}) and a cloth cap, carrying a woodcutter's axe",
     (Race.HUMAN, UnitType.FOOTMAN): f"a human footman: a stocky soldier in a steel helmet with a blue plume and mail, blue tunic ({TEAM}), "
-                                    "a kite shield with a gold cross, and a sword",
+                                    "a blue kite shield with a pale cross, and one sword with a gold crossguard",
     (Race.HUMAN, UnitType.ARCHER): f"a human archer in a dark green hooded cloak over a blue tunic ({TEAM}), with a longbow and a quiver of arrows",
     (Race.HUMAN, UnitType.KNIGHT): f"a human knight in full plate on an armoured warhorse with blue caparison and trim ({TEAM}), carrying a lance and a shield",
     (Race.HUMAN, UnitType.SCOUT): f"a human scout: a light rider in leather armour and a blue tunic ({TEAM}) on a fast unarmoured horse",
@@ -91,7 +93,8 @@ FIXES: dict[tuple[UnitType, Resource | None], str] = {
     (UnitType.PEASANT, None): "the axe is gripped with both hands during the chop; the cap sits on the head",
     (UnitType.PEASANT, Resource.LUMBER): "the bundle of logs rests across the shoulder and is held from below with both hands; it never floats above the head",
     (UnitType.PEASANT, Resource.GOLD): "the sack is cradled in the arms against the chest, hands visible on it",
-    (UnitType.FOOTMAN, None): "the weapon is gripped in the right hand, the shield is strapped to the left forearm and follows that arm",
+    (UnitType.FOOTMAN, None): "exactly one sword, gripped in the right hand; the shield is strapped to the left forearm and follows that arm; "
+                              "the pale cross on the shield is a flat painted emblem, never a hilt or a second weapon; the only gold is the sword's crossguard",
     (UnitType.ARCHER, None): "the weapon is held in both hands, aimed in the wind-up and loosed in the strike; the ammunition hangs on the back or belt",
     (UnitType.KNIGHT, None): "the rider sits in a saddle with stirrups and holds the reins; the weapon is gripped and couched under the arm in the strike, not floating beside the mount",
     (UnitType.SCOUT, None): "the rider sits in a saddle and holds the reins; the spear is gripped",
@@ -103,6 +106,16 @@ RACE_FIXES: dict[tuple[Race, UnitType], str] = {
     (Race.ORC, UnitType.KNIGHT): "the ogre stands on its own two feet with no mount; both heads look towards the facing; the club is gripped in both hands",
     (Race.ELF, UnitType.CATAPULT): "the bolt lies in the groove of the ballista and is gone after the shot; the wheels have spokes",
     (Race.DWARF, UnitType.CATAPULT): "the mortar barrel points up and forward on its carriage and recoils in the strike; smoke at the muzzle in the strike and follow-through",
+}
+#: What every painted cell must contain, for the judge to count.
+INVENTORY: dict[UnitType, str] = {
+    UnitType.PEASANT: "one figure, one tool (axe) or one carried load, no shield",
+    UnitType.FOOTMAN: "one figure, exactly one sword (one hilt), exactly one shield",
+    UnitType.ARCHER: "one figure, exactly one bow (or a throwing axe in hand for orcs, a crossbow for dwarves), no shield",
+    UnitType.KNIGHT: "one rider on one mount (the orc ogre: one two-headed giant on foot), one lance or club, at most one shield",
+    UnitType.SCOUT: "one rider on one mount, one spear, no shield",
+    UnitType.CATAPULT: "one siege engine, one throwing arm or barrel, wheels, at most one projectile",
+    UnitType.CLERIC: "one figure, one staff, no shield, no sword",
 }
 PLAUSIBLE = ("The reference is a rough low-poly stand-in. Where its construction is physically implausible (a load floating instead of "
              "held, a prop attached instead of resting, a weapon beside a hand instead of in it), draw the plausible version in the same "
@@ -256,6 +269,11 @@ def main() -> None:
     p = sub.add_parser("cut"); p.add_argument("dir", type=Path); p.add_argument("--provider", default="codex")
     p.add_argument("--tolerate", type=int, default=2, help="flagged cells allowed before a sheet is rejected"); p.set_defaults(run=cmd_cut)
     p = sub.add_parser("preview"); p.add_argument("dir", type=Path); p.add_argument("out", type=Path); p.set_defaults(run=cmd_preview)
+    p = sub.add_parser("check"); p.add_argument("dir", type=Path); p.add_argument("--fix", action="store_true", help="re-render questioned sheets with the complaints in the prompt")
+    p.add_argument("--rounds", type=int, default=3); p.add_argument("--max-bad", type=int, default=12, help="more questioned cells than this means the sheet needs a look, not a retry")
+    p.add_argument("--provider", default="codex"); p.add_argument("--tolerate", type=int, default=2); p.add_argument("--jobs", type=int, default=6)
+    p.add_argument("--sheets", type=Path, default=None, help="judge sheets in this folder instead of the installed ones")
+    p.set_defaults(run=cmd_check)
     p = sub.add_parser("refresh"); p.add_argument("dir", type=Path); p.add_argument("--provider", default="codex", choices=["codex", "openrouter"])
     p.add_argument("--model", default="google/gemini-3.1-flash-image"); p.add_argument("--jobs", type=int, default=4)
     p.add_argument("--force", action="store_true"); p.add_argument("--tolerate", type=int, default=2); p.set_defaults(run=cmd_refresh)
@@ -265,6 +283,85 @@ def main() -> None:
     args = parser.parse_args()
     args.run(args)
 
+
+
+def complaints_text(verdicts: list[dict], sheet: restyle.Sheet) -> str:
+    bad = [v for v in verdicts if not v.get("ok", True)]
+    frames = {c.row: c.tags["frame"] for c in sheet.cells}
+    return "; ".join(f"row {v['row']} ({FRAME_NAMES.get(frames.get(v['row'], ''), '')}), column {v['col']}: {v['issue']}" for v in bad)
+
+
+def check_one(args: argparse.Namespace, race: Race, unit: UnitType, carrying: Resource | None, sheets: Path) -> list[dict]:
+    """Judge the sheet of one subject in *sheets* against its stand-ins; writes DIR/name/check.json
+    and returns the verdicts (empty when there is no sheet)."""
+    name = subject_name(race, unit, carrying)
+    if not restyle.file(sheets / name, "png").exists():
+        print(f"{name}: no sheet in {sheets}")
+        return []
+    sheet, painted = restyle.load_frames(sheets / name)
+    _, originals = build_sheet(race, unit, carrying)
+    names = [FRAME_NAMES[f] for f in unit_frames(unit, carrying)]
+    (args.dir / name).mkdir(parents=True, exist_ok=True)
+    chunks = [(list(range(r, min(r + 2, sheet.rows))), list(range(c, min(c + 4, sheet.cols))))
+              for r in range(0, sheet.rows, 2) for c in range(0, sheet.cols, 4)]
+
+    def judge(chunk: tuple[list[int], list[int]]) -> list[dict]:
+        rows, cols = chunk
+        review_png = args.dir / name / f"review-{rows[0]}-{cols[0]}.png"
+        restyle.review_image(sheet, originals, painted, rows=rows, cols=cols, row_names=names).convert("RGB").save(review_png)
+        return restyle.judge_with_codex(review_png, SUBJECTS[(race, unit)] + CARRY.get(carrying, ""), sheet, rows=rows, cols=cols, inventory=INVENTORY[unit])
+
+    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+        verdicts = [v for chunk in pool.map(judge, chunks) for v in chunk]
+    (args.dir / name / "check.json").write_text(json.dumps(verdicts, indent=1))
+    bad = [v for v in verdicts if not v.get("ok", True)]
+    print(f"{name}: {len(bad)} of {len(verdicts)} cells questioned" + ("" if not bad else ":"))
+    for v in bad:
+        print(f"   row {v['row']} col {v['col']}: {v['issue']}")
+    return verdicts
+
+
+def questioned(verdicts: list[dict]) -> list[dict]:
+    return [v for v in verdicts if not v.get("ok", True)]
+
+
+def cmd_check(args: argparse.Namespace) -> None:
+    """Judge every selected sheet.  With --fix, re-render a questioned sheet with the complaints
+    in its prompt and install the candidate only when the judge questions fewer of its cells;
+    the best of the rounds ends up installed."""
+    for race, unit, carrying in selected(args):
+        name = subject_name(race, unit, carrying)
+        verdicts = check_one(args, race, unit, carrying, args.sheets or RESTYLED)
+        best = len(questioned(verdicts)) if verdicts else None
+        if best is None or best == 0 or not args.fix:
+            continue
+        if best > args.max_bad:
+            print(f"   {best} questioned cells is more than --max-bad {args.max_bad}: not re-rendering, look at the review images")
+            continue
+        sheet = restyle.Sheet.load(args.dir / name)
+        prompt_text = (args.dir / f"{name}.prompt.txt").read_text()
+        for attempt in range(1, args.rounds + 1):
+            feedback = complaints_text(verdicts, sheet)
+            text = prompt_text + f"\n\nA previous attempt got these cells wrong; do not repeat them: {feedback}."
+            print(f"   round {attempt}: re-rendering with the complaints in the prompt")
+            candidate = args.dir / name / f"candidate-{attempt}"
+            candidate.mkdir(parents=True, exist_ok=True)
+            restyle.render_with_codex(args.dir / f"{name}.png", text, candidate / f"{args.provider}.png")
+            result = restyle.cut(sheet, Image.open(candidate / f"{args.provider}.png"), Image.open(args.dir / f"{name}.png"))
+            if len(result.flagged) > args.tolerate:
+                print(f"   the candidate failed the geometry checks ({len(result.flagged)} flagged)")
+                continue
+            restyle.save_frames(result, sheet, candidate / name)
+            candidate_verdicts = check_one(args, race, unit, carrying, candidate)
+            count = len(questioned(candidate_verdicts))
+            if count < best:
+                restyle.save_frames(result, sheet, RESTYLED / name)
+                best, verdicts = count, candidate_verdicts
+                print(f"   installed the candidate ({count} questioned)")
+            else:
+                print(f"   kept the installed sheet ({best} questioned) over the candidate ({count})")
+            if best == 0:
+                break
 
 
 def cmd_refresh(args: argparse.Namespace) -> None:

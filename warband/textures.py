@@ -1204,18 +1204,23 @@ def _helm(z: float, race: Race, team: Color, radius: float = 0.19) -> Mesh:
 
 #: The hand weapon through a blow: pitched back over the shoulder, driven forward and down,
 #: swept across the body, then settling back to guard.  Walking swings it a little.
-_SWORD_PITCH = {"wind": 55, "strike": -100, "follow": -70, "recover": -35, "walk1": -28, "walk3": 4}
-_SWORD_YAW = {"wind": 15, "follow": -50}  # about the grip: out to the side, then across
+#: At rest the blade is held out at an angle: nearly vertical it foreshortens to a stub from the
+#: game's camera, which painters read as a second shield or hilt.
+_SWORD_PITCH = {"wind": 55, "strike": -100, "follow": -70, "recover": -50, "walk1": -65, "walk3": -45, "stand": -55, "walk2": -55, "walk4": -55}
+#: About the grip: at rest the blade points diagonally forward and out, the compromise that shows
+#: its length from the front as well as from the side facings; the wind-up goes out, the sweep across.
+_SWORD_YAW = {"wind": 15, "follow": -50, "stand": 45, "walk1": 40, "walk2": 45, "walk3": 50, "walk4": 45, "recover": 35}
 _SWORD_SHIFT = {"wind": (0.02, -0.08, 0.06), "strike": (0.0, 0.16, 0.04), "follow": (-0.06, 0.1, -0.02), "walk1": (0, 0.09, 0), "walk3": (0, -0.09, 0)}
 _SHIELD_SHIFT = {"wind": (0, 0.08, 0), "strike": (0.03, -0.05, -0.04), "follow": (0, 0.05, 0), "walk1": (0, -0.07, 0), "walk3": (0, 0.07, 0)}
-_SWORD_GRIP = (0.32, 0.13, 0.5)
+_SWORD_GRIP = (0.3, 0.24, 0.6)  # held forward and high, so hilt and blade stay one visible object from every facing
 
 
 def _sword(frame: str, race: Race = Race.HUMAN) -> Mesh:
     """The race's hand weapon in the right hand: sword, cleaver, curved blade or axe."""
     look = LOOKS[race]
     grip = _SWORD_GRIP
-    handle = _unit_rod((0.32, 0.13, 0.4), (0.32, 0.13, 0.55), 0.043, WOOD_DARK)
+    gx, gy, gz = grip
+    handle = _unit_rod((gx, gy, gz - 0.1), (gx, gy, gz + 0.05), 0.043, WOOD_DARK)
     if race is Race.ORC:
         blade = (_unit_rod((0.32, 0.13, 0.55), (0.32, 0.13, 1.12), 0.04, WOOD_DARK)
                  + _unit_panel([(0.32, 0.16, 0.78), (0.32, 0.5, 0.86), (0.32, 0.46, 1.2), (0.32, 0.16, 1.14)], look.metal)
@@ -1231,6 +1236,7 @@ def _sword(frame: str, race: Race = Race.HUMAN) -> Mesh:
     else:
         blade = (r3.box((0.32, 0.13, 0.85), (0.08, 0.055, 0.59), look.metal) + r3.pyramid((0.32, 0.13, 1.145), (0.08, 0.055), 0.14, look.metal)
                  + r3.box((0.32, 0.13, 0.57), (0.27, 0.09, 0.06), GOLD))
+    blade = _shift(blade, (gx - 0.32, gy - 0.13, gz - 0.5))  # the blades are modelled at the old grip
     mesh = _unit_pitch(blade + handle, _SWORD_PITCH.get(frame, -12), grip)
     mesh = r3.rotate_z(mesh, _SWORD_YAW.get(frame, 0), about=(grip[0], grip[1]))
     return _shift(mesh, _SWORD_SHIFT.get(frame, (0.0, 0.0, 0.0)))
@@ -1285,8 +1291,9 @@ def _shield(x: float, y: float, z: float, team: Color, size: float = 1.0, race: 
     for offset, factor, color in ((0, 1.0, look.metal), (0.025, 0.8, team)):
         mesh += _unit_panel([(x + dx * size * factor, y + offset, z + dz * size * factor)
                              for dx, dz in outline], color)
-    mesh += r3.box((x, y + 0.035, z - 0.015), (0.055 * size, 0.06, 0.34 * size), GOLD)
-    mesh += r3.box((x, y + 0.04, z + 0.075), (0.23 * size, 0.06, 0.055 * size), GOLD)
+    # A flat, pale emblem: raised gold bars read as a second sword hilt when the shield is seen edge-on.
+    mesh += r3.box((x, y + 0.03, z - 0.015), (0.055 * size, 0.012, 0.34 * size), PLASTER)
+    mesh += r3.box((x, y + 0.032, z + 0.075), (0.23 * size, 0.012, 0.055 * size), PLASTER)
     return mesh
 
 
