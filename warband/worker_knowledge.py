@@ -84,7 +84,7 @@ class WorkerKnowledge:
     def sees(self, visible: bytearray, x: int, y: int, size: int) -> bool:
         """Whether any tile of a footprint lies in *visible*, a fog grid of this map's shape."""
         for start, stop in self.spans(x, y, size):
-            if any(visible[start:stop]):
+            if visible.count(0, start, stop) < stop - start:  # a C scan, no slice copied
                 return True
         return False
 
@@ -113,15 +113,17 @@ class WorkerKnowledge:
         visible = world.visible[player]
         width = self.width
         remembered, terrain_blocked, trees = self.terrain, self._terrain_blocked, self._trees
+        changed = False
         for y, row in enumerate(world.terrain):
             base = y * width
             seen = visible[base:base + width]
-            if not any(seen):
-                continue
+            if seen.count(0) == width:
+                continue  # no tile of this row is lit
             for x in itertools.compress(range(width), seen):
                 index = base + x
                 terrain = row[x]
                 if remembered[index] is not terrain:
+                    changed = True
                     remembered[index] = terrain
                     terrain_blocked[index] = terrain in BLOCKING
                     if terrain is Terrain.TREES:
@@ -137,14 +139,24 @@ class WorkerKnowledge:
                                                      remembered_building.size)):
                 del self.buildings[bid]
                 self.mines.pop(bid, None)
+                changed = True
         for building in observed.values():
-            threat_range = building.info.range + 1.5 if building.done and building.info.damage else 0.0
-            self.buildings[building.id] = _Building(building.id, building.x, building.y, building.size, building.player, threat_range)
+            info = building.info
+            threat_range = info.range + 1.5 if building.done and info.damage else 0.0
+            known = self.buildings.get(building.id)
+            # Nothing but a structure's threat can change under a fixed id: it is built once and never moves.
+            if known is None or known.threat_range != threat_range:
+                self.buildings[building.id] = _Building(building.id, building.x, building.y, building.size,
+                                                        building.player, threat_range)
+                changed = True
             if building.type is BuildingType.GOLD_MINE:
-                self.mines[building.id] = KnownMine(building.id, building.x, building.y, building.size, building.gold)
+                mine = self.mines.get(building.id)
+                if mine is None or mine.gold != building.gold:
+                    self.mines[building.id] = KnownMine(building.id, building.x, building.y, building.size, building.gold)
             else:
                 self.mines.pop(building.id, None)
-        self._stamp_buildings()
+        if changed:  # the grid still stands as it was unless remembered terrain or a footprint changed
+            self._stamp_buildings()
 
     def resource_rect(self, target: int | tuple[int, int]) -> tuple[int, int, int, int] | None:
         if isinstance(target, int):

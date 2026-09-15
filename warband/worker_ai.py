@@ -45,18 +45,19 @@ def _navigation(world: World, player: int) -> bytearray:
     threats = [(building.center, building.threat_range, (building.x, building.y, building.size, building.size))
                for building in knowledge.threats if building.player != player]
     for unit in world.units.values():
-        if unit.player == player or unit.hp <= 0 or unit.inside is not None or unit.constructing is not None:
+        if unit.player == player:
             continue
         x, y = int(unit.x), int(unit.y)
         if not (0 <= x < width and 0 <= y < height and visible[y * width + x]):
             continue
+        if unit.hp <= 0 or unit.inside is not None or unit.constructing is not None:
+            continue
         info = unit.info
         if info.damage:
             threats.append(((unit.x, unit.y), max(2.5, info.range + 1.5), None))
-    remembered = knowledge.buildings
-    for building in world.buildings.values():
-        if building.id in remembered:
-            continue  # the remembered grid already blocks this footprint
+    # Footprints the remembered grid already blocks need no second stamp, which usually leaves none at all.
+    for bid in world.buildings.keys() - knowledge.buildings.keys():
+        building = world.buildings[bid]
         x, y, size = building.x, building.y, building.size
         if building.player != player and not knowledge.sees(visible, x, y, size):
             continue
@@ -70,9 +71,10 @@ def _navigation(world: World, player: int) -> bytearray:
             r2 = radius * radius
             for y in range(max(0, floor(cy - radius)), min(height, ceil(cy + radius) + 1)):
                 dy = y + 0.5 - cy
-                if dy * dy > r2:
+                offset = dy * dy
+                if offset > r2:
                     continue
-                half = sqrt(r2 - dy * dy)
+                half = sqrt(r2 - offset)
                 lo, hi = max(0, ceil(cx - half - 0.5)), min(width, floor(cx + half - 0.5) + 1)
                 if lo < hi:
                     blocked[y * width + lo:y * width + hi] = b"\x01" * (hi - lo)
