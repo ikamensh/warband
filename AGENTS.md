@@ -15,6 +15,7 @@ uv run pytest -q                                 # headless suite, about four mi
 uv run python -u tools/fuzz.py --games 2 --monkey 0 --seed 81   # AI matches with invariants + monkey input (needs -u)
 uv run python tools/verify.py DIR                # a match through real pyglet events, frames saved to look at
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms)
+uv run python tools/step_bench.py --repeat 3     # model step times of the same battle without a window, with --profile
 uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening; full report takes ~30 min
 uv run python tools/music.py render DIR          # WAV, spectrogram and stats per track
 uv run python tools/deaths.py refresh            # regenerate death pieces with Stable Audio 3 (needs STABLE_AUDIO_MLX; see docs/warband-deaths.md)

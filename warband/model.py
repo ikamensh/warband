@@ -41,6 +41,7 @@ ARRIVE = 0.12  # a unit is "there" within this many tiles of its target point
 TOUCH = 0.4  # gap at which a peasant can enter a mine, deliver, or start building (a diagonal neighbour counts)
 STUCK_AFTER = 0.8  # seconds without progress before a unit paths again around the units in its way
 REPLAN_EVERY = 0.6  # a unit plans at most this often unless it gets a new order (a melee would otherwise plan every tick)
+REPLAN_STAGGER = 8  # ticks over which units spread their next plans by id, so a crowd does not plan in lockstep
 STEER_RANGE = 4.0  # within this many tiles a unit walks straight at its target when the line is clear, without A*
 LOCAL_EXPANSIONS = 700  # A* budget for the detours around other units; those goals are close
 SETTLE_WITHIN = 1.0  # a plain walk counts as arrived when a crowd keeps the unit this close to its spot without progress
@@ -320,17 +321,23 @@ def tile_center(pos: Pos) -> Point:
     return (pos[0] + 0.5, pos[1] + 0.5)
 
 
-def _sight_offsets(radius: int) -> list[Pos]:
-    return [(dx, dy) for dx in range(-radius, radius + 1) for dy in range(-radius, radius + 1) if dx * dx + dy * dy <= radius * radius + radius]
+def _sight_spans(radius: int) -> list[tuple[int, int]]:
+    """Per row offset of a sight disc, how far it reaches sideways: the largest dx with dx² + dy² ≤ r² + r."""
+    return [(dy, math.isqrt(radius * radius + radius - dy * dy)) for dy in range(-radius, radius + 1)]
 
 
-_SIGHT: dict[int, list[Pos]] = {}
+_SIGHT: dict[int, list[tuple[int, int]]] = {}
 
 
-def sight_offsets(radius: int) -> list[Pos]:
+def sight_spans(radius: int) -> list[tuple[int, int]]:
     if radius not in _SIGHT:
-        _SIGHT[radius] = _sight_offsets(radius)
+        _SIGHT[radius] = _sight_spans(radius)
     return _SIGHT[radius]
+
+
+def or_into(target: bytearray, source: bytes | bytearray) -> None:
+    """``target[i] |= source[i]`` for every byte of two flag grids, done in C through big integers."""
+    target[:] = (int.from_bytes(target, "little") | int.from_bytes(source, "little")).to_bytes(len(target), "little")
 
 
 # -- World ---------------------------------------------------------------------
@@ -366,13 +373,16 @@ class World:
                     self._blocked[y * width + x] = 1
         self.explored = [bytearray(width * height) for _ in self.players]
         self.visible = [bytearray(width * height) for _ in self.players]
-        self._buckets: dict[Pos, list[Unit]] = {}
+        self._buckets: list[list[Unit] | None] = [None] * (width * height)  # units by tile, rebuilt each step
         self.worker_knowledge = [WorkerKnowledge(width, height) for _ in self.players]
         self._worker_ai_checks: dict[int, int] = {}
         self._worker_ai_views: dict[int, tuple[int, Any]] = {}
         self._worker_ai_navigation: dict[int, tuple[int, bytearray]] = {}
         self.settlement = Settlement(self)
         self._exposed: set[int] = set()  # players whose last holdings stand revealed
+        self._region_map: pathing.Regions | None = None  # walkable regions of the static grid, see _regions()
+        self._pace_groups: dict[tuple[int, Point, float], bool] = {}  # per step, see _group_together()
+        self._dangers: dict[int, float] = {}  # per step, see _danger_to()
 
     # -- Ids and lookups -----------------------------------------------------------
 
@@ -439,23 +449,36 @@ class World:
     def mines(self) -> list[Building]:
         return [b for b in self.buildings.values() if b.type is BuildingType.GOLD_MINE]
 
-    def units_near(self, point: Point, radius: float) -> Iterator[Unit]:
+    def units_near(self, point: Point, radius: float) -> list[Unit]:
         """Units whose centre lies within *radius* tiles of *point* (via the spatial buckets of the current step)."""
-        r = int(radius) + 1
-        cx, cy = int(point[0]), int(point[1])
+        px, py = point
+        reach = int(radius) + 1
+        x0, x1 = max(0, int(px) - reach), min(self.width - 1, int(px) + reach)
+        y0, y1 = max(0, int(py) - reach), min(self.height - 1, int(py) + reach)
         r2 = radius * radius
-        for bx in range(cx - r, cx + r + 1):
-            for by in range(cy - r, cy + r + 1):
-                for unit in self._buckets.get((bx, by), ()):
-                    dx, dy = unit.x - point[0], unit.y - point[1]
-                    if dx * dx + dy * dy <= r2:
-                        yield unit
+        width, buckets = self.width, self._buckets
+        near: list[Unit] = []
+        for row in range(y0 * width, y1 * width + 1, width):
+            for cell in buckets[row + x0:row + x1 + 1]:
+                if cell:
+                    for unit in cell:
+                        dx, dy = unit.x - px, unit.y - py
+                        if dx * dx + dy * dy <= r2:
+                            near.append(unit)
+        return near
 
     def _index_units(self) -> None:
-        buckets: dict[Pos, list[Unit]] = {}
+        self._buckets = [None] * (self.width * self.height)
         for unit in self.units.values():
-            buckets.setdefault(unit.tile, []).append(unit)
-        self._buckets = buckets
+            self._bucket(unit)
+
+    def _bucket(self, unit: Unit) -> None:
+        index = int(unit.y) * self.width + int(unit.x)
+        cell = self._buckets[index]
+        if cell is None:
+            self._buckets[index] = [unit]
+        else:
+            cell.append(unit)
 
     # -- Vision ----------------------------------------------------------------
 
@@ -468,12 +491,9 @@ class World:
     def update_vision(self) -> None:
         self._worker_ai_views.clear()
         self._worker_ai_navigation.clear()
-        width, height = self.width, self.height
         for player in self.players:
             visible = self.visible[player.id]
-            explored = self.explored[player.id]
-            for i in range(len(visible)):
-                visible[i] = 0
+            visible[:] = bytes(len(visible))
             for unit in self.units.values():
                 if unit.player == player.id:
                     self._reveal(visible, unit.tile, unit.info.sight)
@@ -481,9 +501,7 @@ class World:
                 if building.player == player.id:
                     cx, cy = building.center
                     self._reveal(visible, (int(cx), int(cy)), building.info.sight + building.size // 2)
-            for i in range(width * height):
-                if visible[i]:
-                    explored[i] = 1
+            or_into(self.explored[player.id], visible)
             self.worker_knowledge[player.id].refresh(self, player.id)
         self._reveal_last_standings()
 
@@ -510,13 +528,10 @@ class World:
                 if viewer.id == exposed_id:
                     continue
                 visible = self.visible[viewer.id]
-                explored = self.explored[viewer.id]
                 for b in holdings:
                     for tile in b.tiles():
                         self._reveal(visible, tile, 1)
-                for i in range(self.width * self.height):
-                    if visible[i]:
-                        explored[i] = 1
+                or_into(self.explored[viewer.id], visible)
             if exposed_id not in self._exposed:
                 self._exposed.add(exposed_id)
                 self.events.append(Event("exposed", holdings[0].center, player=exposed_id,
@@ -525,10 +540,12 @@ class World:
     def _reveal(self, visible: bytearray, at: Pos, radius: int) -> None:
         width, height = self.width, self.height
         x0, y0 = at
-        for dx, dy in sight_offsets(radius):
-            x, y = x0 + dx, y0 + dy
-            if 0 <= x < width and 0 <= y < height:
-                visible[y * width + x] = 1
+        for dy, half in sight_spans(radius):
+            y = y0 + dy
+            if 0 <= y < height:
+                lo, hi = max(0, x0 - half), min(width, x0 + half + 1)
+                if lo < hi:
+                    visible[y * width + lo:y * width + hi] = b"\x01" * (hi - lo)
 
     def reveal_all(self, player: int) -> None:
         """Explore (and, until the next vision update, see) the whole map."""
@@ -949,7 +966,7 @@ class World:
         race = self.race_of(player)
         unit = Unit(self._new_id(), unit_type, player, point[0], point[1], RACES[race].units[unit_type].hp, race=race)
         self.units[unit.id] = unit
-        self._buckets.setdefault(unit.tile, []).append(unit)
+        self._bucket(unit)
         return unit
 
     def place_building(self, player: int | None, building_type: BuildingType, pos: Pos, *, done: bool = True) -> Building:
@@ -991,6 +1008,8 @@ class World:
         dt = SIM_DT
         self.time += dt
         self.tick += 1
+        self._pace_groups.clear()
+        self._dangers.clear()
         self._index_units()
         self.settlement.update()
         for building in list(self.buildings.values()):
@@ -1196,19 +1215,29 @@ class World:
             u.home = u.pos
             u.orders.appendleft(Attack(target.id, auto=True))
 
+    def _danger_to(self, patient: Unit) -> float:
+        """Hits per second the visible enemies in reach of *patient* could land on it.  Memoised for the
+        step: every healer weighing the same patients would otherwise sum it again."""
+        danger = self._dangers.get(patient.id)
+        if danger is None:
+            danger = 0.0
+            player = patient.player
+            for enemy in self.units_near(patient.pos, 9):
+                if enemy.player == player or enemy.hidden or enemy.hp <= 0 or not self.is_visible(player, enemy.tile):
+                    continue
+                if enemy.info.damage and self._gap(enemy, patient) <= self.range_of(enemy) + .75:
+                    danger += max(1, self.damage_of(enemy) - self.armor_of(patient)) / enemy.info.cooldown
+            for tower in self.buildings.values():
+                if tower.player in (None, player) or not tower.done or not tower.info.damage:
+                    continue
+                if any(self.is_visible(player, tile) for tile in tower.tiles()) and self._gap(tower, patient) <= self.building_range(tower) + .75:
+                    danger += max(1, self.damage_of(tower) - self.armor_of(patient)) / tower.info.cooldown
+            self._dangers[patient.id] = danger
+        return danger
+
     def _healing_priority(self, healer: Unit, patient: Unit) -> float:
         """Weigh missing health and visible pressure against travel before treatment."""
-        danger = 0.0
-        for enemy in self.units_near(patient.pos, 9):
-            if enemy.player == healer.player or enemy.hidden or enemy.hp <= 0 or not self.is_visible(healer.player, enemy.tile):
-                continue
-            if enemy.info.damage and self._gap(enemy, patient) <= self.range_of(enemy) + .75:
-                danger += max(1, self.damage_of(enemy) - self.armor_of(patient)) / enemy.info.cooldown
-        for tower in self.buildings.values():
-            if tower.player in (None, healer.player) or not tower.done or not tower.info.damage:
-                continue
-            if any(self.is_visible(healer.player, tile) for tile in tower.tiles()) and self._gap(tower, patient) <= self.building_range(tower) + .75:
-                danger += max(1, self.damage_of(tower) - self.armor_of(patient)) / tower.info.cooldown
+        danger = self._danger_to(patient)
         value = self.damage_of(patient) / patient.info.cooldown + self.heal_rate(patient) + 1
         missing_fraction = (patient.max_hp - patient.hp) / patient.max_hp
         urgency = 1 + min(3, 4 * danger / patient.hp)
@@ -1697,7 +1726,10 @@ class World:
             nearest = pathing.nearest_passable(goal, passable, prefer=start)
             if nearest is not None:
                 target = nearest
-        u.replan_at = self.time + REPLAN_EVERY
+        # A goal beyond water or a tree wall: aim at the nearest tile on this side of it, where a search
+        # would end anyway after flooding everything it can reach.
+        target = self._regions().reachable_goal(start, target)
+        u.replan_at = self.time + REPLAN_EVERY + (u.id % REPLAN_STAGGER) * SIM_DT
         if around_units:
             blocked = bytearray(grid)
             width = self.width
@@ -1719,6 +1751,12 @@ class World:
             if reached and passable(*goal_tile):
                 u.exact = exact
 
+    def _regions(self) -> pathing.Regions:
+        """The walkable regions of the static grid, rebuilt after a building or a tree changed it."""
+        if self._region_map is None or self._region_map.grid != self._blocked:
+            self._region_map = pathing.Regions(self._blocked, self.width, self.height)
+        return self._region_map
+
     def _escape(self, start: Pos, nearest: Pos) -> list[Pos] | None:
         """Real-ground steps from *start*, which the safe map forbids (an enemy came close), to *nearest*, which it
         allows; None when real ground does not lead there (a wall between, or too far for the local budget)."""
@@ -1736,29 +1774,22 @@ class World:
         """
         base = self.speed_of(u)
         order = u.order
-        if not isinstance(order, (Move, AttackMove)) or order.pace is None:
+        if not isinstance(order, (Move, AttackMove)) or order.pace is None or order.pace >= base:
             return base
-        if order.pace >= base:
-            return base
-        target, pace = order.target, order.pace
-        leader_pos, leader_d = u.pos, dist(u.pos, target)
-        mates: list[Unit] = [u]
-        for v in self.units.values():
-            if v is u or v.player != u.player or v.hidden or v.hp <= 0:
-                continue
-            vo = v.order
-            if not isinstance(vo, (Move, AttackMove)) or vo.pace is None:
-                continue
-            if vo.pace != pace or vo.target != target:
-                continue
-            mates.append(v)
-            d = dist(v.pos, target)
-            if d < leader_d:
-                leader_d, leader_pos = d, v.pos
-        for m in mates:
-            if dist(m.pos, leader_pos) > 6.0:
-                return base
-        return min(base, pace)
+        return order.pace if self._group_together(u.player, order.target, order.pace) else base
+
+    def _group_together(self, player: int, target: Point, pace: float) -> bool:
+        """Whether every unit of *player* pacing towards *target* is within 6 tiles of the one leading the
+        way.  Memoised for the step: a group of a hundred would otherwise be scanned a hundred times."""
+        key = (player, target, pace)
+        together = self._pace_groups.get(key)
+        if together is None:
+            mates = [v for v in self.units.values()
+                     if v.player == player and not v.hidden and v.hp > 0 and isinstance(v.order, (Move, AttackMove))
+                     and v.order.pace == pace and v.order.target == target]
+            leader = min(mates, key=lambda v: (dist(v.pos, target), v.id)).pos if mates else target
+            together = self._pace_groups[key] = all(dist(m.pos, leader) <= 6.0 for m in mates)
+        return together
 
     def _walk_to(self, u: Unit, target: Point, dt: float, *, settle: bool = False) -> bool:
         """Move towards *target*; True once there is nothing left to walk (arrived, or as near as the

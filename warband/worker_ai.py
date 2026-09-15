@@ -9,11 +9,10 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-import heapq
 import math
 
 from warband import path as pathing
-from warband.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Unit, World, dist, rect_gap, tile_center
+from warband.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Unit, World, rect_gap, tile_center
 from warband.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, SIM_DT, UNITS, UNIT_RADIUS, BuildingType, Resource, Terrain
 
 
@@ -38,13 +37,26 @@ def _navigation(world: World, player: int) -> bytearray:
             continue
         for x, y in building.tiles():
             blocked[y * world.width + x] = 1
+    width = world.width
     for center, radius, rect in threats:
-        extent = radius + (max(rect[2:]) / 2 if rect is not None else 0)
-        for y in range(max(0, math.floor(center[1] - extent)), min(world.height, math.ceil(center[1] + extent) + 1)):
-            for x in range(max(0, math.floor(center[0] - extent)), min(world.width, math.ceil(center[0] + extent) + 1)):
-                point = tile_center((x, y))
-                if (rect_gap(point, rect) if rect is not None else dist(point, center)) <= radius:
-                    blocked[y * world.width + x] = 1
+        cx, cy = center
+        if rect is None:
+            # A unit's threat: the tiles whose centre lies within radius of it, one slice per row.
+            r2 = radius * radius
+            for y in range(max(0, math.floor(cy - radius)), min(world.height, math.ceil(cy + radius) + 1)):
+                dy = y + 0.5 - cy
+                if dy * dy > r2:
+                    continue
+                half = math.sqrt(r2 - dy * dy)
+                lo, hi = max(0, math.ceil(cx - half - 0.5)), min(width, math.floor(cx + half - 0.5) + 1)
+                if lo < hi:
+                    blocked[y * width + lo:y * width + hi] = b"\x01" * (hi - lo)
+            continue
+        extent = radius + max(rect[2:]) / 2
+        for y in range(max(0, math.floor(cy - extent)), min(world.height, math.ceil(cy + extent) + 1)):
+            for x in range(max(0, math.floor(cx - extent)), min(width, math.ceil(cx + extent) + 1)):
+                if rect_gap(tile_center((x, y)), rect) <= radius:
+                    blocked[y * width + x] = 1
     return blocked
 
 
@@ -78,25 +90,18 @@ class _View:
         return tuple((tx, ty) for ty in range(y - 1, y + height + 1) for tx in range(x - 1, x + width + 1)
                      if self.passable(tx, ty) and rect_gap(tile_center((tx, ty)), rect) <= TOUCH + UNIT_RADIUS)
 
-    def _distances(self, starts: set[Pos]) -> dict[Pos, float]:
-        distances = {tile: 0.0 for tile in starts}
-        pending = [(0.0, tile) for tile in sorted(starts)]
-        heapq.heapify(pending)
-        while pending:
-            cost, tile = heapq.heappop(pending)
-            if cost > distances[tile]:
-                continue
-            for neighbour, step in pathing.neighbours(tile, self.passable):
-                next_cost = cost + step
-                if next_cost < distances.get(neighbour, math.inf):
-                    distances[neighbour] = next_cost
-                    heapq.heappush(pending, (next_cost, neighbour))
-        return distances
+    def _distances(self, starts: set[Pos]) -> list[float]:
+        """Walking distance from the nearest of *starts* to every tile (flat indices; infinity where none)."""
+        width = self.world.width
+        return pathing.distance_field((y * width + x for x, y in starts), self.blocked, width, self.world.height)
+
+    def depot_distance_at(self, tile: Pos, resource: Resource) -> float:
+        """How far *tile* is from a depot taking *resource*; infinity when no safe walk leads to one."""
+        return self.depot_distance[resource][tile[1] * self.world.width + tile[0]]
 
     def choose(self, worker: Unit, resource: Resource, loads: Counter) -> _Site | None:
         if not self.passable(*worker.tile):
             return None
-        distances = self.depot_distance[resource]
         goals, owners = {}, {}
         for site in self.sites:
             if site.resource is not resource or (resource is Resource.LUMBER and loads[site.target]):
@@ -108,8 +113,9 @@ class _View:
             elif self.world.worker_knowledge[self.player].terrain[site.target[1] * self.world.width + site.target[0]] is not Terrain.TREES:
                 continue
             for tile in site.access:
-                if tile in distances:
-                    cost = 2 * distances[tile] + loads[site.target] * 1.5
+                distance = self.depot_distance_at(tile, resource)
+                if distance < math.inf:
+                    cost = 2 * distance + loads[site.target] * 1.5
                     if tile not in goals or (cost, site.position) < (goals[tile], owners[tile].position):
                         goals[tile], owners[tile] = cost, site
         route = pathing.find_work_path(worker.tile, goals, self.blocked, self.world.width, self.world.height)
@@ -176,7 +182,7 @@ def assign_idle_workers(world: World, player: int) -> None:
     trip = {Resource.GOLD: GOLD_PER_TRIP, Resource.LUMBER: LUMBER_PER_TRIP}
     for worker in idle:
         if worker.carrying is not None:
-            if worker.tile in view.depot_distance[worker.carrying]:
+            if view.depot_distance_at(worker.tile, worker.carrying) < math.inf:
                 worker.orders.append(Deposit(auto=True))
             continue
         choices = sorted(Resource, key=lambda resource: (stock[resource] + crews[resource] * trip[resource] * 3) / reserves[resource])

@@ -7,6 +7,7 @@ Unknown terrain stays blocked for automatic worker routes.
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
@@ -79,9 +80,8 @@ class WorkerKnowledge:
         if (world.width, world.height) != (self.width, self.height):
             raise ValueError("Worker knowledge dimensions must match the world")
         visible = world.visible[player]
-        for index, shown in enumerate(visible):
-            if shown:
-                self.terrain[index] = world.terrain[index // self.width][index % self.width]
+        for index in itertools.compress(range(len(visible)), visible):
+            self.terrain[index] = world.terrain[index // self.width][index % self.width]
         observed = {building.id: building for building in world.buildings.values()
                     if building.player == player or any(visible[index] for index in self._cells(building))}
         for bid, remembered in list(self._buildings.items()):

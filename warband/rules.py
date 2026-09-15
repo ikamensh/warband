@@ -24,14 +24,21 @@ import math
 from enum import Enum
 
 
-class Terrain(Enum):
+class IdentityEnum(Enum):
+    """An enum whose members hash by identity.  The rule tables are keyed by these in the hottest
+    loops, and Enum's own hash goes through a Python frame and the member's name."""
+
+    __hash__ = object.__hash__
+
+
+class Terrain(IdentityEnum):
     GRASS = "grass"
     WATER = "water"
     TREES = "trees"
     ROCK = "rock"
 
 
-class Resource(Enum):
+class Resource(IdentityEnum):
     GOLD = "gold"
     LUMBER = "lumber"
 
@@ -45,7 +52,7 @@ class Cost:
         return f"{self.gold} gold" + (f", {self.lumber} lumber" if self.lumber else "")
 
 
-class UnitType(Enum):
+class UnitType(IdentityEnum):
     PEASANT = "peasant"
     FOOTMAN = "footman"
     ARCHER = "archer"
@@ -55,7 +62,7 @@ class UnitType(Enum):
     CLERIC = "cleric"
 
 
-class BuildingType(Enum):
+class BuildingType(IdentityEnum):
     TOWN_HALL = "town_hall"
     FARM = "farm"
     BARRACKS = "barracks"
@@ -68,7 +75,7 @@ class BuildingType(Enum):
     GOLD_MINE = "gold_mine"
 
 
-class Race(Enum):
+class Race(IdentityEnum):
     """Who a player leads.  The tech skeleton (unit roles, buildings, hotkeys, costs) is shared;
     :mod:`warband.races` gives each race its names, numbers, upgrades and mechanics."""
 
@@ -78,7 +85,7 @@ class Race(Enum):
     DWARF = "dwarf"
 
 
-class Upgrade(Enum):
+class Upgrade(IdentityEnum):
     BLADES_1 = "blades_1"
     BLADES_2 = "blades_2"
     ARMOR_1 = "armor_1"
@@ -283,13 +290,13 @@ PLAYERS: list[PlayerInfo] = [
 ]
 
 
-class Difficulty(Enum):
+class Difficulty(IdentityEnum):
     EASY = "easy"
     NORMAL = "normal"
     HARD = "hard"
 
 
-class MapTheme(Enum):
+class MapTheme(IdentityEnum):
     SUMMER = "summer"
     WINTER = "winter"
     WASTELAND = "wasteland"

@@ -1,12 +1,13 @@
 """Model step times of a 150-unit battle, without a window: the simulation alone.
 
-    uv run python tools/step_bench.py [--steps 300] [--profile]
+    uv run python tools/step_bench.py [--steps 300] [--repeat 3] [--profile]
 
 Two armies of six unit types meet between twelve farms on a large map and
 are ordered at each other; the world is then stepped in place.  The step
-is timed with a wall clock; ``--profile`` adds a cProfile breakdown of the
-same run (the profiler roughly doubles the times, so read it for shares,
-not for milliseconds).  ``tools/perf.py`` times whole frames on the real
+is timed with a wall clock, and the run with the lowest mean of ``--repeat``
+is reported (other work on the machine only ever makes a run slower).
+``--profile`` adds a cProfile breakdown of the last run (the profiler
+roughly doubles the times, so read it for shares, not for milliseconds).  ``tools/perf.py`` times whole frames on the real
 backend with this same battle.
 """
 
@@ -50,19 +51,24 @@ def battle_world(seed: int = 3, width: int = 64, height: int = 48) -> World:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--steps", type=int, default=300)
-    parser.add_argument("--profile", action="store_true", help="print a cProfile breakdown of the run")
+    parser.add_argument("--repeat", type=int, default=1, help="runs; the one with the lowest mean is reported")
+    parser.add_argument("--profile", action="store_true", help="print a cProfile breakdown of the last run")
     args = parser.parse_args()
-    world = battle_world()
     profiler = cProfile.Profile() if args.profile else None
-    times: list[float] = []
-    for _ in range(args.steps):
-        started = time.perf_counter()
-        if profiler is not None:
-            profiler.enable()
-        world.step()
-        if profiler is not None:
-            profiler.disable()
-        times.append((time.perf_counter() - started) * 1000)
+    runs: list[tuple[list[float], World]] = []
+    for run in range(args.repeat):
+        world = battle_world()
+        times: list[float] = []
+        for _ in range(args.steps):
+            started = time.perf_counter()
+            if profiler is not None and run == args.repeat - 1:
+                profiler.enable()
+            world.step()
+            if profiler is not None and run == args.repeat - 1:
+                profiler.disable()
+            times.append((time.perf_counter() - started) * 1000)
+        runs.append((times, world))
+    times, world = min(runs, key=lambda run: statistics.mean(run[0]))
     ordered = sorted(times)
     print(f"{args.steps} steps, {len(world.units)} units alive at the end, first step {times[0]:.1f} ms")
     print(f"per step: mean {statistics.mean(times):.2f} ms, p50 {ordered[len(ordered) // 2]:.2f} ms, "
