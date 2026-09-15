@@ -136,9 +136,7 @@ def cmd_render(args: argparse.Namespace) -> None:
         if args.provider == "codex":
             restyle.render_with_codex(args.dir / f"{name}.png", text, out)
         else:
-            key = [line.split("=", 1)[1].strip() for line in Path("~/secrets/llm-providers.md").expanduser().read_text().splitlines()
-                   if line.startswith("OPENROUTER_API_KEY=")][0]
-            usage = restyle.render_with_openrouter(args.dir / f"{name}.png", text, out, model=args.model, api_key=key)
+            usage = restyle.render_with_openrouter(args.dir / f"{name}.png", text, out, model=args.model, api_key=restyle.openrouter_api_key())
             (args.dir / name / "usage.json").write_text(json.dumps(usage, indent=1))
         return f"{name}: wrote {out}"
 

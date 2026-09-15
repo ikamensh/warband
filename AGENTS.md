@@ -17,6 +17,7 @@ uv run python tools/verify.py DIR                # a match through real pyglet e
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms)
 uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening; full report takes ~30 min
 uv run python tools/music.py render DIR          # WAV, spectrogram and stats per track
+uv run python tools/restyle.py dump DIR          # painted unit sprites: dump, render (Codex), cut (installs), preview, showcase
 uv run --extra package python tools/package.py build --version 0.1.0   # standalone build; verify DIR / install too
 ```
 
@@ -34,8 +35,12 @@ real breakdown.
   automatic gatherers, `settlement.py`/`production.py` building plans and the
   command card, `scores.py` the local top ten.
 - `warband/textures.py` renders ground, props, buildings and units through
-  `sagaforge.render3d`; `view.py` keeps sprites in step and draws fog, minimap
-  and water; `effects.py` transient animations and lingering bodies.
+  `sagaforge.render3d`; a unit whose subject has a painted sheet under
+  `warband/assets/restyled/` (made by `tools/restyle.py` through
+  `sagaforge.restyle`, human units so far) gets that frame recoloured to its
+  team instead (`WARBAND_ART=procedural` keeps the renders). `view.py` keeps
+  sprites in step and draws fog, minimap and water; `effects.py` transient
+  animations and lingering bodies.
 - `warband/sound.py`, `combat_sound.py`, `voices.py`, `ambience.py`,
   `instruments.py`, `music.py` — everything synthesised with `sagaforge.synth`;
   `music.Director` maps moods to tracks; the bank composes in a background thread.
