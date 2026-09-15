@@ -76,7 +76,7 @@ def test_save_browser_writes_slots_with_summaries_and_loads_them(game) -> None:
     press(game, "2")
     assert game.scene is scene and any("Saved to slot 2" in t for t in texts(game))
     entry = game.save_manager.list_slots(3)[1]
-    assert entry["summary"]["players"] == 3 and entry["summary"]["map"].startswith("Medium") and entry["summary"]["player"] == "Azure (Humans)"
+    assert entry["summary"]["players"] == 3 and entry["summary"]["map"].startswith("Small") and entry["summary"]["player"] == "Azure (Humans)"
     scene.player.gold = 77
     press(game, "escape")
     press(game, "f9")
@@ -127,11 +127,11 @@ def test_damaged_and_foreign_saves_are_refused_with_a_message(game, tmp_path) ->
 
 
 def test_title_continue_takes_the_newest_save_and_the_browser_lists_them(game) -> None:
-    first = new_game(seed=5, width=40, height=32)
+    first = new_game(seed=5, width=48, height=40)
     game.push(first)
     game.tick(1 / 60)
     first.save_to(1)
-    second = new_game(seed=6, width=40, height=32)
+    second = new_game(seed=6, width=48, height=40)
     game.clear_and_push(second)
     game.tick(1 / 60)
     second.world.time = 30.0

@@ -196,8 +196,8 @@ def main(argv=None) -> int:
     parser.add_argument("--wait-timeout", type=float, default=900, help="maximum seconds waiting for a partner (default: 900)")
     parser.add_argument("--report-every", type=float, default=5, help="seconds between authoritative evidence rows (default: 5)")
     parser.add_argument("--seed", type=int, default=3, help="map seed for --create")
-    parser.add_argument("--width", type=int, default=48, help="map width for --create (40–64)")
-    parser.add_argument("--height", type=int, default=40, help="map height for --create (32–48)")
+    parser.add_argument("--width", type=int, default=48, help="map width for --create (48–80)")
+    parser.add_argument("--height", type=int, default=40, help="map height for --create (40–64)")
     parser.add_argument("--theme", choices=[item.value for item in MapTheme], default="summer", help="map theme for --create")
     args = parser.parse_args(argv)
     try:

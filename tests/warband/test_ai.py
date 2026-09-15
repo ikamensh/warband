@@ -5,7 +5,7 @@ import random
 from warband import mapgen
 from warband.ai import DEFEND_RADIUS, PROFILES, Brain
 from warband.model import AttackMove, Harvest, Repair, World, dist, tile_center
-from warband.rules import SIM_DT, BuildingType, Difficulty, Race, Terrain, UnitType
+from warband.rules import BuildingType, Difficulty, Layout, Race, SIM_DT, Terrain, UnitType
 
 
 def test_normal_and_hard_send_a_peasant_to_mend_a_damaged_building_but_easy_does_not() -> None:
@@ -226,7 +226,7 @@ def _trained_archer_share(brain: Brain) -> float:
 
 
 def test_hard_elf_and_orc_armies_grow_towards_their_race_plans() -> None:
-    world = mapgen.generate(seed=5, players=2, human=None, races=[Race.ELF, Race.ORC])
+    world = mapgen.generate(seed=5, players=2, human=None, races=[Race.ELF, Race.ORC], layout=Layout.PLAINS)  # open ground: both plans unfold
     brains = [Brain(0, Difficulty.HARD), Brain(1, Difficulty.HARD)]
     rng = random.Random(1)
     for _ in range(int(360 / SIM_DT)):

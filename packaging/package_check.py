@@ -31,7 +31,7 @@ def online_smoke(endpoint: str) -> dict:
         raise AssertionError([(client.ready, client.closed, client.error) for client in clients])
 
     try:
-        creator = OnlineClient("warband-v1", endpoint=endpoint, options={"seed": 3, "width": 40, "height": 32})
+        creator = OnlineClient("warband-v1", endpoint=endpoint, options={"seed": 3, "width": 48, "height": 40})
         clients.append(creator)
         wait(lambda: bool(creator.room) and creator.state is not None)
         assert creator.resume_token and not creator.ready
@@ -226,7 +226,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
             capture("-match-menu")
             click("Leave match")
             assert isinstance(game.scene, TitleScene)
-            game.clear_and_push(new_game(3, width=40, height=32, settings=settings))
+            game.clear_and_push(new_game(3, width=48, height=40, settings=settings))
             capture("")
             assert game.scene.world.units and game.scene.world.buildings
             return {"passed": True, "source_commit": info["source_commit"], "version": info["version"],

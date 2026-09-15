@@ -17,7 +17,7 @@ def test_warband_runs_on_the_server_clock_and_pauses_for_a_disconnected_player(s
     """Headless RTS advances without a host scene and both factions' units obey validated orders."""
     from warband.model import World
     with connect(server_url, proxy=None) as host, connect(server_url, proxy=None) as guest:
-        room = handshake(host, game='warband-v1', options={'width': 40, 'height': 32})
+        room = handshake(host, game='warband-v1', options={'width': 48, 'height': 40})
         assert receive(host)['state']['world']['tick'] == 0
         guest_seat = handshake(guest, 'join', game='warband-v1', room=room['room'])
         receive(host)
@@ -66,7 +66,7 @@ def test_rooms_and_private_seats_survive_server_restart(tmp_path):
 def test_trusted_checkpoint_keeps_existing_json_and_the_next_real_order():
     """The match resumes exact paid state using its unchanged checkpoint format."""
     spec = ONLINE[GAME]
-    match = spec.create({'width': 40, 'height': 32})
+    match = spec.create({'width': 48, 'height': 40})
     hall = next(building for building in match.world.buildings.values()
                 if building.player == 0 and building.type == BuildingType.TOWN_HALL)
     match.apply(0, {'action': 'train', 'args': [hall.id, UnitType.PEASANT.value]})

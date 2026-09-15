@@ -8,7 +8,7 @@ from saga2d import Button, CommandError, Label
 from warband import mapgen
 from warband.model import World, RuleError, Event
 from saga2d.server.games import GameSpec, option_choice, option_int, option_keys, option_seed
-from warband.rules import BuildingType, UnitType, Upgrade, SIM_DT, MapTheme, Race
+from warband.rules import BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
 
 GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'stop', 'hold'}
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building'}
@@ -18,10 +18,10 @@ HIT_AUDIO_FIELDS = frozenset({'source_type', 'target_type', 'target_armor', 'tar
 
 
 class WarbandMatch:
-    def __init__(self, seed=3, width=48, height=40, theme=MapTheme.SUMMER, races=None):
-        """*races* names the two seats' races; a ``None`` seat is drawn from the seed."""
+    def __init__(self, seed=3, width=48, height=40, theme=MapTheme.SUMMER, races=None, layout=None):
+        """*races* names the two seats' races; a ``None`` seat is drawn from the seed, and so is a ``None`` *layout*."""
         self.seed = seed
-        self.world = mapgen.generate(seed, width, height, players=2, theme=theme, races=races)
+        self.world = mapgen.generate(seed, width, height, players=2, theme=theme, races=races, layout=layout)
         for player in self.world.players:
             player.human = True
         self.events = []
@@ -110,16 +110,18 @@ class WarbandMatch:
 
 def _create(options):
     """Validate resource-bounded creation options before generating any map."""
-    option_keys(options, {'seed', 'width', 'height', 'theme', 'races'})
+    option_keys(options, {'seed', 'width', 'height', 'theme', 'races', 'layout'})
     races = options.get('races', [None, None])
     if (not isinstance(races, list) or len(races) != 2
             or any(race is not None and (not isinstance(race, str) or race not in {r.value for r in Race})
                    for race in races)):
         raise CommandError('races must name two seats, each a race or null.')
-    return WarbandMatch(option_seed(options, 3), width=option_int(options, 'width', 48, 40, 64),
-                        height=option_int(options, 'height', 40, 32, 48),
+    layout = option_choice(options, 'layout', 'any', {each.value for each in Layout} | {'any'})
+    return WarbandMatch(option_seed(options, 3), width=option_int(options, 'width', 48, 48, 80),
+                        height=option_int(options, 'height', 40, 40, 64),
                         theme=MapTheme(option_choice(options, 'theme', 'summer', {t.value for t in MapTheme})),
-                        races=[Race(race) if race is not None else None for race in races])
+                        races=[Race(race) if race is not None else None for race in races],
+                        layout=None if layout == 'any' else Layout(layout))
 
 
 def _checkpoint(match):

@@ -25,6 +25,7 @@ from warband.races import RACES
 from warband.settlement import Plan, Settlement
 from warband.worker_knowledge import WorkerKnowledge
 from warband.rules import (
+    Layout,
     REPAIR_CHUNK, REPAIR_RATE, repair_cost,
     ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLASTING_POWDER_BONUS, BLESSING_BONUS, BLOODLUST_BONUS, BUILDINGS, CHOP_TIME, DEEP_MINING_TRIP,
     FRENZY_BONUS, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, PLAYERS,
@@ -346,7 +347,7 @@ def or_into(target: bytearray, source: bytes | bytearray) -> None:
 class World:
     def __init__(self, width: int, height: int, terrain: list[list[Terrain]], player_count: int, *,
                  human: int | None = 0, rng: random.Random | None = None, theme: MapTheme = MapTheme.SUMMER,
-                 races: list[Race] | tuple[Race, ...] | None = None) -> None:
+                 races: list[Race] | tuple[Race, ...] | None = None, layout: Layout = Layout.PLAINS) -> None:
         if len(terrain) != height or any(len(row) != width for row in terrain):
             raise ValueError("terrain must be height rows of width tiles")
         if races is not None and len(races) != player_count:
@@ -355,6 +356,7 @@ class World:
         self.height = height
         self.terrain = terrain
         self.theme = theme
+        self.layout = layout
         self.players = [Player(i, PLAYERS[i].name, PLAYERS[i].color, human=(i == human), race=races[i] if races is not None else Race.HUMAN)
                         for i in range(player_count)]
         self.regrowth: list[tuple[Pos, float]] = []  # (felled tree tile, simulation time it grows back) — the elven art
@@ -2230,7 +2232,7 @@ class World:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "width": self.width, "height": self.height, "theme": self.theme.value,
+            "width": self.width, "height": self.height, "theme": self.theme.value, "layout": self.layout.value,
             "terrain": ["".join(t.value[0] for t in row) for row in self.terrain],
             "players": [{"id": p.id, "human": p.human, "race": p.race.value, "gold": p.gold, "lumber": p.lumber, "alive": p.alive,
                          "surrendered": p.surrendered, "stats": dict(p.stats), "last_alert": p.last_alert,
@@ -2252,7 +2254,7 @@ class World:
         terrain = [[letters[c] for c in row] for row in data["terrain"]]
         human = next((p["id"] for p in data["players"] if p["human"]), None)
         world = cls(data["width"], data["height"], terrain, len(data["players"]), human=human, theme=MapTheme(data["theme"]),
-                    races=[Race(p.get("race", Race.HUMAN.value)) for p in data["players"]])
+                    races=[Race(p.get("race", Race.HUMAN.value)) for p in data["players"]], layout=Layout(data["layout"]))
         world.regrowth = [((tile[0], tile[1]), when) for tile, when in data.get("regrowth", [])]
         for p, saved in zip(world.players, data["players"]):
             p.human = saved["human"]

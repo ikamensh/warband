@@ -2,9 +2,12 @@
 
 import time
 
+import pytest
+
 from saga2d import Game
 from warband import mapgen
 from warband.races import RACES
+from warband.rules import Layout
 from warband.style import build_theme
 from warband.title import NewGameScene, TitleScene, preview_image
 
@@ -55,14 +58,32 @@ def test_reroll_changes_seed_and_image(tmp_path) -> None:
         game._teardown()
 
 
-def test_large_preview_is_256x192(tmp_path) -> None:
+@pytest.mark.parametrize("key, size, pixels", [("s", "Small", (288, 240)), ("m", "Medium", (320, 240)), ("l", "Large", (240, 192))])
+def test_the_preview_fits_its_box_at_whole_pixels_per_tile(tmp_path, key: str, size: str, pixels: tuple[int, int]) -> None:
     game = open_new_game(tmp_path)
     try:
-        press(game, "l")
+        press(game, key)
         scene = game.scene
-        assert scene.size == "Large"
+        assert scene.size == size
         handle = game.assets.image(scene._preview_key)
-        assert game.backend.get_image_size(handle) == (256, 192)
+        assert game.backend.get_image_size(handle) == pixels
+    finally:
+        game._teardown()
+
+
+def test_the_map_row_picks_a_layout_and_the_caption_says_what_any_drew(tmp_path) -> None:
+    game = open_new_game(tmp_path)
+    try:
+        scene = game.scene
+        assert scene.layout is None
+        assert any(t.startswith("Any drew ") for t in texts(game))
+        press(game, "f")
+        assert scene.layout is Layout.FOREST and scene._preview_world.layout is Layout.FOREST
+        assert mapgen.PROMISES[Layout.FOREST] in texts(game)
+        press(game, "k")
+        assert scene._preview_world.layout is Layout.KLONDIKE
+        press(game, "y")
+        assert scene.layout is None
     finally:
         game._teardown()
 
@@ -74,7 +95,7 @@ def test_opponent_line_matches_mapgen(tmp_path) -> None:
         width, height = mapgen.SIZES[scene.size]
         expected_world = mapgen.generate(
             scene.seed, width, height, scene.players,
-            theme=scene.theme, races=[scene.race] + [None] * (scene.players - 1),
+            theme=scene.theme, races=[scene.race] + [None] * (scene.players - 1), layout=scene.layout,
         )
         expected = "Opponents: " + ", ".join(RACES[p.race].name for p in expected_world.players[1:])
         assert expected in texts(game)
@@ -89,5 +110,5 @@ def test_large_preview_generation_is_fast() -> None:
     world = mapgen.generate(12345, 64, 48, 4, theme=MapTheme.SUMMER, races=[Race.HUMAN, None, None, None])
     image = preview_image(world)
     elapsed = time.perf_counter() - t0
-    assert image.size == (256, 192)
+    assert image.size == (320, 240)
     assert elapsed < 1.0

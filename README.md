@@ -3,8 +3,11 @@
 A small Warcraft 2-style real-time strategy game on [Saga2D](../saga2d).
 
 A top-down map of meadows, woods and lakes under a soft fog of war, in
-summer, winter or wasteland; a base for each of two to four players with a
-gold mine and a wood beside it. Four races — Humans, Orcs, Elves and Dwarves —
+summer, winter or wasteland, in one of five layouts (open plains, deep
+forest, a river with fords, a gold pit in the middle, walled bastions); a base
+for each of two to four players with a gold mine and a wood beside it, a
+natural expansion of its own, and contested mines between, laid out by
+symmetry so every seat gets the same ([docs/warband-maps.md](docs/warband-maps.md)). Four races — Humans, Orcs, Elves and Dwarves —
 share one tech skeleton but differ in names, numbers, look, voice and march,
 each with a passive mechanic and two arts of its own
 ([docs/warband-races.md](docs/warband-races.md)). Peasants mine gold and fell
@@ -48,7 +51,7 @@ Straight into a match, and the other options:
 
 ```bash
 uv run warband --seed 3                    # skip the title: seed 3, you against one computer player
-uv run warband --seed 3 --race orc --players 4 --size Large --difficulty hard --theme winter
+uv run warband --seed 3 --race orc --players 4 --size Large --difficulty hard --theme winter --layout forest
 uv run warband --fullscreen
 uv run warband --help
 ```

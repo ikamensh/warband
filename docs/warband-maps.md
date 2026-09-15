@@ -1,8 +1,10 @@
 # Warband maps: a generator with five layouts
 
-Design note, 2026-09-15. Status: proposal, nothing implemented yet. The
-current generator is `warband/mapgen.py`; its fairness audit and the
-per-seed test are in `tests/warband/test_maps.py` and `tools/map_report.py`.
+Design note, 2026-09-15, implemented the same day in `warband/mapgen.py`
+(the section *What was built* at the end records where the build departs
+from the plan). The fairness audit runs inside the generator; the per-seed
+tests are `tests/warband/test_mapgen.py` and `tests/warband/test_maps.py`,
+the numbers over many seeds come from `tools/map_report.py`.
 
 ## The proposal in short
 
@@ -522,3 +524,61 @@ the longest.
 - Research: Togelius et al., [Controllable procedural map generation via multiobjective evolution](https://www.researchgate.net/publication/257564581_Controllable_procedural_map_generation_via_multiobjective_evolution)
   and [Multiobjective exploration of the StarCraft map space](https://www.semanticscholar.org/paper/Multiobjective-exploration-of-the-StarCraft-map-Togelius-Preuss/13179d4846f3a787c4d8a9e02a4864a7ecee176e);
   Uriarte and Ontañón, [PSMAGE: balanced map generation for StarCraft](https://www.researchgate.net/publication/261266936_PSMAGE_Balanced_map_generation_for_StarCraft).
+
+## What was built
+
+The generator draws the first seat on a canvas and copies it by the map's
+symmetry (point reflection for two players, both mirrors for three and four),
+places the natural and the thirds by a scored site search over the canonical
+region, carves corridors only through unprotected ground, audits the result
+with the production pathfinder and retries the seed up to eight times.
+Where it departs from the plan above:
+
+- **Sizes.** 40 × 32 is gone: four symmetric seats with a natural each do not
+  fit on it, and Klondike's pit and Bastion's rings collide with the base
+  clearings. The sizes are now Small 48 × 40, Medium 64 × 48 and Large
+  80 × 64, so every layout works at every size with two to four players
+  (the suite proves 40 seeds of each). The 80 × 64 map is the "Huge" the
+  plan asked for; the names shifted so the hotkeys S, M, L stay.
+- **Thirds.** Two players get one contested site (two mines) on Small and
+  two on Medium and Large; four seats get none on Small, one on Medium and
+  two on Large. On mirror maps the contested line runs along the axes where
+  a mine cannot sit, so a third there may be up to twelve tiles nearer one
+  hall than the next (fourteen on Crossings, where the river itself runs down
+  the bisector); every seat has the same, by symmetry.
+- **Naturals.** Ten to eighteen tiles out (twelve on Bastion, thirteen on
+  Forest), nine on mirror maps whose quadrants are 24 × 20. The AI builds a
+  hall at a mine more than fourteen tiles away and mines a nearer one from
+  its main hall.
+- **The AI claims mines.** Klondike starved the old brain: it expanded only
+  once its nearest mine was gone, by which time it had spent everything on
+  soldiers. `Brain._mine_to_claim` now plans a hall at the nearest unclaimed
+  mine while the worked one is far, below 6 000 gold or gone (at most three
+  halls, one at a time), and holds army training and research until the hall
+  is paid for. Six-minute Hard-vs-Hard probes on 2026-09-15: both brains
+  hold two or three halls in the pit by eight minutes.
+- **Forest clearings** are radius 9, not 7: at 7 a full base ran out of farm
+  sites. The brain's own habits (one barracks for the first four minutes,
+  defending piecemeal) show more on Forest, where the enemy's whole army
+  walks the road into the clearing; that is the AI gap recorded in
+  `warband-gaps-2026-09-09.md`, not a map fault, and is left as it was.
+- **Crossings.** Two players get one wandering river through the centre;
+  four seats get a straight cross whose width swells and narrows, because a
+  wandering river mirrored across an axis doubles into an unpassable band.
+  Fords are cuts straight across the water: six tiles at the centre, three
+  near each end.
+- **Klondike.** Two gates for two players and four for four, one per seat,
+  each four tiles wide; two pit mines on Small and Medium, four on Large for
+  two players, four for four seats. A poor corner mine only when two play.
+- **Bastion.** The ring is 8 to 11.5 tiles from the hall's middle for two
+  players and 8 to 10.5 for four, whose gates always face along the map's
+  long axis so the two facing gates share the middle column.
+- **Forest.** Roads zigzag between waypoints six to ten tiles off the
+  straight line; the audit asks for a detour of at least 1.1 between the
+  first two halls and at least 40 % trees.
+- **Theme** no longer changes the terrain at all: the same seed gives the
+  same map in summer, winter and wasteland.
+- **Scores** do not yet name the layout.
+- **Preview.** The New game screen puts the preview beside the options, up
+  to 320 × 240 pixels, with the layout's promise under the Map row; under
+  Any the caption names what the seed drew.

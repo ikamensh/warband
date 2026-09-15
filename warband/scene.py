@@ -24,6 +24,7 @@ from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
 from warband.production import ProductionButton, ProductionTarget, draw_production_icon
 from warband.races import RACES, RaceInfo
 from warband.rules import BUILDINGS, SIM_DT, UPGRADES, BuildingType, Difficulty, MapTheme, Race, UnitType, Upgrade
+from warband.rules import Layout as MapLayout
 from warband.scores import HighScores, score_breakdown
 from warband.sound import IMPACTS, apply_volumes, impact_sound, play_music, play_sound
 from warband.voices import voiced
@@ -35,7 +36,7 @@ from warband.tutorial import OBJECTIVES, Tutorial
 from warband.view import MapView, Overlay, rgba, to_tiles, to_world
 
 DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True}
-SAVE_VERSION = 1
+SAVE_VERSION = 2  # 2: the world records its layout
 SAVE_SLOTS = 3
 AUTOSAVE_EVERY = 120.0  # seconds of match time
 TOAST_TOP = 280  # below the resource, settlement and objectives panels
@@ -1595,7 +1596,7 @@ class GameScene(Scene):
     def get_save_summary(self) -> dict:
         world = self.world
         size = next((name for name, (w, h) in mapgen.SIZES.items() if (w, h) == (world.width, world.height)), f"{world.width}×{world.height}")
-        return {"map": f"{size} {world.theme.value}", "players": len(world.players), "difficulty": self.difficulty.value, "clock": _clock(world.time),
+        return {"map": f"{size} {world.theme.value} {world.layout.value}", "players": len(world.players), "difficulty": self.difficulty.value, "clock": _clock(world.time),
                 "player": f"{self.player.name} ({self.race.name})"}
 
     def load_save_state(self, state: dict) -> None:
@@ -1791,7 +1792,7 @@ class PauseScene(_Overlay):
         scene = self.game_scene
         self.game.clear_and_push(new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players),
                                           difficulty=scene.difficulty, theme=scene.world.theme, settings=scene.settings,
-                                          races=[p.race for p in scene.world.players]))
+                                          races=[p.race for p in scene.world.players], layout=scene.world.layout))
 
     def back_to_title(self) -> None:
         from warband.title import TitleScene
@@ -2118,7 +2119,7 @@ class GameOverScene(_Overlay):
         scene = self.game_scene
         self.game.clear_and_push(new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players),
                                           difficulty=scene.difficulty, theme=scene.world.theme, settings=scene.settings,
-                                          races=[p.race for p in scene.world.players]))
+                                          races=[p.race for p in scene.world.players], layout=scene.world.layout))
 
     def back_to_title(self) -> None:
         from warband.title import TitleScene
@@ -2126,16 +2127,18 @@ class GameOverScene(_Overlay):
         scene = self.game_scene
         size = next((name for name, dimensions in mapgen.SIZES.items() if dimensions == (scene.world.width, scene.world.height)), "Medium")
         self.game.clear_and_push(TitleScene(size=size, players=len(scene.world.players), difficulty=scene.difficulty, theme=scene.world.theme,
-                                           race=scene.player.race, settings=scene.settings))
+                                           race=scene.player.race, layout=scene.world.layout, settings=scene.settings))
 
     def quit(self) -> None:
         self.game.quit()
 
 
 def new_game(seed: int, width: int = 48, height: int = 40, players: int = 2, *, difficulty: Difficulty = Difficulty.NORMAL,
-             theme: MapTheme = MapTheme.SUMMER, settings: dict[str, Any] | None = None, races: list[Race | None] | None = None) -> GameScene:
-    return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players, theme=theme, races=races), seed, difficulty=difficulty,
-                     settings=settings)
+             theme: MapTheme = MapTheme.SUMMER, settings: dict[str, Any] | None = None, races: list[Race | None] | None = None,
+             layout: MapLayout | None = None) -> GameScene:
+    """*layout* ``None`` draws one from the seed."""
+    return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players, theme=theme, races=races, layout=layout), seed,
+                     difficulty=difficulty, settings=settings)
 
 
 def check_save(state: dict[str, Any]) -> World:

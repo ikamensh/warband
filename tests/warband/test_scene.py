@@ -414,11 +414,11 @@ def test_title_new_game_flow_with_hotkeys(game) -> None:
     press(game, "return")
     scene = game.scene
     assert isinstance(scene, GameScene)
-    assert (scene.world.width, scene.world.height) == (40, 32) and len(scene.world.players) == 3 and len(scene.brains) == 2
+    assert (scene.world.width, scene.world.height) == (48, 40) and len(scene.world.players) == 3 and len(scene.brains) == 2
 
 
 def test_title_continue_loads_the_saved_match(game) -> None:
-    played = new_game(seed=11, width=40, height=32)
+    played = new_game(seed=11, width=48, height=40)
     game.push(played)
     game.tick(1 / 60)
     played.player.gold = 4242
@@ -427,7 +427,7 @@ def test_title_continue_loads_the_saved_match(game) -> None:
     game.tick(1 / 60)
     press(game, "c")
     scene = game.scene
-    assert isinstance(scene, GameScene) and scene.seed == 11 and scene.player.gold == 4242 and scene.world.width == 40
+    assert isinstance(scene, GameScene) and scene.seed == 11 and scene.player.gold == 4242 and scene.world.width == 48
 
 
 # -- Content through the UI ------------------------------------------------------------------

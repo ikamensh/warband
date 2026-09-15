@@ -300,3 +300,14 @@ class MapTheme(IdentityEnum):
     SUMMER = "summer"
     WINTER = "winter"
     WASTELAND = "wasteland"
+
+
+class Layout(IdentityEnum):
+    """The shape of a generated map: what its walls are made of and where the gold lies.
+    One row of the new-game screen; the recipes are in :mod:`warband.mapgen` and docs/warband-maps.md."""
+
+    PLAINS = "plains"
+    FOREST = "forest"
+    CROSSINGS = "crossings"
+    KLONDIKE = "klondike"
+    BASTION = "bastion"

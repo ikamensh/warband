@@ -32,7 +32,7 @@ real breakdown.
   construction, supply, upgrades, towers, fog, elimination, JSON saves); no
   saga2d dependency, so rules are tested directly. `rules.py` holds the tables,
   `races.py` the four races' names, numbers and arts, `path.py` bounded A*,
-  `mapgen.py` layout and fairness, `ai.py` a Brain per player from a profile
+  `mapgen.py` the five map layouts, their symmetry and audit, `ai.py` a Brain per player from a profile
   per difficulty (`PROFILES`), `worker_ai.py`/`worker_knowledge.py` the
   automatic gatherers, `settlement.py`/`production.py` building plans and the
   command card, `scores.py` the local top ten.

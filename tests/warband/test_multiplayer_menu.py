@@ -37,7 +37,7 @@ def buttons(game):
 @pytest.fixture
 def online_game(server_url, tmp_path, monkeypatch):
     monkeypatch.setenv('SAGA2D_SERVER_URL', server_url)
-    partner = OnlineClient('warband-v1', endpoint=server_url, options={'seed': 3, 'width': 40, 'height': 32})
+    partner = OnlineClient('warband-v1', endpoint=server_url, options={'seed': 3, 'width': 48, 'height': 40})
     game = Game('online menu', backend='mock', resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / 'saves')
     try:
         game.push(TitleScene())

@@ -7,7 +7,7 @@ from PIL import Image
 from saga2d import Game
 from warband import textures
 from warband.model import tile_center
-from warband.rules import BuildingType, MapTheme, Resource, Terrain, UnitType
+from warband.rules import BuildingType, Layout, MapTheme, Resource, Terrain, UnitType
 from warband.scene import GameScene, new_game
 from warband.view import FOG_MARGIN, WATER_PERIOD
 from warband import mapgen
@@ -224,7 +224,7 @@ def test_ground_chunks_cover_the_map_with_a_margin_and_sand_meets_water() -> Non
 @pytest.mark.parametrize("scale", [0.85375, 1.0, 2.0])
 def test_chunk_padding_does_not_paint_grass_beyond_the_playable_map(scale) -> None:
     """The renderer's overlapping chunks must not create a bright strip outside fog."""
-    world = mapgen.generate(seed=3, width=27, height=25)
+    world = mapgen.generate(seed=3, width=48, height=40, layout=Layout.PLAINS)
     for cx, cy in ((0, 0), (3, 0), (0, 3), (3, 3)):
         image = textures.ground_chunk(world.terrain_at, world.in_bounds, cx, cy, scale)
         assert image.size == (round(textures.CHUNK_PX * scale),) * 2
@@ -255,7 +255,7 @@ def test_overlapping_ground_chunks_agree_at_horizontal_and_vertical_seams(scale)
 @pytest.mark.parametrize("scale", [1.0, 2.0])
 def test_forest_and_clearing_share_the_same_ground_across_chunk_edges(theme, scale) -> None:
     """Felling removes the tree sprite, leaving grass rather than a baked dark square."""
-    world = mapgen.generate(seed=3, width=24, height=24, theme=theme)
+    world = mapgen.generate(seed=3, width=48, height=40, theme=theme, layout=Layout.FOREST)
     forest = [textures.ground_chunk(world.terrain_at, world.in_bounds, cx, cy, scale, theme)
               for cx, cy in ((0, 0), (1, 0), (1, 1))]
     assert any(terrain is Terrain.TREES for row in world.terrain for terrain in row)
