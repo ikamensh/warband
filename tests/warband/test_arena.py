@@ -185,3 +185,11 @@ def test_a_four_player_game_scores_out_of_its_three_pairings():
     assert ratings["a"].pairings == 3
     assert ratings["a"].score == 1.0
     assert ratings["d"].score == 0.0
+
+
+def test_a_seed_with_no_fair_map_is_reported_rather_than_raised():
+    """mapgen refuses layouts it cannot make fair; a ladder has to survive that."""
+    from warband.arena import playable
+    assert playable(MatchSpec(seed=1000, agents=("hard", "hard")))
+    # Whatever the answer for a given seed, asking must not raise.
+    assert playable(MatchSpec(seed=6005, agents=("hard", "hard"))) in (True, False)

@@ -24,7 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from warband import arena  # noqa: E402
-from warband.arena import AGENTS, MatchResult, MatchSpec, play, rate, win_rate  # noqa: E402
+from warband.arena import AGENTS, MatchResult, MatchSpec, playable, rate, win_rate  # noqa: E402
 
 
 def specs_1v1(agents: list[str], seeds: range, variant: str, minutes: float) -> list[MatchSpec]:
@@ -49,7 +49,24 @@ def specs_ffa(agents: list[str], seeds: range, players: int, variant: str, minut
     return out
 
 
+def drop_unfair(specs: list[MatchSpec]) -> list[MatchSpec]:
+    """Leave out the seeds mapgen cannot make a fair map from, and say how many."""
+    usable: dict[tuple, bool] = {}
+    kept = []
+    for spec in specs:
+        key = (spec.seed, spec.width, spec.height, spec.players)
+        if key not in usable:
+            usable[key] = playable(spec)
+        if usable[key]:
+            kept.append(spec)
+    dropped = len(usable) - sum(usable.values())
+    if dropped:
+        print(f"  ({dropped} of {len(usable)} seeds have no fair map at this size and were left out)")
+    return kept
+
+
 def run(specs: list[MatchSpec], workers: int, label: str) -> list[MatchResult]:
+    specs = drop_unfair(specs)
     started = time.perf_counter()
     packed = [tuple(s.__dict__[f] for f in ("seed", "agents", "variant", "minutes", "width", "height", "races"))
               for s in specs]
