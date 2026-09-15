@@ -355,7 +355,7 @@ class World:
         self.height = height
         self.terrain = terrain
         self.theme = theme
-        self.scripted = scripted  # a mission decides the outcome: elimination still happens, but never declares a winner
+        self.scripted = scripted  # a mission decides the outcome: elimination still happens, but nobody surrenders and no winner is declared
         self.players = [Player(i, PLAYERS[i].name, PLAYERS[i].color, human=(i == human), race=races[i] if races is not None else Race.HUMAN)
                         for i in range(player_count)]
         self.regrowth: list[tuple[Pos, float]] = []  # (felled tree tile, simulation time it grows back) — the elven art
@@ -2179,7 +2179,7 @@ class World:
     def clear_player(self, player: int) -> None:
         """Take everything *player* owns off the map without a fight and mark them out: a mission's
         setup, not a defeat, so no event, no statistic and no elimination is recorded.  A later
-        :meth:`spawn_unit` for the player puts them back in play."""
+        :meth:`spawn_unit` for the player puts them back in play (a mission's ``place`` does the same)."""
         for unit in self.player_units(player):
             del self.units[unit.id]
         for building in self.player_buildings(player):
@@ -2227,8 +2227,9 @@ class World:
             if not buildings:
                 player.alive = False
                 self.events.append(Event("eliminated", (0.0, 0.0), player=player.id, text=f"{player.name} has fallen"))
-            elif not player.human and not any(b.done and b.queue for b in buildings) and self.recovery_recruit(player.id) is None:
-                # An AI with no units, nothing in training and no affordable recruit cannot come back.
+            elif not player.human and not self.scripted and not any(b.done and b.queue for b in buildings) and self.recovery_recruit(player.id) is None:
+                # An AI with no units, nothing in training and no affordable recruit cannot come back.  A mission's
+                # sides fight to the last building: its camps have no brain to give up, and its objectives say "every".
                 player.alive = False
                 player.surrendered = True
                 for building in buildings:

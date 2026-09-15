@@ -14,6 +14,7 @@ uv run warband --seed 3                          # play (python -m warband works
 uv run pytest -q                                 # headless suite, about four minutes
 uv run python -u tools/fuzz.py --games 2 --monkey 0 --seed 81   # AI matches with invariants + monkey input (needs -u)
 uv run python tools/verify.py DIR                # a match through real pyglet events, frames saved to look at
+uv run python tools/verify_campaign.py DIR       # the campaign's screens rendered by the real backend; uv run warband --mission ID plays one
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms)
 uv run python tools/step_bench.py --repeat 3     # model step times of the same battle without a window, with --profile
 uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening; full report takes ~30 min
@@ -56,6 +57,14 @@ real breakdown.
   building collapse, from pieces committed under `warband/assets/impacts/`, `deaths/` and
   `wreckage/` (Stable Audio 3 through `sagaforge.foley`; `pieces.py` reads them;
   provenance in each folder's manifest, the procedure in `docs/warband-pieces.md`).
+- `warband/campaign.py` — the campaign engine: speakers, lines and choices,
+  objectives and triggers, `Run` (a mission in play, saved beside the world),
+  `Progress`/`ProgressStore` (the small cross-version progress file); the
+  rules for keeping it playable across versions are in `docs/warband-campaign.md`.
+  `missions.py` is the content (The Thornwood War, six missions), `dialog.py`
+  the dialogue overlay, `mission_scene.py` a mission as a match with its result
+  and loader, `campaign_scene.py` the campaign screen. `World.scripted` worlds
+  never declare a winner or surrender: the mission decides.
 - `warband/scene.py`, `title.py`, `tutorial.py`, `icons.py`, `style.py`,
   `score_scene.py` — the saga2d scenes. `multiplayer.py` is the LAN/online
   match; its `ONLINE` table registers `warband-v1` with `saga2d.server`.

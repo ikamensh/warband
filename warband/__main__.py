@@ -3,6 +3,9 @@
 Without ``--seed`` the game opens on the title screen (``--size`` and
 ``--players`` pre-fill the new-game options).  With ``--seed`` it skips the
 title and starts that map directly, so a seed reproduces a match in one step.
+``--campaign`` opens the campaign screen; ``--mission ID`` starts that
+mission straight away, with the saved progress's choices, skipping the
+briefing (for looking at one mission; ``--mission list`` names them).
 """
 
 from __future__ import annotations
@@ -27,9 +30,17 @@ def main() -> None:
     parser.add_argument("--theme", choices=[t.value for t in MapTheme], default="summer")
     parser.add_argument("--race", choices=[r.value for r in Race], default="human", help="your race; the computer players' are drawn from the seed")
     parser.add_argument("--fullscreen", action="store_true")
+    parser.add_argument("--campaign", action="store_true", help="open the campaign screen")
+    parser.add_argument("--mission", metavar="ID", help="start this campaign mission directly (or 'list')")
     parser.add_argument("--selftest", metavar="PNG", help="start a match in a hidden window, save one frame to PNG and exit (for packaged builds)")
     add_match_arguments(parser)
     args = parser.parse_args()
+    if args.mission == "list":
+        from warband.missions import CAMPAIGN
+
+        for mission in CAMPAIGN.missions:
+            print(f"{mission.id:16} {CAMPAIGN.index(mission)}. {mission.title} · {mission.act}")
+        return
     if args.selftest:
         selftest(args.selftest)
         return
@@ -50,6 +61,18 @@ def main() -> None:
                                  create_options=lambda: options, game=game)
     if lobby is not None:
         game.run(lobby)
+        return
+    if args.campaign or args.mission is not None:
+        from warband.campaign_scene import CampaignScene
+        from warband.mission_scene import MissionScene, build_world, current_progress
+        from warband.missions import CAMPAIGN
+
+        if args.mission is None:
+            game.run(CampaignScene(settings))
+            return
+        progress = current_progress(game, CAMPAIGN, Difficulty(args.difficulty))
+        run = build_world(CAMPAIGN.mission(args.mission), flags=progress.flags)
+        game.run(MissionScene(CAMPAIGN, run, difficulty=progress.difficulty, settings=settings))
         return
     if args.seed is not None:
         width, height = mapgen.SIZES[args.size]

@@ -17,6 +17,21 @@ a minimap that pans and orders, three save slots with an autosave, a tutorial
 strip, a codex, a synthesised march per race, and the fallen lying where they
 fell for a while.
 
+## The campaign
+
+**Campaign** on the title (P) opens *The Thornwood War*: six missions in three
+acts for the Marches, with briefings, objectives, scripted raids and ambushes,
+dialogue with portraits, three choices that carry across missions, and an
+epilogue that reads them back. One mission is played as the dwarves. The
+campaign's difficulty is chosen once and shifts every computer opponent a
+step. Progress (the missions done and the choices) lives in
+`~/.warband/campaign/` apart from the mission in play (the `campaign` save
+slot), so a new version of Warband keeps your place even when it can no longer
+read the saved mission: that mission starts again from its briefing. The
+design and the persistence rules are in
+[docs/warband-campaign.md](docs/warband-campaign.md);
+`uv run warband --mission ID` starts one mission directly (`--mission list`).
+
 ## Play the latest version
 
 Warband runs straight from this checkout on macOS and Windows; nothing is

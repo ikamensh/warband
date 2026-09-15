@@ -83,14 +83,15 @@ class TitleScene(Scene):
 
     def _newest_save(self) -> int | str | None:
         """The slot saved most recently, whatever kind it is."""
-        entries = [e for e in self.game.save_manager.list_slots(SAVE_SLOTS, names=("quick", "autosave")) if e is not None and "error" not in e]
+        entries = [e for e in self.game.save_manager.list_slots(SAVE_SLOTS, names=("quick", "autosave", "campaign")) if e is not None and "error" not in e]
         return max(entries, key=lambda e: e["timestamp"])["slot"] if entries else None
 
     def _build_menu(self) -> None:
         newest = self._newest_save()
         menu = Column(spacing=10, anchor=Anchor.CENTER, margin=0)
-        menu.add(Label("", height=150))
+        menu.add(Label("", height=200))  # room for the title and its tagline above the nine buttons
         menu.add(Button("New game", hotkey="N", on_click=self.new_game, style=ACTION_BUTTON, width=300))
+        menu.add(Button("Campaign", shortcut="P", on_click=self.campaign, style=MENU_BUTTON, width=300))
         cont = Button("Continue", hotkey="C", on_click=self.continue_game, style=MENU_BUTTON, width=300)
         cont.enabled = newest is not None
         menu.add(cont)
@@ -99,7 +100,7 @@ class TitleScene(Scene):
         menu.add(Button("High scores", hotkey="B", on_click=self.high_scores, style=MENU_BUTTON, width=300))
         menu.add(Button("How to play", hotkey="H", on_click=self.how_to_play, style=MENU_BUTTON, width=300))
         menu.add(Button("Quit", hotkey="Q", on_click=self.quit, style=MENU_BUTTON, width=300))
-        where = f"slot {newest}" if isinstance(newest, int) else f"the {newest}" if newest else None
+        where = f"slot {newest}" if isinstance(newest, int) else f"the {newest} mission" if newest == "campaign" else f"the {newest}" if newest else None
         menu.add(Label(f"Continue resumes {where}" if where else "No saved game yet — the match autosaves every two minutes", text_style="caption"))
         self.ui.add(menu)
         self.ui.add(Label("Every command has a hotkey — the keycaps show them · F1 in game for help", text_style="caption", anchor=Anchor.BOTTOM_CENTER, margin=12))
@@ -111,7 +112,7 @@ class TitleScene(Scene):
     def draw(self) -> None:
         w, h = self.game.resolution
         self.draw_rect(0, 0, w, h, (6, 8, 14, 150))
-        cy = h / 2 - 190  # the title and its tagline sit above the menu, which is centred and 150 px shorter than its spacer suggests
+        cy = h / 2 - 190  # the title and its tagline sit above the menu, which is centred and 200 px shorter than its spacer suggests
         for spread, alpha in ((3, 50), (2, 80)):
             self.draw_text("WARBAND", w / 2 + spread, cy + spread, style="hero", color=(0, 0, 0, alpha), anchor_x="center", anchor_y="center")
         self.draw_text("WARBAND", w / 2, cy, style="hero", anchor_x="center", anchor_y="center")
@@ -137,6 +138,12 @@ class TitleScene(Scene):
     def new_game(self) -> None:
         self.sfx("button")
         self.game.push(NewGameScene(self))
+
+    def campaign(self) -> None:
+        from warband.campaign_scene import CampaignScene
+
+        self.sfx("button")
+        self.game.push(CampaignScene(self.settings))
 
     def continue_game(self) -> None:
         newest = self._newest_save()

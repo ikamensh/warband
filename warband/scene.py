@@ -108,6 +108,7 @@ class GameScene(Scene):
     """The whole match: map, selection, orders, HUD, the AI's turns and the game clock."""
 
     background_color = (8, 10, 14, 255)
+    AUTOSAVE_SLOT = "autosave"
     controls = {
         "escape": "cancel",
         "f1": "open_help",
@@ -307,23 +308,28 @@ class GameScene(Scene):
         self.ui.add(KeyHints(self._hint, anchor=Anchor.BOTTOM_CENTER, margin=5))
         self.ui.add(Label(lambda: self.status if self.status_timer > 0 else "", text_style="hud", anchor=Anchor.TOP_LEFT,
                           margin=(12, HUD_TOP), width=760, wrap=True, text_color=GOLD))
-        self.objectives = Column(spacing=4, anchor=Anchor.TOP_RIGHT, margin=(12, HUD_TOP), style=PANEL_STYLE)
-        self.objectives.add(Row(Label("Getting started", text_style="heading", width=290),
-                                Button("Hide", hotkey="F4", on_click=self.hide_tutorial, style=GHOST_BUTTON, width=90), spacing=8))
-        self.objective_label = Label("", text_style="body", width=390)
-        self.objective_done = Label("", text_style="sub", width=390)
-        self.objectives.add(self.objective_label)
-        self.objectives.add(self.objective_done)
-        self.objectives.visible = self.tutorial is not None
+        self.objectives = self._build_objectives()
         self.ui.add(self.objectives)
         self._refresh_card()
+
+    def _build_objectives(self) -> Column:
+        """The panel under the top-right corner: the tutorial strip here, a mission's objectives in the campaign."""
+        panel = Column(spacing=4, anchor=Anchor.TOP_RIGHT, margin=(12, HUD_TOP), style=PANEL_STYLE)
+        panel.add(Row(Label("Getting started", text_style="heading", width=290),
+                      Button("Hide", hotkey="F4", on_click=self.hide_tutorial, style=GHOST_BUTTON, width=90), spacing=8))
+        self.objective_label = Label("", text_style="body", width=390)
+        self.objective_done = Label("", text_style="sub", width=390)
+        panel.add(self.objective_label)
+        panel.add(self.objective_done)
+        panel.visible = self.tutorial is not None
+        return panel
 
     def hide_tutorial(self) -> None:
         self.tutorial = None
         self.objectives.visible = False
         self.sfx("button")
 
-    def _update_tutorial(self) -> None:
+    def _update_objectives(self) -> None:
         if self.tutorial is None:
             self.objectives.visible = False
             return
@@ -462,6 +468,14 @@ class GameScene(Scene):
         self.camera.pan_to(*to_world(unit.pos), duration=0.25)
 
     # -- Orders ---------------------------------------------------------------------
+
+    @property
+    def toast_top(self) -> int:
+        """Where notices slide in: under the objectives panel, which a mission makes taller than the tutorial strip."""
+        if not self.objectives.visible:
+            return TOAST_TOP
+        _x, y, _w, _h = self.objectives.bounds
+        return max(TOAST_TOP, y + self.objectives.get_preferred_size()[1] + 10)  # the preferred height follows a change at once
 
     def say(self, text: str) -> None:
         self.status = text
@@ -1039,7 +1053,10 @@ class GameScene(Scene):
         self.sfx("button")
 
     def open_menu(self) -> None:
-        self.game.push(PauseScene(self))
+        self.game.push(self.pause_menu())
+
+    def pause_menu(self) -> Scene:
+        return PauseScene(self)
 
     def open_help(self) -> None:
         self.game.push(HelpScene())
@@ -1195,10 +1212,10 @@ class GameScene(Scene):
         self.view.sync(dt)
         self._update_card()
         self.idle_button.visible = self._idle_peasant_count() > 0
-        self._update_tutorial()
+        self._update_objectives()
         if self.world.time >= self._autosave_at and not self._game_over:
             self._autosave_at += AUTOSAVE_EVERY
-            self.game.save("autosave", scene=self)
+            self.game.save(self.AUTOSAVE_SLOT, scene=self)
             self.say("Autosaved")
         self._check_game_over()
 
@@ -1265,14 +1282,14 @@ class GameScene(Scene):
             elif e.kind == "under_attack" and mine:
                 self.last_alert = e.pos
                 self.minimap.ping(*to_world(e.pos))
-                self.effects.add(Toast("Under attack!", ["Press Space to look"], hold=3.0, top=TOAST_TOP))
+                self.effects.add(Toast("Under attack!", ["Press Space to look"], hold=3.0, top=self.toast_top))
                 self.sfx("under_attack")
             elif e.kind == "refused" and mine:
                 self.warn(e.text)
             elif e.kind in ("eliminated", "surrendered") and not mine:
-                self.effects.add(Toast("A rival falls", [e.text], accent=GOOD, hold=4.0, top=TOAST_TOP))
+                self.effects.add(Toast("A rival falls", [e.text], accent=GOOD, hold=4.0, top=self.toast_top))
             elif e.kind == "exposed":
-                self.effects.add(Toast(f"{e.text}'s last holdings are revealed", [e.text], hold=4.0, top=TOAST_TOP))
+                self.effects.add(Toast(f"{e.text}'s last holdings are revealed", [e.text], hold=4.0, top=self.toast_top))
             elif e.kind == "exhausted":
                 self.effects.add(FloatingText("Mine exhausted", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), MUTED, rise=20, duration=1.5))
             elif e.kind == "plunder" and mine:
@@ -1357,7 +1374,7 @@ class GameScene(Scene):
 
     def _show_destroyed(self, e: Event) -> None:
         if e.player == self.human:
-            self.effects.add(Toast("Building lost", [f"Your {self.building_name(BuildingType(e.text)).lower()} was destroyed"], hold=4.0, top=TOAST_TOP))
+            self.effects.add(Toast("Building lost", [f"Your {self.building_name(BuildingType(e.text)).lower()} was destroyed"], hold=4.0, top=self.toast_top))
         if self._visible(e.pos):
             wx, wy = to_world(e.pos)
             self.effects.add(Burst((wx, wy), (255, 160, 80, 255), 18, rng=self.rng, size=16, speed=(40, 160)))
@@ -1889,7 +1906,8 @@ class SaveBrowserScene(_Overlay):
                 detail, ok = "corrupt file — cannot be loaded", self.mode == "save"
             else:
                 s = entry["summary"]
-                detail = f"{s.get('player', '')} · {s.get('map', '')} · {s.get('players', '?')} players · {s.get('difficulty', '')} · {s.get('clock', '')} · {entry['timestamp'][:16].replace('T', ' ')}"
+                head = f"Campaign · {s['mission']}" if "mission" in s else s.get("player", "")
+                detail = f"{head} · {s.get('map', '')} · {s.get('players', '?')} players · {s.get('difficulty', '')} · {s.get('clock', '')} · {entry['timestamp'][:16].replace('T', ' ')}"
                 ok = True
             button = Button(name, hotkey=key, on_click=lambda sl=slot: self.pick(sl), style=ACTION_BUTTON if ok else GHOST_BUTTON, width=150)
             button.enabled = ok and not (self.mode == "save" and slot == "autosave")
@@ -2164,7 +2182,12 @@ def _saved_run_id(state: dict[str, Any]) -> str:
 
 
 def load_game(state: dict[str, Any], *, settings: dict[str, Any] | None = None) -> GameScene:
-    """A game scene from a save slot's ``state`` (see :meth:`GameScene.get_save_state`)."""
+    """A game scene from a save slot's ``state`` (see :meth:`GameScene.get_save_state`); a campaign mission's save
+    (it carries a ``mission`` block) comes back as its mission scene."""
+    if isinstance(state, dict) and "mission" in state:
+        from warband.mission_scene import load_mission
+
+        return load_mission(state, settings=settings)
     world = check_save(state)
     scene = GameScene(world, state["seed"], difficulty=Difficulty(state["difficulty"]), settings=settings,
                       run_id=_saved_run_id(state), ranked=state.get("ranked", True))
