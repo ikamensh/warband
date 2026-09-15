@@ -71,6 +71,7 @@ class ProProfile:
     regroup_seconds: float = 45.0     # after a failed push, rebuild before trying again
     min_army: int = 10                # never walk out with less than this, whatever the comparison says
     guards: int = 2                   # soldiers kept home against raiders, never sent out
+    soldiers_before_workers: int = 6   # below this the barracks is fed before the hall
     tower_count: int = 2
     retreat_wounded: bool = True       # pull a soldier out at this much health and let it heal…
     retreat_hp: float = 0.25
@@ -103,6 +104,7 @@ _TRIALS = (
     replace(PRO, name="pro-noscout", scout=False),
     replace(PRO, name="pro-noheal", retreat_wounded=False),
     replace(PRO, name="pro-noraid", raid=False),
+    replace(PRO, name="pro-workersfirst", soldiers_before_workers=0),
     replace(PRO, name="pro-group", reinforce_group=4),
     replace(PRO, name="pro-eager", attack_ratio=1.15),
     replace(PRO, name="pro-patient", attack_ratio=2.2),
@@ -497,15 +499,24 @@ class ProBrain:
 
     def _training(self, world: World) -> None:
         player = self.player
-        target = self._worker_target(world)
-        peasants = len(self._peasants(world))
-        halls = self._halls(world)
-        for hall in halls:
-            if peasants + sum(len(h.queue) for h in halls) >= target:
-                break
-            if len(hall.queue) < 2 and world.can_train(hall, UnitType.PEASANT) is None:
-                world.train(hall.id, UnitType.PEASANT)
         army = self._army(world)
+        halls = self._halls(world)
+        # Peasants come first only while there is something to defend them with.
+        # Raiders killing workers is exactly the moment the hall wants to replace
+        # them, and replacing them is what pays for the soldiers that would stop
+        # the raid — bases have been lost at sixteen workers, four thousand gold
+        # and no army at all.
+        rebuilding = (len(army) < self.profile.soldiers_before_workers
+                      and any(b.info.trains and b.type is not BuildingType.TOWN_HALL
+                              for b in world.player_buildings(player, done=True)))
+        if not rebuilding:
+            target = self._worker_target(world)
+            peasants = len(self._peasants(world))
+            for hall in halls:
+                if peasants + sum(len(h.queue) for h in halls) >= target:
+                    break
+                if len(hall.queue) < 2 and world.can_train(hall, UnitType.PEASANT) is None:
+                    world.train(hall.id, UnitType.PEASANT)
         counts = {t: sum(1 for u in army if u.type is t) for t in UnitType}
         for building in world.player_buildings(player, done=True):
             if not building.info.trains or building.type is BuildingType.TOWN_HALL:

@@ -309,6 +309,21 @@ def _placements(world: World, eliminated: dict[int, float], players: int) -> tup
     return tuple(out)
 
 
+def playable(spec: MatchSpec) -> bool:
+    """Whether a map exists for this spec at all.
+
+    ``mapgen.generate`` refuses a seed whose layout it cannot make fair — too
+    straight a road, a start with no wood — and says so. A ladder should leave
+    such a seed out rather than die on it a hundred matches in.
+    """
+    try:
+        mapgen.generate(seed=spec.seed, width=spec.width, height=spec.height,
+                        players=spec.players, human=None)
+    except ValueError:
+        return False
+    return True
+
+
 def play(spec: MatchSpec) -> MatchResult:
     """Run one match to a winner or the time cap."""
     ensure_variant(spec.variant)
