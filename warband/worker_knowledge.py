@@ -16,6 +16,8 @@ from warband.rules import BuildingType, Terrain
 if TYPE_CHECKING:
     from warband.model import World
 
+BLOCKING = (Terrain.WATER, Terrain.TREES, Terrain.ROCK)
+
 
 @dataclass(frozen=True)
 class KnownMine:
@@ -52,40 +54,70 @@ class WorkerKnowledge:
     def __init__(self, width: int, height: int) -> None:
         self.width, self.height = width, height
         self.terrain: list[Terrain | None] = [None] * (width * height)
-        self.known = bytearray(width * height)
         self.blocked = bytearray([1]) * (width * height)
         self.mines: dict[int, KnownMine] = {}
+        self.threats: tuple[_Building, ...] = ()  # last-observed armed structures; callers filter out their own
         self._buildings: dict[int, _Building] = {}
+        self._terrain_blocked = bytearray([1]) * (width * height)  # the grid without any footprint stamped on it
+        self._spans: dict[tuple[int, int, int], tuple[tuple[int, int], ...]] = {}
 
-    @property
-    def threats(self) -> tuple[_Building, ...]:
-        """Last-observed armed structures; callers filter out their own buildings."""
-        return tuple(building for building in self._buildings.values() if building.threat_range > 0)
+    def spans(self, x: int, y: int, size: int) -> tuple[tuple[int, int], ...]:
+        """One flat-index range per row of a footprint, clipped to the map. Footprints never move, so these are cached."""
+        key = (x, y, size)
+        found = self._spans.get(key)
+        if found is None:
+            left, right = max(0, x), min(self.width, x + size)
+            found = tuple((row * self.width + left, row * self.width + right)
+                          for row in range(max(0, y), min(self.height, y + size))) if left < right else ()
+            self._spans[key] = found
+        return found
 
-    def _cells(self, building):
-        for y in range(max(0, building.y), min(self.height, building.y + building.size)):
-            for x in range(max(0, building.x), min(self.width, building.x + building.size)):
-                yield y * self.width + x
+    def sees(self, visible: bytearray, x: int, y: int, size: int) -> bool:
+        """Whether any tile of a footprint lies in *visible*, a fog grid of this map's shape."""
+        for start, stop in self.spans(x, y, size):
+            if any(visible[start:stop]):
+                return True
+        return False
+
+    def _stamp_buildings(self) -> None:
+        """Rebuild the public grid from the terrain layer with every remembered footprint blocked."""
+        blocked = self.blocked
+        blocked[:] = self._terrain_blocked
+        for building in self._buildings.values():
+            for start, stop in self.spans(building.x, building.y, building.size):
+                blocked[start:stop] = b"\x01" * (stop - start)
+        self.threats = tuple(building for building in self._buildings.values() if building.threat_range > 0)
 
     def _rebuild_grid(self) -> None:
-        blocking = (Terrain.WATER, Terrain.TREES, Terrain.ROCK)
+        """Recompute the terrain layer from scratch; refresh() then keeps it current tile by tile."""
+        terrain_blocked = self._terrain_blocked
         for index, terrain in enumerate(self.terrain):
-            self.known[index] = terrain is not None
-            self.blocked[index] = terrain is None or terrain in blocking
-        for building in self._buildings.values():
-            for index in self._cells(building):
-                self.known[index] = self.blocked[index] = 1
+            terrain_blocked[index] = terrain is None or terrain in BLOCKING
+        self._stamp_buildings()
 
     def refresh(self, world: World, player: int) -> None:
         if (world.width, world.height) != (self.width, self.height):
             raise ValueError("Worker knowledge dimensions must match the world")
         visible = world.visible[player]
-        for index in itertools.compress(range(len(visible)), visible):
-            self.terrain[index] = world.terrain[index // self.width][index % self.width]
+        width = self.width
+        remembered, terrain_blocked = self.terrain, self._terrain_blocked
+        for y, row in enumerate(world.terrain):
+            base = y * width
+            seen = visible[base:base + width]
+            if not any(seen):
+                continue
+            for x in itertools.compress(range(width), seen):
+                index = base + x
+                terrain = row[x]
+                if remembered[index] is not terrain:
+                    remembered[index] = terrain
+                    terrain_blocked[index] = terrain in BLOCKING
         observed = {building.id: building for building in world.buildings.values()
-                    if building.player == player or any(visible[index] for index in self._cells(building))}
-        for bid, remembered in list(self._buildings.items()):
-            if bid not in observed and (remembered.player == player or any(visible[index] for index in self._cells(remembered))):
+                    if building.player == player or self.sees(visible, building.x, building.y, building.size)}
+        for bid, remembered_building in list(self._buildings.items()):
+            if bid not in observed and (remembered_building.player == player
+                                        or self.sees(visible, remembered_building.x, remembered_building.y,
+                                                     remembered_building.size)):
                 del self._buildings[bid]
                 self.mines.pop(bid, None)
         for building in observed.values():
@@ -95,7 +127,7 @@ class WorkerKnowledge:
                 self.mines[building.id] = KnownMine(building.id, building.x, building.y, building.size, building.gold)
             else:
                 self.mines.pop(building.id, None)
-        self._rebuild_grid()
+        self._stamp_buildings()
 
     def resource_rect(self, target: int | tuple[int, int]) -> tuple[int, int, int, int] | None:
         if isinstance(target, int):
