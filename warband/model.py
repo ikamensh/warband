@@ -308,6 +308,14 @@ def rects_gap(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> int
     return max(dx, dy)
 
 
+def shell_hp(info: BuildingInfo, progress: float) -> int:
+    """Hit points *progress* seconds of building have earned a shell: a tenth to start with, the rest at the build rate.
+
+    Construction only ever adds the difference between two readings, so blows taken meanwhile stay taken."""
+    start = max(1, info.hp // 10)
+    return start + int((info.hp - start) * min(progress, info.build_time) / info.build_time)
+
+
 def tile_center(pos: Pos) -> Point:
     return (pos[0] + 0.5, pos[1] + 0.5)
 
@@ -947,7 +955,7 @@ class World:
     def place_building(self, player: int | None, building_type: BuildingType, pos: Pos, *, done: bool = True) -> Building:
         race = self.race_of(player)
         info = RACES[race].buildings[building_type]
-        building = Building(self._new_id(), building_type, player, pos[0], pos[1], info.hp if done else max(1, info.hp // 10), race=race)
+        building = Building(self._new_id(), building_type, player, pos[0], pos[1], info.hp if done else shell_hp(info, 0.0), race=race)
         if done:
             building.progress = info.build_time
         if building_type is BuildingType.GOLD_MINE:
@@ -1032,10 +1040,9 @@ class World:
         if not b.done:
             builder = self.units.get(b.builder) if b.builder is not None else None
             if builder is not None and builder.constructing == b.id:
+                b.hp += shell_hp(info, b.progress + dt) - shell_hp(info, b.progress)
                 b.progress = min(info.build_time, b.progress + dt)
-                b.hp = max(b.hp, int(info.hp * b.progress / info.build_time))
                 if b.done:
-                    b.hp = info.hp
                     self._finish_construction(b, builder)
             return
         if b.queue:

@@ -385,6 +385,31 @@ def test_an_interrupted_site_can_be_cancelled_for_a_refund_or_resumed() -> None:
     assert b.constructing is None and not b.orders
 
 
+def test_a_shell_under_construction_gains_hit_points_at_the_build_rate_and_keeps_its_wounds() -> None:
+    """Construction adds hit points steadily; blows taken meanwhile are undone neither by the builder nor by completion."""
+    world, _hall = base_world()
+    world.reveal_all(0)
+    peasant = world.spawn_unit(0, UnitType.PEASANT, (8.5, 8.5))
+    world.build(peasant.id, BuildingType.FARM, (10, 10))
+    run_until(world, lambda: peasant.constructing is not None, 5.0)
+    farm = world.buildings[peasant.constructing]
+    info = BUILDINGS[BuildingType.FARM]
+    run(world, info.build_time / 2)
+    before = farm.hp
+    knight = world.spawn_unit(1, UnitType.KNIGHT, (13.5, 10.5))
+    world.attack([knight.id], farm.id)
+    run(world, 5.0)
+    world.move([knight.id], (20.5, 10.5))
+    dealt = sum(e.amount for e in events(world, "hit") if e.other == farm.id)
+    assert dealt >= 20
+    assert farm.hp <= before + 5 * info.hp / info.build_time + 1 - dealt  # five seconds of building, less the blows
+    wounded = farm.hp
+    run(world, 1.0)
+    assert wounded < farm.hp <= wounded + info.hp / info.build_time + 1  # a second of building, no more
+    run_until(world, lambda: farm.done, info.build_time)
+    assert farm.hp == info.hp - dealt
+
+
 def test_peasants_repair_damaged_buildings_for_a_share_of_the_price() -> None:
     world, hall_id = base_world()
     hall = world.buildings[hall_id]
