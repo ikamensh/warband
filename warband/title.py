@@ -16,7 +16,7 @@ from saga2d import Anchor, Button, Camera, Column, Image, Label, Row, SaveError,
 from warband import mapgen
 from warband.model import World
 from warband.races import RACES
-from warband.rules import BuildingType, Difficulty, MapTheme, Race
+from warband.rules import BuildingType, Difficulty, Layout, MapTheme, Race
 from warband.scene import SAVE_SLOTS, HelpScene, SaveBrowserScene, load_game, new_game
 from warband.sound import play_music, play_sound
 from warband.style import ACTION_BUTTON, GHOST_BUTTON, MENU_BUTTON, OVERLAY_STYLE
@@ -28,20 +28,22 @@ OPTION_WIDTH = 170
 RACE_WIDTH = 125
 RACE_KEYS = {Race.HUMAN: "U", Race.ORC: "O", Race.ELF: "V", Race.DWARF: "A"}
 PREVIEW_KEY = "newgame.preview"
-PREVIEW_PX = 4  # pixels per tile; Large (64x48) renders at 256x192
+PREVIEW_BOX = (320, 240)  # the preview fits this many pixels: whole pixels per tile, as many as fit
 PREVIEW_MINE = (232, 196, 70)
+LAYOUT_KEYS: dict[Layout | None, str] = {Layout.PLAINS: "P", Layout.FOREST: "F", Layout.CROSSINGS: "C", Layout.KLONDIKE: "K", Layout.BASTION: "B", None: "Y"}
 
 
 def preview_image(world: World) -> PilImage.Image:
     """A small picture of *world*: terrain, a 3x3 block per start hall in the
-    owner's colour and every mine in gold, at ``PREVIEW_PX`` pixels per tile."""
+    owner's colour and every mine in gold, at as many whole pixels per tile as fit ``PREVIEW_BOX``."""
     img = minimap_terrain(world)
     for b in world.buildings.values():
         if b.type is BuildingType.TOWN_HALL and b.player is not None:
             img[b.y:b.y + b.size, b.x:b.x + b.size] = world.players[b.player].color
         elif b.type is BuildingType.GOLD_MINE:
             img[b.y:b.y + b.size, b.x:b.x + b.size] = PREVIEW_MINE
-    pixels = np.repeat(np.repeat(img.clip(0, 255).astype(np.uint8), PREVIEW_PX, 0), PREVIEW_PX, 1)
+    scale = min(PREVIEW_BOX[0] // world.width, PREVIEW_BOX[1] // world.height)
+    pixels = np.repeat(np.repeat(img.clip(0, 255).astype(np.uint8), scale, 0), scale, 1)
     return PilImage.fromarray(pixels, "RGB")
 DRIFT_SECONDS = 24.0
 
@@ -51,12 +53,14 @@ class TitleScene(Scene):
     controls = {("n", "return"): "new_game", "c": "continue_game", "l": "load_game", "b": "high_scores", "h": "how_to_play", "q": "quit"}
 
     def __init__(self, *, size: str = "Medium", players: int = 2, difficulty: Difficulty = Difficulty.NORMAL, theme: MapTheme = MapTheme.SUMMER,
-                 race: Race = Race.HUMAN, settings: dict[str, Any] | None = None) -> None:
+                 race: Race = Race.HUMAN, layout: Layout | None = None, settings: dict[str, Any] | None = None) -> None:
+        """*layout* ``None`` is Any: each seed draws its own."""
         self.size = size
         self.players = players
         self.difficulty = difficulty
         self.theme = theme
         self.race = race
+        self.layout = layout
         self.settings = settings
         self.time = 0.0
         self._stop = 0
@@ -129,10 +133,11 @@ class TitleScene(Scene):
         width, height = mapgen.SIZES[self.size]
         # The room's creator leads the race chosen under New game; the guest's is drawn from the seed.
         self.game.push(MatchMenu("Warband multiplayer", "warband-v1",
-                                lambda: WarbandMatch(mapgen.fresh_seed(), width, height, self.theme, races=(self.race, None)),
+                                lambda: WarbandMatch(mapgen.fresh_seed(), width, height, self.theme, races=(self.race, None), layout=self.layout),
                                 lambda session, match: NetworkGameScene(session, match, settings=self.settings),
                                 create_options=lambda: {'seed': mapgen.fresh_seed(), 'width': width, 'height': height,
-                                                        'theme': self.theme.value, 'races': [self.race.value, None]}))
+                                                        'theme': self.theme.value, 'races': [self.race.value, None],
+                                                        'layout': self.layout.value if self.layout is not None else 'any'}))
 
     def new_game(self) -> None:
         self.sfx("button")
@@ -177,14 +182,16 @@ class TitleScene(Scene):
 
 
 class NewGameScene(Scene):
-    """Map size, number of players, your race, the seed, then Start.  The computer players' races are drawn from the seed."""
+    """Map size, number of players, the land and its layout, your race, the seed, then Start.
+    The computer players' races are drawn from the seed, and so is the layout under Any."""
 
     transparent = True
     pause_below = False
     pop_on_cancel = True
     controls = {"s": "size_small", "m": "size_medium", "l": "size_large", "2": "players_2", "3": "players_3", "4": "players_4",
                 "e": "easy", "n": "normal", "h": "hard", "g": "summer", "w": "winter", "d": "wasteland", "r": "reroll", ("return", "space"): "start",
-                "u": "humans", "o": "orcs", "v": "elves", "a": "dwarves"}
+                "u": "humans", "o": "orcs", "v": "elves", "a": "dwarves",
+                "p": "plains", "f": "forest", "c": "crossings", "k": "klondike", "b": "bastion", "y": "any_layout"}
 
     def __init__(self, title: TitleScene) -> None:
         self.title = title
@@ -193,6 +200,7 @@ class NewGameScene(Scene):
         self.difficulty = title.difficulty
         self.theme = title.theme
         self.race = title.race
+        self.layout = title.layout
         self.seed = mapgen.fresh_seed()
         self._preview_key = PREVIEW_KEY
         self._preview_world: World | None = None
@@ -202,6 +210,14 @@ class NewGameScene(Scene):
         self._player_buttons: dict[int, Button] = {}
         self._difficulty_buttons: dict[Difficulty, Button] = {}
         self._race_buttons: dict[Race, Button] = {}
+        self._layout_buttons: dict[Layout | None, Button] = {}
+
+    def _layout_text(self) -> str:
+        if self._preview_world is None:
+            return "…"
+        drawn = self._preview_world.layout
+        promise = mapgen.PROMISES[drawn]
+        return promise if self.layout is not None else f"Any drew {drawn.value.title()} · {promise}"
 
     def _preview_races(self) -> list[Race | None]:
         return [self.race] + [None] * (self.players - 1)
@@ -216,7 +232,7 @@ class NewGameScene(Scene):
         if getattr(self, "game", None) is None:
             return
         width, height = mapgen.SIZES[self.size]
-        world = mapgen.generate(self.seed, width, height, self.players, theme=self.theme, races=self._preview_races())
+        world = mapgen.generate(self.seed, width, height, self.players, theme=self.theme, races=self._preview_races(), layout=self.layout)
         self._preview_world = world
         image = preview_image(world)
         self._preview_pil = image
@@ -231,47 +247,59 @@ class NewGameScene(Scene):
             self.game.assets.image_from_pil(self._preview_key, image)
 
     def on_enter(self) -> None:
+        """The options in a column on the left, the preview and the opponents beside them, Start below."""
         self._refresh_preview()
-        panel = Column(spacing=12, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
-        panel.add(Label("New game", text_style="title"))
+        options = Column(spacing=8, margin=0)
         size_row = Row(Label("Map size", text_style="body", width=90), spacing=8)
         for name, (w, h) in mapgen.SIZES.items():
             button = Button(f"{name} {w}×{h}", hotkey=name[0], on_click=lambda n=name: self.set_size(n), style=GHOST_BUTTON, width=OPTION_WIDTH)
             self._size_buttons[name] = button
             size_row.add(button)
-        panel.add(size_row)
+        options.add(size_row)
         player_row = Row(Label("Players", text_style="body", width=90), spacing=8)
         for count in PLAYER_COUNTS:
             button = Button(f"{count}  (you + {count - 1} AI)", hotkey=str(count), on_click=lambda c=count: self.set_players(c), style=GHOST_BUTTON, width=OPTION_WIDTH)
             self._player_buttons[count] = button
             player_row.add(button)
-        panel.add(player_row)
+        options.add(player_row)
         difficulty_row = Row(Label("AI", text_style="body", width=90), spacing=8)
         for difficulty in Difficulty:
             button = Button(difficulty.value.title(), hotkey=difficulty.value[0].upper(), on_click=lambda d=difficulty: self.set_difficulty(d),
                             style=GHOST_BUTTON, width=OPTION_WIDTH)
             self._difficulty_buttons[difficulty] = button
             difficulty_row.add(button)
-        panel.add(difficulty_row)
+        options.add(difficulty_row)
         theme_row = Row(Label("Land", text_style="body", width=90), spacing=8)
         for theme, key in ((MapTheme.SUMMER, "G"), (MapTheme.WINTER, "W"), (MapTheme.WASTELAND, "D")):
             button = Button(theme.value.title(), hotkey=key, on_click=lambda t=theme: self.set_theme(t), style=GHOST_BUTTON, width=OPTION_WIDTH)
             self._theme_buttons[theme] = button
             theme_row.add(button)
-        panel.add(theme_row)
+        options.add(theme_row)
+        layouts = list(LAYOUT_KEYS.items())
+        for first in (0, 3):
+            row = Row(Label("Map" if first == 0 else "", text_style="body", width=90), spacing=8)
+            for layout, key in layouts[first:first + 3]:
+                button = Button("Any" if layout is None else layout.value.title(), hotkey=key, on_click=lambda chosen=layout: self.set_layout(chosen),
+                                style=GHOST_BUTTON, width=OPTION_WIDTH)
+                self._layout_buttons[layout] = button
+                row.add(button)
+            options.add(row)
+        options.add(Label(lambda: self._layout_text(), text_style="sub", width=3 * OPTION_WIDTH + 90 + 24))
         race_row = Row(Label("Race", text_style="body", width=90), spacing=8)
         for race, key in RACE_KEYS.items():
             button = Button(RACES[race].name, hotkey=key, on_click=lambda r=race: self.set_race(r), style=GHOST_BUTTON, width=RACE_WIDTH)
             self._race_buttons[race] = button
             race_row.add(button)
-        panel.add(race_row)
-        panel.add(Label(lambda: f"{RACES[self.race].tagline} · {RACES[self.race].passive}", text_style="sub", width=3 * OPTION_WIDTH + 90 + 24))
-        panel.add(Row(Label(lambda: f"Seed {self.seed}", text_style="body", width=90 + 8 + OPTION_WIDTH),
-                      Button("Reroll", hotkey="R", on_click=self.reroll, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
-        panel.add(Image(self._preview_key, width=256, height=192))
-        panel.add(Label(lambda: self._opponents_text(), text_style="sub"))
-        panel.add(Row(Button("Start", hotkey="Enter", on_click=self.start, style=ACTION_BUTTON, width=2 * OPTION_WIDTH + 8),
-                      Button("Back", hotkey="Esc", on_click=self.game.pop, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
+        options.add(race_row)
+        options.add(Label(lambda: f"{RACES[self.race].tagline} · {RACES[self.race].passive}", text_style="sub", width=3 * OPTION_WIDTH + 90 + 24))
+        options.add(Row(Label(lambda: f"Seed {self.seed}", text_style="body", width=90 + 8 + OPTION_WIDTH),
+                        Button("Reroll", hotkey="R", on_click=self.reroll, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
+        side = Column(Image(self._preview_key, width=PREVIEW_BOX[0], height=PREVIEW_BOX[1]),
+                      Label(lambda: self._opponents_text(), text_style="sub"), spacing=8, margin=0)
+        panel = Column(Label("New game", text_style="title"), Row(options, side, spacing=24),
+                       Row(Button("Start", hotkey="Enter", on_click=self.start, style=ACTION_BUTTON, width=2 * OPTION_WIDTH + 8),
+                           Button("Back", hotkey="Esc", on_click=self.game.pop, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8),
+                       spacing=12, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
         self.ui.add(panel)
         self._restyle()
 
@@ -286,6 +314,8 @@ class NewGameScene(Scene):
             button.style = ACTION_BUTTON if theme == self.theme else GHOST_BUTTON
         for race, button in self._race_buttons.items():
             button.style = ACTION_BUTTON if race == self.race else GHOST_BUTTON
+        for layout, button in self._layout_buttons.items():
+            button.style = ACTION_BUTTON if layout is self.layout else GHOST_BUTTON
 
     def draw(self) -> None:
         w, h = self.game.resolution
@@ -320,6 +350,31 @@ class NewGameScene(Scene):
         self.title.sfx("button")
         self._restyle()
         self._refresh_preview()
+
+    def set_layout(self, layout: Layout | None) -> None:
+        self.layout = layout
+        self.title.layout = layout  # multiplayer rooms use the layout chosen here
+        self.title.sfx("button")
+        self._restyle()
+        self._refresh_preview()
+
+    def plains(self) -> None:
+        self.set_layout(Layout.PLAINS)
+
+    def forest(self) -> None:
+        self.set_layout(Layout.FOREST)
+
+    def crossings(self) -> None:
+        self.set_layout(Layout.CROSSINGS)
+
+    def klondike(self) -> None:
+        self.set_layout(Layout.KLONDIKE)
+
+    def bastion(self) -> None:
+        self.set_layout(Layout.BASTION)
+
+    def any_layout(self) -> None:
+        self.set_layout(None)
 
     def humans(self) -> None:
         self.set_race(Race.HUMAN)
@@ -378,4 +433,4 @@ class NewGameScene(Scene):
         self.title.sfx("button")
         width, height = mapgen.SIZES[self.size]
         self.game.clear_and_push(new_game(self.seed, width=width, height=height, players=self.players, difficulty=self.difficulty, theme=self.theme,
-                                          settings=self.title.settings, races=[self.race] + [None] * (self.players - 1)))
+                                          settings=self.title.settings, races=[self.race] + [None] * (self.players - 1), layout=self.layout))

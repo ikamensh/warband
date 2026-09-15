@@ -10,6 +10,7 @@ from warband.ai import Brain
 from warband.model import RuleError, World, dist
 from warband.races import RACES
 from warband.rules import (
+    Layout,
     BUILDINGS, DEEP_MINING_TRIP, GOLD_PER_TRIP, REGROWTH_SECONDS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, Race, Resource, Terrain,
     UnitType, Upgrade,
 )
@@ -272,7 +273,7 @@ def test_races_survive_a_save_and_an_old_save_means_humans() -> None:
 
 
 def test_a_match_between_two_races_plays_out_under_the_ai() -> None:
-    world = mapgen.generate(seed=9, players=2, human=None, races=(Race.ORC, Race.DWARF))
+    world = mapgen.generate(seed=9, players=2, human=None, races=(Race.ORC, Race.DWARF), layout=Layout.BASTION)  # walls: no raid empties an army
     brains = [Brain(p.id, Difficulty.HARD) for p in world.players]
     rng = random.Random(9)
     for _ in range(int(240 / SIM_DT)):

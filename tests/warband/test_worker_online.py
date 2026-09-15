@@ -11,7 +11,7 @@ from warband.model import Deposit, Harvest, World
 def test_server_assigns_both_players_workers_and_respects_manual_parking(server_url):
     """Two passive peers gain jobs; Stop persists and a later move permits work again."""
     with connect(server_url, proxy=None) as host, connect(server_url, proxy=None, max_queue=None) as guest:
-        room = handshake(host, game="warband-v1", options={"seed": 3, "width": 40, "height": 32})
+        room = handshake(host, game="warband-v1", options={"seed": 3, "width": 48, "height": 40})
         handshake(guest, "join", game="warband-v1", room=room["room"])
         working = receive(host, predicate=lambda message: message["state"]["world"]["tick"] >= 22)
         world = World.from_dict(working["state"]["world"])

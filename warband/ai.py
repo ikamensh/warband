@@ -22,6 +22,9 @@ from warband.races import RACES
 from warband.rules import BUILDINGS, BuildingType, Difficulty, Race, Resource, UnitType, Upgrade
 
 EXPAND_DISTANCE = 14.0  # a mine farther than this from the hall gets a hall of its own
+LOW_MINE_GOLD = 6000  # a mine this low means the next hall is planned now, while gold still comes in
+CLAIM_DISTANCE = 8.0  # a mine with an own hall this near is claimed
+MAX_HALLS = 3
 DEFEND_RADIUS = 9.0
 BUILD_MIN_DISTANCE = 2
 BUILD_MAX_DISTANCE = 11
@@ -119,6 +122,7 @@ PROFILES: dict[Difficulty, Profile] = {
 class Brain:
     def __init__(self, player: int, difficulty: Difficulty = Difficulty.NORMAL) -> None:
         self.player = player
+        self.saving = False  # a hall for the next mine comes before more soldiers
         self.difficulty = difficulty
         self.profile = PROFILES[difficulty]
         self.next_think = 0.0
@@ -251,6 +255,7 @@ class Brain:
         profile = self.profile
         gold = world.players[player].gold
         mine = world._nearest_mine(hall.center if hall is not None else fallback, math.inf)
+        self.saving = False
         if hall is None:
             wanted, anchor = BuildingType.TOWN_HALL, (mine.center if mine is not None else fallback)
         else:
@@ -262,12 +267,13 @@ class Brain:
                 wanted = BuildingType.FARM
             elif not have(BuildingType.BARRACKS):
                 wanted = BuildingType.BARRACKS
+            elif (claim := self._mine_to_claim(world, hall, mine)) is not None:
+                wanted, anchor = BuildingType.TOWN_HALL, claim.center
+                self.saving = world.can_afford(player, BUILDINGS[wanted].cost) is not None  # the army waits for the hall
             elif profile.tech and not have(BuildingType.LUMBER_MILL):
                 wanted = BuildingType.LUMBER_MILL
             elif profile.tech and not have(BuildingType.BLACKSMITH) and gold > 900:
                 wanted = BuildingType.BLACKSMITH
-            elif mine is not None and dist(mine.center, hall.center) > EXPAND_DISTANCE and not world.player_buildings(player, BuildingType.TOWN_HALL, done=False):
-                wanted, anchor = BuildingType.TOWN_HALL, mine.center
             elif profile.tech and not have(BuildingType.STABLES) and gold > 1200:
                 wanted = BuildingType.STABLES
             elif have(BuildingType.BARRACKS) < profile.barracks and gold > 1500:
@@ -283,6 +289,19 @@ class Brain:
         if world.can_afford(player, BUILDINGS[wanted].cost) is not None:
             return None
         return wanted, anchor
+
+    def _mine_to_claim(self, world: World, hall: Building, worked: Building | None) -> Building | None:
+        """The nearest unclaimed mine when the one the hall works is far, running low or gone, up to
+        MAX_HALLS halls in all and one at a time."""
+        player = self.player
+        halls = world.player_buildings(player, BuildingType.TOWN_HALL)
+        if len(halls) >= MAX_HALLS or any(not h.done for h in halls):
+            return None
+        if worked is not None and worked.gold >= LOW_MINE_GOLD and dist(worked.center, hall.center) <= EXPAND_DISTANCE:
+            return None
+        free = [m for m in world.mines() if m.gold >= LOW_MINE_GOLD
+                and not any(dist(m.center, h.center) <= CLAIM_DISTANCE for h in halls)]
+        return min(free, key=lambda m: dist(m.center, hall.center)) if free else None
 
     def _site(self, world: World, building_type: BuildingType, anchor: Point, rng: random.Random) -> Pos | None:
         size = BUILDINGS[building_type].size
@@ -336,7 +355,7 @@ class Brain:
         army = self._army(world)
         counts = {t: sum(1 for u in army if u.type is t) for t in UnitType}
         for building in world.player_buildings(player, done=True):
-            if not building.info.trains or building.type is BuildingType.TOWN_HALL:
+            if not building.info.trains or building.type is BuildingType.TOWN_HALL or self.saving:
                 continue
             if building.rally is None and hall is not None:
                 world.set_rally(building.id, self._muster_point(world, hall))
@@ -407,7 +426,7 @@ class Brain:
         if not self.profile.tech:
             return
         player = world.players[self.player]
-        if player.gold < self.profile.reserve:
+        if player.gold < self.profile.reserve or self.saving:
             return
         for upgrade in RESEARCH_ORDER:
             if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):

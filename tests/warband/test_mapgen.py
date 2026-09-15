@@ -1,87 +1,181 @@
-"""Generated maps: bases in corners, mines and woods beside them, everything reachable."""
-
-from collections import deque
+"""Generated maps: a symmetric skeleton (hall, main mine, grove, natural, thirds) under five layouts,
+everything reachable within the pathfinder's budget."""
 
 import pytest
 
-from warband import mapgen
+from warband import mapgen, path
 from warband.model import World
-from warband.rules import BuildingType, MapTheme, Terrain, UnitType
+from warband.rules import EXPANSION_GOLD, MINE_GOLD, BuildingType, Layout, MapTheme, Terrain, UnitType
 
 
-def reachable(world: World, start) -> set:
-    seen = {start}
-    queue = deque([start])
-    while queue:
-        x, y = queue.popleft()
-        for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
-            if n not in seen and world.passable(*n):
-                seen.add(n)
-                queue.append(n)
-    return seen
+def halls(world: World) -> list:
+    return sorted((b for b in world.buildings.values() if b.type is BuildingType.TOWN_HALL), key=lambda b: b.player)
 
 
-@pytest.mark.parametrize("seed", range(1, 9))
+def door(world: World, building) -> tuple[int, int]:
+    spot = world.free_tile_near(building.rect)
+    assert spot is not None
+    return spot
+
+
+def images(world: World, pos: tuple[int, int]) -> set[tuple[int, int]]:
+    """Where the map's symmetry sends a tile: the opposite corner for two players, both mirrors too for more."""
+    x, y = pos
+    far = (world.width - 1 - x, world.height - 1 - y)
+    return {far} if len(world.players) == 2 else {far, (far[0], y), (x, far[1])}
+
+
+@pytest.mark.parametrize("seed", range(1, 7))
 @pytest.mark.parametrize("players", (2, 4))
-def test_every_base_has_a_hall_a_mine_a_wood_and_a_way_to_the_others(seed: int, players: int) -> None:
-    world = mapgen.generate(seed=seed, players=players)
-    halls = [b for b in world.buildings.values() if b.type is BuildingType.TOWN_HALL]
-    assert len(halls) == players and {h.player for h in halls} == set(range(players))
+@pytest.mark.parametrize("layout", list(Layout))
+def test_every_base_has_a_hall_a_mine_a_wood_and_a_way_to_the_others(seed: int, players: int, layout: Layout) -> None:
+    world = mapgen.generate(seed=seed, players=players, layout=layout)
+    assert world.layout is layout
+    bases = halls(world)
+    assert len(bases) == players and {h.player for h in bases} == set(range(players))
     doors = []
-    for hall in halls:
+    for hall in bases:
         peasants = [u for u in world.units.values() if u.player == hall.player and u.type is UnitType.PEASANT]
         assert len(peasants) == 3 and all(world.passable(*p.tile) for p in peasants)
         assert any(abs(m.center[0] - hall.center[0]) < 9 and abs(m.center[1] - hall.center[1]) < 9 for m in world.mines())
         assert world.nearest_tree(hall.center, 12) is not None
-        door = world.free_tile_near(hall.rect)
-        assert door is not None
-        doors.append(door)
+        doors.append(door(world, hall))
         assert world.is_visible(hall.player, hall.pos)
-    region = reachable(world, doors[0])
-    assert all(door in region for door in doors)
+    region = mapgen.reachable(world, doors[0])
+    assert all(d in region for d in doors)
     for mine in world.mines():
-        assert world.free_tile_near(mine.rect) in region
+        assert door(world, mine) in region
     assert len(world.mines()) >= players + 1
 
 
+@pytest.mark.parametrize("players", (2, 3, 4))
+@pytest.mark.parametrize("layout", list(Layout))
+def test_the_map_is_symmetric_so_every_seat_gets_the_same(players: int, layout: Layout) -> None:
+    """Terrain and mines map onto themselves under the symmetry; halls onto other halls."""
+    world = mapgen.generate(seed=5, players=players, layout=layout)
+    for y in range(world.height):
+        for x in range(world.width):
+            for ix, iy in images(world, (x, y)):
+                assert world.terrain[iy][ix] is world.terrain[y][x], (x, y)
+    mines = {m.pos for m in world.mines()}
+    for m in world.mines():
+        if players == 3 and m.gold != EXPANSION_GOLD:
+            continue  # the empty fourth corner has no start mine, only its natural
+        for x, y in _rect_images(world, m.pos):
+            assert (x, y) in mines, (m.pos, (x, y))
+    if players in (2, 4):
+        hall_spots = {h.pos for h in halls(world)}
+        for h in halls(world):
+            assert _rect_images(world, h.pos) <= hall_spots
+
+
+def _rect_images(world: World, pos: tuple[int, int]) -> set[tuple[int, int]]:
+    x, y = pos
+    far = (world.width - 3 - x, world.height - 3 - y)
+    return {far} if len(world.players) == 2 else {far, (far[0], y), (x, far[1])}
+
+
+def test_three_players_leave_the_fourth_corner_to_a_neutral_mine() -> None:
+    world = mapgen.generate(seed=2, players=3, layout=Layout.PLAINS)
+    assert len(halls(world)) == 3
+    corner = [m for m in world.mines() if m.x > world.width // 2 and m.y > world.height // 2 or m.x < world.width // 2 and m.y > world.height // 2]
+    assert any(m.gold == EXPANSION_GOLD and all(abs(m.center[0] - h.center[0]) + abs(m.center[1] - h.center[1]) > 12 for h in halls(world))
+               for m in corner)
+
+
+@pytest.mark.parametrize("layout", [each for each in Layout if each is not Layout.KLONDIKE])
+def test_every_player_has_a_natural_expansion_of_their_own(layout: Layout) -> None:
+    """A 30 000 mine ten to eighteen tiles out, nearer its owner than any rival by half again."""
+    for players in (2, 4):
+        world = mapgen.generate(seed=9, players=players, layout=layout)
+        for hall in halls(world):
+            own = [m for m in world.mines() if m.gold == EXPANSION_GOLD
+                   and 9 <= max(abs(m.center[0] - hall.center[0]), abs(m.center[1] - hall.center[1])) <= 18]
+            assert any(all(_dist(m.center, other.center) >= 1.4 * _dist(m.center, hall.center) for other in halls(world) if other is not hall)
+                       for m in own), (layout, players, hall.player)
+
+
+def _dist(a, b) -> float:
+    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+
+
+@pytest.mark.parametrize("layout", list(Layout))
+def test_every_route_is_found_within_the_pathfinders_budget(layout: Layout) -> None:
+    """A flood fill proving a mine reachable is not enough: the bounded A* units use must get there too."""
+    world = mapgen.generate(seed=4, width=80, height=64, players=4, layout=layout)
+    start = door(world, halls(world)[0])
+    for goal in [door(world, h) for h in halls(world)[1:]] + [door(world, m) for m in world.mines()]:
+        route = path.find_path_grid(start, goal, world._blocked, world.width, world.height)
+        assert route and route[-1] == goal, (layout, goal)
+
+
+def test_forest_is_woods_joined_by_winding_roads() -> None:
+    world, report = mapgen.build(seed=3, layout=Layout.FOREST)
+    assert report["trees"] >= 0.4
+    assert report["detour"] >= 1.1
+
+
+def test_crossings_join_the_banks_only_at_the_fords() -> None:
+    world, report = mapgen.build(seed=3, layout=Layout.CROSSINGS)
+    fords = frozenset(map(tuple, report["fords"]))
+    assert fords and all(world.passable(*f) for f in fords)
+    a, b = (door(world, h) for h in halls(world))
+    assert b in mapgen.reachable(world, a)
+    assert b not in mapgen.reachable(world, a, shut=fords)
+
+
+def test_klondike_keeps_its_gold_in_a_pit_behind_gates() -> None:
+    world, report = mapgen.build(seed=3, players=2, layout=Layout.KLONDIKE)
+    golds = sorted(m.gold for m in world.mines())
+    assert golds == [mapgen.POOR_GOLD] * 2 + [mapgen.KLONDIKE_START_GOLD] * 2 + [EXPANSION_GOLD] * 2
+    gates = frozenset(map(tuple, report["gates"]))
+    pit = [m for m in world.mines() if m.gold == EXPANSION_GOLD]
+    a = door(world, halls(world)[0])
+    assert all(door(world, m) in mapgen.reachable(world, a) for m in pit)
+    assert not any(door(world, m) in mapgen.reachable(world, a, shut=gates) for m in pit)
+
+
+def test_bastion_walls_every_base_behind_one_gate() -> None:
+    world, report = mapgen.build(seed=3, players=4, layout=Layout.BASTION)
+    gates = frozenset(map(tuple, report["gates"]))
+    for hall in halls(world):
+        inside = mapgen.reachable(world, door(world, hall), shut=gates)
+        assert all(_dist(tile, hall.center) < 13 for tile in inside), hall.player
+        assert any(door(world, m) in inside for m in world.mines() if m.gold == MINE_GOLD)  # the main mine is inside the ring
+        assert not any(door(world, m) in inside for m in world.mines() if m.gold == EXPANSION_GOLD)  # the natural is outside
+
+
+def test_any_layout_is_drawn_from_the_seed() -> None:
+    drawn = {mapgen.generate(seed=seed).layout for seed in range(1, 30)}
+    assert drawn == set(Layout)
+    assert mapgen.generate(seed=17).layout is mapgen.generate(seed=17).layout
+
+
 def test_map_edges_are_forest_and_sizes_are_respected() -> None:
-    world = mapgen.generate(seed=3, width=40, height=32)
-    assert world.width == 40 and world.height == 32
-    assert all(world.terrain_at((x, 0)) is Terrain.TREES and world.terrain_at((x, 31)) is Terrain.TREES for x in range(40))
-    assert all(world.terrain_at((0, y)) is Terrain.TREES and world.terrain_at((39, y)) is Terrain.TREES for y in range(32))
+    world = mapgen.generate(seed=3, width=48, height=40, layout=Layout.PLAINS)
+    assert world.width == 48 and world.height == 40
+    assert all(world.terrain_at((x, 0)) is Terrain.TREES and world.terrain_at((x, 39)) is Terrain.TREES for x in range(48))
+    assert all(world.terrain_at((0, y)) is Terrain.TREES and world.terrain_at((47, y)) is Terrain.TREES for y in range(40))
     kinds = {t for row in world.terrain for t in row}
     assert Terrain.WATER in kinds and Terrain.TREES in kinds and Terrain.GRASS in kinds
 
 
-def test_the_same_seed_makes_the_same_map() -> None:
+def test_maps_narrower_than_forty_tiles_are_refused() -> None:
+    with pytest.raises(ValueError, match="at least 40"):
+        mapgen.generate(seed=3, width=40, height=32)
+
+
+def test_the_same_seed_makes_the_same_map_and_themes_only_change_the_palette() -> None:
     assert mapgen.generate(seed=11).to_dict() == mapgen.generate(seed=11).to_dict()
+    assert mapgen.generate(seed=11, theme=MapTheme.WINTER).terrain == mapgen.generate(seed=11, theme=MapTheme.WASTELAND).terrain
+    assert World.from_dict(mapgen.generate(seed=11, layout=Layout.BASTION).to_dict()).layout is Layout.BASTION
 
 
-@pytest.mark.parametrize("seed", (3, 7, 11))
-@pytest.mark.parametrize("theme", list(MapTheme))
-def test_interior_has_meadow_forest_water_and_rock_regions(seed: int, theme: MapTheme) -> None:
-    """Exploring beyond the bases finds open meadow and substantial connected terrain patches."""
-    world = mapgen.generate(seed=seed, theme=theme)
-    halls = [b for b in world.buildings.values() if b.type is BuildingType.TOWN_HALL]
-    interior = {(x, y) for y in range(3, world.height - 3) for x in range(3, world.width - 3)
-                if all(max(abs(x - h.center[0]), abs(y - h.center[1])) >= 8 for h in halls)}
-
-    for kind, minimum in ((Terrain.TREES, 20), (Terrain.WATER, 12), (Terrain.ROCK, 8)):
-        remaining = {p for p in interior if world.terrain_at(p) is kind}
-        largest = 0
-        while remaining:
-            start = min(remaining)
-            remaining.remove(start)
-            region, queue = {start}, deque([start])
-            while queue:
-                x, y = queue.popleft()
-                for p in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
-                    if p in remaining:
-                        remaining.remove(p)
-                        region.add(p)
-                        queue.append(p)
-            largest = max(largest, len(region))
-        assert largest >= minimum, (seed, kind, largest)
-
-    assert any(all((x + dx, y + dy) in interior and world.passable(x + dx, y + dy)
-                   for dy in range(6) for dx in range(6)) for x, y in interior), seed
+@pytest.mark.parametrize("layout", list(Layout))
+def test_no_building_stands_on_trees_water_or_rock(layout: Layout) -> None:
+    """Fuzz seed 81 found a Bastion ring painted under a mine's corner: dug out, the tile was
+    open to walk on but still forest to look at and to chop."""
+    for players, seed in ((2, 81), (4, 81), (3, 5)):
+        world = mapgen.generate(seed=seed, width=64, height=48, players=players, layout=layout)
+        for building in world.buildings.values():
+            assert all(world.terrain_at(tile) is Terrain.GRASS for tile in building.tiles()), (layout, players, building.pos)

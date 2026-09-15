@@ -1,4 +1,4 @@
-"""Run Warband: ``python -m warband [--seed N] [--size Small|Medium|Large] [--players N] [--fullscreen]``.
+"""Run Warband: ``python -m warband [--seed N] [--size Small|Medium|Large] [--players N] [--layout NAME] [--fullscreen]``.
 
 Without ``--seed`` the game opens on the title screen (``--size`` and
 ``--players`` pre-fill the new-game options).  With ``--seed`` it skips the
@@ -12,7 +12,7 @@ import argparse
 from saga2d import add_match_arguments, match_from_arguments
 from saga2d import Game, fonts
 from warband import mapgen, sound
-from warband.rules import Difficulty, MapTheme, Race
+from warband.rules import Difficulty, Layout, MapTheme, Race
 from warband.scene import DEFAULT_SETTINGS, new_game
 from warband.style import build_theme
 from warband.title import TitleScene
@@ -26,6 +26,7 @@ def main() -> None:
     parser.add_argument("--difficulty", choices=[d.value for d in Difficulty], default="normal")
     parser.add_argument("--theme", choices=[t.value for t in MapTheme], default="summer")
     parser.add_argument("--race", choices=[r.value for r in Race], default="human", help="your race; the computer players' are drawn from the seed")
+    parser.add_argument("--layout", choices=[each.value for each in Layout] + ["any"], default="any", help="the map's shape; any draws one from the seed")
     parser.add_argument("--fullscreen", action="store_true")
     parser.add_argument("--selftest", metavar="PNG", help="start a match in a hidden window, save one frame to PNG and exit (for packaged builds)")
     add_match_arguments(parser)
@@ -42,10 +43,12 @@ def main() -> None:
     sound.apply_volumes(settings["music"], settings["sfx"])
     from warband.multiplayer import NetworkGameScene, WarbandMatch
     width, height = mapgen.SIZES[args.size]
+    layout = None if args.layout == "any" else Layout(args.layout)
     options = {'seed': args.seed if args.seed is not None else mapgen.fresh_seed(), 'width': width,
-               'height': height, 'theme': args.theme, 'races': [args.race, None]}
+               'height': height, 'theme': args.theme, 'races': [args.race, None], 'layout': args.layout}
     lobby = match_from_arguments(args, parser, title="Warband", game_id="warband-v1",
-                                 create_match=lambda: WarbandMatch(**{**options, 'theme': MapTheme(args.theme), 'races': (Race(args.race), None)}),
+                                 create_match=lambda: WarbandMatch(**{**options, 'theme': MapTheme(args.theme), 'races': (Race(args.race), None),
+                                                                      'layout': layout}),
                                  create_scene=lambda session, match: NetworkGameScene(session, match, settings=settings),
                                  create_options=lambda: options, game=game)
     if lobby is not None:
@@ -54,10 +57,10 @@ def main() -> None:
     if args.seed is not None:
         width, height = mapgen.SIZES[args.size]
         game.run(new_game(args.seed, width=width, height=height, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme),
-                          settings=settings, races=[Race(args.race)] + [None] * (args.players - 1)))
+                          settings=settings, races=[Race(args.race)] + [None] * (args.players - 1), layout=layout))
     else:
         game.run(TitleScene(size=args.size, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme), race=Race(args.race),
-                            settings=settings))
+                            layout=layout, settings=settings))
 
 
 def selftest(png: str) -> None:

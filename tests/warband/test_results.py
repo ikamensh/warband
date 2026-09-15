@@ -208,7 +208,7 @@ def test_result_leaderboard_and_loaded_finish_are_one_frozen_record(tmp_path):
 
     game = Game("Warband scores test", backend="mock", resolution=(1280, 720), theme=build_theme(), save_dir=tmp_path / "saves")
     try:
-        scene = new_game(3, width=40, height=32)
+        scene = new_game(3, width=48, height=40)
         world = scene.world
         for unit in world.player_units(1):
             del world.units[unit.id]

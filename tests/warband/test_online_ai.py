@@ -17,7 +17,7 @@ server_url = server_fixture('warband.multiplayer:ONLINE')
 def test_headless_opponent_joins_and_its_orders_reach_the_authoritative_world(server_url):
     """A separate CLI process joins seat one, develops it, and exits with useful evidence."""
     with connect(server_url, proxy=None) as human:
-        welcome = handshake(human, game="warband-v1", options={"seed": 3, "width": 40, "height": 32})
+        welcome = handshake(human, game="warband-v1", options={"seed": 3, "width": 48, "height": 40})
         initial = receive(human)["state"]["world"]
         result = subprocess.run(
             [sys.executable, "-m", "warband.online_ai", "--server", server_url,
@@ -46,7 +46,7 @@ def test_headless_creator_announces_a_room_before_a_human_joins(server_url):
     """The remote bot can create seat zero and waits without advancing the lobby world."""
     process = subprocess.Popen(
         [sys.executable, "-m", "warband.online_ai", "--server", server_url, "--create",
-         "--difficulty", "hard", "--width", "40", "--height", "32", "--duration", "2"],
+         "--difficulty", "hard", "--width", "48", "--height", "40", "--duration", "2"],
         cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
     try:
