@@ -65,7 +65,7 @@ Installed apps; your saved games remain available for a later reinstall.
 
 ## Build and verification
 
-The [Windows workflow](../.github/workflows/warband-windows.yml) runs on
+The [Windows workflow](../.github/workflows/windows.yml) runs on
 `windows-latest`. Dispatch it with an explicit version to create a downloadable
 CI artifact, or push an immutable `warband-vVERSION` tag to publish a release
 after the checks pass. A manual publication also requires the matching tag
