@@ -54,9 +54,9 @@ class ProProfile:
     name: str
     think_every: float = 0.4          # seconds of simulation between macro passes
     combat_every: float = 0.2         # …and between combat passes, which are cheaper and matter more
-    workers_per_mine: int = 9         # peasants a worked mine supports
+    workers_per_mine: int = 13        # peasants a worked mine supports
     lumber_share: float = 0.35        # workforce hired above the mine slots; who chops is the model's own policy
-    max_workers: int = 26
+    max_workers: int = 32
     supply_slack: int = 4             # farms go up to keep this much headroom…
     supply_per_producer: float = 2.0  # …plus this much per military building
     max_sites: int = 5                # building orders in flight at once; walking is most of a build
@@ -64,10 +64,13 @@ class ProProfile:
     lumber_floor: int = 150           # never spend the lumber the next few soldiers need
     max_halls: int = 3
     barracks_per_hall: int = 4        # a barracks turns out ~4 soldiers a minute; income buys far more
+    gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
+    max_producers: int = 10
     attack_ratio: float = 1.6         # attack when my strength exceeds theirs by this
     retreat_ratio: float = 0.55       # break off once the push has lost this much of itself
     regroup_seconds: float = 45.0     # after a failed push, rebuild before trying again
     min_army: int = 10                # never walk out with less than this, whatever the comparison says
+    guards: int = 2                   # soldiers kept home against raiders, never sent out
     tower_count: int = 2
     early_towers: int = 0             # towers put up before anything optional, to survive a rush
     retreat_wounded: bool = True       # pull a soldier out at this much health and let it heal…
@@ -107,6 +110,8 @@ _TRIALS = (
     replace(PRO, name="pro-patient", attack_ratio=2.2),
     replace(PRO, name="pro-siege", siege_share=0.2),
     replace(PRO, name="pro-cleric", cleric_share=0.15),
+    replace(PRO, name="pro-w14", workers_per_mine=9),
+    replace(PRO, name="pro-w26", workers_per_mine=17),
     replace(PRO, name="pro-sites3", max_sites=3),
     replace(PRO, name="pro-sites8", max_sites=8),
 )
@@ -290,7 +295,13 @@ class ProBrain:
         return [m for m in world.mines() if m.gold > 0 and min(dist(m.center, h.center) for h in halls) < 14.0]
 
     def _worker_target(self, world: World) -> int:
-        """Peasants worth having: what the mines being worked can absorb, plus the woodcutters."""
+        """Peasants worth having: what the mines being worked can absorb.
+
+        Hired as fast as the halls will make them. Feeding them in gradually
+        instead was measured and is simply worse — 1516 Elo against 1329 for the
+        same target reached over forty seconds a worker — because the economy
+        that pays for the army is the thing being delayed.
+        """
         mines = max(1, len(self._worked_mines(world)))
         wanted = round(mines * self.profile.workers_per_mine / (1.0 - self.profile.lumber_share))
         return min(self.profile.max_workers, wanted)
@@ -364,7 +375,12 @@ class ProBrain:
             wishes.append((BuildingType.TOWN_HALL, expansion))
         if count(BuildingType.BLACKSMITH) < 1:
             wishes.append((BuildingType.BLACKSMITH, anchor))
-        barracks_target = profile.barracks_per_hall * max(1, len(halls))
+        # Production capacity is what the bank is short of, not money. A barracks
+        # turns out about four soldiers a minute; gold piling up past that is an
+        # army that does not exist. Tie the target to what is actually unspent.
+        barracks_target = min(profile.max_producers,
+                              max(profile.barracks_per_hall * max(1, len(halls)),
+                                  1 + world.players[player].gold // profile.gold_per_barracks))
         if count(BuildingType.BARRACKS) < barracks_target:
             wishes.append((BuildingType.BARRACKS, anchor))
         if count(BuildingType.STABLES) < 1:
@@ -594,11 +610,16 @@ class ProBrain:
         self._send_scout(world, army)
         busy = set(self.scouts) | set(self._raid(world, army))
         army = [u for u in army if u.id not in busy]
+        # A couple of soldiers never leave. Riders picking off peasants cost more
+        # than they are worth to chase with an army that is somewhere else, and a
+        # base with nothing in it is what an early raid is looking for.
+        guards, army = army[:self.profile.guards], army[self.profile.guards:]
         threats = self._threats(world)
         if threats and not (self.attacking and strength(world, threats)
                             < self.profile.ignore_raid_ratio * strength(world, army)):
-            self._defend(world, army, threats)
+            self._defend(world, guards + army, threats)
             return
+        self._post(world, guards)
         targets = self._attack_targets(world)
         if not targets:
             return
@@ -657,6 +678,15 @@ class ProBrain:
         """Whether anything of the enemy's is still standing where the push was aimed."""
         return any(b.hp > 0 and b.player not in (None, self.player) and dist(b.center, point) < 3.0
                    for b in world.buildings.values())
+
+    def _post(self, world: World, guards: list[Unit]) -> None:
+        """Send the home guard back to the hall whenever it has nothing to do."""
+        hall = self._hall(world)
+        if hall is None:
+            return
+        idle = [u.id for u in guards if not u.orders and dist(u.pos, hall.center) > 6.0]
+        if idle:
+            world.move(idle, hall.center)
 
     def _army_centre(self, world: World, army: list[Unit]) -> Point | None:
         if not army:
