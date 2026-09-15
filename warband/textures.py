@@ -700,7 +700,7 @@ def _building_body(building_type: BuildingType, player: int, race: Race, m: Mate
     if building_type is BuildingType.BARRACKS:
         mesh = _yard(3, (154, 131, 98))
         mesh += _roofed_walls((0, -0.65, 0.55), (2.5, 1.05, 1.03), m.stone_dark)
-        mesh += _roof_tiles(r3.gable_roof((0, -0.65, 1.07), (2.73, 1.35), 0.54, roof((98, 104, 119))))
+        mesh += _roof_tiles(r3.gable_roof((0, -0.65, 1.07), (2.73, 1.35), 0.54, roof((108, 104, 100))))
         mesh += r3.box((0, -0.65, 1.61), (2.82, 0.1, 0.1), m.wood_dark)
         for x in (-1.12, -0.56, 0.56, 1.12):
             mesh += r3.box((x, -0.11, 0.57), (0.1, 0.1, 1.05), m.wood_dark)
@@ -872,7 +872,7 @@ def _building_body(building_type: BuildingType, player: int, race: Race, m: Mate
         mesh += r3.box((0.34, -0.87, 0.57), (1.46, 0.29, 1.03), m.stone_dark)
         for x in (-0.25, 1.04):
             mesh += r3.box((x, 0.14, 0.58), (0.12, 0.12, 1.09), m.wood_dark)
-        mesh += _roof_tiles(r3.gable_roof((0.35, -0.53, 1.14), (1.6, 1.49), 0.34, roof((68, 80, 91))))
+        mesh += _roof_tiles(r3.gable_roof((0.35, -0.53, 1.14), (1.6, 1.49), 0.34, roof((82, 80, 78))))
         # Furnace mouth is a dark arch containing nested hot coals.
         mesh += _inset_arch(-0.8, 0.245, 0.17, 0.67, 0.92, m.stone_dark, (56, 35, 29), 0.065)
         for x, z, h in ((-0.98, 0.44, 0.47), (-0.8, 0.47, 0.7), (-0.63, 0.44, 0.42)):
@@ -890,7 +890,7 @@ def _building_body(building_type: BuildingType, player: int, race: Race, m: Mate
         mesh += r3.box((0.16, 0.9, 0.66), (0.11, 0.12, 0.16), INK)
         mesh += _banner(0.46, 0.234, 1.13, 0.36, 0.39, team)
         mesh += r3.cylinder((-0.59, 1.03, 0.045), 0.23, 0.31, m.wood, sides=8)
-        mesh += r3.cylinder((-0.59, 1.03, 0.353), 0.19, 0.01, (64, 108, 127), sides=8)
+        mesh += r3.cylinder((-0.59, 1.03, 0.353), 0.19, 0.01, (58, 104, 92), sides=8)
         return mesh
     if building_type is BuildingType.STABLES:
         mesh = _yard(3, (167, 140, 94))
@@ -966,7 +966,7 @@ def _building_body(building_type: BuildingType, player: int, race: Race, m: Mate
         return mesh
     if building_type is BuildingType.CHURCH:
         mesh = _yard(3, (183, 179, 160))
-        shingle = roof((68, 111, 123))
+        shingle = roof((62, 118, 96))
         mesh += _roofed_walls((0.1, -0.2, 0.73), (1.22, 2.03, 1.38), m.plaster)
         mesh += _roofed_walls((0.1, -0.38, 0.51), (2.35, 0.72, 0.94), m.stone)
         mesh += r3.rotate_z(r3.gable_roof((0.1, -0.2, 1.43), (2.21, 1.4), 0.85, shingle), 90, about=(0.1, -0.2))
@@ -997,7 +997,7 @@ def _building_body(building_type: BuildingType, player: int, race: Race, m: Mate
             mesh += r3.box((x, 0.78, 0.58), (0.23, 0.52, 1.07), m.stone)
             mesh += r3.pyramid((x, 0.78, 1.115), (0.25, 0.54), 0.25, m.plaster)
         mesh += _inset_arch(0.1, 0.945, 0.12, 0.67, 1.07, m.stone_dark, (81, 61, 51), 0.1)
-        mesh += _inset_arch(0.1, 0.947, 1.3, 0.44, 0.61, m.stone_dark, (100, 184, 209) if race is not Race.ORC else (200, 90, 40), 0.07)
+        mesh += _inset_arch(0.1, 0.947, 1.3, 0.44, 0.61, m.stone_dark, (236, 190, 96) if race is not Race.ORC else (200, 90, 40), 0.07)
         if race is Race.HUMAN:
             mesh += r3.box((0.1, 0.963, 0.43), (0.029, 0.02, 0.59), GOLD)
             mesh += r3.box((0.1, 0.96, 1.56), (0.035, 0.025, 0.38), GOLD)
@@ -1286,7 +1286,7 @@ def _shield(x: float, y: float, z: float, team: Color, size: float = 1.0, race: 
         outline = [(-0.16, 0.3), (0.16, 0.3), (0.2, 0.0), (0, -0.36), (-0.2, 0.0)]
         for offset, factor, color in ((0, 1.0, look.metal), (0.025, 0.7, team)):
             mesh += _unit_panel([(x + dx * size * factor, y + offset, z + dz * size * factor) for dx, dz in outline], color)
-        return mesh + r3.box((x, y + 0.035, z + 0.02), (0.045 * size, 0.06, 0.3 * size), look.hair)
+        return mesh + r3.box((x, y + 0.03, z + 0.02), (0.045 * size, 0.012, 0.3 * size), look.hair)  # a flat rib, not a hilt
     outline = [(-0.23, 0.26), (0.23, 0.26), (0.24, -0.05), (0, -0.34), (-0.24, -0.05)]
     for offset, factor, color in ((0, 1.0, look.metal), (0.025, 0.8, team)):
         mesh += _unit_panel([(x + dx * size * factor, y + offset, z + dz * size * factor)
@@ -1848,21 +1848,37 @@ RESTYLED = Path(__file__).resolve().parent / "assets" / "restyled"
 RESTYLED_ART = os.environ.get("WARBAND_ART", "restyled") != "procedural"
 
 
-@lru_cache(maxsize=None)
-def restyled_frames(race: Race, unit_type: UnitType, carrying: Resource | None) -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
-    """The hand-painted frames of one subject made by ``tools/restyle.py`` (rendered for
-    player 0, every facing and frame), or None when the subject has none."""
-    name = f"{race.value}.{unit_type.value}" + (f".{carrying.value}" if carrying else "")
+def _painted(name: str, wanted: list[str]) -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
+    """The painted sheet *name* made by ``tools/restyle.py`` (rendered for player 0), or None
+    when there is none; a sheet missing one of the *wanted* keys is stale and ignored."""
     if not RESTYLED_ART or not restyle.file(RESTYLED / name, "png").exists():
         return None
     sheet, frames = restyle.load_frames(RESTYLED / name)
-    wanted = FRAMES + CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else FRAMES
-    missing = [frame for frame in wanted if unit_key(unit_type, 0, 0, frame, carrying, race) not in frames]
+    missing = [key for key in wanted if key not in frames]
     if missing:
-        warnings.warn(f"painted sheet {name} is stale (no {missing[0]!r} frame) and is ignored; re-render it with tools/restyle.py",
-                      stacklevel=2)
+        warnings.warn(f"painted sheet {name} is stale (no {missing[0]!r}) and is ignored; re-render it with tools/restyle.py", stacklevel=3)
         return None
     return sheet, frames
+
+
+@lru_cache(maxsize=None)
+def restyled_frames(race: Race, unit_type: UnitType, carrying: Resource | None) -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
+    """The hand-painted frames of one unit subject (every facing and frame), or None."""
+    name = f"{race.value}.{unit_type.value}" + (f".{carrying.value}" if carrying else "")
+    wanted = FRAMES + CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else FRAMES
+    return _painted(name, [unit_key(unit_type, 0, 0, frame, carrying, race) for frame in wanted])
+
+
+@lru_cache(maxsize=None)
+def restyled_buildings(race: Race) -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
+    """The hand-painted buildings of one race (one frame per building type, the gold mine
+    excluded), or None."""
+    return _painted(f"{race.value}.buildings", [building_key(bt, 0, race) for bt in BuildingType if bt is not BuildingType.GOLD_MINE])
+
+
+def _recoloured(image: Image.Image, player: int) -> Image.Image:
+    """A player-0 painted frame in *player*'s team colour."""
+    return image if player == 0 else restyle.recolor(image, team_color(0), team_color(player))
 
 
 def unit_image(game: Game, unit_type: UnitType, player: int, facing: int, frame: str, carrying: Resource | None = None, *,
@@ -1877,19 +1893,35 @@ def unit_image(game: Game, unit_type: UnitType, player: int, facing: int, frame:
             game.assets.image_from_pil(key, _prop(key, mesh, DROP_UNIT, game.backend.scale_factor))
         else:
             sheet, frames = restyled
-            image = frames[unit_key(unit_type, 0, facing, frame, carrying, race)]
-            if player != 0:
-                image = restyle.recolor(image, team_color(0), team_color(player))
             placements[key] = Placement(sheet.logical_size, sheet.drop)
-            game.assets.image_from_pil(key, image)
+            game.assets.image_from_pil(key, _recoloured(frames[unit_key(unit_type, 0, facing, frame, carrying, race)], player))
     return key
 
 
+def _painted_portrait(subject: UnitType | BuildingType, player: int, race: Race) -> Image.Image | None:
+    """The subject's painted frame (a unit facing the viewer at rest) cropped to its figure, or None."""
+    if isinstance(subject, UnitType):
+        painted, key = restyled_frames(race, subject, None), unit_key(subject, 0, 2, "stand", None, race)
+    elif subject is BuildingType.GOLD_MINE:
+        return None
+    else:
+        painted, key = restyled_buildings(race), building_key(subject, 0, race)
+    if painted is None:
+        return None
+    image = _recoloured(painted[1][key], player)
+    return image.crop(image.split()[3].getbbox())
+
+
 def portrait_image(game: Game, subject: UnitType | BuildingType, player: int | None, race: Race = Race.HUMAN) -> str:
-    """A tightly framed picture of a unit or building, for the selection panel."""
+    """A tightly framed picture of a unit or building, for the selection panel: the painted
+    frame where the subject has one, the low-poly render otherwise."""
     key = f"portrait.{race.value}.{subject.value}.{player}"
     if not game.assets.has_image(key):
-        if isinstance(subject, UnitType):
+        painted = _painted_portrait(subject, player or 0, race)
+        if painted is not None:
+            fit = 128 * game.backend.scale_factor / max(painted.size)
+            game.assets.image_from_pil(key, painted.resize((max(1, round(painted.width * fit)), max(1, round(painted.height * fit))), Image.LANCZOS))
+        elif isinstance(subject, UnitType):
             mesh = r3.rotate_z(_unit(subject, player or 0, "stand", None, race), 0)
         elif subject is BuildingType.GOLD_MINE:
             mesh = _mine()
@@ -1921,10 +1953,18 @@ def building_key(building_type: BuildingType, player: int, race: Race = Race.HUM
 
 
 def building_image(game: Game, building_type: BuildingType, player: int, race: Race = Race.HUMAN) -> str:
+    """Register (once) and return the key of one building image: the painted frame recoloured
+    to the player's team when the race's buildings were restyled, the low-poly render otherwise."""
     key = building_key(building_type, player, race)
     if not game.assets.has_image(key):
-        size = BUILDINGS[building_type].size
-        game.assets.image_from_pil(key, _prop(key, _building(building_type, player, race), size / 2 * TILE + PAD, game.backend.scale_factor))
+        restyled = restyled_buildings(race)
+        if restyled is None:
+            size = BUILDINGS[building_type].size
+            game.assets.image_from_pil(key, _prop(key, _building(building_type, player, race), size / 2 * TILE + PAD, game.backend.scale_factor))
+        else:
+            sheet, frames = restyled
+            placements[key] = Placement(sheet.logical_size, sheet.drop)
+            game.assets.image_from_pil(key, _recoloured(frames[building_key(building_type, 0, race)], player))
     return key
 
 
