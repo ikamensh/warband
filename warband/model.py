@@ -277,9 +277,10 @@ def dist(a: Point, b: Point) -> float:
 def rect_gap(point: Point, rect: tuple[int, int, int, int]) -> float:
     """Distance from *point* to the nearest point of *rect* (0 inside)."""
     x, y, w, h = rect
-    dx = max(x - point[0], 0.0, point[0] - (x + w))
-    dy = max(y - point[1], 0.0, point[1] - (y + h))
-    return math.hypot(dx, dy)
+    px, py = point
+    dx = x - px if px < x else px - (x + w)  # at most one of the two sides can be overshot
+    dy = y - py if py < y else py - (y + h)
+    return math.hypot(dx if dx > 0.0 else 0.0, dy if dy > 0.0 else 0.0)
 
 
 def rects_gap(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> int:
@@ -301,15 +302,17 @@ def tile_center(pos: Pos) -> Point:
     return (pos[0] + 0.5, pos[1] + 0.5)
 
 
-def _sight_spans(radius: int) -> list[tuple[int, int]]:
-    """Per row offset of a sight disc, how far it reaches sideways: the largest dx with dx² + dy² ≤ r² + r."""
-    return [(dy, math.isqrt(radius * radius + radius - dy * dy)) for dy in range(-radius, radius + 1)]
+def _sight_spans(radius: int) -> list[tuple[int, int, bytes]]:
+    """Per row offset of a sight disc: how far it reaches sideways (the largest dx with
+    dx² + dy² ≤ r² + r) and the run of flags that paints the row."""
+    halves = [math.isqrt(radius * radius + radius - dy * dy) for dy in range(-radius, radius + 1)]
+    return [(dy, half, b"\x01" * (2 * half + 1)) for dy, half in zip(range(-radius, radius + 1), halves)]
 
 
-_SIGHT: dict[int, list[tuple[int, int]]] = {}
+_SIGHT: dict[int, list[tuple[int, int, bytes]]] = {}
 
 
-def sight_spans(radius: int) -> list[tuple[int, int]]:
+def sight_spans(radius: int) -> list[tuple[int, int, bytes]]:
     if radius not in _SIGHT:
         _SIGHT[radius] = _sight_spans(radius)
     return _SIGHT[radius]
@@ -438,13 +441,13 @@ class World:
         r2 = radius * radius
         width, buckets = self.width, self._buckets
         near: list[Unit] = []
-        for row in range(y0 * width, y1 * width + 1, width):
-            for cell in buckets[row + x0:row + x1 + 1]:
-                if cell:
-                    for unit in cell:
-                        dx, dy = unit.x - px, unit.y - py
-                        if dx * dx + dy * dy <= r2:
-                            near.append(unit)
+        append = near.append
+        for row in range(y0 * width + x0, y1 * width + x0 + 1, width):
+            for cell in filter(None, buckets[row:row + x1 - x0 + 1]):
+                for unit in cell:
+                    dx, dy = unit.x - px, unit.y - py
+                    if dx * dx + dy * dy <= r2:
+                        append(unit)
         return near
 
     def _index_units(self) -> None:
@@ -463,24 +466,42 @@ class World:
     # -- Vision ----------------------------------------------------------------
 
     def is_visible(self, player: int, pos: Pos) -> bool:
-        return self.in_bounds(pos) and bool(self.visible[player][pos[1] * self.width + pos[0]])
+        x, y = pos
+        width = self.width
+        return 0 <= x < width and 0 <= y < self.height and bool(self.visible[player][y * width + x])
 
     def is_explored(self, player: int, pos: Pos) -> bool:
-        return self.in_bounds(pos) and bool(self.explored[player][pos[1] * self.width + pos[0]])
+        x, y = pos
+        width = self.width
+        return 0 <= x < width and 0 <= y < self.height and bool(self.explored[player][y * width + x])
+
+    def any_visible(self, player: int, rect: tuple[int, int, int, int]) -> bool:
+        """Whether *player* sees any tile of *rect*, testing whole rows of the flag grid at a time."""
+        x, y, w, h = rect
+        width, visible = self.width, self.visible[player]
+        lo, hi = max(0, x), min(width, x + w)
+        if lo >= hi:
+            return False
+        return any(any(visible[row * width + lo:row * width + hi])
+                   for row in range(max(0, y), min(self.height, y + h)))
 
     def update_vision(self) -> None:
         self._worker_ai_views.clear()
         self._worker_ai_navigation.clear()
+        # Collect each player's sight discs first: everything on one tile with one sight radius
+        # reveals the very same tiles, and a crowd around a mine or in a battle line is common.
+        discs: list[set[tuple[Pos, int]]] = [set() for _ in self.players]
+        for unit in self.units.values():
+            discs[unit.player].add((unit.tile, unit.info.sight))
+        for building in self.buildings.values():
+            if building.player is not None:
+                cx, cy = building.center
+                discs[building.player].add(((int(cx), int(cy)), building.info.sight + building.size // 2))
         for player in self.players:
             visible = self.visible[player.id]
             visible[:] = bytes(len(visible))
-            for unit in self.units.values():
-                if unit.player == player.id:
-                    self._reveal(visible, unit.tile, unit.info.sight)
-            for building in self.buildings.values():
-                if building.player == player.id:
-                    cx, cy = building.center
-                    self._reveal(visible, (int(cx), int(cy)), building.info.sight + building.size // 2)
+            for at, sight in discs[player.id]:
+                self._reveal(visible, at, sight)
             or_into(self.explored[player.id], visible)
             self.worker_knowledge[player.id].refresh(self, player.id)
         self._reveal_last_standings()
@@ -520,7 +541,14 @@ class World:
     def _reveal(self, visible: bytearray, at: Pos, radius: int) -> None:
         width, height = self.width, self.height
         x0, y0 = at
-        for dy, half in sight_spans(radius):
+        spans = sight_spans(radius)
+        if radius <= x0 < width - radius and radius <= y0 < height - radius:
+            # No row of the disc reaches an edge, so each one is painted as it stands.
+            for dy, half, run in spans:
+                middle = (y0 + dy) * width + x0
+                visible[middle - half:middle + half + 1] = run
+            return
+        for dy, half, _run in spans:
             y = y0 + dy
             if 0 <= y < height:
                 lo, hi = max(0, x0 - half), min(width, x0 + half + 1)
@@ -1132,7 +1160,8 @@ class World:
     # -- Units ----------------------------------------------------------------------
 
     def _update_unit(self, u: Unit, dt: float) -> None:
-        u.cooldown = max(0.0, u.cooldown - dt)
+        cooldown = u.cooldown - dt
+        u.cooldown = cooldown if cooldown > 0.0 else 0.0
         if u.inside is not None:
             self._mine_inside(u, dt)
             return
@@ -1435,8 +1464,7 @@ class World:
             return
         remembered = self.worker_knowledge[u.player].resource_rect(order.target)
         if remembered is not None:
-            x, y, width, height = remembered
-            if not any(self.is_visible(u.player, (tx, ty)) for ty in range(y, y + height) for tx in range(x, x + width)):
+            if not self.any_visible(u.player, remembered):
                 # Revisit the last observed site before discovering a depleted
                 # mine or felled tree. Hidden changes cannot alter this route.
                 if self._approach_work(u, remembered, dt, self._worker_navigation(u)):
@@ -1552,9 +1580,10 @@ class World:
             order.target = None  # a new wall or threat may require another depot
 
     def _worker_navigation(self, u: Unit) -> bytearray:
-        if any(isinstance(order, (Harvest, Deposit)) and order.auto for order in u.orders):
-            from warband.worker_ai import safe_navigation
-            return safe_navigation(self, u.player)
+        for order in u.orders:
+            if isinstance(order, (Harvest, Deposit)) and order.auto:
+                from warband.worker_ai import safe_navigation
+                return safe_navigation(self, u.player)
         return self._blocked
 
 
@@ -1802,17 +1831,19 @@ class World:
             u.state = "idle"
             return True
         u.state = "move"
-        if navigation is not None and navigation[u.tile[1] * self.width + u.tile[0]]:
+        width = self.width
+        tile = tx, ty = int(u.x), int(u.y)  # nothing below moves the unit until the very last step
+        if navigation is not None and navigation[ty * width + tx]:
             navigation = None  # caught on forbidden ground: any real step out is better than standing still
         grid = self._blocked if navigation is None else navigation
         if u.path and u.path_goal is not None:
-            tx, ty = u.tile
-            if grid[u.path[0][1] * self.width + u.path[0][0]] or max(abs(u.path[0][0] - tx), abs(u.path[0][1] - ty)) > 1:
+            ahead_x, ahead_y = u.path[0]
+            if grid[ahead_y * width + ahead_x] or max(abs(ahead_x - tx), abs(ahead_y - ty)) > 1:
                 # Something was built across the path, or a crowd pushed the unit off it.
                 if self.time >= u.replan_at:
                     self._plan(u, u.path_goal, u.exact, around_units=True, navigation=navigation)
                     return False
-                u.path.insert(0, u.tile)
+                u.path.insert(0, tile)
         dx, dy = waypoint[0] - u.x, waypoint[1] - u.y
         d = math.hypot(dx, dy)
         step = self._effective_speed(u) * dt
@@ -1829,11 +1860,11 @@ class World:
             return False
         u.facing = math.atan2(dy, dx)
         nx, ny = u.x + dx / d * step, u.y + dy / d * step
-        if (grid[int(ny) * self.width + int(nx)] or (navigation is not None and not self._line_clear(u.pos, (nx, ny), navigation=navigation))) and self.passable(*u.tile):
-            if u.path and u.path[0] != u.tile:
+        if (grid[int(ny) * width + int(nx)] or (navigation is not None and not self._line_clear(u.pos, (nx, ny), navigation=navigation))) and self.passable(tx, ty):
+            if u.path and u.path[0] != tile:
                 # Pushed off course so that the straight line to the next tile crosses a blocked
                 # one: go back to this tile's centre first, which is always possible.
-                u.path.insert(0, u.tile)
+                u.path.insert(0, tile)
             elif u.path_goal is not None and self.time >= u.replan_at:
                 # Even from the centre the straight step to the exact spot crosses a blocked tile: it
                 # lies across a corner.  Plan again; the planner never cuts corners, so the path comes
@@ -1869,9 +1900,11 @@ class World:
         needs both tiles beside it free, as a diagonal step in the pathfinder does.
         """
         # Check continuous coordinates before int() can turn -0.1 into tile zero.
-        if not (0 <= a[0] < self.width and 0 <= a[1] < self.height
-                and 0 <= b[0] < self.width and 0 <= b[1] < self.height):
+        width, height = self.width, self.height
+        if not (0 <= a[0] < width and 0 <= a[1] < height
+                and 0 <= b[0] < width and 0 <= b[1] < height):
             return False
+        grid = self._blocked if navigation is None else navigation
         x, y = int(a[0]), int(a[1])
         end_x, end_y = int(b[0]), int(b[1])
         dx, dy = b[0] - a[0], b[1] - a[1]
@@ -1880,26 +1913,27 @@ class World:
         next_x = ((x + (step_x > 0)) - a[0]) / dx if dx else math.inf
         next_y = ((y + (step_y > 0)) - a[1]) / dy if dy else math.inf
         per_x, per_y = (abs(1 / dx) if dx else math.inf), (abs(1 / dy) if dy else math.inf)
-        if navigation is None:
-            passable = self.passable
-        else:
-            def passable(x: int, y: int) -> bool:
-                return 0 <= x < self.width and 0 <= y < self.height and not navigation[y * self.width + x]
+        # The walk never leaves the box spanned by the two endpoints, so only the two
+        # tiles beside a corner need their own bounds test.
+        row = y * width
         for _ in range(abs(end_x - x) + abs(end_y - y) + 1):
-            if not passable(x, y):
+            if grid[row + x]:
                 return False
             if x == end_x and y == end_y:
                 return True
             if abs(next_x - next_y) < 1e-9:
-                if not (passable(x + step_x, y) and passable(x, y + step_y)):
+                beside_x, beside_y = x + step_x, y + step_y
+                if not 0 <= beside_x < width or grid[row + beside_x]:
                     return False
-                x, y = x + step_x, y + step_y
+                if not 0 <= beside_y < height or grid[beside_y * width + x]:
+                    return False
+                x, y, row = beside_x, beside_y, beside_y * width
                 next_x, next_y = next_x + per_x, next_y + per_y
             elif next_x < next_y:
                 x, next_x = x + step_x, next_x + per_x
             else:
-                y, next_y = y + step_y, next_y + per_y
-        return passable(x, y)
+                y, next_y, row = y + step_y, next_y + per_y, row + step_y * width
+        return not grid[row + x]
 
     def _steer(self, u: Unit, target: Point, dt: float) -> bool:
         """Walk straight at *target* when it is near and the line is clear; True if that was possible."""
@@ -1919,31 +1953,44 @@ class World:
 
     def _separate(self) -> None:
         """Push overlapping units apart, never into blocked tiles."""
+        # The neighbour scan is :meth:`units_near` inlined: it runs for every unit on every
+        # step, and the bucket rows it walks are only ever three cells wide.
         moves: dict[int, tuple[float, float]] = {}
+        width, height, buckets = self.width, self.height, self._buckets
+        radius = 2 * UNIT_RADIUS
+        reach, r2 = int(radius) + 1, radius * radius
+        hypot = math.hypot
         for u in self.units.values():
             if u.hidden:
                 continue
             px = py = 0.0
-            for v in self.units_near(u.pos, 2 * UNIT_RADIUS):
-                if v is u or v.hidden:
-                    continue
-                dx, dy = u.x - v.x, u.y - v.y
-                d = math.hypot(dx, dy)
-                overlap = u.radius + v.radius - d
-                if overlap <= 0:
-                    continue
-                if d < 1e-6:
-                    angle = (u.id * 2.399) % (2 * math.pi)
-                    dx, dy, d = math.cos(angle), math.sin(angle), 1.0
-                weight = 0.5 if v.state == "move" or u.state != "move" else 0.2
-                px += dx / d * overlap * weight
-                py += dy / d * overlap * weight
-                if u.state == "move":
-                    # Walking units also step to their own right, so two meeting head-on pass
-                    # each other instead of pushing each other back along the same line forever.
-                    hx, hy = math.cos(u.facing), math.sin(u.facing)
-                    px += -hy * overlap * SIDESTEP
-                    py += hx * overlap * SIDESTEP
+            ux, uy = u.x, u.y
+            moving = u.state == "move"
+            hx, hy = (math.cos(u.facing), math.sin(u.facing)) if moving else (0.0, 0.0)
+            x0, x1 = max(0, int(ux) - reach), min(width - 1, int(ux) + reach)
+            y0, y1 = max(0, int(uy) - reach), min(height - 1, int(uy) + reach)
+            span = x1 - x0 + 1
+            for row in range(y0 * width + x0, y1 * width + x0 + 1, width):
+                for cell in filter(None, buckets[row:row + span]):
+                    for v in cell:
+                        dx, dy = ux - v.x, uy - v.y
+                        if dx * dx + dy * dy > r2 or v is u or v.hidden:
+                            continue
+                        d = hypot(dx, dy)
+                        overlap = u.radius + v.radius - d
+                        if overlap <= 0:
+                            continue
+                        if d < 1e-6:
+                            angle = (u.id * 2.399) % (2 * math.pi)
+                            dx, dy, d = math.cos(angle), math.sin(angle), 1.0
+                        weight = 0.5 if v.state == "move" or not moving else 0.2
+                        px += dx / d * overlap * weight
+                        py += dy / d * overlap * weight
+                        if moving:
+                            # Walking units also step to their own right, so two meeting head-on pass
+                            # each other instead of pushing each other back along the same line forever.
+                            px += -hy * overlap * SIDESTEP
+                            py += hx * overlap * SIDESTEP
             if px or py:
                 moves[u.id] = (px, py)
         for uid, (px, py) in moves.items():
@@ -2006,8 +2053,10 @@ class World:
             if unit.player == player or unit.hidden or unit.hp <= 0 or not self.is_visible(player, unit.tile):
                 continue
             d = dist(point, unit.pos)
+            if d > radius + unit.radius:
+                continue
             key = (self._threat(unit), d)
-            if d <= radius + unit.radius and key < best_key:
+            if key < best_key:
                 best, best_key = unit, key
         if best is not None or units_only:
             return best
@@ -2015,8 +2064,10 @@ class World:
             if building.player is None or building.player == player or building.hp <= 0:
                 continue
             d = rect_gap(point, building.rect)
+            if d > radius:
+                continue
             key = (self._threat(building), d)
-            if d <= radius and key < best_key and any(self.is_visible(player, tile) for tile in building.tiles()):
+            if key < best_key and any(self.is_visible(player, tile) for tile in building.tiles()):
                 best, best_key = building, key
         return best
 

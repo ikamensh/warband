@@ -200,37 +200,10 @@ class Regions:
         return nearest
 
 
-def grid_steps(index: int, blocked: bytes | bytearray, width: int, height: int) -> list[tuple[int, float]]:
-    """The passable neighbours of flat tile *index* with their step costs; a diagonal step needs
-    both orthogonal tiles free.  :func:`find_path_grid` inlines this for speed."""
-    y, x = divmod(index, width)
-    east = x + 1 < width and not blocked[index + 1]
-    west = x > 0 and not blocked[index - 1]
-    south = y + 1 < height and not blocked[index + width]
-    north = y > 0 and not blocked[index - width]
-    steps = []
-    if east:
-        steps.append((index + 1, 1.0))
-    if west:
-        steps.append((index - 1, 1.0))
-    if south:
-        steps.append((index + width, 1.0))
-    if north:
-        steps.append((index - width, 1.0))
-    if east and south and not blocked[index + width + 1]:
-        steps.append((index + width + 1, SQRT2))
-    if east and north and not blocked[index - width + 1]:
-        steps.append((index - width + 1, SQRT2))
-    if west and south and not blocked[index + width - 1]:
-        steps.append((index + width - 1, SQRT2))
-    if west and north and not blocked[index - width - 1]:
-        steps.append((index - width - 1, SQRT2))
-    return steps
-
-
 def distance_field(starts: Iterable[int], blocked: bytes | bytearray, width: int, height: int) -> list[float]:
     """Walking distance from the nearest of the *starts* (flat indices) to every tile; infinity where
-    no walk leads."""
+    no walk leads.  The eight-way expansion is inlined as in :func:`find_path_grid`: this floods the
+    whole map."""
     distances = [math.inf] * (width * height)
     frontier = []
     for index in sorted(starts):
@@ -242,8 +215,22 @@ def distance_field(starts: Iterable[int], blocked: bytes | bytearray, width: int
         cost, current = pop(frontier)
         if cost > distances[current]:
             continue
-        for nxt, step in grid_steps(current, blocked, width, height):
-            total = cost + step
+        y, x = divmod(current, width)
+        east = x + 1 < width and not blocked[current + 1]
+        west = x > 0 and not blocked[current - 1]
+        south = y + 1 < height and not blocked[current + width]
+        north = y > 0 and not blocked[current - width]
+        straight, slanted = cost + 1.0, cost + SQRT2
+        for offset, total, open_ in (
+            (1, straight, east), (-1, straight, west), (width, straight, south), (-width, straight, north),
+            (width + 1, slanted, east and south), (1 - width, slanted, east and north),
+            (width - 1, slanted, west and south), (-width - 1, slanted, west and north),
+        ):
+            if not open_:
+                continue
+            nxt = current + offset
+            if blocked[nxt]:
+                continue  # the diagonal tile itself; an orthogonal one was checked above
             if total < distances[nxt]:
                 distances[nxt] = total
                 push(frontier, (total, nxt))
@@ -289,8 +276,22 @@ def find_work_path(start: Pos, goals: dict[Pos, float], blocked: bytes | bytearr
         penalty = penalties.get(current)
         if penalty is not None and cost + penalty < best_cost:
             best, best_cost = current, cost + penalty
-        for nxt, step in grid_steps(current, blocked, width, height):
-            total = cost + step
+        y, x = divmod(current, width)
+        east = x + 1 < width and not blocked[current + 1]
+        west = x > 0 and not blocked[current - 1]
+        south = y + 1 < height and not blocked[current + width]
+        north = y > 0 and not blocked[current - width]
+        straight, slanted = cost + 1.0, cost + SQRT2
+        for offset, total, open_ in (
+            (1, straight, east), (-1, straight, west), (width, straight, south), (-width, straight, north),
+            (width + 1, slanted, east and south), (1 - width, slanted, east and north),
+            (width - 1, slanted, west and south), (-width - 1, slanted, west and north),
+        ):
+            if not open_:
+                continue
+            nxt = current + offset
+            if blocked[nxt]:
+                continue  # the diagonal tile itself; an orthogonal one was checked above
             if total < costs[nxt]:
                 costs[nxt] = total
                 parents[nxt] = current
