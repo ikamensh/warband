@@ -186,7 +186,8 @@ def test_minimap_image_marks_terrain_buildings_and_units(play) -> None:
 def test_unit_images_are_rendered_on_demand_per_facing_and_frame(play) -> None:
     game, scene = play
     key = textures.unit_image(game, UnitType.KNIGHT, 1, 6, "attack")
-    assert game.assets.has_image(key) and textures.placements[key].drop == textures.DROP_UNIT
+    placement = textures.placements[key]
+    assert game.assets.has_image(key) and 0 < placement.drop < placement.size[1]  # the feet lie inside the image
     for unit_type in UnitType:  # every unit, frame and carry variant renders (a missing colour name would raise here)
         for frame in textures.FRAMES:
             textures.unit_image(game, unit_type, 1, 3, frame)

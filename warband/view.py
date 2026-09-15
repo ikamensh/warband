@@ -23,7 +23,7 @@ from saga2d import Game, ParticleEmitter, RenderLayer, Scene, Sprite, SpriteAnch
 from warband import textures
 from warband.model import Building, Entity, Pos, Unit, World
 from warband.rules import BUILDINGS, VISION_EVERY, BuildingType, Terrain
-from warband.textures import CHUNK, CHUNK_PX, DROP_UNIT, TILE
+from warband.textures import CHUNK, CHUNK_PX, TILE
 
 WATER_PERIOD = 0.45  # seconds between water phase changes
 WATER_CYCLE = (0, 1, 2, 1)  # ping-pong through the phases so the ripples never jump
@@ -349,7 +349,7 @@ class MapView:
                     sprite.size = textures.placements[key].size
                     self._unit_keys[u.id] = key
                 wx, wy = to_world(u.pos)
-                sprite.position = (wx, wy + DROP_UNIT)
+                sprite.position = (wx, wy + textures.placements[key].drop)
                 sprite.visible = True
 
     def unit_sprite(self, unit_id: int) -> Sprite | None:

@@ -1,0 +1,313 @@
+{
+ "cell": [
+  178,
+  212
+ ],
+ "cols": 8,
+ "rows": 4,
+ "origin": [
+  89.0,
+  149.6671407546405
+ ],
+ "scale": 2.0,
+ "pad": [
+  0,
+  0
+ ],
+ "chroma": [
+  255,
+  0,
+  255
+ ],
+ "grid": false,
+ "cells": [
+  {
+   "key": "unit.human.catapult.0.0.stand",
+   "col": 0,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.1.stand",
+   "col": 1,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.2.stand",
+   "col": 2,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.3.stand",
+   "col": 3,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.4.stand",
+   "col": 4,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.5.stand",
+   "col": 5,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.6.stand",
+   "col": 6,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.7.stand",
+   "col": 7,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 7
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.0.walk1",
+   "col": 0,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.1.walk1",
+   "col": 1,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.2.walk1",
+   "col": 2,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.3.walk1",
+   "col": 3,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.4.walk1",
+   "col": 4,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.5.walk1",
+   "col": 5,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.6.walk1",
+   "col": 6,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.7.walk1",
+   "col": 7,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 7
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.0.walk2",
+   "col": 0,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.1.walk2",
+   "col": 1,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.2.walk2",
+   "col": 2,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.3.walk2",
+   "col": 3,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.4.walk2",
+   "col": 4,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.5.walk2",
+   "col": 5,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.6.walk2",
+   "col": 6,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.7.walk2",
+   "col": 7,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 7
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.0.attack",
+   "col": 0,
+   "row": 3,
+   "tags": {
+    "frame": "attack",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.1.attack",
+   "col": 1,
+   "row": 3,
+   "tags": {
+    "frame": "attack",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.2.attack",
+   "col": 2,
+   "row": 3,
+   "tags": {
+    "frame": "attack",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.3.attack",
+   "col": 3,
+   "row": 3,
+   "tags": {
+    "frame": "attack",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.4.attack",
+   "col": 4,
+   "row": 3,
+   "tags": {
+    "frame": "attack",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.5.attack",
+   "col": 5,
+   "row": 3,
+   "tags": {
+    "frame": "attack",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.6.attack",
+   "col": 6,
+   "row": 3,
+   "tags": {
+    "frame": "attack",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.human.catapult.0.7.attack",
+   "col": 7,
+   "row": 3,
+   "tags": {
+    "frame": "attack",
+    "facing": 7
+   }
+  }
+ ]
+}

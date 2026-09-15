@@ -20,14 +20,17 @@ below the point it is placed at — like Tribes.
 from __future__ import annotations
 
 import math
+import os
 import random
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
 from saga2d import Game
 from sagaforge import render3d as r3
+from sagaforge import restyle
 from sagaforge.render3d import Mesh
 from warband.rules import BUILDINGS, PLAYERS, BuildingType, MapTheme, Race, Resource, Terrain, UnitType
 
@@ -1739,13 +1742,38 @@ def unit_key(unit_type: UnitType, player: int, facing: int, frame: str, carrying
     return f"unit.{race.value}.{unit_type.value}{carry}.{player}.{facing}.{frame}"
 
 
+RESTYLED = Path(__file__).resolve().parent / "assets" / "restyled"
+#: ``WARBAND_ART=procedural`` plays with the low-poly renders even where painted frames exist.
+RESTYLED_ART = os.environ.get("WARBAND_ART", "restyled") != "procedural"
+
+
+@lru_cache(maxsize=None)
+def restyled_frames(race: Race, unit_type: UnitType, carrying: Resource | None) -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
+    """The hand-painted frames of one subject made by ``tools/restyle.py`` (rendered for
+    player 0, every facing and frame), or None when the subject has none."""
+    name = f"{race.value}.{unit_type.value}" + (f".{carrying.value}" if carrying else "")
+    if not RESTYLED_ART or not restyle.file(RESTYLED / name, "png").exists():
+        return None
+    return restyle.load_frames(RESTYLED / name)
+
+
 def unit_image(game: Game, unit_type: UnitType, player: int, facing: int, frame: str, carrying: Resource | None = None, *,
                race: Race = Race.HUMAN) -> str:
-    """Register (once) and return the key of one unit image."""
+    """Register (once) and return the key of one unit image: the painted frame recoloured
+    to the player's team when the subject was restyled, the low-poly render otherwise."""
     key = unit_key(unit_type, player, facing, frame, carrying, race)
     if not game.assets.has_image(key):
-        mesh = r3.rotate_z(_unit(unit_type, player, frame, carrying, race), facing * 45 - 90)
-        game.assets.image_from_pil(key, _prop(key, mesh, DROP_UNIT, game.backend.scale_factor))
+        restyled = restyled_frames(race, unit_type, carrying)
+        if restyled is None:
+            mesh = r3.rotate_z(_unit(unit_type, player, frame, carrying, race), facing * 45 - 90)
+            game.assets.image_from_pil(key, _prop(key, mesh, DROP_UNIT, game.backend.scale_factor))
+        else:
+            sheet, frames = restyled
+            image = frames[unit_key(unit_type, 0, facing, frame, carrying, race)]
+            if player != 0:
+                image = restyle.recolor(image, team_color(0), team_color(player))
+            placements[key] = Placement(sheet.logical_size, sheet.drop)
+            game.assets.image_from_pil(key, image)
     return key
 
 

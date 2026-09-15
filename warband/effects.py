@@ -7,7 +7,7 @@ import math
 from saga2d.effects import Effect
 from saga2d.rendering import Sprite
 from saga2d.scene import Scene
-from warband.textures import DROP_UNIT
+from warband.textures import placements
 
 Point = tuple[float, float]
 
@@ -30,7 +30,8 @@ class UnitDeath(Effect):
         self.size = sprite.size
         self.rotation, self.tint = sprite.rotation, sprite.tint
         angle = math.radians(self.rotation)
-        pivot = self.size[1] / 2 - DROP_UNIT
+        self.drop = placements[sprite.image].drop  # the feet lie this far above the image's bottom edge
+        pivot = self.size[1] / 2 - self.drop
         self.ground = (sprite.x - math.sin(angle) * pivot, sprite.y - self.size[1] / 2 + math.cos(angle) * pivot)
         dx, dy = (position[0] - source[0], position[1] - source[1]) if source is not None else (1.0, .2)
         length = math.hypot(dx, dy) or 1
@@ -48,7 +49,7 @@ class UnitDeath(Effect):
         w, h = self.size[0] * sx, self.size[1] * sy
         rotation = self.rotation + (self.turn - self.rotation) * p
         angle = math.radians(rotation)
-        pivot = (self.size[1] / 2 - DROP_UNIT) * sy
+        pivot = (self.size[1] / 2 - self.drop) * sy
         x = self.ground[0] + (self.position[0] - self.ground[0] + self.direction[0] * 9) * p
         y = self.ground[1] + (self.position[1] - self.ground[1] + self.direction[1] * 5) * p
         self.sprite.size = (w, h)
