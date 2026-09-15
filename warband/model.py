@@ -18,7 +18,7 @@ import math
 import random
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Iterator
+from typing import Any
 
 from warband import path as pathing
 from warband.races import RACES
@@ -176,6 +176,15 @@ class Unit:
     replan_at: float = 0.0  # simulation time from which the unit may plan again
     auto_work: bool = True  # Stop/Hold parks a worker until another order is given.
 
+    radius = UNIT_RADIUS
+
+    def __post_init__(self) -> None:
+        # Type and race are fixed for life, so the stats they select are read once
+        # rather than through RACES on every one of a match's millions of lookups.
+        self.info: UnitInfo = RACES[self.race].units[self.type]
+        self.max_hp: int = self.info.hp
+        self.is_worker: bool = self.type is UnitType.PEASANT
+
     @property
     def pos(self) -> Point:
         return (self.x, self.y)
@@ -185,25 +194,9 @@ class Unit:
         return (int(self.x), int(self.y))
 
     @property
-    def info(self) -> UnitInfo:
-        return RACES[self.race].units[self.type]
-
-    @property
-    def max_hp(self) -> int:
-        return self.info.hp
-
-    @property
-    def radius(self) -> float:
-        return UNIT_RADIUS
-
-    @property
     def hidden(self) -> bool:
         """Inside a mine or a building under construction: not on the map."""
         return self.inside is not None or self.constructing is not None
-
-    @property
-    def is_worker(self) -> bool:
-        return self.type is UnitType.PEASANT
 
     @property
     def order(self) -> Order | None:
@@ -229,38 +222,25 @@ class Building:
     research_progress: float = 0.0
     race: Race = Race.HUMAN  # its owner's; a gold mine is nobody's
 
-    @property
-    def info(self) -> BuildingInfo:
-        return RACES[self.race].buildings[self.type]
-
-    @property
-    def size(self) -> int:
-        return self.info.size
-
-    @property
-    def max_hp(self) -> int:
-        return self.info.hp
+    def __post_init__(self) -> None:
+        # Type, race and position are fixed once a building is placed, so its stats and
+        # its footprint are worked out here: vision, navigation grids and worker routing
+        # read them millions of times a match.
+        self.info: BuildingInfo = RACES[self.race].buildings[self.type]
+        size = self.size = self.info.size
+        self.max_hp: int = self.info.hp
+        self._build_time: float = self.info.build_time
+        self.pos: Pos = (self.x, self.y)
+        self.center: Point = (self.x + size / 2, self.y + size / 2)
+        self.rect: tuple[int, int, int, int] = (self.x, self.y, size, size)
+        self._tiles: tuple[Pos, ...] = tuple((self.x + dx, self.y + dy) for dy in range(size) for dx in range(size))
 
     @property
     def done(self) -> bool:
-        return self.progress >= self.info.build_time
+        return self.progress >= self._build_time
 
-    @property
-    def pos(self) -> Pos:
-        return (self.x, self.y)
-
-    @property
-    def center(self) -> Point:
-        return (self.x + self.size / 2, self.y + self.size / 2)
-
-    @property
-    def rect(self) -> tuple[int, int, int, int]:
-        return (self.x, self.y, self.size, self.size)
-
-    def tiles(self) -> Iterator[Pos]:
-        for dy in range(self.size):
-            for dx in range(self.size):
-                yield (self.x + dx, self.y + dy)
+    def tiles(self) -> tuple[Pos, ...]:
+        return self._tiles
 
     def contains(self, point: Point) -> bool:
         return self.x <= point[0] < self.x + self.size and self.y <= point[1] < self.y + self.size
@@ -2262,13 +2242,11 @@ class World:
             p.surrendered = saved.get("surrendered", False)
             p.stats.update(saved.get("stats", {}))
         for saved in data["buildings"]:
-            b = _building_from_dict(saved)
-            b.race = world.race_of(b.player)
+            b = _building_from_dict(saved, world.race_of(saved["player"]))
             world.buildings[b.id] = b
             world._set_blocked(b, True)
         for saved in data["units"]:
-            u = _unit_from_dict(saved)
-            u.race = world.race_of(u.player)
+            u = _unit_from_dict(saved, world.race_of(saved["player"]))
             world.units[u.id] = u
         world.explored = [bytearray(bytes.fromhex(e)) for e in data["explored"]]
         if "worker_knowledge" in data:
@@ -2327,8 +2305,8 @@ def _unit_to_dict(u: Unit) -> dict[str, Any]:
     }
 
 
-def _unit_from_dict(d: dict[str, Any]) -> Unit:
-    u = Unit(d["id"], UnitType(d["type"]), d["player"], d["x"], d["y"], d["hp"], facing=d["facing"], cooldown=d["cooldown"],
+def _unit_from_dict(d: dict[str, Any], race: Race) -> Unit:
+    u = Unit(d["id"], UnitType(d["type"]), d["player"], d["x"], d["y"], d["hp"], race=race, facing=d["facing"], cooldown=d["cooldown"],
              carrying=Resource(d["carrying"]) if d["carrying"] else None, carry=d["carry"], timer=d["timer"],
              inside=d["inside"], constructing=d["constructing"], home=tuple(d["home"]) if d["home"] else None, state=d["state"],
              charge=d["charge"], auto_work=d.get("auto_work", True))
@@ -2352,8 +2330,8 @@ def _building_to_dict(b: Building) -> dict[str, Any]:
     }
 
 
-def _building_from_dict(d: dict[str, Any]) -> Building:
-    return Building(d["id"], BuildingType(d["type"]), d["player"], d["x"], d["y"], d["hp"], progress=d["progress"],
+def _building_from_dict(d: dict[str, Any], race: Race) -> Building:
+    return Building(d["id"], BuildingType(d["type"]), d["player"], d["x"], d["y"], d["hp"], race=race, progress=d["progress"],
                     queue=[UnitType(t) for t in d["queue"]], train_progress=d["train_progress"],
                     rally=tuple(d["rally"]) if d["rally"] else None, gold=d["gold"], builder=d["builder"], cooldown=d["cooldown"],
                     research=Upgrade(d["research"]) if d["research"] else None, research_progress=d["research_progress"])
