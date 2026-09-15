@@ -70,7 +70,7 @@ class ProProfile:
     min_army: int = 10                # never walk out with less than this, whatever the comparison says
     tower_count: int = 2
     early_towers: int = 0             # towers put up before anything optional, to survive a rush
-    retreat_wounded: bool = False      # pull a soldier out at this much health and let it heal…
+    retreat_wounded: bool = True       # pull a soldier out at this much health and let it heal…
     retreat_hp: float = 0.25
     rejoin_hp: float = 0.7             # …and send it back once it is this whole again
     raid: bool = False                 # riders sent at the enemy's peasants
@@ -99,10 +99,9 @@ PRO = ProProfile("pro")
 #: attributes the difference rather than guessing at it.
 _TRIALS = (
     replace(PRO, name="pro-noscout", scout=False),
-    replace(PRO, name="pro-heal", retreat_wounded=True),
+    replace(PRO, name="pro-noheal", retreat_wounded=False),
     replace(PRO, name="pro-raid", raid=True),
     replace(PRO, name="pro-group", reinforce_group=4),
-    replace(PRO, name="pro-towers", early_towers=2),
     replace(PRO, name="pro-eager", attack_ratio=1.15),
     replace(PRO, name="pro-patient", attack_ratio=2.2),
     replace(PRO, name="pro-siege", siege_share=0.2),
