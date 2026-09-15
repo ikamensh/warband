@@ -104,8 +104,11 @@ FIXES: dict[tuple[UnitType, Resource | None], str] = {
 }
 RACE_FIXES: dict[tuple[Race, UnitType], str] = {
     (Race.ORC, UnitType.KNIGHT): "the ogre stands on its own two feet with no mount; both heads look towards the facing; the club is gripped in both hands",
+    (Race.ORC, UnitType.CATAPULT): "exactly one stone, inside the sling basket at the end of the arm; the small skull on the frame's front is bone with eye sockets, "
+                                   "never a second stone; the basket is empty after the throw",
     (Race.ELF, UnitType.CATAPULT): "the bolt lies in the groove of the ballista and is gone after the shot; the wheels have spokes",
-    (Race.DWARF, UnitType.CATAPULT): "the mortar barrel points up and forward on its carriage and recoils in the strike; smoke at the muzzle in the strike and follow-through",
+    (Race.DWARF, UnitType.CATAPULT): "exactly one barrel (one muzzle, one bore), a fat iron mortar tipped back in a low wooden bed with trunnion cheeks; "
+                                     "no second tube, no tall frame; the bed carries a rack of shot; the barrel recoils in the strike with smoke at the muzzle",
 }
 #: What every painted cell must contain, for the judge to count.
 INVENTORY: dict[UnitType, str] = {
@@ -271,7 +274,7 @@ def main() -> None:
     p = sub.add_parser("preview"); p.add_argument("dir", type=Path); p.add_argument("out", type=Path); p.set_defaults(run=cmd_preview)
     p = sub.add_parser("check"); p.add_argument("dir", type=Path); p.add_argument("--fix", action="store_true", help="re-render questioned sheets with the complaints in the prompt")
     p.add_argument("--patch", action="store_true", help="re-render only the rows with questioned cells and splice in the clean ones")
-    p.add_argument("--rounds", type=int, default=3); p.add_argument("--max-bad", type=int, default=12, help="more questioned cells than this means the sheet needs a look, not a retry")
+    p.add_argument("--rounds", type=int, default=3); p.add_argument("--max-bad", type=int, default=24, help="more questioned cells than this means the stand-in needs a look, not a re-roll (--patch ignores it)")
     p.add_argument("--provider", default="codex"); p.add_argument("--tolerate", type=int, default=2); p.add_argument("--jobs", type=int, default=6)
     p.add_argument("--sheets", type=Path, default=None, help="judge sheets in this folder instead of the installed ones")
     p.set_defaults(run=cmd_check)
@@ -301,7 +304,7 @@ def check_one(args: argparse.Namespace, race: Race, unit: UnitType, carrying: Re
         return []
     sheet, painted = restyle.load_frames(sheets / name)
     _, originals = build_sheet(race, unit, carrying)
-    names = [FRAME_NAMES[f] for f in unit_frames(unit, carrying)]
+    names = [FRAME_NAMES[f] + (f", carrying {carrying.value} (no weapon out)" if carrying else "") for f in unit_frames(unit, carrying)]
     (args.dir / name).mkdir(parents=True, exist_ok=True)
     chunks = [(list(range(r, min(r + 2, sheet.rows))), list(range(c, min(c + 4, sheet.cols))))
               for r in range(0, sheet.rows, 2) for c in range(0, sheet.cols, 4)]
@@ -336,7 +339,7 @@ def cmd_check(args: argparse.Namespace) -> None:
         best = len(questioned(verdicts)) if verdicts else None
         if best is None or best == 0 or not (args.fix or args.patch):
             continue
-        if best > args.max_bad:
+        if best > args.max_bad and not args.patch:
             print(f"   {best} questioned cells is more than --max-bad {args.max_bad}: not re-rendering, look at the review images")
             continue
         sheet = restyle.Sheet.load(args.dir / name)

@@ -1677,8 +1677,9 @@ def _siege(player: int, frame: str, race: Race) -> Mesh:
     mesh = _shadow(0.51, 0.05, 0.03)
     for x in (-0.27, 0.27):
         mesh += r3.box((x, 0, 0.27), (0.11, 0.96, 0.13), wood_dark)
-        mesh += _unit_rod((x, -0.38, 0.3), (x, -0.04, 0.83), 0.055, wood)
-        mesh += _unit_rod((x, 0.37, 0.3), (x, -0.04, 0.83), 0.055, wood)
+        if race is not Race.DWARF:  # the throwing engines stand on an A-frame; the mortar sits in a low bed
+            mesh += _unit_rod((x, -0.38, 0.3), (x, -0.04, 0.83), 0.055, wood)
+            mesh += _unit_rod((x, 0.37, 0.3), (x, -0.04, 0.83), 0.055, wood)
     for y in (-0.32, 0.32):
         mesh += _unit_rod((-0.5, y, 0.23), (0.5, y, 0.23), 0.055, look.metal)
     wheel_turn = {"walk1": 0, "walk2": 22, "walk3": 45, "walk4": 67}.get(frame, 0)
@@ -1692,18 +1693,23 @@ def _siege(player: int, frame: str, race: Race) -> Mesh:
                 mesh += _unit_rod((outer, y, 0.23),
                                   (outer, y + 0.18 * math.cos(angle), 0.23 + 0.18 * math.sin(angle)), 0.019, THATCH)
             mesh += _unit_rod((x, y, 0.23), (outer * 1.045, y, 0.23), 0.055, look.metal)
-    mesh += _unit_rod((-0.34, -0.04, 0.8), (0.34, -0.04, 0.8), 0.08, look.metal)
+    if race is not Race.DWARF:
+        mesh += _unit_rod((-0.34, -0.04, 0.8), (0.34, -0.04, 0.8), 0.08, look.metal)  # the axle the arm swings on
     if race is Race.DWARF:
-        # A mortar: a short iron barrel on the chassis, tipped back to lob.
-        pivot = (0, -0.04, 0.6)
-        barrel = _unit_rod((0, -0.04, 0.45), (0, -0.04, 1.05), 0.17, look.metal_dark, sides=8)
-        barrel += _unit_rod((0, -0.04, 1.0), (0, -0.04, 1.08), 0.19, look.metal, sides=8)
-        barrel += _unit_rod((0, -0.04, 0.5), (0, -0.04, 0.58), 0.19, look.metal, sides=8)
-        barrel += r3.cylinder((0, -0.04, 1.06), 0.11, 0.03, INK, sides=8)
-        mesh += _unit_pitch(barrel, -20 if _striking(frame) else 42, pivot)
-        for x in (-0.2, 0.2):
-            mesh += r3.sphere((x, 0.36, 0.45), 0.09, BOULDER, rings=3, sides=6)  # shot
-        mesh += r3.box((0, 0.29, 0.35), (0.58, 0.13, 0.15), wood)
+        # A mortar: one fat iron barrel in a low wooden bed, tipped back to lob.  No tall frame
+        # and no cross-axle: seen end-on from the side those read as a second muzzle.
+        mesh += r3.box((0, -0.04, 0.4), (0.6, 0.5, 0.2), wood)  # the bed
+        for x in (-0.31, 0.31):
+            mesh += r3.box((x, -0.04, 0.55), (0.08, 0.3, 0.16), wood_dark)  # the cheeks holding the trunnions
+        pivot = (0, -0.04, 0.58)
+        barrel = _unit_rod((0, -0.04, 0.38), (0, -0.04, 0.98), 0.21, look.metal_dark, sides=8)
+        barrel += _unit_rod((0, -0.04, 0.9), (0, -0.04, 1.0), 0.24, look.metal, sides=8)  # the muzzle band
+        barrel += _unit_rod((0, -0.04, 0.42), (0, -0.04, 0.52), 0.235, look.metal, sides=8)  # the breech band
+        barrel += r3.cylinder((0, -0.04, 0.985), 0.15, 0.03, INK, sides=8)  # the bore
+        mesh += _unit_pitch(barrel, -25 if _striking(frame) else 50, pivot)
+        mesh += r3.box((0, 0.36, 0.34), (0.5, 0.14, 0.12), wood)  # the shot rack
+        for x in (-0.15, 0.15):
+            mesh += r3.sphere((x, 0.36, 0.44), 0.075, BOULDER, rings=3, sides=6)
     elif race is Race.ELF:
         # A ballista: a great horizontal bow on the front and a bolt in the groove.
         pivot = (0, -0.04, 0.65)
@@ -1726,7 +1732,9 @@ def _siege(player: int, frame: str, race: Race) -> Mesh:
         if race is Race.ORC:
             for x in (-0.3, 0.3):
                 mesh += r3.cone((x, -0.4, 0.83), 0.05, 0.2, BONE, sides=4)
-            mesh += r3.sphere((0, 0.5, 0.42), 0.09, BONE, rings=3, sides=6)  # a skull on the frame
+            mesh += r3.sphere((0, 0.5, 0.42), 0.055, BONE, rings=3, sides=6)  # a small skull on the frame
+            for x in (-0.02, 0.02):
+                mesh += r3.box((x, 0.55, 0.43), (0.018, 0.02, 0.018), INK)  # its eye sockets
         mesh += r3.box((0, 0.29, 0.35), (0.58, 0.13, 0.15), wood)
     mesh += _unit_panel([(-0.2, 0.365, 0.4), (0.2, 0.365, 0.4),
                          (0.2, 0.365, 0.22), (0, 0.365, 0.17), (-0.2, 0.365, 0.22)], team)
