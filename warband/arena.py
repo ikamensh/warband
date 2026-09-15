@@ -79,6 +79,11 @@ def make_agent(name: str, player: int) -> Agent:
 for _difficulty in Difficulty:
     register(_difficulty.value, lambda player, d=_difficulty: Brain(player, d))
 
+from warband.pro_ai import PRO_PROFILES, ProBrain  # noqa: E402 - after register() exists
+
+for _name, _profile in PRO_PROFILES.items():
+    register(_name, lambda player, p=_profile: ProBrain(player, p))
+
 
 # -- Balance variants --------------------------------------------------------------
 
