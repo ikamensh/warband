@@ -83,7 +83,7 @@ def print_table(results: list[MatchResult], anchor: str, agents: list[str]) -> N
     width = max(len(r.name) for r in ratings)
     print(f"\n  {'agent':<{width}}  {'elo':>7}  {'90% interval':>16}  {'games':>6}  {'score':>6}")
     for r in ratings:
-        print(f"  {r.name:<{width}}  {r.elo:7.0f}  {r.low:7.0f} .. {r.high:<6.0f}  {r.games:6d}  {r.wins / r.games * 100 if r.games else 0:5.1f}%")
+        print(f"  {r.name:<{width}}  {r.elo:7.0f}  {r.low:7.0f} .. {r.high:<6.0f}  {r.games:6d}  {r.score * 100:5.1f}%")
     print(f"\n  head to head (row's score against column, {len(results)} matches):")
     print(f"  {'':<{width}}  " + "  ".join(f"{name[:8]:>8}" for name in agents))
     for a in agents:

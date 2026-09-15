@@ -176,3 +176,12 @@ def test_a_tie_counts_a_half_to_each_side():
 def test_mirror_pairings_are_not_counted():
     """An agent beating itself says nothing about its strength."""
     assert arena.pairwise([result(("a", "a"), (1, 2))]) == {}
+
+
+def test_a_four_player_game_scores_out_of_its_three_pairings():
+    """Regression: a placement in a four player game is three head-to-head results,
+    so a winner scored 300% of its matches until the share counted pairings."""
+    ratings = {r.name: r for r in rate([result(("a", "b", "c", "d"), (1, 2, 3, 4))], bootstrap=0)}
+    assert ratings["a"].pairings == 3
+    assert ratings["a"].score == 1.0
+    assert ratings["d"].score == 0.0

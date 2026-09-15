@@ -75,7 +75,7 @@ class ProProfile:
     retreat_wounded: bool = True       # pull a soldier out at this much health and let it heal…
     retreat_hp: float = 0.25
     rejoin_hp: float = 0.7             # …and send it back once it is this whole again
-    raid: bool = False                 # riders sent at the enemy's peasants
+    raid: bool = True                  # riders sent at the enemy's peasants
     raiders: int = 2
     reinforce_group: int = 1           # soldiers that must gather before walking to a fight together
     ignore_raid_ratio: float = 0.4     # a raid smaller than this share of the army does not stop a push
@@ -102,7 +102,7 @@ PRO = ProProfile("pro")
 _TRIALS = (
     replace(PRO, name="pro-noscout", scout=False),
     replace(PRO, name="pro-noheal", retreat_wounded=False),
-    replace(PRO, name="pro-raid", raid=True),
+    replace(PRO, name="pro-noraid", raid=False),
     replace(PRO, name="pro-group", reinforce_group=4),
     replace(PRO, name="pro-eager", attack_ratio=1.15),
     replace(PRO, name="pro-patient", attack_ratio=2.2),

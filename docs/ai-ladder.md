@@ -63,16 +63,44 @@ say "it never lost".
 
 ## Where the agents stand
 
-1v1, 25 seeds, every pairing from both corners, 300 games, `hard` anchored at 1000:
+**1v1** — 30 seeds, every pairing from both corners, 360 games, `hard` anchored at 1000:
 
 | agent | Elo | 90% interval | score |
 |-------|-----|--------------|-------|
-| `pro` | 1391 | 1305 .. 1512 | 94.7% |
-| `hard` | 1000 | — | 50.7% |
-| `normal` | 952 | 888 .. 1018 | 44.0% |
-| `easy` | 691 | 598 .. 776 | 10.7% |
+| `pro` | 1445 | 1361 .. 1582 | 95.6% |
+| `hard` | 1000 | — | 47.2% |
+| `normal` | 992 | 932 .. 1051 | 46.1% |
+| `easy` | 719 | 643 .. 798 | 11.1% |
 
-`pro` takes 88% against `hard`, 96% against `normal` and 100% against `easy`.
+`pro` takes 88.3% against `hard`, 98.3% against `normal` and 100% against `easy`.
+
+**Free-for-all** — four players, 20 seeds, each agent rotated through every
+corner, 80 games:
+
+| agent | Elo | score |
+|-------|-----|-------|
+| `pro` | 1217 | 81.7% |
+| `hard` | 1000 | 46.7% |
+| `normal` | 983 | 43.7% |
+| `easy` | 889 | 27.9% |
+
+The spread is narrower than in 1v1, which is what a free-for-all does: three
+opponents can wear a leader down between them, and a placement is a softer
+result than a win. `pro` still takes 73.8% of its head-to-heads against
+`hard` there.
+
+**Under jittered balance** — five `shuffle-N` rulebooks, every unit and
+building's hit points, damage, cost and build time multiplied by a factor
+drawn from the seed, 120 games:
+
+| agent | Elo | score against `hard` |
+|-------|-----|----------------------|
+| `pro` | 1375 | 90.0% |
+| `hard` | 1000 | 10.0% |
+
+That is the number worth dwelling on: 90% under rulebooks it has never seen,
+against 88.3% under the one it was built on. Whatever `pro` has learnt, it is
+not this particular table of numbers.
 
 Two things are worth reading off that table. The three shipped difficulties
 span only about 300 Elo, and `hard` beats `normal` just 58% of the time — so

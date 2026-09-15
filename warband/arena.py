@@ -360,10 +360,16 @@ def play_spec_tuple(packed: tuple) -> MatchResult:
 class Rating:
     name: str
     elo: float
-    low: float   # 5th percentile of the bootstrap
-    high: float  # 95th
-    games: int
-    wins: float  # counting a tie as a half
+    low: float      # 5th percentile of the bootstrap
+    high: float     # 95th
+    games: int      # matches played
+    pairings: int   # head-to-head results in them; a four player game is three
+    wins: float     # counting a tie as a half
+
+    @property
+    def score(self) -> float:
+        """Share of the head-to-head results taken, 0 to 1."""
+        return self.wins / self.pairings if self.pairings else 0.0
 
 
 def pairwise(results: Iterable[MatchResult]) -> dict[tuple[str, str], float]:
@@ -448,10 +454,13 @@ def rate(results: Sequence[MatchResult], *, anchor: str | None = None, anchor_el
         games = sum(1 for r in results for i, a in enumerate(r.spec.agents) if a == name
                     and any(b != name for b in r.spec.agents))
         wins = sum(table.get((name, other), 0.0) for other in names if other != name)
+        pairings = round(sum(table.get((name, other), 0.0) + table.get((other, name), 0.0)
+                             for other in names if other != name))
         spread = sorted(samples[name])
         low = spread[int(0.05 * len(spread))] if spread else point[name]
         high = spread[int(0.95 * (len(spread) - 1))] if spread else point[name]
-        out.append(Rating(name=name, elo=point[name], low=low, high=high, games=games, wins=wins))
+        out.append(Rating(name=name, elo=point[name], low=low, high=high, games=games,
+                          pairings=pairings, wins=wins))
     return sorted(out, key=lambda r: -r.elo)
 
 
