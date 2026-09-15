@@ -2,8 +2,9 @@
 
     uv run python tools/perf.py [--frames 720] [--profile late.prof]
 
-Two armies of six unit types meet between twelve farms on a large map,
-every unit image already rendered (as after the opening's warm-up).  Each
+Two armies of six unit types meet between twelve farms on a large map
+(``tools/step_bench.py`` times the same battle without a window), every
+unit image already rendered (as after the opening's warm-up).  Each
 frame is timed with wall-clock wrappers around the world step, the view
 sync, the scene and UI draws and the batch draw/flip; cProfile distorts
 tight Python loops, so it is optional and only covers the last 120 frames.
@@ -26,32 +27,20 @@ from saga2d import Game, fonts  # noqa: E402
 from saga2d.testing import FrameTimer  # noqa: E402
 from warband import path as pathing  # noqa: E402
 from warband import textures  # noqa: E402
-from warband.model import tile_center  # noqa: E402
-from warband.rules import BuildingType, UnitType  # noqa: E402
-from warband.scene import new_game  # noqa: E402
+from warband.rules import BuildingType  # noqa: E402
+from warband.scene import GameScene  # noqa: E402
 from warband.style import build_theme  # noqa: E402
+from tools.step_bench import battle_world  # noqa: E402
 
 
 def battle(game: Game):
-    scene = new_game(seed=3, width=64, height=48)
+    scene = GameScene(battle_world(), 3)
     game.push(scene)
     w = scene.world
     hall = w.player_buildings(0, BuildingType.TOWN_HALL)[0]
     hx, hy = hall.pos
-    w.reveal_all(0)
-    types = [UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT, UnitType.SCOUT, UnitType.CATAPULT, UnitType.CLERIC]
-    for i in range(75):
-        w.spawn_unit(0, types[i % 6], tile_center((hx + 4 + i % 15, hy + 4 + i // 15)))
-        w.spawn_unit(1, types[(i + 1) % 6], tile_center((hx + 22 + i % 15, hy + 4 + i // 15)))
-    for i in range(12):
-        w.place_building(0 if i % 2 == 0 else 1, BuildingType.FARM, (hx + 4 + (i % 6) * 3, hy + 11 + (i // 6) * 3))
-    w.update_vision()
     scene.camera.center_on((hx + 20) * 32, (hy + 7) * 32)
-    mine = [u.id for u in w.player_units(0) if not u.is_worker]
-    theirs = [u.id for u in w.player_units(1) if not u.is_worker]
-    w.attack_move(mine, tile_center((hx + 25, hy + 7)))
-    w.attack_move(theirs, tile_center((hx + 8, hy + 7)))
-    scene.select(mine[:12])
+    scene.select([u.id for u in w.player_units(0) if not u.is_worker][:12])
     for _ in textures.warm_units(game, [p.id for p in w.players]):
         pass
     return scene
