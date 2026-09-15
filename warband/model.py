@@ -346,7 +346,7 @@ def or_into(target: bytearray, source: bytes | bytearray) -> None:
 class World:
     def __init__(self, width: int, height: int, terrain: list[list[Terrain]], player_count: int, *,
                  human: int | None = 0, rng: random.Random | None = None, theme: MapTheme = MapTheme.SUMMER,
-                 races: list[Race] | tuple[Race, ...] | None = None) -> None:
+                 races: list[Race] | tuple[Race, ...] | None = None, scripted: bool = False) -> None:
         if len(terrain) != height or any(len(row) != width for row in terrain):
             raise ValueError("terrain must be height rows of width tiles")
         if races is not None and len(races) != player_count:
@@ -355,6 +355,7 @@ class World:
         self.height = height
         self.terrain = terrain
         self.theme = theme
+        self.scripted = scripted  # a mission decides the outcome: elimination still happens, but never declares a winner
         self.players = [Player(i, PLAYERS[i].name, PLAYERS[i].color, human=(i == human), race=races[i] if races is not None else Race.HUMAN)
                         for i in range(player_count)]
         self.regrowth: list[tuple[Pos, float]] = []  # (felled tree tile, simulation time it grows back) — the elven art
@@ -967,6 +968,7 @@ class World:
         unit = Unit(self._new_id(), unit_type, player, point[0], point[1], RACES[race].units[unit_type].hp, race=race)
         self.units[unit.id] = unit
         self._bucket(unit)
+        self.players[player].alive = True  # a side cleared by a mission comes back with its first unit
         return unit
 
     def place_building(self, player: int | None, building_type: BuildingType, pos: Pos, *, done: bool = True) -> Building:
@@ -2174,6 +2176,18 @@ class World:
         return min(candidates, key=lambda pair: (pair[1] is not UnitType.PEASANT,
                    UNITS[pair[1]].cost.gold + UNITS[pair[1]].cost.lumber, pair[0].id)) if candidates else None
 
+    def clear_player(self, player: int) -> None:
+        """Take everything *player* owns off the map without a fight and mark them out: a mission's
+        setup, not a defeat, so no event, no statistic and no elimination is recorded.  A later
+        :meth:`spawn_unit` for the player puts them back in play."""
+        for unit in self.player_units(player):
+            del self.units[unit.id]
+        for building in self.player_buildings(player):
+            del self.buildings[building.id]
+            self._set_blocked(building, False)
+        self.players[player].alive = False
+        self._index_units()
+
     def can_resign(self, player: int) -> str | None:
         """Why *player* cannot concede, or None when resigning is allowed."""
         if self.winner is not None:
@@ -2222,7 +2236,7 @@ class World:
                 self.events.append(Event("surrendered", (0.0, 0.0), player=player.id,
                                          text=f"{player.name} surrenders: no units and no way to recruit"))
         alive = [p for p in self.players if p.alive]
-        if self.winner is None and len(alive) == 1 and len(self.players) > 1:
+        if self.winner is None and not self.scripted and len(alive) == 1 and len(self.players) > 1:
             self.winner = alive[0].id
             self.events.append(Event("victory", (0.0, 0.0), player=self.winner, text=f"{alive[0].name} wins"))
 
@@ -2242,7 +2256,7 @@ class World:
             "explored": [bytes(e).hex() for e in self.explored],
             "worker_knowledge": [knowledge.to_dict() for knowledge in self.worker_knowledge],
             "settlement": self.settlement.to_dict(),
-            "time": self.time, "tick": self.tick, "next_id": self._next_id, "winner": self.winner,
+            "time": self.time, "tick": self.tick, "next_id": self._next_id, "winner": self.winner, "scripted": self.scripted,
             "rng": self.rng.getstate(),
         }
 
@@ -2252,7 +2266,7 @@ class World:
         terrain = [[letters[c] for c in row] for row in data["terrain"]]
         human = next((p["id"] for p in data["players"] if p["human"]), None)
         world = cls(data["width"], data["height"], terrain, len(data["players"]), human=human, theme=MapTheme(data["theme"]),
-                    races=[Race(p.get("race", Race.HUMAN.value)) for p in data["players"]])
+                    races=[Race(p.get("race", Race.HUMAN.value)) for p in data["players"]], scripted=data.get("scripted", False))
         world.regrowth = [((tile[0], tile[1]), when) for tile, when in data.get("regrowth", [])]
         for p, saved in zip(world.players, data["players"]):
             p.human = saved["human"]
