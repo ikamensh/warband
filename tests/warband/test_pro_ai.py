@@ -1,0 +1,138 @@
+"""What the stronger brain must keep doing, including two things it once got wrong.
+
+Both regressions were found by watching matches rather than by reasoning:
+an army that re-decided every pass oscillated in and out of the enemy base
+without ever fighting, and a remembered enemy count that was a running total
+reported roughly ten times the army that was there.
+"""
+
+from __future__ import annotations
+
+import random
+
+from warband import mapgen
+from warband.pro_ai import PRO, ProBrain, strength
+from warband.rules import SIM_DT, BuildingType, UnitType
+
+
+def _world_with_army(seed: int = 5):
+    """A generated map, plus a brain for player 0 that has already had a look round."""
+    world = mapgen.generate(seed=seed, players=2, human=None)
+    return world, ProBrain(0, PRO)
+
+
+def _spawn(world, player, unit_type, near, count):
+    hall = world.player_buildings(player, BuildingType.TOWN_HALL)[0]
+    return [world.spawn_unit(player, unit_type, (hall.center[0] + near + i * 0.6, hall.center[1] + 1))
+            for i in range(count)]
+
+
+# -- Force comparison -----------------------------------------------------------
+
+def test_strength_grows_with_the_size_of_the_army():
+    world, _ = _world_with_army()
+    few = _spawn(world, 0, UnitType.FOOTMAN, 2, 3)
+    many = few + _spawn(world, 0, UnitType.FOOTMAN, 6, 3)
+    assert strength(world, many) > strength(world, few)
+
+
+def test_a_wounded_army_is_worth_less_than_a_whole_one():
+    world, _ = _world_with_army()
+    army = _spawn(world, 0, UnitType.FOOTMAN, 2, 4)
+    whole = strength(world, army)
+    for unit in army:
+        unit.hp = max(1, unit.hp // 3)
+    assert strength(world, army) < whole
+
+
+def test_knights_are_worth_more_than_the_same_number_of_peasants():
+    world, _ = _world_with_army()
+    assert strength(world, _spawn(world, 0, UnitType.KNIGHT, 2, 4)) > \
+           strength(world, _spawn(world, 0, UnitType.PEASANT, 8, 4))
+
+
+# -- Remembering the enemy ------------------------------------------------------
+
+def test_the_enemy_memory_counts_soldiers_rather_than_sightings():
+    """Regression: a decaying running total reported about ten armies instead of one.
+
+    The brain compares the remembered count against its own army, so the number
+    has to mean "how many of them there are", however many times it has looked.
+    """
+    world, brain = _world_with_army()
+    world.reveal_all(0)
+    _spawn(world, 1, UnitType.ARCHER, 2, 3)
+    for _ in range(40):
+        brain._observe(world)
+    assert brain._enemy_seen[UnitType.ARCHER] == 3
+
+
+def test_a_sighting_fades_once_the_enemy_is_out_of_sight():
+    world, brain = _world_with_army()
+    world.reveal_all(0)
+    archers = _spawn(world, 1, UnitType.ARCHER, 2, 3)
+    for _ in range(10):
+        brain._observe(world)
+    seen = brain._enemy_seen[UnitType.ARCHER]
+    for unit in archers:
+        world.units.pop(unit.id)
+    for _ in range(200):
+        world.time += PRO.think_every
+        brain._observe(world)
+    assert brain._enemy_seen[UnitType.ARCHER] < seen
+
+
+def test_an_enemy_nobody_has_looked_at_is_not_assumed_to_be_harmless():
+    """Regression: an unseen enemy read as strength zero, so ten soldiers walked in blind."""
+    world, brain = _world_with_army()
+    army = _spawn(world, 0, UnitType.FOOTMAN, 2, 10)
+    world.time = 600.0  # long past any sighting
+    enemy_hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0].center
+    assert brain._defenders_near(world, enemy_hall) >= strength(world, army) * PRO.symmetry_prior
+
+
+# -- Committing to a push --------------------------------------------------------
+
+def test_a_push_is_not_called_off_while_the_army_is_still_whole():
+    """Regression: re-deciding every pass walked the army home as soon as a tower came into view."""
+    world, brain = _world_with_army()
+    army = _spawn(world, 0, UnitType.FOOTMAN, 2, 12)
+    brain.attacking = True
+    brain.commit_strength = strength(world, army)
+    brain.target = world.player_buildings(1, BuildingType.TOWN_HALL)[0].center
+    # A tower right next to the army: under the old rule this alone turned it round.
+    world.place_building(1, BuildingType.TOWER, (int(army[0].x) + 3, int(army[0].y) + 3))
+    brain._military(world)
+    assert brain.attacking
+
+
+def test_a_push_that_has_lost_most_of_itself_breaks_off():
+    world, brain = _world_with_army()
+    army = _spawn(world, 0, UnitType.FOOTMAN, 2, 12)
+    brain.attacking = True
+    brain.commit_strength = strength(world, army)
+    brain.target = world.player_buildings(1, BuildingType.TOWN_HALL)[0].center
+    for unit in army[3:]:
+        world.units.pop(unit.id)
+    brain._military(world)
+    assert not brain.attacking
+    assert brain.regroup_until > world.time, "a beaten army rebuilds before trying again"
+
+
+# -- Playing a whole game --------------------------------------------------------
+
+def test_the_brain_plays_a_match_without_raising_and_builds_an_army():
+    """The cheapest cover there is: the whole thing actually runs."""
+    world = mapgen.generate(seed=12, players=2, human=None)
+    brains = [ProBrain(0, PRO), ProBrain(1, PRO)]
+    rngs = [random.Random(i) for i in range(2)]
+    for _ in range(int(240 / SIM_DT)):
+        if world.winner is not None:
+            break
+        for brain, rng in zip(brains, rngs):
+            brain.think(world, rng)
+        world.step()
+        world.take_events()
+    for player in (0, 1):
+        assert any(not u.is_worker for u in world.player_units(player)), f"player {player} trained nothing"
+        assert len(world.player_buildings(player, done=True)) > 2

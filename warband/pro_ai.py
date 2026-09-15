@@ -70,6 +70,12 @@ class ProProfile:
     min_army: int = 10                # never walk out with less than this, whatever the comparison says
     tower_count: int = 2
     focus_fire: bool = True
+    retreat_wounded: bool = False      # pull a soldier out at this much health and let it heal…
+    retreat_hp: float = 0.25
+    rejoin_hp: float = 0.7             # …and send it back once it is this whole again
+    raid: bool = False                 # riders sent at the enemy's peasants
+    raiders: int = 2
+    reinforce_group: int = 1           # soldiers that must gather before walking to a fight together
     defend_with_workers: bool = True
     worker_defence_ratio: float = 2.0  # pull peasants when the threat outweighs the army this badly
     scout: bool = True
@@ -77,13 +83,28 @@ class ProProfile:
     stale_seconds: float = 25.0        # a sighting older than this is not worth attacking on
     symmetry_prior: float = 1.0        # an unlooked-at opponent is assumed to be doing as well as we are
     expand: bool = True
+    expand_early: bool = False        # a second mine before production has saturated
     reserve: int = 0                   # gold held back from unit production for buildings and research
     siege: bool = True
     clerics: bool = True
 
 
 PRO = ProProfile("pro")
-PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO}
+
+#: Variants used to find out which knob is actually carrying the strength.
+#: Each differs from :data:`PRO` in one thing, so a ladder over all of them
+#: attributes the difference rather than guessing at it.
+_TRIALS = (
+    replace(PRO, name="pro-eco", workers_per_mine=13, max_workers=32),
+    replace(PRO, name="pro-prod", barracks_per_hall=4, surplus_gold=800, surplus_lumber=0),
+    replace(PRO, name="pro-expand", expand_early=True),
+    replace(PRO, name="pro-nofocus", focus_fire=False),
+    replace(PRO, name="pro-noscout", scout=False),
+    replace(PRO, name="pro-heal", retreat_wounded=True),
+    replace(PRO, name="pro-raid", raid=True),
+    replace(PRO, name="pro-group", reinforce_group=4),
+)
+PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}}
 
 
 # -- Force comparison ---------------------------------------------------------------
@@ -102,10 +123,13 @@ def _effective_hp(world: World, unit: Unit) -> float:
 
 
 def strength(world: World, units: list[Unit]) -> float:
-    """How much fight a group has in it: the square law, rooted so ratios read naturally.
+    """How much fight a group has in it: ``sqrt(total dps × total effective hit points)``.
 
-    Damage and durability multiply rather than add — twice the army is four
-    times the force — which is exactly why feeding soldiers in piecemeal loses.
+    Squaring it gives Lanchester's square-law combat power, ``N² × dps × hp``
+    for a group of like units — twice the army is four times the force, which
+    is why feeding soldiers in piecemeal loses. Comparing two of these numbers
+    therefore ranks armies exactly as comparing the square law would, and the
+    root keeps the ratios the brain is tuned against readable.
     """
     damage = sum(_dps(world, u) for u in units)
     body = sum(_effective_hp(world, u) for u in units)
@@ -138,6 +162,8 @@ class ProBrain:
         self.commit_strength = 0.0            # what the army was worth when it set out
         self.regroup_until = 0.0              # no new push before this, so a beaten army rebuilds
         self.scouts: list[int] = []
+        self.raiders: list[int] = []
+        self._hurt: set[int] = set()  # soldiers pulled out to heal
         self.log: list[tuple[float, str]] = []
         self._focus: dict[int, int] = {}      # unit id → the target it was last pointed at
         self._enemy_seen: dict[UnitType, float] = {}  # decaying memory of what the enemy fields
@@ -294,12 +320,13 @@ class ProBrain:
         # Everything past here is optional, and optional buildings are what lose games:
         # each one is an army that was not trained. They are unlocked only once the
         # production already standing cannot keep up with the money coming in.
+        expansion = self._expansion_site(world) if profile.expand else None
+        if expansion is not None and profile.expand_early and count(BuildingType.TOWN_HALL) < profile.max_halls:
+            wishes.append((BuildingType.TOWN_HALL, expansion))
         if not self._producers_saturated(world):
             return wishes
-        if profile.expand:
-            expansion = self._expansion_site(world)
-            if expansion is not None and count(BuildingType.TOWN_HALL) < profile.max_halls:
-                wishes.append((BuildingType.TOWN_HALL, expansion))
+        if expansion is not None and not profile.expand_early and count(BuildingType.TOWN_HALL) < profile.max_halls:
+            wishes.append((BuildingType.TOWN_HALL, expansion))
         if count(BuildingType.BLACKSMITH) < 1:
             wishes.append((BuildingType.BLACKSMITH, anchor))
         barracks_target = profile.barracks_per_hall * max(1, len(halls))
@@ -497,7 +524,8 @@ class ProBrain:
     def _military(self, world: World) -> None:
         army = self._army(world)
         self._send_scout(world, army)
-        army = [u for u in army if u.id not in self.scouts]
+        busy = set(self.scouts) | set(self._raid(world, army))
+        army = [u for u in army if u.id not in busy]
         threats = self._threats(world)
         if threats:
             self._defend(world, army, threats)
@@ -525,10 +553,20 @@ class ProBrain:
                 return
             if self.target is None or not self._still_there(world, self.target):
                 self.target = min(targets, key=lambda t: dist(t, origin))
-            # Reinforcements walk to the same place, so the push grows instead of trickling.
-            idle = [u.id for u in army if not u.orders]
-            if idle:
-                world.attack_move(idle, self.target)
+            # Reinforcements walk to the same place, so the push grows instead of
+            # trickling. A soldier crossing the map alone arrives alone and dies
+            # alone, so the ones still at home wait until there are enough to travel
+            # together; the ones already at the front simply rejoin the fight.
+            idle = [u for u in army if not u.orders]
+            arrived = [u.id for u in idle if dist(u.pos, self.target) <= 12.0]
+            if arrived:
+                world.attack_move(arrived, self.target)
+            waiting = [u for u in idle if dist(u.pos, self.target) > 12.0]
+            if len(waiting) >= self.profile.reinforce_group:
+                world.attack_move([u.id for u in waiting], self.target)
+            elif waiting and hall is not None:
+                point = self._front_point(world, hall)
+                world.move([u.id for u in waiting if dist(u.pos, point) > 4.0], point)
             return
         if world.time < self.regroup_until or len(army) < self.profile.min_army:
             self._gather(world, army, hall)
@@ -656,6 +694,51 @@ class ProBrain:
 
     # -- Combat ----------------------------------------------------------------------
 
+    def _withdraw_if_hurt(self, world: World, unit: Unit) -> bool:
+        """Walk a nearly-dead soldier out of reach. A body that lives is damage next fight.
+
+        Returns whether the unit is out of the fight, so the caller stops
+        giving it targets.
+        """
+        profile = self.profile
+        if unit.id in self._hurt:
+            if unit.hp >= profile.rejoin_hp * unit.max_hp:
+                self._hurt.discard(unit.id)
+                return False
+            return True
+        if unit.hp >= profile.retreat_hp * unit.max_hp:
+            return False
+        if not any(e.info.damage and dist(e.pos, unit.pos) < world.range_of(e) + 2.0 for e in self._enemies(world)):
+            return False  # nothing is shooting at it; no reason to leave
+        hall = self._hall(world)
+        if hall is None:
+            return False
+        self._hurt.add(unit.id)
+        self._focus.pop(unit.id, None)
+        world.move([unit.id], hall.center)
+        return True
+
+    def _raid(self, world: World, army: list[Unit]) -> list[int]:
+        """Riders sent at the peasants. Economy damage costs the enemy the whole game,
+        not just the units lost, and the army never misses two scouts."""
+        if not self.profile.raid:
+            return []
+        self.raiders = [i for i in self.raiders if i in world.units]
+        spare = [u for u in army if u.type is UnitType.SCOUT and u.id not in self.raiders]
+        while len(self.raiders) < self.profile.raiders and spare:
+            self.raiders.append(spare.pop().id)
+        prey = [u.pos for u in world.units.values()
+                if u.player != self.player and u.is_worker and not u.hidden and u.hp > 0
+                and world.players[u.player].alive]
+        if not prey:
+            return list(self.raiders)
+        for raider_id in self.raiders:
+            rider = world.units[raider_id]
+            if rider.orders:
+                continue
+            world.attack_move([raider_id], min(prey, key=lambda p: dist(p, rider.pos)))
+        return list(self.raiders)
+
     def _threat_value(self, world: World, unit: Unit) -> float:
         """What killing this one is worth: what it does to us, against how hard it is to kill."""
         output = _dps(world, unit)
@@ -665,14 +748,17 @@ class ProBrain:
 
     def _combat(self, world: World) -> None:
         """Point melee at the enemy worth killing most, and keep it pointed there."""
-        if not self.profile.focus_fire:
-            return
         army = [u for u in world.player_units(self.player) if not u.is_worker and u.info.damage > 0]
         if not army:
             return
         enemies = self._enemies(world)
         if not enemies:
             self._focus.clear()
+            self._hurt.clear()
+            return
+        if self.profile.retreat_wounded:
+            army = [u for u in army if not self._withdraw_if_hurt(world, u)]
+        if not self.profile.focus_fire:
             return
         for unit in army:
             reach = world.range_of(unit) + 2.5
