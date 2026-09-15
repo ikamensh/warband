@@ -158,8 +158,8 @@ def build_sheet(race: Race, unit: UnitType, carrying: Resource | None) -> tuple[
     return sheet, images
 
 
-def prompt(sheet: restyle.Sheet, race: Race, unit: UnitType, carrying: Resource | None) -> str:
-    frames = unit_frames(unit, carrying)
+def prompt(sheet: restyle.Sheet, race: Race, unit: UnitType, carrying: Resource | None, frames: tuple[str, ...] | None = None) -> str:
+    frames = unit_frames(unit, carrying) if frames is None else frames
     rows = ", ".join(FRAME_NAMES[f] for f in frames)
     w, h = sheet.size
     return (f"Edit target: the attached sprite sheet of one unit from a 2D real-time strategy game (Warcraft 2 style, "
@@ -270,6 +270,7 @@ def main() -> None:
     p.add_argument("--tolerate", type=int, default=2, help="flagged cells allowed before a sheet is rejected"); p.set_defaults(run=cmd_cut)
     p = sub.add_parser("preview"); p.add_argument("dir", type=Path); p.add_argument("out", type=Path); p.set_defaults(run=cmd_preview)
     p = sub.add_parser("check"); p.add_argument("dir", type=Path); p.add_argument("--fix", action="store_true", help="re-render questioned sheets with the complaints in the prompt")
+    p.add_argument("--patch", action="store_true", help="re-render only the rows with questioned cells and splice in the clean ones")
     p.add_argument("--rounds", type=int, default=3); p.add_argument("--max-bad", type=int, default=12, help="more questioned cells than this means the sheet needs a look, not a retry")
     p.add_argument("--provider", default="codex"); p.add_argument("--tolerate", type=int, default=2); p.add_argument("--jobs", type=int, default=6)
     p.add_argument("--sheets", type=Path, default=None, help="judge sheets in this folder instead of the installed ones")
@@ -333,14 +334,14 @@ def cmd_check(args: argparse.Namespace) -> None:
         name = subject_name(race, unit, carrying)
         verdicts = check_one(args, race, unit, carrying, args.sheets or RESTYLED)
         best = len(questioned(verdicts)) if verdicts else None
-        if best is None or best == 0 or not args.fix:
+        if best is None or best == 0 or not (args.fix or args.patch):
             continue
         if best > args.max_bad:
             print(f"   {best} questioned cells is more than --max-bad {args.max_bad}: not re-rendering, look at the review images")
             continue
         sheet = restyle.Sheet.load(args.dir / name)
         prompt_text = (args.dir / f"{name}.prompt.txt").read_text()
-        for attempt in range(1, args.rounds + 1):
+        for attempt in range(1, (args.rounds if args.fix else 0) + 1):
             feedback = complaints_text(verdicts, sheet)
             text = prompt_text + f"\n\nA previous attempt got these cells wrong; do not repeat them: {feedback}."
             print(f"   round {attempt}: re-rendering with the complaints in the prompt")
@@ -362,6 +363,60 @@ def cmd_check(args: argparse.Namespace) -> None:
                 print(f"   kept the installed sheet ({best} questioned) over the candidate ({count})")
             if best == 0:
                 break
+        if args.patch and best:
+            for attempt in range(1, args.rounds + 1):
+                print(f"   patch round {attempt}: re-rendering the rows with questioned cells")
+                if not patch_cells(args, race, unit, carrying, verdicts):
+                    break
+                verdicts = check_one(args, race, unit, carrying, RESTYLED)
+                best = len(questioned(verdicts))
+                if best == 0:
+                    break
+
+
+def patch_cells(args: argparse.Namespace, race: Race, unit: UnitType, carrying: Resource | None, verdicts: list[dict]) -> int:
+    """Re-render only the rows that hold questioned cells, as one-row sheets, judge them, and
+    splice in the questioned cells that come back clean.  Returns how many cells were replaced."""
+    name = subject_name(race, unit, carrying)
+    sheet, painted = restyle.load_frames(RESTYLED / name)
+    _, originals = build_sheet(race, unit, carrying)
+    replaced = 0
+    for row in sorted({v["row"] for v in questioned(verdicts)}):
+        cells = [c for c in sheet.cells if c.row == row]
+        frame = cells[0].tags["frame"]
+        row_sheet = restyle.Sheet.layout([(c.key, dict(c.tags)) for c in cells], cols=sheet.cols, cell=sheet.cell, origin=sheet.origin, scale=sheet.scale)
+        folder = args.dir / name / f"patch-row{row}"
+        folder.mkdir(parents=True, exist_ok=True)
+        row_sheet.save(folder / "row", {c.key: originals[c.key] for c in cells})
+        wanted = [v for v in questioned(verdicts) if v["row"] == row]
+        text = prompt(row_sheet, race, unit, carrying, (frame,)).replace("a grid of 1 rows x", "a single row of")
+        text += "\n\nIn a previous painting of this row these cells were wrong; do not repeat it: " + "; ".join(f"column {v['col']}: {v['issue']}" for v in wanted) + "."
+        restyle.render_with_codex(folder / "row.png", text, folder / f"{args.provider}.png")
+        result = restyle.cut(row_sheet, Image.open(folder / f"{args.provider}.png"), Image.open(folder / "row.png"))
+        if len(result.flagged) > args.tolerate:
+            print(f"   row {row}: the patch failed the geometry checks ({len(result.flagged)} flagged)")
+            continue
+        review_png = folder / "review.png"
+        names = [FRAME_NAMES[frame]]
+        clean: list[int] = []
+        for start in (0, 4):
+            cols = list(range(start, min(start + 4, sheet.cols)))
+            restyle.review_image(row_sheet, originals, result.frames, rows=[0], cols=cols, row_names=names).convert("RGB").save(folder / f"review-{start}.png")
+            row_verdicts = restyle.judge_with_codex(folder / f"review-{start}.png", SUBJECTS[(race, unit)] + CARRY.get(carrying, ""), row_sheet,
+                                                    rows=[0], cols=cols, inventory=INVENTORY[unit])
+            clean += [v["col"] for v in row_verdicts if v.get("ok", True)]
+        for v in wanted:
+            key = next(c.key for c in cells if c.col == v["col"])
+            if v["col"] in clean:
+                painted[key] = result.frames[key]
+                replaced += 1
+                print(f"   row {row} col {v['col']}: patched")
+            else:
+                print(f"   row {row} col {v['col']}: the patch was questioned too; kept")
+    if replaced:
+        merged = restyle.Cut(painted, restyle.Registration(1.0, 0.0, 0.0), ())
+        restyle.save_frames(merged, sheet, RESTYLED / name)
+    return replaced
 
 
 def cmd_refresh(args: argparse.Namespace) -> None:
