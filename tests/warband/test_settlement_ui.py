@@ -133,78 +133,65 @@ def test_global_unit_request_starts_when_funded_and_active_queue_can_be_cancelle
     assert not hall.queue and scene.selection == []
 
 
-def test_ctrl_t_trains_one_then_five_and_toggles_shut(settlement):
-    """Ctrl+T opens the train menu, F orders one, Shift+F five more, Ctrl+T closes."""
-    game, scene = settlement
-    game.backend.inject_key("t", ctrl=True)
+def key(game, name, **mods):
+    game.backend.inject_key(name, **mods)
     game.tick(1 / 30)
+
+
+def test_plain_letters_plan_without_a_selection(settlement):
+    """With nothing selected, T opens Train, F orders one, Shift+F five more, T closes; B / U / G do their jobs."""
+    game, scene = settlement
+    key(game, "t")
     assert scene.settlement_menu == "train"
     assert "Footman" in [c.label for c in scene._card]
-    game.backend.inject_key("f")
-    game.tick(1 / 30)
+    key(game, "f")
     assert len(scene.world.player_plans(scene.human)) == 1
     sounds = len(scene.recent_sounds)
-    game.backend.inject_key("f", shift=True)
-    game.tick(1 / 30)
+    key(game, "f", shift=True)
     assert len(scene.world.player_plans(scene.human)) == 6
     assert scene.status == "5 x Footman ordered - pay when work starts - manage in Plans"
     assert list(scene.recent_sounds)[sounds:] == ["button"]
-    game.backend.inject_key("t", ctrl=True)
-    game.tick(1 / 30)
+    key(game, "t")
     assert scene.settlement_menu is None
-
-
-def test_settlement_shortcuts_switch_menus_plan_and_assembly(settlement):
-    """Ctrl+B/U switch menus, Ctrl+B then F queues a farm site, Ctrl+P/U/G do their jobs."""
-    game, scene = settlement
-    game.backend.inject_key("b", ctrl=True)
-    game.tick(1 / 30)
+    key(game, "b")
     assert scene.settlement_menu == "build"
-    game.backend.inject_key("u", ctrl=True)
-    game.tick(1 / 30)
+    key(game, "u")
     assert scene.settlement_menu == "upgrade"
-    game.backend.inject_key("b", ctrl=True)
-    game.tick(1 / 30)
+    key(game, "b", ctrl=True)  # in the Upgrade menu B is Blades: the chord switches menus past the card
     assert scene.settlement_menu == "build"
-    game.backend.inject_key("f")
-    game.tick(1 / 30)
+    key(game, "f")
     assert scene.pending.startswith("plan:")
-    game.backend.inject_key("u", ctrl=True)
-    game.tick(1 / 30)
-    assert scene.settlement_menu == "upgrade"
-    game.backend.inject_key("p", ctrl=True)
-    game.tick(1 / 30)
+    key(game, "g")
+    assert scene.pending == "assembly" and scene.settlement_menu is None
+    key(game, "p", ctrl=True)
     assert isinstance(game.scene, SettlementPlansScene)
-    game.pop()
-    game.tick(1 / 30)
-    game.backend.inject_key("g", ctrl=True)
-    game.tick(1 / 30)
-    assert scene.pending == "assembly"
 
 
-def test_settlement_shortcuts_work_with_a_peasant_selected(settlement):
-    """Ctrl+T opens Train without dropping the selection; bare B still opens the worker menu."""
+def test_selection_commands_win_over_settlement_letters(settlement):
+    """A peasant's B is its own build menu and T in that menu is the tower; Ctrl+B still forces the plan menu."""
     game, scene = settlement
     peasant = next(u for u in scene.world.player_units(scene.human) if u.is_worker)
     scene.select([peasant.id])
-    game.backend.inject_key("t", ctrl=True)
-    game.tick(1 / 30)
-    assert scene.settlement_menu == "train"
-    assert scene.selection == [peasant.id]
-    game.backend.inject_key("t", ctrl=True)
-    game.tick(1 / 30)
+    key(game, "b")
+    assert scene.build_menu is True and scene.settlement_menu is None
+    key(game, "t")  # the tower, blocked this early: the card answers, the train menu stays shut
+    assert scene.settlement_menu is None and scene.build_menu and "Requires a Barracks" in scene.status
+    key(game, "escape")
+    assert scene.selection == [peasant.id] and not scene.build_menu
+    key(game, "t")
+    assert scene.settlement_menu == "train" and scene.selection == [peasant.id]
+    key(game, "t")
     assert scene.settlement_menu is None
-    game.backend.inject_key("b")
-    game.tick(1 / 30)
-    assert scene.build_menu is True
+    key(game, "b", ctrl=True)
+    assert scene.settlement_menu == "build" and scene.selection == [peasant.id]
 
 
-def test_settlement_row_draws_shortcut_keycaps(settlement):
-    """The Settlement buttons draw their Ctrl chords as keycaps (mock records the cap text)."""
+def test_settlement_row_draws_plain_keycaps(settlement):
+    """The Settlement buttons draw the letters that open them (mock records the cap text); Plans keeps its chord."""
     game, scene = settlement
     texts = [item["text"] for item in game.backend.texts]
-    for chord in ("Ctrl+B", "Ctrl+T", "Ctrl+U", "Ctrl+P", "Ctrl+G"):
-        assert chord in texts
+    for cap in ("B", "T", "U", "Ctrl+P", "G"):
+        assert cap in texts
 
 
 def test_long_plan_list_pages_and_keeps_cancellation_visible(settlement):
@@ -226,3 +213,100 @@ def test_long_plan_list_pages_and_keeps_cancellation_visible(settlement):
     click(game, "Cancel")
     assert len(scene.world.player_plans(scene.human)) == 5
     assert "1 / 1" in [item["text"] for item in game.backend.texts]
+
+
+def test_upgrade_letters_order_the_next_tier(settlement):
+    """U then B orders Blades I, B again Blades II; a third B is answered by the card rather than opening Build."""
+    game, scene = settlement
+    key(game, "u")
+    caps = {c.label: c.hotkey for c in scene._card}
+    assert caps["Blades I"] == "B" and caps["Blades II"] == "" and caps["Horses"] == "H"
+    key(game, "b")
+    assert [p.type for p in scene.world.player_plans(scene.human)] == [Upgrade.BLADES_1]
+    assert {c.label: c.hotkey for c in scene._card}["Blades II"] == "B"
+    key(game, "b")
+    assert [p.type for p in scene.world.player_plans(scene.human)] == [Upgrade.BLADES_1, Upgrade.BLADES_2]
+    key(game, "b")
+    assert scene.settlement_menu == "upgrade" and scene.status == "Already ordered"
+
+
+def test_cards_count_what_is_already_ordered(settlement):
+    """Two F presses caption the portrait 'Footman ×2'; a peasant plan keeps counting once the hall is training it."""
+    game, scene = settlement
+    world, player = scene.world, scene.player
+    player.gold = player.lumber = 0
+    key(game, "t")
+    key(game, "f")
+    key(game, "f")
+    key(game, "p")
+    texts = [item["text"] for item in game.backend.texts]
+    assert "Footman ×2" in texts and "Peasant ×1" in texts and "Archer" in texts
+    player.gold = UNITS[UnitType.PEASANT].cost.gold
+    scene.paused = False
+    for _ in range(32):
+        game.tick(1 / 30)
+    scene.paused = True
+    hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    assert hall.queue == [UnitType.PEASANT] and not any(p.type is UnitType.PEASANT for p in world.player_plans(scene.human))
+    assert "Peasant ×1" in [item["text"] for item in game.backend.texts]
+    key(game, "b")
+    key(game, "f")
+    place_blueprint(game, scene, BuildingType.FARM)
+    assert "Farm ×1" in [item["text"] for item in game.backend.texts]
+
+
+def test_selection_panel_overviews_production_and_manages_it(settlement):
+    """Nothing selected: a portrait per item training, queued or waiting; hover explains, click selects the producer, right-click cancels."""
+    game, scene = settlement
+    world, player = scene.world, scene.player
+    player.gold, player.lumber = 800, 0
+    key(game, "t")
+    key(game, "p")
+    key(game, "p")
+    key(game, "b")
+    key(game, "f")
+    place_blueprint(game, scene, BuildingType.FARM)
+    key(game, "escape")
+    assert scene.settlement_menu is None and scene.selection == []
+    scene.paused = False
+    for _ in range(32):
+        game.tick(1 / 30)
+    scene.paused = True
+    hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    assert hall.queue == [UnitType.PEASANT, UnitType.PEASANT]
+    farm = next(p for p in world.player_plans(scene.human) if p.type is BuildingType.FARM)
+    game.tick(1 / 30)
+    assert "Production · 2 in progress · 1 waiting" in [item["text"] for item in game.backend.texts]
+    hits = scene._queue_hits
+    assert [entry.target for _rect, entry in hits] == [UnitType.PEASANT, UnitType.PEASANT, BuildingType.FARM]
+    (x, y, w, h), _first = hits[0]
+    game.backend.inject_mouse_move(x + w / 2, y + h / 2)
+    game.tick(1 / 30)
+    assert scene.tooltip.startswith("Peasant · training") and "Town Hall" in scene.tooltip
+    (x, y, w, h), _farm = hits[2]
+    game.backend.inject_mouse_move(x + w / 2, y + h / 2)
+    game.tick(1 / 30)
+    assert scene.tooltip.startswith("Farm · ") and farm.status in scene.tooltip
+    game.backend.inject_click(x + w / 2, y + h / 2, "right")
+    game.tick(1 / 30)
+    assert farm.id not in {p.id for p in world.player_plans(scene.human)}
+    (x, y, w, h), _first = scene._queue_hits[0]
+    game.backend.inject_click(x + w / 2, y + h / 2)
+    game.tick(1 / 30)
+    assert scene.selection == [hall.id]
+
+
+def test_group_portrait_click_picks_one_unit(settlement):
+    """Clicking a portrait in a group selects that unit alone; Shift-click drops it from the group instead."""
+    game, scene = settlement
+    peasants = [u.id for u in scene.world.player_units(scene.human) if u.is_worker]
+    scene.select(peasants)
+    game.tick(1 / 30)
+    entity_id, (x, y, size, _) = scene._portraits[1]
+    game.backend.inject_click(x + size / 2, y + size / 2, shift=True)
+    game.tick(1 / 30)
+    assert scene.selection == [i for i in peasants if i != entity_id]
+    entity_id, (x, y, size, _) = scene._portraits[0]
+    game.backend.inject_click(x + size / 2, y + size / 2)
+    game.tick(1 / 30)
+    assert scene.selection == [entity_id]

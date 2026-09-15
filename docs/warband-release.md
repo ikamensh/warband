@@ -127,10 +127,11 @@ See the in-game help (F1) and codex (F2). Summary:
 |---|---|
 | Select | click, drag a box, double-click or Ctrl-click for a type, Ctrl+A for the army, 1–9 groups (Ctrl+1–9 to set), Tab / . next idle peasant / soldier |
 | Order | right-click (move, harvest, attack, repair, resume building, rally), A attack-move, P patrol, S stop, H hold, M move, R repair |
-| Plan without a selection | Settlement → Build / Train / Upgrade (Ctrl+B / Ctrl+T / Ctrl+U, Shift+letter orders five in Train); Ctrl+P Plans shows waiting work, progress and cancellation; Ctrl+G assembly point |
+| Plan for the settlement | B / T / U open the Build / Train / Upgrade plan menus and G sets the assembly point; a selection's own commands come first (a peasant's B is its build menu), Ctrl+letter forces the plan menu. Letters order one, Shift+letter five in Train; the cards count what is already ordered |
+| Production overview | with nothing selected, the selection panel lists everything in training, research, construction or waiting: hover for its state, click to go to its producer, right-click to cancel; Ctrl+P opens the full Plans list |
 | Build with a selected worker | B then F farm, B barracks, H town hall, T tower, M lumber mill, K blacksmith, S stables, W workshop, C church |
 | Train / research directly | the letters on the command card when a building is selected |
-| Gather new soldiers | Assembly (Ctrl+G), then click the map; a building-specific rally point takes priority |
+| Gather new soldiers | Assembly (G), then click the map; a building-specific rally point takes priority |
 | Park an automatic worker | S or H; another order enables automatic work again |
 | Mac trackpad | two-finger click or Ctrl+click is the right-click; Cmd-click selects every unit of a type |
 | Camera | arrows, screen edges, middle-drag, wheel or + / − zoom, F6–F8 bookmarks (Ctrl to set), Space jumps to the last alert, Home or Backspace to the base |

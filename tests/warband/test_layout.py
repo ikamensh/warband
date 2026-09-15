@@ -3,7 +3,7 @@
 import pytest
 
 from saga2d import Game
-from saga2d.testing import assert_no_text_overlap
+from saga2d.testing import assert_no_text_overlap, text_boxes
 from warband.rules import BuildingType, Race, UnitType
 from warband.model import tile_center
 from warband.scene import CodexScene, GameOverScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game
@@ -62,5 +62,20 @@ def test_no_text_is_drawn_over_other_text(screen: str, size: tuple[int, int], tm
         SCREENS[screen](game)
         settle(game)
         assert_no_text_overlap(game, top_scene_only=True)
+    finally:
+        game._teardown()
+
+
+@pytest.mark.parametrize("size", SIZES, ids=[f"{w}x{h}" for w, h in SIZES])
+def test_help_fits_the_window(size: tuple[int, int], tmp_path) -> None:
+    """Every line of the help screen lies inside the window: a row that runs off the edge teaches nothing."""
+    game = Game("Warband layout", backend="mock", resolution=size, theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        SCREENS["help"](game)
+        settle(game)
+        width, height = size
+        outside = [box.text for box in text_boxes(game.backend) if box.space == "screen"
+                   and not (0 <= box.left and box.left + box.width <= width and 0 <= box.top and box.top + box.height <= height)]
+        assert not outside, outside
     finally:
         game._teardown()

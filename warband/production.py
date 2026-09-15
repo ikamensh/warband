@@ -185,10 +185,11 @@ def _fit(game, key, x, y, size):
     return x + (size - width) / 2, y + (size - height) / 2, width, height
 
 
-def draw_production_icon(scene, target: ProductionTarget, player: int | None, race: Race, x: float, y: float, size: float) -> None:
+def draw_production_icon(scene, target: ProductionTarget, player: int | None, race: Race, x: float, y: float, size: float, *,
+                         opacity: float = 1.0) -> None:
     """Draw a target centred in a square, without distorting its portrait."""
     key = production_image(scene.game, target, player, race)
-    scene.draw_image(key, *_fit(scene.game, key, x, y, size))
+    scene.draw_image(key, *_fit(scene.game, key, x, y, size), opacity=opacity)
 
 
 class ProductionIcon(Component):
