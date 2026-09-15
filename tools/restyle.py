@@ -239,6 +239,9 @@ LOOK_BRIEF = {
                 "outline; no flames and no smoke (the game draws them), no people."),
 }
 LOOK_DETAILS = {"active": ACTIVE, "damaged": DAMAGED}
+#: What the judge must not see in a look (the game draws smoke and flames on a damaged building itself).
+LOOK_FORBIDDEN = {"active": "smoke (lit torches, braziers, lanterns and a roaring furnace are the point of this look)",
+                  "damaged": "smoke or fire spreading on the building (a torch or furnace that was lit in the painting above is fine)"}
 BUILDING_JUDGE = """You are checking a repainted sprite sheet of buildings against its stand-ins. The image shows, for each row, the
 low-poly stand-in buildings above and the painted buildings below, labelled "row N: ..." (naming the building in each column) and "col N".
 
@@ -247,7 +250,7 @@ Work cell by cell, painted row only. Compare each painted building with the stan
 - its footprint, height or silhouette differs clearly from the stand-in (a building that grew a storey, lost its tower, or left its ground patch);
 - a major part is missing or added: a tower, dome, spire or roof, the gate, the yard machinery (saw, anvil, crane, siege engine), the animal in the pen;
 - blue appears where the stand-in has none (a blue roof, blue water or glass), or a blue banner of the stand-in is missing or another colour;
-- it contains people, smoke, flames outside a furnace, or text.
+- it contains people, smoke, a building on fire, or text (a lit torch, brazier, lantern or furnace is fine).
 Style, material texture, proportion and detail may differ freely; the painter is allowed to make the building prettier.
 
 Reply with one JSON object and nothing else:
@@ -260,7 +263,7 @@ in each column) and "col N". The {look} look means: {brief}
 Work cell by cell, lower row only. A cell is wrong if:
 - it is not the same building as above (a different kind, footprint or silhouette beyond what the look changes);
 - the look is not visible: the cell looks the same as the intact painting above it;
-- it contains people, text, flames or smoke;
+- it contains people, text, or {forbidden};
 - blue appears where the painting above has none.
 
 Reply with one JSON object and nothing else:
@@ -385,7 +388,9 @@ class Buildings:
 
     @property
     def judge(self) -> str:
-        return BUILDING_JUDGE if self.look == "intact" else LOOK_JUDGE.format(look=self.look, brief=LOOK_BRIEF[self.look])
+        if self.look == "intact":
+            return BUILDING_JUDGE
+        return LOOK_JUDGE.format(look=self.look, brief=LOOK_BRIEF[self.look], forbidden=LOOK_FORBIDDEN[self.look])
 
     def building_name(self, cell: restyle.Cell) -> str:
         return RACES[self.race].buildings[BuildingType(cell.tags["building"])].name
