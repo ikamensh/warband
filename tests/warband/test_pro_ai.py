@@ -190,3 +190,28 @@ def test_a_free_for_all_runs_to_placements():
     outcome = play(MatchSpec(seed=21, agents=("pro", "pro", "hard", "normal"), minutes=6, width=64, height=56))
     assert len(outcome.placements) == 4
     assert min(outcome.placements) == 1
+
+
+def test_soldiers_sent_home_are_sent_somewhere_they_can_stand():
+    """Regression, found by fuzz: a hall's centre is inside its own footprint.
+
+    A wounded soldier ordered onto blocked ground paths towards it, stops a
+    tile short and stays there — an archer stalled for twenty seconds on a
+    move of two thirds of a tile.
+    """
+    world, brain = _world_with_army()
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    point = brain._home_point(world, hall)
+    assert world.building_at((int(point[0]), int(point[1]))) is None
+    assert world.passable(int(point[0]), int(point[1]))
+
+
+def test_the_muster_point_is_never_inside_a_building():
+    """Regression, found by fuzz: a farm built on the muster point made walking there
+    an order no unit could ever finish."""
+    world, brain = _world_with_army()
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    point = brain._front_point(world, hall)
+    world.place_building(0, BuildingType.FARM, (int(point[0]), int(point[1])))
+    moved = brain._front_point(world, hall)
+    assert world.passable(int(moved[0]), int(moved[1]))

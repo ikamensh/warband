@@ -17,7 +17,7 @@ import random
 
 from dataclasses import dataclass
 
-from warband.model import Attack, AttackMove, Build, Building, Deposit, Harvest, Point, Pos, Repair, Unit, World, dist
+from warband.model import Attack, AttackMove, Build, Building, Deposit, Harvest, Move, Point, Pos, Repair, Unit, World, dist
 from warband.races import RACES
 from warband.rules import BUILDINGS, BuildingType, Difficulty, Race, Resource, UnitType, Upgrade
 
@@ -46,6 +46,29 @@ ARMY_PLANS: dict[Race, dict[UnitType, float]] = {
 }
 
 _MELEE_TYPES = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
+
+
+ARRIVED_WITHIN = 1.5  # a soldier this near its destination has arrived, whatever the order says
+
+
+def release_arrived(world: World, player: int) -> None:
+    """Let go of a Move that is as good as finished.
+
+    A Move ends only when the unit reaches the point itself. Order a whole army
+    to one coordinate — which is what a muster point is — and the soldiers that
+    cannot stand on it stop a fraction of a tile short and keep the order for
+    the rest of the game, taking no further part in it. Re-issuing the move to
+    where the unit already stands completes it.
+
+    Found by ``tools/fuzz.py``: an archer stalled twenty seconds two thirds of
+    a tile from a muster point, with the tile it wanted occupied.
+    """
+    for unit in world.player_units(player):
+        if unit.is_worker:
+            continue
+        order = unit.order
+        if isinstance(order, Move) and dist(unit.pos, order.target) < ARRIVED_WITHIN:
+            world.move([unit.id], unit.pos)
 
 
 def _shift(plan: dict[UnitType, float], deltas: dict[UnitType, float]) -> None:
@@ -117,6 +140,7 @@ class Brain:
         if world.time < self.next_think or not world.players[self.player].alive or world.winner is not None:
             return
         self.next_think = world.time + self.profile.think_every
+        release_arrived(world, self.player)
         if not self._plan_logged:
             self._plan_logged = True
             self.note(world, f"army plan {world.players[self.player].race.value}")

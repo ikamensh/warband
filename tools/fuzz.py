@@ -3,7 +3,8 @@
     uv run python tools/fuzz.py                 # 12 AI-vs-AI games and 12 random-input scene runs
     uv run python tools/fuzz.py --games 40 --monkey 0
 
-AI games run brains against each other for up to fifteen simulated minutes,
+AI games run brains against each other — the shipped difficulties and the
+stronger :class:`warband.pro_ai.ProBrain`, mixed — for up to fifteen simulated minutes,
 checking the world every simulated second: units stand on open ground,
 hit points and resources stay in range, buildings never overlap, the
 blocked grid matches the map, hidden units are inside something real.
@@ -25,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from warband import mapgen  # noqa: E402
 from warband.ai import Brain  # noqa: E402
+from warband.pro_ai import PRO, ProBrain  # noqa: E402
 from warband.model import BLOCKING, World  # noqa: E402
 from warband.rules import BUILDINGS, SIM_DT, BuildingType, Difficulty  # noqa: E402
 from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
@@ -98,7 +100,11 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
         width, height = rng.choice(list(mapgen.SIZES.values()))
         try:
             world = mapgen.generate(seed=seed, width=width, height=height, players=players, human=None)
-            brains = [Brain(p.id, rng.choice(list(Difficulty))) for p in world.players]
+            # Mix the stronger brain in: it drives the model down different paths
+            # (several build orders in flight, wounded soldiers walking home,
+            # peasants sent scouting) and the invariants have to hold there too.
+            brains = [ProBrain(p.id, PRO) if rng.random() < 0.5 else Brain(p.id, rng.choice(list(Difficulty)))
+                      for p in world.players]
             check_world(world)
             stalled: dict[int, tuple[tuple[float, float], float]] = {}
             for tick in range(int(GAME_MINUTES * 60 / SIM_DT)):
@@ -119,7 +125,7 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
             assert any(len(world.player_buildings(p.id, BuildingType.BARRACKS)) for p in world.players), "nobody built a barracks"
             assert sum(armies) > 0 or kills, "nobody trained an army"
             outcomes["decided" if world.winner is not None else "eliminations" if kills else "undecided"] += 1
-            levels = "/".join(b.difficulty.value[0] for b in brains)
+            levels = "/".join("P" if isinstance(b, ProBrain) else b.difficulty.value[0] for b in brains)
             print(f"  seed {seed}: {players} players {width}x{height} [{levels}] → {world.time / 60:.1f} min, winner {world.winner}, armies {armies}, buildings {buildings}")
         except Exception:
             failures += 1

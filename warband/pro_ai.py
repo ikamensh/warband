@@ -37,8 +37,8 @@ import math
 import random
 from dataclasses import dataclass, field, replace
 
-from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift
-from warband.model import Attack, Build, Building, Point, Pos, Repair, Unit, World, dist
+from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, release_arrived
+from warband.model import Attack, Build, Building, Point, Pos, Repair, Unit, World, dist, tile_center
 from warband.races import RACES
 from warband.rules import BUILDINGS, BuildingType, UnitType
 
@@ -582,7 +582,29 @@ class ProBrain:
         towards = min(enemy_halls, key=lambda c: dist(c, hall.center)) if enemy_halls else (world.width / 2, world.height / 2)
         hx, hy = hall.center
         away = dist((hx, hy), towards) or 1.0
-        return (hx + (towards[0] - hx) / away * 6, hy + (towards[1] - hy) / away * 6)
+        return self._standable(world, (hx + (towards[0] - hx) / away * 6, hy + (towards[1] - hy) / away * 6))
+
+    @staticmethod
+    def _standable(world: World, point: Point) -> Point:
+        """The nearest ground a unit can be told to walk to.
+
+        Six tiles towards the enemy is a fine place for an army to wait until a
+        farm is standing on it, at which point a Move there is an order the unit
+        can never finish: it paths as close as it can and stops, for good. Fuzz
+        catches that as a stalled unit.
+        """
+        x, y = int(point[0]), int(point[1])
+        if world.in_bounds((x, y)) and world.passable(x, y):
+            return point
+        for ring in range(1, 9):
+            for dy in range(-ring, ring + 1):
+                for dx in range(-ring, ring + 1):
+                    if max(abs(dx), abs(dy)) != ring:
+                        continue
+                    tile = (x + dx, y + dy)
+                    if world.in_bounds(tile) and world.passable(*tile):
+                        return tile_center(tile)
+        return point
 
     def _threats(self, world: World) -> list[Unit]:
         own = world.player_buildings(self.player)
@@ -630,7 +652,9 @@ class ProBrain:
                 self.regroup_until = world.time + self.profile.regroup_seconds
                 self.note(world, f"withdraw at {mine:.0f} of {self.commit_strength:.0f}")
                 if hall is not None:
-                    world.move([u.id for u in army], self._front_point(world, hall))
+                    home = self._front_point(world, hall)
+                    for unit in army:
+                        world.move([unit.id], self._muster(world, home, unit))
                 return
             if self.target is None or not self._still_there(world, self.target):
                 self.target = min(targets, key=lambda t: dist(t, origin))
@@ -647,7 +671,9 @@ class ProBrain:
                 world.attack_move([u.id for u in waiting], self.target)
             elif waiting and hall is not None:
                 point = self._front_point(world, hall)
-                world.move([u.id for u in waiting if dist(u.pos, point) > 4.0], point)
+                for unit in waiting:
+                    if dist(unit.pos, point) > 4.0:
+                        world.move([unit.id], self._muster(world, point, unit))
             return
         if world.time < self.regroup_until or len(army) < self.profile.min_army:
             self._gather(world, army, hall)
@@ -670,14 +696,26 @@ class ProBrain:
         return any(b.hp > 0 and b.player not in (None, self.player) and dist(b.center, point) < 3.0
                    for b in world.buildings.values())
 
+    def _home_point(self, world: World, hall: Building) -> Point:
+        """Somewhere a soldier can actually stand next to the hall.
+
+        A hall's centre is inside its own footprint, which is blocked ground: a
+        unit sent there paths towards it and stops a tile short for good. Fuzz
+        caught an archer stalled twenty seconds on a move of two thirds of a
+        tile, which is what that looks like from the outside.
+        """
+        tile = world.free_tile_near(hall.rect, prefer=hall.center)
+        return tile_center(tile) if tile is not None else self._front_point(world, hall)
+
     def _post(self, world: World, guards: list[Unit]) -> None:
         """Send the home guard back to the hall whenever it has nothing to do."""
         hall = self._hall(world)
         if hall is None:
             return
-        idle = [u.id for u in guards if not u.orders and dist(u.pos, hall.center) > 6.0]
-        if idle:
-            world.move(idle, hall.center)
+        home = self._home_point(world, hall)
+        for guard in guards:
+            if not guard.orders and dist(guard.pos, hall.center) > 6.0:
+                world.move([guard.id], self._muster(world, home, guard))
 
     def _army_centre(self, world: World, army: list[Unit]) -> Point | None:
         if not army:
@@ -689,9 +727,21 @@ class ProBrain:
         if hall is None:
             return
         point = self._front_point(world, hall)
-        stragglers = [u.id for u in army if not u.orders and dist(u.pos, point) > 4.0]
-        if stragglers:
-            world.move(stragglers, point)
+        for unit in army:
+            if unit.orders or dist(unit.pos, point) <= 4.0:
+                continue
+            world.move([unit.id], self._muster(world, point, unit))
+
+    def _muster(self, world: World, point: Point, unit: Unit) -> Point:
+        """*point*, nudged so the whole army is not walking at one tile.
+
+        Twenty soldiers sent to the same coordinate cannot all stand on it. The
+        ones that cannot keep a Move order they are unable to finish and stop
+        taking part in the game — fuzz reports it as a stalled unit.
+        """
+        angle = (unit.id % 12) / 12.0 * 2.0 * math.pi
+        spread = 1.0 + unit.id % 3
+        return self._standable(world, (point[0] + spread * math.cos(angle), point[1] + spread * math.sin(angle)))
 
     def _defenders_near(self, world: World, point: Point, radius: float = 12.0) -> float:
         """What is waiting at *point*: the soldiers we can see, the towers covering it,
@@ -811,8 +861,8 @@ class ProBrain:
             centre = min(targets, key=lambda c: dist(c, scout.pos))
             angle = (world.time / 12.0) % (2 * math.pi)
             ring = (centre[0] + 7.0 * math.cos(angle), centre[1] + 7.0 * math.sin(angle))
-            world.move([scout_id], (min(max(ring[0], 1.0), world.width - 1.0),
-                                    min(max(ring[1], 1.0), world.height - 1.0)))
+            world.move([scout_id], self._standable(world, (min(max(ring[0], 1.0), world.width - 1.0),
+                                                           min(max(ring[1], 1.0), world.height - 1.0))))
 
     # -- Combat ----------------------------------------------------------------------
 
@@ -836,7 +886,7 @@ class ProBrain:
         if hall is None:
             return False
         self._hurt.add(unit.id)
-        world.move([unit.id], hall.center)
+        world.move([unit.id], self._muster(world, self._home_point(world, hall), unit))
         return True
 
     def _raid(self, world: World, army: list[Unit]) -> list[int]:
@@ -862,6 +912,7 @@ class ProBrain:
 
     def _combat(self, world: World) -> None:
         """Take the nearly dead out of the fight. The fighting itself is the model's."""
+        release_arrived(world, self.player)
         if not self.profile.retreat_wounded:
             return
         army = [u for u in world.player_units(self.player) if not u.is_worker and u.info.damage > 0]
