@@ -1325,13 +1325,19 @@ class World:
             self._finish_order(u)
             u.orders.appendleft(Move(u.home))
             return
+        if order.auto and self.tick % 5 == 0 and self._threat(target) > 0:
+            # A bystander or a building holds a unit's attention only until something more dangerous shows up.
+            better = self._nearest_enemy(u.player, u.pos, u.info.sight)
+            if better is not None and self._threat(better) < self._threat(target):
+                target = better
+                self._retarget(u, order, better)
         if order.auto and u.type is UnitType.ARCHER and u.cooldown > 0 and self._ranged_retreat(u, target, dt):
             return
         if order.auto and u.cooldown <= 0 and self.range_of(u) < 1:
-            # Finish a reachable wounded opponent when ready to strike.  Keep the target
-            # during recovery, and preserve explicit focus fire.
+            # Finish a reachable wounded opponent when ready to strike, unless it matters less than the
+            # target.  Keep the target during recovery, and preserve explicit focus fire.
             nearby = self._melee_opponent(u)
-            if nearby is not None and self._in_range(u, nearby):
+            if nearby is not None and self._in_range(u, nearby) and self._threat(nearby) <= self._threat(target):
                 target = nearby
                 order.target = target.id
         if self._in_range(u, target):
@@ -1409,7 +1415,7 @@ class World:
                      if enemy.player != u.player and not enemy.hidden and enemy.hp > 0
                      and self.is_visible(u.player, enemy.tile) and self._in_range(u, enemy)]
         if opponents:
-            return min(opponents, key=lambda enemy: (enemy.hp, dist(u.pos, enemy.pos), enemy.id))
+            return min(opponents, key=lambda enemy: (self._threat(enemy), enemy.hp, dist(u.pos, enemy.pos), enemy.id))
         return self._nearest_enemy(u.player, u.pos, self.range_of(u) + u.radius + .05)
 
     def _do_harvest(self, u: Unit, order: Harvest, dt: float) -> None:
@@ -1970,23 +1976,37 @@ class World:
             return False
         return self._gap(u, target) <= self.range_of(u) + 0.05
 
+    def _threat(self, entity: Entity) -> int:
+        """Whom to fight first, lowest first: soldiers, other units (workers, healers), towers, other buildings."""
+        if isinstance(entity, Unit):
+            return 0 if entity.info.damage and not entity.is_worker else 1
+        return 2 if entity.info.damage and entity.done else 3
+
+    def _retarget(self, u: Unit, order: Attack, target: Entity) -> None:
+        order.target = target.id
+        u.path = []
+        u.path_goal = None
+
     def _nearest_enemy(self, player: int, point: Point, radius: float, *, units_only: bool = False) -> Entity | None:
+        """The visible enemy within *radius* to fight first: by :meth:`_threat`, then the nearest."""
         best: Entity | None = None
-        best_d = math.inf
+        best_key = (math.inf, math.inf)
         for unit in self.units_near(point, radius + UNIT_RADIUS):
             if unit.player == player or unit.hidden or unit.hp <= 0 or not self.is_visible(player, unit.tile):
                 continue
             d = dist(point, unit.pos)
-            if d <= radius + unit.radius and d < best_d:
-                best, best_d = unit, d
+            key = (self._threat(unit), d)
+            if d <= radius + unit.radius and key < best_key:
+                best, best_key = unit, key
         if best is not None or units_only:
             return best
         for building in self.buildings.values():
             if building.player is None or building.player == player or building.hp <= 0:
                 continue
             d = rect_gap(point, building.rect)
-            if d <= radius and d + 0.5 < best_d and any(self.is_visible(player, tile) for tile in building.tiles()):
-                best, best_d = building, d + 0.5  # a visible unit in reach beats a visible building
+            key = (self._threat(building), d)
+            if d <= radius and key < best_key and any(self.is_visible(player, tile) for tile in building.tiles()):
+                best, best_key = building, key
         return best
 
     def _strike(self, u: Unit, target: Entity) -> None:
@@ -2038,11 +2058,15 @@ class World:
             if loot:
                 self.players[source.player].gold += loot
                 self.events.append(Event("plunder", target.center, player=source.player, entity=source.id, other=target.id, amount=loot))
-        if isinstance(target, Unit) and target.hp > 0 and not target.orders and not target.is_worker and target.info.damage > 0:
-            attacker_alive = source.id in self.units or source.id in self.buildings
-            if attacker_alive and not (isinstance(source, Building)):
+        if isinstance(source, Unit) and isinstance(target, Unit) and target.hp > 0 and self._threat(target) == 0:
+            current = target.order
+            if current is None:
                 target.home = target.pos
                 target.orders.append(Attack(source.id, auto=True))
+            elif isinstance(current, Attack) and current.auto:
+                busy_with = self.entity(current.target)
+                if busy_with is None or self._threat(source) < self._threat(busy_with):
+                    self._retarget(target, current, source)  # a soldier busy on a bystander or a building answers whoever hits it
 
     def _bury_the_dead(self) -> None:
         for unit in [u for u in self.units.values() if u.hp <= 0]:
