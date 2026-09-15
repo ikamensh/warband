@@ -1,0 +1,673 @@
+{
+ "cell": [
+  268,
+  285
+ ],
+ "cols": 8,
+ "rows": 9,
+ "origin": [
+  134.0,
+  161.4221955142212
+ ],
+ "scale": 2.0,
+ "pad": [
+  0,
+  0
+ ],
+ "chroma": [
+  255,
+  0,
+  255
+ ],
+ "grid": false,
+ "cells": [
+  {
+   "key": "unit.orc.footman.0.0.stand",
+   "col": 0,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.1.stand",
+   "col": 1,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.2.stand",
+   "col": 2,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.3.stand",
+   "col": 3,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.4.stand",
+   "col": 4,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.5.stand",
+   "col": 5,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.6.stand",
+   "col": 6,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.7.stand",
+   "col": 7,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 7
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.0.walk1",
+   "col": 0,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.1.walk1",
+   "col": 1,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.2.walk1",
+   "col": 2,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.3.walk1",
+   "col": 3,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.4.walk1",
+   "col": 4,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.5.walk1",
+   "col": 5,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.6.walk1",
+   "col": 6,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.7.walk1",
+   "col": 7,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 7
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.0.walk2",
+   "col": 0,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.1.walk2",
+   "col": 1,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.2.walk2",
+   "col": 2,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.3.walk2",
+   "col": 3,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.4.walk2",
+   "col": 4,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.5.walk2",
+   "col": 5,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.6.walk2",
+   "col": 6,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.7.walk2",
+   "col": 7,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 7
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.0.walk3",
+   "col": 0,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.1.walk3",
+   "col": 1,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.2.walk3",
+   "col": 2,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.3.walk3",
+   "col": 3,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.4.walk3",
+   "col": 4,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.5.walk3",
+   "col": 5,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.6.walk3",
+   "col": 6,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.7.walk3",
+   "col": 7,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 7
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.0.walk4",
+   "col": 0,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.1.walk4",
+   "col": 1,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.2.walk4",
+   "col": 2,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.3.walk4",
+   "col": 3,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.4.walk4",
+   "col": 4,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.5.walk4",
+   "col": 5,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.6.walk4",
+   "col": 6,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.7.walk4",
+   "col": 7,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 7
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.0.wind",
+   "col": 0,
+   "row": 5,
+   "tags": {
+    "frame": "wind",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.1.wind",
+   "col": 1,
+   "row": 5,
+   "tags": {
+    "frame": "wind",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.2.wind",
+   "col": 2,
+   "row": 5,
+   "tags": {
+    "frame": "wind",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.3.wind",
+   "col": 3,
+   "row": 5,
+   "tags": {
+    "frame": "wind",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.4.wind",
+   "col": 4,
+   "row": 5,
+   "tags": {
+    "frame": "wind",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.5.wind",
+   "col": 5,
+   "row": 5,
+   "tags": {
+    "frame": "wind",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.6.wind",
+   "col": 6,
+   "row": 5,
+   "tags": {
+    "frame": "wind",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.7.wind",
+   "col": 7,
+   "row": 5,
+   "tags": {
+    "frame": "wind",
+    "facing": 7
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.0.strike",
+   "col": 0,
+   "row": 6,
+   "tags": {
+    "frame": "strike",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.1.strike",
+   "col": 1,
+   "row": 6,
+   "tags": {
+    "frame": "strike",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.2.strike",
+   "col": 2,
+   "row": 6,
+   "tags": {
+    "frame": "strike",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.3.strike",
+   "col": 3,
+   "row": 6,
+   "tags": {
+    "frame": "strike",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.4.strike",
+   "col": 4,
+   "row": 6,
+   "tags": {
+    "frame": "strike",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.5.strike",
+   "col": 5,
+   "row": 6,
+   "tags": {
+    "frame": "strike",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.6.strike",
+   "col": 6,
+   "row": 6,
+   "tags": {
+    "frame": "strike",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.7.strike",
+   "col": 7,
+   "row": 6,
+   "tags": {
+    "frame": "strike",
+    "facing": 7
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.0.follow",
+   "col": 0,
+   "row": 7,
+   "tags": {
+    "frame": "follow",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.1.follow",
+   "col": 1,
+   "row": 7,
+   "tags": {
+    "frame": "follow",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.2.follow",
+   "col": 2,
+   "row": 7,
+   "tags": {
+    "frame": "follow",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.3.follow",
+   "col": 3,
+   "row": 7,
+   "tags": {
+    "frame": "follow",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.4.follow",
+   "col": 4,
+   "row": 7,
+   "tags": {
+    "frame": "follow",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.5.follow",
+   "col": 5,
+   "row": 7,
+   "tags": {
+    "frame": "follow",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.6.follow",
+   "col": 6,
+   "row": 7,
+   "tags": {
+    "frame": "follow",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.7.follow",
+   "col": 7,
+   "row": 7,
+   "tags": {
+    "frame": "follow",
+    "facing": 7
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.0.recover",
+   "col": 0,
+   "row": 8,
+   "tags": {
+    "frame": "recover",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.1.recover",
+   "col": 1,
+   "row": 8,
+   "tags": {
+    "frame": "recover",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.2.recover",
+   "col": 2,
+   "row": 8,
+   "tags": {
+    "frame": "recover",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.3.recover",
+   "col": 3,
+   "row": 8,
+   "tags": {
+    "frame": "recover",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.4.recover",
+   "col": 4,
+   "row": 8,
+   "tags": {
+    "frame": "recover",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.5.recover",
+   "col": 5,
+   "row": 8,
+   "tags": {
+    "frame": "recover",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.6.recover",
+   "col": 6,
+   "row": 8,
+   "tags": {
+    "frame": "recover",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.orc.footman.0.7.recover",
+   "col": 7,
+   "row": 8,
+   "tags": {
+    "frame": "recover",
+    "facing": 7
+   }
+  }
+ ]
+}

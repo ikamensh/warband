@@ -35,10 +35,12 @@ real breakdown.
   automatic gatherers, `settlement.py`/`production.py` building plans and the
   command card, `scores.py` the local top ten.
 - `warband/textures.py` renders ground, props, buildings and units through
-  `sagaforge.render3d`; a unit whose subject has a painted sheet under
-  `warband/assets/restyled/` (made by `tools/restyle.py` through
-  `sagaforge.restyle`, human units so far) gets that frame recoloured to its
-  team instead (`WARBAND_ART=procedural` keeps the renders). `view.py` keeps
+  `sagaforge.render3d`; units have nine frames per facing (stand, a four-step
+  walk, a four-phase blow) posed by one `Pose` table. A unit whose subject has a
+  painted sheet under `warband/assets/restyled/` (made by `tools/restyle.py`
+  through `sagaforge.restyle`; every unit of every race) gets that frame
+  recoloured to its team instead (`WARBAND_ART=procedural` keeps the renders;
+  a sheet whose frames no longer match `FRAMES` warns and is ignored). `view.py` keeps
   sprites in step and draws fog, minimap and water; `effects.py` transient
   animations and lingering bodies.
 - `warband/sound.py`, `combat_sound.py`, `voices.py`, `ambience.py`,

@@ -260,7 +260,8 @@ def main() -> None:
     p.add_argument("--model", default="google/gemini-3.1-flash-image"); p.add_argument("--jobs", type=int, default=4)
     p.add_argument("--force", action="store_true"); p.add_argument("--tolerate", type=int, default=2); p.set_defaults(run=cmd_refresh)
     p = sub.add_parser("showcase"); p.add_argument("out", type=Path); p.add_argument("--seconds", type=float, default=6.0)
-    p.add_argument("--zoom", type=float, default=1.5); p.set_defaults(run=cmd_showcase)
+    p.add_argument("--zoom", type=float, default=1.5); p.add_argument("--races", default="human,human", help="the two players' races")
+    p.set_defaults(run=cmd_showcase)
     args = parser.parse_args()
     args.run(args)
 
@@ -276,8 +277,8 @@ def cmd_refresh(args: argparse.Namespace) -> None:
 
 
 def cmd_showcase(args: argparse.Namespace) -> None:
-    """A scripted skirmish through the real renderer, saved as a GIF: two human armies
-    (so the second one shows the recolouring) attack-move into each other while peasants
+    """A scripted skirmish through the real renderer, saved as a GIF: two armies (``--races``,
+    the same race twice shows the recolouring) attack-move into each other while peasants
     chop the wood behind the line.  The display must be awake."""
     from saga2d import Game, fonts
     from warband.view import to_world
@@ -288,7 +289,8 @@ def cmd_showcase(args: argparse.Namespace) -> None:
     game = Game("Warband showcase", resolution=(960, 600), backend="pyglet", visible=False, theme=build_theme())
     try:
         fonts.load(game)
-        scene = new_game(seed=3, races=[Race.HUMAN, Race.HUMAN], settings={"tutorial": False, "edge_scroll": False})
+        races = [Race(r) for r in args.races.split(",")]
+        scene = new_game(seed=3, races=races, settings={"tutorial": False, "edge_scroll": False})
         game.push(scene)
         world = scene.world
         for _ in range(160):  # the title banner passes
