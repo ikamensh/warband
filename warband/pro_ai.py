@@ -59,7 +59,7 @@ class ProProfile:
     max_workers: int = 26
     supply_slack: int = 4             # farms go up to keep this much headroom…
     supply_per_producer: float = 2.0  # …plus this much per military building
-    max_sites: int = 2                # building sites at once
+    max_sites: int = 5                # building orders in flight at once; walking is most of a build
     surplus_gold: int = 800           # money piling up past this unlocks optional buildings
     lumber_floor: int = 150           # never spend the lumber the next few soldiers need
     max_halls: int = 3
@@ -88,6 +88,8 @@ class ProProfile:
     reserve: int = 0                   # gold held back from unit production for buildings and research
     siege: bool = True
     clerics: bool = True
+    siege_share: float = 0.0          # if set, the share of the army that is catapults…
+    cleric_share: float = 0.0         # …and that is healers, overriding the race's plan
 
 
 PRO = ProProfile("pro")
@@ -103,6 +105,10 @@ _TRIALS = (
     replace(PRO, name="pro-towers", early_towers=2),
     replace(PRO, name="pro-eager", attack_ratio=1.15),
     replace(PRO, name="pro-patient", attack_ratio=2.2),
+    replace(PRO, name="pro-siege", siege_share=0.2),
+    replace(PRO, name="pro-cleric", cleric_share=0.15),
+    replace(PRO, name="pro-sites3", max_sites=3),
+    replace(PRO, name="pro-sites8", max_sites=8),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}}
 
@@ -333,7 +339,11 @@ class ProBrain:
             return [(BuildingType.TOWN_HALL, mine.center if mine is not None else fallback)]
 
         have = lambda t: len(world.player_buildings(player, t, done=True))  # noqa: E731
-        going_up = [b.type for b in world.player_buildings(player) if not b.done]
+        # A building that has been ordered does not exist until the peasant walks
+        # to the site and pays for it, so the orders in flight have to be counted
+        # too — otherwise the same barracks is wished for again on the next pass.
+        going_up = ([b.type for b in world.player_buildings(player) if not b.done]
+                    + [order.type for order in self._ordered(world)])
         count = lambda t: have(t) + going_up.count(t)  # noqa: E731
         anchor = hall.center
         wishes: list[tuple[BuildingType, Point]] = []
@@ -413,15 +423,29 @@ class ProBrain:
                 best, best_distance = mine.center, away
         return best
 
+    def _ordered(self, world: World) -> list[Build]:
+        """The build orders already given and not yet begun.
+
+        ``World.build`` only hands a peasant an order: the building appears, and
+        is paid for, when that peasant arrives. Between the two it is invisible
+        to ``player_buildings``, and a brain that does not remember giving the
+        order re-gives it every pass — which sends peasant after peasant off the
+        gold to start the same barracks in four different places.
+        """
+        return [p.order for p in self._peasants(world) if isinstance(p.order, Build)]
+
     def _construction(self, world: World, rng: random.Random) -> None:
         sites = [b for b in world.player_buildings(self.player) if not b.done]
-        free = self.profile.max_sites - len(sites)
+        free = self.profile.max_sites - len(sites) - len(self._ordered(world))
         if free <= 0:
             return
         builders = [p for p in self._peasants(world)
                     if not p.hidden and not isinstance(p.order, (Build, Repair))]
         if not builders:
             return
+        # Ground already spoken for by an order in flight: can_place cannot know
+        # about it, so two buildings would otherwise be sent to the same tile.
+        taken = [(o.pos, BUILDINGS[o.type].size) for o in self._ordered(world)]
         for wanted, anchor in self._wish_list(world):
             if free <= 0 or not builders:
                 break
@@ -430,16 +454,18 @@ class ProBrain:
                 continue
             if world.players[self.player].lumber - cost.lumber < self.profile.lumber_floor:
                 continue
-            site = self._site(world, wanted, anchor, rng)
+            site = self._site(world, wanted, anchor, rng, taken)
             if site is None:
                 continue
             builder = min(builders, key=lambda p: dist(p.pos, (site[0] + 1.0, site[1] + 1.0)))
             world.build(builder.id, wanted, site)
+            taken.append((site, BUILDINGS[wanted].size))
             builders.remove(builder)
             free -= 1
             self.note(world, f"build {wanted.value} at {site}")
 
-    def _site(self, world: World, building_type: BuildingType, anchor: Point, rng: random.Random) -> Pos | None:
+    def _site(self, world: World, building_type: BuildingType, anchor: Point, rng: random.Random,
+              taken: list[tuple[Pos, int]] = ()) -> Pos | None:
         size = BUILDINGS[building_type].size
         ax, ay = int(anchor[0]), int(anchor[1])
         candidates: list[tuple[float, Pos]] = []
@@ -450,9 +476,17 @@ class ProBrain:
                 candidates.append((math.hypot(dx, dy) + rng.random() * 2, (ax + dx - size // 2, ay + dy - size // 2)))
         candidates.sort()
         for _score, pos in candidates:
+            if any(self._overlaps(pos, size, other, other_size) for other, other_size in taken):
+                continue
             if world.can_place(building_type, pos, self.player) is None and self._keeps_paths_open(world, pos, size):
                 return pos
         return None
+
+    @staticmethod
+    def _overlaps(pos: Pos, size: int, other: Pos, other_size: int) -> bool:
+        """Whether two sites are within a tile of each other, counting the clearance."""
+        return (abs(pos[0] - other[0]) < size + other_size - 1
+                and abs(pos[1] - other[1]) < size + other_size - 1)
 
     def _keeps_paths_open(self, world: World, pos: Pos, size: int) -> bool:
         for b in world.player_buildings(self.player):
@@ -495,6 +529,15 @@ class ProBrain:
             plan.pop(UnitType.CATAPULT, None)
         if not self.profile.clerics:
             plan.pop(UnitType.CLERIC, None)
+        # A catapult out-ranges everything in the game and hits buildings for half
+        # again; a healer makes every other soldier last longer. Both are worth
+        # more to an army that has to break into a defended base than the race's
+        # own plan allows, so the profile can overrule it.
+        for unit_type, share in ((UnitType.CATAPULT, self.profile.siege_share),
+                                 (UnitType.CLERIC, self.profile.cleric_share)):
+            if share > 0 and unit_type in plan:
+                rest = sum(v for t, v in plan.items() if t is not unit_type) or 1.0
+                plan = {t: (share if t is unit_type else v * (1.0 - share) / rest) for t, v in plan.items()}
         total = sum(plan.values())
         if total > 0:
             plan = {t: share / total for t, share in plan.items()}
