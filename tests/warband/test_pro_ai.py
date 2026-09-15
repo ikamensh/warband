@@ -90,21 +90,15 @@ def test_a_sighting_fades_once_the_enemy_is_out_of_sight():
     assert brain.remembered(1).get(UnitType.ARCHER, 0.0) < seen
 
 
-def test_an_army_watched_dying_stops_being_counted():
-    """Looking at their base means what is standing there is all there is.
-
-    Without this the army just destroyed goes on being remembered, and the
-    counter-attack that should follow a repelled push never goes out.
-    """
+def test_an_army_out_on_the_map_still_defends_its_base():
+    """Regression: a scout looking at an empty base reported a defence of nothing,
+    and the push that went out met the army that had simply been standing elsewhere."""
     world, brain = _world_with_army()
     world.reveal_all(0)
-    archers = _spawn(world, 1, UnitType.ARCHER, 2, 4)
+    _spawn(world, 1, UnitType.FOOTMAN, 2, 10)  # their army, nowhere near their hall
     brain._observe(world)
-    assert brain.remembered(1)[UnitType.ARCHER] == 4
-    for unit in archers:
-        world.units.pop(unit.id)
-    brain._observe(world)
-    assert sum(brain.remembered(1).values()) == 0
+    enemy_hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0].center
+    assert brain._defenders_near(world, enemy_hall) > 0.0
 
 
 def test_an_enemy_nobody_has_looked_at_is_not_assumed_to_be_harmless():

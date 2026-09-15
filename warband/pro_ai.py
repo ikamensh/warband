@@ -76,6 +76,7 @@ class ProProfile:
     raid: bool = False                 # riders sent at the enemy's peasants
     raiders: int = 2
     reinforce_group: int = 1           # soldiers that must gather before walking to a fight together
+    ignore_raid_ratio: float = 0.4     # a raid smaller than this share of the army does not stop a push
     defend_with_workers: bool = True
     worker_defence_ratio: float = 2.0  # pull peasants when the threat outweighs the army this badly
     scout: bool = True
@@ -260,20 +261,8 @@ class ProBrain:
             if now:
                 self._seen_at[player.id] = world.time
             memory = self._seen.setdefault(player.id, {})
-            if self._in_view(world, player.id):
-                memory.clear()
-                memory.update(now)
-                continue
             for unit_type in set(memory) | set(now):
                 memory[unit_type] = max(memory.get(unit_type, 0.0) * fade, now.get(unit_type, 0.0))
-
-    def _in_view(self, world: World, player: int) -> bool:
-        """Whether we are actually looking at *player*'s home, so what we see is all there is."""
-        for building in world.buildings.values():
-            if building.player == player and building.type is BuildingType.TOWN_HALL:
-                if any(world.is_visible(self.player, tile) for tile in building.tiles()):
-                    return True
-        return False
 
     def remembered(self, player: int | None = None) -> dict[UnitType, float]:
         """How many of each kind *player* was last seen with; every opponent's, added, if None."""
@@ -606,7 +595,8 @@ class ProBrain:
         busy = set(self.scouts) | set(self._raid(world, army))
         army = [u for u in army if u.id not in busy]
         threats = self._threats(world)
-        if threats:
+        if threats and not (self.attacking and strength(world, threats)
+                            < self.profile.ignore_raid_ratio * strength(world, army)):
             self._defend(world, army, threats)
             return
         targets = self._attack_targets(world)
@@ -689,11 +679,17 @@ class ProBrain:
         Strength is linear in the number of like units, so an unseen soldier can
         simply be priced at what one of ours is worth.
         """
-        near = [u for u in self._enemies(world) if not u.is_worker and dist(u.pos, point) < radius]
         owner = self._owner_of(world, point)
+        # Every soldier they have defends their base, not only the ones standing
+        # in it: an army that is out on the map when the scout looks is an army
+        # that walks home the moment the attack starts. Counting only what is
+        # near the target is how a push goes out against an estimate of twelve
+        # and meets two hundred.
+        theirs = [u for u in self._enemies(world)
+                  if not u.is_worker and (owner is None or u.player == owner)]
         counted = sum(self.remembered(owner).values()) if owner is not None else sum(self.remembered().values())
-        hidden = max(0.0, counted - len(near))
-        seen = (strength(world, near) + _tower_strength(world, self.player, point)
+        hidden = max(0.0, counted - len(theirs))
+        seen = (strength(world, theirs) + _tower_strength(world, self.player, point)
                 + 0.5 * hidden * self._typical_soldier(world))
         if world.time - self.last_seen(owner) > self.profile.stale_seconds:
             # Nobody has looked at them lately. An enemy nobody has looked at is not
