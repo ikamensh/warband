@@ -24,6 +24,27 @@ _STEPS: tuple[tuple[int, int, float], ...] = (
 )
 MAX_EXPANSIONS = 3000
 
+_STEP_OFFSETS: dict[int, tuple[tuple[tuple[int, ...], tuple[int, ...]], ...]] = {}
+
+
+def step_offsets(width: int) -> tuple[tuple[tuple[int, ...], tuple[int, ...]], ...]:
+    """Flat-index offsets of a tile's walkable neighbours for a grid *width* tiles wide,
+    indexed by which of its four orthogonal neighbours are open: ``east + 2·west + 4·south + 8·north``.
+
+    Each entry holds the orthogonal offsets, already known open, and then the diagonal ones,
+    whose own tile the caller still has to test.  The searches below read this table instead
+    of rebuilding a neighbour list at every expansion; the order is the one every search
+    relaxes in, so paths and parents do not depend on how the neighbours were found.
+    """
+    table = _STEP_OFFSETS.get(width)
+    if table is None:
+        table = _STEP_OFFSETS[width] = tuple(
+            (tuple(offset for offset, open_ in ((1, flags & 1), (-1, flags & 2), (width, flags & 4), (-width, flags & 8)) if open_),
+             tuple(offset for offset, open_ in ((width + 1, flags & 5 == 5), (1 - width, flags & 9 == 9),
+                                                (width - 1, flags & 6 == 6), (-width - 1, flags & 10 == 10)) if open_))
+            for flags in range(16))
+    return table
+
 
 def octile(a: Pos, b: Pos) -> float:
     dx, dy = abs(a[0] - b[0]), abs(a[1] - b[1])
@@ -102,6 +123,7 @@ def find_path_grid(start: Pos, goal: Pos, blocked: bytes | bytearray, width: int
     frontier = [(best_h, 0.0, origin)]
     expansions = 0
     push, pop = heapq.heappush, heapq.heappop
+    table = step_offsets(width)
     while frontier and expansions < max_expansions:
         _f, g, current = pop(frontier)
         if done[current]:
@@ -112,24 +134,31 @@ def find_path_grid(start: Pos, goal: Pos, blocked: bytes | bytearray, width: int
         if x == gx and y == gy:
             best = current
             break
-        east = x + 1 < width and not blocked[current + 1]
-        west = x > 0 and not blocked[current - 1]
-        south = y + 1 < height and not blocked[current + width]
-        north = y > 0 and not blocked[current - width]
-        for offset, nx, ny, cost, open_ in (
-            (1, x + 1, y, 1.0, east), (-1, x - 1, y, 1.0, west), (width, x, y + 1, 1.0, south), (-width, x, y - 1, 1.0, north),
-            (width + 1, x + 1, y + 1, SQRT2, east and south), (1 - width, x + 1, y - 1, SQRT2, east and north),
-            (width - 1, x - 1, y + 1, SQRT2, west and south), (-width - 1, x - 1, y - 1, SQRT2, west and north),
-        ):
-            if not open_:
-                continue
+        orthogonals, diagonals = table[(x + 1 < width and not blocked[current + 1])
+                                       + 2 * (x > 0 and not blocked[current - 1])
+                                       + 4 * (y + 1 < height and not blocked[current + width])
+                                       + 8 * (y > 0 and not blocked[current - width])]
+        ng = g + 1.0
+        for offset in orthogonals:
             nxt = current + offset
-            if blocked[nxt]:
-                continue  # the diagonal tile itself; an orthogonal one was checked above
-            ng = g + cost
             if ng < g_score[nxt]:
                 g_score[nxt] = ng
                 parent[nxt] = current
+                ny, nx = divmod(nxt, width)
+                dx, dy = abs(nx - gx), abs(ny - gy)
+                h = (dx + dy + DIAGONAL * dy) if dx > dy else (dx + dy + DIAGONAL * dx)
+                if h < best_h or (h == best_h and ng < g_score[best]):
+                    best, best_h = nxt, h
+                push(frontier, (ng + h, ng, nxt))
+        ng = g + SQRT2
+        for offset in diagonals:
+            nxt = current + offset
+            if blocked[nxt]:
+                continue  # the diagonal tile itself; the orthogonals it needs were checked above
+            if ng < g_score[nxt]:
+                g_score[nxt] = ng
+                parent[nxt] = current
+                ny, nx = divmod(nxt, width)
                 dx, dy = abs(nx - gx), abs(ny - gy)
                 h = (dx + dy + DIAGONAL * dy) if dx > dy else (dx + dy + DIAGONAL * dx)
                 if h < best_h or (h == best_h and ng < g_score[best]):
@@ -211,27 +240,26 @@ def distance_field(starts: Iterable[int], blocked: bytes | bytearray, width: int
         frontier.append((0.0, index))
     heapq.heapify(frontier)
     push, pop = heapq.heappush, heapq.heappop
+    table = step_offsets(width)
     while frontier:
         cost, current = pop(frontier)
         if cost > distances[current]:
             continue
         y, x = divmod(current, width)
-        east = x + 1 < width and not blocked[current + 1]
-        west = x > 0 and not blocked[current - 1]
-        south = y + 1 < height and not blocked[current + width]
-        north = y > 0 and not blocked[current - width]
-        straight, slanted = cost + 1.0, cost + SQRT2
-        for offset, total, open_ in (
-            (1, straight, east), (-1, straight, west), (width, straight, south), (-width, straight, north),
-            (width + 1, slanted, east and south), (1 - width, slanted, east and north),
-            (width - 1, slanted, west and south), (-width - 1, slanted, west and north),
-        ):
-            if not open_:
-                continue
+        orthogonals, diagonals = table[(x + 1 < width and not blocked[current + 1])
+                                       + 2 * (x > 0 and not blocked[current - 1])
+                                       + 4 * (y + 1 < height and not blocked[current + width])
+                                       + 8 * (y > 0 and not blocked[current - width])]
+        total = cost + 1.0
+        for offset in orthogonals:
             nxt = current + offset
-            if blocked[nxt]:
-                continue  # the diagonal tile itself; an orthogonal one was checked above
             if total < distances[nxt]:
+                distances[nxt] = total
+                push(frontier, (total, nxt))
+        total = cost + SQRT2
+        for offset in diagonals:
+            nxt = current + offset
+            if not blocked[nxt] and total < distances[nxt]:
                 distances[nxt] = total
                 push(frontier, (total, nxt))
     return distances
@@ -267,6 +295,7 @@ def find_work_path(start: Pos, goals: dict[Pos, float], blocked: bytes | bytearr
     frontier = [(0.0, origin)]
     best, best_cost = -1, math.inf
     push, pop = heapq.heappush, heapq.heappop
+    table = step_offsets(width)
     while frontier:
         cost, current = pop(frontier)
         if cost >= best_cost:
@@ -277,22 +306,21 @@ def find_work_path(start: Pos, goals: dict[Pos, float], blocked: bytes | bytearr
         if penalty is not None and cost + penalty < best_cost:
             best, best_cost = current, cost + penalty
         y, x = divmod(current, width)
-        east = x + 1 < width and not blocked[current + 1]
-        west = x > 0 and not blocked[current - 1]
-        south = y + 1 < height and not blocked[current + width]
-        north = y > 0 and not blocked[current - width]
-        straight, slanted = cost + 1.0, cost + SQRT2
-        for offset, total, open_ in (
-            (1, straight, east), (-1, straight, west), (width, straight, south), (-width, straight, north),
-            (width + 1, slanted, east and south), (1 - width, slanted, east and north),
-            (width - 1, slanted, west and south), (-width - 1, slanted, west and north),
-        ):
-            if not open_:
-                continue
+        orthogonals, diagonals = table[(x + 1 < width and not blocked[current + 1])
+                                       + 2 * (x > 0 and not blocked[current - 1])
+                                       + 4 * (y + 1 < height and not blocked[current + width])
+                                       + 8 * (y > 0 and not blocked[current - width])]
+        total = cost + 1.0
+        for offset in orthogonals:
             nxt = current + offset
-            if blocked[nxt]:
-                continue  # the diagonal tile itself; an orthogonal one was checked above
             if total < costs[nxt]:
+                costs[nxt] = total
+                parents[nxt] = current
+                push(frontier, (total, nxt))
+        total = cost + SQRT2
+        for offset in diagonals:
+            nxt = current + offset
+            if not blocked[nxt] and total < costs[nxt]:
                 costs[nxt] = total
                 parents[nxt] = current
                 push(frontier, (total, nxt))
