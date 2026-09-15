@@ -571,12 +571,16 @@ class World:
             lo = (y0 - radius) * width + x0 - radius
             visible[lo:lo + length] = (int.from_bytes(visible[lo:lo + length], "little") | mask).to_bytes(length, "little")
             return
-        for dy, half, _run in sight_spans(radius):
+        for dy, half, run in sight_spans(radius):
             y = y0 + dy
             if 0 <= y < height:
-                lo, hi = max(0, x0 - half), min(width, x0 + half + 1)
+                lo, hi = x0 - half, x0 + half + 1
+                if lo < 0:
+                    lo = 0
+                if hi > width:
+                    hi = width
                 if lo < hi:
-                    visible[y * width + lo:y * width + hi] = b"\x01" * (hi - lo)
+                    visible[y * width + lo:y * width + hi] = run[:hi - lo]
 
     def reveal_all(self, player: int) -> None:
         """Explore (and, until the next vision update, see) the whole map."""
@@ -752,7 +756,8 @@ class World:
 
     def can_place(self, building_type: BuildingType, pos: Pos, player: int, *, builder: int | None = None) -> str | None:
         info = BUILDINGS[building_type]
-        if info.requires is not None and not self.player_buildings(player, info.requires, done=True):
+        if info.requires is not None and not any(b.player == player and b.type is info.requires and b.done
+                                                 for b in self.buildings.values()):
             return f"Requires a {self.building_info(player, info.requires).name}"
         return self._placement_reason(building_type, pos, player, builder=builder)
 
@@ -1392,12 +1397,14 @@ class World:
             self._finish_order(u)
             u.orders.appendleft(Move(u.home))
             return
-        if order.auto and self.tick % 5 == 0 and self._threat(target) > 0:
-            # A bystander or a building holds a unit's attention only until something more dangerous shows up.
-            better = self._nearest_enemy(u.player, u.pos, u.info.sight)
-            if better is not None and self._threat(better) < self._threat(target):
-                target = better
-                self._retarget(u, order, better)
+        if order.auto and self.tick % 5 == 0:
+            threat = self._threat(target)
+            if threat > 0:
+                # A bystander or a building holds a unit's attention only until something more dangerous shows up.
+                better = self._nearest_enemy(u.player, u.pos, u.info.sight)
+                if better is not None and self._threat(better) < threat:
+                    target = better
+                    self._retarget(u, order, better)
         if order.auto and u.type is UnitType.ARCHER and u.cooldown > 0 and self._ranged_retreat(u, target, dt):
             return
         if order.auto and u.cooldown <= 0 and self.range_of(u) < 1:
@@ -1584,7 +1591,8 @@ class World:
         navigation = self._worker_navigation(u)
         hall = self.buildings.get(order.target)
         if hall is None or not hall.done or u.carrying not in hall.info.deposits or u.path_goal is None:
-            depots = [b for b in self.player_buildings(u.player, done=True) if u.carrying in b.info.deposits]
+            depots = [b for b in self.buildings.values()
+                      if b.player == u.player and b.done and u.carrying in b.info.deposits]
             hall = next((b for b in depots if rect_gap(u.pos, b.rect) - u.radius <= TOUCH), None)
             if hall is None:
                 if self.time < u.replan_at:

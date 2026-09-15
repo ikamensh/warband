@@ -130,14 +130,15 @@ def find_path_grid(start: Pos, goal: Pos, blocked: bytes | bytearray, width: int
             continue
         done[current] = 1
         expansions += 1
-        y, x = divmod(current, width)
-        if x == gx and y == gy:
+        x = current % width
+        if x == gx and current // width == gy:
             best = current
             break
+        below, above = current + width, current - width
         orthogonals, diagonals = table[(x + 1 < width and not blocked[current + 1])
                                        + 2 * (x > 0 and not blocked[current - 1])
-                                       + 4 * (y + 1 < height and not blocked[current + width])
-                                       + 8 * (y > 0 and not blocked[current - width])]
+                                       + 4 * (below < size and not blocked[below])
+                                       + 8 * (above >= 0 and not blocked[above])]
         ng = g + 1.0
         for offset in orthogonals:
             nxt = current + offset
@@ -233,7 +234,8 @@ def distance_field(starts: Iterable[int], blocked: bytes | bytearray, width: int
     """Walking distance from the nearest of the *starts* (flat indices) to every tile; infinity where
     no walk leads.  The eight-way expansion is inlined as in :func:`find_path_grid`: this floods the
     whole map."""
-    distances = [math.inf] * (width * height)
+    size = width * height
+    distances = [math.inf] * size
     frontier = []
     for index in sorted(starts):
         distances[index] = 0.0
@@ -245,11 +247,11 @@ def distance_field(starts: Iterable[int], blocked: bytes | bytearray, width: int
         cost, current = pop(frontier)
         if cost > distances[current]:
             continue
-        y, x = divmod(current, width)
+        x, below, above = current % width, current + width, current - width
         orthogonals, diagonals = table[(x + 1 < width and not blocked[current + 1])
                                        + 2 * (x > 0 and not blocked[current - 1])
-                                       + 4 * (y + 1 < height and not blocked[current + width])
-                                       + 8 * (y > 0 and not blocked[current - width])]
+                                       + 4 * (below < size and not blocked[below])
+                                       + 8 * (above >= 0 and not blocked[above])]
         total = cost + 1.0
         for offset in orthogonals:
             nxt = current + offset
@@ -287,11 +289,12 @@ def find_work_path(start: Pos, goals: dict[Pos, float], blocked: bytes | bytearr
     """
     if not goals:
         return None
+    size = width * height
     origin = start[1] * width + start[0]
     penalties = {y * width + x: penalty for (x, y), penalty in goals.items()}
-    costs = [math.inf] * (width * height)
+    costs = [math.inf] * size
     costs[origin] = 0.0
-    parents = [-1] * (width * height)
+    parents = [-1] * size
     frontier = [(0.0, origin)]
     best, best_cost = -1, math.inf
     push, pop = heapq.heappush, heapq.heappop
@@ -305,11 +308,11 @@ def find_work_path(start: Pos, goals: dict[Pos, float], blocked: bytes | bytearr
         penalty = penalties.get(current)
         if penalty is not None and cost + penalty < best_cost:
             best, best_cost = current, cost + penalty
-        y, x = divmod(current, width)
+        x, below, above = current % width, current + width, current - width
         orthogonals, diagonals = table[(x + 1 < width and not blocked[current + 1])
                                        + 2 * (x > 0 and not blocked[current - 1])
-                                       + 4 * (y + 1 < height and not blocked[current + width])
-                                       + 8 * (y > 0 and not blocked[current - width])]
+                                       + 4 * (below < size and not blocked[below])
+                                       + 8 * (above >= 0 and not blocked[above])]
         total = cost + 1.0
         for offset in orthogonals:
             nxt = current + offset
