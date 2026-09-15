@@ -53,6 +53,15 @@ def test_knights_are_worth_more_than_the_same_number_of_peasants():
 
 # -- Remembering the enemy ------------------------------------------------------
 
+def _raiders_at_our_base(world, count=3):
+    """Enemy archers standing in our base, where our own buildings can see them."""
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    archers = [world.spawn_unit(1, UnitType.ARCHER, (hall.center[0] + 1 + i * 0.5, hall.center[1] + 1))
+               for i in range(count)]
+    world.update_vision()
+    return archers
+
+
 def test_the_enemy_memory_counts_soldiers_rather_than_sightings():
     """Regression: a decaying running total reported about ten armies instead of one.
 
@@ -60,8 +69,7 @@ def test_the_enemy_memory_counts_soldiers_rather_than_sightings():
     has to mean "how many of them there are", however many times it has looked.
     """
     world, brain = _world_with_army()
-    world.reveal_all(0)
-    _spawn(world, 1, UnitType.ARCHER, 2, 3)
+    _raiders_at_our_base(world, 3)
     for _ in range(40):
         brain._observe(world)
     assert brain.remembered(1)[UnitType.ARCHER] == 3
@@ -69,17 +77,34 @@ def test_the_enemy_memory_counts_soldiers_rather_than_sightings():
 
 def test_a_sighting_fades_once_the_enemy_is_out_of_sight():
     world, brain = _world_with_army()
-    world.reveal_all(0)
-    archers = _spawn(world, 1, UnitType.ARCHER, 2, 3)
+    archers = _raiders_at_our_base(world, 3)
     for _ in range(10):
         brain._observe(world)
     seen = brain.remembered(1)[UnitType.ARCHER]
     for unit in archers:
         world.units.pop(unit.id)
+    world.update_vision()
     for _ in range(200):
         world.time += PRO.think_every
         brain._observe(world)
-    assert brain.remembered(1)[UnitType.ARCHER] < seen
+    assert brain.remembered(1).get(UnitType.ARCHER, 0.0) < seen
+
+
+def test_an_army_watched_dying_stops_being_counted():
+    """Looking at their base means what is standing there is all there is.
+
+    Without this the army just destroyed goes on being remembered, and the
+    counter-attack that should follow a repelled push never goes out.
+    """
+    world, brain = _world_with_army()
+    world.reveal_all(0)
+    archers = _spawn(world, 1, UnitType.ARCHER, 2, 4)
+    brain._observe(world)
+    assert brain.remembered(1)[UnitType.ARCHER] == 4
+    for unit in archers:
+        world.units.pop(unit.id)
+    brain._observe(world)
+    assert sum(brain.remembered(1).values()) == 0
 
 
 def test_an_enemy_nobody_has_looked_at_is_not_assumed_to_be_harmless():

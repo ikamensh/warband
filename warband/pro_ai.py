@@ -21,13 +21,14 @@ towers covering whatever is being attacked. The brain attacks when that
 comparison says it wins, retreats when it stops saying so, and does not care
 how many soldiers it has in absolute terms.
 
-*Focus fire.* Spreading damage over five enemies kills five of them at once
-and takes their fire the whole time; concentrating it removes a shooter from
-the fight immediately. The combat pass ranks the enemies in reach by threat
-against fragility and points melee at the best of them. Archers are left on
-their automatic orders while enemy melee is close, because the model's own
-automatic handling kites for them (see ``World._ranged_retreat``) and an
-explicit order would switch that off.
+*Leaving the fighting alone.* An explicit ``Attack`` order switches off the
+model's own automatic handling — archers kiting while they recover their shot,
+a unit retargeting when something more dangerous arrives, a melee finishing a
+wounded opponent in reach (see ``World._update_unit``). Directing focus fire
+from outside the fight measured 109 Elo *worse* than not doing it, over 588
+games, so the brain gives its army an objective and lets the model fight.
+What it does still manage is which soldiers are in the fight at all: one
+nearly dead walks home to be healed rather than dying for nothing.
 """
 
 from __future__ import annotations
@@ -59,17 +60,16 @@ class ProProfile:
     supply_slack: int = 4             # farms go up to keep this much headroom…
     supply_per_producer: float = 2.0  # …plus this much per military building
     max_sites: int = 2                # building sites at once
-    surplus_gold: int = 1200          # money piling up past this unlocks optional buildings…
-    surplus_lumber: int = 700         # …and so must lumber, which is what actually runs out
+    surplus_gold: int = 800           # money piling up past this unlocks optional buildings
     lumber_floor: int = 150           # never spend the lumber the next few soldiers need
     max_halls: int = 3
-    barracks_per_hall: int = 2
-    attack_ratio: float = 1.15        # attack when my strength exceeds theirs by this
+    barracks_per_hall: int = 4        # a barracks turns out ~4 soldiers a minute; income buys far more
+    attack_ratio: float = 1.6         # attack when my strength exceeds theirs by this
     retreat_ratio: float = 0.55       # break off once the push has lost this much of itself
     regroup_seconds: float = 45.0     # after a failed push, rebuild before trying again
     min_army: int = 10                # never walk out with less than this, whatever the comparison says
     tower_count: int = 2
-    focus_fire: bool = True
+    early_towers: int = 0             # towers put up before anything optional, to survive a rush
     retreat_wounded: bool = False      # pull a soldier out at this much health and let it heal…
     retreat_hp: float = 0.25
     rejoin_hp: float = 0.7             # …and send it back once it is this whole again
@@ -96,14 +96,13 @@ PRO = ProProfile("pro")
 #: Each differs from :data:`PRO` in one thing, so a ladder over all of them
 #: attributes the difference rather than guessing at it.
 _TRIALS = (
-    replace(PRO, name="pro-eco", workers_per_mine=13, max_workers=32),
-    replace(PRO, name="pro-prod", barracks_per_hall=4, surplus_gold=800, surplus_lumber=0),
-    replace(PRO, name="pro-expand", expand_early=True),
-    replace(PRO, name="pro-nofocus", focus_fire=False),
     replace(PRO, name="pro-noscout", scout=False),
     replace(PRO, name="pro-heal", retreat_wounded=True),
     replace(PRO, name="pro-raid", raid=True),
     replace(PRO, name="pro-group", reinforce_group=4),
+    replace(PRO, name="pro-towers", early_towers=2),
+    replace(PRO, name="pro-eager", attack_ratio=1.15),
+    replace(PRO, name="pro-patient", attack_ratio=2.2),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}}
 
@@ -166,7 +165,6 @@ class ProBrain:
         self.raiders: list[int] = []
         self._hurt: set[int] = set()  # soldiers pulled out to heal
         self.log: list[tuple[float, str]] = []
-        self._focus: dict[int, int] = {}      # unit id → the target it was last pointed at
         self._seen: dict[int, dict[UnitType, float]] = {}  # per opponent: most of each kind ever seen at once
         self._seen_at: dict[int, float] = {}               # …and when that opponent was last looked at
 
@@ -257,8 +255,20 @@ class ProBrain:
             if now:
                 self._seen_at[player.id] = world.time
             memory = self._seen.setdefault(player.id, {})
+            if self._in_view(world, player.id):
+                memory.clear()
+                memory.update(now)
+                continue
             for unit_type in set(memory) | set(now):
                 memory[unit_type] = max(memory.get(unit_type, 0.0) * fade, now.get(unit_type, 0.0))
+
+    def _in_view(self, world: World, player: int) -> bool:
+        """Whether we are actually looking at *player*'s home, so what we see is all there is."""
+        for building in world.buildings.values():
+            if building.player == player and building.type is BuildingType.TOWN_HALL:
+                if any(world.is_visible(self.player, tile) for tile in building.tiles()):
+                    return True
+        return False
 
     def remembered(self, player: int | None = None) -> dict[UnitType, float]:
         """How many of each kind *player* was last seen with; every opponent's, added, if None."""
@@ -339,6 +349,11 @@ class ProBrain:
             wishes.append((BuildingType.BARRACKS, anchor))
         if count(BuildingType.LUMBER_MILL) < 1:
             wishes.append((BuildingType.LUMBER_MILL, anchor))
+        # Most of these games are decided inside eight minutes, so surviving the
+        # first push is worth more than anything it would otherwise buy: a tower
+        # outlasts three soldiers and never needs feeding.
+        if count(BuildingType.TOWER) < profile.early_towers and have(BuildingType.BARRACKS):
+            wishes.append((BuildingType.TOWER, self._front_point(world, hall)))
         # Everything past here is optional, and optional buildings are what lose games:
         # each one is an army that was not trained. They are unlocked only once the
         # production already standing cannot keep up with the money coming in.
@@ -377,7 +392,7 @@ class ProBrain:
         if any(not b.queue and b.research is None for b in producers):
             return False
         player = world.players[self.player]
-        return player.gold >= self.profile.surplus_gold and player.lumber >= self.profile.surplus_lumber
+        return player.gold >= self.profile.surplus_gold
 
     def _expansion_site(self, world: World) -> Point | None:
         """An unclaimed mine with gold in it, nearest to home."""
@@ -762,7 +777,6 @@ class ProBrain:
         if hall is None:
             return False
         self._hurt.add(unit.id)
-        self._focus.pop(unit.id, None)
         world.move([unit.id], hall.center)
         return True
 
@@ -787,39 +801,18 @@ class ProBrain:
             world.attack_move([raider_id], min(prey, key=lambda p: dist(p, rider.pos)))
         return list(self.raiders)
 
-    def _threat_value(self, world: World, unit: Unit) -> float:
-        """What killing this one is worth: what it does to us, against how hard it is to kill."""
-        output = _dps(world, unit)
-        if unit.is_worker:
-            output += 1.5  # a peasant is not dangerous, but it is the enemy's income
-        return output / max(1.0, _effective_hp(world, unit))
-
     def _combat(self, world: World) -> None:
-        """Point melee at the enemy worth killing most, and keep it pointed there."""
+        """Take the nearly dead out of the fight. The fighting itself is the model's."""
+        if not self.profile.retreat_wounded:
+            return
         army = [u for u in world.player_units(self.player) if not u.is_worker and u.info.damage > 0]
         if not army:
             return
-        enemies = self._enemies(world)
-        if not enemies:
-            self._focus.clear()
+        if not self._enemies(world):
             self._hurt.clear()
             return
-        if self.profile.retreat_wounded:
-            army = [u for u in army if not self._withdraw_if_hurt(world, u)]
-        if not self.profile.focus_fire:
-            return
         for unit in army:
-            reach = world.range_of(unit) + 2.5
-            in_reach = [e for e in enemies if dist(e.pos, unit.pos) <= reach]
-            if not in_reach:
-                continue
-            if unit.info.ranged and any(e.info.melee and dist(e.pos, unit.pos) < 2.5 for e in in_reach):
-                continue  # leave the model's own kiting alone; an explicit order would switch it off
-            best = max(in_reach, key=lambda e: self._threat_value(world, e))
-            if self._focus.get(unit.id) == best.id and isinstance(unit.order, Attack) and unit.order.target == best.id:
-                continue  # already on it; re-issuing would restart the approach
-            world.attack([unit.id], best.id)
-            self._focus[unit.id] = best.id
+            self._withdraw_if_hurt(world, unit)
 
 
 def register_agents(register) -> None:
