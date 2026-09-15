@@ -16,7 +16,7 @@ M4 MacBook Air. `assets/deaths/manifest.json` records, per file, the prompt, the
 the requested length and steps, the trimming applied, the length and a SHA-256, so any
 piece can be regenerated or challenged.
 
-- `<race>_cry_<n>.wav`: three or four takes, 2 s requested, each from its own prompt
+- `<race>_cry_<n>.wav`: four takes, 2 s requested, each from its own prompt
   describing a dying warrior of that race. The same prompt with four seeds gave four
   near-identical takes; different wording per take is what makes them vary.
 - `<race>_weapon_<n>.wav`, `<race>_body_<n>.wav`, `<race>_settle_<n>.wav`: two takes
@@ -24,12 +24,11 @@ piece can be regenerated or challenged.
   settling for humans, an axe and a shield for orcs, a bow and a quiver for elves, a
   hammer and a helmet for dwarves).
 
-Trimming: cries lose leading and trailing quiet below −42 dB, keep a 60 ms tail and are
-band-limited to 90 Hz–9 kHz. Stages are cut to their first impact (from the onset until
-250 ms of quiet below 3.5 % of the peak, 0.25–1 s), high-passed at 30 Hz and low-passed
-at 9 kHz. Two kinds of failed generation were rejected: a near-silent clip (one elf cry)
-and a clip whose energy sat mostly above 9 kHz, a click rather than an impact (one human
-settle). Pieces are stored mono, 16-bit, 44.1 kHz, cries at 0.72 peak and stages at 0.8.
+Cutting and checks are `sagaforge.foley`'s: cries are the `voice` shape (everything between
+the first and last loud moment, band 90 Hz–9 kHz), stages the `impact` shape (the first
+event until 250 ms of quiet, 0.25–1 s, band 30 Hz–9 kHz); silent clips and clicks are
+rejected, and two seeds were replaced for that. Pieces are stored mono, 16-bit, 44.1 kHz,
+cries at 0.72 peak and stages at 0.8.
 
 ## The cue
 
@@ -43,15 +42,19 @@ bump `SOUND_VERSION` so the cache regenerates.
 
 ## Remaking a piece
 
-The generator is not in this repository. Clone `Stability-AI/stable-audio-3`, run
-`optimized/mlx/install.sh -y --download medium`, then for a stage:
+`tools/deaths.py` owns the prompts, seeds and styles and drives `sagaforge.foley`
+(`../sagaforge/docs/foley.md` covers the runtime install and the prompting lessons):
 
 ```bash
-./sa3 --dit medium --decoder same-l --seconds 1.6 --steps 8 --seed SEED --prompt "PROMPT" --out piece.wav
+export STABLE_AUDIO_MLX=~/stable-audio-3/optimized/mlx
+uv run python tools/deaths.py refresh                 # generates what is missing or whose spec changed
+uv run python tools/deaths.py sampler /tmp/deaths.wav # every piece back to back, to listen once
 ```
 
-with the prompt and seed from the manifest (cries use `--seconds 2`), trim as above,
-replace the file and update the manifest entry. Small SFX is faster but diverged on
-1.6 s clips in the pilot; Medium was stable at every setting tried. Keep the checks in
-`tests/warband/test_deaths.py` and `test_sound.py` green: they hold the fall after the
-cry, the level, the length and the absence of clicks.
+Change a prompt or a seed in the tool and refresh: only that piece is regenerated, the
+manifest follows. A rejected generation (silent, or a click) is named at the end; give it a
+new seed in `RESEEDED`. After a refresh bump `SOUND_VERSION` in `warband/sound.py` so the
+cached cues are mixed again, and keep `tests/warband/test_deaths.py` and `test_sound.py`
+green: they hold the fall after the cry, the level, the length and the absence of clicks.
+The same seed reproduces the same clip on the same machine, so the committed WAVs and the
+tool agree; the manifest's hashes are the check.

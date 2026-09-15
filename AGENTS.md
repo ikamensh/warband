@@ -17,7 +17,8 @@ uv run python tools/verify.py DIR                # a match through real pyglet e
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms)
 uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening; full report takes ~30 min
 uv run python tools/music.py render DIR          # WAV, spectrogram and stats per track
-uv run python tools/restyle.py refresh DIR          # painted unit sprites: the whole procedure; see ../sagaforge/docs/restyle.md
+uv run python tools/deaths.py refresh            # regenerate death pieces with Stable Audio 3 (needs STABLE_AUDIO_MLX; see docs/warband-deaths.md)
+uv run python tools/restyle.py refresh DIR          # painted unit and building sprites: the whole procedure; see ../sagaforge/docs/restyle.md
 uv run --extra package python tools/package.py build --version 0.1.0   # standalone build; verify DIR / install too
 ```
 
@@ -39,10 +40,14 @@ real breakdown.
   walk, a four-phase blow) posed by one `Pose` table. A unit whose subject has a
   painted sheet under `warband/assets/restyled/` (made by `tools/restyle.py`
   through `sagaforge.restyle`; every unit of every race) gets that frame
-  recoloured to its team instead (`WARBAND_ART=procedural` keeps the renders;
-  a sheet whose frames no longer match `FRAMES` warns and is ignored). `view.py` keeps
-  sprites in step and draws fog, minimap and water; `effects.py` transient
-  animations and lingering bodies.
+  recoloured to its team instead, and so does a building whose race has a
+  painted sheet (`<race>.buildings.<look>`: `intact`, `active` while it trains
+  or researches, `damaged` under half its hit points; `view.building_look`
+  picks the look, a missing look shows the intact one). Portraits use the
+  painted frame too. `WARBAND_ART=procedural` keeps the renders; a sheet whose
+  frames no longer match `FRAMES` or the building types warns and is ignored.
+  `view.py` keeps sprites in step and draws fog, minimap and water;
+  `effects.py` transient animations and lingering bodies.
 - `warband/sound.py`, `combat_sound.py`, `voices.py`, `ambience.py`,
   `instruments.py`, `music.py` — everything synthesised with `sagaforge.synth`;
   `music.Director` maps moods to tracks; the bank composes in a background thread.
