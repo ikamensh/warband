@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from saga2d import SaveError, SaveManager
-from warband.model import Building, Point, Pos, Unit, World, dist, tile_center
+from warband.model import Building, Point, Pos, Unit, World, dist, rects_gap, tile_center
 from warband.rules import BUILDINGS, MINE_GOLD, BuildingType, Difficulty, MapTheme, Race, Terrain, UnitType
 
 FORMAT = 1  # of the progress file; bump only when an older Warband could misread a newer file
@@ -323,8 +323,6 @@ class Run:
         if any(pos[0] - u.radius < u.x < pos[0] + size + u.radius and pos[1] - u.radius < u.y < pos[1] + size + u.radius
                for u in world.units.values() if not u.hidden):
             return False
-        from warband.model import rects_gap
-
         return all(rects_gap((pos[0], pos[1], size, size), mine.rect) >= MINE_CLEARANCE for mine in world.mines())
 
     def place(self, side: int | None, building_type: BuildingType, around: Point, *, radius: int = 10, done: bool = True) -> Building:

@@ -14,7 +14,7 @@ from saga2d import Anchor, Button, Column, Component, InputEvent, KeyHints, Labe
 from warband.campaign import Choice, Dialog, Item, Line, Speaker
 from warband.production import ProductionIcon
 from warband.sound import play_sound
-from warband.style import ACTION_BUTTON, GHOST_BUTTON, GOLD, MUTED, OVERLAY_STYLE
+from warband.style import ACTION_BUTTON, GHOST_BUTTON, MUTED, OVERLAY_STYLE
 
 PORTRAIT = 104
 PANEL_WIDTH = 980

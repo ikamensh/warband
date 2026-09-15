@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from PIL import Image as PilImage
-
 from saga2d import Anchor, Button, Column, Image, KeyHints, Label, Row, SaveError, Scene
 from warband.campaign import Campaign, Mission, Progress, ProgressStore
 from warband.dialog import DialogScene
@@ -19,7 +17,7 @@ from warband.missions import CAMPAIGN
 from warband.rules import Difficulty
 from warband.scene import _clock, load_game
 from warband.sound import play_sound
-from warband.style import ACTION_BUTTON, BAD, DIM, GHOST_BUTTON, GOLD, GOOD, MENU_BUTTON, MUTED, OVERLAY_STYLE
+from warband.style import ACTION_BUTTON, BAD, DIM, GHOST_BUTTON, GOLD, GOOD, MUTED, OVERLAY_STYLE
 
 PREVIEW_KEY = "campaign.preview"
 PREVIEW_SIZE = (256, 192)

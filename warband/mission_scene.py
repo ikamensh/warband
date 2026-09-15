@@ -20,8 +20,8 @@ from warband.campaign import Campaign, Mission, Progress, ProgressStore, Run, sh
 from warband.dialog import DialogScene
 from warband.model import World
 from warband.rules import Difficulty
-from warband.scene import HUD_TOP, GameScene, HelpScene, PauseScene, SettingsScene, _clock, _Overlay, check_save
-from warband.style import ACTION_BUTTON, BAD, DIM, GHOST_BUTTON, GOLD, GOOD, MUTED, PANEL_STYLE, RESULTS_STYLE, TEXT
+from warband.scene import HUD_TOP, GameScene, PauseScene, _clock, _Overlay, check_save
+from warband.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MUTED, PANEL_STYLE, RESULTS_STYLE, TEXT
 from warband.view import rgba, to_world
 
 CAMPAIGN_SLOT = "campaign"

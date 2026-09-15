@@ -15,7 +15,7 @@ from __future__ import annotations
 from warband.campaign import (
     Campaign, Choice, Line, Mission, Objective, Option, Run, Side, Speaker, Trigger, after, all_of, any_of, at, objective_done, side_out, var,
 )
-from warband.model import dist, tile_center
+from warband.model import tile_center
 from warband.rules import BuildingType as B, Difficulty, MapTheme, Race, UnitType as U, Upgrade
 
 SPEAKERS = {

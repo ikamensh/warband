@@ -108,7 +108,6 @@ def test_hollowmere_raids_come_once_the_village_stands_and_the_third_wave_broken
 
 def test_losing_the_hall_loses_hollowmere(game) -> None:
     run = build_world(mission("hollowmere"), flags={})
-    run.set("camp", run.get("camp"))
     run_for(run, 301)  # the raid comes at five minutes whether the village is ready or not
     assert "raid_1" in run.fired
     run.hall(0).hp = 0
@@ -252,8 +251,7 @@ def test_a_replayed_mission_asks_its_own_question_again() -> None:
 
 def test_a_mission_save_keeps_the_script_where_it_was_and_continue_resumes_it(game) -> None:
     scene = start(game, "hollowmere")
-    run, world = scene.run, scene.world
-    run.set("camp", run.get("camp"))
+    run = scene.run
     run_for(run, 301)
     game.tick(1 / 60)
     press(game, "space")  # Aldric's warning
