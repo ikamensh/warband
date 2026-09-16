@@ -30,7 +30,7 @@ from arena import print_table, run, specs_1v1  # noqa: E402 - the ladder runner 
 from warband import arena, balance  # noqa: E402
 from warband.archetypes import NAMES  # noqa: E402
 from warband.arena import MatchResult, MatchSpec, win_rate  # noqa: E402
-from warband.rules import Race  # noqa: E402
+from warband.rules import Race, UnitType  # noqa: E402
 
 SEED_BASE = 70_000  # far from the seeds the ladders and the tuner use; nothing was tuned here
 
@@ -78,6 +78,12 @@ def report(results: list[MatchResult], agents: list[str], usage_of: str | None) 
         print(f"  {p.name:<12} {p.games:5d} {p.score * 100:5.1f}% {p.undecided:9d} {p.unspent:8.0f} {p.blocked * 100:7.0f}% "
               f"{p.peak_army:9.0f} {_minutes(p.first_soldier):>11}")
     print("  unspent: gold+lumber in the bank at the end; blocked: share of minutes at the supply cap; 1st soldier in minutes")
+
+    kinds = [t.value for t in UnitType if t is not UnitType.PEASANT]
+    print("\n== fielded (units trained per game, so a posture is what its name says) ==")
+    print(f"  {'posture':<12} " + "".join(f"{k[:8]:>9}" for k in kinds))
+    for name, counts in balance.fielded(results).items():
+        print(f"  {name:<12} " + "".join(f"{counts[k]:9.1f}" for k in kinds))
 
     races, pairs = balance.race_table(results)
     print("\n== races ==")

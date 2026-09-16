@@ -200,6 +200,17 @@ def postures(results: Iterable[MatchResult]) -> list[Posture]:
 _SOLDIERS = frozenset(t.value for t in UnitType if t is not UnitType.PEASANT)
 
 
+def fielded(results: Iterable[MatchResult]) -> dict[str, Counter[str]]:
+    """Units trained per game by each agent, averaged over its seats: whether a posture did what its name says."""
+    totals: dict[str, Counter[str]] = {}
+    seats: Counter[str] = Counter()
+    for result in results:
+        for name, tally in zip(result.spec.agents, result.tallies):
+            totals.setdefault(name, Counter()).update(tally.trained)
+            seats[name] += 1
+    return {name: Counter({k: v / seats[name] for k, v in total.items()}) for name, total in totals.items()}
+
+
 # -- Races -------------------------------------------------------------------------
 
 def race_table(results: Iterable[MatchResult]) -> tuple[dict[str, tuple[float, int]], dict[tuple[str, str], tuple[float, int]]]:

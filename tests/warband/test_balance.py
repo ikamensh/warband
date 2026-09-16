@@ -96,3 +96,16 @@ def test_the_evidence_file_gives_back_what_was_written():
     path = __import__("pathlib").Path(__import__("tempfile").mkdtemp()) / "league.jsonl"
     save(played, path)
     assert load(path) == played
+
+
+def test_what_a_posture_fielded_is_the_mean_of_its_own_seats():
+    """A knights posture that trained 4 knights in one game and 2 in another fielded 3 a game."""
+    from warband.balance import fielded
+
+    results = [_match(("knights", "pro"), 0, [_tally(trained={"knight": 4, "footman": 1}), _tally(trained={"footman": 5})]),
+               _match(("pro", "knights"), 1, [_tally(trained={"footman": 3}), _tally(trained={"knight": 2})], seed=2)]
+    table = fielded(results)
+    assert table["knights"]["knight"] == pytest.approx(3.0)
+    assert table["knights"]["footman"] == pytest.approx(0.5)
+    assert table["pro"]["footman"] == pytest.approx(4.0)
+    assert table["pro"]["knight"] == 0
