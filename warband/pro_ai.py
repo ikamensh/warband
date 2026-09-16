@@ -68,6 +68,7 @@ class ProProfile:
     max_halls: int = 3
     barracks_per_hall: int = 3        # a barracks turns out ~4 soldiers a minute; income buys far more
     min_barracks: int = 1             # put up this many before anything optional, saturated or not
+    barracks_first: bool = False      # nothing but farms goes up before the first barracks
     gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
     max_producers: int = 10
     attack_ratio: float = 0.85        # attack when my strength exceeds theirs by this
@@ -179,6 +180,9 @@ _STYLES = (
     replace(PRO, name="pro-min10", min_army=10, attack_ratio=1.0),
     replace(PRO, name="pro-siege-kills", siege_share=0.25, cleric_share=0.1, target_halls=True, min_army=8,
             attack_ratio=1.0, count_kills=True),
+    replace(PRO, name="pro-raxfirst", barracks_first=True),
+    replace(PRO, name="pro-raxfirst-min8", barracks_first=True, min_army=8, attack_ratio=1.0),
+    replace(PRO, name="pro-raxfirst-kills", barracks_first=True, count_kills=True),
     # The slow races lose the first clash: dwarves walk slower, orcs arm slower,
     # and both march out at the same minute with the same five soldiers as the
     # elves who beat them four times in five. Let them hold longer.
@@ -533,6 +537,13 @@ class ProBrain:
             wishes.append((BuildingType.FARM, anchor))
         if count(BuildingType.BARRACKS) < 1:
             wishes.append((BuildingType.BARRACKS, anchor))
+            # The mill sits behind the barracks here and costs a hundred gold
+            # less, so whenever the bank is between the two it is the mill that
+            # gets bought — and its 450 lumber is the barracks' 450 lumber, a
+            # minute of chopping later. Both brains in a mirror trace had their
+            # first barracks at three minutes for exactly this reason.
+            if profile.barracks_first:
+                return wishes
         if count(BuildingType.LUMBER_MILL) < 1:
             wishes.append((BuildingType.LUMBER_MILL, anchor))
         if 1 <= count(BuildingType.BARRACKS) < profile.min_barracks:
