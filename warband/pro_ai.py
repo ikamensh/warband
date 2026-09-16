@@ -41,7 +41,7 @@ from dataclasses import dataclass, field, replace
 from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived
 from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, tile_center
 from warband.races import RACES
-from warband.rules import BUILDINGS, BuildingType, UnitType
+from warband.rules import BUILDINGS, BuildingType, Race, UnitType
 
 _MELEE_TYPES = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
 BUILD_MIN_DISTANCE = 2
@@ -101,6 +101,12 @@ class ProProfile:
     wood_stock: int = 900             # …'short' meaning below this; above it the wood crews go back to the gold
     count_kills: bool = False         # soldiers the brain watched die no longer count against it
     target_halls: bool = False        # pushes go for the hall (the economy) before the barracks
+    by_race: Mapping[Race, Mapping[str, object]] = field(default_factory=dict)  # knobs that differ when playing that race
+
+    def for_race(self, race: Race) -> "ProProfile":
+        """The knobs to play *race* by: this profile with that race's overrides applied."""
+        overrides = self.by_race.get(race)
+        return replace(self, **overrides) if overrides else self
 
 
 PRO = ProProfile("pro")
@@ -154,6 +160,8 @@ _STYLES = (
     replace(PRO, name="pro-wood", wood_share=0.3),
     replace(PRO, name="pro-wood25", wood_share=0.25),
     replace(PRO, name="pro-wood40", wood_share=0.4),
+    replace(PRO, name="pro-group3", reinforce_group=3),
+    replace(PRO, name="pro-group5", reinforce_group=5),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}, **{p.name: p for p in _STYLES}}
 
@@ -235,6 +243,10 @@ class ProBrain:
     def think(self, world: World, rng: random.Random) -> None:
         if not world.players[self.player].alive or world.winner is not None:
             return
+        if self.profile.by_race:
+            # The race is drawn with the map, so the first pass is the first
+            # chance to play by its numbers; from then on the profile is settled.
+            self.profile = self.profile.for_race(world.players[self.player].race)
         if world.time >= self.next_combat:
             self.next_combat = world.time + self.profile.combat_every
             self._combat(world)

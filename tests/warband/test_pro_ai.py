@@ -142,6 +142,20 @@ def test_the_wood_share_puts_that_many_hands_on_the_trees_and_takes_them_off_aga
         "the rest were sent to a mine, not left idle"
 
 
+def test_a_profile_plays_each_race_by_its_own_numbers():
+    from dataclasses import replace
+    from warband.rules import Race
+    world, _ = _world_with_army()
+    profile = replace(PRO, min_army=5, by_race={Race.DWARF: {"min_army": 12}})
+    assert profile.for_race(Race.DWARF).min_army == 12
+    assert profile.for_race(Race.ELF).min_army == 5
+    assert profile.for_race(Race.DWARF).by_race == profile.by_race, "the overrides travel with the profile"
+    brain = ProBrain(0, profile)
+    world.players[0].race = Race.DWARF
+    brain.think(world, random.Random(0))
+    assert brain.profile.min_army == 12
+
+
 def test_an_army_out_on_the_map_still_defends_its_base():
     """Regression: a scout looking at an empty base reported a defence of nothing,
     and the push that went out met the army that had simply been standing elsewhere."""
