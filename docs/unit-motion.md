@@ -59,13 +59,13 @@ these now has a concrete carrier in the rig or the view.
 - The stand-ins were also made honest where they misled the painter: the stone rides in
   a sling basket, the peasant holds the logs from below and cradles the sack.
 
-**View (`view.py`): distance and the cooldown clock.**
+**View (`view.py`): distance and the model's clocks.**
 - The walk frame is chosen by distance covered (`STRIDE` = 0.22 tiles per frame): feet
   stay planted, a knight steps faster than a peasant, a held unit holds its frame.
-- The blow phases read off the model's own cooldown: `wind` during the last 0.2 s
-  before the cooldown runs out (anticipation for the blow the model is about to land),
-  then `strike` 0.10 s, `follow` 0.16 s, `recover` 0.16 s after it. No rules changed,
-  nothing was delayed; the wind-up simply uses the timer that already existed.
+- The blow phases read off the model: `wind` while the model has the weapon drawn back
+  (`Unit.windup`, see part 4), then `strike` 0.10 s, `follow` 0.16 s, `recover` 0.16 s
+  after the blow, read off the cooldown. Before part 4 the wind-up was guessed as the
+  last 0.2 s of the cooldown, so the first blow of a fight had none.
 
 **Impact (`scene.py`).** The victim flinches away from the striker (a 3 px shove when it
 was standing, a 9 px wobble otherwise) and melee hits burst five sparks at the contact
@@ -92,9 +92,8 @@ prompt naming the frames and their purpose so the model keeps the poses distinct
 4. **Secondary motion.** Plumes, cloaks, tabards and the archer's quiver lagging a frame
    behind the body sell weight more than the body itself. Cheapest route: extra keys in
    the rig with the cloth offset against the motion; the painter follows.
-5. **Turning.** Facing snaps between eight directions. Interpolating the sprite facing
-   over 80–120 ms through the neighbouring facings (the sheets already have them)
-   removes the pop when a unit changes target.
+5. **Turning.** Done in the model instead (part 4): a unit pivots at its turn rate, so
+   the sprite passes through the neighbouring facings on its way round.
 6. **Gaits.** One walk for every speed. A run cycle (longer stride, forward lean 12°, arms
    pumping) for scouts and charging knights, and a trudge for laden peasants.
 7. **Idle life.** A breathing bob and an occasional look-around every few seconds keep
@@ -107,5 +106,48 @@ prompt naming the frames and their purpose so the model keeps the poses distinct
 10. **A style anchor between sheets.** Passing an approved sheet alongside a new one
     should stop the drift in horse and armour styles between units.
 
-Items 1, 2 and 5 are a day; 3 and 4 are authoring, a day per race; 6–9 are polish that
+Items 1 and 2 are a day; 3 and 4 are authoring, a day per race; 6–9 are polish that
 can go in one unit at a time.
+
+## 4. Turning, the wind-up and shots in the air (2026-09-16)
+
+The rules now spend time on a blow, so the motion above has something real to show and
+the balance follows from it (`rules.py` has the table; `docs/evidence/combat-timing/`
+the frames this was checked on).
+
+**Turning.** `UnitInfo.turn` is a rate in radians per second (infantry 360°/s, scouts
+450°/s, knights 270°/s, catapults 150°/s). `World._turn_toward` pivots a unit toward a
+point at that rate, whether it is walking a path or squaring up to a target; a blow
+starts only once the unit faces its target. A footman struck from behind spends half a
+second turning before it answers; a catapult wheels round in over a second.
+
+**Wind-up.** `UnitInfo.windup` (0.25–0.35 s for soldiers, 0.8 s for a catapult) is the
+time from the decision to strike to the blow landing. `Unit.windup` counts it down; the
+view shows `wind` for exactly that long. The blow at the end lands if the target is still
+within reach plus `WINDUP_SLACK` (half a tile) and costs the cooldown either way, so a
+swing at air is a swing lost. A shooter stands through its wind-up; a melee unit with an
+attack order keeps closing on its target meanwhile, or a knight after a fleeing peasant
+would swing at air forever. A new order breaks a wind-up off. The period between blows is
+`UnitInfo.period` = wind-up + cooldown, which is what the AI's strength maths divides by.
+
+**Shots.** `World.projectiles` holds every arrow, axe, bolt and stone in the air
+(`Projectile`: shooter, kind, start, aim, target, launch time, flight, damage). An arrow
+follows its mark at `ARROW_SPEED` and strikes when it arrives; if the mark died meanwhile
+it lands on nothing. A siege stone is fired at a point on the ground (`_aim_point`): the
+nearest wall of a building, or a marching unit's position led by the stone's flight along
+its current velocity, clamped to the engine's reach. When it comes down (`_land_stone`)
+everything within `DIRECT_HIT` of the point takes the full blow and everything out to the
+splash radius `SPLASH_FRACTION` of it, friend and foe alike, plus the enemy's buildings.
+A crew firing on its own judgement (an automatic or attack-move target) holds fire while
+its own side stands within the splash plus `FRIENDLY_MARGIN` of where the stone would
+fall; a crew the player ordered fires, and the player answers for it. Catapults cannot
+throw inside `min_range` (two tiles), pick their own targets beyond it, and back straight
+away from a target inside it to get range. Saves carry the shots in flight.
+
+**View.** Each shot has a sprite moved every frame, between model steps too (the view
+keeps `_since_tick`), on a flat arc for arrows and a high lob for stones (`projectile_point`);
+behind it a fading trail (`TRAIL` seconds long), under a stone its shadow on the ground
+and, on visible ground, a ring where it will come down (the owner's colour for the
+player's own stones, red for the enemy's, so a player can step out from under one). The
+blow's sound and flinch come with the `hit` event, which is now raised when the shot
+lands; a stone that found nothing raises `impact` for its dust and thud.

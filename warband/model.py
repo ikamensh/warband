@@ -2268,9 +2268,9 @@ class World:
             if target.vx or target.vy:
                 flight = self._stone_flight(u.pos, here)
                 lead = self._clamp((here[0] + target.vx * flight, here[1] + target.vy * flight))
-                reach = self.range_of(u) + u.radius
-                if dist(u.pos, lead) > reach:  # never beyond where the engine can throw
-                    lead = (u.x + (lead[0] - u.x) / dist(u.pos, lead) * reach, u.y + (lead[1] - u.y) / dist(u.pos, lead) * reach)
+                reach, far = self.range_of(u) + u.radius, dist(u.pos, lead)
+                if far > reach:  # never beyond where the engine can throw
+                    lead = (u.x + (lead[0] - u.x) / far * reach, u.y + (lead[1] - u.y) / far * reach)
                 spots.insert(0, lead)
         spots = [spot for spot in spots if dist(u.pos, spot) - u.radius >= u.info.min_range]
         if not spots:

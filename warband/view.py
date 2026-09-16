@@ -455,7 +455,7 @@ class MapView:
             gx, gy = to_world((x, y))
             position = (gx, gy - height * TILE)
             if shot is None:
-                size = (12, 12) if p.kind == "stone" else (22, 6)
+                size = (14, 14) if p.kind == "stone" else (22, 6)
                 shot = self._shots[p.id] = _Shot(self.scene.add_sprite(Sprite(p.kind, position=position, size=size, layer=RenderLayer.EFFECTS)))
             elif p.kind == "arrow" and shot.trail:
                 shot.sprite.rotation = math.degrees(math.atan2(position[1] - shot.trail[-1][2], position[0] - shot.trail[-1][1]))

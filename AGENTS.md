@@ -35,7 +35,9 @@ real breakdown.
 
 - `warband/model.py` — the 20 Hz fixed-step simulation (orders, harvesting,
   construction, supply, upgrades, towers, fog, elimination, JSON saves); no
-  saga2d dependency, so rules are tested directly. `rules.py` holds the tables,
+  saga2d dependency, so rules are tested directly. A blow turns, winds up and
+  lands; shots are `Projectile`s that land later, stones on the ground they
+  were fired at (`docs/unit-motion.md` part 4). `rules.py` holds the tables,
   `races.py` the four races' names, numbers and arts, `path.py` bounded A*,
   `mapgen.py` the five map layouts, their symmetry and audit, `ai.py` a Brain
   per player for the lower difficulties (`PROFILES`) plus `make_brain`, which
@@ -58,8 +60,9 @@ real breakdown.
   picks the look, a missing look shows the intact one). Portraits use the
   painted frame too. `WARBAND_ART=procedural` keeps the renders; a sheet whose
   frames no longer match `FRAMES` or the building types warns and is ignored.
-  `view.py` keeps sprites in step and draws fog, minimap and water;
-  `effects.py` transient animations and lingering bodies.
+  `view.py` keeps sprites in step (units, buildings, shots in the air with
+  their trails) and draws fog, minimap and water; `effects.py` transient
+  animations and lingering bodies.
 - `warband/sound.py`, `voices.py`, `ambience.py`, `instruments.py`, `music.py` —
   synthesised with `sagaforge.synth`; `music.Director` maps moods to tracks; the bank
   composes in a background thread. `combat_sound.py`, `deaths.py` and `wreckage.py` are
