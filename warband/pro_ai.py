@@ -68,9 +68,7 @@ class ProProfile:
     max_halls: int = 3
     barracks_per_hall: int = 3        # a barracks turns out ~4 soldiers a minute; income buys far more
     barracks_first: bool = False      # nothing but farms goes up before the first barracks
-    opening_slack: int | None = None  # if set, the supply headroom kept while no barracks stands, instead of supply_slack
     towers_early: int = 0             # towers at the front point as soon as the barracks stands, before the mill
-    counter_punch: bool = False       # a push that was just beaten off is followed home at once, whatever the army's size
     gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
     max_producers: int = 10
     attack_ratio: float = 0.85        # attack when my strength exceeds theirs by this
@@ -117,11 +115,6 @@ PRO_WARDEN = replace(PRO_VANGUARD, name="pro-warden", towers_early=1, min_army=8
 
 #: Probes on the postures, for the ladder to price.
 _PROBES = (
-    replace(PRO_WARDEN, name="pro-warden-os1", opening_slack=1),
-    replace(PRO_WARDEN, name="pro-warden-os2", opening_slack=2),
-    replace(PRO_VANGUARD, name="pro-vanguard-os1", opening_slack=1),
-    replace(PRO_WARDEN, name="pro-warden-punch", counter_punch=True),
-    replace(PRO_WARDEN, name="pro-warden-os1-punch", opening_slack=1, counter_punch=True),
     replace(PRO_WARDEN, name="pro-warden-scout", scout_peasant=True),
     replace(PRO_VANGUARD, name="pro-vanguard-scout", scout_peasant=True),
 )
@@ -220,7 +213,6 @@ class ProBrain:
         self.scouts: list[int] = []
         self.raiders: list[int] = []
         self._hurt: set[int] = set()  # soldiers pulled out to heal
-        self._defended_at = -math.inf  # when the army was last sent at something in the base
         self.log: list[tuple[float, str]] = []
         self._seen: dict[int, dict[UnitType, float]] = {}  # per opponent: most of each kind ever seen at once
         self._seen_at: dict[int, float] = {}               # …and when that opponent was last looked at
@@ -454,12 +446,6 @@ class ProBrain:
         producers = sum(count(t) for t in (BuildingType.BARRACKS, BuildingType.STABLES,
                                            BuildingType.WORKSHOP, BuildingType.CHURCH))
         headroom = profile.supply_slack + int(profile.supply_per_producer * producers)
-        if profile.opening_slack is not None and not have(BuildingType.BARRACKS):
-            # Four of headroom means a farm every thirty seconds in the opening,
-            # and each one is 250 of the barracks' 450 lumber: traced as orcs
-            # against elves, the third and fourth farm came before the barracks
-            # and the barracks a minute after the enemy's.
-            headroom = profile.opening_slack
         farms_coming = going_up.count(BuildingType.FARM) + going_up.count(BuildingType.TOWN_HALL)
         if cap - used + 4 * farms_coming < headroom:
             wishes.append((BuildingType.FARM, anchor))
@@ -774,25 +760,10 @@ class ProBrain:
         if threats and not (self.attacking and strength(world, threats)
                             < self.profile.ignore_raid_ratio * strength(world, army)):
             self._defend(world, guards + army, threats)
-            self._defended_at = world.time
             return
         self._post(world, guards)
         hall = self._hall(world)
         mine = strength(world, army)
-        if (self.profile.counter_punch and not self.attacking and army
-                and world.time - self._defended_at < 5.0 and world.time >= self.regroup_until):
-            # The push that was just beaten off walks home under Move orders and
-            # does not fight back, and its base is at its weakest until it has
-            # regrouped: follow it now, with whatever is standing.
-            targets = self._attack_targets(world)
-            origin = hall.center if hall is not None else army[0].pos
-            if targets:
-                self.attacking = True
-                self.target = min(targets, key=lambda t: dist(t, origin))
-                self.commit_strength = mine
-                self.note(world, f"counter-punch {len(army)} strong")
-                world.attack_move([u.id for u in army], self.target)
-                return
         if self.attacking:
             # Judge a push by how it is going, not by how big the enemy looks from
             # where the army happens to be standing. Estimating the defence again

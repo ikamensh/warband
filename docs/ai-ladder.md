@@ -417,6 +417,8 @@ contradicted the reasoning that produced the change:
 | the barracks itself at the front point, so Master's push meets tower, army and reinforcements in one place | **−35 Elo** (45% against Master, 43% against the Warden, 160 games each) |
 | a raid too small to matter met by three soldiers rather than the whole army | level (51% and 52%, 141 games each) |
 | dwarves and orcs holding harder — two towers, out at ten | level against Master, 44% against the Warden (149 games) |
+| a farm only when supply is about to block, until the barracks stands (an opening slack of 1 or 2) | **−50 to −100 Elo** for the Warden (42%, 46% over 80 games), level for the Vanguard (54%): the farms it holds back are the supply the army is made of, again |
+| a beaten push followed home at once, whatever the army's size | level (50%) |
 | marching out at eight to ten soldiers on level terms instead of five on a guess (`min_army` 8–10, `attack_ratio` 1.0) | **+40 Elo** — 55–57% against Master over 96 games each, 55% pooled over 576; the one posture change that measured |
 | soldiers seen to die dropped from the enemy count at once (`count_kills`) | +20 Elo alone (53%), about the same on top of the later push |
 | a standing share of the workforce on wood | **−40 to −180 Elo** — 46% at 30%, 31% at 40%, 25% with farms ahead of demand as well; the model's own policy is better |
