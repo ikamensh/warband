@@ -67,6 +67,7 @@ class ProProfile:
     lumber_floor: int = 150           # never spend the lumber the next few soldiers need
     max_halls: int = 3
     barracks_per_hall: int = 3        # a barracks turns out ~4 soldiers a minute; income buys far more
+    min_barracks: int = 1             # put up this many before anything optional, saturated or not
     gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
     max_producers: int = 10
     attack_ratio: float = 0.85        # attack when my strength exceeds theirs by this
@@ -164,6 +165,12 @@ _STYLES = (
     replace(PRO, name="pro-group3", reinforce_group=3),
     replace(PRO, name="pro-group5", reinforce_group=5),
     replace(PRO, name="pro-sat", blocked_is_busy=True),
+    replace(PRO, name="pro-2rax", min_barracks=2),
+    replace(PRO, name="pro-3rax", min_barracks=3),
+    replace(PRO, name="pro-wood-2rax", wood_share=0.3, min_barracks=2),
+    replace(PRO, name="pro-wood-sat", wood_share=0.3, blocked_is_busy=True),
+    replace(PRO, name="pro-wood-kills", wood_share=0.3, count_kills=True),
+    replace(PRO, name="pro-wood-slack", wood_share=0.3, supply_slack=8),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}, **{p.name: p for p in _STYLES}}
 
@@ -509,6 +516,8 @@ class ProBrain:
             wishes.append((BuildingType.BARRACKS, anchor))
         if count(BuildingType.LUMBER_MILL) < 1:
             wishes.append((BuildingType.LUMBER_MILL, anchor))
+        if 1 <= count(BuildingType.BARRACKS) < profile.min_barracks:
+            wishes.append((BuildingType.BARRACKS, anchor))
         # Everything past here is optional, and optional buildings are what lose games:
         # each one is an army that was not trained. They are unlocked only once the
         # production already standing cannot keep up with the money coming in.
