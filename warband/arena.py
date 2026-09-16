@@ -229,10 +229,37 @@ def shuffled_variant(seed: int, spread: float = 0.25) -> Variant:
     return Variant(f"shuffle-{seed}", units=units, buildings=buildings)
 
 
+def scaled_variant(name: str) -> Variant:
+    """A patch spelled out in its name: ``scale:knight.cost_gold=1.25,tower.hp=0.8,blades_1.time=0.5``.
+
+    Each term is a unit, building or upgrade value, a field of it (:data:`UNIT_FIELDS`,
+    :data:`BUILDING_FIELDS`, :data:`UPGRADE_FIELDS`) and the factor to multiply it by.
+    This is how a proposed price change is tried: the name travels to every
+    worker as plain data, and the league is played again under it.
+    """
+    units: dict[UnitType, dict[str, float]] = {}
+    buildings: dict[BuildingType, dict[str, float]] = {}
+    upgrades: dict[Upgrade, dict[str, float]] = {}
+    for term in name.removeprefix("scale:").split(","):
+        target, factor = term.split("=")
+        thing, field_name = target.split(".")
+        if thing in UnitType._value2member_map_ and field_name in UNIT_FIELDS:
+            units.setdefault(UnitType(thing), {})[field_name] = float(factor)
+        elif thing in BuildingType._value2member_map_ and field_name in BUILDING_FIELDS:
+            buildings.setdefault(BuildingType(thing), {})[field_name] = float(factor)
+        elif thing in Upgrade._value2member_map_ and field_name in UPGRADE_FIELDS:
+            upgrades.setdefault(Upgrade(thing), {})[field_name] = float(factor)
+        else:
+            raise KeyError(f"nothing to scale in {term!r}")
+    return Variant(name, units=units, buildings=buildings, upgrades=upgrades)
+
+
 def ensure_variant(name: str) -> None:
-    """Register ``shuffle-N`` on demand, so a variant name is all a worker needs."""
+    """Register ``shuffle-N`` and ``scale:…`` on demand, so a variant name is all a worker needs."""
     if name not in VARIANTS and name.startswith("shuffle-"):
         register_variant(shuffled_variant(int(name.split("-", 1)[1])))
+    if name not in VARIANTS and name.startswith("scale:"):
+        register_variant(scaled_variant(name))
     use_variant(name)
 
 

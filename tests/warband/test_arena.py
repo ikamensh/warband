@@ -242,3 +242,20 @@ def test_the_layout_comes_from_the_seed_so_a_ladder_sees_all_of_them():
         if playable(spec):
             drawn.add(mapgen.generate(seed=seed, players=2, human=None).layout)
     assert len(drawn) >= 4, f"a ladder should meet most layouts, saw {drawn}"
+
+
+def test_a_scaled_variant_is_spelled_out_in_its_name():
+    """``scale:knight.cost_gold=1.25,tower.hp=0.8`` travels to a worker as a name and patches exactly those numbers."""
+    from warband.arena import ensure_variant, use_variant
+
+    knight_gold, tower_hp = UNITS[UnitType.KNIGHT].cost.gold, BUILDINGS[BuildingType.TOWER].hp
+    try:
+        ensure_variant("scale:knight.cost_gold=1.25,tower.hp=0.8")
+        assert UNITS[UnitType.KNIGHT].cost.gold == round(knight_gold * 1.25)
+        assert BUILDINGS[BuildingType.TOWER].hp == round(tower_hp * 0.8)
+        assert UNITS[UnitType.FOOTMAN].cost.gold == 600
+    finally:
+        use_variant("standard")
+    assert UNITS[UnitType.KNIGHT].cost.gold == knight_gold
+    with pytest.raises(KeyError):
+        ensure_variant("scale:dragon.hp=2")

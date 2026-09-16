@@ -123,14 +123,16 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=ROOT / "docs" / "evidence" / "balance" / f"league-{date.today()}.jsonl")
     parser.add_argument("--from", dest="source", type=Path, help="read a league already played instead of playing one")
     parser.add_argument("--usage-of", help="also print the usage table for this posture's seats alone")
+    parser.add_argument("--variant", default="standard",
+                        help="rulebook to play under: a registered name, shuffle-N, or scale:knight.cost_gold=1.25,tower.hp=0.8")
     args = parser.parse_args()
     agents = args.agents.split(",")
     if args.source is not None:
         results = balance.load(args.source)
         print(f"{len(results)} matches read from {args.source}")
     else:
-        specs = with_races(specs_1v1(agents, range(SEED_BASE, SEED_BASE + args.seeds), "standard", args.minutes))
-        print(f"{len(agents)} postures, {len(specs)} matches on {args.workers} workers")
+        specs = with_races(specs_1v1(agents, range(SEED_BASE, SEED_BASE + args.seeds), args.variant, args.minutes))
+        print(f"{len(agents)} postures, {len(specs)} matches on {args.workers} workers, rulebook {args.variant}")
         results = run(specs, args.workers, "league")
         balance.save(results, args.out)
         print(f"saved to {args.out}")
