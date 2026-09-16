@@ -42,8 +42,8 @@ holds the skeleton and the arts.
 
 The numbers: orc units have +15 % hit points (the ogre +20 %), the grunt and
 ogre +10 % damage and −1 / −2 armour, and all orc soldiers train 10 % slower;
-elf units have −5 % hit points, +0.3 speed and +2 sight, and the ranger one
-more tile of range; dwarf units have +10 % hit points and −0.3 speed, the
+elf units have −5 % hit points, +0.15 speed and +2 sight, and the ranger one
+more tile of range; dwarf units have +10 % hit points and −0.15 speed, the
 ironguard and bear rider +1 armour.  The codex (F2) shows the player's race's
 tables and a fourth page comparing the races.
 
@@ -97,6 +97,14 @@ to 5 % after that run; the rerun gave Humans 8–4, Orcs 6–6, Dwarves 5–6 an
   shifts training towards counters of the enemy composition it can see, so
   these numbers mix the rules with race-specific play; Drill (faster training)
   suits an AI that trains without pause, which is likely part of the human edge.
+
+A pro-versus-pro race ladder on 2026-09-16 (96 matches, every pair both ways)
+gave human 66.7 %, elf 66.7 %, dwarf 35.4 % and orc 31.2 %, and the elves beat
+every other race three games in four.  Changing the training rates moved humans
+and orcs but left the elves at 75 %: what the elves have is speed, and what the
+dwarves lack is speed, in a game decided by who reaches the first clash with
+more.  Both speed modifiers were halved (±0.3 → ±0.15) as a result; see
+`docs/balance.md`.
 
 ## Verification
 

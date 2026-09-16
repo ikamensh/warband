@@ -17,10 +17,10 @@ Balance in one table (base values; upgrades in :data:`UPGRADES`):
 |----------|-----------|----|-----|-------|-------|--------------------|-------|-------|-----------------------------------------|
 | peasant  | 400       | 30 | 3   | 0     | melee | 0.25 + 1.0         | 360°/s| 2.4   | economy; anything kills it              |
 | footman  | 600       | 60 | 7   | 2     | melee | 0.3 + 1.0          | 360°/s| 2.4   | line; beats archers, loses to knights   |
-| archer   | 500+50    | 40 | 5   | 0     | 4     | 0.35 + 1.3         | 360°/s| 2.4   | ranged; beats footmen in numbers, dies to scouts/knights |
+| archer   | 500+50    | 40 | 6   | 0     | 4     | 0.35 + 1.3         | 360°/s| 2.4   | ranged; the answer to armour, dies to scouts/knights |
 | scout    | 350       | 35 | 4   | 0     | melee | 0.25 + 0.8         | 450°/s| 4.2   | fast raider, sight 8; kills archers, peasants; loses to footmen |
-| knight   | 800+100   | 90 | 10  | 4     | melee | 0.35 + 1.0         | 270°/s| 3.4   | shock; beats everything at cost; catapults and mass archers wear it down |
-| catapult | 900+300   | 80 | 36  | 0     | 2..7  | 0.8 + 3.0          | 150°/s| 1.6   | siege: stones land where aimed, splash friend and foe, ×1.5 vs buildings; helpless inside two tiles |
+| knight   | 900+100   | 90 | 10  | 4     | melee | 0.35 + 1.0         | 270°/s| 3.4   | shock; beats everything at cost; catapults and mass archers wear it down |
+| catapult | 700+200   |100 | 36  | 0     | 2..7  | 0.8 + 3.0          | 150°/s| 1.6   | siege: stones land where aimed, splash friend and foe, ×1.5 vs buildings; helpless inside two tiles |
 | cleric   | 700+50    | 40 | —   | 0     | 3     | —                  | 360°/s| 2.4   | heals 6 hp/s; no attack; protect it     |
 """
 
@@ -155,13 +155,13 @@ UNITS: dict[UnitType, UnitInfo] = {
                                "Mines gold, chops lumber, builds and repairs", windup=0.25),
     UnitType.FOOTMAN: UnitInfo("Footman", Cost(600), 60, 7, 2, MELEE, 1.0, 2.4, 5, 15.0, BuildingType.BARRACKS, "f",
                                "Sturdy swordsman; the line of any army", windup=0.3),
-    UnitType.ARCHER: UnitInfo("Archer", Cost(500, 50), 40, 5, 0, 4.0, 1.3, 2.4, 6, 14.0, BuildingType.BARRACKS, "a",
+    UnitType.ARCHER: UnitInfo("Archer", Cost(500, 50), 40, 6, 0, 4.0, 1.3, 2.4, 6, 14.0, BuildingType.BARRACKS, "a",
                               "Shoots from four tiles away; fragile up close", windup=0.35),
     UnitType.SCOUT: UnitInfo("Scout", Cost(350), 35, 4, 0, MELEE, 0.8, 4.2, 8, 10.0, BuildingType.STABLES, "s",
                              "Fast rider who sees far; raids peasants and archers", mounted=True, windup=0.25, turn=math.radians(450)),
-    UnitType.KNIGHT: UnitInfo("Knight", Cost(800, 100), 90, 10, 4, MELEE, 1.0, 3.4, 5, 20.0, BuildingType.STABLES, "k",
+    UnitType.KNIGHT: UnitInfo("Knight", Cost(900, 100), 90, 10, 4, MELEE, 1.0, 3.4, 5, 20.0, BuildingType.STABLES, "k",
                               "Fast, heavily armoured shock cavalry", mounted=True, windup=0.35, turn=math.radians(270)),
-    UnitType.CATAPULT: UnitInfo("Catapult", Cost(900, 300), 80, 36, 0, 7.0, 3.0, 1.6, 6, 30.0, BuildingType.WORKSHOP, "c",
+    UnitType.CATAPULT: UnitInfo("Catapult", Cost(700, 200), 100, 36, 0, 7.0, 3.0, 1.6, 6, 30.0, BuildingType.WORKSHOP, "c",
                                 "Slow siege engine: stones land where aimed, splash friend and foe, ×1.5 against buildings",
                                 splash=1.2, siege=1.5, windup=0.8, turn=math.radians(150), min_range=2.0),
     UnitType.CLERIC: UnitInfo("Cleric", Cost(700, 50), 40, 0, 0, 3.0, 1.0, 2.4, 5, 20.0, BuildingType.CHURCH, "l",
@@ -197,7 +197,7 @@ BUILDINGS: dict[BuildingType, BuildingInfo] = {
     BuildingType.FARM: BuildingInfo("Farm", Cost(500, 250), 400, 2, 2, 25.0, 3, 4, "f", "Feeds four units"),
     BuildingType.BARRACKS: BuildingInfo("Barracks", Cost(700, 450), 800, 3, 3, 40.0, 5, 0, "b", "Trains footmen and archers",
                                         trains=(UnitType.FOOTMAN, UnitType.ARCHER), requires=BuildingType.TOWN_HALL),
-    BuildingType.TOWER: BuildingInfo("Guard Tower", Cost(500, 200), 400, 3, 2, 35.0, 8, 0, "t", "Shoots at enemies six tiles away",
+    BuildingType.TOWER: BuildingInfo("Guard Tower", Cost(700, 250), 400, 3, 2, 35.0, 8, 0, "t", "Shoots at enemies six tiles away",
                                      requires=BuildingType.BARRACKS, damage=8, range=6.0, cooldown=1.5),
     BuildingType.LUMBER_MILL: BuildingInfo("Lumber Mill", Cost(600, 450), 600, 2, 3, 35.0, 4, 0, "m",
                                            "Lumber is delivered here; researches better arrows",
@@ -212,7 +212,7 @@ BUILDINGS: dict[BuildingType, BuildingInfo] = {
                                        "Trains scouts and knights; breeds faster horses",
                                        trains=(UnitType.SCOUT, UnitType.KNIGHT), researches=(Upgrade.HORSES, Upgrade.PLUNDER),
                                        requires=BuildingType.BARRACKS),
-    BuildingType.WORKSHOP: BuildingInfo("Workshop", Cost(900, 500), 600, 3, 3, 45.0, 4, 0, "w",
+    BuildingType.WORKSHOP: BuildingInfo("Workshop", Cost(700, 350), 600, 3, 3, 45.0, 4, 0, "w",
                                         "Builds catapults; improves siege engines",
                                         trains=(UnitType.CATAPULT,), researches=(Upgrade.SIEGE, Upgrade.BLASTING_POWDER), requires=BuildingType.BLACKSMITH),
     BuildingType.CHURCH: BuildingInfo("Church", Cost(900, 400), 600, 3, 3, 45.0, 5, 0, "c",
