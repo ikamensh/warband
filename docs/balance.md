@@ -307,10 +307,40 @@ Recommended, with the evidence above:
 4. **Tower 500+200 → 700+250**, a modest rise: it does not move the
    standings, but a building that kills seven times its cost in every
    rulebook is too cheap even if it is not the problem.
-5. **Races**: orcs at 43% and dwarves at 46% against elves and humans at
-   55%. Orcs train 10% slower and humans 15% faster, a quarter apart, in a
-   game decided by who has more at the first clash. The race ladder with
-   orcs at the common rate and Drill at 10% is in the evidence directory.
+5. **Races**: Master against Master, every pair of distinct races, eight
+   maps each way (96 matches, 48 a race, about seven points of noise):
+   human 66.7%, elf 66.7%, dwarf 35.4%, orc 31.2%. With orcs training at
+   the common rate and Drill cut to 10% (`races-tweak.jsonl`): elf 75.0%,
+   human 50.0%, orc 41.7%, dwarf 33.3% — orcs recover ten points, humans
+   fall seventeen, and the elves, who beat every other race three games in
+   four, are the real outlier. What the elves have is speed (+0.3) and
+   sight, and what the dwarves lack is speed (−0.3): in a game decided at
+   the first clash, being there first is the race. Halve both speed
+   modifiers before touching training rates; measure again with the same
+   ladder.
 6. **Scouts**: ten a game, trading 0.67, most of them Master's rule that
    keeps one scout alive for eyes. A price is not the fix; a cheaper way to
    see (a longer-sighted tower, a scout that flees) is.
+7. **Clerics**: not the price. At 30% off, the clerics posture moved from
+   25% to 33% (inside the noise) and the brains bought exactly as many. A
+   healer's worth cannot be read off kills; it needs its own measure
+   (hit points restored per gold) before its price is judged.
+
+Two things the experiments found that are not prices:
+
+* **Master does not expand when its mine runs dry.** Under the dry-mine
+  rulebook (base mines of 12,000) not one town hall went up in 336 seats,
+  peak armies fell to a third, towers vanished, and 28 matches of 168 ran
+  to the cap with fifteen to twenty thousand lumber banked, because the
+  idle miners went to the trees. The expansion wish sits behind the
+  saturation gate, and a brain with no income never saturates; and the
+  hall costs 1,200 gold that the barracks spend first. A base mine lasts
+  ten to twelve minutes at Master's mining rate, so this bites in any long
+  match against a human too. Fix before the mine size can be judged: an
+  expansion, and the gold for it, gets first claim once the worked mines
+  are low.
+* **The league prices what the brain can use.** Catapults that out-range
+  towers and walk into them, scouts bought as eyes, a healer measured by
+  kills: each is a place where the readout is a floor on the true value,
+  not the value. Read the pathologies and the fielded table before every
+  number.
