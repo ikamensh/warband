@@ -133,22 +133,6 @@ def test_a_profile_plays_each_race_by_its_own_numbers():
     assert brain.profile.min_army == 12
 
 
-def test_a_peasant_is_not_queued_over_a_build_order_that_could_not_then_be_paid():
-    """Second zero: 1000 gold, a farm ordered at 500. One peasant leaves 100 — the farm's, so no second."""
-    from dataclasses import replace
-    world, brain = _world_with_army()
-    brain.profile = replace(PRO, builds_before_peasants=True)
-    world.players[0].gold, world.players[0].lumber = 1000, 500
-    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
-    peasants = [u for u in world.player_units(0) if u.is_worker]
-    world.build(peasants[0].id, BuildingType.FARM, (hall.x + 5, hall.y + 5))
-    brain._training(world)
-    assert len(hall.queue) == 1, "the second peasant would have spent the farm's gold"
-    world.players[0].gold = 5000
-    brain._training(world)
-    assert len(hall.queue) == 2
-
-
 def test_barracks_first_wishes_for_nothing_else_until_it_stands():
     from dataclasses import replace
     world, brain = _world_with_army()

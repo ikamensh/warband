@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from warband import arena  # noqa: E402
 from warband.arena import MatchSpec  # noqa: E402
-from warband.pro_ai import PRO, ProProfile  # noqa: E402
+from warband.pro_ai import PRO, PRO_PROFILES, ProProfile  # noqa: E402
 
 #: knob → (low, high). Only knobs worth a search; booleans are settled by ablation.
 KNOBS: dict[str, tuple[float, float]] = {
@@ -91,11 +91,12 @@ def main() -> None:
     parser.add_argument("--minutes", type=float, default=arena.DEFAULT_MINUTES)
     parser.add_argument("--workers", type=int, default=max(1, mp.cpu_count() - 2))
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--start", default=PRO.name, help="the registered profile to climb from")
     args = parser.parse_args()
 
     against = args.against.split(",")
     rng = random.Random(args.seed)
-    best = PRO
+    best = PRO_PROFILES[args.start]
     seeds = range(50_000, 50_000 + args.games // (2 * len(against)) or 1)
     started = time.perf_counter()
     best_score = score(best, against, seeds, args.workers, args.minutes)
@@ -117,7 +118,7 @@ def main() -> None:
             best, best_score = replace(candidate, name=PRO.name), trial
     print("\nbest profile:")
     for f in fields(ProProfile):
-        value, baseline = getattr(best, f.name), getattr(PRO, f.name)
+        value, baseline = getattr(best, f.name), getattr(PRO_PROFILES[args.start], f.name)
         mark = "  <-- changed" if value != baseline else ""
         print(f"    {f.name}={value!r},{mark}")
 

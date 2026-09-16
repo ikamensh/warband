@@ -69,8 +69,7 @@ class ProProfile:
     barracks_per_hall: int = 3        # a barracks turns out ~4 soldiers a minute; income buys far more
     min_barracks: int = 1             # put up this many before anything optional, saturated or not
     barracks_first: bool = False      # nothing but farms goes up before the first barracks
-    builds_before_peasants: bool = False  # a peasant is not queued if it would leave a farm order in flight unpaid
-    smith_early: bool = False         # the blacksmith goes up with the mill, not behind the saturation gate
+    towers_early: int = 0             # towers at the front point as soon as the barracks stands, before the mill
     gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
     max_producers: int = 10
     attack_ratio: float = 0.85        # attack when my strength exceeds theirs by this
@@ -173,12 +172,11 @@ _STYLES = (
     replace(PRO, name="pro-min10", min_army=10, attack_ratio=1.0),
     replace(PRO, name="pro-siege-kills", siege_share=0.25, cleric_share=0.1, target_halls=True, min_army=8,
             attack_ratio=1.0, count_kills=True),
-    replace(PRO, name="pro-open", builds_before_peasants=True),
-    replace(PRO, name="pro-open-rax", builds_before_peasants=True, barracks_first=True),
-    replace(PRO, name="pro-open-rax-min8", builds_before_peasants=True, barracks_first=True, min_army=8, attack_ratio=1.0),
-    replace(PRO, name="pro-smith", smith_early=True),
-    replace(PRO, name="pro-open-rax-smith", builds_before_peasants=True, barracks_first=True, smith_early=True),
     replace(PRO, name="pro-raxfirst", barracks_first=True),
+    replace(PRO, name="pro-rax-min10-kills", barracks_first=True, min_army=10, attack_ratio=1.0, count_kills=True),
+    replace(PRO, name="pro-rax-tower1", barracks_first=True, towers_early=1),
+    replace(PRO, name="pro-rax-tower2", barracks_first=True, towers_early=2),
+    replace(PRO, name="pro-rax-min8-tower1", barracks_first=True, towers_early=1, min_army=8, attack_ratio=1.0),
     replace(PRO, name="pro-raxfirst-min8", barracks_first=True, min_army=8, attack_ratio=1.0),
     replace(PRO, name="pro-raxfirst-kills", barracks_first=True, count_kills=True),
     # The slow races lose the first clash: dwarves walk slower, orcs arm slower,
@@ -523,14 +521,14 @@ class ProBrain:
             # first barracks at three minutes for exactly this reason.
             if profile.barracks_first:
                 return wishes
+        if count(BuildingType.TOWER) < profile.towers_early:
+            # A tower is two footmen's worth of fight for less than one footman's
+            # gold, for as long as the enemy comes to it — and Master comes to it.
+            wishes.append((BuildingType.TOWER, self._front_point(world, hall)))
         if count(BuildingType.LUMBER_MILL) < 1:
             wishes.append((BuildingType.LUMBER_MILL, anchor))
         if 1 <= count(BuildingType.BARRACKS) < profile.min_barracks:
             wishes.append((BuildingType.BARRACKS, anchor))
-        if profile.smith_early and count(BuildingType.BLACKSMITH) < 1:
-            # Sharpened Blades is +2 on a footman's 7 for 500 gold, and the
-            # bank idles at three thousand while the first clash is fought.
-            wishes.append((BuildingType.BLACKSMITH, anchor))
         # Everything past here is optional, and optional buildings are what lose games:
         # each one is an army that was not trained. They are unlocked only once the
         # production already standing cannot keep up with the money coming in.
@@ -690,19 +688,8 @@ class ProBrain:
         if not rebuilding:
             target = self._worker_target(world)
             peasants = len(self._peasants(world))
-            # A building is paid for when its peasant arrives at the site. Two
-            # peasants queued at second zero spend 800 of the 1000 gold, so the
-            # farm ordered in the same pass finds 200 in the bank, is dropped,
-            # and goes up eleven seconds later — with the hall capped at five
-            # and idle for most of the first half minute. Only farms: a peasant
-            # that leaves the farm unpaid has nowhere to stand, while one that
-            # delays a barracks is still income.
-            owed = sum(BUILDINGS[order.type].cost.gold for order in self._ordered(world)
-                       if order.type is BuildingType.FARM) if self.profile.builds_before_peasants else 0
             for hall in halls:
                 if peasants + sum(len(h.queue) for h in halls) >= target:
-                    break
-                if world.players[player].gold - RACES[world.players[player].race].units[UnitType.PEASANT].cost.gold < owed:
                     break
                 if len(hall.queue) < 2 and world.can_train(hall, UnitType.PEASANT) is None:
                     world.train(hall.id, UnitType.PEASANT)
