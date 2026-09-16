@@ -88,6 +88,12 @@ from warband.pro_ai import PRO_PROFILES, ProBrain  # noqa: E402 - after register
 for _name, _profile in PRO_PROFILES.items():
     register(_name, lambda player, p=_profile: ProBrain(player, p))
 
+from warband.archetypes import ARCHETYPES  # noqa: E402 - the balance league's postures play under their names too
+
+for _profile in ARCHETYPES:
+    if _profile.name not in AGENTS:
+        register(_profile.name, lambda player, p=_profile: ProBrain(player, p))
+
 
 # -- Balance variants --------------------------------------------------------------
 
