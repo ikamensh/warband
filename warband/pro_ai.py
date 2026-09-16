@@ -207,6 +207,19 @@ _STYLES = (
     replace(PRO, name="pro-rax-min6-tower1", barracks_first=True, towers_early=1, min_army=6, attack_ratio=0.9),
     replace(PRO, name="pro-raxfirst-min8", barracks_first=True, min_army=8, attack_ratio=1.0),
     replace(PRO, name="pro-raxfirst-kills", barracks_first=True, count_kills=True),
+    # Whoever draws orcs loses three games in four under every profile so
+    # far, dwarves three in five, elves win three in four: the first rung's
+    # posture, with the two slow races holding harder and the orcs fielding
+    # grunts and throwers rather than ogres, whose missing armour is what the
+    # elven rangers are shooting at.
+    replace(PRO, name="pro-r1-slow", barracks_first=True, panic_gold=1000, lumber_floor_panic=300,
+            towers_early=1, min_army=8, attack_ratio=1.0, by_race={
+                Race.DWARF: {"towers_early": 2, "min_army": 10, "attack_ratio": 1.1},
+                Race.ORC: {"towers_early": 2, "min_army": 10, "attack_ratio": 1.1}}),
+    replace(PRO, name="pro-r1-orcs", barracks_first=True, panic_gold=1000, lumber_floor_panic=300,
+            towers_early=1, min_army=8, attack_ratio=1.0, by_race={
+                Race.ORC: {"army_plan": {UnitType.FOOTMAN: 0.55, UnitType.ARCHER: 0.35, UnitType.SCOUT: 0.05,
+                                         UnitType.CATAPULT: 0.05}}}),
     # The slow races lose the first clash: dwarves walk slower, orcs arm slower,
     # and both march out at the same minute with the same five soldiers as the
     # elves who beat them four times in five. Let them hold longer.
