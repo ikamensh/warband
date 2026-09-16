@@ -120,6 +120,58 @@ table cannot see, but nothing buys back a ten-to-one exchange. The rules
 table says archers and catapults wear knights down; the arithmetic says
 they do not.
 
-## Findings
+## The first league (2026-09-16)
 
-*(filled in from the first league)*
+Twelve postures, eight maps each way, 1,056 matches, 997 decided, median
+8.5 sim-minutes. `docs/evidence/balance/league-1.jsonl`.
+
+**Timing decides, not composition.** The top four are one brain that
+differs only in when it walks out: `turtle` 79.5%, `mass` 76.7%, `boom`
+71.6%, `pro` 69.3%. Master, which attacks at five soldiers, loses three
+games in four to the postures that wait for twelve or fifteen, and the
+equilibrium is turtle 43%, mass 29%, boom 28% with nothing else in it.
+Every composition posture (`knights` 46%, `clerics` 43%, `archers` 38%,
+`siege` 37%, `footmen` 30%, `raiders` 31%) attacks at Master's timing, so
+what they measured first is one branch of the tree at the wrong minute.
+`rush` at 37% says the early push has no edge: the first soldier stands at
+2.6 minutes for every posture, and three of them lose to a base.
+
+**Two brain bugs, found in the pathologies and fixed before any price.**
+Lumber piled up — losers ended with 5,600 banked, turtle's losers 16,500,
+and by minute fifteen the mean seat held 16,000 lumber against 1,500 gold —
+because the chop rule only ever sent hands to the trees and the model's
+policy places a peasant once. And producers bought whatever they could
+afford at the moment of choice: the knights posture fielded fifteen scouts
+to eight knights, the siege posture 3.7 catapults a game, because the
+stables took a scout every time the knight was a few hundred gold away.
+Both are fixed in `pro_ai.py` (`lumber_stock`, `save_for_wanted`); the
+ladder result against the old brain is below.
+
+**Usage, before the fixes**, so read with the above in mind:
+
+| unit | bought in | a game | value per 1,000 | trade |
+|------|----------:|-------:|----------------:|------:|
+| knight | 42% | 2.8 | 1,458 | 2.82 |
+| archer | 83% | 15.6 | 1,037 | 1.56 |
+| footman | 100% | 19.1 | 750 | 1.03 |
+| catapult | 8% | 0.4 | 635 | 0.96 |
+| scout | 90% | 12.4 | 610 | 0.75 |
+
+The knight earns the most per gold and wins its exchanges nearly three to
+one, as the arithmetic said, and is still bought in fewer than half the
+games. The scout is bought twelve times a game and loses value, most of
+them the filler purchases above. Towers stood in 82% of player-games,
+1.6 a game, and destroyed 2.7 times their cost — 8% of all damage dealt
+in the league came from towers — which is how a posture of five towers
+and a late push came to sit at the top. Arrows were researched in nine
+games of ten (the mill stands in every game from minute two), blades in
+79% and 54%, plate in 77% and 35%, the race arts in 7% to 23%, siege
+engineering in 3%. `noresearch` took 42.6% to Master's 69.3%: the research
+path as a whole earns its price.
+
+**Races:** elf 58.2%, human 51.7%, dwarf 44.9%, orc 44.9% over about 530
+pairings each; the elves beat all three others at 59% to 63%. Orcs train
+10% slower and dwarves walk 0.3 slower, and a game decided by who has more
+at the first clash punishes both.
+
+**Undecided:** 59 matches, `turtle` in 27 of them.
