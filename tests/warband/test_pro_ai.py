@@ -278,3 +278,66 @@ def test_the_brain_cannot_conjure_resources():
     # eliminated, which is the rules working rather than the brain cheating.
     assert len(world.player_buildings(0)) <= before, "something was built out of thin air"
     assert not world.player_units(0), "something was trained out of thin air"
+
+
+# -- The economy follows scarcity both ways --------------------------------------
+
+def test_choppers_go_back_to_the_gold_once_the_wood_is_plentiful():
+    """Six hands on the trees with five thousand lumber banked and five hundred gold: all but a trickle go mining.
+
+    The rule used to fire one way only — hands to the trees when the wood ran
+    out — so the wood crew only ever grew, and the league's losers ended with
+    five to sixteen thousand lumber unspent while gold was what they lacked.
+    """
+    from warband.model import Harvest
+    from warband.rules import Resource
+
+    world, brain = _world_with_army()
+    player = world.players[0]
+    player.gold, player.lumber = 500, 5000
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    for i in range(4):
+        world.spawn_unit(0, UnitType.PEASANT, (hall.center[0] + 2 + i * 0.6, hall.center[1] + 2))
+    peasants = world.player_units(0)
+    assert len(peasants) >= 6
+    tree = world.nearest_tree(peasants[0].pos, 24)
+    world.harvest([p.id for p in peasants], tree)
+    rng = random.Random(1)
+    for _ in range(int(3 / SIM_DT)):
+        brain.think(world, rng)
+        world.step()
+    chopping = [p for p in world.player_units(0)
+                if any(isinstance(o, Harvest) and not isinstance(o.target, int) for o in p.orders)
+                or p.carrying is Resource.LUMBER]
+    assert len(chopping) <= 1, "one hand may keep chopping; the rest belong at the mine"
+
+
+def test_a_producer_saves_for_the_unit_the_plan_wants():
+    """With a stables idle, six hundred gold and a plan of knights, the barracks does not buy a footman it could afford.
+
+    Buying whatever was affordable at the moment of choice made the knights posture
+    field fifteen scouts for eight knights."""
+    from dataclasses import replace
+
+    from warband.model import Building
+
+    world = mapgen.generate(seed=5, players=2, human=None)
+    brain = ProBrain(0, replace(PRO, name="test-knights", scout=False,
+                                army_plan={UnitType.FOOTMAN: 0.2, UnitType.KNIGHT: 0.8}))
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    world.place_building(0, BuildingType.BARRACKS, (hall.x + 5, hall.y))
+    world.place_building(0, BuildingType.STABLES, (hall.x + 5, hall.y + 4))
+    for _ in range(3):
+        world.place_building(0, BuildingType.FARM, (hall.x - 3, hall.y + _ * 3))
+    player = world.players[0]
+    rng = random.Random(1)
+
+    def pass_with(gold: int) -> list[UnitType]:
+        player.gold, player.lumber = gold, 500
+        for _ in range(int(PRO.think_every / SIM_DT) + 1):  # a macro pass comes once per think_every of sim time
+            world.step()
+        brain.think(world, rng)
+        return [u for b in world.player_buildings(0) for u in b.queue]
+
+    assert pass_with(600) == [], "six hundred gold is saved for the knight the plan is short of"
+    assert pass_with(900) == [UnitType.KNIGHT]
