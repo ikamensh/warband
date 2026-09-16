@@ -6,6 +6,8 @@
     uv run python tools/arena.py ffa --players 4 --seeds 12              # free-for-all placements
     uv run python tools/arena.py variants --shuffles 6 --seeds 6         # the same ladder under jittered balance
     uv run python tools/arena.py report --seeds 24                       # 1v1, FFA and variants in one go
+    uv run python tools/arena.py ladder --agents pro,pro2 --seeds 60 --save runs/pro2.jsonl   # keep every match
+    uv run python tools/arena.py rate --from runs/*.jsonl --anchor pro --anchor-elo 1450      # one table over saved runs
 
 Matches are independent and fully determined by their seed, so they are
 handed to a process pool; ``--workers`` defaults to most of the machine.
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import json
 import multiprocessing as mp
 import sys
 import time
@@ -94,21 +97,43 @@ def drop_unfair(specs: list[MatchSpec]) -> list[MatchSpec]:
     return kept
 
 
-def run(specs: list[MatchSpec], workers: int, label: str) -> list[MatchResult]:
+def run(specs: list[MatchSpec], workers: int, label: str, save: Path | None = None) -> list[MatchResult]:
     specs = drop_unfair(specs)
     started = time.perf_counter()
     packed = [tuple(s.__dict__[f] for f in arena.SPEC_FIELDS) for s in specs]
     results: list[MatchResult] = []
-    if workers <= 1:
-        for p in packed:
-            results.append(arena.play_spec_tuple(p))
-            _progress(label, results, len(specs), started)
-    else:
-        with mp.get_context("spawn").Pool(workers) as pool:
-            for result in pool.imap_unordered(arena.play_spec_tuple, packed, chunksize=1):
+    out = open(save, "a") if save is not None else None
+    try:
+        if workers <= 1:
+            for result in map(arena.play_spec_tuple, packed):
                 results.append(result)
+                _keep(out, result)
                 _progress(label, results, len(specs), started)
+        else:
+            with mp.get_context("spawn").Pool(workers) as pool:
+                for result in pool.imap_unordered(arena.play_spec_tuple, packed, chunksize=1):
+                    results.append(result)
+                    _keep(out, result)
+                    _progress(label, results, len(specs), started)
+    finally:
+        if out is not None:
+            out.close()
     print()
+    return results
+
+
+def _keep(out, result: MatchResult) -> None:
+    """Append a finished match to the save file at once, so a killed run still leaves its games."""
+    if out is not None:
+        out.write(json.dumps(arena.to_record(result)) + "\n")
+        out.flush()
+
+
+def load(paths: list[str]) -> list[MatchResult]:
+    results = []
+    for path in paths:
+        with open(path) as f:
+            results += [arena.from_record(json.loads(line)) for line in f if line.strip()]
     return results
 
 
@@ -162,7 +187,9 @@ def print_styles(results: list[MatchResult], agents: list[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("mode", choices=("ladder", "ffa", "variants", "report"))
+    parser.add_argument("mode", choices=("ladder", "ffa", "variants", "report", "rate"))
+    parser.add_argument("--save", type=Path, default=None, help="append every match to this JSON-lines file")
+    parser.add_argument("--from", dest="sources", nargs="*", default=[], help="rate: saved runs to pool")
     parser.add_argument("--agents", default=None, help="comma separated; default every registered agent")
     parser.add_argument("--seeds", type=int, default=8)
     parser.add_argument("--first-seed", type=int, default=1000)
@@ -181,6 +208,13 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=max(1, mp.cpu_count() - 2))
     args = parser.parse_args()
 
+    if args.mode == "rate":
+        results = load(args.sources)
+        agents = args.agents.split(",") if args.agents else sorted({n for r in results for n in r.spec.agents})
+        results = [r for r in results if all(n in agents for n in r.spec.agents)]
+        print(f"{len(results)} matches from {len(args.sources)} file(s)")
+        print_table(results, args.anchor, agents, args.anchor_elo, args.proximity or None)
+        return
     agents = args.agents.split(",") if args.agents else sorted(AGENTS)
     against = args.against.split(",") if args.against else None
     for name in against or []:
@@ -196,13 +230,14 @@ def main() -> None:
 
     if args.mode in ("ladder", "report"):
         print("\n== 1v1 ==")
-        results = run(specs_1v1(agents, seeds, "standard", args.minutes, args.neighbours, against), args.workers, "1v1")
+        results = run(specs_1v1(agents, seeds, "standard", args.minutes, args.neighbours, against), args.workers, "1v1",
+                      args.save)
         table(results)
     if args.mode in ("ffa", "report"):
         players = args.players if args.mode == "ffa" else min(4, max(3, len(agents)))
         if len(agents) >= players:
             print(f"\n== free-for-all, {players} players ==")
-            results = run(specs_ffa(agents, seeds, players, "standard", args.minutes), args.workers, "ffa")
+            results = run(specs_ffa(agents, seeds, players, "standard", args.minutes), args.workers, "ffa", args.save)
             table(results)
         else:
             print(f"\n(skipping free-for-all: {players} players need {players} agents)")
@@ -216,7 +251,7 @@ def main() -> None:
             names.append(variant.name)
         every: list[MatchResult] = []
         for name in names:
-            results = run(specs_1v1(agents, seeds, name, args.minutes), args.workers, name)
+            results = run(specs_1v1(agents, seeds, name, args.minutes), args.workers, name, args.save)
             every += results
             line = "   ".join(f"{a} {win_rate(results, a, args.anchor)[0] * 100:.0f}%" for a in agents if a != args.anchor)
             print(f"  {name}: against {args.anchor} — {line}")

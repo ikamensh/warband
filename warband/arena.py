@@ -580,6 +580,23 @@ def rate(results: Sequence[MatchResult], *, anchor: str | None = None, anchor_el
     return sorted(out, key=lambda r: -r.elo)
 
 
+def to_record(result: MatchResult) -> dict:
+    """A match result as plain data, so runs can be saved and pooled."""
+    return {"spec": {f: getattr(result.spec, f) for f in SPEC_FIELDS}, "placements": list(result.placements),
+            "winner": result.winner, "minutes": result.minutes, "steps": result.steps, "wall": result.wall,
+            "styles": [dict(style) for style in result.styles]}
+
+
+def from_record(record: Mapping) -> MatchResult:
+    spec = dict(record["spec"])
+    for key in ("agents", "races"):
+        if spec.get(key) is not None:
+            spec[key] = tuple(spec[key])
+    return MatchResult(spec=MatchSpec(**spec), placements=tuple(record["placements"]), winner=record["winner"],
+                       minutes=record["minutes"], steps=record["steps"], wall=record["wall"],
+                       styles=tuple(record.get("styles", ())))
+
+
 def win_rate(results: Iterable[MatchResult], a: str, b: str) -> tuple[float, int]:
     """``(share of games *a* scored against *b*, games played)``."""
     table = pairwise(results)

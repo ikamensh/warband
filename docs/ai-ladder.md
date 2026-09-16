@@ -74,7 +74,13 @@ uv run python tools/arena.py variants --shuffles 6 --seeds 6       # under jitte
 uv run python tools/arena.py report --seeds 24                     # all three
 uv run python tools/arena.py ladder --agents pro-rush,pro-boom --against pro --seeds 24 --anchor pro --anchor-elo 1450
 uv run python tools/arena.py ladder --agents hard,pro,pro-x,pro-y --neighbours 1 --anchor pro --anchor-elo 1450
+uv run python tools/arena.py ladder --agents pro,pro2 --seeds 60 --save runs/pro2.jsonl   # keep every match
+uv run python tools/arena.py rate --from runs/*.jsonl --anchor pro --anchor-elo 1450      # one table over saved runs
 ```
+
+`--save` appends every finished match to a JSON-lines file as it lands, and
+`rate --from` pools any number of them into one table: the rungs of a chain
+are measured in separate runs and rated together.
 
 `--against` plays a panel: every agent meets only the agents named, which
 is how candidates are screened against the best brain without paying for
