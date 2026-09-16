@@ -3,7 +3,7 @@
 import pytest
 
 from saga2d import Game
-from saga2d.testing import assert_no_text_overlap, text_boxes
+from saga2d.testing import assert_no_text_overlap, assert_text_fits, text_boxes
 from warband.rules import BuildingType, Race, UnitType
 from warband.model import tile_center
 from warband.scene import CodexScene, GameOverScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game
@@ -77,6 +77,24 @@ def test_help_fits_the_window(size: tuple[int, int], tmp_path) -> None:
         outside = [box.text for box in text_boxes(game.backend) if box.space == "screen"
                    and not (0 <= box.left and box.left + box.width <= width and 0 <= box.top and box.top + box.height <= height)]
         assert not outside, outside
+    finally:
+        game._teardown()
+
+
+@pytest.mark.parametrize("size", SIZES, ids=[f"{w}x{h}" for w, h in SIZES])
+@pytest.mark.parametrize("players", [2, 4])
+def test_the_match_intro_banner_stays_in_the_window(players: int, size: tuple[int, int], tmp_path) -> None:
+    """The title and the roll of rivals, from the first frame of the slide to the last.
+
+    The banner used to enter from 60 % of the window width to the left, so the
+    opening frames drew both strings outside the window — a wipe nobody could read.
+    """
+    game = Game("Warband intro", backend="mock", resolution=size, theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        game.push(new_game(seed=3, players=players))
+        for _ in range(2 * 60):  # the banner holds 1.2 s between two 0.35 s slides
+            game.tick(1 / 60)
+            assert_text_fits(game)
     finally:
         game._teardown()
 
