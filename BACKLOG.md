@@ -8,12 +8,13 @@ evidence. Shared engine work belongs in the [Saga2D backlog](../saga2d/BACKLOG.m
 Keep IDs stable. When starting an item, change its status to `in progress` and
 record the branch. On completion, mark it `done` here with the commit and
 verification evidence; split larger discoveries into new IDs. Statuses below
-record planning, not implementation. Within each priority, the order is the
-suggested sequence, not a requirement to finish every earlier item first.
+record the current state; `proposed` items still need scope selection. Within
+each priority, the order is the suggested sequence, not a requirement to finish
+every earlier item first.
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
-| WB-001 | First | in progress | Recover useful branch work and clean up local branches/worktrees | User |
+| WB-001 | First | done | Recover useful branch work and clean up local branches/worktrees | User |
 | WB-002 | First | ready | Publish tested main pushes through GitHub Actions to games.tachyon-ai.eu | User |
 | WB-003 | Next | ready | Diagnose and improve movement animation | User |
 | WB-004 | Next | ready | Give melee attacks readable weight and contact | User |
@@ -32,8 +33,14 @@ suggested sequence, not a requirement to finish every earlier item first.
 
 ## WB-001 — Recover branch work, then clean up
 
-Working branch: `codex/backlog-wb001`. Acceptance is recorded before integration
-in [the branch recovery record](docs/branch-recovery-2026-09.md).
+Completed 2026-09-16: merged the useful visual candidate as `db3ed40`, with
+845 passing tests, unchanged simulation fingerprint, passing input fuzz and
+inspected native frames. Removed its clean, inactive worktree/branch after
+preserving the local lockfile edit and evidence; also removed the redundant
+stack-root worktree and the temporary recovery worktree. Active balance/AI
+experiments remain under WB-014, the campaign under WB-016, and engine candidates
+under S2D-001. Acceptance, review, limits and exact dispositions are in
+[the branch recovery record](docs/branch-recovery-2026-09.md).
 
 Review committed differences and dirty worktrees before beginning new feature
 work. Classify each as integrate, already integrated, retain, or discard with a

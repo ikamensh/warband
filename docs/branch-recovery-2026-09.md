@@ -126,4 +126,19 @@ was preserved rather than applied over the current game's lockfile.
 
 Background tuning/balance jobs were temporarily paused during expensive
 validation and resumed in a `finally` block; no paused jobs remain. Final
-branch/worktree removal is performed only after the verified merge reaches main.
+branch/worktree removal followed the verified merge to main.
+
+## Completion
+
+Accepted into main as merge commit `db3ed4090b3fb36724faf914a4e5f41619df76b1`.
+After fresh clean-status, ancestry and process checks, removed the
+`warband-visual` worktree and `visual-defects` branch using ordinary safe Git
+removal (no force). Copied all 39 recovery evidence files to the main checkout
+and verified their SHA-256 contents before removing the clean temporary
+`warband-backlog` worktree and `codex/backlog-wb001` branch.
+
+Warband's remaining worktrees are main, `ai-arena`, `ai-2000`, `balance` and
+`campaign`, with the follow-ups recorded above. Engine audio/rendering candidates,
+the active stack-root worktree and the detached Absolution investigation remain
+retained, with no unique work discarded. WB-001 is complete; this does not mark
+the retained experiments or the rest of the roadmap complete.
