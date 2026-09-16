@@ -210,7 +210,7 @@ use JSON beneath `game.data_dir`, which defaults to `~/.warband/`
 |---|---|
 | Player name and rated match results; Elo is derived from these results | `profile/save_1.json` |
 | Local leaderboard | `high_scores/save_1.json` |
-| Recorded matches | `replays/save_<match-id>.json` |
+| Recorded matches | `replays/` (one JSON file per match) |
 | Saved games and autosave | `saves/` |
 | Preferences | `settings.json` |
 
