@@ -103,6 +103,45 @@ def test_master_draws_one_of_two_postures_from_the_seed():
     assert PRO_WARDEN.towers_early == 1 and PRO_VANGUARD.towers_early == 0
 
 
+def test_the_opening_slack_holds_the_farms_back_until_the_barracks_stands():
+    from dataclasses import replace
+    world, brain = _world_with_army()
+    brain.profile = replace(PRO, opening_slack=1)
+    world.players[0].gold, world.players[0].lumber = 5000, 5000
+    used, cap = world.supply(0)
+    assert cap - used >= 2, "the start has a little headroom"
+    assert BuildingType.FARM not in [b for b, _ in brain._wish_list(world)], "no farm wanted at one of slack"
+    brain.profile = replace(PRO, opening_slack=None)
+    assert BuildingType.FARM in [b for b, _ in brain._wish_list(world)], "four of slack wants one now"
+    brain.profile = replace(PRO, opening_slack=1)
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    world.place_building(0, BuildingType.BARRACKS, (hall.x + 6, hall.y))
+    assert BuildingType.FARM in [b for b, _ in brain._wish_list(world)], "once the barracks stands, the usual slack"
+
+
+def test_a_beaten_push_is_followed_home_at_once():
+    from dataclasses import replace
+    from warband.model import AttackMove
+    world, brain = _world_with_army()
+    brain.profile = replace(PRO, counter_punch=True, min_army=20, scout=False, raid=False)
+    footmen = _spawn(world, 0, UnitType.FOOTMAN, 3, 4)
+    archers = _raiders_at_our_base(world, 2)
+    brain._military(world)  # the defence
+    assert all(isinstance(u.order, AttackMove) for u in footmen)
+    for unit in archers:
+        world.units.pop(unit.id)  # beaten off
+    world.update_vision()
+    enemy_hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0]
+    world.worker_knowledge[0].remember_building(enemy_hall) if hasattr(world.worker_knowledge[0], "remember_building") else None
+    for unit in footmen:
+        world.stop([unit.id])
+    world.time += 1.0
+    brain._military(world)
+    if brain._known_enemy_buildings(world):
+        assert brain.attacking and all(isinstance(u.order, AttackMove) for u in footmen), "four follow, min_army or not"
+        assert any("counter-punch" in what for _, what in brain.log)
+
+
 def test_barracks_first_wishes_for_nothing_else_until_it_stands():
     from dataclasses import replace
     world, brain = _world_with_army()
