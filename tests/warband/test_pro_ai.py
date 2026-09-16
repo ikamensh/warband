@@ -131,7 +131,7 @@ def test_the_wood_share_puts_that_many_hands_on_the_trees_and_takes_them_off_aga
     assert len(peasants) == 8
     world.players[0].gold, world.players[0].lumber = 3000, 0
     for _ in range(4):
-        brain._economy(world)  # two moves a pass, at most
+        brain._economy(world)
     assert sum(1 for p in peasants if brain._on_lumber(p)) == 4
     world.players[0].lumber = 2000  # plenty: the crews go back to the gold, a third of the share stays
     for _ in range(4):

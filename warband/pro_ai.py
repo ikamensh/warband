@@ -436,8 +436,6 @@ class ProBrain:
         profile = self.profile
         peasants = [p for p in self._peasants(world)
                     if not p.hidden and not isinstance(p.order, (Build, Repair)) and p.id not in self.scouts]
-        if len(peasants) < 4:
-            return
         want = None
         if profile.wood_share > 0:
             share = profile.wood_share if player.lumber < profile.wood_stock else profile.wood_share / 3
@@ -447,11 +445,11 @@ class ProBrain:
         if want is None:
             return
         # Never everyone: gold still has to come in, or the next peasant never does.
-        want = min(want, len(peasants) - 2)
+        want = min(want, max(0, len(peasants) - 2))
         choppers = [p for p in peasants if self._on_lumber(p)]
         short = want - len(choppers)
         if short > 0:
-            for peasant in [p for p in peasants if not self._on_lumber(p) and p.carrying is None][:min(short, 2)]:
+            for peasant in [p for p in peasants if not self._on_lumber(p) and p.carrying is None][:short]:
                 tree = world.nearest_tree(peasant.pos, 24)
                 if tree is not None:
                     world.harvest([peasant.id], tree)
