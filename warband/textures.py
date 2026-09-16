@@ -117,8 +117,19 @@ TRUNK = PALETTES[MapTheme.SUMMER].trunk
 
 @dataclass(frozen=True)
 class Placement:
+    """How an image is placed: its logical *size*, how far its bottom edge lies below the point it
+    is placed at (*drop*), and how far below that point the line it stands on lies (*front*: zero
+    for a unit or tree standing on the point, half the footprint for a building placed at its
+    centre).  Sprites sort by that line."""
+
     size: tuple[float, float]
     drop: float
+    front: float = 0.0
+
+    @property
+    def ground(self) -> float:
+        """How far the image continues below the line it stands on."""
+        return self.drop - self.front
 
 
 placements: dict[str, Placement] = {}
@@ -274,16 +285,16 @@ def map_edge(length: int, scale: float, theme: MapTheme) -> Image.Image:
 # -- Props --------------------------------------------------------------------------
 
 
-def _prop(key: str, mesh: Mesh, drop: float, scale: float, *, min_width: float = 0) -> Image.Image:
+def _prop(key: str, mesh: Mesh, drop: float, scale: float, *, min_width: float = 0, front: float = 0.0) -> Image.Image:
     """Render *mesh* into a canvas symmetric about the model origin whose bottom is
-    *drop* below it, and record the placement."""
+    *drop* below it, and record the placement (*front* as in :class:`Placement`)."""
     min_x, min_y, max_x, max_y = r3.bounds(mesh, PROJECTION)
     half_w = math.ceil(max(-min_x, max_x, min_width / 2) + PAD)
     top = math.ceil(-min_y + PAD)
     if max_y + PAD > drop:
         raise ValueError(f"{key}: mesh extends {max_y:.1f} below its anchor, more than its drop of {drop}")
     canvas = (2 * half_w, top + drop)
-    placements[key] = Placement(canvas, drop)
+    placements[key] = Placement(canvas, drop, front)
     return r3.render(mesh, PROJECTION, scale=scale, canvas=canvas, origin=(half_w, top))
 
 
@@ -467,7 +478,7 @@ def _tree_ground(image: Image.Image, variant: int, theme: MapTheme, scale: float
 def _resource_image(kind: str, variant: int, theme: MapTheme, scale: float) -> Image.Image:
     """Reuse immutable pre-renders across matches; gameplay never grows geometry."""
     if kind == "mine":
-        return _prop(f"mine.{variant}", _mine(variant), 1.5 * TILE + PAD, scale)
+        return _prop(f"mine.{variant}", _mine(variant), 1.5 * TILE + PAD, scale, front=1.5 * TILE)
     mesh = {"tree": _tree, "rock": _rock}[kind](variant, theme)
     image = _prop(f"{kind}.{theme.value}.{variant}", mesh, DROP_TREE, scale, min_width=40 if kind == "tree" else 0)
     return _tree_ground(image, variant, theme, scale) if kind == "tree" else image
@@ -1854,6 +1865,8 @@ def _painted(name: str, wanted: list[str]) -> tuple[restyle.Sheet, dict[str, Ima
     if not RESTYLED_ART or not restyle.file(RESTYLED / name, "png").exists():
         return None
     sheet, frames = restyle.load_frames(RESTYLED / name)
+    # The committed sheets were cut before key_out took the key's tint off their edges.
+    frames = {key: restyle.despill(frame, sheet.chroma) for key, frame in frames.items()}
     missing = [key for key in wanted if key not in frames]
     if missing:
         warnings.warn(f"painted sheet {name} is stale (no {missing[0]!r}) and is ignored; re-render it with tools/restyle.py", stacklevel=3)
@@ -1969,18 +1982,18 @@ def building_image(game: Game, building_type: BuildingType, player: int, race: R
     key = building_key(building_type, player, race, look)
     if not game.assets.has_image(key):
         restyled = restyled_buildings(race, look)
+        front = BUILDINGS[building_type].size / 2 * TILE
         if restyled is None:
-            size = BUILDINGS[building_type].size
-            game.assets.image_from_pil(key, _prop(key, _building(building_type, player, race), size / 2 * TILE + PAD, game.backend.scale_factor))
+            game.assets.image_from_pil(key, _prop(key, _building(building_type, player, race), front + PAD, game.backend.scale_factor, front=front))
         else:
             sheet, frames = restyled
-            placements[key] = Placement(sheet.logical_size, sheet.drop)
+            placements[key] = Placement(sheet.logical_size, sheet.drop, front)
             game.assets.image_from_pil(key, _recoloured(frames[building_key(building_type, 0, race, look)], player))
     return key
 
 
 DROP_TREE = TILE / 2 + PAD  # a tree is placed at its tile's centre; its image reaches the tile's front edge
-DROP_UNIT = TILE * 1.9 + PAD  # a lance pointed at the camera, or an orc's lunging strike, reaches well below the feet
+DROP_UNIT = TILE * 2.1 + PAD  # a lance pointed at the camera, or an orc's lunging strike, reaches well below the feet
 
 
 # -- 2-D effect images ----------------------------------------------------------------
@@ -2039,7 +2052,7 @@ def register_static(game: Game) -> None:
     scale = game.backend.scale_factor
     assets = game.assets
     for size in {info.size for info in BUILDINGS.values()}:
-        assets.image_from_pil(f"site.{size}", _prop(f"site.{size}", _site(size), size / 2 * TILE + PAD, scale))
+        assets.image_from_pil(f"site.{size}", _prop(f"site.{size}", _site(size), size / 2 * TILE + PAD, scale, front=size / 2 * TILE))
     px = int(TILE * scale)
     assets.image_from_pil("glow", _glow(px * 2, 0.24, (*WHITE, 255)))
     assets.image_from_pil("ring", _ring(px * 2, scale))

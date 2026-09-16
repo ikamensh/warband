@@ -26,13 +26,14 @@ from warband.textures import TILE
 from warband.view import MapView, minimap_terrain, to_world
 
 PLAYER_COUNTS = (2, 3, 4)
-OPTION_WIDTH = 170
+OPTION_WIDTH = 180
 RACE_WIDTH = 125
 RACE_KEYS = {Race.HUMAN: "U", Race.ORC: "O", Race.ELF: "V", Race.DWARF: "A"}
 #: Not the first letter: Medium and Master share one, and M is already the map size.
 DIFFICULTY_KEYS = {Difficulty.EASY: "E", Difficulty.MEDIUM: "N", Difficulty.HARD: "H", Difficulty.MASTER: "T"}
 #: Two per row, filling the same width the three-button rows use, so the column lines up.
 DIFFICULTY_WIDTH = (3 * OPTION_WIDTH + 2 * 8 - 8) // 2
+NOTE_WIDTH = 90 + 8 + 3 * OPTION_WIDTH + 2 * 8  # a note under a row of options spans the row and wraps beside the preview
 PREVIEW_KEY = "newgame.preview"
 PREVIEW_BOX = (320, 240)  # the preview fits this many pixels: whole pixels per tile, as many as fit
 PREVIEW_MINE = (232, 196, 70)
@@ -160,11 +161,13 @@ class TitleScene(Scene):
     def draw(self) -> None:
         w, h = self.game.resolution
         self.draw_rect(0, 0, w, h, (6, 8, 14, 150))
-        cy = self._block.bounds[1] + 58  # the title and its tagline fill the spacer at the top of the centred menu block
+        # The UI's bounds are laid out after draw(), so measure the centred block
+        # here instead of using the previous frame's (initially empty) bounds.
+        cy = (h - self._block.get_preferred_size()[1]) / 2 + 58
         for spread, alpha in ((3, 50), (2, 80)):
             self.draw_text("WARBAND", w / 2 + spread, cy + spread, style="hero", color=(0, 0, 0, alpha), anchor_x="center", anchor_y="center")
         self.draw_text("WARBAND", w / 2, cy, style="hero", anchor_x="center", anchor_y="center")
-        self.draw_text("Gather · Build · Train · Conquer", w / 2, cy + 74, style="hero_sub", anchor_x="center", anchor_y="center")
+        self.draw_text("Gather · Build · Train · Conquer", w / 2, cy + 70, style="hero_sub", anchor_x="center", anchor_y="center")
         if self.notice:
             self.draw_text(self.notice, w / 2, h - 60, style="hud", color=(240, 130, 110, 255), anchor_x="center", anchor_y="center")
 
@@ -304,7 +307,7 @@ class NewGameScene(Scene):
     def on_enter(self) -> None:
         """The options in a column on the left, the preview and the opponents beside them, Start below."""
         self._refresh_preview()
-        options = Column(spacing=8, margin=0)
+        options = Column(spacing=6, margin=0)
         size_row = Row(Label("Map size", text_style="body", width=90), spacing=8)
         for name, (w, h) in mapgen.SIZES.items():
             button = Button(f"{name} {w}×{h}", hotkey=name[0], on_click=lambda n=name: self.set_size(n), style=GHOST_BUTTON, width=OPTION_WIDTH)
@@ -326,7 +329,7 @@ class NewGameScene(Scene):
                 self._difficulty_buttons[difficulty] = button
                 row.add(button)
             options.add(row)
-        options.add(Label(lambda: self._difficulty_text(), text_style="sub", width=3 * OPTION_WIDTH + 90 + 24))
+        options.add(Label(lambda: self._difficulty_text(), text_style="sub", width=NOTE_WIDTH, wrap=True))
         theme_row = Row(Label("Land", text_style="body", width=90), spacing=8)
         for theme, key in ((MapTheme.SUMMER, "G"), (MapTheme.WINTER, "W"), (MapTheme.WASTELAND, "D")):
             button = Button(theme.value.title(), hotkey=key, on_click=lambda t=theme: self.set_theme(t), style=GHOST_BUTTON, width=OPTION_WIDTH)
@@ -342,22 +345,23 @@ class NewGameScene(Scene):
                 self._layout_buttons[layout] = button
                 row.add(button)
             options.add(row)
-        options.add(Label(lambda: self._layout_text(), text_style="sub", width=3 * OPTION_WIDTH + 90 + 24))
+        options.add(Label(lambda: self._layout_text(), text_style="sub", width=NOTE_WIDTH, wrap=True))
         race_row = Row(Label("Race", text_style="body", width=90), spacing=8)
         for race, key in RACE_KEYS.items():
             button = Button(RACES[race].name, hotkey=key, on_click=lambda r=race: self.set_race(r), style=GHOST_BUTTON, width=RACE_WIDTH)
             self._race_buttons[race] = button
             race_row.add(button)
         options.add(race_row)
-        options.add(Label(lambda: f"{RACES[self.race].tagline} · {RACES[self.race].passive}", text_style="sub", width=3 * OPTION_WIDTH + 90 + 24))
         options.add(Row(Label(lambda: f"Seed {self.seed}", text_style="body", width=90 + 8 + OPTION_WIDTH),
                         Button("Reroll", hotkey="R", on_click=self.reroll, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
         side = Column(Image(self._preview_key, width=PREVIEW_BOX[0], height=PREVIEW_BOX[1]),
                       Label(lambda: self._opponents_text(), text_style="sub"), spacing=8, margin=0)
-        panel = Column(Label("New game", text_style="title"), Row(options, side, spacing=24),
+        # The race's character runs under the whole row: beside the preview it would wrap, and the panel must fit a 680 px window.
+        race_note = Label(lambda: f"{RACES[self.race].tagline} · {RACES[self.race].passive}", text_style="sub", width=NOTE_WIDTH + 24 + PREVIEW_BOX[0])
+        panel = Column(Label("New game", text_style="title"), Row(options, side, spacing=24), race_note,
                        Row(Button("Start", hotkey="Enter", on_click=self.start, style=ACTION_BUTTON, width=2 * OPTION_WIDTH + 8),
                            Button("Back", hotkey="Esc", on_click=self.game.pop, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8),
-                       spacing=12, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
+                       spacing=8, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
         self.ui.add(panel)
         self._restyle()
 

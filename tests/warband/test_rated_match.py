@@ -63,6 +63,18 @@ def test_a_victory_is_rated_and_its_replay_kept(play):
     assert playback.world.players[scene.human].name == "Tester"
 
 
+@pytest.mark.parametrize("players", [2, 3])
+def test_rival_falls_notice_only_appears_while_the_match_continues(game, players):
+    """FFA still announces an eliminated rival; victory must not freeze a new toast behind the result."""
+    scene = new_game(seed=3, players=players, settings={"music": 0, "sfx": 0, "tutorial": False})
+    game.push(scene)
+    game.tick(1 / 60)
+    scene.world.resign(1)
+    tick(game, 0.5)
+    assert ("A rival falls" in texts(game)) == (players == 3)
+    assert isinstance(game.scene, GameOverScene) == (players == 2)
+
+
 def test_resigning_on_even_terms_asks_first_and_counts_a_fifth_of_a_loss(play):
     """Resign from the pause menu: the confirmation names the cost, Escape keeps playing, Enter concedes."""
     game, scene = play

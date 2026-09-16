@@ -28,6 +28,7 @@ suggested sequence, not a requirement to finish every earlier item first.
 | WB-012 | Later | proposed | Support three- and four-human online FFA | Suggested |
 | WB-013 | Next | proposed | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Later | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
+| WB-016 | Later | proposed | Assess and recover the six-mission Thornwood campaign | Recovered branch |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -301,11 +302,31 @@ checks cannot mark the human playtest complete.
 
 ## WB-014 — Difficulty and race-balance evidence
 
-After WB-001 resolves the balance branch and any deliberate combat-rule changes,
-rerun the existing arena/AI-report tools over adequate seeded samples. Check
+WB-001 retained the active `balance` work and local AI experiments. Audit their
+commits, dirty files and completed reports against current main before choosing
+changes to integrate; the mine-capacity, economy and settled-match rules require
+their own acceptance rather than an automatic branch merge. Preserve the
+experiment evidence and retire those worktrees only once inactive and recovered.
+After integrating accepted changes, rerun the existing arena/AI-report tools
+over adequate seeded samples. Check
 Easy against a basic opening, the ordering of difficulties, race/map/seat bias,
 and FFA endings. Keep economy/crowding failures distinct from numerical balance.
 
 **Done when:** a recorded report supports the displayed difficulty expectations;
 concrete regressions become small fixes with rule tests, fuzz and refreshed
 fingerprints where appropriate. Do not retune from a few observed matches.
+
+## WB-016 — Assess the Thornwood campaign
+
+The retained `campaign` branch at `9dbc98f` contains four unique commits: a
+six-mission campaign, scripted outcomes, briefings, dialogue, choices and saved
+progress. Review its product fit and playability before adoption. Integrate
+against the current profile/title UI and the pinned engine; preserve ordinary
+skirmish and replay behavior. Coordinate durable campaign progress with WB-015.
+
+**Done when:** each mission's start, objectives, win and loss paths are verified;
+choices and unlocked missions survive a new process and an upgrade; the title
+and briefing screens fit supported resolutions and have inspected native frames.
+Run the full suite and test scripted outcomes separately from normal elimination.
+Record whether the campaign is accepted or retained with specific remaining
+issues, and clean up the branch only after its work is safely accounted for.
