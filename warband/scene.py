@@ -279,6 +279,7 @@ class GameScene(Scene):
             Label(lambda: _clock(world.time), text_style="sub"),
             Label(lambda: "Paused" if self.paused else f"×{self.speed:g}" if self.speed != 1 else "", text_style="hud", text_color=BAD),
             self._idle_button(),
+            self._army_button(),
             Button("Menu", hotkey="F10", on_click=self.open_menu, style=GHOST_BUTTON),
         ]))
         # The keycaps are hints only: the letters are dispatched after the command card (see handle_input), so a
@@ -344,6 +345,14 @@ class GameScene(Scene):
     def _idle_peasant_count(self) -> int:
         return sum(1 for u in self.world.player_units(self.human) if u.is_worker and not u.orders and not u.hidden)
 
+    def _army_button(self) -> Button:
+        self.army_button = Button(lambda: f"Army {len(self._army())}", hotkey="Ctrl+A", on_click=self.select_army, style=ACTION_BUTTON)
+        return self.army_button
+
+    def _army(self) -> list[Unit]:
+        """Every soldier of the player's, wherever it stands: what the Army button and Ctrl+A select."""
+        return [u for u in self.world.player_units(self.human) if not u.is_worker and not u.hidden]
+
     def _hint(self) -> list[tuple[str, str]]:
         if self.pending is not None:
             return [("Click", "target"), ("Right click", "cancel"), ("Shift", "queue / keep placing")]
@@ -364,7 +373,7 @@ class GameScene(Scene):
         if building is not None:
             keys = " ".join(dict.fromkeys(c.hotkey for c in self._card if c.hotkey not in ("X", "C")))
             return ([(keys, "train / research")] if keys else []) + [("Right click", "rally point"), ("F2", "codex"), ("Esc", "deselect")]
-        return [("Drag", "select"), ("B / T / U", "plan buildings / units / upgrades"), ("G", "assembly"), ("Tab", "idle peasant"),
+        return [("Drag", "select"), ("B / T / U", "plan buildings / units / upgrades"), ("G", "assembly"), ("Tab", "idle peasant"), ("Ctrl+A", "army"),
                 ("Space", "last alert"), ("F3", "pause"), ("F1", "help"), ("F2", "codex")]
 
     # -- Selection -----------------------------------------------------------------
@@ -431,8 +440,8 @@ class GameScene(Scene):
         self.select(same if not add else [i for i in same if i not in self.selection], add=add)
 
     def select_army(self) -> None:
-        """Ctrl+A (Cmd+A on a Mac): every soldier of the player's, wherever it is."""
-        soldiers = [u.id for u in self.world.player_units(self.human) if not u.is_worker and not u.hidden]
+        """The Army button, Ctrl+A or Cmd+A on a Mac."""
+        soldiers = [u.id for u in self._army()]
         if soldiers:
             self.select(soldiers)
         else:
@@ -1196,6 +1205,7 @@ class GameScene(Scene):
         self.view.sync(dt)
         self._update_card()
         self.idle_button.visible = self._idle_peasant_count() > 0
+        self.army_button.visible = bool(self._army())
         self._update_tutorial()
         if self.world.time >= self._autosave_at and not self._game_over:
             self._autosave_at += AUTOSAVE_EVERY

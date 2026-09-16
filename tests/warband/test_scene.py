@@ -590,3 +590,20 @@ def test_ctrl_a_and_cmd_a_select_the_whole_army(play) -> None:
     scene.select([])
     press(game, "a", ctrl=True)
     assert sorted(scene.selection) == sorted(u.id for u in soldiers)
+
+
+def test_the_army_button_counts_the_soldiers_and_selects_them_all(play) -> None:
+    """The button beside Idle shows how many soldiers Ctrl+A would take, hides while there are none,
+    and a click on it selects them wherever they stand."""
+    game, scene = play
+    world, hall = scene.world, hall_of(scene)
+    assert not scene.army_button.visible
+    soldiers = [world.spawn_unit(scene.human, UnitType.FOOTMAN, (hall.x - 1.5, hall.y + i)) for i in range(3)]
+    soldiers.append(world.spawn_unit(scene.human, UnitType.ARCHER, (world.width - hall.x - 2.5, world.height - hall.y - 2.5)))
+    game.tick(1 / 60)
+    assert scene.army_button.visible and "Army 4" in texts(game)
+    x, y, w, h = scene.army_button.bounds
+    game.backend.inject_click(int(x + w / 2), int(y + h / 2))
+    game.backend.inject_release(int(x + w / 2), int(y + h / 2))
+    game.tick(1 / 60)
+    assert sorted(scene.selection) == sorted(u.id for u in soldiers)
