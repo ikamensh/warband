@@ -21,6 +21,7 @@ suggested sequence, not a requirement to finish every earlier item first.
 | WB-006 | Next | ready | Add blood on damaging hits | User |
 | WB-007 | Next | ready | Leave grey abandoned buildings when a player resigns in FFA | User |
 | WB-008 | Next | ready | Improve health bars and building progress indicators | User |
+| WB-015 | Next | ready | Verify and complete durable local player storage outside game sources | User |
 | WB-009 | Next | proposed | Establish current battle performance and fix measured bottlenecks | User / engine split |
 | WB-010 | Later | proposed | Smooth online movement and make connection problems understandable | Suggested |
 | WB-011 | Later | proposed | Keep fog-hidden state out of opponents' network snapshots | Suggested |
@@ -191,6 +192,47 @@ construction/production/research progress is understandable without overlapping
 bars or labels. Inspect real frames across themes, zooms and crowded fights,
 including grey abandoned buildings from WB-007. Verify the policy through real
 selection and pointer journeys as well as drawing tests.
+
+## WB-015 — Durable local player storage
+
+Keep player data as readable text files in the user's home/data directory,
+separate from source checkouts and installed application files. It must survive
+quitting, restarting, updating or replacing the game, and switching between
+source and packaged launches. No account or server should be required.
+
+**Existing baseline, verified by source inspection on main (`17b5160`):** the
+profile/Elo work is already merged. [Profile](warband/profile.py),
+[leaderboard](warband/scores.py) and [replay storage](warband/replay.py) already
+use JSON beneath `game.data_dir`, which defaults to `~/.warband/`
+(`%USERPROFILE%\.warband\` on Windows):
+
+| Data | Existing location relative to that directory |
+|---|---|
+| Player name and rated match results; Elo is derived from these results | `profile/save_1.json` |
+| Local leaderboard | `high_scores/save_1.json` |
+| Recorded matches | `replays/save_<match-id>.json` |
+| Saved games and autosave | `saves/` |
+| Preferences | `settings.json` |
+
+Build on this storage rather than introducing another persistence mechanism.
+Audit the actual write/load journeys and fill any gaps. Document what is saved
+and when, make the data folder discoverable from the game, and give simple
+backup/restore instructions. Keep files human-readable and versioned; preserve
+existing data if a schema or location changes. Reuse atomic writes and explicit
+backup recovery; report damaged/unsupported files or write failures clearly
+without silently replacing the player's history with a fresh profile.
+Current rated results/replays cover offline play; online recording/rating is a
+separate feature, not an assumed part of this storage audit.
+
+**Done when:** a real match produces a result, rating and leaderboard entry;
+a new game process reloads them along with the player name and settings; a
+saved match and its replay can be opened after restart. Verify source and
+packaged builds use the same user-owned directory independent of working
+directory, and an upgrade preserves the data. Integration checks use an
+isolated temporary user directory, cover interrupted writes, corrupt files,
+explicit recovery and repeat loading without duplicate results, and never
+modify the developer's real profile. Record current evidence in the
+[profile storage guide](docs/warband-profile.md).
 
 ## WB-009 — Current performance baseline and targeted fixes
 
