@@ -161,10 +161,12 @@ class GitHub:
                 return None
             raise
 
-    def pages(self, path):
+    def pages(self, path, *, collection=None):
         page = 1
         while True:
             items = self.api(f"{path}?per_page=100&page={page}")
+            if collection is not None:
+                items = items[collection]
             yield from items
             if len(items) < 100:
                 break

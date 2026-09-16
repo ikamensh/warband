@@ -311,3 +311,39 @@ in the same evidence directory. The workflow's latest red status is this
 intentional refusal test; attempt 1 is the successful native build. This proves
 safe refusal, not successful publication retry. The separate publication
 workflow and end-to-end promotion remain unfinished.
+
+### Separate producer/publisher wiring
+
+`publish.yml` now consumes a successful main native run through `workflow_run`,
+or accepts that producer run ID through manual dispatch for publication retries.
+`ci_source.py` reads provenance from GitHub's API: repository and head repository,
+main branch/event, the exact native workflow ID/path, all four successful jobs,
+and both unexpired artifacts bound to the same source commit. It follows API
+pagination. Thirteen CLI/HTTP checks reject untrusted, incomplete or mismatched
+sources; all 43 focused release checks pass. The changed workflow passes Actionlint.
+
+Preparation downloads from the separate producer run and stages exact accepted
+bytes. Only a main-ref job with `WARBAND_PUBLISH_ENABLED=true` enters the
+`warband-release` environment and obtains `contents: write`. It revalidates the
+staged release, publishes/verifies its immutable bytes, retains the receipt, and
+requests Saga Online's `warband-promotion.yml` via a token scoped to Actions write
+in that repository. No repository settings, environment, secret or enable flag
+has been changed. The new workflow has not yet run from the default branch;
+actual separated-run retry and publication remain required acceptance evidence.
+
+### Compatibility implementation boundary
+
+Before implementing compatibility promotion, separate the authoritative match
+rules/registration from the multiplayer scene. The compatibility digest will
+cover that authority module and its transitive game-code imports, plus the exact
+engine release and relevant runtime dependency versions. Cosmetic-only modules
+must not change it; rule, state, order validation, map generation and automatic
+worker behavior must change it. A new local import must join the digest without
+an operator remembering to edit a manual file list. Unsupported dynamic imports
+or external data in this path must fail clearly rather than silently omit input.
+
+The server's reviewed baseline will record this digest and exact deployment
+identity. Promotion will require a matching live baseline and packaged socket
+checks; a digest mismatch requires the separate room-draining/server rollout
+already specified above. This is deliberately conservative: it proves identical
+relevant inputs, not a claim that arbitrary different rules are compatible.
