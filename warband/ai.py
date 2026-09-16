@@ -54,6 +54,24 @@ _MELEE_TYPES = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
 ARRIVED_WITHIN = 1.5  # a soldier this near its destination has arrived, whatever the order says
 
 
+def known_enemy_buildings(world: World, player: int) -> list:
+    """Enemy structures *player* has seen, as that player's own memory records them.
+
+    The AI is bound by the fog the human plays under: every question it asks
+    about the map goes through ``world.worker_knowledge``, which holds the last
+    observed footprint of every structure this player has laid eyes on and
+    nothing else. A razed building stays remembered until somebody looks at the
+    ground again, which is exactly what a player would believe.
+    """
+    return [record for record in world.worker_knowledge[player].buildings.values()
+            if record.player not in (None, player) and world.players[record.player].alive]
+
+
+def known_mines(world: World, player: int) -> list:
+    """Gold *player* has found; its contents are what they were when last seen."""
+    return list(world.worker_knowledge[player].mines.values())
+
+
 def release_arrived(world: World, player: int) -> None:
     """Let go of a Move that is as good as finished.
 
@@ -142,10 +160,10 @@ PRO_FOR: dict[Difficulty, str] = {Difficulty.HARD: "pro-hard", Difficulty.MASTER
 #: ``tools/arena.py``; the games behind the numbers are in ``docs/ai-ladder.md``. Shown on the New game screen so a player can see what
 #: they are picking rather than guess from a word.
 DIFFICULTY_ELO: dict[Difficulty, int] = {
-    Difficulty.EASY: 690,
+    Difficulty.EASY: 770,
     Difficulty.MEDIUM: 1000,
     Difficulty.HARD: 1220,
-    Difficulty.MASTER: 1490,
+    Difficulty.MASTER: 1420,
 }
 
 #: One line per setting, for the same screen.
@@ -294,7 +312,9 @@ class Brain:
         player = self.player
         profile = self.profile
         gold = world.players[player].gold
-        mine = world._nearest_mine(hall.center if hall is not None else fallback, math.inf)
+        found = known_mines(world, player)
+        anchor_point = hall.center if hall is not None else fallback
+        mine = min(found, key=lambda m: dist(m.center, anchor_point)) if found else None
         self.saving = False
         if hall is None:
             wanted, anchor = BuildingType.TOWN_HALL, (mine.center if mine is not None else fallback)
@@ -339,7 +359,7 @@ class Brain:
             return None
         if worked is not None and worked.gold >= LOW_MINE_GOLD and dist(worked.center, hall.center) <= EXPAND_DISTANCE:
             return None
-        free = [m for m in world.mines() if m.gold >= LOW_MINE_GOLD
+        free = [m for m in known_mines(world, self.player) if m.gold >= LOW_MINE_GOLD
                 and not any(dist(m.center, h.center) <= CLAIM_DISTANCE for h in halls)]
         return min(free, key=lambda m: dist(m.center, hall.center)) if free else None
 
@@ -502,7 +522,8 @@ class Brain:
     def _enemy_soldiers(self, world: World) -> int:
         """Living enemy soldiers (units that are not workers) of alive players."""
         return sum(1 for u in world.units.values() if u.player != self.player and world.players[u.player].alive
-                   and not u.is_worker and u.hp > 0 and not u.hidden)
+                   and not u.is_worker and u.hp > 0 and not u.hidden
+                   and world.is_visible(self.player, u.tile))
 
     # -- Military --------------------------------------------------------------------
 
@@ -584,8 +605,11 @@ class Brain:
         idle = [i for i in self.raiders if not world.units[i].orders]
         if not idle:
             return
-        mines = [m.center for m in world.mines() if any(u.player != self.player and dist(u.pos, m.center) < 8 for u in world.units.values() if u.is_worker)]
-        prey = mines or [u.pos for u in world.units.values() if u.player != self.player and u.is_worker and not u.hidden]
+        seen = [u for u in world.units.values()
+                if u.player != self.player and u.is_worker and not u.hidden and world.is_visible(self.player, u.tile)]
+        mines = [m.center for m in known_mines(world, self.player)
+                 if any(dist(u.pos, m.center) < 8 for u in seen)]
+        prey = mines or [u.pos for u in seen]
         if prey:
             target = min(prey, key=lambda p: dist(p, world.units[idle[0]].pos))
             world.attack_move(idle, target)
@@ -593,11 +617,21 @@ class Brain:
 
     def _enemy_targets(self, world: World) -> list[Point]:
         """Enemy buildings of alive players; once those are gone, whatever enemy units remain."""
-        buildings = [b.center for b in world.buildings.values() if b.player is not None and b.player != self.player
-                     and world.players[b.player].alive]
+        buildings = [record.center for record in known_enemy_buildings(world, self.player)]
         if buildings:
             return buildings
-        return [u.pos for u in world.units.values() if u.player != self.player and world.players[u.player].alive]
+        seen = [u.pos for u in world.units.values()
+                if u.player != self.player and world.players[u.player].alive
+                and not u.hidden and world.is_visible(self.player, u.tile)]
+        if seen:
+            return seen
+        # Nothing of theirs found yet: walk at the far corner rather than stand
+        # at home until the clock runs out. Starts sit in the corners.
+        hall = self._hall(world)
+        here = hall.center if hall is not None else (world.width / 2, world.height / 2)
+        corners = [(2.5, 2.5), (world.width - 2.5, 2.5), (2.5, world.height - 2.5),
+                   (world.width - 2.5, world.height - 2.5)]
+        return [max(corners, key=lambda c: dist(c, here))]
 
     def _threats(self, world: World) -> list[Unit]:
         """Visible enemies within DEFEND_RADIUS of one of our buildings."""

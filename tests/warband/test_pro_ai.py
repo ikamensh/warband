@@ -11,7 +11,8 @@ from __future__ import annotations
 import random
 
 from warband import mapgen
-from warband.pro_ai import PRO, ProBrain, strength
+from warband.model import dist
+from warband.pro_ai import PRO, ProBrain, _tower_strength, strength
 from warband.rules import SIM_DT, BuildingType, UnitType
 
 
@@ -215,3 +216,65 @@ def test_the_muster_point_is_never_inside_a_building():
     world.place_building(0, BuildingType.FARM, (int(point[0]), int(point[1])))
     moved = brain._front_point(world, hall)
     assert world.passable(int(moved[0]), int(moved[1]))
+
+
+# -- What the brain is allowed to know -------------------------------------------
+
+def test_the_brain_knows_nothing_of_an_enemy_base_it_has_never_seen():
+    """Fog of war binds the AI as much as the player.
+
+    Everything the brain reads about the map goes through the model's own
+    per-player memory, which holds only what this player has laid eyes on.
+    """
+    world = mapgen.generate(seed=31, players=2, human=None)
+    world.update_vision()
+    brain = ProBrain(0, PRO)
+    enemy_hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0]
+
+    assert brain._known_enemy_buildings(world) == [], "their base has not been seen"
+    assert all(dist(t, enemy_hall.center) > 3.0 for t in brain._attack_targets(world)), \
+        "an unseen hall is not a target"
+    assert brain._victim(world) is None
+    world.place_building(1, BuildingType.TOWER, (enemy_hall.x + 5, enemy_hall.y))
+    assert _tower_strength(world, 0, enemy_hall.center) == 0.0, "an unseen tower defends nothing we know of"
+
+    world.reveal_all(0)
+    world.update_vision()
+    assert brain._known_enemy_buildings(world), "once looked at, it is known"
+    assert any(dist(t, enemy_hall.center) <= 3.0 for t in brain._attack_targets(world))
+    assert _tower_strength(world, 0, enemy_hall.center) > 0.0
+
+
+def test_raiders_hunt_only_peasants_they_can_see():
+    world = mapgen.generate(seed=31, players=2, human=None)
+    world.update_vision()
+    brain = ProBrain(0, PRO)
+    riders = _spawn(world, 0, UnitType.SCOUT, 2, 2)
+    brain._raid(world, riders)
+    for rider in riders:
+        for order in rider.orders:
+            target = getattr(order, "target", None)
+            if isinstance(target, tuple):
+                assert all(dist(target, u.pos) > 1.0 for u in world.player_units(1) if u.is_worker), \
+                    "a rider was sent at a peasant nobody has seen"
+
+
+def test_the_brain_cannot_conjure_resources():
+    """Every purchase goes through the model's can_afford, so with no income and an
+    empty bank the brain buys nothing at all — no free gold, no free lumber."""
+    world = mapgen.generate(seed=31, players=2, human=None)
+    for unit in list(world.player_units(0)):
+        world.units.pop(unit.id)  # nobody left to earn anything
+    world.players[0].gold = 0
+    world.players[0].lumber = 0
+    before = len(world.player_buildings(0))
+    brain = ProBrain(0, PRO)
+    rng = random.Random(1)
+    for _ in range(int(60 / SIM_DT)):
+        brain.think(world, rng)
+        world.step()
+    assert world.players[0].gold == 0 and world.players[0].lumber == 0, "resources appeared from nowhere"
+    # Buildings can only go down here: with nothing left alive the player is
+    # eliminated, which is the rules working rather than the brain cheating.
+    assert len(world.player_buildings(0)) <= before, "something was built out of thin air"
+    assert not world.player_units(0), "something was trained out of thin air"

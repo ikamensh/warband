@@ -37,7 +37,7 @@ import math
 import random
 from dataclasses import dataclass, field, replace
 
-from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, release_arrived
+from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived
 from warband.model import Attack, Build, Building, Point, Pos, Repair, Unit, World, dist, tile_center
 from warband.races import RACES
 from warband.rules import BUILDINGS, BuildingType, UnitType
@@ -104,10 +104,10 @@ PRO = ProProfile("pro")
 #: The Hard difficulty: the same brain as Master, thinking once every second
 #: and a half on a small economy, without raiders, scouts or expansions, and
 #: back on the cautious posture Master gave up. It exists to put a real step
-#: between Medium and Master — measured at 1222 Elo against Medium's 1000 and
-#: Master's 1489 — not to be the best player available.
+#: between Medium and Master — measured at 1218 Elo against Medium's 1000 and
+#: Master's 1420 — not to be the best player available.
 PRO_HARD = replace(PRO, name="pro-hard", think_every=1.5, combat_every=0.5, workers_per_mine=6,
-                   barracks_per_hall=1, max_sites=2, raid=False, retreat_wounded=False, scout=False,
+                   barracks_per_hall=1, max_sites=2, raid=False, retreat_wounded=False,
                    expand=False, min_army=10, attack_ratio=1.6, symmetry_prior=1.0, guards=2)
 
 _TRIALS = (
@@ -155,15 +155,22 @@ def strength(world: World, units: list[Unit]) -> float:
 
 
 def _tower_strength(world: World, player: int, point: Point, radius: float = 9.0) -> float:
-    """What the fortifications around *point* add to the defender."""
+    """What the fortifications around *point* add to the defender.
+
+    Only the ones we have seen: ``worker_knowledge`` remembers every armed
+    structure this player has laid eyes on, and nothing else. A tower is priced
+    at what it was built as rather than at its current health, because a
+    remembered tower is not a tower we are looking at.
+    """
     damage = body = 0.0
-    for building in world.buildings.values():
-        if building.player in (None, player) or not building.done or building.hp <= 0:
+    for record in world.worker_knowledge[player].threats:
+        if record.player in (None, player) or dist(record.center, point) > radius:
             continue
-        if not building.info.damage or dist(building.center, point) > radius:
+        building = world.buildings.get(record.id)
+        if building is None or not building.info.damage:
             continue
         damage += world.damage_of(building) / building.info.cooldown
-        body += building.hp
+        body += building.max_hp
     return math.sqrt(damage * body)
 
 
@@ -246,6 +253,27 @@ class ProBrain:
         halls = self._halls(world)
         return halls[0] if halls else None
 
+    def _knowledge(self, world: World):
+        """What this player has actually seen: the model's own per-player memory."""
+        return world.worker_knowledge[self.player]
+
+    def _known_enemy_buildings(self, world: World) -> list:
+        return known_enemy_buildings(world, self.player)
+
+    def _unexplored_corner(self, world: World) -> Point:
+        """Somewhere worth looking when nothing of theirs has been found yet.
+
+        Starts sit in the corners, so the far one from ours is the first guess.
+        """
+        hall = self._hall(world)
+        here = hall.center if hall is not None else (world.width / 2, world.height / 2)
+        corners = [(2.5, 2.5), (world.width - 2.5, 2.5), (2.5, world.height - 2.5),
+                   (world.width - 2.5, world.height - 2.5)]
+        return max(corners, key=lambda c: dist(c, here))
+
+    def _known_mines(self, world: World) -> list:
+        return known_mines(world, self.player)
+
     def _enemies(self, world: World) -> list[Unit]:
         """Visible enemy units of players still in the game."""
         return [u for u in world.units.values()
@@ -299,7 +327,7 @@ class ProBrain:
         halls = self._halls(world)
         if not halls:
             return []
-        return [m for m in world.mines() if m.gold > 0 and min(dist(m.center, h.center) for h in halls) < 14.0]
+        return [m for m in self._known_mines(world) if m.gold > 0 and min(dist(m.center, h.center) for h in halls) < 14.0]
 
     def _worker_target(self, world: World) -> int:
         """Peasants worth having: what the mines being worked can absorb.
@@ -341,8 +369,9 @@ class ProBrain:
         peasants = self._peasants(world)
         fallback = peasants[0].pos if peasants else (world.width / 2, world.height / 2)
         if hall is None:
-            mine = world._nearest_mine(fallback, math.inf)
-            return [(BuildingType.TOWN_HALL, mine.center if mine is not None else fallback)]
+            mines = self._known_mines(world)
+            nearest = min(mines, key=lambda m: dist(m.center, fallback)) if mines else None
+            return [(BuildingType.TOWN_HALL, nearest.center if nearest is not None else fallback)]
 
         have = lambda t: len(world.player_buildings(player, t, done=True))  # noqa: E731
         # A building that has been ordered does not exist until the peasant walks
@@ -417,12 +446,11 @@ class ProBrain:
             return None
         claimed = [h.center for h in world.player_buildings(self.player, BuildingType.TOWN_HALL)]
         best, best_distance = None, math.inf
-        for mine in world.mines():
+        for mine in self._known_mines(world):
             if mine.gold <= 0 or min(dist(mine.center, c) for c in claimed) < 12.0:
                 continue
             away = min(dist(mine.center, h.center) for h in halls)
-            enemy_halls = [b.center for b in world.buildings.values()
-                           if b.type is BuildingType.TOWN_HALL and b.player not in (None, self.player)]
+            enemy_halls = [r.center for r in self._known_enemy_buildings(world)]
             if enemy_halls and min(dist(mine.center, c) for c in enemy_halls) < away:
                 continue  # not ours to take yet
             if away < best_distance:
@@ -605,8 +633,7 @@ class ProBrain:
 
     def _front_point(self, world: World, hall: Building) -> Point:
         """Where the army waits: between the hall and whoever is coming."""
-        enemy_halls = [b.center for b in world.buildings.values()
-                       if b.player not in (None, self.player) and world.players[b.player].alive]
+        enemy_halls = [record.center for record in self._known_enemy_buildings(world)]
         towards = min(enemy_halls, key=lambda c: dist(c, hall.center)) if enemy_halls else (world.width / 2, world.height / 2)
         hx, hy = hall.center
         away = dist((hx, hy), towards) or 1.0
@@ -661,13 +688,7 @@ class ProBrain:
             self._defend(world, guards + army, threats)
             return
         self._post(world, guards)
-        targets = self._attack_targets(world)
-        if not targets:
-            return
         hall = self._hall(world)
-        origin = hall.center if hall is not None else (army[0].pos if army else None)
-        if origin is None:
-            return
         mine = strength(world, army)
         if self.attacking:
             # Judge a push by how it is going, not by how big the enemy looks from
@@ -684,8 +705,11 @@ class ProBrain:
                     for unit in army:
                         world.move([unit.id], self._muster(world, home, unit))
                 return
-            if self.target is None or not self._still_there(world, self.target):
-                self.target = min(targets, key=lambda t: dist(t, origin))
+            targets = self._attack_targets(world)
+            if targets and (self.target is None or not self._still_there(world, self.target)):
+                self.target = min(targets, key=lambda t: dist(t, hall.center if hall is not None else army[0].pos))
+            if self.target is None:
+                return
             # Reinforcements walk to the same place, so the push grows instead of
             # trickling. A soldier crossing the map alone arrives alone and dies
             # alone, so the ones still at home wait until there are enough to travel
@@ -706,6 +730,11 @@ class ProBrain:
         if world.time < self.regroup_until:
             self._gather(world, army, hall)
             return
+        targets = self._attack_targets(world)
+        origin = hall.center if hall is not None else (army[0].pos if army else None)
+        if not targets or origin is None:
+            self._gather(world, army, hall)
+            return
         target = min(targets, key=lambda t: dist(t, origin))
         theirs = self._defenders_near(world, target)
         care = self._caution(world)
@@ -723,8 +752,7 @@ class ProBrain:
 
     def _still_there(self, world: World, point: Point) -> bool:
         """Whether anything of the enemy's is still standing where the push was aimed."""
-        return any(b.hp > 0 and b.player not in (None, self.player) and dist(b.center, point) < 3.0
-                   for b in world.buildings.values())
+        return any(dist(record.center, point) < 3.0 for record in self._known_enemy_buildings(world))
 
     def _home_point(self, world: World, hall: Building) -> Point:
         """Somewhere a soldier can actually stand next to the hall.
@@ -816,10 +844,10 @@ class ProBrain:
 
     def _owner_of(self, world: World, point: Point) -> int | None:
         """Whose ground *point* is: the player owning the nearest building to it."""
-        owned = [b for b in world.buildings.values() if b.player not in (None, self.player) and b.hp > 0]
+        owned = self._known_enemy_buildings(world)
         if not owned:
             return None
-        return min(owned, key=lambda b: dist(b.center, point)).player
+        return min(owned, key=lambda record: dist(record.center, point)).player
 
     def _typical_soldier(self, world: World) -> float:
         """What one average soldier of ours is worth, as a yardstick for unseen enemies."""
@@ -833,8 +861,8 @@ class ProBrain:
         it is the whole game — walking at the nearest neighbour while a third
         player grows is how a free-for-all is lost by the one who started it.
         """
-        living = [p.id for p in world.players if p.id != self.player and p.alive
-                  and any(b.player == p.id and b.hp > 0 for b in world.buildings.values())]
+        seen = {record.player for record in self._known_enemy_buildings(world)}
+        living = [p.id for p in world.players if p.id != self.player and p.alive and p.id in seen]
         if not living:
             return None
         return min(living, key=lambda p: sum(self.remembered(p).values()))
@@ -844,16 +872,21 @@ class ProBrain:
         wanted = (BuildingType.BARRACKS, BuildingType.STABLES, BuildingType.WORKSHOP,
                   BuildingType.CHURCH, BuildingType.TOWN_HALL)
         victim = self._victim(world)
-        buildings = [b for b in world.buildings.values()
-                     if b.player is not None and b.player != self.player and world.players[b.player].alive and b.hp > 0]
-        theirs = [b for b in buildings if b.player == victim] or buildings
-        production = [b.center for b in theirs if b.type in wanted]
+        buildings = self._known_enemy_buildings(world)
+        theirs = [record for record in buildings if record.player == victim] or buildings
+        # A structure we have seen, we know the kind of; one razed while we were
+        # not looking reads as unknown and stays a place worth walking to.
+        production = [record.center for record in theirs
+                      if getattr(world.buildings.get(record.id), "type", None) in wanted]
         if production:
             return production
         if theirs:
-            return [b.center for b in theirs]
-        return [u.pos for u in world.units.values()
-                if u.player != self.player and u.hp > 0 and world.players[u.player].alive]
+            return [record.center for record in theirs]
+        seen = [u.pos for u in self._enemies(world)]
+        # Under fog an army with no target simply stands at home until the clock
+        # runs out. If nothing of theirs has been found, the place to go is the
+        # ground we have not looked at.
+        return seen or [self._unexplored_corner(world)]
 
     def _defend(self, world: World, army: list[Unit], threats: list[Unit]) -> None:
         """Send the soldiers at whatever is nearest our buildings. The peasants keep mining.
@@ -888,11 +921,9 @@ class ProBrain:
                          if not p.hidden and p.carrying is None and not isinstance(p.order, (Build, Repair))]
                 if len(spare) > 3:
                     self.scouts = [spare[-1].id]
-        targets = [b.center for b in world.buildings.values()
-                   if b.type is BuildingType.TOWN_HALL and b.player not in (None, self.player)
-                   and world.players[b.player].alive]
+        targets = [record.center for record in self._known_enemy_buildings(world)]
         if not targets:
-            return
+            targets = [self._unexplored_corner(world)]  # nothing found yet: go and look
         for scout_id in self.scouts:
             scout = world.units[scout_id]
             if scout.orders:
@@ -938,9 +969,7 @@ class ProBrain:
         spare = [u for u in army if u.type is UnitType.SCOUT and u.id not in self.raiders]
         while len(self.raiders) < self.profile.raiders and spare:
             self.raiders.append(spare.pop().id)
-        prey = [u.pos for u in world.units.values()
-                if u.player != self.player and u.is_worker and not u.hidden and u.hp > 0
-                and world.players[u.player].alive]
+        prey = [u.pos for u in self._enemies(world) if u.is_worker]
         if not prey:
             return list(self.raiders)
         for raider_id in self.raiders:

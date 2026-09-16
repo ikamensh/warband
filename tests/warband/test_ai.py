@@ -404,3 +404,28 @@ def test_every_difficulty_builds_a_brain_that_plays() -> None:
             brain.think(world, rng)
             world.step()
         assert len(world.player_units(0)) > 3, difficulty
+
+
+def test_the_shipped_brain_is_bound_by_the_same_fog_the_player_plays_under() -> None:
+    """It may not target, expand towards, or count what it has never seen."""
+    from warband.ai import known_enemy_buildings, known_mines
+
+    world = mapgen.generate(seed=31, players=2, human=None)
+    world.update_vision()
+    brain = Brain(0, Difficulty.MEDIUM)
+    enemy_hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0]
+    world.spawn_unit(1, UnitType.FOOTMAN, (enemy_hall.center[0] + 1, enemy_hall.center[1] + 1))
+    world.update_vision()
+
+    assert known_enemy_buildings(world, 0) == []
+    assert all(dist(t, enemy_hall.center) > 3.0 for t in brain._enemy_targets(world)), "an unseen hall is not a target"
+    assert brain._enemy_soldiers(world) == 0, "an unseen soldier is not counted"
+    assert all(dist(m.center, enemy_hall.center) > 12.0 for m in known_mines(world, 0)), \
+        "their gold has not been found"
+
+    # Genuine sight, not a revealed map: a scout of ours standing in their base.
+    world.spawn_unit(0, UnitType.SCOUT, (enemy_hall.center[0] + 1, enemy_hall.center[1]))
+    world.update_vision()
+    assert known_enemy_buildings(world, 0), "once looked at, it is known"
+    assert brain._enemy_soldiers(world) == 1
+    assert any(dist(t, enemy_hall.center) <= 3.0 for t in brain._enemy_targets(world))

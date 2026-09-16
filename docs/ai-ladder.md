@@ -13,6 +13,38 @@ numbers here come from a few hundred.
 
 The ladder is `warband/arena.py`, driven by `tools/arena.py`.
 
+## What the AI is allowed to know
+
+The computer plays under the same fog the human does, and out of the same
+purse. Both are worth stating because neither was true to begin with.
+
+**Fog.** Every question either brain asks about the map goes through
+`world.worker_knowledge[player]` — the model's own per-player memory, holding
+the last observed footprint of every structure that player has laid eyes on
+and the contents of every mine it has found, and nothing else. A razed
+building stays remembered until somebody looks at the ground again, which is
+what a player would believe. Enemy units are counted only where they are
+visible. `ai.known_enemy_buildings` and `ai.known_mines` are the only doors in,
+and both brains use them.
+
+Before this the AI read `world.buildings` and `world.mines()` straight: it knew
+every enemy building, tower and gold mine from the first tick, and its raiders
+rode at peasants nobody had seen. Taking that away cost real strength — Master
+went from about 96% against Medium to 87% — which is the measure of how much
+it had been leaning on it.
+
+It also broke the game until exploration was added. An army with no remembered
+target simply stands at home, so fog-honest matches ran to the twenty-minute
+cap instead of ending around seven, and the ladder slowed to a third of its
+pace. Both brains now walk at the far corner when they have found nothing:
+starts sit in corners, which is a guess a player can make from the map's shape
+rather than something read out of the model.
+
+**Resources.** Nothing in either brain writes gold or lumber. Every purchase
+goes through `can_afford`, `can_train`, `can_research` and `build`, which are
+the same gates the player's clicks pass. A test starves a brain of both income
+and reserves and checks that it builds and trains nothing at all.
+
 ## The maps a ladder is played on
 
 A rating from one map is a rating of very little, so a ladder walks the map
@@ -84,16 +116,16 @@ say "it never lost".
 ## The difficulty settings
 
 What the New game screen offers, and what each one is worth. 60 seeds, both
-corners, every map size, 720 games, Medium anchored at 1000:
+corners, every map size, under fog, 720 games, Medium anchored at 1000:
 
 | setting | Elo | 90% interval | plays |
 |---------|-----|--------------|-------|
-| Easy | 694 | 625 .. 748 | `ai.Brain`, the Easy profile |
+| Easy | 768 | 708 .. 824 | `ai.Brain`, the Easy profile |
 | Medium | 1000 | — | `ai.Brain`, what Normal and Hard both were |
-| Hard | 1222 | 1171 .. 1268 | `pro_ai.ProBrain`, `pro-hard` |
-| Master | 1489 | 1425 .. 1556 | `pro_ai.ProBrain`, `pro` |
+| Hard | 1218 | 1174 .. 1267 | `pro_ai.ProBrain`, `pro-hard` |
+| Master | 1420 | 1374 .. 1485 | `pro_ai.ProBrain`, `pro` |
 
-Each beats the one below it 86%, 77%, 83% of the time — a real step every
+Each beats the one below it 81%, 77%, 78% of the time — a real step every
 time, which the old three settings did not have: Normal and Hard measured 994
 and 1000 and split their games 55/45. They are one setting now, and the
 screen shows each rating beside its button so the choice is not a guess.
