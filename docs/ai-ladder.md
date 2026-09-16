@@ -162,7 +162,16 @@ became projectiles (`docs/unit-motion.md` part 4):
 Master's number is the rung's: the brain that measured 1452 on this
 protocol (`pro`, still on the ladder under that name) plus the 57–61% its
 two postures take against it over four seed sets each. The three lower
-rows are the 720-game protocol. Each of those beats the one below it 84%, 82%, 78% of the time — a real step every
+rows are the 720-game protocol. Measured directly against Hard and Medium
+(40 seeds, both corners, 80 games a pairing), the two-posture Master takes
+76% and 94% where `pro` on the same seeds takes 79% and 99% — 1485 to
+`pro`'s 1521 on that run, within a sample of eighty games' noise of each
+other and of the 1452. So the rung is an edge over the brain Master was,
+not a step against everything below it: the postures were chosen by how
+they fare against their nearest opponent, which is what a rating settled
+by peers rewards, and a player who wants the difficulty step should read
+this row as "about 1500, a different opponent" rather than "sixty points
+harder". Each of those beats the one below it 84%, 82%, 78% of the time — a real step every
 time, which the old three settings did not have: Normal and Hard measured 994
 and 1000 and split their games 55/45. They are one setting now, and the
 screen shows each rating beside its button so the choice is not a guess.
