@@ -90,6 +90,7 @@ class ProProfile:
     ignore_raid_ratio: float = 0.4     # a raid smaller than this share of the army does not stop a push
     scout: bool = True
     scout_from: float = 50.0           # send the first pair of eyes out at this many seconds
+    scout_peasant: bool = False        # a peasant drafted as the scout is actually sent (see _send_scout)
     stale_seconds: float = 25.0        # a sighting older than this is not worth attacking on
     symmetry_prior: float = 0.4        # an unlooked-at opponent is assumed to be this much of our own strength
     ffa_caution: float = 0.8           # how much more careful each extra opponent makes it
@@ -122,8 +123,9 @@ _PROBES = (
     replace(PRO_VANGUARD, name="pro-vanguard-os1", opening_slack=1),
     replace(PRO_WARDEN, name="pro-warden-punch", counter_punch=True),
     replace(PRO_WARDEN, name="pro-warden-os1-punch", opening_slack=1, counter_punch=True),
-    replace(PRO_WARDEN, name="pro-warden-rush", tower_rush=True, scout_from=30.0),
-    replace(PRO_VANGUARD, name="pro-vanguard-rush", tower_rush=True, scout_from=30.0),
+    replace(PRO_WARDEN, name="pro-warden-scout", scout_peasant=True),
+    replace(PRO_WARDEN, name="pro-warden-rush", tower_rush=True, scout_peasant=True, scout_from=30.0),
+    replace(PRO_VANGUARD, name="pro-vanguard-rush", tower_rush=True, scout_peasant=True, scout_from=30.0),
 )
 
 #: Variants used to find out which knob is actually carrying the strength.
@@ -1050,6 +1052,15 @@ class ProBrain:
                          if not p.hidden and p.carrying is None and not isinstance(p.order, (Build, Repair))]
                 if len(spare) > 3:
                     self.scouts = [spare[-1].id]
+                    if self.profile.scout_peasant:
+                        # Drafted with a harvest order in hand, the peasant kept it:
+                        # the ring move below is only given to a scout with nothing
+                        # to do, and the model's gatherer policy refills an idle
+                        # peasant's orders before the next pass. So the brain it
+                        # was written for never sent one, and knew nothing of the
+                        # enemy until the enemy arrived. This one is stopped and
+                        # taken off the gatherer policy, and goes.
+                        world.stop([self.scouts[0]])
         targets = [record.center for record in self._known_enemy_buildings(world)]
         if not targets:
             targets = [self._unexplored_corner(world)]  # nothing found yet: go and look
@@ -1063,6 +1074,8 @@ class ProBrain:
             ring = (centre[0] + 7.0 * math.cos(angle), centre[1] + 7.0 * math.sin(angle))
             world.move([scout_id], self._standable(world, (min(max(ring[0], 1.0), world.width - 1.0),
                                                            min(max(ring[1], 1.0), world.height - 1.0))))
+            if scout.is_worker and self.profile.scout_peasant:
+                scout.auto_work = False  # a Move switches it back on; off again, or the policy takes it back on arrival
 
     # -- Combat ----------------------------------------------------------------------
 

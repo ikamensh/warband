@@ -142,6 +142,31 @@ def test_a_beaten_push_is_followed_home_at_once():
         assert any("counter-punch" in what for _, what in brain.log)
 
 
+def test_a_drafted_peasant_scout_actually_leaves_and_stays_drafted():
+    """Regression: the scout peasant kept its harvest order and never left the base."""
+    from dataclasses import replace
+    from warband.model import Move
+    world, brain = _world_with_army()
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    for i in range(6 - sum(1 for u in world.player_units(0) if u.is_worker)):
+        world.spawn_unit(0, UnitType.PEASANT, (hall.center[0] + 3 + i * 0.6, hall.center[1] + 3))
+    world.time = 60.0
+    for scout_peasant, leaves in ((False, False), (True, True)):
+        brain.profile = replace(PRO, scout_from=50.0, scout_peasant=scout_peasant)
+        brain.scouts = []
+        world.tick += 20
+        brain._economy(world)  # every peasant is given a harvest order
+        brain._send_scout(world, [])
+        scout = world.units[brain.scouts[0]]
+        assert isinstance(scout.order, Move) == leaves, f"scout_peasant={scout_peasant}"
+        assert scout.auto_work == (not leaves)
+        if leaves:
+            world.tick += 20
+            brain._economy(world)
+            assert isinstance(scout.order, Move), "the gatherer policy does not take it back"
+            scout.auto_work = True
+
+
 def test_the_tower_rush_wishes_for_a_tower_at_the_enemy_mine_once_seen():
     from dataclasses import replace
     world, brain = _world_with_army()
