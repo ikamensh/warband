@@ -245,3 +245,25 @@ approved live journey remain outstanding.
 API contracts checked against [GitHub releases](https://docs.github.com/en/rest/releases/releases),
 [release assets](https://docs.github.com/en/rest/releases/assets) and
 [immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases).
+
+### Publication workflow separation
+
+The write-enabled publisher will run as a separate workflow consuming the
+completed native workflow's immutable run ID and source SHA. Rerunning a
+publication attempt must not rerun its native producer: native Actions artifacts
+belong to that other run and can be downloaded and revalidated again. Native
+full-run retries still fail closed if their original artifacts disappear; a new
+build gets a new run/version. Complete GitHub release assets provide the durable
+copy after publication. Recovery must never interpret missing native artifacts
+as permission to regenerate a version that has already been staged or published.
+This wiring and its real failed-publication retry remain to be implemented and
+verified before WB-002 can pass acceptance.
+
+### Review limits
+
+An implementation review through the local `second-opinion` CLI was attempted.
+The configured Google and OpenAI keys were rejected; the primary Anthropic
+account reported insufficient credits. No outside-review answer was obtained for
+this publication increment. Local self-review, the integration checks and actual
+native CI evidence above remain the available validation; the earlier WB-001
+outside review does not cover this code.
