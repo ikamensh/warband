@@ -119,37 +119,6 @@ def test_a_soldier_that_walked_out_of_sight_is_not_counted_as_dead():
     assert brain.remembered(1)[UnitType.ARCHER] > 2.5, "out of sight is not dead"
 
 
-def test_the_wood_share_puts_that_many_hands_on_the_trees_and_takes_them_off_again():
-    from dataclasses import replace
-    from warband.model import Harvest
-    world, brain = _world_with_army()
-    brain.profile = replace(PRO, wood_share=0.5, wood_stock=900)
-    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
-    for i in range(8 - sum(1 for u in world.player_units(0) if u.is_worker)):
-        world.spawn_unit(0, UnitType.PEASANT, (hall.center[0] + 3 + i * 0.6, hall.center[1] + 3))
-    peasants = [u for u in world.player_units(0) if u.is_worker]
-    assert len(peasants) == 8
-    mine = min(world.mines(), key=lambda m: dist(m.center, hall.center))
-    for p in peasants[:3]:
-        p.inside = mine.id  # in the mine: part of the workforce, but not to be given an order now
-    assert all(p.hidden for p in peasants[:3])
-    world.players[0].gold, world.players[0].lumber = 3000, 0
-    for _ in range(4):
-        world.tick += 20  # the model's idle-worker policy runs once a second of ticks
-        brain._economy(world)
-    assert sum(1 for p in peasants if brain._on_lumber(p)) == 4, "half of eight, not half of the five outside"
-    for p in peasants[:3]:
-        p.inside = None
-    world.players[0].lumber = 2000  # plenty: the crews go back to the gold, a third of the share stays
-    for _ in range(4):
-        world.tick += 20
-        brain._economy(world)
-    on_wood = [p for p in peasants if brain._on_lumber(p)]
-    assert len(on_wood) == round(8 * 0.5 / 3) == 1
-    assert all(isinstance(p.order, Harvest) and isinstance(p.order.target, int) for p in peasants if p not in on_wood), \
-        "the rest were sent to a mine, not left idle"
-
-
 def test_a_profile_plays_each_race_by_its_own_numbers():
     from dataclasses import replace
     from warband.rules import Race
@@ -178,25 +147,6 @@ def test_a_peasant_is_not_queued_over_a_build_order_that_could_not_then_be_paid(
     world.players[0].gold = 5000
     brain._training(world)
     assert len(hall.queue) == 2
-
-
-def test_wood_crews_are_not_sent_to_a_mine_that_has_been_dug_out():
-    """Regression: the ladder died on 'Not a gold mine' when a remembered mine was gone."""
-    from dataclasses import replace
-    world, brain = _world_with_army()
-    brain.profile = replace(PRO, wood_share=0.5, wood_stock=900)
-    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
-    for i in range(8 - sum(1 for u in world.player_units(0) if u.is_worker)):
-        world.spawn_unit(0, UnitType.PEASANT, (hall.center[0] + 3 + i * 0.6, hall.center[1] + 3))
-    world.players[0].gold, world.players[0].lumber = 3000, 0
-    world.tick += 20
-    brain._economy(world)
-    assert any(brain._on_lumber(p) for p in world.player_units(0) if p.is_worker)
-    for mine in world.mines():
-        world.buildings.pop(mine.id)  # dug out while nobody was looking; the memory still holds gold
-    world.players[0].lumber = 2000
-    world.tick += 20
-    brain._economy(world)  # must not raise
 
 
 def test_barracks_first_wishes_for_nothing_else_until_it_stands():
