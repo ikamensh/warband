@@ -40,8 +40,8 @@ holds the skeleton and the arts.
 | workshop   | Workshop    | Siege Yard  | Siege Bower  | Engine Works |
 | church     | Church      | Altar       | Moonwell     | Rune Shrine  |
 
-The numbers: orc units have +15 % hit points (the ogre +20 %), the grunt and
-ogre +10 % damage and −1 / −2 armour, and all orc soldiers train 10 % slower;
+The numbers: orc units have +15 % hit points (the ogre +20 %), and the grunt and
+ogre +10 % damage and −1 / −2 armour;
 elf units have −5 % hit points, +0.15 speed and +2 sight, and the ranger one
 more tile of range; dwarf units have +10 % hit points and −0.15 speed, the
 ironguard and bear rider +1 armour.  The codex (F2) shows the player's race's
@@ -105,6 +105,15 @@ and orcs but left the elves at 75 %: what the elves have is speed, and what the
 dwarves lack is speed, in a game decided by who reaches the first clash with
 more.  Both speed modifiers were halved (±0.3 → ±0.15) as a result; see
 `docs/balance.md`.
+
+That fixed the dwarves and left the orcs.  Re-run after the halving, the same
+ladder gave human 62.5 %, elf 62.5 %, dwarf 50.0 % and orc 25.0 %: orcs took
+19 % against both leaders.  They had been training 10 % slower for their
+hit points, and a game decided by who reaches the first clash with more
+punishes the slower trainer twice over.  At the common rate the ladder reads
+elf 58.3 %, human 56.2 %, dwarf 43.8 %, orc 41.7 % — a spread of seventeen
+points where it had been thirty-eight.  Ninety-six matches a run, so the
+ordering inside that spread is not yet established.
 
 ## Verification
 

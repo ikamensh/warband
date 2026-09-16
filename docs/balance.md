@@ -502,12 +502,16 @@ that the second one is between the players rather than behind them.
 2. **Make plains contest its mines** — fewer of them, or placed so a second
    base is forward rather than behind. This is the change most likely to
    move the equilibrium, and no price tried today came close.
-3. **Orcs.** After halving the speed modifiers the race ladder gives human
-   62.5%, elf 62.5%, dwarf 50.0% and orc 25.0% (96 matches, pro against pro,
-   every pair both ways): the dwarves recovered from 35% and the orcs fell.
-   Orcs train 10% slower for +15% hit points and −1 armour, and in a game
-   decided by who reaches the first clash with more, the slower trainer
-   loses. Trying the common training rate is the obvious next measurement.
+3. **Orcs: measured and fixed.** After halving the speed modifiers the race
+   ladder gave human 62.5%, elf 62.5%, dwarf 50.0% and orc 25.0% (96
+   matches, Master against Master, every pair both ways): the dwarves
+   recovered from 35% and the orcs fell to 19% against both leaders. They
+   had been training 10% slower in a game decided by who reaches the first
+   clash with more, which is a penalty paid twice. At the common rate the
+   ladder reads elf 58.3%, human 56.2%, dwarf 43.8%, orc 41.7% — a spread of
+   seventeen points where it had been thirty-eight — and that is applied.
+   Ninety-six matches a run, so the ordering inside the remaining spread is
+   not established; a few hundred would settle it.
 4. **The armour rule.** Raising the archer to six damage is a workaround for
    a floor of one point against four armour. A rule that scales would make
    the archer the counter the table promises without the patch.
