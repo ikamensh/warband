@@ -36,12 +36,12 @@ from __future__ import annotations
 import math
 import random
 from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 
 from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived
 from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, tile_center
 from warband.races import RACES
-from warband.rules import BUILDINGS, BuildingType, Race, UnitType
+from warband.rules import BUILDINGS, BuildingType, UnitType
 
 _MELEE_TYPES = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
 BUILD_MIN_DISTANCE = 2
@@ -67,11 +67,8 @@ class ProProfile:
     lumber_floor: int = 150           # never spend the lumber the next few soldiers need
     max_halls: int = 3
     barracks_per_hall: int = 3        # a barracks turns out ~4 soldiers a minute; income buys far more
-    min_barracks: int = 1             # put up this many before anything optional, saturated or not
     barracks_first: bool = False      # nothing but farms goes up before the first barracks
     towers_early: int = 0             # towers at the front point as soon as the barracks stands, before the mill
-    front_barracks: bool = False      # the barracks goes up at the front point, where the army musters and the towers stand
-    raid_detachment: int = 0          # if set, a raid too small to matter is met by this many soldiers, not the whole army
     gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
     max_producers: int = 10
     attack_ratio: float = 0.85        # attack when my strength exceeds theirs by this
@@ -102,15 +99,6 @@ class ProProfile:
     siege_share: float = 0.0          # if set, the share of the army that is catapults…
     cleric_share: float = 0.0         # …and that is healers, overriding the race's plan
     army_plan: Mapping[UnitType, float] | None = None  # shares of the army to aim for, instead of the race's own
-    count_kills: bool = False         # soldiers the brain watched die no longer count against it
-    target_halls: bool = False        # pushes go for the hall (the economy) before the barracks
-    blocked_is_busy: bool = False     # a producer idle only for want of supply still counts as saturated
-    by_race: Mapping[Race, Mapping[str, object]] = field(default_factory=dict)  # knobs that differ when playing that race
-
-    def for_race(self, race: Race) -> "ProProfile":
-        """The knobs to play *race* by: this profile with that race's overrides applied."""
-        overrides = self.by_race.get(race)
-        return replace(self, **overrides) if overrides else self
 
 
 PRO = ProProfile("pro")
@@ -150,97 +138,8 @@ _TRIALS = (
     replace(PRO, name="pro-nopanic", lumber_floor_panic=0),
     replace(PRO, name="pro-nocounter", counter_from=1.1),
 )
-#: Distinct ways to play, not one-knob probes: each is a posture a player
-#: would recognise. The ladder says which of them are worth the same, and the
-#: aim is several opponents of one strength that do not feel like one opponent.
-_STYLES = (
-    replace(PRO, name="pro-rush", min_army=3, attack_ratio=0.6, symmetry_prior=0.2, regroup_seconds=20.0,
-            workers_per_mine=8, expand=False, soldiers_before_workers=8, barracks_per_hall=4),
-    replace(PRO, name="pro-boom", expand_early=True, workers_per_mine=12, max_workers=40, max_halls=4,
-            min_army=12, attack_ratio=1.2, tower_count=3, siege_share=0.2, cleric_share=0.1),
-    replace(PRO, name="pro-raid", raiders=4, scout_from=30.0,
-            army_plan={UnitType.FOOTMAN: 0.2, UnitType.ARCHER: 0.2, UnitType.SCOUT: 0.2, UnitType.KNIGHT: 0.35,
-                       UnitType.CATAPULT: 0.05}),
-    replace(PRO, name="pro-siege", siege_share=0.25, cleric_share=0.1, target_halls=True, min_army=8, attack_ratio=1.0),
-    replace(PRO, name="pro-knights",
-            army_plan={UnitType.FOOTMAN: 0.25, UnitType.ARCHER: 0.15, UnitType.SCOUT: 0.05, UnitType.KNIGHT: 0.5,
-                       UnitType.CATAPULT: 0.05}),
-    replace(PRO, name="pro-archers",
-            army_plan={UnitType.FOOTMAN: 0.3, UnitType.ARCHER: 0.55, UnitType.SCOUT: 0.05, UnitType.KNIGHT: 0.05,
-                       UnitType.CATAPULT: 0.05}),
-    replace(PRO, name="pro-kills", count_kills=True),
-    replace(PRO, name="pro-halls", target_halls=True),
-    replace(PRO, name="pro-group3", reinforce_group=3),
-    replace(PRO, name="pro-group5", reinforce_group=5),
-    replace(PRO, name="pro-sat", blocked_is_busy=True),
-    replace(PRO, name="pro-2rax", min_barracks=2),
-    replace(PRO, name="pro-3rax", min_barracks=3),
-    # The siege posture took 60% of 48 games against `pro` with no workshop ever
-    # built, so its catapult share did nothing: what it changed was marching
-    # out at eight soldiers on level terms instead of five on a guess.
-    replace(PRO, name="pro-min8", min_army=8, attack_ratio=1.0),
-    replace(PRO, name="pro-min8-kills", min_army=8, attack_ratio=1.0, count_kills=True),
-    replace(PRO, name="pro-min10", min_army=10, attack_ratio=1.0),
-    replace(PRO, name="pro-siege-kills", siege_share=0.25, cleric_share=0.1, target_halls=True, min_army=8,
-            attack_ratio=1.0, count_kills=True),
-    replace(PRO, name="pro-raxfirst", barracks_first=True),
-    # Lumber supply from a corner whose wood is far: seed 6000's elf start has
-    # its nearest tree ten tiles out, spends its last 250 on a second farm at
-    # ten seconds, and waits ninety seconds for the barracks' 450 while four
-    # thousand gold idles. Three cheap answers on top of barracks-first.
-    replace(PRO, name="pro-rax-panic", barracks_first=True, panic_gold=1000, lumber_floor_panic=300),
-    replace(PRO, name="pro-rax-slack2", barracks_first=True, supply_slack=2),
-    # …and the two that measured, together, with the tower posture, and a
-    # panic threshold a notch earlier still.
-    replace(PRO, name="pro-rax-panic-slack2", barracks_first=True, panic_gold=1000, lumber_floor_panic=300, supply_slack=2),
-    replace(PRO, name="pro-rax-panic2", barracks_first=True, panic_gold=800, lumber_floor_panic=400),
-    replace(PRO, name="pro-rax-panic-tower1-min8", barracks_first=True, panic_gold=1000, lumber_floor_panic=300,
-            towers_early=1, min_army=8, attack_ratio=1.0),
-    replace(PRO, name="pro-rax-panic-slack2-tower1-min8", barracks_first=True, panic_gold=1000, lumber_floor_panic=300,
-            supply_slack=2, towers_early=1, min_army=8, attack_ratio=1.0),
-    # The second generation: on top of the first rung's posture.
-    replace(PRO, name="pro-r1-front", barracks_first=True, panic_gold=1000, lumber_floor_panic=300,
-            towers_early=1, min_army=8, attack_ratio=1.0, front_barracks=True),
-    replace(PRO, name="pro-r1-detach3", barracks_first=True, panic_gold=1000, lumber_floor_panic=300,
-            towers_early=1, min_army=8, attack_ratio=1.0, raid_detachment=3),
-    replace(PRO, name="pro-r1-front-detach3", barracks_first=True, panic_gold=1000, lumber_floor_panic=300,
-            towers_early=1, min_army=8, attack_ratio=1.0, front_barracks=True, raid_detachment=3),
-    replace(PRO, name="pro-rax-min10-kills", barracks_first=True, min_army=10, attack_ratio=1.0, count_kills=True),
-    replace(PRO, name="pro-rax-tower1", barracks_first=True, towers_early=1),
-    replace(PRO, name="pro-rax-tower2", barracks_first=True, towers_early=2),
-    replace(PRO, name="pro-rax-min8-tower1", barracks_first=True, towers_early=1, min_army=8, attack_ratio=1.0),
-    replace(PRO, name="pro-rax-min8-tower1-kills", barracks_first=True, towers_early=1, min_army=8, attack_ratio=1.0,
-            count_kills=True),
-    replace(PRO, name="pro-rax-min10-tower1", barracks_first=True, towers_early=1, min_army=10, attack_ratio=1.0),
-    replace(PRO, name="pro-rax-min8-tower2", barracks_first=True, towers_early=2, min_army=8, attack_ratio=1.0),
-    replace(PRO, name="pro-rax-min6-tower1", barracks_first=True, towers_early=1, min_army=6, attack_ratio=0.9),
-    replace(PRO, name="pro-raxfirst-min8", barracks_first=True, min_army=8, attack_ratio=1.0),
-    replace(PRO, name="pro-raxfirst-kills", barracks_first=True, count_kills=True),
-    # Whoever draws orcs loses three games in four under every profile so
-    # far, dwarves three in five, elves win three in four: the first rung's
-    # posture, with the two slow races holding harder and the orcs fielding
-    # grunts and throwers rather than ogres, whose missing armour is what the
-    # elven rangers are shooting at.
-    replace(PRO, name="pro-r1-slow", barracks_first=True, panic_gold=1000, lumber_floor_panic=300,
-            towers_early=1, min_army=8, attack_ratio=1.0, by_race={
-                Race.DWARF: {"towers_early": 2, "min_army": 10, "attack_ratio": 1.1},
-                Race.ORC: {"towers_early": 2, "min_army": 10, "attack_ratio": 1.1}}),
-    replace(PRO, name="pro-r1-orcs", barracks_first=True, panic_gold=1000, lumber_floor_panic=300,
-            towers_early=1, min_army=8, attack_ratio=1.0, by_race={
-                Race.ORC: {"army_plan": {UnitType.FOOTMAN: 0.55, UnitType.ARCHER: 0.35, UnitType.SCOUT: 0.05,
-                                         UnitType.CATAPULT: 0.05}}}),
-    # The slow races lose the first clash: dwarves walk slower, orcs arm slower,
-    # and both march out at the same minute with the same five soldiers as the
-    # elves who beat them four times in five. Let them hold longer.
-    replace(PRO, name="pro-race1", by_race={
-        Race.DWARF: {"min_army": 9, "attack_ratio": 1.1, "tower_count": 3},
-        Race.ORC: {"min_army": 8, "attack_ratio": 1.0}}),
-    replace(PRO, name="pro-race-turtle", by_race={
-        Race.DWARF: {"min_army": 12, "attack_ratio": 1.3, "tower_count": 3, "siege_share": 0.2},
-        Race.ORC: {"min_army": 10, "attack_ratio": 1.2, "tower_count": 3}}),
-)
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, PRO_VANGUARD.name: PRO_VANGUARD, PRO_WARDEN.name: PRO_WARDEN,
-                                       **{p.name: p for p in _TRIALS}, **{p.name: p for p in _STYLES}}
+                                       **{p.name: p for p in _TRIALS}}
 
 
 # -- Force comparison ---------------------------------------------------------------
@@ -310,7 +209,6 @@ class ProBrain:
         self.log: list[tuple[float, str]] = []
         self._seen: dict[int, dict[UnitType, float]] = {}  # per opponent: most of each kind ever seen at once
         self._seen_at: dict[int, float] = {}               # …and when that opponent was last looked at
-        self._in_view: dict[int, tuple[int, UnitType]] = {}  # enemy soldiers visible on the last pass: id → (owner, kind)
 
     def note(self, world: World, what: str) -> None:
         self.log.append((world.time, what))
@@ -320,10 +218,6 @@ class ProBrain:
     def think(self, world: World, rng: random.Random) -> None:
         if not world.players[self.player].alive or world.winner is not None:
             return
-        if self.profile.by_race:
-            # The race is drawn with the map, so the first pass is the first
-            # chance to play by its numbers; from then on the profile is settled.
-            self.profile = self.profile.for_race(world.players[self.player].race)
         if world.time >= self.next_combat:
             self.next_combat = world.time + self.profile.combat_every
             self._combat(world)
@@ -412,23 +306,10 @@ class ProBrain:
         believes it is always outnumbered never attacks at all.
         """
         current: dict[int, dict[UnitType, float]] = {}
-        in_view: dict[int, tuple[int, UnitType]] = {}
         for unit in self._enemies(world):
             if not unit.is_worker:
                 seen = current.setdefault(unit.player, {})
                 seen[unit.type] = seen.get(unit.type, 0.0) + 1.0
-                in_view[unit.id] = (unit.player, unit.type)
-        # A soldier that was in view a moment ago and is now gone from the world
-        # died where we could see it. It is not coming back, so it stops counting
-        # against us at once instead of fading out over the next minute — which
-        # is the minute the enemy is weakest, and the one the brain used to wait.
-        dead: dict[int, dict[UnitType, float]] = {}
-        if self.profile.count_kills:
-            for unit_id, (owner, unit_type) in self._in_view.items():
-                if unit_id not in world.units:
-                    fallen = dead.setdefault(owner, {})
-                    fallen[unit_type] = fallen.get(unit_type, 0.0) + 1.0
-        self._in_view = in_view
         fade = 0.99 ** (self.profile.think_every / 0.4)
         for player in world.players:
             if player.id == self.player or not player.alive:
@@ -437,10 +318,8 @@ class ProBrain:
             if now:
                 self._seen_at[player.id] = world.time
             memory = self._seen.setdefault(player.id, {})
-            fallen = dead.get(player.id, {})
             for unit_type in set(memory) | set(now):
-                memory[unit_type] = max(memory.get(unit_type, 0.0) * fade - fallen.get(unit_type, 0.0),
-                                        now.get(unit_type, 0.0), 0.0)
+                memory[unit_type] = max(memory.get(unit_type, 0.0) * fade, now.get(unit_type, 0.0))
 
     def remembered(self, player: int | None = None) -> dict[UnitType, float]:
         """How many of each kind *player* was last seen with; every opponent's, added, if None."""
@@ -564,10 +443,7 @@ class ProBrain:
         if cap - used + 4 * farms_coming < headroom:
             wishes.append((BuildingType.FARM, anchor))
         if count(BuildingType.BARRACKS) < 1:
-            # Master's first push walks at our production. A barracks at the front
-            # point puts that fight where the army musters, the towers stand and
-            # every new soldier steps out into it.
-            wishes.append((BuildingType.BARRACKS, self._front_point(world, hall) if profile.front_barracks else anchor))
+            wishes.append((BuildingType.BARRACKS, anchor))
             # The mill sits behind the barracks here and costs a hundred gold
             # less, so whenever the bank is between the two it is the mill that
             # gets bought — and its 450 lumber is the barracks' 450 lumber, a
@@ -585,8 +461,6 @@ class ProBrain:
             # where barracks-first alone took 59%): the wood is six tiles from
             # every start, and a second mill at the wood front no better.
             wishes.append((BuildingType.LUMBER_MILL, anchor))
-        if 1 <= count(BuildingType.BARRACKS) < profile.min_barracks:
-            wishes.append((BuildingType.BARRACKS, anchor))
         # Everything past here is optional, and optional buildings are what lose games:
         # each one is an army that was not trained. They are unlocked only once the
         # production already standing cannot keep up with the money coming in.
@@ -628,13 +502,7 @@ class ProBrain:
         if not producers:
             return False
         if any(not b.queue and b.research is None for b in producers):
-            # An idle queue means the bank is the bottleneck — unless the queue is
-            # empty because nothing can be fed: a supply-blocked barracks with
-            # three thousand gold behind it is production waiting on farms, and
-            # the farms are wished for first in any case.
-            used, cap = world.supply(self.player)
-            if not (self.profile.blocked_is_busy and used >= cap):
-                return False
+            return False
         player = world.players[self.player]
         return player.gold >= self.profile.surplus_gold
 
@@ -882,21 +750,10 @@ class ProBrain:
         # base with nothing in it is what an early raid is looking for.
         guards, army = army[:self.profile.guards], army[self.profile.guards:]
         threats = self._threats(world)
-        if threats:
-            small = strength(world, threats) < self.profile.ignore_raid_ratio * strength(world, army)
-            if small and self.attacking:
-                pass  # a push is not called off for two riders at the farms
-            elif small and self.profile.raid_detachment and len(army) > self.profile.raid_detachment:
-                # Two riders at the peasants used to pull the whole army home and
-                # round the base after them; a handful is enough, and the rest
-                # keep mustering where they were.
-                point = threats[0].pos
-                detachment = sorted(army, key=lambda u: dist(u.pos, point))[:self.profile.raid_detachment]
-                self._defend(world, guards + detachment, threats)
-                army = [u for u in army if u not in detachment]
-            else:
-                self._defend(world, guards + army, threats)
-                return
+        if threats and not (self.attacking and strength(world, threats)
+                            < self.profile.ignore_raid_ratio * strength(world, army)):
+            self._defend(world, guards + army, threats)
+            return
         self._post(world, guards)
         hall = self._hall(world)
         mine = strength(world, army)
@@ -1081,8 +938,6 @@ class ProBrain:
         """What is worth walking to: the weakest opponent's production, then anything of theirs."""
         wanted = (BuildingType.BARRACKS, BuildingType.STABLES, BuildingType.WORKSHOP,
                   BuildingType.CHURCH, BuildingType.TOWN_HALL)
-        if self.profile.target_halls:
-            wanted = (BuildingType.TOWN_HALL,) + wanted
         victim = self._victim(world)
         buildings = self._known_enemy_buildings(world)
         theirs = [record for record in buildings if record.player == victim] or buildings
@@ -1091,11 +946,6 @@ class ProBrain:
         production = [record.center for record in theirs
                       if getattr(world.buildings.get(record.id), "type", None) in wanted]
         if production:
-            if self.profile.target_halls:
-                halls = [record.center for record in theirs
-                         if getattr(world.buildings.get(record.id), "type", None) is BuildingType.TOWN_HALL]
-                if halls:
-                    return halls
             return production
         if theirs:
             return [record.center for record in theirs]

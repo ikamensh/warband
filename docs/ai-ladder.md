@@ -329,6 +329,23 @@ brain plays every race by the same numbers. A quarter of the games on the
 ladder are decided by that draw before either brain moves, which caps what
 any posture change can take — and is where the next rung has to come from.
 
+### What the 2000 still needs
+
+Every probe of this brain's numbers lands within a hundred points of
+Master, on either side. The gains that measured — barracks first, the
+earlier lumber panic, the tower and the later push — all decide the same
+first clash, and stack to one rung of sixty or seventy points rather than
+to the two hundred a real step takes. What decides the rest is settled
+before either brain moves: the race drawn (orcs lose three in four to
+elves under every profile), the corner, and the roll of the first fight.
+A 2000 on this scale is 550 above Master, which means winning nine games
+in ten against it — every orc game, every bad corner — and no posture of
+this brain does that. The next rung needs a different kind of strength:
+play that changes with the race and the map rather than the same numbers
+for all of them, or fights that are not left entirely to the model. The
+tooling for measuring it is here: `--save` a run, `rate --from` the pool,
+read the score by race, and rate the rung against its neighbours.
+
 ### Against the 2000 that was asked for
 
 `pro` is about **535 Elo above the anchor, not 1000**. A 1000-point gap means
@@ -383,6 +400,9 @@ contradicted the reasoning that produced the change:
 | …with the lumber panic a minute earlier (`panic_gold` 1000, `lumber_floor_panic` 300: half the hands to the trees once lumber is short and a thousand gold idles) | **67%** over 96 games where barracks-first alone took 59% on the same seeds |
 | …with less farm slack (`supply_slack` 2) | 64% on the same seeds |
 | the mill at the edge of the nearest wood, a second mill at the wood front, a larger workforce | level with barracks-first alone (52–56%); the wood is six tiles from every start |
+| the barracks itself at the front point, so Master's push meets tower, army and reinforcements in one place | **−35 Elo** (45% against Master, 43% against the Warden, 160 games each) |
+| a raid too small to matter met by three soldiers rather than the whole army | level (51% and 52%, 141 games each) |
+| dwarves and orcs holding harder — two towers, out at ten | level against Master, 44% against the Warden (149 games) |
 | marching out at eight to ten soldiers on level terms instead of five on a guess (`min_army` 8–10, `attack_ratio` 1.0) | **+40 Elo** — 55–57% against Master over 96 games each, 55% pooled over 576; the one posture change that measured |
 | soldiers seen to die dropped from the enemy count at once (`count_kills`) | +20 Elo alone (53%), about the same on top of the later push |
 | a standing share of the workforce on wood | **−40 to −180 Elo** — 46% at 30%, 31% at 40%, 25% with farms ahead of demand as well; the model's own policy is better |
