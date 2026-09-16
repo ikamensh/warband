@@ -345,6 +345,9 @@ contradicted the reasoning that produced the change:
 | …with the later push and one tower at the front point as soon as the barracks stands (`towers_early`) | **67%** over 72 games on a third seed set, where barracks-first alone took 64% and every barracks-first variant 54–64% (59% pooled over 432); being confirmed on a fourth |
 | holding a peasant back so the farm ordered at second zero is not dropped | level (50%), and it cancelled barracks-first when combined |
 | an early blacksmith for Sharpened Blades | level (47–54%) |
+| …with the lumber panic a minute earlier (`panic_gold` 1000, `lumber_floor_panic` 300: half the hands to the trees once lumber is short and a thousand gold idles) | **67%** over 96 games where barracks-first alone took 59% on the same seeds |
+| …with less farm slack (`supply_slack` 2) | 64% on the same seeds |
+| the mill at the edge of the nearest wood, a second mill at the wood front, a larger workforce | level with barracks-first alone (52–56%); the wood is six tiles from every start |
 | marching out at eight to ten soldiers on level terms instead of five on a guess (`min_army` 8–10, `attack_ratio` 1.0) | **+40 Elo** — 55–57% against Master over 96 games each, 55% pooled over 576; the one posture change that measured |
 | soldiers seen to die dropped from the enemy count at once (`count_kills`) | +20 Elo alone (53%), about the same on top of the later push |
 | a standing share of the workforce on wood | **−40 to −180 Elo** — 46% at 30%, 31% at 40%, 25% with farms ahead of demand as well; the model's own policy is better |
