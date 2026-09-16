@@ -348,6 +348,16 @@ comment in `_send_scout` says why. The rush itself was dropped: the
 builder's order dies on arrival after a forty-second walk, five times a
 game, and feeds peasants to the first soldiers.
 
+### The wasp that would not live
+
+Master's defence sends the whole army at any enemy unit within nine tiles
+of any of its buildings, every pass, so one fast unit circling its base
+looked like a way to keep that army home for as long as the unit lived.
+Scripted directly — a scout handed to Master's opponent at 100 s and
+driven round the elven hall at eight or ten tiles, still or at two laps a
+minute — it lived forty seconds every time: rangers see eight tiles and
+shoot five, and the first push left at 184 s whatever the wasp did.
+
 ### What the 2000 still needs
 
 Every probe of this brain's numbers lands within a hundred points of
