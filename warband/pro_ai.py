@@ -54,7 +54,7 @@ class ProProfile:
     name: str
     think_every: float = 0.4          # seconds of simulation between macro passes
     combat_every: float = 0.2         # …and between combat passes, which are cheaper and matter more
-    workers_per_mine: int = 13        # peasants a worked mine supports
+    workers_per_mine: int = 10        # peasants a worked mine supports
     lumber_share: float = 0.35        # workforce hired above the mine slots; who chops is the model's own policy
     max_workers: int = 32
     supply_slack: int = 4             # farms go up to keep this much headroom…
@@ -63,14 +63,14 @@ class ProProfile:
     surplus_gold: int = 800           # money piling up past this unlocks optional buildings
     lumber_floor: int = 150           # never spend the lumber the next few soldiers need
     max_halls: int = 3
-    barracks_per_hall: int = 4        # a barracks turns out ~4 soldiers a minute; income buys far more
+    barracks_per_hall: int = 3        # a barracks turns out ~4 soldiers a minute; income buys far more
     gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
     max_producers: int = 10
-    attack_ratio: float = 1.6         # attack when my strength exceeds theirs by this
+    attack_ratio: float = 0.85        # attack when my strength exceeds theirs by this
     retreat_ratio: float = 0.55       # break off once the push has lost this much of itself
     regroup_seconds: float = 45.0     # after a failed push, rebuild before trying again
-    min_army: int = 10                # never walk out with less than this, whatever the comparison says
-    guards: int = 2                   # soldiers kept home against raiders, never sent out
+    min_army: int = 5                 # never walk out with less than this, whatever the comparison says
+    guards: int = 0                   # soldiers kept home against raiders, never sent out
     soldiers_before_workers: int = 6   # below this the barracks is fed before the hall
     tower_count: int = 2
     retreat_wounded: bool = True       # pull a soldier out at this much health and let it heal…
@@ -83,7 +83,7 @@ class ProProfile:
     scout: bool = True
     scout_from: float = 50.0           # send the first pair of eyes out at this many seconds
     stale_seconds: float = 25.0        # a sighting older than this is not worth attacking on
-    symmetry_prior: float = 1.0        # an unlooked-at opponent is assumed to be doing as well as we are
+    symmetry_prior: float = 0.4        # an unlooked-at opponent is assumed to be this much of our own strength
     ffa_caution: float = 0.25          # extra margin demanded per opponent who could profit from the fight
     expand: bool = True
     expand_early: bool = False        # a second mine before production has saturated
@@ -102,6 +102,10 @@ _TRIALS = (
     replace(PRO, name="pro-noscout", scout=False),
     replace(PRO, name="pro-noheal", retreat_wounded=False),
     replace(PRO, name="pro-noraid", raid=False),
+    replace(PRO, name="pro-timid", min_army=10, attack_ratio=1.6, symmetry_prior=1.0, guards=2,
+            workers_per_mine=13, barracks_per_hall=4),
+    replace(PRO, name="pro-wild", min_army=3, attack_ratio=0.6, symmetry_prior=0.2),
+    replace(PRO, name="pro-rushbig", workers_per_mine=13, barracks_per_hall=4),
     replace(PRO, name="pro-noexpand", expand=False),
     replace(PRO, name="pro-army16", min_army=16),
     replace(PRO, name="pro-lean", max_sites=3, barracks_per_hall=3),
