@@ -254,6 +254,8 @@ def test_a_scaled_variant_is_spelled_out_in_its_name():
         assert UNITS[UnitType.KNIGHT].cost.gold == round(knight_gold * 1.25)
         assert BUILDINGS[BuildingType.TOWER].hp == round(tower_hp * 0.8)
         assert UNITS[UnitType.FOOTMAN].cost.gold == 600
+        ensure_variant("scale:tower.damage=0.75")
+        assert BUILDINGS[BuildingType.TOWER].damage == 6, "a tower's shot can be scaled too"
     finally:
         use_variant("standard")
     assert UNITS[UnitType.KNIGHT].cost.gold == knight_gold

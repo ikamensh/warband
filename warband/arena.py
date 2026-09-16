@@ -100,7 +100,7 @@ for _profile in ARCHETYPES:
 #: Multiplicative knobs a variant may turn. ``cost_gold``/``cost_lumber`` scale a
 #: price; the rest scale the matching field of the unit, building or upgrade.
 UNIT_FIELDS = ("hp", "damage", "speed", "range", "build_time", "cost_gold", "cost_lumber")
-BUILDING_FIELDS = ("hp", "build_time", "cost_gold", "cost_lumber")
+BUILDING_FIELDS = ("hp", "build_time", "cost_gold", "cost_lumber", "damage", "range")
 UPGRADE_FIELDS = ("cost_gold", "cost_lumber", "time")
 
 
@@ -153,6 +153,8 @@ def _scaled_building(info, factors: Mapping[str, float]):
         hp=max(1, round(info.hp * factors.get("hp", 1.0))),
         build_time=max(0.5, round(info.build_time * factors.get("build_time", 1.0), 3)),
         cost=_scaled_cost(info.cost, factors),
+        damage=round(info.damage * factors.get("damage", 1.0)),
+        range=round(info.range * factors.get("range", 1.0), 3),
     )
 
 
