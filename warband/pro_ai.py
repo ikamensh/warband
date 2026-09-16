@@ -84,11 +84,13 @@ class ProProfile:
     scout_from: float = 50.0           # send the first pair of eyes out at this many seconds
     stale_seconds: float = 25.0        # a sighting older than this is not worth attacking on
     symmetry_prior: float = 0.4        # an unlooked-at opponent is assumed to be this much of our own strength
-    ffa_caution: float = 0.25          # extra margin demanded per opponent who could profit from the fight
+    ffa_caution: float = 0.8           # how much more careful each extra opponent makes it
     expand: bool = True
     expand_early: bool = False        # a second mine before production has saturated
     siege: bool = True
     clerics: bool = True
+    counter_from: float = 0.3         # an enemy more than this fraction shooters is answered with riders
+    counter_strength: float = 1.0     # …this hard
     siege_share: float = 0.0          # if set, the share of the army that is catapults…
     cleric_share: float = 0.0         # …and that is healers, overriding the race's plan
 
@@ -108,6 +110,8 @@ _TRIALS = (
     replace(PRO, name="pro-noexpand", expand=False),
     replace(PRO, name="pro-lean", max_sites=3, barracks_per_hall=2),
     replace(PRO, name="pro-workersfirst", soldiers_before_workers=0),
+    replace(PRO, name="pro-nocounter", counter_from=1.1),
+    replace(PRO, name="pro-counter2", counter_strength=2.0),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}}
 
@@ -547,8 +551,18 @@ class ProBrain:
         archers = seen.get(UnitType.ARCHER, 0.0)
         knights = seen.get(UnitType.KNIGHT, 0.0)
         melee = sum(seen.get(t, 0.0) for t in _MELEE_TYPES)
-        if archers > 0 and archers >= 2 * melee:
-            _shift(plan, {UnitType.FOOTMAN: -0.15, UnitType.SCOUT: 0.075, UnitType.KNIGHT: 0.075})
+        total = archers + melee
+        # Answer shooters with whatever closes the distance, in proportion to how
+        # many of them there are. The old rule only fired when archers outnumbered
+        # everything else two to one, which no race on this map ever fields — so
+        # against the Elves, who are half archers and the matchup this brain loses
+        # most, it never fired at all.
+        if total > 0:
+            excess = archers / total - self.profile.counter_from
+            if excess > 0:
+                swing = min(0.3, excess * self.profile.counter_strength)
+                _shift(plan, {UnitType.FOOTMAN: -swing, UnitType.SCOUT: swing / 2,
+                              UnitType.KNIGHT: swing / 2})
         if knights >= 3:
             _shift(plan, {UnitType.SCOUT: -0.075, UnitType.KNIGHT: -0.075, UnitType.FOOTMAN: 0.075, UnitType.ARCHER: 0.075})
         return plan
@@ -680,14 +694,16 @@ class ProBrain:
                     if dist(unit.pos, point) > 4.0:
                         world.move([unit.id], self._muster(world, point, unit))
             return
-        if world.time < self.regroup_until or len(army) < self.profile.min_army:
+        if world.time < self.regroup_until:
             self._gather(world, army, hall)
             return
         target = min(targets, key=lambda t: dist(t, origin))
         theirs = self._defenders_near(world, target)
-        bystanders = sum(1 for p in world.players if p.id != self.player and p.alive) - 1
-        needed = self.profile.attack_ratio * (1.0 + self.profile.ffa_caution * bystanders)
-        if mine >= needed * theirs:
+        care = self._caution(world)
+        if len(army) < self.profile.min_army * care:
+            self._gather(world, army, hall)
+            return
+        if mine >= self.profile.attack_ratio * care * theirs:
             self.attacking = True
             self.target = target
             self.commit_strength = mine
@@ -721,6 +737,18 @@ class ProBrain:
         for guard in guards:
             if not guard.orders and dist(guard.pos, hall.center) > 6.0:
                 world.move([guard.id], self._muster(world, home, guard))
+
+    def _caution(self, world: World) -> float:
+        """How much more careful to be than in a duel.
+
+        Starting a fight in a free-for-all pays for itself only if it is won
+        cheaply: everything spent on it is a gift to the players who stayed out.
+        The posture that rates 1562 Elo one against one rates 1022 in a four
+        player game without this, which is barely ahead of the brain it
+        replaced — so every extra opponent buys back some of the caution.
+        """
+        bystanders = sum(1 for p in world.players if p.id != self.player and p.alive) - 1
+        return 1.0 + self.profile.ffa_caution * max(0, bystanders)
 
     def _army_centre(self, world: World, army: list[Unit]) -> Point | None:
         if not army:
@@ -773,7 +801,8 @@ class ProBrain:
             # into a defended base and dies. Until a scout says otherwise, credit
             # them with a game as good as ours, which means no attack goes out on
             # no information at all.
-            seen = max(seen, self.profile.symmetry_prior * strength(world, self._army(world)))
+            seen = max(seen, self.profile.symmetry_prior * self._caution(world)
+                       * strength(world, self._army(world)))
         return seen
 
     def _owner_of(self, world: World, point: Point) -> int | None:
