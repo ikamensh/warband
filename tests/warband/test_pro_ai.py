@@ -119,6 +119,29 @@ def test_a_soldier_that_walked_out_of_sight_is_not_counted_as_dead():
     assert brain.remembered(1)[UnitType.ARCHER] > 2.5, "out of sight is not dead"
 
 
+def test_the_wood_share_puts_that_many_hands_on_the_trees_and_takes_them_off_again():
+    from dataclasses import replace
+    from warband.model import Harvest
+    world, brain = _world_with_army()
+    brain.profile = replace(PRO, wood_share=0.5, wood_stock=900)
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    for i in range(8 - sum(1 for u in world.player_units(0) if u.is_worker)):
+        world.spawn_unit(0, UnitType.PEASANT, (hall.center[0] + 3 + i * 0.6, hall.center[1] + 3))
+    peasants = [u for u in world.player_units(0) if u.is_worker]
+    assert len(peasants) == 8
+    world.players[0].gold, world.players[0].lumber = 3000, 0
+    for _ in range(4):
+        brain._economy(world)  # two moves a pass, at most
+    assert sum(1 for p in peasants if brain._on_lumber(p)) == 4
+    world.players[0].lumber = 2000  # plenty: the crews go back to the gold, a third of the share stays
+    for _ in range(4):
+        brain._economy(world)
+    on_wood = [p for p in peasants if brain._on_lumber(p)]
+    assert len(on_wood) == round(8 * 0.5 / 3) == 1
+    assert all(isinstance(p.order, Harvest) and isinstance(p.order.target, int) for p in peasants if p not in on_wood), \
+        "the rest were sent to a mine, not left idle"
+
+
 def test_an_army_out_on_the_map_still_defends_its_base():
     """Regression: a scout looking at an empty base reported a defence of nothing,
     and the push that went out met the army that had simply been standing elsewhere."""

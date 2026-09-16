@@ -97,6 +97,8 @@ class ProProfile:
     siege_share: float = 0.0          # if set, the share of the army that is catapults…
     cleric_share: float = 0.0         # …and that is healers, overriding the race's plan
     army_plan: Mapping[UnitType, float] | None = None  # shares of the army to aim for, instead of the race's own
+    wood_share: float = 0.0           # if set, the share of the gatherers kept on wood while lumber is short…
+    wood_stock: int = 900             # …'short' meaning below this; above it the wood crews go back to the gold
     count_kills: bool = False         # soldiers the brain watched die no longer count against it
     target_halls: bool = False        # pushes go for the hall (the economy) before the barracks
 
@@ -149,6 +151,9 @@ _STYLES = (
                        UnitType.CATAPULT: 0.05}),
     replace(PRO, name="pro-kills", count_kills=True),
     replace(PRO, name="pro-halls", target_halls=True),
+    replace(PRO, name="pro-wood", wood_share=0.3),
+    replace(PRO, name="pro-wood25", wood_share=0.25),
+    replace(PRO, name="pro-wood40", wood_share=0.4),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}, **{p.name: p for p in _STYLES}}
 
@@ -399,29 +404,50 @@ class ProBrain:
         return any(isinstance(order, Harvest) and not isinstance(order.target, int) for order in peasant.orders)
 
     def _chop(self, world: World) -> None:
-        """Put spare hands on trees when the wood runs out, and only then.
+        """Keep the right number of hands on the trees.
 
-        A fixed share of the workforce on lumber measured as nothing: the model's
-        own policy usually splits the two resources well. What it does not handle
-        is the map where the wood near home is gone — lumber sits at zero, no farm
-        can be built, the supply cap freezes, and a bank of fifteen thousand gold
-        buys nothing at all. Every game this brain still loses looks like that, so
-        the rule fires on the symptom rather than running all the time.
+        The model's own policy sends a peasant to whichever resource is
+        scarcer against a reserve of one farm, which is a fair rule for a
+        player and far too little wood for this brain: every four supply
+        costs 250 lumber, and a barracks, a mill or a hall costs a farm's
+        worth of wood twice over. Left to the policy, the brain sits at three
+        thousand gold and no lumber, supply-blocked, while its one barracks
+        idles — the opening trace in ``docs/ai-ladder.md``. With ``wood_share``
+        set, that share of the gatherers is kept on wood until the stock is
+        comfortable, and sent back to the gold once it is.
+
+        On top of that, the panic rule: when the wood near home has run out
+        and gold is piling up unspendable, half the hands go looking for
+        trees, which is the map where the supply cap would otherwise freeze.
         """
         player = world.players[self.player]
-        if player.lumber >= self.profile.lumber_floor_panic or player.gold < self.profile.panic_gold:
-            return
+        profile = self.profile
         peasants = [p for p in self._peasants(world)
                     if not p.hidden and not isinstance(p.order, (Build, Repair)) and p.id not in self.scouts]
-        # Never everyone: gold still has to come in, or the next peasant never does.
-        want = min(len(peasants) // 2, max(0, len(peasants) - 2))
-        short = want - sum(1 for p in peasants if self._on_lumber(p))
-        if short <= 0:
+        if len(peasants) < 4:
             return
-        for peasant in [p for p in peasants if not self._on_lumber(p) and p.carrying is None][:short]:
-            tree = world.nearest_tree(peasant.pos, 24)
-            if tree is not None:
-                world.harvest([peasant.id], tree)
+        want = None
+        if profile.wood_share > 0:
+            share = profile.wood_share if player.lumber < profile.wood_stock else profile.wood_share / 3
+            want = round(share * len(peasants))
+        if player.lumber < profile.lumber_floor_panic and player.gold >= profile.panic_gold:
+            want = max(want or 0, len(peasants) // 2)
+        if want is None:
+            return
+        # Never everyone: gold still has to come in, or the next peasant never does.
+        want = min(want, len(peasants) - 2)
+        choppers = [p for p in peasants if self._on_lumber(p)]
+        short = want - len(choppers)
+        if short > 0:
+            for peasant in [p for p in peasants if not self._on_lumber(p) and p.carrying is None][:min(short, 2)]:
+                tree = world.nearest_tree(peasant.pos, 24)
+                if tree is not None:
+                    world.harvest([peasant.id], tree)
+        elif short < 0 and profile.wood_share > 0:
+            mines = self._worked_mines(world)
+            for peasant in [p for p in choppers if p.carrying is None][:min(-short, 2)]:
+                if mines:
+                    world.harvest([peasant.id], min(mines, key=lambda m: dist(m.center, peasant.pos)).id)
 
     def _repairs(self, world: World) -> None:
         damaged = [b for b in world.player_buildings(self.player, done=True)
