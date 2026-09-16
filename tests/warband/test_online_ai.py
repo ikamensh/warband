@@ -17,7 +17,7 @@ server_url = server_fixture('warband.multiplayer:ONLINE')
 def test_headless_opponent_joins_and_its_orders_reach_the_authoritative_world(server_url):
     """A separate CLI process joins seat one, develops it, and exits with useful evidence."""
     with connect(server_url, proxy=None) as human:
-        welcome = handshake(human, game="warband-v1", options={"seed": 3, "width": 48, "height": 40})
+        welcome = handshake(human, game="warband-v2", options={"seed": 3, "width": 48, "height": 40})
         initial = receive(human)["state"]["world"]
         result = subprocess.run(
             [sys.executable, "-m", "warband.online_ai", "--server", server_url,
@@ -53,7 +53,7 @@ def test_headless_creator_announces_a_room_before_a_human_joins(server_url):
         announced = json.loads(first_stdout_line(process, timeout=5))
         assert announced["event"] == "created" and announced["player"] == 0
         with connect(server_url, proxy=None) as human:
-            joined = handshake(human, "join", game="warband-v1", room=announced["room"])
+            joined = handshake(human, "join", game="warband-v2", room=announced["room"])
             assert joined["player"] == 1
             state = receive(human, predicate=lambda message: message["state"]["world"]["tick"] >= 22)
             assert any(unit["player"] == 0 and unit["orders"] for unit in state["state"]["world"]["units"])

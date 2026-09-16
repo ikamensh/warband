@@ -2546,7 +2546,7 @@ class World:
 
 
 def _order_to_dict(order: Order) -> dict[str, Any]:
-    # Keep player-order fields compatible with existing warband-v1 clients.
+    # Keep player-order fields stable: online clients read them straight from the snapshot.
     # Automatic routing metadata lives beside the queue in each unit record.
     if isinstance(order, Harvest):
         return {"kind": "Harvest", "target": list(order.target) if isinstance(order.target, tuple) else order.target}

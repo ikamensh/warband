@@ -72,7 +72,7 @@ real breakdown.
   provenance in each folder's manifest, the procedure in `docs/warband-pieces.md`).
 - `warband/scene.py`, `title.py`, `tutorial.py`, `icons.py`, `style.py`,
   `score_scene.py` — the saga2d scenes. `multiplayer.py` is the LAN/online
-  match; its `ONLINE` table registers `warband-v1` with `saga2d.server`.
+  match; its `ONLINE` table registers `warband-v2` with `saga2d.server`.
   `online_ai.py` is the headless AI client that can sit in a room.
 - `packaging/package_check.py` — the diagnostics the frozen app runs.
 - `docs/` — Early Access criteria and progress (`warband-early-access-*.md`),

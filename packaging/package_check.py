@@ -31,11 +31,11 @@ def online_smoke(endpoint: str) -> dict:
         raise AssertionError([(client.ready, client.closed, client.error) for client in clients])
 
     try:
-        creator = OnlineClient("warband-v1", endpoint=endpoint, options={"seed": 3, "width": 48, "height": 40})
+        creator = OnlineClient("warband-v2", endpoint=endpoint, options={"seed": 3, "width": 48, "height": 40})
         clients.append(creator)
         wait(lambda: bool(creator.room) and creator.state is not None)
         assert creator.resume_token and not creator.ready
-        guest = OnlineClient("warband-v1", endpoint=endpoint, room=creator.room)
+        guest = OnlineClient("warband-v2", endpoint=endpoint, room=creator.room)
         clients.append(guest)
         wait(lambda: creator.ready and guest.ready)
         assert (creator.player, guest.player) == (0, 1)
@@ -58,7 +58,7 @@ def online_smoke(endpoint: str) -> dict:
         room, token = creator.room, creator.resume_token
         creator.close()
         wait(lambda: not guest.ready)
-        resumed = OnlineClient("warband-v1", endpoint=endpoint, room=room, resume_token=token)
+        resumed = OnlineClient("warband-v2", endpoint=endpoint, room=room, resume_token=token)
         clients.append(resumed)
         wait(lambda: resumed.ready and guest.ready)
         assert resumed.player == 0 and moved(resumed)
@@ -193,7 +193,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
             assert game.backend.get_clipboard_text() == room
             capture("-room-code")
             click("Cancel")
-            creator = OnlineClient("warband-v1", endpoint=endpoint, room=room, resume_token=token)
+            creator = OnlineClient("warband-v2", endpoint=endpoint, room=room, resume_token=token)
             wait(lambda: creator.state is not None)
             click("Paste code")
             assert game.scene.fields[2] == room.upper()

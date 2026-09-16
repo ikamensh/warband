@@ -66,7 +66,7 @@ Ctrl+click is the right-click.
 
 The installed app (`/Applications/Warband.app`, or the Windows installer from
 [games.tachyon-ai.eu](https://games.tachyon-ai.eu/warband/)) is the published
-**0.1.0-preview.4**, which is behind this checkout. Rebuild it from the
+**0.2.0-preview.1**; later checkouts move ahead of it. Rebuild it from the
 working tree with the shared packaging recipe; it refuses an uncommitted tree
 unless you pass `--allow-dirty`:
 
@@ -86,8 +86,8 @@ version.
 
 - **Online**, the default: a two-seat room on the shared server, joined by
   code or invite link, with no port forwarding, VPN or account. The published
-  builds play there. A room created from this checkout is refused with
-  *Unknown match option* while the live server still runs preview.4; a
+  builds play there, and so does a checkout while it still speaks the deployed
+  game id (`warband-v2`) and options; after a rules change that moves them, a
   refresh is a deploy from [saga-online](../saga-online). Guide:
   [play together on Mac and Windows](docs/warband-play-together.md).
 - **Your own server**, for checkout against checkout. Run the room server

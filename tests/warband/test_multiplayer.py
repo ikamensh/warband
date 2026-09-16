@@ -22,8 +22,8 @@ def test_warband_guest_orders_and_host_simulation_stay_in_sync():
     from warband.multiplayer import WarbandMatch
     from warband.model import World
     match = WarbandMatch(seed=3)
-    host = MatchHost('warband-v1', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
-    client = MatchClient('warband-v1', host.address, token='test')
+    host = MatchHost('warband-v2', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
+    client = MatchClient('warband-v2', host.address, token='test')
     try:
         converge(host, client, lambda: client.ready)
         guest = match.world.player_units(1)[0]
@@ -77,8 +77,8 @@ def test_warband_fatal_impact_keeps_its_material_across_the_socket(tmp_path, aud
                 del event[field]
         return state
 
-    host = MatchHost('warband-v1', match.apply, snapshot, address=('127.0.0.1', 0), token='test')
-    client = MatchClient('warband-v1', host.address, token='test')
+    host = MatchHost('warband-v2', match.apply, snapshot, address=('127.0.0.1', 0), token='test')
+    client = MatchClient('warband-v2', host.address, token='test')
     game = Game('network battle audio', backend='mock', theme=build_theme(), save_dir=tmp_path)
     try:
         converge(host, client, lambda: client.ready)

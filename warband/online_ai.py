@@ -111,7 +111,7 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
             raise ValueError(f"{name} must be positive and finite.")
     started = waiting_since = time.monotonic()
     deadline = math.inf if duration is None else started + duration
-    client = OnlineClient("warband-v1", endpoint=endpoint, room=room, options=options)
+    client = OnlineClient("warband-v2", endpoint=endpoint, room=room, options=options)
     brain = rng = None
     announced = ever_ready = last_ready = False
     revision = -1
