@@ -15,7 +15,7 @@ every earlier item first.
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-001 | First | done | Recover useful branch work and clean up local branches/worktrees | User |
-| WB-002 | First | ready | Publish tested main pushes through GitHub Actions to games.tachyon-ai.eu | User |
+| WB-002 | First | in progress | Publish tested main pushes through GitHub Actions to games.tachyon-ai.eu | User |
 | WB-003 | Next | ready | Diagnose and improve movement animation | User |
 | WB-004 | Next | ready | Give melee attacks readable weight and contact | User |
 | WB-005 | Next | ready | Replace the rotating-sprite death with convincing falls | User |
@@ -71,6 +71,10 @@ items rather than silently losing it. Campaign adoption is a product decision
 to assess here, not an instruction to merge it wholesale.
 
 ## WB-002 — Publish tested pushes through GitHub Actions
+
+Working branches: `codex/backlog-wb002` (Warband) and
+`codex/warband-publishing` (Saga Online). Acceptance and rollout are recorded
+before implementation in [the CI publication plan](docs/ci-publication.md).
 
 Make a push to `main` produce an immutable preview release and update the
 Warband download page at [games.tachyon-ai.eu](https://games.tachyon-ai.eu/warband/).
