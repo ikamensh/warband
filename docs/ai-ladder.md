@@ -72,7 +72,26 @@ uv run python tools/arena.py ladder --agents hard,pro --seeds 40   # 80 games, b
 uv run python tools/arena.py ffa --players 4 --seeds 12            # free-for-all placements
 uv run python tools/arena.py variants --shuffles 6 --seeds 6       # under jittered rulebooks
 uv run python tools/arena.py report --seeds 24                     # all three
+uv run python tools/arena.py ladder --agents pro-rush,pro-boom --against pro --seeds 24 --anchor pro --anchor-elo 1450
+uv run python tools/arena.py ladder --agents hard,pro,pro-x,pro-y --neighbours 1 --anchor pro --anchor-elo 1450
+uv run python tools/arena.py ladder --agents pro,pro2 --seeds 60 --save runs/pro2.jsonl   # keep every match
+uv run python tools/arena.py rate --from runs/*.jsonl --anchor pro --anchor-elo 1450      # one table over saved runs
 ```
+
+`--save` appends every finished match to a JSON-lines file as it lands, and
+`rate --from` pools any number of them into one table: the rungs of a chain
+are measured in separate runs and rated together.
+
+`--against` plays a panel: every agent meets only the agents named, which
+is how candidates are screened against the best brain without paying for
+every pair. `--neighbours N` plays a chain: only agents within N places of
+each other in the list meet, which is where the information is once the
+list is in rating order. `--anchor-elo` pins the anchor at a rating other
+than 1000, so a ladder over the top rungs can be read on the same scale as
+the difficulty table below (`pro` at 1450). Every table ends with the
+medians of how each agent played — first attack, attacks, peak army,
+workers, towers, halls, barracks, kills — which is the evidence behind
+any claim that two agents of one strength are two different players.
 
 Matches are independent and fully determined by their `MatchSpec`, so they
 are handed to a process pool (`--workers`, default: most of the machine).
@@ -113,6 +132,19 @@ rungs in between: `hard` against `pro` against a stronger `pro` gives a
 well-conditioned chain, where `hard` against the strongest alone would only
 say "it never lost".
 
+**Settled by peers.** Each pair's games are weighted by how close the two
+turn out to be — a pair 200 Elo apart counts half, 400 apart a fifth, a
+thousand apart almost nothing (`arena.proximity_weight`, refitted until
+the weights and the ratings agree). A game against an agent a thousand
+points below is nearly always won and says almost nothing about *where*
+in the top half the winner sits; counting it as much as a game against a
+peer is how an agent that is 55% against the best and 99% against the
+worst got rated on the 99%. With twenty head-to-head games between two
+peers and a hundred each against a far weaker third, the flat fit puts the
+one with the perfect far record 114 points clear; weighted, 22. One pair
+alone is unchanged: with nothing to weigh it against, the odds are the
+odds. `--proximity 0` gives the old flat fit.
+
 ## The difficulty settings
 
 What the New game screen offers, and what each one is worth. 60 seeds, both
@@ -125,9 +157,21 @@ became projectiles (`docs/unit-motion.md` part 4):
 | Easy | 736 | 672 .. 799 | `ai.Brain`, the Easy profile |
 | Medium | 1000 | — | `ai.Brain`, what Normal and Hard both were |
 | Hard | 1253 | 1209 .. 1302 | `pro_ai.ProBrain`, `pro-hard` |
-| Master | 1452 | 1402 .. 1511 | `pro_ai.ProBrain`, `pro` |
+| Master | 1510 | — | `pro_ai.ProBrain`, `pro-vanguard` or `pro-warden`, drawn with the map |
 
-Each beats the one below it 84%, 82%, 78% of the time — a real step every
+Master's number is the rung's: the brain that measured 1452 on this
+protocol (`pro`, still on the ladder under that name) plus the 57–61% its
+two postures take against it over four seed sets each. The three lower
+rows are the 720-game protocol. Measured directly against Hard and Medium
+(40 seeds, both corners, 80 games a pairing), the two-posture Master takes
+76% and 94% where `pro` on the same seeds takes 79% and 99% — 1485 to
+`pro`'s 1521 on that run, within a sample of eighty games' noise of each
+other and of the 1452. So the rung is an edge over the brain Master was,
+not a step against everything below it: the postures were chosen by how
+they fare against their nearest opponent, which is what a rating settled
+by peers rewards, and a player who wants the difficulty step should read
+this row as "about 1500, a different opponent" rather than "sixty points
+harder". Each of those beats the one below it 84%, 82%, 78% of the time — a real step every
 time, which the old three settings did not have: Normal and Hard measured 994
 and 1000 and split their games 55/45. They are one setting now, and the
 screen shows each rating beside its button so the choice is not a guess.
@@ -194,6 +238,153 @@ leash on pushes — were rated against Master over 1008 games. Five of them
 landed between 47% and 53% against it, which is nothing, and the sixth (more
 farms) was clearly worse. The plateau is in the brain, not in the ruler.
 
+### What decides a Master mirror
+
+Before looking for the next rung, 48 games of `pro` against itself (24
+seeds, both corners, every size, after the combat rework) were traced to
+see what a game between two copies of the best brain turns on. Every one
+was decided, in 8.4 minutes at the median, and almost every one the same
+way: both sides march out at about 200 s with five soldiers, the armies
+meet, and the side with more wins the fight and the game. The winner's
+peak army is 33 at the median, the loser's 12; the winner kills 54 and
+loses 24. There is no second act.
+
+Two things set the size of the army at the clash.
+
+**Lumber.** A snapshot at 150 s shows a side with 2900 gold in the bank,
+one barracks, 350 lumber and a supply cap it has just hit; two minutes
+later the same side has 3000 gold, 100 lumber and 29 of 29 supply. The
+model's gatherer policy reserves one farm's worth of wood and sends every
+other hand to the gold, which is a fair rule for a player and far too
+little for a brain that spends 250 lumber per four supply and a farm's
+worth twice over on every barracks, mill and hall. The supply block also
+closes the gate on the second barracks — a barracks that is idle for want
+of supply reads as "not saturated" — so the gold sits. The winner of a
+mirror is supply-blocked with gold in hand for 72 s at the median; it is
+simply the side that got blocked later.
+
+**Race.** The brain plays every race with the same numbers and the same
+minute, and the races do not train or walk at the same speed:
+
+| race | mirror games | won | peak army | first attack |
+|------|--------------|-----|-----------|--------------|
+| elf | 16 | 75% | 20 | 222 s |
+| human | 26 | 62% | 33 | 198 s |
+| orc | 24 | 42% | 21 | 197 s |
+| dwarf | 30 | 33% | 18 | 219 s |
+
+Dwarves walk 0.3 slower and orcs arm 10% slower, so their five arrive
+later and fewer, against elves whose rangers shoot a tile farther and
+humans whose barracks turn out a soldier every 13 s instead of 15. A
+quarter of the games either brain plays are lost or won on the draw of
+the race, which a race-aware profile can take back.
+
+### The opening, traced tick by tick
+
+Three things in Master's first three minutes are not decisions but
+accidents of ordering, found by printing every peasant's order at every
+tick:
+
+* **The farm at second zero is dropped.** The pass trains before it
+  builds, the hall queues two peasants for 800 of the 1000 gold, and the
+  farm ordered in the same pass finds 200 in the bank when its peasant
+  arrives. It goes up again at eleven seconds and stands at thirty-eight;
+  the hall is capped at five and idle for most of that time.
+  `builds_before_peasants` holds the peasant back when a farm in flight
+  could not then be paid (farms only: a peasant that delays a barracks is
+  still income).
+* **The mill is bought before the barracks.** The wish list puts the
+  barracks first, but the mill costs 600 gold to the barracks' 700, so
+  whenever the bank is between the two the mill is what gets bought — and
+  its 450 lumber is the barracks' 450 lumber, a minute of chopping later.
+  Both brains in a mirror have their first barracks at about three
+  minutes. `barracks_first` wishes for nothing but farms until it stands,
+  and lands it at about two.
+* **The wood share had been measuring nothing.** A third to a half of the
+  miners are inside the mine at any moment, and the first version of the
+  rule took its share of the rest, so "thirty per cent on wood" put almost
+  nobody there. The 17% it scored against Master was the score of a rule
+  that did not run; the share is of the whole workforce now.
+
+### The first rung above Master
+
+Everything that measured stacks into one posture: nothing but farms before
+the first barracks, the lumber panic a minute earlier, one tower at the
+front point as soon as the barracks stands, and marching out at eight
+soldiers on level terms. Over three seed sets it had never been tuned on:
+
+| candidate | games against `pro`, by seed set | score |
+|-----------|--------------------|-------|
+| `pro-rax-panic-tower1-min8` (the Warden without its counter) | 72, 120, 120, 80, 120 | 67%, 57%, 61%, 54%, 60% — 60% pooled |
+| `pro-warden` as shipped (with the counter) | 80, 120, 80 | 60%, 65%, 65% — 64% pooled |
+| `pro-rax-panic` (the same without the tower or the wait: out at five) | 96, 120 | 67%, 60% |
+| `pro-raxfirst` (barracks-first alone) | 72, 72, 96, 120 | 60%, 64%, 59%, 48% — 57% pooled |
+| every barracks-first variant pooled | about 2400 | 57% |
+
+That is about **+50 to +70 Elo**, a first rung at roughly 1510, and the
+swing between seed sets of the same size is six points either way, which
+is why nothing under a hundred games on two sets is quoted. It is two
+players rather than one: `pro-rax-panic` walks out at five soldiers at
+195 s with no tower, `pro-rax-panic-tower1-min8` builds a tower first and
+walks out at eight at 245 s, and the two score the same. The gains do not
+add: the tower, the later push and the kill memory each took the same
+60% on top of barracks-first as barracks-first took alone, because they
+all decide the same fight.
+
+Where the losses are is now on the ladder table too, by the race drawn.
+Over the combined ladder's 600 games whoever drew orcs won 22–41% and
+dwarves 31–62%, elves 72–91%, under every profile including Master: the
+elven rangers outrange and outrun the orcs' throwers and grunts, and the
+brain plays every race by the same numbers. A quarter of the games on the
+ladder are decided by that draw before either brain moves, which caps what
+any posture change can take — and is where the next rung has to come from.
+
+### The scout that never left
+
+Tracing a tower rush on Master's mine turned up why every profile attacks
+blind: the peasant drafted as the scout keeps the harvest order it was
+drafted with, the ring move is only given to a scout with nothing to do,
+and the gatherer policy refills an idle peasant before the next pass — so
+no brain without a rider has ever sent anyone to look, and the enemy is
+unknown until its push arrives. That is the ground the blind-attack
+posture measured +126 on. Sending the peasant (stop it, keep it off the
+policy) was measured on both postures: **44% and 39%** against Master,
+against 55% blind, with peak armies of 13 to the blind Warden's 22. The
+engagement rule is tuned for not knowing — a prior of four tenths of its
+own strength stands in for an enemy nobody has looked at — and given real
+sightings it waits while Master attacks. Using what a scout sees takes a
+different engagement rule, not a scout, so the peasant stays home and the
+comment in `_send_scout` says why. The rush itself was dropped: the
+builder's order dies on arrival after a forty-second walk, five times a
+game, and feeds peasants to the first soldiers.
+
+### The wasp that would not live
+
+Master's defence sends the whole army at any enemy unit within nine tiles
+of any of its buildings, every pass, so one fast unit circling its base
+looked like a way to keep that army home for as long as the unit lived.
+Scripted directly — a scout handed to Master's opponent at 100 s and
+driven round the elven hall at eight or ten tiles, still or at two laps a
+minute — it lived forty seconds every time: rangers see eight tiles and
+shoot five, and the first push left at 184 s whatever the wasp did.
+
+### What the 2000 still needs
+
+Every probe of this brain's numbers lands within a hundred points of
+Master, on either side. The gains that measured — barracks first, the
+earlier lumber panic, the tower and the later push — all decide the same
+first clash, and stack to one rung of sixty or seventy points rather than
+to the two hundred a real step takes. What decides the rest is settled
+before either brain moves: the race drawn (orcs lose three in four to
+elves under every profile), the corner, and the roll of the first fight.
+A 2000 on this scale is 550 above Master, which means winning nine games
+in ten against it — every orc game, every bad corner — and no posture of
+this brain does that. The next rung needs a different kind of strength:
+play that changes with the race and the map rather than the same numbers
+for all of them, or fights that are not left entirely to the model. The
+tooling for measuring it is here: `--save` a run, `rate --from` the pool,
+read the score by race, and rate the rung against its neighbours.
+
 ### Against the 2000 that was asked for
 
 `pro` is about **535 Elo above the anchor, not 1000**. A 1000-point gap means
@@ -240,6 +431,28 @@ contradicted the reasoning that produced the change:
 | counting build orders in flight | −18 points on its own, good once the site limit was raised to match |
 | peasants called to defend | −35 Elo, under either of the two rules tried |
 | holding the opening lumber for the barracks | **−400 Elo** — it buys the barracks 64s earlier and starves the farms |
+| nothing but farms before the first barracks stands (`barracks_first`) | **+65 Elo** — 60% over 72 games; the barracks lands at two minutes instead of three |
+| …with the later push, or the kill memory, on top | 59% and 57%: the gains overlap rather than add |
+| …with the later push and one tower at the front point as soon as the barracks stands (`towers_early`) | **67%** over 72 games on a third seed set, where barracks-first alone took 64% and every barracks-first variant 54–64% (59% pooled over 432); being confirmed on a fourth |
+| holding a peasant back so the farm ordered at second zero is not dropped | level (50%), and it cancelled barracks-first when combined |
+| an early blacksmith for Sharpened Blades | level (47–54%) |
+| …with the lumber panic a minute earlier (`panic_gold` 1000, `lumber_floor_panic` 300: half the hands to the trees once lumber is short and a thousand gold idles) | **67%** over 96 games where barracks-first alone took 59% on the same seeds |
+| …with less farm slack (`supply_slack` 2) | 64% on the same seeds |
+| the mill at the edge of the nearest wood, a second mill at the wood front, a larger workforce | level with barracks-first alone (52–56%); the wood is six tiles from every start |
+| the barracks itself at the front point, so Master's push meets tower, army and reinforcements in one place | **−35 Elo** (45% against Master, 43% against the Warden, 160 games each) |
+| a raid too small to matter met by three soldiers rather than the whole army | level (51% and 52%, 141 games each) |
+| dwarves and orcs holding harder — two towers, out at ten | level against Master, 44% against the Warden (149 games) |
+| a farm only when supply is about to block, until the barracks stands (an opening slack of 1 or 2) | **−50 to −100 Elo** for the Warden (42%, 46% over 80 games), level for the Vanguard (54%): the farms it holds back are the supply the army is made of, again |
+| a beaten push followed home at once, whatever the army's size | level (50%) |
+| the counter to shooters earlier and harder (`counter_from` 0.2, `counter_strength` 2.0) on the Warden | **+25 Elo** on top of the posture — 60% and 65% on two seed sets where the Warden alone took 54% and 60%, 63% pooled over 200 games; the gain lands on humans and dwarves, not the orcs it was aimed at; worse on the Vanguard (51%) |
+| the same, harder still (0.15, 3.0) | 61% pooled: no better |
+| the Warden's combat knobs: pulling a wounded soldier out at 40% instead of 25%, at 15%, a combat pass every 0.1 s instead of 0.2, pushing through raids up to 70% of the army | level (65%), −50 (52%), −30 (55%), level (59%) against the Warden's 65% on the same 80 games |
+| marching out at eight to ten soldiers on level terms instead of five on a guess (`min_army` 8–10, `attack_ratio` 1.0) | **+40 Elo** — 55–57% against Master over 96 games each, 55% pooled over 576; the one posture change that measured |
+| soldiers seen to die dropped from the enemy count at once (`count_kills`) | +20 Elo alone (53%), about the same on top of the later push |
+| a standing share of the workforce on wood | **−40 to −180 Elo** — 46% at 30%, 31% at 40%, 25% with farms ahead of demand as well; the model's own policy is better |
+| an army plan of knights, of archers, or of raiders | **−110 Elo** each (33%); the race plans are right |
+| pro-rush (three soldiers, ratio 0.6), pro-boom (twelve, 1.2, early expansion, towers), hall-first pushes, raiders | within noise (44–52%) |
+| a supply-blocked barracks counting as saturated, a second or third barracks ahead of the gate, gathering three or five before walking, race-aware postures for dwarves and orcs | within noise (48–56%, 48 games each) |
 
 Two of those are worth dwelling on. Holding the opening lumber was reasoned
 out from arithmetic — the game starts with 500 lumber, a farm costs 250 and a

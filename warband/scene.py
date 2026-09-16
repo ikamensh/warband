@@ -149,7 +149,7 @@ class GameScene(Scene):
         self.seed = seed
         self.difficulty = difficulty
         self.human = next(p.id for p in world.players if p.human) if player is None else player
-        self.brains = [make_brain(p.id, difficulty) for p in world.players if not p.human]
+        self.brains = [make_brain(p.id, difficulty, seed) for p in world.players if not p.human]
         self.rng = random.Random(seed)
         self.settings = settings if settings is not None else dict(DEFAULT_SETTINGS)  # a saga2d Settings when the game runs
         for key, value in DEFAULT_SETTINGS.items():
@@ -1608,7 +1608,7 @@ class GameScene(Scene):
         self.ranked = state.get("ranked", True)
         self.seed = state["seed"]
         self.difficulty = Difficulty(state["difficulty"])
-        self.brains = [make_brain(p.id, self.difficulty) for p in world.players if not p.human]
+        self.brains = [make_brain(p.id, self.difficulty, self.seed) for p in world.players if not p.human]
         self.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
         self.tutorial = Tutorial() if state.get("tutorial") is not None and self.settings["tutorial"] else None
         if self.tutorial is not None:

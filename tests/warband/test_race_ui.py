@@ -137,9 +137,9 @@ def test_rooms_carry_the_creator_race_and_reject_nonsense(tmp_path) -> None:
     match = WarbandMatch(3, 48, 40, races=(Race.DWARF, None))
     assert match.world.players[0].race is Race.DWARF and match.world.players[1].race is not Race.DWARF
     assert match.snapshot(0)["world"]["players"][0]["race"] == "dwarf"
-    served = ONLINE["warband-v1"].create({"seed": 3, "width": 48, "height": 40, "races": ["elf", None]})
+    served = ONLINE["warband-v2"].create({"seed": 3, "width": 48, "height": 40, "races": ["elf", None]})
     assert served.world.players[0].race is Race.ELF
     for bad in ("elf", ["elf"], ["elf", "hobbit"], [1, None]):
         with pytest.raises(CommandError, match="races"):
-            ONLINE["warband-v1"].create({"seed": 3, "races": bad})
+            ONLINE["warband-v2"].create({"seed": 3, "races": bad})
     assert BUILDINGS[BuildingType.TOWN_HALL].name == "Town Hall"  # the shared table is untouched by the race tables

@@ -137,7 +137,7 @@ class TitleScene(Scene):
         from warband.multiplayer import WarbandMatch, NetworkGameScene
         width, height = mapgen.SIZES[self.size]
         # The room's creator leads the race chosen under New game; the guest's is drawn from the seed.
-        self.game.push(MatchMenu("Warband multiplayer", "warband-v1",
+        self.game.push(MatchMenu("Warband multiplayer", "warband-v2",
                                 lambda: WarbandMatch(mapgen.fresh_seed(), width, height, self.theme, races=(self.race, None), layout=self.layout),
                                 lambda session, match: NetworkGameScene(session, match, settings=self.settings),
                                 create_options=lambda: {'seed': mapgen.fresh_seed(), 'width': width, 'height': height,

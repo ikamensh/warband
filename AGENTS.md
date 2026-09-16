@@ -42,8 +42,9 @@ real breakdown.
   `mapgen.py` the five map layouts, their symmetry and audit, `ai.py` a Brain
   per player for the lower difficulties (`PROFILES`) plus `make_brain`, which
   is what every caller should use — Hard and Master are `pro_ai.ProBrain`, not
-  a Brain — and `DIFFICULTY_ELO`, the measured ratings the New game screen
-  shows; `pro_ai.py` a stronger
+  a Brain, and Master draws one of two postures (`PRO_VANGUARD`, `PRO_WARDEN`)
+  from the map seed and the player's slot — and `DIFFICULTY_ELO`, the measured
+  ratings the New game screen shows; `pro_ai.py` a stronger
   `ProBrain` driven by a `ProProfile` of knobs, `arena.py` the ladder that
   rates them (1v1, free-for-all placements, jittered rulebooks,
   Bradley-Terry ratings on the Elo scale), `worker_ai.py`/`worker_knowledge.py` the
@@ -72,7 +73,7 @@ real breakdown.
   provenance in each folder's manifest, the procedure in `docs/warband-pieces.md`).
 - `warband/scene.py`, `title.py`, `tutorial.py`, `icons.py`, `style.py`,
   `score_scene.py` — the saga2d scenes. `multiplayer.py` is the LAN/online
-  match; its `ONLINE` table registers `warband-v1` with `saga2d.server`.
+  match; its `ONLINE` table registers `warband-v2` with `saga2d.server`.
   `online_ai.py` is the headless AI client that can sit in a room.
 - `packaging/package_check.py` — the diagnostics the frozen app runs.
 - `docs/` — Early Access criteria and progress (`warband-early-access-*.md`),

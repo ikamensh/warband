@@ -136,7 +136,7 @@ def _restore(snapshot):
     return match
 
 
-ONLINE = {'warband-v1': GameSpec(_create, _checkpoint, _restore, realtime=True)}
+ONLINE = {'warband-v2': GameSpec(_create, _checkpoint, _restore, realtime=True)}
 
 
 from warband.scene import GameScene, HelpScene, SettingsScene, _Overlay, _clock

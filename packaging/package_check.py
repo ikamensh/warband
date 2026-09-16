@@ -31,11 +31,11 @@ def online_smoke(endpoint: str) -> dict:
         raise AssertionError([(client.ready, client.closed, client.error) for client in clients])
 
     try:
-        creator = OnlineClient("warband-v1", endpoint=endpoint, options={"seed": 3, "width": 48, "height": 40})
+        creator = OnlineClient("warband-v2", endpoint=endpoint, options={"seed": 3, "width": 48, "height": 40})
         clients.append(creator)
         wait(lambda: bool(creator.room) and creator.state is not None)
         assert creator.resume_token and not creator.ready
-        guest = OnlineClient("warband-v1", endpoint=endpoint, room=creator.room)
+        guest = OnlineClient("warband-v2", endpoint=endpoint, room=creator.room)
         clients.append(guest)
         wait(lambda: creator.ready and guest.ready)
         assert (creator.player, guest.player) == (0, 1)
@@ -58,7 +58,7 @@ def online_smoke(endpoint: str) -> dict:
         room, token = creator.room, creator.resume_token
         creator.close()
         wait(lambda: not guest.ready)
-        resumed = OnlineClient("warband-v1", endpoint=endpoint, room=room, resume_token=token)
+        resumed = OnlineClient("warband-v2", endpoint=endpoint, room=room, resume_token=token)
         clients.append(resumed)
         wait(lambda: resumed.ready and guest.ready)
         assert resumed.player == 0 and moved(resumed)
@@ -127,6 +127,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
     from warband.style import build_theme
     from warband.title import TitleScene
     from warband.multiplayer import NetworkGameScene, NetworkMenuScene
+    from warband.rules import UnitType
 
     info = build_info()
     images = []
@@ -161,9 +162,14 @@ def native_smoke(output: Path, endpoint: str) -> dict:
                 game.backend.window.dispatch_event("on_key_release", symbol, modifiers)
                 frames()
 
-            def click(text):
+            def click(what):
+                """Press the button labelled *what*, or the command-card button producing that unit, building or upgrade."""
                 from pyglet.window import mouse
-                button = next(b for b in game.scene.ui.walk() if getattr(b, "text", "") == text)
+                buttons = [b for b in game.scene.ui.walk()
+                           if (getattr(b, "text", "") == what if isinstance(what, str) else getattr(b, "target", None) == what)]
+                if not buttons:
+                    raise AssertionError(f"No button for {what!r} on {type(game.scene).__name__}")
+                button = buttons[0]
                 x, y, w, h = button.bounds
                 px = int((x + w / 2) * game.backend.scale_factor + game.backend.offset_x)
                 py = int((game.height - y - h / 2) * game.backend.scale_factor + game.backend.offset_y)
@@ -193,7 +199,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
             assert game.backend.get_clipboard_text() == room
             capture("-room-code")
             click("Cancel")
-            creator = OnlineClient("warband-v1", endpoint=endpoint, room=room, resume_token=token)
+            creator = OnlineClient("warband-v2", endpoint=endpoint, room=room, resume_token=token)
             wait(lambda: creator.state is not None)
             click("Paste code")
             assert game.scene.fields[2] == room.upper()
@@ -209,7 +215,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
             assert live.selection == []
             click("Train")
             capture("-settlement-train")
-            click("Footman")
+            click(UnitType.FOOTMAN)  # the line unit under whatever name this seat's race gives it
             wait(lambda: any(plan.kind == "unit" for plan in live.world.player_plans(live.human)))
             camera_before = (*live.camera.offset, live.camera.zoom)
             click(f"Plans ({live._plan_count()})")

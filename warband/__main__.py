@@ -46,7 +46,7 @@ def main() -> None:
     layout = None if args.layout == "any" else Layout(args.layout)
     options = {'seed': args.seed if args.seed is not None else mapgen.fresh_seed(), 'width': width,
                'height': height, 'theme': args.theme, 'races': [args.race, None], 'layout': args.layout}
-    lobby = match_from_arguments(args, parser, title="Warband", game_id="warband-v1",
+    lobby = match_from_arguments(args, parser, title="Warband", game_id="warband-v2",
                                  create_match=lambda: WarbandMatch(**{**options, 'theme': MapTheme(args.theme), 'races': (Race(args.race), None),
                                                                       'layout': layout}),
                                  create_scene=lambda session, match: NetworkGameScene(session, match, settings=settings),

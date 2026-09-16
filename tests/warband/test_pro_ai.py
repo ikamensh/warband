@@ -91,6 +91,32 @@ def test_a_sighting_fades_once_the_enemy_is_out_of_sight():
     assert brain.remembered(1).get(UnitType.ARCHER, 0.0) < seen
 
 
+def test_master_draws_one_of_two_postures_from_the_seed():
+    from warband.ai import make_brain
+    from warband.pro_ai import PRO_VANGUARD, PRO_WARDEN
+    from warband.rules import Difficulty
+    first, second = make_brain(0, Difficulty.MASTER, seed=4), make_brain(0, Difficulty.MASTER, seed=5)
+    assert {first.profile.name, second.profile.name} == {PRO_VANGUARD.name, PRO_WARDEN.name}
+    assert make_brain(0, Difficulty.MASTER, seed=4).profile is first.profile, "the same seed draws the same posture"
+    assert make_brain(1, Difficulty.MASTER, seed=4).profile is not first.profile, "two Masters in one game differ"
+    assert PRO_WARDEN.barracks_first and PRO_VANGUARD.barracks_first, "both are the rung above pro"
+    assert PRO_WARDEN.towers_early == 1 and PRO_VANGUARD.towers_early == 0
+
+
+def test_barracks_first_wishes_for_nothing_else_until_it_stands():
+    from dataclasses import replace
+    world, brain = _world_with_army()
+    brain.profile = replace(PRO, barracks_first=True)
+    world.players[0].gold, world.players[0].lumber = 5000, 5000
+    wanted = [building for building, _ in brain._wish_list(world)]
+    assert BuildingType.BARRACKS in wanted
+    assert set(wanted) <= {BuildingType.FARM, BuildingType.BARRACKS}
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    world.place_building(0, BuildingType.BARRACKS, (hall.x + 6, hall.y))
+    wanted = [building for building, _ in brain._wish_list(world)]
+    assert BuildingType.LUMBER_MILL in wanted, "once the barracks stands, the rest of the list is back"
+
+
 def test_an_army_out_on_the_map_still_defends_its_base():
     """Regression: a scout looking at an empty base reported a defence of nothing,
     and the push that went out met the army that had simply been standing elsewhere."""

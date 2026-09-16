@@ -1,13 +1,13 @@
-# Warband — release pack (0.1.0-preview.4)
+# Warband — release pack (0.2.0-preview.2)
 
 The [Warband page](https://games.tachyon-ai.eu/warband/) offers the current
 downloads with installation steps; the same files are on the published
-[preview.4 release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.4):
-the [Windows installer](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.4/Warband-0.1.0-preview.4-windows-x64-setup.exe)
-and [Apple Silicon Mac app](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.4/Warband-0.1.0-preview.4-darwin-arm64-app.zip),
-built from `6f58eca12b7f4a969a063227267637256413c8ae`.
-See the [Mac and Windows player guide](warband-play-together.md) for practical
-installation and play instructions.
+[0.2.0-preview.2 release](https://github.com/ikamensh/warband/releases/tag/v0.2.0-preview.2):
+the [Windows installer](https://github.com/ikamensh/warband/releases/download/v0.2.0-preview.2/Warband-0.2.0-preview.2-windows-x64-setup.exe)
+and [Apple Silicon Mac app](https://github.com/ikamensh/warband/releases/download/v0.2.0-preview.2/Warband-0.2.0-preview.2-darwin-arm64-app.zip).
+Releases now live on this repository; preview.4 and earlier stay on the
+archived monorepo. See the [Mac and Windows player guide](warband-play-together.md)
+for practical installation and play instructions.
 
 ## Local install on this Mac
 
@@ -19,6 +19,77 @@ copies the new bundle in with `ditto` and self-tests it again; a receipt with
 the commit and executable hash lands in `dist/warband-local/`.  `--skip-build
 --output DIR` installs a bundle already built there; `--allow-dirty` builds an
 uncommitted tree.  The same script installs Tribes.
+
+## Changes in 0.2.0-preview.2
+
+- Four races. Humans, orcs, elves and dwarves share one skeleton (seven unit
+  roles, nine buildings, the same hotkeys and costs) and differ in names, a
+  few numbers per role, one passive trait, two race-only upgrades, their look,
+  their voice and their march ([warband-races.md](warband-races.md)). Pick a
+  race on the New game screen or in an online room; a seat left unset draws
+  one from the map seed.
+- Painted art. Every unit and building of every race is a painted sheet made
+  from the game's own low-poly renders and recoloured to its team; buildings
+  show active and damaged looks. Units walk with a four-step stride and swing
+  with a four-phase blow ([unit-motion.md](unit-motion.md)).
+- Combat. A blow turns the attacker, winds up and lands; arrows and stones
+  are projectiles that land later, stones on the ground they were fired at,
+  so a catapult can hit its own side and has a minimum range. Soldiers fight
+  soldiers first. A shell under construction gains hit points at the build
+  rate and keeps its wounds.
+- Generated sound. Weapon-on-material impacts, each race's death cries and
+  each material's building collapse come from committed Stable Audio pieces
+  ([warband-pieces.md](warband-pieces.md)); the march and the rest of the
+  music are still synthesised.
+- Maps. Five layouts on a symmetric skeleton (Plains, Forest, Crossings,
+  Klondike, Bastion, or Any) in sizes up to 80×64 ([warband-maps.md](warband-maps.md));
+  the map scrolls clear of the HUD.
+- Four difficulties with the rating each earned on the ladder (Easy 740,
+  Medium 1000, Hard 1250, Master 1450; [ai-ladder.md](ai-ladder.md)). Hard and
+  Master are a stronger brain that plays under the fog and out of its own
+  purse.
+- Settlement planning by plain keys and upgrade letters, order counts on the
+  cards, a production overview when nothing is selected; spare hands go to the
+  trees when the wood runs out.
+- The simulation steps about three times faster on a 150-unit battle, with a
+  fingerprint tool that keeps lockstep play reproducible to the bit.
+- Online. Rooms are `warband-v2` and take races and layout options; the invite
+  links read `/join/warband-v2/<code>`. Preview.4 and earlier builds are
+  refused by the refreshed server with **Update required** and offered this
+  download. The engine is Saga2D 0.3.1 from PyPI, whose packaging recipe now
+  ships the game's `assets` folder: the painted sheets and the sound pieces.
+  (`v0.2.0-preview.1` was tagged first; its packages lacked those assets,
+  failed the native package check and were never published.)
+
+## Acceptance: 0.2.0-preview.2
+
+Source: `dd4f3e2563915a6743e6dab14ab1de9b480bdc99` on Saga2D 0.3.1.
+
+[Windows CI run 35106932878](https://github.com/ikamensh/warband/actions/runs/35106932878)
+ran the regression suite, built the installer and portable ZIP, passed the
+extracted, installed and public TLS (`wss://games.tachyon-ai.eu/play`) package
+checks and the native check under the test-only Mesa driver (llvmpipe, Mesa
+26.2.0) with all 135 sounds, Start menu shortcut creation and uninstall, then
+published the release. The Mac portable executable passed the loopback socket
+and native checks on Apple M4: the whole multiplayer flow through real window
+events (create a room, copy and paste the code, join, the Train card, Plans,
+the match menu, leave) and an offline match. The app bundle's executable
+passed the online diagnostics against `wss://games.tachyon-ai.eu/play`
+(`mac-public-server.json` on the release) and is installed as
+`/Applications/Warband.app`. All three public downloads were fetched without
+authentication and hashed; the catalog carries those hashes, which match the
+CI `SHA256SUMS` and the Mac build manifest.
+
+| File | SHA-256 |
+|---|---|
+| `Warband-0.2.0-preview.2-windows-x64-setup.exe` | `086a0df1700e836112e328efaff36d3df51d5994309eb81a7579fc1db58f90f5` |
+| `Warband-0.2.0-preview.2-windows-x64-portable.zip` | `b8a7acccb76f7bce83eaa387565e6e12b235028f9b8454a52339bb546f7a3544` |
+| `Warband-0.2.0-preview.2-darwin-arm64-app.zip` | `9d794deab8bb3b9d8775d995c505d5e97e42f47d1ed2e75e1d3f57aa52a6b5c6` |
+
+The packages are about 130 MB each because the painted sheets and sound
+pieces now ship with the game. The remaining preview limits are unchanged:
+unsigned Windows installer, ad-hoc signed Mac app, and no complete
+human-versus-human playtest.
 
 ## Changes in preview.4
 
@@ -103,8 +174,9 @@ strategy, on procedural maps that change your opening.
 - Nine buildings and a short tech chain: farms, barracks, lumber mill,
   blacksmith, stables, workshop, church and guard towers; nine upgrades;
   peasants repair what the enemy leaves standing.
-- Three AI difficulties that build, expand, upgrade, raid and attack in
-  growing waves.
+- Four races with their own rosters, traits and upgrades, and four AI
+  difficulties with measured ratings that build, expand, upgrade, raid and
+  attack in growing waves.
 - Procedural maps in three sizes and three lands — summer, winter and
   wasteland — with regional meadows, groves, ponds and stone. Offline games
   support two to four factions; internet rooms have two player seats.

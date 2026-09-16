@@ -35,7 +35,8 @@ from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass, field, replace
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 
 from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived
 from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, tile_center
@@ -66,6 +67,8 @@ class ProProfile:
     lumber_floor: int = 150           # never spend the lumber the next few soldiers need
     max_halls: int = 3
     barracks_per_hall: int = 3        # a barracks turns out ~4 soldiers a minute; income buys far more
+    barracks_first: bool = False      # nothing but farms goes up before the first barracks
+    towers_early: int = 0             # towers at the front point as soon as the barracks stands, before the mill
     gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
     max_producers: int = 10
     attack_ratio: float = 0.85        # attack when my strength exceeds theirs by this
@@ -95,9 +98,24 @@ class ProProfile:
     counter_strength: float = 1.0     # …this hard
     siege_share: float = 0.0          # if set, the share of the army that is catapults…
     cleric_share: float = 0.0         # …and that is healers, overriding the race's plan
+    army_plan: Mapping[UnitType, float] | None = None  # shares of the army to aim for, instead of the race's own
 
 
 PRO = ProProfile("pro")
+
+#: The two postures Master plays, one drawn per game with the map. Both are
+#: the first rung above `pro` on the ladder — nothing but farms before the
+#: first barracks, the lumber panic a minute earlier — and the same strength,
+#: measured 57–61% against `pro` over four seed sets each (docs/ai-ladder.md):
+#: the Vanguard marches out at five soldiers with no tower, the Warden puts a
+#: tower at the front point first and marches out at eight on level terms.
+PRO_VANGUARD = replace(PRO, name="pro-vanguard", barracks_first=True, panic_gold=1000, lumber_floor_panic=300)
+#: The Warden also answers shooters earlier and harder (a fifth of the
+#: enemy's soldiers rather than three tenths, twice the swing): 63% against
+#: `pro` over 200 games where the same posture without it took 58%. The
+#: Vanguard measured worse with it (51% against its 60%), and keeps its own.
+PRO_WARDEN = replace(PRO_VANGUARD, name="pro-warden", towers_early=1, min_army=8, attack_ratio=1.0,
+                     counter_from=0.2, counter_strength=2.0)
 
 #: Variants used to find out which knob is actually carrying the strength.
 #: Each differs from :data:`PRO` in one thing, so a ladder over all of them
@@ -125,7 +143,8 @@ _TRIALS = (
     replace(PRO, name="pro-nopanic", lumber_floor_panic=0),
     replace(PRO, name="pro-nocounter", counter_from=1.1),
 )
-PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}}
+PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, PRO_VANGUARD.name: PRO_VANGUARD, PRO_WARDEN.name: PRO_WARDEN,
+                                       **{p.name: p for p in _TRIALS}}
 
 
 # -- Force comparison ---------------------------------------------------------------
@@ -360,12 +379,14 @@ class ProBrain:
     def _chop(self, world: World) -> None:
         """Put spare hands on trees when the wood runs out, and only then.
 
-        A fixed share of the workforce on lumber measured as nothing: the model's
-        own policy usually splits the two resources well. What it does not handle
-        is the map where the wood near home is gone — lumber sits at zero, no farm
-        can be built, the supply cap freezes, and a bank of fifteen thousand gold
-        buys nothing at all. Every game this brain still loses looks like that, so
-        the rule fires on the symptom rather than running all the time.
+        A fixed share of the workforce on lumber is worse than the model's own
+        policy, and measured so twice: as a standing share it cost 40 to 180
+        Elo depending on the share, because every hand on wood is gold not
+        coming in during the minutes that decide the game. What the policy
+        does not handle is the map where the wood near home is gone — lumber
+        sits at zero, no farm can be built, the supply cap freezes, and a bank
+        of fifteen thousand gold buys nothing at all — so the rule fires on the
+        symptom rather than running all the time.
         """
         player = world.players[self.player]
         if player.lumber >= self.profile.lumber_floor_panic or player.gold < self.profile.panic_gold:
@@ -428,7 +449,22 @@ class ProBrain:
             wishes.append((BuildingType.FARM, anchor))
         if count(BuildingType.BARRACKS) < 1:
             wishes.append((BuildingType.BARRACKS, anchor))
+            # The mill sits behind the barracks here and costs a hundred gold
+            # less, so whenever the bank is between the two it is the mill that
+            # gets bought — and its 450 lumber is the barracks' 450 lumber, a
+            # minute of chopping later. Both brains in a mirror trace had their
+            # first barracks at three minutes for exactly this reason.
+            if profile.barracks_first:
+                return wishes
+        if count(BuildingType.TOWER) < profile.towers_early:
+            # A tower is two footmen's worth of fight for less than one footman's
+            # gold, for as long as the enemy comes to it — and Master comes to it.
+            wishes.append((BuildingType.TOWER, self._front_point(world, hall)))
         if count(BuildingType.LUMBER_MILL) < 1:
+            # Beside the hall, where the site search puts it. Siting it at the
+            # edge of the nearest wood measured level (52–56% against Master,
+            # where barracks-first alone took 59%): the wood is six tiles from
+            # every start, and a second mill at the wood front no better.
             wishes.append((BuildingType.LUMBER_MILL, anchor))
         # Everything past here is optional, and optional buildings are what lose games:
         # each one is an army that was not trained. They are unlocked only once the
@@ -603,7 +639,7 @@ class ProBrain:
 
     def _army_targets(self, world: World) -> dict[UnitType, float]:
         """Shares of the army to aim for, shifted towards counters of what the enemy is remembered fielding."""
-        plan = dict(ARMY_PLANS[world.players[self.player].race])
+        plan = dict(self.profile.army_plan or ARMY_PLANS[world.players[self.player].race])
         if not self.profile.siege:
             plan.pop(UnitType.CATAPULT, None)
         if not self.profile.clerics:
@@ -956,6 +992,16 @@ class ProBrain:
                 spare = [p for p in self._peasants(world)
                          if not p.hidden and p.carrying is None and not isinstance(p.order, (Build, Repair))]
                 if len(spare) > 3:
+                    # Drafted with a harvest order in hand, the peasant keeps it:
+                    # the ring move below is only given to a scout with nothing to
+                    # do, and the gatherer policy refills an idle peasant before
+                    # the next pass, so the peasant never goes and the brain knows
+                    # nothing of the enemy until the enemy arrives. Sending it
+                    # (stop it, keep it off the policy) was measured: 44% and 39%
+                    # against Master for the two postures, against 55% blind. The
+                    # engagement rule is tuned for not knowing, and given real
+                    # sightings it waits while Master attacks; using them takes a
+                    # different rule, not a scout. So the peasant stays home.
                     self.scouts = [spare[-1].id]
         targets = [record.center for record in self._known_enemy_buildings(world)]
         if not targets:

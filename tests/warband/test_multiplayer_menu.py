@@ -37,7 +37,7 @@ def buttons(game):
 @pytest.fixture
 def online_game(server_url, tmp_path, monkeypatch):
     monkeypatch.setenv('SAGA2D_SERVER_URL', server_url)
-    partner = OnlineClient('warband-v1', endpoint=server_url, options={'seed': 3, 'width': 48, 'height': 40})
+    partner = OnlineClient('warband-v2', endpoint=server_url, options={'seed': 3, 'width': 48, 'height': 40})
     game = Game('online menu', backend='mock', resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / 'saves')
     try:
         game.push(TitleScene())
@@ -109,8 +109,8 @@ def test_network_result_has_no_solo_rematch_and_escape_leaves(tmp_path, winner):
     victim = match.world.spawn_unit(1 - winner, UnitType.PEASANT, (11, 10.5))
     victim.hp = 1
     match.world.update_vision()
-    host = MatchHost('warband-v1', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
-    client = MatchClient('warband-v1', host.address, token='test')
+    host = MatchHost('warband-v2', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
+    client = MatchClient('warband-v2', host.address, token='test')
     game = Game('network result', backend='mock', resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / 'saves')
     try:
         converge(host, client, lambda: client.ready)

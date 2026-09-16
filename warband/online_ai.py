@@ -111,7 +111,7 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
             raise ValueError(f"{name} must be positive and finite.")
     started = waiting_since = time.monotonic()
     deadline = math.inf if duration is None else started + duration
-    client = OnlineClient("warband-v1", endpoint=endpoint, room=room, options=options)
+    client = OnlineClient("warband-v2", endpoint=endpoint, room=room, options=options)
     brain = rng = None
     announced = ever_ready = last_ready = False
     revision = -1
@@ -132,7 +132,6 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
             if client.resume_token and not announced:
                 emit({"event": "joined" if room else "created", "room": client.room,
                       "player": client.player, "difficulty": difficulty.value})
-                brain = make_brain(client.player, difficulty)
                 announced = True
             if client.ready != last_ready:
                 emit({"event": "match_ready" if client.ready else "match_paused", "revision": client.revision})
@@ -161,8 +160,10 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
             if not client.ready:
                 if now - waiting_since >= wait_timeout:
                     raise TimeoutError("Timed out waiting for the other player to connect.")
-            elif not pending and client.state["world"]["time"] >= brain.next_think:
-                if rng is None:
+            elif not pending and (brain is None or client.state["world"]["time"] >= brain.next_think):
+                if brain is None:
+                    # The map's seed draws Master's posture, and a joiner learns it with the state.
+                    brain = make_brain(client.player, difficulty, client.state["seed"])
                     rng = random.Random(client.state["seed"] * 2 + client.player)
                 planning = _PlanningWorld(client.state["world"])
                 brain.think(planning, rng)

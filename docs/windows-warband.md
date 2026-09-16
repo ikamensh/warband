@@ -1,6 +1,6 @@
 # Warband for Windows
 
-Download the [0.1.0-preview.4 Windows installer](https://github.com/ikamensh/saga2d/releases/download/warband-v0.1.0-preview.4/Warband-0.1.0-preview.4-windows-x64-setup.exe)
+Download the [0.2.0-preview.2 Windows installer](https://github.com/ikamensh/warband/releases/download/v0.2.0-preview.2/Warband-0.2.0-preview.2-windows-x64-setup.exe)
 from the [Warband page](https://games.tachyon-ai.eu/warband/), which also has
 the installation steps and service status.
 
@@ -10,9 +10,9 @@ dependencies, installs for your account, and requires no administrator prompt.
 The portable ZIP is an alternative: extract the entire `Warband` folder and
 open `Warband.exe`, keeping its `_internal` folder beside it.
 
-The [preview.4 release](https://github.com/ikamensh/saga2d/releases/tag/warband-v0.1.0-preview.4)
-includes an Apple Silicon Mac companion and adds invite links and update
-notices; its acceptance is recorded in [warband-release.md](warband-release.md). See the
+The [0.2.0-preview.2 release](https://github.com/ikamensh/warband/releases/tag/v0.2.0-preview.2)
+includes an Apple Silicon Mac companion; what changed and its acceptance are
+recorded in [warband-release.md](warband-release.md). See the
 [Mac and Windows player guide](warband-play-together.md) for setup, controls,
 first-launch prompts and reconnecting.
 
@@ -74,7 +74,7 @@ to resolve to the dispatched commit. Existing releases are never overwritten.
 The local Windows build commands are:
 
 ```powershell
-uv run --extra package python tools/package.py build --version 0.1.0-preview.4 --installer --require-clean
+uv run --extra package python tools/package.py build --version 0.2.0-preview.2 --installer --require-clean
 uv run --extra package python tools/package.py verify dist/warband --native --public-server wss://games.tachyon-ai.eu/play
 ```
 

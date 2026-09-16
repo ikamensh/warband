@@ -34,6 +34,34 @@ def test_match_is_reproducible():
            (second.placements, second.winner, second.minutes, second.steps)
 
 
+def test_a_match_records_how_each_player_played():
+    """The style telemetry is what backs a claim that two agents of one strength are two players."""
+    played = play(MatchSpec(seed=3, agents=("medium", "pro"), minutes=4.0))
+    assert len(played.styles) == 2
+    for style in played.styles:
+        assert set(style) == set(arena.STYLE_FIELDS)
+        assert style["peak_army"] >= 0 and style["workers"] >= 0
+    medians = arena.styles([played, played])
+    assert set(medians) == {"medium", "pro"}
+    assert medians["pro"]["peak_army"] == played.styles[1]["peak_army"]
+
+
+def test_a_match_result_survives_a_round_trip_through_plain_data():
+    """Saved runs are what a chain of rungs is rated over, so nothing may be lost on the way."""
+    import json
+    played = play(MatchSpec(seed=3, agents=("medium", "pro"), minutes=2.0, races=("orc", "elf")))
+    back = arena.from_record(json.loads(json.dumps(arena.to_record(played))))
+    same = lambda a, b: a == b or (isinstance(a, float) and isinstance(b, float) and math.isnan(a) and math.isnan(b))  # noqa: E731
+    assert (back.spec, back.placements, back.winner, back.minutes, back.steps, back.wall, back.races) == \
+        (played.spec, played.placements, played.winner, played.minutes, played.steps, played.wall, played.races)
+    assert all(same(a[f], b[f]) for a, b in zip(back.styles, played.styles) for f in arena.STYLE_FIELDS), \
+        "a brain that never attacked has a NaN first attack, which is still the same NaN"
+    assert played.races == ("orc", "elf")
+    by_race = arena.score_by_race([played, played])
+    assert set(by_race) == {"medium", "pro"} and set(by_race["medium"]) == {"orc"}
+    assert by_race["medium"]["orc"][1] == 2
+
+
 def test_placements_rank_every_player_from_one():
     """Placements start at 1 and leave no gaps except where players tie."""
     spec = MatchSpec(seed=11, agents=("hard", "medium", "easy"), minutes=3)
@@ -159,6 +187,39 @@ def test_more_games_at_the_same_rate_mean_a_bigger_proven_gap():
     short = {r.name: r for r in rate([result(("a", "b"), (1, 2))] * 10, anchor="b", bootstrap=0)}
     long = {r.name: r for r in rate([result(("a", "b"), (1, 2))] * 200, anchor="b", bootstrap=0)}
     assert long["a"].elo > short["a"].elo
+
+
+def test_a_rating_is_settled_by_peers_not_by_the_agents_it_always_beats():
+    """a and b split twenty games; c loses to b 90% and to a 100%, a hundred games each.
+
+    Counting every game the same, a's perfect record against c pulls it well
+    clear of b, though the games they played against each other say they are
+    level. Weighted by proximity, the games against a far weaker agent count
+    for little, and the head-to-head decides.
+    """
+    results = ([result(("a", "b"), (1, 2))] * 10 + [result(("a", "b"), (2, 1))] * 10
+               + [result(("b", "c"), (1, 2))] * 90 + [result(("b", "c"), (2, 1))] * 10
+               + [result(("a", "c"), (1, 2))] * 100)
+    flat = {r.name: r.elo for r in rate(results, anchor="b", bootstrap=0, proximity=None)}
+    near = {r.name: r.elo for r in rate(results, anchor="b", bootstrap=0)}
+    assert flat["a"] - flat["b"] > 80, "unweighted, the games against c decide"
+    assert abs(near["a"] - near["b"]) < 40, "weighted, the head-to-head does"
+    assert near["c"] < near["b"] - 200, "c is still rated well below both"
+
+
+def test_proximity_weight_falls_off_with_the_gap():
+    assert arena.proximity_weight(0.0, 200.0) == 1.0
+    assert arena.proximity_weight(200.0, 200.0) == pytest.approx(0.5)
+    assert arena.proximity_weight(400.0, 200.0) == pytest.approx(0.2)
+    assert arena.proximity_weight(1000.0, 200.0) < 0.05
+
+
+def test_two_agents_rate_the_same_however_far_apart_they_are():
+    """With only one pair there is nothing to weigh against; the odds are the odds."""
+    results = [result(("a", "b"), (1, 2))] * 95 + [result(("a", "b"), (2, 1))] * 5
+    weighted = {r.name: r.elo for r in rate(results, anchor="b", bootstrap=0)}
+    flat = {r.name: r.elo for r in rate(results, anchor="b", bootstrap=0, proximity=None)}
+    assert weighted["a"] == pytest.approx(flat["a"], abs=1e-6)
 
 
 def test_free_for_all_placements_score_pairwise():

@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "warband"
-version = "0.1.0"
+version = "0.2.0"
 description = "Warband — a small Warcraft 2-style real-time strategy game on Saga2D"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Ilya Kamenshchikov", email = "ilya.kamenshchikov@gmail.com" }]
-dependencies = ["saga2d==0.3.0", "sagaforge"]
+dependencies = ["saga2d==0.3.1", "sagaforge"]
 
 [project.optional-dependencies]
 dev = ["pytest>=9.0.2"]

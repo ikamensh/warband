@@ -12,8 +12,8 @@ from warband.rules import BuildingType
 def test_online_building_plans_need_no_worker_id_and_reject_foreign_player(server_url):
     """A real peer plans for its settlement; spoofing the other faction is rejected."""
     with connect(server_url, proxy=None, max_queue=None) as host, connect(server_url, proxy=None) as guest:
-        room = handshake(host, game="warband-v1", options={"seed": 3, "width": 48, "height": 40})
-        handshake(guest, "join", game="warband-v1", room=room["room"])
+        room = handshake(host, game="warband-v2", options={"seed": 3, "width": 48, "height": 40})
+        handshake(guest, "join", game="warband-v2", room=room["room"])
         state = receive(host, predicate=lambda message: message["ready"])
         world = World.from_dict(state["state"]["world"])
         pos = next((x, y) for y in range(world.height) for x in range(world.width)
@@ -29,8 +29,8 @@ def test_online_building_plans_need_no_worker_id_and_reject_foreign_player(serve
 def test_online_global_production_assembly_and_cancellation_are_owned_by_the_player(server_url):
     """A client queues future production without a producer and controls only its own plans."""
     with connect(server_url, proxy=None, max_queue=None) as host, connect(server_url, proxy=None, max_queue=None) as guest:
-        room = handshake(host, game="warband-v1", options={"seed": 3, "width": 48, "height": 40})
-        handshake(guest, "join", game="warband-v1", room=room["room"])
+        room = handshake(host, game="warband-v2", options={"seed": 3, "width": 48, "height": 40})
+        handshake(guest, "join", game="warband-v2", room=room["room"])
         receive(host, predicate=lambda message: message["ready"])
         command(host, {"action": "order_unit", "args": [0, "footman"]})
         command(host, {"action": "order_upgrade", "args": [0, "blades_1"]})

@@ -23,6 +23,10 @@ the games are fed in, and a agent that never loses runs away to infinity.
 once (order-independent), smoothed with half a virtual win and loss per pair
 that actually met, and reports a bootstrap interval. The scale is Elo's, and
 one agent is anchored so the numbers mean something across runs.
+
+*Ratings settled by peers.* Each pair's games are weighted by how close the
+two turn out to be (:data:`PROXIMITY`), so a strong agent is placed by the
+agents around it and only a little by the ones it beats every time.
 """
 
 from __future__ import annotations
@@ -58,7 +62,7 @@ class Agent:
         raise NotImplementedError
 
 
-AgentFactory = Callable[[int], Agent]
+AgentFactory = Callable[[int, int], Agent]  # (player, seed) → agent
 #: Name → how to build that agent for a player slot. Names travel between
 #: processes, so the arena can hand a match to a worker as plain data.
 AGENTS: dict[str, AgentFactory] = {}
@@ -71,21 +75,22 @@ def register(name: str, factory: AgentFactory) -> None:
     AGENTS[name] = factory
 
 
-def make_agent(name: str, player: int) -> Agent:
+def make_agent(name: str, player: int, seed: int = 0) -> Agent:
+    """*seed* is the match's: a difficulty with more than one posture draws one from it."""
     if name not in AGENTS:
         raise KeyError(f"unknown agent {name!r}; known: {', '.join(sorted(AGENTS))}")
-    return AGENTS[name](player)
+    return AGENTS[name](player, seed)
 
 
 # The shipped settings, under their own names. Hard and Master are ProBrain
 # profiles, so these overlap with the pro-* names below; both spellings play.
 for _difficulty in Difficulty:
-    register(_difficulty.value, lambda player, d=_difficulty: make_brain(player, d))
+    register(_difficulty.value, lambda player, seed, d=_difficulty: make_brain(player, d, seed))
 
 from warband.pro_ai import PRO_PROFILES, ProBrain  # noqa: E402 - after register() exists
 
 for _name, _profile in PRO_PROFILES.items():
-    register(_name, lambda player, p=_profile: ProBrain(player, p))
+    register(_name, lambda player, seed, p=_profile: ProBrain(player, p))
 
 
 # -- Balance variants --------------------------------------------------------------
@@ -265,6 +270,8 @@ class MatchResult:
     minutes: float
     steps: int
     wall: float
+    styles: tuple[Mapping[str, float], ...] = ()  # how each player played; see :func:`style_of`
+    races: tuple[str, ...] = ()                   # the race each player was drawn, by value
 
     @property
     def decided(self) -> bool:
@@ -331,16 +338,42 @@ def playable(spec: MatchSpec) -> bool:
     return True
 
 
+#: What :func:`style_of` reports per player. Medians of these over a ladder
+#: say whether two agents of one strength are really different players.
+STYLE_FIELDS = ("first_attack", "attacks", "peak_army", "workers", "towers", "halls", "barracks",
+                "soldiers", "kills", "razed")
+
+
+def style_of(world: World, agent: Agent, player: int, peak_army: int) -> dict[str, float]:
+    """How *player* played, from the world at the end and the brain's own log."""
+    log = getattr(agent, "log", [])
+    attacks = [t for t, what in log if what.startswith("attack")]
+    stats = world.players[player].stats
+    return {
+        "first_attack": attacks[0] if attacks else math.nan,
+        "attacks": len(attacks),
+        "peak_army": peak_army,
+        "workers": sum(1 for u in world.player_units(player) if u.is_worker),
+        "towers": len(world.player_buildings(player, BuildingType.TOWER, done=True)),
+        "halls": len(world.player_buildings(player, BuildingType.TOWN_HALL, done=True)),
+        "barracks": len(world.player_buildings(player, BuildingType.BARRACKS, done=True)),
+        "soldiers": stats["units_killed"] + stats["units_lost"],  # how much fighting the game had
+        "kills": stats["units_killed"],
+        "razed": stats["buildings_razed"],
+    }
+
+
 def play(spec: MatchSpec) -> MatchResult:
     """Run one match to a winner or the time cap."""
     ensure_variant(spec.variant)
     races = tuple(Race(r) for r in spec.races) if spec.races is not None else None
     world = mapgen.generate(seed=spec.seed, width=spec.width, height=spec.height, players=spec.players,
                             human=None, theme=MapTheme(spec.theme), races=races)
-    agents = [make_agent(name, player) for player, name in enumerate(spec.agents)]
+    agents = [make_agent(name, player, spec.seed) for player, name in enumerate(spec.agents)]
     # A stream per player: whose turn it is to draw must not depend on who else is playing.
     rngs = [random.Random(spec.seed * 1000003 + player) for player in range(spec.players)]
     eliminated: dict[int, float] = {}
+    peak_army = [0] * spec.players
     started = time.perf_counter()
     steps = 0
     for _ in range(int(spec.minutes * 60 / SIM_DT)):
@@ -354,8 +387,26 @@ def play(spec: MatchSpec) -> MatchResult:
         for player in world.players:
             if not player.alive and player.id not in eliminated:
                 eliminated[player.id] = world.time
+        if steps % 20 == 0:
+            for player in range(spec.players):
+                peak_army[player] = max(peak_army[player],
+                                        sum(1 for u in world.player_units(player) if not u.is_worker))
+    styles = tuple(style_of(world, agent, player, peak_army[player]) for player, agent in enumerate(agents))
     return MatchResult(spec=spec, placements=_placements(world, eliminated, spec.players), winner=world.winner,
-                       minutes=world.time / 60, steps=steps, wall=time.perf_counter() - started)
+                       minutes=world.time / 60, steps=steps, wall=time.perf_counter() - started, styles=styles,
+                       races=tuple(p.race.value for p in world.players))
+
+
+def styles(results: Iterable[MatchResult]) -> dict[str, dict[str, float]]:
+    """Per agent, the median of each :data:`STYLE_FIELDS` entry over every game it played."""
+    seen: dict[str, dict[str, list[float]]] = {}
+    for result in results:
+        for name, style in zip(result.spec.agents, result.styles):
+            rows = seen.setdefault(name, {f: [] for f in STYLE_FIELDS})
+            for f in STYLE_FIELDS:
+                if not math.isnan(style[f]):
+                    rows[f].append(style[f])
+    return {name: {f: (statistics.median(v) if v else math.nan) for f, v in rows.items()} for name, rows in seen.items()}
 
 
 def register_profiles(profiles: Sequence[tuple[str, object]]) -> None:
@@ -368,7 +419,7 @@ def register_profiles(profiles: Sequence[tuple[str, object]]) -> None:
 
     for name, profile in profiles:
         if name not in AGENTS:
-            register(name, lambda player, p=profile: ProBrain(player, p))
+            register(name, lambda player, seed, p=profile: ProBrain(player, p))
 
 
 #: The order :func:`play_spec_tuple` expects, and the only thing that crosses
@@ -414,21 +465,24 @@ def pairwise(results: Iterable[MatchResult]) -> dict[tuple[str, str], float]:
     return table
 
 
-def _fit(table: Mapping[tuple[str, str], float], names: Sequence[str], smoothing: float) -> dict[str, float]:
+def _fit(table: Mapping[tuple[str, str], float], names: Sequence[str], smoothing: float,
+         weights: Mapping[tuple[str, str], float] | None = None) -> dict[str, float]:
     """Bradley-Terry strengths by the standard MM iteration, in log space at the end.
 
     *smoothing* adds that many virtual wins to each side of every pair that
-    actually played, which is what keeps a perfect record finite.
+    actually played, which is what keeps a perfect record finite. *weights*
+    scale how much each pair's games (virtual ones included, so a pair's own
+    odds are untouched) count towards the fit.
     """
     strength = {name: 1.0 for name in names}
     played: dict[tuple[str, str], float] = {}
+    wins = {name: 0.0 for name in names}
     for (a, b), _ in table.items():
         if a < b:
-            played[(a, b)] = table.get((a, b), 0.0) + table.get((b, a), 0.0) + 2 * smoothing
-    wins = {name: 0.0 for name in names}
-    for (a, b), games in played.items():
-        wins[a] += table.get((a, b), 0.0) + smoothing
-        wins[b] += table.get((b, a), 0.0) + smoothing
+            weight = weights.get((a, b), 1.0) if weights is not None else 1.0
+            played[(a, b)] = weight * (table.get((a, b), 0.0) + table.get((b, a), 0.0) + 2 * smoothing)
+            wins[a] += weight * (table.get((a, b), 0.0) + smoothing)
+            wins[b] += weight * (table.get((b, a), 0.0) + smoothing)
     for _ in range(500):
         new = {}
         for name in names:
@@ -448,13 +502,51 @@ def _fit(table: Mapping[tuple[str, str], float], names: Sequence[str], smoothing
     return {name: math.log(max(value, 1e-12)) for name, value in strength.items()}
 
 
+def proximity_weight(gap: float, scale: float) -> float:
+    """How much a pairing *gap* Elo apart counts: all of it when level, a fifth at twice *scale*."""
+    return 1.0 / (1.0 + (gap / scale) ** 2)
+
+
+def _fit_by_proximity(table: Mapping[tuple[str, str], float], names: Sequence[str], smoothing: float,
+                      proximity: float | None) -> dict[str, float]:
+    """The fit, re-weighted until each pair counts by how close the two turned out to be.
+
+    A rating is settled mostly by the opponents near it. A game against
+    someone a thousand points away is nearly always won and says almost
+    nothing about *where* in the top half the winner sits; letting it count
+    as much as a game against a peer is how an agent that is 55% against the
+    best and 99% against the worst gets rated on the 99%.
+    """
+    log_strength = _fit(table, names, smoothing)
+    if proximity is None:
+        return log_strength
+    for _ in range(20):
+        weights = {(a, b): proximity_weight(abs(log_strength[a] - log_strength[b]) * ELO_SCALE, proximity)
+                   for (a, b) in table if a < b}
+        refit = _fit(table, names, smoothing, weights)
+        moved = max(abs(refit[n] - log_strength[n]) for n in names) * ELO_SCALE
+        log_strength = refit
+        if moved < 0.1:
+            break
+    return log_strength
+
+
+#: How close two agents have to be, in Elo, for their games to count fully
+#: towards each other's rating; see :func:`proximity_weight`.
+PROXIMITY = 200.0
+
+
 def rate(results: Sequence[MatchResult], *, anchor: str | None = None, anchor_elo: float = 1000.0,
-         smoothing: float = 0.5, bootstrap: int = 200, seed: int = 0) -> list[Rating]:
+         smoothing: float = 0.5, bootstrap: int = 200, seed: int = 0,
+         proximity: float | None = PROXIMITY) -> list[Rating]:
     """Elo-scale ratings for every agent that played, strongest first.
 
     *anchor* is pinned at *anchor_elo* so runs are comparable; without one the
-    mean rating is pinned there instead. The interval is a bootstrap over
-    matches, so it widens honestly when an agent has played few games.
+    mean rating is pinned there instead. Each pair's games count by how close
+    the two are (*proximity*, in Elo; ``None`` counts every game the same), so
+    a rating is settled by peers rather than by whoever is furthest away. The
+    interval is a bootstrap over matches, so it widens honestly when an agent
+    has played few games.
     """
     names = sorted({name for r in results for name in r.spec.agents})
     if not names:
@@ -462,7 +554,7 @@ def rate(results: Sequence[MatchResult], *, anchor: str | None = None, anchor_el
     table = pairwise(results)
 
     def elos(rows: Sequence[MatchResult]) -> dict[str, float]:
-        log_strength = _fit(pairwise(rows), names, smoothing)
+        log_strength = _fit_by_proximity(pairwise(rows), names, smoothing, proximity)
         points = {name: value * ELO_SCALE for name, value in log_strength.items()}
         offset = anchor_elo - (points[anchor] if anchor in points else statistics.fmean(points.values()))
         return {name: value + offset for name, value in points.items()}
@@ -489,6 +581,44 @@ def rate(results: Sequence[MatchResult], *, anchor: str | None = None, anchor_el
         out.append(Rating(name=name, elo=point[name], low=low, high=high, games=games,
                           pairings=pairings, wins=wins))
     return sorted(out, key=lambda r: -r.elo)
+
+
+def to_record(result: MatchResult) -> dict:
+    """A match result as plain data, so runs can be saved and pooled."""
+    return {"spec": {f: getattr(result.spec, f) for f in SPEC_FIELDS}, "placements": list(result.placements),
+            "winner": result.winner, "minutes": result.minutes, "steps": result.steps, "wall": result.wall,
+            "styles": [dict(style) for style in result.styles], "races": list(result.races)}
+
+
+def from_record(record: Mapping) -> MatchResult:
+    spec = dict(record["spec"])
+    for key in ("agents", "races"):
+        if spec.get(key) is not None:
+            spec[key] = tuple(spec[key])
+    return MatchResult(spec=MatchSpec(**spec), placements=tuple(record["placements"]), winner=record["winner"],
+                       minutes=record["minutes"], steps=record["steps"], wall=record["wall"],
+                       styles=tuple(record.get("styles", ())), races=tuple(record.get("races", ())))
+
+
+def score_by_race(results: Iterable[MatchResult]) -> dict[str, dict[str, tuple[float, int]]]:
+    """Per agent, per race it was drawn: ``(share of the head-to-head results taken, results)``."""
+    won: dict[str, dict[str, float]] = {}
+    played: dict[str, dict[str, int]] = {}
+    for result in results:
+        if not result.races:
+            continue
+        agents = result.spec.agents
+        for i, name in enumerate(agents):
+            for j, other in enumerate(agents):
+                if j == i or other == name:
+                    continue
+                race = result.races[i]
+                won.setdefault(name, {}).setdefault(race, 0.0)
+                won[name][race] += result.score(i, j)
+                played.setdefault(name, {}).setdefault(race, 0)
+                played[name][race] += 1
+    return {name: {race: (won[name][race] / played[name][race], played[name][race]) for race in played[name]}
+            for name in played}
 
 
 def win_rate(results: Iterable[MatchResult], a: str, b: str) -> tuple[float, int]:
