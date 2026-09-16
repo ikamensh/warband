@@ -123,7 +123,7 @@ class GameScene(Scene):
         "minus": "zoom_out",
         "tab": "next_idle_peasant",
         "period": "next_idle_soldier",
-        "ctrl+a": "select_army",
+        ("ctrl+a", "meta+a"): "select_army",
         "f6": "recall_bookmark_1", "f7": "recall_bookmark_2", "f8": "recall_bookmark_3",
         "ctrl+f6": "set_bookmark_1", "ctrl+f7": "set_bookmark_2", "ctrl+f8": "set_bookmark_3",
     }
@@ -431,6 +431,7 @@ class GameScene(Scene):
         self.select(same if not add else [i for i in same if i not in self.selection], add=add)
 
     def select_army(self) -> None:
+        """Ctrl+A (Cmd+A on a Mac): every soldier of the player's, wherever it is."""
         soldiers = [u.id for u in self.world.player_units(self.human) if not u.is_worker and not u.hidden]
         if soldiers:
             self.select(soldiers)
@@ -1907,7 +1908,7 @@ HELP_KEYS = (
     ("Shift", "Train: five at once;  Build: keep placing;  otherwise add to the selection or queue an order"),
     ("Production panel", "with nothing selected: hover an item for its state, click to go to its producer, right-click to cancel"),
     ("Click / drag / right-click", "select;  box-select;  order whatever fits the target  (Mac trackpad: two-finger click)"),
-    ("Double-click / Ctrl-click", "every unit of that type on screen;  Ctrl+A: the whole army  (Mac: Cmd-click)"),
+    ("Double-click / Ctrl-click", "every unit of that type on screen;  Ctrl+A: the whole army  (Mac: Cmd-click, Cmd+A)"),
     ("A / P / S / H", "attack-move: fight everything on the way / patrol between two spots / stop / hold position"),
     ("B / R (peasants)", "build now, with the Build plan menu's letters / repair one of your damaged buildings"),
     ("Building selected", "its letters train or research there;  right-click the map: its rally point"),

@@ -151,3 +151,44 @@ and, on visible ground, a ring where it will come down (the owner's colour for t
 player's own stones, red for the enemy's, so a player can step out from under one). The
 blow's sound and flinch come with the `hit` event, which is now raised when the shot
 lands; a stone that found nothing raises `impact` for its dust and thud.
+
+## 5. Standing at ease (2026-09-16)
+
+A group sent somewhere used to arrive as one stack, every unit touching its neighbours
+(`UNIT_RADIUS` apart, twice 0.35 tiles), and stand like that until the next order: sixteen
+footmen were one overlapping mass of blue. Real troops loosen up when nothing is happening.
+Two things now happen in the model, both only for units *at ease*: neither fighting (an
+`Attack`, `Heal` or `Hold` order, a wind-up, or the `attack` state), nor working (a peasant
+harvesting, delivering, building or repairing). Everything else — standing, or walking a
+`Move`, `AttackMove` or `Patrol` — counts.
+
+**Elbow room (`_separate`).** Besides pushing overlapping bodies apart, the crowd step gives
+a unit at ease a soft push away from any neighbour closer than touching plus `SPACING`
+(0.2 tiles), at `SPACING_WEIGHT` of the missing clearance per step, so it is gentler than the
+overlap push and a marching column loosens rather than scatters. The push moves the unit
+that wants room, never the one it is making room for: a peasant idling against a footman
+hitting a wall steps back, the footman keeps its reach. Fights, mining queues and building
+sites are untouched; `unit_at`, weapon reach and the melee positioning all still use
+`UNIT_RADIUS`.
+
+**Stepping away (`_ease`, `_elbow_room`).** A standing unit with a neighbour's centre closer
+than `EASE_SPACE` (one tile) is crowded. Every `EASE_EVERY` ticks it rolls `EASE_CHANCE`
+(about once every two seconds) and, when the roll comes up, picks a spot `EASE_STEP` give or
+take `EASE_STEP_VARIANCE` away from the weighted middle of its close neighbours, veered by
+up to `EASE_JITTER` either side so the crowd does not explode radially. The spot must be on
+open ground on a clear line, and must offer `EASE_GAIN` more room than where the unit
+stands, so nobody steps into somebody else and a unit boxed in on all sides waits for the
+outside to loosen first. The step is a real short walk through `_steer`: the unit turns,
+takes a stride or two (the view's distance-driven walk cycle plays), and stops. It is not an
+order: the unit stays idle to the AI, to Tab and `.` and to the player; the target of the
+step is `Unit.ease`, cleared by any order and carried in saves. Held units never step (Hold
+is handled before idling), and an enemy in sight still takes precedence every fifth tick.
+
+The rolls come from `World.rng`, so lockstep play and replays stay bit-exact; the recorded
+`tools/sim_fingerprint.txt` moved with this change. Sixteen footmen sent fifteen tiles now
+finish the order in 17 s where the tight crowd took 19 (the looser arrival lets more of
+them stop inside `SETTLE_WITHIN`), and stand with their nearest neighbours 0.9–1.0 tiles
+apart in a blob of radius 2.9 tiles instead of 1.8. `tests/warband/test_spacing.py` holds
+the four properties above; the frames this was judged on are under
+`docs/evidence/spacing/`. This is the cheap half of part 3's item 7, idle life; the
+breathing bob and look-around are still open.

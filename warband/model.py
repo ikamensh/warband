@@ -50,6 +50,17 @@ SETTLE_WITHIN = 1.0  # a plain walk counts as arrived when a crowd keeps the uni
 MINE_CLEARANCE = 2  # tiles kept free around a gold mine so peasants can get in and out
 SIDESTEP = 0.6  # lateral share of the push when walking units collide
 MAX_PUSH = 0.25  # tiles a crowd can shove a unit in one step; eight overlapping units once summed to a jump over a tree wall
+# Standing at ease (docs/unit-motion.md part 5): units that are neither fighting nor working keep a little
+# elbow room, and a unit hemmed in by its neighbours takes a short step away from them now and then.
+SPACING = 0.2  # tiles of clearance beyond touching that units at ease keep between each other; a soft push
+SPACING_WEIGHT = 0.15  # share of the missing clearance closed per step, gentler than the overlap push
+EASE_SPACE = 1.0  # a standing unit with a neighbour's centre closer than this feels crowded
+EASE_EVERY = 5  # ticks between a crowded unit's chances to step away
+EASE_CHANCE = 0.12  # that a crowded unit steps away at one of those chances: about once every two seconds
+EASE_STEP = 0.4  # tiles of the step, give or take EASE_STEP_VARIANCE
+EASE_STEP_VARIANCE = 0.3
+EASE_JITTER = 0.7  # radians either side of straight away from the crowd the step may veer
+EASE_GAIN = 0.1  # tiles more room the spot must offer than where the unit stands, so nobody steps into a neighbour
 
 
 class RuleError(Exception):
@@ -126,6 +137,7 @@ class Patrol:
 
 
 Order = Move | AttackMove | Attack | Harvest | Deposit | Build | Hold | Heal | Patrol | Repair
+AT_EASE_ORDERS = (Move, AttackMove, Patrol)  # walked at ease: no target to close on, no work to press for
 
 _ORDER_TYPES: dict[str, type] = {cls.__name__: cls for cls in (Move, AttackMove, Attack, Harvest, Deposit, Build, Hold, Heal, Patrol, Repair)}
 
@@ -176,6 +188,7 @@ class Unit:
     inside: int | None = None  # the mine this peasant is in
     constructing: int | None = None
     home: Point | None = None  # where an auto-acquired chase started
+    ease: Point | None = None  # where a unit standing at ease is stepping to for elbow room
     state: str = "idle"  # idle | move | attack | chop | build
     progress: float = 0.0
     last_distance: float = math.inf
@@ -882,6 +895,7 @@ class World:
             unit.windup = 0.0  # a blow being drawn back is broken off
         unit.orders.append(order)
         unit.home = None
+        unit.ease = None
         unit.state = "idle"
 
     def move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
@@ -1246,7 +1260,7 @@ class World:
             return
         order = u.order
         if order is None:
-            self._idle(u)
+            self._idle(u, dt)
             return
         if isinstance(order, Move):
             self._do_move(u, order, dt)
@@ -1280,26 +1294,75 @@ class World:
         u.last_distance = math.inf
         u.progress = 0.0
 
-    def _idle(self, u: Unit) -> None:
+    def _idle(self, u: Unit, dt: float) -> None:
         u.state = "idle"
         if u.is_worker:
             if u.auto_work and self.tick % round(1 / SIM_DT) == 0:
                 from warband.worker_ai import assign_idle_workers
 
                 assign_idle_workers(self, u.player)
+        elif self.tick % 5 == 0:
+            if u.info.heal:
+                patient = self._healing_patient(u, u.info.sight)
+                if patient is not None:
+                    u.home = u.pos
+                    u.orders.appendleft(Heal(patient.id, auto=True))
+            else:
+                target = self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range)
+                if target is not None:
+                    u.home = u.pos
+                    u.orders.appendleft(Attack(target.id, auto=True))
+        if not u.orders:
+            self._ease(u, dt)
+
+    def _ease(self, u: Unit, dt: float) -> None:
+        """Standing at ease: a unit hemmed in by its neighbours takes a short step away from them now
+        and then, so a crowd that arrived as a clump loosens to arm's length.  No order is involved:
+        the unit stays idle to the AI, to Tab and to the player."""
+        if u.ease is None:
+            if self.tick % EASE_EVERY or self.rng.random() >= EASE_CHANCE:
+                return
+            u.ease = self._elbow_room(u)
+            if u.ease is None:
+                return
+            u.last_distance = math.inf
+        left = dist(u.pos, u.ease)
+        if left > ARRIVE and left < u.last_distance - 1e-3 and self._steer(u, u.ease, dt):
+            u.last_distance = left  # still walking: the step gains ground and the line is clear
             return
-        if self.tick % 5:
-            return
-        if u.info.heal:
-            patient = self._healing_patient(u, u.info.sight)
-            if patient is not None:
-                u.home = u.pos
-                u.orders.appendleft(Heal(patient.id, auto=True))
-            return
-        target = self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range)
-        if target is not None:
-            u.home = u.pos
-            u.orders.appendleft(Attack(target.id, auto=True))
+        u.ease = None
+        u.last_distance = math.inf
+        u.state = "idle"
+
+    def _elbow_room(self, u: Unit) -> Point | None:
+        """A spot a short step away from the neighbours crowding *u*, or None when it has room already,
+        is boxed in, or the step would end nearer to someone else than where it stands."""
+        ax = ay = 0.0
+        for v in self.units_near(u.pos, EASE_SPACE):
+            if v is u or v.hidden:
+                continue
+            dx, dy = u.x - v.x, u.y - v.y
+            d = math.hypot(dx, dy)
+            if d < 1e-6:
+                angle = (u.id * 2.399) % (2 * math.pi)
+                dx, dy, d = math.cos(angle), math.sin(angle), 1.0
+            weight = (EASE_SPACE - d) / d  # the closer, the more it counts
+            ax += dx * weight
+            ay += dy * weight
+        if not (ax or ay):
+            return None
+        angle = math.atan2(ay, ax) + self.rng.uniform(-EASE_JITTER, EASE_JITTER)
+        step = EASE_STEP + self.rng.uniform(-EASE_STEP_VARIANCE, EASE_STEP_VARIANCE)
+        spot = self._clamp((u.x + math.cos(angle) * step, u.y + math.sin(angle) * step))
+        if not self.passable(int(spot[0]), int(spot[1])) or not self._line_clear(u.pos, spot):
+            return None
+        return spot if self._room(u, spot) >= self._room(u, u.pos) + EASE_GAIN else None
+
+    def _room(self, u: Unit, point: Point) -> float:
+        """How far *point* is from the nearest unit other than *u*, as far as EASE_SPACE plus the
+        gain a step must make matters: anything beyond is all the room a standing unit asks for."""
+        return min((dist(point, v.pos) for v in self.units_near(point, EASE_SPACE + EASE_GAIN) if v is not u and not v.hidden),
+                   default=math.inf)
 
     def _danger_to(self, patient: Unit) -> float:
         """Hits per second the visible enemies in reach of *patient* could land on it.  Memoised for the
@@ -2097,7 +2160,7 @@ class World:
         # step, and the bucket rows it walks are only ever three cells wide.
         moves: dict[int, tuple[float, float]] = {}
         width, height, buckets = self.width, self.height, self._buckets
-        radius = 2 * UNIT_RADIUS
+        radius = 2 * UNIT_RADIUS + SPACING
         reach, r2 = int(radius) + 1, radius * radius
         hypot = math.hypot
         for u in self.units.values():
@@ -2106,6 +2169,7 @@ class World:
             px = py = 0.0
             ux, uy = u.x, u.y
             moving = u.state == "move"
+            at_ease = self._at_ease(u)
             hx, hy = (math.cos(u.facing), math.sin(u.facing)) if moving else (0.0, 0.0)
             x0, x1 = max(0, int(ux) - reach), min(width - 1, int(ux) + reach)
             y0, y1 = max(0, int(uy) - reach), min(height - 1, int(uy) + reach)
@@ -2119,6 +2183,11 @@ class World:
                         d = hypot(dx, dy)
                         overlap = u.radius + v.radius - d
                         if overlap <= 0:
+                            if at_ease and overlap > -SPACING:
+                                # Elbow room: a unit at ease eases off a neighbour it is not quite touching.
+                                weight = (0.5 if v.state == "move" or not moving else 0.2) * SPACING_WEIGHT
+                                px += dx / d * (overlap + SPACING) * weight
+                                py += dy / d * (overlap + SPACING) * weight
                             continue
                         if d < 1e-6:
                             angle = (u.id * 2.399) % (2 * math.pi)
@@ -2136,6 +2205,12 @@ class World:
         for uid, (px, py) in moves.items():
             u = self.units[uid]
             self._nudge(u, px, py)
+
+    @staticmethod
+    def _at_ease(u: Unit) -> bool:
+        """Neither fighting, working nor holding: standing, or walking somewhere without a target."""
+        order = u.order
+        return u.windup <= 0.0 and u.state != "attack" and (order is None or type(order) in AT_EASE_ORDERS)
 
     def _nudge(self, u: Unit, px: float, py: float) -> None:
         """Shove *u* by at most MAX_PUSH, never through a blocked tile or across a blocked corner."""
@@ -2583,7 +2658,7 @@ def _unit_to_dict(u: Unit) -> dict[str, Any]:
                           for index, order in enumerate(u.orders) if isinstance(order, (Harvest, Deposit))],
         "carrying": u.carrying.value if u.carrying else None, "carry": u.carry, "timer": u.timer,
         "inside": u.inside, "constructing": u.constructing, "home": list(u.home) if u.home else None, "state": u.state,
-        "charge": u.charge, "auto_work": u.auto_work,
+        "ease": list(u.ease) if u.ease else None, "charge": u.charge, "auto_work": u.auto_work,
     }
 
 
@@ -2591,7 +2666,7 @@ def _unit_from_dict(d: dict[str, Any], race: Race) -> Unit:
     u = Unit(d["id"], UnitType(d["type"]), d["player"], d["x"], d["y"], d["hp"], race=race, facing=d["facing"], cooldown=d["cooldown"],
              windup=d.get("windup", 0.0), vx=d.get("vx", 0.0), vy=d.get("vy", 0.0), carrying=Resource(d["carrying"]) if d["carrying"] else None, carry=d["carry"], timer=d["timer"],
              inside=d["inside"], constructing=d["constructing"], home=tuple(d["home"]) if d["home"] else None, state=d["state"],
-             charge=d["charge"], auto_work=d.get("auto_work", True))
+             ease=tuple(d["ease"]) if d.get("ease") else None, charge=d["charge"], auto_work=d.get("auto_work", True))
     u.orders = deque(_order_from_dict(o) for o in d["orders"])
     for state in d.get("worker_orders", []):
         order = u.orders[state["index"]]

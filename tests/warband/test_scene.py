@@ -572,3 +572,21 @@ def test_resign_does_nothing_once_the_match_is_over(play) -> None:
     tick(game, 0.2)
     assert isinstance(game.scene, PauseScene)
     assert scene.world.players[scene.human].alive
+
+
+def test_ctrl_a_and_cmd_a_select_the_whole_army(play) -> None:
+    """The army hotkey takes every soldier wherever it stands, on a Mac with Cmd as well as Ctrl;
+    with no soldiers it says so instead of clearing the selection."""
+    game, scene = play
+    world = scene.world
+    hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    press(game, "a", meta=True)
+    assert scene.status == "No soldiers yet"
+    far = (world.width - hall.x - 2.5, world.height - hall.y - 2.5)  # the other end of the map
+    soldiers = [world.spawn_unit(scene.human, UnitType.FOOTMAN, (hall.x - 1.5, hall.y + i)) for i in range(2)]
+    soldiers.append(world.spawn_unit(scene.human, UnitType.ARCHER, far))
+    press(game, "a", meta=True)
+    assert sorted(scene.selection) == sorted(u.id for u in soldiers)
+    scene.select([])
+    press(game, "a", ctrl=True)
+    assert sorted(scene.selection) == sorted(u.id for u in soldiers)
