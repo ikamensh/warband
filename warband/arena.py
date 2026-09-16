@@ -39,6 +39,7 @@ from warband.ai import make_brain
 from warband.model import World
 from warband.races import RACES
 from warband.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Difficulty, MapTheme, Race, SIM_DT, UnitType, Upgrade
+from warband.telemetry import PlayerTally, Telemetry
 
 ELO_SCALE = 400.0 / math.log(10.0)  # Elo points per unit of Bradley-Terry log-strength
 DEFAULT_MINUTES = 20.0
@@ -265,6 +266,7 @@ class MatchResult:
     minutes: float
     steps: int
     wall: float
+    tallies: tuple[PlayerTally, ...] = ()  # what each player bought, lost and killed; see :mod:`warband.telemetry`
 
     @property
     def decided(self) -> bool:
@@ -341,6 +343,7 @@ def play(spec: MatchSpec) -> MatchResult:
     # A stream per player: whose turn it is to draw must not depend on who else is playing.
     rngs = [random.Random(spec.seed * 1000003 + player) for player in range(spec.players)]
     eliminated: dict[int, float] = {}
+    telemetry = Telemetry(world)
     started = time.perf_counter()
     steps = 0
     for _ in range(int(spec.minutes * 60 / SIM_DT)):
@@ -349,13 +352,15 @@ def play(spec: MatchSpec) -> MatchResult:
         for agent, rng in zip(agents, rngs):
             agent.think(world, rng)
         world.step()
-        world.take_events()
+        telemetry.observe(world, world.take_events())
         steps += 1
         for player in world.players:
             if not player.alive and player.id not in eliminated:
                 eliminated[player.id] = world.time
+    telemetry.finish(world)
     return MatchResult(spec=spec, placements=_placements(world, eliminated, spec.players), winner=world.winner,
-                       minutes=world.time / 60, steps=steps, wall=time.perf_counter() - started)
+                       minutes=world.time / 60, steps=steps, wall=time.perf_counter() - started,
+                       tallies=telemetry.tallies)
 
 
 def register_profiles(profiles: Sequence[tuple[str, object]]) -> None:

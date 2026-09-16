@@ -1,0 +1,46 @@
+"""The postures the balance league is played between.
+
+An archetype is a ProProfile that plays one way on purpose — knights, siege,
+a rush — so that the payoff matrix between them says which ingredients of
+the game are worth their price.  These tests pin that each knob really
+changes what the brain buys, which is the whole point of having it.
+"""
+
+from __future__ import annotations
+
+from dataclasses import replace
+
+from warband import arena
+from warband.arena import MatchSpec, play
+from warband.pro_ai import PRO
+from warband.rules import UnitType
+
+
+def _play(name: str, profile, seed: int = 7, minutes: float = 6):
+    arena.register_profiles([(name, profile)])
+    return play(MatchSpec(seed=seed, agents=(name, "pro"), minutes=minutes)).tallies[0]
+
+
+def test_an_army_plan_decides_what_the_barracks_trains():
+    """A plan of archers only turns out archers and no footmen, whatever the race would have done."""
+    tally = _play("test-archers-only", replace(PRO, name="test-archers-only", army_plan={UnitType.ARCHER: 1.0}))
+    assert tally.trained["archer"] >= 3
+    assert tally.trained["footman"] == 0
+
+
+def test_early_tech_goes_up_before_the_bank_overflows():
+    """A knights posture lays its stables inside six minutes; the plain brain waits for saturation."""
+    from warband.rules import BuildingType
+
+    tally = _play("test-stables-early", replace(PRO, name="test-stables-early", early_tech=(BuildingType.STABLES,)))
+    assert tally.started["stables"] >= 1
+
+
+def test_research_can_be_switched_off_to_price_the_upgrades():
+    """With a smith standing, the brain researches; with research off it never does, smith or not."""
+    from warband.rules import BuildingType
+
+    smith = replace(PRO, name="test-smith", early_tech=(BuildingType.BLACKSMITH,))
+    assert _play("test-smith", smith, minutes=8).researched
+    silent = replace(smith, name="test-smith-silent", research=False)
+    assert not _play("test-smith-silent", silent, minutes=8).researched

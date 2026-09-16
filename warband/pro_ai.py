@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 
 from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived
@@ -95,6 +96,9 @@ class ProProfile:
     counter_strength: float = 1.0     # …this hard
     siege_share: float = 0.0          # if set, the share of the army that is catapults…
     cleric_share: float = 0.0         # …and that is healers, overriding the race's plan
+    army_plan: Mapping[UnitType, float] | None = None  # shares of the army to aim for, instead of the race's own
+    early_tech: tuple[BuildingType, ...] = ()  # put up as soon as their requirements stand, saturated or not
+    research: bool = True             # whether upgrades are bought at all
 
 
 PRO = ProProfile("pro")
@@ -430,6 +434,12 @@ class ProBrain:
             wishes.append((BuildingType.BARRACKS, anchor))
         if count(BuildingType.LUMBER_MILL) < 1:
             wishes.append((BuildingType.LUMBER_MILL, anchor))
+        # A posture built around one branch of the tree — knights, siege, healers —
+        # cannot wait for the bank to overflow before it is allowed that branch.
+        for tech in profile.early_tech:
+            needs = BUILDINGS[tech].requires
+            if count(tech) < 1 and (needs is None or have(needs)):
+                wishes.append((tech, anchor))
         # Everything past here is optional, and optional buildings are what lose games:
         # each one is an army that was not trained. They are unlocked only once the
         # production already standing cannot keep up with the money coming in.
@@ -603,7 +613,7 @@ class ProBrain:
 
     def _army_targets(self, world: World) -> dict[UnitType, float]:
         """Shares of the army to aim for, shifted towards counters of what the enemy is remembered fielding."""
-        plan = dict(ARMY_PLANS[world.players[self.player].race])
+        plan = dict(self.profile.army_plan or ARMY_PLANS[world.players[self.player].race])
         if not self.profile.siege:
             plan.pop(UnitType.CATAPULT, None)
         if not self.profile.clerics:
@@ -656,6 +666,8 @@ class ProBrain:
         return best
 
     def _research(self, world: World) -> None:
+        if not self.profile.research:
+            return
         player = world.players[self.player]
         for upgrade in RESEARCH_ORDER:
             if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):
