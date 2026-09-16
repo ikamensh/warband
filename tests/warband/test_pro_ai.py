@@ -133,6 +133,40 @@ def test_a_profile_plays_each_race_by_its_own_numbers():
     assert brain.profile.min_army == 12
 
 
+def test_a_small_raid_is_met_by_a_detachment_and_the_rest_keep_mustering():
+    from dataclasses import replace
+    from warband.model import AttackMove
+    world, brain = _world_with_army()
+    brain.profile = replace(PRO, raid_detachment=3, ignore_raid_ratio=0.4, scout=False, raid=False, min_army=20)
+    footmen = _spawn(world, 0, UnitType.FOOTMAN, 3, 10)
+    _raiders_at_our_base(world, 1)  # one archer at the hall: a raid, not an attack
+    brain._military(world)
+    sent = [u for u in footmen if isinstance(u.order, AttackMove)]
+    assert len(sent) == 3, "three go, the other seven keep mustering (min_army keeps them from marching out)"
+
+
+def test_a_real_attack_is_still_met_by_everyone():
+    from dataclasses import replace
+    from warband.model import AttackMove
+    world, brain = _world_with_army()
+    brain.profile = replace(PRO, raid_detachment=3, ignore_raid_ratio=0.4, scout=False, raid=False)
+    footmen = _spawn(world, 0, UnitType.FOOTMAN, 3, 4)
+    _raiders_at_our_base(world, 6)
+    brain._military(world)
+    assert all(isinstance(u.order, AttackMove) for u in footmen)
+
+
+def test_the_front_barracks_is_wished_for_towards_the_enemy():
+    from dataclasses import replace
+    world, brain = _world_with_army()
+    brain.profile = replace(PRO, front_barracks=True)
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    world.players[0].gold, world.players[0].lumber = 5000, 5000
+    anchors = {b: pt for b, pt in brain._wish_list(world)}
+    assert anchors[BuildingType.BARRACKS] == brain._front_point(world, hall)
+    assert anchors[BuildingType.BARRACKS] != hall.center
+
+
 def test_barracks_first_wishes_for_nothing_else_until_it_stands():
     from dataclasses import replace
     world, brain = _world_with_army()

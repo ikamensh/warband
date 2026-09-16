@@ -70,6 +70,8 @@ class ProProfile:
     min_barracks: int = 1             # put up this many before anything optional, saturated or not
     barracks_first: bool = False      # nothing but farms goes up before the first barracks
     towers_early: int = 0             # towers at the front point as soon as the barracks stands, before the mill
+    front_barracks: bool = False      # the barracks goes up at the front point, where the army musters and the towers stand
+    raid_detachment: int = 0          # if set, a raid too small to matter is met by this many soldiers, not the whole army
     gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
     max_producers: int = 10
     attack_ratio: float = 0.85        # attack when my strength exceeds theirs by this
@@ -187,6 +189,13 @@ _STYLES = (
             towers_early=1, min_army=8, attack_ratio=1.0),
     replace(PRO, name="pro-rax-panic-slack2-tower1-min8", barracks_first=True, panic_gold=1000, lumber_floor_panic=300,
             supply_slack=2, towers_early=1, min_army=8, attack_ratio=1.0),
+    # The second generation: on top of the first rung's posture.
+    replace(PRO, name="pro-r1-front", barracks_first=True, panic_gold=1000, lumber_floor_panic=300,
+            towers_early=1, min_army=8, attack_ratio=1.0, front_barracks=True),
+    replace(PRO, name="pro-r1-detach3", barracks_first=True, panic_gold=1000, lumber_floor_panic=300,
+            towers_early=1, min_army=8, attack_ratio=1.0, raid_detachment=3),
+    replace(PRO, name="pro-r1-front-detach3", barracks_first=True, panic_gold=1000, lumber_floor_panic=300,
+            towers_early=1, min_army=8, attack_ratio=1.0, front_barracks=True, raid_detachment=3),
     replace(PRO, name="pro-rax-min10-kills", barracks_first=True, min_army=10, attack_ratio=1.0, count_kills=True),
     replace(PRO, name="pro-rax-tower1", barracks_first=True, towers_early=1),
     replace(PRO, name="pro-rax-tower2", barracks_first=True, towers_early=2),
@@ -532,7 +541,10 @@ class ProBrain:
         if cap - used + 4 * farms_coming < headroom:
             wishes.append((BuildingType.FARM, anchor))
         if count(BuildingType.BARRACKS) < 1:
-            wishes.append((BuildingType.BARRACKS, anchor))
+            # Master's first push walks at our production. A barracks at the front
+            # point puts that fight where the army musters, the towers stand and
+            # every new soldier steps out into it.
+            wishes.append((BuildingType.BARRACKS, self._front_point(world, hall) if profile.front_barracks else anchor))
             # The mill sits behind the barracks here and costs a hundred gold
             # less, so whenever the bank is between the two it is the mill that
             # gets bought — and its 450 lumber is the barracks' 450 lumber, a
@@ -847,10 +859,21 @@ class ProBrain:
         # base with nothing in it is what an early raid is looking for.
         guards, army = army[:self.profile.guards], army[self.profile.guards:]
         threats = self._threats(world)
-        if threats and not (self.attacking and strength(world, threats)
-                            < self.profile.ignore_raid_ratio * strength(world, army)):
-            self._defend(world, guards + army, threats)
-            return
+        if threats:
+            small = strength(world, threats) < self.profile.ignore_raid_ratio * strength(world, army)
+            if small and self.attacking:
+                pass  # a push is not called off for two riders at the farms
+            elif small and self.profile.raid_detachment and len(army) > self.profile.raid_detachment:
+                # Two riders at the peasants used to pull the whole army home and
+                # round the base after them; a handful is enough, and the rest
+                # keep mustering where they were.
+                point = threats[0].pos
+                detachment = sorted(army, key=lambda u: dist(u.pos, point))[:self.profile.raid_detachment]
+                self._defend(world, guards + detachment, threats)
+                army = [u for u in army if u not in detachment]
+            else:
+                self._defend(world, guards + army, threats)
+                return
         self._post(world, guards)
         hall = self._hall(world)
         mine = strength(world, army)
