@@ -72,7 +72,20 @@ uv run python tools/arena.py ladder --agents hard,pro --seeds 40   # 80 games, b
 uv run python tools/arena.py ffa --players 4 --seeds 12            # free-for-all placements
 uv run python tools/arena.py variants --shuffles 6 --seeds 6       # under jittered rulebooks
 uv run python tools/arena.py report --seeds 24                     # all three
+uv run python tools/arena.py ladder --agents pro-rush,pro-boom --against pro --seeds 24 --anchor pro --anchor-elo 1450
+uv run python tools/arena.py ladder --agents hard,pro,pro-x,pro-y --neighbours 1 --anchor pro --anchor-elo 1450
 ```
+
+`--against` plays a panel: every agent meets only the agents named, which
+is how candidates are screened against the best brain without paying for
+every pair. `--neighbours N` plays a chain: only agents within N places of
+each other in the list meet, which is where the information is once the
+list is in rating order. `--anchor-elo` pins the anchor at a rating other
+than 1000, so a ladder over the top rungs can be read on the same scale as
+the difficulty table below (`pro` at 1450). Every table ends with the
+medians of how each agent played — first attack, attacks, peak army,
+workers, towers, halls, barracks, kills — which is the evidence behind
+any claim that two agents of one strength are two different players.
 
 Matches are independent and fully determined by their `MatchSpec`, so they
 are handed to a process pool (`--workers`, default: most of the machine).
@@ -112,6 +125,19 @@ Because the fit is over all pairs at once, a large gap is best measured with
 rungs in between: `hard` against `pro` against a stronger `pro` gives a
 well-conditioned chain, where `hard` against the strongest alone would only
 say "it never lost".
+
+**Settled by peers.** Each pair's games are weighted by how close the two
+turn out to be — a pair 200 Elo apart counts half, 400 apart a fifth, a
+thousand apart almost nothing (`arena.proximity_weight`, refitted until
+the weights and the ratings agree). A game against an agent a thousand
+points below is nearly always won and says almost nothing about *where*
+in the top half the winner sits; counting it as much as a game against a
+peer is how an agent that is 55% against the best and 99% against the
+worst got rated on the 99%. With twenty head-to-head games between two
+peers and a hundred each against a far weaker third, the flat fit puts the
+one with the perfect far record 114 points clear; weighted, 22. One pair
+alone is unchanged: with nothing to weigh it against, the odds are the
+odds. `--proximity 0` gives the old flat fit.
 
 ## The difficulty settings
 
