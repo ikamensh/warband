@@ -51,7 +51,7 @@ def test_the_title_offers_every_race_with_a_hotkey_and_the_match_uses_it(game) -
     assert isinstance(scene, GameScene) and scene.player.race is Race.ORC and scene.world.players[1].race is not Race.ORC
     game.tick(1 / 60)
     shown = texts(game)
-    assert "Orcs" in shown and any("The Orcs of Azure against the" in t for t in shown)
+    assert "Orcs" in shown and any(f"The Orcs of {scene.player.name} against the" in t for t in shown)
     peon = next(u for u in scene.world.player_units(scene.human) if u.is_worker)
     click_tile(game, scene, peon.pos)
     assert "Peon" in texts(game)
