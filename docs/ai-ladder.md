@@ -336,6 +336,7 @@ contradicted the reasoning that produced the change:
 | holding the opening lumber for the barracks | **−400 Elo** — it buys the barracks 64s earlier and starves the farms |
 | nothing but farms before the first barracks stands (`barracks_first`) | **+65 Elo** — 60% over 72 games; the barracks lands at two minutes instead of three |
 | …with the later push, or the kill memory, on top | 59% and 57%: the gains overlap rather than add |
+| …with the later push and one tower at the front point as soon as the barracks stands (`towers_early`) | **67%** over 72 games on a third seed set, where barracks-first alone took 64% and every barracks-first variant 54–64% (59% pooled over 432); being confirmed on a fourth |
 | holding a peasant back so the farm ordered at second zero is not dropped | level (50%), and it cancelled barracks-first when combined |
 | an early blacksmith for Sharpened Blades | level (47–54%) |
 | marching out at eight to ten soldiers on level terms instead of five on a guess (`min_army` 8–10, `attack_ratio` 1.0) | **+40 Elo** — 55–57% against Master over 96 games each, 55% pooled over 576; the one posture change that measured |
