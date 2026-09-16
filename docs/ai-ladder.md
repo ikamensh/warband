@@ -63,51 +63,41 @@ say "it never lost".
 
 ## Where the agents stand
 
-**1v1** — 30 seeds, every pairing from both corners, 360 games, `hard` anchored at 1000:
+**1v1** — 80 seeds it had never been measured on, every pairing from both
+corners, 960 games, `hard` anchored at 1000:
 
 | agent | Elo | 90% interval | score |
 |-------|-----|--------------|-------|
-| `pro` | 1445 | 1361 .. 1582 | 95.6% |
-| `hard` | 1000 | — | 47.2% |
-| `normal` | 992 | 932 .. 1051 | 46.1% |
-| `easy` | 719 | 643 .. 798 | 11.1% |
+| `pro` | 1422 | 1365 .. 1474 | 93.9% |
+| `normal` | 1013 | 979 .. 1050 | 46.5% |
+| `hard` | 1000 | — | 44.6% |
+| `easy` | 784 | 739 .. 825 | 15.1% |
 
-`pro` takes 88.3% against `hard`, 98.3% against `normal` and 100% against `easy`.
+`pro` takes 90.0% against `hard`, 94.4% against `normal`, 97.2% against `easy`.
 
 **Free-for-all** — four players, 20 seeds, each agent rotated through every
-corner, 80 games:
-
-| agent | Elo | score |
-|-------|-----|-------|
-| `pro` | 1217 | 81.7% |
-| `hard` | 1000 | 46.7% |
-| `normal` | 983 | 43.7% |
-| `easy` | 889 | 27.9% |
-
-The spread is narrower than in 1v1, which is what a free-for-all does: three
-opponents can wear a leader down between them, and a placement is a softer
-result than a win. `pro` still takes 73.8% of its head-to-heads against
-`hard` there.
+corner, 80 games: `pro` 1316, `hard` 1000, `normal` 908, `easy` 848. `pro`
+takes 87.5% of its head-to-heads against `hard` there.
 
 **Under jittered balance** — five `shuffle-N` rulebooks, every unit and
 building's hit points, damage, cost and build time multiplied by a factor
-drawn from the seed, 120 games:
+drawn from the seed, 140 games: `pro` 1376, taking **90.0%** against `hard` —
+the same margin it takes under the rulebook it was built on. Whatever `pro`
+has learnt, it is not this particular table of numbers.
 
-| agent | Elo | score against `hard` |
-|-------|-----|----------------------|
-| `pro` | 1375 | 90.0% |
-| `hard` | 1000 | 10.0% |
+Two things are worth reading off the 1v1 table. The three shipped
+difficulties span about 230 Elo and `hard` does not actually beat `normal`
+(48.8%), so "the current AI" is one strength with three settings. And `pro`
+against `easy` is 97%: this game has no floor of upsets a strong player
+cannot escape, so the distance between two agents here is limited by the
+agents rather than by the dice.
 
-That is the number worth dwelling on: 90% under rulebooks it has never seen,
-against 88.3% under the one it was built on. Whatever `pro` has learnt, it is
-not this particular table of numbers.
+### On seed sets
 
-Two things are worth reading off that table. The three shipped difficulties
-span only about 300 Elo, and `hard` beats `normal` just 58% of the time — so
-"the current AI" is really one strength with three settings. And `pro`
-against `easy` is 100 games out of 100: this game has no floor of upsets
-that a strong player cannot escape, so the distance between two agents here
-is limited by the agents, not by the dice.
+`pro` measured 96.7% against `hard` on one set of thirty seeds and 84.6% on
+another set of seventy. Neither was wrong; both were too small. The 960-game
+figure above is the one to quote, and the lesson is in the rules: a few dozen
+games is the floor for noticing anything, and a few hundred for trusting it.
 
 ## What each change was worth
 
