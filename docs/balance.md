@@ -144,8 +144,18 @@ policy places a peasant once. And producers bought whatever they could
 afford at the moment of choice: the knights posture fielded fifteen scouts
 to eight knights, the siege posture 3.7 catapults a game, because the
 stables took a scout every time the knight was a few hundred gold away.
-Both are fixed in `pro_ai.py` (`lumber_stock`, `save_for_wanted`); the
-ladder result against the old brain is below.
+Both are fixed in `pro_ai.py` (`lumber_stock`, `save_for_wanted`). On the
+ladder the fixes are worth nothing to Master's strength — `pro`, `pro-old`,
+`pro-nostock` and `pro-nosave` all measured 48% to 52% against each other
+over 288 games — which is what the ladder doc predicted: the first clash
+decides Master's games, not the bank. They are kept because they fix what
+they were written for: the postures field their plans, and losers no
+longer sit on sixteen thousand lumber.
+
+Two more things a posture needed before it could be measured: `early_tech`
+names how many of a building to put up (one stables cannot turn out a
+knights army: 36 footmen to 5 knights in a check match), and `strict_plan`
+stops a producer once its type is past its share of the living army.
 
 **Usage, before the fixes**, so read with the above in mind:
 
