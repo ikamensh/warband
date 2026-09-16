@@ -334,6 +334,12 @@ contradicted the reasoning that produced the change:
 | counting build orders in flight | −18 points on its own, good once the site limit was raised to match |
 | peasants called to defend | −35 Elo, under either of the two rules tried |
 | holding the opening lumber for the barracks | **−400 Elo** — it buys the barracks 64s earlier and starves the farms |
+| marching out at eight to ten soldiers on level terms instead of five on a guess (`min_army` 8–10, `attack_ratio` 1.0) | **+40 Elo** — 55–57% against Master over 96 games each, 55% pooled over 576; the one posture change that measured |
+| soldiers seen to die dropped from the enemy count at once (`count_kills`) | +20 Elo alone (53%), about the same on top of the later push |
+| a standing share of the workforce on wood | **−40 to −180 Elo** — 46% at 30%, 31% at 40%, 25% with farms ahead of demand as well; the model's own policy is better |
+| an army plan of knights, of archers, or of raiders | **−110 Elo** each (33%); the race plans are right |
+| pro-rush (three soldiers, ratio 0.6), pro-boom (twelve, 1.2, early expansion, towers), hall-first pushes, raiders | within noise (44–52%) |
+| a supply-blocked barracks counting as saturated, a second or third barracks ahead of the gate, gathering three or five before walking, race-aware postures for dwarves and orcs | within noise (48–56%, 48 games each) |
 
 Two of those are worth dwelling on. Holding the opening lumber was reasoned
 out from arithmetic — the game starts with 500 lumber, a farm costs 250 and a
