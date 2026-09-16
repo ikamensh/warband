@@ -119,6 +119,19 @@ current AI" is one strength with three settings. And `pro` against `easy` is
 98%: this game has no floor of upsets a strong player cannot escape, so the
 distance between two agents is limited by the agents rather than the dice.
 
+### Measuring against a saturated opponent
+
+Master takes 88-95% against Medium depending on the seed set, which is close
+enough to the ceiling that Medium can no longer tell two strong brains apart:
+a candidate 50 Elo better and one 50 Elo worse both read as "about 90%". Once
+that happens the ladder has to be run against the best agent, not the anchor.
+
+That was done. Six candidates — thinking twice as often, a bigger workforce,
+six barracks a hall, more farms, earlier and further expansion, and a shorter
+leash on pushes — were rated against Master over 1008 games. Five of them
+landed between 47% and 53% against it, which is nothing, and the sixth (more
+farms) was clearly worse. The plateau is in the brain, not in the ruler.
+
 ### Against the 2000 that was asked for
 
 `pro` is about **535 Elo above the anchor, not 1000**. A 1000-point gap means
@@ -150,6 +163,7 @@ contradicted the reasoning that produced the change:
 | …the same posture in a four player game | **−512 Elo** (1534 → 1022) until aggression was divided by the number of opponents |
 | reacting to a rush the scout can see | neutral |
 | a proportional counter to massed archers | neutral — but the rule it replaced had never once fired |
+| six further candidates rated against Master itself | all neutral, over 1008 games |
 | directing focus fire | **−109 Elo** — it switches off the model's own kiting and retargeting |
 | feeding the workforce in gradually | **−187 Elo** (1516 → 1329) against hiring it at once |
 | early towers | 68.8% against `hard` where every other variant took 100% |
