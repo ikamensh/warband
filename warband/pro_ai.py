@@ -171,6 +171,14 @@ _STYLES = (
     replace(PRO, name="pro-wood-sat", wood_share=0.3, blocked_is_busy=True),
     replace(PRO, name="pro-wood-kills", wood_share=0.3, count_kills=True),
     replace(PRO, name="pro-wood-slack", wood_share=0.3, supply_slack=8),
+    # The siege posture took 60% of 48 games against `pro` with no workshop ever
+    # built, so its catapult share did nothing: what it changed was marching
+    # out at eight soldiers on level terms instead of five on a guess.
+    replace(PRO, name="pro-min8", min_army=8, attack_ratio=1.0),
+    replace(PRO, name="pro-min8-kills", min_army=8, attack_ratio=1.0, count_kills=True),
+    replace(PRO, name="pro-min10", min_army=10, attack_ratio=1.0),
+    replace(PRO, name="pro-siege-kills", siege_share=0.25, cleric_share=0.1, target_halls=True, min_army=8,
+            attack_ratio=1.0, count_kills=True),
     # The slow races lose the first clash: dwarves walk slower, orcs arm slower,
     # and both march out at the same minute with the same five soldiers as the
     # elves who beat them four times in five. Let them hold longer.
@@ -452,18 +460,20 @@ class ProBrain:
         """
         player = world.players[self.player]
         profile = self.profile
-        peasants = [p for p in self._peasants(world)
-                    if not p.hidden and not isinstance(p.order, (Build, Repair)) and p.id not in self.scouts]
+        workforce = [p for p in self._peasants(world)
+                     if not isinstance(p.order, (Build, Repair)) and p.id not in self.scouts]
+        # A third to a half of the miners are inside the mine at any moment, so
+        # the share is of the whole workforce; only the ones outside can be told.
+        peasants = [p for p in workforce if not p.hidden]
         want = None
         if profile.wood_share > 0:
             share = profile.wood_share if player.lumber < profile.wood_stock else profile.wood_share / 3
-            want = round(share * len(peasants))
+            want = min(round(share * len(workforce)), max(0, len(workforce) - 2))
         if player.lumber < profile.lumber_floor_panic and player.gold >= profile.panic_gold:
-            want = max(want or 0, len(peasants) // 2)
+            # Never everyone: gold still has to come in, or the next peasant never does.
+            want = max(want or 0, min(len(peasants) // 2, max(0, len(peasants) - 2)))
         if want is None:
             return
-        # Never everyone: gold still has to come in, or the next peasant never does.
-        want = min(want, max(0, len(peasants) - 2))
         choppers = [p for p in peasants if self._on_lumber(p)]
         short = want - len(choppers)
         if short > 0:

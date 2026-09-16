@@ -129,12 +129,20 @@ def test_the_wood_share_puts_that_many_hands_on_the_trees_and_takes_them_off_aga
         world.spawn_unit(0, UnitType.PEASANT, (hall.center[0] + 3 + i * 0.6, hall.center[1] + 3))
     peasants = [u for u in world.player_units(0) if u.is_worker]
     assert len(peasants) == 8
+    mine = min(world.mines(), key=lambda m: dist(m.center, hall.center))
+    for p in peasants[:3]:
+        p.inside = mine.id  # in the mine: part of the workforce, but not to be given an order now
+    assert all(p.hidden for p in peasants[:3])
     world.players[0].gold, world.players[0].lumber = 3000, 0
     for _ in range(4):
+        world.tick += 20  # the model's idle-worker policy runs once a second of ticks
         brain._economy(world)
-    assert sum(1 for p in peasants if brain._on_lumber(p)) == 4
+    assert sum(1 for p in peasants if brain._on_lumber(p)) == 4, "half of eight, not half of the five outside"
+    for p in peasants[:3]:
+        p.inside = None
     world.players[0].lumber = 2000  # plenty: the crews go back to the gold, a third of the share stays
     for _ in range(4):
+        world.tick += 20
         brain._economy(world)
     on_wood = [p for p in peasants if brain._on_lumber(p)]
     assert len(on_wood) == round(8 * 0.5 / 3) == 1
