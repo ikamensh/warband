@@ -44,3 +44,16 @@ def test_research_can_be_switched_off_to_price_the_upgrades():
     assert _play("test-smith", smith, minutes=8).researched
     silent = replace(smith, name="test-smith-silent", research=False)
     assert not _play("test-smith-silent", silent, minutes=8).researched
+
+
+def test_early_tech_names_how_many_and_a_strict_plan_stops_the_barracks():
+    """Two stables in the list means two stables; a strict plan of knights trains no footman past its share."""
+    from warband.rules import BuildingType
+
+    tally = _play("test-two-stables", replace(PRO, name="test-two-stables", barracks_per_hall=1, strict_plan=True,
+                                              early_tech=(BuildingType.STABLES, BuildingType.STABLES),
+                                              army_plan={UnitType.FOOTMAN: 0.2, UnitType.KNIGHT: 0.8}), minutes=9)
+    assert tally.started["stables"] >= 2
+    soldiers = tally.trained["footman"] + tally.trained["knight"] + tally.trained["scout"]
+    assert tally.trained["knight"] >= 4
+    assert tally.trained["footman"] <= 0.35 * soldiers + 2, dict(tally.trained)

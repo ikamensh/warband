@@ -44,6 +44,7 @@ from warband.races import RACES
 from warband.rules import BUILDINGS, BuildingType, UnitType
 
 _MELEE_TYPES = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
+STRICT_SLACK = 0.1  # how far past its planned share a type may run under a strict plan
 BUILD_MIN_DISTANCE = 2
 BUILD_MAX_DISTANCE = 12
 
@@ -99,7 +100,8 @@ class ProProfile:
     cleric_share: float = 0.0         # …and that is healers, overriding the race's plan
     army_plan: Mapping[UnitType, float] | None = None  # shares of the army to aim for, instead of the race's own
     save_for_wanted: bool = True      # the unit the plan is shortest of has first claim on the bank, affordable yet or not
-    early_tech: tuple[BuildingType, ...] = ()  # put up as soon as their requirements stand, saturated or not
+    early_tech: tuple[BuildingType, ...] = ()  # put up as soon as their requirements stand, saturated or not; twice for two
+    strict_plan: bool = False         # a type already past its share of the plan is not trained, whatever is idle
     research: bool = True             # whether upgrades are bought at all
 
 
@@ -453,9 +455,9 @@ class ProBrain:
             wishes.append((BuildingType.LUMBER_MILL, anchor))
         # A posture built around one branch of the tree — knights, siege, healers —
         # cannot wait for the bank to overflow before it is allowed that branch.
-        for tech in profile.early_tech:
+        for tech in set(profile.early_tech):
             needs = BUILDINGS[tech].requires
-            if count(tech) < 1 and (needs is None or have(needs)):
+            if count(tech) < profile.early_tech.count(tech) and (needs is None or have(needs)):
                 wishes.append((tech, anchor))
         # Everything past here is optional, and optional buildings are what lose games:
         # each one is an army that was not trained. They are unlocked only once the
@@ -693,8 +695,11 @@ class ProBrain:
             if unit_type not in building.info.trains:
                 continue
             share = counts.get(unit_type, 0) / soldiers if soldiers else 0.0
-            if best is None or targets[unit_type] - share > best[0]:
-                best = (targets[unit_type] - share, unit_type)
+            gap = targets[unit_type] - share
+            if self.profile.strict_plan and gap < -STRICT_SLACK:
+                continue
+            if best is None or gap > best[0]:
+                best = (gap, unit_type)
         return best
 
     def _research(self, world: World) -> None:

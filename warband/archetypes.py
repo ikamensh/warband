@@ -34,15 +34,18 @@ ARCHETYPES: tuple[ProProfile, ...] = (
             min_army=12, attack_ratio=1.2),
     replace(PRO, name="mass", barracks_per_hall=5, min_army=15, attack_ratio=1.0, regroup_seconds=60.0),
     replace(PRO, name="turtle", tower_count=5, min_army=12, attack_ratio=1.4, symmetry_prior=1.0, guards=3),
-    # Composition: one branch of the tree, with the building that unlocks it put up early.
-    replace(PRO, name="footmen", army_plan={F: 1.0}, early_tech=(BuildingType.BLACKSMITH,)),
-    replace(PRO, name="archers", army_plan={F: 0.2, A: 0.8}, counter_from=1.1),
-    replace(PRO, name="knights", army_plan={F: 0.25, S: 0.1, K: 0.65}, early_tech=(BuildingType.STABLES,)),
-    replace(PRO, name="raiders", army_plan={F: 0.3, A: 0.2, S: 0.5}, raiders=4, scout_from=30.0,
-            early_tech=(BuildingType.STABLES,)),
-    replace(PRO, name="siege", army_plan={F: 0.4, A: 0.25, C: 0.35}, min_army=8, attack_ratio=1.0,
-            early_tech=(BuildingType.BLACKSMITH, BuildingType.WORKSHOP)),
-    replace(PRO, name="clerics", army_plan={F: 0.45, A: 0.3, L: 0.25}, early_tech=(BuildingType.CHURCH,)),
+    # Composition: one branch of the tree, held to strictly, with enough producers of it to field the plan.
+    replace(PRO, name="footmen", army_plan={F: 1.0}, strict_plan=True, early_tech=(BuildingType.BLACKSMITH,)),
+    replace(PRO, name="archers", army_plan={F: 0.2, A: 0.8}, strict_plan=True, counter_from=1.1),
+    replace(PRO, name="knights", army_plan={F: 0.25, S: 0.1, K: 0.65}, strict_plan=True, barracks_per_hall=1,
+            early_tech=(BuildingType.STABLES,) * 3),
+    replace(PRO, name="raiders", army_plan={F: 0.3, A: 0.2, S: 0.5}, strict_plan=True, raiders=4, scout_from=30.0,
+            early_tech=(BuildingType.STABLES,) * 2),
+    # Siege dies at six minutes if it walks out at eight: it holds behind towers until the stones are ready.
+    replace(PRO, name="siege", army_plan={F: 0.4, A: 0.25, C: 0.35}, strict_plan=True, min_army=12, attack_ratio=1.2,
+            tower_count=3, early_tech=(BuildingType.BLACKSMITH, BuildingType.WORKSHOP, BuildingType.WORKSHOP)),
+    replace(PRO, name="clerics", army_plan={F: 0.45, A: 0.3, L: 0.25}, strict_plan=True,
+            early_tech=(BuildingType.CHURCH,) * 2),
     # Upgrades: the same brain that never buys one, to price the research path.
     replace(PRO, name="noresearch", research=False),
 )
