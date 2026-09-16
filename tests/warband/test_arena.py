@@ -287,3 +287,23 @@ def test_a_match_still_in_the_balance_is_played_on():
     """The rule waits for a lead that holds: an opening in which nobody has fought yet is not settled."""
     short = play(MatchSpec(seed=7, agents=("pro", "pro"), minutes=3))
     assert not short.settled
+
+
+def test_a_ladder_can_ask_for_a_layout_instead_of_hoping_the_seeds_cover_them():
+    """Eight seeds drew plains five times and forest never, which weighted a whole league towards one map.
+
+    The postures that wait score 87% on plains and 50% on klondike, so a
+    league that is five-eighths plains is measuring the map as much as the
+    rules. A spec now names its layout, and the runner cycles them.
+    """
+    from warband.rules import Layout
+
+    seen = set()
+    for layout in Layout:
+        spec = MatchSpec(seed=4, agents=("medium", "easy"), minutes=1, layout=layout.value)
+        outcome = play(spec)
+        assert outcome.spec.layout == layout.value
+        seen.add(layout.value)
+    assert len(seen) == len(Layout)
+    drawn = play(MatchSpec(seed=4, agents=("medium", "easy"), minutes=1))
+    assert drawn.spec.layout is None, "without one named, the seed still draws it"

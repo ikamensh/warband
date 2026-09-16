@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from warband import arena, mapgen  # noqa: E402
 from warband.arena import AGENTS, MatchResult, MatchSpec, playable, rate, win_rate  # noqa: E402
+from warband.rules import Layout  # noqa: E402
 
 
 #: Sizes a ladder walks through, one per seed. The layout is drawn from the
@@ -36,9 +37,15 @@ SIZES = list(mapgen.SIZES.values())
 
 
 def _board(seed: int) -> dict:
-    """The size this seed is played on, so both corners share a map."""
+    """The size and layout this seed is played on, so both corners share a map.
+
+    Both are cycled rather than drawn: eight seeds left to themselves drew
+    plains five times and forest never, and a posture's score swings by
+    thirty points between layouts (docs/balance.md).
+    """
     width, height = SIZES[seed % len(SIZES)]
-    return {"width": width, "height": height}
+    layouts = [layout.value for layout in Layout]
+    return {"width": width, "height": height, "layout": layouts[seed % len(layouts)]}
 
 
 def specs_1v1(agents: list[str], seeds: range, variant: str, minutes: float) -> list[MatchSpec]:
@@ -70,7 +77,7 @@ def drop_unfair(specs: list[MatchSpec]) -> list[MatchSpec]:
     usable: dict[tuple, bool] = {}
     kept = []
     for spec in specs:
-        key = (spec.seed, spec.width, spec.height, spec.players)
+        key = (spec.seed, spec.width, spec.height, spec.players, spec.layout)
         if key not in usable:
             usable[key] = playable(spec)
         if usable[key]:
