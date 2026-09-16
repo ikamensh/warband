@@ -69,6 +69,7 @@ class ProProfile:
     barracks_per_hall: int = 3        # a barracks turns out ~4 soldiers a minute; income buys far more
     min_barracks: int = 1             # put up this many before anything optional, saturated or not
     barracks_first: bool = False      # nothing but farms goes up before the first barracks
+    builds_before_peasants: bool = False  # a peasant is not queued if it would leave a build order in flight unpaid
     gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
     max_producers: int = 10
     attack_ratio: float = 0.85        # attack when my strength exceeds theirs by this
@@ -180,6 +181,9 @@ _STYLES = (
     replace(PRO, name="pro-min10", min_army=10, attack_ratio=1.0),
     replace(PRO, name="pro-siege-kills", siege_share=0.25, cleric_share=0.1, target_halls=True, min_army=8,
             attack_ratio=1.0, count_kills=True),
+    replace(PRO, name="pro-open", builds_before_peasants=True),
+    replace(PRO, name="pro-open-rax", builds_before_peasants=True, barracks_first=True),
+    replace(PRO, name="pro-open-rax-min8", builds_before_peasants=True, barracks_first=True, min_army=8, attack_ratio=1.0),
     replace(PRO, name="pro-raxfirst", barracks_first=True),
     replace(PRO, name="pro-raxfirst-min8", barracks_first=True, min_army=8, attack_ratio=1.0),
     replace(PRO, name="pro-raxfirst-kills", barracks_first=True, count_kills=True),
@@ -707,8 +711,17 @@ class ProBrain:
         if not rebuilding:
             target = self._worker_target(world)
             peasants = len(self._peasants(world))
+            # A building is paid for when its peasant arrives at the site. Two
+            # peasants queued at second zero spend 800 of the 1000 gold, so the
+            # farm ordered in the same pass finds 200 in the bank, is dropped,
+            # and goes up eleven seconds later — with the hall capped at five
+            # and idle for most of the first half minute.
+            owed = sum(BUILDINGS[order.type].cost.gold for order in self._ordered(world)) \
+                if self.profile.builds_before_peasants else 0
             for hall in halls:
                 if peasants + sum(len(h.queue) for h in halls) >= target:
+                    break
+                if world.players[player].gold - RACES[world.players[player].race].units[UnitType.PEASANT].cost.gold < owed:
                     break
                 if len(hall.queue) < 2 and world.can_train(hall, UnitType.PEASANT) is None:
                     world.train(hall.id, UnitType.PEASANT)
