@@ -112,6 +112,8 @@ jobs:
             if ($artifact.expired) { throw 'Accepted artifact expired. Start a new run/version.' }
             if ($artifact.workflow_run.head_sha -ne $env:GITHUB_SHA) { throw 'Accepted artifact belongs to another source commit.' }
             "artifact_id=$($artifact.id)" | Add-Content $env:GITHUB_OUTPUT
+          } elseif ([int]$env:GITHUB_RUN_ATTEMPT -gt 1) {
+            throw 'A previous attempt may have accepted bytes that GitHub no longer retains. Refusing to rebuild this version. Start a new workflow run/version; retry publication from durable release assets.'
           }
       - name: Reuse the accepted archive without rebuilding
         if: steps.cached.outputs.artifact_id != ''
