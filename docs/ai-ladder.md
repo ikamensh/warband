@@ -294,6 +294,35 @@ tick:
   nobody there. The 17% it scored against Master was the score of a rule
   that did not run; the share is of the whole workforce now.
 
+### The first rung above Master
+
+Everything that measured stacks into one posture: nothing but farms before
+the first barracks, the lumber panic a minute earlier, one tower at the
+front point as soon as the barracks stands, and marching out at eight
+soldiers on level terms. Over three seed sets it had never been tuned on:
+
+| candidate | games against `pro` | score |
+|-----------|--------------------|-------|
+| `pro-rax-panic-tower1-min8` | 72 + 120 + 120 | 67%, 57%, 61% |
+| `pro-rax-panic` (the same without the tower or the wait: out at five) | 96 + 120 | 67%, 60% |
+| every barracks-first variant pooled | about 1900 | 58% |
+
+That is about **+70 Elo**, a first rung at roughly 1520, and it is two
+players rather than one: `pro-rax-panic` walks out at five soldiers at
+195 s with no tower, `pro-rax-panic-tower1-min8` builds a tower first and
+walks out at eight at 245 s, and the two score the same. The gains do not
+add: the tower, the later push and the kill memory each took the same
+60% on top of barracks-first as barracks-first took alone, because they
+all decide the same fight.
+
+Where the losses are is now on the ladder table too, by the race drawn.
+Over the combined ladder's 600 games whoever drew orcs won 22–41% and
+dwarves 31–62%, elves 72–91%, under every profile including Master: the
+elven rangers outrange and outrun the orcs' throwers and grunts, and the
+brain plays every race by the same numbers. A quarter of the games on the
+ladder are decided by that draw before either brain moves, which caps what
+any posture change can take — and is where the next rung has to come from.
+
 ### Against the 2000 that was asked for
 
 `pro` is about **535 Elo above the anchor, not 1000**. A 1000-point gap means
