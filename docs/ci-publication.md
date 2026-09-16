@@ -392,3 +392,36 @@ package/module resolution regression was added and corrected, all 56 focused
 compatibility/release/source/publication checks passed again. The existing
 real-socket multiplayer/online selection passed 38 checks including the initial
 compatibility cases. Native Windows/Mac verification of this refactor is next.
+
+### Native acceptance of the authority refactor
+
+[Native package run 35149564980](https://github.com/ikamensh/warband/actions/runs/35149564980)
+passed all four jobs on `2361f79cecf5a584562847bdc25e2be4d2f353c8`.
+Windows and Mac each passed **901 tests, 12 skipped**, with the expected
+stale-sheet warning (537.76s and 291.02s respectively). Portable and installed
+socket checks, native input/clipboard/menu/planning checks, Mac app verification,
+and Windows shortcut/uninstall checks all passed. The separate regular
+[Tests run 35149564991](https://github.com/ikamensh/warband/actions/runs/35149564991)
+also passed. Native graphics used the runners' software renderers; this is not
+physical-GPU or listening acceptance.
+
+Both complete accepted artifacts were downloaded and independently validated
+locally against the producer identity. The producer's identity exactly matches
+local preparation from that committed checkout, including compatibility digest
+`ffdfe856c27cf2c9d7f507d9e1caa54e631d41cdb283e367c2e08b954bd49524`.
+Staging and inspection passed on the actual four binaries and both evidence
+archives. The staged `release.json` SHA-256 is
+`f9587ae7c6d38eb6fbabfdaca6fea15b0aac22fc4bca893bbfded79ef88bc303`.
+Receipts, logs, file digests and captures are under
+`docs/evidence/ci-publication/github-35149564980/`; the complete downloads and
+staged release are under `dist/ci-acceptance/github-35149564980/`.
+The Mac online-match/app-plans and Windows title/plans captures were inspected.
+The existing intro-under-overlay observation remains for WB-013.
+
+This was a branch run; no GitHub game release or hosted promotion occurred.
+The separate publisher must still be exercised from main after coordinated
+integration. The first server baseline is also pending: Shardbound's isolated
+0.3.2 alignment candidate `cc070e3` has 19 failures that all reproduce on 0.3.1,
+plus the same incomplete native verification journey on both engines. Those
+findings are recorded in its release guide and Saga Online's publication plan;
+neither that candidate nor the shared server has been accepted or deployed.
