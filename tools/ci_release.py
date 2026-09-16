@@ -43,11 +43,11 @@ def prepare(root: Path, run_id: str) -> dict:
             or engines[0]["source"] != {"registry": "https://pypi.org/simple"}):
         raise ValueError("The saga2d lock must match the declared PyPI release")
     pins = json.loads((root / ".github/release-pins.json").read_text())
-    if set(pins) != {"sagaforge_commit", "python", "uv"}:
-        raise ValueError("Release pins must contain sagaforge_commit, python and uv")
+    if set(pins) != {"sagaforge_commit", "python", "uv", "inno_setup"}:
+        raise ValueError("Release pins must contain sagaforge_commit, python, uv and inno_setup")
     if not isinstance(pins["sagaforge_commit"], str) or not re.fullmatch(r"[0-9a-f]{40}", pins["sagaforge_commit"]):
         raise ValueError("Sagaforge must be pinned to a full commit SHA")
-    for tool in ("python", "uv"):
+    for tool in ("python", "uv", "inno_setup"):
         if not isinstance(pins[tool], str) or not re.fullmatch(r"\d+\.\d+\.\d+", pins[tool]):
             raise ValueError(f"{tool} must be pinned to an exact version")
     version = f"{project['version']}-preview.{run_id}"

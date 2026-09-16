@@ -109,11 +109,6 @@ jobs:
           7z x $archive "-o$folder" 'x64/opengl32.dll' 'x64/libgallium_wgl.dll' -y
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "GAME_TEST_MESA=$folder/x64" | Add-Content $env:GITHUB_ENV
-          @{
-            version = '26.2.0'; source = $url; archive_sha256 = $digest
-            scope = 'Native CI only; absent from shipping archives and installer.'
-            inno_setup = (Get-Item $compiler).VersionInfo.ProductVersion
-          } | ConvertTo-Json | Set-Content dist/ci-inputs/windows-tools.json -Encoding utf8
       - name: Test, build and verify actual native distributions
         run: |
           $arguments = @('run', '--no-sync', 'python', 'tools/ci_package.py', 'build',

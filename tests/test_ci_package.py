@@ -155,6 +155,8 @@ def test_windows_candidate_requires_the_installer_and_shortcut_uninstall_receipt
     path = candidate / "build-inputs.json"
     inputs = json.loads(path.read_text())
     inputs["target"] = "windows-x64"
+    inputs["inno_setup"] = inputs["identity"]["inno_setup"]
+    inputs["inno_setup_sha256"] = digest(b"Compiler format fixture")
     write_json(path, inputs)
     prefix = f"Warband-{inputs['identity']['version']}-windows-x64"
     portable = candidate / f"{prefix}-portable.zip"
@@ -181,6 +183,12 @@ def test_windows_candidate_requires_the_installer_and_shortcut_uninstall_receipt
     write_json(path, report)
     result = validate(candidate, "windows-x64")
     assert result.returncode == 0, result.stderr
+    inputs["inno_setup"] = "0.0.0"
+    write_json(candidate / "build-inputs.json", inputs)
+    result = validate(candidate, "windows-x64")
+    assert result.returncode != 0 and "compiler" in result.stderr
+    inputs["inno_setup"] = inputs["identity"]["inno_setup"]
+    write_json(candidate / "build-inputs.json", inputs)
     report["install_shortcut_uninstall"] = False
     write_json(path, report)
     result = validate(candidate, "windows-x64")

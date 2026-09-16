@@ -9,8 +9,10 @@ import argparse
 import hashlib
 from importlib import metadata, util
 import json
+import os
 from pathlib import Path
 import platform
+import re
 import subprocess
 import sys
 import tempfile
@@ -73,6 +75,9 @@ def validate(directory: Path, identity: dict, target: str) -> dict:
 
     inputs = read_json(record("build-inputs.json"))
     require(inputs["identity"] == identity and inputs["target"] == target, "Build inputs differ from release identity/target")
+    if target == "windows-x64":
+        require(inputs["inno_setup"] == identity["inno_setup"], "Installer compiler differs from the release pin")
+        require(bool(re.fullmatch(r"[0-9a-f]{64}", inputs["inno_setup_sha256"])), "Missing installer compiler digest")
     versions = locked_packages(identity)
     require(inputs["packages"] == versions, "Installed dependencies differ from the lock")
     regression = read_json(record("regression.json"))
@@ -146,7 +151,7 @@ def validate(directory: Path, identity: dict, target: str) -> dict:
     return {"schema_version": 1, "identity": identity, "target": target, "artifacts": artifacts, "evidence": evidence}
 
 
-def native_inputs(identity: dict) -> dict:
+def native_inputs(identity: dict, *, iscc: Path | None = None) -> dict:
     """Check the actual interpreter, installed packages and editable source checkouts."""
     from ci_release import prepare
 
@@ -173,7 +178,16 @@ def native_inputs(identity: dict) -> dict:
             "Use the locked Saga2D PyPI release, not a path/editable install")
     packages = {name: metadata.version(name) for name in (*PACKAGES, "saga2d", "sagaforge")}
     require(packages == locked_packages(identity), "Installed build dependencies differ from the lock")
-    return {"identity": identity, "target": target, "packages": packages}
+    result = {"identity": identity, "target": target, "packages": packages}
+    if target == "windows-x64":
+        require(iscc is not None and iscc.is_file(), "Windows builds require an explicit Inno Setup compiler")
+        compiler_version = subprocess.check_output([
+            "powershell", "-NoProfile", "-NonInteractive", "-Command",
+            "(Get-Item -LiteralPath $env:WARBAND_ISCC).VersionInfo.ProductVersion",
+        ], env={**os.environ, "WARBAND_ISCC": str(iscc.resolve())}, text=True).strip()
+        require(compiler_version == identity["inno_setup"], "Installed Inno Setup compiler differs from the release pin")
+        result.update(inno_setup=compiler_version, inno_setup_sha256=sha256(iscc))
+    return result
 
 
 def verify_mac_app(directory: Path, report: dict) -> None:
@@ -205,7 +219,7 @@ def verify_mac_app(directory: Path, report: dict) -> None:
 
 def build(identity: dict, directory: Path, *, iscc: Path | None = None, mesa_dir: Path | None = None) -> dict:
     """Run the suite, freeze the game, verify both distributions and seal their evidence."""
-    inputs = native_inputs(identity)
+    inputs = native_inputs(identity, iscc=iscc)
     directory = directory.resolve()
     directory.mkdir(parents=True, exist_ok=True)
     require(not any(directory.iterdir()), "Use an empty output directory; preserve or explicitly remove earlier evidence")
@@ -218,7 +232,7 @@ def build(identity: dict, directory: Path, *, iscc: Path | None = None, mesa_dir
                                                "exit_code": process.returncode,
                                                "log_sha256": sha256(directory / "regression.log")})
     process.check_returncode()
-    require(native_inputs(identity) == inputs, "Build inputs changed during regression checks")
+    require(native_inputs(identity, iscc=iscc) == inputs, "Build inputs changed during regression checks")
     from package import PACKAGE
     from saga2d.packaging import build as freeze
     from saga2d.packaging.verify import verify
@@ -228,7 +242,7 @@ def build(identity: dict, directory: Path, *, iscc: Path | None = None, mesa_dir
     report = verify(PACKAGE, directory, native=True, mesa_dir=mesa_dir)
     if not windows:
         verify_mac_app(directory, report)
-    require(native_inputs(identity) == inputs, "Build inputs changed during package verification")
+    require(native_inputs(identity, iscc=iscc) == inputs, "Build inputs changed during package verification")
     accepted = validate(directory, identity, inputs["target"])
     write_json(directory / "candidate.json", accepted)
     return accepted

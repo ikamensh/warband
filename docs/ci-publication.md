@@ -84,6 +84,7 @@ separate compatibility rollout and must not be hidden by ignoring lockfiles.
 
 - [GitHub concurrency and workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
 - [GitHub runner architecture](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+- [Windows 2025 runner tools](https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md)
 - [Triggering workflows and token restrictions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
 - [Saga Online distribution plan](../../saga-online/docs/game-distribution-plan.md)
 
@@ -123,6 +124,11 @@ Implemented locally so far:
   shares one prepared identity between Windows x64 and Apple Silicon jobs and
   independently validates both downloaded candidates on Linux. Actions are
   pinned by SHA; Actionlint passes. No release/promotion job is enabled in it.
+- Inno Setup 6.7.1 is part of the shared identity. Windows input validation
+  compares the actual compiler's product version with that pin and records its
+  executable digest before/after the build. A runner image upgrade that changes
+  the compiler stops the build until a deliberate pin update. The evidence
+  consumer rejects an installer made with a different compiler version.
 
 ### Local native Mac evidence
 
@@ -152,8 +158,8 @@ Sagaforge `2fa6fadfd28e2457f2f264b7b071cac7f7566ee5`:
   `docs/evidence/ci-publication/mac-6ecd2ed/`; archives remain under
   `dist/ci-acceptance/mac-35100000125/` in the implementation worktree.
 
-Still required: actual native GitHub runs (including Windows), the final pinned
-Windows compiler input, reuse of accepted artifacts across retries, immutable binary publication,
+Still required: actual native GitHub runs (including the Windows compiler check),
+reuse of accepted artifacts across retries, immutable binary publication,
 compatibility-gated catalog promotion, transaction/rollback implementation,
 scoped credentials, approved activation and a verified actual main-push journey.
 The existing Windows publication workflow is not yet changed. No production

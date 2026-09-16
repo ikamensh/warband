@@ -27,7 +27,7 @@ def checkout(tmp_path):
         '[[package]]\nname = "saga2d"\nversion = "0.3.2"\nsource = {registry = "https://pypi.org/simple"}\n')
     (root / ".github").mkdir()
     (root / ".github/release-pins.json").write_text(json.dumps({
-        "sagaforge_commit": "a" * 40, "python": "3.13.2", "uv": "0.12.10",
+        "sagaforge_commit": "a" * 40, "python": "3.13.2", "uv": "0.12.10", "inno_setup": "6.7.1",
     }))
     (root / "warband").mkdir()
     (root / "warband/__init__.py").write_text('"""A release fixture."""\n')
