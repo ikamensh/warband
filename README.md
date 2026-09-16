@@ -2,6 +2,8 @@
 
 A small Warcraft 2-style real-time strategy game on [Saga2D](https://pypi.org/project/saga2d/).
 
+Planned work and task order: [Warband backlog](BACKLOG.md).
+
 A top-down map of meadows, woods and lakes under a soft fog of war, in
 summer, winter or wasteland, in one of five layouts (open plains, deep
 forest, a river with fords, a gold pit in the middle, walled bastions); a base

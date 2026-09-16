@@ -1,0 +1,266 @@
+# Warband backlog
+
+Created 2026-09-16. This is the working queue for taking one task at a time.
+The [Early Access criteria](docs/warband-early-access-criteria.md) remain the
+release gates; [progress](docs/warband-early-access-progress.md) holds their
+evidence. Shared engine work belongs in the [Saga2D backlog](../saga2d/BACKLOG.md).
+
+Keep IDs stable. When starting an item, change its status to `in progress` and
+record the branch. On completion, mark it `done` here with the commit and
+verification evidence; split larger discoveries into new IDs. Statuses below
+record planning, not implementation. Within each priority, the order is the
+suggested sequence, not a requirement to finish every earlier item first.
+
+| ID | Priority | Status | Task | Origin |
+|---|---|---|---|---|
+| WB-001 | First | ready | Recover useful branch work and clean up local branches/worktrees | User |
+| WB-002 | First | ready | Publish tested main pushes through GitHub Actions to games.tachyon-ai.eu | User |
+| WB-003 | Next | ready | Diagnose and improve movement animation | User |
+| WB-004 | Next | ready | Give melee attacks readable weight and contact | User |
+| WB-005 | Next | ready | Replace the rotating-sprite death with convincing falls | User |
+| WB-006 | Next | ready | Add blood on damaging hits | User |
+| WB-007 | Next | ready | Leave grey abandoned buildings when a player resigns in FFA | User |
+| WB-008 | Next | ready | Improve health bars and building progress indicators | User |
+| WB-009 | Next | proposed | Establish current battle performance and fix measured bottlenecks | User / engine split |
+| WB-010 | Later | proposed | Smooth online movement and make connection problems understandable | Suggested |
+| WB-011 | Later | proposed | Keep fog-hidden state out of opponents' network snapshots | Suggested |
+| WB-012 | Later | proposed | Support three- and four-human online FFA | Suggested |
+| WB-013 | Next | proposed | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
+| WB-014 | Later | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
+
+## WB-001 — Recover branch work, then clean up
+
+Review committed differences and dirty worktrees before beginning new feature
+work. Classify each as integrate, already integrated, retain, or discard with a
+reason. Test worthwhile changes against current main before merging; preserve
+unmerged commits and uncommitted work. An old name or a merged tip alone is not
+enough to remove a worktree that another task is using.
+
+Local read-only inventory on 2026-09-16, compared with main at `5c277f1`:
+
+| Branch / worktree | Commits ahead of main | Finding |
+|---|---:|---|
+| `balance` / `../warband-balance` | 15 | Balance experiments, mine capacity and AI expansion; three modified files |
+| `campaign` / `../warband-campaign` | 4 | Six-mission Thornwood campaign, scripted outcomes and title entry; clean |
+| `visual-defects` / `../warband-visual` | 3 | Visual lint and fixes; modified `uv.lock` |
+| `ai-arena` / `../warband-arena` | 0 | Committed tip integrated, but `warband/pro_ai.py` modified |
+| `ai-2000` / `../warband-elo` | 0 | Committed tip integrated; clean at inspection |
+| `player-profile` / `../warband-profile` | 0 | Profile/replays integrated during this planning session; clean |
+
+This is a changing snapshot, not a safety decision or a quality endorsement.
+Refresh `git worktree list`, status, ancestry and patch-equivalence before acting.
+Include stack-root and sibling-repo local refs in the sweep; engine candidates
+are recorded in S2D-001. Do not infer remote merge state from stale tracking refs.
+
+**Done when:** every candidate has a recorded disposition, useful work is
+integrated with its required checks, and only confirmed inactive/redundant
+branches and clean worktrees are removed. Record retained work as follow-up
+items rather than silently losing it. Campaign adoption is a product decision
+to assess here, not an instruction to merge it wholesale.
+
+## WB-002 — Publish tested pushes through GitHub Actions
+
+Make a push to `main` produce an immutable preview release and update the
+Warband download page at [games.tachyon-ai.eu](https://games.tachyon-ai.eu/warband/).
+Use `main` as the proposed publishing branch; ordinary feature-branch pushes
+should run checks. Extend the existing [Windows release workflow](.github/workflows/windows.yml)
+and [test workflow](.github/workflows/tests.yml), adding the corresponding Mac
+build. Site/catalog publication belongs in `saga-online`; start from its
+[distribution plan](../saga-online/docs/game-distribution-plan.md) and
+[deployment tool](../saga-online/tools/deploy_online.py).
+
+Pin the game, engine and Sagaforge revisions used by a build. Derive unique
+versions from recorded release identity; retries must be idempotent. Run tests
+and packaged launch checks before promoting catalog links, publish hashes and
+source revisions, serialize promotion so an older run cannot replace a newer
+one, and retain the previous known-good catalog/site for rollback. A failure
+must leave the last working download available.
+
+Decide server compatibility as part of this task: a rules-changing client must
+not become the recommended online download against an incompatible server.
+Treat static-site promotion and room-server activation as separate operations,
+with an explicit compatible rollout/draining policy. Document the CI credential
+handoff from today's laptop-operated deployment and the chosen preview/stable
+policy. Enabling unattended production publication is the explicit rollout
+step of this future task; writing this backlog does not enable it.
+
+**Done when:** a main push passes the complete build → verify → release →
+catalog → website journey; downloaded Windows/Mac artifacts match the tested
+bytes; compatible clients create/join; failed, repeated and out-of-order runs
+and rollback are exercised. The enabled trigger and publication policy are
+documented so future main pushes need no manual publishing steps.
+
+## WB-003 — Movement animation: diagnose before authoring more frames
+
+The current [motion notes](docs/unit-motion.md), [view](warband/view.py) and
+[pose generation](warband/textures.py) already provide four walk frames,
+distance-driven cadence and gradual turning. Reproduce what still looks wrong
+in the current build instead of assuming the earlier diagnosis still applies.
+
+Capture short native recordings and frame strips of infantry, workers and
+mounted units: straight travel, diagonal travel, turns, start/stop, crowded
+arrival and obstruction, at normal zoom and both close/far zoom. Compare
+painted and procedural art, solo movement and groups, offline and online.
+Trace model positions/velocity, render positions, facing, travelled distance,
+frame choice and frame times. Separate pose/silhouette, stride/foot sliding,
+frame timing, facing changes, crowd pushes and simulation/network cadence.
+
+**Done when:** the dominant causes are demonstrated with evidence, the first
+bounded fixes have before/after recordings at gameplay scale, and follow-up
+art or engine needs have their own tasks. Validate that stopped units do not
+walk, turns do not pop, and motion looks consistent across speeds. Presentation
+changes preserve the simulation fingerprint; deliberate rule changes need
+their own acceptance. Depends on S2D-002 only if profiling proves an engine issue.
+
+## WB-004 — Stronger melee attacks
+
+The existing wind/strike/follow/recover cycle and sparks still read as timid.
+After WB-003 establishes the timing/art baseline, improve silhouette,
+anticipation, body weight, weapon arc, contact and recovery. Prototype one
+infantry weapon before expanding across races/types; consider extra keys or a
+smear only where they solve an observed gap. Evaluate brief presentation-only
+hit-stop and damage-scaled feedback without delaying simulation or orders.
+
+**Done when:** real-speed close fights and crowded battles show a clear swing
+and impact synchronized to the model's hit event and audio; misses, cancelled
+wind-ups and moving targets remain honest. Inspect every affected facing and
+preserve combat timings/damage unless a separate rules change is agreed.
+
+## WB-005 — Death animations
+
+[UnitDeath](warband/effects.py) currently rotates and squashes the live sprite,
+then leaves a fading body. Try authored stagger/fall/lie sprite keys per facing,
+or a smaller rig solution that looks convincing at normal zoom. Establish the
+look on one infantry unit, then cover mounted units and siege equipment with
+appropriate outcomes rather than applying the same topple to everything.
+
+**Done when:** bodies land at the feet and away from the blow without floating,
+spinning or reappearing; layering/fog are correct; corpses expire within a
+bounded budget. Inspect death sequences and mass-casualty scenes with painted
+and procedural art, including loading a save or leaving the scene mid-effect.
+
+## WB-006 — Blood on damaging hits
+
+Add readable, restrained directional blood feedback on organic targets, keyed
+to confirmed damage rather than the start of a swing. Distinguish flesh from
+armour sparks, buildings and siege impacts. Consider short-lived ground stains
+only after the hit effect works; bound their count and lifetime. Provide a
+blood-off setting if the effect becomes a persistent part of the presentation.
+
+**Done when:** melee and projectile contact show the appropriate effect once,
+with sensible intensity; missed/zero-damage blows and buildings do not bleed;
+fog, reconnects and repeated snapshots do not leak or duplicate effects. A
+busy battle remains legible and meets the measured frame budget.
+
+## WB-007 — FFA resignation leaves abandoned buildings
+
+[World.resign](warband/model.py) currently removes every owned unit and
+building; AI surrender also removes buildings. In three-/four-player FFA,
+retain the resigning player's buildings and show them as grey, inactive
+abandoned structures while the remaining players continue.
+
+Proposed first scope: preserve footprint, damage and race silhouette; stop
+production, research, construction, attacks, vision and economic contribution;
+eliminate the former owner from victory checks. Keep current unit removal.
+Decide and record whether abandoned structures can be attacked/cleared, and
+whether automatic AI surrender follows the same rule. Capture/reuse is a
+separate mechanic, not implicit in abandonment. Handle unfinished buildings,
+queues and workers inside buildings explicitly; do not confuse abandoned
+structures with neutral gold mines.
+
+**Done when:** a seeded four-player match continues correctly after resignation,
+the minimap/selection/tooltip agree on the abandoned state, remaining armies
+respect footprints, and save/load preserves it. Verify victory, AI targeting,
+pathing and absence of destruction rewards/effects on abandonment. Run rules
+integration tests and fuzz; keep two-player match completion correct. Online
+FFA is separate (WB-012), not a prerequisite for this local-game change.
+
+## WB-008 — Health bars and building progress
+
+Currently [view.py](warband/view.py) draws world health bars for selected or
+hovered entities, including undamaged ones. Default health bars to wounded
+units/buildings, with clear access
+for selection/hover or a temporary show-all control. Choose the exact policy
+after seeing a crowded battle. Improve contrast, outline, thickness, anchoring
+and zoom behavior; distinguish health from construction, training and research
+progress by more than colour. Active work should remain discoverable even on
+an undamaged building.
+
+**Done when:** damaged, selected, hovered and full-health cases look deliberate;
+construction/production/research progress is understandable without overlapping
+bars or labels. Inspect real frames across themes, zooms and crowded fights,
+including grey abandoned buildings from WB-007. Verify the policy through real
+selection and pointer journeys as well as drawing tests.
+
+## WB-009 — Current performance baseline and targeted fixes
+
+Refresh the W10 evidence after the painted-art and combat changes. Use
+[tools/perf.py](tools/perf.py) for native frame timings and
+[tools/step_bench.py](tools/step_bench.py) for simulation cost. Include the
+150-unit reference battle, a large four-player battle, pan/zoom, many deaths
+and repeated match restarts. Record host, resolution, revisions, warmup,
+p50/p95/max and phase breakdown; separate startup stalls from steady play.
+
+**Done when:** current evidence establishes the existing p95 < 16 ms reference
+gate, or identifies reproducible misses and fixes them. Put shared renderer
+findings into S2D-002 onward; keep model/view-specific fixes here. Speed-only
+changes preserve the simulation fingerprint. Never benchmark under a profiler
+or another expensive verification job.
+
+## WB-010 — Online responsiveness and connection feedback
+
+The online path publishes full world snapshots at 10 Hz; distinguish that
+cadence from local 20 Hz simulation and frame pacing. Measure command-to-visible
+response and jitter under controlled latency; evaluate bounded presentation
+interpolation separately from prediction. Keep hit/death events synchronized,
+and show useful reconnect/stall status while avoiding unbounded queued orders.
+
+**Done when:** two real clients under delay/disconnection/rejoin have measured,
+improved movement and correct orders/events, with no stale motion after resume.
+Use S2D-010 for genuinely shared transport/rate work.
+
+## WB-011 — Player-specific network visibility
+
+`WarbandMatch.snapshot(player)` currently copies the full world regardless of
+player. Before public competitive play, send only the information that player
+is allowed to know, including safe event payloads and remembered discoveries.
+Rendering fog over a complete snapshot does not protect hidden information.
+
+**Done when:** serialized snapshots/events cannot reveal unexplored enemy units,
+orders, economy or research; exploration, remembered buildings, combat and
+reconnection still work in real two-client tests. Keep this separate from
+compression and from claims of comprehensive anti-cheat.
+
+## WB-012 — Three-/four-human online FFA
+
+Local skirmish supports two to four players; current hosted rooms and
+WarbandMatch are two-seat. Generalize seats, lobby/race choices, ready/start,
+disconnect/rejoin and results through S2D-011, then adapt the game. Reuse WB-007
+for resignation. Spectators, teams and ranked matchmaking can wait.
+
+**Done when:** three and four actual clients complete seeded matches, recover a
+disconnection and handle a resignation without premature victory or seat leaks.
+Require WB-011 before presenting this as public competitive play.
+
+## WB-013 — Fresh-player and cross-platform acceptance
+
+Refresh W06/W15 with the current candidate: observe first launch, first economy,
+first battle, loss/resign, save/resume and the website-to-online-match journey.
+Include a complete human match on the published Mac/Windows candidate and
+record hardware, version and obstacles. Use the visual-defects branch's useful
+checks after WB-001, while retaining human assessment of animation and clarity.
+
+**Done when:** each blocker becomes a reproducible ticket and is resolved or
+explicitly deferred; current evidence replaces stale gate claims. Automated
+checks cannot mark the human playtest complete.
+
+## WB-014 — Difficulty and race-balance evidence
+
+After WB-001 resolves the balance branch and any deliberate combat-rule changes,
+rerun the existing arena/AI-report tools over adequate seeded samples. Check
+Easy against a basic opening, the ordering of difficulties, race/map/seat bias,
+and FFA endings. Keep economy/crowding failures distinct from numerical balance.
+
+**Done when:** a recorded report supports the displayed difficulty expectations;
+concrete regressions become small fixes with rule tests, fuzz and refreshed
+fingerprints where appropriate. Do not retune from a few observed matches.
