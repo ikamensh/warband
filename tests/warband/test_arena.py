@@ -34,6 +34,18 @@ def test_match_is_reproducible():
            (second.placements, second.winner, second.minutes, second.steps)
 
 
+def test_a_match_records_how_each_player_played():
+    """The style telemetry is what backs a claim that two agents of one strength are two players."""
+    played = play(MatchSpec(seed=3, agents=("medium", "pro"), minutes=4.0))
+    assert len(played.styles) == 2
+    for style in played.styles:
+        assert set(style) == set(arena.STYLE_FIELDS)
+        assert style["peak_army"] >= 0 and style["workers"] >= 0
+    medians = arena.styles([played, played])
+    assert set(medians) == {"medium", "pro"}
+    assert medians["pro"]["peak_army"] == played.styles[1]["peak_army"]
+
+
 def test_placements_rank_every_player_from_one():
     """Placements start at 1 and leave no gaps except where players tie."""
     spec = MatchSpec(seed=11, agents=("hard", "medium", "easy"), minutes=3)

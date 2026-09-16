@@ -269,6 +269,7 @@ class MatchResult:
     minutes: float
     steps: int
     wall: float
+    styles: tuple[Mapping[str, float], ...] = ()  # how each player played; see :func:`style_of`
 
     @property
     def decided(self) -> bool:
@@ -335,6 +336,31 @@ def playable(spec: MatchSpec) -> bool:
     return True
 
 
+#: What :func:`style_of` reports per player. Medians of these over a ladder
+#: say whether two agents of one strength are really different players.
+STYLE_FIELDS = ("first_attack", "attacks", "peak_army", "workers", "towers", "halls", "barracks",
+                "soldiers", "kills", "razed")
+
+
+def style_of(world: World, agent: Agent, player: int, peak_army: int) -> dict[str, float]:
+    """How *player* played, from the world at the end and the brain's own log."""
+    log = getattr(agent, "log", [])
+    attacks = [t for t, what in log if what.startswith("attack")]
+    stats = world.players[player].stats
+    return {
+        "first_attack": attacks[0] if attacks else math.nan,
+        "attacks": len(attacks),
+        "peak_army": peak_army,
+        "workers": sum(1 for u in world.player_units(player) if u.is_worker),
+        "towers": len(world.player_buildings(player, BuildingType.TOWER, done=True)),
+        "halls": len(world.player_buildings(player, BuildingType.TOWN_HALL, done=True)),
+        "barracks": len(world.player_buildings(player, BuildingType.BARRACKS, done=True)),
+        "soldiers": stats["units_killed"] + stats["units_lost"],  # how much fighting the game had
+        "kills": stats["units_killed"],
+        "razed": stats["buildings_razed"],
+    }
+
+
 def play(spec: MatchSpec) -> MatchResult:
     """Run one match to a winner or the time cap."""
     ensure_variant(spec.variant)
@@ -345,6 +371,7 @@ def play(spec: MatchSpec) -> MatchResult:
     # A stream per player: whose turn it is to draw must not depend on who else is playing.
     rngs = [random.Random(spec.seed * 1000003 + player) for player in range(spec.players)]
     eliminated: dict[int, float] = {}
+    peak_army = [0] * spec.players
     started = time.perf_counter()
     steps = 0
     for _ in range(int(spec.minutes * 60 / SIM_DT)):
@@ -358,8 +385,25 @@ def play(spec: MatchSpec) -> MatchResult:
         for player in world.players:
             if not player.alive and player.id not in eliminated:
                 eliminated[player.id] = world.time
+        if steps % 20 == 0:
+            for player in range(spec.players):
+                peak_army[player] = max(peak_army[player],
+                                        sum(1 for u in world.player_units(player) if not u.is_worker))
+    styles = tuple(style_of(world, agent, player, peak_army[player]) for player, agent in enumerate(agents))
     return MatchResult(spec=spec, placements=_placements(world, eliminated, spec.players), winner=world.winner,
-                       minutes=world.time / 60, steps=steps, wall=time.perf_counter() - started)
+                       minutes=world.time / 60, steps=steps, wall=time.perf_counter() - started, styles=styles)
+
+
+def styles(results: Iterable[MatchResult]) -> dict[str, dict[str, float]]:
+    """Per agent, the median of each :data:`STYLE_FIELDS` entry over every game it played."""
+    seen: dict[str, dict[str, list[float]]] = {}
+    for result in results:
+        for name, style in zip(result.spec.agents, result.styles):
+            rows = seen.setdefault(name, {f: [] for f in STYLE_FIELDS})
+            for f in STYLE_FIELDS:
+                if not math.isnan(style[f]):
+                    rows[f].append(style[f])
+    return {name: {f: (statistics.median(v) if v else math.nan) for f, v in rows.items()} for name, rows in seen.items()}
 
 
 def register_profiles(profiles: Sequence[tuple[str, object]]) -> None:

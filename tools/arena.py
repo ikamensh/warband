@@ -144,6 +144,20 @@ def print_table(results: list[MatchResult], anchor: str, agents: list[str], anch
     decided = sum(1 for r in results if r.decided)
     minutes = sorted(r.minutes for r in results)
     print(f"\n  {decided}/{len(results)} decided; match length median {minutes[len(minutes) // 2]:.1f} sim-minutes")
+    print_styles(results, agents)
+
+
+def print_styles(results: list[MatchResult], agents: list[str]) -> None:
+    """Medians of how each agent played: whether two agents of one strength are two players."""
+    table = arena.styles(results)
+    width = max(len(name) for name in agents)
+    print(f"\n  how they play (medians):")
+    print(f"  {'':<{width}}  " + "  ".join(f"{f[:8]:>8}" for f in arena.STYLE_FIELDS))
+    for name in agents:
+        if name not in table:
+            continue
+        cells = [f"{table[name][f]:8.0f}" for f in arena.STYLE_FIELDS]
+        print(f"  {name:<{width}}  " + "  ".join(cells))
 
 
 def main() -> None:
