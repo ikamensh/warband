@@ -241,7 +241,7 @@ def save(results: Iterable[MatchResult], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w") as out:
         for result in results:
-            row = {f: getattr(result, f) for f in ("placements", "winner", "minutes", "steps", "wall")}
+            row = {f: getattr(result, f) for f in ("placements", "winner", "minutes", "steps", "wall", "settled")}
             row["spec"] = asdict(result.spec)
             # dataclasses.asdict rebuilds a Counter from its (key, count) pairs, which counts the pairs.
             row["tallies"] = [{**{k: (dict(v) if isinstance(v, Counter) else v) for k, v in vars(t).items()

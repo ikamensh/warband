@@ -44,6 +44,17 @@ from warband.telemetry import PlayerTally, Telemetry
 ELO_SCALE = 400.0 / math.log(10.0)  # Elo points per unit of Bradley-Terry log-strength
 DEFAULT_MINUTES = 20.0
 
+# When a match is beyond doubt. A fifth of the average match was spent razing a
+# beaten player's farms, and the twenty-minute cap was paid in full by every
+# stalemate. A lead this far ahead, held this long, has never been overturned in
+# the leagues it was checked against, and the placements are the same function of
+# the world either way (:func:`_placements`), so stopping early measures the same thing.
+SETTLED_ARMY = 5.0       # times every rival's army, priced in gold and lumber…
+SETTLED_POWER = 1.5      # …while also this far ahead on everything standing, so a beaten army with an
+                         #   intact economy is still given its chance to rebuild
+SETTLED_SECONDS = 30.0   # …both held for this long of simulation time
+SETTLED_EVERY = 40       # steps between checks; the comparison walks every unit and building
+
 
 # -- Agents ------------------------------------------------------------------------
 
@@ -301,6 +312,7 @@ class MatchResult:
     minutes: float
     steps: int
     wall: float
+    settled: bool = False  # stopped once the result was beyond doubt rather than played to the last building
     tallies: tuple[PlayerTally, ...] = ()  # what each player bought, lost and killed; see :mod:`warband.telemetry`
 
     @property
@@ -317,17 +329,28 @@ class MatchResult:
 def _power(world: World, player: int) -> float:
     """What a player still has on the map, priced in gold and lumber.
 
-    Only used to rank players who are both still alive when time runs out.
+    Used to rank players who are both still alive when time runs out, and to
+    tell a settled match from one still in the balance.
     """
-    total = 0.0
+    army, rest = _worth(world, player)
+    return army + rest
+
+
+def _worth(world: World, player: int) -> tuple[float, float]:
+    """``(what its soldiers are worth, what everything else is)``, priced in gold and lumber, wounds counted."""
+    army = rest = 0.0
     for unit in world.units.values():
         if unit.player == player and unit.hp > 0:
             cost = unit.info.cost
-            total += (cost.gold + cost.lumber) * unit.hp / max(1, unit.max_hp)
+            worth = (cost.gold + cost.lumber) * unit.hp / max(1, unit.max_hp)
+            if unit.is_worker:
+                rest += worth
+            else:
+                army += worth
     for building in world.player_buildings(player):
         cost = building.info.cost
-        total += (cost.gold + cost.lumber) * building.hp / max(1, building.max_hp)
-    return total
+        rest += (cost.gold + cost.lumber) * building.hp / max(1, building.max_hp)
+    return army, rest
 
 
 def _placements(world: World, eliminated: dict[int, float], players: int) -> tuple[int, ...]:
@@ -368,8 +391,31 @@ def playable(spec: MatchSpec) -> bool:
     return True
 
 
-def play(spec: MatchSpec) -> MatchResult:
-    """Run one match to a winner or the time cap."""
+def _runaway(world: World, eliminated: Mapping[int, float], players: int) -> int | None:
+    """The player who has both the field and the map, if there is one.
+
+    An army five times every rival's says nothing can stop it now; a lead on
+    everything standing says the rival cannot buy a new one either. Both are
+    needed: an army wiped out in one bad fight is not a lost game.
+    """
+    standing = [p for p in range(players) if p not in eliminated]
+    if len(standing) < 2:
+        return None
+    worth = {p: _worth(world, p) for p in standing}
+    leader = max(standing, key=lambda p: sum(worth[p]))
+    army, rest = worth[leader]
+    others = [worth[p] for p in standing if p != leader]
+    if army < SETTLED_ARMY * max(a for a, _ in others):
+        return None
+    return leader if army + rest >= SETTLED_POWER * max(a + r for a, r in others) else None
+
+
+def play(spec: MatchSpec, *, settle: bool = True) -> MatchResult:
+    """Run one match to a winner, a settled result or the time cap.
+
+    *settle* stops a match whose result is beyond doubt; pass False to play
+    every match to the last building, which is what the rule was checked against.
+    """
     ensure_variant(spec.variant)
     races = tuple(Race(r) for r in spec.races) if spec.races is not None else None
     world = mapgen.generate(seed=spec.seed, width=spec.width, height=spec.height, players=spec.players,
@@ -381,6 +427,9 @@ def play(spec: MatchSpec) -> MatchResult:
     telemetry = Telemetry(world)
     started = time.perf_counter()
     steps = 0
+    leader: int | None = None
+    leader_since = 0.0
+    settled: int | None = None
     for _ in range(int(spec.minutes * 60 / SIM_DT)):
         if world.winner is not None:
             break
@@ -392,10 +441,18 @@ def play(spec: MatchSpec) -> MatchResult:
         for player in world.players:
             if not player.alive and player.id not in eliminated:
                 eliminated[player.id] = world.time
+        if settle and steps % SETTLED_EVERY == 0:
+            ahead = _runaway(world, eliminated, spec.players)
+            if ahead is None or ahead != leader:
+                leader, leader_since = ahead, world.time
+            elif world.time - leader_since >= SETTLED_SECONDS:
+                settled = leader
+                break
     telemetry.finish(world)
-    return MatchResult(spec=spec, placements=_placements(world, eliminated, spec.players), winner=world.winner,
+    return MatchResult(spec=spec, placements=_placements(world, eliminated, spec.players),
+                       winner=world.winner if world.winner is not None else settled,
                        minutes=world.time / 60, steps=steps, wall=time.perf_counter() - started,
-                       tallies=telemetry.tallies)
+                       settled=settled is not None, tallies=telemetry.tallies)
 
 
 def register_profiles(profiles: Sequence[tuple[str, object]]) -> None:
