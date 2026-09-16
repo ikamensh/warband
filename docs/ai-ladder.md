@@ -116,19 +116,29 @@ say "it never lost".
 ## The difficulty settings
 
 What the New game screen offers, and what each one is worth. 60 seeds, both
-corners, every map size, under fog, 720 games, Medium anchored at 1000:
+corners, every map size, under fog, 720 games, Medium anchored at 1000,
+measured on 2026-09-16 after blows were given a turn and a wind-up and shots
+became projectiles (`docs/unit-motion.md` part 4):
 
 | setting | Elo | 90% interval | plays |
 |---------|-----|--------------|-------|
-| Easy | 768 | 708 .. 824 | `ai.Brain`, the Easy profile |
+| Easy | 736 | 672 .. 799 | `ai.Brain`, the Easy profile |
 | Medium | 1000 | — | `ai.Brain`, what Normal and Hard both were |
-| Hard | 1218 | 1174 .. 1267 | `pro_ai.ProBrain`, `pro-hard` |
-| Master | 1420 | 1374 .. 1485 | `pro_ai.ProBrain`, `pro` |
+| Hard | 1253 | 1209 .. 1302 | `pro_ai.ProBrain`, `pro-hard` |
+| Master | 1452 | 1402 .. 1511 | `pro_ai.ProBrain`, `pro` |
 
-Each beats the one below it 81%, 77%, 78% of the time — a real step every
+Each beats the one below it 84%, 82%, 78% of the time — a real step every
 time, which the old three settings did not have: Normal and Hard measured 994
 and 1000 and split their games 55/45. They are one setting now, and the
 screen shows each rating beside its button so the choice is not a guess.
+Before the combat rework the same protocol gave 768, 1000, 1218 and 1420 with
+steps of 81%, 77% and 78%: the slower blows moved nobody's standing. (A
+12-seed run had put Easy at 573 first; that was the sample, not the rules.)
+None of the brains reaches a workshop in a 20-minute match against another
+brain, so the catapult rules — stones on the ground, own-side splash, the
+minimum range — are exercised against a human, not on this ladder; with three
+catapults handed to each Medium side at minute one they threw 65–74 stones a
+match, two thirds at buildings, and never hit their own side.
 
 Hard is not a hobbled Master by accident: it is the same brain thinking once
 every second and a half, on six peasants a mine, with one barracks a hall, no
