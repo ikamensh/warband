@@ -117,6 +117,16 @@ PRO_VANGUARD = replace(PRO, name="pro-vanguard", barracks_first=True, panic_gold
 PRO_WARDEN = replace(PRO_VANGUARD, name="pro-warden", towers_early=1, min_army=8, attack_ratio=1.0,
                      counter_from=0.2, counter_strength=2.0)
 
+#: Probes on the Warden, for the ladder to price: the combat knobs the
+#: hill-climb does not search — when a wounded soldier walks out and when it
+#: comes back, how often the combat pass runs, how big a raid stops a push.
+_PROBES = (
+    replace(PRO_WARDEN, name="pro-warden-hp40", retreat_hp=0.4, rejoin_hp=0.8),
+    replace(PRO_WARDEN, name="pro-warden-hp15", retreat_hp=0.15),
+    replace(PRO_WARDEN, name="pro-warden-fast", combat_every=0.1),
+    replace(PRO_WARDEN, name="pro-warden-raid70", ignore_raid_ratio=0.7),
+)
+
 
 #: Variants used to find out which knob is actually carrying the strength.
 #: Each differs from :data:`PRO` in one thing, so a ladder over all of them
@@ -145,7 +155,7 @@ _TRIALS = (
     replace(PRO, name="pro-nocounter", counter_from=1.1),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, PRO_VANGUARD.name: PRO_VANGUARD, PRO_WARDEN.name: PRO_WARDEN,
-                                       **{p.name: p for p in _TRIALS}}
+                                       **{p.name: p for p in _TRIALS}, **{p.name: p for p in _PROBES}}
 
 
 # -- Force comparison ---------------------------------------------------------------
