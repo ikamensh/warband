@@ -2,14 +2,17 @@
 
 import json
 import random
+import re
+from pathlib import Path
 
 import pytest
 
 from saga2d import SaveError
 from warband import mapgen
 from warband.ai import make_brain
+from warband import model
 from warband.model import RuleError, World
-from warband.replay import Playback, Replay, ReplayStore, digest
+from warband.replay import ORDERS, Playback, Replay, ReplayStore, apply_order, digest
 from warband.rules import SIM_DT, BuildingType, Difficulty, Terrain, UnitType
 
 
@@ -107,6 +110,16 @@ def test_replays_are_kept_per_match_and_a_damaged_file_is_reported(tmp_path):
     assert not store.exists("match-1")
     with pytest.raises(SaveError):
         store.load("match-1")
+
+
+def test_only_the_decorated_order_methods_are_replayable():
+    """ORDERS is the allowlist a replay file may call, so it must be exactly what `recorded` marked:
+    it once also caught every staticmethod, because a staticmethod carries __wrapped__ of its own."""
+    declared = set(re.findall(r"@recorded\n    def ([a-z_]+)\(", Path(model.__file__).read_text()))
+    assert ORDERS == declared and declared
+    assert not any(name.startswith("_") for name in ORDERS)
+    with pytest.raises(ValueError):
+        apply_order(World(8, 8, [[Terrain.GRASS] * 8 for _ in range(8)], 2), "_at_ease", [1], {})
 
 
 def test_a_replay_from_another_format_or_with_a_bad_log_is_refused():

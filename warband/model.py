@@ -87,6 +87,7 @@ def recorded(method):
         finally:
             self._order_depth -= 1
 
+    order.is_order = True  # what :data:`warband.replay.ORDERS` is built from; a plain wrapper flag would also match staticmethods
     return order
 
 
