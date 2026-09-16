@@ -176,6 +176,9 @@ def test_the_tower_rush_wishes_for_a_tower_at_the_enemy_mine_once_seen():
     world.place_building(0, BuildingType.BARRACKS, (hall.x + 6, hall.y))
     assert BuildingType.TOWER not in [b for b, _ in brain._wish_list(world)], "nothing of theirs has been seen"
     world.reveal_all(0)
+    world.players[0].gold = 800
+    assert BuildingType.TOWER not in [b for b, _ in brain._wish_list(world)], "not without the price held twice"
+    world.players[0].gold = 9000
     world.update_vision()
     mine = brain._enemy_mine(world)
     assert mine is not None

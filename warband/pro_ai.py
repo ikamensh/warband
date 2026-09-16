@@ -474,18 +474,24 @@ class ProBrain:
             # first barracks at three minutes for exactly this reason.
             if profile.barracks_first:
                 return wishes
+        if profile.tower_rush:
+            mine = self._enemy_mine(world)
+            bank = world.players[player]
+            # A tower at their mine is worth what it costs them, not what it
+            # costs us: their gatherers route round anything armed they have
+            # seen, so the mine is shut until an army comes to open it, and the
+            # first push goes for our production, not for this. It has to be
+            # standing before their first soldiers are, so it goes the moment
+            # the mine is seen — ahead of the home tower — and only with the
+            # price held twice over, because the peasant pays on arrival after
+            # a walk across the map and an order that cannot be paid is dropped.
+            if (mine is not None and not self._rush_placed(world, mine)
+                    and bank.gold >= 1000 and bank.lumber >= 400 + profile.lumber_floor):
+                wishes.append((BuildingType.TOWER, mine.center))
         if count(BuildingType.TOWER) < profile.towers_early:
             # A tower is two footmen's worth of fight for less than one footman's
             # gold, for as long as the enemy comes to it — and Master comes to it.
             wishes.append((BuildingType.TOWER, self._front_point(world, hall)))
-        if profile.tower_rush and world.player_buildings(player, BuildingType.BARRACKS):
-            mine = self._enemy_mine(world)
-            if mine is not None and not self._rush_placed(world, mine):
-                # A tower at their mine is worth what it costs them, not what it
-                # costs us: their gatherers route round anything armed they have
-                # seen, so the mine is shut until an army comes to open it, and
-                # the first push goes for our production, not for this.
-                wishes.append((BuildingType.TOWER, mine.center))
         if count(BuildingType.LUMBER_MILL) < 1:
             # Beside the hall, where the site search puts it. Siting it at the
             # edge of the nearest wood measured level (52–56% against Master,
