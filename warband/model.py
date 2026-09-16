@@ -937,6 +937,23 @@ class World:
         for unit in self._own_units(unit_ids):
             self._issue(unit, Hold())
 
+    def release_workers(self, unit_ids: list[int]) -> None:
+        """Take peasants off the job they are on and leave the automatic policy to place them again.
+
+        Unlike :meth:`stop` this keeps ``auto_work``: the point is to be given
+        new work, not to be left standing. A caller that knows a peasant should
+        be somewhere else but not exactly where — the brain pulling hands off
+        the trees once the wood is piled up — says so this way rather than
+        naming a destination it may be remembering wrongly.
+        """
+        for unit in self._own_units(unit_ids):
+            if not unit.is_worker:
+                raise RuleError("Only peasants gather")
+            unit.orders.clear()
+            unit.path = []
+            unit.path_goal = None
+            unit.state = "idle"
+
     def harvest(self, unit_ids: list[int], target: int | Pos, *, queue: bool = False) -> None:
         if isinstance(target, int):
             mine = self.buildings.get(target)

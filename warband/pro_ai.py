@@ -389,10 +389,11 @@ class ProBrain:
         peasants = [p for p in self._peasants(world)
                     if not p.hidden and not isinstance(p.order, (Build, Repair)) and p.id not in self.scouts]
         if player.lumber >= self.profile.lumber_stock:
-            mines = self._worked_mines(world)
-            for peasant in [p for p in peasants if self._on_lumber(p) and p.carrying is None][1:]:
-                if mines:
-                    world.harvest([peasant.id], min(mines, key=lambda m: dist(m.center, peasant.pos)).id)
+            # Let go of the axe and let the model's own policy place them. Naming a
+            # mine here crashed a league sixty matches in: the brain chose from the
+            # player's memory, which keeps a mine nobody has looked at lately, and a
+            # harvest order on ground that no longer holds one is refused.
+            world.release_workers([p.id for p in peasants if self._on_lumber(p) and p.carrying is None][1:])
             return
         if player.lumber >= self.profile.lumber_floor_panic or player.gold < self.profile.panic_gold:
             return

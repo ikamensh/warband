@@ -12,6 +12,7 @@ import random
 
 from warband import mapgen
 from warband.model import dist
+from warband.ai import known_mines
 from warband.pro_ai import PRO, ProBrain, _tower_strength, strength
 from warband.rules import SIM_DT, BuildingType, UnitType
 
@@ -403,3 +404,39 @@ def test_a_brain_with_room_at_the_face_and_gold_left_does_not_expand_early():
         world.step()
     ordered = [o.type for o in brain._ordered(world)]
     assert len(world.player_buildings(0, BuildingType.TOWN_HALL)) == 1 and BuildingType.TOWN_HALL not in ordered
+
+
+def test_choppers_sent_back_to_the_gold_do_not_name_a_mine_that_is_gone():
+    """A remembered mine may have been dug out since it was last seen; ordering a peasant to it is refused.
+
+    Found by the balance league crashing sixty matches in: the brain picked
+    its destination from the player's memory, which keeps a mine nobody has
+    looked at lately, and the model refuses a harvest on ground that no longer
+    holds one. Seed 12 has a mine thirteen tiles from the hall — close enough
+    for the brain to want it, too far for anything at home to see it go.
+    """
+    from warband.model import Harvest
+
+    world = mapgen.generate(seed=12, players=2, human=None)
+    brain = ProBrain(0, PRO)
+    world.reveal_all(0)
+    brain.think(world, random.Random(1))  # the mines round about are now remembered
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    far = max((m for m in world.mines() if dist(m.center, hall.center) < 14),
+              key=lambda m: dist(m.center, hall.center))
+    for mine in list(world.mines()):
+        if mine.id != far.id:
+            world._remove_building(mine, reason="exhausted")  # leave only the one nobody can see
+    tree = world.nearest_tree(hall.center, 24)
+    for peasant in world.player_units(0):
+        world.harvest([peasant.id], tree)
+    world.update_vision()
+    world._remove_building(far, reason="exhausted")  # dug out where nobody is looking
+    assert far.id in [m.id for m in known_mines(world, 0)], "the player still remembers it"
+    world.players[0].lumber = PRO.lumber_stock + 1000
+    rng = random.Random(1)
+    for _ in range(int(PRO.think_every / SIM_DT) + 2):
+        brain.think(world, rng)  # must not raise
+        world.step()
+    assert not any(isinstance(o, Harvest) and isinstance(o.target, int)
+                   for p in world.player_units(0) for o in p.orders), "nobody was sent to a mine that is not there"
