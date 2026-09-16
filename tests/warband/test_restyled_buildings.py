@@ -67,7 +67,7 @@ def test_building_image_uses_the_painted_frame_recoloured_to_the_player(game, pa
     images = registered(game, monkeypatch)
     key = textures.building_image(game, BuildingType.FARM, 1, Race.ORC)
     assert key == "building.orc.farm.intact.1"
-    assert textures.placements[key] == textures.Placement((20.0, 30.0), 7.5)  # the sheet's cell over its scale, the anchor's drop
+    assert textures.placements[key] == textures.Placement((20.0, 30.0), 7.5, 32.0)  # the sheet's cell over its scale, the anchor's drop, the footprint's front
     frame = np.asarray(images[key])
     assert frame.shape[:2] == CELL[::-1]
     banner, wall = frame[15, 15, :3], frame[30, 20, :3]

@@ -365,6 +365,7 @@ for _page in range(4):
 for _won in (True, False):
     def _game_over(game: Game, won: bool = _won) -> None:
         scene = match(game)
+        ticks(game, 120)  # the opening banner has come and gone
         scene.world.winner = scene.human if won else 1
         scene.player.alive = won
         ticks(game, 3)
@@ -381,6 +382,7 @@ def high_scores(game: Game) -> None:
 @screen
 def high_scores_after_match(game: Game) -> None:
     scene = match(game)
+    ticks(game, 120)
     scene.world.winner = scene.human
     ticks(game, 3)
     game.scene.high_scores()

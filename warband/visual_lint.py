@@ -40,7 +40,7 @@ from warband.rules import BUILDINGS, BuildingType, MapTheme, Race, Resource, Uni
 
 SOLID = 160  # alpha from which a pixel counts as the figure itself, not its shadow or fringe
 EDGE = 96  # alpha from which a pixel at the canvas edge means the figure was cut off
-CHROMA_PIXELS = 40  # visible magenta-cast edge pixels a painted frame may keep before its fringe shows
+CHROMA_SHARE = 0.05  # share of a painted frame's edge pixels that may carry the key's tint before its fringe shows
 HOP = 3.0  # logical pixels the feet may move between frames of one facing before it is a hop
 SLIDE = 4.0  # logical pixels the figure may shift sideways between frames of one facing
 TURN_SLIDE = 6.0  # ... or between facings
@@ -150,8 +150,8 @@ def lint_image(key: str, image: Image.Image, *, painted: bool = False, cropped: 
         rgb = np.asarray(image.convert("RGBA")).astype(int)
         edge = (rgb[..., 3] >= EDGE) & (rgb[..., 3] < 250)
         cast = edge & (rgb[..., 0] - rgb[..., 1] > 40) & (rgb[..., 2] - rgb[..., 1] > 40)
-        if cast.sum() > CHROMA_PIXELS:
-            findings.append(Finding("chroma", key, f"{int(cast.sum())} visible edge pixels with a magenta cast from the chroma key", image))
+        if cast.sum() > CHROMA_SHARE * edge.sum() and cast.sum() > 20:
+            findings.append(Finding("chroma", key, f"{cast.sum() / edge.sum():.0%} of the visible edge pixels carry the chroma key's tint", image))
     return findings
 
 
@@ -320,8 +320,8 @@ def lint_images(game: Game, store: ImageStore) -> list[Finding]:
     findings: list[Finding] = []
     painted_keys = {key for key in game.assets._images if key.startswith(("unit.", "building.", "portrait."))}
     for key in list(game.assets._images):
-        if key.startswith(("fog.", "minimap.", "ground.", "edge.", "newgame.")):
-            continue
+        if key not in textures.placements and not key.startswith(("portrait.", "production.")):
+            continue  # the ground, fog, minimap and the soft effect images are not figures
         findings += lint_image(key, store.image(key), painted=key in painted_keys and textures.RESTYLED_ART,
                                cropped=key.startswith("portrait."))
     for name, race, unit_type, carrying, player in unit_subjects():
@@ -373,6 +373,8 @@ def use_real_text_metrics(game: Game) -> None:
         return cache[key]
 
     def measure_text(text: str, font_size: int, font: str | None = None) -> tuple[int, int]:
+        if not str(text):
+            return (0, 0)  # an empty label takes no room, as on pyglet
         face = font_for(font, font_size)
         ascent, descent = face.getmetrics()
         return (math.ceil(face.getlength(str(text)) / 2), (ascent + descent) // 2)
@@ -459,8 +461,8 @@ def lint_sprites(game: Game, store: ImageStore) -> list[Finding]:
         expected = placement.size
         if abs(s["width"] - expected[0]) > 1 or abs(s["height"] - expected[1]) > 1:
             findings.append(Finding("stretched", key, f"drawn {s['width']:.0f}×{s['height']:.0f}, the image is {expected[0]:.0f}×{expected[1]:.0f}"))
-        feet = s["y"] + s["height"] - placement.drop
-        props.append((key, s["x"], s["y"], s["x"] + s["width"], s["y"] + s["height"], feet, s["order"]))
+        line = s["y"] + s["height"] - placement.ground  # a unit's feet, a building's front edge
+        props.append((key, s["x"], s["y"], s["x"] + s["width"], s["y"] + s["height"], line, s["order"]))
     wrong = []
     for i, a in enumerate(props):
         for b in props[i + 1:]:
@@ -471,7 +473,7 @@ def lint_sprites(game: Game, store: ImageStore) -> list[Finding]:
                 wrong.append((behind, front))
     if wrong:
         behind, front = wrong[0]
-        findings.append(Finding("draw-order", f"{len(wrong)} pairs", f"e.g. {behind[0]} (feet y {behind[5]:.0f}) drawn over {front[0]} (feet y {front[5]:.0f})"))
+        findings.append(Finding("draw-order", f"{len(wrong)} pairs", f"e.g. {behind[0]} (standing at y {behind[5]:.0f}) drawn over {front[0]} (at y {front[5]:.0f})"))
     return findings
 
 

@@ -66,9 +66,18 @@ player.
 
 ```sh
 uv run python -m pytest tests/warband tests/framework/test_render3d.py -q
+uv run python tools/visual_lint.py --no-screens --evidence /tmp/warband-lint
 uv run python tools/verify_art.py /tmp/warband-art
 uv run python tools/verify_forest.py /tmp/warband-forest
 ```
+
+The lint checks every registered image without a window: empty or clipped
+frames, a visible chroma fringe, a painted frame whose figure drifted from
+the low-poly render it repaints (the game places the painting where the
+render stood), a pose reaching below the unit canvas' padding, a team
+recolour that changes almost nothing (the elven scout and the elven and
+dwarven workshops carry too little team hue to tell whose they are). It
+writes a PNG of each flagged frame with the anchor row marked.
 
 The native verifier uses the same registered images and MapView as gameplay.
 Inspect the generated catalogs, settlement screenshots and chopping animation

@@ -40,7 +40,7 @@ SAVE_VERSION = 2  # 2: the world records its layout
 SAVE_SLOTS = 3
 AUTOSAVE_EVERY = 120.0  # seconds of match time
 TOAST_TOP = 280  # below the resource, settlement and objectives panels
-HUD_TOP = 146  # just under the Settlement row: the status line starts here, and the map can scroll clear of it
+HUD_TOP = 158  # just under the Settlement row (which ends at 150): the status line starts here, and the map can scroll clear of it
 HINT_BAR = 28
 PANEL_MARGIN = (12, HINT_BAR + 10)
 MAX_STEPS_PER_FRAME = 6
@@ -63,6 +63,8 @@ UPGRADE_NAMES = {Upgrade.BLADES_1: "Blades I", Upgrade.BLADES_2: "Blades II", Up
                  Upgrade.BLOODLUST: "Bloodlust", Upgrade.PLUNDER: "Plunder", Upgrade.LONGBOWS: "Longbows", Upgrade.REGROWTH: "Regrowth",
                  Upgrade.DEEP_MINING: "Mining", Upgrade.BLASTING_POWDER: "Powder"}
 CARD_WIDTH = 116
+CARD_GAP = 6
+CARD_PANEL_WIDTH = CARD_COLS * CARD_WIDTH + (CARD_COLS - 1) * CARD_GAP + 2 * PANEL_STYLE.padding  # the widest command card
 CARD_ICON = 58  # height of a portrait button; the name sits under it
 MINIMAP_WIDTH = 200
 SELECTION_WIDTH = 470
@@ -289,19 +291,23 @@ class GameScene(Scene):
                         Button("Train", hotkey="T", on_click=lambda: self.toggle_settlement("train"), style=GHOST_BUTTON, width=104),
                         Button("Upgrade", hotkey="U", on_click=lambda: self.toggle_settlement("upgrade"), style=GHOST_BUTTON, width=128),
                         Button(lambda: f"Plans ({self._plan_count()})", hotkey="Ctrl+P", on_click=self.open_plans, style=GHOST_BUTTON, width=152),
-                        Button("Assembly", hotkey="G", on_click=lambda: self.start_pending("assembly"), style=GHOST_BUTTON, width=128),
+                        Button("Assembly", hotkey="G", on_click=lambda: self.start_pending("assembly"), style=GHOST_BUTTON, width=140),
                         spacing=8, anchor=Anchor.TOP_LEFT, margin=(12, 84), style=PANEL_STYLE))
         world_w, world_h = self.world.width * TILE, self.world.height * TILE
         self.minimap = Minimap(self.view.minimap_key, (world_w, world_h), self.camera, width=MINIMAP_WIDTH,
                                height=self._minimap_height(), on_click=self.minimap_click,
                                anchor=Anchor.BOTTOM_LEFT, margin=PANEL_MARGIN, style=PANEL_STYLE)
         self.ui.add(self.minimap)
-        self.selection_panel = Component(width=SELECTION_WIDTH, height=SELECTION_HEIGHT, anchor=Anchor.BOTTOM_CENTER, margin=PANEL_MARGIN)
+        # The selection panel sits centred between the minimap and the widest command card, which on a
+        # narrow window is left of the screen's centre.
+        width = self.game.resolution[0]
+        left = max(PANEL_MARGIN[0] + MINIMAP_WIDTH + 12, min((width - SELECTION_WIDTH) // 2, width - PANEL_MARGIN[0] - CARD_PANEL_WIDTH - 8 - SELECTION_WIDTH))
+        self.selection_panel = Component(width=SELECTION_WIDTH, height=SELECTION_HEIGHT, anchor=Anchor.BOTTOM_LEFT, margin=(left, PANEL_MARGIN[1]))
         self.ui.add(self.selection_panel)
-        self.card_panel = Column(spacing=6, anchor=Anchor.BOTTOM_RIGHT, margin=PANEL_MARGIN, style=PANEL_STYLE)
+        self.card_panel = Column(spacing=CARD_GAP, anchor=Anchor.BOTTOM_RIGHT, margin=PANEL_MARGIN, style=PANEL_STYLE)
         self.ui.add(self.card_panel)
         # What a hovered command or queued job is, wrapped above the selection panel where a long line fits.
-        self.command_tooltip = Panel(anchor=Anchor.BOTTOM_CENTER, margin=(0, PANEL_MARGIN[1] + SELECTION_HEIGHT + 8), layout=Layout.VERTICAL,
+        self.command_tooltip = Panel(anchor=Anchor.BOTTOM_LEFT, margin=(left, PANEL_MARGIN[1] + SELECTION_HEIGHT + 8), layout=Layout.VERTICAL,
                                      style=PANEL_STYLE, visible=False,
                                      children=[Label(lambda: self.tooltip, text_style="body", wrap=True, width=SELECTION_WIDTH - 24)])
         self.ui.add(self.command_tooltip)
@@ -902,7 +908,7 @@ class GameScene(Scene):
             self.card_panel.add(Label("Cost: gold / lumber · paid when work starts", text_style="caption", width=360, wrap=True))
         portraits = any(c.target is not None for c in commands)
         for start in range(0, len(commands), CARD_COLS):
-            row = Row(spacing=6)
+            row = Row(spacing=CARD_GAP)
             for command in commands[start:start + CARD_COLS]:
                 captions = []
                 if command.target is not None:
@@ -1894,7 +1900,7 @@ class SaveBrowserScene(_Overlay):
                 ok = True
             button = Button(name, hotkey=key, on_click=lambda sl=slot: self.pick(sl), style=ACTION_BUTTON if ok else GHOST_BUTTON, width=150)
             button.enabled = ok and not (self.mode == "save" and slot == "autosave")
-            panel.add(Row(button, Label(detail, text_style="body", width=520), spacing=12))
+            panel.add(Row(button, Label(detail, text_style="body", width=560, wrap=True), spacing=12))
         panel.add(KeyHints([("1 2 3 Q A", "pick"), ("Esc", "back")]))
 
     def pick(self, slot: int | str) -> None:
@@ -1924,7 +1930,7 @@ HELP_INTRO = (
 )
 HELP_KEYS = (
     ("B / T / U / G", "plan a building / unit / upgrade for the settlement, or set the assembly point for new soldiers"),
-    ("Ctrl + letter", "the same when the selection's own commands use that letter;  Ctrl+P: every plan, its progress and cancel"),
+    ("Ctrl + letter", "the same when the selection's own commands use that letter;  Ctrl+P: every plan and its progress"),
     ("Shift", "Train: five at once;  Build: keep placing;  otherwise add to the selection or queue an order"),
     ("Production panel", "with nothing selected: hover an item for its state, click to go to its producer, right-click to cancel"),
     ("Click / drag / right-click", "select;  box-select;  order whatever fits the target  (Mac trackpad: two-finger click)"),
@@ -1940,16 +1946,19 @@ HELP_KEYS = (
 )
 
 
+HELP_KEY_WIDTH, HELP_TEXT_WIDTH = 230, 860  # the longest line fits unwrapped, and the panel fits a 1200 px window
+
+
 class HelpScene(_Overlay):
     pause_below = True
 
     def on_enter(self) -> None:
         panel = self.panel("How to play")
-        for line in HELP_INTRO:
-            panel.add(Label(line, text_style="body", width=1000))
+        panel.add(Label(" ".join(HELP_INTRO), text_style="body", width=HELP_KEY_WIDTH + 14 + HELP_TEXT_WIDTH, wrap=True))
         table = Column(spacing=4)
         for keys, what in HELP_KEYS:
-            table.add(Row(Label(keys, text_style="hud", width=230, align="right", text_color=GOLD), Label(what, text_style="body", width=780), spacing=14))
+            table.add(Row(Label(keys, text_style="hud", width=HELP_KEY_WIDTH, align="right", text_color=GOLD),
+                          Label(what, text_style="body", width=HELP_TEXT_WIDTH, wrap=True), spacing=14))
         panel.add(table)
         panel.add(KeyHints([("Esc", "close")]))
 
@@ -1980,9 +1989,11 @@ class CodexScene(_Overlay):
         if self.page == 3:
             table = self._race_table(race.name)
         else:
-            for cells in self._rows():
-                table.add(Row(*[Label(text, text_style="hud" if i == 0 else "body", width=width, text_color=GOLD if i == 0 else None)
-                                for i, (text, width) in enumerate(cells)], spacing=10))
+            widths, rows = self._rows()
+            for cells in rows:
+                table.add(Row(*[Label(text, text_style="hud" if i == 0 else "body", width=width, text_color=GOLD if i == 0 else None,
+                                      wrap=i == len(cells) - 1)
+                                for i, (text, width) in enumerate(zip(cells, widths))], spacing=8))
         panel.add(table)
         panel.add(KeyHints([("1 2 3 4", "page"), ("Tab", "next"), ("Esc", "close")]))
 
@@ -2000,36 +2011,38 @@ class CodexScene(_Overlay):
             table.add(block)
         return table
 
-    def _rows(self) -> list[list[tuple[str, int]]]:
+    def _rows(self) -> tuple[tuple[int, ...], list[list[str]]]:
+        """The page's column widths and its rows, the header first.  The widths fit the widest
+        name, cost and building of every race at 1200 px; the last column wraps."""
         player = self.world.players[self.player]
         have = player.upgrades
         race = RACES[player.race]
         if self.page == 0:
-            rows = [[("Unit", 120), ("Cost", 150), ("HP", 50), ("Dmg", 50), ("Arm", 50), ("Rng", 50), ("Spd", 50), ("Trained at", 120), ("Role", 320)]]
+            rows = [["Unit", "Cost", "HP", "Dmg", "Arm", "Rng", "Spd", "Trained at", "Role"]]
             for unit_type, info in race.units.items():
-                rows.append([(info.name, 120), (str(info.cost), 190), (str(info.hp), 50), (str(info.damage) if info.damage else f"heal {info.heal}", 50),
-                             (str(info.armor), 50), ("melee" if info.range < 1 else f"{info.range:g}", 50), (f"{info.speed:g}", 50),
-                             (race.buildings[info.trained_at].name, 120), (info.summary, 320)])
-            return rows
+                rows.append([info.name, str(info.cost), str(info.hp), str(info.damage) if info.damage else f"heal {info.heal}",
+                             str(info.armor), "melee" if info.range < 1 else f"{info.range:g}", f"{info.speed:g}",
+                             race.buildings[info.trained_at].name, info.summary])
+            return (150, 198, 40, 60, 40, 55, 42, 140, 367), rows
         if self.page == 1:
-            rows = [[("Building", 120), ("Cost", 150), ("HP", 50), ("Arm", 50), ("Size", 50), ("Time", 50), ("Requires", 110), ("What it does", 400)]]
+            rows = [["Building", "Cost", "HP", "Arm", "Size", "Time", "Requires", "What it does"]]
             for building_type, info in race.buildings.items():
                 if building_type is BuildingType.GOLD_MINE:
                     continue
-                rows.append([(info.name, 120), (str(info.cost), 190), (str(info.hp), 50), (str(info.armor), 50), (f"{info.size}×{info.size}", 50),
-                             (f"{info.build_time:g}s", 50), (race.buildings[info.requires].name if info.requires else "—", 110),
-                             (info.summary + (f" · supply +{info.supply}" if info.supply else ""), 400)])
-            return rows
+                rows.append([info.name, str(info.cost), str(info.hp), str(info.armor), f"{info.size}×{info.size}", f"{info.build_time:g}s",
+                             race.buildings[info.requires].name if info.requires else "—",
+                             info.summary + (f" · supply +{info.supply}" if info.supply else "")])
+            return (150, 198, 50, 40, 50, 50, 130, 420), rows
         if self.page == 2:
-            rows = [[("Upgrade", 160), ("Cost", 150), ("Time", 50), ("Where", 110), ("Requires", 150), ("Effect", 320)]]
+            rows = [["Upgrade", "Cost", "Time", "Where", "Requires", "Effect"]]
             for upgrade, info in UPGRADES.items():
                 if not race.upgrade_allowed(upgrade):
                     continue
                 where = next(b for b, binfo in BUILDINGS.items() if upgrade in binfo.researches)
                 requires = UPGRADES[info.requires].name if info.requires else f"{race.adjective} art" if info.race is not None else "—"
-                rows.append([(info.name + (" ✓" if upgrade in have else ""), 160), (str(info.cost), 190), (f"{info.time:g}s", 50),
-                             (race.buildings[where].name, 110), (requires, 150), (info.summary, 320)])
-            return rows
+                rows.append([info.name + (" ✓" if upgrade in have else ""), str(info.cost), f"{info.time:g}s", race.buildings[where].name, requires,
+                             info.summary])
+            return (190, 198, 50, 130, 165, 383), rows
         raise ValueError(f"no table for page {self.page}")
 
     def show(self, page: int) -> None:

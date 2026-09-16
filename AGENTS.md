@@ -14,6 +14,7 @@ uv run warband --seed 3                          # play (python -m warband works
 uv run pytest -q                                 # headless suite, about four minutes
 uv run python -u tools/fuzz.py --games 2 --monkey 0 --seed 81   # AI matches with invariants + monkey input (needs -u)
 uv run python tools/verify.py DIR                # a match through real pyglet events, frames saved to look at
+uv run python tools/visual_lint.py --evidence DIR   # visual defects in the art and on every screen; PNGs of what it flags (--screens NAME, --no-images)
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms)
 uv run python tools/step_bench.py --repeat 3     # model step times of the same battle without a window, with --profile
 uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening (the default report is about a minute)
@@ -58,7 +59,13 @@ real breakdown.
   painted frame too. `WARBAND_ART=procedural` keeps the renders; a sheet whose
   frames no longer match `FRAMES` or the building types warns and is ignored.
   `view.py` keeps sprites in step and draws fog, minimap and water;
-  `effects.py` transient animations and lingering bodies.
+  `effects.py` transient animations and lingering bodies. `visual_lint.py`
+  finds visual defects: in every registered image (empty, clipped, chroma
+  fringe, a painted frame off its render, a team recolour that did not take)
+  and in what a scene drew on the mock backend with real glyph metrics (text
+  over text or off screen, labels narrower than their text, panels over each
+  other, sprites drawn over what they stand behind); `tools/visual_lint.py`
+  runs it over fifty screens at 1280×800 and 1200×680.
 - `warband/sound.py`, `voices.py`, `ambience.py`, `instruments.py`, `music.py` —
   synthesised with `sagaforge.synth`; `music.Director` maps moods to tracks; the bank
   composes in a background thread. `combat_sound.py`, `deaths.py` and `wreckage.py` are
@@ -85,6 +92,9 @@ real breakdown.
 - Visual changes must be looked at (render a frame with
   `saga2d.testing.render_scene` or `tools/verify.py` and open the PNG). Mock
   tests prove logic, not pixels. The display must be awake for pyglet.
+  After a HUD, overlay or art change run `tools/visual_lint.py`; the screens
+  it walks are kept clean by `tests/warband/test_visual_lint.py`, and a
+  finding there is something to look at, not a number to tune away.
 - After changing rules, the AI or scene input, run `tools/fuzz.py`; a bug
   found by fuzz gets a regression test built from the seed's exact tiles and
   unit positions (synthetic geometries kept passing on old code).

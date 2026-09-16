@@ -2,7 +2,9 @@
 
 Layers: ground chunks on ``BACKGROUND``; selection rings and rally lines on
 ``OBJECTS``; trees, rocks, mines, buildings and units on ``UNITS``, y-sorted
-by the point they stand on; arrows and particles on ``EFFECTS`` under the fog
+by the line they stand on (a unit's feet, a building's front edge: the
+placement's *ground* tells the sprite how far its padded canvas continues
+below that line); arrows and particles on ``EFFECTS`` under the fog
 sprite, which is one image with a pixel per tile stretched over the whole
 map (bilinear filtering makes the soft edges for free) and is redrawn with
 ``update_image`` whenever the model recomputes vision; health bars and the
@@ -235,7 +237,7 @@ class MapView:
         placement = textures.placements[key]
         wx, wy = to_world(point)
         return self.scene.add_sprite(Sprite(key, position=(wx, wy + placement.drop), size=placement.size, anchor=SpriteAnchor.BOTTOM_CENTER,
-                                            layer=RenderLayer.UNITS, y_sort=True, **kwargs))
+                                            layer=RenderLayer.UNITS, y_sort=True, ground=placement.ground, **kwargs))
 
     def _build_props(self) -> None:
         world = self.world
@@ -330,6 +332,7 @@ class MapView:
             elif self._building_keys[b.id] != key:
                 sprite.image = key
                 sprite.size = textures.placements[key].size
+                sprite.ground = textures.placements[key].ground
                 self._building_keys[b.id] = key
             sprite.opacity = 150 if rising else 255
             self._sync_smoke(b, sprite)
@@ -387,6 +390,7 @@ class MapView:
                 if self._unit_keys[u.id] != key:
                     sprite.image = key
                     sprite.size = textures.placements[key].size
+                    sprite.ground = textures.placements[key].ground
                     self._unit_keys[u.id] = key
                 wx, wy = to_world(u.pos)
                 sprite.position = (wx, wy + textures.placements[key].drop)
