@@ -220,6 +220,47 @@ leash on pushes — were rated against Master over 1008 games. Five of them
 landed between 47% and 53% against it, which is nothing, and the sixth (more
 farms) was clearly worse. The plateau is in the brain, not in the ruler.
 
+### What decides a Master mirror
+
+Before looking for the next rung, 48 games of `pro` against itself (24
+seeds, both corners, every size, after the combat rework) were traced to
+see what a game between two copies of the best brain turns on. Every one
+was decided, in 8.4 minutes at the median, and almost every one the same
+way: both sides march out at about 200 s with five soldiers, the armies
+meet, and the side with more wins the fight and the game. The winner's
+peak army is 33 at the median, the loser's 12; the winner kills 54 and
+loses 24. There is no second act.
+
+Two things set the size of the army at the clash.
+
+**Lumber.** A snapshot at 150 s shows a side with 2900 gold in the bank,
+one barracks, 350 lumber and a supply cap it has just hit; two minutes
+later the same side has 3000 gold, 100 lumber and 29 of 29 supply. The
+model's gatherer policy reserves one farm's worth of wood and sends every
+other hand to the gold, which is a fair rule for a player and far too
+little for a brain that spends 250 lumber per four supply and a farm's
+worth twice over on every barracks, mill and hall. The supply block also
+closes the gate on the second barracks — a barracks that is idle for want
+of supply reads as "not saturated" — so the gold sits. The winner of a
+mirror is supply-blocked with gold in hand for 72 s at the median; it is
+simply the side that got blocked later.
+
+**Race.** The brain plays every race with the same numbers and the same
+minute, and the races do not train or walk at the same speed:
+
+| race | mirror games | won | peak army | first attack |
+|------|--------------|-----|-----------|--------------|
+| elf | 16 | 75% | 20 | 222 s |
+| human | 26 | 62% | 33 | 198 s |
+| orc | 24 | 42% | 21 | 197 s |
+| dwarf | 30 | 33% | 18 | 219 s |
+
+Dwarves walk 0.3 slower and orcs arm 10% slower, so their five arrive
+later and fewer, against elves whose rangers shoot a tile farther and
+humans whose barracks turn out a soldier every 13 s instead of 15. A
+quarter of the games either brain plays are lost or won on the draw of
+the race, which a race-aware profile can take back.
+
 ### Against the 2000 that was asked for
 
 `pro` is about **535 Elo above the anchor, not 1000**. A 1000-point gap means
