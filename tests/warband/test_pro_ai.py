@@ -150,6 +150,26 @@ def test_the_mill_is_wished_for_at_the_edge_of_the_wood():
     assert plain[BuildingType.LUMBER_MILL] == hall.center
 
 
+def test_a_second_mill_is_wished_for_once_the_wood_near_the_depots_is_gone():
+    from dataclasses import replace
+    from warband.rules import Terrain
+    world, brain = _world_with_army()
+    brain.profile = replace(PRO, mill_by_wood=True, wood_reach=8.0)
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    world.players[0].gold, world.players[0].lumber = 9000, 9000
+    world.place_building(0, BuildingType.BARRACKS, (hall.x + 6, hall.y))
+    world.place_building(0, BuildingType.LUMBER_MILL, (hall.x, hall.y + 6))
+    wanted = [b for b, _ in brain._wish_list(world)]
+    assert wanted.count(BuildingType.LUMBER_MILL) == 0, "the wood is still near"
+    hx, hy = int(hall.center[0]), int(hall.center[1])
+    for y in range(max(0, hy - 14), min(world.height, hy + 15)):
+        for x in range(max(0, hx - 14), min(world.width, hx + 15)):
+            if world.terrain[y][x] is Terrain.TREES:
+                world.terrain[y][x] = Terrain.GRASS  # chopped through
+    wanted = [b for b, _ in brain._wish_list(world)]
+    assert wanted.count(BuildingType.LUMBER_MILL) == 1, "a second mill, at the wood that is left"
+
+
 def test_barracks_first_wishes_for_nothing_else_until_it_stands():
     from dataclasses import replace
     world, brain = _world_with_army()

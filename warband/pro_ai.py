@@ -71,6 +71,7 @@ class ProProfile:
     barracks_first: bool = False      # nothing but farms goes up before the first barracks
     towers_early: int = 0             # towers at the front point as soon as the barracks stands, before the mill
     mill_by_wood: bool = False        # the mill goes up at the edge of the nearest wood, not beside the hall
+    wood_reach: float = 0.0           # if set, a second mill goes up once every depot is this far from the nearest tree
     gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
     max_producers: int = 10
     attack_ratio: float = 0.85        # attack when my strength exceeds theirs by this
@@ -182,6 +183,7 @@ _STYLES = (
     replace(PRO, name="pro-rax-workers", barracks_first=True, workers_per_mine=13, max_workers=40),
     replace(PRO, name="pro-rax-slack2", barracks_first=True, supply_slack=2),
     replace(PRO, name="pro-mill", mill_by_wood=True),
+    replace(PRO, name="pro-rax-mill2", barracks_first=True, mill_by_wood=True, wood_reach=8.0),
     replace(PRO, name="pro-rax-mill", barracks_first=True, mill_by_wood=True),
     replace(PRO, name="pro-rax-mill-min8", barracks_first=True, mill_by_wood=True, min_army=8, attack_ratio=1.0),
     replace(PRO, name="pro-rax-min10-kills", barracks_first=True, min_army=10, attack_ratio=1.0, count_kills=True),
@@ -543,6 +545,13 @@ class ProBrain:
             wishes.append((BuildingType.LUMBER_MILL, self._wood_anchor(world, hall) if profile.mill_by_wood else anchor))
         if 1 <= count(BuildingType.BARRACKS) < profile.min_barracks:
             wishes.append((BuildingType.BARRACKS, anchor))
+        if profile.wood_reach > 0 and have(BuildingType.LUMBER_MILL) == 1 and count(BuildingType.LUMBER_MILL) < 2:
+            # The eighty-odd trees within eight tiles of a start are gone by the
+            # fourth minute, and every trip after that is a walk. A second mill
+            # at the wood that is left brings the depot back to the trees.
+            depots = halls + world.player_buildings(player, BuildingType.LUMBER_MILL, done=True)
+            if all(self._wood_distance(world, depot) > profile.wood_reach for depot in depots):
+                wishes.append((BuildingType.LUMBER_MILL, self._wood_anchor(world, hall)))
         # Everything past here is optional, and optional buildings are what lose games:
         # each one is an army that was not trained. They are unlocked only once the
         # production already standing cannot keep up with the money coming in.
@@ -572,6 +581,12 @@ class ProBrain:
         if count(BuildingType.TOWER) < profile.tower_count and len(self._army(world)) >= 4:
             wishes.append((BuildingType.TOWER, self._front_point(world, hall)))
         return wishes
+
+    @staticmethod
+    def _wood_distance(world: World, depot: Building, reach: int = 24) -> float:
+        """How far a chopper walks from *depot* to the nearest tree left standing."""
+        tree = world.nearest_tree(depot.center, reach)
+        return dist(depot.center, tile_center(tree)) if tree is not None else math.inf
 
     def _wood_anchor(self, world: World, hall: Building, reach: int = 16) -> Point:
         """Where to site the mill: the edge of the thickest wood within *reach* of the hall.
