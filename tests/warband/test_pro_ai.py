@@ -133,6 +133,23 @@ def test_a_profile_plays_each_race_by_its_own_numbers():
     assert brain.profile.min_army == 12
 
 
+def test_the_mill_is_wished_for_at_the_edge_of_the_wood():
+    from dataclasses import replace
+    from warband.rules import Terrain
+    world, brain = _world_with_army()
+    brain.profile = replace(PRO, mill_by_wood=True)
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    world.players[0].gold, world.players[0].lumber = 5000, 5000
+    anchors = {building: point for building, point in brain._wish_list(world)}
+    assert BuildingType.LUMBER_MILL in anchors
+    mill = anchors[BuildingType.LUMBER_MILL]
+    nearest = world.nearest_tree(mill, 4)
+    assert nearest is not None, "within four tiles of a tree"
+    assert dist(mill, hall.center) > 3.0, "and not simply beside the hall"
+    plain = {b: pt for b, pt in ProBrain(0, PRO)._wish_list(world)}
+    assert plain[BuildingType.LUMBER_MILL] == hall.center
+
+
 def test_barracks_first_wishes_for_nothing_else_until_it_stands():
     from dataclasses import replace
     world, brain = _world_with_army()

@@ -41,7 +41,7 @@ from dataclasses import dataclass, field, replace
 from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived
 from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, tile_center
 from warband.races import RACES
-from warband.rules import BUILDINGS, BuildingType, Race, UnitType
+from warband.rules import BUILDINGS, BuildingType, Race, Terrain, UnitType
 
 _MELEE_TYPES = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
 BUILD_MIN_DISTANCE = 2
@@ -70,6 +70,7 @@ class ProProfile:
     min_barracks: int = 1             # put up this many before anything optional, saturated or not
     barracks_first: bool = False      # nothing but farms goes up before the first barracks
     towers_early: int = 0             # towers at the front point as soon as the barracks stands, before the mill
+    mill_by_wood: bool = False        # the mill goes up at the edge of the nearest wood, not beside the hall
     gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
     max_producers: int = 10
     attack_ratio: float = 0.85        # attack when my strength exceeds theirs by this
@@ -173,6 +174,9 @@ _STYLES = (
     replace(PRO, name="pro-siege-kills", siege_share=0.25, cleric_share=0.1, target_halls=True, min_army=8,
             attack_ratio=1.0, count_kills=True),
     replace(PRO, name="pro-raxfirst", barracks_first=True),
+    replace(PRO, name="pro-mill", mill_by_wood=True),
+    replace(PRO, name="pro-rax-mill", barracks_first=True, mill_by_wood=True),
+    replace(PRO, name="pro-rax-mill-min8", barracks_first=True, mill_by_wood=True, min_army=8, attack_ratio=1.0),
     replace(PRO, name="pro-rax-min10-kills", barracks_first=True, min_army=10, attack_ratio=1.0, count_kills=True),
     replace(PRO, name="pro-rax-tower1", barracks_first=True, towers_early=1),
     replace(PRO, name="pro-rax-tower2", barracks_first=True, towers_early=2),
@@ -526,7 +530,10 @@ class ProBrain:
             # gold, for as long as the enemy comes to it — and Master comes to it.
             wishes.append((BuildingType.TOWER, self._front_point(world, hall)))
         if count(BuildingType.LUMBER_MILL) < 1:
-            wishes.append((BuildingType.LUMBER_MILL, anchor))
+            # A mill beside the hall shortens no trip: the hall takes lumber too.
+            # Beside the wood it halves every chopper's walk, which is the whole
+            # of what a mill is for.
+            wishes.append((BuildingType.LUMBER_MILL, self._wood_anchor(world, hall) if profile.mill_by_wood else anchor))
         if 1 <= count(BuildingType.BARRACKS) < profile.min_barracks:
             wishes.append((BuildingType.BARRACKS, anchor))
         # Everything past here is optional, and optional buildings are what lose games:
@@ -558,6 +565,35 @@ class ProBrain:
         if count(BuildingType.TOWER) < profile.tower_count and len(self._army(world)) >= 4:
             wishes.append((BuildingType.TOWER, self._front_point(world, hall)))
         return wishes
+
+    def _wood_anchor(self, world: World, hall: Building, reach: int = 16) -> Point:
+        """Where to site the mill: the edge of the thickest wood within *reach* of the hall.
+
+        Scored as trees within a three-tile square less a quarter of the
+        distance, so a stand of forest beats a lone tree twice as near. The
+        anchor sits two tiles from the wood towards the hall, so the site
+        search that fans out from it finds open ground on the near side.
+        """
+        hx, hy = hall.center
+        cx, cy = int(hx), int(hy)
+        best, best_score = None, -math.inf
+        for y in range(max(0, cy - reach), min(world.height, cy + reach + 1)):
+            for x in range(max(0, cx - reach), min(world.width, cx + reach + 1)):
+                if world.terrain[y][x] is not Terrain.TREES:
+                    continue
+                away = math.hypot(x + 0.5 - hx, y + 0.5 - hy)
+                if away > reach:
+                    continue
+                stand = sum(1 for dy in (-1, 0, 1) for dx in (-1, 0, 1)
+                            if world.in_bounds((x + dx, y + dy)) and world.terrain[y + dy][x + dx] is Terrain.TREES)
+                score = stand - away / 4.0
+                if score > best_score:
+                    best, best_score = (x, y), score
+        if best is None:
+            return hall.center
+        tx, ty = tile_center(best)
+        away = math.hypot(tx - hx, ty - hy) or 1.0
+        return (tx + (hx - tx) / away * 2.0, ty + (hy - ty) / away * 2.0)
 
     def _producers_saturated(self, world: World) -> bool:
         """Whether the buildings already standing are the bottleneck rather than the bank.
