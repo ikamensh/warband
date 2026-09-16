@@ -172,6 +172,23 @@ def print_table(results: list[MatchResult], anchor: str, agents: list[str], anch
     print_styles(results, agents)
 
 
+def print_by_race(results: list[MatchResult], agents: list[str]) -> None:
+    """Each agent's score by the race it was drawn: where a brain's losses come from."""
+    table = arena.score_by_race(results)
+    if not table:
+        return
+    races = sorted({race for rows in table.values() for race in rows})
+    width = max(len(name) for name in agents)
+    print(f"\n  score by race drawn (results in brackets):")
+    print(f"  {'':<{width}}  " + "  ".join(f"{race:>12}" for race in races))
+    for name in agents:
+        if name not in table:
+            continue
+        cells = [f"{table[name][r][0] * 100:5.1f}% ({table[name][r][1]:3d})" if r in table[name] else f"{'-':>12}"
+                 for r in races]
+        print(f"  {name:<{width}}  " + "  ".join(cells))
+
+
 def print_styles(results: list[MatchResult], agents: list[str]) -> None:
     """Medians of how each agent played: whether two agents of one strength are two players."""
     table = arena.styles(results)
@@ -214,6 +231,7 @@ def main() -> None:
         results = [r for r in results if all(n in agents for n in r.spec.agents)]
         print(f"{len(results)} matches from {len(args.sources)} file(s)")
         print_table(results, args.anchor, agents, args.anchor_elo, args.proximity or None)
+        print_by_race(results, agents)
         return
     agents = args.agents.split(",") if args.agents else sorted(AGENTS)
     against = args.against.split(",") if args.against else None

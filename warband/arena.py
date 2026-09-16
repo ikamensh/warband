@@ -270,6 +270,7 @@ class MatchResult:
     steps: int
     wall: float
     styles: tuple[Mapping[str, float], ...] = ()  # how each player played; see :func:`style_of`
+    races: tuple[str, ...] = ()                   # the race each player was drawn, by value
 
     @property
     def decided(self) -> bool:
@@ -391,7 +392,8 @@ def play(spec: MatchSpec) -> MatchResult:
                                         sum(1 for u in world.player_units(player) if not u.is_worker))
     styles = tuple(style_of(world, agent, player, peak_army[player]) for player, agent in enumerate(agents))
     return MatchResult(spec=spec, placements=_placements(world, eliminated, spec.players), winner=world.winner,
-                       minutes=world.time / 60, steps=steps, wall=time.perf_counter() - started, styles=styles)
+                       minutes=world.time / 60, steps=steps, wall=time.perf_counter() - started, styles=styles,
+                       races=tuple(p.race.value for p in world.players))
 
 
 def styles(results: Iterable[MatchResult]) -> dict[str, dict[str, float]]:
@@ -584,7 +586,7 @@ def to_record(result: MatchResult) -> dict:
     """A match result as plain data, so runs can be saved and pooled."""
     return {"spec": {f: getattr(result.spec, f) for f in SPEC_FIELDS}, "placements": list(result.placements),
             "winner": result.winner, "minutes": result.minutes, "steps": result.steps, "wall": result.wall,
-            "styles": [dict(style) for style in result.styles]}
+            "styles": [dict(style) for style in result.styles], "races": list(result.races)}
 
 
 def from_record(record: Mapping) -> MatchResult:
@@ -594,7 +596,28 @@ def from_record(record: Mapping) -> MatchResult:
             spec[key] = tuple(spec[key])
     return MatchResult(spec=MatchSpec(**spec), placements=tuple(record["placements"]), winner=record["winner"],
                        minutes=record["minutes"], steps=record["steps"], wall=record["wall"],
-                       styles=tuple(record.get("styles", ())))
+                       styles=tuple(record.get("styles", ())), races=tuple(record.get("races", ())))
+
+
+def score_by_race(results: Iterable[MatchResult]) -> dict[str, dict[str, tuple[float, int]]]:
+    """Per agent, per race it was drawn: ``(share of the head-to-head results taken, results)``."""
+    won: dict[str, dict[str, float]] = {}
+    played: dict[str, dict[str, int]] = {}
+    for result in results:
+        if not result.races:
+            continue
+        agents = result.spec.agents
+        for i, name in enumerate(agents):
+            for j, other in enumerate(agents):
+                if j == i or other == name:
+                    continue
+                race = result.races[i]
+                won.setdefault(name, {}).setdefault(race, 0.0)
+                won[name][race] += result.score(i, j)
+                played.setdefault(name, {}).setdefault(race, 0)
+                played[name][race] += 1
+    return {name: {race: (won[name][race] / played[name][race], played[name][race]) for race in played[name]}
+            for name in played}
 
 
 def win_rate(results: Iterable[MatchResult], a: str, b: str) -> tuple[float, int]:
