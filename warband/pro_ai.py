@@ -364,9 +364,7 @@ class ProBrain:
         return min(self.profile.max_workers, wanted)
 
     def _economy(self, world: World) -> None:
-        from warband.worker_ai import assign_idle_workers
-
-        assign_idle_workers(world, self.player)
+        world.assign_workers(self.player)
         self._chop(world)
 
     @staticmethod

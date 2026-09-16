@@ -271,9 +271,7 @@ class Brain:
     # -- Economy -----------------------------------------------------------------
 
     def _economy(self, world: World) -> None:
-        from warband.worker_ai import assign_idle_workers
-
-        assign_idle_workers(world, self.player)
+        world.assign_workers(self.player)
 
     def _repairs(self, world: World) -> None:
         """One peasant mends the most damaged building, once no enemy is near it."""

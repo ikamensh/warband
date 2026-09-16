@@ -14,10 +14,12 @@ top-left tile.  :meth:`World.step` advances exactly ``SIM_DT`` seconds.
 
 from __future__ import annotations
 
+import functools
 import math
 import random
 from collections import deque
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
 
 from warband import path as pathing
@@ -61,6 +63,42 @@ EASE_STEP = 0.4  # tiles of the step, give or take EASE_STEP_VARIANCE
 EASE_STEP_VARIANCE = 0.3
 EASE_JITTER = 0.7  # radians either side of straight away from the crowd the step may veer
 EASE_GAIN = 0.1  # tiles more room the spot must offer than where the unit stands, so nobody steps into a neighbour
+
+
+def recorded(method):
+    """An order the world takes from a player.
+
+    While :attr:`World.orders` is a list, every call from outside the simulation
+    is appended to it as ``[tick, name, args, kwargs]`` in plain JSON values
+    before it runs, so a replay can give the same order at the same tick (and
+    meet the same rule error).  Orders the simulation gives itself, while
+    stepping or while carrying out another order, are that step's or order's
+    own business and are not logged.
+    """
+    name = method.__name__
+
+    @functools.wraps(method)
+    def order(self, *args, **kwargs):
+        if self._order_depth == 0 and self.orders is not None:
+            self.orders.append([self.tick, name, _plain(args), _plain(kwargs)])
+        self._order_depth += 1
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            self._order_depth -= 1
+
+    return order
+
+
+def _plain(value: Any) -> Any:
+    """*value* as the JSON types a log can hold: enums by value, tuples as lists, copies of lists and dicts."""
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    return value
 
 
 class RuleError(Exception):
@@ -413,6 +451,8 @@ class World:
         self.tick = 0
         self.events: list[Event] = []
         self.winner: int | None = None
+        self.orders: list[list[Any]] | None = None  # the order log a replay is made of, see :func:`recorded`
+        self._order_depth = 0
         self._next_id = 1
         self._blocked = bytearray(width * height)
         for y in range(height):
@@ -781,6 +821,7 @@ class World:
             return "Training in progress"
         return self.can_afford(building.player, info.cost)
 
+    @recorded
     def research(self, building_id: int, upgrade: Upgrade) -> None:
         building = self.buildings.get(building_id)
         if building is None:
@@ -793,6 +834,7 @@ class World:
         building.research = upgrade
         building.research_progress = 0.0
 
+    @recorded
     def cancel_research(self, building_id: int) -> None:
         building = self.buildings.get(building_id)
         if building is None or building.research is None:
@@ -842,6 +884,7 @@ class World:
         """Check a blueprint's ground; resources, prerequisites and workers may arrive later."""
         return self.settlement.can_plan_building(building_type, pos, player)
 
+    @recorded
     def plan_building(self, player: int, building_type: BuildingType, pos: Pos) -> int:
         """Schedule construction without selecting a worker; pay when construction starts."""
         return self.settlement.plan_building(player, building_type, pos)
@@ -850,18 +893,22 @@ class World:
         """Pending settlement requests and active construction, in request order."""
         return self.settlement.player_plans(player)
 
+    @recorded
     def order_unit(self, player: int, unit_type: UnitType) -> int:
         """Request a recruit; an available compatible producer is chosen automatically."""
         return self.settlement.order_unit(player, unit_type)
 
+    @recorded
     def order_upgrade(self, player: int, upgrade: Upgrade) -> int:
         """Request research; prerequisites, resources and a free researcher may arrive later."""
         return self.settlement.order_upgrade(player, upgrade)
 
+    @recorded
     def cancel_plan(self, player: int, plan_id: int) -> None:
         """Cancel pending work or refund an unfinished planned building at the normal rate."""
         self.settlement.cancel_plan(player, plan_id)
 
+    @recorded
     def set_assembly(self, player: int, point: Point | None) -> None:
         """Set the fallback destination for new combat recruits across the settlement."""
         self.players[player].assembly = self._clamp(point) if point is not None else None
@@ -898,6 +945,7 @@ class World:
         unit.ease = None
         unit.state = "idle"
 
+    @recorded
     def move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         target = self._clamp(target)
         units = self._own_units(unit_ids)
@@ -905,6 +953,7 @@ class World:
         for unit in units:
             self._issue(unit, Move(target, pace=pace), queue=queue)
 
+    @recorded
     def attack_move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         target = self._clamp(target)
         units = self._own_units(unit_ids)
@@ -912,6 +961,7 @@ class World:
         for unit in units:
             self._issue(unit, AttackMove(target, pace=pace) if not unit.is_worker else Move(target, pace=pace), queue=queue)
 
+    @recorded
     def patrol(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         """Patrol between where each unit stands and *target*."""
         target = self._clamp(target)
@@ -921,6 +971,7 @@ class World:
             else:
                 self._issue(unit, Patrol(unit.pos, target), queue=queue)
 
+    @recorded
     def attack(self, unit_ids: list[int], target_id: int, *, queue: bool = False) -> None:
         target = self.entity(target_id)
         if target is None:
@@ -935,6 +986,7 @@ class World:
             else:
                 self._issue(unit, Attack(target_id), queue=queue)
 
+    @recorded
     def stop(self, unit_ids: list[int]) -> None:
         for unit in self._own_units(unit_ids):
             unit.auto_work = False
@@ -946,10 +998,12 @@ class World:
             unit.state = "idle"
             unit.home = None
 
+    @recorded
     def hold(self, unit_ids: list[int]) -> None:
         for unit in self._own_units(unit_ids):
             self._issue(unit, Hold())
 
+    @recorded
     def harvest(self, unit_ids: list[int], target: int | Pos, *, queue: bool = False) -> None:
         if isinstance(target, int):
             mine = self.buildings.get(target)
@@ -962,6 +1016,7 @@ class World:
                 raise RuleError("Only peasants can harvest")
             self._issue(unit, Harvest(target), queue=queue)
 
+    @recorded
     def build(self, unit_id: int, building_type: BuildingType, pos: Pos, *, queue: bool = False) -> None:
         unit = self.units.get(unit_id)
         if unit is None or not unit.is_worker:
@@ -974,6 +1029,7 @@ class World:
             raise RuleError(reason)
         self._issue(unit, Build(building_type, pos), queue=queue)
 
+    @recorded
     def repair(self, unit_ids: list[int], building_id: int, *, queue: bool = False) -> None:
         """Peasants among *unit_ids* mend one of their own finished, damaged buildings."""
         workers = [u for u in self._own_units(unit_ids) if u.is_worker]
@@ -989,6 +1045,7 @@ class World:
         for u in workers:
             self._issue(u, Repair(b.id), queue=queue)
 
+    @recorded
     def train(self, building_id: int, unit_type: UnitType) -> None:
         building = self.buildings.get(building_id)
         if building is None:
@@ -1000,6 +1057,7 @@ class World:
         self._pay(building.player, UNITS[unit_type].cost)
         building.queue.append(unit_type)
 
+    @recorded
     def cancel_train(self, building_id: int, index: int = -1) -> None:
         building = self.buildings.get(building_id)
         if building is None or not building.queue:
@@ -1010,12 +1068,14 @@ class World:
         if index in (0, -len(building.queue) - 1) or not building.queue:
             building.train_progress = 0.0
 
+    @recorded
     def set_rally(self, building_id: int, point: Point | None) -> None:
         building = self.buildings.get(building_id)
         if building is None or building.player is None:
             raise RuleError("No such building")
         building.rally = self._clamp(point) if point is not None else None
 
+    @recorded
     def smart(self, unit_ids: list[int], point: Point, *, queue: bool = False) -> str:
         """What a right-click means for these units at *point*; returns the verb used."""
         units = self._own_units(unit_ids)
@@ -1097,6 +1157,13 @@ class World:
 
     def step(self) -> None:
         """Advance the world by :data:`SIM_DT`."""
+        self._order_depth += 1
+        try:
+            self._step()
+        finally:
+            self._order_depth -= 1
+
+    def _step(self) -> None:
         dt = SIM_DT
         self.time += dt
         self.tick += 1
@@ -1218,6 +1285,7 @@ class World:
             if spot is not None:
                 unit.x, unit.y = tile_center(spot)
 
+    @recorded
     def cancel_building(self, building_id: int) -> None:
         """Tear down an unfinished building; the whole cost comes back."""
         b = self.buildings.get(building_id)
@@ -1233,6 +1301,7 @@ class World:
         self._refund(b.player, b.info.cost)
         self._remove_building(b, reason="cancelled")
 
+    @recorded
     def resume_construction(self, unit_ids: list[int], building_id: int) -> None:
         b = self.buildings.get(building_id)
         if b is None or b.done:
@@ -2507,6 +2576,16 @@ class World:
         return min(candidates, key=lambda pair: (pair[1] is not UnitType.PEASANT,
                    UNITS[pair[1]].cost.gold + UNITS[pair[1]].cost.lumber, pair[0].id)) if candidates else None
 
+    @recorded
+    def assign_workers(self, player: int) -> None:
+        """Send *player*'s idle peasants to work now, as the simulation does for everyone once a second.
+
+        A computer player asks for this as soon as it has thought, so it is an order like its others.
+        """
+        from warband.worker_ai import assign_idle_workers
+
+        assign_idle_workers(self, player)
+
     def can_resign(self, player: int) -> str | None:
         """Why *player* cannot concede, or None when resigning is allowed."""
         if self.winner is not None:
@@ -2515,6 +2594,7 @@ class World:
             return f"{self.players[player].name} is already out"
         return None
 
+    @recorded
     def resign(self, player: int) -> None:
         """Concede the match: remove everything *player* owns, then eliminate them."""
         reason = self.can_resign(player)
@@ -2565,7 +2645,7 @@ class World:
         return {
             "width": self.width, "height": self.height, "theme": self.theme.value, "layout": self.layout.value,
             "terrain": ["".join(t.value[0] for t in row) for row in self.terrain],
-            "players": [{"id": p.id, "human": p.human, "race": p.race.value, "gold": p.gold, "lumber": p.lumber, "alive": p.alive,
+            "players": [{"id": p.id, "name": p.name, "human": p.human, "race": p.race.value, "gold": p.gold, "lumber": p.lumber, "alive": p.alive,
                          "surrendered": p.surrendered, "stats": dict(p.stats), "last_alert": p.last_alert,
                          "upgrades": sorted(u.value for u in p.upgrades),
                          "assembly": list(p.assembly) if p.assembly is not None else None} for p in self.players],
@@ -2590,6 +2670,7 @@ class World:
         world.regrowth = [((tile[0], tile[1]), when) for tile, when in data.get("regrowth", [])]
         for p, saved in zip(world.players, data["players"]):
             p.human = saved["human"]
+            p.name = saved.get("name", p.name)
             p.gold, p.lumber, p.alive, p.last_alert = saved["gold"], saved["lumber"], saved["alive"], saved["last_alert"]
             p.upgrades = {Upgrade(u) for u in saved["upgrades"]}
             p.assembly = tuple(saved["assembly"]) if saved.get("assembly") is not None else None
