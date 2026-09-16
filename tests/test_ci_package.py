@@ -148,3 +148,40 @@ def test_replacing_archive_and_checksums_does_not_reuse_old_native_receipts(cand
         "".join(f"{item['sha256']}  {item['file']}\n" for item in manifest["artifacts"]))
     result = validate(candidate)
     assert result.returncode != 0 and "archived executable" in result.stderr
+
+
+def test_windows_candidate_requires_the_installer_and_shortcut_uninstall_receipt(candidate):
+    """Windows acceptance includes the installed program and cleanup, beyond the portable launch."""
+    path = candidate / "build-inputs.json"
+    inputs = json.loads(path.read_text())
+    inputs["target"] = "windows-x64"
+    write_json(path, inputs)
+    prefix = f"Warband-{inputs['identity']['version']}-windows-x64"
+    portable = candidate / f"{prefix}-portable.zip"
+    with zipfile.ZipFile(next(candidate.glob("*-portable.zip"))) as archive:
+        executable = archive.read("Warband/Warband")
+    with zipfile.ZipFile(portable, "w") as archive:
+        archive.writestr("Warband/Warband.exe", executable)
+    installer = candidate / f"{prefix}-setup.exe"
+    installer.write_bytes(b"A non-executable installer format fixture")
+    for archive in candidate.glob("*-darwin-arm64-*.zip"):
+        archive.unlink()
+    path = candidate / "build-manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest.update(platform="Windows-10", architecture="AMD64", artifacts=[
+        {"file": item.name, "bytes": item.stat().st_size, "sha256": digest(item.read_bytes())}
+        for item in (portable, installer)])
+    write_json(path, manifest)
+    (candidate / "SHA256SUMS").write_text(
+        "".join(f"{item['sha256']}  {item['file']}\n" for item in manifest["artifacts"]))
+    path = candidate / "verification.json"
+    report = json.loads(path.read_text())
+    del report["app_native"]
+    report["install_shortcut_uninstall"] = True
+    write_json(path, report)
+    result = validate(candidate, "windows-x64")
+    assert result.returncode == 0, result.stderr
+    report["install_shortcut_uninstall"] = False
+    write_json(path, report)
+    result = validate(candidate, "windows-x64")
+    assert result.returncode != 0 and "shortcut/uninstall" in result.stderr

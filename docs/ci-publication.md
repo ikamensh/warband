@@ -108,12 +108,52 @@ Implemented locally so far:
   identity and committed lock. It requires both distribution formats, verifies
   artifact and regression-log digests, compares archived executable bytes with
   the smoke/native receipts, and requires the platform's install checks and
-  captured images. Nine CLI checks pass using deliberately non-executable file
+  captured images. Ten CLI checks pass using deliberately non-executable file
   fixtures, including stale receipts, changed archives/dependencies, missing
-  app checks and replacing an executable while regenerating its checksums.
+  app checks, Windows shortcut/uninstall acceptance and replacing an executable
+  while regenerating its checksums.
   These tests verify the consumer, not native Windows/Mac execution.
+- `tools/ci_package.py build` checks the actual interpreter, dependency versions,
+  editable game/Sagaforge locations and clean pinned commits before testing,
+  freezing and verification. It archives the Mac app with `ditto`, extracts
+  that archive into a temporary Applications directory, verifies its ad-hoc
+  signature and runs its socket/native diagnostics with isolated profiles.
+  Only complete accepted evidence produces `candidate.json`.
+- The read-only [native workflow](../.github/workflows/native-packages.yml)
+  shares one prepared identity between Windows x64 and Apple Silicon jobs and
+  independently validates both downloaded candidates on Linux. Actions are
+  pinned by SHA; Actionlint passes. No release/promotion job is enabled in it.
 
-Still required: native release workflow/receipts, immutable binary publication,
+### Local native Mac evidence
+
+Source `6ecd2ed6538b5e58398ec289d18339d0e3febe70`, local test identity
+`0.2.0-preview.35100000125`, Python 3.13.2 / uv 0.12.10 / Saga2D 0.3.2 /
+Sagaforge `2fa6fadfd28e2457f2f264b7b071cac7f7566ee5`:
+
+- Full suite: **860 passed, 12 skipped**, one intended stale-painted-sheet
+  warning, 157.79 seconds. The added Windows evidence-format check subsequently
+  passed with the complete 16-test CI-helper selection.
+- Extracted portable and installed app: socket acceptance, native rendering,
+  clipboard join, live match menu and settlement planning passed. The app's
+  extracted signature passed `codesign --verify --deep --strict`. All 18 native
+  captures were inspected (title, multiplayer/code/paste, online match,
+  training/plans/menu, offline match); fonts, art and controls rendered.
+- Initial native verification stopped because Cocoa reported no available
+  display. Waking and holding the display with `caffeinate -u -d -i` allowed
+  verification of the **same** frozen portable bytes, then the app archive.
+  CI uses that display assertion. No failed receipt was accepted.
+- Portable ZIP: 139193756 bytes, SHA-256
+  `e4338c88b2a518eaf5ec3cdec4369a1c3697786e3c202fd89a7eb220573af07f`.
+  App ZIP: 135488376 bytes, SHA-256
+  `c52e4a2407885063cb252785c06e268220e1f54364d4eea0814019a773f220e7`.
+- The source host was Apple M4 / macOS 26.6.2. This establishes local native
+  behavior, not the minimum supported macOS version or GitHub runner behavior.
+  Receipts, regression log and captures are retained under
+  `docs/evidence/ci-publication/mac-6ecd2ed/`; archives remain under
+  `dist/ci-acceptance/mac-35100000125/` in the implementation worktree.
+
+Still required: actual native GitHub runs (including Windows), the final pinned
+Windows compiler input, reuse of accepted artifacts across retries, immutable binary publication,
 compatibility-gated catalog promotion, transaction/rollback implementation,
 scoped credentials, approved activation and a verified actual main-push journey.
 The existing Windows publication workflow is not yet changed. No production
