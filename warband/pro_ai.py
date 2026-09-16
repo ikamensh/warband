@@ -70,6 +70,7 @@ class ProProfile:
     min_barracks: int = 1             # put up this many before anything optional, saturated or not
     barracks_first: bool = False      # nothing but farms goes up before the first barracks
     builds_before_peasants: bool = False  # a peasant is not queued if it would leave a farm order in flight unpaid
+    smith_early: bool = False         # the blacksmith goes up with the mill, not behind the saturation gate
     gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
     max_producers: int = 10
     attack_ratio: float = 0.85        # attack when my strength exceeds theirs by this
@@ -187,6 +188,8 @@ _STYLES = (
     replace(PRO, name="pro-open-rax-wood", builds_before_peasants=True, barracks_first=True, wood_share=0.3),
     replace(PRO, name="pro-open-rax-wood-min8", builds_before_peasants=True, barracks_first=True, wood_share=0.3,
             min_army=8, attack_ratio=1.0),
+    replace(PRO, name="pro-smith", smith_early=True),
+    replace(PRO, name="pro-open-rax-smith", builds_before_peasants=True, barracks_first=True, smith_early=True),
     replace(PRO, name="pro-raxfirst", barracks_first=True),
     replace(PRO, name="pro-raxfirst-min8", barracks_first=True, min_army=8, attack_ratio=1.0),
     replace(PRO, name="pro-raxfirst-kills", barracks_first=True, count_kills=True),
@@ -555,6 +558,10 @@ class ProBrain:
             wishes.append((BuildingType.LUMBER_MILL, anchor))
         if 1 <= count(BuildingType.BARRACKS) < profile.min_barracks:
             wishes.append((BuildingType.BARRACKS, anchor))
+        if profile.smith_early and count(BuildingType.BLACKSMITH) < 1:
+            # Sharpened Blades is +2 on a footman's 7 for 500 gold, and the
+            # bank idles at three thousand while the first clash is fought.
+            wishes.append((BuildingType.BLACKSMITH, anchor))
         # Everything past here is optional, and optional buildings are what lose games:
         # each one is an army that was not trained. They are unlocked only once the
         # production already standing cannot keep up with the money coming in.
