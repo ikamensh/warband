@@ -7,8 +7,13 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+from importlib import metadata, util
 import json
 from pathlib import Path
+import platform
+import subprocess
+import sys
+import tempfile
 import tomllib
 import zipfile
 
@@ -22,6 +27,12 @@ NATIVE_CHECKS = ("native_multiplayer_input", "native_clipboard_join", "live_matc
 
 def read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def write_json(path: Path, value: dict) -> None:
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(value, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
 
 
 def sha256(path: Path) -> str:
@@ -135,6 +146,94 @@ def validate(directory: Path, identity: dict, target: str) -> dict:
     return {"schema_version": 1, "identity": identity, "target": target, "artifacts": artifacts, "evidence": evidence}
 
 
+def native_inputs(identity: dict) -> dict:
+    """Check the actual interpreter, installed packages and editable source checkouts."""
+    from ci_release import prepare
+
+    require(prepare(ROOT, str(identity["run_id"])) == identity, "Checkout differs from release identity")
+    require(platform.python_version() == identity["python"], "Use the pinned build Python")
+    uv = subprocess.check_output(["uv", "--version"], text=True).split()[1]
+    require(uv == identity["uv"], "Use the pinned uv executable on PATH")
+    host = (platform.system(), platform.machine().lower())
+    if host == ("Darwin", "arm64"):
+        target = "darwin-arm64"
+    elif host[0] == "Windows" and host[1] in ("amd64", "x86_64"):
+        target = "windows-x64"
+    else:
+        raise ValueError(f"Native packaging requires Windows x64 or Apple Silicon macOS, got {host}")
+    for name, root in (("warband", ROOT), ("sagaforge", ROOT.parent / "sagaforge")):
+        require(Path(util.find_spec(name).origin).resolve() == (root / name / "__init__.py").resolve(),
+                f"Installed {name} must use the intended checkout")
+        require(not subprocess.check_output(["git", "status", "--porcelain=v1"], cwd=root, text=True).strip(),
+                f"The {name} source checkout must be clean")
+        if name == "sagaforge":
+            commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            require(commit == identity["sagaforge_commit"], "Sagaforge checkout differs from the release pin")
+    require(metadata.distribution("saga2d").read_text("direct_url.json") is None,
+            "Use the locked Saga2D PyPI release, not a path/editable install")
+    packages = {name: metadata.version(name) for name in (*PACKAGES, "saga2d", "sagaforge")}
+    require(packages == locked_packages(identity), "Installed build dependencies differ from the lock")
+    return {"identity": identity, "target": target, "packages": packages}
+
+
+def verify_mac_app(directory: Path, report: dict) -> None:
+    """Archive, extract and launch the app that Mac players will actually download."""
+    from package import PACKAGE
+    from saga2d.packaging.verify import authority, executable_smoke
+
+    manifest_path = directory / "build-manifest.json"
+    manifest = read_json(manifest_path)
+    archive = directory / f"Warband-{manifest['version']}-darwin-arm64-app.zip"
+    subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent",
+                    str(directory / "Warband.app"), str(archive)], check=True)
+    with tempfile.TemporaryDirectory(prefix="installed-warband-") as temporary, authority(PACKAGE) as endpoint:
+        applications = Path(temporary) / "Applications"
+        applications.mkdir()
+        subprocess.run(["ditto", "-x", "-k", str(archive), str(applications)], check=True)
+        app = applications / "Warband.app"
+        subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
+        executable = app / "Contents/MacOS/Warband"
+        evidence = directory / "verification"
+        report["installed"] = executable_smoke(executable, endpoint, evidence / "installed.json", manifest)
+        report["app_native"] = executable_smoke(executable, endpoint, evidence / "app-native.json", manifest, native=True)
+    manifest["artifacts"].append({"file": archive.name, "bytes": archive.stat().st_size, "sha256": sha256(archive)})
+    write_json(manifest_path, manifest)
+    (directory / "SHA256SUMS").write_text(
+        "".join(f"{item['sha256']}  {item['file']}\n" for item in manifest["artifacts"]), encoding="ascii")
+    write_json(directory / "verification.json", report)
+
+
+def build(identity: dict, directory: Path, *, iscc: Path | None = None, mesa_dir: Path | None = None) -> dict:
+    """Run the suite, freeze the game, verify both distributions and seal their evidence."""
+    inputs = native_inputs(identity)
+    directory = directory.resolve()
+    directory.mkdir(parents=True, exist_ok=True)
+    require(not any(directory.iterdir()), "Use an empty output directory; preserve or explicitly remove earlier evidence")
+    write_json(directory / "build-inputs.json", inputs)
+    command = ["-m", "pytest", "-q"]
+    print("Running the full regression suite; output is in regression.log", flush=True)
+    with (directory / "regression.log").open("w", encoding="utf-8") as log:
+        process = subprocess.run([sys.executable, *command], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
+    write_json(directory / "regression.json", {"identity": identity, "command": command,
+                                               "exit_code": process.returncode,
+                                               "log_sha256": sha256(directory / "regression.log")})
+    process.check_returncode()
+    require(native_inputs(identity) == inputs, "Build inputs changed during regression checks")
+    from package import PACKAGE
+    from saga2d.packaging import build as freeze
+    from saga2d.packaging.verify import verify
+
+    windows = inputs["target"] == "windows-x64"
+    freeze(PACKAGE, identity["version"], output=directory, installer=windows, iscc=iscc, require_clean=True)
+    report = verify(PACKAGE, directory, native=True, mesa_dir=mesa_dir)
+    if not windows:
+        verify_mac_app(directory, report)
+    require(native_inputs(identity) == inputs, "Build inputs changed during package verification")
+    accepted = validate(directory, identity, inputs["target"])
+    write_json(directory / "candidate.json", accepted)
+    return accepted
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -142,8 +241,18 @@ def main() -> None:
     validator.add_argument("--identity", type=Path, required=True)
     validator.add_argument("--directory", type=Path, required=True)
     validator.add_argument("--target", choices=TARGETS, required=True)
+    builder = commands.add_parser("build")
+    builder.add_argument("--identity", type=Path, required=True)
+    builder.add_argument("--directory", type=Path, required=True)
+    builder.add_argument("--iscc", type=Path)
+    builder.add_argument("--mesa-dir", type=Path)
     args = parser.parse_args()
-    print(json.dumps(validate(args.directory, read_json(args.identity), args.target), sort_keys=True, indent=2))
+    identity = read_json(args.identity)
+    if args.command == "build":
+        accepted = build(identity, args.directory, iscc=args.iscc, mesa_dir=args.mesa_dir)
+    else:
+        accepted = validate(args.directory, identity, args.target)
+    print(json.dumps(accepted, sort_keys=True, indent=2))
 
 
 if __name__ == "__main__":
