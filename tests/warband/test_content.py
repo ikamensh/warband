@@ -153,9 +153,9 @@ def test_catapults_splash_and_batter_buildings_from_afar() -> None:
     run_until(world, lambda: farm.hp < farm.max_hp, 8.0)
     assert dist(catapult.pos, farm.center) >= 6.5  # it never closes in
     hits = [e for e in world.events if e.kind == "hit" and e.entity == catapult.id]
-    assert hits[0].other == farm.id and hits[0].amount >= 20  # ×1.5 against buildings, minus armour
-    assert a.hp < a.max_hp and b.hp < b.max_hp  # both stood inside the splash
-    assert max(e.amount for e in hits if e.other == a.id) < hits[0].amount  # a share of the blow, not the whole
+    assert next(e.amount for e in hits if e.other == farm.id) >= 20  # ×1.5 against buildings, minus armour
+    assert a.hp < a.max_hp and b.hp < b.max_hp  # both stood where the stone came down
+    assert max(e.amount for e in hits if e.other == b.id) < max(e.amount for e in hits if e.other == a.id)  # a tile off: a share of the blow
 
 
 def test_scouts_are_fast_and_knights_faster_with_horses() -> None:

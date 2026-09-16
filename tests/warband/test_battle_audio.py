@@ -11,6 +11,15 @@ from warband.rules import BuildingType, Resource, Terrain, UnitType, Upgrade
 from warband.scene import GameScene
 
 
+def tick_until(game, condition, max_seconds: float = 4.0) -> None:
+    """Blows take a turn, a wind-up and a flight now: tick in small steps until *condition* holds."""
+    for _ in range(int(max_seconds / 0.1)):
+        if condition():
+            return
+        game.tick(0.1)
+    assert condition(), f"not reached within {max_seconds}s"
+
+
 @pytest.fixture(scope="module")
 def audio_files(tmp_path_factory):
     root = tmp_path_factory.mktemp("battle-audio")
@@ -62,20 +71,22 @@ def test_automatic_gold_deliveries_do_not_ring(battle):
 def test_killing_blow_keeps_the_targets_material(battle, target_type, material, attacker_type, weapon):
     """A victim removed by the simulation must still produce its own impact sound."""
     game, scene, world = battle
-    if isinstance(attacker_type, UnitType):
+    if attacker_type is UnitType.CATAPULT:
+        attacker = world.spawn_unit(0, attacker_type, (7.5, 10.5))  # beyond its minimum range
+    elif isinstance(attacker_type, UnitType):
         attacker = world.spawn_unit(0, attacker_type, (10.5, 10.5))
     else:
         attacker = world.place_building(0, attacker_type, (8, 10))
     if isinstance(target_type, UnitType):
         target = world.spawn_unit(1, target_type, (11.5, 10.5))
+        world.hold([target.id])  # a soldier would otherwise close on the catapult, inside where it can throw
     else:
         target = world.place_building(1, target_type, (11, 10))
     target.hp = 1
     world.update_vision()  # a tower shoots only what its owner can see
     if isinstance(attacker_type, UnitType):
         world.attack([attacker.id], target.id)
-    game.tick(0.2)
-    assert world.entity(target.id) is None
+    tick_until(game, lambda: world.entity(target.id) is None)
     assert f"{weapon}_{material}" in scene.recent_sounds
 
 
@@ -107,8 +118,7 @@ def test_offscreen_skirmish_is_quiet_but_own_attack_alert_still_plays(battle):
     scene.camera.zoom = 2
     scene.camera.center_on(160, 160)
     world.attack([attacker.id], victim.id)
-    game.tick(0.2)
-    assert victim.hp < victim.max_hp
+    tick_until(game, lambda: victim.hp < victim.max_hp)
     assert world.is_visible(scene.human, victim.tile)
     assert "under_attack" in scene.recent_sounds
     assert not sound.IMPACTS.intersection(scene.recent_sounds)
@@ -126,7 +136,8 @@ def test_armor_upgrades_and_construction_change_the_actual_surface(battle, targe
     target = (world.spawn_unit(1, target_type, (11.5, 10.5)) if isinstance(target_type, UnitType)
               else world.place_building(1, target_type, (11, 10), done=complete))
     world.attack([attacker.id], target.id)
-    game.tick(0.2)
+    before = target.hp  # a site under construction is already below its finished hit points
+    tick_until(game, lambda: target.hp < before)
     assert f"sword_{material}" in scene.recent_sounds
 
 
@@ -134,9 +145,10 @@ def test_siege_splash_is_one_weighty_impact_not_a_building_collapse(battle):
     """One catapult volley can hit a crowd without replaying the collapse effect."""
     game, scene, world = battle
     attacker = world.spawn_unit(0, UnitType.CATAPULT, (9.5, 10.5))
-    victims = [world.spawn_unit(1, UnitType.KNIGHT, (11.5, 10.5 + offset)) for offset in (-0.5, 0, 0.5)]
+    victims = [world.spawn_unit(1, UnitType.KNIGHT, (12.5, 10.5 + offset)) for offset in (-0.5, 0, 0.5)]
+    world.hold([v.id for v in victims])
     world.attack([attacker.id], victims[1].id)
-    game.tick(0.2)
+    tick_until(game, lambda: victims[1].hp < victims[1].max_hp)
     assert all(v.hp < v.max_hp for v in victims)
     for _ in range(6):
         game.tick(0.1)
@@ -145,17 +157,14 @@ def test_siege_splash_is_one_weighty_impact_not_a_building_collapse(battle):
 
 
 def test_siege_impact_waits_for_the_visible_stone_to_land(battle):
-    """Long-range catapult contact belongs at arrival, after the visible flight."""
+    """Long-range catapult contact belongs at arrival: the stone is a projectile, and the blow and its sound land with it."""
     game, scene, world = battle
     attacker = world.spawn_unit(0, UnitType.CATAPULT, (9.5, 10.5))
     victim = world.spawn_unit(1, UnitType.KNIGHT, (15.5, 10.5))
+    world.hold([victim.id])
     world.update_vision()
     world.attack([attacker.id], victim.id)
-    game.tick(0.05)
-    assert victim.hp < victim.max_hp
-    for _ in range(3):
-        game.tick(0.1)
-    assert "stone_armor" not in scene.recent_sounds
-    for _ in range(4):
-        game.tick(0.1)
-    assert "stone_armor" in scene.recent_sounds
+    tick_until(game, lambda: bool(world.projectiles))  # the stone is in the air
+    assert victim.hp == victim.max_hp and "stone_armor" not in scene.recent_sounds
+    tick_until(game, lambda: not world.projectiles)
+    assert victim.hp < victim.max_hp and "stone_armor" in scene.recent_sounds

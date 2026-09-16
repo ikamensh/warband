@@ -11,8 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from saga2d import (
-    Anchor, Button, Camera, Column, Component, InputEvent, KeyHints, Label, Layout, Minimap, MoveTo, Panel, Remove, RenderLayer, Row, Scene,
-    Sequence, Sprite, Style,
+    Anchor, Button, Camera, Column, Component, InputEvent, KeyHints, Label, Layout, Minimap, Panel, RenderLayer, Row, Scene, Style,
 )
 from saga2d import SaveError
 from saga2d.effects import Banner, Burst, Effects, FloatingText, HitReaction, Pulse, Toast
@@ -1235,12 +1234,14 @@ class GameScene(Scene):
 
     def _handle_events(self, events: list[Event]) -> None:
         view = self.view
-        for e in events:
+        for index, e in enumerate(events):
             mine = e.player == self.human
             if e.kind == "hit":
                 if self._mine(e):
                     self._fights.append(self.clock)
                 self._show_hit(e)
+            elif e.kind == "impact":
+                self._show_impact(e, struck=any(h.kind == "hit" and h.entity == e.entity for h in events[index + 1:]))
             elif e.kind == "death":
                 self._show_death(e)
             elif e.kind == "destroyed":
@@ -1305,44 +1306,22 @@ class GameScene(Scene):
             if e.text != "ranged":
                 wx, wy = to_world(e.pos)
                 self.effects.add(Burst((wx, wy - TILE * 0.45), (255, 236, 190, 255), 5, rng=self.rng, size=5, speed=(50, 140)))
-        if e.text == "ranged" and source is not None:
-            if isinstance(source, Unit) and source.info.splash > 0:
-                flight = self._stone(source, e.pos)
-            else:
-                flight = self._arrow(source, e.pos)
-            if flight is not None:
-                self.after(flight, lambda: self._sound_hit(e))
-        else:
-            self._sound_hit(e)
+        self._sound_hit(e)  # a shot's blow is raised when the shot lands, so its sound is due now
+
+    def _show_impact(self, e: Event, *, struck: bool) -> None:
+        """A stone comes down: dust where it lands, and a thud of its own when it found nothing to hit."""
+        if not self._visible(e.pos):
+            return
+        wx, wy = to_world(e.pos)
+        self.effects.add(Burst((wx, wy), (200, 190, 170, 255), 12, rng=self.rng, size=12, speed=(40, 140)))
+        self.camera.shake(2, 0.15)
+        if not struck and self._audible(e.pos):
+            self.sfx("impact")
 
     def _sound_hit(self, event: Event) -> None:
         if self._audible(event.pos):
             source = self.world.entity(event.entity) if event.entity is not None else None
             self.sfx(impact_sound(event, source.race if source is not None else Race.HUMAN))  # a striker dead with its blow keeps the common Foley
-
-    def _arrow(self, source: Entity, target: tuple[float, float]) -> float:
-        sx, sy = to_world(source.pos if isinstance(source, Unit) else source.center)
-        tx, ty = to_world(target)
-        sy -= TILE * 0.5
-        ty -= TILE * 0.4
-        if isinstance(source, Building):
-            sy -= TILE * 1.2
-        arrow = self.add_sprite(Sprite("arrow", position=(sx, sy), size=(22, 6), layer=RenderLayer.EFFECTS, rotation=math.degrees(math.atan2(ty - sy, tx - sx))))
-        arrow.do(Sequence(MoveTo((tx, ty), speed=520), Remove()))
-        return math.dist((sx, sy), (tx, ty)) / 520
-
-    def _stone(self, source: Unit, target: tuple[float, float]) -> float | None:
-        """A catapult stone: lobbed slowly, bursting where it lands (one per volley)."""
-        if self.clock - self._sound_times.get("stone", -1.0) < 0.3:
-            return
-        self._sound_times["stone"] = self.clock
-        sx, sy = to_world(source.pos)
-        tx, ty = to_world(target)
-        stone = self.add_sprite(Sprite("stone", position=(sx, sy - TILE * 0.8), size=(12, 12), layer=RenderLayer.EFFECTS))
-        stone.do(Sequence(MoveTo((tx, ty - TILE * 0.2), speed=330), Remove()))
-        flight = math.dist((sx, sy), (tx, ty)) / 330
-        self.effects.add(Burst((tx, ty), (200, 190, 170, 255), 12, rng=self.rng, size=12, speed=(40, 140), delay=flight))
-        return flight
 
     def _show_death(self, e: Event) -> None:
         if not self._visible(e.pos):

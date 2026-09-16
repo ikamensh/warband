@@ -88,7 +88,7 @@ def test_warband_fatal_impact_keeps_its_material_across_the_socket(tmp_path, aud
         game.tick(1 / 30)
         scene.order('attack', [attacker.id], victim.id)
         converge(host, client, lambda: bool(match.world.units[attacker.id].orders))
-        for _ in range(4):
+        for _ in range(40):  # the footman turns to the wall and winds up before the blow
             match.step()
             if match.world.entity(victim.id) is None:
                 break

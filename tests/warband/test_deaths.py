@@ -78,11 +78,13 @@ def test_a_dying_unit_cries_out_in_its_own_race(battle) -> None:
     grunt = world.spawn_unit(1, UnitType.PEASANT, (11.5, 10.5))
     grunt.hp = 1
     world.attack([footman.id], grunt.id)
-    game.tick(0.2)
+    for _ in range(15):
+        game.tick(0.1)
     assert world.entity(grunt.id) is None and "orc_death" in scene.recent_sounds
     avenger = world.spawn_unit(1, UnitType.FOOTMAN, (11.5, 11.5))
     footman.hp = 1
     world.attack([avenger.id], footman.id)
-    game.tick(0.2)
+    for _ in range(15):
+        game.tick(0.1)
     assert world.entity(footman.id) is None and "human_death" in scene.recent_sounds
     assert "death" not in scene.recent_sounds  # the old raceless thud is gone

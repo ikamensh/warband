@@ -132,7 +132,7 @@ def _dps(world: World, unit: Unit) -> float:
     if damage <= 0:
         # A cleric adds to a fight by undoing damage; count its healing as if it were damage.
         return world.heal_rate(unit) * 0.8 if unit.info.heal else 0.0
-    return damage / unit.info.cooldown
+    return damage / unit.info.period
 
 
 def _effective_hp(world: World, unit: Unit) -> float:

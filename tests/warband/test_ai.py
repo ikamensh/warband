@@ -235,8 +235,7 @@ def test_hard_elf_and_orc_armies_grow_towards_their_race_plans() -> None:
         world.step()
         if world.winner is not None:
             break
-    assert len([u for u in world.player_units(0) if not u.is_worker]) > 0
-    assert len([u for u in world.player_units(1) if not u.is_worker]) > 0
+    assert all(p.stats["units_lost"] > 0 for p in world.players)  # both fielded soldiers and met
     assert _trained_archer_share(brains[0]) > _trained_archer_share(brains[1])
     assert any("army plan elf" in what for _, what in brains[0].log)
     assert any("army plan orc" in what for _, what in brains[1].log)

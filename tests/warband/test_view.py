@@ -369,25 +369,56 @@ def test_walk_frames_follow_the_distance_walked_not_the_clock(play) -> None:
 
 
 def test_a_blow_winds_up_before_it_lands_and_follows_through_after(play) -> None:
-    """Phases of one attack, read off the model's cooldown: guard, wind-up as the cooldown runs
-    out, then strike, follow-through and recovery right after the blow."""
-    from warband.view import FOLLOW, RECOVER, STRIKE, WIND_UP, unit_frame
+    """Phases of one attack, read off the model's own clocks: wind-up while the model has the weapon
+    drawn back, then strike, follow-through and recovery right after the blow, guard otherwise."""
+    from warband.view import FOLLOW, RECOVER, STRIKE, unit_frame
 
     game, scene = play
     u = scene.world.spawn_unit(scene.human, UnitType.FOOTMAN, (10.5, 10.5))
     u.state = "attack"
     full = u.info.cooldown
 
-    def at(cooldown: float) -> str:
-        u.cooldown = cooldown
+    def at(cooldown: float, windup: float = 0.0) -> str:
+        u.cooldown, u.windup = cooldown, windup
         return unit_frame(u, 0.0, 0.0)
 
+    assert at(0.0, u.info.windup) == "wind"  # drawn back, about to land
+    assert at(0.0, 0.01) == "wind"
     assert at(full) == "strike"  # the model has just landed the blow and reset the cooldown
     assert at(full - STRIKE - FOLLOW / 2) == "follow"
     assert at(full - STRIKE - FOLLOW - RECOVER / 2) == "recover"
     assert at(full / 2) == "stand"
-    assert at(WIND_UP / 2) == "wind"  # the next blow is about to land
-    assert at(0.0) == "stand"  # nothing to wind up for: the model strikes as soon as it is in range
+    assert at(0.0) == "stand"  # ready, facing a target it cannot yet strike: guard
+
+
+def test_shots_in_the_air_have_sprites_that_fly_and_go_when_they_land(play) -> None:
+    """An arrow's sprite appears when it is loosed, moves toward its mark and leaves when the shot lands;
+    a stone lobs above the ground on its way to the point it was aimed at."""
+    game, scene = play
+    world = scene.world
+    archer = world.spawn_unit(scene.human, UnitType.ARCHER, (6.5, 6.5))
+    catapult = world.spawn_unit(scene.human, UnitType.CATAPULT, (6.5, 9.5))
+    for u in (archer, catapult):
+        u.facing = 0.0
+    victim = world.spawn_unit(1, UnitType.KNIGHT, (10.4, 6.5))
+    wall = world.place_building(1, BuildingType.FARM, (12, 9))
+    world.hold([victim.id])
+    world.attack([archer.id], victim.id)
+    world.attack([catapult.id], wall.id)
+    seen: dict[str, list[tuple[float, float]]] = {"arrow": [], "stone": []}
+    for _ in range(90):
+        game.tick(1 / 30)
+        for p in world.projectiles.values():
+            sprite = scene.view._shots[p.id].sprite
+            assert sprite.visible and sprite.image == p.kind
+            seen[p.kind].append(sprite.position)
+    assert len(seen["arrow"]) >= 2 and len(seen["stone"]) >= 5
+    assert seen["arrow"][-1][0] > seen["arrow"][0][0]  # flew toward the knight
+    stone_x = [x for x, _ in seen["stone"]]
+    assert stone_x == sorted(stone_x) and stone_x[-1] > stone_x[0] + 3 * 32
+    apex = min(y for _, y in seen["stone"])
+    assert apex < seen["stone"][0][1] - 32 and apex < seen["stone"][-1][1] - 32  # up, over and down again
+    assert not world.projectiles and not scene.view._shots  # all landed, all sprites gone
 
 
 def test_moving_units_walk_and_attacking_units_swing_on_screen(play) -> None:

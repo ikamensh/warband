@@ -343,6 +343,7 @@ def test_a_kill_leaves_a_body_lying_that_fades_and_is_removed(play) -> None:
     hall = hall_of(scene)
     victim = world.spawn_unit(1, UnitType.PEASANT, tile_center((hall.x + 4, hall.y + 4)))
     victim.hp = 1
+    scene.brains = []  # or its side sends it off to work while the knight turns and winds up
     knight = world.spawn_unit(scene.human, UnitType.KNIGHT, tile_center((hall.x + 3, hall.y + 4)))
     world.attack([knight.id], victim.id)
     tick(game, 1.5)

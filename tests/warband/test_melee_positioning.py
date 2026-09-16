@@ -89,8 +89,12 @@ def test_attack_move_fights_an_adjacent_defender_instead_of_chasing_past_it():
     world.hold([defender.id])
     world.update_vision()
     world.take_events()
-    world.step()
-    hits = [event for event in world.take_events() if event.kind == "hit" and event.entity == soldier.id]
+    hits = []
+    for _ in range(20):  # the wind-up, then the blow
+        world.step()
+        hits += [event for event in world.take_events() if event.kind == "hit" and event.entity == soldier.id]
+        if hits:
+            break
     assert len(hits) == 1 and hits[0].other == defender.id
 
 
@@ -102,8 +106,10 @@ def test_an_acquired_opponent_is_not_abandoned_during_attack_recovery():
     world.hold([target.id])
     world.attack_move([soldier.id], (15, 8.5))
     world.update_vision()
-    for _ in range(6):
+    for _ in range(30):
         world.step()
+        if soldier.cooldown > 0:
+            break
     assert soldier.cooldown > 0
     substitute = world.spawn_unit(1, UnitType.FOOTMAN, (soldier.x, soldier.y + .7))
     world.hold([substitute.id])
@@ -126,9 +132,11 @@ def test_attack_move_finishes_a_wounded_visible_opponent_in_reach():
     world.update_vision()
     assert world.is_visible(soldier.player, wounded.tile)
     hits = []
-    for _ in range(6):
+    for _ in range(20):
         world.step()
         hits.extend(event for event in world.take_events() if event.kind == "hit" and event.entity == soldier.id)
+        if hits:
+            break
     assert len(hits) == 1 and hits[0].other == wounded.id
     assert wounded.id not in world.units and healthy.hp == healthy.max_hp
 

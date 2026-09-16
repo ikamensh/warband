@@ -120,7 +120,10 @@ def test_network_result_has_no_solo_rematch_and_escape_leaves(tmp_path, winner):
         command = {'action': 'attack', 'args': [[attacker.id], victim.id]}
         (host if winner == 0 else client).submit(command)
         converge(host, client, lambda: bool(match.world.units[attacker.id].orders))
-        match.step()
+        for _ in range(40):
+            match.step()
+            if match.world.winner is not None:
+                break
         assert match.world.winner == winner
         host.publish()
         converge(host, client, lambda: client.state['world']['winner'] == winner)

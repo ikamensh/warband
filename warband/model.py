@@ -30,6 +30,7 @@ from warband.rules import (
     ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLASTING_POWDER_BONUS, BLESSING_BONUS, BLOODLUST_BONUS, BUILDINGS, CHOP_TIME, DEEP_MINING_TRIP,
     FRENZY_BONUS, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, PLAYERS,
     PLUNDER_SHARE, REGROWTH_SECONDS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION, STARTING_GOLD, STARTING_LUMBER,
+    ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
     UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
     Terrain, UnitInfo, UnitType, Upgrade,
 )
@@ -101,6 +102,8 @@ class Build:
 class Hold:
     """Stand here; fight what comes in range but never chase."""
 
+    target: int | None = None  # what the unit is winding up against, while it stays in reach
+
 
 @dataclass
 class Heal:
@@ -164,6 +167,9 @@ class Unit:
     path_goal: Pos | None = None
     exact: Point | None = None  # the point to stop at once the last path tile is reached
     cooldown: float = 0.0
+    windup: float = 0.0  # seconds left of the blow being drawn back; the unit stands committed while it is above zero
+    vx: float = 0.0  # tiles per second the unit moved of its own accord last step, for leading it with a stone
+    vy: float = 0.0
     carrying: Resource | None = None
     carry: int = 0
     timer: float = 0.0
@@ -248,6 +254,32 @@ class Building:
 
 
 Entity = Unit | Building
+
+
+@dataclass
+class Projectile:
+    """A shot in the air.  An arrow (``target`` set) follows its mark and strikes it when it arrives;
+    a siege stone (``target`` None) comes down on ``aim``, the ground it was fired at, on whoever
+    stands there by then.  The shooter may be dead before the shot lands: what the blow needs of
+    it is copied here."""
+
+    id: int
+    player: int
+    source: int  # the shooter's id
+    source_type: str  # its UnitType or BuildingType value, for the blow's event
+    kind: str  # "arrow" | "stone"
+    start: Point
+    aim: Point  # where it was fired at
+    target: int | None
+    launched: float  # simulation time
+    flight: float  # seconds in the air
+    damage: int
+    splash: float = 0.0
+    siege: float = 1.0
+
+    @property
+    def lands_at(self) -> float:
+        return self.launched + self.flight
 
 
 @dataclass
@@ -362,6 +394,7 @@ class World:
         self.regrowth: list[tuple[Pos, float]] = []  # (felled tree tile, simulation time it grows back) — the elven art
         self.units: dict[int, Unit] = {}
         self.buildings: dict[int, Building] = {}
+        self.projectiles: dict[int, Projectile] = {}
         self.rng = rng if rng is not None else random.Random(0)
         self.time = 0.0
         self.tick = 0
@@ -846,6 +879,7 @@ class World:
             unit.orders.clear()
             unit.path = []
             unit.path_goal = None
+            unit.windup = 0.0  # a blow being drawn back is broken off
         unit.orders.append(order)
         unit.home = None
         unit.state = "idle"
@@ -1061,6 +1095,7 @@ class World:
         for unit in list(self.units.values()):
             if unit.id in self.units:
                 self._update_unit(unit, dt)
+        self._land_projectiles()
         self._separate()
         self._bury_the_dead()
         if self.regrowth and self.tick % round(1 / SIM_DT) == 0:
@@ -1156,7 +1191,7 @@ class World:
         target = self._nearest_enemy(b.player, b.center, self.building_range(b) + b.size / 2, units_only=True)  # type: ignore[arg-type]
         if target is None:
             return
-        self._hit(b, target, self.damage_of(b))
+        self._launch_arrow(b, target, self.damage_of(b))
         b.cooldown = info.cooldown
 
     def _abandon_construction(self, unit: Unit) -> None:
@@ -1198,6 +1233,11 @@ class World:
     def _update_unit(self, u: Unit, dt: float) -> None:
         cooldown = u.cooldown - dt
         u.cooldown = cooldown if cooldown > 0.0 else 0.0
+        x, y = u.x, u.y
+        self._act(u, dt)
+        u.vx, u.vy = (u.x - x) / dt, (u.y - y) / dt  # its own walking, before the crowd shoves it
+
+    def _act(self, u: Unit, dt: float) -> None:
         if u.inside is not None:
             self._mine_inside(u, dt)
             return
@@ -1221,7 +1261,7 @@ class World:
         elif isinstance(order, Build):
             self._do_build(u, order, dt)
         elif isinstance(order, Hold):
-            self._do_hold(u)
+            self._do_hold(u, order, dt)
         elif isinstance(order, Heal):
             self._do_heal(u, order, dt)
         elif isinstance(order, Patrol):
@@ -1236,6 +1276,7 @@ class World:
         u.path_goal = None
         u.exact = None
         u.state = "idle"
+        u.windup = 0.0
         u.last_distance = math.inf
         u.progress = 0.0
 
@@ -1255,7 +1296,7 @@ class World:
                 u.home = u.pos
                 u.orders.appendleft(Heal(patient.id, auto=True))
             return
-        target = self._nearest_enemy(u.player, u.pos, u.info.sight)
+        target = self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range)
         if target is not None:
             u.home = u.pos
             u.orders.appendleft(Attack(target.id, auto=True))
@@ -1271,7 +1312,7 @@ class World:
                 if enemy.player == player or enemy.hidden or enemy.hp <= 0 or not self.is_visible(player, enemy.tile):
                     continue
                 if enemy.info.damage and self._gap(enemy, patient) <= self.range_of(enemy) + .75:
-                    danger += max(1, self.damage_of(enemy) - self.armor_of(patient)) / enemy.info.cooldown
+                    danger += max(1, self.damage_of(enemy) - self.armor_of(patient)) / enemy.info.period
             for tower in self.buildings.values():
                 if tower.player in (None, player) or not tower.done or not tower.info.damage:
                     continue
@@ -1283,7 +1324,7 @@ class World:
     def _healing_priority(self, healer: Unit, patient: Unit) -> float:
         """Weigh missing health and visible pressure against travel before treatment."""
         danger = self._danger_to(patient)
-        value = self.damage_of(patient) / patient.info.cooldown + self.heal_rate(patient) + 1
+        value = self.damage_of(patient) / patient.info.period + self.heal_rate(patient) + 1
         missing_fraction = (patient.max_hp - patient.hp) / patient.max_hp
         urgency = 1 + min(3, 4 * danger / patient.hp)
         travel = max(0, self._gap(healer, patient) - self.range_of(healer)) / self.speed_of(healer)
@@ -1315,7 +1356,7 @@ class World:
         if self._gap(u, patient) <= self.range_of(u) + 0.05:
             u.path = []
             u.path_goal = None
-            self._face(u, patient.pos)
+            self._turn_toward(u, patient.pos, dt)
             u.state = "attack"
             u.charge += self.heal_rate(u) * dt
             u.timer += dt
@@ -1335,20 +1376,22 @@ class World:
         if self._follow(u, dt) and u.path_goal != goal and self.time >= u.replan_at:
             self._plan(u, goal, patient.pos)
 
-    def _do_hold(self, u: Unit) -> None:
+    def _do_hold(self, u: Unit, order: Hold, dt: float) -> None:
         u.state = "idle"
         u.path = []
-        if u.is_worker or self.tick % 5:
+        if u.is_worker or u.info.damage == 0:
             return
-        if u.info.damage == 0:
-            return
-        target = self._nearest_enemy(u.player, u.pos, self.range_of(u) + 1.0)
-        if target is not None and self._in_range(u, target):
-            self._face(u, self._target_point(target))
-            if u.cooldown <= 0:
-                self._strike(u, target)
-                u.cooldown = u.info.cooldown
-            u.state = "attack"
+        target = self.entity(order.target) if order.target is not None else None
+        if target is not None and (target.hp <= 0 or (u.windup <= 0.0 and not self._in_range(u, target))):
+            target = order.target = None
+        if target is None:
+            if self.tick % 5:
+                return
+            target = self._nearest_enemy(u.player, u.pos, self.range_of(u) + 1.0, min_radius=u.info.min_range)
+            if target is None or not self._in_range(u, target):
+                return
+            order.target = target.id
+        self._fight(u, target, dt, auto=True)
 
     def _do_move(self, u: Unit, order: Move, dt: float) -> None:
         if self._walk_to(u, order.target, dt, settle=True):
@@ -1364,7 +1407,7 @@ class World:
                 return False
             u.orders.appendleft(Heal(patient.id, auto=True))
         else:
-            target = self._nearest_enemy(u.player, u.pos, u.info.sight)
+            target = self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range)
             if target is None:
                 return False
             u.orders.appendleft(Attack(target.id, auto=True))
@@ -1395,6 +1438,9 @@ class World:
             if order.auto and u.home is not None and not u.orders:
                 u.orders.append(Move(u.home))
             return
+        if u.windup > 0.0:
+            self._fight(u, target, dt, auto=order.auto, chase=True)  # committed: the blow is drawn back, whatever else moves
+            return
         if order.auto and u.home is not None and dist(u.pos, u.home) > LEASH:
             self._finish_order(u)
             u.orders.appendleft(Move(u.home))
@@ -1403,7 +1449,7 @@ class World:
             threat = self._threat(target)
             if threat > 0:
                 # A bystander or a building holds a unit's attention only until something more dangerous shows up.
-                better = self._nearest_enemy(u.player, u.pos, u.info.sight)
+                better = self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range)
                 if better is not None and self._threat(better) < threat:
                     target = better
                     self._retarget(u, order, better)
@@ -1416,14 +1462,12 @@ class World:
             if nearby is not None and self._in_range(u, nearby) and self._threat(nearby) <= self._threat(target):
                 target = nearby
                 order.target = target.id
+        if u.info.min_range and self._gap(u, target) < u.info.min_range:
+            if not self._back_off(u, target, dt):
+                u.state = "idle"  # cornered: the crew can do nothing about this one until it moves
+            return
         if self._in_range(u, target):
-            u.path = []
-            u.path_goal = None
-            self._face(u, self._target_point(target))
-            u.state = "attack"
-            if u.cooldown <= 0:
-                self._strike(u, target)
-                u.cooldown = u.info.cooldown
+            self._fight(u, target, dt, auto=order.auto, chase=True)
             return
         aim = self._target_point(target)
         if self.range_of(u) < 1:
@@ -1438,6 +1482,54 @@ class World:
             self._plan(u, goal_tile, aim)
         if self._follow(u, dt) and u.path_goal != goal_tile and self.time >= u.replan_at:
             self._plan(u, goal_tile, aim)
+
+    def _fight(self, u: Unit, target: Entity, dt: float, *, auto: bool, chase: bool = False) -> None:
+        """Face *target*, wind up and strike.  The blow at the end of the wind-up lands if the target is
+        still within reach and :data:`WINDUP_SLACK`, and costs the cooldown either way.  A shooter stands
+        through its wind-up; a melee unit that may *chase* swings on the run, so a target merely walking
+        away is still caught."""
+        u.path = []
+        u.path_goal = None
+        faced = self._turn_toward(u, self._target_point(target), dt)
+        if u.windup > 0.0:
+            if chase and u.info.melee and not self._in_range(u, target):
+                self._steer(u, self._melee_position(u, target), dt)
+            u.state = "attack"
+            u.windup -= dt
+            if u.windup > 1e-9:
+                return
+            u.windup = 0.0
+            self._release(u, target, auto=auto)
+        else:
+            u.state = "attack"
+            if not faced or u.cooldown > 0.0:
+                return
+            if u.info.splash and self._aim_point(u, target, auto=auto) is None:
+                return  # no clear shot: the crew waits rather than drop a stone on its own side
+            u.windup = u.info.windup  # drawn back from now; the blow lands that many seconds on
+            if u.windup <= 0.0:
+                self._release(u, target, auto=auto)
+
+    def _release(self, u: Unit, target: Entity, *, auto: bool) -> None:
+        """The blow at the end of a wind-up."""
+        if target.hp <= 0 or (isinstance(target, Unit) and target.hidden) or self._gap(u, target) > self.range_of(u) + WINDUP_SLACK:
+            u.cooldown = u.info.cooldown  # swung at air
+            return
+        if u.info.splash:
+            aim = self._aim_point(u, target, auto=auto)
+            if aim is None:
+                return  # friends walked under the shot while the arm was cranked: wait for a clear one
+            self._launch_stone(u, aim)
+        else:
+            self._strike(u, target)
+        u.cooldown = u.info.cooldown
+
+    def _back_off(self, u: Unit, target: Entity, dt: float) -> bool:
+        """Step straight away from a target inside the engine's minimum range; True if there was room."""
+        px, py = self._target_point(target)
+        dx, dy = u.x - px, u.y - py
+        d = math.hypot(dx, dy) or 1e-6
+        return self._steer(u, self._clamp((u.x + dx / d, u.y + dy / d)), dt)
 
     def _ranged_retreat(self, u: Unit, target: Entity, dt: float) -> bool:
         """An automatic archer recovering its shot steps away from visible melee, keeping the target in range."""
@@ -1547,7 +1639,7 @@ class World:
         if rect_gap(u.pos, rect) - u.radius <= TOUCH and not navigation[u.tile[1] * self.width + u.tile[0]]:
             u.path = []
             u.state = "chop"
-            self._face(u, tile_center(tile))
+            self._turn_toward(u, tile_center(tile), dt)
             u.timer += dt
             if u.timer >= CHOP_TIME:
                 u.timer = 0.0
@@ -1725,7 +1817,7 @@ class World:
         u.path = []
         u.path_goal = None
         u.state = "repair"
-        self._face(u, b.center)
+        self._turn_toward(u, b.center, dt)
         u.charge += REPAIR_RATE * dt
         if u.charge < REPAIR_CHUNK:
             return
@@ -1901,7 +1993,7 @@ class World:
                 u.exact = None
             u.last_distance = math.inf
             return False
-        u.facing = math.atan2(dy, dx)
+        self._turn_toward(u, waypoint, dt)
         nx, ny = u.x + dx / d * step, u.y + dy / d * step
         if ((grid[int(ny) * width + int(nx)] or (navigation is not None and not self._line_clear(u.pos, (nx, ny), navigation=navigation)))
                 and 0 <= tx < width and 0 <= ty < self.height and not self._blocked[ty * width + tx]):
@@ -1991,7 +2083,7 @@ class World:
         d = math.hypot(dx, dy)
         if d >= 1e-6:
             step = min(d, self._effective_speed(u) * dt)
-            u.facing = math.atan2(dy, dx)
+            self._turn_toward(u, target, dt)
             u.x, u.y = u.x + dx / d * step, u.y + dy / d * step  # on the segment, so on a tile just checked
         u.path = []
         u.path_goal = None
@@ -2062,10 +2154,19 @@ class World:
     def _target_point(self, target: Entity) -> Point:
         return target.pos if isinstance(target, Unit) else target.center
 
-    def _face(self, u: Unit, point: Point) -> None:
+    def _turn_toward(self, u: Unit, point: Point, dt: float) -> bool:
+        """Pivot *u* toward *point* at its turn rate; True once it faces it."""
         dx, dy = point[0] - u.x, point[1] - u.y
-        if dx or dy:
-            u.facing = math.atan2(dy, dx)
+        if not (dx or dy):
+            return True
+        wanted = math.atan2(dy, dx)
+        delta = (wanted - u.facing + math.pi) % (2 * math.pi) - math.pi
+        step = u.info.turn * dt
+        if -step <= delta <= step:
+            u.facing = wanted
+            return True
+        u.facing = (u.facing + (step if delta > 0 else -step) + math.pi) % (2 * math.pi) - math.pi
+        return False
 
     def _gap(self, source: Entity, target: Entity) -> float:
         """Distance between the edges of two entities."""
@@ -2080,7 +2181,7 @@ class World:
     def _in_range(self, u: Unit, target: Entity) -> bool:
         if isinstance(target, Unit) and target.hidden:
             return False
-        return self._gap(u, target) <= self.range_of(u) + 0.05
+        return u.info.min_range <= self._gap(u, target) <= self.range_of(u) + 0.05
 
     def _threat(self, entity: Entity) -> int:
         """Whom to fight first, lowest first: soldiers, other units (workers, healers), towers, other buildings."""
@@ -2093,15 +2194,16 @@ class World:
         u.path = []
         u.path_goal = None
 
-    def _nearest_enemy(self, player: int, point: Point, radius: float, *, units_only: bool = False) -> Entity | None:
-        """The visible enemy within *radius* to fight first: by :meth:`_threat`, then the nearest."""
+    def _nearest_enemy(self, player: int, point: Point, radius: float, *, units_only: bool = False,
+                       min_radius: float = 0.0) -> Entity | None:
+        """The visible enemy within *radius* (and beyond *min_radius*) to fight first: by :meth:`_threat`, then the nearest."""
         best: Entity | None = None
         best_key = (math.inf, math.inf)
         for unit in self.units_near(point, radius + UNIT_RADIUS):
             if unit.player == player or unit.hidden or unit.hp <= 0 or not self.is_visible(player, unit.tile):
                 continue
             d = dist(point, unit.pos)
-            if d > radius + unit.radius:
+            if d > radius + unit.radius or d - unit.radius < min_radius:
                 continue
             key = (self._threat(unit), d)
             if key < best_key:
@@ -2116,7 +2218,7 @@ class World:
             if not (bx - radius <= px <= bx + bw + radius and by - radius <= py <= by + bh + radius):
                 continue  # too far on one axis alone, so the real gap cannot be within reach
             d = rect_gap(point, building.rect)
-            if d > radius:
+            if d > radius or d < min_radius:
                 continue
             key = (self._threat(building), d)
             if key < best_key and any(self.is_visible(player, tile) for tile in building.tiles()):
@@ -2124,63 +2226,136 @@ class World:
         return best
 
     def _strike(self, u: Unit, target: Entity) -> None:
-        """One blow (or shot) from *u* at *target*, with splash for siege engines."""
+        """One blow from *u* at *target*: a melee hit lands now, an arrow goes up and lands when it arrives."""
         damage = self.damage_of(u)
-        self._hit(u, target, damage)
-        splash = self.splash_of(u)
-        if splash > 0:
-            centre = self._impact_point(u, target)
-            for other in list(self.units_near(centre, splash + UNIT_RADIUS)):
-                if other is not target and other.player != u.player and not other.hidden and other.hp > 0:
-                    self._hit(u, other, int(damage * SPLASH_FRACTION))
-            for building in list(self.buildings.values()):
-                if building is not target and building.player not in (None, u.player) and building.hp > 0 and rect_gap(centre, building.rect) <= splash:
-                    self._hit(u, building, int(damage * SPLASH_FRACTION))
+        if u.info.melee:
+            self._hit(target, damage, player=u.player, source=u.id, source_type=u.type.value, siege=u.info.siege)
+        else:
+            self._launch_arrow(u, target, damage)
 
-    def _impact_point(self, u: Unit, target: Entity) -> Point:
-        """Where a shot lands: on a unit, or on the wall of a building nearest the shooter."""
-        if isinstance(target, Unit):
-            return target.pos
-        x, y, w, h = target.rect
-        return (min(max(u.x, x), x + w), min(max(u.y, y), y + h))
+    def _launch_arrow(self, shooter: Entity, target: Entity, damage: int) -> Projectile:
+        start = self._target_point(shooter)
+        aim = self._target_point(target)
+        return self._launch(shooter, "arrow", start, aim, target.id, damage, max(SIM_DT, dist(start, aim) / ARROW_SPEED))
 
-    def _hit(self, source: Entity, target: Entity, damage: int) -> None:
+    def _launch_stone(self, u: Unit, aim: Point) -> Projectile:
+        return self._launch(u, "stone", u.pos, aim, None, self.damage_of(u), self._stone_flight(u.pos, aim),
+                            splash=self.splash_of(u), siege=u.info.siege)
+
+    def _launch(self, shooter: Entity, kind: str, start: Point, aim: Point, target: int | None, damage: int, flight: float, *,
+                splash: float = 0.0, siege: float = 1.0) -> Projectile:
+        assert shooter.player is not None
+        p = Projectile(self._new_id(), shooter.player, shooter.id, shooter.type.value, kind, start, aim, target, self.time, flight, damage,
+                       splash=splash, siege=siege)
+        self.projectiles[p.id] = p
+        return p
+
+    def _stone_flight(self, start: Point, aim: Point) -> float:
+        return max(STONE_MIN_FLIGHT, dist(start, aim) / STONE_SPEED)
+
+    def _aim_point(self, u: Unit, target: Entity, *, auto: bool) -> Point | None:
+        """Where a siege crew drops its stone on *target*: the nearest wall of a building, or ahead of a
+        marching unit by the stone's flight so it comes down where the unit will be.  None when there is
+        no shot: every landing point is inside the engine's minimum range, or the crew is firing on its
+        own judgement (*auto*) and its own side stands where the stone would fall.  A crew ordered to
+        fire by the player fires, and the player answers for the splash."""
+        if isinstance(target, Building):
+            x, y, w, h = target.rect
+            spots = [(min(max(u.x, x), x + w), min(max(u.y, y), y + h))]
+        else:
+            here = target.pos
+            spots = [here]
+            if target.vx or target.vy:
+                flight = self._stone_flight(u.pos, here)
+                lead = self._clamp((here[0] + target.vx * flight, here[1] + target.vy * flight))
+                reach = self.range_of(u) + u.radius
+                if dist(u.pos, lead) > reach:  # never beyond where the engine can throw
+                    lead = (u.x + (lead[0] - u.x) / dist(u.pos, lead) * reach, u.y + (lead[1] - u.y) / dist(u.pos, lead) * reach)
+                spots.insert(0, lead)
+        spots = [spot for spot in spots if dist(u.pos, spot) - u.radius >= u.info.min_range]
+        if not spots:
+            return None
+        keep_clear = self.splash_of(u) + FRIENDLY_MARGIN
+        for spot in spots:
+            if not any(ally.player == u.player and ally is not u and not ally.hidden and ally.hp > 0
+                       and dist(spot, ally.pos) - ally.radius <= keep_clear for ally in self.units_near(spot, keep_clear + UNIT_RADIUS)):
+                return spot
+        return None if auto else spots[-1]
+
+    def _land_projectiles(self) -> None:
+        if not self.projectiles:
+            return
+        now = self.time
+        for p in [p for p in self.projectiles.values() if p.lands_at <= now]:
+            del self.projectiles[p.id]
+            if p.target is None:
+                self._land_stone(p)
+                continue
+            target = self.entity(p.target)
+            if target is not None and target.hp > 0 and not (isinstance(target, Unit) and target.hidden):
+                self._hit(target, p.damage, player=p.player, source=p.source, source_type=p.source_type, siege=p.siege, ranged=True)
+
+    def _land_stone(self, p: Projectile) -> None:
+        """A stone comes down: its full damage within DIRECT_HIT of the point and SPLASH_FRACTION of it out
+        to the splash radius, on every unit standing there, friend or foe, and on the enemy's buildings."""
+        self.events.append(Event("impact", p.aim, player=p.player, entity=p.source, text=p.kind, source_type=p.source_type))
+        splash = int(p.damage * SPLASH_FRACTION)
+        for unit in list(self.units_near(p.aim, p.splash + UNIT_RADIUS)):
+            if unit.hidden or unit.hp <= 0:
+                continue
+            gap = dist(p.aim, unit.pos) - unit.radius
+            if gap <= p.splash:
+                self._hit(unit, p.damage if gap <= DIRECT_HIT else splash, player=p.player, source=p.source, source_type=p.source_type,
+                          siege=p.siege, ranged=True)
+        for building in list(self.buildings.values()):
+            if building.player in (None, p.player) or building.hp <= 0:
+                continue
+            gap = rect_gap(p.aim, building.rect)
+            if gap <= p.splash:
+                self._hit(building, p.damage if gap <= DIRECT_HIT else splash, player=p.player, source=p.source, source_type=p.source_type,
+                          siege=p.siege, ranged=True)
+
+    def _hit(self, target: Entity, damage: int, *, player: int, source: int, source_type: str, siege: float = 1.0, ranged: bool = False) -> None:
+        """*damage* from *player*'s *source* (a unit or building, possibly gone by now) lands on *target*."""
         if target.hp <= 0:
             return  # already down this step (a siege splash after the killing blow)
         armor = self.armor_of(target)
-        if isinstance(source, Unit) and isinstance(target, Building):
-            damage = int(round(damage * source.info.siege))
+        if isinstance(target, Building):
+            damage = int(round(damage * siege))
         roll = damage * self.rng.uniform(1 - HIT_VARIANCE, 1 + HIT_VARIANCE)
         dealt = max(1, int(round(roll)) - armor)
         target.hp -= dealt
-        if target.hp <= 0 and source.player is not None and target.player not in (None, source.player):
-            stats = self.players[source.player].stats
+        own = target.player == player
+        if target.hp <= 0 and target.player is not None and not own:
+            stats = self.players[player].stats
             stats["units_killed" if isinstance(target, Unit) else "buildings_razed"] += 1
             stats["destroyed_value"] += target.info.cost.gold + target.info.cost.lumber
-        ranged = source.info.range >= 1
-        self.events.append(Event("hit", self._target_point(target), player=target.player, entity=source.id, other=target.id,
-                                 amount=dealt, text="ranged" if ranged else "melee", source_type=source.type.value,
+        self.events.append(Event("hit", self._target_point(target), player=target.player, entity=source, other=target.id,
+                                 amount=dealt, text="ranged" if ranged else "melee", source_type=source_type,
                                  target_type=target.type.value, target_armor=armor,
                                  target_complete=not isinstance(target, Building) or target.done))
+        if own:
+            return  # a stone on one's own side hurts, but is no attack to answer or to raise the alarm for
         if target.player is not None:
             victim = self.players[target.player]
             if self.time - victim.last_alert >= UNDER_ATTACK_COOLDOWN:
                 victim.last_alert = self.time
                 self.events.append(Event("under_attack", self._target_point(target), player=target.player, entity=target.id))
-        if isinstance(target, Building) and target.hp <= 0 and isinstance(source, Unit) and self._has(source.player, Upgrade.PLUNDER):
+        if isinstance(target, Building) and target.hp <= 0 and self._has(player, Upgrade.PLUNDER):
             loot = int(target.info.cost.gold * PLUNDER_SHARE)
             if loot:
-                self.players[source.player].gold += loot
-                self.events.append(Event("plunder", target.center, player=source.player, entity=source.id, other=target.id, amount=loot))
-        if isinstance(source, Unit) and isinstance(target, Unit) and target.hp > 0 and self._threat(target) == 0:
+                self.players[player].gold += loot
+                self.events.append(Event("plunder", target.center, player=player, entity=source, other=target.id, amount=loot))
+        striker = self.units.get(source)
+        if striker is not None and isinstance(target, Unit) and target.hp > 0 and self._threat(target) == 0:
             current = target.order
             if current is None:
                 target.home = target.pos
-                target.orders.append(Attack(source.id, auto=True))
+                target.orders.append(Attack(striker.id, auto=True))
             elif isinstance(current, Attack) and current.auto:
                 busy_with = self.entity(current.target)
-                if busy_with is None or self._threat(source) < self._threat(busy_with):
-                    self._retarget(target, current, source)  # a soldier busy on a bystander or a building answers whoever hits it
+                if busy_with is None or self._threat(striker) < self._threat(busy_with):
+                    self._retarget(target, current, striker)  # a soldier busy on a bystander or a building answers whoever hits it
 
     def _bury_the_dead(self) -> None:
         for unit in [u for u in self.units.values() if u.hp <= 0]:
@@ -2322,6 +2497,7 @@ class World:
             "regrowth": [[list(tile), when] for tile, when in self.regrowth],
             "units": [_unit_to_dict(u) for u in self.units.values()],
             "buildings": [_building_to_dict(b) for b in self.buildings.values()],
+            "projectiles": [_projectile_to_dict(p) for p in self.projectiles.values()],
             "explored": [bytes(e).hex() for e in self.explored],
             "worker_knowledge": [knowledge.to_dict() for knowledge in self.worker_knowledge],
             "settlement": self.settlement.to_dict(),
@@ -2351,6 +2527,9 @@ class World:
         for saved in data["units"]:
             u = _unit_from_dict(saved, world.race_of(saved["player"]))
             world.units[u.id] = u
+        for saved in data.get("projectiles", []):
+            p = _projectile_from_dict(saved)
+            world.projectiles[p.id] = p
         world.explored = [bytearray(bytes.fromhex(e)) for e in data["explored"]]
         if "worker_knowledge" in data:
             world.worker_knowledge = [WorkerKnowledge.from_dict(knowledge) for knowledge in data["worker_knowledge"]]
@@ -2398,7 +2577,7 @@ def _order_from_dict(d: dict[str, Any]) -> Order:
 def _unit_to_dict(u: Unit) -> dict[str, Any]:
     return {
         "id": u.id, "type": u.type.value, "player": u.player, "x": u.x, "y": u.y, "hp": u.hp, "facing": u.facing,
-        "orders": [_order_to_dict(o) for o in u.orders], "cooldown": u.cooldown,
+        "orders": [_order_to_dict(o) for o in u.orders], "cooldown": u.cooldown, "windup": u.windup, "vx": u.vx, "vy": u.vy,
         "worker_orders": [{"index": index, "auto": order.auto,
                            **({"target": order.target} if isinstance(order, Deposit) else {})}
                           for index, order in enumerate(u.orders) if isinstance(order, (Harvest, Deposit))],
@@ -2410,7 +2589,7 @@ def _unit_to_dict(u: Unit) -> dict[str, Any]:
 
 def _unit_from_dict(d: dict[str, Any], race: Race) -> Unit:
     u = Unit(d["id"], UnitType(d["type"]), d["player"], d["x"], d["y"], d["hp"], race=race, facing=d["facing"], cooldown=d["cooldown"],
-             carrying=Resource(d["carrying"]) if d["carrying"] else None, carry=d["carry"], timer=d["timer"],
+             windup=d.get("windup", 0.0), vx=d.get("vx", 0.0), vy=d.get("vy", 0.0), carrying=Resource(d["carrying"]) if d["carrying"] else None, carry=d["carry"], timer=d["timer"],
              inside=d["inside"], constructing=d["constructing"], home=tuple(d["home"]) if d["home"] else None, state=d["state"],
              charge=d["charge"], auto_work=d.get("auto_work", True))
     u.orders = deque(_order_from_dict(o) for o in d["orders"])
@@ -2422,6 +2601,16 @@ def _unit_from_dict(d: dict[str, Any], race: Race) -> Unit:
         if isinstance(order, Deposit):
             order.target = state["target"]
     return u
+
+
+def _projectile_to_dict(p: Projectile) -> dict[str, Any]:
+    d = dict(vars(p))
+    d["start"], d["aim"] = list(p.start), list(p.aim)
+    return d
+
+
+def _projectile_from_dict(d: dict[str, Any]) -> Projectile:
+    return Projectile(**{**d, "start": tuple(d["start"]), "aim": tuple(d["aim"])})
 
 
 def _building_to_dict(b: Building) -> dict[str, Any]:

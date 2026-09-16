@@ -2,7 +2,7 @@
 
 Layers: ground chunks on ``BACKGROUND``; selection rings and rally lines on
 ``OBJECTS``; trees, rocks, mines, buildings and units on ``UNITS``, y-sorted
-by the point they stand on; arrows and particles on ``EFFECTS`` under the fog
+by the point they stand on; shots in flight, their trails and particles on ``EFFECTS`` under the fog
 sprite, which is one image with a pixel per tile stretched over the whole
 map (bilinear filtering makes the soft edges for free) and is redrawn with
 ``update_image`` whenever the model recomputes vision; health bars and the
@@ -21,8 +21,8 @@ from PIL import Image
 
 from saga2d import Game, ParticleEmitter, RenderLayer, Scene, Sprite, SpriteAnchor
 from warband import textures
-from warband.model import Building, Entity, Pos, Unit, World
-from warband.rules import BUILDINGS, VISION_EVERY, BuildingType, Terrain
+from warband.model import Building, Entity, Pos, Projectile, Unit, World, dist
+from warband.rules import BUILDINGS, SIM_DT, VISION_EVERY, BuildingType, Terrain
 from warband.textures import CHUNK, CHUNK_PX, TILE
 
 WATER_PERIOD = 0.45  # seconds between water phase changes
@@ -87,26 +87,28 @@ def minimap_terrain(world: World) -> np.ndarray:
 
 
 STRIDE = 0.22  # tiles travelled per walk frame: feet stay planted instead of sliding, and faster units step faster
-WIND_UP = 0.2  # seconds before a blow lands in which the weapon is drawn back
 STRIKE, FOLLOW, RECOVER = 0.1, 0.16, 0.16  # seconds after the blow: driven forward, swept across, settling to guard
+TRAIL = {"arrow": 0.12, "stone": 0.45}  # seconds of flight a shot leaves hanging in the air behind it
+TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194)}
 
 
 def unit_frame(u: Unit, travel: float, time: float) -> str:
-    """Which of the unit's frames shows now.  Walking is driven by distance travelled, a blow
-    by the model's cooldown clock: the wind-up precedes the strike the model will land when the
-    cooldown runs out, and the strike, follow-through and recovery trail the blow it just landed."""
+    """Which of the unit's frames shows now.  Walking is driven by distance travelled, a blow by the
+    model's own clocks: the wind-up while the model has the weapon drawn back, then the strike,
+    follow-through and recovery trailing the blow it just landed, read off the cooldown."""
     if u.state == "move":
         return textures.WALK_FRAMES[int(travel / STRIDE) % len(textures.WALK_FRAMES)]
     if u.state == "attack":
-        since = u.info.cooldown - u.cooldown
-        if since < STRIKE:
-            return "strike"
-        if since < STRIKE + FOLLOW:
-            return "follow"
-        if since < STRIKE + FOLLOW + RECOVER:
-            return "recover"
-        if 0 < u.cooldown <= WIND_UP:
+        if u.windup > 0.0:
             return "wind"
+        if u.cooldown > 0.0:
+            since = u.info.cooldown - u.cooldown
+            if since < STRIKE:
+                return "strike"
+            if since < STRIKE + FOLLOW:
+                return "follow"
+            if since < STRIKE + FOLLOW + RECOVER:
+                return "recover"
         return "stand"
     if u.state == "chop":
         if u.carrying is not None:
@@ -116,6 +118,37 @@ def unit_frame(u: Unit, travel: float, time: float) -> str:
     if u.state == "repair":
         return "strike" if (time * 2 + u.id * 0.37) % 1.0 < 0.35 else "stand"
     return "stand"
+
+
+def projectile_point(p: Projectile, world: World, now: float) -> tuple[float, float, float]:
+    """Where a shot is at simulation time *now*: its ground position in tiles and its height above the
+    ground, in tiles.  An arrow flies at its mark's current position on a flat arc; a stone lobs high to
+    the ground it was fired at."""
+    t = max(0.0, min(1.0, (now - p.launched) / p.flight))
+    end = p.aim
+    if p.target is not None:
+        target = world.entity(p.target)
+        if target is not None:
+            end = target.pos if isinstance(target, Unit) else target.center
+    x = p.start[0] + (end[0] - p.start[0]) * t
+    y = p.start[1] + (end[1] - p.start[1]) * t
+    span = dist(p.start, end)
+    lift = 1.7 if p.source_type == BuildingType.TOWER.value else 0.55  # loosed from the battlements, or from the shoulder
+    if p.kind == "stone":
+        height = 0.55 + 4 * (0.5 + 0.14 * span) * t * (1 - t)
+    else:
+        height = lift + (0.45 - lift) * t + 0.35 * math.sin(math.pi * t) * min(1.0, span / 4)
+    return x, y, height
+
+
+@dataclass
+class _Shot:
+    """What the view keeps per projectile in the air."""
+
+    sprite: Sprite
+    trail: list[tuple[float, float, float]] = field(default_factory=list)  # (view time, x, y) samples in world pixels
+    ground: tuple[float, float] = (0.0, 0.0)  # the point on the ground under the shot, in world pixels
+    height: float = 0.0  # tiles above it
 
 
 class MapView:
@@ -144,6 +177,9 @@ class MapView:
         self._unit_keys: dict[int, str] = {}
         self._smoke: dict[int, ParticleEmitter] = {}
         self._fire: dict[int, ParticleEmitter] = {}
+        self._shots: dict[int, _Shot] = {}
+        self._tick_seen = -1
+        self._since_tick = 0.0  # seconds of frames since the model last stepped: shots move between steps too
         self._vision_tick = -1
         self._minimap_time = -1.0
         self.fog_key = f"fog.{world.width}x{world.height}"
@@ -259,6 +295,9 @@ class MapView:
             for emitter in burning.values():
                 emitter.remove()
             burning.clear()
+        for shot in self._shots.values():
+            shot.sprite.remove()
+        self._shots.clear()
         self._building_keys.clear()
         self._unit_keys.clear()
         self.world = world
@@ -292,6 +331,7 @@ class MapView:
                 self._trees.pop(pos).remove()
         self._sync_buildings()
         self._sync_units()
+        self._sync_projectiles(dt)
         if world.tick // VISION_EVERY != self._vision_tick:
             self._vision_tick = world.tick // VISION_EVERY
             self.game.assets.update_image(self.fog_key, self._fog_image())
@@ -392,6 +432,63 @@ class MapView:
                 sprite.position = (wx, wy + textures.placements[key].drop)
                 sprite.visible = True
 
+    def _sync_projectiles(self, dt: float) -> None:
+        """A sprite per shot in the air, moved every frame (between model steps as well), and the
+        trail it leaves behind."""
+        world = self.world
+        if world.tick != self._tick_seen:
+            self._tick_seen, self._since_tick = world.tick, 0.0
+        else:
+            self._since_tick = min(SIM_DT, self._since_tick + dt)
+        now = world.time + self._since_tick
+        for pid, shot in list(self._shots.items()):
+            if pid not in world.projectiles:
+                shot.sprite.remove()
+                del self._shots[pid]
+        for p in world.projectiles.values():
+            x, y, height = projectile_point(p, world, now)
+            shot = self._shots.get(p.id)
+            if not (p.player == self.player or world.is_visible(self.player, (int(x), int(y)))):
+                if shot is not None:
+                    shot.sprite.visible = False
+                continue
+            gx, gy = to_world((x, y))
+            position = (gx, gy - height * TILE)
+            if shot is None:
+                size = (12, 12) if p.kind == "stone" else (22, 6)
+                shot = self._shots[p.id] = _Shot(self.scene.add_sprite(Sprite(p.kind, position=position, size=size, layer=RenderLayer.EFFECTS)))
+            elif p.kind == "arrow" and shot.trail:
+                shot.sprite.rotation = math.degrees(math.atan2(position[1] - shot.trail[-1][2], position[0] - shot.trail[-1][1]))
+            shot.sprite.position = position
+            shot.sprite.visible = True
+            shot.ground, shot.height = (gx, gy), height
+            shot.trail.append((self.time, *position))
+            while self.time - shot.trail[0][0] > TRAIL[p.kind]:
+                shot.trail.pop(0)
+
+    def _draw_projectiles(self) -> None:
+        """The trail behind each shot, and under a stone its shadow on the ground and the ring where it will come down."""
+        world, scene = self.world, self.scene
+        for p in world.projectiles.values():
+            shot = self._shots.get(p.id)
+            if shot is None or not shot.sprite.visible:
+                continue
+            color, hang = TRAIL_COLOR[p.kind], TRAIL[p.kind]
+            for (_, x0, y0), (t1, x1, y1) in zip(shot.trail, shot.trail[1:]):
+                age = (self.time - t1) / hang
+                scene.draw_line(x0, y0, x1, y1, (*color, round(210 * (1 - age))), 3.0 - 2.0 * age if p.kind == "stone" else 1.5,
+                                space="world", layer=RenderLayer.EFFECTS)
+            if p.kind != "stone":
+                continue
+            gx, gy = shot.ground
+            shade = max(2.0, 6.0 - shot.height * 1.2)
+            scene.draw_polygon([(gx + shade * 1.6 * math.cos(i * math.pi / 5), gy + shade * math.sin(i * math.pi / 5)) for i in range(10)],
+                               (20, 16, 12, 90), space="world", layer=RenderLayer.EFFECTS)
+            if world.is_visible(self.player, (int(p.aim[0]), int(p.aim[1]))):
+                ax, ay = to_world(p.aim)
+                ring = (*world.players[p.player].color, 130) if p.player == self.player else (255, 90, 70, 110)
+                self._ring(ax, ay, p.splash * TILE, p.splash * TILE * 0.62, ring, 1.5, layer=RenderLayer.EFFECTS)
+
     def unit_sprite(self, unit_id: int) -> Sprite | None:
         return self._units.get(unit_id)
 
@@ -468,6 +565,7 @@ class MapView:
     def draw(self, overlay: Overlay) -> None:
         world, scene = self.world, self.scene
         self._draw_wood_chips()
+        self._draw_projectiles()
         for eid in overlay.selected + ([overlay.hovered] if overlay.hovered is not None and overlay.hovered not in overlay.selected else []):
             entity = world.entity(eid)
             if entity is None:
