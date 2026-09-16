@@ -301,13 +301,16 @@ the first barracks, the lumber panic a minute earlier, one tower at the
 front point as soon as the barracks stands, and marching out at eight
 soldiers on level terms. Over three seed sets it had never been tuned on:
 
-| candidate | games against `pro` | score |
+| candidate | games against `pro`, by seed set | score |
 |-----------|--------------------|-------|
-| `pro-rax-panic-tower1-min8` | 72 + 120 + 120 | 67%, 57%, 61% |
-| `pro-rax-panic` (the same without the tower or the wait: out at five) | 96 + 120 | 67%, 60% |
-| every barracks-first variant pooled | about 1900 | 58% |
+| `pro-rax-panic-tower1-min8` | 72, 120, 120 | 67%, 57%, 61% — 61% pooled |
+| `pro-rax-panic` (the same without the tower or the wait: out at five) | 96, 120 | 67%, 60% |
+| `pro-raxfirst` (barracks-first alone) | 72, 72, 96, 120 | 60%, 64%, 59%, 48% — 57% pooled |
+| every barracks-first variant pooled | about 2400 | 57% |
 
-That is about **+70 Elo**, a first rung at roughly 1520, and it is two
+That is about **+50 to +70 Elo**, a first rung at roughly 1510, and the
+swing between seed sets of the same size is six points either way, which
+is why nothing under a hundred games on two sets is quoted. It is two
 players rather than one: `pro-rax-panic` walks out at five soldiers at
 195 s with no tower, `pro-rax-panic-tower1-min8` builds a tower first and
 walks out at eight at 245 s, and the two score the same. The gains do not
