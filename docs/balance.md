@@ -185,3 +185,49 @@ pairings each; the elves beat all three others at 59% to 63%. Orcs train
 at the first clash punishes both.
 
 **Undecided:** 59 matches, `turtle` in 27 of them.
+
+## The second league, on the fixed brain
+
+The same 1,056 matches with the economy fixes and the postures that can
+field their plans (`docs/evidence/balance/league-2.jsonl`; 993 decided).
+The postures now are what their names say: `knights` trained 22 knights
+a game, `siege` 5.9 catapults, `clerics` 11.6 healers, `raiders` 36 scouts.
+
+| posture | score | Elo | against `pro` |
+|---------|------:|----:|--------------:|
+| `mass` | 77.3% | 1073 | 68.8% |
+| `turtle` | 76.1% | 1063 | 56.2% |
+| `pro` | 68.2% | 1000 | — |
+| `boom` | 67.6% | 996 | 56.2% |
+| `knights` | 65.3% | 979 | 50.0% |
+| `archers` | 42.0% | 816 | 31.2% |
+| `noresearch` | 39.8% | 800 | 25.0% |
+| `clerics` | 38.6% | 792 | 25.0% |
+| `rush` | 36.4% | 776 | 12.5% |
+| `siege` | 34.7% | 764 | 6.2% |
+| `raiders` | 27.8% | 713 | 18.8% |
+| `footmen` | 26.1% | 699 | 0.0% |
+
+The equilibrium is `mass` 61%, `turtle` 39%, nothing else. Two readings
+changed and one did not:
+
+* **A knights army is as good as Master's mixed one** at the same timing
+  (50% head to head, up from 12.5% when it could not field its plan), beats
+  `boom` 62.5% and every composition posture 75% to 94%, and loses only to
+  the later pushes. Knights earned 1,340 per 1,000 spent and traded 2.7 to
+  1; the unit that is supposed to wear them down, the archer, took 18.8%
+  against them. A single branch of the tree that matches the whole tree
+  has no counter, which is what the arithmetic said before any game was
+  played.
+* **The siege path does not work even when it survives.** Holding behind
+  three towers until the stones were ready, `siege` still took 6% against
+  Master, 19% against `mass` and `turtle`. Catapults earned 650 per 1,000
+  and traded 0.97; the workshop stood in 16% of player-games at minute 6.2.
+  Nobody who was not made to reach it did.
+* **Timing still decides.** `mass` and `turtle` beat everything, `rush`
+  beats nothing, and towers destroyed 2.5 times their cost in 83% of
+  player-games.
+
+Races: elf 55.6%, human 55.2%, dwarf 46.0%, orc 43.0%. Orcs lose to elves
+35% and to humans 40%; their 10% slower training is the whole race in a
+game decided by who has more at the first clash.
