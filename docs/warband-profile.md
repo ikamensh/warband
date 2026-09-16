@@ -8,8 +8,7 @@ replay is kept. Online matches are neither rated nor recorded.
 ## The rating
 
 The rating is on the Elo scale the difficulty settings are measured on
-([docs/ai-ladder.md](ai-ladder.md)): Easy 770, Medium 1000, Hard 1220,
-Master 1420 at the time of writing (`warband.ai.DIFFICULTY_ELO`). It is an
+([docs/ai-ladder.md](ai-ladder.md)): Easy 740, Medium 1000, Hard 1250, Master 1450 at the time of writing (`warband.ai.DIFFICULTY_ELO`). It is an
 *estimate*, so it is updated by Glicko rather than plain Elo and shown with
 its deviation: a new player starts at **1000 ± 350** and is *provisional*
 until the deviation is under 150, which takes about five matches. Each match is
