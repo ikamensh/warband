@@ -267,3 +267,47 @@ account reported insufficient credits. No outside-review answer was obtained for
 this publication increment. Local self-review, the integration checks and actual
 native CI evidence above remain the available validation; the earlier WB-001
 outside review does not cover this code.
+
+### Verified staged release from the latest native build
+
+[Run 35145401921, attempt 1](https://github.com/ikamensh/warband/actions/runs/35145401921/attempts/1)
+at `7970b18e2e0c4a9bedc58a3d89d6453c8fb6afb9` passed both native builders and Linux
+validation. Each platform passed **875 tests, 12 skipped**, one intended warning
+(Windows 494.71 s; Mac 410.76 s). The ordinary Tests workflow also passed.
+Both artifact sets were downloaded and preserved before the deliberate rerun.
+Representative Windows title/planning and Mac portable/app match captures were
+inspected; rendering agrees with the earlier native evidence.
+
+The actual `ci_publish.py stage` command accepted these real native artifacts,
+and the publication entry point's offline inspection revalidated the complete
+staged files and receipts. Local binaries/staged release are retained under
+`dist/ci-acceptance/github-35145401921/`; receipts, images, the manifest and
+inspection result are under `docs/evidence/ci-publication/github-35145401921/`.
+No release was created or published in GitHub.
+
+| Distribution | Bytes | SHA-256 |
+|---|---:|---|
+| Windows portable | 144477557 | `f4ebc9963821292ab4e8cc3e8ddfdf03628131161682743c9be0c40723fade9c` |
+| Windows installer | 136065756 | `e5be4e180bb0a0e051217424cdb90f0e7eb3301acf776f203978fda7de6cda22` |
+| Mac portable | 139337879 | `8dc502ea3097165698125280bebce6347bbb3c36d6401b42971d502940b36597` |
+| Mac app | 135415834 | `6ccbce72057406d032dc8e82d77574c74f41cc7b8671e4562bd99953611e80e4` |
+
+The staged `release.json` digest is
+`ce280828eeae3c79a3da3d789249cfedda9df813250b35f7c6144c8954e496a3`.
+
+The final staging format stores evidence ZIP entries without recompressing them,
+with fixed timestamps, permissions and creator OS. This removes host/zlib
+variation across publication retries. Thirty focused integration checks still
+pass, including restaging after source-file metadata changes. The real native
+artifacts were staged and inspected again in `release-final/`; the manifest
+digest above refers to that final format. This small archive-format change was
+verified locally after the 875-test native run; it does not rebuild game binaries.
+
+[Attempt 2](https://github.com/ikamensh/warband/actions/runs/35145401921/attempts/2)
+then exercised the missing-artifact safeguard. Both native jobs failed at
+“Find already accepted bytes from this run” with “Refusing to rebuild this
+version”; both actual build steps were skipped. Logs and step results are saved
+in the same evidence directory. The workflow's latest red status is this
+intentional refusal test; attempt 1 is the successful native build. This proves
+safe refusal, not successful publication retry. The separate publication
+workflow and end-to-end promotion remain unfinished.

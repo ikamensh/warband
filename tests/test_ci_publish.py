@@ -55,6 +55,10 @@ def test_both_native_candidates_form_one_repeatable_release(packages, tmp_path):
             assert "verification/native.png" in archive.namelist()
             assert json.loads(archive.read("build-inputs.json"))["identity"] == manifest["identity"]
     before = {p.name: p.read_bytes() for p in output.iterdir()}
+    for directory in packages:
+        for path in directory.rglob("*"):
+            if path.is_file():
+                os.utime(path, (1_000_000_000, 1_000_000_000))
     assert stage(packages, output).returncode == 0
     assert {p.name: p.read_bytes() for p in output.iterdir()} == before
 

@@ -53,12 +53,14 @@ def stage(identity: dict, directories: dict[str, Path], output: Path) -> dict:
                 require(file_record(destination) == item, "Download bytes changed while staging")
                 assets.append(item)
             archive = staged / f"evidence-{target}.zip"
-            with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+            # PNGs are already compressed. Stored entries also avoid changing
+            # accepted evidence bytes when a retry's zlib or host OS changes.
+            with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as bundle:
                 for name, expected in sorted(candidate["evidence"].items()):
                     path = source / name
                     require(sha256(path) == expected, "Native evidence changed while staging")
                     entry = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
-                    entry.compress_type = zipfile.ZIP_DEFLATED
+                    entry.create_system = 3
                     entry.external_attr = 0o100644 << 16
                     bundle.writestr(entry, path.read_bytes())
             assets.append(file_record(archive))
