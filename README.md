@@ -13,7 +13,7 @@ each with a passive mechanic and two arts of its own
 ([docs/warband-races.md](docs/warband-races.md)). Peasants mine gold and fell
 trees; farms feed the army; a barracks, lumber mill, blacksmith, stables,
 workshop and church open seven units and the upgrades; guard towers hold the
-line. Three AI difficulties expand, upgrade, raid and attack in growing waves.
+line. Four AI difficulties expand, upgrade, raid and attack; Master plays one of two postures, drawn with the map.
 Every finished match is scored into a local top ten. A command card of
 portraits and emblems with keycaps, control groups, patrol, camera bookmarks,
 a minimap that pans and orders, three save slots with an autosave, a tutorial
