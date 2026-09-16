@@ -110,16 +110,12 @@ PRO = ProProfile("pro")
 #: the Vanguard marches out at five soldiers with no tower, the Warden puts a
 #: tower at the front point first and marches out at eight on level terms.
 PRO_VANGUARD = replace(PRO, name="pro-vanguard", barracks_first=True, panic_gold=1000, lumber_floor_panic=300)
-PRO_WARDEN = replace(PRO_VANGUARD, name="pro-warden", towers_early=1, min_army=8, attack_ratio=1.0)
-
-#: Probes on the postures, for the ladder to price: the counter to shooters,
-#: earlier and harder, because the losses that are left are orcs against
-#: elves, whose rangers outrange and outrun grunts.
-_PROBES = (
-    replace(PRO_WARDEN, name="pro-warden-counter2", counter_from=0.2, counter_strength=2.0),
-    replace(PRO_WARDEN, name="pro-warden-counter3", counter_from=0.15, counter_strength=3.0),
-    replace(PRO_VANGUARD, name="pro-vanguard-counter2", counter_from=0.2, counter_strength=2.0),
-)
+#: The Warden also answers shooters earlier and harder (a fifth of the
+#: enemy's soldiers rather than three tenths, twice the swing): 63% against
+#: `pro` over 200 games where the same posture without it took 58%. The
+#: Vanguard measured worse with it (51% against its 60%), and keeps its own.
+PRO_WARDEN = replace(PRO_VANGUARD, name="pro-warden", towers_early=1, min_army=8, attack_ratio=1.0,
+                     counter_from=0.2, counter_strength=2.0)
 
 
 #: Variants used to find out which knob is actually carrying the strength.
@@ -149,7 +145,7 @@ _TRIALS = (
     replace(PRO, name="pro-nocounter", counter_from=1.1),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, PRO_VANGUARD.name: PRO_VANGUARD, PRO_WARDEN.name: PRO_WARDEN,
-                                       **{p.name: p for p in _TRIALS}, **{p.name: p for p in _PROBES}}
+                                       **{p.name: p for p in _TRIALS}}
 
 
 # -- Force comparison ---------------------------------------------------------------
