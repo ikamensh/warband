@@ -231,3 +231,86 @@ changed and one did not:
 Races: elf 55.6%, human 55.2%, dwarf 46.0%, orc 43.0%. Orcs lose to elves
 35% and to humans 40%; their 10% slower training is the whole race in a
 game decided by who has more at the first clash.
+
+## Price experiments
+
+Six postures (`pro`, `mass`, `turtle`, `knights`, `archers`, `siege`) on the
+league's first four maps, both corners, 120 matches per rulebook, against
+the same 120 of the second league. Forty games per posture: about eight
+points of noise on a score, seventeen on a single cell. The usage columns
+are over 240 player-games and are the steadier readings.
+
+| rulebook | `knights` | `archers` | `siege` | `turtle` | knight trade | archer vs knights | tower trade | towers bought in |
+|----------|----------:|----------:|--------:|---------:|-------------:|------------------:|------------:|-----------------:|
+| standard | 62.5% | 22.5% | 7.5% | 72.5% | 2.53 | 0% | 7.5 | 86% |
+| tower damage 8 → 6 | 57.5% | 20.0% | 10.0% | 75.0% | 2.51 | 12% | 5.4 | 86% |
+| tower 700 → 1,050 | 60.0% | 15.0% | 12.5% | 77.5% | 2.71 | 0% | 4.0 | 68% |
+| knight 900 → 1,000 | 42.5% | 25.0% | 12.5% | 75.0% | 1.82 | 25% | 10.2 | 86% |
+| knight 900 → 1,000 and archer 5 → 6 damage | 47.5% | 30.0% | 10.0% | 77.5% | 2.02 | 38% | 8.2 | 86% |
+| catapult 1,200 → 875 and +25% hp, workshop 1,400 → 980 | 55.0% | 17.5% | 15.0% | 75.0% | 2.00 | 12% | 8.6 | 86% |
+
+(The knight rows read 900 and 1,000 for gold and lumber together; the
+package is a 12.5% gold rise. Catapult trade in the siege package: 1.09,
+from 0.56; workshops stood in 56% of player-games, from 22%.)
+
+What the table settles:
+
+* **Towers are a symptom.** Weaker or dearer towers cut what a tower kills
+  from 7.5 times its cost to 4 or 5 and leave `turtle` exactly where it
+  was. What wins is waiting for twelve soldiers, with or without towers:
+  `mass` has Master's two towers and the same record.
+* **The knight is over-priced by about a tenth in the wrong direction.**
+  A hundred gold more takes the knights posture from Master's equal to
+  twenty points below it. With the archer's shot raised from five to six
+  as well, archers take 38% against knights where they took none, and
+  knights keep a trade of two to one. That is the package to ship, and the
+  cause is the armour rule: flat subtraction with a floor of one leaves a
+  five-damage archer doing one point to four armour.
+* **The siege path is priced for a unit the brain cannot use.** Cheaper
+  and sturdier, catapults trade evenly and the baseline brains reach the
+  workshop in more than half their games, yet the siege posture still loses
+  every game to a massed push. Catapults out-range towers by one tile and
+  the brain walks them into range anyway; against a human who stands off
+  they are worth more than this league can see.
+
+## What to change
+
+Fixed on this branch, before any price:
+
+1. Repair charged up to 40% over the half price it promises (rounding per
+   ten-point chunk). Fixed in `rules.repair_cost`.
+2. The wood crew only ever grew; losers sat on sixteen thousand lumber.
+   Fixed: above `lumber_stock` all but one chopper go back to the gold.
+3. A producer bought whatever it could afford at that moment, so a knights
+   plan fielded scouts. Fixed: the unit the army is shortest of has first
+   claim on the bank.
+
+Recommended, with the evidence above:
+
+1. **Give waiting a cost.** The league's equilibrium is entirely postures
+   that hold until twelve to fifteen soldiers; the rush posture is the
+   worst thing in the game and raiding the second worst. Nothing punishes
+   a player for sitting at home: a base mine holds 50,000 gold, so it never
+   runs dry inside a match and the expansions are never fought over.
+   Shrinking the base mine so it is spent around minute five (a dry-mine
+   experiment is in `docs/evidence/balance/`) makes the map the fight, and
+   is the one change here that reaches the top of the table. Master itself
+   should also walk out later — the `ai-2000` branch found the same — but
+   that is the brain, not the rules.
+2. **Knight 800 → 900 gold and archer damage 5 → 6.** Measured above.
+   Better still, and untested: an armour rule that cannot floor a shot to
+   one point, so the archer is the counter the rules table says it is.
+3. **Catapult 900+300 → 700+200 with 100 hit points, workshop
+   900+500 → 700+350.** The path is then reached, and the unit trades
+   evenly. Whether it also needs the blacksmith as a prerequisite is a
+   design choice; the package left it in.
+4. **Tower 500+200 → 700+250**, a modest rise: it does not move the
+   standings, but a building that kills seven times its cost in every
+   rulebook is too cheap even if it is not the problem.
+5. **Races**: orcs at 43% and dwarves at 46% against elves and humans at
+   55%. Orcs train 10% slower and humans 15% faster, a quarter apart, in a
+   game decided by who has more at the first clash. The race ladder with
+   orcs at the common rate and Drill at 10% is in the evidence directory.
+6. **Scouts**: ten a game, trading 0.67, most of them Master's rule that
+   keeps one scout alive for eyes. A price is not the fix; a cheaper way to
+   see (a longer-sighted tower, a scout that flees) is.
