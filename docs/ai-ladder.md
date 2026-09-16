@@ -106,15 +106,31 @@ contradicted the reasoning that produced the change:
 
 | change | effect |
 |--------|--------|
+| attacking on less information, with a smaller army | **+63 Elo** (1408 → 1471), 95.5% against `hard` where caution took 90.0% |
 | directing focus fire | **−109 Elo** — it switches off the model's own kiting and retargeting |
 | feeding the workforce in gradually | **−187 Elo** (1516 → 1329) against hiring it at once |
 | early towers | 68.8% against `hard` where every other variant took 100% |
 | answering a raid with just enough soldiers | 81% against `hard`, where sending everyone took 90% |
 | more production once gold piles up | +52 Elo |
 | pulling wounded soldiers out to heal | beat the baseline 68.8% |
-| counting build orders in flight | −18 points on its own, +good once the site limit was raised to match |
+| counting build orders in flight | −18 points on its own, good once the site limit was raised to match |
+| peasants called to defend | −35 Elo, under either of the two rules tried |
+| holding the opening lumber for the barracks | **−400 Elo** — it buys the barracks 64s earlier and starves the farms |
 
-The last one is the cautionary tale. The brain had been re-ordering the same
+Two of those are worth dwelling on. Holding the opening lumber was reasoned
+out from arithmetic — the game starts with 500 lumber, a farm costs 250 and a
+barracks 450, so the second farm is what delays the barracks — and it did
+exactly what it was supposed to, moving the barracks from 138s to 74s. It
+also collapsed the brain to 901 Elo, below `hard`, because the farms it
+displaced are what the supply cap is made of.
+
+And the caution the brain had been taught was itself an overcorrection. It
+learnt not to attack blind after a push of ten walked into a defended base;
+the right lesson, at four times the dose it needed. It kills four soldiers
+for every one it loses, so a fight it is unsure of is still a fight worth
+having.
+
+The build-order one is the other cautionary tale. The brain had been re-ordering the same
 barracks on every pass because a building does not exist until its peasant
 arrives; fixing that was plainly correct and immediately made the brain
 worse, because the double-ordering had been buying a build rate nothing else

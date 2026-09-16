@@ -97,21 +97,17 @@ PRO = ProProfile("pro")
 
 #: Variants used to find out which knob is actually carrying the strength.
 #: Each differs from :data:`PRO` in one thing, so a ladder over all of them
-#: attributes the difference rather than guessing at it.
+#: attributes the difference rather than guessing at it. What each one settled
+#: is written down in ``docs/ai-ladder.md``.
 _TRIALS = (
-    replace(PRO, name="pro-noscout", scout=False),
-    replace(PRO, name="pro-noheal", retreat_wounded=False),
-    replace(PRO, name="pro-noraid", raid=False),
     replace(PRO, name="pro-timid", min_army=10, attack_ratio=1.6, symmetry_prior=1.0, guards=2,
-            workers_per_mine=13, barracks_per_hall=4),
-    replace(PRO, name="pro-wild", min_army=3, attack_ratio=0.6, symmetry_prior=0.2),
-    replace(PRO, name="pro-rushbig", workers_per_mine=13, barracks_per_hall=4),
+            workers_per_mine=13, barracks_per_hall=4),   # the cautious posture it replaced
+    replace(PRO, name="pro-noscout", scout=False),
+    replace(PRO, name="pro-noraid", raid=False),
+    replace(PRO, name="pro-noheal", retreat_wounded=False),
     replace(PRO, name="pro-noexpand", expand=False),
-    replace(PRO, name="pro-army16", min_army=16),
-    replace(PRO, name="pro-lean", max_sites=3, barracks_per_hall=3),
-    replace(PRO, name="pro-guards4", guards=4),
-    replace(PRO, name="pro-group", reinforce_group=4),
-    replace(PRO, name="pro-patient", attack_ratio=2.2),
+    replace(PRO, name="pro-lean", max_sites=3, barracks_per_hall=2),
+    replace(PRO, name="pro-workersfirst", soldiers_before_workers=0),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}}
 
