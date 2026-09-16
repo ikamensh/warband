@@ -316,7 +316,7 @@ soldiers on level terms. Over three seed sets it had never been tuned on:
 | candidate | games against `pro`, by seed set | score |
 |-----------|--------------------|-------|
 | `pro-rax-panic-tower1-min8` (the Warden without its counter) | 72, 120, 120, 80, 120 | 67%, 57%, 61%, 54%, 60% — 60% pooled |
-| `pro-warden` as shipped (with the counter) | 80, 120 | 60%, 65% — 63% pooled |
+| `pro-warden` as shipped (with the counter) | 80, 120, 80 | 60%, 65%, 65% — 64% pooled |
 | `pro-rax-panic` (the same without the tower or the wait: out at five) | 96, 120 | 67%, 60% |
 | `pro-raxfirst` (barracks-first alone) | 72, 72, 96, 120 | 60%, 64%, 59%, 48% — 57% pooled |
 | every barracks-first variant pooled | about 2400 | 57% |
@@ -446,6 +446,7 @@ contradicted the reasoning that produced the change:
 | a beaten push followed home at once, whatever the army's size | level (50%) |
 | the counter to shooters earlier and harder (`counter_from` 0.2, `counter_strength` 2.0) on the Warden | **+25 Elo** on top of the posture — 60% and 65% on two seed sets where the Warden alone took 54% and 60%, 63% pooled over 200 games; the gain lands on humans and dwarves, not the orcs it was aimed at; worse on the Vanguard (51%) |
 | the same, harder still (0.15, 3.0) | 61% pooled: no better |
+| the Warden's combat knobs: pulling a wounded soldier out at 40% instead of 25%, at 15%, a combat pass every 0.1 s instead of 0.2, pushing through raids up to 70% of the army | level (65%), −50 (52%), −30 (55%), level (59%) against the Warden's 65% on the same 80 games |
 | marching out at eight to ten soldiers on level terms instead of five on a guess (`min_army` 8–10, `attack_ratio` 1.0) | **+40 Elo** — 55–57% against Master over 96 games each, 55% pooled over 576; the one posture change that measured |
 | soldiers seen to die dropped from the enemy count at once (`count_kills`) | +20 Elo alone (53%), about the same on top of the later push |
 | a standing share of the workforce on wood | **−40 to −180 Elo** — 46% at 30%, 31% at 40%, 25% with farms ahead of demand as well; the model's own policy is better |
