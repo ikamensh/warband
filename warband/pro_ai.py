@@ -171,6 +171,15 @@ _STYLES = (
     replace(PRO, name="pro-wood-sat", wood_share=0.3, blocked_is_busy=True),
     replace(PRO, name="pro-wood-kills", wood_share=0.3, count_kills=True),
     replace(PRO, name="pro-wood-slack", wood_share=0.3, supply_slack=8),
+    # The slow races lose the first clash: dwarves walk slower, orcs arm slower,
+    # and both march out at the same minute with the same five soldiers as the
+    # elves who beat them four times in five. Let them hold longer.
+    replace(PRO, name="pro-race1", by_race={
+        Race.DWARF: {"min_army": 9, "attack_ratio": 1.1, "tower_count": 3},
+        Race.ORC: {"min_army": 8, "attack_ratio": 1.0}}),
+    replace(PRO, name="pro-race-turtle", by_race={
+        Race.DWARF: {"min_army": 12, "attack_ratio": 1.3, "tower_count": 3, "siege_share": 0.2},
+        Race.ORC: {"min_army": 10, "attack_ratio": 1.2, "tower_count": 3}}),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}, **{p.name: p for p in _STYLES}}
 
