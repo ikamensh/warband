@@ -1,6 +1,6 @@
 # Warband
 
-A small Warcraft 2-style real-time strategy game on [Saga2D](../saga2d).
+A small Warcraft 2-style real-time strategy game on [Saga2D](https://pypi.org/project/saga2d/).
 
 A top-down map of meadows, woods and lakes under a soft fog of war, in
 summer, winter or wasteland, in one of five layouts (open plains, deep
@@ -24,11 +24,10 @@ fell for a while.
 
 Warband runs straight from this checkout on macOS and Windows; nothing is
 installed system-wide. You need
-[uv](https://docs.astral.sh/uv/getting-started/installation/) and the two
-repositories Warband depends on, checked out beside this one:
+[uv](https://docs.astral.sh/uv/getting-started/installation/) and the
+sagaforge asset library checked out beside this one:
 
 ```bash
-git clone https://github.com/ikamensh/saga2d-framework.git saga2d
 git clone https://github.com/ikamensh/sagaforge.git
 git clone https://github.com/ikamensh/warband.git
 cd warband
@@ -38,14 +37,19 @@ uv run warband
 `uv run` creates `.venv`, fetches Python and the dependencies when they are
 missing, and opens the title screen; the first start also synthesises the
 sounds and music. **New game** picks map, players, difficulty and race,
-**Continue** resumes the autosave. The framework and the asset library are
-editable path dependencies, so moving to a newer version is a pull in the
-three checkouts and another start:
+**Continue** resumes the autosave. Saga2D comes from PyPI at the version pinned
+in `pyproject.toml` and `uv.lock`. The asset library remains an editable path
+dependency. Update the game and asset checkout, then start again:
 
 ```bash
-git -C ../saga2d pull && git -C ../sagaforge pull && git pull
+git -C ../sagaforge pull && git pull
 uv run warband
 ```
+
+For an existing environment that used the editable engine, run
+`uv sync --locked --extra dev --reinstall-package saga2d` once before launching.
+A plain sync can retain an editable install of the same version. This also
+restores the release after local engine testing.
 
 Straight into a match, and the other options:
 
