@@ -46,6 +46,22 @@ def test_a_match_records_how_each_player_played():
     assert medians["pro"]["peak_army"] == played.styles[1]["peak_army"]
 
 
+def test_a_match_result_survives_a_round_trip_through_plain_data():
+    """Saved runs are what a chain of rungs is rated over, so nothing may be lost on the way."""
+    import json
+    played = play(MatchSpec(seed=3, agents=("medium", "pro"), minutes=2.0, races=("orc", "elf")))
+    back = arena.from_record(json.loads(json.dumps(arena.to_record(played))))
+    same = lambda a, b: a == b or (isinstance(a, float) and isinstance(b, float) and math.isnan(a) and math.isnan(b))  # noqa: E731
+    assert (back.spec, back.placements, back.winner, back.minutes, back.steps, back.wall, back.races) == \
+        (played.spec, played.placements, played.winner, played.minutes, played.steps, played.wall, played.races)
+    assert all(same(a[f], b[f]) for a, b in zip(back.styles, played.styles) for f in arena.STYLE_FIELDS), \
+        "a brain that never attacked has a NaN first attack, which is still the same NaN"
+    assert played.races == ("orc", "elf")
+    by_race = arena.score_by_race([played, played])
+    assert set(by_race) == {"medium", "pro"} and set(by_race["medium"]) == {"orc"}
+    assert by_race["medium"]["orc"][1] == 2
+
+
 def test_placements_rank_every_player_from_one():
     """Placements start at 1 and leave no gaps except where players tie."""
     spec = MatchSpec(seed=11, agents=("hard", "medium", "easy"), minutes=3)
