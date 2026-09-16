@@ -79,3 +79,24 @@ def test_help_fits_the_window(size: tuple[int, int], tmp_path) -> None:
         assert not outside, outside
     finally:
         game._teardown()
+
+
+def test_long_tutorial_objective_fits_its_panel(tmp_path) -> None:
+    """The lumber instruction remains fully readable when the tutorial advances."""
+    game = Game("Warband tutorial", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        scene = new_game(seed=3)
+        game.push(scene)
+        worker = next(unit for unit in scene.world.player_units(scene.human) if unit.is_worker)
+        scene.select([worker.id])
+        scene.world.harvest([worker.id], scene.world.mines()[0].id)
+        settle(game)
+        assert scene.tutorial.current.text == "Right-click a tree with another peasant for lumber"
+        x, y, width, height = scene.objectives.bounds
+        instruction = [box for box in text_boxes(game.backend) if box.space == "screen"
+                       and box.left >= x and y <= box.top < y + height]
+        assert instruction
+        assert all(box.right <= x + width for box in instruction), instruction
+        assert_no_text_overlap(game, top_scene_only=True)
+    finally:
+        game.close()

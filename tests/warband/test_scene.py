@@ -298,6 +298,26 @@ def test_help_and_settings_overlays(play) -> None:
     assert game.scene is scene
 
 
+def test_settings_keyboard_adjusts_the_row_last_clicked(play) -> None:
+    """Mouse and keyboard share row focus, preserving the other saved preferences."""
+    from saga2d import Button, Label
+
+    game, scene = play
+    press(game, "escape")
+    press(game, "s")
+    settings = game.scene
+    sound_label = settings.ui.find(lambda component: isinstance(component, Label) and component.text == "Sound volume")
+    row = sound_label.parent
+    plus = row.find(lambda component: isinstance(component, Button) and component.text == "+")
+    x, y, width, height = plus.bounds
+    original = dict(scene.settings)
+    game.backend.inject_click(x + width // 2, y + height // 2)
+    game.tick(1 / 60)
+    assert scene.settings["sfx"] == pytest.approx(original["sfx"] + 0.1)
+    press(game, "left")
+    assert dict(scene.settings) == original
+
+
 def test_losing_every_building_and_unit_ends_the_game(play) -> None:
     game, scene = play
     world = scene.world

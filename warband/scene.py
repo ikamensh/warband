@@ -104,6 +104,19 @@ class QueueEntry:
     cancel: Callable[[], None]  # right click
 
 
+class _SelectionPanel(Component):
+    """Route the immediate-drawn portraits and production queue through the UI tree."""
+
+    def __init__(self, scene: GameScene, **kwargs: Any) -> None:
+        super().__init__(blocks_pointer=True, **kwargs)
+        self.scene = scene
+
+    def on_event(self, event: InputEvent) -> bool:
+        if event.type == "click" and self.hit_test(event.x, event.y):
+            return self.scene._click_panel(event.x, event.y, event.button, shift=event.shift)
+        return False
+
+
 class GameScene(Scene):
     """The whole match: map, selection, orders, HUD, the AI's turns and the game clock."""
 
@@ -272,7 +285,7 @@ class GameScene(Scene):
             (Row(Icon("supply", size=22), Label(supply_text, text_style="hud"), spacing=6),
              "Supply used / capacity — farms and halls feed the army"),
         ]
-        self.ui.add(Panel(anchor=Anchor.TOP_LEFT, margin=12, layout=Layout.HORIZONTAL, spacing=12, style=PANEL_STYLE, children=[
+        self.ui.add(Panel(anchor=Anchor.TOP_LEFT, margin=12, layout=Layout.HORIZONTAL, spacing=12, style=PANEL_STYLE, blocks_pointer=True, children=[
             Label(player.name, text_style="title", text_color=rgba(player.color)),
             Label(self.race.name, text_style="sub"),
             *(row for row, _hint in self._resource_rows),
@@ -281,36 +294,36 @@ class GameScene(Scene):
             self._idle_button(),
             Button("Menu", hotkey="F10", on_click=self.open_menu, style=GHOST_BUTTON),
         ]))
-        # The keycaps are hints only: the letters are dispatched after the command card (see handle_input), so a
-        # selection's own commands keep them, and Ctrl+letter forces the settlement action past that.
+        # Advertise the chords that always work. Plain letters fall through to these actions only when
+        # the command card does not claim them (for example, T means Tower in the build catalogue).
         self.ui.add(Row(Label("Settlement", text_style="heading", width=124),
-                        Button("Build", hotkey="B", on_click=lambda: self.toggle_settlement("build"), style=GHOST_BUTTON, width=104),
-                        Button("Train", hotkey="T", on_click=lambda: self.toggle_settlement("train"), style=GHOST_BUTTON, width=104),
-                        Button("Upgrade", hotkey="U", on_click=lambda: self.toggle_settlement("upgrade"), style=GHOST_BUTTON, width=128),
+                        Button("Build", hotkey="Ctrl+B", on_click=lambda: self.toggle_settlement("build"), style=GHOST_BUTTON),
+                        Button("Train", hotkey="Ctrl+T", on_click=lambda: self.toggle_settlement("train"), style=GHOST_BUTTON),
+                        Button("Upgrade", hotkey="Ctrl+U", on_click=lambda: self.toggle_settlement("upgrade"), style=GHOST_BUTTON),
                         Button(lambda: f"Plans ({self._plan_count()})", hotkey="Ctrl+P", on_click=self.open_plans, style=GHOST_BUTTON, width=152),
-                        Button("Assembly", hotkey="G", on_click=lambda: self.start_pending("assembly"), style=GHOST_BUTTON, width=128),
-                        spacing=8, anchor=Anchor.TOP_LEFT, margin=(12, 84), style=PANEL_STYLE))
+                        Button("Assembly", hotkey="Ctrl+G", on_click=lambda: self.start_pending("assembly"), style=GHOST_BUTTON),
+                        spacing=8, anchor=Anchor.TOP_LEFT, margin=(12, 84), style=PANEL_STYLE, blocks_pointer=True))
         world_w, world_h = self.world.width * TILE, self.world.height * TILE
         self.minimap = Minimap(self.view.minimap_key, (world_w, world_h), self.camera, width=MINIMAP_WIDTH,
                                height=self._minimap_height(), on_click=self.minimap_click,
-                               anchor=Anchor.BOTTOM_LEFT, margin=PANEL_MARGIN, style=PANEL_STYLE)
+                               anchor=Anchor.BOTTOM_LEFT, margin=PANEL_MARGIN, style=PANEL_STYLE, blocks_pointer=True)
         self.ui.add(self.minimap)
-        self.selection_panel = Component(width=SELECTION_WIDTH, height=SELECTION_HEIGHT, anchor=Anchor.BOTTOM_CENTER, margin=PANEL_MARGIN)
+        self.selection_panel = _SelectionPanel(self, width=SELECTION_WIDTH, height=SELECTION_HEIGHT, anchor=Anchor.BOTTOM_CENTER, margin=PANEL_MARGIN)
         self.ui.add(self.selection_panel)
-        self.card_panel = Column(spacing=6, anchor=Anchor.BOTTOM_RIGHT, margin=PANEL_MARGIN, style=PANEL_STYLE)
+        self.card_panel = Column(spacing=6, anchor=Anchor.BOTTOM_RIGHT, margin=PANEL_MARGIN, style=PANEL_STYLE, blocks_pointer=True)
         self.ui.add(self.card_panel)
         # What a hovered command or queued job is, wrapped above the selection panel where a long line fits.
         self.command_tooltip = Panel(anchor=Anchor.BOTTOM_CENTER, margin=(0, PANEL_MARGIN[1] + SELECTION_HEIGHT + 8), layout=Layout.VERTICAL,
-                                     style=PANEL_STYLE, visible=False,
+                                     style=PANEL_STYLE, visible=False, blocks_pointer=True,
                                      children=[Label(lambda: self.tooltip, text_style="body", wrap=True, width=SELECTION_WIDTH - 24)])
         self.ui.add(self.command_tooltip)
-        self.ui.add(KeyHints(self._hint, anchor=Anchor.BOTTOM_CENTER, margin=5))
+        self.ui.add(KeyHints(self._hint, anchor=Anchor.BOTTOM_CENTER, margin=5, blocks_pointer=True))
         self.ui.add(Label(lambda: self.status if self.status_timer > 0 else "", text_style="hud", anchor=Anchor.TOP_LEFT,
-                          margin=(12, HUD_TOP), width=760, wrap=True, text_color=GOLD))
-        self.objectives = Column(spacing=4, anchor=Anchor.TOP_RIGHT, margin=(12, HUD_TOP), style=PANEL_STYLE)
+                          margin=(12, HUD_TOP), width=760, wrap=True, text_color=GOLD, blocks_pointer=True))
+        self.objectives = Column(spacing=4, anchor=Anchor.TOP_RIGHT, margin=(12, HUD_TOP), style=PANEL_STYLE, blocks_pointer=True)
         self.objectives.add(Row(Label("Getting started", text_style="heading", width=290),
                                 Button("Hide", hotkey="F4", on_click=self.hide_tutorial, style=GHOST_BUTTON, width=90), spacing=8))
-        self.objective_label = Label("", text_style="body", width=390)
+        self.objective_label = Label("", text_style="body", width=390, wrap=True)
         self.objective_done = Label("", text_style="sub", width=390)
         self.objectives.add(self.objective_label)
         self.objectives.add(self.objective_done)
@@ -1070,9 +1083,6 @@ class GameScene(Scene):
 
     # -- Raw input ----------------------------------------------------------------------
 
-    def _over_ui(self, x: float, y: float) -> bool:
-        return any(child.visible and child.hit_test(x, y) for child in self.ui.children)
-
     def handle_input(self, event: InputEvent) -> bool:
         if event.type == "key_press" and event.key is not None:
             if event.key in GROUP_KEYS:
@@ -1090,8 +1100,6 @@ class GameScene(Scene):
             self.mouse = (event.x, event.y)
             self.hover = point
             return True
-        if event.type == "click" and self._over_ui(event.x, event.y):
-            return self._click_panel(event.x, event.y, event.button, shift=event.shift)
         if event.type == "click" and event.button == "left":
             if self.pending is not None:
                 self._execute_pending(point, keep=event.shift)
@@ -1362,7 +1370,7 @@ class GameScene(Scene):
     # -- Drawing ---------------------------------------------------------------------------
 
     def _ghost(self) -> tuple[BuildingType, Pos, bool] | None:
-        if self.pending is None or not self.pending.startswith(("build:", "plan:")) or self._over_ui(*self.mouse):
+        if self.pending is None or not self.pending.startswith(("build:", "plan:")) or self.ui.pointer_target(*self.mouse) is not None:
             return None
         building_type = BuildingType(self.pending.split(":", 1)[1])
         site = self._ghost_site(building_type)
@@ -1374,7 +1382,7 @@ class GameScene(Scene):
 
     def draw(self) -> None:
         hovered = None
-        if not self._over_ui(*self.mouse) and self.pending is None:
+        if self.ui.pointer_target(*self.mouse) is None and self.pending is None:
             entity = self.world.entity_at(self.hover, visible_to=self.human)
             hovered = entity.id if entity is not None else None
         self.view.draw(Overlay(selected=list(self.selection), hovered=hovered, ghost=self._ghost(),
@@ -1786,7 +1794,7 @@ class SettingsScene(_Overlay):
     """Keyboard-navigable options: ↑↓ pick a row, ←→ adjust or toggle.  Saved to the settings file."""
 
     pause_below = True
-    controls = {"up": "focus_up", "down": "focus_down", "left": "decrease", "right": "increase", ("return", "space"): "increase"}
+    controls = {"left": "decrease", "right": "increase", ("return", "space"): "increase"}
     ROWS: tuple[tuple[str, str, str], ...] = (
         ("Music volume", "music", "percent"), ("Sound volume", "sfx", "percent"), ("Edge scrolling", "edge_scroll", "toggle"),
         ("Scroll speed", "scroll_speed", "speed"), ("Fullscreen", "fullscreen", "toggle"), ("Tutorial", "tutorial", "toggle"),
@@ -1794,7 +1802,7 @@ class SettingsScene(_Overlay):
 
     def __init__(self, game_scene: GameScene) -> None:
         self.game_scene = game_scene
-        self.focus = 0
+        self.row_keys: dict[Row, str] = {}
 
     @property
     def settings(self) -> dict[str, Any]:
@@ -1809,17 +1817,23 @@ class SettingsScene(_Overlay):
         return "On" if value else "Off"
 
     def on_enter(self) -> None:
+        self.ui.enable_focus(navigation="vertical", activate=())
         panel = self.panel("Settings")
-        for index, (name, key, kind) in enumerate(self.ROWS):
-            marker = Label(lambda i=index: "›" if self.focus == i else "", text_style="hud", width=18, text_color=GOLD)
-            panel.add(Row(marker, Label(name, text_style="body", width=170), Row(
-                Button("−", on_click=lambda k=key: self._adjust(k, -1), style=GHOST_BUTTON, width=48),
+        for name, key, kind in self.ROWS:
+            row = Row(spacing=12, focusable=True)
+            self.row_keys[row] = key
+            row.add(Label(lambda r=row: "›" if r.focused else "", text_style="hud", width=18, text_color=GOLD))
+            row.add(Label(name, text_style="body", width=170))
+            row.add(Row(
+                Button("−", on_click=lambda k=key: self._adjust(k, -1), style=GHOST_BUTTON, width=48, focusable=False),
                 Label(lambda k=key, kd=kind: self._shown(k, kd), text_style="hud", width=70, align="center"),
-                Button("+", on_click=lambda k=key: self._adjust(k, 1), style=GHOST_BUTTON, width=48),
+                Button("+", on_click=lambda k=key: self._adjust(k, 1), style=GHOST_BUTTON, width=48, focusable=False),
                 spacing=8,
-            ), spacing=12))
+            ))
+            panel.add(row)
+        self.ui.focus(next(iter(self.row_keys)))
         panel.add(Label("Settings are saved when you leave this screen.", text_style="sub"))
-        panel.add(KeyHints([("↑↓", "select"), ("←→", "adjust"), ("Esc", "close")]))
+        panel.add(KeyHints([("Tab / ↑↓", "select"), ("←→", "adjust"), ("Esc", "close")]))
 
     def _adjust(self, key: str, direction: int) -> None:
         kind = next(k for _n, k2, k in self.ROWS if k2 == key)
@@ -1835,17 +1849,11 @@ class SettingsScene(_Overlay):
     def on_exit(self) -> None:
         self.game_scene.apply_settings()
 
-    def focus_up(self) -> None:
-        self.focus = (self.focus - 1) % len(self.ROWS)
-
-    def focus_down(self) -> None:
-        self.focus = (self.focus + 1) % len(self.ROWS)
-
     def decrease(self) -> None:
-        self._adjust(self.ROWS[self.focus][1], -1)
+        self._adjust(self.row_keys[self.ui.focused], -1)
 
     def increase(self) -> None:
-        self._adjust(self.ROWS[self.focus][1], 1)
+        self._adjust(self.row_keys[self.ui.focused], 1)
 
 
 class SaveBrowserScene(_Overlay):
@@ -1903,7 +1911,7 @@ HELP_INTRO = (
 )
 HELP_KEYS = (
     ("B / T / U / G", "plan a building / unit / upgrade for the settlement, or set the assembly point for new soldiers"),
-    ("Ctrl + letter", "the same when the selection's own commands use that letter;  Ctrl+P: every plan, its progress and cancel"),
+    ("Ctrl + letter", "bypass the current card (T is Tower in Build);  Ctrl+P: every plan, its progress and cancel"),
     ("Shift", "Train: five at once;  Build: keep placing;  otherwise add to the selection or queue an order"),
     ("Production panel", "with nothing selected: hover an item for its state, click to go to its producer, right-click to cancel"),
     ("Click / drag / right-click", "select;  box-select;  order whatever fits the target  (Mac trackpad: two-finger click)"),

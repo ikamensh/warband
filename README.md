@@ -120,6 +120,10 @@ version.
 | Arrows, edges, middle-drag | scroll | Wheel, + / − | zoom |
 | F3 / F5 / F9 | pause / quicksave / quickload | Esc, F1, F2, F10 | cancel · help · codex · menu |
 
+In Settings, Tab / Shift+Tab or ↑↓ select a row; ←→ adjust it. Clicking an
+option selects that same row for the keyboard. Enter toggles or increases
+the selected setting.
+
 Guides: [scores](docs/warband-scores.md), [art](docs/warband-art.md),
 [audio](docs/warband-audio.md) and [music](docs/warband-music.md). The Early
 Access goal is defined in
