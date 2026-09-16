@@ -273,7 +273,7 @@ What the table settles:
   the brain walks them into range anyway; against a human who stands off
   they are worth more than this league can see.
 
-## What to change
+## What was changed
 
 Fixed on this branch, before any price:
 
@@ -344,3 +344,83 @@ Two things the experiments found that are not prices:
   kills: each is a place where the readout is a floor on the true value,
   not the value. Read the pathologies and the fielded table before every
   number.
+
+
+## The changes this evidence bought
+
+### Staying at home now costs something
+
+Nothing in the game punished a player for never leaving base: a mine held
+50,000 gold and absorbed every peasant that could be hired, so a bigger
+workforce at home always beat taking a second mine. That is why the
+league's equilibrium was the two postures that sit at home longest.
+
+A mine now works `MINE_SLOTS` peasants at its face and the rest wait their
+turn, so it yields at most `MINE_SLOTS * GOLD_PER_TRIP / MINE_TIME`. With
+the walk to the hall on top, a mine next door is saturated by about ten
+peasants and a distant one by a few more; past that the way to more gold is
+another mine. Crews are counted as peasants enter and leave, rebuilt on
+load, and the automatic worker policy sends nobody to a face that is full.
+
+This needed the expansion bug fixing first. Master's expansion wish sat
+behind the saturation gate, and a brain with no income never saturates, so
+the dry-mine rulebook saw no second hall in 336 seats. Scarcity — a mine
+below `mine_floor`, or every place at the face taken — now opens that gate
+too, while the old mine still has the gold to pay for the move.
+
+### Prices
+
+Applied as measured in the experiments table above: knight 800 → 900 gold,
+archer 5 → 6 damage, catapult 900+300 → 700+200 with 100 hit points,
+workshop 900+500 → 700+350, tower 500+200 → 700+250, and the elf and dwarf
+speed modifiers halved to ±0.15.
+
+The archer's is the one worth restating. Armour is a flat subtraction with
+a floor of one, so a five-damage arrow did a single point to a knight's
+four armour: ninety shots to fell it. At six it does two. That is a
+workaround, not a fix — the rule that floors a shot at one point is still
+there, and an armour rule that scales instead would make the archer the
+counter the rules table says it is. A test now pins the margin so a future
+change cannot quietly take it back.
+
+### A settled match stops
+
+A fifth of the average match was spent razing a beaten player's farms, and
+every stalemate paid the twenty-minute cap in full. A match now ends when
+one player has both the field and the map: an army five times every
+rival's, while also half again ahead on everything standing, held for
+thirty seconds. Checked over 112 matches played both ways — identical
+placements in all 112, the same winner in 110, and the two others were
+stalemates the full match left undecided and the rule called. It saves 22%
+of a league's wall time and the simulation is untouched.
+
+### Scanning less often: measured and dropped
+
+A unit looks around for something else to fight four times a second; the
+proposal was two. It was tried and dropped, because the measurements did
+not support it:
+
+| | 4 Hz (kept) | 2 Hz |
+|---|---|---|
+| whole matches, same seeds, one process | 0.518 ms/step | 0.524 ms/step |
+| Master over Hard, 108 matches | 86.1% | 75.0% |
+| Hard over Medium | 88.9% | 100.0% |
+| Medium's score on the ladder | 5.6% | 0.0% |
+
+It buys nothing on a whole match because a match is worker routes,
+pathfinding and crowd separation, not target scanning — the 150-unit battle
+benchmark where scanning does show up is not what a league spends its time
+on. And slower reactions cost the weaker brains far more than the stronger
+ones, which would flatten the shipped difficulty ladder and make the
+easiest setting easier still. The mop-up rule above is where the league's
+time actually was.
+
+### The sawmill does nothing for lumber
+
+It is a drop-off point and a research building, nothing more: lumber is a
+flat `LUMBER_PER_TRIP` wherever it is delivered, and the only per-trip
+bonus in the game is Deep Mining, on gold, for dwarves alone. For 600 gold
+and 450 lumber that is a thin building, and now that mines are capped and
+lumber is the resource that gates farms and supply, a sawmill that actually
+increased the load a peasant carries would be the obvious counterpart to
+Deep Mining. Untested: it needs a rule, not a `scale:` variant.
