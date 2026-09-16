@@ -1,10 +1,10 @@
-# Warband — release pack (0.2.0-preview.1)
+# Warband — release pack (0.2.0-preview.2)
 
 The [Warband page](https://games.tachyon-ai.eu/warband/) offers the current
 downloads with installation steps; the same files are on the published
-[0.2.0-preview.1 release](https://github.com/ikamensh/warband/releases/tag/v0.2.0-preview.1):
-the [Windows installer](https://github.com/ikamensh/warband/releases/download/v0.2.0-preview.1/Warband-0.2.0-preview.1-windows-x64-setup.exe)
-and [Apple Silicon Mac app](https://github.com/ikamensh/warband/releases/download/v0.2.0-preview.1/Warband-0.2.0-preview.1-darwin-arm64-app.zip).
+[0.2.0-preview.2 release](https://github.com/ikamensh/warband/releases/tag/v0.2.0-preview.2):
+the [Windows installer](https://github.com/ikamensh/warband/releases/download/v0.2.0-preview.2/Warband-0.2.0-preview.2-windows-x64-setup.exe)
+and [Apple Silicon Mac app](https://github.com/ikamensh/warband/releases/download/v0.2.0-preview.2/Warband-0.2.0-preview.2-darwin-arm64-app.zip).
 Releases now live on this repository; preview.4 and earlier stay on the
 archived monorepo. See the [Mac and Windows player guide](warband-play-together.md)
 for practical installation and play instructions.
@@ -20,7 +20,7 @@ the commit and executable hash lands in `dist/warband-local/`.  `--skip-build
 --output DIR` installs a bundle already built there; `--allow-dirty` builds an
 uncommitted tree.  The same script installs Tribes.
 
-## Changes in 0.2.0-preview.1
+## Changes in 0.2.0-preview.2
 
 - Four races. Humans, orcs, elves and dwarves share one skeleton (seven unit
   roles, nine buildings, the same hotkeys and costs) and differ in names, a
@@ -56,7 +56,10 @@ uncommitted tree.  The same script installs Tribes.
 - Online. Rooms are `warband-v2` and take races and layout options; the invite
   links read `/join/warband-v2/<code>`. Preview.4 and earlier builds are
   refused by the refreshed server with **Update required** and offered this
-  download. The engine is Saga2D 0.3.0 from PyPI.
+  download. The engine is Saga2D 0.3.1 from PyPI, whose packaging recipe now
+  ships the game's `assets` folder: the painted sheets and the sound pieces.
+  (`v0.2.0-preview.1` was tagged first; its packages lacked those assets,
+  failed the native package check and were never published.)
 
 ## Changes in preview.4
 

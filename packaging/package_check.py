@@ -127,6 +127,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
     from warband.style import build_theme
     from warband.title import TitleScene
     from warband.multiplayer import NetworkGameScene, NetworkMenuScene
+    from warband.rules import UnitType
 
     info = build_info()
     images = []
@@ -161,9 +162,14 @@ def native_smoke(output: Path, endpoint: str) -> dict:
                 game.backend.window.dispatch_event("on_key_release", symbol, modifiers)
                 frames()
 
-            def click(text):
+            def click(what):
+                """Press the button labelled *what*, or the command-card button producing that unit, building or upgrade."""
                 from pyglet.window import mouse
-                button = next(b for b in game.scene.ui.walk() if getattr(b, "text", "") == text)
+                buttons = [b for b in game.scene.ui.walk()
+                           if (getattr(b, "text", "") == what if isinstance(what, str) else getattr(b, "target", None) == what)]
+                if not buttons:
+                    raise AssertionError(f"No button for {what!r} on {type(game.scene).__name__}")
+                button = buttons[0]
                 x, y, w, h = button.bounds
                 px = int((x + w / 2) * game.backend.scale_factor + game.backend.offset_x)
                 py = int((game.height - y - h / 2) * game.backend.scale_factor + game.backend.offset_y)
@@ -209,7 +215,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
             assert live.selection == []
             click("Train")
             capture("-settlement-train")
-            click("Footman")
+            click(UnitType.FOOTMAN)  # the line unit under whatever name this seat's race gives it
             wait(lambda: any(plan.kind == "unit" for plan in live.world.player_plans(live.human)))
             camera_before = (*live.camera.offset, live.camera.zoom)
             click(f"Plans ({live._plan_count()})")

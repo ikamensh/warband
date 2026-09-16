@@ -2,10 +2,10 @@
 
 One of you creates a room; the other joins with its code. You play against
 each other in a two-player real-time match. Both players need Warband
-**0.2.0-preview.1** and an internet connection. There is no account to create.
+**0.2.0-preview.2** and an internet connection. There is no account to create.
 
 Download the packages from the [Warband page](https://games.tachyon-ai.eu/warband/)
-or the published [0.2.0-preview.1 release](https://github.com/ikamensh/warband/releases/tag/v0.2.0-preview.1).
+or the published [0.2.0-preview.2 release](https://github.com/ikamensh/warband/releases/tag/v0.2.0-preview.2).
 The website also explains installation, shows the service status and turns an
 invite link into the room code and download for a friend who has nothing installed.
 
@@ -13,12 +13,12 @@ invite link into the room code and download for a friend who has nothing install
 
 **On Ilya's Mac:** open **Warband** from the Dock or **Finder → Applications →
 Warband**. Updates use the existing `/Applications/Warband.app` location.
-0.2.0-preview.1 is installed and verified there. Quit and reopen Warband if an
+0.2.0-preview.2 is installed and verified there. Quit and reopen Warband if an
 older session is still open; your settings and saved games are preserved.
 
 For a fresh installation on another **Apple Silicon Mac** (M1 or later):
 
-1. Download the [Mac app](https://github.com/ikamensh/warband/releases/download/v0.2.0-preview.1/Warband-0.2.0-preview.1-darwin-arm64-app.zip).
+1. Download the [Mac app](https://github.com/ikamensh/warband/releases/download/v0.2.0-preview.2/Warband-0.2.0-preview.2-darwin-arm64-app.zip).
 2. In Finder, open **Downloads** and double-click the ZIP to extract
    **Warband.app**.
 3. Drag **Warband.app** into **Applications** in the Finder sidebar. Replace
@@ -37,8 +37,8 @@ damaged or contains malware is a different problem; see troubleshooting below.
 
 This download is for a Windows 10/11 PC with x64 application support.
 
-1. Download the [Windows installer](https://github.com/ikamensh/warband/releases/download/v0.2.0-preview.1/Warband-0.2.0-preview.1-windows-x64-setup.exe).
-2. Open the downloaded **Warband-0.2.0-preview.1-windows-x64-setup.exe**.
+1. Download the [Windows installer](https://github.com/ikamensh/warband/releases/download/v0.2.0-preview.2/Warband-0.2.0-preview.2-windows-x64-setup.exe).
+2. Open the downloaded **Warband-0.2.0-preview.2-windows-x64-setup.exe**.
 3. Follow the installer with its default folder. A desktop shortcut is
    optional. Leave **Play Warband** selected on the last page to open the game.
 4. For later sessions, open Start, type **Warband**, and select it.

@@ -66,7 +66,7 @@ Ctrl+click is the right-click.
 
 The installed app (`/Applications/Warband.app`, or the Windows installer from
 [games.tachyon-ai.eu](https://games.tachyon-ai.eu/warband/)) is the published
-**0.2.0-preview.1**; later checkouts move ahead of it. Rebuild it from the
+**0.2.0-preview.2**; later checkouts move ahead of it. Rebuild it from the
 working tree with the shared packaging recipe; it refuses an uncommitted tree
 unless you pass `--allow-dirty`:
 
