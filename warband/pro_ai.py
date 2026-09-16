@@ -111,7 +111,6 @@ _TRIALS = (
     replace(PRO, name="pro-lean", max_sites=3, barracks_per_hall=2),
     replace(PRO, name="pro-workersfirst", soldiers_before_workers=0),
     replace(PRO, name="pro-nocounter", counter_from=1.1),
-    replace(PRO, name="pro-counter2", counter_strength=2.0),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}}
 

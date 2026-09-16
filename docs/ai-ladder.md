@@ -63,41 +63,59 @@ say "it never lost".
 
 ## Where the agents stand
 
-**1v1** — 80 seeds it had never been measured on, every pairing from both
-corners, 960 games, `hard` anchored at 1000:
+**1v1** — 60 seeds it had never been measured on, every pairing from both
+corners, 720 games, `hard` anchored at 1000:
 
 | agent | Elo | 90% interval | score |
 |-------|-----|--------------|-------|
-| `pro` | 1422 | 1365 .. 1474 | 93.9% |
-| `normal` | 1013 | 979 .. 1050 | 46.5% |
-| `hard` | 1000 | — | 44.6% |
-| `easy` | 784 | 739 .. 825 | 15.1% |
+| `pro` | 1534 | 1456 .. 1627 | 97.2% |
+| `hard` | 1000 | — | 46.8% |
+| `normal` | 994 | 952 .. 1035 | 46.0% |
+| `easy` | 697 | 636 .. 745 | 10.0% |
 
-`pro` takes 90.0% against `hard`, 94.4% against `normal`, 97.2% against `easy`.
+`pro` takes **97.5%** against `hard`, 95.8% against `normal`, 98.3% against `easy`.
 
-**Free-for-all** — four players, 20 seeds, each agent rotated through every
-corner, 80 games: `pro` 1316, `hard` 1000, `normal` 908, `easy` 848. `pro`
-takes 87.5% of its head-to-heads against `hard` there.
+**Free-for-all** — each agent rotated through every corner:
 
-**Under jittered balance** — five `shuffle-N` rulebooks, every unit and
+| | `pro` against `hard` | games |
+|---|---|---|
+| three players | 88.2% | 288 |
+| four players | 80.0% | 120 |
+
+The margin narrows with the company, as it should: three opponents can wear a
+leader down between them, and a placement is a softer result than a win.
+
+**Under jittered balance** — six `shuffle-N` rulebooks, every unit and
 building's hit points, damage, cost and build time multiplied by a factor
-drawn from the seed, 140 games: `pro` 1376, taking **90.0%** against `hard` —
-the same margin it takes under the rulebook it was built on. Whatever `pro`
-has learnt, it is not this particular table of numbers.
+drawn from the seed, 216 games: `pro` 1446, taking **93.1%** against `hard`
+under rulebooks it has never seen, against 97.5% under the one it was built
+on. Whatever it has learnt, it is very nearly not this table of numbers.
 
 Two things are worth reading off the 1v1 table. The three shipped
-difficulties span about 230 Elo and `hard` does not actually beat `normal`
-(48.8%), so "the current AI" is one strength with three settings. And `pro`
-against `easy` is 97%: this game has no floor of upsets a strong player
-cannot escape, so the distance between two agents here is limited by the
-agents rather than by the dice.
+difficulties span about 300 Elo and `hard` beats `normal` only 55%, so "the
+current AI" is one strength with three settings. And `pro` against `easy` is
+98%: this game has no floor of upsets a strong player cannot escape, so the
+distance between two agents is limited by the agents rather than the dice.
+
+### Against the 2000 that was asked for
+
+`pro` is about **535 Elo above the anchor, not 1000**. A 1000-point gap means
+winning 99.7% of games — two losses in 720 rather than the eighteen it takes
+now. The remaining losses are not systematic: no seed loses from both
+corners, no race is broken, and the brain kills four soldiers for every one
+it loses. They are games where an early rush lands before there is anything
+to meet it. Every fix tried for that — early towers, peasants called to
+fight, a militia rule, holding the opening lumber, reacting to a visible
+rush, stronger counters against archers — measured neutral or worse, and is
+recorded below.
 
 ### On seed sets
 
 `pro` measured 96.7% against `hard` on one set of thirty seeds and 84.6% on
-another set of seventy. Neither was wrong; both were too small. The 960-game
-figure above is the one to quote, and the lesson is in the rules: a few dozen
-games is the floor for noticing anything, and a few hundred for trusting it.
+another set of seventy. Neither was wrong; both were too small. The
+several-hundred-game figures above are the ones to quote, and the lesson is
+in the rules: a few dozen games is the floor for noticing anything, a few
+hundred for trusting it.
 
 ## What each change was worth
 
@@ -106,7 +124,10 @@ contradicted the reasoning that produced the change:
 
 | change | effect |
 |--------|--------|
-| attacking on less information, with a smaller army | **+63 Elo** (1408 → 1471), 95.5% against `hard` where caution took 90.0% |
+| attacking on less information, with a smaller army | **+126 Elo** (1408 → 1534), 97.5% against `hard` where caution took 90.0% |
+| …the same posture in a four player game | **−512 Elo** (1534 → 1022) until aggression was divided by the number of opponents |
+| reacting to a rush the scout can see | neutral |
+| a proportional counter to massed archers | neutral — but the rule it replaced had never once fired |
 | directing focus fire | **−109 Elo** — it switches off the model's own kiting and retargeting |
 | feeding the workforce in gradually | **−187 Elo** (1516 → 1329) against hiring it at once |
 | early towers | 68.8% against `hard` where every other variant took 100% |
