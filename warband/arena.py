@@ -62,7 +62,7 @@ class Agent:
         raise NotImplementedError
 
 
-AgentFactory = Callable[[int], Agent]
+AgentFactory = Callable[[int, int], Agent]  # (player, seed) → agent
 #: Name → how to build that agent for a player slot. Names travel between
 #: processes, so the arena can hand a match to a worker as plain data.
 AGENTS: dict[str, AgentFactory] = {}
@@ -75,21 +75,22 @@ def register(name: str, factory: AgentFactory) -> None:
     AGENTS[name] = factory
 
 
-def make_agent(name: str, player: int) -> Agent:
+def make_agent(name: str, player: int, seed: int = 0) -> Agent:
+    """*seed* is the match's: a difficulty with more than one posture draws one from it."""
     if name not in AGENTS:
         raise KeyError(f"unknown agent {name!r}; known: {', '.join(sorted(AGENTS))}")
-    return AGENTS[name](player)
+    return AGENTS[name](player, seed)
 
 
 # The shipped settings, under their own names. Hard and Master are ProBrain
 # profiles, so these overlap with the pro-* names below; both spellings play.
 for _difficulty in Difficulty:
-    register(_difficulty.value, lambda player, d=_difficulty: make_brain(player, d))
+    register(_difficulty.value, lambda player, seed, d=_difficulty: make_brain(player, d, seed))
 
 from warband.pro_ai import PRO_PROFILES, ProBrain  # noqa: E402 - after register() exists
 
 for _name, _profile in PRO_PROFILES.items():
-    register(_name, lambda player, p=_profile: ProBrain(player, p))
+    register(_name, lambda player, seed, p=_profile: ProBrain(player, p))
 
 
 # -- Balance variants --------------------------------------------------------------
@@ -368,7 +369,7 @@ def play(spec: MatchSpec) -> MatchResult:
     races = tuple(Race(r) for r in spec.races) if spec.races is not None else None
     world = mapgen.generate(seed=spec.seed, width=spec.width, height=spec.height, players=spec.players,
                             human=None, theme=MapTheme(spec.theme), races=races)
-    agents = [make_agent(name, player) for player, name in enumerate(spec.agents)]
+    agents = [make_agent(name, player, spec.seed) for player, name in enumerate(spec.agents)]
     # A stream per player: whose turn it is to draw must not depend on who else is playing.
     rngs = [random.Random(spec.seed * 1000003 + player) for player in range(spec.players)]
     eliminated: dict[int, float] = {}
@@ -418,7 +419,7 @@ def register_profiles(profiles: Sequence[tuple[str, object]]) -> None:
 
     for name, profile in profiles:
         if name not in AGENTS:
-            register(name, lambda player, p=profile: ProBrain(player, p))
+            register(name, lambda player, seed, p=profile: ProBrain(player, p))
 
 
 #: The order :func:`play_spec_tuple` expects, and the only thing that crosses

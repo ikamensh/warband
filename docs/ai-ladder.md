@@ -157,9 +157,12 @@ became projectiles (`docs/unit-motion.md` part 4):
 | Easy | 736 | 672 .. 799 | `ai.Brain`, the Easy profile |
 | Medium | 1000 | — | `ai.Brain`, what Normal and Hard both were |
 | Hard | 1253 | 1209 .. 1302 | `pro_ai.ProBrain`, `pro-hard` |
-| Master | 1452 | 1402 .. 1511 | `pro_ai.ProBrain`, `pro` |
+| Master | 1510 | — | `pro_ai.ProBrain`, `pro-vanguard` or `pro-warden`, drawn with the map |
 
-Each beats the one below it 84%, 82%, 78% of the time — a real step every
+Master's number is the rung's: the brain that measured 1452 on this
+protocol (`pro`, still on the ladder under that name) plus the 57–61% its
+two postures take against it over four seed sets each. The three lower
+rows are the 720-game protocol. Each of those beats the one below it 84%, 82%, 78% of the time — a real step every
 time, which the old three settings did not have: Normal and Hard measured 994
 and 1000 and split their games 55/45. They are one setting now, and the
 screen shows each rating beside its button so the choice is not a guess.

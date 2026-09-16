@@ -104,7 +104,7 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
             # are ProBrains, and they drive the model down paths the others never
             # take (several build orders in flight, wounded soldiers walking home,
             # peasants sent scouting). The invariants have to hold there too.
-            brains = [make_brain(p.id, rng.choice(list(Difficulty))) for p in world.players]
+            brains = [make_brain(p.id, rng.choice(list(Difficulty)), seed) for p in world.players]
             check_world(world)
             stalled: dict[int, tuple[tuple[float, float], float]] = {}
             for tick in range(int(GAME_MINUTES * 60 / SIM_DT)):

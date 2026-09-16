@@ -115,6 +115,15 @@ class ProProfile:
 
 PRO = ProProfile("pro")
 
+#: The two postures Master plays, one drawn per game with the map. Both are
+#: the first rung above `pro` on the ladder — nothing but farms before the
+#: first barracks, the lumber panic a minute earlier — and the same strength,
+#: measured 57–61% against `pro` over four seed sets each (docs/ai-ladder.md):
+#: the Vanguard marches out at five soldiers with no tower, the Warden puts a
+#: tower at the front point first and marches out at eight on level terms.
+PRO_VANGUARD = replace(PRO, name="pro-vanguard", barracks_first=True, panic_gold=1000, lumber_floor_panic=300)
+PRO_WARDEN = replace(PRO_VANGUARD, name="pro-warden", towers_early=1, min_army=8, attack_ratio=1.0)
+
 #: Variants used to find out which knob is actually carrying the strength.
 #: Each differs from :data:`PRO` in one thing, so a ladder over all of them
 #: attributes the difference rather than guessing at it. What each one settled
@@ -230,7 +239,8 @@ _STYLES = (
         Race.DWARF: {"min_army": 12, "attack_ratio": 1.3, "tower_count": 3, "siege_share": 0.2},
         Race.ORC: {"min_army": 10, "attack_ratio": 1.2, "tower_count": 3}}),
 )
-PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}, **{p.name: p for p in _STYLES}}
+PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, PRO_VANGUARD.name: PRO_VANGUARD, PRO_WARDEN.name: PRO_WARDEN,
+                                       **{p.name: p for p in _TRIALS}, **{p.name: p for p in _STYLES}}
 
 
 # -- Force comparison ---------------------------------------------------------------

@@ -167,6 +167,18 @@ def test_the_front_barracks_is_wished_for_towards_the_enemy():
     assert anchors[BuildingType.BARRACKS] != hall.center
 
 
+def test_master_draws_one_of_two_postures_from_the_seed():
+    from warband.ai import make_brain
+    from warband.pro_ai import PRO_VANGUARD, PRO_WARDEN
+    from warband.rules import Difficulty
+    first, second = make_brain(0, Difficulty.MASTER, seed=4), make_brain(0, Difficulty.MASTER, seed=5)
+    assert {first.profile.name, second.profile.name} == {PRO_VANGUARD.name, PRO_WARDEN.name}
+    assert make_brain(0, Difficulty.MASTER, seed=4).profile is first.profile, "the same seed draws the same posture"
+    assert make_brain(1, Difficulty.MASTER, seed=4).profile is not first.profile, "two Masters in one game differ"
+    assert PRO_WARDEN.barracks_first and PRO_VANGUARD.barracks_first, "both are the rung above pro"
+    assert PRO_WARDEN.towers_early == 1 and PRO_VANGUARD.towers_early == 0
+
+
 def test_barracks_first_wishes_for_nothing_else_until_it_stands():
     from dataclasses import replace
     world, brain = _world_with_army()

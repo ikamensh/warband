@@ -138,22 +138,27 @@ PROFILES: dict[Difficulty, Profile] = {
 }
 
 
-def make_brain(player: int, difficulty: Difficulty):
+def make_brain(player: int, difficulty: Difficulty, seed: int = 0):
     """The opponent a difficulty setting means.
 
     Easy and Medium are this module's :class:`Brain`; Hard and Master are
     :class:`warband.pro_ai.ProBrain`, which is a different and much stronger
-    player. Imported late because ``pro_ai`` imports this module.
+    player. Master has two postures of one strength, and *seed* — the map's —
+    draws which one this player gets, so every client of an online match and
+    every replay of a seed agree, and two Master players in one game differ.
+    Imported late because ``pro_ai`` imports this module.
     """
     from warband.pro_ai import PRO_PROFILES, ProBrain
 
     if difficulty in PROFILES:
         return Brain(player, difficulty)
-    return ProBrain(player, PRO_PROFILES[PRO_FOR[difficulty]])
+    postures = PRO_FOR[difficulty]
+    return ProBrain(player, PRO_PROFILES[postures[(seed + player) % len(postures)]])
 
 
-#: Which ProBrain profile stands behind each of the upper difficulties.
-PRO_FOR: dict[Difficulty, str] = {Difficulty.HARD: "pro-hard", Difficulty.MASTER: "pro"}
+#: Which ProBrain profiles stand behind each of the upper difficulties.
+PRO_FOR: dict[Difficulty, tuple[str, ...]] = {Difficulty.HARD: ("pro-hard",),
+                                              Difficulty.MASTER: ("pro-vanguard", "pro-warden")}
 
 #: What each setting is worth, measured on the ladder and anchored at Medium =
 #: 1000, over every map size and all five layouts. Produced by
@@ -163,7 +168,7 @@ DIFFICULTY_ELO: dict[Difficulty, int] = {
     Difficulty.EASY: 740,
     Difficulty.MEDIUM: 1000,
     Difficulty.HARD: 1250,
-    Difficulty.MASTER: 1450,
+    Difficulty.MASTER: 1510,  # the rung above the 1450 brain it replaced: 57–61% against it over four seed sets
 }
 
 #: One line per setting, for the same screen.
@@ -173,7 +178,7 @@ DIFFICULTY_NOTES: dict[Difficulty, str] = {
     Difficulty.EASY: "Seven peasants, one barracks, no upgrades.",
     Difficulty.MEDIUM: "Techs, sieges, heals and raids. The old Normal and Hard, in one.",
     Difficulty.HARD: "Strong, but slow to think and short of workers.",
-    Difficulty.MASTER: "Expands, raids peasants, attacks the moment it is ahead.",
+    Difficulty.MASTER: "Vanguard marches at five; Warden towers up, marches at eight.",
 }
 
 
