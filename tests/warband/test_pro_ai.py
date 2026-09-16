@@ -91,6 +91,34 @@ def test_a_sighting_fades_once_the_enemy_is_out_of_sight():
     assert brain.remembered(1).get(UnitType.ARCHER, 0.0) < seen
 
 
+def test_a_soldier_seen_to_die_stops_counting_at_once():
+    """Three archers stood in our base; two died in front of us. One is left, not three fading."""
+    from dataclasses import replace
+    world, brain = _world_with_army()
+    brain.profile = replace(PRO, count_kills=True)
+    archers = _raiders_at_our_base(world, 3)
+    brain._observe(world)
+    assert brain.remembered(1)[UnitType.ARCHER] == 3
+    for unit in archers[:2]:
+        world.units.pop(unit.id)  # what the model does with the dead at the end of a step
+    world.update_vision()
+    brain._observe(world)
+    assert brain.remembered(1)[UnitType.ARCHER] == 1
+
+
+def test_a_soldier_that_walked_out_of_sight_is_not_counted_as_dead():
+    from dataclasses import replace
+    world, brain = _world_with_army()
+    brain.profile = replace(PRO, count_kills=True)
+    archers = _raiders_at_our_base(world, 3)
+    brain._observe(world)
+    for unit in archers:
+        unit.x, unit.y = world.width - 3.0, world.height - 3.0  # far away, out of our vision
+    world.update_vision()
+    brain._observe(world)
+    assert brain.remembered(1)[UnitType.ARCHER] > 2.5, "out of sight is not dead"
+
+
 def test_an_army_out_on_the_map_still_defends_its_base():
     """Regression: a scout looking at an empty base reported a defence of nothing,
     and the push that went out met the army that had simply been standing elsewhere."""

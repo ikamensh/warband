@@ -43,18 +43,21 @@ def _board(seed: int) -> dict:
 
 
 def specs_1v1(agents: list[str], seeds: range, variant: str, minutes: float,
-              neighbours: int | None = None) -> list[MatchSpec]:
+              neighbours: int | None = None, against: list[str] | None = None) -> list[MatchSpec]:
     """Every unordered pair, on every seed, from both corners.
 
     With *neighbours*, only agents within that many places of each other in
     the list meet: a chain of rungs rather than every pair, which is where the
-    information is once the list is in rating order.
+    information is once the list is in rating order. With *against*, a panel:
+    every agent meets only the agents in that list.
     """
     out = []
     for i, j in itertools.combinations(range(len(agents)), 2):
         if neighbours is not None and j - i > neighbours:
             continue
         a, b = agents[i], agents[j]
+        if against is not None and a not in against and b not in against:
+            continue
         for seed in seeds:
             board = _board(seed)
             out.append(MatchSpec(seed=seed, agents=(a, b), variant=variant, minutes=minutes, **board))
@@ -159,10 +162,16 @@ def main() -> None:
                         help="Elo gap at which a pair's games count half; 0 counts every game the same")
     parser.add_argument("--neighbours", type=int, default=None,
                         help="1v1: only agents this close in the --agents list meet (default: every pair)")
+    parser.add_argument("--against", default=None,
+                        help="1v1: comma separated panel; every agent meets only these (default: every pair)")
     parser.add_argument("--workers", type=int, default=max(1, mp.cpu_count() - 2))
     args = parser.parse_args()
 
     agents = args.agents.split(",") if args.agents else sorted(AGENTS)
+    against = args.against.split(",") if args.against else None
+    for name in against or []:
+        if name not in agents:
+            agents.append(name)
     for name in agents:
         if name not in AGENTS:
             raise SystemExit(f"unknown agent {name!r}; known: {', '.join(sorted(AGENTS))}")
@@ -173,7 +182,7 @@ def main() -> None:
 
     if args.mode in ("ladder", "report"):
         print("\n== 1v1 ==")
-        results = run(specs_1v1(agents, seeds, "standard", args.minutes, args.neighbours), args.workers, "1v1")
+        results = run(specs_1v1(agents, seeds, "standard", args.minutes, args.neighbours, against), args.workers, "1v1")
         table(results)
     if args.mode in ("ffa", "report"):
         players = args.players if args.mode == "ffa" else min(4, max(3, len(agents)))

@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 
 from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived
@@ -95,6 +96,9 @@ class ProProfile:
     counter_strength: float = 1.0     # …this hard
     siege_share: float = 0.0          # if set, the share of the army that is catapults…
     cleric_share: float = 0.0         # …and that is healers, overriding the race's plan
+    army_plan: Mapping[UnitType, float] | None = None  # shares of the army to aim for, instead of the race's own
+    count_kills: bool = False         # soldiers the brain watched die no longer count against it
+    target_halls: bool = False        # pushes go for the hall (the economy) before the barracks
 
 
 PRO = ProProfile("pro")
@@ -125,7 +129,28 @@ _TRIALS = (
     replace(PRO, name="pro-nopanic", lumber_floor_panic=0),
     replace(PRO, name="pro-nocounter", counter_from=1.1),
 )
-PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}}
+#: Distinct ways to play, not one-knob probes: each is a posture a player
+#: would recognise. The ladder says which of them are worth the same, and the
+#: aim is several opponents of one strength that do not feel like one opponent.
+_STYLES = (
+    replace(PRO, name="pro-rush", min_army=3, attack_ratio=0.6, symmetry_prior=0.2, regroup_seconds=20.0,
+            workers_per_mine=8, expand=False, soldiers_before_workers=8, barracks_per_hall=4),
+    replace(PRO, name="pro-boom", expand_early=True, workers_per_mine=12, max_workers=40, max_halls=4,
+            min_army=12, attack_ratio=1.2, tower_count=3, siege_share=0.2, cleric_share=0.1),
+    replace(PRO, name="pro-raid", raiders=4, scout_from=30.0,
+            army_plan={UnitType.FOOTMAN: 0.2, UnitType.ARCHER: 0.2, UnitType.SCOUT: 0.2, UnitType.KNIGHT: 0.35,
+                       UnitType.CATAPULT: 0.05}),
+    replace(PRO, name="pro-siege", siege_share=0.25, cleric_share=0.1, target_halls=True, min_army=8, attack_ratio=1.0),
+    replace(PRO, name="pro-knights",
+            army_plan={UnitType.FOOTMAN: 0.25, UnitType.ARCHER: 0.15, UnitType.SCOUT: 0.05, UnitType.KNIGHT: 0.5,
+                       UnitType.CATAPULT: 0.05}),
+    replace(PRO, name="pro-archers",
+            army_plan={UnitType.FOOTMAN: 0.3, UnitType.ARCHER: 0.55, UnitType.SCOUT: 0.05, UnitType.KNIGHT: 0.05,
+                       UnitType.CATAPULT: 0.05}),
+    replace(PRO, name="pro-kills", count_kills=True),
+    replace(PRO, name="pro-halls", target_halls=True),
+)
+PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}, **{p.name: p for p in _STYLES}}
 
 
 # -- Force comparison ---------------------------------------------------------------
@@ -195,6 +220,7 @@ class ProBrain:
         self.log: list[tuple[float, str]] = []
         self._seen: dict[int, dict[UnitType, float]] = {}  # per opponent: most of each kind ever seen at once
         self._seen_at: dict[int, float] = {}               # …and when that opponent was last looked at
+        self._in_view: dict[int, tuple[int, UnitType]] = {}  # enemy soldiers visible on the last pass: id → (owner, kind)
 
     def note(self, world: World, what: str) -> None:
         self.log.append((world.time, what))
@@ -292,10 +318,23 @@ class ProBrain:
         believes it is always outnumbered never attacks at all.
         """
         current: dict[int, dict[UnitType, float]] = {}
+        in_view: dict[int, tuple[int, UnitType]] = {}
         for unit in self._enemies(world):
             if not unit.is_worker:
                 seen = current.setdefault(unit.player, {})
                 seen[unit.type] = seen.get(unit.type, 0.0) + 1.0
+                in_view[unit.id] = (unit.player, unit.type)
+        # A soldier that was in view a moment ago and is now gone from the world
+        # died where we could see it. It is not coming back, so it stops counting
+        # against us at once instead of fading out over the next minute — which
+        # is the minute the enemy is weakest, and the one the brain used to wait.
+        dead: dict[int, dict[UnitType, float]] = {}
+        if self.profile.count_kills:
+            for unit_id, (owner, unit_type) in self._in_view.items():
+                if unit_id not in world.units:
+                    fallen = dead.setdefault(owner, {})
+                    fallen[unit_type] = fallen.get(unit_type, 0.0) + 1.0
+        self._in_view = in_view
         fade = 0.99 ** (self.profile.think_every / 0.4)
         for player in world.players:
             if player.id == self.player or not player.alive:
@@ -304,8 +343,10 @@ class ProBrain:
             if now:
                 self._seen_at[player.id] = world.time
             memory = self._seen.setdefault(player.id, {})
+            fallen = dead.get(player.id, {})
             for unit_type in set(memory) | set(now):
-                memory[unit_type] = max(memory.get(unit_type, 0.0) * fade, now.get(unit_type, 0.0))
+                memory[unit_type] = max(memory.get(unit_type, 0.0) * fade - fallen.get(unit_type, 0.0),
+                                        now.get(unit_type, 0.0), 0.0)
 
     def remembered(self, player: int | None = None) -> dict[UnitType, float]:
         """How many of each kind *player* was last seen with; every opponent's, added, if None."""
@@ -603,7 +644,7 @@ class ProBrain:
 
     def _army_targets(self, world: World) -> dict[UnitType, float]:
         """Shares of the army to aim for, shifted towards counters of what the enemy is remembered fielding."""
-        plan = dict(ARMY_PLANS[world.players[self.player].race])
+        plan = dict(self.profile.army_plan or ARMY_PLANS[world.players[self.player].race])
         if not self.profile.siege:
             plan.pop(UnitType.CATAPULT, None)
         if not self.profile.clerics:
@@ -907,6 +948,8 @@ class ProBrain:
         """What is worth walking to: the weakest opponent's production, then anything of theirs."""
         wanted = (BuildingType.BARRACKS, BuildingType.STABLES, BuildingType.WORKSHOP,
                   BuildingType.CHURCH, BuildingType.TOWN_HALL)
+        if self.profile.target_halls:
+            wanted = (BuildingType.TOWN_HALL,) + wanted
         victim = self._victim(world)
         buildings = self._known_enemy_buildings(world)
         theirs = [record for record in buildings if record.player == victim] or buildings
@@ -915,6 +958,11 @@ class ProBrain:
         production = [record.center for record in theirs
                       if getattr(world.buildings.get(record.id), "type", None) in wanted]
         if production:
+            if self.profile.target_halls:
+                halls = [record.center for record in theirs
+                         if getattr(world.buildings.get(record.id), "type", None) is BuildingType.TOWN_HALL]
+                if halls:
+                    return halls
             return production
         if theirs:
             return [record.center for record in theirs]
