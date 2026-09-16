@@ -425,3 +425,24 @@ integration. The first server baseline is also pending: Shardbound's isolated
 plus the same incomplete native verification journey on both engines. Those
 findings are recorded in its release guide and Saga Online's publication plan;
 neither that candidate nor the shared server has been accepted or deployed.
+
+### Shared server package acceptance
+
+Saga Online now builds a clean pinned server package with this native Warband
+source and compatibility contract. Its deployment launcher verifies actual
+source hashes and runtime versions before opening game sockets and serves the
+live compatibility response from that same process. The candidate package
+passed all three games' real orders, SIGTERM checkpoint flushing and private-seat
+rejoin locally and on Ubuntu 24.04. The Linux run also exercised the actual
+installer preparation command as root, verification as the unprivileged service
+account, and an unchanged-release retry.
+
+[Server Tests 35158657345](https://github.com/ikamensh/saga-online/actions/runs/35158657345)
+passed all 103 checks without skips on Saga Online `126f220`. The downloaded
+server archive is byte-identical to the Mac build, SHA-256
+`cce03f0b961a05269c364a840274cf9a505d9ed46e062d0177c7a2baf2f03a10`.
+The [server publication record](../../saga-online/docs/warband-ci-publication.md)
+contains the exact inputs and evidence. This accepts server package preparation;
+Shardbound's existing client failures, common server/site locking, production
+rollout and public packaged-client acceptance remain outstanding. No main push,
+release publication or live deployment was performed for this milestone.
