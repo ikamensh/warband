@@ -4,11 +4,12 @@ Two kinds of evidence, both from the mock backend so no window is needed:
 
 * **Images** — every sprite the game registers (:class:`ImageStore` keeps the
   PIL image behind each key).  :func:`lint_images` checks each one for empty
-  or clipped content and chroma-key residue, checks the frames of one subject
+  or clipped content and a chroma-key fringe, painted frames against the
+  low-poly render they repaint (the game places the painting where the render
+  stood) and for a team recolour that did not take, low-poly subjects' frames
   against each other (feet that hop between frames, a figure that slides
-  sideways while it turns, frames that are pixel-identical), buildings
-  against their footprint, and painted frames for a team recolour that
-  did not take.
+  sideways while it turns, frames that are pixel-identical), poses against
+  the unit canvas' padding, and buildings against their footprint.
 * **Frames** — after a tick, :func:`lint_frame` reads what the scene drew and
   laid out: texts drawn over each other or off screen, labels and buttons
   whose text is wider than the width they were given (with real glyph
@@ -27,14 +28,15 @@ import math
 import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Iterator
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from saga2d import Game, fonts
 from saga2d.testing import overlapping_texts, text_boxes
-from saga2d.ui import Button, Component, Label, Panel
+from saga2d.ui import Button, Component, Label
+from saga2d.ui.components import KEYCAP_GAP
 from warband import textures
 from warband.rules import BUILDINGS, BuildingType, MapTheme, Race, Resource, UnitType
 
@@ -89,8 +91,8 @@ class ImageStore:
     def image(self, key: str) -> Image.Image:
         return self.by_handle[self.game.assets.image(key)]
 
-    def key_of(self, handle: str) -> str | None:
-        return next((key for key, h in self.game.assets._images.items() if h == handle), None)
+    def keys_by_handle(self) -> dict[str, str]:
+        return {handle: key for key, handle in self.game.assets._images.items()}
 
 
 def alpha(image: Image.Image) -> np.ndarray:
@@ -398,7 +400,7 @@ def _label(component: Component) -> str:
 
 def lint_layout(game: Game, scene: Any) -> list[Finding]:
     """The top scene's UI tree: text wider than its box, panels over each other or off screen."""
-    backend, theme = game.backend, game.theme
+    backend = game.backend
     width, height = game.resolution
     findings = []
     for component in scene.ui.walk():
@@ -413,8 +415,6 @@ def lint_layout(game: Game, scene: Any) -> list[Finding]:
         elif isinstance(component, Button) and component._width is not None:
             resolved = component._resolve()
             iw, tw, kw, _ = component._content_size(resolved)
-            from saga2d.ui.components import KEYCAP_GAP
-
             content = iw + tw + kw + KEYCAP_GAP * max(0, sum(bool(v) for v in (iw, tw, kw)) - 1) + 2 * resolved.padding
             if content > w + 1:
                 findings.append(Finding("overflow", _label(component), f"content {content} px wide in a {w} px button"))
@@ -451,10 +451,11 @@ def lint_sprites(game: Game, store: ImageStore) -> list[Finding]:
     stand in front of (two overlapping sprites whose draw order contradicts their feet)."""
     findings = []
     props = []
-    for sid, s in game.backend.sprites.items():
+    keys = store.keys_by_handle()
+    for s in game.backend.sprites.values():
         if not s["visible"] or s["space"] != "world":
             continue
-        key = store.key_of(s["image"])
+        key = keys.get(s["image"])
         placement = textures.placements.get(key) if key else None
         if placement is None:
             continue

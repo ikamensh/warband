@@ -33,9 +33,7 @@ from saga2d.effects import Toast  # noqa: E402
 from warband import visual_lint as lint  # noqa: E402
 from warband.model import World, tile_center  # noqa: E402
 from warband.rules import BuildingType, Race, Terrain, UnitType, Upgrade  # noqa: E402
-from warband.scene import (  # noqa: E402
-    TOAST_TOP, CodexScene, GameOverScene, GameScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, SettlementPlansScene, new_game,
-)
+from warband.scene import TOAST_TOP, CodexScene, GameScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game  # noqa: E402
 from warband.score_scene import HighScoreScene  # noqa: E402
 from warband.style import build_theme  # noqa: E402
 from warband.textures import TILE  # noqa: E402
