@@ -19,7 +19,7 @@ def converge(host, client, until):
 
 def test_warband_guest_orders_and_host_simulation_stay_in_sync():
     """Guest units move on the authoritative clock; forged ownership is rejected atomically."""
-    from warband.multiplayer import WarbandMatch
+    from warband.authority import WarbandMatch
     from warband.model import World
     match = WarbandMatch(seed=3)
     host = MatchHost('warband-v2', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
@@ -52,7 +52,8 @@ def test_warband_fatal_impact_keeps_its_material_across_the_socket(tmp_path, aud
     """Guests hear fatal impacts, with explicit basic audio only for the old schema."""
     from saga2d import Game
     from warband.model import World
-    from warband.multiplayer import WarbandMatch, NetworkGameScene
+    from warband.authority import WarbandMatch
+    from warband.multiplayer import NetworkGameScene
     from warband.rules import BuildingType, Terrain, UnitType
     from warband.style import build_theme
 
@@ -140,7 +141,7 @@ def test_warband_fatal_impact_keeps_its_material_across_the_socket(tmp_path, aud
 
 def test_warband_invalid_cancel_index_is_rejected_without_changing_the_queue():
     """Malformed remote orders are ordinary rejections and cannot crash the host loop."""
-    from warband.multiplayer import WarbandMatch
+    from warband.authority import WarbandMatch
     from warband.rules import UnitType, BuildingType
     match = WarbandMatch()
     hall = match.world.player_buildings(1, BuildingType.TOWN_HALL)[0]
@@ -176,7 +177,8 @@ def test_warband_selection_facts_are_drawn_above_their_background(tmp_path):
 def test_warband_host_clock_runs_under_its_menu_and_pauses_on_disconnect(tmp_path):
     """The actual host scene owns time independently of the local pause overlay."""
     from saga2d import Game
-    from warband.multiplayer import WarbandMatch, NetworkGameScene
+    from warband.authority import WarbandMatch
+    from warband.multiplayer import NetworkGameScene
     from warband.style import build_theme
     match = WarbandMatch()
     host = MatchHost('warband', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
@@ -213,7 +215,8 @@ def test_warband_host_clock_runs_under_its_menu_and_pauses_on_disconnect(tmp_pat
 
 def test_guest_controls_reach_host_and_accepted_state_returns_to_the_scene(tmp_path):
     """The real match scene submits orders without mutating the guest world ahead of the host."""
-    from warband.multiplayer import WarbandMatch, NetworkGameScene
+    from warband.authority import WarbandMatch
+    from warband.multiplayer import NetworkGameScene
     from warband.style import build_theme
     match = WarbandMatch(3)
     host = MatchHost('warband', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')

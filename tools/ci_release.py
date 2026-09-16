@@ -15,6 +15,8 @@ import re
 import subprocess
 import tomllib
 
+from ci_compatibility import fingerprint
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -55,6 +57,7 @@ def prepare(root: Path, run_id: str) -> dict:
         "schema_version": 1, "game": "warband", "version": version,
         "tag": f"v{version}", "run_id": int(run_id), "source_commit": commit,
         "saga2d_version": engine_pins[0], "lock_sha256": hashlib.sha256(lock_bytes).hexdigest(),
+        "compatibility": fingerprint(root),
         **pins,
     }
 

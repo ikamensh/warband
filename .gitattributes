@@ -1,0 +1,2 @@
+# Compatibility hashes must use the same source bytes on every native runner.
+*.py text eol=lf

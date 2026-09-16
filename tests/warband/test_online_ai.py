@@ -11,7 +11,7 @@ from websockets.sync.client import connect
 
 from saga2d.testing.online import first_stdout_line, handshake, receive, server_fixture
 
-server_url = server_fixture('warband.multiplayer:ONLINE')
+server_url = server_fixture('warband.authority:ONLINE')
 
 
 def test_headless_opponent_joins_and_its_orders_reach_the_authoritative_world(server_url):

@@ -33,9 +33,11 @@ def candidate(tmp_path):
     directory.mkdir()
     lock = (ROOT / "uv.lock").read_bytes()
     pins = json.loads((ROOT / ".github/release-pins.json").read_text())
+    compatibility = json.loads(subprocess.check_output(
+        [sys.executable, str(ROOT / "tools/ci_compatibility.py")], text=True))
     identity = {"schema_version": 1, "game": "warband", "source_commit": "a" * 40,
                 "version": "0.2.0-preview.123", "tag": "v0.2.0-preview.123", "run_id": 123,
-                "saga2d_version": "0.3.2", "lock_sha256": digest(lock), **pins}
+                "saga2d_version": "0.3.2", "lock_sha256": digest(lock), "compatibility": compatibility, **pins}
     write_json(tmp_path / "identity.json", identity)
     versions = {item["name"]: item["version"] for item in tomllib.loads(lock.decode())["package"]}
     packages = {name: versions[name.lower()] for name in
@@ -148,6 +150,21 @@ def test_replacing_archive_and_checksums_does_not_reuse_old_native_receipts(cand
         "".join(f"{item['sha256']}  {item['file']}\n" for item in manifest["artifacts"]))
     result = validate(candidate)
     assert result.returncode != 0 and "archived executable" in result.stderr
+
+
+def test_consistent_receipts_cannot_substitute_another_server_contract(candidate):
+    """The consumer recomputes compatibility from source instead of trusting mutually consistent receipts."""
+    path = candidate.parent / "identity.json"
+    identity = json.loads(path.read_text())
+    identity["compatibility"]["sha256"] = "b" * 64
+    write_json(path, identity)
+    for name in ("build-inputs.json", "regression.json"):
+        path = candidate / name
+        receipt = json.loads(path.read_text())
+        receipt["identity"] = identity
+        write_json(path, receipt)
+    result = validate(candidate)
+    assert result.returncode != 0 and "compatibility" in result.stderr
 
 
 def as_windows(candidate):

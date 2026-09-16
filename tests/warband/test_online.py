@@ -5,11 +5,11 @@ import pytest
 from websockets.sync.client import connect
 
 from saga2d.testing.online import command, handshake, receive, running_server, server_fixture
-from warband.multiplayer import ONLINE
+from warband.authority import ONLINE
 from warband.rules import BuildingType, UnitType
 
 GAME = 'warband-v2'
-SPEC = 'warband.multiplayer:ONLINE'
+SPEC = 'warband.authority:ONLINE'
 server_url = server_fixture(SPEC)
 
 

@@ -347,3 +347,48 @@ identity. Promotion will require a matching live baseline and packaged socket
 checks; a digest mismatch requires the separate room-draining/server rollout
 already specified above. This is deliberately conservative: it proves identical
 relevant inputs, not a claim that arbitrary different rules are compatible.
+
+### Authoritative compatibility contract
+
+`warband.authority:ONLINE` is now the server/package entry point. `WarbandMatch`
+and the create/checkpoint/restore functions were moved without changing their
+ASTs; multiplayer scenes remain in `warband.multiplayer`. Importing the server
+registry does not import those scenes or artwork. All game, package and test
+callers use the new entry point. Saga Online's service/check scripts and the
+stack-root `make server` command must change to the new registry when these
+branches are integrated; the deployed server has not changed.
+
+`tools/ci_compatibility.py` computes a contract offline from the static import
+closure rooted at the authority module, including package initializers,
+relative and function-local imports. It follows Python's preference for a
+package over a same-named module. Every included source byte contributes; a
+comment-only edit can conservatively require reapproval. Client scenes/artwork
+do not contribute unless authoritative code starts importing them. Python
+sources are checked out as LF on every platform for consistent native hashes.
+
+The contract also includes the pinned Python version and exact PyPI versions
+of Saga2D and its transitive runtime dependencies. This is the required runtime,
+not a claim about the Python used to run the inspection CLI. A server baseline
+must verify its actual interpreter and installed dependencies against this
+contract. The existing deployment cannot be declared compatible by copying its
+game ID or by recording these desired pins without checking the server.
+
+Imports outside the supported simulation standard-library set and the small
+engine registration interface fail explicitly. Dynamic loading/execution and
+file-reading forms are rejected; new external rules/data need explicit contract
+support. These source conventions are not a sandbox for hostile Python or a
+proof against arbitrary reflection. Reviewed code plus the trusted producer's
+full regression and packaged socket checks remain necessary.
+
+Release preparation now embeds the full contract in the immutable identity.
+Native build/validation and publication staging recompute it from the exact
+source checkout. Matching supplied receipts cannot substitute a different
+contract. The first live baseline, compatibility-gated promotion and actual
+separated publication retry are still pending; WB-002 remains in progress.
+
+Local verification: 900 tests passed, 12 skipped, with the expected stale-sheet
+warning (`docs/evidence/ci-publication/authority-regression.log`). After the
+package/module resolution regression was added and corrected, all 56 focused
+compatibility/release/source/publication checks passed again. The existing
+real-socket multiplayer/online selection passed 38 checks including the initial
+compatibility cases. Native Windows/Mac verification of this refactor is next.

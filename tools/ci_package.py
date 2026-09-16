@@ -18,6 +18,8 @@ import tempfile
 import tomllib
 import zipfile
 
+from ci_compatibility import fingerprint
+
 ROOT = Path(__file__).resolve().parents[1]
 TARGETS = ("windows-x64", "darwin-arm64")
 PACKAGES = ("numpy", "Pillow", "pyglet", "websockets", "pyinstaller", "pyinstaller-hooks-contrib")
@@ -55,6 +57,7 @@ def local_file(directory: Path, name: str) -> Path:
 
 
 def locked_packages(identity: dict) -> dict:
+    require(identity["compatibility"] == fingerprint(ROOT), "Server compatibility differs from the source checkout")
     lock = ROOT / "uv.lock"
     require(sha256(lock) == identity["lock_sha256"], "Release identity differs from the committed lock")
     versions = {item["name"]: item["version"] for item in tomllib.loads(lock.read_text())["package"]}

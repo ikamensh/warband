@@ -31,6 +31,7 @@ def checkout(tmp_path):
     }))
     (root / "warband").mkdir()
     (root / "warband/__init__.py").write_text('"""A release fixture."""\n')
+    (root / "warband/authority.py").write_text("ONLINE = {}\n")
     (root / ".gitignore").write_text("dist/\n")
     git(root, "add", ".")
     git(root, "commit", "-qm", "fixture")
@@ -54,6 +55,9 @@ def test_retry_reuses_one_identity_and_another_run_gets_a_new_version(checkout):
     assert identity["sagaforge_commit"] == "a" * 40
     assert identity["saga2d_version"] == "0.3.2"
     assert identity["version"] == "1.2.3-preview.35100000123"
+    expected = subprocess.check_output([sys.executable, str(ROOT / "tools/ci_compatibility.py"),
+                                        "--root", str(checkout)], text=True)
+    assert identity["compatibility"] == json.loads(expected)
     assert prepare(checkout).returncode == 0
     assert path.read_bytes() == original
     assert prepare(checkout, "35100000124").returncode == 0
