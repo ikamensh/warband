@@ -80,8 +80,6 @@ class ProProfile:
     raiders: int = 2
     reinforce_group: int = 1           # soldiers that must gather before walking to a fight together
     ignore_raid_ratio: float = 0.4     # a raid smaller than this share of the army does not stop a push
-    defend_with_workers: bool = True
-    worker_defence_ratio: float = 2.0  # pull peasants when the threat outweighs the army this badly
     scout: bool = True
     scout_from: float = 50.0           # send the first pair of eyes out at this many seconds
     stale_seconds: float = 25.0        # a sighting older than this is not worth attacking on
@@ -104,16 +102,12 @@ _TRIALS = (
     replace(PRO, name="pro-noscout", scout=False),
     replace(PRO, name="pro-noheal", retreat_wounded=False),
     replace(PRO, name="pro-noraid", raid=False),
-    replace(PRO, name="pro-workersfirst", soldiers_before_workers=0),
+    replace(PRO, name="pro-noexpand", expand=False),
+    replace(PRO, name="pro-army16", min_army=16),
+    replace(PRO, name="pro-lean", max_sites=3, barracks_per_hall=3),
+    replace(PRO, name="pro-guards4", guards=4),
     replace(PRO, name="pro-group", reinforce_group=4),
-    replace(PRO, name="pro-eager", attack_ratio=1.15),
     replace(PRO, name="pro-patient", attack_ratio=2.2),
-    replace(PRO, name="pro-siege", siege_share=0.2),
-    replace(PRO, name="pro-cleric", cleric_share=0.15),
-    replace(PRO, name="pro-w14", workers_per_mine=9),
-    replace(PRO, name="pro-w26", workers_per_mine=17),
-    replace(PRO, name="pro-sites3", max_sites=3),
-    replace(PRO, name="pro-sites8", max_sites=8),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}}
 
@@ -824,21 +818,18 @@ class ProBrain:
                 if u.player != self.player and u.hp > 0 and world.players[u.player].alive]
 
     def _defend(self, world: World, army: list[Unit], threats: list[Unit]) -> None:
+        """Send the soldiers at whatever is nearest our buildings. The peasants keep mining.
+
+        Calling peasants to fight was measured twice — once only when the army
+        was already winning, once whenever the army alone could not win — and
+        both cost about 35 Elo against the brain that leaves them on the gold.
+        They die, and the economy that would have replaced the soldiers dies
+        with them.
+        """
         point = min(threats, key=lambda u: min(dist(u.pos, b.center)
                                                for b in world.player_buildings(self.player))).pos
         self.attacking = False
         world.attack_move([u.id for u in army if not isinstance(u.order, Attack)], point)
-        if not self.profile.defend_with_workers:
-            return
-        incoming = strength(world, threats)
-        ours = strength(world, army) + _tower_strength(world, self.player, point)
-        if ours * self.profile.worker_defence_ratio < incoming:
-            return  # hopeless: peasants would only feed it
-        if ours >= incoming:
-            helpers = [p for p in self._peasants(world)
-                       if not p.hidden and dist(p.pos, point) < 12.0 and p.carrying is None][:6]
-            if helpers:
-                world.attack_move([p.id for p in helpers], point)
 
     def _send_scout(self, world: World, army: list[Unit]) -> None:
         """Keep one pair of eyes on the enemy: a rider if we have one, a peasant if not.
