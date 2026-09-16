@@ -13,7 +13,7 @@ suggested sequence, not a requirement to finish every earlier item first.
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
-| WB-001 | First | ready | Recover useful branch work and clean up local branches/worktrees | User |
+| WB-001 | First | in progress | Recover useful branch work and clean up local branches/worktrees | User |
 | WB-002 | First | ready | Publish tested main pushes through GitHub Actions to games.tachyon-ai.eu | User |
 | WB-003 | Next | ready | Diagnose and improve movement animation | User |
 | WB-004 | Next | ready | Give melee attacks readable weight and contact | User |
@@ -30,6 +30,9 @@ suggested sequence, not a requirement to finish every earlier item first.
 | WB-014 | Later | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 
 ## WB-001 — Recover branch work, then clean up
+
+Working branch: `codex/backlog-wb001`. Acceptance is recorded before integration
+in [the branch recovery record](docs/branch-recovery-2026-09.md).
 
 Review committed differences and dirty worktrees before beginning new feature
 work. Classify each as integrate, already integrated, retain, or discard with a
