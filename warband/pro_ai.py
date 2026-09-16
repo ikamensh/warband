@@ -69,7 +69,7 @@ class ProProfile:
     barracks_per_hall: int = 3        # a barracks turns out ~4 soldiers a minute; income buys far more
     min_barracks: int = 1             # put up this many before anything optional, saturated or not
     barracks_first: bool = False      # nothing but farms goes up before the first barracks
-    builds_before_peasants: bool = False  # a peasant is not queued if it would leave a build order in flight unpaid
+    builds_before_peasants: bool = False  # a peasant is not queued if it would leave a farm order in flight unpaid
     gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
     max_producers: int = 10
     attack_ratio: float = 0.85        # attack when my strength exceeds theirs by this
@@ -715,9 +715,11 @@ class ProBrain:
             # peasants queued at second zero spend 800 of the 1000 gold, so the
             # farm ordered in the same pass finds 200 in the bank, is dropped,
             # and goes up eleven seconds later — with the hall capped at five
-            # and idle for most of the first half minute.
-            owed = sum(BUILDINGS[order.type].cost.gold for order in self._ordered(world)) \
-                if self.profile.builds_before_peasants else 0
+            # and idle for most of the first half minute. Only farms: a peasant
+            # that leaves the farm unpaid has nowhere to stand, while one that
+            # delays a barracks is still income.
+            owed = sum(BUILDINGS[order.type].cost.gold for order in self._ordered(world)
+                       if order.type is BuildingType.FARM) if self.profile.builds_before_peasants else 0
             for hall in halls:
                 if peasants + sum(len(h.queue) for h in halls) >= target:
                     break
