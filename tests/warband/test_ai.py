@@ -9,7 +9,7 @@ from warband.rules import BuildingType, Difficulty, Layout, Race, SIM_DT, Terrai
 
 
 def test_normal_and_hard_send_a_peasant_to_mend_a_damaged_building_but_easy_does_not() -> None:
-    for difficulty, expected in ((Difficulty.NORMAL, True), (Difficulty.HARD, True), (Difficulty.EASY, False)):
+    for difficulty, expected in ((Difficulty.MEDIUM, True), (Difficulty.EASY, False)):
         world = mapgen.generate(seed=5, players=2, human=None)
         brain = Brain(0, difficulty)
         hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
@@ -27,7 +27,7 @@ def test_normal_and_hard_send_a_peasant_to_mend_a_damaged_building_but_easy_does
 def _siege_setup(enemy_type, enemy_count):
     """Eight own footmen marching on the enemy hall, with an enemy raid at an own farm."""
     world = mapgen.generate(seed=5, players=2, human=None)
-    brain = Brain(0, Difficulty.NORMAL)
+    brain = Brain(0, Difficulty.MEDIUM)
     hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
     farm = None
     for dy in range(-8, 9):
@@ -119,8 +119,8 @@ def _expansion_world():
     return world, far
 
 
-def _run_brain(world, seconds=90):
-    brain = Brain(0, Difficulty.NORMAL)
+def _run_brain(world, seconds=120):
+    brain = Brain(0, Difficulty.MEDIUM)
     rng = random.Random(1)
     for _ in range(int(seconds / SIM_DT)):
         brain.think(world, rng)
@@ -138,7 +138,7 @@ def test_a_second_hall_grows_the_workforce_onto_its_own_mine() -> None:
     world, far = _expansion_world()
     brain = _run_brain(world)
     peasants = [u for u in world.player_units(0) if u.is_worker]
-    assert len(peasants) > PROFILES[Difficulty.NORMAL].peasants
+    assert len(peasants) > PROFILES[Difficulty.MEDIUM].peasants
     assert any(_harvests_far(unit, far) for unit in peasants)
     assert any("workforce target" in what for _, what in brain.log)
 
@@ -148,9 +148,9 @@ def test_one_hall_holds_the_workforce_at_the_profile_value() -> None:
     _farm_headroom(world)
     world.players[0].gold = 20000
     world.players[0].lumber = 5000
-    _run_brain(world)
+    _run_brain(world, seconds=260)  # Medium wants fourteen peasants, and a hall makes one at a time
     peasants = [u for u in world.player_units(0) if u.is_worker]
-    assert len(peasants) == PROFILES[Difficulty.NORMAL].peasants
+    assert len(peasants) == PROFILES[Difficulty.MEDIUM].peasants
 
 
 def _military_building(world, player, building_type):
@@ -178,7 +178,7 @@ def test_orc_barracks_trains_grunts_and_elf_barracks_trains_rangers() -> None:
         _rich(world)
         barracks = _military_building(world, 0, BuildingType.BARRACKS)
         world.update_vision()
-        brain = Brain(0, Difficulty.HARD)
+        brain = Brain(0, Difficulty.MEDIUM)
         assert brain._choose_unit(world, barracks, {t: 2 for t in UnitType}) is expected, race
 
 
@@ -191,7 +191,7 @@ def test_human_answers_a_visible_archer_mass_with_cavalry() -> None:
     for i in range(6):
         world.spawn_unit(1, UnitType.ARCHER, (hall.center[0] + 2, hall.center[1] + i * 0.7))
     world.update_vision()
-    brain = Brain(0, Difficulty.HARD)
+    brain = Brain(0, Difficulty.MEDIUM)
     assert brain._choose_unit(world, stables, {t: 2 for t in UnitType}) in (UnitType.SCOUT, UnitType.KNIGHT)
 
 
@@ -203,7 +203,7 @@ def test_dwarf_workshop_starts_siege_with_four_soldiers() -> None:
         _military_building(world, 0, BuildingType.BLACKSMITH)
         workshop = _military_building(world, 0, BuildingType.WORKSHOP)
         world.update_vision()
-        brain = Brain(0, Difficulty.HARD)
+        brain = Brain(0, Difficulty.MEDIUM)
         counts = {t: 0 for t in UnitType}
         counts[UnitType.FOOTMAN] = soldiers
         assert brain._choose_unit(world, workshop, counts) is expected, (race, soldiers)
@@ -227,7 +227,7 @@ def _trained_archer_share(brain: Brain) -> float:
 
 def test_hard_elf_and_orc_armies_grow_towards_their_race_plans() -> None:
     world = mapgen.generate(seed=5, players=2, human=None, races=[Race.ELF, Race.ORC], layout=Layout.PLAINS)  # open ground: both plans unfold
-    brains = [Brain(0, Difficulty.HARD), Brain(1, Difficulty.HARD)]
+    brains = [Brain(0, Difficulty.MEDIUM), Brain(1, Difficulty.MEDIUM)]
     rng = random.Random(1)
     for _ in range(int(360 / SIM_DT)):
         for brain in brains:
@@ -279,7 +279,7 @@ def test_a_hard_brain_caps_its_wave_at_what_the_farms_feed() -> None:
     for i in range(3):
         world.spawn_unit(1, UnitType.PEASANT, (34.5 + 0.5 * i, 37.5))
     world.update_vision()
-    brain = Brain(0, Difficulty.HARD)
+    brain = Brain(0, Difficulty.MEDIUM)
     brain.wave = 60
     brain.waves_sent = 1
     rng = random.Random(1)
@@ -306,7 +306,7 @@ def test_a_normal_brain_presses_the_attack_against_a_hall_less_enemy() -> None:
     for i in range(5):
         world.spawn_unit(0, UnitType.FOOTMAN, (hall.center[0] + 0.5 * i, hall.center[1] + 4))
     world.update_vision()
-    brain = Brain(0, Difficulty.NORMAL)
+    brain = Brain(0, Difficulty.MEDIUM)
     brain.wave = 10
     brain.waves_sent = 1
     rng = random.Random(1)
@@ -342,8 +342,9 @@ def _attacks(brain: Brain) -> list[str]:
     return [what for _, what in brain.log if "attack with" in what]
 
 
-def test_a_normal_brain_holds_its_first_wave_until_it_is_full() -> None:
-    world, brain = _press_world(Difficulty.NORMAL)
+def test_an_easy_brain_holds_its_first_wave_until_it_is_full() -> None:
+    """Easy is the setting that waits for a full wave; Medium harasses before one."""
+    world, brain = _press_world(Difficulty.EASY)
     rng = random.Random(1)
     for _ in range(3):
         brain.think(world, rng)
@@ -360,8 +361,8 @@ def test_a_normal_brain_holds_its_first_wave_until_it_is_full() -> None:
     assert _attacks(brain) != []
 
 
-def test_a_hard_brain_presses_even_before_its_first_wave() -> None:
-    world, brain = _press_world(Difficulty.HARD)
+def test_a_medium_brain_presses_even_before_its_first_wave() -> None:
+    world, brain = _press_world(Difficulty.MEDIUM)
     assert brain.waves_sent == 0
     rng = random.Random(1)
     for _ in range(3):
@@ -371,3 +372,35 @@ def test_a_hard_brain_presses_even_before_its_first_wave() -> None:
             break
     assert brain.attacking
     assert _attacks(brain) != []
+
+
+def test_every_difficulty_has_a_rating_and_a_note_and_they_go_up() -> None:
+    """The New game screen shows these numbers, so a setting without one is a bug.
+
+    They are measured by ``tools/arena.py`` and recorded in docs/ai-ladder.md;
+    what is pinned here is that each setting is rated, described, and stronger
+    than the one before it.
+    """
+    from warband.ai import DIFFICULTY_ELO, DIFFICULTY_NOTES
+
+    assert set(DIFFICULTY_ELO) == set(Difficulty)
+    assert set(DIFFICULTY_NOTES) == set(Difficulty)
+    ratings = [DIFFICULTY_ELO[d] for d in Difficulty]
+    assert ratings == sorted(ratings) and len(set(ratings)) == len(ratings), ratings
+    assert DIFFICULTY_ELO[Difficulty.MEDIUM] == 1000, "Medium is the anchor the ladder is measured against"
+    for note in DIFFICULTY_NOTES.values():
+        assert 10 < len(note) <= 70, note  # long enough to say something, short enough to fit the panel
+
+
+def test_every_difficulty_builds_a_brain_that_plays() -> None:
+    """Easy and Medium are a Brain, Hard and Master a ProBrain; all four must think."""
+    from warband.ai import make_brain
+
+    for difficulty in Difficulty:
+        world = mapgen.generate(seed=7, players=2, human=None)
+        brain = make_brain(0, difficulty)
+        rng = random.Random(1)
+        for _ in range(int(60 / SIM_DT)):
+            brain.think(world, rng)
+            world.step()
+        assert len(world.player_units(0)) > 3, difficulty

@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from warband import mapgen  # noqa: E402
-from warband.ai import Brain  # noqa: E402
+from warband.ai import make_brain  # noqa: E402
 from warband.model import Harvest, World, dist  # noqa: E402
 from warband.rules import BUILDINGS, SIM_DT, BuildingType, Difficulty, UnitType, Upgrade  # noqa: E402
 
@@ -99,7 +99,7 @@ class Script:
 def match(seed: int, difficulty: Difficulty, *, minutes: int = MINUTES) -> tuple[int | None, float, dict]:
     rng = random.Random(seed)
     world = mapgen.generate(seed=seed, players=2, human=0)
-    script, brain = Script(0), Brain(1, difficulty)
+    script, brain = Script(0), make_brain(1, difficulty)
     for _ in range(int(minutes * 60 / SIM_DT)):
         if world.winner is not None:
             break
@@ -115,7 +115,7 @@ def ai_vs_ai(seed: int, difficulty: Difficulty, other: Difficulty | None = None,
     """Player 0 plays *difficulty*, player 1 plays *other* (the same difficulty by default)."""
     rng = random.Random(seed)
     world = mapgen.generate(seed=seed, players=2, human=None)
-    brains = [Brain(0, difficulty), Brain(1, other or difficulty)]
+    brains = [make_brain(0, difficulty), make_brain(1, other or difficulty)]
     for _ in range(int(minutes * 60 / SIM_DT)):
         if world.winner is not None:
             break
@@ -143,7 +143,7 @@ def main() -> None:
     decided = 0
     times = []
     for seed in range(101, 101 + args.decide):
-        winner, t = ai_vs_ai(seed, Difficulty.NORMAL, minutes=MINUTES)
+        winner, t = ai_vs_ai(seed, Difficulty.MEDIUM, minutes=MINUTES)
         decided += winner is not None
         times.append(t / 60)
         print(f"  normal vs normal seed {seed}: winner {winner} at {t / 60:.1f} min")

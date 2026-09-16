@@ -28,7 +28,7 @@ def result(agents: tuple[str, ...], placements: tuple[int, ...]) -> MatchResult:
 
 def test_match_is_reproducible():
     """The same spec twice gives the same match, or no measurement means anything."""
-    spec = MatchSpec(seed=7, agents=("normal", "easy"), minutes=3)
+    spec = MatchSpec(seed=7, agents=("medium", "easy"), minutes=3)
     first, second = play(spec), play(spec)
     assert (first.placements, first.winner, first.minutes, first.steps) == \
            (second.placements, second.winner, second.minutes, second.steps)
@@ -36,7 +36,7 @@ def test_match_is_reproducible():
 
 def test_placements_rank_every_player_from_one():
     """Placements start at 1 and leave no gaps except where players tie."""
-    spec = MatchSpec(seed=11, agents=("hard", "normal", "easy"), minutes=3)
+    spec = MatchSpec(seed=11, agents=("hard", "medium", "easy"), minutes=3)
     placements = play(spec).placements
     assert len(placements) == 3
     assert min(placements) == 1

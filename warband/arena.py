@@ -35,7 +35,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 
 from warband import mapgen
-from warband.ai import Brain
+from warband.ai import make_brain
 from warband.model import World
 from warband.races import RACES
 from warband.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Difficulty, Race, SIM_DT, UnitType, Upgrade
@@ -49,8 +49,9 @@ DEFAULT_MINUTES = 20.0
 class Agent:
     """What the arena needs of a brain: ``think`` once per simulation step.
 
-    :class:`warband.ai.Brain` satisfies this already; the protocol is written
-    down so new agents have something to implement.
+    :class:`warband.ai.Brain` and :class:`warband.pro_ai.ProBrain` satisfy this
+    already; the protocol is written down so new agents have something to
+    implement.
     """
 
     def think(self, world: World, rng: random.Random) -> None:  # pragma: no cover - interface
@@ -76,8 +77,10 @@ def make_agent(name: str, player: int) -> Agent:
     return AGENTS[name](player)
 
 
+# The shipped settings, under their own names. Hard and Master are ProBrain
+# profiles, so these overlap with the pro-* names below; both spellings play.
 for _difficulty in Difficulty:
-    register(_difficulty.value, lambda player, d=_difficulty: Brain(player, d))
+    register(_difficulty.value, lambda player, d=_difficulty: make_brain(player, d))
 
 from warband.pro_ai import PRO_PROFILES, ProBrain  # noqa: E402 - after register() exists
 

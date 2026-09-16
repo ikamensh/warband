@@ -23,7 +23,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=None, help="start this map directly, skipping the title screen")
     parser.add_argument("--size", choices=list(mapgen.SIZES), default="Medium")
     parser.add_argument("--players", type=int, default=2, choices=(2, 3, 4))
-    parser.add_argument("--difficulty", choices=[d.value for d in Difficulty], default="normal")
+    parser.add_argument("--difficulty", choices=[d.value for d in Difficulty], default="medium")
     parser.add_argument("--theme", choices=[t.value for t in MapTheme], default="summer")
     parser.add_argument("--race", choices=[r.value for r in Race], default="human", help="your race; the computer players' are drawn from the seed")
     parser.add_argument("--layout", choices=[each.value for each in Layout] + ["any"], default="any", help="the map's shape; any draws one from the seed")

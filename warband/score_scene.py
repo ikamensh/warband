@@ -17,7 +17,7 @@ class HighScoreScene(_Overlay):
     pause_below = True
     controls = {"d": "cycle_difficulty", "m": "cycle_size", "p": "cycle_players"}
 
-    def __init__(self, *, difficulty: Difficulty = Difficulty.NORMAL, size: tuple[int, int] = (48, 40), players: int = 2,
+    def __init__(self, *, difficulty: Difficulty = Difficulty.MEDIUM, size: tuple[int, int] = (48, 40), players: int = 2,
                  run_id: str | None = None, error: str = "") -> None:
         self.difficulty, self.size, self.players = difficulty, size, players
         self.run_id, self.error = run_id, error

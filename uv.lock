@@ -297,7 +297,6 @@ wheels = [
 
 [[package]]
 name = "saga2d"
-version = "0.2.0"
 source = { editable = "../saga2d" }
 dependencies = [
     { name = "pillow" },

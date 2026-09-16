@@ -111,16 +111,56 @@ class Profile:
 PROFILES: dict[Difficulty, Profile] = {
     Difficulty.EASY: Profile(peasants=7, think_every=2.0, first_wave=10, wave_growth=2, barracks=1, towers=0, tech=False, siege=False,
                              clerics=False, harass=False, reserve=1500, repair=False),
-    # Normal is the coin flip against a plain, competent opening; it thinks slower, waits for a bigger first wave and skips siege.
-    Difficulty.NORMAL: Profile(peasants=9, think_every=1.5, first_wave=10, wave_growth=3, barracks=2, towers=1, tech=True, siege=False,
-                               clerics=False, harass=False, reserve=1000, repair=True),
-    Difficulty.HARD: Profile(peasants=14, think_every=0.5, first_wave=8, wave_growth=4, barracks=3, towers=3, tech=True, siege=True,
-                             clerics=True, harass=True, reserve=500, repair=True),
+    # Medium is what Normal and Hard both used to be. They measured 994 and 1000
+    # Elo and split their games 55/45, so the fuller of the two plays for both:
+    # it techs, sieges, fields healers and sends raiders, which makes a more
+    # interesting opponent at the same strength.
+    Difficulty.MEDIUM: Profile(peasants=14, think_every=0.5, first_wave=8, wave_growth=4, barracks=3, towers=3, tech=True, siege=True,
+                               clerics=True, harass=True, reserve=500, repair=True),
+}
+
+
+def make_brain(player: int, difficulty: Difficulty):
+    """The opponent a difficulty setting means.
+
+    Easy and Medium are this module's :class:`Brain`; Hard and Master are
+    :class:`warband.pro_ai.ProBrain`, which is a different and much stronger
+    player. Imported late because ``pro_ai`` imports this module.
+    """
+    from warband.pro_ai import PRO_PROFILES, ProBrain
+
+    if difficulty in PROFILES:
+        return Brain(player, difficulty)
+    return ProBrain(player, PRO_PROFILES[PRO_FOR[difficulty]])
+
+
+#: Which ProBrain profile stands behind each of the upper difficulties.
+PRO_FOR: dict[Difficulty, str] = {Difficulty.HARD: "pro-hard", Difficulty.MASTER: "pro"}
+
+#: What each setting is worth, measured on the ladder and anchored at Medium =
+#: 1000. Produced by ``tools/arena.py``; the games behind the numbers are in
+#: ``docs/ai-ladder.md``. Shown on the New game screen so a player can see what
+#: they are picking rather than guess from a word.
+DIFFICULTY_ELO: dict[Difficulty, int] = {
+    Difficulty.EASY: 810,
+    Difficulty.MEDIUM: 1000,
+    Difficulty.HARD: 1300,
+    Difficulty.MASTER: 1560,
+}
+
+#: One line per setting, for the same screen.
+#: One line per setting, for the same screen. Kept short enough to fit beside
+#: the map preview.
+DIFFICULTY_NOTES: dict[Difficulty, str] = {
+    Difficulty.EASY: "Seven peasants, one barracks, no upgrades.",
+    Difficulty.MEDIUM: "Techs, sieges, heals and raids. The old Normal and Hard, in one.",
+    Difficulty.HARD: "Strong, but slow to think and short of workers.",
+    Difficulty.MASTER: "Expands, raids peasants, attacks the moment it is ahead.",
 }
 
 
 class Brain:
-    def __init__(self, player: int, difficulty: Difficulty = Difficulty.NORMAL) -> None:
+    def __init__(self, player: int, difficulty: Difficulty = Difficulty.MEDIUM) -> None:
         self.player = player
         self.saving = False  # a hall for the next mine comes before more soldiers
         self.difficulty = difficulty

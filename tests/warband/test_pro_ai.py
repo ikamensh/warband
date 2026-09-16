@@ -187,7 +187,7 @@ def test_more_opponents_mean_a_bigger_margin_is_wanted_before_attacking():
 def test_a_free_for_all_runs_to_placements():
     """Four brains, one map, and a finishing order rather than a winner."""
     from warband.arena import MatchSpec, play
-    outcome = play(MatchSpec(seed=21, agents=("pro", "pro", "hard", "normal"), minutes=6, width=64, height=56))
+    outcome = play(MatchSpec(seed=21, agents=("pro", "pro", "hard", "medium"), minutes=6, width=64, height=56))
     assert len(outcome.placements) == 4
     assert min(outcome.placements) == 1
 

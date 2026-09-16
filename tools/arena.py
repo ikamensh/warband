@@ -1,7 +1,7 @@
 """Run the ladder: agents against each other, in parallel, and the rating table that follows.
 
     uv run python tools/arena.py ladder --seeds 8                       # every pair, both corners
-    uv run python tools/arena.py ladder --agents hard,pro --seeds 40     # two agents, a lot of games
+    uv run python tools/arena.py ladder --agents medium,hard,master --seeds 40     # two agents, a lot of games
     uv run python tools/arena.py ffa --players 4 --seeds 12              # free-for-all placements
     uv run python tools/arena.py variants --shuffles 6 --seeds 6         # the same ladder under jittered balance
     uv run python tools/arena.py report --seeds 24                       # 1v1, FFA and variants in one go
@@ -127,7 +127,7 @@ def main() -> None:
     parser.add_argument("--shuffles", type=int, default=4, help="jittered balance variants to rate under")
     parser.add_argument("--spread", type=float, default=0.25, help="how far a jittered variant moves a number")
     parser.add_argument("--minutes", type=float, default=arena.DEFAULT_MINUTES)
-    parser.add_argument("--anchor", default="hard", help="the agent pinned at 1000 Elo")
+    parser.add_argument("--anchor", default="medium", help="the agent pinned at 1000 Elo")
     parser.add_argument("--workers", type=int, default=max(1, mp.cpu_count() - 2))
     args = parser.parse_args()
 

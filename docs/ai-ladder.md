@@ -61,6 +61,28 @@ rungs in between: `hard` against `pro` against a stronger `pro` gives a
 well-conditioned chain, where `hard` against the strongest alone would only
 say "it never lost".
 
+## The difficulty settings
+
+What the New game screen offers, and what each one is worth. 80 seeds, both
+corners, 960 games, Medium anchored at 1000:
+
+| setting | Elo | 90% interval | plays |
+|---------|-----|--------------|-------|
+| Easy | 814 | 765 .. 854 | `ai.Brain`, the Easy profile |
+| Medium | 1000 | — | `ai.Brain`, what Normal and Hard both were |
+| Hard | 1299 | 1257 .. 1349 | `pro_ai.ProBrain`, `pro-hard` |
+| Master | 1561 | 1495 .. 1635 | `pro_ai.ProBrain`, `pro` |
+
+Each beats the one below it 72%, 84%, 86% of the time — a real step every
+time, which the old three settings did not have: Normal and Hard measured 994
+and 1000 and split their games 55/45. They are one setting now, and the
+screen shows each rating beside its button so the choice is not a guess.
+
+Hard is not a hobbled Master by accident: it is the same brain thinking once
+every second and a half, on six peasants a mine, with one barracks a hall, no
+scouting, no raiding, no expansions, and back on the cautious posture Master
+gave up. Every one of those is a knob the ladder measured.
+
 ## Where the agents stand
 
 **1v1** — 60 seeds it had never been measured on, every pairing from both

@@ -16,6 +16,7 @@ from saga2d import Anchor, Button, Camera, Column, Image, Label, Row, SaveError,
 from warband import mapgen
 from warband.model import World
 from warband.races import RACES
+from warband.ai import DIFFICULTY_ELO, DIFFICULTY_NOTES
 from warband.rules import BuildingType, Difficulty, Layout, MapTheme, Race
 from warband.scene import SAVE_SLOTS, HelpScene, SaveBrowserScene, load_game, new_game
 from warband.sound import play_music, play_sound
@@ -27,6 +28,10 @@ PLAYER_COUNTS = (2, 3, 4)
 OPTION_WIDTH = 170
 RACE_WIDTH = 125
 RACE_KEYS = {Race.HUMAN: "U", Race.ORC: "O", Race.ELF: "V", Race.DWARF: "A"}
+#: Not the first letter: Medium and Master share one, and M is already the map size.
+DIFFICULTY_KEYS = {Difficulty.EASY: "E", Difficulty.MEDIUM: "N", Difficulty.HARD: "H", Difficulty.MASTER: "T"}
+#: Two per row, filling the same width the three-button rows use, so the column lines up.
+DIFFICULTY_WIDTH = (3 * OPTION_WIDTH + 2 * 8 - 8) // 2
 PREVIEW_KEY = "newgame.preview"
 PREVIEW_BOX = (320, 240)  # the preview fits this many pixels: whole pixels per tile, as many as fit
 PREVIEW_MINE = (232, 196, 70)
@@ -52,7 +57,7 @@ class TitleScene(Scene):
     background_color = (8, 10, 14, 255)
     controls = {("n", "return"): "new_game", "c": "continue_game", "l": "load_game", "b": "high_scores", "h": "how_to_play", "q": "quit"}
 
-    def __init__(self, *, size: str = "Medium", players: int = 2, difficulty: Difficulty = Difficulty.NORMAL, theme: MapTheme = MapTheme.SUMMER,
+    def __init__(self, *, size: str = "Medium", players: int = 2, difficulty: Difficulty = Difficulty.MEDIUM, theme: MapTheme = MapTheme.SUMMER,
                  race: Race = Race.HUMAN, layout: Layout | None = None, settings: dict[str, Any] | None = None) -> None:
         """*layout* ``None`` is Any: each seed draws its own."""
         self.size = size
@@ -189,7 +194,7 @@ class NewGameScene(Scene):
     pause_below = False
     pop_on_cancel = True
     controls = {"s": "size_small", "m": "size_medium", "l": "size_large", "2": "players_2", "3": "players_3", "4": "players_4",
-                "e": "easy", "n": "normal", "h": "hard", "g": "summer", "w": "winter", "d": "wasteland", "r": "reroll", ("return", "space"): "start",
+                "e": "easy", "n": "medium", "h": "hard", "t": "master", "g": "summer", "w": "winter", "d": "wasteland", "r": "reroll", ("return", "space"): "start",
                 "u": "humans", "o": "orcs", "v": "elves", "a": "dwarves",
                 "p": "plains", "f": "forest", "c": "crossings", "k": "klondike", "b": "bastion", "y": "any_layout"}
 
@@ -221,6 +226,10 @@ class NewGameScene(Scene):
 
     def _preview_races(self) -> list[Race | None]:
         return [self.race] + [None] * (self.players - 1)
+
+    def _difficulty_text(self) -> str:
+        """The rating beside the chosen setting, and what it plays like."""
+        return DIFFICULTY_NOTES[self.difficulty]
 
     def _opponents_text(self) -> str:
         if self._preview_world is None:
@@ -262,13 +271,16 @@ class NewGameScene(Scene):
             self._player_buttons[count] = button
             player_row.add(button)
         options.add(player_row)
-        difficulty_row = Row(Label("AI", text_style="body", width=90), spacing=8)
-        for difficulty in Difficulty:
-            button = Button(difficulty.value.title(), hotkey=difficulty.value[0].upper(), on_click=lambda d=difficulty: self.set_difficulty(d),
-                            style=GHOST_BUTTON, width=OPTION_WIDTH)
-            self._difficulty_buttons[difficulty] = button
-            difficulty_row.add(button)
-        options.add(difficulty_row)
+        settings = list(Difficulty)
+        for first in (0, 2):
+            row = Row(Label("AI" if first == 0 else "", text_style="body", width=90), spacing=8)
+            for difficulty in settings[first:first + 2]:
+                button = Button(f"{difficulty.value.title()}  {DIFFICULTY_ELO[difficulty]} Elo", hotkey=DIFFICULTY_KEYS[difficulty],
+                                on_click=lambda d=difficulty: self.set_difficulty(d), style=GHOST_BUTTON, width=DIFFICULTY_WIDTH)
+                self._difficulty_buttons[difficulty] = button
+                row.add(button)
+            options.add(row)
+        options.add(Label(lambda: self._difficulty_text(), text_style="sub", width=3 * OPTION_WIDTH + 90 + 24))
         theme_row = Row(Label("Land", text_style="body", width=90), spacing=8)
         for theme, key in ((MapTheme.SUMMER, "G"), (MapTheme.WINTER, "W"), (MapTheme.WASTELAND, "D")):
             button = Button(theme.value.title(), hotkey=key, on_click=lambda t=theme: self.set_theme(t), style=GHOST_BUTTON, width=OPTION_WIDTH)
@@ -400,11 +412,14 @@ class NewGameScene(Scene):
     def easy(self) -> None:
         self.set_difficulty(Difficulty.EASY)
 
-    def normal(self) -> None:
-        self.set_difficulty(Difficulty.NORMAL)
+    def medium(self) -> None:
+        self.set_difficulty(Difficulty.MEDIUM)
 
     def hard(self) -> None:
         self.set_difficulty(Difficulty.HARD)
+
+    def master(self) -> None:
+        self.set_difficulty(Difficulty.MASTER)
 
     def size_small(self) -> None:
         self.set_size("Small")

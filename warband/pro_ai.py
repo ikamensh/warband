@@ -101,7 +101,17 @@ PRO = ProProfile("pro")
 #: Each differs from :data:`PRO` in one thing, so a ladder over all of them
 #: attributes the difference rather than guessing at it. What each one settled
 #: is written down in ``docs/ai-ladder.md``.
+#: The Hard difficulty: the same brain as Master, thinking once every second
+#: and a half on a small economy, without raiders, scouts or expansions, and
+#: back on the cautious posture Master gave up. It exists to put a real step
+#: between Medium and Master — measured at 1299 Elo against Medium's 1000 and
+#: Master's 1561 — not to be the best player available.
+PRO_HARD = replace(PRO, name="pro-hard", think_every=1.5, combat_every=0.5, workers_per_mine=6,
+                   barracks_per_hall=1, max_sites=2, raid=False, retreat_wounded=False, scout=False,
+                   expand=False, min_army=10, attack_ratio=1.6, symmetry_prior=1.0, guards=2)
+
 _TRIALS = (
+    PRO_HARD,
     replace(PRO, name="pro-timid", min_army=10, attack_ratio=1.6, symmetry_prior=1.0, guards=2,
             workers_per_mine=13, barracks_per_hall=4),   # the cautious posture it replaced
     replace(PRO, name="pro-noscout", scout=False),

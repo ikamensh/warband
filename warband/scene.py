@@ -17,7 +17,7 @@ from saga2d import (
 from saga2d import SaveError
 from saga2d.effects import Banner, Burst, Effects, FloatingText, HitReaction, Pulse, Toast
 from warband import ambience, deaths, mapgen, wreckage
-from warband.ai import Brain
+from warband.ai import make_brain
 from warband.effects import UnitDeath
 from warband.icons import Icon, draw_icon
 from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
@@ -129,7 +129,7 @@ class GameScene(Scene):
         "ctrl+f6": "set_bookmark_1", "ctrl+f7": "set_bookmark_2", "ctrl+f8": "set_bookmark_3",
     }
 
-    def __init__(self, world: World, seed: int, *, difficulty: Difficulty = Difficulty.NORMAL, settings: dict[str, Any] | None = None,
+    def __init__(self, world: World, seed: int, *, difficulty: Difficulty = Difficulty.MEDIUM, settings: dict[str, Any] | None = None,
                  player: int | None = None, run_id: str | None = None, ranked: bool = True) -> None:
         self.world = world
         self.run_id = run_id if run_id is not None else str(uuid4())  # one leaderboard row per match, however often it is reloaded
@@ -137,7 +137,7 @@ class GameScene(Scene):
         self.seed = seed
         self.difficulty = difficulty
         self.human = next(p.id for p in world.players if p.human) if player is None else player
-        self.brains = [Brain(p.id, difficulty) for p in world.players if not p.human]
+        self.brains = [make_brain(p.id, difficulty) for p in world.players if not p.human]
         self.rng = random.Random(seed)
         self.settings = settings if settings is not None else dict(DEFAULT_SETTINGS)  # a saga2d Settings when the game runs
         for key, value in DEFAULT_SETTINGS.items():
@@ -1610,7 +1610,7 @@ class GameScene(Scene):
         self.ranked = state.get("ranked", True)
         self.seed = state["seed"]
         self.difficulty = Difficulty(state["difficulty"])
-        self.brains = [Brain(p.id, self.difficulty) for p in world.players if not p.human]
+        self.brains = [make_brain(p.id, self.difficulty) for p in world.players if not p.human]
         self.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
         self.tutorial = Tutorial() if state.get("tutorial") is not None and self.settings["tutorial"] else None
         if self.tutorial is not None:
@@ -2133,7 +2133,7 @@ class GameOverScene(_Overlay):
         self.game.quit()
 
 
-def new_game(seed: int, width: int = 48, height: int = 40, players: int = 2, *, difficulty: Difficulty = Difficulty.NORMAL,
+def new_game(seed: int, width: int = 48, height: int = 40, players: int = 2, *, difficulty: Difficulty = Difficulty.MEDIUM,
              theme: MapTheme = MapTheme.SUMMER, settings: dict[str, Any] | None = None, races: list[Race | None] | None = None,
              layout: MapLayout | None = None) -> GameScene:
     """*layout* ``None`` draws one from the seed."""

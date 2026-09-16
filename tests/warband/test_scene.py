@@ -478,22 +478,31 @@ def test_the_codex_lists_every_unit_building_and_upgrade(play) -> None:
     assert game.scene is scene
 
 
-def test_the_title_offers_three_difficulties_and_saves_keep_it(game) -> None:
+def test_the_title_offers_every_difficulty_and_saves_keep_it(game) -> None:
+    """Each setting is reachable by its key, and the one chosen survives a save."""
+    from warband.ai import DIFFICULTY_ELO, PROFILES
+    from warband.pro_ai import ProBrain
     from warband.rules import Difficulty
 
     game.push(TitleScene())
     game.tick(1 / 60)
     press(game, "n")
-    press(game, "h")
-    assert game.scene.difficulty is Difficulty.HARD
+    for key, difficulty in (("e", Difficulty.EASY), ("n", Difficulty.MEDIUM),
+                            ("h", Difficulty.HARD), ("t", Difficulty.MASTER)):
+        press(game, key)
+        assert game.scene.difficulty is difficulty, key
+        assert DIFFICULTY_ELO[difficulty] > 0, "every setting shows a rating"
     press(game, "return")
     scene = game.scene
-    assert isinstance(scene, GameScene) and scene.difficulty is Difficulty.HARD and all(b.difficulty is Difficulty.HARD for b in scene.brains)
+    assert isinstance(scene, GameScene) and scene.difficulty is Difficulty.MASTER
+    # Master is a ProBrain, not a Brain with a profile.
+    assert Difficulty.MASTER not in PROFILES
+    assert all(isinstance(b, ProBrain) for b in scene.brains)
     press(game, "f5")
     game.clear_and_push(TitleScene())
     game.tick(1 / 60)
     press(game, "c")
-    assert game.scene.difficulty is Difficulty.HARD
+    assert game.scene.difficulty is Difficulty.MASTER
 
 
 def test_double_click_and_ctrl_click_select_every_unit_of_a_type_on_screen(play) -> None:

@@ -23,7 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from warband import mapgen  # noqa: E402
-from warband.ai import Brain  # noqa: E402
+from warband.ai import make_brain  # noqa: E402
 from warband.model import World  # noqa: E402
 from warband.rules import SIM_DT, Difficulty  # noqa: E402
 
@@ -50,7 +50,7 @@ def fingerprint(seeds=SEEDS, minutes: int = MINUTES) -> str:
     for seed in seeds:
         rng = random.Random(seed)
         world = mapgen.generate(seed=seed, players=2, human=None)
-        brains = [Brain(0, Difficulty.HARD), Brain(1, Difficulty.NORMAL)]
+        brains = [make_brain(0, Difficulty.HARD), make_brain(1, Difficulty.MEDIUM)]
         out.update(f"seed={seed};".encode())
         for step in range(int(minutes * 60 / SIM_DT)):
             if world.winner is not None:

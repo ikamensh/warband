@@ -72,6 +72,20 @@ class ScoreEntry:
         return self.difficulty, self.width, self.height, self.players
 
 
+#: Difficulty names version 1 used. Normal and Hard measured 994 and 1000 Elo
+#: and are one setting now, so a board played against either was played against
+#: what Medium is.
+RENAMED_DIFFICULTIES = {"normal": "medium", "hard": "medium"}
+
+
+def _renamed(row: dict) -> dict:
+    """A version 1 row under the names version 2 uses."""
+    difficulty = row.get("difficulty")
+    if difficulty in RENAMED_DIFFICULTIES:
+        row = dict(row, difficulty=RENAMED_DIFFICULTIES[difficulty])
+    return row
+
+
 class HighScores:
     """Top ten per difficulty, map size and player count; one best finish per run.
 
@@ -89,11 +103,15 @@ class HighScores:
             return []
         try:
             state = saved["state"]
-            if type(state["version"]) is not int or state["version"] != 1:
-                raise ValueError("Unsupported high-score version; expected 1")
+            version = state["version"]
+            if type(version) is not int or version not in (1, 2):
+                raise ValueError("Unsupported high-score version; expected 1 or 2")
             if not isinstance(state["entries"], list):
                 raise ValueError("High-score entries must be a list")
-            entries = [ScoreEntry(**entry) for entry in state["entries"]]
+            rows = [dict(entry) if isinstance(entry, dict) else entry for entry in state["entries"]]
+            if version == 1:
+                rows = [_renamed(row) for row in rows]
+            entries = [ScoreEntry(**row) for row in rows]
             if len({e.run_id for e in entries}) != len(entries):
                 raise ValueError("Duplicate high-score run IDs")
             return sorted(entries, key=self._order)
@@ -120,7 +138,7 @@ class HighScores:
                     kept.append(candidate)
             entries = kept
             if entries != original:
-                self.saves.save(1, {"version": 1, "entries": [asdict(e) for e in entries]}, "WarbandHighScores")
+                self.saves.save(1, {"version": 2, "entries": [asdict(e) for e in entries]}, "WarbandHighScores")
         table = [e for e in entries if e.board == entry.board]
         return next((i for i, e in enumerate(table, 1) if e.run_id == run_id), None)
 

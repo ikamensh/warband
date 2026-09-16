@@ -291,9 +291,18 @@ PLAYERS: list[PlayerInfo] = [
 
 
 class Difficulty(IdentityEnum):
+    """What the player is up against, weakest first.
+
+    The three settings that shipped before were two: measured over 720 games,
+    Normal and Hard sat at 994 and 1000 Elo and won 55% against each other,
+    which is not a difficulty step. They are one setting now, and the steps
+    above them are :mod:`warband.pro_ai` brains. See ``docs/ai-ladder.md``.
+    """
+
     EASY = "easy"
-    NORMAL = "normal"
+    MEDIUM = "medium"
     HARD = "hard"
+    MASTER = "master"
 
 
 class MapTheme(IdentityEnum):
