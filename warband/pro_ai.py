@@ -496,7 +496,10 @@ class ProBrain:
                 if tree is not None:
                     world.harvest([peasant.id], tree)
         elif short < 0 and profile.wood_share > 0:
-            mines = self._worked_mines(world)
+            # A remembered mine may have been dug out since it was last seen, and
+            # the model refuses an order to mine what is no longer a mine.
+            mines = [m for m in self._worked_mines(world)
+                     if getattr(world.buildings.get(m.id), "type", None) is BuildingType.GOLD_MINE]
             for peasant in [p for p in choppers if p.carrying is None][:min(-short, 2)]:
                 if mines:
                     world.harvest([peasant.id], min(mines, key=lambda m: dist(m.center, peasant.pos)).id)

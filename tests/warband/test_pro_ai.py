@@ -180,6 +180,25 @@ def test_a_peasant_is_not_queued_over_a_build_order_that_could_not_then_be_paid(
     assert len(hall.queue) == 2
 
 
+def test_wood_crews_are_not_sent_to_a_mine_that_has_been_dug_out():
+    """Regression: the ladder died on 'Not a gold mine' when a remembered mine was gone."""
+    from dataclasses import replace
+    world, brain = _world_with_army()
+    brain.profile = replace(PRO, wood_share=0.5, wood_stock=900)
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    for i in range(8 - sum(1 for u in world.player_units(0) if u.is_worker)):
+        world.spawn_unit(0, UnitType.PEASANT, (hall.center[0] + 3 + i * 0.6, hall.center[1] + 3))
+    world.players[0].gold, world.players[0].lumber = 3000, 0
+    world.tick += 20
+    brain._economy(world)
+    assert any(brain._on_lumber(p) for p in world.player_units(0) if p.is_worker)
+    for mine in world.mines():
+        world.buildings.pop(mine.id)  # dug out while nobody was looking; the memory still holds gold
+    world.players[0].lumber = 2000
+    world.tick += 20
+    brain._economy(world)  # must not raise
+
+
 def test_barracks_first_wishes_for_nothing_else_until_it_stands():
     from dataclasses import replace
     world, brain = _world_with_army()
