@@ -104,6 +104,14 @@ Implemented locally so far:
   website-check workflow. Its 15 existing catalog/site integration tests pass;
   it renders all seven pages, images, fonts and the exact catalog without
   installing the hosted games. Its workflow also passes Actionlint.
+- `tools/ci_package.py validate` checks a native candidate against the expected
+  identity and committed lock. It requires both distribution formats, verifies
+  artifact and regression-log digests, compares archived executable bytes with
+  the smoke/native receipts, and requires the platform's install checks and
+  captured images. Nine CLI checks pass using deliberately non-executable file
+  fixtures, including stale receipts, changed archives/dependencies, missing
+  app checks and replacing an executable while regenerating its checksums.
+  These tests verify the consumer, not native Windows/Mac execution.
 
 Still required: native release workflow/receipts, immutable binary publication,
 compatibility-gated catalog promotion, transaction/rollback implementation,
