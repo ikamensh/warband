@@ -190,8 +190,12 @@ farms) was clearly worse. The plateau is in the brain, not in the ruler.
 winning 99.7% of games — two losses in 720 rather than the eighteen it takes
 now. The remaining losses are not systematic: no seed loses from both
 corners, no race is broken, and the brain kills four soldiers for every one
-it loses. They are games where an early rush lands before there is anything
-to meet it. Every fix tried for that — early towers, peasants called to
+it loses. They are, almost all of them, one shape: the brain ends with a peak army of
+two or three and no soldiers at four minutes. Tracing them lands on the wood.
+On a map where the trees near home run out — `bastion` especially, which walls
+a player in — lumber reaches zero, no farm can be built, the supply cap
+freezes at twenty-five, and fifteen thousand gold sits in the bank buying
+nothing while the soldiers that do trickle out die one at a time. Every fix tried for that — early towers, peasants called to
 fight, a militia rule, holding the opening lumber, reacting to a visible
 rush, stronger counters against archers — measured neutral or worse, and is
 recorded below.
@@ -216,6 +220,7 @@ contradicted the reasoning that produced the change:
 | reacting to a rush the scout can see | neutral |
 | a proportional counter to massed archers | neutral — but the rule it replaced had never once fired |
 | six further candidates rated against Master itself | all neutral, over 1008 games |
+| spare hands to the trees when the lumber runs out | 53.5% over 340 games — suggestive, not established; kept because it fixes a diagnosed pathology |
 | directing focus fire | **−109 Elo** — it switches off the model's own kiting and retargeting |
 | feeding the workforce in gradually | **−187 Elo** (1516 → 1329) against hiring it at once |
 | early towers | 68.8% against `hard` where every other variant took 100% |
