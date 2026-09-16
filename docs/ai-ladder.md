@@ -261,6 +261,33 @@ humans whose barracks turn out a soldier every 13 s instead of 15. A
 quarter of the games either brain plays are lost or won on the draw of
 the race, which a race-aware profile can take back.
 
+### The opening, traced tick by tick
+
+Three things in Master's first three minutes are not decisions but
+accidents of ordering, found by printing every peasant's order at every
+tick:
+
+* **The farm at second zero is dropped.** The pass trains before it
+  builds, the hall queues two peasants for 800 of the 1000 gold, and the
+  farm ordered in the same pass finds 200 in the bank when its peasant
+  arrives. It goes up again at eleven seconds and stands at thirty-eight;
+  the hall is capped at five and idle for most of that time.
+  `builds_before_peasants` holds the peasant back when a farm in flight
+  could not then be paid (farms only: a peasant that delays a barracks is
+  still income).
+* **The mill is bought before the barracks.** The wish list puts the
+  barracks first, but the mill costs 600 gold to the barracks' 700, so
+  whenever the bank is between the two the mill is what gets bought — and
+  its 450 lumber is the barracks' 450 lumber, a minute of chopping later.
+  Both brains in a mirror have their first barracks at about three
+  minutes. `barracks_first` wishes for nothing but farms until it stands,
+  and lands it at about two.
+* **The wood share had been measuring nothing.** A third to a half of the
+  miners are inside the mine at any moment, and the first version of the
+  rule took its share of the rest, so "thirty per cent on wood" put almost
+  nobody there. The 17% it scored against Master was the score of a rule
+  that did not run; the share is of the whole workforce now.
+
 ### Against the 2000 that was asked for
 
 `pro` is about **535 Elo above the anchor, not 1000**. A 1000-point gap means
