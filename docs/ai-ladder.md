@@ -337,10 +337,15 @@ drafted with, the ring move is only given to a scout with nothing to do,
 and the gatherer policy refills an idle peasant before the next pass — so
 no brain without a rider has ever sent anyone to look, and the enemy is
 unknown until its push arrives. That is the ground the blind-attack
-posture measured +126 on. `scout_peasant` stops the drafted peasant and
-keeps it off the policy; it is a knob rather than a fix so that `pro`, the
-anchor, keeps playing exactly as it was rated. The rush itself was dropped:
-the builder's order dies on arrival after a forty-second walk, five times a
+posture measured +126 on. Sending the peasant (stop it, keep it off the
+policy) was measured on both postures: **44% and 39%** against Master,
+against 55% blind, with peak armies of 13 to the blind Warden's 22. The
+engagement rule is tuned for not knowing — a prior of four tenths of its
+own strength stands in for an enemy nobody has looked at — and given real
+sightings it waits while Master attacks. Using what a scout sees takes a
+different engagement rule, not a scout, so the peasant stays home and the
+comment in `_send_scout` says why. The rush itself was dropped: the
+builder's order dies on arrival after a forty-second walk, five times a
 game, and feeds peasants to the first soldiers.
 
 ### What the 2000 still needs

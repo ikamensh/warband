@@ -87,7 +87,6 @@ class ProProfile:
     ignore_raid_ratio: float = 0.4     # a raid smaller than this share of the army does not stop a push
     scout: bool = True
     scout_from: float = 50.0           # send the first pair of eyes out at this many seconds
-    scout_peasant: bool = False        # a peasant drafted as the scout is actually sent (see _send_scout)
     stale_seconds: float = 25.0        # a sighting older than this is not worth attacking on
     symmetry_prior: float = 0.4        # an unlooked-at opponent is assumed to be this much of our own strength
     ffa_caution: float = 0.8           # how much more careful each extra opponent makes it
@@ -113,11 +112,6 @@ PRO = ProProfile("pro")
 PRO_VANGUARD = replace(PRO, name="pro-vanguard", barracks_first=True, panic_gold=1000, lumber_floor_panic=300)
 PRO_WARDEN = replace(PRO_VANGUARD, name="pro-warden", towers_early=1, min_army=8, attack_ratio=1.0)
 
-#: Probes on the postures, for the ladder to price.
-_PROBES = (
-    replace(PRO_WARDEN, name="pro-warden-scout", scout_peasant=True),
-    replace(PRO_VANGUARD, name="pro-vanguard-scout", scout_peasant=True),
-)
 
 #: Variants used to find out which knob is actually carrying the strength.
 #: Each differs from :data:`PRO` in one thing, so a ladder over all of them
@@ -146,7 +140,7 @@ _TRIALS = (
     replace(PRO, name="pro-nocounter", counter_from=1.1),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, PRO_VANGUARD.name: PRO_VANGUARD, PRO_WARDEN.name: PRO_WARDEN,
-                                       **{p.name: p for p in _TRIALS}, **{p.name: p for p in _PROBES}}
+                                       **{p.name: p for p in _TRIALS}}
 
 
 # -- Force comparison ---------------------------------------------------------------
@@ -994,16 +988,17 @@ class ProBrain:
                 spare = [p for p in self._peasants(world)
                          if not p.hidden and p.carrying is None and not isinstance(p.order, (Build, Repair))]
                 if len(spare) > 3:
+                    # Drafted with a harvest order in hand, the peasant keeps it:
+                    # the ring move below is only given to a scout with nothing to
+                    # do, and the gatherer policy refills an idle peasant before
+                    # the next pass, so the peasant never goes and the brain knows
+                    # nothing of the enemy until the enemy arrives. Sending it
+                    # (stop it, keep it off the policy) was measured: 44% and 39%
+                    # against Master for the two postures, against 55% blind. The
+                    # engagement rule is tuned for not knowing, and given real
+                    # sightings it waits while Master attacks; using them takes a
+                    # different rule, not a scout. So the peasant stays home.
                     self.scouts = [spare[-1].id]
-                    if self.profile.scout_peasant:
-                        # Drafted with a harvest order in hand, the peasant kept it:
-                        # the ring move below is only given to a scout with nothing
-                        # to do, and the model's gatherer policy refills an idle
-                        # peasant's orders before the next pass. So the brain it
-                        # was written for never sent one, and knew nothing of the
-                        # enemy until the enemy arrived. This one is stopped and
-                        # taken off the gatherer policy, and goes.
-                        world.stop([self.scouts[0]])
         targets = [record.center for record in self._known_enemy_buildings(world)]
         if not targets:
             targets = [self._unexplored_corner(world)]  # nothing found yet: go and look
@@ -1017,8 +1012,6 @@ class ProBrain:
             ring = (centre[0] + 7.0 * math.cos(angle), centre[1] + 7.0 * math.sin(angle))
             world.move([scout_id], self._standable(world, (min(max(ring[0], 1.0), world.width - 1.0),
                                                            min(max(ring[1], 1.0), world.height - 1.0))))
-            if scout.is_worker and self.profile.scout_peasant:
-                scout.auto_work = False  # a Move switches it back on; off again, or the policy takes it back on arrival
 
     # -- Combat ----------------------------------------------------------------------
 
