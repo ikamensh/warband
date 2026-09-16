@@ -174,6 +174,13 @@ _STYLES = (
     replace(PRO, name="pro-siege-kills", siege_share=0.25, cleric_share=0.1, target_halls=True, min_army=8,
             attack_ratio=1.0, count_kills=True),
     replace(PRO, name="pro-raxfirst", barracks_first=True),
+    # Lumber supply from a corner whose wood is far: seed 6000's elf start has
+    # its nearest tree ten tiles out, spends its last 250 on a second farm at
+    # ten seconds, and waits ninety seconds for the barracks' 450 while four
+    # thousand gold idles. Three cheap answers on top of barracks-first.
+    replace(PRO, name="pro-rax-panic", barracks_first=True, panic_gold=1000, lumber_floor_panic=300),
+    replace(PRO, name="pro-rax-workers", barracks_first=True, workers_per_mine=13, max_workers=40),
+    replace(PRO, name="pro-rax-slack2", barracks_first=True, supply_slack=2),
     replace(PRO, name="pro-mill", mill_by_wood=True),
     replace(PRO, name="pro-rax-mill", barracks_first=True, mill_by_wood=True),
     replace(PRO, name="pro-rax-mill-min8", barracks_first=True, mill_by_wood=True, min_army=8, attack_ratio=1.0),
