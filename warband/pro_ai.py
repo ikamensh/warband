@@ -38,7 +38,7 @@ import random
 from dataclasses import dataclass, field, replace
 
 from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived
-from warband.model import Attack, Build, Building, Point, Pos, Repair, Unit, World, dist, tile_center
+from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, tile_center
 from warband.races import RACES
 from warband.rules import BUILDINGS, BuildingType, UnitType
 
@@ -56,6 +56,8 @@ class ProProfile:
     combat_every: float = 0.2         # …and between combat passes, which are cheaper and matter more
     workers_per_mine: int = 10        # peasants a worked mine supports
     lumber_share: float = 0.35        # workforce hired above the mine slots; who chops is the model's own policy
+    lumber_floor_panic: int = 350     # below this much lumber, with gold to spare, spare hands go to the trees
+    panic_gold: int = 2000            # …'to spare' meaning this much unspendable gold
     max_workers: int = 32
     supply_slack: int = 4             # farms go up to keep this much headroom…
     supply_per_producer: float = 2.0  # …plus this much per military building
@@ -120,6 +122,7 @@ _TRIALS = (
     replace(PRO, name="pro-noexpand", expand=False),
     replace(PRO, name="pro-lean", max_sites=3, barracks_per_hall=2),
     replace(PRO, name="pro-workersfirst", soldiers_before_workers=0),
+    replace(PRO, name="pro-nopanic", lumber_floor_panic=0),
     replace(PRO, name="pro-nocounter", counter_from=1.1),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}}
@@ -345,6 +348,39 @@ class ProBrain:
         from warband.worker_ai import assign_idle_workers
 
         assign_idle_workers(world, self.player)
+        self._chop(world)
+
+    @staticmethod
+    def _on_lumber(peasant: Unit) -> bool:
+        """Whether this peasant is working wood: a tree is a tile, a mine is an id."""
+        if peasant.carrying is Resource.LUMBER:
+            return True
+        return any(isinstance(order, Harvest) and not isinstance(order.target, int) for order in peasant.orders)
+
+    def _chop(self, world: World) -> None:
+        """Put spare hands on trees when the wood runs out, and only then.
+
+        A fixed share of the workforce on lumber measured as nothing: the model's
+        own policy usually splits the two resources well. What it does not handle
+        is the map where the wood near home is gone — lumber sits at zero, no farm
+        can be built, the supply cap freezes, and a bank of fifteen thousand gold
+        buys nothing at all. Every game this brain still loses looks like that, so
+        the rule fires on the symptom rather than running all the time.
+        """
+        player = world.players[self.player]
+        if player.lumber >= self.profile.lumber_floor_panic or player.gold < self.profile.panic_gold:
+            return
+        peasants = [p for p in self._peasants(world)
+                    if not p.hidden and not isinstance(p.order, (Build, Repair)) and p.id not in self.scouts]
+        # Never everyone: gold still has to come in, or the next peasant never does.
+        want = min(len(peasants) // 2, max(0, len(peasants) - 2))
+        short = want - sum(1 for p in peasants if self._on_lumber(p))
+        if short <= 0:
+            return
+        for peasant in [p for p in peasants if not self._on_lumber(p) and p.carrying is None][:short]:
+            tree = world.nearest_tree(peasant.pos, 24)
+            if tree is not None:
+                world.harvest([peasant.id], tree)
 
     def _repairs(self, world: World) -> None:
         damaged = [b for b in world.player_buildings(self.player, done=True)
