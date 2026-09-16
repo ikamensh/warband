@@ -125,10 +125,14 @@ Implemented locally so far:
   independently validates both downloaded candidates on Linux. Actions are
   pinned by SHA; Actionlint passes. No release/promotion job is enabled in it.
 - Inno Setup 6.7.1 is part of the shared identity. Windows input validation
-  compares the actual compiler's product version with that pin and records its
+  compares the actual compiler engine's version with that pin and records its
   executable digest before/after the build. A runner image upgrade that changes
   the compiler stops the build until a deliberate pin update. The evidence
   consumer rejects an installer made with a different compiler version.
+  ISCC's Windows product-version resource is `0.0.0.0`; the second native CI
+  run exposed that difference. The check now compiles a minimal stdin script
+  with output disabled and reads the engine banner, rather than the launcher
+  resource. The corrected path still requires native CI verification.
 - The native workflow now locates accepted artifacts within the same run,
   checks their source commit, downloads and revalidates them before skipping
   any rebuild. Successful platform uploads have one stable name per run and

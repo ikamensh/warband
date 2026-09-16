@@ -9,7 +9,6 @@ import argparse
 import hashlib
 from importlib import metadata, util
 import json
-import os
 from pathlib import Path
 import platform
 import re
@@ -181,11 +180,17 @@ def native_inputs(identity: dict, *, iscc: Path | None = None) -> dict:
     result = {"identity": identity, "target": target, "packages": packages}
     if target == "windows-x64":
         require(iscc is not None and iscc.is_file(), "Windows builds require an explicit Inno Setup compiler")
-        compiler_version = subprocess.check_output([
-            "powershell", "-NoProfile", "-NonInteractive", "-Command",
-            "(Get-Item -LiteralPath $env:WARBAND_ISCC).VersionInfo.ProductVersion",
-        ], env={**os.environ, "WARBAND_ISCC": str(iscc.resolve())}, text=True).strip()
-        require(compiler_version == identity["inno_setup"], "Installed Inno Setup compiler differs from the release pin")
+        # ISCC.exe's Windows ProductVersion is 0.0.0.0. Ask its actual compiler
+        # engine by compiling a minimal stdin script with output disabled.
+        probe = subprocess.run([str(iscc.resolve()), "/O-", "-"], input=(
+            "[Setup]\nAppName=Warband compiler check\nAppVersion=0.0.0\n"
+            "DefaultDirName={tmp}\\warband-compiler-check\nUninstallable=no\nCreateAppDir=no\nOutput=no\n"
+        ), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=True)
+        found = re.findall(r"^Compiler engine version: Inno Setup (\d+\.\d+\.\d+)\s*$", probe.stdout, re.MULTILINE)
+        require(len(found) == 1, f"Cannot identify the Inno Setup compiler engine:\n{probe.stdout}")
+        compiler_version = found[0]
+        require(compiler_version == identity["inno_setup"],
+                f"Installed Inno Setup compiler {compiler_version} differs from pin {identity['inno_setup']}")
         result.update(inno_setup=compiler_version, inno_setup_sha256=sha256(iscc))
     return result
 
