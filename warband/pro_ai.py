@@ -101,6 +101,7 @@ class ProProfile:
     wood_stock: int = 900             # …'short' meaning below this; above it the wood crews go back to the gold
     count_kills: bool = False         # soldiers the brain watched die no longer count against it
     target_halls: bool = False        # pushes go for the hall (the economy) before the barracks
+    blocked_is_busy: bool = False     # a producer idle only for want of supply still counts as saturated
     by_race: Mapping[Race, Mapping[str, object]] = field(default_factory=dict)  # knobs that differ when playing that race
 
     def for_race(self, race: Race) -> "ProProfile":
@@ -162,6 +163,7 @@ _STYLES = (
     replace(PRO, name="pro-wood40", wood_share=0.4),
     replace(PRO, name="pro-group3", reinforce_group=3),
     replace(PRO, name="pro-group5", reinforce_group=5),
+    replace(PRO, name="pro-sat", blocked_is_busy=True),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, **{p.name: p for p in _TRIALS}, **{p.name: p for p in _STYLES}}
 
@@ -548,7 +550,13 @@ class ProBrain:
         if not producers:
             return False
         if any(not b.queue and b.research is None for b in producers):
-            return False
+            # An idle queue means the bank is the bottleneck — unless the queue is
+            # empty because nothing can be fed: a supply-blocked barracks with
+            # three thousand gold behind it is production waiting on farms, and
+            # the farms are wished for first in any case.
+            used, cap = world.supply(self.player)
+            if not (self.profile.blocked_is_busy and used >= cap):
+                return False
         player = world.players[self.player]
         return player.gold >= self.profile.surplus_gold
 
