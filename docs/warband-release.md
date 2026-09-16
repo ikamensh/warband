@@ -61,6 +61,36 @@ uncommitted tree.  The same script installs Tribes.
   (`v0.2.0-preview.1` was tagged first; its packages lacked those assets,
   failed the native package check and were never published.)
 
+## Acceptance: 0.2.0-preview.2
+
+Source: `dd4f3e2563915a6743e6dab14ab1de9b480bdc99` on Saga2D 0.3.1.
+
+[Windows CI run 35106932878](https://github.com/ikamensh/warband/actions/runs/35106932878)
+ran the regression suite, built the installer and portable ZIP, passed the
+extracted, installed and public TLS (`wss://games.tachyon-ai.eu/play`) package
+checks and the native check under the test-only Mesa driver (llvmpipe, Mesa
+26.2.0) with all 135 sounds, Start menu shortcut creation and uninstall, then
+published the release. The Mac portable executable passed the loopback socket
+and native checks on Apple M4: the whole multiplayer flow through real window
+events (create a room, copy and paste the code, join, the Train card, Plans,
+the match menu, leave) and an offline match. The app bundle's executable
+passed the online diagnostics against `wss://games.tachyon-ai.eu/play`
+(`mac-public-server.json` on the release) and is installed as
+`/Applications/Warband.app`. All three public downloads were fetched without
+authentication and hashed; the catalog carries those hashes, which match the
+CI `SHA256SUMS` and the Mac build manifest.
+
+| File | SHA-256 |
+|---|---|
+| `Warband-0.2.0-preview.2-windows-x64-setup.exe` | `086a0df1700e836112e328efaff36d3df51d5994309eb81a7579fc1db58f90f5` |
+| `Warband-0.2.0-preview.2-windows-x64-portable.zip` | `b8a7acccb76f7bce83eaa387565e6e12b235028f9b8454a52339bb546f7a3544` |
+| `Warband-0.2.0-preview.2-darwin-arm64-app.zip` | `9d794deab8bb3b9d8775d995c505d5e97e42f47d1ed2e75e1d3f57aa52a6b5c6` |
+
+The packages are about 130 MB each because the painted sheets and sound
+pieces now ship with the game. The remaining preview limits are unchanged:
+unsigned Windows installer, ad-hoc signed Mac app, and no complete
+human-versus-human playtest.
+
 ## Changes in preview.4
 
 - The waiting screen offers **Copy invite link** beside **Copy room code**.
