@@ -424,3 +424,90 @@ and 450 lumber that is a thin building, and now that mines are capped and
 lumber is the resource that gates farms and supply, a sawmill that actually
 increased the load a peasant carries would be the obvious counterpart to
 Deep Mining. Untested: it needs a rule, not a `scale:` variant.
+
+
+## The third league: what the changes did, and what they did not
+
+The same 1,056 matches under the new rules
+(`docs/evidence/balance/league-3.jsonl`, 1,040 decided). What the changes
+were aimed at, they hit:
+
+| | league 2 | league 3 |
+|---|---|---|
+| knight, value destroyed per 1,000 spent | 1,340 | 1,071 |
+| knight, destroyed per lost | 2.68 | 2.02 |
+| archer, value per 1,000 | 1,053 | 1,118 |
+| catapults bought in | 9% of seats | 17% |
+| workshops bought in | 16% | 31% |
+| catapult, destroyed per lost | 0.97 | 1.22 |
+| towers bought in | 83% | 58% |
+| tower, value per 1,000 | 2,488 | 1,662 |
+| halls built per seat | 0.30 | 0.39 |
+| minutes at the supply cap | 23% | 15% |
+| unspent bank at the end | 6,400 | 3,372 |
+| undecided matches | 63 | 16 |
+| median match | 8.5 min | 7.0 min |
+
+The knight is no longer the best thing per gold, archers trade better than
+footmen, the siege path is reached twice as often and its stones now trade
+above their cost, towers are bought in a quarter fewer games, brains expand
+a third more often, and matches are shorter and far more decisive. A league
+costs 3.4 core-hours where it cost 5.0.
+
+**And none of it changed the answer.** The equilibrium went from `mass` 61%
+/ `turtle` 39% to `turtle` 99.9% alone. Waiting still wins, and capping the
+mines did not punish it, because a cap binds on both players equally: the
+patient player expands too, and defends the expansion better.
+
+## What actually decides it: the map
+
+Breaking the same league down by layout says more than any price did:
+
+| layout | games | mines | `turtle` | `mass` | `rush` | `raiders` | `knights` |
+|--------|------:|------:|---------:|-------:|-------:|----------:|----------:|
+| plains | 660 | 7.6 | 87.3% | 87.3% | 30.9% | 26.4% | 61.8% |
+| crossings | 132 | 8.0 | 61.4% | 59.1% | 45.5% | 59.1% | 70.5% |
+| klondike | 132 | 8.0 | 50.0% | 54.5% | 36.4% | 40.9% | 63.6% |
+| bastion | 132 | 6.0 | 77.3% | 77.3% | 54.5% | 36.4% | 18.2% |
+
+On plains the patient postures take seven games in eight and raiding is the
+worst thing in the game. On klondike the same postures are merely average
+and the meta is flat. Raiders go from 26% to 59% between the two. Knights
+swing from 70% on crossings to 18% on bastion, where walls mean cavalry
+cannot get at anything.
+
+Two things follow.
+
+**The instrument was measuring plains.** Eight seeds drew plains five times
+and forest not at all, so five eighths of every number in this document is a
+statement about one layout. A `MatchSpec` now names its layout and the
+runner cycles all five, as it already cycled the map size. Every league from
+here is spread across the generator; these tables are not, and the
+per-layout rows above are 132 games each — a couple of dozen per posture,
+which is below the floor this project sets for believing anything. They say
+where to look, not what is true.
+
+**Balance is a map problem at least as much as a price problem.** The reason
+waiting wins on plains is that nothing is contested: seven or eight mines on
+open ground mean a player can take a second base without ever meeting the
+enemy, so an attack buys nothing an expansion does not buy more cheaply.
+Where mines are few or the ground is broken, aggression pays. The lever is
+in `mapgen`, not in `rules`: fewer mines on open maps, or mines placed so
+that the second one is between the players rather than behind them.
+
+## What to change next
+
+1. **Re-measure across the layouts**, now that a league can ask for them.
+   Every conclusion here is weighted towards plains and needs restating.
+2. **Make plains contest its mines** — fewer of them, or placed so a second
+   base is forward rather than behind. This is the change most likely to
+   move the equilibrium, and no price tried today came close.
+3. **Orcs.** After halving the speed modifiers the race ladder gives human
+   62.5%, elf 62.5%, dwarf 50.0% and orc 25.0% (96 matches, pro against pro,
+   every pair both ways): the dwarves recovered from 35% and the orcs fell.
+   Orcs train 10% slower for +15% hit points and −1 armour, and in a game
+   decided by who reaches the first clash with more, the slower trainer
+   loses. Trying the common training rate is the obvious next measurement.
+4. **The armour rule.** Raising the archer to six damage is a workaround for
+   a floor of one point against four armour. A rule that scales would make
+   the archer the counter the table promises without the patch.
