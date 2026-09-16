@@ -7,7 +7,7 @@ from warband.model import Event, Repair, Attack, AttackMove, Build, Harvest, Mov
 from warband.rules import BUILDINGS, SIM_DT, UNITS, BuildingType, UnitType
 from warband.races import RACES
 from warband.rules import Race
-from warband.scene import GameOverScene, GameScene, HelpScene, PauseScene, SettingsScene, new_game
+from warband.scene import GameOverScene, GameScene, HelpScene, LeaveScene, PauseScene, SettingsScene, new_game
 from warband.style import build_theme
 from warband.title import NewGameScene, TitleScene
 
@@ -577,6 +577,8 @@ def test_resigning_from_the_pause_menu_ends_in_defeat(play) -> None:
     press(game, "escape")
     assert isinstance(game.scene, PauseScene)
     press(game, "r")
+    assert isinstance(game.scene, LeaveScene), "resigning a rated match says what it costs first"
+    press(game, "return")
     tick(game, 0.5)
     assert isinstance(game.scene, GameOverScene)
     assert any("Defeat" in t for t in texts(game))

@@ -15,6 +15,7 @@ uv run warband --seed 3                          # play (python -m warband works
 uv run pytest -q                                 # headless suite, about four minutes
 uv run python -u tools/fuzz.py --games 2 --monkey 0 --seed 81   # AI matches with invariants + monkey input (needs -u)
 uv run python tools/verify.py DIR                # a match through real pyglet events, frames saved to look at
+uv run python tools/verify_profile.py DIR        # title card, profile, rating on the results, leave confirmations, a replay: frames to look at
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms)
 uv run python tools/step_bench.py --repeat 3     # model step times of the same battle without a window, with --profile
 uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening (the default report is about a minute)
@@ -49,7 +50,11 @@ real breakdown.
   rates them (1v1, free-for-all placements, jittered rulebooks,
   Bradley-Terry ratings on the Elo scale), `worker_ai.py`/`worker_knowledge.py` the
   automatic gatherers, `settlement.py`/`production.py` building plans and the
-  command card, `scores.py` the local top ten.
+  command card, `scores.py` the local top ten, `profile.py` the player's name,
+  results and Glicko-updated rating on the ladder's Elo scale plus the
+  standing rule for leaving a match, `replay.py` the recording of a match (the
+  start world plus the order log `@recorded` fills in `model.py`), its playback
+  and the replay store.
 - `warband/textures.py` renders ground, props, buildings and units through
   `sagaforge.render3d`; units have nine frames per facing (stand, a four-step
   walk, a four-phase blow) posed by one `Pose` table. A unit whose subject has a
@@ -72,7 +77,10 @@ real breakdown.
   `wreckage/` (Stable Audio 3 through `sagaforge.foley`; `pieces.py` reads them;
   provenance in each folder's manifest, the procedure in `docs/warband-pieces.md`).
 - `warband/scene.py`, `title.py`, `tutorial.py`, `icons.py`, `style.py`,
-  `score_scene.py` — the saga2d scenes. `multiplayer.py` is the LAN/online
+  `score_scene.py`, `profile_scene.py`, `replay_scene.py` — the saga2d scenes
+  (the title carries the player's card; `LeaveScene` in `scene.py` is the
+  confirmation every way out of an undecided rated match goes through;
+  `ReplayScene` plays a recording back). `multiplayer.py` is the LAN/online
   match; its `ONLINE` table registers `warband-v2` with `saga2d.server`.
   `online_ai.py` is the headless AI client that can sit in a room.
 - `packaging/package_check.py` — the diagnostics the frozen app runs.
@@ -104,6 +112,10 @@ real breakdown.
 - Check what the player can reach through the UI, not only what the rules
   allow (the build card once offered four of nine buildings while the model
   tests passed).
+- Every order a player or brain gives the world goes through a `@recorded`
+  World method, never a direct mutation or a helper called on the world from
+  outside, or replays stop reproducing the match; `tests/warband/test_replay.py`
+  checks playback to the bit on several seeds.
 - Tests use the mock backend (`game`/`backend` fixtures from
   `saga2d.testing.fixtures`), public behaviour only; fixtures use
   `save_dir=tmp_path / "saves"` because `data_dir` is its parent.

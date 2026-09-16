@@ -152,10 +152,12 @@ class _Shot:
 
 
 class MapView:
-    def __init__(self, scene: Scene, world: World, player: int) -> None:
+    def __init__(self, scene: Scene, world: World, player: int, *, reveal: bool = False) -> None:
+        """The map as *player* sees it, or the whole of it when *reveal* is set (a replay watched from above)."""
         self.scene = scene
         self.world = world
         self.player = player
+        self.reveal = reveal
         self.game: Game = scene.game
         self.time = 0.0
         textures.register_static(self.game)
@@ -339,8 +341,14 @@ class MapView:
             self._minimap_time = self.time
             self.game.assets.update_image(self.minimap_key, self._minimap_image())
 
+    def set_reveal(self, reveal: bool) -> None:
+        """Show the whole map, or only what the player sees; the fog and minimap follow on the next sync."""
+        self.reveal = reveal
+        self._vision_tick = -1
+        self._minimap_time = -1.0
+
     def _known(self, building: Building) -> bool:
-        return building.player == self.player or any(self.world.is_explored(self.player, t) for t in building.tiles())
+        return self.reveal or building.player == self.player or any(self.world.is_explored(self.player, t) for t in building.tiles())
 
     def _sync_buildings(self) -> None:
         world = self.world
@@ -377,7 +385,7 @@ class MapView:
     def _sync_smoke(self, b: Building, sprite: Sprite) -> None:
         """A damaged building smoulders under half health and burns under a quarter: smoke from the
         roof, then flames licking up from it."""
-        seen = b.done and b.type is not BuildingType.GOLD_MINE and self.world.is_visible(self.player, (int(b.center[0]), int(b.center[1])))
+        seen = b.done and b.type is not BuildingType.GOLD_MINE and (self.reveal or self.world.is_visible(self.player, (int(b.center[0]), int(b.center[1]))))
         wx, wy = to_world(b.center)
         roof = (wx, wy - b.size * TILE * 0.5)
         self._toggle_emitter(self._smoke, b.id, seen and b.hp < b.max_hp / 2, lambda: ParticleEmitter(
@@ -414,7 +422,7 @@ class MapView:
             self._travel[u.id] = self._travel.get(u.id, 0.0) + math.hypot(u.x - last[0], u.y - last[1])
             self._last_pos[u.id] = u.pos
             sprite = self._units.get(u.id)
-            shown = not u.hidden and (u.player == self.player or world.is_visible(self.player, u.tile))
+            shown = not u.hidden and (self.reveal or u.player == self.player or world.is_visible(self.player, u.tile))
             if not shown:
                 if sprite is not None:
                     sprite.visible = False
@@ -509,6 +517,8 @@ class MapView:
         visible = np.frombuffer(bytes(world.visible[self.player]), dtype=np.uint8).reshape(shape)
         explored = np.frombuffer(bytes(world.explored[self.player]), dtype=np.uint8).reshape(shape)
         alpha = np.where(visible > 0, 0, np.where(explored > 0, FOG_EXPLORED, 255)).astype(np.uint8)
+        if self.reveal:
+            alpha[:] = 0
         rgba = np.empty((*shape, 4), dtype=np.uint8)
         rgba[..., 0], rgba[..., 1], rgba[..., 2] = FOG_COLOR
         rgba[..., 3] = alpha
@@ -524,6 +534,8 @@ class MapView:
         shape = (world.height, world.width)
         visible = np.frombuffer(bytes(world.visible[self.player]), dtype=np.uint8).reshape(shape) > 0
         explored = np.frombuffer(bytes(world.explored[self.player]), dtype=np.uint8).reshape(shape) > 0
+        if self.reveal:
+            visible[:] = explored[:] = True
         img = self._minimap_terrain() * np.where(visible, 1.0, np.where(explored, 0.6, 0.18))[..., None]
         for b in world.buildings.values():
             if not self._known(b):

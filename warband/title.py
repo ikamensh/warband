@@ -17,10 +17,11 @@ from warband import mapgen
 from warband.model import World
 from warband.races import RACES
 from warband.ai import DIFFICULTY_ELO, DIFFICULTY_NOTES
+from warband.profile import Profile, plural
 from warband.rules import BuildingType, Difficulty, Layout, MapTheme, Race
 from warband.scene import SAVE_SLOTS, HelpScene, SaveBrowserScene, load_game, new_game
 from warband.sound import play_music, play_sound
-from warband.style import ACTION_BUTTON, GHOST_BUTTON, MENU_BUTTON, OVERLAY_STYLE
+from warband.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MENU_BUTTON, MUTED, OVERLAY_STYLE, PANEL_STYLE
 from warband.textures import TILE
 from warband.view import MapView, minimap_terrain, to_world
 
@@ -51,11 +52,13 @@ def preview_image(world: World) -> PilImage.Image:
     pixels = np.repeat(np.repeat(img.clip(0, 255).astype(np.uint8), scale, 0), scale, 1)
     return PilImage.fromarray(pixels, "RGB")
 DRIFT_SECONDS = 24.0
+CARD_WIDTH = 400
+RECENT = 4  # results shown on the title card
 
 
 class TitleScene(Scene):
     background_color = (8, 10, 14, 255)
-    controls = {("n", "return"): "new_game", "c": "continue_game", "l": "load_game", "b": "high_scores", "h": "how_to_play", "q": "quit"}
+    controls = {("n", "return"): "new_game", "c": "continue_game", "l": "load_game", "p": "profile_screen", "b": "high_scores", "h": "how_to_play", "q": "quit"}
 
     def __init__(self, *, size: str = "Medium", players: int = 2, difficulty: Difficulty = Difficulty.MEDIUM, theme: MapTheme = MapTheme.SUMMER,
                  race: Race = Race.HUMAN, layout: Layout | None = None, settings: dict[str, Any] | None = None) -> None:
@@ -70,8 +73,14 @@ class TitleScene(Scene):
         self.time = 0.0
         self._stop = 0
         self.notice = ""
+        self.profile: Profile | None = None
+        self.profile_error = ""
 
     def on_enter(self) -> None:
+        try:
+            self.profile = Profile.load(self.game.data_dir)
+        except SaveError as error:
+            self.profile, self.profile_error = None, str(error)
         seed = mapgen.fresh_seed()
         width, height = mapgen.SIZES["Medium"]
         self.backdrop = mapgen.generate(seed=seed, width=width, height=height, players=2, theme=random.choice(list(MapTheme)))
@@ -96,9 +105,9 @@ class TitleScene(Scene):
         return max(entries, key=lambda e: e["timestamp"])["slot"] if entries else None
 
     def _build_menu(self) -> None:
+        """The menu on the left, the player's card on the right, under the title."""
         newest = self._newest_save()
-        menu = Column(spacing=10, anchor=Anchor.CENTER, margin=0)
-        menu.add(Label("", height=150))
+        menu = Column(spacing=10, margin=0)
         menu.add(Button("New game", hotkey="N", on_click=self.new_game, style=ACTION_BUTTON, width=300))
         cont = Button("Continue", hotkey="C", on_click=self.continue_game, style=MENU_BUTTON, width=300)
         cont.enabled = newest is not None
@@ -110,8 +119,39 @@ class TitleScene(Scene):
         menu.add(Button("Quit", hotkey="Q", on_click=self.quit, style=MENU_BUTTON, width=300))
         where = f"slot {newest}" if isinstance(newest, int) else f"the {newest}" if newest else None
         menu.add(Label(f"Continue resumes {where}" if where else "No saved game yet — the match autosaves every two minutes", text_style="caption"))
-        self.ui.add(menu)
+        self._block = Column(Label("", height=150), Row(menu, self._card(), spacing=36), spacing=0, anchor=Anchor.CENTER, margin=0)
+        self.ui.add(self._block)
         self.ui.add(Label("Every command has a hotkey — the keycaps show them · F1 in game for help", text_style="caption", anchor=Anchor.BOTTOM_CENTER, margin=12))
+
+    def _card(self) -> Column:
+        """Who is playing and how they stand: name, rating, record and the last few results."""
+        card = Column(spacing=8, margin=0, width=CARD_WIDTH, style=PANEL_STYLE)
+        if self.profile is None:
+            card.add(Label("Profile unavailable", text_style="heading", text_color=BAD))
+            card.add(Label(self.profile_error, text_style="sub", text_color=BAD, width=CARD_WIDTH - 24, wrap=True))
+            card.add(Label("The profile file has been preserved.", text_style="sub"))
+            return card
+        profile = self.profile
+        rating = profile.rating
+        counts = profile.counts()
+        card.add(Label(profile.name, text_style="title"))
+        card.add(Label(f"Rating {rating}" + (" · provisional" if rating.provisional else ""), text_style="heading", text_color=GOLD))
+        history = profile.history()
+        if not history:
+            card.add(Label("No rated matches yet. Beat the computer to earn a rating;\nleaving a match early counts against it.",
+                           text_style="sub", width=CARD_WIDTH - 24, wrap=True))
+        else:
+            card.add(Label(f"{plural(counts['victories'], 'victory', 'victories')} · {plural(counts['defeats'], 'defeat')} · {counts['left']} left early",
+                           text_style="body"))
+            for change in reversed(history[-RECENT:]):
+                result = change.result
+                outcome = {"victory": "Victory", "defeat": "Defeat", "resigned": "Resigned", "left": "Left"}[result.outcome]
+                color = GOOD if change.delta > 0 else BAD if change.delta < 0 else MUTED
+                card.add(Row(Label(f"{change.delta:+d}", text_style="body", text_color=color, width=48),
+                             Label(f"{outcome} · {result.difficulty.title()} · {result.opponents + 1} players · {result.played_at[:10]}", text_style="sub", width=CARD_WIDTH - 90),
+                             spacing=6))
+        card.add(Button("Profile & replays", hotkey="P", on_click=self.profile_screen, style=MENU_BUTTON, width=CARD_WIDTH - 24))
+        return card
 
     def update(self, dt: float) -> None:
         self.time += dt
@@ -120,7 +160,7 @@ class TitleScene(Scene):
     def draw(self) -> None:
         w, h = self.game.resolution
         self.draw_rect(0, 0, w, h, (6, 8, 14, 150))
-        cy = h / 2 - 190  # the title and its tagline sit above the menu, which is centred and 150 px shorter than its spacer suggests
+        cy = self._block.bounds[1] + 58  # the title and its tagline fill the spacer at the top of the centred menu block
         for spread, alpha in ((3, 50), (2, 80)):
             self.draw_text("WARBAND", w / 2 + spread, cy + spread, style="hero", color=(0, 0, 0, alpha), anchor_x="center", anchor_y="center")
         self.draw_text("WARBAND", w / 2, cy, style="hero", anchor_x="center", anchor_y="center")
@@ -175,6 +215,12 @@ class TitleScene(Scene):
     def how_to_play(self) -> None:
         self.sfx("button")
         self.game.push(HelpScene())
+
+    def profile_screen(self) -> None:
+        from warband.profile_scene import ProfileScene
+
+        self.sfx("button")
+        self.game.push(ProfileScene(settings=self.settings, error=self.profile_error))
 
     def high_scores(self) -> None:
         from warband.score_scene import HighScoreScene

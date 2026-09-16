@@ -151,6 +151,11 @@ def fold(results: Iterable[MatchResult]) -> Rating:
     return rating
 
 
+def plural(count: int, noun: str, nouns: str | None = None) -> str:
+    """``1 defeat``, ``2 defeats``."""
+    return f"{count} {noun if count == 1 else nouns or noun + 's'}"
+
+
 def default_name() -> str:
     """The account's login name, or Warlord when there is none to read."""
     try:

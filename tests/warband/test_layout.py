@@ -6,7 +6,11 @@ from saga2d import Game
 from saga2d.testing import assert_no_text_overlap, assert_text_fits, text_boxes
 from warband.rules import BuildingType, Race, UnitType
 from warband.model import tile_center
-from warband.scene import CodexScene, GameOverScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game
+from warband.profile import EARLY_EXIT_WEIGHT, MatchResult, Profile, standing
+from warband.profile_scene import NameScene, ProfileScene
+from warband.replay import Replay, ReplayStore
+from warband.replay_scene import ReplayEndScene, ReplayScene
+from warband.scene import CodexScene, GameOverScene, HelpScene, LeaveScene, PauseScene, SaveBrowserScene, SettingsScene, new_game
 from warband.score_scene import HighScoreScene
 from warband.style import build_theme
 from warband.title import NewGameScene, TitleScene
@@ -33,8 +37,41 @@ def match(game: Game, races=None):
     return scene
 
 
+def rated(game: Game) -> Profile:
+    """A profile with a few results and a replay of the last one, so the card and the profile screen have rows to lay out."""
+    profile = Profile.load(game.data_dir)
+    profile.rename("Ilya the Bold, o")
+    for i, (outcome, difficulty, weight) in enumerate([("victory", "medium", 1.0), ("defeat", "hard", 1.0), ("left", "master", EARLY_EXIT_WEIGHT),
+                                                        ("victory", "master", 1.0), ("resigned", "easy", 1.0)]):
+        profile.record(MatchResult(f"match-{i}", f"2026-09-1{i}T10:00:00+00:00", outcome, weight,
+                                   "left with no enemy at the gates and no material disadvantage: 0.2 of a loss" if outcome == "left" else "",
+                                   difficulty, 1000, 1 + i % 3, "orc", 64, 48, "winter", "forest", 100 + i, 600 + 90 * i, i == 4))
+    scene = new_game(seed=5)
+    replay = Replay.begin(scene.world, seed=5, difficulty=scene.difficulty, human=scene.human)
+    for _ in range(20):
+        scene.world.step()
+    replay.finish(scene.world, "resigned")
+    ReplayStore(game.data_dir).save("match-4", replay, {})
+    return profile
+
+
+def replay(game: Game) -> ReplayScene:
+    rated(game)
+    scene = ReplayScene(ReplayStore(game.data_dir).load("match-4"))
+    game.push(scene)
+    settle(game)
+    return scene
+
+
 SCREENS = {
     "title": lambda game: game.push(TitleScene()),
+    "title with a record": lambda game: (rated(game), game.push(TitleScene())),
+    "profile": lambda game: (rated(game), game.push(TitleScene()), settle(game), game.push(ProfileScene())),
+    "empty profile": lambda game: (game.push(TitleScene()), settle(game), game.push(ProfileScene())),
+    "rename": lambda game: (p := rated(game), game.push(TitleScene()), settle(game), game.push(NameScene(p))),
+    "leave": lambda game: (s := match(game), game.push(LeaveScene(s, standing(s.world, s.human), "Back to title", lambda: None))),
+    "replay": replay,
+    "replay over": lambda game: (s := replay(game), setattr(s, "skipping", True), settle(game, 12)),
     "new game": lambda game: (game.push(TitleScene()), settle(game), game.push(NewGameScene(game.scene))),
     "match, twelve units selected, a warning, the tutorial": match,
     "build menu": lambda game: (match(game), game.scene.select([next(u.id for u in game.scene.world.player_units(game.scene.human) if u.is_worker)]), game.scene.open_build_menu()),

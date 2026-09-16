@@ -14,7 +14,10 @@ each with a passive mechanic and two arts of its own
 trees; farms feed the army; a barracks, lumber mill, blacksmith, stables,
 workshop and church open seven units and the upgrades; guard towers hold the
 line. Four AI difficulties expand, upgrade, raid and attack; Master plays one of two postures, drawn with the map.
-Every finished match is scored into a local top ten. A command card of
+Every finished match is scored into a local top ten and rated into the
+player's profile — an Elo-scale rating estimated against the difficulty
+ladder, with every match's replay kept to watch again
+([docs/warband-profile.md](docs/warband-profile.md)). A command card of
 portraits and emblems with keycaps, control groups, patrol, camera bookmarks,
 a minimap that pans and orders, three save slots with an autosave, a tutorial
 strip, a codex, a synthesised march per race, and the fallen lying where they
@@ -37,7 +40,8 @@ uv run warband
 `uv run` creates `.venv`, fetches Python and the dependencies when they are
 missing, and opens the title screen; the first start also synthesises the
 sounds and music. **New game** picks map, players, difficulty and race,
-**Continue** resumes the autosave. Saga2D comes from PyPI at the version pinned
+**Continue** resumes the autosave, **Profile & replays** shows your rating,
+record and the replays of your matches. Saga2D comes from PyPI at the version pinned
 in `pyproject.toml` and `uv.lock`. The asset library remains an editable path
 dependency. Update the game and asset checkout, then start again:
 
