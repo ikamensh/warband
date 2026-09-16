@@ -1,10 +1,11 @@
 # Warband — agent notes
 
 A Warcraft 2-style real-time strategy game, the second reference game of the
-Saga stack (`~/saga/`, see `../AGENTS.md`). The framework is `../saga2d` and
-procedural assets come from `../sagaforge`, both path dependencies: a change
-there shows up here at once, so run this suite after touching them. The hosted
-server and website live in `../saga-online`.
+Saga stack (`~/saga/`, see `../AGENTS.md`). Saga2D is a pinned PyPI release;
+its source lives in `../saga2d`. Upgrade it deliberately in `pyproject.toml`
+and `uv.lock`, then run this suite. Procedural assets come from `../sagaforge`
+as an editable path dependency, so run this suite after changing that library.
+The hosted server and website live in `../saga-online`.
 
 ## Commands
 
