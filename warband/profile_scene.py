@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from saga2d import Button, Column, InputEvent, Label, Row, SaveError, Style
-from warband.profile import Profile, RatingChange, plural
+from warband.profile import OUTCOME_NAMES, Profile, RatingChange, plural
 from warband.races import RACES
 from warband.replay import ReplayStore
 from warband.rules import Race
@@ -14,7 +14,6 @@ from warband.scene import _Overlay, _clock
 from warband.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MUTED, RESULTS_STYLE
 
 PAGE = 8
-OUTCOME_NAMES = {"victory": "Victory", "defeat": "Defeat", "resigned": "Resigned", "left": "Left"}
 #: Keys a name may be typed from, besides letters and digits.
 NAME_KEYS = {"space": " ", "minus": "-", "period": ".", "apostrophe": "'", "underscore": "_"}
 
@@ -82,8 +81,10 @@ class ProfileScene(_Overlay):
                        for name, width in zip(("Date", "Result", "Against", "Players", "Race", "Map", "Time", "Rating", "Replay"), widths)), spacing=10))
         for change in changes[self.page * PAGE:(self.page + 1) * PAGE]:
             run_id = change.result.run_id
-            replay = self._replay_controls(run_id, widths[-1]) if self.store.exists(run_id) else Label("—", text_style="sub", width=widths[-1], height=24)
-            rows.add(Row(*self._cells(change, widths, newest=change is changes[0]), replay, spacing=10))
+            newest = change is changes[0]
+            replay = (self._replay_controls(run_id, widths[-1], latest=newest) if self.store.exists(run_id)
+                      else Label("—", text_style="sub", width=widths[-1], height=24))
+            rows.add(Row(*self._cells(change, widths, newest=newest), replay, spacing=10))
         if changes:
             newest = changes[0]
             if newest.result.reason:
@@ -110,8 +111,7 @@ class ProfileScene(_Overlay):
                   GOOD if change.delta > 0 else BAD if change.delta < 0 else None]
         return [Label(value, text_style="body", width=width, height=24, text_color=color) for value, width, color in zip(values, widths, colors)]
 
-    def _replay_controls(self, run_id: str, width: int) -> Row:
-        latest = self._changes() and self._changes()[0].result.run_id == run_id
+    def _replay_controls(self, run_id: str, width: int, *, latest: bool) -> Row:
         return Row(Button("Watch", shortcut="W" if latest else None, on_click=lambda: self.watch(run_id), style=ACTION_BUTTON, width=96),
                    Button("Delete", on_click=lambda: self.delete(run_id), style=GHOST_BUTTON, width=84), spacing=8, width=width, style=Style(padding=0))
 

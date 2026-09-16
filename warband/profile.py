@@ -36,6 +36,7 @@ MATERIAL_MARGIN = 0.9  # under this share of the strongest rival's material, the
 GATES = 8.0  # tiles: an enemy fighter this close to one of your buildings is at your gates
 NAME_LENGTH = 16
 OUTCOMES = ("victory", "defeat", "resigned", "left")
+OUTCOME_NAMES = {"victory": "Victory", "defeat": "Defeat", "resigned": "Resigned", "left": "Left"}
 _Q = math.log(10) / 400
 
 

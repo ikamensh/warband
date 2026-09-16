@@ -17,7 +17,7 @@ from warband import mapgen
 from warband.model import World
 from warband.races import RACES
 from warband.ai import DIFFICULTY_ELO, DIFFICULTY_NOTES
-from warband.profile import Profile, plural
+from warband.profile import OUTCOME_NAMES, Profile, plural
 from warband.rules import BuildingType, Difficulty, Layout, MapTheme, Race
 from warband.scene import SAVE_SLOTS, HelpScene, SaveBrowserScene, load_game, new_game
 from warband.sound import play_music, play_sound
@@ -145,10 +145,10 @@ class TitleScene(Scene):
                            text_style="body"))
             for change in reversed(history[-RECENT:]):
                 result = change.result
-                outcome = {"victory": "Victory", "defeat": "Defeat", "resigned": "Resigned", "left": "Left"}[result.outcome]
                 color = GOOD if change.delta > 0 else BAD if change.delta < 0 else MUTED
                 card.add(Row(Label(f"{change.delta:+d}", text_style="body", text_color=color, width=48),
-                             Label(f"{outcome} · {result.difficulty.title()} · {result.opponents + 1} players · {result.played_at[:10]}", text_style="sub", width=CARD_WIDTH - 90),
+                             Label(f"{OUTCOME_NAMES[result.outcome]} · {result.difficulty.title()} · {result.opponents + 1} players · {result.played_at[:10]}",
+                                   text_style="sub", width=CARD_WIDTH - 90),
                              spacing=6))
         card.add(Button("Profile & replays", hotkey="P", on_click=self.profile_screen, style=MENU_BUTTON, width=CARD_WIDTH - 24))
         return card
