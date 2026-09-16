@@ -38,7 +38,7 @@ from warband import mapgen
 from warband.ai import make_brain
 from warband.model import World
 from warband.races import RACES
-from warband.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Difficulty, Race, SIM_DT, UnitType, Upgrade
+from warband.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Difficulty, MapTheme, Race, SIM_DT, UnitType, Upgrade
 
 ELO_SCALE = 400.0 / math.log(10.0)  # Elo points per unit of Bradley-Terry log-strength
 DEFAULT_MINUTES = 20.0
@@ -242,6 +242,10 @@ class MatchSpec:
     width: int = 48
     height: int = 40
     races: tuple[str, ...] | None = None  # race value per player; None draws them from the seed
+    theme: str = MapTheme.SUMMER.value
+    # The layout is always drawn from the seed, so a ladder spans all five of
+    # them without being told to. Size and land are not, so they are spelled
+    # out here and varied per seed by the runner.
 
     @property
     def players(self) -> int:
@@ -321,7 +325,7 @@ def playable(spec: MatchSpec) -> bool:
     """
     try:
         mapgen.generate(seed=spec.seed, width=spec.width, height=spec.height,
-                        players=spec.players, human=None)
+                        players=spec.players, human=None, theme=MapTheme(spec.theme))
     except ValueError:
         return False
     return True
@@ -332,7 +336,7 @@ def play(spec: MatchSpec) -> MatchResult:
     ensure_variant(spec.variant)
     races = tuple(Race(r) for r in spec.races) if spec.races is not None else None
     world = mapgen.generate(seed=spec.seed, width=spec.width, height=spec.height, players=spec.players,
-                            human=None, races=races)
+                            human=None, theme=MapTheme(spec.theme), races=races)
     agents = [make_agent(name, player) for player, name in enumerate(spec.agents)]
     # A stream per player: whose turn it is to draw must not depend on who else is playing.
     rngs = [random.Random(spec.seed * 1000003 + player) for player in range(spec.players)]
@@ -365,6 +369,11 @@ def register_profiles(profiles: Sequence[tuple[str, object]]) -> None:
     for name, profile in profiles:
         if name not in AGENTS:
             register(name, lambda player, p=profile: ProBrain(player, p))
+
+
+#: The order :func:`play_spec_tuple` expects, and the only thing that crosses
+#: a process boundary.
+SPEC_FIELDS = ("seed", "agents", "variant", "minutes", "width", "height", "races", "theme")
 
 
 def play_spec_tuple(packed: tuple) -> MatchResult:

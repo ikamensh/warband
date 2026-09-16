@@ -327,7 +327,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "pillow", specifier = ">=12.1.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.2" },
-    { name = "saga2d", marker = "extra == 'dev'", editable = "../saga2d" },
+    { name = "saga2d", marker = "extra == 'dev'", specifier = "==0.2.0" },
 ]
 provides-extras = ["dev"]
 

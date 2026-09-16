@@ -23,8 +23,22 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from warband import arena  # noqa: E402
+from warband import arena, mapgen  # noqa: E402
 from warband.arena import AGENTS, MatchResult, MatchSpec, playable, rate, win_rate  # noqa: E402
+
+
+#: Sizes a ladder walks through, one per seed. The layout is drawn from the
+#: seed by mapgen itself, so all five appear without being asked for. The land
+#: is not varied: summer, winter and wasteland generate identical terrain —
+#: same trees, grass, rock and water, tile for tile — and differ only in how
+#: they are drawn, so cycling them would buy a ladder nothing.
+SIZES = list(mapgen.SIZES.values())
+
+
+def _board(seed: int) -> dict:
+    """The size this seed is played on, so both corners share a map."""
+    width, height = SIZES[seed % len(SIZES)]
+    return {"width": width, "height": height}
 
 
 def specs_1v1(agents: list[str], seeds: range, variant: str, minutes: float) -> list[MatchSpec]:
@@ -32,8 +46,9 @@ def specs_1v1(agents: list[str], seeds: range, variant: str, minutes: float) -> 
     out = []
     for a, b in itertools.combinations(agents, 2):
         for seed in seeds:
-            out.append(MatchSpec(seed=seed, agents=(a, b), variant=variant, minutes=minutes))
-            out.append(MatchSpec(seed=seed, agents=(b, a), variant=variant, minutes=minutes))
+            board = _board(seed)
+            out.append(MatchSpec(seed=seed, agents=(a, b), variant=variant, minutes=minutes, **board))
+            out.append(MatchSpec(seed=seed, agents=(b, a), variant=variant, minutes=minutes, **board))
     return out
 
 
@@ -43,8 +58,9 @@ def specs_ffa(agents: list[str], seeds: range, players: int, variant: str, minut
     for group in itertools.combinations(agents, players):
         for seed in seeds:
             for turn in range(players):
-                spec = MatchSpec(seed=seed, agents=group, variant=variant, minutes=minutes,
-                                 width=64, height=56)
+                board = _board(seed)
+                board["width"] = max(board["width"], 64)  # four players need room
+                spec = MatchSpec(seed=seed, agents=group, variant=variant, minutes=minutes, **board)
                 out.append(spec.rotated(turn))
     return out
 
@@ -68,8 +84,7 @@ def drop_unfair(specs: list[MatchSpec]) -> list[MatchSpec]:
 def run(specs: list[MatchSpec], workers: int, label: str) -> list[MatchResult]:
     specs = drop_unfair(specs)
     started = time.perf_counter()
-    packed = [tuple(s.__dict__[f] for f in ("seed", "agents", "variant", "minutes", "width", "height", "races"))
-              for s in specs]
+    packed = [tuple(s.__dict__[f] for f in arena.SPEC_FIELDS) for s in specs]
     results: list[MatchResult] = []
     if workers <= 1:
         for p in packed:

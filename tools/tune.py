@@ -70,8 +70,7 @@ def score(candidate: ProProfile, against: list[str], seeds: range, workers: int,
         for seed in seeds:
             specs.append(MatchSpec(seed=seed, agents=("candidate", opponent), minutes=minutes))
             specs.append(MatchSpec(seed=seed, agents=(opponent, "candidate"), minutes=minutes))
-    packed = [tuple(s.__dict__[f] for f in ("seed", "agents", "variant", "minutes", "width", "height", "races"))
-              for s in specs]
+    packed = [tuple(s.__dict__[f] for f in arena.SPEC_FIELDS) for s in specs]
     context = mp.get_context("spawn")
     with context.Pool(workers, initializer=arena.register_profiles,
                       initargs=([("candidate", candidate)],)) as pool:

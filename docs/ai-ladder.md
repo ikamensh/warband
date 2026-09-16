@@ -13,6 +13,26 @@ numbers here come from a few hundred.
 
 The ladder is `warband/arena.py`, driven by `tools/arena.py`.
 
+## The maps a ladder is played on
+
+A rating from one map is a rating of very little, so a ladder walks the map
+generator rather than a map:
+
+* **Layout** is drawn from the seed by `mapgen` itself, so a few dozen seeds
+  meet all five — plains, forest, crossings, klondike, bastion — without the
+  runner asking for anything.
+* **Size** is cycled per seed across all three (48×40, 64×48, 80×64). Both
+  corners of a seed share a board, or the side swap would not be a swap.
+* **Land** is not varied, and deliberately: summer, winter and wasteland
+  generate identical terrain tile for tile and differ only in how they are
+  drawn. A test pins that, so if it ever stops being true the ladder should
+  start cycling it.
+
+Map size turns out to matter to the ratings: Master measures 1561 on 48×40
+alone and 1489 across all three sizes, and Hard 1299 against 1222. The brain
+is a little tuned to the small map it was developed on, and the honest number
+is the one across all of them, which is what the New game screen shows.
+
 ## Running it
 
 ```bash
@@ -63,17 +83,17 @@ say "it never lost".
 
 ## The difficulty settings
 
-What the New game screen offers, and what each one is worth. 80 seeds, both
-corners, 960 games, Medium anchored at 1000:
+What the New game screen offers, and what each one is worth. 60 seeds, both
+corners, every map size, 720 games, Medium anchored at 1000:
 
 | setting | Elo | 90% interval | plays |
 |---------|-----|--------------|-------|
-| Easy | 814 | 765 .. 854 | `ai.Brain`, the Easy profile |
+| Easy | 694 | 625 .. 748 | `ai.Brain`, the Easy profile |
 | Medium | 1000 | — | `ai.Brain`, what Normal and Hard both were |
-| Hard | 1299 | 1257 .. 1349 | `pro_ai.ProBrain`, `pro-hard` |
-| Master | 1561 | 1495 .. 1635 | `pro_ai.ProBrain`, `pro` |
+| Hard | 1222 | 1171 .. 1268 | `pro_ai.ProBrain`, `pro-hard` |
+| Master | 1489 | 1425 .. 1556 | `pro_ai.ProBrain`, `pro` |
 
-Each beats the one below it 72%, 84%, 86% of the time — a real step every
+Each beats the one below it 86%, 77%, 83% of the time — a real step every
 time, which the old three settings did not have: Normal and Hard measured 994
 and 1000 and split their games 55/45. They are one setting now, and the
 screen shows each rating beside its button so the choice is not a guess.

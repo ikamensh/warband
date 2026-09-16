@@ -193,3 +193,52 @@ def test_a_seed_with_no_fair_map_is_reported_rather_than_raised():
     assert playable(MatchSpec(seed=1000, agents=("hard", "hard")))
     # Whatever the answer for a given seed, asking must not raise.
     assert playable(MatchSpec(seed=6005, agents=("hard", "hard"))) in (True, False)
+
+
+def test_a_ladder_is_played_across_the_map_generator_not_one_map():
+    """An agent rated on one layout, one size and one land is rated on very little.
+
+    mapgen draws the layout from the seed on its own; size and land are the
+    runner's job, and this pins that it does it.
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
+    from arena import specs_1v1
+
+    from warband import mapgen
+
+    specs = specs_1v1(["easy", "medium"], range(4000, 4030), "standard", 20.0)
+    assert {(s.width, s.height) for s in specs} == set(mapgen.SIZES.values()), "every map size"
+    # Both corners of a seed must be the same board, or the swap is not a swap.
+    for spec in specs:
+        twin = next(o for o in specs if o.seed == spec.seed and o.agents == spec.agents[::-1])
+        assert (twin.width, twin.height, twin.theme) == (spec.width, spec.height, spec.theme)
+
+
+def test_the_land_is_cosmetic_so_a_ladder_need_not_vary_it():
+    """Summer, winter and wasteland generate the same terrain tile for tile."""
+    from collections import Counter
+
+    from warband import mapgen
+    from warband.rules import MapTheme
+
+    counts = set()
+    for theme in MapTheme:
+        world = mapgen.generate(seed=16000, players=2, human=None, theme=theme)
+        counts.add(tuple(sorted(Counter(cell for row in world.terrain for cell in row).items(),
+                                key=lambda kv: kv[0].value)))
+    assert len(counts) == 1, "if this ever fails, the ladder should start varying the land"
+
+
+def test_the_layout_comes_from_the_seed_so_a_ladder_sees_all_of_them():
+    from warband import mapgen
+    from warband.arena import MatchSpec, playable
+
+    drawn = set()
+    for seed in range(15000, 15060):
+        spec = MatchSpec(seed=seed, agents=("easy", "medium"))
+        if playable(spec):
+            drawn.add(mapgen.generate(seed=seed, players=2, human=None).layout)
+    assert len(drawn) >= 4, f"a ladder should meet most layouts, saw {drawn}"

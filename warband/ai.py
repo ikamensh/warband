@@ -138,14 +138,14 @@ def make_brain(player: int, difficulty: Difficulty):
 PRO_FOR: dict[Difficulty, str] = {Difficulty.HARD: "pro-hard", Difficulty.MASTER: "pro"}
 
 #: What each setting is worth, measured on the ladder and anchored at Medium =
-#: 1000. Produced by ``tools/arena.py``; the games behind the numbers are in
-#: ``docs/ai-ladder.md``. Shown on the New game screen so a player can see what
+#: 1000, over every map size and all five layouts. Produced by
+#: ``tools/arena.py``; the games behind the numbers are in ``docs/ai-ladder.md``. Shown on the New game screen so a player can see what
 #: they are picking rather than guess from a word.
 DIFFICULTY_ELO: dict[Difficulty, int] = {
-    Difficulty.EASY: 810,
+    Difficulty.EASY: 690,
     Difficulty.MEDIUM: 1000,
-    Difficulty.HARD: 1300,
-    Difficulty.MASTER: 1560,
+    Difficulty.HARD: 1220,
+    Difficulty.MASTER: 1490,
 }
 
 #: One line per setting, for the same screen.

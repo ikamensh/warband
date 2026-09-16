@@ -104,8 +104,8 @@ PRO = ProProfile("pro")
 #: The Hard difficulty: the same brain as Master, thinking once every second
 #: and a half on a small economy, without raiders, scouts or expansions, and
 #: back on the cautious posture Master gave up. It exists to put a real step
-#: between Medium and Master — measured at 1299 Elo against Medium's 1000 and
-#: Master's 1561 — not to be the best player available.
+#: between Medium and Master — measured at 1222 Elo against Medium's 1000 and
+#: Master's 1489 — not to be the best player available.
 PRO_HARD = replace(PRO, name="pro-hard", think_every=1.5, combat_every=0.5, workers_per_mine=6,
                    barracks_per_hall=1, max_sites=2, raid=False, retreat_wounded=False, scout=False,
                    expand=False, min_army=10, attack_ratio=1.6, symmetry_prior=1.0, guards=2)
