@@ -329,6 +329,20 @@ brain plays every race by the same numbers. A quarter of the games on the
 ladder are decided by that draw before either brain moves, which caps what
 any posture change can take — and is where the next rung has to come from.
 
+### The scout that never left
+
+Tracing a tower rush on Master's mine turned up why every profile attacks
+blind: the peasant drafted as the scout keeps the harvest order it was
+drafted with, the ring move is only given to a scout with nothing to do,
+and the gatherer policy refills an idle peasant before the next pass — so
+no brain without a rider has ever sent anyone to look, and the enemy is
+unknown until its push arrives. That is the ground the blind-attack
+posture measured +126 on. `scout_peasant` stops the drafted peasant and
+keeps it off the policy; it is a knob rather than a fix so that `pro`, the
+anchor, keeps playing exactly as it was rated. The rush itself was dropped:
+the builder's order dies on arrival after a forty-second walk, five times a
+game, and feeds peasants to the first soldiers.
+
 ### What the 2000 still needs
 
 Every probe of this brain's numbers lands within a hundred points of

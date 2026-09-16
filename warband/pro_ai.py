@@ -71,7 +71,6 @@ class ProProfile:
     opening_slack: int | None = None  # if set, the supply headroom kept while no barracks stands, instead of supply_slack
     towers_early: int = 0             # towers at the front point as soon as the barracks stands, before the mill
     counter_punch: bool = False       # a push that was just beaten off is followed home at once, whatever the army's size
-    tower_rush: bool = False          # a tower at the enemy's mine as soon as it has been seen and the barracks is paid for
     gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
     max_producers: int = 10
     attack_ratio: float = 0.85        # attack when my strength exceeds theirs by this
@@ -124,8 +123,7 @@ _PROBES = (
     replace(PRO_WARDEN, name="pro-warden-punch", counter_punch=True),
     replace(PRO_WARDEN, name="pro-warden-os1-punch", opening_slack=1, counter_punch=True),
     replace(PRO_WARDEN, name="pro-warden-scout", scout_peasant=True),
-    replace(PRO_WARDEN, name="pro-warden-rush", tower_rush=True, scout_peasant=True, scout_from=30.0),
-    replace(PRO_VANGUARD, name="pro-vanguard-rush", tower_rush=True, scout_peasant=True, scout_from=30.0),
+    replace(PRO_VANGUARD, name="pro-vanguard-scout", scout_peasant=True),
 )
 
 #: Variants used to find out which knob is actually carrying the strength.
@@ -474,20 +472,6 @@ class ProBrain:
             # first barracks at three minutes for exactly this reason.
             if profile.barracks_first:
                 return wishes
-        if profile.tower_rush:
-            mine = self._enemy_mine(world)
-            bank = world.players[player]
-            # A tower at their mine is worth what it costs them, not what it
-            # costs us: their gatherers route round anything armed they have
-            # seen, so the mine is shut until an army comes to open it, and the
-            # first push goes for our production, not for this. It has to be
-            # standing before their first soldiers are, so it goes the moment
-            # the mine is seen — ahead of the home tower — and only with the
-            # price held twice over, because the peasant pays on arrival after
-            # a walk across the map and an order that cannot be paid is dropped.
-            if (mine is not None and not self._rush_placed(world, mine)
-                    and bank.gold >= 1000 and bank.lumber >= 400 + profile.lumber_floor):
-                wishes.append((BuildingType.TOWER, mine.center))
         if count(BuildingType.TOWER) < profile.towers_early:
             # A tower is two footmen's worth of fight for less than one footman's
             # gold, for as long as the enemy comes to it — and Master comes to it.
@@ -527,24 +511,6 @@ class ProBrain:
         if count(BuildingType.TOWER) < profile.tower_count and len(self._army(world)) >= 4:
             wishes.append((BuildingType.TOWER, self._front_point(world, hall)))
         return wishes
-
-    def _enemy_mine(self, world: World):
-        """The known mine nearest a known enemy hall, if one is within their base."""
-        halls = [r.center for r in self._known_enemy_buildings(world)
-                 if getattr(world.buildings.get(r.id), "type", None) is BuildingType.TOWN_HALL]
-        if not halls:
-            return None
-        mines = [(min(dist(m.center, h) for h in halls), m) for m in self._known_mines(world)]
-        near = [(away, m) for away, m in mines if away < 12.0]
-        return min(near, key=lambda pair: pair[0])[1] if near else None
-
-    def _rush_placed(self, world: World, mine) -> bool:
-        """Whether a tower of ours stands, rises or is on order within reach of *mine*."""
-        for tower in world.player_buildings(self.player, BuildingType.TOWER):
-            if dist(tower.center, mine.center) < 9.0:
-                return True
-        return any(order.type is BuildingType.TOWER and dist((order.pos[0] + 1.0, order.pos[1] + 1.0), mine.center) < 9.0
-                   for order in self._ordered(world))
 
     def _producers_saturated(self, world: World) -> bool:
         """Whether the buildings already standing are the bottleneck rather than the bank.

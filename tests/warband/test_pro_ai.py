@@ -167,30 +167,6 @@ def test_a_drafted_peasant_scout_actually_leaves_and_stays_drafted():
             scout.auto_work = True
 
 
-def test_the_tower_rush_wishes_for_a_tower_at_the_enemy_mine_once_seen():
-    from dataclasses import replace
-    world, brain = _world_with_army()
-    brain.profile = replace(PRO, tower_rush=True)
-    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
-    world.players[0].gold, world.players[0].lumber = 9000, 9000
-    world.place_building(0, BuildingType.BARRACKS, (hall.x + 6, hall.y))
-    assert BuildingType.TOWER not in [b for b, _ in brain._wish_list(world)], "nothing of theirs has been seen"
-    world.reveal_all(0)
-    world.players[0].gold = 800
-    assert BuildingType.TOWER not in [b for b, _ in brain._wish_list(world)], "not without the price held twice"
-    world.players[0].gold = 9000
-    world.update_vision()
-    mine = brain._enemy_mine(world)
-    assert mine is not None
-    enemy_hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0]
-    assert dist(mine.center, enemy_hall.center) < 12.0, "their mine, not ours"
-    anchors = {b: pt for b, pt in brain._wish_list(world)}
-    assert anchors.get(BuildingType.TOWER) == mine.center
-    world.place_building(0, BuildingType.TOWER, (int(mine.center[0]) + 4, int(mine.center[1]) + 4))
-    assert brain._rush_placed(world, mine)
-    assert BuildingType.TOWER not in [b for b, pt in brain._wish_list(world) if pt == mine.center], "one is enough"
-
-
 def test_barracks_first_wishes_for_nothing_else_until_it_stands():
     from dataclasses import replace
     world, brain = _world_with_army()
