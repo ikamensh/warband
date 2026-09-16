@@ -89,5 +89,24 @@ separate compatibility rollout and must not be hidden by ignoring lockfiles.
 
 ## Evidence and status
 
-Implementation pending. No workflow, production credential, live server or
-public download has been changed by WB-002 yet.
+Implemented locally so far:
+
+- `tools/ci_release.py prepare` records one clean source commit, the committed
+  sibling/Python/uv pins, the exact locked engine and the lockfile digest. It
+  keeps retries byte-identical and refuses to rebind an existing run identity.
+  Six CLI integration checks using real temporary Git repositories pass,
+  including dirty/untracked source, a stale engine lock and a moving sibling.
+  Preparation also succeeded against the actual committed candidate checkout.
+- The branch-check workflow now consumes those pins with read-only permissions
+  and pinned Actions. Its changed workflow passes Actionlint 1.7.12. A fresh
+  environment resolved with the exact CI Python 3.13.2 and uv 0.12.10.
+- Saga Online has a separate locked `publishing/` environment and a read-only
+  website-check workflow. Its 15 existing catalog/site integration tests pass;
+  it renders all seven pages, images, fonts and the exact catalog without
+  installing the hosted games. Its workflow also passes Actionlint.
+
+Still required: native release workflow/receipts, immutable binary publication,
+compatibility-gated catalog promotion, transaction/rollback implementation,
+scoped credentials, approved activation and a verified actual main-push journey.
+The existing Windows publication workflow is not yet changed. No production
+credential, live server or public download has changed as part of WB-002.

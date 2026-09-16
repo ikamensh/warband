@@ -2,25 +2,54 @@ name: Tests
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
     branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      UV_PYTHON_PREFERENCE: only-managed
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           path: warband
-      - uses: actions/checkout@v4
+      - name: Resolve committed build inputs
+        id: inputs
+        working-directory: warband
+        run: |
+          python3 tools/ci_release.py prepare --run-id "$GITHUB_RUN_ID" --output "$RUNNER_TEMP/warband-identity.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          identity = json.loads((Path(os.environ['RUNNER_TEMP']) / 'warband-identity.json').read_text())
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for key in ('sagaforge_commit', 'python', 'uv'):
+                  print(f'{key}={identity[key]}', file=output)
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ikamensh/sagaforge
+          ref: ${{ steps.inputs.outputs.sagaforge_commit }}
+          persist-credentials: false
           path: sagaforge
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ steps.inputs.outputs.uv }}
+          python-version: ${{ steps.inputs.outputs.python }}
+          enable-cache: false
       - name: Install dependencies
-        run: uv sync --locked --extra dev
+        run: uv sync --locked --extra dev --python "${{ steps.inputs.outputs.python }}"
         working-directory: warband
       - name: Run tests
         run: uv run --locked pytest -q
