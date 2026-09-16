@@ -129,6 +129,13 @@ Implemented locally so far:
   executable digest before/after the build. A runner image upgrade that changes
   the compiler stops the build until a deliberate pin update. The evidence
   consumer rejects an installer made with a different compiler version.
+- The native workflow now locates accepted artifacts within the same run,
+  checks their source commit, downloads and revalidates them before skipping
+  any rebuild. Successful platform uploads have one stable name per run and
+  cannot be overwritten; failed diagnostics have separate attempt names.
+  Shared input artifacts are passed by ID, so rerunning failed jobs can consume
+  their successful dependencies' original outputs. Real rerun verification is
+  still required; Actionlint alone does not establish retry behavior.
 
 ### Local native Mac evidence
 
@@ -159,7 +166,7 @@ Sagaforge `2fa6fadfd28e2457f2f264b7b071cac7f7566ee5`:
   `dist/ci-acceptance/mac-35100000125/` in the implementation worktree.
 
 Still required: actual native GitHub runs (including the Windows compiler check),
-reuse of accepted artifacts across retries, immutable binary publication,
+exercising accepted-artifact reuse across retries, immutable binary publication,
 compatibility-gated catalog promotion, transaction/rollback implementation,
 scoped credentials, approved activation and a verified actual main-push journey.
 The existing Windows publication workflow is not yet changed. No production
