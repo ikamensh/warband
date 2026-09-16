@@ -2,6 +2,7 @@
 
     uv run python tools/arena.py ladder --seeds 8                       # every pair, both corners
     uv run python tools/arena.py ladder --agents medium,hard,master --seeds 40     # two agents, a lot of games
+    uv run python tools/arena.py ladder --agents hard,master,pro-x --neighbours 1 --anchor master --anchor-elo 1420
     uv run python tools/arena.py ffa --players 4 --seeds 12              # free-for-all placements
     uv run python tools/arena.py variants --shuffles 6 --seeds 6         # the same ladder under jittered balance
     uv run python tools/arena.py report --seeds 24                       # 1v1, FFA and variants in one go
@@ -41,10 +42,19 @@ def _board(seed: int) -> dict:
     return {"width": width, "height": height}
 
 
-def specs_1v1(agents: list[str], seeds: range, variant: str, minutes: float) -> list[MatchSpec]:
-    """Every unordered pair, on every seed, from both corners."""
+def specs_1v1(agents: list[str], seeds: range, variant: str, minutes: float,
+              neighbours: int | None = None) -> list[MatchSpec]:
+    """Every unordered pair, on every seed, from both corners.
+
+    With *neighbours*, only agents within that many places of each other in
+    the list meet: a chain of rungs rather than every pair, which is where the
+    information is once the list is in rating order.
+    """
     out = []
-    for a, b in itertools.combinations(agents, 2):
+    for i, j in itertools.combinations(range(len(agents)), 2):
+        if neighbours is not None and j - i > neighbours:
+            continue
+        a, b = agents[i], agents[j]
         for seed in seeds:
             board = _board(seed)
             out.append(MatchSpec(seed=seed, agents=(a, b), variant=variant, minutes=minutes, **board))
@@ -110,8 +120,9 @@ def _progress(label: str, results: list[MatchResult], total: int, started: float
           end="", flush=True)
 
 
-def print_table(results: list[MatchResult], anchor: str, agents: list[str]) -> None:
-    ratings = rate(results, anchor=anchor)
+def print_table(results: list[MatchResult], anchor: str, agents: list[str], anchor_elo: float = 1000.0,
+                proximity: float | None = arena.PROXIMITY) -> None:
+    ratings = rate(results, anchor=anchor, anchor_elo=anchor_elo, proximity=proximity)
     width = max(len(r.name) for r in ratings)
     print(f"\n  {'agent':<{width}}  {'elo':>7}  {'90% interval':>16}  {'games':>6}  {'score':>6}")
     for r in ratings:
@@ -142,7 +153,12 @@ def main() -> None:
     parser.add_argument("--shuffles", type=int, default=4, help="jittered balance variants to rate under")
     parser.add_argument("--spread", type=float, default=0.25, help="how far a jittered variant moves a number")
     parser.add_argument("--minutes", type=float, default=arena.DEFAULT_MINUTES)
-    parser.add_argument("--anchor", default="medium", help="the agent pinned at 1000 Elo")
+    parser.add_argument("--anchor", default="medium", help="the agent pinned at --anchor-elo")
+    parser.add_argument("--anchor-elo", type=float, default=1000.0)
+    parser.add_argument("--proximity", type=float, default=arena.PROXIMITY,
+                        help="Elo gap at which a pair's games count half; 0 counts every game the same")
+    parser.add_argument("--neighbours", type=int, default=None,
+                        help="1v1: only agents this close in the --agents list meet (default: every pair)")
     parser.add_argument("--workers", type=int, default=max(1, mp.cpu_count() - 2))
     args = parser.parse_args()
 
@@ -152,17 +168,19 @@ def main() -> None:
             raise SystemExit(f"unknown agent {name!r}; known: {', '.join(sorted(AGENTS))}")
     seeds = range(args.first_seed, args.first_seed + args.seeds)
     print(f"agents: {', '.join(agents)}; {args.seeds} seeds from {args.first_seed}; {args.workers} workers")
+    proximity = args.proximity or None
+    table = lambda results: print_table(results, args.anchor, agents, args.anchor_elo, proximity)  # noqa: E731
 
     if args.mode in ("ladder", "report"):
         print("\n== 1v1 ==")
-        results = run(specs_1v1(agents, seeds, "standard", args.minutes), args.workers, "1v1")
-        print_table(results, args.anchor, agents)
+        results = run(specs_1v1(agents, seeds, "standard", args.minutes, args.neighbours), args.workers, "1v1")
+        table(results)
     if args.mode in ("ffa", "report"):
         players = args.players if args.mode == "ffa" else min(4, max(3, len(agents)))
         if len(agents) >= players:
             print(f"\n== free-for-all, {players} players ==")
             results = run(specs_ffa(agents, seeds, players, "standard", args.minutes), args.workers, "ffa")
-            print_table(results, args.anchor, agents)
+            table(results)
         else:
             print(f"\n(skipping free-for-all: {players} players need {players} agents)")
     if args.mode in ("variants", "report"):
@@ -180,7 +198,7 @@ def main() -> None:
             line = "   ".join(f"{a} {win_rate(results, a, args.anchor)[0] * 100:.0f}%" for a in agents if a != args.anchor)
             print(f"  {name}: against {args.anchor} — {line}")
         print("\n  pooled over every jittered rulebook:")
-        print_table(every, args.anchor, agents)
+        table(every)
 
 
 if __name__ == "__main__":

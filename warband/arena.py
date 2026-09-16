@@ -23,6 +23,10 @@ the games are fed in, and a agent that never loses runs away to infinity.
 once (order-independent), smoothed with half a virtual win and loss per pair
 that actually met, and reports a bootstrap interval. The scale is Elo's, and
 one agent is anchored so the numbers mean something across runs.
+
+*Ratings settled by peers.* Each pair's games are weighted by how close the
+two turn out to be (:data:`PROXIMITY`), so a strong agent is placed by the
+agents around it and only a little by the ones it beats every time.
 """
 
 from __future__ import annotations
@@ -414,21 +418,24 @@ def pairwise(results: Iterable[MatchResult]) -> dict[tuple[str, str], float]:
     return table
 
 
-def _fit(table: Mapping[tuple[str, str], float], names: Sequence[str], smoothing: float) -> dict[str, float]:
+def _fit(table: Mapping[tuple[str, str], float], names: Sequence[str], smoothing: float,
+         weights: Mapping[tuple[str, str], float] | None = None) -> dict[str, float]:
     """Bradley-Terry strengths by the standard MM iteration, in log space at the end.
 
     *smoothing* adds that many virtual wins to each side of every pair that
-    actually played, which is what keeps a perfect record finite.
+    actually played, which is what keeps a perfect record finite. *weights*
+    scale how much each pair's games (virtual ones included, so a pair's own
+    odds are untouched) count towards the fit.
     """
     strength = {name: 1.0 for name in names}
     played: dict[tuple[str, str], float] = {}
+    wins = {name: 0.0 for name in names}
     for (a, b), _ in table.items():
         if a < b:
-            played[(a, b)] = table.get((a, b), 0.0) + table.get((b, a), 0.0) + 2 * smoothing
-    wins = {name: 0.0 for name in names}
-    for (a, b), games in played.items():
-        wins[a] += table.get((a, b), 0.0) + smoothing
-        wins[b] += table.get((b, a), 0.0) + smoothing
+            weight = weights.get((a, b), 1.0) if weights is not None else 1.0
+            played[(a, b)] = weight * (table.get((a, b), 0.0) + table.get((b, a), 0.0) + 2 * smoothing)
+            wins[a] += weight * (table.get((a, b), 0.0) + smoothing)
+            wins[b] += weight * (table.get((b, a), 0.0) + smoothing)
     for _ in range(500):
         new = {}
         for name in names:
@@ -448,13 +455,51 @@ def _fit(table: Mapping[tuple[str, str], float], names: Sequence[str], smoothing
     return {name: math.log(max(value, 1e-12)) for name, value in strength.items()}
 
 
+def proximity_weight(gap: float, scale: float) -> float:
+    """How much a pairing *gap* Elo apart counts: all of it when level, a fifth at twice *scale*."""
+    return 1.0 / (1.0 + (gap / scale) ** 2)
+
+
+def _fit_by_proximity(table: Mapping[tuple[str, str], float], names: Sequence[str], smoothing: float,
+                      proximity: float | None) -> dict[str, float]:
+    """The fit, re-weighted until each pair counts by how close the two turned out to be.
+
+    A rating is settled mostly by the opponents near it. A game against
+    someone a thousand points away is nearly always won and says almost
+    nothing about *where* in the top half the winner sits; letting it count
+    as much as a game against a peer is how an agent that is 55% against the
+    best and 99% against the worst gets rated on the 99%.
+    """
+    log_strength = _fit(table, names, smoothing)
+    if proximity is None:
+        return log_strength
+    for _ in range(20):
+        weights = {(a, b): proximity_weight(abs(log_strength[a] - log_strength[b]) * ELO_SCALE, proximity)
+                   for (a, b) in table if a < b}
+        refit = _fit(table, names, smoothing, weights)
+        moved = max(abs(refit[n] - log_strength[n]) for n in names) * ELO_SCALE
+        log_strength = refit
+        if moved < 0.1:
+            break
+    return log_strength
+
+
+#: How close two agents have to be, in Elo, for their games to count fully
+#: towards each other's rating; see :func:`proximity_weight`.
+PROXIMITY = 200.0
+
+
 def rate(results: Sequence[MatchResult], *, anchor: str | None = None, anchor_elo: float = 1000.0,
-         smoothing: float = 0.5, bootstrap: int = 200, seed: int = 0) -> list[Rating]:
+         smoothing: float = 0.5, bootstrap: int = 200, seed: int = 0,
+         proximity: float | None = PROXIMITY) -> list[Rating]:
     """Elo-scale ratings for every agent that played, strongest first.
 
     *anchor* is pinned at *anchor_elo* so runs are comparable; without one the
-    mean rating is pinned there instead. The interval is a bootstrap over
-    matches, so it widens honestly when an agent has played few games.
+    mean rating is pinned there instead. Each pair's games count by how close
+    the two are (*proximity*, in Elo; ``None`` counts every game the same), so
+    a rating is settled by peers rather than by whoever is furthest away. The
+    interval is a bootstrap over matches, so it widens honestly when an agent
+    has played few games.
     """
     names = sorted({name for r in results for name in r.spec.agents})
     if not names:
@@ -462,7 +507,7 @@ def rate(results: Sequence[MatchResult], *, anchor: str | None = None, anchor_el
     table = pairwise(results)
 
     def elos(rows: Sequence[MatchResult]) -> dict[str, float]:
-        log_strength = _fit(pairwise(rows), names, smoothing)
+        log_strength = _fit_by_proximity(pairwise(rows), names, smoothing, proximity)
         points = {name: value * ELO_SCALE for name, value in log_strength.items()}
         offset = anchor_elo - (points[anchor] if anchor in points else statistics.fmean(points.values()))
         return {name: value + offset for name, value in points.items()}

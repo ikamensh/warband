@@ -161,6 +161,39 @@ def test_more_games_at_the_same_rate_mean_a_bigger_proven_gap():
     assert long["a"].elo > short["a"].elo
 
 
+def test_a_rating_is_settled_by_peers_not_by_the_agents_it_always_beats():
+    """a and b split twenty games; c loses to b 90% and to a 100%, a hundred games each.
+
+    Counting every game the same, a's perfect record against c pulls it well
+    clear of b, though the games they played against each other say they are
+    level. Weighted by proximity, the games against a far weaker agent count
+    for little, and the head-to-head decides.
+    """
+    results = ([result(("a", "b"), (1, 2))] * 10 + [result(("a", "b"), (2, 1))] * 10
+               + [result(("b", "c"), (1, 2))] * 90 + [result(("b", "c"), (2, 1))] * 10
+               + [result(("a", "c"), (1, 2))] * 100)
+    flat = {r.name: r.elo for r in rate(results, anchor="b", bootstrap=0, proximity=None)}
+    near = {r.name: r.elo for r in rate(results, anchor="b", bootstrap=0)}
+    assert flat["a"] - flat["b"] > 80, "unweighted, the games against c decide"
+    assert abs(near["a"] - near["b"]) < 40, "weighted, the head-to-head does"
+    assert near["c"] < near["b"] - 200, "c is still rated well below both"
+
+
+def test_proximity_weight_falls_off_with_the_gap():
+    assert arena.proximity_weight(0.0, 200.0) == 1.0
+    assert arena.proximity_weight(200.0, 200.0) == pytest.approx(0.5)
+    assert arena.proximity_weight(400.0, 200.0) == pytest.approx(0.2)
+    assert arena.proximity_weight(1000.0, 200.0) < 0.05
+
+
+def test_two_agents_rate_the_same_however_far_apart_they_are():
+    """With only one pair there is nothing to weigh against; the odds are the odds."""
+    results = [result(("a", "b"), (1, 2))] * 95 + [result(("a", "b"), (2, 1))] * 5
+    weighted = {r.name: r.elo for r in rate(results, anchor="b", bootstrap=0)}
+    flat = {r.name: r.elo for r in rate(results, anchor="b", bootstrap=0, proximity=None)}
+    assert weighted["a"] == pytest.approx(flat["a"], abs=1e-6)
+
+
 def test_free_for_all_placements_score_pairwise():
     """A three way game is three head to head results, so one match informs every pair."""
     table = arena.pairwise([result(("a", "b", "c"), (1, 2, 3))])
