@@ -1823,7 +1823,7 @@ class World:
             return
         u.charge -= REPAIR_CHUNK
         amount = min(REPAIR_CHUNK, b.max_hp - b.hp)
-        cost = repair_cost(b.info, amount, b.max_hp)
+        cost = repair_cost(b.info, b.hp, b.hp + amount, b.max_hp)
         reason = self.can_afford(u.player, cost)
         if reason is not None:
             self.events.append(Event("refused", u.pos, player=u.player, entity=u.id, text=f"Cannot repair: {reason}"))

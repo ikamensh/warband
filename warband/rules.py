@@ -282,10 +282,16 @@ REPAIR_CHUNK = 10  # hit points paid for at a time while repairing
 REPAIR_COST = 0.5  # share of a building's price that mending all of its hit points costs
 
 
-def repair_cost(info: BuildingInfo, amount: int, max_hp: int) -> Cost:
-    """What mending *amount* of a building's *max_hp* hit points costs: REPAIR_COST of its price, pro rata."""
-    share = REPAIR_COST * amount / max_hp
-    return Cost(math.ceil(info.cost.gold * share), math.ceil(info.cost.lumber * share))
+def repair_cost(info: BuildingInfo, hp_before: int, hp_after: int, max_hp: int) -> Cost:
+    """What mending a building from *hp_before* to *hp_after* of *max_hp* costs: REPAIR_COST of its price, pro rata.
+
+    Charged as the difference of two rounded-up running totals, so a repair
+    costs the same however many chunks it is paid in: rounding each chunk up
+    on its own charged a farm 160 lumber for a 125-lumber repair."""
+    def so_far(price: int, hp: int) -> int:
+        return math.ceil(price * REPAIR_COST * hp / max_hp)
+    return Cost(so_far(info.cost.gold, hp_after) - so_far(info.cost.gold, hp_before),
+                so_far(info.cost.lumber, hp_after) - so_far(info.cost.lumber, hp_before))
 MINE_GOLD = 50_000  # a base mine; expansion mines hold EXPANSION_GOLD
 EXPANSION_GOLD = 30_000
 STARTING_GOLD = 1000

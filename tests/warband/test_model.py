@@ -9,8 +9,8 @@ import math
 
 from warband.model import Attack, AttackMove, Deposit, Harvest, Move, Repair, RuleError, World, dist, tile_center
 from warband.rules import (
-    BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, REPAIR_COST, SIM_DT, UNITS, BuildingType, Resource, Terrain,
-    UnitType,
+    BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, REPAIR_COST, SIM_DT, UNITS, BuildingType, Cost, Resource,
+    Terrain, UnitType, repair_cost,
 )
 
 
@@ -428,8 +428,8 @@ def test_peasants_repair_damaged_buildings_for_a_share_of_the_price() -> None:
     assert peasant.state == "repair" and farm.hp > 100
     run_until(world, lambda: farm.hp >= farm.max_hp, 60.0)
     assert not peasant.orders and peasant.state == "idle"
-    least = math.ceil(BUILDINGS[BuildingType.FARM].cost.gold * REPAIR_COST * 300 / farm.max_hp)
-    assert least <= gold - world.players[0].gold <= least + 30 and lumber - world.players[0].lumber > 0  # paid per ten hit points, rounded up
+    paid = repair_cost(BUILDINGS[BuildingType.FARM], 100, farm.max_hp, farm.max_hp)
+    assert (gold - world.players[0].gold, lumber - world.players[0].lumber) == (paid.gold, paid.lumber)
     farm.hp = 50
     world.players[0].gold = 0
     world.repair([peasant.id], farm.id)
@@ -697,3 +697,27 @@ def test_resigning_in_a_three_player_match_leaves_no_winner() -> None:
     world.resign(0)
     assert not world.players[0].alive and world.winner is None
     assert world.players[1].alive and world.players[2].alive
+
+
+def test_a_repair_costs_the_same_however_it_is_chunked() -> None:
+    """Ten points at a time or all at once, mending a building costs REPAIR_COST of its price and not a coin more.
+
+    Rounding each chunk up on its own charged a farm 160 lumber for a 125-lumber repair."""
+    info = BUILDINGS[BuildingType.FARM]
+    whole = repair_cost(info, 0, info.hp, info.hp)
+    assert whole == Cost(math.ceil(info.cost.gold * REPAIR_COST), math.ceil(info.cost.lumber * REPAIR_COST))
+    gold = lumber = 0
+    for hp in range(0, info.hp, 10):
+        chunk = repair_cost(info, hp, hp + 10, info.hp)
+        gold, lumber = gold + chunk.gold, lumber + chunk.lumber
+    assert (gold, lumber) == (whole.gold, whole.lumber)
+    world, hall_id = base_world()
+    hall = world.buildings[hall_id]
+    farm = world.place_building(0, BuildingType.FARM, (hall.x + 5, hall.y + 4))
+    peasant = world.spawn_unit(0, UnitType.PEASANT, (hall.x + 4.5, hall.y + 4.5))
+    farm.hp = 100
+    before_gold, before_lumber = world.players[0].gold, world.players[0].lumber
+    world.repair([peasant.id], farm.id)
+    run_until(world, lambda: farm.hp >= farm.max_hp, 60.0)
+    expected = repair_cost(info, 100, info.hp, info.hp)
+    assert (before_gold - world.players[0].gold, before_lumber - world.players[0].lumber) == (expected.gold, expected.lumber)
