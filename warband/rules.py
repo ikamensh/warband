@@ -275,6 +275,11 @@ FRIENDLY_MARGIN = 0.3  # tiles beyond its splash a siege crew keeps a stone from
 
 GOLD_PER_TRIP = 100
 LUMBER_PER_TRIP = 100
+MINE_SLOTS = 8  # peasants at a mine's face at once; the rest wait their turn at the mouth.
+# The face serves MINE_SLOTS peasants every MINE_TIME, so a mine yields at most
+# MINE_SLOTS * GOLD_PER_TRIP / MINE_TIME.  With the walk to the hall on top, a
+# mine next door is saturated by about ten peasants and a distant one by a few
+# more: hiring past that earns nothing, and the way to more gold is another mine.
 MINE_TIME = 5.0  # seconds a peasant spends inside a mine per trip
 CHOP_TIME = 5.0  # seconds to fell a tree
 REPAIR_RATE = 8.0  # hit points a peasant mends per second

@@ -41,7 +41,7 @@ from dataclasses import dataclass, field, replace
 from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived
 from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, tile_center
 from warband.races import RACES
-from warband.rules import BUILDINGS, BuildingType, UnitType
+from warband.rules import BUILDINGS, MINE_SLOTS, BuildingType, UnitType
 
 _MELEE_TYPES = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
 STRICT_SLACK = 0.1  # how far past its planned share a type may run under a strict plan
@@ -68,6 +68,7 @@ class ProProfile:
     surplus_gold: int = 800           # money piling up past this unlocks optional buildings
     lumber_floor: int = 150           # never spend the lumber the next few soldiers need
     max_halls: int = 3
+    mine_floor: int = 6000            # a worked mine with less than this left is running out; take another
     barracks_per_hall: int = 3        # a barracks turns out ~4 soldiers a minute; income buys far more
     gold_per_barracks: int = 1500     # …so every this much unspent gold justifies another one
     max_producers: int = 10
@@ -463,11 +464,18 @@ class ProBrain:
         # each one is an army that was not trained. They are unlocked only once the
         # production already standing cannot keep up with the money coming in.
         expansion = self._expansion_site(world) if profile.expand else None
-        if expansion is not None and profile.expand_early and count(BuildingType.TOWN_HALL) < profile.max_halls:
+        room_for_a_hall = expansion is not None and count(BuildingType.TOWN_HALL) < profile.max_halls
+        if room_for_a_hall and (profile.expand_early or self._mines_failing(world)):
+            # Scarcity opens this gate as well as plenty. A brain whose mines are
+            # spent or full has no income to saturate its production with, so
+            # waiting for saturation meant never expanding at all: the dry-mine
+            # league saw no second hall in 336 seats. A hall takes a minute to
+            # build and a peasant longer to walk, so the move starts while the
+            # old mine still has gold in it.
             wishes.append((BuildingType.TOWN_HALL, expansion))
         if not self._producers_saturated(world):
             return wishes
-        if expansion is not None and not profile.expand_early and count(BuildingType.TOWN_HALL) < profile.max_halls:
+        if room_for_a_hall and not profile.expand_early:
             wishes.append((BuildingType.TOWN_HALL, expansion))
         if count(BuildingType.BLACKSMITH) < 1:
             wishes.append((BuildingType.BLACKSMITH, anchor))
@@ -488,6 +496,17 @@ class ProBrain:
         if count(BuildingType.TOWER) < profile.tower_count and len(self._army(world)) >= 4:
             wishes.append((BuildingType.TOWER, self._front_point(world, hall)))
         return wishes
+
+    def _mines_failing(self, world: World) -> bool:
+        """Whether the mines being worked can no longer grow this economy: spent, or every place at the face taken."""
+        mines = self._worked_mines(world)
+        if not mines:
+            return True
+        if sum(mine.gold for mine in mines) < self.profile.mine_floor * len(mines):
+            return True
+        miners = sum(1 for p in self._peasants(world)
+                     if p.inside is not None or any(isinstance(o, Harvest) and isinstance(o.target, int) for o in p.orders))
+        return miners >= MINE_SLOTS * len(mines)
 
     def _producers_saturated(self, world: World) -> bool:
         """Whether the buildings already standing are the bottleneck rather than the bank.

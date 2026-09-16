@@ -9,7 +9,7 @@ import math
 
 from warband.model import Attack, AttackMove, Deposit, Harvest, Move, Repair, RuleError, World, dist, tile_center
 from warband.rules import (
-    BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, REPAIR_COST, SIM_DT, UNITS, BuildingType, Cost, Resource,
+    BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_GOLD, MINE_SLOTS, MINE_TIME, REPAIR_COST, SIM_DT, UNITS, BuildingType, Cost, Resource,
     Terrain, UnitType, repair_cost,
 )
 
@@ -721,3 +721,47 @@ def test_a_repair_costs_the_same_however_it_is_chunked() -> None:
     run_until(world, lambda: farm.hp >= farm.max_hp, 60.0)
     expected = repair_cost(info, 100, info.hp, info.hp)
     assert (before_gold - world.players[0].gold, before_lumber - world.players[0].lumber) == (expected.gold, expected.lumber)
+
+
+def _mine_income(workers: int, seconds: float = 90.0) -> tuple[int, int]:
+    """``(gold earned, most peasants inside the mine at once)`` for *workers* on one mine."""
+    world, _hall = base_world()
+    mine = world.mines()[0]
+    for i in range(workers):
+        world.spawn_unit(0, UnitType.PEASANT, (4.5 + i % 6, 5.5 + i // 6))
+    world.players[0].gold = 0
+    world.harvest([u.id for u in world.player_units(0)], mine.id)
+    busiest = 0
+    for _ in range(int(seconds / SIM_DT)):
+        world.step()
+        busiest = max(busiest, sum(1 for u in world.player_units(0) if u.inside == mine.id))
+    return world.players[0].gold, busiest
+
+
+def test_a_mine_works_only_so_many_peasants_at_once() -> None:
+    """A mine has MINE_SLOTS places at the face: hands past that wait their turn and earn nothing.
+
+    Without the cap a base mine absorbed every peasant a player could hire, so
+    a bigger workforce at home always beat taking a second mine.
+    """
+    lean, lean_inside = _mine_income(10)
+    crowd, crowd_inside = _mine_income(20)
+    assert lean_inside <= MINE_SLOTS and crowd_inside <= MINE_SLOTS
+    assert lean >= 9000, "ten peasants on a mine next door still earn their keep"
+    assert crowd < 1.3 * lean, f"twice the hands earned {crowd} against {lean}: the mine is not capped"
+    assert crowd >= lean, "the extra hands must not make the mine slower"
+
+
+def test_a_loaded_world_remembers_who_is_at_the_mine_face() -> None:
+    """Crews are counted rather than stored, so a save and load must rebuild the count or the cap leaks."""
+    world, _hall = base_world()
+    mine = world.mines()[0]
+    for i in range(MINE_SLOTS + 2):
+        world.spawn_unit(0, UnitType.PEASANT, (4.5 + i % 6, 5.5 + i // 6))
+    world.harvest([u.id for u in world.player_units(0)], mine.id)
+    run_until(world, lambda: sum(1 for u in world.player_units(0) if u.inside == mine.id) == MINE_SLOTS, 60.0)
+    loaded = World.from_dict(world.to_dict())
+    assert loaded._mine_crews == {mine.id: MINE_SLOTS}
+    for _ in range(int(60 / SIM_DT)):
+        loaded.step()
+        assert sum(1 for u in loaded.player_units(0) if u.inside == mine.id) <= MINE_SLOTS

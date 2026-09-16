@@ -341,3 +341,65 @@ def test_a_producer_saves_for_the_unit_the_plan_wants():
 
     assert pass_with(600) == [], "six hundred gold is saved for the knight the plan is short of"
     assert pass_with(900) == [UnitType.KNIGHT]
+
+
+# -- Expansion under scarcity ------------------------------------------------------
+
+def _brain_with_a_failing_mine(seed: int = 5, gold_left: int = 2000, peasants: int = 12):
+    """A settled base whose mine is nearly spent, a second mine known, and money to move."""
+    from warband.rules import MINE_SLOTS
+
+    world = mapgen.generate(seed=seed, players=2, human=None)
+    brain = ProBrain(0, PRO)
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    world.reveal_all(0)
+    # No producer, so the saturation gate that normally unlocks an expansion is shut:
+    # this is the state the dry-mine league found Master stuck in.
+    for i in range(3):
+        world.place_building(0, BuildingType.FARM, (hall.x - 4, hall.y + i * 3))
+    for i in range(peasants):
+        world.spawn_unit(0, UnitType.PEASANT, (hall.center[0] + 2 + i % 5, hall.center[1] + 2 + i // 5))
+    near = min(world.mines(), key=lambda m: dist(m.center, hall.center))
+    near.gold = gold_left
+    world.players[0].gold, world.players[0].lumber = 4000, 3000
+    return world, brain, near
+
+
+def test_a_brain_takes_another_mine_when_the_face_is_full_even_with_gold_left():
+    """Twelve hands on a mine with eight places is a saturated mine: the way to more gold is a second one."""
+    world, brain, _near = _brain_with_a_failing_mine(gold_left=40_000, peasants=12)
+    rng = random.Random(1)
+    for _ in range(int(20 / SIM_DT)):
+        brain.think(world, rng)
+        world.step()
+    assert BuildingType.TOWN_HALL in [o.type for o in brain._ordered(world)] or \
+        len(world.player_buildings(0, BuildingType.TOWN_HALL)) > 1
+
+
+def test_a_brain_takes_another_mine_when_the_one_it_works_is_running_out():
+    """A hall goes up at a second mine while the first still has gold: waiting for it to run dry is too late.
+
+    Master never expanded under scarcity — the wish sat behind the saturation
+    gate, and a brain with no income never saturates — so a dry-mine rulebook
+    saw no second hall in 336 seats.
+    """
+    world, brain, near = _brain_with_a_failing_mine()
+    rng = random.Random(1)
+    for _ in range(int(20 / SIM_DT)):
+        brain.think(world, rng)
+        world.step()
+    halls = [b for b in world.player_buildings(0, BuildingType.TOWN_HALL)]
+    ordered = [o.type for o in brain._ordered(world)]
+    assert len(halls) > 1 or BuildingType.TOWN_HALL in ordered, "no second hall was even ordered"
+    assert near.gold > 0, "the mine still had gold: the brain moved before it was starved"
+
+
+def test_a_brain_with_room_at_the_face_and_gold_left_does_not_expand_early():
+    """The rule fires on scarcity, not on every pass: a few hands on a rich mine stay where they are."""
+    world, brain, _near = _brain_with_a_failing_mine(gold_left=40_000, peasants=4)
+    rng = random.Random(1)
+    for _ in range(int(20 / SIM_DT)):
+        brain.think(world, rng)
+        world.step()
+    ordered = [o.type for o in brain._ordered(world)]
+    assert len(world.player_buildings(0, BuildingType.TOWN_HALL)) == 1 and BuildingType.TOWN_HALL not in ordered

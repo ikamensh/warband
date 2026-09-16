@@ -28,7 +28,7 @@ from warband.rules import (
     Layout,
     REPAIR_CHUNK, REPAIR_RATE, repair_cost,
     ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLASTING_POWDER_BONUS, BLESSING_BONUS, BLOODLUST_BONUS, BUILDINGS, CHOP_TIME, DEEP_MINING_TRIP,
-    FRENZY_BONUS, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, PLAYERS,
+    FRENZY_BONUS, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MINE_GOLD, MINE_SLOTS, MINE_TIME, PLAYERS,
     PLUNDER_SHARE, REGROWTH_SECONDS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION, STARTING_GOLD, STARTING_LUMBER,
     ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
     UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
@@ -409,6 +409,7 @@ class World:
         self.explored = [bytearray(width * height) for _ in self.players]
         self.visible = [bytearray(width * height) for _ in self.players]
         self._buckets: list[list[Unit] | None] = [None] * (width * height)  # units by tile, rebuilt each step
+        self._mine_crews: dict[int, int] = {}  # mine id → peasants at its face; kept as they enter and leave
         self.worker_knowledge = [WorkerKnowledge(width, height) for _ in self.players]
         self._worker_ai_checks: dict[int, int] = {}
         self._worker_ai_views: dict[int, tuple[int, Any]] = {}
@@ -1613,6 +1614,12 @@ class World:
                 return  # a remembered replacement may still be hidden by fog
             navigation = self._worker_navigation(u)
             if rect_gap(u.pos, mine.rect) - u.radius <= TOUCH and not navigation[u.tile[1] * self.width + u.tile[0]]:
+                if self._mine_crews.get(mine.id, 0) >= MINE_SLOTS:
+                    u.path = []
+                    u.path_goal = None
+                    u.state = "idle"  # every place at the face is taken: wait at the mouth for one to free
+                    return
+                self._mine_crews[mine.id] = self._mine_crews.get(mine.id, 0) + 1
                 u.inside = mine.id
                 u.timer = MINE_TIME
                 u.path = []
@@ -1655,18 +1662,29 @@ class World:
         if self._approach_work(u, rect, dt, navigation):
             self._finish_order(u)
 
+    def _leave_mine(self, u: Unit) -> None:
+        """Give up this peasant's place at the face, so a waiting one can take it."""
+        if u.inside is None:
+            return
+        crew = self._mine_crews.get(u.inside, 0) - 1
+        if crew > 0:
+            self._mine_crews[u.inside] = crew
+        else:
+            self._mine_crews.pop(u.inside, None)
+        u.inside = None
+
     def _mine_inside(self, u: Unit, dt: float) -> None:
         mine = self.buildings.get(u.inside) if u.inside is not None else None
         u.timer -= dt
         if mine is None:
-            u.inside = None
+            self._leave_mine(u)
             return
         if u.timer > 0:
             return
         taken = min(self.gold_per_trip(u.player), mine.gold)
         mine.gold -= taken
         u.carrying, u.carry = Resource.GOLD, taken
-        u.inside = None
+        self._leave_mine(u)
         # Emerge where this worker entered. Teleporting every miner to the same
         # depot-facing tile creates a pile-up and can cross a separating wall.
         if not u.orders and u.auto_work:
@@ -2364,6 +2382,7 @@ class World:
             self._remove_building(building, reason="destroyed")
 
     def _remove_unit(self, unit: Unit) -> None:
+        self._leave_mine(unit)
         del self.units[unit.id]
         self.players[unit.player].stats["units_lost"] += 1
         if unit.constructing is not None:
@@ -2377,6 +2396,7 @@ class World:
         if reason == "destroyed" and b.player is not None:
             self.players[b.player].stats["buildings_lost"] += 1
         self._set_blocked(b, False)
+        self._mine_crews.pop(b.id, None)
         for unit in self.units.values():
             if unit.inside == b.id:
                 unit.inside = None
@@ -2527,6 +2547,8 @@ class World:
         for saved in data["units"]:
             u = _unit_from_dict(saved, world.race_of(saved["player"]))
             world.units[u.id] = u
+            if u.inside is not None:  # the crews are counted, not stored: a load rebuilds them
+                world._mine_crews[u.inside] = world._mine_crews.get(u.inside, 0) + 1
         for saved in data.get("projectiles", []):
             p = _projectile_from_dict(saved)
             world.projectiles[p.id] = p
