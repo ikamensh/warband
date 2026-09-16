@@ -132,14 +132,15 @@ Implemented locally so far:
   ISCC's Windows product-version resource is `0.0.0.0`; the second native CI
   run exposed that difference. The check now compiles a minimal stdin script
   with output disabled and reads the engine banner, rather than the launcher
-  resource. The corrected path still requires native CI verification.
+  resource. The corrected path passed native CI in attempt 1 of run `35143620725`.
 - The native workflow now locates accepted artifacts within the same run,
   checks their source commit, downloads and revalidates them before skipping
   any rebuild. Successful platform uploads have one stable name per run and
   cannot be overwritten; failed diagnostics have separate attempt names.
   Shared input artifacts are passed by ID, so rerunning failed jobs can consume
-  their successful dependencies' original outputs. Real rerun verification is
-  still required; Actionlint alone does not establish retry behavior.
+  their successful dependencies' original outputs. The real full-run retry exposed lost prior-attempt artifacts (details below).
+  A retry now refuses to rebuild when accepted artifacts are unavailable; durable
+  publication recovery still needs to be connected before production.
 
 ### Local native Mac evidence
 
@@ -175,3 +176,72 @@ compatibility-gated catalog promotion, transaction/rollback implementation,
 scoped credentials, approved activation and a verified actual main-push journey.
 The existing Windows publication workflow is not yet changed. No production
 credential, live server or public download has changed as part of WB-002.
+
+### Native GitHub evidence and the retry finding
+
+[Run 35141350074](https://github.com/ikamensh/warband/actions/runs/35141350074)
+at `5edb8366052d86c980a9ab5de45e85231d8718e8` passed both native runners and the
+independent Linux validator. Each native suite passed **861 tests, 12 skipped**
+with the intended stale-sheet warning (Windows 506.52 s; Mac 321.32 s).
+The extracted portable packages, installed Windows executable, Windows shortcut
+and uninstall, and extracted Mac app all passed their required checks. Windows
+used test-only llvmpipe; Mac reported Apple Software Renderer. All 27 downloaded
+PNGs were inspected. Art, bundled fonts and the tested controls render correctly;
+the existing training hint extending beneath the right card and the match-intro
+banner beneath overlays remain visual polish observations for WB-013.
+
+All four downloaded distributions were independently rehashed against their
+receipts. Evidence is retained locally under
+`docs/evidence/ci-publication/github-35141350074/`; the binaries remain under
+`dist/ci-acceptance/github-35141350074/`.
+
+| Distribution | Bytes | SHA-256 |
+|---|---:|---|
+| Windows portable | 144478511 | `4e3a9206a6603d1ea04ead266d2fced464833308afcde9587d835fcd255ba9a9` |
+| Windows installer | 136071306 | `bc9803cbef1c860891c475988599e4a610e1e2271acf1ae109bcb32847870ed8` |
+| Mac portable | 139339028 | `15c43da7fe6a6ce19e0d687bade59e2074ae0d2bd6921103199237395864de2a` |
+| Mac app | 135416986 | `b0ca5fe2f905d0781d2af2f81ec267d10533e1531a977ceb24cf135eaed73681` |
+
+[Run 35143620725, attempt 1](https://github.com/ikamensh/warband/actions/runs/35143620725/attempts/1)
+at `70e15ad2841e41b9c0abd1663c557b9f065c379d` subsequently passed both native builds
+and Linux validation with the corrected Inno Setup engine check. A full rerun
+made accepted artifact IDs `10466364557` (Windows) and `10466113897` (Mac)
+unavailable: both the run listing and direct artifact lookup no longer returned
+them. The original metadata/digests were saved before rerunning. The rerun began
+fresh builds and was cancelled before new candidates were accepted. This is a
+failed reuse acceptance check, not proof of idempotence. The workflow now stops
+if a later attempt cannot find accepted bytes. Use a new run/version for a new
+build; publication must recover from durable release assets when Actions no
+longer retains them. Never infer that a missing artifact means no earlier bytes
+were accepted.
+
+### Offline release staging and tested publication protocol
+
+`tools/ci_publish.py stage` revalidates both native candidates and assembles four
+downloads, two deterministic evidence archives and `release.json`. Repeating
+staging accepts only identical output. `publish` revalidates the complete native
+evidence before any remote mutation, binds a lightweight version tag to the
+source SHA, creates/resumes a draft and downloads every uploaded asset to check
+its bytes. It never overwrites a completed asset. Only an empty draft asset in
+GitHub's documented `starter` state can be deleted and retried. Publication
+requires a complete asset set; a retry of an already published release performs
+only reads, and successful output requires immutable status plus unauthenticated
+download checks for every asset.
+
+Fourteen CLI/HTTP integration checks cover staging, mixed/incomplete candidates,
+lost upload and publication responses, changed local/remote bytes, conflicting
+tags/identity, empty versus nonempty failed uploads and corrupt public downloads.
+These use a local HTTP implementation of the documented GitHub contract and
+non-executable package fixtures; they do not establish the real GitHub release
+journey. The command is not connected to a write-enabled workflow yet.
+
+The repository's release-immutability setting was read as disabled. Enabling it
+is part of the explicit production rollout, not done here. The runtime checks a
+published release's `immutable` flag rather than granting the job admin access
+to read or change repository settings. Draft recovery outside Actions retention,
+Saga Online's independent consumer, source-order/compatibility gates and the
+approved live journey remain outstanding.
+
+API contracts checked against [GitHub releases](https://docs.github.com/en/rest/releases/releases),
+[release assets](https://docs.github.com/en/rest/releases/assets) and
+[immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases).

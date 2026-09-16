@@ -150,8 +150,8 @@ def test_replacing_archive_and_checksums_does_not_reuse_old_native_receipts(cand
     assert result.returncode != 0 and "archived executable" in result.stderr
 
 
-def test_windows_candidate_requires_the_installer_and_shortcut_uninstall_receipt(candidate):
-    """Windows acceptance includes the installed program and cleanup, beyond the portable launch."""
+def as_windows(candidate):
+    """Turn the shared native evidence format fixture into its Windows counterpart."""
     path = candidate / "build-inputs.json"
     inputs = json.loads(path.read_text())
     inputs["target"] = "windows-x64"
@@ -181,6 +181,15 @@ def test_windows_candidate_requires_the_installer_and_shortcut_uninstall_receipt
     del report["app_native"]
     report["install_shortcut_uninstall"] = True
     write_json(path, report)
+    return candidate
+
+
+def test_windows_candidate_requires_the_installer_and_shortcut_uninstall_receipt(candidate):
+    """Windows acceptance includes the installed program and cleanup, beyond the portable launch."""
+    as_windows(candidate)
+    inputs = json.loads((candidate / "build-inputs.json").read_text())
+    path = candidate / "verification.json"
+    report = json.loads(path.read_text())
     result = validate(candidate, "windows-x64")
     assert result.returncode == 0, result.stderr
     inputs["inno_setup"] = "0.0.0"
