@@ -41,7 +41,8 @@ def main() -> None:
     fonts.load(game)
     sound.install(game)
     sound.apply_volumes(settings["music"], settings["sfx"])
-    from warband.multiplayer import NetworkGameScene, WarbandMatch
+    from warband.authority import WarbandMatch
+    from warband.multiplayer import NetworkGameScene
     width, height = mapgen.SIZES[args.size]
     layout = None if args.layout == "any" else Layout(args.layout)
     options = {'seed': args.seed if args.seed is not None else mapgen.fresh_seed(), 'width': width,

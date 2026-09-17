@@ -1,0 +1,217 @@
+name: Native package checks
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-packages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  inputs:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      sagaforge_commit: ${{ steps.identity.outputs.sagaforge_commit }}
+      python: ${{ steps.identity.outputs.python }}
+      uv: ${{ steps.identity.outputs.uv }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Resolve one immutable identity for both platforms
+        id: identity
+        run: |
+          python3 tools/ci_release.py prepare --run-id "$GITHUB_RUN_ID" --output "$RUNNER_TEMP/identity.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          identity = json.loads((Path(os.environ['RUNNER_TEMP']) / 'identity.json').read_text())
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for key in ('sagaforge_commit', 'python', 'uv'):
+                  print(f'{key}={identity[key]}', file=output)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        id: upload
+        with:
+          name: release-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/identity.json
+          if-no-files-found: error
+          retention-days: 30
+
+  native:
+    needs: inputs
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            target: windows-x64
+          - runner: macos-15
+            target: darwin-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: warband
+    env:
+      UV_PYTHON_PREFERENCE: only-managed
+      BUILD_PYTHON: ${{ needs.inputs.outputs.python }}
+    steps:
+      - name: Preserve source bytes on Windows
+        if: runner.os == 'Windows'
+        working-directory: .
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          path: warband
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ikamensh/sagaforge
+          ref: ${{ needs.inputs.outputs.sagaforge_commit }}
+          persist-credentials: false
+          path: sagaforge
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ needs.inputs.outputs.uv }}
+          python-version: ${{ needs.inputs.outputs.python }}
+          enable-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.inputs.outputs.artifact_id }}
+          merge-multiple: true
+          path: warband/dist/ci-inputs
+      - name: Find already accepted bytes from this run
+        id: cached
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_TARGET: ${{ matrix.target }}
+        run: |
+          $raw = gh api --paginate --slurp "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID/artifacts"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $pages = ($raw -join "`n") | ConvertFrom-Json
+          $name = "warband-$env:PACKAGE_TARGET-$env:GITHUB_RUN_ID"
+          $accepted = @($pages | ForEach-Object { $_.artifacts } | Where-Object { $_.name -eq $name })
+          if ($accepted.Count -gt 1) { throw 'Multiple accepted artifacts for one run/target.' }
+          if ($accepted.Count -eq 1) {
+            $artifact = $accepted[0]
+            if ($artifact.expired) { throw 'Accepted artifact expired. Start a new run/version.' }
+            if ($artifact.workflow_run.head_sha -ne $env:GITHUB_SHA) { throw 'Accepted artifact belongs to another source commit.' }
+            "artifact_id=$($artifact.id)" | Add-Content $env:GITHUB_OUTPUT
+          } elseif ([int]$env:GITHUB_RUN_ATTEMPT -gt 1) {
+            throw 'A previous attempt may have accepted bytes that GitHub no longer retains. Refusing to rebuild this version. Start a new workflow run/version; retry publication from durable release assets.'
+          }
+      - name: Reuse the accepted archive without rebuilding
+        if: steps.cached.outputs.artifact_id != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.cached.outputs.artifact_id }}
+          merge-multiple: true
+          path: warband/dist/ci-package
+      - name: Revalidate reused bytes against this run's identity
+        if: steps.cached.outputs.artifact_id != ''
+        env:
+          PACKAGE_TARGET: ${{ matrix.target }}
+        run: |
+          uv run --no-project --python $env:BUILD_PYTHON python tools/ci_package.py validate --identity dist/ci-inputs/identity.json --directory dist/ci-package --target $env:PACKAGE_TARGET
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install the locked runtime and build tools
+        if: steps.cached.outputs.artifact_id == ''
+        run: |
+          uv sync --locked --extra dev --extra package --python $env:BUILD_PYTHON
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare Windows compiler and test-only graphics driver
+        if: runner.os == 'Windows' && steps.cached.outputs.artifact_id == ''
+        run: |
+          $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
+          if (-not (Test-Path $compiler)) { throw 'The runner is missing Inno Setup.' }
+          "GAME_ISCC=$compiler" | Add-Content $env:GITHUB_ENV
+          $url = 'https://github.com/pal1000/mesa-dist-win/releases/download/26.2.0/mesa3d-26.2.0-release-msvc.7z'
+          $expected = 'dcb2719ef346dab5b609fcb193a5f13cfc4b0502e3f4de1ad43d349477402f47'
+          $archive = Join-Path $env:RUNNER_TEMP 'mesa3d-26.2.0-release-msvc.7z'
+          $folder = Join-Path $env:RUNNER_TEMP 'game-mesa-test'
+          Invoke-WebRequest $url -OutFile $archive
+          $digest = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($digest -ne $expected) { throw 'Mesa test archive differs from the pinned SHA-256.' }
+          7z x $archive "-o$folder" 'x64/opengl32.dll' 'x64/libgallium_wgl.dll' -y
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "GAME_TEST_MESA=$folder/x64" | Add-Content $env:GITHUB_ENV
+      - name: Test, build and verify actual native distributions
+        if: steps.cached.outputs.artifact_id == ''
+        run: |
+          $arguments = @('run', '--no-sync', 'python', 'tools/ci_package.py', 'build',
+            '--identity', 'dist/ci-inputs/identity.json', '--directory', 'dist/ci-package')
+          if ($env:RUNNER_OS -eq 'Windows') {
+            $arguments += @('--iscc', $env:GAME_ISCC, '--mesa-dir', $env:GAME_TEST_MESA)
+            & uv @arguments
+          } else {
+            & caffeinate -u -d -i uv @arguments
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Retain the accepted bytes once for this run
+        if: success() && steps.cached.outputs.artifact_id == ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: warband-${{ matrix.target }}-${{ github.run_id }}
+          path: |
+            warband/dist/ci-package/*.zip
+            warband/dist/ci-package/*.exe
+            warband/dist/ci-package/*.json
+            warband/dist/ci-package/regression.log
+            warband/dist/ci-package/SHA256SUMS
+            warband/dist/ci-package/verification/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+      - name: Retain failed attempt diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: failed-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            warband/dist/ci-package/*.json
+            warband/dist/ci-package/regression.log
+            warband/dist/ci-package/verification/
+          if-no-files-found: warn
+          retention-days: 30
+
+  validate:
+    needs: native
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: warband-*-${{ github.run_id }}
+          path: dist/packages
+      - name: Independently validate both platforms before publication
+        run: |
+          python3 tools/ci_release.py prepare --run-id "$GITHUB_RUN_ID" --output "$RUNNER_TEMP/identity.json"
+          for target in windows-x64 darwin-arm64; do
+            python3 tools/ci_package.py validate --identity "$RUNNER_TEMP/identity.json" \
+              --target "$target" --directory "dist/packages/warband-$target-$GITHUB_RUN_ID" \
+              > "$RUNNER_TEMP/$target-candidate.json"
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/*-candidate.json
+          if-no-files-found: error
+          retention-days: 30

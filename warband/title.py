@@ -177,7 +177,8 @@ class TitleScene(Scene):
 
     def multiplayer(self) -> None:
         from saga2d import MatchMenu
-        from warband.multiplayer import WarbandMatch, NetworkGameScene
+        from warband.authority import WarbandMatch
+        from warband.multiplayer import NetworkGameScene
         width, height = mapgen.SIZES[self.size]
         # The room's creator leads the race chosen under New game; the guest's is drawn from the seed.
         self.game.push(MatchMenu("Warband multiplayer", "warband-v2",

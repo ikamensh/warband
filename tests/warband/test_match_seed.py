@@ -6,7 +6,7 @@ from saga2d import Button, Game, MatchMenu
 from saga2d.multiplayer_ui import MatchLobby
 from saga2d.testing.online import server_fixture
 
-server_url = server_fixture('warband.multiplayer:ONLINE')
+server_url = server_fixture('warband.authority:ONLINE')
 from warband.style import build_theme
 from warband.title import TitleScene
 

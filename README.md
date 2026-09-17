@@ -101,7 +101,7 @@ version.
   both clients at it with `--server` or `SAGA2D_SERVER_URL`:
 
   ```bash
-  uv run python -m saga2d.server --games warband.multiplayer:ONLINE   # ws://127.0.0.1:8765
+  uv run python -m saga2d.server --games warband.authority:ONLINE   # ws://127.0.0.1:8765
   uv run warband --online-host --server ws://127.0.0.1:8765           # prints the room code
   uv run warband --online-join CODE --server ws://127.0.0.1:8765
   ```

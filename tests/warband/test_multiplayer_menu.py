@@ -7,7 +7,7 @@ from saga2d import Button, Game, MatchMenu
 from saga2d.online import OnlineClient
 from saga2d.testing.online import server_fixture
 
-server_url = server_fixture('warband.multiplayer:ONLINE')
+server_url = server_fixture('warband.authority:ONLINE')
 from warband.multiplayer import NetworkGameScene
 from warband.scene import SettingsScene
 from warband.style import build_theme
@@ -98,7 +98,7 @@ def test_network_result_has_no_solo_rematch_and_escape_leaves(tmp_path, winner):
     from saga2d import MatchClient, MatchHost
     from tests.warband.test_multiplayer import converge
     from warband.model import World
-    from warband.multiplayer import WarbandMatch
+    from warband.authority import WarbandMatch
     from warband.rules import Terrain, UnitType
 
     match = WarbandMatch(3)

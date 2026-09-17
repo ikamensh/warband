@@ -89,8 +89,9 @@ real breakdown.
   `score_scene.py`, `profile_scene.py`, `replay_scene.py` — the saga2d scenes
   (the title carries the player's card; `LeaveScene` in `scene.py` is the
   confirmation every way out of an undecided rated match goes through;
-  `ReplayScene` plays a recording back). `multiplayer.py` is the LAN/online
-  match; its `ONLINE` table registers `warband-v2` with `saga2d.server`.
+  `ReplayScene` plays a recording back). `multiplayer.py` contains LAN/online
+  scenes; `authority.py` contains the authoritative match and its `ONLINE` table
+  registers `warband-v2` with `saga2d.server`.
   `online_ai.py` is the headless AI client that can sit in a room.
 - `packaging/package_check.py` — the diagnostics the frozen app runs.
 - `docs/` — Early Access criteria and progress (`warband-early-access-*.md`),

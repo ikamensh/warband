@@ -3,9 +3,8 @@
 import pytest
 
 from saga2d import CommandError, Game
-from warband.multiplayer import ONLINE
+from warband.authority import ONLINE, WarbandMatch
 from warband.model import tile_center
-from warband.multiplayer import WarbandMatch
 from warband.races import RACES
 from warband.rules import BUILDINGS, BuildingType, Race, Terrain, UnitType, Upgrade
 from warband.scene import CodexScene, GameScene, new_game
