@@ -12,10 +12,13 @@ record the current state; `proposed` items still need scope selection. Within
 each priority, the order is the suggested sequence, not a requirement to finish
 every earlier item first.
 
-Execution is **paused after WB-004**, as requested on 2026-09-17. No next
-backlog item has been started. WB-022 was done outside the queue on
-2026-09-17: a crash on the first match start in the shipped Windows build,
-with the coverage that catches its class.
+Execution resumed on 2026-09-18 at the user's request: items are taken one at
+a time, each with its acceptance recorded here before implementation and its
+evidence after. Presentation items go first because they publish without a
+server rollout; the rules items (WB-017, WB-007) follow together, then one
+reviewed rollout. WB-022 was done outside the queue on 2026-09-17: a crash on
+the first match start in the shipped Windows build, with the coverage that
+catches its class.
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
@@ -23,7 +26,7 @@ with the coverage that catches its class.
 | WB-002 | First | done | Publish tested main pushes through GitHub Actions to games.tachyon-ai.eu | User |
 | WB-003 | Next | done | Diagnose and improve movement animation | User |
 | WB-004 | Next | done | Give melee attacks readable weight and contact | User |
-| WB-005 | Next | ready | Replace the rotating-sprite death with convincing falls | User |
+| WB-005 | Next | in progress | Replace the rotating-sprite death with convincing falls | User |
 | WB-006 | Next | ready | Add blood on damaging hits | User |
 | WB-007 | Next | ready | Leave grey abandoned buildings when a player resigns in FFA | User |
 | WB-008 | Next | ready | Improve health bars and building progress indicators | User |
@@ -305,6 +308,42 @@ appropriate outcomes rather than applying the same topple to everything.
 spinning or reappearing; layering/fog are correct; corpses expire within a
 bounded budget. Inspect death sequences and mass-casualty scenes with painted
 and procedural art, including loading a save or leaving the scene mid-effect.
+
+**Diagnosis 2026-09-18** (`tools/verify_deaths.py`, montages in
+`docs/evidence/deaths/before/`): the body rotates as a rigid plank at one even
+pace, with no lurch, no acceleration and no landing, so it reads as a sprite
+turning rather than a figure falling. The scene never passes the blow's source,
+so every body falls east: a footman killed from the east falls into its killer.
+Mounted units and catapults get the same 88° topple, a horse standing on its
+nose and a catapult tipped on end. Bodies do lie at the feet, darken, sort under
+the living and fade; those parts stay.
+
+**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+
+1. A killed unit falls away from the blow that killed it, melee or projectile,
+   never onto its killer; the direction comes from the hit the view already
+   sees, with the old default only when no blow is known.
+2. The fall has weight: a lurch with the blow, a topple that accelerates like
+   gravity, a landing that overshoots and settles with a dust puff at the
+   feet. From the killing blow to lying still takes at most 0.6 s. The feet
+   stay within 2 px of the death point throughout (no floating), the body
+   never turns past lying, never snaps back and never reappears.
+3. Outcomes per category: infantry, archers and casters topple; mounted units
+   go down as the mount collapses (a low heap tilted under 50°, not a plank);
+   siege engines collapse in place with dust and no topple (under 15°).
+   Buildings are untouched.
+4. Bodies lie darkened at the feet, sort under living units and stay under
+   the fog; only visible deaths make bodies; painted and procedural art
+   behave the same.
+5. A bounded budget: at most 48 bodies lie at once, the oldest fading early
+   past that; every body is gone within HOLD + FADE. Loading a save or
+   leaving the match mid-fall leaves no sprite, timer or exception behind.
+6. Evidence: before/after montages from `tools/verify_deaths.py` for each
+   category from both sides and the mass-casualty scene, in painted and
+   procedural art, inspected; scene-seam tests for direction (east and west),
+   the timing envelope, each category's outcome, the body cap and a load
+   mid-fall; the suite, `tools/fuzz.py` and an unchanged simulation
+   fingerprint (no model change).
 
 ## WB-006 — Blood on damaging hits
 
