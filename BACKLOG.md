@@ -32,6 +32,7 @@ every earlier item first.
 | WB-016 | Later | proposed | Assess and recover the six-mission Thornwood campaign | Recovered branch |
 | WB-017 | Next | ready | Preserve movement speed through path waypoints | WB-003 diagnosis |
 | WB-018 | Next | ready | Keep large selections inside the HUD | Native crowd capture |
+| WB-019 | Next | ready | Remove stray sprite-sheet lines from painted units | Native melee review |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -514,3 +515,19 @@ portraits/health indicators, commands, minimap and hints do not overlap; each
 unit remains reachable by the chosen interaction. Verify selection changes,
 mixed unit types and shrinking selections through real input, extend visual
 lint to include the reproduced case, and inspect native frames before closing.
+
+## WB-019 — Stray lines in painted sprite sheets
+
+WB-004's scout review exposes faint horizontal lines floating above the orc
+wolf riders. They are visible in the existing `warband/assets/restyled/orc.scout.png`
+itself, especially across the walk and attack rows, and in the native capture
+`docs/evidence/melee/scouts-painted-orc/1.0/wind.png`. The current sheet and its
+cell extraction retain those pixels; the combat changes do not modify the sheet.
+Inspect other painted sheets for the same detached border/guide fragments.
+
+**Done when:** the wolf rider has no floating lines in stand, walk or combat
+from any facing at normal/near/far zoom. Clean the affected art or extraction
+without erasing legitimate spears, antennae, shadows or detached effects; add
+a regression using the actual affected frame and a visual-lint check that
+reports comparable stray fragments. Preserve team colours, frame geometry and
+placement, and inspect native frames after the correction.
