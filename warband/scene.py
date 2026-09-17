@@ -72,7 +72,11 @@ CARD_ICON = 58  # height of a portrait button; the name sits under it
 MINIMAP_WIDTH = 200
 SELECTION_WIDTH = 470
 SELECTION_HEIGHT = 128
-MAX_PORTRAITS = 12
+PORTRAIT = 30  # a selected unit's portrait in the panel
+PORTRAIT_GAP = 3
+PORTRAIT_COLS = 13
+PORTRAIT_ROWS = 2
+PORTRAITS_PER_PAGE = PORTRAIT_COLS * PORTRAIT_ROWS  # a larger selection pages; the grid's last cell turns the page
 
 
 def _clock(seconds: float) -> str:
@@ -195,6 +199,8 @@ class GameScene(Scene):
         self._card: list[Command] = []
         self._card_buttons: list[Button] = []
         self._portraits: list[tuple[int, tuple[int, int, int, int]]] = []
+        self._portrait_page, self._portrait_pages = 0, 1  # of a selection too large for one grid
+        self._page_tile: tuple[float, float, float, float] | None = None
         self._queue_hits: list[tuple[tuple[float, float, float, float], QueueEntry]] = []
         self._sound_times: dict[str, float] = {}
         self._battle_voices: deque[float] = deque()
@@ -446,6 +452,7 @@ class GameScene(Scene):
         if len(alive) > 1:
             alive = [i for i in alive if isinstance(self.world.entity(i), Unit)]  # buildings are selected alone
         self.selection = alive
+        self._portrait_page = 0
         self.pending = None
         self.build_menu = False
         self.settlement_menu = None
@@ -1191,6 +1198,11 @@ class GameScene(Scene):
                 if px <= x < px + size and py <= y < py + size:
                     self.select([entity_id], add=shift)
                     return True
+            if self._page_tile is not None:
+                px, py, pw, ph = self._page_tile
+                if px <= x < px + pw and py <= y < py + ph:
+                    self._portrait_page = (self._portrait_page + 1) % self._portrait_pages
+                    return True
         for (px, py, pw, ph), entry in self._queue_hits:
             if not (px <= x < px + pw and py <= y < py + ph):
                 continue
@@ -1578,6 +1590,7 @@ class GameScene(Scene):
         self.draw_rect(x, y, w, h, PANEL_STYLE.background_color, border_color=PANEL_STYLE.border_color,
                        border_width=1, radius=10)
         self._portraits = []
+        self._page_tile = None
         self._queue_hits = []
         entities = [e for e in (self.world.entity(i) for i in self.selection) if e is not None]
         if self.settlement_menu is not None or not entities:
@@ -1587,17 +1600,32 @@ class GameScene(Scene):
         if len(entities) == 1:
             self._draw_entity_card(entities[0], x + 16, y + 14)
         else:
-            self.draw_text(f"{len(entities)} units", x + 16, y + 30, style="heading")
-            size, gap = 34, 4
-            for i, entity in enumerate(entities[:MAX_PORTRAITS]):
-                px, py = x + 16 + i * (size + gap), y + 46
-                self._portraits.append((entity.id, (px, py, size, size)))
-                self.draw_rect(px, py, size, size, (255, 255, 255, 18), border_color=(255, 255, 255, 40), border_width=1, radius=4)
-                self._portrait(entity, px + 3, py + 2, size - 6)
-                frac = entity.hp / max(1, entity.max_hp)
-                self.draw_rect(px, py + size + 3, size, 3, (0, 0, 0, 160))
-                self.draw_rect(px, py + size + 3, size * frac, 3, GOOD if frac > 0.5 else BAD)
+            self._draw_portrait_grid(entities, x, y)
         self.command_tooltip.visible = bool(self.tooltip)
+
+    def _draw_portrait_grid(self, entities: list[Entity], x: float, y: float) -> None:
+        """Two rows of portraits with a health strip each; a selection too large for the grid pages, its last cell turning the page."""
+        per_page = PORTRAITS_PER_PAGE if len(entities) <= PORTRAITS_PER_PAGE else PORTRAITS_PER_PAGE - 1
+        self._portrait_pages = pages = max(1, math.ceil(len(entities) / per_page))
+        self._portrait_page = page = min(self._portrait_page, pages - 1)
+        self._page_tile = None
+        heading = f"{len(entities)} units" + (f" · page {page + 1} of {pages}" if pages > 1 else "")
+        self.draw_text(heading, x + 16, y + 30, style="heading")
+        size, gap = PORTRAIT, PORTRAIT_GAP
+        cells = list(entities[page * per_page:(page + 1) * per_page])
+        for i in range(len(cells) + (1 if pages > 1 else 0)):
+            px, py = x + 16 + (i % PORTRAIT_COLS) * (size + gap), y + 44 + (i // PORTRAIT_COLS) * (size + 9)
+            self.draw_rect(px, py, size, size, (255, 255, 255, 18), border_color=(255, 255, 255, 40), border_width=1, radius=4)
+            if i == len(cells):  # the page tile
+                self._page_tile = (px, py, size, size)
+                self.draw_polygon([(px + size * .36, py + size * .26), (px + size * .72, py + size * .5), (px + size * .36, py + size * .74)], GOLD)
+                continue
+            entity = cells[i]
+            self._portraits.append((entity.id, (px, py, size, size)))
+            self._portrait(entity, px + 3, py + 2, size - 6)
+            frac = entity.hp / max(1, entity.max_hp)
+            self.draw_rect(px, py + size + 2, size, 4, (0, 0, 0, 160))
+            self.draw_rect(px, py + size + 2, size * frac, 4, GOOD if frac > 0.5 else BAD)
 
     def _draw_queue(self, x: float, y: float, w: float) -> None:
         """The production overview where the selection would be: one portrait per item being made or waited for."""

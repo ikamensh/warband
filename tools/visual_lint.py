@@ -183,6 +183,17 @@ for _unit in UnitType:
     SCREENS[f"select_{_unit.value}"] = _select_unit
 
 
+for _count in (18, 60):
+    def _select_many(game: Game, count: int = _count) -> None:
+        scene = town(game)
+        units = [spawn(scene, UnitType.PEASANT if i % 5 == 0 else UnitType.FOOTMAN, (6 + i % 12, 9 + i // 12)) for i in range(count)]
+        scene.select([u.id for u in units])
+        scene.camera.center_on(12 * TILE, 11 * TILE)
+        ticks(game)
+
+    SCREENS[f"select_{_count}_units"] = _select_many
+
+
 for _building in BuildingType:
     def _select_building(game: Game, kind: BuildingType = _building) -> None:
         scene = town(game)

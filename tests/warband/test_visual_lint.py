@@ -118,7 +118,7 @@ def test_every_unit_pose_fits_the_unit_canvas() -> None:
                     assert reach + textures.PAD <= textures.DROP_UNIT, (race, unit_type, carrying, frame, reach)
 
 
-SCREENS = ("title", "new_game_elf", "select_peasant", "select_town_hall", "select_army", "menu_build_hover", "plans", "alerts", "battle_wood",
+SCREENS = ("title", "new_game_elf", "select_peasant", "select_town_hall", "select_army", "select_60_units", "menu_build_hover", "plans", "alerts", "battle_wood",
            "help", "codex_0", "codex_2", "codex_3", "save_browser", "game_over_won", "high_scores")
 
 

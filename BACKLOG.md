@@ -39,8 +39,8 @@ catches its class.
 | WB-014 | Later | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-016 | Later | proposed | Assess and recover the six-mission Thornwood campaign | Recovered branch |
 | WB-017 | Next | ready | Preserve movement speed through path waypoints | WB-003 diagnosis |
-| WB-018 | Next | ready | Keep large selections inside the HUD | Native crowd capture |
-| WB-019 | Next | in progress | Remove stray sprite-sheet lines from painted units | Native melee review |
+| WB-018 | Next | in progress | Keep large selections inside the HUD | Native crowd capture |
+| WB-019 | Next | done | Remove stray sprite-sheet lines from painted units | Native melee review |
 | WB-020 | Later | proposed | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
 | WB-021 | Next | ready | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
 | WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
@@ -630,6 +630,32 @@ unit remains reachable by the chosen interaction. Verify selection changes,
 mixed unit types and shrinking selections through real input, extend visual
 lint to include the reproduced case, and inspect native frames before closing.
 
+**Where it starts, 2026-09-18** (`docs/evidence/movement/procedural-crowd-far/gameplay.png`):
+a selection of 18 shows one row of twelve 34 px portraits (`MAX_PORTRAITS`)
+that runs to the panel's right edge; the other six units have no portrait and
+cannot be picked from the panel. Health is a 3 px strip under each portrait.
+
+**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+
+1. Selections of 1, 12, 18, 26 and 60 units fit inside the selection panel at
+   1280×800, 1280×720 and 1200×680: no portrait or strip outside the panel,
+   nothing over the command card, minimap, tooltip or key hints, the panel's
+   size unchanged.
+2. Up to 26 units show as a grid of two rows of thirteen 30 px portraits, each
+   with a 4 px health strip. Larger selections page: the heading says "N units
+   · page i of k", the grid's last cell is a page tile that turns to the next
+   page (wrapping), every unit is on some page, the page returns to the first
+   when the selection changes and clamps when it shrinks.
+3. Clicking a portrait picks that unit (shift adds), on any page.
+4. Verified through real input: scene tests drive a click on the page tile, a
+   pick on the second page and a shrinking selection; the fuzz monkey stays
+   clean; visual lint gains `select_18_units` and `select_60_units` screens
+   (kept clean by its test) and the layout test gains the same selections at
+   every size; native frames of 18 and 60 selected at 1280×800 and 1200×680,
+   and a mixed selection (peasants, footmen, knights, a catapult), inspected.
+5. The suite; no model change (fingerprint unchanged). WB-008 takes the
+   in-world health bars; the panel's strips only gain the width to read.
+
 ## WB-019 — Stray lines in painted sprite sheets
 
 WB-004's scout review exposes faint horizontal lines floating above the orc
@@ -656,7 +682,20 @@ at its left and right edges; the rest are one to a few specks each. They are
 what the cut brought in from beyond the figure: the sheet's own cell borders
 and the neighbours' spill.
 
-**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+**Done 2026-09-18**, commits `e19d1ac` (Warband) and sagaforge `9db9701`,
+`b65daa3`, `7e98912`: every criterion below holds, criterion 2 as refined.
+[Tests 35287067407](https://github.com/ikamensh/warband/actions/runs/35287067407),
+[Native package checks 35287067418](https://github.com/ikamensh/warband/actions/runs/35287067418),
+[Publish 35288050978](https://github.com/ikamensh/warband/actions/runs/35288050978)
+(Saga Online's promotion was still running when this was written; the live version was 0.2.5). Locally: the sagaforge suite (35) and the Warband suite (1125
+passed, the lint's new `stray` finding included), 47 sheets cleaned with
+17 thousand solid and 450 thousand faint pixels removed and every changed
+pixel verified to be a stray, the boxed surveys inspected for every affected
+subject, and the wolf rider captured natively before and after at normal and
+near zoom (`docs/evidence/strays/`): the lines above it in stand, walk and
+combat are gone. What the survey also exposed is WB-023.
+
+**Acceptance (recorded 2026-09-18 before implementation):**
 
 1. The wolf rider shows no floating lines in stand, walk or combat from any
    facing at normal, near and far zoom: native frames before and after,

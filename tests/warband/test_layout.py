@@ -37,6 +37,19 @@ def match(game: Game, races=None):
     return scene
 
 
+def crowd(game: Game, count: int, page: int = 0):
+    """A selection of *count* footmen and peasants, on the given portrait page."""
+    scene = match(game)
+    world = scene.world
+    hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    units = [world.spawn_unit(scene.human, UnitType.PEASANT if i % 5 == 0 else UnitType.FOOTMAN, tile_center((hall.x - 6 + i % 12, hall.y + 5 + i // 12)))
+             for i in range(count)]
+    scene.select([u.id for u in units])
+    scene._portrait_page = page
+    settle(game)
+    return scene
+
+
 def rated(game: Game) -> Profile:
     """A profile with a few results and a replay of the last one, so the card and the profile screen have rows to lay out."""
     profile = Profile.load(game.data_dir)
@@ -74,6 +87,8 @@ SCREENS = {
     "replay over": lambda game: (s := replay(game), setattr(s, "skipping", True), settle(game, 12)),
     "new game": lambda game: (game.push(TitleScene()), settle(game), game.push(NewGameScene(game.scene))),
     "match, twelve units selected, a warning, the tutorial": match,
+    "eighteen selected": lambda game: crowd(game, 18),
+    "sixty selected, page two": lambda game: crowd(game, 60, page=1),
     "build menu": lambda game: (match(game), game.scene.select([next(u.id for u in game.scene.world.player_units(game.scene.human) if u.is_worker)]), game.scene.open_build_menu()),
     "pause": lambda game: game.push(PauseScene(match(game))),
     "settings": lambda game: game.push(SettingsScene(match(game))),
