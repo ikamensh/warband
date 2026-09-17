@@ -255,6 +255,9 @@ open; [the prototype record](docs/melee-animation.md) states the limits.
 
 Current milestones:
 
+Execution note (2026-09-17): finish WB-004, mark its accepted work done,
+then pause before selecting another backlog item, as requested by the user.
+
 - [x] Recover visible hit recoil and compose it with movement and pause.
 - [x] Accept the human sword prototype with native frames and measured cost.
 - [x] Extend weight and weapon-specific trails to orc, elf and dwarf infantry;
@@ -275,8 +278,10 @@ Current milestones:
   pause, and real socket snapshots (including rejection and repeated hit history);
   144 scene/network/replay/benchmark-fixture tests pass.
 - [ ] Pass the ordinary mixed-army performance gate, full-suite checks and
-  complete WB-004 release acceptance. The first performance run failed and
-  exposed a human-only benchmark warm-up; remeasure with actual faction art ready.
+  complete WB-004 release acceptance. Correct faction warm-up is in place.
+  The current and previous views both miss the timing gate; the focused
+  [engine investigation](../saga2d/docs/warband-renderer-performance.md)
+  has verified allocation and opacity fixes but has not accepted frame times.
 
 The existing wind/strike/follow/recover cycle and sparks still read as timid.
 After WB-003 establishes the timing/art baseline, improve silhouette,

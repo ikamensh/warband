@@ -508,3 +508,34 @@ selection of melee, multiplayer, replay-scene and benchmark-fixture tests passes
 **144 tests in 26.15 s** (`final-scene-tests.log`). No gameplay/view fix was needed
 for these boundary cases. The native performance gate and publication are still
 open; the cold-art benchmark result cannot establish their completion.
+
+### Warmed comparison with the previous view
+
+After fixing faction warm-up, `mixed-warm-current.log` records late p50
+16.1 ms / p95 33.2 ms and whole-run p95 35.4 ms. Loading `view.py` and
+`scene.py` from pre-WB-004 main `7655d0e`, while retaining the identical
+current art, model and corrected fixture, gives late p50 15.5 ms / p95
+34.4 ms and whole-run p95 35.6 ms (`mixed-warm-before.log`). Both runs end
+with 144 units and world digest
+`51df29e630e6439a147f9115f2b7c47d7feaebddc7b48d02fe96889be6e3baf2`.
+This isolates the presentation change; it is not a reproduction of every
+dependency or asset from the old checkout. Both miss W10. Their nearly
+identical batch/draw and view-sync costs point to a shared bottleneck,
+so a separate diagnostic profile precedes any performance fix. Profiled
+frame times cannot establish acceptance.
+
+The timing wrapper's global warm-up hook was also reached by the scene's
+incremental warmer, allowing cooperative sleeps inside startup ticks. Later
+runs suppress that hook while timing a frame; the late 120 frames are after
+incremental warm-up completes. Corrected ordinary unpaced timing on released
+Saga2D 0.3.2 gives late p50 10.9 / p95 18.4 ms and whole-run p95 17.8 ms
+(`mixed-release-corrected.log`). CPU-limited and unpaced results are distinct
+conditions, not interchangeable acceptance figures.
+
+The focused engine branch `codex/wb004-render-shapes` recovers bounded shape
+buffers, avoids unchanged sprite transform uploads, and fixes a confirmed
+opacity reset in pyglet's RGB setter. Native properties and the full engine
+suite pass, but the shape/transform candidate still misses W10 (late p95
+18.5 ms). [Its acceptance record](../../saga2d/docs/warband-renderer-performance.md)
+keeps those correctness/allocation wins separate from the open timing gate.
+No engine or WB-004 release has been published for this investigation.
