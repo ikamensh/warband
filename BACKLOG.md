@@ -17,7 +17,7 @@ every earlier item first.
 | WB-001 | First | done | Recover useful branch work and clean up local branches/worktrees | User |
 | WB-002 | First | done | Publish tested main pushes through GitHub Actions to games.tachyon-ai.eu | User |
 | WB-003 | Next | done | Diagnose and improve movement animation | User |
-| WB-004 | Next | ready | Give melee attacks readable weight and contact | User |
+| WB-004 | Next | in progress | Give melee attacks readable weight and contact | User |
 | WB-005 | Next | ready | Replace the rotating-sprite death with convincing falls | User |
 | WB-006 | Next | ready | Add blood on damaging hits | User |
 | WB-007 | Next | ready | Leave grey abandoned buildings when a player resigns in FFA | User |
@@ -233,6 +233,14 @@ changes preserve the simulation fingerprint; deliberate rule changes need
 their own acceptance. Depends on S2D-002 only if profiling proves an engine issue.
 
 ## WB-004 — Stronger melee attacks
+
+Started 2026-09-17 on `codex/wb004-melee-motion`, from main `7655d0e`.
+[Acceptance and initial evidence](docs/melee-animation.md) are recorded before
+implementation. Native painted/procedural captures reproduce the weak swing;
+model damage and strike poses agree. A separate measurable fault is confirmed:
+the view overwrites hit knockback before drawing (zero rendered displacement
+through three hits). The first regression must preserve visible contact and
+moving-unit continuity; fixing recoil alone will not complete this item.
 
 The existing wind/strike/follow/recover cycle and sparks still read as timid.
 After WB-003 establishes the timing/art baseline, improve silhouette,
