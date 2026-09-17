@@ -627,6 +627,13 @@ class, not the instance:
 - Process: `make ci` at the stack root (`tools/ci_status.py`) and the rule in
   the stack and Warband agent notes that a push is not done until CI is green.
 
-Follow-up: Saga Online's promotion gate (`tools/warband_evidence.py`) can
-require `start_after_resize` once a release carrying it is live. Evidence:
-see the publication runs recorded below once the push is verified.
+Evidence, commit `82cb9c0`: [Tests 35278240645](https://github.com/ikamensh/warband/actions/runs/35278240645),
+[Native package checks 35278240715](https://github.com/ikamensh/warband/actions/runs/35278240715)
+(Windows and Mac both passed the resize-then-start step),
+[Publish verified Warband 35279499839](https://github.com/ikamensh/warband/actions/runs/35279499839)
+and Saga Online's [promotion 35279704806](https://github.com/ikamensh/saga-online/actions/runs/35279704806):
+**Warband 0.2.3** is the live download. Locally: the full suite (1060 passed),
+`tools/fuzz.py --games 0 --monkey 20` with the new window events, an unchanged
+simulation fingerprint, and inspected native frames of the self-test after a
+resize and of the new-game screen at each map size. Saga Online's promotion
+gate now requires `start_after_resize` (`b4ef8fb`).
