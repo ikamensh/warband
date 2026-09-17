@@ -316,3 +316,28 @@ The simulation fingerprint remains `1baac5542386b900d86ff2485ab4982db19d1faf2030
 and small forest frames were opened. Worker combat is verified. Mounted/heavy
 weapons and the remaining whole-item scene, performance and release gates
 are still open; WB-004 remains in progress.
+
+## Next increment — mounted and heavy melee
+
+Acceptance before implementation:
+
+- Capture the current scout spear, knight lance, dwarf rider's hammer and orc
+  ogre's club in real native fights. Distinguish their authored weapon motion
+  and silhouettes before choosing a weight shift or trail. Start with a scout
+  prototype; a mounted spear must not inherit the worker axe's rig or torso
+  bend. The ogre is a ground-based body despite sharing the knight role.
+- Show a readable preparation, release/contact and recovery through each
+  role's existing combat clocks. Preserve model positions, reach, damage,
+  attack periods and movement. Keep the accepted infantry and worker results.
+- Project any weapon afterimage from that weapon's actual grip, moving edge
+  and body pose, including race dimensions. Avoid large opaque fans covering
+  the rider or opponent. Cache bounded images; retain whole-arc margins in
+  every facing. If the existing poses prove inadequate, change both art paths
+  deliberately instead of improving only the procedural rig.
+- Verify pause, cancellation, released misses and moving victims through the
+  real scene for the added roles. Inspect normal/near/far native fights in all
+  eight facings for all four races, including slower heavy attacks and faster
+  scouts. Run the affected tests, fingerprint and native layout checks.
+- This covers melee unit presentation only. Final fog/target/replay/network
+  checks, ordinary mixed-army performance, full-suite and release verification
+  remain necessary before WB-004 can be marked done.
