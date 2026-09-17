@@ -383,3 +383,29 @@ That separate art/extraction defect is recorded as **WB-019**, including a
 future visual-lint regression; the current layout checks do not detect it.
 Scout combat presentation is verified. Knights, the ogre and the remaining
 whole-item gates are still open; WB-004 remains in progress.
+
+### Heavy weapons: prerequisite art correction
+
+The native heavy baselines and a direct look at `dwarf.knight.png` confirm
+that the painted bear rider carries a lance, while its procedural rig has a
+hammer. The asset recipe in `tools/restyle.py` incorrectly asks for a lance;
+the rig, combat Foley and race/audio documentation agree on a blunt hammer.
+A trail based on the hammer would visibly disagree with the painted weapon.
+
+Acceptance before correcting the recipe or installed art:
+
+- Make the bear-rider subject, weapon inventory and pose instructions agree
+  on one short-handled war hammer. Keep its existing bronze armour, blue team
+  cloth, armoured bear, camera, facing order, frame order and ground anchors.
+- Preserve all nine animation frames in every facing, including the original
+  distinction between wind-up, contact, follow-through and recovery. The
+  hammer follows the existing procedural grip and pitch; do not alter combat
+  timing or damage to fit new artwork.
+- Keep the current asset until a candidate has passed cell extraction and
+  geometric checks and has been inspected beside the procedural reference.
+  Check all 72 cells for the intended weapon, one rider and one bear, correct
+  facing, clear borders and team recolouring. Reject misplaced or duplicated
+  figures, lost poses and new guide-line fragments.
+- Inspect native gameplay at normal/near/far zoom with the corrected art and
+  the eventual hammer trail. Verify the unchanged simulation fingerprint,
+  affected scene/art tests and native visual lint before accepting the change.
