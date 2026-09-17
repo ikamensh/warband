@@ -409,3 +409,49 @@ Acceptance before correcting the recipe or installed art:
 - Inspect native gameplay at normal/near/far zoom with the corrected art and
   the eventual hammer trail. Verify the unchanged simulation fingerprint,
   affected scene/art tests and native visual lint before accepting the change.
+
+### Heavy-unit implementation and art provenance
+
+The load/drive regression failed for all four knight races: each body's
+horizontal displacement stayed exactly zero before the opponent's counter-hit.
+Heavy bodies now load back by up to 4 logical pixels and drive forward by 6,
+using their existing longer wind-up and cooldown. Lance, hammer and club trails
+use the actual weapon grip, edge, pitch and authored body bob. Hammer/club
+edges are slightly wider to remain visible when foreshortened. These are
+presentation changes; all 36 procedural knight meshes compare exactly equal
+to `fead4b7`, including face colours and vertex coordinates.
+
+The bear-rider recipe now requests one hammer and its matching pose. A second
+prompt bug appended the worker's axe description to every non-worker; that
+suffix is now limited to workers. The installed bear-rider PNG was edited with
+the built-in image-generation tool, using the old painted sheet for identity
+and the procedural sheet for the hammer's position and animation. The original
+generated RGBA sheet, exact prompt, references and extraction report are in
+`docs/evidence/melee/bear-hammer-art/`. The output's transparent background was
+composited over the pipeline's chroma key, then passed through the existing
+`sagaforge.restyle.cut` registration and extraction. No weapon pixels were
+hand-painted or changed by a script.
+
+All 72 cells passed extraction: global scale 1.00763 and shift
+(-0.879, -1.538) pixels, with zero flagged cells. The existing sheet metadata,
+frame order and anchors are unchanged. All cells and red-team combat frames
+were inspected; they retain one dwarf, one bear, one hammer (occluded where
+appropriate), the shield, blue/red cloth and separate movement/combat poses.
+Native captures in `heavy-{painted,procedural}-{race}` cover every facing at
+1.0, 2.0 and 0.7 zoom. All eight normal matrices and the near/far contact
+comparisons were opened. The corrected hammer and compact trails keep the
+combat silhouettes readable.
+
+The native human-knight trace shows -3.846 pixels of anticipation and +6.0
+pixels of drive before an incoming hit, compared with 0/0 in the baseline;
+the model retains exactly one ground position. All 120 melee regressions pass,
+including all knight races, and the broader scene/view/combat/art selection
+passes **215 tests** in 26.06 s (one deliberate stale-sheet warning).
+`heavy-tests.log` and `heavy-fingerprint.log` record the results; the simulation
+fingerprint remains `1baac5542386b900d86ff2485ab4982db19d1faf2030870bcebdf12aefe5eccb`.
+Every corrected art cell passes empty/clipping/chroma/recolour checks and the
+runtime centroid-drift threshold (`bear-hammer-art/runtime-lint.log`). Four
+native battle/forest layouts report zero findings (`heavy-layout.log`); the
+small battle and large forest images were opened. This completes the heavy
+weapon milestone; final fog/target/replay/network, ordinary mixed-army
+performance, full-suite and publication gates remain open for WB-004.

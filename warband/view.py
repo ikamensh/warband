@@ -128,18 +128,19 @@ def _melee_lunge(u: Unit, fraction: float) -> float:
     These are pixels of presentation, never additional reach or model movement.
     The existing wind-up/cooldown clocks keep the weight shift tied to the blow.
     """
-    if u.type not in (UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT) or u.state != "attack":
+    if u.type not in (UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT, UnitType.KNIGHT) or u.state != "attack":
         return 0.0
+    load, drive = (4.0, 6.0) if u.type is UnitType.KNIGHT else (3.0, 5.0)
     if u.windup > 0.0:
         remaining = max(0.0, u.windup - fraction * SIM_DT)
         if remaining > 0.09:
-            return -3.0 * (u.info.windup - remaining) / (u.info.windup - 0.09)
+            return -load * (u.info.windup - remaining) / (u.info.windup - 0.09)
         progress = 1 - remaining / 0.09
-        return -3.0 + 8.0 * progress * progress * (3 - 2 * progress)
+        return -load + (load + drive) * progress * progress * (3 - 2 * progress)
     if u.cooldown > 0.0:
         age = u.info.cooldown - u.cooldown + fraction * SIM_DT
         if 0 <= age < STRIKE + FOLLOW + RECOVER:
-            return 5.0 * (1 - age / (STRIKE + FOLLOW + RECOVER)) ** 2
+            return drive * (1 - age / (STRIKE + FOLLOW + RECOVER)) ** 2
     return 0.0
 
 
@@ -764,7 +765,7 @@ class MapView:
     def _draw_melee_trails(self) -> None:
         """A brief afterimage of the released cut; damage still owns impact feedback."""
         for u in self.world.units.values():
-            if u.type not in (UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT) or u.state != "attack" or u.windup > 0 or u.cooldown <= 0:
+            if u.type not in (UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT, UnitType.KNIGHT) or u.state != "attack" or u.windup > 0 or u.cooldown <= 0:
                 continue
             age = u.info.cooldown - u.cooldown + self._fraction * SIM_DT
             if not 0 <= age < 0.09:

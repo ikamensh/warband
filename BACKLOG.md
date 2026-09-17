@@ -267,7 +267,10 @@ Current milestones:
 - [x] Give scouts a spear trail and weight shift using the mounted rig;
   222 relevant checks pass, with native review for every race/facing in both
   art paths at normal/near/far zoom. Existing wolf-rider sheet lines are WB-019.
-- [ ] Finish heavy melee: knight lances, the dwarf hammer and the ogre club.
+- [x] Give heavy melee its lance, hammer and club trails and weight shift;
+  correct the painted bear rider's lance to its intended hammer. All 72 art
+  cells pass extraction and runtime checks; 215 relevant tests pass, the
+  fingerprint is unchanged, and native review covers all races/facings/zooms.
 - [ ] Finish fog/target-change/replay/network checks, the ordinary battle
   performance gate and complete WB-004 release acceptance.
 

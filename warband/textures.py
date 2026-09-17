@@ -1591,10 +1591,35 @@ def _archer(player: int, frame: str, race: Race) -> Mesh:
     return mesh
 
 
+_OGRE_CLUB_HEAD_Z = 1.24
+_OGRE_CLUB_RADIUS = 0.17
+_HAMMER_HEAD_ABOVE_RIDER = 0.9
+_HAMMER_HEAD_SIZE = (0.12, 0.22, 0.16)
+_LANCE_POINT_ABOVE_RIDER = 1.17
+_LANCE_POINT_LENGTH = 0.2
+
+
+def _knight_geometry(race: Race) -> tuple[float, r3.Vec3, r3.Vec3]:
+    """Rider height, weapon grip and striking edge shared by the mesh and trail."""
+    if race is Race.ORC:
+        return 0.0, (0.44, 0.16, 0.66), (0.44, 0.16, _OGRE_CLUB_HEAD_Z + _OGRE_CLUB_RADIUS)
+    z = 0.68 if race is Race.DWARF else 0.73
+    edge = (_HAMMER_HEAD_ABOVE_RIDER + _HAMMER_HEAD_SIZE[2] / 2 if race is Race.DWARF
+            else _LANCE_POINT_ABOVE_RIDER + _LANCE_POINT_LENGTH)
+    return z, (0.34, 0.05, z + 0.27), (0.34, 0.05, z + edge)
+
+
+def _knight_pitch(frame: str, race: Race) -> float:
+    if race is Race.ORC:
+        return -95 if _striking(frame) else -20
+    return -82 if _striking(frame) else -38
+
+
 def _knight(player: int, frame: str, race: Race) -> Mesh:
     team = team_color(player)
     look = LOOKS[race]
     trim = darker(team, 0.7)
+    rider_z, grip, _ = _knight_geometry(race)
     if race is Race.ORC:
         # An ogre: two heads, a club, no mount and no manners.
         mesh = _shadow(0.42) + _legs(frame, look.skin, spread=0.16)
@@ -1607,16 +1632,14 @@ def _knight(player: int, frame: str, race: Race) -> Mesh:
         mesh += _unit_head((0.17, 0.02, 1.0), 0.14, race=Race.ORC)
         mesh += r3.box((-0.17, 0.02, 1.16), (0.18, 0.18, 0.06), look.metal_dark)
         mesh += _unit_rod((-0.34, 0, 0.78), (-0.5, 0.2, 0.6), 0.09, look.skin)
-        grip = (0.44, 0.16, 0.66)
         mesh += _unit_rod((0.34, 0, 0.78), grip, 0.09, look.skin)
         club = _unit_rod((0.44, 0.16, 0.5), (0.44, 0.16, 1.2), 0.05, WOOD_DARK)
-        club += r3.sphere((0.44, 0.16, 1.24), 0.17, WOOD_DARK, rings=3, sides=7)
+        club += r3.sphere((0.44, 0.16, _OGRE_CLUB_HEAD_Z), _OGRE_CLUB_RADIUS, WOOD_DARK, rings=3, sides=7)
         for a in (0.3, 1.6, 2.9, 4.2, 5.5):
-            club += r3.cone((0.44 + 0.15 * math.cos(a), 0.16 + 0.15 * math.sin(a), 1.24), 0.03, 0.1, look.metal, sides=4)
-        mesh += _unit_pitch(club, -95 if _striking(frame) else -20, grip)
+            club += r3.cone((0.44 + 0.15 * math.cos(a), 0.16 + 0.15 * math.sin(a), _OGRE_CLUB_HEAD_Z), 0.03, 0.1, look.metal, sides=4)
+        mesh += _unit_pitch(club, _knight_pitch(frame, race), grip)
         return mesh
     mesh = _mount(frame, True, team, race)
-    rider_z = 0.73 if race is not Race.DWARF else 0.68
     mesh += r3.cylinder((0, -0.11, rider_z), 0.21, 0.34, look.metal, sides=8)
     mesh += _unit_panel([(-0.21, -0.19, rider_z + 0.34), (0.21, -0.19, rider_z + 0.34),
                          (0.28, -0.45, rider_z - 0.19), (-0.28, -0.45, rider_z - 0.19)], trim)
@@ -1639,16 +1662,15 @@ def _knight(player: int, frame: str, race: Race) -> Mesh:
             mesh += _unit_rod((0, -0.1, rider_z + 0.72), (0, -0.31, rider_z + 0.89), 0.1, team)
             mesh += r3.cone((0, -0.32, rider_z + 0.83), 0.13, 0.14, team, sides=6)
     mesh += _shield(-0.33, 0.11, rider_z + 0.21, team, 0.92, race=race)
-    grip = (0.34, 0.05, rider_z + 0.27)
     if race is Race.DWARF:
-        lance = _unit_rod((0.34, 0.05, rider_z), (0.34, 0.05, rider_z + 0.95), 0.036, WOOD)
-        lance += r3.box((0.34, 0.05, rider_z + 0.9), (0.12, 0.22, 0.16), look.metal)  # a war hammer's head
-        lance += r3.cone((0.34, 0.17, rider_z + 0.9), 0.05, 0.14, look.metal_dark, sides=4)
+        weapon = _unit_rod((0.34, 0.05, rider_z), (0.34, 0.05, rider_z + 0.95), 0.036, WOOD)
+        weapon += r3.box((0.34, 0.05, rider_z + _HAMMER_HEAD_ABOVE_RIDER), _HAMMER_HEAD_SIZE, look.metal)
+        weapon += r3.cone((0.34, 0.17, rider_z + _HAMMER_HEAD_ABOVE_RIDER), 0.05, 0.14, look.metal_dark, sides=4)
     else:
-        lance = _unit_rod((0.34, 0.05, rider_z - 0.06), (0.34, 0.05, rider_z + 1.19), 0.036, THATCH if race is Race.HUMAN else (222, 206, 168))
-        lance += r3.cone((0.34, 0.05, rider_z + 1.17), 0.085, 0.2, look.metal, sides=4)
-        lance += _unit_panel([(0.34, 0.05, rider_z + 1.1), (0.34, -0.29, rider_z + 0.97), (0.34, 0.05, rider_z + 0.86)], team)
-    mesh += _unit_pitch(lance, -82 if _striking(frame) else -38, grip)
+        weapon = _unit_rod((0.34, 0.05, rider_z - 0.06), (0.34, 0.05, rider_z + 1.19), 0.036, THATCH if race is Race.HUMAN else (222, 206, 168))
+        weapon += r3.cone((0.34, 0.05, rider_z + _LANCE_POINT_ABOVE_RIDER), 0.085, _LANCE_POINT_LENGTH, look.metal, sides=4)
+        weapon += _unit_panel([(0.34, 0.05, rider_z + 1.1), (0.34, -0.29, rider_z + 0.97), (0.34, 0.05, rider_z + 0.86)], team)
+    mesh += _unit_pitch(weapon, _knight_pitch(frame, race), grip)
     return mesh
 
 
@@ -1865,7 +1887,7 @@ def chop_contact_offset(facing: int, race: Race = Race.HUMAN) -> tuple[float, fl
     return PROJECTION.project((x * c - y * s, x * s + y * c, z))
 
 
-@lru_cache(maxsize=3 * FACINGS * len(Race))
+@lru_cache(maxsize=4 * FACINGS * len(Race))
 def _melee_sweep(unit_type: UnitType, facing: int, race: Race) -> tuple[tuple[tuple[float, float], tuple[float, float]], ...]:
     """A weapon ribbon, projected from its authored wind/strike rig.
 
@@ -1880,6 +1902,8 @@ def _melee_sweep(unit_type: UnitType, facing: int, race: Race) -> tuple[tuple[tu
         grip, edge = _WORKER_GRIP, _WORKER_AXE_EDGE[1]
     elif unit_type is UnitType.SCOUT:
         _, grip, edge = _scout_geometry(race)
+    elif unit_type is UnitType.KNIGHT:
+        _, grip, edge = _knight_geometry(race)
     else:
         raise ValueError(unit_type)
     inner = tuple(a + (b - a) * 0.88 for a, b in zip(grip, edge))
@@ -1898,8 +1922,10 @@ def _melee_sweep(unit_type: UnitType, facing: int, race: Race) -> tuple[tuple[tu
             mesh = _shift(mesh, tuple(between(a, b) for a, b in zip(_SWORD_SHIFT["wind"], _SWORD_SHIFT["strike"])))
         elif unit_type is UnitType.PEASANT:
             mesh = _unit_pitch(mesh, between(_worker_axe_angle("wind"), _worker_axe_angle("strike")), grip)
-        else:
+        elif unit_type is UnitType.SCOUT:
             mesh = _unit_pitch(mesh, between(_SCOUT_PITCH["wind"], _SCOUT_PITCH["strike"]), grip)
+        else:
+            mesh = _unit_pitch(mesh, between(_knight_pitch("wind", race), _knight_pitch("strike", race)), grip)
         if unit_type in MOUNTED:
             mesh = _shift(mesh, (0.0, between(wind.lunge, strike.lunge), between(_BOB["wind"], _BOB["strike"])))
         else:
@@ -1927,11 +1953,12 @@ def melee_trail_image(game: Game, unit_type: UnitType, facing: int, race: Race =
     height = bottom - top
     image = Image.new("RGBA", (round(width * sample), round(height * sample)))
     draw = ImageDraw.Draw(image)
+    edge_width = 1.6 if unit_type is UnitType.KNIGHT and race in (Race.ORC, Race.DWARF) else 1.2
     for i, ((inner0, tip0), (inner1, tip1)) in enumerate(zip(ribbon, ribbon[1:])):
         strength = (i + 1) / (len(ribbon) - 1)
         points = [((x + width / 2) * sample, (y - top) * sample) for x, y in (inner0, tip0, tip1, inner1)]
         draw.polygon(points, fill=(235, 242, 252, round(85 * strength)))
-        draw.line(points[1:3], fill=(249, 251, 255, round(180 * strength)), width=round(1.2 * sample))
+        draw.line(points[1:3], fill=(249, 251, 255, round(180 * strength)), width=round(edge_width * sample))
     image = image.resize((round(width * scale), round(height * scale)), Image.Resampling.LANCZOS)
     placements[key] = Placement((width, height), bottom)
     game.assets.image_from_pil(key, image)

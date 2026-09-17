@@ -89,7 +89,7 @@ SUBJECTS: dict[tuple[Race, UnitType], str] = {
     (Race.DWARF, UnitType.FOOTMAN): f"a dwarven ironguard: a squat, broad axeman in heavy bronze-trimmed plate, a horned nasal helm, a blue tabard "
                                     f"({TEAM}), a bossed round shield and a double-bitted axe",
     (Race.DWARF, UnitType.ARCHER): f"a dwarven crossbowman in a mail coat and a blue tabard ({TEAM}), with a heavy crossbow and a bolt case",
-    (Race.DWARF, UnitType.KNIGHT): f"a dwarven bear rider in bronze-trimmed plate with a blue caparison ({TEAM}) on an armoured war bear, carrying a lance and a shield",
+    (Race.DWARF, UnitType.KNIGHT): f"a dwarven bear rider in bronze-trimmed plate with a blue caparison ({TEAM}) on an armoured war bear, carrying one short-handled war hammer and a shield",
     (Race.DWARF, UnitType.SCOUT): f"a dwarven ram rider in leather and a blue sash ({TEAM}) on a shaggy mountain ram, with a spear",
     (Race.DWARF, UnitType.CATAPULT): f"a dwarven mortar: a squat iron mortar barrel on a wheeled carriage with a blue pennant ({TEAM}); the attack row fires "
                                      "with the barrel jolting back",
@@ -115,6 +115,8 @@ FIXES: dict[tuple[UnitType, Resource | None], str] = {
 }
 RACE_FIXES: dict[tuple[Race, UnitType], str] = {
     (Race.ORC, UnitType.KNIGHT): "the ogre stands on its own two feet with no mount; both heads look towards the facing; the club is gripped in both hands",
+    (Race.DWARF, UnitType.KNIGHT): "the rider sits in the bear's saddle; one war hammer is held in the right hand, with a short shaft and a block-shaped metal head; "
+                                 "its grip and swing follow the reference, raised in wind-up and swung forward in strike; the shield stays on the left forearm",
     (Race.ORC, UnitType.CATAPULT): "exactly one stone, inside the sling basket at the end of the arm; the small skull on the frame's front is bone with eye sockets, "
                                    "never a second stone; the basket is empty after the throw",
     (Race.ELF, UnitType.CATAPULT): "the bolt lies in the groove of the ballista and is gone after the shot; the wheels have spokes",
@@ -126,7 +128,7 @@ INVENTORY: dict[UnitType, str] = {
     UnitType.PEASANT: "one figure, one tool (axe) or one carried load, no shield",
     UnitType.FOOTMAN: "one figure, exactly one sword (one hilt), exactly one shield",
     UnitType.ARCHER: "one figure, exactly one bow (or a throwing axe in hand for orcs, a crossbow for dwarves), no shield",
-    UnitType.KNIGHT: "one rider on one mount (the orc ogre: one two-headed giant on foot), one lance or club, at most one shield",
+    UnitType.KNIGHT: "one rider on one mount (the orc ogre: one two-headed giant on foot), one weapon (human/elf lance, dwarf war hammer, orc club), at most one shield",
     UnitType.SCOUT: "one rider on one mount, one spear, no shield",
     UnitType.CATAPULT: "one siege engine, one throwing arm or barrel, wheels, at most one projectile",
     UnitType.CLERIC: "one figure, one staff, no shield, no sword",
@@ -304,7 +306,7 @@ class Unit:
 
     @property
     def description(self) -> str:
-        return SUBJECTS[(self.race, self.unit)] + CARRY.get(self.carrying, "")
+        return SUBJECTS[(self.race, self.unit)] + (CARRY[self.carrying] if self.unit is UnitType.PEASANT else "")
 
     @property
     def inventory(self) -> str:
