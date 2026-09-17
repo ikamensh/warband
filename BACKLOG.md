@@ -12,12 +12,15 @@ record the current state; `proposed` items still need scope selection. Within
 each priority, the order is the suggested sequence, not a requirement to finish
 every earlier item first.
 
+Execution is **paused after WB-004**, as requested on 2026-09-17. No next
+backlog item has been started.
+
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-001 | First | done | Recover useful branch work and clean up local branches/worktrees | User |
 | WB-002 | First | done | Publish tested main pushes through GitHub Actions to games.tachyon-ai.eu | User |
 | WB-003 | Next | done | Diagnose and improve movement animation | User |
-| WB-004 | Next | in progress | Give melee attacks readable weight and contact | User |
+| WB-004 | Next | done | Give melee attacks readable weight and contact | User |
 | WB-005 | Next | ready | Replace the rotating-sprite death with convincing falls | User |
 | WB-006 | Next | ready | Add blood on damaging hits | User |
 | WB-007 | Next | ready | Leave grey abandoned buildings when a player resigns in FFA | User |
@@ -236,66 +239,49 @@ their own acceptance. Depends on S2D-002 only if profiling proves an engine issu
 
 ## WB-004 — Stronger melee attacks
 
-Started 2026-09-17 on `codex/wb004-melee-motion`, from main `7655d0e`.
-[Acceptance and initial evidence](docs/melee-animation.md) are recorded before
-implementation. Native painted/procedural captures reproduce the weak swing;
-model damage and strike poses agree. A separate measurable fault is confirmed:
-the view overwrites hit knockback before drawing (zero rendered displacement
-through three hits). The first regression must preserve visible contact and
-moving-unit continuity; fixing recoil alone will not complete this item.
-The first increment now renders the intended recoil (~3 px in native capture),
-follows newly issued movement and freezes under F3. It passes 82 relevant tests,
-input fuzz, the unchanged fingerprint and native layout checks. The human
-footman's next prototype adds a continuous weight shift and a brief sword
-afterimage. Six melee regressions and an image-clipping regression pass;
-the final complete suite passes 924 tests (12 skips).
-Native captures cover eight facings and both art paths. A 150-footman timing
-comparison rejected the expensive polygon version in favour of one cached
-image per trail. Other melee weapons and complete WB-004 acceptance remain
-open; [the prototype record](docs/melee-animation.md) states the limits.
+Completed 2026-09-17 in source `cac35b7`, published as
+[0.2.0-preview.35244288044](https://github.com/ikamensh/warband/releases/tag/v0.2.0-preview.35244288044)
+and promoted to [games.tachyon-ai.eu](https://games.tachyon-ai.eu/).
+[Acceptance criteria, diagnosis and evidence](docs/melee-animation.md) were
+recorded before implementation on `codex/wb004-melee-motion`.
 
-Current milestones:
+Infantry, workers, scouts and heavy melee now shift their weight through a
+weapon-specific swing and brief cached trail. Actual damaging hits produce
+visible recoil that composes with movement. Workers fight with free hands while
+retaining carried resources; the painted dwarf bear rider now carries its
+intended hammer. Combat timing, damage, orders and the simulation fingerprint
+are unchanged.
 
-Execution note (2026-09-17): finish WB-004, mark its accepted work done,
-then pause before selecting another backlog item, as requested by the user.
-
-- [x] Recover visible hit recoil and compose it with movement and pause.
-- [x] Accept the human sword prototype with native frames and measured cost.
-- [x] Extend weight and weapon-specific trails to orc, elf and dwarf infantry;
-  135 relevant checks pass, with all eight facings inspected in both art paths
-  at normal/near/far zoom. The human trail images remain identical.
-- [x] Give workers weight and an axe cut, including when carrying. Real
-  harvest/fight/stop/deposit checks preserve both resources for all races;
-  194 relevant tests pass, the simulation fingerprint is unchanged, and all
-  eight facings were inspected in both art paths at normal/near/far zoom.
-- [x] Give scouts a spear trail and weight shift using the mounted rig;
-  222 relevant checks pass, with native review for every race/facing in both
-  art paths at normal/near/far zoom. Existing wolf-rider sheet lines are WB-019.
-- [x] Give heavy melee its lance, hammer and club trails and weight shift;
-  correct the painted bear rider's lance to its intended hammer. All 72 art
-  cells pass extraction and runtime checks; 215 relevant tests pass, the
-  fingerprint is unchanged, and native review covers all races/facings/zooms.
+- [x] Recover visible hit recoil and verify movement, repeated hits and pause.
+- [x] Accept the human sword prototype before expanding to all four races,
+  infantry, workers, scouts and heavy melee. Inspect eight facings in painted
+  and procedural art at normal/near/far zoom; verify all 72 corrected hammer
+  art cells. Existing wolf-rider sheet lines remain separately tracked in WB-019.
 - [x] Verify target changes/removal, fog/reveal, save loading, replay speed and
-  pause, and real socket snapshots (including rejection and repeated hit history);
-  144 scene/network/replay/benchmark-fixture tests pass.
-- [ ] Pass the ordinary mixed-army performance gate, full-suite checks and
-  complete WB-004 release acceptance. Correct faction warm-up is in place.
-  The focused [engine work](../saga2d/docs/warband-renderer-performance.md)
-  now passes the full-run gate at p95 15.58 ms, preserving crowd pixels and
-  the simulation fingerprint. All 1048 game tests pass (12 skips); the
-  native final review and compatible server/client release are being verified.
+  pause, and real socket snapshots, including rejected/unreceived orders and
+  repeated hit history.
+- [x] Pass the ordinary 150-unit mixed-army performance gate with published
+  Saga2D 0.3.3: whole-run p95 **15.58 ms**, late p95 **15.1 ms**, on the recorded
+  Apple M4 setup. Preserve crowded-frame pixels and the simulation fingerprint.
+  The first pathfinding burst still reaches 109 ms; this is not a worst-frame
+  or long-soak guarantee. See the [engine record](../saga2d/docs/warband-renderer-performance.md).
+- [x] Pass [main Linux tests](https://github.com/ikamensh/warband/actions/runs/35244288009)
+  (1,048 passed, 12 skipped) and [Windows/Mac native packages](https://github.com/ikamensh/warband/actions/runs/35244288044),
+  including independent archive validation and final native visual review.
+- [x] Accept the compatible [shared-server rollout](../saga-online/docs/warband-melee-rollout.md),
+  publish the immutable release through [CI](https://github.com/ikamensh/warband/actions/runs/35245660396),
+  and complete [automatic site promotion](https://github.com/ikamensh/saga-online/actions/runs/35256004880).
+- [x] Verify actual public Windows/Mac downloads in
+  [run 35256113070](https://github.com/ikamensh/saga-online/actions/runs/35256113070):
+  archive identity, frozen client/fonts, all eight public multiplayer checks,
+  and unchanged live catalog/server attestation pass on both platforms.
 
-The existing wind/strike/follow/recover cycle and sparks still read as timid.
-After WB-003 establishes the timing/art baseline, improve silhouette,
-anticipation, body weight, weapon arc, contact and recovery. Prototype one
-infantry weapon before expanding across races/types; consider extra keys or a
-smear only where they solve an observed gap. Evaluate brief presentation-only
-hit-stop and damage-scaled feedback without delaying simulation or orders.
+**Accepted:** real-speed fights show readable swings and contact synchronized
+with actual model hits. Cancelled attacks and network rejection do not fabricate
+impacts. Upload recovery reused the exact accepted binaries; WB-020 records a
+proposed follow-up for GitHub transfer/finalization diagnostics.
 
-**Done when:** real-speed close fights and crowded battles show a clear swing
-and impact synchronized to the model's hit event and audio; misses, cancelled
-wind-ups and moving targets remain honest. Inspect every affected facing and
-preserve combat timings/damage unless a separate rules change is agreed.
+Execution is paused here. No further backlog item is started.
 
 ## WB-005 — Death animations
 

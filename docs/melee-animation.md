@@ -1,5 +1,9 @@
 # WB-004 — Melee animation acceptance and diagnosis
 
+Completed and published on 2026-09-17. The final acceptance record is at the
+end of this chronological log; earlier open gates describe their state at
+that stage. Backlog execution is paused after WB-004 at the user's request.
+
 Started 2026-09-17 on `codex/wb004-melee-motion`, from main `7655d0e`.
 WB-003 is published and its public Windows/Mac download checks passed.
 
@@ -573,3 +577,47 @@ public-CLI acceptance test reproduced the failure locally. Deriving the valid
 fixture's engine identity from that same lock fixes it without changing any
 production validator or weakening rejection cases. A fresh CI source/run is
 required for final native acceptance; the failed run is not reused.
+
+## Accepted release — 2026-09-17
+
+Final source `cac35b7a908f0526aaa9a3117c5e36a8d415dc90` pins published
+Saga2D 0.3.3. The final human/dwarf native duels at normal/near/far zoom and
+the crowded battle were inspected; the earlier all-race, eight-facing painted
+and procedural matrices cover infantry, workers, scouts and heavy melee.
+The implementation preserves the authoritative simulation fingerprint above.
+
+- [Main Linux tests](https://github.com/ikamensh/warband/actions/runs/35244288009)
+  pass 1,048 tests with 12 skips and the expected stale-art warning.
+- [Main native packages](https://github.com/ikamensh/warband/actions/runs/35244288044)
+  pass Windows, Mac and independent archive validation, from that exact source.
+- [Publication](https://github.com/ikamensh/warband/actions/runs/35245660396)
+  succeeds on attempt 3, reusing the original accepted prepare artifact and
+  every original native binary. The immutable release is
+  [0.2.0-preview.35244288044](https://github.com/ikamensh/warband/releases/tag/v0.2.0-preview.35244288044).
+- [Saga Online promotion](https://github.com/ikamensh/saga-online/actions/runs/35256004880)
+  independently verifies the public release and live compatibility, then
+  activates the website. Catalog commit `be75290` and the live public catalog
+  both identify the accepted source and version.
+
+GitHub upload transport/finalization failures interrupted the first two
+publisher attempts. Operator recovery reused the accepted publication bundle,
+preserved completed assets, and verified all seven final sizes and SHA-256
+digests before resuming the normal publisher. One transfer returned HTTP 500;
+another returned HTTP 504 after sending the complete archive, which GitHub
+finalized later. No binaries were rebuilt and no integrity or compatibility
+check was relaxed. The receipts are in `docs/evidence/melee/`, including
+`all-uploaded-final-verification.json` and `published-35245660396-3/`.
+WB-020 records a proposed diagnostic/recovery follow-up; it is not started.
+
+The [accepted server rollout](../../saga-online/docs/warband-melee-rollout.md)
+records the exact engine/game cohort, Linux service-account checks, backup and
+retained-campaign rehearsal, public three-game journeys and rollback baseline.
+[Public download run 35256113070](https://github.com/ikamensh/saga-online/actions/runs/35256113070)
+passes on Windows and Mac. Both anonymously downloaded archives match the
+catalog bytes and hashes; frozen execution, bundled fonts and all eight live
+TLS multiplayer checks pass. The public catalog and server attestation remain
+unchanged throughout both journeys. Receipts are in Saga Online's
+`docs/evidence/melee-rollout/public-downloads-35256113070/`.
+
+WB-004 is complete. Its backlog entry is marked done, and execution is paused
+before starting another item, as requested.
