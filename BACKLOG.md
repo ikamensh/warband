@@ -139,6 +139,12 @@ The user authorized autonomous releases, CI publishing setup and hosted
 deployments on 2026-09-17. Proceed after the required verification without
 another go-ahead. All milestones above have verified completion evidence.
 
+- [x] Follow-up approved 2026-09-17: replace run-ID preview suffixes with
+  automatic short patch versions. **0.2.2** is published and live; native builds,
+  automatic promotion and fresh public Windows/Mac clients passed. See
+  [the versioning acceptance record](docs/release-versioning.md). This focused
+  follow-up does not resume the backlog beyond WB-004.
+
 Make a push to `main` produce an immutable preview release and update the
 Warband download page at [games.tachyon-ai.eu](https://games.tachyon-ai.eu/warband/).
 Use `main` as the publishing branch; ordinary feature-branch pushes

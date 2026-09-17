@@ -53,3 +53,38 @@ directly rather than constructing a native release identity from its unrelated
 workflow counter. A regression executes the actual Linux setup block with an
 independent counter below the native version anchor. The failed candidate's
 version is not reused; the next native run produces 0.2.2.
+
+## Completed public acceptance — 2026-09-17
+
+The first published short version is **0.2.2**, from Warband
+`f6e3b28c447017c85145c9dcb56b794da09bc053`, native run number 27.
+
+- [x] The 51 local release CLI/Git/HTTP checks passed. Linux
+  [Tests 35270068163](https://github.com/ikamensh/warband/actions/runs/35270068163)
+  passed 1,054 tests with 12 skips. Saga Online `5da5fbe` passed
+  [142 server/publication checks and real host acceptance](https://github.com/ikamensh/saga-online/actions/runs/35269772417)
+  and its [website checks](https://github.com/ikamensh/saga-online/actions/runs/35269772371).
+- [x] Both native platforms and combined artifact validation passed in
+  [build 35270068161](https://github.com/ikamensh/warband/actions/runs/35270068161).
+  [Publisher 35271641922](https://github.com/ikamensh/warband/actions/runs/35271641922)
+  succeeded on its first attempt and created immutable
+  [release v0.2.2](https://github.com/ikamensh/warband/releases/tag/v0.2.2)
+  (release ID 391043050). Its manifest SHA-256 is
+  `0b8aef83704c275a2639456cc6cfde1e500f6d3d62ba44c1731521b87e049a3b`.
+- [x] Automatic [promotion 35271825201](https://github.com/ikamensh/saga-online/actions/runs/35271825201)
+  independently verified the release, committed catalog `d0ad911` and activated
+  site `3abd8bdea211c66966211d75c246cf660bb1b5b08792ca484be5552e99123f19`
+  at generation 10. The prior site remains available for rollback. The server
+  compatibility fingerprint is unchanged, so no room-server refresh was needed.
+- [x] The actual [public page](https://games.tachyon-ai.eu/warband/) was opened
+  and its screenshot inspected: Early access is separate from Version 0.2.2;
+  all four download labels and filenames use the short version.
+- [x] Fresh anonymous Windows/Mac downloads passed
+  [public acceptance 35272034238](https://github.com/ikamensh/saga-online/actions/runs/35272034238).
+  Archive hashes, embedded source/version, executable identity and bundled fonts
+  matched; all eight live online checks passed from fresh user directories.
+
+Evidence is retained under `docs/evidence/versioning/` in both repositories,
+including native input identity, logs, public manifest, activation receipt and
+both public-client receipts. This completes the separately approved versioning
+change; backlog execution remains paused after WB-004.
