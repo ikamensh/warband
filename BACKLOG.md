@@ -33,6 +33,7 @@ every earlier item first.
 | WB-017 | Next | ready | Preserve movement speed through path waypoints | WB-003 diagnosis |
 | WB-018 | Next | ready | Keep large selections inside the HUD | Native crowd capture |
 | WB-019 | Next | ready | Remove stray sprite-sheet lines from painted units | Native melee review |
+| WB-020 | Later | proposed | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -547,3 +548,25 @@ without erasing legitimate spears, antennae, shadows or detached effects; add
 a regression using the actual affected frame and a visual-lint check that
 reports comparable stray fragments. Preserve team colours, frame geometry and
 placement, and inspect native frames after the correction.
+
+## WB-020 — Interrupted release upload recovery
+
+WB-004 publication encountered both a response-read timeout and a request-write
+timeout while uploading accepted archives to GitHub. An unfinished `starter`
+asset advertised its intended nonzero size with no digest; in one case its
+retrievable bytes already matched the independent CI receipt. The publisher
+correctly refused to treat that state as accepted. Preserve the failure logs
+and operator recovery evidence in `docs/evidence/melee/`.
+
+Improve per-file transfer/finalization diagnostics and establish a bounded
+recovery procedure for these states. Distinguish an active upload from a
+terminal failed attempt, and prove the exact source, version and expected bytes
+before retrying. Preserve completed assets and immutable published versions.
+Do not simply relax digest/state validation or overwrite an ambiguous asset.
+
+**Done when:** realistic HTTP integration checks cover partial uploads, fully
+received bytes without final metadata, and interrupted retries. Recovery reuses
+accepted archives, leaves completed assets untouched, and reaches a verified
+immutable publication. Actual transfer/finalization progress and failures must
+be understandable in CI logs. This item is proposed; no implementation is
+started during the requested pause after WB-004.
