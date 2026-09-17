@@ -102,13 +102,16 @@ def release_service():
 
         def asset(self, name):
             data = state["assets"][name]
+            download = "/draft-download/" if state["release"]["draft"] else "/download/"
             return {"id": list(state["assets"]).index(name) + 1, "name": name,
                     "state": "starter" if name == state["starter"] else "uploaded",
                     "size": len(data), "digest": "sha256:" + digest(data),
-                    "browser_download_url": state["url"] + "/download/" + name}
+                    "browser_download_url": state["url"] + download + name}
 
         def handle_request(self):
             route = urlsplit(self.path)
+            if route.path.startswith("/draft-download/"):
+                return self.respond({"message": "Not Found"}, 404)
             if route.path.startswith("/download/"):
                 assert self.headers.get("Authorization") is None, "Public download must be unauthenticated"
                 assert state["release"] and not state["release"]["draft"]
@@ -188,6 +191,15 @@ def publish(directory, service):
     return subprocess.run([sys.executable, str(CLI), "publish", "--directory", str(directory),
                            "--api-url", service["url"]], capture_output=True, text=True,
                           env={**os.environ, "GH_TOKEN": "local-fixture-token"}, timeout=15)
+
+
+def test_publication_uses_the_final_public_download_urls(packages, tmp_path, release_service):
+    """GitHub replaces draft asset URLs when publishing; verify the resulting public URLs."""
+    directory = tmp_path / "release"
+    assert stage(packages, directory).returncode == 0
+    result = publish(directory, release_service)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["release_id"] == release_service["release"]["id"]
 
 
 def test_interrupted_upload_resumes_without_replacing_bytes(packages, tmp_path, release_service):

@@ -261,6 +261,11 @@ def publish(directory: Path, api_url: str, token: str) -> dict:
         release = api.api(path, method="PATCH", value={"draft": False, "make_latest": "false"})
     require(release["draft"] is False and release["immutable"] is True,
             "Enable GitHub release immutability before production publication")
+    # Draft assets use temporary `untagged-*` URLs. Publication replaces them
+    # with versioned public URLs, so the earlier asset records are stale.
+    remote = list(api.pages(path + "/assets"))
+    require(len(remote) == len(assets) and {item["name"] for item in remote} == set(assets),
+            "Published release asset inventory differs")
     for item in remote:
         api.verify_asset(item, assets[item["name"]], public=True)
     return {"identity": identity, "release_id": release["id"], "url": release["html_url"],

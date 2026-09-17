@@ -101,6 +101,21 @@ are `true`. The live server and website are healthy; the site is still the
 previous release until the first complete pipeline succeeds. The initial main
 push, downloaded client acceptance and publication retry remain to be recorded.
 
+The first native main run `35201502611` passed both platforms and triggered
+publisher `35202693598`. It created immutable release `390564613`, version
+`0.2.0-preview.35201502611`, then stopped during anonymous verification with a
+404. The website was not promoted. A temporary unpublished GitHub draft proved
+that draft assets use `untagged-*` download URLs; publication changes those URLs.
+The diagnostic draft/asset were removed and no tag remained.
+
+The publisher now reloads the final asset inventory after publication before
+checking anonymous downloads. A real HTTP-service regression reproduces the
+draft-to-public URL change: it failed with the same 404 before the fix, then all
+57 publication/input/package integration checks passed. No retry delay or weaker
+hash check was added. The existing immutable release is being retried using the
+accepted native artifacts; a subsequent main build will verify the corrected
+first-publication path. GitHub release immutability is enabled on the repository.
+
 The legacy Windows-only tag/manual release workflow has been removed after
 acceptance of the pinned two-platform native producer (run `35149564980`).
 The native workflow and separate publisher now provide the single build/release
