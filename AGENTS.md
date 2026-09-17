@@ -13,6 +13,7 @@ The hosted server and website live in `../saga-online`.
 uv sync --extra dev
 uv run warband --seed 3                          # play (python -m warband works too)
 uv run pytest -q                                 # headless suite, about four minutes
+gh run list --limit 6                            # CI after every push: Tests, Native package checks and, on main, the publication (make ci at the stack root)
 uv run python -u tools/fuzz.py --games 2 --monkey 0 --seed 81   # AI matches with invariants + monkey input (needs -u)
 uv run python tools/verify.py DIR                # a match through real pyglet events, frames saved to look at
 uv run python tools/verify_profile.py DIR        # title card, profile, rating on the results, leave confirmations, a replay: frames to look at
@@ -122,6 +123,13 @@ real breakdown.
   watching a match. The same two brains on the same twelve seeds swing
   between seven and eleven wins on the random stream alone, so nothing under
   a few dozen games means anything; see `docs/ai-ladder.md`.
+- A push is not done until its CI is green: run `gh run list` (or `make ci` at
+  the stack root) after pushing and fix or revert a red run before moving on.
+  `tests/warband/test_startup.py` starts the game on the windows players
+  actually get (clipped under a taskbar, maximised, a 4K desktop, fullscreen
+  toggled between matches) and the packaged native check starts a match
+  after a resize; a report from a real desktop adds its window to that
+  matrix before the fix.
 - Check what the player can reach through the UI, not only what the rules
   allow (the build card once offered four of nine buildings while the model
   tests passed).

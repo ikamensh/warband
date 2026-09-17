@@ -165,10 +165,14 @@ def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = No
                         if rng.random() < 0.5:
                             game.backend.inject_drag(x + rng.randrange(-200, 200), y + rng.randrange(-200, 200), rng.uniform(-50, 50), rng.uniform(-50, 50), button=button)
                         game.backend.inject_release(x + rng.randrange(-200, 200), y + rng.randrange(-200, 200), button)
-                    elif roll < 0.9:
+                    elif roll < 0.88:
                         game.backend.inject_mouse_move(rng.randrange(1280), rng.randrange(800))
-                    else:
+                    elif roll < 0.97:
                         game.backend.inject_scroll(rng.randrange(1280), rng.randrange(800), 0, rng.uniform(-5, 5))
+                    elif roll < 0.99:  # the OS has the last word on the window: any size, at any moment
+                        game.backend.inject_resize(rng.randrange(640, 3841), rng.randrange(400, 2161))
+                    else:
+                        game.backend.set_fullscreen(not game.fullscreen)
                     for _ in range(rng.choice((1, 1, 2, 12))):
                         game.tick(1 / 60)
                         if budget:

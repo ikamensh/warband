@@ -257,7 +257,6 @@ class NewGameScene(Scene):
         self.race = title.race
         self.layout = title.layout
         self.seed = mapgen.fresh_seed()
-        self._preview_key = PREVIEW_KEY
         self._preview_world: World | None = None
         self._preview_pil: PilImage.Image | None = None
         self._theme_buttons: dict[MapTheme, Button] = {}
@@ -295,15 +294,13 @@ class NewGameScene(Scene):
         self._preview_world = world
         image = preview_image(world)
         self._preview_pil = image
-        if self.game.assets.has_image(self._preview_key):
-            try:
-                self.game.assets.update_image(self._preview_key, image)
-            except ValueError:
-                # The map size changed, so the image changed size too: re-register under the same key.
-                del self.game.assets._images[self._preview_key]
-                self.game.assets.image_from_pil(self._preview_key, image)
+        # One image slot whatever the map size: the picture sits centred in its box, so the slot is redrawn in place.
+        canvas = PilImage.new("RGBA", PREVIEW_BOX, (0, 0, 0, 0))
+        canvas.paste(image, ((PREVIEW_BOX[0] - image.width) // 2, (PREVIEW_BOX[1] - image.height) // 2))
+        if self.game.assets.has_image(PREVIEW_KEY):
+            self.game.assets.update_image(PREVIEW_KEY, canvas)
         else:
-            self.game.assets.image_from_pil(self._preview_key, image)
+            self.game.assets.image_from_pil(PREVIEW_KEY, canvas)
 
     def on_enter(self) -> None:
         """The options in a column on the left, the preview and the opponents beside them, Start below."""
@@ -355,7 +352,7 @@ class NewGameScene(Scene):
         options.add(race_row)
         options.add(Row(Label(lambda: f"Seed {self.seed}", text_style="body", width=90 + 8 + OPTION_WIDTH),
                         Button("Reroll", hotkey="R", on_click=self.reroll, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
-        side = Column(Image(self._preview_key, width=PREVIEW_BOX[0], height=PREVIEW_BOX[1]),
+        side = Column(Image(PREVIEW_KEY, width=PREVIEW_BOX[0], height=PREVIEW_BOX[1]),
                       Label(lambda: self._opponents_text(), text_style="sub"), spacing=8, margin=0)
         # The race's character runs under the whole row: beside the preview it would wrap, and the panel must fit a 680 px window.
         race_note = Label(lambda: f"{RACES[self.race].tagline} · {RACES[self.race].passive}", text_style="sub", width=NOTE_WIDTH + 24 + PREVIEW_BOX[0])

@@ -25,7 +25,7 @@ TARGETS = ("windows-x64", "darwin-arm64")
 PACKAGES = ("numpy", "Pillow", "pyglet", "websockets", "pyinstaller", "pyinstaller-hooks-contrib")
 ONLINE_CHECKS = ("create_join", "authoritative_movement", "foreign_order_rejected", "private_seat_rejoin",
                  "global_production", "automatic_plan_builder", "cancel_plans", "assembly_point")
-NATIVE_CHECKS = ("native_multiplayer_input", "native_clipboard_join", "live_match_menu", "native_settlement_planning")
+NATIVE_CHECKS = ("native_multiplayer_input", "native_clipboard_join", "live_match_menu", "native_settlement_planning", "start_after_resize")
 
 
 def read_json(path: Path) -> dict:

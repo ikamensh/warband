@@ -65,14 +65,20 @@ def main() -> None:
 
 
 def selftest(png: str) -> None:
-    """Prove a build works without a screen: fonts, art, sound files and a rendered frame."""
+    """Prove a build works without a screen: fonts, art, sound files, and a match started from the title on a window the OS resized."""
     import os
 
     os.environ["SAGA2D_SILENT"] = "1"
     game = Game("Warband", resolution=(1280, 800), visible=False, theme=build_theme())
     fonts.load(game)
     bank = sound.install(game)
-    game.push(new_game(1, settings=game.settings(DEFAULT_SETTINGS)))
+    game.push(TitleScene(settings=game.settings(DEFAULT_SETTINGS)))
+    game.tick(1 / 60)
+    game.set_window_size((1271, 791))  # the OS has the last word on the window; the match starts on what it gives
+    game.tick(1 / 60)
+    game.scene.new_game()
+    game.tick(1 / 60)
+    game.scene.start()
     for _ in range(5):
         game.tick(1 / 60)
     game.backend.capture_frame().save(png)

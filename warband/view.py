@@ -193,6 +193,8 @@ class MapView:
         textures.register_static(self.game)
         textures.register_theme(self.game, world.theme)
         self.scale = self.game.backend.scale_factor
+        # Ground and edge images are rasterised for this window: another scale is another image, never a redraw in place.
+        self._map_key = f"{world.width}x{world.height}@{self.scale:g}"
         self._ground: list[Sprite] = []
         self._edge: list[Sprite] = []
         self._ground_keys: list[list[str]] = []  # per chunk: one image, or WATER_PHASES of them when it holds water
@@ -232,7 +234,7 @@ class MapView:
     # -- Setup ------------------------------------------------------------------------
 
     def _register(self, key: str, image: Image.Image) -> None:
-        """Register an image, or redraw it in place if an earlier map left one of the same size."""
+        """Register an image, or redraw it in place if an earlier map of this size left one at this scale."""
         if self.game.assets.has_image(key):
             self.game.assets.update_image(key, image)
         else:
@@ -248,7 +250,7 @@ class MapView:
     def _chunk_keys(self, index: int) -> list[str]:
         world = self.world
         phases = textures.WATER_PHASES if self._chunk_has_water(index) else 1
-        return [f"ground.{index}.{world.width}x{world.height}.{phase}" for phase in range(phases)]
+        return [f"ground.{index}.{self._map_key}.{phase}" for phase in range(phases)]
 
     def _paint_chunk(self, index: int, phase: int) -> None:
         world = self.world
@@ -295,7 +297,7 @@ class MapView:
             ("right", vertical.transpose(Image.Transpose.ROTATE_270), (world.width * TILE, 0)),
         )
         for side, image, position in sides:
-            key = f"edge.{side}.{world.width}x{world.height}"
+            key = f"edge.{side}.{self._map_key}"
             self._register(key, image)
             if len(self._edge) < 4:
                 self._edge.append(self.scene.add_sprite(Sprite(key, position=position,

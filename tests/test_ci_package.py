@@ -75,7 +75,7 @@ def candidate(tmp_path):
     smoke = {**receipt, "frozen": True, "bundled_fonts": True, "online": dict.fromkeys(ONLINE, True)}
     native = {**receipt, "backend": "pyglet", "native_multiplayer_input": True,
               "native_clipboard_join": True, "live_match_menu": True,
-              "native_settlement_planning": True, "images": ["native.png"]}
+              "native_settlement_planning": True, "start_after_resize": True, "images": ["native.png"]}
     (directory / "verification").mkdir()
     (directory / "verification/native.png").write_bytes(b"\x89PNG\r\n\x1a\nfixture")
     write_json(directory / "verification.json", {

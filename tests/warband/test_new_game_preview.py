@@ -9,7 +9,7 @@ from warband import mapgen
 from warband.races import RACES
 from warband.rules import Layout
 from warband.style import build_theme
-from warband.title import NewGameScene, TitleScene, preview_image
+from warband.title import PREVIEW_BOX, PREVIEW_KEY, NewGameScene, TitleScene, preview_image
 
 
 def open_new_game(tmp_path, resolution=(1280, 800)):
@@ -36,7 +36,7 @@ def test_preview_is_drawn_with_opponents(tmp_path) -> None:
         scene = game.scene
         assert isinstance(scene, NewGameScene)
         assert scene._preview_world is not None and scene._preview_pil is not None
-        handle = game.assets.image(scene._preview_key)
+        handle = game.assets.image(PREVIEW_KEY)
         drawn = [i["image"] for i in game.backend.images]
         sprites = [s["image"] for s in game.backend.sprites.values()]
         assert handle in drawn or handle in sprites
@@ -65,8 +65,8 @@ def test_the_preview_fits_its_box_at_whole_pixels_per_tile(tmp_path, key: str, s
         press(game, key)
         scene = game.scene
         assert scene.size == size
-        handle = game.assets.image(scene._preview_key)
-        assert game.backend.get_image_size(handle) == pixels
+        assert scene._preview_pil.size == pixels
+        assert game.backend.get_image_size(game.assets.image(PREVIEW_KEY)) == PREVIEW_BOX  # one slot, the picture centred in it
     finally:
         game._teardown()
 

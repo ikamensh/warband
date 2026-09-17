@@ -123,9 +123,9 @@ def native_smoke(output: Path, endpoint: str) -> dict:
     from saga2d.multiplayer_ui import MatchLobby
     from saga2d.online import OnlineClient
     from warband import sound
-    from warband.scene import DEFAULT_SETTINGS, SettlementPlansScene, new_game
+    from warband.scene import DEFAULT_SETTINGS, GameScene, SettlementPlansScene
     from warband.style import build_theme
-    from warband.title import TitleScene
+    from warband.title import NewGameScene, TitleScene
     from warband.multiplayer import NetworkGameScene, NetworkMenuScene
     from warband.rules import UnitType
 
@@ -232,14 +232,20 @@ def native_smoke(output: Path, endpoint: str) -> dict:
             capture("-match-menu")
             click("Leave match")
             assert isinstance(game.scene, TitleScene)
-            game.clear_and_push(new_game(3, width=48, height=40, settings=settings))
+            game.set_window_size((1271, 791))  # the OS has the last word on the window: the next match starts on what it gives
+            frames()
+            press(key.N)
+            assert isinstance(game.scene, NewGameScene)
+            capture("-new-game")
+            press(key.ENTER)
+            assert isinstance(game.scene, GameScene) and game.backend.scale_factor != 1.0
             capture("")
             assert game.scene.world.units and game.scene.world.buildings
             return {"passed": True, "source_commit": info["source_commit"], "version": info["version"],
                     "executable": info["executable"], "executable_sha256": info["executable_sha256"],
                     "renderer": gl.gl_info.get_renderer(), "opengl_version": gl.gl_info.get_version_string(), "vendor": gl.gl_info.get_vendor(),
                     "backend": "pyglet", "native_multiplayer_input": True, "native_clipboard_join": True,
-                    "live_match_menu": True, "native_settlement_planning": True,
+                    "live_match_menu": True, "native_settlement_planning": True, "start_after_resize": True,
                     "sound_catalogue": len(bank.names), "images": images}
         finally:
             game.backend.set_clipboard_text(clipboard)

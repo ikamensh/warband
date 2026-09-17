@@ -13,7 +13,9 @@ each priority, the order is the suggested sequence, not a requirement to finish
 every earlier item first.
 
 Execution is **paused after WB-004**, as requested on 2026-09-17. No next
-backlog item has been started.
+backlog item has been started. WB-022 was done outside the queue on
+2026-09-17: a crash on the first match start in the shipped Windows build,
+with the coverage that catches its class.
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
@@ -37,6 +39,8 @@ backlog item has been started.
 | WB-018 | Next | ready | Keep large selections inside the HUD | Native crowd capture |
 | WB-019 | Next | ready | Remove stray sprite-sheet lines from painted units | Native melee review |
 | WB-020 | Later | proposed | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
+| WB-021 | Next | ready | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
+| WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -562,3 +566,67 @@ accepted archives, leaves completed assets untouched, and reaches a verified
 immutable publication. Actual transfer/finalization progress and failures must
 be understandable in CI logs. This item is proposed; no implementation is
 started during the requested pause after WB-004.
+
+## WB-021 — A 4K Windows desktop gets a window and HUD made for it
+
+Reported 2026-09-17 with a screenshot: on a Windows 10 desktop at 3840×2160
+the game opened as a window covering about half of the desktop, letterboxed
+inside its own frame with black bands left and right, and the HUD drawn at
+native pixels, so the title's menu and the player's card were tiny.
+`python -m warband` asks the engine for a window that fits the screen
+(`Game(resolution=None)`: the reported screen size minus a margin); the units
+pyglet reports under Windows display scaling and what the OS then hands back
+decide the rest, and neither has been checked on a scaled desktop. The engine
+side is [S2D-015](../saga2d/BACKLOG.md); Tribes and Ninefold ask for their
+windows the same way.
+
+**Done when:** on a 4K Windows desktop (a session with display scaling, or a
+scaled virtual desktop in CI) the window uses the desktop, letterboxes only
+for an aspect mismatch and shows a readable HUD (the layouts are made for
+1280 wide and up; a `scale_factor` of 2 keeps text sharp); the startup matrix
+in `tests/warband/test_startup.py` names that desktop; a native frame from
+such a window is inspected. Ready; not started during the pause after WB-004.
+
+## WB-022 — The first match starts on the window the OS handed back
+
+Reported 2026-09-17 with the traceback: on Windows 10 the first Start from the
+title crashed in `MapView._register` with `update_image: got (317, 317), the
+image is 320x320`. The title's backdrop is a Medium map and so is the default
+new game. The backdrop had registered the ground chunk images under keys of
+map size alone; the OS then handed back a window a few pixels shorter than
+requested (a scale of 951/960 = 0.990625: 317 px of 320), and the match redrew
+the chunks at that scale into the old slots. Every Windows player whose window
+is clipped under the taskbar hit it on their first match. CI was green
+throughout: the suite started matches at requested sizes only, the native
+package check started its match straight from code at 1280×800, and the mock
+backend kept `scale_factor` at 1 whatever the window.
+
+Done 2026-09-17. The fix: ground and edge images carry the window scale in
+their key (`MapView._map_key`), so another scale is another image and the same
+scale is still a redraw in place; the new-game preview keys its image by map
+size instead of deleting from the engine's private cache. Coverage for the
+class, not the instance:
+
+- `tests/warband/test_startup.py` starts the game as `__main__` does
+  (`resolution=None`) on the windows players get — as requested, clipped under
+  a taskbar, maximised, small, a 4K desktop that reported scaled units — and
+  title → match → title → match across a resize, a fullscreen toggle and a
+  size change. The matrix fails on the old code exactly as the report did.
+- Saga2D 0.3.4 (published, tag `v0.3.4`): the mock backend derives
+  `scale_factor` from the window like the pyglet backend. Warband still pins
+  0.3.3: the promotion gate requires the candidate's compatibility contract,
+  engine version included, to equal the live server's (`verify_baseline` in
+  Saga Online), so the pin moves with the next reviewed server rollout. Until
+  then `test_startup.py` sets the scale pyglet would derive after each display
+  change (`the_os_hands_back`) and drops that line with the pin bump.
+- The packaged native check on both CI platforms resizes the window on the
+  title and starts the next match through the new-game screen
+  (`start_after_resize` in the receipt, required by `tools/ci_package.py`);
+  `--selftest` does the same on the installed Mac app.
+- The fuzz monkey resizes the window and toggles fullscreen at random moments.
+- Process: `make ci` at the stack root (`tools/ci_status.py`) and the rule in
+  the stack and Warband agent notes that a push is not done until CI is green.
+
+Follow-up: Saga Online's promotion gate (`tools/warband_evidence.py`) can
+require `start_after_resize` once a release carrying it is live. Evidence:
+see the publication runs recorded below once the push is verified.
