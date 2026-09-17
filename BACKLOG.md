@@ -243,8 +243,14 @@ through three hits). The first regression must preserve visible contact and
 moving-unit continuity; fixing recoil alone will not complete this item.
 The first increment now renders the intended recoil (~3 px in native capture),
 follows newly issued movement and freezes under F3. It passes 82 relevant tests,
-input fuzz, the unchanged fingerprint and native layout checks. The actual
-weapon/body-motion prototype and complete WB-004 acceptance remain open.
+input fuzz, the unchanged fingerprint and native layout checks. The human
+footman's next prototype adds a continuous weight shift and a brief sword
+afterimage. Six melee regressions and an image-clipping regression pass;
+the final complete suite passes 924 tests (12 skips).
+Native captures cover eight facings and both art paths. A 150-footman timing
+comparison rejected the expensive polygon version in favour of one cached
+image per trail. Other melee weapons and complete WB-004 acceptance remain
+open; [the prototype record](docs/melee-animation.md) states the limits.
 
 The existing wind/strike/follow/recover cycle and sparks still read as timid.
 After WB-003 establishes the timing/art baseline, improve silhouette,

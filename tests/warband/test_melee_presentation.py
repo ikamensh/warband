@@ -1,10 +1,28 @@
 """Combat presentation must survive the complete scene update without changing rules."""
 import math
 
+from warband import textures
 from warband.model import World
 from warband.rules import BuildingType, Terrain, UnitType
 from warband.scene import GameScene
 from warband.textures import TILE
+from warband.visual_lint import ImageStore, alpha
+
+
+def test_sword_trail_keeps_its_whole_arc_inside_the_image_in_every_facing(game):
+    """Rear-facing cuts rise farther than the original fixed square allowed."""
+    store = ImageStore(game)
+    for facing in range(8):
+        pixels = alpha(store.image(textures.sword_trail_image(game, facing)))
+        assert pixels.max() > 100, f"The trail vanished in facing {facing}"
+        for edge in (pixels[0], pixels[-1], pixels[:, 0], pixels[:, -1]):
+            assert edge.max() < 8, f"The trail is clipped in facing {facing}"
+
+
+def world_marks(game):
+    """Immediate world drawings in this bare duel, independent of their primitive."""
+    return [(kind, mark) for kind in ("images", "polygons", "lines")
+            for mark in getattr(game.backend, kind) if mark["space"] == "world"]
 
 
 def duel(game, *, damaging=True):
@@ -18,7 +36,7 @@ def duel(game, *, damaging=True):
     victim = world.spawn_unit(1, UnitType.FOOTMAN, (18.5, 13.5))
     attacker.facing, victim.facing = 0.0, math.pi
     if not damaging:
-        attacker.cooldown = 3.0  # Same opponent/target poses; no incoming blow in this window.
+        attacker.cooldown = attacker.info.cooldown  # Same target poses; no incoming blow in this window.
     scene = GameScene(world, 0, ranked=False, settings={"tutorial": False, "music": 0, "sfx": 0})
     game.clear_and_push(scene)
     scene.view.set_reveal(True)
@@ -58,6 +76,29 @@ def first_hit(game, victim):
     raise AssertionError("The duel did not produce a damaging hit")
 
 
+def test_swordsman_loads_back_then_drives_forward_without_moving_his_ground_point(game):
+    """Anticipation and follow-through must carry visible weight at gameplay size.
+
+    Stop before the opponent's counter-hit: incoming recoil cannot satisfy this
+    property. The drawn weight shift must not move the authoritative unit.
+    """
+    scene, attacker, victim = duel(game)
+    initial_hp = attacker.hp
+    wind, contact = [], []
+    for _ in range(28):
+        game.tick(1 / 60)
+        assert attacker.pos == (17.5, 13.5)
+        assert attacker.hp == initial_hp
+        offset = scene.view.unit_sprite(attacker.id).x - attacker.x * TILE
+        if attacker.windup > 0:
+            wind.append(offset)
+        elif victim.hp < victim.max_hp:
+            contact.append(offset)
+    assert min(wind) < -1.0, "The body never loads back for the swing"
+    assert max(contact) > 1.0, "The body never drives through contact"
+    assert all(abs(offset) < attacker.radius * TILE for offset in wind + contact)
+
+
 def test_pause_freezes_the_visible_hit_reaction(game):
     """F3 must freeze the combat body as well as the authoritative clock."""
     scene, attacker, victim = duel(game)
@@ -69,9 +110,50 @@ def test_pause_freezes_the_visible_hit_reaction(game):
     assert scene.paused
     sprite = scene.view.unit_sprite(victim.id)
     held = (scene.world.tick, sprite.position, sprite.rotation, sprite.image)
+    trails = world_marks(game)
+    assert trails, "Exercise a released sword cut as well as the body's recoil"
     for _ in range(20):
         game.tick(1 / 60)
         assert (scene.world.tick, sprite.position, sprite.rotation, sprite.image) == held
+        assert world_marks(game) == trails
+
+
+def test_cancelled_windup_does_not_leave_a_cut_or_impact(game):
+    """Moving away cancels the load-up; no predicted contact may leak into a frame."""
+    scene, attacker, victim = duel(game)
+    for _ in range(9):
+        game.tick(1 / 60)
+    assert attacker.windup > 0
+    initial_hp = victim.hp
+    scene.world.move([attacker.id], (5.5, attacker.y))
+    scene.world.move([victim.id], (30.5, victim.y))
+    for _ in range(45):
+        game.tick(1 / 60)
+        assert victim.hp == initial_hp
+        assert not world_marks(game)
+        sprite = scene.view.unit_sprite(attacker.id)
+        assert sprite.rotation == 0
+        assert sprite.x == scene.view.unit_position(attacker)[0] * TILE
+
+
+def test_a_released_miss_draws_the_cut_but_does_not_shove_the_target(game):
+    """A target outside reach can escape a committed swing; a trail is not a hit."""
+    scene, attacker, victim = duel(game)
+    for _ in range(6):
+        game.tick(1 / 60)
+    assert attacker.windup > 0
+    # Reproduce the model's missed-windup regression through the actual scene.
+    victim.x += 4.0
+    scene.world.move([victim.id], (30.5, victim.y))
+    cut_seen = False
+    for _ in range(30):
+        game.tick(1 / 60)
+        assert victim.hp == victim.max_hp
+        sprite = scene.view.unit_sprite(victim.id)
+        assert sprite.x == scene.view.unit_position(victim)[0] * TILE
+        assert sprite.rotation == 0
+        cut_seen |= bool(world_marks(game))
+    assert cut_seen, "The committed miss must still release its swing"
 
 
 def test_recoil_follows_a_new_move_and_finishes_at_the_current_ground_point(game):

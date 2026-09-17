@@ -24,7 +24,7 @@ from PIL import Image
 from saga2d import Game, ParticleEmitter, RenderLayer, Scene, Sprite, SpriteAnchor
 from warband import textures
 from warband.model import Building, Entity, Pos, Projectile, Unit, World, dist
-from warband.rules import BUILDINGS, SIM_DT, VISION_EVERY, BuildingType, Terrain
+from warband.rules import BUILDINGS, SIM_DT, VISION_EVERY, BuildingType, Race, Terrain, UnitType
 from warband.textures import CHUNK, CHUNK_PX, TILE
 
 WATER_PERIOD = 0.45  # seconds between water phase changes
@@ -120,6 +120,27 @@ def unit_frame(u: Unit, travel: float, time: float) -> str:
     if u.state == "repair":
         return "strike" if (time * 2 + u.id * 0.37) % 1.0 < 0.35 else "stand"
     return "stand"
+
+
+def _sword_lunge(u: Unit, fraction: float) -> float:
+    """Human sword prototype: load slowly, drive quickly, settle to the ground point.
+
+    These are pixels of presentation, never additional reach or model movement.
+    The existing wind-up/cooldown clocks keep the weight shift tied to the blow.
+    """
+    if u.type is not UnitType.FOOTMAN or u.race is not Race.HUMAN or u.state != "attack":
+        return 0.0
+    if u.windup > 0.0:
+        remaining = max(0.0, u.windup - fraction * SIM_DT)
+        if remaining > 0.09:
+            return -3.0 * (u.info.windup - remaining) / (u.info.windup - 0.09)
+        progress = 1 - remaining / 0.09
+        return -3.0 + 8.0 * progress * progress * (3 - 2 * progress)
+    if u.cooldown > 0.0:
+        age = u.info.cooldown - u.cooldown + fraction * SIM_DT
+        if 0 <= age < STRIKE + FOLLOW + RECOVER:
+            return 5.0 * (1 - age / (STRIKE + FOLLOW + RECOVER)) ** 2
+    return 0.0
 
 
 def projectile_point(p: Projectile, world: World, now: float) -> tuple[float, float, float]:
@@ -514,9 +535,12 @@ class MapView:
                     sprite.size = textures.placements[key].size
                     sprite.ground = textures.placements[key].ground
                     self._unit_keys[u.id] = key
-                wx, wy = to_world(position)
-                sprite.position = (wx, wy + textures.placements[key].drop)
-                sprite.visible = True
+            wx, wy = to_world(position)
+            wy += textures.placements[key].drop
+            lunge = _sword_lunge(u, self._fraction)
+            if lunge:
+                wx += math.cos(u.facing) * lunge
+                wy += math.sin(u.facing) * lunge
             reaction = self._recoil.get(u.id)
             if reaction is not None:
                 t = (self.time - reaction.started) / 0.22
@@ -525,9 +549,11 @@ class MapView:
                     sprite.rotation = 0.0
                 else:
                     displacement = 3.0 * math.sin(math.pi * t)
-                    sprite.position = (sprite.x + reaction.direction[0] * displacement,
-                                       sprite.y + reaction.direction[1] * displacement)
+                    wx += reaction.direction[0] * displacement
+                    wy += reaction.direction[1] * displacement
                     sprite.rotation = 6.0 * math.sin(2 * math.pi * t) * (1 - t)
+            sprite.position = (wx, wy)
+            sprite.visible = True
 
     def _sync_projectiles(self, dt: float) -> None:
         """A sprite per shot in the air, moved every frame (between model steps as well), and the
@@ -668,6 +694,7 @@ class MapView:
         world, scene = self.world, self.scene
         self._draw_wood_chips()
         self._draw_projectiles()
+        self._draw_sword_trails()
         for eid in overlay.selected + ([overlay.hovered] if overlay.hovered is not None and overlay.hovered not in overlay.selected else []):
             entity = world.entity(eid)
             if entity is None:
@@ -731,3 +758,22 @@ class MapView:
                 y = wy - (10 + i % 3 * 4) * t + 20 * t * t
                 self.scene.draw_line(x, y, x + 2 + i % 2, y - 1.5, (238, 202, 139, round(235 * (1 - t))), 1.5,
                                      space="world", layer=RenderLayer.EFFECTS)
+
+    def _draw_sword_trails(self) -> None:
+        """A brief afterimage of the released cut; damage still owns impact feedback."""
+        for u in self.world.units.values():
+            if u.type is not UnitType.FOOTMAN or u.race is not Race.HUMAN or u.state != "attack" or u.windup > 0 or u.cooldown <= 0:
+                continue
+            age = u.info.cooldown - u.cooldown + self._fraction * SIM_DT
+            if not 0 <= age < 0.09:
+                continue
+            sprite = self.unit_sprite(u.id)
+            if sprite is None or not sprite.visible:
+                continue
+            wx, wy = sprite.x, sprite.y - textures.placements[sprite.image].drop
+            key = textures.sword_trail_image(self.game, textures.facing_index(u.facing))
+            placement = textures.placements[key]
+            width, height = placement.size
+            fade = (1 - age / 0.09) ** 2
+            self.scene.draw_image(key, wx - width / 2, wy + placement.drop - height, width, height,
+                                  opacity=fade, space="world", layer=RenderLayer.EFFECTS)

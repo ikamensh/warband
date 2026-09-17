@@ -126,3 +126,77 @@ Verification for this increment:
 
 The weapon/body-motion prototype, broader native combat matrix and final full
 suite remain open. No engine, authoritative rule or network contract changed.
+
+## Human-footman sword prototype
+
+The first weapon now loads its body back by up to three logical pixels, drives
+forward by five at contact and settles through the existing recovery clock.
+The offset composes with movement and recoil; it never changes the unit's
+ground position, reach or orders. A short afterimage follows the authored
+sword grip, pitch, torso twist and projection. It appears only after a released
+swing, including a genuine miss, and fades over 0.09 seconds. Damaging hit
+events still exclusively drive victim recoil, sparks and impact audio.
+
+The first wide ribbon looked like a translucent fan in the native frame and
+was rejected. The narrower version makes the cut easier to read from the side
+and diagonals; a cut toward the camera remains naturally foreshortened. Normal,
+near (2×) and far (0.7×) captures include four duels with both combatants,
+covering all eight facings in painted and procedural art. The first near matrix
+put two duels partly behind the HUD; the final capture moves those duels into
+the playable area. Evidence and full-speed 60-frame/s clips are under
+`docs/evidence/melee/sword-cached-*` (the earlier `sword-*-matrix` directories
+retain the polygon version for comparison). Inspecting the cached version
+caught clipping: rear-facing tips reach above its original 128-pixel canvas,
+and one side-facing tip touched the edge. A failing image regression now checks
+the whole trail has a clear margin in all eight facings. Each image uses its
+projected bounds, with its ground offset preserved. The final one-second native
+cycles at all three zooms are in `sword-bounded-painted` and
+`sword-bounded-procedural`; they show the complete arcs again.
+
+The new scene regression first failed because the attacker never drew back.
+Six melee scene checks now cover weight without model movement, real incoming
+recoil, pause, moving during recoil, cancelled wind-up and a released miss.
+The latter two distinguish a swing from actual contact: cancellation leaves
+no cut; a committed miss can leave a cut without moving or damaging the victim.
+The same pause/cancellation assertions survive replacing drawn polygons with
+an image. Those six checks plus the image-margin regression pass. The relevant
+scene/view/movement suite before the margin correction passed 85 tests in
+25.90 s (`sword-cached-tests.log`). The final complete suite passes **924 tests,
+12 skips** in 189.84 s, with only the deliberate stale-sheet warning test
+(`sword-full-tests.log`). The simulation fingerprint remains
+`1baac5542386b900d86ff2485ab4982db19d1faf2030870bcebdf12aefe5eccb`.
+Four native battle/forest-battle layout checks at 1280×800 and 1200×680 report
+zero findings; the normal battle and small forest-battle PNGs were inspected
+(`sword-lint.log`). No additional input fuzz is required for this art/view-only
+increment; the preceding recoil/scene change already passed seeds 83 and 84.
+
+### Rendering cost and remaining scope
+
+A deliberately synchronized 150-footman native stress scene compared 312 warmed
+frames per version, using the same world, orders, CPU budget and fixed steps.
+All runs ended with 150 units and 5,260 combined hit points. This is a stress
+comparison, not the standard mixed-army W10 benchmark; these are single-run
+measurements, not confidence intervals.
+
+| View | Frame p50 / p95 | Mean view sync / draw |
+|---|---|---|
+| Recoil baseline `90f9f3d` | 7.49 / 18.08 ms | 1.01 / 0.013 ms |
+| Body plus immediate polygons | 8.27 / 24.32 ms | 1.66 / 0.433 ms |
+| Body plus cached trail image | 7.72 / 20.69 ms | 1.29 / 0.126 ms |
+| Cached image with complete projected bounds (final) | 7.90 / 22.40 ms | 1.29 / 0.216 ms |
+
+The polygon version made many native draw calls during simultaneous cuts.
+The final version shares eight small atlas images and issues one image drawing
+per active trail. Body movement and recoil also write one composed position
+per frame. This reduces the measured overhead, but does not establish zero
+performance cost or a 16 ms stress-test pass. The final bounds correction was
+also measured; run-to-run timing varies, and its p95 remains above the baseline.
+Logs, JSON timings and native crowd frames are in
+`docs/evidence/melee/sword-perf-{before,after,cached,bounded}`. The ordinary
+mixed-army gate and any needed cost reduction remain part of WB-004 acceptance.
+
+This is still the **human-footman prototype**, not completion of WB-004.
+Other races' weapons, workers and mounted/heavy melee need their own treatment
+and native review. Final coverage also includes fog, target changes, replay,
+network snapshots and the standard mixed-army performance check. No public
+engine interface, simulation rule, save schema or network contract changed.

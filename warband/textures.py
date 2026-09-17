@@ -1849,6 +1849,63 @@ def chop_contact_offset(facing: int, race: Race = Race.HUMAN) -> tuple[float, fl
     return PROJECTION.project((x * c - y * s, x * s + y * c, z))
 
 
+@lru_cache(maxsize=8)
+def _sword_sweep(facing: int) -> tuple[tuple[tuple[float, float], tuple[float, float]], ...]:
+    """Human footman's blade ribbon, projected from the authored wind/strike rig.
+
+    Each pair is the inner edge and tip at one point along the fast downswing.
+    Keeping the arc in the art module makes it follow the weapon's actual grip,
+    pitch, torso and camera instead of drawing a generic circle around a unit.
+    """
+    grip = _SWORD_GRIP
+    edge = (grip[0], grip[1], grip[2] + 0.785)  # tip of the human sword
+    inner = tuple(a + (b - a) * 0.88 for a, b in zip(grip, edge))
+    wind, strike = POSES["wind"], POSES["strike"]
+    ribbon = []
+    for i in range(13):
+        t = 0.2 + 0.8 * i / 12
+
+        def between(a: float, b: float) -> float:
+            return a + (b - a) * t
+
+        mesh = [r3.Face((inner, edge, edge), (255, 255, 255))]
+        mesh = _unit_pitch(mesh, between(_SWORD_PITCH["wind"], _SWORD_PITCH["strike"]), grip)
+        mesh = r3.rotate_z(mesh, between(_SWORD_YAW["wind"], _SWORD_YAW.get("strike", 0)), about=grip[:2])
+        mesh = _shift(mesh, tuple(between(a, b) for a, b in zip(_SWORD_SHIFT["wind"], _SWORD_SHIFT["strike"])))
+        mesh = r3.rotate_z(mesh, between(wind.twist, strike.twist))
+        mesh = _unit_pitch(mesh, -between(wind.lean, strike.lean), (0.0, 0.0, HIP))
+        mesh = _shift(mesh, (between(wind.sway, strike.sway), between(wind.lunge, strike.lunge), 0.0))
+        mesh = r3.rotate_z(r3.scale(mesh, UNIT_SCALE), facing * 45 - 90)
+        ribbon.append(tuple(PROJECTION.project(point) for point in mesh[0].points[:2]))
+    return tuple(ribbon)
+
+
+def sword_trail_image(game: Game, facing: int) -> str:
+    """One small atlas image per facing, shared by every human swordsman."""
+    key = f"sword-trail.{facing}"
+    if game.assets.has_image(key):
+        return key
+    scale = game.backend.scale_factor
+    sample = scale * 2  # supersample the thin ribbon's edge
+    ribbon = _sword_sweep(facing)
+    points = [point for pair in ribbon for point in pair]
+    width = 2 * (math.ceil(max(abs(x) for x, _ in points)) + 3)
+    top = math.floor(min(y for _, y in points)) - 3
+    bottom = math.ceil(max(y for _, y in points)) + 3
+    height = bottom - top
+    image = Image.new("RGBA", (round(width * sample), round(height * sample)))
+    draw = ImageDraw.Draw(image)
+    for i, ((inner0, tip0), (inner1, tip1)) in enumerate(zip(ribbon, ribbon[1:])):
+        strength = (i + 1) / (len(ribbon) - 1)
+        points = [((x + width / 2) * sample, (y - top) * sample) for x, y in (inner0, tip0, tip1, inner1)]
+        draw.polygon(points, fill=(235, 242, 252, round(85 * strength)))
+        draw.line(points[1:3], fill=(249, 251, 255, round(180 * strength)), width=round(1.2 * sample))
+    image = image.resize((round(width * scale), round(height * scale)), Image.Resampling.LANCZOS)
+    placements[key] = Placement((width, height), bottom)
+    game.assets.image_from_pil(key, image)
+    return key
+
+
 def unit_key(unit_type: UnitType, player: int, facing: int, frame: str, carrying: Resource | None = None, race: Race = Race.HUMAN) -> str:
     carry = f".{carrying.value}" if carrying is not None else ""
     return f"unit.{race.value}.{unit_type.value}{carry}.{player}.{facing}.{frame}"
