@@ -39,3 +39,17 @@ reuse an existing version; promotion must reject older or rebound versions.
 
 The numeric version is separate from release maturity: this remains an early
 access game and the existing unsigned/notarized build notices remain honest.
+
+## Rollout checks
+
+Local release CLI/Git/HTTP checks pass, as do 115 independent publication,
+website and activation checks. The local website preview was rendered and
+inspected: Early access and Version are separate, and download labels are short.
+
+The first native candidate (run 26, 0.2.1) was cancelled before publication:
+Linux Tests run 35269801032 exposed its separate setup step still calling the
+old CLI. That job only needs committed dependency pins, so it now reads those
+directly rather than constructing a native release identity from its unrelated
+workflow counter. A regression executes the actual Linux setup block with an
+independent counter below the native version anchor. The failed candidate's
+version is not reused; the next native run produces 0.2.2.

@@ -1,5 +1,8 @@
 """CI release preparation through its CLI and real Git checkouts."""
 import json
+import os
+import shutil
+import textwrap
 from pathlib import Path
 import subprocess
 import sys
@@ -131,3 +134,24 @@ def test_retry_cannot_change_its_native_counter(checkout):
     original = path.read_bytes()
     assert prepare(checkout, run_number="27").returncode != 0
     assert path.read_bytes() == original
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Executes a Linux workflow bash step")
+def test_linux_workflow_resolves_pins_without_a_native_release_counter(checkout, tmp_path):
+    """Execute the actual test-workflow setup: its own counter is not the native release counter."""
+    scripts = checkout / "tools"
+    scripts.mkdir()
+    for name in ("ci_release.py", "ci_compatibility.py"):
+        shutil.copyfile(ROOT / "tools" / name, scripts / name)
+    git(checkout, "add", "tools")
+    git(checkout, "commit", "-qm", "release tooling")
+    workflow = (ROOT / ".github/workflows/tests.yml").read_text()
+    block = workflow.split("        run: |\n", 1)[1].split("      - ", 1)[0]
+    output = tmp_path / "outputs"
+    result = subprocess.run(["bash", "-e", "-c", textwrap.dedent(block)], cwd=checkout,
+                            env={**os.environ, "RUNNER_TEMP": str(tmp_path), "GITHUB_OUTPUT": str(output),
+                                 "GITHUB_RUN_ID": "123", "GITHUB_RUN_NUMBER": "1"},
+                            text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+    assert dict(line.split("=", 1) for line in output.read_text().splitlines()) == {
+        "sagaforge_commit": "a" * 40, "python": "3.13.2", "uv": "0.12.10"}
