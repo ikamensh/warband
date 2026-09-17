@@ -40,7 +40,7 @@ catches its class.
 | WB-016 | Later | proposed | Assess and recover the six-mission Thornwood campaign | Recovered branch |
 | WB-017 | Next | ready | Preserve movement speed through path waypoints | WB-003 diagnosis |
 | WB-018 | Next | ready | Keep large selections inside the HUD | Native crowd capture |
-| WB-019 | Next | ready | Remove stray sprite-sheet lines from painted units | Native melee review |
+| WB-019 | Next | in progress | Remove stray sprite-sheet lines from painted units | Native melee review |
 | WB-020 | Later | proposed | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
 | WB-021 | Next | ready | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
 | WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
@@ -630,6 +630,38 @@ without erasing legitimate spears, antennae, shadows or detached effects; add
 a regression using the actual affected frame and a visual-lint check that
 reports comparable stray fragments. Preserve team colours, frame geometry and
 placement, and inspect native frames after the correction.
+
+**Survey 2026-09-18** (every painted unit sheet, clusters of solid pixels
+detached from the figure by 3 px or more): twelve subjects carry them, all at
+the cell edge, none in the interior. The orc scout has thin guide lines along
+the top of ten walk frames, the orc archer the same along the bottom of its
+follow frames, the elf's gold-carrying peasant vertical slivers at the right
+edge of nine frames, the human knight pieces of the neighbouring cell's lance
+at its left and right edges; the rest are one to a few specks each. They are
+what the cut brought in from beyond the figure: the sheet's own cell borders
+and the neighbours' spill.
+
+**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+
+1. The wolf rider shows no floating lines in stand, walk or combat from any
+   facing at normal, near and far zoom: native frames before and after,
+   inspected.
+2. Every painted sheet is free of border and guide slivers and neighbours'
+   spill: pixel clusters detached from the figure, no larger than 60 px,
+   lying within 6 px of the cell edge. Detached content beyond that band
+   stays untouched (arrows, spear tips, antennae, shadows, thrown effects),
+   and so do team colours, cell geometry, origin, drop and every pixel of the
+   figure itself.
+3. The cleaning lives in the extraction (`sagaforge.restyle.declutter`,
+   applied when a rendered sheet is cut), so a re-rendered sheet comes out
+   clean; the committed sheets are cleaned once by that same function and the
+   twelve subjects' diffs are only the removed clusters.
+4. Visual lint reports comparable fragments as `stray` findings on painted
+   frames, so `tests/warband/test_visual_lint.py` keeps the sheets clean; a
+   regression test names the affected orc scout frame and walks every sheet.
+5. Evidence: the sagaforge and Warband suites, the lint over every registered
+   image, native frames inspected; Warband's sagaforge pin in
+   `.github/release-pins.json` moved to the commit with the cleaner.
 
 ## WB-020 — Interrupted release upload recovery
 
