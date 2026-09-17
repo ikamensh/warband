@@ -279,9 +279,10 @@ then pause before selecting another backlog item, as requested by the user.
   144 scene/network/replay/benchmark-fixture tests pass.
 - [ ] Pass the ordinary mixed-army performance gate, full-suite checks and
   complete WB-004 release acceptance. Correct faction warm-up is in place.
-  The current and previous views both miss the timing gate; the focused
-  [engine investigation](../saga2d/docs/warband-renderer-performance.md)
-  has verified allocation and opacity fixes but has not accepted frame times.
+  The focused [engine work](../saga2d/docs/warband-renderer-performance.md)
+  now passes the full-run gate at p95 15.58 ms, preserving crowd pixels and
+  the simulation fingerprint. All 1048 game tests pass (12 skips); the
+  native final review and compatible server/client release are being verified.
 
 The existing wind/strike/follow/recover cycle and sparks still read as timid.
 After WB-003 establishes the timing/art baseline, improve silhouette,

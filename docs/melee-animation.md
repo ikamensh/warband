@@ -539,3 +539,30 @@ suite pass, but the shape/transform candidate still misses W10 (late p95
 18.5 ms). [Its acceptance record](../../saga2d/docs/warband-renderer-performance.md)
 keeps those correctness/allocation wins separate from the open timing gate.
 No engine or WB-004 release has been published for this investigation.
+
+### Renderer gate accepted; release verification
+
+The final focused engine candidate `ebd346c` keeps the 2048px atlas, every
+unit/AI/terrain/HUD feature and unchanged model code. Corrected native timing
+now passes W10: **720-frame p50 9.0 ms / p95 15.58 ms**, late p50 8.4 ms /
+p95 15.1 ms, compared with released 0.3.2 whole-run p95 17.8 ms. Conditions
+remain 1280×800, Retina scale 2, Apple M4/macOS 26.6.2, unpaced timed frames,
+25%-paced asset preparation, no profiler or competing heavy local job.
+The first pathfinding burst still reaches 109 ms; no worst-frame or soak claim
+is made. `mixed-unchanged-soups/metadata.json` records the exact inputs.
+
+The final 144-unit world digest is unchanged, and the crowded frame is
+byte-identical to the earlier culling-only candidate; it was opened. The
+engine retains bounded text/shape storage, skips unchanged buffer uploads,
+culls offscreen groups, avoids redundant GL blending and fixes actual sprite
+opacity. The new engine passes 403 tests, including 14 native checks.
+Warband's final full suite passes **1048 tests, 12 skips, one expected stale-art
+warning in 202.05 s**. The simulation fingerprint still matches
+`1baac5542386b900d86ff2485ab4982db19d1faf2030870bcebdf12aefe5eccb`.
+Logs are in Saga2D `docs/evidence/render-shapes/warband-final-tests.log` and
+`warband-fingerprint.log`. Native final duels and release/host acceptance follow.
+
+The engine version belongs to the strict publication compatibility contract.
+Align the shared server with the verified PyPI release before publishing the
+new client; preserve that check rather than bypassing it for a visual change.
+After this item is released and marked done, pause as requested.
