@@ -153,6 +153,12 @@ class _Shot:
     height: float = 0.0  # tiles above it
 
 
+@dataclass
+class _Recoil:
+    started: float
+    direction: tuple[float, float]
+
+
 class MapView:
     def __init__(self, scene: Scene, world: World, player: int, *, reveal: bool = False) -> None:
         """The map as *player* sees it, or the whole of it when *reveal* is set (a replay watched from above)."""
@@ -181,6 +187,7 @@ class MapView:
         self._previous_positions: dict[int, tuple[float, float]] = {}
         self._fraction = 1.0
         self._unit_keys: dict[int, str] = {}
+        self._recoil: dict[int, _Recoil] = {}
         self._smoke: dict[int, ParticleEmitter] = {}
         self._fire: dict[int, ParticleEmitter] = {}
         self._shots: dict[int, _Shot] = {}
@@ -309,6 +316,7 @@ class MapView:
         self._travel.clear()
         self._last_pos.clear()
         self._previous_positions.clear()
+        self._recoil.clear()
         self.world = world
         textures.register_theme(self.game, world.theme)
         self._build_edge()
@@ -344,6 +352,17 @@ class MapView:
         previous = self._previous_positions.get(unit.id, unit.pos)
         return (previous[0] + (unit.x - previous[0]) * self._fraction,
                 previous[1] + (unit.y - previous[1]) * self._fraction)
+
+    def hit_reaction(self, unit: Unit, source: tuple[float, float] | None) -> None:
+        """Recoil from a real hit, composed with each frame's current ground point.
+
+        Never retain a sprite position: the victim may start moving before the
+        reaction ends. One reaction per unit also bounds simultaneous impacts.
+        """
+        dx, dy = (unit.x - source[0], unit.y - source[1]) if source is not None else (0.0, 0.0)
+        distance = math.hypot(dx, dy)
+        direction = (dx / distance, dy / distance) if distance else (0.0, 0.0)
+        self._recoil[unit.id] = _Recoil(self.time, direction)
 
     def entity_at(self, point: tuple[float, float]) -> Entity | None:
         """Pick what is actually shown, including the interpolated unit bodies."""
@@ -470,6 +489,7 @@ class MapView:
                 del self._unit_keys[uid]
                 self._travel.pop(uid, None)
                 self._last_pos.pop(uid, None)
+                self._recoil.pop(uid, None)
         for u in world.units.values():
             position = self.unit_position(u)
             last = self._last_pos.get(u.id, position)
@@ -478,8 +498,11 @@ class MapView:
             sprite = self._units.get(u.id)
             shown = not u.hidden and (self.reveal or u.player == self.player or world.is_visible(self.player, u.tile))
             if not shown:
+                reaction = self._recoil.pop(u.id, None)
                 if sprite is not None:
                     sprite.visible = False
+                    if reaction is not None:
+                        sprite.rotation = 0.0
                 continue
             key = textures.unit_image(self.game, u.type, u.player, textures.facing_index(u.facing), self._frame(u), u.carrying, race=u.race)
             if sprite is None:
@@ -494,6 +517,17 @@ class MapView:
                 wx, wy = to_world(position)
                 sprite.position = (wx, wy + textures.placements[key].drop)
                 sprite.visible = True
+            reaction = self._recoil.get(u.id)
+            if reaction is not None:
+                t = (self.time - reaction.started) / 0.22
+                if t >= 1.0:
+                    del self._recoil[u.id]
+                    sprite.rotation = 0.0
+                else:
+                    displacement = 3.0 * math.sin(math.pi * t)
+                    sprite.position = (sprite.x + reaction.direction[0] * displacement,
+                                       sprite.y + reaction.direction[1] * displacement)
+                    sprite.rotation = 6.0 * math.sin(2 * math.pi * t) * (1 - t)
 
     def _sync_projectiles(self, dt: float) -> None:
         """A sprite per shot in the air, moved every frame (between model steps as well), and the
@@ -559,6 +593,7 @@ class MapView:
         """Hand a unit's sprite to the caller (for a death animation) instead of removing it on the next sync."""
         sprite = self._units.pop(unit_id, None)
         self._unit_keys.pop(unit_id, None)
+        self._recoil.pop(unit_id, None)
         return sprite if sprite is not None and sprite.visible else None
 
     def building_sprite(self, building_id: int) -> Sprite | None:

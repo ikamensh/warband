@@ -241,6 +241,10 @@ model damage and strike poses agree. A separate measurable fault is confirmed:
 the view overwrites hit knockback before drawing (zero rendered displacement
 through three hits). The first regression must preserve visible contact and
 moving-unit continuity; fixing recoil alone will not complete this item.
+The first increment now renders the intended recoil (~3 px in native capture),
+follows newly issued movement and freezes under F3. It passes 82 relevant tests,
+input fuzz, the unchanged fingerprint and native layout checks. The actual
+weapon/body-motion prototype and complete WB-004 acceptance remain open.
 
 The existing wind/strike/follow/recover cycle and sparks still read as timid.
 After WB-003 establishes the timing/art baseline, improve silhouette,

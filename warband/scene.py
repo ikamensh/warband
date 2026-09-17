@@ -15,7 +15,7 @@ from saga2d import (
     Anchor, Button, Camera, Column, Component, InputEvent, KeyHints, Label, Layout, Minimap, Panel, RenderLayer, Row, Scene, Style,
 )
 from saga2d import SaveError
-from saga2d.effects import Banner, Burst, Effects, FloatingText, HitReaction, Pulse, Toast
+from saga2d.effects import Banner, Burst, Effects, FloatingText, Pulse, Toast
 from warband import ambience, deaths, mapgen, wreckage
 from warband.ai import DIFFICULTY_ELO, make_brain
 from warband.effects import UnitDeath
@@ -1241,7 +1241,7 @@ class GameScene(Scene):
             play_music(self.mood, self.player.race)
         self._prune_selection()
         self.effects.update(dt)
-        self.view.sync(dt, fraction=self._motion_fraction())
+        self.view.sync(0.0 if self.paused else dt, fraction=self._motion_fraction())
         self._update_card()
         self.idle_button.visible = self._idle_peasant_count() > 0
         self.army_button.visible = bool(self._army())
@@ -1355,12 +1355,8 @@ class GameScene(Scene):
         target = self.world.entity(e.other) if e.other is not None else None
         source = self.world.entity(e.entity) if e.entity is not None else None
         if isinstance(target, Unit):
-            sprite = self.view.unit_sprite(target.id)
-            if sprite is not None and sprite.visible:
-                # The victim flinches away from the blow; a standing victim is shoved a little.
-                origin = to_world(source.pos if isinstance(source, Unit) else source.center) if source is not None else None
-                shove = 3.0 if target.state in ("idle", "attack", "hold") else 0.0
-                self.effects.add(HitReaction(sprite, (1.0, 1.0, 1.0), source=origin, knockback=shove, wobble=9.0, duration=0.22))
+            origin = (source.pos if isinstance(source, Unit) else source.center) if source is not None else None
+            self.view.hit_reaction(target, origin)
             if e.text != "ranged":
                 wx, wy = to_world(e.pos)
                 self.effects.add(Burst((wx, wy - TILE * 0.45), (255, 236, 190, 255), 5, rng=self.rng, size=5, speed=(50, 140)))

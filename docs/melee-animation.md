@@ -94,3 +94,35 @@ AssertionError: Unit 3: 3 damaging hits, but maximum rendered recoil is 0.000px
 A real scene/view regression should cover this observable contact behavior,
 then a presentation prototype must still improve the actual swing. Fixing only
 this bug is insufficient to call the whole melee-animation item done.
+
+## First bounded increment — visible contact recoil
+
+The real scene regression reproduced zero drawn recoil after `game.tick`, using
+matched target poses with and without incoming damage. The view now owns the
+short response and adds it to the current presented ground position each frame;
+it never restores a captured old position. Simultaneous hits keep one bounded
+response per unit. Hidden, removed, released and reset units clear that state.
+F3 freezes the view clock; a separate red test caught the reaction continuing
+while the simulation was paused before that fix.
+
+Native normal-zoom capture (`docs/evidence/melee/recoil-painted-normal/`) shows
+**2.986 pixels peak displacement** for both footmen, versus zero in the baseline.
+The full contact frame and four-phase strip were inspected; the corrected crop
+keeps the wind-up blade in frame. This restores contact response, but does not
+make the current sword arc strong enough to finish WB-004.
+
+Verification for this increment:
+
+- 82 relevant scene/view/movement/melee tests passed in 25.89 seconds. The three
+  new scene checks cover actual contact, pause, and movement during recovery;
+  the lifecycle check also verifies bodies finish and are removed. Final checks
+  after simplifying rotation updates pass (`recoil-*-tests.log`).
+- Two 500-input fuzz journeys, seeds 83 and 84, passed (`recoil-fuzz.log`).
+- Simulation fingerprint is still
+  `1baac5542386b900d86ff2485ab4982db19d1faf2030870bcebdf12aefe5eccb`.
+- Eight native layout checks (army/damaged selection, battle and forest battle
+  at 1280×800 and 1200×680) report zero findings. Battle and damaged-selection
+  PNGs were opened. These are layout checks, not proof of a stronger swing.
+
+The weapon/body-motion prototype, broader native combat matrix and final full
+suite remain open. No engine, authoritative rule or network contract changed.
