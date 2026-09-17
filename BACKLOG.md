@@ -95,8 +95,12 @@ Milestones checked on 2026-09-17 (the complete item remains **in progress**):
 - [x] Verify atomic site publication/rollback, shared server/site locking,
   crash recovery and compatibility rechecks. Saga Online `7bb5411` passed
   [112 Linux checks and host exclusion acceptance](https://github.com/ikamensh/saga-online/actions/runs/35160355976).
-- [ ] Finish and verify the restricted CI upload account, SSH caller and
-  Saga Online promotion workflow.
+- [x] Implement and verify the restricted CI upload account and SSH caller.
+  Saga Online `f8222e5` passed [133 Linux checks and real SSH acceptance](https://github.com/ikamensh/saga-online/actions/runs/35194126106),
+  including upload/retry, restricted commands/forwarding, host-key checks,
+  compatibility refusal and rollback. Production account setup remains below.
+- [ ] Wire Saga Online's promotion workflow, including stable archive bytes
+  and recovery after the catalog is committed but site publication is interrupted.
 - [ ] Complete server rollout/restore acceptance, record the actual live
   compatibility baseline, and configure/enable production CI publishing.
 - [ ] Exercise the complete main-push journey, public Windows/Mac downloads,
