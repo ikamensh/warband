@@ -251,3 +251,22 @@ with body weight and victim recoil carrying the contact.
 
 Infantry presentation coverage is verified. Workers, mounted/heavy melee and
 the remaining whole-item gates are still open; this does not mark WB-004 done.
+
+## Next increment — workers in combat
+
+Acceptance before implementation:
+
+- First capture empty-handed, gold-carrying and lumber-carrying workers in a
+  real fight. Source inspection shows cargo sprites omit the axe; verify the
+  visible failure before deciding how to show the combat tool.
+- Workers of every race must show anticipation, an axe cut and recovery at
+  gameplay size, using the existing worker grip/swing and combat clocks. Keep
+  harvesting/chopping, repair and ordinary cargo travel unchanged.
+- If the combat pose puts cargo away to show the tool, retain the exact payload
+  and show the cargo again on leaving combat. Verify a real command sequence,
+  including successful delivery afterward; drawing a weapon must not discard
+  resources or change recorded orders.
+- Check all eight facings in both art paths, plus near/far contact frames and
+  cargo transitions. Extend the scene regressions for pause, cancellation,
+  missed swings and movement as appropriate. Keep the simulation fingerprint,
+  run affected checks, and inspect native frames before recording acceptance.
