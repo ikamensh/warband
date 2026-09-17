@@ -104,8 +104,12 @@ Milestones checked on 2026-09-17 (the complete item remains **in progress**):
   Saga Online `3843a4e` passed [135 Linux checks and the real Git/SSH journey](https://github.com/ikamensh/saga-online/actions/runs/35196347871);
   the default read-only CI token also verified Warband provenance. Enabling
   the main workflow and public deployment remain below.
-- [ ] Complete server rollout/restore acceptance, record the actual live
-  compatibility baseline, and configure/enable production CI publishing.
+- [x] Complete server rollout/restore acceptance and record the actual live
+  compatibility baseline. Saga Online `f7d3c61` passed [135 Linux checks](https://github.com/ikamensh/saga-online/actions/runs/35199018970),
+  including a regression for RTS ticks during rejoin. Live bundle `c5193bd5`
+  passed public Mac client checks for all three games; the two retained
+  campaigns are preserved, and live database/configuration rollback passed.
+- [ ] Configure and enable production CI publishing.
 - [ ] Exercise the complete main-push journey, public Windows/Mac downloads,
   compatible packaged online clients, publication retries and rollback.
 
