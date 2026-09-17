@@ -178,6 +178,8 @@ class MapView:
         self._units: dict[int, Sprite] = {}
         self._travel: dict[int, float] = {}  # distance each unit has walked, for its stride
         self._last_pos: dict[int, tuple[float, float]] = {}
+        self._previous_positions: dict[int, tuple[float, float]] = {}
+        self._fraction = 1.0
         self._unit_keys: dict[int, str] = {}
         self._smoke: dict[int, ParticleEmitter] = {}
         self._fire: dict[int, ParticleEmitter] = {}
@@ -304,6 +306,9 @@ class MapView:
         self._shots.clear()
         self._building_keys.clear()
         self._unit_keys.clear()
+        self._travel.clear()
+        self._last_pos.clear()
+        self._previous_positions.clear()
         self.world = world
         textures.register_theme(self.game, world.theme)
         self._build_edge()
@@ -326,7 +331,22 @@ class MapView:
         if pos not in self._trees and self.world.terrain_at(pos) is Terrain.TREES:
             self._trees[pos] = self._prop(f"tree.{self.world.theme.value}.{textures.scatter(*pos, 3) % textures.TREE_VARIANTS}", (pos[0] + 0.5, pos[1] + 0.5))
 
-    def sync(self, dt: float = 0.0) -> None:
+    def before_step(self) -> None:
+        """Retain the unit positions immediately before an authoritative local step.
+
+        The scene supplies its accumulator fraction to ``sync``. Network scenes
+        that do not own fixed steps keep their existing snapshot presentation.
+        """
+        self._previous_positions = {u.id: u.pos for u in self.world.units.values() if not u.hidden}
+
+    def unit_position(self, unit: Unit) -> tuple[float, float]:
+        """The presented ground point, shared by the sprite and attached overlays."""
+        previous = self._previous_positions.get(unit.id, unit.pos)
+        return (previous[0] + (unit.x - previous[0]) * self._fraction,
+                previous[1] + (unit.y - previous[1]) * self._fraction)
+
+    def sync(self, dt: float = 0.0, *, fraction: float = 1.0) -> None:
+        self._fraction = max(0.0, min(1.0, fraction))
         self.time += dt
         world = self.world
         self._animate_water(dt)
@@ -421,9 +441,10 @@ class MapView:
                 self._travel.pop(uid, None)
                 self._last_pos.pop(uid, None)
         for u in world.units.values():
-            last = self._last_pos.get(u.id, u.pos)
-            self._travel[u.id] = self._travel.get(u.id, 0.0) + math.hypot(u.x - last[0], u.y - last[1])
-            self._last_pos[u.id] = u.pos
+            position = self.unit_position(u)
+            last = self._last_pos.get(u.id, position)
+            self._travel[u.id] = self._travel.get(u.id, 0.0) + math.dist(position, last)
+            self._last_pos[u.id] = position
             sprite = self._units.get(u.id)
             shown = not u.hidden and (self.reveal or u.player == self.player or world.is_visible(self.player, u.tile))
             if not shown:
@@ -432,7 +453,7 @@ class MapView:
                 continue
             key = textures.unit_image(self.game, u.type, u.player, textures.facing_index(u.facing), self._frame(u), u.carrying, race=u.race)
             if sprite is None:
-                sprite = self._units[u.id] = self._prop(key, u.pos)
+                sprite = self._units[u.id] = self._prop(key, position)
                 self._unit_keys[u.id] = key
             else:
                 if self._unit_keys[u.id] != key:
@@ -440,7 +461,7 @@ class MapView:
                     sprite.size = textures.placements[key].size
                     sprite.ground = textures.placements[key].ground
                     self._unit_keys[u.id] = key
-                wx, wy = to_world(u.pos)
+                wx, wy = to_world(position)
                 sprite.position = (wx, wy + textures.placements[key].drop)
                 sprite.visible = True
 
@@ -590,7 +611,7 @@ class MapView:
             if isinstance(entity, Unit):
                 if entity.hidden:
                     continue
-                wx, wy = to_world(entity.pos)
+                wx, wy = to_world(self.unit_position(entity))
                 self._ring(wx, wy + 2, TILE * 0.42, TILE * 0.26, color if eid in overlay.selected else rgba(color[:3], 120))
                 self._health_bar(entity, wx, wy - TILE * 0.95, TILE * 0.8)
             else:

@@ -30,6 +30,7 @@ every earlier item first.
 | WB-013 | Next | proposed | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Later | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-016 | Later | proposed | Assess and recover the six-mission Thornwood campaign | Recovered branch |
+| WB-017 | Next | ready | Preserve movement speed through path waypoints | WB-003 diagnosis |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -167,6 +168,13 @@ documented so future main pushes need no manual publishing steps.
 Started 2026-09-17 on `codex/wb003-movement`, from main `1a6def9`.
 Acceptance and the repeatable capture matrix are recorded before changes in
 [the movement diagnosis](docs/movement-diagnosis.md).
+
+First verified increment: local fixed-step interpolation removes the 20 Hz
+stop–jump pattern (39/59 stationary frame intervals became 0/59 in the native
+capture). Nine movement cases and the full 910-test suite pass; the simulation
+fingerprint is unchanged, and native battle/selection frames were inspected.
+WB-003 remains in progress for the rest of the capture matrix and interaction/
+replay checks. The separate waypoint-speed finding is WB-017.
 
 The current [motion notes](docs/unit-motion.md), [view](warband/view.py) and
 [pose generation](warband/textures.py) already provide four walk frames,
@@ -401,3 +409,20 @@ and briefing screens fit supported resolutions and have inspected native frames.
 Run the full suite and test scripted outcomes separately from normal elimination.
 Record whether the campaign is accepted or retained with specific remaining
 issues, and clean up the branch only after its work is safely accounted for.
+
+## WB-017 — Consistent speed through path waypoints
+
+WB-003's [movement trace](docs/movement-diagnosis.md) demonstrates that
+`World._walk_to` discards unused movement when reaching an intermediate waypoint.
+A footman moving at 2.4 tiles/s normally covers 0.12 tiles per tick but periodically
+covers only 0.04; the rendered result slows rhythmically at each tile center.
+Preserve the tick's remaining travel budget across intermediate waypoints while
+respecting turn rates, collision clearance and the actual final destination.
+This changes authoritative rules and needs a new compatibility baseline.
+
+**Done when:** straight and diagonal paths over many tiles preserve the intended
+distance/time budget, small final segments never overshoot, and turns, obstacles,
+crowds, terrain boundaries, harvesting and attack pursuit remain correct. Prove
+the rules change with integration tests and seeded fuzz, audit affected movement/
+combat expectations, deliberately refresh the simulation fingerprint, and verify
+replay/online agreement and compatible client/server rollout before publication.

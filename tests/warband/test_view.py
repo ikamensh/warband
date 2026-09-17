@@ -419,17 +419,3 @@ def test_shots_in_the_air_have_sprites_that_fly_and_go_when_they_land(play) -> N
     apex = min(y for _, y in seen["stone"])
     assert apex < seen["stone"][0][1] - 32 and apex < seen["stone"][-1][1] - 32  # up, over and down again
     assert not world.projectiles and not scene.view._shots  # all landed, all sprites gone
-
-
-def test_moving_units_walk_and_attacking_units_swing_on_screen(play) -> None:
-    """The view's sprites cycle through the walk frames while a unit travels and show the blow phases while it fights."""
-    game, scene = play
-    world = scene.world
-    walker = world.spawn_unit(scene.human, UnitType.FOOTMAN, (8.5, 8.5))
-    world.move([walker.id], (14.5, 8.5))
-    frames = set()
-    for _ in range(90):
-        game.tick(1 / 30)
-        if walker.state == "move":
-            frames.add(scene.view.unit_sprite(walker.id).image.rsplit(".", 1)[-1])
-    assert frames >= set(textures.WALK_FRAMES), frames

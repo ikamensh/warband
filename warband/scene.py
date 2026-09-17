@@ -1235,7 +1235,7 @@ class GameScene(Scene):
             play_music(self.mood, self.player.race)
         self._prune_selection()
         self.effects.update(dt)
-        self.view.sync(dt)
+        self.view.sync(dt, fraction=self._acc / SIM_DT)
         self._update_card()
         self.idle_button.visible = self._idle_peasant_count() > 0
         self.army_button.visible = bool(self._army())
@@ -1253,6 +1253,7 @@ class GameScene(Scene):
             while self._acc >= SIM_DT and steps < MAX_STEPS_PER_FRAME:
                 for brain in self.brains:
                     brain.think(self.world, self.rng)
+                self.view.before_step()
                 self.world.step()
                 self._acc -= SIM_DT
                 steps += 1
