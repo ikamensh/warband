@@ -65,11 +65,18 @@ Installed apps; your saved games remain available for a later reinstall.
 
 ## Build and verification
 
-The [Windows workflow](../.github/workflows/windows.yml) runs on
-`windows-latest`. Dispatch it with an explicit version to create a downloadable
-CI artifact, or push an immutable `warband-vVERSION` tag to publish a release
-after the checks pass. A manual publication also requires the matching tag
-to resolve to the dispatched commit. Existing releases are never overwritten.
+The [native package workflow](../.github/workflows/native-packages.yml) builds
+Windows x64 on `windows-2025` and Apple Silicon macOS on `macos-15`. Branch
+pushes, pull requests and manual runs produce verified CI artifacts. Both
+platforms use one recorded source/dependency identity and a preview version
+derived from the run ID. Retry publication from the accepted build run; do not
+rebuild an existing release identity.
+
+The separate [publisher](../.github/workflows/publish.yml) consumes successful
+native runs on `main`. Its write job requires `WARBAND_PUBLISH_ENABLED=true`;
+enabling it and Saga Online promotion is tracked in the
+[CI publication plan](ci-publication.md). The old tag-triggered Windows-only
+workflow has been removed. Existing versioned releases are never overwritten.
 
 The local Windows build commands are:
 
@@ -92,11 +99,12 @@ private seat. CI also installs the EXE, checks its Start menu shortcut, repeats
 the executable check, uninstalls, and checks that the program and shortcut are
 removed. These checks use the production room handler and simulation.
 
-Before uninstalling, CI repeats the installed executable's multiplayer checks
-over TLS against `wss://games.tachyon-ai.eu/play`. This required public-server
-check records its endpoint and results in `verification.json` and creates one
-short-lived room on the hosted service. Omit `--public-server` for a local-only
-verification run.
+The native producer verifies sockets against its pinned local server. Public
+server compatibility and packaged create/join checks are separate promotion
+and rollout requirements. The local command above also repeats the installed
+executable's checks over TLS against `wss://games.tachyon-ai.eu/play`, records
+the result in `verification.json` and creates one short-lived room. Omit
+`--public-server` for local-only verification.
 
 Native title, multiplayer input and match rendering must also pass. Because
 the Windows runner has only Microsoft's legacy OpenGL driver, CI supplies

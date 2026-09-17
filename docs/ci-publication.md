@@ -65,10 +65,10 @@ alone do not complete it.
 
 ## Findings before implementation
 
-The current Windows workflow runs on tags/manual dispatch, follows Sagaforge
-main, and publishes only Windows assets. Mac builds and website updates are
-manual. There are no repository Actions secrets/variables configured in either
-Warband or Saga Online at inspection. Both repositories are public, with
+At the initial inspection, the Windows workflow ran on tags/manual dispatch,
+followed Sagaforge main and published only Windows assets. Mac builds and
+website updates were manual. Neither Warband nor Saga Online had repository
+Actions secrets/variables configured. Both repositories are public, with
 administrative access available through the local GitHub CLI.
 
 The current site installer swaps its symlink without a transaction/rollback
@@ -90,6 +90,12 @@ separate compatibility rollout and must not be hidden by ignoring lockfiles.
 - [Saga Online distribution plan](../../saga-online/docs/game-distribution-plan.md)
 
 ## Evidence and status
+
+The legacy Windows-only tag/manual release workflow has been removed after
+acceptance of the pinned two-platform native producer (run `35149564980`).
+The native workflow and separate publisher now provide the single build/release
+path. Workflow lint and Markdown link checks pass; actual enabled main
+publication remains part of the rollout acceptance below.
 
 Implemented locally so far:
 
