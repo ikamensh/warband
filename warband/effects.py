@@ -7,12 +7,67 @@ import math
 from typing import Callable
 
 from saga2d.effects import Effect
-from saga2d.rendering import Sprite
+from saga2d.rendering import ParticleEmitter, Sprite
 from saga2d.scene import Scene
 from warband.rules import UnitType
 from warband.textures import MOUNTED, placements
 
 Point = tuple[float, float]
+
+
+class Spray(Effect):
+    """Droplets, chips or sparks flung from a blow along *direction*; holds the emitter until its last particle dies."""
+
+    def __init__(self, position: Point, direction: Point, image: str, color: tuple[int, int, int], count: int, *,
+                 rng, speed: tuple[float, float] = (70, 190), size: tuple[float, float] = (2.5, 5.0), spread: float = 38.0,
+                 lifetime: tuple[float, float] = (0.2, 0.42)) -> None:
+        super().__init__(lifetime[1] + 0.1)
+        angle = math.degrees(math.atan2(direction[1], direction[0]))
+        self.direction, self.image, self.color, self.count = direction, image, color, count
+        self.emitter = ParticleEmitter(image, position=position, speed=speed, direction=(angle - spread, angle + spread),
+                                       lifetime=lifetime, size=size, shrink=True, tint=tuple(c / 255 for c in color), rng=rng)
+
+    def start(self) -> None:
+        self.emitter.burst(self.count)
+
+    def advance(self) -> None:
+        if not self.emitter.is_active:
+            self.cancelled = True
+
+    def finish(self) -> None:
+        self.emitter.remove()
+
+
+class Stain(Effect):
+    """A dark pool under a body: lies a while, fades, and hurries when newer stains need the room."""
+
+    HOLD = 24.0
+    FADE = 8.0
+    STAINS = 64  # lying at once; past that the oldest fade early
+    OPACITY = 150
+
+    def __init__(self, sprite: Sprite) -> None:
+        super().__init__(self.HOLD + self.FADE)
+        self.sprite = sprite
+        self.hurried = False
+
+    def hurry(self) -> None:
+        self.hurried = True
+
+    def advance(self) -> None:
+        if self.sprite.is_removed:
+            self.cancelled = True
+            return
+        fade = max(0.0, (self.elapsed - (0.0 if self.hurried else self.HOLD)) / self.FADE)
+        self.sprite.opacity = self.OPACITY * max(0.0, 1 - fade)
+        if fade >= 1:
+            self.cancelled = True
+
+    def draw(self, scene: Scene) -> None:
+        pass  # a retained sprite
+
+    def finish(self) -> None:
+        self.sprite.remove()
 
 
 @dataclass(frozen=True)

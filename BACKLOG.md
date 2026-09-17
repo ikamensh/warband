@@ -26,7 +26,7 @@ catches its class.
 | WB-002 | First | done | Publish tested main pushes through GitHub Actions to games.tachyon-ai.eu | User |
 | WB-003 | Next | done | Diagnose and improve movement animation | User |
 | WB-004 | Next | done | Give melee attacks readable weight and contact | User |
-| WB-005 | Next | in progress | Replace the rotating-sprite death with convincing falls | User |
+| WB-005 | Next | done | Replace the rotating-sprite death with convincing falls | User |
 | WB-006 | Next | in progress | Add blood on damaging hits | User |
 | WB-007 | Next | ready | Leave grey abandoned buildings when a player resigns in FFA | User |
 | WB-008 | Next | ready | Improve health bars and building progress indicators | User |
@@ -318,7 +318,18 @@ Mounted units and catapults get the same 88° topple, a horse standing on its
 nose and a catapult tipped on end. Bodies do lie at the feet, darken, sort under
 the living and fade; those parts stay.
 
-**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+**Done 2026-09-18**, commit `bd9dcb9`: every criterion below holds.
+[Tests 35282713696](https://github.com/ikamensh/warband/actions/runs/35282713696),
+[Native package checks 35282713708](https://github.com/ikamensh/warband/actions/runs/35282713708),
+[Publish 35284011662](https://github.com/ikamensh/warband/actions/runs/35284011662) and Saga
+Online's [promotion 35284127986](https://github.com/ikamensh/saga-online/actions/runs/35284127986):
+live as Warband 0.2.4. Locally: the full suite (1068 passed), `tools/fuzz.py --games 2
+--monkey 20` clean, the fingerprint unchanged, and the montages in
+`docs/evidence/deaths/{before,after,after-near,after-procedural}/` inspected
+(infantry, archer, mounted and siege from both sides, the mass scene, painted
+and procedural).
+
+**Acceptance (recorded 2026-09-18 before implementation):**
 
 1. A killed unit falls away from the blow that killed it, melee or projectile,
    never onto its killer; the direction comes from the hit the view already

@@ -2177,3 +2177,5 @@ def register_static(game: Game) -> None:
     assets.image_from_pil("blank", Image.new("RGBA", (px, px), (*WHITE, 255)))
     assets.image_from_pil("arrow", _arrow(scale))
     assets.image_from_pil("stone", _glow(int(px * 0.4), 0.36, (150, 140, 128, 255), 0.06))
+    assets.image_from_pil("drop", _glow(max(6, int(px * 0.3)), 0.42, (*WHITE, 255), 0.08))  # a droplet, a chip: a dot with an edge, tinted by its spray
+    assets.image_from_pil("stain", _glow(int(px * 1.2), 0.36, (*WHITE, 255), 0.12))  # a soft blotch on the ground, tinted dark red; the blur stays inside the canvas

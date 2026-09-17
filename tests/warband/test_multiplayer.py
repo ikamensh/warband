@@ -362,12 +362,16 @@ def test_received_melee_contact_reacts_once_across_repeated_snapshots(game):
         assert scene.world.units[victim.id].hp == victim.hp
         game.tick(1 / 60)  # Advance the reaction from its zero-displacement contact instant.
         assert abs(sprite.rotation) > 0, 'The received hit must have a visible reaction'
+        from warband.effects import Spray
+        blood = [e for e in scene.effects._items if isinstance(e, Spray)]
+        assert len(blood) == 1, 'The received hit bleeds once'
         for _ in range(24):
             host.publish()  # A new revision includes the same retained hit event.
             converge(host, client, lambda: client.revision == host.revision)
             game.tick(1 / 60)
         assert scene.world.units[victim.id].hp == victim.hp
         assert sprite.rotation == 0, 'Repeated snapshots restarted an old hit reaction'
+        assert [e for e in scene.effects._items if isinstance(e, Spray) and e not in blood] == [], 'Repeated snapshots bled again'
         assert sprite.x == victim.x * TILE, 'Expired recoil must return to the received ground point'
     finally:
         client.close()

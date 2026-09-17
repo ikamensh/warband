@@ -7,23 +7,11 @@ import pytest
 from saga2d import Game
 from saga2d.effects import Burst
 from warband.effects import OUTCOMES, UnitDeath
-from warband.model import World, tile_center
-from warband.rules import BuildingType, Terrain, UnitType
+from warband.rules import UnitType
 from warband.scene import GameScene
 from warband.style import build_theme
-from warband.view import to_world
 
-SETTINGS = {"tutorial": False, "music": 0, "sfx": 0, "edge_scroll": False}
-
-
-def field() -> World:
-    """Open grass, two human seats far apart: deaths depend on nothing but the blow."""
-    world = World(40, 30, [[Terrain.GRASS] * 40 for _ in range(30)], 2)
-    for player in world.players:
-        player.human = True
-    world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
-    world.place_building(1, BuildingType.TOWN_HALL, (34, 25))
-    return world
+from tests.warband.battlefield import SETTINGS, field
 
 
 @pytest.fixture

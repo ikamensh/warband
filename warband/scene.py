@@ -12,13 +12,13 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from saga2d import (
-    Anchor, Button, Camera, Column, Component, InputEvent, KeyHints, Label, Layout, Minimap, Panel, RenderLayer, Row, Scene, Style,
+    Anchor, Button, Camera, Column, Component, InputEvent, KeyHints, Label, Layout, Minimap, Panel, RenderLayer, Row, Scene, Sprite, Style,
 )
 from saga2d import SaveError
 from saga2d.effects import Banner, Burst, Effects, FloatingText, Pulse, Toast
 from warband import ambience, deaths, mapgen, wreckage
 from warband.ai import DIFFICULTY_ELO, make_brain
-from warband.effects import UnitDeath, death_outcome
+from warband.effects import Spray, Stain, UnitDeath, death_outcome
 from warband.icons import Icon, draw_icon
 from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
 from warband.production import ProductionButton, ProductionTarget, draw_production_icon
@@ -37,7 +37,8 @@ from warband.textures import TILE
 from warband.tutorial import OBJECTIVES, Tutorial
 from warband.view import MapView, Overlay, rgba, to_tiles, to_world
 
-DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True}
+DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True, "blood": True}
+FLESH = {u.value for u in UnitType} - {UnitType.CATAPULT.value}  # what bleeds when hit
 SAVE_VERSION = 2  # 2: the world records its layout
 SAVE_SLOTS = 3
 AUTOSAVE_EVERY = 120.0  # seconds of match time
@@ -178,6 +179,7 @@ class GameScene(Scene):
         self.clock = 0.0
         self.effects = Effects()
         self.bodies: list[UnitDeath] = []  # lying where they fell, oldest first
+        self.stains: list[Stain] = []  # under the bodies, oldest first
         self._blows: dict[int, tuple[float, float]] = {}  # unit id -> where its last visible blow came from (tiles)
         self.recent_sounds: deque[str] = deque(maxlen=48)
         self.status = ""
@@ -1244,6 +1246,7 @@ class GameScene(Scene):
         self._prune_selection()
         self.effects.update(dt)
         self.bodies = [b for b in self.bodies if not b.done]
+        self.stains = [s for s in self.stains if not s.done]
         self.view.sync(0.0 if self.paused else dt, fraction=self._motion_fraction())
         self._update_card()
         self.idle_button.visible = self._idle_peasant_count() > 0
@@ -1362,10 +1365,26 @@ class GameScene(Scene):
             self._blows[e.other] = origin  # a killing blow has already removed its target: its death falls away from this
         if isinstance(target, Unit):
             self.view.hit_reaction(target, origin)
-            if e.text != "ranged":
-                wx, wy = to_world(e.pos)
-                self.effects.add(Burst((wx, wy - TILE * 0.45), (255, 236, 190, 255), 5, rng=self.rng, size=5, speed=(50, 140)))
+        if e.target_type in FLESH or e.target_type == UnitType.CATAPULT.value:  # a unit, alive or just killed by this
+            wx, wy = to_world(e.pos)
+            struck = (wx, wy - TILE * 0.45)
+            away = self._away(e.pos, origin)
+            if e.target_type == UnitType.CATAPULT.value:
+                self.effects.add(Spray(struck, away, "drop", (222, 184, 118), 10, rng=self.rng, size=(3, 6)))  # pale wood chips off the dark frame
+            elif self.settings["blood"]:
+                self.effects.add(Spray(struck, away, "drop", (172, 22, 26), min(9, 3 + e.amount // 2), rng=self.rng,
+                                       size=(3, 5 + min(e.amount, 12) / 4)))  # a few drops for a light blow, a splash for a heavy one
+            if e.target_armor > 0:
+                self.effects.add(Burst(struck, (255, 236, 190, 255), 3, rng=self.rng, size=5, speed=(50, 140)))  # off the armour
         self._sound_hit(e)  # a shot's blow is raised when the shot lands, so its sound is due now
+
+    def _away(self, point: tuple[float, float], origin: tuple[float, float] | None) -> tuple[float, float]:
+        """The unit direction from *origin* to *point* in world pixels; straight up when the blow's origin is unknown."""
+        if origin is None:
+            return (0.0, -1.0)
+        (px, py), (ox, oy) = to_world(point), to_world(origin)
+        length = math.hypot(px - ox, py - oy)
+        return ((px - ox) / length, (py - oy) / length) if length else (0.0, -1.0)
 
     def _show_impact(self, e: Event, *, struck: bool) -> None:
         """A stone comes down: dust where it lands, and a thud of its own when it found nothing to hit."""
@@ -1395,10 +1414,22 @@ class GameScene(Scene):
             self.bodies = [b for b in self.bodies if not b.done and not b.cancelled] + [body]
             for old in self.bodies[:-UnitDeath.BODIES]:
                 old.hurry()
+            if self.settings["blood"] and e.text in FLESH:
+                self._stain((body.position[0] + 10 * math.copysign(1, body.turn), body.position[1]))
         color = self.world.players[e.player].color if e.player is not None else (200, 200, 200)
         self.effects.add(Burst(to_world(e.pos), rgba(color), 10, rng=self.rng, size=10))
         if self._audible(e.pos):
             self.sfx(deaths.cue(self.world.players[e.player].race))
+
+    def _stain(self, point: tuple[float, float]) -> None:
+        """A dark pool under a body, on the ground under everything that walks; the oldest make room past the cap."""
+        sprite = self.add_sprite(Sprite("stain", position=point, size=(30, 19), layer=RenderLayer.OBJECTS))
+        sprite.tint, sprite.opacity = (.42, .06, .07), Stain.OPACITY
+        stain = Stain(sprite)
+        self.effects.add(stain)
+        self.stains = [s for s in self.stains if not s.done and not s.cancelled] + [stain]
+        for old in self.stains[:-Stain.STAINS]:
+            old.hurry()
 
     def _dust(self, feet: tuple[float, float], outcome: str) -> None:
         """The landing raises dust at the feet; a wreck raises more, and smoke."""
@@ -1736,7 +1767,7 @@ class GameScene(Scene):
             self.tutorial.step = state["tutorial"]
         self._autosave_at = (world.time // AUTOSAVE_EVERY + 1) * AUTOSAVE_EVERY
         self.effects.clear()
-        self.bodies, self._blows = [], {}
+        self.bodies, self.stains, self._blows = [], [], {}
         self.selection = []
         self.pending = None
         self.build_menu = False
@@ -1973,6 +2004,7 @@ class SettingsScene(_Overlay):
     ROWS: tuple[tuple[str, str, str], ...] = (
         ("Music volume", "music", "percent"), ("Sound volume", "sfx", "percent"), ("Edge scrolling", "edge_scroll", "toggle"),
         ("Scroll speed", "scroll_speed", "speed"), ("Fullscreen", "fullscreen", "toggle"), ("Tutorial", "tutorial", "toggle"),
+        ("Blood", "blood", "toggle"),
     )
 
     def __init__(self, game_scene: GameScene) -> None:
