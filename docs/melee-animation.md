@@ -475,3 +475,36 @@ Before accepting the complete item:
 - Run the full suite and unchanged fingerprint, inspect crowded native combat,
   then publish through the established main-push pipeline and verify the
   resulting downloadable builds/catalog before marking WB-004 done.
+
+### First mixed-army measurement
+
+`mixed-final.log` (source `f87feae`, native 1280×800, Retina scale 2,
+CPU budget 25% outside timed frames) misses W10: late-frame p50 16.5 ms,
+p95 36.5 ms; whole-run p95 174.9 ms. The scene ends with 144 units.
+The crowded native frame was opened. This is a failed gate, not a pass based
+on the smaller duels.
+
+The benchmark calls `warm_units` without the participating races, which defaults
+to humans; the actual battle includes elves. Its claim that all images are
+warm is therefore false. Correct that fixture first, then compare the same
+warmed battle with the pre-WB-004 view. Ranked cost hypotheses: cold faction
+images cause the largest spikes; new combat presentation adds steady view/draw
+work; existing backend/UI work or host load dominates both versions. A passing
+result must use the same battle and threshold, without reducing unit counts or
+hiding expensive game features.
+
+The fixture regression reproduces **498 cold combat frames** before the fix.
+Passing the world's actual races to the existing warmer makes it pass without
+changing the benchmark's units, terrain, AI, draw path or timing gate.
+
+Final behavior checks now cover explicit retargeting for all four melee roles,
+a target removed during heavy wind-up, hiding/revealing active recoil, loading
+a real save during contact, and an actual fight recorded and replayed at 1× and
+4× with F3 pause. Playback reaches the recorded digest. The real LAN socket
+test rejects an ownership violation and holds an unprocessed order without
+predicted contact; an authoritative hit recoils, and 24 repeated snapshots with
+the same event history let it expire instead of restarting it. The complete
+selection of melee, multiplayer, replay-scene and benchmark-fixture tests passes
+**144 tests in 26.15 s** (`final-scene-tests.log`). No gameplay/view fix was needed
+for these boundary cases. The native performance gate and publication are still
+open; the cold-art benchmark result cannot establish their completion.

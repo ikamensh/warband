@@ -312,3 +312,63 @@ def test_title_opens_a_usable_host_join_form(tmp_path):
         assert game.scene.fields[1] == '8'
     finally:
         game.close()
+
+
+def test_received_melee_contact_reacts_once_across_repeated_snapshots(game):
+    """Only an authoritative hit recoils; retained event history cannot replay it."""
+    from warband.authority import WarbandMatch
+    from warband.model import World
+    from warband.multiplayer import NetworkGameScene
+    from warband.rules import BuildingType, Terrain, UnitType
+    from warband.textures import TILE
+
+    match = WarbandMatch(3)
+    match.world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2)
+    for player in match.world.players:
+        player.human = True
+    match.world.place_building(0, BuildingType.TOWN_HALL, (3, 3))
+    match.world.place_building(1, BuildingType.TOWN_HALL, (25, 18))
+    attacker = match.world.spawn_unit(1, UnitType.KNIGHT, (10.5, 10.5))
+    victim = match.world.spawn_unit(0, UnitType.PEASANT, (11.5, 10.5))
+    attacker.facing = 0.0
+    match.world.hold([victim.id])
+    match.world.update_vision()
+    host = MatchHost('warband-v2', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
+    client = MatchClient('warband-v2', host.address, token='test')
+    try:
+        converge(host, client, lambda: client.ready)
+        scene = NetworkGameScene(client, settings={'music': 0, 'sfx': 0, 'tutorial': False})
+        game.push(scene)
+        scene.order('attack', [victim.id], attacker.id)  # Rejected: another player's unit.
+        converge(host, client, lambda: bool(client.error))
+        game.tick(1 / 60)
+        assert scene.world.units[victim.id].hp == victim.max_hp
+        assert scene.view.unit_sprite(victim.id).rotation == 0
+        scene.order('attack', [attacker.id], victim.id)
+        game.tick(1 / 60)  # The host has not processed the new order or advanced yet.
+        assert scene.world.units[victim.id].hp == victim.max_hp
+        assert scene.view.unit_sprite(victim.id).rotation == 0
+        converge(host, client, lambda: bool(match.world.units[attacker.id].orders))
+        victim = match.world.units[victim.id]  # Accepted orders atomically replace the authority's world.
+        for _ in range(40):
+            match.step()
+            if victim.hp < victim.max_hp:
+                break
+        assert victim.hp < victim.max_hp
+        host.publish()
+        converge(host, client, lambda: client.revision == host.revision)
+        game.tick(1 / 60)
+        sprite = scene.view.unit_sprite(victim.id)
+        assert scene.world.units[victim.id].hp == victim.hp
+        game.tick(1 / 60)  # Advance the reaction from its zero-displacement contact instant.
+        assert abs(sprite.rotation) > 0, 'The received hit must have a visible reaction'
+        for _ in range(24):
+            host.publish()  # A new revision includes the same retained hit event.
+            converge(host, client, lambda: client.revision == host.revision)
+            game.tick(1 / 60)
+        assert scene.world.units[victim.id].hp == victim.hp
+        assert sprite.rotation == 0, 'Repeated snapshots restarted an old hit reaction'
+        assert sprite.x == victim.x * TILE, 'Expired recoil must return to the received ground point'
+    finally:
+        client.close()
+        host.close()

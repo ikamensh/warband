@@ -41,7 +41,7 @@ def battle(game: Game):
     hx, hy = hall.pos
     scene.camera.center_on((hx + 20) * 32, (hy + 7) * 32)
     scene.select([u.id for u in w.player_units(0) if not u.is_worker][:12])
-    for _ in textures.warm_units(game, [p.id for p in w.players]):
+    for _ in textures.warm_units(game, [p.id for p in w.players], [p.race for p in w.players]):
         pass
     return scene
 

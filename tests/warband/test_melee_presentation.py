@@ -251,3 +251,118 @@ def test_recoil_follows_a_new_move_and_finishes_at_the_current_ground_point(game
     assert victim.x > start[0] + 0.5, "Exercise actual travel during recovery"
     assert sprite.x == ground[0] * TILE, "Expired recoil must leave no displacement"
     assert sprite.rotation == 0.0
+
+
+@pytest.mark.parametrize("unit_type", [UnitType.PEASANT, UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT])
+def test_changing_target_during_windup_cannot_hit_the_cancelled_target(game, unit_type):
+    """A new focus-fire order must redirect both the attack and its visible contact."""
+    scene, attacker, abandoned = duel(game, unit_type=unit_type)
+    replacement = scene.world.spawn_unit(1, UnitType.PEASANT, (attacker.x, attacker.y + 1))
+    scene.world.hold([replacement.id])
+    for _ in range(6):
+        game.tick(1 / 60)
+    assert attacker.windup > 0 and abandoned.hp == abandoned.max_hp
+    scene.world.attack([attacker.id], replacement.id)
+    for _ in range(120):
+        game.tick(1 / 60)
+        assert abandoned.hp == abandoned.max_hp
+        assert scene.view.unit_sprite(abandoned.id).rotation == 0
+        if replacement.hp < replacement.max_hp:
+            break
+    assert replacement.hp < replacement.max_hp, "The new target must actually be struck"
+    assert abs(scene.view.unit_sprite(replacement.id).rotation) > 0, "Only the new target reacts to contact"
+
+
+def test_a_target_removed_during_windup_leaves_no_phantom_contact(game):
+    """A target killed by something else must disappear without a later melee impact."""
+    scene, attacker, victim = duel(game, unit_type=UnitType.KNIGHT)
+    for _ in range(6):
+        game.tick(1 / 60)
+    assert attacker.windup > 0
+    victim.hp = 0  # Another attack killed it before this committed swing could land.
+    game.tick(SIM_DT)
+    assert scene.world.entity(victim.id) is None
+    for _ in range(45):
+        game.tick(1 / 60)
+        assert scene.view.unit_sprite(victim.id) is None
+        assert not world_marks(game), "No released cut should survive the vanished target"
+    assert not any(sound.startswith("lance_") for sound in scene.recent_sounds)
+
+
+def test_fog_reveal_does_not_restore_a_hidden_hit_reaction(game):
+    """Hiding an enemy discards its visible reaction, even if revealed immediately."""
+    scene, attacker, victim = duel(game)
+    first_hit(game, victim)
+    scene.world.hold([attacker.id, victim.id])
+    sprite = scene.view.unit_sprite(victim.id)
+    assert sprite.visible and abs(sprite.rotation) > 0
+    scene.paused = True  # Keep the same combat instant across both visibility changes.
+    scene.view.set_reveal(False)
+    scene.world.visible[scene.human][:] = bytes(len(scene.world.visible[scene.human]))
+    game.tick(1 / 60)
+    assert not sprite.visible
+    assert not world_marks(game), "Hidden combat cannot leak a weapon trail"
+    scene.view.set_reveal(True)
+    game.tick(1 / 60)
+    assert sprite.visible and sprite.rotation == 0
+    assert sprite.position == (victim.x * TILE, victim.y * TILE + textures.placements[sprite.image].drop)
+
+
+def test_loading_a_save_during_contact_discards_the_old_drawn_offset(game):
+    """Transient recoil must not be serialized or restored onto a replacement world."""
+    scene, attacker, victim = duel(game, unit_type=UnitType.KNIGHT)
+    first_hit(game, victim)
+    scene.world.hold([attacker.id, victim.id])
+    assert abs(scene.view.unit_sprite(victim.id).rotation) > 0
+    scene.paused = True
+    scene.save_to("contact")
+    saved = scene.world.to_dict()
+    scene.load_from("contact")
+    game.tick(1 / 60)
+    assert scene.world.to_dict() == saved
+    restored = scene.world.units[victim.id]
+    sprite = scene.view.unit_sprite(restored.id)
+    assert sprite.rotation == 0
+    assert sprite.position == (restored.x * TILE, restored.y * TILE + textures.placements[sprite.image].drop)
+
+
+@pytest.mark.parametrize("faster", [False, True])
+def test_recorded_contact_survives_replay_speed_and_pause(game, faster):
+    """A rendered replay must reproduce the fight, react to hits and freeze on pause."""
+    from warband.replay import Replay
+    from warband.replay_scene import ReplayScene
+
+    scene, attacker, victim = duel(game, unit_type=UnitType.KNIGHT)
+    replay = Replay.begin(scene.world, seed=scene.seed, difficulty=scene.difficulty, human=scene.human)
+    scene.world.attack([attacker.id], victim.id)
+    for _ in range(180):
+        game.tick(1 / 60)
+    replay.finish(scene.world, "left")
+    assert victim.hp < victim.max_hp
+    watching = ReplayScene(Replay.from_dict(replay.to_dict()), settings={"music": 0, "sfx": 0, "tutorial": False})
+    game.clear_and_push(watching)
+    if faster:
+        watching.faster()
+        watching.faster()
+    saw_contact = False
+    previous_hp = watching.world.units[victim.id].hp
+    for _ in range(240):
+        game.tick(1 / 60)
+        target = watching.world.units[victim.id]
+        if target.hp < previous_hp and not saw_contact:
+            sprite = watching.view.unit_sprite(target.id)
+            assert abs(sprite.rotation) > 0
+            game.backend.inject_key("f3")
+            game.tick(1 / 60)
+            held = watching.world.tick, sprite.position, sprite.rotation, sprite.image
+            for _ in range(12):
+                game.tick(1 / 60)
+                assert (watching.world.tick, sprite.position, sprite.rotation, sprite.image) == held
+            game.backend.inject_key("f3")
+            game.tick(1 / 60)
+            saw_contact = True
+        previous_hp = target.hp
+        if watching.playback.done:
+            break
+    assert saw_contact
+    assert watching.playback.done and watching.playback.faithful

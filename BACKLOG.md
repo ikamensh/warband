@@ -271,8 +271,12 @@ Current milestones:
   correct the painted bear rider's lance to its intended hammer. All 72 art
   cells pass extraction and runtime checks; 215 relevant tests pass, the
   fingerprint is unchanged, and native review covers all races/facings/zooms.
-- [ ] Finish fog/target-change/replay/network checks, the ordinary battle
-  performance gate and complete WB-004 release acceptance.
+- [x] Verify target changes/removal, fog/reveal, save loading, replay speed and
+  pause, and real socket snapshots (including rejection and repeated hit history);
+  144 scene/network/replay/benchmark-fixture tests pass.
+- [ ] Pass the ordinary mixed-army performance gate, full-suite checks and
+  complete WB-004 release acceptance. The first performance run failed and
+  exposed a human-only benchmark warm-up; remeasure with actual faction art ready.
 
 The existing wind/strike/follow/recover cycle and sparks still read as timid.
 After WB-003 establishes the timing/art baseline, improve silhouette,
