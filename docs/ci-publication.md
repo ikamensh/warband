@@ -369,7 +369,7 @@ branches are integrated; the deployed server has not changed.
 closure rooted at the authority module, including package initializers,
 relative and function-local imports. It follows Python's preference for a
 package over a same-named module. Every included source byte contributes; a
-comment-only edit can conservatively require reapproval. Client scenes/artwork
+comment-only edit can conservatively require fresh server verification. Client scenes/artwork
 do not contribute unless authoritative code starts importing them. Python
 sources are checked out as LF on every platform for consistent native hashes.
 
