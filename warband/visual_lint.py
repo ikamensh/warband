@@ -39,6 +39,7 @@ from saga2d.scene import UI_ORDER_BASE, UI_ORDER_STRIDE
 from saga2d.testing.cpu_budget import CpuBudget
 from saga2d.ui import Button, Component, Label
 from saga2d.ui.components import KEYCAP_GAP
+from sagaforge import restyle
 from warband import textures
 from warband.rules import BUILDINGS, BuildingType, MapTheme, Race, Resource, UnitType
 
@@ -156,6 +157,8 @@ def lint_image(key: str, image: Image.Image, *, painted: bool = False, cropped: 
         cast = edge & (rgb[..., 0] - rgb[..., 1] > 40) & (rgb[..., 2] - rgb[..., 1] > 40)
         if cast.sum() > CHROMA_SHARE * edge.sum() and cast.sum() > 20:
             findings.append(Finding("chroma", key, f"{cast.sum() / edge.sum():.0%} of the visible edge pixels carry the chroma key's tint", image))
+        for x0, y0, x1, y1 in restyle.strays(image):
+            findings.append(Finding("stray", key, f"a fragment detached from the figure at ({x0}, {y0})–({x1}, {y1}), within the cell's edge band", image))
     return findings
 
 

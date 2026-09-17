@@ -27,7 +27,7 @@ catches its class.
 | WB-003 | Next | done | Diagnose and improve movement animation | User |
 | WB-004 | Next | done | Give melee attacks readable weight and contact | User |
 | WB-005 | Next | done | Replace the rotating-sprite death with convincing falls | User |
-| WB-006 | Next | in progress | Add blood on damaging hits | User |
+| WB-006 | Next | done | Add blood on damaging hits | User |
 | WB-007 | Next | ready | Leave grey abandoned buildings when a player resigns in FFA | User |
 | WB-008 | Next | ready | Improve health bars and building progress indicators | User |
 | WB-015 | Next | ready | Verify and complete durable local player storage outside game sources | User |
@@ -44,6 +44,7 @@ catches its class.
 | WB-020 | Later | proposed | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
 | WB-021 | Next | ready | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
 | WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
+| WB-023 | Next | ready | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -379,7 +380,21 @@ has shown (`_event_id`). The engine stays pinned at 0.3.3, so the effect is
 built on what it has: the particle emitter's direction cone and retained
 sprites.
 
-**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+**Done 2026-09-18**, commit `117fc8c`: every criterion below holds.
+[Tests 35284452707](https://github.com/ikamensh/warband/actions/runs/35284452707),
+[Native package checks 35284452663](https://github.com/ikamensh/warband/actions/runs/35284452663),
+[Publish 35285652488](https://github.com/ikamensh/warband/actions/runs/35285652488) and Saga
+Online's [promotion 35285820197](https://github.com/ikamensh/saga-online/actions/runs/35285820197):
+live as Warband 0.2.5. Locally: the full suite (1076 passed), `tools/fuzz.py
+--games 1 --monkey 12` clean, the fingerprint unchanged, `tools/perf.py` on
+the 150-unit battle three times after against once before (p95 15.1–17.0 ms
+against 16.0 ms, `effects.update` 0.24 against 0.14 ms per frame: within the
+run-to-run spread, recorded in `docs/evidence/blood/perf-*.txt`), and the
+montages in `docs/evidence/blood/{after,after-near}/` inspected (a knight's
+blow, an arrow, a blow on a catapult, a crowded fight) together with a lying
+body and its stain in `docs/evidence/deaths/after-near/`.
+
+**Acceptance (recorded 2026-09-18 before implementation):**
 
 1. A damaging hit on a flesh unit (every unit but the catapult) sprays a few
    dark red droplets away from the striker, sized by the damage dealt (light
@@ -647,11 +662,15 @@ and the neighbours' spill.
    facing at normal, near and far zoom: native frames before and after,
    inspected.
 2. Every painted sheet is free of border and guide slivers and neighbours'
-   spill: pixel clusters detached from the figure, no larger than 60 px,
-   lying within 6 px of the cell edge. Detached content beyond that band
-   stays untouched (arrows, spear tips, antennae, shadows, thrown effects),
-   and so do team colours, cell geometry, origin, drop and every pixel of the
-   figure itself.
+   spill. Refined during implementation, since the wolf rider's lines proved
+   to sit 7% into the cell, 130 px long and in the stand frames faint: a
+   stray is a cluster separated from the figure by more than 3 px that is a
+   thin line at any length or faintness, a speck of at most six solid pixels,
+   a blob of at most 60 solid pixels in the outer 12% of the cell, or the
+   faint long narrow band along a side that is the ghost of a border.
+   Detached content that is none of those stays untouched (arrows, spear tips,
+   antennae, shadows, thrown effects, keying residue), and so do team colours,
+   cell geometry, origin, drop and every pixel of the figure itself.
 3. The cleaning lives in the extraction (`sagaforge.restyle.declutter`,
    applied when a rendered sheet is cut), so a re-rendered sheet comes out
    clean; the committed sheets are cleaned once by that same function and the
@@ -755,3 +774,22 @@ and Saga Online's [promotion 35279704806](https://github.com/ikamensh/saga-onlin
 simulation fingerprint, and inspected native frames of the self-test after a
 resize and of the new-game screen at each map size. Saga Online's promotion
 gate now requires `start_after_resize` (`b4ef8fb`).
+
+## WB-023 — Keying residue: a faint square around every painted unit
+
+Found 2026-09-18 while cleaning the sheets for WB-019: the keyed background
+of every painted cell is not fully transparent. A faint uniform alpha (about
+8–16 of 255) covers the whole cell around the figure, so each unit carries a
+faint darker square the size of its cell that moves with it. It is plain at
+raised contrast (`docs/evidence/strays/` composites) and subtle on the green
+field in play; the blurred cell border that WB-019 removed was the brighter
+edge of the same residue. The cause is the hue key (`sagaforge.restyle.key_out`)
+leaving a little of everything that was not exactly the key colour.
+
+**Done when:** a painted frame's background is alpha 0 everywhere that is not
+the figure, its soft edge or its shadow, on every committed sheet and on a
+newly cut one; the figure's anti-aliased edge and the drawn shadows keep their
+softness (compare frames at gameplay size before and after, painted against
+procedural, and a crowd on light ground where a square would show most); the
+lint reports residue so it cannot return; the sheets are re-cleaned once by the
+same function and their diffs are only the residue.
