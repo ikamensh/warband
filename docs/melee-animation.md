@@ -455,3 +455,23 @@ native battle/forest layouts report zero findings (`heavy-layout.log`); the
 small battle and large forest images were opened. This completes the heavy
 weapon milestone; final fog/target/replay/network, ordinary mixed-army
 performance, full-suite and publication gates remain open for WB-004.
+
+## Final scene and release gates
+
+Before accepting the complete item:
+
+- Change target during wind-up and remove a target before release: the old
+  target must receive neither damage nor a hit reaction from a cancelled blow.
+- Hide a reacting enemy through fog, reveal it and reload a world: invisible
+  bodies/trails and stale contact offsets must not survive those transitions.
+- Replay an actual recorded fight through `ReplayScene`, including pause and
+  changed playback speed; preserve the final simulation digest and visible
+  contact. Receive actual authority snapshots through the multiplayer scene:
+  hits produce recoil once, repeated event history must not restart it, and
+  rejected/unreceived orders cannot create a predicted impact.
+- Run the ordinary 150-unit mixed-army benchmark on the native backend with
+  the existing W10 p95 <16 ms gate. Measure without a profiler and record the
+  source, resolution and pacing. Investigate a miss before accepting a release.
+- Run the full suite and unchanged fingerprint, inspect crowded native combat,
+  then publish through the established main-push pipeline and verify the
+  resulting downloadable builds/catalog before marking WB-004 done.
