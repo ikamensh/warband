@@ -566,3 +566,10 @@ The engine version belongs to the strict publication compatibility contract.
 Align the shared server with the verified PyPI release before publishing the
 new client; preserve that check rather than bypassing it for a visual change.
 After this item is released and marked done, pause as requested.
+
+After the PyPI pin changed, CI found a stale release-format fixture: its
+hard-coded 0.3.2 identity conflicted with the real 0.3.3 lock. The existing
+public-CLI acceptance test reproduced the failure locally. Deriving the valid
+fixture's engine identity from that same lock fixes it without changing any
+production validator or weakening rejection cases. A fresh CI source/run is
+required for final native acceptance; the failed run is not reused.

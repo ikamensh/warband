@@ -32,14 +32,14 @@ def candidate(tmp_path):
     directory = tmp_path / "package"
     directory.mkdir()
     lock = (ROOT / "uv.lock").read_bytes()
+    versions = {item["name"]: item["version"] for item in tomllib.loads(lock.decode())["package"]}
     pins = json.loads((ROOT / ".github/release-pins.json").read_text())
     compatibility = json.loads(subprocess.check_output(
         [sys.executable, str(ROOT / "tools/ci_compatibility.py")], text=True))
     identity = {"schema_version": 1, "game": "warband", "source_commit": "a" * 40,
                 "version": "0.2.0-preview.123", "tag": "v0.2.0-preview.123", "run_id": 123,
-                "saga2d_version": "0.3.2", "lock_sha256": digest(lock), "compatibility": compatibility, **pins}
+                "saga2d_version": versions["saga2d"], "lock_sha256": digest(lock), "compatibility": compatibility, **pins}
     write_json(tmp_path / "identity.json", identity)
-    versions = {item["name"]: item["version"] for item in tomllib.loads(lock.decode())["package"]}
     packages = {name: versions[name.lower()] for name in
                 ("numpy", "Pillow", "pyglet", "websockets", "pyinstaller", "pyinstaller-hooks-contrib")}
     write_json(directory / "build-inputs.json", {
