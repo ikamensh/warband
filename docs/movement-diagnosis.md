@@ -234,9 +234,14 @@ The corresponding repeatable regressions remain in the game test suite.
 The native matrix and pointer journey are complete. `35b851f` passed
 [the game tests](https://github.com/ikamensh/warband/actions/runs/35210630104)
 and [Windows/Mac native package checks](https://github.com/ikamensh/warband/actions/runs/35210630105),
-including final artifact validation. WB-003 remains in progress for its verified
-server compatibility rollout and main integration/publication. The isolated server candidate is recorded in
-Saga Online's `docs/warband-movement-rollout.md` on
-`codex/wb003-server-compatibility`; that document is pending integration.
-WB-010 owns network smoothing, WB-017 the waypoint budget, and WB-018 the large
-selection HUD. No motion change has been published from this branch.
+including final artifact validation. The server compatibility rollout is now
+accepted as `99e28517…54609f7`, and its baseline is integrated in Saga Online main
+`89fe348`. The [rollout record](../../saga-online/docs/warband-movement-rollout.md)
+contains Linux preparation, private retained-campaign restore/rejoin, actual
+public pointer commands and all three downloaded Mac client checks. The final
+server suite passed 135 tests in 89.94 seconds. The three retained campaigns and
+the website pointer stayed intact through activation.
+
+WB-003 remains in progress for main-push publication and public Windows/Mac
+download acceptance. WB-010 owns network smoothing, WB-017 the waypoint budget,
+and WB-018 the large selection HUD.

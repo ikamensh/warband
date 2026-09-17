@@ -189,7 +189,11 @@ inspected at near/normal/far zoom. Real native mouse and F3 events also verify
 presented selection, empty-ground movement, enemy targeting and pause.
 Candidate `35b851f` also passed [Windows/Mac native checks](https://github.com/ikamensh/warband/actions/runs/35210630105)
 and the Linux game test workflow. The staged server suite passes 135 tests;
-hosted acceptance and publication remain open.
+the hosted server rollout is accepted as `99e28517…54609f7`. Public pointer
+commands and all three downloaded Mac clients pass, and the three retained
+campaigns are preserved. [The rollout record](../saga-online/docs/warband-movement-rollout.md)
+and baseline are integrated in Saga Online main `89fe348`; final main-push
+publication and public Windows/Mac download acceptance remain open.
 
 The current [motion notes](docs/unit-motion.md), [view](warband/view.py) and
 [pose generation](warband/textures.py) already provide four walk frames,
