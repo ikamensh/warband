@@ -31,6 +31,7 @@ every earlier item first.
 | WB-014 | Later | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-016 | Later | proposed | Assess and recover the six-mission Thornwood campaign | Recovered branch |
 | WB-017 | Next | ready | Preserve movement speed through path waypoints | WB-003 diagnosis |
+| WB-018 | Next | ready | Keep large selections inside the HUD | Native crowd capture |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -177,12 +178,15 @@ The follow-up fixes replay interpolation, the load-time clock reset and
 presented selection. Smart orders preserve the displayed target (including
 empty ground); 101 relevant scene/view/replay/socket tests pass. This optional
 command field requires a server compatibility update. WB-003 remains in progress
-for native matrix, final verification and integration. The separate waypoint-speed
+for native package acceptance, server rollout and integration. The separate waypoint-speed
 finding is WB-017.
 
 The follow-up full suite passes 917 tests (12 skips), two input-fuzz journeys
 pass and the simulation fingerprint remains unchanged. The 2× native turn capture
 shows attached selection markers and stationary stand poses during both stops.
+The full painted/procedural turn, crowd and obstacle matrix is recorded and
+inspected at near/normal/far zoom. Real native mouse and F3 events also verify
+presented selection, empty-ground movement, enemy targeting and pause.
 
 The current [motion notes](docs/unit-motion.md), [view](warband/view.py) and
 [pose generation](warband/textures.py) already provide four walk frames,
@@ -439,3 +443,17 @@ crowds, terrain boundaries, harvesting and attack pursuit remain correct. Prove
 the rules change with integration tests and seeded fuzz, audit affected movement/
 combat expectations, deliberately refresh the simulation fingerprint, and verify
 replay/online agreement and compatible client/server rollout before publication.
+
+## WB-018 — Large selection HUD
+
+The native 18-unit crowd capture at 1280×800 shows the selected-unit portraits
+and their health strips extending under the command card. The selection panel
+must fit the available space while retaining access to every selected unit.
+Choose a compact grid or explicit paging from real gameplay needs; coordinate
+its health indicators with WB-008. Evidence: `docs/evidence/movement/procedural-crowd-far/`.
+
+**Done when:** 1, 12, 18 and large army selections fit at 1280×800 and 1200×680;
+portraits/health indicators, commands, minimap and hints do not overlap; each
+unit remains reachable by the chosen interaction. Verify selection changes,
+mixed unit types and shrinking selections through real input, extend visual
+lint to include the reproduced case, and inspect native frames before closing.

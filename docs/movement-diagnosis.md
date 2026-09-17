@@ -199,11 +199,42 @@ footman and **10.88 px** for the knight at normal zoom. Its median mock scene
 cost is 0.58 ms. This verifies a separate snapshot-cadence problem rather than
 local simulation or draw cost; WB-010 owns buffering, latency and rejoin policy.
 
+The procedural 0.75× crowd capture (`procedural-crowd-far/`) issues one move to
+18 mixed units. Its approach and arrival frames were inspected; all 18 have
+reached idle by the end of ten seconds. Median native frame cost is 7.33 ms.
+Crowd pushes produce larger authoritative displacement than solo walking
+(maximum presented step 3.69 world pixels), so the solo speed bound is not a
+valid crowd-motion assertion. The trace preserves that model behavior.
+This also exposes an existing HUD defect: the large selection's portrait row
+extends under the command card at 1280×800. WB-018 records it separately.
+The matching painted crowd capture (`painted-crowd-far/`) was inspected too:
+all 18 units finish idle, the same maximum displacement is recorded, and median
+native frame cost is 7.53 ms. The portrait overflow occurs with both art styles.
+Idle at the final frame does not mean the whole approach was stationary: some
+units are still displaced by arriving neighbours during the last second. That
+authoritative push behavior is preserved, rather than hidden by interpolation.
+
+Both obstruction captures (`painted-obstruction-normal/` and
+`procedural-obstruction-near/`) were inspected at the gap and after arrival.
+Worker, footman and knight all traverse the two-tile opening and finish idle
+at their exact destinations on the far side by twelve seconds. Median native
+frame costs are 5.85 and 5.65 ms respectively. The barrier is in the actual
+collision terrain, not a visual prop that units could walk through.
+
+The native pointer journey (`check_native_input.py`, `native-input/`) dispatches
+real pyglet mouse and F3 events. Clicking the trailing edge selects the displayed
+footman, right-clicking empty ground ahead of the displayed enemy produces a
+move, and clicking the enemy's trailing edge produces an attack on its exact ID.
+F3 freezes the tick, displayed point and walk pose. The selected, attack and
+paused native screenshots were opened and inspected with ordinary fog enabled.
+The corresponding repeatable regressions remain in the game test suite.
+
 ## Remaining acceptance
 
-WB-003 is not complete: inspect procedural art, diagonal motion, turns,
-start/stop, crowds/obstructions and zooms; check native presented picking/overlays;
-measure the online snapshot case and retain its transport policy under WB-010.
-Complete the native matrix and integrate the completed item with its required
-server compatibility update.
-No motion change has been published from this branch.
+The native matrix and pointer journey are complete. WB-003 remains in progress
+for native package acceptance, its verified server compatibility rollout and
+main integration/publication. The isolated server candidate is recorded in
+Saga Online's `docs/warband-movement-rollout.md` on
+`codex/wb003-server-compatibility`; that document is pending integration.
+WB-010 owns network smoothing, WB-017 the waypoint budget, and WB-018 the large
+selection HUD. No motion change has been published from this branch.
