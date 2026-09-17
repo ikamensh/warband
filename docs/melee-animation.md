@@ -200,3 +200,23 @@ Other races' weapons, workers and mounted/heavy melee need their own treatment
 and native review. Final coverage also includes fog, target changes, replay,
 network snapshots and the standard mixed-army performance check. No public
 engine interface, simulation rule, save schema or network contract changed.
+
+## Next increment — all four infantry weapons
+
+Acceptance before extending the prototype:
+
+- Human footman, orc grunt, elf sentinel and dwarf axeman all show the same
+  readable load/drive/recover phases, driven by their own combat clocks.
+  Preserve the accepted human treatment and every race's combat numbers.
+- Trace each race's actual sword/cleaver/curved blade/axe tip through the shared
+  hand-weapon rig, including that race's width and height. A generic human-sized
+  arc on every figure is insufficient. Cache each race/facing image and retain
+  the clear-margin regression that caught rear-facing clipping.
+- Compare native baseline and candidate infantry fights. Inspect all eight
+  facings in painted and procedural art at gameplay size, with near/far checks
+  for overlap, clipping and a trail that obscures the body. Check cancellation,
+  misses, pause, and the body following its current ground point for every race.
+- Run the affected scene/view tests and simulation fingerprint; record the
+  verification and limits before committing. This completes infantry coverage
+  only: workers, mounted/heavy melee, the remaining scene modes and the normal
+  mixed-army performance gate still belong to WB-004.
