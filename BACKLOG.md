@@ -15,7 +15,7 @@ every earlier item first.
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-001 | First | done | Recover useful branch work and clean up local branches/worktrees | User |
-| WB-002 | First | in progress | Publish tested main pushes through GitHub Actions to games.tachyon-ai.eu | User |
+| WB-002 | First | done | Publish tested main pushes through GitHub Actions to games.tachyon-ai.eu | User |
 | WB-003 | Next | ready | Diagnose and improve movement animation | User |
 | WB-004 | Next | ready | Give melee attacks readable weight and contact | User |
 | WB-005 | Next | ready | Replace the rotating-sprite death with convincing falls | User |
@@ -72,11 +72,15 @@ to assess here, not an instruction to merge it wholesale.
 
 ## WB-002 — Publish tested pushes through GitHub Actions
 
-Working branches: `codex/backlog-wb002` (Warband) and
-`codex/warband-publishing` (Saga Online). Acceptance and rollout are recorded
-before implementation in [the CI publication plan](docs/ci-publication.md).
+Completed 2026-09-17. The implementation from `codex/backlog-wb002` (Warband)
+and `codex/warband-publishing` (Saga Online) is integrated on both mains.
+Warband `e38618d` passed the complete main-push journey; Saga Online `1be6068`
+passed all 135 server/publication checks, and automated catalog commit `3fcb79a`
+published the accepted release. Acceptance, operating policy and detailed
+evidence are in [the CI publication plan](docs/ci-publication.md) and
+[Saga Online's publication record](../saga-online/docs/warband-ci-publication.md).
 
-Milestones checked on 2026-09-17 (the complete item remains **in progress**):
+Milestones completed on 2026-09-17:
 
 - [x] Pin release inputs and verify native Windows/Mac packages. Source
   `2361f79` passed [native run 35149564980](https://github.com/ikamensh/warband/actions/runs/35149564980):
@@ -113,16 +117,24 @@ Milestones checked on 2026-09-17 (the complete item remains **in progress**):
   only `main`; the dedicated Saga Online Actions token and restricted website
   SSH key are installed. Both publishing flags are enabled. The actual release
   journey and public download acceptance remain below.
-- [ ] Exercise the complete main-push journey, public Windows/Mac downloads,
-  compatible packaged online clients, publication retries and rollback.
+- [x] Exercise the complete main-push journey: [native build 35203328191](https://github.com/ikamensh/warband/actions/runs/35203328191)
+  → [publisher 35204501320](https://github.com/ikamensh/warband/actions/runs/35204501320)
+  → [site promotion 35204667815](https://github.com/ikamensh/saga-online/actions/runs/35204667815).
+  Immutable preview `0.2.0-preview.35203328191` is live. [Public Windows/Mac
+  downloads 35205462324](https://github.com/ikamensh/saga-online/actions/runs/35205462324)
+  matched the tested bytes and passed all eight packaged online checks with
+  fresh profiles. Publisher retry reused immutable artifacts; a GitHub artifact
+  upload failure retried successfully before activation. Live rollback, restore,
+  repeated publication and stale-upload refusal all passed; the live page was
+  inspected. Main-only CI publishing is enabled without manual approval.
 
 The user authorized autonomous releases, CI publishing setup and hosted
 deployments on 2026-09-17. Proceed after the required verification without
-another go-ahead; authorization alone does not complete the remaining milestones.
+another go-ahead. All milestones above have verified completion evidence.
 
 Make a push to `main` produce an immutable preview release and update the
 Warband download page at [games.tachyon-ai.eu](https://games.tachyon-ai.eu/warband/).
-Use `main` as the proposed publishing branch; ordinary feature-branch pushes
+Use `main` as the publishing branch; ordinary feature-branch pushes
 should run checks. Use one pinned Windows/Mac native build workflow and a
 separate publisher, replacing the former Windows-only release path; retain the
 [test workflow](.github/workflows/tests.yml). Site/catalog publication belongs in `saga-online`; start from its
@@ -142,7 +154,7 @@ Treat static-site promotion and room-server activation as separate operations,
 with an explicit compatible rollout/draining policy. Document the CI credential
 handoff from today's laptop-operated deployment and the chosen preview/stable
 policy. Enabling unattended production publication is an authorized rollout
-step of this task; the checked milestones above do not yet mean it is enabled.
+step of this task, completed with both publishing flags enabled.
 
 **Done when:** a main push passes the complete build → verify → release →
 catalog → website journey; downloaded Windows/Mac artifacts match the tested

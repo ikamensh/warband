@@ -1,9 +1,10 @@
 # WB-002 — Verified publication on a main push
 
 Acceptance recorded 2026-09-16 before implementation. Baselines: Warband
-`e710ed8`, Saga Online `c33c195`. This item remains in progress until the actual
-GitHub-to-download journey below passes; local helpers and green unit tests
-alone do not complete it.
+`e710ed8`, Saga Online `c33c195`. **Completed 2026-09-17:** the real main-push
+journey, anonymous native downloads, online clients, retries and live rollback
+passed. Both repositories have publishing enabled on main. The evidence below
+includes historical intermediate findings followed by the accepted result.
 
 ## Acceptance
 
@@ -97,9 +98,32 @@ publishing environments allow only main, without a manual reviewer gate.
 Warband's `warband-release` environment has the fine-grained Saga Online Actions
 dispatch token; Saga Online's `warband-promotion` environment has the dedicated
 restricted website SSH key and pinned host key. Both repository enable flags
-are `true`. The live server and website are healthy; the site is still the
-previous release until the first complete pipeline succeeds. The initial main
-push, downloaded client acceptance and publication retry remain to be recorded.
+are `true`. The live server and website are healthy. Main `e38618d` passed
+[native run 35203328191](https://github.com/ikamensh/warband/actions/runs/35203328191),
+which automatically triggered [publisher 35204501320](https://github.com/ikamensh/warband/actions/runs/35204501320).
+Its first attempt published immutable preview `0.2.0-preview.35203328191` and
+dispatched [Saga Online promotion 35204667815](https://github.com/ikamensh/saga-online/actions/runs/35204667815).
+A GitHub artifact-finalization 403 stopped that consumer before activation;
+rerunning the failed job succeeded without code or release-byte changes.
+Catalog commit `3fcb79a` and accepted site `1fd8db6e…11f681` at generation 5
+advertise the new release.
+
+[Public download checks 35205462324](https://github.com/ikamensh/saga-online/actions/runs/35205462324)
+passed on Windows and Mac: exact public archive hashes, source/version and
+executable identity, frozen launch outside the checkout, bundled fonts, and all
+eight online checks including create/join, authoritative orders and private-seat
+rejoin. Saga Online main `1be6068` passed 135 server/publication checks; its
+separate website suite passed 130 checks (one native-proxy skip and one package
+deselection, both covered by the full suite). Live site rollback/restore,
+unchanged-publication retry and stale-upload refusal passed. The actual public
+page and native package captures were inspected.
+
+The [Saga Online record](../../saga-online/docs/warband-ci-publication.md)
+contains the receipts, exact site hashes, credential rotation and operational
+retry/disable/rollback commands. Future compatible main pushes require no manual
+publication step. Failed compatibility checks preserve the previous downloads
+until a verified server rollout; native previews retain the documented unsigned/
+ad-hoc-signed policy.
 
 The first native main run `35201502611` passed both platforms and triggered
 publisher `35202693598`. It created immutable release `390564613`, version
@@ -112,15 +136,14 @@ The publisher now reloads the final asset inventory after publication before
 checking anonymous downloads. A real HTTP-service regression reproduces the
 draft-to-public URL change: it failed with the same 404 before the fix, then all
 57 publication/input/package integration checks passed. No retry delay or weaker
-hash check was added. The existing immutable release is being retried using the
-accepted native artifacts; a subsequent main build will verify the corrected
+hash check was added. Retrying the first release successfully reused its accepted
+native artifacts. The subsequent main journey above verified the corrected
 first-publication path. GitHub release immutability is enabled on the repository.
 
 The legacy Windows-only tag/manual release workflow has been removed after
 acceptance of the pinned two-platform native producer (run `35149564980`).
 The native workflow and separate publisher now provide the single build/release
-path. Workflow lint and Markdown link checks pass; actual enabled main
-publication remains part of the rollout acceptance below.
+path. Workflow lint, Markdown link checks and enabled main publication pass.
 
 Implemented locally so far:
 
