@@ -27,7 +27,7 @@ catches its class.
 | WB-003 | Next | done | Diagnose and improve movement animation | User |
 | WB-004 | Next | done | Give melee attacks readable weight and contact | User |
 | WB-005 | Next | in progress | Replace the rotating-sprite death with convincing falls | User |
-| WB-006 | Next | ready | Add blood on damaging hits | User |
+| WB-006 | Next | in progress | Add blood on damaging hits | User |
 | WB-007 | Next | ready | Leave grey abandoned buildings when a player resigns in FFA | User |
 | WB-008 | Next | ready | Improve health bars and building progress indicators | User |
 | WB-015 | Next | ready | Verify and complete durable local player storage outside game sources | User |
@@ -357,6 +357,42 @@ blood-off setting if the effect becomes a persistent part of the presentation.
 with sensible intensity; missed/zero-damage blows and buildings do not bleed;
 fog, reconnects and repeated snapshots do not leak or duplicate effects. A
 busy battle remains legible and meets the measured frame budget.
+
+**Where it starts, 2026-09-18:** every melee hit on a unit shows the same
+five light sparks and a recoil, whatever was hit; arrows show nothing at the
+target; the rules never deal zero damage (`World._hit` deals at least one), so
+"no blood" means no `hit` event: a miss, a cancelled swing or a stone that
+found nothing. Hit events already carry the damage dealt, the target's type
+and armour and whether the blow was ranged; the network scene skips events it
+has shown (`_event_id`). The engine stays pinned at 0.3.3, so the effect is
+built on what it has: the particle emitter's direction cone and retained
+sprites.
+
+**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+
+1. A damaging hit on a flesh unit (every unit but the catapult) sprays a few
+   dark red droplets away from the striker, sized by the damage dealt (light
+   blows a few small drops, heavy blows more and larger), once per hit, for
+   melee and for arrows alike. Armoured targets add a short spark; a catapult
+   sheds wood chips instead of blood; buildings show what they show today.
+2. Only real damage bleeds: no `hit` event, no effect. Hits out of sight show
+   nothing, and a snapshot applied twice or a replayed event index shows each
+   hit once.
+3. A flesh unit's death leaves a dark stain under the body that fades over
+   about half a minute; at most 64 stains lie at once, the oldest fading early
+   past that; they sort under units and bodies and stay under the fog.
+4. A **Blood** row in Settings (default on) turns sprays and stains off
+   together, immediately, and persists like the other rows; sparks and wood
+   chips stay.
+5. Legibility and cost: the effect never hides the fighters (droplets are
+   small and short-lived, stains low-contrast); `tools/perf.py` on the 150-unit
+   battle before and after stays within the p95 < 16 ms gate with no
+   meaningful change.
+6. Evidence: native frames of a melee hit, an arrow hit, a catapult hit and a
+   crowded fight at normal and near zoom, inspected; scene-seam tests for each
+   criterion (direction and size by damage, no blood on siege and buildings,
+   no effect out of sight or on a repeated snapshot, the stain cap and fade,
+   the setting); the suite, `tools/fuzz.py` and an unchanged fingerprint.
 
 ## WB-007 — FFA resignation leaves abandoned buildings
 
