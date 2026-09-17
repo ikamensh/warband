@@ -317,7 +317,7 @@ and small forest frames were opened. Worker combat is verified. Mounted/heavy
 weapons and the remaining whole-item scene, performance and release gates
 are still open; WB-004 remains in progress.
 
-## Next increment — mounted and heavy melee
+## Mounted and heavy melee
 
 Acceptance before implementation:
 
@@ -341,3 +341,45 @@ Acceptance before implementation:
 - This covers melee unit presentation only. Final fog/target/replay/network
   checks, ordinary mixed-army performance, full-suite and release verification
   remain necessary before WB-004 can be marked done.
+
+### Scout prototype
+
+Native baselines are recorded in
+`docs/evidence/melee/mounted-before-{human-scout,human-knight,orc-knight,dwarf-knight}`.
+The scout lowers its spear through contact, but the rider and mount show little
+preparatory weight. The load/drive regression fails for scouts of all four
+races (`scout-weight-red.log`); the released-miss check also confirms that no
+spear afterimage is drawn (`scout-trail-red.log`).
+
+The prototype adds the existing weight curve to the scout's own combat clocks.
+The spear's grip, point and pitch are shared with its mesh. Its trail uses the
+mounted bob and forward lunge, without the infantry torso twist or lean. A
+one-off comparison against `7a7779d` verifies that every scout mesh face,
+colour and vertex is unchanged for all four races and every animation frame
+(`scout-mesh-comparison.log`, maximum coordinate difference **0.0**).
+No new sprite poses or combat rules are introduced. The role/race/facing cache
+now holds at most 96 ribbons, still drawn as one image per active weapon.
+
+The extended melee suite passes **92 tests** in 9.40 s (`scout-tests.log`),
+covering infantry, workers and scouts of every race. The wider scene/view/
+worker/movement/race/timing checks pass **222 tests** in 35.63 s
+(`scout-relevant-tests.log`). The simulation fingerprint is unchanged
+(`scout-fingerprint.log`). Four native battle/forest-battle layout checks report
+zero findings (`scout-lint.log`); the small battle and large forest frames were
+opened.
+
+Native cycles in `docs/evidence/melee/scouts-{painted,procedural}-{human,orc,elf,dwarf}`
+cover all eight facings at normal, 2× and 0.7× zoom. All normal phase matrices
+and near/far contact comparisons were opened and inspected. The human trace
+before the first incoming hit measures **−2.875 px load-back / +5.0 px drive**,
+versus **0 / 0 px** in the baseline, with one unchanged authoritative position
+in each capture. The higher spear arcs retain their margins and do not cover
+the mount with an opaque fan. As with infantry, cuts toward the camera are
+foreshortened.
+
+Review also found thin horizontal lines above painted wolf riders. They are
+present in the existing `orc.scout.png`, which this change does not modify.
+That separate art/extraction defect is recorded as **WB-019**, including a
+future visual-lint regression; the current layout checks do not detect it.
+Scout combat presentation is verified. Knights, the ogre and the remaining
+whole-item gates are still open; WB-004 remains in progress.

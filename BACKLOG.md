@@ -264,7 +264,10 @@ Current milestones:
   harvest/fight/stop/deposit checks preserve both resources for all races;
   194 relevant tests pass, the simulation fingerprint is unchanged, and all
   eight facings were inspected in both art paths at normal/near/far zoom.
-- [ ] Treat mounted/heavy melee according to its weapon and body.
+- [x] Give scouts a spear trail and weight shift using the mounted rig;
+  222 relevant checks pass, with native review for every race/facing in both
+  art paths at normal/near/far zoom. Existing wolf-rider sheet lines are WB-019.
+- [ ] Finish heavy melee: knight lances, the dwarf hammer and the ogre club.
 - [ ] Finish fog/target-change/replay/network checks, the ordinary battle
   performance gate and complete WB-004 release acceptance.
 

@@ -123,12 +123,12 @@ def unit_frame(u: Unit, travel: float, time: float) -> str:
 
 
 def _melee_lunge(u: Unit, fraction: float) -> float:
-    """Foot soldiers load slowly, drive quickly, then settle to their ground point.
+    """Melee bodies load slowly, drive quickly, then settle to their ground point.
 
     These are pixels of presentation, never additional reach or model movement.
     The existing wind-up/cooldown clocks keep the weight shift tied to the blow.
     """
-    if u.type not in (UnitType.FOOTMAN, UnitType.PEASANT) or u.state != "attack":
+    if u.type not in (UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT) or u.state != "attack":
         return 0.0
     if u.windup > 0.0:
         remaining = max(0.0, u.windup - fraction * SIM_DT)
@@ -764,7 +764,7 @@ class MapView:
     def _draw_melee_trails(self) -> None:
         """A brief afterimage of the released cut; damage still owns impact feedback."""
         for u in self.world.units.values():
-            if u.type not in (UnitType.FOOTMAN, UnitType.PEASANT) or u.state != "attack" or u.windup > 0 or u.cooldown <= 0:
+            if u.type not in (UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT) or u.state != "attack" or u.windup > 0 or u.cooldown <= 0:
                 continue
             age = u.info.cooldown - u.cooldown + self._fraction * SIM_DT
             if not 0 <= age < 0.09:

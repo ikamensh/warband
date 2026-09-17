@@ -1657,11 +1657,21 @@ def _shift(mesh: Mesh, offset: r3.Vec3) -> Mesh:
     return [r3.Face(tuple((x + ox, y + oy, z + oz) for x, y, z in face.points), face.color) for face in mesh]
 
 
+_SCOUT_PITCH = {"wind": -8, "strike": -84, "follow": -84}
+_SCOUT_SPEAR_HEAD = 0.18
+
+
+def _scout_geometry(race: Race) -> tuple[float, r3.Vec3, r3.Vec3]:
+    """Rider height, spear grip and point shared by its mesh and combat trail."""
+    rider_z = 0.63 if race is not Race.ORC else 0.5
+    return rider_z, (0.27, 0.07, rider_z + 0.27), (0.27, 0.07, rider_z + 1.0 + _SCOUT_SPEAR_HEAD)
+
+
 def _scout(player: int, frame: str, race: Race) -> Mesh:
     team = team_color(player)
     look = LOOKS[race]
     mesh = _mount(frame, False, team, race)
-    rider_z = 0.63 if race is not Race.ORC else 0.5
+    rider_z, grip, tip = _scout_geometry(race)
     mesh += r3.cylinder((0, -0.1, rider_z), 0.15, 0.29, look.leather, sides=6)
     mesh += _unit_panel([(-0.18, -0.16, rider_z + 0.29), (0.18, -0.16, rider_z + 0.29),
                          (0.2, -0.57, rider_z - 0.09), (0, -0.48, rider_z - 0.04), (-0.2, -0.57, rider_z - 0.09)], team)
@@ -1679,12 +1689,11 @@ def _scout(player: int, frame: str, race: Race) -> Mesh:
     for x in (-0.19, 0.19):
         mesh += _unit_rod((x, -0.06, rider_z + 0.11), (x * 1.15, 0.06, rider_z - 0.2), 0.058, WOOD_DARK)
         mesh += _unit_rod((x, -0.08, rider_z + 0.23), (x, 0.12, rider_z + 0.19), 0.045, look.skin)
-    grip = (0.27, 0.07, rider_z + 0.27)
     spear = _unit_rod((0.27, 0.07, rider_z - 0.08), (0.27, 0.07, rider_z + 1.02), 0.024, WOOD)
-    spear += r3.cone((0.27, 0.07, rider_z + 1.0), 0.06, 0.18, look.metal, sides=4)
+    spear += r3.cone((tip[0], tip[1], tip[2] - _SCOUT_SPEAR_HEAD), 0.06, _SCOUT_SPEAR_HEAD, look.metal, sides=4)
     if race is Race.ORC:
         spear += r3.cone((0.27, 0.07, rider_z + 0.85), 0.05, -0.1, BONE, sides=4)
-    mesh += _unit_pitch(spear, -84 if _striking(frame) else -8, grip)
+    mesh += _unit_pitch(spear, _SCOUT_PITCH.get(frame, -8), grip)
     return mesh
 
 
@@ -1856,9 +1865,9 @@ def chop_contact_offset(facing: int, race: Race = Race.HUMAN) -> tuple[float, fl
     return PROJECTION.project((x * c - y * s, x * s + y * c, z))
 
 
-@lru_cache(maxsize=2 * FACINGS * len(Race))
+@lru_cache(maxsize=3 * FACINGS * len(Race))
 def _melee_sweep(unit_type: UnitType, facing: int, race: Race) -> tuple[tuple[tuple[float, float], tuple[float, float]], ...]:
-    """A foot soldier's weapon ribbon, projected from its authored wind/strike rig.
+    """A weapon ribbon, projected from its authored wind/strike rig.
 
     Each pair is the inner edge and tip at one point along the fast downswing.
     Keeping the arc in the art module makes it follow the weapon's actual grip,
@@ -1869,6 +1878,8 @@ def _melee_sweep(unit_type: UnitType, facing: int, race: Race) -> tuple[tuple[tu
         edge = tuple(g + (e - o) for g, e, o in zip(grip, _SWORD_EDGE[race], _SWORD_ORIGIN))
     elif unit_type is UnitType.PEASANT:
         grip, edge = _WORKER_GRIP, _WORKER_AXE_EDGE[1]
+    elif unit_type is UnitType.SCOUT:
+        _, grip, edge = _scout_geometry(race)
     else:
         raise ValueError(unit_type)
     inner = tuple(a + (b - a) * 0.88 for a, b in zip(grip, edge))
@@ -1885,11 +1896,16 @@ def _melee_sweep(unit_type: UnitType, facing: int, race: Race) -> tuple[tuple[tu
             mesh = _unit_pitch(mesh, between(_SWORD_PITCH["wind"], _SWORD_PITCH["strike"]), grip)
             mesh = r3.rotate_z(mesh, between(_SWORD_YAW["wind"], _SWORD_YAW.get("strike", 0)), about=grip[:2])
             mesh = _shift(mesh, tuple(between(a, b) for a, b in zip(_SWORD_SHIFT["wind"], _SWORD_SHIFT["strike"])))
-        else:
+        elif unit_type is UnitType.PEASANT:
             mesh = _unit_pitch(mesh, between(_worker_axe_angle("wind"), _worker_axe_angle("strike")), grip)
-        mesh = r3.rotate_z(mesh, between(wind.twist, strike.twist))
-        mesh = _unit_pitch(mesh, -between(wind.lean, strike.lean), (0.0, 0.0, HIP))
-        mesh = _shift(mesh, (between(wind.sway, strike.sway), between(wind.lunge, strike.lunge), 0.0))
+        else:
+            mesh = _unit_pitch(mesh, between(_SCOUT_PITCH["wind"], _SCOUT_PITCH["strike"]), grip)
+        if unit_type in MOUNTED:
+            mesh = _shift(mesh, (0.0, between(wind.lunge, strike.lunge), between(_BOB["wind"], _BOB["strike"])))
+        else:
+            mesh = r3.rotate_z(mesh, between(wind.twist, strike.twist))
+            mesh = _unit_pitch(mesh, -between(wind.lean, strike.lean), (0.0, 0.0, HIP))
+            mesh = _shift(mesh, (between(wind.sway, strike.sway), between(wind.lunge, strike.lunge), 0.0))
         mesh = _stretch(mesh, *LOOKS[race].stretch)
         mesh = r3.rotate_z(r3.scale(mesh, UNIT_SCALE), facing * 45 - 90)
         ribbon.append(tuple(PROJECTION.project(point) for point in mesh[0].points[:2]))

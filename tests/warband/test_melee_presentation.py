@@ -76,7 +76,7 @@ def test_worker_puts_cargo_away_for_combat_then_delivers_the_same_load(game, rac
 
 
 @pytest.mark.parametrize("race", list(Race))
-@pytest.mark.parametrize("unit_type", [UnitType.FOOTMAN, UnitType.PEASANT])
+@pytest.mark.parametrize("unit_type", [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT])
 def test_melee_trail_keeps_its_whole_arc_inside_the_image_in_every_facing(game, race, unit_type):
     """Rear-facing cuts rise farther than the original fixed square allowed."""
     store = ImageStore(game)
@@ -115,7 +115,7 @@ def duel(game, *, damaging=True, race=Race.HUMAN, unit_type=UnitType.FOOTMAN):
 
 
 @pytest.mark.parametrize("race", list(Race))
-@pytest.mark.parametrize("unit_type", [UnitType.FOOTMAN, UnitType.PEASANT])
+@pytest.mark.parametrize("unit_type", [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT])
 def test_actual_melee_contact_displaces_the_drawn_victim(game, race, unit_type):
     """Compare the same target motion with/without damage, after the entire frame.
 
@@ -148,7 +148,7 @@ def first_hit(game, victim):
 
 
 @pytest.mark.parametrize("race", list(Race))
-@pytest.mark.parametrize("unit_type", [UnitType.FOOTMAN, UnitType.PEASANT])
+@pytest.mark.parametrize("unit_type", [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT])
 def test_melee_loads_back_then_drives_forward_without_moving_its_ground_point(game, race, unit_type):
     """Anticipation and follow-through must carry visible weight at gameplay size.
 
@@ -173,7 +173,7 @@ def test_melee_loads_back_then_drives_forward_without_moving_its_ground_point(ga
 
 
 @pytest.mark.parametrize("race", list(Race))
-@pytest.mark.parametrize("unit_type", [UnitType.FOOTMAN, UnitType.PEASANT])
+@pytest.mark.parametrize("unit_type", [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT])
 def test_pause_freezes_the_visible_hit_reaction(game, race, unit_type):
     """F3 must freeze the combat body as well as the authoritative clock."""
     scene, attacker, victim = duel(game, race=race, unit_type=unit_type)
@@ -194,7 +194,7 @@ def test_pause_freezes_the_visible_hit_reaction(game, race, unit_type):
 
 
 @pytest.mark.parametrize("race", list(Race))
-@pytest.mark.parametrize("unit_type", [UnitType.FOOTMAN, UnitType.PEASANT])
+@pytest.mark.parametrize("unit_type", [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT])
 def test_cancelled_windup_does_not_leave_a_cut_or_impact(game, race, unit_type):
     """Moving away cancels the load-up; no predicted contact may leak into a frame."""
     scene, attacker, victim = duel(game, race=race, unit_type=unit_type)
@@ -214,7 +214,7 @@ def test_cancelled_windup_does_not_leave_a_cut_or_impact(game, race, unit_type):
 
 
 @pytest.mark.parametrize("race", list(Race))
-@pytest.mark.parametrize("unit_type", [UnitType.FOOTMAN, UnitType.PEASANT])
+@pytest.mark.parametrize("unit_type", [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT])
 def test_a_released_miss_draws_the_cut_but_does_not_shove_the_target(game, race, unit_type):
     """A target outside reach can escape a committed swing; a trail is not a hit."""
     scene, attacker, victim = duel(game, race=race, unit_type=unit_type)
@@ -236,7 +236,7 @@ def test_a_released_miss_draws_the_cut_but_does_not_shove_the_target(game, race,
 
 
 @pytest.mark.parametrize("race", list(Race))
-@pytest.mark.parametrize("unit_type", [UnitType.FOOTMAN, UnitType.PEASANT])
+@pytest.mark.parametrize("unit_type", [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT])
 def test_recoil_follows_a_new_move_and_finishes_at_the_current_ground_point(game, race, unit_type):
     """A hit cannot pin a new move to its old position or snap back on expiry."""
     scene, attacker, victim = duel(game, race=race, unit_type=unit_type)
