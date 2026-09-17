@@ -109,7 +109,10 @@ Milestones checked on 2026-09-17 (the complete item remains **in progress**):
   including a regression for RTS ticks during rejoin. Live bundle `c5193bd5`
   passed public Mac client checks for all three games; the two retained
   campaigns are preserved, and live database/configuration rollback passed.
-- [ ] Configure and enable production CI publishing.
+- [x] Configure and enable production CI publishing. Both environments allow
+  only `main`; the dedicated Saga Online Actions token and restricted website
+  SSH key are installed. Both publishing flags are enabled. The actual release
+  journey and public download acceptance remain below.
 - [ ] Exercise the complete main-push journey, public Windows/Mac downloads,
   compatible packaged online clients, publication retries and rollback.
 

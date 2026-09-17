@@ -91,6 +91,16 @@ separate compatibility rollout and must not be hidden by ignoring lockfiles.
 
 ## Evidence and status
 
+Production configuration is enabled as of 2026-09-17. Saga Online's verified
+promotion workflow and live baseline are integrated on main (`c3266a3`). Both
+publishing environments allow only main, without a manual reviewer gate.
+Warband's `warband-release` environment has the fine-grained Saga Online Actions
+dispatch token; Saga Online's `warband-promotion` environment has the dedicated
+restricted website SSH key and pinned host key. Both repository enable flags
+are `true`. The live server and website are healthy; the site is still the
+previous release until the first complete pipeline succeeds. The initial main
+push, downloaded client acceptance and publication retry remain to be recorded.
+
 The legacy Windows-only tag/manual release workflow has been removed after
 acceptance of the pinned two-platform native producer (run `35149564980`).
 The native workflow and separate publisher now provide the single build/release
