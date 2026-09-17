@@ -345,6 +345,36 @@ class MapView:
         return (previous[0] + (unit.x - previous[0]) * self._fraction,
                 previous[1] + (unit.y - previous[1]) * self._fraction)
 
+    def entity_at(self, point: tuple[float, float]) -> Entity | None:
+        """Pick what is actually shown, including the interpolated unit bodies."""
+        nearest, distance = None, math.inf
+        for unit in self.world.units.values():
+            sprite = self._units.get(unit.id)
+            if unit.hidden or sprite is None or not sprite.visible:
+                continue
+            gap = math.dist(point, self.unit_position(unit)) - unit.radius
+            if gap <= 0.35 and gap < distance:
+                nearest, distance = unit, gap
+        if nearest is not None:
+            return nearest
+        tile = (math.floor(point[0]), math.floor(point[1]))
+        building = self.world.building_at(tile) if self.world.in_bounds(tile) else None
+        return building if building is not None and self._known(building) else None
+
+    def units_in_rect(self, a: tuple[float, float], b: tuple[float, float], *, player: int) -> list[Unit]:
+        """Visible owned units whose presented ground points lie inside a box."""
+        left, right = sorted((a[0], b[0]))
+        top, bottom = sorted((a[1], b[1]))
+        result = []
+        for unit in self.world.player_units(player):
+            sprite = self._units.get(unit.id)
+            if unit.hidden or sprite is None or not sprite.visible:
+                continue
+            x, y = self.unit_position(unit)
+            if left <= x <= right and top <= y <= bottom:
+                result.append(unit)
+        return result
+
     def sync(self, dt: float = 0.0, *, fraction: float = 1.0) -> None:
         self._fraction = max(0.0, min(1.0, fraction))
         self.time += dt

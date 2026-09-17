@@ -81,6 +81,8 @@ class WarbandMatch:
                 raise CommandError('Choose a position inside the map.')
             values[field] = tuple(point)
         for field in ('target_id', 'building_id', 'plan_id'):
+            if action == 'smart' and field == 'target_id' and values.get(field) is None:
+                continue  # An explicit empty-ground pick must not target a newer unit position.
             if field in values and type(values[field]) is not int:
                 raise CommandError('Invalid target.')
         if action == 'cancel_train':

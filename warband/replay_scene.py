@@ -53,6 +53,9 @@ class ReplayScene(GameScene):
         """Seconds of match the recording holds."""
         return self.playback.replay.end_tick * SIM_DT
 
+    def _motion_fraction(self) -> float:
+        return 1.0 if self.playback.done else self._acc / SIM_DT
+
     def _advance(self, dt: float) -> None:
         if self.paused or self.playback.done:
             return
@@ -74,6 +77,7 @@ class ReplayScene(GameScene):
             self._acc = 0.0
 
     def _step(self) -> None:
+        self.view.before_step()
         self.playback.step()
         if self.playback.world is not self.world:  # the match went on from a save here, and so does the playback
             self.world = self.playback.world

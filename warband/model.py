@@ -20,7 +20,7 @@ import random
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from warband import path as pathing
 from warband.races import RACES
@@ -1077,13 +1077,23 @@ class World:
         building.rally = self._clamp(point) if point is not None else None
 
     @recorded
-    def smart(self, unit_ids: list[int], point: Point, *, queue: bool = False) -> str:
-        """What a right-click means for these units at *point*; returns the verb used."""
+    def smart(self, unit_ids: list[int], point: Point, *, queue: bool = False,
+              target_id: int | None | Literal["at_point"] = "at_point") -> str:
+        """Resolve a context order; return the verb used.
+
+        A displayed target can be supplied by ID, or None for empty ground.
+        Omission picks at the model point, preserving AI and recorded orders.
+        """
         units = self._own_units(unit_ids)
         if not units:
             return "none"
         player = units[0].player
-        target = self.entity_at(point, visible_to=player)
+        if target_id == "at_point":
+            target = self.entity_at(point, visible_to=player)
+        else:
+            target = self.entity(target_id) if target_id is not None else None
+        if target_id not in ("at_point", None) and target is None:
+            raise RuleError("No such target")
         tile = (int(point[0]), int(point[1]))
         if target is not None and target.player is not None and target.player != player:
             self.attack(unit_ids, target.id, queue=queue)

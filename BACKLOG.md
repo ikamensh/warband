@@ -173,8 +173,16 @@ First verified increment: local fixed-step interpolation removes the 20 Hz
 stop–jump pattern (39/59 stationary frame intervals became 0/59 in the native
 capture). Nine movement cases and the full 910-test suite pass; the simulation
 fingerprint is unchanged, and native battle/selection frames were inspected.
-WB-003 remains in progress for the rest of the capture matrix and interaction/
-replay checks. The separate waypoint-speed finding is WB-017.
+The follow-up fixes replay interpolation, the load-time clock reset and
+presented selection. Smart orders preserve the displayed target (including
+empty ground); 101 relevant scene/view/replay/socket tests pass. This optional
+command field requires a server compatibility update. WB-003 remains in progress
+for native matrix, final verification and integration. The separate waypoint-speed
+finding is WB-017.
+
+The follow-up full suite passes 917 tests (12 skips), two input-fuzz journeys
+pass and the simulation fingerprint remains unchanged. The 2× native turn capture
+shows attached selection markers and stationary stand poses during both stops.
 
 The current [motion notes](docs/unit-motion.md), [view](warband/view.py) and
 [pose generation](warband/textures.py) already provide four walk frames,
@@ -339,6 +347,11 @@ cadence from local 20 Hz simulation and frame pacing. Measure command-to-visible
 response and jitter under controlled latency; evaluate bounded presentation
 interpolation separately from prediction. Keep hit/death events synchronized,
 and show useful reconnect/stall status while avoiding unbounded queued orders.
+
+WB-003's real-socket capture reproduces 49/59 stationary display intervals at
+60 FPS, then jumps up to 7.68 px for infantry/workers and 10.88 px for knights
+at normal zoom (`docs/evidence/movement/online-trace/`). Local interpolation
+does not fix this separate path; see [the diagnosis](docs/movement-diagnosis.md).
 
 **Done when:** two real clients under delay/disconnection/rejoin have measured,
 improved movement and correct orders/events, with no stale motion after resume.

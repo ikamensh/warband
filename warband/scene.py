@@ -456,7 +456,7 @@ class GameScene(Scene):
             self._refresh_card()
 
     def click_select(self, point: tuple[float, float], shift: bool, ctrl: bool = False) -> None:
-        entity = self.world.entity_at(point, visible_to=self.human)
+        entity = self.view.entity_at(point)
         if entity is None:
             if not shift:
                 self.select([])
@@ -474,7 +474,7 @@ class GameScene(Scene):
     def select_same_type(self, unit: Unit, *, add: bool = False) -> None:
         """Every unit of *unit*'s type that is on screen (a double-click or ctrl-click)."""
         left, top, right, bottom = self.camera.visible_world_rect()
-        same = [u.id for u in self.world.units_in_rect(*to_tiles(left, top), *to_tiles(right, bottom), player=self.human) if u.type is unit.type]
+        same = [u.id for u in self.view.units_in_rect(to_tiles(left, top), to_tiles(right, bottom), player=self.human) if u.type is unit.type]
         self.select(same if not add else [i for i in same if i not in self.selection], add=add)
 
     def select_army(self) -> None:
@@ -486,7 +486,7 @@ class GameScene(Scene):
             self.say("No soldiers yet")
 
     def box_select(self, a: tuple[float, float], b: tuple[float, float], shift: bool) -> None:
-        units = self.world.units_in_rect(a[0], a[1], b[0], b[1], player=self.human)
+        units = self.view.units_in_rect(a, b, player=self.human)
         if units:
             self.select([u.id for u in units], add=shift)
         elif not shift:
@@ -529,7 +529,13 @@ class GameScene(Scene):
     def command_smart(self, point: tuple[float, float], *, queue: bool = False) -> None:
         units = self._own_units()
         if units:
-            verb = self.order("smart", [u.id for u in units], point, queue=queue)
+            target = self.view.entity_at(point)
+            if target is not None and target.player is not None and target.player != self.human:
+                self.order("attack", [u.id for u in units], target.id, queue=queue)
+                verb = "attack"
+            else:
+                verb = self.order("smart", [u.id for u in units], point, queue=queue,
+                                  target_id=target.id if target is not None else None)
             self._marker(point, (255, 80, 70, 220) if verb == "attack" else (120, 255, 140, 220))
             self.sfx("attack_command" if verb == "attack" else "command")
             return
@@ -541,7 +547,7 @@ class GameScene(Scene):
 
     def command_repair(self, point: tuple[float, float], *, queue: bool = False) -> None:
         workers = [u.id for u in self._own_units() if u.is_worker]
-        target = self.world.entity_at(point, visible_to=self.human)
+        target = self.view.entity_at(point)
         if not workers or not isinstance(target, Building):
             self.warn("Click one of your damaged buildings")
             return
@@ -565,7 +571,7 @@ class GameScene(Scene):
         if not units:
             return
         ids = [u.id for u in units]
-        target = self.world.entity_at(point, visible_to=self.human)
+        target = self.view.entity_at(point)
         try:
             if target is not None and target.player is not None and target.player != self.human:
                 self.order("attack", ids, target.id, queue=queue)
@@ -1235,7 +1241,7 @@ class GameScene(Scene):
             play_music(self.mood, self.player.race)
         self._prune_selection()
         self.effects.update(dt)
-        self.view.sync(dt, fraction=self._acc / SIM_DT)
+        self.view.sync(dt, fraction=self._motion_fraction())
         self._update_card()
         self.idle_button.visible = self._idle_peasant_count() > 0
         self.army_button.visible = bool(self._army())
@@ -1245,6 +1251,11 @@ class GameScene(Scene):
             self.game.save("autosave", scene=self)
             self.say("Autosaved")
         self._check_game_over()
+
+    def _motion_fraction(self) -> float:
+        if self._game_over or self.world.winner is not None or not self.player.alive:
+            return 1.0
+        return self._acc / SIM_DT
 
     def _advance(self, dt: float) -> None:
         if not self.paused and not self._game_over and self.world.winner is None and self.player.alive:  # a decided match stays frozen
@@ -1486,7 +1497,7 @@ class GameScene(Scene):
     def draw(self) -> None:
         hovered = None
         if self.ui.pointer_target(*self.mouse) is None and self.pending is None:
-            entity = self.world.entity_at(self.hover, visible_to=self.human)
+            entity = self.view.entity_at(self.hover)
             hovered = entity.id if entity is not None else None
         self.view.draw(Overlay(selected=list(self.selection), hovered=hovered, ghost=self._ghost(),
                                rally_for=[b.id for b in [self._own_building()] if b is not None]))
@@ -1717,6 +1728,7 @@ class GameScene(Scene):
         self.build_menu = False
         self.settlement_menu = None
         self._game_over = False
+        self._acc = 0.0
         self.view.reset(world)
         self.ui.clear()
         self._build_hud()

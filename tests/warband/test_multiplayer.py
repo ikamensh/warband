@@ -47,6 +47,50 @@ def test_warband_guest_orders_and_host_simulation_stay_in_sync():
         host.close()
 
 
+def test_smart_target_identity_and_empty_ground_survive_the_socket():
+    """Context orders keep the clicked identity even if a unit crosses the point."""
+    from warband.authority import WarbandMatch
+    from warband.model import Attack, Harvest, Move, Repair, World
+    from warband.rules import BuildingType, Terrain, UnitType
+
+    match = WarbandMatch(seed=3)
+    match.world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2)
+    worker = match.world.spawn_unit(1, UnitType.PEASANT, (10.5, 10.5))
+    enemy = match.world.spawn_unit(0, UnitType.FOOTMAN, (12.5, 10.5))
+    hall = match.world.place_building(1, BuildingType.TOWN_HALL, (3, 3))
+    hall.hp -= 20
+    mine = match.world.place_building(None, BuildingType.GOLD_MINE, (17, 10))
+    match.world.update_vision()
+    host = MatchHost('warband-v2', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
+    client = MatchClient('warband-v2', host.address, token='test')
+    try:
+        converge(host, client, lambda: client.ready)
+        for target_id, order_type, destination in (
+            (None, Move, enemy.pos),
+            (enemy.id, Attack, enemy.id),
+            (mine.id, Harvest, mine.id),
+            (hall.id, Repair, hall.id),
+        ):
+            client.submit({'action': 'smart', 'args': [[worker.id], enemy.pos],
+                           'kwargs': {'target_id': target_id}})
+            converge(host, client, lambda: isinstance(match.world.units[worker.id].order, order_type))
+            order = match.world.units[worker.id].order
+            assert order.target == destination
+        client.submit({'action': 'smart', 'args': [[worker.id], enemy.pos],
+                       'kwargs': {'target_id': None, 'queue': True}})
+        converge(host, client, lambda: len(match.world.units[worker.id].orders) == 2)
+        assert isinstance(match.world.units[worker.id].orders[-1], Move)
+        before = match.world.to_dict()
+        for invalid in (True, [], {}, 'at_point', 2.5, 99999):
+            with pytest.raises(CommandError):
+                match.apply(1, {'action': 'smart', 'args': [[worker.id], enemy.pos],
+                                'kwargs': {'target_id': invalid}})
+            assert match.world.to_dict() == before
+    finally:
+        client.close()
+        host.close()
+
+
 @pytest.mark.parametrize('audio_schema', ['current', 'basic', 'partial'])
 def test_warband_fatal_impact_keeps_its_material_across_the_socket(tmp_path, audio_schema):
     """Guests hear fatal impacts, with explicit basic audio only for the old schema."""

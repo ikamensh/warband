@@ -72,7 +72,7 @@ uv run pytest -q tests/warband/test_movement_presentation.py
 
 ## First bounded fix, still under WB-003 acceptance
 
-The scene records visible-unit positions immediately before each local model
+The scene records non-hidden unit positions immediately before each local model
 step; the view interpolates between that pair using the scene's actual fixed-step
 accumulator. This presents the previous simulation interval (at most 50 ms of
 delay at normal speed), without predicting or altering the model. Walk cadence
@@ -117,12 +117,93 @@ assertion would therefore be testing a false premise about the baseline model.
 WB-017 records this rules-affecting issue with its own acceptance; the current
 presentation change preserves it.
 
+## Interaction, replay and save follow-up
+
+Scene regressions reproduced three more presentation faults: replay scenes
+still jumped at 20 Hz; repeated loads depended on the previous scene's leftover
+fractional tick; click and box selection picked authoritative points ahead of
+the visible units. Replays now share the same interpolation boundary, load resets
+the accumulator, and selection/hover/attack/repair use presented ground points.
+Replay pause preserves both position and pose; skipping to the end shows the
+exact recorded final positions. The terminal local match also shows its final
+authoritative positions.
+
+The relevant scene/view/replay/socket suites pass **101 tests**
+(`interaction-tests.log`). The new socket journey checks explicit empty ground,
+enemy, mine and damaged-building targets, queued movement, and atomic rejection
+of malformed/missing targets. A context order at the moving enemy's future point
+also survives JSON recording and faithful playback. These are implementation
+checks, not yet native or hosted acceptance of this increment.
+
+The complete suite subsequently passed **917 tests, 12 skips**, with the one
+expected stale-sheet warning, in 193.46 seconds (`interaction-full-tests.log`).
+Two 500-input monkey journeys (seeds 81 and 82) finished without exceptions or
+invariant failures (`interaction-fuzz.log`). The simulation fingerprint still
+matches `1baac5542386b900d86ff2485ab4982db19d1faf2030870bcebdf12aefe5eccb`
+exactly (`interaction-fingerprint.log`). This verifies unchanged default model
+stepping; the new explicit pointer intent remains a compatibility-contract change.
+
+### Presented pointer intent (acceptance before the protocol edit)
+
+The scene regression also reproduces the inverse picking error: right-clicking
+empty ground just ahead of a displayed knight attacks its newer model position.
+Resolving a positive enemy hit to an attack ID alone does not fix this. Smart
+orders must preserve the displayed target identity, including an explicit empty
+ground result, instead of picking again after the click. Existing callers and
+recordings that omit this intent retain their current model-point behavior.
+Verify positive and negative pointer hits, resource/building actions, queued
+orders, replay fidelity and the authoritative command path. Reject invalid
+target types without changing the match. The simulation fingerprint must stay
+identical. This adds an optional command field, so publishing requires a reviewed
+server compatibility update; it cannot use the previous client-only baseline.
+
+### Expanded capture matrix
+
+`tools/verify_movement.py` now includes `turns`, `crowd`, `obstruction` and
+`online` scenarios beside `straight`. Turns schedule diagonal orders, reversals,
+stops and restarts. Crowds issue one group move to 18 mixed units. Obstructions
+put a real rock barrier with a two-tile opening into the terrain before world
+construction. Online uses a real loopback socket, 20 Hz host stepping and 10 Hz
+publication, rendered by `NetworkGameScene`; it does not simulate internet
+jitter. Every capture records unit IDs, scheduled orders, source state, engine,
+art style, zoom and per-second native PNGs, alongside the original trace/video.
+
+Planned native matrix: painted turns at 2×, painted crowd at 0.75×, painted
+obstruction at 1×; procedural turns at 1×, procedural crowd at 0.75× and
+procedural obstruction at 2×. The normal-zoom straight before/after above remains
+the baseline comparison. The online baseline will be traced separately for
+WB-010. The eight-second mock turn trace already shows stable stand poses during
+both stopped intervals and bounded displacement for all three subjects.
+
+The painted 2× turn capture (`painted-turns-near/`) is now recorded and its
+diagonal, stop/restart and final-standing PNGs were inspected. Each subject has
+exactly one presented position and the stand pose throughout frames 255–299
+and 405–479 (after the final partial movement interval settles). The maximum
+normalized heading step is 0.3142 radians for worker/footman and 0.2356 for the
+knight; the trace crosses ±π continuously. Median native frame cost is 5.51 ms.
+Two earlier framing trials are retained under `*-framing/`: their routes moved
+subjects under the HUD, so the final route stays within the playable viewport.
+The original fixed-height close-zoom strip cropped the mounted unit; the tool
+now sizes frame crops from the actual sprite and zoom.
+
+The procedural normal-zoom turn capture (`procedural-turns-normal/`) is also
+recorded. Its diagonal and stopped native PNGs and the complete mounted frame
+strip were inspected. It shows the same bounded travel and stationary stand
+poses in both stopped intervals, with 5.71 ms median frame cost. Switching art
+does not reintroduce the 20 Hz displacement pattern. The painted sheets have
+more silhouette detail, but both currently use the same four-pose walk cycle.
+
+The real-socket 10 Hz baseline (`online-trace/`) remains visibly stepped:
+**49/59 stationary intervals**, with maximum jumps of **7.68 px** for worker/
+footman and **10.88 px** for the knight at normal zoom. Its median mock scene
+cost is 0.58 ms. This verifies a separate snapshot-cadence problem rather than
+local simulation or draw cost; WB-010 owns buffering, latency and rejoin policy.
+
 ## Remaining acceptance
 
 WB-003 is not complete: inspect procedural art, diagonal motion, turns,
-start/stop, crowds/obstructions and zooms; check pause, reset and presented
-picking/overlays; apply the local stepping policy to replay playback; measure
-the online snapshot case and retain its transport policy under WB-010. The
-first-increment checks above pass; repeat relevant verification as subsequent
-fixes require, then integrate the completed item into main. No motion change has
-been published from this branch.
+start/stop, crowds/obstructions and zooms; check native presented picking/overlays;
+measure the online snapshot case and retain its transport policy under WB-010.
+Complete the native matrix and integrate the completed item with its required
+server compatibility update.
+No motion change has been published from this branch.
