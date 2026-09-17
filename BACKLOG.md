@@ -16,7 +16,7 @@ every earlier item first.
 |---|---|---|---|---|
 | WB-001 | First | done | Recover useful branch work and clean up local branches/worktrees | User |
 | WB-002 | First | done | Publish tested main pushes through GitHub Actions to games.tachyon-ai.eu | User |
-| WB-003 | Next | ready | Diagnose and improve movement animation | User |
+| WB-003 | Next | in progress | Diagnose and improve movement animation | User |
 | WB-004 | Next | ready | Give melee attacks readable weight and contact | User |
 | WB-005 | Next | ready | Replace the rotating-sprite death with convincing falls | User |
 | WB-006 | Next | ready | Add blood on damaging hits | User |
@@ -163,6 +163,10 @@ and rollback are exercised. The enabled trigger and publication policy are
 documented so future main pushes need no manual publishing steps.
 
 ## WB-003 — Movement animation: diagnose before authoring more frames
+
+Started 2026-09-17 on `codex/wb003-movement`, from main `1a6def9`.
+Acceptance and the repeatable capture matrix are recorded before changes in
+[the movement diagnosis](docs/movement-diagnosis.md).
 
 The current [motion notes](docs/unit-motion.md), [view](warband/view.py) and
 [pose generation](warband/textures.py) already provide four walk frames,
