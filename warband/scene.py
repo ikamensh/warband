@@ -18,7 +18,7 @@ from saga2d import SaveError
 from saga2d.effects import Banner, Burst, Effects, FloatingText, Pulse, Toast
 from warband import ambience, deaths, mapgen, wreckage
 from warband.ai import DIFFICULTY_ELO, make_brain
-from warband.effects import UnitDeath
+from warband.effects import UnitDeath, death_outcome
 from warband.icons import Icon, draw_icon
 from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
 from warband.production import ProductionButton, ProductionTarget, draw_production_icon
@@ -177,6 +177,8 @@ class GameScene(Scene):
         self.speed = 1.0
         self.clock = 0.0
         self.effects = Effects()
+        self.bodies: list[UnitDeath] = []  # lying where they fell, oldest first
+        self._blows: dict[int, tuple[float, float]] = {}  # unit id -> where its last visible blow came from (tiles)
         self.recent_sounds: deque[str] = deque(maxlen=48)
         self.status = ""
         self.status_timer = 0.0
@@ -1241,6 +1243,7 @@ class GameScene(Scene):
             play_music(self.mood, self.player.race)
         self._prune_selection()
         self.effects.update(dt)
+        self.bodies = [b for b in self.bodies if not b.done]
         self.view.sync(0.0 if self.paused else dt, fraction=self._motion_fraction())
         self._update_card()
         self.idle_button.visible = self._idle_peasant_count() > 0
@@ -1354,8 +1357,10 @@ class GameScene(Scene):
             return
         target = self.world.entity(e.other) if e.other is not None else None
         source = self.world.entity(e.entity) if e.entity is not None else None
+        origin = (source.pos if isinstance(source, Unit) else source.center) if source is not None else None
+        if e.other is not None and origin is not None:
+            self._blows[e.other] = origin  # a killing blow has already removed its target: its death falls away from this
         if isinstance(target, Unit):
-            origin = (source.pos if isinstance(source, Unit) else source.center) if source is not None else None
             self.view.hit_reaction(target, origin)
             if e.text != "ranged":
                 wx, wy = to_world(e.pos)
@@ -1378,16 +1383,28 @@ class GameScene(Scene):
             self.sfx(impact_sound(event, source.race if source is not None else Race.HUMAN))  # a striker dead with its blow keeps the common Foley
 
     def _show_death(self, e: Event) -> None:
+        blow = self._blows.pop(e.entity, None)
         if not self._visible(e.pos):
             return
         sprite = self.view.release_unit_sprite(e.entity) if e.entity is not None else None
         if sprite is not None:
             self.add_sprite(sprite)
-            self.effects.add(UnitDeath(sprite, to_world(e.pos)))  # the body falls and lies there a while
+            body = UnitDeath(sprite, to_world(e.pos), source=to_world(blow) if blow is not None else None,
+                             outcome=death_outcome(UnitType(e.text)), on_land=self._dust)
+            self.effects.add(body)  # the body falls and lies there a while
+            self.bodies = [b for b in self.bodies if not b.done and not b.cancelled] + [body]
+            for old in self.bodies[:-UnitDeath.BODIES]:
+                old.hurry()
         color = self.world.players[e.player].color if e.player is not None else (200, 200, 200)
         self.effects.add(Burst(to_world(e.pos), rgba(color), 10, rng=self.rng, size=10))
         if self._audible(e.pos):
             self.sfx(deaths.cue(self.world.players[e.player].race))
+
+    def _dust(self, feet: tuple[float, float], outcome: str) -> None:
+        """The landing raises dust at the feet; a wreck raises more, and smoke."""
+        self.effects.add(Burst(feet, (200, 190, 170, 255), 14 if outcome == "wreck" else 6, rng=self.rng, size=8, speed=(30, 90)))
+        if outcome == "wreck":
+            self.effects.add(Burst((feet[0], feet[1] - 10), (150, 146, 140, 170), 5, rng=self.rng, image="smoke", size=14, speed=(8, 30)))
 
     def _show_destroyed(self, e: Event) -> None:
         if e.player == self.human:
@@ -1719,6 +1736,7 @@ class GameScene(Scene):
             self.tutorial.step = state["tutorial"]
         self._autosave_at = (world.time // AUTOSAVE_EVERY + 1) * AUTOSAVE_EVERY
         self.effects.clear()
+        self.bodies, self._blows = [], {}
         self.selection = []
         self.pending = None
         self.build_menu = False

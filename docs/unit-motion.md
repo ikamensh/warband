@@ -98,8 +98,12 @@ prompt naming the frames and their purpose so the model keeps the poses distinct
    pumping) for scouts and charging knights, and a trudge for laden peasants.
 7. **Idle life.** A breathing bob and an occasional look-around every few seconds keep
    a standing army from looking like a screenshot.
-8. **Death per facing.** The topple is a rotated sprite; painted fall keys (stagger, fall,
-   lie) per facing would let the body land where it stood.
+8. **Death per facing.** The fall is still the one sprite turned about its feet, but since
+   WB-005 it has weight: a lurch with the blow, a topple that gathers pace, a landing that
+   bounces and raises dust, always away from the killer; mounts fold into a low heap and
+   siege engines break where they stand (`effects.UnitDeath`, `tools/verify_deaths.py`).
+   Painted fall keys (stagger, fall, lie) per facing would let the body change shape as it
+   goes down.
 9. **Effects tied to the frames.** Footstep dust on contact frames, a weapon trail on the
    strike frame, a shield spark on a blocked hit. These key off frame names, which the
    view now knows.

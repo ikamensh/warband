@@ -41,8 +41,8 @@ def field() -> World:
 
 
 class Capture:
-    def __init__(self, output: Path):
-        self.output = output
+    def __init__(self, output: Path, zoom: float = 1.0):
+        self.output, self.zoom = output, zoom
         self.temporary = tempfile.TemporaryDirectory(prefix="warband-deaths-")
         self.game = Game("Warband deaths", resolution=(1280, 800), visible=False, theme=build_theme(),
                          save_dir=Path(self.temporary.name) / "saves")
@@ -54,6 +54,7 @@ class Capture:
         self.game.push(scene)
         scene._warm = None
         scene.view.set_reveal(True)
+        scene.camera.zoom = self.zoom
         scene.camera.center_on(center[0] * textures.TILE, center[1] * textures.TILE)
         scene.paused = True
         for _ in range(8):  # retire the intro banner without advancing the field
@@ -136,9 +137,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
     parser.add_argument("--victims", default=",".join(VICTIMS), help="comma-separated categories (default: all)")
+    parser.add_argument("--zoom", type=float, default=1.0, help="camera zoom: 1 is gameplay, 2 is near")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    capture = Capture(args.output)
+    capture = Capture(args.output, args.zoom)
     try:
         for name in args.victims.split(","):
             for side in ("west", "east"):
