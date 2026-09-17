@@ -178,7 +178,7 @@ The follow-up fixes replay interpolation, the load-time clock reset and
 presented selection. Smart orders preserve the displayed target (including
 empty ground); 101 relevant scene/view/replay/socket tests pass. This optional
 command field requires a server compatibility update. WB-003 remains in progress
-for native package acceptance, server rollout and integration. The separate waypoint-speed
+for server rollout and integration. The separate waypoint-speed
 finding is WB-017.
 
 The follow-up full suite passes 917 tests (12 skips), two input-fuzz journeys
@@ -187,6 +187,9 @@ shows attached selection markers and stationary stand poses during both stops.
 The full painted/procedural turn, crowd and obstacle matrix is recorded and
 inspected at near/normal/far zoom. Real native mouse and F3 events also verify
 presented selection, empty-ground movement, enemy targeting and pause.
+Candidate `35b851f` also passed [Windows/Mac native checks](https://github.com/ikamensh/warband/actions/runs/35210630105)
+and the Linux game test workflow. The staged server suite passes 135 tests;
+hosted acceptance and publication remain open.
 
 The current [motion notes](docs/unit-motion.md), [view](warband/view.py) and
 [pose generation](warband/textures.py) already provide four walk frames,

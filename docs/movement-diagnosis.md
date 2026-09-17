@@ -231,9 +231,11 @@ The corresponding repeatable regressions remain in the game test suite.
 
 ## Remaining acceptance
 
-The native matrix and pointer journey are complete. WB-003 remains in progress
-for native package acceptance, its verified server compatibility rollout and
-main integration/publication. The isolated server candidate is recorded in
+The native matrix and pointer journey are complete. `35b851f` passed
+[the game tests](https://github.com/ikamensh/warband/actions/runs/35210630104)
+and [Windows/Mac native package checks](https://github.com/ikamensh/warband/actions/runs/35210630105),
+including final artifact validation. WB-003 remains in progress for its verified
+server compatibility rollout and main integration/publication. The isolated server candidate is recorded in
 Saga Online's `docs/warband-movement-rollout.md` on
 `codex/wb003-server-compatibility`; that document is pending integration.
 WB-010 owns network smoothing, WB-017 the waypoint budget, and WB-018 the large
