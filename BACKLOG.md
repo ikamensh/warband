@@ -99,8 +99,11 @@ Milestones checked on 2026-09-17 (the complete item remains **in progress**):
   Saga Online `f8222e5` passed [133 Linux checks and real SSH acceptance](https://github.com/ikamensh/saga-online/actions/runs/35194126106),
   including upload/retry, restricted commands/forwarding, host-key checks,
   compatibility refusal and rollback. Production account setup remains below.
-- [ ] Wire Saga Online's promotion workflow, including stable archive bytes
+- [x] Wire Saga Online's promotion workflow, including stable archive bytes
   and recovery after the catalog is committed but site publication is interrupted.
+  Saga Online `3843a4e` passed [135 Linux checks and the real Git/SSH journey](https://github.com/ikamensh/saga-online/actions/runs/35196347871);
+  the default read-only CI token also verified Warband provenance. Enabling
+  the main workflow and public deployment remain below.
 - [ ] Complete server rollout/restore acceptance, record the actual live
   compatibility baseline, and configure/enable production CI publishing.
 - [ ] Exercise the complete main-push journey, public Windows/Mac downloads,
@@ -113,9 +116,9 @@ another go-ahead; authorization alone does not complete the remaining milestones
 Make a push to `main` produce an immutable preview release and update the
 Warband download page at [games.tachyon-ai.eu](https://games.tachyon-ai.eu/warband/).
 Use `main` as the proposed publishing branch; ordinary feature-branch pushes
-should run checks. Extend the existing [Windows release workflow](.github/workflows/windows.yml)
-and [test workflow](.github/workflows/tests.yml), adding the corresponding Mac
-build. Site/catalog publication belongs in `saga-online`; start from its
+should run checks. Use one pinned Windows/Mac native build workflow and a
+separate publisher, replacing the former Windows-only release path; retain the
+[test workflow](.github/workflows/tests.yml). Site/catalog publication belongs in `saga-online`; start from its
 [distribution plan](../saga-online/docs/game-distribution-plan.md) and
 [deployment tool](../saga-online/tools/deploy_online.py).
 
