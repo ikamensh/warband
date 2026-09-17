@@ -51,6 +51,7 @@ jobs:
           source = json.loads((Path(os.environ['RUNNER_TEMP']) / 'source.json').read_text())
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               print(f"source_commit={source['source_commit']}", file=output)
+              print(f"run_number={source['run_number']}", file=output)
               for target, artifact in source['artifacts'].items():
                   print(f"{target}={artifact['id']}", file=output)
           PY
@@ -62,8 +63,10 @@ jobs:
       - name: Recreate the producer's exact identity
         id: identity
         working-directory: warband
+        env:
+          BUILD_RUN_NUMBER: ${{ steps.source.outputs.run_number }}
         run: |
-          python3 tools/ci_release.py prepare --run-id "$BUILD_RUN_ID" --output "$RUNNER_TEMP/identity.json"
+          python3 tools/ci_release.py prepare --run-id "$BUILD_RUN_ID" --run-number "$BUILD_RUN_NUMBER" --output "$RUNNER_TEMP/identity.json"
           python3 - <<'PY'
           import json, os
           from pathlib import Path

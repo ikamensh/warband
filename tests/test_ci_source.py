@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def native_service():
     commit = "a" * 40
     repo = {"full_name": "ikamensh/warband"}
-    run = {"id": 123, "run_attempt": 1, "workflow_id": 456,
+    run = {"id": 123, "run_number": 26, "run_attempt": 1, "workflow_id": 456,
            "path": ".github/workflows/native-packages.yml", "event": "push", "head_branch": "main",
            "head_sha": commit, "repository": repo, "head_repository": repo,
            "status": "completed", "conclusion": "success"}
@@ -74,6 +74,7 @@ def test_successful_native_main_run_resolves_exact_artifact_ids(native_service, 
     result = resolve(native_service, output)
     assert result.returncode == 0, result.stderr
     source = json.loads(output.read_text())
+    assert source["run_number"] == 26
     assert source["run_id"] == 123 and source["source_commit"] == "a" * 40
     assert source["artifacts"] == {"windows-x64": {"id": 1, "digest": "sha256:" + "1" * 64},
                                    "darwin-arm64": {"id": 2, "digest": "sha256:" + "2" * 64}}

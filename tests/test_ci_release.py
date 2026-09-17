@@ -27,7 +27,7 @@ def checkout(tmp_path):
         '[[package]]\nname = "saga2d"\nversion = "0.3.2"\nsource = {registry = "https://pypi.org/simple"}\n')
     (root / ".github").mkdir()
     (root / ".github/release-pins.json").write_text(json.dumps({
-        "sagaforge_commit": "a" * 40, "python": "3.13.2", "uv": "0.12.10", "inno_setup": "6.7.1",
+        "sagaforge_commit": "a" * 40, "python": "3.13.2", "uv": "0.12.10", "inno_setup": "6.7.1", "version_run_base": 25,
     }))
     (root / "warband").mkdir()
     (root / "warband/__init__.py").write_text('"""A release fixture."""\n')
@@ -38,9 +38,9 @@ def checkout(tmp_path):
     return root
 
 
-def prepare(root, run_id="35100000123"):
+def prepare(root, run_id="35100000123", run_number="26"):
     return subprocess.run([sys.executable, str(CLI), "prepare", "--root", str(root),
-                           "--run-id", run_id, "--output", str(root / "dist/identity.json")],
+                           "--run-id", run_id, "--run-number", run_number, "--output", str(root / "dist/identity.json")],
                           text=True, capture_output=True)
 
 
@@ -54,14 +54,15 @@ def test_retry_reuses_one_identity_and_another_run_gets_a_new_version(checkout):
     assert identity["source_commit"] == git(checkout, "rev-parse", "HEAD")
     assert identity["sagaforge_commit"] == "a" * 40
     assert identity["saga2d_version"] == "0.3.2"
-    assert identity["version"] == "1.2.3-preview.35100000123"
+    assert identity["version"] == "1.2.4"
+    assert identity["run_number"] == 26 and identity["run_id"] == 35100000123
     expected = subprocess.check_output([sys.executable, str(ROOT / "tools/ci_compatibility.py"),
                                         "--root", str(checkout)], text=True)
     assert identity["compatibility"] == json.loads(expected)
     assert prepare(checkout).returncode == 0
     assert path.read_bytes() == original
-    assert prepare(checkout, "35100000124").returncode == 0
-    assert json.loads(path.read_text())["version"] != identity["version"]
+    assert prepare(checkout, "35100000124", "27").returncode == 0
+    assert json.loads(path.read_text())["version"] == "1.2.5"
 
 
 def test_dirty_source_is_rejected_without_replacing_an_accepted_identity(checkout):
@@ -111,3 +112,22 @@ def test_inconsistent_or_uncommitted_inputs_do_not_produce_an_identity(checkout,
     result = prepare(checkout)
     assert result.returncode != 0 and message in result.stderr
     assert not (checkout / "dist/identity.json").exists()
+
+
+@pytest.mark.parametrize("number", ["0", "-1", "24", "not-a-number"])
+def test_invalid_or_pre_anchor_counter_cannot_allocate_a_version(checkout, number):
+    """Bad counters cannot create a version or replace an accepted identity."""
+    assert prepare(checkout).returncode == 0
+    path = checkout / "dist/identity.json"
+    original = path.read_bytes()
+    assert prepare(checkout, run_number=number).returncode != 0
+    assert path.read_bytes() == original
+
+
+def test_retry_cannot_change_its_native_counter(checkout):
+    """The same run ID cannot acquire a different patch version on retry."""
+    assert prepare(checkout).returncode == 0
+    path = checkout / "dist/identity.json"
+    original = path.read_bytes()
+    assert prepare(checkout, run_number="27").returncode != 0
+    assert path.read_bytes() == original

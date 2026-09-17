@@ -157,7 +157,7 @@ def native_inputs(identity: dict, *, iscc: Path | None = None) -> dict:
     """Check the actual interpreter, installed packages and editable source checkouts."""
     from ci_release import prepare
 
-    require(prepare(ROOT, str(identity["run_id"])) == identity, "Checkout differs from release identity")
+    require(prepare(ROOT, str(identity["run_id"]), identity["run_number"]) == identity, "Checkout differs from release identity")
     require(platform.python_version() == identity["python"], "Use the pinned build Python")
     uv = subprocess.check_output(["uv", "--version"], text=True).split()[1]
     require(uv == identity["uv"], "Use the pinned uv executable on PATH")

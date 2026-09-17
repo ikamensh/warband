@@ -1,5 +1,11 @@
 # WB-002 — Verified publication on a main push
 
+Current version policy (2026-09-17): new releases use short numeric versions
+starting at **0.2.1**, with the producer's run ID retained as metadata. See
+[automatic release versioning](release-versioning.md) for the counter anchor,
+retry invariants and rollout evidence. The preview-version examples below are
+historical acceptance records; existing published assets stay immutable.
+
 Acceptance recorded 2026-09-16 before implementation. Baselines: Warband
 `e710ed8`, Saga Online `c33c195`. **Completed 2026-09-17:** the real main-push
 journey, anonymous native downloads, online clients, retries and live rollback

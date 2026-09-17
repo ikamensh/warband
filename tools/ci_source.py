@@ -32,6 +32,7 @@ def resolve(api: GitHub, run_id: int) -> dict:
             "Only the native packaging workflow may supply a release")
     require(run["status"] == "completed" and run["conclusion"] == "success", "Native workflow has not passed")
     commit, attempt = run["head_sha"], run["run_attempt"]
+    require(type(run["run_number"]) is int and run["run_number"] > 0, "Invalid native run number")
     require(bool(re.fullmatch(r"[a-f0-9]{40}", commit)) and type(attempt) is int and attempt > 0,
             "Invalid source commit or native attempt")
     jobs = list(api.pages(f"/actions/runs/{run_id}/attempts/{attempt}/jobs", collection="jobs"))
@@ -50,7 +51,7 @@ def resolve(api: GitHub, run_id: int) -> dict:
         require(type(item["id"]) is int and item["id"] > 0
                 and bool(re.fullmatch(r"sha256:[0-9a-f]{64}", item["digest"])), "Invalid native artifact identity")
         accepted[target] = {"id": item["id"], "digest": item["digest"]}
-    return {"run_id": run_id, "run_attempt": attempt, "source_commit": commit, "artifacts": accepted}
+    return {"run_id": run_id, "run_number": run["run_number"], "run_attempt": attempt, "source_commit": commit, "artifacts": accepted}
 
 
 def main() -> None:

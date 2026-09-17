@@ -18,6 +18,7 @@ from urllib.error import HTTPError
 from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from ci_release import release_version
 from ci_package import TARGETS, local_file, read_json, require, sha256, validate, write_json
 
 
@@ -26,11 +27,12 @@ def file_record(path: Path) -> dict:
 
 
 def validate_identity(identity: dict) -> None:
-    require(identity["schema_version"] == 1 and identity["game"] == "warband", "Wrong release identity")
+    require(identity["schema_version"] == 2 and identity["game"] == "warband", "Wrong release identity")
     require(bool(re.fullmatch(r"[0-9a-f]{40}", identity["source_commit"])), "Expected a full source commit")
-    require(bool(re.fullmatch(r"\d+\.\d+\.\d+-preview\.[1-9][0-9]*", identity["version"]))
-            and identity["tag"] == "v" + identity["version"]
-            and identity["version"].endswith("." + str(identity["run_id"])), "Invalid version/run identity")
+    require(type(identity["run_id"]) is int and identity["run_id"] > 0, "Invalid build run ID")
+    require(identity["version"] == release_version(identity["base_version"], identity["run_number"],
+                                                  identity["version_run_base"])
+            and identity["tag"] == "v" + identity["version"], "Invalid version/run identity")
 
 
 def stage(identity: dict, directories: dict[str, Path], output: Path) -> dict:
@@ -209,7 +211,7 @@ def publish(directory: Path, api_url: str, token: str) -> dict:
                      "body": (f"Source: {identity['source_commit']}\n\n"
                               f"Build: https://github.com/ikamensh/warband/actions/runs/{identity['run_id']}\n\n"
                               f"release.json SHA-256: {assets['release.json']['sha256']}\n\n"
-                              "Unsigned preview for Windows x64 and Apple Silicon macOS. Native regression, "
+                              "Early access for Windows x64 and Apple Silicon macOS; unsigned builds. Native regression, "
                               "packaged socket, rendering and install checks are included in the evidence archives. "
                               "Hosted multiplayer compatibility is checked separately before website promotion.\n")}
     matches = [item for item in api.pages("/releases") if item["tag_name"] == identity["tag"]]

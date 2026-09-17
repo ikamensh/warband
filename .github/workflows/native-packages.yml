@@ -30,7 +30,7 @@ jobs:
       - name: Resolve one immutable identity for both platforms
         id: identity
         run: |
-          python3 tools/ci_release.py prepare --run-id "$GITHUB_RUN_ID" --output "$RUNNER_TEMP/identity.json"
+          python3 tools/ci_release.py prepare --run-id "$GITHUB_RUN_ID" --run-number "$GITHUB_RUN_NUMBER" --output "$RUNNER_TEMP/identity.json"
           python3 - <<'PY'
           import json, os
           from pathlib import Path
@@ -203,7 +203,7 @@ jobs:
           path: dist/packages
       - name: Independently validate both platforms before publication
         run: |
-          python3 tools/ci_release.py prepare --run-id "$GITHUB_RUN_ID" --output "$RUNNER_TEMP/identity.json"
+          python3 tools/ci_release.py prepare --run-id "$GITHUB_RUN_ID" --run-number "$GITHUB_RUN_NUMBER" --output "$RUNNER_TEMP/identity.json"
           for target in windows-x64 darwin-arm64; do
             python3 tools/ci_package.py validate --identity "$RUNNER_TEMP/identity.json" \
               --target "$target" --directory "dist/packages/warband-$target-$GITHUB_RUN_ID" \

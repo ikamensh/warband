@@ -36,8 +36,9 @@ def candidate(tmp_path):
     pins = json.loads((ROOT / ".github/release-pins.json").read_text())
     compatibility = json.loads(subprocess.check_output(
         [sys.executable, str(ROOT / "tools/ci_compatibility.py")], text=True))
-    identity = {"schema_version": 1, "game": "warband", "source_commit": "a" * 40,
-                "version": "0.2.0-preview.123", "tag": "v0.2.0-preview.123", "run_id": 123,
+    identity = {"schema_version": 2, "game": "warband", "source_commit": "a" * 40,
+                "version": "0.2.1", "tag": "v0.2.1", "run_id": 123,
+                "base_version": "0.2.0", "run_number": pins["version_run_base"] + 1,
                 "saga2d_version": versions["saga2d"], "lock_sha256": digest(lock), "compatibility": compatibility, **pins}
     write_json(tmp_path / "identity.json", identity)
     packages = {name: versions[name.lower()] for name in
