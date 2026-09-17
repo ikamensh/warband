@@ -76,6 +76,36 @@ Working branches: `codex/backlog-wb002` (Warband) and
 `codex/warband-publishing` (Saga Online). Acceptance and rollout are recorded
 before implementation in [the CI publication plan](docs/ci-publication.md).
 
+Milestones checked on 2026-09-17 (the complete item remains **in progress**):
+
+- [x] Pin release inputs and verify native Windows/Mac packages. Source
+  `2361f79` passed [native run 35149564980](https://github.com/ikamensh/warband/actions/runs/35149564980):
+  901 tests per platform, portable/installed launch and socket checks, native
+  input, Mac app verification, and Windows shortcut/uninstall checks.
+- [x] Implement immutable release preparation, source/receipt validation and
+  separate producer/publisher wiring; independently download and validate the
+  accepted native artifacts. Actual main publication remains below.
+- [x] Implement the independent Saga Online release consumer and catalog
+  updates with retry/order checks. Saga Online `21f31c4` passed
+  [83 Linux publication checks](https://github.com/ikamensh/saga-online/actions/runs/35154907841).
+- [x] Verify the pinned server package, real orders for all three games,
+  checkpoint/rejoin, root preparation and unchanged-release retry on Mac/Linux.
+  Saga Online `126f220` passed [103 Linux checks](https://github.com/ikamensh/saga-online/actions/runs/35158657345);
+  the independently downloaded Linux archive matched the Mac archive byte for byte.
+- [x] Verify atomic site publication/rollback, shared server/site locking,
+  crash recovery and compatibility rechecks. Saga Online `7bb5411` passed
+  [112 Linux checks and host exclusion acceptance](https://github.com/ikamensh/saga-online/actions/runs/35160355976).
+- [ ] Finish and verify the restricted CI upload account, SSH caller and
+  Saga Online promotion workflow.
+- [ ] Complete server rollout/restore acceptance, record the actual live
+  compatibility baseline, and configure/enable production CI publishing.
+- [ ] Exercise the complete main-push journey, public Windows/Mac downloads,
+  compatible packaged online clients, publication retries and rollback.
+
+The user authorized autonomous releases, CI publishing setup and hosted
+deployments on 2026-09-17. Proceed after the required verification without
+another go-ahead; authorization alone does not complete the remaining milestones.
+
 Make a push to `main` produce an immutable preview release and update the
 Warband download page at [games.tachyon-ai.eu](https://games.tachyon-ai.eu/warband/).
 Use `main` as the proposed publishing branch; ordinary feature-branch pushes
@@ -97,8 +127,8 @@ not become the recommended online download against an incompatible server.
 Treat static-site promotion and room-server activation as separate operations,
 with an explicit compatible rollout/draining policy. Document the CI credential
 handoff from today's laptop-operated deployment and the chosen preview/stable
-policy. Enabling unattended production publication is the explicit rollout
-step of this future task; writing this backlog does not enable it.
+policy. Enabling unattended production publication is an authorized rollout
+step of this task; the checked milestones above do not yet mean it is enabled.
 
 **Done when:** a main push passes the complete build → verify → release →
 catalog → website journey; downloaded Windows/Mac artifacts match the tested
