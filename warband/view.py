@@ -24,7 +24,7 @@ from PIL import Image
 from saga2d import Game, ParticleEmitter, RenderLayer, Scene, Sprite, SpriteAnchor
 from warband import textures
 from warband.model import Building, Entity, Pos, Projectile, Unit, World, dist
-from warband.rules import BUILDINGS, SIM_DT, VISION_EVERY, BuildingType, Race, Terrain, UnitType
+from warband.rules import BUILDINGS, SIM_DT, VISION_EVERY, BuildingType, Terrain, UnitType
 from warband.textures import CHUNK, CHUNK_PX, TILE
 
 WATER_PERIOD = 0.45  # seconds between water phase changes
@@ -122,13 +122,13 @@ def unit_frame(u: Unit, travel: float, time: float) -> str:
     return "stand"
 
 
-def _sword_lunge(u: Unit, fraction: float) -> float:
-    """Human sword prototype: load slowly, drive quickly, settle to the ground point.
+def _footman_lunge(u: Unit, fraction: float) -> float:
+    """Infantry load slowly, drive quickly, then settle to their ground point.
 
     These are pixels of presentation, never additional reach or model movement.
     The existing wind-up/cooldown clocks keep the weight shift tied to the blow.
     """
-    if u.type is not UnitType.FOOTMAN or u.race is not Race.HUMAN or u.state != "attack":
+    if u.type is not UnitType.FOOTMAN or u.state != "attack":
         return 0.0
     if u.windup > 0.0:
         remaining = max(0.0, u.windup - fraction * SIM_DT)
@@ -537,7 +537,7 @@ class MapView:
                     self._unit_keys[u.id] = key
             wx, wy = to_world(position)
             wy += textures.placements[key].drop
-            lunge = _sword_lunge(u, self._fraction)
+            lunge = _footman_lunge(u, self._fraction)
             if lunge:
                 wx += math.cos(u.facing) * lunge
                 wy += math.sin(u.facing) * lunge
@@ -694,7 +694,7 @@ class MapView:
         world, scene = self.world, self.scene
         self._draw_wood_chips()
         self._draw_projectiles()
-        self._draw_sword_trails()
+        self._draw_footman_trails()
         for eid in overlay.selected + ([overlay.hovered] if overlay.hovered is not None and overlay.hovered not in overlay.selected else []):
             entity = world.entity(eid)
             if entity is None:
@@ -759,10 +759,10 @@ class MapView:
                 self.scene.draw_line(x, y, x + 2 + i % 2, y - 1.5, (238, 202, 139, round(235 * (1 - t))), 1.5,
                                      space="world", layer=RenderLayer.EFFECTS)
 
-    def _draw_sword_trails(self) -> None:
+    def _draw_footman_trails(self) -> None:
         """A brief afterimage of the released cut; damage still owns impact feedback."""
         for u in self.world.units.values():
-            if u.type is not UnitType.FOOTMAN or u.race is not Race.HUMAN or u.state != "attack" or u.windup > 0 or u.cooldown <= 0:
+            if u.type is not UnitType.FOOTMAN or u.state != "attack" or u.windup > 0 or u.cooldown <= 0:
                 continue
             age = u.info.cooldown - u.cooldown + self._fraction * SIM_DT
             if not 0 <= age < 0.09:
@@ -771,7 +771,7 @@ class MapView:
             if sprite is None or not sprite.visible:
                 continue
             wx, wy = sprite.x, sprite.y - textures.placements[sprite.image].drop
-            key = textures.sword_trail_image(self.game, textures.facing_index(u.facing))
+            key = textures.footman_trail_image(self.game, textures.facing_index(u.facing), u.race)
             placement = textures.placements[key]
             width, height = placement.size
             fade = (1 - age / 0.09) ** 2

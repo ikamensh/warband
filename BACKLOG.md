@@ -252,6 +252,18 @@ comparison rejected the expensive polygon version in favour of one cached
 image per trail. Other melee weapons and complete WB-004 acceptance remain
 open; [the prototype record](docs/melee-animation.md) states the limits.
 
+Current milestones:
+
+- [x] Recover visible hit recoil and compose it with movement and pause.
+- [x] Accept the human sword prototype with native frames and measured cost.
+- [x] Extend weight and weapon-specific trails to orc, elf and dwarf infantry;
+  135 relevant checks pass, with all eight facings inspected in both art paths
+  at normal/near/far zoom. The human trail images remain identical.
+- [ ] Give workers a convincing combat animation, including when carrying.
+- [ ] Treat mounted/heavy melee according to its weapon and body.
+- [ ] Finish fog/target-change/replay/network checks, the ordinary battle
+  performance gate and complete WB-004 release acceptance.
+
 The existing wind/strike/follow/recover cycle and sparks still read as timid.
 After WB-003 establishes the timing/art baseline, improve silhouette,
 anticipation, body weight, weapon arc, contact and recovery. Prototype one

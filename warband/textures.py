@@ -1224,6 +1224,13 @@ _SWORD_YAW = {"wind": 15, "follow": -50, "stand": 45, "walk1": 40, "walk2": 45, 
 _SWORD_SHIFT = {"wind": (0.02, -0.08, 0.06), "strike": (0.0, 0.16, 0.04), "follow": (-0.06, 0.1, -0.02), "walk1": (0, 0.09, 0), "walk3": (0, -0.09, 0)}
 _SHIELD_SHIFT = {"wind": (0, 0.08, 0), "strike": (0.03, -0.05, -0.04), "follow": (0, 0.05, 0), "walk1": (0, -0.07, 0), "walk3": (0, 0.07, 0)}
 _SWORD_GRIP = (0.3, 0.24, 0.6)  # held forward and high, so hilt and blade stay one visible object from every facing
+_SWORD_ORIGIN = (0.32, 0.13, 0.5)  # grip in the blade meshes' original coordinates
+_SWORD_EDGE: dict[Race, r3.Vec3] = {
+    Race.HUMAN: (0.32, 0.13, 1.285),  # sword point
+    Race.ORC: (0.32, 0.46, 1.2),  # cleaver's outer cutting corner, not the spike above its haft
+    Race.ELF: (0.32, 0.2, 1.24),  # curved blade's point
+    Race.DWARF: (0.32, 0.42, 1.14),  # upper axe edge, midway between its two faces
+}
 
 
 def _sword(frame: str, race: Race = Race.HUMAN) -> Mesh:
@@ -1247,7 +1254,7 @@ def _sword(frame: str, race: Race = Race.HUMAN) -> Mesh:
     else:
         blade = (r3.box((0.32, 0.13, 0.85), (0.08, 0.055, 0.59), look.metal) + r3.pyramid((0.32, 0.13, 1.145), (0.08, 0.055), 0.14, look.metal)
                  + r3.box((0.32, 0.13, 0.57), (0.27, 0.09, 0.06), GOLD))
-    blade = _shift(blade, (gx - 0.32, gy - 0.13, gz - 0.5))  # the blades are modelled at the old grip
+    blade = _shift(blade, tuple(g - o for g, o in zip(grip, _SWORD_ORIGIN)))
     mesh = _unit_pitch(blade + handle, _SWORD_PITCH.get(frame, -12), grip)
     mesh = r3.rotate_z(mesh, _SWORD_YAW.get(frame, 0), about=(grip[0], grip[1]))
     return _shift(mesh, _SWORD_SHIFT.get(frame, (0.0, 0.0, 0.0)))
@@ -1849,16 +1856,16 @@ def chop_contact_offset(facing: int, race: Race = Race.HUMAN) -> tuple[float, fl
     return PROJECTION.project((x * c - y * s, x * s + y * c, z))
 
 
-@lru_cache(maxsize=8)
-def _sword_sweep(facing: int) -> tuple[tuple[tuple[float, float], tuple[float, float]], ...]:
-    """Human footman's blade ribbon, projected from the authored wind/strike rig.
+@lru_cache(maxsize=FACINGS * len(Race))
+def _footman_sweep(facing: int, race: Race) -> tuple[tuple[tuple[float, float], tuple[float, float]], ...]:
+    """An infantry weapon's ribbon, projected from its authored wind/strike rig.
 
     Each pair is the inner edge and tip at one point along the fast downswing.
     Keeping the arc in the art module makes it follow the weapon's actual grip,
     pitch, torso and camera instead of drawing a generic circle around a unit.
     """
     grip = _SWORD_GRIP
-    edge = (grip[0], grip[1], grip[2] + 0.785)  # tip of the human sword
+    edge = tuple(g + (e - o) for g, e, o in zip(grip, _SWORD_EDGE[race], _SWORD_ORIGIN))
     inner = tuple(a + (b - a) * 0.88 for a, b in zip(grip, edge))
     wind, strike = POSES["wind"], POSES["strike"]
     ribbon = []
@@ -1875,19 +1882,20 @@ def _sword_sweep(facing: int) -> tuple[tuple[tuple[float, float], tuple[float, f
         mesh = r3.rotate_z(mesh, between(wind.twist, strike.twist))
         mesh = _unit_pitch(mesh, -between(wind.lean, strike.lean), (0.0, 0.0, HIP))
         mesh = _shift(mesh, (between(wind.sway, strike.sway), between(wind.lunge, strike.lunge), 0.0))
+        mesh = _stretch(mesh, *LOOKS[race].stretch)
         mesh = r3.rotate_z(r3.scale(mesh, UNIT_SCALE), facing * 45 - 90)
         ribbon.append(tuple(PROJECTION.project(point) for point in mesh[0].points[:2]))
     return tuple(ribbon)
 
 
-def sword_trail_image(game: Game, facing: int) -> str:
-    """One small atlas image per facing, shared by every human swordsman."""
-    key = f"sword-trail.{facing}"
+def footman_trail_image(game: Game, facing: int, race: Race = Race.HUMAN) -> str:
+    """One small atlas image per race/facing, shared by that race's infantry."""
+    key = f"melee-trail.{race.value}.footman.{facing}"
     if game.assets.has_image(key):
         return key
     scale = game.backend.scale_factor
     sample = scale * 2  # supersample the thin ribbon's edge
-    ribbon = _sword_sweep(facing)
+    ribbon = _footman_sweep(facing, race)
     points = [point for pair in ribbon for point in pair]
     width = 2 * (math.ceil(max(abs(x) for x, _ in points)) + 3)
     top = math.floor(min(y for _, y in points)) - 3

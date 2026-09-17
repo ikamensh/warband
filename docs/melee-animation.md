@@ -201,7 +201,7 @@ and native review. Final coverage also includes fog, target changes, replay,
 network snapshots and the standard mixed-army performance check. No public
 engine interface, simulation rule, save schema or network contract changed.
 
-## Next increment — all four infantry weapons
+## All four infantry weapons
 
 Acceptance before extending the prototype:
 
@@ -220,3 +220,34 @@ Acceptance before extending the prototype:
   verification and limits before committing. This completes infantry coverage
   only: workers, mounted/heavy melee, the remaining scene modes and the normal
   mixed-army performance gate still belong to WB-004.
+
+The extension follows the actual outer cleaver corner, curved blade point and
+axe edge, then applies each race's width/height to the shared weapon and torso
+transforms. It keeps the human prototype's timing and weight curve. The
+per-race/facing images use the same bounded cache and one drawing per active
+cut; no additional primitive loop runs during combat.
+
+Baseline native normal-zoom matrices for orcs, elves and dwarves are recorded
+in `docs/evidence/melee/{orc,elf,dwarf}-before`. The body-weight regression
+failed for all three races while passing for humans (`infantry-red.log`).
+The extended checks pass for every race: **28 tests** cover visible damage,
+weight without model movement, cancelled wind-up, released miss, pause,
+moving during recoil and unclipped images in all eight directions.
+The wider scene/view/movement/race/combat-timing set passes **135 tests** in
+30.21 s (`infantry-relevant-tests.log`). An independent asset comparison also
+confirms all eight human trail images match `63b01fc` pixel for pixel. The
+simulation fingerprint remains unchanged (`infantry-fingerprint.log`), and
+four native battle/forest-battle layout checks report no findings
+(`infantry-lint.log`).
+
+Candidate native cycles are in
+`docs/evidence/melee/infantry-{painted,procedural}-{orc,elf,dwarf}`, each with
+normal, 2× and 0.7× frames, a 60-frame/s clip and model/sprite trace. Normal-zoom
+phase matrices and the near/far contact comparisons were opened and inspected
+for all three races, including the counterattacker's four opposite facings.
+The taller orc arcs and shorter dwarf cuts retain their complete tips. Side
+and diagonal cuts read most clearly; toward-camera cuts are foreshortened,
+with body weight and victim recoil carrying the contact.
+
+Infantry presentation coverage is verified. Workers, mounted/heavy melee and
+the remaining whole-item gates are still open; this does not mark WB-004 done.

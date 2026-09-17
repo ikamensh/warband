@@ -1,19 +1,22 @@
 """Combat presentation must survive the complete scene update without changing rules."""
 import math
 
+import pytest
+
 from warband import textures
 from warband.model import World
-from warband.rules import BuildingType, Terrain, UnitType
+from warband.rules import BuildingType, Race, Terrain, UnitType
 from warband.scene import GameScene
 from warband.textures import TILE
 from warband.visual_lint import ImageStore, alpha
 
 
-def test_sword_trail_keeps_its_whole_arc_inside_the_image_in_every_facing(game):
+@pytest.mark.parametrize("race", list(Race))
+def test_infantry_trail_keeps_its_whole_arc_inside_the_image_in_every_facing(game, race):
     """Rear-facing cuts rise farther than the original fixed square allowed."""
     store = ImageStore(game)
     for facing in range(8):
-        pixels = alpha(store.image(textures.sword_trail_image(game, facing)))
+        pixels = alpha(store.image(textures.footman_trail_image(game, facing, race)))
         assert pixels.max() > 100, f"The trail vanished in facing {facing}"
         for edge in (pixels[0], pixels[-1], pixels[:, 0], pixels[:, -1]):
             assert edge.max() < 8, f"The trail is clipped in facing {facing}"
@@ -25,11 +28,12 @@ def world_marks(game):
             for mark in getattr(game.backend, kind) if mark["space"] == "world"]
 
 
-def duel(game, *, damaging=True):
+def duel(game, *, damaging=True, race=Race.HUMAN):
     """Reproduce the stationary footman fight captured for WB-004."""
     world = World(40, 30, [[Terrain.GRASS] * 40 for _ in range(30)], 2)
     for player in world.players:
         player.human = True
+        player.race = race
     world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
     world.place_building(1, BuildingType.TOWN_HALL, (34, 25))
     attacker = world.spawn_unit(0, UnitType.FOOTMAN, (17.5, 13.5))
@@ -45,7 +49,8 @@ def duel(game, *, damaging=True):
     return scene, attacker, victim
 
 
-def test_actual_melee_contact_displaces_the_drawn_victim(game):
+@pytest.mark.parametrize("race", list(Race))
+def test_actual_melee_contact_displaces_the_drawn_victim(game, race):
     """Compare the same target motion with/without damage, after the entire frame.
 
     Reading the sprite after game.tick catches a view overwriting the effect;
@@ -54,7 +59,7 @@ def test_actual_melee_contact_displaces_the_drawn_victim(game):
     """
     journeys = []
     for damaging in (False, True):
-        scene, attacker, victim = duel(game, damaging=damaging)
+        scene, attacker, victim = duel(game, damaging=damaging, race=race)
         frames = []
         for _ in range(30):
             game.tick(1 / 60)
@@ -76,13 +81,14 @@ def first_hit(game, victim):
     raise AssertionError("The duel did not produce a damaging hit")
 
 
-def test_swordsman_loads_back_then_drives_forward_without_moving_his_ground_point(game):
+@pytest.mark.parametrize("race", list(Race))
+def test_infantry_loads_back_then_drives_forward_without_moving_its_ground_point(game, race):
     """Anticipation and follow-through must carry visible weight at gameplay size.
 
     Stop before the opponent's counter-hit: incoming recoil cannot satisfy this
     property. The drawn weight shift must not move the authoritative unit.
     """
-    scene, attacker, victim = duel(game)
+    scene, attacker, victim = duel(game, race=race)
     initial_hp = attacker.hp
     wind, contact = [], []
     for _ in range(28):
@@ -99,9 +105,10 @@ def test_swordsman_loads_back_then_drives_forward_without_moving_his_ground_poin
     assert all(abs(offset) < attacker.radius * TILE for offset in wind + contact)
 
 
-def test_pause_freezes_the_visible_hit_reaction(game):
+@pytest.mark.parametrize("race", list(Race))
+def test_pause_freezes_the_visible_hit_reaction(game, race):
     """F3 must freeze the combat body as well as the authoritative clock."""
-    scene, attacker, victim = duel(game)
+    scene, attacker, victim = duel(game, race=race)
     first_hit(game, victim)
     for _ in range(3):
         game.tick(1 / 60)
@@ -118,9 +125,10 @@ def test_pause_freezes_the_visible_hit_reaction(game):
         assert world_marks(game) == trails
 
 
-def test_cancelled_windup_does_not_leave_a_cut_or_impact(game):
+@pytest.mark.parametrize("race", list(Race))
+def test_cancelled_windup_does_not_leave_a_cut_or_impact(game, race):
     """Moving away cancels the load-up; no predicted contact may leak into a frame."""
-    scene, attacker, victim = duel(game)
+    scene, attacker, victim = duel(game, race=race)
     for _ in range(9):
         game.tick(1 / 60)
     assert attacker.windup > 0
@@ -136,9 +144,10 @@ def test_cancelled_windup_does_not_leave_a_cut_or_impact(game):
         assert sprite.x == scene.view.unit_position(attacker)[0] * TILE
 
 
-def test_a_released_miss_draws_the_cut_but_does_not_shove_the_target(game):
+@pytest.mark.parametrize("race", list(Race))
+def test_a_released_miss_draws_the_cut_but_does_not_shove_the_target(game, race):
     """A target outside reach can escape a committed swing; a trail is not a hit."""
-    scene, attacker, victim = duel(game)
+    scene, attacker, victim = duel(game, race=race)
     for _ in range(6):
         game.tick(1 / 60)
     assert attacker.windup > 0
@@ -156,9 +165,10 @@ def test_a_released_miss_draws_the_cut_but_does_not_shove_the_target(game):
     assert cut_seen, "The committed miss must still release its swing"
 
 
-def test_recoil_follows_a_new_move_and_finishes_at_the_current_ground_point(game):
+@pytest.mark.parametrize("race", list(Race))
+def test_recoil_follows_a_new_move_and_finishes_at_the_current_ground_point(game, race):
     """A hit cannot pin a new move to its old position or snap back on expiry."""
-    scene, attacker, victim = duel(game)
+    scene, attacker, victim = duel(game, race=race)
     first_hit(game, victim)
     start = victim.pos
     scene.world.move([victim.id], (30.5, victim.y))
