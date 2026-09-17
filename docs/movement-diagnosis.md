@@ -229,7 +229,7 @@ F3 freezes the tick, displayed point and walk pose. The selected, attack and
 paused native screenshots were opened and inspected with ordinary fog enabled.
 The corresponding repeatable regressions remain in the game test suite.
 
-## Remaining acceptance
+## Completed acceptance — 2026-09-17
 
 The native matrix and pointer journey are complete. `35b851f` passed
 [the game tests](https://github.com/ikamensh/warband/actions/runs/35210630104)
@@ -242,6 +242,23 @@ public pointer commands and all three downloaded Mac client checks. The final
 server suite passed 135 tests in 89.94 seconds. The three retained campaigns and
 the website pointer stayed intact through activation.
 
-WB-003 remains in progress for main-push publication and public Windows/Mac
-download acceptance. WB-010 owns network smoothing, WB-017 the waypoint budget,
-and WB-018 the large selection HUD.
+Main `2e31cda` passed [native build 35214358368](https://github.com/ikamensh/warband/actions/runs/35214358368),
+[publisher 35215555895](https://github.com/ikamensh/warband/actions/runs/35215555895)
+and [website promotion 35215726975](https://github.com/ikamensh/saga-online/actions/runs/35215726975).
+Immutable release **0.2.0-preview.35214358368** is live; Saga Online catalog commit
+`6b3c952` records its four package links. The public page points to those exact
+packages, and the downloaded manifest's compatibility contract matches the live
+server (`main-release/site-acceptance.json`).
+
+[Public download run 35215886199](https://github.com/ikamensh/saga-online/actions/runs/35215886199)
+passed on Windows and Mac. The anonymous downloads match the accepted archives,
+source/version, frozen executable identity and bundled fonts. Both pass all eight
+public online checks: create/join, movement, ownership rejection, private-seat
+rejoin, production, automatic building, cancellation and assembly points. The
+Mac app archive hash is `8cb7afa4…0669af`; Windows portable is `d516f6b1…8db76`.
+Receipts are retained under Saga Online's
+`docs/evidence/movement-rollout/public-downloads/` in the isolated rollout stack.
+
+WB-003 is done. WB-010 owns the demonstrated 10 Hz network stepping, WB-017 the
+waypoint budget, and WB-018 the large selection HUD. These have not been hidden
+by, or claimed fixed through, the local/replay presentation change.

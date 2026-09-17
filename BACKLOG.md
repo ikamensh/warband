@@ -16,7 +16,7 @@ every earlier item first.
 |---|---|---|---|---|
 | WB-001 | First | done | Recover useful branch work and clean up local branches/worktrees | User |
 | WB-002 | First | done | Publish tested main pushes through GitHub Actions to games.tachyon-ai.eu | User |
-| WB-003 | Next | in progress | Diagnose and improve movement animation | User |
+| WB-003 | Next | done | Diagnose and improve movement animation | User |
 | WB-004 | Next | ready | Give melee attacks readable weight and contact | User |
 | WB-005 | Next | ready | Replace the rotating-sprite death with convincing falls | User |
 | WB-006 | Next | ready | Add blood on damaging hits | User |
@@ -166,7 +166,25 @@ documented so future main pushes need no manual publishing steps.
 
 ## WB-003 — Movement animation: diagnose before authoring more frames
 
-Started 2026-09-17 on `codex/wb003-movement`, from main `1a6def9`.
+Completed 2026-09-17. Implementation `fae77d9` and `35b851f` is integrated on
+main at `2e31cda` and published as **0.2.0-preview.35214358368**. Local and replay
+movement interpolate between simulation steps; picking follows displayed units,
+and saved/replayed timing is stable. The simulation fingerprint is unchanged.
+Native before/after capture reduces stationary intervals during steady travel
+from 39/59 to 0/59. Both art styles, turns/stops, crowds, obstacles, pointer input
+and pause were inspected; separate network and waypoint issues remain below.
+
+[Main native build](https://github.com/ikamensh/warband/actions/runs/35214358368)
+→ [immutable publisher](https://github.com/ikamensh/warband/actions/runs/35215555895)
+→ [website promotion](https://github.com/ikamensh/saga-online/actions/runs/35215726975)
+all passed. [Public Windows/Mac downloads](https://github.com/ikamensh/saga-online/actions/runs/35215886199)
+matched the accepted hashes and passed all eight packaged online checks against
+server `99e28517…54609f7`. The three retained campaigns are preserved. The
+[diagnosis](docs/movement-diagnosis.md) and
+[server rollout](../saga-online/docs/warband-movement-rollout.md) record the
+complete acceptance and its limits. Follow-ups are WB-010, WB-017 and WB-018.
+
+Started on `codex/wb003-movement`, from main `1a6def9`.
 Acceptance and the repeatable capture matrix are recorded before changes in
 [the movement diagnosis](docs/movement-diagnosis.md).
 
@@ -177,9 +195,8 @@ fingerprint is unchanged, and native battle/selection frames were inspected.
 The follow-up fixes replay interpolation, the load-time clock reset and
 presented selection. Smart orders preserve the displayed target (including
 empty ground); 101 relevant scene/view/replay/socket tests pass. This optional
-command field requires a server compatibility update. WB-003 remains in progress
-for server rollout and integration. The separate waypoint-speed
-finding is WB-017.
+command field required the accepted server compatibility update below.
+The separate waypoint-speed finding is WB-017.
 
 The follow-up full suite passes 917 tests (12 skips), two input-fuzz journeys
 pass and the simulation fingerprint remains unchanged. The 2× native turn capture
@@ -192,8 +209,8 @@ and the Linux game test workflow. The staged server suite passes 135 tests;
 the hosted server rollout is accepted as `99e28517…54609f7`. Public pointer
 commands and all three downloaded Mac clients pass, and the three retained
 campaigns are preserved. [The rollout record](../saga-online/docs/warband-movement-rollout.md)
-and baseline are integrated in Saga Online main `89fe348`; final main-push
-publication and public Windows/Mac download acceptance remain open.
+and baseline are integrated in Saga Online main `89fe348`; main publication and
+public Windows/Mac download acceptance are complete as recorded above.
 
 The current [motion notes](docs/unit-motion.md), [view](warband/view.py) and
 [pose generation](warband/textures.py) already provide four walk frames,
