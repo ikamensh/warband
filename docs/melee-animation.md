@@ -252,7 +252,7 @@ with body weight and victim recoil carrying the contact.
 Infantry presentation coverage is verified. Workers, mounted/heavy melee and
 the remaining whole-item gates are still open; this does not mark WB-004 done.
 
-## Next increment — workers in combat
+## Workers in combat
 
 Acceptance before implementation:
 
@@ -270,3 +270,49 @@ Acceptance before implementation:
   cargo transitions. Extend the scene regressions for pause, cancellation,
   missed swings and movement as appropriate. Keep the simulation fingerprint,
   run affected checks, and inspect native frames before recording acceptance.
+
+The three human baseline captures (`docs/evidence/melee/worker-before-{none,gold,lumber}`)
+confirm the fault: empty-handed workers swing an axe, but laden workers attack
+with their sack or logs still in both hands and no tool. The worker rigs already
+contain an axe and four combat poses; choosing those existing images fixes the
+missing tool without repainting art. During `attack` the view selects the
+unladen image. The model's cargo stays intact, and leaving combat immediately
+restores the carried-load image.
+
+Workers now use the same continuous body-weight curve as infantry, driven by
+their shorter existing wind-up. Their cached ribbon follows the actual worker
+axe's upper cutting edge, grip and wind/strike pitches, then the common torso
+pose, race dimensions and camera projection. Harvest/chop and repair states do
+not enter this combat path. The shared trail renderer still draws one image
+per active cut; worker/facing/race images extend the bounded cache to 64 shapes.
+
+The real harvesting regression failed for all eight race/resource combinations
+before the fix (`worker-cargo-red.log`). It now harvests gold or lumber, carries
+it to a fight, draws the axe, lands a hit, stops with the load visible, and
+delivers exactly that load to the town hall. Separate red runs demonstrated the
+missing worker weight shift and released-miss trail (`worker-weight-red.log`,
+`worker-trail-red.log`). The melee suite now covers both workers and infantry
+of all four races: **64 checks**, including cargo, all eight trail bounds,
+damage/recoil, weight without model movement, pause, cancellation, misses and
+movement during recoil. The affected scene/view/worker/movement/race/timing set
+passes **194 tests** in 33.42 s (`worker-relevant-tests.log`).
+
+Native candidate cycles are in
+`docs/evidence/melee/workers-{painted,procedural}-{human,orc,elf,dwarf}`.
+Each includes normal, 2× and 0.7× captures, a 60-frame/s clip and a trace.
+Human/orc fixtures carry gold; elf/dwarf fixtures carry lumber. The eight
+normal-zoom phase matrices and all near/far contact comparisons were opened
+and inspected. Both sides explicitly receive attack orders because workers
+do not automatically counterattack; this exercises all eight facings. The
+last phase stops both fighters and shows their cargo again. Across all 24
+captures the traces confirm the unchanged ten-resource payload, unladen
+weapon poses during wind-up and restored cargo images after stopping.
+The shorter worker arc stays intact at every facing; side/diagonal contact
+reads most strongly, while forward/back cuts retain the existing perspective.
+
+The simulation fingerprint remains `1baac5542386b900d86ff2485ab4982db19d1faf2030870bcebdf12aefe5eccb`
+(`worker-fingerprint.log`). Native battle/forest-battle layout checks at
+1280×800 and 1200×680 report zero findings (`worker-lint.log`); the large battle
+and small forest frames were opened. Worker combat is verified. Mounted/heavy
+weapons and the remaining whole-item scene, performance and release gates
+are still open; WB-004 remains in progress.

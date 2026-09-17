@@ -1856,16 +1856,21 @@ def chop_contact_offset(facing: int, race: Race = Race.HUMAN) -> tuple[float, fl
     return PROJECTION.project((x * c - y * s, x * s + y * c, z))
 
 
-@lru_cache(maxsize=FACINGS * len(Race))
-def _footman_sweep(facing: int, race: Race) -> tuple[tuple[tuple[float, float], tuple[float, float]], ...]:
-    """An infantry weapon's ribbon, projected from its authored wind/strike rig.
+@lru_cache(maxsize=2 * FACINGS * len(Race))
+def _melee_sweep(unit_type: UnitType, facing: int, race: Race) -> tuple[tuple[tuple[float, float], tuple[float, float]], ...]:
+    """A foot soldier's weapon ribbon, projected from its authored wind/strike rig.
 
     Each pair is the inner edge and tip at one point along the fast downswing.
     Keeping the arc in the art module makes it follow the weapon's actual grip,
     pitch, torso and camera instead of drawing a generic circle around a unit.
     """
-    grip = _SWORD_GRIP
-    edge = tuple(g + (e - o) for g, e, o in zip(grip, _SWORD_EDGE[race], _SWORD_ORIGIN))
+    if unit_type is UnitType.FOOTMAN:
+        grip = _SWORD_GRIP
+        edge = tuple(g + (e - o) for g, e, o in zip(grip, _SWORD_EDGE[race], _SWORD_ORIGIN))
+    elif unit_type is UnitType.PEASANT:
+        grip, edge = _WORKER_GRIP, _WORKER_AXE_EDGE[1]
+    else:
+        raise ValueError(unit_type)
     inner = tuple(a + (b - a) * 0.88 for a, b in zip(grip, edge))
     wind, strike = POSES["wind"], POSES["strike"]
     ribbon = []
@@ -1876,9 +1881,12 @@ def _footman_sweep(facing: int, race: Race) -> tuple[tuple[tuple[float, float], 
             return a + (b - a) * t
 
         mesh = [r3.Face((inner, edge, edge), (255, 255, 255))]
-        mesh = _unit_pitch(mesh, between(_SWORD_PITCH["wind"], _SWORD_PITCH["strike"]), grip)
-        mesh = r3.rotate_z(mesh, between(_SWORD_YAW["wind"], _SWORD_YAW.get("strike", 0)), about=grip[:2])
-        mesh = _shift(mesh, tuple(between(a, b) for a, b in zip(_SWORD_SHIFT["wind"], _SWORD_SHIFT["strike"])))
+        if unit_type is UnitType.FOOTMAN:
+            mesh = _unit_pitch(mesh, between(_SWORD_PITCH["wind"], _SWORD_PITCH["strike"]), grip)
+            mesh = r3.rotate_z(mesh, between(_SWORD_YAW["wind"], _SWORD_YAW.get("strike", 0)), about=grip[:2])
+            mesh = _shift(mesh, tuple(between(a, b) for a, b in zip(_SWORD_SHIFT["wind"], _SWORD_SHIFT["strike"])))
+        else:
+            mesh = _unit_pitch(mesh, between(_worker_axe_angle("wind"), _worker_axe_angle("strike")), grip)
         mesh = r3.rotate_z(mesh, between(wind.twist, strike.twist))
         mesh = _unit_pitch(mesh, -between(wind.lean, strike.lean), (0.0, 0.0, HIP))
         mesh = _shift(mesh, (between(wind.sway, strike.sway), between(wind.lunge, strike.lunge), 0.0))
@@ -1888,14 +1896,14 @@ def _footman_sweep(facing: int, race: Race) -> tuple[tuple[tuple[float, float], 
     return tuple(ribbon)
 
 
-def footman_trail_image(game: Game, facing: int, race: Race = Race.HUMAN) -> str:
-    """One small atlas image per race/facing, shared by that race's infantry."""
-    key = f"melee-trail.{race.value}.footman.{facing}"
+def melee_trail_image(game: Game, unit_type: UnitType, facing: int, race: Race = Race.HUMAN) -> str:
+    """One small atlas image per role/race/facing, shared by matching weapons."""
+    key = f"melee-trail.{race.value}.{unit_type.value}.{facing}"
     if game.assets.has_image(key):
         return key
     scale = game.backend.scale_factor
     sample = scale * 2  # supersample the thin ribbon's edge
-    ribbon = _footman_sweep(facing, race)
+    ribbon = _melee_sweep(unit_type, facing, race)
     points = [point for pair in ribbon for point in pair]
     width = 2 * (math.ceil(max(abs(x) for x, _ in points)) + 3)
     top = math.floor(min(y for _, y in points)) - 3
