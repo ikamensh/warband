@@ -23,7 +23,9 @@ def test_warband_runs_on_the_server_clock_and_pauses_for_a_disconnected_player(s
         receive(host)
         ready = receive(guest)
         world = World.from_dict(ready['state']['world'])
-        own, enemy = world.player_units(1)[0], world.player_units(0)[0]
+        own = world.player_units(1)[0]
+        enemy = World.from_dict(receive(host)['state']['world']).player_units(0)[0]  # out of the guest's sight: the host's own
+        assert enemy.id not in world.units, "the host's worker at home travels to the guest"
         destination = [own.x - 2, own.y]
         command(guest, {'action': 'move', 'args': [[enemy.id], destination]})
         assert 'own' in receive(guest, 'error')['error']
@@ -72,7 +74,7 @@ def test_trusted_checkpoint_keeps_existing_json_and_the_next_real_order():
     match.apply(0, {'action': 'train', 'args': [hall.id, UnitType.PEASANT.value]})
     checkpoint = json.loads(json.dumps(spec.checkpoint(match)))
     assert checkpoint == json.loads(json.dumps({'seed': match.seed, 'world': match.world.to_dict(), 'events': match.events,
-                                                'event_id': match.event_id}))
+                                                'event_id': match.event_id, 'event_seen': match.event_seen, 'begun': match.begun}))
     resumed = spec.restore(checkpoint)
     before = json.loads(json.dumps(match.snapshot(0)))
     assert resumed.snapshot(0) == match.snapshot(0)

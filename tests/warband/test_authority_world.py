@@ -57,7 +57,10 @@ def test_a_snapshot_tells_a_seat_neither_the_servers_dice_nor_what_the_other_sea
         theirs = sent['worker_knowledge'][other]
         assert not theirs['buildings'] and not theirs['mines'] and not any(theirs['terrain'])
         assert sent['worker_knowledge'][seat] == world.worker_knowledge[seat].to_dict()
-        assert sent['units'] == world.to_dict()['units'] and sent['buildings'] == world.to_dict()['buildings']
+        whole = world.to_dict()
+        for key in ('units', 'buildings'):
+            own = [entity for entity in whole[key] if entity['player'] == seat]
+            assert own and [entity for entity in sent[key] if entity['player'] == seat] == own, f"a seat's own {key} travel whole"
 
 
 def test_a_snapshot_is_the_receivers_to_keep() -> None:

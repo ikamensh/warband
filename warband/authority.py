@@ -17,6 +17,18 @@ ORDERS = GROUP_ORDERS | BUILDING_ORDERS | SETTLEMENT_ORDERS | {'build'}
 EVENT_TICKS = 100
 #: What a seat is told of the server's random stream: a fixed state, so no client can read the damage rolls to come.
 NO_DICE = random.Random(0).getstate()
+#: News for its owner alone: what it trains and researches, what it is refused, its deposits, alarms and plunder.
+PRIVATE_EVENTS = frozenset({'trained', 'researched', 'refused', 'deposit', 'under_attack', 'plunder'})
+#: The match's public news, told to every seat wherever it happened.
+PUBLIC_EVENTS = frozenset({'victory', 'eliminated', 'surrendered', 'resigned', 'exposed'})
+#: What a seat learns of a unit it sees but does not own is where it stands and how it moves and strikes, not where it is going.
+STRANGER_UNIT = {'orders': [], 'worker_orders': [], 'home': None, 'constructing': None, 'auto_work': False}
+#: Of a building it sees but does not own: footprint, hit points, construction and abandonment, not its work.
+STRANGER_BUILDING = {'queue': [], 'train_progress': 0.0, 'rally': None, 'builder': None, 'research': None, 'research_progress': 0.0}
+
+
+def _terrain_rows(world):
+    return ["".join(t.value[0] for t in row) for row in world.terrain]
 
 
 class WarbandMatch:
@@ -28,7 +40,9 @@ class WarbandMatch:
             player.human = True
         self.events = []  # [number, fields] of the recent ones, oldest first
         self.event_ticks = []  # the tick each of them happened at
+        self.event_seen = []  # the seats that may hear of each: decided when it happens, not when a snapshot goes out
         self.event_id = 0
+        self.begun = _terrain_rows(self.world)  # the map as it began: what a seat is told of ground it never saw
 
     def _events(self):
         """Number the world's new events and drop the old ones: a snapshot carries the recent ones only, for a client
@@ -38,25 +52,80 @@ class WarbandMatch:
             self.event_id += 1
             self.events.append([self.event_id, vars(event)])
             self.event_ticks.append(tick)
+            self.event_seen.append(self._witnesses(event))
         fresh = next((i for i, born in enumerate(self.event_ticks) if tick - born < EVENT_TICKS), len(self.events))
         keep = max(fresh, len(self.events) - 128)
-        self.events, self.event_ticks = self.events[keep:], self.event_ticks[keep:]
+        self.events, self.event_ticks, self.event_seen = self.events[keep:], self.event_ticks[keep:], self.event_seen[keep:]
+
+    def _witnesses(self, event):
+        """The seats that may hear of *event*: all of them for public news, its owner alone for its private
+        affairs, otherwise its owner and every seat that sees where it happens."""
+        seats = range(len(self.world.players))
+        if event.kind in PUBLIC_EVENTS:
+            return list(seats)
+        if event.kind in PRIVATE_EVENTS:
+            return [event.player]
+        tile = (int(event.pos[0]), int(event.pos[1]))
+        return [seat for seat in seats if seat == event.player or self.world.is_visible(seat, tile)]
 
     def snapshot(self, player):
-        """The match for seat *player*: the world's save (``to_dict`` builds it afresh, the receiver may keep it)
-        without what is the server's alone or the other seat's: the random stream, the ground the other seat
-        has explored and the map it remembers."""
-        world = self.world.to_dict()
-        world['rng'] = NO_DICE
-        unexplored = bytes(self.world.width * self.world.height).hex()
-        unknown = WorkerKnowledge(self.world.width, self.world.height).to_dict()
-        for seat in range(len(self.world.players)):
-            if seat != player:
-                world['explored'][seat], world['worker_knowledge'][seat] = unexplored, unknown
-        return {'seed': self.seed, 'world': world, 'events': self._recent_events()}
+        """The match as seat *player* may know it (``to_dict`` builds it afresh, the receiver may keep it).
 
-    def _recent_events(self):
-        return [[index, dict(fields)] for index, fields in self.events]
+        All of its own.  Of everyone else's, what it sees now, without intentions: a unit's orders and home, a
+        building's work.  The ground and the mines out of sight as it last saw them, ground it never saw as the
+        map began, mines it never saw not at all.  Of the news, what it saw happen, its own affairs and what is
+        public.  The other seats' purse, research and scores once the match is decided, their plans and memory
+        never, and the server's random stream never: a fixed state stands in for it."""
+        world = self.world
+        data = world.to_dict()
+        data['rng'] = NO_DICE
+        unexplored = bytes(world.width * world.height).hex()
+        unknown = WorkerKnowledge(world.width, world.height).to_dict()
+        for seat, record in enumerate(data['players']):
+            if seat != player:
+                data['explored'][seat], data['worker_knowledge'][seat] = unexplored, unknown
+                if world.winner is None:
+                    record.update(gold=0, lumber=0, upgrades=[], stats=dict.fromkeys(record['stats'], 0), last_alert=None, assembly=None)
+        visible, knowledge = world.visible[player], world.worker_knowledge[player]
+        data['units'] = [d if unit.player == player else {**d, **STRANGER_UNIT}
+                         for unit, d in zip(world.units.values(), data['units'])
+                         if unit.player == player or (not unit.hidden and world.is_visible(player, unit.tile))]
+        buildings = []
+        for building, d in zip(world.buildings.values(), data['buildings']):
+            if building.player == player:
+                buildings.append(d)
+            elif knowledge.sees(visible, building.x, building.y, building.size):
+                buildings.append(d if building.player is None else {**d, **STRANGER_BUILDING})
+            elif building.id in knowledge.mines:
+                buildings.append({**d, 'gold': knowledge.mines[building.id].gold})
+        data['buildings'] = buildings
+        data['projectiles'] = [d for shot, d in zip(world.projectiles.values(), data['projectiles'])
+                               if shot.player == player or world.is_visible(player, _tile(world.shot_ground(shot, world.time)))]
+        data['next_id'] = 1 + max((d['id'] for key in ('units', 'buildings', 'projectiles') for d in data[key]), default=0)
+        plans = [plan for plan in data['settlement']['plans'] if plan['player'] == player]
+        data['settlement'] = {'next_id': 1 + max((plan['id'] for plan in plans), default=0), 'plans': plans}
+        data['terrain'] = self._terrain_as_known(player, data['terrain'])
+        data['regrowth'] = [entry for entry in data['regrowth'] if world.is_visible(player, tuple(entry[0]))]
+        return {'seed': self.seed, 'world': data, 'events': self._recent_events(player)}
+
+    def _terrain_as_known(self, player, rows):
+        """The map's rows with every tile *player* does not see now as it remembers it, or as it began if never seen."""
+        width, visible = self.world.width, self.world.visible[player]
+        remembered = self.world.worker_knowledge[player].terrain
+        known = []
+        for y, (now, began) in enumerate(zip(rows, self.begun)):
+            base = y * width
+            seen = visible[base:base + width]
+            if seen.count(0) == 0:
+                known.append(now)
+                continue
+            known.append("".join(letter if sees else (memory.value[0] if (memory := remembered[base + x]) is not None else first)
+                                 for x, (letter, sees, first) in enumerate(zip(now, seen, began))))
+        return known
+
+    def _recent_events(self, player=None):
+        """The news that still rides the snapshots: all of it for the checkpoint, what *player* may hear for a seat."""
+        return [[index, dict(fields)] for (index, fields), seen in zip(self.events, self.event_seen) if player is None or player in seen]
 
     def step(self):
         if self.world.winner is None:
@@ -144,8 +213,13 @@ def _create(options):
                         layout=None if layout == 'any' else Layout(layout))
 
 
+def _tile(point):
+    return int(point[0]), int(point[1])
+
+
 def _checkpoint(match):
-    return {'seed': match.seed, 'world': match.world.to_dict(), 'events': match._recent_events(), 'event_id': match.event_id}
+    return {'seed': match.seed, 'world': match.world.to_dict(), 'events': match._recent_events(), 'event_id': match.event_id,
+            'event_seen': match.event_seen, 'begun': match.begun}
 
 
 def _restore(snapshot):
@@ -155,6 +229,10 @@ def _restore(snapshot):
     match.event_ticks = [match.world.tick] * len(match.events)  # a restored match tells its last news once more
     # The count goes on where it was, or a client would take the news after a restart for news it has had.
     match.event_id = snapshot.get('event_id', max((event[0] for event in match.events), default=0))  # older checkpoints carry none
+    # A checkpoint from before WB-011 kept no record of who saw what, nor of the map's beginning: its last news
+    # goes to every seat once, and the ground as it stands now stands for how it began.
+    match.event_seen = snapshot.get('event_seen', [list(range(len(match.world.players)))] * len(match.events))
+    match.begun = snapshot.get('begun', _terrain_rows(match.world))
     return match
 
 

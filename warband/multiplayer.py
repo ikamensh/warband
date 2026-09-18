@@ -2,14 +2,21 @@
 import math
 import time
 
-from saga2d import Button, CommandError, Label
+from saga2d import Button, CommandError, Label, Settings
 from warband.model import Event, RuleError, World
 from warband.rules import SIM_DT
 from warband.scene import GameScene, HelpScene, SettingsScene, _Overlay, _clock
 from warband.style import ACTION_BUTTON, GHOST_BUTTON
+from warband.view import check_memory
 
 
 HIT_AUDIO_FIELDS = frozenset({'source_type', 'target_type', 'target_armor', 'target_complete'})
+
+
+def _room_memory(game):
+    """What the player had seen of buildings out of sight in the online room they last played.  A room tells a seat
+    only what it sees now (WB-011), so rejoining it from the title would otherwise forget the rival's base."""
+    return Settings(game.data_dir / 'online-memory.json', {'room': '', 'player': -1, 'seen': {'buildings': []}})
 
 
 class NetworkGameScene(GameScene):
@@ -28,10 +35,19 @@ class NetworkGameScene(GameScene):
         self._autosave_at = math.inf
 
     def on_enter(self):
+        if getattr(self.session, 'online', False):
+            record = _room_memory(self.game)
+            if (record['room'], record['player']) == (self.session.room, self.session.player):
+                check_memory(record['seen'], self.world)
+                self._seen = record['seen']
         super().on_enter()
         self.every(1 / 60, self._poll)
 
     def on_close(self):
+        if getattr(self.session, 'online', False) and self.session.room:
+            record = _room_memory(self.game)
+            record.update(room=self.session.room, player=self.session.player, seen=self.view.memory())
+            record.save()
         self.session.close()
 
     def _step_match(self):

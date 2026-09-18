@@ -493,6 +493,20 @@ class World:
     def entity(self, entity_id: int) -> Entity | None:
         return self.units.get(entity_id) or self.buildings.get(entity_id)
 
+    def shot_mark(self, p: Projectile) -> Point:
+        """Where shot *p* is headed: its mark as the mark stands now (an arrow), or the ground it was fired at (a stone)."""
+        if p.target is not None:
+            target = self.entity(p.target)
+            if target is not None:
+                return target.pos if isinstance(target, Unit) else target.center
+        return p.aim
+
+    def shot_ground(self, p: Projectile, now: float) -> Point:
+        """Where shot *p* is over the ground at simulation time *now*, on the line from where it was loosed to its mark."""
+        t = max(0.0, min(1.0, (now - p.launched) / p.flight))
+        end = self.shot_mark(p)
+        return p.start[0] + (end[0] - p.start[0]) * t, p.start[1] + (end[1] - p.start[1]) * t
+
     def building_at(self, pos: Pos) -> Building | None:
         for building in self.buildings.values():
             if building.x <= pos[0] < building.x + building.size and building.y <= pos[1] < building.y + building.size:
