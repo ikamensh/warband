@@ -1020,9 +1020,10 @@ class World:
         the trees once the wood is piled up — says so this way rather than
         naming a destination it may be remembering wrongly.
         """
-        for unit in self._own_units(unit_ids):
-            if not unit.is_worker:
-                raise RuleError("Only peasants gather")
+        units = self._own_units(unit_ids)
+        if not all(unit.is_worker for unit in units):
+            raise RuleError("Only peasants gather")  # before any is let go: a refused order leaves no trace
+        for unit in units:
             unit.orders.clear()
             unit.path = []
             unit.path_goal = None

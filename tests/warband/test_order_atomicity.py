@@ -37,6 +37,7 @@ REFUSED = {
     "attack on nothing": lambda w, e: w.attack([e["footman"]], 9999),
     "harvest with a soldier among the peasants": lambda w, e: w.harvest([e["peasant"], e["footman"]], e["mine"]),
     "harvest where no trees stand": lambda w, e: w.harvest([e["peasant"]], (3, 20)),
+    "peasants released with a soldier among them": lambda w, e: w.release_workers([e["peasant"], e["footman"]]),
     "construction resumed with a soldier among the peasants": lambda w, e: w.resume_construction([e["peasant"], e["footman"]], e["site"]),
     "construction resumed on a finished hall": lambda w, e: w.resume_construction([e["peasant"]], e["hall"]),
     "repair of an undamaged hall": lambda w, e: w.repair([e["peasant"]], e["hall"]),
@@ -61,6 +62,7 @@ REFUSED = {
 def test_a_refused_order_leaves_the_world_as_it_was(name) -> None:
     world, entities = scenario()
     world.train(entities["hall"], UnitType.PEASANT)  # one in the queue, so a bad slot is a bad slot and not an empty queue
+    world.harvest([entities["peasant"]], entities["mine"])  # a job, so an order that let go of it would show
     before = world.to_dict()
     with pytest.raises(RuleError):
         REFUSED[name](world, entities)
