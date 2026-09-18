@@ -148,6 +148,19 @@ compression and from claims of comprehensive anti-cheat.
    seconds of events are told to both seats once, and its terrain at restore
    stands for the map's beginning.
 
+
+**Done 2026-09-18**, merged as Warband main `89a6587`: every criterion holds.
+`WarbandMatch.snapshot` filters per seat (`bdcb985`, `413e61f`), and
+`tests/warband/test_snapshot_visibility.py` (8 tests) failed on the old code.
+The online tests that read one seat's view of the other now read each seat's
+own. The packaged smoke checks that the guest is not sent the creator's
+worker. A client keeps what it saw of buildings across a rejoin from the title
+(`online-memory.json`). A snapshot costs 0.67 ms against 0.41 on a Large map
+and is a little smaller. The previous client (0.2.30) ran over the new
+snapshots, and a checkpoint from the previous server restored and played on
+(checked before activation). Live as Warband 0.2.32 through the same
+[rollout](../saga-online/docs/wb016-011-rollout.md) and runs as WB-016.
+
 ## WB-012 — Three-/four-human online FFA
 
 Local skirmish supports two to four players; current hosted rooms and
@@ -319,6 +332,29 @@ every `GameScene` is ranked (recorded and rated) unless it says otherwise.
    `model.py` moves the authoritative contract, so the release is promoted
    after the server rollout it shares with WB-011. The missions' tuning stays
    for people to judge (WB-013), and the campaign doc's "Not yet" says so.
+
+
+**Done 2026-09-18**, merged as Warband main `df3ef1c` (in `89a6587`): every
+criterion holds. The branch took main in (`b30e7cc`): the campaign's Normal is
+Medium and shifts along Easy, Medium, Hard and Master; missions are made with
+`make_brain`; Campaign moved to A (P is Profile). Every mission names its
+layout: Crossings for the ford, Forest for the Court, Plains for the rest.
+Every mission is tested both ways, the choices go through their debriefs, a
+second process reads the progress file, and the epilogue speaks the three
+choices (`tests/warband/test_campaign.py`, 22 tests). Looking at 1200×680
+found three fixes. Notices now place themselves through `draw_below`, which
+the engine uses. The objectives panel and first notices wait for the title
+banner. A camera cue no longer pans into unexplored ground.
+`tools/verify_campaign.py --size` frames and mission maps at 1280×800 and
+1200×680 were looked at; the visual lint walks five campaign screens.
+Fingerprint unchanged; fuzz (4 games, 10 monkey runs) clean; suite 1,355
+passed. Published after the shared server's
+[rollout](../saga-online/docs/wb016-011-rollout.md):
+[Tests 35386809507](https://github.com/ikamensh/warband/actions/runs/35386809507),
+[native package checks 35386809594](https://github.com/ikamensh/warband/actions/runs/35386809594),
+[promotion 35389432103](https://github.com/ikamensh/saga-online/actions/runs/35389432103)
+and [public download checks 35389690968](https://github.com/ikamensh/saga-online/actions/runs/35389690968):
+live as Warband 0.2.32. The missions' tuning waits for people (WB-013).
 
 ## WB-024 — Plan fewer paths in a melee
 
