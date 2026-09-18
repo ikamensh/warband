@@ -28,7 +28,7 @@ catches its class.
 | WB-004 | Next | done | Give melee attacks readable weight and contact | User |
 | WB-005 | Next | done | Replace the rotating-sprite death with convincing falls | User |
 | WB-006 | Next | done | Add blood on damaging hits | User |
-| WB-007 | Next | in progress | Leave grey abandoned buildings when a player resigns in FFA | User |
+| WB-007 | Next | done | Leave grey abandoned buildings when a player resigns in FFA | User |
 | WB-008 | Next | done | Improve health bars and building progress indicators | User |
 | WB-015 | Next | done | Verify and complete durable local player storage outside game sources | User |
 | WB-009 | Next | proposed | Establish current battle performance and fix measured bottlenecks | User / engine split |
@@ -38,7 +38,7 @@ catches its class.
 | WB-013 | Next | proposed | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Later | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-016 | Later | proposed | Assess and recover the six-mission Thornwood campaign | Recovered branch |
-| WB-017 | Next | in progress | Preserve movement speed through path waypoints | WB-003 diagnosis |
+| WB-017 | Next | done | Preserve movement speed through path waypoints | WB-003 diagnosis |
 | WB-018 | Next | done | Keep large selections inside the HUD | Native crowd capture |
 | WB-019 | Next | done | Remove stray sprite-sheet lines from painted units | Native melee review |
 | WB-020 | Later | proposed | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
@@ -451,7 +451,23 @@ may attack it while nobody's brain targets it. Razing it rewards nothing and
 raises no alarm. Automatic AI surrender follows the same rule. A two-player
 match keeps the current removal: it ends there anyway.
 
-**Acceptance (recorded 2026-09-18 before implementation), in progress on `rules`:**
+**Done 2026-09-18**, commit `0ea2c1f` on `rules`, merged as Warband main
+`0bbe4ae`: every criterion below holds. Its publication needed the shared
+server first: Saga Online's [rules rollout](../saga-online/docs/warband-rules-rollout.md)
+activated bundle `58f75c42…` (this commit, sagaforge `10f4d87`) at 02:01 UTC
+after CI acceptance, a fresh verified backup, the retained-seat rehearsal,
+public health, attestation, three-game smoke, native journeys and a live
+rejoin of every retained seat. Then [Tests 35295716669](https://github.com/ikamensh/warband/actions/runs/35295716669),
+[Native package checks 35295716718](https://github.com/ikamensh/warband/actions/runs/35295716718),
+[Publish 35296736779](https://github.com/ikamensh/warband/actions/runs/35296736779) (release 0.2.11, refused
+by the compatibility gate until the rollout), Saga Online's
+[promotion 35297987598](https://github.com/ikamensh/saga-online/actions/runs/35297987598) and
+[public download checks 35298112116](https://github.com/ikamensh/saga-online/actions/runs/35298112116):
+live as Warband 0.2.11. Locally: the suite (1178 passed), `tools/fuzz.py --games 12 --monkey 12
+--seed 1900` clean with the tile-based stall detector, the fingerprint refreshed deliberately,
+`ai_report --seeds 3 --decide 0` unchanged in outcome, and the abandoned base's frame inspected.
+
+**Acceptance (recorded 2026-09-18 before implementation):**
 
 1. Rules: in a match of three or more players, a resignation keeps every
    building the player owned, finished or not, as abandoned: footprint and hit
@@ -763,7 +779,22 @@ about 0.04. The work happens on the `rules` branch (worktree
 authoritative modules and publication then waits for one reviewed server
 rollout.
 
-**Acceptance (recorded 2026-09-18 before implementation), in progress on `rules`:**
+**Done 2026-09-18**, commits `bd60932` and `2974699` on `rules`, merged as
+Warband main `0bbe4ae`: every criterion below holds, and the corner-bounce
+deadlock its fuzz found ("Found on the way" below) is fixed in the same
+series. Published and promoted together with WB-007 after the shared
+server's [rules rollout](../saga-online/docs/warband-rules-rollout.md):
+[Tests 35295716669](https://github.com/ikamensh/warband/actions/runs/35295716669),
+[Native package checks 35295716718](https://github.com/ikamensh/warband/actions/runs/35295716718),
+[Publish 35296736779](https://github.com/ikamensh/warband/actions/runs/35296736779), Saga Online's
+[promotion 35297987598](https://github.com/ikamensh/saga-online/actions/runs/35297987598) and
+[public download checks 35298112116](https://github.com/ikamensh/saga-online/actions/runs/35298112116):
+live as Warband 0.2.11. Locally: `tests/warband/test_waypoints.py` and `test_off_course.py`, the
+suite (1178 passed), `tools/fuzz.py --games 12 --monkey 12 --seed 1900` clean, the fingerprint
+refreshed deliberately, `ai_report --seeds 3 --decide 0` before and after with every difficulty
+still beating the script, the straight trace without short ticks (`docs/movement-diagnosis.md`).
+
+**Acceptance (recorded 2026-09-18 before implementation):**
 
 1. A tick's travel is spent in full along the path: reaching a waypoint with
    budget left, the unit goes on towards the next (through as many waypoints
