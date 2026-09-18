@@ -31,18 +31,18 @@ catches its class.
 | WB-007 | Next | done | Leave grey abandoned buildings when a player resigns in FFA | User |
 | WB-008 | Next | done | Improve health bars and building progress indicators | User |
 | WB-015 | Next | done | Verify and complete durable local player storage outside game sources | User |
-| WB-009 | Next | proposed | Establish current battle performance and fix measured bottlenecks | User / engine split |
+| WB-009 | Next | in progress | Establish current battle performance and fix measured bottlenecks | User / engine split |
 | WB-010 | Later | proposed | Smooth online movement and make connection problems understandable | Suggested |
 | WB-011 | Later | proposed | Keep fog-hidden state out of opponents' network snapshots | Suggested |
 | WB-012 | Later | proposed | Support three- and four-human online FFA | Suggested |
-| WB-013 | Next | proposed | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
+| WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Later | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-016 | Later | proposed | Assess and recover the six-mission Thornwood campaign | Recovered branch |
 | WB-017 | Next | done | Preserve movement speed through path waypoints | WB-003 diagnosis |
 | WB-018 | Next | done | Keep large selections inside the HUD | Native crowd capture |
 | WB-019 | Next | done | Remove stray sprite-sheet lines from painted units | Native melee review |
 | WB-020 | Later | proposed | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
-| WB-021 | Next | ready | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
+| WB-021 | Next | blocked | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
 | WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
 | WB-023 | Next | done | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
 
@@ -670,6 +670,38 @@ findings into S2D-002 onward; keep model/view-specific fixes here. Speed-only
 changes preserve the simulation fingerprint. Never benchmark under a profiler
 or another expensive verification job.
 
+**Where it starts, 2026-09-18:** the last figures are from the melee work
+([melee-animation.md](docs/melee-animation.md)): on Saga2D 0.3.2 the
+reference battle's late frames were p50 10.9 / p95 18.4 ms and the whole run
+p95 17.8 ms; the WB-004 rollout measured the unchanged battle at whole-run
+p95 15.58 ms on 0.3.3. Since then the units and buildings are painted sheets
+(WB-019, WB-023), deaths leave bodies and blood (WB-005, WB-006), bars draw
+over wounded units (WB-008), and movement changed (WB-017). CI has no frame
+gate: W10 is measured by hand on the reference Mac.
+
+**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+
+1. Evidence on this Mac, unpaced, without a profiler or another expensive job,
+   naming host, resolution, commit and engine: `tools/perf.py` records p50,
+   p95 and max of the late frames and the whole run with the phase breakdown
+   (world step, view sync, scene draw, UI draw, batch draw and flip) for the
+   150-unit reference battle and, through new scenarios of the same tool, a
+   four-player battle of about 300 units, panning and zooming across a
+   battle, a mass-death scene while its bodies and blood linger, and repeated
+   match restarts (title → match, several times) with the first frames of each
+   match separated from steady play; `tools/step_bench.py --repeat 3` records
+   the model's step time and its profile.
+2. The gate: the reference battle's late p95 is under 16 ms (W10). Every other
+   scenario's steady p95 is under 16 ms as well, or its miss is reproducible,
+   traced to a phase and either fixed here (model, view, scene) or, when the
+   cost is the renderer's, filed in the Saga2D backlog (S2D-002 onward) with
+   the numbers.
+3. Speed-only changes keep `tools/sim_fingerprint.py --check` unchanged and
+   the suite green; anything that changes a frame's look is looked at.
+4. The figures, host and revisions are recorded here and in the W10 row of
+   [warband-early-access-progress.md](docs/warband-early-access-progress.md);
+   the logs are under `docs/evidence/perf/`.
+
 ## WB-010 — Online responsiveness and connection feedback
 
 The online path publishes full world snapshots at 10 Hz; distinguish that
@@ -721,6 +753,11 @@ checks after WB-001, while retaining human assessment of animation and clarity.
 **Done when:** each blocker becomes a reproducible ticket and is resolved or
 explicitly deferred; current evidence replaces stale gate claims. Automated
 checks cannot mark the human playtest complete.
+
+**Blocked 2026-09-18:** this needs people who have not played before and a
+Windows machine besides the reporter's; nothing to build until a playtest
+happens. What unblocks it: one or two fresh players' sessions (a recording or
+notes on what confused them) and the Windows report's follow-up.
 
 ## WB-014 — Difficulty and race-balance evidence
 
@@ -992,6 +1029,18 @@ for an aspect mismatch and shows a readable HUD (the layouts are made for
 1280 wide and up; a `scale_factor` of 2 keeps text sharp); the startup matrix
 in `tests/warband/test_startup.py` names that desktop; a native frame from
 such a window is inspected. Ready; not started during the pause after WB-004.
+
+**Blocked 2026-09-18:** the fix needs a Windows desktop at 3840×2160 with
+display scaling to measure what pyglet reports and what the OS hands back,
+and to inspect the frame. GitHub's Windows runners cannot change their
+session's DPI or resolution inside a job, so no scaled virtual desktop is
+available in CI, and this Mac cannot stand in for Windows display scaling.
+What unblocks it: a session on such a desktop (the reporter's machine or a
+Windows VM with a 4K scaled display), starting with the desktop's scale and
+resolution from Settings › Display and the output of
+`python -c "import pyglet; s = pyglet.display.get_display().get_default_screen(); print(s.width, s.height, s.get_scale(), s.get_dpi())"`
+in the game's environment. The startup matrix already names the desktop from
+the report with the scale it is presumed to report.
 
 ## WB-022 — The first match starts on the window the OS handed back
 
