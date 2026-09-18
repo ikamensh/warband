@@ -25,10 +25,11 @@ WB-010, live as 0.2.33
 ([`5cb5959`](https://github.com/ikamensh/warband/blob/5cb5959df79bc09042e6f597736d7e43240a15a2/BACKLOG.md));
 WB-012, live as 0.2.34
 ([`12ecf88`](https://github.com/ikamensh/warband/blob/12ecf88fef5ba74fe6c29a76bdf4defcf0774a02/BACKLOG.md)).
+Removed 2026-09-19: WB-040, merged as `9c5caa4`
+([`c49badb`](https://github.com/ikamensh/warband/blob/c49badb5f2baaca0d882f500caa09b38b4139864/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
-| WB-040 | First | proposed | A fast test suite by default; slow tests on demand and in CI; better tests on the way | User 2026-09-18 |
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
@@ -285,128 +286,6 @@ all four race voices is what was chosen. A test pins it: the new cue's level is
 under the order cue's (or there is no sound), and a burst of selections
 plays one sound. `SOUND_VERSION` is bumped so cached WAVs are made again,
 and Ilya has heard it in a match. Presentation only.
-
-## WB-040 — A fast suite by default; slow tests on demand and in CI
-
-Ilya, 2026-09-18, high priority: make the test suite dramatically faster.
-Split it into fast tests that run by default and slow ones that run on
-demand and in CI, write the agent instructions for both, and improve the
-tests on the way (merge them, state properties, think long term).
-
-Where it stands: 1,284 tests in 79 files, 13,300 lines of tests for 25,000
-lines of game and tools. CI runs them all in one process: 508 s on the last
-green run (1,272 passed, 12 skipped). AGENTS.md says about four minutes
-locally. No test is marked slow, nothing runs in parallel, and no Saga repo
-has a split yet. The code shows the expensive kinds: whole matches (arena
-tests play up to 20 minutes, some twice to check the settled rule;
-`test_pro_ai.py` plays a six-minute four-player match), matrices that build
-a scene per case (146 layout cases, 129 melee-presentation cases), and art
-and audio generation. Start with `pytest --durations=0` on a quiet machine
-to see where the time actually goes.
-
-The split:
-
-* `uv run pytest -q` runs the fast tier, which an agent runs after every
-  change. Aim for about 30 s for the whole tier on the Mac, with a per-test
-  budget (half a second, say).
-* `@pytest.mark.slow` marks the rest, and `--slow` (a conftest option) runs
-  them. The default run lists them as deselected, not skipped, so nobody
-  forgets they exist. A slow test's docstring says why it cannot be fast.
-* CI runs both tiers on every push, the slow tier in parallel with
-  `pytest-xdist` (the repo is public, so its runners have four cores). CI
-  also fails when an unmarked test goes over the budget, so the fast tier
-  cannot slow down unnoticed.
-
-Faster, not only split:
-
-* Expensive things that never change (generated maps, loaded painted
-  sheets, synthesized clips) are built once per session, not once per
-  parametrized case. Nothing mutable is shared between tests.
-* A test of the arena's machinery (determinism, placements, the settled
-  rule) plays the shortest match on the smallest map that shows the
-  property. How strong an AI is gets settled by `tools/arena.py`, not by
-  the suite.
-* Only valid cases are generated: the 12 skipped tests are production-UI
-  cases for another race's art.
-
-Better, not only faster:
-
-* The three kinds of test that earn their keep: executability (every
-  module and screen runs), properties (every World order is atomic, save
-  and load and replay round-trip from any seed and moment, maps are fair
-  over seeds, layouts and player counts, paths keep their invariants), and
-  regressions (the fuzz-seed tests stay). For the model and pathfinding,
-  try `hypothesis` with few examples locally and more in CI.
-* Near-duplicate tests merge into one property whose failure message names
-  the failing case.
-* Tests check behaviour through public interfaces. Today 206 lines in 38
-  files touch private members. The most common, `game._teardown()` (42),
-  shows the engine's test support has no public way to make a second game,
-  which is an S2D item. Each of the rest is a missing public accessor or a
-  test of internals.
-* Tests that pin tuning constants go (`PRO_WARDEN.towers_early == 1`): they
-  break on every balance change and catch nothing.
-
-The guard: measure coverage of `warband/` before and after
-(`uv run --with coverage`). The full suite's coverage must not drop, and the
-fast tier alone should cover about 85 % of the lines the full suite covers,
-so it is a real check rather than a smoke test.
-
-AGENTS.md's Commands and Rules say which tier runs when: the fast one after
-every change; the slow one on demand, before pushing a change to rules, AI,
-replays, art or audio, and always in CI. They also say what counts as slow,
-where a new test goes, and what the budget is. The stack root's "every repo:
-`uv run pytest -q`" stays true. Once a second Saga game wants the same
-split, the option and the budget check move into `saga2d.testing`, where
-the fixtures already live.
-
-Other sessions edit tests all the time, so do this on a branch in its own
-worktree. Land the mechanism first as one small commit (marker, option, CI,
-AGENTS.md), then improve the files a few at a time, rebasing often.
-
-**Done when:** the fast tier runs in about 30 s on the Mac and the whole
-suite in under four minutes in CI (from 8½). The budget check fails CI when
-a test goes over. Coverage before and after is recorded here and meets the
-guard. The suite passes three runs in a row under `pytest -n auto`, and
-AGENTS.md documents both tiers.
-
-**Done 2026-09-19, merged into main as `9c5caa4`** (branch `fast-suite`; the
-Done when above was the acceptance). It holds:
-
-- `uv run pytest -q` runs the fast tier, 927 tests, in about 17 s on the Mac:
-  pyproject's `-n auto` spreads it over four workers, and a named file or test
-  runs in one process (about 48 s for the whole tier). Before, the whole suite
-  took 352 s in one process. Both tiers: 1,396 tests in about 71 s.
-- CI: the Tests workflow's two jobs ran side by side in 203 s (fast tier 56 s,
-  slow tier 138 s) and 211 s (the compiled simulation's tests, whose mypyc
-  compile needs a runner of its own), against 805 s for `4e092a0` and 1,009 s
-  for main with fast-sim's tests, in one process
-  ([run 35402339370](https://github.com/ikamensh/warband/actions/runs/35402339370)).
-- The budget: CI runs the fast tier with `--budget 3`, since four workers on a
-  runner run a test about four times slower than the Mac. Its first run failed
-  two tests over the first try (2.5 s); they joined the slow tier.
-- Coverage of `warband/`: the full suite at `d4e2e19` covered 13,532 lines
-  (91.68 %), both tiers now 13,517 (91.58 %). The difference is the fast
-  simulation's compile path (compiled in the fresh checkout measured before,
-  cached in the one after; CI compiles it on every run) and `sound.generate`,
-  deleted. A cleric's leash, which a long AI match used to cover by chance,
-  has a test of its own. The fast tier alone covers 12,636 lines, 93.5 % of
-  what both tiers cover.
-- Both tiers passed three runs in a row under `-n auto`: 1,396 each, 70–71 s.
-- AGENTS.md says which tier runs when, what counts as slow and the budget.
-
-Faster, not only split: a test that waits for a state ticks in tenths of a
-second instead of drawing sixtieths; the arena's machinery plays minute-long
-matches; painted ground is painted once per session (`ground_painted_once`);
-Sagaforge `e099051` recolours a painted frame to a team in 1.75 ms instead of
-3.61, the same bytes for all 8,484 recolours of the 2,828 frames (the game's
-warm-up recolours six frames a frame); the sound tests stopped composing the
-fifteen tracks twice a run; the painted-sheet matrix stopped loading all 48
-sheets at collection. Better too: twelve skipped cases became valid cases
-only, a painted subject that loses its sheet now fails, 42 private teardowns
-became `Game.close()`, two tests stopped pinning tuning numbers, and a
-duplicate music check went. The split stays in Warband until a second game
-wants it in `saga2d.testing`. What is left is WB-042.
 
 ## WB-041 — Folders for the source tree
 
