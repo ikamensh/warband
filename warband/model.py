@@ -33,7 +33,7 @@ from warband.rules import (
     FRENZY_BONUS, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, PLAYERS,
     PLUNDER_SHARE, REGROWTH_SECONDS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION, STARTING_GOLD, STARTING_LUMBER,
     ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
-    UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
+    MAX_QUEUED_ORDERS, UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
     Terrain, UnitInfo, UnitType, Upgrade,
 )
 
@@ -917,7 +917,8 @@ class World:
 
     # -- Commands ------------------------------------------------------------------
 
-    def _own_units(self, unit_ids: list[int], player: int | None = None) -> list[Unit]:
+    def _own_units(self, unit_ids: list[int], player: int | None = None, *, queue: bool = False) -> list[Unit]:
+        """The living units among *unit_ids*; with *queue*, only if each has room for one more order behind its own."""
         units = []
         for uid in unit_ids:
             unit = self.units.get(uid)
@@ -925,6 +926,8 @@ class World:
                 continue
             if player is not None and unit.player != player:
                 raise RuleError("Not your unit")
+            if queue and len(unit.orders) >= MAX_QUEUED_ORDERS:
+                raise RuleError(f"Too many queued orders (a unit takes {MAX_QUEUED_ORDERS})")
             units.append(unit)
         return units
 
@@ -950,7 +953,7 @@ class World:
     @recorded
     def move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         target = self._clamp(target)
-        units = self._own_units(unit_ids)
+        units = self._own_units(unit_ids, queue=queue)
         pace = min((self.speed_of(u) for u in units), default=None) if len(units) > 1 and not queue else None
         for unit in units:
             self._issue(unit, Move(target, pace=pace), queue=queue)
@@ -958,7 +961,7 @@ class World:
     @recorded
     def attack_move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         target = self._clamp(target)
-        units = self._own_units(unit_ids)
+        units = self._own_units(unit_ids, queue=queue)
         pace = min((self.speed_of(u) for u in units), default=None) if len(units) > 1 and not queue else None
         for unit in units:
             self._issue(unit, AttackMove(target, pace=pace) if not unit.is_worker else Move(target, pace=pace), queue=queue)
@@ -967,7 +970,7 @@ class World:
     def patrol(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         """Patrol between where each unit stands and *target*."""
         target = self._clamp(target)
-        for unit in self._own_units(unit_ids):
+        for unit in self._own_units(unit_ids, queue=queue):
             if unit.is_worker:
                 self._issue(unit, Move(target), queue=queue)
             else:
@@ -980,7 +983,7 @@ class World:
             raise RuleError("No such target")
         if isinstance(target, Building) and target.type is BuildingType.GOLD_MINE:
             raise RuleError("A gold mine cannot be attacked")
-        units = self._own_units(unit_ids)
+        units = self._own_units(unit_ids, queue=queue)
         if any(target.player == unit.player for unit in units):
             raise RuleError("Cannot attack your own")
         for unit in units:
@@ -1014,7 +1017,7 @@ class World:
                 raise RuleError("Not a gold mine")
         elif not self.in_bounds(target) or self.terrain_at(target) is not Terrain.TREES:
             raise RuleError("No trees there")
-        units = self._own_units(unit_ids)
+        units = self._own_units(unit_ids, queue=queue)
         if not all(unit.is_worker for unit in units):
             raise RuleError("Only peasants can harvest")
         for unit in units:
@@ -1025,6 +1028,7 @@ class World:
         unit = self.units.get(unit_id)
         if unit is None or not unit.is_worker:
             raise RuleError("Only peasants can build")
+        self._own_units([unit_id], queue=queue)
         info = BUILDINGS[building_type]
         if building_type is BuildingType.GOLD_MINE:
             raise RuleError("Gold mines cannot be built")
@@ -1036,7 +1040,7 @@ class World:
     @recorded
     def repair(self, unit_ids: list[int], building_id: int, *, queue: bool = False) -> None:
         """Peasants among *unit_ids* mend one of their own finished, damaged buildings."""
-        workers = [u for u in self._own_units(unit_ids) if u.is_worker]
+        workers = [u for u in self._own_units(unit_ids, queue=queue) if u.is_worker]
         if not workers:
             raise RuleError("Only peasants can repair")
         b = self.buildings.get(building_id)
@@ -1089,7 +1093,7 @@ class World:
         A displayed target can be supplied by ID, or None for empty ground.
         Omission picks at the model point, preserving AI and recorded orders.
         """
-        units = self._own_units(unit_ids)
+        units = self._own_units(unit_ids, queue=queue)  # room for every unit now, whichever order each ends up with
         if not units:
             return "none"
         player = units[0].player
