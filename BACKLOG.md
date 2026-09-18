@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-041**; a new
+section; git history keeps the record. The last ID given is **WB-042**; a new
 item takes the next one and updates this line.
 
 Done and removed 2026-09-18, every one merged into main (whose code is live as
@@ -38,6 +38,7 @@ WB-012, live as 0.2.34
 | WB-038 | Next | proposed | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | proposed | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
+| WB-042 | Later | proposed | Tests read through public accessors; try property tests for the model and paths | WB-040 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -369,6 +370,44 @@ a test goes over. Coverage before and after is recorded here and meets the
 guard. The suite passes three runs in a row under `pytest -n auto`, and
 AGENTS.md documents both tiers.
 
+**Done 2026-09-19, merged into main as `9c5caa4`** (branch `fast-suite`; the
+Done when above was the acceptance). It holds:
+
+- `uv run pytest -q` runs the fast tier, 927 tests, in about 17 s on the Mac:
+  pyproject's `-n auto` spreads it over four workers, and a named file or test
+  runs in one process (about 48 s for the whole tier). Before, the whole suite
+  took 352 s in one process. Both tiers: 1,396 tests in about 71 s.
+- CI: the Tests workflow's two jobs ran side by side in 203 s (fast tier 56 s,
+  slow tier 138 s) and 211 s (the compiled simulation's tests, whose mypyc
+  compile needs a runner of its own), against 805 s for `4e092a0` and 1,009 s
+  for main with fast-sim's tests, in one process
+  ([run 35402339370](https://github.com/ikamensh/warband/actions/runs/35402339370)).
+- The budget: CI runs the fast tier with `--budget 3`, since four workers on a
+  runner run a test about four times slower than the Mac. Its first run failed
+  two tests over the first try (2.5 s); they joined the slow tier.
+- Coverage of `warband/`: the full suite at `d4e2e19` covered 13,532 lines
+  (91.68 %), both tiers now 13,517 (91.58 %). The difference is the fast
+  simulation's compile path (compiled in the fresh checkout measured before,
+  cached in the one after; CI compiles it on every run) and `sound.generate`,
+  deleted. A cleric's leash, which a long AI match used to cover by chance,
+  has a test of its own. The fast tier alone covers 12,636 lines, 93.5 % of
+  what both tiers cover.
+- Both tiers passed three runs in a row under `-n auto`: 1,396 each, 70–71 s.
+- AGENTS.md says which tier runs when, what counts as slow and the budget.
+
+Faster, not only split: a test that waits for a state ticks in tenths of a
+second instead of drawing sixtieths; the arena's machinery plays minute-long
+matches; painted ground is painted once per session (`ground_painted_once`);
+Sagaforge `e099051` recolours a painted frame to a team in 1.75 ms instead of
+3.61, the same bytes for all 8,484 recolours of the 2,828 frames (the game's
+warm-up recolours six frames a frame); the sound tests stopped composing the
+fifteen tracks twice a run; the painted-sheet matrix stopped loading all 48
+sheets at collection. Better too: twelve skipped cases became valid cases
+only, a painted subject that loses its sheet now fails, 42 private teardowns
+became `Game.close()`, two tests stopped pinning tuning numbers, and a
+duplicate music check went. The split stays in Warband until a second game
+wants it in `saga2d.testing`. What is left is WB-042.
+
 ## WB-041 — Folders for the source tree
 
 Ilya, 2026-09-18: the package has no folder structure, so group what
@@ -424,3 +463,20 @@ fingerprint and the replay tests are unchanged by the move, since it is
 only a move. The suite, fuzz, a packaged native build and the online smoke
 pass; saga-online's references are updated and the rollout is done.
 AGENTS.md describes the tree and says where new code goes.
+
+## WB-042 — Tests through public accessors, and property tests
+
+Left from WB-040: 172 lines in 26 test files still reach into private members,
+most often `view._trees` (22), `scene._card` (17), `_page_tile` (10),
+`_blocked` (10), `_portraits` (9), `effects._items` (9) and `_ground_keys` (8).
+Each is a missing public accessor or a test of internals: give the view and
+the scene what the tests need to read, or test through what the player sees.
+Then try `hypothesis` for the model and pathfinding, a few examples in the
+fast tier and more in the slow one: every order atomic from any state, save,
+load and replay round-trip from any seed and moment, paths keep their
+invariants.
+
+**Done when:** no test reads a private member of `warband/`, or each that does
+says why; the property tests that earn their keep run in the tiers, and the
+rest are recorded here with what they found.
+
