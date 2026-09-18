@@ -7,7 +7,6 @@ Unknown terrain stays blocked for automatic worker routes.
 
 from __future__ import annotations
 
-import itertools
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
@@ -117,20 +116,25 @@ class WorkerKnowledge:
         for y, row in enumerate(world.terrain):
             base = y * width
             seen = visible[base:base + width]
-            if seen.count(0) == width:
-                continue  # no tile of this row is lit
-            for x in itertools.compress(range(width), seen):
-                index = base + x
-                terrain = row[x]
-                if remembered[index] is not terrain:
-                    changed = True
-                    remembered[index] = terrain
-                    terrain_blocked[index] = terrain in BLOCKING
-                    if terrain is Terrain.TREES:
-                        trees.add(index)
-                    else:
-                        trees.discard(index)
-                    self._tree_order = None
+            lo = seen.find(1)
+            while lo >= 0:  # each run of lit tiles in the row, compared whole first: usually nothing changed
+                hi = seen.find(0, lo)
+                if hi < 0:
+                    hi = width
+                if remembered[base + lo:base + hi] != row[lo:hi]:
+                    for x in range(lo, hi):
+                        index = base + x
+                        terrain = row[x]
+                        if remembered[index] is not terrain:
+                            changed = True
+                            remembered[index] = terrain
+                            terrain_blocked[index] = terrain in BLOCKING
+                            if terrain is Terrain.TREES:
+                                trees.add(index)
+                            else:
+                                trees.discard(index)
+                            self._tree_order = None
+                lo = seen.find(1, hi)
         observed = {building.id: building for building in world.buildings.values()
                     if building.player == player or self.sees(visible, building.x, building.y, building.size)}
         for bid, remembered_building in list(self.buildings.items()):

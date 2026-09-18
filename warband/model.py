@@ -404,23 +404,6 @@ def sight_spans(radius: int) -> list[tuple[int, int, bytes]]:
     return _SIGHT[radius]
 
 
-_DISCS: dict[tuple[int, int], tuple[int, int]] = {}
-
-
-def disc_mask(radius: int, width: int) -> tuple[int, int]:
-    """A sight disc as one big integer of flag bytes and its length, laid out for a grid *width*
-    tiles wide: OR-ing it into the grid at the disc's top-left corner reveals every row at once."""
-    disc = _DISCS.get((radius, width))
-    if disc is None:
-        length = 2 * radius * width + 2 * radius + 1  # the last row stops at the disc's right edge
-        rows = bytearray(length)
-        for row, (_dy, half, run) in enumerate(sight_spans(radius)):
-            start = row * width + radius - half
-            rows[start:start + len(run)] = run
-        disc = _DISCS[(radius, width)] = (int.from_bytes(rows, "little"), length)
-    return disc
-
-
 def or_into(target: bytearray, source: bytes | bytearray) -> None:
     """``target[i] |= source[i]`` for every byte of two flag grids, done in C through big integers."""
     target[:] = (int.from_bytes(target, "little") | int.from_bytes(source, "little")).to_bytes(len(target), "little")
@@ -470,6 +453,7 @@ class World:
         self._worker_ai_views: dict[int, tuple[int, Any]] = {}
         self._worker_ai_navigation: dict[int, tuple[int, bytearray]] = {}
         self._worker_ai_routes: dict[int, Any] = {}  # worker_ai._Routes per player, kept across ticks
+        self._sight_layers: dict[int, tuple[frozenset[tuple[Pos, int]], bytes]] = {}  # per player, see update_vision()
         self.settlement = Settlement(self)
         self._exposed: set[int] = set()  # players whose last holdings stand revealed
         self._region_map: pathing.Regions | None = None  # walkable regions of the static grid, see _regions()
@@ -606,17 +590,28 @@ class World:
         self._worker_ai_navigation.clear()
         # Collect each player's sight discs first: everything on one tile with one sight radius
         # reveals the very same tiles, and a crowd around a mine or in a battle line is common.
-        discs: list[set[tuple[Pos, int]]] = [set() for _ in self.players]
-        for unit in self.units.values():
-            discs[unit.player].add((unit.tile, unit.info.sight))
+        # Buildings never move, so what they see is painted once and kept until one goes up,
+        # comes down or is abandoned; the units' discs go on top of that every time.
+        standing: list[set[tuple[Pos, int]]] = [set() for _ in self.players]
         for building in self.buildings.values():
             if building.player is not None and not building.abandoned:
                 cx, cy = building.center
-                discs[building.player].add(((int(cx), int(cy)), building.info.sight + building.size // 2))
+                standing[building.player].add(((int(cx), int(cy)), building.info.sight + building.size // 2))
+        moving: list[set[tuple[Pos, int]]] = [set() for _ in self.players]
+        for unit in self.units.values():
+            moving[unit.player].add((unit.tile, unit.info.sight))
         for player in self.players:
             visible = self.visible[player.id]
-            visible[:] = bytes(len(visible))
-            for at, sight in discs[player.id]:
+            discs = standing[player.id]
+            layer = self._sight_layers.get(player.id)
+            if layer is not None and layer[0] == discs:
+                visible[:] = layer[1]
+            else:
+                visible[:] = bytes(len(visible))
+                for at, sight in discs:
+                    self._reveal(visible, at, sight)
+                self._sight_layers[player.id] = (frozenset(discs), bytes(visible))
+            for at, sight in moving[player.id] - discs:
                 self._reveal(visible, at, sight)
             or_into(self.explored[player.id], visible)
             self.worker_knowledge[player.id].refresh(self, player.id)
@@ -658,10 +653,11 @@ class World:
         width, height = self.width, self.height
         x0, y0 = at
         if radius <= x0 < width - radius and radius <= y0 < height - radius:
-            # No row of the disc reaches an edge, so the whole disc goes in as one big integer.
-            mask, length = disc_mask(radius, width)
-            lo = (y0 - radius) * width + x0 - radius
-            visible[lo:lo + length] = (int.from_bytes(visible[lo:lo + length], "little") | mask).to_bytes(length, "little")
+            # No row of the disc reaches an edge, so every row's run goes in whole.
+            centre = (y0 - radius) * width + x0
+            for _dy, half, run in sight_spans(radius):
+                visible[centre - half:centre + half + 1] = run
+                centre += width
             return
         for dy, half, run in sight_spans(radius):
             y = y0 + dy
