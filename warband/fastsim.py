@@ -6,7 +6,11 @@ The modules in :data:`MODULES` (the world, its pathfinding and worker policy,
 the rule tables and both kinds of brain) are compiled from their own source,
 so a compiled match is the interpreted match: mypyc keeps Python's integer and
 float semantics and every operation's order, and ``tools/sim_fingerprint.py``
-checks the two to the bit (``tests/warband/test_fastsim.py``).  A build is
+checks the two to the bit (``tests/warband/test_fastsim.py``).  The grid
+searches of ``path.py`` are the one thing written twice: mypyc cannot keep
+their scores and heaps out of Python objects, so :data:`NATIVE` does them in C
+and path.py hands them over when it is there; the test holds the two to the
+same answers on random grids, and path.py stays the reference.  A build is
 filed under a hash of the sources it was made from, so an edited source is
 never run as an old build: the next activation compiles it again, which
 takes a minute or less.
@@ -27,6 +31,7 @@ the source.  ``WARBAND_INTERPRETED=1`` makes :func:`activate` a no-op.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -38,6 +43,8 @@ from pathlib import Path
 PACKAGE = Path(__file__).resolve().parent
 BUILDS = PACKAGE.parent / "build" / "fastsim"
 MODULES = ("rules", "races", "path", "worker_knowledge", "model", "worker_ai", "ai", "pro_ai")
+NATIVE = "_native.c"  # path.py's searches in C, built alongside; see its opening comment
+RECIPE = "2"  # bumped when the build itself changes, so that no build made the old way is reused
 ENV = "WARBAND_FASTSIM"  # the build a parent process activated, for the processes it starts
 OPT_OUT = "WARBAND_INTERPRETED"
 
@@ -45,9 +52,9 @@ OPT_OUT = "WARBAND_INTERPRETED"
 def key() -> str:
     """The name of the build these sources make on this interpreter."""
     digest = hashlib.sha256()
-    for name in MODULES:
-        digest.update(name.encode() + b"\0" + (PACKAGE / f"{name}.py").read_bytes() + b"\0")
-    digest.update(f"{sys.implementation.cache_tag}|{sysconfig.get_platform()}".encode())
+    for name in (*(f"{module}.py" for module in MODULES), NATIVE):
+        digest.update(name.encode() + b"\0" + (PACKAGE / name).read_bytes() + b"\0")
+    digest.update(f"{RECIPE}|{sys.implementation.cache_tag}|{sysconfig.get_platform()}".encode())
     return digest.hexdigest()[:20]
 
 
@@ -58,15 +65,21 @@ def build() -> Path:
         return target
     BUILDS.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f"{target.name}-", dir=BUILDS))
-    paths = [f"warband/{name}.py" for name in MODULES]
-    script = (
-        "from setuptools import setup\n"
-        "from mypyc.build import mypycify\n"
-        f"setup(name='warband-fastsim', packages=[], py_modules=[],"
-        f" ext_modules=mypycify({[f'--cache-dir={staging / 'mypy'}', '--follow-imports=silent', *paths]!r},"
-        f" target_dir={str(staging / 'c')!r}),"
-        f" script_args=['build_ext', '--build-lib', {str(staging)!r}, '--build-temp', {str(staging / 'obj')!r}])\n"
-    )
+    config = {"paths": [f"warband/{name}.py" for name in MODULES], "native": f"warband/{NATIVE}",
+              "cache": str(staging / "mypy"), "c": str(staging / "c"), "out": str(staging), "obj": str(staging / "obj")}
+    script = f"""
+import json, sys
+from setuptools import Extension, setup
+from mypyc.build import mypycify
+config = json.loads({json.dumps(config)!r})
+modules = mypycify(["--cache-dir=" + config["cache"], "--follow-imports=silent", *config["paths"]], target_dir=config["c"])
+modules.append(Extension("warband._native", [config["native"]]))
+if sys.platform != "win32":
+    for module in modules:  # no fused multiply-add: every float operation rounds on its own, as Python's do
+        module.extra_compile_args.append("-ffp-contract=off")
+setup(name="warband-fastsim", packages=[], py_modules=[], ext_modules=modules,
+      script_args=["build_ext", "--build-lib", config["out"], "--build-temp", config["obj"]])
+"""
     print(f"compiling the simulation with mypyc into {target} (once per change to its sources)...", file=sys.stderr, flush=True)
     done = subprocess.run([sys.executable, "-c", script], cwd=PACKAGE.parent, capture_output=True, text=True)
     if done.returncode:

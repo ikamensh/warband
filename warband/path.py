@@ -11,7 +11,13 @@ from __future__ import annotations
 import heapq
 import itertools
 import math
-from typing import Callable, Iterable, Iterator
+from array import array
+from typing import Callable, Iterable, Iterator, Sequence, cast
+
+try:
+    from warband import _native  # these searches in C, built only with the compiled simulation (warband/fastsim.py)
+except ImportError:  # the source runs, as it does in the game: the searches are the Python below
+    _native = None  # type: ignore[assignment]
 
 Pos = tuple[int, int]
 Passable = Callable[[int, int], bool]
@@ -109,6 +115,8 @@ def find_path_grid(start: Pos, goal: Pos, blocked: bytes | bytearray, width: int
     A goal in another region floods everything reachable; :class:`Regions` lets a
     caller substitute a reachable goal first.
     """
+    if _native is not None:
+        return _native.find_path_grid(start, goal, blocked, width, height, max_expansions)
     if start == goal:
         return []
     size = width * height
@@ -188,7 +196,13 @@ class Regions:
     def __init__(self, blocked: bytes | bytearray, width: int, height: int) -> None:
         self.grid = bytes(blocked)
         self.width, self.height = width, height
+        self._nearest: dict[tuple[Pos, int], Pos] = {}
         size = width * height
+        self.labels: Sequence[int]
+        if _native is not None:
+            self.labels = array("i", bytes(4 * size))
+            _native.region_labels(blocked, width, height, self.labels)
+            return
         labels = [0] * size
         region = 0
         for seed in range(size):
@@ -205,7 +219,6 @@ class Regions:
                         labels[nxt] = region
                         stack.append(nxt)
         self.labels = labels
-        self._nearest: dict[tuple[Pos, int], Pos] = {}
 
     def label(self, pos: Pos) -> int:
         return self.labels[pos[1] * self.width + pos[0]]
@@ -219,6 +232,8 @@ class Regions:
             return goal
         key = (goal, region)
         nearest = self._nearest.get(key)
+        if nearest is None and _native is not None:
+            nearest = self._nearest[key] = _native.nearest_in_region(cast(array, self.labels), region, goal, self.width)
         if nearest is None:
             gx, gy = goal
             width = self.width
@@ -236,6 +251,8 @@ def distance_field(starts: Iterable[int], blocked: bytes | bytearray, width: int
     """Walking distance from the nearest of the *starts* (flat indices) to every tile; infinity where
     no walk leads.  This floods the whole map, so it expands tiles through :func:`step_offsets` the
     way :func:`find_path_grid` does."""
+    if _native is not None:
+        return _native.distance_field(starts, blocked, width, height)
     size = width * height
     distances = [math.inf] * size
     frontier = []
@@ -289,6 +306,8 @@ def find_work_path(start: Pos, goals: dict[Pos, float], blocked: bytes | bytearr
     cannot deliver cargo or harvest a resource. None means no reachable goal;
     an empty path means the worker already occupies the chosen goal.
     """
+    if _native is not None:
+        return _native.find_work_path(start, goals, blocked, width, height)
     if not goals:
         return None
     size = width * height
