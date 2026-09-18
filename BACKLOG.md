@@ -55,6 +55,7 @@ catches its class.
 | WB-031 | Next | done | A snapshot tells a seat the match, not the server's dice or the other seat's map | Review 2026-09-18 |
 | WB-032 | Next | done | An abandoned tower never looses another arrow | Review 2026-09-18 |
 | WB-033 | Next | done | Old news leaves the snapshot: events ride five seconds, not for ever | Review 2026-09-18 |
+| WB-034 | Next | done | One way to load a save: a load in the match is a new match scene, as from the title | Review 2026-09-18 |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -1723,3 +1724,27 @@ across a quiet server restart, so a client never takes new news for old.
 checkpoint carries the count (`event_id`; older checkpoints fall back to the
 highest number they hold). `tests/warband/test_authority_world.py`. With
 WB-031 a mid-game state on a Small map is 69 KB where it was 100.
+
+## WB-034 — One way to load a save
+
+Found 2026-09-18 by the code review: a save was loaded two ways. From the
+title `load_game` built a new `GameScene`; in the match
+`GameScene.load_save_state` rebuilt the running scene in place, thirty lines
+that reset what somebody had thought of and kept the rest of the timeline left
+behind: the last alert (Space jumped to an attack that never happened in the
+loaded match), the battle mood and its music for ten more seconds, the camera
+bookmarks, and where the computer players' random stream had got to, so the
+same save played on differently loaded in the match than from the title.
+
+**Acceptance (recorded 2026-09-18 before implementation):** after a load in
+the match the scene is a new `GameScene` that says "Loaded", with no alert, in
+the peace mood, without the units of the match left behind; every existing
+load test (deaths mid-fall, melee recoil, leftover frame time, the save
+browser, the rated recording through a reload) holds on the loaded scene; a
+damaged save is still refused with the match untouched.
+
+**Done 2026-09-18**: `load_save_state` is `clear_and_push(load_game(state))`;
+`tests/warband/test_scene.py::test_a_load_in_the_match_leaves_the_abandoned_timeline_behind`
+(failed on the old code); seven tests that held the old scene object follow
+the loaded one; the suite 1,240 passed, 12 skipped. `MapView.reset` stays for
+the replay that continues through a reload.

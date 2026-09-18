@@ -1771,40 +1771,11 @@ class GameScene(Scene):
                 "player": f"{self.player.name} ({self.race.name})"}
 
     def load_save_state(self, state: dict) -> None:
-        world = check_save(state)
-        if (world.width, world.height) != (self.world.width, self.world.height):
-            self.game.clear_and_push(load_game(state, settings=self.settings))
-            return
-        self.world = world
-        self.human = next(p.id for p in world.players if p.human)
-        self.run_id = _saved_run_id(state)
-        self.ranked = state.get("ranked", True)
-        self.seed = state["seed"]
-        self.difficulty = Difficulty(state["difficulty"])
-        self.replay = self._recording(_saved_replay(state)) if self.ranked else None
-        self._resignation = None
-        self.rating_change = None
-        if self.profile is not None:
-            self.player.name = self.profile.name
-        self.brains = [make_brain(p.id, self.difficulty, self.seed) for p in world.players if not p.human]
-        self.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
-        self.tutorial = Tutorial() if state.get("tutorial") is not None and self.settings["tutorial"] else None
-        if self.tutorial is not None:
-            self.tutorial.step = state["tutorial"]
-        self._autosave_at = (world.time // AUTOSAVE_EVERY + 1) * AUTOSAVE_EVERY
-        self.effects.clear()
-        self.bodies, self.stains, self._blows = [], [], {}
-        self.selection = []
-        self.pending = None
-        self.build_menu = False
-        self.settlement_menu = None
-        self._game_over = False
-        self._acc = 0.0
-        self.view.reset(world, state.get("seen"))
-        self.ui.clear()
-        self._build_hud()
-        self.center_base(instant=True)
-        self.say("Loaded")
+        """A load is a new match scene, in the match as from the title: nothing of the timeline left behind
+        (its last alert, its battle mood, where its brains' random stream had got to) follows into the loaded one."""
+        scene = load_game(state, settings=self.settings)
+        scene.say("Loaded")
+        self.game.clear_and_push(scene)
 
 
 class _Overlay(Scene):

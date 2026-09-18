@@ -264,8 +264,9 @@ def test_escape_opens_the_menu_and_save_load_round_trips(play) -> None:
     press(game, "f5")
     scene.player.gold = 9999
     press(game, "f9")
-    assert scene.player.gold == 1000
-    assert len(scene.world.player_units(scene.human)) == 3
+    loaded = game.scene
+    assert isinstance(loaded, GameScene) and loaded.player.gold == 1000
+    assert len(loaded.world.player_units(loaded.human)) == 3
 
 
 def test_pause_menu_save_and_load_work_despite_the_deferred_pop(play) -> None:
@@ -280,7 +281,7 @@ def test_pause_menu_save_and_load_work_despite_the_deferred_pop(play) -> None:
     press(game, "escape")
     press(game, "f9")
     press(game, "1")
-    assert game.scene is scene and scene.player.gold == 1000
+    assert isinstance(game.scene, GameScene) and game.scene.player.gold == 1000
 
 
 def test_help_and_settings_overlays(play) -> None:
@@ -629,3 +630,23 @@ def test_the_army_button_counts_the_soldiers_and_selects_them_all(play) -> None:
     game.backend.inject_release(int(x + w / 2), int(y + h / 2))
     game.tick(1 / 60)
     assert sorted(scene.selection) == sorted(u.id for u in soldiers)
+
+
+def test_a_load_in_the_match_leaves_the_abandoned_timeline_behind(play) -> None:
+    """A load once rebuilt the running scene in place, keeping whatever nobody thought to reset: the last alert
+    (Space jumped to an attack that never happened in the loaded match), the battle mood and its music, and where
+    the computer players' random stream had got to.  A load is a new match scene now, in the match as from the title."""
+    game, scene = play
+    press(game, "f5")
+    world = scene.world
+    rival = next(p.id for p in world.players if p.id != scene.human)
+    victim = world.player_units(scene.human)[0]
+    raider = world.spawn_unit(rival, UnitType.FOOTMAN, (victim.x + 0.9, victim.y))
+    world.attack([raider.id], victim.id)
+    tick(game, 4.0)
+    assert scene.last_alert is not None and scene.mood == "battle"
+    press(game, "f9")
+    loaded = game.scene
+    assert isinstance(loaded, GameScene) and loaded is not scene, "the load kept the scene of the match left behind"
+    assert loaded.last_alert is None and loaded.mood == "peace"
+    assert "Loaded" in loaded.status and raider.id not in loaded.world.units

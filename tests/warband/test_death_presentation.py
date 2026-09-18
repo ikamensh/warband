@@ -120,7 +120,9 @@ def test_loading_a_save_mid_fall_leaves_nothing_behind(play) -> None:
     assert not body.landed
     scene.save_to("quick")
     scene.load_from("quick")
-    assert body.sprite.is_removed and scene.bodies == []
-    dust = bursts(scene)
+    game.tick(1 / 60)
+    loaded = game.scene  # a load is a new match scene
+    assert loaded is not scene and body.sprite.is_removed and loaded.bodies == []
+    dust = bursts(loaded)
     tick(game, 1.0)
-    assert not body.landed and bursts(scene) == dust and body not in scene.effects._items
+    assert not body.landed and bursts(loaded) == dust and body not in loaded.effects._items

@@ -115,11 +115,11 @@ def test_loading_a_save_restarts_the_same_motion_without_old_frame_time(game):
     sequences = []
     for leftover in (0.0, 0.013):
         game.tick(leftover)
-        scene.load_save_state(state)
+        game.scene.load_save_state(state)
         sequence = []
         for _ in range(9):
             game.tick(1 / 60)
-            sprite = scene.view.unit_sprite(walker.id)
+            sprite = game.scene.view.unit_sprite(walker.id)
             sequence.append((sprite.position, sprite.image))
         sequences.append(sequence)
     assert sequences[0] == sequences[1], "Loaded motion depends on time left over from the previous world"

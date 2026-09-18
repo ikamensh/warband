@@ -83,7 +83,7 @@ def test_save_browser_writes_slots_with_summaries_and_loads_them(game) -> None:
     assert isinstance(game.scene, SaveBrowserScene) and game.scene.mode == "load"
     assert any("3 players" in t for t in texts(game))
     press(game, "2")
-    assert game.scene is scene and scene.player.gold == 1000
+    assert isinstance(game.scene, GameScene) and game.scene is not scene and game.scene.player.gold == 1000
 
 
 def test_quicksave_and_autosave_slots(game) -> None:
