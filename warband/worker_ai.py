@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import math
 
 from warband import path as pathing
-from warband.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Unit, World, _hypot, rect_gap, tile_center
+from warband.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Unit, World, hypot, rect_gap, tile_center
 from warband.worker_knowledge import _Building
 from warband.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_SLOTS, SIM_DT, UNITS, UNIT_RADIUS, BuildingType, Resource, Terrain
 
@@ -120,7 +120,7 @@ def _stamp_structures(world: World, player: int, footprints: frozenset[tuple[int
     for x, y, size in footprints:
         for start, stop in knowledge.spans(x, y, size):
             blocked[start:stop] = b"\x01" * (stop - start)
-    floor, ceil, hypot = math.floor, math.ceil, _hypot
+    floor, ceil = math.floor, math.ceil
     for building in knowledge.threats:
         if building.player == player:
             continue

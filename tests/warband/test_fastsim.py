@@ -4,6 +4,7 @@ and its C searches and painting answer as the Python does."""
 from __future__ import annotations
 
 import importlib.util
+import math
 import os
 import random
 import subprocess
@@ -174,3 +175,50 @@ def test_the_c_site_search_finds_the_python_site() -> None:
                     assert answer == ai.first_site(world, building_type, player, list(candidates), taken)
                     found += answer is not None
     assert found > 20
+
+
+def _hypot_cases(rng: random.Random, count: int) -> list[tuple[float, float]]:
+    """Coordinate pairs as the simulation meets them (differences of positions on a map, tile offsets, a hair
+    apart) and as it never does (vast and tiny magnitudes, zeros, infinities and NaNs)."""
+    specials = [0.0, -0.0, 1.0, 0.5, 1e-300, 5e-324, 1e300, math.inf, -math.inf, math.nan, 2.0 ** -1000, 2.0 ** 1000]
+    cases = [(a, b) for a in specials for b in specials]
+    for _ in range(count):
+        kind = rng.randrange(6)
+        if kind == 0:
+            a, b = rng.uniform(-200, 200), rng.uniform(-200, 200)
+        elif kind == 1:
+            a, b = rng.randint(-40, 40) + rng.choice((0.0, 0.5)), rng.randint(-40, 40) + rng.choice((0.0, 0.5))
+        elif kind == 2:
+            p, q = rng.uniform(0, 100), rng.uniform(0, 100)
+            a, b = p - (p + rng.choice((1e-15, 1e-9, 1e-6))), q - rng.uniform(0, 100)
+        elif kind == 3:
+            a, b = 10.0 ** rng.uniform(-30, 30), 10.0 ** rng.uniform(-30, 30)
+        elif kind == 4:
+            a, b = rng.uniform(-1, 1) * 10.0 ** rng.uniform(-300, 300), rng.uniform(-1, 1) * 10.0 ** rng.uniform(-300, 300)
+        else:
+            a = rng.uniform(-50, 50)
+            b = a * rng.choice((1.0, -1.0, 0.0, 1e-160, 1e160))
+        cases.append((a, b))
+    return cases
+
+
+def test_the_hypot_port_is_math_hypot_run_from_source() -> None:
+    port = model.hypot_port
+    assert model.hypot is math.hypot  # the source runs math's own
+    for a, b in _hypot_cases(random.Random(3), 60000):
+        assert math.hypot(a, b).hex() == port(a, b).hex() or math.isnan(math.hypot(a, b)) and math.isnan(port(a, b)), (a, b)
+
+
+def test_the_compiled_hypot_is_math_hypot() -> None:
+    build = fastsim.build()
+    script = ("import math, random, sys; sys.path.insert(0, '.')\n"
+              "import warband.model as model\n"
+              "from tests.warband.test_fastsim import _hypot_cases\n"
+              "assert model.hypot is not math.hypot and model.hypot_port is model.hypot\n"
+              "bad = [(a, b) for a, b in _hypot_cases(random.Random(4), 3_000_000)\n"
+              "       if model.hypot(a, b).hex() != math.hypot(a, b).hex() and not math.isnan(math.hypot(a, b))]\n"
+              "print(len(bad), bad[:5])\n")
+    env = {k: v for k, v in os.environ.items() if k != fastsim.OPT_OUT} | {fastsim.ENV: str(build)}
+    done = subprocess.run([sys.executable, "-c", script], cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.startswith("0 "), done.stdout

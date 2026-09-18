@@ -20,6 +20,7 @@ import random
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
+from types import FunctionType
 from typing import Any, Final, Iterable, Iterator, Literal
 
 from warband import path as pathing
@@ -45,9 +46,76 @@ from warband.rules import (
 Pos = tuple[int, int]
 Point = tuple[float, float]
 
-# Bound once: compiled code (warband/fastsim.py) would otherwise look them up in math at every call.
-_hypot: Final = math.hypot
+# Bound once: compiled code (warband/fastsim.py) would otherwise look it up in math at every call.
 _atan2: Final = math.atan2
+_math_hypot: Final = math.hypot
+_VELTKAMP: Final = 134217729.0  # 2 ** 27 + 1, which splits a double into halves whose products are exact
+
+
+def _two_product(a: float, b: float) -> tuple[float, float]:
+    """``(a * b, the exact rounding error of that product)``, as CPython's ``dl_mul`` gets it from fma():
+    Shewchuk's TwoProduct, exact wherever nothing underflows."""
+    product = a * b
+    t = a * _VELTKAMP
+    a_hi = t - (t - a)
+    a_lo = a - a_hi
+    t = b * _VELTKAMP
+    b_hi = t - (t - b)
+    b_lo = b - b_hi
+    error = product - a_hi * b_hi
+    error = error - a_lo * b_hi
+    error = error - a_hi * b_lo
+    return product, a_lo * b_lo - error
+
+
+def hypot(x: float, y: float) -> float:
+    """``math.hypot(x, y)``, worked out step for step as CPython 3.13 does it (``vector_norm`` in
+    Modules/mathmodule.c), so that the compiled simulation (warband/fastsim.py) has it as arithmetic in C
+    rather than as a call into the math module.  Run from source, this name is ``math.hypot`` itself (below).
+
+    Magnitudes outside 2**-1000..2**1000, a coordinate so much smaller than the other that its square would
+    underflow, zeros, infinities and NaNs go to math.hypot.  ``tests/warband/test_fastsim.py`` compares the two."""
+    x = math.fabs(x)
+    y = math.fabs(y)
+    big = x if x > 0.0 else 0.0  # CPython's running maximum over the coordinates, from 0.0
+    if y > big:
+        big = y
+    small = y if big == x else x
+    if (not 9.332636185032189e-302 <= big <= 1.0715086071862673e+301  # 2**-1000 and 2**1000
+            or 0.0 < small < big * 3.054936363499605e-151 or x != x or y != y):  # 2**-500
+        return _math_hypot(x, y)
+    scale = 1.0  # frexp's power of two: big * scale in [0.5, 1)
+    while big * scale >= 1.0:
+        scale *= 0.5
+    while big * scale < 0.5:
+        scale *= 2.0
+    csum = 1.0
+    frac1 = 0.0
+    frac2 = 0.0
+    square, error = _two_product(x * scale, x * scale)  # the coordinates in CPython's order, squared exactly,
+    total = csum + square                                # summed with compensation
+    frac2 += (csum - total) + square
+    csum = total
+    frac1 += error
+    square, error = _two_product(y * scale, y * scale)
+    total = csum + square
+    frac2 += (csum - total) + square
+    csum = total
+    frac1 += error
+    h = math.sqrt(csum - 1.0 + (frac1 + frac2))
+    square, error = _two_product(-h, h)
+    total = csum + square
+    frac2 += (csum - total) + square
+    csum = total
+    frac1 += error
+    x = csum - 1.0 + (frac1 + frac2)
+    h += x / (2.0 * h)  # the differential correction
+    return h / scale
+
+
+hypot_port: Final = hypot  # the port itself, whichever hypot runs, for the test that compares it with math.hypot
+if isinstance(hypot, FunctionType):  # run from source: math.hypot is far quicker than this port interpreted
+    hypot = math.hypot  # type: ignore[assignment]  # noqa: F811
 
 BLOCKING = frozenset({Terrain.WATER, Terrain.TREES, Terrain.ROCK})
 ARRIVE = 0.12  # a unit is "there" within this many tiles of its target point
@@ -366,7 +434,7 @@ class Event:
 
 
 def dist(a: Point, b: Point) -> float:
-    return _hypot(a[0] - b[0], a[1] - b[1])
+    return hypot(a[0] - b[0], a[1] - b[1])
 
 
 def rect_gap(point: Point, rect: tuple[int, int, int, int]) -> float:
@@ -375,7 +443,7 @@ def rect_gap(point: Point, rect: tuple[int, int, int, int]) -> float:
     px, py = point
     dx = x - px if px < x else px - (x + w)  # at most one of the two sides can be overshot
     dy = y - py if py < y else py - (y + h)
-    return _hypot(dx if dx > 0.0 else 0.0, dy if dy > 0.0 else 0.0)
+    return hypot(dx if dx > 0.0 else 0.0, dy if dy > 0.0 else 0.0)
 
 
 def rects_gap(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> int:
@@ -1535,7 +1603,7 @@ class World:
             if v is u or v.hidden:
                 continue
             dx, dy = u.x - v.x, u.y - v.y
-            d = _hypot(dx, dy)
+            d = hypot(dx, dy)
             if d < 1e-6:
                 angle = (u.id * 2.399) % (2 * math.pi)
                 dx, dy, d = math.cos(angle), math.sin(angle), 1.0
@@ -1784,7 +1852,7 @@ class World:
         """Step straight away from a target inside the engine's minimum range; True if there was room."""
         px, py = self._target_point(target)
         dx, dy = u.x - px, u.y - py
-        d = _hypot(dx, dy) or 1e-6
+        d = hypot(dx, dy) or 1e-6
         return self._steer(u, self._clamp((u.x + dx / d, u.y + dy / d)), dt)
 
     def _ranged_retreat(self, u: Unit, target: Entity, dt: float) -> bool:
@@ -1828,7 +1896,7 @@ class World:
         else:
             point, radius = target.pos, target.radius
         dx, dy = u.x - point[0], u.y - point[1]
-        distance = _hypot(dx, dy) or 1e-6
+        distance = hypot(dx, dy) or 1e-6
         reach = radius + u.radius + self.range_of(u) * .8
         # The spot is on the attacker's side of the target, so a target at the edge of the map puts it
         # off the map — and a tile lookup truncates x=-0.04 to tile 0, so nothing on the way would notice.
@@ -2229,7 +2297,7 @@ class World:
         # Work requires contact, so the walking tolerance cannot discard a
         # final step that would put the worker inside interaction range.
         exact = u.exact
-        if exact is not None and _hypot(u.x - exact[0], u.y - exact[1]) > (1e-6 if precise else ARRIVE):
+        if exact is not None and hypot(u.x - exact[0], u.y - exact[1]) > (1e-6 if precise else ARRIVE):
             return exact
         return None
 
@@ -2266,7 +2334,7 @@ class World:
                     return False
                 u.path.insert(0, tile)
         dx, dy = waypoint[0] - u.x, waypoint[1] - u.y
-        d = _hypot(dx, dy)
+        d = hypot(dx, dy)
         speed = self._effective_speed(u)
         step = speed * dt - spent  # what is left of this tick's travel
         if d <= step or d <= ARRIVE:
@@ -2304,7 +2372,7 @@ class World:
             remaining = 0.0
         else:
             aim = u.exact if u.exact is not None else (u.path_goal[0] + 0.5, u.path_goal[1] + 0.5)
-            remaining = _hypot(nx - aim[0], ny - aim[1])
+            remaining = hypot(nx - aim[0], ny - aim[1])
         if remaining < u.last_distance - 0.02:
             u.last_distance = remaining
             u.progress = 0.0
@@ -2370,7 +2438,7 @@ class World:
         if dist(u.pos, target) > STEER_RANGE or not self._line_clear(u.pos, target):
             return False
         dx, dy = target[0] - u.x, target[1] - u.y
-        d = _hypot(dx, dy)
+        d = hypot(dx, dy)
         if d >= 1e-6:
             step = min(d, self._effective_speed(u) * dt)
             self._turn_toward(u, target, dt)
@@ -2410,7 +2478,7 @@ class World:
                         dx, dy = ux - v.x, uy - v.y
                         if dx * dx + dy * dy > r2 or v is u or v.hidden:
                             continue
-                        d = _hypot(dx, dy)
+                        d = hypot(dx, dy)
                         overlap = u.radius + v.radius - d
                         if overlap <= 0:
                             if at_ease is None and overlap > -SPACING:
@@ -2445,7 +2513,7 @@ class World:
 
     def _nudge(self, u: Unit, px: float, py: float) -> None:
         """Shove *u* by at most MAX_PUSH, never through a blocked tile or across a blocked corner."""
-        length = _hypot(px, py)
+        length = hypot(px, py)
         if length > MAX_PUSH:
             px, py = px / length * MAX_PUSH, py / length * MAX_PUSH
         own_tile_open = self.passable(*u.tile)
