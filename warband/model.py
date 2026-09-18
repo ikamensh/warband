@@ -2091,8 +2091,8 @@ class World:
         path = u.path
         if path:
             ahead = path[0]
-            if len(path) == 1 and u.exact is not None and ahead != (int(u.x), int(u.y)):
-                return u.exact
+            if len(path) == 1 and u.exact is not None:
+                return u.exact  # straight to the spot from anywhere on its tile: the centre first would overshoot and come back
             return (ahead[0] + 0.5, ahead[1] + 0.5)  # a detour back to the unit's own tile centre is walked first
         # Work requires contact, so the walking tolerance cannot discard a
         # final step that would put the worker inside interaction range.
@@ -2102,8 +2102,9 @@ class World:
         return None
 
     def _follow(self, u: Unit, dt: float, *, settle: bool = False, navigation: bytearray | None = None,
-                precise: bool = False) -> bool:
-        """Step along the path; True when there was nothing left to walk."""
+                precise: bool = False, spent: float = 0.0) -> bool:
+        """Step along the path; True when there was nothing left to walk.  *spent* is the travel this tick
+        already used before the current waypoint, so a walk keeps its pace through the corners of its path."""
         waypoint = self._next_waypoint(u, precise=precise)
         if waypoint is None:
             u.state = "idle"
@@ -2124,7 +2125,8 @@ class World:
                 u.path.insert(0, tile)
         dx, dy = waypoint[0] - u.x, waypoint[1] - u.y
         d = math.hypot(dx, dy)
-        step = self._effective_speed(u) * dt
+        speed = self._effective_speed(u)
+        step = speed * dt - spent  # what is left of this tick's travel
         if d <= step or d <= ARRIVE:
             if navigation is not None and not self._line_clear(u.pos, waypoint, navigation=navigation):
                 u.path_goal = None
@@ -2135,8 +2137,11 @@ class World:
             if u.exact is not None and dist(u.pos, u.exact) <= ARRIVE:
                 u.exact = None
             u.last_distance = math.inf
+            if step - d > 1e-9 and self._next_waypoint(u, precise=precise) is not None:
+                # The tick's travel is not used up at a waypoint: the rest goes on towards the next one.
+                return self._follow(u, dt, settle=settle, navigation=navigation, precise=precise, spent=spent + d)
             return False
-        self._turn_toward(u, waypoint, dt)
+        self._turn_toward(u, waypoint, step / speed if speed else dt)
         nx, ny = u.x + dx / d * step, u.y + dy / d * step
         if ((grid[int(ny) * width + int(nx)] or (navigation is not None and not self._line_clear(u.pos, (nx, ny), navigation=navigation)))
                 and 0 <= tx < width and 0 <= ty < self.height and not self._blocked[ty * width + tx]):

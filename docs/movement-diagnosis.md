@@ -108,6 +108,11 @@ without depending on an invalid spawn or a particular interpolation formula.
 
 ## Separate finding: travel budget lost at waypoints
 
+Resolved 2026-09-18 as WB-017: `_follow` carries the tick's leftover travel
+through waypoints, and `_next_waypoint` goes straight to the exact spot from
+anywhere on its tile instead of the tile centre first (which walked past and
+back). The straight trace has no short ticks left; see the backlog entry.
+
 The clear-ground trace also records an actual model-speed dip at tile centers:
 the footman normally moves 0.12 tiles per tick, then only 0.04 for the remainder
 of a one-tile segment. `_walk_to` snaps to the waypoint and returns, discarding
