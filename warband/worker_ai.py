@@ -8,6 +8,7 @@ Commands still belong to the player: this module only fills an empty order queue
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 import math
 
@@ -169,7 +170,7 @@ class _View:
     def __init__(self, world: World, player: int):
         self.world, self.player = world, player
         self.blocked = safe_navigation(world, player)
-        self._depot_distance: dict[Resource, list[float]] = {}
+        self._depot_distance: dict[Resource, Sequence[float]] = {}
         self._sites: dict[Resource, list[_Site]] = {}
 
     def passable(self, x: int, y: int) -> bool:
@@ -201,7 +202,7 @@ class _View:
         self._sites[resource] = found
         return found
 
-    def _depot_field(self, resource: Resource) -> list[float]:
+    def _depot_field(self, resource: Resource) -> Sequence[float]:
         """Walking distance from the nearest depot taking *resource* to every tile (flat indices; infinity where none)."""
         field = self._depot_distance.get(resource)
         if field is None:
@@ -216,26 +217,25 @@ class _View:
         """How far *tile* is from a depot taking *resource*; infinity when no safe walk leads to one."""
         return self._depot_field(resource)[tile[1] * self.world.width + tile[0]]
 
-    def choose(self, worker: Unit, resource: Resource, loads: Counter) -> _Site | None:
+    def choose(self, worker: Unit, resource: Resource, loads: Counter) -> int | Pos | None:
+        """The source *worker* should work next: a mine's id or a tree's tile; None when no safe walk leads to one."""
         if not self.passable(*worker.tile):
             return None
         knowledge = self.world.worker_knowledge[self.player]
         field, width = self._depot_field(resource), self.world.width
-        lumber = resource is Resource.LUMBER
+        if resource is Resource.LUMBER:
+            felling = {target[1] * width + target[0] for target, count in loads.items() if count and not isinstance(target, int)}
+            return _choose_tree(worker.tile, knowledge.trees, felling, knowledge.terrain, field, self.blocked, width, self.world.height)
         goals: dict[Pos, float] = {}
         owners: dict[Pos, _Site] = {}
         for site in self._sites_for(resource):
             target = site.target
-            load = loads.get(target, 0)  # what loads[target] is, without a call to Counter.__missing__ for every tree
-            if lumber:  # a tree's target is its tile, a mine's its id
-                if load or knowledge.terrain[target[1] * width + target[0]] is not Terrain.TREES:  # type: ignore[index]
-                    continue
-            else:
-                mine = knowledge.mines.get(target)  # type: ignore[arg-type]
-                if mine is None or mine.gold <= 0:
-                    continue
-                if load >= MINE_SLOTS:
-                    continue  # every place at that face is spoken for; another hand there would only queue
+            load = loads.get(target, 0)  # what loads[target] is, without a call to Counter.__missing__
+            mine = knowledge.mines.get(target)  # type: ignore[arg-type]
+            if mine is None or mine.gold <= 0:
+                continue
+            if load >= MINE_SLOTS:
+                continue  # every place at that face is spoken for; another hand there would only queue
             penalty = load * 1.5
             for tile in site.access:
                 distance = field[tile[1] * width + tile[0]]
@@ -245,7 +245,37 @@ class _View:
                     if held is None or cost < held or (cost == held and site.position < owners[tile].position):
                         goals[tile], owners[tile] = cost, site
         route = pathing.find_work_path(worker.tile, goals, self.blocked, self.world.width, self.world.height)
-        return owners[route[-1] if route else worker.tile] if route is not None else None
+        return owners[route[-1] if route else worker.tile].target if route is not None else None
+
+
+def _choose_tree(start: Pos, trees: Sequence[int], felling: set[int], remembered: list[Terrain | None], field: Sequence[float],
+                 blocked: bytes | bytearray, width: int, height: int) -> Pos | None:
+    """The tree a worker at *start* should fell next, or None.  Every remembered tree nobody is felling (*trees* and
+    *felling* are flat indices) offers the open tiles a worker can chop it from at twice their walk to a depot
+    (*field*); a tile goes to the cheaper tree, and to the one nearer the map's top left on a tie; the worker takes
+    the claim cheapest to walk to (:func:`~warband.path.find_work_path`).  The compiled simulation does this in C."""
+    reach = _reach(1, 1)
+    if _native is not None:
+        return _native.choose_tree(start, trees, felling, remembered, Terrain.TREES, field, blocked, reach, width, height)
+    goals: dict[Pos, float] = {}
+    owners: dict[Pos, Pos] = {}
+    for index in trees:
+        if index in felling or remembered[index] is not Terrain.TREES:
+            continue
+        y, x = divmod(index, width)
+        tree = (x, y)
+        for dx, dy in reach:
+            tx, ty = x + dx, y + dy
+            if not (0 <= tx < width and 0 <= ty < height) or blocked[ty * width + tx]:
+                continue
+            distance = field[ty * width + tx]
+            if distance < math.inf:
+                tile, cost = (tx, ty), 2 * distance
+                held = goals.get(tile)
+                if held is None or cost < held or (cost == held and tree < owners[tile]):
+                    goals[tile], owners[tile] = cost, tree
+    route = pathing.find_work_path(start, goals, blocked, width, height)
+    return owners[route[-1] if route else start] if route is not None else None
 
 
 def _view(world: World, player: int) -> _View:
@@ -314,11 +344,11 @@ def assign_idle_workers(world: World, player: int) -> None:
             continue
         choices = sorted(Resource, key=lambda resource: (stock[resource] + crews[resource] * trip[resource] * 3) / reserves[resource])
         for resource in choices:
-            site = view.choose(worker, resource, loads)
-            if site is not None:
-                world._issue(worker, Harvest(site.target, auto=True))
+            target = view.choose(worker, resource, loads)
+            if target is not None:
+                world._issue(worker, Harvest(target, auto=True))
                 crews[resource] += 1
-                loads[site.target] += 1
+                loads[target] += 1
                 break
 
 
@@ -326,5 +356,4 @@ def choose_replacement(world: World, worker: Unit, resource: Resource) -> int | 
     """Continue an exhausted resource job using the same information and safety limits."""
     workers = [unit for unit in world.player_units(worker.player) if unit.is_worker and unit.id != worker.id]
     _, loads = _assignments(workers)
-    site = _view(world, worker.player).choose(worker, resource, loads)
-    return site.target if site is not None else None
+    return _view(world, worker.player).choose(worker, resource, loads)

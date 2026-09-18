@@ -73,7 +73,9 @@ def test_the_c_searches_answer_as_path_py_does() -> None:
         goals = {_tile(rng, width, height): rng.choice((0, 0.0, 1.5, rng.random() * 9)) for _ in range(rng.randint(0, 6))}
         assert native.find_work_path(start, goals, blocked, width, height) == path.find_work_path(start, goals, blocked, width, height)
         starts = [rng.randrange(width * height) for _ in range(rng.randint(0, 4))]
-        assert native.distance_field(iter(starts), blocked, width, height) == path.distance_field(iter(starts), blocked, width, height)
+        field = array("d", bytes(8 * width * height))
+        native.distance_field(iter(starts), blocked, width, height, field)
+        assert list(field) == path.distance_field(iter(starts), blocked, width, height)
         regions = path.Regions(blocked, width, height)
         labels = array("i", bytes(4 * width * height))
         assert native.region_labels(blocked, width, height, labels) == max(regions.labels, default=0)
@@ -124,3 +126,24 @@ def test_the_c_terrain_scan_finds_what_the_python_finds() -> None:
         knowledge.terrain = [rng.choice((None, rows[i // width][i % width], rng.choice(kinds))) for i in range(width * height)]
         visible = bytearray(rng.random() < rng.random() for _ in range(width * height))
         assert native.stale_tiles(visible, rows, knowledge.terrain, width, height) == knowledge._stale(rows, visible)
+
+
+def test_the_c_tree_choice_is_the_python_choice() -> None:
+    native = _native_searches()
+    rng = random.Random(4242)
+    chosen = 0
+    for _ in range(600):
+        blocked, width, height = _random_grid(rng)
+        size = width * height
+        remembered = [rng.choice((None, Terrain.GRASS, Terrain.TREES, Terrain.TREES)) for _ in range(size)]
+        trees = tuple(sorted(rng.sample(range(size), min(size, rng.randint(0, 25)))))  # mostly trees, some not any more
+        felling = set(rng.sample(trees, min(len(trees), rng.randint(0, 3))))
+        depots = [rng.randrange(size) for _ in range(rng.randint(0, 3))]
+        field = array("d", bytes(8 * size))
+        native.distance_field(depots, blocked, width, height, field)
+        start = _tile(rng, width, height)
+        expected = worker_ai._choose_tree(start, trees, felling, remembered, list(field), blocked, width, height)
+        assert native.choose_tree(start, trees, felling, remembered, Terrain.TREES, field, blocked, worker_ai._reach(1, 1),
+                                  width, height) == expected
+        chosen += expected is not None
+    assert chosen > 100  # most searches found a tree, so the comparison covered the tie-breaks too

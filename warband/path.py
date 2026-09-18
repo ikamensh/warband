@@ -247,12 +247,14 @@ class Regions:
         return nearest
 
 
-def distance_field(starts: Iterable[int], blocked: bytes | bytearray, width: int, height: int) -> list[float]:
+def distance_field(starts: Iterable[int], blocked: bytes | bytearray, width: int, height: int) -> Sequence[float]:
     """Walking distance from the nearest of the *starts* (flat indices) to every tile; infinity where
     no walk leads.  This floods the whole map, so it expands tiles through :func:`step_offsets` the
     way :func:`find_path_grid` does."""
     if _native is not None:
-        return _native.distance_field(starts, blocked, width, height)
+        field = array("d", bytes(8 * width * height))  # the same floats, without a Python object for each
+        _native.distance_field(starts, blocked, width, height, field)
+        return field
     size = width * height
     distances = [math.inf] * size
     frontier = []

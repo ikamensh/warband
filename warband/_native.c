@@ -271,38 +271,14 @@ out:
 
 /* -- find_work_path ---------------------------------------------------------------------------- */
 
-static PyObject *find_work_path(PyObject *self, PyObject *args) {
-    PyObject *start_obj, *goals, *blocked_obj;
-    Py_ssize_t width, height;
-    if (!PyArg_ParseTuple(args, "OO!Onn", &start_obj, &PyDict_Type, &goals, &blocked_obj, &width, &height))
-        return NULL;
-    if (PyDict_GET_SIZE(goals) == 0) Py_RETURN_NONE;
-    Py_ssize_t sx, sy;
-    if (read_pos(start_obj, &sx, &sy) < 0) return NULL;
-    Py_ssize_t size = width * height, origin = sy * width + sx;
-    if (origin < 0 || origin >= size) { PyErr_SetString(PyExc_ValueError, "the start is off the grid"); return NULL; }
-    Grid grid;
-    if (grid_open(blocked_obj, size, &grid) < 0) return NULL;
-    const unsigned char *blocked = grid.cells;
+/* The cheapest goal to walk to from *origin*, each goal's penalty added to the walk: path.find_work_path's
+   search.  Its index goes to *best* (-1 when no goal can be reached) and *parents* holds the walk to it. */
+static int work_search(Py_ssize_t origin, const unsigned char *is_goal, const double *penalty, const unsigned char *blocked,
+                       Py_ssize_t width, Py_ssize_t size, Py_ssize_t *parents, Py_ssize_t *best_out) {
     double *costs = PyMem_Malloc((size_t)size * sizeof(double));
-    double *penalty = PyMem_Malloc((size_t)size * sizeof(double));
-    unsigned char *is_goal = PyMem_Calloc((size_t)size, 1);
-    Py_ssize_t *parents = PyMem_Malloc((size_t)size * sizeof(Py_ssize_t));
     Heap2 frontier = {NULL, 0, 0};
-    PyObject *result = NULL;
-    if (costs == NULL || penalty == NULL || is_goal == NULL || parents == NULL) { PyErr_NoMemory(); goto out; }
-    /* {y * width + x: penalty for (x, y), penalty in goals.items()}: later keys that land on the
-       same index replace earlier ones, and an index off the grid is never reached. */
-    Py_ssize_t position = 0;
-    PyObject *key, *value;
-    while (PyDict_Next(goals, &position, &key, &value)) {
-        Py_ssize_t x, y;
-        if (read_pos(key, &x, &y) < 0) goto out;
-        double amount = PyFloat_AsDouble(value);
-        if (amount == -1.0 && PyErr_Occurred()) goto out;
-        Py_ssize_t index = y * width + x;
-        if (index >= 0 && index < size) { penalty[index] = amount; is_goal[index] = 1; }
-    }
+    int status = -1;
+    if (costs == NULL) { PyErr_NoMemory(); goto out; }
     for (Py_ssize_t i = 0; i < size; i++) { costs[i] = INFINITY; parents[i] = -1; }
     costs[origin] = 0.0;
     if (push2(&frontier, (Node2){0.0, origin}) < 0) goto out;
@@ -339,6 +315,45 @@ static PyObject *find_work_path(PyObject *self, PyObject *args) {
             }
         }
     }
+    *best_out = best;
+    status = 0;
+out:
+    PyMem_Free(frontier.items);
+    PyMem_Free(costs);
+    return status;
+}
+
+static PyObject *find_work_path(PyObject *self, PyObject *args) {
+    PyObject *start_obj, *goals, *blocked_obj;
+    Py_ssize_t width, height;
+    if (!PyArg_ParseTuple(args, "OO!Onn", &start_obj, &PyDict_Type, &goals, &blocked_obj, &width, &height))
+        return NULL;
+    if (PyDict_GET_SIZE(goals) == 0) Py_RETURN_NONE;
+    Py_ssize_t sx, sy;
+    if (read_pos(start_obj, &sx, &sy) < 0) return NULL;
+    Py_ssize_t size = width * height, origin = sy * width + sx;
+    if (origin < 0 || origin >= size) { PyErr_SetString(PyExc_ValueError, "the start is off the grid"); return NULL; }
+    Grid grid;
+    if (grid_open(blocked_obj, size, &grid) < 0) return NULL;
+    double *penalty = PyMem_Malloc((size_t)size * sizeof(double));
+    unsigned char *is_goal = PyMem_Calloc((size_t)size, 1);
+    Py_ssize_t *parents = PyMem_Malloc((size_t)size * sizeof(Py_ssize_t));
+    PyObject *result = NULL;
+    if (penalty == NULL || is_goal == NULL || parents == NULL) { PyErr_NoMemory(); goto out; }
+    /* {y * width + x: penalty for (x, y), penalty in goals.items()}: later keys that land on the
+       same index replace earlier ones, and an index off the grid is never reached. */
+    Py_ssize_t position = 0;
+    PyObject *key, *value;
+    while (PyDict_Next(goals, &position, &key, &value)) {
+        Py_ssize_t x, y;
+        if (read_pos(key, &x, &y) < 0) goto out;
+        double amount = PyFloat_AsDouble(value);
+        if (amount == -1.0 && PyErr_Occurred()) goto out;
+        Py_ssize_t index = y * width + x;
+        if (index >= 0 && index < size) { penalty[index] = amount; is_goal[index] = 1; }
+    }
+    Py_ssize_t best;
+    if (work_search(origin, is_goal, penalty, grid.cells, width, size, parents, &best) < 0) goto out;
     if (best < 0) {
         Py_INCREF(Py_None);
         result = Py_None;
@@ -346,12 +361,118 @@ static PyObject *find_work_path(PyObject *self, PyObject *args) {
         result = route_to(best, origin, parents, width);
     }
 out:
-    PyMem_Free(frontier.items);
-    PyMem_Free(costs);
     PyMem_Free(penalty);
     PyMem_Free(is_goal);
     PyMem_Free(parents);
     grid_close(&grid);
+    return result;
+}
+
+/* -- choose_tree ------------------------------------------------------------------------------- */
+
+/* worker_ai._choose_tree: every remembered tree nobody is felling offers the open tiles around it
+   (the offsets of *reach*, in order) at twice their walk to a depot, a tile going to the cheaper tree
+   and to the one nearer the top left on a tie; the worker at *start* takes the claim it can reach
+   most cheaply, and the answer is that tree, or None. */
+static PyObject *choose_tree(PyObject *self, PyObject *args) {
+    PyObject *start_obj, *trees_obj, *loaded, *remembered, *marker, *field_obj, *blocked_obj, *reach_obj;
+    Py_ssize_t width, height;
+    if (!PyArg_ParseTuple(args, "OOOO!OOOOnn", &start_obj, &trees_obj, &loaded, &PyList_Type, &remembered, &marker,
+                          &field_obj, &blocked_obj, &reach_obj, &width, &height))
+        return NULL;
+    Py_ssize_t sx, sy;
+    if (read_pos(start_obj, &sx, &sy) < 0) return NULL;
+    Py_ssize_t size = width * height, origin = sy * width + sx;
+    if (origin < 0 || origin >= size) { PyErr_SetString(PyExc_ValueError, "the start is off the grid"); return NULL; }
+    if (PyList_GET_SIZE(remembered) < size) { PyErr_SetString(PyExc_ValueError, "the remembered terrain is too short"); return NULL; }
+    PyObject *trees = PySequence_Fast(trees_obj, "the trees are a sequence of flat indices");
+    if (trees == NULL) return NULL;
+    PyObject *reach = PySequence_Fast(reach_obj, "reach is a sequence of (dx, dy)");
+    if (reach == NULL) { Py_DECREF(trees); return NULL; }
+    Grid grid, field;
+    if (grid_open(blocked_obj, size, &grid) < 0) { Py_DECREF(trees); Py_DECREF(reach); return NULL; }
+    if (PyObject_GetBuffer(field_obj, &field.view, PyBUF_FORMAT) < 0) {
+        grid_close(&grid); Py_DECREF(trees); Py_DECREF(reach); return NULL;
+    }
+    PyObject *result = NULL;
+    unsigned char *taken = NULL, *is_goal = NULL;
+    double *cost = NULL;
+    Py_ssize_t *owner = NULL, *parents = NULL, *offsets = NULL;
+    if (field.view.itemsize != sizeof(double) || field.view.len < size * (Py_ssize_t)sizeof(double)) {
+        PyErr_SetString(PyExc_ValueError, "the depot field is an array('d') of width * height");
+        goto out;
+    }
+    const double *distance = (const double *)field.view.buf;
+    const unsigned char *blocked = grid.cells;
+    Py_ssize_t reaches = PySequence_Fast_GET_SIZE(reach);
+    taken = PyMem_Calloc((size_t)size, 1);
+    is_goal = PyMem_Calloc((size_t)size, 1);
+    cost = PyMem_Malloc((size_t)size * sizeof(double));
+    owner = PyMem_Malloc((size_t)size * sizeof(Py_ssize_t));
+    parents = PyMem_Malloc((size_t)size * sizeof(Py_ssize_t));
+    offsets = PyMem_Malloc((size_t)(2 * reaches + 1) * sizeof(Py_ssize_t));
+    if (taken == NULL || is_goal == NULL || cost == NULL || owner == NULL || parents == NULL || offsets == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
+    for (Py_ssize_t i = 0; i < reaches; i++)
+        if (read_pos(PySequence_Fast_GET_ITEM(reach, i), &offsets[2 * i], &offsets[2 * i + 1]) < 0) goto out;
+    PyObject *iterator = PyObject_GetIter(loaded), *item;
+    if (iterator == NULL) goto out;
+    while ((item = PyIter_Next(iterator)) != NULL) {
+        Py_ssize_t index = PyLong_AsSsize_t(item);
+        Py_DECREF(item);
+        if (index == -1 && PyErr_Occurred()) { Py_DECREF(iterator); goto out; }
+        if (index >= 0 && index < size) taken[index] = 1;
+    }
+    Py_DECREF(iterator);
+    if (PyErr_Occurred()) goto out;
+    int any = 0;
+    Py_ssize_t count = PySequence_Fast_GET_SIZE(trees);
+    for (Py_ssize_t i = 0; i < count; i++) {
+        Py_ssize_t tree = PyLong_AsSsize_t(PySequence_Fast_GET_ITEM(trees, i));
+        if (tree == -1 && PyErr_Occurred()) goto out;
+        if (tree < 0 || tree >= size) { PyErr_SetString(PyExc_ValueError, "a tree is off the grid"); goto out; }
+        if (taken[tree] || PyList_GET_ITEM(remembered, tree) != marker) continue;
+        Py_ssize_t x = tree % width, y = tree / width;
+        for (Py_ssize_t r = 0; r < reaches; r++) {
+            Py_ssize_t tx = x + offsets[2 * r], ty = y + offsets[2 * r + 1];
+            if (tx < 0 || tx >= width || ty < 0 || ty >= height) continue;
+            Py_ssize_t tile = ty * width + tx;
+            if (blocked[tile]) continue;
+            double walk = distance[tile];
+            if (!(walk < INFINITY)) continue;
+            double claim = 2.0 * walk;
+            if (!is_goal[tile] || claim < cost[tile]
+                    || (claim == cost[tile] && (x < owner[tile] % width
+                                                || (x == owner[tile] % width && y < owner[tile] / width)))) {
+                is_goal[tile] = 1;
+                cost[tile] = claim;
+                owner[tile] = tree;
+            }
+            any = 1;
+        }
+    }
+    if (!any) { Py_INCREF(Py_None); result = Py_None; goto out; }
+    Py_ssize_t best;
+    if (work_search(origin, is_goal, cost, blocked, width, size, parents, &best) < 0) goto out;
+    if (best < 0) {
+        Py_INCREF(Py_None);
+        result = Py_None;
+    } else {
+        result = Py_BuildValue("(nn)", owner[best] % width, owner[best] / width);
+    }
+out:
+    PyMem_Free(taken);
+    PyMem_Free(is_goal);
+    PyMem_Free(cost);
+    PyMem_Free(owner);
+    PyMem_Free(parents);
+    PyMem_Free(offsets);
+    PyBuffer_Release(&field.view);
+    grid_close(&grid);
+    Py_DECREF(trees);
+    Py_DECREF(reach);
     return result;
 }
 
@@ -363,22 +484,29 @@ static int compare_indices(const void *a, const void *b) {
 }
 
 static PyObject *distance_field(PyObject *self, PyObject *args) {
-    PyObject *starts_obj, *blocked_obj;
+    PyObject *starts_obj, *blocked_obj, *out_obj;
     Py_ssize_t width, height;
-    if (!PyArg_ParseTuple(args, "OOnn", &starts_obj, &blocked_obj, &width, &height))
+    if (!PyArg_ParseTuple(args, "OOnnO", &starts_obj, &blocked_obj, &width, &height, &out_obj))
         return NULL;
     Py_ssize_t size = width * height;
+    Py_buffer out_view;
+    if (PyObject_GetBuffer(out_obj, &out_view, PyBUF_WRITABLE | PyBUF_FORMAT) < 0) return NULL;
+    if (out_view.itemsize != sizeof(double) || out_view.len < size * (Py_ssize_t)sizeof(double)) {
+        PyBuffer_Release(&out_view);
+        PyErr_SetString(PyExc_ValueError, "the field is an array('d') of width * height");
+        return NULL;
+    }
     PyObject *starts = PySequence_Fast(starts_obj, "the starts are a sequence of flat indices");
-    if (starts == NULL) return NULL;
+    if (starts == NULL) { PyBuffer_Release(&out_view); return NULL; }
     Py_ssize_t count = PySequence_Fast_GET_SIZE(starts);
     Grid grid;
-    if (grid_open(blocked_obj, size, &grid) < 0) { Py_DECREF(starts); return NULL; }
+    if (grid_open(blocked_obj, size, &grid) < 0) { Py_DECREF(starts); PyBuffer_Release(&out_view); return NULL; }
     const unsigned char *blocked = grid.cells;
-    double *distances = PyMem_Malloc((size_t)size * sizeof(double));
+    double *distances = (double *)out_view.buf;
     Py_ssize_t *sorted = PyMem_Malloc((size_t)(count ? count : 1) * sizeof(Py_ssize_t));
     Heap2 frontier = {NULL, 0, 0};
     PyObject *result = NULL;
-    if (distances == NULL || sorted == NULL) { PyErr_NoMemory(); goto out; }
+    if (sorted == NULL) { PyErr_NoMemory(); goto out; }
     for (Py_ssize_t i = 0; i < count; i++) {
         sorted[i] = PyLong_AsSsize_t(PySequence_Fast_GET_ITEM(starts, i));
         if (sorted[i] == -1 && PyErr_Occurred()) goto out;
@@ -414,29 +542,14 @@ static PyObject *distance_field(PyObject *self, PyObject *args) {
             }
         }
     }
-    result = PyList_New(size);
-    if (result == NULL) goto out;
-    PyObject *infinity = PyFloat_FromDouble(INFINITY);
-    if (infinity == NULL) { Py_CLEAR(result); goto out; }
-    for (Py_ssize_t i = 0; i < size; i++) {
-        PyObject *item;
-        if (distances[i] == INFINITY) {
-            Py_INCREF(infinity);
-            item = infinity;
-        } else if ((item = PyFloat_FromDouble(distances[i])) == NULL) {
-            Py_DECREF(infinity);
-            Py_CLEAR(result);
-            goto out;
-        }
-        PyList_SET_ITEM(result, i, item);
-    }
-    Py_DECREF(infinity);
+    Py_INCREF(Py_None);
+    result = Py_None;
 out:
     PyMem_Free(frontier.items);
-    PyMem_Free(distances);
     PyMem_Free(sorted);
     grid_close(&grid);
     Py_DECREF(starts);
+    PyBuffer_Release(&out_view);
     return result;
 }
 
@@ -711,7 +824,8 @@ static PyObject *stale_tiles(PyObject *self, PyObject *args) {
 static PyMethodDef methods[] = {
     {"find_path_grid", find_path_grid, METH_VARARGS, "path.find_path_grid(start, goal, blocked, width, height, max_expansions)"},
     {"find_work_path", find_work_path, METH_VARARGS, "path.find_work_path(start, goals, blocked, width, height)"},
-    {"distance_field", distance_field, METH_VARARGS, "path.distance_field(starts, blocked, width, height)"},
+    {"distance_field", distance_field, METH_VARARGS, "path.distance_field(starts, blocked, width, height) into an array('d')"},
+    {"choose_tree", choose_tree, METH_VARARGS, "worker_ai._choose_tree(start, trees, loaded, remembered, TREES, field, blocked, reach, width, height)"},
     {"region_labels", region_labels, METH_VARARGS, "Regions.__init__'s labels into an array('i'); returns the region count"},
     {"nearest_in_region", nearest_in_region, METH_VARARGS, "Regions.reachable_goal's scan over array('i') labels"},
     {"stamp_discs", stamp_discs, METH_VARARGS, "model.World._reveal for every ((x, y), radius) of an iterable"},
