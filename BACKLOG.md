@@ -42,7 +42,7 @@ catches its class.
 | WB-018 | Next | done | Keep large selections inside the HUD | Native crowd capture |
 | WB-019 | Next | done | Remove stray sprite-sheet lines from painted units | Native melee review |
 | WB-020 | Later | done | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
-| WB-021 | Next | blocked | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
+| WB-021 | Next | in progress | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
 | WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
 | WB-023 | Next | done | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
@@ -1227,6 +1227,44 @@ resolution from Settings › Display and the output of
 `python -c "import pyglet; s = pyglet.display.get_display().get_default_screen(); print(s.width, s.height, s.get_scale(), s.get_dpi())"`
 in the game's environment. The startup matrix already names the desktop from
 the report with the scale it is presumed to report.
+
+**Unblocked and measured 2026-09-18** on a Scaleway Windows Server 2022 test
+box (created with Scaleway's `with-ssh` tag, so it is set up over SSH; an
+interactive desktop comes from a headless FreeRDP client in a container, at
+any size and scaling, without a person at a login screen; the procedure is in
+[saga-online](../saga-online/docs/windows-test-box.md)). Branch `fit-desktop`
+(worktree `../warband-fit`). The published 0.2.18 build, pyglet 2.1.16:
+
+- 3840×2160 at 100 % and at 200 %: pyglet reports a 3840×2160 screen in both
+  (scale 1.0 and 2.0), the engine makes canvas and window 3760×2040 with
+  `scale_factor` 1.0, the whole 64-tile map floats in the middle of the
+  canvas with black all round, and the HUD is drawn at native pixels; at 200 %
+  it is half the size of the taskbar's text and the window's lower edge lies
+  under the taskbar. That is the report (`docs/evidence/win4k/session-200/`,
+  `headless-200/`: title, new game, match, `screen_report.json`).
+- 1408×1252 at 100 % (the first session): canvas and window 1328×1132, fine.
+
+The cause and the fix are the engine's ([S2D-015](../saga2d/BACKLOG.md):
+desktop units at the backend's boundary, the desktop's scale in
+`scale_factor`, a fitted canvas of at most 1440 units).
+
+**Acceptance (recorded 2026-09-18 before implementation):**
+
+1. On 3840×2160 at 200 %, at 150 % and at 100 % the game's window uses the
+   desktop without reaching under the taskbar, the title's backdrop and the
+   match fill the window (letterboxing only for an aspect mismatch), and the
+   HUD is as large as the desktop's own text suggests: frames of the title,
+   the New game screen and a match from each scaling, from a build on the
+   fixed engine, looked at beside the 0.2.18 frames.
+2. `tests/warband/test_startup.py` names the measured desktops (3840×2160 at
+   100 %, 150 % and 200 %) with what the fixed engine gives them and starts,
+   leaves and restarts a match on each.
+3. The suite, the visual lint's screens and the simulation fingerprint are
+   unchanged otherwise; the Mac's window is as before (a native frame looked
+   at).
+4. Shipped by the engine-upgrade procedure (engine release, cohort, server
+   rollout, promotion, public download checks), and the published Windows
+   build looked at once more on the 4K desktop at 200 %.
 
 ## WB-022 — The first match starts on the window the OS handed back
 
