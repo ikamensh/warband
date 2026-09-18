@@ -22,7 +22,7 @@ WB-034. Their acceptance and evidence are in
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-040 | First | proposed | A fast test suite by default; slow tests on demand and in CI; better tests on the way | User 2026-09-18 |
-| WB-010 | Later | proposed | Smooth online movement and make connection problems understandable | Suggested |
+| WB-010 | Next | in progress | Smooth online movement and make connection problems understandable | Suggested |
 | WB-011 | Next | in progress | Keep fog-hidden state out of opponents' network snapshots | Suggested |
 | WB-012 | Later | proposed | Support three- and four-human online FFA | Suggested |
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
@@ -52,6 +52,45 @@ does not fix this separate path; see [the diagnosis](docs/movement-diagnosis.md)
 **Done when:** two real clients under delay/disconnection/rejoin have measured,
 improved movement and correct orders/events, with no stale motion after resume.
 Use S2D-010 for genuinely shared transport/rate work.
+
+**Started 2026-09-18** (Ilya: "later is now"), branch `online-motion`
+(worktree `../warband-motion`). Where it starts: `NetworkGameScene` never
+records the positions it presents. Its motion fraction comes from the local
+step accumulator, which a network scene never fills, and each snapshot is
+applied with `view.sync()` at fraction one. So a unit stands still between
+snapshots and jumps when one lands. Orders during a disconnection are already
+refused: the engine's `OnlineClient.submit` refuses them while the seat is
+not ready and bounds its outgoing queue, and since WB-030 the HUD shows the
+refusal. This change is to the client only (`multiplayer.py`, `view.py`), so
+it publishes without a server rollout.
+
+**Acceptance (recorded 2026-09-18 before implementation):**
+
+1. Measured before and after: `tools/verify_movement.py --scenario online`
+   (real loopback socket, 20 Hz host, 10 Hz publication) gains uneven arrival
+   (snapshots held back by a seeded jitter) and records, for a walking worker,
+   footman and knight at normal zoom, the stationary display intervals and
+   the largest jump between frames. The WB-003 baseline is 49/59 stationary
+   intervals, with jumps up to 7.68 px and 10.88 px.
+2. Presentation: in steady travel, at most 3 of 59 intervals are stationary,
+   regular or jittered, and no jump exceeds twice the unit's steady travel per
+   frame. A unit in sight moves on screen from where it was drawn towards
+   where the latest snapshot puts it, over the measured interval between
+   snapshots (clamped to 50–250 ms). What the model says is the snapshot's:
+   selection, orders, fog, hit points.
+3. No stale motion: a unit that appears or comes into sight is placed, not
+   slid. After a gap of more than half a second (a stall, the partner's pause,
+   a reconnect or a resume), units are placed where the snapshot says.
+4. Events: hits and deaths show once, as before; repeated snapshots never
+   replay them.
+5. Connection status: when a ready session has had no new snapshot for more
+   than a second, the status line says so and for how long. Reconnecting and
+   waiting keep their messages. An order given while the seat is not ready is
+   refused with the reason, and a test pins that.
+6. Two real clients over a socket, with held-back snapshots and a
+   disconnection and rejoin: movement is measured, orders and events are
+   correct, nothing slides after the resume. The suite passes, and native
+   frames of a walk are looked at.
 
 ## WB-011 — Player-specific network visibility
 
