@@ -980,9 +980,10 @@ class World:
             raise RuleError("No such target")
         if isinstance(target, Building) and target.type is BuildingType.GOLD_MINE:
             raise RuleError("A gold mine cannot be attacked")
-        for unit in self._own_units(unit_ids):
-            if target.player == unit.player:
-                raise RuleError("Cannot attack your own")
+        units = self._own_units(unit_ids)
+        if any(target.player == unit.player for unit in units):
+            raise RuleError("Cannot attack your own")
+        for unit in units:
             if unit.info.damage == 0:
                 self._issue(unit, Move(self._target_point(target)), queue=queue)  # a healer follows the fight instead
             else:
@@ -1013,9 +1014,10 @@ class World:
                 raise RuleError("Not a gold mine")
         elif not self.in_bounds(target) or self.terrain_at(target) is not Terrain.TREES:
             raise RuleError("No trees there")
-        for unit in self._own_units(unit_ids):
-            if not unit.is_worker:
-                raise RuleError("Only peasants can harvest")
+        units = self._own_units(unit_ids)
+        if not all(unit.is_worker for unit in units):
+            raise RuleError("Only peasants can harvest")
+        for unit in units:
             self._issue(unit, Harvest(target), queue=queue)
 
     @recorded
@@ -1064,6 +1066,8 @@ class World:
         building = self.buildings.get(building_id)
         if building is None or not building.queue:
             raise RuleError("Nothing to cancel")
+        if not -len(building.queue) <= index < len(building.queue):
+            raise RuleError("No such place in the training queue")
         assert building.player is not None
         unit_type = building.queue.pop(index)
         self._refund(building.player, UNITS[unit_type].cost)
@@ -1318,9 +1322,10 @@ class World:
         b = self.buildings.get(building_id)
         if b is None or b.done:
             raise RuleError("Nothing to resume")
-        for unit in self._own_units(unit_ids):
-            if not unit.is_worker:
-                raise RuleError("Only peasants can build")
+        units = self._own_units(unit_ids)
+        if not all(unit.is_worker for unit in units):
+            raise RuleError("Only peasants can build")
+        for unit in units:
             self._issue(unit, Build(b.type, b.pos, building=b.id))
 
     # -- Units ----------------------------------------------------------------------

@@ -85,25 +85,21 @@ class WarbandMatch:
                 continue  # An explicit empty-ground pick must not target a newer unit position.
             if field in values and type(values[field]) is not int:
                 raise CommandError('Invalid target.')
-        if action == 'cancel_train':
-            index = values.get('index', -1)
-            size = len(self.world.buildings[values['building_id']].queue)
-            if type(index) is not int or not -size <= index < size:
-                raise CommandError('Choose an item in the training queue.')
+        if action == 'cancel_train' and type(values.get('index', -1)) is not int:
+            raise CommandError('Choose an item in the training queue.')
         for field, enum in [('building_type', BuildingType), ('unit_type', UnitType), ('upgrade', Upgrade)]:
             if field in values:
                 try:
                     values[field] = enum(values[field])
                 except (ValueError, TypeError) as exc:
                     raise CommandError(f'Unknown {field}.') from exc
-        # Trial on a copy also makes group orders atomic if a rule rejects one unit.
-        trial = World.from_dict(deepcopy(self.world.to_dict()))
-        values['self'] = trial
+        # The order goes to the running world: a copy rebuilt from its save would come back without the paths,
+        # plan throttles and stuck clocks of every unit on the map.  A world order checks before it changes
+        # anything, so one the rules refuse leaves no trace (tests/warband/test_order_atomicity.py).
         try:
             method(*bound.args, **bound.kwargs)
         except RuleError as exc:
             raise CommandError(str(exc)) from exc
-        self.world = trial
         self._events()
 
 
