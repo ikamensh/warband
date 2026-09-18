@@ -226,20 +226,23 @@ class _View:
         owners: dict[Pos, _Site] = {}
         for site in self._sites_for(resource):
             target = site.target
+            load = loads.get(target, 0)  # what loads[target] is, without a call to Counter.__missing__ for every tree
             if lumber:  # a tree's target is its tile, a mine's its id
-                if loads[target] or knowledge.terrain[target[1] * width + target[0]] is not Terrain.TREES:  # type: ignore[index]
+                if load or knowledge.terrain[target[1] * width + target[0]] is not Terrain.TREES:  # type: ignore[index]
                     continue
             else:
                 mine = knowledge.mines.get(target)  # type: ignore[arg-type]
                 if mine is None or mine.gold <= 0:
                     continue
-                if loads[target] >= MINE_SLOTS:
+                if load >= MINE_SLOTS:
                     continue  # every place at that face is spoken for; another hand there would only queue
+            penalty = load * 1.5
             for tile in site.access:
                 distance = field[tile[1] * width + tile[0]]
                 if distance < math.inf:
-                    cost = 2 * distance + loads[target] * 1.5
-                    if tile not in goals or (cost, site.position) < (goals[tile], owners[tile].position):
+                    cost = 2 * distance + penalty
+                    held = goals.get(tile)  # the cheaper claim on a tile wins, the one nearer the map's top left on a tie
+                    if held is None or cost < held or (cost == held and site.position < owners[tile].position):
                         goals[tile], owners[tile] = cost, site
         route = pathing.find_work_path(worker.tile, goals, self.blocked, self.world.width, self.world.height)
         return owners[route[-1] if route else worker.tile] if route is not None else None
