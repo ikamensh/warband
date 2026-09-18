@@ -764,6 +764,24 @@ rollout.
    published until the reviewed server rollout that carries WB-007 as well,
    recorded in Saga Online's rollout notes.
 
+**Found on the way, 2026-09-18:** the seeded fuzz of criterion 3 stopped on
+two peasants "stalled" on their way home (seeds 1904 and 1908). The cause is
+older than WB-017: a work trip walks against the grid (a plain walk does not),
+and a crowd's shove onto the diagonal neighbour of the trip's next tile,
+beside a building's corner, left the peasant bouncing between that tile's
+centre and the corner it may not cut for the rest of the match, because
+`_follow` recognised only a shove of more than a tile as being off the path.
+The new pace made the bounce's period exactly the fuzz's sampling interval,
+which is the only reason it was seen: with a detector that watches for a unit
+staying within a tile for twenty seconds instead of standing on one point,
+main has the bounce in six of the same twelve seeds. Fixed in the same
+series: a diagonal step across a blocked corner counts as off the path and
+plans again; a unit already at its centre waits there for the plan instead of
+spending the tick's leftover towards the refused tile; the fuzz detector is
+the tile-based one; `tests/warband/test_off_course.py` rebuilds seed 1908's
+tiles and shove, and the leftover-at-a-waypoint case beside newly forbidden
+ground.
+
 ## WB-018 — Large selection HUD
 
 The native 18-unit crowd capture at 1280×800 shows the selected-unit portraits

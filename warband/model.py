@@ -2118,10 +2118,20 @@ class World:
         grid = self._blocked if navigation is None else navigation
         if u.path and u.path_goal is not None:
             ahead_x, ahead_y = u.path[0]
-            if grid[ahead_y * width + ahead_x] or max(abs(ahead_x - tx), abs(ahead_y - ty)) > 1:
-                # Something was built across the path, or a crowd pushed the unit off it.
+            if (grid[ahead_y * width + ahead_x] or max(abs(ahead_x - tx), abs(ahead_y - ty)) > 1
+                    or (ahead_x != tx and ahead_y != ty and (grid[ty * width + ahead_x] or grid[ahead_y * width + tx]))):
+                # Something was built across the path, or a crowd pushed the unit off it: further than a
+                # step, or onto the diagonal neighbour whose corner it cannot cut (going back to the
+                # centre first would only bring it to the same corner again).
                 if self.time >= u.replan_at:
                     self._plan(u, u.path_goal, u.exact, around_units=True, navigation=navigation)
+                    return False
+                centre = tile_center(tile)
+                if dist(u.pos, centre) <= ARRIVE:
+                    # At the centre already: wait there for the plan, rather than spend the tick's leftover
+                    # travel towards the refused tile and walk back next tick.
+                    u.x, u.y = centre
+                    u.last_distance = math.inf
                     return False
                 u.path.insert(0, tile)
         dx, dy = waypoint[0] - u.x, waypoint[1] - u.y

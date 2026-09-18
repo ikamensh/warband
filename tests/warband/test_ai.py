@@ -148,6 +148,8 @@ def test_one_hall_holds_the_workforce_at_the_profile_value() -> None:
     _farm_headroom(world)
     world.players[0].gold = 20000
     world.players[0].lumber = 5000
+    for mine in world.mines():
+        mine.gold = 10 ** 6  # never running low: a second hall would raise the target by five
     _run_brain(world, seconds=260)  # Medium wants fourteen peasants, and a hall makes one at a time
     peasants = [u for u in world.player_units(0) if u.is_worker]
     assert len(peasants) == PROFILES[Difficulty.MEDIUM].peasants
@@ -225,20 +227,21 @@ def _trained_archer_share(brain: Brain) -> float:
     return sum(1 for name in trained if name == UnitType.ARCHER.value) / len(trained)
 
 
-def test_hard_elf_and_orc_armies_grow_towards_their_race_plans() -> None:
-    world = mapgen.generate(seed=5, players=2, human=None, races=[Race.ELF, Race.ORC], layout=Layout.PLAINS)  # open ground: both plans unfold
-    brains = [Brain(0, Difficulty.MEDIUM), Brain(1, Difficulty.MEDIUM)]
-    rng = random.Random(1)
-    for _ in range(int(360 / SIM_DT)):
-        for brain in brains:
+def test_elf_and_orc_armies_grow_towards_their_race_plans() -> None:
+    """Each race's brain on the same open ground against a base that trains nothing: what it asks of
+    its buildings then follows its plan alone, with no enemy soldiers in sight to counter and no
+    losses (a two-brain match once decided this on the survivors of one seeded fight)."""
+    shares = {}
+    for race in (Race.ELF, Race.ORC):
+        world = mapgen.generate(seed=5, players=2, human=None, races=[race, Race.HUMAN], layout=Layout.PLAINS)
+        brain = Brain(0, Difficulty.MEDIUM)
+        rng = random.Random(1)
+        for _ in range(int(360 / SIM_DT)):
             brain.think(world, rng)
-        world.step()
-        if world.winner is not None:
-            break
-    assert all(p.stats["units_lost"] > 0 for p in world.players)  # both fielded soldiers and met
-    assert _trained_archer_share(brains[0]) > _trained_archer_share(brains[1])
-    assert any("army plan elf" in what for _, what in brains[0].log)
-    assert any("army plan orc" in what for _, what in brains[1].log)
+            world.step()
+        assert any(f"army plan {race.value}" in what for _, what in brain.log)
+        shares[race] = _trained_archer_share(brain)
+    assert shares[Race.ELF] > shares[Race.ORC], shares
 
 
 def _open_world() -> World:

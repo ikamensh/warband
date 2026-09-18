@@ -112,6 +112,12 @@ Resolved 2026-09-18 as WB-017: `_follow` carries the tick's leftover travel
 through waypoints, and `_next_waypoint` goes straight to the exact spot from
 anywhere on its tile instead of the tile centre first (which walked past and
 back). The straight trace has no short ticks left; see the backlog entry.
+Its fuzz also exposed an older deadlock in worker traffic: a work trip shoved
+onto the diagonal neighbour of its next tile beside a building corner bounced
+between its centre and that corner without end (six of twelve seeds on the
+old code once the detector watched for a unit staying within a tile rather
+than on a point). Such a step now counts as off the path and plans again;
+`tests/warband/test_off_course.py` keeps the seed's geometry.
 
 The clear-ground trace also records an actual model-speed dip at tile centers:
 the footman normally moves 0.12 tiles per tick, then only 0.04 for the remainder

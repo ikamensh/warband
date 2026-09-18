@@ -281,7 +281,8 @@ def test_a_match_between_two_races_plays_out_under_the_ai() -> None:
             brain.think(world, rng)
         world.step()
     for player in world.players:
-        army = [u for u in world.player_units(player.id) if not u.is_worker]
-        assert army and all(u.race is player.race for u in army), player.race
+        trained = [what for _, what in brains[player.id].log if what.startswith("train ")]
+        assert trained, player.race  # soldiers were fielded, whatever the fighting since did to them
+        assert all(u.race is player.race for u in world.player_units(player.id)), player.race
         assert any(b.type is BuildingType.BARRACKS for b in world.player_buildings(player.id))
     assert all(dist(u.pos, u.pos) == 0 for u in world.units.values())

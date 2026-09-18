@@ -15,6 +15,7 @@ on the mock backend, including through every overlay.
 from __future__ import annotations
 
 import argparse
+import math
 import random
 import sys
 import tempfile
@@ -77,18 +78,20 @@ STALL_SECONDS = 20.0
 
 
 def check_progress(world: World, stalled: dict[int, tuple[tuple[float, float], float]]) -> None:
-    """A unit that is walking (has orders, is not hidden) must move: standing still for
-    STALL_SECONDS while in the move state is a deadlock in the movement code."""
+    """A unit that is walking (has orders, is not hidden) must get somewhere: staying within a tile of
+    where it was for STALL_SECONDS while in the move state is a deadlock in the movement code.  A
+    tile, not a point: a unit bouncing between its tile centre and a corner it cannot cut is as stuck
+    as one standing still, and a bounce whose period divides the sampling interval looks still."""
     for u in world.units.values():
         if not u.orders or u.hidden or u.state != "move":
             stalled.pop(u.id, None)
             continue
-        pos = (round(u.x, 2), round(u.y, 2))
-        last_pos, since = stalled.get(u.id, (None, world.time))
-        if last_pos != pos:
-            stalled[u.id] = (pos, world.time)
+        origin, since = stalled.get(u.id, (None, world.time))
+        if origin is None or math.dist(origin, u.pos) > 1.0:
+            stalled[u.id] = (u.pos, world.time)
         elif world.time - since > STALL_SECONDS:
-            raise AssertionError(f"unit {u.id} ({u.type.value}) stalled for {STALL_SECONDS}s at {pos} with {u.orders[0]} path {u.path[:3]}")
+            raise AssertionError(f"unit {u.id} ({u.type.value}) of player {u.player} stuck for {STALL_SECONDS}s within a tile of "
+                                 f"{origin} at {u.pos} with {u.orders[0]} path {u.path[:3]}")
 
 
 def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
