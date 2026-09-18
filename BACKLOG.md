@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-035**; a new
+section; git history keeps the record. The last ID given is **WB-039**; a new
 item takes the next one and updates this line.
 
 Done and removed 2026-09-18, every one merged into main (whose code is live as
@@ -29,6 +29,10 @@ WB-034. Their acceptance and evidence are in
 | WB-016 | Next | in progress | Assess and recover the six-mission Thornwood campaign | Recovered branch |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
 | WB-035 | Later | proposed | Open a match on a small map without margins beside it on a large canvas | WB-021 measurement |
+| WB-036 | Next | proposed | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often | User 2026-09-18 |
+| WB-037 | Next | proposed | Answer a tower rush without stopping the economy: one tower by the mine now halts Master's gold | User 2026-09-18 |
+| WB-038 | Next | proposed | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
+| WB-039 | Next | proposed | Stop chiming on every selection | User 2026-09-18 |
 
 ## WB-010 — Online responsiveness and connection feedback
 
@@ -242,3 +246,160 @@ leaves the margins.
 those canvases while other map sizes and the 1280×800 window open as today;
 native frames of both are looked at. Presentation only: the simulation
 fingerprint is unchanged.
+
+## WB-036 — A tower rush for Hard and Master
+
+Ilya asked on 2026-09-18 for a "cannon rush" brain: if it lifts the rating,
+Hard plays it with a small chance and Master with a medium one. Warband has
+no cannons. Its static defence is the Guard Tower: 700 gold and 250 lumber,
+400 hit points, armour 3, two tiles square, 35 s to build, needs a
+barracks, and shoots 8 damage every 1.5 s at six tiles. The rush is an early
+peasant walking to the enemy's gold mine and raising one or two towers
+beside it.
+
+The ai-2000 push tried it once and dropped it without a rating: the
+builder's order died on arrival after a forty-second walk, five times a game
+([the scout that never left](docs/ai-ladder.md#the-scout-that-never-left)).
+First find out why the order dies and fix that. Then give `ProProfile` the
+knobs (how many towers, when, where, how many builders) and register the
+posture for `tools/arena.py`. Hard's version keeps Hard's handicaps
+(`PRO_HARD`: slow thinking, six workers a mine), so Hard stays below Master.
+
+Rate it only after WB-037. Against today's answers, a finished tower by the
+mine stops Master's gold for minutes (WB-037's measurement), so a rush would
+win on that bug rather than on play that also beats a human. Build the
+posture first as the opponent WB-037 iterates against; rate it once those
+answers are in.
+
+`make_brain` picks a difficulty's posture from `PRO_FOR` by
+`(seed + player) % len(postures)`, which gives every posture an equal share. A small or medium
+share needs a weighted draw that still depends only on the seed and the
+player, so every client of an online match and every replay agree. Start
+from one Hard game in eight and one Master game in three.
+
+**Done when:** the rush posture is rated after WB-037 with `tools/arena.py
+ladder` against `pro-hard`, `pro-vanguard` and `pro-warden`, on fresh seeds
+over all five layouts, at least 96 games a pairing. If it scores above the
+postures it would join, Hard and Master draw it at the chosen shares; a test
+pins the draw to the seed and player and checks its shares over many seeds;
+the New game screen's ratings are re-measured with the 720-game protocol and
+its notes mention the rush; the fingerprint is refreshed deliberately. If it
+does not, its numbers go into [docs/ai-ladder.md](docs/ai-ladder.md) and the
+knobs are deleted. The brains are outside the authoritative contract
+(`warband/ai.py` and `pro_ai.py` are not in its import closure), so no
+server rollout is needed.
+
+## WB-037 — Answer a tower rush without stopping the economy
+
+Ilya asked on 2026-09-18 whether the computer players stop all mining when
+a tower goes up by their mine, which is strictly worse than any real answer.
+They do. It was measured the same day (script and log in
+`docs/evidence/tower-rush/`): Master played a player with no brain on ten
+seeds, and a finished enemy tower was placed 2–3 tiles behind Master's main
+mine at 150 s. In the next minute Master's gold fell to 0–1,400, against
+6,400–7,600 without the tower. In seven seeds the tower still stood at
+330 s. Master had 0–1 soldiers (12–22 without the tower) and 3–11 peasants
+(15–24 without), and its gold still came in at 0–2,300 a minute. In the
+other three seeds its army killed the tower within about a minute and mining
+resumed.
+
+The code shows three causes:
+
+* The automatic worker policy blocks every tile within the tower's range
+  plus 1.5 (7.5 tiles from its footprint) for automatic harvest and deposit
+  trips (`warband/worker_ai.py`, `_navigation`). A tower within about four
+  tiles of a mine covers every tile the mine is worked from, so no automatic
+  peasant goes to any face, even one the tower cannot reach. A tower that
+  also covers the hall's edge leaves peasants holding gold they cannot
+  deliver. The computer players' peasants are automatic, and so are a
+  human's.
+* Master defends only against enemy *units* within nine tiles of its
+  buildings (`ProBrain._threats`). A tower is a building, and a
+  peasant raising one is inside the construction, so no defence is called.
+  The soldiers meet the tower only when they wander into its range, a few
+  at a time, and they die a few at a time.
+* Orders the brain gives itself (`world.harvest` in `_chop`, builds) are not
+  automatic, so they path over plain ground, through the tower's fire. Where
+  the peasants actually die is still to be traced.
+
+Answers to iterate on, against WB-036's rushing posture:
+
+* A tower going up by the mine or hall is a threat. The army kills the
+  builder or the frame while its hit points are still low (`shell_hp`
+  starts it at a tenth), and peasants do it when there is no army.
+* A finished tower is attacked by a force that gathers out of its range and
+  is big enough to kill it, not by soldiers arriving one by one. Catapults
+  (seven tiles) outrange it.
+* The peasants keep working what is out of range: faces the tower cannot
+  reach, another known mine, the trees. None stands idle while safe work
+  exists, and none carries gold it cannot deliver.
+* `_defend` keeps peasants out of fights because calling them measured about
+  35 Elo worse. That was against soldiers; whether peasants should help
+  against a lone tower is to be measured, not assumed.
+
+The worker policy is part of the model. Changing its margin, or checking the
+faces one by one, moves the authoritative contract, so that part ships with
+the next rules series and its server rollout (with WB-024 and the model
+changes of WB-016). The brain's answers are client-side and need no rollout.
+
+**Done when:** on twenty or more seeds over all five layouts, against
+WB-036's rush posture and the evidence script's placed tower, Master and
+Hard stop the tower or kill it within a minute of its completion in nine
+games of ten, lose no more than three peasants to it, and bring in at least
+70 % of their unrushed gold over the three minutes after it appears. The
+placed tower becomes a regression test: gold resumes and the army does not
+die piecemeal. The fingerprint is refreshed deliberately, and the ladder
+confirms that Master's rating against ordinary opponents did not drop.
+
+## WB-038 — Paint the gold mine
+
+Ilya asked on 2026-09-18 why the gold mine is not painted and animated like
+the buildings. The painting procedure has no subject for it:
+`tools/restyle.py` paints one race's units, or one race's nine buildings in
+one look, and the game recolours each painting to its owner's team. The mine
+belongs to no race and no player, so the sheets leave it out
+(`textures.restyled_buildings` skips `BuildingType.GOLD_MINE`). The map
+draws it from twenty low-poly stand-ins (`textures._mine`, one picked by a
+tile hash in `view.py`), and its selection-panel portrait is the low-poly
+render too. It is the last structure on the map still drawn as a stand-in.
+
+The buildings come alive by swapping looks (`view.building_look`): `active`
+(lit windows, open doors) while they train or research, and `damaged` under
+half their hit points. A mine's own states are idle and worked (a peasant
+inside). An exhausted mine is removed from the map, so there is no ruin to
+paint. A neutral `mine` subject would paint a few of the stand-in variants
+in an `intact` and an `active` look (lamps lit, a cart at the mouth), with
+no team colour and no recolouring, keeping each variant's footprint and
+anchor.
+
+**Done when:** painted mine sheets are installed under
+`warband/assets/restyled/`, and the map and the portrait use them (the
+low-poly render stays behind `WARBAND_ART=procedural`). A worked mine wears
+its active look only while the player can see it; out of sight it shows
+what was last seen (WB-027's rule). `tools/visual_lint.py` passes the new
+frames (no drift from the stand-in, no fringe), and native frames of an idle
+and a worked mine on all three map themes are looked at. Presentation only:
+the fingerprint and the contract are unchanged.
+
+## WB-039 — A quieter selection
+
+Ilya, 2026-09-18: a chime on every selection is perhaps too much. Every
+selection that picks anything plays the `select` cue (`GameScene.select`
+has a `quiet` flag, but no caller passes it): a click, a drag, Tab to an
+idle peasant, a recalled group, a portrait click. In a fight that is a cue
+every second or two, and it is the brightest one there is. Humans hear two
+rising notes, E5 to A5 (`sound.select`); elves two bells, D6 to A6; dwarves
+an anvil strike with two high rings (`warband/voices.py`). Only the orcs'
+thump is dull.
+
+There are two options. Selection can make no sound at all, because the
+selection ring and the panel already answer. Or it can play one short, soft,
+low tick well under the order cues, once however fast the selections come.
+The order cues stay, because they confirm that something happened.
+
+**Done when:** Ilya chooses after hearing the candidates beside today's cue
+(a listening page like the one made for the death cries), and selection in
+all four race voices is what was chosen. A test pins it: the new cue's level is
+under the order cue's (or there is no sound), and a burst of selections
+plays one sound. `SOUND_VERSION` is bumped so cached WAVs are made again,
+and Ilya has heard it in a match. Presentation only.
