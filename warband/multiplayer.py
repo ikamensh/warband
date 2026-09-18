@@ -174,7 +174,7 @@ class NetworkGameScene(GameScene):
 class NetworkMenuScene(_Overlay):
     """A live match menu: local preferences and explicit room departure only."""
 
-    controls = {"s": "settings", "f1": "help", "t": "leave_match", "q": "quit"}
+    controls = {"s": "settings", "f1": "help", "r": "resign", "t": "leave_match", "q": "quit"}
 
     def __init__(self, game_scene):
         self.game_scene = game_scene
@@ -188,8 +188,18 @@ class NetworkMenuScene(_Overlay):
         panel.add(Button("Return to match", hotkey="Esc", on_click=self.game.pop, style=ACTION_BUTTON, width=280))
         panel.add(Button("Settings", hotkey="S", on_click=self.settings, style=GHOST_BUTTON, width=280))
         panel.add(Button("How to play", hotkey="F1", on_click=self.help, style=GHOST_BUTTON, width=280))
+        if self._can_resign():
+            panel.add(Button("Resign", hotkey="R", on_click=self.resign, style=GHOST_BUTTON, width=280))
         panel.add(Button("Leave match", hotkey="T", on_click=self.leave_match, style=GHOST_BUTTON, width=280))
         panel.add(Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=280))
+
+    def _can_resign(self):
+        scene = self.game_scene
+        return scene.world.can_resign(scene.human) is None
+
+    def resign(self):
+        if self._can_resign():
+            self.game.push(ResignScene(self.game_scene))
 
     def settings(self):
         self.game.push(SettingsScene(self.game_scene))
@@ -206,11 +216,39 @@ class NetworkMenuScene(_Overlay):
         self.game.quit()
 
 
+class ResignScene(_Overlay):
+    """Resigning online asks first: it cannot be taken back."""
+
+    controls = {("return", "y"): "confirm", ("escape", "n"): "cancel"}
+
+    def __init__(self, game_scene):
+        self.game_scene = game_scene
+
+    def on_enter(self):
+        world = self.game_scene.world
+        panel = self.panel("Resign the match?")
+        others = ("Your forces lay down their arms. Your buildings stay, abandoned, and the others fight on."
+                  if len(world.players) >= 3 else "Your forces lay down their arms, and your opponent wins.")
+        panel.add(Label(others, text_style="body", width=520, wrap=True))
+        panel.add(Button("Resign", hotkey="Enter", on_click=self.confirm, style=ACTION_BUTTON, width=280))
+        panel.add(Button("Keep fighting", hotkey="Esc", on_click=self.cancel, style=GHOST_BUTTON, width=280))
+
+    def confirm(self):
+        scene = self.game_scene
+        self.game.pop()  # this question
+        self.game.pop()  # the match menu
+        scene.attempt('resign', scene.human)
+
+    def cancel(self):
+        self.game.pop()
+
+
 class NetworkResultScene(NetworkMenuScene):
-    """A finished online match leads back to multiplayer, never to a solo rematch."""
+    """A finished online match leads back to multiplayer, never to a solo rematch.  A player who is out while
+    the others fight on may stay and watch."""
 
     pop_on_cancel = False
-    controls = {("t", "escape"): "leave_match", "q": "quit"}
+    controls = {("t", "escape"): "leave_match", "q": "quit", "w": "watch"}
 
     def __init__(self, game_scene, won):
         super().__init__(game_scene)
@@ -218,11 +256,19 @@ class NetworkResultScene(NetworkMenuScene):
 
     def on_enter(self):
         scene = self.game_scene
-        winner = scene.world.players[scene.world.winner].name if scene.world.winner is not None else "Nobody yet"
-        panel = self.panel("Victory!" if self.won else f"Defeat — {winner} prevails")
+        decided = scene.world.winner is not None
+        title = ("Victory!" if self.won else f"Defeat — {scene.world.players[scene.world.winner].name} prevails" if decided
+                 else "You are out — the others fight on")
+        panel = self.panel(title)
         stats = scene.stats
         panel.add(Label(f"{_clock(scene.world.time)} played · {stats['units_killed']} kills · "
                         f"{stats['units_lost']} units lost", text_style="body"))
         panel.add(Label("For another match, choose Multiplayer on the title screen.", text_style="sub"))
-        panel.add(Button("Back to title", hotkey="T", on_click=self.leave_match, style=ACTION_BUTTON, width=280))
+        if not decided:
+            panel.add(Button("Watch", hotkey="W", on_click=self.watch, style=ACTION_BUTTON, width=280))
+        panel.add(Button("Back to title", hotkey="T", on_click=self.leave_match, style=ACTION_BUTTON if decided else GHOST_BUTTON, width=280))
         panel.add(Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=280))
+
+    def watch(self):
+        if self.game_scene.world.winner is None:
+            self.game.pop()
