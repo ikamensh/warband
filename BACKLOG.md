@@ -1605,7 +1605,12 @@ reads 1500/1500 and intact under the fog while it stands at 800 and trains, a
 farm raised since is absent from map and minimap; once a scout looks the farm
 appears, the hall shows its active look and 800/1500, and its production stays
 unshown). Not covered here: the online server still sends both seats the whole
-world (WB-011); the client no longer shows it.
+world (WB-011); the client no longer shows it. Commit `eb8065e`, with WB-028
+[Tests 35362378663](https://github.com/ikamensh/warband/actions/runs/35362378663),
+[Native package checks 35362378768](https://github.com/ikamensh/warband/actions/runs/35362378768),
+[Publish 35364237386](https://github.com/ikamensh/warband/actions/runs/35364237386) and
+[promotion 35364399632](https://github.com/ikamensh/saga-online/actions/runs/35364399632):
+live as Warband 0.2.23.
 
 ## WB-028 — A seed is a match
 
@@ -1623,7 +1628,23 @@ the test fails on the old code.
 **Done 2026-09-18.** Effects draw from `GameScene.fx_rng`, the brains keep
 `rng`; `tests/warband/test_match_reproducible.py` (the digests differed on the
 old code after 100 seconds of match); the suite as above. Replays were never
-affected: they give the brains' recorded orders back.
+affected: they give the brains' recorded orders back. Commit `c171bd8`; live as
+Warband 0.2.23 with WB-027's runs.
+
+## WB-029 to WB-033 — runs and rollout
+
+The five items below are Warband main `7f163cf`:
+[Tests 35364339651](https://github.com/ikamensh/warband/actions/runs/35364339651),
+[Native package checks 35364339056](https://github.com/ikamensh/warband/actions/runs/35364339056),
+[Publish 35366048325](https://github.com/ikamensh/warband/actions/runs/35366048325). They move
+the authoritative contract (`authority.py`, `model.py`, `rules.py`,
+`settlement.py`; the simulation fingerprint is unchanged), so
+[promotion 35366285791](https://github.com/ikamensh/saga-online/actions/runs/35366285791)
+refused the release as designed until the shared server runs them. The server
+rollout is the one WB-021 needs for Saga2D 0.3.6/0.3.7 and is run by that
+item's session, which pins the Warband main commit that carries both; locally
+the suite passed (1,239), `tools/fuzz.py --games 6 --monkey 8 --seed 4242` found
+nothing, and the online, LAN and startup tests pass on Saga2D 0.3.7.
 
 ## WB-029 — The online authority gives orders to the world it runs
 
