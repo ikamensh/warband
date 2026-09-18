@@ -700,8 +700,9 @@ def _audit(world: World, cv: _Canvas, spec: _Spec, walls: _Walls, natural: Pos |
     if any(route is None for route in routes.values()):
         problems.append("a route exceeds the pathfinder's budget")
     report["detour"] = None
-    if routes.get(doors[1]) is not None:
-        walk = sum(pathing.octile(a, b) for a, b in zip([doors[0]] + routes[doors[1]], routes[doors[1]]))
+    route = routes.get(doors[1])
+    if route is not None:
+        walk = sum(pathing.octile(a, b) for a, b in zip([doors[0]] + route, route))
         report["detour"] = walk / _dist(doors[0], doors[1])
     layout = spec.layout
     if layout is Layout.FOREST:

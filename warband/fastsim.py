@@ -3,9 +3,9 @@
     uv run python -m warband.fastsim        # build it now (the tools build it on first use) and say where
 
 The modules in :data:`MODULES` (the world, its pathfinding and worker policy,
-the rule tables and both kinds of brain) are compiled from their own source,
-so a compiled match is the interpreted match: mypyc keeps Python's integer and
-float semantics and every operation's order, and ``tools/sim_fingerprint.py``
+the map generator, the rule tables and both kinds of brain) are compiled from
+their own source, so a compiled match is the interpreted match: mypyc keeps
+Python's integer and float semantics and every operation's order, and ``tools/sim_fingerprint.py``
 checks the two to the bit (``tests/warband/test_fastsim.py``).  A few loops are
 written twice, because mypyc cannot keep their scores, heaps and grids out of
 Python objects: :data:`NATIVE` does them in C (its opening comment lists each
@@ -47,7 +47,7 @@ from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parent
 BUILDS = PACKAGE.parent / "build" / "fastsim"
-MODULES = ("rules", "races", "path", "worker_knowledge", "model", "worker_ai", "ai", "pro_ai")
+MODULES = ("rules", "races", "path", "worker_knowledge", "model", "mapgen", "worker_ai", "ai", "pro_ai")
 NATIVE = "_native.c"  # the loops written twice, in C, built alongside; see its opening comment
 RECIPE = "2"  # bumped when the build itself changes, so that no build made the old way is reused
 ENV = "WARBAND_FASTSIM"  # the build a process activated, for the worker processes it starts
