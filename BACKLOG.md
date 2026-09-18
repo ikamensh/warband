@@ -31,17 +31,17 @@ catches its class.
 | WB-007 | Next | done | Leave grey abandoned buildings when a player resigns in FFA | User |
 | WB-008 | Next | done | Improve health bars and building progress indicators | User |
 | WB-015 | Next | done | Verify and complete durable local player storage outside game sources | User |
-| WB-009 | Next | in progress | Establish current battle performance and fix measured bottlenecks | User / engine split |
+| WB-009 | Next | done | Establish current battle performance and fix measured bottlenecks | User / engine split |
 | WB-010 | Later | proposed | Smooth online movement and make connection problems understandable | Suggested |
 | WB-011 | Later | proposed | Keep fog-hidden state out of opponents' network snapshots | Suggested |
 | WB-012 | Later | proposed | Support three- and four-human online FFA | Suggested |
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Later | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
-| WB-016 | Later | proposed | Assess and recover the six-mission Thornwood campaign | Recovered branch |
+| WB-016 | Later | blocked | Assess and recover the six-mission Thornwood campaign | Recovered branch |
 | WB-017 | Next | done | Preserve movement speed through path waypoints | WB-003 diagnosis |
 | WB-018 | Next | done | Keep large selections inside the HUD | Native crowd capture |
 | WB-019 | Next | done | Remove stray sprite-sheet lines from painted units | Native melee review |
-| WB-020 | Later | in progress | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
+| WB-020 | Later | done | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
 | WB-021 | Next | blocked | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
 | WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
 | WB-023 | Next | done | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
@@ -680,7 +680,19 @@ p95 15.58 ms on 0.3.3. Since then the units and buildings are painted sheets
 over wounded units (WB-008), and movement changed (WB-017). CI has no frame
 gate: W10 is measured by hand on the reference Mac.
 
-**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+**Done 2026-09-18**, commit `d8b4fe0`: the evidence of every criterion is
+below; the gate is missed by one to two milliseconds and each miss is traced
+and either fixed here (the collector), filed in the engine's backlog
+(S2D-016, S2D-017) or given its own rules item (WB-024).
+[Tests 35300115609](https://github.com/ikamensh/warband/actions/runs/35300115609),
+[Native package checks 35299591104](https://github.com/ikamensh/warband/actions/runs/35299591104),
+[Publish 35300636902](https://github.com/ikamensh/warband/actions/runs/35300636902) and Saga
+Online's [promotion 35300732958](https://github.com/ikamensh/saga-online/actions/runs/35300732958):
+live as Warband 0.2.13 (the Tests run of `d8b4fe0` itself was cancelled by the
+next push; that push's runs carry the same code). Locally: the suite (1179
+passed), the fingerprint unchanged, the runs in `docs/evidence/perf/`.
+
+**Acceptance (recorded 2026-09-18 before implementation):**
 
 1. Evidence on this Mac, unpaced, without a profiler or another expensive job,
    naming host, resolution, commit and engine: `tools/perf.py` records p50,
@@ -835,6 +847,34 @@ and briefing screens fit supported resolutions and have inspected native frames.
 Run the full suite and test scripted outcomes separately from normal elimination.
 Record whether the campaign is accepted or retained with specific remaining
 issues, and clean up the branch only after its work is safely accounted for.
+
+**Assessed 2026-09-18** (branch `campaign` at `9dbc98f`, worktree
+`~/saga/warband-campaign`): four commits on top of `d24446a` add the campaign
+(`campaign.py`, `missions.py`, `dialog.py`, `mission_scene.py`,
+`campaign_scene.py`, `docs/warband-campaign.md`, `tools/verify_campaign.py`,
+`tests/warband/test_campaign.py`: 2,415 lines in 17 files) and touch the
+model (`World.scripted`, `clear_player`), the scene (a mission's pause menu
+and objectives panel), the title (the Campaign entry, a tighter menu at 720
+tall) and the layout test. Its own 14 campaign tests pass on the branch. Main
+has moved 207 commits since; a test merge conflicts in five files —
+`model.py` (main moved in 18 commits, the branch changed 27 lines),
+`scene.py` (22 / 59), `title.py` (9 / 22), `tests/warband/test_layout.py`
+(4 / 25), `AGENTS.md` (15 / 9) — small hunks each, so a rebase is an
+afternoon's work, not a rewrite. Two things follow from it: the model change
+moves the authoritative contract, so the rebased campaign can only be
+published with a server rollout, and the natural place is the next rules
+series with WB-024; and the missions are tuned by scripted play only, so
+they need the human playtests of WB-013 before the campaign is called
+accepted. Nothing in the branch is lost: the worktree and branch stay until
+the decision.
+
+**Blocked on** the adoption decision: is The Thornwood War wanted as
+Warband's campaign (product fit: six missions, three carried choices, a
+progress file that survives versions)? If yes, the plan is: rebase onto main
+(five files), give `Mission` a `layout` (ford = Crossings, Thornwood =
+Forest) as the layouts work intended, run the suite and
+`tools/verify_campaign.py`, inspect the briefing and title frames at 1280×800
+and 1200×680, and ship it in the same rules series and rollout as WB-024.
 
 ## WB-017 — Consistent speed through path waypoints
 
@@ -1066,7 +1106,16 @@ back, the asset stayed `starter` with its intended size and no digest, its
 bytes were downloadable and matched the receipt, and two curl attempts
 finished it. The publisher prints nothing while it transfers.
 
-**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+**Done 2026-09-18**, commit `2a72221`: every criterion below holds.
+[Tests 35300115609](https://github.com/ikamensh/warband/actions/runs/35300115609),
+[Native package checks 35300115672](https://github.com/ikamensh/warband/actions/runs/35300115672),
+[Publish 35301710690](https://github.com/ikamensh/warband/actions/runs/35301710690) — the first
+publication by the publisher with its transfer lines in the job log — and
+Saga Online's [promotion 35301855798](https://github.com/ikamensh/saga-online/actions/runs/35301855798):
+live as Warband 0.2.14. Locally: the twenty publisher tests and the release
+tool suites (43 passed).
+
+**Acceptance (recorded 2026-09-18 before implementation):**
 
 1. Diagnostics: every transfer and finalization step prints one line to the
    CI log when it starts and when it ends (asset, bytes, seconds, the remote
