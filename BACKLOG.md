@@ -1640,11 +1640,22 @@ The five items below are Warband main `7f163cf`:
 the authoritative contract (`authority.py`, `model.py`, `rules.py`,
 `settlement.py`; the simulation fingerprint is unchanged), so
 [promotion 35366285791](https://github.com/ikamensh/saga-online/actions/runs/35366285791)
-refused the release as designed until the shared server runs them. The server
-rollout is the one WB-021 needs for Saga2D 0.3.6/0.3.7 and is run by that
-item's session, which pins the Warband main commit that carries both; locally
-the suite passed (1,239), `tools/fuzz.py --games 6 --monkey 8 --seed 4242` found
-nothing, and the online, LAN and startup tests pass on Saga2D 0.3.7.
+refused the release as designed until the shared server ran them. Locally the
+suite passed (1,239), `tools/fuzz.py --games 6 --monkey 8 --seed 4242` found
+nothing, and the online, LAN and startup tests passed on Saga2D 0.3.7.
+
+**Live 2026-09-18 as Warband 0.2.26.** One server rollout, run by WB-021's
+session, carried these rules, WB-021 and Saga2D 0.3.7 (which holds the
+review's engine fixes S2D-019 to S2D-021): Warband main `2e2dd88`
+([Tests 35366637939](https://github.com/ikamensh/warband/actions/runs/35366637939),
+[Native package checks 35366638004](https://github.com/ikamensh/warband/actions/runs/35366638004)),
+live bundle `443319e9…`, the served attestation equal to the contract
+`9ab6e7ac…` (the moved files exactly `authority.py`, `model.py`, `rules.py`,
+`settlement.py`, plus `packages.saga2d`), every retained seat resumed,
+permessage-deflate negotiated through the public proxy,
+[promotion 35368756806](https://github.com/ikamensh/saga-online/actions/runs/35368756806) and
+[public download checks 35368903585](https://github.com/ikamensh/saga-online/actions/runs/35368903585).
+The record is [Saga Online's engine 0.3.7 rollout](../saga-online/docs/engine-037-rollout.md).
 
 ## WB-029 — The online authority gives orders to the world it runs
 
