@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from saga2d import Button, Label, Row
+from warband.model import RuleError
 from warband.replay import Playback, Replay
 from warband.rules import SIM_DT
 from warband.scene import MAX_STEPS_PER_FRAME, GameScene, HelpScene, SettingsScene, _Overlay, _clock
@@ -94,8 +95,7 @@ class ReplayScene(GameScene):
     # -- What the viewer may do ------------------------------------------------------------------
 
     def order(self, action, *args, **kwargs):
-        self.warn("This is a replay: its orders were given long ago")
-        return None
+        raise RuleError("This is a replay: its orders were given long ago")
 
     def open_menu(self) -> None:
         self.game.push(ReplayMenuScene(self))

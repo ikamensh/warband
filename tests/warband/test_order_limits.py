@@ -40,3 +40,34 @@ def test_a_units_queue_of_orders_is_bounded_and_a_fresh_order_still_clears_it() 
     assert world.to_dict() == before, "a refused order changed the world"
     world.move(ids, (20.5, 20.5))
     assert all(len(u.orders) == 1 for u in squad)
+
+
+def test_the_hud_says_why_when_the_world_refuses_an_order(tmp_path) -> None:
+    """Shift-queueing past a unit's limit is a warning on the status line, whichever way the order was given:
+    right click, the Move, Attack and Patrol buttons, the minimap.  A refusal is never an exception in the frame."""
+    from saga2d import Game
+    from warband.scene import new_game
+    from warband.style import build_theme
+    from warband.view import to_world
+
+    game = Game("Warband Limits", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        scene = new_game(seed=3)
+        game.push(scene)
+        game.tick(1 / 60)
+        worker = next(u for u in scene.world.player_units(scene.human))
+        scene.select([worker.id])
+        spot = (worker.x + 2.0, worker.y)
+        for _ in range(MAX_QUEUED_ORDERS):
+            scene.command_move(spot, queue=True)
+        assert len(worker.orders) == MAX_QUEUED_ORDERS
+        x, y = scene.camera.world_to_screen(*to_world(spot))
+        for give in (lambda: game.backend.inject_click(int(x), int(y), "right", shift=True),
+                     lambda: scene.command_move(spot, queue=True), lambda: scene.command_attack(spot, queue=True),
+                     lambda: scene.command_patrol(spot, queue=True), lambda: scene.command_smart(spot, queue=True)):
+            scene.status = ""
+            give()
+            game.tick(1 / 60)
+            assert "queued" in scene.status and len(worker.orders) == MAX_QUEUED_ORDERS
+    finally:
+        game._teardown()

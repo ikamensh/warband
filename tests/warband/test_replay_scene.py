@@ -70,7 +70,7 @@ def test_a_replay_plays_the_match_back_to_its_recorded_end(game, recorded):
     before = scene.world.tick
     tick(game, 1.0)
     assert scene.world.tick > before, "the recording advances"
-    assert scene.order("move", [1], (3.0, 3.0)) is None, "the viewer gives no orders"
+    assert not scene.attempt("move", [1], (3.0, 3.0)) and "replay" in scene.status, "the viewer gives no orders, and is told so"
     press(game, "end")
     tick(game, 3.0)
     assert isinstance(game.scene, ReplayEndScene)
