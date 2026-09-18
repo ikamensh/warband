@@ -246,10 +246,10 @@ def test_the_simulation_runs_in_fixed_steps_and_pauses(play) -> None:
     assert abs(world.time - 1.0) < 2 * SIM_DT + 1 / 60
     press(game, "f3")
     before = world.time
-    tick(game, 0.5)
+    tick(game, 0.5, 0.1)
     assert world.time == before and "Paused" in texts(game)
     press(game, "f3")
-    tick(game, 0.5)
+    tick(game, 0.5, 0.1)
     assert world.time > before
 
 

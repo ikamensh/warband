@@ -112,7 +112,9 @@ def game(tmp_path):
     g.close()
 
 
+@pytest.mark.slow
 def test_a_match_asks_for_battle_music_while_its_forces_fight_and_peace_when_they_stop(game, monkeypatch) -> None:
+    """A fight and then the ten seconds a battle mood outlasts it, seventeen seconds of a match: the slow tier."""
     asked: list[tuple[str, Race | None]] = []
     monkeypatch.setattr(sound, "music_hook", lambda mood, race: asked.append((mood, race)))
     world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2, rng=random.Random(1), races=(Race.ORC, Race.HUMAN))

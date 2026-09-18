@@ -199,8 +199,8 @@ real breakdown.
   `save_dir=tmp_path / "saves"` because `data_dir` is its parent.
 - The suite has two tiers. A test goes in the fast tier unless it cannot:
   each fast test takes under half a second on the Mac, and CI fails one whose
-  setup, call or teardown takes over 2.5 s (`--budget`; its runners are about
-  twice as slow). A test that needs a whole match or minutes of one, a real
+  setup, call or teardown takes over 3 s (`--budget`; four workers on a runner
+  run a test about four times slower). A test that needs a whole match or minutes of one, a real
   server, socket or process, every race's art or every window size is marked
   `@pytest.mark.slow`, and its docstring (or its module's) says why: collection
   refuses one that does not. A matrix keeps representative cases in the fast

@@ -51,8 +51,8 @@ jobs:
         run: uv sync --locked --extra dev --python "${{ steps.inputs.outputs.python }}"
         working-directory: warband
       - name: Fast tier
-        # every unmarked test, on four workers; one over the budget fails: CI's runners are about twice as slow as a Mac
-        run: uv run --locked pytest -q --budget 2.5 --durations=10
+        # every unmarked test, on four workers; one over the budget fails: four workers on a runner run a test about four times slower than a Mac
+        run: uv run --locked pytest -q --budget 3 --durations=10
         working-directory: warband
       - name: Slow tier
         run: uv run --locked pytest -q --slow -m slow --durations=10

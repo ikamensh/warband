@@ -179,7 +179,9 @@ def start(game: Game, mission_id: str, flags: dict | None = None, difficulty: Di
     return scene
 
 
+@pytest.mark.slow
 def test_granting_the_truce_at_the_ford_ends_the_mission_and_is_remembered(game) -> None:
+    """The ford's waves and its emissary come on the mission's clock, ten minutes of it: the slow tier."""
     scene = start(game, "greywater")
     run, world = scene.run, scene.world
     assert [type(b).__name__ for b in scene.brains] == ["Brain"] and scene.brains[0].difficulty is Difficulty.EASY
@@ -213,7 +215,9 @@ def test_granting_the_truce_at_the_ford_ends_the_mission_and_is_remembered(game)
     assert ProgressStore(game.data_dir).load().flags == {"truce": True}
 
 
+@pytest.mark.slow
 def test_refusing_the_truce_means_the_camp_must_burn(game) -> None:
+    """Ten minutes of the mission's clock: the slow tier."""
     run = build_world(mission("greywater"), flags={})
     for seconds in (160, 240, 200):
         run_for(run, seconds)
@@ -254,7 +258,9 @@ def test_a_replayed_mission_asks_its_own_question_again() -> None:
 # -- Saves in the middle of a mission ----------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_a_mission_save_keeps_the_script_where_it_was_and_continue_resumes_it(game) -> None:
+    """Five minutes of the mission's clock before the save: the slow tier."""
     scene = start(game, "hollowmere")
     run = scene.run
     run_for(run, 301)
@@ -422,7 +428,9 @@ def test_losing_the_hall_before_the_levies_come_loses_the_ford() -> None:
     assert run.lost == "Hold the ford until the levies arrive (10:00)" and not run.won
 
 
+@pytest.mark.slow
 def test_karst_hold_is_won_by_burning_the_camp_and_the_powder_goes_south_into_a_new_process(game) -> None:
+    """A second process reads the progress file: the slow tier."""
     ProgressStore(game.data_dir).save(Progress(CAMPAIGN.id, Difficulty.HARD, completed=["hollowmere", "greywater", "silent_hold"], flags={"truce": True}))
     scene = start(game, "karst_hold", flags={"truce": True}, difficulty=Difficulty.HARD)
     run, world = scene.run, scene.world
