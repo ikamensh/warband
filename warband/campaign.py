@@ -23,7 +23,7 @@ from typing import Any, Callable
 
 from saga2d import SaveError, SaveManager
 from warband.model import Building, Point, Pos, Unit, World, dist, rects_gap, tile_center
-from warband.rules import BUILDINGS, MINE_GOLD, BuildingType, Difficulty, MapTheme, Race, Terrain, UnitType
+from warband.rules import BUILDINGS, MINE_GOLD, BuildingType, Difficulty, Layout, MapTheme, Race, Terrain, UnitType
 
 FORMAT = 1  # of the progress file; bump only when an older Warband could misread a newer file
 MINE_CLEARANCE = 2
@@ -121,6 +121,7 @@ class Mission:
     sides: tuple[Side, ...]
     size: str  # a key of mapgen.SIZES
     theme: MapTheme
+    layout: Layout  # always named: a layout drawn from the seed would put the setup's camps in a river or a rock ring
     seed: int
     briefing: Dialog
     debrief: Dialog

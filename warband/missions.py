@@ -16,7 +16,7 @@ from warband.campaign import (
     Campaign, Choice, Line, Mission, Objective, Option, Run, Side, Speaker, Trigger, after, all_of, any_of, at, objective_done, side_out, var,
 )
 from warband.model import tile_center
-from warband.rules import BuildingType as B, Difficulty, MapTheme, Race, UnitType as U, Upgrade
+from warband.rules import BuildingType as B, Difficulty, Layout, MapTheme, Race, UnitType as U, Upgrade
 
 SPEAKERS = {
     "Aldric": Speaker("Captain Aldric Vane", Race.HUMAN, U.KNIGHT),
@@ -73,7 +73,7 @@ def _raid_3(run: Run) -> None:
 HOLLOWMERE = Mission(
     id="hollowmere", title="Hollowmere", act=ACT_1,
     sides=(Side("Hollowmere", Race.HUMAN), Side("Bloodfang Raiders", Race.ORC)),
-    size="Small", theme=MapTheme.SUMMER, seed=1101,
+    size="Small", theme=MapTheme.SUMMER, layout=Layout.PLAINS, seed=1101,
     briefing=(
         Line("", "Ten years of quiet on the Greywater ended in one night. Orc warbands crossed the river, and the village of Hollowmere burned."),
         Line("Aldric", "The raiders pulled back east to a camp in the hills, but they'll be back once they've counted their dead. "
@@ -152,7 +152,7 @@ def _truce(run: Run) -> None:
 GREYWATER = Mission(
     id="greywater", title="Greywater Ford", act=ACT_1,
     sides=(Side("The Marches", Race.HUMAN), Side("Bloodfang Clan", Race.ORC, ai=Difficulty.EASY)),
-    size="Medium", theme=MapTheme.WASTELAND, seed=1202,
+    size="Medium", theme=MapTheme.WASTELAND, layout=Layout.CROSSINGS, seed=1202,
     briefing=(
         Line("", "The Greywater is the border. The ford at the old mill is the only crossing for a day's ride, and the orcs have made camp on the far bank."),
         Line("Aldric", "We hold the ford. Ten minutes and the Marcher levies reach us from the south; until then it's us and what we can raise."),
@@ -230,7 +230,7 @@ def _ambush(run: Run) -> None:
 SILENT_HOLD = Mission(
     id="silent_hold", title="The Silent Hold", act=ACT_2,
     sides=(Side("Aldric's Company", Race.HUMAN), Side("Thornwood Wardens", Race.ELF)),
-    size="Medium", theme=MapTheme.WINTER, seed=1303,
+    size="Medium", theme=MapTheme.WINTER, layout=Layout.PLAINS, seed=1303,
     briefing=(
         Line("", "Karst Hold lies beyond the Frostcomb pass, three days north through country that was open moor a year ago. It is open moor no longer."),
         Line("Aldric", "No wagons, no peasants. A company on foot: Sister Maren, myself and the best of the levy."),
@@ -283,7 +283,7 @@ def _assault(run: Run) -> None:
 KARST_HOLD = Mission(
     id="karst_hold", title="Karst Hold", act=ACT_2,
     sides=(Side("Karst Hold", Race.DWARF), Side("Thornwood Host", Race.ELF, ai=Difficulty.MEDIUM)),
-    size="Medium", theme=MapTheme.WINTER, seed=1404,
+    size="Medium", theme=MapTheme.WINTER, layout=Layout.PLAINS, seed=1404,
     briefing=(
         Line("Brunna", "You'll lead the hold's defence, Captain; my people know the walls, not the field. Bolt towers, a guard hall, a mortar we've been saving. Gold enough."),
         Line("Aldric", "And the wardens?"),
@@ -333,7 +333,7 @@ def _setup_retaken(run: Run) -> None:
 RETAKEN = Mission(
     id="retaken", title="Greywater Retaken", act=ACT_3,
     sides=(Side("The Marches", Race.HUMAN), Side("Thornwood Lodges", Race.ELF, ai=Difficulty.MEDIUM)),
-    size="Medium", theme=MapTheme.SUMMER, seed=1505,
+    size="Medium", theme=MapTheme.SUMMER, layout=Layout.CROSSINGS, seed=1505,
     briefing=(
         Line("", "The company came south by the river road and found the ford under leaves. The old mill is a lodge of living wood; the Thornwood has crossed the Greywater."),
         Line("Aldric", "They took the ford while we were away. Everything south of it is next."),
@@ -391,7 +391,7 @@ COURT_OF_THORNS = Mission(
     id="court_of_thorns", title="The Court of Thorns", act=ACT_3,
     sides=(Side("The Marches", Race.HUMAN), Side("The Court of Thorns", Race.ELF, ai=Difficulty.HARD),
            Side("Ironjaw's Warband", Race.ORC, ai=Difficulty.MEDIUM)),
-    size="Large", theme=MapTheme.SUMMER, seed=1606,
+    size="Large", theme=MapTheme.SUMMER, layout=Layout.FOREST, seed=1606,
     briefing=(
         Line("", "The Court of Thorns: a moon hall older than the Marches, ringed with eyries, under a canopy that has never been cut."),
         Line("Ysolde", "Marcher. You have cut your way through half my wood to bring me a message. Say it."),

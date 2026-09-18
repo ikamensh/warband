@@ -39,7 +39,8 @@ def name_sides(world: World, mission: Mission) -> None:
 def build_world(mission: Mission, *, flags: dict[str, Any]) -> Run:
     """The mission's map from its seed, reshaped by its setup; the run that plays it."""
     width, height = mapgen.SIZES[mission.size]
-    world = mapgen.generate(mission.seed, width, height, len(mission.sides), theme=mission.theme, races=[side.race for side in mission.sides])
+    world = mapgen.generate(mission.seed, width, height, len(mission.sides), theme=mission.theme, races=[side.race for side in mission.sides],
+                           layout=mission.layout)
     world.scripted = True
     name_sides(world, mission)
     run = Run(mission, world, flags=flags)
@@ -68,9 +69,9 @@ def start_mission(game, campaign: Campaign, mission: Mission, progress: Progress
 class _Notice(Toast):
     """A toast that keeps under the objectives panel however the panel grows after it was raised."""
 
-    def draw(self, scene: Scene) -> None:
+    def draw_below(self, scene: Scene, below: float) -> float:  # the effects layer draws toasts through this, stacked
         self.top = scene.toast_top
-        super().draw(scene)
+        return super().draw_below(scene, below)
 
 
 class _Mark(Component):
@@ -116,16 +117,22 @@ class MissionScene(GameScene):
         self._panel_state: dict[str, str] = {}
         self._notices: deque[tuple[str, list[str], tuple[int, int, int, int]]] = deque()  # one toast at a time, so none hides another
         self._notice_until = -math.inf
+        self._banner_until = -math.inf  # the mission's title has the screen to itself until then
 
     def on_enter(self) -> None:
         super().on_enter()
-        self.effects.add(Banner(f"Mission {self.campaign.index(self.mission)}: {self.mission.title}", subtitle=self.mission.act,
-                                accent=rgba(self.player.color), hold=2.0))
+        banner = Banner(f"Mission {self.campaign.index(self.mission)}: {self.mission.title}", subtitle=self.mission.act,
+                        accent=rgba(self.player.color), hold=2.0)
+        self.effects.add(banner)
+        # The band crosses the window at 40 % of its height, where a short window's objectives panel reaches: the
+        # panel and the script's first notices wait for it to pass.
+        self._banner_until = self.clock + banner.duration
+        self._notice_until = max(self._notice_until, self._banner_until)
 
     # -- Objectives panel ---------------------------------------------------------------
 
     def _build_objectives(self) -> Column:
-        panel = Column(spacing=6, anchor=Anchor.TOP_RIGHT, margin=(12, HUD_TOP), style=PANEL_STYLE)
+        panel = Column(spacing=6, anchor=Anchor.TOP_RIGHT, margin=(12, HUD_TOP), style=PANEL_STYLE, blocks_pointer=True)
         panel.add(Label(f"{self.campaign.index(self.mission)}. {self.mission.title}", text_style="heading", width=390))
         self._rows = {}
         for objective in self.mission.objectives:
@@ -153,6 +160,7 @@ class MissionScene(GameScene):
 
     def update(self, dt: float) -> None:
         super().update(dt)
+        self.objectives.visible = self.clock >= self._banner_until
         if not self._game_over:
             self._script()
 
@@ -173,7 +181,8 @@ class MissionScene(GameScene):
             self._notice_until = self.clock + NOTICE_HOLD + 2 * Toast.SLIDE
         for point in run.looks:
             wx, wy = to_world(point)
-            self.camera.pan_to(wx, wy, 0.8)
+            if self.world.is_explored(self.human, (int(point[0]), int(point[1]))):
+                self.camera.pan_to(wx, wy, 0.8)  # never into the dark: ground not yet explored shows the player nothing
             self.minimap.ping(wx, wy)
             self.last_alert = point
         run.looks.clear()

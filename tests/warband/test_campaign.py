@@ -1,6 +1,10 @@
 """The campaign: missions that play through the scene, choices that carry over, and progress that outlives a version."""
 
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -11,7 +15,7 @@ from warband.dialog import DialogScene
 from warband.mission_scene import CAMPAIGN_SLOT, MissionResultScene, MissionScene, build_world
 from warband.missions import CAMPAIGN
 from warband.model import tile_center
-from warband.rules import SIM_DT, BuildingType, Difficulty, UnitType
+from warband.rules import SIM_DT, BuildingType, Difficulty, Race, UnitType
 from warband.style import build_theme
 from warband.title import TitleScene
 
@@ -133,6 +137,7 @@ def begin_campaign(game: Game) -> MissionScene:
 
 def test_the_first_mission_plays_to_a_result_that_records_progress_and_leads_on(game) -> None:
     scene = begin_campaign(game)
+    settle(game, BANNER_FRAMES)
     assert "1. Hollowmere" in texts(game) and "Build a farm" in texts(game) and "Getting started" not in texts(game)
     world = scene.world
     hall = scene.run.hall(0)
@@ -268,6 +273,7 @@ def test_a_mission_save_keeps_the_script_where_it_was_and_continue_resumes_it(ga
     assert isinstance(loaded, MissionScene) and loaded is not scene
     assert loaded.run.fired.keys() == {"raid_1"} and loaded.run.state == run.state and loaded.run.get("camp") == run.get("camp")
     assert [p.name for p in loaded.world.players] == ["Hollowmere", "Bloodfang Raiders"] and loaded.world.scripted
+    settle(game, BANNER_FRAMES)
     assert "1. Hollowmere" in texts(game) and "Hold Hollowmere against the raids" in texts(game)
     assert loaded.AUTOSAVE_SLOT == CAMPAIGN_SLOT and not loaded.ranked
 
@@ -347,3 +353,172 @@ def test_dialogue_lines_follow_the_answer_and_escape_skips_to_the_question(game)
     assert "The end." in texts(game)
     press(game, "space")
     assert done == [True] and game.scene is None
+
+
+# -- Every mission both ways ------------------------------------------------------------------------------------
+
+ROOT = Path(__file__).resolve().parents[2]
+
+READ_PROGRESS = """
+import json, sys
+from pathlib import Path
+from saga2d import Game
+from warband.campaign_scene import CampaignScene
+from warband.style import build_theme
+data = Path(sys.argv[1])
+game = Game("Warband Campaign", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=data / "saves")
+game.push(CampaignScene())
+game.tick(1 / 60)
+scene = game.scene
+print(json.dumps({"next": scene.next_mission.id, "flags": scene.progress.flags, "difficulty": scene.difficulty.value}))
+game._teardown()
+"""
+
+
+BANNER_FRAMES = 170  # the mission's title banner holds the screen for 2.7 seconds
+
+
+def raze(world, side: int) -> None:
+    """Everything *side* has falls on the next step, buildings and units alike."""
+    slay(world, side)
+    for building in world.player_buildings(side):
+        building.hp = 0
+
+
+def settle(game: Game, frames: int = 30) -> None:
+    for _ in range(frames):
+        game.tick(1 / 60)
+
+
+def read_in_a_new_process(data_dir) -> dict:
+    """What the campaign screen of a fresh process offers from the progress file in *data_dir*."""
+    env = {**os.environ, "SAGA2D_SILENT": "1"}
+    done = subprocess.run([sys.executable, "-c", READ_PROGRESS, str(data_dir)], cwd=ROOT, env=env, capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr[-2000:]
+    return json.loads(done.stdout.strip().splitlines()[-1])
+
+
+def talk_through(game: Game, until) -> list[str]:
+    """Press Space through the dialogues until *until* holds; every text shown on the way."""
+    seen: list[str] = []
+    for _ in range(16):
+        seen += texts(game)
+        if until(game.scene):
+            return seen
+        press(game, "space")
+    raise AssertionError(f"still in {type(game.scene).__name__} after sixteen lines")
+
+
+def test_losing_the_hall_before_the_levies_come_loses_the_ford() -> None:
+    run = build_world(mission("greywater"), flags={})
+    run_for(run, 60)
+    run.hall(0).hp = 0
+    run_for(run, 1)
+    assert run.lost == "Hold the ford until the levies arrive (10:00)" and not run.won
+
+
+def test_karst_hold_is_won_by_burning_the_camp_and_the_powder_goes_south_into_a_new_process(game) -> None:
+    ProgressStore(game.data_dir).save(Progress(CAMPAIGN.id, Difficulty.HARD, completed=["hollowmere", "greywater", "silent_hold"], flags={"truce": True}))
+    scene = start(game, "karst_hold", flags={"truce": True}, difficulty=Difficulty.HARD)
+    run, world = scene.run, scene.world
+    assert world.players[0].race is Race.DWARF and [type(b).__name__ for b in scene.brains] == ["ProBrain"]  # Medium, one step harder
+    run_for(run, 5)
+    assert "assault" in run.fired and run.state["break"] == "open"
+    raze(world, 1)
+    settle(game)
+    assert isinstance(game.scene, MissionResultScene) and game.scene.won
+    press(game, "return")  # the debrief
+    assert isinstance(game.scene, DialogScene)
+    press(game, "escape")  # to Brunna's question
+    assert "Take the powder south" in texts(game)
+    press(game, "1")
+    talk_through(game, lambda scene: isinstance(scene, CampaignScene))
+    assert game.scene.next_mission.id == "retaken"
+    assert read_in_a_new_process(game.data_dir) == {"next": "retaken", "flags": {"truce": True, "powder": True}, "difficulty": "hard"}
+
+
+def test_karst_hold_is_lost_with_its_deep_hold() -> None:
+    run = build_world(mission("karst_hold"), flags={})
+    run_for(run, 5)
+    run.hall(0).hp = 0
+    run_for(run, 1)
+    assert run.lost == "Karst's Deep Hold must stand" and not run.won
+
+
+def test_greywater_retaken_is_won_when_the_lodges_burn_and_lost_with_the_hall() -> None:
+    run = build_world(mission("retaken"), flags={"truce": True})
+    run_for(run, 2)
+    assert "tribute" in run.fired and run.state["retake"] == "open"
+    raze(run.world, 1)
+    run_for(run, 1)
+    assert run.state["retake"] == "done" and run.won and run.lost is None
+    again = build_world(mission("retaken"), flags={})
+    run_for(again, 2)
+    assert "tribute" not in again.fired
+    again.hall(0).hp = 0
+    run_for(again, 1)
+    assert again.lost == "Your town hall must stand" and not again.won
+
+
+def test_the_court_falls_once_the_orcs_are_driven_off_and_the_epilogue_reads_the_three_choices(game) -> None:
+    before = [m.id for m in CAMPAIGN.missions[:5]]
+    ProgressStore(game.data_dir).save(Progress(CAMPAIGN.id, Difficulty.MEDIUM, completed=before, flags={"truce": False, "powder": True}))
+    scene = start(game, "court_of_thorns", flags={"truce": False, "powder": True})
+    run, world = scene.run, scene.world
+    run_for(run, 2)
+    raze(world, 1)
+    settle(game)
+    assert run.state["court"] == "done" and run.state["orcs"] == "open" and not run.won and game.scene is scene
+    raze(world, 2)
+    settle(game)
+    assert isinstance(game.scene, MissionResultScene) and game.scene.won and "The war is over" in texts(game)
+    press(game, "return")  # the debrief
+    press(game, "escape")  # to Ysolde's question
+    press(game, "1")  # burn it back
+    shown = " ".join(talk_through(game, lambda scene: isinstance(scene, CampaignScene)))
+    assert "The Thornwood War ended in the ash of the Court" in shown
+    assert "Every spring since" in shown and "No orc has crossed the Greywater" in shown and "crater to boast of" in shown
+    assert "oath held" not in shown and "grandchildren" not in shown and "kept its powder" not in shown
+    progress = ProgressStore(game.data_dir).load()
+    assert progress.completed == before + ["court_of_thorns"] and progress.flags == {"truce": False, "powder": True, "burn": True}
+    assert progress.next_mission(CAMPAIGN) is None and "Read the epilogue" in texts(game)
+
+
+def test_the_court_of_thorns_is_lost_with_the_hall() -> None:
+    run = build_world(mission("court_of_thorns"), flags={"truce": True})
+    run_for(run, 2)
+    run.hall(0).hp = 0
+    run_for(run, 1)
+    assert run.lost == "Your town hall must stand" and not run.won
+
+
+# -- The mission's HUD ---------------------------------------------------------------------------------------------------
+
+
+def test_the_title_banner_has_the_screen_first_and_notices_hang_under_the_objectives(game) -> None:
+    """At 680 tall the banner's band crosses where the objectives panel reaches, so the panel waits for it; and a
+    notice slides in under the panel however tall the panel has grown, never over it."""
+    scene = start(game, "hollowmere")
+    assert "Mission 1: Hollowmere" in texts(game) and "Build a farm" not in texts(game)
+    settle(game, BANNER_FRAMES)
+    assert "Build a farm" in texts(game) and "Mission 1: Hollowmere" not in texts(game)
+    world, hall = scene.world, scene.run.hall(0)
+    world.place_building(0, BuildingType.FARM, (hall.x + 5, hall.y + 5))
+    world.place_building(0, BuildingType.BARRACKS, (hall.x + 5, hall.y - 1))
+    for i in range(4):
+        world.spawn_unit(0, UnitType.FOOTMAN, tile_center((hall.x + i, hall.y + 4)))
+    settle(game, 12)
+    press(game, "space")  # Aldric's warning; the raid's objectives join the panel
+    settle(game, 40)
+    notice = next(t for t in game.backend.texts if t["text"] == "Objectives complete")
+    _x, top, _w, height = scene.objectives.bounds
+    assert "Hold Hollowmere against the raids" in texts(game) and notice["y"] > top + height
+
+
+def test_a_camera_cue_never_pans_into_unexplored_ground_but_the_minimap_and_space_still_point_there(game) -> None:
+    scene = start(game, "silent_hold")
+    home = scene.camera.center
+    settle(game, 90)  # the road trigger at one second names the pass, deep in unexplored ground
+    goal = tuple(scene.run.get("goal"))
+    assert "road" in scene.run.fired and scene.last_alert == goal
+    assert scene.camera.center == home

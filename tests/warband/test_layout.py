@@ -125,7 +125,7 @@ def mission_scene(game: Game, mission_id: str):
     run = build_world(CAMPAIGN.mission(mission_id), flags={"truce": True})
     scene = MissionScene(CAMPAIGN, run, difficulty=Difficulty.MEDIUM)
     game.push(scene)
-    settle(game)
+    settle(game, 170)  # past the title banner, which the objectives panel waits for
     return scene
 
 
