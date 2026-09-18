@@ -22,6 +22,7 @@ from ci_compatibility import fingerprint
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGETS = ("windows-x64", "darwin-arm64")
+REGRESSION = ["-m", "pytest", "-q", "--slow"]  # the full regression suite: both tiers (tests/conftest.py)
 PACKAGES = ("numpy", "Pillow", "pyglet", "websockets", "pyinstaller", "pyinstaller-hooks-contrib")
 ONLINE_CHECKS = ("create_join", "authoritative_movement", "foreign_order_rejected", "private_seat_rejoin",
                  "global_production", "automatic_plan_builder", "cancel_plans", "assembly_point")
@@ -84,7 +85,7 @@ def validate(directory: Path, identity: dict, target: str) -> dict:
     require(inputs["packages"] == versions, "Installed dependencies differ from the lock")
     regression = read_json(record("regression.json"))
     require(regression["identity"] == identity and regression["exit_code"] == 0
-            and regression["command"] == ["-m", "pytest", "-q"], "Full regression suite did not pass for this identity")
+            and regression["command"] == REGRESSION, "Full regression suite did not pass for this identity")
     require(sha256(record("regression.log")) == regression["log_sha256"], "Regression log differs from its receipt")
     manifest = read_json(record("build-manifest.json"))
     require(manifest["game"] == "warband" and manifest["product"] == "Warband", "Wrong game package")
@@ -234,7 +235,7 @@ def build(identity: dict, directory: Path, *, iscc: Path | None = None, mesa_dir
     directory.mkdir(parents=True, exist_ok=True)
     require(not any(directory.iterdir()), "Use an empty output directory; preserve or explicitly remove earlier evidence")
     write_json(directory / "build-inputs.json", inputs)
-    command = ["-m", "pytest", "-q"]
+    command = REGRESSION
     print("Running the full regression suite; output is in regression.log", flush=True)
     with (directory / "regression.log").open("w", encoding="utf-8") as log:
         process = subprocess.run([sys.executable, *command], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
