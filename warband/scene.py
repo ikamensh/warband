@@ -173,7 +173,8 @@ class GameScene(Scene):
         self.rating_change: RatingChange | None = None  # what the finished or abandoned match did to the rating
         self._resignation: Standing | None = None  # where the player stood when they resigned
         self.brains = [make_brain(p.id, difficulty, seed) for p in world.players if not p.human]
-        self.rng = random.Random(seed)
+        self.rng = random.Random(seed)  # the computer players' stream, and nothing else's: what is drawn must not move the match
+        self.fx_rng = random.Random(seed)  # sparks, blood and dust
         self.settings = settings if settings is not None else dict(DEFAULT_SETTINGS)  # a saga2d Settings when the game runs
         for key, value in DEFAULT_SETTINGS.items():
             self.settings.setdefault(key, value)
@@ -1403,12 +1404,12 @@ class GameScene(Scene):
             struck = (wx, wy - TILE * 0.45)
             away = self._away(e.pos, origin)
             if e.target_type == UnitType.CATAPULT.value:
-                self.effects.add(Spray(struck, away, "drop", (222, 184, 118), 10, rng=self.rng, size=(3, 6)))  # pale wood chips off the dark frame
+                self.effects.add(Spray(struck, away, "drop", (222, 184, 118), 10, rng=self.fx_rng, size=(3, 6)))  # pale wood chips off the dark frame
             elif self.settings["blood"]:
-                self.effects.add(Spray(struck, away, "drop", (172, 22, 26), min(9, 3 + e.amount // 2), rng=self.rng,
+                self.effects.add(Spray(struck, away, "drop", (172, 22, 26), min(9, 3 + e.amount // 2), rng=self.fx_rng,
                                        size=(3, 5 + min(e.amount, 12) / 4)))  # a few drops for a light blow, a splash for a heavy one
             if e.target_armor > 0:
-                self.effects.add(Burst(struck, (255, 236, 190, 255), 3, rng=self.rng, size=5, speed=(50, 140)))  # off the armour
+                self.effects.add(Burst(struck, (255, 236, 190, 255), 3, rng=self.fx_rng, size=5, speed=(50, 140)))  # off the armour
         self._sound_hit(e)  # a shot's blow is raised when the shot lands, so its sound is due now
 
     def _away(self, point: tuple[float, float], origin: tuple[float, float] | None) -> tuple[float, float]:
@@ -1424,7 +1425,7 @@ class GameScene(Scene):
         if not self._visible(e.pos):
             return
         wx, wy = to_world(e.pos)
-        self.effects.add(Burst((wx, wy), (200, 190, 170, 255), 12, rng=self.rng, size=12, speed=(40, 140)))
+        self.effects.add(Burst((wx, wy), (200, 190, 170, 255), 12, rng=self.fx_rng, size=12, speed=(40, 140)))
         self.camera.shake(2, 0.15)
         if not struck and self._audible(e.pos):
             self.sfx("impact")
@@ -1450,7 +1451,7 @@ class GameScene(Scene):
             if self.settings["blood"] and e.text in FLESH:
                 self._stain((body.position[0] + 10 * math.copysign(1, body.turn), body.position[1]))
         color = self.world.players[e.player].color if e.player is not None else (200, 200, 200)
-        self.effects.add(Burst(to_world(e.pos), rgba(color), 10, rng=self.rng, size=10))
+        self.effects.add(Burst(to_world(e.pos), rgba(color), 10, rng=self.fx_rng, size=10))
         if self._audible(e.pos):
             self.sfx(deaths.cue(self.world.players[e.player].race))
 
@@ -1466,17 +1467,17 @@ class GameScene(Scene):
 
     def _dust(self, feet: tuple[float, float], outcome: str) -> None:
         """The landing raises dust at the feet; a wreck raises more, and smoke."""
-        self.effects.add(Burst(feet, (200, 190, 170, 255), 14 if outcome == "wreck" else 6, rng=self.rng, size=8, speed=(30, 90)))
+        self.effects.add(Burst(feet, (200, 190, 170, 255), 14 if outcome == "wreck" else 6, rng=self.fx_rng, size=8, speed=(30, 90)))
         if outcome == "wreck":
-            self.effects.add(Burst((feet[0], feet[1] - 10), (150, 146, 140, 170), 5, rng=self.rng, image="smoke", size=14, speed=(8, 30)))
+            self.effects.add(Burst((feet[0], feet[1] - 10), (150, 146, 140, 170), 5, rng=self.fx_rng, image="smoke", size=14, speed=(8, 30)))
 
     def _show_destroyed(self, e: Event) -> None:
         if e.player == self.human:
             self.effects.add(Toast("Building lost", [f"Your {self.building_name(BuildingType(e.text)).lower()} was destroyed"], hold=4.0, top=TOAST_TOP))
         if self._visible(e.pos):
             wx, wy = to_world(e.pos)
-            self.effects.add(Burst((wx, wy), (255, 160, 80, 255), 18, rng=self.rng, size=16, speed=(40, 160)))
-            self.effects.add(Burst((wx, wy - 10), (60, 60, 64, 255), 14, rng=self.rng, image="smoke", size=28, speed=(10, 50)))
+            self.effects.add(Burst((wx, wy), (255, 160, 80, 255), 18, rng=self.fx_rng, size=16, speed=(40, 160)))
+            self.effects.add(Burst((wx, wy - 10), (60, 60, 64, 255), 14, rng=self.fx_rng, image="smoke", size=28, speed=(10, 50)))
             self.camera.shake(4, 0.3)
             if self._audible(e.pos):
                 self.sfx(wreckage.cue(wreckage.material(BuildingType(e.text))), gap=0.3)

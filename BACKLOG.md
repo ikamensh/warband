@@ -49,6 +49,7 @@ catches its class.
 | WB-025 | Next | done | Health bars: steady while moving, anchored to the sprite, filled from the first frame | User report 2026-09-18 |
 | WB-026 | Next | done | Give the Windows and Mac builds Warband's own icon instead of the packager's snake | User 2026-09-18 |
 | WB-027 | Next | done | Show ground out of sight as the player last saw it: buildings, trees, minimap, selection panel | Review 2026-09-18 |
+| WB-028 | Next | done | A seed is a match: effects no longer draw from the computer players' random stream | Review 2026-09-18 |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -1561,3 +1562,21 @@ farm raised since is absent from map and minimap; once a scout looks the farm
 appears, the hall shows its active look and 800/1500, and its production stays
 unshown). Not covered here: the online server still sends both seats the whole
 world (WB-011); the client no longer shows it.
+
+## WB-028 — A seed is a match
+
+Found 2026-09-18 by the code review: `GameScene` gave one `random.Random(seed)`
+to the computer players (where to build, give or take) and to every spark,
+blood spray and dust burst. Effects are thrown only for what the player sees
+and only with Blood on, so the brains' next draw depended on the camera, the
+fog and a display setting: a seed from a bug report or `--seed` did not
+reproduce the match once a fight had been in view.
+
+**Acceptance (recorded 2026-09-18 before implementation):** the same seed with
+a skirmish in view plays out to the same world digest with Blood on and off;
+the test fails on the old code.
+
+**Done 2026-09-18.** Effects draw from `GameScene.fx_rng`, the brains keep
+`rng`; `tests/warband/test_match_reproducible.py` (the digests differed on the
+old code after 100 seconds of match); the suite as above. Replays were never
+affected: they give the brains' recorded orders back.
