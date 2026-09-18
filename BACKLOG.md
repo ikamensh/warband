@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-042**; a new
+section; git history keeps the record. The last ID given is **WB-043**; a new
 item takes the next one and updates this line.
 
 Done and removed 2026-09-18, every one merged into main (whose code is live as
@@ -40,6 +40,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-042 | Later | proposed | Tests read through public accessors; try property tests for the model and paths | WB-040 |
+| WB-043 | Next | proposed | Hold a build order's price while its builder walks: a quarter of Master's orders die on arrival | WB-036 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -411,4 +412,22 @@ invariants.
 **Done when:** no test reads a private member of `warband/`, or each that does
 says why; the property tests that earn their keep run in the tiers, and the
 rest are recorded here with what they found.
+
+## WB-043 — Hold a build order's price while its builder walks
+
+Found tracing WB-036's rush: a build order is paid when its peasant reaches
+the site, and the pro brain spends the bank on soldiers (and peasants,
+research, other buildings) every pass in between, so the order is refused on
+arrival and the walk is wasted. Over twenty six-minute games of the Vanguard
+against the Warden, 611 constructions began and 227 orders were refused for
+money (159 gold, 68 lumber): a quarter of them. The rush now holds its own
+tower's price while its builder walks; every order in flight wants the same.
+
+**Done when:** the brains hold the price of every build order in flight from
+what they train, research and order next; the refusals for money in that
+twenty-game count fall to near none; the ladder (`tools/arena.py`, a knob
+keeping the old way as a trial profile) shows whether Hard and Master got
+stronger, and the displayed ratings are re-measured with the 720-game
+protocol if they moved; the fingerprint and `sim_bench.txt` are refreshed
+deliberately. The brains are outside the contract: no server rollout.
 
