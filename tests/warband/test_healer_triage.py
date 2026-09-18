@@ -5,7 +5,7 @@ import math
 import pytest
 
 from warband.model import Heal, World
-from warband.rules import BuildingType, SIM_DT, Terrain, UnitType
+from warband.rules import LEASH, BuildingType, SIM_DT, Terrain, UnitType
 
 
 def arena(terrain=None):
@@ -163,3 +163,22 @@ def test_a_moving_healer_reaches_a_patient_through_the_legal_crossing():
     advance(world, 12)
     assert healer.x > 10
     assert patient.hp > 40
+
+
+def test_a_healer_that_took_up_a_patient_by_itself_goes_home_past_the_leash():
+    """An idle cleric tends a wounded ally it sees and follows one that walks off, but only so far: past the leash
+    from where it stood it walks back, the patient still wounded, rather than trail it across the map."""
+    world = arena()
+    post = (4.5, 8.5)
+    cleric = world.spawn_unit(0, UnitType.CLERIC, post)
+    knight = world.spawn_unit(0, UnitType.KNIGHT, (5.5, 8.5))  # faster than a cleric: it cannot be caught
+    knight.hp = 1
+    advance(world, 0.5)
+    assert isinstance(cleric.orders[0], Heal) and cleric.orders[0].auto and cleric.home == post
+    world.move([knight.id], (22.5, 8.5))
+    farthest = 0.0
+    for _ in range(round(10 / SIM_DT)):
+        world.step()
+        farthest = max(farthest, math.dist(cleric.pos, post))
+    assert LEASH < farthest < LEASH + 1, f"it followed to the leash and no further: {farthest:.2f} tiles"
+    assert math.dist(cleric.pos, post) < 1 and knight.hp < knight.max_hp, "it walked back to its post, the knight still hurt"
