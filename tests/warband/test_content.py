@@ -217,3 +217,16 @@ def test_research_and_upgrades_survive_a_save(tmp_path) -> None:
     run(world, 45.0)
     run(copy, 45.0)
     assert world.to_dict() == copy.to_dict() and Upgrade.BLADES_1 in copy.players[0].upgrades
+
+
+def test_a_shot_does_more_than_a_scratch_against_the_heaviest_armour() -> None:
+    """Armour is flat with a floor of one, so a shooter's damage has to clear the heaviest plate by a margin.
+
+    At five damage an archer did one point to a knight's four armour: ninety
+    shots to fell it, and the counter the rules table promises did not exist.
+    The balance league measured archers taking nothing at all against a
+    knights army; this pins the margin that fixed it.
+    """
+    heaviest = max(info.armor for info in UNITS.values())
+    for shooter in (UnitType.ARCHER, UnitType.CATAPULT):
+        assert UNITS[shooter].damage - heaviest >= 2, f"{shooter.value} barely scratches the heaviest armour"

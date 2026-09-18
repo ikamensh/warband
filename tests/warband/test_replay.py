@@ -131,3 +131,26 @@ def test_a_replay_from_another_format_or_with_a_bad_log_is_refused():
         Replay.from_dict({**data, "orders": [[0, "spawn_unit", [0, "peasant", [1.0, 1.0]], {}]]})
     with pytest.raises(ValueError):
         Replay.from_dict({**data, "orders": list(reversed(data["orders"]))})
+
+
+def test_a_match_in_which_choppers_are_released_replays_faithfully():
+    """Master pulls hands off the trees through ``release_workers`` once the wood is piled up; that order is
+    logged and replayed like any other. The sixty-second matches above never bank enough lumber to give it."""
+    seed = 7
+    world = mapgen.generate(seed=seed, players=2, human=None)
+    for player in world.players:
+        player.lumber = 5000  # well past the stock at which the brain lets its choppers go
+    replay = Replay.begin(world, seed=seed, difficulty=Difficulty.MASTER, human=0)
+    minds = [make_brain(i, Difficulty.MASTER) for i in range(2)]
+    rng = random.Random(seed)
+    for _ in range(int(40 / SIM_DT)):
+        for brain in minds:
+            brain.think(world, rng)
+        world.step()
+        world.take_events()
+    assert "release_workers" in {name for _tick, name, _args, _kwargs in replay.orders}
+    replay.finish(world, "abandoned")
+    playback = Playback(Replay.from_dict(json.loads(json.dumps(replay.to_dict()))))
+    playback.run()
+    assert playback.done and playback.faithful
+    assert digest(playback.world) == digest(world)

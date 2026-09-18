@@ -41,9 +41,10 @@ from dataclasses import dataclass, replace
 from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived
 from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, tile_center
 from warband.races import RACES
-from warband.rules import BUILDINGS, BuildingType, UnitType
+from warband.rules import BUILDINGS, MINE_SLOTS, BuildingType, UnitType
 
 _MELEE_TYPES = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
+STRICT_SLACK = 0.1  # how far past its planned share a type may run under a strict plan
 BUILD_MIN_DISTANCE = 2
 BUILD_MAX_DISTANCE = 12
 
@@ -59,6 +60,7 @@ class ProProfile:
     lumber_share: float = 0.35        # workforce hired above the mine slots; who chops is the model's own policy
     lumber_floor_panic: int = 350     # below this much lumber, with gold to spare, spare hands go to the trees
     panic_gold: int = 2000            # …'to spare' meaning this much unspendable gold
+    lumber_stock: int = 2000          # above this much lumber, all but one chopper go back to the gold
     max_workers: int = 32
     supply_slack: int = 4             # farms go up to keep this much headroom…
     supply_per_producer: float = 2.0  # …plus this much per military building
@@ -66,6 +68,7 @@ class ProProfile:
     surplus_gold: int = 800           # money piling up past this unlocks optional buildings
     lumber_floor: int = 150           # never spend the lumber the next few soldiers need
     max_halls: int = 3
+    mine_floor: int = 6000            # a worked mine with less than this left is running out; take another
     barracks_per_hall: int = 3        # a barracks turns out ~4 soldiers a minute; income buys far more
     barracks_first: bool = False      # nothing but farms goes up before the first barracks
     towers_early: int = 0             # towers at the front point as soon as the barracks stands, before the mill
@@ -99,6 +102,10 @@ class ProProfile:
     siege_share: float = 0.0          # if set, the share of the army that is catapults…
     cleric_share: float = 0.0         # …and that is healers, overriding the race's plan
     army_plan: Mapping[UnitType, float] | None = None  # shares of the army to aim for, instead of the race's own
+    save_for_wanted: bool = True      # the unit the plan is shortest of has first claim on the bank, affordable yet or not
+    early_tech: tuple[BuildingType, ...] = ()  # put up as soon as their requirements stand, saturated or not; twice for two
+    strict_plan: bool = False         # a type already past its share of the plan is not trained, whatever is idle
+    research: bool = True             # whether upgrades are bought at all
 
 
 PRO = ProProfile("pro")
@@ -142,6 +149,11 @@ _TRIALS = (
     replace(PRO, name="pro-workersfirst", soldiers_before_workers=0),
     replace(PRO, name="pro-nopanic", lumber_floor_panic=0),
     replace(PRO, name="pro-nocounter", counter_from=1.1),
+    # The balance league (docs/balance.md) found the wood crew only ever grew and
+    # producers bought whatever was affordable at the moment: these two play the way it was.
+    replace(PRO, name="pro-nostock", lumber_stock=10**9),
+    replace(PRO, name="pro-nosave", save_for_wanted=False),
+    replace(PRO, name="pro-old", lumber_stock=10**9, save_for_wanted=False),
 )
 PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, PRO_VANGUARD.name: PRO_VANGUARD, PRO_WARDEN.name: PRO_WARDEN,
                                        **{p.name: p for p in _TRIALS}}
@@ -375,7 +387,7 @@ class ProBrain:
         return any(isinstance(order, Harvest) and not isinstance(order.target, int) for order in peasant.orders)
 
     def _chop(self, world: World) -> None:
-        """Put spare hands on trees when the wood runs out, and only then.
+        """Hands follow scarcity both ways: to the trees when the wood runs out, back to the gold when it piles up.
 
         A fixed share of the workforce on lumber is worse than the model's own
         policy, and measured so twice: as a standing share it cost 40 to 180
@@ -385,12 +397,24 @@ class ProBrain:
         sits at zero, no farm can be built, the supply cap freezes, and a bank
         of fifteen thousand gold buys nothing at all — so the rule fires on the
         symptom rather than running all the time.
+
+        The model's policy only ever places a peasant once, so a crew sent to the
+        trees stayed there for the rest of the game: the balance league's losers
+        ended with five to sixteen thousand lumber banked while gold was what they
+        lacked. Above ``lumber_stock`` all but one chopper go back to the mine.
         """
         player = world.players[self.player]
-        if player.lumber >= self.profile.lumber_floor_panic or player.gold < self.profile.panic_gold:
-            return
         peasants = [p for p in self._peasants(world)
                     if not p.hidden and not isinstance(p.order, (Build, Repair)) and p.id not in self.scouts]
+        if player.lumber >= self.profile.lumber_stock:
+            # Let go of the axe and let the model's own policy place them. Naming a
+            # mine here crashed a league sixty matches in: the brain chose from the
+            # player's memory, which keeps a mine nobody has looked at lately, and a
+            # harvest order on ground that no longer holds one is refused.
+            world.release_workers([p.id for p in peasants if self._on_lumber(p) and p.carrying is None][1:])
+            return
+        if player.lumber >= self.profile.lumber_floor_panic or player.gold < self.profile.panic_gold:
+            return
         # Never everyone: gold still has to come in, or the next peasant never does.
         want = min(len(peasants) // 2, max(0, len(peasants) - 2))
         short = want - sum(1 for p in peasants if self._on_lumber(p))
@@ -464,15 +488,28 @@ class ProBrain:
             # where barracks-first alone took 59%): the wood is six tiles from
             # every start, and a second mill at the wood front no better.
             wishes.append((BuildingType.LUMBER_MILL, anchor))
+        # A posture built around one branch of the tree — knights, siege, healers —
+        # cannot wait for the bank to overflow before it is allowed that branch.
+        for tech in set(profile.early_tech):
+            needs = BUILDINGS[tech].requires
+            if count(tech) < profile.early_tech.count(tech) and (needs is None or have(needs)):
+                wishes.append((tech, anchor))
         # Everything past here is optional, and optional buildings are what lose games:
         # each one is an army that was not trained. They are unlocked only once the
         # production already standing cannot keep up with the money coming in.
         expansion = self._expansion_site(world) if profile.expand else None
-        if expansion is not None and profile.expand_early and count(BuildingType.TOWN_HALL) < profile.max_halls:
+        room_for_a_hall = expansion is not None and count(BuildingType.TOWN_HALL) < profile.max_halls
+        if room_for_a_hall and (profile.expand_early or self._mines_failing(world)):
+            # Scarcity opens this gate as well as plenty. A brain whose mines are
+            # spent or full has no income to saturate its production with, so
+            # waiting for saturation meant never expanding at all: the dry-mine
+            # league saw no second hall in 336 seats. A hall takes a minute to
+            # build and a peasant longer to walk, so the move starts while the
+            # old mine still has gold in it.
             wishes.append((BuildingType.TOWN_HALL, expansion))
         if not self._producers_saturated(world):
             return wishes
-        if expansion is not None and not profile.expand_early and count(BuildingType.TOWN_HALL) < profile.max_halls:
+        if room_for_a_hall and not profile.expand_early:
             wishes.append((BuildingType.TOWN_HALL, expansion))
         if count(BuildingType.BLACKSMITH) < 1:
             wishes.append((BuildingType.BLACKSMITH, anchor))
@@ -493,6 +530,17 @@ class ProBrain:
         if count(BuildingType.TOWER) < profile.tower_count and len(self._army(world)) >= 4:
             wishes.append((BuildingType.TOWER, self._front_point(world, hall)))
         return wishes
+
+    def _mines_failing(self, world: World) -> bool:
+        """Whether the mines being worked can no longer grow this economy: spent, or every place at the face taken."""
+        mines = self._worked_mines(world)
+        if not mines:
+            return True
+        if sum(mine.gold for mine in mines) < self.profile.mine_floor * len(mines):
+            return True
+        miners = sum(1 for p in self._peasants(world)
+                     if p.inside is not None or any(isinstance(o, Harvest) and isinstance(o.target, int) for o in p.orders))
+        return miners >= MINE_SLOTS * len(mines)
 
     def _producers_saturated(self, world: World) -> bool:
         """Whether the buildings already standing are the bottleneck rather than the bank.
@@ -623,6 +671,8 @@ class ProBrain:
                 if len(hall.queue) < 2 and world.can_train(hall, UnitType.PEASANT) is None:
                     world.train(hall.id, UnitType.PEASANT)
         counts = {t: sum(1 for u in army if u.type is t) for t in UnitType}
+        targets = self._army_targets(world)
+        wishes: list[tuple[float, Building, UnitType]] = []
         for building in world.player_buildings(player, done=True):
             if not building.info.trains or building.type is BuildingType.TOWN_HALL:
                 continue
@@ -630,10 +680,23 @@ class ProBrain:
                 world.set_rally(building.id, self._front_point(world, halls[0]))
             if building.research is not None or len(building.queue) >= 2:
                 continue
-            choice = self._choose_unit(world, building, counts)
-            if choice is not None and world.can_train(building, choice) is None:
+            wish = self._choose_unit(building, counts, targets)
+            if wish is not None:
+                wishes.append((*wish, building))
+        # The unit the army is shortest of has first claim on the bank. Buying
+        # whatever was affordable at the moment instead had the stables turn out
+        # a scout every time the knight it wanted was a few hundred gold away:
+        # fifteen scouts to eight knights, in a posture that asked for knights.
+        gold, lumber = world.players[player].gold, world.players[player].lumber
+        for _gap, choice, building in sorted(wishes, key=lambda w: -w[0]):
+            cost = world.unit_info(player, choice).cost
+            if gold >= cost.gold and lumber >= cost.lumber and world.can_train(building, choice) is None:
                 world.train(building.id, choice)
                 counts[choice] = counts.get(choice, 0) + 1
+            elif not self.profile.save_for_wanted:
+                continue
+            gold -= cost.gold
+            lumber -= cost.lumber
 
     def _army_targets(self, world: World) -> dict[UnitType, float]:
         """Shares of the army to aim for, shifted towards counters of what the enemy is remembered fielding."""
@@ -674,22 +737,27 @@ class ProBrain:
             _shift(plan, {UnitType.SCOUT: -0.075, UnitType.KNIGHT: -0.075, UnitType.FOOTMAN: 0.075, UnitType.ARCHER: 0.075})
         return plan
 
-    def _choose_unit(self, world: World, building: Building, counts: dict[UnitType, int]) -> UnitType | None:
+    def _choose_unit(self, building: Building, counts: dict[UnitType, int],
+                     targets: dict[UnitType, float]) -> tuple[float, UnitType] | None:
+        """What *building* should train next and how short of it the army is: ``(gap, unit)``, affordable or not."""
         soldiers = sum(counts.values())
         if building.type is BuildingType.STABLES and self.profile.scout and counts.get(UnitType.SCOUT, 0) < 1:
-            return UnitType.SCOUT
-        targets = self._army_targets(world)
-        best: UnitType | None = None
-        best_gap = -math.inf
+            return math.inf, UnitType.SCOUT
+        best: tuple[float, UnitType] | None = None
         for unit_type in targets:
-            if unit_type not in building.info.trains or world.can_train(building, unit_type) is not None:
+            if unit_type not in building.info.trains:
                 continue
             share = counts.get(unit_type, 0) / soldiers if soldiers else 0.0
-            if targets[unit_type] - share > best_gap:
-                best, best_gap = unit_type, targets[unit_type] - share
+            gap = targets[unit_type] - share
+            if self.profile.strict_plan and gap < -STRICT_SLACK:
+                continue
+            if best is None or gap > best[0]:
+                best = (gap, unit_type)
         return best
 
     def _research(self, world: World) -> None:
+        if not self.profile.research:
+            return
         player = world.players[self.player]
         for upgrade in RESEARCH_ORDER:
             if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):

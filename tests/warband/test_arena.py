@@ -303,3 +303,68 @@ def test_the_layout_comes_from_the_seed_so_a_ladder_sees_all_of_them():
         if playable(spec):
             drawn.add(mapgen.generate(seed=seed, players=2, human=None).layout)
     assert len(drawn) >= 4, f"a ladder should meet most layouts, saw {drawn}"
+
+
+def test_a_scaled_variant_is_spelled_out_in_its_name():
+    """``scale:knight.cost_gold=1.25,tower.hp=0.8`` travels to a worker as a name and patches exactly those numbers."""
+    from warband.arena import ensure_variant, use_variant
+
+    knight_gold, tower_hp = UNITS[UnitType.KNIGHT].cost.gold, BUILDINGS[BuildingType.TOWER].hp
+    try:
+        ensure_variant("scale:knight.cost_gold=1.25,tower.hp=0.8")
+        assert UNITS[UnitType.KNIGHT].cost.gold == round(knight_gold * 1.25)
+        assert BUILDINGS[BuildingType.TOWER].hp == round(tower_hp * 0.8)
+        assert UNITS[UnitType.FOOTMAN].cost.gold == 600
+        ensure_variant("scale:tower.damage=0.75")
+        assert BUILDINGS[BuildingType.TOWER].damage == 6, "a tower's shot can be scaled too"
+    finally:
+        use_variant("standard")
+    assert UNITS[UnitType.KNIGHT].cost.gold == knight_gold
+    with pytest.raises(KeyError):
+        ensure_variant("scale:dragon.hp=2")
+
+
+# -- Settled matches -------------------------------------------------------------
+
+def test_a_settled_match_stops_before_the_last_building_falls():
+    """A runaway is called once it is beyond doubt, and calls the same winner as playing it out.
+
+    A fifth of the average league match was spent razing a beaten player's
+    farms. Stopping changes what is measured only if it calls a different
+    winner, which is what this pins.
+    """
+    spec = MatchSpec(seed=101, agents=("pro", "easy"), minutes=20)
+    quick, full = play(spec), play(spec, settle=False)
+    assert full.winner is not None and quick.winner == full.winner
+    assert quick.settled and not full.settled
+    assert quick.minutes < full.minutes
+    assert quick.placements == full.placements
+    # Checked over 112 matches played both ways: the same placements in every one,
+    # the same winner in 110, and the two others were stalemates the full match
+    # left undecided and the rule called. 22% of the wall time saved.
+
+
+def test_a_match_still_in_the_balance_is_played_on():
+    """The rule waits for a lead that holds: an opening in which nobody has fought yet is not settled."""
+    short = play(MatchSpec(seed=7, agents=("pro", "pro"), minutes=3))
+    assert not short.settled
+
+
+def test_a_ladder_can_ask_for_a_layout_instead_of_hoping_the_seeds_cover_them():
+    """Eight seeds drew plains five times and forest never, which weighted a whole league towards one map.
+
+    The postures that wait score 87% on plains and 50% on klondike, so a
+    league that is five-eighths plains is measuring the map as much as the
+    rules. A spec now names its layout, and the runner cycles them.
+    """
+    from warband.rules import Layout
+
+    seen = set()
+    for layout in Layout:
+        spec = MatchSpec(seed=4, agents=("medium", "easy"), minutes=1, layout=layout.value)
+        outcome = play(spec)
+        assert outcome.spec.layout == layout.value
+        seen.add(layout.value)
+    assert len(seen) == len(Layout)
+    drawn = play(MatchSpec(seed=4, agents=("medium", "easy"), minutes=1))
+    assert drawn.spec.layout is None, "without one named, the seed still draws it"

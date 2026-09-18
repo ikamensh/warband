@@ -13,7 +13,7 @@ import math
 
 from warband import path as pathing
 from warband.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Unit, World, rect_gap, tile_center
-from warband.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, SIM_DT, UNITS, UNIT_RADIUS, BuildingType, Resource, Terrain
+from warband.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_SLOTS, SIM_DT, UNITS, UNIT_RADIUS, BuildingType, Resource, Terrain
 
 
 @dataclass(frozen=True)
@@ -167,6 +167,8 @@ class _View:
                 mine = knowledge.mines.get(target)
                 if mine is None or mine.gold <= 0:
                     continue
+                if loads[target] >= MINE_SLOTS:
+                    continue  # every place at that face is spoken for; another hand there would only queue
             for tile in site.access:
                 distance = field[tile[1] * width + tile[0]]
                 if distance < math.inf:

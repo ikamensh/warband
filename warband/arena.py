@@ -42,10 +42,22 @@ from warband import mapgen
 from warband.ai import make_brain
 from warband.model import World
 from warband.races import RACES
-from warband.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Difficulty, MapTheme, Race, SIM_DT, UnitType, Upgrade
+from warband.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Difficulty, Layout, MapTheme, Race, SIM_DT, UnitType, Upgrade
+from warband.telemetry import PlayerTally, Telemetry
 
 ELO_SCALE = 400.0 / math.log(10.0)  # Elo points per unit of Bradley-Terry log-strength
 DEFAULT_MINUTES = 20.0
+
+# When a match is beyond doubt. A fifth of the average match was spent razing a
+# beaten player's farms, and the twenty-minute cap was paid in full by every
+# stalemate. A lead this far ahead, held this long, has never been overturned in
+# the leagues it was checked against, and the placements are the same function of
+# the world either way (:func:`_placements`), so stopping early measures the same thing.
+SETTLED_ARMY = 5.0       # times every rival's army, priced in gold and lumber…
+SETTLED_POWER = 1.5      # …while also this far ahead on everything standing, so a beaten army with an
+                         #   intact economy is still given its chance to rebuild
+SETTLED_SECONDS = 30.0   # …both held for this long of simulation time
+SETTLED_EVERY = 40       # steps between checks; the comparison walks every unit and building
 
 
 # -- Agents ------------------------------------------------------------------------
@@ -92,13 +104,19 @@ from warband.pro_ai import PRO_PROFILES, ProBrain  # noqa: E402 - after register
 for _name, _profile in PRO_PROFILES.items():
     register(_name, lambda player, seed, p=_profile: ProBrain(player, p))
 
+from warband.archetypes import ARCHETYPES  # noqa: E402 - the balance league's postures play under their names too
+
+for _profile in ARCHETYPES:
+    if _profile.name not in AGENTS:
+        register(_profile.name, lambda player, seed, p=_profile: ProBrain(player, p))
+
 
 # -- Balance variants --------------------------------------------------------------
 
 #: Multiplicative knobs a variant may turn. ``cost_gold``/``cost_lumber`` scale a
 #: price; the rest scale the matching field of the unit, building or upgrade.
 UNIT_FIELDS = ("hp", "damage", "speed", "range", "build_time", "cost_gold", "cost_lumber")
-BUILDING_FIELDS = ("hp", "build_time", "cost_gold", "cost_lumber")
+BUILDING_FIELDS = ("hp", "build_time", "cost_gold", "cost_lumber", "damage", "range")
 UPGRADE_FIELDS = ("cost_gold", "cost_lumber", "time")
 
 
@@ -151,6 +169,8 @@ def _scaled_building(info, factors: Mapping[str, float]):
         hp=max(1, round(info.hp * factors.get("hp", 1.0))),
         build_time=max(0.5, round(info.build_time * factors.get("build_time", 1.0), 3)),
         cost=_scaled_cost(info.cost, factors),
+        damage=round(info.damage * factors.get("damage", 1.0)),
+        range=round(info.range * factors.get("range", 1.0), 3),
     )
 
 
@@ -227,10 +247,37 @@ def shuffled_variant(seed: int, spread: float = 0.25) -> Variant:
     return Variant(f"shuffle-{seed}", units=units, buildings=buildings)
 
 
+def scaled_variant(name: str) -> Variant:
+    """A patch spelled out in its name: ``scale:knight.cost_gold=1.25,tower.hp=0.8,blades_1.time=0.5``.
+
+    Each term is a unit, building or upgrade value, a field of it (:data:`UNIT_FIELDS`,
+    :data:`BUILDING_FIELDS`, :data:`UPGRADE_FIELDS`) and the factor to multiply it by.
+    This is how a proposed price change is tried: the name travels to every
+    worker as plain data, and the league is played again under it.
+    """
+    units: dict[UnitType, dict[str, float]] = {}
+    buildings: dict[BuildingType, dict[str, float]] = {}
+    upgrades: dict[Upgrade, dict[str, float]] = {}
+    for term in name.removeprefix("scale:").split(","):
+        target, factor = term.split("=")
+        thing, field_name = target.split(".")
+        if thing in UnitType._value2member_map_ and field_name in UNIT_FIELDS:
+            units.setdefault(UnitType(thing), {})[field_name] = float(factor)
+        elif thing in BuildingType._value2member_map_ and field_name in BUILDING_FIELDS:
+            buildings.setdefault(BuildingType(thing), {})[field_name] = float(factor)
+        elif thing in Upgrade._value2member_map_ and field_name in UPGRADE_FIELDS:
+            upgrades.setdefault(Upgrade(thing), {})[field_name] = float(factor)
+        else:
+            raise KeyError(f"nothing to scale in {term!r}")
+    return Variant(name, units=units, buildings=buildings, upgrades=upgrades)
+
+
 def ensure_variant(name: str) -> None:
-    """Register ``shuffle-N`` on demand, so a variant name is all a worker needs."""
+    """Register ``shuffle-N`` and ``scale:…`` on demand, so a variant name is all a worker needs."""
     if name not in VARIANTS and name.startswith("shuffle-"):
         register_variant(shuffled_variant(int(name.split("-", 1)[1])))
+    if name not in VARIANTS and name.startswith("scale:"):
+        register_variant(scaled_variant(name))
     use_variant(name)
 
 
@@ -248,9 +295,12 @@ class MatchSpec:
     height: int = 40
     races: tuple[str, ...] | None = None  # race value per player; None draws them from the seed
     theme: str = MapTheme.SUMMER.value
-    # The layout is always drawn from the seed, so a ladder spans all five of
-    # them without being told to. Size and land are not, so they are spelled
-    # out here and varied per seed by the runner.
+    layout: str | None = None  # None draws it from the seed
+    # Size, land and layout are spelled out here and varied by the runner. The
+    # layout used to be left to the seed, on the grounds that a few dozen seeds
+    # meet all five — but a league of eight seeds drew plains five times and
+    # forest never, and the postures that wait score 87% on plains against 50%
+    # on klondike. A league that is five-eighths one map measures that map.
 
     @property
     def players(self) -> int:
@@ -272,6 +322,8 @@ class MatchResult:
     wall: float
     styles: tuple[Mapping[str, float], ...] = ()  # how each player played; see :func:`style_of`
     races: tuple[str, ...] = ()                   # the race each player was drawn, by value
+    settled: bool = False  # stopped once the result was beyond doubt rather than played to the last building
+    tallies: tuple[PlayerTally, ...] = ()  # what each player bought, lost and killed; see :mod:`warband.telemetry`
 
     @property
     def decided(self) -> bool:
@@ -287,17 +339,28 @@ class MatchResult:
 def _power(world: World, player: int) -> float:
     """What a player still has on the map, priced in gold and lumber.
 
-    Only used to rank players who are both still alive when time runs out.
+    Used to rank players who are both still alive when time runs out, and to
+    tell a settled match from one still in the balance.
     """
-    total = 0.0
+    army, rest = _worth(world, player)
+    return army + rest
+
+
+def _worth(world: World, player: int) -> tuple[float, float]:
+    """``(what its soldiers are worth, what everything else is)``, priced in gold and lumber, wounds counted."""
+    army = rest = 0.0
     for unit in world.units.values():
         if unit.player == player and unit.hp > 0:
             cost = unit.info.cost
-            total += (cost.gold + cost.lumber) * unit.hp / max(1, unit.max_hp)
+            worth = (cost.gold + cost.lumber) * unit.hp / max(1, unit.max_hp)
+            if unit.is_worker:
+                rest += worth
+            else:
+                army += worth
     for building in world.player_buildings(player):
         cost = building.info.cost
-        total += (cost.gold + cost.lumber) * building.hp / max(1, building.max_hp)
-    return total
+        rest += (cost.gold + cost.lumber) * building.hp / max(1, building.max_hp)
+    return army, rest
 
 
 def _placements(world: World, eliminated: dict[int, float], players: int) -> tuple[int, ...]:
@@ -332,7 +395,8 @@ def playable(spec: MatchSpec) -> bool:
     """
     try:
         mapgen.generate(seed=spec.seed, width=spec.width, height=spec.height,
-                        players=spec.players, human=None, theme=MapTheme(spec.theme))
+                        players=spec.players, human=None, theme=MapTheme(spec.theme),
+                        layout=Layout(spec.layout) if spec.layout is not None else None)
     except ValueError:
         return False
     return True
@@ -363,26 +427,54 @@ def style_of(world: World, agent: Agent, player: int, peak_army: int) -> dict[st
     }
 
 
-def play(spec: MatchSpec) -> MatchResult:
-    """Run one match to a winner or the time cap."""
+def _runaway(world: World, eliminated: Mapping[int, float], players: int) -> int | None:
+    """The player who has both the field and the map, if there is one.
+
+    An army five times every rival's says nothing can stop it now; a lead on
+    everything standing says the rival cannot buy a new one either. Both are
+    needed: an army wiped out in one bad fight is not a lost game.
+    """
+    standing = [p for p in range(players) if p not in eliminated]
+    if len(standing) < 2:
+        return None
+    worth = {p: _worth(world, p) for p in standing}
+    leader = max(standing, key=lambda p: sum(worth[p]))
+    army, rest = worth[leader]
+    others = [worth[p] for p in standing if p != leader]
+    if army < SETTLED_ARMY * max(a for a, _ in others):
+        return None
+    return leader if army + rest >= SETTLED_POWER * max(a + r for a, r in others) else None
+
+
+def play(spec: MatchSpec, *, settle: bool = True) -> MatchResult:
+    """Run one match to a winner, a settled result or the time cap.
+
+    *settle* stops a match whose result is beyond doubt; pass False to play
+    every match to the last building, which is what the rule was checked against.
+    """
     ensure_variant(spec.variant)
     races = tuple(Race(r) for r in spec.races) if spec.races is not None else None
     world = mapgen.generate(seed=spec.seed, width=spec.width, height=spec.height, players=spec.players,
-                            human=None, theme=MapTheme(spec.theme), races=races)
+                            human=None, theme=MapTheme(spec.theme), races=races,
+                            layout=Layout(spec.layout) if spec.layout is not None else None)
     agents = [make_agent(name, player, spec.seed) for player, name in enumerate(spec.agents)]
     # A stream per player: whose turn it is to draw must not depend on who else is playing.
     rngs = [random.Random(spec.seed * 1000003 + player) for player in range(spec.players)]
     eliminated: dict[int, float] = {}
     peak_army = [0] * spec.players
+    telemetry = Telemetry(world)
     started = time.perf_counter()
     steps = 0
+    leader: int | None = None
+    leader_since = 0.0
+    settled: int | None = None
     for _ in range(int(spec.minutes * 60 / SIM_DT)):
         if world.winner is not None:
             break
         for agent, rng in zip(agents, rngs):
             agent.think(world, rng)
         world.step()
-        world.take_events()
+        telemetry.observe(world, world.take_events())
         steps += 1
         for player in world.players:
             if not player.alive and player.id not in eliminated:
@@ -391,10 +483,20 @@ def play(spec: MatchSpec) -> MatchResult:
             for player in range(spec.players):
                 peak_army[player] = max(peak_army[player],
                                         sum(1 for u in world.player_units(player) if not u.is_worker))
+        if settle and steps % SETTLED_EVERY == 0:
+            ahead = _runaway(world, eliminated, spec.players)
+            if ahead is None or ahead != leader:
+                leader, leader_since = ahead, world.time
+            elif world.time - leader_since >= SETTLED_SECONDS:
+                settled = leader
+                break
+    telemetry.finish(world)
     styles = tuple(style_of(world, agent, player, peak_army[player]) for player, agent in enumerate(agents))
-    return MatchResult(spec=spec, placements=_placements(world, eliminated, spec.players), winner=world.winner,
+    return MatchResult(spec=spec, placements=_placements(world, eliminated, spec.players),
+                       winner=world.winner if world.winner is not None else settled,
                        minutes=world.time / 60, steps=steps, wall=time.perf_counter() - started, styles=styles,
-                       races=tuple(p.race.value for p in world.players))
+                       races=tuple(p.race.value for p in world.players),
+                       settled=settled is not None, tallies=telemetry.tallies)
 
 
 def styles(results: Iterable[MatchResult]) -> dict[str, dict[str, float]]:
@@ -424,7 +526,7 @@ def register_profiles(profiles: Sequence[tuple[str, object]]) -> None:
 
 #: The order :func:`play_spec_tuple` expects, and the only thing that crosses
 #: a process boundary.
-SPEC_FIELDS = ("seed", "agents", "variant", "minutes", "width", "height", "races", "theme")
+SPEC_FIELDS = ("seed", "agents", "variant", "minutes", "width", "height", "races", "theme", "layout")
 
 
 def play_spec_tuple(packed: tuple) -> MatchResult:
@@ -587,7 +689,8 @@ def to_record(result: MatchResult) -> dict:
     """A match result as plain data, so runs can be saved and pooled."""
     return {"spec": {f: getattr(result.spec, f) for f in SPEC_FIELDS}, "placements": list(result.placements),
             "winner": result.winner, "minutes": result.minutes, "steps": result.steps, "wall": result.wall,
-            "styles": [dict(style) for style in result.styles], "races": list(result.races)}
+            "styles": [dict(style) for style in result.styles], "races": list(result.races),
+            "settled": result.settled, "tallies": [tally.to_record() for tally in result.tallies]}
 
 
 def from_record(record: Mapping) -> MatchResult:
@@ -597,7 +700,9 @@ def from_record(record: Mapping) -> MatchResult:
             spec[key] = tuple(spec[key])
     return MatchResult(spec=MatchSpec(**spec), placements=tuple(record["placements"]), winner=record["winner"],
                        minutes=record["minutes"], steps=record["steps"], wall=record["wall"],
-                       styles=tuple(record.get("styles", ())), races=tuple(record.get("races", ())))
+                       styles=tuple(record.get("styles", ())), races=tuple(record.get("races", ())),
+                       settled=record.get("settled", False),
+                       tallies=tuple(PlayerTally.from_record(t) for t in record.get("tallies", ())))
 
 
 def score_by_race(results: Iterable[MatchResult]) -> dict[str, dict[str, tuple[float, int]]]:
