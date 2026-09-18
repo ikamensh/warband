@@ -38,7 +38,7 @@ catches its class.
 | WB-013 | Next | proposed | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Later | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-016 | Later | proposed | Assess and recover the six-mission Thornwood campaign | Recovered branch |
-| WB-017 | Next | ready | Preserve movement speed through path waypoints | WB-003 diagnosis |
+| WB-017 | Next | in progress | Preserve movement speed through path waypoints | WB-003 diagnosis |
 | WB-018 | Next | done | Keep large selections inside the HUD | Native crowd capture |
 | WB-019 | Next | done | Remove stray sprite-sheet lines from painted units | Native melee review |
 | WB-020 | Later | proposed | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
@@ -695,6 +695,39 @@ crowds, terrain boundaries, harvesting and attack pursuit remain correct. Prove
 the rules change with integration tests and seeded fuzz, audit affected movement/
 combat expectations, deliberately refresh the simulation fingerprint, and verify
 replay/online agreement and compatible client/server rollout before publication.
+
+**Where it starts, 2026-09-18:** `World._follow` walks one segment per tick:
+when the distance to the next waypoint is under the tick's step it snaps
+there and returns, so the rest of that tick's travel is lost. A footman at
+2.4 tiles/s should cover 0.12 tiles every tick; at every tile centre it covers
+about 0.04. The work happens on the `rules` branch (worktree
+`~/saga/warband-rules`) together with WB-007, because both change the
+authoritative modules and publication then waits for one reviewed server
+rollout.
+
+**Acceptance (recorded 2026-09-18 before implementation), in progress on `rules`:**
+
+1. A tick's travel is spent in full along the path: reaching a waypoint with
+   budget left, the unit goes on towards the next (through as many waypoints
+   as the budget covers), turning as its turn rate allows at each; the final
+   segment never overshoots the exact destination. Blocked steps, replanning,
+   settling, the watchdog, harvesting approach and attack pursuit keep their
+   decisions; only the leftover distance is carried.
+2. On open ground, straight and diagonal walks of twenty tiles take the
+   distance over the speed within one tick, and a per-tick trace of the
+   distance covered is even within 2 % except across turns; the trace of the
+   diagnosis (`tools/verify_movement.py --backend mock`) shows the old
+   rhythm gone.
+3. Proof: model tests for the carried budget, the final segment and a turn;
+   the existing movement, combat, harvesting and crowd suites; seeded fuzz
+   (`tools/fuzz.py --games 12 --monkey 12`); replay playback and host/client
+   agreement (`tests/warband/test_replay.py`, `test_online.py`); the
+   simulation fingerprint refreshed deliberately in the same commit.
+4. `tools/ai_report.py --seeds 3 --decide 0` before and after shows no
+   collapse of any difficulty (a full re-measure stays WB-014).
+5. Compatibility: the change moves the authoritative contract, so main is not
+   published until the reviewed server rollout that carries WB-007 as well,
+   recorded in Saga Online's rollout notes.
 
 ## WB-018 — Large selection HUD
 
