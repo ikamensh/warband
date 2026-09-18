@@ -40,7 +40,7 @@ from dataclasses import dataclass, replace
 from typing import Final
 
 from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_search
-from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, tile_center
+from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, rect_gap, tile_center
 from warband.races import RACES
 from warband.rules import BUILDINGS, MINE_SLOTS, BuildingType, UnitType
 from warband.worker_knowledge import KnownMine
@@ -108,6 +108,9 @@ class ProProfile:
     early_tech: tuple[BuildingType, ...] = ()  # put up as soon as their requirements stand, saturated or not; twice for two
     strict_plan: bool = False         # a type already past its share of the plan is not trained, whatever is idle
     research: bool = True             # whether upgrades are bought at all
+    rush_towers: int = 0              # towers raised beside the enemy's main mine as soon as a barracks stands (one-on-one only)
+    rush_builders: int = 1            # peasants that walk there, look and raise them; the brain holds their price meanwhile
+    rush_tries: int = 3               # builders it drafts in all before it gives the rush up
 
 
 PRO: Final = ProProfile("pro")
@@ -157,7 +160,12 @@ _TRIALS: Final = (
     replace(PRO, name="pro-nosave", save_for_wanted=False),
     replace(PRO, name="pro-old", lumber_stock=10**9, save_for_wanted=False),
 )
+#: The tower rush (WB-036): a peasant walks to the enemy's start as soon as the first barracks stands and
+#: raises a tower beside their main mine. Hard's version keeps Hard's handicaps.
+PRO_RUSH: Final = replace(PRO_VANGUARD, name="pro-rush", rush_towers=1)
+PRO_HARD_RUSH: Final = replace(PRO_HARD, name="pro-hard-rush", rush_towers=1)
 PRO_PROFILES: Final[dict[str, ProProfile]] = {"pro": PRO, PRO_VANGUARD.name: PRO_VANGUARD, PRO_WARDEN.name: PRO_WARDEN,
+                                       PRO_RUSH.name: PRO_RUSH, PRO_HARD_RUSH.name: PRO_HARD_RUSH,
                                        **{p.name: p for p in _TRIALS}}
 
 
@@ -224,6 +232,9 @@ class ProBrain:
         self.regroup_until = 0.0              # no new push before this, so a beaten army rebuilds
         self.scouts: list[int] = []
         self.raiders: list[int] = []
+        self.rushers: list[int] = []  # peasants walking to the enemy's mine to raise a tower there
+        self.rush_drafted = 0
+        self.rush_over = False
         self._hurt: set[int] = set()  # soldiers pulled out to heal
         self.log: list[tuple[float, str]] = []
         self._seen: dict[int, dict[UnitType, float]] = {}  # per opponent: most of each kind ever seen at once
@@ -248,6 +259,7 @@ class ProBrain:
             return
         self._observe(world)
         self._economy(world)
+        self._tower_rush(world)    # a rush tower's price is held from everything below
         self._training(world)      # soldiers get first call on the bank…
         self._construction(world, rng)  # …and buildings buy what is left
         self._research(world)
@@ -604,9 +616,9 @@ class ProBrain:
             if free <= 0 or not builders:
                 break
             cost = BUILDINGS[wanted].cost
-            if world.can_afford(self.player, cost) is not None:
+            if world.can_afford(self.player, cost) is not None or not self._affordable(world, cost):
                 continue
-            if world.players[self.player].lumber - cost.lumber < self.profile.lumber_floor:
+            if self._spendable(world)[1] - cost.lumber < self.profile.lumber_floor:
                 continue
             site = self._site(world, wanted, anchor, rng, taken)
             if site is None:
@@ -621,6 +633,119 @@ class ProBrain:
     def _site(self, world: World, building_type: BuildingType, anchor: Point, rng: random.Random,
               taken: Sequence[tuple[Pos, int]] = ()) -> Pos | None:
         return site_search(world, building_type, self.player, anchor, rng, BUILD_MIN_DISTANCE, BUILD_MAX_DISTANCE, taken)
+
+    # -- Tower rush -------------------------------------------------------------------
+
+    def _held(self) -> tuple[int, int]:
+        """What a rush builder on its way will pay on arrival: a build order is paid at the site, and a
+        bank spent during the walk drops it there."""
+        if not self.rushers:
+            return (0, 0)
+        cost = BUILDINGS[BuildingType.TOWER].cost
+        return (cost.gold, cost.lumber)
+
+    def _spendable(self, world: World) -> tuple[int, int]:
+        bank, (gold, lumber) = world.players[self.player], self._held()
+        return (bank.gold - gold, bank.lumber - lumber)
+
+    def _affordable(self, world: World, cost) -> bool:
+        gold, lumber = self._spendable(world)
+        return gold >= cost.gold and lumber >= cost.lumber
+
+    def _enemy_mine_guess(self, world: World) -> Point | None:
+        """Where the one opponent's main mine must be: a two-seat map is the point reflection of itself
+        through the centre, so it is the reflection of our own main mine."""
+        hall = self._hall(world)
+        mines = self._known_mines(world)
+        if hall is None or not mines or len(world.players) != 2:
+            return None
+        ours = min(mines, key=lambda m: dist((m.x + m.size / 2, m.y + m.size / 2), hall.center))
+        return (world.width - (ours.x + ours.size / 2), world.height - (ours.y + ours.size / 2))
+
+    def _rush_mine(self, world: World, guess: Point) -> KnownMine | None:
+        """The enemy's main mine, once seen."""
+        seen = [m for m in self._known_mines(world) if dist((m.x + m.size / 2, m.y + m.size / 2), guess) < 3]
+        return seen[0] if seen else None
+
+    def _enemy_start(self, world: World) -> Point | None:
+        """Where the one opponent started: the point reflection of our own start through the centre."""
+        hall = self._hall(world)
+        if hall is None or len(world.players) != 2:
+            return None
+        return (world.width - hall.center[0], world.height - hall.center[1])
+
+    def _behind(self, mine: Point, start: Point, reach: float) -> Point:
+        """*reach* tiles beyond *mine* seen from *start*: the side their gatherers do not walk."""
+        away = (mine[0] - start[0], mine[1] - start[1])
+        length = math.hypot(*away) or 1.0
+        return (mine[0] + away[0] / length * reach, mine[1] + away[1] / length * reach)
+
+    def _rush_site(self, world: World, mine: KnownMine, start: Point) -> Pos | None:
+        """A tower site 1.5 to 3 tiles from the enemy's mine, as far round it from their hall as there is."""
+        size = BUILDINGS[BuildingType.TOWER].size
+        best: tuple[float, Pos] | None = None
+        for y in range(mine.y - 6, mine.y + mine.size + 6):
+            for x in range(mine.x - 6, mine.x + mine.size + 6):
+                centre = (x + size / 2, y + size / 2)
+                gap = rect_gap(centre, mine.rect) - size / 2
+                if not 1.5 <= gap <= 3.0 or world.can_place(BuildingType.TOWER, (x, y), self.player) is not None:
+                    continue
+                score = dist(centre, start)
+                if best is None or score > best[0]:
+                    best = (score, (x, y))
+        return None if best is None else best[1]
+
+    def _tower_rush(self, world: World) -> None:
+        """Towers beside the enemy's main mine, raised by a peasant who walks to where they must have started.
+
+        A tower needs a barracks, so the walk starts when one stands. The peasant is kept off the
+        gatherer policy (holding while it waits), and the tower's price is held from everything the
+        brain buys until the peasant has paid it on arrival."""
+        profile = self.profile
+        if profile.rush_towers <= 0 or self.rush_over:
+            return
+        start, guess = self._enemy_start(world), self._enemy_mine_guess(world)
+        # The walk takes most of a minute, so it starts as the barracks goes up; the tower is ordered when it stands.
+        if start is None or guess is None or not world.player_buildings(self.player, BuildingType.BARRACKS):
+            return
+        barracks = bool(world.player_buildings(self.player, BuildingType.BARRACKS, done=True))
+        mine = self._rush_mine(world, guess)
+        if mine is not None and sum(1 for b in world.player_buildings(self.player, BuildingType.TOWER)
+                                    if rect_gap(b.center, mine.rect) <= 4.5) >= profile.rush_towers:
+            self._end_rush(world)
+            return
+        self.rushers = [i for i in self.rushers if i in world.units]
+        while len(self.rushers) < profile.rush_builders and self.rush_drafted < profile.rush_tries:
+            spare = [p for p in self._peasants(world) if not p.hidden and p.id not in self.rushers
+                     and not isinstance(p.order, (Build, Repair)) and p.constructing is None]
+            if not spare:
+                break
+            drafted = min(spare, key=lambda p: dist(p.pos, start))
+            self.rushers.append(drafted.id)
+            self.rush_drafted += 1
+            self.note(world, f"rush: drafted peasant {drafted.id}")
+        if not self.rushers:
+            self._end_rush(world)
+            return
+        post = self._standable(world, self._behind(guess, start, 4.0))
+        for rusher in [world.units[i] for i in self.rushers]:
+            if rusher.constructing is not None or isinstance(rusher.order, Build):
+                continue
+            site = self._rush_site(world, mine, start) if mine is not None and barracks else None
+            if site is not None and world.can_afford(self.player, BUILDINGS[BuildingType.TOWER].cost) is None:
+                world.build(rusher.id, BuildingType.TOWER, site)
+                self.note(world, f"rush: tower at {site}")
+            elif dist(rusher.pos, post) > 1.5:
+                if not rusher.orders or rusher.path_goal is None:
+                    world.move([rusher.id], post)
+            else:
+                world.hold([rusher.id])  # there, and waiting: off the gatherer policy
+
+    def _end_rush(self, world: World) -> None:
+        """The rush is done or given up: its builders go back to work and its price is no longer held."""
+        self.rush_over = True
+        self.rushers = []
+        self.note(world, "rush: over")
 
     # -- Training -------------------------------------------------------------------
 
@@ -642,7 +767,7 @@ class ProBrain:
             for hall in halls:
                 if peasants + sum(len(h.queue) for h in halls) >= target:
                     break
-                if len(hall.queue) < 2 and world.can_train(hall, UnitType.PEASANT) is None:
+                if len(hall.queue) < 2 and world.can_train(hall, UnitType.PEASANT) is None and self._affordable(world, world.unit_info(player, UnitType.PEASANT).cost):
                     world.train(hall.id, UnitType.PEASANT)
         counts = {t: sum(1 for u in army if u.type is t) for t in UnitType}
         targets = self._army_targets(world)
@@ -661,7 +786,7 @@ class ProBrain:
         # whatever was affordable at the moment instead had the stables turn out
         # a scout every time the knight it wanted was a few hundred gold away:
         # fifteen scouts to eight knights, in a posture that asked for knights.
-        gold, lumber = world.players[player].gold, world.players[player].lumber
+        gold, lumber = self._spendable(world)
         for _gap, choice, building in sorted(wishes, key=lambda w: -w[0]):
             cost = world.unit_info(player, choice).cost
             if gold >= cost.gold and lumber >= cost.lumber and world.can_train(building, choice) is None:
