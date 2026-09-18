@@ -50,13 +50,9 @@ def frames(game: Game, count: int = 3) -> None:
 def the_os_hands_back(game: Game, change) -> None:
     """Apply a display *change* and let the backend rasterise for the window that came of it.
 
-    The pyglet backend derives ``scale_factor`` from the window it got; Saga2D 0.3.4's mock backend does the same,
-    while 0.3.3's keeps 1.0 whatever the window.  Warband moves its pin with the next server rollout (the publication
-    gate ties the client's engine version to the live server's); until then the tests set what pyglet would.
+    The mock backend derives ``scale_factor`` from the window it got, as the pyglet backend does.
     """
     change()
-    width, height = game.window_size
-    game.backend.scale_factor = min(width / game.width, height / game.height)
     frames(game)
 
 
