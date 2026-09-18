@@ -950,7 +950,11 @@ static PyObject *site_search(PyObject *self, PyObject *args) {
         if (read_ints(PySequence_Fast_GET_ITEM(mines, i), &mine_rects[4 * i], 4, "a mine is (x, y, width, height)") < 0) goto out;
     for (Py_ssize_t i = 0; i < nown; i++)
         if (read_ints(PySequence_Fast_GET_ITEM(own, i), &own_rects[4 * i], 4, "a building is (x, y, width, height)") < 0) goto out;
-    qsort(order, (size_t)count, sizeof(Candidate), compare_candidates);
+    /* Every check but the standing units depends on the spot alone, so it is made first for every
+       candidate and only the spots that pass it are sorted: usually none do, and nothing is sorted.  The
+       first of those in sorted order that no unit stands on is the first candidate in sorted order that
+       passes everything. */
+    Py_ssize_t kept = 0;
     for (Py_ssize_t c = 0; c < count; c++) {
         Py_ssize_t left = order[c].x, top = order[c].y, right = left + size, bottom = top + size;
         int ok = 1;
@@ -971,10 +975,6 @@ static PyObject *site_search(PyObject *self, PyObject *args) {
                 if (PyList_GET_ITEM(row, x) != grass || blocked.cells[index] || !explored.cells[index]) { ok = 0; break; }
             }
         }
-        for (Py_ssize_t u = 0; ok && u < nunits; u++) {
-            double ux = units[3 * u], uy = units[3 * u + 1], r = units[3 * u + 2];
-            if ((double)left - r < ux && ux < (double)right + r && (double)top - r < uy && uy < (double)bottom + r) ok = 0;
-        }
         Py_ssize_t rect[4] = {left, top, size, size};
         for (Py_ssize_t m = 0; ok && m < nmines; m++)
             if (rects_gap(rect, &mine_rects[4 * m]) < clearance) ok = 0;
@@ -984,7 +984,18 @@ static PyObject *site_search(PyObject *self, PyObject *args) {
             Py_ssize_t gap_y = max3(other[1] - bottom, top - (other[1] + other[3]), 0);
             if ((gap_x > gap_y ? gap_x : gap_y) < 1) ok = 0;
         }
-        if (ok) { result = Py_BuildValue("(nn)", left, top); goto out; }
+        if (ok) order[kept++] = order[c];
+    }
+    qsort(order, (size_t)kept, sizeof(Candidate), compare_candidates);
+    for (Py_ssize_t c = 0; c < kept; c++) {
+        double left = (double)order[c].x, top = (double)order[c].y;
+        double right = (double)(order[c].x + size), bottom = (double)(order[c].y + size);
+        int ok = 1;
+        for (Py_ssize_t u = 0; ok && u < nunits; u++) {
+            double ux = units[3 * u], uy = units[3 * u + 1], r = units[3 * u + 2];
+            if (left - r < ux && ux < right + r && top - r < uy && uy < bottom + r) ok = 0;
+        }
+        if (ok) { result = Py_BuildValue("(nn)", order[c].x, order[c].y); goto out; }
     }
     Py_INCREF(Py_None);
     result = Py_None;
