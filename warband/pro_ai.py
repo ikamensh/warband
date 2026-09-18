@@ -42,7 +42,7 @@ from typing import Final
 from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_search
 from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, rect_gap, tile_center
 from warband.races import RACES
-from warband.rules import BUILDINGS, MINE_SLOTS, BuildingType, UnitType
+from warband.rules import BUILDINGS, MINE_SLOTS, UPGRADES, BuildingType, Cost, UnitType
 from warband.worker_knowledge import KnownMine
 
 _MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
@@ -108,6 +108,7 @@ class ProProfile:
     early_tech: tuple[BuildingType, ...] = ()  # put up as soon as their requirements stand, saturated or not; twice for two
     strict_plan: bool = False         # a type already past its share of the plan is not trained, whatever is idle
     research: bool = True             # whether upgrades are bought at all
+    hold_builds: bool = True          # hold the price of every build order in flight from all else it buys (WB-043)
     rush_towers: int = 0              # towers raised beside the enemy's main mine as soon as a barracks stands (one-on-one only)
     rush_builders: int = 1            # peasants that walk there, look and raise them; the brain holds their price meanwhile
     rush_tries: int = 3               # builders it drafts in all before it gives the rush up
@@ -159,6 +160,11 @@ _TRIALS: Final = (
     replace(PRO, name="pro-nostock", lumber_stock=10**9),
     replace(PRO, name="pro-nosave", save_for_wanted=False),
     replace(PRO, name="pro-old", lumber_stock=10**9, save_for_wanted=False),
+    # Before WB-043 a build order's price was not held while its builder walked, and a quarter of the orders
+    # died on arrival, unpaid: these play the way it was.
+    replace(PRO_VANGUARD, name="pro-vanguard-nohold", hold_builds=False),
+    replace(PRO_WARDEN, name="pro-warden-nohold", hold_builds=False),
+    replace(PRO_HARD, name="pro-hard-nohold", hold_builds=False),
 )
 #: The tower rush (WB-036): a peasant walks to the enemy's start as soon as the first barracks stands and
 #: raises a tower beside their main mine. Hard's version keeps Hard's handicaps.
@@ -636,19 +642,26 @@ class ProBrain:
 
     # -- Tower rush -------------------------------------------------------------------
 
-    def _held(self) -> tuple[int, int]:
-        """What a rush builder on its way will pay on arrival: a build order is paid at the site, and a
-        bank spent during the walk drops it there."""
-        if not self.rushers:
-            return (0, 0)
-        cost = BUILDINGS[BuildingType.TOWER].cost
-        return (cost.gold, cost.lumber)
+    def _held(self, world: World) -> tuple[int, int]:
+        """What orders in flight will pay on arrival: every build order not begun yet, and a rush tower whose
+        builder is still walking to its site. A build order is paid at the site, and a bank spent during the
+        walk drops it there: a quarter of Master's orders died so before this held them (WB-043)."""
+        gold = lumber = 0
+        for peasant in self._peasants(world):
+            order = peasant.order
+            if isinstance(order, Build) and order.building is None and (self.profile.hold_builds or peasant.id in self.rushers):
+                cost = BUILDINGS[order.type].cost
+                gold, lumber = gold + cost.gold, lumber + cost.lumber
+            elif peasant.id in self.rushers and peasant.constructing is None and not isinstance(order, Build):
+                cost = BUILDINGS[BuildingType.TOWER].cost
+                gold, lumber = gold + cost.gold, lumber + cost.lumber
+        return (gold, lumber)
 
     def _spendable(self, world: World) -> tuple[int, int]:
-        bank, (gold, lumber) = world.players[self.player], self._held()
+        bank, (gold, lumber) = world.players[self.player], self._held(world)
         return (bank.gold - gold, bank.lumber - lumber)
 
-    def _affordable(self, world: World, cost) -> bool:
+    def _affordable(self, world: World, cost: Cost) -> bool:
         gold, lumber = self._spendable(world)
         return gold >= cost.gold and lumber >= cost.lumber
 
@@ -863,7 +876,8 @@ class ProBrain:
             if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):
                 continue
             for building in buildings:
-                if upgrade in building.info.researches and world.can_research(building, upgrade) is None:
+                if upgrade in building.info.researches and world.can_research(building, upgrade) is None \
+                        and self._affordable(world, UPGRADES[upgrade].cost):
                     world.research(building.id, upgrade)
                     return
 
