@@ -1,4 +1,7 @@
-"""CI release preparation through its CLI and real Git checkouts."""
+"""CI release preparation through its CLI and real Git checkouts.
+
+A process and a repository per test: the slow tier.
+"""
 import json
 import os
 import shutil
@@ -8,6 +11,8 @@ import subprocess
 import sys
 
 import pytest
+
+pytestmark = pytest.mark.slow
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "ci_release.py"

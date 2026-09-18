@@ -14,8 +14,11 @@ from saga2d.testing.online import first_stdout_line, handshake, receive, server_
 server_url = server_fixture('warband.authority:ONLINE')
 
 
+@pytest.mark.slow
 def test_headless_opponent_joins_and_its_orders_reach_the_authoritative_world(server_url):
-    """A separate CLI process joins seat one, develops it, and exits with useful evidence."""
+    """A separate CLI process joins seat one, develops it, and exits with useful evidence.
+
+    The headless client plays against a real server for seconds: the slow tier."""
     with connect(server_url, proxy=None) as human:
         welcome = handshake(human, game="warband-v2", options={"seed": 3, "width": 48, "height": 40})
         initial = receive(human)["state"]["world"]
@@ -43,8 +46,11 @@ def test_headless_opponent_joins_and_its_orders_reach_the_authoritative_world(se
         assert authoritative["players"][0]["gold"] == initial["players"][0]["gold"]
 
 
+@pytest.mark.slow
 def test_headless_creator_announces_a_room_before_a_human_joins(server_url):
-    """The remote bot can create seat zero and waits without advancing the lobby world."""
+    """The remote bot can create seat zero and waits without advancing the lobby world.
+
+    The headless client waits in a real lobby for seconds: the slow tier."""
     process = subprocess.Popen(
         [sys.executable, "-m", "warband.online_ai", "--server", server_url, "--create",
          "--difficulty", "hard", "--width", "48", "--height", "40", "--duration", "2"],

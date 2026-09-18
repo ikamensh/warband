@@ -22,12 +22,13 @@ def play(tmp_path):
     scene.view.set_reveal(True)
     game.tick(1 / 60)
     yield game, scene
-    game._teardown()
+    game.close()
 
 
-def tick(game: Game, seconds: float) -> None:
-    for _ in range(round(seconds * 60)):
-        game.tick(1 / 60)
+def tick(game: Game, seconds: float, dt: float = 1 / 60) -> None:
+    """*seconds* of play in frames of *dt*; waiting for a body's next state takes tenths."""
+    for _ in range(round(seconds / dt)):
+        game.tick(dt)
 
 
 def kill(game: Game, scene: GameScene, victim_type: UnitType, side: str) -> UnitDeath:
@@ -75,9 +76,9 @@ def test_the_fall_has_weight_and_lands_at_the_feet(play) -> None:
     assert max(rotations) <= OUTCOMES["topple"].turn + 1e-9, "the body never turns past lying"
     assert worst_feet <= 2.0, f"the feet drifted {worst_feet:.1f} px from the death point"
     assert body.landed and bursts(scene) > dust_before, "the landing raises dust"
-    tick(game, UnitDeath.HOLD - 0.2)
+    tick(game, UnitDeath.HOLD - 0.2, 0.1)
     assert body.sprite.opacity == 255 and body.sprite.rotation == body.turn, "lying still until the fade"
-    tick(game, 0.2 + UnitDeath.FADE + 0.1)
+    tick(game, 0.2 + UnitDeath.FADE + 0.1, 0.1)
     assert body.done and body.sprite.is_removed and body not in scene.bodies + [b for b in scene.effects._items]
 
 
@@ -104,12 +105,12 @@ def test_bodies_are_bounded_and_the_oldest_make_room(play) -> None:
             victim.hp = 1
             knight = world.spawn_unit(0, UnitType.KNIGHT, (12.5 + col, 9.6 + row * 2))
             world.attack([knight.id], victim.id)
-    tick(game, 2.5)
+    tick(game, 2.5, 0.1)
     assert not world.player_units(1) and len(scene.bodies) == 56
-    tick(game, UnitDeath.DOWN + UnitDeath.FADE + 0.2)
+    tick(game, UnitDeath.DOWN + UnitDeath.FADE + 0.2, 0.1)
     lying = [b for b in scene.bodies if not b.done and not b.cancelled]
     assert len(lying) == UnitDeath.BODIES and all(b.sprite.opacity == 255 for b in lying)
-    tick(game, UnitDeath.HOLD + UnitDeath.FADE + 0.5)
+    tick(game, UnitDeath.HOLD + UnitDeath.FADE + 0.5, 0.1)
     assert not [b for b in scene.bodies if not b.done and not b.cancelled]
 
 

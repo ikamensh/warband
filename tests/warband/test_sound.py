@@ -9,15 +9,21 @@ import pytest
 from saga2d import Game
 from sagaforge import synth
 from sagaforge.synth import pan, tone
-from warband import combat_sound, deaths, music, sound, wreckage
+from warband import combat_sound, deaths, sound, wreckage
 from warband.rules import Race
 from warband.sound import SoundBank
 
 
 @pytest.fixture(scope="session")
 def generated(tmp_path_factory) -> Path:
+    """Every effect, written as the game writes them: by its bank, on first use. No music: the bank composes a track
+    only when it is wanted, and composing is the music tests' job."""
     root = tmp_path_factory.mktemp("warband")
-    sound.generate(root, sound.SOUND_VERSION, sound.SOUNDS, sound.MUSIC)
+    game = Game("Warband Sound", backend="mock")
+    try:
+        SoundBank(game, data_dir=root)
+    finally:
+        game.close()
     return root
 
 
@@ -25,7 +31,7 @@ def generated(tmp_path_factory) -> Path:
 def game():
     g = Game("Warband Sound", backend="mock")
     yield g
-    g._teardown()
+    g.close()
 
 
 @pytest.fixture
@@ -54,20 +60,17 @@ def test_every_scene_event_has_an_effect_that_is_normalised_and_click_free(gener
         assert np.abs(np.diff(mono)).max() < (np.abs(mono).max() if from_pieces else 0.5), name
 
 
-def test_the_cached_tracks_are_the_catalogue_stereo_and_quiet(generated: Path) -> None:
-    for track, piece in music.PIECES.items():
-        data, rate = read_wav(generated / "music" / f"{track}.wav")
-        assert data.shape == (round(piece.seconds * rate), 2), track
-        assert 0.4 <= np.abs(data).max() <= 0.8, track
-
-
-def test_install_routes_scene_events_to_the_bank(game: Game, generated: Path, monkeypatch) -> None:
-    monkeypatch.setattr(Path, "home", lambda: generated.parent)
-    bank = SoundBank(game, data_dir=generated)
+def test_install_routes_scene_events_to_the_bank(game: Game, tmp_path: Path, monkeypatch) -> None:
+    """Effects and moods reach Warband's bank. The tracks are silent stand-ins in the bank's cache: composing
+    them is the music tests' job, and what is checked here is which one each mood starts."""
+    SoundBank(game, data_dir=tmp_path)  # the effects, written on first use
+    for track in sound.MUSIC:
+        synth.write_wav(tmp_path / "music" / f"{track}.wav", np.zeros((64, 2)))
+    bank = SoundBank(game, data_dir=tmp_path)  # a later start finds the effects and the tracks cached
     monkeypatch.setattr(sound, "sound_hook", lambda name: bank.play(name))
     monkeypatch.setattr(sound, "music_hook", bank.music)
     sound.play_sound("command")
-    assert game.backend.sounds_played[-1]["handle"] == game.backend.load_sound(str(generated / "sounds" / "command.wav"))
+    assert game.backend.sounds_played[-1]["handle"] == game.backend.load_sound(str(tmp_path / "sounds" / "command.wav"))
     sound.play_music("title")
     assert bank.music_playing == "vigil"  # the title's night watch; a match starts its race's suite
     sound.play_music("peace", Race.DWARF)

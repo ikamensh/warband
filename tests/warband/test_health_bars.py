@@ -25,7 +25,7 @@ def play(tmp_path):
     scene.camera.center_on(16 * TILE, 12 * TILE)
     game.tick(1 / 60)
     yield game, scene
-    game._teardown()
+    game.close()
 
 
 def frame(game: Game) -> None:
@@ -153,7 +153,9 @@ def test_the_fill_shows_on_the_first_frame_after_selection_wherever_the_unit_sta
         assert on_top(game, *fill_centre(bar)) == tuple(bar["color"]), f"a black bar with the unit at y={unit.y}"
 
 
+@pytest.mark.slow
 def test_a_wounded_units_bar_stays_filled_through_every_frame_of_a_walk(play) -> None:
+    """Every frame of a three-second walk is looked at, over a second: the slow tier."""
     game, scene = play
     world = scene.world
     unit = world.spawn_unit(0, UnitType.PEASANT, (16.5, 11.0))
@@ -176,10 +178,11 @@ def stride_top(race: Race, facing: int) -> float:
     return (sheet.origin[1] - min(tops)) / sheet.scale
 
 
-@pytest.mark.parametrize("race", list(Race))
+@pytest.mark.parametrize("race", [pytest.param(race, marks=() if race is Race.HUMAN else pytest.mark.slow) for race in Race])
 def test_a_workers_bar_hangs_a_few_pixels_over_its_figure_and_holds_still_through_a_walk(play, race) -> None:
     """Anchored to the figure, not the sprite's cell (a painted cell is far taller than a dwarf), the
-    same for every race; the offset from the feet does not bob with the stride."""
+    same for every race; the offset from the feet does not bob with the stride. Every frame of a
+    two-second walk is looked at, so the fast tier walks the humans' worker and the slow tier the rest."""
     game, scene = play
     world = scene.world
     world.players[0].race = race

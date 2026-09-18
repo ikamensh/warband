@@ -42,7 +42,7 @@ def launch(tmp_path):
     game.push(TitleScene())
     game.tick(1 / 60)
     yield game
-    game._teardown()
+    game.close()
 
 
 def press(game: Game, *keys: str) -> None:
@@ -95,9 +95,12 @@ def test_the_first_match_starts_on_the_window_the_os_handed_back(launch, window)
     start_match(game)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("screen, scale, canvas, texture_scale", DESKTOPS.values(), ids=list(DESKTOPS))
 def test_a_4k_desktop_gets_a_canvas_made_for_it_and_plays(tmp_path, screen, scale, canvas, texture_scale) -> None:
-    """The report's desktop: not a 3760×2040 canvas with the HUD at native pixels, and matches start, end and restart."""
+    """The report's desktop: not a 3760×2040 canvas with the HUD at native pixels, and matches start, end and restart.
+
+    Two matches per desktop with art painted at up to twice the scale, most of a second each: the slow tier."""
     game = Game("Warband", backend=MockBackend(screen=screen, desktop_scale=scale), resolution=None,
                 theme=build_theme(), save_dir=tmp_path / "saves")
     try:
@@ -109,11 +112,14 @@ def test_a_4k_desktop_gets_a_canvas_made_for_it_and_plays(tmp_path, screen, scal
         the_os_hands_back(game, lambda: game.set_fullscreen(True))
         start_match(game)
     finally:
-        game._teardown()
+        game.close()
 
 
+@pytest.mark.slow
 def test_matches_start_after_the_window_changed_between_them(launch) -> None:
-    """Title, match, title, match: each pair after a display change rasterises for a window the previous pair did not."""
+    """Title, match, title, match: each pair after a display change rasterises for a window the previous pair did not.
+
+    Four matches, one per window, over a second: the slow tier."""
     game = launch
     start_match(game)
     for change in (lambda: game.backend.inject_resize(1840, 951), lambda: game.set_fullscreen(True), lambda: game.set_window_size((1280, 800))):

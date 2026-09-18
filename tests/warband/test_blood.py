@@ -22,7 +22,7 @@ def play(tmp_path):
     scene.view.set_reveal(True)
     game.tick(1 / 60)
     yield game, scene
-    game._teardown()
+    game.close()
 
 
 def sprays(scene: GameScene) -> list[Spray]:
@@ -92,13 +92,16 @@ def test_a_hit_out_of_sight_shows_nothing(play) -> None:
     victim = world.spawn_unit(1, UnitType.FOOTMAN, (30.5, 5.5))  # a fight between two rivals, far from anything of ours
     striker = world.spawn_unit(2, UnitType.KNIGHT, (29.2, 5.5))
     world.attack([striker.id], victim.id)
-    for _ in range(60 * 3):
-        game.tick(1 / 60)
+    for _ in range(30):  # three seconds in tenths: a spray lives over half a second, so none slips between two looks
+        game.tick(0.1)
         assert not sprays(scene)
     assert victim.hp < victim.max_hp, "the blow landed"
 
 
+@pytest.mark.slow
 def test_a_death_stains_the_ground_and_stains_are_bounded(play) -> None:
+    """The stains' whole life is over forty seconds of a field of seventy knights, about five seconds to play:
+    the slow tier."""
     game, scene = play
     world = scene.world
     for row in range(5):  # 70 peasants die under 70 knights; a catapult dies too, leaving no stain
@@ -110,17 +113,17 @@ def test_a_death_stains_the_ground_and_stains_are_bounded(play) -> None:
     engine = world.spawn_unit(1, UnitType.CATAPULT, (30.5, 20.5))
     engine.hp = 1
     world.attack([world.spawn_unit(0, UnitType.KNIGHT, (29.2, 20.5)).id], engine.id)
-    for _ in range(60 * 3):
-        game.tick(1 / 60)
+    for _ in range(30):  # in tenths: stains are states on a clock, not frames to look at
+        game.tick(0.1)
     assert not world.player_units(1)
     live = [s for s in scene.stains if not s.done and not s.cancelled]
     assert len(scene.stains) == 70 and len(live) == 70 and sum(s.hurried for s in live) == 6
     assert all(s.sprite.opacity == Stain.OPACITY for s in live if not s.hurried)
-    for _ in range(round((Stain.FADE + 0.5) * 60)):
-        game.tick(1 / 60)
+    for _ in range(round((Stain.FADE + 0.5) * 10)):
+        game.tick(0.1)
     assert len([s for s in scene.stains if not s.done]) == Stain.STAINS
-    for _ in range(round((Stain.HOLD + Stain.FADE) * 60)):
-        game.tick(1 / 60)
+    for _ in range(round((Stain.HOLD + Stain.FADE) * 10)):
+        game.tick(0.1)
     assert not [s for s in scene.stains if not s.done] and all(s.sprite.is_removed for s in live)
 
 
@@ -131,7 +134,7 @@ def test_the_blood_setting_turns_sprays_and_stains_off(play) -> None:
     victim = world.spawn_unit(1, UnitType.PEASANT, (20.5, 12.5))
     victim.hp = 1
     world.attack([world.spawn_unit(0, UnitType.KNIGHT, (19.2, 12.5)).id], victim.id)
-    for _ in range(60 * 3):
-        game.tick(1 / 60)
+    for _ in range(30):  # three seconds in tenths: a spray lives over half a second
+        game.tick(0.1)
         assert not sprays(scene)
     assert victim.id not in world.units and scene.bodies and not scene.stains

@@ -13,7 +13,7 @@ authors = [{ name = "Ilya Kamenshchikov", email = "ilya.kamenshchikov@gmail.com"
 dependencies = ["saga2d==0.3.8", "sagaforge"]
 
 [project.optional-dependencies]
-dev = ["pytest>=9.0.2", "mypy>=2.3.1", "setuptools>=84"]  # mypy brings mypyc, which compiles the simulation (warband/fastsim.py)
+dev = ["pytest>=9.0.2", "pytest-xdist>=3.8", "mypy>=2.3.1", "setuptools>=84"]  # mypy brings mypyc, which compiles the simulation (warband/fastsim.py)
 package = ["pyinstaller==6.22.2", "pyinstaller-hooks-contrib==2026.7"]
 
 [project.scripts]
@@ -27,3 +27,4 @@ packages = ["warband"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-n auto --dist loadgroup"  # four workers for a whole tier; a named file or test runs in one process (tests/conftest.py)

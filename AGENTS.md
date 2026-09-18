@@ -12,7 +12,9 @@ The hosted server and website live in `../saga-online`.
 ```bash
 uv sync --extra dev
 uv run warband --seed 3                          # play (python -m warband works too)
-uv run pytest -q                                 # headless suite, about four minutes
+uv run pytest -q                                 # the fast tier, about 20 s on four workers: after every change (a named file or test runs in one process)
+uv run pytest -q --slow                          # both tiers, about 80 s: before pushing rules, AI, replays, art, audio or CI tools; CI runs both on every push
+uv run pytest -q --slow -m slow                  # the slow tier alone; -n0 runs any selection in one process
 gh run list --limit 6                            # CI after every push: Tests, Native package checks and, on main, the publication (make ci at the stack root)
 uv run python -u tools/fuzz.py --games 2 --monkey 0 --seed 81   # AI matches with invariants + monkey input (needs -u)
 uv run python tools/verify.py DIR                # a match through real pyglet events, frames saved to look at
@@ -195,6 +197,18 @@ real breakdown.
 - Tests use the mock backend (`game`/`backend` fixtures from
   `saga2d.testing.fixtures`), public behaviour only; fixtures use
   `save_dir=tmp_path / "saves"` because `data_dir` is its parent.
+- The suite has two tiers. A test goes in the fast tier unless it cannot:
+  each fast test takes under half a second on the Mac, and CI fails one whose
+  setup, call or teardown takes over 3 s (`--budget`; four workers on a runner
+  run a test about four times slower). A test that needs a whole match or minutes of one, a real
+  server, socket or process, every race's art or every window size is marked
+  `@pytest.mark.slow`, and its docstring (or its module's) says why: collection
+  refuses one that does not. A matrix keeps representative cases in the fast
+  tier (one race per unit type, the shortest window) and the rest in the slow
+  one. A test that waits for a state ticks in tenths (`game.tick(0.1)`), not in
+  sixtieths, unless the frames themselves are what it checks. What never
+  changes is built once per session (painted ground: `ground_painted_once`
+  in `tests/conftest.py`); nothing mutable is shared between tests.
 - Run at most one expensive local job at a time; long CLIs default to
   `--cpu-percent 25`. Evidence you produce goes under `docs/evidence/`
   (git-ignored); the pre-split evidence lives in the archived monorepo.

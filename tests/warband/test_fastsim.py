@@ -1,5 +1,8 @@
 """The compiled simulation is the simulation: matches played by it hash as the source's do on the same machine, to
-the bit, and its C searches and painting answer as the Python does."""
+the bit, and its C searches and painting answer as the Python does.
+
+The first test to need the build compiles the simulation with mypyc, a minute or more on a fresh machine, so the
+module is the slow tier's."""
 
 from __future__ import annotations
 
@@ -19,6 +22,8 @@ from warband.ai import make_brain
 from warband.model import World
 from warband.rules import BUILDINGS, BuildingType, Difficulty, Terrain
 from warband.worker_knowledge import WorkerKnowledge
+
+pytestmark = [pytest.mark.slow, pytest.mark.xdist_group("fastsim")]  # one worker, one compile
 
 ROOT = Path(__file__).resolve().parents[2]
 

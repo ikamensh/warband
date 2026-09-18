@@ -13,6 +13,8 @@ import sys
 
 from websockets.sync.client import connect
 
+import pytest
+
 from saga2d.testing.online import command, handshake, receive, server_fixture
 
 GAME = 'warband-v2'
@@ -53,7 +55,9 @@ def test_three_humans_play_one_room_each_seeing_its_own(server_url):
         assert moved['winner'] is None
 
 
+@pytest.mark.slow
 def test_a_resignation_in_four_leaves_three_fighting_and_the_last_two_decide_it(server_url):
+    """Four clients play until three have resigned, most of a second: the slow tier."""
     with room(server_url, 4) as (sockets, seats):
         for socket in sockets:
             state(socket, lambda message: message['ready'])
@@ -108,7 +112,9 @@ def test_a_client_from_before_larger_rooms_cannot_join_one(server_url):
         assert 'Update your game client' in refused['error']
 
 
+@pytest.mark.slow
 def test_the_online_ai_takes_a_seat_in_a_room_of_three(server_url):
+    """The headless client plays for seconds in a room of three: the slow tier."""
     with ExitStack() as stack:
         human = stack.enter_context(connect(server_url, proxy=None, max_queue=None))
         welcome = handshake(human, game=GAME, seats=4, options={'seed': 5, 'width': 64, 'height': 48, 'players': 3})
@@ -175,4 +181,4 @@ def test_resigning_from_the_match_menu_asks_first_then_the_player_may_watch_the_
         press("w")
         assert game.scene is scene, "Watch did not return to the match"
     finally:
-        game._teardown()
+        game.close()

@@ -15,6 +15,12 @@ concurrency:
 
 jobs:
   test:
+    name: ${{ matrix.part }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # mypyc compiles the simulation before its tests, minutes on a fresh runner: they get a runner of their own
+        part: [tiers, compiled simulation]
     runs-on: ubuntu-latest
     env:
       UV_PYTHON_PREFERENCE: only-managed
@@ -50,6 +56,16 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev --python "${{ steps.inputs.outputs.python }}"
         working-directory: warband
-      - name: Run tests
-        run: uv run --locked pytest -q
+      - name: Fast tier
+        if: matrix.part == 'tiers'
+        # every unmarked test, on four workers; one over the budget fails: four workers on a runner run a test about four times slower than a Mac
+        run: uv run --locked pytest -q --budget 3 --durations=10
+        working-directory: warband
+      - name: Slow tier
+        if: matrix.part == 'tiers'
+        run: uv run --locked pytest -q --slow -m slow --ignore tests/warband/test_fastsim.py --durations=10
+        working-directory: warband
+      - name: Compiled simulation
+        if: matrix.part == 'compiled simulation'
+        run: uv run --locked pytest -q --slow tests/warband/test_fastsim.py --durations=10
         working-directory: warband

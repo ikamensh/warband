@@ -48,9 +48,12 @@ def test_a_score_wraps_a_loop_and_cuts_a_one_shot_at_its_tail() -> None:
     assert loop.note(bell, 440.0, 0.1, 1) is first and loop.note(bell, 440.0, 0.1, 2) is not first
 
 
-@pytest.mark.parametrize("name", sorted(PIECES))
+@pytest.mark.parametrize("name", [pytest.param(name, marks=() if name == "victory" else pytest.mark.slow) for name in sorted(PIECES)])
 def test_each_piece_renders_balanced_stereo_at_a_common_loudness(name: str) -> None:
-    """Finite, stereo, the catalogued length, one loudness for all, no sub-bass takeover, a quiet seam."""
+    """Finite, stereo, the catalogued length, one loudness for all, no sub-bass takeover, a quiet seam.
+
+    A piece takes most of a second to render, so the fast tier renders the shortest, the victory sting, and the
+    slow tier all fifteen."""
     piece = PIECES[name]
     clip = piece.render()
     assert clip.shape == (round(piece.seconds * SAMPLE_RATE), 2) and np.all(np.isfinite(clip))
@@ -106,10 +109,12 @@ def test_peaceful_pieces_alternate_at_their_loop_points_with_a_long_crossfade() 
 def game(tmp_path):
     g = Game("Warband music", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     yield g
-    g._teardown()
+    g.close()
 
 
+@pytest.mark.slow
 def test_a_match_asks_for_battle_music_while_its_forces_fight_and_peace_when_they_stop(game, monkeypatch) -> None:
+    """A fight and then the ten seconds a battle mood outlasts it, seventeen seconds of a match: the slow tier."""
     asked: list[tuple[str, Race | None]] = []
     monkeypatch.setattr(sound, "music_hook", lambda mood, race: asked.append((mood, race)))
     world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2, rng=random.Random(1), races=(Race.ORC, Race.HUMAN))

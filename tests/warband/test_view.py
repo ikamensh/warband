@@ -22,7 +22,7 @@ def play():
     game.push(scene)
     game.tick(1 / 60)
     yield game, scene
-    game._teardown()
+    game.close()
 
 
 def order_of(game: Game, sprite) -> int:
@@ -54,8 +54,11 @@ def test_forest_uses_twenty_stable_variants_across_save_reload(play) -> None:
     assert {pos: sprite.image for pos, sprite in scene.view._trees.items()} == before
 
 
+@pytest.mark.slow
 def test_harvesting_worker_swings_axe_then_carries_wood(play) -> None:
-    """Harvest orders drive all swing poses, face the tree, then show carried logs."""
+    """Harvest orders drive all swing poses, face the tree, then show carried logs.
+
+    It watches a whole chop frame by frame for every swing pose, about three seconds: the slow tier."""
     game, scene = play
     world = scene.world
     tree, approach = next(
@@ -139,8 +142,8 @@ def test_enemies_are_shown_only_where_the_player_can_see(play) -> None:
     assert view.unit_sprite(near.id) is not None and view.unit_sprite(near.id).visible
     peasant = next(u for u in world.player_units(scene.human))
     world.harvest([peasant.id], world.mines()[0].id)
-    for _ in range(200):
-        game.tick(1 / 60)
+    for _ in range(40):  # the walk to the mine, in tenths
+        game.tick(0.1)
         if peasant.inside is not None:
             break
     assert peasant.inside is not None and not view.unit_sprite(peasant.id).visible
@@ -354,7 +357,7 @@ def test_water_moves_once_its_phases_are_painted_while_land_stays_still() -> Non
     for index, keys in enumerate(view._ground_keys):
         assert (len(keys) > 1) == view._chunk_has_water(index)
     assert len(view._ground_keys[view._ground_keys.index(view._chunk_keys(2 * 6 + 2))]) == textures.WATER_PHASES  # chunk (2, 2) holds (20, 20)
-    game._teardown()
+    game.close()
 
 
 def test_walk_frames_follow_the_distance_walked_not_the_clock(play) -> None:

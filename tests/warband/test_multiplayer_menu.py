@@ -54,8 +54,11 @@ def online_game(server_url, tmp_path, monkeypatch):
         partner.close()
 
 
+@pytest.mark.slow
 def test_online_menu_keeps_play_live_and_leaving_preserves_rejoin(online_game):
-    """Real room state keeps advancing under menus; leaving returns to a recoverable seat."""
+    """Real room state keeps advancing under menus; leaving returns to a recoverable seat.
+
+    A real room's match runs under the menu for most of a second: the slow tier."""
     game, partner = online_game
     match = game.scene
     room = match.session.room

@@ -16,7 +16,7 @@ from warband.title import TitleScene
 def game(tmp_path):
     g = Game("Warband replay", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     yield g
-    g._teardown()
+    g.close()
 
 
 def press(game: Game, key: str, **mods) -> None:
@@ -24,9 +24,9 @@ def press(game: Game, key: str, **mods) -> None:
     game.tick(1 / 60)
 
 
-def tick(game: Game, seconds: float) -> None:
-    for _ in range(int(seconds * 60) + 1):
-        game.tick(1 / 60)
+def tick(game: Game, seconds: float, dt: float = 1 / 60) -> None:
+    for _ in range(int(seconds / dt) + 1):
+        game.tick(dt)
 
 
 def texts(game: Game) -> list[str]:
@@ -39,13 +39,13 @@ def recorded(game):
     Profile.load(game.data_dir).rename("Watcher")
     scene = new_game(seed=3, settings={"music": 0, "sfx": 0, "tutorial": False})
     game.push(scene)
-    tick(game, 3.0)
+    tick(game, 3.0, 0.1)  # in tenths: the world steps as often, the scene draws a sixth as many frames
     scene.select([u.id for u in scene.world.player_units(scene.human)])  # send the peasants somewhere: an order of the player's own, in the log
     hall = scene.world.player_buildings(scene.human)[0]
     scene.command_smart((hall.center[0] + 6, hall.center[1] + 6))
-    tick(game, 2.0)
+    tick(game, 2.0, 0.1)
     scene.world.resign(1)
-    tick(game, 0.5)
+    tick(game, 0.5, 0.1)
     assert isinstance(game.scene, GameOverScene)
     replay = ReplayStore(game.data_dir).load(scene.run_id)
     assert any(row[1] == "smart" for row in replay.orders)

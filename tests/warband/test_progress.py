@@ -17,7 +17,7 @@ from warband.title import TitleScene
 def game(tmp_path):
     g = Game("Warband Progress", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     yield g
-    g._teardown()
+    g.close()
 
 
 def press(game: Game, key: str, **mods) -> None:

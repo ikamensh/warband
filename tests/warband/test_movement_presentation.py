@@ -21,13 +21,15 @@ def walking_scene(game, kind=UnitType.FOOTMAN):
     return scene, walker
 
 
-@pytest.mark.parametrize("fps", (30, 60, 144))
+@pytest.mark.parametrize("fps", (30, 60, pytest.param(144, marks=pytest.mark.slow)))
 @pytest.mark.parametrize("kind", (UnitType.PEASANT, UnitType.FOOTMAN, UnitType.KNIGHT))
 def test_straight_travel_advances_on_every_display_frame(game, fps, kind):
     """A steady walk must not alternate two frozen frames with a three-frame jump.
 
     Drive the real fixed-step scene and read the visible sprite, so a model-only
     movement test cannot accidentally pass while the player still sees judder.
+    At 144 frames a second the scene's warm-up paints six unit frames in each of the
+    288, over two seconds: the slow tier walks at 144, the fast tier at 30 and 60.
     """
     scene, walker = walking_scene(game, kind)
     positions = []

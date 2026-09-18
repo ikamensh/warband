@@ -237,7 +237,7 @@ def test_result_leaderboard_and_loaded_finish_are_one_frozen_record(tmp_path):
         assert restored.run_id == scene.run_id and restored.world.time == finished
         assert HighScores(game.data_dir).load() == records
     finally:
-        game._teardown()
+        game.close()
 
 
 @pytest.mark.parametrize("field,value", [("run_id", None), ("run_id", ""), ("ranked", "false"), ("stats", -1)])

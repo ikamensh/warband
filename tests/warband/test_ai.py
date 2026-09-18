@@ -2,6 +2,8 @@
 
 import random
 
+import pytest
+
 from warband import mapgen
 from warband.ai import DEFEND_RADIUS, PROFILES, Brain
 from warband.model import AttackMove, Harvest, Repair, World, dist, tile_center
@@ -143,7 +145,9 @@ def test_a_second_hall_grows_the_workforce_onto_its_own_mine() -> None:
     assert any("workforce target" in what for _, what in brain.log)
 
 
+@pytest.mark.slow
 def test_one_hall_holds_the_workforce_at_the_profile_value() -> None:
+    """Medium needs over four minutes to hire its fourteen peasants one at a time: the slow tier."""
     world = mapgen.generate(seed=5, players=2, human=None)
     _farm_headroom(world)
     world.players[0].gold = 20000
@@ -227,10 +231,13 @@ def _trained_archer_share(brain: Brain) -> float:
     return sum(1 for name in trained if name == UnitType.ARCHER.value) / len(trained)
 
 
+@pytest.mark.slow
 def test_elf_and_orc_armies_grow_towards_their_race_plans() -> None:
     """Each race's brain on the same open ground against a base that trains nothing: what it asks of
     its buildings then follows its plan alone, with no enemy soldiers in sight to counter and no
-    losses (a two-brain match once decided this on the survivors of one seeded fight)."""
+    losses (a two-brain match once decided this on the survivors of one seeded fight).
+    Six minutes of play for each of two races: the slow tier.
+    """
     shares = {}
     for race in (Race.ELF, Race.ORC):
         world = mapgen.generate(seed=5, players=2, human=None, races=[race, Race.HUMAN], layout=Layout.PLAINS)

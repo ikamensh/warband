@@ -39,7 +39,7 @@ for _ in range(90):
     game.tick(1 / 60)
 assert isinstance(game.scene, GameOverScene), type(game.scene).__name__
 print(json.dumps({"run_id": scene.run_id, "name": scene.profile.name, "results": len(scene.profile.results)}))
-game._teardown()
+game.close()
 '''
 
 RETURN = '''
@@ -64,7 +64,7 @@ print(json.dumps({"music": settings["music"], "results": [r.run_id for r in prof
                   "scores": len(HighScores(data).load()), "replay_orders": len(replay.orders), "ended": replay.end is not None,
                   "quick": game.save_manager.load("quick") is not None,
                   "card": any(profile.name in t for t in texts) and any("Rating" in t for t in texts)}))
-game._teardown()
+game.close()
 '''
 
 
@@ -82,7 +82,9 @@ def played(tmp_path) -> tuple[Path, dict]:
     return data, run(PLAY, str(data))
 
 
+@pytest.mark.slow
 def test_a_new_process_finds_the_result_rating_score_replay_save_and_setting(played) -> None:
+    """A second process reads what the first wrote, over a second: the slow tier."""
     data, match = played
     assert match["results"] == 1
     back = run(RETURN, str(data), match["run_id"])
@@ -125,7 +127,7 @@ def test_a_damaged_profile_is_reported_and_restored_from_its_backup_on_the_profi
         assert [r.run_id for r in restored.results] == ["first"]
         assert (data / "profile" / "save_1.damaged.json").read_text(encoding="utf-8") == "{broken"
     finally:
-        game._teardown()
+        game.close()
 
 
 def test_a_write_failure_at_match_end_is_said_and_the_game_goes_on(tmp_path) -> None:
@@ -147,4 +149,4 @@ def test_a_write_failure_at_match_end_is_said_and_the_game_goes_on(tmp_path) -> 
         assert scene.rating_change is None and "save_1.json" in scene.profile_error, "the failure names the file"
         assert (data / "profile" / "save_1.json").is_dir(), "nothing was replaced"
     finally:
-        game._teardown()
+        game.close()

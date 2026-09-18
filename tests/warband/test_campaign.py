@@ -24,7 +24,7 @@ from warband.title import TitleScene
 def game(tmp_path):
     g = Game("Warband Campaign", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     yield g
-    g._teardown()
+    g.close()
 
 
 def press(game: Game, key: str, **mods) -> None:
@@ -137,7 +137,7 @@ def begin_campaign(game: Game) -> MissionScene:
 
 def test_the_first_mission_plays_to_a_result_that_records_progress_and_leads_on(game) -> None:
     scene = begin_campaign(game)
-    settle(game, BANNER_FRAMES)
+    past_the_banner(game)
     assert "1. Hollowmere" in texts(game) and "Build a farm" in texts(game) and "Getting started" not in texts(game)
     world = scene.world
     hall = scene.run.hall(0)
@@ -179,7 +179,9 @@ def start(game: Game, mission_id: str, flags: dict | None = None, difficulty: Di
     return scene
 
 
+@pytest.mark.slow
 def test_granting_the_truce_at_the_ford_ends_the_mission_and_is_remembered(game) -> None:
+    """The ford's waves and its emissary come on the mission's clock, ten minutes of it: the slow tier."""
     scene = start(game, "greywater")
     run, world = scene.run, scene.world
     assert [type(b).__name__ for b in scene.brains] == ["Brain"] and scene.brains[0].difficulty is Difficulty.EASY
@@ -213,7 +215,9 @@ def test_granting_the_truce_at_the_ford_ends_the_mission_and_is_remembered(game)
     assert ProgressStore(game.data_dir).load().flags == {"truce": True}
 
 
+@pytest.mark.slow
 def test_refusing_the_truce_means_the_camp_must_burn(game) -> None:
+    """Ten minutes of the mission's clock: the slow tier."""
     run = build_world(mission("greywater"), flags={})
     for seconds in (160, 240, 200):
         run_for(run, seconds)
@@ -254,7 +258,9 @@ def test_a_replayed_mission_asks_its_own_question_again() -> None:
 # -- Saves in the middle of a mission ----------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_a_mission_save_keeps_the_script_where_it_was_and_continue_resumes_it(game) -> None:
+    """Five minutes of the mission's clock before the save: the slow tier."""
     scene = start(game, "hollowmere")
     run = scene.run
     run_for(run, 301)
@@ -273,7 +279,7 @@ def test_a_mission_save_keeps_the_script_where_it_was_and_continue_resumes_it(ga
     assert isinstance(loaded, MissionScene) and loaded is not scene
     assert loaded.run.fired.keys() == {"raid_1"} and loaded.run.state == run.state and loaded.run.get("camp") == run.get("camp")
     assert [p.name for p in loaded.world.players] == ["Hollowmere", "Bloodfang Raiders"] and loaded.world.scripted
-    settle(game, BANNER_FRAMES)
+    past_the_banner(game)
     assert "1. Hollowmere" in texts(game) and "Hold Hollowmere against the raids" in texts(game)
     assert loaded.AUTOSAVE_SLOT == CAMPAIGN_SLOT and not loaded.ranked
 
@@ -371,11 +377,10 @@ game.push(CampaignScene())
 game.tick(1 / 60)
 scene = game.scene
 print(json.dumps({"next": scene.next_mission.id, "flags": scene.progress.flags, "difficulty": scene.difficulty.value}))
-game._teardown()
+game.close()
 """
 
 
-BANNER_FRAMES = 170  # the mission's title banner holds the screen for 2.7 seconds
 
 
 def raze(world, side: int) -> None:
@@ -388,6 +393,12 @@ def raze(world, side: int) -> None:
 def settle(game: Game, frames: int = 30) -> None:
     for _ in range(frames):
         game.tick(1 / 60)
+
+
+def past_the_banner(game: Game) -> None:
+    """The mission's title banner holds the screen for 2.7 seconds: three seconds in tenths are past it."""
+    for _ in range(30):
+        game.tick(0.1)
 
 
 def read_in_a_new_process(data_dir) -> dict:
@@ -417,7 +428,9 @@ def test_losing_the_hall_before_the_levies_come_loses_the_ford() -> None:
     assert run.lost == "Hold the ford until the levies arrive (10:00)" and not run.won
 
 
+@pytest.mark.slow
 def test_karst_hold_is_won_by_burning_the_camp_and_the_powder_goes_south_into_a_new_process(game) -> None:
+    """A second process reads the progress file: the slow tier."""
     ProgressStore(game.data_dir).save(Progress(CAMPAIGN.id, Difficulty.HARD, completed=["hollowmere", "greywater", "silent_hold"], flags={"truce": True}))
     scene = start(game, "karst_hold", flags={"truce": True}, difficulty=Difficulty.HARD)
     run, world = scene.run, scene.world
@@ -500,7 +513,7 @@ def test_the_title_banner_has_the_screen_first_and_notices_hang_under_the_object
     notice slides in under the panel however tall the panel has grown, never over it."""
     scene = start(game, "hollowmere")
     assert "Mission 1: Hollowmere" in texts(game) and "Build a farm" not in texts(game)
-    settle(game, BANNER_FRAMES)
+    past_the_banner(game)
     assert "Build a farm" in texts(game) and "Mission 1: Hollowmere" not in texts(game)
     world, hall = scene.world, scene.run.hall(0)
     world.place_building(0, BuildingType.FARM, (hall.x + 5, hall.y + 5))

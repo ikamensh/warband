@@ -38,7 +38,7 @@ def test_every_production_target_has_a_distinct_renderable_icon(tmp_path, race) 
             assert x <= image["x"] < image["x"] + image["width"] <= x + w
             assert y <= image["y"] < image["y"] + image["height"] <= y + h
     finally:
-        game._teardown()
+        game.close()
 
 
 def test_portrait_and_keycap_clicks_use_normal_button_enabled_behaviour(tmp_path) -> None:
@@ -67,20 +67,25 @@ def test_portrait_and_keycap_clicks_use_normal_button_enabled_behaviour(tmp_path
         assert trained == [UnitType.PEASANT] * 2
         assert game.backend.images[0]["opacity"] < 1
     finally:
-        game._teardown()
+        game.close()
 
 
 @pytest.fixture(params=[Race.HUMAN, Race.DWARF], ids=["humans", "dwarves"])
-def play(tmp_path, request):
+def race(request):
+    return request.param
+
+
+@pytest.fixture
+def play(tmp_path, race):
     game = Game("Production UI", backend="mock", resolution=(1280, 720), theme=build_theme(), save_dir=tmp_path / "saves")
-    scene = new_game(seed=3, races=[request.param, None])
+    scene = new_game(seed=3, races=[race, None])
     game.push(scene)
     scene.paused = True
     scene.effects.clear()
     for _ in range(3):
         game.tick(1 / 60)
     yield game, scene
-    game._teardown()
+    game.close()
 
 
 def producer_of(scene, target):
@@ -90,13 +95,14 @@ def producer_of(scene, target):
     return hall if kind is BuildingType.TOWN_HALL else scene.world.place_building(scene.human, kind, (hall.x + 5, hall.y + 4))
 
 
-@pytest.mark.parametrize("target", [*UnitType, *Upgrade])
-def test_every_unit_and_upgrade_of_the_race_has_an_operable_production_icon(play, target) -> None:
-    """The portrait names itself on hover, trains or researches on click, and then shows in the panel's readout."""
+@pytest.mark.parametrize("race, target", [pytest.param(race, target, id=f"{race.value}-{target.value}")
+                                          for race in (Race.HUMAN, Race.DWARF) for target in (*UnitType, *Upgrade)
+                                          if not isinstance(target, Upgrade) or RACES[race].upgrade_allowed(target)])
+def test_every_unit_and_upgrade_of_the_race_has_an_operable_production_icon(play, race, target) -> None:
+    """The portrait names itself on hover, trains or researches on click, and then shows in the panel's readout.
+    Each race's own units and arts only: another race's art is refused, as test_races checks."""
     game, scene = play
-    race = RACES[scene.player.race]
-    if isinstance(target, Upgrade) and not race.upgrade_allowed(target):
-        pytest.skip(f"{target.value} is another race's art")
+    race = RACES[race]
     info = race.units[target] if isinstance(target, UnitType) else UPGRADES[target]
     building = producer_of(scene, target)
     if isinstance(target, Upgrade) and info.requires:
