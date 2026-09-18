@@ -669,6 +669,43 @@ static PyObject *any_lit(PyObject *self, PyObject *args) {
     return PyBool_FromLong(lit);
 }
 
+/* WorkerKnowledge._stale: the flat indices, in map order, of the lit tiles whose remembered terrain
+   is not the terrain there now (compared by identity, as `is not` does). */
+static PyObject *stale_tiles(PyObject *self, PyObject *args) {
+    PyObject *visible_obj, *rows, *remembered;
+    Py_ssize_t width, height;
+    if (!PyArg_ParseTuple(args, "OO!O!nn", &visible_obj, &PyList_Type, &rows, &PyList_Type, &remembered, &width, &height))
+        return NULL;
+    if (PyList_GET_SIZE(rows) < height || PyList_GET_SIZE(remembered) < width * height) {
+        PyErr_SetString(PyExc_ValueError, "the terrain is smaller than width * height");
+        return NULL;
+    }
+    Grid grid;
+    if (grid_open(visible_obj, width * height, &grid) < 0) return NULL;
+    PyObject *stale = PyList_New(0);
+    for (Py_ssize_t y = 0; stale != NULL && y < height; y++) {
+        PyObject *row = PyList_GET_ITEM(rows, y);
+        if (!PyList_Check(row) || PyList_GET_SIZE(row) < width) {
+            PyErr_SetString(PyExc_ValueError, "a terrain row is not a list of width tiles");
+            Py_CLEAR(stale);
+            break;
+        }
+        const unsigned char *lit = grid.cells + y * width;
+        for (Py_ssize_t x = 0; x < width; x++) {
+            if (!lit[x] || PyList_GET_ITEM(remembered, y * width + x) == PyList_GET_ITEM(row, x)) continue;
+            PyObject *index = PyLong_FromSsize_t(y * width + x);
+            if (index == NULL || PyList_Append(stale, index) < 0) {
+                Py_XDECREF(index);
+                Py_CLEAR(stale);
+                break;
+            }
+            Py_DECREF(index);
+        }
+    }
+    grid_close(&grid);
+    return stale;
+}
+
 /* -- Module ------------------------------------------------------------------------------------ */
 
 static PyMethodDef methods[] = {
@@ -681,6 +718,7 @@ static PyMethodDef methods[] = {
     {"or_into", or_into, METH_VARARGS, "model.or_into(target, source)"},
     {"stamp_threats", stamp_threats, METH_VARARGS, "worker_ai._stamp_units(blocked, units, width, height)"},
     {"any_lit", any_lit, METH_VARARGS, "WorkerKnowledge.sees(visible, x, y, size) given the map's width and height"},
+    {"stale_tiles", stale_tiles, METH_VARARGS, "WorkerKnowledge._stale(visible, terrain rows, remembered, width, height)"},
     {NULL, NULL, 0, NULL},
 };
 

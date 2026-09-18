@@ -120,28 +120,16 @@ class WorkerKnowledge:
         width = self.width
         remembered, terrain_blocked, trees = self.terrain, self._terrain_blocked, self._trees
         changed = False
-        for y, row in enumerate(world.terrain):
-            base = y * width
-            seen = visible[base:base + width]
-            lo = seen.find(1)
-            while lo >= 0:  # each run of lit tiles in the row, compared whole first: usually nothing changed
-                hi = seen.find(0, lo)
-                if hi < 0:
-                    hi = width
-                if remembered[base + lo:base + hi] != row[lo:hi]:
-                    for x in range(lo, hi):
-                        index = base + x
-                        terrain = row[x]
-                        if remembered[index] is not terrain:
-                            changed = True
-                            remembered[index] = terrain
-                            terrain_blocked[index] = terrain in BLOCKING
-                            if terrain is Terrain.TREES:
-                                trees.add(index)
-                            else:
-                                trees.discard(index)
-                            self._tree_order = None
-                lo = seen.find(1, hi)
+        for index in self._stale(world.terrain, visible):
+            terrain = world.terrain[index // width][index % width]
+            changed = True
+            remembered[index] = terrain
+            terrain_blocked[index] = terrain in BLOCKING
+            if terrain is Terrain.TREES:
+                trees.add(index)
+            else:
+                trees.discard(index)
+            self._tree_order = None
         observed = {building.id: building for building in world.buildings.values()
                     if building.player == player or self.sees(visible, building.x, building.y, building.size)}
         for bid, remembered_building in list(self.buildings.items()):
@@ -168,6 +156,25 @@ class WorkerKnowledge:
                 self.mines.pop(building.id, None)
         if changed:  # the grid still stands as it was unless remembered terrain or a footprint changed
             self._stamp_buildings()
+
+    def _stale(self, rows: list[list[Terrain]], visible: bytearray) -> list[int]:
+        """The flat indices, in map order, of the lit tiles whose remembered terrain is not what is there now."""
+        width, remembered = self.width, self.terrain
+        if _native is not None:
+            return _native.stale_tiles(visible, rows, remembered, width, self.height)
+        stale: list[int] = []
+        for y, row in enumerate(rows):
+            base = y * width
+            seen = visible[base:base + width]
+            lo = seen.find(1)
+            while lo >= 0:  # each run of lit tiles in the row, compared whole first: usually nothing changed
+                hi = seen.find(0, lo)
+                if hi < 0:
+                    hi = width
+                if remembered[base + lo:base + hi] != row[lo:hi]:
+                    stale.extend(base + x for x in range(lo, hi) if remembered[base + x] is not row[x])
+                lo = seen.find(1, hi)
+        return stale
 
     def resource_rect(self, target: int | tuple[int, int]) -> tuple[int, int, int, int] | None:
         if isinstance(target, int):

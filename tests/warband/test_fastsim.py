@@ -111,3 +111,16 @@ def test_the_c_painting_paints_as_the_python_does() -> None:
         for _ in range(10):
             x, y, size = rng.randint(-4, width + 1), rng.randint(-4, height + 1), rng.randint(1, 4)
             assert native.any_lit(source, x, y, size, width, height) == knowledge.sees(source, x, y, size)
+
+
+def test_the_c_terrain_scan_finds_what_the_python_finds() -> None:
+    native = _native_searches()
+    rng = random.Random(1809)
+    kinds = list(Terrain)
+    for _ in range(300):
+        width, height = rng.randint(1, 50), rng.randint(1, 40)
+        rows = [[rng.choice(kinds) for _ in range(width)] for _ in range(height)]
+        knowledge = WorkerKnowledge(width, height)
+        knowledge.terrain = [rng.choice((None, rows[i // width][i % width], rng.choice(kinds))) for i in range(width * height)]
+        visible = bytearray(rng.random() < rng.random() for _ in range(width * height))
+        assert native.stale_tiles(visible, rows, knowledge.terrain, width, height) == knowledge._stale(rows, visible)
