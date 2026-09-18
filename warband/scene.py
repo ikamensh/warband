@@ -1697,7 +1697,8 @@ class GameScene(Scene):
         name = entity.info.name if isinstance(entity, Unit) else RACES[entity.race].buildings[entity.type].name
         self.draw_text(f"{name}", tx, y + 16, style="heading")
         color = MUTED if abandoned else rgba(world.players[entity.player].color) if entity.player is not None else GOLD
-        self.draw_text(owner, tx + 6 + self.game.backend.measure_text(name, 17, "Nunito SemiBold")[0], y + 16, style="sub", color=color)
+        heading = self.game.theme.get_text_style("heading")  # the name's style: the owner follows wherever the theme ends it
+        self.draw_text(owner, tx + 6 + self.game.backend.measure_text(name, heading.font_size, heading.font)[0], y + 16, style="sub", color=color)
         lines: list[str] = []
         if isinstance(entity, Sighting) and entity.type is BuildingType.GOLD_MINE:
             lines.append(f"{entity.gold} gold left")
