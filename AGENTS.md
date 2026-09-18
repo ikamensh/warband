@@ -21,6 +21,8 @@ uv run python tools/verify_deaths.py DIR         # one death per unit category f
 uv run python tools/visual_lint.py --evidence DIR   # visual defects in the art and on every screen; PNGs of what it flags (--screens NAME, --no-images)
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms); --scenario four-player|pan-zoom|deaths|restarts, --csv, --gc
 uv run python tools/step_bench.py --repeat 3     # model step times of the same battle without a window, with --profile
+uv run python tools/sim_bench.py --check tools/sim_bench.txt   # processor time of nine whole arena matches, and their results unchanged
+uv run python -m warband.fastsim                 # compile the simulation with mypyc now (the match-running tools do it on first use)
 uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening (the default report is about a minute)
 uv run python tools/arena.py ladder --agents hard,pro --seeds 40   # rate agents against each other, in parallel
 uv run python tools/arena.py report --seeds 24                     # 1v1, free-for-all and jittered-balance ladders
@@ -127,7 +129,16 @@ real breakdown.
 - A change that is meant to be only a speed change must leave
   `tools/sim_fingerprint.py --check` alone: lockstep online play needs the
   simulation reproducible to the float bit. A deliberate rules or AI change
-  moves it, and the recorded hash is refreshed in the same commit.
+  moves it, and the recorded hash is refreshed in the same commit (and
+  `tools/sim_bench.txt` with it).
+- The tools that play many matches (`arena`, `tune`, `balance_report`,
+  `ai_report`, `race_report`, `sim_bench`, `step_bench`) run the simulation
+  compiled by mypyc from its own source (`warband/fastsim.py`, built on first
+  use under `build/fastsim/`, `WARBAND_INTERPRETED=1` to opt out); the game
+  and the tests run the source. The compiler trusts the annotations of
+  `fastsim.MODULES`: keep mypy over them clean, because a value of the wrong
+  type is a `TypeError` in a compiled run where the interpreter carried on.
+  `tests/warband/test_fastsim.py` plays the fingerprint compiled.
 - Claims about an AI being stronger are settled by `tools/arena.py`, not by
   watching a match. The same two brains on the same twelve seeds swing
   between seven and eleven wins on the random stream alone, so nothing under

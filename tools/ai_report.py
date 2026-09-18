@@ -20,6 +20,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from warband import fastsim  # noqa: E402
+
+fastsim.activate()  # the compiled simulation, unless WARBAND_INTERPRETED is set
+
 from warband import mapgen  # noqa: E402
 from warband.ai import make_brain  # noqa: E402
 from warband.model import Harvest, World, dist  # noqa: E402

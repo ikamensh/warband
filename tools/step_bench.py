@@ -23,6 +23,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from warband import fastsim  # noqa: E402
+
+fastsim.activate()  # the compiled simulation, unless WARBAND_INTERPRETED is set
+
 from warband import mapgen  # noqa: E402
 from warband.model import World, tile_center  # noqa: E402
 from warband.rules import BuildingType, UnitType  # noqa: E402

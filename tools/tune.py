@@ -24,6 +24,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from warband import fastsim  # noqa: E402
+
+fastsim.activate()  # the compiled simulation, unless WARBAND_INTERPRETED is set
+
 from warband import arena  # noqa: E402
 from warband.arena import MatchSpec  # noqa: E402
 from warband.pro_ai import PRO, PRO_PROFILES, ProProfile  # noqa: E402

@@ -20,6 +20,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from warband import fastsim  # noqa: E402
+
+fastsim.activate()  # the compiled simulation, unless WARBAND_INTERPRETED is set
+
 from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
 from warband import mapgen  # noqa: E402
 from warband.ai import Brain  # noqa: E402
