@@ -50,6 +50,10 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev --python "${{ steps.inputs.outputs.python }}"
         working-directory: warband
-      - name: Run tests
-        run: uv run --locked pytest -q
+      - name: Fast tier
+        # every unmarked test, on four workers; one over the budget fails: CI's runners are about twice as slow as a Mac
+        run: uv run --locked pytest -q --budget 2.5 --durations=10
+        working-directory: warband
+      - name: Slow tier
+        run: uv run --locked pytest -q --slow -m slow --durations=10
         working-directory: warband
