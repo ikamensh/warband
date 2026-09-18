@@ -283,15 +283,27 @@ downloads, two deterministic evidence archives and `release.json`. Repeating
 staging accepts only identical output. `publish` revalidates the complete native
 evidence before any remote mutation, binds a lightweight version tag to the
 source SHA, creates/resumes a draft and downloads every uploaded asset to check
-its bytes. It never overwrites a completed asset. Only an empty draft asset in
-GitHub's documented `starter` state can be deleted and retried. Publication
-requires a complete asset set; a retry of an already published release performs
-only reads, and successful output requires immutable status plus unauthenticated
-download checks for every asset.
+its bytes. It never overwrites a completed asset. Each upload, read-back and
+the publication print their start, end, bytes, seconds and the remote record
+to the job log (stderr; stdout carries the publication result). A failure of
+the wire — a timeout, a dropped connection, a 5xx — reads the asset's record
+again, gives a lost response up to 30 s to finalize (`--finalize-wait`),
+adopts the asset if it is complete, otherwise removes its own interrupted
+`starter` and tries again, three attempts in all (WB-020). A draft asset in
+the `starter` state left by an earlier run is deleted and retried only when
+it is GitHub's documented empty placeholder or sized with no digest and still
+for longer than a transfer's timeout (120 s); a younger one may still be
+finalizing and stops the run. Publication requires a complete asset set; a
+retry of an already published release performs only reads, and successful
+output requires immutable status plus unauthenticated download checks for
+every asset.
 
-Fourteen CLI/HTTP integration checks cover staging, mixed/incomplete candidates,
-lost upload and publication responses, changed local/remote bytes, conflicting
-tags/identity, empty versus nonempty failed uploads and corrupt public downloads.
+Twenty CLI/HTTP integration checks cover staging, mixed/incomplete candidates,
+lost upload and publication responses recovered by reading the asset back,
+terminal refusals, a connection dropped mid-body, a body received without a
+final record, a fresh unfinished upload, an upload that fails twice within one
+run, changed local/remote bytes, conflicting tags/identity, empty versus
+nonempty failed uploads and corrupt public downloads.
 These use a local HTTP implementation of the documented GitHub contract and
 non-executable package fixtures; they do not establish the real GitHub release
 journey. The command is not connected to a write-enabled workflow yet.

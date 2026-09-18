@@ -41,7 +41,7 @@ catches its class.
 | WB-017 | Next | done | Preserve movement speed through path waypoints | WB-003 diagnosis |
 | WB-018 | Next | done | Keep large selections inside the HUD | Native crowd capture |
 | WB-019 | Next | done | Remove stray sprite-sheet lines from painted units | Native melee review |
-| WB-020 | Later | proposed | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
+| WB-020 | Later | in progress | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
 | WB-021 | Next | blocked | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
 | WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
 | WB-023 | Next | done | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
@@ -1055,6 +1055,60 @@ accepted archives, leaves completed assets untouched, and reaches a verified
 immutable publication. Actual transfer/finalization progress and failures must
 be understandable in CI logs. This item is proposed; no implementation is
 started during the requested pause after WB-004.
+
+**Where it starts, 2026-09-18:** `tools/ci_publish.py publish` uploads each
+missing asset in one request (120 s timeout), verifies it, and on a retry
+deletes only GitHub's documented empty `starter` placeholder; any other
+unfinished asset stops the run ("Remote asset metadata differs") and an
+operator recovers by hand, as WB-004's evidence under `docs/evidence/melee/`
+shows: the upload of a 134 MB archive got GitHub's HTML "Unicorn" 5xx page
+back, the asset stayed `starter` with its intended size and no digest, its
+bytes were downloadable and matched the receipt, and two curl attempts
+finished it. The publisher prints nothing while it transfers.
+
+**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+
+1. Diagnostics: every transfer and finalization step prints one line to the
+   CI log when it starts and when it ends (asset, bytes, seconds, the remote
+   state and digest it saw), and a failure names the exception, the asset and
+   what the remote holds for it afterwards (state, size, digest, when it was
+   updated). Nothing secret is printed.
+2. Recovery of an unfinished upload, bounded: an asset in the `starter` state
+   with a nonzero size and no digest on a draft release is treated as an
+   interrupted upload once it is older than the upload's own timeout (its
+   `updated_at` more than 120 s ago) — before that it may still be finalizing
+   and the run stops as today. An interrupted upload is replaced only after
+   the staged bytes are verified again against the release identity; the
+   publisher deletes it and uploads the staged file again, then verifies size,
+   digest and bytes as for any asset. Completed assets and published
+   (non-draft) releases are never touched; the remaining stops stay.
+3. Retries on the wire: a transfer that fails with a timeout, a 5xx or a
+   dropped connection is tried again up to three times with the remote state
+   re-read between attempts, so a retry never re-sends what is already
+   complete and never replaces an asset that finished in the meantime.
+4. Proof: the loopback service in `tests/test_ci_publish.py` gains a partial
+   upload (the connection drops mid-body and leaves the sized `starter`), a
+   fully received body without final metadata (the sized `starter` whose bytes
+   download complete), an active upload (a fresh `starter`, which still stops
+   the run), and an interrupted retry (the second attempt fails once and then
+   succeeds); each ends in the verified immutable publication or the same
+   refusal as today, with completed assets untouched and the log lines
+   asserted. The existing retry tests keep passing.
+
+**Implemented 2026-09-18** (`tools/ci_publish.py`, `tests/test_ci_publish.py`):
+every upload, read-back and the publication print their start, end, bytes,
+seconds and the remote record to stderr (stdout stays the publication
+result); a failure of the wire (timeout, dropped connection, 5xx) reads the
+asset's record again, waits up to `--finalize-wait` seconds (30 in CI) for a
+lost response to finalize, adopts the asset if it is complete, removes its
+own interrupted `starter` otherwise and tries again, three attempts in all; a
+`starter` left by an earlier run is removed only when it is the empty
+placeholder or sized with no digest and still for longer than a transfer's
+timeout, else the run stops with "may still be finalizing". The loopback
+service now models a connection dropped mid-body, a body received without a
+final record, a fresh unfinished upload and a terminal refusal; twenty
+publisher tests cover them, the retry refusals as before, and that no token
+reaches the log.
 
 ## WB-021 — A 4K Windows desktop gets a window and HUD made for it
 
