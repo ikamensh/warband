@@ -333,6 +333,30 @@ def battle(game: Game) -> None:
 
 
 @screen
+def battle_bars(game: Game) -> None:
+    """The same fight with Alt held: every unit's health."""
+    battle(game)
+    game.scene.all_bars = True
+    ticks(game)
+
+
+@screen
+def town_at_work(game: Game) -> None:
+    """A damaged farm, a barracks training, a tower going up: health and progress told apart."""
+    scene = town(game, zoom=1.5)
+    world = scene.world
+    farm = own(scene, BuildingType.FARM)
+    farm.hp = farm.max_hp // 3
+    world.players[scene.human].gold = world.players[scene.human].lumber = 5000
+    world.train(own(scene, BuildingType.BARRACKS).id, UnitType.FOOTMAN)
+    hall = own(scene, BuildingType.TOWN_HALL)
+    site = world.place_building(scene.human, BuildingType.TOWER, (hall.x + 8, hall.y + 5), done=False)
+    site.progress = site.info.build_time * 0.4
+    scene.camera.center_on(*(c * TILE for c in own(scene, BuildingType.BARRACKS).center))
+    ticks(game)
+
+
+@screen
 def battle_wood(game: Game) -> None:
     scene = town(game, zoom=2.0)
     for i, tile in enumerate(((30, 2), (31, 3), (33, 2), (34, 4), (36, 3), (29, 5))):

@@ -29,7 +29,7 @@ catches its class.
 | WB-005 | Next | done | Replace the rotating-sprite death with convincing falls | User |
 | WB-006 | Next | done | Add blood on damaging hits | User |
 | WB-007 | Next | ready | Leave grey abandoned buildings when a player resigns in FFA | User |
-| WB-008 | Next | ready | Improve health bars and building progress indicators | User |
+| WB-008 | Next | in progress | Improve health bars and building progress indicators | User |
 | WB-015 | Next | ready | Verify and complete durable local player storage outside game sources | User |
 | WB-009 | Next | proposed | Establish current battle performance and fix measured bottlenecks | User / engine split |
 | WB-010 | Later | proposed | Smooth online movement and make connection problems understandable | Suggested |
@@ -39,7 +39,7 @@ catches its class.
 | WB-014 | Later | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-016 | Later | proposed | Assess and recover the six-mission Thornwood campaign | Recovered branch |
 | WB-017 | Next | ready | Preserve movement speed through path waypoints | WB-003 diagnosis |
-| WB-018 | Next | in progress | Keep large selections inside the HUD | Native crowd capture |
+| WB-018 | Next | done | Keep large selections inside the HUD | Native crowd capture |
 | WB-019 | Next | done | Remove stray sprite-sheet lines from painted units | Native melee review |
 | WB-020 | Later | proposed | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
 | WB-021 | Next | ready | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
@@ -460,6 +460,50 @@ bars or labels. Inspect real frames across themes, zooms and crowded fights,
 including grey abandoned buildings from WB-007. Verify the policy through real
 selection and pointer journeys as well as drawing tests.
 
+**Where it starts, 2026-09-18** (`docs/evidence/health/before/`): bars exist
+only for selected or hovered entities. In a crowded fight the eleven selected
+units carry 4 px bars that overlap in the clump while every other wounded
+unit, the enemy's included, shows nothing; at near zoom the bars read but
+still only on the selection. A damaged farm and a tower under construction
+show nothing unselected; a barracks training a footman shows its progress
+only in the panel, and its own health bar (full, green) sits on its selection
+outline.
+
+**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+
+1. Policy: a health bar shows over every visible unit and building that is
+   wounded, over every selected or hovered one whatever its health, and over
+   every visible unit and building while F11 has them on (F11 again turns them
+   off) or while Alt is held on the pointer's motion. Revised during
+   implementation: the engine drops a modifier key's own press and release
+   before any scene sees them (`saga2d.input`), so Alt alone cannot be a
+   hold-to-show control under the pinned engine; its flag on the events that
+   do arrive still works, and F11 is the control that always does (F6 to F8
+   are the camera bookmarks). Unwounded,
+   unselected ones show nothing. A site under construction shows its progress
+   instead of a health bar unless selected.
+2. Rendering: a bar is 5 screen pixels tall with a 1 px dark outline at any
+   zoom (its width follows the unit), anchored just above the sprite's top or
+   the building's rect; green above half, amber above a quarter, red below;
+   readable at far zoom (0.5) and in a clump at normal zoom without bars
+   drawn over each other more than the sprites themselves overlap.
+3. Progress is told apart from health by more than colour: a gold segmented
+   bar (five segments) along the bottom edge of a site under construction,
+   visible whenever the site is; an own building at work (training or
+   research) shows the same segmented bar with a pulsing gold mark at its
+   left, so the work is discoverable on an undamaged building without
+   selecting it. A rival's work stays hidden; its sites still show progress.
+4. Frames inspected: the crowded fight at zoom 1 and 2 by default and with
+   every bar on, the town at work (damaged farm, training barracks, site), and
+   the same town in winter and wasteland for contrast; the panel's strips
+   from WB-018 unchanged. Abandoned buildings wait for WB-007.
+5. Tests at the view seam through real input (selection, hover, Alt press and
+   flag, F11): wounded shows, healthy hidden, selected and hovered show, Alt
+   and F11 show all, a site shows progress not health, own work shows
+   its bar and mark, a rival's work does not; visual lint gains
+   `battle_bars` (Alt held) and `town_at_work` screens; the suite; the
+   fingerprint unchanged (no model change).
+
 ## WB-015 — Durable local player storage
 
 Keep player data as readable text files in the user's home/data directory,
@@ -635,7 +679,17 @@ a selection of 18 shows one row of twelve 34 px portraits (`MAX_PORTRAITS`)
 that runs to the panel's right edge; the other six units have no portrait and
 cannot be picked from the panel. Health is a 3 px strip under each portrait.
 
-**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+**Done 2026-09-18**, commit `15a533a`: every criterion below holds.
+[Tests 35288251187](https://github.com/ikamensh/warband/actions/runs/35288251187),
+[Native package checks 35288251308](https://github.com/ikamensh/warband/actions/runs/35288251308),
+[Publish 35289342675](https://github.com/ikamensh/warband/actions/runs/35289342675) and Saga
+Online's [promotion 35289463852](https://github.com/ikamensh/saga-online/actions/runs/35289463852):
+live as Warband 0.2.7. Locally: the full suite (1155 passed), `tools/fuzz.py
+--games 0 --monkey 16` clean, the fingerprint unchanged, and native frames of
+18, 60 (page two) and a mixed selection at 1280×800 and 1200×680 inspected
+(`docs/evidence/selection/`).
+
+**Acceptance (recorded 2026-09-18 before implementation):**
 
 1. Selections of 1, 12, 18, 26 and 60 units fit inside the selection panel at
    1280×800, 1280×720 and 1200×680: no portrait or strip outside the panel,
@@ -687,7 +741,7 @@ and the neighbours' spill.
 [Tests 35287067407](https://github.com/ikamensh/warband/actions/runs/35287067407),
 [Native package checks 35287067418](https://github.com/ikamensh/warband/actions/runs/35287067418),
 [Publish 35288050978](https://github.com/ikamensh/warband/actions/runs/35288050978)
-(Saga Online's promotion was still running when this was written; the live version was 0.2.5). Locally: the sagaforge suite (35) and the Warband suite (1125
+and Saga Online's [promotion 35288191313](https://github.com/ikamensh/saga-online/actions/runs/35288191313): live as Warband 0.2.6. Locally: the sagaforge suite (35) and the Warband suite (1125
 passed, the lint's new `stray` finding included), 47 sheets cleaned with
 17 thousand solid and 450 thousand faint pixels removed and every changed
 pixel verified to be a stray, the boxed surveys inspected for every affected

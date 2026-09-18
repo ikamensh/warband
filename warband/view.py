@@ -24,7 +24,8 @@ from PIL import Image
 from saga2d import Game, ParticleEmitter, RenderLayer, Scene, Sprite, SpriteAnchor
 from warband import textures
 from warband.model import Building, Entity, Pos, Projectile, Unit, World, dist
-from warband.rules import BUILDINGS, SIM_DT, VISION_EVERY, BuildingType, Terrain, UnitType
+from warband.races import RACES
+from warband.rules import BUILDINGS, SIM_DT, VISION_EVERY, BuildingType, Terrain, UnitType, UPGRADES
 from warband.textures import CHUNK, CHUNK_PX, TILE
 
 WATER_PERIOD = 0.45  # seconds between water phase changes
@@ -71,6 +72,7 @@ class Overlay:
     hovered: int | None = None
     ghost: tuple[BuildingType, Pos, bool] | None = None  # building, top-left tile, placeable
     rally_for: list[int] = field(default_factory=list)
+    bars_for_all: bool = False  # Alt held: every visible unit and building shows its health
 
 
 def minimap_terrain(world: World) -> np.ndarray:
@@ -688,12 +690,57 @@ class MapView:
         return SELECT if entity.player == self.player else ENEMY
 
     def _health_bar(self, entity: Entity, x: float, y: float, width: float) -> None:
+        """A bar *width* wide centred on *x* with its top at *y*: 5 screen pixels tall with a 1 px outline at any zoom."""
         if isinstance(entity, Building) and entity.type is BuildingType.GOLD_MINE:
             return
+        px = 1 / self.scene.camera.zoom  # one screen pixel in world units
         frac = max(0.0, min(1.0, entity.hp / max(1, entity.max_hp)))
         color = (110, 230, 110, 255) if frac > 0.5 else (240, 200, 80, 255) if frac > 0.25 else (240, 90, 70, 255)
-        self.scene.draw_rect(x - width / 2, y, width, 4, (0, 0, 0, 170), space="world", layer=RenderLayer.UI_WORLD)
-        self.scene.draw_rect(x - width / 2, y, width * frac, 4, color, space="world", layer=RenderLayer.UI_WORLD)
+        self.scene.draw_rect(x - width / 2 - px, y - px, width + 2 * px, 7 * px, (0, 0, 0, 190), space="world", layer=RenderLayer.UI_WORLD)
+        self.scene.draw_rect(x - width / 2, y, width * frac, 5 * px, color, space="world", layer=RenderLayer.UI_WORLD)
+
+    def _progress_bar(self, left: float, top: float, w: int, h: int, frac: float, *, work: bool) -> None:
+        """A gold bar in five segments along a building's bottom edge; *work* adds the pulsing mark of a building making something."""
+        px = 1 / self.scene.camera.zoom
+        x0, width, y0 = left + 4, w * TILE - 8, top + h * TILE - 4 - 5 * px
+        self.scene.draw_rect(x0 - px, y0 - px, width + 2 * px, 7 * px, (0, 0, 0, 190), space="world", layer=RenderLayer.UI_WORLD)
+        self.scene.draw_rect(x0, y0, width * max(0.0, min(1.0, frac)), 5 * px, (255, 214, 110, 255), space="world", layer=RenderLayer.UI_WORLD)
+        for tick in range(1, 5):
+            self.scene.draw_rect(x0 + width * tick / 5 - px / 2, y0, px, 5 * px, (0, 0, 0, 190), space="world", layer=RenderLayer.UI_WORLD)
+        if work:
+            pulse = 0.55 + 0.45 * math.sin(self.time * 5)
+            self.scene.draw_circle(x0 - 6 * px, y0 + 2.5 * px, 3.5 * px, (255, 214, 110, int(120 + 135 * pulse)), space="world", layer=RenderLayer.UI_WORLD)
+
+    def _seen(self, building: Building) -> bool:
+        return self.reveal or building.player == self.player or any(self.world.is_visible(self.player, t) for t in building.tiles())
+
+    def _draw_bars(self, overlay: Overlay) -> None:
+        """Health over every wounded, selected or hovered unit and building (over everything while Alt is held);
+        progress along the bottom of every site under construction and of own buildings at work."""
+        world = self.world
+        shown = set(overlay.selected) | ({overlay.hovered} if overlay.hovered is not None else set())
+        for uid, sprite in self._units.items():
+            unit = world.units.get(uid)
+            if unit is None or not sprite.visible:
+                continue
+            if overlay.bars_for_all or uid in shown or unit.hp < unit.max_hp:
+                self._health_bar(unit, sprite.x, sprite.y - sprite.size[1] - 6, TILE * 0.8)
+        for bid, building in world.buildings.items():
+            if bid not in self._buildings or not self._seen(building):
+                continue
+            x, y, w, h = building.rect
+            left, top = x * TILE, y * TILE
+            if not building.done:
+                self._progress_bar(left, top, w, h, building.progress / building.info.build_time, work=False)
+                if bid in shown:
+                    self._health_bar(building, left + w * TILE / 2, top - 8, w * TILE * 0.8)
+                continue
+            if overlay.bars_for_all or bid in shown or building.hp < building.max_hp:
+                self._health_bar(building, left + w * TILE / 2, top - 8, w * TILE * 0.8)
+            if building.player == self.player and building.queue:
+                self._progress_bar(left, top, w, h, building.train_progress / RACES[building.race].units[building.queue[0]].build_time, work=True)
+            elif building.player == self.player and building.research is not None:
+                self._progress_bar(left, top, w, h, building.research_progress / UPGRADES[building.research].time, work=True)
 
     def draw(self, overlay: Overlay) -> None:
         world, scene = self.world, self.scene
@@ -710,17 +757,12 @@ class MapView:
                     continue
                 wx, wy = to_world(self.unit_position(entity))
                 self._ring(wx, wy + 2, TILE * 0.42, TILE * 0.26, color if eid in overlay.selected else rgba(color[:3], 120))
-                self._health_bar(entity, wx, wy - TILE * 0.95, TILE * 0.8)
             else:
                 x, y, w, h = entity.rect
                 left, top = x * TILE, y * TILE
                 scene.draw_rect(left, top, w * TILE, h * TILE, (0, 0, 0, 0), border_color=color if eid in overlay.selected else rgba(color[:3], 120),
                                 border_width=2, space="world", layer=RenderLayer.OBJECTS)
-                self._health_bar(entity, left + w * TILE / 2, top - 8, w * TILE * 0.8)
-                if not entity.done:
-                    frac = entity.progress / entity.info.build_time
-                    scene.draw_rect(left + 4, top + h * TILE - 8, w * TILE - 8, 4, (0, 0, 0, 170), space="world", layer=RenderLayer.UI_WORLD)
-                    scene.draw_rect(left + 4, top + h * TILE - 8, (w * TILE - 8) * frac, 4, (255, 214, 110, 255), space="world", layer=RenderLayer.UI_WORLD)
+        self._draw_bars(overlay)
         for bid in overlay.rally_for:
             b = world.buildings.get(bid)
             if b is None or b.rally is None:

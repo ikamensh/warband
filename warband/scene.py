@@ -137,6 +137,7 @@ class GameScene(Scene):
         "f2": "open_codex",
         "f3": "toggle_pause",
         "f4": "hide_tutorial",
+        "f11": "toggle_bars",
         "f5": "quick_save",
         "f9": "quick_load",
         "f10": "open_menu",
@@ -183,6 +184,8 @@ class GameScene(Scene):
         self.clock = 0.0
         self.effects = Effects()
         self.bodies: list[UnitDeath] = []  # lying where they fell, oldest first
+        self.all_bars = False  # F11: every visible unit's and building's health, not only the wounded
+        self.alt_held = False  # Alt on the latest input shows the same while it lasts
         self.stains: list[Stain] = []  # under the bodies, oldest first
         self._blows: dict[int, tuple[float, float]] = {}  # unit id -> where its last visible blow came from (tiles)
         self.recent_sounds: deque[str] = deque(maxlen=48)
@@ -371,6 +374,11 @@ class GameScene(Scene):
         self.tutorial = None
         self.objectives.visible = False
         self.sfx("button")
+
+    def toggle_bars(self) -> None:
+        """F11: health over every visible unit and building, or over the wounded and the selected only."""
+        self.all_bars = not self.all_bars
+        self.say("Health bars: everyone" if self.all_bars else "Health bars: the wounded and the selected")
 
     def _update_tutorial(self) -> None:
         if self.tutorial is None:
@@ -1136,6 +1144,7 @@ class GameScene(Scene):
     # -- Raw input ----------------------------------------------------------------------
 
     def handle_input(self, event: InputEvent) -> bool:
+        self.alt_held = bool(event.alt)  # the engine keeps modifier keys' own presses; their flag on any input is what arrives
         if event.type == "key_press" and event.key is not None:
             if event.key in GROUP_KEYS:
                 self._group(event.key, assign=event.ctrl or event.meta, add=event.shift)
@@ -1555,7 +1564,7 @@ class GameScene(Scene):
         if self.ui.pointer_target(*self.mouse) is None and self.pending is None:
             entity = self.view.entity_at(self.hover)
             hovered = entity.id if entity is not None else None
-        self.view.draw(Overlay(selected=list(self.selection), hovered=hovered, ghost=self._ghost(),
+        self.view.draw(Overlay(selected=list(self.selection), hovered=hovered, ghost=self._ghost(), bars_for_all=self.all_bars or self.alt_held,
                                rally_for=[b.id for b in [self._own_building()] if b is not None]))
         ambience.draw(self, self.world, self.human)
         self._draw_settlement_markers()
@@ -2157,7 +2166,7 @@ HELP_KEYS = (
     ("Ctrl+1-9 / 1-9", "assign / recall a control group;  Tab / . : next idle peasant / soldier"),
     ("Space", "jump to the last alert;  Ctrl+F6-F8 / F6-F8: set / return to a camera bookmark"),
     ("Arrows / edges / wheel", "scroll the map (middle-drag too);  wheel or + / −: zoom;  minimap: left-click to look, right-click to send"),
-    ("F3 / F5 / F9", "offline: pause / save / load;  online uses a live match menu"),
+    ("F3 / F5 / F9", "offline: pause / save / load;  F11: health bars over everyone;  online uses a live match menu"),
     ("F2 / Esc", "codex: every unit, building and upgrade  /  cancel, deselect, then the menu"),
 )
 
