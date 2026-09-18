@@ -92,6 +92,26 @@ it publishes without a server rollout.
    correct, nothing slides after the resume. The suite passes, and native
    frames of a walk are looked at.
 
+
+**Done 2026-09-18**, merged as Warband main `6c5f90b` (`9f9e169`, `85f7579`):
+every criterion holds. Over a real socket (`tools/verify_movement.py
+--scenario online`), a worker, a footman and a knight used to stand still in
+149 of 179 frames, jumping up to 7.68 px (10.88 for the knight). Now none
+stand still, and no jump exceeds 1.28 px (1.81). With snapshots 4 to 8 frames
+apart (`--jitter 10`), 149 still frames and jumps up to 11.52 px (16.32)
+became 2 still and 1.64 px (2.32). Natively: 2 of 119 frames still, jumps
+under 1.61 px, and the walk strip was looked at. `tests/warband/test_online_motion.py`
+has six tests, including a LAN socket with a stall. Units that appear or come
+into sight are placed, as they are after a gap over half a second. Silence
+over a second is said, and the line clears the moment word comes. Orders
+while the seat waits are refused with the reason. Suite: 1,361 passed.
+Client only, so no rollout:
+[Tests 35389786939](https://github.com/ikamensh/warband/actions/runs/35389786939),
+[native package checks 35389786978](https://github.com/ikamensh/warband/actions/runs/35389786978),
+[promotion 35392055004](https://github.com/ikamensh/saga-online/actions/runs/35392055004),
+[public download checks 35392154479](https://github.com/ikamensh/saga-online/actions/runs/35392154479):
+live as Warband 0.2.33.
+
 ## WB-012 — Three-/four-human online FFA
 
 Local skirmish supports two to four players; current hosted rooms and
