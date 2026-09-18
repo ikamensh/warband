@@ -36,7 +36,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
 | WB-036 | Next | proposed | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often | User 2026-09-18 |
 | WB-037 | Next | proposed | Answer a tower rush without stopping the economy: one tower by the mine now halts Master's gold | User 2026-09-18 |
-| WB-038 | Next | proposed | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
+| WB-038 | Next | in progress | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-042 | Later | proposed | Tests read through public accessors; try property tests for the model and paths | WB-040 |
@@ -249,6 +249,27 @@ what was last seen (WB-027's rule). `tools/visual_lint.py` passes the new
 frames (no drift from the stand-in, no fringe), and native frames of an idle
 and a worked mine on all three map themes are looked at. Presentation only:
 the fingerprint and the contract are unchanged.
+
+**Started 2026-09-19**, branch `painted-mine`.
+
+**Acceptance (recorded before implementation):**
+
+1. `tools/restyle.py` gets a neutral `mine` subject in two looks: `intact`,
+   painted from four of the twenty stand-in variants, and `active` (a worked
+   mine: lamps lit, a cart at the mouth), painted from the installed intact
+   painting. No team colour: the prompt forbids blue and nothing recolours it.
+   The vision judge passes every cell of both looks; each painted variant keeps
+   its stand-in's footprint and anchor.
+2. The map draws a mine from the painted variants (the tile hash picks one of
+   the four), in the active look while a peasant works inside and the player
+   sees it; out of sight it shows the look last seen, as buildings do since
+   WB-027. The selection panel's portrait is the painted intact frame.
+   `WARBAND_ART=procedural` still draws the twenty stand-ins.
+3. Tests: the painted sheets load and a mine's image is painted; a worked mine
+   in sight is active and one out of sight keeps what was seen; the portrait
+   is painted; with procedural art the stand-ins return. `tools/visual_lint.py`
+   passes, and native frames of an idle and a worked mine on the three map
+   themes are looked at. The fingerprint and the contract do not move.
 
 ## WB-039 — A quieter selection
 
