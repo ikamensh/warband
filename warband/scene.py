@@ -246,12 +246,16 @@ class GameScene(Scene):
         return MapView(self, self.world, self.human, memory=self._seen)
 
     def _setup_camera(self) -> None:
-        """The map plus its rim, scrollable clear of the HUD: the top rows above, the selection panel and minimap below."""
+        """The map plus its rim, scrollable clear of the HUD: the top rows above, the selection panel and minimap below.
+        A map narrower than the window, or shorter than the room between the HUD's rows and panels, opens zoomed in
+        until it fills it, rather than lying in dark margins (a Small map on a 4K desktop)."""
         w, h = self.game.resolution
         world_w, world_h = self.world.width * TILE, self.world.height * TILE
         hud_bottom = PANEL_MARGIN[1] + max(SELECTION_HEIGHT, self._minimap_height())
+        fill = max(w / (world_w + 2 * TILE), (h - HUD_TOP - hud_bottom) / (world_h + 2 * TILE))
+        zoom = max(1.0, fill)
         self.camera = Camera((w, h), world_bounds=(-TILE, -TILE, world_w + TILE, world_h + TILE), insets=(0, HUD_TOP, 0, hud_bottom),
-                             zoom=1.0, min_zoom=0.75, max_zoom=2.0)
+                             zoom=zoom, min_zoom=0.75, max_zoom=max(2.0, zoom))
         self.camera.enable_key_scroll(speed=KEY_SPEED)
 
     def _minimap_height(self) -> int:
