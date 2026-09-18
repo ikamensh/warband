@@ -26,14 +26,14 @@ WB-010, live as 0.2.33
 WB-012, live as 0.2.34
 ([`12ecf88`](https://github.com/ikamensh/warband/blob/12ecf88fef5ba74fe6c29a76bdf4defcf0774a02/BACKLOG.md)).
 Removed 2026-09-19: WB-040, merged as `9c5caa4`
-([`c49badb`](https://github.com/ikamensh/warband/blob/c49badb5f2baaca0d882f500caa09b38b4139864/BACKLOG.md)).
+([`c49badb`](https://github.com/ikamensh/warband/blob/c49badb5f2baaca0d882f500caa09b38b4139864/BACKLOG.md)); WB-035, merged as `464328e`
+([`2ad4dcb`](https://github.com/ikamensh/warband/blob/2ad4dcb7723c7d46d7c611fd254caa387a0df3e4/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
-| WB-035 | Later | in progress | Open a match on a small map without margins beside it on a large canvas | WB-021 measurement |
 | WB-036 | Next | proposed | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often | User 2026-09-18 |
 | WB-037 | Next | proposed | Answer a tower rush without stopping the economy: one tower by the mine now halts Master's gold | User 2026-09-18 |
 | WB-038 | Next | proposed | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
@@ -115,55 +115,6 @@ with the same fights decided the same way (the arena's ladders unchanged
 within noise), the step's p95 under 3 ms in `tools/step_bench.py`, the late
 p95 of `tools/perf.py` measured before and after, seeded fuzz clean, the
 fingerprint refreshed deliberately with the rest of its series.
-
-## WB-035 — A small map fills a large window
-
-Found 2026-09-18 while WB-021 was measured on the 4K Windows desktop
-(`docs/evidence/win4k/candidate-150/`): at 150 % scaling the canvas is 2480
-units wide and a Small map at zoom 1 is narrower, so the match shows
-earth-dark margins beside the map, as it already does on any 2560×1440
-desktop at 100 %. The window is right; the camera's starting zoom is what
-leaves the margins.
-
-**Done when:** a match on a Small map opens without margins beside the map on
-those canvases while other map sizes and the 1280×800 window open as today;
-native frames of both are looked at. Presentation only: the simulation
-fingerprint is unchanged.
-
-**Started 2026-09-19**, branch `small-map-zoom`. Measured first: a map and its
-one-tile rim are `(width + 2) × 32` units wide, so a Small map (1,600) is
-narrower than every canvas a 4K desktop gets (1840 at 200 %, 2480 at 150 %,
-2506 at 100 %) and a Medium one (2,112) than 2480 and 2506; a Large map (2,624)
-and every size in a 1280×800 window fill the width at zoom 1.
-
-**Acceptance (recorded before implementation):**
-
-1. A match opens at the zoom that fills the canvas's width and the height
-   between the HUD's top rows and bottom panels, and never below 1: Small and
-   Medium on those canvases open zoomed in, with no margin beside the map at
-   the camera's starting place or anywhere the player scrolls it; the rest open
-   at 1 as today. Zooming out stays allowed to 0.75, as today.
-2. It holds for every scene that plays a match (a skirmish, a mission, an
-   online match, a replay), since they share the camera.
-3. Proof: a test over map sizes and those canvases plus 1280×800 checks the
-   starting zoom and that the view never shows past the rim; native frames of
-   a Small and a Medium match at 2480×1320 and of a Small match at 1280×800 are
-   looked at. The fingerprint does not move.
-
-**Done 2026-09-19, merged into main as `464328e`** (`7982315` on branch
-`small-map-zoom`). `GameScene._setup_camera` opens at the zoom that fills the
-canvas's width and the room between the HUD's rows and panels, never below 1:
-a Small map at 2480×1320 opens at 1.55, a Medium one at 1.17, a Small map at
-1280×800 at 1 as before; zooming out still reaches 0.75.
-`tests/warband/test_map_fills_window.py` checks every map size on 1280×800,
-1840×960 and 2480×1320 and a mission, at the starting place and the four
-corners the camera scrolls to; against the old camera four of its cases fail.
-Native frames of those three openings were looked at: the rim at both sides
-of the window, fog inside it, no margin. The fingerprint is unchanged. Main ran
-[Tests 35403093350](https://github.com/ikamensh/warband/actions/runs/35403093350)
-and [native package checks 35403093356](https://github.com/ikamensh/warband/actions/runs/35403093356);
-the client-only change reaches the site with the next promotion, once the
-server's baseline has moved for fast-sim's contract.
 
 ## WB-036 — A tower rush for Hard and Master
 
