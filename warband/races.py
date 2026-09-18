@@ -61,7 +61,7 @@ class RaceInfo:
 
 
 def _units(tweaks: dict[UnitType, UnitTweak]) -> dict[UnitType, UnitInfo]:
-    out = {}
+    out: dict[UnitType, UnitInfo] = {}
     for unit_type, base in UNITS.items():
         t = tweaks[unit_type]
         out[unit_type] = replace(
@@ -73,7 +73,7 @@ def _units(tweaks: dict[UnitType, UnitTweak]) -> dict[UnitType, UnitInfo]:
 
 
 def _buildings(tweaks: dict[BuildingType, BuildingTweak]) -> dict[BuildingType, BuildingInfo]:
-    out = {}
+    out: dict[BuildingType, BuildingInfo] = {}
     for building_type, base in BUILDINGS.items():
         if building_type is BuildingType.GOLD_MINE:
             out[building_type] = base

@@ -703,9 +703,9 @@ class World:
         damage = info.damage
         if damage == 0:
             return 0
-        if isinstance(entity, Unit) and info.melee and not entity.is_worker:
+        if isinstance(entity, Unit) and entity.info.melee and not entity.is_worker:
             damage += BLADES_BONUS * (self._has(entity.player, Upgrade.BLADES_1) + self._has(entity.player, Upgrade.BLADES_2))
-        if (isinstance(entity, Building) or info.ranged) and entity.type is not UnitType.CATAPULT:
+        if (isinstance(entity, Building) or entity.info.ranged) and entity.type is not UnitType.CATAPULT:
             damage += ARROWS_BONUS * (self._has(entity.player, Upgrade.ARROWS_1) + self._has(entity.player, Upgrade.ARROWS_2))
         if isinstance(entity, Unit) and entity.type is UnitType.CATAPULT and self._has(entity.player, Upgrade.SIEGE):
             damage = int(round(damage * SIEGE_DAMAGE_BONUS))
@@ -1810,7 +1810,7 @@ class World:
             if replacement is None:
                 self._finish_order(u)
                 return
-            order.target = tile = replacement
+            order.target = replacement  # a tree's replacement is a tree
             order.auto = True
             u.path = []
             u.path_goal = None
@@ -1875,7 +1875,7 @@ class World:
         order = u.orders[0]
         assert isinstance(order, Deposit)
         navigation = self._worker_navigation(u)
-        hall = self.buildings.get(order.target)
+        hall = self.buildings.get(order.target) if order.target is not None else None
         if hall is None or not hall.done or u.carrying not in hall.info.deposits or u.path_goal is None:
             depots = [b for b in self.buildings.values()
                       if b.player == u.player and b.done and u.carrying in b.info.deposits]
@@ -1885,7 +1885,7 @@ class World:
                     u.state = "idle"
                     return
                 order.target = self._plan_work_route(u, {b.id: b.rect for b in depots}, navigation)
-                hall = self.buildings.get(order.target)
+                hall = self.buildings.get(order.target) if order.target is not None else None
         if hall is None:
             u.state = "idle"
             return
@@ -1936,7 +1936,7 @@ class World:
                 return 0 <= x < self.width and 0 <= y < self.height and not navigation[y * self.width + x]
             nearest = pathing.nearest_passable(start, allowed)
             found = self._escape(start, nearest) if nearest is not None else None
-            if found is None:
+            if found is None or nearest is None:
                 return None  # forbidden ground with no way out: wait for the danger to pass
             escape, start = found, nearest
         route = pathing.find_work_path(start, costs, navigation, self.width, self.height)
@@ -2785,8 +2785,8 @@ class World:
             if u.inside is not None:  # the crews are counted, not stored: a load rebuilds them
                 world._mine_crews[u.inside] = world._mine_crews.get(u.inside, 0) + 1
         for saved in data.get("projectiles", []):
-            p = _projectile_from_dict(saved)
-            world.projectiles[p.id] = p
+            shot = _projectile_from_dict(saved)
+            world.projectiles[shot.id] = shot
         world.explored = [bytearray(bytes.fromhex(e)) for e in data["explored"]]
         if "worker_knowledge" in data:
             world.worker_knowledge = [WorkerKnowledge.from_dict(knowledge) for knowledge in data["worker_knowledge"]]

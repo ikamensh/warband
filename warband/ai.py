@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from warband.model import Attack, AttackMove, Build, Building, Deposit, Harvest, Move, Point, Pos, Repair, Unit, World, dist
 from warband.races import RACES
 from warband.rules import BUILDINGS, BuildingType, Difficulty, Race, Resource, UnitType, Upgrade
+from warband.worker_knowledge import KnownMine
 
 EXPAND_DISTANCE = 14.0  # a mine farther than this from the hall gets a hall of its own
 LOW_MINE_GOLD = 6000  # a mine this low means the next hall is planned now, while gold still comes in
@@ -67,7 +68,7 @@ def known_enemy_buildings(world: World, player: int) -> list:
             if record.player not in (None, player) and world.players[record.player].alive]
 
 
-def known_mines(world: World, player: int) -> list:
+def known_mines(world: World, player: int) -> list[KnownMine]:
     """Gold *player* has found; its contents are what they were when last seen."""
     return list(world.worker_knowledge[player].mines.values())
 
@@ -353,7 +354,7 @@ class Brain:
             return None
         return wanted, anchor
 
-    def _mine_to_claim(self, world: World, hall: Building, worked: Building | None) -> Building | None:
+    def _mine_to_claim(self, world: World, hall: Building, worked: KnownMine | None) -> KnownMine | None:
         """The nearest unclaimed mine when the one the hall works is far, running low or gone, up to
         MAX_HALLS halls in all and one at a time."""
         player = self.player
@@ -414,14 +415,14 @@ class Brain:
                 break
             if not hall.queue and world.can_train(hall, UnitType.PEASANT) is None:
                 world.train(hall.id, UnitType.PEASANT)
-        hall = halls[0] if halls else None
+        first = halls[0] if halls else None
         army = self._army(world)
         counts = {t: sum(1 for u in army if u.type is t) for t in UnitType}
         for building in world.player_buildings(player, done=True):
             if not building.info.trains or building.type is BuildingType.TOWN_HALL or self.saving:
                 continue
-            if building.rally is None and hall is not None:
-                world.set_rally(building.id, self._muster_point(world, hall))
+            if building.rally is None and first is not None:
+                world.set_rally(building.id, self._muster_point(world, first))
             if building.queue or building.research is not None:
                 continue
             choice = self._choose_unit(world, building, counts)

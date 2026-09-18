@@ -42,8 +42,9 @@ def _navigation(world: World, player: int) -> bytearray:
     blocked = bytearray(knowledge.blocked)
     width, height = world.width, world.height
     visible = world.visible[player]
-    threats = [(building.center, building.threat_range, (building.x, building.y, building.size, building.size))
-               for building in knowledge.threats if building.player != player]
+    threats: list[tuple[Point, float, tuple[int, int, int, int] | None]] = [
+        (building.center, building.threat_range, (building.x, building.y, building.size, building.size))
+        for building in knowledge.threats if building.player != player]
     for unit in world.units.values():
         if unit.player == player:
             continue
@@ -157,14 +158,15 @@ class _View:
         knowledge = self.world.worker_knowledge[self.player]
         field, width = self._depot_field(resource), self.world.width
         lumber = resource is Resource.LUMBER
-        goals, owners = {}, {}
+        goals: dict[Pos, float] = {}
+        owners: dict[Pos, _Site] = {}
         for site in self._sites_for(resource):
             target = site.target
-            if lumber:
-                if loads[target] or knowledge.terrain[target[1] * width + target[0]] is not Terrain.TREES:
+            if lumber:  # a tree's target is its tile, a mine's its id
+                if loads[target] or knowledge.terrain[target[1] * width + target[0]] is not Terrain.TREES:  # type: ignore[index]
                     continue
             else:
-                mine = knowledge.mines.get(target)
+                mine = knowledge.mines.get(target)  # type: ignore[arg-type]
                 if mine is None or mine.gold <= 0:
                     continue
                 if loads[target] >= MINE_SLOTS:
@@ -199,7 +201,8 @@ def safe_navigation(world: World, player: int) -> bytearray:
 
 
 def _assignments(workers: list[Unit]) -> tuple[Counter, Counter]:
-    crews, loads = Counter(), Counter()
+    crews: Counter[Resource] = Counter()
+    loads: Counter[int | Pos] = Counter()
     for worker in workers:
         harvest = next((order for order in worker.orders if isinstance(order, Harvest)), None)
         if harvest is not None:

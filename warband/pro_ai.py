@@ -35,13 +35,14 @@ from __future__ import annotations
 
 import math
 import random
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 
 from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived
 from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, tile_center
 from warband.races import RACES
 from warband.rules import BUILDINGS, MINE_SLOTS, BuildingType, UnitType
+from warband.worker_knowledge import KnownMine
 
 _MELEE_TYPES = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
 STRICT_SLACK = 0.1  # how far past its planned share a type may run under a strict plan
@@ -305,7 +306,7 @@ class ProBrain:
                    (world.width - 2.5, world.height - 2.5)]
         return max(corners, key=lambda c: dist(c, here))
 
-    def _known_mines(self, world: World) -> list:
+    def _known_mines(self, world: World) -> list[KnownMine]:
         return known_mines(world, self.player)
 
     def _enemies(self, world: World) -> list[Unit]:
@@ -356,7 +357,7 @@ class ProBrain:
 
     # -- Economy -------------------------------------------------------------------
 
-    def _worked_mines(self, world: World) -> list[Building]:
+    def _worked_mines(self, world: World) -> list[KnownMine]:
         """Mines with gold left inside reach of one of our halls."""
         halls = self._halls(world)
         if not halls:
@@ -499,7 +500,7 @@ class ProBrain:
         # production already standing cannot keep up with the money coming in.
         expansion = self._expansion_site(world) if profile.expand else None
         room_for_a_hall = expansion is not None and count(BuildingType.TOWN_HALL) < profile.max_halls
-        if room_for_a_hall and (profile.expand_early or self._mines_failing(world)):
+        if expansion is not None and room_for_a_hall and (profile.expand_early or self._mines_failing(world)):
             # Scarcity opens this gate as well as plenty. A brain whose mines are
             # spent or full has no income to saturate its production with, so
             # waiting for saturation meant never expanding at all: the dry-mine
@@ -509,7 +510,7 @@ class ProBrain:
             wishes.append((BuildingType.TOWN_HALL, expansion))
         if not self._producers_saturated(world):
             return wishes
-        if room_for_a_hall and not profile.expand_early:
+        if expansion is not None and room_for_a_hall and not profile.expand_early:
             wishes.append((BuildingType.TOWN_HALL, expansion))
         if count(BuildingType.BLACKSMITH) < 1:
             wishes.append((BuildingType.BLACKSMITH, anchor))
@@ -617,7 +618,7 @@ class ProBrain:
             self.note(world, f"build {wanted.value} at {site}")
 
     def _site(self, world: World, building_type: BuildingType, anchor: Point, rng: random.Random,
-              taken: list[tuple[Pos, int]] = ()) -> Pos | None:
+              taken: Sequence[tuple[Pos, int]] = ()) -> Pos | None:
         size = BUILDINGS[building_type].size
         ax, ay = int(anchor[0]), int(anchor[1])
         candidates: list[tuple[float, Pos]] = []
@@ -672,7 +673,7 @@ class ProBrain:
                     world.train(hall.id, UnitType.PEASANT)
         counts = {t: sum(1 for u in army if u.type is t) for t in UnitType}
         targets = self._army_targets(world)
-        wishes: list[tuple[float, Building, UnitType]] = []
+        wishes: list[tuple[float, UnitType, Building]] = []
         for building in world.player_buildings(player, done=True):
             if not building.info.trains or building.type is BuildingType.TOWN_HALL:
                 continue
