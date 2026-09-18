@@ -917,7 +917,7 @@ class World:
             return f"{info.name} is a {RACES[info.race].adjective} art"  # type: ignore[index]
         if upgrade in player.upgrades:
             return "Already researched"
-        if any(b.research is upgrade for b in self.player_buildings(building.player)):
+        if any(b.research is upgrade and b.player == building.player and not b.abandoned for b in self.buildings.values()):
             return "Already being researched"
         if info.requires is not None and info.requires not in player.upgrades:
             return f"Requires {UPGRADES[info.requires].name}"

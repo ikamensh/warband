@@ -538,10 +538,11 @@ class Brain:
         player = world.players[self.player]
         if player.gold < self.profile.reserve or self.saving:
             return
+        buildings = world.player_buildings(self.player, done=True)  # nothing changes until the one order below
         for upgrade in RESEARCH_ORDER:
             if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):
                 continue
-            for building in world.player_buildings(self.player, done=True):
+            for building in buildings:
                 if upgrade in building.info.researches and world.can_research(building, upgrade) is None:
                     world.research(building.id, upgrade)
                     self.note(world, f"research {upgrade.value}")
