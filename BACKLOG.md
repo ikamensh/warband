@@ -47,6 +47,7 @@ catches its class.
 | WB-023 | Next | done | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
 | WB-025 | Next | done | Health bars: steady while moving, anchored to the sprite, filled from the first frame | User report 2026-09-18 |
+| WB-026 | Next | in progress | Give the Windows and Mac builds Warband's own icon instead of the packager's snake | User 2026-09-18 |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -1430,3 +1431,35 @@ zoom and holds still over the helmet through the stride; its outline now ends
 three screen pixels over the helmet at both zooms where it hung some 40 (80
 at zoom 2) before. On the mock backend the backing and the fill now share
 their order at every position.
+
+## WB-026 — Warband's own icon on the builds
+
+Asked for 2026-09-18: the downloaded game shows the packager's default
+picture (a Python-coloured snake) in Finder, the Dock, Explorer and the
+taskbar. The engine gets a default mark and the means to name a game's own
+picture ([S2D-018](../saga2d/BACKLOG.md)); Warband supplies something of its
+own. Branch `icon` (worktree `../warband-icon`). Presentation only, but the
+engine release it needs is part of the online compatibility contract, so
+publishing it takes a server rollout like any engine upgrade.
+
+**Acceptance (recorded 2026-09-18 before implementation):**
+
+1. `packaging/icon.png`: a square picture of 1024 px painted to the edges,
+   recognisably Warband (the game's blue-and-gold heraldry and weapons, in the
+   painted manner of its units), with the script and the inputs that produced
+   it committed so it can be made again.
+2. It reads at small sizes: looked at 16, 32, 64, 256 and 1024 px on light
+   and dark ground; at 16 px the subject is still one clear shape.
+3. `tools/package.py` names it, and a bundle built on the reference Mac shows
+   it: `CFBundleIconFile` points at the converted `.icns` and the Finder
+   thumbnail of the built app is looked at.
+4. Windows: the native package check passes with the engine's icon
+   verification (the executable carries exactly the converted icon); the
+   installer and shortcuts follow from the engine recipe. Looked at in
+   Explorer if the Windows test box is reachable during the item.
+5. A test pins that the picture exists, is square and at least 1024 px, so a
+   replaced file cannot break the release build unnoticed.
+6. Shipped: the suite green on the released engine that carries S2D-018, the
+   main push's Tests and Native package checks green, the server rolled out
+   on the same engine version by the reviewed procedure, the promotion
+   accepted and the public download checks passed.
