@@ -26,7 +26,7 @@ WB-034. Their acceptance and evidence are in
 | WB-012 | Later | proposed | Support three- and four-human online FFA | Suggested |
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
-| WB-016 | Later | blocked | Assess and recover the six-mission Thornwood campaign | Recovered branch |
+| WB-016 | Next | in progress | Assess and recover the six-mission Thornwood campaign | Recovered branch |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
 | WB-035 | Later | proposed | Open a match on a small map without margins beside it on a large canvas | WB-021 measurement |
 
@@ -161,13 +161,46 @@ they need the human playtests of WB-013 before the campaign is called
 accepted. Nothing in the branch is lost: the worktree and branch stay until
 the decision.
 
-**Blocked on** the adoption decision: is The Thornwood War wanted as
-Warband's campaign (product fit: six missions, three carried choices, a
-progress file that survives versions)? If yes, the plan is: rebase onto main
-(six files), give `Mission` a `layout` (ford = Crossings, Thornwood =
-Forest) as the layouts work intended, run the suite and
-`tools/verify_campaign.py`, inspect the briefing and title frames at 1280×800
-and 1200×680, and ship it in the same rules series and rollout as WB-024.
+**Adopted 2026-09-18** (Ilya: "we don't have a better one"). Main is merged
+into `campaign` rather than the branch rebased, so its four commits stay as
+they are. It ships with WB-011's server rollout instead of waiting for WB-024,
+which nobody has started. Two things main added since the branch began matter
+here. `mapgen.generate` draws a layout from the seed when none is named, so the
+missions' hand-placed setups would land on a random river or rock ring. And
+every `GameScene` is ranked (recorded and rated) unless it says otherwise.
+
+**Acceptance (recorded 2026-09-18 before implementation):**
+
+1. On today's main: the six conflicting files resolved keeping both sides'
+   intent. A mission is unranked: never recorded as a replay, rated or put on
+   the leaderboard, and leaving one asks no rated-match question. The suite
+   passes on the pinned engine; skirmish play is unchanged
+   (`tools/sim_fingerprint.py --check`, or refreshed deliberately if the save's
+   new `scripted` key is part of what it hashes).
+2. Maps: every mission names its layout and none draws one from its seed. The
+   ford (Greywater Ford, Greywater Retaken) is Crossings, the Court of Thorns
+   Forest, the others Plains, the nearest to the one generator the missions
+   were written for. Each setup fits its map (placement raises when it does
+   not), and a native frame of each of the six starts is looked at: bands,
+   camps and goals where the story puts them.
+3. Every mission both ways: a test per mission starts it as the campaign
+   screen does, checks its first objectives, plays its win and every way it
+   can be lost, and checks what the campaign records: the next mission, the
+   flags (truce, powder, burn) and the epilogue's lines. A second process
+   reads the progress file and offers the same next mission and flags.
+4. Screens: the title with its Campaign entry, the campaign screen (fresh,
+   under way, finished), a briefing, the objectives panel, a line, a
+   question, both results and the mission menu fit at 1280×800, 1280×720 and
+   1200×680 (`tests/warband/test_layout.py`); `tools/verify_campaign.py`
+   frames at 1280×800 and 1200×680 are looked at; `tools/visual_lint.py` is
+   clean.
+5. Rules: `test_model.py` covers a scripted world (no winner declared, no
+   surrender, `clear_player` quiet and undone by the side's next unit or
+   building); `tools/fuzz.py` with its monkey is clean.
+6. Shipped: merged into main with Tests and Native package checks green.
+   `model.py` moves the authoritative contract, so the release is promoted
+   after the server rollout it shares with WB-011. The missions' tuning stays
+   for people to judge (WB-013), and the campaign doc's "Not yet" says so.
 
 ## WB-024 — Plan fewer paths in a melee
 
