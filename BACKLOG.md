@@ -18,13 +18,13 @@ Done and removed 2026-09-18, every one merged into main (whose code is live as
 Warband 0.2.30): WB-001 to WB-009, WB-015, WB-017 to WB-023 and WB-025 to
 WB-034. Their acceptance and evidence are in
 [the backlog at `1a6e08b`](https://github.com/ikamensh/warband/blob/1a6e08b73872cb595756a9d4ba7bc96c685c5ef0/BACKLOG.md).
-Removed later the same day: WB-011 and WB-016, live as Warband 0.2.32; their
+Removed later the same day: WB-011 and WB-016, live as Warband 0.2.32, and
+WB-010, live as 0.2.33 (its record is [the backlog at `5cb5959`](https://github.com/ikamensh/warband/blob/5cb5959df79bc09042e6f597736d7e43240a15a2/BACKLOG.md)); the first two's
 records are in [the backlog at `8a13fae`](https://github.com/ikamensh/warband/blob/8a13faeb65a0457ec0cd65d53e0461f01a734b49/BACKLOG.md).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-040 | First | proposed | A fast test suite by default; slow tests on demand and in CI; better tests on the way | User 2026-09-18 |
-| WB-010 | Next | in progress | Smooth online movement and make connection problems understandable | Suggested |
 | WB-012 | Next | in progress | Support three- and four-human online FFA | Suggested |
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
@@ -35,82 +35,6 @@ records are in [the backlog at `8a13fae`](https://github.com/ikamensh/warband/bl
 | WB-038 | Next | proposed | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | proposed | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
-
-## WB-010 — Online responsiveness and connection feedback
-
-The online path publishes world snapshots at 10 Hz; distinguish that
-cadence from local 20 Hz simulation and frame pacing. Measure command-to-visible
-response and jitter under controlled latency; evaluate bounded presentation
-interpolation separately from prediction. Keep hit/death events synchronized,
-and show useful reconnect/stall status while avoiding unbounded queued orders.
-
-WB-003's real-socket capture reproduces 49/59 stationary display intervals at
-60 FPS, then jumps up to 7.68 px for infantry/workers and 10.88 px for knights
-at normal zoom (`docs/evidence/movement/online-trace/`). Local interpolation
-does not fix this separate path; see [the diagnosis](docs/movement-diagnosis.md).
-
-**Done when:** two real clients under delay/disconnection/rejoin have measured,
-improved movement and correct orders/events, with no stale motion after resume.
-Use S2D-010 for genuinely shared transport/rate work.
-
-**Started 2026-09-18** (Ilya: "later is now"), branch `online-motion`
-(worktree `../warband-motion`). Where it starts: `NetworkGameScene` never
-records the positions it presents. Its motion fraction comes from the local
-step accumulator, which a network scene never fills, and each snapshot is
-applied with `view.sync()` at fraction one. So a unit stands still between
-snapshots and jumps when one lands. Orders during a disconnection are already
-refused: the engine's `OnlineClient.submit` refuses them while the seat is
-not ready and bounds its outgoing queue, and since WB-030 the HUD shows the
-refusal. This change is to the client only (`multiplayer.py`, `view.py`), so
-it publishes without a server rollout.
-
-**Acceptance (recorded 2026-09-18 before implementation):**
-
-1. Measured before and after: `tools/verify_movement.py --scenario online`
-   (real loopback socket, 20 Hz host, 10 Hz publication) gains uneven arrival
-   (snapshots held back by a seeded jitter) and records, for a walking worker,
-   footman and knight at normal zoom, the stationary display intervals and
-   the largest jump between frames. The WB-003 baseline is 49/59 stationary
-   intervals, with jumps up to 7.68 px and 10.88 px.
-2. Presentation: in steady travel, at most 3 of 59 intervals are stationary,
-   regular or jittered, and no jump exceeds twice the unit's steady travel per
-   frame. A unit in sight moves on screen from where it was drawn towards
-   where the latest snapshot puts it, over the measured interval between
-   snapshots (clamped to 50–250 ms). What the model says is the snapshot's:
-   selection, orders, fog, hit points.
-3. No stale motion: a unit that appears or comes into sight is placed, not
-   slid. After a gap of more than half a second (a stall, the partner's pause,
-   a reconnect or a resume), units are placed where the snapshot says.
-4. Events: hits and deaths show once, as before; repeated snapshots never
-   replay them.
-5. Connection status: when a ready session has had no new snapshot for more
-   than a second, the status line says so and for how long. Reconnecting and
-   waiting keep their messages. An order given while the seat is not ready is
-   refused with the reason, and a test pins that.
-6. Two real clients over a socket, with held-back snapshots and a
-   disconnection and rejoin: movement is measured, orders and events are
-   correct, nothing slides after the resume. The suite passes, and native
-   frames of a walk are looked at.
-
-
-**Done 2026-09-18**, merged as Warband main `6c5f90b` (`9f9e169`, `85f7579`):
-every criterion holds. Over a real socket (`tools/verify_movement.py
---scenario online`), a worker, a footman and a knight used to stand still in
-149 of 179 frames, jumping up to 7.68 px (10.88 for the knight). Now none
-stand still, and no jump exceeds 1.28 px (1.81). With snapshots 4 to 8 frames
-apart (`--jitter 10`), 149 still frames and jumps up to 11.52 px (16.32)
-became 2 still and 1.64 px (2.32). Natively: 2 of 119 frames still, jumps
-under 1.61 px, and the walk strip was looked at. `tests/warband/test_online_motion.py`
-has six tests, including a LAN socket with a stall. Units that appear or come
-into sight are placed, as they are after a gap over half a second. Silence
-over a second is said, and the line clears the moment word comes. Orders
-while the seat waits are refused with the reason. Suite: 1,361 passed.
-Client only, so no rollout:
-[Tests 35389786939](https://github.com/ikamensh/warband/actions/runs/35389786939),
-[native package checks 35389786978](https://github.com/ikamensh/warband/actions/runs/35389786978),
-[promotion 35392055004](https://github.com/ikamensh/saga-online/actions/runs/35392055004),
-[public download checks 35392154479](https://github.com/ikamensh/saga-online/actions/runs/35392154479):
-live as Warband 0.2.33.
 
 ## WB-012 — Three-/four-human online FFA
 
