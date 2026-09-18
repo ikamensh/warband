@@ -72,7 +72,7 @@ def known_enemy_buildings(world: World, player: int) -> list:
     ground again, which is exactly what a player would believe.
     """
     return [record for record in world.worker_knowledge[player].buildings.values()
-            if record.player not in (None, player) and world.players[record.player].alive]
+            if record.player is not None and record.player != player and world.players[record.player].alive]
 
 
 _RINGS: Final[dict[tuple[int, int], tuple[tuple[float, int, int], ...]]] = {}

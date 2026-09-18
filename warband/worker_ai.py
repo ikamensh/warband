@@ -87,11 +87,13 @@ def _navigation(world: World, player: int) -> bytearray:
     if kept is not None and kept[0] == epochs:
         footprints = kept[1]
     else:
+        known = knowledge.buildings
         found: set[tuple[int, int, int]] = set()
-        for bid in world.buildings.keys() - knowledge.buildings.keys():
-            building = world.buildings[bid]
+        for building in world.buildings.values():
+            if building.id in known:
+                continue
             x, y, size = building.x, building.y, building.size
-            if building.player == player or knowledge.sees(visible, x, y, size):
+            if building.player is not None and building.player == player or knowledge.sees(visible, x, y, size):
                 found.add((x, y, size))
         footprints = frozenset(found)
         world._worker_ai_footprints[player] = (epochs, footprints)

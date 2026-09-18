@@ -132,10 +132,12 @@ class WorkerKnowledge:
             else:
                 trees.discard(index)
             self._tree_order = None
+        # Owners are narrowed before they are compared, as World.player_buildings explains.
         observed = {building.id: building for building in world.buildings.values()
-                    if building.player == player or self.sees(visible, building.x, building.y, building.size)}
+                    if building.player is not None and building.player == player
+                    or self.sees(visible, building.x, building.y, building.size)}
         for bid, remembered_building in list(self.buildings.items()):
-            if bid not in observed and (remembered_building.player == player
+            if bid not in observed and (remembered_building.player is not None and remembered_building.player == player
                                         or self.sees(visible, remembered_building.x, remembered_building.y,
                                                      remembered_building.size)):
                 del self.buildings[bid]

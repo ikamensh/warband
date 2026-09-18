@@ -606,8 +606,10 @@ class World:
         return [u for u in self.units.values() if u.player == player]
 
     def player_buildings(self, player: int, building_type: BuildingType | None = None, *, done: bool | None = None) -> list[Building]:
+        # The owner is narrowed to an int before it is compared: compiled, two ints compare natively, and an
+        # int | None only through Python's ==.
         return [b for b in self.buildings.values() if (building_type is None or b.type is building_type)
-                and b.player == player and not b.abandoned and (done is None or b.done == done)]
+                and b.player is not None and b.player == player and not b.abandoned and (done is None or b.done == done)]
 
     def mines(self) -> list[Building]:
         return [b for b in self.buildings.values() if b.type is BuildingType.GOLD_MINE]
