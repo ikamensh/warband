@@ -40,7 +40,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-042 | Later | proposed | Tests read through public accessors; try property tests for the model and paths | WB-040 |
-| WB-043 | Next | proposed | Hold a build order's price while its builder walks: a quarter of Master's orders die on arrival | WB-036 |
+| WB-043 | Next | done | Hold a build order's price while its builder walks: a quarter of Master's orders die on arrival | WB-036 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -172,6 +172,9 @@ the first barracks goes up, and ordering the tower the moment it stands, the
 tower went up by 106–135 s in four seeds of six; against the Warden's front
 tower the builders still died. Knobs: `rush_towers`, `rush_builders`,
 `rush_tries`; postures `pro-rush` (the Vanguard's) and `pro-hard-rush`.
+The posture was merged into main as `ee363e5` on 2026-09-19 (no difficulty
+plays it); the rush's own held price became every order's in WB-043. The
+rating waits for WB-037.
 
 ## WB-037 — Answer a tower rush without stopping the economy
 
@@ -431,3 +434,23 @@ stronger, and the displayed ratings are re-measured with the 720-game
 protocol if they moved; the fingerprint and `sim_bench.txt` are refreshed
 deliberately. The brains are outside the contract: no server rollout.
 
+
+**Done 2026-09-19, merged into main as `66d35a5`** (`66de94f` on branch
+`hold-builds`). `ProBrain._held` counts the price of every build order whose
+builder has not begun (`hold_builds`, on in every profile), and training,
+construction and research spend only what is left; research had not asked
+before. Over the same twenty six-minute Vanguard-against-Warden games
+(`docs/evidence/wb043/refusals.py`), 227 of 838 orders were refused for money
+(159 gold, 68 lumber) and none are now; refusals because a unit stood on the
+site went from 6 to 22 (orders that used to die for money earlier now reach
+the site; not chased). Against the same posture without the hold
+(`pro-vanguard-nohold`, `pro-warden-nohold`, `pro-hard-nohold`; 96 games each,
+seeds from 43000, both corners): the Vanguard 64.6%, the Warden 61.5%, Hard
+58.9%. The 720-game protocol re-rated Easy 857, Hard 1400 and Master 1615
+(1353 and 1589 before; steps 69%, 88%, 78%); the New game screen shows 860,
+1000, 1400 and 1620, and [docs/ai-ladder.md](docs/ai-ladder.md) has the table
+and a row in "What each change was worth". A slow test holds the Vanguard, the
+Warden and Hard to no refusal for money over four minutes on seed 17; the
+`-nohold` profiles fail it. Fingerprint and `sim_bench.txt` refreshed. Main
+ran [Tests 35406556076](https://github.com/ikamensh/warband/actions/runs/35406556076)
+and [native package checks 35406555983](https://github.com/ikamensh/warband/actions/runs/35406555983).
