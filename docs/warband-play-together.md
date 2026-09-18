@@ -80,6 +80,14 @@ no extra AI player in this room. Each new room generates a fresh map with
 meadows, groves, ponds and rocky regions. The stone rim marks the edge of the
 playable map; dark fog hides places you have not explored.
 
+**Three or four players.** The number of players chosen on the **New game**
+screen is the size of the room you create. With three or four, send the code
+to each friend; the match starts when everyone is in (**Waiting for players ·
+2 of 4**). Anyone can resign from **F10 → Resign**, which asks first: their
+buildings stay, grey and abandoned, and the others fight on until one is left.
+A player who is out may **Watch** or leave without pausing the rest. A copy of
+Warband from before rooms of more than two is told to update.
+
 ## 4. Your first few minutes
 
 Use left-click to select, then right-click to give an order. On a Mac
@@ -203,7 +211,8 @@ computer. After reconnecting, check your units before repeating an order;
 orders interrupted by the lost connection are not automatically resent.
 
 To leave, press **F10 → Leave match**, or **Quit** to close the app. Leaving
-disconnects your seat and pauses play for your friend. When a battle reaches
+disconnects your seat and pauses play for the others while you are still in
+the match. When a battle reaches
 **Victory!** or **Defeat**, choose **Back to title**. For a rematch, create a
 new room and share its new code.
 
@@ -214,6 +223,8 @@ new room and share its new code.
 | **Enter a room code first.** | Copy the code your friend sent, click Paste code, then Join room. |
 | **Room not found for this game. Check the room code.** | Check every character and ask your friend to confirm their current code. If the room expired, create a new one. |
 | **Both seats are claimed. Reconnect using your saved seat.** | Choose Rejoin last room on the computer that previously joined. If neither of you can recover the seat, create a new room. |
+| **Every seat is claimed. Reconnect using your saved seat.** | The same for a room of three or four: everyone who joined already holds a seat. |
+| **This match has 3 seats. Update your game client to play it.** | This copy of Warband is from before rooms of more than two. Install the current release from the Warband page. |
 | Waiting for your partner | The other seat has not connected or has disconnected. Your friend should join the current code once, or use Rejoin last room for a seat they already occupied. |
 | **Cannot reach the online server** | Check that your internet connection works, cancel back to Multiplayer, and retry. If both players get it, try again later. |
 | **Connection lost — reconnecting to your room…** | Give the automatic reconnect a moment; if it fails, use Rejoin last room on the same computer. |
