@@ -44,7 +44,7 @@ catches its class.
 | WB-020 | Later | proposed | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
 | WB-021 | Next | ready | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
 | WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
-| WB-023 | Next | ready | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
+| WB-023 | Next | in progress | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -922,3 +922,27 @@ softness (compare frames at gameplay size before and after, painted against
 procedural, and a crowd on light ground where a square would show most); the
 lint reports residue so it cannot return; the sheets are re-cleaned once by the
 same function and their diffs are only the residue.
+
+**Measured 2026-09-18:** in a footman's stand frame 37,504 pixels lie farther
+than 3 px from any solid pixel and still carry alpha (up to 17, 4.8 on
+average); a wolf rider's walk frame 20,207 (up to 40), a town hall 14,134
+(up to 27). Composited on grass at raised contrast that field is the square.
+
+**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+
+1. A painted frame keeps alpha only where it belongs: every pixel farther
+   than 3 px from any solid pixel (alpha above 40) and fainter than alpha 24
+   becomes fully transparent; the figure's anti-aliased edge and the shadows
+   drawn against it, which sit within that reach or above that floor, are
+   untouched pixel for pixel.
+2. The cleaning is part of the cut (`sagaforge.restyle.clear_residue`, after
+   `declutter`), so a newly rendered sheet comes out clean; the committed
+   sheets are cleaned once by the same function and every changed pixel is
+   residue by that rule (verified in the cleaning pass, as for WB-019).
+3. Visual lint reports residue (faint alpha far from the figure) as a
+   `residue` finding on painted frames; `tests/warband/test_painted_sheets.py`
+   asserts every committed sheet is free of it.
+4. Frames inspected: the same footman, wolf rider and town hall composited at
+   raised contrast before and after; a crowd on winter ground at normal
+   contrast where a square shows most; the lint over every registered image.
+5. The sagaforge and Warband suites; the sagaforge pin moved; no model change.

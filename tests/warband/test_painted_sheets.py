@@ -1,5 +1,6 @@
 """The committed painted sheets carry nothing the cut brought in from beyond the figure (WB-019)."""
 
+import numpy as np
 import pytest
 from sagaforge import restyle
 
@@ -32,3 +33,5 @@ def test_every_painted_sheet_is_free_of_edge_strays(race, subject, carrying) -> 
     sheet, frames = painted
     stray = {key: restyle.strays(frame) for key, frame in frames.items()}
     assert {key: boxes for key, boxes in stray.items() if boxes} == {}
+    field = {key: int(restyle.residue(np.asarray(frame)[..., 3]).sum()) for key, frame in frames.items()}
+    assert {key: count for key, count in field.items() if count} == {}, "the key's faint field far from the figure"

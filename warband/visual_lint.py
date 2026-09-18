@@ -159,6 +159,9 @@ def lint_image(key: str, image: Image.Image, *, painted: bool = False, cropped: 
             findings.append(Finding("chroma", key, f"{cast.sum() / edge.sum():.0%} of the visible edge pixels carry the chroma key's tint", image))
         for x0, y0, x1, y1 in restyle.strays(image):
             findings.append(Finding("stray", key, f"a fragment detached from the figure at ({x0}, {y0})–({x1}, {y1}), within the cell's edge band", image))
+        field = restyle.residue(a)
+        if field.any():
+            findings.append(Finding("residue", key, f"{int(field.sum())} faint pixels of the key's field far from the figure (alpha up to {int(a[field].max())})", image))
     return findings
 
 
