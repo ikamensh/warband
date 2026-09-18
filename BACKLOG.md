@@ -33,7 +33,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
-| WB-035 | Later | proposed | Open a match on a small map without margins beside it on a large canvas | WB-021 measurement |
+| WB-035 | Later | in progress | Open a match on a small map without margins beside it on a large canvas | WB-021 measurement |
 | WB-036 | Next | proposed | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often | User 2026-09-18 |
 | WB-037 | Next | proposed | Answer a tower rush without stopping the economy: one tower by the mine now halts Master's gold | User 2026-09-18 |
 | WB-038 | Next | proposed | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
@@ -129,6 +129,26 @@ leaves the margins.
 those canvases while other map sizes and the 1280×800 window open as today;
 native frames of both are looked at. Presentation only: the simulation
 fingerprint is unchanged.
+
+**Started 2026-09-19**, branch `small-map-zoom`. Measured first: a map and its
+one-tile rim are `(width + 2) × 32` units wide, so a Small map (1,600) is
+narrower than every canvas a 4K desktop gets (1840 at 200 %, 2480 at 150 %,
+2506 at 100 %) and a Medium one (2,112) than 2480 and 2506; a Large map (2,624)
+and every size in a 1280×800 window fill the width at zoom 1.
+
+**Acceptance (recorded before implementation):**
+
+1. A match opens at the zoom that fills the canvas's width and the height
+   between the HUD's top rows and bottom panels, and never below 1: Small and
+   Medium on those canvases open zoomed in, with no margin beside the map at
+   the camera's starting place or anywhere the player scrolls it; the rest open
+   at 1 as today. Zooming out stays allowed to 0.75, as today.
+2. It holds for every scene that plays a match (a skirmish, a mission, an
+   online match, a replay), since they share the camera.
+3. Proof: a test over map sizes and those canvases plus 1280×800 checks the
+   starting zoom and that the view never shows past the rim; native frames of
+   a Small and a Medium match at 2480×1320 and of a Small match at 1280×800 are
+   looked at. The fingerprint does not move.
 
 ## WB-036 — A tower rush for Hard and Master
 
