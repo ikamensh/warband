@@ -37,7 +37,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-036 | Next | proposed | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often | User 2026-09-18 |
 | WB-037 | Next | proposed | Answer a tower rush without stopping the economy: one tower by the mine now halts Master's gold | User 2026-09-18 |
 | WB-038 | Next | proposed | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
-| WB-039 | Next | proposed | Stop chiming on every selection | User 2026-09-18 |
+| WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-042 | Later | proposed | Tests read through public accessors; try property tests for the model and paths | WB-040 |
 
@@ -306,6 +306,16 @@ all four race voices is what was chosen. A test pins it: the new cue's level is
 under the order cue's (or there is no sound), and a burst of selections
 plays one sound. `SOUND_VERSION` is bumped so cached WAVs are made again,
 and Ilya has heard it in a match. Presentation only.
+
+**Candidates ready 2026-09-19; blocked on Ilya's choice.** The listening page
+([Warband Selection Sound](https://claude.ai/artifact/ACNyp1fbcJBzSUF7BDusBK))
+plays each race's order cue, today's selection cue and two candidates, singly
+and as a burst of five selections in a second: A, silence; B, one soft wooden
+tick for every race; C, a soft tick in each race's timbre (a muted pluck, a
+drum tap, a low bell, a muffled anvil). Both ticks peak about 8 dB under the
+order cues and would sound once however fast the selections come. The
+generators and levels are in `docs/evidence/wb039/` on the machine that made
+them. What unblocks it: Ilya's A, B or C.
 
 ## WB-041 — Folders for the source tree
 
