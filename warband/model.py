@@ -526,8 +526,10 @@ class World:
                     self._blocked[y * width + x] = 1
         self.explored = [bytearray(width * height) for _ in self.players]
         self.visible = [bytearray(width * height) for _ in self.players]
-        self._buckets: list[list[Unit] | None] = [None] * (width * height)  # units by tile, rebuilt each step
-        self._occupied: list[int] = []  # the tiles of _buckets that hold a list
+        # Units by tile, refilled each step.  Every tile keeps its list for the world's life, so that indexing
+        # the units allocates nothing but room for the tiles someone stands on.
+        self._buckets: list[list[Unit]] = [[] for _ in range(width * height)]
+        self._occupied: list[int] = []  # the tiles of _buckets whose list is not empty
         self._mine_crews: dict[int, int] = {}  # mine id → peasants at its face; kept as they enter and leave
         self.worker_knowledge = [WorkerKnowledge(width, height) for _ in self.players]
         self._worker_ai_checks: dict[int, int] = {}
@@ -630,7 +632,7 @@ class World:
             row = y * width + x0
             for index in range(row, row + span):
                 cell = buckets[index]
-                if cell is not None:
+                if cell:
                     for unit in cell:
                         dx, dy = unit.x - px, unit.y - py
                         if dx * dx + dy * dy <= r2:
@@ -639,27 +641,23 @@ class World:
 
     def _index_units(self) -> None:
         buckets, occupied = self._buckets, self._occupied
-        for index in occupied:  # emptied where last step's units stood, rather than made anew
-            buckets[index] = None
+        for index in occupied:  # emptied where last step's units stood, rather than all of them
+            buckets[index].clear()
         occupied.clear()
         width = self.width
         for unit in self.units.values():
             index = int(unit.y) * width + int(unit.x)
             cell = buckets[index]
-            if cell is None:
-                buckets[index] = [unit]
+            if not cell:
                 occupied.append(index)
-            else:
-                cell.append(unit)
+            cell.append(unit)
 
     def _bucket(self, unit: Unit) -> None:
         index = int(unit.y) * self.width + int(unit.x)
         cell = self._buckets[index]
-        if cell is None:
-            self._buckets[index] = [unit]
+        if not cell:
             self._occupied.append(index)
-        else:
-            cell.append(unit)
+        cell.append(unit)
 
     # -- Vision ----------------------------------------------------------------
 
@@ -2471,7 +2469,7 @@ class World:
                 row = y * width + x0
                 for index in range(row, row + span):
                     cell = buckets[index]
-                    if cell is None:
+                    if not cell:
                         continue
                     for v in cell:
                         dx, dy = ux - v.x, uy - v.y
@@ -2515,12 +2513,18 @@ class World:
         length = hypot(px, py)
         if length > MAX_PUSH:
             px, py = px / length * MAX_PUSH, py / length * MAX_PUSH
-        own_tile_open = self.passable(*u.tile)
-        for dx, dy in ((px, py), (px, 0.0), (0.0, py)):
-            nx, ny = self._clamp((u.x + dx, u.y + dy))
-            if self._line_clear(u.pos, (nx, ny)) if own_tile_open else self.passable(int(nx), int(ny)):
-                u.x, u.y = nx, ny
-                return
+        own_tile_open = self.passable(int(u.x), int(u.y))
+        # The whole shove, else its x part alone, else its y part alone.
+        if not self._shove(u, px, py, own_tile_open) and not self._shove(u, px, 0.0, own_tile_open):
+            self._shove(u, 0.0, py, own_tile_open)
+
+    def _shove(self, u: Unit, dx: float, dy: float, own_tile_open: bool) -> bool:
+        """Move *u* by (dx, dy), kept on the map, if nothing blocks the way; whether it moved."""
+        nx, ny = min(max(u.x + dx, 0.05), self.width - 0.05), min(max(u.y + dy, 0.05), self.height - 0.05)  # _clamp's
+        if self._line_clear((u.x, u.y), (nx, ny)) if own_tile_open else self.passable(int(nx), int(ny)):
+            u.x, u.y = nx, ny
+            return True
+        return False
 
     # -- Combat ----------------------------------------------------------------------
 
@@ -2571,19 +2575,24 @@ class World:
                        min_radius: float = 0.0) -> Entity | None:
         """The visible enemy within *radius* (and beyond *min_radius*) to fight first: by :meth:`_threat`, then the nearest."""
         best: Entity | None = None
-        best_key = (math.inf, math.inf)
+        # The best (threat, distance) so far, compared as the tuple would be; no threat is as high as 4.
+        best_threat, best_d = 4, math.inf
+        px, py = point
+        visible, width, height = self.visible[player], self.width, self.height
         for unit in self.units_near(point, radius + UNIT_RADIUS):
-            if unit.player == player or unit.hidden or unit.hp <= 0 or not self.is_visible(player, unit.tile):
+            if unit.player == player or unit.hidden or unit.hp <= 0:
                 continue
-            d = dist(point, unit.pos)
+            x, y = int(unit.x), int(unit.y)
+            if not (0 <= x < width and 0 <= y < height and visible[y * width + x]):  # is_visible's test
+                continue
+            d = hypot(px - unit.x, py - unit.y)
             if d > radius + unit.radius or d - unit.radius < min_radius:
                 continue
-            key = (self._threat(unit), d)
-            if key < best_key:
-                best, best_key = unit, key
+            threat = self._threat(unit)
+            if threat < best_threat or threat == best_threat and d < best_d:
+                best, best_threat, best_d = unit, threat, d
         if best is not None or units_only:
             return best
-        px, py = point
         for building in self.buildings.values():
             if building.player is None or building.player == player or building.hp <= 0 or building.abandoned:
                 continue  # a ruin is razed on an explicit order, never picked up in passing
@@ -2593,9 +2602,10 @@ class World:
             d = rect_gap(point, building.rect)
             if d > radius or d < min_radius:
                 continue
-            key = (self._threat(building), d)
-            if key < best_key and any(self.is_visible(player, tile) for tile in building.tiles()):
-                best, best_key = building, key
+            threat = self._threat(building)
+            if ((threat < best_threat or threat == best_threat and d < best_d)
+                    and any(self.is_visible(player, tile) for tile in building.tiles())):
+                best, best_threat, best_d = building, threat, d
         return best
 
     def _strike(self, u: Unit, target: Entity) -> None:
