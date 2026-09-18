@@ -14,8 +14,8 @@ REGISTRY = "warband.authority:ONLINE"
 # Deliberately narrow: a new I/O, loader or third-party dependency needs review
 # of how its inputs enter this contract. This is a source convention, not a
 # sandbox for hostile Python; code review still owns reflective/dynamic tricks.
-STDLIB = {"__future__", "collections", "copy", "dataclasses", "enum", "functools",
-          "heapq", "inspect", "itertools", "math", "random", "typing"}
+STDLIB = {"__future__", "array", "collections", "copy", "dataclasses", "enum", "functools",
+          "heapq", "inspect", "itertools", "math", "random", "types", "typing"}
 ENGINE_IMPORTS = {"saga2d": {"CommandError"},
                   "saga2d.server.games": {"GameSpec", "option_choice", "option_int", "option_keys", "option_seed"}}
 UNTRACKED = {"__import__", "eval", "exec", "open", "read_bytes", "read_text", "import_module"}

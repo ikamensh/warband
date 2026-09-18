@@ -1,14 +1,22 @@
-/* warband._native: the grid searches of warband/path.py and the flag-grid painting of vision and
-   of the workers' route map, in C, for the compiled simulation.
+/* warband._native: the loops of the simulation that mypyc cannot keep out of Python objects, in C,
+   for the compiled simulation.  Each function has a Python namesake that stays the reference and is
+   what the game and the tests run:
 
-   warband/fastsim.py builds this module next to the mypyc-compiled modules; path.py hands its
-   searches to it when it is there, which is only in the compiled simulation.  Every function
-   computes exactly what its namesake in path.py computes: the same floating-point operations in
-   the same order (the build turns floating-point contraction off, so no a + b * c becomes one
-   fused instruction that rounds once), neighbours relaxed in the same order, the frontier popped
-   in the same order.  heapq pops the least of tuples that never repeat, so any heap that pops the
-   least gives the same sequence.  path.py is the reference: a change is made there first and
-   then here, and tests/warband/test_fastsim.py holds the two to the same answers on random grids. */
+     find_path_grid, find_work_path, distance_field,
+     region_labels, nearest_in_region    path.py (the last two are Regions)
+     stamp_discs, or_into, any_lit       model.py: World._reveal, or_into, World.any_visible
+     stamp_threats, choose_tree          worker_ai.py: _stamp_units, _choose_tree
+     any_lit, stale_tiles                worker_knowledge.py: WorkerKnowledge.sees, ._stale
+     site_search                         ai.py: first_site, with the draws site_search makes
+
+   warband/fastsim.py builds this module next to the mypyc-compiled modules, and each namesake hands
+   its work over when the module is there, which is only in the compiled simulation.  Every function
+   computes exactly what its namesake computes: the same floating-point operations in the same order
+   (the build turns floating-point contraction off, so no a + b * c becomes one fused instruction that
+   rounds once), neighbours relaxed in the same order, the frontier popped in the same order, the
+   same random numbers drawn.  heapq pops the least of tuples that never repeat, so any heap that pops
+   the least gives the same sequence.  A change is made to the Python first and then here, and
+   tests/warband/test_fastsim.py holds the two to the same answers on random inputs. */
 
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>

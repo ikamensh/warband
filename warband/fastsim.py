@@ -6,14 +6,17 @@ The modules in :data:`MODULES` (the world, its pathfinding and worker policy,
 the rule tables and both kinds of brain) are compiled from their own source,
 so a compiled match is the interpreted match: mypyc keeps Python's integer and
 float semantics and every operation's order, and ``tools/sim_fingerprint.py``
-checks the two to the bit (``tests/warband/test_fastsim.py``).  The grid
-searches of ``path.py`` are the one thing written twice: mypyc cannot keep
-their scores and heaps out of Python objects, so :data:`NATIVE` does them in C
-and path.py hands them over when it is there; the test holds the two to the
-same answers on random grids, and path.py stays the reference.  A build is
-filed under a hash of the sources it was made from, so an edited source is
-never run as an old build: the next activation compiles it again, which
-takes a minute or less.
+checks the two to the bit (``tests/warband/test_fastsim.py``).  A few loops are
+written twice, because mypyc cannot keep their scores, heaps and grids out of
+Python objects: :data:`NATIVE` does them in C (its opening comment lists each
+with the Python function it copies), and the Python hands them over when the
+module is there.  The Python stays the reference, and the test holds the two
+to the same answers on random inputs.  ``model.hypot`` is CPython's own
+``math.hypot`` written out, so that the compiled modules call it without going
+through the ``math`` module; the source keeps calling ``math.hypot``.  A build
+is filed under a hash of the sources it was made from, so an edited source is
+never run as an old build: the next activation compiles it again, which takes
+a minute or less.
 
 What the compiler asks in return is that the annotations are true.  A value
 of the wrong type reaching compiled code (a ``KnownMine`` where a ``Building``
@@ -23,10 +26,11 @@ carried on; ``mypy`` over :data:`MODULES` must stay clean for a build to exist.
 :func:`activate` is called by ``tools/arena.py``, ``tune.py``,
 ``balance_report.py``, ``ai_report.py``, ``race_report.py``, ``sim_bench.py``
 and ``step_bench.py`` when they run as programs, before they import the
-simulation; worker processes they spawn follow through the ``WARBAND_FASTSIM``
-variable (see ``warband/__init__.py``), and a process that only imports one of
-them as a library stays as it was.  The game itself, the tests and everything
-else run the source.  ``WARBAND_INTERPRETED=1`` makes :func:`activate` a no-op.
+simulation, and again in the worker processes they spawn, which run the same
+script as ``__mp_main__`` and take the parent's build from ``WARBAND_FASTSIM``.
+A process that only imports one of them as a library stays as it was.  The
+game itself, the online authority, the tests and everything else run the
+source.  ``WARBAND_INTERPRETED=1`` makes :func:`activate` a no-op.
 """
 
 from __future__ import annotations
@@ -44,9 +48,9 @@ from pathlib import Path
 PACKAGE = Path(__file__).resolve().parent
 BUILDS = PACKAGE.parent / "build" / "fastsim"
 MODULES = ("rules", "races", "path", "worker_knowledge", "model", "worker_ai", "ai", "pro_ai")
-NATIVE = "_native.c"  # path.py's searches in C, built alongside; see its opening comment
+NATIVE = "_native.c"  # the loops written twice, in C, built alongside; see its opening comment
 RECIPE = "2"  # bumped when the build itself changes, so that no build made the old way is reused
-ENV = "WARBAND_FASTSIM"  # the build a parent process activated, for the processes it starts
+ENV = "WARBAND_FASTSIM"  # the build a process activated, for the worker processes it starts
 OPT_OUT = "WARBAND_INTERPRETED"
 
 
@@ -100,8 +104,8 @@ def attach(path: str | os.PathLike[str]) -> None:
     """Import :data:`MODULES` from the build at *path* from now on; it must match the current sources."""
     root = Path(path)
     if root.name != key():
-        raise ImportError(f"{ENV} names the compiled simulation {root.name}, but the sources now make {key()}: "
-                          f"the process that set it ran other sources")
+        raise ImportError(f"the compiled simulation {root.name} was built from other sources: the current ones "
+                          f"make {key()}")
     import warband
 
     compiled = str(root / "warband")
@@ -116,10 +120,15 @@ def attach(path: str | os.PathLike[str]) -> None:
 
 
 def activate() -> Path | None:
-    """Run the compiled simulation in this process and every process it starts; its build path, or None when opted out."""
+    """Run the compiled simulation in this process and every process it starts; its build path, or None when opted out.
+
+    A worker process takes the build its parent activated, never one of its own: sources edited since
+    the parent started are refused rather than compiled again in every worker.
+    """
     if os.environ.get(OPT_OUT):
         return None
-    root = build()
+    inherited = os.environ.get(ENV)
+    root = Path(inherited) if inherited else build()
     attach(root)
     return root
 

@@ -15,10 +15,3 @@
 * ``music``    — the score: a suite per race, the title's night watch, two endings, and the director that plays them by mood.
 * ``instruments`` — the orchestra the music is written for.
 """
-
-import os as _os
-
-if _os.environ.get("WARBAND_FASTSIM"):  # started by a process that runs the compiled simulation: so does this one
-    from warband.fastsim import attach as _attach
-
-    _attach(_os.environ["WARBAND_FASTSIM"])

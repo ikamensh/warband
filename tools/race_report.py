@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from warband import fastsim  # noqa: E402
 
-if __name__ == "__main__":  # run as a program, not imported: its worker processes follow through WARBAND_FASTSIM
+if __name__ in ("__main__", "__mp_main__"):  # run as a program or as one of its worker processes, not as a library
     fastsim.activate()  # the compiled simulation, unless WARBAND_INTERPRETED is set
 
 from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402

@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from warband import fastsim  # noqa: E402
 
-if __name__ == "__main__":  # run as a program, not imported: its worker processes follow through WARBAND_FASTSIM
+if __name__ in ("__main__", "__mp_main__"):  # run as a program or as one of its worker processes, not as a library
     fastsim.activate()  # the compiled simulation, unless WARBAND_INTERPRETED is set
 
 from arena import load, print_table, run, specs_1v1  # noqa: E402 - the ladder runner in tools/arena.py

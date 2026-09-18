@@ -23,18 +23,25 @@ from warband.worker_knowledge import WorkerKnowledge
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_the_compiled_simulation_plays_the_recorded_fingerprint() -> None:
+def _run_compiled(script: str) -> str:
+    """What *script* prints, run in a fresh process on the compiled simulation of the current sources."""
     build = fastsim.build()
-    script = ("import sys; sys.path.insert(0, '.')\n"
-              "import warband.model, warband.pro_ai\n"
-              f"assert warband.model.__file__.startswith({str(build)!r}), warband.model.__file__\n"
-              f"assert warband.pro_ai.__file__.startswith({str(build)!r}), warband.pro_ai.__file__\n"
-              "from tools.sim_fingerprint import fingerprint\n"
-              "print(fingerprint())\n")
-    env = {k: v for k, v in os.environ.items() if k != fastsim.OPT_OUT} | {fastsim.ENV: str(build)}
-    done = subprocess.run([sys.executable, "-c", script], cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
+    prelude = ("import sys; sys.path.insert(0, '.')\n"
+               "from warband import fastsim\n"
+               f"fastsim.attach({str(build)!r})\n"
+               "import warband.model, warband.pro_ai\n"
+               f"assert warband.model.__file__.startswith({str(build)!r}), warband.model.__file__\n"
+               f"assert warband.pro_ai.__file__.startswith({str(build)!r}), warband.pro_ai.__file__\n")
+    env = {k: v for k, v in os.environ.items() if k not in (fastsim.OPT_OUT, fastsim.ENV)}
+    done = subprocess.run([sys.executable, "-c", prelude + script], cwd=ROOT, env=env, capture_output=True, text=True,
+                          timeout=900)
     assert done.returncode == 0, done.stderr
-    assert done.stdout.strip() == (ROOT / "tools" / "sim_fingerprint.txt").read_text().strip()
+    return done.stdout
+
+
+def test_the_compiled_simulation_plays_the_recorded_fingerprint() -> None:
+    printed = _run_compiled("from tools.sim_fingerprint import fingerprint\nprint(fingerprint())\n")
+    assert printed.strip() == (ROOT / "tools" / "sim_fingerprint.txt").read_text().strip()
 
 
 def test_a_build_of_other_sources_is_refused(tmp_path: Path) -> None:
@@ -217,15 +224,11 @@ def test_the_hypot_port_is_math_hypot_run_from_source() -> None:
 
 
 def test_the_compiled_hypot_is_math_hypot() -> None:
-    build = fastsim.build()
-    script = ("import math, random, sys; sys.path.insert(0, '.')\n"
-              "import warband.model as model\n"
-              "from tests.warband.test_fastsim import _hypot_cases\n"
-              "assert model.hypot is not math.hypot and model.hypot_port is model.hypot\n"
-              "bad = [(a, b) for a, b in _hypot_cases(random.Random(4), 3_000_000)\n"
-              "       if model.hypot(a, b).hex() != math.hypot(a, b).hex() and not math.isnan(math.hypot(a, b))]\n"
-              "print(len(bad), bad[:5])\n")
-    env = {k: v for k, v in os.environ.items() if k != fastsim.OPT_OUT} | {fastsim.ENV: str(build)}
-    done = subprocess.run([sys.executable, "-c", script], cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
-    assert done.returncode == 0, done.stderr
-    assert done.stdout.startswith("0 "), done.stdout
+    printed = _run_compiled("import math, random\n"
+                            "import warband.model as model\n"
+                            "from tests.warband.test_fastsim import _hypot_cases\n"
+                            "assert model.hypot is not math.hypot and model.hypot_port is model.hypot\n"
+                            "bad = [(a, b) for a, b in _hypot_cases(random.Random(4), 3_000_000)\n"
+                            "       if model.hypot(a, b).hex() != math.hypot(a, b).hex() and not math.isnan(math.hypot(a, b))]\n"
+                            "print(len(bad), bad[:5])\n")
+    assert printed.startswith("0 "), printed
