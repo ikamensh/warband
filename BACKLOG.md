@@ -18,16 +18,16 @@ Done and removed 2026-09-18, every one merged into main (whose code is live as
 Warband 0.2.30): WB-001 to WB-009, WB-015, WB-017 to WB-023 and WB-025 to
 WB-034. Their acceptance and evidence are in
 [the backlog at `1a6e08b`](https://github.com/ikamensh/warband/blob/1a6e08b73872cb595756a9d4ba7bc96c685c5ef0/BACKLOG.md).
+Removed later the same day: WB-011 and WB-016, live as Warband 0.2.32; their
+records are in [the backlog at `8a13fae`](https://github.com/ikamensh/warband/blob/8a13faeb65a0457ec0cd65d53e0461f01a734b49/BACKLOG.md).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-040 | First | proposed | A fast test suite by default; slow tests on demand and in CI; better tests on the way | User 2026-09-18 |
 | WB-010 | Next | in progress | Smooth online movement and make connection problems understandable | Suggested |
-| WB-011 | Next | in progress | Keep fog-hidden state out of opponents' network snapshots | Suggested |
 | WB-012 | Next | in progress | Support three- and four-human online FFA | Suggested |
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
-| WB-016 | Next | in progress | Assess and recover the six-mission Thornwood campaign | Recovered branch |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
 | WB-035 | Later | proposed | Open a match on a small map without margins beside it on a large canvas | WB-021 measurement |
 | WB-036 | Next | proposed | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often | User 2026-09-18 |
@@ -91,75 +91,6 @@ it publishes without a server rollout.
    disconnection and rejoin: movement is measured, orders and events are
    correct, nothing slides after the resume. The suite passes, and native
    frames of a walk are looked at.
-
-## WB-011 — Player-specific network visibility
-
-Since WB-031, `WarbandMatch.snapshot(player)` leaves out the server's random
-stream and the other seat's explored ground and remembered map. It still sends
-every unit, building and player record (orders, loads, the other seat's
-economy and research) and every recent event, whatever the fog hides from that
-seat: the client hides it (since WB-027 buildings too), but the data is all
-there. Before public
-competitive play, send only the information that player is allowed to know,
-including safe event payloads and remembered discoveries. Rendering fog over a
-complete snapshot does not protect hidden information.
-
-**Done when:** serialized snapshots/events cannot reveal unexplored enemy units,
-orders, economy or research; exploration, remembered buildings, combat and
-reconnection still work in real two-client tests. Keep this separate from
-compression and from claims of comprehensive anti-cheat.
-
-**Started 2026-09-18** (Ilya: "later is now"), branch `visibility` (worktree
-`../warband-visibility`). It ships in one server rollout with WB-016.
-
-**Acceptance (recorded 2026-09-18 before implementation):**
-
-1. Units and buildings: a seat's snapshot carries all of its own, and of
-   everyone else's only what its units and buildings see now, including a
-   player's last holdings once the rules expose them. An enemy unit out of
-   sight or inside a mine or building is absent. One in sight carries its
-   position, type, hit points, facing, motion and pose, but no orders, route,
-   home or automatic-work state. An enemy building in sight carries its
-   footprint, hit points, construction and abandonment, but no queue,
-   research or rally point. Out of sight it is absent, and the client shows
-   it as last seen (WB-027).
-2. Economy: the other seat's gold, lumber, upgrades, statistics, last alert
-   and assembly point are blank until the match is decided, and its
-   settlement plans are absent. The world's id counter tells nothing beyond
-   the entities sent.
-3. Ground: out of sight it is as the seat remembers it, so trees felled or
-   grown back there are not news; ground never seen is as the map began. A
-   mine out of sight carries the gold the seat last saw; a mine never seen is
-   absent. A shot in the air travels when the seat can see where it is.
-4. Events: a seat hears of what it saw happen, of its own affairs (units it
-   trained, research, refusals, deposits, alarms and plunder, told to it
-   alone) and of the match's public news (victory, elimination, surrender,
-   resignation, exposure). Who saw an event is decided when it happens, not
-   when a snapshot is sent, and the checkpoint carries it.
-5. Proof: a test sends a snapshot as JSON and looks for every hidden fact:
-   a unit in unexplored ground, the enemy's gold, research and orders, its
-   plans, a tree felled and a mine mined under fog, an event in fog. It fails
-   on the old code. Exploration, remembered buildings, combat and
-   reconnection work between two real clients over a socket. The suite passes
-   and the simulation fingerprint does not move (only the authority changes).
-6. Compatibility: the previous release's client loads the new snapshots,
-   checked in the rollout rehearsal. A checkpoint written by the previous
-   server restores. It has no record of who saw what, so its last five
-   seconds of events are told to both seats once, and its terrain at restore
-   stands for the map's beginning.
-
-
-**Done 2026-09-18**, merged as Warband main `89a6587`: every criterion holds.
-`WarbandMatch.snapshot` filters per seat (`bdcb985`, `413e61f`), and
-`tests/warband/test_snapshot_visibility.py` (8 tests) failed on the old code.
-The online tests that read one seat's view of the other now read each seat's
-own. The packaged smoke checks that the guest is not sent the creator's
-worker. A client keeps what it saw of buildings across a rejoin from the title
-(`online-memory.json`). A snapshot costs 0.67 ms against 0.41 on a Large map
-and is a little smaller. The previous client (0.2.30) ran over the new
-snapshots, and a checkpoint from the previous server restored and played on
-(checked before activation). Live as Warband 0.2.32 through the same
-[rollout](../saga-online/docs/wb016-011-rollout.md) and runs as WB-016.
 
 ## WB-012 — Three-/four-human online FFA
 
@@ -254,107 +185,6 @@ remove the worktree.
 **Done when:** a recorded report supports the displayed difficulty expectations;
 concrete regressions become small fixes with rule tests, fuzz and refreshed
 fingerprints where appropriate. Do not retune from a few observed matches.
-
-## WB-016 — Assess the Thornwood campaign
-
-The retained `campaign` branch at `9dbc98f` contains four unique commits: a
-six-mission campaign, scripted outcomes, briefings, dialogue, choices and saved
-progress. Review its product fit and playability before adoption. Integrate
-against the current profile/title UI and the pinned engine; preserve ordinary
-skirmish and replay behavior. Keep durable campaign progress in the player's
-data folder beside the profile ([storage guide](docs/warband-profile.md)).
-
-**Done when:** each mission's start, objectives, win and loss paths are verified;
-choices and unlocked missions survive a new process and an upgrade; the title
-and briefing screens fit supported resolutions and have inspected native frames.
-Run the full suite and test scripted outcomes separately from normal elimination.
-Record whether the campaign is accepted or retained with specific remaining
-issues, and clean up the branch only after its work is safely accounted for.
-
-**Assessed 2026-09-18** (branch `campaign` at `9dbc98f`, worktree
-`~/saga/warband-campaign`): four commits on top of `d24446a` add the campaign
-(`campaign.py`, `missions.py`, `dialog.py`, `mission_scene.py`,
-`campaign_scene.py`, `docs/warband-campaign.md`, `tools/verify_campaign.py`,
-`tests/warband/test_campaign.py`: 2,415 lines in 17 files) and touch the
-model (`World.scripted`, `clear_player`), the scene (a mission's pause menu
-and objectives panel), the title (the Campaign entry, a tighter menu at 720
-tall) and the layout test. Its own 14 campaign tests pass on the branch. By
-the evening of 2026-09-18, after the balance merge, main had moved 266 commits
-past `d24446a`, and a test merge conflicts in six files, fourteen hunks:
-`model.py` (four), `scene.py` (four), `title.py` (three),
-`tests/warband/test_layout.py`, `AGENTS.md`, and `tests/warband/test_model.py`,
-where both sides appended tests. The hunks are small, so a rebase is an
-afternoon's work, not a rewrite. Two things follow from it: the model change
-moves the authoritative contract, so the rebased campaign can only be
-published with a server rollout, and the natural place is the next rules
-series with WB-024; and the missions are tuned by scripted play only, so
-they need the human playtests of WB-013 before the campaign is called
-accepted. Nothing in the branch is lost: the worktree and branch stay until
-the decision.
-
-**Adopted 2026-09-18** (Ilya: "we don't have a better one"). Main is merged
-into `campaign` rather than the branch rebased, so its four commits stay as
-they are. It ships with WB-011's server rollout instead of waiting for WB-024,
-which nobody has started. Two things main added since the branch began matter
-here. `mapgen.generate` draws a layout from the seed when none is named, so the
-missions' hand-placed setups would land on a random river or rock ring. And
-every `GameScene` is ranked (recorded and rated) unless it says otherwise.
-
-**Acceptance (recorded 2026-09-18 before implementation):**
-
-1. On today's main: the six conflicting files resolved keeping both sides'
-   intent. A mission is unranked: never recorded as a replay, rated or put on
-   the leaderboard, and leaving one asks no rated-match question. The suite
-   passes on the pinned engine; skirmish play is unchanged
-   (`tools/sim_fingerprint.py --check`, or refreshed deliberately if the save's
-   new `scripted` key is part of what it hashes).
-2. Maps: every mission names its layout and none draws one from its seed. The
-   ford (Greywater Ford, Greywater Retaken) is Crossings, the Court of Thorns
-   Forest, the others Plains, the nearest to the one generator the missions
-   were written for. Each setup fits its map (placement raises when it does
-   not), and a native frame of each of the six starts is looked at: bands,
-   camps and goals where the story puts them.
-3. Every mission both ways: a test per mission starts it as the campaign
-   screen does, checks its first objectives, plays its win and every way it
-   can be lost, and checks what the campaign records: the next mission, the
-   flags (truce, powder, burn) and the epilogue's lines. A second process
-   reads the progress file and offers the same next mission and flags.
-4. Screens: the title with its Campaign entry, the campaign screen (fresh,
-   under way, finished), a briefing, the objectives panel, a line, a
-   question, both results and the mission menu fit at 1280×800, 1280×720 and
-   1200×680 (`tests/warband/test_layout.py`); `tools/verify_campaign.py`
-   frames at 1280×800 and 1200×680 are looked at; `tools/visual_lint.py` is
-   clean.
-5. Rules: `test_model.py` covers a scripted world (no winner declared, no
-   surrender, `clear_player` quiet and undone by the side's next unit or
-   building); `tools/fuzz.py` with its monkey is clean.
-6. Shipped: merged into main with Tests and Native package checks green.
-   `model.py` moves the authoritative contract, so the release is promoted
-   after the server rollout it shares with WB-011. The missions' tuning stays
-   for people to judge (WB-013), and the campaign doc's "Not yet" says so.
-
-
-**Done 2026-09-18**, merged as Warband main `df3ef1c` (in `89a6587`): every
-criterion holds. The branch took main in (`b30e7cc`): the campaign's Normal is
-Medium and shifts along Easy, Medium, Hard and Master; missions are made with
-`make_brain`; Campaign moved to A (P is Profile). Every mission names its
-layout: Crossings for the ford, Forest for the Court, Plains for the rest.
-Every mission is tested both ways, the choices go through their debriefs, a
-second process reads the progress file, and the epilogue speaks the three
-choices (`tests/warband/test_campaign.py`, 22 tests). Looking at 1200×680
-found three fixes. Notices now place themselves through `draw_below`, which
-the engine uses. The objectives panel and first notices wait for the title
-banner. A camera cue no longer pans into unexplored ground.
-`tools/verify_campaign.py --size` frames and mission maps at 1280×800 and
-1200×680 were looked at; the visual lint walks five campaign screens.
-Fingerprint unchanged; fuzz (4 games, 10 monkey runs) clean; suite 1,355
-passed. Published after the shared server's
-[rollout](../saga-online/docs/wb016-011-rollout.md):
-[Tests 35386809507](https://github.com/ikamensh/warband/actions/runs/35386809507),
-[native package checks 35386809594](https://github.com/ikamensh/warband/actions/runs/35386809594),
-[promotion 35389432103](https://github.com/ikamensh/saga-online/actions/runs/35389432103)
-and [public download checks 35389690968](https://github.com/ikamensh/saga-online/actions/runs/35389690968):
-live as Warband 0.2.32. The missions' tuning waits for people (WB-013).
 
 ## WB-024 — Plan fewer paths in a melee
 
