@@ -27,7 +27,8 @@ WB-012, live as 0.2.34
 ([`12ecf88`](https://github.com/ikamensh/warband/blob/12ecf88fef5ba74fe6c29a76bdf4defcf0774a02/BACKLOG.md)).
 Removed 2026-09-19: WB-040, merged as `9c5caa4`
 ([`c49badb`](https://github.com/ikamensh/warband/blob/c49badb5f2baaca0d882f500caa09b38b4139864/BACKLOG.md)); WB-035, merged as `464328e`
-([`2ad4dcb`](https://github.com/ikamensh/warband/blob/2ad4dcb7723c7d46d7c611fd254caa387a0df3e4/BACKLOG.md)).
+([`2ad4dcb`](https://github.com/ikamensh/warband/blob/2ad4dcb7723c7d46d7c611fd254caa387a0df3e4/BACKLOG.md)); WB-043, merged as `66d35a5`
+([`0680eb5`](https://github.com/ikamensh/warband/blob/0680eb570c73abba14d3c431f89bedeba5846246/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
@@ -40,7 +41,6 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-042 | Later | proposed | Tests read through public accessors; try property tests for the model and paths | WB-040 |
-| WB-043 | Next | done | Hold a build order's price while its builder walks: a quarter of Master's orders die on arrival | WB-036 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -415,42 +415,3 @@ invariants.
 **Done when:** no test reads a private member of `warband/`, or each that does
 says why; the property tests that earn their keep run in the tiers, and the
 rest are recorded here with what they found.
-
-## WB-043 — Hold a build order's price while its builder walks
-
-Found tracing WB-036's rush: a build order is paid when its peasant reaches
-the site, and the pro brain spends the bank on soldiers (and peasants,
-research, other buildings) every pass in between, so the order is refused on
-arrival and the walk is wasted. Over twenty six-minute games of the Vanguard
-against the Warden, 611 constructions began and 227 orders were refused for
-money (159 gold, 68 lumber): a quarter of them. The rush now holds its own
-tower's price while its builder walks; every order in flight wants the same.
-
-**Done when:** the brains hold the price of every build order in flight from
-what they train, research and order next; the refusals for money in that
-twenty-game count fall to near none; the ladder (`tools/arena.py`, a knob
-keeping the old way as a trial profile) shows whether Hard and Master got
-stronger, and the displayed ratings are re-measured with the 720-game
-protocol if they moved; the fingerprint and `sim_bench.txt` are refreshed
-deliberately. The brains are outside the contract: no server rollout.
-
-
-**Done 2026-09-19, merged into main as `66d35a5`** (`66de94f` on branch
-`hold-builds`). `ProBrain._held` counts the price of every build order whose
-builder has not begun (`hold_builds`, on in every profile), and training,
-construction and research spend only what is left; research had not asked
-before. Over the same twenty six-minute Vanguard-against-Warden games
-(`docs/evidence/wb043/refusals.py`), 227 of 838 orders were refused for money
-(159 gold, 68 lumber) and none are now; refusals because a unit stood on the
-site went from 6 to 22 (orders that used to die for money earlier now reach
-the site; not chased). Against the same posture without the hold
-(`pro-vanguard-nohold`, `pro-warden-nohold`, `pro-hard-nohold`; 96 games each,
-seeds from 43000, both corners): the Vanguard 64.6%, the Warden 61.5%, Hard
-58.9%. The 720-game protocol re-rated Easy 857, Hard 1400 and Master 1615
-(1353 and 1589 before; steps 69%, 88%, 78%); the New game screen shows 860,
-1000, 1400 and 1620, and [docs/ai-ladder.md](docs/ai-ladder.md) has the table
-and a row in "What each change was worth". A slow test holds the Vanguard, the
-Warden and Hard to no refusal for money over four minutes on seed 17; the
-`-nohold` profiles fail it. Fingerprint and `sim_bench.txt` refreshed. Main
-ran [Tests 35406556076](https://github.com/ikamensh/warband/actions/runs/35406556076)
-and [native package checks 35406555983](https://github.com/ikamensh/warband/actions/runs/35406555983).
