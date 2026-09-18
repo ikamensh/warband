@@ -518,7 +518,10 @@ uv run python tools/sim_fingerprint.py --check tools/sim_fingerprint.txt
 ```
 
 A deliberate change to the rules or to `warband/ai.py` is expected to move it,
-and the recorded file is refreshed in the same commit.
+and the recorded file is refreshed in the same commit. The recorded hash is
+macOS's: glibc and the Windows runtime round a few of the simulation's sines,
+cosines and arctangents differently in the last bit, so on Linux or Windows the
+same source hashes differently.
 
 The ladder itself runs the simulation compiled (`docs/fast-simulation.md`),
 about ten times faster than the source and to the same bits:

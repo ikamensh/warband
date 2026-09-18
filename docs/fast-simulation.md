@@ -62,8 +62,17 @@ Compiling the same source keeps every one of those properties.
   neighbours and pop the frontier in the same order, and draw the same random
   numbers. The Python is the reference; `tests/warband/test_fastsim.py` holds
   the two to the same answers on random inputs.
-- Checks: the fingerprint, compiled (in the test) and from source; the bench's
-  digest of nine whole results (`--check tools/sim_bench.txt`); the twin tests.
+- Checks: the fingerprint, compiled and from source on the same machine (in
+  the test); the bench's digest of nine whole results
+  (`--check tools/sim_bench.txt`); the twin tests.
+- Exact means the same bits as the source *on the same platform*. The
+  simulation calls libm's `sin`, `cos` and `atan2`, and Apple's libm, glibc
+  and the Windows runtime round a fraction of a percent of arguments
+  differently in the last bit (in two fingerprint matches, about 0.6% of the
+  distinct sines and cosines differ between macOS and Linux). So the source
+  itself hashes differently on each platform, and the recorded fingerprint and
+  bench digest are macOS's. The test compares compiled with source wherever it
+  runs: macOS, Linux and Windows in CI.
 - A build is filed under a hash of its sources, so an edited source is never
   run as an old build. Worker processes take their parent's build and refuse
   one made from other sources.

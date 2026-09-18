@@ -1,5 +1,5 @@
-"""The compiled simulation is the simulation: matches played by it hash to the recorded fingerprint, to the bit,
-and its C searches and painting answer as the Python does."""
+"""The compiled simulation is the simulation: matches played by it hash as the source's do on the same machine, to
+the bit, and its C searches and painting answer as the Python does."""
 
 from __future__ import annotations
 
@@ -39,9 +39,14 @@ def _run_compiled(script: str) -> str:
     return done.stdout
 
 
-def test_the_compiled_simulation_plays_the_recorded_fingerprint() -> None:
+def test_the_compiled_simulation_plays_the_source_fingerprint() -> None:
+    """Compiled or not, the fingerprint matches hash the same on this machine.  Not necessarily to the recorded
+    hash: that one is macOS's, and glibc and the Windows runtime round some sines, cosines and arctangents
+    differently in the last bit, the source's as much as the compiled simulation's."""
+    from tools.sim_fingerprint import fingerprint
+
     printed = _run_compiled("from tools.sim_fingerprint import fingerprint\nprint(fingerprint())\n")
-    assert printed.strip() == (ROOT / "tools" / "sim_fingerprint.txt").read_text().strip()
+    assert printed.strip() == fingerprint()
 
 
 def test_a_build_of_other_sources_is_refused(tmp_path: Path) -> None:

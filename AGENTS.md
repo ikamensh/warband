@@ -141,7 +141,9 @@ real breakdown.
   `tools/sim_fingerprint.py --check` alone: lockstep online play needs the
   simulation reproducible to the float bit. A deliberate rules or AI change
   moves it, and the recorded hash is refreshed in the same commit (and
-  `tools/sim_bench.txt` with it).
+  `tools/sim_bench.txt` with it). Both records are macOS's: glibc and the
+  Windows runtime round some sines, cosines and arctangents differently in the
+  last bit, so the same source hashes differently there.
 - The tools that play many matches (`arena`, `tune`, `balance_report`,
   `ai_report`, `race_report`, `sim_bench`, `step_bench`) run the simulation
   compiled by mypyc from its own source (`warband/fastsim.py`, built on first
