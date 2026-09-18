@@ -29,6 +29,7 @@ try:
     from warband import _native  # vision's painting in C, built only with the compiled simulation (warband/fastsim.py)
 except ImportError:  # the source runs, as it does in the game
     _native = None  # type: ignore[assignment]
+_any_lit: Final = None if _native is None else _native.any_lit  # looked up once: any_visible is asked often
 
 from warband.settlement import Plan, Settlement
 from warband.worker_knowledge import WorkerKnowledge
@@ -675,8 +676,8 @@ class World:
         """Whether *player* sees any tile of *rect*, testing whole rows of the flag grid at a time."""
         x, y, w, h = rect
         width, visible = self.width, self.visible[player]
-        if _native is not None:
-            return _native.any_lit(visible, x, y, w, h, width, self.height)
+        if _any_lit is not None:
+            return _any_lit(visible, x, y, w, h, width, self.height)
         lo, hi = max(0, x), min(width, x + w)
         if lo >= hi:
             return False

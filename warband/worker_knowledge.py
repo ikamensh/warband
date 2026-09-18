@@ -16,6 +16,7 @@ try:
     from warband import _native  # the footprint test in C, built only with the compiled simulation (warband/fastsim.py)
 except ImportError:  # the source runs, as it does in the game
     _native = None  # type: ignore[assignment]
+_any_lit: Final = None if _native is None else _native.any_lit  # looked up once: sees is asked dozens of times a step
 
 if TYPE_CHECKING:
     from warband.model import World
@@ -88,8 +89,8 @@ class WorkerKnowledge:
 
     def sees(self, visible: bytearray, x: int, y: int, size: int) -> bool:
         """Whether any tile of a footprint lies in *visible*, a fog grid of this map's shape."""
-        if _native is not None:
-            return _native.any_lit(visible, x, y, size, size, self.width, self.height)
+        if _any_lit is not None:
+            return _any_lit(visible, x, y, size, size, self.width, self.height)
         for start, stop in self.spans(x, y, size):
             if visible.count(0, start, stop) < stop - start:  # a C scan, no slice copied
                 return True
