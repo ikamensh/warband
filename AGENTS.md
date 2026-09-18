@@ -74,8 +74,10 @@ real breakdown.
   recoloured to its team instead, and so does a building whose race has a
   painted sheet (`<race>.buildings.<look>`: `intact`, `active` while it trains
   or researches, `damaged` under half its hit points; `view.building_look`
-  picks the look, a missing look shows the intact one). Portraits use the
-  painted frame too. `WARBAND_ART=procedural` keeps the renders; a sheet whose
+  picks the look, a missing look shows the intact one). The gold mine is
+  nobody's and never recoloured: four of its stand-ins are painted
+  (`mine.<look>`, `tools/restyle.py --mines`), `active` while a peasant works
+  inside. Portraits use the painted frame too. `WARBAND_ART=procedural` keeps the renders; a sheet whose
   frames no longer match `FRAMES` or the building types warns and is ignored.
   `view.py` keeps sprites in step (units, buildings, shots in the air with
   their trails) and draws fog, minimap and water; ground out of sight shows

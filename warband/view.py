@@ -15,7 +15,7 @@ draws in screen space.
 from __future__ import annotations
 
 import math
-from typing import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -43,9 +43,12 @@ def rgba(color: tuple[int, int, int], alpha: int = 255) -> Color:
     return (color[0], color[1], color[2], alpha)
 
 
-def building_look(b: Building) -> str:
+def building_look(b: Building, worked: Collection[int] = ()) -> str:
     """Which painted look a building wears: damaged under half its hit points, active while it
-    trains or researches, intact otherwise (and while it is still going up)."""
+    trains or researches, intact otherwise (and while it is still going up).  A gold mine is
+    active while a peasant works inside it: its id is among *worked*."""
+    if b.type is BuildingType.GOLD_MINE:
+        return "active" if b.id in worked else "intact"
     if not b.done:
         return "intact"
     if b.hp < b.max_hp / 2:
@@ -94,14 +97,14 @@ class Sighting:
     look: str  # the painted look it wore, see :func:`building_look`
 
     @classmethod
-    def of(cls, b: Building) -> Sighting:
+    def of(cls, b: Building, worked: Collection[int] = ()) -> Sighting:
         sighting = cls(b.id, b.type, b.player, b.race, b.rect, 0, 0, 0.0, 0, False, "intact")
-        sighting.refresh(b)
+        sighting.refresh(b, worked)
         return sighting
 
-    def refresh(self, b: Building) -> None:
-        """The player is looking at *b*: remember it as it is now."""
-        self.hp, self.max_hp, self.gold, self.abandoned, self.look = b.hp, b.max_hp, b.gold, b.abandoned, building_look(b)
+    def refresh(self, b: Building, worked: Collection[int] = ()) -> None:
+        """The player is looking at *b* (and at the mines in *worked* being worked): remember it as it is now."""
+        self.hp, self.max_hp, self.gold, self.abandoned, self.look = b.hp, b.max_hp, b.gold, b.abandoned, building_look(b, worked)
         self.built = 1.0 if b.done else b.progress / b.info.build_time
 
     @property
@@ -571,15 +574,16 @@ class MapView:
         """Buildings in sight are shown as they are and remembered so; out of sight they stay as last seen,
         until the player looks at the ground again and finds them changed or gone."""
         world = self.world
+        worked = {u.inside for u in world.units.values() if u.inside is not None}  # mines with a peasant at the face
         for b in world.buildings.values():
             if not self._seen(b):
                 self._quench(b.id)
                 continue
             sighting = self._sightings.get(b.id)
             if sighting is None:
-                sighting = Sighting.of(b)
+                sighting = Sighting.of(b, worked)
             else:
-                sighting.refresh(b)
+                sighting.refresh(b, worked)
             self._sync_smoke(b, self._show(sighting))
         for bid, sighting in list(self._sightings.items()):
             if bid not in world.buildings and (self.reveal or sighting.player == self.player or world.any_visible(self.player, sighting.rect)):
@@ -594,7 +598,7 @@ class MapView:
         x, y, size, _ = sighting.rect
         rising = 0.5 <= sighting.built < 1.0  # the second half of construction shows the building going up
         if sighting.type is BuildingType.GOLD_MINE:
-            key = textures.mine_image(self.game, textures.scatter(x, y, 8) % textures.MINE_VARIANTS)
+            key = textures.mine_image(self.game, textures.scatter(x, y, 8) % textures.mine_variants(), sighting.look)
         elif sighting.built >= 0.5:
             key = textures.building_image(self.game, sighting.type, sighting.player, sighting.race, sighting.look, abandoned=sighting.abandoned)  # type: ignore[arg-type]
         else:
