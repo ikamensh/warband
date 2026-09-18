@@ -606,8 +606,8 @@ class World:
         return [u for u in self.units.values() if u.player == player]
 
     def player_buildings(self, player: int, building_type: BuildingType | None = None, *, done: bool | None = None) -> list[Building]:
-        return [b for b in self.buildings.values() if b.player == player and not b.abandoned
-                and (building_type is None or b.type is building_type) and (done is None or b.done == done)]
+        return [b for b in self.buildings.values() if (building_type is None or b.type is building_type)
+                and b.player == player and not b.abandoned and (done is None or b.done == done)]
 
     def mines(self) -> list[Building]:
         return [b for b in self.buildings.values() if b.type is BuildingType.GOLD_MINE]
@@ -1559,9 +1559,7 @@ class World:
         u.state = "idle"
         if u.is_worker:
             if u.auto_work and self.tick % round(1 / SIM_DT) == 0:
-                from warband.worker_ai import assign_idle_workers
-
-                assign_idle_workers(self, u.player)
+                worker_ai.assign_idle_workers(self, u.player)
         elif self.tick % 5 == 0:
             if u.info.heal:
                 patient = self._healing_patient(u, u.info.sight)
@@ -1929,8 +1927,7 @@ class World:
         if isinstance(order.target, int):
             mine = self.buildings.get(order.target)
             if mine is None or mine.gold <= 0:
-                from warband.worker_ai import choose_replacement
-                replacement = choose_replacement(self, u, Resource.GOLD)
+                replacement = worker_ai.choose_replacement(self, u, Resource.GOLD)
                 if replacement is None:
                     self._finish_order(u)
                     return
@@ -1956,8 +1953,7 @@ class World:
             return
         tile = order.target
         if self.terrain_at(tile) is not Terrain.TREES:
-            from warband.worker_ai import choose_replacement
-            replacement = choose_replacement(self, u, Resource.LUMBER)
+            replacement = worker_ai.choose_replacement(self, u, Resource.LUMBER)
             if replacement is None:
                 self._finish_order(u)
                 return
@@ -2056,8 +2052,7 @@ class World:
     def _worker_navigation(self, u: Unit) -> bytearray:
         for order in u.orders:
             if isinstance(order, (Harvest, Deposit)) and order.auto:
-                from warband.worker_ai import safe_navigation
-                return safe_navigation(self, u.player)
+                return worker_ai.safe_navigation(self, u.player)
         return self._blocked
 
 
@@ -2816,9 +2811,7 @@ class World:
 
         A computer player asks for this as soon as it has thought, so it is an order like its others.
         """
-        from warband.worker_ai import assign_idle_workers
-
-        assign_idle_workers(self, player)
+        worker_ai.assign_idle_workers(self, player)
 
     def can_resign(self, player: int) -> str | None:
         """Why *player* cannot concede, or None when resigning is allowed."""
@@ -2872,7 +2865,7 @@ class World:
 
     def _check_elimination(self) -> None:
         for player in self.players:
-            if not player.alive or self.player_units(player.id):
+            if not player.alive or any(unit.player == player.id for unit in self.units.values()):
                 continue
             buildings = self.player_buildings(player.id)
             if not buildings:
@@ -3041,3 +3034,7 @@ def _building_from_dict(d: dict[str, Any], race: Race) -> Building:
                     rally=tuple(d["rally"]) if d["rally"] else None, gold=d["gold"], builder=d["builder"], cooldown=d["cooldown"],
                     research=Upgrade(d["research"]) if d["research"] else None, research_progress=d["research_progress"],
                     abandoned=d.get("abandoned", False))
+
+
+# At the end, as it imports this module: the automatic worker policy the simulation consults.
+from warband import worker_ai  # noqa: E402
