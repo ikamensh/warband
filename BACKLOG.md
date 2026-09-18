@@ -36,7 +36,7 @@ catches its class.
 | WB-011 | Later | proposed | Keep fog-hidden state out of opponents' network snapshots | Suggested |
 | WB-012 | Later | proposed | Support three- and four-human online FFA | Suggested |
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
-| WB-014 | Next | blocked | Revalidate difficulty and race balance after recovered branch work | Suggested |
+| WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-016 | Later | blocked | Assess and recover the six-mission Thornwood campaign | Recovered branch |
 | WB-017 | Next | done | Preserve movement speed through path waypoints | WB-003 diagnosis |
 | WB-018 | Next | done | Keep large selections inside the HUD | Native crowd capture |
