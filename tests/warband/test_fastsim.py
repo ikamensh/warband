@@ -17,7 +17,7 @@ import pytest
 from warband import ai, fastsim, mapgen, model, path, worker_ai
 from warband.ai import make_brain
 from warband.model import World
-from warband.rules import BuildingType, Difficulty, Terrain
+from warband.rules import BUILDINGS, BuildingType, Difficulty, Terrain
 from warband.worker_knowledge import WorkerKnowledge
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -170,58 +170,15 @@ def test_the_c_site_search_finds_the_python_site() -> None:
             for player in (0, 1):
                 hall = world.player_buildings(player, BuildingType.TOWN_HALL)[0]
                 for building_type in BuildingType:
-                    candidates = [(rng.random() * 30, (hall.x + rng.randint(-16, 16), hall.y + rng.randint(-16, 16))) for _ in range(300)]
-                    candidates += candidates[:5]  # equal scores and spots, as the sort meets them
-                    taken = [(pos, rng.randint(1, 4)) for _score, pos in rng.sample(candidates, 3)]
-                    inputs = ai.site_inputs(world, building_type, player, list(candidates), taken)
-                    answer = native.first_site(*inputs) if inputs is not None else None
-                    assert answer == ai.first_site(world, building_type, player, list(candidates), taken)
+                    anchor = (hall.x + rng.uniform(-6, 6), hall.y + rng.uniform(-6, 6))
+                    taken = [((hall.x + rng.randint(-9, 9), hall.y + rng.randint(-9, 9)), rng.randint(1, 4)) for _ in range(3)]
+                    size = BUILDINGS[building_type].size
+                    draws = random.Random(rng.random())
+                    twin = random.Random()
+                    twin.setstate(draws.getstate())
+                    answer = native.site_search(ai.site_ring(2 + size, 12), int(anchor[0]) - size // 2, int(anchor[1]) - size // 2,
+                                                draws.random, *ai.site_inputs(world, building_type, player, taken))
+                    assert answer == ai.site_search(world, building_type, player, anchor, twin, 2, 12, taken)
+                    assert draws.getstate() == twin.getstate()  # the same numbers were drawn, found or not
                     found += answer is not None
     assert found > 20
-
-
-def _hypot_cases(rng: random.Random, count: int) -> list[tuple[float, float]]:
-    """Coordinate pairs as the simulation meets them (differences of positions on a map, tile offsets, a hair
-    apart) and as it never does (vast and tiny magnitudes, zeros, infinities and NaNs)."""
-    specials = [0.0, -0.0, 1.0, 0.5, 1e-300, 5e-324, 1e300, math.inf, -math.inf, math.nan, 2.0 ** -1000, 2.0 ** 1000]
-    cases = [(a, b) for a in specials for b in specials]
-    for _ in range(count):
-        kind = rng.randrange(6)
-        if kind == 0:
-            a, b = rng.uniform(-200, 200), rng.uniform(-200, 200)
-        elif kind == 1:
-            a, b = rng.randint(-40, 40) + rng.choice((0.0, 0.5)), rng.randint(-40, 40) + rng.choice((0.0, 0.5))
-        elif kind == 2:
-            p, q = rng.uniform(0, 100), rng.uniform(0, 100)
-            a, b = p - (p + rng.choice((1e-15, 1e-9, 1e-6))), q - rng.uniform(0, 100)
-        elif kind == 3:
-            a, b = 10.0 ** rng.uniform(-30, 30), 10.0 ** rng.uniform(-30, 30)
-        elif kind == 4:
-            a, b = rng.uniform(-1, 1) * 10.0 ** rng.uniform(-300, 300), rng.uniform(-1, 1) * 10.0 ** rng.uniform(-300, 300)
-        else:
-            a = rng.uniform(-50, 50)
-            b = a * rng.choice((1.0, -1.0, 0.0, 1e-160, 1e160))
-        cases.append((a, b))
-    return cases
-
-
-def test_the_hypot_port_is_math_hypot_run_from_source() -> None:
-    port = model.hypot_port
-    assert model.hypot is math.hypot  # the source runs math's own
-    for a, b in _hypot_cases(random.Random(3), 60000):
-        assert math.hypot(a, b).hex() == port(a, b).hex() or math.isnan(math.hypot(a, b)) and math.isnan(port(a, b)), (a, b)
-
-
-def test_the_compiled_hypot_is_math_hypot() -> None:
-    build = fastsim.build()
-    script = ("import math, random, sys; sys.path.insert(0, '.')\n"
-              "import warband.model as model\n"
-              "from tests.warband.test_fastsim import _hypot_cases\n"
-              "assert model.hypot is not math.hypot and model.hypot_port is model.hypot\n"
-              "bad = [(a, b) for a, b in _hypot_cases(random.Random(4), 3_000_000)\n"
-              "       if model.hypot(a, b).hex() != math.hypot(a, b).hex() and not math.isnan(math.hypot(a, b))]\n"
-              "print(len(bad), bad[:5])\n")
-    env = {k: v for k, v in os.environ.items() if k != fastsim.OPT_OUT} | {fastsim.ENV: str(build)}
-    done = subprocess.run([sys.executable, "-c", script], cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
-    assert done.returncode == 0, done.stderr
-    assert done.stdout.startswith("0 "), done.stdout

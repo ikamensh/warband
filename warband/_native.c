@@ -819,7 +819,7 @@ static PyObject *stale_tiles(PyObject *self, PyObject *args) {
     return stale;
 }
 
-/* -- first_site ------------------------------------------------------------------------------- */
+/* -- site_search ------------------------------------------------------------------------------ */
 
 typedef struct { double score; Py_ssize_t x, y; } Candidate;
 
@@ -848,23 +848,27 @@ static Py_ssize_t rects_gap(const Py_ssize_t *a, const Py_ssize_t *b) {
     return dx > dy ? dx : dy;
 }
 
-/* ai.first_site from ai.site_inputs: the first candidate in sorted order that no taken site crowds, whose
-   ground is open grass the player has explored, with no unit standing on it, far enough from every gold
-   mine, and a tile clear of every one of the player's buildings.  None when there is none. */
-static PyObject *first_site(PyObject *self, PyObject *args) {
-    PyObject *candidates_obj, *taken_obj, *rows, *grass, *blocked_obj, *explored_obj, *standing_obj, *mines_obj, *own_obj;
-    Py_ssize_t size, width, height, clearance;
-    if (!PyArg_ParseTuple(args, "OnOO!OOOOOOnnn", &candidates_obj, &size, &taken_obj, &PyList_Type, &rows, &grass, &blocked_obj,
-                          &explored_obj, &standing_obj, &mines_obj, &own_obj, &width, &height, &clearance))
+/* ai.site_search from the ring, the corner, rng.random and ai.site_inputs: every spot of the ring scored by
+   its distance plus two random draws of a tile, drawn in ring order whether or not any spot can do; then
+   the first in sorted order that no taken site crowds, whose ground is open grass the player has explored,
+   with no unit standing on it, far enough from every gold mine, and a tile clear of every one of the
+   player's buildings.  None when there is none. */
+static PyObject *site_search(PyObject *self, PyObject *args) {
+    PyObject *ring_obj, *draw, *taken_obj, *rows, *grass, *blocked_obj, *explored_obj, *standing_obj, *mines_obj, *own_obj;
+    Py_ssize_t origin_x, origin_y, size, width, height, clearance;
+    int possible;
+    if (!PyArg_ParseTuple(args, "OnnOpnOO!OOOOOOnnn", &ring_obj, &origin_x, &origin_y, &draw, &possible, &size, &taken_obj,
+                          &PyList_Type, &rows, &grass, &blocked_obj, &explored_obj, &standing_obj, &mines_obj, &own_obj,
+                          &width, &height, &clearance))
         return NULL;
     if (PyList_GET_SIZE(rows) < height) { PyErr_SetString(PyExc_ValueError, "the terrain has too few rows"); return NULL; }
-    PyObject *candidates = NULL, *taken = NULL, *standing = NULL, *mines = NULL, *own = NULL, *result = NULL;
+    PyObject *ring = NULL, *taken = NULL, *standing = NULL, *mines = NULL, *own = NULL, *result = NULL;
     Candidate *order = NULL;
     Py_ssize_t *taken_at = NULL, *mine_rects = NULL, *own_rects = NULL;
     double *units = NULL;
     Grid blocked, explored;
     int blocked_open = 0, explored_open = 0;
-    if ((candidates = PySequence_Fast(candidates_obj, "candidates are (score, (x, y)) pairs")) == NULL) goto out;
+    if ((ring = PySequence_Fast(ring_obj, "the ring is a sequence of (distance, dx, dy)")) == NULL) goto out;
     if ((taken = PySequence_Fast(taken_obj, "taken is a sequence of ((x, y), size)")) == NULL) goto out;
     if ((standing = PySequence_Fast(standing_obj, "standing is a sequence of (x, y, radius)")) == NULL) goto out;
     if ((mines = PySequence_Fast(mines_obj, "mines is a sequence of rectangles")) == NULL) goto out;
@@ -873,7 +877,7 @@ static PyObject *first_site(PyObject *self, PyObject *args) {
     blocked_open = 1;
     if (grid_open(explored_obj, width * height, &explored) < 0) goto out;
     explored_open = 1;
-    Py_ssize_t count = PySequence_Fast_GET_SIZE(candidates), ntaken = PySequence_Fast_GET_SIZE(taken);
+    Py_ssize_t count = PySequence_Fast_GET_SIZE(ring), ntaken = PySequence_Fast_GET_SIZE(taken);
     Py_ssize_t nunits = PySequence_Fast_GET_SIZE(standing), nmines = PySequence_Fast_GET_SIZE(mines), nown = PySequence_Fast_GET_SIZE(own);
     order = PyMem_Malloc((size_t)(count + 1) * sizeof(Candidate));
     taken_at = PyMem_Malloc((size_t)(3 * ntaken + 1) * sizeof(Py_ssize_t));
@@ -881,13 +885,26 @@ static PyObject *first_site(PyObject *self, PyObject *args) {
     mine_rects = PyMem_Malloc((size_t)(4 * nmines + 1) * sizeof(Py_ssize_t));
     own_rects = PyMem_Malloc((size_t)(4 * nown + 1) * sizeof(Py_ssize_t));
     if (order == NULL || taken_at == NULL || units == NULL || mine_rects == NULL || own_rects == NULL) { PyErr_NoMemory(); goto out; }
-    for (Py_ssize_t i = 0; i < count; i++) {
-        PyObject *item = PySequence_Fast_GET_ITEM(candidates, i);
-        if (!PyTuple_Check(item) || PyTuple_GET_SIZE(item) != 2) { PyErr_SetString(PyExc_TypeError, "a candidate is (score, (x, y))"); goto out; }
-        order[i].score = PyFloat_AsDouble(PyTuple_GET_ITEM(item, 0));
-        if (order[i].score == -1.0 && PyErr_Occurred()) goto out;
-        if (read_pos(PyTuple_GET_ITEM(item, 1), &order[i].x, &order[i].y) < 0) goto out;
+    for (Py_ssize_t i = 0; i < count; i++) {  /* distance + rng.random() * 2, in ring order */
+        PyObject *item = PySequence_Fast_GET_ITEM(ring, i);
+        Py_ssize_t offset[2];
+        if (!PyTuple_Check(item) || PyTuple_GET_SIZE(item) != 3) { PyErr_SetString(PyExc_TypeError, "a ring spot is (distance, dx, dy)"); goto out; }
+        double distance = PyFloat_AsDouble(PyTuple_GET_ITEM(item, 0));
+        if (distance == -1.0 && PyErr_Occurred()) goto out;
+        offset[0] = PyLong_AsSsize_t(PyTuple_GET_ITEM(item, 1));
+        offset[1] = PyLong_AsSsize_t(PyTuple_GET_ITEM(item, 2));
+        if (PyErr_Occurred()) goto out;
+        PyObject *drawn = PyObject_CallNoArgs(draw);
+        if (drawn == NULL) goto out;
+        double tiebreak = PyFloat_AsDouble(drawn);
+        Py_DECREF(drawn);
+        if (tiebreak == -1.0 && PyErr_Occurred()) goto out;
+        double spread = tiebreak * 2.0;
+        order[i].score = distance + spread;
+        order[i].x = origin_x + offset[0];
+        order[i].y = origin_y + offset[1];
     }
+    if (!possible) { Py_INCREF(Py_None); result = Py_None; goto out; }
     for (Py_ssize_t i = 0; i < ntaken; i++) {
         PyObject *item = PySequence_Fast_GET_ITEM(taken, i);
         if (!PyTuple_Check(item) || PyTuple_GET_SIZE(item) != 2) { PyErr_SetString(PyExc_TypeError, "a taken site is ((x, y), size)"); goto out; }
@@ -953,7 +970,7 @@ out:
     PyMem_Free(own_rects);
     if (explored_open) grid_close(&explored);
     if (blocked_open) grid_close(&blocked);
-    Py_XDECREF(candidates);
+    Py_XDECREF(ring);
     Py_XDECREF(taken);
     Py_XDECREF(standing);
     Py_XDECREF(mines);
@@ -975,7 +992,7 @@ static PyMethodDef methods[] = {
     {"stamp_threats", stamp_threats, METH_VARARGS, "worker_ai._stamp_units(blocked, units, width, height)"},
     {"any_lit", any_lit, METH_VARARGS, "World.any_visible and WorkerKnowledge.sees: any lit tile in (x, y, w, h)"},
     {"stale_tiles", stale_tiles, METH_VARARGS, "WorkerKnowledge._stale(visible, terrain rows, remembered, width, height)"},
-    {"first_site", first_site, METH_VARARGS, "ai.first_site from the arguments ai.site_inputs makes"},
+    {"site_search", site_search, METH_VARARGS, "ai.site_search: the ring, the corner, rng.random, then what ai.site_inputs makes"},
     {NULL, NULL, 0, NULL},
 };
 

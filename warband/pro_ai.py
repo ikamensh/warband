@@ -38,7 +38,7 @@ import random
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 
-from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, first_site, known_enemy_buildings, known_mines, release_arrived, site_ring
+from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_search
 from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, tile_center
 from warband.races import RACES
 from warband.rules import BUILDINGS, MINE_SLOTS, BuildingType, UnitType
@@ -619,11 +619,7 @@ class ProBrain:
 
     def _site(self, world: World, building_type: BuildingType, anchor: Point, rng: random.Random,
               taken: Sequence[tuple[Pos, int]] = ()) -> Pos | None:
-        size = BUILDINGS[building_type].size
-        left, top = int(anchor[0]) - size // 2, int(anchor[1]) - size // 2
-        candidates: list[tuple[float, Pos]] = [(distance + rng.random() * 2, (left + dx, top + dy))
-                                               for distance, dx, dy in site_ring(BUILD_MIN_DISTANCE + size, BUILD_MAX_DISTANCE)]
-        return first_site(world, building_type, self.player, candidates, taken)
+        return site_search(world, building_type, self.player, anchor, rng, BUILD_MIN_DISTANCE, BUILD_MAX_DISTANCE, taken)
 
     # -- Training -------------------------------------------------------------------
 

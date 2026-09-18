@@ -93,14 +93,25 @@ def crowds(pos: Pos, size: int, other: Pos, other_size: int) -> bool:
     return abs(pos[0] - other[0]) < size + other_size - 1 and abs(pos[1] - other[1]) < size + other_size - 1
 
 
+def site_search(world: World, building_type: BuildingType, player: int, anchor: Point, rng: random.Random,
+                near: int, far: int, taken: Sequence[tuple[Pos, int]] = ()) -> Pos | None:
+    """Where *player* should put *building_type* near *anchor*: every spot at least *near* tiles plus the building's
+    size out and at most *far* (Chebyshev), scored by its distance plus a tiebreak of up to two tiles drawn from *rng*
+    in :func:`site_ring`'s order, and the best that :func:`first_site` allows.  The compiled simulation draws and
+    searches in C (``warband._native.site_search``), from :func:`site_inputs`."""
+    size = BUILDINGS[building_type].size
+    left, top = int(anchor[0]) - size // 2, int(anchor[1]) - size // 2
+    ring = site_ring(near + size, far)
+    if _native is not None:
+        return _native.site_search(ring, left, top, rng.random, *site_inputs(world, building_type, player, taken))
+    candidates = [(distance + rng.random() * 2, (left + dx, top + dy)) for distance, dx, dy in ring]
+    return first_site(world, building_type, player, candidates, taken)
+
+
 def first_site(world: World, building_type: BuildingType, player: int, candidates: list[tuple[float, Pos]],
                taken: Sequence[tuple[Pos, int]] = ()) -> Pos | None:
     """The first of *candidates* (``(score, spot)`` pairs), in their sorted order, that no site in *taken* crowds,
-    where :meth:`World.placeable` lets *player* put *building_type* and that :func:`keeps_paths_open`.  The compiled
-    simulation searches in C (``warband._native.first_site``), from :func:`site_inputs`."""
-    if _native is not None:
-        inputs = site_inputs(world, building_type, player, candidates, taken)
-        return _native.first_site(*inputs) if inputs is not None else None
+    where :meth:`World.placeable` lets *player* put *building_type* and that :func:`keeps_paths_open`."""
     size = BUILDINGS[building_type].size
     candidates.sort()
     free = (pos for _score, pos in candidates if not any(crowds(pos, size, other, other_size) for other, other_size in taken))
@@ -110,15 +121,14 @@ def first_site(world: World, building_type: BuildingType, player: int, candidate
     return None
 
 
-def site_inputs(world: World, building_type: BuildingType, player: int, candidates: list[tuple[float, Pos]],
-                taken: Sequence[tuple[Pos, int]]) -> tuple[Any, ...] | None:
-    """What ``warband._native.first_site`` needs to search as :func:`first_site` does; None when no site will do."""
+def site_inputs(world: World, building_type: BuildingType, player: int, taken: Sequence[tuple[Pos, int]]) -> tuple[Any, ...]:
+    """What ``warband._native.site_search`` needs beside the ring to search as :func:`first_site` does: first whether
+    any spot can do at all (the prerequisite stands), then the ground and what stands on it."""
     blockers = world.placement_blockers(building_type, player)
-    if blockers is None:
-        return None
-    standing, mines = blockers
-    return (candidates, BUILDINGS[building_type].size, taken, world.terrain, Terrain.GRASS, world._blocked, world.explored[player],
-            standing, mines, [b.rect for b in world.player_buildings(player)], world.width, world.height, MINE_CLEARANCE)
+    standing, mines = blockers if blockers is not None else ([], [])
+    return (blockers is not None, BUILDINGS[building_type].size, taken, world.terrain, Terrain.GRASS, world._blocked,
+            world.explored[player], standing, mines, [b.rect for b in world.player_buildings(player)], world.width,
+            world.height, MINE_CLEARANCE)
 
 
 def site_ring(inner: int, outer: int) -> tuple[tuple[float, int, int], ...]:
@@ -432,11 +442,7 @@ class Brain:
         return min(free, key=lambda m: dist(m.center, hall.center)) if free else None
 
     def _site(self, world: World, building_type: BuildingType, anchor: Point, rng: random.Random) -> Pos | None:
-        size = BUILDINGS[building_type].size
-        left, top = int(anchor[0]) - size // 2, int(anchor[1]) - size // 2
-        candidates: list[tuple[float, Pos]] = [(distance + rng.random() * 2, (left + dx, top + dy))
-                                               for distance, dx, dy in site_ring(BUILD_MIN_DISTANCE + size, BUILD_MAX_DISTANCE)]
-        return first_site(world, building_type, self.player, candidates)
+        return site_search(world, building_type, self.player, anchor, rng, BUILD_MIN_DISTANCE, BUILD_MAX_DISTANCE)
 
     # -- Training ------------------------------------------------------------------
 
