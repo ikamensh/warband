@@ -10,7 +10,7 @@ passive mechanic the simulation applies:
 | race   | passive                                                  | arts                         |
 |--------|----------------------------------------------------------|------------------------------|
 | Humans | Drill: units train 15 % faster                            | Horse Breeding, Blessing     |
-| Orcs   | Frenzy: +25 % damage below half health; tougher, slower to arm | Bloodlust, Plunder      |
+| Orcs   | Frenzy: +25 % damage below half health; tougher, thinner armour | Bloodlust, Plunder     |
 | Elves  | Keen eyes: +2 sight, rangers shoot a tile farther; lighter | Longbows, Regrowth          |
 | Dwarves| Stonework: buildings +25 % hp and +2 armour; sturdier, slower | Deep Mining, Blasting Powder |
 """

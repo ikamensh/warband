@@ -165,10 +165,10 @@ PRO_FOR: dict[Difficulty, tuple[str, ...]] = {Difficulty.HARD: ("pro-hard",),
 #: ``tools/arena.py``; the games behind the numbers are in ``docs/ai-ladder.md``. Shown on the New game screen so a player can see what
 #: they are picking rather than guess from a word.
 DIFFICULTY_ELO: dict[Difficulty, int] = {
-    Difficulty.EASY: 740,
+    Difficulty.EASY: 860,
     Difficulty.MEDIUM: 1000,
-    Difficulty.HARD: 1250,
-    Difficulty.MASTER: 1510,  # the rung above the 1450 brain it replaced: 57–61% against it over four seed sets
+    Difficulty.HARD: 1350,
+    Difficulty.MASTER: 1590,
 }
 
 #: One line per setting, for the same screen.

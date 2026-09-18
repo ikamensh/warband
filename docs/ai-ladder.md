@@ -148,8 +148,28 @@ odds. `--proximity 0` gives the old flat fit.
 ## The difficulty settings
 
 What the New game screen offers, and what each one is worth. 60 seeds, both
-corners, every map size, under fog, 720 games, Medium anchored at 1000,
-measured on 2026-09-16 after blows were given a turn and a wind-up and shots
+corners, every map size, all five layouts in turn, under fog, 720 games,
+Medium anchored at 1000, measured on 2026-09-18 after the balance merge
+(mine cap, prices, race numbers; `docs/balance.md`) and the rules that went
+live with Warband 0.2.26:
+
+| setting | Elo | 90% interval | plays |
+|---------|-----|--------------|-------|
+| Easy | 856 | 801 .. 905 | `ai.Brain`, the Easy profile |
+| Medium | 1000 | — | `ai.Brain`, what Normal and Hard both were |
+| Hard | 1353 | 1295 .. 1433 | `pro_ai.ProBrain`, `pro-hard` |
+| Master | 1589 | 1532 .. 1700 | `pro_ai.ProBrain`, `pro-vanguard` or `pro-warden`, drawn with the map |
+
+Each beats the one below it 69%, 87% and 80% of the time. The screen had
+shown 740, 1250 and 1510: Easy and Hard were outside their intervals, and
+Master's number had been inferred from the brain it replaced rather than
+measured. Master is measured directly now. The 720 games took five minutes
+where the same protocol used to take hours: a match stops once it is settled
+rather than at the last building (`arena.SETTLED_ARMY`), which calls the same
+placements as playing it out.
+
+The measurement it replaced — the same protocol with the layout left to the
+seed, on 2026-09-16, after blows were given a turn and a wind-up and shots
 became projectiles (`docs/unit-motion.md` part 4):
 
 | setting | Elo | 90% interval | plays |
