@@ -18,14 +18,17 @@ Done and removed 2026-09-18, every one merged into main (whose code is live as
 Warband 0.2.30): WB-001 to WB-009, WB-015, WB-017 to WB-023 and WB-025 to
 WB-034. Their acceptance and evidence are in
 [the backlog at `1a6e08b`](https://github.com/ikamensh/warband/blob/1a6e08b73872cb595756a9d4ba7bc96c685c5ef0/BACKLOG.md).
-Removed later the same day: WB-011 and WB-016, live as Warband 0.2.32, and
-WB-010, live as 0.2.33 (its record is [the backlog at `5cb5959`](https://github.com/ikamensh/warband/blob/5cb5959df79bc09042e6f597736d7e43240a15a2/BACKLOG.md)); the first two's
-records are in [the backlog at `8a13fae`](https://github.com/ikamensh/warband/blob/8a13faeb65a0457ec0cd65d53e0461f01a734b49/BACKLOG.md).
+Removed later the same day, each with its record in the backlog at the
+commit named: WB-011 and WB-016, live as Warband 0.2.32
+([`8a13fae`](https://github.com/ikamensh/warband/blob/8a13faeb65a0457ec0cd65d53e0461f01a734b49/BACKLOG.md));
+WB-010, live as 0.2.33
+([`5cb5959`](https://github.com/ikamensh/warband/blob/5cb5959df79bc09042e6f597736d7e43240a15a2/BACKLOG.md));
+WB-012, live as 0.2.34
+([`12ecf88`](https://github.com/ikamensh/warband/blob/12ecf88fef5ba74fe6c29a76bdf4defcf0774a02/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-040 | First | proposed | A fast test suite by default; slow tests on demand and in CI; better tests on the way | User 2026-09-18 |
-| WB-012 | Next | in progress | Support three- and four-human online FFA | Suggested |
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
@@ -35,76 +38,6 @@ records are in [the backlog at `8a13fae`](https://github.com/ikamensh/warband/bl
 | WB-038 | Next | proposed | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | proposed | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
-
-## WB-012 — Three-/four-human online FFA
-
-Local skirmish supports two to four players; current hosted rooms and
-WarbandMatch are two-seat. Generalize seats, lobby/race choices, ready/start,
-disconnect/rejoin and results through S2D-011, then adapt the game. Reuse the
-free-for-all resignation rules (`World.resign`: the player's buildings stay,
-abandoned). Spectators, teams and ranked matchmaking can wait.
-
-**Done when:** three and four actual clients complete seeded matches, recover a
-disconnection and handle a resignation without premature victory or seat leaks.
-Require WB-011 before presenting this as public competitive play.
-
-**Started 2026-09-18** (Ilya: "later is now"), branch `online-ffa` (worktree
-`../warband-ffa`), on the engine's room seats ([S2D-011](../saga2d/BACKLOG.md),
-branch `room-seats`). WB-011 is live, so what a seat is sent is already its own.
-
-**Acceptance (recorded 2026-09-18 before implementation):**
-
-1. Rooms of two to four humans. Warband's room takes a `players` option
-   (2–4, two by default) and a race for each seat (`None` drawn from the
-   seed), and `WarbandMatch` has that many seats. The room a player creates
-   from Multiplayer has the player count chosen on the New game screen.
-2. Every seat still in the match gives orders to its own forces and is sent
-   its own snapshot. Play starts and goes on while every seat still in the
-   match is connected (the engine's `needed`).
-3. Resigning online: the match menu's Resign asks first, then gives a
-   `resign` order. With three or four players, the resigning player's
-   buildings stay, abandoned (WB-007), and the rest play on; with two, the
-   other player wins. A seat that has resigned or been eliminated is no
-   longer needed: its player may leave without pausing the room.
-4. No premature victory and no seat leaks. Victory is decided among the
-   players still in. A seat that leaves while still in the match pauses the
-   room until it rejoins with its token. A decided room whose players have
-   all left expires.
-5. Results: each client's result says victory or defeat, and a player who is
-   out while the others play on is told so and may leave.
-6. Proof: real three- and four-client matches over the server process, with a
-   disconnection and rejoin, a resignation in a four-player match without
-   premature victory, and the last two fighting it out. A client from before
-   larger rooms is refused from them with the update message, and the online
-   AI client takes a seat in a larger room. The suite passes; the simulation
-   fingerprint does not move.
-7. Shipped with Saga2D 0.3.8 (S2D-011). Tribes and Shardbound pin 0.3.8, so
-   does Warband, and one server rollout carries the engine and Warband's
-   authority.
-
-**Done and live 2026-09-18 as Warband 0.2.34.** Built on `online-ffa`
-(`4edae3f`; the match menu's Resign `5936663`; the play-together guide
-`e8320ee`; the Saga2D 0.3.8 pin `2ef6f92`) and merged into main as `4e092a0`.
-Criteria 1 to 7 hold. `tests/warband/test_online_ffa.py` plays real matches
-over the server process: three humans in one room, each sent only its own; a
-resignation in four leaves three fighting with the resigner's buildings
-standing abandoned, and nobody wins until the last two have decided it;
-resigning someone else is refused; a seat still in the match that leaves
-pauses the room until it rejoins with its token; a client from before larger
-rooms is refused with the update message; the online AI takes a seat in a
-room of three; the match menu's Resign asks first, and the player who is out
-is told so and may watch the rest (frames in `docs/evidence/online-ffa/`,
-looked at). The engine's journeys (S2D-011, Saga2D `11adf41`) add that a room
-whose players are all out expires once they leave. The suite passed 1,369
-tests and the simulation fingerprint is unchanged (`e6b0ed6f…`); main ran
-[Tests 35391932290](https://github.com/ikamensh/warband/actions/runs/35391932290)
-and [native package checks 35391932264](https://github.com/ikamensh/warband/actions/runs/35391932264).
-One server rollout carried Saga2D 0.3.8 and the authority
-([its record](../saga-online/docs/wb012-rollout.md)): on the live bundle
-`3bf61237…` a three-seat room filled, started with 3 of 3 and refused a client
-from before 0.3.8; [promotion 35394864959](https://github.com/ikamensh/saga-online/actions/runs/35394864959)
-published 0.2.34, and [the public download checks 35395000096](https://github.com/ikamensh/saga-online/actions/runs/35395000096)
-passed on Windows and macOS.
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
