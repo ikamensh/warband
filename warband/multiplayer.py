@@ -11,6 +11,15 @@ from warband.view import check_memory
 
 
 HIT_AUDIO_FIELDS = frozenset({'source_type', 'target_type', 'target_armor', 'target_complete'})
+#: The room publishes every other 20 Hz tick: the interval to present over until arrivals have been measured.
+SNAPSHOT_INTERVAL = 0.1
+#: Units cover what the latest snapshot says a little more slowly than snapshots come, so one that is a little late
+#: finds them still moving instead of stopped.
+SLACK = 1.25
+#: A gap longer than this is a stall, a pause or a resume: what arrives after it is placed, not slid into.
+STALL = 0.5
+#: Silence this long from a ready room is said on the status line.
+QUIET = 1.0
 
 
 def _room_memory(game):
@@ -28,6 +37,8 @@ class NetworkGameScene(GameScene):
         self._network_steps = 0
         self._last_time = time.monotonic()
         self._elapsed = 0.
+        self._snapshot_at = 0.0  # scene clock of the latest snapshot
+        self._interval = SNAPSHOT_INTERVAL  # measured time between snapshots, smoothed
         data = session.state
         super().__init__(World.from_dict(data['world']), data['seed'], settings=settings, player=session.player, ranked=False)
         self.brains = []
@@ -79,9 +90,16 @@ class NetworkGameScene(GameScene):
             else:
                 self.say('Match paused — waiting for your partner.' if self.session.player == 0 else
                          'Disconnected — return to the title and rejoin the host.')
+        elif self.clock - self._snapshot_at > QUIET:
+            self.say(f'No word from the server for {self.clock - self._snapshot_at:.0f} s — the match goes on when it answers.')
         if self._revision == self.session.revision:
             return
         self._revision = self.session.revision
+        gap = self.clock - self._snapshot_at
+        drawn = self.view.drawn_positions() if gap <= STALL else {}  # after a stall or a resume, place; never slide stale motion
+        if gap <= STALL:
+            self._interval = min(.25, max(.05, .8 * self._interval + .2 * gap))
+        self._snapshot_at = self.clock
         data = self.session.state
         fresh = World.from_dict(data['world'])
         for old, new in zip(self.world.players, fresh.players):
@@ -105,8 +123,15 @@ class NetworkGameScene(GameScene):
         self._handle_events(events)
         self._prune_selection()
         self._refresh_card()
-        self.view.sync()
+        self.view.present_from(drawn)
+        self.view.sync(fraction=self._motion_fraction())
         self._check_game_over()
+
+    def _motion_fraction(self):
+        """How far units have moved on from where they were drawn towards the latest snapshot."""
+        if self._game_over or self.world.winner is not None or not self.player.alive:
+            return 1.0
+        return min(1.0, (self.clock - self._snapshot_at) / (self._interval * SLACK))
 
     def order(self, action, *args, **kwargs):
         """Send the order to the match's authority.  One that cannot be sent is refused here and now; what the

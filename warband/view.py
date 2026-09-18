@@ -489,6 +489,15 @@ class MapView:
         """
         self._previous_positions = {u.id: u.pos for u in self.world.units.values() if not u.hidden}
 
+    def drawn_positions(self) -> dict[int, tuple[float, float]]:
+        """Where every unit in the open is drawn now."""
+        return {u.id: self.unit_position(u) for u in self.world.units.values() if not u.hidden}
+
+    def present_from(self, drawn: dict[int, tuple[float, float]]) -> None:
+        """Move units on from *drawn*, where they were drawn before a network snapshot replaced the world, towards
+        where the snapshot puts them, as the scene's fraction runs to one.  A unit not in *drawn* is placed."""
+        self._previous_positions = drawn
+
     def unit_position(self, unit: Unit) -> tuple[float, float]:
         """The presented ground point, shared by the sprite and attached overlays."""
         previous = self._previous_positions.get(unit.id, unit.pos)
