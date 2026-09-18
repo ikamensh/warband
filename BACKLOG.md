@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-039**; a new
+section; git history keeps the record. The last ID given is **WB-041**; a new
 item takes the next one and updates this line.
 
 Done and removed 2026-09-18, every one merged into main (whose code is live as
@@ -21,6 +21,7 @@ WB-034. Their acceptance and evidence are in
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
+| WB-040 | First | proposed | A fast test suite by default; slow tests on demand and in CI; better tests on the way | User 2026-09-18 |
 | WB-010 | Later | proposed | Smooth online movement and make connection problems understandable | Suggested |
 | WB-011 | Later | proposed | Keep fog-hidden state out of opponents' network snapshots | Suggested |
 | WB-012 | Later | proposed | Support three- and four-human online FFA | Suggested |
@@ -33,6 +34,7 @@ WB-034. Their acceptance and evidence are in
 | WB-037 | Next | proposed | Answer a tower rush without stopping the economy: one tower by the mine now halts Master's gold | User 2026-09-18 |
 | WB-038 | Next | proposed | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | proposed | Stop chiming on every selection | User 2026-09-18 |
+| WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 
 ## WB-010 — Online responsiveness and connection feedback
 
@@ -403,3 +405,143 @@ all four race voices is what was chosen. A test pins it: the new cue's level is
 under the order cue's (or there is no sound), and a burst of selections
 plays one sound. `SOUND_VERSION` is bumped so cached WAVs are made again,
 and Ilya has heard it in a match. Presentation only.
+
+## WB-040 — A fast suite by default; slow tests on demand and in CI
+
+Ilya, 2026-09-18, high priority: make the test suite dramatically faster.
+Split it into fast tests that run by default and slow ones that run on
+demand and in CI, write the agent instructions for both, and improve the
+tests on the way (merge them, state properties, think long term).
+
+Where it stands: 1,284 tests in 79 files, 13,300 lines of tests for 25,000
+lines of game and tools. CI runs them all in one process: 508 s on the last
+green run (1,272 passed, 12 skipped). AGENTS.md says about four minutes
+locally. No test is marked slow, nothing runs in parallel, and no Saga repo
+has a split yet. The code shows the expensive kinds: whole matches (arena
+tests play up to 20 minutes, some twice to check the settled rule;
+`test_pro_ai.py` plays a six-minute four-player match), matrices that build
+a scene per case (146 layout cases, 129 melee-presentation cases), and art
+and audio generation. Start with `pytest --durations=0` on a quiet machine
+to see where the time actually goes.
+
+The split:
+
+* `uv run pytest -q` runs the fast tier, which an agent runs after every
+  change. Aim for about 30 s for the whole tier on the Mac, with a per-test
+  budget (half a second, say).
+* `@pytest.mark.slow` marks the rest, and `--slow` (a conftest option) runs
+  them. The default run lists them as deselected, not skipped, so nobody
+  forgets they exist. A slow test's docstring says why it cannot be fast.
+* CI runs both tiers on every push, the slow tier in parallel with
+  `pytest-xdist` (the repo is public, so its runners have four cores). CI
+  also fails when an unmarked test goes over the budget, so the fast tier
+  cannot slow down unnoticed.
+
+Faster, not only split:
+
+* Expensive things that never change (generated maps, loaded painted
+  sheets, synthesized clips) are built once per session, not once per
+  parametrized case. Nothing mutable is shared between tests.
+* A test of the arena's machinery (determinism, placements, the settled
+  rule) plays the shortest match on the smallest map that shows the
+  property. How strong an AI is gets settled by `tools/arena.py`, not by
+  the suite.
+* Only valid cases are generated: the 12 skipped tests are production-UI
+  cases for another race's art.
+
+Better, not only faster:
+
+* The three kinds of test that earn their keep: executability (every
+  module and screen runs), properties (every World order is atomic, save
+  and load and replay round-trip from any seed and moment, maps are fair
+  over seeds, layouts and player counts, paths keep their invariants), and
+  regressions (the fuzz-seed tests stay). For the model and pathfinding,
+  try `hypothesis` with few examples locally and more in CI.
+* Near-duplicate tests merge into one property whose failure message names
+  the failing case.
+* Tests check behaviour through public interfaces. Today 206 lines in 38
+  files touch private members. The most common, `game._teardown()` (42),
+  shows the engine's test support has no public way to make a second game,
+  which is an S2D item. Each of the rest is a missing public accessor or a
+  test of internals.
+* Tests that pin tuning constants go (`PRO_WARDEN.towers_early == 1`): they
+  break on every balance change and catch nothing.
+
+The guard: measure coverage of `warband/` before and after
+(`uv run --with coverage`). The full suite's coverage must not drop, and the
+fast tier alone should cover about 85 % of the lines the full suite covers,
+so it is a real check rather than a smoke test.
+
+AGENTS.md's Commands and Rules say which tier runs when: the fast one after
+every change; the slow one on demand, before pushing a change to rules, AI,
+replays, art or audio, and always in CI. They also say what counts as slow,
+where a new test goes, and what the budget is. The stack root's "every repo:
+`uv run pytest -q`" stays true. Once a second Saga game wants the same
+split, the option and the budget check move into `saga2d.testing`, where
+the fixtures already live.
+
+Other sessions edit tests all the time, so do this on a branch in its own
+worktree. Land the mechanism first as one small commit (marker, option, CI,
+AGENTS.md), then improve the files a few at a time, rebasing often.
+
+**Done when:** the fast tier runs in about 30 s on the Mac and the whole
+suite in under four minutes in CI (from 8½). The budget check fails CI when
+a test goes over. Coverage before and after is recorded here and meets the
+guard. The suite passes three runs in a row under `pytest -n auto`, and
+AGENTS.md documents both tiers.
+
+## WB-041 — Folders for the source tree
+
+Ilya, 2026-09-18: the package has no folder structure, so group what
+belongs together, the way a person would. `warband/` holds 43 modules side
+by side, from 17 lines to 2,887. Four of them hold nearly half of its 18,900
+lines:
+`model.py` (2,887), `scene.py` (2,398), `textures.py` (2,215) and
+`pro_ai.py` (1,148). The imports already fall into layers, so the folders
+can follow them. A proposal, not a decision:
+
+```
+warband/
+  sim/     rules, races, model, path, mapgen, settlement, worker_ai, worker_knowledge
+  online/  authority (the server's game), online_ai (a headless player)
+  ai/      ai, pro_ai, archetypes
+  arena/   arena, balance, telemetry
+  player/  profile, scores, replay
+  art/     textures, effects, ambience, production, visual_lint
+  audio/   sound, voices, music, instruments, pieces, combat_sound, deaths, wreckage
+  ui/      scene, view, title, multiplayer, profile_scene, replay_scene, score_scene, tutorial, style, icons
+```
+
+`sim/` is today's authoritative closure: `tools/ci_compatibility.py`
+hashes `authority` and everything it imports. A test keeps the layers
+honest, either an AST walk or `import-linter`: `sim` imports nothing above
+it; `ai`, `arena` and `player` never import `art`, `audio` or `ui`; and
+`art` and `audio` never import `ui`. After the move, split the four giants
+along their seams, each split its own pure move: `model` into orders,
+movement, combat, economy, construction and vision; `scene` into the match,
+the HUD, overlays and input; `textures` into terrain, units, buildings and
+painted sheets; `pro_ai` into economy, military and memory.
+
+What moves with it:
+
+* Imports in the package, the tools and the 79 test files (the tests can
+  mirror the new tree), and the hidden imports in `tools/package.py`. 58
+  docs name `warband/<module>.py` paths; `make check-links` catches links
+  but not paths written in prose.
+* The authoritative contract hashes file paths, and saga-online names
+  `warband.authority:ONLINE` in 11 places and `warband.online_ai` in 4. So
+  the move changes the contract and ships with a server rollout. The next
+  rules series (WB-024, WB-016, WB-037) is the natural one. Saves and
+  replays are JSON, with no pickles, so no stored class paths need
+  migrating.
+* Every open branch conflicts with a tree move (the campaign, `fast-sim`,
+  rules work). Do it right after they land and tell the running sessions
+  first. Make the move one mechanical commit, `git mv` plus import rewrites
+  and nothing else, so history and blame follow the files.
+
+**Done when:** `warband/` holds only `__init__.py`, `__main__.py` and the
+subpackages, and the layer test is in the suite. The simulation
+fingerprint and the replay tests are unchanged by the move, since it is
+only a move. The suite, fuzz, a packaged native build and the online smoke
+pass; saga-online's references are updated and the rollout is done.
+AGENTS.md describes the tree and says where new code goes.
