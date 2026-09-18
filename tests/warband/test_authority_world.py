@@ -40,3 +40,40 @@ def test_an_accepted_order_is_given_to_the_running_world() -> None:
     match.apply(1, {'action': 'move', 'args': [[worker.id], [worker.x + 3, worker.y]], 'kwargs': {}})
     assert match.world is world and worker.orders, "the order went to a copy of the world"
 
+
+def test_a_snapshot_tells_a_seat_neither_the_servers_dice_nor_what_the_other_seat_has_seen() -> None:
+    """The save format is the server's; a seat gets the match without the random stream (every damage roll to
+    come) and without the other seat's explored ground and remembered map, which also were a third of its bytes."""
+    from warband.model import World
+
+    match = WarbandMatch(seed=3)
+    for _ in range(40):
+        match.step()
+    world = match.world
+    for seat, other in ((0, 1), (1, 0)):
+        sent = match.snapshot(seat)['world']
+        assert World.from_dict(sent).rng.getstate() != world.rng.getstate(), "the snapshot carries the server's random stream"
+        assert sent['explored'][seat] == world.to_dict()['explored'][seat] and not any(bytes.fromhex(sent['explored'][other]))
+        theirs = sent['worker_knowledge'][other]
+        assert not theirs['buildings'] and not theirs['mines'] and not any(theirs['terrain'])
+        assert sent['worker_knowledge'][seat] == world.worker_knowledge[seat].to_dict()
+        assert sent['units'] == world.to_dict()['units'] and sent['buildings'] == world.to_dict()['buildings']
+
+
+def test_a_snapshot_is_the_receivers_to_keep() -> None:
+    match = WarbandMatch(seed=3)
+    sent = match.snapshot(0)
+    sent['world']['units'].clear()
+    sent['events'].append('scribble')
+    assert match.world.units and 'scribble' not in match.events and match.snapshot(0)['world']['units']
+
+
+def test_a_checkpoint_keeps_the_whole_match() -> None:
+    from warband.authority import ONLINE
+
+    match = WarbandMatch(seed=3)
+    for _ in range(40):
+        match.step()
+    spec = ONLINE['warband-v2']
+    restored = spec.restore(spec.checkpoint(match))
+    assert restored.world.to_dict() == match.world.to_dict() and restored.world.rng.getstate() == match.world.rng.getstate()

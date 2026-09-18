@@ -1,10 +1,11 @@
 """Authoritative RTS matches and server registration, independent of client scenes."""
 import inspect
-from copy import deepcopy
+import random
 
 from saga2d import CommandError
 from warband import mapgen
 from warband.model import World, RuleError
+from warband.worker_knowledge import WorkerKnowledge
 from saga2d.server.games import GameSpec, option_choice, option_int, option_keys, option_seed
 from warband.rules import BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
 
@@ -12,6 +13,8 @@ GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 's
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building'}
 SETTLEMENT_ORDERS = {'plan_building', 'order_unit', 'order_upgrade', 'set_assembly', 'cancel_plan'}
 ORDERS = GROUP_ORDERS | BUILDING_ORDERS | SETTLEMENT_ORDERS | {'build'}
+#: What a seat is told of the server's random stream: a fixed state, so no client can read the damage rolls to come.
+NO_DICE = random.Random(0).getstate()
 
 
 class WarbandMatch:
@@ -31,7 +34,20 @@ class WarbandMatch:
         self.events = self.events[-128:]
 
     def snapshot(self, player):
-        return {'seed': self.seed, 'world': deepcopy(self.world.to_dict()), 'events': deepcopy(self.events)}
+        """The match for seat *player*: the world's save (``to_dict`` builds it afresh, the receiver may keep it)
+        without what is the server's alone or the other seat's: the random stream, the ground the other seat
+        has explored and the map it remembers."""
+        world = self.world.to_dict()
+        world['rng'] = NO_DICE
+        unexplored = bytes(self.world.width * self.world.height).hex()
+        unknown = WorkerKnowledge(self.world.width, self.world.height).to_dict()
+        for seat in range(len(self.world.players)):
+            if seat != player:
+                world['explored'][seat], world['worker_knowledge'][seat] = unexplored, unknown
+        return {'seed': self.seed, 'world': world, 'events': self._recent_events()}
+
+    def _recent_events(self):
+        return [[index, dict(fields)] for index, fields in self.events]
 
     def step(self):
         if self.world.winner is None:
@@ -120,7 +136,7 @@ def _create(options):
 
 
 def _checkpoint(match):
-    return {'seed': match.seed, 'world': deepcopy(match.world.to_dict()), 'events': deepcopy(match.events)}
+    return {'seed': match.seed, 'world': match.world.to_dict(), 'events': match._recent_events()}
 
 
 def _restore(snapshot):
