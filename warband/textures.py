@@ -54,6 +54,8 @@ CHOP_FRAMES = ("chop1", "chop2", "chop3", "chop4")
 TREE_VARIANTS = 20
 ROCK_VARIANTS = 20
 MINE_VARIANTS = 20
+PAINTED_MINES = (0, 5, 10, 15)  # the stand-in variants the painted mine sheets repaint; the map draws only these when they exist
+MINE_LOOKS = ("intact", "active")  # a mine is worked while a peasant is inside; it is never damaged
 
 Color = tuple[int, int, int]
 
@@ -486,10 +488,25 @@ def _resource_image(kind: str, variant: int, theme: MapTheme, scale: float) -> I
     return _tree_ground(image, variant, theme, scale) if kind == "tree" else image
 
 
-def mine_image(game: Game, variant: int) -> str:
-    key = f"mine.{variant}"
+def mine_image(game: Game, variant: int, look: str = "intact") -> str:
+    """Register (once) and return the key of a gold mine's image: painted mine *variant* (of
+    :func:`mine_variants`) in *look*, "active" while a peasant works inside (a look without a sheet
+    shows the intact painting), or, without the painted sheets, the low-poly stand-in, which has
+    only the one look.  The mine is nobody's, so nothing recolours it."""
+    if look not in MINE_LOOKS:
+        raise ValueError(f"unknown mine look {look!r}")
+    if restyled_mines() is None:
+        key = f"mine.{variant}"
+        if not game.assets.has_image(key):
+            game.assets.image_from_pil(key, _resource_image("mine", variant, MapTheme.SUMMER, game.backend.scale_factor))
+        return key
+    if restyled_mines(look) is None:
+        look = "intact"
+    key = mine_key(PAINTED_MINES[variant], look)
     if not game.assets.has_image(key):
-        game.assets.image_from_pil(key, _resource_image("mine", variant, MapTheme.SUMMER, game.backend.scale_factor))
+        sheet, frames = restyled_mines(look)
+        placements[key] = Placement(sheet.logical_size, sheet.drop, 1.5 * TILE, head=figure_top(sheet, frames[key]))
+        game.assets.image_from_pil(key, frames[key])
     return key
 
 
@@ -2029,6 +2046,22 @@ def restyled_buildings(race: Race, look: str = "intact") -> tuple[restyle.Sheet,
     return _painted(f"{race.value}.buildings.{look}", [building_key(bt, 0, race, look) for bt in BuildingType if bt is not BuildingType.GOLD_MINE])
 
 
+def mine_key(variant: int, look: str = "intact") -> str:
+    """The painted gold mine that repaints stand-in *variant*, in *look*."""
+    return f"mine.{variant}.{look}"
+
+
+@lru_cache(maxsize=None)
+def restyled_mines(look: str = "intact") -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
+    """The hand-painted gold mines in one look (the stand-in variants of :data:`PAINTED_MINES`), or None."""
+    return _painted(f"mine.{look}", [mine_key(variant, look) for variant in PAINTED_MINES])
+
+
+def mine_variants() -> int:
+    """How many different gold mines the map draws: the painted ones, or every stand-in."""
+    return len(PAINTED_MINES) if restyled_mines() is not None else MINE_VARIANTS
+
+
 def _recoloured(image: Image.Image, player: int) -> Image.Image:
     """A player-0 painted frame in *player*'s team colour."""
     return image if player == 0 else restyle.recolor(image, team_color(0), team_color(player))
@@ -2056,7 +2089,7 @@ def _painted_portrait(subject: UnitType | BuildingType, player: int, race: Race)
     if isinstance(subject, UnitType):
         painted, key = restyled_frames(race, subject, None), unit_key(subject, 0, 2, "stand", None, race)
     elif subject is BuildingType.GOLD_MINE:
-        return None
+        painted, key, player = restyled_mines(), mine_key(PAINTED_MINES[0]), 0  # nobody's mine: never recoloured
     else:
         painted, key = restyled_buildings(race), building_key(subject, 0, race)
     if painted is None:

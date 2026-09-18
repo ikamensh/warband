@@ -143,6 +143,20 @@ def test_the_tool_lays_the_nine_buildings_out_on_one_sheet_with_a_shared_anchor(
     assert subject.row_names(sheet)[1] == "col 0 Bolt Tower, col 1 Timber Works, col 2 Forge"
 
 
+def test_the_tool_lays_four_mines_out_on_a_three_by_four_sheet_that_image_models_paint_as_it_is() -> None:
+    """The painters keep a layout only on a canvas of their own shapes: the mine sheet is 3:4, and the canvas asked
+    for is the one nearest a sheet's shape. No cell is cut off, none is recoloured blue."""
+    subject = tool.Mines()
+    sheet, images = subject.build_sheet()
+    assert (sheet.cols, sheet.rows) == (2, 2) and [c.tags["variant"] for c in sheet.cells] == list(textures.PAINTED_MINES)
+    assert sheet.size[0] / sheet.size[1] == pytest.approx(3 / 4, rel=0.01) and tool.aspect_ratio(sheet.size) == "3:4"
+    assert tool.aspect_ratio((1000, 1000)) == "1:1" and tool.aspect_ratio((1080, 606)) == "16:9"
+    for cell in sheet.cells:
+        alpha = np.asarray(images[cell.key])[..., 3]
+        assert alpha.max() > 0 and alpha[0].max() == 0 and alpha[-1].max() == 0 and alpha[:, 0].max() == 0 and alpha[:, -1].max() == 0
+    text = subject.prompt(sheet)
+    assert "2 rows x 2 columns" in text and "no blue" in text
+
 def test_a_look_sheet_is_built_from_the_installed_intact_painting(painted, monkeypatch) -> None:
     monkeypatch.setattr(tool, "RESTYLED", painted)
     with pytest.raises(FileNotFoundError, match="orc.buildings.intact"):
@@ -159,9 +173,11 @@ def test_selection_defaults_to_every_subject_of_the_race() -> None:
     parse = tool.argparse.ArgumentParser()
     parse.add_argument("--race", default="human"); parse.add_argument("--units", default=None)
     parse.add_argument("--buildings", action="store_true"); parse.add_argument("--looks", default="intact,active,damaged")
+    parse.add_argument("--mines", action="store_true")
     names = [s.name for s in tool.selected(parse.parse_args(["--race", "elf"]))]
     assert names[:3] == ["elf.peasant", "elf.peasant.gold", "elf.peasant.lumber"] and names[-3:] == ["elf.buildings.intact", "elf.buildings.active", "elf.buildings.damaged"]
     assert [s.name for s in tool.selected(parse.parse_args(["--buildings", "--looks", "damaged"]))] == ["human.buildings.damaged"]
     assert [s.name for s in tool.selected(parse.parse_args(["--units", "knight"]))] == ["human.knight"]
+    assert [s.name for s in tool.selected(parse.parse_args(["--mines"]))] == ["mine.intact", "mine.active"], "a mine has no damaged look"
     with pytest.raises(SystemExit):
         tool.selected(parse.parse_args(["--buildings", "--looks", "ruined"]))

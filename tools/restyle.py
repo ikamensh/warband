@@ -9,8 +9,8 @@
                                                             # --fix re-renders a sheet with the complaints in its prompt,
                                                             # --patch only the rows with questioned cells
 
-A *subject* is one unit of one race (a carrying peasant is its own subject) or the nine
-buildings of one race in one look: ``intact`` is painted from the low-poly stand-ins;
+A *subject* is one unit of one race (a carrying peasant is its own subject), the nine
+buildings of one race in one look, or (``--mines``) four of the gold mine's stand-ins in a look: ``intact`` is painted from the low-poly stand-ins;
 ``active`` (producing) and ``damaged`` are painted from the installed intact painting, so
 a building keeps its identity across its looks.  ``--race`` picks the race; ``--units``
 and ``--buildings`` (with ``--looks``) narrow the subjects, which are all of the race by
@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -274,6 +275,39 @@ Reply with one JSON object and nothing else:
 {{"cells": [{{"row": 0, "col": 0, "ok": true, "issue": ""}}, ...]}}
 List every cell of the rows shown. Keep issues short and concrete."""
 
+MINE_SUBJECT = ("a gold mine: a rocky outcrop studded with glittering gold crystals, with a timbered mine entrance (a dark opening "
+                "under heavy beams) at its foot and a short cart track leading out of it")
+MINE_STYLE = ("Re-render every cell as a polished, appealing sprite in a rich hand-painted fantasy style (Warcraft 2 / Heroes of Might "
+              "and Magic feel): weathered grey rock with volumetric shading, gold crystals with bright highlights, dark weathered timber "
+              "and iron rails, light from the upper left, a soft dark shadow on the ground at the foot of the rocks. The mine belongs to "
+              "no faction: no blue, no banners or flags. Sprites will be shown at about a third of this size, so keep shapes bold, edges "
+              "crisp and details large.")
+MINE_ACTIVE = ("being worked: lanterns lit and glowing warm on the beams, warm light from inside the entrance, and a small ore cart "
+               "heaped with gold standing on the track at the mouth. The change must read at a third of this size, so the warm light "
+               "in the opening is the main signal. No people and no smoke.")
+MINE_JUDGE = """You are checking a repainted sprite sheet of gold mines against its stand-ins. The image shows, for each row, the
+low-poly stand-in mines above and the painted mines below, labelled "row N: ..." and "col N".
+
+Work cell by cell, painted row only. Compare each painted mine with the stand-in directly above it. A cell is wrong if:
+- it is not a gold mine: a rocky outcrop with gold crystals and a timbered entrance at its foot;
+- its footprint, height or silhouette differs clearly from the stand-in, or it left its patch of ground;
+- the entrance, its beams, the cart track or the main crystal cluster is missing or moved;
+- any blue appears, or a banner or flag;
+- it contains people, animals, smoke or text.
+Style, texture and detail may differ freely; the painter is allowed to make the mine prettier.
+
+Reply with one JSON object and nothing else:
+{"cells": [{"row": 0, "col": 0, "ok": true, "issue": ""}, ...]}
+List every cell of the rows shown. Keep issues short and concrete, like "lost the entrance" or "crystals are blue"."""
+
+#: The canvases an OpenRouter image model paints (width:height); a sheet is painted on the nearest.
+ASPECTS = ("1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9")
+
+
+def aspect_ratio(size: tuple[int, int]) -> str:
+    """The painter's canvas nearest a sheet of *size*: a canvas of another shape makes the model lay the cells out anew."""
+    return min(ASPECTS, key=lambda a: abs(math.log(size[0] / size[1] * int(a.split(":")[1]) / int(a.split(":")[0]))))
+
 
 def geometry(sheet: restyle.Sheet, what: str) -> str:
     w, h = sheet.size
@@ -457,7 +491,87 @@ class Buildings:
         return path
 
 
-Subject = Unit | Buildings
+@dataclass(frozen=True)
+class Mines:
+    """The gold mine, which belongs to no race and no player: four of its stand-in variants
+    (:data:`textures.PAINTED_MINES`) in one look.  The intact look is painted from the stand-ins,
+    the active look (worked) from the installed intact painting.  Nothing recolours a mine."""
+
+    look: str = "intact"
+    chunk = (1, 2)
+
+    @property
+    def stage(self) -> int:
+        return 0 if self.look == "intact" else 1
+
+    @property
+    def name(self) -> str:
+        return f"mine.{self.look}"
+
+    @property
+    def description(self) -> str:
+        return MINE_SUBJECT
+
+    @property
+    def inventory(self) -> str:
+        return "one gold mine per cell, on its own patch of ground"
+
+    @property
+    def judge(self) -> str:
+        if self.look == "intact":
+            return MINE_JUDGE
+        return LOOK_JUDGE.format(look=self.look, brief=MINE_ACTIVE, forbidden="people or smoke")
+
+    def build_sheet(self) -> tuple[restyle.Sheet, dict[str, Image.Image]]:
+        keys = [(textures.mine_key(variant, self.look), {"variant": variant}) for variant in textures.PAINTED_MINES]
+        if self.look != "intact":
+            intact = Mines()
+            if not restyle.file(RESTYLED / intact.name, "png").exists():
+                raise FileNotFoundError(f"{self.name} is painted from the intact painting: install {intact.name} first")
+            base, painted = restyle.load_frames(RESTYLED / intact.name)
+            sheet = restyle.Sheet.layout(keys, cols=base.cols, cell=base.cell, origin=base.origin, scale=base.scale)
+            return sheet, {key: painted[textures.mine_key(tags["variant"])] for key, tags in keys}
+        meshes = {variant: textures._mine(variant) for variant in textures.PAINTED_MINES}
+        bounds = [r3.bounds(m, textures.PROJECTION) for m in meshes.values()]
+        half_w = max(max(-b[0], b[2]) for b in bounds)
+        top, below = max(-b[1] for b in bounds), max(b[3] for b in bounds)
+        height = int((top + below) * BUILDING_SCALE) + 2 * MARGIN
+        cell = (max(int(2 * half_w * BUILDING_SCALE) + 2 * MARGIN, round(height * 3 / 4)), height)  # a 3:4 sheet, a shape image models paint
+        origin = (cell[0] / 2, MARGIN + top * BUILDING_SCALE)
+        sheet = restyle.Sheet.layout(keys, cols=2, cell=cell, origin=origin, scale=BUILDING_SCALE)
+        images = {key: r3.render(meshes[tags["variant"]], textures.PROJECTION, scale=BUILDING_SCALE,
+                                 canvas=(cell[0] / BUILDING_SCALE, cell[1] / BUILDING_SCALE),
+                                 origin=(origin[0] / BUILDING_SCALE, origin[1] / BUILDING_SCALE))
+                  for key, tags in keys}
+        return sheet, images
+
+    def prompt(self, sheet: restyle.Sheet) -> str:
+        head = (f"Edit target: the attached sprite sheet of {len(sheet.cells)} gold mines from a 2D real-time strategy game (Warcraft 2 "
+                f"style, a 3/4 top-down camera on square ground tiles; each mine stands on its own patch of rocky ground that is part of "
+                f"the sprite). {geometry(sheet, 'mine')} Each cell is {MINE_SUBJECT}; the cells differ in how the rocks and crystals lie.")
+        if self.look == "intact":
+            return (f"{head}\n\n{MINE_STYLE}\n\n{PLAUSIBLE_BUILDINGS}\n\n"
+                    f"Keep exactly: each mine's position, footprint and ground patch, overall height and silhouette, and where its entrance, "
+                    f"beams, cart track and largest crystals are. No people, no animals, no smoke, no text. {background(sheet)}")
+        return (f"{head} The mines are already painted.\n\nRepaint every mine in exactly the same place, style, colours and shape, but "
+                f"{MINE_ACTIVE} Put no blue anywhere. {background(sheet)}")
+
+    def row_names(self, sheet: restyle.Sheet) -> list[str]:
+        return [", ".join(f"col {c.col} gold mine" for c in sheet.cells if c.row == row) for row in range(sheet.rows)]
+
+    def cell_name(self, cell: restyle.Cell) -> str:
+        return f"row {cell.row}, column {cell.col} (a gold mine)"
+
+    def preview(self, sheet: restyle.Sheet, frames: dict[str, Image.Image], out: Path) -> Path:
+        """One PNG: the originals (stand-ins, or the intact painting for the active look) above the painting."""
+        _, original = self.build_sheet()
+        keys = [c.key for c in sheet.cells]
+        path = out / f"{self.name}.png"
+        stacked([restyle.strip(original, keys, scale=0.5), restyle.strip(frames, keys, scale=0.5)]).save(path)
+        return path
+
+
+Subject = Unit | Buildings | Mines
 
 
 def stacked(strips: list[Image.Image]) -> Image.Image:
@@ -472,6 +586,8 @@ def stacked(strips: list[Image.Image]) -> Image.Image:
 def selected(args: argparse.Namespace) -> list[Subject]:
     """The subjects the options name: every unit and building look of the race unless ``--units``
     or ``--buildings`` narrows them."""
+    if args.mines:
+        return [Mines(look) for look in args.looks.split(",") if look in textures.MINE_LOOKS]
     race = Race(args.race)
     everything = args.units is None and not args.buildings
     subjects: list[Subject] = []
@@ -508,7 +624,8 @@ def cmd_render(args: argparse.Namespace, subjects: list[Subject]) -> None:
         if args.provider == "codex":
             restyle.render_with_codex(args.dir / f"{name}.png", text, out)
         else:
-            usage = restyle.render_with_openrouter(args.dir / f"{name}.png", text, out, model=args.model, api_key=restyle.openrouter_api_key())
+            usage = restyle.render_with_openrouter(args.dir / f"{name}.png", text, out, model=args.model, api_key=restyle.openrouter_api_key(),
+                                                   aspect_ratio=aspect_ratio(Image.open(args.dir / f"{name}.png").size))
             (args.dir / name / "usage.json").write_text(json.dumps(usage, indent=1))
         return f"{name}: wrote {out}"
 
@@ -752,6 +869,7 @@ def main() -> None:
     parser.add_argument("--units", default=None, help="comma-separated unit types, or 'all' (default with no --buildings: all)")
     parser.add_argument("--buildings", action="store_true", help="the race's building sheets (default with no --units: yes)")
     parser.add_argument("--looks", default=",".join(LOOKS), help=f"comma-separated building looks (default: {','.join(LOOKS)})")
+    parser.add_argument("--mines", action="store_true", help="the gold mine's sheets instead (no race; looks intact and active)")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("dump"); p.add_argument("dir", type=Path); p.set_defaults(run=cmd_dump)
     p = sub.add_parser("render"); p.add_argument("dir", type=Path); p.add_argument("--provider", default="codex", choices=["codex", "openrouter"])

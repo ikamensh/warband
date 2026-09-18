@@ -122,8 +122,9 @@ def capture_sheets(game: Game, output: Path) -> None:
             sheet(f"04_{theme.value}_{kind}s", f"{theme.value.title()} / {count} {kind} variants",
                   f"{description}. Every variant is selected by the live map.", cards, 5)
 
-    sheet("05_crystal_mines", "Twenty crystal deposits", "Distinct clusters and rock strata for the map's gold mines.",
-          [Card(textures.mine_image(game, index), f"Deposit {index + 1:02}", "Gold mine") for index in range(textures.MINE_VARIANTS)], 5)
+    sheet("05_crystal_mines", "Gold mines", "Every mine the map draws, idle and worked: the painted ones, or the low-poly deposits.",
+          [Card(textures.mine_image(game, index, look), f"Deposit {index + 1:02}", f"Gold mine, {look}")
+           for index in range(textures.mine_variants()) for look in textures.MINE_LOOKS], 4)
 
 
 def settlement() -> tuple[GameScene, list[Unit], list[tuple[int, int]]]:

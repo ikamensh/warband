@@ -286,6 +286,18 @@ def lint_drift(game: Game, store: ImageStore, *, budget: CpuBudget | None = None
                 if math.hypot(dx, dy) > DRIFT:
                     findings.append(Finding("drift", key, f"painted figure {dx:+.0f}, {dy:+.0f} px from the render it repaints",
                                             side_by_side(painted, placement, render, render_placement)))
+    for variant in textures.PAINTED_MINES:  # a painted mine stands where the stand-in it repaints stood
+        for look in textures.MINE_LOOKS:
+            key = textures.mine_key(variant, look)
+            if not game.assets.has_image(key):
+                continue
+            painted, placement = store.image(key), textures.placements[key]
+            render = textures._prop(f"{key}#render", textures._mine(variant), 1.5 * textures.TILE + textures.PAD, 2.0, front=1.5 * textures.TILE)
+            render_placement = textures.placements.pop(f"{key}#render")
+            a, b = centroid(painted, placement), centroid(render, render_placement)
+            if a is not None and b is not None and math.hypot(a[0] - b[0], a[1] - b[1]) > DRIFT:
+                findings.append(Finding("drift", key, f"painted mine {a[0] - b[0]:+.0f}, {a[1] - b[1]:+.0f} px from the stand-in it repaints",
+                                        side_by_side(painted, placement, render, render_placement)))
     return findings
 
 
@@ -298,8 +310,9 @@ def register_everything(game: Game, *, players: tuple[int, ...] = (0, 1), budget
     textures.register_static(game)
     for theme in MapTheme:
         textures.register_theme(game, theme)
-    for variant in range(textures.MINE_VARIANTS):
-        textures.mine_image(game, variant)
+    for variant in range(textures.mine_variants()):
+        for look in textures.MINE_LOOKS:
+            textures.mine_image(game, variant, look)
     for race in Race:
         for _ in textures.warm_units(game, [0], [race]):
             if budget is not None:
@@ -367,6 +380,11 @@ def lint_images(game: Game, store: ImageStore, *, budget: CpuBudget | None = Non
                 team = textures.building_key(building_type, 1, race, look)
                 if game.assets.has_image(team):
                     findings += lint_recolour(team, store.image(key), store.image(team))
+    for variant in textures.PAINTED_MINES:
+        for look in textures.MINE_LOOKS:
+            key = textures.mine_key(variant, look)
+            if game.assets.has_image(key):
+                findings += lint_building(key, store.image(key), textures.placements[key], BUILDINGS[BuildingType.GOLD_MINE].size)
     for key in list(game.assets._images):
         if key.startswith(("tree.", "rock.", "mine.")):
             fig = figure(store.image(key), textures.placements[key])

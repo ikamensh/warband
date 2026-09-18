@@ -104,8 +104,8 @@ def test_idle_opening_prepares_later_animation_images(play) -> None:
 def test_crystal_mines_render_all_variants_and_keep_their_variant_on_reload(play) -> None:
     """Every mine variant can enter the atlas, with placement stable across saves."""
     game, scene = play
-    keys = {textures.mine_image(game, i) for i in range(20)}
-    assert len(keys) == 20
+    keys = {textures.mine_image(game, i) for i in range(textures.mine_variants())}
+    assert len(keys) == textures.mine_variants()
     for key in keys:
         width, height = game.backend.get_image_size(game.assets.image(key))
         assert width >= TILE * 2 and height >= TILE * 2
