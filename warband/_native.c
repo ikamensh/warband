@@ -22,6 +22,24 @@
 
 static double SQRT2, DIAGONAL; /* math.sqrt(2) and SQRT2 - 2, as path.py has them */
 
+/* -- Arguments --------------------------------------------------------------------------------- */
+
+/* The functions called many times a step take their arguments as METH_FASTCALL does, since
+   PyArg_ParseTuple costs more than some of them do. */
+static int check_count(const char *name, Py_ssize_t nargs, Py_ssize_t want) {
+    if (nargs == want) return 0;
+    PyErr_Format(PyExc_TypeError, "%s takes %zd arguments (%zd given)", name, want, nargs);
+    return -1;
+}
+
+static int ssize_args(PyObject *const *args, Py_ssize_t count, Py_ssize_t *out) {
+    for (Py_ssize_t i = 0; i < count; i++) {
+        out[i] = PyLong_AsSsize_t(args[i]);
+        if (out[i] == -1 && PyErr_Occurred()) return -1;
+    }
+    return 0;
+}
+
 /* -- The blocked grid -------------------------------------------------------------------------- */
 
 typedef struct {
@@ -198,11 +216,11 @@ static double octile_left(Py_ssize_t index, Py_ssize_t width, Py_ssize_t gx, Py_
 
 /* -- find_path_grid ---------------------------------------------------------------------------- */
 
-static PyObject *find_path_grid(PyObject *self, PyObject *args) {
-    PyObject *start_obj, *goal_obj, *blocked_obj;
-    Py_ssize_t width, height, max_expansions;
-    if (!PyArg_ParseTuple(args, "OOOnnn", &start_obj, &goal_obj, &blocked_obj, &width, &height, &max_expansions))
-        return NULL;
+static PyObject *find_path_grid(PyObject *self, PyObject *const *args, Py_ssize_t nargs) {
+    Py_ssize_t v[3];
+    if (check_count("find_path_grid", nargs, 6) < 0 || ssize_args(args + 3, 3, v) < 0) return NULL;
+    PyObject *start_obj = args[0], *goal_obj = args[1], *blocked_obj = args[2];
+    Py_ssize_t width = v[0], height = v[1], max_expansions = v[2];
     Py_ssize_t sx, sy, gx, gy;
     if (read_pos(start_obj, &sx, &sy) < 0 || read_pos(goal_obj, &gx, &gy) < 0) return NULL;
     if (sx == gx && sy == gy) return PyList_New(0);
@@ -323,11 +341,12 @@ out:
     return status;
 }
 
-static PyObject *find_work_path(PyObject *self, PyObject *args) {
-    PyObject *start_obj, *goals, *blocked_obj;
-    Py_ssize_t width, height;
-    if (!PyArg_ParseTuple(args, "OO!Onn", &start_obj, &PyDict_Type, &goals, &blocked_obj, &width, &height))
-        return NULL;
+static PyObject *find_work_path(PyObject *self, PyObject *const *args, Py_ssize_t nargs) {
+    Py_ssize_t v[2];
+    if (check_count("find_work_path", nargs, 5) < 0 || ssize_args(args + 3, 2, v) < 0) return NULL;
+    PyObject *start_obj = args[0], *goals = args[1], *blocked_obj = args[2];
+    Py_ssize_t width = v[0], height = v[1];
+    if (!PyDict_Check(goals)) { PyErr_SetString(PyExc_TypeError, "the goals are a dict"); return NULL; }
     if (PyDict_GET_SIZE(goals) == 0) Py_RETURN_NONE;
     Py_ssize_t sx, sy;
     if (read_pos(start_obj, &sx, &sy) < 0) return NULL;
@@ -660,10 +679,11 @@ static Py_ssize_t isqrt_of(Py_ssize_t value) {  /* math.isqrt for the small valu
 
 /* model.World._reveal for every ((x, y), radius) of *discs*: each row of a sight disc reaches
    isqrt(r * r + r - dy * dy) tiles sideways, and rows and runs are clipped to the map. */
-static PyObject *stamp_discs(PyObject *self, PyObject *args) {
-    PyObject *visible_obj, *discs;
-    Py_ssize_t width, height;
-    if (!PyArg_ParseTuple(args, "OOnn", &visible_obj, &discs, &width, &height)) return NULL;
+static PyObject *stamp_discs(PyObject *self, PyObject *const *args, Py_ssize_t nargs) {
+    Py_ssize_t v[2];
+    if (check_count("stamp_discs", nargs, 4) < 0 || ssize_args(args + 2, 2, v) < 0) return NULL;
+    PyObject *visible_obj = args[0], *discs = args[1];
+    Py_ssize_t width = v[0], height = v[1];
     Py_buffer view;
     if (open_writable(visible_obj, width * height, &view) < 0) return NULL;
     unsigned char *visible = (unsigned char *)view.buf;
@@ -699,9 +719,9 @@ static PyObject *stamp_discs(PyObject *self, PyObject *args) {
 }
 
 /* model.or_into: target[i] |= source[i] for every byte. */
-static PyObject *or_into(PyObject *self, PyObject *args) {
-    PyObject *target_obj, *source_obj;
-    if (!PyArg_ParseTuple(args, "OO", &target_obj, &source_obj)) return NULL;
+static PyObject *or_into(PyObject *self, PyObject *const *args, Py_ssize_t nargs) {
+    if (check_count("or_into", nargs, 2) < 0) return NULL;
+    PyObject *target_obj = args[0], *source_obj = args[1];
     Py_buffer target, source;
     if (PyObject_GetBuffer(target_obj, &target, PyBUF_WRITABLE) < 0) return NULL;
     if (PyObject_GetBuffer(source_obj, &source, PyBUF_SIMPLE) < 0) { PyBuffer_Release(&target); return NULL; }
@@ -721,10 +741,11 @@ static PyObject *or_into(PyObject *self, PyObject *args) {
 
 /* worker_ai._stamp_units: for each (x, y, radius), block the tiles whose centre lies within
    radius of the point, one run per row, with the same float steps as the Python. */
-static PyObject *stamp_threats(PyObject *self, PyObject *args) {
-    PyObject *blocked_obj, *units;
-    Py_ssize_t width, height;
-    if (!PyArg_ParseTuple(args, "OOnn", &blocked_obj, &units, &width, &height)) return NULL;
+static PyObject *stamp_threats(PyObject *self, PyObject *const *args, Py_ssize_t nargs) {
+    Py_ssize_t v[2];
+    if (check_count("stamp_threats", nargs, 4) < 0 || ssize_args(args + 2, 2, v) < 0) return NULL;
+    PyObject *blocked_obj = args[0], *units = args[1];
+    Py_ssize_t width = v[0], height = v[1];
     Py_buffer view;
     if (open_writable(blocked_obj, width * height, &view) < 0) return NULL;
     unsigned char *blocked = (unsigned char *)view.buf;
@@ -766,10 +787,11 @@ static PyObject *stamp_threats(PyObject *self, PyObject *args) {
 
 /* World.any_visible and WorkerKnowledge.sees: whether any tile of the w by h rectangle at (x, y),
    clipped to the map, is lit in *visible*. */
-static PyObject *any_lit(PyObject *self, PyObject *args) {
-    PyObject *visible_obj;
-    Py_ssize_t x, y, w, h, width, height;
-    if (!PyArg_ParseTuple(args, "Onnnnnn", &visible_obj, &x, &y, &w, &h, &width, &height)) return NULL;
+static PyObject *any_lit(PyObject *self, PyObject *const *args, Py_ssize_t nargs) {
+    Py_ssize_t v[6];
+    if (check_count("any_lit", nargs, 7) < 0 || ssize_args(args + 1, 6, v) < 0) return NULL;
+    PyObject *visible_obj = args[0];
+    Py_ssize_t x = v[0], y = v[1], w = v[2], h = v[3], width = v[4], height = v[5];
     Grid grid;
     if (grid_open(visible_obj, width * height, &grid) < 0) return NULL;
     Py_ssize_t left = x > 0 ? x : 0, right = x + w < width ? x + w : width;
@@ -784,11 +806,15 @@ static PyObject *any_lit(PyObject *self, PyObject *args) {
 
 /* WorkerKnowledge._stale: the flat indices, in map order, of the lit tiles whose remembered terrain
    is not the terrain there now (compared by identity, as `is not` does). */
-static PyObject *stale_tiles(PyObject *self, PyObject *args) {
-    PyObject *visible_obj, *rows, *remembered;
-    Py_ssize_t width, height;
-    if (!PyArg_ParseTuple(args, "OO!O!nn", &visible_obj, &PyList_Type, &rows, &PyList_Type, &remembered, &width, &height))
+static PyObject *stale_tiles(PyObject *self, PyObject *const *args, Py_ssize_t nargs) {
+    Py_ssize_t v[2];
+    if (check_count("stale_tiles", nargs, 5) < 0 || ssize_args(args + 3, 2, v) < 0) return NULL;
+    PyObject *visible_obj = args[0], *rows = args[1], *remembered = args[2];
+    Py_ssize_t width = v[0], height = v[1];
+    if (!PyList_Check(rows) || !PyList_Check(remembered)) {
+        PyErr_SetString(PyExc_TypeError, "the terrain rows and the remembered terrain are lists");
         return NULL;
+    }
     if (PyList_GET_SIZE(rows) < height || PyList_GET_SIZE(remembered) < width * height) {
         PyErr_SetString(PyExc_ValueError, "the terrain is smaller than width * height");
         return NULL;
@@ -981,17 +1007,17 @@ out:
 /* -- Module ------------------------------------------------------------------------------------ */
 
 static PyMethodDef methods[] = {
-    {"find_path_grid", find_path_grid, METH_VARARGS, "path.find_path_grid(start, goal, blocked, width, height, max_expansions)"},
-    {"find_work_path", find_work_path, METH_VARARGS, "path.find_work_path(start, goals, blocked, width, height)"},
+    {"find_path_grid", (PyCFunction)(void (*)(void))find_path_grid, METH_FASTCALL, "path.find_path_grid(start, goal, blocked, width, height, max_expansions)"},
+    {"find_work_path", (PyCFunction)(void (*)(void))find_work_path, METH_FASTCALL, "path.find_work_path(start, goals, blocked, width, height)"},
     {"distance_field", distance_field, METH_VARARGS, "path.distance_field(starts, blocked, width, height) into an array('d')"},
     {"choose_tree", choose_tree, METH_VARARGS, "worker_ai._choose_tree(start, trees, loaded, remembered, TREES, field, blocked, reach, width, height)"},
     {"region_labels", region_labels, METH_VARARGS, "Regions.__init__'s labels into an array('i'); returns the region count"},
     {"nearest_in_region", nearest_in_region, METH_VARARGS, "Regions.reachable_goal's scan over array('i') labels"},
-    {"stamp_discs", stamp_discs, METH_VARARGS, "model.World._reveal for every ((x, y), radius) of an iterable"},
-    {"or_into", or_into, METH_VARARGS, "model.or_into(target, source)"},
-    {"stamp_threats", stamp_threats, METH_VARARGS, "worker_ai._stamp_units(blocked, units, width, height)"},
-    {"any_lit", any_lit, METH_VARARGS, "World.any_visible and WorkerKnowledge.sees: any lit tile in (x, y, w, h)"},
-    {"stale_tiles", stale_tiles, METH_VARARGS, "WorkerKnowledge._stale(visible, terrain rows, remembered, width, height)"},
+    {"stamp_discs", (PyCFunction)(void (*)(void))stamp_discs, METH_FASTCALL, "model.World._reveal for every ((x, y), radius) of an iterable"},
+    {"or_into", (PyCFunction)(void (*)(void))or_into, METH_FASTCALL, "model.or_into(target, source)"},
+    {"stamp_threats", (PyCFunction)(void (*)(void))stamp_threats, METH_FASTCALL, "worker_ai._stamp_units(blocked, units, width, height)"},
+    {"any_lit", (PyCFunction)(void (*)(void))any_lit, METH_FASTCALL, "World.any_visible and WorkerKnowledge.sees: any lit tile in (x, y, w, h)"},
+    {"stale_tiles", (PyCFunction)(void (*)(void))stale_tiles, METH_FASTCALL, "WorkerKnowledge._stale(visible, terrain rows, remembered, width, height)"},
     {"site_search", site_search, METH_VARARGS, "ai.site_search: the ring, the corner, rng.random, then what ai.site_inputs makes"},
     {NULL, NULL, 0, NULL},
 };
