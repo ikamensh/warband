@@ -14,13 +14,20 @@ from __future__ import annotations
 
 import math
 import random
-
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
-from warband.model import Attack, AttackMove, Build, Building, Deposit, Harvest, Move, Point, Pos, Repair, Unit, World, dist
+from warband.model import (MINE_CLEARANCE, Attack, AttackMove, Build, Building, Deposit, Harvest, Move, Point, Pos, Repair, Unit,
+                           World, dist)
 from warband.races import RACES
-from warband.rules import BUILDINGS, BuildingType, Difficulty, Race, Resource, UnitType, Upgrade
+from warband.rules import BUILDINGS, BuildingType, Difficulty, Race, Resource, Terrain, UnitType, Upgrade
 from warband.worker_knowledge import KnownMine
+
+try:
+    from warband import _native  # the site search in C, built only with the compiled simulation (warband/fastsim.py)
+except ImportError:  # the source runs, as it does in the game
+    _native = None  # type: ignore[assignment]
 
 EXPAND_DISTANCE = 14.0  # a mine farther than this from the hall gets a hall of its own
 LOW_MINE_GOLD = 6000  # a mine this low means the next hall is planned now, while gold still comes in
@@ -69,6 +76,49 @@ def known_enemy_buildings(world: World, player: int) -> list:
 
 
 _RINGS: dict[tuple[int, int], tuple[tuple[float, int, int], ...]] = {}
+
+
+def keeps_paths_open(world: World, player: int, pos: Pos, size: int) -> bool:
+    """Whether a building at *pos* leaves a tile of clearance to every one of *player*'s, so peasants can always get through."""
+    for b in world.player_buildings(player):
+        gap_x = max(b.x - (pos[0] + size), pos[0] - (b.x + b.size), 0)
+        gap_y = max(b.y - (pos[1] + size), pos[1] - (b.y + b.size), 0)
+        if max(gap_x, gap_y) < 1:
+            return False
+    return True
+
+
+def crowds(pos: Pos, size: int, other: Pos, other_size: int) -> bool:
+    """Whether two sites are within a tile of each other, counting the clearance."""
+    return abs(pos[0] - other[0]) < size + other_size - 1 and abs(pos[1] - other[1]) < size + other_size - 1
+
+
+def first_site(world: World, building_type: BuildingType, player: int, candidates: list[tuple[float, Pos]],
+               taken: Sequence[tuple[Pos, int]] = ()) -> Pos | None:
+    """The first of *candidates* (``(score, spot)`` pairs), in their sorted order, that no site in *taken* crowds,
+    where :meth:`World.placeable` lets *player* put *building_type* and that :func:`keeps_paths_open`.  The compiled
+    simulation searches in C (``warband._native.first_site``), from :func:`site_inputs`."""
+    if _native is not None:
+        inputs = site_inputs(world, building_type, player, candidates, taken)
+        return _native.first_site(*inputs) if inputs is not None else None
+    size = BUILDINGS[building_type].size
+    candidates.sort()
+    free = (pos for _score, pos in candidates if not any(crowds(pos, size, other, other_size) for other, other_size in taken))
+    for pos in world.placeable(building_type, player, free):
+        if keeps_paths_open(world, player, pos, size):
+            return pos
+    return None
+
+
+def site_inputs(world: World, building_type: BuildingType, player: int, candidates: list[tuple[float, Pos]],
+                taken: Sequence[tuple[Pos, int]]) -> tuple[Any, ...] | None:
+    """What ``warband._native.first_site`` needs to search as :func:`first_site` does; None when no site will do."""
+    blockers = world.placement_blockers(building_type, player)
+    if blockers is None:
+        return None
+    standing, mines = blockers
+    return (candidates, BUILDINGS[building_type].size, taken, world.terrain, Terrain.GRASS, world._blocked, world.explored[player],
+            standing, mines, [b.rect for b in world.player_buildings(player)], world.width, world.height, MINE_CLEARANCE)
 
 
 def site_ring(inner: int, outer: int) -> tuple[tuple[float, int, int], ...]:
@@ -386,20 +436,7 @@ class Brain:
         left, top = int(anchor[0]) - size // 2, int(anchor[1]) - size // 2
         candidates: list[tuple[float, Pos]] = [(distance + rng.random() * 2, (left + dx, top + dy))
                                                for distance, dx, dy in site_ring(BUILD_MIN_DISTANCE + size, BUILD_MAX_DISTANCE)]
-        candidates.sort()
-        for pos in world.placeable(building_type, self.player, (pos for _score, pos in candidates)):
-            if self._keeps_paths_open(world, pos, size):
-                return pos
-        return None
-
-    def _keeps_paths_open(self, world: World, pos: Pos, size: int) -> bool:
-        """Leave a tile of clearance around other buildings so peasants can always get through."""
-        for b in world.player_buildings(self.player):
-            gap_x = max(b.x - (pos[0] + size), pos[0] - (b.x + b.size), 0)
-            gap_y = max(b.y - (pos[1] + size), pos[1] - (b.y + b.size), 0)
-            if max(gap_x, gap_y) < 1:
-                return False
-        return True
+        return first_site(world, building_type, self.player, candidates)
 
     # -- Training ------------------------------------------------------------------
 

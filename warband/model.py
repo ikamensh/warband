@@ -886,20 +886,31 @@ class World:
             return f"Requires a {self.building_info(player, info.requires).name}"
         return self._placement_reason(building_type, pos, player, builder=builder)
 
+    def placement_blockers(self, building_type: BuildingType, player: int
+                           ) -> tuple[list[tuple[float, float, float]], list[tuple[int, int, int, int]]] | None:
+        """What :meth:`placeable` holds a spot against besides its ground: the units standing on the map as
+        ``(x, y, radius)`` and the gold mines' rectangles; None when *building_type*'s prerequisite is missing,
+        so that no spot will do."""
+        info = BUILDINGS[building_type]
+        if info.requires is not None and not any(b.player == player and b.type is info.requires and b.done
+                                                 for b in self.buildings.values()):
+            return None
+        standing = [(unit.x, unit.y, unit.radius) for unit in self.units.values() if not unit.hidden]
+        mines = [building.rect for building in self.buildings.values() if building.type is BuildingType.GOLD_MINE]
+        return standing, mines
+
     def placeable(self, building_type: BuildingType, player: int, positions: Iterable[Pos]) -> Iterator[Pos]:
         """Those of *positions*, in their order, where :meth:`can_place` would let *player* put *building_type*
         with no builder.  Everything that does not depend on the position is looked at once, for a search
         that tries hundreds of spots; ``tests/warband/test_placement.py`` holds the two to the same answers."""
-        info = BUILDINGS[building_type]
-        if info.requires is not None and not any(b.player == player and b.type is info.requires and b.done
-                                                 for b in self.buildings.values()):
+        blockers = self.placement_blockers(building_type, player)
+        if blockers is None:
             return
-        size = info.size
+        # No name here stands for two types: mypyc keeps all of a generator's variables in one environment.
+        standing, mines = blockers
+        size = BUILDINGS[building_type].size
         width, height = self.width, self.height
         terrain, blocked, explored = self.terrain, self._blocked, self.explored[player]
-        standing = [(unit.x, unit.y, unit.radius) for unit in self.units.values() if not unit.hidden]
-        # No name here stands for two types: mypyc keeps all of a generator's variables in one environment.
-        mines = [building.rect for building in self.buildings.values() if building.type is BuildingType.GOLD_MINE]
         grass = Terrain.GRASS
         for pos in positions:
             left, top = pos

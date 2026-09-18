@@ -38,7 +38,7 @@ import random
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 
-from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_ring
+from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, first_site, known_enemy_buildings, known_mines, release_arrived, site_ring
 from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, tile_center
 from warband.races import RACES
 from warband.rules import BUILDINGS, MINE_SLOTS, BuildingType, UnitType
@@ -623,27 +623,7 @@ class ProBrain:
         left, top = int(anchor[0]) - size // 2, int(anchor[1]) - size // 2
         candidates: list[tuple[float, Pos]] = [(distance + rng.random() * 2, (left + dx, top + dy))
                                                for distance, dx, dy in site_ring(BUILD_MIN_DISTANCE + size, BUILD_MAX_DISTANCE)]
-        candidates.sort()
-        free = (pos for _score, pos in candidates
-                if not any(self._overlaps(pos, size, other, other_size) for other, other_size in taken))
-        for pos in world.placeable(building_type, self.player, free):
-            if self._keeps_paths_open(world, pos, size):
-                return pos
-        return None
-
-    @staticmethod
-    def _overlaps(pos: Pos, size: int, other: Pos, other_size: int) -> bool:
-        """Whether two sites are within a tile of each other, counting the clearance."""
-        return (abs(pos[0] - other[0]) < size + other_size - 1
-                and abs(pos[1] - other[1]) < size + other_size - 1)
-
-    def _keeps_paths_open(self, world: World, pos: Pos, size: int) -> bool:
-        for b in world.player_buildings(self.player):
-            gap_x = max(b.x - (pos[0] + size), pos[0] - (b.x + b.size), 0)
-            gap_y = max(b.y - (pos[1] + size), pos[1] - (b.y + b.size), 0)
-            if max(gap_x, gap_y) < 1:
-                return False
-        return True
+        return first_site(world, building_type, self.player, candidates, taken)
 
     # -- Training -------------------------------------------------------------------
 

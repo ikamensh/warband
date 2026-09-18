@@ -819,6 +819,148 @@ static PyObject *stale_tiles(PyObject *self, PyObject *args) {
     return stale;
 }
 
+/* -- first_site ------------------------------------------------------------------------------- */
+
+typedef struct { double score; Py_ssize_t x, y; } Candidate;
+
+static int compare_candidates(const void *a, const void *b) {  /* as Python orders (score, (x, y)) */
+    const Candidate *p = a, *q = b;
+    if (p->score != q->score) return p->score < q->score ? -1 : 1;
+    if (p->x != q->x) return p->x < q->x ? -1 : 1;
+    return (p->y > q->y) - (p->y < q->y);
+}
+
+static int read_ints(PyObject *item, Py_ssize_t *out, Py_ssize_t count, const char *what) {
+    if (!PyTuple_Check(item) || PyTuple_GET_SIZE(item) != count) { PyErr_Format(PyExc_TypeError, "%s", what); return -1; }
+    for (Py_ssize_t i = 0; i < count; i++) {
+        out[i] = PyLong_AsSsize_t(PyTuple_GET_ITEM(item, i));
+        if (out[i] == -1 && PyErr_Occurred()) return -1;
+    }
+    return 0;
+}
+
+static Py_ssize_t max3(Py_ssize_t a, Py_ssize_t b, Py_ssize_t c) { Py_ssize_t m = a > b ? a : b; return m > c ? m : c; }
+
+/* model.rects_gap: tiles of clearance between two tile rectangles (Chebyshev; 0 when they touch or overlap). */
+static Py_ssize_t rects_gap(const Py_ssize_t *a, const Py_ssize_t *b) {
+    Py_ssize_t dx = max3(b[0] - (a[0] + a[2]), a[0] - (b[0] + b[2]), 0);
+    Py_ssize_t dy = max3(b[1] - (a[1] + a[3]), a[1] - (b[1] + b[3]), 0);
+    return dx > dy ? dx : dy;
+}
+
+/* ai.first_site from ai.site_inputs: the first candidate in sorted order that no taken site crowds, whose
+   ground is open grass the player has explored, with no unit standing on it, far enough from every gold
+   mine, and a tile clear of every one of the player's buildings.  None when there is none. */
+static PyObject *first_site(PyObject *self, PyObject *args) {
+    PyObject *candidates_obj, *taken_obj, *rows, *grass, *blocked_obj, *explored_obj, *standing_obj, *mines_obj, *own_obj;
+    Py_ssize_t size, width, height, clearance;
+    if (!PyArg_ParseTuple(args, "OnOO!OOOOOOnnn", &candidates_obj, &size, &taken_obj, &PyList_Type, &rows, &grass, &blocked_obj,
+                          &explored_obj, &standing_obj, &mines_obj, &own_obj, &width, &height, &clearance))
+        return NULL;
+    if (PyList_GET_SIZE(rows) < height) { PyErr_SetString(PyExc_ValueError, "the terrain has too few rows"); return NULL; }
+    PyObject *candidates = NULL, *taken = NULL, *standing = NULL, *mines = NULL, *own = NULL, *result = NULL;
+    Candidate *order = NULL;
+    Py_ssize_t *taken_at = NULL, *mine_rects = NULL, *own_rects = NULL;
+    double *units = NULL;
+    Grid blocked, explored;
+    int blocked_open = 0, explored_open = 0;
+    if ((candidates = PySequence_Fast(candidates_obj, "candidates are (score, (x, y)) pairs")) == NULL) goto out;
+    if ((taken = PySequence_Fast(taken_obj, "taken is a sequence of ((x, y), size)")) == NULL) goto out;
+    if ((standing = PySequence_Fast(standing_obj, "standing is a sequence of (x, y, radius)")) == NULL) goto out;
+    if ((mines = PySequence_Fast(mines_obj, "mines is a sequence of rectangles")) == NULL) goto out;
+    if ((own = PySequence_Fast(own_obj, "own is a sequence of rectangles")) == NULL) goto out;
+    if (grid_open(blocked_obj, width * height, &blocked) < 0) goto out;
+    blocked_open = 1;
+    if (grid_open(explored_obj, width * height, &explored) < 0) goto out;
+    explored_open = 1;
+    Py_ssize_t count = PySequence_Fast_GET_SIZE(candidates), ntaken = PySequence_Fast_GET_SIZE(taken);
+    Py_ssize_t nunits = PySequence_Fast_GET_SIZE(standing), nmines = PySequence_Fast_GET_SIZE(mines), nown = PySequence_Fast_GET_SIZE(own);
+    order = PyMem_Malloc((size_t)(count + 1) * sizeof(Candidate));
+    taken_at = PyMem_Malloc((size_t)(3 * ntaken + 1) * sizeof(Py_ssize_t));
+    units = PyMem_Malloc((size_t)(3 * nunits + 1) * sizeof(double));
+    mine_rects = PyMem_Malloc((size_t)(4 * nmines + 1) * sizeof(Py_ssize_t));
+    own_rects = PyMem_Malloc((size_t)(4 * nown + 1) * sizeof(Py_ssize_t));
+    if (order == NULL || taken_at == NULL || units == NULL || mine_rects == NULL || own_rects == NULL) { PyErr_NoMemory(); goto out; }
+    for (Py_ssize_t i = 0; i < count; i++) {
+        PyObject *item = PySequence_Fast_GET_ITEM(candidates, i);
+        if (!PyTuple_Check(item) || PyTuple_GET_SIZE(item) != 2) { PyErr_SetString(PyExc_TypeError, "a candidate is (score, (x, y))"); goto out; }
+        order[i].score = PyFloat_AsDouble(PyTuple_GET_ITEM(item, 0));
+        if (order[i].score == -1.0 && PyErr_Occurred()) goto out;
+        if (read_pos(PyTuple_GET_ITEM(item, 1), &order[i].x, &order[i].y) < 0) goto out;
+    }
+    for (Py_ssize_t i = 0; i < ntaken; i++) {
+        PyObject *item = PySequence_Fast_GET_ITEM(taken, i);
+        if (!PyTuple_Check(item) || PyTuple_GET_SIZE(item) != 2) { PyErr_SetString(PyExc_TypeError, "a taken site is ((x, y), size)"); goto out; }
+        if (read_pos(PyTuple_GET_ITEM(item, 0), &taken_at[3 * i], &taken_at[3 * i + 1]) < 0) goto out;
+        taken_at[3 * i + 2] = PyLong_AsSsize_t(PyTuple_GET_ITEM(item, 1));
+        if (taken_at[3 * i + 2] == -1 && PyErr_Occurred()) goto out;
+    }
+    for (Py_ssize_t i = 0; i < nunits; i++) {
+        PyObject *item = PySequence_Fast_GET_ITEM(standing, i);
+        if (!PyTuple_Check(item) || PyTuple_GET_SIZE(item) != 3) { PyErr_SetString(PyExc_TypeError, "a unit is (x, y, radius)"); goto out; }
+        for (int k = 0; k < 3; k++) {
+            units[3 * i + k] = PyFloat_AsDouble(PyTuple_GET_ITEM(item, k));
+            if (units[3 * i + k] == -1.0 && PyErr_Occurred()) goto out;
+        }
+    }
+    for (Py_ssize_t i = 0; i < nmines; i++)
+        if (read_ints(PySequence_Fast_GET_ITEM(mines, i), &mine_rects[4 * i], 4, "a mine is (x, y, width, height)") < 0) goto out;
+    for (Py_ssize_t i = 0; i < nown; i++)
+        if (read_ints(PySequence_Fast_GET_ITEM(own, i), &own_rects[4 * i], 4, "a building is (x, y, width, height)") < 0) goto out;
+    qsort(order, (size_t)count, sizeof(Candidate), compare_candidates);
+    for (Py_ssize_t c = 0; c < count; c++) {
+        Py_ssize_t left = order[c].x, top = order[c].y, right = left + size, bottom = top + size;
+        int ok = 1;
+        for (Py_ssize_t t = 0; ok && t < ntaken; t++) {
+            Py_ssize_t reach = size + taken_at[3 * t + 2] - 1;
+            Py_ssize_t dx = left - taken_at[3 * t], dy = top - taken_at[3 * t + 1];
+            if ((dx < 0 ? -dx : dx) < reach && (dy < 0 ? -dy : dy) < reach) ok = 0;
+        }
+        if (!ok || left < 0 || top < 0 || right > width || bottom > height) continue;
+        for (Py_ssize_t y = top; ok && y < bottom; y++) {
+            PyObject *row = PyList_GET_ITEM(rows, y);
+            if (!PyList_Check(row) || PyList_GET_SIZE(row) < width) {
+                PyErr_SetString(PyExc_ValueError, "a terrain row is not a list of width tiles");
+                goto out;
+            }
+            for (Py_ssize_t x = left; x < right; x++) {
+                Py_ssize_t index = y * width + x;
+                if (PyList_GET_ITEM(row, x) != grass || blocked.cells[index] || !explored.cells[index]) { ok = 0; break; }
+            }
+        }
+        for (Py_ssize_t u = 0; ok && u < nunits; u++) {
+            double ux = units[3 * u], uy = units[3 * u + 1], r = units[3 * u + 2];
+            if ((double)left - r < ux && ux < (double)right + r && (double)top - r < uy && uy < (double)bottom + r) ok = 0;
+        }
+        Py_ssize_t rect[4] = {left, top, size, size};
+        for (Py_ssize_t m = 0; ok && m < nmines; m++)
+            if (rects_gap(rect, &mine_rects[4 * m]) < clearance) ok = 0;
+        for (Py_ssize_t b = 0; ok && b < nown; b++) {
+            const Py_ssize_t *other = &own_rects[4 * b];
+            Py_ssize_t gap_x = max3(other[0] - right, left - (other[0] + other[2]), 0);
+            Py_ssize_t gap_y = max3(other[1] - bottom, top - (other[1] + other[3]), 0);
+            if ((gap_x > gap_y ? gap_x : gap_y) < 1) ok = 0;
+        }
+        if (ok) { result = Py_BuildValue("(nn)", left, top); goto out; }
+    }
+    Py_INCREF(Py_None);
+    result = Py_None;
+out:
+    PyMem_Free(order);
+    PyMem_Free(taken_at);
+    PyMem_Free(units);
+    PyMem_Free(mine_rects);
+    PyMem_Free(own_rects);
+    if (explored_open) grid_close(&explored);
+    if (blocked_open) grid_close(&blocked);
+    Py_XDECREF(candidates);
+    Py_XDECREF(taken);
+    Py_XDECREF(standing);
+    Py_XDECREF(mines);
+    Py_XDECREF(own);
+    return result;
+}
+
 /* -- Module ------------------------------------------------------------------------------------ */
 
 static PyMethodDef methods[] = {
@@ -833,6 +975,7 @@ static PyMethodDef methods[] = {
     {"stamp_threats", stamp_threats, METH_VARARGS, "worker_ai._stamp_units(blocked, units, width, height)"},
     {"any_lit", any_lit, METH_VARARGS, "WorkerKnowledge.sees(visible, x, y, size) given the map's width and height"},
     {"stale_tiles", stale_tiles, METH_VARARGS, "WorkerKnowledge._stale(visible, terrain rows, remembered, width, height)"},
+    {"first_site", first_site, METH_VARARGS, "ai.first_site from the arguments ai.site_inputs makes"},
     {NULL, NULL, 0, NULL},
 };
 

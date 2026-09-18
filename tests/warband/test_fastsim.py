@@ -13,9 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from warband import fastsim, model, path, worker_ai
+from warband import ai, fastsim, mapgen, model, path, worker_ai
+from warband.ai import make_brain
 from warband.model import World
-from warband.rules import Terrain
+from warband.rules import BuildingType, Difficulty, Terrain
 from warband.worker_knowledge import WorkerKnowledge
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -147,3 +148,29 @@ def test_the_c_tree_choice_is_the_python_choice() -> None:
                                   width, height) == expected
         chosen += expected is not None
     assert chosen > 100  # most searches found a tree, so the comparison covered the tie-breaks too
+
+
+def test_the_c_site_search_finds_the_python_site() -> None:
+    native = _native_searches()
+    rng = random.Random(55)
+    found = 0
+    for seed in (5, 11):
+        world = mapgen.generate(seed=seed, players=2, human=None)
+        brains = [make_brain(0, Difficulty.HARD), make_brain(1, Difficulty.MEDIUM)]
+        for step in range(2400):
+            for brain in brains:
+                brain.think(world, rng)
+            world.step()
+            if step % 300 != 299:
+                continue
+            for player in (0, 1):
+                hall = world.player_buildings(player, BuildingType.TOWN_HALL)[0]
+                for building_type in BuildingType:
+                    candidates = [(rng.random() * 30, (hall.x + rng.randint(-16, 16), hall.y + rng.randint(-16, 16))) for _ in range(300)]
+                    candidates += candidates[:5]  # equal scores and spots, as the sort meets them
+                    taken = [(pos, rng.randint(1, 4)) for _score, pos in rng.sample(candidates, 3)]
+                    inputs = ai.site_inputs(world, building_type, player, list(candidates), taken)
+                    answer = native.first_site(*inputs) if inputs is not None else None
+                    assert answer == ai.first_site(world, building_type, player, list(candidates), taken)
+                    found += answer is not None
+    assert found > 20
