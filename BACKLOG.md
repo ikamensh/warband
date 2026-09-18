@@ -42,7 +42,7 @@ catches its class.
 | WB-018 | Next | done | Keep large selections inside the HUD | Native crowd capture |
 | WB-019 | Next | done | Remove stray sprite-sheet lines from painted units | Native melee review |
 | WB-020 | Later | done | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
-| WB-021 | Next | blocked | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
+| WB-021 | Next | in progress | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
 | WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
 | WB-023 | Next | done | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
@@ -50,6 +50,11 @@ catches its class.
 | WB-026 | Next | done | Give the Windows and Mac builds Warband's own icon instead of the packager's snake | User 2026-09-18 |
 | WB-027 | Next | done | Show ground out of sight as the player last saw it: buildings, trees, minimap, selection panel | Review 2026-09-18 |
 | WB-028 | Next | done | A seed is a match: effects no longer draw from the computer players' random stream | Review 2026-09-18 |
+| WB-029 | Next | done | The online authority gives orders to the world it runs; a refused order leaves no trace | Review 2026-09-18 |
+| WB-030 | Next | done | Bound what a player can pile up on the world: plans and queued orders; the HUD warns on any refusal | Review 2026-09-18 |
+| WB-031 | Next | done | A snapshot tells a seat the match, not the server's dice or the other seat's map | Review 2026-09-18 |
+| WB-032 | Next | done | An abandoned tower never looses another arrow | Review 2026-09-18 |
+| WB-033 | Next | done | Old news leaves the snapshot: events ride five seconds, not for ever | Review 2026-09-18 |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -1223,6 +1228,44 @@ resolution from Settings › Display and the output of
 in the game's environment. The startup matrix already names the desktop from
 the report with the scale it is presumed to report.
 
+**Unblocked and measured 2026-09-18** on a Scaleway Windows Server 2022 test
+box (created with Scaleway's `with-ssh` tag, so it is set up over SSH; an
+interactive desktop comes from a headless FreeRDP client in a container, at
+any size and scaling, without a person at a login screen; the procedure is in
+[saga-online](../saga-online/docs/windows-test-box.md)). Branch `fit-desktop`
+(worktree `../warband-fit`). The published 0.2.18 build, pyglet 2.1.16:
+
+- 3840×2160 at 100 % and at 200 %: pyglet reports a 3840×2160 screen in both
+  (scale 1.0 and 2.0), the engine makes canvas and window 3760×2040 with
+  `scale_factor` 1.0, the whole 64-tile map floats in the middle of the
+  canvas with black all round, and the HUD is drawn at native pixels; at 200 %
+  it is half the size of the taskbar's text and the window's lower edge lies
+  under the taskbar. That is the report (`docs/evidence/win4k/session-200/`,
+  `headless-200/`: title, new game, match, `screen_report.json`).
+- 1408×1252 at 100 % (the first session): canvas and window 1328×1132, fine.
+
+The cause and the fix are the engine's ([S2D-015](../saga2d/BACKLOG.md):
+desktop units at the backend's boundary, the desktop's scale in
+`scale_factor`, a fitted canvas of at most 1440 units).
+
+**Acceptance (recorded 2026-09-18 before implementation):**
+
+1. On 3840×2160 at 200 %, at 150 % and at 100 % the game's window uses the
+   desktop without reaching under the taskbar, the title's backdrop and the
+   match fill the window (letterboxing only for an aspect mismatch), and the
+   HUD is as large as the desktop's own text suggests: frames of the title,
+   the New game screen and a match from each scaling, from a build on the
+   fixed engine, looked at beside the 0.2.18 frames.
+2. `tests/warband/test_startup.py` names the measured desktops (3840×2160 at
+   100 %, 150 % and 200 %) with what the fixed engine gives them and starts,
+   leaves and restarts a match on each.
+3. The suite, the visual lint's screens and the simulation fingerprint are
+   unchanged otherwise; the Mac's window is as before (a native frame looked
+   at).
+4. Shipped by the engine-upgrade procedure (engine release, cohort, server
+   rollout, promotion, public download checks), and the published Windows
+   build looked at once more on the 4K desktop at 200 %.
+
 ## WB-022 — The first match starts on the window the OS handed back
 
 Reported 2026-09-17 with the traceback: on Windows 10 the first Start from the
@@ -1580,3 +1623,103 @@ the test fails on the old code.
 `rng`; `tests/warband/test_match_reproducible.py` (the digests differed on the
 old code after 100 seconds of match); the suite as above. Replays were never
 affected: they give the brains' recorded orders back.
+
+## WB-029 — The online authority gives orders to the world it runs
+
+Found 2026-09-18 by the code review. `WarbandMatch.apply` ran every order on
+`World.from_dict(deepcopy(world.to_dict()))` and kept the copy as the match's
+world ("a trial on a copy makes group orders atomic"). A save holds no paths,
+plan throttles or stuck clocks, so every accepted order, from either seat, made
+every unit on the map forget its route and plan again on the next tick (the
+first step after an order cost nine times a normal one on an eight-minute
+match), ran the fog out of schedule, and changed what the other seat's units
+did: a worker sent across the map ended 0.12 tiles elsewhere after 400 ticks
+when the other seat re-set a rally point meanwhile. The copy itself cost 3 ms
+an order.
+
+**Acceptance (recorded 2026-09-18 before implementation):** an order that
+concerns one seat leaves the other seat's march unchanged to the float bit,
+whatever its frequency; the accepted order is given to the running world; an
+order the rules refuse leaves the world's save unchanged, for every order the
+authority accepts and every way it can be refused, and is a `RuleError`, never
+another exception; the simulation fingerprint does not move.
+
+**Done 2026-09-18** (`693bfc2`): `apply` gives the order to the running world.
+What the copy was for is the model's own business now: `attack`, `harvest` and
+`resume_construction` check every unit before they change any (each raised
+inside its loop), and `cancel_train` refuses a slot that is not there with a
+`RuleError` (it raised `IndexError`). `tests/warband/test_authority_world.py`
+(the march with the other seat chattering every tick, every seven and every
+forty: different positions on the old code) and
+`tests/warband/test_order_atomicity.py` (23 refused orders, five of which left
+a trace or the wrong exception on the old code).
+
+## WB-030 — What a player can pile up on the world is bounded
+
+Found 2026-09-18 by the code review: settlement plans and shift-queued orders
+had no limit. Plans are walked every second and travel in every online
+snapshot, and the public server takes twenty orders a second from a seat, so
+one room could pile up tens of thousands of plans (or 5,000 queued orders a
+second across a 256-unit selection) and slow the single-threaded server for
+every room on it until its own snapshot passed 8 MB and the room failed.
+
+**Acceptance (recorded 2026-09-18 before implementation):** a player holds at
+most `MAX_PLANS` plans and a unit at most `MAX_QUEUED_ORDERS` orders; one more
+is refused whole with a `RuleError` that says so, leaving the world unchanged;
+room returns when a plan goes, and an unqueued order still replaces a full
+queue; the other seat's allowance is its own; the HUD says why instead of
+raising, whichever way the order was given; the computer players never queue.
+
+**Done 2026-09-18** (`72ebd7d`, HUD `attempt` in the commit after WB-033):
+`rules.MAX_PLANS` 64 and `MAX_QUEUED_ORDERS` 32, checked in `Settlement._add`
+and `World._own_units(queue=)` before anything changes.
+`tests/warband/test_order_limits.py`. The HUD gives every order through
+`GameScene.attempt`, which turns a refusal into the status line's warning and
+`False`; the eleven call sites that each caught `RuleError` themselves (and the
+six that did not) are gone, a replay refuses orders the same way, and an online
+order that cannot be sent is a refusal too instead of a marker for an order
+never given.
+
+## WB-031 — A snapshot tells a seat the match, not the server's dice or the other seat's map
+
+Found 2026-09-18 by the code review: `WarbandMatch.snapshot(player)` ignored
+its seat and sent the world's whole save, deep-copied although `to_dict`
+builds it afresh: the random stream's state (every damage roll to come), both
+seats' explored ground and both seats' remembered maps. 100 to 140 KB of JSON
+per seat ten times a second.
+
+**Acceptance (recorded 2026-09-18 before implementation):** a snapshot loads
+in a current and an older client; its random state is not the server's; the
+other seat's explored ground and remembered map are blank, the receiver's own
+are whole; units, buildings and players are as before (what the fog hides of
+those is WB-011); the receiver may keep and change what it gets; the
+checkpoint still restores the whole match.
+
+**Done 2026-09-18** (`3efae2b`): `snapshot` blanks what is not the seat's and
+sends a fixed random state (`authority.NO_DICE`); no deep copies.
+`tests/warband/test_authority_world.py`; the socket tests compare what a seat
+may know.
+
+## WB-032 — An abandoned tower never looses another arrow
+
+Found 2026-09-18 by the code review: `_update_building` skipped mines and
+nobody's buildings but not abandoned ones, so a resigned player's tower went on
+shooting until the next fog recomputation took its owner's sight away (one
+arrow into a passer-by in the test). **Done 2026-09-18** (`39a8905`):
+abandoned buildings are skipped; `tests/warband/test_abandoned.py`.
+
+## WB-033 — Old news leaves the snapshot
+
+Found 2026-09-18 by the code review: the authority kept the last 128 events
+and sent them in every snapshot for ever, 28 KB of a 100 KB state, minutes
+after the fight, and whoever joined or rejoined heard all 128 at once.
+
+**Acceptance (recorded 2026-09-18 before implementation):** an event rides the
+snapshots for `EVENT_TICKS` (five seconds) and never more than 128 at a time;
+a client a second or two behind still finds it; event numbers go on counting
+across a quiet server restart, so a client never takes new news for old.
+
+**Done 2026-09-18** (`4bcdd24`): events carry their tick on the server; the
+checkpoint carries the count (`event_id`; older checkpoints fall back to the
+highest number they hold). `tests/warband/test_authority_world.py`. With
+WB-031 a mid-game state on a Small map is 69 KB where it was 100.

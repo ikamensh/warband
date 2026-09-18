@@ -1,10 +1,11 @@
 """Authoritative RTS matches and server registration, independent of client scenes."""
 import inspect
-from copy import deepcopy
+import random
 
 from saga2d import CommandError
 from warband import mapgen
 from warband.model import World, RuleError
+from warband.worker_knowledge import WorkerKnowledge
 from saga2d.server.games import GameSpec, option_choice, option_int, option_keys, option_seed
 from warband.rules import BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
 
@@ -12,6 +13,10 @@ GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 's
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building'}
 SETTLEMENT_ORDERS = {'plan_building', 'order_unit', 'order_upgrade', 'set_assembly', 'cancel_plan'}
 ORDERS = GROUP_ORDERS | BUILDING_ORDERS | SETTLEMENT_ORDERS | {'build'}
+#: Ticks an event rides the snapshots (five seconds): long enough for a client that hiccups, not for ever.
+EVENT_TICKS = 100
+#: What a seat is told of the server's random stream: a fixed state, so no client can read the damage rolls to come.
+NO_DICE = random.Random(0).getstate()
 
 
 class WarbandMatch:
@@ -21,17 +26,37 @@ class WarbandMatch:
         self.world = mapgen.generate(seed, width, height, players=2, theme=theme, races=races, layout=layout)
         for player in self.world.players:
             player.human = True
-        self.events = []
+        self.events = []  # [number, fields] of the recent ones, oldest first
+        self.event_ticks = []  # the tick each of them happened at
         self.event_id = 0
 
     def _events(self):
+        """Number the world's new events and drop the old ones: a snapshot carries the recent ones only, for a client
+        cannot say which it has seen, and a burst never more than 128 of them."""
+        tick = self.world.tick
         for event in self.world.take_events():
             self.event_id += 1
             self.events.append([self.event_id, vars(event)])
-        self.events = self.events[-128:]
+            self.event_ticks.append(tick)
+        fresh = next((i for i, born in enumerate(self.event_ticks) if tick - born < EVENT_TICKS), len(self.events))
+        keep = max(fresh, len(self.events) - 128)
+        self.events, self.event_ticks = self.events[keep:], self.event_ticks[keep:]
 
     def snapshot(self, player):
-        return {'seed': self.seed, 'world': deepcopy(self.world.to_dict()), 'events': deepcopy(self.events)}
+        """The match for seat *player*: the world's save (``to_dict`` builds it afresh, the receiver may keep it)
+        without what is the server's alone or the other seat's: the random stream, the ground the other seat
+        has explored and the map it remembers."""
+        world = self.world.to_dict()
+        world['rng'] = NO_DICE
+        unexplored = bytes(self.world.width * self.world.height).hex()
+        unknown = WorkerKnowledge(self.world.width, self.world.height).to_dict()
+        for seat in range(len(self.world.players)):
+            if seat != player:
+                world['explored'][seat], world['worker_knowledge'][seat] = unexplored, unknown
+        return {'seed': self.seed, 'world': world, 'events': self._recent_events()}
+
+    def _recent_events(self):
+        return [[index, dict(fields)] for index, fields in self.events]
 
     def step(self):
         if self.world.winner is None:
@@ -85,25 +110,21 @@ class WarbandMatch:
                 continue  # An explicit empty-ground pick must not target a newer unit position.
             if field in values and type(values[field]) is not int:
                 raise CommandError('Invalid target.')
-        if action == 'cancel_train':
-            index = values.get('index', -1)
-            size = len(self.world.buildings[values['building_id']].queue)
-            if type(index) is not int or not -size <= index < size:
-                raise CommandError('Choose an item in the training queue.')
+        if action == 'cancel_train' and type(values.get('index', -1)) is not int:
+            raise CommandError('Choose an item in the training queue.')
         for field, enum in [('building_type', BuildingType), ('unit_type', UnitType), ('upgrade', Upgrade)]:
             if field in values:
                 try:
                     values[field] = enum(values[field])
                 except (ValueError, TypeError) as exc:
                     raise CommandError(f'Unknown {field}.') from exc
-        # Trial on a copy also makes group orders atomic if a rule rejects one unit.
-        trial = World.from_dict(deepcopy(self.world.to_dict()))
-        values['self'] = trial
+        # The order goes to the running world: a copy rebuilt from its save would come back without the paths,
+        # plan throttles and stuck clocks of every unit on the map.  A world order checks before it changes
+        # anything, so one the rules refuse leaves no trace (tests/warband/test_order_atomicity.py).
         try:
             method(*bound.args, **bound.kwargs)
         except RuleError as exc:
             raise CommandError(str(exc)) from exc
-        self.world = trial
         self._events()
 
 
@@ -124,14 +145,16 @@ def _create(options):
 
 
 def _checkpoint(match):
-    return {'seed': match.seed, 'world': deepcopy(match.world.to_dict()), 'events': deepcopy(match.events)}
+    return {'seed': match.seed, 'world': match.world.to_dict(), 'events': match._recent_events(), 'event_id': match.event_id}
 
 
 def _restore(snapshot):
     match = WarbandMatch.__new__(WarbandMatch)
     match.seed, match.world = snapshot['seed'], World.from_dict(snapshot['world'])
     match.events = snapshot['events']
-    match.event_id = max((event[0] for event in match.events), default=0)
+    match.event_ticks = [match.world.tick] * len(match.events)  # a restored match tells its last news once more
+    # The count goes on where it was, or a client would take the news after a restart for news it has had.
+    match.event_id = snapshot.get('event_id', max((event[0] for event in match.events), default=0))  # older checkpoints carry none
     return match
 
 

@@ -125,3 +125,17 @@ def test_the_scene_shows_a_ruin_grey_on_the_map_the_minimap_and_the_card(tmp_pat
         assert "Abandoned" in texts and not scene._card, "named for what it is, with nothing to order"
     finally:
         game._teardown()
+
+
+def test_an_abandoned_tower_never_looses_another_arrow() -> None:
+    """Its owner's last look at the ground once outlived the resignation by a few ticks, and so did the tower's aim."""
+    world = field(3)
+    tower = world.place_building(1, BuildingType.TOWER, (20, 10))
+    passer_by = world.spawn_unit(0, UnitType.FOOTMAN, (21.0, 13.5))
+    world.hold([passer_by.id])
+    world.update_vision()
+    world.resign(1)
+    assert tower.abandoned
+    for _ in range(100):
+        world.step()
+    assert not world.projectiles and passer_by.hp == passer_by.max_hp, "a ruin nobody owns shot at a passer-by"

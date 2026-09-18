@@ -112,7 +112,7 @@ class QueueEntry:
     state: str  # "working" | "queued" | "waiting"
     progress: float  # of the work; 0 while queued or waiting
     goto: Callable[[], None] | None  # left click: select the producer or look at the site
-    cancel: Callable[[], None]  # right click
+    cancel: Callable[[], bool]  # right click; whether the rules allowed it
 
 
 class _SelectionPanel(Component):
@@ -549,25 +549,39 @@ class GameScene(Scene):
         wx, wy = to_world(point)
         self.effects.add(Pulse((wx, wy), color, radius=(4, 18), rings=2, duration=0.5))
 
-    def order(self, action, *args, **kwargs):
-        return getattr(self.world, action)(*args, **kwargs)
+    def order(self, action, *args, **kwargs) -> None:
+        """Give the match an order; a match played elsewhere (:class:`warband.multiplayer.NetworkGameScene`) sends it there."""
+        getattr(self.world, action)(*args, **kwargs)
+
+    def attempt(self, action: str, *args, **kwargs) -> bool:
+        """Give an order for the player.  When the rules refuse it, the status line says why and this is False.
+        Every button, key and click goes through here, so a refusal is never an exception in the frame."""
+        try:
+            self.order(action, *args, **kwargs)
+        except RuleError as exc:
+            self.warn(str(exc))
+            return False
+        return True
+
+    def _enemy(self, target: Entity | None) -> bool:
+        return target is not None and target.player is not None and target.player != self.human
 
     def command_smart(self, point: tuple[float, float], *, queue: bool = False) -> None:
         units = self._own_units()
         if units:
+            ids = [u.id for u in units]
             target = self.view.entity_at(point)
-            if target is not None and target.player is not None and target.player != self.human:
-                self.order("attack", [u.id for u in units], target.id, queue=queue)
-                verb = "attack"
+            attack = self._enemy(target)  # the only context order that strikes: smart on anything else moves, mends, mines or builds
+            if attack:
+                given = self.attempt("attack", ids, target.id, queue=queue)
             else:
-                verb = self.order("smart", [u.id for u in units], point, queue=queue,
-                                  target_id=target.id if target is not None else None)
-            self._marker(point, (255, 80, 70, 220) if verb == "attack" else (120, 255, 140, 220))
-            self.sfx("attack_command" if verb == "attack" else "command")
+                given = self.attempt("smart", ids, point, queue=queue, target_id=target.id if target is not None else None)
+            if given:
+                self._marker(point, (255, 80, 70, 220) if attack else (120, 255, 140, 220))
+                self.sfx("attack_command" if attack else "command")
             return
         building = self._own_building()
-        if building is not None and building.done:
-            self.order("set_rally", building.id, point)
+        if building is not None and building.done and self.attempt("set_rally", building.id, point):
             self._marker(point, (255, 214, 110, 220))
             self.sfx("command")
 
@@ -576,19 +590,13 @@ class GameScene(Scene):
         target = self.view.entity_at(point)
         if not workers or not isinstance(target, Building):
             self.warn("Click one of your damaged buildings")
-            return
-        try:
-            self.order("repair", workers, target.id, queue=queue)
-        except RuleError as exc:
-            self.warn(str(exc))
-            return
-        self._marker(point, (120, 255, 140, 220))
-        self.sfx("command")
+        elif self.attempt("repair", workers, target.id, queue=queue):
+            self._marker(point, (120, 255, 140, 220))
+            self.sfx("command")
 
     def command_move(self, point: tuple[float, float], *, queue: bool = False) -> None:
         units = self._own_units()
-        if units:
-            self.order("move", [u.id for u in units], point, queue=queue)
+        if units and self.attempt("move", [u.id for u in units], point, queue=queue):
             self._marker(point, (120, 255, 140, 220))
             self.sfx("command")
 
@@ -598,34 +606,28 @@ class GameScene(Scene):
             return
         ids = [u.id for u in units]
         target = self.view.entity_at(point)
-        try:
-            if target is not None and target.player is not None and target.player != self.human:
-                self.order("attack", ids, target.id, queue=queue)
-            else:
-                self.order("attack_move", ids, point, queue=queue)
-        except RuleError as exc:
-            self.warn(str(exc))
-            return
-        self._marker(point, (255, 80, 70, 220))
-        self.sfx("attack_command")
+        if self._enemy(target):
+            given = self.attempt("attack", ids, target.id, queue=queue)
+        else:
+            given = self.attempt("attack_move", ids, point, queue=queue)
+        if given:
+            self._marker(point, (255, 80, 70, 220))
+            self.sfx("attack_command")
 
     def command_patrol(self, point: tuple[float, float], *, queue: bool = False) -> None:
         units = self._own_units()
-        if units:
-            self.order("patrol", [u.id for u in units], point, queue=queue)
+        if units and self.attempt("patrol", [u.id for u in units], point, queue=queue):
             self._marker(point, (120, 200, 255, 220))
             self.sfx("command")
 
     def command_stop(self) -> None:
         units = self._own_units()
-        if units:
-            self.order("stop", [u.id for u in units])
+        if units and self.attempt("stop", [u.id for u in units]):
             self.sfx("command")
 
     def command_hold(self) -> None:
         units = self._own_units()
-        if units:
-            self.order("hold", [u.id for u in units])
+        if units and self.attempt("hold", [u.id for u in units]):
             self.sfx("command")
 
     def start_pending(self, mode: str) -> None:
@@ -657,10 +659,7 @@ class GameScene(Scene):
         size = BUILDINGS[building_type].size
         site = (int(math.floor(point[0] - size / 2 + 0.5)), int(math.floor(point[1] - size / 2 + 0.5)))
         builder = min(peasants, key=lambda u: (u.hidden, math.dist(u.pos, point)))
-        try:
-            self.order("build", builder.id, building_type, site, queue=keep)
-        except RuleError as exc:
-            self.warn(str(exc))
+        if not self.attempt("build", builder.id, building_type, site, queue=keep):
             return
         self.sfx("command")
         self._marker((site[0] + size / 2, site[1] + size / 2), (255, 214, 110, 220))
@@ -676,46 +675,28 @@ class GameScene(Scene):
 
     def train(self, unit_type: UnitType) -> None:
         building = self._own_building()
-        if building is None:
-            return
-        try:
-            self.order("train", building.id, unit_type)
-        except RuleError as exc:
-            self.warn(str(exc))
-            return
-        self.sfx("button")
-        self._refresh_card()
+        if building is not None and self.attempt("train", building.id, unit_type):
+            self.sfx("button")
+            self._refresh_card()
 
     def cancel_work(self) -> None:
         building = self._own_building()
-        if building is None:
+        if building is None or not (building.queue or building.research is not None):
             return
-        if building.queue:
-            self.order("cancel_train", building.id)
-        elif building.research is not None:
-            self.order("cancel_research", building.id)
-        else:
-            return
-        self.sfx("button")
-        self._refresh_card()
+        if self.attempt("cancel_train" if building.queue else "cancel_research", building.id):
+            self.sfx("button")
+            self._refresh_card()
 
     def research(self, upgrade: Upgrade) -> None:
         building = self._own_building()
-        if building is None:
-            return
-        try:
-            self.order("research", building.id, upgrade)
-        except RuleError as exc:
-            self.warn(str(exc))
-            return
-        self.sfx("button")
-        self._refresh_card()
+        if building is not None and self.attempt("research", building.id, upgrade):
+            self.sfx("button")
+            self._refresh_card()
 
     def cancel_construction(self) -> None:
         building = self._own_building()
-        if building is None or building.done:
+        if building is None or building.done or not self.attempt("cancel_building", building.id):
             return
-        self.order("cancel_building", building.id)
         self.say(f"{building.info.name} cancelled, cost refunded")
         self.sfx("button")
         self.select([])
@@ -765,10 +746,7 @@ class GameScene(Scene):
         self.game.push(SettlementPlansScene(self))
 
     def order_production(self, kind: str, item: UnitType | Upgrade) -> None:
-        try:
-            self.order("order_unit" if kind == "train" else "order_upgrade", self.human, item)
-        except RuleError as exc:
-            self.warn(str(exc))
+        if not self.attempt("order_unit" if kind == "train" else "order_upgrade", self.human, item):
             return
         info = self.race.units[item] if kind == "train" else UPGRADES[item]
         self.say(f"{info.name} ordered · pay when work starts · manage in Plans")
@@ -778,10 +756,7 @@ class GameScene(Scene):
     def place_plan(self, building_type: BuildingType, point: tuple[float, float], *, keep: bool = False) -> None:
         size = BUILDINGS[building_type].size
         site = (int(math.floor(point[0] - size / 2 + 0.5)), int(math.floor(point[1] - size / 2 + 0.5)))
-        try:
-            self.order("plan_building", self.human, building_type, site)
-        except RuleError as exc:
-            self.warn(str(exc))
+        if not self.attempt("plan_building", self.human, building_type, site):
             return
         self.say(f"{self.building_name(building_type)} planned · a worker will build when ready")
         self.sfx("command")
@@ -790,10 +765,7 @@ class GameScene(Scene):
             self._refresh_card()
 
     def set_assembly(self, point: tuple[float, float] | None) -> None:
-        try:
-            self.order("set_assembly", self.human, point)
-        except RuleError as exc:
-            self.warn(str(exc))
+        if not self.attempt("set_assembly", self.human, point):
             return
         self.say("Assembly point cleared" if point is None else "New soldiers will assemble here; workers keep working")
         self.sfx("command")
@@ -814,11 +786,11 @@ class GameScene(Scene):
                 if building.pos not in sites:
                     progress = building.progress / building.info.build_time
                     entries.append(QueueEntry(building.type, f"{building.info.name} · building {int(progress * 100)}%", "working", progress, look,
-                                              lambda b=building: self.order("cancel_building", b.id)))
+                                              lambda b=building: self.attempt("cancel_building", b.id)))
                 continue
             for index, unit_type in enumerate(building.queue):
                 info = race.units[unit_type]
-                cancel = lambda b=building, i=index: self.order("cancel_train", b.id, i)
+                cancel = lambda b=building, i=index: self.attempt("cancel_train", b.id, i)
                 if index == 0:
                     progress = building.train_progress / info.build_time
                     entries.append(QueueEntry(unit_type, f"{info.name} · training {int(progress * 100)}% at the {building.info.name}", "working",
@@ -829,10 +801,10 @@ class GameScene(Scene):
                 info = UPGRADES[building.research]
                 progress = building.research_progress / info.time
                 entries.append(QueueEntry(building.research, f"{info.name} · researching {int(progress * 100)}% at the {building.info.name}", "working",
-                                          progress, look, lambda b=building: self.order("cancel_research", b.id)))
+                                          progress, look, lambda b=building: self.attempt("cancel_research", b.id)))
         for plan in plans:
             info = {"building": race.buildings, "unit": race.units, "upgrade": UPGRADES}[plan.kind][plan.type]
-            cancel = lambda pid=plan.id: self.order("cancel_plan", human, pid)
+            cancel = lambda pid=plan.id: self.attempt("cancel_plan", human, pid)
             site = next((b for b in world.player_buildings(human, plan.type) if b.pos == plan.pos), None) if plan.kind == "building" else None
             if site is not None:
                 progress = site.progress / site.info.build_time
@@ -1021,14 +993,9 @@ class GameScene(Scene):
                     if blocked is not None:
                         self.warn(blocked)
                         return True
-                    try:
-                        for _ in range(5):
-                            self.order("order_unit", self.human, command.target)
-                    except RuleError as exc:
-                        self.warn(str(exc))
-                        return True
-                    self.say(f"5 x {self.race.units[command.target].name} ordered - pay when work starts - manage in Plans")
-                    self.sfx("button")
+                    if all(self.attempt("order_unit", self.human, command.target) for _ in range(5)):  # stops at the first refusal, which says why
+                        self.say(f"5 x {self.race.units[command.target].name} ordered - pay when work starts - manage in Plans")
+                        self.sfx("button")
                     return True
                 blocked = command.blocked()
                 if blocked is None:
@@ -1223,13 +1190,9 @@ class GameScene(Scene):
             if not (px <= x < px + pw and py <= y < py + ph):
                 continue
             if button == "right":
-                try:
-                    entry.cancel()
-                except RuleError as exc:
-                    self.warn(str(exc))
-                    return True
-                self.sfx("button")
-                self._refresh_card()
+                if entry.cancel():
+                    self.sfx("button")
+                    self._refresh_card()
             elif button == "left" and entry.goto is not None:
                 entry.goto()
             return True

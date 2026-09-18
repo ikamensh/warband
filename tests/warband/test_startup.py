@@ -13,6 +13,7 @@ images at one scale and the match redrew them at another.
 import pytest
 
 from saga2d import Game
+from saga2d.backends.mock_backend import MockBackend
 from warband.scene import GameScene, LeaveScene, PauseScene
 from warband.style import build_theme
 from warband.title import NewGameScene, TitleScene
@@ -23,7 +24,15 @@ WINDOWS = {
     "clipped under the taskbar": (1840, 951),  # the reported crash: the ground came back 317 px for a 320 px image
     "maximised": (1920, 1040),
     "a small window": (960, 500),
-    "a 4K desktop that reported scaled units": (3760, 2040),
+    "maximised on a 4K monitor it was dragged to": (3840, 2120),
+}
+
+# The 3840×2160 Windows desktop of the 2026-09-17 report (WB-021), as measured on a real one at each scaling:
+# the screen in desktop units, the desktop's scale, and the canvas and texture scale the engine gives the game.
+DESKTOPS = {
+    "3840x2160 at 200 %": ((1920, 1080), 2.0, (1840, 960), 2.0),
+    "3840x2160 at 150 %": ((2560, 1440), 1.5, (2480, 1320), 1.5),
+    "3840x2160 at 100 %": ((3840, 2160), 1.0, (2506, 1360), 1.5),
 }
 
 
@@ -84,6 +93,23 @@ def test_the_first_match_starts_on_the_window_the_os_handed_back(launch, window)
     assert game.resolution == (1840, 960)
     the_os_hands_back(game, lambda: game.backend.inject_resize(*window))
     start_match(game)
+
+
+@pytest.mark.parametrize("screen, scale, canvas, texture_scale", DESKTOPS.values(), ids=list(DESKTOPS))
+def test_a_4k_desktop_gets_a_canvas_made_for_it_and_plays(tmp_path, screen, scale, canvas, texture_scale) -> None:
+    """The report's desktop: not a 3760×2040 canvas with the HUD at native pixels, and matches start, end and restart."""
+    game = Game("Warband", backend=MockBackend(screen=screen, desktop_scale=scale), resolution=None,
+                theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        game.push(TitleScene())
+        game.tick(1 / 60)
+        assert game.resolution == canvas and game.backend.scale_factor == pytest.approx(texture_scale, abs=0.001)
+        start_match(game)
+        back_to_title(game)
+        the_os_hands_back(game, lambda: game.set_fullscreen(True))
+        start_match(game)
+    finally:
+        game._teardown()
 
 
 def test_matches_start_after_the_window_changed_between_them(launch) -> None:

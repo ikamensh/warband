@@ -70,10 +70,11 @@ def test_trusted_checkpoint_keeps_existing_json_and_the_next_real_order():
     hall = next(building for building in match.world.buildings.values()
                 if building.player == 0 and building.type == BuildingType.TOWN_HALL)
     match.apply(0, {'action': 'train', 'args': [hall.id, UnitType.PEASANT.value]})
-    before = json.loads(json.dumps(match.snapshot(0)))
     checkpoint = json.loads(json.dumps(spec.checkpoint(match)))
-    assert checkpoint == before
+    assert checkpoint == json.loads(json.dumps({'seed': match.seed, 'world': match.world.to_dict(), 'events': match.events,
+                                                'event_id': match.event_id}))
     resumed = spec.restore(checkpoint)
+    before = json.loads(json.dumps(match.snapshot(0)))
     assert resumed.snapshot(0) == match.snapshot(0)
     assert resumed.snapshot(1) == match.snapshot(1)
     following = {'action': 'cancel_train', 'args': [hall.id]}

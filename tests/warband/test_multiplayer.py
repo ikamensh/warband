@@ -41,7 +41,10 @@ def test_warband_guest_orders_and_host_simulation_stay_in_sync():
         assert match.world.units[guest.id].pos != original
         restored = World.from_dict(client.state['world'])
         assert all(p.human for p in restored.players)
-        assert restored.to_dict() == match.world.to_dict()
+        ours, theirs = restored.to_dict(), match.world.to_dict()
+        private = ('rng', 'explored', 'worker_knowledge')  # the server's dice and the host's view of the map stay with them
+        assert {k: v for k, v in ours.items() if k not in private} == {k: v for k, v in theirs.items() if k not in private}
+        assert ours['explored'][1] == theirs['explored'][1] and ours['worker_knowledge'][1] == theirs['worker_knowledge'][1]
     finally:
         client.close()
         host.close()

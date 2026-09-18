@@ -146,6 +146,18 @@ real breakdown.
   World method, never a direct mutation or a helper called on the world from
   outside, or replays stop reproducing the match; `tests/warband/test_replay.py`
   checks playback to the bit on several seeds.
+- A World order checks all it has to check before it changes anything and
+  refuses with a `RuleError`: the online authority gives orders straight to
+  the running world, so a half-applied group order would be a match nobody
+  asked for. A new order, or a new way to refuse one, gets a row in
+  `tests/warband/test_order_atomicity.py`. What a player can pile up is
+  bounded (`rules.MAX_PLANS`, `MAX_QUEUED_ORDERS`). The HUD gives orders
+  through `GameScene.attempt`, which turns a refusal into the status line's
+  warning; never call `order` from a button or a key.
+- What the authority sends a seat (`WarbandMatch.snapshot`) is not the save:
+  no random stream, none of the other seat's explored ground or remembered
+  map, events for five seconds. The checkpoint is the whole match. What the
+  fog hides of units and buildings still travels (WB-011).
 - Tests use the mock backend (`game`/`backend` fixtures from
   `saga2d.testing.fixtures`), public behaviour only; fixtures use
   `save_dir=tmp_path / "saves"` because `data_dir` is its parent.

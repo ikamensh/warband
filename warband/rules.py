@@ -306,6 +306,8 @@ LEASH = 6.0  # how far an idle unit chases before it walks home
 UNDER_ATTACK_COOLDOWN = 20.0
 SIM_DT = 0.05  # the simulation runs at 20 Hz regardless of the frame rate
 VISION_EVERY = 4  # ticks between fog recomputations
+MAX_PLANS = 64  # settlement plans a player may have waiting: each is looked at every second and travels in every online snapshot
+MAX_QUEUED_ORDERS = 32  # orders a unit may have queued behind the one it is carrying out
 HIT_VARIANCE = 0.25  # damage rolls between 75 % and 125 % of the listed value
 
 

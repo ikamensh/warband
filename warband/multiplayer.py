@@ -3,7 +3,7 @@ import math
 import time
 
 from saga2d import Button, CommandError, Label
-from warband.model import World, Event
+from warband.model import Event, RuleError, World
 from warband.rules import SIM_DT
 from warband.scene import GameScene, HelpScene, SettingsScene, _Overlay, _clock
 from warband.style import ACTION_BUTTON, GHOST_BUTTON
@@ -93,12 +93,13 @@ class NetworkGameScene(GameScene):
         self._check_game_over()
 
     def order(self, action, *args, **kwargs):
+        """Send the order to the match's authority.  One that cannot be sent is refused here and now; what the
+        authority refuses comes back later as the session's error."""
         fields = [arg.value if hasattr(arg, 'value') else arg for arg in args]
         try:
             self.session.submit({'action': action, 'args': fields, 'kwargs': kwargs})
         except CommandError as exc:
-            self.warn(str(exc))
-        return 'move' if action == 'smart' else None
+            raise RuleError(str(exc)) from exc
 
     def open_menu(self):
         self.game.push(NetworkMenuScene(self))
