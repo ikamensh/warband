@@ -279,6 +279,7 @@ class Building:
     cooldown: float = 0.0
     research: Upgrade | None = None
     research_progress: float = 0.0
+    abandoned: bool = False  # left behind by a resigned or surrendered player: nobody's, attackable, inert
     race: Race = Race.HUMAN  # its owner's; a gold mine is nobody's
 
     def __post_init__(self) -> None:
@@ -532,7 +533,7 @@ class World:
         return [u for u in self.units.values() if u.player == player]
 
     def player_buildings(self, player: int, building_type: BuildingType | None = None, *, done: bool | None = None) -> list[Building]:
-        return [b for b in self.buildings.values() if b.player == player
+        return [b for b in self.buildings.values() if b.player == player and not b.abandoned
                 and (building_type is None or b.type is building_type) and (done is None or b.done == done)]
 
     def mines(self) -> list[Building]:
@@ -607,7 +608,7 @@ class World:
         for unit in self.units.values():
             discs[unit.player].add((unit.tile, unit.info.sight))
         for building in self.buildings.values():
-            if building.player is not None:
+            if building.player is not None and not building.abandoned:
                 cx, cy = building.center
                 discs[building.player].add(((int(cx), int(cy)), building.info.sight + building.size // 2))
         for player in self.players:
@@ -2372,8 +2373,8 @@ class World:
             return best
         px, py = point
         for building in self.buildings.values():
-            if building.player is None or building.player == player or building.hp <= 0:
-                continue
+            if building.player is None or building.player == player or building.hp <= 0 or building.abandoned:
+                continue  # a ruin is razed on an explicit order, never picked up in passing
             bx, by, bw, bh = building.rect
             if not (bx - radius <= px <= bx + bw + radius and by - radius <= py <= by + bh + radius):
                 continue  # too far on one axis alone, so the real gap cannot be within reach
@@ -2486,7 +2487,8 @@ class World:
         dealt = max(1, int(round(roll)) - armor)
         target.hp -= dealt
         own = target.player == player
-        if target.hp <= 0 and target.player is not None and not own:
+        abandoned = isinstance(target, Building) and target.abandoned
+        if target.hp <= 0 and target.player is not None and not own and not abandoned:
             stats = self.players[player].stats
             stats["units_killed" if isinstance(target, Unit) else "buildings_razed"] += 1
             stats["destroyed_value"] += target.info.cost.gold + target.info.cost.lumber
@@ -2494,8 +2496,8 @@ class World:
                                  amount=dealt, text="ranged" if ranged else "melee", source_type=source_type,
                                  target_type=target.type.value, target_armor=armor,
                                  target_complete=not isinstance(target, Building) or target.done))
-        if own:
-            return  # a stone on one's own side hurts, but is no attack to answer or to raise the alarm for
+        if own or abandoned:
+            return  # a stone on one's own side hurts, but is no attack to answer or to raise the alarm for; nobody answers for a ruin
         if target.player is not None:
             victim = self.players[target.player]
             if self.time - victim.last_alert >= UNDER_ATTACK_COOLDOWN:
@@ -2630,9 +2632,27 @@ class World:
         for unit in units:
             self._remove_unit(unit)
         for building in owned:
-            self._remove_building(building, reason="resigned")
+            if len(self.players) >= 3:
+                self._abandon(building)  # the others fight on around what is left
+            else:
+                self._remove_building(building, reason="resigned")
         self.events.append(Event("resigned", pos, player=player, text=self.players[player].name))
         self._check_elimination()
+
+    def _abandon(self, b: Building) -> None:
+        """Leave *b* standing as nobody's: its footprint and hit points stay, everything it did stops."""
+        b.abandoned = True
+        b.queue.clear()
+        b.train_progress = 0.0
+        b.research, b.research_progress = None, 0.0
+        b.rally = None
+        for unit in self.units.values():
+            if unit.inside == b.id:
+                unit.inside = None
+                unit.timer = 0.0
+            if unit.constructing == b.id:
+                unit.constructing = None
+        self.events.append(Event("abandoned", b.center, player=b.player, entity=b.id, text=b.type.value))
 
     def _check_elimination(self) -> None:
         for player in self.players:
@@ -2647,7 +2667,10 @@ class World:
                 player.alive = False
                 player.surrendered = True
                 for building in buildings:
-                    self._remove_building(building, reason="abandoned")
+                    if len(self.players) >= 3:
+                        self._abandon(building)
+                    else:
+                        self._remove_building(building, reason="abandoned")
                 self.events.append(Event("surrendered", (0.0, 0.0), player=player.id,
                                          text=f"{player.name} surrenders: no units and no way to recruit"))
         alive = [p for p in self.players if p.alive]
@@ -2790,7 +2813,7 @@ def _building_to_dict(b: Building) -> dict[str, Any]:
         "id": b.id, "type": b.type.value, "player": b.player, "x": b.x, "y": b.y, "hp": b.hp, "progress": b.progress,
         "queue": [t.value for t in b.queue], "train_progress": b.train_progress, "rally": list(b.rally) if b.rally else None,
         "gold": b.gold, "builder": b.builder, "cooldown": b.cooldown,
-        "research": b.research.value if b.research else None, "research_progress": b.research_progress,
+        "research": b.research.value if b.research else None, "research_progress": b.research_progress, "abandoned": b.abandoned,
     }
 
 
@@ -2798,4 +2821,5 @@ def _building_from_dict(d: dict[str, Any], race: Race) -> Building:
     return Building(d["id"], BuildingType(d["type"]), d["player"], d["x"], d["y"], d["hp"], race=race, progress=d["progress"],
                     queue=[UnitType(t) for t in d["queue"]], train_progress=d["train_progress"],
                     rally=tuple(d["rally"]) if d["rally"] else None, gold=d["gold"], builder=d["builder"], cooldown=d["cooldown"],
-                    research=Upgrade(d["research"]) if d["research"] else None, research_progress=d["research_progress"])
+                    research=Upgrade(d["research"]) if d["research"] else None, research_progress=d["research_progress"],
+                    abandoned=d.get("abandoned", False))

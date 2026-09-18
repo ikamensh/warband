@@ -1712,10 +1712,11 @@ class GameScene(Scene):
         self.draw_rect(x, y, 72, 72, (255, 255, 255, 16), border_color=(255, 255, 255, 40), border_width=1, radius=6)
         self._portrait(entity, x + 4, y + 4, 64)
         tx = x + 88
-        owner = world.players[entity.player].name if entity.player is not None else "Neutral"
+        abandoned = isinstance(entity, Building) and entity.abandoned
+        owner = "Abandoned" if abandoned else world.players[entity.player].name if entity.player is not None else "Neutral"
         name = entity.info.name
         self.draw_text(f"{name}", tx, y + 16, style="heading")
-        color = rgba(world.players[entity.player].color) if entity.player is not None else GOLD
+        color = MUTED if abandoned else rgba(world.players[entity.player].color) if entity.player is not None else GOLD
         self.draw_text(owner, tx + 6 + self.game.backend.measure_text(name, 17, "Nunito SemiBold")[0], y + 16, style="sub", color=color)
         lines: list[str] = []
         if isinstance(entity, Building) and entity.type is BuildingType.GOLD_MINE:

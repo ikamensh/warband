@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
 
 from saga2d import Game
 from sagaforge import render3d as r3
@@ -2087,25 +2087,34 @@ def building_key(building_type: BuildingType, player: int, race: Race = Race.HUM
     return f"building.{race.value}.{building_type.value}.{look}.{player}"
 
 
-def building_image(game: Game, building_type: BuildingType, player: int, race: Race = Race.HUMAN, look: str = "intact") -> str:
+def building_image(game: Game, building_type: BuildingType, player: int, race: Race = Race.HUMAN, look: str = "intact", *,
+                   abandoned: bool = False) -> str:
     """Register (once) and return the key of one building image: the painted frame recoloured
     to the player's team when the race's buildings were restyled in that *look* (a look without
-    a painted sheet shows the intact painting), the low-poly render otherwise."""
+    a painted sheet shows the intact painting), the low-poly render otherwise.  An *abandoned*
+    building is the same picture drained of colour."""
     if look not in BUILDING_LOOKS:
         raise ValueError(f"unknown building look {look!r}")
     if look != "intact" and restyled_buildings(race, look) is None:
         look = "intact"
-    key = building_key(building_type, player, race, look)
+    key = building_key(building_type, player, race, look) + (".abandoned" if abandoned else "")
     if not game.assets.has_image(key):
         restyled = restyled_buildings(race, look)
         front = BUILDINGS[building_type].size / 2 * TILE
         if restyled is None:
-            game.assets.image_from_pil(key, _prop(key, _building(building_type, player, race), front + PAD, game.backend.scale_factor, front=front))
+            image = _prop(key, _building(building_type, player, race), front + PAD, game.backend.scale_factor, front=front)
         else:
             sheet, frames = restyled
             placements[key] = Placement(sheet.logical_size, sheet.drop, front)
-            game.assets.image_from_pil(key, _recoloured(frames[building_key(building_type, 0, race, look)], player))
+            image = _recoloured(frames[building_key(building_type, 0, race, look)], player)
+        game.assets.image_from_pil(key, _greyed(image) if abandoned else image)
     return key
+
+
+def _greyed(image: Image.Image) -> Image.Image:
+    """*image* without its colour and a little darker: a ruin nobody keeps."""
+    grey = ImageEnhance.Brightness(image.convert("RGBA").convert("L")).enhance(0.82)
+    return Image.merge("RGBA", (grey, grey, grey, image.convert("RGBA").getchannel("A")))
 
 
 DROP_TREE = TILE / 2 + PAD  # a tree is placed at its tile's centre; its image reaches the tile's front edge

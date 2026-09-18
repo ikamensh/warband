@@ -28,7 +28,7 @@ catches its class.
 | WB-004 | Next | done | Give melee attacks readable weight and contact | User |
 | WB-005 | Next | done | Replace the rotating-sprite death with convincing falls | User |
 | WB-006 | Next | done | Add blood on damaging hits | User |
-| WB-007 | Next | ready | Leave grey abandoned buildings when a player resigns in FFA | User |
+| WB-007 | Next | in progress | Leave grey abandoned buildings when a player resigns in FFA | User |
 | WB-008 | Next | in progress | Improve health bars and building progress indicators | User |
 | WB-015 | Next | in progress | Verify and complete durable local player storage outside game sources | User |
 | WB-009 | Next | proposed | Establish current battle performance and fix measured bottlenecks | User / engine split |
@@ -442,6 +442,41 @@ respect footprints, and save/load preserves it. Verify victory, AI targeting,
 pathing and absence of destruction rewards/effects on abandonment. Run rules
 integration tests and fuzz; keep two-player match completion correct. Online
 FFA is separate (WB-012), not a prerequisite for this local-game change.
+
+**Decisions 2026-09-18** (on the `rules` branch with WB-017, one server
+rollout for both): an abandoned building keeps its former owner's id with
+`abandoned = True`, so it is never confused with a gold mine (`player None`),
+ownership queries (`player_buildings`) leave it out, and every player's units
+may attack it while nobody's brain targets it. Razing it rewards nothing and
+raises no alarm. Automatic AI surrender follows the same rule. A two-player
+match keeps the current removal: it ends there anyway.
+
+**Acceptance (recorded 2026-09-18 before implementation), in progress on `rules`:**
+
+1. Rules: in a match of three or more players, a resignation keeps every
+   building the player owned, finished or not, as abandoned: footprint and hit
+   points stay; queue, research, construction, rally and any worker inside are
+   dropped; it gives no vision, supply, income or production; the player is
+   eliminated at once and victory is decided among the rest as before. In a
+   two-player match buildings are removed as today. Automatic AI surrender in
+   three or more follows the same rule.
+2. Any player's units can attack an abandoned building and raze it; razing
+   credits no kill, value, plunder or score to anyone, raises no
+   "building lost" alarm, and clears the footprint; until then units path
+   around it. Brains neither target nor fear abandoned buildings.
+3. Presentation: an abandoned building draws grey (its painting desaturated,
+   no team colour), the minimap marks it grey, the card names it "Abandoned
+   <building>" with no commands, the tooltip says abandoned; the WB-008 bar
+   rules apply to it (a bar when wounded or selected); it is seen through fog
+   like any building.
+4. Save and load carry the state; replays reproduce; the fingerprint is
+   refreshed deliberately (same series as WB-017).
+5. Tests: model tests on a four-player field for the resignation, the
+   elimination and victory, attacking and razing without rewards, pathing
+   around the footprint, brains ignoring it, AI surrender and the two-player
+   removal; a save round trip; scene tests for the look, the minimap colour
+   and the card; `tools/fuzz.py --games 6 --players 4` (or the equivalent
+   seeds) and the suite; native frames of an abandoned base inspected.
 
 ## WB-008 — Health bars and building progress
 

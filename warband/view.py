@@ -465,7 +465,7 @@ class MapView:
             if b.type is BuildingType.GOLD_MINE:
                 key = textures.mine_image(self.game, textures.scatter(b.x, b.y, 8) % textures.MINE_VARIANTS)
             elif b.done or rising:
-                key = textures.building_image(self.game, b.type, b.player, b.race, building_look(b))  # type: ignore[arg-type]
+                key = textures.building_image(self.game, b.type, b.player, b.race, building_look(b), abandoned=b.abandoned)  # type: ignore[arg-type]
             else:
                 key = f"site.{b.size}"
             sprite = self._buildings.get(b.id)
@@ -663,7 +663,7 @@ class MapView:
         for b in world.buildings.values():
             if not self._known(b):
                 continue
-            color = (232, 196, 70) if b.player is None else world.players[b.player].color
+            color = (150, 150, 150) if b.abandoned else (232, 196, 70) if b.player is None else world.players[b.player].color
             img[b.y:b.y + b.size, b.x:b.x + b.size] = color
         for u in world.units.values():
             if u.hidden or not (u.player == self.player or visible[u.tile[1], u.tile[0]]):
@@ -687,6 +687,8 @@ class MapView:
 
         if entity.player is None:
             return GOLD
+        if isinstance(entity, Building) and entity.abandoned:
+            return (150, 150, 150, 255)
         return SELECT if entity.player == self.player else ENEMY
 
     def _health_bar(self, entity: Entity, x: float, y: float, width: float) -> None:
@@ -731,7 +733,8 @@ class MapView:
             x, y, w, h = building.rect
             left, top = x * TILE, y * TILE
             if not building.done:
-                self._progress_bar(left, top, w, h, building.progress / building.info.build_time, work=False)
+                if not building.abandoned:  # a ruin's site goes nowhere
+                    self._progress_bar(left, top, w, h, building.progress / building.info.build_time, work=False)
                 if bid in shown:
                     self._health_bar(building, left + w * TILE / 2, top - 8, w * TILE * 0.8)
                 continue
