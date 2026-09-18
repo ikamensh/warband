@@ -19,7 +19,7 @@ uv run python tools/verify.py DIR                # a match through real pyglet e
 uv run python tools/verify_profile.py DIR        # title card, profile, rating on the results, leave confirmations, a replay: frames to look at
 uv run python tools/verify_deaths.py DIR         # one death per unit category from both sides and a mass-casualty scene, as montages to look at (--zoom 2 for near)
 uv run python tools/visual_lint.py --evidence DIR   # visual defects in the art and on every screen; PNGs of what it flags (--screens NAME, --no-images)
-uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms)
+uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms); --scenario four-player|pan-zoom|deaths|restarts, --csv, --gc
 uv run python tools/step_bench.py --repeat 3     # model step times of the same battle without a window, with --profile
 uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening (the default report is about a minute)
 uv run python tools/arena.py ladder --agents hard,pro --seeds 40   # rate agents against each other, in parallel

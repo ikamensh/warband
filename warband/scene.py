@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import json
 import math
 import random
@@ -1259,6 +1260,13 @@ class GameScene(Scene):
             for _ in range(6):
                 if next(self._warm, None) is None:
                     self._warm = None
+                    # The match's world, sprites and images are long-lived: freeze them out of the collector's
+                    # scans, or every full collection walks them (26 ms and growing in a 150-unit battle, every
+                    # two seconds).  What the previous match froze is thawed and buried first, so a session of
+                    # many matches keeps only the current one out of reach.
+                    gc.unfreeze()
+                    gc.collect()
+                    gc.freeze()
                     break
         self._advance(dt)
         self._handle_events(self.world.take_events())

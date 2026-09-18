@@ -45,6 +45,7 @@ catches its class.
 | WB-021 | Next | blocked | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
 | WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
 | WB-023 | Next | done | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
+| WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -702,6 +703,51 @@ gate: W10 is measured by hand on the reference Mac.
    [warband-early-access-progress.md](docs/warband-early-access-progress.md);
    the logs are under `docs/evidence/perf/`.
 
+**Evidence 2026-09-18** (Apple M4, macOS 26.6.2, 2880×2560 desktop, the
+tool's 1280×800 window, Warband `6745905`, Saga2D 0.3.3, unpaced, nothing
+else running; `docs/evidence/perf/`). `tools/perf.py` now keeps every phase
+per frame, names the slowest frames, dumps a CSV, runs the collector off or
+frozen, counts the batch's groups and domains and the tracked objects, and
+has the four other scenarios. Late 120 frames, p50 / p95 / max:
+
+| Scenario | p50 | p95 | max | Whole run p95 |
+|----------|-----|-----|-----|---------------|
+| reference battle (147 units) | 9.2–10.8 | 16.7–18.4 | 38–46 | 16.5–17.8 |
+| four players, 284 units | 10.1 | 16.8 | 17.8 | 18.9 |
+| pan and zoom over the battle | 8.7 | 16.6 | 20.1 | 16.8 |
+| two armies dying, bodies and blood lingering | 10.2 | 16.7 | 17.8 | 17.6 |
+| three matches in a row, 180 steady frames each | 10.0–11.2 | 17.3–18.1 | 38–44 | — |
+
+A match's first 30 frames sum to 400–580 ms with one frame of 103–125 ms:
+the first world step plans a path for every ordered unit (`find_path_grid`
+60–100 ms in that step). `tools/step_bench.py --repeat 3`: a step is p50
+1.99 / p95 4.59 ms, the first 86 ms.
+
+The gate (late p95 < 16 ms) is missed by one to two milliseconds in every
+scenario, reproducibly, and the miss is traced: a median frame is 9.3 ms —
+the engine's `end_frame` 4.5 (batch draw 2.6, flip 1.2, shape soups and
+labels the rest), `view.sync` 1.55, the scene's draw 1.1, the UI's 0.9, the
+collector's young passes 0.4 — and the frames carrying a world step are
+12.6 ms at p50 and 19.3 ms at p95, because a step averages 3.5 ms of which
+45 % is path planning (1,621 plans over 240 steps: attackers plan again
+whenever their target shifts a tile) and its bursts reach 28 ms when a
+fallen farm opens a gap for many at once. The p99 was the collector's full
+passes: 26–41 ms every two seconds, growing with the match, because the
+renderer's y-sorted groups and vertex domains grow without bound (165 → 489
+domains, 359 → 969 groups, 159,691 → 218,012 tracked objects in twelve
+seconds; each domain builds a class).
+
+What changed here: a match now thaws the previous one, buries it and freezes
+its own world, sprites and images out of the collector once its warm-up ends
+(`GameScene.update`; a full pass then costs about 10 ms instead of 26–41 and
+no longer grows: `--gc freeze` late max 22 ms against 46);
+`tests/warband/test_collector.py`. The simulation fingerprint is unchanged.
+Filed with the numbers: [S2D-016](../saga2d/BACKLOG.md) (the growth) and
+[S2D-017](../saga2d/BACKLOG.md) (the draw-list rebuild on every y-sort change
+and the Python-pushed shape soups, most of them WB-008's bars). The model's
+share is a rules change, so it is its own item, WB-024, for the next rules
+series. The W10 row in the progress record now says the gate is missed.
+
 ## WB-010 — Online responsiveness and connection feedback
 
 The online path publishes full world snapshots at 10 Hz; distinguish that
@@ -1147,3 +1193,23 @@ before and after (`docs/evidence/residue/`): the squares are gone.
    raised contrast before and after; a crowd on winter ground at normal
    contrast where a square shows most; the lint over every registered image.
 5. The sagaforge and Warband suites; the sagaforge pin moved; no model change.
+
+## WB-024 — Plan fewer paths in a melee
+
+WB-009's trace of the 150-unit reference battle: a world step averages 3.5 ms
+and 45 % of it is `find_path_grid` (1,621 plans over 240 steps), because an
+attacker plans again whenever its target moves to another tile
+(`_approach`: `path_goal != goal`), throttled only by `REPLAN_EVERY` and the
+stagger; a fallen farm makes many plan at once (28 ms in one step). A unit
+already within a step or two of a target that shuffled inside its reach does
+not need a new path, and a target that moved one tile could keep the old
+path's tail. This changes when units move, so it moves the simulation
+fingerprint and the authoritative contract: it goes with the next rules
+series and its server rollout, not on its own.
+
+**Done when:** the reference battle's plans per step fall by half or more
+with the same fights decided the same way (the arena's ladders unchanged
+within noise), the step's p95 under 3 ms in `tools/step_bench.py`, the late
+p95 of `tools/perf.py` measured before and after, seeded fuzz clean, the
+fingerprint refreshed deliberately with the rest of its series.
+
