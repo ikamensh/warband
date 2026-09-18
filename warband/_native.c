@@ -14,6 +14,7 @@
 #include <Python.h>
 #include <math.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 
 #ifdef __clang__
@@ -214,6 +215,72 @@ static double octile_left(Py_ssize_t index, Py_ssize_t width, Py_ssize_t gx, Py_
     return straight + saved;
 }
 
+/* -- Scratch ---------------------------------------------------------------------------------- */
+
+/* The per-tile arrays the searches work in, kept from call to call for the largest map seen.  A tile's
+   entries count only while its mark equals the current search's number, so a search starts by taking a
+   new number rather than by clearing the map: most searches touch a few hundred tiles of thousands.  The
+   GIL is held throughout and nothing calls back into Python in the middle of a search, so one set of
+   arrays serves every search. */
+typedef struct {
+    Py_ssize_t capacity;
+    uint32_t number;
+    uint32_t *scored;  /* scored[i] == number: score[i] and parent[i] belong to this search */
+    uint32_t *closed;  /* closed[i] == number: A* has expanded tile i */
+    uint32_t *goal;    /* goal[i] == number: tile i is a goal, penalty[i] added to the walk (owner[i]: whose claim) */
+    uint32_t *busy;    /* busy[i] == number: a tree somebody is already felling */
+    double *score;
+    double *penalty;
+    Py_ssize_t *parent;
+    Py_ssize_t *owner;
+    Heap2 heap2;
+    Heap3 heap3;
+} Scratch;
+
+static Scratch scratch;
+
+static int scratch_begin(Py_ssize_t size) {
+    if (size > scratch.capacity) {
+        PyMem_Free(scratch.scored); PyMem_Free(scratch.closed); PyMem_Free(scratch.goal); PyMem_Free(scratch.busy);
+        PyMem_Free(scratch.score); PyMem_Free(scratch.penalty); PyMem_Free(scratch.parent); PyMem_Free(scratch.owner);
+        scratch.scored = PyMem_Calloc((size_t)size, sizeof(uint32_t));
+        scratch.closed = PyMem_Calloc((size_t)size, sizeof(uint32_t));
+        scratch.goal = PyMem_Calloc((size_t)size, sizeof(uint32_t));
+        scratch.busy = PyMem_Calloc((size_t)size, sizeof(uint32_t));
+        scratch.score = PyMem_Malloc((size_t)size * sizeof(double));
+        scratch.penalty = PyMem_Malloc((size_t)size * sizeof(double));
+        scratch.parent = PyMem_Malloc((size_t)size * sizeof(Py_ssize_t));
+        scratch.owner = PyMem_Malloc((size_t)size * sizeof(Py_ssize_t));
+        scratch.number = 0;
+        if (!scratch.scored || !scratch.closed || !scratch.goal || !scratch.busy || !scratch.score || !scratch.penalty
+                || !scratch.parent || !scratch.owner) {
+            scratch.capacity = 0;
+            PyErr_NoMemory();
+            return -1;
+        }
+        scratch.capacity = size;
+    }
+    if (++scratch.number == 0) {  /* the count wrapped round: an old mark could pass for this search's */
+        memset(scratch.scored, 0, (size_t)scratch.capacity * sizeof(uint32_t));
+        memset(scratch.closed, 0, (size_t)scratch.capacity * sizeof(uint32_t));
+        memset(scratch.goal, 0, (size_t)scratch.capacity * sizeof(uint32_t));
+        memset(scratch.busy, 0, (size_t)scratch.capacity * sizeof(uint32_t));
+        scratch.number = 1;
+    }
+    scratch.heap2.count = 0;
+    scratch.heap3.count = 0;
+    return 0;
+}
+
+/* The score of tile i in this search: infinity until the search scores it. */
+static inline double score_of(Py_ssize_t i) { return scratch.scored[i] == scratch.number ? scratch.score[i] : INFINITY; }
+
+static inline void score_tile(Py_ssize_t i, double value, Py_ssize_t from) {
+    scratch.scored[i] = scratch.number;
+    scratch.score[i] = value;
+    scratch.parent[i] = from;
+}
+
 /* -- find_path_grid ---------------------------------------------------------------------------- */
 
 static PyObject *find_path_grid(PyObject *self, PyObject *const *args, Py_ssize_t nargs) {
@@ -229,60 +296,50 @@ static PyObject *find_path_grid(PyObject *self, PyObject *const *args, Py_ssize_
     Grid grid;
     if (grid_open(blocked_obj, size, &grid) < 0) return NULL;
     const unsigned char *blocked = grid.cells;
-    double *g_score = PyMem_Malloc((size_t)size * sizeof(double));
-    Py_ssize_t *parent = PyMem_Malloc((size_t)size * sizeof(Py_ssize_t));
-    unsigned char *done = PyMem_Calloc((size_t)size, 1);
-    Heap3 frontier = {NULL, 0, 0};
     PyObject *result = NULL;
-    if (g_score == NULL || parent == NULL || done == NULL) { PyErr_NoMemory(); goto out; }
-    for (Py_ssize_t i = 0; i < size; i++) { g_score[i] = INFINITY; parent[i] = -1; }
-    g_score[origin] = 0.0;
+    if (scratch_begin(size) < 0) goto out;
+    uint32_t number = scratch.number;
+    score_tile(origin, 0.0, -1);
     Py_ssize_t dx = sx > gx ? sx - gx : gx - sx, dy = sy > gy ? sy - gy : gy - sy;
     Py_ssize_t best = origin;
     double best_h = (double)(dx + dy) + DIAGONAL * (double)(dx > dy ? dy : dx);
-    if (push3(&frontier, (Node3){best_h, 0.0, origin}) < 0) goto out;
+    if (push3(&scratch.heap3, (Node3){best_h, 0.0, origin}) < 0) goto out;
     Py_ssize_t expansions = 0;
     Steps steps;
-    while (frontier.count && expansions < max_expansions) {
-        Node3 top = pop3(&frontier);
+    while (scratch.heap3.count && expansions < max_expansions) {
+        Node3 top = pop3(&scratch.heap3);
         Py_ssize_t current = top.index;
-        if (done[current]) continue;
-        done[current] = 1;
+        if (scratch.closed[current] == number) continue;
+        scratch.closed[current] = number;
         expansions++;
         if (current % width == gx && current / width == gy) { best = current; break; }
         steps_from(current, width, size, blocked, &steps);
         double ng = top.g + 1.0;
         for (int i = 0; i < steps.orthogonals; i++) {
             Py_ssize_t next = current + steps.orthogonal[i];
-            if (ng < g_score[next]) {
-                g_score[next] = ng;
-                parent[next] = current;
+            if (ng < score_of(next)) {
+                score_tile(next, ng, current);
                 double h = octile_left(next, width, gx, gy);
-                if (h < best_h || (h == best_h && ng < g_score[best])) { best = next; best_h = h; }
+                if (h < best_h || (h == best_h && ng < score_of(best))) { best = next; best_h = h; }
                 double f = ng + h;
-                if (push3(&frontier, (Node3){f, ng, next}) < 0) goto out;
+                if (push3(&scratch.heap3, (Node3){f, ng, next}) < 0) goto out;
             }
         }
         ng = top.g + SQRT2;
         for (int i = 0; i < steps.diagonals; i++) {
             Py_ssize_t next = current + steps.diagonal[i];
             if (blocked[next]) continue;
-            if (ng < g_score[next]) {
-                g_score[next] = ng;
-                parent[next] = current;
+            if (ng < score_of(next)) {
+                score_tile(next, ng, current);
                 double h = octile_left(next, width, gx, gy);
-                if (h < best_h || (h == best_h && ng < g_score[best])) { best = next; best_h = h; }
+                if (h < best_h || (h == best_h && ng < score_of(best))) { best = next; best_h = h; }
                 double f = ng + h;
-                if (push3(&frontier, (Node3){f, ng, next}) < 0) goto out;
+                if (push3(&scratch.heap3, (Node3){f, ng, next}) < 0) goto out;
             }
         }
     }
-    result = route_to(best, origin, parent, width);
+    result = route_to(best, origin, scratch.parent, width);
 out:
-    PyMem_Free(frontier.items);
-    PyMem_Free(g_score);
-    PyMem_Free(parent);
-    PyMem_Free(done);
     grid_close(&grid);
     return result;
 }
@@ -290,55 +347,47 @@ out:
 /* -- find_work_path ---------------------------------------------------------------------------- */
 
 /* The cheapest goal to walk to from *origin*, each goal's penalty added to the walk: path.find_work_path's
-   search.  Its index goes to *best* (-1 when no goal can be reached) and *parents* holds the walk to it. */
-static int work_search(Py_ssize_t origin, const unsigned char *is_goal, const double *penalty, const unsigned char *blocked,
-                       Py_ssize_t width, Py_ssize_t size, Py_ssize_t *parents, Py_ssize_t *best_out) {
-    double *costs = PyMem_Malloc((size_t)size * sizeof(double));
-    Heap2 frontier = {NULL, 0, 0};
-    int status = -1;
-    if (costs == NULL) { PyErr_NoMemory(); goto out; }
-    for (Py_ssize_t i = 0; i < size; i++) { costs[i] = INFINITY; parents[i] = -1; }
-    costs[origin] = 0.0;
-    if (push2(&frontier, (Node2){0.0, origin}) < 0) goto out;
+   search, over the goals marked in the scratch for the current search.  Its index goes to *best* (-1 when
+   no goal can be reached) and the scratch's parents hold the walk to it. */
+static int work_search(Py_ssize_t origin, const unsigned char *blocked, Py_ssize_t width, Py_ssize_t size,
+                       Py_ssize_t *best_out) {
+    uint32_t number = scratch.number;
+    score_tile(origin, 0.0, -1);
+    scratch.heap2.count = 0;
+    if (push2(&scratch.heap2, (Node2){0.0, origin}) < 0) return -1;
     Py_ssize_t best = -1;
     double best_cost = INFINITY;
     Steps steps;
-    while (frontier.count) {
-        Node2 top = pop2(&frontier);
+    while (scratch.heap2.count) {
+        Node2 top = pop2(&scratch.heap2);
         double cost = top.cost;
         Py_ssize_t current = top.index;
         if (cost >= best_cost) break;
-        if (cost != costs[current]) continue;
-        if (is_goal[current]) {
-            double total = cost + penalty[current];
+        if (cost != scratch.score[current]) continue;  /* every tile on the frontier has been scored */
+        if (scratch.goal[current] == number) {
+            double total = cost + scratch.penalty[current];
             if (total < best_cost) { best = current; best_cost = total; }
         }
         steps_from(current, width, size, blocked, &steps);
         double total = cost + 1.0;
         for (int i = 0; i < steps.orthogonals; i++) {
             Py_ssize_t next = current + steps.orthogonal[i];
-            if (total < costs[next]) {
-                costs[next] = total;
-                parents[next] = current;
-                if (push2(&frontier, (Node2){total, next}) < 0) goto out;
+            if (total < score_of(next)) {
+                score_tile(next, total, current);
+                if (push2(&scratch.heap2, (Node2){total, next}) < 0) return -1;
             }
         }
         total = cost + SQRT2;
         for (int i = 0; i < steps.diagonals; i++) {
             Py_ssize_t next = current + steps.diagonal[i];
-            if (!blocked[next] && total < costs[next]) {
-                costs[next] = total;
-                parents[next] = current;
-                if (push2(&frontier, (Node2){total, next}) < 0) goto out;
+            if (!blocked[next] && total < score_of(next)) {
+                score_tile(next, total, current);
+                if (push2(&scratch.heap2, (Node2){total, next}) < 0) return -1;
             }
         }
     }
     *best_out = best;
-    status = 0;
-out:
-    PyMem_Free(frontier.items);
-    PyMem_Free(costs);
-    return status;
+    return 0;
 }
 
 static PyObject *find_work_path(PyObject *self, PyObject *const *args, Py_ssize_t nargs) {
@@ -354,11 +403,8 @@ static PyObject *find_work_path(PyObject *self, PyObject *const *args, Py_ssize_
     if (origin < 0 || origin >= size) { PyErr_SetString(PyExc_ValueError, "the start is off the grid"); return NULL; }
     Grid grid;
     if (grid_open(blocked_obj, size, &grid) < 0) return NULL;
-    double *penalty = PyMem_Malloc((size_t)size * sizeof(double));
-    unsigned char *is_goal = PyMem_Calloc((size_t)size, 1);
-    Py_ssize_t *parents = PyMem_Malloc((size_t)size * sizeof(Py_ssize_t));
     PyObject *result = NULL;
-    if (penalty == NULL || is_goal == NULL || parents == NULL) { PyErr_NoMemory(); goto out; }
+    if (scratch_begin(size) < 0) goto out;
     /* {y * width + x: penalty for (x, y), penalty in goals.items()}: later keys that land on the
        same index replace earlier ones, and an index off the grid is never reached. */
     Py_ssize_t position = 0;
@@ -369,20 +415,17 @@ static PyObject *find_work_path(PyObject *self, PyObject *const *args, Py_ssize_
         double amount = PyFloat_AsDouble(value);
         if (amount == -1.0 && PyErr_Occurred()) goto out;
         Py_ssize_t index = y * width + x;
-        if (index >= 0 && index < size) { penalty[index] = amount; is_goal[index] = 1; }
+        if (index >= 0 && index < size) { scratch.penalty[index] = amount; scratch.goal[index] = scratch.number; }
     }
     Py_ssize_t best;
-    if (work_search(origin, is_goal, penalty, grid.cells, width, size, parents, &best) < 0) goto out;
+    if (work_search(origin, grid.cells, width, size, &best) < 0) goto out;
     if (best < 0) {
         Py_INCREF(Py_None);
         result = Py_None;
     } else {
-        result = route_to(best, origin, parents, width);
+        result = route_to(best, origin, scratch.parent, width);
     }
 out:
-    PyMem_Free(penalty);
-    PyMem_Free(is_goal);
-    PyMem_Free(parents);
     grid_close(&grid);
     return result;
 }
@@ -414,26 +457,18 @@ static PyObject *choose_tree(PyObject *self, PyObject *args) {
         grid_close(&grid); Py_DECREF(trees); Py_DECREF(reach); return NULL;
     }
     PyObject *result = NULL;
-    unsigned char *taken = NULL, *is_goal = NULL;
-    double *cost = NULL;
-    Py_ssize_t *owner = NULL, *parents = NULL, *offsets = NULL;
+    Py_ssize_t *offsets = NULL;
     if (field.view.itemsize != sizeof(double) || field.view.len < size * (Py_ssize_t)sizeof(double)) {
         PyErr_SetString(PyExc_ValueError, "the depot field is an array('d') of width * height");
         goto out;
     }
+    if (scratch_begin(size) < 0) goto out;
+    uint32_t number = scratch.number;
     const double *distance = (const double *)field.view.buf;
     const unsigned char *blocked = grid.cells;
     Py_ssize_t reaches = PySequence_Fast_GET_SIZE(reach);
-    taken = PyMem_Calloc((size_t)size, 1);
-    is_goal = PyMem_Calloc((size_t)size, 1);
-    cost = PyMem_Malloc((size_t)size * sizeof(double));
-    owner = PyMem_Malloc((size_t)size * sizeof(Py_ssize_t));
-    parents = PyMem_Malloc((size_t)size * sizeof(Py_ssize_t));
     offsets = PyMem_Malloc((size_t)(2 * reaches + 1) * sizeof(Py_ssize_t));
-    if (taken == NULL || is_goal == NULL || cost == NULL || owner == NULL || parents == NULL || offsets == NULL) {
-        PyErr_NoMemory();
-        goto out;
-    }
+    if (offsets == NULL) { PyErr_NoMemory(); goto out; }
     for (Py_ssize_t i = 0; i < reaches; i++)
         if (read_pos(PySequence_Fast_GET_ITEM(reach, i), &offsets[2 * i], &offsets[2 * i + 1]) < 0) goto out;
     PyObject *iterator = PyObject_GetIter(loaded), *item;
@@ -442,7 +477,7 @@ static PyObject *choose_tree(PyObject *self, PyObject *args) {
         Py_ssize_t index = PyLong_AsSsize_t(item);
         Py_DECREF(item);
         if (index == -1 && PyErr_Occurred()) { Py_DECREF(iterator); goto out; }
-        if (index >= 0 && index < size) taken[index] = 1;
+        if (index >= 0 && index < size) scratch.busy[index] = number;
     }
     Py_DECREF(iterator);
     if (PyErr_Occurred()) goto out;
@@ -452,7 +487,7 @@ static PyObject *choose_tree(PyObject *self, PyObject *args) {
         Py_ssize_t tree = PyLong_AsSsize_t(PySequence_Fast_GET_ITEM(trees, i));
         if (tree == -1 && PyErr_Occurred()) goto out;
         if (tree < 0 || tree >= size) { PyErr_SetString(PyExc_ValueError, "a tree is off the grid"); goto out; }
-        if (taken[tree] || PyList_GET_ITEM(remembered, tree) != marker) continue;
+        if (scratch.busy[tree] == number || PyList_GET_ITEM(remembered, tree) != marker) continue;
         Py_ssize_t x = tree % width, y = tree / width;
         for (Py_ssize_t r = 0; r < reaches; r++) {
             Py_ssize_t tx = x + offsets[2 * r], ty = y + offsets[2 * r + 1];
@@ -462,31 +497,31 @@ static PyObject *choose_tree(PyObject *self, PyObject *args) {
             double walk = distance[tile];
             if (!(walk < INFINITY)) continue;
             double claim = 2.0 * walk;
-            if (!is_goal[tile] || claim < cost[tile]
-                    || (claim == cost[tile] && (x < owner[tile] % width
-                                                || (x == owner[tile] % width && y < owner[tile] / width)))) {
-                is_goal[tile] = 1;
-                cost[tile] = claim;
-                owner[tile] = tree;
+            if (scratch.goal[tile] != number) {
+                scratch.goal[tile] = number;
+                scratch.penalty[tile] = claim;
+                scratch.owner[tile] = tree;
+            } else {
+                Py_ssize_t holder = scratch.owner[tile];
+                if (claim < scratch.penalty[tile]
+                        || (claim == scratch.penalty[tile] && (x < holder % width || (x == holder % width && y < holder / width)))) {
+                    scratch.penalty[tile] = claim;
+                    scratch.owner[tile] = tree;
+                }
             }
             any = 1;
         }
     }
     if (!any) { Py_INCREF(Py_None); result = Py_None; goto out; }
     Py_ssize_t best;
-    if (work_search(origin, is_goal, cost, blocked, width, size, parents, &best) < 0) goto out;
+    if (work_search(origin, blocked, width, size, &best) < 0) goto out;
     if (best < 0) {
         Py_INCREF(Py_None);
         result = Py_None;
     } else {
-        result = Py_BuildValue("(nn)", owner[best] % width, owner[best] / width);
+        result = Py_BuildValue("(nn)", scratch.owner[best] % width, scratch.owner[best] / width);
     }
 out:
-    PyMem_Free(taken);
-    PyMem_Free(is_goal);
-    PyMem_Free(cost);
-    PyMem_Free(owner);
-    PyMem_Free(parents);
     PyMem_Free(offsets);
     PyBuffer_Release(&field.view);
     grid_close(&grid);
@@ -523,7 +558,8 @@ static PyObject *distance_field(PyObject *self, PyObject *args) {
     const unsigned char *blocked = grid.cells;
     double *distances = (double *)out_view.buf;
     Py_ssize_t *sorted = PyMem_Malloc((size_t)(count ? count : 1) * sizeof(Py_ssize_t));
-    Heap2 frontier = {NULL, 0, 0};
+    Heap2 frontier = scratch.heap2;  /* the scratch's heap storage, handed back for the next search below */
+    frontier.count = 0;
     PyObject *result = NULL;
     if (sorted == NULL) { PyErr_NoMemory(); goto out; }
     for (Py_ssize_t i = 0; i < count; i++) {
@@ -564,7 +600,8 @@ static PyObject *distance_field(PyObject *self, PyObject *args) {
     Py_INCREF(Py_None);
     result = Py_None;
 out:
-    PyMem_Free(frontier.items);
+    scratch.heap2 = frontier;
+    scratch.heap2.count = 0;
     PyMem_Free(sorted);
     grid_close(&grid);
     Py_DECREF(starts);
