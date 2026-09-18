@@ -61,7 +61,7 @@ def test_online_menu_keeps_play_live_and_leaving_preserves_rejoin(online_game):
     room = match.session.room
     press(game, 'f10')
     menu = game.scene
-    assert buttons(game) == ['Return to match', 'Settings', 'How to play', 'Leave match', 'Quit']
+    assert buttons(game) == ['Return to match', 'Settings', 'How to play', 'Resign', 'Leave match', 'Quit']
     text = '\n'.join(item['text'] for item in game.backend.texts)
     assert 'Match menu' in text and 'Paused' not in text
     assert 'The match continues while this menu is open.' in text

@@ -67,3 +67,24 @@ def test_a_refused_order_leaves_the_world_as_it_was(name) -> None:
     with pytest.raises(RuleError):
         REFUSED[name](world, entities)
     assert world.to_dict() == before, f"{name}: refused, yet the world changed"
+
+
+def test_resigning_twice_or_after_the_end_is_refused_and_changes_nothing() -> None:
+    """Online, resigning is an order (WB-012): refused as any other, never half done."""
+    terrain = [[Terrain.GRASS] * 40 for _ in range(30)]
+    world = World(40, 30, terrain, 3)
+    for player, pos in enumerate(((1, 1), (34, 25), (34, 1))):
+        world.place_building(player, BuildingType.TOWN_HALL, pos)
+        world.spawn_unit(player, UnitType.PEASANT, (pos[0] + 4.5, pos[1] + 4.5))
+    world.resign(2)
+    assert not world.players[2].alive and world.winner is None
+    before = world.to_dict()
+    with pytest.raises(RuleError, match="already out"):
+        world.resign(2)
+    assert world.to_dict() == before
+    world.resign(1)
+    assert world.winner == 0
+    before = world.to_dict()
+    with pytest.raises(RuleError, match="over"):
+        world.resign(0)
+    assert world.to_dict() == before

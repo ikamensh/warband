@@ -12,7 +12,8 @@ from warband.rules import BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTh
 GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'stop', 'hold'}
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building'}
 SETTLEMENT_ORDERS = {'plan_building', 'order_unit', 'order_upgrade', 'set_assembly', 'cancel_plan'}
-ORDERS = GROUP_ORDERS | BUILDING_ORDERS | SETTLEMENT_ORDERS | {'build'}
+SEAT_ORDERS = SETTLEMENT_ORDERS | {'resign'}  # orders about the seat's own player, named in the order
+ORDERS = GROUP_ORDERS | BUILDING_ORDERS | SEAT_ORDERS | {'build'}
 #: Ticks an event rides the snapshots (five seconds): long enough for a client that hiccups, not for ever.
 EVENT_TICKS = 100
 #: What a seat is told of the server's random stream: a fixed state, so no client can read the damage rolls to come.
@@ -32,10 +33,11 @@ def _terrain_rows(world):
 
 
 class WarbandMatch:
-    def __init__(self, seed=3, width=48, height=40, theme=MapTheme.SUMMER, races=None, layout=None):
-        """*races* names the two seats' races; a ``None`` seat is drawn from the seed, and so is a ``None`` *layout*."""
+    def __init__(self, seed=3, width=48, height=40, theme=MapTheme.SUMMER, races=None, layout=None, players=2):
+        """*players* humans, two to four; *races* names each seat's race, a ``None`` seat drawn from the seed, and so
+        is a ``None`` *layout*."""
         self.seed = seed
-        self.world = mapgen.generate(seed, width, height, players=2, theme=theme, races=races, layout=layout)
+        self.world = mapgen.generate(seed, width, height, players=players, theme=theme, races=races, layout=layout)
         for player in self.world.players:
             player.human = True
         self.events = []  # [number, fields] of the recent ones, oldest first
@@ -133,7 +135,7 @@ class WarbandMatch:
             self._events()
 
     def apply(self, player, command):
-        if player not in (0, 1) or self.world.winner is not None or not self.world.players[player].alive:
+        if player not in range(len(self.world.players)) or self.world.winner is not None or not self.world.players[player].alive:
             raise CommandError('This faction cannot issue orders.')
         action, args, kwargs = command.get('action'), command.get('args'), command.get('kwargs', {})
         if not isinstance(action, str) or action not in ORDERS or not isinstance(args, list) or not isinstance(kwargs, dict):
@@ -148,9 +150,9 @@ class WarbandMatch:
             entity = collection.get(entity_id) if type(entity_id) is int else None
             if entity is None or entity.player != player:
                 raise CommandError('You can only order your own units and buildings.')
-        if action in SETTLEMENT_ORDERS:
+        if action in SEAT_ORDERS:
             if type(values['player']) is not int or values['player'] != player:
-                raise CommandError('You can only order your own settlement.')
+                raise CommandError('You can only order your own settlement.' if action != 'resign' else 'You can only resign yourself.')
         elif action in GROUP_ORDERS:
             ids = values['unit_ids']
             if not isinstance(ids, list) or not 1 <= len(ids) <= 256:
@@ -199,18 +201,22 @@ class WarbandMatch:
 
 def _create(options):
     """Validate resource-bounded creation options before generating any map."""
-    option_keys(options, {'seed', 'width', 'height', 'theme', 'races', 'layout'})
-    races = options.get('races', [None, None])
-    if (not isinstance(races, list) or len(races) != 2
+    option_keys(options, {'seed', 'width', 'height', 'theme', 'races', 'layout', 'players'})
+    players = option_int(options, 'players', 2, 2, 4)
+    races = options.get('races', [None] * players)
+    if (not isinstance(races, list) or len(races) != players
             or any(race is not None and (not isinstance(race, str) or race not in {r.value for r in Race})
                    for race in races)):
-        raise CommandError('races must name two seats, each a race or null.')
+        raise CommandError(f'races must name {players} seats, each a race or null.')
     layout = option_choice(options, 'layout', 'any', {each.value for each in Layout} | {'any'})
-    return WarbandMatch(option_seed(options, 3), width=option_int(options, 'width', 48, 48, 80),
-                        height=option_int(options, 'height', 40, 40, 64),
-                        theme=MapTheme(option_choice(options, 'theme', 'summer', {t.value for t in MapTheme})),
-                        races=[Race(race) if race is not None else None for race in races],
-                        layout=None if layout == 'any' else Layout(layout))
+    try:
+        return WarbandMatch(option_seed(options, 3), width=option_int(options, 'width', 48, 48, 80),
+                            height=option_int(options, 'height', 40, 40, 64),
+                            theme=MapTheme(option_choice(options, 'theme', 'summer', {t.value for t in MapTheme})),
+                            races=[Race(race) if race is not None else None for race in races],
+                            layout=None if layout == 'any' else Layout(layout), players=players)
+    except mapgen.NoFairMap as exc:
+        raise CommandError(f'{exc} Choose a larger map or another layout.') from exc
 
 
 def _tile(point):
@@ -236,4 +242,10 @@ def _restore(snapshot):
     return match
 
 
-ONLINE = {'warband-v2': GameSpec(_create, _checkpoint, _restore, realtime=True)}
+def _needed(match, player):
+    """A seat is needed while its player is in an undecided match: one who resigned or fell may leave."""
+    return match.world.winner is None and match.world.players[player].alive
+
+
+ONLINE = {'warband-v2': GameSpec(_create, _checkpoint, _restore, realtime=True,
+                                 seats=lambda match: len(match.world.players), needed=_needed)}
