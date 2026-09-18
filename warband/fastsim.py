@@ -22,10 +22,11 @@ carried on; ``mypy`` over :data:`MODULES` must stay clean for a build to exist.
 
 :func:`activate` is called by ``tools/arena.py``, ``tune.py``,
 ``balance_report.py``, ``ai_report.py``, ``race_report.py``, ``sim_bench.py``
-and ``step_bench.py`` before they import the simulation; worker processes they
-spawn follow through the ``WARBAND_FASTSIM`` variable (see
-``warband/__init__.py``).  The game itself, the tests and everything else run
-the source.  ``WARBAND_INTERPRETED=1`` makes :func:`activate` a no-op.
+and ``step_bench.py`` when they run as programs, before they import the
+simulation; worker processes they spawn follow through the ``WARBAND_FASTSIM``
+variable (see ``warband/__init__.py``), and a process that only imports one of
+them as a library stays as it was.  The game itself, the tests and everything
+else run the source.  ``WARBAND_INTERPRETED=1`` makes :func:`activate` a no-op.
 """
 
 from __future__ import annotations
