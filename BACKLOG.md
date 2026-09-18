@@ -46,7 +46,7 @@ catches its class.
 | WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
 | WB-023 | Next | done | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
-| WB-025 | Next | in progress | Health bars: steady while moving, anchored to the sprite, filled from the first frame | User report 2026-09-18 |
+| WB-025 | Next | done | Health bars: steady while moving, anchored to the sprite, filled from the first frame | User report 2026-09-18 |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -1375,6 +1375,20 @@ wounded dwarf worker selected on open grass, native frames at zoom 1 and 2):
   feet, the helmet 33 to 36 in the front facings, the axe carried over the
   shoulder 57 to 62 in the back ones (`textures.restyled_frames`, the frames'
   opaque extents). The 6 is in world units too, so the gap doubles at zoom 2.
+
+**Done 2026-09-18**, commit `184d5ec`: every criterion below holds, criterion 2
+as revised. [Tests 35312625249](https://github.com/ikamensh/warband/actions/runs/35312625249),
+[Native package checks 35312625116](https://github.com/ikamensh/warband/actions/runs/35312625116),
+[Publish 35313775413](https://github.com/ikamensh/warband/actions/runs/35313775413):
+live as Warband 0.2.17. Locally: the three added tests
+(`test_the_fill_shows_on_the_first_frame_after_selection_wherever_the_unit_stands`,
+`test_a_wounded_units_bar_stays_filled_through_every_frame_of_a_walk`,
+`test_a_workers_bar_hangs_a_few_pixels_over_its_figure_and_holds_still_through_a_walk`
+for every race) fail on the old code and pass on the new; the full suite (1191
+passed, 12 skipped); `tools/visual_lint.py` with every screen clean at both
+sizes, its 39 image findings (drift 4, recolour 8, residue 27, all portraits
+and painted frames) identical to main's before this change; the simulation
+fingerprint unchanged. The frames below inspected.
 
 **Acceptance (recorded 2026-09-18 before implementation):**
 
