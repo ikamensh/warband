@@ -29,8 +29,8 @@ catches its class.
 | WB-005 | Next | done | Replace the rotating-sprite death with convincing falls | User |
 | WB-006 | Next | done | Add blood on damaging hits | User |
 | WB-007 | Next | in progress | Leave grey abandoned buildings when a player resigns in FFA | User |
-| WB-008 | Next | in progress | Improve health bars and building progress indicators | User |
-| WB-015 | Next | in progress | Verify and complete durable local player storage outside game sources | User |
+| WB-008 | Next | done | Improve health bars and building progress indicators | User |
+| WB-015 | Next | done | Verify and complete durable local player storage outside game sources | User |
 | WB-009 | Next | proposed | Establish current battle performance and fix measured bottlenecks | User / engine split |
 | WB-010 | Later | proposed | Smooth online movement and make connection problems understandable | Suggested |
 | WB-011 | Later | proposed | Keep fog-hidden state out of opponents' network snapshots | Suggested |
@@ -44,7 +44,7 @@ catches its class.
 | WB-020 | Later | proposed | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
 | WB-021 | Next | ready | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
 | WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
-| WB-023 | Next | in progress | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
+| WB-023 | Next | done | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -504,7 +504,18 @@ show nothing unselected; a barracks training a footman shows its progress
 only in the panel, and its own health bar (full, green) sits on its selection
 outline.
 
-**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+**Done 2026-09-18**, commit `0d4bcce`: every criterion below holds, criterion 1 as revised.
+[Tests 35289810567](https://github.com/ikamensh/warband/actions/runs/35289810567),
+[Native package checks 35289810572](https://github.com/ikamensh/warband/actions/runs/35289810572),
+[Publish 35291144567](https://github.com/ikamensh/warband/actions/runs/35291144567) and Saga
+Online's [promotion 35291321096](https://github.com/ikamensh/saga-online/actions/runs/35291321096):
+live as Warband 0.2.8. Locally: the full suite (1161 passed), `tools/fuzz.py
+--monkey 10` clean, the fingerprint unchanged, and the frames in
+`docs/evidence/health/{before,after}/` inspected: the crowded fight at zoom 1
+and 2 by default and with every bar on, the town at work in summer, winter
+and wasteland.
+
+**Acceptance (recorded 2026-09-18 before implementation):**
 
 1. Policy: a health bar shows over every visible unit and building that is
    wounded, over every selected or hovered one whatever its health, and over
@@ -593,7 +604,19 @@ nothing exercises an interrupted write or a write failure at match end, the
 profile's backup can only be restored by hand, the game never says where its
 data lives, and the guide has no backup or restore steps.
 
-**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+**Done 2026-09-18**, commit `757bbc1`: every criterion below holds.
+[Tests 35291350912](https://github.com/ikamensh/warband/actions/runs/35291350912),
+[Native package checks 35291350922](https://github.com/ikamensh/warband/actions/runs/35291350922)
+(the Windows and Mac receipts now carry the packaged data folder),
+[Publish 35292501371](https://github.com/ikamensh/warband/actions/runs/35292501371) and Saga
+Online's [promotion 35292613456](https://github.com/ikamensh/saga-online/actions/runs/35292613456):
+live as Warband 0.2.9. Locally: the full suite (1165 passed), the fingerprint
+unchanged, the cross-process journey in `tests/warband/test_storage_journeys.py`,
+and the profile screen captured natively with a record and with a damaged
+profile (`docs/evidence/storage/`), inspected. The guide records what is saved
+and when, and how to back up and restore.
+
+**Acceptance (recorded 2026-09-18 before implementation):**
 
 1. A match played to a decision in one process, in an isolated data directory,
    leaves a result and rating in the profile, a leaderboard entry, a replay,
@@ -1014,7 +1037,19 @@ than 3 px from any solid pixel and still carry alpha (up to 17, 4.8 on
 average); a wolf rider's walk frame 20,207 (up to 40), a town hall 14,134
 (up to 27). Composited on grass at raised contrast that field is the square.
 
-**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+**Done 2026-09-18**, commit `b6446d4` (Warband) with sagaforge `2b0360d`,
+`bb17eda`, `10f4d87`: every criterion below holds.
+[Tests 35292660008](https://github.com/ikamensh/warband/actions/runs/35292660008),
+[Native package checks 35292659985](https://github.com/ikamensh/warband/actions/runs/35292659985),
+[Publish 35293821104](https://github.com/ikamensh/warband/actions/runs/35293821104) and Saga
+Online's [promotion 35293968088](https://github.com/ikamensh/saga-online/actions/runs/35293968088):
+live as Warband 0.2.10. Locally: the sagaforge suite (36) and the Warband
+suite (1176 passed, the lint's `residue` finding included), all 48 sheets
+cleaned once with 63.7 million residue pixels verified by the rule and 4,713
+px of uncovered slivers decluttered after, and the winter crowd captured
+before and after (`docs/evidence/residue/`): the squares are gone.
+
+**Acceptance (recorded 2026-09-18 before implementation):**
 
 1. A painted frame keeps alpha only where it belongs: every pixel farther
    than 3 px from any solid pixel (alpha above 40) and fainter than alpha 24
