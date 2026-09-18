@@ -47,7 +47,7 @@ catches its class.
 | WB-023 | Next | done | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
 | WB-025 | Next | done | Health bars: steady while moving, anchored to the sprite, filled from the first frame | User report 2026-09-18 |
-| WB-026 | Next | in progress | Give the Windows and Mac builds Warband's own icon instead of the packager's snake | User 2026-09-18 |
+| WB-026 | Next | done | Give the Windows and Mac builds Warband's own icon instead of the packager's snake | User 2026-09-18 |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -1441,6 +1441,44 @@ picture ([S2D-018](../saga2d/BACKLOG.md)); Warband supplies something of its
 own. Branch `icon` (worktree `../warband-icon`). Presentation only, but the
 engine release it needs is part of the online compatibility contract, so
 publishing it takes a server rollout like any engine upgrade.
+
+**Done 2026-09-18**, commits `1de3946`, `eaf29f9`, `dbd8bed` (main `dbd8bed`): every
+criterion below holds. Live as Warband 0.2.21:
+[Tests 35337133332](https://github.com/ikamensh/warband/actions/runs/35337133332),
+[Native package checks 35337133223](https://github.com/ikamensh/warband/actions/runs/35337133223)
+(Windows and Mac, the first builds whose `verify` requires the executable and
+the bundle to carry the converted icon),
+[Publish 35338448502](https://github.com/ikamensh/warband/actions/runs/35338448502);
+the promotion was refused until the shared server ran Saga2D 0.3.5 and then
+accepted ([35339144196](https://github.com/ikamensh/saga-online/actions/runs/35339144196)),
+and the [public download checks 35339235957](https://github.com/ikamensh/saga-online/actions/runs/35339235957)
+passed on both systems; the rollout is recorded in
+[saga-online](../saga-online/docs/engine-035-rollout.md).
+
+- The picture: `tools/make_icon.py schematic` draws the composition (the
+  knights' blue shield with its gold cross over a crossed sword and axe on the
+  title's dark earth), `paint` had `google/gemini-3.1-flash-image` repaint it
+  in the manner of the units (three candidates, the calmest ground chosen),
+  `install` squares it to 1024 px. Looked at 16, 24, 32, 48, 64, 128, 256 and
+  1024 px in both platform shapes on light and dark ground
+  (`docs/evidence/icon/sizes.png`): at 16 px it is a blue shield with a gold
+  rim on dark ground.
+- Mac: the bundle built on the reference Mac and the app downloaded from the
+  public site name `icon.icns` in `CFBundleIconFile`; Finder's icon for both
+  looked at (`docs/evidence/icon/finder/before-after.png`: the packager's
+  snake on a floppy disk before, the shield after;
+  `published-0.2.21-mac-app.png`).
+- Windows: the executable and the Inno Setup installer from CI hold all seven
+  images of the converted `.ico` byte for byte (inspected from the run's
+  artifact), and the conversion on the Windows runner equals the Mac's. Not
+  looked at in Explorer: the test box had no desktop session during the item.
+- `tests/test_package_icon.py` pins the picture against the engine's rules; on
+  its first CI run it caught that `*.png` was git-ignored and the picture had
+  not been committed, which would have failed the release build.
+- The suite on the released engine: 1192 passed, 12 skipped; the simulation
+  fingerprint unchanged. The engine pin moved 0.3.3 to 0.3.5, so
+  `tests/warband/test_startup.py` dropped its stand-in for the mock backend's
+  scale.
 
 **Acceptance (recorded 2026-09-18 before implementation):**
 
