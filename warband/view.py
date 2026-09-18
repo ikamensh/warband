@@ -212,14 +212,8 @@ def projectile_point(p: Projectile, world: World, now: float) -> tuple[float, fl
     ground, in tiles.  An arrow flies at its mark's current position on a flat arc; a stone lobs high to
     the ground it was fired at."""
     t = max(0.0, min(1.0, (now - p.launched) / p.flight))
-    end = p.aim
-    if p.target is not None:
-        target = world.entity(p.target)
-        if target is not None:
-            end = target.pos if isinstance(target, Unit) else target.center
-    x = p.start[0] + (end[0] - p.start[0]) * t
-    y = p.start[1] + (end[1] - p.start[1]) * t
-    span = dist(p.start, end)
+    x, y = world.shot_ground(p, now)
+    span = dist(p.start, world.shot_mark(p))
     lift = 1.7 if p.source_type == BuildingType.TOWER.value else 0.55  # loosed from the battlements, or from the shoulder
     if p.kind == "stone":
         height = 0.55 + 4 * (0.5 + 0.14 * span) * t * (1 - t)
