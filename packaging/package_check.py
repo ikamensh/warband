@@ -39,10 +39,13 @@ def online_smoke(endpoint: str) -> dict:
         clients.append(guest)
         wait(lambda: creator.ready and guest.ready)
         assert (creator.player, guest.player) == (0, 1)
+        def beside(world, unit):
+            return next((unit.x + dx, unit.y + dy) for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2))
+                        if world.passable(int(unit.x + dx), int(unit.y + dy)))
+
         world = World.from_dict(creator.state["world"])
         unit = world.player_units(0)[0]
-        target = next((unit.x + dx, unit.y + dy) for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2))
-                      if world.passable(int(unit.x + dx), int(unit.y + dy)))
+        target = beside(world, unit)
         command = {"action": "move", "args": [[unit.id], list(target)]}
         guest.submit(command)
         wait(lambda: bool(guest.error))
@@ -50,11 +53,18 @@ def online_smoke(endpoint: str) -> dict:
         guest.error = ""
         creator.submit(command)
 
-        def moved(client):
-            current = next(item for item in client.state["world"]["units"] if item["id"] == unit.id)
-            return abs(current["x"] - unit.x) + abs(current["y"] - unit.y) > .1
+        def moved(client, which=unit):
+            current = next(item for item in client.state["world"]["units"] if item["id"] == which.id)
+            return abs(current["x"] - which.x) + abs(current["y"] - which.y) > .1
 
-        wait(lambda: moved(creator) and moved(guest))
+        wait(lambda: moved(creator))
+        # Each seat is sent the match as it may know it (WB-011): the guest moves its own worker and sees it go,
+        # and is never sent the creator's, at work in the other corner.
+        theirs = World.from_dict(guest.state["world"])
+        own = theirs.player_units(1)[0]
+        guest.submit({"action": "move", "args": [[own.id], list(beside(theirs, own))]})
+        wait(lambda: moved(guest, own))
+        assert unit.id not in {item["id"] for item in guest.state["world"]["units"]}, "the creator's worker at home was sent to the guest"
         room, token = creator.room, creator.resume_token
         creator.close()
         wait(lambda: not guest.ready)

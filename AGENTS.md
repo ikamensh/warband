@@ -154,10 +154,14 @@ real breakdown.
   bounded (`rules.MAX_PLANS`, `MAX_QUEUED_ORDERS`). The HUD gives orders
   through `GameScene.attempt`, which turns a refusal into the status line's
   warning; never call `order` from a button or a key.
-- What the authority sends a seat (`WarbandMatch.snapshot`) is not the save:
-  no random stream, none of the other seat's explored ground or remembered
-  map, events for five seconds. The checkpoint is the whole match. What the
-  fog hides of units and buildings still travels (WB-011).
+- What the authority sends a seat (`WarbandMatch.snapshot`) is the match as
+  that seat may know it, not the save: all of its own; of the rest only what
+  it sees now (strangers without orders, route or work), ground and mines out
+  of sight as it remembers them, and the news it saw, its own affairs and the
+  public news (`PRIVATE_EVENTS`, `PUBLIC_EVENTS`), for five seconds. Never the
+  random stream or another seat's memory, purse, research or plans. The
+  checkpoint is the whole match. A test about one seat's state reads that
+  seat's own snapshot.
 - Tests use the mock backend (`game`/`backend` fixtures from
   `saga2d.testing.fixtures`), public behaviour only; fixtures use
   `save_dir=tmp_path / "saves"` because `data_dir` is its parent.
