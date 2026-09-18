@@ -13,6 +13,8 @@ GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 's
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building'}
 SETTLEMENT_ORDERS = {'plan_building', 'order_unit', 'order_upgrade', 'set_assembly', 'cancel_plan'}
 ORDERS = GROUP_ORDERS | BUILDING_ORDERS | SETTLEMENT_ORDERS | {'build'}
+#: Ticks an event rides the snapshots (five seconds): long enough for a client that hiccups, not for ever.
+EVENT_TICKS = 100
 #: What a seat is told of the server's random stream: a fixed state, so no client can read the damage rolls to come.
 NO_DICE = random.Random(0).getstate()
 
@@ -24,14 +26,21 @@ class WarbandMatch:
         self.world = mapgen.generate(seed, width, height, players=2, theme=theme, races=races, layout=layout)
         for player in self.world.players:
             player.human = True
-        self.events = []
+        self.events = []  # [number, fields] of the recent ones, oldest first
+        self.event_ticks = []  # the tick each of them happened at
         self.event_id = 0
 
     def _events(self):
+        """Number the world's new events and drop the old ones: a snapshot carries the recent ones only, for a client
+        cannot say which it has seen, and a burst never more than 128 of them."""
+        tick = self.world.tick
         for event in self.world.take_events():
             self.event_id += 1
             self.events.append([self.event_id, vars(event)])
-        self.events = self.events[-128:]
+            self.event_ticks.append(tick)
+        fresh = next((i for i, born in enumerate(self.event_ticks) if tick - born < EVENT_TICKS), len(self.events))
+        keep = max(fresh, len(self.events) - 128)
+        self.events, self.event_ticks = self.events[keep:], self.event_ticks[keep:]
 
     def snapshot(self, player):
         """The match for seat *player*: the world's save (``to_dict`` builds it afresh, the receiver may keep it)
@@ -136,14 +145,16 @@ def _create(options):
 
 
 def _checkpoint(match):
-    return {'seed': match.seed, 'world': match.world.to_dict(), 'events': match._recent_events()}
+    return {'seed': match.seed, 'world': match.world.to_dict(), 'events': match._recent_events(), 'event_id': match.event_id}
 
 
 def _restore(snapshot):
     match = WarbandMatch.__new__(WarbandMatch)
     match.seed, match.world = snapshot['seed'], World.from_dict(snapshot['world'])
     match.events = snapshot['events']
-    match.event_id = max((event[0] for event in match.events), default=0)
+    match.event_ticks = [match.world.tick] * len(match.events)  # a restored match tells its last news once more
+    # The count goes on where it was, or a client would take the news after a restart for news it has had.
+    match.event_id = snapshot.get('event_id', max((event[0] for event in match.events), default=0))  # older checkpoints carry none
     return match
 
 

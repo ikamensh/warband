@@ -77,3 +77,55 @@ def test_a_checkpoint_keeps_the_whole_match() -> None:
     spec = ONLINE['warband-v2']
     restored = spec.restore(spec.checkpoint(match))
     assert restored.world.to_dict() == match.world.to_dict() and restored.world.rng.getstate() == match.world.rng.getstate()
+
+
+def test_old_news_leaves_the_snapshot_and_fresh_news_stays_long_enough_to_be_read() -> None:
+    """Every snapshot once carried the last 128 events for ever: a quarter of its bytes, ten times a second, minutes after the fight."""
+    from warband.authority import EVENT_TICKS
+    from tests.warband.battlefield import field
+
+    match = WarbandMatch(seed=3)
+    match.world = field()
+    victim = match.world.spawn_unit(0, UnitType.PEASANT, (12.5, 12.5))
+    victim.hp = 1
+    raider = match.world.spawn_unit(1, UnitType.FOOTMAN, (13.4, 12.5))
+    match.world.update_vision()
+    match.apply(1, {'action': 'attack', 'args': [[raider.id], victim.id], 'kwargs': {}})
+    for _ in range(200):
+        match.step()
+        if victim.id not in match.world.units:
+            break
+    news = match.snapshot(0)['events']
+    assert {fields['kind'] for _, fields in news} >= {'hit', 'death'}
+    for _ in range(EVENT_TICKS // 2):
+        match.step()
+    assert match.snapshot(0)['events'] == news, "a client a second or two behind must still find the news"
+    for _ in range(EVENT_TICKS):
+        match.step()
+    assert match.snapshot(0)['events'] == [], "old news still rides every snapshot"
+    match.apply(1, {'action': 'attack', 'args': [[raider.id], match.world.player_buildings(0)[0].id], 'kwargs': {}})
+    for _ in range(600):
+        match.step()
+        if match.snapshot(0)['events']:
+            break
+    later = match.snapshot(0)['events']
+    assert later and later[0][0] > news[-1][0], "event numbers go on counting, so a client never takes new news for old"
+
+
+def test_event_numbers_go_on_counting_after_a_restart_in_a_quiet_moment() -> None:
+    from warband.authority import EVENT_TICKS, ONLINE
+    from tests.warband.battlefield import field
+
+    match = WarbandMatch(seed=3)
+    match.world = field()
+    victim = match.world.spawn_unit(0, UnitType.PEASANT, (12.5, 12.5))
+    victim.hp = 1
+    raider = match.world.spawn_unit(1, UnitType.FOOTMAN, (13.4, 12.5))
+    match.world.update_vision()
+    match.apply(1, {'action': 'attack', 'args': [[raider.id], victim.id], 'kwargs': {}})
+    for _ in range(200 + EVENT_TICKS):
+        match.step()
+    assert match.event_id > 0 and match.events == [], "the fight is old news by now"
+    spec = ONLINE['warband-v2']
+    restored = spec.restore(spec.checkpoint(match))
+    assert restored.event_id == match.event_id, "a client would take the news after the restart for news it has had"
