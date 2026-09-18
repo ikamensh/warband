@@ -53,7 +53,7 @@ def candidate(tmp_path):
     log = b"845 passed, 12 skipped\n"
     (directory / "regression.log").write_bytes(log)
     write_json(directory / "regression.json", {
-        "identity": identity, "command": ["-m", "pytest", "-q"], "exit_code": 0,
+        "identity": identity, "command": ["-m", "pytest", "-q", "--slow"], "exit_code": 0,
         "log_sha256": digest(log),
     })
     executable = b"A deliberately non-executable package format fixture.\n"
