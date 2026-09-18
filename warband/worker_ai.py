@@ -14,7 +14,7 @@ import math
 
 from warband import path as pathing
 from warband.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Unit, World, hypot, rect_gap, tile_center
-from warband.worker_knowledge import WorkerKnowledge
+from warband.worker_knowledge import WorkerKnowledge, _Building
 from warband.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_SLOTS, SIM_DT, UNITS, UNIT_RADIUS, BuildingType, Resource, Terrain
 
 try:
@@ -94,7 +94,7 @@ def _navigation(world: World, player: int) -> bytearray:
                 found.add((x, y, size))
         footprints = frozenset(found)
         world._worker_ai_footprints[player] = (epochs, footprints)
-    routes = world._worker_ai_routes.get(player)
+    routes: _Routes | None = world._worker_ai_routes.get(player)
     if (routes is None or routes.knowledge is not knowledge or routes.version != knowledge.version
             or (routes.footprints is not footprints and routes.footprints != footprints)):
         routes = _Routes(knowledge, footprints, _stamp_structures(world, player, footprints))
@@ -117,25 +117,40 @@ def _stamp_structures(world: World, player: int, footprints: frozenset[tuple[int
     for x, y, size in footprints:
         for start, stop in knowledge.spans(x, y, size):
             blocked[start:stop] = b"\x01" * (stop - start)
-    floor, ceil = math.floor, math.ceil
     for building in knowledge.threats:
-        if building.player == player:
-            continue
-        # A tower's threat: the tiles whose centre lies within radius of its footprint.
-        cx, cy = building.center
-        radius = building.threat_range
-        rx, ry, rw, rh = building.x, building.y, building.size, building.size
+        if building.player != player:
+            for index in _tower_ground(building, width, height):
+                blocked[index] = 1
+    return blocked
+
+
+_TOWER_GROUND: dict[tuple[_Building, int, int], tuple[int, ...]] = {}
+
+
+def _tower_ground(tower: _Building, width: int, height: int) -> tuple[int, ...]:
+    """The flat indices of the tiles whose centre lies within a known tower's threat range of its footprint.
+    A remembered tower never moves, so its ground is worked out once per record and map size."""
+    key = (tower, width, height)
+    ground = _TOWER_GROUND.get(key)
+    if ground is None:
+        found: list[int] = []
+        cx, cy = tower.center
+        radius = tower.threat_range
+        rx, ry, rw, rh = tower.x, tower.y, tower.size, tower.size
         extent = radius + max(rw, rh) / 2
-        columns = range(max(0, floor(cx - extent)), min(width, ceil(cx + extent) + 1))
-        for y in range(max(0, floor(cy - extent)), min(height, ceil(cy + extent) + 1)):
+        columns = range(max(0, math.floor(cx - extent)), min(width, math.ceil(cx + extent) + 1))
+        for y in range(max(0, math.floor(cy - extent)), min(height, math.ceil(cy + extent) + 1)):
             py = y + 0.5
             dy = max(ry - py, 0.0, py - (ry + rh))
             row = y * width
             for x in columns:
                 px = x + 0.5
                 if hypot(max(rx - px, 0.0, px - (rx + rw)), dy) <= radius:
-                    blocked[row + x] = 1
-    return blocked
+                    found.append(row + x)
+        if len(_TOWER_GROUND) >= 4096:  # a ladder plays thousands of matches: remember the recent towers only
+            _TOWER_GROUND.clear()
+        ground = _TOWER_GROUND[key] = tuple(found)
+    return ground
 
 
 def _stamp_units(blocked: bytearray, units: tuple[tuple[float, float, float], ...], width: int, height: int) -> None:
