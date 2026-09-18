@@ -37,6 +37,7 @@ import math
 import random
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from typing import Final
 
 from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_search
 from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, tile_center
@@ -44,10 +45,10 @@ from warband.races import RACES
 from warband.rules import BUILDINGS, MINE_SLOTS, BuildingType, UnitType
 from warband.worker_knowledge import KnownMine
 
-_MELEE_TYPES = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
-STRICT_SLACK = 0.1  # how far past its planned share a type may run under a strict plan
-BUILD_MIN_DISTANCE = 2
-BUILD_MAX_DISTANCE = 12
+_MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
+STRICT_SLACK: Final = 0.1  # how far past its planned share a type may run under a strict plan
+BUILD_MIN_DISTANCE: Final = 2
+BUILD_MAX_DISTANCE: Final = 12
 
 
 @dataclass(frozen=True)
@@ -109,7 +110,7 @@ class ProProfile:
     research: bool = True             # whether upgrades are bought at all
 
 
-PRO = ProProfile("pro")
+PRO: Final = ProProfile("pro")
 
 #: The two postures Master plays, one drawn per game with the map. Both are
 #: the first rung above `pro` on the ladder — nothing but farms before the
@@ -117,12 +118,12 @@ PRO = ProProfile("pro")
 #: measured 57–61% against `pro` over four seed sets each (docs/ai-ladder.md):
 #: the Vanguard marches out at five soldiers with no tower, the Warden puts a
 #: tower at the front point first and marches out at eight on level terms.
-PRO_VANGUARD = replace(PRO, name="pro-vanguard", barracks_first=True, panic_gold=1000, lumber_floor_panic=300)
+PRO_VANGUARD: Final = replace(PRO, name="pro-vanguard", barracks_first=True, panic_gold=1000, lumber_floor_panic=300)
 #: The Warden also answers shooters earlier and harder (a fifth of the
 #: enemy's soldiers rather than three tenths, twice the swing): 63% against
 #: `pro` over 200 games where the same posture without it took 58%. The
 #: Vanguard measured worse with it (51% against its 60%), and keeps its own.
-PRO_WARDEN = replace(PRO_VANGUARD, name="pro-warden", towers_early=1, min_army=8, attack_ratio=1.0,
+PRO_WARDEN: Final = replace(PRO_VANGUARD, name="pro-warden", towers_early=1, min_army=8, attack_ratio=1.0,
                      counter_from=0.2, counter_strength=2.0)
 
 #: Variants used to find out which knob is actually carrying the strength.
@@ -134,11 +135,11 @@ PRO_WARDEN = replace(PRO_VANGUARD, name="pro-warden", towers_early=1, min_army=8
 #: back on the cautious posture Master gave up. It exists to put a real step
 #: between Medium and Master — measured at 1218 Elo against Medium's 1000 and
 #: Master's 1420 — not to be the best player available.
-PRO_HARD = replace(PRO, name="pro-hard", think_every=1.5, combat_every=0.5, workers_per_mine=6,
+PRO_HARD: Final = replace(PRO, name="pro-hard", think_every=1.5, combat_every=0.5, workers_per_mine=6,
                    barracks_per_hall=1, max_sites=2, raid=False, retreat_wounded=False,
                    expand=False, min_army=10, attack_ratio=1.6, symmetry_prior=1.0, guards=2)
 
-_TRIALS = (
+_TRIALS: Final = (
     PRO_HARD,
     replace(PRO, name="pro-timid", min_army=10, attack_ratio=1.6, symmetry_prior=1.0, guards=2,
             workers_per_mine=13, barracks_per_hall=4),   # the cautious posture it replaced
@@ -156,7 +157,7 @@ _TRIALS = (
     replace(PRO, name="pro-nosave", save_for_wanted=False),
     replace(PRO, name="pro-old", lumber_stock=10**9, save_for_wanted=False),
 )
-PRO_PROFILES: dict[str, ProProfile] = {"pro": PRO, PRO_VANGUARD.name: PRO_VANGUARD, PRO_WARDEN.name: PRO_WARDEN,
+PRO_PROFILES: Final[dict[str, ProProfile]] = {"pro": PRO, PRO_VANGUARD.name: PRO_VANGUARD, PRO_WARDEN.name: PRO_WARDEN,
                                        **{p.name: p for p in _TRIALS}}
 
 

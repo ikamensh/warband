@@ -12,7 +12,7 @@ import heapq
 import itertools
 import math
 from array import array
-from typing import Callable, Iterable, Iterator, Sequence, cast
+from typing import Callable, Final, Iterable, Iterator, Sequence, cast
 
 try:
     from warband import _native  # these searches in C, built only with the compiled simulation (warband/fastsim.py)
@@ -22,15 +22,15 @@ except ImportError:  # the source runs, as it does in the game: the searches are
 Pos = tuple[int, int]
 Passable = Callable[[int, int], bool]
 
-SQRT2 = math.sqrt(2)
-DIAGONAL = SQRT2 - 2  # what a diagonal step saves against two orthogonal ones, for the octile heuristic
-_STEPS: tuple[tuple[int, int, float], ...] = (
+SQRT2: Final = math.sqrt(2)
+DIAGONAL: Final = SQRT2 - 2  # what a diagonal step saves against two orthogonal ones, for the octile heuristic
+_STEPS: Final[tuple[tuple[int, int, float], ...]] = (
     (1, 0, 1.0), (-1, 0, 1.0), (0, 1, 1.0), (0, -1, 1.0),
     (1, 1, SQRT2), (1, -1, SQRT2), (-1, 1, SQRT2), (-1, -1, SQRT2),
 )
-MAX_EXPANSIONS = 3000
+MAX_EXPANSIONS: Final = 3000
 
-_STEP_OFFSETS: dict[int, tuple[tuple[tuple[int, ...], tuple[int, ...]], ...]] = {}
+_STEP_OFFSETS: Final[dict[int, tuple[tuple[tuple[int, ...], tuple[int, ...]], ...]]] = {}
 
 
 def step_offsets(width: int) -> tuple[tuple[tuple[int, ...], tuple[int, ...]], ...]:

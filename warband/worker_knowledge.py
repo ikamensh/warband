@@ -8,7 +8,7 @@ Unknown terrain stays blocked for automatic worker routes.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING
+from typing import Final, TYPE_CHECKING
 
 from warband.rules import BuildingType, Terrain
 
@@ -20,7 +20,7 @@ except ImportError:  # the source runs, as it does in the game
 if TYPE_CHECKING:
     from warband.model import World
 
-BLOCKING = (Terrain.WATER, Terrain.TREES, Terrain.ROCK)
+BLOCKING: Final = (Terrain.WATER, Terrain.TREES, Terrain.ROCK)
 
 
 @dataclass(frozen=True)

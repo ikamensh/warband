@@ -29,6 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 from enum import Enum
+from typing import Final
 
 
 class IdentityEnum(Enum):
@@ -148,9 +149,9 @@ class UnitInfo:
         return self.range >= 1 and self.damage > 0
 
 
-MELEE = 0.45  # reach of a melee unit: it strikes from the next tile over, diagonals included
+MELEE: Final = 0.45  # reach of a melee unit: it strikes from the next tile over, diagonals included
 
-UNITS: dict[UnitType, UnitInfo] = {
+UNITS: Final[dict[UnitType, UnitInfo]] = {
     UnitType.PEASANT: UnitInfo("Peasant", Cost(400), 30, 3, 0, MELEE, 1.0, 2.4, 4, 12.0, BuildingType.TOWN_HALL, "p",
                                "Mines gold, chops lumber, builds and repairs", windup=0.25),
     UnitType.FOOTMAN: UnitInfo("Footman", Cost(600), 60, 7, 2, MELEE, 1.0, 2.4, 5, 15.0, BuildingType.BARRACKS, "f",
@@ -190,7 +191,7 @@ class BuildingInfo:
     cooldown: float = 1.0
 
 
-BUILDINGS: dict[BuildingType, BuildingInfo] = {
+BUILDINGS: Final[dict[BuildingType, BuildingInfo]] = {
     BuildingType.TOWN_HALL: BuildingInfo("Town Hall", Cost(1200, 800), 1200, 3, 3, 60.0, 6, 5, "h",
                                          "Trains peasants; gold and lumber are delivered here", trains=(UnitType.PEASANT,),
                                          deposits=frozenset({Resource.GOLD, Resource.LUMBER})),
@@ -233,7 +234,7 @@ class UpgradeInfo:
     race: Race | None = None  # a race art: nobody else can research it
 
 
-UPGRADES: dict[Upgrade, UpgradeInfo] = {
+UPGRADES: Final[dict[Upgrade, UpgradeInfo]] = {
     Upgrade.BLADES_1: UpgradeInfo("Sharpened Blades", Cost(500, 100), 40.0, "b", "+2 damage for melee units"),
     Upgrade.BLADES_2: UpgradeInfo("Tempered Blades", Cost(1500, 300), 60.0, "b", "+2 more damage for melee units", requires=Upgrade.BLADES_1),
     Upgrade.ARMOR_1: UpgradeInfo("Plate Armour", Cost(300, 300), 40.0, "a", "+1 armour for soldiers"),
@@ -251,40 +252,40 @@ UPGRADES: dict[Upgrade, UpgradeInfo] = {
     Upgrade.BLASTING_POWDER: UpgradeInfo("Blasting Powder", Cost(900, 400), 50.0, "p", "Mortar splash reaches half again as far", race=Race.DWARF),
 }
 
-BLADES_BONUS = 2
-ARMOR_BONUS = 1
-ARROWS_BONUS = 2
-HORSES_BONUS = 0.8
-SIEGE_RANGE_BONUS = 1.0
-SIEGE_DAMAGE_BONUS = 1.25
-BLESSING_BONUS = 1.5
-FRENZY_BONUS = 1.25  # an orc below half health hits this much harder…
-BLOODLUST_BONUS = 1.5  # …and this much with Bloodlust
-PLUNDER_SHARE = 0.2  # of a razed building's gold cost
-LONGBOWS_BONUS = 1.0
-REGROWTH_SECONDS = 60.0
-DEEP_MINING_TRIP = 150
-BLASTING_POWDER_BONUS = 1.5
-SPLASH_FRACTION = 0.6  # share of the damage a stone deals beyond DIRECT_HIT of where it lands, out to the splash radius
-DIRECT_HIT = 0.5  # tiles from where a stone lands within which it deals its full damage
-WINDUP_SLACK = 0.5  # tiles a target may slip beyond weapon reach during the wind-up and still be struck
-ARROW_SPEED = 14.0  # tiles per second an arrow, axe or bolt flies; it follows its mark and strikes on arrival
-STONE_SPEED = 7.0  # tiles per second a siege stone covers; it comes down on the ground it was fired at
-STONE_MIN_FLIGHT = 0.4  # seconds even the shortest lob spends in the air
-FRIENDLY_MARGIN = 0.3  # tiles beyond its splash a siege crew keeps a stone from its own side when firing on its own
+BLADES_BONUS: Final = 2
+ARMOR_BONUS: Final = 1
+ARROWS_BONUS: Final = 2
+HORSES_BONUS: Final = 0.8
+SIEGE_RANGE_BONUS: Final = 1.0
+SIEGE_DAMAGE_BONUS: Final = 1.25
+BLESSING_BONUS: Final = 1.5
+FRENZY_BONUS: Final = 1.25  # an orc below half health hits this much harder…
+BLOODLUST_BONUS: Final = 1.5  # …and this much with Bloodlust
+PLUNDER_SHARE: Final = 0.2  # of a razed building's gold cost
+LONGBOWS_BONUS: Final = 1.0
+REGROWTH_SECONDS: Final = 60.0
+DEEP_MINING_TRIP: Final = 150
+BLASTING_POWDER_BONUS: Final = 1.5
+SPLASH_FRACTION: Final = 0.6  # share of the damage a stone deals beyond DIRECT_HIT of where it lands, out to the splash radius
+DIRECT_HIT: Final = 0.5  # tiles from where a stone lands within which it deals its full damage
+WINDUP_SLACK: Final = 0.5  # tiles a target may slip beyond weapon reach during the wind-up and still be struck
+ARROW_SPEED: Final = 14.0  # tiles per second an arrow, axe or bolt flies; it follows its mark and strikes on arrival
+STONE_SPEED: Final = 7.0  # tiles per second a siege stone covers; it comes down on the ground it was fired at
+STONE_MIN_FLIGHT: Final = 0.4  # seconds even the shortest lob spends in the air
+FRIENDLY_MARGIN: Final = 0.3  # tiles beyond its splash a siege crew keeps a stone from its own side when firing on its own
 
-GOLD_PER_TRIP = 100
-LUMBER_PER_TRIP = 100
-MINE_SLOTS = 8  # peasants at a mine's face at once; the rest wait their turn at the mouth.
+GOLD_PER_TRIP: Final = 100
+LUMBER_PER_TRIP: Final = 100
+MINE_SLOTS: Final = 8  # peasants at a mine's face at once; the rest wait their turn at the mouth.
 # The face serves MINE_SLOTS peasants every MINE_TIME, so a mine yields at most
 # MINE_SLOTS * GOLD_PER_TRIP / MINE_TIME.  With the walk to the hall on top, a
 # mine next door is saturated by about ten peasants and a distant one by a few
 # more: hiring past that earns nothing, and the way to more gold is another mine.
-MINE_TIME = 5.0  # seconds a peasant spends inside a mine per trip
-CHOP_TIME = 5.0  # seconds to fell a tree
-REPAIR_RATE = 8.0  # hit points a peasant mends per second
-REPAIR_CHUNK = 10  # hit points paid for at a time while repairing
-REPAIR_COST = 0.5  # share of a building's price that mending all of its hit points costs
+MINE_TIME: Final = 5.0  # seconds a peasant spends inside a mine per trip
+CHOP_TIME: Final = 5.0  # seconds to fell a tree
+REPAIR_RATE: Final = 8.0  # hit points a peasant mends per second
+REPAIR_CHUNK: Final = 10  # hit points paid for at a time while repairing
+REPAIR_COST: Final = 0.5  # share of a building's price that mending all of its hit points costs
 
 
 def repair_cost(info: BuildingInfo, hp_before: int, hp_after: int, max_hp: int) -> Cost:
@@ -297,18 +298,18 @@ def repair_cost(info: BuildingInfo, hp_before: int, hp_after: int, max_hp: int) 
         return math.ceil(price * REPAIR_COST * hp / max_hp)
     return Cost(so_far(info.cost.gold, hp_after) - so_far(info.cost.gold, hp_before),
                 so_far(info.cost.lumber, hp_after) - so_far(info.cost.lumber, hp_before))
-MINE_GOLD = 50_000  # a base mine; expansion mines hold EXPANSION_GOLD
-EXPANSION_GOLD = 30_000
-STARTING_GOLD = 1000
-STARTING_LUMBER = 500
-UNIT_RADIUS = 0.35
-LEASH = 6.0  # how far an idle unit chases before it walks home
-UNDER_ATTACK_COOLDOWN = 20.0
-SIM_DT = 0.05  # the simulation runs at 20 Hz regardless of the frame rate
-VISION_EVERY = 4  # ticks between fog recomputations
-MAX_PLANS = 64  # settlement plans a player may have waiting: each is looked at every second and travels in every online snapshot
-MAX_QUEUED_ORDERS = 32  # orders a unit may have queued behind the one it is carrying out
-HIT_VARIANCE = 0.25  # damage rolls between 75 % and 125 % of the listed value
+MINE_GOLD: Final = 50_000  # a base mine; expansion mines hold EXPANSION_GOLD
+EXPANSION_GOLD: Final = 30_000
+STARTING_GOLD: Final = 1000
+STARTING_LUMBER: Final = 500
+UNIT_RADIUS: Final = 0.35
+LEASH: Final = 6.0  # how far an idle unit chases before it walks home
+UNDER_ATTACK_COOLDOWN: Final = 20.0
+SIM_DT: Final = 0.05  # the simulation runs at 20 Hz regardless of the frame rate
+VISION_EVERY: Final = 4  # ticks between fog recomputations
+MAX_PLANS: Final = 64  # settlement plans a player may have waiting: each is looked at every second and travels in every online snapshot
+MAX_QUEUED_ORDERS: Final = 32  # orders a unit may have queued behind the one it is carrying out
+HIT_VARIANCE: Final = 0.25  # damage rolls between 75 % and 125 % of the listed value
 
 
 @dataclass(frozen=True)
@@ -317,7 +318,7 @@ class PlayerInfo:
     color: tuple[int, int, int]
 
 
-PLAYERS: list[PlayerInfo] = [
+PLAYERS: Final[list[PlayerInfo]] = [
     PlayerInfo("Azure", (70, 130, 255)),
     PlayerInfo("Crimson", (225, 70, 60)),
     PlayerInfo("Viridian", (80, 190, 110)),

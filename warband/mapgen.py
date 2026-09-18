@@ -28,26 +28,27 @@ import random
 from collections import deque
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from typing import Final
 
 from warband import path as pathing
 from warband.model import Pos, World, tile_center
 from warband.rules import EXPANSION_GOLD, MINE_GOLD, BuildingType, Layout, MapTheme, Race, Terrain, UnitType
 
-SIZES: dict[str, tuple[int, int]] = {"Small": (48, 40), "Medium": (64, 48), "Large": (80, 64)}
-PROMISES: dict[Layout, str] = {
+SIZES: Final[dict[str, tuple[int, int]]] = {"Small": (48, 40), "Medium": (64, 48), "Large": (80, 64)}
+PROMISES: Final[dict[Layout, str]] = {
     Layout.PLAINS: "Open ground: raids come early, expansions lie exposed",
     Layout.FOREST: "Deep woods: narrow roads, hidden clearings, chop your own way through",
     Layout.CROSSINGS: "A river splits the land: hold the fords or find the long way round",
     Layout.KLONDIKE: "Little gold at home; the rest lies in a walled pit in the middle",
     Layout.BASTION: "Walled in: boom in safety, then break out and fight for the middle",
 }
-RETRIES = 8
-KLONDIKE_START_GOLD = 20_000
-POOR_GOLD = 10_000  # the coward's gold: a far corner mine on Klondike
-_MARGIN = 7  # tiles from the map edge to the hall's top-left
-_CLEARING = 7  # radius of open ground around the hall's middle tile
-_SITE_SPACING = {True: 8, False: 7}  # Chebyshev tiles between mine sites, by point symmetry (mirror quadrants are tighter)
-_SITE_ROOM = 60  # open tiles within six of a natural or third, so a hall and farms fit
+RETRIES: Final = 8
+KLONDIKE_START_GOLD: Final = 20_000
+POOR_GOLD: Final = 10_000  # the coward's gold: a far corner mine on Klondike
+_MARGIN: Final = 7  # tiles from the map edge to the hall's top-left
+_CLEARING: Final = 7  # radius of open ground around the hall's middle tile
+_SITE_SPACING: Final = {True: 8, False: 7}  # Chebyshev tiles between mine sites, by point symmetry (mirror quadrants are tighter)
+_SITE_ROOM: Final = 60  # open tiles within six of a natural or third, so a hall and farms fit
 
 Point = tuple[float, float]
 
@@ -260,7 +261,7 @@ class _Spec:
     start_gold: int = MINE_GOLD
 
 
-_SPECS: dict[Layout, _Spec] = {
+_SPECS: Final[dict[Layout, _Spec]] = {
     Layout.PLAINS: _Spec(Layout.PLAINS),
     Layout.FOREST: _Spec(Layout.FOREST, clearing=9, natural_range=(13, 18), natural_clearing=5, third_clearing=4),  # a full base needs the room; four seats get less, see _clearing
     Layout.CROSSINGS: _Spec(Layout.CROSSINGS, contested=14),  # the river runs down the bisector; thirds sit on its banks
@@ -572,7 +573,7 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
 # -- Connectivity ------------------------------------------------------------------
 
 
-_CARVE_COST = {Terrain.GRASS: 1.0, Terrain.TREES: 4.0, Terrain.ROCK: 6.0, Terrain.WATER: 12.0}
+_CARVE_COST: Final = {Terrain.GRASS: 1.0, Terrain.TREES: 4.0, Terrain.ROCK: 6.0, Terrain.WATER: 12.0}
 
 
 def reachable(world: World, start: Pos, *, shut: frozenset[Pos] = frozenset()) -> set[Pos]:

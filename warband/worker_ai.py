@@ -11,6 +11,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 import math
+from typing import Final
 
 from warband import path as pathing
 from warband.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Unit, World, hypot, rect_gap, tile_center
@@ -30,7 +31,7 @@ class _Site:
     access: tuple[Pos, ...]
 
 
-_REACH: dict[tuple[int, int], tuple[tuple[int, int], ...]] = {}
+_REACH: Final[dict[tuple[int, int], tuple[tuple[int, int], ...]]] = {}
 
 
 def _reach(width: int, height: int) -> tuple[tuple[int, int], ...]:
@@ -124,7 +125,7 @@ def _stamp_structures(world: World, player: int, footprints: frozenset[tuple[int
     return blocked
 
 
-_TOWER_GROUND: dict[tuple[_Building, int, int], tuple[int, ...]] = {}
+_TOWER_GROUND: Final[dict[tuple[_Building, int, int], tuple[int, ...]]] = {}
 
 
 def _tower_ground(tower: _Building, width: int, height: int) -> tuple[int, ...]:

@@ -117,29 +117,29 @@ hypot_port: Final = hypot  # the port itself, whichever hypot runs, for the test
 if isinstance(hypot, FunctionType):  # run from source: math.hypot is far quicker than this port interpreted
     hypot = math.hypot  # type: ignore[assignment]  # noqa: F811
 
-BLOCKING = frozenset({Terrain.WATER, Terrain.TREES, Terrain.ROCK})
-ARRIVE = 0.12  # a unit is "there" within this many tiles of its target point
-TOUCH = 0.4  # gap at which a peasant can enter a mine, deliver, or start building (a diagonal neighbour counts)
-STUCK_AFTER = 0.8  # seconds without progress before a unit paths again around the units in its way
-REPLAN_EVERY = 0.6  # a unit plans at most this often unless it gets a new order (a melee would otherwise plan every tick)
-REPLAN_STAGGER = 8  # ticks over which units spread their next plans by id, so a crowd does not plan in lockstep
-STEER_RANGE = 4.0  # within this many tiles a unit walks straight at its target when the line is clear, without A*
-LOCAL_EXPANSIONS = 700  # A* budget for the detours around other units; those goals are close
-SETTLE_WITHIN = 1.0  # a plain walk counts as arrived when a crowd keeps the unit this close to its spot without progress
-MINE_CLEARANCE = 2  # tiles kept free around a gold mine so peasants can get in and out
-SIDESTEP = 0.6  # lateral share of the push when walking units collide
-MAX_PUSH = 0.25  # tiles a crowd can shove a unit in one step; eight overlapping units once summed to a jump over a tree wall
+BLOCKING: Final = frozenset({Terrain.WATER, Terrain.TREES, Terrain.ROCK})
+ARRIVE: Final = 0.12  # a unit is "there" within this many tiles of its target point
+TOUCH: Final = 0.4  # gap at which a peasant can enter a mine, deliver, or start building (a diagonal neighbour counts)
+STUCK_AFTER: Final = 0.8  # seconds without progress before a unit paths again around the units in its way
+REPLAN_EVERY: Final = 0.6  # a unit plans at most this often unless it gets a new order (a melee would otherwise plan every tick)
+REPLAN_STAGGER: Final = 8  # ticks over which units spread their next plans by id, so a crowd does not plan in lockstep
+STEER_RANGE: Final = 4.0  # within this many tiles a unit walks straight at its target when the line is clear, without A*
+LOCAL_EXPANSIONS: Final = 700  # A* budget for the detours around other units; those goals are close
+SETTLE_WITHIN: Final = 1.0  # a plain walk counts as arrived when a crowd keeps the unit this close to its spot without progress
+MINE_CLEARANCE: Final = 2  # tiles kept free around a gold mine so peasants can get in and out
+SIDESTEP: Final = 0.6  # lateral share of the push when walking units collide
+MAX_PUSH: Final = 0.25  # tiles a crowd can shove a unit in one step; eight overlapping units once summed to a jump over a tree wall
 # Standing at ease (docs/unit-motion.md part 5): units that are neither fighting nor working keep a little
 # elbow room, and a unit hemmed in by its neighbours takes a short step away from them now and then.
-SPACING = 0.2  # tiles of clearance beyond touching that units at ease keep between each other; a soft push
-SPACING_WEIGHT = 0.15  # share of the missing clearance closed per step, gentler than the overlap push
-EASE_SPACE = 1.0  # a standing unit with a neighbour's centre closer than this feels crowded
-EASE_EVERY = 5  # ticks between a crowded unit's chances to step away
-EASE_CHANCE = 0.12  # that a crowded unit steps away at one of those chances: about once every two seconds
-EASE_STEP = 0.4  # tiles of the step, give or take EASE_STEP_VARIANCE
-EASE_STEP_VARIANCE = 0.3
-EASE_JITTER = 0.7  # radians either side of straight away from the crowd the step may veer
-EASE_GAIN = 0.1  # tiles more room the spot must offer than where the unit stands, so nobody steps into a neighbour
+SPACING: Final = 0.2  # tiles of clearance beyond touching that units at ease keep between each other; a soft push
+SPACING_WEIGHT: Final = 0.15  # share of the missing clearance closed per step, gentler than the overlap push
+EASE_SPACE: Final = 1.0  # a standing unit with a neighbour's centre closer than this feels crowded
+EASE_EVERY: Final = 5  # ticks between a crowded unit's chances to step away
+EASE_CHANCE: Final = 0.12  # that a crowded unit steps away at one of those chances: about once every two seconds
+EASE_STEP: Final = 0.4  # tiles of the step, give or take EASE_STEP_VARIANCE
+EASE_STEP_VARIANCE: Final = 0.3
+EASE_JITTER: Final = 0.7  # radians either side of straight away from the crowd the step may veer
+EASE_GAIN: Final = 0.1  # tiles more room the spot must offer than where the unit stands, so nobody steps into a neighbour
 
 
 def recorded(method):
@@ -253,9 +253,9 @@ class Patrol:
 
 
 Order = Move | AttackMove | Attack | Harvest | Deposit | Build | Hold | Heal | Patrol | Repair
-AT_EASE_ORDERS = (Move, AttackMove, Patrol)  # walked at ease: no target to close on, no work to press for
+AT_EASE_ORDERS: Final = (Move, AttackMove, Patrol)  # walked at ease: no target to close on, no work to press for
 
-_ORDER_TYPES: dict[str, type] = {cls.__name__: cls for cls in (Move, AttackMove, Attack, Harvest, Deposit, Build, Hold, Heal, Patrol, Repair)}
+_ORDER_TYPES: Final[dict[str, type]] = {cls.__name__: cls for cls in (Move, AttackMove, Attack, Harvest, Deposit, Build, Hold, Heal, Patrol, Repair)}
 
 
 # -- Entities ------------------------------------------------------------------
@@ -472,7 +472,7 @@ def _sight_spans(radius: int) -> list[tuple[int, int, bytes]]:
     return [(dy, half, b"\x01" * (2 * half + 1)) for dy, half in zip(range(-radius, radius + 1), halves)]
 
 
-_SIGHT: dict[int, list[tuple[int, int, bytes]]] = {}
+_SIGHT: Final[dict[int, list[tuple[int, int, bytes]]]] = {}
 
 
 def sight_spans(radius: int) -> list[tuple[int, int, bytes]]:

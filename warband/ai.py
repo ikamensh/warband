@@ -16,7 +16,7 @@ import math
 import random
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Final
 
 from warband.model import (MINE_CLEARANCE, Attack, AttackMove, Build, Building, Deposit, Harvest, Move, Point, Pos, Repair, Unit,
                            World, dist)
@@ -29,15 +29,15 @@ try:
 except ImportError:  # the source runs, as it does in the game
     _native = None  # type: ignore[assignment]
 
-EXPAND_DISTANCE = 14.0  # a mine farther than this from the hall gets a hall of its own
-LOW_MINE_GOLD = 6000  # a mine this low means the next hall is planned now, while gold still comes in
-CLAIM_DISTANCE = 8.0  # a mine with an own hall this near is claimed
-MAX_HALLS = 3
-DEFEND_RADIUS = 9.0
-BUILD_MIN_DISTANCE = 2
-BUILD_MAX_DISTANCE = 11
+EXPAND_DISTANCE: Final = 14.0  # a mine farther than this from the hall gets a hall of its own
+LOW_MINE_GOLD: Final = 6000  # a mine this low means the next hall is planned now, while gold still comes in
+CLAIM_DISTANCE: Final = 8.0  # a mine with an own hall this near is claimed
+MAX_HALLS: Final = 3
+DEFEND_RADIUS: Final = 9.0
+BUILD_MIN_DISTANCE: Final = 2
+BUILD_MAX_DISTANCE: Final = 11
 #: Shared upgrades first, then whatever arts the brain's race has (see :mod:`warband.races`).
-RESEARCH_ORDER = (Upgrade.BLADES_1, Upgrade.ARMOR_1, Upgrade.ARROWS_1, Upgrade.HORSES, Upgrade.PLUNDER, Upgrade.DEEP_MINING, Upgrade.LONGBOWS,
+RESEARCH_ORDER: Final = (Upgrade.BLADES_1, Upgrade.ARMOR_1, Upgrade.ARROWS_1, Upgrade.HORSES, Upgrade.PLUNDER, Upgrade.DEEP_MINING, Upgrade.LONGBOWS,
                   Upgrade.BLADES_2, Upgrade.ARMOR_2, Upgrade.ARROWS_2, Upgrade.SIEGE, Upgrade.BLESSING, Upgrade.BLOODLUST, Upgrade.REGROWTH,
                   Upgrade.BLASTING_POWDER)
 
@@ -45,7 +45,7 @@ RESEARCH_ORDER = (Upgrade.BLADES_1, Upgrade.ARMOR_1, Upgrade.ARROWS_1, Upgrade.H
 #: SCOUT raider, KNIGHT shock, CATAPULT siege, CLERIC healer.  Shares of types
 #: the difficulty profile does not use (cavalry without tech, siege without
 #: siege, healers without clerics) are dropped and the rest renormalised.
-ARMY_PLANS: dict[Race, dict[UnitType, float]] = {
+ARMY_PLANS: Final[dict[Race, dict[UnitType, float]]] = {
     Race.HUMAN: {UnitType.FOOTMAN: 0.35, UnitType.ARCHER: 0.30, UnitType.SCOUT: 0.05, UnitType.KNIGHT: 0.20,
                  UnitType.CATAPULT: 0.05, UnitType.CLERIC: 0.05},
     Race.ORC: {UnitType.FOOTMAN: 0.45, UnitType.ARCHER: 0.15, UnitType.SCOUT: 0.05, UnitType.KNIGHT: 0.30,
@@ -56,10 +56,10 @@ ARMY_PLANS: dict[Race, dict[UnitType, float]] = {
                  UnitType.CATAPULT: 0.15, UnitType.CLERIC: 0.05},
 }
 
-_MELEE_TYPES = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
+_MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
 
 
-ARRIVED_WITHIN = 1.5  # a soldier this near its destination has arrived, whatever the order says
+ARRIVED_WITHIN: Final = 1.5  # a soldier this near its destination has arrived, whatever the order says
 
 
 def known_enemy_buildings(world: World, player: int) -> list:
@@ -75,7 +75,7 @@ def known_enemy_buildings(world: World, player: int) -> list:
             if record.player not in (None, player) and world.players[record.player].alive]
 
 
-_RINGS: dict[tuple[int, int], tuple[tuple[float, int, int], ...]] = {}
+_RINGS: Final[dict[tuple[int, int], tuple[tuple[float, int, int], ...]]] = {}
 
 
 def keeps_paths_open(world: World, player: int, pos: Pos, size: int) -> bool:
@@ -201,7 +201,7 @@ class Profile:
     repair: bool  # peasants mend damaged buildings once the fighting there is over
 
 
-PROFILES: dict[Difficulty, Profile] = {
+PROFILES: Final[dict[Difficulty, Profile]] = {
     Difficulty.EASY: Profile(peasants=7, think_every=2.0, first_wave=10, wave_growth=2, barracks=1, towers=0, tech=False, siege=False,
                              clerics=False, harass=False, reserve=1500, repair=False),
     # Medium is what Normal and Hard both used to be. They measured 994 and 1000
@@ -232,14 +232,14 @@ def make_brain(player: int, difficulty: Difficulty, seed: int = 0):
 
 
 #: Which ProBrain profiles stand behind each of the upper difficulties.
-PRO_FOR: dict[Difficulty, tuple[str, ...]] = {Difficulty.HARD: ("pro-hard",),
+PRO_FOR: Final[dict[Difficulty, tuple[str, ...]]] = {Difficulty.HARD: ("pro-hard",),
                                               Difficulty.MASTER: ("pro-vanguard", "pro-warden")}
 
 #: What each setting is worth, measured on the ladder and anchored at Medium =
 #: 1000, over every map size and all five layouts. Produced by
 #: ``tools/arena.py``; the games behind the numbers are in ``docs/ai-ladder.md``. Shown on the New game screen so a player can see what
 #: they are picking rather than guess from a word.
-DIFFICULTY_ELO: dict[Difficulty, int] = {
+DIFFICULTY_ELO: Final[dict[Difficulty, int]] = {
     Difficulty.EASY: 860,
     Difficulty.MEDIUM: 1000,
     Difficulty.HARD: 1350,
@@ -249,7 +249,7 @@ DIFFICULTY_ELO: dict[Difficulty, int] = {
 #: One line per setting, for the same screen.
 #: One line per setting, for the same screen. Kept short enough to fit beside
 #: the map preview.
-DIFFICULTY_NOTES: dict[Difficulty, str] = {
+DIFFICULTY_NOTES: Final[dict[Difficulty, str]] = {
     Difficulty.EASY: "Seven peasants, one barracks, no upgrades.",
     Difficulty.MEDIUM: "Techs, sieges, heals and raids. The old Normal and Hard, in one.",
     Difficulty.HARD: "Strong, but slow to think and short of workers.",
