@@ -765,3 +765,49 @@ def test_a_loaded_world_remembers_who_is_at_the_mine_face() -> None:
     for _ in range(int(60 / SIM_DT)):
         loaded.step()
         assert sum(1 for u in loaded.player_units(0) if u.inside == mine.id) <= MINE_SLOTS
+
+
+# -- Scripted worlds: a mission decides ----------------------------------------------------
+
+
+def test_a_scripted_world_eliminates_but_never_declares_a_winner() -> None:
+    world = flat_world(players=2)
+    world.scripted = True
+    world.place_building(0, BuildingType.TOWN_HALL, (3, 3))
+    world.spawn_unit(0, UnitType.FOOTMAN, (10.5, 10.5))
+    world.spawn_unit(1, UnitType.FOOTMAN, (14.5, 14.5))
+    world.units[max(world.units)].hp = 0
+    run(world, 1.0)
+    assert not world.players[1].alive and world.winner is None and events(world, "eliminated")
+    world.scripted = False
+    run(world, SIM_DT)
+    assert world.winner == 0
+
+
+def test_clearing_a_player_is_quiet_and_its_next_unit_puts_it_back_in_play() -> None:
+    world = flat_world(players=2)
+    world.place_building(0, BuildingType.TOWN_HALL, (2, 2))
+    world.place_building(1, BuildingType.TOWN_HALL, (12, 12))
+    world.spawn_unit(1, UnitType.PEASANT, (10.5, 10.5))
+    world.clear_player(1)
+    assert not world.player_units(1) and not world.player_buildings(1) and not world.players[1].alive
+    assert world.passable(12, 12) and world.players[1].stats["units_lost"] == 0 and not world.events
+    run(world, 1.0)
+    assert not events(world, "eliminated") and not events(world, "surrendered")
+    world.spawn_unit(1, UnitType.FOOTMAN, (10.5, 10.5))
+    assert world.players[1].alive
+
+
+def test_nobody_surrenders_in_a_scripted_world() -> None:
+    """A raiders' camp with no units and no gold stands until it is razed; the mission's objectives say so."""
+    world = flat_world(players=2)
+    world.scripted = True
+    world.place_building(0, BuildingType.TOWN_HALL, (2, 2))
+    world.spawn_unit(0, UnitType.FOOTMAN, (6.5, 6.5))
+    camp = world.place_building(1, BuildingType.BARRACKS, (12, 12))
+    world.players[1].gold = 0
+    run(world, 2.0)
+    assert camp.id in world.buildings and world.players[1].alive and not world.players[1].surrendered
+    world.scripted = False
+    run(world, SIM_DT)
+    assert camp.id not in world.buildings and world.players[1].surrendered

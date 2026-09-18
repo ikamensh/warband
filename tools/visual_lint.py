@@ -33,8 +33,13 @@ from saga2d.effects import Toast  # noqa: E402
 from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
 from saga2d.testing.native_frames import tick as native_tick  # noqa: E402
 from warband import visual_lint as lint  # noqa: E402
+from warband.campaign import Progress, ProgressStore  # noqa: E402
+from warband.campaign_scene import CampaignScene  # noqa: E402
+from warband.dialog import DialogScene  # noqa: E402
+from warband.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
+from warband.missions import CAMPAIGN  # noqa: E402
 from warband.model import World, tile_center  # noqa: E402
-from warband.rules import BuildingType, Race, Terrain, UnitType, Upgrade  # noqa: E402
+from warband.rules import BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
 from warband.scene import TOAST_TOP, CodexScene, GameScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game  # noqa: E402
 from warband.score_scene import HighScoreScene  # noqa: E402
 from warband.style import build_theme  # noqa: E402
@@ -427,6 +432,56 @@ def high_scores_after_match(game: Game) -> None:
     scene.world.resign(1)
     ticks(game)
     game.scene.high_scores()
+    ticks(game)
+
+
+@screen
+def campaign_fresh(game: Game) -> None:
+    game.push(CampaignScene())
+    ticks(game)
+
+
+@screen
+def campaign_under_way(game: Game) -> None:
+    ProgressStore(game.data_dir).save(Progress(CAMPAIGN.id, Difficulty.HARD, completed=["hollowmere", "greywater"], flags={"truce": True}))
+    game.push(CampaignScene())
+    ticks(game)
+
+
+def mission(game: Game, mission_id: str, flags: dict | None = None) -> MissionScene:
+    """A campaign mission past its title banner, which the objectives panel waits for."""
+    scene = MissionScene(CAMPAIGN, build_world(CAMPAIGN.mission(mission_id), flags=flags or {}), difficulty=Difficulty.MEDIUM, settings=None)
+    game.push(scene)
+    ticks(game, 170)
+    return scene
+
+
+@screen
+def mission_raid(game: Game) -> None:
+    """Hollowmere's panel at its tallest, the raid's objectives shown and a notice hanging under it."""
+    scene = mission(game, "hollowmere")
+    world, hall = scene.world, scene.run.hall(0)
+    world.place_building(0, BuildingType.FARM, (hall.x + 5, hall.y + 5))
+    world.place_building(0, BuildingType.BARRACKS, (hall.x + 5, hall.y - 1))
+    for i in range(4):
+        world.spawn_unit(0, UnitType.FOOTMAN, tile_center((hall.x + i, hall.y + 4)))
+    ticks(game, 12)
+    game.scene.skip()  # Aldric's warning
+    ticks(game, 40)
+
+
+@screen
+def mission_choice(game: Game) -> None:
+    scene = mission(game, "karst_hold")
+    game.push(DialogScene(scene.mission.debrief[2:], CAMPAIGN.speakers, scene.run.vars))
+    ticks(game)
+
+
+@screen
+def mission_result(game: Game) -> None:
+    scene = mission(game, "court_of_thorns")
+    scene.run.state.update(court="done", orcs="done")
+    game.push(MissionResultScene(scene, won=True))
     ticks(game)
 
 
