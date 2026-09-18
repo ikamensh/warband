@@ -34,8 +34,8 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
-| WB-036 | Next | proposed | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often | User 2026-09-18 |
-| WB-037 | Next | proposed | Answer a tower rush without stopping the economy: one tower by the mine now halts Master's gold | User 2026-09-18 |
+| WB-036 | Next | in progress | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often | User 2026-09-18 |
+| WB-037 | Next | in progress | Answer a tower rush without stopping the economy: one tower by the mine now halts Master's gold | User 2026-09-18 |
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
@@ -157,6 +157,20 @@ does not, its numbers go into [docs/ai-ladder.md](docs/ai-ladder.md) and the
 knobs are deleted. The brains are outside the authoritative contract
 (`warband/ai.py` and `pro_ai.py` are not in its import closure), so no
 server rollout is needed.
+
+**Started 2026-09-19**, branch `tower-rush` (worktree `../warband-rush`), with
+WB-037 on the same branch: the posture comes first, then the answers, then
+the rating. Why the order died, found first: a build order is paid at the site,
+and the brain spent the bank on soldiers during the walk, so the order was
+dropped on arrival. The brain now holds a rush tower's price while its builder
+walks, and picks the site with the mine in sight (no refusal in twelve traced
+games). What killed the rush after that was the builders: sent to the enemy's
+hall, all three drafted died there in every game. Walking instead to the far
+side of their main mine (the reflection of our own through the map's centre) as
+the first barracks goes up, and ordering the tower the moment it stands, the
+tower went up by 106–135 s in four seeds of six; against the Warden's front
+tower the builders still died. Knobs: `rush_towers`, `rush_builders`,
+`rush_tries`; postures `pro-rush` (the Vanguard's) and `pro-hard-rush`.
 
 ## WB-037 — Answer a tower rush without stopping the economy
 
