@@ -214,7 +214,7 @@ See the in-game help (F1) and codex (F2). Summary:
 ## Known issues in this preview
 
 - Units use discrete animation poses; workers have four additional chopping poses with coordinated axe and body motion.
-- The layout uses a fixed logical canvas. Fullscreen helps readability; scaling the window does not rearrange its panels. On a 4K desktop with display scaling the window can open at about half the desktop, letterboxed, with a small HUD ([WB-021](../BACKLOG.md)); fullscreen is the workaround until then.
+- The layout uses a fixed logical canvas. Fullscreen helps readability; scaling the window does not rearrange its panels.
 - Large maps with three or four players can run past twenty minutes without a decision.
 - Preview.3 passed automated Windows package, native input and public multiplayer checks with a test-only Mesa driver. Physical Windows GPU performance and audible sound quality remain unverified. The installer is unsigned.
 - Preview.3 passed macOS native input/rendering and public multiplayer checks on Apple M4. The Mac app uses ad-hoc signatures without Developer ID notarization. Independent playtesting and a complete human-versus-human match remain open.
