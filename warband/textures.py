@@ -26,7 +26,7 @@ import math
 import os
 import random
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
@@ -118,13 +118,15 @@ TRUNK = PALETTES[MapTheme.SUMMER].trunk
 @dataclass(frozen=True)
 class Placement:
     """How an image is placed: its logical *size*, how far its bottom edge lies below the point it
-    is placed at (*drop*), and how far below that point the line it stands on lies (*front*: zero
+    is placed at (*drop*), how far below that point the line it stands on lies (*front*: zero
     for a unit or tree standing on the point, half the footprint for a building placed at its
-    centre).  Sprites sort by that line."""
+    centre), and how far above the point the figure's top lies (*head*: what a health bar hangs
+    over; a painted cell is far taller than its figure).  Sprites sort by the line."""
 
     size: tuple[float, float]
     drop: float
     front: float = 0.0
+    head: float = field(kw_only=True)
 
     @property
     def ground(self) -> float:
@@ -294,7 +296,7 @@ def _prop(key: str, mesh: Mesh, drop: float, scale: float, *, min_width: float =
     if max_y + PAD > drop:
         raise ValueError(f"{key}: mesh extends {max_y:.1f} below its anchor, more than its drop of {drop}")
     canvas = (2 * half_w, top + drop)
-    placements[key] = Placement(canvas, drop, front)
+    placements[key] = Placement(canvas, drop, front, head=top - PAD)
     return r3.render(mesh, PROJECTION, scale=scale, canvas=canvas, origin=(half_w, top))
 
 
@@ -1960,7 +1962,7 @@ def melee_trail_image(game: Game, unit_type: UnitType, facing: int, race: Race =
         draw.polygon(points, fill=(235, 242, 252, round(85 * strength)))
         draw.line(points[1:3], fill=(249, 251, 255, round(180 * strength)), width=round(edge_width * sample))
     image = image.resize((round(width * scale), round(height * scale)), Image.Resampling.LANCZOS)
-    placements[key] = Placement((width, height), bottom)
+    placements[key] = Placement((width, height), bottom, head=-top)
     game.assets.image_from_pil(key, image)
     return key
 
@@ -1998,6 +2000,28 @@ def restyled_frames(race: Race, unit_type: UnitType, carrying: Resource | None) 
     return _painted(name, [unit_key(unit_type, 0, 0, frame, carrying, race) for frame in wanted])
 
 
+def figure_top(sheet: restyle.Sheet, frame: Image.Image) -> float:
+    """How far above the sheet's anchor the figure in *frame* begins: its first row with a pixel at
+    least a quarter opaque (a stray faint pixel of the key's field does not count), in logical units."""
+    box = frame.split()[3].point(lambda alpha: 255 if alpha >= 64 else 0).getbbox()
+    if box is None:
+        raise ValueError("a painted frame with no figure")
+    return (sheet.origin[1] - box[1]) / sheet.scale
+
+
+@lru_cache(maxsize=None)
+def stride_heads(race: Race, unit_type: UnitType, carrying: Resource | None) -> tuple[float, ...]:
+    """Per facing, how far above its feet the unit reaches standing or walking: the highest figure top
+    over its stand and walk frames, so a bar hung over it holds still through the stride and clears a
+    tool carried over the shoulder."""
+    painted = restyled_frames(race, unit_type, carrying)
+    if painted is None:
+        raise ValueError(f"no painted sheet for {race.value} {unit_type.value} carrying {carrying}")
+    sheet, frames = painted
+    return tuple(max(figure_top(sheet, frames[unit_key(unit_type, 0, facing, name, carrying, race)]) for name in ("stand",) + WALK_FRAMES)
+                 for facing in range(FACINGS))
+
+
 @lru_cache(maxsize=None)
 def restyled_buildings(race: Race, look: str = "intact") -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
     """The hand-painted buildings of one race in one look (one frame per building type, the
@@ -2022,7 +2046,7 @@ def unit_image(game: Game, unit_type: UnitType, player: int, facing: int, frame:
             game.assets.image_from_pil(key, _prop(key, mesh, DROP_UNIT, game.backend.scale_factor))
         else:
             sheet, frames = restyled
-            placements[key] = Placement(sheet.logical_size, sheet.drop)
+            placements[key] = Placement(sheet.logical_size, sheet.drop, head=stride_heads(race, unit_type, carrying)[facing])
             game.assets.image_from_pil(key, _recoloured(frames[unit_key(unit_type, 0, facing, frame, carrying, race)], player))
     return key
 
@@ -2105,8 +2129,9 @@ def building_image(game: Game, building_type: BuildingType, player: int, race: R
             image = _prop(key, _building(building_type, player, race), front + PAD, game.backend.scale_factor, front=front)
         else:
             sheet, frames = restyled
-            placements[key] = Placement(sheet.logical_size, sheet.drop, front)
-            image = _recoloured(frames[building_key(building_type, 0, race, look)], player)
+            painted = frames[building_key(building_type, 0, race, look)]
+            placements[key] = Placement(sheet.logical_size, sheet.drop, front, head=figure_top(sheet, painted))
+            image = _recoloured(painted, player)
         game.assets.image_from_pil(key, _greyed(image) if abandoned else image)
     return key
 

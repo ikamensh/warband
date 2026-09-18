@@ -3,6 +3,8 @@
 import pytest
 
 from saga2d import Game
+from warband import textures, view
+from warband.races import Race
 from warband.rules import BuildingType, UnitType, Upgrade
 from warband.scene import GameScene
 from warband.style import build_theme
@@ -121,3 +123,80 @@ def test_a_site_shows_progress_and_own_work_shows_a_bar_and_a_mark_but_a_rivals_
     scene.select([site.id])
     frame(game)
     assert len(health_bars(game)) == 1, "a selected site shows its health as well"
+
+
+def on_top(game: Game, x: float, y: float) -> tuple:
+    """The colour the backend puts on top at world point (x, y): of the world rects covering it, the
+    one with the highest draw order and, at one order, the last pushed (a soup draws in call order)."""
+    covering = [(r["order"], i, tuple(r["color"])) for i, r in enumerate(game.backend.rects)
+                if r["space"] == "world" and r["x"] <= x <= r["x"] + r["width"] and r["y"] <= y <= r["y"] + r["height"]]
+    assert covering, f"nothing drawn at {(x, y)}"
+    return max(covering)[2]
+
+
+def fill_centre(bar: dict) -> tuple[float, float]:
+    return (bar["x"] + bar["width"] / 2, bar["y"] + bar["height"] / 2)
+
+
+def test_the_fill_shows_on_the_first_frame_after_selection_wherever_the_unit_stands(play) -> None:
+    """The scene sorts a world rect by its bottom edge in bands of eight units, so a backing drawn
+    taller than its fill can land in the next band and cover it: sweep the unit through a whole band."""
+    game, scene = play
+    unit = scene.world.spawn_unit(0, UnitType.PEASANT, (16.5, 12.5))
+    for step in range(12):
+        unit.y = 12.5 + step / 32  # one world unit a step
+        scene.select([])
+        frame(game)
+        scene.select([unit.id])
+        game.tick(1 / 60)  # the first frame after selection
+        (bar,) = health_bars(game)
+        assert on_top(game, *fill_centre(bar)) == tuple(bar["color"]), f"a black bar with the unit at y={unit.y}"
+
+
+def test_a_wounded_units_bar_stays_filled_through_every_frame_of_a_walk(play) -> None:
+    game, scene = play
+    world = scene.world
+    unit = world.spawn_unit(0, UnitType.PEASANT, (16.5, 11.0))
+    unit.hp = unit.max_hp // 2
+    frame(game)
+    world.move([unit.id], (16.5, 16.0))
+    for tick in range(180):
+        game.tick(1 / 60)
+        (bar,) = health_bars(game)
+        assert on_top(game, *fill_centre(bar)) == tuple(bar["color"]), f"the bar went black on frame {tick} with the unit at y={unit.y:.2f}"
+    assert unit.y > 13.0, "it walked"
+
+
+def stride_top(race: Race, facing: int) -> float:
+    """How far above its feet a race's worker reaches standing or walking with *facing*: the highest
+    pixel at least a quarter opaque over its stand and walk frames on the painted sheet, in world units."""
+    sheet, frames = textures.restyled_frames(race, UnitType.PEASANT, None)
+    tops = [frames[textures.unit_key(UnitType.PEASANT, 0, facing, name, None, race)].split()[3].point(lambda a: 255 if a >= 64 else 0).getbbox()[1]
+            for name in ("stand",) + textures.WALK_FRAMES]
+    return (sheet.origin[1] - min(tops)) / sheet.scale
+
+
+@pytest.mark.parametrize("race", list(Race))
+def test_a_workers_bar_hangs_a_few_pixels_over_its_figure_and_holds_still_through_a_walk(play, race) -> None:
+    """Anchored to the figure, not the sprite's cell (a painted cell is far taller than a dwarf), the
+    same for every race; the offset from the feet does not bob with the stride."""
+    game, scene = play
+    world = scene.world
+    world.players[0].race = race
+    unit = world.spawn_unit(0, UnitType.PEASANT, (16.5, 11.0))
+    unit.hp = unit.max_hp // 2
+    frame(game)
+    world.move([unit.id], (16.5, 16.0))
+    for _ in range(12):
+        game.tick(1 / 60)  # under way and facing south
+    offsets = set()
+    for _ in range(120):
+        game.tick(1 / 60)
+        (bar,) = health_bars(game)
+        feet = view.to_world(scene.view.unit_position(unit))[1]
+        outline_bottom = bar["y"] + bar["height"] + 1  # the 1 px bottom edge of the outline at zoom 1
+        clearance = (feet - stride_top(race, textures.facing_index(unit.facing))) - outline_bottom
+        assert 1 <= clearance <= 6, f"{race.value}: the bar's outline ends {clearance:.1f} px above the figure"
+        offsets.add(round(feet - bar["y"], 3))
+    assert len(offsets) == 1, f"{race.value}: the bar bobbed through {sorted(offsets)}"
+    assert unit.y > 12.5, "it walked"

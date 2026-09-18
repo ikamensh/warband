@@ -94,6 +94,7 @@ STRIDE = 0.22  # tiles travelled per walk frame: feet stay planted instead of sl
 STRIKE, FOLLOW, RECOVER = 0.1, 0.16, 0.16  # seconds after the blow: driven forward, swept across, settling to guard
 TRAIL = {"arrow": 0.12, "stone": 0.45}  # seconds of flight a shot leaves hanging in the air behind it
 TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194)}
+BAR_OUTLINE = (0, 0, 0, 190)  # the backing and outline of every health and progress bar
 
 
 def unit_frame(u: Unit, travel: float, time: float) -> str:
@@ -691,24 +692,34 @@ class MapView:
             return (150, 150, 150, 255)
         return SELECT if entity.player == self.player else ENEMY
 
+    def _bar(self, x0: float, y: float, width: float, fill: float, color: Color) -> None:
+        """A bar *width* wide from (*x0*, *y*), 5 screen pixels tall at any zoom: *fill* of it in *color* on a dark
+        backing inside a 1 px outline.  The backing and the fill span the same rows, so the scene gives them one
+        draw order (a world rect sorts by its bottom edge, in bands) and the fill, pushed second, lands on top
+        wherever the bar is; the outline's top and bottom edges are strips of their own that overlap nothing."""
+        px = 1 / self.scene.camera.zoom  # one screen pixel in world units
+        height = 5 * px
+        draw = self.scene.draw_rect
+        draw(x0 - px, y - px, width + 2 * px, px, BAR_OUTLINE, space="world", layer=RenderLayer.UI_WORLD)
+        draw(x0 - px, y, width + 2 * px, height, BAR_OUTLINE, space="world", layer=RenderLayer.UI_WORLD)
+        draw(x0, y, fill, height, color, space="world", layer=RenderLayer.UI_WORLD)
+        draw(x0 - px, y + height, width + 2 * px, px, BAR_OUTLINE, space="world", layer=RenderLayer.UI_WORLD)
+
     def _health_bar(self, entity: Entity, x: float, y: float, width: float) -> None:
-        """A bar *width* wide centred on *x* with its top at *y*: 5 screen pixels tall with a 1 px outline at any zoom."""
+        """A health bar *width* wide centred on *x* with its fill's top at *y*."""
         if isinstance(entity, Building) and entity.type is BuildingType.GOLD_MINE:
             return
-        px = 1 / self.scene.camera.zoom  # one screen pixel in world units
         frac = max(0.0, min(1.0, entity.hp / max(1, entity.max_hp)))
         color = (110, 230, 110, 255) if frac > 0.5 else (240, 200, 80, 255) if frac > 0.25 else (240, 90, 70, 255)
-        self.scene.draw_rect(x - width / 2 - px, y - px, width + 2 * px, 7 * px, (0, 0, 0, 190), space="world", layer=RenderLayer.UI_WORLD)
-        self.scene.draw_rect(x - width / 2, y, width * frac, 5 * px, color, space="world", layer=RenderLayer.UI_WORLD)
+        self._bar(x - width / 2, y, width, width * frac, color)
 
     def _progress_bar(self, left: float, top: float, w: int, h: int, frac: float, *, work: bool) -> None:
         """A gold bar in five segments along a building's bottom edge; *work* adds the pulsing mark of a building making something."""
         px = 1 / self.scene.camera.zoom
         x0, width, y0 = left + 4, w * TILE - 8, top + h * TILE - 4 - 5 * px
-        self.scene.draw_rect(x0 - px, y0 - px, width + 2 * px, 7 * px, (0, 0, 0, 190), space="world", layer=RenderLayer.UI_WORLD)
-        self.scene.draw_rect(x0, y0, width * max(0.0, min(1.0, frac)), 5 * px, (255, 214, 110, 255), space="world", layer=RenderLayer.UI_WORLD)
-        for tick in range(1, 5):
-            self.scene.draw_rect(x0 + width * tick / 5 - px / 2, y0, px, 5 * px, (0, 0, 0, 190), space="world", layer=RenderLayer.UI_WORLD)
+        self._bar(x0, y0, width, width * max(0.0, min(1.0, frac)), (255, 214, 110, 255))
+        for tick in range(1, 5):  # the same rows as the fill: the same order, pushed after it
+            self.scene.draw_rect(x0 + width * tick / 5 - px / 2, y0, px, 5 * px, BAR_OUTLINE, space="world", layer=RenderLayer.UI_WORLD)
         if work:
             pulse = 0.55 + 0.45 * math.sin(self.time * 5)
             self.scene.draw_circle(x0 - 6 * px, y0 + 2.5 * px, 3.5 * px, (255, 214, 110, int(120 + 135 * pulse)), space="world", layer=RenderLayer.UI_WORLD)
@@ -721,12 +732,15 @@ class MapView:
         progress along the bottom of every site under construction and of own buildings at work."""
         world = self.world
         shown = set(overlay.selected) | ({overlay.hovered} if overlay.hovered is not None else set())
+        px = 1 / self.scene.camera.zoom
         for uid, sprite in self._units.items():
             unit = world.units.get(uid)
             if unit is None or not sprite.visible:
                 continue
             if overlay.bars_for_all or uid in shown or unit.hp < unit.max_hp:
-                self._health_bar(unit, sprite.x, sprite.y - sprite.size[1] - 6, TILE * 0.8)
+                placement = textures.placements[self._unit_keys[uid]]
+                # Over the figure's top, not the sprite's cell: three screen pixels of air, then the outline's bottom edge and the 5 px fill.
+                self._health_bar(unit, sprite.x, sprite.y - placement.drop - placement.head - 9 * px, TILE * 0.8)
         for bid, building in world.buildings.items():
             if bid not in self._buildings or not self._seen(building):
                 continue

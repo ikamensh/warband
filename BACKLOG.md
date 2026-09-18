@@ -46,6 +46,7 @@ catches its class.
 | WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
 | WB-023 | Next | done | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
+| WB-025 | Next | in progress | Health bars: steady while moving, anchored to the sprite, filled from the first frame | User report 2026-09-18 |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -1344,3 +1345,74 @@ within noise), the step's p95 under 3 ms in `tools/step_bench.py`, the late
 p95 of `tools/perf.py` measured before and after, seeded fuzz clean, the
 fingerprint refreshed deliberately with the rest of its series.
 
+
+## WB-025 — Health bars: steady while moving, anchored to the sprite, filled from the first frame
+
+Reported 2026-09-18 after a match on a Mac with a dwarf worker selected: its
+health bar blinks while it walks, sits noticeably too far above it, and
+sometimes shows black right after the unit is selected. Branch `bars`
+(worktree `../warband-bars`); presentation only, WB-008's policy unchanged.
+
+**Where it starts, 2026-09-18** (`docs/evidence/bars-followup/before/`: a
+wounded dwarf worker selected on open grass, native frames at zoom 1 and 2):
+
+- Standing at tile y 12.5 and 12.75 the bar is black on the first frame after
+  selection and on the next one; at 12.6 and 12.9 it is green. The position
+  decides, not the time since selection: the scene orders a world-space rect
+  by its bottom edge in bands of eight world units (`Scene.draw_rect`,
+  `world_order`), the bar's dark backing is one screen pixel taller than its
+  fill, and whenever a band boundary falls between the two bottom edges the
+  backing sorts after the fill and covers it. On the mock backend at y 12.5
+  the backing draws at order 400041 and the fill at 400040; at 12.6 both are
+  400041 and the fill, pushed later, wins.
+- Walking south the same bar alternates black and green from one model step
+  to the next: the same band flip, crossed again and again as the unit
+  travels. That is the blink; it shows at zoom 2 as well.
+- The bar hangs some 40 screen pixels above the dwarf's helmet at zoom 1 and
+  80 at zoom 2. It is anchored to the top of the sprite's *cell*
+  (`sprite.y - sprite.size[1] - 6`), and a painted sheet's cell is far taller
+  than its figure: the dwarf worker's cell top lies 71 world units above the
+  feet, the helmet 33 to 36 in the front facings, the axe carried over the
+  shoulder 57 to 62 in the back ones (`textures.restyled_frames`, the frames'
+  opaque extents). The 6 is in world units too, so the gap doubles at zoom 2.
+
+**Acceptance (recorded 2026-09-18 before implementation):**
+
+1. Ordering: the fill is what shows at every position and zoom. The backing
+   and the fill share one vertical extent, so they take the same draw order
+   and the fill, pushed after the backing, lands on top; the outline's top and
+   bottom edges are strips of their own that overlap nothing. Progress bars
+   are built the same way. A test sweeps a selected unit through a whole band
+   of positions and asserts the health colour is on top on the first frame
+   after each selection; another walks a wounded unit for a few seconds and
+   asserts its bar is drawn with the fill on top in every frame.
+2. Anchoring: a unit's bar hangs a fixed few screen pixels above the top of
+   its figure at rest for its facing (the stand frame's opaque top on a
+   painted sheet, the mesh's top on a render), never over the cell: the dwarf
+   worker's bar sits just over its helmet, and in the facings where it
+   carries the axe over the shoulder the bar clears the axe. The bar's offset
+   from the feet stays constant through a walk (no bobbing with the stride)
+   and changes only when the unit turns or its sprite changes; the gap is in
+   screen pixels, the same at every zoom. A test checks the bar against the
+   figure's top for a worker of every race across a walk. Revised during
+   implementation: the figure's top for a facing is the highest row at least
+   a quarter opaque over its stand *and* walk frames (`textures.stride_heads`),
+   so nothing the unit raises while walking crosses the bar, and a stray
+   faint pixel of the key's field near the cell top (the human worker's walk1
+   and the elf's walk3 at facing 2 keep a few at alpha 16 or less, which the
+   residue rule's floor of 24 also passes over) does not push the bar up.
+3. Frames inspected: the dwarf worker standing at the four positions (first
+   and next frame after selection) and walking south, at zoom 1 and 2, before
+   and after; the crowd with every bar on (the lint's `battle_bars` screen).
+4. Runs: the added tests fail on the old code and pass on the new; the suite;
+   `tools/visual_lint.py` over its screens; the simulation fingerprint
+   unchanged.
+
+**Frames, 2026-09-18** (`docs/evidence/bars-followup/after/`, the same
+worker, positions and walk as `before/`): standing at every one of the four
+positions the bar is green on the first frame after selection and on the
+next, at zoom 1 and 2; walking south it is green in all 48 frames at either
+zoom and holds still over the helmet through the stride; its outline now ends
+three screen pixels over the helmet at both zooms where it hung some 40 (80
+at zoom 2) before. On the mock backend the backing and the fill now share
+their order at every position.
