@@ -57,6 +57,10 @@ def test_rooms_and_private_seats_survive_server_restart(tmp_path):
             seat1 = handshake(guest, 'join', game=GAME, room=seat0['room'])
             receive(host)
             before = receive(guest, predicate=lambda state: state['state']['world']['tick'] >= 4)
+            host.close()
+            # The server checkpoints a room as it tells the others a seat left: once the guest hears it, the process
+            # may be lost. Killed any earlier (Windows terminates outright) it kept the checkpoint from the start.
+            receive(guest, predicate=lambda state: not state['ready'])
     with running_server(SPEC, arguments=('--state-dir', tmp_path)) as (url, process):
         with connect(url, proxy=None) as host, connect(url, proxy=None) as guest:
             returned = handshake(host, 'resume', game=GAME, room=seat0['room'], resume_token=seat0['resume_token'])
