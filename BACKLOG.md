@@ -82,6 +82,30 @@ branch `room-seats`). WB-011 is live, so what a seat is sent is already its own.
    does Warband, and one server rollout carries the engine and Warband's
    authority.
 
+**Done and live 2026-09-18 as Warband 0.2.34.** Built on `online-ffa`
+(`4edae3f`; the match menu's Resign `5936663`; the play-together guide
+`e8320ee`; the Saga2D 0.3.8 pin `2ef6f92`) and merged into main as `4e092a0`.
+Criteria 1 to 7 hold. `tests/warband/test_online_ffa.py` plays real matches
+over the server process: three humans in one room, each sent only its own; a
+resignation in four leaves three fighting with the resigner's buildings
+standing abandoned, and nobody wins until the last two have decided it;
+resigning someone else is refused; a seat still in the match that leaves
+pauses the room until it rejoins with its token; a client from before larger
+rooms is refused with the update message; the online AI takes a seat in a
+room of three; the match menu's Resign asks first, and the player who is out
+is told so and may watch the rest (frames in `docs/evidence/online-ffa/`,
+looked at). The engine's journeys (S2D-011, Saga2D `11adf41`) add that a room
+whose players are all out expires once they leave. The suite passed 1,369
+tests and the simulation fingerprint is unchanged (`e6b0ed6f…`); main ran
+[Tests 35391932290](https://github.com/ikamensh/warband/actions/runs/35391932290)
+and [native package checks 35391932264](https://github.com/ikamensh/warband/actions/runs/35391932264).
+One server rollout carried Saga2D 0.3.8 and the authority
+([its record](../saga-online/docs/wb012-rollout.md)): on the live bundle
+`3bf61237…` a three-seat room filled, started with 3 of 3 and refused a client
+from before 0.3.8; [promotion 35394864959](https://github.com/ikamensh/saga-online/actions/runs/35394864959)
+published 0.2.34, and [the public download checks 35395000096](https://github.com/ikamensh/saga-online/actions/runs/35395000096)
+passed on Windows and macOS.
+
 ## WB-013 — Fresh-player and cross-platform acceptance
 
 Refresh W06/W15 with the current candidate: observe first launch, first economy,
