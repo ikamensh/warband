@@ -13,6 +13,7 @@ import math
 
 from warband import path as pathing
 from warband.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Unit, World, rect_gap, tile_center
+from warband.worker_knowledge import _Building
 from warband.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_SLOTS, SIM_DT, UNITS, UNIT_RADIUS, BuildingType, Resource, Terrain
 
 
@@ -36,15 +37,31 @@ def _reach(width: int, height: int) -> tuple[tuple[int, int], ...]:
     return found
 
 
+class _Routes:
+    """A player's automatic-work grid and everything it was stamped from.
+
+    The grid is a pure function of these inputs, so while they stay as they
+    were (no wall or tower newly remembered, no structure newly seen, no armed
+    enemy in sight moving) the grid made last time is the grid, and a tick
+    returns it rather than stamping every threat again.  Callers only read it.
+    """
+
+    def __init__(self, remembered: bytes, towers: tuple[_Building, ...], footprints: frozenset[tuple[int, int, int]],
+                 base: bytearray) -> None:
+        self.remembered = remembered  # the knowledge grid the base was stamped on
+        self.towers = towers          # the knowledge's armed structures, stamped on the base
+        self.footprints = footprints  # structures seen but not yet in the knowledge, stamped on the base
+        self.base = base
+        self.units: tuple[tuple[float, float, float], ...] = ()  # the visible armed enemies stamped on the grid
+        self.grid = base
+
+
 def _navigation(world: World, player: int) -> bytearray:
     """Remember static terrain and towers; only visible mobile enemies add danger."""
     knowledge = world.worker_knowledge[player]
-    blocked = bytearray(knowledge.blocked)
     width, height = world.width, world.height
     visible = world.visible[player]
-    threats: list[tuple[Point, float, tuple[int, int, int, int] | None]] = [
-        (building.center, building.threat_range, (building.x, building.y, building.size, building.size))
-        for building in knowledge.threats if building.player != player]
+    units: list[tuple[float, float, float]] = []
     for unit in world.units.values():
         if unit.player == player:
             continue
@@ -55,33 +72,46 @@ def _navigation(world: World, player: int) -> bytearray:
             continue
         info = unit.info
         if info.damage:
-            threats.append(((unit.x, unit.y), max(2.5, info.range + 1.5), None))
+            units.append((unit.x, unit.y, max(2.5, info.range + 1.5)))
     # Only a footprint the remembered grid does not already block still needs stamping, which is usually none.
+    footprints: set[tuple[int, int, int]] = set()
     for bid in world.buildings.keys() - knowledge.buildings.keys():
         building = world.buildings[bid]
         x, y, size = building.x, building.y, building.size
-        if building.player != player and not knowledge.sees(visible, x, y, size):
-            continue
+        if building.player == player or knowledge.sees(visible, x, y, size):
+            footprints.add((x, y, size))
+    routes = world._worker_ai_routes.get(player)
+    if (routes is None or routes.towers != knowledge.threats or routes.footprints != footprints
+            or knowledge.blocked != routes.remembered):
+        routes = _Routes(bytes(knowledge.blocked), knowledge.threats, frozenset(footprints),
+                         _stamp_structures(world, player, footprints))
+        world._worker_ai_routes[player] = routes
+    stamped = tuple(units)
+    if stamped != routes.units:
+        grid = routes.base
+        if stamped:
+            grid = bytearray(grid)
+            _stamp_units(grid, stamped, width, height)
+        routes.units, routes.grid = stamped, grid
+    return routes.grid
+
+
+def _stamp_structures(world: World, player: int, footprints: set[tuple[int, int, int]]) -> bytearray:
+    """The remembered grid with *footprints* blocked and the ground under every known enemy tower forbidden."""
+    knowledge = world.worker_knowledge[player]
+    blocked = bytearray(knowledge.blocked)
+    width, height = world.width, world.height
+    for x, y, size in footprints:
         for start, stop in knowledge.spans(x, y, size):
             blocked[start:stop] = b"\x01" * (stop - start)
-    floor, ceil, sqrt, hypot = math.floor, math.ceil, math.sqrt, math.hypot
-    for center, radius, rect in threats:
-        cx, cy = center
-        if rect is None:
-            # A unit's threat: the tiles whose centre lies within radius of it, one slice per row.
-            r2 = radius * radius
-            for y in range(max(0, floor(cy - radius)), min(height, ceil(cy + radius) + 1)):
-                dy = y + 0.5 - cy
-                offset = dy * dy
-                if offset > r2:
-                    continue
-                half = sqrt(r2 - offset)
-                lo, hi = max(0, ceil(cx - half - 0.5)), min(width, floor(cx + half - 0.5) + 1)
-                if lo < hi:
-                    blocked[y * width + lo:y * width + hi] = b"\x01" * (hi - lo)
+    floor, ceil, hypot = math.floor, math.ceil, math.hypot
+    for building in knowledge.threats:
+        if building.player == player:
             continue
         # A tower's threat: the tiles whose centre lies within radius of its footprint.
-        rx, ry, rw, rh = rect
+        cx, cy = building.center
+        radius = building.threat_range
+        rx, ry, rw, rh = building.x, building.y, building.size, building.size
         extent = radius + max(rw, rh) / 2
         columns = range(max(0, floor(cx - extent)), min(width, ceil(cx + extent) + 1))
         for y in range(max(0, floor(cy - extent)), min(height, ceil(cy + extent) + 1)):
@@ -93,6 +123,22 @@ def _navigation(world: World, player: int) -> bytearray:
                 if hypot(max(rx - px, 0.0, px - (rx + rw)), dy) <= radius:
                     blocked[row + x] = 1
     return blocked
+
+
+def _stamp_units(blocked: bytearray, units: tuple[tuple[float, float, float], ...], width: int, height: int) -> None:
+    """Forbid the tiles whose centre lies within each unit's threat radius of it, one slice per row."""
+    floor, ceil, sqrt = math.floor, math.ceil, math.sqrt
+    for cx, cy, radius in units:
+        r2 = radius * radius
+        for y in range(max(0, floor(cy - radius)), min(height, ceil(cy + radius) + 1)):
+            dy = y + 0.5 - cy
+            offset = dy * dy
+            if offset > r2:
+                continue
+            half = sqrt(r2 - offset)
+            lo, hi = max(0, ceil(cx - half - 0.5)), min(width, floor(cx + half - 0.5) + 1)
+            if lo < hi:
+                blocked[y * width + lo:y * width + hi] = b"\x01" * (hi - lo)
 
 
 class _View:

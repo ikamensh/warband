@@ -63,7 +63,7 @@ def build() -> Path:
         "from setuptools import setup\n"
         "from mypyc.build import mypycify\n"
         f"setup(name='warband-fastsim', packages=[], py_modules=[],"
-        f" ext_modules=mypycify({[f'--cache-dir={staging / 'mypy'}', *paths]!r},"
+        f" ext_modules=mypycify({[f'--cache-dir={staging / 'mypy'}', '--follow-imports=silent', *paths]!r},"
         f" target_dir={str(staging / 'c')!r}),"
         f" script_args=['build_ext', '--build-lib', {str(staging)!r}, '--build-temp', {str(staging / 'obj')!r}])\n"
     )

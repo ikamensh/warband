@@ -469,6 +469,7 @@ class World:
         self._worker_ai_checks: dict[int, int] = {}
         self._worker_ai_views: dict[int, tuple[int, Any]] = {}
         self._worker_ai_navigation: dict[int, tuple[int, bytearray]] = {}
+        self._worker_ai_routes: dict[int, Any] = {}  # worker_ai._Routes per player, kept across ticks
         self.settlement = Settlement(self)
         self._exposed: set[int] = set()  # players whose last holdings stand revealed
         self._region_map: pathing.Regions | None = None  # walkable regions of the static grid, see _regions()
