@@ -67,16 +67,6 @@ def sound_files(data_dir: Path, sounds: Mapping[str, Generator], music: Mapping[
     return [data_dir / "sounds" / f"{name}.wav" for name in sounds] + [data_dir / "music" / f"{name}.wav" for name in music]
 
 
-def generate(data_dir: Path, version: str, sounds: Mapping[str, Generator], music: Mapping[str, Generator]) -> None:
-    """Synthesise every effect and track into *data_dir*, overwriting; the
-    VERSION marker is written last so an interrupted run regenerates."""
-    for name, make in sounds.items():
-        write_wav(data_dir / "sounds" / f"{name}.wav", make())
-    for name, make in music.items():
-        write_wav(data_dir / "music" / f"{name}.wav", make())
-    (data_dir / "sounds" / "VERSION").write_text(version)
-
-
 class SynthBank:
     """A game's sounds, generated on first use and played through its ``game.audio``.
 

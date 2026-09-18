@@ -22,8 +22,13 @@ def tick_until(game, condition, max_seconds: float = 4.0) -> None:
 
 @pytest.fixture(scope="module")
 def audio_files(tmp_path_factory):
+    """A battle's sounds as the game writes them, by its bank on first use; the bank composes no track unasked."""
     root = tmp_path_factory.mktemp("battle-audio")
-    sound.generate(root, sound.SOUND_VERSION, sound.SOUNDS, sound.MUSIC)
+    game = Game("Battle audio", backend="mock")
+    try:
+        sound.SoundBank(game, root)
+    finally:
+        game.close()
     return root
 
 
