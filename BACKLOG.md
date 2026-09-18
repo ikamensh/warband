@@ -150,6 +150,21 @@ and every size in a 1280×800 window fill the width at zoom 1.
    a Small and a Medium match at 2480×1320 and of a Small match at 1280×800 are
    looked at. The fingerprint does not move.
 
+**Done 2026-09-19, merged into main as `464328e`** (`7982315` on branch
+`small-map-zoom`). `GameScene._setup_camera` opens at the zoom that fills the
+canvas's width and the room between the HUD's rows and panels, never below 1:
+a Small map at 2480×1320 opens at 1.55, a Medium one at 1.17, a Small map at
+1280×800 at 1 as before; zooming out still reaches 0.75.
+`tests/warband/test_map_fills_window.py` checks every map size on 1280×800,
+1840×960 and 2480×1320 and a mission, at the starting place and the four
+corners the camera scrolls to; against the old camera four of its cases fail.
+Native frames of those three openings were looked at: the rim at both sides
+of the window, fog inside it, no margin. The fingerprint is unchanged. Main ran
+[Tests 35403093350](https://github.com/ikamensh/warband/actions/runs/35403093350)
+and [native package checks 35403093356](https://github.com/ikamensh/warband/actions/runs/35403093356);
+the client-only change reaches the site with the next promotion, once the
+server's baseline has moved for fast-sim's contract.
+
 ## WB-036 — A tower rush for Hard and Master
 
 Ilya asked on 2026-09-18 for a "cannon rush" brain: if it lifts the rating,
