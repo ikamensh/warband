@@ -36,7 +36,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
 | WB-036 | Next | proposed | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often | User 2026-09-18 |
 | WB-037 | Next | proposed | Answer a tower rush without stopping the economy: one tower by the mine now halts Master's gold | User 2026-09-18 |
-| WB-038 | Next | in progress | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
+| WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-042 | Later | proposed | Tests read through public accessors; try property tests for the model and paths | WB-040 |
@@ -270,6 +270,28 @@ the fingerprint and the contract are unchanged.
    is painted; with procedural art the stand-ins return. `tools/visual_lint.py`
    passes, and native frames of an idle and a worked mine on the three map
    themes are looked at. The fingerprint and the contract do not move.
+
+**First part merged 2026-09-19 as `7f7de57`** (`b491200` on `painted-mine`).
+The intact look is painted and installed (`warband/assets/restyled/mine.intact`):
+four stand-ins (0, 5, 10, 15) repainted in the buildings' style, each figure's
+box within 2 px of its stand-in's, no blue; the cut registered at scale 0.99,
+no cell flagged. The map draws only the painted four, never recoloured; the
+portrait is the painting; a mine is `active` while a peasant works inside and
+the player sees it, and keeps the look last seen out of sight (tested; with
+the active sheet made up in the test, since none is painted yet, the intact
+painting shows). The art lint finds nothing new (the same 39 findings as
+main) and checks the painted mines' footprint and drift; native frames of a
+worked and an idle mine on summer, winter and wasteland were looked at. The
+fingerprint and contract are unchanged. The painter is now handed a canvas
+of the sheet's own shape: OpenRouter's model re-laid a portrait sheet out on
+its default 3:2, eight mines instead of four.
+
+**Blocked on a painter for the active look.** Codex, which also runs the
+vision judge, is out of credits until 24 September; OpenRouter answered 402
+(its credit is spent) after the two intact paintings (about $0.07 each). The
+intact painting was judged by eye against the stand-ins instead: the judge
+runs when Codex is back. What unblocks it: either painter again.
+`tools/restyle.py --mines --looks active dump|render|cut DIR`, then `check`.
 
 ## WB-039 — A quieter selection
 
