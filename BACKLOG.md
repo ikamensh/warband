@@ -1815,5 +1815,13 @@ damaged save is still refused with the match untouched.
 **Done 2026-09-18**: `load_save_state` is `clear_and_push(load_game(state))`;
 `tests/warband/test_scene.py::test_a_load_in_the_match_leaves_the_abandoned_timeline_behind`
 (failed on the old code); seven tests that held the old scene object follow
-the loaded one; the suite 1,240 passed, 12 skipped. `MapView.reset` stays for
-the replay that continues through a reload.
+the loaded one; the suite 1,240 passed, 12 skipped (1,243 on Saga2D 0.3.7
+after the rollout). `MapView.reset` stays for the replay that continues
+through a reload. Commit `5ed11a6`, pushed as main `2a1bc4c` with a small HUD
+fix (`28533f5`: the selection card measures a name in the theme's heading
+style): [Native package checks 35369318870](https://github.com/ikamensh/warband/actions/runs/35369318870),
+[Publish 35371131273](https://github.com/ikamensh/warband/actions/runs/35371131273),
+[promotion 35371297258](https://github.com/ikamensh/saga-online/actions/runs/35371297258):
+live as Warband 0.2.27. Its own Tests run was cancelled by the next push, whose
+[Tests 35369561134](https://github.com/ikamensh/warband/actions/runs/35369561134)
+cover it.
