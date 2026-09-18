@@ -764,16 +764,16 @@ static PyObject *stamp_threats(PyObject *self, PyObject *args) {
     Py_RETURN_NONE;
 }
 
-/* WorkerKnowledge.sees: whether any tile of the size-square footprint at (x, y), clipped to
-   the map, is lit in *visible*. */
+/* World.any_visible and WorkerKnowledge.sees: whether any tile of the w by h rectangle at (x, y),
+   clipped to the map, is lit in *visible*. */
 static PyObject *any_lit(PyObject *self, PyObject *args) {
     PyObject *visible_obj;
-    Py_ssize_t x, y, size, width, height;
-    if (!PyArg_ParseTuple(args, "Onnnnn", &visible_obj, &x, &y, &size, &width, &height)) return NULL;
+    Py_ssize_t x, y, w, h, width, height;
+    if (!PyArg_ParseTuple(args, "Onnnnnn", &visible_obj, &x, &y, &w, &h, &width, &height)) return NULL;
     Grid grid;
     if (grid_open(visible_obj, width * height, &grid) < 0) return NULL;
-    Py_ssize_t left = x > 0 ? x : 0, right = x + size < width ? x + size : width;
-    Py_ssize_t top = y > 0 ? y : 0, bottom = y + size < height ? y + size : height;
+    Py_ssize_t left = x > 0 ? x : 0, right = x + w < width ? x + w : width;
+    Py_ssize_t top = y > 0 ? y : 0, bottom = y + h < height ? y + h : height;
     int lit = 0;
     for (Py_ssize_t row = top; row < bottom && !lit; row++)
         for (Py_ssize_t col = left; col < right; col++)
@@ -973,7 +973,7 @@ static PyMethodDef methods[] = {
     {"stamp_discs", stamp_discs, METH_VARARGS, "model.World._reveal for every ((x, y), radius) of an iterable"},
     {"or_into", or_into, METH_VARARGS, "model.or_into(target, source)"},
     {"stamp_threats", stamp_threats, METH_VARARGS, "worker_ai._stamp_units(blocked, units, width, height)"},
-    {"any_lit", any_lit, METH_VARARGS, "WorkerKnowledge.sees(visible, x, y, size) given the map's width and height"},
+    {"any_lit", any_lit, METH_VARARGS, "World.any_visible and WorkerKnowledge.sees: any lit tile in (x, y, w, h)"},
     {"stale_tiles", stale_tiles, METH_VARARGS, "WorkerKnowledge._stale(visible, terrain rows, remembered, width, height)"},
     {"first_site", first_site, METH_VARARGS, "ai.first_site from the arguments ai.site_inputs makes"},
     {NULL, NULL, 0, NULL},

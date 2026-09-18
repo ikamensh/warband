@@ -66,6 +66,7 @@ class WorkerKnowledge:
         self._spans: dict[tuple[int, int, int], tuple[tuple[int, int], ...]] = {}
         self._trees: set[int] = set()
         self._tree_order: tuple[int, ...] | None = None
+        self.version = 0  # counts the times blocked and threats were stamped anew, the only times they change
 
     @property
     def trees(self) -> tuple[int, ...]:
@@ -88,7 +89,7 @@ class WorkerKnowledge:
     def sees(self, visible: bytearray, x: int, y: int, size: int) -> bool:
         """Whether any tile of a footprint lies in *visible*, a fog grid of this map's shape."""
         if _native is not None:
-            return _native.any_lit(visible, x, y, size, self.width, self.height)
+            return _native.any_lit(visible, x, y, size, size, self.width, self.height)
         for start, stop in self.spans(x, y, size):
             if visible.count(0, start, stop) < stop - start:  # a C scan, no slice copied
                 return True
@@ -96,6 +97,7 @@ class WorkerKnowledge:
 
     def _stamp_buildings(self) -> None:
         """Rebuild the public grid from the terrain layer with every remembered footprint blocked."""
+        self.version += 1
         blocked = self.blocked
         blocked[:] = self._terrain_blocked
         for building in self.buildings.values():

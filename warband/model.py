@@ -675,6 +675,8 @@ class World:
         """Whether *player* sees any tile of *rect*, testing whole rows of the flag grid at a time."""
         x, y, w, h = rect
         width, visible = self.width, self.visible[player]
+        if _native is not None:
+            return _native.any_lit(visible, x, y, w, h, width, self.height)
         lo, hi = max(0, x), min(width, x + w)
         if lo >= hi:
             return False

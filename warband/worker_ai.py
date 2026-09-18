@@ -14,7 +14,7 @@ import math
 
 from warband import path as pathing
 from warband.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Unit, World, hypot, rect_gap, tile_center
-from warband.worker_knowledge import _Building
+from warband.worker_knowledge import WorkerKnowledge
 from warband.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_SLOTS, SIM_DT, UNITS, UNIT_RADIUS, BuildingType, Resource, Terrain
 
 try:
@@ -52,10 +52,9 @@ class _Routes:
     returns it rather than stamping every threat again.  Callers only read it.
     """
 
-    def __init__(self, remembered: bytes, towers: tuple[_Building, ...], footprints: frozenset[tuple[int, int, int]],
-                 base: bytearray) -> None:
-        self.remembered = remembered  # the knowledge grid the base was stamped on
-        self.towers = towers          # the knowledge's armed structures, stamped on the base
+    def __init__(self, knowledge: WorkerKnowledge, footprints: frozenset[tuple[int, int, int]], base: bytearray) -> None:
+        self.knowledge = knowledge          # whose remembered grid and armed structures the base was stamped from,
+        self.version = knowledge.version    # as they stood at this stamping of them
         self.footprints = footprints  # structures seen but not yet in the knowledge, stamped on the base
         self.base = base
         self.units: tuple[tuple[float, float, float], ...] = ()  # the visible armed enemies stamped on the grid
@@ -96,11 +95,9 @@ def _navigation(world: World, player: int) -> bytearray:
         footprints = frozenset(found)
         world._worker_ai_footprints[player] = (epochs, footprints)
     routes = world._worker_ai_routes.get(player)
-    if (routes is None or routes.towers != knowledge.threats
-            or (routes.footprints is not footprints and routes.footprints != footprints)
-            or knowledge.blocked != routes.remembered):
-        routes = _Routes(bytes(knowledge.blocked), knowledge.threats, footprints,
-                         _stamp_structures(world, player, footprints))
+    if (routes is None or routes.knowledge is not knowledge or routes.version != knowledge.version
+            or (routes.footprints is not footprints and routes.footprints != footprints)):
+        routes = _Routes(knowledge, footprints, _stamp_structures(world, player, footprints))
         world._worker_ai_routes[player] = routes
     stamped = tuple(units)
     if stamped != routes.units:

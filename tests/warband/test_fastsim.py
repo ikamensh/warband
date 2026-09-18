@@ -114,7 +114,10 @@ def test_the_c_painting_paints_as_the_python_does() -> None:
         knowledge = WorkerKnowledge(width, height)
         for _ in range(10):
             x, y, size = rng.randint(-4, width + 1), rng.randint(-4, height + 1), rng.randint(1, 4)
-            assert native.any_lit(source, x, y, size, width, height) == knowledge.sees(source, x, y, size)
+            assert native.any_lit(source, x, y, size, size, width, height) == knowledge.sees(source, x, y, size)
+            w, h = rng.randint(1, 4), rng.randint(1, 4)
+            world.visible[0][:] = source
+            assert native.any_lit(source, x, y, w, h, width, height) == world.any_visible(0, (x, y, w, h))
 
 
 def test_the_c_terrain_scan_finds_what_the_python_finds() -> None:
