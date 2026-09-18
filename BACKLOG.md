@@ -42,7 +42,7 @@ catches its class.
 | WB-018 | Next | done | Keep large selections inside the HUD | Native crowd capture |
 | WB-019 | Next | done | Remove stray sprite-sheet lines from painted units | Native melee review |
 | WB-020 | Later | done | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
-| WB-021 | Next | in progress | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
+| WB-021 | Next | done | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
 | WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
 | WB-023 | Next | done | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
@@ -1249,6 +1249,41 @@ The cause and the fix are the engine's ([S2D-015](../saga2d/BACKLOG.md):
 desktop units at the backend's boundary, the desktop's scale in
 `scale_factor`, a fitted canvas of at most 1440 units).
 
+**Done 2026-09-18**, commits `eac62a3`, `5f16b35`, `2e2dd88` (main `2e2dd88`), on
+Saga2D 0.3.7 (the fix is the engine's 0.3.6, [S2D-015](../saga2d/BACKLOG.md)).
+Live as Warband 0.2.26:
+[Tests 35366637939](https://github.com/ikamensh/warband/actions/runs/35366637939),
+[Native package checks 35366638004](https://github.com/ikamensh/warband/actions/runs/35366638004),
+[Publish 35368085005](https://github.com/ikamensh/warband/actions/runs/35368085005);
+the promotion was refused until the shared server ran 0.3.7 and then accepted
+([35368756806](https://github.com/ikamensh/saga-online/actions/runs/35368756806)),
+the [public download checks 35368903585](https://github.com/ikamensh/saga-online/actions/runs/35368903585)
+passed; one rollout carried this and the review's WB-029 to WB-033
+([record](../saga-online/docs/engine-037-rollout.md)). Every criterion below
+holds:
+
+- On the real 3840×2160 desktop, from source on the candidate engine
+  (`docs/evidence/win4k/candidate-200/`, `-150/`, `-100/`, beside the 0.2.18
+  frames in `session-200/` and `headless-200/`): at 200 % a 1840×960 canvas at
+  `scale_factor` 2.0 (framebuffer 3680×1920), at 150 % 2480×1320 at 1.5, at
+  100 % 2506×1360 at 1.5; the window is centred above the taskbar with the
+  hotkey strip visible, the title's backdrop fills it, and the HUD is as large
+  as the desktop's own text. Windows used to cascade the window under the
+  taskbar; the engine now centres it. The published 0.2.26 build looked at on
+  the same desktop at 200 % (`published-0.2.26-200/`): the same, and its
+  title bar and taskbar show Warband's shield, which is the look at the icon
+  on Windows that WB-026 had left open.
+- At 150 % a Small map is narrower than the 2480-unit canvas at zoom 1, so
+  the match shows earth-dark margins beside the map, as it already does on any
+  2560×1440 desktop at 100 %. That is the camera's starting zoom, not the
+  window: a candidate for a later item, not part of this one.
+- `tests/warband/test_startup.py` names the three measured desktops with the
+  canvas and texture scale the engine gives them, and starts, leaves,
+  switches to fullscreen and restarts a match on each.
+- The suite on the released engine: 1242 passed, 12 skipped; the simulation
+  fingerprint unchanged; the Mac's self-test frame identical in size and look
+  to the one on the previous engine (2542×1582).
+
 **Acceptance (recorded 2026-09-18 before implementation):**
 
 1. On 3840×2160 at 200 %, at 150 % and at 100 % the game's window uses the
@@ -1516,8 +1551,10 @@ passed on both systems; the rollout is recorded in
   `published-0.2.21-mac-app.png`).
 - Windows: the executable and the Inno Setup installer from CI hold all seven
   images of the converted `.ico` byte for byte (inspected from the run's
-  artifact), and the conversion on the Windows runner equals the Mac's. Not
-  looked at in Explorer: the test box had no desktop session during the item.
+  artifact), and the conversion on the Windows runner equals the Mac's.
+  Looked at later the same day on the test box's desktop: the title bar and
+  the taskbar of the published 0.2.26 build show the shield
+  (`docs/evidence/win4k/published-0.2.26-200/`).
 - `tests/test_package_icon.py` pins the picture against the engine's rules; on
   its first CI run it caught that `*.png` was git-ignored and the picture had
   not been committed, which would have failed the release build.
