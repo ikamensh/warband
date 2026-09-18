@@ -29,7 +29,7 @@ ACTION_BUTTON = Style(font=fonts.SEMIBOLD, background_color=(70, 118, 200, 255),
 DANGER_BUTTON = Style(font=fonts.SEMIBOLD, background_color=(190, 66, 58, 255), hover_color=(216, 92, 82, 255), press_color=(255, 140, 130, 255),
                       border_color=(255, 150, 140, 110), border_width=1, padding=7, radius=7)
 MENU_BUTTON = Style(font=fonts.SEMIBOLD, background_color=(34, 30, 36, 235), hover_color=(58, 52, 60, 255), press_color=(96, 86, 100, 255),
-                    border_color=(255, 255, 255, 50), border_width=1, padding=10, radius=10)
+                    border_color=(255, 255, 255, 50), border_width=1, padding=8, radius=10)
 CARD_BUTTON = Style(font=fonts.SEMIBOLD, font_size=14, background_color=(255, 255, 255, 22), hover_color=(255, 255, 255, 52), press_color=(255, 255, 255, 90),
                     border_color=(255, 255, 255, 44), border_width=1, padding=6, radius=7)
 

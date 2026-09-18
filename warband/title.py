@@ -102,7 +102,7 @@ class TitleScene(Scene):
 
     def _newest_save(self) -> int | str | None:
         """The slot saved most recently, whatever kind it is."""
-        entries = [e for e in self.game.save_manager.list_slots(SAVE_SLOTS, names=("quick", "autosave")) if e is not None and "error" not in e]
+        entries = [e for e in self.game.save_manager.list_slots(SAVE_SLOTS, names=("quick", "autosave", "campaign")) if e is not None and "error" not in e]
         return max(entries, key=lambda e: e["timestamp"])["slot"] if entries else None
 
     def _build_menu(self) -> None:
@@ -110,6 +110,7 @@ class TitleScene(Scene):
         newest = self._newest_save()
         menu = Column(spacing=10, margin=0)
         menu.add(Button("New game", hotkey="N", on_click=self.new_game, style=ACTION_BUTTON, width=300))
+        menu.add(Button("Campaign", shortcut="A", on_click=self.campaign, style=MENU_BUTTON, width=300))
         cont = Button("Continue", hotkey="C", on_click=self.continue_game, style=MENU_BUTTON, width=300)
         cont.enabled = newest is not None
         menu.add(cont)
@@ -118,7 +119,7 @@ class TitleScene(Scene):
         menu.add(Button("High scores", hotkey="B", on_click=self.high_scores, style=MENU_BUTTON, width=300))
         menu.add(Button("How to play", hotkey="H", on_click=self.how_to_play, style=MENU_BUTTON, width=300))
         menu.add(Button("Quit", hotkey="Q", on_click=self.quit, style=MENU_BUTTON, width=300))
-        where = f"slot {newest}" if isinstance(newest, int) else f"the {newest}" if newest else None
+        where = f"slot {newest}" if isinstance(newest, int) else "the campaign mission" if newest == "campaign" else f"the {newest}" if newest else None
         menu.add(Label(f"Continue resumes {where}" if where else "No saved game yet — the match autosaves every two minutes", text_style="caption"))
         self._block = Column(Label("", height=150), Row(menu, self._card(), spacing=36), spacing=0, anchor=Anchor.CENTER, margin=0)
         self.ui.add(self._block)
@@ -180,17 +181,25 @@ class TitleScene(Scene):
         from warband.authority import WarbandMatch
         from warband.multiplayer import NetworkGameScene
         width, height = mapgen.SIZES[self.size]
-        # The room's creator leads the race chosen under New game; the guest's is drawn from the seed.
+        # The room's creator leads the race chosen under New game; the others' are drawn from the seed.  An online
+        # room has New game's player count; a LAN host has two seats.
         self.game.push(MatchMenu("Warband multiplayer", "warband-v2",
                                 lambda: WarbandMatch(mapgen.fresh_seed(), width, height, self.theme, races=(self.race, None), layout=self.layout),
                                 lambda session, match: NetworkGameScene(session, match, settings=self.settings),
                                 create_options=lambda: {'seed': mapgen.fresh_seed(), 'width': width, 'height': height,
-                                                        'theme': self.theme.value, 'races': [self.race.value, None],
+                                                        'theme': self.theme.value, 'players': self.players,
+                                                        'races': [self.race.value] + [None] * (self.players - 1),
                                                         'layout': self.layout.value if self.layout is not None else 'any'}))
 
     def new_game(self) -> None:
         self.sfx("button")
         self.game.push(NewGameScene(self))
+
+    def campaign(self) -> None:
+        from warband.campaign_scene import CampaignScene
+
+        self.sfx("button")
+        self.game.push(CampaignScene(self.settings))
 
     def continue_game(self) -> None:
         newest = self._newest_save()

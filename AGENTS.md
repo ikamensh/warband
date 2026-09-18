@@ -17,6 +17,7 @@ gh run list --limit 6                            # CI after every push: Tests, N
 uv run python -u tools/fuzz.py --games 2 --monkey 0 --seed 81   # AI matches with invariants + monkey input (needs -u)
 uv run python tools/verify.py DIR                # a match through real pyglet events, frames saved to look at
 uv run python tools/verify_profile.py DIR        # title card, profile, rating on the results, leave confirmations, a replay: frames to look at
+uv run python tools/verify_campaign.py DIR       # the campaign's screens rendered by the real backend; uv run warband --mission ID plays one
 uv run python tools/verify_deaths.py DIR         # one death per unit category from both sides and a mass-casualty scene, as montages to look at (--zoom 2 for near)
 uv run python tools/visual_lint.py --evidence DIR   # visual defects in the art and on every screen; PNGs of what it flags (--screens NAME, --no-images)
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms); --scenario four-player|pan-zoom|deaths|restarts, --csv, --gc
@@ -94,6 +95,14 @@ real breakdown.
   building collapse, from pieces committed under `warband/assets/impacts/`, `deaths/` and
   `wreckage/` (Stable Audio 3 through `sagaforge.foley`; `pieces.py` reads them;
   provenance in each folder's manifest, the procedure in `docs/warband-pieces.md`).
+- `warband/campaign.py` — the campaign engine: speakers, lines and choices,
+  objectives and triggers, `Run` (a mission in play, saved beside the world),
+  `Progress`/`ProgressStore` (the small cross-version progress file); the
+  rules for keeping it playable across versions are in `docs/warband-campaign.md`.
+  `missions.py` is the content (The Thornwood War, six missions), `dialog.py`
+  the dialogue overlay, `mission_scene.py` a mission as a match with its result
+  and loader, `campaign_scene.py` the campaign screen. `World.scripted` worlds
+  never declare a winner or surrender: the mission decides.
 - `warband/scene.py`, `title.py`, `tutorial.py`, `icons.py`, `style.py`,
   `score_scene.py`, `profile_scene.py`, `replay_scene.py` — the saga2d scenes
   (the title carries the player's card; `LeaveScene` in `scene.py` is the
@@ -165,10 +174,14 @@ real breakdown.
   bounded (`rules.MAX_PLANS`, `MAX_QUEUED_ORDERS`). The HUD gives orders
   through `GameScene.attempt`, which turns a refusal into the status line's
   warning; never call `order` from a button or a key.
-- What the authority sends a seat (`WarbandMatch.snapshot`) is not the save:
-  no random stream, none of the other seat's explored ground or remembered
-  map, events for five seconds. The checkpoint is the whole match. What the
-  fog hides of units and buildings still travels (WB-011).
+- What the authority sends a seat (`WarbandMatch.snapshot`) is the match as
+  that seat may know it, not the save: all of its own; of the rest only what
+  it sees now (strangers without orders, route or work), ground and mines out
+  of sight as it remembers them, and the news it saw, its own affairs and the
+  public news (`PRIVATE_EVENTS`, `PUBLIC_EVENTS`), for five seconds. Never the
+  random stream or another seat's memory, purse, research or plans. The
+  checkpoint is the whole match. A test about one seat's state reads that
+  seat's own snapshot.
 - Tests use the mock backend (`game`/`backend` fixtures from
   `saga2d.testing.fixtures`), public behaviour only; fixtures use
   `save_dir=tmp_path / "saves"` because `data_dir` is its parent.

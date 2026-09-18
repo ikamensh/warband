@@ -4,7 +4,12 @@ import pytest
 
 from saga2d import Game
 from saga2d.testing import assert_no_text_overlap, assert_text_fits, text_boxes
-from warband.rules import BuildingType, Race, UnitType
+from warband.campaign import Progress, ProgressStore
+from warband.campaign_scene import CampaignScene
+from warband.dialog import DialogScene
+from warband.mission_scene import MissionResultScene, MissionScene, build_world
+from warband.missions import CAMPAIGN
+from warband.rules import BuildingType, Difficulty, Race, UnitType
 from warband.model import tile_center
 from warband.profile import EARLY_EXIT_WEIGHT, MatchResult, Profile, standing
 from warband.profile_scene import NameScene, ProfileScene
@@ -103,7 +108,25 @@ SCREENS = {
     "victory": lambda game: (s := match(game), setattr(s.world, "winner", s.human), game.push(GameOverScene(s))),
     "defeat": lambda game: (s := match(game), setattr(s.world.players[s.human], "alive", False), game.push(GameOverScene(s))),
     "high scores": lambda game: (s := match(game), game.push(HighScoreScene(size=(s.world.width, s.world.height)))),
+    "campaign, fresh": lambda game: game.push(CampaignScene()),
+    "campaign, under way": lambda game: (ProgressStore(game.data_dir).save(Progress(CAMPAIGN.id, Difficulty.HARD, completed=["hollowmere", "greywater"], flags={"truce": True})),
+                                        game.push(CampaignScene())),
+    "mission, objectives": lambda game: mission_scene(game, "hollowmere"),
+    "dialogue, a line": lambda game: (s := mission_scene(game, "greywater"), game.push(DialogScene(s.mission.briefing, CAMPAIGN.speakers, s.run.vars))),
+    "dialogue, a choice": lambda game: (s := mission_scene(game, "karst_hold"), game.push(DialogScene(s.mission.debrief[2:], CAMPAIGN.speakers, s.run.vars))),
+    "mission complete": lambda game: (s := mission_scene(game, "court_of_thorns"), s.run.state.update(court="done", orcs="done"), game.push(MissionResultScene(s, won=True))),
+    "mission failed": lambda game: (s := mission_scene(game, "silent_hold"), s.run.state.update(maren="failed"),
+                                    game.push(MissionResultScene(s, won=False, reason="Sister Maren must survive"))),
+    "mission pause": lambda game: (s := mission_scene(game, "retaken"), game.push(s.pause_menu())),
 }
+
+
+def mission_scene(game: Game, mission_id: str):
+    run = build_world(CAMPAIGN.mission(mission_id), flags={"truce": True})
+    scene = MissionScene(CAMPAIGN, run, difficulty=Difficulty.MEDIUM)
+    game.push(scene)
+    settle(game, 170)  # past the title banner, which the objectives panel waits for
+    return scene
 
 
 @pytest.mark.parametrize("size", SIZES, ids=[f"{w}x{h}" for w, h in SIZES])

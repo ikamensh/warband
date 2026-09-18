@@ -38,7 +38,8 @@ def test_headless_opponent_joins_and_its_orders_reach_the_authoritative_world(se
         assert evidence[-1]["event"] == "finished" and evidence[-1]["reason"] == "duration"
         changed = receive(human, predicate=lambda message: message["state"]["world"]["tick"] >= observed[-1]["tick"])
         authoritative = changed["state"]["world"]
-        assert any(unit["player"] == 1 and unit["orders"] for unit in authoritative["units"])
+        # The bot's orders reached the world (its own snapshots above say so); the human is not told them (WB-011).
+        assert not any(unit["player"] == 1 and unit["orders"] for unit in authoritative["units"])
         assert authoritative["players"][0]["gold"] == initial["players"][0]["gold"]
 
 
@@ -56,10 +57,11 @@ def test_headless_creator_announces_a_room_before_a_human_joins(server_url):
             joined = handshake(human, "join", game="warband-v2", room=announced["room"])
             assert joined["player"] == 1
             state = receive(human, predicate=lambda message: message["state"]["world"]["tick"] >= 22)
-            assert any(unit["player"] == 0 and unit["orders"] for unit in state["state"]["world"]["units"])
+            assert not any(unit["player"] == 0 and unit["orders"] for unit in state["state"]["world"]["units"])  # WB-011
             assert process.wait(timeout=6) == 0, process.stderr.read()
         evidence = [json.loads(line) for line in process.stdout.read().splitlines()]
         assert evidence[-1]["event"] == "finished" and evidence[-1]["player"] == 0
+        assert any(row["order_counts"] for row in evidence if row["event"] == "authoritative_state"), "the bot never gave an order"
         assert "resume_token" not in json.dumps([announced, *evidence])
     finally:
         if process.poll() is None:

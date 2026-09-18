@@ -58,6 +58,10 @@ def fresh_seed() -> int:
     return random.randrange(1, 2**31)
 
 
+class NoFairMap(ValueError):
+    """The layout cannot make a fair map at that size for that many players."""
+
+
 def generate(seed: int, width: int = 48, height: int = 40, players: int = 2, human: int | None = 0, theme: MapTheme = MapTheme.SUMMER,
              races: Sequence[Race | None] | None = None, layout: Layout | None = None) -> World:
     """*races* names each player's race; ``None`` entries are drawn from the seed, so a seed reproduces
@@ -86,7 +90,7 @@ def build(seed: int, width: int = 48, height: int = 40, players: int = 2, human:
             report["attempt"] = attempt
             return world, report
         problems = report["problems"]
-    raise ValueError(f"no fair {layout.value} map at {width}x{height} for {players} players from seed {seed} in {RETRIES} tries: {problems}")
+    raise NoFairMap(f"No fair {layout.value} map at {width}x{height} for {players} players from seed {seed} in {RETRIES} tries: {problems}.")
 
 
 def draw_races(races: list[Race | None], rng: random.Random) -> list[Race]:

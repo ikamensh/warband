@@ -15,8 +15,9 @@ def test_server_assigns_both_players_workers_and_respects_manual_parking(server_
         handshake(guest, "join", game="warband-v2", room=room["room"])
         working = receive(host, predicate=lambda message: message["state"]["world"]["tick"] >= 22)
         world = World.from_dict(working["state"]["world"])
-        for player in (0, 1):
-            workers = [unit for unit in world.player_units(player) if unit.is_worker]
+        for player, peer in ((0, host), (1, guest)):  # each seat is told of its own workers' jobs, and only it
+            seen = world if peer is host else World.from_dict(receive(guest, predicate=lambda m: m["state"]["world"]["tick"] >= 22)["state"]["world"])
+            workers = [unit for unit in seen.player_units(player) if unit.is_worker]
             assert workers
             assert all(isinstance(unit.order, (Harvest, Deposit)) for unit in workers)
 

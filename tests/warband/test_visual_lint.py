@@ -119,7 +119,8 @@ def test_every_unit_pose_fits_the_unit_canvas() -> None:
 
 
 SCREENS = ("title", "new_game_elf", "select_peasant", "select_town_hall", "select_army", "select_60_units", "town_at_work", "menu_build_hover", "plans", "alerts", "battle_wood",
-           "help", "codex_0", "codex_2", "codex_3", "save_browser", "game_over_won", "high_scores")
+           "help", "codex_0", "codex_2", "codex_3", "save_browser", "game_over_won", "high_scores",
+           "campaign_fresh", "campaign_under_way", "mission_raid", "mission_choice", "mission_result")
 
 
 @pytest.mark.parametrize("resolution", screens.RESOLUTIONS, ids=lambda r: f"{r[0]}x{r[1]}")
