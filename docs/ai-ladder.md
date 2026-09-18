@@ -519,3 +519,9 @@ uv run python tools/sim_fingerprint.py --check tools/sim_fingerprint.txt
 
 A deliberate change to the rules or to `warband/ai.py` is expected to move it,
 and the recorded file is refreshed in the same commit.
+
+The ladder itself runs the simulation compiled (`docs/fast-simulation.md`),
+about ten times faster than the source and to the same bits:
+`tests/warband/test_fastsim.py` plays this fingerprint compiled, and
+`tools/sim_bench.py --check tools/sim_bench.txt` times nine whole arena matches
+and checks their results against the recorded digest.

@@ -61,7 +61,9 @@ real breakdown.
   results and Glicko-updated rating on the ladder's Elo scale plus the
   standing rule for leaving a match, `replay.py` the recording of a match (the
   start world plus the order log `@recorded` fills in `model.py`), its playback
-  and the replay store.
+  and the replay store. `fastsim.py` compiles the simulation modules with mypyc
+  for the tools that play many matches, and `_native.c` holds C twins of a few
+  of their loops (`docs/fast-simulation.md`).
 - `warband/textures.py` renders ground, props, buildings and units through
   `sagaforge.render3d`; units have nine frames per facing (stand, a four-step
   walk, a four-phase blow) posed by one `Pose` table. A unit whose subject has a
@@ -143,11 +145,17 @@ real breakdown.
 - The tools that play many matches (`arena`, `tune`, `balance_report`,
   `ai_report`, `race_report`, `sim_bench`, `step_bench`) run the simulation
   compiled by mypyc from its own source (`warband/fastsim.py`, built on first
-  use under `build/fastsim/`, `WARBAND_INTERPRETED=1` to opt out); the game
-  and the tests run the source. The compiler trusts the annotations of
-  `fastsim.MODULES`: keep mypy over them clean, because a value of the wrong
-  type is a `TypeError` in a compiled run where the interpreter carried on.
-  `tests/warband/test_fastsim.py` plays the fingerprint compiled.
+  use under `build/fastsim/`, `WARBAND_INTERPRETED=1` to opt out), about ten
+  times faster; the game, the online authority and the tests run the source.
+  The compiler trusts the annotations of `fastsim.MODULES`: keep mypy over them
+  clean, because a value of the wrong type is a `TypeError` in a compiled run
+  where the interpreter carried on. Their module constants are `Final` and are
+  never bound again (compiled code inlines them; tables are patched in place,
+  as the rulebook variants do). A few loops have a C twin in `warband/_native.c`
+  (its opening comment lists them): the Python stays the reference, a change
+  goes into both, and `tests/warband/test_fastsim.py` holds them to the same
+  answers on random inputs and plays the fingerprint compiled. What the
+  compiler rewards and punishes is in `docs/fast-simulation.md`.
 - Claims about an AI being stronger are settled by `tools/arena.py`, not by
   watching a match. The same two brains on the same twelve seeds swing
   between seven and eleven wins on the random stream alone, so nothing under
