@@ -38,6 +38,7 @@ class NetworkGameScene(GameScene):
         self._last_time = time.monotonic()
         self._elapsed = 0.
         self._snapshot_at = 0.0  # scene clock of the latest snapshot
+        self._quiet_said = False  # the status line says the server has gone quiet
         self._interval = SNAPSHOT_INTERVAL  # measured time between snapshots, smoothed
         data = session.state
         super().__init__(World.from_dict(data['world']), data['seed'], settings=settings, player=session.player, ranked=False)
@@ -92,9 +93,12 @@ class NetworkGameScene(GameScene):
                          'Disconnected — return to the title and rejoin the host.')
         elif self.clock - self._snapshot_at > QUIET:
             self.say(f'No word from the server for {self.clock - self._snapshot_at:.0f} s — the match goes on when it answers.')
+            self._quiet_said = True
         if self._revision == self.session.revision:
             return
         self._revision = self.session.revision
+        if self._quiet_said:  # word came: the silence is over, and the line must not go on saying it
+            self.status_timer, self._quiet_said = 0.0, False
         gap = self.clock - self._snapshot_at
         drawn = self.view.drawn_positions() if gap <= STALL else {}  # after a stall or a resume, place; never slide stale motion
         if gap <= STALL:

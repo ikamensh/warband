@@ -118,7 +118,7 @@ def test_after_a_stall_units_are_placed_where_the_snapshot_says_not_slid(game) -
     scene, footman, drawn = walk(game, match, Seat(match), arrivals=arrivals, frames=131)
     sent = scene.world.units[footman.id].pos
     assert drawn[130] == sent, "after a stall the unit slid from where it was drawn"
-    assert any("No word from the server" in t["text"] for t in game.backend.texts), "the silence was not said"
+    assert not any("No word from the server" in t["text"] for t in game.backend.texts), "the silence is still said once word came"
 
 
 def test_a_unit_that_comes_into_sight_is_placed_not_slid(game) -> None:
@@ -188,7 +188,7 @@ def test_over_a_real_socket_a_guest_walks_smoothly_hears_of_a_stall_and_is_place
         converge(lambda: client.ready)
         scene = NetworkGameScene(client, settings=QUIET)
         game.push(scene)
-        drawn, sent = [], []
+        drawn, sent, said = [], [], False
         for frame in range(150):
             if frame % 3 == 0:
                 match.step()
@@ -198,9 +198,11 @@ def test_over_a_real_socket_a_guest_walks_smoothly_hears_of_a_stall_and_is_place
             game.tick(FRAME)
             drawn.append(scene.view.unit_position(scene.world.units[footman.id]))
             sent.append(scene.world.units[footman.id].pos)
+            said = said or any("No word from the server" in t["text"] for t in game.backend.texts)
         travel = steps(drawn, start=24, count=30)
         assert sum(1 for d in travel if d < 1e-6) <= 1 and max(travel) <= 2 * match.world.speed_of(footman) * FRAME
-        assert any("No word from the server" in t["text"] for t in game.backend.texts)
+        assert said, "the silence was not said"
+        assert not any("No word from the server" in t["text"] for t in game.backend.texts), "the silence is still said once word came"
         arrival = next(frame for frame in range(140, 150) if sent[frame] != sent[frame - 1])
         assert drawn[arrival] == sent[arrival], "the first snapshot after the stall slid instead of placing the unit"
     finally:
