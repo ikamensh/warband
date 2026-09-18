@@ -27,6 +27,14 @@ def form(changes: list[RatingChange], count: int = 10) -> str:
     return " ".join("W" if c.result.outcome == "victory" else "L" if c.result.outcome == "defeat" else "l" for c in changes[-count:])
 
 
+def home_relative(path: Path) -> str:
+    """*path* with the home directory shortened to ``~`` where it applies."""
+    try:
+        return "~/" + path.relative_to(Path.home()).as_posix()
+    except ValueError:
+        return str(path)
+
+
 class ProfileScene(_Overlay):
     """Rating and record at the top, the rated matches below, newest first; a kept replay can be watched or deleted."""
 
@@ -36,6 +44,7 @@ class ProfileScene(_Overlay):
     def __init__(self, *, settings: dict[str, Any] | None = None, error: str = "") -> None:
         self.settings = settings
         self.error = error
+        self.notice = ""
         self.page = 0
         self.profile: Profile | None = None
 
@@ -45,6 +54,16 @@ class ProfileScene(_Overlay):
         except SaveError as error:
             self.error = str(error)
         self.store = ReplayStore(self.game.data_dir)
+        self._build()
+
+    def restore(self) -> None:
+        """Bring the last good profile back over the damaged one."""
+        try:
+            self.profile = Profile.restore_backup(self.game.data_dir)
+        except SaveError as error:
+            self.error = str(error)
+        else:
+            self.error, self.notice = "", "Profile restored from its backup; the damaged file is kept as save_1.damaged.json."
         self._build()
 
     def _changes(self) -> list[RatingChange]:
@@ -59,7 +78,12 @@ class ProfileScene(_Overlay):
             panel.add(Label("Profile unavailable", text_style="heading", text_color=BAD))
             panel.add(Label(self.error, text_style="body", text_color=BAD, width=900, wrap=True))
             panel.add(Label("The existing profile file has been preserved.", text_style="body"))
-            panel.add(Button("Back", hotkey="Esc", on_click=self.game.pop, style=GHOST_BUTTON, width=200))
+            actions = Row(Button("Back", hotkey="Esc", on_click=self.game.pop, style=GHOST_BUTTON, width=200), spacing=12)
+            if Profile.has_backup(self.game.data_dir):
+                actions.add(Button("Restore backup", shortcut="B", on_click=self.restore, style=GHOST_BUTTON, width=240))
+                panel.add(Label("The last good profile is kept beside it; restoring keeps the damaged file as save_1.damaged.json.", text_style="sub"))
+            panel.add(actions)
+            panel.add(Label(f"Kept in {home_relative(self.game.data_dir)}", text_style="sub"))
             return
         profile = self.profile
         rating = profile.rating
@@ -91,6 +115,10 @@ class ProfileScene(_Overlay):
                 rows.add(Label(f"Latest: {newest.result.reason}", text_style="sub"))
         panel.add(rows)
         total = max(1, (len(changes) + PAGE - 1) // PAGE)
+        if self.notice:
+            panel.add(Label(self.notice, text_style="sub", text_color=GOOD))
+        panel.add(Label(f"Your profile, saves, replays and settings live in {home_relative(self.game.data_dir)}; copy that folder to back them up.",
+                        text_style="sub"))
         panel.add(Row(Button("Newer", shortcut="PageUp", on_click=self.newer, style=GHOST_BUTTON, width=150, enabled=self.page > 0),
                       Label(f"Page {self.page + 1} of {total}", text_style="sub", width=120, height=24),
                       Button("Older", shortcut="PageDown", on_click=self.older, style=GHOST_BUTTON, width=150, enabled=self.page + 1 < total),

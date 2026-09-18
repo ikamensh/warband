@@ -64,10 +64,47 @@ recording — it drifts only if the game's rules have changed since.
 
 ## Storage
 
-`~/.warband/profile/save_1.json` holds the name and results; a damaged
-file is reported on the title, the results screen and the profile screen and
-never overwritten. The name defaults to the login name and is changed from
-the profile screen (up to 16 characters).
+Everything of the player's lives under `~/.warband` (`%USERPROFILE%\.warband`
+on Windows), the same folder for a source checkout and the installed app
+whatever directory the game is started from (`Game.data_dir`, derived from
+the game's title; the packaged build's smoke receipt records the path it
+resolved and CI requires it to be that folder). Files are JSON, written
+through Saga2D's `SaveManager`: the new file is staged beside the old one and
+swapped in whole, the previous good file is kept as `save_1.backup.json`
+next to it, and a damaged current file is reported with its path and never
+overwritten or silently replaced by its backup.
+
+| What | Where | Written when |
+|---|---|---|
+| Name and rated results (the rating is folded from them; `PROFILE_VERSION` 1) | `profile/save_1.json` | a rated match ends or is left; a rename |
+| Local top ten | `high_scores/save_1.json` | the results screen of a decided match |
+| One replay per rated match | `replays/<match>.json` | the match ends or is left |
+| Saved games, quicksave and autosave (`SAVE_VERSION` 2) | `saves/` | F5, the save browser, every two minutes of play |
+| Preferences | `settings.json` | the settings screen closes |
+
+The name defaults to the login name and is changed from the profile screen
+(up to 16 characters). An interrupted write leaves at most a `.tmp` file
+beside the current one, which the game ignores. When the folder cannot be
+written at the end of a match, the game says so ("Result not recorded",
+"Replay not saved") and goes on; the result is lost, nothing else is.
+
+### Backing up and restoring
+
+Copy the whole `~/.warband` folder somewhere safe; copy it back, with the
+game closed, to restore. A damaged profile shows "Profile unavailable" with
+the reason on the profile screen (**P** on the title) and a **Restore backup**
+button when `profile/save_1.backup.json` exists: it brings the last good
+profile back and keeps the damaged file beside it as `save_1.damaged.json`.
+For a damaged leaderboard, replay or save, rename the matching
+`*.backup.json` over the damaged file while the game is closed. The profile
+screen says where the folder is.
+
+Verified 2026-09-18 (WB-015): `tests/warband/test_storage_journeys.py` plays
+a match to a resignation in one process and reloads the result, rating,
+leaderboard entry, replay, quicksave and a changed setting in another; loads
+past a leftover staged file and loads twice without duplicating; damages the
+profile and restores it through the profile screen; and makes the profile and
+replay folders unwritable at match end to see the game say so and go on.
 
 ## Verification
 

@@ -1543,6 +1543,7 @@ class GameScene(Scene):
             self.rating_change = self.profile.record(result)
         except SaveError as error:
             self.profile_error = str(error)
+            self.say(f"Result not recorded: {error}")
             return None
         return self.rating_change
 

@@ -30,7 +30,7 @@ catches its class.
 | WB-006 | Next | done | Add blood on damaging hits | User |
 | WB-007 | Next | ready | Leave grey abandoned buildings when a player resigns in FFA | User |
 | WB-008 | Next | in progress | Improve health bars and building progress indicators | User |
-| WB-015 | Next | ready | Verify and complete durable local player storage outside game sources | User |
+| WB-015 | Next | in progress | Verify and complete durable local player storage outside game sources | User |
 | WB-009 | Next | proposed | Establish current battle performance and fix measured bottlenecks | User / engine split |
 | WB-010 | Later | proposed | Smooth online movement and make connection problems understandable | Suggested |
 | WB-011 | Later | proposed | Keep fog-hidden state out of opponents' network snapshots | Suggested |
@@ -544,6 +544,42 @@ isolated temporary user directory, cover interrupted writes, corrupt files,
 explicit recovery and repeat loading without duplicate results, and never
 modify the developer's real profile. Record current evidence in the
 [profile storage guide](docs/warband-profile.md).
+
+**Audit 2026-09-18:** the profile, leaderboard, replays, saves and settings
+all live under `Game.data_dir` (`~/.warband`, from the game's title, so the
+same for a source checkout and the installed app whatever the working
+directory), written through Saga2D's `SaveManager`: staged atomic writes, the
+previous good file kept as `save_1.backup.json`, recovery explicit through
+`load_backup`, damaged files reported and never overwritten (tested for the
+profile, replays and saves; the title and the profile screen show the error).
+`PROFILE_VERSION` and `SAVE_VERSION` mark the formats. What is missing: no
+check crosses a process boundary, nothing proves the packaged build's path,
+nothing exercises an interrupted write or a write failure at match end, the
+profile's backup can only be restored by hand, the game never says where its
+data lives, and the guide has no backup or restore steps.
+
+**Acceptance (recorded 2026-09-18 before implementation), in progress on main:**
+
+1. A match played to a decision in one process, in an isolated data directory,
+   leaves a result and rating in the profile, a leaderboard entry, a replay,
+   a quicksave and a changed setting; a second, fresh process reloads all
+   five: the title card shows the name and rating, the leaderboard lists the
+   entry, the replay opens, the save loads, the setting holds.
+2. Source and packaged builds resolve the same user-owned `~/.warband`
+   whatever the working directory: the frozen smoke receipt carries the path
+   and `tools/ci_package.py` requires it to be that folder under the home.
+3. Damage and failure: a corrupt profile, leaderboard, replay or save is
+   reported with its path and never overwritten; the profile screen offers
+   **Restore backup**, which brings the last good profile back and says so;
+   a leftover staged file from an interrupted write is ignored; loading twice
+   never duplicates results; when the directory cannot be written at match
+   end, the game says the result or replay was not recorded and goes on.
+4. The profile screen says where the data lives and that copying the folder
+   backs it up; the guide gains "What is saved and when" and "Backing up and
+   restoring" with this evidence.
+5. Tests at the scene seam for the journey across processes, each damage and
+   failure case and the restore action, in temporary directories only; the
+   suite; no model change (fingerprint unchanged).
 
 ## WB-009 — Current performance baseline and targeted fixes
 

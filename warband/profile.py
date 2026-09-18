@@ -190,6 +190,23 @@ class Profile:
         saved = SaveManager(path.parent).load(1)
         if saved is None:
             return cls(data_dir, name=default_name(), results=[])
+        return cls._from_saved(data_dir, saved, path)
+
+    @classmethod
+    def restore_backup(cls, data_dir: Path) -> Profile:
+        """Bring the last good profile back over a damaged one, explicitly; the damaged file stays beside it as ``save_1.damaged.json``."""
+        path = data_dir / "profile" / "save_1.json"
+        backup = SaveManager(path.parent).load_backup(1)
+        if backup is None:
+            raise SaveError(f"There is no backup of the profile beside {path}")
+        profile = cls._from_saved(data_dir, backup, path.with_name("save_1.backup.json"))
+        if path.exists():
+            path.replace(path.with_name("save_1.damaged.json"))
+        profile.save()
+        return profile
+
+    @classmethod
+    def _from_saved(cls, data_dir: Path, saved: dict, path: Path) -> Profile:
         try:
             state = saved["state"]
             if state["version"] != PROFILE_VERSION:
@@ -203,6 +220,10 @@ class Profile:
         except (KeyError, TypeError, ValueError) as error:
             raise SaveError(f"Cannot read the profile at {path}: {error}") from error
         return cls(data_dir, name=name, results=results)
+
+    @classmethod
+    def has_backup(cls, data_dir: Path) -> bool:
+        return (data_dir / "profile" / "save_1.backup.json").is_file()
 
     def save(self) -> None:
         self.saves.save(1, {"version": PROFILE_VERSION, "name": self.name, "results": [asdict(r) for r in self.results]}, "WarbandProfile")

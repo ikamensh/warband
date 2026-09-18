@@ -99,6 +99,21 @@ def build_info() -> dict:
     return info
 
 
+def data_dir_check() -> str:
+    """The user-owned folder the game keeps its data in, resolved from another working directory than the app's."""
+    from saga2d import Game
+    here = os.getcwd()
+    os.chdir(tempfile.gettempdir())
+    try:
+        game = Game("Warband", backend="mock", resolution=(640, 400))
+        try:
+            return str(game.data_dir)
+        finally:
+            game._teardown()
+    finally:
+        os.chdir(here)
+
+
 def smoke(endpoint: str) -> dict:
     from saga2d import fonts
     info = build_info()
@@ -106,7 +121,7 @@ def smoke(endpoint: str) -> dict:
         assert (fonts.FONT_DIR / filename).is_file(), filename
     return {"passed": True, "source_commit": info["source_commit"], "version": info["version"], "frozen": True,
             "executable": info["executable"], "executable_sha256": info["executable_sha256"],
-            "bundled_fonts": True, "online": online_smoke(endpoint)}
+            "bundled_fonts": True, "data_dir": data_dir_check(), "online": online_smoke(endpoint)}
 
 
 def native_smoke(output: Path, endpoint: str) -> dict:

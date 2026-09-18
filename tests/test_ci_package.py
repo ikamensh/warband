@@ -72,7 +72,7 @@ def candidate(tmp_path):
         "".join(f"{item['sha256']}  {item['file']}\n" for item in artifacts))
     receipt = {"passed": True, "source_commit": identity["source_commit"], "version": identity["version"],
                "executable_sha256": digest(executable)}
-    smoke = {**receipt, "frozen": True, "bundled_fonts": True, "online": dict.fromkeys(ONLINE, True)}
+    smoke = {**receipt, "frozen": True, "bundled_fonts": True, "data_dir": "/home/runner/.warband", "online": dict.fromkeys(ONLINE, True)}
     native = {**receipt, "backend": "pyglet", "native_multiplayer_input": True,
               "native_clipboard_join": True, "live_match_menu": True,
               "native_settlement_planning": True, "start_after_resize": True, "images": ["native.png"]}

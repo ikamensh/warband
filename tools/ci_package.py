@@ -142,6 +142,8 @@ def validate(directory: Path, identity: dict, target: str) -> dict:
         else:
             require(result["frozen"] is True and result["bundled_fonts"] is True
                     and all(result["online"][key] is True for key in ONLINE_CHECKS), f"Incomplete socket checks: {name}")
+            require(result["data_dir"].replace("\\", "/").rstrip("/").endswith("/.warband"),
+                    f"The packaged game keeps its data somewhere other than the user's .warband folder: {name}")
 
     receipt("portable", portable_digest)
     receipt("installed", app_digest)
