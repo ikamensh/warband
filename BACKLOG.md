@@ -24,7 +24,7 @@ WB-034. Their acceptance and evidence are in
 | WB-040 | First | proposed | A fast test suite by default; slow tests on demand and in CI; better tests on the way | User 2026-09-18 |
 | WB-010 | Next | in progress | Smooth online movement and make connection problems understandable | Suggested |
 | WB-011 | Next | in progress | Keep fog-hidden state out of opponents' network snapshots | Suggested |
-| WB-012 | Later | proposed | Support three- and four-human online FFA | Suggested |
+| WB-012 | Next | in progress | Support three- and four-human online FFA | Suggested |
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-016 | Next | in progress | Assess and recover the six-mission Thornwood campaign | Recovered branch |
@@ -159,6 +159,40 @@ abandoned). Spectators, teams and ranked matchmaking can wait.
 **Done when:** three and four actual clients complete seeded matches, recover a
 disconnection and handle a resignation without premature victory or seat leaks.
 Require WB-011 before presenting this as public competitive play.
+
+**Started 2026-09-18** (Ilya: "later is now"), branch `online-ffa` (worktree
+`../warband-ffa`), on the engine's room seats ([S2D-011](../saga2d/BACKLOG.md),
+branch `room-seats`). WB-011 is live, so what a seat is sent is already its own.
+
+**Acceptance (recorded 2026-09-18 before implementation):**
+
+1. Rooms of two to four humans. Warband's room takes a `players` option
+   (2–4, two by default) and a race for each seat (`None` drawn from the
+   seed), and `WarbandMatch` has that many seats. The room a player creates
+   from Multiplayer has the player count chosen on the New game screen.
+2. Every seat still in the match gives orders to its own forces and is sent
+   its own snapshot. Play starts and goes on while every seat still in the
+   match is connected (the engine's `needed`).
+3. Resigning online: the match menu's Resign asks first, then gives a
+   `resign` order. With three or four players, the resigning player's
+   buildings stay, abandoned (WB-007), and the rest play on; with two, the
+   other player wins. A seat that has resigned or been eliminated is no
+   longer needed: its player may leave without pausing the room.
+4. No premature victory and no seat leaks. Victory is decided among the
+   players still in. A seat that leaves while still in the match pauses the
+   room until it rejoins with its token. A decided room whose players have
+   all left expires.
+5. Results: each client's result says victory or defeat, and a player who is
+   out while the others play on is told so and may leave.
+6. Proof: real three- and four-client matches over the server process, with a
+   disconnection and rejoin, a resignation in a four-player match without
+   premature victory, and the last two fighting it out. A client from before
+   larger rooms is refused from them with the update message, and the online
+   AI client takes a seat in a larger room. The suite passes; the simulation
+   fingerprint does not move.
+7. Shipped with Saga2D 0.3.8 (S2D-011). Tribes and Shardbound pin 0.3.8, so
+   does Warband, and one server rollout carries the engine and Warband's
+   authority.
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
