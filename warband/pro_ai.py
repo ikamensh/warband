@@ -38,7 +38,7 @@ import random
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 
-from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived
+from warband.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_ring
 from warband.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, tile_center
 from warband.races import RACES
 from warband.rules import BUILDINGS, MINE_SLOTS, BuildingType, UnitType
@@ -620,13 +620,9 @@ class ProBrain:
     def _site(self, world: World, building_type: BuildingType, anchor: Point, rng: random.Random,
               taken: Sequence[tuple[Pos, int]] = ()) -> Pos | None:
         size = BUILDINGS[building_type].size
-        ax, ay = int(anchor[0]), int(anchor[1])
-        candidates: list[tuple[float, Pos]] = []
-        for dy in range(-BUILD_MAX_DISTANCE, BUILD_MAX_DISTANCE + 1):
-            for dx in range(-BUILD_MAX_DISTANCE, BUILD_MAX_DISTANCE + 1):
-                if max(abs(dx), abs(dy)) < BUILD_MIN_DISTANCE + size:
-                    continue
-                candidates.append((math.hypot(dx, dy) + rng.random() * 2, (ax + dx - size // 2, ay + dy - size // 2)))
+        left, top = int(anchor[0]) - size // 2, int(anchor[1]) - size // 2
+        candidates: list[tuple[float, Pos]] = [(distance + rng.random() * 2, (left + dx, top + dy))
+                                               for distance, dx, dy in site_ring(BUILD_MIN_DISTANCE + size, BUILD_MAX_DISTANCE)]
         candidates.sort()
         free = (pos for _score, pos in candidates
                 if not any(self._overlaps(pos, size, other, other_size) for other, other_size in taken))

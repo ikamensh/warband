@@ -68,6 +68,20 @@ def known_enemy_buildings(world: World, player: int) -> list:
             if record.player not in (None, player) and world.players[record.player].alive]
 
 
+_RINGS: dict[tuple[int, int], tuple[tuple[float, int, int], ...]] = {}
+
+
+def site_ring(inner: int, outer: int) -> tuple[tuple[float, int, int], ...]:
+    """``(math.hypot(dx, dy), dx, dy)`` for every offset out to *outer* tiles and at least *inner* away
+    (Chebyshev), row by row: the spots a site search draws a random tiebreak for, in the order it draws."""
+    ring = _RINGS.get((inner, outer))
+    if ring is None:
+        ring = _RINGS[(inner, outer)] = tuple((math.hypot(dx, dy), dx, dy)
+                                              for dy in range(-outer, outer + 1) for dx in range(-outer, outer + 1)
+                                              if max(abs(dx), abs(dy)) >= inner)
+    return ring
+
+
 def known_mines(world: World, player: int) -> list[KnownMine]:
     """Gold *player* has found; its contents are what they were when last seen."""
     return list(world.worker_knowledge[player].mines.values())
@@ -369,14 +383,9 @@ class Brain:
 
     def _site(self, world: World, building_type: BuildingType, anchor: Point, rng: random.Random) -> Pos | None:
         size = BUILDINGS[building_type].size
-        ax, ay = int(anchor[0]), int(anchor[1])
-        candidates: list[tuple[float, Pos]] = []
-        for dy in range(-BUILD_MAX_DISTANCE, BUILD_MAX_DISTANCE + 1):
-            for dx in range(-BUILD_MAX_DISTANCE, BUILD_MAX_DISTANCE + 1):
-                pos = (ax + dx - size // 2, ay + dy - size // 2)
-                if max(abs(dx), abs(dy)) < BUILD_MIN_DISTANCE + size:
-                    continue
-                candidates.append((math.hypot(dx, dy) + rng.random() * 2, pos))
+        left, top = int(anchor[0]) - size // 2, int(anchor[1]) - size // 2
+        candidates: list[tuple[float, Pos]] = [(distance + rng.random() * 2, (left + dx, top + dy))
+                                               for distance, dx, dy in site_ring(BUILD_MIN_DISTANCE + size, BUILD_MAX_DISTANCE)]
         candidates.sort()
         for pos in world.placeable(building_type, self.player, (pos for _score, pos in candidates)):
             if self._keeps_paths_open(world, pos, size):

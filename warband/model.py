@@ -20,7 +20,7 @@ import random
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Iterable, Iterator, Literal
+from typing import Any, Final, Iterable, Iterator, Literal
 
 from warband import path as pathing
 from warband.races import RACES
@@ -44,6 +44,10 @@ from warband.rules import (
 
 Pos = tuple[int, int]
 Point = tuple[float, float]
+
+# Bound once: compiled code (warband/fastsim.py) would otherwise look them up in math at every call.
+_hypot: Final = math.hypot
+_atan2: Final = math.atan2
 
 BLOCKING = frozenset({Terrain.WATER, Terrain.TREES, Terrain.ROCK})
 ARRIVE = 0.12  # a unit is "there" within this many tiles of its target point
@@ -362,7 +366,7 @@ class Event:
 
 
 def dist(a: Point, b: Point) -> float:
-    return math.hypot(a[0] - b[0], a[1] - b[1])
+    return _hypot(a[0] - b[0], a[1] - b[1])
 
 
 def rect_gap(point: Point, rect: tuple[int, int, int, int]) -> float:
@@ -371,7 +375,7 @@ def rect_gap(point: Point, rect: tuple[int, int, int, int]) -> float:
     px, py = point
     dx = x - px if px < x else px - (x + w)  # at most one of the two sides can be overshot
     dy = y - py if py < y else py - (y + h)
-    return math.hypot(dx if dx > 0.0 else 0.0, dy if dy > 0.0 else 0.0)
+    return _hypot(dx if dx > 0.0 else 0.0, dy if dy > 0.0 else 0.0)
 
 
 def rects_gap(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> int:
@@ -455,6 +459,7 @@ class World:
         self.explored = [bytearray(width * height) for _ in self.players]
         self.visible = [bytearray(width * height) for _ in self.players]
         self._buckets: list[list[Unit] | None] = [None] * (width * height)  # units by tile, rebuilt each step
+        self._occupied: list[int] = []  # the tiles of _buckets that hold a list
         self._mine_crews: dict[int, int] = {}  # mine id → peasants at its face; kept as they enter and leave
         self.worker_knowledge = [WorkerKnowledge(width, height) for _ in self.players]
         self._worker_ai_checks: dict[int, int] = {}
@@ -552,22 +557,26 @@ class World:
         return near
 
     def _index_units(self) -> None:
+        buckets, occupied = self._buckets, self._occupied
+        for index in occupied:  # emptied where last step's units stood, rather than made anew
+            buckets[index] = None
+        occupied.clear()
         width = self.width
-        buckets: list[list[Unit] | None] = [None] * (width * self.height)
         for unit in self.units.values():
             index = int(unit.y) * width + int(unit.x)
             cell = buckets[index]
             if cell is None:
                 buckets[index] = [unit]
+                occupied.append(index)
             else:
                 cell.append(unit)
-        self._buckets = buckets
 
     def _bucket(self, unit: Unit) -> None:
         index = int(unit.y) * self.width + int(unit.x)
         cell = self._buckets[index]
         if cell is None:
             self._buckets[index] = [unit]
+            self._occupied.append(index)
         else:
             cell.append(unit)
 
@@ -1501,7 +1510,7 @@ class World:
             if v is u or v.hidden:
                 continue
             dx, dy = u.x - v.x, u.y - v.y
-            d = math.hypot(dx, dy)
+            d = _hypot(dx, dy)
             if d < 1e-6:
                 angle = (u.id * 2.399) % (2 * math.pi)
                 dx, dy, d = math.cos(angle), math.sin(angle), 1.0
@@ -1510,7 +1519,7 @@ class World:
             ay += dy * weight
         if not (ax or ay):
             return None
-        angle = math.atan2(ay, ax) + self.rng.uniform(-EASE_JITTER, EASE_JITTER)
+        angle = _atan2(ay, ax) + self.rng.uniform(-EASE_JITTER, EASE_JITTER)
         step = EASE_STEP + self.rng.uniform(-EASE_STEP_VARIANCE, EASE_STEP_VARIANCE)
         spot = self._clamp((u.x + math.cos(angle) * step, u.y + math.sin(angle) * step))
         if not self.passable(int(spot[0]), int(spot[1])) or not self._line_clear(u.pos, spot):
@@ -1750,7 +1759,7 @@ class World:
         """Step straight away from a target inside the engine's minimum range; True if there was room."""
         px, py = self._target_point(target)
         dx, dy = u.x - px, u.y - py
-        d = math.hypot(dx, dy) or 1e-6
+        d = _hypot(dx, dy) or 1e-6
         return self._steer(u, self._clamp((u.x + dx / d, u.y + dy / d)), dt)
 
     def _ranged_retreat(self, u: Unit, target: Entity, dt: float) -> bool:
@@ -1766,7 +1775,7 @@ class World:
         clearance = self._gap(u, nearest)
         if clearance >= 2.75:
             return False
-        angle = math.atan2(u.y - nearest.y, u.x - nearest.x)
+        angle = _atan2(u.y - nearest.y, u.x - nearest.x)
         allies = [ally for ally in self.units_near(u.pos, 2) if ally is not u and ally.player == u.player and not ally.hidden]
         known = self.worker_knowledge[u.player].blocked
         best, best_score = None, clearance + .1
@@ -1794,7 +1803,7 @@ class World:
         else:
             point, radius = target.pos, target.radius
         dx, dy = u.x - point[0], u.y - point[1]
-        distance = math.hypot(dx, dy) or 1e-6
+        distance = _hypot(dx, dy) or 1e-6
         reach = radius + u.radius + self.range_of(u) * .8
         # The spot is on the attacker's side of the target, so a target at the edge of the map puts it
         # off the map — and a tile lookup truncates x=-0.04 to tile 0, so nothing on the way would notice.
@@ -2195,7 +2204,7 @@ class World:
         # Work requires contact, so the walking tolerance cannot discard a
         # final step that would put the worker inside interaction range.
         exact = u.exact
-        if exact is not None and math.hypot(u.x - exact[0], u.y - exact[1]) > (1e-6 if precise else ARRIVE):
+        if exact is not None and _hypot(u.x - exact[0], u.y - exact[1]) > (1e-6 if precise else ARRIVE):
             return exact
         return None
 
@@ -2232,7 +2241,7 @@ class World:
                     return False
                 u.path.insert(0, tile)
         dx, dy = waypoint[0] - u.x, waypoint[1] - u.y
-        d = math.hypot(dx, dy)
+        d = _hypot(dx, dy)
         speed = self._effective_speed(u)
         step = speed * dt - spent  # what is left of this tick's travel
         if d <= step or d <= ARRIVE:
@@ -2270,7 +2279,7 @@ class World:
             remaining = 0.0
         else:
             aim = u.exact if u.exact is not None else (u.path_goal[0] + 0.5, u.path_goal[1] + 0.5)
-            remaining = math.hypot(nx - aim[0], ny - aim[1])
+            remaining = _hypot(nx - aim[0], ny - aim[1])
         if remaining < u.last_distance - 0.02:
             u.last_distance = remaining
             u.progress = 0.0
@@ -2336,7 +2345,7 @@ class World:
         if dist(u.pos, target) > STEER_RANGE or not self._line_clear(u.pos, target):
             return False
         dx, dy = target[0] - u.x, target[1] - u.y
-        d = math.hypot(dx, dy)
+        d = _hypot(dx, dy)
         if d >= 1e-6:
             step = min(d, self._effective_speed(u) * dt)
             self._turn_toward(u, target, dt)
@@ -2355,7 +2364,6 @@ class World:
         width, height, buckets = self.width, self.height, self._buckets
         radius = 2 * UNIT_RADIUS + SPACING
         reach, r2 = int(radius) + 1, radius * radius
-        hypot = math.hypot
         for u in self.units.values():
             if u.hidden:
                 continue
@@ -2373,7 +2381,7 @@ class World:
                         dx, dy = ux - v.x, uy - v.y
                         if dx * dx + dy * dy > r2 or v is u or v.hidden:
                             continue
-                        d = hypot(dx, dy)
+                        d = _hypot(dx, dy)
                         overlap = u.radius + v.radius - d
                         if overlap <= 0:
                             if at_ease and overlap > -SPACING:
@@ -2407,7 +2415,7 @@ class World:
 
     def _nudge(self, u: Unit, px: float, py: float) -> None:
         """Shove *u* by at most MAX_PUSH, never through a blocked tile or across a blocked corner."""
-        length = math.hypot(px, py)
+        length = _hypot(px, py)
         if length > MAX_PUSH:
             px, py = px / length * MAX_PUSH, py / length * MAX_PUSH
         own_tile_open = self.passable(*u.tile)
@@ -2427,7 +2435,7 @@ class World:
         dx, dy = point[0] - u.x, point[1] - u.y
         if not (dx or dy):
             return True
-        wanted = math.atan2(dy, dx)
+        wanted = _atan2(dy, dx)
         delta = (wanted - u.facing + math.pi) % (2 * math.pi) - math.pi
         step = u.info.turn * dt
         if -step <= delta <= step:
