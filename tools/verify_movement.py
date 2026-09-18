@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 from importlib.metadata import version
 import json
+import random
 import math
 import os
 from pathlib import Path
@@ -103,6 +104,8 @@ def main():
     parser.add_argument("--seconds", type=float, default=4.0)
     parser.add_argument("--fps", type=int, default=60)
     parser.add_argument("--cpu-percent", type=float, default=25)
+    parser.add_argument("--jitter", type=int, metavar="SEED",
+                        help="online: publish at seeded uneven gaps of 4 to 8 frames at 60 FPS instead of every other tick")
     args = parser.parse_args()
     if args.seconds < 2 or args.fps < 20 or (args.scenario == "online" and args.fps % 20):
         parser.error("Use at least two seconds and 20 FPS; online FPS must be divisible by 20")
@@ -114,6 +117,12 @@ def main():
     encoder = None
     host = client = None
     actions = []
+    arrivals = None
+    if args.jitter is not None:  # a network that delivers a hundred milliseconds apart, give or take a third
+        rng, arrivals, at = random.Random(args.jitter), set(), 0
+        while at < args.seconds * args.fps:
+            arrivals.add(at)
+            at += rng.randint(4 * args.fps // 60, 8 * args.fps // 60)
     with tempfile.TemporaryDirectory(prefix="warband-motion-") as temporary:
         game = Game("Warband movement", resolution=(1280, 800), backend=args.backend,
                     visible=False, theme=build_theme(), save_dir=Path(temporary) / "saves")
@@ -159,9 +168,10 @@ def main():
                     actions.append({"frame": frame, "action": action})
                 if client is not None and frame % (args.fps // 20) == 0:
                     match.step()
-                    if world.tick % 2 == 0:
-                        host.publish()
-                        converge(host, client, lambda: client.state['world']['tick'] == world.tick)
+                regular = frame % (args.fps // 20) == 0 and world.tick % 2 == 0  # every other tick, as the room does
+                if client is not None and (frame in arrivals if arrivals is not None else regular):
+                    host.publish()
+                    converge(host, client, lambda: client.state['world']['tick'] == world.tick)
                 started = time.perf_counter()
                 game.tick(1 / args.fps)
                 cost = (time.perf_counter() - started) * 1000
