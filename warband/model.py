@@ -556,7 +556,8 @@ class World:
         span = x1 - x0 + 1
         # Cell by cell rather than filter(None, a slice of the row): the compiled simulation (warband/fastsim.py)
         # runs this loop without making a Python object, which costs the interpreter a little over a slice.
-        for row in range(y0 * width + x0, y1 * width + x0 + 1, width):
+        for y in range(y0, y1 + 1):
+            row = y * width + x0
             for index in range(row, row + span):
                 cell = buckets[index]
                 if cell is not None:
@@ -2394,12 +2395,13 @@ class World:
             px = py = 0.0
             ux, uy = u.x, u.y
             moving = u.state == "move"
-            at_ease = self._at_ease(u)
+            at_ease: bool | None = None  # asked only of a unit with a neighbour just out of touch
             hx, hy = (math.cos(u.facing), math.sin(u.facing)) if moving else (0.0, 0.0)
             x0, x1 = max(0, int(ux) - reach), min(width - 1, int(ux) + reach)
             y0, y1 = max(0, int(uy) - reach), min(height - 1, int(uy) + reach)
             span = x1 - x0 + 1
-            for row in range(y0 * width + x0, y1 * width + x0 + 1, width):
+            for y in range(y0, y1 + 1):
+                row = y * width + x0
                 for index in range(row, row + span):
                     cell = buckets[index]
                     if cell is None:
@@ -2411,6 +2413,8 @@ class World:
                         d = _hypot(dx, dy)
                         overlap = u.radius + v.radius - d
                         if overlap <= 0:
+                            if at_ease is None and overlap > -SPACING:
+                                at_ease = self._at_ease(u)
                             if at_ease and overlap > -SPACING:
                                 # Elbow room: a unit at ease eases off a neighbour it is not quite touching.
                                 weight = (0.5 if v.state == "move" or not moving else 0.2) * SPACING_WEIGHT
