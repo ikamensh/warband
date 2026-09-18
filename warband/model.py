@@ -1747,7 +1747,9 @@ class World:
         dx, dy = u.x - point[0], u.y - point[1]
         distance = math.hypot(dx, dy) or 1e-6
         reach = radius + u.radius + self.range_of(u) * .8
-        return point[0] + dx / distance * reach, point[1] + dy / distance * reach
+        # The spot is on the attacker's side of the target, so a target at the edge of the map puts it
+        # off the map — and a tile lookup truncates x=-0.04 to tile 0, so nothing on the way would notice.
+        return self._clamp((point[0] + dx / distance * reach, point[1] + dy / distance * reach))
 
     def _melee_opponent(self, u: Unit) -> Entity | None:
         """Finish visible opponents already in reach before pursuing another target."""
