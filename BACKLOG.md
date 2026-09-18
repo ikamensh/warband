@@ -23,7 +23,7 @@ WB-034. Their acceptance and evidence are in
 |---|---|---|---|---|
 | WB-040 | First | proposed | A fast test suite by default; slow tests on demand and in CI; better tests on the way | User 2026-09-18 |
 | WB-010 | Later | proposed | Smooth online movement and make connection problems understandable | Suggested |
-| WB-011 | Later | proposed | Keep fog-hidden state out of opponents' network snapshots | Suggested |
+| WB-011 | Next | in progress | Keep fog-hidden state out of opponents' network snapshots | Suggested |
 | WB-012 | Later | proposed | Support three- and four-human online FFA | Suggested |
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
@@ -69,6 +69,45 @@ complete snapshot does not protect hidden information.
 orders, economy or research; exploration, remembered buildings, combat and
 reconnection still work in real two-client tests. Keep this separate from
 compression and from claims of comprehensive anti-cheat.
+
+**Started 2026-09-18** (Ilya: "later is now"), branch `visibility` (worktree
+`../warband-visibility`). It ships in one server rollout with WB-016.
+
+**Acceptance (recorded 2026-09-18 before implementation):**
+
+1. Units and buildings: a seat's snapshot carries all of its own, and of
+   everyone else's only what its units and buildings see now, including a
+   player's last holdings once the rules expose them. An enemy unit out of
+   sight or inside a mine or building is absent. One in sight carries its
+   position, type, hit points, facing, motion and pose, but no orders, route,
+   home or automatic-work state. An enemy building in sight carries its
+   footprint, hit points, construction and abandonment, but no queue,
+   research or rally point. Out of sight it is absent, and the client shows
+   it as last seen (WB-027).
+2. Economy: the other seat's gold, lumber, upgrades, statistics, last alert
+   and assembly point are blank until the match is decided, and its
+   settlement plans are absent. The world's id counter tells nothing beyond
+   the entities sent.
+3. Ground: out of sight it is as the seat remembers it, so trees felled or
+   grown back there are not news; ground never seen is as the map began. A
+   mine out of sight carries the gold the seat last saw; a mine never seen is
+   absent. A shot in the air travels when the seat can see where it is.
+4. Events: a seat hears of what it saw happen, of its own affairs (units it
+   trained, research, refusals, deposits, alarms and plunder, told to it
+   alone) and of the match's public news (victory, elimination, surrender,
+   resignation, exposure). Who saw an event is decided when it happens, not
+   when a snapshot is sent, and the checkpoint carries it.
+5. Proof: a test sends a snapshot as JSON and looks for every hidden fact:
+   a unit in unexplored ground, the enemy's gold, research and orders, its
+   plans, a tree felled and a mine mined under fog, an event in fog. It fails
+   on the old code. Exploration, remembered buildings, combat and
+   reconnection work between two real clients over a socket. The suite passes
+   and the simulation fingerprint does not move (only the authority changes).
+6. Compatibility: the previous release's client loads the new snapshots,
+   checked in the rollout rehearsal. A checkpoint written by the previous
+   server restores. It has no record of who saw what, so its last five
+   seconds of events are told to both seats once, and its terrain at restore
+   stands for the map's beginning.
 
 ## WB-012 — Three-/four-human online FFA
 
