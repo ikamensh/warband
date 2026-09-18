@@ -1233,7 +1233,7 @@ class World:
     # -- Buildings -------------------------------------------------------------------
 
     def _update_building(self, b: Building, dt: float) -> None:
-        if b.type is BuildingType.GOLD_MINE or b.player is None:
+        if b.type is BuildingType.GOLD_MINE or b.player is None or b.abandoned:  # a ruin nobody owns builds, trains and shoots nothing
             return
         info = b.info
         if not b.done:
