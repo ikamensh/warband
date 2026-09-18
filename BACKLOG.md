@@ -42,7 +42,7 @@ catches its class.
 | WB-018 | Next | done | Keep large selections inside the HUD | Native crowd capture |
 | WB-019 | Next | done | Remove stray sprite-sheet lines from painted units | Native melee review |
 | WB-020 | Later | done | Make interrupted release uploads easier to diagnose and recover | WB-004 publication |
-| WB-021 | Next | in progress | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
+| WB-021 | Next | done | Fit the window and HUD to a 4K Windows desktop | User report 2026-09-17 |
 | WB-022 | Next | done | Start the first match on the window the OS handed back (Windows crash) | User report 2026-09-17 |
 | WB-023 | Next | done | Remove the keying residue that tints a faint square around every painted unit | WB-019 survey |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
@@ -55,6 +55,7 @@ catches its class.
 | WB-031 | Next | done | A snapshot tells a seat the match, not the server's dice or the other seat's map | Review 2026-09-18 |
 | WB-032 | Next | done | An abandoned tower never looses another arrow | Review 2026-09-18 |
 | WB-033 | Next | done | Old news leaves the snapshot: events ride five seconds, not for ever | Review 2026-09-18 |
+| WB-034 | Next | done | One way to load a save: a load in the match is a new match scene, as from the title | Review 2026-09-18 |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -1248,6 +1249,41 @@ The cause and the fix are the engine's ([S2D-015](../saga2d/BACKLOG.md):
 desktop units at the backend's boundary, the desktop's scale in
 `scale_factor`, a fitted canvas of at most 1440 units).
 
+**Done 2026-09-18**, commits `eac62a3`, `5f16b35`, `2e2dd88` (main `2e2dd88`), on
+Saga2D 0.3.7 (the fix is the engine's 0.3.6, [S2D-015](../saga2d/BACKLOG.md)).
+Live as Warband 0.2.26:
+[Tests 35366637939](https://github.com/ikamensh/warband/actions/runs/35366637939),
+[Native package checks 35366638004](https://github.com/ikamensh/warband/actions/runs/35366638004),
+[Publish 35368085005](https://github.com/ikamensh/warband/actions/runs/35368085005);
+the promotion was refused until the shared server ran 0.3.7 and then accepted
+([35368756806](https://github.com/ikamensh/saga-online/actions/runs/35368756806)),
+the [public download checks 35368903585](https://github.com/ikamensh/saga-online/actions/runs/35368903585)
+passed; one rollout carried this and the review's WB-029 to WB-033
+([record](../saga-online/docs/engine-037-rollout.md)). Every criterion below
+holds:
+
+- On the real 3840×2160 desktop, from source on the candidate engine
+  (`docs/evidence/win4k/candidate-200/`, `-150/`, `-100/`, beside the 0.2.18
+  frames in `session-200/` and `headless-200/`): at 200 % a 1840×960 canvas at
+  `scale_factor` 2.0 (framebuffer 3680×1920), at 150 % 2480×1320 at 1.5, at
+  100 % 2506×1360 at 1.5; the window is centred above the taskbar with the
+  hotkey strip visible, the title's backdrop fills it, and the HUD is as large
+  as the desktop's own text. Windows used to cascade the window under the
+  taskbar; the engine now centres it. The published 0.2.26 build looked at on
+  the same desktop at 200 % (`published-0.2.26-200/`): the same, and its
+  title bar and taskbar show Warband's shield, which is the look at the icon
+  on Windows that WB-026 had left open.
+- At 150 % a Small map is narrower than the 2480-unit canvas at zoom 1, so
+  the match shows earth-dark margins beside the map, as it already does on any
+  2560×1440 desktop at 100 %. That is the camera's starting zoom, not the
+  window: a candidate for a later item, not part of this one.
+- `tests/warband/test_startup.py` names the three measured desktops with the
+  canvas and texture scale the engine gives them, and starts, leaves,
+  switches to fullscreen and restarts a match on each.
+- The suite on the released engine: 1242 passed, 12 skipped; the simulation
+  fingerprint unchanged; the Mac's self-test frame identical in size and look
+  to the one on the previous engine (2542×1582).
+
 **Acceptance (recorded 2026-09-18 before implementation):**
 
 1. On 3840×2160 at 200 %, at 150 % and at 100 % the game's window uses the
@@ -1515,8 +1551,10 @@ passed on both systems; the rollout is recorded in
   `published-0.2.21-mac-app.png`).
 - Windows: the executable and the Inno Setup installer from CI hold all seven
   images of the converted `.ico` byte for byte (inspected from the run's
-  artifact), and the conversion on the Windows runner equals the Mac's. Not
-  looked at in Explorer: the test box had no desktop session during the item.
+  artifact), and the conversion on the Windows runner equals the Mac's.
+  Looked at later the same day on the test box's desktop: the title bar and
+  the taskbar of the published 0.2.26 build show the shield
+  (`docs/evidence/win4k/published-0.2.26-200/`).
 - `tests/test_package_icon.py` pins the picture against the engine's rules; on
   its first CI run it caught that `*.png` was git-ignored and the picture had
   not been committed, which would have failed the release build.
@@ -1604,7 +1642,12 @@ reads 1500/1500 and intact under the fog while it stands at 800 and trains, a
 farm raised since is absent from map and minimap; once a scout looks the farm
 appears, the hall shows its active look and 800/1500, and its production stays
 unshown). Not covered here: the online server still sends both seats the whole
-world (WB-011); the client no longer shows it.
+world (WB-011); the client no longer shows it. Commit `eb8065e`, with WB-028
+[Tests 35362378663](https://github.com/ikamensh/warband/actions/runs/35362378663),
+[Native package checks 35362378768](https://github.com/ikamensh/warband/actions/runs/35362378768),
+[Publish 35364237386](https://github.com/ikamensh/warband/actions/runs/35364237386) and
+[promotion 35364399632](https://github.com/ikamensh/saga-online/actions/runs/35364399632):
+live as Warband 0.2.23.
 
 ## WB-028 — A seed is a match
 
@@ -1622,7 +1665,34 @@ the test fails on the old code.
 **Done 2026-09-18.** Effects draw from `GameScene.fx_rng`, the brains keep
 `rng`; `tests/warband/test_match_reproducible.py` (the digests differed on the
 old code after 100 seconds of match); the suite as above. Replays were never
-affected: they give the brains' recorded orders back.
+affected: they give the brains' recorded orders back. Commit `c171bd8`; live as
+Warband 0.2.23 with WB-027's runs.
+
+## WB-029 to WB-033 — runs and rollout
+
+The five items below are Warband main `7f163cf`:
+[Tests 35364339651](https://github.com/ikamensh/warband/actions/runs/35364339651),
+[Native package checks 35364339056](https://github.com/ikamensh/warband/actions/runs/35364339056),
+[Publish 35366048325](https://github.com/ikamensh/warband/actions/runs/35366048325). They move
+the authoritative contract (`authority.py`, `model.py`, `rules.py`,
+`settlement.py`; the simulation fingerprint is unchanged), so
+[promotion 35366285791](https://github.com/ikamensh/saga-online/actions/runs/35366285791)
+refused the release as designed until the shared server ran them. Locally the
+suite passed (1,239), `tools/fuzz.py --games 6 --monkey 8 --seed 4242` found
+nothing, and the online, LAN and startup tests passed on Saga2D 0.3.7.
+
+**Live 2026-09-18 as Warband 0.2.26.** One server rollout, run by WB-021's
+session, carried these rules, WB-021 and Saga2D 0.3.7 (which holds the
+review's engine fixes S2D-019 to S2D-021): Warband main `2e2dd88`
+([Tests 35366637939](https://github.com/ikamensh/warband/actions/runs/35366637939),
+[Native package checks 35366638004](https://github.com/ikamensh/warband/actions/runs/35366638004)),
+live bundle `443319e9…`, the served attestation equal to the contract
+`9ab6e7ac…` (the moved files exactly `authority.py`, `model.py`, `rules.py`,
+`settlement.py`, plus `packages.saga2d`), every retained seat resumed,
+permessage-deflate negotiated through the public proxy,
+[promotion 35368756806](https://github.com/ikamensh/saga-online/actions/runs/35368756806) and
+[public download checks 35368903585](https://github.com/ikamensh/saga-online/actions/runs/35368903585).
+The record is [Saga Online's engine 0.3.7 rollout](../saga-online/docs/engine-037-rollout.md).
 
 ## WB-029 — The online authority gives orders to the world it runs
 
@@ -1723,3 +1793,27 @@ across a quiet server restart, so a client never takes new news for old.
 checkpoint carries the count (`event_id`; older checkpoints fall back to the
 highest number they hold). `tests/warband/test_authority_world.py`. With
 WB-031 a mid-game state on a Small map is 69 KB where it was 100.
+
+## WB-034 — One way to load a save
+
+Found 2026-09-18 by the code review: a save was loaded two ways. From the
+title `load_game` built a new `GameScene`; in the match
+`GameScene.load_save_state` rebuilt the running scene in place, thirty lines
+that reset what somebody had thought of and kept the rest of the timeline left
+behind: the last alert (Space jumped to an attack that never happened in the
+loaded match), the battle mood and its music for ten more seconds, the camera
+bookmarks, and where the computer players' random stream had got to, so the
+same save played on differently loaded in the match than from the title.
+
+**Acceptance (recorded 2026-09-18 before implementation):** after a load in
+the match the scene is a new `GameScene` that says "Loaded", with no alert, in
+the peace mood, without the units of the match left behind; every existing
+load test (deaths mid-fall, melee recoil, leftover frame time, the save
+browser, the rated recording through a reload) holds on the loaded scene; a
+damaged save is still refused with the match untouched.
+
+**Done 2026-09-18**: `load_save_state` is `clear_and_push(load_game(state))`;
+`tests/warband/test_scene.py::test_a_load_in_the_match_leaves_the_abandoned_timeline_behind`
+(failed on the old code); seven tests that held the old scene object follow
+the loaded one; the suite 1,240 passed, 12 skipped. `MapView.reset` stays for
+the replay that continues through a reload.

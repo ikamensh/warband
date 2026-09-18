@@ -142,6 +142,7 @@ def test_a_loaded_save_goes_on_recording_and_replays_faithfully(play):
     tick(game, 1.0)
     press(game, "f9")
     tick(game, 1.0)
+    scene = game.scene  # a load is a new match scene, which goes on with the recording
     world = scene.world
     world.resign(1)  # the computer concedes: an order, so the replay carries it
     tick(game, 0.5)

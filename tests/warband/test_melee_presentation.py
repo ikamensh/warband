@@ -319,6 +319,7 @@ def test_loading_a_save_during_contact_discards_the_old_drawn_offset(game):
     saved = scene.world.to_dict()
     scene.load_from("contact")
     game.tick(1 / 60)
+    scene = game.scene  # a load is a new match scene
     assert scene.world.to_dict() == saved
     restored = scene.world.units[victim.id]
     sprite = scene.view.unit_sprite(restored.id)
