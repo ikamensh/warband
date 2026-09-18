@@ -1,4 +1,5 @@
-/* warband._native: the grid searches of warband/path.py in C, for the compiled simulation.
+/* warband._native: the grid searches of warband/path.py and the flag-grid painting of vision and
+   of the workers' route map, in C, for the compiled simulation.
 
    warband/fastsim.py builds this module next to the mypyc-compiled modules; path.py hands its
    searches to it when it is there, which is only in the compiled simulation.  Every function
@@ -525,6 +526,149 @@ static PyObject *nearest_in_region(PyObject *self, PyObject *args) {
     return Py_BuildValue("(nn)", best % width, best / width);
 }
 
+/* -- Painting on flag grids -------------------------------------------------------------------- */
+
+static int open_writable(PyObject *object, Py_ssize_t size, Py_buffer *view) {
+    if (PyObject_GetBuffer(object, view, PyBUF_WRITABLE) < 0) return -1;
+    if (view->len < size) {
+        PyBuffer_Release(view);
+        PyErr_SetString(PyExc_ValueError, "the grid is smaller than width * height");
+        return -1;
+    }
+    return 0;
+}
+
+static Py_ssize_t isqrt_of(Py_ssize_t value) {  /* math.isqrt for the small values sight needs */
+    Py_ssize_t root = (Py_ssize_t)sqrt((double)value);
+    while (root * root > value) root--;
+    while ((root + 1) * (root + 1) <= value) root++;
+    return root;
+}
+
+/* model.World._reveal for every ((x, y), radius) of *discs*: each row of a sight disc reaches
+   isqrt(r * r + r - dy * dy) tiles sideways, and rows and runs are clipped to the map. */
+static PyObject *stamp_discs(PyObject *self, PyObject *args) {
+    PyObject *visible_obj, *discs;
+    Py_ssize_t width, height;
+    if (!PyArg_ParseTuple(args, "OOnn", &visible_obj, &discs, &width, &height)) return NULL;
+    Py_buffer view;
+    if (open_writable(visible_obj, width * height, &view) < 0) return NULL;
+    unsigned char *visible = (unsigned char *)view.buf;
+    PyObject *iterator = PyObject_GetIter(discs), *disc;
+    if (iterator == NULL) { PyBuffer_Release(&view); return NULL; }
+    while ((disc = PyIter_Next(iterator)) != NULL) {
+        PyObject *at;
+        Py_ssize_t x0, y0, radius;
+        int ok = PyTuple_Check(disc) && PyTuple_GET_SIZE(disc) == 2;
+        if (ok) {
+            at = PyTuple_GET_ITEM(disc, 0);
+            radius = PyLong_AsSsize_t(PyTuple_GET_ITEM(disc, 1));
+            ok = !(radius == -1 && PyErr_Occurred()) && read_pos(at, &x0, &y0) == 0;
+        } else {
+            PyErr_SetString(PyExc_TypeError, "a disc is ((x, y), radius)");
+        }
+        Py_DECREF(disc);
+        if (!ok) { Py_DECREF(iterator); PyBuffer_Release(&view); return NULL; }
+        for (Py_ssize_t dy = -radius; dy <= radius; dy++) {
+            Py_ssize_t y = y0 + dy;
+            if (y < 0 || y >= height) continue;
+            Py_ssize_t half = isqrt_of(radius * radius + radius - dy * dy);
+            Py_ssize_t lo = x0 - half, hi = x0 + half + 1;
+            if (lo < 0) lo = 0;
+            if (hi > width) hi = width;
+            if (lo < hi) memset(visible + y * width + lo, 1, (size_t)(hi - lo));
+        }
+    }
+    Py_DECREF(iterator);
+    PyBuffer_Release(&view);
+    if (PyErr_Occurred()) return NULL;
+    Py_RETURN_NONE;
+}
+
+/* model.or_into: target[i] |= source[i] for every byte. */
+static PyObject *or_into(PyObject *self, PyObject *args) {
+    PyObject *target_obj, *source_obj;
+    if (!PyArg_ParseTuple(args, "OO", &target_obj, &source_obj)) return NULL;
+    Py_buffer target, source;
+    if (PyObject_GetBuffer(target_obj, &target, PyBUF_WRITABLE) < 0) return NULL;
+    if (PyObject_GetBuffer(source_obj, &source, PyBUF_SIMPLE) < 0) { PyBuffer_Release(&target); return NULL; }
+    if (source.len != target.len) {
+        PyBuffer_Release(&target);
+        PyBuffer_Release(&source);
+        PyErr_SetString(PyExc_ValueError, "or_into needs two grids of one size");
+        return NULL;
+    }
+    unsigned char *to = (unsigned char *)target.buf;
+    const unsigned char *from = (const unsigned char *)source.buf;
+    for (Py_ssize_t i = 0; i < target.len; i++) to[i] |= from[i];
+    PyBuffer_Release(&target);
+    PyBuffer_Release(&source);
+    Py_RETURN_NONE;
+}
+
+/* worker_ai._stamp_units: for each (x, y, radius), block the tiles whose centre lies within
+   radius of the point, one run per row, with the same float steps as the Python. */
+static PyObject *stamp_threats(PyObject *self, PyObject *args) {
+    PyObject *blocked_obj, *units;
+    Py_ssize_t width, height;
+    if (!PyArg_ParseTuple(args, "OOnn", &blocked_obj, &units, &width, &height)) return NULL;
+    Py_buffer view;
+    if (open_writable(blocked_obj, width * height, &view) < 0) return NULL;
+    unsigned char *blocked = (unsigned char *)view.buf;
+    PyObject *iterator = PyObject_GetIter(units), *unit;
+    if (iterator == NULL) { PyBuffer_Release(&view); return NULL; }
+    while ((unit = PyIter_Next(iterator)) != NULL) {
+        double values[3];
+        int ok = PyTuple_Check(unit) && PyTuple_GET_SIZE(unit) == 3;
+        for (int i = 0; ok && i < 3; i++) {
+            values[i] = PyFloat_AsDouble(PyTuple_GET_ITEM(unit, i));
+            ok = !(values[i] == -1.0 && PyErr_Occurred());
+        }
+        if (!ok && !PyErr_Occurred()) PyErr_SetString(PyExc_TypeError, "a threat is (x, y, radius)");
+        Py_DECREF(unit);
+        if (!ok) { Py_DECREF(iterator); PyBuffer_Release(&view); return NULL; }
+        double cx = values[0], cy = values[1], radius = values[2];
+        double r2 = radius * radius;
+        double top = floor(cy - radius), bottom = ceil(cy + radius);
+        Py_ssize_t first = top > 0.0 ? (Py_ssize_t)top : 0;
+        Py_ssize_t last = (Py_ssize_t)bottom + 1;
+        if (last > height) last = height;
+        for (Py_ssize_t y = first; y < last; y++) {
+            double dy = ((double)y + 0.5) - cy;
+            double offset = dy * dy;
+            if (offset > r2) continue;
+            double half = sqrt(r2 - offset);
+            double left = ceil((cx - half) - 0.5), right = floor((cx + half) - 0.5);
+            Py_ssize_t lo = left > 0.0 ? (Py_ssize_t)left : 0;
+            Py_ssize_t hi = (Py_ssize_t)right + 1;
+            if (hi > width) hi = width;
+            if (lo < hi) memset(blocked + y * width + lo, 1, (size_t)(hi - lo));
+        }
+    }
+    Py_DECREF(iterator);
+    PyBuffer_Release(&view);
+    if (PyErr_Occurred()) return NULL;
+    Py_RETURN_NONE;
+}
+
+/* WorkerKnowledge.sees: whether any tile of the size-square footprint at (x, y), clipped to
+   the map, is lit in *visible*. */
+static PyObject *any_lit(PyObject *self, PyObject *args) {
+    PyObject *visible_obj;
+    Py_ssize_t x, y, size, width, height;
+    if (!PyArg_ParseTuple(args, "Onnnnn", &visible_obj, &x, &y, &size, &width, &height)) return NULL;
+    Grid grid;
+    if (grid_open(visible_obj, width * height, &grid) < 0) return NULL;
+    Py_ssize_t left = x > 0 ? x : 0, right = x + size < width ? x + size : width;
+    Py_ssize_t top = y > 0 ? y : 0, bottom = y + size < height ? y + size : height;
+    int lit = 0;
+    for (Py_ssize_t row = top; row < bottom && !lit; row++)
+        for (Py_ssize_t col = left; col < right; col++)
+            if (grid.cells[row * width + col]) { lit = 1; break; }
+    grid_close(&grid);
+    return PyBool_FromLong(lit);
+}
+
 /* -- Module ------------------------------------------------------------------------------------ */
 
 static PyMethodDef methods[] = {
@@ -533,6 +677,10 @@ static PyMethodDef methods[] = {
     {"distance_field", distance_field, METH_VARARGS, "path.distance_field(starts, blocked, width, height)"},
     {"region_labels", region_labels, METH_VARARGS, "Regions.__init__'s labels into an array('i'); returns the region count"},
     {"nearest_in_region", nearest_in_region, METH_VARARGS, "Regions.reachable_goal's scan over array('i') labels"},
+    {"stamp_discs", stamp_discs, METH_VARARGS, "model.World._reveal for every ((x, y), radius) of an iterable"},
+    {"or_into", or_into, METH_VARARGS, "model.or_into(target, source)"},
+    {"stamp_threats", stamp_threats, METH_VARARGS, "worker_ai._stamp_units(blocked, units, width, height)"},
+    {"any_lit", any_lit, METH_VARARGS, "WorkerKnowledge.sees(visible, x, y, size) given the map's width and height"},
     {NULL, NULL, 0, NULL},
 };
 

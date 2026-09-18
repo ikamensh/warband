@@ -1,5 +1,5 @@
 """The compiled simulation is the simulation: matches played by it hash to the recorded fingerprint, to the bit,
-and its C searches answer as path.py does."""
+and its C searches and painting answer as the Python does."""
 
 from __future__ import annotations
 
@@ -13,7 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from warband import fastsim, path
+from warband import fastsim, model, path, worker_ai
+from warband.model import World
+from warband.rules import Terrain
+from warband.worker_knowledge import WorkerKnowledge
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -78,3 +81,33 @@ def test_the_c_searches_answer_as_path_py_does() -> None:
         region = regions.label(start)
         if region and regions.label(goal) != region:  # the case reachable_goal scans the region for
             assert native.nearest_in_region(labels, region, goal, width) == regions.reachable_goal(start, goal)
+
+
+def test_the_c_painting_paints_as_the_python_does() -> None:
+    native = _native_searches()
+    rng = random.Random(918)
+    for _ in range(400):
+        width, height = rng.randint(1, 50), rng.randint(1, 40)
+        world = World(width, height, [[Terrain.GRASS] * width for _ in range(height)], 1, rng=random.Random(1))
+        discs = {((rng.randint(-3, width + 2), rng.randint(-3, height + 2)), rng.randint(0, 9)) for _ in range(rng.randint(0, 8))}
+        painted, reference = bytearray(width * height), bytearray(width * height)
+        native.stamp_discs(painted, discs, width, height)
+        for at, radius in discs:
+            world._reveal(reference, at, radius)
+        assert painted == reference
+        threats = tuple((rng.uniform(-1, width + 1), rng.uniform(-1, height + 1), rng.choice((2.5, 3.0, rng.uniform(0, 9))))
+                        for _ in range(rng.randint(0, 6)))
+        painted, reference = bytearray(rng.random() < 0.2 for _ in range(width * height)), None
+        reference = bytearray(painted)
+        native.stamp_threats(painted, threats, width, height)
+        worker_ai._stamp_units(reference, threats, width, height)
+        assert painted == reference
+        target, source = bytearray(rng.random() < 0.3 for _ in range(width * height)), bytes(rng.random() < 0.3 for _ in range(width * height))
+        expected = bytearray(target)
+        model.or_into(expected, source)
+        native.or_into(target, source)
+        assert target == expected
+        knowledge = WorkerKnowledge(width, height)
+        for _ in range(10):
+            x, y, size = rng.randint(-4, width + 1), rng.randint(-4, height + 1), rng.randint(1, 4)
+            assert native.any_lit(source, x, y, size, width, height) == knowledge.sees(source, x, y, size)

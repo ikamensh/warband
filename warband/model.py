@@ -24,6 +24,11 @@ from typing import Any, Iterable, Iterator, Literal
 
 from warband import path as pathing
 from warband.races import RACES
+try:
+    from warband import _native  # vision's painting in C, built only with the compiled simulation (warband/fastsim.py)
+except ImportError:  # the source runs, as it does in the game
+    _native = None  # type: ignore[assignment]
+
 from warband.settlement import Plan, Settlement
 from warband.worker_knowledge import WorkerKnowledge
 from warband.rules import (
@@ -406,6 +411,9 @@ def sight_spans(radius: int) -> list[tuple[int, int, bytes]]:
 
 def or_into(target: bytearray, source: bytes | bytearray) -> None:
     """``target[i] |= source[i]`` for every byte of two flag grids, done in C through big integers."""
+    if _native is not None:
+        _native.or_into(target, source)
+        return
     target[:] = (int.from_bytes(target, "little") | int.from_bytes(source, "little")).to_bytes(len(target), "little")
 
 
@@ -608,11 +616,9 @@ class World:
                 visible[:] = layer[1]
             else:
                 visible[:] = bytes(len(visible))
-                for at, sight in discs:
-                    self._reveal(visible, at, sight)
+                self._paint(visible, discs)
                 self._sight_layers[player.id] = (frozenset(discs), bytes(visible))
-            for at, sight in moving[player.id] - discs:
-                self._reveal(visible, at, sight)
+            self._paint(visible, moving[player.id] - discs)
             or_into(self.explored[player.id], visible)
             self.worker_knowledge[player.id].refresh(self, player.id)
         self._reveal_last_standings()
@@ -648,6 +654,14 @@ class World:
                 self._exposed.add(exposed_id)
                 self.events.append(Event("exposed", holdings[0].center, player=exposed_id,
                                          text=self.players[exposed_id].name))
+
+    def _paint(self, visible: bytearray, discs: set[tuple[Pos, int]]) -> None:
+        """:meth:`_reveal` every one of *discs*, each a ``(tile, radius)``."""
+        if _native is not None:
+            _native.stamp_discs(visible, discs, self.width, self.height)
+            return
+        for at, sight in discs:
+            self._reveal(visible, at, sight)
 
     def _reveal(self, visible: bytearray, at: Pos, radius: int) -> None:
         width, height = self.width, self.height

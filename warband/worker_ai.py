@@ -16,6 +16,11 @@ from warband.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Unit, Worl
 from warband.worker_knowledge import _Building
 from warband.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_SLOTS, SIM_DT, UNITS, UNIT_RADIUS, BuildingType, Resource, Terrain
 
+try:
+    from warband import _native  # threat painting in C, built only with the compiled simulation (warband/fastsim.py)
+except ImportError:  # the source runs, as it does in the game
+    _native = None  # type: ignore[assignment]
+
 
 @dataclass(frozen=True)
 class _Site:
@@ -127,6 +132,9 @@ def _stamp_structures(world: World, player: int, footprints: set[tuple[int, int,
 
 def _stamp_units(blocked: bytearray, units: tuple[tuple[float, float, float], ...], width: int, height: int) -> None:
     """Forbid the tiles whose centre lies within each unit's threat radius of it, one slice per row."""
+    if _native is not None:
+        _native.stamp_threats(blocked, units, width, height)
+        return
     floor, ceil, sqrt = math.floor, math.ceil, math.sqrt
     for cx, cy, radius in units:
         r2 = radius * radius
