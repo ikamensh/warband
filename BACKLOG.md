@@ -833,6 +833,34 @@ and FFA endings. Keep economy/crowding failures distinct from numerical balance.
 concrete regressions become small fixes with rule tests, fuzz and refreshed
 fingerprints where appropriate. Do not retune from a few observed matches.
 
+**Audited 2026-09-18** (the first step above). Branch `balance` at `6f873d6`
+in `~/saga/warband-balance`: clean, 23 commits of its own, 159 behind main,
+2,053 lines in 22 files; a test merge conflicts in `warband/model.py`,
+`warband/pro_ai.py`, `warband/arena.py` and `tools/sim_fingerprint.txt`. It
+holds two kinds of work. Tooling with no rules in it: `warband/telemetry.py`
+(a tally per player per arena match), `warband/archetypes.py` (twelve
+postures of one ProBrain), `warband/balance.py` (the payoff equilibrium,
+usage and posture readouts), `tools/balance_report.py`, `docs/balance.md`
+(three leagues of 1,056 games each, evidence under `docs/evidence/balance/`)
+and their tests. Rules and brain changes that need their own acceptance
+before anyone reads a price: a mine works eight peasants at a time
+(`a4f1f12`), the prices the league argued for (`648a799`), repair at half
+price however chunked (`3a5c418`), the economy following scarcity both ways
+and producers saving for the wanted unit (`250d316`), choppers placed by the
+policy (`741158b`), postures fielding strict plans (`b0943d3`). The league's
+own finding is that the map decides more than the prices. Of the AI
+experiment worktrees, `ai-2000` (`~/saga/warband-elo`) was fully merged and
+its worktree is now removed; `ai-arena` (`~/saga/warband-arena`) is fully
+merged but carries an uncommitted edit to `warband/pro_ai.py` from another
+session, so it stays until that session is done.
+
+**Next step, scope to choose:** the tooling can be rebased and merged on its
+own (its conflicts are the knob names in `pro_ai.py` and `arena.py`) and
+the arena and AI report re-run on main for the record; the rules and brain
+changes move the simulation fingerprint and the AI modules are not in the authoritative contract, but the fingerprint moves, so
+they go, item by item with their own acceptance, into the next rules series
+and its server rollout, together with WB-024.
+
 ## WB-016 — Assess the Thornwood campaign
 
 The retained `campaign` branch at `9dbc98f` contains four unique commits: a
