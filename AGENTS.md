@@ -71,7 +71,11 @@ real breakdown.
   painted frame too. `WARBAND_ART=procedural` keeps the renders; a sheet whose
   frames no longer match `FRAMES` or the building types warns and is ignored.
   `view.py` keeps sprites in step (units, buildings, shots in the air with
-  their trails) and draws fog, minimap and water; `effects.py` transient
+  their trails) and draws fog, minimap and water; ground out of sight shows
+  what the player last saw there (`view.Sighting` per building, saved as the
+  scene's `seen`; trees and the minimap's terrain follow the model's own
+  per-player memory, `World.worker_knowledge`), and the selection panel reads
+  the sighting, never a rival's live building; `effects.py` transient
   animations and lingering bodies. `visual_lint.py`
   finds visual defects: in every registered image (empty, clipped, chroma
   fringe, a painted frame off its render, a team recolour that did not take)

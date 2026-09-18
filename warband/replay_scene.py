@@ -81,7 +81,7 @@ class ReplayScene(GameScene):
         self.playback.step()
         if self.playback.world is not self.world:  # the match went on from a save here, and so does the playback
             self.world = self.playback.world
-            self.view.reset(self.world)
+            self.view.reset(self.world, self.view.memory())  # the same match goes on: what the player had seen stays seen
             self.selection = []
 
     def _check_game_over(self) -> None:

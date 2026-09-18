@@ -25,7 +25,7 @@ from saga2d import Game, ParticleEmitter, RenderLayer, Scene, Sprite, SpriteAnch
 from warband import textures
 from warband.model import Building, Entity, Pos, Projectile, Unit, World, dist
 from warband.races import RACES
-from warband.rules import BUILDINGS, SIM_DT, VISION_EVERY, BuildingType, Terrain, UnitType, UPGRADES
+from warband.rules import BUILDINGS, SIM_DT, VISION_EVERY, BuildingType, Race, Terrain, UnitType, UPGRADES
 from warband.textures import CHUNK, CHUNK_PX, TILE
 
 WATER_PERIOD = 0.45  # seconds between water phase changes
@@ -75,18 +75,78 @@ class Overlay:
     bars_for_all: bool = False  # Alt held: every visible unit and building shows its health
 
 
-def minimap_terrain(world: World) -> np.ndarray:
-    """Terrain colours for *world* from ``textures.PALETTES[theme].minimap``.
+@dataclass
+class Sighting:
+    """A building as the player last saw it.  Under the fog this is all the map, the minimap and the
+    selection panel show of it: a rival's new hall is not there until somebody looks, and a razed one
+    stands until somebody looks again."""
+
+    id: int
+    type: BuildingType
+    player: int | None
+    race: Race
+    rect: tuple[int, int, int, int]
+    hp: int
+    max_hp: int
+    built: float  # share of its construction done: 1 once it stands
+    gold: int  # what a mine held
+    abandoned: bool
+    look: str  # the painted look it wore, see :func:`building_look`
+
+    @classmethod
+    def of(cls, b: Building) -> Sighting:
+        sighting = cls(b.id, b.type, b.player, b.race, b.rect, 0, 0, 0.0, 0, False, "intact")
+        sighting.refresh(b)
+        return sighting
+
+    def refresh(self, b: Building) -> None:
+        """The player is looking at *b*: remember it as it is now."""
+        self.hp, self.max_hp, self.gold, self.abandoned, self.look = b.hp, b.max_hp, b.gold, b.abandoned, building_look(b)
+        self.built = 1.0 if b.done else b.progress / b.info.build_time
+
+    @property
+    def done(self) -> bool:
+        return self.built >= 1.0
+
+    @property
+    def center(self) -> tuple[float, float]:
+        x, y, w, h = self.rect
+        return (x + w / 2, y + h / 2)
+
+    def to_dict(self) -> dict:
+        return {"id": self.id, "type": self.type.value, "player": self.player, "race": self.race.value, "rect": list(self.rect), "hp": self.hp,
+                "max_hp": self.max_hp, "built": self.built, "gold": self.gold, "abandoned": self.abandoned, "look": self.look}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Sighting:
+        if d["look"] not in textures.BUILDING_LOOKS:
+            raise ValueError(f"unknown building look {d['look']!r}")
+        return cls(d["id"], BuildingType(d["type"]), d["player"], Race(d["race"]), tuple(d["rect"]), d["hp"], d["max_hp"], d["built"], d["gold"],
+                   d["abandoned"], d["look"])
+
+
+def check_memory(memory: dict, world: World) -> None:
+    """Raise ValueError (or KeyError, TypeError) unless *memory* is what :meth:`MapView.memory` writes for a map like *world*."""
+    for saved in memory["buildings"]:
+        x, y, w, h = Sighting.from_dict(saved).rect
+        if not (world.in_bounds((x, y)) and world.in_bounds((x + w - 1, y + h - 1))):
+            raise ValueError("a remembered building lies off the map")
+
+
+def minimap_terrain(world: World, terrain_at: Callable[[Pos], Terrain] | None = None) -> np.ndarray:
+    """Terrain colours for *world* from ``textures.PALETTES[theme].minimap``: the ground as it
+    is, or as *terrain_at* tells it (what a player remembers of it).
 
     A ``(height, width, 3)`` float array shared by the HUD minimap and the
     new-game preview, so both pictures agree on what grass, water, trees
     and rock look like.
     """
     colours = textures.PALETTES[world.theme].minimap
+    terrain_at = terrain_at if terrain_at is not None else world.terrain_at
     base = np.zeros((world.height, world.width, 3), dtype=np.float32)
     for y in range(world.height):
         for x in range(world.width):
-            base[y, x] = colours[world.terrain[y][x]]
+            base[y, x] = colours[terrain_at((x, y))]
     return base
 
 
@@ -185,8 +245,11 @@ class _Recoil:
 
 
 class MapView:
-    def __init__(self, scene: Scene, world: World, player: int, *, reveal: bool = False) -> None:
-        """The map as *player* sees it, or the whole of it when *reveal* is set (a replay watched from above)."""
+    def __init__(self, scene: Scene, world: World, player: int, *, reveal: bool = False, memory: dict | None = None) -> None:
+        """The map as *player* sees it, or the whole of it when *reveal* is set (a replay watched from above).
+
+        *memory* is what an earlier view of this match remembered (see :meth:`memory`): ground out of
+        sight shows what the player last saw there, not what stands there now."""
         self.scene = scene
         self.world = world
         self.player = player
@@ -208,6 +271,7 @@ class MapView:
         self._rocks: dict[Pos, Sprite] = {}
         self._buildings: dict[int, Sprite] = {}
         self._building_keys: dict[int, str] = {}
+        self._sightings: dict[int, Sighting] = {}  # every building the player has seen, as they last saw it
         self._units: dict[int, Sprite] = {}
         self._travel: dict[int, float] = {}  # distance each unit has walked, for its stride
         self._last_pos: dict[int, tuple[float, float]] = {}
@@ -224,6 +288,7 @@ class MapView:
         self._minimap_time = -1.0
         self.fog_key = f"fog.{world.width}x{world.height}"
         self.minimap_key = f"minimap.{world.width}x{world.height}"
+        self._minimap_ground = minimap_terrain(world, self.terrain_at)  # as the player knows it: a tree felled out of sight still stands
         self._register(self.fog_key, self._fog_image())
         self._register(self.minimap_key, self._minimap_image())
         self._fog = scene.add_sprite(Sprite(self.fog_key, position=(-FOG_MARGIN * TILE, -FOG_MARGIN * TILE),
@@ -232,6 +297,7 @@ class MapView:
         self._build_ground()
         self._build_edge()
         self._build_props()
+        self._recall(memory)
         self.sync()
 
     # -- Setup ------------------------------------------------------------------------
@@ -313,18 +379,22 @@ class MapView:
         return self.scene.add_sprite(Sprite(key, position=(wx, wy + placement.drop), size=placement.size, anchor=SpriteAnchor.BOTTOM_CENTER,
                                             layer=RenderLayer.UNITS, y_sort=True, ground=placement.ground, **kwargs))
 
+    def _tree(self, pos: Pos) -> Sprite:
+        x, y = pos
+        return self._prop(f"tree.{self.world.theme.value}.{textures.scatter(x, y, 3) % textures.TREE_VARIANTS}", (x + 0.5, y + 0.5))
+
     def _build_props(self) -> None:
         world = self.world
         for y in range(world.height):
             for x in range(world.width):
-                terrain = world.terrain[y][x]
+                terrain = self.terrain_at((x, y))
                 if terrain is Terrain.TREES:
-                    self._trees[(x, y)] = self._prop(f"tree.{world.theme.value}.{textures.scatter(x, y, 3) % textures.TREE_VARIANTS}", (x + 0.5, y + 0.5))
+                    self._trees[(x, y)] = self._tree((x, y))
                 elif terrain is Terrain.ROCK:
                     self._rocks[(x, y)] = self._prop(f"rock.{world.theme.value}.{textures.scatter(x, y, 4) % textures.ROCK_VARIANTS}", (x + 0.5, y + 0.5))
 
-    def reset(self, world: World) -> None:
-        """Point the view at another world of the same size (after loading a save)."""
+    def reset(self, world: World, memory: dict | None = None) -> None:
+        """Point the view at another world of the same size (after loading a save), with the *memory* saved with it."""
         if (world.width, world.height) != (self.world.width, self.world.height):
             raise ValueError("a loaded map must have the size of the current one")
         for group in (self._trees, self._rocks, self._buildings, self._units):
@@ -339,6 +409,7 @@ class MapView:
             shot.sprite.remove()
         self._shots.clear()
         self._building_keys.clear()
+        self._sightings.clear()
         self._unit_keys.clear()
         self._travel.clear()
         self._last_pos.clear()
@@ -357,14 +428,64 @@ class MapView:
             sprite.image = keys[0]
             self._water_pending.extend((index, phase) for phase in range(1, len(keys)))
         self._build_props()
+        self._minimap_ground = minimap_terrain(world, self.terrain_at)
+        self._recall(memory)
         self.sync()
+
+    # -- What the player remembers ----------------------------------------------------------
+
+    def memory(self) -> dict:
+        """The buildings as the player last saw them, as JSON for a save.  Where things stand and what the
+        ground is like the model remembers itself (``World.worker_knowledge``); how a building looked it does not."""
+        return {"buildings": [sighting.to_dict() for sighting in self._sightings.values()]}
+
+    def _recall(self, memory: dict | None) -> None:
+        """Start from *memory*; without one (a new match, a save from before the view remembered) from the
+        buildings whose footprints the model remembers for the player, as they look now."""
+        world = self.world
+        if memory is None:
+            footprints = world.worker_knowledge[self.player].buildings
+            known = [Sighting.of(b) for b in world.buildings.values() if b.player == self.player or b.id in footprints]
+        else:
+            known = [Sighting.from_dict(d) for d in memory["buildings"]]
+        for sighting in known:
+            self._show(sighting)
+
+    def sighting(self, building_id: int) -> Sighting | None:
+        """What the player knows of a building: as it is while they see it, as they last saw it otherwise."""
+        return self._sightings.get(building_id)
+
+    def terrain_at(self, pos: Pos) -> Terrain:
+        """The ground at *pos* as the player knows it: a tree felled out of sight still stands for them."""
+        world = self.world
+        remembered = None if self.reveal else world.worker_knowledge[self.player].terrain[pos[1] * world.width + pos[0]]
+        return remembered if remembered is not None else world.terrain_at(pos)
 
     # -- Sync ----------------------------------------------------------------------------
 
-    def tree_grown(self, pos: Pos) -> None:
-        """A felled tree has grown back (the elven art): give it a sprite like the original."""
-        if pos not in self._trees and self.world.terrain_at(pos) is Terrain.TREES:
-            self._trees[pos] = self._prop(f"tree.{self.world.theme.value}.{textures.scatter(*pos, 3) % textures.TREE_VARIANTS}", (pos[0] + 0.5, pos[1] + 0.5))
+    def tree_felled(self, pos: Pos) -> None:
+        """A tree came down: gone from the map at once when the player sees it fall, rather than at the next look around."""
+        if pos in self._trees and (self.reveal or self.world.is_visible(self.player, pos)):
+            self._trees.pop(pos).remove()
+            self._minimap_ground[pos[1], pos[0]] = textures.PALETTES[self.world.theme].minimap[Terrain.GRASS]
+
+    def _sync_trees(self) -> None:
+        """The trees the player knows of, each with a sprite: one they see felled loses it, one they see
+        grown back (the elven art) gets one like the original; out of sight both wait to be seen."""
+        world, width = self.world, self.world.width
+        if self.reveal:
+            standing = {(x, y) for y, row in enumerate(world.terrain) for x, terrain in enumerate(row) if terrain is Terrain.TREES}
+        else:
+            knowledge = world.worker_knowledge[self.player]
+            standing = {(index % width, index // width) for index in knowledge.trees}
+            standing.update(pos for pos in self._trees if knowledge.terrain[pos[1] * width + pos[0]] is None)  # never looked at: left as it is
+        colours = textures.PALETTES[world.theme].minimap
+        for pos in self._trees.keys() - standing:
+            self._trees.pop(pos).remove()
+            self._minimap_ground[pos[1], pos[0]] = colours[Terrain.GRASS]
+        for pos in standing - self._trees.keys():
+            self._trees[pos] = self._tree(pos)
+            self._minimap_ground[pos[1], pos[0]] = colours[Terrain.TREES]
 
     def before_step(self) -> None:
         """Retain the unit positions immediately before an authoritative local step.
@@ -405,7 +526,7 @@ class MapView:
             return nearest
         tile = (math.floor(point[0]), math.floor(point[1]))
         building = self.world.building_at(tile) if self.world.in_bounds(tile) else None
-        return building if building is not None and self._known(building) else None
+        return building if building is not None and building.id in self._sightings else None  # one never seen is not there to pick
 
     def units_in_rect(self, a: tuple[float, float], b: tuple[float, float], *, player: int) -> list[Unit]:
         """Visible owned units whose presented ground points lie inside a box."""
@@ -426,14 +547,12 @@ class MapView:
         self.time += dt
         world = self.world
         self._animate_water(dt)
-        for pos in list(self._trees):
-            if world.terrain_at(pos) is not Terrain.TREES:
-                self._trees.pop(pos).remove()
         self._sync_buildings()
         self._sync_units()
         self._sync_projectiles(dt)
-        if world.tick // VISION_EVERY != self._vision_tick:
+        if world.tick // VISION_EVERY != self._vision_tick:  # what the player knows of the ground changes with what they see
             self._vision_tick = world.tick // VISION_EVERY
+            self._sync_trees()
             self.game.assets.update_image(self.fog_key, self._fog_image())
         if self.time - self._minimap_time >= 0.25:
             self._minimap_time = self.time
@@ -445,41 +564,56 @@ class MapView:
         self._vision_tick = -1
         self._minimap_time = -1.0
 
-    def _known(self, building: Building) -> bool:
-        return self.reveal or building.player == self.player or any(self.world.is_explored(self.player, t) for t in building.tiles())
-
     def _sync_buildings(self) -> None:
+        """Buildings in sight are shown as they are and remembered so; out of sight they stay as last seen,
+        until the player looks at the ground again and finds them changed or gone."""
         world = self.world
-        for bid, sprite in list(self._buildings.items()):
-            if bid not in world.buildings:
-                sprite.remove()
-                del self._buildings[bid]
-                del self._building_keys[bid]
-                for burning in (self._smoke, self._fire):
-                    emitter = burning.pop(bid, None)
-                    if emitter is not None:
-                        emitter.remove()
         for b in world.buildings.values():
-            if not self._known(b):
+            if not self._seen(b):
+                self._quench(b.id)
                 continue
-            rising = not b.done and b.progress >= b.info.build_time / 2  # the second half of construction shows the building going up
-            if b.type is BuildingType.GOLD_MINE:
-                key = textures.mine_image(self.game, textures.scatter(b.x, b.y, 8) % textures.MINE_VARIANTS)
-            elif b.done or rising:
-                key = textures.building_image(self.game, b.type, b.player, b.race, building_look(b), abandoned=b.abandoned)  # type: ignore[arg-type]
+            sighting = self._sightings.get(b.id)
+            if sighting is None:
+                sighting = Sighting.of(b)
             else:
-                key = f"site.{b.size}"
-            sprite = self._buildings.get(b.id)
-            if sprite is None:
-                sprite = self._buildings[b.id] = self._prop(key, b.center)
-                self._building_keys[b.id] = key
-            elif self._building_keys[b.id] != key:
-                sprite.image = key
-                sprite.size = textures.placements[key].size
-                sprite.ground = textures.placements[key].ground
-                self._building_keys[b.id] = key
-            sprite.opacity = 150 if rising else 255
-            self._sync_smoke(b, sprite)
+                sighting.refresh(b)
+            self._sync_smoke(b, self._show(sighting))
+        for bid, sighting in list(self._sightings.items()):
+            if bid not in world.buildings and (self.reveal or sighting.player == self.player or world.any_visible(self.player, sighting.rect)):
+                del self._sightings[bid]
+                self._buildings.pop(bid).remove()
+                del self._building_keys[bid]
+                self._quench(bid)
+
+    def _show(self, sighting: Sighting) -> Sprite:
+        """Keep *sighting* and the sprite that shows it."""
+        self._sightings[sighting.id] = sighting
+        x, y, size, _ = sighting.rect
+        rising = 0.5 <= sighting.built < 1.0  # the second half of construction shows the building going up
+        if sighting.type is BuildingType.GOLD_MINE:
+            key = textures.mine_image(self.game, textures.scatter(x, y, 8) % textures.MINE_VARIANTS)
+        elif sighting.built >= 0.5:
+            key = textures.building_image(self.game, sighting.type, sighting.player, sighting.race, sighting.look, abandoned=sighting.abandoned)  # type: ignore[arg-type]
+        else:
+            key = f"site.{size}"
+        sprite = self._buildings.get(sighting.id)
+        if sprite is None:
+            sprite = self._buildings[sighting.id] = self._prop(key, sighting.center)
+            self._building_keys[sighting.id] = key
+        elif self._building_keys[sighting.id] != key:
+            sprite.image = key
+            sprite.size = textures.placements[key].size
+            sprite.ground = textures.placements[key].ground
+            self._building_keys[sighting.id] = key
+        sprite.opacity = 150 if rising else 255
+        return sprite
+
+    def _quench(self, building_id: int) -> None:
+        """No smoke or flames over a building out of sight, or gone."""
+        for burning in (self._smoke, self._fire):
+            emitter = burning.pop(building_id, None)
+            if emitter is not None:
+                emitter.remove()
 
     def _sync_smoke(self, b: Building, sprite: Sprite) -> None:
         """A damaged building smoulders under half health and burns under a quarter: smoke from the
@@ -650,9 +784,6 @@ class MapView:
         image.paste(Image.fromarray(rgba, "RGBA"), (FOG_MARGIN, FOG_MARGIN))
         return image
 
-    def _minimap_terrain(self) -> np.ndarray:
-        return minimap_terrain(self.world)
-
     def _minimap_image(self) -> Image.Image:
         world = self.world
         shape = (world.height, world.width)
@@ -660,12 +791,10 @@ class MapView:
         explored = np.frombuffer(bytes(world.explored[self.player]), dtype=np.uint8).reshape(shape) > 0
         if self.reveal:
             visible[:] = explored[:] = True
-        img = self._minimap_terrain() * np.where(visible, 1.0, np.where(explored, 0.6, 0.18))[..., None]
-        for b in world.buildings.values():
-            if not self._known(b):
-                continue
-            color = (150, 150, 150) if b.abandoned else (232, 196, 70) if b.player is None else world.players[b.player].color
-            img[b.y:b.y + b.size, b.x:b.x + b.size] = color
+        img = self._minimap_ground * np.where(visible, 1.0, np.where(explored, 0.6, 0.18))[..., None]
+        for b in self._sightings.values():  # as last seen: a rival's new hall is not on the minimap before it is on the map
+            x, y, w, h = b.rect
+            img[y:y + h, x:x + w] = (150, 150, 150) if b.abandoned else (232, 196, 70) if b.player is None else world.players[b.player].color
         for u in world.units.values():
             if u.hidden or not (u.player == self.player or visible[u.tile[1], u.tile[0]]):
                 continue
@@ -683,12 +812,12 @@ class MapView:
             (x1, y1), (x2, y2) = points[i], points[(i + 1) % 14]
             self.scene.draw_line(x1, y1, x2, y2, color, width, space="world", layer=layer)
 
-    def _entity_color(self, entity: Entity) -> Color:
+    def _entity_color(self, entity: Unit | Sighting) -> Color:
         from warband.style import ENEMY, GOLD, SELECT
 
         if entity.player is None:
             return GOLD
-        if isinstance(entity, Building) and entity.abandoned:
+        if isinstance(entity, Sighting) and entity.abandoned:
             return (150, 150, 150, 255)
         return SELECT if entity.player == self.player else ENEMY
 
@@ -725,7 +854,7 @@ class MapView:
             self.scene.draw_circle(x0 - 6 * px, y0 + 2.5 * px, 3.5 * px, (255, 214, 110, int(120 + 135 * pulse)), space="world", layer=RenderLayer.UI_WORLD)
 
     def _seen(self, building: Building) -> bool:
-        return self.reveal or building.player == self.player or any(self.world.is_visible(self.player, t) for t in building.tiles())
+        return self.reveal or building.player == self.player or self.world.any_visible(self.player, building.rect)
 
     def _draw_bars(self, overlay: Overlay) -> None:
         """Health over every wounded, selected or hovered unit and building (over everything while Alt is held);
@@ -765,7 +894,7 @@ class MapView:
         self._draw_projectiles()
         self._draw_melee_trails()
         for eid in overlay.selected + ([overlay.hovered] if overlay.hovered is not None and overlay.hovered not in overlay.selected else []):
-            entity = world.entity(eid)
+            entity = world.units.get(eid) or self._sightings.get(eid)  # a building where the player knows it to stand
             if entity is None:
                 continue
             color = self._entity_color(entity)

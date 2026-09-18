@@ -36,7 +36,7 @@ from warband.style import (
 )
 from warband.textures import TILE
 from warband.tutorial import OBJECTIVES, Tutorial
-from warband.view import MapView, Overlay, rgba, to_tiles, to_world
+from warband.view import MapView, Overlay, Sighting, check_memory, rgba, to_tiles, to_world
 
 DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True, "blood": True}
 FLESH = {u.value for u in UnitType} - {UnitType.CATAPULT.value}  # what bleeds when hit
@@ -154,9 +154,13 @@ class GameScene(Scene):
     }
 
     def __init__(self, world: World, seed: int, *, difficulty: Difficulty = Difficulty.MEDIUM, settings: dict[str, Any] | None = None,
-                 player: int | None = None, run_id: str | None = None, ranked: bool = True, replay: Replay | None = None) -> None:
-        """A *ranked* match is recorded from here on (or *replay* goes on recording it, after a load) and rated when it ends."""
+                 player: int | None = None, run_id: str | None = None, ranked: bool = True, replay: Replay | None = None,
+                 seen: dict | None = None) -> None:
+        """A *ranked* match is recorded from here on (or *replay* goes on recording it, after a load) and rated when it ends.
+        *seen* is what a save's view remembered of ground out of sight (:meth:`MapView.memory`)."""
         self.world = world
+        self.view: MapView | None = None  # made on entry: it needs the game
+        self._seen = seen
         self.run_id = run_id if run_id is not None else str(uuid4())  # one leaderboard row per match, however often it is reloaded
         self.ranked = ranked
         self.seed = seed
@@ -237,7 +241,7 @@ class GameScene(Scene):
         self._refresh_card()  # the Plans overlay may have cancelled what the card's keys and counts describe
 
     def _make_view(self) -> MapView:
-        return MapView(self, self.world, self.human)
+        return MapView(self, self.world, self.human, memory=self._seen)
 
     def _setup_camera(self) -> None:
         """The map plus its rim, scrollable clear of the HUD: the top rows above, the selection panel and minimap below."""
@@ -470,8 +474,9 @@ class GameScene(Scene):
             self.sfx("select")
 
     def _prune_selection(self) -> None:
+        """Drop what is gone; a building razed out of sight stays selected as the player remembers it, until they look."""
         before = list(self.selection)
-        self.selection = [i for i in self.selection if self.world.entity(i) is not None]
+        self.selection = [i for i in self.selection if self.world.entity(i) is not None or self.view.sighting(i) is not None]
         if self.selection != before:
             self._refresh_card()
 
@@ -1324,7 +1329,6 @@ class GameScene(Scene):
         return striker is not None and striker.player == self.human
 
     def _handle_events(self, events: list[Event]) -> None:
-        view = self.view
         for index, e in enumerate(events):
             mine = e.player == self.human
             if e.kind == "hit":
@@ -1353,8 +1357,10 @@ class GameScene(Scene):
                 self._refresh_card()
             elif e.kind == "heal" and self._visible(e.pos):
                 self.effects.add(Pulse(to_world(e.pos), (140, 255, 160, 200), radius=(4, 16), rings=1, duration=0.4))
-            elif e.kind == "tree_felled" and mine and self._audible(e.pos):
-                self.sfx("chop", gap=2.5)
+            elif e.kind == "tree_felled":
+                self.view.tree_felled((int(e.pos[0]), int(e.pos[1])))
+                if mine and self._audible(e.pos):
+                    self.sfx("chop", gap=2.5)
             elif e.kind == "under_attack" and mine:
                 self.last_alert = e.pos
                 self.minimap.ping(*to_world(e.pos))
@@ -1372,8 +1378,6 @@ class GameScene(Scene):
                 self.effects.add(FloatingText("Mine exhausted", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), MUTED, rise=20, duration=1.5))
             elif e.kind == "plunder" and mine:
                 self.effects.add(FloatingText(f"+{e.amount} gold plundered", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), GOLD, rise=26, duration=1.8))
-            elif e.kind == "tree_grown":
-                view.tree_grown((int(e.pos[0]), int(e.pos[1])))
 
     def _visible(self, point: tuple[float, float]) -> bool:
         return self.world.is_visible(self.human, (int(point[0]), int(point[1])))
@@ -1610,7 +1614,8 @@ class GameScene(Scene):
         self._portraits = []
         self._page_tile = None
         self._queue_hits = []
-        entities = [e for e in (self.world.entity(i) for i in self.selection) if e is not None]
+        # A unit as it is; a building as the player knows it, which under the fog is as they last saw it.
+        entities = [e for e in (self.world.units.get(i) or self.view.sighting(i) for i in self.selection) if e is not None]
         if self.settlement_menu is not None or not entities:
             self._draw_queue(x, y, w)
             self.command_tooltip.visible = bool(self.tooltip)
@@ -1656,7 +1661,7 @@ class GameScene(Scene):
             tile = (int(self.hover[0]), int(self.hover[1]))
             text = "Nothing selected"
             if self.world.in_bounds(tile) and self.world.is_explored(self.human, tile):
-                text = f"{self.world.terrain_at(tile).value.title()} ({tile[0]}, {tile[1]})"
+                text = f"{self.view.terrain_at(tile).value.title()} ({tile[0]}, {tile[1]})"
             self.draw_text(text, x + 16, y + 30, style="heading")
             self.draw_text("Drag to select units · right-click to order them", x + 16, y + 58, style="sub")
             return
@@ -1684,7 +1689,7 @@ class GameScene(Scene):
             self.draw_text(f"+{len(entries) - len(shown)}", x + 16 + len(shown) * (size + gap), y + 46 + size / 2, style="body", anchor_y="center")
         self.draw_text("Hover for details · click to go there · right-click to cancel", x + 16, y + 106, style="sub")
 
-    def _portrait(self, entity: Entity, x: float, y: float, size: float) -> None:
+    def _portrait(self, entity: Unit | Sighting, x: float, y: float, size: float) -> None:
         draw_production_icon(self, entity.type, entity.player, entity.race, x, y, size)
 
     def _draw_production(self, building: Building, x: float, y: float) -> None:
@@ -1715,19 +1720,22 @@ class GameScene(Scene):
             if qx <= mx < qx + 30 and qy <= my < qy + 30:
                 self.tooltip = f"Queued {i + 1}: {world.unit_info(building.player, queued).name}"
 
-    def _draw_entity_card(self, entity: Entity, x: float, y: float) -> None:
+    def _draw_entity_card(self, entity: Unit | Sighting, x: float, y: float) -> None:
+        """One selected unit or building.  What a rival's unit is ordered to do and what their building is
+        making are theirs to know: the card says them of the player's own only."""
         world = self.world
+        own = entity.player == self.human
         self.draw_rect(x, y, 72, 72, (255, 255, 255, 16), border_color=(255, 255, 255, 40), border_width=1, radius=6)
         self._portrait(entity, x + 4, y + 4, 64)
         tx = x + 88
-        abandoned = isinstance(entity, Building) and entity.abandoned
+        abandoned = isinstance(entity, Sighting) and entity.abandoned
         owner = "Abandoned" if abandoned else world.players[entity.player].name if entity.player is not None else "Neutral"
-        name = entity.info.name
+        name = entity.info.name if isinstance(entity, Unit) else RACES[entity.race].buildings[entity.type].name
         self.draw_text(f"{name}", tx, y + 16, style="heading")
         color = MUTED if abandoned else rgba(world.players[entity.player].color) if entity.player is not None else GOLD
         self.draw_text(owner, tx + 6 + self.game.backend.measure_text(name, 17, "Nunito SemiBold")[0], y + 16, style="sub", color=color)
         lines: list[str] = []
-        if isinstance(entity, Building) and entity.type is BuildingType.GOLD_MINE:
+        if isinstance(entity, Sighting) and entity.type is BuildingType.GOLD_MINE:
             lines.append(f"{entity.gold} gold left")
         else:
             self.draw_rect(tx, y + 26, 180, 8, (0, 0, 0, 160), radius=3)
@@ -1751,7 +1759,9 @@ class GameScene(Scene):
             if world.frenzied(entity):
                 self.draw_text("Frenzy!", tx + 4 * 78, y + 60, style="body", color=BAD)
             order = entity.order
-            if entity.inside is not None:
+            if not own:
+                pass
+            elif entity.inside is not None:
                 lines.append("Mining")
             elif entity.constructing is not None:
                 lines.append("Building")
@@ -1763,16 +1773,17 @@ class GameScene(Scene):
                              .replace("Patrol", "Patrolling"))
             else:
                 lines.append("Idle")
-        elif isinstance(entity, Building):
+        else:
+            building = world.buildings.get(entity.id) if own else None  # the player's own, as it is: what it is making, who builds it
             if not entity.done:
-                frac = entity.progress / entity.info.build_time
-                lines.append(f"Under construction {int(frac * 100)}%" + ("" if entity.builder is not None else " — no builder: right-click it with a peasant"))
-            elif entity.queue or entity.research is not None:
-                self._draw_production(entity, tx, y + 44)
-            elif entity.player == self.human:
-                lines.append(entity.info.summary)
-                if entity.type is BuildingType.TOWN_HALL:
-                    lines.append("Rally point set" if entity.rally is not None else "Right-click the map to set a rally point")
+                unmanned = building is not None and building.builder is None
+                lines.append(f"Under construction {int(entity.built * 100)}%" + (" — no builder: right-click it with a peasant" if unmanned else ""))
+            elif building is not None and (building.queue or building.research is not None):
+                self._draw_production(building, tx, y + 44)
+            elif building is not None:
+                lines.append(building.info.summary)
+                if building.type is BuildingType.TOWN_HALL:
+                    lines.append("Rally point set" if building.rally is not None else "Right-click the map to set a rally point")
         ly = y + 82 if isinstance(entity, Unit) else y + 50
         for line in lines[:2]:
             self.draw_text(line, tx, ly, style="body")
@@ -1783,7 +1794,11 @@ class GameScene(Scene):
     def get_save_state(self) -> dict:
         return {"version": SAVE_VERSION, "seed": self.seed, "difficulty": self.difficulty.value, "world": self.world.to_dict(),
                 "run_id": self.run_id, "ranked": self.ranked, "replay": self.replay.to_dict() if self.replay is not None else None,
-                "groups": self.groups, "tutorial": self.tutorial.step if self.tutorial is not None else None}
+                "groups": self.groups, "tutorial": self.tutorial.step if self.tutorial is not None else None, "seen": self._memory()}
+
+    def _memory(self) -> dict | None:
+        """What the player had seen of buildings now out of sight: the view's once there is one, until then what a save brought."""
+        return self.view.memory() if self.view is not None else self._seen
 
     def get_save_summary(self) -> dict:
         world = self.world
@@ -1821,7 +1836,7 @@ class GameScene(Scene):
         self.settlement_menu = None
         self._game_over = False
         self._acc = 0.0
-        self.view.reset(world)
+        self.view.reset(world, state.get("seen"))
         self.ui.clear()
         self._build_hud()
         self.center_base(instant=True)
@@ -2414,6 +2429,8 @@ def check_save(state: dict[str, Any]) -> World:
         if "ranked" in state and type(state["ranked"]) is not bool:
             raise ValueError("ranked must be a boolean")
         _saved_replay(state)
+        if state.get("seen") is not None:  # saves from before the view remembered carry none
+            check_memory(state["seen"], world)
         if any(type(value) is not int or value < 0 for player in world.players for value in player.stats.values()):
             raise ValueError("battle statistics must be nonnegative integers")
     except (KeyError, ValueError, TypeError, IndexError) as exc:
@@ -2437,7 +2454,7 @@ def load_game(state: dict[str, Any], *, settings: dict[str, Any] | None = None) 
     """A game scene from a save slot's ``state`` (see :meth:`GameScene.get_save_state`)."""
     world = check_save(state)
     scene = GameScene(world, state["seed"], difficulty=Difficulty(state["difficulty"]), settings=settings,
-                      run_id=_saved_run_id(state), ranked=state.get("ranked", True), replay=_saved_replay(state))
+                      run_id=_saved_run_id(state), ranked=state.get("ranked", True), replay=_saved_replay(state), seen=state.get("seen"))
     scene.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
     if state.get("tutorial") is not None and scene.tutorial is not None:
         scene.tutorial.step = state["tutorial"]

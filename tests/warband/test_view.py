@@ -34,11 +34,13 @@ def test_every_tree_and_building_has_a_sprite_and_a_felled_tree_loses_it(play) -
     world, view = scene.world, scene.view
     trees = sum(1 for row in world.terrain for t in row if t is Terrain.TREES)
     assert len(view._trees) == trees
-    assert set(view._buildings) == {b.id for b in world.buildings.values() if view._known(b)}
-    pos = next(p for p in view._trees)
+    in_sight = {b.id for b in world.buildings.values() if b.player == scene.human or world.any_visible(scene.human, b.rect)}
+    assert {b.id for b in world.buildings.values() if view.building_sprite(b.id) is not None} == in_sight
+    pos = next(p for p in view._trees if world.is_visible(scene.human, p))  # one felled out of sight stands until somebody looks: test_fog_memory
     tree_sprite_id = view._trees[pos].sprite_id
     world.terrain[pos[1]][pos[0]] = Terrain.GRASS
-    game.tick(1 / 60)
+    for _ in range(20):  # the player's next look around (a felling they watch is shown at once: test_fog_memory)
+        game.tick(1 / 60)
     assert pos not in view._trees
     assert tree_sprite_id not in game.backend.sprites  # Includes its baked shade and litter.
 

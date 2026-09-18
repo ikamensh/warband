@@ -48,6 +48,7 @@ catches its class.
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
 | WB-025 | Next | done | Health bars: steady while moving, anchored to the sprite, filled from the first frame | User report 2026-09-18 |
 | WB-026 | Next | done | Give the Windows and Mac builds Warband's own icon instead of the packager's snake | User 2026-09-18 |
+| WB-027 | Next | done | Show ground out of sight as the player last saw it: buildings, trees, minimap, selection panel | Review 2026-09-18 |
 
 ## WB-001 — Recover branch work, then clean up
 
@@ -1501,3 +1502,62 @@ passed on both systems; the rollout is recorded in
    main push's Tests and Native package checks green, the server rolled out
    on the same engine version by the reviewed procedure, the promotion
    accepted and the public download checks passed.
+
+## WB-027 — The fog of war shows ground out of sight as the player last saw it
+
+Found 2026-09-18 by the code review. `MapView` drew every building with one
+explored tile from the live world: a rival's new barracks appeared on explored
+ground the moment it was placed, a razed one vanished at once, the painted
+look (rising, active, damaged, abandoned) followed the building under the fog,
+and the minimap did the same. A tree a rival felled out of sight disappeared
+too, so their lumber camp could be watched through the fog. The selection
+panel read the live entity: a fogged building's hit points as they are now,
+and, in plain sight as well, what a rival's building was training or
+researching with its progress, and what a rival's unit was ordered to do or
+carrying. The computer players had been made to play from what they remember
+(`ai.known_enemy_buildings`, `World.worker_knowledge`); the human's view had
+not.
+
+**Acceptance (recorded 2026-09-18 before implementation):**
+
+1. A building raised on explored ground out of sight is not drawn, not on the
+   minimap and cannot be picked until one of the player's units or buildings
+   sees one of its tiles; from then on it is remembered.
+2. A building razed (or cancelled) out of sight stays on the map and the
+   minimap as it last looked until the player sees its ground again; the
+   player's own buildings are always shown as they are. Smoke and flames show
+   only over what is in sight.
+3. A tree felled out of sight stands until seen, one grown back waits to be
+   seen, one the player watches fall is gone the frame it falls; the minimap
+   and the status line's terrain agree with the map.
+4. The selection panel shows a building as the player knows it (hit points,
+   construction, abandonment as last seen); production, the missing-builder
+   hint and the summary only for the player's own; a rival unit's orders and
+   load are not shown.
+5. A save carries what the player had seen: loading (in the match or from the
+   title) reveals nothing the fog hid when it was written; a save from before
+   starts from the footprints the model remembers for the player. A replay
+   that continues through a reload keeps its memory.
+6. Each of the above has a test that fails on the old code; the suite, the
+   visual lint and native frames of a fogged rival base before and after a
+   scout looks.
+
+**Done 2026-09-18.** `view.Sighting` is a building as the player last saw it;
+`MapView` refreshes the sightings of what is in sight every frame, draws
+sprites, minimap and selection rings from them, forgets one when the player
+sees its ground empty, and hands `GameScene` the sighting for the selection
+panel (`MapView.sighting`). Where things stand and what the ground is like the
+model already remembers per player (`World.worker_knowledge`, the memory the
+workers and the brains use), so trees and the minimap's terrain follow that
+memory at every fog recomputation (which also ends the scan of every tree
+sprite on every frame) and a watched felling is shown at once through its
+event; only how a building looked is the view's own memory, saved as the
+scene's `seen`. `tests/warband/test_fog_memory.py` (ten tests, failing on the
+old code); the suite 1203 passed, 12 skipped; `tools/visual_lint.py` over the
+screens: nothing found; frames inspected
+(`docs/evidence/review-fog/fog_unseen.png`, `fog_seen.png`: the rival's hall
+reads 1500/1500 and intact under the fog while it stands at 800 and trains, a
+farm raised since is absent from map and minimap; once a scout looks the farm
+appears, the hall shows its active look and 800/1500, and its production stays
+unshown). Not covered here: the online server still sends both seats the whole
+world (WB-011); the client no longer shows it.
