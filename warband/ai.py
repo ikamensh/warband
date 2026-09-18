@@ -378,8 +378,8 @@ class Brain:
                     continue
                 candidates.append((math.hypot(dx, dy) + rng.random() * 2, pos))
         candidates.sort()
-        for _score, pos in candidates:
-            if world.can_place(building_type, pos, self.player) is None and self._keeps_paths_open(world, pos, size):
+        for pos in world.placeable(building_type, self.player, (pos for _score, pos in candidates)):
+            if self._keeps_paths_open(world, pos, size):
                 return pos
         return None
 

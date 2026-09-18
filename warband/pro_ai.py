@@ -628,10 +628,10 @@ class ProBrain:
                     continue
                 candidates.append((math.hypot(dx, dy) + rng.random() * 2, (ax + dx - size // 2, ay + dy - size // 2)))
         candidates.sort()
-        for _score, pos in candidates:
-            if any(self._overlaps(pos, size, other, other_size) for other, other_size in taken):
-                continue
-            if world.can_place(building_type, pos, self.player) is None and self._keeps_paths_open(world, pos, size):
+        free = (pos for _score, pos in candidates
+                if not any(self._overlaps(pos, size, other, other_size) for other, other_size in taken))
+        for pos in world.placeable(building_type, self.player, free):
+            if self._keeps_paths_open(world, pos, size):
                 return pos
         return None
 

@@ -20,7 +20,7 @@ import random
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Iterable, Iterator, Literal
 
 from warband import path as pathing
 from warband.races import RACES
@@ -854,6 +854,44 @@ class World:
                                                  for b in self.buildings.values()):
             return f"Requires a {self.building_info(player, info.requires).name}"
         return self._placement_reason(building_type, pos, player, builder=builder)
+
+    def placeable(self, building_type: BuildingType, player: int, positions: Iterable[Pos]) -> Iterator[Pos]:
+        """Those of *positions*, in their order, where :meth:`can_place` would let *player* put *building_type*
+        with no builder.  Everything that does not depend on the position is looked at once, for a search
+        that tries hundreds of spots; ``tests/warband/test_placement.py`` holds the two to the same answers."""
+        info = BUILDINGS[building_type]
+        if info.requires is not None and not any(b.player == player and b.type is info.requires and b.done
+                                                 for b in self.buildings.values()):
+            return
+        size = info.size
+        width, height = self.width, self.height
+        terrain, blocked, explored = self.terrain, self._blocked, self.explored[player]
+        standing = [(unit.x, unit.y, unit.radius) for unit in self.units.values() if not unit.hidden]
+        # No name here stands for two types: mypyc keeps all of a generator's variables in one environment.
+        mines = [building.rect for building in self.buildings.values() if building.type is BuildingType.GOLD_MINE]
+        grass = Terrain.GRASS
+        for pos in positions:
+            left, top = pos
+            if left < 0 or top < 0 or left + size > width or top + size > height:
+                continue
+            ground = True
+            for y in range(top, top + size):
+                row, base = terrain[y], y * width
+                for x in range(left, left + size):
+                    if row[x] is not grass or blocked[base + x] or not explored[base + x]:
+                        ground = False
+                        break
+                if not ground:
+                    break
+            if not ground:
+                continue
+            right, bottom = left + size, top + size
+            if any(left - r < ux < right + r and top - r < uy < bottom + r for ux, uy, r in standing):
+                continue
+            rect = (left, top, size, size)
+            if any(rects_gap(rect, mine) < MINE_CLEARANCE for mine in mines):
+                continue
+            yield pos
 
     def _placement_reason(self, building_type: BuildingType, pos: Pos, player: int, *,
                           builder: int | None = None, ignore_units: bool = False) -> str | None:
