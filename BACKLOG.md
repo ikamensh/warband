@@ -870,6 +870,20 @@ is a server rollout like `saga-online/docs/engine-037-rollout.md`, pinning
 the current Warband main. Still to check for this item: Easy against a basic
 opening, and free-for-all endings.
 
+**Live 2026-09-18 as Warband 0.2.30.** The rollout was run the same evening by
+the session that ran the day's other two
+([record](../saga-online/docs/balance-rollout.md)): Warband `faed307` (main
+native run [35372085715](https://github.com/ikamensh/warband/actions/runs/35372085715))
+in the server pins, the engine and the Tribes and Shardbound cohort unchanged;
+the contract moved in `model.py`, `races.py`, `rules.py` and `worker_ai.py`
+only; backup, rehearsal and live rejoin of every retained seat, the three-game
+smoke and a native Warband journey passed; the refused promotion was
+dispatched again and accepted
+([35376046307](https://github.com/ikamensh/saga-online/actions/runs/35376046307)),
+the [public download checks](https://github.com/ikamensh/saga-online/actions/runs/35376176691)
+passed. The item's remaining checks (Easy against a basic opening,
+free-for-all endings) are still open; its status stays as its owner left it.
+
 **Audited 2026-09-18** (the first step above). Branch `balance` at `6f873d6`
 in `~/saga/warband-balance`: clean, 23 commits of its own, 159 behind main,
 2,053 lines in 22 files; a test merge conflicts in `warband/model.py`,
