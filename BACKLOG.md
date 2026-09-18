@@ -36,7 +36,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
 | WB-036 | Next | in progress | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often | User 2026-09-18 |
-| WB-037 | Next | in progress | Answer a tower rush without stopping the economy: one tower by the mine now halts Master's gold | User 2026-09-18 |
+| WB-037 | Next | in progress | Answer a tower rush without stopping the economy: one tower by the mine now halts Master's gold (branch `rush-answers`) | User 2026-09-18 |
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
@@ -237,6 +237,36 @@ games of ten, lose no more than three peasants to it, and bring in at least
 placed tower becomes a regression test: gold resumes and the army does not
 die piecemeal. The fingerprint is refreshed deliberately, and the ladder
 confirms that Master's rating against ordinary opponents did not drop.
+
+**Started 2026-09-19** on branch `rush-answers` (worktree `../warband-rush`),
+off main after WB-036's posture and WB-043 merged. How the acceptance is
+counted (`docs/evidence/wb037/rush_answers.py` in that worktree, git-ignored
+until it becomes a tool): 20 seeds from 5000 on the ladder's boards (the three
+sizes and five layouts cycled by seed), the defender in both corners; the
+Vanguard, the Warden and Hard against `pro-rush`, and against the placed
+tower of `tower_freeze.py`. The rush's tower is the first enemy tower within
+4.5 tiles of the defender's main mine. A game passes when that tower never
+stands or dies within a minute of standing, kills at most three of the
+defender's peasants, and the defender's gold over the three minutes after
+the tower appeared is at least 70% of the same board without the rush
+(against `pro-vanguard`, or no tower placed). Baseline on main `66d35a5`:
+the rush raised its frame in 32, 32 and 35 of 40 games against the
+Vanguard, the Warden and Hard, and 9, 10 and 5 of 40 passed (median gold
+22%, 22%, 26%); against the placed tower 12, 10 and 1 passed.
+
+Traced on seed 5000: the tower went up one tile from the hall, so every
+depot tile was in danger. Carriers holding gold had an escape to safe ground
+but no route on from there, and `World._plan_work_route` then left them
+standing in the fire: eight died holding gold. A worker caught on forbidden
+ground now walks out to the nearest safe ground even when its work cannot be
+reached from there (`World._take_cover`, a model change: contract and
+rollout). With that alone, games with at most three peasants lost went from
+15, 17 and 29 of 40 to 37, 34 and 40. The rusher walks through the base past
+the hall and starts its frame 4 to 15 seconds after it is first seen; inside
+the frame nothing reaches it, and the frame gains 10 hit points a second,
+more than two footmen take off it. Next, measured one at a time: peasants
+hunt a lone enemy builder inside the base; soldiers attack a frame they can
+outpace; a finished tower is struck by a force gathered out of its range.
 
 ## WB-038 — Paint the gold mine
 
