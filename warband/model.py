@@ -553,13 +553,17 @@ class World:
         r2 = radius * radius
         width, buckets = self.width, self._buckets
         near: list[Unit] = []
-        append = near.append
+        span = x1 - x0 + 1
+        # Cell by cell rather than filter(None, a slice of the row): the compiled simulation (warband/fastsim.py)
+        # runs this loop without making a Python object, which costs the interpreter a little over a slice.
         for row in range(y0 * width + x0, y1 * width + x0 + 1, width):
-            for cell in filter(None, buckets[row:row + x1 - x0 + 1]):
-                for unit in cell:
-                    dx, dy = unit.x - px, unit.y - py
-                    if dx * dx + dy * dy <= r2:
-                        append(unit)
+            for index in range(row, row + span):
+                cell = buckets[index]
+                if cell is not None:
+                    for unit in cell:
+                        dx, dy = unit.x - px, unit.y - py
+                        if dx * dx + dy * dy <= r2:
+                            near.append(unit)
         return near
 
     def _index_units(self) -> None:
@@ -2369,7 +2373,7 @@ class World:
         """Push overlapping units apart, never into blocked tiles."""
         # The neighbour scan is :meth:`units_near` inlined: it runs for every unit on every
         # step, and the bucket rows it walks are only ever three cells wide.
-        moves: dict[int, tuple[float, float]] = {}
+        moves: list[tuple[Unit, float, float]] = []
         width, height, buckets = self.width, self.height, self._buckets
         radius = 2 * UNIT_RADIUS + SPACING
         reach, r2 = int(radius) + 1, radius * radius
@@ -2385,7 +2389,10 @@ class World:
             y0, y1 = max(0, int(uy) - reach), min(height - 1, int(uy) + reach)
             span = x1 - x0 + 1
             for row in range(y0 * width + x0, y1 * width + x0 + 1, width):
-                for cell in filter(None, buckets[row:row + span]):
+                for index in range(row, row + span):
+                    cell = buckets[index]
+                    if cell is None:
+                        continue
                     for v in cell:
                         dx, dy = ux - v.x, uy - v.y
                         if dx * dx + dy * dy > r2 or v is u or v.hidden:
@@ -2411,9 +2418,8 @@ class World:
                             px += -hy * overlap * SIDESTEP
                             py += hx * overlap * SIDESTEP
             if px or py:
-                moves[u.id] = (px, py)
-        for uid, (px, py) in moves.items():
-            u = self.units[uid]
+                moves.append((u, px, py))
+        for u, px, py in moves:
             self._nudge(u, px, py)
 
     @staticmethod
