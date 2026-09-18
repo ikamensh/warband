@@ -242,8 +242,8 @@ PRO_FOR: Final[dict[Difficulty, tuple[str, ...]]] = {Difficulty.HARD: ("pro-hard
 DIFFICULTY_ELO: Final[dict[Difficulty, int]] = {
     Difficulty.EASY: 860,
     Difficulty.MEDIUM: 1000,
-    Difficulty.HARD: 1350,
-    Difficulty.MASTER: 1590,
+    Difficulty.HARD: 1400,
+    Difficulty.MASTER: 1620,
 }
 
 #: One line per setting, for the same screen.

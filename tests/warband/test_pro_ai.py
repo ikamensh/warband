@@ -472,3 +472,23 @@ def test_choppers_sent_back_to_the_gold_do_not_name_a_mine_that_is_gone():
         world.step()
     assert not any(isinstance(o, Harvest) and isinstance(o.target, int)
                    for p in world.player_units(0) for o in p.orders), "nobody was sent to a mine that is not there"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("posture", ["pro-vanguard", "pro-warden", "pro-hard"])
+def test_a_pro_brain_builds_what_it_orders_its_builders_arrive_to_a_paid_order(posture: str) -> None:
+    """WB-043: a build order is paid at the site, and the brain once spent the bank during the walk, so a quarter of
+    its orders died on arrival. It holds their price now. Four minutes of two brains' play: the slow tier."""
+    from warband.arena import make_agent
+
+    world = mapgen.generate(seed=17, players=2, human=None)
+    agents = [make_agent(posture, 0, 17), make_agent("pro-vanguard", 1, 17)]
+    rngs = [random.Random(17), random.Random(18)]
+    unpaid = []
+    while world.time < 240 and world.winner is None:
+        for agent, rng in zip(agents, rngs):
+            agent.think(world, rng)
+        world.step()
+        unpaid += [event.text for event in world.take_events()
+                   if event.kind == "refused" and event.player == 0 and event.text.startswith("Cannot build: Not enough")]
+    assert not unpaid, unpaid

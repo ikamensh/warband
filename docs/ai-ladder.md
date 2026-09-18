@@ -149,18 +149,21 @@ odds. `--proximity 0` gives the old flat fit.
 
 What the New game screen offers, and what each one is worth. 60 seeds, both
 corners, every map size, all five layouts in turn, under fog, 720 games,
-Medium anchored at 1000, measured on 2026-09-18 after the balance merge
-(mine cap, prices, race numbers; `docs/balance.md`) and the rules that went
-live with Warband 0.2.26:
+Medium anchored at 1000, measured on 2026-09-19 once the pro brains held a
+build order's price while its builder walks (`hold_builds`, below):
 
 | setting | Elo | 90% interval | plays |
 |---------|-----|--------------|-------|
-| Easy | 856 | 801 .. 905 | `ai.Brain`, the Easy profile |
+| Easy | 857 | 795 .. 910 | `ai.Brain`, the Easy profile |
 | Medium | 1000 | — | `ai.Brain`, what Normal and Hard both were |
-| Hard | 1353 | 1295 .. 1433 | `pro_ai.ProBrain`, `pro-hard` |
-| Master | 1589 | 1532 .. 1700 | `pro_ai.ProBrain`, `pro-vanguard` or `pro-warden`, drawn with the map |
+| Hard | 1400 | 1335 .. 1485 | `pro_ai.ProBrain`, `pro-hard` |
+| Master | 1615 | 1535 .. 1701 | `pro_ai.ProBrain`, `pro-vanguard` or `pro-warden`, drawn with the map |
 
-Each beats the one below it 69%, 87% and 80% of the time. The screen had
+Each beats the one below it 69%, 88% and 78% of the time. The hold moved Hard
+47 points and Master 26 from the measurement before it, on 2026-09-18 after the
+balance merge (mine cap, prices, race numbers; `docs/balance.md`) and the rules
+that went live with Warband 0.2.26: 856, 1353 and 1589, with steps of 69%, 87%
+and 80%. Before that measurement the screen had
 shown 740, 1250 and 1510: Easy and Hard were outside their intervals, and
 Master's number had been inferred from the brain it replaced rather than
 measured. Master is measured directly now. The 720 games took five minutes
@@ -472,6 +475,7 @@ contradicted the reasoning that produced the change:
 | a standing share of the workforce on wood | **−40 to −180 Elo** — 46% at 30%, 31% at 40%, 25% with farms ahead of demand as well; the model's own policy is better |
 | an army plan of knights, of archers, or of raiders | **−110 Elo** each (33%); the race plans are right |
 | pro-rush (three soldiers, ratio 0.6), pro-boom (twelve, 1.2, early expansion, towers), hall-first pushes, raiders | within noise (44–52%) |
+| holding a build order's price while its builder walks (`hold_builds`): the brain had spent it on soldiers, peasants and research during the walk, and 227 of 838 orders over twenty Master mirrors died on arrival, unpaid; none do now | **+60 to +100 Elo** — 65% for the Vanguard, 62% for the Warden, 59% for Hard against the same posture without it, 96 games each; Hard's and Master's displayed ratings re-measured |
 | a supply-blocked barracks counting as saturated, a second or third barracks ahead of the gate, gathering three or five before walking, race-aware postures for dwarves and orcs | within noise (48–56%, 48 games each) |
 
 Two of those are worth dwelling on. Holding the opening lumber was reasoned
