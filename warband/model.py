@@ -467,6 +467,12 @@ class World:
         self._worker_ai_navigation: dict[int, tuple[int, bytearray]] = {}
         self._worker_ai_routes: dict[int, Any] = {}  # worker_ai._Routes per player, kept across ticks
         self._sight_layers: dict[int, tuple[frozenset[tuple[Pos, int]], bytes]] = {}  # per player, see update_vision()
+        # Counters of the only two ways what a player can see and what stands on the map change, so that
+        # what is worked out from them can be kept until one moves: update_vision (or reveal_all) runs,
+        # a building is placed or removed.
+        self._vision_epoch = 0
+        self._building_epoch = 0
+        self._worker_ai_footprints: dict[int, tuple[tuple[int, int], frozenset[tuple[int, int, int]]]] = {}
         self.settlement = Settlement(self)
         self._exposed: set[int] = set()  # players whose last holdings stand revealed
         self._region_map: pathing.Regions | None = None  # walkable regions of the static grid, see _regions()
@@ -631,6 +637,7 @@ class World:
             or_into(self.explored[player.id], visible)
             self.worker_knowledge[player.id].refresh(self, player.id)
         self._reveal_last_standings()
+        self._vision_epoch += 1
 
     def _is_exposed(self, player_id: int) -> bool:
         """Alive but with no completed hall and no completed building that trains units."""
@@ -701,6 +708,7 @@ class World:
             self.explored[player][i] = 1
             self.visible[player][i] = 1
         self.worker_knowledge[player].refresh(self, player)
+        self._vision_epoch += 1
 
     # -- Stats with upgrades applied ----------------------------------------------------
 
@@ -1228,6 +1236,7 @@ class World:
         if building_type is BuildingType.GOLD_MINE:
             building.gold = MINE_GOLD
         self.buildings[building.id] = building
+        self._building_epoch += 1
         self._set_blocked(building, True)
         footprint = set(building.tiles())
         for unit in self.units.values():
@@ -2652,6 +2661,7 @@ class World:
 
     def _remove_building(self, b: Building, *, reason: str) -> None:
         del self.buildings[b.id]
+        self._building_epoch += 1
         if reason == "destroyed" and b.player is not None:
             self.players[b.player].stats["buildings_lost"] += 1
         self._set_blocked(b, False)

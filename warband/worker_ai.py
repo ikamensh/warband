@@ -79,16 +79,26 @@ def _navigation(world: World, player: int) -> bytearray:
         if info.damage:
             units.append((unit.x, unit.y, max(2.5, info.range + 1.5)))
     # Only a footprint the remembered grid does not already block still needs stamping, which is usually none.
-    footprints: set[tuple[int, int, int]] = set()
-    for bid in world.buildings.keys() - knowledge.buildings.keys():
-        building = world.buildings[bid]
-        x, y, size = building.x, building.y, building.size
-        if building.player == player or knowledge.sees(visible, x, y, size):
-            footprints.add((x, y, size))
+    # Which footprints those are changes only with what the player sees (the knowledge is refreshed with it)
+    # and with what stands on the map, so the answer is kept until one of the two moves on.
+    epochs = (world._vision_epoch, world._building_epoch)
+    kept = world._worker_ai_footprints.get(player)
+    if kept is not None and kept[0] == epochs:
+        footprints = kept[1]
+    else:
+        found: set[tuple[int, int, int]] = set()
+        for bid in world.buildings.keys() - knowledge.buildings.keys():
+            building = world.buildings[bid]
+            x, y, size = building.x, building.y, building.size
+            if building.player == player or knowledge.sees(visible, x, y, size):
+                found.add((x, y, size))
+        footprints = frozenset(found)
+        world._worker_ai_footprints[player] = (epochs, footprints)
     routes = world._worker_ai_routes.get(player)
-    if (routes is None or routes.towers != knowledge.threats or routes.footprints != footprints
+    if (routes is None or routes.towers != knowledge.threats
+            or (routes.footprints is not footprints and routes.footprints != footprints)
             or knowledge.blocked != routes.remembered):
-        routes = _Routes(bytes(knowledge.blocked), knowledge.threats, frozenset(footprints),
+        routes = _Routes(bytes(knowledge.blocked), knowledge.threats, footprints,
                          _stamp_structures(world, player, footprints))
         world._worker_ai_routes[player] = routes
     stamped = tuple(units)
@@ -101,7 +111,7 @@ def _navigation(world: World, player: int) -> bytearray:
     return routes.grid
 
 
-def _stamp_structures(world: World, player: int, footprints: set[tuple[int, int, int]]) -> bytearray:
+def _stamp_structures(world: World, player: int, footprints: frozenset[tuple[int, int, int]]) -> bytearray:
     """The remembered grid with *footprints* blocked and the ground under every known enemy tower forbidden."""
     knowledge = world.worker_knowledge[player]
     blocked = bytearray(knowledge.blocked)
