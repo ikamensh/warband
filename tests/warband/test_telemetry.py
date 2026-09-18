@@ -14,14 +14,14 @@ from warband.rules import Race
 
 def test_a_played_match_comes_back_with_a_tally_per_player():
     """Every purchase a player made is in its tally, keyed by what was bought."""
-    outcome = play(MatchSpec(seed=7, agents=("pro", "pro"), minutes=4))
+    outcome = play(MatchSpec(seed=7, agents=("pro", "pro"), minutes=1.5))
     assert len(outcome.tallies) == 2
     for tally in outcome.tallies:
         assert Race(tally.race)
-        assert tally.trained["peasant"] >= 1, "four minutes is enough to hire one peasant"
+        assert tally.trained["peasant"] >= 1, "a minute and a half is enough to hire one peasant"
         assert tally.started["farm"] >= 1, "…and to lay one farm"
         assert tally.spent["peasant"] == 400 * tally.trained["peasant"]
-        assert 0 < tally.first["farm"] <= 4 * 60, "when the first farm was finished, in sim seconds"
+        assert 0 < tally.first["farm"] <= 90, "when the first farm was finished, in sim seconds"
 
 
 def test_the_last_blow_gets_the_kill_priced_at_what_the_victim_cost():

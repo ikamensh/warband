@@ -24,7 +24,7 @@ from warband.title import TitleScene
 def game(tmp_path):
     g = Game("Warband Campaign", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     yield g
-    g._teardown()
+    g.close()
 
 
 def press(game: Game, key: str, **mods) -> None:
@@ -137,7 +137,7 @@ def begin_campaign(game: Game) -> MissionScene:
 
 def test_the_first_mission_plays_to_a_result_that_records_progress_and_leads_on(game) -> None:
     scene = begin_campaign(game)
-    settle(game, BANNER_FRAMES)
+    past_the_banner(game)
     assert "1. Hollowmere" in texts(game) and "Build a farm" in texts(game) and "Getting started" not in texts(game)
     world = scene.world
     hall = scene.run.hall(0)
@@ -273,7 +273,7 @@ def test_a_mission_save_keeps_the_script_where_it_was_and_continue_resumes_it(ga
     assert isinstance(loaded, MissionScene) and loaded is not scene
     assert loaded.run.fired.keys() == {"raid_1"} and loaded.run.state == run.state and loaded.run.get("camp") == run.get("camp")
     assert [p.name for p in loaded.world.players] == ["Hollowmere", "Bloodfang Raiders"] and loaded.world.scripted
-    settle(game, BANNER_FRAMES)
+    past_the_banner(game)
     assert "1. Hollowmere" in texts(game) and "Hold Hollowmere against the raids" in texts(game)
     assert loaded.AUTOSAVE_SLOT == CAMPAIGN_SLOT and not loaded.ranked
 
@@ -371,11 +371,10 @@ game.push(CampaignScene())
 game.tick(1 / 60)
 scene = game.scene
 print(json.dumps({"next": scene.next_mission.id, "flags": scene.progress.flags, "difficulty": scene.difficulty.value}))
-game._teardown()
+game.close()
 """
 
 
-BANNER_FRAMES = 170  # the mission's title banner holds the screen for 2.7 seconds
 
 
 def raze(world, side: int) -> None:
@@ -388,6 +387,12 @@ def raze(world, side: int) -> None:
 def settle(game: Game, frames: int = 30) -> None:
     for _ in range(frames):
         game.tick(1 / 60)
+
+
+def past_the_banner(game: Game) -> None:
+    """The mission's title banner holds the screen for 2.7 seconds: three seconds in tenths are past it."""
+    for _ in range(30):
+        game.tick(0.1)
 
 
 def read_in_a_new_process(data_dir) -> dict:
@@ -500,7 +505,7 @@ def test_the_title_banner_has_the_screen_first_and_notices_hang_under_the_object
     notice slides in under the panel however tall the panel has grown, never over it."""
     scene = start(game, "hollowmere")
     assert "Mission 1: Hollowmere" in texts(game) and "Build a farm" not in texts(game)
-    settle(game, BANNER_FRAMES)
+    past_the_banner(game)
     assert "Build a farm" in texts(game) and "Mission 1: Hollowmere" not in texts(game)
     world, hall = scene.world, scene.run.hall(0)
     world.place_building(0, BuildingType.FARM, (hall.x + 5, hall.y + 5))

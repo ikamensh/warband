@@ -124,7 +124,7 @@ def test_the_scene_shows_a_ruin_grey_on_the_map_the_minimap_and_the_card(tmp_pat
         texts = [t["text"] for t in game.backend.texts]
         assert "Abandoned" in texts and not scene._card, "named for what it is, with nothing to order"
     finally:
-        game._teardown()
+        game.close()
 
 
 def test_an_abandoned_tower_never_looses_another_arrow() -> None:

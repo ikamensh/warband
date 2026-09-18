@@ -2,14 +2,19 @@
 
 import gc
 
+import pytest
+
 from warband import mapgen
 from warband.scene import GameScene
 
 
+@pytest.mark.slow
 def test_a_match_freezes_its_world_and_sprites_once_warmed_up(game, tmp_path):
     """Full collections walk every tracked object: in a 150-unit battle they took 26 ms every two seconds
     and grew with the match (tools/perf.py).  The world, sprites and images built for the match are
-    long-lived, so they are frozen out of the scans once the unit images are warm."""
+    long-lived, so they are frozen out of the scans once the unit images are warm.
+    The freeze waits for the warm-up to paint every unit frame of the match, about two seconds: the slow tier.
+    """
     gc.unfreeze()  # whatever an earlier test left frozen
     scene = GameScene(mapgen.generate(seed=3, players=2), 3)
     game.push(scene)
@@ -21,8 +26,11 @@ def test_a_match_freezes_its_world_and_sprites_once_warmed_up(game, tmp_path):
     assert scene.world.time > 0  # the match runs on regardless
 
 
+@pytest.mark.slow
 def test_the_next_match_thaws_the_previous_one(game):
-    """A frozen object is never collected; each match's freeze first thaws and buries what the last one froze."""
+    """A frozen object is never collected; each match's freeze first thaws and buries what the last one froze.
+
+    Two warm-ups, one per match, over two seconds: the slow tier."""
     gc.unfreeze()
     first = GameScene(mapgen.generate(seed=3, players=2), 3)
     game.push(first)

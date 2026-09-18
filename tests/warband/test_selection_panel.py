@@ -51,7 +51,7 @@ def test_selections_fit_inside_the_panel_at_every_size(tmp_path, resolution, cou
             assert not overlaps(rect, card), (count, resolution, rect, card)
         assert (scene._page_tile is not None) == (count > PORTRAITS_PER_PAGE)
     finally:
-        game._teardown()
+        game.close()
 
 
 def test_a_large_selection_pages_and_every_unit_can_be_picked(tmp_path) -> None:
@@ -73,7 +73,7 @@ def test_a_large_selection_pages_and_every_unit_can_be_picked(tmp_path) -> None:
         game.tick(1 / 60)
         assert scene.selection == [wanted] and scene._page_tile is None
     finally:
-        game._teardown()
+        game.close()
 
 
 def test_the_page_clamps_when_the_selection_shrinks_and_resets_when_it_changes(tmp_path) -> None:
@@ -91,7 +91,7 @@ def test_the_page_clamps_when_the_selection_shrinks_and_resets_when_it_changes(t
         game.tick(1 / 60)
         assert headings(game) == ["18 units"] and scene._page_tile is None and len(scene._portraits) == 18
     finally:
-        game._teardown()
+        game.close()
 
 
 def test_a_mixed_selection_shows_every_kind(tmp_path) -> None:
@@ -100,4 +100,4 @@ def test_a_mixed_selection_shows_every_kind(tmp_path) -> None:
         assert [entity_id for entity_id, _ in scene._portraits] == ids
         assert all(inside(rect, scene.selection_panel.bounds) for _, rect in scene._portraits)
     finally:
-        game._teardown()
+        game.close()

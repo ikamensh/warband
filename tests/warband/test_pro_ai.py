@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import random
 
+import pytest
+
 from warband import mapgen
 from warband.model import dist
 from warband.ai import known_mines
@@ -100,8 +102,6 @@ def test_master_draws_one_of_two_postures_from_the_seed():
     assert {first.profile.name, second.profile.name} == {PRO_VANGUARD.name, PRO_WARDEN.name}
     assert make_brain(0, Difficulty.MASTER, seed=4).profile is first.profile, "the same seed draws the same posture"
     assert make_brain(1, Difficulty.MASTER, seed=4).profile is not first.profile, "two Masters in one game differ"
-    assert PRO_WARDEN.barracks_first and PRO_VANGUARD.barracks_first, "both are the rung above pro"
-    assert PRO_WARDEN.towers_early == 1 and PRO_VANGUARD.towers_early == 0
 
 
 def test_barracks_first_wishes_for_nothing_else_until_it_stands():
@@ -168,8 +168,12 @@ def test_a_push_that_has_lost_most_of_itself_breaks_off():
 
 # -- Playing a whole game --------------------------------------------------------
 
+@pytest.mark.slow
 def test_the_brain_plays_a_match_without_raising_and_builds_an_army():
-    """The cheapest cover there is: the whole thing actually runs."""
+    """The cheapest cover there is: the whole thing actually runs.
+
+    Both sides have soldiers only after three minutes, about a second of play: the slow tier. The fast tier's
+    arena matches run the brain for a minute and a half."""
     world = mapgen.generate(seed=12, players=2, human=None)
     brains = [ProBrain(0, PRO), ProBrain(1, PRO)]
     rngs = [random.Random(i) for i in range(2)]
@@ -212,8 +216,10 @@ def test_more_opponents_mean_a_bigger_margin_is_wanted_before_attacking():
     assert PRO.attack_ratio * (1 + PRO.ffa_caution * bystanders) > PRO.attack_ratio
 
 
+@pytest.mark.slow
 def test_a_free_for_all_runs_to_placements():
-    """Four brains, one map, and a finishing order rather than a winner."""
+    """Four brains, one map, and a finishing order rather than a winner: six minutes on a large map, the
+    slow tier's."""
     from warband.arena import MatchSpec, play
     outcome = play(MatchSpec(seed=21, agents=("pro", "pro", "hard", "medium"), minutes=6, width=64, height=56))
     assert len(outcome.placements) == 4

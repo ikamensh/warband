@@ -70,4 +70,4 @@ def test_the_hud_says_why_when_the_world_refuses_an_order(tmp_path) -> None:
             game.tick(1 / 60)
             assert "queued" in scene.status and len(worker.orders) == MAX_QUEUED_ORDERS
     finally:
-        game._teardown()
+        game.close()

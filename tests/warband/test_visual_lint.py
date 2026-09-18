@@ -105,8 +105,12 @@ def test_the_lint_sees_a_sprite_drawn_over_the_one_it_stands_behind(tmp_path) ->
         game.close()
 
 
+@pytest.mark.slow
 def test_every_unit_pose_fits_the_unit_canvas() -> None:
-    """A pose reaching below the padding would raise while rendering the low-poly art."""
+    """A pose reaching below the padding would raise while rendering the low-poly art.
+
+    Every race's every pose in all eight facings takes about two seconds: the slow tier, which a change to the
+    art runs before it is pushed."""
     for race in Race:
         for unit_type in UnitType:
             carries = (None, Resource.GOLD, Resource.LUMBER) if unit_type is UnitType.PEASANT else (None,)
@@ -123,11 +127,19 @@ SCREENS = ("title", "new_game_elf", "select_peasant", "select_town_hall", "selec
            "campaign_fresh", "campaign_under_way", "mission_raid", "mission_choice", "mission_result")
 
 
-@pytest.mark.parametrize("resolution", screens.RESOLUTIONS, ids=lambda r: f"{r[0]}x{r[1]}")
-@pytest.mark.parametrize("name", SCREENS)
+SMALLEST = min(screens.RESOLUTIONS)
+FAST_SCREENS = {"title", "select_army", "town_at_work", "battle_wood", "menu_build_hover", "help", "mission_raid"}
+
+
+@pytest.mark.parametrize("name, resolution", [pytest.param(name, r, id=f"{name}-{r[0]}x{r[1]}",
+                                                           marks=() if name in FAST_SCREENS and r == SMALLEST else pytest.mark.slow)
+                                              for name in SCREENS for r in screens.RESOLUTIONS])
 def test_the_screens_draw_nothing_over_anything(name: str, resolution: tuple[int, int]) -> None:
     """Texts and panels keep off each other and on the screen; overlays fit even a 1200×680 window;
-    sprites draw in front only of what they stand in front of."""
+    sprites draw in front only of what they stand in front of. A screen takes a fifth of a second or more
+    to play and lint, so the fast tier lints seven, a match's, a mission's and an overlay's, in that
+    smallest window, and the slow tier every screen in every window. The layout tests keep text off text
+    on every screen in the fast tier."""
     findings = screens.run_screen(name, resolution, None)
     visible = [f for f in findings if f.check in VISIBLE or (f.check == "overflow" and name in ("help", "codex_0", "codex_2", "codex_3", "save_browser"))]
     assert not visible, "\n".join(str(f) for f in visible)

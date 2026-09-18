@@ -5,6 +5,8 @@ once drew from the same stream, so a fight in view, or the Blood setting, sent t
 down another road, and a seed from a bug report did not reproduce it.
 """
 
+import pytest
+
 from saga2d import Game
 from warband.replay import digest
 from warband.rules import BuildingType, UnitType
@@ -31,10 +33,13 @@ def played(blood: bool, seconds: float = 100.0) -> tuple[str, int]:
             shown = max(shown, len(scene.effects))
         return digest(world), shown
     finally:
-        game._teardown()
+        game.close()
 
 
+@pytest.mark.slow
 def test_the_blood_setting_and_the_effects_in_view_leave_the_match_alone() -> None:
+    """It plays a hundred seconds of a skirmish twice, about six seconds: the slow tier. The fast tier's replay
+    tests check that a match reproduces."""
     with_blood, shown = played(True)
     without, _ = played(False)
     assert shown > 0, "the skirmish threw no effects: the test watches nothing"

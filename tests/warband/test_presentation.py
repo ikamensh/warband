@@ -17,7 +17,7 @@ def play(tmp_path):
     game.push(scene)
     game.tick(1 / 60)
     yield game, scene
-    game._teardown()
+    game.close()
 
 
 def hover(game, scene, x, y):

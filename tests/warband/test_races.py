@@ -71,7 +71,7 @@ def test_names_and_numbers_differ_by_race_and_a_unit_reports_its_race() -> None:
     assert world.mines() == [] and world.place_building(None, BuildingType.GOLD_MINE, (20, 20)).info.name == "Gold Mine"
 
 
-def test_race_arts_are_refused_to_other_races_and_the_ai_researches_only_its_own() -> None:
+def test_race_arts_are_refused_to_other_races() -> None:
     world = flat_world((Race.ORC, Race.HUMAN))
     world.place_building(0, BuildingType.TOWN_HALL, (2, 2))
     world.place_building(0, BuildingType.BARRACKS, (6, 2))
@@ -83,6 +83,12 @@ def test_race_arts_are_refused_to_other_races_and_the_ai_researches_only_its_own
     world.order_upgrade(0, Upgrade.PLUNDER)
     run(world, 1.5)
     assert stables.research is Upgrade.PLUNDER
+
+
+@pytest.mark.slow
+def test_the_ai_researches_only_its_own_race_arts() -> None:
+    """Two Medium brains with every building up research for four hundred seconds, each its own race's art and
+    no other's. Minutes of play: the slow tier."""
     world = mapgen.generate(seed=11, players=2, human=None, races=(Race.ELF, Race.DWARF))
     for player in world.players:
         player.gold, player.lumber = 50_000, 50_000
@@ -272,7 +278,9 @@ def test_races_survive_a_save_and_an_old_save_means_humans() -> None:
     assert all(p.race is Race.HUMAN for p in old.players) and old.regrowth == []
 
 
+@pytest.mark.slow
 def test_a_match_between_two_races_plays_out_under_the_ai() -> None:
+    """Two Medium brains of different races play four minutes: the slow tier."""
     world = mapgen.generate(seed=9, players=2, human=None, races=(Race.ORC, Race.DWARF), layout=Layout.BASTION)  # walls: no raid empties an army
     brains = [Brain(p.id, Difficulty.MEDIUM) for p in world.players]
     rng = random.Random(9)

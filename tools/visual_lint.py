@@ -452,7 +452,7 @@ def mission(game: Game, mission_id: str, flags: dict | None = None) -> MissionSc
     """A campaign mission past its title banner, which the objectives panel waits for."""
     scene = MissionScene(CAMPAIGN, build_world(CAMPAIGN.mission(mission_id), flags=flags or {}), difficulty=Difficulty.MEDIUM, settings=None)
     game.push(scene)
-    ticks(game, 170)
+    ticks(game, 30, 0.1)  # three seconds in tenths
     return scene
 
 

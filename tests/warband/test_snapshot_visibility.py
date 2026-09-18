@@ -230,7 +230,7 @@ def game(tmp_path):
 
     g = Game("Warband WB-011", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     yield g
-    g._teardown()
+    g.close()
 
 
 def play(game: Game, match: WarbandMatch, ticks: int = 8) -> None:

@@ -62,8 +62,11 @@ def test_untracked_authoritative_inputs_are_rejected(source, snippet):
     assert not result.stdout
 
 
+@pytest.mark.slow
 def test_every_authoritative_source_byte_and_runtime_pin_affects_identity(source):
-    """A reviewed baseline cannot silently survive changes to rules, orders, maps, workers or runtime."""
+    """A reviewed baseline cannot silently survive changes to rules, orders, maps, workers or runtime.
+
+    It rehashes the contract once per source file and pin, over a second: the slow tier."""
     original = json.loads(contract(source).stdout)
     for name in original["files"]:
         path = source / name

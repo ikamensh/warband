@@ -2,6 +2,7 @@
 
 The tiny archives are format fixtures, not executable smoke-test evidence.
 The native build command must still run the actual packaged game on each OS.
+Each test runs the command in its own process: the slow tier.
 """
 import hashlib
 import json
@@ -12,6 +13,8 @@ import tomllib
 import zipfile
 
 import pytest
+
+pytestmark = pytest.mark.slow
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools/ci_package.py"

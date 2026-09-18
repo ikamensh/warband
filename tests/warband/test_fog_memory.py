@@ -27,7 +27,7 @@ def play(tmp_path):
     scene.brains = []  # the rival only does what the test has it do
     game.tick(FRAME)
     yield game, scene
-    game._teardown()
+    game.close()
 
 
 def frames(game: Game, count: int = VISION_FRAMES) -> None:
@@ -121,8 +121,8 @@ def test_a_tree_felled_out_of_sight_stands_until_somebody_looks_and_one_grown_ba
     rival = next(p.id for p in world.players if p.id != scene.human)
     feller = world.spawn_unit(rival, UnitType.PEASANT, tile_center(beside))
     world.harvest([feller.id], tree)
-    for _ in range(60 * 60):
-        game.tick(FRAME)
+    for _ in range(600):  # a minute at most, in tenths: the chopping is waited out, not looked at
+        game.tick(0.1)
         if world.terrain_at(tree).value != "trees":
             break
     assert world.terrain_at(tree).value != "trees", "the rival's worker never felled the tree"
@@ -189,8 +189,8 @@ def test_a_tree_the_player_watches_fall_is_gone_the_frame_it_falls(play) -> None
                         for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)) if world.passable(pos[0] + dx, pos[1] + dy))
     worker = world.spawn_unit(scene.human, UnitType.PEASANT, tile_center(beside))
     world.harvest([worker.id], tree)
-    for _ in range(60 * 60):
-        game.tick(FRAME)
+    for _ in range(600):  # in tenths: whatever frame the tree falls in is the frame it must be gone by
+        game.tick(0.1)
         if world.terrain_at(tree) is not Terrain.TREES:
             break
     assert world.terrain_at(tree) is not Terrain.TREES and tree not in view._trees

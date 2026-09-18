@@ -21,6 +21,11 @@ from warband.style import build_theme
 from warband.title import NewGameScene, TitleScene
 
 SIZES = [(1280, 800), (1280, 720), (1440, 900), (1728, 922), (1920, 1080)]  # the HUD is laid out for 1280 wide and up
+SHORTEST = (1280, 720)  # where text runs into text first: the fast tier's size, the others are the slow tier's
+
+
+def sizes(fast=SHORTEST) -> list:
+    return [pytest.param(size, id=f"{size[0]}x{size[1]}", marks=() if size == fast else pytest.mark.slow) for size in SIZES]
 
 
 def settle(game: Game, frames: int = 6) -> None:
@@ -125,25 +130,29 @@ def mission_scene(game: Game, mission_id: str):
     run = build_world(CAMPAIGN.mission(mission_id), flags={"truce": True})
     scene = MissionScene(CAMPAIGN, run, difficulty=Difficulty.MEDIUM)
     game.push(scene)
-    settle(game, 170)  # past the title banner, which the objectives panel waits for
+    for _ in range(30):  # three seconds in tenths: past the title banner, which the objectives panel waits for
+        game.tick(0.1)
     return scene
 
 
-@pytest.mark.parametrize("size", SIZES, ids=[f"{w}x{h}" for w, h in SIZES])
+@pytest.mark.parametrize("size", sizes())
 @pytest.mark.parametrize("screen", list(SCREENS), ids=list(SCREENS))
 def test_no_text_is_drawn_over_other_text(screen: str, size: tuple[int, int], tmp_path) -> None:
+    """Every screen at the shortest window in the fast tier; the other four sizes build the same scenes again,
+    so they are the slow tier's."""
     game = Game("Warband layout", backend="mock", resolution=size, theme=build_theme(), save_dir=tmp_path / "saves")
     try:
         SCREENS[screen](game)
         settle(game)
         assert_no_text_overlap(game, top_scene_only=True)
     finally:
-        game._teardown()
+        game.close()
 
 
-@pytest.mark.parametrize("size", SIZES, ids=[f"{w}x{h}" for w, h in SIZES])
+@pytest.mark.parametrize("size", sizes())
 def test_help_fits_the_window(size: tuple[int, int], tmp_path) -> None:
-    """Every line of the help screen lies inside the window: a row that runs off the edge teaches nothing."""
+    """Every line of the help screen lies inside the window: a row that runs off the edge teaches nothing.
+    The shortest window is the fast tier's, the other sizes the slow tier's."""
     game = Game("Warband layout", backend="mock", resolution=size, theme=build_theme(), save_dir=tmp_path / "saves")
     try:
         SCREENS["help"](game)
@@ -153,16 +162,19 @@ def test_help_fits_the_window(size: tuple[int, int], tmp_path) -> None:
                    and not (0 <= box.left and box.left + box.width <= width and 0 <= box.top and box.top + box.height <= height)]
         assert not outside, outside
     finally:
-        game._teardown()
+        game.close()
 
 
-@pytest.mark.parametrize("size", SIZES, ids=[f"{w}x{h}" for w, h in SIZES])
-@pytest.mark.parametrize("players", [2, 4])
+@pytest.mark.parametrize("size, players", [pytest.param(size, players, id=f"{players}p-{size[0]}x{size[1]}",
+                                                        marks=() if (size, players) == (SHORTEST, 4) else pytest.mark.slow)
+                                           for size in SIZES for players in (2, 4)])
 def test_the_match_intro_banner_stays_in_the_window(players: int, size: tuple[int, int], tmp_path) -> None:
     """The title and the roll of rivals, from the first frame of the slide to the last.
 
     The banner used to enter from 60 % of the window width to the left, so the
     opening frames drew both strings outside the window — a wipe nobody could read.
+    Every frame of the two seconds is checked, so the fast tier takes the longest roll, four players in the
+    shortest window, and the slow tier the rest.
     """
     game = Game("Warband intro", backend="mock", resolution=size, theme=build_theme(), save_dir=tmp_path / "saves")
     try:
@@ -171,7 +183,7 @@ def test_the_match_intro_banner_stays_in_the_window(players: int, size: tuple[in
             game.tick(1 / 60)
             assert_text_fits(game)
     finally:
-        game._teardown()
+        game.close()
 
 
 def test_long_tutorial_objective_fits_its_panel(tmp_path) -> None:

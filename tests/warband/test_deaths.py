@@ -41,7 +41,7 @@ def test_every_race_has_death_cues_whose_fall_lands_after_the_cry() -> None:
 def bank(tmp_path):
     game = Game("Warband deaths", backend="mock", save_dir=tmp_path / "saves")
     yield game, SoundBank(game, data_dir=tmp_path / "audio")
-    game._teardown()
+    game.close()
 
 
 def test_the_bank_plays_a_races_death_in_varying_takes_under_the_alert_volume(bank) -> None:

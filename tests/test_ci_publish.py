@@ -2,6 +2,8 @@
 
 Package fixtures deliberately contain no executable code. These tests establish
 upload/retry integrity; the separate native workflow establishes game execution.
+Each test runs the publishing command in its own process against a local release service, and
+some wait out its one-second polls, so the module is in the slow tier.
 """
 from datetime import datetime, timezone
 import json
@@ -18,6 +20,8 @@ import zipfile
 import pytest
 
 from tests.test_ci_package import candidate, as_windows, digest
+
+pytestmark = pytest.mark.slow
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools/ci_publish.py"

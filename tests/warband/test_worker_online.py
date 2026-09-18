@@ -2,14 +2,19 @@
 
 from websockets.sync.client import connect
 
+import pytest
+
 from saga2d.testing.online import command, handshake, receive, server_fixture
 
 server_url = server_fixture('warband.authority:ONLINE')
 from warband.model import Deposit, Harvest, World
 
 
+@pytest.mark.slow
 def test_server_assigns_both_players_workers_and_respects_manual_parking(server_url):
-    """Two passive peers gain jobs; Stop persists and a later move permits work again."""
+    """Two passive peers gain jobs; Stop persists and a later move permits work again.
+
+    Two clients work a real server's match for seconds: the slow tier."""
     with connect(server_url, proxy=None) as host, connect(server_url, proxy=None, max_queue=None) as guest:
         room = handshake(host, game="warband-v2", options={"seed": 3, "width": 48, "height": 40})
         handshake(guest, "join", game="warband-v2", room=room["room"])

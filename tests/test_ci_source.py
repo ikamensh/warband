@@ -1,4 +1,7 @@
-"""A publication source must be the exact successful native workflow on trusted main."""
+"""A publication source must be the exact successful native workflow on trusted main.
+
+Each test runs the resolution command in its own process against a local API: the slow tier.
+"""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -9,6 +12,8 @@ import threading
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
+
+pytestmark = pytest.mark.slow
 
 ROOT = Path(__file__).resolve().parents[1]
 

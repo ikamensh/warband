@@ -42,7 +42,7 @@ def test_preview_is_drawn_with_opponents(tmp_path) -> None:
         assert handle in drawn or handle in sprites
         assert any("Opponents:" in t for t in texts(game))
     finally:
-        game._teardown()
+        game.close()
 
 
 def test_reroll_changes_seed_and_image(tmp_path) -> None:
@@ -55,7 +55,7 @@ def test_reroll_changes_seed_and_image(tmp_path) -> None:
         assert scene.seed != old_seed
         assert scene._preview_pil.tobytes() != old_bytes
     finally:
-        game._teardown()
+        game.close()
 
 
 @pytest.mark.parametrize("key, size, pixels", [("s", "Small", (288, 240)), ("m", "Medium", (320, 240)), ("l", "Large", (240, 192))])
@@ -68,7 +68,7 @@ def test_the_preview_fits_its_box_at_whole_pixels_per_tile(tmp_path, key: str, s
         assert scene._preview_pil.size == pixels
         assert game.backend.get_image_size(game.assets.image(PREVIEW_KEY)) == PREVIEW_BOX  # one slot, the picture centred in it
     finally:
-        game._teardown()
+        game.close()
 
 
 def test_the_map_row_picks_a_layout_and_the_caption_says_what_any_drew(tmp_path) -> None:
@@ -85,7 +85,7 @@ def test_the_map_row_picks_a_layout_and_the_caption_says_what_any_drew(tmp_path)
         press(game, "y")
         assert scene.layout is None
     finally:
-        game._teardown()
+        game.close()
 
 
 def test_opponent_line_matches_mapgen(tmp_path) -> None:
@@ -100,7 +100,7 @@ def test_opponent_line_matches_mapgen(tmp_path) -> None:
         expected = "Opponents: " + ", ".join(RACES[p.race].name for p in expected_world.players[1:])
         assert expected in texts(game)
     finally:
-        game._teardown()
+        game.close()
 
 
 def test_large_preview_generation_is_fast() -> None:

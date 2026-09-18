@@ -13,8 +13,11 @@ SPEC = 'warband.authority:ONLINE'
 server_url = server_fixture(SPEC)
 
 
+@pytest.mark.slow
 def test_warband_runs_on_the_server_clock_and_pauses_for_a_disconnected_player(server_url):
-    """Headless RTS advances without a host scene and both factions' units obey validated orders."""
+    """Headless RTS advances without a host scene and both factions' units obey validated orders.
+
+    It waits out the server's real clock, most of a second: the slow tier."""
     from warband.model import World
     with connect(server_url, proxy=None) as host, connect(server_url, proxy=None) as guest:
         room = handshake(host, game='warband-v2', options={'width': 48, 'height': 40})

@@ -28,7 +28,7 @@ def result(agents: tuple[str, ...], placements: tuple[int, ...]) -> MatchResult:
 
 def test_match_is_reproducible():
     """The same spec twice gives the same match, or no measurement means anything."""
-    spec = MatchSpec(seed=7, agents=("medium", "easy"), minutes=3)
+    spec = MatchSpec(seed=7, agents=("medium", "easy"), minutes=1)
     first, second = play(spec), play(spec)
     assert (first.placements, first.winner, first.minutes, first.steps) == \
            (second.placements, second.winner, second.minutes, second.steps)
@@ -36,7 +36,7 @@ def test_match_is_reproducible():
 
 def test_a_match_records_how_each_player_played():
     """The style telemetry is what backs a claim that two agents of one strength are two players."""
-    played = play(MatchSpec(seed=3, agents=("medium", "pro"), minutes=4.0))
+    played = play(MatchSpec(seed=3, agents=("medium", "pro"), minutes=1.5))
     assert len(played.styles) == 2
     for style in played.styles:
         assert set(style) == set(arena.STYLE_FIELDS)
@@ -64,7 +64,7 @@ def test_a_match_result_survives_a_round_trip_through_plain_data():
 
 def test_placements_rank_every_player_from_one():
     """Placements start at 1 and leave no gaps except where players tie."""
-    spec = MatchSpec(seed=11, agents=("hard", "medium", "easy"), minutes=3)
+    spec = MatchSpec(seed=11, agents=("hard", "medium", "easy"), minutes=1)
     placements = play(spec).placements
     assert len(placements) == 3
     assert min(placements) == 1
@@ -72,7 +72,9 @@ def test_placements_rank_every_player_from_one():
         assert 1 <= place <= 3
 
 
+@pytest.mark.slow
 def test_the_winner_places_first():
+    """A decided match ranks its winner first. Hard needs most of a second to beat easy: the slow tier."""
     spec = MatchSpec(seed=101, agents=("hard", "easy"), minutes=20)
     outcome = play(spec)
     assert outcome.winner is not None, "hard against easy should decide inside twenty minutes"
@@ -293,7 +295,9 @@ def test_the_land_is_cosmetic_so_a_ladder_need_not_vary_it():
     assert len(counts) == 1, "if this ever fails, the ladder should start varying the land"
 
 
+@pytest.mark.slow
 def test_the_layout_comes_from_the_seed_so_a_ladder_sees_all_of_them():
+    """Sixty seeds meet most layouts. Their maps are generated twice each, over a second: the slow tier."""
     from warband import mapgen
     from warband.arena import MatchSpec, playable
 
@@ -309,14 +313,15 @@ def test_a_scaled_variant_is_spelled_out_in_its_name():
     """``scale:knight.cost_gold=1.25,tower.hp=0.8`` travels to a worker as a name and patches exactly those numbers."""
     from warband.arena import ensure_variant, use_variant
 
-    knight_gold, tower_hp = UNITS[UnitType.KNIGHT].cost.gold, BUILDINGS[BuildingType.TOWER].hp
+    knight_gold, footman_gold = UNITS[UnitType.KNIGHT].cost.gold, UNITS[UnitType.FOOTMAN].cost.gold
+    tower_hp, tower_damage = BUILDINGS[BuildingType.TOWER].hp, BUILDINGS[BuildingType.TOWER].damage
     try:
         ensure_variant("scale:knight.cost_gold=1.25,tower.hp=0.8")
         assert UNITS[UnitType.KNIGHT].cost.gold == round(knight_gold * 1.25)
         assert BUILDINGS[BuildingType.TOWER].hp == round(tower_hp * 0.8)
-        assert UNITS[UnitType.FOOTMAN].cost.gold == 600
+        assert UNITS[UnitType.FOOTMAN].cost.gold == footman_gold, "what the name leaves out is untouched"
         ensure_variant("scale:tower.damage=0.75")
-        assert BUILDINGS[BuildingType.TOWER].damage == 6, "a tower's shot can be scaled too"
+        assert BUILDINGS[BuildingType.TOWER].damage == round(tower_damage * 0.75), "a tower's shot can be scaled too"
     finally:
         use_variant("standard")
     assert UNITS[UnitType.KNIGHT].cost.gold == knight_gold
@@ -326,8 +331,10 @@ def test_a_scaled_variant_is_spelled_out_in_its_name():
 
 # -- Settled matches -------------------------------------------------------------
 
+@pytest.mark.slow
 def test_a_settled_match_stops_before_the_last_building_falls():
     """A runaway is called once it is beyond doubt, and calls the same winner as playing it out.
+    It plays a decided match twice, about three seconds: the slow tier.
 
     A fifth of the average league match was spent razing a beaten player's
     farms. Stopping changes what is measured only if it calls a different
@@ -346,7 +353,7 @@ def test_a_settled_match_stops_before_the_last_building_falls():
 
 def test_a_match_still_in_the_balance_is_played_on():
     """The rule waits for a lead that holds: an opening in which nobody has fought yet is not settled."""
-    short = play(MatchSpec(seed=7, agents=("pro", "pro"), minutes=3))
+    short = play(MatchSpec(seed=7, agents=("pro", "pro"), minutes=2))
     assert not short.settled
 
 
@@ -361,10 +368,10 @@ def test_a_ladder_can_ask_for_a_layout_instead_of_hoping_the_seeds_cover_them():
 
     seen = set()
     for layout in Layout:
-        spec = MatchSpec(seed=4, agents=("medium", "easy"), minutes=1, layout=layout.value)
+        spec = MatchSpec(seed=4, agents=("medium", "easy"), minutes=0.25, layout=layout.value)
         outcome = play(spec)
         assert outcome.spec.layout == layout.value
         seen.add(layout.value)
     assert len(seen) == len(Layout)
-    drawn = play(MatchSpec(seed=4, agents=("medium", "easy"), minutes=1))
+    drawn = play(MatchSpec(seed=4, agents=("medium", "easy"), minutes=0.25))
     assert drawn.spec.layout is None, "without one named, the seed still draws it"

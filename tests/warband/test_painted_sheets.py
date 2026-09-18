@@ -9,14 +9,14 @@ from warband.rules import Race, Resource, UnitType
 
 
 def subjects():
+    """Every painted subject, listed without loading a sheet: each race's units (the peasant also with each load)
+    and its buildings in each look."""
     for race in Race:
         for unit in UnitType:
             for carrying in ((None,) if unit is not UnitType.PEASANT else (None, Resource.GOLD, Resource.LUMBER)):
-                if textures.restyled_frames(race, unit, carrying) is not None:
-                    yield race, unit, carrying
+                yield race, unit, carrying
         for look in ("intact", "active", "damaged"):
-            if textures.restyled_buildings(race, look) is not None:
-                yield race, look, None
+            yield race, look, None
 
 
 def test_the_orc_wolf_rider_has_no_lines_floating_above_it() -> None:
@@ -27,9 +27,14 @@ def test_the_orc_wolf_rider_has_no_lines_floating_above_it() -> None:
             assert restyle.strays(frames[textures.unit_key(UnitType.SCOUT, 0, facing, frame, None, Race.ORC)]) == [], (facing, frame)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("race, subject, carrying", list(subjects()), ids=lambda v: getattr(v, "value", str(v)))
 def test_every_painted_sheet_is_free_of_edge_strays(race, subject, carrying) -> None:
+    """Every race's every unit and building look is painted, and its frames carry nothing from beyond the figure.
+    Each sheet is loaded and examined frame by frame, seven seconds for them all: the slow tier, which a change to
+    the art runs before it is pushed. The wolf rider's check stays in the fast tier."""
     painted = textures.restyled_buildings(race, subject) if isinstance(subject, str) else textures.restyled_frames(race, subject, carrying)
+    assert painted is not None, "this subject has no painted sheet, or a stale one"
     sheet, frames = painted
     stray = {key: restyle.strays(frame) for key, frame in frames.items()}
     assert {key: boxes for key, boxes in stray.items() if boxes} == {}

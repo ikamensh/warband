@@ -7,14 +7,17 @@ from warband.mapgen import audit as fairness
 from warband.model import World
 from warband.rules import Layout, MapTheme, UnitType
 
-SEEDS = range(1, 41)
+SEEDS = [pytest.param(range(1, 4), id="seeds 1-3"), pytest.param(range(4, 41), id="seeds 4-40", marks=pytest.mark.slow)]
 
 
+@pytest.mark.parametrize("seeds", SEEDS)
 @pytest.mark.parametrize("layout", list(Layout))
 @pytest.mark.parametrize("size", list(mapgen.SIZES))
-def test_every_seed_gives_every_player_a_fair_start(size: str, layout: Layout) -> None:
+def test_every_seed_gives_every_player_a_fair_start(size: str, layout: Layout, seeds: range) -> None:
+    """Forty seeds of every size and layout take about twenty seconds, so the fast tier checks the first three
+    of each (two, three and four players) and the slow tier the other thirty-seven."""
     width, height = mapgen.SIZES[size]
-    for seed in SEEDS:
+    for seed in seeds:
         players = 2 + seed % 3
         world = mapgen.generate(seed=seed, width=width, height=height, players=players, layout=layout)
         r = fairness(world)

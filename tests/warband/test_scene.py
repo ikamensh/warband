@@ -16,7 +16,7 @@ from warband.title import NewGameScene, TitleScene
 def game(tmp_path):
     g = Game("Warband Test", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     yield g
-    g._teardown()
+    g.close()
 
 
 @pytest.fixture
@@ -32,9 +32,10 @@ def press(game: Game, key: str, **mods) -> None:
     game.tick(1 / 60)
 
 
-def tick(game: Game, seconds: float) -> None:
-    for _ in range(int(seconds * 60) + 1):
-        game.tick(1 / 60)
+def tick(game: Game, seconds: float, dt: float = 1 / 60) -> None:
+    """*seconds* of play in frames of *dt*; a test that only waits for a state to come about takes tenths."""
+    for _ in range(int(seconds / dt) + 1):
+        game.tick(dt)
 
 
 def texts(game: Game) -> list[str]:
@@ -160,7 +161,7 @@ def test_build_menu_places_a_farm_where_the_mouse_is(play) -> None:
     assert scene._ghost() is not None and scene._ghost()[2]
     click(game, scene, (site[0] + 1, site[1] + 1))
     assert isinstance(peasant.order, Build) and peasant.order.type is BuildingType.FARM and peasant.order.pos == site
-    tick(game, 3.0)
+    tick(game, 3.0, 0.1)
     assert any(b.type is BuildingType.FARM for b in world.player_buildings(scene.human))
 
 
@@ -338,11 +339,11 @@ def test_an_attack_on_the_base_raises_an_alert_that_space_jumps_to(play) -> None
     enemy = world.spawn_unit(1, UnitType.KNIGHT, tile_center((hall.x + 4, hall.y + 1)))
     world.attack([enemy.id], hall.id)
     scene.camera.center_on(0, 0)
-    tick(game, 3.0)
+    tick(game, 3.0, 0.1)
     assert scene.last_alert is not None and "under_attack" in scene.recent_sounds
     assert any("Under attack" in t for t in texts(game))
     press(game, "space")
-    tick(game, 0.5)
+    tick(game, 0.5, 0.1)
     left, top, right, bottom = scene.camera.visible_world_rect()
     assert left < scene.last_alert[0] * 32 < right and top < scene.last_alert[1] * 32 < bottom
 
@@ -367,13 +368,13 @@ def test_a_kill_leaves_a_body_lying_that_fades_and_is_removed(play) -> None:
     scene.brains = []  # or its side sends it off to work while the knight turns and winds up
     knight = world.spawn_unit(scene.human, UnitType.KNIGHT, tile_center((hall.x + 3, hall.y + 4)))
     world.attack([knight.id], victim.id)
-    tick(game, 1.5)
+    tick(game, 1.5, 0.1)
     assert victim.id not in world.units and scene.stats["units_killed"] == 1
     death = next(e for e in scene.effects._items if isinstance(e, UnitDeath))
     assert abs(death.sprite.rotation) > 80 and death.sprite.opacity == 255  # fallen, and lying there
-    tick(game, 3.0)
+    tick(game, 3.0, 0.1)
     assert not death.done and death.sprite.opacity == 255
-    tick(game, UnitDeath.HOLD + UnitDeath.FADE)
+    tick(game, UnitDeath.HOLD + UnitDeath.FADE, 0.1)
     assert death.done and death.sprite.is_removed and not any(isinstance(e, UnitDeath) for e in scene.effects._items)
 
 
@@ -643,7 +644,7 @@ def test_a_load_in_the_match_leaves_the_abandoned_timeline_behind(play) -> None:
     victim = world.player_units(scene.human)[0]
     raider = world.spawn_unit(rival, UnitType.FOOTMAN, (victim.x + 0.9, victim.y))
     world.attack([raider.id], victim.id)
-    tick(game, 4.0)
+    tick(game, 4.0, 0.1)
     assert scene.last_alert is not None and scene.mood == "battle"
     press(game, "f9")
     loaded = game.scene
