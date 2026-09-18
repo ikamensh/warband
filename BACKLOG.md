@@ -36,7 +36,7 @@ catches its class.
 | WB-011 | Later | proposed | Keep fog-hidden state out of opponents' network snapshots | Suggested |
 | WB-012 | Later | proposed | Support three- and four-human online FFA | Suggested |
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
-| WB-014 | Later | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
+| WB-014 | Next | blocked | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-016 | Later | blocked | Assess and recover the six-mission Thornwood campaign | Recovered branch |
 | WB-017 | Next | done | Preserve movement speed through path waypoints | WB-003 diagnosis |
 | WB-018 | Next | done | Keep large selections inside the HUD | Native crowd capture |
@@ -842,6 +842,33 @@ and FFA endings. Keep economy/crowding failures distinct from numerical balance.
 **Done when:** a recorded report supports the displayed difficulty expectations;
 concrete regressions become small fixes with rule tests, fuzz and refreshed
 fingerprints where appropriate. Do not retune from a few observed matches.
+
+**Integrated, 2026-09-18; blocked on a server rollout.** Ilya reviewed the
+`balance` work and asked for it on main ("merge into main… don't worry about
+server so much, nobody plays there yet"): merge
+[`4366789`](https://github.com/ikamensh/warband/commit/4366789), then
+[`faed307`](https://github.com/ikamensh/warband/commit/faed307). It carries the
+mine cap (eight at the face), Master expanding when its mine fails, the price
+and race changes, the repair-cost fix, match tallies, the posture league
+(`tools/balance_report.py`), settled matches and layout cycling; the evidence
+and every league's findings are in [docs/balance.md](docs/balance.md). Fuzz
+after the merge found a latent melee aim point off the map edge (seed 602),
+fixed in `af92b4c` with a test from its exact positions. The displayed
+ratings were re-measured on merged main with the 720-game protocol — Easy
+856, Medium 1000, Hard 1353, Master 1589, where the screen had said
+740/1250/1510 — see [docs/ai-ladder.md](docs/ai-ladder.md).
+
+The authoritative contract changed, so
+[promotion 35374587491](https://github.com/ikamensh/saga-online/actions/runs/35374587491)
+refused Warband 0.2.30 (native run
+[35372085715](https://github.com/ikamensh/warband/actions/runs/35372085715),
+green on Windows and Mac) with "Candidate requires a different server
+compatibility baseline", and `make ci` is red on it. That refusal is the
+designed state, not a regression: **do not revert the merge.** Every main
+build is refused the same way until the live server runs these rules; the fix
+is a server rollout like `saga-online/docs/engine-037-rollout.md`, pinning
+the current Warband main. Still to check for this item: Easy against a basic
+opening, and free-for-all endings.
 
 **Audited 2026-09-18** (the first step above). Branch `balance` at `6f873d6`
 in `~/saga/warband-balance`: clean, 23 commits of its own, 159 behind main,
