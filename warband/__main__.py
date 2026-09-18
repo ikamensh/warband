@@ -1,4 +1,4 @@
-"""Run Warband: ``python -m warband [--seed N] [--size Small|Medium|Large] [--players N] [--fullscreen]``.
+"""Run Warband: ``python -m warband [--seed N] [--size Small|Medium|Large] [--players N] [--layout NAME] [--fullscreen]``.
 
 Without ``--seed`` the game opens on the title screen (``--size`` and
 ``--players`` pre-fill the new-game options).  With ``--seed`` it skips the
@@ -15,7 +15,7 @@ import argparse
 from saga2d import add_match_arguments, match_from_arguments
 from saga2d import Game, fonts
 from warband import mapgen, sound
-from warband.rules import Difficulty, MapTheme, Race
+from warband.rules import Difficulty, Layout, MapTheme, Race
 from warband.scene import DEFAULT_SETTINGS, new_game
 from warband.style import build_theme
 from warband.title import TitleScene
@@ -26,9 +26,10 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=None, help="start this map directly, skipping the title screen")
     parser.add_argument("--size", choices=list(mapgen.SIZES), default="Medium")
     parser.add_argument("--players", type=int, default=2, choices=(2, 3, 4))
-    parser.add_argument("--difficulty", choices=[d.value for d in Difficulty], default="normal")
+    parser.add_argument("--difficulty", choices=[d.value for d in Difficulty], default="medium")
     parser.add_argument("--theme", choices=[t.value for t in MapTheme], default="summer")
     parser.add_argument("--race", choices=[r.value for r in Race], default="human", help="your race; the computer players' are drawn from the seed")
+    parser.add_argument("--layout", choices=[each.value for each in Layout] + ["any"], default="any", help="the map's shape; any draws one from the seed")
     parser.add_argument("--fullscreen", action="store_true")
     parser.add_argument("--campaign", action="store_true", help="open the campaign screen")
     parser.add_argument("--mission", metavar="ID", help="start this campaign mission directly (or 'list')")
@@ -51,12 +52,15 @@ def main() -> None:
     fonts.load(game)
     sound.install(game)
     sound.apply_volumes(settings["music"], settings["sfx"])
-    from warband.multiplayer import NetworkGameScene, WarbandMatch
+    from warband.authority import WarbandMatch
+    from warband.multiplayer import NetworkGameScene
     width, height = mapgen.SIZES[args.size]
+    layout = None if args.layout == "any" else Layout(args.layout)
     options = {'seed': args.seed if args.seed is not None else mapgen.fresh_seed(), 'width': width,
-               'height': height, 'theme': args.theme, 'races': [args.race, None]}
-    lobby = match_from_arguments(args, parser, title="Warband", game_id="warband-v1",
-                                 create_match=lambda: WarbandMatch(**{**options, 'theme': MapTheme(args.theme), 'races': (Race(args.race), None)}),
+               'height': height, 'theme': args.theme, 'races': [args.race, None], 'layout': args.layout}
+    lobby = match_from_arguments(args, parser, title="Warband", game_id="warband-v2",
+                                 create_match=lambda: WarbandMatch(**{**options, 'theme': MapTheme(args.theme), 'races': (Race(args.race), None),
+                                                                      'layout': layout}),
                                  create_scene=lambda session, match: NetworkGameScene(session, match, settings=settings),
                                  create_options=lambda: options, game=game)
     if lobby is not None:
@@ -77,21 +81,27 @@ def main() -> None:
     if args.seed is not None:
         width, height = mapgen.SIZES[args.size]
         game.run(new_game(args.seed, width=width, height=height, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme),
-                          settings=settings, races=[Race(args.race)] + [None] * (args.players - 1)))
+                          settings=settings, races=[Race(args.race)] + [None] * (args.players - 1), layout=layout))
     else:
         game.run(TitleScene(size=args.size, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme), race=Race(args.race),
-                            settings=settings))
+                            layout=layout, settings=settings))
 
 
 def selftest(png: str) -> None:
-    """Prove a build works without a screen: fonts, art, sound files and a rendered frame."""
+    """Prove a build works without a screen: fonts, art, sound files, and a match started from the title on a window the OS resized."""
     import os
 
     os.environ["SAGA2D_SILENT"] = "1"
     game = Game("Warband", resolution=(1280, 800), visible=False, theme=build_theme())
     fonts.load(game)
     bank = sound.install(game)
-    game.push(new_game(1, settings=game.settings(DEFAULT_SETTINGS)))
+    game.push(TitleScene(settings=game.settings(DEFAULT_SETTINGS)))
+    game.tick(1 / 60)
+    game.set_window_size((1271, 791))  # the OS has the last word on the window; the match starts on what it gives
+    game.tick(1 / 60)
+    game.scene.new_game()
+    game.tick(1 / 60)
+    game.scene.start()
     for _ in range(5):
         game.tick(1 / 60)
     game.backend.capture_frame().save(png)

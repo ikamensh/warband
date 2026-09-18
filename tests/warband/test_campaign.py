@@ -121,7 +121,7 @@ def test_losing_the_hall_loses_hollowmere(game) -> None:
 def begin_campaign(game: Game) -> MissionScene:
     game.push(TitleScene())
     game.tick(1 / 60)
-    press(game, "p")
+    press(game, "a")
     assert isinstance(game.scene, CampaignScene)
     press(game, "return")
     assert isinstance(game.scene, DialogScene)
@@ -166,7 +166,7 @@ def test_the_first_mission_plays_to_a_result_that_records_progress_and_leads_on(
 # -- Choices that carry across missions --------------------------------------------------------------
 
 
-def start(game: Game, mission_id: str, flags: dict | None = None, difficulty: Difficulty = Difficulty.NORMAL) -> MissionScene:
+def start(game: Game, mission_id: str, flags: dict | None = None, difficulty: Difficulty = Difficulty.MEDIUM) -> MissionScene:
     run = build_world(mission(mission_id), flags=flags or {})
     scene = MissionScene(CAMPAIGN, run, difficulty=difficulty)
     game.push(scene)
@@ -225,7 +225,7 @@ def test_refusing_the_truce_means_the_camp_must_burn(game) -> None:
 def test_the_truce_and_the_powder_shape_the_later_missions() -> None:
     peace = build_world(mission("retaken"), flags={"truce": True})
     war = build_world(mission("retaken"), flags={})
-    assert peace.ai[1] is Difficulty.EASY and war.ai[1] is Difficulty.NORMAL
+    assert peace.ai[1] is Difficulty.EASY and war.ai[1] is Difficulty.MEDIUM
     assert peace.world.players[0].gold == war.world.players[0].gold + 1000
     court = build_world(mission("court_of_thorns"), flags={"truce": True, "powder": True})
     assert not court.world.players[2].alive and not court.world.player_units(2)
@@ -290,7 +290,7 @@ def test_a_mission_save_from_another_version_costs_the_mission_not_the_campaign(
 
 
 def test_start_over_asks_twice_and_then_erases(game) -> None:
-    ProgressStore(game.data_dir).save(Progress(CAMPAIGN.id, Difficulty.NORMAL, completed=["hollowmere"]))
+    ProgressStore(game.data_dir).save(Progress(CAMPAIGN.id, Difficulty.MEDIUM, completed=["hollowmere"]))
     game.push(CampaignScene())
     game.tick(1 / 60)
     scene = game.scene

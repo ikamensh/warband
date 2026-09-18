@@ -27,7 +27,7 @@ from typing import Callable
 
 from saga2d import CommandError
 from saga2d.online import OnlineClient, server_endpoint
-from warband.ai import Brain
+from warband.ai import make_brain
 from warband.model import World, tile_center
 from warband.rules import Difficulty, MapTheme
 
@@ -97,7 +97,7 @@ def _print_event(event):
     print(json.dumps(event, separators=(",", ":"), allow_nan=False), flush=True)
 
 
-def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.NORMAL, options=None,
+def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=None,
             duration=None, wait_timeout=900.0, report_every=5.0,
             emit: Callable[[dict], None] = _print_event) -> dict:
     """Play the assigned online seat until victory or the wall-clock duration ends.
@@ -111,7 +111,7 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.NORMAL, options=N
             raise ValueError(f"{name} must be positive and finite.")
     started = waiting_since = time.monotonic()
     deadline = math.inf if duration is None else started + duration
-    client = OnlineClient("warband-v1", endpoint=endpoint, room=room, options=options)
+    client = OnlineClient("warband-v2", endpoint=endpoint, room=room, options=options)
     brain = rng = None
     announced = ever_ready = last_ready = False
     revision = -1
@@ -132,7 +132,6 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.NORMAL, options=N
             if client.resume_token and not announced:
                 emit({"event": "joined" if room else "created", "room": client.room,
                       "player": client.player, "difficulty": difficulty.value})
-                brain = Brain(client.player, difficulty)
                 announced = True
             if client.ready != last_ready:
                 emit({"event": "match_ready" if client.ready else "match_paused", "revision": client.revision})
@@ -161,8 +160,10 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.NORMAL, options=N
             if not client.ready:
                 if now - waiting_since >= wait_timeout:
                     raise TimeoutError("Timed out waiting for the other player to connect.")
-            elif not pending and client.state["world"]["time"] >= brain.next_think:
-                if rng is None:
+            elif not pending and (brain is None or client.state["world"]["time"] >= brain.next_think):
+                if brain is None:
+                    # The map's seed draws Master's posture, and a joiner learns it with the state.
+                    brain = make_brain(client.player, difficulty, client.state["seed"])
                     rng = random.Random(client.state["seed"] * 2 + client.player)
                 planning = _PlanningWorld(client.state["world"])
                 brain.think(planning, rng)
@@ -191,13 +192,13 @@ def main(argv=None) -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--room", help="join this human-created room as the second seat")
     mode.add_argument("--create", action="store_true", help="create a room, play seat zero and immediately print its code")
-    parser.add_argument("--difficulty", choices=[item.value for item in Difficulty], default="normal")
+    parser.add_argument("--difficulty", choices=[item.value for item in Difficulty], default="medium")
     parser.add_argument("--duration", type=float, help="maximum wall-clock seconds including the lobby; default runs until victory")
     parser.add_argument("--wait-timeout", type=float, default=900, help="maximum seconds waiting for a partner (default: 900)")
     parser.add_argument("--report-every", type=float, default=5, help="seconds between authoritative evidence rows (default: 5)")
     parser.add_argument("--seed", type=int, default=3, help="map seed for --create")
-    parser.add_argument("--width", type=int, default=48, help="map width for --create (40–64)")
-    parser.add_argument("--height", type=int, default=40, help="map height for --create (32–48)")
+    parser.add_argument("--width", type=int, default=48, help="map width for --create (48–80)")
+    parser.add_argument("--height", type=int, default=40, help="map height for --create (40–64)")
     parser.add_argument("--theme", choices=[item.value for item in MapTheme], default="summer", help="map theme for --create")
     args = parser.parse_args(argv)
     try:

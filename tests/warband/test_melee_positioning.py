@@ -89,8 +89,12 @@ def test_attack_move_fights_an_adjacent_defender_instead_of_chasing_past_it():
     world.hold([defender.id])
     world.update_vision()
     world.take_events()
-    world.step()
-    hits = [event for event in world.take_events() if event.kind == "hit" and event.entity == soldier.id]
+    hits = []
+    for _ in range(20):  # the wind-up, then the blow
+        world.step()
+        hits += [event for event in world.take_events() if event.kind == "hit" and event.entity == soldier.id]
+        if hits:
+            break
     assert len(hits) == 1 and hits[0].other == defender.id
 
 
@@ -102,8 +106,10 @@ def test_an_acquired_opponent_is_not_abandoned_during_attack_recovery():
     world.hold([target.id])
     world.attack_move([soldier.id], (15, 8.5))
     world.update_vision()
-    for _ in range(6):
+    for _ in range(30):
         world.step()
+        if soldier.cooldown > 0:
+            break
     assert soldier.cooldown > 0
     substitute = world.spawn_unit(1, UnitType.FOOTMAN, (soldier.x, soldier.y + .7))
     world.hold([substitute.id])
@@ -126,9 +132,11 @@ def test_attack_move_finishes_a_wounded_visible_opponent_in_reach():
     world.update_vision()
     assert world.is_visible(soldier.player, wounded.tile)
     hits = []
-    for _ in range(6):
+    for _ in range(20):
         world.step()
         hits.extend(event for event in world.take_events() if event.kind == "hit" and event.entity == soldier.id)
+        if hits:
+            break
     assert len(hits) == 1 and hits[0].other == wounded.id
     assert wounded.id not in world.units and healthy.hp == healthy.max_hp
 
@@ -159,3 +167,24 @@ def test_an_attack_on_a_mining_unit_ends_even_when_the_attacker_shares_its_posit
     world.step()
     assert soldier.order is None
     assert worker.hp == worker.max_hp
+
+
+def test_a_soldier_closing_on_a_foe_at_the_map_edge_stays_on_the_map():
+    """The spot beside a target is on the attacker's side of it, so a target at the edge put that spot off the map.
+
+    Found by fuzz seed 602 (48x40, after the balance merge): a footman at
+    x=0.05 aimed for x=-0.25 beside a foe at x=0.60, and walked there. A tile
+    lookup truncates -0.04 to tile 0, so nothing on the way noticed. These are
+    that match's exact positions.
+    """
+    world = World(48, 40, [[Terrain.GRASS] * 48 for _ in range(40)], 2)
+    world.rng.seed(3)
+    soldier = world.spawn_unit(0, UnitType.FOOTMAN, (0.05, 19.021795816778983))
+    foe = world.spawn_unit(1, UnitType.FOOTMAN, (0.5964763951777218, 19.42908802887842))
+    world.hold([foe.id])
+    world.update_vision()
+    world.attack([soldier.id], foe.id)
+    for _ in range(200):
+        world.step()
+        for unit in world.units.values():
+            assert 0 <= unit.x <= world.width and 0 <= unit.y <= world.height, ("unit off the map", unit)

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from warband import path as pathing
-from warband.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, UnitType, Upgrade
+from warband.rules import BUILDINGS, MAX_PLANS, SIM_DT, UNITS, UPGRADES, BuildingType, UnitType, Upgrade
 
 if TYPE_CHECKING:
     from warband.model import Unit, World
@@ -62,6 +62,10 @@ class Settlement:
         return self._add(player, "building", building_type, pos)
 
     def _add(self, player: int, kind: str, item: BuildingType | UnitType | Upgrade, pos=None) -> int:
+        from warband.model import RuleError
+
+        if len(self.player_plans(player)) >= MAX_PLANS:
+            raise RuleError(f"Too many plans waiting ({MAX_PLANS}): cancel some in Plans first")
         plan = Plan(self.next_id, player, kind, item, pos)
         self.next_id += 1
         self.plans.append(plan)

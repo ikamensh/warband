@@ -9,7 +9,7 @@ campaign screen). Tests: `tests/warband/test_campaign.py`; screens rendered by
 
 ## What the player gets
 
-**Campaign** on the title (P) opens the campaign screen: the story's title,
+**Campaign** on the title (A) opens the campaign screen: the story's title,
 the six missions in their three acts with what is done, next and still to
 come, a map of the next mission, and one button that does the right thing:
 begin (after choosing the campaign's difficulty), resume the saved mission,

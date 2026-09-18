@@ -10,11 +10,11 @@ from saga2d.packaging import GamePackage, main
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = GamePackage(
-    game="warband", product="Warband", package="warband", online="warband.multiplayer:ONLINE",
+    game="warband", product="Warband", package="warband", online="warband.authority:ONLINE",
     bundle_id="org.saga2d.warband", installer_id="{B51768BC-40A4-4705-BE86-D55131C7B414}",
     hiddenimports=("saga2d.backends.pyglet_backend", "warband.textures", "warband.sound", "websockets.asyncio.client"),
     documents={"windows-warband.md": "docs/windows-warband.md", "warband-play-together.md": "docs/warband-play-together.md"},
-    root=ROOT, check=ROOT / "packaging" / "package_check.py",
+    root=ROOT, check=ROOT / "packaging" / "package_check.py", icon=ROOT / "packaging" / "icon.png",
 )
 
 if __name__ == "__main__":

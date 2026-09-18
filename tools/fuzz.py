@@ -3,7 +3,8 @@
     uv run python tools/fuzz.py                 # 12 AI-vs-AI games and 12 random-input scene runs
     uv run python tools/fuzz.py --games 40 --monkey 0
 
-AI games run brains against each other for up to fifteen simulated minutes,
+AI games run every difficulty against every other — which is both kinds of
+brain, since Hard and Master are :class:`warband.pro_ai.ProBrain` — for up to fifteen simulated minutes,
 checking the world every simulated second: units stand on open ground,
 hit points and resources stay in range, buildings never overlap, the
 blocked grid matches the map, hidden units are inside something real.
@@ -14,6 +15,7 @@ on the mock backend, including through every overlay.
 from __future__ import annotations
 
 import argparse
+import math
 import random
 import sys
 import tempfile
@@ -24,7 +26,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from warband import mapgen  # noqa: E402
-from warband.ai import Brain  # noqa: E402
+from warband.ai import make_brain  # noqa: E402
+from warband.pro_ai import PRO, ProBrain  # noqa: E402
 from warband.model import BLOCKING, World  # noqa: E402
 from warband.rules import BUILDINGS, SIM_DT, BuildingType, Difficulty  # noqa: E402
 from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
@@ -75,18 +78,20 @@ STALL_SECONDS = 20.0
 
 
 def check_progress(world: World, stalled: dict[int, tuple[tuple[float, float], float]]) -> None:
-    """A unit that is walking (has orders, is not hidden) must move: standing still for
-    STALL_SECONDS while in the move state is a deadlock in the movement code."""
+    """A unit that is walking (has orders, is not hidden) must get somewhere: staying within a tile of
+    where it was for STALL_SECONDS while in the move state is a deadlock in the movement code.  A
+    tile, not a point: a unit bouncing between its tile centre and a corner it cannot cut is as stuck
+    as one standing still, and a bounce whose period divides the sampling interval looks still."""
     for u in world.units.values():
         if not u.orders or u.hidden or u.state != "move":
             stalled.pop(u.id, None)
             continue
-        pos = (round(u.x, 2), round(u.y, 2))
-        last_pos, since = stalled.get(u.id, (None, world.time))
-        if last_pos != pos:
-            stalled[u.id] = (pos, world.time)
+        origin, since = stalled.get(u.id, (None, world.time))
+        if origin is None or math.dist(origin, u.pos) > 1.0:
+            stalled[u.id] = (u.pos, world.time)
         elif world.time - since > STALL_SECONDS:
-            raise AssertionError(f"unit {u.id} ({u.type.value}) stalled for {STALL_SECONDS}s at {pos} with {u.orders[0]} path {u.path[:3]}")
+            raise AssertionError(f"unit {u.id} ({u.type.value}) of player {u.player} stuck for {STALL_SECONDS}s within a tile of "
+                                 f"{origin} at {u.pos} with {u.orders[0]} path {u.path[:3]}")
 
 
 def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
@@ -98,7 +103,11 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
         width, height = rng.choice(list(mapgen.SIZES.values()))
         try:
             world = mapgen.generate(seed=seed, width=width, height=height, players=players, human=None)
-            brains = [Brain(p.id, rng.choice(list(Difficulty))) for p in world.players]
+            # Every setting, which now means both kinds of brain: Hard and Master
+            # are ProBrains, and they drive the model down paths the others never
+            # take (several build orders in flight, wounded soldiers walking home,
+            # peasants sent scouting). The invariants have to hold there too.
+            brains = [make_brain(p.id, rng.choice(list(Difficulty)), seed) for p in world.players]
             check_world(world)
             stalled: dict[int, tuple[tuple[float, float], float]] = {}
             for tick in range(int(GAME_MINUTES * 60 / SIM_DT)):
@@ -119,7 +128,7 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
             assert any(len(world.player_buildings(p.id, BuildingType.BARRACKS)) for p in world.players), "nobody built a barracks"
             assert sum(armies) > 0 or kills, "nobody trained an army"
             outcomes["decided" if world.winner is not None else "eliminations" if kills else "undecided"] += 1
-            levels = "/".join(b.difficulty.value[0] for b in brains)
+            levels = "/".join("P" if isinstance(b, ProBrain) else b.difficulty.value[0].upper() for b in brains)
             print(f"  seed {seed}: {players} players {width}x{height} [{levels}] → {world.time / 60:.1f} min, winner {world.winner}, armies {armies}, buildings {buildings}")
         except Exception:
             failures += 1
@@ -159,10 +168,14 @@ def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = No
                         if rng.random() < 0.5:
                             game.backend.inject_drag(x + rng.randrange(-200, 200), y + rng.randrange(-200, 200), rng.uniform(-50, 50), rng.uniform(-50, 50), button=button)
                         game.backend.inject_release(x + rng.randrange(-200, 200), y + rng.randrange(-200, 200), button)
-                    elif roll < 0.9:
+                    elif roll < 0.88:
                         game.backend.inject_mouse_move(rng.randrange(1280), rng.randrange(800))
-                    else:
+                    elif roll < 0.97:
                         game.backend.inject_scroll(rng.randrange(1280), rng.randrange(800), 0, rng.uniform(-5, 5))
+                    elif roll < 0.99:  # the OS has the last word on the window: any size, at any moment
+                        game.backend.inject_resize(rng.randrange(640, 3841), rng.randrange(400, 2161))
+                    else:
+                        game.backend.set_fullscreen(not game.fullscreen)
                     for _ in range(rng.choice((1, 1, 2, 12))):
                         game.tick(1 / 60)
                         if budget:

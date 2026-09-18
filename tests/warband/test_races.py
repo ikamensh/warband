@@ -10,6 +10,7 @@ from warband.ai import Brain
 from warband.model import RuleError, World, dist
 from warband.races import RACES
 from warband.rules import (
+    Layout,
     BUILDINGS, DEEP_MINING_TRIP, GOLD_PER_TRIP, REGROWTH_SECONDS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, Race, Resource, Terrain,
     UnitType, Upgrade,
 )
@@ -92,7 +93,7 @@ def test_race_arts_are_refused_to_other_races_and_the_ai_researches_only_its_own
         world.place_building(player.id, BuildingType.LUMBER_MILL, (hall.x + 2 * dx, hall.y + dy))
         world.place_building(player.id, BuildingType.BLACKSMITH, (hall.x + dx, hall.y + 2 * dy))
         world.place_building(player.id, BuildingType.STABLES, (hall.x + 2 * dx, hall.y + 2 * dy))
-    brains = [Brain(p.id, Difficulty.HARD) for p in world.players]
+    brains = [Brain(p.id, Difficulty.MEDIUM) for p in world.players]
     rng = random.Random(1)
     for _ in range(int(400 / SIM_DT)):
         for brain in brains:
@@ -272,15 +273,16 @@ def test_races_survive_a_save_and_an_old_save_means_humans() -> None:
 
 
 def test_a_match_between_two_races_plays_out_under_the_ai() -> None:
-    world = mapgen.generate(seed=9, players=2, human=None, races=(Race.ORC, Race.DWARF))
-    brains = [Brain(p.id, Difficulty.HARD) for p in world.players]
+    world = mapgen.generate(seed=9, players=2, human=None, races=(Race.ORC, Race.DWARF), layout=Layout.BASTION)  # walls: no raid empties an army
+    brains = [Brain(p.id, Difficulty.MEDIUM) for p in world.players]
     rng = random.Random(9)
     for _ in range(int(240 / SIM_DT)):
         for brain in brains:
             brain.think(world, rng)
         world.step()
     for player in world.players:
-        army = [u for u in world.player_units(player.id) if not u.is_worker]
-        assert army and all(u.race is player.race for u in army), player.race
+        trained = [what for _, what in brains[player.id].log if what.startswith("train ")]
+        assert trained, player.race  # soldiers were fielded, whatever the fighting since did to them
+        assert all(u.race is player.race for u in world.player_units(player.id)), player.race
         assert any(b.type is BuildingType.BARRACKS for b in world.player_buildings(player.id))
     assert all(dist(u.pos, u.pos) == 0 for u in world.units.values())

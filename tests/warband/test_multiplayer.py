@@ -19,11 +19,11 @@ def converge(host, client, until):
 
 def test_warband_guest_orders_and_host_simulation_stay_in_sync():
     """Guest units move on the authoritative clock; forged ownership is rejected atomically."""
-    from warband.multiplayer import WarbandMatch
+    from warband.authority import WarbandMatch
     from warband.model import World
     match = WarbandMatch(seed=3)
-    host = MatchHost('warband-v1', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
-    client = MatchClient('warband-v1', host.address, token='test')
+    host = MatchHost('warband-v2', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
+    client = MatchClient('warband-v2', host.address, token='test')
     try:
         converge(host, client, lambda: client.ready)
         guest = match.world.player_units(1)[0]
@@ -41,7 +41,54 @@ def test_warband_guest_orders_and_host_simulation_stay_in_sync():
         assert match.world.units[guest.id].pos != original
         restored = World.from_dict(client.state['world'])
         assert all(p.human for p in restored.players)
-        assert restored.to_dict() == match.world.to_dict()
+        ours, theirs = restored.to_dict(), match.world.to_dict()
+        private = ('rng', 'explored', 'worker_knowledge')  # the server's dice and the host's view of the map stay with them
+        assert {k: v for k, v in ours.items() if k not in private} == {k: v for k, v in theirs.items() if k not in private}
+        assert ours['explored'][1] == theirs['explored'][1] and ours['worker_knowledge'][1] == theirs['worker_knowledge'][1]
+    finally:
+        client.close()
+        host.close()
+
+
+def test_smart_target_identity_and_empty_ground_survive_the_socket():
+    """Context orders keep the clicked identity even if a unit crosses the point."""
+    from warband.authority import WarbandMatch
+    from warband.model import Attack, Harvest, Move, Repair, World
+    from warband.rules import BuildingType, Terrain, UnitType
+
+    match = WarbandMatch(seed=3)
+    match.world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2)
+    worker = match.world.spawn_unit(1, UnitType.PEASANT, (10.5, 10.5))
+    enemy = match.world.spawn_unit(0, UnitType.FOOTMAN, (12.5, 10.5))
+    hall = match.world.place_building(1, BuildingType.TOWN_HALL, (3, 3))
+    hall.hp -= 20
+    mine = match.world.place_building(None, BuildingType.GOLD_MINE, (17, 10))
+    match.world.update_vision()
+    host = MatchHost('warband-v2', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
+    client = MatchClient('warband-v2', host.address, token='test')
+    try:
+        converge(host, client, lambda: client.ready)
+        for target_id, order_type, destination in (
+            (None, Move, enemy.pos),
+            (enemy.id, Attack, enemy.id),
+            (mine.id, Harvest, mine.id),
+            (hall.id, Repair, hall.id),
+        ):
+            client.submit({'action': 'smart', 'args': [[worker.id], enemy.pos],
+                           'kwargs': {'target_id': target_id}})
+            converge(host, client, lambda: isinstance(match.world.units[worker.id].order, order_type))
+            order = match.world.units[worker.id].order
+            assert order.target == destination
+        client.submit({'action': 'smart', 'args': [[worker.id], enemy.pos],
+                       'kwargs': {'target_id': None, 'queue': True}})
+        converge(host, client, lambda: len(match.world.units[worker.id].orders) == 2)
+        assert isinstance(match.world.units[worker.id].orders[-1], Move)
+        before = match.world.to_dict()
+        for invalid in (True, [], {}, 'at_point', 2.5, 99999):
+            with pytest.raises(CommandError):
+                match.apply(1, {'action': 'smart', 'args': [[worker.id], enemy.pos],
+                                'kwargs': {'target_id': invalid}})
+            assert match.world.to_dict() == before
     finally:
         client.close()
         host.close()
@@ -52,7 +99,8 @@ def test_warband_fatal_impact_keeps_its_material_across_the_socket(tmp_path, aud
     """Guests hear fatal impacts, with explicit basic audio only for the old schema."""
     from saga2d import Game
     from warband.model import World
-    from warband.multiplayer import WarbandMatch, NetworkGameScene
+    from warband.authority import WarbandMatch
+    from warband.multiplayer import NetworkGameScene
     from warband.rules import BuildingType, Terrain, UnitType
     from warband.style import build_theme
 
@@ -77,8 +125,8 @@ def test_warband_fatal_impact_keeps_its_material_across_the_socket(tmp_path, aud
                 del event[field]
         return state
 
-    host = MatchHost('warband-v1', match.apply, snapshot, address=('127.0.0.1', 0), token='test')
-    client = MatchClient('warband-v1', host.address, token='test')
+    host = MatchHost('warband-v2', match.apply, snapshot, address=('127.0.0.1', 0), token='test')
+    client = MatchClient('warband-v2', host.address, token='test')
     game = Game('network battle audio', backend='mock', theme=build_theme(), save_dir=tmp_path)
     try:
         converge(host, client, lambda: client.ready)
@@ -88,7 +136,7 @@ def test_warband_fatal_impact_keeps_its_material_across_the_socket(tmp_path, aud
         game.tick(1 / 30)
         scene.order('attack', [attacker.id], victim.id)
         converge(host, client, lambda: bool(match.world.units[attacker.id].orders))
-        for _ in range(4):
+        for _ in range(40):  # the footman turns to the wall and winds up before the blow
             match.step()
             if match.world.entity(victim.id) is None:
                 break
@@ -140,7 +188,7 @@ def test_warband_fatal_impact_keeps_its_material_across_the_socket(tmp_path, aud
 
 def test_warband_invalid_cancel_index_is_rejected_without_changing_the_queue():
     """Malformed remote orders are ordinary rejections and cannot crash the host loop."""
-    from warband.multiplayer import WarbandMatch
+    from warband.authority import WarbandMatch
     from warband.rules import UnitType, BuildingType
     match = WarbandMatch()
     hall = match.world.player_buildings(1, BuildingType.TOWN_HALL)[0]
@@ -176,7 +224,8 @@ def test_warband_selection_facts_are_drawn_above_their_background(tmp_path):
 def test_warband_host_clock_runs_under_its_menu_and_pauses_on_disconnect(tmp_path):
     """The actual host scene owns time independently of the local pause overlay."""
     from saga2d import Game
-    from warband.multiplayer import WarbandMatch, NetworkGameScene
+    from warband.authority import WarbandMatch
+    from warband.multiplayer import NetworkGameScene
     from warband.style import build_theme
     match = WarbandMatch()
     host = MatchHost('warband', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
@@ -213,7 +262,8 @@ def test_warband_host_clock_runs_under_its_menu_and_pauses_on_disconnect(tmp_pat
 
 def test_guest_controls_reach_host_and_accepted_state_returns_to_the_scene(tmp_path):
     """The real match scene submits orders without mutating the guest world ahead of the host."""
-    from warband.multiplayer import WarbandMatch, NetworkGameScene
+    from warband.authority import WarbandMatch
+    from warband.multiplayer import NetworkGameScene
     from warband.style import build_theme
     match = WarbandMatch(3)
     host = MatchHost('warband', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
@@ -265,3 +315,67 @@ def test_title_opens_a_usable_host_join_form(tmp_path):
         assert game.scene.fields[1] == '8'
     finally:
         game.close()
+
+
+def test_received_melee_contact_reacts_once_across_repeated_snapshots(game):
+    """Only an authoritative hit recoils; retained event history cannot replay it."""
+    from warband.authority import WarbandMatch
+    from warband.model import World
+    from warband.multiplayer import NetworkGameScene
+    from warband.rules import BuildingType, Terrain, UnitType
+    from warband.textures import TILE
+
+    match = WarbandMatch(3)
+    match.world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2)
+    for player in match.world.players:
+        player.human = True
+    match.world.place_building(0, BuildingType.TOWN_HALL, (3, 3))
+    match.world.place_building(1, BuildingType.TOWN_HALL, (25, 18))
+    attacker = match.world.spawn_unit(1, UnitType.KNIGHT, (10.5, 10.5))
+    victim = match.world.spawn_unit(0, UnitType.PEASANT, (11.5, 10.5))
+    attacker.facing = 0.0
+    match.world.hold([victim.id])
+    match.world.update_vision()
+    host = MatchHost('warband-v2', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
+    client = MatchClient('warband-v2', host.address, token='test')
+    try:
+        converge(host, client, lambda: client.ready)
+        scene = NetworkGameScene(client, settings={'music': 0, 'sfx': 0, 'tutorial': False})
+        game.push(scene)
+        scene.order('attack', [victim.id], attacker.id)  # Rejected: another player's unit.
+        converge(host, client, lambda: bool(client.error))
+        game.tick(1 / 60)
+        assert scene.world.units[victim.id].hp == victim.max_hp
+        assert scene.view.unit_sprite(victim.id).rotation == 0
+        scene.order('attack', [attacker.id], victim.id)
+        game.tick(1 / 60)  # The host has not processed the new order or advanced yet.
+        assert scene.world.units[victim.id].hp == victim.max_hp
+        assert scene.view.unit_sprite(victim.id).rotation == 0
+        converge(host, client, lambda: bool(match.world.units[attacker.id].orders))
+        victim = match.world.units[victim.id]  # Accepted orders atomically replace the authority's world.
+        for _ in range(40):
+            match.step()
+            if victim.hp < victim.max_hp:
+                break
+        assert victim.hp < victim.max_hp
+        host.publish()
+        converge(host, client, lambda: client.revision == host.revision)
+        game.tick(1 / 60)
+        sprite = scene.view.unit_sprite(victim.id)
+        assert scene.world.units[victim.id].hp == victim.hp
+        game.tick(1 / 60)  # Advance the reaction from its zero-displacement contact instant.
+        assert abs(sprite.rotation) > 0, 'The received hit must have a visible reaction'
+        from warband.effects import Spray
+        blood = [e for e in scene.effects._items if isinstance(e, Spray)]
+        assert len(blood) == 1, 'The received hit bleeds once'
+        for _ in range(24):
+            host.publish()  # A new revision includes the same retained hit event.
+            converge(host, client, lambda: client.revision == host.revision)
+            game.tick(1 / 60)
+        assert scene.world.units[victim.id].hp == victim.hp
+        assert sprite.rotation == 0, 'Repeated snapshots restarted an old hit reaction'
+        assert [e for e in scene.effects._items if isinstance(e, Spray) and e not in blood] == [], 'Repeated snapshots bled again'
+        assert sprite.x == victim.x * TILE, 'Expired recoil must return to the received ground point'
+    finally:
+        client.close()
+        host.close()

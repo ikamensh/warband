@@ -2,28 +2,32 @@
 
 from __future__ import annotations
 
+import gc
 import json
 import math
 import random
 from collections import deque
+from datetime import datetime, timezone
 from uuid import NAMESPACE_URL, uuid4, uuid5
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from saga2d import (
-    Anchor, Button, Camera, Column, Component, InputEvent, KeyHints, Label, Layout, Minimap, MoveTo, Panel, Remove, RenderLayer, Row, Scene,
-    Sequence, Sprite, Style,
+    Anchor, Button, Camera, Column, Component, InputEvent, KeyHints, Label, Layout, Minimap, Panel, RenderLayer, Row, Scene, Sprite, Style,
 )
 from saga2d import SaveError
-from saga2d.effects import Banner, Burst, Effects, FloatingText, HitReaction, Pulse, Toast
+from saga2d.effects import Banner, Burst, Effects, FloatingText, Pulse, Toast
 from warband import ambience, deaths, mapgen, wreckage
-from warband.ai import Brain
-from warband.effects import UnitDeath
+from warband.ai import DIFFICULTY_ELO, make_brain
+from warband.effects import Spray, Stain, UnitDeath, death_outcome
 from warband.icons import Icon, draw_icon
 from warband.model import Building, Entity, Event, Pos, RuleError, Unit, World
 from warband.production import ProductionButton, ProductionTarget, draw_production_icon
 from warband.races import RACES, RaceInfo
 from warband.rules import BUILDINGS, SIM_DT, UPGRADES, BuildingType, Difficulty, MapTheme, Race, UnitType, Upgrade
+from warband.rules import Layout as MapLayout
+from warband.profile import MatchResult, Profile, RatingChange, Standing, rated, standing
+from warband.replay import Replay, ReplayStore
 from warband.scores import HighScores, score_breakdown
 from warband.sound import IMPACTS, apply_volumes, impact_sound, play_music, play_sound
 from warband.voices import voiced
@@ -32,14 +36,15 @@ from warband.style import (
 )
 from warband.textures import TILE
 from warband.tutorial import OBJECTIVES, Tutorial
-from warband.view import MapView, Overlay, rgba, to_tiles, to_world
+from warband.view import MapView, Overlay, Sighting, check_memory, rgba, to_tiles, to_world
 
-DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True}
-SAVE_VERSION = 1
+DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True, "blood": True}
+FLESH = {u.value for u in UnitType} - {UnitType.CATAPULT.value}  # what bleeds when hit
+SAVE_VERSION = 2  # 2: the world records its layout
 SAVE_SLOTS = 3
 AUTOSAVE_EVERY = 120.0  # seconds of match time
 TOAST_TOP = 280  # below the resource, settlement and objectives panels
-HUD_TOP = 146  # just under the Settlement row: the status line starts here, and the map can scroll clear of it
+HUD_TOP = 158  # just under the Settlement row (which ends at 150): the status line starts here, and the map can scroll clear of it
 HINT_BAR = 28
 PANEL_MARGIN = (12, HINT_BAR + 10)
 MAX_STEPS_PER_FRAME = 6
@@ -62,11 +67,17 @@ UPGRADE_NAMES = {Upgrade.BLADES_1: "Blades I", Upgrade.BLADES_2: "Blades II", Up
                  Upgrade.BLOODLUST: "Bloodlust", Upgrade.PLUNDER: "Plunder", Upgrade.LONGBOWS: "Longbows", Upgrade.REGROWTH: "Regrowth",
                  Upgrade.DEEP_MINING: "Mining", Upgrade.BLASTING_POWDER: "Powder"}
 CARD_WIDTH = 116
+CARD_GAP = 6
+CARD_PANEL_WIDTH = CARD_COLS * CARD_WIDTH + (CARD_COLS - 1) * CARD_GAP + 2 * PANEL_STYLE.padding  # the widest command card
 CARD_ICON = 58  # height of a portrait button; the name sits under it
 MINIMAP_WIDTH = 200
 SELECTION_WIDTH = 470
 SELECTION_HEIGHT = 128
-MAX_PORTRAITS = 12
+PORTRAIT = 30  # a selected unit's portrait in the panel
+PORTRAIT_GAP = 3
+PORTRAIT_COLS = 13
+PORTRAIT_ROWS = 2
+PORTRAITS_PER_PAGE = PORTRAIT_COLS * PORTRAIT_ROWS  # a larger selection pages; the grid's last cell turns the page
 
 
 def _clock(seconds: float) -> str:
@@ -101,7 +112,20 @@ class QueueEntry:
     state: str  # "working" | "queued" | "waiting"
     progress: float  # of the work; 0 while queued or waiting
     goto: Callable[[], None] | None  # left click: select the producer or look at the site
-    cancel: Callable[[], None]  # right click
+    cancel: Callable[[], bool]  # right click; whether the rules allowed it
+
+
+class _SelectionPanel(Component):
+    """Route the immediate-drawn portraits and production queue through the UI tree."""
+
+    def __init__(self, scene: GameScene, **kwargs: Any) -> None:
+        super().__init__(blocks_pointer=True, **kwargs)
+        self.scene = scene
+
+    def on_event(self, event: InputEvent) -> bool:
+        if event.type == "click" and self.hit_test(event.x, event.y):
+            return self.scene._click_panel(event.x, event.y, event.button, shift=event.shift)
+        return False
 
 
 class GameScene(Scene):
@@ -115,6 +139,7 @@ class GameScene(Scene):
         "f2": "open_codex",
         "f3": "toggle_pause",
         "f4": "hide_tutorial",
+        "f11": "toggle_bars",
         "f5": "quick_save",
         "f9": "quick_load",
         "f10": "open_menu",
@@ -124,21 +149,33 @@ class GameScene(Scene):
         "minus": "zoom_out",
         "tab": "next_idle_peasant",
         "period": "next_idle_soldier",
-        "ctrl+a": "select_army",
+        ("ctrl+a", "meta+a"): "select_army",
         "f6": "recall_bookmark_1", "f7": "recall_bookmark_2", "f8": "recall_bookmark_3",
         "ctrl+f6": "set_bookmark_1", "ctrl+f7": "set_bookmark_2", "ctrl+f8": "set_bookmark_3",
     }
 
-    def __init__(self, world: World, seed: int, *, difficulty: Difficulty = Difficulty.NORMAL, settings: dict[str, Any] | None = None,
-                 player: int | None = None, run_id: str | None = None, ranked: bool = True) -> None:
+    def __init__(self, world: World, seed: int, *, difficulty: Difficulty = Difficulty.MEDIUM, settings: dict[str, Any] | None = None,
+                 player: int | None = None, run_id: str | None = None, ranked: bool = True, replay: Replay | None = None,
+                 seen: dict | None = None) -> None:
+        """A *ranked* match is recorded from here on (or *replay* goes on recording it, after a load) and rated when it ends.
+        *seen* is what a save's view remembered of ground out of sight (:meth:`MapView.memory`)."""
         self.world = world
+        self.view: MapView | None = None  # made on entry: it needs the game
+        self._seen = seen
         self.run_id = run_id if run_id is not None else str(uuid4())  # one leaderboard row per match, however often it is reloaded
         self.ranked = ranked
         self.seed = seed
         self.difficulty = difficulty
         self.human = next(p.id for p in world.players if p.human) if player is None else player
-        self.brains = [Brain(p.id, difficulty) for p in world.players if not p.human]
-        self.rng = random.Random(seed)
+        self.replay: Replay | None = None  # recording from entry on, when ranked
+        self._saved_replay = replay
+        self.profile: Profile | None = None  # loaded on entry: the scene needs the data directory
+        self.profile_error = ""
+        self.rating_change: RatingChange | None = None  # what the finished or abandoned match did to the rating
+        self._resignation: Standing | None = None  # where the player stood when they resigned
+        self.brains = [make_brain(p.id, difficulty, seed) for p in world.players if not p.human]
+        self.rng = random.Random(seed)  # the computer players' stream, and nothing else's: what is drawn must not move the match
+        self.fx_rng = random.Random(seed)  # sparks, blood and dust
         self.settings = settings if settings is not None else dict(DEFAULT_SETTINGS)  # a saga2d Settings when the game runs
         for key, value in DEFAULT_SETTINGS.items():
             self.settings.setdefault(key, value)
@@ -153,6 +190,11 @@ class GameScene(Scene):
         self.speed = 1.0
         self.clock = 0.0
         self.effects = Effects()
+        self.bodies: list[UnitDeath] = []  # lying where they fell, oldest first
+        self.all_bars = False  # F11: every visible unit's and building's health, not only the wounded
+        self.alt_held = False  # Alt on the latest input shows the same while it lasts
+        self.stains: list[Stain] = []  # under the bodies, oldest first
+        self._blows: dict[int, tuple[float, float]] = {}  # unit id -> where its last visible blow came from (tiles)
         self.recent_sounds: deque[str] = deque(maxlen=48)
         self.status = ""
         self.status_timer = 0.0
@@ -167,6 +209,8 @@ class GameScene(Scene):
         self._card: list[Command] = []
         self._card_buttons: list[Button] = []
         self._portraits: list[tuple[int, tuple[int, int, int, int]]] = []
+        self._portrait_page, self._portrait_pages = 0, 1  # of a selection too large for one grid
+        self._page_tile: tuple[float, float, float, float] | None = None
         self._queue_hits: list[tuple[tuple[float, float, float, float], QueueEntry]] = []
         self._sound_times: dict[str, float] = {}
         self._battle_voices: deque[float] = deque()
@@ -179,7 +223,11 @@ class GameScene(Scene):
     # -- Lifecycle -------------------------------------------------------------
 
     def on_enter(self) -> None:
-        self.view = MapView(self, self.world, self.human)
+        self._load_profile()
+        if self.ranked:
+            self.replay = self._recording(self._saved_replay)
+            self._saved_replay = None
+        self.view = self._make_view()
         self._setup_camera()
         self.apply_settings()
         self._build_hud()
@@ -193,6 +241,9 @@ class GameScene(Scene):
 
     def on_reveal(self) -> None:
         self._refresh_card()  # the Plans overlay may have cancelled what the card's keys and counts describe
+
+    def _make_view(self) -> MapView:
+        return MapView(self, self.world, self.human, memory=self._seen)
 
     def _setup_camera(self) -> None:
         """The map plus its rim, scrollable clear of the HUD: the top rows above, the selection panel and minimap below."""
@@ -273,51 +324,58 @@ class GameScene(Scene):
             (Row(Icon("supply", size=22), Label(supply_text, text_style="hud"), spacing=6),
              "Supply used / capacity — farms and halls feed the army"),
         ]
-        self.ui.add(Panel(anchor=Anchor.TOP_LEFT, margin=12, layout=Layout.HORIZONTAL, spacing=12, style=PANEL_STYLE, children=[
+        self.ui.add(Panel(anchor=Anchor.TOP_LEFT, margin=12, layout=Layout.HORIZONTAL, spacing=12, style=PANEL_STYLE, blocks_pointer=True, children=[
             Label(player.name, text_style="title", text_color=rgba(player.color)),
             Label(self.race.name, text_style="sub"),
             *(row for row, _hint in self._resource_rows),
             Label(lambda: _clock(world.time), text_style="sub"),
             Label(lambda: "Paused" if self.paused else f"×{self.speed:g}" if self.speed != 1 else "", text_style="hud", text_color=BAD),
             self._idle_button(),
+            self._army_button(),
             Button("Menu", hotkey="F10", on_click=self.open_menu, style=GHOST_BUTTON),
         ]))
-        # The keycaps are hints only: the letters are dispatched after the command card (see handle_input), so a
-        # selection's own commands keep them, and Ctrl+letter forces the settlement action past that.
+        # Advertise the chords that always work. Plain letters fall through to these actions only when
+        # the command card does not claim them (for example, T means Tower in the build catalogue).
         self.ui.add(Row(Label("Settlement", text_style="heading", width=124),
-                        Button("Build", hotkey="B", on_click=lambda: self.toggle_settlement("build"), style=GHOST_BUTTON, width=104),
-                        Button("Train", hotkey="T", on_click=lambda: self.toggle_settlement("train"), style=GHOST_BUTTON, width=104),
-                        Button("Upgrade", hotkey="U", on_click=lambda: self.toggle_settlement("upgrade"), style=GHOST_BUTTON, width=128),
+                        Button("Build", hotkey="Ctrl+B", on_click=lambda: self.toggle_settlement("build"), style=GHOST_BUTTON),
+                        Button("Train", hotkey="Ctrl+T", on_click=lambda: self.toggle_settlement("train"), style=GHOST_BUTTON),
+                        Button("Upgrade", hotkey="Ctrl+U", on_click=lambda: self.toggle_settlement("upgrade"), style=GHOST_BUTTON),
                         Button(lambda: f"Plans ({self._plan_count()})", hotkey="Ctrl+P", on_click=self.open_plans, style=GHOST_BUTTON, width=152),
-                        Button("Assembly", hotkey="G", on_click=lambda: self.start_pending("assembly"), style=GHOST_BUTTON, width=128),
-                        spacing=8, anchor=Anchor.TOP_LEFT, margin=(12, 84), style=PANEL_STYLE))
+                        Button("Assembly", hotkey="Ctrl+G", on_click=lambda: self.start_pending("assembly"), style=GHOST_BUTTON),
+                        spacing=8, anchor=Anchor.TOP_LEFT, margin=(12, 84), style=PANEL_STYLE, blocks_pointer=True))
         world_w, world_h = self.world.width * TILE, self.world.height * TILE
         self.minimap = Minimap(self.view.minimap_key, (world_w, world_h), self.camera, width=MINIMAP_WIDTH,
                                height=self._minimap_height(), on_click=self.minimap_click,
-                               anchor=Anchor.BOTTOM_LEFT, margin=PANEL_MARGIN, style=PANEL_STYLE)
+                               anchor=Anchor.BOTTOM_LEFT, margin=PANEL_MARGIN, style=PANEL_STYLE, blocks_pointer=True)
         self.ui.add(self.minimap)
-        self.selection_panel = Component(width=SELECTION_WIDTH, height=SELECTION_HEIGHT, anchor=Anchor.BOTTOM_CENTER, margin=PANEL_MARGIN)
+        # Centre the selection between the minimap and the widest command card.
+        width = self.game.resolution[0]
+        left = max(PANEL_MARGIN[0] + MINIMAP_WIDTH + 12,
+                   min((width - SELECTION_WIDTH) // 2,
+                       width - PANEL_MARGIN[0] - CARD_PANEL_WIDTH - 8 - SELECTION_WIDTH))
+        self.selection_panel = _SelectionPanel(self, width=SELECTION_WIDTH, height=SELECTION_HEIGHT,
+                                               anchor=Anchor.BOTTOM_LEFT, margin=(left, PANEL_MARGIN[1]))
         self.ui.add(self.selection_panel)
-        self.card_panel = Column(spacing=6, anchor=Anchor.BOTTOM_RIGHT, margin=PANEL_MARGIN, style=PANEL_STYLE)
+        self.card_panel = Column(spacing=CARD_GAP, anchor=Anchor.BOTTOM_RIGHT, margin=PANEL_MARGIN, style=PANEL_STYLE, blocks_pointer=True)
         self.ui.add(self.card_panel)
         # What a hovered command or queued job is, wrapped above the selection panel where a long line fits.
-        self.command_tooltip = Panel(anchor=Anchor.BOTTOM_CENTER, margin=(0, PANEL_MARGIN[1] + SELECTION_HEIGHT + 8), layout=Layout.VERTICAL,
-                                     style=PANEL_STYLE, visible=False,
+        self.command_tooltip = Panel(anchor=Anchor.BOTTOM_LEFT, margin=(left, PANEL_MARGIN[1] + SELECTION_HEIGHT + 8), layout=Layout.VERTICAL,
+                                     style=PANEL_STYLE, visible=False, blocks_pointer=True,
                                      children=[Label(lambda: self.tooltip, text_style="body", wrap=True, width=SELECTION_WIDTH - 24)])
         self.ui.add(self.command_tooltip)
-        self.ui.add(KeyHints(self._hint, anchor=Anchor.BOTTOM_CENTER, margin=5))
+        self.ui.add(KeyHints(self._hint, anchor=Anchor.BOTTOM_CENTER, margin=5, blocks_pointer=True))
         self.ui.add(Label(lambda: self.status if self.status_timer > 0 else "", text_style="hud", anchor=Anchor.TOP_LEFT,
-                          margin=(12, HUD_TOP), width=760, wrap=True, text_color=GOLD))
+                          margin=(12, HUD_TOP), width=760, wrap=True, text_color=GOLD, blocks_pointer=True))
         self.objectives = self._build_objectives()
         self.ui.add(self.objectives)
         self._refresh_card()
 
     def _build_objectives(self) -> Column:
         """The panel under the top-right corner: the tutorial strip here, a mission's objectives in the campaign."""
-        panel = Column(spacing=4, anchor=Anchor.TOP_RIGHT, margin=(12, HUD_TOP), style=PANEL_STYLE)
+        panel = Column(spacing=4, anchor=Anchor.TOP_RIGHT, margin=(12, HUD_TOP), style=PANEL_STYLE, blocks_pointer=True)
         panel.add(Row(Label("Getting started", text_style="heading", width=290),
                       Button("Hide", hotkey="F4", on_click=self.hide_tutorial, style=GHOST_BUTTON, width=90), spacing=8))
-        self.objective_label = Label("", text_style="body", width=390)
+        self.objective_label = Label("", text_style="body", width=390, wrap=True)
         self.objective_done = Label("", text_style="sub", width=390)
         panel.add(self.objective_label)
         panel.add(self.objective_done)
@@ -328,6 +386,11 @@ class GameScene(Scene):
         self.tutorial = None
         self.objectives.visible = False
         self.sfx("button")
+
+    def toggle_bars(self) -> None:
+        """F11: health over every visible unit and building, or over the wounded and the selected only."""
+        self.all_bars = not self.all_bars
+        self.say("Health bars: everyone" if self.all_bars else "Health bars: the wounded and the selected")
 
     def _update_objectives(self) -> None:
         if self.tutorial is None:
@@ -350,6 +413,14 @@ class GameScene(Scene):
     def _idle_peasant_count(self) -> int:
         return sum(1 for u in self.world.player_units(self.human) if u.is_worker and not u.orders and not u.hidden)
 
+    def _army_button(self) -> Button:
+        self.army_button = Button(lambda: f"Army {len(self._army())}", hotkey="Ctrl+A", on_click=self.select_army, style=ACTION_BUTTON)
+        return self.army_button
+
+    def _army(self) -> list[Unit]:
+        """Every soldier of the player's, wherever it stands: what the Army button and Ctrl+A select."""
+        return [u for u in self.world.player_units(self.human) if not u.is_worker and not u.hidden]
+
     def _hint(self) -> list[tuple[str, str]]:
         if self.pending is not None:
             return [("Click", "target"), ("Right click", "cancel"), ("Shift", "queue / keep placing")]
@@ -370,7 +441,7 @@ class GameScene(Scene):
         if building is not None:
             keys = " ".join(dict.fromkeys(c.hotkey for c in self._card if c.hotkey not in ("X", "C")))
             return ([(keys, "train / research")] if keys else []) + [("Right click", "rally point"), ("F2", "codex"), ("Esc", "deselect")]
-        return [("Drag", "select"), ("B / T / U", "plan buildings / units / upgrades"), ("G", "assembly"), ("Tab", "idle peasant"),
+        return [("Drag", "select"), ("B / T / U", "plan buildings / units / upgrades"), ("G", "assembly"), ("Tab", "idle peasant"), ("Ctrl+A", "army"),
                 ("Space", "last alert"), ("F3", "pause"), ("F1", "help"), ("F2", "codex")]
 
     # -- Selection -----------------------------------------------------------------
@@ -401,6 +472,7 @@ class GameScene(Scene):
         if len(alive) > 1:
             alive = [i for i in alive if isinstance(self.world.entity(i), Unit)]  # buildings are selected alone
         self.selection = alive
+        self._portrait_page = 0
         self.pending = None
         self.build_menu = False
         self.settlement_menu = None
@@ -409,13 +481,14 @@ class GameScene(Scene):
             self.sfx("select")
 
     def _prune_selection(self) -> None:
+        """Drop what is gone; a building razed out of sight stays selected as the player remembers it, until they look."""
         before = list(self.selection)
-        self.selection = [i for i in self.selection if self.world.entity(i) is not None]
+        self.selection = [i for i in self.selection if self.world.entity(i) is not None or self.view.sighting(i) is not None]
         if self.selection != before:
             self._refresh_card()
 
     def click_select(self, point: tuple[float, float], shift: bool, ctrl: bool = False) -> None:
-        entity = self.world.entity_at(point, visible_to=self.human)
+        entity = self.view.entity_at(point)
         if entity is None:
             if not shift:
                 self.select([])
@@ -433,18 +506,19 @@ class GameScene(Scene):
     def select_same_type(self, unit: Unit, *, add: bool = False) -> None:
         """Every unit of *unit*'s type that is on screen (a double-click or ctrl-click)."""
         left, top, right, bottom = self.camera.visible_world_rect()
-        same = [u.id for u in self.world.units_in_rect(*to_tiles(left, top), *to_tiles(right, bottom), player=self.human) if u.type is unit.type]
+        same = [u.id for u in self.view.units_in_rect(to_tiles(left, top), to_tiles(right, bottom), player=self.human) if u.type is unit.type]
         self.select(same if not add else [i for i in same if i not in self.selection], add=add)
 
     def select_army(self) -> None:
-        soldiers = [u.id for u in self.world.player_units(self.human) if not u.is_worker and not u.hidden]
+        """The Army button, Ctrl+A or Cmd+A on a Mac."""
+        soldiers = [u.id for u in self._army()]
         if soldiers:
             self.select(soldiers)
         else:
             self.say("No soldiers yet")
 
     def box_select(self, a: tuple[float, float], b: tuple[float, float], shift: bool) -> None:
-        units = self.world.units_in_rect(a[0], a[1], b[0], b[1], player=self.human)
+        units = self.view.units_in_rect(a, b, player=self.human)
         if units:
             self.select([u.id for u in units], add=shift)
         elif not shift:
@@ -489,40 +563,54 @@ class GameScene(Scene):
         wx, wy = to_world(point)
         self.effects.add(Pulse((wx, wy), color, radius=(4, 18), rings=2, duration=0.5))
 
-    def order(self, action, *args, **kwargs):
-        return getattr(self.world, action)(*args, **kwargs)
+    def order(self, action, *args, **kwargs) -> None:
+        """Give the match an order; a match played elsewhere (:class:`warband.multiplayer.NetworkGameScene`) sends it there."""
+        getattr(self.world, action)(*args, **kwargs)
+
+    def attempt(self, action: str, *args, **kwargs) -> bool:
+        """Give an order for the player.  When the rules refuse it, the status line says why and this is False.
+        Every button, key and click goes through here, so a refusal is never an exception in the frame."""
+        try:
+            self.order(action, *args, **kwargs)
+        except RuleError as exc:
+            self.warn(str(exc))
+            return False
+        return True
+
+    def _enemy(self, target: Entity | None) -> bool:
+        return target is not None and target.player is not None and target.player != self.human
 
     def command_smart(self, point: tuple[float, float], *, queue: bool = False) -> None:
         units = self._own_units()
         if units:
-            verb = self.order("smart", [u.id for u in units], point, queue=queue)
-            self._marker(point, (255, 80, 70, 220) if verb == "attack" else (120, 255, 140, 220))
-            self.sfx("attack_command" if verb == "attack" else "command")
+            ids = [u.id for u in units]
+            target = self.view.entity_at(point)
+            attack = self._enemy(target)  # the only context order that strikes: smart on anything else moves, mends, mines or builds
+            if attack:
+                given = self.attempt("attack", ids, target.id, queue=queue)
+            else:
+                given = self.attempt("smart", ids, point, queue=queue, target_id=target.id if target is not None else None)
+            if given:
+                self._marker(point, (255, 80, 70, 220) if attack else (120, 255, 140, 220))
+                self.sfx("attack_command" if attack else "command")
             return
         building = self._own_building()
-        if building is not None and building.done:
-            self.order("set_rally", building.id, point)
+        if building is not None and building.done and self.attempt("set_rally", building.id, point):
             self._marker(point, (255, 214, 110, 220))
             self.sfx("command")
 
     def command_repair(self, point: tuple[float, float], *, queue: bool = False) -> None:
         workers = [u.id for u in self._own_units() if u.is_worker]
-        target = self.world.entity_at(point, visible_to=self.human)
+        target = self.view.entity_at(point)
         if not workers or not isinstance(target, Building):
             self.warn("Click one of your damaged buildings")
-            return
-        try:
-            self.order("repair", workers, target.id, queue=queue)
-        except RuleError as exc:
-            self.warn(str(exc))
-            return
-        self._marker(point, (120, 255, 140, 220))
-        self.sfx("command")
+        elif self.attempt("repair", workers, target.id, queue=queue):
+            self._marker(point, (120, 255, 140, 220))
+            self.sfx("command")
 
     def command_move(self, point: tuple[float, float], *, queue: bool = False) -> None:
         units = self._own_units()
-        if units:
-            self.order("move", [u.id for u in units], point, queue=queue)
+        if units and self.attempt("move", [u.id for u in units], point, queue=queue):
             self._marker(point, (120, 255, 140, 220))
             self.sfx("command")
 
@@ -531,35 +619,29 @@ class GameScene(Scene):
         if not units:
             return
         ids = [u.id for u in units]
-        target = self.world.entity_at(point, visible_to=self.human)
-        try:
-            if target is not None and target.player is not None and target.player != self.human:
-                self.order("attack", ids, target.id, queue=queue)
-            else:
-                self.order("attack_move", ids, point, queue=queue)
-        except RuleError as exc:
-            self.warn(str(exc))
-            return
-        self._marker(point, (255, 80, 70, 220))
-        self.sfx("attack_command")
+        target = self.view.entity_at(point)
+        if self._enemy(target):
+            given = self.attempt("attack", ids, target.id, queue=queue)
+        else:
+            given = self.attempt("attack_move", ids, point, queue=queue)
+        if given:
+            self._marker(point, (255, 80, 70, 220))
+            self.sfx("attack_command")
 
     def command_patrol(self, point: tuple[float, float], *, queue: bool = False) -> None:
         units = self._own_units()
-        if units:
-            self.order("patrol", [u.id for u in units], point, queue=queue)
+        if units and self.attempt("patrol", [u.id for u in units], point, queue=queue):
             self._marker(point, (120, 200, 255, 220))
             self.sfx("command")
 
     def command_stop(self) -> None:
         units = self._own_units()
-        if units:
-            self.order("stop", [u.id for u in units])
+        if units and self.attempt("stop", [u.id for u in units]):
             self.sfx("command")
 
     def command_hold(self) -> None:
         units = self._own_units()
-        if units:
-            self.order("hold", [u.id for u in units])
+        if units and self.attempt("hold", [u.id for u in units]):
             self.sfx("command")
 
     def start_pending(self, mode: str) -> None:
@@ -591,10 +673,7 @@ class GameScene(Scene):
         size = BUILDINGS[building_type].size
         site = (int(math.floor(point[0] - size / 2 + 0.5)), int(math.floor(point[1] - size / 2 + 0.5)))
         builder = min(peasants, key=lambda u: (u.hidden, math.dist(u.pos, point)))
-        try:
-            self.order("build", builder.id, building_type, site, queue=keep)
-        except RuleError as exc:
-            self.warn(str(exc))
+        if not self.attempt("build", builder.id, building_type, site, queue=keep):
             return
         self.sfx("command")
         self._marker((site[0] + size / 2, site[1] + size / 2), (255, 214, 110, 220))
@@ -610,46 +689,28 @@ class GameScene(Scene):
 
     def train(self, unit_type: UnitType) -> None:
         building = self._own_building()
-        if building is None:
-            return
-        try:
-            self.order("train", building.id, unit_type)
-        except RuleError as exc:
-            self.warn(str(exc))
-            return
-        self.sfx("button")
-        self._refresh_card()
+        if building is not None and self.attempt("train", building.id, unit_type):
+            self.sfx("button")
+            self._refresh_card()
 
     def cancel_work(self) -> None:
         building = self._own_building()
-        if building is None:
+        if building is None or not (building.queue or building.research is not None):
             return
-        if building.queue:
-            self.order("cancel_train", building.id)
-        elif building.research is not None:
-            self.order("cancel_research", building.id)
-        else:
-            return
-        self.sfx("button")
-        self._refresh_card()
+        if self.attempt("cancel_train" if building.queue else "cancel_research", building.id):
+            self.sfx("button")
+            self._refresh_card()
 
     def research(self, upgrade: Upgrade) -> None:
         building = self._own_building()
-        if building is None:
-            return
-        try:
-            self.order("research", building.id, upgrade)
-        except RuleError as exc:
-            self.warn(str(exc))
-            return
-        self.sfx("button")
-        self._refresh_card()
+        if building is not None and self.attempt("research", building.id, upgrade):
+            self.sfx("button")
+            self._refresh_card()
 
     def cancel_construction(self) -> None:
         building = self._own_building()
-        if building is None or building.done:
+        if building is None or building.done or not self.attempt("cancel_building", building.id):
             return
-        self.order("cancel_building", building.id)
         self.say(f"{building.info.name} cancelled, cost refunded")
         self.sfx("button")
         self.select([])
@@ -699,10 +760,7 @@ class GameScene(Scene):
         self.game.push(SettlementPlansScene(self))
 
     def order_production(self, kind: str, item: UnitType | Upgrade) -> None:
-        try:
-            self.order("order_unit" if kind == "train" else "order_upgrade", self.human, item)
-        except RuleError as exc:
-            self.warn(str(exc))
+        if not self.attempt("order_unit" if kind == "train" else "order_upgrade", self.human, item):
             return
         info = self.race.units[item] if kind == "train" else UPGRADES[item]
         self.say(f"{info.name} ordered · pay when work starts · manage in Plans")
@@ -712,10 +770,7 @@ class GameScene(Scene):
     def place_plan(self, building_type: BuildingType, point: tuple[float, float], *, keep: bool = False) -> None:
         size = BUILDINGS[building_type].size
         site = (int(math.floor(point[0] - size / 2 + 0.5)), int(math.floor(point[1] - size / 2 + 0.5)))
-        try:
-            self.order("plan_building", self.human, building_type, site)
-        except RuleError as exc:
-            self.warn(str(exc))
+        if not self.attempt("plan_building", self.human, building_type, site):
             return
         self.say(f"{self.building_name(building_type)} planned · a worker will build when ready")
         self.sfx("command")
@@ -724,10 +779,7 @@ class GameScene(Scene):
             self._refresh_card()
 
     def set_assembly(self, point: tuple[float, float] | None) -> None:
-        try:
-            self.order("set_assembly", self.human, point)
-        except RuleError as exc:
-            self.warn(str(exc))
+        if not self.attempt("set_assembly", self.human, point):
             return
         self.say("Assembly point cleared" if point is None else "New soldiers will assemble here; workers keep working")
         self.sfx("command")
@@ -748,11 +800,11 @@ class GameScene(Scene):
                 if building.pos not in sites:
                     progress = building.progress / building.info.build_time
                     entries.append(QueueEntry(building.type, f"{building.info.name} · building {int(progress * 100)}%", "working", progress, look,
-                                              lambda b=building: self.order("cancel_building", b.id)))
+                                              lambda b=building: self.attempt("cancel_building", b.id)))
                 continue
             for index, unit_type in enumerate(building.queue):
                 info = race.units[unit_type]
-                cancel = lambda b=building, i=index: self.order("cancel_train", b.id, i)
+                cancel = lambda b=building, i=index: self.attempt("cancel_train", b.id, i)
                 if index == 0:
                     progress = building.train_progress / info.build_time
                     entries.append(QueueEntry(unit_type, f"{info.name} · training {int(progress * 100)}% at the {building.info.name}", "working",
@@ -763,10 +815,10 @@ class GameScene(Scene):
                 info = UPGRADES[building.research]
                 progress = building.research_progress / info.time
                 entries.append(QueueEntry(building.research, f"{info.name} · researching {int(progress * 100)}% at the {building.info.name}", "working",
-                                          progress, look, lambda b=building: self.order("cancel_research", b.id)))
+                                          progress, look, lambda b=building: self.attempt("cancel_research", b.id)))
         for plan in plans:
             info = {"building": race.buildings, "unit": race.units, "upgrade": UPGRADES}[plan.kind][plan.type]
-            cancel = lambda pid=plan.id: self.order("cancel_plan", human, pid)
+            cancel = lambda pid=plan.id: self.attempt("cancel_plan", human, pid)
             site = next((b for b in world.player_buildings(human, plan.type) if b.pos == plan.pos), None) if plan.kind == "building" else None
             if site is not None:
                 progress = site.progress / site.info.build_time
@@ -915,7 +967,7 @@ class GameScene(Scene):
             self.card_panel.add(Label("Cost: gold / lumber · paid when work starts", text_style="caption", width=360, wrap=True))
         portraits = any(c.target is not None for c in commands)
         for start in range(0, len(commands), CARD_COLS):
-            row = Row(spacing=6)
+            row = Row(spacing=CARD_GAP)
             for command in commands[start:start + CARD_COLS]:
                 captions = []
                 if command.target is not None:
@@ -955,14 +1007,9 @@ class GameScene(Scene):
                     if blocked is not None:
                         self.warn(blocked)
                         return True
-                    try:
-                        for _ in range(5):
-                            self.order("order_unit", self.human, command.target)
-                    except RuleError as exc:
-                        self.warn(str(exc))
-                        return True
-                    self.say(f"5 x {self.race.units[command.target].name} ordered - pay when work starts - manage in Plans")
-                    self.sfx("button")
+                    if all(self.attempt("order_unit", self.human, command.target) for _ in range(5)):  # stops at the first refusal, which says why
+                        self.say(f"5 x {self.race.units[command.target].name} ordered - pay when work starts - manage in Plans")
+                        self.sfx("button")
                     return True
                 blocked = command.blocked()
                 if blocked is None:
@@ -1087,10 +1134,8 @@ class GameScene(Scene):
 
     # -- Raw input ----------------------------------------------------------------------
 
-    def _over_ui(self, x: float, y: float) -> bool:
-        return any(child.visible and child.hit_test(x, y) for child in self.ui.children)
-
     def handle_input(self, event: InputEvent) -> bool:
+        self.alt_held = bool(event.alt)  # the engine keeps modifier keys' own presses; their flag on any input is what arrives
         if event.type == "key_press" and event.key is not None:
             if event.key in GROUP_KEYS:
                 self._group(event.key, assign=event.ctrl or event.meta, add=event.shift)
@@ -1107,8 +1152,6 @@ class GameScene(Scene):
             self.mouse = (event.x, event.y)
             self.hover = point
             return True
-        if event.type == "click" and self._over_ui(event.x, event.y):
-            return self._click_panel(event.x, event.y, event.button, shift=event.shift)
         if event.type == "click" and event.button == "left":
             if self.pending is not None:
                 self._execute_pending(point, keep=event.shift)
@@ -1155,17 +1198,18 @@ class GameScene(Scene):
                 if px <= x < px + size and py <= y < py + size:
                     self.select([entity_id], add=shift)
                     return True
+            if self._page_tile is not None:
+                px, py, pw, ph = self._page_tile
+                if px <= x < px + pw and py <= y < py + ph:
+                    self._portrait_page = (self._portrait_page + 1) % self._portrait_pages
+                    return True
         for (px, py, pw, ph), entry in self._queue_hits:
             if not (px <= x < px + pw and py <= y < py + ph):
                 continue
             if button == "right":
-                try:
-                    entry.cancel()
-                except RuleError as exc:
-                    self.warn(str(exc))
-                    return True
-                self.sfx("button")
-                self._refresh_card()
+                if entry.cancel():
+                    self.sfx("button")
+                    self._refresh_card()
             elif button == "left" and entry.goto is not None:
                 entry.goto()
             return True
@@ -1202,6 +1246,13 @@ class GameScene(Scene):
             for _ in range(6):
                 if next(self._warm, None) is None:
                     self._warm = None
+                    # The match's world, sprites and images are long-lived: freeze them out of the collector's
+                    # scans, or every full collection walks them (26 ms and growing in a 150-unit battle, every
+                    # two seconds).  What the previous match froze is thawed and buried first, so a session of
+                    # many matches keeps only the current one out of reach.
+                    gc.unfreeze()
+                    gc.collect()
+                    gc.freeze()
                     break
         self._advance(dt)
         self._handle_events(self.world.take_events())
@@ -1209,15 +1260,23 @@ class GameScene(Scene):
             play_music(self.mood, self.player.race)
         self._prune_selection()
         self.effects.update(dt)
-        self.view.sync(dt)
+        self.bodies = [b for b in self.bodies if not b.done]
+        self.stains = [s for s in self.stains if not s.done]
+        self.view.sync(0.0 if self.paused else dt, fraction=self._motion_fraction())
         self._update_card()
         self.idle_button.visible = self._idle_peasant_count() > 0
+        self.army_button.visible = bool(self._army())
         self._update_objectives()
         if self.world.time >= self._autosave_at and not self._game_over:
             self._autosave_at += AUTOSAVE_EVERY
             self.game.save(self.AUTOSAVE_SLOT, scene=self)
             self.say("Autosaved")
         self._check_game_over()
+
+    def _motion_fraction(self) -> float:
+        if self._game_over or self.world.winner is not None or not self.player.alive:
+            return 1.0
+        return self._acc / SIM_DT
 
     def _advance(self, dt: float) -> None:
         if not self.paused and not self._game_over and self.world.winner is None and self.player.alive:  # a decided match stays frozen
@@ -1226,6 +1285,7 @@ class GameScene(Scene):
             while self._acc >= SIM_DT and steps < MAX_STEPS_PER_FRAME:
                 for brain in self.brains:
                     brain.think(self.world, self.rng)
+                self.view.before_step()
                 self.world.step()
                 self._acc -= SIM_DT
                 steps += 1
@@ -1250,13 +1310,14 @@ class GameScene(Scene):
         return striker is not None and striker.player == self.human
 
     def _handle_events(self, events: list[Event]) -> None:
-        view = self.view
-        for e in events:
+        for index, e in enumerate(events):
             mine = e.player == self.human
             if e.kind == "hit":
                 if self._mine(e):
                     self._fights.append(self.clock)
                 self._show_hit(e)
+            elif e.kind == "impact":
+                self._show_impact(e, struck=any(h.kind == "hit" and h.entity == e.entity for h in events[index + 1:]))
             elif e.kind == "death":
                 self._show_death(e)
             elif e.kind == "destroyed":
@@ -1277,8 +1338,10 @@ class GameScene(Scene):
                 self._refresh_card()
             elif e.kind == "heal" and self._visible(e.pos):
                 self.effects.add(Pulse(to_world(e.pos), (140, 255, 160, 200), radius=(4, 16), rings=1, duration=0.4))
-            elif e.kind == "tree_felled" and mine and self._audible(e.pos):
-                self.sfx("chop", gap=2.5)
+            elif e.kind == "tree_felled":
+                self.view.tree_felled((int(e.pos[0]), int(e.pos[1])))
+                if mine and self._audible(e.pos):
+                    self.sfx("chop", gap=2.5)
             elif e.kind == "under_attack" and mine:
                 self.last_alert = e.pos
                 self.minimap.ping(*to_world(e.pos))
@@ -1287,15 +1350,15 @@ class GameScene(Scene):
             elif e.kind == "refused" and mine:
                 self.warn(e.text)
             elif e.kind in ("eliminated", "surrendered") and not mine:
-                self.effects.add(Toast("A rival falls", [e.text], accent=GOOD, hold=4.0, top=self.toast_top))
+                # Results pause this scene: a new toast would freeze mid-slide underneath them.
+                if self.world.winner is None and self.player.alive:
+                    self.effects.add(Toast("A rival falls", [e.text], accent=GOOD, hold=4.0, top=self.toast_top))
             elif e.kind == "exposed":
                 self.effects.add(Toast(f"{e.text}'s last holdings are revealed", [e.text], hold=4.0, top=self.toast_top))
             elif e.kind == "exhausted":
                 self.effects.add(FloatingText("Mine exhausted", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), MUTED, rise=20, duration=1.5))
             elif e.kind == "plunder" and mine:
                 self.effects.add(FloatingText(f"+{e.amount} gold plundered", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), GOLD, rise=26, duration=1.8))
-            elif e.kind == "tree_grown":
-                view.tree_grown((int(e.pos[0]), int(e.pos[1])))
 
     def _visible(self, point: tuple[float, float]) -> bool:
         return self.world.is_visible(self.human, (int(point[0]), int(point[1])))
@@ -1311,74 +1374,90 @@ class GameScene(Scene):
             return
         target = self.world.entity(e.other) if e.other is not None else None
         source = self.world.entity(e.entity) if e.entity is not None else None
+        origin = (source.pos if isinstance(source, Unit) else source.center) if source is not None else None
+        if e.other is not None and origin is not None:
+            self._blows[e.other] = origin  # a killing blow has already removed its target: its death falls away from this
         if isinstance(target, Unit):
-            sprite = self.view.unit_sprite(target.id)
-            if sprite is not None and sprite.visible:
-                # The victim flinches away from the blow; a standing victim is shoved a little.
-                origin = to_world(source.pos if isinstance(source, Unit) else source.center) if source is not None else None
-                shove = 3.0 if target.state in ("idle", "attack", "hold") else 0.0
-                self.effects.add(HitReaction(sprite, (1.0, 1.0, 1.0), source=origin, knockback=shove, wobble=9.0, duration=0.22))
-            if e.text != "ranged":
-                wx, wy = to_world(e.pos)
-                self.effects.add(Burst((wx, wy - TILE * 0.45), (255, 236, 190, 255), 5, rng=self.rng, size=5, speed=(50, 140)))
-        if e.text == "ranged" and source is not None:
-            if isinstance(source, Unit) and source.info.splash > 0:
-                flight = self._stone(source, e.pos)
-            else:
-                flight = self._arrow(source, e.pos)
-            if flight is not None:
-                self.after(flight, lambda: self._sound_hit(e))
-        else:
-            self._sound_hit(e)
+            self.view.hit_reaction(target, origin)
+        if e.target_type in FLESH or e.target_type == UnitType.CATAPULT.value:  # a unit, alive or just killed by this
+            wx, wy = to_world(e.pos)
+            struck = (wx, wy - TILE * 0.45)
+            away = self._away(e.pos, origin)
+            if e.target_type == UnitType.CATAPULT.value:
+                self.effects.add(Spray(struck, away, "drop", (222, 184, 118), 10, rng=self.fx_rng, size=(3, 6)))  # pale wood chips off the dark frame
+            elif self.settings["blood"]:
+                self.effects.add(Spray(struck, away, "drop", (172, 22, 26), min(9, 3 + e.amount // 2), rng=self.fx_rng,
+                                       size=(3, 5 + min(e.amount, 12) / 4)))  # a few drops for a light blow, a splash for a heavy one
+            if e.target_armor > 0:
+                self.effects.add(Burst(struck, (255, 236, 190, 255), 3, rng=self.fx_rng, size=5, speed=(50, 140)))  # off the armour
+        self._sound_hit(e)  # a shot's blow is raised when the shot lands, so its sound is due now
+
+    def _away(self, point: tuple[float, float], origin: tuple[float, float] | None) -> tuple[float, float]:
+        """The unit direction from *origin* to *point* in world pixels; straight up when the blow's origin is unknown."""
+        if origin is None:
+            return (0.0, -1.0)
+        (px, py), (ox, oy) = to_world(point), to_world(origin)
+        length = math.hypot(px - ox, py - oy)
+        return ((px - ox) / length, (py - oy) / length) if length else (0.0, -1.0)
+
+    def _show_impact(self, e: Event, *, struck: bool) -> None:
+        """A stone comes down: dust where it lands, and a thud of its own when it found nothing to hit."""
+        if not self._visible(e.pos):
+            return
+        wx, wy = to_world(e.pos)
+        self.effects.add(Burst((wx, wy), (200, 190, 170, 255), 12, rng=self.fx_rng, size=12, speed=(40, 140)))
+        self.camera.shake(2, 0.15)
+        if not struck and self._audible(e.pos):
+            self.sfx("impact")
 
     def _sound_hit(self, event: Event) -> None:
         if self._audible(event.pos):
             source = self.world.entity(event.entity) if event.entity is not None else None
             self.sfx(impact_sound(event, source.race if source is not None else Race.HUMAN))  # a striker dead with its blow keeps the common Foley
 
-    def _arrow(self, source: Entity, target: tuple[float, float]) -> float:
-        sx, sy = to_world(source.pos if isinstance(source, Unit) else source.center)
-        tx, ty = to_world(target)
-        sy -= TILE * 0.5
-        ty -= TILE * 0.4
-        if isinstance(source, Building):
-            sy -= TILE * 1.2
-        arrow = self.add_sprite(Sprite("arrow", position=(sx, sy), size=(22, 6), layer=RenderLayer.EFFECTS, rotation=math.degrees(math.atan2(ty - sy, tx - sx))))
-        arrow.do(Sequence(MoveTo((tx, ty), speed=520), Remove()))
-        return math.dist((sx, sy), (tx, ty)) / 520
-
-    def _stone(self, source: Unit, target: tuple[float, float]) -> float | None:
-        """A catapult stone: lobbed slowly, bursting where it lands (one per volley)."""
-        if self.clock - self._sound_times.get("stone", -1.0) < 0.3:
-            return
-        self._sound_times["stone"] = self.clock
-        sx, sy = to_world(source.pos)
-        tx, ty = to_world(target)
-        stone = self.add_sprite(Sprite("stone", position=(sx, sy - TILE * 0.8), size=(12, 12), layer=RenderLayer.EFFECTS))
-        stone.do(Sequence(MoveTo((tx, ty - TILE * 0.2), speed=330), Remove()))
-        flight = math.dist((sx, sy), (tx, ty)) / 330
-        self.effects.add(Burst((tx, ty), (200, 190, 170, 255), 12, rng=self.rng, size=12, speed=(40, 140), delay=flight))
-        return flight
-
     def _show_death(self, e: Event) -> None:
+        blow = self._blows.pop(e.entity, None)
         if not self._visible(e.pos):
             return
         sprite = self.view.release_unit_sprite(e.entity) if e.entity is not None else None
         if sprite is not None:
             self.add_sprite(sprite)
-            self.effects.add(UnitDeath(sprite, to_world(e.pos)))  # the body falls and lies there a while
+            body = UnitDeath(sprite, to_world(e.pos), source=to_world(blow) if blow is not None else None,
+                             outcome=death_outcome(UnitType(e.text)), on_land=self._dust)
+            self.effects.add(body)  # the body falls and lies there a while
+            self.bodies = [b for b in self.bodies if not b.done and not b.cancelled] + [body]
+            for old in self.bodies[:-UnitDeath.BODIES]:
+                old.hurry()
+            if self.settings["blood"] and e.text in FLESH:
+                self._stain((body.position[0] + 10 * math.copysign(1, body.turn), body.position[1]))
         color = self.world.players[e.player].color if e.player is not None else (200, 200, 200)
-        self.effects.add(Burst(to_world(e.pos), rgba(color), 10, rng=self.rng, size=10))
+        self.effects.add(Burst(to_world(e.pos), rgba(color), 10, rng=self.fx_rng, size=10))
         if self._audible(e.pos):
             self.sfx(deaths.cue(self.world.players[e.player].race))
+
+    def _stain(self, point: tuple[float, float]) -> None:
+        """A dark pool under a body, on the ground under everything that walks; the oldest make room past the cap."""
+        sprite = self.add_sprite(Sprite("stain", position=point, size=(30, 19), layer=RenderLayer.OBJECTS))
+        sprite.tint, sprite.opacity = (.42, .06, .07), Stain.OPACITY
+        stain = Stain(sprite)
+        self.effects.add(stain)
+        self.stains = [s for s in self.stains if not s.done and not s.cancelled] + [stain]
+        for old in self.stains[:-Stain.STAINS]:
+            old.hurry()
+
+    def _dust(self, feet: tuple[float, float], outcome: str) -> None:
+        """The landing raises dust at the feet; a wreck raises more, and smoke."""
+        self.effects.add(Burst(feet, (200, 190, 170, 255), 14 if outcome == "wreck" else 6, rng=self.fx_rng, size=8, speed=(30, 90)))
+        if outcome == "wreck":
+            self.effects.add(Burst((feet[0], feet[1] - 10), (150, 146, 140, 170), 5, rng=self.fx_rng, image="smoke", size=14, speed=(8, 30)))
 
     def _show_destroyed(self, e: Event) -> None:
         if e.player == self.human:
             self.effects.add(Toast("Building lost", [f"Your {self.building_name(BuildingType(e.text)).lower()} was destroyed"], hold=4.0, top=self.toast_top))
         if self._visible(e.pos):
             wx, wy = to_world(e.pos)
-            self.effects.add(Burst((wx, wy), (255, 160, 80, 255), 18, rng=self.rng, size=16, speed=(40, 160)))
-            self.effects.add(Burst((wx, wy - 10), (60, 60, 64, 255), 14, rng=self.rng, image="smoke", size=28, speed=(10, 50)))
+            self.effects.add(Burst((wx, wy), (255, 160, 80, 255), 18, rng=self.fx_rng, size=16, speed=(40, 160)))
+            self.effects.add(Burst((wx, wy - 10), (60, 60, 64, 255), 14, rng=self.fx_rng, image="smoke", size=28, speed=(10, 50)))
             self.camera.shake(4, 0.3)
             if self._audible(e.pos):
                 self.sfx(wreckage.cue(wreckage.material(BuildingType(e.text))), gap=0.3)
@@ -1395,11 +1474,76 @@ class GameScene(Scene):
         self._game_over = True
         self.sfx("victory" if won else "defeat")
         play_music("victory" if won else "defeat")
+        if self._resignation is not None:
+            self.conclude("resigned", self._resignation)
+        else:
+            self.conclude("victory" if won else "defeat")
+
+    # -- The record of the match -------------------------------------------------------------
+
+    def _recording(self, replay: Replay | None) -> Replay:
+        """The recording of this match: the one a save carried, taken up again, or a fresh one from here."""
+        if replay is None:
+            return Replay.begin(self.world, seed=self.seed, difficulty=self.difficulty, human=self.human)
+        replay.reloaded(self.world)
+        return replay
+
+    def _load_profile(self) -> None:
+        """The profile a rated match is played under; its name is the player's.  An unreadable one is reported at the end."""
+        if not self.ranked:
+            return
+        try:
+            self.profile = Profile.load(self.game.data_dir)
+        except SaveError as error:
+            self.profile, self.profile_error = None, str(error)
+            return
+        self.player.name = self.profile.name
+
+    def leaving(self) -> Standing | None:
+        """What leaving the match now would count as, or None when leaving costs nothing: the match is decided or not rated."""
+        if self.replay is None or self.profile is None or self._game_over or self.world.winner is not None or not self.player.alive:
+            return None
+        return standing(self.world, self.human)
+
+    def resign(self, where: Standing) -> None:
+        """Concede from *where* the player stands, which is what the resignation will be rated on."""
+        self._resignation = where
+        self.world.resign(self.human)
+
+    def conclude(self, outcome: str, where: Standing | None = None) -> RatingChange | None:
+        """Close the record of the match: the replay to disk, the result and its weight to the profile.
+
+        Returns what the result did to the rating, or None when the match is not rated.  A result for a
+        match already rated (a save of it reopened, a match finished after it was left) replaces the old one.
+        """
+        if self.replay is None or self.profile is None:
+            return None
+        world = self.world
+        self.replay.finish(world, outcome)
+        try:
+            ReplayStore(self.game.data_dir).save(self.run_id, self.replay, {
+                "name": self.player.name, "outcome": outcome, "race": self.player.race.value, "difficulty": self.difficulty.value,
+                "players": len(world.players), "size": f"{world.width}×{world.height}", "clock": _clock(world.time), "seed": self.seed})
+            kept = True
+        except SaveError as error:
+            kept = False
+            self.say(f"Replay not saved: {error}")
+        weight, reason = (where.weight, where.reason) if where is not None else (1.0, "")
+        result = MatchResult(self.run_id, datetime.now(timezone.utc).isoformat(), outcome, weight, reason, self.difficulty.value,
+                             DIFFICULTY_ELO[self.difficulty], len(world.players) - 1, self.player.race.value, world.width, world.height,
+                             world.theme.value, world.layout.value, self.seed, int(world.time), kept)
+        try:
+            self.rating_change = self.profile.record(result)
+        except SaveError as error:
+            self.profile_error = str(error)
+            self.say(f"Result not recorded: {error}")
+            return None
+        return self.rating_change
 
     # -- Drawing ---------------------------------------------------------------------------
 
     def _ghost(self) -> tuple[BuildingType, Pos, bool] | None:
-        if self.pending is None or not self.pending.startswith(("build:", "plan:")) or self._over_ui(*self.mouse):
+        if self.pending is None or not self.pending.startswith(("build:", "plan:")) or self.ui.pointer_target(*self.mouse) is not None:
             return None
         building_type = BuildingType(self.pending.split(":", 1)[1])
         site = self._ghost_site(building_type)
@@ -1411,10 +1555,10 @@ class GameScene(Scene):
 
     def draw(self) -> None:
         hovered = None
-        if not self._over_ui(*self.mouse) and self.pending is None:
-            entity = self.world.entity_at(self.hover, visible_to=self.human)
+        if self.ui.pointer_target(*self.mouse) is None and self.pending is None:
+            entity = self.view.entity_at(self.hover)
             hovered = entity.id if entity is not None else None
-        self.view.draw(Overlay(selected=list(self.selection), hovered=hovered, ghost=self._ghost(),
+        self.view.draw(Overlay(selected=list(self.selection), hovered=hovered, ghost=self._ghost(), bars_for_all=self.all_bars or self.alt_held,
                                rally_for=[b.id for b in [self._own_building()] if b is not None]))
         ambience.draw(self, self.world, self.human)
         self._draw_settlement_markers()
@@ -1449,8 +1593,10 @@ class GameScene(Scene):
         self.draw_rect(x, y, w, h, PANEL_STYLE.background_color, border_color=PANEL_STYLE.border_color,
                        border_width=1, radius=10)
         self._portraits = []
+        self._page_tile = None
         self._queue_hits = []
-        entities = [e for e in (self.world.entity(i) for i in self.selection) if e is not None]
+        # A unit as it is; a building as the player knows it, which under the fog is as they last saw it.
+        entities = [e for e in (self.world.units.get(i) or self.view.sighting(i) for i in self.selection) if e is not None]
         if self.settlement_menu is not None or not entities:
             self._draw_queue(x, y, w)
             self.command_tooltip.visible = bool(self.tooltip)
@@ -1458,17 +1604,32 @@ class GameScene(Scene):
         if len(entities) == 1:
             self._draw_entity_card(entities[0], x + 16, y + 14)
         else:
-            self.draw_text(f"{len(entities)} units", x + 16, y + 30, style="heading")
-            size, gap = 34, 4
-            for i, entity in enumerate(entities[:MAX_PORTRAITS]):
-                px, py = x + 16 + i * (size + gap), y + 46
-                self._portraits.append((entity.id, (px, py, size, size)))
-                self.draw_rect(px, py, size, size, (255, 255, 255, 18), border_color=(255, 255, 255, 40), border_width=1, radius=4)
-                self._portrait(entity, px + 3, py + 2, size - 6)
-                frac = entity.hp / max(1, entity.max_hp)
-                self.draw_rect(px, py + size + 3, size, 3, (0, 0, 0, 160))
-                self.draw_rect(px, py + size + 3, size * frac, 3, GOOD if frac > 0.5 else BAD)
+            self._draw_portrait_grid(entities, x, y)
         self.command_tooltip.visible = bool(self.tooltip)
+
+    def _draw_portrait_grid(self, entities: list[Entity], x: float, y: float) -> None:
+        """Two rows of portraits with a health strip each; a selection too large for the grid pages, its last cell turning the page."""
+        per_page = PORTRAITS_PER_PAGE if len(entities) <= PORTRAITS_PER_PAGE else PORTRAITS_PER_PAGE - 1
+        self._portrait_pages = pages = max(1, math.ceil(len(entities) / per_page))
+        self._portrait_page = page = min(self._portrait_page, pages - 1)
+        self._page_tile = None
+        heading = f"{len(entities)} units" + (f" · page {page + 1} of {pages}" if pages > 1 else "")
+        self.draw_text(heading, x + 16, y + 30, style="heading")
+        size, gap = PORTRAIT, PORTRAIT_GAP
+        cells = list(entities[page * per_page:(page + 1) * per_page])
+        for i in range(len(cells) + (1 if pages > 1 else 0)):
+            px, py = x + 16 + (i % PORTRAIT_COLS) * (size + gap), y + 44 + (i // PORTRAIT_COLS) * (size + 9)
+            self.draw_rect(px, py, size, size, (255, 255, 255, 18), border_color=(255, 255, 255, 40), border_width=1, radius=4)
+            if i == len(cells):  # the page tile
+                self._page_tile = (px, py, size, size)
+                self.draw_polygon([(px + size * .36, py + size * .26), (px + size * .72, py + size * .5), (px + size * .36, py + size * .74)], GOLD)
+                continue
+            entity = cells[i]
+            self._portraits.append((entity.id, (px, py, size, size)))
+            self._portrait(entity, px + 3, py + 2, size - 6)
+            frac = entity.hp / max(1, entity.max_hp)
+            self.draw_rect(px, py + size + 2, size, 4, (0, 0, 0, 160))
+            self.draw_rect(px, py + size + 2, size * frac, 4, GOOD if frac > 0.5 else BAD)
 
     def _draw_queue(self, x: float, y: float, w: float) -> None:
         """The production overview where the selection would be: one portrait per item being made or waited for."""
@@ -1481,7 +1642,7 @@ class GameScene(Scene):
             tile = (int(self.hover[0]), int(self.hover[1]))
             text = "Nothing selected"
             if self.world.in_bounds(tile) and self.world.is_explored(self.human, tile):
-                text = f"{self.world.terrain_at(tile).value.title()} ({tile[0]}, {tile[1]})"
+                text = f"{self.view.terrain_at(tile).value.title()} ({tile[0]}, {tile[1]})"
             self.draw_text(text, x + 16, y + 30, style="heading")
             self.draw_text("Drag to select units · right-click to order them", x + 16, y + 58, style="sub")
             return
@@ -1509,7 +1670,7 @@ class GameScene(Scene):
             self.draw_text(f"+{len(entries) - len(shown)}", x + 16 + len(shown) * (size + gap), y + 46 + size / 2, style="body", anchor_y="center")
         self.draw_text("Hover for details · click to go there · right-click to cancel", x + 16, y + 106, style="sub")
 
-    def _portrait(self, entity: Entity, x: float, y: float, size: float) -> None:
+    def _portrait(self, entity: Unit | Sighting, x: float, y: float, size: float) -> None:
         draw_production_icon(self, entity.type, entity.player, entity.race, x, y, size)
 
     def _draw_production(self, building: Building, x: float, y: float) -> None:
@@ -1540,18 +1701,23 @@ class GameScene(Scene):
             if qx <= mx < qx + 30 and qy <= my < qy + 30:
                 self.tooltip = f"Queued {i + 1}: {world.unit_info(building.player, queued).name}"
 
-    def _draw_entity_card(self, entity: Entity, x: float, y: float) -> None:
+    def _draw_entity_card(self, entity: Unit | Sighting, x: float, y: float) -> None:
+        """One selected unit or building.  What a rival's unit is ordered to do and what their building is
+        making are theirs to know: the card says them of the player's own only."""
         world = self.world
+        own = entity.player == self.human
         self.draw_rect(x, y, 72, 72, (255, 255, 255, 16), border_color=(255, 255, 255, 40), border_width=1, radius=6)
         self._portrait(entity, x + 4, y + 4, 64)
         tx = x + 88
-        owner = world.players[entity.player].name if entity.player is not None else "Neutral"
-        name = entity.info.name
+        abandoned = isinstance(entity, Sighting) and entity.abandoned
+        owner = "Abandoned" if abandoned else world.players[entity.player].name if entity.player is not None else "Neutral"
+        name = entity.info.name if isinstance(entity, Unit) else RACES[entity.race].buildings[entity.type].name
         self.draw_text(f"{name}", tx, y + 16, style="heading")
-        color = rgba(world.players[entity.player].color) if entity.player is not None else GOLD
-        self.draw_text(owner, tx + 6 + self.game.backend.measure_text(name, 17, "Nunito SemiBold")[0], y + 16, style="sub", color=color)
+        color = MUTED if abandoned else rgba(world.players[entity.player].color) if entity.player is not None else GOLD
+        heading = self.game.theme.get_text_style("heading")  # the name's style: the owner follows wherever the theme ends it
+        self.draw_text(owner, tx + 6 + self.game.backend.measure_text(name, heading.font_size, heading.font)[0], y + 16, style="sub", color=color)
         lines: list[str] = []
-        if isinstance(entity, Building) and entity.type is BuildingType.GOLD_MINE:
+        if isinstance(entity, Sighting) and entity.type is BuildingType.GOLD_MINE:
             lines.append(f"{entity.gold} gold left")
         else:
             self.draw_rect(tx, y + 26, 180, 8, (0, 0, 0, 160), radius=3)
@@ -1575,7 +1741,9 @@ class GameScene(Scene):
             if world.frenzied(entity):
                 self.draw_text("Frenzy!", tx + 4 * 78, y + 60, style="body", color=BAD)
             order = entity.order
-            if entity.inside is not None:
+            if not own:
+                pass
+            elif entity.inside is not None:
                 lines.append("Mining")
             elif entity.constructing is not None:
                 lines.append("Building")
@@ -1587,16 +1755,17 @@ class GameScene(Scene):
                              .replace("Patrol", "Patrolling"))
             else:
                 lines.append("Idle")
-        elif isinstance(entity, Building):
+        else:
+            building = world.buildings.get(entity.id) if own else None  # the player's own, as it is: what it is making, who builds it
             if not entity.done:
-                frac = entity.progress / entity.info.build_time
-                lines.append(f"Under construction {int(frac * 100)}%" + ("" if entity.builder is not None else " — no builder: right-click it with a peasant"))
-            elif entity.queue or entity.research is not None:
-                self._draw_production(entity, tx, y + 44)
-            elif entity.player == self.human:
-                lines.append(entity.info.summary)
-                if entity.type is BuildingType.TOWN_HALL:
-                    lines.append("Rally point set" if entity.rally is not None else "Right-click the map to set a rally point")
+                unmanned = building is not None and building.builder is None
+                lines.append(f"Under construction {int(entity.built * 100)}%" + (" — no builder: right-click it with a peasant" if unmanned else ""))
+            elif building is not None and (building.queue or building.research is not None):
+                self._draw_production(building, tx, y + 44)
+            elif building is not None:
+                lines.append(building.info.summary)
+                if building.type is BuildingType.TOWN_HALL:
+                    lines.append("Rally point set" if building.rally is not None else "Right-click the map to set a rally point")
         ly = y + 82 if isinstance(entity, Unit) else y + 50
         for line in lines[:2]:
             self.draw_text(line, tx, ly, style="body")
@@ -1606,43 +1775,25 @@ class GameScene(Scene):
 
     def get_save_state(self) -> dict:
         return {"version": SAVE_VERSION, "seed": self.seed, "difficulty": self.difficulty.value, "world": self.world.to_dict(),
-                "run_id": self.run_id, "ranked": self.ranked,
-                "groups": self.groups, "tutorial": self.tutorial.step if self.tutorial is not None else None}
+                "run_id": self.run_id, "ranked": self.ranked, "replay": self.replay.to_dict() if self.replay is not None else None,
+                "groups": self.groups, "tutorial": self.tutorial.step if self.tutorial is not None else None, "seen": self._memory()}
+
+    def _memory(self) -> dict | None:
+        """What the player had seen of buildings now out of sight: the view's once there is one, until then what a save brought."""
+        return self.view.memory() if self.view is not None else self._seen
 
     def get_save_summary(self) -> dict:
         world = self.world
         size = next((name for name, (w, h) in mapgen.SIZES.items() if (w, h) == (world.width, world.height)), f"{world.width}×{world.height}")
-        return {"map": f"{size} {world.theme.value}", "players": len(world.players), "difficulty": self.difficulty.value, "clock": _clock(world.time),
+        return {"map": f"{size} {world.theme.value} {world.layout.value}", "players": len(world.players), "difficulty": self.difficulty.value, "clock": _clock(world.time),
                 "player": f"{self.player.name} ({self.race.name})"}
 
     def load_save_state(self, state: dict) -> None:
-        world = check_save(state)
-        if (world.width, world.height) != (self.world.width, self.world.height):
-            self.game.clear_and_push(load_game(state, settings=self.settings))
-            return
-        self.world = world
-        self.human = next(p.id for p in world.players if p.human)
-        self.run_id = _saved_run_id(state)
-        self.ranked = state.get("ranked", True)
-        self.seed = state["seed"]
-        self.difficulty = Difficulty(state["difficulty"])
-        self.brains = [Brain(p.id, self.difficulty) for p in world.players if not p.human]
-        self.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
-        self.tutorial = Tutorial() if state.get("tutorial") is not None and self.settings["tutorial"] else None
-        if self.tutorial is not None:
-            self.tutorial.step = state["tutorial"]
-        self._autosave_at = (world.time // AUTOSAVE_EVERY + 1) * AUTOSAVE_EVERY
-        self.effects.clear()
-        self.selection = []
-        self.pending = None
-        self.build_menu = False
-        self.settlement_menu = None
-        self._game_over = False
-        self.view.reset(world)
-        self.ui.clear()
-        self._build_hud()
-        self.center_base(instant=True)
-        self.say("Loaded")
+        """A load is a new match scene, in the match as from the title: nothing of the timeline left behind
+        (its last alert, its battle mood, where its brains' random stream had got to) follows into the loaded one."""
+        scene = load_game(state, settings=self.settings)
+        scene.say("Loaded")
+        self.game.clear_and_push(scene)
 
 
 class _Overlay(Scene):
@@ -1801,37 +1952,79 @@ class PauseScene(_Overlay):
         scene = self.game_scene
         if scene.world.can_resign(scene.human) is not None:
             return
-        self.game.pop()
-        scene.world.resign(scene.human)
+        where = scene.leaving()
+        if where is None:
+            self.game.pop()
+            scene.world.resign(scene.human)
+            return
+        self.game.push(LeaveScene(scene, where, "Resign", lambda: (self.game.pop_to(scene), scene.resign(where))))
+
+    def _leave(self, verb: str, then: Callable[[], None]) -> None:
+        """Do *then* now, or after the player has agreed to what leaving the match costs."""
+        where = self.game_scene.leaving()
+        if where is None:
+            then()
+            return
+        scene = self.game_scene
+        self.game.push(LeaveScene(scene, where, verb, lambda: (scene.conclude("left", where), then())))
 
     def new_game(self) -> None:
         scene = self.game_scene
-        self.game.clear_and_push(new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players),
-                                          difficulty=scene.difficulty, theme=scene.world.theme, settings=scene.settings,
-                                          races=[p.race for p in scene.world.players]))
+        self._leave("New game", lambda: self.game.clear_and_push(
+            new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players), difficulty=scene.difficulty,
+                     theme=scene.world.theme, settings=scene.settings, races=[p.race for p in scene.world.players], layout=scene.world.layout)))
 
     def back_to_title(self) -> None:
         from warband.title import TitleScene
 
-        self.game.clear_and_push(TitleScene(settings=self.game_scene.settings))
+        self._leave("Back to title", lambda: self.game.clear_and_push(TitleScene(settings=self.game_scene.settings)))
 
     def quit(self) -> None:
-        self.game.quit()
+        self._leave("Quit", self.game.quit)
+
+
+class LeaveScene(_Overlay):
+    """What leaving the match now costs, and the choice to do it anyway."""
+
+    pause_below = True
+    controls = {("return", "space"): "confirm"}
+
+    def __init__(self, game_scene: GameScene, where: Standing, verb: str, then: Callable[[], None]) -> None:
+        self.game_scene, self.where, self.verb, self.then = game_scene, where, verb, then
+
+    def on_enter(self) -> None:
+        scene = self.game_scene
+        profile = scene.profile
+        assert profile is not None
+        before = profile.rating
+        after = rated(before, DIFFICULTY_ELO[scene.difficulty], 0.0, self.where.weight)
+        panel = self.panel(f"{self.verb}: leave the match?")
+        panel.add(Label("The match is not decided. Leaving counts against your rating.", text_style="body"))
+        panel.add(Label(self.where.reason[0].upper() + self.where.reason[1:], text_style="body", text_color=BAD if self.where.weight == 1.0 else GOLD,
+                        width=560, wrap=True))
+        panel.add(Label(f"Rating {round(before.value)} → {round(after.value)} ({round(after.value) - round(before.value):+d}) · "
+                        f"the replay is kept either way", text_style="heading"))
+        panel.add(Row(Button(self.verb, hotkey="Enter", on_click=self.confirm, style=DANGER_BUTTON, width=260),
+                      Button("Stay", hotkey="Esc", on_click=self.game.pop, style=GHOST_BUTTON, width=200), spacing=12))
+
+    def confirm(self) -> None:
+        self.then()
 
 
 class SettingsScene(_Overlay):
     """Keyboard-navigable options: ↑↓ pick a row, ←→ adjust or toggle.  Saved to the settings file."""
 
     pause_below = True
-    controls = {"up": "focus_up", "down": "focus_down", "left": "decrease", "right": "increase", ("return", "space"): "increase"}
+    controls = {"left": "decrease", "right": "increase", ("return", "space"): "increase"}
     ROWS: tuple[tuple[str, str, str], ...] = (
         ("Music volume", "music", "percent"), ("Sound volume", "sfx", "percent"), ("Edge scrolling", "edge_scroll", "toggle"),
         ("Scroll speed", "scroll_speed", "speed"), ("Fullscreen", "fullscreen", "toggle"), ("Tutorial", "tutorial", "toggle"),
+        ("Blood", "blood", "toggle"),
     )
 
     def __init__(self, game_scene: GameScene) -> None:
         self.game_scene = game_scene
-        self.focus = 0
+        self.row_keys: dict[Row, str] = {}
 
     @property
     def settings(self) -> dict[str, Any]:
@@ -1846,17 +2039,23 @@ class SettingsScene(_Overlay):
         return "On" if value else "Off"
 
     def on_enter(self) -> None:
+        self.ui.enable_focus(navigation="vertical", activate=())
         panel = self.panel("Settings")
-        for index, (name, key, kind) in enumerate(self.ROWS):
-            marker = Label(lambda i=index: "›" if self.focus == i else "", text_style="hud", width=18, text_color=GOLD)
-            panel.add(Row(marker, Label(name, text_style="body", width=170), Row(
-                Button("−", on_click=lambda k=key: self._adjust(k, -1), style=GHOST_BUTTON, width=48),
+        for name, key, kind in self.ROWS:
+            row = Row(spacing=12, focusable=True)
+            self.row_keys[row] = key
+            row.add(Label(lambda r=row: "›" if r.focused else "", text_style="hud", width=18, text_color=GOLD))
+            row.add(Label(name, text_style="body", width=170))
+            row.add(Row(
+                Button("−", on_click=lambda k=key: self._adjust(k, -1), style=GHOST_BUTTON, width=48, focusable=False),
                 Label(lambda k=key, kd=kind: self._shown(k, kd), text_style="hud", width=70, align="center"),
-                Button("+", on_click=lambda k=key: self._adjust(k, 1), style=GHOST_BUTTON, width=48),
+                Button("+", on_click=lambda k=key: self._adjust(k, 1), style=GHOST_BUTTON, width=48, focusable=False),
                 spacing=8,
-            ), spacing=12))
+            ))
+            panel.add(row)
+        self.ui.focus(next(iter(self.row_keys)))
         panel.add(Label("Settings are saved when you leave this screen.", text_style="sub"))
-        panel.add(KeyHints([("↑↓", "select"), ("←→", "adjust"), ("Esc", "close")]))
+        panel.add(KeyHints([("Tab / ↑↓", "select"), ("←→", "adjust"), ("Esc", "close")]))
 
     def _adjust(self, key: str, direction: int) -> None:
         kind = next(k for _n, k2, k in self.ROWS if k2 == key)
@@ -1872,17 +2071,11 @@ class SettingsScene(_Overlay):
     def on_exit(self) -> None:
         self.game_scene.apply_settings()
 
-    def focus_up(self) -> None:
-        self.focus = (self.focus - 1) % len(self.ROWS)
-
-    def focus_down(self) -> None:
-        self.focus = (self.focus + 1) % len(self.ROWS)
-
     def decrease(self) -> None:
-        self._adjust(self.ROWS[self.focus][1], -1)
+        self._adjust(self.row_keys[self.ui.focused], -1)
 
     def increase(self) -> None:
-        self._adjust(self.ROWS[self.focus][1], 1)
+        self._adjust(self.row_keys[self.ui.focused], 1)
 
 
 class SaveBrowserScene(_Overlay):
@@ -1911,7 +2104,7 @@ class SaveBrowserScene(_Overlay):
                 ok = True
             button = Button(name, hotkey=key, on_click=lambda sl=slot: self.pick(sl), style=ACTION_BUTTON if ok else GHOST_BUTTON, width=150)
             button.enabled = ok and not (self.mode == "save" and slot == "autosave")
-            panel.add(Row(button, Label(detail, text_style="body", width=520), spacing=12))
+            panel.add(Row(button, Label(detail, text_style="body", width=560, wrap=True), spacing=12))
         panel.add(KeyHints([("1 2 3 Q A", "pick"), ("Esc", "back")]))
 
     def pick(self, slot: int | str) -> None:
@@ -1941,20 +2134,23 @@ HELP_INTRO = (
 )
 HELP_KEYS = (
     ("B / T / U / G", "plan a building / unit / upgrade for the settlement, or set the assembly point for new soldiers"),
-    ("Ctrl + letter", "the same when the selection's own commands use that letter;  Ctrl+P: every plan, its progress and cancel"),
+    ("Ctrl + letter", "bypass the current card (T is Tower in Build);  Ctrl+P: every plan, its progress and cancel"),
     ("Shift", "Train: five at once;  Build: keep placing;  otherwise add to the selection or queue an order"),
     ("Production panel", "with nothing selected: hover an item for its state, click to go to its producer, right-click to cancel"),
     ("Click / drag / right-click", "select;  box-select;  order whatever fits the target  (Mac trackpad: two-finger click)"),
-    ("Double-click / Ctrl-click", "every unit of that type on screen;  Ctrl+A: the whole army  (Mac: Cmd-click)"),
+    ("Double-click / Ctrl-click", "every unit of that type on screen;  Ctrl+A: the whole army  (Mac: Cmd-click, Cmd+A)"),
     ("A / P / S / H", "attack-move: fight everything on the way / patrol between two spots / stop / hold position"),
     ("B / R (peasants)", "build now, with the Build plan menu's letters / repair one of your damaged buildings"),
     ("Building selected", "its letters train or research there;  right-click the map: its rally point"),
     ("Ctrl+1-9 / 1-9", "assign / recall a control group;  Tab / . : next idle peasant / soldier"),
     ("Space", "jump to the last alert;  Ctrl+F6-F8 / F6-F8: set / return to a camera bookmark"),
     ("Arrows / edges / wheel", "scroll the map (middle-drag too);  wheel or + / −: zoom;  minimap: left-click to look, right-click to send"),
-    ("F3 / F5 / F9", "offline: pause / save / load;  online uses a live match menu"),
+    ("F3 / F5 / F9", "offline: pause / save / load;  F11: health bars over everyone;  online uses a live match menu"),
     ("F2 / Esc", "codex: every unit, building and upgrade  /  cancel, deselect, then the menu"),
 )
+
+
+HELP_KEY_WIDTH, HELP_TEXT_WIDTH = 230, 860  # the longest line fits unwrapped, and the panel fits a 1200 px window
 
 
 class HelpScene(_Overlay):
@@ -1962,11 +2158,11 @@ class HelpScene(_Overlay):
 
     def on_enter(self) -> None:
         panel = self.panel("How to play")
-        for line in HELP_INTRO:
-            panel.add(Label(line, text_style="body", width=1000))
+        panel.add(Label(" ".join(HELP_INTRO), text_style="body", width=HELP_KEY_WIDTH + 14 + HELP_TEXT_WIDTH, wrap=True))
         table = Column(spacing=4)
         for keys, what in HELP_KEYS:
-            table.add(Row(Label(keys, text_style="hud", width=230, align="right", text_color=GOLD), Label(what, text_style="body", width=780), spacing=14))
+            table.add(Row(Label(keys, text_style="hud", width=HELP_KEY_WIDTH, align="right", text_color=GOLD),
+                          Label(what, text_style="body", width=HELP_TEXT_WIDTH, wrap=True), spacing=14))
         panel.add(table)
         panel.add(KeyHints([("Esc", "close")]))
 
@@ -1997,9 +2193,11 @@ class CodexScene(_Overlay):
         if self.page == 3:
             table = self._race_table(race.name)
         else:
-            for cells in self._rows():
-                table.add(Row(*[Label(text, text_style="hud" if i == 0 else "body", width=width, text_color=GOLD if i == 0 else None)
-                                for i, (text, width) in enumerate(cells)], spacing=10))
+            widths, rows = self._rows()
+            for cells in rows:
+                table.add(Row(*[Label(text, text_style="hud" if i == 0 else "body", width=width, text_color=GOLD if i == 0 else None,
+                                      wrap=i == len(cells) - 1)
+                                for i, (text, width) in enumerate(zip(cells, widths))], spacing=8))
         panel.add(table)
         panel.add(KeyHints([("1 2 3 4", "page"), ("Tab", "next"), ("Esc", "close")]))
 
@@ -2017,36 +2215,38 @@ class CodexScene(_Overlay):
             table.add(block)
         return table
 
-    def _rows(self) -> list[list[tuple[str, int]]]:
+    def _rows(self) -> tuple[tuple[int, ...], list[list[str]]]:
+        """The page's column widths and its rows, the header first.  The widths fit the widest
+        name, cost and building of every race at 1200 px; the last column wraps."""
         player = self.world.players[self.player]
         have = player.upgrades
         race = RACES[player.race]
         if self.page == 0:
-            rows = [[("Unit", 120), ("Cost", 150), ("HP", 50), ("Dmg", 50), ("Arm", 50), ("Rng", 50), ("Spd", 50), ("Trained at", 120), ("Role", 320)]]
+            rows = [["Unit", "Cost", "HP", "Dmg", "Arm", "Rng", "Spd", "Trained at", "Role"]]
             for unit_type, info in race.units.items():
-                rows.append([(info.name, 120), (str(info.cost), 190), (str(info.hp), 50), (str(info.damage) if info.damage else f"heal {info.heal}", 50),
-                             (str(info.armor), 50), ("melee" if info.range < 1 else f"{info.range:g}", 50), (f"{info.speed:g}", 50),
-                             (race.buildings[info.trained_at].name, 120), (info.summary, 320)])
-            return rows
+                rows.append([info.name, str(info.cost), str(info.hp), str(info.damage) if info.damage else f"heal {info.heal}",
+                             str(info.armor), "melee" if info.range < 1 else f"{info.range:g}", f"{info.speed:g}",
+                             race.buildings[info.trained_at].name, info.summary])
+            return (150, 198, 40, 60, 40, 55, 42, 140, 367), rows
         if self.page == 1:
-            rows = [[("Building", 120), ("Cost", 150), ("HP", 50), ("Arm", 50), ("Size", 50), ("Time", 50), ("Requires", 110), ("What it does", 400)]]
+            rows = [["Building", "Cost", "HP", "Arm", "Size", "Time", "Requires", "What it does"]]
             for building_type, info in race.buildings.items():
                 if building_type is BuildingType.GOLD_MINE:
                     continue
-                rows.append([(info.name, 120), (str(info.cost), 190), (str(info.hp), 50), (str(info.armor), 50), (f"{info.size}×{info.size}", 50),
-                             (f"{info.build_time:g}s", 50), (race.buildings[info.requires].name if info.requires else "—", 110),
-                             (info.summary + (f" · supply +{info.supply}" if info.supply else ""), 400)])
-            return rows
+                rows.append([info.name, str(info.cost), str(info.hp), str(info.armor), f"{info.size}×{info.size}", f"{info.build_time:g}s",
+                             race.buildings[info.requires].name if info.requires else "—",
+                             info.summary + (f" · supply +{info.supply}" if info.supply else "")])
+            return (150, 198, 50, 40, 50, 50, 130, 420), rows
         if self.page == 2:
-            rows = [[("Upgrade", 160), ("Cost", 150), ("Time", 50), ("Where", 110), ("Requires", 150), ("Effect", 320)]]
+            rows = [["Upgrade", "Cost", "Time", "Where", "Requires", "Effect"]]
             for upgrade, info in UPGRADES.items():
                 if not race.upgrade_allowed(upgrade):
                     continue
                 where = next(b for b, binfo in BUILDINGS.items() if upgrade in binfo.researches)
                 requires = UPGRADES[info.requires].name if info.requires else f"{race.adjective} art" if info.race is not None else "—"
-                rows.append([(info.name + (" ✓" if upgrade in have else ""), 160), (str(info.cost), 190), (f"{info.time:g}s", 50),
-                             (race.buildings[where].name, 110), (requires, 150), (info.summary, 320)])
-            return rows
+                rows.append([info.name + (" ✓" if upgrade in have else ""), str(info.cost), f"{info.time:g}s", race.buildings[where].name, requires,
+                             info.summary])
+            return (190, 198, 50, 130, 165, 383), rows
         raise ValueError(f"no table for page {self.page}")
 
     def show(self, page: int) -> None:
@@ -2120,10 +2320,23 @@ class GameOverScene(_Overlay):
                 self.score_error = str(error)
                 notice = "High score could not be saved · open High scores for the error"
         panel.add(Label(notice, text_style="body", text_color=GOLD))
+        panel.add(Label(self._rating_text(), text_style="body", text_color=GOLD if scene.rating_change is not None else MUTED, width=880, wrap=True))
         panel.add(Row(Button("New game", hotkey="N", on_click=self.new_game, style=ACTION_BUTTON, width=210),
                       Button("High scores", hotkey="B", on_click=self.high_scores, style=GHOST_BUTTON, width=210),
                       Button("Back to title", hotkey="T", on_click=self.back_to_title, style=GHOST_BUTTON, width=210),
                       Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=190), spacing=12))
+
+    def _rating_text(self) -> str:
+        scene = self.game_scene
+        change = scene.rating_change
+        if change is None:
+            return (f"Profile could not be updated · {scene.profile_error}" if scene.profile_error else
+                    "Not rated" if scene.replay is None else "Rating unchanged")
+        result = change.result
+        weight = f" · {result.reason}" if result.reason else ""
+        replaced = " · replaces this match's earlier result" if change.replaced else ""
+        replay = " · replay saved to your profile" if result.replay else ""
+        return f"Rating {change} against {result.difficulty.title()} ({result.opponent}){weight}{replaced}{replay}"
 
     def high_scores(self) -> None:
         from warband.score_scene import HighScoreScene
@@ -2136,7 +2349,7 @@ class GameOverScene(_Overlay):
         scene = self.game_scene
         self.game.clear_and_push(new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players),
                                           difficulty=scene.difficulty, theme=scene.world.theme, settings=scene.settings,
-                                          races=[p.race for p in scene.world.players]))
+                                          races=[p.race for p in scene.world.players], layout=scene.world.layout))
 
     def back_to_title(self) -> None:
         from warband.title import TitleScene
@@ -2144,16 +2357,18 @@ class GameOverScene(_Overlay):
         scene = self.game_scene
         size = next((name for name, dimensions in mapgen.SIZES.items() if dimensions == (scene.world.width, scene.world.height)), "Medium")
         self.game.clear_and_push(TitleScene(size=size, players=len(scene.world.players), difficulty=scene.difficulty, theme=scene.world.theme,
-                                           race=scene.player.race, settings=scene.settings))
+                                           race=scene.player.race, layout=scene.world.layout, settings=scene.settings))
 
     def quit(self) -> None:
         self.game.quit()
 
 
-def new_game(seed: int, width: int = 48, height: int = 40, players: int = 2, *, difficulty: Difficulty = Difficulty.NORMAL,
-             theme: MapTheme = MapTheme.SUMMER, settings: dict[str, Any] | None = None, races: list[Race | None] | None = None) -> GameScene:
-    return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players, theme=theme, races=races), seed, difficulty=difficulty,
-                     settings=settings)
+def new_game(seed: int, width: int = 48, height: int = 40, players: int = 2, *, difficulty: Difficulty = Difficulty.MEDIUM,
+             theme: MapTheme = MapTheme.SUMMER, settings: dict[str, Any] | None = None, races: list[Race | None] | None = None,
+             layout: MapLayout | None = None) -> GameScene:
+    """*layout* ``None`` draws one from the seed."""
+    return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players, theme=theme, races=races, layout=layout), seed,
+                     difficulty=difficulty, settings=settings)
 
 
 def check_save(state: dict[str, Any]) -> World:
@@ -2167,6 +2382,9 @@ def check_save(state: dict[str, Any]) -> World:
             raise ValueError("run_id must be nonempty text")
         if "ranked" in state and type(state["ranked"]) is not bool:
             raise ValueError("ranked must be a boolean")
+        _saved_replay(state)
+        if state.get("seen") is not None:  # saves from before the view remembered carry none
+            check_memory(state["seen"], world)
         if any(type(value) is not int or value < 0 for player in world.players for value in player.stats.values()):
             raise ValueError("battle statistics must be nonnegative integers")
     except (KeyError, ValueError, TypeError, IndexError) as exc:
@@ -2181,6 +2399,11 @@ def _saved_run_id(state: dict[str, Any]) -> str:
     return state["run_id"] if "run_id" in state else str(uuid5(NAMESPACE_URL, "warband:" + json.dumps(state, sort_keys=True)))
 
 
+def _saved_replay(state: dict[str, Any]) -> Replay | None:
+    """The recording a save carries, if it has one (saves from before replays record from where they are loaded)."""
+    return Replay.from_dict(state["replay"]) if state.get("replay") is not None else None
+
+
 def load_game(state: dict[str, Any], *, settings: dict[str, Any] | None = None) -> GameScene:
     """A game scene from a save slot's ``state`` (see :meth:`GameScene.get_save_state`); a campaign mission's save
     (it carries a ``mission`` block) comes back as its mission scene."""
@@ -2190,7 +2413,7 @@ def load_game(state: dict[str, Any], *, settings: dict[str, Any] | None = None) 
         return load_mission(state, settings=settings)
     world = check_save(state)
     scene = GameScene(world, state["seed"], difficulty=Difficulty(state["difficulty"]), settings=settings,
-                      run_id=_saved_run_id(state), ranked=state.get("ranked", True))
+                      run_id=_saved_run_id(state), ranked=state.get("ranked", True), replay=_saved_replay(state), seen=state.get("seen"))
     scene.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
     if state.get("tutorial") is not None and scene.tutorial is not None:
         scene.tutorial.step = state["tutorial"]

@@ -53,7 +53,8 @@ def test_a_razed_building_collapses_in_its_material(battle) -> None:
     farm = world.place_building(1, BuildingType.FARM, (11, 10))
     farm.hp = 1
     world.attack([footman.id], farm.id)
-    game.tick(0.2)
+    for _ in range(15):
+        game.tick(0.1)
     assert world.entity(farm.id) is None and "wood_collapse" in scene.recent_sounds
     tower = world.place_building(1, BuildingType.TOWER, (13, 10))
     tower.hp = 1

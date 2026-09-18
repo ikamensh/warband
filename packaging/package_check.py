@@ -31,11 +31,11 @@ def online_smoke(endpoint: str) -> dict:
         raise AssertionError([(client.ready, client.closed, client.error) for client in clients])
 
     try:
-        creator = OnlineClient("warband-v1", endpoint=endpoint, options={"seed": 3, "width": 40, "height": 32})
+        creator = OnlineClient("warband-v2", endpoint=endpoint, options={"seed": 3, "width": 48, "height": 40})
         clients.append(creator)
         wait(lambda: bool(creator.room) and creator.state is not None)
         assert creator.resume_token and not creator.ready
-        guest = OnlineClient("warband-v1", endpoint=endpoint, room=creator.room)
+        guest = OnlineClient("warband-v2", endpoint=endpoint, room=creator.room)
         clients.append(guest)
         wait(lambda: creator.ready and guest.ready)
         assert (creator.player, guest.player) == (0, 1)
@@ -58,7 +58,7 @@ def online_smoke(endpoint: str) -> dict:
         room, token = creator.room, creator.resume_token
         creator.close()
         wait(lambda: not guest.ready)
-        resumed = OnlineClient("warband-v1", endpoint=endpoint, room=room, resume_token=token)
+        resumed = OnlineClient("warband-v2", endpoint=endpoint, room=room, resume_token=token)
         clients.append(resumed)
         wait(lambda: resumed.ready and guest.ready)
         assert resumed.player == 0 and moved(resumed)
@@ -99,6 +99,21 @@ def build_info() -> dict:
     return info
 
 
+def data_dir_check() -> str:
+    """The user-owned folder the game keeps its data in, resolved from another working directory than the app's."""
+    from saga2d import Game
+    here = os.getcwd()
+    os.chdir(tempfile.gettempdir())
+    try:
+        game = Game("Warband", backend="mock", resolution=(640, 400))
+        try:
+            return str(game.data_dir)
+        finally:
+            game._teardown()
+    finally:
+        os.chdir(here)
+
+
 def smoke(endpoint: str) -> dict:
     from saga2d import fonts
     info = build_info()
@@ -106,7 +121,7 @@ def smoke(endpoint: str) -> dict:
         assert (fonts.FONT_DIR / filename).is_file(), filename
     return {"passed": True, "source_commit": info["source_commit"], "version": info["version"], "frozen": True,
             "executable": info["executable"], "executable_sha256": info["executable_sha256"],
-            "bundled_fonts": True, "online": online_smoke(endpoint)}
+            "bundled_fonts": True, "data_dir": data_dir_check(), "online": online_smoke(endpoint)}
 
 
 def native_smoke(output: Path, endpoint: str) -> dict:
@@ -123,10 +138,11 @@ def native_smoke(output: Path, endpoint: str) -> dict:
     from saga2d.multiplayer_ui import MatchLobby
     from saga2d.online import OnlineClient
     from warband import sound
-    from warband.scene import DEFAULT_SETTINGS, SettlementPlansScene, new_game
+    from warband.scene import DEFAULT_SETTINGS, GameScene, SettlementPlansScene
     from warband.style import build_theme
-    from warband.title import TitleScene
+    from warband.title import NewGameScene, TitleScene
     from warband.multiplayer import NetworkGameScene, NetworkMenuScene
+    from warband.rules import UnitType
 
     info = build_info()
     images = []
@@ -161,9 +177,14 @@ def native_smoke(output: Path, endpoint: str) -> dict:
                 game.backend.window.dispatch_event("on_key_release", symbol, modifiers)
                 frames()
 
-            def click(text):
+            def click(what):
+                """Press the button labelled *what*, or the command-card button producing that unit, building or upgrade."""
                 from pyglet.window import mouse
-                button = next(b for b in game.scene.ui.walk() if getattr(b, "text", "") == text)
+                buttons = [b for b in game.scene.ui.walk()
+                           if (getattr(b, "text", "") == what if isinstance(what, str) else getattr(b, "target", None) == what)]
+                if not buttons:
+                    raise AssertionError(f"No button for {what!r} on {type(game.scene).__name__}")
+                button = buttons[0]
                 x, y, w, h = button.bounds
                 px = int((x + w / 2) * game.backend.scale_factor + game.backend.offset_x)
                 py = int((game.height - y - h / 2) * game.backend.scale_factor + game.backend.offset_y)
@@ -193,7 +214,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
             assert game.backend.get_clipboard_text() == room
             capture("-room-code")
             click("Cancel")
-            creator = OnlineClient("warband-v1", endpoint=endpoint, room=room, resume_token=token)
+            creator = OnlineClient("warband-v2", endpoint=endpoint, room=room, resume_token=token)
             wait(lambda: creator.state is not None)
             click("Paste code")
             assert game.scene.fields[2] == room.upper()
@@ -209,7 +230,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
             assert live.selection == []
             click("Train")
             capture("-settlement-train")
-            click("Footman")
+            click(UnitType.FOOTMAN)  # the line unit under whatever name this seat's race gives it
             wait(lambda: any(plan.kind == "unit" for plan in live.world.player_plans(live.human)))
             camera_before = (*live.camera.offset, live.camera.zoom)
             click(f"Plans ({live._plan_count()})")
@@ -226,14 +247,20 @@ def native_smoke(output: Path, endpoint: str) -> dict:
             capture("-match-menu")
             click("Leave match")
             assert isinstance(game.scene, TitleScene)
-            game.clear_and_push(new_game(3, width=40, height=32, settings=settings))
+            game.set_window_size((1271, 791))  # the OS has the last word on the window: the next match starts on what it gives
+            frames()
+            press(key.N)
+            assert isinstance(game.scene, NewGameScene)
+            capture("-new-game")
+            press(key.ENTER)
+            assert isinstance(game.scene, GameScene) and game.backend.scale_factor != 1.0
             capture("")
             assert game.scene.world.units and game.scene.world.buildings
             return {"passed": True, "source_commit": info["source_commit"], "version": info["version"],
                     "executable": info["executable"], "executable_sha256": info["executable_sha256"],
                     "renderer": gl.gl_info.get_renderer(), "opengl_version": gl.gl_info.get_version_string(), "vendor": gl.gl_info.get_vendor(),
                     "backend": "pyglet", "native_multiplayer_input": True, "native_clipboard_join": True,
-                    "live_match_menu": True, "native_settlement_planning": True,
+                    "live_match_menu": True, "native_settlement_planning": True, "start_after_resize": True,
                     "sound_catalogue": len(bank.names), "images": images}
         finally:
             game.backend.set_clipboard_text(clipboard)

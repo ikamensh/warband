@@ -282,7 +282,7 @@ def _assault(run: Run) -> None:
 
 KARST_HOLD = Mission(
     id="karst_hold", title="Karst Hold", act=ACT_2,
-    sides=(Side("Karst Hold", Race.DWARF), Side("Thornwood Host", Race.ELF, ai=Difficulty.NORMAL)),
+    sides=(Side("Karst Hold", Race.DWARF), Side("Thornwood Host", Race.ELF, ai=Difficulty.MEDIUM)),
     size="Medium", theme=MapTheme.WINTER, seed=1404,
     briefing=(
         Line("Brunna", "You'll lead the hold's defence, Captain; my people know the walls, not the field. Bolt towers, a guard hall, a mortar we've been saving. Gold enough."),
@@ -332,7 +332,7 @@ def _setup_retaken(run: Run) -> None:
 
 RETAKEN = Mission(
     id="retaken", title="Greywater Retaken", act=ACT_3,
-    sides=(Side("The Marches", Race.HUMAN), Side("Thornwood Lodges", Race.ELF, ai=Difficulty.NORMAL)),
+    sides=(Side("The Marches", Race.HUMAN), Side("Thornwood Lodges", Race.ELF, ai=Difficulty.MEDIUM)),
     size="Medium", theme=MapTheme.SUMMER, seed=1505,
     briefing=(
         Line("", "The company came south by the river road and found the ford under leaves. The old mill is a lodge of living wood; the Thornwood has crossed the Greywater."),
@@ -390,7 +390,7 @@ def _setup_court(run: Run) -> None:
 COURT_OF_THORNS = Mission(
     id="court_of_thorns", title="The Court of Thorns", act=ACT_3,
     sides=(Side("The Marches", Race.HUMAN), Side("The Court of Thorns", Race.ELF, ai=Difficulty.HARD),
-           Side("Ironjaw's Warband", Race.ORC, ai=Difficulty.NORMAL)),
+           Side("Ironjaw's Warband", Race.ORC, ai=Difficulty.MEDIUM)),
     size="Large", theme=MapTheme.SUMMER, seed=1606,
     briefing=(
         Line("", "The Court of Thorns: a moon hall older than the Marches, ringed with eyries, under a canopy that has never been cut."),

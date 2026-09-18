@@ -10,7 +10,7 @@ passive mechanic the simulation applies:
 | race   | passive                                                  | arts                         |
 |--------|----------------------------------------------------------|------------------------------|
 | Humans | Drill: units train 15 % faster                            | Horse Breeding, Blessing     |
-| Orcs   | Frenzy: +25 % damage below half health; tougher, slower to arm | Bloodlust, Plunder      |
+| Orcs   | Frenzy: +25 % damage below half health; tougher, thinner armour | Bloodlust, Plunder     |
 | Elves  | Keen eyes: +2 sight, rangers shoot a tile farther; lighter | Longbows, Regrowth          |
 | Dwarves| Stonework: buildings +25 % hp and +2 armour; sturdier, slower | Deep Mining, Blasting Powder |
 """
@@ -112,12 +112,12 @@ _HUMAN_BUILDINGS = {
 
 _ORC_UNITS = {
     UnitType.PEASANT: UnitTweak("Peon", "Digs gold, hacks lumber, builds and repairs", hp=1.15),
-    UnitType.FOOTMAN: UnitTweak("Grunt", "Brutal axeman; hits harder as it bleeds", hp=1.15, damage=1.1, armor=-1, build_time=1.1),
-    UnitType.ARCHER: UnitTweak("Axethrower", "Throws axes four tiles; a sturdy shooter", hp=1.15, build_time=1.1),
-    UnitType.SCOUT: UnitTweak("Wolf Rider", "Fast wolf rider; hunts peons and throwers", hp=1.15, build_time=1.1),
-    UnitType.KNIGHT: UnitTweak("Ogre", "Two-headed brute; no armour, all frenzy", hp=1.2, damage=1.1, armor=-2, build_time=1.1),
-    UnitType.CATAPULT: UnitTweak("Catapult", "Skulled siege engine: splash, ×1.5 vs walls", hp=1.15, build_time=1.1),
-    UnitType.CLERIC: UnitTweak("Shaman", "Mends wounded allies nearby; cannot fight", hp=1.15, build_time=1.1),
+    UnitType.FOOTMAN: UnitTweak("Grunt", "Brutal axeman; hits harder as it bleeds", hp=1.15, damage=1.1, armor=-1, build_time=1.0),
+    UnitType.ARCHER: UnitTweak("Axethrower", "Throws axes four tiles; a sturdy shooter", hp=1.15, build_time=1.0),
+    UnitType.SCOUT: UnitTweak("Wolf Rider", "Fast wolf rider; hunts peons and throwers", hp=1.15, build_time=1.0),
+    UnitType.KNIGHT: UnitTweak("Ogre", "Two-headed brute; no armour, all frenzy", hp=1.2, damage=1.1, armor=-2, build_time=1.0),
+    UnitType.CATAPULT: UnitTweak("Catapult", "Skulled siege engine: splash, ×1.5 vs walls", hp=1.15, build_time=1.0),
+    UnitType.CLERIC: UnitTweak("Shaman", "Mends wounded allies nearby; cannot fight", hp=1.15, build_time=1.0),
 }
 _ORC_BUILDINGS = {
     BuildingType.TOWN_HALL: BuildingTweak("Great Hall", "Hall", "Trains peons; takes gold and lumber"),
@@ -132,13 +132,13 @@ _ORC_BUILDINGS = {
 }
 
 _ELF_UNITS = {
-    UnitType.PEASANT: UnitTweak("Gatherer", "Mines gold, fells trees, builds and repairs", hp=0.95, speed=0.3, sight=2),
-    UnitType.FOOTMAN: UnitTweak("Sentinel", "Light swordsman; quick on their feet", hp=0.95, speed=0.3, sight=2),
-    UnitType.ARCHER: UnitTweak("Ranger", "Shoots from five tiles; fragile up close", hp=0.95, range=1.0, speed=0.3, sight=2),
-    UnitType.SCOUT: UnitTweak("Outrider", "Fleet deer rider who sees farthest of all", hp=0.95, speed=0.3, sight=2),
-    UnitType.KNIGHT: UnitTweak("Stag Knight", "Antlered shock cavalry, swift but light", hp=0.95, speed=0.3, sight=2),
-    UnitType.CATAPULT: UnitTweak("Ballista", "Living-wood siege engine: splash, ×1.5", hp=0.95, speed=0.3, sight=2),
-    UnitType.CLERIC: UnitTweak("Druid", "Heals wounded allies nearby; cannot fight", hp=0.95, speed=0.3, sight=2),
+    UnitType.PEASANT: UnitTweak("Gatherer", "Mines gold, fells trees, builds and repairs", hp=0.95, speed=0.15, sight=2),
+    UnitType.FOOTMAN: UnitTweak("Sentinel", "Light swordsman; quick on their feet", hp=0.95, speed=0.15, sight=2),
+    UnitType.ARCHER: UnitTweak("Ranger", "Shoots from five tiles; fragile up close", hp=0.95, range=1.0, speed=0.15, sight=2),
+    UnitType.SCOUT: UnitTweak("Outrider", "Fleet deer rider who sees farthest of all", hp=0.95, speed=0.15, sight=2),
+    UnitType.KNIGHT: UnitTweak("Stag Knight", "Antlered shock cavalry, swift but light", hp=0.95, speed=0.15, sight=2),
+    UnitType.CATAPULT: UnitTweak("Ballista", "Living-wood siege engine: splash, ×1.5", hp=0.95, speed=0.15, sight=2),
+    UnitType.CLERIC: UnitTweak("Druid", "Heals wounded allies nearby; cannot fight", hp=0.95, speed=0.15, sight=2),
 }
 _ELF_BUILDINGS = {
     BuildingType.TOWN_HALL: BuildingTweak("Moon Hall", "Hall", "Trains gatherers; takes gold and lumber"),
@@ -153,13 +153,13 @@ _ELF_BUILDINGS = {
 }
 
 _DWARF_UNITS = {
-    UnitType.PEASANT: UnitTweak("Miner", "Mines gold, chops lumber, builds, repairs", hp=1.1, speed=-0.3),
-    UnitType.FOOTMAN: UnitTweak("Ironguard", "Armoured axeman behind a round shield", hp=1.1, armor=1, speed=-0.3),
-    UnitType.ARCHER: UnitTweak("Crossbowman", "Shoots from four tiles; hardy for a shooter", hp=1.1, speed=-0.3),
-    UnitType.SCOUT: UnitTweak("Ram Rider", "Fast ram rider; raids miners and crossbows", hp=1.1, speed=-0.3),
-    UnitType.KNIGHT: UnitTweak("Bear Rider", "Armoured shock cavalry on a war bear", hp=1.1, armor=1, speed=-0.3),
-    UnitType.CATAPULT: UnitTweak("Mortar", "Iron mortar: wide splash, ×1.5 vs buildings", hp=1.1, speed=-0.3),
-    UnitType.CLERIC: UnitTweak("Runepriest", "Heals wounded allies nearby; cannot fight", hp=1.1, speed=-0.3),
+    UnitType.PEASANT: UnitTweak("Miner", "Mines gold, chops lumber, builds, repairs", hp=1.1, speed=-0.15),
+    UnitType.FOOTMAN: UnitTweak("Ironguard", "Armoured axeman behind a round shield", hp=1.1, armor=1, speed=-0.15),
+    UnitType.ARCHER: UnitTweak("Crossbowman", "Shoots from four tiles; hardy for a shooter", hp=1.1, speed=-0.15),
+    UnitType.SCOUT: UnitTweak("Ram Rider", "Fast ram rider; raids miners and crossbows", hp=1.1, speed=-0.15),
+    UnitType.KNIGHT: UnitTweak("Bear Rider", "Armoured shock cavalry on a war bear", hp=1.1, armor=1, speed=-0.15),
+    UnitType.CATAPULT: UnitTweak("Mortar", "Iron mortar: wide splash, ×1.5 vs buildings", hp=1.1, speed=-0.15),
+    UnitType.CLERIC: UnitTweak("Runepriest", "Heals wounded allies nearby; cannot fight", hp=1.1, speed=-0.15),
 }
 _DWARF_BUILDINGS = {
     BuildingType.TOWN_HALL: BuildingTweak("Deep Hold", "Hold", "Trains miners; takes gold and lumber", hp=1.25, armor=2),

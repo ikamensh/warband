@@ -26,13 +26,13 @@ LIST_WIDTH = 470
 
 class CampaignScene(Scene):
     background_color = (8, 10, 14, 255)
-    controls = {("return", "c"): "continue_campaign", "r": "restart_mission", "escape": "back", "e": "easy", "n": "normal", "h": "hard"}
+    controls = {("return", "c"): "continue_campaign", "r": "restart_mission", "escape": "back", "e": "easy", "n": "medium", "h": "hard"}
 
     def __init__(self, settings: dict[str, Any] | None = None, *, campaign: Campaign = CAMPAIGN) -> None:
         self.settings = settings
         self.campaign = campaign
         self.progress: Progress | None = None
-        self.difficulty = Difficulty.NORMAL
+        self.difficulty = Difficulty.MEDIUM
         self.notice = ""
         self.confirm_reset = False
         self.resume: MissionScene | None = None
@@ -101,7 +101,7 @@ class CampaignScene(Scene):
         panel.add(Label(f"{len(self.campaign.missions)} missions in three acts. The difficulty shifts every computer opponent one step; it is set for the whole campaign.",
                         text_style="body", width=760, wrap=True))
         row = Row(Label("Difficulty", text_style="body", width=110), spacing=8)
-        for difficulty, key in ((Difficulty.EASY, "E"), (Difficulty.NORMAL, "N"), (Difficulty.HARD, "H")):
+        for difficulty, key in ((Difficulty.EASY, "E"), (Difficulty.MEDIUM, "N"), (Difficulty.HARD, "H")):
             button = Button(difficulty.value.title(), hotkey=key, on_click=lambda d=difficulty: self.set_difficulty(d), style=GHOST_BUTTON, width=150)
             self._difficulty_buttons[difficulty] = button
             row.add(button)
@@ -175,8 +175,8 @@ class CampaignScene(Scene):
     def easy(self) -> None:
         self.set_difficulty(Difficulty.EASY)
 
-    def normal(self) -> None:
-        self.set_difficulty(Difficulty.NORMAL)
+    def medium(self) -> None:
+        self.set_difficulty(Difficulty.MEDIUM)
 
     def hard(self) -> None:
         self.set_difficulty(Difficulty.HARD)

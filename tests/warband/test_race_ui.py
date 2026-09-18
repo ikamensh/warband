@@ -3,9 +3,8 @@
 import pytest
 
 from saga2d import CommandError, Game
-from warband.multiplayer import ONLINE
+from warband.authority import ONLINE, WarbandMatch
 from warband.model import tile_center
-from warband.multiplayer import WarbandMatch
 from warband.races import RACES
 from warband.rules import BUILDINGS, BuildingType, Race, Terrain, UnitType, Upgrade
 from warband.scene import CodexScene, GameScene, new_game
@@ -51,7 +50,7 @@ def test_the_title_offers_every_race_with_a_hotkey_and_the_match_uses_it(game) -
     assert isinstance(scene, GameScene) and scene.player.race is Race.ORC and scene.world.players[1].race is not Race.ORC
     game.tick(1 / 60)
     shown = texts(game)
-    assert "Orcs" in shown and any("The Orcs of Azure against the" in t for t in shown)
+    assert "Orcs" in shown and any(f"The Orcs of {scene.player.name} against the" in t for t in shown)
     peon = next(u for u in scene.world.player_units(scene.human) if u.is_worker)
     click_tile(game, scene, peon.pos)
     assert "Peon" in texts(game)
@@ -134,12 +133,12 @@ def test_a_regrown_tree_gets_a_sprite_and_a_felled_one_loses_it(game) -> None:
 
 
 def test_rooms_carry_the_creator_race_and_reject_nonsense(tmp_path) -> None:
-    match = WarbandMatch(3, 40, 32, races=(Race.DWARF, None))
+    match = WarbandMatch(3, 48, 40, races=(Race.DWARF, None))
     assert match.world.players[0].race is Race.DWARF and match.world.players[1].race is not Race.DWARF
     assert match.snapshot(0)["world"]["players"][0]["race"] == "dwarf"
-    served = ONLINE["warband-v1"].create({"seed": 3, "width": 40, "height": 32, "races": ["elf", None]})
+    served = ONLINE["warband-v2"].create({"seed": 3, "width": 48, "height": 40, "races": ["elf", None]})
     assert served.world.players[0].race is Race.ELF
     for bad in ("elf", ["elf"], ["elf", "hobbit"], [1, None]):
         with pytest.raises(CommandError, match="races"):
-            ONLINE["warband-v1"].create({"seed": 3, "races": bad})
+            ONLINE["warband-v2"].create({"seed": 3, "races": bad})
     assert BUILDINGS[BuildingType.TOWN_HALL].name == "Town Hall"  # the shared table is untouched by the race tables

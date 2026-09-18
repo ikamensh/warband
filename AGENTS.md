@@ -1,10 +1,11 @@
 # Warband — agent notes
 
 A Warcraft 2-style real-time strategy game, the second reference game of the
-Saga stack (`~/saga/`, see `../AGENTS.md`). The framework is `../saga2d` and
-procedural assets come from `../sagaforge`, both path dependencies: a change
-there shows up here at once, so run this suite after touching them. The hosted
-server and website live in `../saga-online`.
+Saga stack (`~/saga/`, see `../AGENTS.md`). Saga2D is a pinned PyPI release;
+its source lives in `../saga2d`. Upgrade it deliberately in `pyproject.toml`
+and `uv.lock`, then run this suite. Procedural assets come from `../sagaforge`
+as an editable path dependency, so run this suite after changing that library.
+The hosted server and website live in `../saga-online`.
 
 ## Commands
 
@@ -12,16 +13,25 @@ server and website live in `../saga-online`.
 uv sync --extra dev
 uv run warband --seed 3                          # play (python -m warband works too)
 uv run pytest -q                                 # headless suite, about four minutes
+gh run list --limit 6                            # CI after every push: Tests, Native package checks and, on main, the publication (make ci at the stack root)
 uv run python -u tools/fuzz.py --games 2 --monkey 0 --seed 81   # AI matches with invariants + monkey input (needs -u)
 uv run python tools/verify.py DIR                # a match through real pyglet events, frames saved to look at
+uv run python tools/verify_profile.py DIR        # title card, profile, rating on the results, leave confirmations, a replay: frames to look at
 uv run python tools/verify_campaign.py DIR       # the campaign's screens rendered by the real backend; uv run warband --mission ID plays one
-uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms)
+uv run python tools/verify_deaths.py DIR         # one death per unit category from both sides and a mass-casualty scene, as montages to look at (--zoom 2 for near)
+uv run python tools/visual_lint.py --evidence DIR   # visual defects in the art and on every screen; PNGs of what it flags (--screens NAME, --no-images)
+uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms); --scenario four-player|pan-zoom|deaths|restarts, --csv, --gc
 uv run python tools/step_bench.py --repeat 3     # model step times of the same battle without a window, with --profile
-uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening; full report takes ~30 min
+uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening (the default report is about a minute)
+uv run python tools/arena.py ladder --agents hard,pro --seeds 40   # rate agents against each other, in parallel
+uv run python tools/arena.py report --seeds 24                     # 1v1, free-for-all and jittered-balance ladders
+uv run python tools/tune.py --rounds 12 --games 48                 # hill-climb a ProProfile's numbers
+uv run python tools/sim_fingerprint.py --check tools/sim_fingerprint.txt   # the simulation is bit-for-bit unchanged
 uv run python tools/music.py render DIR          # WAV, spectrogram and stats per track
 uv run python tools/pieces.py refresh            # regenerate the impact, death and wreckage pieces with Stable Audio 3 (needs STABLE_AUDIO_MLX; see docs/warband-pieces.md)
 uv run python tools/restyle.py refresh DIR          # painted unit and building sprites: the whole procedure; see ../sagaforge/docs/restyle.md
 uv run --extra package python tools/package.py build --version 0.1.0   # standalone build; verify DIR / install too
+uv run python tools/make_icon.py schematic       # the app icon: schematic, then `paint DIR` (image model) and `install CANDIDATE` write packaging/icon.png
 ```
 
 Never time frames under a profiler or tracemalloc; `tools/perf.py` gives the
@@ -31,12 +41,25 @@ real breakdown.
 
 - `warband/model.py` — the 20 Hz fixed-step simulation (orders, harvesting,
   construction, supply, upgrades, towers, fog, elimination, JSON saves); no
-  saga2d dependency, so rules are tested directly. `rules.py` holds the tables,
+  saga2d dependency, so rules are tested directly. A blow turns, winds up and
+  lands; shots are `Projectile`s that land later, stones on the ground they
+  were fired at (`docs/unit-motion.md` part 4). `rules.py` holds the tables,
   `races.py` the four races' names, numbers and arts, `path.py` bounded A*,
-  `mapgen.py` layout and fairness, `ai.py` a Brain per player from a profile
-  per difficulty (`PROFILES`), `worker_ai.py`/`worker_knowledge.py` the
+  `mapgen.py` the five map layouts, their symmetry and audit, `ai.py` a Brain
+  per player for the lower difficulties (`PROFILES`) plus `make_brain`, which
+  is what every caller should use — Hard and Master are `pro_ai.ProBrain`, not
+  a Brain, and Master draws one of two postures (`PRO_VANGUARD`, `PRO_WARDEN`)
+  from the map seed and the player's slot — and `DIFFICULTY_ELO`, the measured
+  ratings the New game screen shows; `pro_ai.py` a stronger
+  `ProBrain` driven by a `ProProfile` of knobs, `arena.py` the ladder that
+  rates them (1v1, free-for-all placements, jittered rulebooks,
+  Bradley-Terry ratings on the Elo scale), `worker_ai.py`/`worker_knowledge.py` the
   automatic gatherers, `settlement.py`/`production.py` building plans and the
-  command card, `scores.py` the local top ten.
+  command card, `scores.py` the local top ten, `profile.py` the player's name,
+  results and Glicko-updated rating on the ladder's Elo scale plus the
+  standing rule for leaving a match, `replay.py` the recording of a match (the
+  start world plus the order log `@recorded` fills in `model.py`), its playback
+  and the replay store.
 - `warband/textures.py` renders ground, props, buildings and units through
   `sagaforge.render3d`; units have nine frames per facing (stand, a four-step
   walk, a four-phase blow) posed by one `Pose` table. A unit whose subject has a
@@ -48,8 +71,21 @@ real breakdown.
   picks the look, a missing look shows the intact one). Portraits use the
   painted frame too. `WARBAND_ART=procedural` keeps the renders; a sheet whose
   frames no longer match `FRAMES` or the building types warns and is ignored.
-  `view.py` keeps sprites in step and draws fog, minimap and water;
-  `effects.py` transient animations and lingering bodies.
+  `view.py` keeps sprites in step (units, buildings, shots in the air with
+  their trails) and draws fog, minimap and water; ground out of sight shows
+  what the player last saw there (`view.Sighting` per building, saved as the
+  scene's `seen`; trees and the minimap's terrain follow the model's own
+  per-player memory, `World.worker_knowledge`), and the selection panel reads
+  the sighting, never a rival's live building; `effects.py` transient
+  animations and lingering bodies. `visual_lint.py`
+  finds visual defects: in every registered image (empty, clipped, chroma
+  fringe, a painted frame off its render, a team recolour that did not take)
+  and in what a scene drew on the mock backend with approximate font metrics (text
+  over text or off screen, labels narrower than their text, panels over each
+  other, sprites drawn over what they stand behind); `tools/visual_lint.py`
+  runs it over representative screens at 1280×800 and 1200×680, and checks
+  actual native layout metrics when writing evidence. Long runs default to
+  `--cpu-percent 25`; native frames are paced at 30 FPS.
 - `warband/sound.py`, `voices.py`, `ambience.py`, `instruments.py`, `music.py` —
   synthesised with `sagaforge.synth`; `music.Director` maps moods to tracks; the bank
   composes in a background thread. `combat_sound.py`, `deaths.py` and `wreckage.py` are
@@ -66,10 +102,17 @@ real breakdown.
   and loader, `campaign_scene.py` the campaign screen. `World.scripted` worlds
   never declare a winner or surrender: the mission decides.
 - `warband/scene.py`, `title.py`, `tutorial.py`, `icons.py`, `style.py`,
-  `score_scene.py` — the saga2d scenes. `multiplayer.py` is the LAN/online
-  match; its `ONLINE` table registers `warband-v1` with `saga2d.server`.
+  `score_scene.py`, `profile_scene.py`, `replay_scene.py` — the saga2d scenes
+  (the title carries the player's card; `LeaveScene` in `scene.py` is the
+  confirmation every way out of an undecided rated match goes through;
+  `ReplayScene` plays a recording back). `multiplayer.py` contains LAN/online
+  scenes; `authority.py` contains the authoritative match and its `ONLINE` table
+  registers `warband-v2` with `saga2d.server`.
   `online_ai.py` is the headless AI client that can sit in a room.
 - `packaging/package_check.py` — the diagnostics the frozen app runs.
+  `packaging/icon.png` is the picture the builds carry (the engine shapes it
+  per platform); `icon-schematic.png` is the composition `tools/make_icon.py`
+  draws and the image model painted it from.
 - `docs/` — Early Access criteria and progress (`warband-early-access-*.md`),
   design notes per feature (`unit-motion.md`: why units looked timid, the nine-frame
   rig and its timing, what cinematic motion still needs), the play-together and Windows guides, and
@@ -84,12 +127,46 @@ real breakdown.
 - Visual changes must be looked at (render a frame with
   `saga2d.testing.render_scene` or `tools/verify.py` and open the PNG). Mock
   tests prove logic, not pixels. The display must be awake for pyglet.
+  After a HUD, overlay or art change run `tools/visual_lint.py`; the screens
+  it walks are kept clean by `tests/warband/test_visual_lint.py`, and a
+  finding there is something to look at, not a number to tune away.
 - After changing rules, the AI or scene input, run `tools/fuzz.py`; a bug
   found by fuzz gets a regression test built from the seed's exact tiles and
   unit positions (synthetic geometries kept passing on old code).
+- A change that is meant to be only a speed change must leave
+  `tools/sim_fingerprint.py --check` alone: lockstep online play needs the
+  simulation reproducible to the float bit. A deliberate rules or AI change
+  moves it, and the recorded hash is refreshed in the same commit.
+- Claims about an AI being stronger are settled by `tools/arena.py`, not by
+  watching a match. The same two brains on the same twelve seeds swing
+  between seven and eleven wins on the random stream alone, so nothing under
+  a few dozen games means anything; see `docs/ai-ladder.md`.
+- A push is not done until its CI is green: run `gh run list` (or `make ci` at
+  the stack root) after pushing and fix or revert a red run before moving on.
+  `tests/warband/test_startup.py` starts the game on the windows players
+  actually get (clipped under a taskbar, maximised, a 4K desktop, fullscreen
+  toggled between matches) and the packaged native check starts a match
+  after a resize; a report from a real desktop adds its window to that
+  matrix before the fix.
 - Check what the player can reach through the UI, not only what the rules
   allow (the build card once offered four of nine buildings while the model
   tests passed).
+- Every order a player or brain gives the world goes through a `@recorded`
+  World method, never a direct mutation or a helper called on the world from
+  outside, or replays stop reproducing the match; `tests/warband/test_replay.py`
+  checks playback to the bit on several seeds.
+- A World order checks all it has to check before it changes anything and
+  refuses with a `RuleError`: the online authority gives orders straight to
+  the running world, so a half-applied group order would be a match nobody
+  asked for. A new order, or a new way to refuse one, gets a row in
+  `tests/warband/test_order_atomicity.py`. What a player can pile up is
+  bounded (`rules.MAX_PLANS`, `MAX_QUEUED_ORDERS`). The HUD gives orders
+  through `GameScene.attempt`, which turns a refusal into the status line's
+  warning; never call `order` from a button or a key.
+- What the authority sends a seat (`WarbandMatch.snapshot`) is not the save:
+  no random stream, none of the other seat's explored ground or remembered
+  map, events for five seconds. The checkpoint is the whole match. What the
+  fog hides of units and buildings still travels (WB-011).
 - Tests use the mock backend (`game`/`backend` fixtures from
   `saga2d.testing.fixtures`), public behaviour only; fixtures use
   `save_dir=tmp_path / "saves"` because `data_dir` is its parent.

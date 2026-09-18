@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "warband"
-version = "0.1.0"
+version = "0.2.0"
 description = "Warband — a small Warcraft 2-style real-time strategy game on Saga2D"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Ilya Kamenshchikov", email = "ilya.kamenshchikov@gmail.com" }]
-dependencies = ["saga2d", "sagaforge"]
+dependencies = ["saga2d==0.3.7", "sagaforge"]
 
 [project.optional-dependencies]
 dev = ["pytest>=9.0.2"]
@@ -20,7 +20,6 @@ package = ["pyinstaller==6.22.2", "pyinstaller-hooks-contrib==2026.7"]
 warband = "warband.__main__:main"
 
 [tool.uv.sources]
-saga2d = { path = "../saga2d", editable = true }
 sagaforge = { path = "../sagaforge", editable = true }
 
 [tool.hatch.build.targets.wheel]

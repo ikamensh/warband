@@ -9,8 +9,8 @@ import math
 
 from warband.model import Attack, AttackMove, Deposit, Harvest, Move, Repair, RuleError, World, dist, tile_center
 from warband.rules import (
-    BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, REPAIR_COST, SIM_DT, UNITS, BuildingType, Resource, Terrain,
-    UnitType,
+    BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_GOLD, MINE_SLOTS, MINE_TIME, REPAIR_COST, SIM_DT, UNITS, BuildingType, Cost, Resource,
+    Terrain, UnitType, repair_cost,
 )
 
 
@@ -428,8 +428,8 @@ def test_peasants_repair_damaged_buildings_for_a_share_of_the_price() -> None:
     assert peasant.state == "repair" and farm.hp > 100
     run_until(world, lambda: farm.hp >= farm.max_hp, 60.0)
     assert not peasant.orders and peasant.state == "idle"
-    least = math.ceil(BUILDINGS[BuildingType.FARM].cost.gold * REPAIR_COST * 300 / farm.max_hp)
-    assert least <= gold - world.players[0].gold <= least + 30 and lumber - world.players[0].lumber > 0  # paid per ten hit points, rounded up
+    paid = repair_cost(BUILDINGS[BuildingType.FARM], 100, farm.max_hp, farm.max_hp)
+    assert (gold - world.players[0].gold, lumber - world.players[0].lumber) == (paid.gold, paid.lumber)
     farm.hp = 50
     world.players[0].gold = 0
     world.repair([peasant.id], farm.id)
@@ -697,6 +697,74 @@ def test_resigning_in_a_three_player_match_leaves_no_winner() -> None:
     world.resign(0)
     assert not world.players[0].alive and world.winner is None
     assert world.players[1].alive and world.players[2].alive
+
+
+def test_a_repair_costs_the_same_however_it_is_chunked() -> None:
+    """Ten points at a time or all at once, mending a building costs REPAIR_COST of its price and not a coin more.
+
+    Rounding each chunk up on its own charged a farm 160 lumber for a 125-lumber repair."""
+    info = BUILDINGS[BuildingType.FARM]
+    whole = repair_cost(info, 0, info.hp, info.hp)
+    assert whole == Cost(math.ceil(info.cost.gold * REPAIR_COST), math.ceil(info.cost.lumber * REPAIR_COST))
+    gold = lumber = 0
+    for hp in range(0, info.hp, 10):
+        chunk = repair_cost(info, hp, hp + 10, info.hp)
+        gold, lumber = gold + chunk.gold, lumber + chunk.lumber
+    assert (gold, lumber) == (whole.gold, whole.lumber)
+    world, hall_id = base_world()
+    hall = world.buildings[hall_id]
+    farm = world.place_building(0, BuildingType.FARM, (hall.x + 5, hall.y + 4))
+    peasant = world.spawn_unit(0, UnitType.PEASANT, (hall.x + 4.5, hall.y + 4.5))
+    farm.hp = 100
+    before_gold, before_lumber = world.players[0].gold, world.players[0].lumber
+    world.repair([peasant.id], farm.id)
+    run_until(world, lambda: farm.hp >= farm.max_hp, 60.0)
+    expected = repair_cost(info, 100, info.hp, info.hp)
+    assert (before_gold - world.players[0].gold, before_lumber - world.players[0].lumber) == (expected.gold, expected.lumber)
+
+
+def _mine_income(workers: int, seconds: float = 90.0) -> tuple[int, int]:
+    """``(gold earned, most peasants inside the mine at once)`` for *workers* on one mine."""
+    world, _hall = base_world()
+    mine = world.mines()[0]
+    for i in range(workers):
+        world.spawn_unit(0, UnitType.PEASANT, (4.5 + i % 6, 5.5 + i // 6))
+    world.players[0].gold = 0
+    world.harvest([u.id for u in world.player_units(0)], mine.id)
+    busiest = 0
+    for _ in range(int(seconds / SIM_DT)):
+        world.step()
+        busiest = max(busiest, sum(1 for u in world.player_units(0) if u.inside == mine.id))
+    return world.players[0].gold, busiest
+
+
+def test_a_mine_works_only_so_many_peasants_at_once() -> None:
+    """A mine has MINE_SLOTS places at the face: hands past that wait their turn and earn nothing.
+
+    Without the cap a base mine absorbed every peasant a player could hire, so
+    a bigger workforce at home always beat taking a second mine.
+    """
+    lean, lean_inside = _mine_income(10)
+    crowd, crowd_inside = _mine_income(20)
+    assert lean_inside <= MINE_SLOTS and crowd_inside <= MINE_SLOTS
+    assert lean >= 9000, "ten peasants on a mine next door still earn their keep"
+    assert crowd < 1.3 * lean, f"twice the hands earned {crowd} against {lean}: the mine is not capped"
+    assert crowd >= lean, "the extra hands must not make the mine slower"
+
+
+def test_a_loaded_world_remembers_who_is_at_the_mine_face() -> None:
+    """Crews are counted rather than stored, so a save and load must rebuild the count or the cap leaks."""
+    world, _hall = base_world()
+    mine = world.mines()[0]
+    for i in range(MINE_SLOTS + 2):
+        world.spawn_unit(0, UnitType.PEASANT, (4.5 + i % 6, 5.5 + i // 6))
+    world.harvest([u.id for u in world.player_units(0)], mine.id)
+    run_until(world, lambda: sum(1 for u in world.player_units(0) if u.inside == mine.id) == MINE_SLOTS, 60.0)
+    loaded = World.from_dict(world.to_dict())
+    assert loaded._mine_crews == {mine.id: MINE_SLOTS}
+    for _ in range(int(60 / SIM_DT)):
+        loaded.step()
+        assert sum(1 for u in loaded.player_units(0) if u.inside == mine.id) <= MINE_SLOTS
 
 
 # -- Scripted worlds: a mission decides ----------------------------------------------------

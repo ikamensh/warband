@@ -78,7 +78,7 @@ def verify(out: Path, resolution: tuple[int, int]) -> None:
                 older = World.from_dict(world.to_dict())
                 older.time += i * 37
                 HighScores(game.data_dir).record(older, player=scene.human, seed=3 + i,
-                                                 difficulty=Difficulty.NORMAL, run_id=f"fixture-{i}")
+                                                 difficulty=Difficulty.MEDIUM, run_id=f"fixture-{i}")
             press(key.B)
             assert isinstance(game.scene, HighScoreScene)
             assert len(HighScores(game.data_dir).load()) == 10

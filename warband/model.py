@@ -14,22 +14,26 @@ top-left tile.  :meth:`World.step` advances exactly ``SIM_DT`` seconds.
 
 from __future__ import annotations
 
+import functools
 import math
 import random
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Iterator
+from enum import Enum
+from typing import Any, Literal
 
 from warband import path as pathing
 from warband.races import RACES
 from warband.settlement import Plan, Settlement
 from warband.worker_knowledge import WorkerKnowledge
 from warband.rules import (
+    Layout,
     REPAIR_CHUNK, REPAIR_RATE, repair_cost,
     ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLASTING_POWDER_BONUS, BLESSING_BONUS, BLOODLUST_BONUS, BUILDINGS, CHOP_TIME, DEEP_MINING_TRIP,
-    FRENZY_BONUS, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MINE_GOLD, MINE_TIME, PLAYERS,
+    FRENZY_BONUS, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MINE_GOLD, MINE_SLOTS, MINE_TIME, PLAYERS,
     PLUNDER_SHARE, REGROWTH_SECONDS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION, STARTING_GOLD, STARTING_LUMBER,
-    UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
+    ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
+    MAX_QUEUED_ORDERS, UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
     Terrain, UnitInfo, UnitType, Upgrade,
 )
 
@@ -48,6 +52,54 @@ SETTLE_WITHIN = 1.0  # a plain walk counts as arrived when a crowd keeps the uni
 MINE_CLEARANCE = 2  # tiles kept free around a gold mine so peasants can get in and out
 SIDESTEP = 0.6  # lateral share of the push when walking units collide
 MAX_PUSH = 0.25  # tiles a crowd can shove a unit in one step; eight overlapping units once summed to a jump over a tree wall
+# Standing at ease (docs/unit-motion.md part 5): units that are neither fighting nor working keep a little
+# elbow room, and a unit hemmed in by its neighbours takes a short step away from them now and then.
+SPACING = 0.2  # tiles of clearance beyond touching that units at ease keep between each other; a soft push
+SPACING_WEIGHT = 0.15  # share of the missing clearance closed per step, gentler than the overlap push
+EASE_SPACE = 1.0  # a standing unit with a neighbour's centre closer than this feels crowded
+EASE_EVERY = 5  # ticks between a crowded unit's chances to step away
+EASE_CHANCE = 0.12  # that a crowded unit steps away at one of those chances: about once every two seconds
+EASE_STEP = 0.4  # tiles of the step, give or take EASE_STEP_VARIANCE
+EASE_STEP_VARIANCE = 0.3
+EASE_JITTER = 0.7  # radians either side of straight away from the crowd the step may veer
+EASE_GAIN = 0.1  # tiles more room the spot must offer than where the unit stands, so nobody steps into a neighbour
+
+
+def recorded(method):
+    """An order the world takes from a player.
+
+    While :attr:`World.orders` is a list, every call from outside the simulation
+    is appended to it as ``[tick, name, args, kwargs]`` in plain JSON values
+    before it runs, so a replay can give the same order at the same tick (and
+    meet the same rule error).  Orders the simulation gives itself, while
+    stepping or while carrying out another order, are that step's or order's
+    own business and are not logged.
+    """
+    name = method.__name__
+
+    @functools.wraps(method)
+    def order(self, *args, **kwargs):
+        if self._order_depth == 0 and self.orders is not None:
+            self.orders.append([self.tick, name, _plain(args), _plain(kwargs)])
+        self._order_depth += 1
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            self._order_depth -= 1
+
+    order.is_order = True  # what :data:`warband.replay.ORDERS` is built from; a plain wrapper flag would also match staticmethods
+    return order
+
+
+def _plain(value: Any) -> Any:
+    """*value* as the JSON types a log can hold: enums by value, tuples as lists, copies of lists and dicts."""
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    return value
 
 
 class RuleError(Exception):
@@ -100,6 +152,8 @@ class Build:
 class Hold:
     """Stand here; fight what comes in range but never chase."""
 
+    target: int | None = None  # what the unit is winding up against, while it stays in reach
+
 
 @dataclass
 class Heal:
@@ -122,6 +176,7 @@ class Patrol:
 
 
 Order = Move | AttackMove | Attack | Harvest | Deposit | Build | Hold | Heal | Patrol | Repair
+AT_EASE_ORDERS = (Move, AttackMove, Patrol)  # walked at ease: no target to close on, no work to press for
 
 _ORDER_TYPES: dict[str, type] = {cls.__name__: cls for cls in (Move, AttackMove, Attack, Harvest, Deposit, Build, Hold, Heal, Patrol, Repair)}
 
@@ -163,18 +218,31 @@ class Unit:
     path_goal: Pos | None = None
     exact: Point | None = None  # the point to stop at once the last path tile is reached
     cooldown: float = 0.0
+    windup: float = 0.0  # seconds left of the blow being drawn back; the unit stands committed while it is above zero
+    vx: float = 0.0  # tiles per second the unit moved of its own accord last step, for leading it with a stone
+    vy: float = 0.0
     carrying: Resource | None = None
     carry: int = 0
     timer: float = 0.0
     inside: int | None = None  # the mine this peasant is in
     constructing: int | None = None
     home: Point | None = None  # where an auto-acquired chase started
+    ease: Point | None = None  # where a unit standing at ease is stepping to for elbow room
     state: str = "idle"  # idle | move | attack | chop | build
     progress: float = 0.0
     last_distance: float = math.inf
     charge: float = 0.0  # healing accumulated below one hit point
     replan_at: float = 0.0  # simulation time from which the unit may plan again
     auto_work: bool = True  # Stop/Hold parks a worker until another order is given.
+
+    radius = UNIT_RADIUS
+
+    def __post_init__(self) -> None:
+        # Type and race are fixed for life, so the stats they select are read once
+        # rather than through RACES on every one of a match's millions of lookups.
+        self.info: UnitInfo = RACES[self.race].units[self.type]
+        self.max_hp: int = self.info.hp
+        self.is_worker: bool = self.type is UnitType.PEASANT
 
     @property
     def pos(self) -> Point:
@@ -185,25 +253,9 @@ class Unit:
         return (int(self.x), int(self.y))
 
     @property
-    def info(self) -> UnitInfo:
-        return RACES[self.race].units[self.type]
-
-    @property
-    def max_hp(self) -> int:
-        return self.info.hp
-
-    @property
-    def radius(self) -> float:
-        return UNIT_RADIUS
-
-    @property
     def hidden(self) -> bool:
         """Inside a mine or a building under construction: not on the map."""
         return self.inside is not None or self.constructing is not None
-
-    @property
-    def is_worker(self) -> bool:
-        return self.type is UnitType.PEASANT
 
     @property
     def order(self) -> Order | None:
@@ -227,46 +279,60 @@ class Building:
     cooldown: float = 0.0
     research: Upgrade | None = None
     research_progress: float = 0.0
+    abandoned: bool = False  # left behind by a resigned or surrendered player: nobody's, attackable, inert
     race: Race = Race.HUMAN  # its owner's; a gold mine is nobody's
 
-    @property
-    def info(self) -> BuildingInfo:
-        return RACES[self.race].buildings[self.type]
-
-    @property
-    def size(self) -> int:
-        return self.info.size
-
-    @property
-    def max_hp(self) -> int:
-        return self.info.hp
+    def __post_init__(self) -> None:
+        # Type, race and position are fixed once a building is placed, so its stats and
+        # its footprint are worked out here: vision, navigation grids and worker routing
+        # read them millions of times a match.
+        self.info: BuildingInfo = RACES[self.race].buildings[self.type]
+        size = self.size = self.info.size
+        self.max_hp: int = self.info.hp
+        self._build_time: float = self.info.build_time
+        self.pos: Pos = (self.x, self.y)
+        self.center: Point = (self.x + size / 2, self.y + size / 2)
+        self.rect: tuple[int, int, int, int] = (self.x, self.y, size, size)
+        self._tiles: tuple[Pos, ...] = tuple((self.x + dx, self.y + dy) for dy in range(size) for dx in range(size))
 
     @property
     def done(self) -> bool:
-        return self.progress >= self.info.build_time
+        return self.progress >= self._build_time
 
-    @property
-    def pos(self) -> Pos:
-        return (self.x, self.y)
-
-    @property
-    def center(self) -> Point:
-        return (self.x + self.size / 2, self.y + self.size / 2)
-
-    @property
-    def rect(self) -> tuple[int, int, int, int]:
-        return (self.x, self.y, self.size, self.size)
-
-    def tiles(self) -> Iterator[Pos]:
-        for dy in range(self.size):
-            for dx in range(self.size):
-                yield (self.x + dx, self.y + dy)
+    def tiles(self) -> tuple[Pos, ...]:
+        return self._tiles
 
     def contains(self, point: Point) -> bool:
         return self.x <= point[0] < self.x + self.size and self.y <= point[1] < self.y + self.size
 
 
 Entity = Unit | Building
+
+
+@dataclass
+class Projectile:
+    """A shot in the air.  An arrow (``target`` set) follows its mark and strikes it when it arrives;
+    a siege stone (``target`` None) comes down on ``aim``, the ground it was fired at, on whoever
+    stands there by then.  The shooter may be dead before the shot lands: what the blow needs of
+    it is copied here."""
+
+    id: int
+    player: int
+    source: int  # the shooter's id
+    source_type: str  # its UnitType or BuildingType value, for the blow's event
+    kind: str  # "arrow" | "stone"
+    start: Point
+    aim: Point  # where it was fired at
+    target: int | None
+    launched: float  # simulation time
+    flight: float  # seconds in the air
+    damage: int
+    splash: float = 0.0
+    siege: float = 1.0
+
+    @property
+    def lands_at(self) -> float:
+        return self.launched + self.flight
 
 
 @dataclass
@@ -297,9 +363,10 @@ def dist(a: Point, b: Point) -> float:
 def rect_gap(point: Point, rect: tuple[int, int, int, int]) -> float:
     """Distance from *point* to the nearest point of *rect* (0 inside)."""
     x, y, w, h = rect
-    dx = max(x - point[0], 0.0, point[0] - (x + w))
-    dy = max(y - point[1], 0.0, point[1] - (y + h))
-    return math.hypot(dx, dy)
+    px, py = point
+    dx = x - px if px < x else px - (x + w)  # at most one of the two sides can be overshot
+    dy = y - py if py < y else py - (y + h)
+    return math.hypot(dx if dx > 0.0 else 0.0, dy if dy > 0.0 else 0.0)
 
 
 def rects_gap(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> int:
@@ -321,18 +388,37 @@ def tile_center(pos: Pos) -> Point:
     return (pos[0] + 0.5, pos[1] + 0.5)
 
 
-def _sight_spans(radius: int) -> list[tuple[int, int]]:
-    """Per row offset of a sight disc, how far it reaches sideways: the largest dx with dx² + dy² ≤ r² + r."""
-    return [(dy, math.isqrt(radius * radius + radius - dy * dy)) for dy in range(-radius, radius + 1)]
+def _sight_spans(radius: int) -> list[tuple[int, int, bytes]]:
+    """Per row offset of a sight disc: how far it reaches sideways (the largest dx with
+    dx² + dy² ≤ r² + r) and the run of flags that paints the row."""
+    halves = [math.isqrt(radius * radius + radius - dy * dy) for dy in range(-radius, radius + 1)]
+    return [(dy, half, b"\x01" * (2 * half + 1)) for dy, half in zip(range(-radius, radius + 1), halves)]
 
 
-_SIGHT: dict[int, list[tuple[int, int]]] = {}
+_SIGHT: dict[int, list[tuple[int, int, bytes]]] = {}
 
 
-def sight_spans(radius: int) -> list[tuple[int, int]]:
+def sight_spans(radius: int) -> list[tuple[int, int, bytes]]:
     if radius not in _SIGHT:
         _SIGHT[radius] = _sight_spans(radius)
     return _SIGHT[radius]
+
+
+_DISCS: dict[tuple[int, int], tuple[int, int]] = {}
+
+
+def disc_mask(radius: int, width: int) -> tuple[int, int]:
+    """A sight disc as one big integer of flag bytes and its length, laid out for a grid *width*
+    tiles wide: OR-ing it into the grid at the disc's top-left corner reveals every row at once."""
+    disc = _DISCS.get((radius, width))
+    if disc is None:
+        length = 2 * radius * width + 2 * radius + 1  # the last row stops at the disc's right edge
+        rows = bytearray(length)
+        for row, (_dy, half, run) in enumerate(sight_spans(radius)):
+            start = row * width + radius - half
+            rows[start:start + len(run)] = run
+        disc = _DISCS[(radius, width)] = (int.from_bytes(rows, "little"), length)
+    return disc
 
 
 def or_into(target: bytearray, source: bytes | bytearray) -> None:
@@ -346,7 +432,8 @@ def or_into(target: bytearray, source: bytes | bytearray) -> None:
 class World:
     def __init__(self, width: int, height: int, terrain: list[list[Terrain]], player_count: int, *,
                  human: int | None = 0, rng: random.Random | None = None, theme: MapTheme = MapTheme.SUMMER,
-                 races: list[Race] | tuple[Race, ...] | None = None, scripted: bool = False) -> None:
+                 races: list[Race] | tuple[Race, ...] | None = None, layout: Layout = Layout.PLAINS,
+                 scripted: bool = False) -> None:
         if len(terrain) != height or any(len(row) != width for row in terrain):
             raise ValueError("terrain must be height rows of width tiles")
         if races is not None and len(races) != player_count:
@@ -355,17 +442,21 @@ class World:
         self.height = height
         self.terrain = terrain
         self.theme = theme
+        self.layout = layout
         self.scripted = scripted  # a mission decides the outcome: elimination still happens, but nobody surrenders and no winner is declared
         self.players = [Player(i, PLAYERS[i].name, PLAYERS[i].color, human=(i == human), race=races[i] if races is not None else Race.HUMAN)
                         for i in range(player_count)]
         self.regrowth: list[tuple[Pos, float]] = []  # (felled tree tile, simulation time it grows back) — the elven art
         self.units: dict[int, Unit] = {}
         self.buildings: dict[int, Building] = {}
+        self.projectiles: dict[int, Projectile] = {}
         self.rng = rng if rng is not None else random.Random(0)
         self.time = 0.0
         self.tick = 0
         self.events: list[Event] = []
         self.winner: int | None = None
+        self.orders: list[list[Any]] | None = None  # the order log a replay is made of, see :func:`recorded`
+        self._order_depth = 0
         self._next_id = 1
         self._blocked = bytearray(width * height)
         for y in range(height):
@@ -375,6 +466,7 @@ class World:
         self.explored = [bytearray(width * height) for _ in self.players]
         self.visible = [bytearray(width * height) for _ in self.players]
         self._buckets: list[list[Unit] | None] = [None] * (width * height)  # units by tile, rebuilt each step
+        self._mine_crews: dict[int, int] = {}  # mine id → peasants at its face; kept as they enter and leave
         self.worker_knowledge = [WorkerKnowledge(width, height) for _ in self.players]
         self._worker_ai_checks: dict[int, int] = {}
         self._worker_ai_views: dict[int, tuple[int, Any]] = {}
@@ -444,7 +536,7 @@ class World:
         return [u for u in self.units.values() if u.player == player]
 
     def player_buildings(self, player: int, building_type: BuildingType | None = None, *, done: bool | None = None) -> list[Building]:
-        return [b for b in self.buildings.values() if b.player == player
+        return [b for b in self.buildings.values() if b.player == player and not b.abandoned
                 and (building_type is None or b.type is building_type) and (done is None or b.done == done)]
 
     def mines(self) -> list[Building]:
@@ -459,19 +551,26 @@ class World:
         r2 = radius * radius
         width, buckets = self.width, self._buckets
         near: list[Unit] = []
-        for row in range(y0 * width, y1 * width + 1, width):
-            for cell in buckets[row + x0:row + x1 + 1]:
-                if cell:
-                    for unit in cell:
-                        dx, dy = unit.x - px, unit.y - py
-                        if dx * dx + dy * dy <= r2:
-                            near.append(unit)
+        append = near.append
+        for row in range(y0 * width + x0, y1 * width + x0 + 1, width):
+            for cell in filter(None, buckets[row:row + x1 - x0 + 1]):
+                for unit in cell:
+                    dx, dy = unit.x - px, unit.y - py
+                    if dx * dx + dy * dy <= r2:
+                        append(unit)
         return near
 
     def _index_units(self) -> None:
-        self._buckets = [None] * (self.width * self.height)
+        width = self.width
+        buckets: list[list[Unit] | None] = [None] * (width * self.height)
         for unit in self.units.values():
-            self._bucket(unit)
+            index = int(unit.y) * width + int(unit.x)
+            cell = buckets[index]
+            if cell is None:
+                buckets[index] = [unit]
+            else:
+                cell.append(unit)
+        self._buckets = buckets
 
     def _bucket(self, unit: Unit) -> None:
         index = int(unit.y) * self.width + int(unit.x)
@@ -484,24 +583,42 @@ class World:
     # -- Vision ----------------------------------------------------------------
 
     def is_visible(self, player: int, pos: Pos) -> bool:
-        return self.in_bounds(pos) and bool(self.visible[player][pos[1] * self.width + pos[0]])
+        x, y = pos
+        width = self.width
+        return 0 <= x < width and 0 <= y < self.height and bool(self.visible[player][y * width + x])
 
     def is_explored(self, player: int, pos: Pos) -> bool:
-        return self.in_bounds(pos) and bool(self.explored[player][pos[1] * self.width + pos[0]])
+        x, y = pos
+        width = self.width
+        return 0 <= x < width and 0 <= y < self.height and bool(self.explored[player][y * width + x])
+
+    def any_visible(self, player: int, rect: tuple[int, int, int, int]) -> bool:
+        """Whether *player* sees any tile of *rect*, testing whole rows of the flag grid at a time."""
+        x, y, w, h = rect
+        width, visible = self.width, self.visible[player]
+        lo, hi = max(0, x), min(width, x + w)
+        if lo >= hi:
+            return False
+        return any(any(visible[row * width + lo:row * width + hi])
+                   for row in range(max(0, y), min(self.height, y + h)))
 
     def update_vision(self) -> None:
         self._worker_ai_views.clear()
         self._worker_ai_navigation.clear()
+        # Collect each player's sight discs first: everything on one tile with one sight radius
+        # reveals the very same tiles, and a crowd around a mine or in a battle line is common.
+        discs: list[set[tuple[Pos, int]]] = [set() for _ in self.players]
+        for unit in self.units.values():
+            discs[unit.player].add((unit.tile, unit.info.sight))
+        for building in self.buildings.values():
+            if building.player is not None and not building.abandoned:
+                cx, cy = building.center
+                discs[building.player].add(((int(cx), int(cy)), building.info.sight + building.size // 2))
         for player in self.players:
             visible = self.visible[player.id]
             visible[:] = bytes(len(visible))
-            for unit in self.units.values():
-                if unit.player == player.id:
-                    self._reveal(visible, unit.tile, unit.info.sight)
-            for building in self.buildings.values():
-                if building.player == player.id:
-                    cx, cy = building.center
-                    self._reveal(visible, (int(cx), int(cy)), building.info.sight + building.size // 2)
+            for at, sight in discs[player.id]:
+                self._reveal(visible, at, sight)
             or_into(self.explored[player.id], visible)
             self.worker_knowledge[player.id].refresh(self, player.id)
         self._reveal_last_standings()
@@ -541,12 +658,22 @@ class World:
     def _reveal(self, visible: bytearray, at: Pos, radius: int) -> None:
         width, height = self.width, self.height
         x0, y0 = at
-        for dy, half in sight_spans(radius):
+        if radius <= x0 < width - radius and radius <= y0 < height - radius:
+            # No row of the disc reaches an edge, so the whole disc goes in as one big integer.
+            mask, length = disc_mask(radius, width)
+            lo = (y0 - radius) * width + x0 - radius
+            visible[lo:lo + length] = (int.from_bytes(visible[lo:lo + length], "little") | mask).to_bytes(length, "little")
+            return
+        for dy, half, run in sight_spans(radius):
             y = y0 + dy
             if 0 <= y < height:
-                lo, hi = max(0, x0 - half), min(width, x0 + half + 1)
+                lo, hi = x0 - half, x0 + half + 1
+                if lo < 0:
+                    lo = 0
+                if hi > width:
+                    hi = width
                 if lo < hi:
-                    visible[y * width + lo:y * width + hi] = b"\x01" * (hi - lo)
+                    visible[y * width + lo:y * width + hi] = run[:hi - lo]
 
     def reveal_all(self, player: int) -> None:
         """Explore (and, until the next vision update, see) the whole map."""
@@ -622,8 +749,9 @@ class World:
         return DEEP_MINING_TRIP if self._has(player, Upgrade.DEEP_MINING) else GOLD_PER_TRIP
 
     def speed_of(self, unit: Unit) -> float:
-        speed = unit.info.speed
-        if unit.info.mounted and self._has(unit.player, Upgrade.HORSES):
+        info = unit.info
+        speed = info.speed
+        if info.mounted and self._has(unit.player, Upgrade.HORSES):
             speed += HORSES_BONUS
         return speed
 
@@ -698,6 +826,7 @@ class World:
             return "Training in progress"
         return self.can_afford(building.player, info.cost)
 
+    @recorded
     def research(self, building_id: int, upgrade: Upgrade) -> None:
         building = self.buildings.get(building_id)
         if building is None:
@@ -710,6 +839,7 @@ class World:
         building.research = upgrade
         building.research_progress = 0.0
 
+    @recorded
     def cancel_research(self, building_id: int) -> None:
         building = self.buildings.get(building_id)
         if building is None or building.research is None:
@@ -721,31 +851,37 @@ class World:
 
     def can_place(self, building_type: BuildingType, pos: Pos, player: int, *, builder: int | None = None) -> str | None:
         info = BUILDINGS[building_type]
-        if info.requires is not None and not self.player_buildings(player, info.requires, done=True):
+        if info.requires is not None and not any(b.player == player and b.type is info.requires and b.done
+                                                 for b in self.buildings.values()):
             return f"Requires a {self.building_info(player, info.requires).name}"
         return self._placement_reason(building_type, pos, player, builder=builder)
 
     def _placement_reason(self, building_type: BuildingType, pos: Pos, player: int, *,
                           builder: int | None = None, ignore_units: bool = False) -> str | None:
         size = BUILDINGS[building_type].size
-        for dy in range(size):
-            for dx in range(size):
-                tile = (pos[0] + dx, pos[1] + dy)
-                if not self.in_bounds(tile):
+        left, top = pos
+        width, height = self.width, self.height
+        terrain, blocked, explored = self.terrain, self._blocked, self.explored[player]
+        for y in range(top, top + size):
+            for x in range(left, left + size):
+                if not (0 <= x < width and 0 <= y < height):
                     return "Off the map"
-                if self.terrain_at(tile) is not Terrain.GRASS:
+                if terrain[y][x] is not Terrain.GRASS:
                     return "Needs open ground"
-                if self._blocked[tile[1] * self.width + tile[0]]:
+                index = y * width + x
+                if blocked[index]:
                     return "Something is in the way"
-                if not self.is_explored(player, tile):
+                if not explored[index]:
                     return "Unexplored"
-        for unit in self.units.values():
-            if ignore_units or unit.id == builder or unit.hidden:
-                continue
-            if pos[0] - unit.radius < unit.x < pos[0] + size + unit.radius and pos[1] - unit.radius < unit.y < pos[1] + size + unit.radius:
-                return "A unit is in the way"
-        for mine in self.mines():
-            if rects_gap((pos[0], pos[1], size, size), mine.rect) < MINE_CLEARANCE:
+        if not ignore_units:
+            for unit in self.units.values():
+                if unit.id == builder or unit.hidden:
+                    continue
+                if left - unit.radius < unit.x < left + size + unit.radius and top - unit.radius < unit.y < top + size + unit.radius:
+                    return "A unit is in the way"
+        rect = (left, top, size, size)
+        for mine in self.buildings.values():
+            if mine.type is BuildingType.GOLD_MINE and rects_gap(rect, mine.rect) < MINE_CLEARANCE:
                 return "Too close to the gold mine"
         return None
 
@@ -753,6 +889,7 @@ class World:
         """Check a blueprint's ground; resources, prerequisites and workers may arrive later."""
         return self.settlement.can_plan_building(building_type, pos, player)
 
+    @recorded
     def plan_building(self, player: int, building_type: BuildingType, pos: Pos) -> int:
         """Schedule construction without selecting a worker; pay when construction starts."""
         return self.settlement.plan_building(player, building_type, pos)
@@ -761,25 +898,30 @@ class World:
         """Pending settlement requests and active construction, in request order."""
         return self.settlement.player_plans(player)
 
+    @recorded
     def order_unit(self, player: int, unit_type: UnitType) -> int:
         """Request a recruit; an available compatible producer is chosen automatically."""
         return self.settlement.order_unit(player, unit_type)
 
+    @recorded
     def order_upgrade(self, player: int, upgrade: Upgrade) -> int:
         """Request research; prerequisites, resources and a free researcher may arrive later."""
         return self.settlement.order_upgrade(player, upgrade)
 
+    @recorded
     def cancel_plan(self, player: int, plan_id: int) -> None:
         """Cancel pending work or refund an unfinished planned building at the normal rate."""
         self.settlement.cancel_plan(player, plan_id)
 
+    @recorded
     def set_assembly(self, player: int, point: Point | None) -> None:
         """Set the fallback destination for new combat recruits across the settlement."""
         self.players[player].assembly = self._clamp(point) if point is not None else None
 
     # -- Commands ------------------------------------------------------------------
 
-    def _own_units(self, unit_ids: list[int], player: int | None = None) -> list[Unit]:
+    def _own_units(self, unit_ids: list[int], player: int | None = None, *, queue: bool = False) -> list[Unit]:
+        """The living units among *unit_ids*; with *queue*, only if each has room for one more order behind its own."""
         units = []
         for uid in unit_ids:
             unit = self.units.get(uid)
@@ -787,6 +929,8 @@ class World:
                 continue
             if player is not None and unit.player != player:
                 raise RuleError("Not your unit")
+            if queue and len(unit.orders) >= MAX_QUEUED_ORDERS:
+                raise RuleError(f"Too many queued orders (a unit takes {MAX_QUEUED_ORDERS})")
             units.append(unit)
         return units
 
@@ -803,47 +947,55 @@ class World:
             unit.orders.clear()
             unit.path = []
             unit.path_goal = None
+            unit.windup = 0.0  # a blow being drawn back is broken off
         unit.orders.append(order)
         unit.home = None
+        unit.ease = None
         unit.state = "idle"
 
+    @recorded
     def move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         target = self._clamp(target)
-        units = self._own_units(unit_ids)
+        units = self._own_units(unit_ids, queue=queue)
         pace = min((self.speed_of(u) for u in units), default=None) if len(units) > 1 and not queue else None
         for unit in units:
             self._issue(unit, Move(target, pace=pace), queue=queue)
 
+    @recorded
     def attack_move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         target = self._clamp(target)
-        units = self._own_units(unit_ids)
+        units = self._own_units(unit_ids, queue=queue)
         pace = min((self.speed_of(u) for u in units), default=None) if len(units) > 1 and not queue else None
         for unit in units:
             self._issue(unit, AttackMove(target, pace=pace) if not unit.is_worker else Move(target, pace=pace), queue=queue)
 
+    @recorded
     def patrol(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         """Patrol between where each unit stands and *target*."""
         target = self._clamp(target)
-        for unit in self._own_units(unit_ids):
+        for unit in self._own_units(unit_ids, queue=queue):
             if unit.is_worker:
                 self._issue(unit, Move(target), queue=queue)
             else:
                 self._issue(unit, Patrol(unit.pos, target), queue=queue)
 
+    @recorded
     def attack(self, unit_ids: list[int], target_id: int, *, queue: bool = False) -> None:
         target = self.entity(target_id)
         if target is None:
             raise RuleError("No such target")
         if isinstance(target, Building) and target.type is BuildingType.GOLD_MINE:
             raise RuleError("A gold mine cannot be attacked")
-        for unit in self._own_units(unit_ids):
-            if target.player == unit.player:
-                raise RuleError("Cannot attack your own")
+        units = self._own_units(unit_ids, queue=queue)
+        if any(target.player == unit.player for unit in units):
+            raise RuleError("Cannot attack your own")
+        for unit in units:
             if unit.info.damage == 0:
                 self._issue(unit, Move(self._target_point(target)), queue=queue)  # a healer follows the fight instead
             else:
                 self._issue(unit, Attack(target_id), queue=queue)
 
+    @recorded
     def stop(self, unit_ids: list[int]) -> None:
         for unit in self._own_units(unit_ids):
             unit.auto_work = False
@@ -855,10 +1007,31 @@ class World:
             unit.state = "idle"
             unit.home = None
 
+    @recorded
     def hold(self, unit_ids: list[int]) -> None:
         for unit in self._own_units(unit_ids):
             self._issue(unit, Hold())
 
+    @recorded
+    def release_workers(self, unit_ids: list[int]) -> None:
+        """Take peasants off the job they are on and leave the automatic policy to place them again.
+
+        Unlike :meth:`stop` this keeps ``auto_work``: the point is to be given
+        new work, not to be left standing. A caller that knows a peasant should
+        be somewhere else but not exactly where — the brain pulling hands off
+        the trees once the wood is piled up — says so this way rather than
+        naming a destination it may be remembering wrongly.
+        """
+        units = self._own_units(unit_ids)
+        if not all(unit.is_worker for unit in units):
+            raise RuleError("Only peasants gather")  # before any is let go: a refused order leaves no trace
+        for unit in units:
+            unit.orders.clear()
+            unit.path = []
+            unit.path_goal = None
+            unit.state = "idle"
+
+    @recorded
     def harvest(self, unit_ids: list[int], target: int | Pos, *, queue: bool = False) -> None:
         if isinstance(target, int):
             mine = self.buildings.get(target)
@@ -866,15 +1039,18 @@ class World:
                 raise RuleError("Not a gold mine")
         elif not self.in_bounds(target) or self.terrain_at(target) is not Terrain.TREES:
             raise RuleError("No trees there")
-        for unit in self._own_units(unit_ids):
-            if not unit.is_worker:
-                raise RuleError("Only peasants can harvest")
+        units = self._own_units(unit_ids, queue=queue)
+        if not all(unit.is_worker for unit in units):
+            raise RuleError("Only peasants can harvest")
+        for unit in units:
             self._issue(unit, Harvest(target), queue=queue)
 
+    @recorded
     def build(self, unit_id: int, building_type: BuildingType, pos: Pos, *, queue: bool = False) -> None:
         unit = self.units.get(unit_id)
         if unit is None or not unit.is_worker:
             raise RuleError("Only peasants can build")
+        self._own_units([unit_id], queue=queue)
         info = BUILDINGS[building_type]
         if building_type is BuildingType.GOLD_MINE:
             raise RuleError("Gold mines cannot be built")
@@ -883,9 +1059,10 @@ class World:
             raise RuleError(reason)
         self._issue(unit, Build(building_type, pos), queue=queue)
 
+    @recorded
     def repair(self, unit_ids: list[int], building_id: int, *, queue: bool = False) -> None:
         """Peasants among *unit_ids* mend one of their own finished, damaged buildings."""
-        workers = [u for u in self._own_units(unit_ids) if u.is_worker]
+        workers = [u for u in self._own_units(unit_ids, queue=queue) if u.is_worker]
         if not workers:
             raise RuleError("Only peasants can repair")
         b = self.buildings.get(building_id)
@@ -898,6 +1075,7 @@ class World:
         for u in workers:
             self._issue(u, Repair(b.id), queue=queue)
 
+    @recorded
     def train(self, building_id: int, unit_type: UnitType) -> None:
         building = self.buildings.get(building_id)
         if building is None:
@@ -909,29 +1087,44 @@ class World:
         self._pay(building.player, UNITS[unit_type].cost)
         building.queue.append(unit_type)
 
+    @recorded
     def cancel_train(self, building_id: int, index: int = -1) -> None:
         building = self.buildings.get(building_id)
         if building is None or not building.queue:
             raise RuleError("Nothing to cancel")
+        if not -len(building.queue) <= index < len(building.queue):
+            raise RuleError("No such place in the training queue")
         assert building.player is not None
         unit_type = building.queue.pop(index)
         self._refund(building.player, UNITS[unit_type].cost)
         if index in (0, -len(building.queue) - 1) or not building.queue:
             building.train_progress = 0.0
 
+    @recorded
     def set_rally(self, building_id: int, point: Point | None) -> None:
         building = self.buildings.get(building_id)
         if building is None or building.player is None:
             raise RuleError("No such building")
         building.rally = self._clamp(point) if point is not None else None
 
-    def smart(self, unit_ids: list[int], point: Point, *, queue: bool = False) -> str:
-        """What a right-click means for these units at *point*; returns the verb used."""
-        units = self._own_units(unit_ids)
+    @recorded
+    def smart(self, unit_ids: list[int], point: Point, *, queue: bool = False,
+              target_id: int | None | Literal["at_point"] = "at_point") -> str:
+        """Resolve a context order; return the verb used.
+
+        A displayed target can be supplied by ID, or None for empty ground.
+        Omission picks at the model point, preserving AI and recorded orders.
+        """
+        units = self._own_units(unit_ids, queue=queue)  # room for every unit now, whichever order each ends up with
         if not units:
             return "none"
         player = units[0].player
-        target = self.entity_at(point, visible_to=player)
+        if target_id == "at_point":
+            target = self.entity_at(point, visible_to=player)
+        else:
+            target = self.entity(target_id) if target_id is not None else None
+        if target_id not in ("at_point", None) and target is None:
+            raise RuleError("No such target")
         tile = (int(point[0]), int(point[1]))
         if target is not None and target.player is not None and target.player != player:
             self.attack(unit_ids, target.id, queue=queue)
@@ -1007,6 +1200,13 @@ class World:
 
     def step(self) -> None:
         """Advance the world by :data:`SIM_DT`."""
+        self._order_depth += 1
+        try:
+            self._step()
+        finally:
+            self._order_depth -= 1
+
+    def _step(self) -> None:
         dt = SIM_DT
         self.time += dt
         self.tick += 1
@@ -1019,6 +1219,7 @@ class World:
         for unit in list(self.units.values()):
             if unit.id in self.units:
                 self._update_unit(unit, dt)
+        self._land_projectiles()
         self._separate()
         self._bury_the_dead()
         if self.regrowth and self.tick % round(1 / SIM_DT) == 0:
@@ -1055,7 +1256,7 @@ class World:
     # -- Buildings -------------------------------------------------------------------
 
     def _update_building(self, b: Building, dt: float) -> None:
-        if b.type is BuildingType.GOLD_MINE or b.player is None:
+        if b.type is BuildingType.GOLD_MINE or b.player is None or b.abandoned:  # a ruin nobody owns builds, trains and shoots nothing
             return
         info = b.info
         if not b.done:
@@ -1114,7 +1315,7 @@ class World:
         target = self._nearest_enemy(b.player, b.center, self.building_range(b) + b.size / 2, units_only=True)  # type: ignore[arg-type]
         if target is None:
             return
-        self._hit(b, target, self.damage_of(b))
+        self._launch_arrow(b, target, self.damage_of(b))
         b.cooldown = info.cooldown
 
     def _abandon_construction(self, unit: Unit) -> None:
@@ -1127,6 +1328,7 @@ class World:
             if spot is not None:
                 unit.x, unit.y = tile_center(spot)
 
+    @recorded
     def cancel_building(self, building_id: int) -> None:
         """Tear down an unfinished building; the whole cost comes back."""
         b = self.buildings.get(building_id)
@@ -1142,19 +1344,27 @@ class World:
         self._refund(b.player, b.info.cost)
         self._remove_building(b, reason="cancelled")
 
+    @recorded
     def resume_construction(self, unit_ids: list[int], building_id: int) -> None:
         b = self.buildings.get(building_id)
         if b is None or b.done:
             raise RuleError("Nothing to resume")
-        for unit in self._own_units(unit_ids):
-            if not unit.is_worker:
-                raise RuleError("Only peasants can build")
+        units = self._own_units(unit_ids)
+        if not all(unit.is_worker for unit in units):
+            raise RuleError("Only peasants can build")
+        for unit in units:
             self._issue(unit, Build(b.type, b.pos, building=b.id))
 
     # -- Units ----------------------------------------------------------------------
 
     def _update_unit(self, u: Unit, dt: float) -> None:
-        u.cooldown = max(0.0, u.cooldown - dt)
+        cooldown = u.cooldown - dt
+        u.cooldown = cooldown if cooldown > 0.0 else 0.0
+        x, y = u.x, u.y
+        self._act(u, dt)
+        u.vx, u.vy = (u.x - x) / dt, (u.y - y) / dt  # its own walking, before the crowd shoves it
+
+    def _act(self, u: Unit, dt: float) -> None:
         if u.inside is not None:
             self._mine_inside(u, dt)
             return
@@ -1163,7 +1373,7 @@ class World:
             return
         order = u.order
         if order is None:
-            self._idle(u)
+            self._idle(u, dt)
             return
         if isinstance(order, Move):
             self._do_move(u, order, dt)
@@ -1178,7 +1388,7 @@ class World:
         elif isinstance(order, Build):
             self._do_build(u, order, dt)
         elif isinstance(order, Hold):
-            self._do_hold(u)
+            self._do_hold(u, order, dt)
         elif isinstance(order, Heal):
             self._do_heal(u, order, dt)
         elif isinstance(order, Patrol):
@@ -1193,29 +1403,79 @@ class World:
         u.path_goal = None
         u.exact = None
         u.state = "idle"
+        u.windup = 0.0
         u.last_distance = math.inf
         u.progress = 0.0
 
-    def _idle(self, u: Unit) -> None:
+    def _idle(self, u: Unit, dt: float) -> None:
         u.state = "idle"
         if u.is_worker:
             if u.auto_work and self.tick % round(1 / SIM_DT) == 0:
                 from warband.worker_ai import assign_idle_workers
 
                 assign_idle_workers(self, u.player)
+        elif self.tick % 5 == 0:
+            if u.info.heal:
+                patient = self._healing_patient(u, u.info.sight)
+                if patient is not None:
+                    u.home = u.pos
+                    u.orders.appendleft(Heal(patient.id, auto=True))
+            else:
+                target = self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range)
+                if target is not None:
+                    u.home = u.pos
+                    u.orders.appendleft(Attack(target.id, auto=True))
+        if not u.orders:
+            self._ease(u, dt)
+
+    def _ease(self, u: Unit, dt: float) -> None:
+        """Standing at ease: a unit hemmed in by its neighbours takes a short step away from them now
+        and then, so a crowd that arrived as a clump loosens to arm's length.  No order is involved:
+        the unit stays idle to the AI, to Tab and to the player."""
+        if u.ease is None:
+            if self.tick % EASE_EVERY or self.rng.random() >= EASE_CHANCE:
+                return
+            u.ease = self._elbow_room(u)
+            if u.ease is None:
+                return
+            u.last_distance = math.inf
+        left = dist(u.pos, u.ease)
+        if left > ARRIVE and left < u.last_distance - 1e-3 and self._steer(u, u.ease, dt):
+            u.last_distance = left  # still walking: the step gains ground and the line is clear
             return
-        if self.tick % 5:
-            return
-        if u.info.heal:
-            patient = self._healing_patient(u, u.info.sight)
-            if patient is not None:
-                u.home = u.pos
-                u.orders.appendleft(Heal(patient.id, auto=True))
-            return
-        target = self._nearest_enemy(u.player, u.pos, u.info.sight)
-        if target is not None:
-            u.home = u.pos
-            u.orders.appendleft(Attack(target.id, auto=True))
+        u.ease = None
+        u.last_distance = math.inf
+        u.state = "idle"
+
+    def _elbow_room(self, u: Unit) -> Point | None:
+        """A spot a short step away from the neighbours crowding *u*, or None when it has room already,
+        is boxed in, or the step would end nearer to someone else than where it stands."""
+        ax = ay = 0.0
+        for v in self.units_near(u.pos, EASE_SPACE):
+            if v is u or v.hidden:
+                continue
+            dx, dy = u.x - v.x, u.y - v.y
+            d = math.hypot(dx, dy)
+            if d < 1e-6:
+                angle = (u.id * 2.399) % (2 * math.pi)
+                dx, dy, d = math.cos(angle), math.sin(angle), 1.0
+            weight = (EASE_SPACE - d) / d  # the closer, the more it counts
+            ax += dx * weight
+            ay += dy * weight
+        if not (ax or ay):
+            return None
+        angle = math.atan2(ay, ax) + self.rng.uniform(-EASE_JITTER, EASE_JITTER)
+        step = EASE_STEP + self.rng.uniform(-EASE_STEP_VARIANCE, EASE_STEP_VARIANCE)
+        spot = self._clamp((u.x + math.cos(angle) * step, u.y + math.sin(angle) * step))
+        if not self.passable(int(spot[0]), int(spot[1])) or not self._line_clear(u.pos, spot):
+            return None
+        return spot if self._room(u, spot) >= self._room(u, u.pos) + EASE_GAIN else None
+
+    def _room(self, u: Unit, point: Point) -> float:
+        """How far *point* is from the nearest unit other than *u*, as far as EASE_SPACE plus the
+        gain a step must make matters: anything beyond is all the room a standing unit asks for."""
+        return min((dist(point, v.pos) for v in self.units_near(point, EASE_SPACE + EASE_GAIN) if v is not u and not v.hidden),
+                   default=math.inf)
 
     def _danger_to(self, patient: Unit) -> float:
         """Hits per second the visible enemies in reach of *patient* could land on it.  Memoised for the
@@ -1228,7 +1488,7 @@ class World:
                 if enemy.player == player or enemy.hidden or enemy.hp <= 0 or not self.is_visible(player, enemy.tile):
                     continue
                 if enemy.info.damage and self._gap(enemy, patient) <= self.range_of(enemy) + .75:
-                    danger += max(1, self.damage_of(enemy) - self.armor_of(patient)) / enemy.info.cooldown
+                    danger += max(1, self.damage_of(enemy) - self.armor_of(patient)) / enemy.info.period
             for tower in self.buildings.values():
                 if tower.player in (None, player) or not tower.done or not tower.info.damage:
                     continue
@@ -1240,7 +1500,7 @@ class World:
     def _healing_priority(self, healer: Unit, patient: Unit) -> float:
         """Weigh missing health and visible pressure against travel before treatment."""
         danger = self._danger_to(patient)
-        value = self.damage_of(patient) / patient.info.cooldown + self.heal_rate(patient) + 1
+        value = self.damage_of(patient) / patient.info.period + self.heal_rate(patient) + 1
         missing_fraction = (patient.max_hp - patient.hp) / patient.max_hp
         urgency = 1 + min(3, 4 * danger / patient.hp)
         travel = max(0, self._gap(healer, patient) - self.range_of(healer)) / self.speed_of(healer)
@@ -1272,7 +1532,7 @@ class World:
         if self._gap(u, patient) <= self.range_of(u) + 0.05:
             u.path = []
             u.path_goal = None
-            self._face(u, patient.pos)
+            self._turn_toward(u, patient.pos, dt)
             u.state = "attack"
             u.charge += self.heal_rate(u) * dt
             u.timer += dt
@@ -1292,20 +1552,22 @@ class World:
         if self._follow(u, dt) and u.path_goal != goal and self.time >= u.replan_at:
             self._plan(u, goal, patient.pos)
 
-    def _do_hold(self, u: Unit) -> None:
+    def _do_hold(self, u: Unit, order: Hold, dt: float) -> None:
         u.state = "idle"
         u.path = []
-        if u.is_worker or self.tick % 5:
+        if u.is_worker or u.info.damage == 0:
             return
-        if u.info.damage == 0:
-            return
-        target = self._nearest_enemy(u.player, u.pos, self.range_of(u) + 1.0)
-        if target is not None and self._in_range(u, target):
-            self._face(u, self._target_point(target))
-            if u.cooldown <= 0:
-                self._strike(u, target)
-                u.cooldown = u.info.cooldown
-            u.state = "attack"
+        target = self.entity(order.target) if order.target is not None else None
+        if target is not None and (target.hp <= 0 or (u.windup <= 0.0 and not self._in_range(u, target))):
+            target = order.target = None
+        if target is None:
+            if self.tick % 5:
+                return
+            target = self._nearest_enemy(u.player, u.pos, self.range_of(u) + 1.0, min_radius=u.info.min_range)
+            if target is None or not self._in_range(u, target):
+                return
+            order.target = target.id
+        self._fight(u, target, dt, auto=True)
 
     def _do_move(self, u: Unit, order: Move, dt: float) -> None:
         if self._walk_to(u, order.target, dt, settle=True):
@@ -1321,7 +1583,7 @@ class World:
                 return False
             u.orders.appendleft(Heal(patient.id, auto=True))
         else:
-            target = self._nearest_enemy(u.player, u.pos, u.info.sight)
+            target = self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range)
             if target is None:
                 return False
             u.orders.appendleft(Attack(target.id, auto=True))
@@ -1352,16 +1614,21 @@ class World:
             if order.auto and u.home is not None and not u.orders:
                 u.orders.append(Move(u.home))
             return
+        if u.windup > 0.0:
+            self._fight(u, target, dt, auto=order.auto, chase=True)  # committed: the blow is drawn back, whatever else moves
+            return
         if order.auto and u.home is not None and dist(u.pos, u.home) > LEASH:
             self._finish_order(u)
             u.orders.appendleft(Move(u.home))
             return
-        if order.auto and self.tick % 5 == 0 and self._threat(target) > 0:
-            # A bystander or a building holds a unit's attention only until something more dangerous shows up.
-            better = self._nearest_enemy(u.player, u.pos, u.info.sight)
-            if better is not None and self._threat(better) < self._threat(target):
-                target = better
-                self._retarget(u, order, better)
+        if order.auto and self.tick % 5 == 0:
+            threat = self._threat(target)
+            if threat > 0:
+                # A bystander or a building holds a unit's attention only until something more dangerous shows up.
+                better = self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range)
+                if better is not None and self._threat(better) < threat:
+                    target = better
+                    self._retarget(u, order, better)
         if order.auto and u.type is UnitType.ARCHER and u.cooldown > 0 and self._ranged_retreat(u, target, dt):
             return
         if order.auto and u.cooldown <= 0 and self.range_of(u) < 1:
@@ -1371,14 +1638,12 @@ class World:
             if nearby is not None and self._in_range(u, nearby) and self._threat(nearby) <= self._threat(target):
                 target = nearby
                 order.target = target.id
+        if u.info.min_range and self._gap(u, target) < u.info.min_range:
+            if not self._back_off(u, target, dt):
+                u.state = "idle"  # cornered: the crew can do nothing about this one until it moves
+            return
         if self._in_range(u, target):
-            u.path = []
-            u.path_goal = None
-            self._face(u, self._target_point(target))
-            u.state = "attack"
-            if u.cooldown <= 0:
-                self._strike(u, target)
-                u.cooldown = u.info.cooldown
+            self._fight(u, target, dt, auto=order.auto, chase=True)
             return
         aim = self._target_point(target)
         if self.range_of(u) < 1:
@@ -1393,6 +1658,54 @@ class World:
             self._plan(u, goal_tile, aim)
         if self._follow(u, dt) and u.path_goal != goal_tile and self.time >= u.replan_at:
             self._plan(u, goal_tile, aim)
+
+    def _fight(self, u: Unit, target: Entity, dt: float, *, auto: bool, chase: bool = False) -> None:
+        """Face *target*, wind up and strike.  The blow at the end of the wind-up lands if the target is
+        still within reach and :data:`WINDUP_SLACK`, and costs the cooldown either way.  A shooter stands
+        through its wind-up; a melee unit that may *chase* swings on the run, so a target merely walking
+        away is still caught."""
+        u.path = []
+        u.path_goal = None
+        faced = self._turn_toward(u, self._target_point(target), dt)
+        if u.windup > 0.0:
+            if chase and u.info.melee and not self._in_range(u, target):
+                self._steer(u, self._melee_position(u, target), dt)
+            u.state = "attack"
+            u.windup -= dt
+            if u.windup > 1e-9:
+                return
+            u.windup = 0.0
+            self._release(u, target, auto=auto)
+        else:
+            u.state = "attack"
+            if not faced or u.cooldown > 0.0:
+                return
+            if u.info.splash and self._aim_point(u, target, auto=auto) is None:
+                return  # no clear shot: the crew waits rather than drop a stone on its own side
+            u.windup = u.info.windup  # drawn back from now; the blow lands that many seconds on
+            if u.windup <= 0.0:
+                self._release(u, target, auto=auto)
+
+    def _release(self, u: Unit, target: Entity, *, auto: bool) -> None:
+        """The blow at the end of a wind-up."""
+        if target.hp <= 0 or (isinstance(target, Unit) and target.hidden) or self._gap(u, target) > self.range_of(u) + WINDUP_SLACK:
+            u.cooldown = u.info.cooldown  # swung at air
+            return
+        if u.info.splash:
+            aim = self._aim_point(u, target, auto=auto)
+            if aim is None:
+                return  # friends walked under the shot while the arm was cranked: wait for a clear one
+            self._launch_stone(u, aim)
+        else:
+            self._strike(u, target)
+        u.cooldown = u.info.cooldown
+
+    def _back_off(self, u: Unit, target: Entity, dt: float) -> bool:
+        """Step straight away from a target inside the engine's minimum range; True if there was room."""
+        px, py = self._target_point(target)
+        dx, dy = u.x - px, u.y - py
+        d = math.hypot(dx, dy) or 1e-6
+        return self._steer(u, self._clamp((u.x + dx / d, u.y + dy / d)), dt)
 
     def _ranged_retreat(self, u: Unit, target: Entity, dt: float) -> bool:
         """An automatic archer recovering its shot steps away from visible melee, keeping the target in range."""
@@ -1437,7 +1750,9 @@ class World:
         dx, dy = u.x - point[0], u.y - point[1]
         distance = math.hypot(dx, dy) or 1e-6
         reach = radius + u.radius + self.range_of(u) * .8
-        return point[0] + dx / distance * reach, point[1] + dy / distance * reach
+        # The spot is on the attacker's side of the target, so a target at the edge of the map puts it
+        # off the map — and a tile lookup truncates x=-0.04 to tile 0, so nothing on the way would notice.
+        return self._clamp((point[0] + dx / distance * reach, point[1] + dy / distance * reach))
 
     def _melee_opponent(self, u: Unit) -> Entity | None:
         """Finish visible opponents already in reach before pursuing another target."""
@@ -1457,8 +1772,7 @@ class World:
             return
         remembered = self.worker_knowledge[u.player].resource_rect(order.target)
         if remembered is not None:
-            x, y, width, height = remembered
-            if not any(self.is_visible(u.player, (tx, ty)) for ty in range(y, y + height) for tx in range(x, x + width)):
+            if not self.any_visible(u.player, remembered):
                 # Revisit the last observed site before discovering a depleted
                 # mine or felled tree. Hidden changes cannot alter this route.
                 if self._approach_work(u, remembered, dt, self._worker_navigation(u)):
@@ -1477,6 +1791,12 @@ class World:
                 return  # a remembered replacement may still be hidden by fog
             navigation = self._worker_navigation(u)
             if rect_gap(u.pos, mine.rect) - u.radius <= TOUCH and not navigation[u.tile[1] * self.width + u.tile[0]]:
+                if self._mine_crews.get(mine.id, 0) >= MINE_SLOTS:
+                    u.path = []
+                    u.path_goal = None
+                    u.state = "idle"  # every place at the face is taken: wait at the mouth for one to free
+                    return
+                self._mine_crews[mine.id] = self._mine_crews.get(mine.id, 0) + 1
                 u.inside = mine.id
                 u.timer = MINE_TIME
                 u.path = []
@@ -1503,7 +1823,7 @@ class World:
         if rect_gap(u.pos, rect) - u.radius <= TOUCH and not navigation[u.tile[1] * self.width + u.tile[0]]:
             u.path = []
             u.state = "chop"
-            self._face(u, tile_center(tile))
+            self._turn_toward(u, tile_center(tile), dt)
             u.timer += dt
             if u.timer >= CHOP_TIME:
                 u.timer = 0.0
@@ -1519,18 +1839,29 @@ class World:
         if self._approach_work(u, rect, dt, navigation):
             self._finish_order(u)
 
+    def _leave_mine(self, u: Unit) -> None:
+        """Give up this peasant's place at the face, so a waiting one can take it."""
+        if u.inside is None:
+            return
+        crew = self._mine_crews.get(u.inside, 0) - 1
+        if crew > 0:
+            self._mine_crews[u.inside] = crew
+        else:
+            self._mine_crews.pop(u.inside, None)
+        u.inside = None
+
     def _mine_inside(self, u: Unit, dt: float) -> None:
         mine = self.buildings.get(u.inside) if u.inside is not None else None
         u.timer -= dt
         if mine is None:
-            u.inside = None
+            self._leave_mine(u)
             return
         if u.timer > 0:
             return
         taken = min(self.gold_per_trip(u.player), mine.gold)
         mine.gold -= taken
         u.carrying, u.carry = Resource.GOLD, taken
-        u.inside = None
+        self._leave_mine(u)
         # Emerge where this worker entered. Teleporting every miner to the same
         # depot-facing tile creates a pile-up and can cross a separating wall.
         if not u.orders and u.auto_work:
@@ -1549,7 +1880,8 @@ class World:
         navigation = self._worker_navigation(u)
         hall = self.buildings.get(order.target)
         if hall is None or not hall.done or u.carrying not in hall.info.deposits or u.path_goal is None:
-            depots = [b for b in self.player_buildings(u.player, done=True) if u.carrying in b.info.deposits]
+            depots = [b for b in self.buildings.values()
+                      if b.player == u.player and b.done and u.carrying in b.info.deposits]
             hall = next((b for b in depots if rect_gap(u.pos, b.rect) - u.radius <= TOUCH), None)
             if hall is None:
                 if self.time < u.replan_at:
@@ -1574,9 +1906,10 @@ class World:
             order.target = None  # a new wall or threat may require another depot
 
     def _worker_navigation(self, u: Unit) -> bytearray:
-        if any(isinstance(order, (Harvest, Deposit)) and order.auto for order in u.orders):
-            from warband.worker_ai import safe_navigation
-            return safe_navigation(self, u.player)
+        for order in u.orders:
+            if isinstance(order, (Harvest, Deposit)) and order.auto:
+                from warband.worker_ai import safe_navigation
+                return safe_navigation(self, u.player)
         return self._blocked
 
 
@@ -1623,7 +1956,8 @@ class World:
         """Walk to a useful work position; True only when no route exists."""
         goal = u.path_goal
         if (goal is None or navigation[goal[1] * self.width + goal[0]]
-                or rect_gap(tile_center(goal), rect) - u.radius > TOUCH or self._next_waypoint(u, precise=True) is None):
+                or rect_gap((goal[0] + 0.5, goal[1] + 0.5), rect) - u.radius > TOUCH
+                or self._next_waypoint(u, precise=True) is None):
             if self.time < u.replan_at:
                 u.state = "idle"
                 return False
@@ -1678,13 +2012,13 @@ class World:
         u.path = []
         u.path_goal = None
         u.state = "repair"
-        self._face(u, b.center)
+        self._turn_toward(u, b.center, dt)
         u.charge += REPAIR_RATE * dt
         if u.charge < REPAIR_CHUNK:
             return
         u.charge -= REPAIR_CHUNK
         amount = min(REPAIR_CHUNK, b.max_hp - b.hp)
-        cost = repair_cost(b.info, amount, b.max_hp)
+        cost = repair_cost(b.info, b.hp, b.hp + amount, b.max_hp)
         reason = self.can_afford(u.player, cost)
         if reason is not None:
             self.events.append(Event("refused", u.pos, player=u.player, entity=u.id, text=f"Cannot repair: {reason}"))
@@ -1806,38 +2140,55 @@ class World:
         return self._follow(u, dt, settle=settle)
 
     def _next_waypoint(self, u: Unit, *, precise: bool = False) -> Point | None:
-        if u.path:
-            if len(u.path) == 1 and u.exact is not None and u.path[0] != u.tile:
-                return u.exact
-            return tile_center(u.path[0])  # a detour back to the unit's own tile centre is walked first
+        path = u.path
+        if path:
+            ahead = path[0]
+            if len(path) == 1 and u.exact is not None:
+                return u.exact  # straight to the spot from anywhere on its tile: the centre first would overshoot and come back
+            return (ahead[0] + 0.5, ahead[1] + 0.5)  # a detour back to the unit's own tile centre is walked first
         # Work requires contact, so the walking tolerance cannot discard a
         # final step that would put the worker inside interaction range.
-        if u.exact is not None and dist(u.pos, u.exact) > (1e-6 if precise else ARRIVE):
-            return u.exact
+        exact = u.exact
+        if exact is not None and math.hypot(u.x - exact[0], u.y - exact[1]) > (1e-6 if precise else ARRIVE):
+            return exact
         return None
 
     def _follow(self, u: Unit, dt: float, *, settle: bool = False, navigation: bytearray | None = None,
-                precise: bool = False) -> bool:
-        """Step along the path; True when there was nothing left to walk."""
+                precise: bool = False, spent: float = 0.0) -> bool:
+        """Step along the path; True when there was nothing left to walk.  *spent* is the travel this tick
+        already used before the current waypoint, so a walk keeps its pace through the corners of its path."""
         waypoint = self._next_waypoint(u, precise=precise)
         if waypoint is None:
             u.state = "idle"
             return True
         u.state = "move"
-        if navigation is not None and navigation[u.tile[1] * self.width + u.tile[0]]:
+        width = self.width
+        tile = tx, ty = int(u.x), int(u.y)  # nothing below moves the unit until the very last step
+        if navigation is not None and navigation[ty * width + tx]:
             navigation = None  # caught on forbidden ground: any real step out is better than standing still
         grid = self._blocked if navigation is None else navigation
         if u.path and u.path_goal is not None:
-            tx, ty = u.tile
-            if grid[u.path[0][1] * self.width + u.path[0][0]] or max(abs(u.path[0][0] - tx), abs(u.path[0][1] - ty)) > 1:
-                # Something was built across the path, or a crowd pushed the unit off it.
+            ahead_x, ahead_y = u.path[0]
+            if (grid[ahead_y * width + ahead_x] or max(abs(ahead_x - tx), abs(ahead_y - ty)) > 1
+                    or (ahead_x != tx and ahead_y != ty and (grid[ty * width + ahead_x] or grid[ahead_y * width + tx]))):
+                # Something was built across the path, or a crowd pushed the unit off it: further than a
+                # step, or onto the diagonal neighbour whose corner it cannot cut (going back to the
+                # centre first would only bring it to the same corner again).
                 if self.time >= u.replan_at:
                     self._plan(u, u.path_goal, u.exact, around_units=True, navigation=navigation)
                     return False
-                u.path.insert(0, u.tile)
+                centre = tile_center(tile)
+                if dist(u.pos, centre) <= ARRIVE:
+                    # At the centre already: wait there for the plan, rather than spend the tick's leftover
+                    # travel towards the refused tile and walk back next tick.
+                    u.x, u.y = centre
+                    u.last_distance = math.inf
+                    return False
+                u.path.insert(0, tile)
         dx, dy = waypoint[0] - u.x, waypoint[1] - u.y
         d = math.hypot(dx, dy)
-        step = self._effective_speed(u) * dt
+        speed = self._effective_speed(u)
+        step = speed * dt - spent  # what is left of this tick's travel
         if d <= step or d <= ARRIVE:
             if navigation is not None and not self._line_clear(u.pos, waypoint, navigation=navigation):
                 u.path_goal = None
@@ -1848,14 +2199,18 @@ class World:
             if u.exact is not None and dist(u.pos, u.exact) <= ARRIVE:
                 u.exact = None
             u.last_distance = math.inf
+            if step - d > 1e-9 and self._next_waypoint(u, precise=precise) is not None:
+                # The tick's travel is not used up at a waypoint: the rest goes on towards the next one.
+                return self._follow(u, dt, settle=settle, navigation=navigation, precise=precise, spent=spent + d)
             return False
-        u.facing = math.atan2(dy, dx)
+        self._turn_toward(u, waypoint, step / speed if speed else dt)
         nx, ny = u.x + dx / d * step, u.y + dy / d * step
-        if (grid[int(ny) * self.width + int(nx)] or (navigation is not None and not self._line_clear(u.pos, (nx, ny), navigation=navigation))) and self.passable(*u.tile):
-            if u.path and u.path[0] != u.tile:
+        if ((grid[int(ny) * width + int(nx)] or (navigation is not None and not self._line_clear(u.pos, (nx, ny), navigation=navigation)))
+                and 0 <= tx < width and 0 <= ty < self.height and not self._blocked[ty * width + tx]):
+            if u.path and u.path[0] != tile:
                 # Pushed off course so that the straight line to the next tile crosses a blocked
                 # one: go back to this tile's centre first, which is always possible.
-                u.path.insert(0, u.tile)
+                u.path.insert(0, tile)
             elif u.path_goal is not None and self.time >= u.replan_at:
                 # Even from the centre the straight step to the exact spot crosses a blocked tile: it
                 # lies across a corner.  Plan again; the planner never cuts corners, so the path comes
@@ -1865,7 +2220,11 @@ class World:
         u.x, u.y = nx, ny
         # Progress watchdog: closing on the goal resets it; a stretch without progress paths
         # again around the units in the way.
-        remaining = dist(u.pos, u.exact if u.exact is not None else tile_center(u.path_goal)) if u.path_goal is not None else 0.0
+        if u.path_goal is None:
+            remaining = 0.0
+        else:
+            aim = u.exact if u.exact is not None else (u.path_goal[0] + 0.5, u.path_goal[1] + 0.5)
+            remaining = math.hypot(nx - aim[0], ny - aim[1])
         if remaining < u.last_distance - 0.02:
             u.last_distance = remaining
             u.progress = 0.0
@@ -1891,9 +2250,11 @@ class World:
         needs both tiles beside it free, as a diagonal step in the pathfinder does.
         """
         # Check continuous coordinates before int() can turn -0.1 into tile zero.
-        if not (0 <= a[0] < self.width and 0 <= a[1] < self.height
-                and 0 <= b[0] < self.width and 0 <= b[1] < self.height):
+        width, height = self.width, self.height
+        if not (0 <= a[0] < width and 0 <= a[1] < height
+                and 0 <= b[0] < width and 0 <= b[1] < height):
             return False
+        grid = self._blocked if navigation is None else navigation
         x, y = int(a[0]), int(a[1])
         end_x, end_y = int(b[0]), int(b[1])
         dx, dy = b[0] - a[0], b[1] - a[1]
@@ -1902,26 +2263,27 @@ class World:
         next_x = ((x + (step_x > 0)) - a[0]) / dx if dx else math.inf
         next_y = ((y + (step_y > 0)) - a[1]) / dy if dy else math.inf
         per_x, per_y = (abs(1 / dx) if dx else math.inf), (abs(1 / dy) if dy else math.inf)
-        if navigation is None:
-            passable = self.passable
-        else:
-            def passable(x: int, y: int) -> bool:
-                return 0 <= x < self.width and 0 <= y < self.height and not navigation[y * self.width + x]
+        # The walk never leaves the box spanned by the two endpoints, so only the two
+        # tiles beside a corner need their own bounds test.
+        row = y * width
         for _ in range(abs(end_x - x) + abs(end_y - y) + 1):
-            if not passable(x, y):
+            if grid[row + x]:
                 return False
             if x == end_x and y == end_y:
                 return True
             if abs(next_x - next_y) < 1e-9:
-                if not (passable(x + step_x, y) and passable(x, y + step_y)):
+                beside_x, beside_y = x + step_x, y + step_y
+                if not 0 <= beside_x < width or grid[row + beside_x]:
                     return False
-                x, y = x + step_x, y + step_y
+                if not 0 <= beside_y < height or grid[beside_y * width + x]:
+                    return False
+                x, y, row = beside_x, beside_y, beside_y * width
                 next_x, next_y = next_x + per_x, next_y + per_y
             elif next_x < next_y:
                 x, next_x = x + step_x, next_x + per_x
             else:
-                y, next_y = y + step_y, next_y + per_y
-        return passable(x, y)
+                y, next_y, row = y + step_y, next_y + per_y, row + step_y * width
+        return not grid[row + x]
 
     def _steer(self, u: Unit, target: Point, dt: float) -> bool:
         """Walk straight at *target* when it is near and the line is clear; True if that was possible."""
@@ -1931,7 +2293,7 @@ class World:
         d = math.hypot(dx, dy)
         if d >= 1e-6:
             step = min(d, self._effective_speed(u) * dt)
-            u.facing = math.atan2(dy, dx)
+            self._turn_toward(u, target, dt)
             u.x, u.y = u.x + dx / d * step, u.y + dy / d * step  # on the segment, so on a tile just checked
         u.path = []
         u.path_goal = None
@@ -1941,36 +2303,61 @@ class World:
 
     def _separate(self) -> None:
         """Push overlapping units apart, never into blocked tiles."""
+        # The neighbour scan is :meth:`units_near` inlined: it runs for every unit on every
+        # step, and the bucket rows it walks are only ever three cells wide.
         moves: dict[int, tuple[float, float]] = {}
+        width, height, buckets = self.width, self.height, self._buckets
+        radius = 2 * UNIT_RADIUS + SPACING
+        reach, r2 = int(radius) + 1, radius * radius
+        hypot = math.hypot
         for u in self.units.values():
             if u.hidden:
                 continue
             px = py = 0.0
-            for v in self.units_near(u.pos, 2 * UNIT_RADIUS):
-                if v is u or v.hidden:
-                    continue
-                dx, dy = u.x - v.x, u.y - v.y
-                d = math.hypot(dx, dy)
-                overlap = u.radius + v.radius - d
-                if overlap <= 0:
-                    continue
-                if d < 1e-6:
-                    angle = (u.id * 2.399) % (2 * math.pi)
-                    dx, dy, d = math.cos(angle), math.sin(angle), 1.0
-                weight = 0.5 if v.state == "move" or u.state != "move" else 0.2
-                px += dx / d * overlap * weight
-                py += dy / d * overlap * weight
-                if u.state == "move":
-                    # Walking units also step to their own right, so two meeting head-on pass
-                    # each other instead of pushing each other back along the same line forever.
-                    hx, hy = math.cos(u.facing), math.sin(u.facing)
-                    px += -hy * overlap * SIDESTEP
-                    py += hx * overlap * SIDESTEP
+            ux, uy = u.x, u.y
+            moving = u.state == "move"
+            at_ease = self._at_ease(u)
+            hx, hy = (math.cos(u.facing), math.sin(u.facing)) if moving else (0.0, 0.0)
+            x0, x1 = max(0, int(ux) - reach), min(width - 1, int(ux) + reach)
+            y0, y1 = max(0, int(uy) - reach), min(height - 1, int(uy) + reach)
+            span = x1 - x0 + 1
+            for row in range(y0 * width + x0, y1 * width + x0 + 1, width):
+                for cell in filter(None, buckets[row:row + span]):
+                    for v in cell:
+                        dx, dy = ux - v.x, uy - v.y
+                        if dx * dx + dy * dy > r2 or v is u or v.hidden:
+                            continue
+                        d = hypot(dx, dy)
+                        overlap = u.radius + v.radius - d
+                        if overlap <= 0:
+                            if at_ease and overlap > -SPACING:
+                                # Elbow room: a unit at ease eases off a neighbour it is not quite touching.
+                                weight = (0.5 if v.state == "move" or not moving else 0.2) * SPACING_WEIGHT
+                                px += dx / d * (overlap + SPACING) * weight
+                                py += dy / d * (overlap + SPACING) * weight
+                            continue
+                        if d < 1e-6:
+                            angle = (u.id * 2.399) % (2 * math.pi)
+                            dx, dy, d = math.cos(angle), math.sin(angle), 1.0
+                        weight = 0.5 if v.state == "move" or not moving else 0.2
+                        px += dx / d * overlap * weight
+                        py += dy / d * overlap * weight
+                        if moving:
+                            # Walking units also step to their own right, so two meeting head-on pass
+                            # each other instead of pushing each other back along the same line forever.
+                            px += -hy * overlap * SIDESTEP
+                            py += hx * overlap * SIDESTEP
             if px or py:
                 moves[u.id] = (px, py)
         for uid, (px, py) in moves.items():
             u = self.units[uid]
             self._nudge(u, px, py)
+
+    @staticmethod
+    def _at_ease(u: Unit) -> bool:
+        """Neither fighting, working nor holding: standing, or walking somewhere without a target."""
+        order = u.order
+        return u.windup <= 0.0 and u.state != "attack" and (order is None or type(order) in AT_EASE_ORDERS)
 
     def _nudge(self, u: Unit, px: float, py: float) -> None:
         """Shove *u* by at most MAX_PUSH, never through a blocked tile or across a blocked corner."""
@@ -1989,10 +2376,19 @@ class World:
     def _target_point(self, target: Entity) -> Point:
         return target.pos if isinstance(target, Unit) else target.center
 
-    def _face(self, u: Unit, point: Point) -> None:
+    def _turn_toward(self, u: Unit, point: Point, dt: float) -> bool:
+        """Pivot *u* toward *point* at its turn rate; True once it faces it."""
         dx, dy = point[0] - u.x, point[1] - u.y
-        if dx or dy:
-            u.facing = math.atan2(dy, dx)
+        if not (dx or dy):
+            return True
+        wanted = math.atan2(dy, dx)
+        delta = (wanted - u.facing + math.pi) % (2 * math.pi) - math.pi
+        step = u.info.turn * dt
+        if -step <= delta <= step:
+            u.facing = wanted
+            return True
+        u.facing = (u.facing + (step if delta > 0 else -step) + math.pi) % (2 * math.pi) - math.pi
+        return False
 
     def _gap(self, source: Entity, target: Entity) -> float:
         """Distance between the edges of two entities."""
@@ -2007,7 +2403,7 @@ class World:
     def _in_range(self, u: Unit, target: Entity) -> bool:
         if isinstance(target, Unit) and target.hidden:
             return False
-        return self._gap(u, target) <= self.range_of(u) + 0.05
+        return u.info.min_range <= self._gap(u, target) <= self.range_of(u) + 0.05
 
     def _threat(self, entity: Entity) -> int:
         """Whom to fight first, lowest first: soldiers, other units (workers, healers), towers, other buildings."""
@@ -2020,86 +2416,169 @@ class World:
         u.path = []
         u.path_goal = None
 
-    def _nearest_enemy(self, player: int, point: Point, radius: float, *, units_only: bool = False) -> Entity | None:
-        """The visible enemy within *radius* to fight first: by :meth:`_threat`, then the nearest."""
+    def _nearest_enemy(self, player: int, point: Point, radius: float, *, units_only: bool = False,
+                       min_radius: float = 0.0) -> Entity | None:
+        """The visible enemy within *radius* (and beyond *min_radius*) to fight first: by :meth:`_threat`, then the nearest."""
         best: Entity | None = None
         best_key = (math.inf, math.inf)
         for unit in self.units_near(point, radius + UNIT_RADIUS):
             if unit.player == player or unit.hidden or unit.hp <= 0 or not self.is_visible(player, unit.tile):
                 continue
             d = dist(point, unit.pos)
+            if d > radius + unit.radius or d - unit.radius < min_radius:
+                continue
             key = (self._threat(unit), d)
-            if d <= radius + unit.radius and key < best_key:
+            if key < best_key:
                 best, best_key = unit, key
         if best is not None or units_only:
             return best
+        px, py = point
         for building in self.buildings.values():
-            if building.player is None or building.player == player or building.hp <= 0:
-                continue
+            if building.player is None or building.player == player or building.hp <= 0 or building.abandoned:
+                continue  # a ruin is razed on an explicit order, never picked up in passing
+            bx, by, bw, bh = building.rect
+            if not (bx - radius <= px <= bx + bw + radius and by - radius <= py <= by + bh + radius):
+                continue  # too far on one axis alone, so the real gap cannot be within reach
             d = rect_gap(point, building.rect)
+            if d > radius or d < min_radius:
+                continue
             key = (self._threat(building), d)
-            if d <= radius and key < best_key and any(self.is_visible(player, tile) for tile in building.tiles()):
+            if key < best_key and any(self.is_visible(player, tile) for tile in building.tiles()):
                 best, best_key = building, key
         return best
 
     def _strike(self, u: Unit, target: Entity) -> None:
-        """One blow (or shot) from *u* at *target*, with splash for siege engines."""
+        """One blow from *u* at *target*: a melee hit lands now, an arrow goes up and lands when it arrives."""
         damage = self.damage_of(u)
-        self._hit(u, target, damage)
-        splash = self.splash_of(u)
-        if splash > 0:
-            centre = self._impact_point(u, target)
-            for other in list(self.units_near(centre, splash + UNIT_RADIUS)):
-                if other is not target and other.player != u.player and not other.hidden and other.hp > 0:
-                    self._hit(u, other, int(damage * SPLASH_FRACTION))
-            for building in list(self.buildings.values()):
-                if building is not target and building.player not in (None, u.player) and building.hp > 0 and rect_gap(centre, building.rect) <= splash:
-                    self._hit(u, building, int(damage * SPLASH_FRACTION))
+        if u.info.melee:
+            self._hit(target, damage, player=u.player, source=u.id, source_type=u.type.value, siege=u.info.siege)
+        else:
+            self._launch_arrow(u, target, damage)
 
-    def _impact_point(self, u: Unit, target: Entity) -> Point:
-        """Where a shot lands: on a unit, or on the wall of a building nearest the shooter."""
-        if isinstance(target, Unit):
-            return target.pos
-        x, y, w, h = target.rect
-        return (min(max(u.x, x), x + w), min(max(u.y, y), y + h))
+    def _launch_arrow(self, shooter: Entity, target: Entity, damage: int) -> Projectile:
+        start = self._target_point(shooter)
+        aim = self._target_point(target)
+        return self._launch(shooter, "arrow", start, aim, target.id, damage, max(SIM_DT, dist(start, aim) / ARROW_SPEED))
 
-    def _hit(self, source: Entity, target: Entity, damage: int) -> None:
+    def _launch_stone(self, u: Unit, aim: Point) -> Projectile:
+        return self._launch(u, "stone", u.pos, aim, None, self.damage_of(u), self._stone_flight(u.pos, aim),
+                            splash=self.splash_of(u), siege=u.info.siege)
+
+    def _launch(self, shooter: Entity, kind: str, start: Point, aim: Point, target: int | None, damage: int, flight: float, *,
+                splash: float = 0.0, siege: float = 1.0) -> Projectile:
+        assert shooter.player is not None
+        p = Projectile(self._new_id(), shooter.player, shooter.id, shooter.type.value, kind, start, aim, target, self.time, flight, damage,
+                       splash=splash, siege=siege)
+        self.projectiles[p.id] = p
+        return p
+
+    def _stone_flight(self, start: Point, aim: Point) -> float:
+        return max(STONE_MIN_FLIGHT, dist(start, aim) / STONE_SPEED)
+
+    def _aim_point(self, u: Unit, target: Entity, *, auto: bool) -> Point | None:
+        """Where a siege crew drops its stone on *target*: the nearest wall of a building, or ahead of a
+        marching unit by the stone's flight so it comes down where the unit will be.  None when there is
+        no shot: every landing point is inside the engine's minimum range, or the crew is firing on its
+        own judgement (*auto*) and its own side stands where the stone would fall.  A crew ordered to
+        fire by the player fires, and the player answers for the splash."""
+        if isinstance(target, Building):
+            x, y, w, h = target.rect
+            spots = [(min(max(u.x, x), x + w), min(max(u.y, y), y + h))]
+        else:
+            here = target.pos
+            spots = [here]
+            if target.vx or target.vy:
+                flight = self._stone_flight(u.pos, here)
+                lead = self._clamp((here[0] + target.vx * flight, here[1] + target.vy * flight))
+                reach, far = self.range_of(u) + u.radius, dist(u.pos, lead)
+                if far > reach:  # never beyond where the engine can throw
+                    lead = (u.x + (lead[0] - u.x) / far * reach, u.y + (lead[1] - u.y) / far * reach)
+                spots.insert(0, lead)
+        spots = [spot for spot in spots if dist(u.pos, spot) - u.radius >= u.info.min_range]
+        if not spots:
+            return None
+        keep_clear = self.splash_of(u) + FRIENDLY_MARGIN
+        for spot in spots:
+            if not any(ally.player == u.player and ally is not u and not ally.hidden and ally.hp > 0
+                       and dist(spot, ally.pos) - ally.radius <= keep_clear for ally in self.units_near(spot, keep_clear + UNIT_RADIUS)):
+                return spot
+        return None if auto else spots[-1]
+
+    def _land_projectiles(self) -> None:
+        if not self.projectiles:
+            return
+        now = self.time
+        for p in [p for p in self.projectiles.values() if p.lands_at <= now]:
+            del self.projectiles[p.id]
+            if p.target is None:
+                self._land_stone(p)
+                continue
+            target = self.entity(p.target)
+            if target is not None and target.hp > 0 and not (isinstance(target, Unit) and target.hidden):
+                self._hit(target, p.damage, player=p.player, source=p.source, source_type=p.source_type, siege=p.siege, ranged=True)
+
+    def _land_stone(self, p: Projectile) -> None:
+        """A stone comes down: its full damage within DIRECT_HIT of the point and SPLASH_FRACTION of it out
+        to the splash radius, on every unit standing there, friend or foe, and on the enemy's buildings."""
+        self.events.append(Event("impact", p.aim, player=p.player, entity=p.source, text=p.kind, source_type=p.source_type))
+        splash = int(p.damage * SPLASH_FRACTION)
+        for unit in list(self.units_near(p.aim, p.splash + UNIT_RADIUS)):
+            if unit.hidden or unit.hp <= 0:
+                continue
+            gap = dist(p.aim, unit.pos) - unit.radius
+            if gap <= p.splash:
+                self._hit(unit, p.damage if gap <= DIRECT_HIT else splash, player=p.player, source=p.source, source_type=p.source_type,
+                          siege=p.siege, ranged=True)
+        for building in list(self.buildings.values()):
+            if building.player in (None, p.player) or building.hp <= 0:
+                continue
+            gap = rect_gap(p.aim, building.rect)
+            if gap <= p.splash:
+                self._hit(building, p.damage if gap <= DIRECT_HIT else splash, player=p.player, source=p.source, source_type=p.source_type,
+                          siege=p.siege, ranged=True)
+
+    def _hit(self, target: Entity, damage: int, *, player: int, source: int, source_type: str, siege: float = 1.0, ranged: bool = False) -> None:
+        """*damage* from *player*'s *source* (a unit or building, possibly gone by now) lands on *target*."""
         if target.hp <= 0:
             return  # already down this step (a siege splash after the killing blow)
         armor = self.armor_of(target)
-        if isinstance(source, Unit) and isinstance(target, Building):
-            damage = int(round(damage * source.info.siege))
+        if isinstance(target, Building):
+            damage = int(round(damage * siege))
         roll = damage * self.rng.uniform(1 - HIT_VARIANCE, 1 + HIT_VARIANCE)
         dealt = max(1, int(round(roll)) - armor)
         target.hp -= dealt
-        if target.hp <= 0 and source.player is not None and target.player not in (None, source.player):
-            stats = self.players[source.player].stats
+        own = target.player == player
+        abandoned = isinstance(target, Building) and target.abandoned
+        if target.hp <= 0 and target.player is not None and not own and not abandoned:
+            stats = self.players[player].stats
             stats["units_killed" if isinstance(target, Unit) else "buildings_razed"] += 1
             stats["destroyed_value"] += target.info.cost.gold + target.info.cost.lumber
-        ranged = source.info.range >= 1
-        self.events.append(Event("hit", self._target_point(target), player=target.player, entity=source.id, other=target.id,
-                                 amount=dealt, text="ranged" if ranged else "melee", source_type=source.type.value,
+        self.events.append(Event("hit", self._target_point(target), player=target.player, entity=source, other=target.id,
+                                 amount=dealt, text="ranged" if ranged else "melee", source_type=source_type,
                                  target_type=target.type.value, target_armor=armor,
                                  target_complete=not isinstance(target, Building) or target.done))
+        if own or abandoned:
+            return  # a stone on one's own side hurts, but is no attack to answer or to raise the alarm for; nobody answers for a ruin
         if target.player is not None:
             victim = self.players[target.player]
             if self.time - victim.last_alert >= UNDER_ATTACK_COOLDOWN:
                 victim.last_alert = self.time
                 self.events.append(Event("under_attack", self._target_point(target), player=target.player, entity=target.id))
-        if isinstance(target, Building) and target.hp <= 0 and isinstance(source, Unit) and self._has(source.player, Upgrade.PLUNDER):
+        if isinstance(target, Building) and target.hp <= 0 and self._has(player, Upgrade.PLUNDER):
             loot = int(target.info.cost.gold * PLUNDER_SHARE)
             if loot:
-                self.players[source.player].gold += loot
-                self.events.append(Event("plunder", target.center, player=source.player, entity=source.id, other=target.id, amount=loot))
-        if isinstance(source, Unit) and isinstance(target, Unit) and target.hp > 0 and self._threat(target) == 0:
+                self.players[player].gold += loot
+                self.events.append(Event("plunder", target.center, player=player, entity=source, other=target.id, amount=loot))
+        striker = self.units.get(source)
+        if striker is not None and isinstance(target, Unit) and target.hp > 0 and self._threat(target) == 0:
             current = target.order
             if current is None:
                 target.home = target.pos
-                target.orders.append(Attack(source.id, auto=True))
+                target.orders.append(Attack(striker.id, auto=True))
             elif isinstance(current, Attack) and current.auto:
                 busy_with = self.entity(current.target)
-                if busy_with is None or self._threat(source) < self._threat(busy_with):
-                    self._retarget(target, current, source)  # a soldier busy on a bystander or a building answers whoever hits it
+                if busy_with is None or self._threat(striker) < self._threat(busy_with):
+                    self._retarget(target, current, striker)  # a soldier busy on a bystander or a building answers whoever hits it
 
     def _bury_the_dead(self) -> None:
         for unit in [u for u in self.units.values() if u.hp <= 0]:
@@ -2108,6 +2587,7 @@ class World:
             self._remove_building(building, reason="destroyed")
 
     def _remove_unit(self, unit: Unit) -> None:
+        self._leave_mine(unit)
         del self.units[unit.id]
         self.players[unit.player].stats["units_lost"] += 1
         if unit.constructing is not None:
@@ -2121,6 +2601,7 @@ class World:
         if reason == "destroyed" and b.player is not None:
             self.players[b.player].stats["buildings_lost"] += 1
         self._set_blocked(b, False)
+        self._mine_crews.pop(b.id, None)
         for unit in self.units.values():
             if unit.inside == b.id:
                 unit.inside = None
@@ -2176,6 +2657,16 @@ class World:
         return min(candidates, key=lambda pair: (pair[1] is not UnitType.PEASANT,
                    UNITS[pair[1]].cost.gold + UNITS[pair[1]].cost.lumber, pair[0].id)) if candidates else None
 
+    @recorded
+    def assign_workers(self, player: int) -> None:
+        """Send *player*'s idle peasants to work now, as the simulation does for everyone once a second.
+
+        A computer player asks for this as soon as it has thought, so it is an order like its others.
+        """
+        from warband.worker_ai import assign_idle_workers
+
+        assign_idle_workers(self, player)
+
     def clear_player(self, player: int) -> None:
         """Take everything *player* owns off the map without a fight and mark them out: a mission's
         setup, not a defeat, so no event, no statistic and no elimination is recorded.  A later
@@ -2196,6 +2687,7 @@ class World:
             return f"{self.players[player].name} is already out"
         return None
 
+    @recorded
     def resign(self, player: int) -> None:
         """Concede the match: remove everything *player* owns, then eliminate them."""
         reason = self.can_resign(player)
@@ -2215,9 +2707,27 @@ class World:
         for unit in units:
             self._remove_unit(unit)
         for building in owned:
-            self._remove_building(building, reason="resigned")
+            if len(self.players) >= 3:
+                self._abandon(building)  # the others fight on around what is left
+            else:
+                self._remove_building(building, reason="resigned")
         self.events.append(Event("resigned", pos, player=player, text=self.players[player].name))
         self._check_elimination()
+
+    def _abandon(self, b: Building) -> None:
+        """Leave *b* standing as nobody's: its footprint and hit points stay, everything it did stops."""
+        b.abandoned = True
+        b.queue.clear()
+        b.train_progress = 0.0
+        b.research, b.research_progress = None, 0.0
+        b.rally = None
+        for unit in self.units.values():
+            if unit.inside == b.id:
+                unit.inside = None
+                unit.timer = 0.0
+            if unit.constructing == b.id:
+                unit.constructing = None
+        self.events.append(Event("abandoned", b.center, player=b.player, entity=b.id, text=b.type.value))
 
     def _check_elimination(self) -> None:
         for player in self.players:
@@ -2233,7 +2743,10 @@ class World:
                 player.alive = False
                 player.surrendered = True
                 for building in buildings:
-                    self._remove_building(building, reason="abandoned")
+                    if len(self.players) >= 3:
+                        self._abandon(building)
+                    else:
+                        self._remove_building(building, reason="abandoned")
                 self.events.append(Event("surrendered", (0.0, 0.0), player=player.id,
                                          text=f"{player.name} surrenders: no units and no way to recruit"))
         alive = [p for p in self.players if p.alive]
@@ -2245,15 +2758,16 @@ class World:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "width": self.width, "height": self.height, "theme": self.theme.value,
+            "width": self.width, "height": self.height, "theme": self.theme.value, "layout": self.layout.value,
             "terrain": ["".join(t.value[0] for t in row) for row in self.terrain],
-            "players": [{"id": p.id, "human": p.human, "race": p.race.value, "gold": p.gold, "lumber": p.lumber, "alive": p.alive,
+            "players": [{"id": p.id, "name": p.name, "human": p.human, "race": p.race.value, "gold": p.gold, "lumber": p.lumber, "alive": p.alive,
                          "surrendered": p.surrendered, "stats": dict(p.stats), "last_alert": p.last_alert,
                          "upgrades": sorted(u.value for u in p.upgrades),
                          "assembly": list(p.assembly) if p.assembly is not None else None} for p in self.players],
             "regrowth": [[list(tile), when] for tile, when in self.regrowth],
             "units": [_unit_to_dict(u) for u in self.units.values()],
             "buildings": [_building_to_dict(b) for b in self.buildings.values()],
+            "projectiles": [_projectile_to_dict(p) for p in self.projectiles.values()],
             "explored": [bytes(e).hex() for e in self.explored],
             "worker_knowledge": [knowledge.to_dict() for knowledge in self.worker_knowledge],
             "settlement": self.settlement.to_dict(),
@@ -2267,24 +2781,29 @@ class World:
         terrain = [[letters[c] for c in row] for row in data["terrain"]]
         human = next((p["id"] for p in data["players"] if p["human"]), None)
         world = cls(data["width"], data["height"], terrain, len(data["players"]), human=human, theme=MapTheme(data["theme"]),
-                    races=[Race(p.get("race", Race.HUMAN.value)) for p in data["players"]], scripted=data.get("scripted", False))
+                    races=[Race(p.get("race", Race.HUMAN.value)) for p in data["players"]], layout=Layout(data["layout"]),
+                    scripted=data.get("scripted", False))
         world.regrowth = [((tile[0], tile[1]), when) for tile, when in data.get("regrowth", [])]
         for p, saved in zip(world.players, data["players"]):
             p.human = saved["human"]
+            p.name = saved.get("name", p.name)
             p.gold, p.lumber, p.alive, p.last_alert = saved["gold"], saved["lumber"], saved["alive"], saved["last_alert"]
             p.upgrades = {Upgrade(u) for u in saved["upgrades"]}
             p.assembly = tuple(saved["assembly"]) if saved.get("assembly") is not None else None
             p.surrendered = saved.get("surrendered", False)
             p.stats.update(saved.get("stats", {}))
         for saved in data["buildings"]:
-            b = _building_from_dict(saved)
-            b.race = world.race_of(b.player)
+            b = _building_from_dict(saved, world.race_of(saved["player"]))
             world.buildings[b.id] = b
             world._set_blocked(b, True)
         for saved in data["units"]:
-            u = _unit_from_dict(saved)
-            u.race = world.race_of(u.player)
+            u = _unit_from_dict(saved, world.race_of(saved["player"]))
             world.units[u.id] = u
+            if u.inside is not None:  # the crews are counted, not stored: a load rebuilds them
+                world._mine_crews[u.inside] = world._mine_crews.get(u.inside, 0) + 1
+        for saved in data.get("projectiles", []):
+            p = _projectile_from_dict(saved)
+            world.projectiles[p.id] = p
         world.explored = [bytearray(bytes.fromhex(e)) for e in data["explored"]]
         if "worker_knowledge" in data:
             world.worker_knowledge = [WorkerKnowledge.from_dict(knowledge) for knowledge in data["worker_knowledge"]]
@@ -2301,7 +2820,7 @@ class World:
 
 
 def _order_to_dict(order: Order) -> dict[str, Any]:
-    # Keep player-order fields compatible with existing warband-v1 clients.
+    # Keep player-order fields stable: online clients read them straight from the snapshot.
     # Automatic routing metadata lives beside the queue in each unit record.
     if isinstance(order, Harvest):
         return {"kind": "Harvest", "target": list(order.target) if isinstance(order.target, tuple) else order.target}
@@ -2332,21 +2851,21 @@ def _order_from_dict(d: dict[str, Any]) -> Order:
 def _unit_to_dict(u: Unit) -> dict[str, Any]:
     return {
         "id": u.id, "type": u.type.value, "player": u.player, "x": u.x, "y": u.y, "hp": u.hp, "facing": u.facing,
-        "orders": [_order_to_dict(o) for o in u.orders], "cooldown": u.cooldown,
+        "orders": [_order_to_dict(o) for o in u.orders], "cooldown": u.cooldown, "windup": u.windup, "vx": u.vx, "vy": u.vy,
         "worker_orders": [{"index": index, "auto": order.auto,
                            **({"target": order.target} if isinstance(order, Deposit) else {})}
                           for index, order in enumerate(u.orders) if isinstance(order, (Harvest, Deposit))],
         "carrying": u.carrying.value if u.carrying else None, "carry": u.carry, "timer": u.timer,
         "inside": u.inside, "constructing": u.constructing, "home": list(u.home) if u.home else None, "state": u.state,
-        "charge": u.charge, "auto_work": u.auto_work,
+        "ease": list(u.ease) if u.ease else None, "charge": u.charge, "auto_work": u.auto_work,
     }
 
 
-def _unit_from_dict(d: dict[str, Any]) -> Unit:
-    u = Unit(d["id"], UnitType(d["type"]), d["player"], d["x"], d["y"], d["hp"], facing=d["facing"], cooldown=d["cooldown"],
-             carrying=Resource(d["carrying"]) if d["carrying"] else None, carry=d["carry"], timer=d["timer"],
+def _unit_from_dict(d: dict[str, Any], race: Race) -> Unit:
+    u = Unit(d["id"], UnitType(d["type"]), d["player"], d["x"], d["y"], d["hp"], race=race, facing=d["facing"], cooldown=d["cooldown"],
+             windup=d.get("windup", 0.0), vx=d.get("vx", 0.0), vy=d.get("vy", 0.0), carrying=Resource(d["carrying"]) if d["carrying"] else None, carry=d["carry"], timer=d["timer"],
              inside=d["inside"], constructing=d["constructing"], home=tuple(d["home"]) if d["home"] else None, state=d["state"],
-             charge=d["charge"], auto_work=d.get("auto_work", True))
+             ease=tuple(d["ease"]) if d.get("ease") else None, charge=d["charge"], auto_work=d.get("auto_work", True))
     u.orders = deque(_order_from_dict(o) for o in d["orders"])
     for state in d.get("worker_orders", []):
         order = u.orders[state["index"]]
@@ -2358,17 +2877,28 @@ def _unit_from_dict(d: dict[str, Any]) -> Unit:
     return u
 
 
+def _projectile_to_dict(p: Projectile) -> dict[str, Any]:
+    d = dict(vars(p))
+    d["start"], d["aim"] = list(p.start), list(p.aim)
+    return d
+
+
+def _projectile_from_dict(d: dict[str, Any]) -> Projectile:
+    return Projectile(**{**d, "start": tuple(d["start"]), "aim": tuple(d["aim"])})
+
+
 def _building_to_dict(b: Building) -> dict[str, Any]:
     return {
         "id": b.id, "type": b.type.value, "player": b.player, "x": b.x, "y": b.y, "hp": b.hp, "progress": b.progress,
         "queue": [t.value for t in b.queue], "train_progress": b.train_progress, "rally": list(b.rally) if b.rally else None,
         "gold": b.gold, "builder": b.builder, "cooldown": b.cooldown,
-        "research": b.research.value if b.research else None, "research_progress": b.research_progress,
+        "research": b.research.value if b.research else None, "research_progress": b.research_progress, "abandoned": b.abandoned,
     }
 
 
-def _building_from_dict(d: dict[str, Any]) -> Building:
-    return Building(d["id"], BuildingType(d["type"]), d["player"], d["x"], d["y"], d["hp"], progress=d["progress"],
+def _building_from_dict(d: dict[str, Any], race: Race) -> Building:
+    return Building(d["id"], BuildingType(d["type"]), d["player"], d["x"], d["y"], d["hp"], race=race, progress=d["progress"],
                     queue=[UnitType(t) for t in d["queue"]], train_progress=d["train_progress"],
                     rally=tuple(d["rally"]) if d["rally"] else None, gold=d["gold"], builder=d["builder"], cooldown=d["cooldown"],
-                    research=Upgrade(d["research"]) if d["research"] else None, research_progress=d["research_progress"])
+                    research=Upgrade(d["research"]) if d["research"] else None, research_progress=d["research_progress"],
+                    abandoned=d.get("abandoned", False))

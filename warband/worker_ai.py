@@ -13,109 +13,166 @@ import math
 
 from warband import path as pathing
 from warband.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Unit, World, rect_gap, tile_center
-from warband.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, SIM_DT, UNITS, UNIT_RADIUS, BuildingType, Resource, Terrain
+from warband.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_SLOTS, SIM_DT, UNITS, UNIT_RADIUS, BuildingType, Resource, Terrain
 
 
 @dataclass(frozen=True)
 class _Site:
     target: int | Pos
-    resource: Resource
     position: Point
     access: tuple[Pos, ...]
 
 
+_REACH: dict[tuple[int, int], tuple[tuple[int, int], ...]] = {}
+
+
+def _reach(width: int, height: int) -> tuple[tuple[int, int], ...]:
+    """Offsets from a footprint's corner whose tile centre is close enough to work it from, in scan order."""
+    found = _REACH.get((width, height))
+    if found is None:
+        found = tuple((dx, dy) for dy in range(-1, height + 1) for dx in range(-1, width + 1)
+                      if rect_gap(tile_center((dx, dy)), (0, 0, width, height)) <= TOUCH + UNIT_RADIUS)
+        _REACH[(width, height)] = found
+    return found
+
+
 def _navigation(world: World, player: int) -> bytearray:
     """Remember static terrain and towers; only visible mobile enemies add danger."""
-    blocked = bytearray(world.worker_knowledge[player].blocked)
+    knowledge = world.worker_knowledge[player]
+    blocked = bytearray(knowledge.blocked)
+    width, height = world.width, world.height
+    visible = world.visible[player]
     threats = [(building.center, building.threat_range, (building.x, building.y, building.size, building.size))
-               for building in world.worker_knowledge[player].threats if building.player != player]
+               for building in knowledge.threats if building.player != player]
     for unit in world.units.values():
-        if unit.player != player and not unit.hidden and world.is_visible(player, unit.tile) and unit.hp > 0 and unit.info.damage:
-            threats.append((unit.pos, max(2.5, unit.info.range + 1.5), None))
-    for building in world.buildings.values():
-        if building.player != player and not any(world.is_visible(player, tile) for tile in building.tiles()):
+        if unit.player == player:
             continue
-        for x, y in building.tiles():
-            blocked[y * world.width + x] = 1
-    width = world.width
+        x, y = int(unit.x), int(unit.y)
+        if not (0 <= x < width and 0 <= y < height and visible[y * width + x]):
+            continue
+        if unit.hp <= 0 or unit.inside is not None or unit.constructing is not None:
+            continue
+        info = unit.info
+        if info.damage:
+            threats.append(((unit.x, unit.y), max(2.5, info.range + 1.5), None))
+    # Only a footprint the remembered grid does not already block still needs stamping, which is usually none.
+    for bid in world.buildings.keys() - knowledge.buildings.keys():
+        building = world.buildings[bid]
+        x, y, size = building.x, building.y, building.size
+        if building.player != player and not knowledge.sees(visible, x, y, size):
+            continue
+        for start, stop in knowledge.spans(x, y, size):
+            blocked[start:stop] = b"\x01" * (stop - start)
+    floor, ceil, sqrt, hypot = math.floor, math.ceil, math.sqrt, math.hypot
     for center, radius, rect in threats:
         cx, cy = center
         if rect is None:
             # A unit's threat: the tiles whose centre lies within radius of it, one slice per row.
             r2 = radius * radius
-            for y in range(max(0, math.floor(cy - radius)), min(world.height, math.ceil(cy + radius) + 1)):
+            for y in range(max(0, floor(cy - radius)), min(height, ceil(cy + radius) + 1)):
                 dy = y + 0.5 - cy
-                if dy * dy > r2:
+                offset = dy * dy
+                if offset > r2:
                     continue
-                half = math.sqrt(r2 - dy * dy)
-                lo, hi = max(0, math.ceil(cx - half - 0.5)), min(width, math.floor(cx + half - 0.5) + 1)
+                half = sqrt(r2 - offset)
+                lo, hi = max(0, ceil(cx - half - 0.5)), min(width, floor(cx + half - 0.5) + 1)
                 if lo < hi:
                     blocked[y * width + lo:y * width + hi] = b"\x01" * (hi - lo)
             continue
-        extent = radius + max(rect[2:]) / 2
-        for y in range(max(0, math.floor(cy - extent)), min(world.height, math.ceil(cy + extent) + 1)):
-            for x in range(max(0, math.floor(cx - extent)), min(width, math.ceil(cx + extent) + 1)):
-                if rect_gap(tile_center((x, y)), rect) <= radius:
-                    blocked[y * width + x] = 1
+        # A tower's threat: the tiles whose centre lies within radius of its footprint.
+        rx, ry, rw, rh = rect
+        extent = radius + max(rw, rh) / 2
+        columns = range(max(0, floor(cx - extent)), min(width, ceil(cx + extent) + 1))
+        for y in range(max(0, floor(cy - extent)), min(height, ceil(cy + extent) + 1)):
+            py = y + 0.5
+            dy = max(ry - py, 0.0, py - (ry + rh))
+            row = y * width
+            for x in columns:
+                px = x + 0.5
+                if hypot(max(rx - px, 0.0, px - (rx + rw)), dy) <= radius:
+                    blocked[row + x] = 1
     return blocked
 
 
 class _View:
-    """One shared route map and depot-distance search per player per decision tick."""
+    """One shared route map and depot-distance search per player per decision tick.
+
+    The searches and the site lists are built on first use: a decision usually
+    only ever asks about one resource, and each field is a whole-map walk.
+    """
 
     def __init__(self, world: World, player: int):
         self.world, self.player = world, player
         self.blocked = safe_navigation(world, player)
-        depots = world.player_buildings(player, done=True)
-        self.depot_distance = {
-            resource: self._distances({tile for depot in depots if resource in depot.info.deposits
-                                       for tile in self.access(depot.rect)})
-            for resource in Resource
-        }
-        self.sites = []
-        knowledge = world.worker_knowledge[player]
-        for mine in knowledge.mines.values():
-            if mine.gold > 0:
-                self.sites.append(_Site(mine.id, Resource.GOLD, mine.center, self.access(mine.rect)))
-        for index, terrain in enumerate(knowledge.terrain):
-            y, x = divmod(index, world.width)
-            if terrain is Terrain.TREES:
-                self.sites.append(_Site((x, y), Resource.LUMBER, tile_center((x, y)), self.access((x, y, 1, 1))))
+        self._depot_distance: dict[Resource, list[float]] = {}
+        self._sites: dict[Resource, list[_Site]] = {}
 
     def passable(self, x: int, y: int) -> bool:
         return 0 <= x < self.world.width and 0 <= y < self.world.height and not self.blocked[y * self.world.width + x]
 
     def access(self, rect: tuple[int, int, int, int]) -> tuple[Pos, ...]:
         x, y, width, height = rect
-        return tuple((tx, ty) for ty in range(y - 1, y + height + 1) for tx in range(x - 1, x + width + 1)
-                     if self.passable(tx, ty) and rect_gap(tile_center((tx, ty)), rect) <= TOUCH + UNIT_RADIUS)
+        blocked, map_width, map_height = self.blocked, self.world.width, self.world.height
+        return tuple((x + dx, y + dy) for dx, dy in _reach(width, height)
+                     if 0 <= x + dx < map_width and 0 <= y + dy < map_height
+                     and not blocked[(y + dy) * map_width + x + dx])
 
-    def _distances(self, starts: set[Pos]) -> list[float]:
-        """Walking distance from the nearest of *starts* to every tile (flat indices; infinity where none)."""
-        width = self.world.width
-        return pathing.distance_field((y * width + x for x, y in starts), self.blocked, width, self.world.height)
+    def _sites_for(self, resource: Resource) -> list[_Site]:
+        """Every remembered source of *resource* with the tiles a worker can work it from, in map order."""
+        found = self._sites.get(resource)
+        if found is not None:
+            return found
+        knowledge = self.world.worker_knowledge[self.player]
+        found = []
+        if resource is Resource.GOLD:
+            for mine in knowledge.mines.values():
+                if mine.gold > 0:
+                    found.append(_Site(mine.id, mine.center, self.access(mine.rect)))
+        else:
+            width = self.world.width
+            for index in knowledge.trees:
+                y, x = divmod(index, width)
+                found.append(_Site((x, y), tile_center((x, y)), self.access((x, y, 1, 1))))
+        self._sites[resource] = found
+        return found
+
+    def _depot_field(self, resource: Resource) -> list[float]:
+        """Walking distance from the nearest depot taking *resource* to every tile (flat indices; infinity where none)."""
+        field = self._depot_distance.get(resource)
+        if field is None:
+            width = self.world.width
+            starts = {tile for depot in self.world.player_buildings(self.player, done=True)
+                      if resource in depot.info.deposits for tile in self.access(depot.rect)}
+            field = pathing.distance_field((y * width + x for x, y in starts), self.blocked, width, self.world.height)
+            self._depot_distance[resource] = field
+        return field
 
     def depot_distance_at(self, tile: Pos, resource: Resource) -> float:
         """How far *tile* is from a depot taking *resource*; infinity when no safe walk leads to one."""
-        return self.depot_distance[resource][tile[1] * self.world.width + tile[0]]
+        return self._depot_field(resource)[tile[1] * self.world.width + tile[0]]
 
     def choose(self, worker: Unit, resource: Resource, loads: Counter) -> _Site | None:
         if not self.passable(*worker.tile):
             return None
+        knowledge = self.world.worker_knowledge[self.player]
+        field, width = self._depot_field(resource), self.world.width
+        lumber = resource is Resource.LUMBER
         goals, owners = {}, {}
-        for site in self.sites:
-            if site.resource is not resource or (resource is Resource.LUMBER and loads[site.target]):
-                continue
-            if isinstance(site.target, int):
-                mine = self.world.worker_knowledge[self.player].mines.get(site.target)
+        for site in self._sites_for(resource):
+            target = site.target
+            if lumber:
+                if loads[target] or knowledge.terrain[target[1] * width + target[0]] is not Terrain.TREES:
+                    continue
+            else:
+                mine = knowledge.mines.get(target)
                 if mine is None or mine.gold <= 0:
                     continue
-            elif self.world.worker_knowledge[self.player].terrain[site.target[1] * self.world.width + site.target[0]] is not Terrain.TREES:
-                continue
+                if loads[target] >= MINE_SLOTS:
+                    continue  # every place at that face is spoken for; another hand there would only queue
             for tile in site.access:
-                distance = self.depot_distance_at(tile, resource)
+                distance = field[tile[1] * width + tile[0]]
                 if distance < math.inf:
-                    cost = 2 * distance + loads[site.target] * 1.5
+                    cost = 2 * distance + loads[target] * 1.5
                     if tile not in goals or (cost, site.position) < (goals[tile], owners[tile].position):
                         goals[tile], owners[tile] = cost, site
         route = pathing.find_work_path(worker.tile, goals, self.blocked, self.world.width, self.world.height)

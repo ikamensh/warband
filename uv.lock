@@ -297,22 +297,17 @@ wheels = [
 
 [[package]]
 name = "saga2d"
-version = "0.2.0"
-source = { editable = "../saga2d" }
+version = "0.3.7"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pillow" },
     { name = "pyglet" },
     { name = "websockets" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "pillow", specifier = ">=12.1.1" },
-    { name = "pyglet", specifier = ">=2.1.13" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.2" },
-    { name = "websockets", specifier = ">=15,<18" },
+sdist = { url = "https://files.pythonhosted.org/packages/5c/0c/10999199dfccdd93b7b2e2347974114e2464936e77c51ce475013a560ca7/saga2d-0.3.7.tar.gz", hash = "sha256:c7278aa8abf58e0ec1b6c8773478679f99e173355533efdaecd8433edbbe9452", size = 664963 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1f/22/0212d6827f414f209fb15ca727d4452176f43af73d0cf48d0f6628d11747/saga2d-0.3.7-py3-none-any.whl", hash = "sha256:31c93847cb9268e8fd22a0a20d9f16e135aec905291dbfde103301715c1c7d21", size = 514417 },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "sagaforge"
@@ -328,7 +323,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "pillow", specifier = ">=12.1.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.2" },
-    { name = "saga2d", marker = "extra == 'dev'", editable = "../saga2d" },
+    { name = "saga2d", marker = "extra == 'dev'", specifier = "==0.2.0" },
 ]
 provides-extras = ["dev"]
 
@@ -343,7 +338,7 @@ wheels = [
 
 [[package]]
 name = "warband"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "saga2d" },
@@ -364,7 +359,7 @@ requires-dist = [
     { name = "pyinstaller", marker = "extra == 'package'", specifier = "==6.22.2" },
     { name = "pyinstaller-hooks-contrib", marker = "extra == 'package'", specifier = "==2026.7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.2" },
-    { name = "saga2d", editable = "../saga2d" },
+    { name = "saga2d", specifier = "==0.3.7" },
     { name = "sagaforge", editable = "../sagaforge" },
 ]
 provides-extras = ["dev", "package"]

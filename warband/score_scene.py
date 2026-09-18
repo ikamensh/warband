@@ -17,7 +17,7 @@ class HighScoreScene(_Overlay):
     pause_below = True
     controls = {"d": "cycle_difficulty", "m": "cycle_size", "p": "cycle_players"}
 
-    def __init__(self, *, difficulty: Difficulty = Difficulty.NORMAL, size: tuple[int, int] = (48, 40), players: int = 2,
+    def __init__(self, *, difficulty: Difficulty = Difficulty.MEDIUM, size: tuple[int, int] = (48, 40), players: int = 2,
                  run_id: str | None = None, error: str = "") -> None:
         self.difficulty, self.size, self.players = difficulty, size, players
         self.run_id, self.error = run_id, error
@@ -41,7 +41,7 @@ class HighScoreScene(_Overlay):
                       Button(f"Map: {size_name}", hotkey="M", on_click=self.cycle_size, style=GHOST_BUTTON, width=230),
                       Button(f"{self.players} players", hotkey="P", on_click=self.cycle_players, style=GHOST_BUTTON, width=230), spacing=12))
         rows = Column(spacing=5, width=960)
-        widths = (40, 90, 80, 80, 80, 60, 100, 120, 120)
+        widths = (46, 90, 80, 80, 80, 60, 100, 120, 120)
 
         def row(values, *, current=False):
             return Row(*(Label(value, text_style="body", width=width, height=24, text_color=GOLD if current else None)

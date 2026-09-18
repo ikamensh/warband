@@ -48,7 +48,8 @@ def test_a_selected_unit_shows_its_numbers_beside_symbols_with_hints(play) -> No
     scene.select([archer.id])
     game.tick(1 / 60)
     texts = [t["text"] for t in game.backend.texts]
-    assert {"5", "0", "4", "2.4"} <= set(texts)
+    info = world.unit_info(scene.human, UnitType.ARCHER)  # read from the rules: the card shows them, it does not invent them
+    assert {str(info.damage), str(info.armor), f"{info.range:g}", f"{info.speed:g}"} <= set(texts)
     assert len([p for p in game.backend.polygons if p["space"] == "screen"]) > before
     px, py, pw, ph = scene.selection_panel.bounds
     x, y = px + 16, py + 14  # the card's origin; its damage symbol sits at (x + 88, y + 45)

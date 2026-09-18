@@ -3,7 +3,7 @@
 import pytest
 
 from saga2d import Game
-from saga2d.testing import assert_no_text_overlap, text_boxes
+from saga2d.testing import assert_no_text_overlap, assert_text_fits, text_boxes
 from warband.campaign import Progress, ProgressStore
 from warband.campaign_scene import CampaignScene
 from warband.dialog import DialogScene
@@ -11,7 +11,11 @@ from warband.mission_scene import MissionResultScene, MissionScene, build_world
 from warband.missions import CAMPAIGN
 from warband.rules import BuildingType, Difficulty, Race, UnitType
 from warband.model import tile_center
-from warband.scene import CodexScene, GameOverScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game
+from warband.profile import EARLY_EXIT_WEIGHT, MatchResult, Profile, standing
+from warband.profile_scene import NameScene, ProfileScene
+from warband.replay import Replay, ReplayStore
+from warband.replay_scene import ReplayEndScene, ReplayScene
+from warband.scene import CodexScene, GameOverScene, HelpScene, LeaveScene, PauseScene, SaveBrowserScene, SettingsScene, new_game
 from warband.score_scene import HighScoreScene
 from warband.style import build_theme
 from warband.title import NewGameScene, TitleScene
@@ -38,10 +42,58 @@ def match(game: Game, races=None):
     return scene
 
 
+def crowd(game: Game, count: int, page: int = 0):
+    """A selection of *count* footmen and peasants, on the given portrait page."""
+    scene = match(game)
+    world = scene.world
+    hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    units = [world.spawn_unit(scene.human, UnitType.PEASANT if i % 5 == 0 else UnitType.FOOTMAN, tile_center((hall.x - 6 + i % 12, hall.y + 5 + i // 12)))
+             for i in range(count)]
+    scene.select([u.id for u in units])
+    scene._portrait_page = page
+    settle(game)
+    return scene
+
+
+def rated(game: Game) -> Profile:
+    """A profile with a few results and a replay of the last one, so the card and the profile screen have rows to lay out."""
+    profile = Profile.load(game.data_dir)
+    profile.rename("Ilya the Bold, o")
+    for i, (outcome, difficulty, weight) in enumerate([("victory", "medium", 1.0), ("defeat", "hard", 1.0), ("left", "master", EARLY_EXIT_WEIGHT),
+                                                        ("victory", "master", 1.0), ("resigned", "easy", 1.0)]):
+        profile.record(MatchResult(f"match-{i}", f"2026-09-1{i}T10:00:00+00:00", outcome, weight,
+                                   "left with no enemy at the gates and no material disadvantage: 0.2 of a loss" if outcome == "left" else "",
+                                   difficulty, 1000, 1 + i % 3, "orc", 64, 48, "winter", "forest", 100 + i, 600 + 90 * i, i == 4))
+    scene = new_game(seed=5)
+    replay = Replay.begin(scene.world, seed=5, difficulty=scene.difficulty, human=scene.human)
+    for _ in range(20):
+        scene.world.step()
+    replay.finish(scene.world, "resigned")
+    ReplayStore(game.data_dir).save("match-4", replay, {})
+    return profile
+
+
+def replay(game: Game) -> ReplayScene:
+    rated(game)
+    scene = ReplayScene(ReplayStore(game.data_dir).load("match-4"))
+    game.push(scene)
+    settle(game)
+    return scene
+
+
 SCREENS = {
     "title": lambda game: game.push(TitleScene()),
+    "title with a record": lambda game: (rated(game), game.push(TitleScene())),
+    "profile": lambda game: (rated(game), game.push(TitleScene()), settle(game), game.push(ProfileScene())),
+    "empty profile": lambda game: (game.push(TitleScene()), settle(game), game.push(ProfileScene())),
+    "rename": lambda game: (p := rated(game), game.push(TitleScene()), settle(game), game.push(NameScene(p))),
+    "leave": lambda game: (s := match(game), game.push(LeaveScene(s, standing(s.world, s.human), "Back to title", lambda: None))),
+    "replay": replay,
+    "replay over": lambda game: (s := replay(game), setattr(s, "skipping", True), settle(game, 12)),
     "new game": lambda game: (game.push(TitleScene()), settle(game), game.push(NewGameScene(game.scene))),
     "match, twelve units selected, a warning, the tutorial": match,
+    "eighteen selected": lambda game: crowd(game, 18),
+    "sixty selected, page two": lambda game: crowd(game, 60, page=1),
     "build menu": lambda game: (match(game), game.scene.select([next(u.id for u in game.scene.world.player_units(game.scene.human) if u.is_worker)]), game.scene.open_build_menu()),
     "pause": lambda game: game.push(PauseScene(match(game))),
     "settings": lambda game: game.push(SettingsScene(match(game))),
@@ -71,7 +123,7 @@ SCREENS = {
 
 def mission_scene(game: Game, mission_id: str):
     run = build_world(CAMPAIGN.mission(mission_id), flags={"truce": True})
-    scene = MissionScene(CAMPAIGN, run, difficulty=Difficulty.NORMAL)
+    scene = MissionScene(CAMPAIGN, run, difficulty=Difficulty.MEDIUM)
     game.push(scene)
     settle(game)
     return scene
@@ -102,3 +154,42 @@ def test_help_fits_the_window(size: tuple[int, int], tmp_path) -> None:
         assert not outside, outside
     finally:
         game._teardown()
+
+
+@pytest.mark.parametrize("size", SIZES, ids=[f"{w}x{h}" for w, h in SIZES])
+@pytest.mark.parametrize("players", [2, 4])
+def test_the_match_intro_banner_stays_in_the_window(players: int, size: tuple[int, int], tmp_path) -> None:
+    """The title and the roll of rivals, from the first frame of the slide to the last.
+
+    The banner used to enter from 60 % of the window width to the left, so the
+    opening frames drew both strings outside the window — a wipe nobody could read.
+    """
+    game = Game("Warband intro", backend="mock", resolution=size, theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        game.push(new_game(seed=3, players=players))
+        for _ in range(2 * 60):  # the banner holds 1.2 s between two 0.35 s slides
+            game.tick(1 / 60)
+            assert_text_fits(game)
+    finally:
+        game._teardown()
+
+
+def test_long_tutorial_objective_fits_its_panel(tmp_path) -> None:
+    """The lumber instruction remains fully readable when the tutorial advances."""
+    game = Game("Warband tutorial", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        scene = new_game(seed=3)
+        game.push(scene)
+        worker = next(unit for unit in scene.world.player_units(scene.human) if unit.is_worker)
+        scene.select([worker.id])
+        scene.world.harvest([worker.id], scene.world.mines()[0].id)
+        settle(game)
+        assert scene.tutorial.current.text == "Right-click a tree with another peasant for lumber"
+        x, y, width, height = scene.objectives.bounds
+        instruction = [box for box in text_boxes(game.backend) if box.space == "screen"
+                       and box.left >= x and y <= box.top < y + height]
+        assert instruction
+        assert all(box.right <= x + width for box in instruction), instruction
+        assert_no_text_overlap(game, top_scene_only=True)
+    finally:
+        game.close()

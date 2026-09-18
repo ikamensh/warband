@@ -26,11 +26,11 @@ import math
 import os
 import random
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
 
 from saga2d import Game
 from sagaforge import render3d as r3
@@ -117,8 +117,21 @@ TRUNK = PALETTES[MapTheme.SUMMER].trunk
 
 @dataclass(frozen=True)
 class Placement:
+    """How an image is placed: its logical *size*, how far its bottom edge lies below the point it
+    is placed at (*drop*), how far below that point the line it stands on lies (*front*: zero
+    for a unit or tree standing on the point, half the footprint for a building placed at its
+    centre), and how far above the point the figure's top lies (*head*: what a health bar hangs
+    over; a painted cell is far taller than its figure).  Sprites sort by the line."""
+
     size: tuple[float, float]
     drop: float
+    front: float = 0.0
+    head: float = field(kw_only=True)
+
+    @property
+    def ground(self) -> float:
+        """How far the image continues below the line it stands on."""
+        return self.drop - self.front
 
 
 placements: dict[str, Placement] = {}
@@ -274,16 +287,16 @@ def map_edge(length: int, scale: float, theme: MapTheme) -> Image.Image:
 # -- Props --------------------------------------------------------------------------
 
 
-def _prop(key: str, mesh: Mesh, drop: float, scale: float, *, min_width: float = 0) -> Image.Image:
+def _prop(key: str, mesh: Mesh, drop: float, scale: float, *, min_width: float = 0, front: float = 0.0) -> Image.Image:
     """Render *mesh* into a canvas symmetric about the model origin whose bottom is
-    *drop* below it, and record the placement."""
+    *drop* below it, and record the placement (*front* as in :class:`Placement`)."""
     min_x, min_y, max_x, max_y = r3.bounds(mesh, PROJECTION)
     half_w = math.ceil(max(-min_x, max_x, min_width / 2) + PAD)
     top = math.ceil(-min_y + PAD)
     if max_y + PAD > drop:
         raise ValueError(f"{key}: mesh extends {max_y:.1f} below its anchor, more than its drop of {drop}")
     canvas = (2 * half_w, top + drop)
-    placements[key] = Placement(canvas, drop)
+    placements[key] = Placement(canvas, drop, front, head=top - PAD)
     return r3.render(mesh, PROJECTION, scale=scale, canvas=canvas, origin=(half_w, top))
 
 
@@ -467,7 +480,7 @@ def _tree_ground(image: Image.Image, variant: int, theme: MapTheme, scale: float
 def _resource_image(kind: str, variant: int, theme: MapTheme, scale: float) -> Image.Image:
     """Reuse immutable pre-renders across matches; gameplay never grows geometry."""
     if kind == "mine":
-        return _prop(f"mine.{variant}", _mine(variant), 1.5 * TILE + PAD, scale)
+        return _prop(f"mine.{variant}", _mine(variant), 1.5 * TILE + PAD, scale, front=1.5 * TILE)
     mesh = {"tree": _tree, "rock": _rock}[kind](variant, theme)
     image = _prop(f"{kind}.{theme.value}.{variant}", mesh, DROP_TREE, scale, min_width=40 if kind == "tree" else 0)
     return _tree_ground(image, variant, theme, scale) if kind == "tree" else image
@@ -1213,6 +1226,13 @@ _SWORD_YAW = {"wind": 15, "follow": -50, "stand": 45, "walk1": 40, "walk2": 45, 
 _SWORD_SHIFT = {"wind": (0.02, -0.08, 0.06), "strike": (0.0, 0.16, 0.04), "follow": (-0.06, 0.1, -0.02), "walk1": (0, 0.09, 0), "walk3": (0, -0.09, 0)}
 _SHIELD_SHIFT = {"wind": (0, 0.08, 0), "strike": (0.03, -0.05, -0.04), "follow": (0, 0.05, 0), "walk1": (0, -0.07, 0), "walk3": (0, 0.07, 0)}
 _SWORD_GRIP = (0.3, 0.24, 0.6)  # held forward and high, so hilt and blade stay one visible object from every facing
+_SWORD_ORIGIN = (0.32, 0.13, 0.5)  # grip in the blade meshes' original coordinates
+_SWORD_EDGE: dict[Race, r3.Vec3] = {
+    Race.HUMAN: (0.32, 0.13, 1.285),  # sword point
+    Race.ORC: (0.32, 0.46, 1.2),  # cleaver's outer cutting corner, not the spike above its haft
+    Race.ELF: (0.32, 0.2, 1.24),  # curved blade's point
+    Race.DWARF: (0.32, 0.42, 1.14),  # upper axe edge, midway between its two faces
+}
 
 
 def _sword(frame: str, race: Race = Race.HUMAN) -> Mesh:
@@ -1236,7 +1256,7 @@ def _sword(frame: str, race: Race = Race.HUMAN) -> Mesh:
     else:
         blade = (r3.box((0.32, 0.13, 0.85), (0.08, 0.055, 0.59), look.metal) + r3.pyramid((0.32, 0.13, 1.145), (0.08, 0.055), 0.14, look.metal)
                  + r3.box((0.32, 0.13, 0.57), (0.27, 0.09, 0.06), GOLD))
-    blade = _shift(blade, (gx - 0.32, gy - 0.13, gz - 0.5))  # the blades are modelled at the old grip
+    blade = _shift(blade, tuple(g - o for g, o in zip(grip, _SWORD_ORIGIN)))
     mesh = _unit_pitch(blade + handle, _SWORD_PITCH.get(frame, -12), grip)
     mesh = r3.rotate_z(mesh, _SWORD_YAW.get(frame, 0), about=(grip[0], grip[1]))
     return _shift(mesh, _SWORD_SHIFT.get(frame, (0.0, 0.0, 0.0)))
@@ -1573,10 +1593,35 @@ def _archer(player: int, frame: str, race: Race) -> Mesh:
     return mesh
 
 
+_OGRE_CLUB_HEAD_Z = 1.24
+_OGRE_CLUB_RADIUS = 0.17
+_HAMMER_HEAD_ABOVE_RIDER = 0.9
+_HAMMER_HEAD_SIZE = (0.12, 0.22, 0.16)
+_LANCE_POINT_ABOVE_RIDER = 1.17
+_LANCE_POINT_LENGTH = 0.2
+
+
+def _knight_geometry(race: Race) -> tuple[float, r3.Vec3, r3.Vec3]:
+    """Rider height, weapon grip and striking edge shared by the mesh and trail."""
+    if race is Race.ORC:
+        return 0.0, (0.44, 0.16, 0.66), (0.44, 0.16, _OGRE_CLUB_HEAD_Z + _OGRE_CLUB_RADIUS)
+    z = 0.68 if race is Race.DWARF else 0.73
+    edge = (_HAMMER_HEAD_ABOVE_RIDER + _HAMMER_HEAD_SIZE[2] / 2 if race is Race.DWARF
+            else _LANCE_POINT_ABOVE_RIDER + _LANCE_POINT_LENGTH)
+    return z, (0.34, 0.05, z + 0.27), (0.34, 0.05, z + edge)
+
+
+def _knight_pitch(frame: str, race: Race) -> float:
+    if race is Race.ORC:
+        return -95 if _striking(frame) else -20
+    return -82 if _striking(frame) else -38
+
+
 def _knight(player: int, frame: str, race: Race) -> Mesh:
     team = team_color(player)
     look = LOOKS[race]
     trim = darker(team, 0.7)
+    rider_z, grip, _ = _knight_geometry(race)
     if race is Race.ORC:
         # An ogre: two heads, a club, no mount and no manners.
         mesh = _shadow(0.42) + _legs(frame, look.skin, spread=0.16)
@@ -1589,16 +1634,14 @@ def _knight(player: int, frame: str, race: Race) -> Mesh:
         mesh += _unit_head((0.17, 0.02, 1.0), 0.14, race=Race.ORC)
         mesh += r3.box((-0.17, 0.02, 1.16), (0.18, 0.18, 0.06), look.metal_dark)
         mesh += _unit_rod((-0.34, 0, 0.78), (-0.5, 0.2, 0.6), 0.09, look.skin)
-        grip = (0.44, 0.16, 0.66)
         mesh += _unit_rod((0.34, 0, 0.78), grip, 0.09, look.skin)
         club = _unit_rod((0.44, 0.16, 0.5), (0.44, 0.16, 1.2), 0.05, WOOD_DARK)
-        club += r3.sphere((0.44, 0.16, 1.24), 0.17, WOOD_DARK, rings=3, sides=7)
+        club += r3.sphere((0.44, 0.16, _OGRE_CLUB_HEAD_Z), _OGRE_CLUB_RADIUS, WOOD_DARK, rings=3, sides=7)
         for a in (0.3, 1.6, 2.9, 4.2, 5.5):
-            club += r3.cone((0.44 + 0.15 * math.cos(a), 0.16 + 0.15 * math.sin(a), 1.24), 0.03, 0.1, look.metal, sides=4)
-        mesh += _unit_pitch(club, -95 if _striking(frame) else -20, grip)
+            club += r3.cone((0.44 + 0.15 * math.cos(a), 0.16 + 0.15 * math.sin(a), _OGRE_CLUB_HEAD_Z), 0.03, 0.1, look.metal, sides=4)
+        mesh += _unit_pitch(club, _knight_pitch(frame, race), grip)
         return mesh
     mesh = _mount(frame, True, team, race)
-    rider_z = 0.73 if race is not Race.DWARF else 0.68
     mesh += r3.cylinder((0, -0.11, rider_z), 0.21, 0.34, look.metal, sides=8)
     mesh += _unit_panel([(-0.21, -0.19, rider_z + 0.34), (0.21, -0.19, rider_z + 0.34),
                          (0.28, -0.45, rider_z - 0.19), (-0.28, -0.45, rider_z - 0.19)], trim)
@@ -1621,16 +1664,15 @@ def _knight(player: int, frame: str, race: Race) -> Mesh:
             mesh += _unit_rod((0, -0.1, rider_z + 0.72), (0, -0.31, rider_z + 0.89), 0.1, team)
             mesh += r3.cone((0, -0.32, rider_z + 0.83), 0.13, 0.14, team, sides=6)
     mesh += _shield(-0.33, 0.11, rider_z + 0.21, team, 0.92, race=race)
-    grip = (0.34, 0.05, rider_z + 0.27)
     if race is Race.DWARF:
-        lance = _unit_rod((0.34, 0.05, rider_z), (0.34, 0.05, rider_z + 0.95), 0.036, WOOD)
-        lance += r3.box((0.34, 0.05, rider_z + 0.9), (0.12, 0.22, 0.16), look.metal)  # a war hammer's head
-        lance += r3.cone((0.34, 0.17, rider_z + 0.9), 0.05, 0.14, look.metal_dark, sides=4)
+        weapon = _unit_rod((0.34, 0.05, rider_z), (0.34, 0.05, rider_z + 0.95), 0.036, WOOD)
+        weapon += r3.box((0.34, 0.05, rider_z + _HAMMER_HEAD_ABOVE_RIDER), _HAMMER_HEAD_SIZE, look.metal)
+        weapon += r3.cone((0.34, 0.17, rider_z + _HAMMER_HEAD_ABOVE_RIDER), 0.05, 0.14, look.metal_dark, sides=4)
     else:
-        lance = _unit_rod((0.34, 0.05, rider_z - 0.06), (0.34, 0.05, rider_z + 1.19), 0.036, THATCH if race is Race.HUMAN else (222, 206, 168))
-        lance += r3.cone((0.34, 0.05, rider_z + 1.17), 0.085, 0.2, look.metal, sides=4)
-        lance += _unit_panel([(0.34, 0.05, rider_z + 1.1), (0.34, -0.29, rider_z + 0.97), (0.34, 0.05, rider_z + 0.86)], team)
-    mesh += _unit_pitch(lance, -82 if _striking(frame) else -38, grip)
+        weapon = _unit_rod((0.34, 0.05, rider_z - 0.06), (0.34, 0.05, rider_z + 1.19), 0.036, THATCH if race is Race.HUMAN else (222, 206, 168))
+        weapon += r3.cone((0.34, 0.05, rider_z + _LANCE_POINT_ABOVE_RIDER), 0.085, _LANCE_POINT_LENGTH, look.metal, sides=4)
+        weapon += _unit_panel([(0.34, 0.05, rider_z + 1.1), (0.34, -0.29, rider_z + 0.97), (0.34, 0.05, rider_z + 0.86)], team)
+    mesh += _unit_pitch(weapon, _knight_pitch(frame, race), grip)
     return mesh
 
 
@@ -1639,11 +1681,21 @@ def _shift(mesh: Mesh, offset: r3.Vec3) -> Mesh:
     return [r3.Face(tuple((x + ox, y + oy, z + oz) for x, y, z in face.points), face.color) for face in mesh]
 
 
+_SCOUT_PITCH = {"wind": -8, "strike": -84, "follow": -84}
+_SCOUT_SPEAR_HEAD = 0.18
+
+
+def _scout_geometry(race: Race) -> tuple[float, r3.Vec3, r3.Vec3]:
+    """Rider height, spear grip and point shared by its mesh and combat trail."""
+    rider_z = 0.63 if race is not Race.ORC else 0.5
+    return rider_z, (0.27, 0.07, rider_z + 0.27), (0.27, 0.07, rider_z + 1.0 + _SCOUT_SPEAR_HEAD)
+
+
 def _scout(player: int, frame: str, race: Race) -> Mesh:
     team = team_color(player)
     look = LOOKS[race]
     mesh = _mount(frame, False, team, race)
-    rider_z = 0.63 if race is not Race.ORC else 0.5
+    rider_z, grip, tip = _scout_geometry(race)
     mesh += r3.cylinder((0, -0.1, rider_z), 0.15, 0.29, look.leather, sides=6)
     mesh += _unit_panel([(-0.18, -0.16, rider_z + 0.29), (0.18, -0.16, rider_z + 0.29),
                          (0.2, -0.57, rider_z - 0.09), (0, -0.48, rider_z - 0.04), (-0.2, -0.57, rider_z - 0.09)], team)
@@ -1661,12 +1713,11 @@ def _scout(player: int, frame: str, race: Race) -> Mesh:
     for x in (-0.19, 0.19):
         mesh += _unit_rod((x, -0.06, rider_z + 0.11), (x * 1.15, 0.06, rider_z - 0.2), 0.058, WOOD_DARK)
         mesh += _unit_rod((x, -0.08, rider_z + 0.23), (x, 0.12, rider_z + 0.19), 0.045, look.skin)
-    grip = (0.27, 0.07, rider_z + 0.27)
     spear = _unit_rod((0.27, 0.07, rider_z - 0.08), (0.27, 0.07, rider_z + 1.02), 0.024, WOOD)
-    spear += r3.cone((0.27, 0.07, rider_z + 1.0), 0.06, 0.18, look.metal, sides=4)
+    spear += r3.cone((tip[0], tip[1], tip[2] - _SCOUT_SPEAR_HEAD), 0.06, _SCOUT_SPEAR_HEAD, look.metal, sides=4)
     if race is Race.ORC:
         spear += r3.cone((0.27, 0.07, rider_z + 0.85), 0.05, -0.1, BONE, sides=4)
-    mesh += _unit_pitch(spear, -84 if _striking(frame) else -8, grip)
+    mesh += _unit_pitch(spear, _SCOUT_PITCH.get(frame, -8), grip)
     return mesh
 
 
@@ -1838,6 +1889,84 @@ def chop_contact_offset(facing: int, race: Race = Race.HUMAN) -> tuple[float, fl
     return PROJECTION.project((x * c - y * s, x * s + y * c, z))
 
 
+@lru_cache(maxsize=4 * FACINGS * len(Race))
+def _melee_sweep(unit_type: UnitType, facing: int, race: Race) -> tuple[tuple[tuple[float, float], tuple[float, float]], ...]:
+    """A weapon ribbon, projected from its authored wind/strike rig.
+
+    Each pair is the inner edge and tip at one point along the fast downswing.
+    Keeping the arc in the art module makes it follow the weapon's actual grip,
+    pitch, torso and camera instead of drawing a generic circle around a unit.
+    """
+    if unit_type is UnitType.FOOTMAN:
+        grip = _SWORD_GRIP
+        edge = tuple(g + (e - o) for g, e, o in zip(grip, _SWORD_EDGE[race], _SWORD_ORIGIN))
+    elif unit_type is UnitType.PEASANT:
+        grip, edge = _WORKER_GRIP, _WORKER_AXE_EDGE[1]
+    elif unit_type is UnitType.SCOUT:
+        _, grip, edge = _scout_geometry(race)
+    elif unit_type is UnitType.KNIGHT:
+        _, grip, edge = _knight_geometry(race)
+    else:
+        raise ValueError(unit_type)
+    inner = tuple(a + (b - a) * 0.88 for a, b in zip(grip, edge))
+    wind, strike = POSES["wind"], POSES["strike"]
+    ribbon = []
+    for i in range(13):
+        t = 0.2 + 0.8 * i / 12
+
+        def between(a: float, b: float) -> float:
+            return a + (b - a) * t
+
+        mesh = [r3.Face((inner, edge, edge), (255, 255, 255))]
+        if unit_type is UnitType.FOOTMAN:
+            mesh = _unit_pitch(mesh, between(_SWORD_PITCH["wind"], _SWORD_PITCH["strike"]), grip)
+            mesh = r3.rotate_z(mesh, between(_SWORD_YAW["wind"], _SWORD_YAW.get("strike", 0)), about=grip[:2])
+            mesh = _shift(mesh, tuple(between(a, b) for a, b in zip(_SWORD_SHIFT["wind"], _SWORD_SHIFT["strike"])))
+        elif unit_type is UnitType.PEASANT:
+            mesh = _unit_pitch(mesh, between(_worker_axe_angle("wind"), _worker_axe_angle("strike")), grip)
+        elif unit_type is UnitType.SCOUT:
+            mesh = _unit_pitch(mesh, between(_SCOUT_PITCH["wind"], _SCOUT_PITCH["strike"]), grip)
+        else:
+            mesh = _unit_pitch(mesh, between(_knight_pitch("wind", race), _knight_pitch("strike", race)), grip)
+        if unit_type in MOUNTED:
+            mesh = _shift(mesh, (0.0, between(wind.lunge, strike.lunge), between(_BOB["wind"], _BOB["strike"])))
+        else:
+            mesh = r3.rotate_z(mesh, between(wind.twist, strike.twist))
+            mesh = _unit_pitch(mesh, -between(wind.lean, strike.lean), (0.0, 0.0, HIP))
+            mesh = _shift(mesh, (between(wind.sway, strike.sway), between(wind.lunge, strike.lunge), 0.0))
+        mesh = _stretch(mesh, *LOOKS[race].stretch)
+        mesh = r3.rotate_z(r3.scale(mesh, UNIT_SCALE), facing * 45 - 90)
+        ribbon.append(tuple(PROJECTION.project(point) for point in mesh[0].points[:2]))
+    return tuple(ribbon)
+
+
+def melee_trail_image(game: Game, unit_type: UnitType, facing: int, race: Race = Race.HUMAN) -> str:
+    """One small atlas image per role/race/facing, shared by matching weapons."""
+    key = f"melee-trail.{race.value}.{unit_type.value}.{facing}"
+    if game.assets.has_image(key):
+        return key
+    scale = game.backend.scale_factor
+    sample = scale * 2  # supersample the thin ribbon's edge
+    ribbon = _melee_sweep(unit_type, facing, race)
+    points = [point for pair in ribbon for point in pair]
+    width = 2 * (math.ceil(max(abs(x) for x, _ in points)) + 3)
+    top = math.floor(min(y for _, y in points)) - 3
+    bottom = math.ceil(max(y for _, y in points)) + 3
+    height = bottom - top
+    image = Image.new("RGBA", (round(width * sample), round(height * sample)))
+    draw = ImageDraw.Draw(image)
+    edge_width = 1.6 if unit_type is UnitType.KNIGHT and race in (Race.ORC, Race.DWARF) else 1.2
+    for i, ((inner0, tip0), (inner1, tip1)) in enumerate(zip(ribbon, ribbon[1:])):
+        strength = (i + 1) / (len(ribbon) - 1)
+        points = [((x + width / 2) * sample, (y - top) * sample) for x, y in (inner0, tip0, tip1, inner1)]
+        draw.polygon(points, fill=(235, 242, 252, round(85 * strength)))
+        draw.line(points[1:3], fill=(249, 251, 255, round(180 * strength)), width=round(edge_width * sample))
+    image = image.resize((round(width * scale), round(height * scale)), Image.Resampling.LANCZOS)
+    placements[key] = Placement((width, height), bottom, head=-top)
+    game.assets.image_from_pil(key, image)
+    return key
+
+
 def unit_key(unit_type: UnitType, player: int, facing: int, frame: str, carrying: Resource | None = None, race: Race = Race.HUMAN) -> str:
     carry = f".{carrying.value}" if carrying is not None else ""
     return f"unit.{race.value}.{unit_type.value}{carry}.{player}.{facing}.{frame}"
@@ -1854,6 +1983,8 @@ def _painted(name: str, wanted: list[str]) -> tuple[restyle.Sheet, dict[str, Ima
     if not RESTYLED_ART or not restyle.file(RESTYLED / name, "png").exists():
         return None
     sheet, frames = restyle.load_frames(RESTYLED / name)
+    # The committed sheets were cut before key_out took the key's tint off their edges.
+    frames = {key: restyle.despill(frame, sheet.chroma) for key, frame in frames.items()}
     missing = [key for key in wanted if key not in frames]
     if missing:
         warnings.warn(f"painted sheet {name} is stale (no {missing[0]!r}) and is ignored; re-render it with tools/restyle.py", stacklevel=3)
@@ -1867,6 +1998,28 @@ def restyled_frames(race: Race, unit_type: UnitType, carrying: Resource | None) 
     name = f"{race.value}.{unit_type.value}" + (f".{carrying.value}" if carrying else "")
     wanted = FRAMES + CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else FRAMES
     return _painted(name, [unit_key(unit_type, 0, 0, frame, carrying, race) for frame in wanted])
+
+
+def figure_top(sheet: restyle.Sheet, frame: Image.Image) -> float:
+    """How far above the sheet's anchor the figure in *frame* begins: its first row with a pixel at
+    least a quarter opaque (a stray faint pixel of the key's field does not count), in logical units."""
+    box = frame.split()[3].point(lambda alpha: 255 if alpha >= 64 else 0).getbbox()
+    if box is None:
+        raise ValueError("a painted frame with no figure")
+    return (sheet.origin[1] - box[1]) / sheet.scale
+
+
+@lru_cache(maxsize=None)
+def stride_heads(race: Race, unit_type: UnitType, carrying: Resource | None) -> tuple[float, ...]:
+    """Per facing, how far above its feet the unit reaches standing or walking: the highest figure top
+    over its stand and walk frames, so a bar hung over it holds still through the stride and clears a
+    tool carried over the shoulder."""
+    painted = restyled_frames(race, unit_type, carrying)
+    if painted is None:
+        raise ValueError(f"no painted sheet for {race.value} {unit_type.value} carrying {carrying}")
+    sheet, frames = painted
+    return tuple(max(figure_top(sheet, frames[unit_key(unit_type, 0, facing, name, carrying, race)]) for name in ("stand",) + WALK_FRAMES)
+                 for facing in range(FACINGS))
 
 
 @lru_cache(maxsize=None)
@@ -1893,7 +2046,7 @@ def unit_image(game: Game, unit_type: UnitType, player: int, facing: int, frame:
             game.assets.image_from_pil(key, _prop(key, mesh, DROP_UNIT, game.backend.scale_factor))
         else:
             sheet, frames = restyled
-            placements[key] = Placement(sheet.logical_size, sheet.drop)
+            placements[key] = Placement(sheet.logical_size, sheet.drop, head=stride_heads(race, unit_type, carrying)[facing])
             game.assets.image_from_pil(key, _recoloured(frames[unit_key(unit_type, 0, facing, frame, carrying, race)], player))
     return key
 
@@ -1958,29 +2111,39 @@ def building_key(building_type: BuildingType, player: int, race: Race = Race.HUM
     return f"building.{race.value}.{building_type.value}.{look}.{player}"
 
 
-def building_image(game: Game, building_type: BuildingType, player: int, race: Race = Race.HUMAN, look: str = "intact") -> str:
+def building_image(game: Game, building_type: BuildingType, player: int, race: Race = Race.HUMAN, look: str = "intact", *,
+                   abandoned: bool = False) -> str:
     """Register (once) and return the key of one building image: the painted frame recoloured
     to the player's team when the race's buildings were restyled in that *look* (a look without
-    a painted sheet shows the intact painting), the low-poly render otherwise."""
+    a painted sheet shows the intact painting), the low-poly render otherwise.  An *abandoned*
+    building is the same picture drained of colour."""
     if look not in BUILDING_LOOKS:
         raise ValueError(f"unknown building look {look!r}")
     if look != "intact" and restyled_buildings(race, look) is None:
         look = "intact"
-    key = building_key(building_type, player, race, look)
+    key = building_key(building_type, player, race, look) + (".abandoned" if abandoned else "")
     if not game.assets.has_image(key):
         restyled = restyled_buildings(race, look)
+        front = BUILDINGS[building_type].size / 2 * TILE
         if restyled is None:
-            size = BUILDINGS[building_type].size
-            game.assets.image_from_pil(key, _prop(key, _building(building_type, player, race), size / 2 * TILE + PAD, game.backend.scale_factor))
+            image = _prop(key, _building(building_type, player, race), front + PAD, game.backend.scale_factor, front=front)
         else:
             sheet, frames = restyled
-            placements[key] = Placement(sheet.logical_size, sheet.drop)
-            game.assets.image_from_pil(key, _recoloured(frames[building_key(building_type, 0, race, look)], player))
+            painted = frames[building_key(building_type, 0, race, look)]
+            placements[key] = Placement(sheet.logical_size, sheet.drop, front, head=figure_top(sheet, painted))
+            image = _recoloured(painted, player)
+        game.assets.image_from_pil(key, _greyed(image) if abandoned else image)
     return key
 
 
+def _greyed(image: Image.Image) -> Image.Image:
+    """*image* without its colour and a little darker: a ruin nobody keeps."""
+    grey = ImageEnhance.Brightness(image.convert("RGBA").convert("L")).enhance(0.82)
+    return Image.merge("RGBA", (grey, grey, grey, image.convert("RGBA").getchannel("A")))
+
+
 DROP_TREE = TILE / 2 + PAD  # a tree is placed at its tile's centre; its image reaches the tile's front edge
-DROP_UNIT = TILE * 1.9 + PAD  # a lance pointed at the camera, or an orc's lunging strike, reaches well below the feet
+DROP_UNIT = TILE * 2.1 + PAD  # a lance pointed at the camera, or an orc's lunging strike, reaches well below the feet
 
 
 # -- 2-D effect images ----------------------------------------------------------------
@@ -2039,7 +2202,7 @@ def register_static(game: Game) -> None:
     scale = game.backend.scale_factor
     assets = game.assets
     for size in {info.size for info in BUILDINGS.values()}:
-        assets.image_from_pil(f"site.{size}", _prop(f"site.{size}", _site(size), size / 2 * TILE + PAD, scale))
+        assets.image_from_pil(f"site.{size}", _prop(f"site.{size}", _site(size), size / 2 * TILE + PAD, scale, front=size / 2 * TILE))
     px = int(TILE * scale)
     assets.image_from_pil("glow", _glow(px * 2, 0.24, (*WHITE, 255)))
     assets.image_from_pil("ring", _ring(px * 2, scale))
@@ -2048,3 +2211,5 @@ def register_static(game: Game) -> None:
     assets.image_from_pil("blank", Image.new("RGBA", (px, px), (*WHITE, 255)))
     assets.image_from_pil("arrow", _arrow(scale))
     assets.image_from_pil("stone", _glow(int(px * 0.4), 0.36, (150, 140, 128, 255), 0.06))
+    assets.image_from_pil("drop", _glow(max(6, int(px * 0.3)), 0.42, (*WHITE, 255), 0.08))  # a droplet, a chip: a dot with an edge, tinted by its spray
+    assets.image_from_pil("stain", _glow(int(px * 1.2), 0.36, (*WHITE, 255), 0.12))  # a soft blotch on the ground, tinted dark red; the blur stays inside the canvas

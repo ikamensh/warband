@@ -52,7 +52,9 @@ def test_a_soldier_busy_on_a_building_turns_on_a_shooter_beyond_its_own_sight():
     assert isinstance(ours.order, Attack) and ours.order.auto and ours.order.target == farm.id
     catapult = world.spawn_unit(1, UnitType.CATAPULT, (16.0, 10.5))
     world.attack([catapult.id], ours.id)
-    for _ in range(10):
+    for _ in range(80):  # the crew wheels round, cranks the arm and the stone flies
         world.step()
+        if ours.hp < ours.max_hp:
+            break
     assert ours.hp < ours.max_hp
     assert isinstance(ours.order, Attack) and ours.order.target == catapult.id

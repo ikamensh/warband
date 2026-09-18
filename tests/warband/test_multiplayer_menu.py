@@ -7,7 +7,7 @@ from saga2d import Button, Game, MatchMenu
 from saga2d.online import OnlineClient
 from saga2d.testing.online import server_fixture
 
-server_url = server_fixture('warband.multiplayer:ONLINE')
+server_url = server_fixture('warband.authority:ONLINE')
 from warband.multiplayer import NetworkGameScene
 from warband.scene import SettingsScene
 from warband.style import build_theme
@@ -37,7 +37,7 @@ def buttons(game):
 @pytest.fixture
 def online_game(server_url, tmp_path, monkeypatch):
     monkeypatch.setenv('SAGA2D_SERVER_URL', server_url)
-    partner = OnlineClient('warband-v1', endpoint=server_url, options={'seed': 3, 'width': 40, 'height': 32})
+    partner = OnlineClient('warband-v2', endpoint=server_url, options={'seed': 3, 'width': 48, 'height': 40})
     game = Game('online menu', backend='mock', resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / 'saves')
     try:
         game.push(TitleScene())
@@ -98,7 +98,7 @@ def test_network_result_has_no_solo_rematch_and_escape_leaves(tmp_path, winner):
     from saga2d import MatchClient, MatchHost
     from tests.warband.test_multiplayer import converge
     from warband.model import World
-    from warband.multiplayer import WarbandMatch
+    from warband.authority import WarbandMatch
     from warband.rules import Terrain, UnitType
 
     match = WarbandMatch(3)
@@ -109,8 +109,8 @@ def test_network_result_has_no_solo_rematch_and_escape_leaves(tmp_path, winner):
     victim = match.world.spawn_unit(1 - winner, UnitType.PEASANT, (11, 10.5))
     victim.hp = 1
     match.world.update_vision()
-    host = MatchHost('warband-v1', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
-    client = MatchClient('warband-v1', host.address, token='test')
+    host = MatchHost('warband-v2', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
+    client = MatchClient('warband-v2', host.address, token='test')
     game = Game('network result', backend='mock', resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / 'saves')
     try:
         converge(host, client, lambda: client.ready)
@@ -120,7 +120,10 @@ def test_network_result_has_no_solo_rematch_and_escape_leaves(tmp_path, winner):
         command = {'action': 'attack', 'args': [[attacker.id], victim.id]}
         (host if winner == 0 else client).submit(command)
         converge(host, client, lambda: bool(match.world.units[attacker.id].orders))
-        match.step()
+        for _ in range(40):
+            match.step()
+            if match.world.winner is not None:
+                break
         assert match.world.winner == winner
         host.publish()
         converge(host, client, lambda: client.state['world']['winner'] == winner)

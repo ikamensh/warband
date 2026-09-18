@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from saga2d import Game, fonts  # noqa: E402
 from warband import sound  # noqa: E402
-from warband.ai import Brain  # noqa: E402
+from warband.ai import make_brain  # noqa: E402
 from warband.rules import Difficulty  # noqa: E402
 from warband.scene import DEFAULT_SETTINGS, GameOverScene, GameScene, new_game  # noqa: E402
 from warband.style import build_theme  # noqa: E402
@@ -59,7 +59,7 @@ def main() -> None:
     while time.time() - started < args.minutes * 60:
         scene = new_game(seed, players=2 + seed % 2, difficulty=list(Difficulty)[seed % 3], settings=settings)
         game.clear_and_push(scene)
-        scene.brains.append(Brain(scene.human, Difficulty.NORMAL))  # the human side plays itself
+        scene.brains.append(make_brain(scene.human, Difficulty.MEDIUM))  # the human side plays itself
         scene.speed = 1.0
         frames: list[float] = []
         while not isinstance(game.scene, GameOverScene) and time.time() - started < args.minutes * 60 and scene.world.time < MATCH_MINUTES * 60:

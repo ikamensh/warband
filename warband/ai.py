@@ -17,11 +17,14 @@ import random
 
 from dataclasses import dataclass
 
-from warband.model import Attack, AttackMove, Build, Building, Deposit, Harvest, Point, Pos, Repair, Unit, World, dist
+from warband.model import Attack, AttackMove, Build, Building, Deposit, Harvest, Move, Point, Pos, Repair, Unit, World, dist
 from warband.races import RACES
 from warband.rules import BUILDINGS, BuildingType, Difficulty, Race, Resource, UnitType, Upgrade
 
 EXPAND_DISTANCE = 14.0  # a mine farther than this from the hall gets a hall of its own
+LOW_MINE_GOLD = 6000  # a mine this low means the next hall is planned now, while gold still comes in
+CLAIM_DISTANCE = 8.0  # a mine with an own hall this near is claimed
+MAX_HALLS = 3
 DEFEND_RADIUS = 9.0
 BUILD_MIN_DISTANCE = 2
 BUILD_MAX_DISTANCE = 11
@@ -46,6 +49,47 @@ ARMY_PLANS: dict[Race, dict[UnitType, float]] = {
 }
 
 _MELEE_TYPES = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
+
+
+ARRIVED_WITHIN = 1.5  # a soldier this near its destination has arrived, whatever the order says
+
+
+def known_enemy_buildings(world: World, player: int) -> list:
+    """Enemy structures *player* has seen, as that player's own memory records them.
+
+    The AI is bound by the fog the human plays under: every question it asks
+    about the map goes through ``world.worker_knowledge``, which holds the last
+    observed footprint of every structure this player has laid eyes on and
+    nothing else. A razed building stays remembered until somebody looks at the
+    ground again, which is exactly what a player would believe.
+    """
+    return [record for record in world.worker_knowledge[player].buildings.values()
+            if record.player not in (None, player) and world.players[record.player].alive]
+
+
+def known_mines(world: World, player: int) -> list:
+    """Gold *player* has found; its contents are what they were when last seen."""
+    return list(world.worker_knowledge[player].mines.values())
+
+
+def release_arrived(world: World, player: int) -> None:
+    """Let go of a Move that is as good as finished.
+
+    A Move ends only when the unit reaches the point itself. Order a whole army
+    to one coordinate — which is what a muster point is — and the soldiers that
+    cannot stand on it stop a fraction of a tile short and keep the order for
+    the rest of the game, taking no further part in it. Re-issuing the move to
+    where the unit already stands completes it.
+
+    Found by ``tools/fuzz.py``: an archer stalled twenty seconds two thirds of
+    a tile from a muster point, with the tile it wanted occupied.
+    """
+    for unit in world.player_units(player):
+        if unit.is_worker:
+            continue
+        order = unit.order
+        if isinstance(order, Move) and dist(unit.pos, order.target) < ARRIVED_WITHIN:
+            world.move([unit.id], unit.pos)
 
 
 def _shift(plan: dict[UnitType, float], deltas: dict[UnitType, float]) -> None:
@@ -85,17 +129,63 @@ class Profile:
 PROFILES: dict[Difficulty, Profile] = {
     Difficulty.EASY: Profile(peasants=7, think_every=2.0, first_wave=10, wave_growth=2, barracks=1, towers=0, tech=False, siege=False,
                              clerics=False, harass=False, reserve=1500, repair=False),
-    # Normal is the coin flip against a plain, competent opening; it thinks slower, waits for a bigger first wave and skips siege.
-    Difficulty.NORMAL: Profile(peasants=9, think_every=1.5, first_wave=10, wave_growth=3, barracks=2, towers=1, tech=True, siege=False,
-                               clerics=False, harass=False, reserve=1000, repair=True),
-    Difficulty.HARD: Profile(peasants=14, think_every=0.5, first_wave=8, wave_growth=4, barracks=3, towers=3, tech=True, siege=True,
-                             clerics=True, harass=True, reserve=500, repair=True),
+    # Medium is what Normal and Hard both used to be. They measured 994 and 1000
+    # Elo and split their games 55/45, so the fuller of the two plays for both:
+    # it techs, sieges, fields healers and sends raiders, which makes a more
+    # interesting opponent at the same strength.
+    Difficulty.MEDIUM: Profile(peasants=14, think_every=0.5, first_wave=8, wave_growth=4, barracks=3, towers=3, tech=True, siege=True,
+                               clerics=True, harass=True, reserve=500, repair=True),
+}
+
+
+def make_brain(player: int, difficulty: Difficulty, seed: int = 0):
+    """The opponent a difficulty setting means.
+
+    Easy and Medium are this module's :class:`Brain`; Hard and Master are
+    :class:`warband.pro_ai.ProBrain`, which is a different and much stronger
+    player. Master has two postures of one strength, and *seed* — the map's —
+    draws which one this player gets, so every client of an online match and
+    every replay of a seed agree, and two Master players in one game differ.
+    Imported late because ``pro_ai`` imports this module.
+    """
+    from warband.pro_ai import PRO_PROFILES, ProBrain
+
+    if difficulty in PROFILES:
+        return Brain(player, difficulty)
+    postures = PRO_FOR[difficulty]
+    return ProBrain(player, PRO_PROFILES[postures[(seed + player) % len(postures)]])
+
+
+#: Which ProBrain profiles stand behind each of the upper difficulties.
+PRO_FOR: dict[Difficulty, tuple[str, ...]] = {Difficulty.HARD: ("pro-hard",),
+                                              Difficulty.MASTER: ("pro-vanguard", "pro-warden")}
+
+#: What each setting is worth, measured on the ladder and anchored at Medium =
+#: 1000, over every map size and all five layouts. Produced by
+#: ``tools/arena.py``; the games behind the numbers are in ``docs/ai-ladder.md``. Shown on the New game screen so a player can see what
+#: they are picking rather than guess from a word.
+DIFFICULTY_ELO: dict[Difficulty, int] = {
+    Difficulty.EASY: 860,
+    Difficulty.MEDIUM: 1000,
+    Difficulty.HARD: 1350,
+    Difficulty.MASTER: 1590,
+}
+
+#: One line per setting, for the same screen.
+#: One line per setting, for the same screen. Kept short enough to fit beside
+#: the map preview.
+DIFFICULTY_NOTES: dict[Difficulty, str] = {
+    Difficulty.EASY: "Seven peasants, one barracks, no upgrades.",
+    Difficulty.MEDIUM: "Techs, sieges, heals and raids. The old Normal and Hard, in one.",
+    Difficulty.HARD: "Strong, but slow to think and short of workers.",
+    Difficulty.MASTER: "Vanguard marches at five; Warden towers up, marches at eight.",
 }
 
 
 class Brain:
-    def __init__(self, player: int, difficulty: Difficulty = Difficulty.NORMAL) -> None:
+    def __init__(self, player: int, difficulty: Difficulty = Difficulty.MEDIUM) -> None:
         self.player = player
+        self.saving = False  # a hall for the next mine comes before more soldiers
         self.difficulty = difficulty
         self.profile = PROFILES[difficulty]
         self.next_think = 0.0
@@ -117,6 +207,7 @@ class Brain:
         if world.time < self.next_think or not world.players[self.player].alive or world.winner is not None:
             return
         self.next_think = world.time + self.profile.think_every
+        release_arrived(world, self.player)
         if not self._plan_logged:
             self._plan_logged = True
             self.note(world, f"army plan {world.players[self.player].race.value}")
@@ -180,9 +271,7 @@ class Brain:
     # -- Economy -----------------------------------------------------------------
 
     def _economy(self, world: World) -> None:
-        from warband.worker_ai import assign_idle_workers
-
-        assign_idle_workers(world, self.player)
+        world.assign_workers(self.player)
 
     def _repairs(self, world: World) -> None:
         """One peasant mends the most damaged building, once no enemy is near it."""
@@ -226,7 +315,10 @@ class Brain:
         player = self.player
         profile = self.profile
         gold = world.players[player].gold
-        mine = world._nearest_mine(hall.center if hall is not None else fallback, math.inf)
+        found = known_mines(world, player)
+        anchor_point = hall.center if hall is not None else fallback
+        mine = min(found, key=lambda m: dist(m.center, anchor_point)) if found else None
+        self.saving = False
         if hall is None:
             wanted, anchor = BuildingType.TOWN_HALL, (mine.center if mine is not None else fallback)
         else:
@@ -238,12 +330,13 @@ class Brain:
                 wanted = BuildingType.FARM
             elif not have(BuildingType.BARRACKS):
                 wanted = BuildingType.BARRACKS
+            elif (claim := self._mine_to_claim(world, hall, mine)) is not None:
+                wanted, anchor = BuildingType.TOWN_HALL, claim.center
+                self.saving = world.can_afford(player, BUILDINGS[wanted].cost) is not None  # the army waits for the hall
             elif profile.tech and not have(BuildingType.LUMBER_MILL):
                 wanted = BuildingType.LUMBER_MILL
             elif profile.tech and not have(BuildingType.BLACKSMITH) and gold > 900:
                 wanted = BuildingType.BLACKSMITH
-            elif mine is not None and dist(mine.center, hall.center) > EXPAND_DISTANCE and not world.player_buildings(player, BuildingType.TOWN_HALL, done=False):
-                wanted, anchor = BuildingType.TOWN_HALL, mine.center
             elif profile.tech and not have(BuildingType.STABLES) and gold > 1200:
                 wanted = BuildingType.STABLES
             elif have(BuildingType.BARRACKS) < profile.barracks and gold > 1500:
@@ -259,6 +352,19 @@ class Brain:
         if world.can_afford(player, BUILDINGS[wanted].cost) is not None:
             return None
         return wanted, anchor
+
+    def _mine_to_claim(self, world: World, hall: Building, worked: Building | None) -> Building | None:
+        """The nearest unclaimed mine when the one the hall works is far, running low or gone, up to
+        MAX_HALLS halls in all and one at a time."""
+        player = self.player
+        halls = world.player_buildings(player, BuildingType.TOWN_HALL)
+        if len(halls) >= MAX_HALLS or any(not h.done for h in halls):
+            return None
+        if worked is not None and worked.gold >= LOW_MINE_GOLD and dist(worked.center, hall.center) <= EXPAND_DISTANCE:
+            return None
+        free = [m for m in known_mines(world, self.player) if m.gold >= LOW_MINE_GOLD
+                and not any(dist(m.center, h.center) <= CLAIM_DISTANCE for h in halls)]
+        return min(free, key=lambda m: dist(m.center, hall.center)) if free else None
 
     def _site(self, world: World, building_type: BuildingType, anchor: Point, rng: random.Random) -> Pos | None:
         size = BUILDINGS[building_type].size
@@ -312,7 +418,7 @@ class Brain:
         army = self._army(world)
         counts = {t: sum(1 for u in army if u.type is t) for t in UnitType}
         for building in world.player_buildings(player, done=True):
-            if not building.info.trains or building.type is BuildingType.TOWN_HALL:
+            if not building.info.trains or building.type is BuildingType.TOWN_HALL or self.saving:
                 continue
             if building.rally is None and hall is not None:
                 world.set_rally(building.id, self._muster_point(world, hall))
@@ -383,7 +489,7 @@ class Brain:
         if not self.profile.tech:
             return
         player = world.players[self.player]
-        if player.gold < self.profile.reserve:
+        if player.gold < self.profile.reserve or self.saving:
             return
         for upgrade in RESEARCH_ORDER:
             if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):
@@ -419,7 +525,8 @@ class Brain:
     def _enemy_soldiers(self, world: World) -> int:
         """Living enemy soldiers (units that are not workers) of alive players."""
         return sum(1 for u in world.units.values() if u.player != self.player and world.players[u.player].alive
-                   and not u.is_worker and u.hp > 0 and not u.hidden)
+                   and not u.is_worker and u.hp > 0 and not u.hidden
+                   and world.is_visible(self.player, u.tile))
 
     # -- Military --------------------------------------------------------------------
 
@@ -501,8 +608,11 @@ class Brain:
         idle = [i for i in self.raiders if not world.units[i].orders]
         if not idle:
             return
-        mines = [m.center for m in world.mines() if any(u.player != self.player and dist(u.pos, m.center) < 8 for u in world.units.values() if u.is_worker)]
-        prey = mines or [u.pos for u in world.units.values() if u.player != self.player and u.is_worker and not u.hidden]
+        seen = [u for u in world.units.values()
+                if u.player != self.player and u.is_worker and not u.hidden and world.is_visible(self.player, u.tile)]
+        mines = [m.center for m in known_mines(world, self.player)
+                 if any(dist(u.pos, m.center) < 8 for u in seen)]
+        prey = mines or [u.pos for u in seen]
         if prey:
             target = min(prey, key=lambda p: dist(p, world.units[idle[0]].pos))
             world.attack_move(idle, target)
@@ -510,11 +620,21 @@ class Brain:
 
     def _enemy_targets(self, world: World) -> list[Point]:
         """Enemy buildings of alive players; once those are gone, whatever enemy units remain."""
-        buildings = [b.center for b in world.buildings.values() if b.player is not None and b.player != self.player
-                     and world.players[b.player].alive]
+        buildings = [record.center for record in known_enemy_buildings(world, self.player)]
         if buildings:
             return buildings
-        return [u.pos for u in world.units.values() if u.player != self.player and world.players[u.player].alive]
+        seen = [u.pos for u in world.units.values()
+                if u.player != self.player and world.players[u.player].alive
+                and not u.hidden and world.is_visible(self.player, u.tile)]
+        if seen:
+            return seen
+        # Nothing of theirs found yet: walk at the far corner rather than stand
+        # at home until the clock runs out. Starts sit in the corners.
+        hall = self._hall(world)
+        here = hall.center if hall is not None else (world.width / 2, world.height / 2)
+        corners = [(2.5, 2.5), (world.width - 2.5, 2.5), (2.5, world.height - 2.5),
+                   (world.width - 2.5, world.height - 2.5)]
+        return [max(corners, key=lambda c: dist(c, here))]
 
     def _threats(self, world: World) -> list[Unit]:
         """Visible enemies within DEFEND_RADIUS of one of our buildings."""

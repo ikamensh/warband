@@ -7,7 +7,7 @@ from warband.model import Event, Repair, Attack, AttackMove, Build, Harvest, Mov
 from warband.rules import BUILDINGS, SIM_DT, UNITS, BuildingType, UnitType
 from warband.races import RACES
 from warband.rules import Race
-from warband.scene import GameOverScene, GameScene, HelpScene, PauseScene, SettingsScene, new_game
+from warband.scene import GameOverScene, GameScene, HelpScene, LeaveScene, PauseScene, SettingsScene, new_game
 from warband.style import build_theme
 from warband.title import NewGameScene, TitleScene
 
@@ -264,8 +264,9 @@ def test_escape_opens_the_menu_and_save_load_round_trips(play) -> None:
     press(game, "f5")
     scene.player.gold = 9999
     press(game, "f9")
-    assert scene.player.gold == 1000
-    assert len(scene.world.player_units(scene.human)) == 3
+    loaded = game.scene
+    assert isinstance(loaded, GameScene) and loaded.player.gold == 1000
+    assert len(loaded.world.player_units(loaded.human)) == 3
 
 
 def test_pause_menu_save_and_load_work_despite_the_deferred_pop(play) -> None:
@@ -280,7 +281,7 @@ def test_pause_menu_save_and_load_work_despite_the_deferred_pop(play) -> None:
     press(game, "escape")
     press(game, "f9")
     press(game, "1")
-    assert game.scene is scene and scene.player.gold == 1000
+    assert isinstance(game.scene, GameScene) and game.scene.player.gold == 1000
 
 
 def test_help_and_settings_overlays(play) -> None:
@@ -296,6 +297,26 @@ def test_help_and_settings_overlays(play) -> None:
     press(game, "escape")
     press(game, "escape")
     assert game.scene is scene
+
+
+def test_settings_keyboard_adjusts_the_row_last_clicked(play) -> None:
+    """Mouse and keyboard share row focus, preserving the other saved preferences."""
+    from saga2d import Button, Label
+
+    game, scene = play
+    press(game, "escape")
+    press(game, "s")
+    settings = game.scene
+    sound_label = settings.ui.find(lambda component: isinstance(component, Label) and component.text == "Sound volume")
+    row = sound_label.parent
+    plus = row.find(lambda component: isinstance(component, Button) and component.text == "+")
+    x, y, width, height = plus.bounds
+    original = dict(scene.settings)
+    game.backend.inject_click(x + width // 2, y + height // 2)
+    game.tick(1 / 60)
+    assert scene.settings["sfx"] == pytest.approx(original["sfx"] + 0.1)
+    press(game, "left")
+    assert dict(scene.settings) == original
 
 
 def test_losing_every_building_and_unit_ends_the_game(play) -> None:
@@ -343,6 +364,7 @@ def test_a_kill_leaves_a_body_lying_that_fades_and_is_removed(play) -> None:
     hall = hall_of(scene)
     victim = world.spawn_unit(1, UnitType.PEASANT, tile_center((hall.x + 4, hall.y + 4)))
     victim.hp = 1
+    scene.brains = []  # or its side sends it off to work while the knight turns and winds up
     knight = world.spawn_unit(scene.human, UnitType.KNIGHT, tile_center((hall.x + 3, hall.y + 4)))
     world.attack([knight.id], victim.id)
     tick(game, 1.5)
@@ -414,11 +436,11 @@ def test_title_new_game_flow_with_hotkeys(game) -> None:
     press(game, "return")
     scene = game.scene
     assert isinstance(scene, GameScene)
-    assert (scene.world.width, scene.world.height) == (40, 32) and len(scene.world.players) == 3 and len(scene.brains) == 2
+    assert (scene.world.width, scene.world.height) == (48, 40) and len(scene.world.players) == 3 and len(scene.brains) == 2
 
 
 def test_title_continue_loads_the_saved_match(game) -> None:
-    played = new_game(seed=11, width=40, height=32)
+    played = new_game(seed=11, width=48, height=40)
     game.push(played)
     game.tick(1 / 60)
     played.player.gold = 4242
@@ -427,7 +449,7 @@ def test_title_continue_loads_the_saved_match(game) -> None:
     game.tick(1 / 60)
     press(game, "c")
     scene = game.scene
-    assert isinstance(scene, GameScene) and scene.seed == 11 and scene.player.gold == 4242 and scene.world.width == 40
+    assert isinstance(scene, GameScene) and scene.seed == 11 and scene.player.gold == 4242 and scene.world.width == 48
 
 
 # -- Content through the UI ------------------------------------------------------------------
@@ -478,22 +500,31 @@ def test_the_codex_lists_every_unit_building_and_upgrade(play) -> None:
     assert game.scene is scene
 
 
-def test_the_title_offers_three_difficulties_and_saves_keep_it(game) -> None:
+def test_the_title_offers_every_difficulty_and_saves_keep_it(game) -> None:
+    """Each setting is reachable by its key, and the one chosen survives a save."""
+    from warband.ai import DIFFICULTY_ELO, PROFILES
+    from warband.pro_ai import ProBrain
     from warband.rules import Difficulty
 
     game.push(TitleScene())
     game.tick(1 / 60)
     press(game, "n")
-    press(game, "h")
-    assert game.scene.difficulty is Difficulty.HARD
+    for key, difficulty in (("e", Difficulty.EASY), ("n", Difficulty.MEDIUM),
+                            ("h", Difficulty.HARD), ("t", Difficulty.MASTER)):
+        press(game, key)
+        assert game.scene.difficulty is difficulty, key
+        assert DIFFICULTY_ELO[difficulty] > 0, "every setting shows a rating"
     press(game, "return")
     scene = game.scene
-    assert isinstance(scene, GameScene) and scene.difficulty is Difficulty.HARD and all(b.difficulty is Difficulty.HARD for b in scene.brains)
+    assert isinstance(scene, GameScene) and scene.difficulty is Difficulty.MASTER
+    # Master is a ProBrain, not a Brain with a profile.
+    assert Difficulty.MASTER not in PROFILES
+    assert all(isinstance(b, ProBrain) for b in scene.brains)
     press(game, "f5")
     game.clear_and_push(TitleScene())
     game.tick(1 / 60)
     press(game, "c")
-    assert game.scene.difficulty is Difficulty.HARD
+    assert game.scene.difficulty is Difficulty.MASTER
 
 
 def test_double_click_and_ctrl_click_select_every_unit_of_a_type_on_screen(play) -> None:
@@ -547,6 +578,8 @@ def test_resigning_from_the_pause_menu_ends_in_defeat(play) -> None:
     press(game, "escape")
     assert isinstance(game.scene, PauseScene)
     press(game, "r")
+    assert isinstance(game.scene, LeaveScene), "resigning a rated match says what it costs first"
+    press(game, "return")
     tick(game, 0.5)
     assert isinstance(game.scene, GameOverScene)
     assert any("Defeat" in t for t in texts(game))
@@ -562,3 +595,58 @@ def test_resign_does_nothing_once_the_match_is_over(play) -> None:
     tick(game, 0.2)
     assert isinstance(game.scene, PauseScene)
     assert scene.world.players[scene.human].alive
+
+
+def test_ctrl_a_and_cmd_a_select_the_whole_army(play) -> None:
+    """The army hotkey takes every soldier wherever it stands, on a Mac with Cmd as well as Ctrl;
+    with no soldiers it says so instead of clearing the selection."""
+    game, scene = play
+    world = scene.world
+    hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    press(game, "a", meta=True)
+    assert scene.status == "No soldiers yet"
+    far = (world.width - hall.x - 2.5, world.height - hall.y - 2.5)  # the other end of the map
+    soldiers = [world.spawn_unit(scene.human, UnitType.FOOTMAN, (hall.x - 1.5, hall.y + i)) for i in range(2)]
+    soldiers.append(world.spawn_unit(scene.human, UnitType.ARCHER, far))
+    press(game, "a", meta=True)
+    assert sorted(scene.selection) == sorted(u.id for u in soldiers)
+    scene.select([])
+    press(game, "a", ctrl=True)
+    assert sorted(scene.selection) == sorted(u.id for u in soldiers)
+
+
+def test_the_army_button_counts_the_soldiers_and_selects_them_all(play) -> None:
+    """The button beside Idle shows how many soldiers Ctrl+A would take, hides while there are none,
+    and a click on it selects them wherever they stand."""
+    game, scene = play
+    world, hall = scene.world, hall_of(scene)
+    assert not scene.army_button.visible
+    soldiers = [world.spawn_unit(scene.human, UnitType.FOOTMAN, (hall.x - 1.5, hall.y + i)) for i in range(3)]
+    soldiers.append(world.spawn_unit(scene.human, UnitType.ARCHER, (world.width - hall.x - 2.5, world.height - hall.y - 2.5)))
+    game.tick(1 / 60)
+    assert scene.army_button.visible and "Army 4" in texts(game)
+    x, y, w, h = scene.army_button.bounds
+    game.backend.inject_click(int(x + w / 2), int(y + h / 2))
+    game.backend.inject_release(int(x + w / 2), int(y + h / 2))
+    game.tick(1 / 60)
+    assert sorted(scene.selection) == sorted(u.id for u in soldiers)
+
+
+def test_a_load_in_the_match_leaves_the_abandoned_timeline_behind(play) -> None:
+    """A load once rebuilt the running scene in place, keeping whatever nobody thought to reset: the last alert
+    (Space jumped to an attack that never happened in the loaded match), the battle mood and its music, and where
+    the computer players' random stream had got to.  A load is a new match scene now, in the match as from the title."""
+    game, scene = play
+    press(game, "f5")
+    world = scene.world
+    rival = next(p.id for p in world.players if p.id != scene.human)
+    victim = world.player_units(scene.human)[0]
+    raider = world.spawn_unit(rival, UnitType.FOOTMAN, (victim.x + 0.9, victim.y))
+    world.attack([raider.id], victim.id)
+    tick(game, 4.0)
+    assert scene.last_alert is not None and scene.mood == "battle"
+    press(game, "f9")
+    loaded = game.scene
+    assert isinstance(loaded, GameScene) and loaded is not scene, "the load kept the scene of the match left behind"
+    assert loaded.last_alert is None and loaded.mood == "peace"
+    assert "Loaded" in loaded.status and raider.id not in loaded.world.units

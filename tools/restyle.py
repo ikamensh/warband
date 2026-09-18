@@ -58,7 +58,7 @@ FRAME_NAMES = {"stand": "standing at guard", "walk1": "walking, left foot forwar
 
 TEAM = "blue is the team colour and must stay this blue"
 SUBJECTS: dict[tuple[Race, UnitType], str] = {
-    (Race.HUMAN, UnitType.PEASANT): f"a human peasant worker in a blue tunic ({TEAM}) and a cloth cap, carrying a woodcutter's axe",
+    (Race.HUMAN, UnitType.PEASANT): f"a human peasant worker in a blue tunic ({TEAM}) and a cloth cap",
     (Race.HUMAN, UnitType.FOOTMAN): f"a human footman: a stocky soldier in a steel helmet with a blue plume and mail, blue tunic ({TEAM}), "
                                     "a blue kite shield with a pale cross, and one sword with a gold crossguard",
     (Race.HUMAN, UnitType.ARCHER): f"a human archer in a dark green hooded cloak over a blue tunic ({TEAM}), with a longbow and a quiver of arrows",
@@ -67,7 +67,7 @@ SUBJECTS: dict[tuple[Race, UnitType], str] = {
     (Race.HUMAN, UnitType.CATAPULT): f"a human catapult: a wooden siege engine on wheels with a throwing arm, a boulder and a blue team pennant ({TEAM}); "
                                      "the attack row swings the arm",
     (Race.HUMAN, UnitType.CLERIC): f"a human cleric: a healer in a pale hooded robe with a blue sash ({TEAM}), holding a staff",
-    (Race.ORC, UnitType.PEASANT): f"an orc peon: a green-skinned, broad worker in a blue loincloth and harness ({TEAM}), carrying a crude axe",
+    (Race.ORC, UnitType.PEASANT): f"an orc peon: a green-skinned, broad worker in a blue loincloth and harness ({TEAM})",
     (Race.ORC, UnitType.FOOTMAN): f"an orc grunt: a hulking green axeman in dark iron with spiked pauldrons, a blue tabard ({TEAM}), a hide-bound round "
                                   "shield studded with bone spikes, and a heavy cleaver",
     (Race.ORC, UnitType.ARCHER): f"an orc axethrower: a green-skinned brute in dark red cloth and a blue sash ({TEAM}), hurling throwing axes from a belt",
@@ -76,7 +76,7 @@ SUBJECTS: dict[tuple[Race, UnitType], str] = {
     (Race.ORC, UnitType.CATAPULT): f"an orc catapult: a crude, skull-decorated siege engine of dark wood and bone on wheels, a blue pennant ({TEAM}), "
                                    "with a throwing arm and a boulder",
     (Race.ORC, UnitType.CLERIC): f"an orc shaman: a hunched green mystic in dark robes and a blue sash ({TEAM}), with a totem staff and bone charms",
-    (Race.ELF, UnitType.PEASANT): f"an elven gatherer: a slender fair-skinned worker in green leathers and a blue sash ({TEAM}), carrying a woodcutter's axe",
+    (Race.ELF, UnitType.PEASANT): f"an elven gatherer: a slender fair-skinned worker in green leathers and a blue sash ({TEAM})",
     (Race.ELF, UnitType.FOOTMAN): f"an elven sentinel: a slender warrior in silvery scale, a winged leaf helm, a blue tabard ({TEAM}), a leaf-shaped buckler "
                                   "and a curved blade",
     (Race.ELF, UnitType.ARCHER): f"an elven ranger in a green hooded cloak over a blue tunic ({TEAM}), with a tall recurve bow and a quiver",
@@ -85,17 +85,19 @@ SUBJECTS: dict[tuple[Race, UnitType], str] = {
     (Race.ELF, UnitType.CATAPULT): f"an elven ballista: a living-wood siege engine on wheels sprouting leaves at its tail, with a blue pennant ({TEAM}), "
                                    "that fires a great bolt; the attack row releases the bolt",
     (Race.ELF, UnitType.CLERIC): f"an elven druid in a green hooded robe with a blue sash ({TEAM}), holding a gnarled staff",
-    (Race.DWARF, UnitType.PEASANT): f"a dwarven miner: a squat, broad, red-bearded worker in a blue smock ({TEAM}) and a cap, carrying a pick-axe",
+    (Race.DWARF, UnitType.PEASANT): f"a dwarven miner: a squat, broad, red-bearded worker in a blue smock ({TEAM}) and a cap",
     (Race.DWARF, UnitType.FOOTMAN): f"a dwarven ironguard: a squat, broad axeman in heavy bronze-trimmed plate, a horned nasal helm, a blue tabard "
                                     f"({TEAM}), a bossed round shield and a double-bitted axe",
     (Race.DWARF, UnitType.ARCHER): f"a dwarven crossbowman in a mail coat and a blue tabard ({TEAM}), with a heavy crossbow and a bolt case",
-    (Race.DWARF, UnitType.KNIGHT): f"a dwarven bear rider in bronze-trimmed plate with a blue caparison ({TEAM}) on an armoured war bear, carrying a lance and a shield",
+    (Race.DWARF, UnitType.KNIGHT): f"a dwarven bear rider in bronze-trimmed plate with a blue caparison ({TEAM}) on an armoured war bear, carrying one short-handled war hammer and a shield",
     (Race.DWARF, UnitType.SCOUT): f"a dwarven ram rider in leather and a blue sash ({TEAM}) on a shaggy mountain ram, with a spear",
     (Race.DWARF, UnitType.CATAPULT): f"a dwarven mortar: a squat iron mortar barrel on a wheeled carriage with a blue pennant ({TEAM}); the attack row fires "
                                      "with the barrel jolting back",
     (Race.DWARF, UnitType.CLERIC): f"a dwarven runepriest in a grey hooded robe with a blue sash ({TEAM}), holding a rune-carved staff",
 }
-CARRY = {Resource.GOLD: ", carrying a heavy sack of gold", Resource.LUMBER: ", carrying a bundle of lumber on the shoulder"}
+CARRY = {None: ", carrying a woodcutter's axe (a pick-axe for dwarves, a crude axe for orcs)",
+         Resource.GOLD: ", carrying a heavy sack of gold in both arms and nothing else (the axe is left behind)",
+         Resource.LUMBER: ", carrying a bundle of lumber on the shoulder with both hands and nothing else (the axe is left behind)"}
 
 #: Known shortcomings of the low-poly stand-ins that the painter is asked to correct in place.
 FIXES: dict[tuple[UnitType, Resource | None], str] = {
@@ -113,6 +115,8 @@ FIXES: dict[tuple[UnitType, Resource | None], str] = {
 }
 RACE_FIXES: dict[tuple[Race, UnitType], str] = {
     (Race.ORC, UnitType.KNIGHT): "the ogre stands on its own two feet with no mount; both heads look towards the facing; the club is gripped in both hands",
+    (Race.DWARF, UnitType.KNIGHT): "the rider sits in the bear's saddle; one war hammer is held in the right hand, with a short shaft and a block-shaped metal head; "
+                                 "its grip and swing follow the reference, raised in wind-up and swung forward in strike; the shield stays on the left forearm",
     (Race.ORC, UnitType.CATAPULT): "exactly one stone, inside the sling basket at the end of the arm; the small skull on the frame's front is bone with eye sockets, "
                                    "never a second stone; the basket is empty after the throw",
     (Race.ELF, UnitType.CATAPULT): "the bolt lies in the groove of the ballista and is gone after the shot; the wheels have spokes",
@@ -124,7 +128,7 @@ INVENTORY: dict[UnitType, str] = {
     UnitType.PEASANT: "one figure, one tool (axe) or one carried load, no shield",
     UnitType.FOOTMAN: "one figure, exactly one sword (one hilt), exactly one shield",
     UnitType.ARCHER: "one figure, exactly one bow (or a throwing axe in hand for orcs, a crossbow for dwarves), no shield",
-    UnitType.KNIGHT: "one rider on one mount (the orc ogre: one two-headed giant on foot), one lance or club, at most one shield",
+    UnitType.KNIGHT: "one rider on one mount (the orc ogre: one two-headed giant on foot), one weapon (human/elf lance, dwarf war hammer, orc club), at most one shield",
     UnitType.SCOUT: "one rider on one mount, one spear, no shield",
     UnitType.CATAPULT: "one siege engine, one throwing arm or barrel, wheels, at most one projectile",
     UnitType.CLERIC: "one figure, one staff, no shield, no sword",
@@ -302,7 +306,7 @@ class Unit:
 
     @property
     def description(self) -> str:
-        return SUBJECTS[(self.race, self.unit)] + CARRY.get(self.carrying, "")
+        return SUBJECTS[(self.race, self.unit)] + (CARRY[self.carrying] if self.unit is UnitType.PEASANT else "")
 
     @property
     def inventory(self) -> str:

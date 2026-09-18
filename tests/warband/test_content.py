@@ -153,9 +153,9 @@ def test_catapults_splash_and_batter_buildings_from_afar() -> None:
     run_until(world, lambda: farm.hp < farm.max_hp, 8.0)
     assert dist(catapult.pos, farm.center) >= 6.5  # it never closes in
     hits = [e for e in world.events if e.kind == "hit" and e.entity == catapult.id]
-    assert hits[0].other == farm.id and hits[0].amount >= 20  # ×1.5 against buildings, minus armour
-    assert a.hp < a.max_hp and b.hp < b.max_hp  # both stood inside the splash
-    assert max(e.amount for e in hits if e.other == a.id) < hits[0].amount  # a share of the blow, not the whole
+    assert next(e.amount for e in hits if e.other == farm.id) >= 20  # ×1.5 against buildings, minus armour
+    assert a.hp < a.max_hp and b.hp < b.max_hp  # both stood where the stone came down
+    assert max(e.amount for e in hits if e.other == b.id) < max(e.amount for e in hits if e.other == a.id)  # a tile off: a share of the blow
 
 
 def test_scouts_are_fast_and_knights_faster_with_horses() -> None:
@@ -217,3 +217,16 @@ def test_research_and_upgrades_survive_a_save(tmp_path) -> None:
     run(world, 45.0)
     run(copy, 45.0)
     assert world.to_dict() == copy.to_dict() and Upgrade.BLADES_1 in copy.players[0].upgrades
+
+
+def test_a_shot_does_more_than_a_scratch_against_the_heaviest_armour() -> None:
+    """Armour is flat with a floor of one, so a shooter's damage has to clear the heaviest plate by a margin.
+
+    At five damage an archer did one point to a knight's four armour: ninety
+    shots to fell it, and the counter the rules table promises did not exist.
+    The balance league measured archers taking nothing at all against a
+    knights army; this pins the margin that fixed it.
+    """
+    heaviest = max(info.armor for info in UNITS.values())
+    for shooter in (UnitType.ARCHER, UnitType.CATAPULT):
+        assert UNITS[shooter].damage - heaviest >= 2, f"{shooter.value} barely scratches the heaviest armour"

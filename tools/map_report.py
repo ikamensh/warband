@@ -1,11 +1,13 @@
-"""Map fairness over many seeds: what every base gets, per size and theme.
+"""Map fairness over many seeds: what every base gets, per size and layout.
 
     uv run python tools/map_report.py [--seeds 100] [--players 2]
 
-For each size and theme, generates the seeds and prints the range and mean of
+For each size and layout, generates the seeds and prints the range and mean of
 open ground around each hall, the distance to the nearest mine and to wood,
-the number of expansion mines and the terrain mix, plus how many maps were
-not fully connected (the test suite requires zero).
+the number of mines beyond the main ones, the terrain mix, the detour a walk
+between the first two halls makes over the straight line, how many seeds
+needed a retry to pass the audit, and how many maps were not fully connected
+(the test suite requires zero).
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from warband import mapgen  # noqa: E402
-from warband.rules import MapTheme  # noqa: E402
+from warband.rules import Layout  # noqa: E402
 
 
 def main() -> None:
@@ -27,8 +29,10 @@ def main() -> None:
     parser.add_argument("--players", type=int, default=2)
     args = parser.parse_args()
     for size, (width, height) in mapgen.SIZES.items():
-        for theme in MapTheme:
+        for layout in Layout:
             opens: list[int] = []
+            detours: list[float] = []
+            retried = 0
             mines: list[float] = []
             woods: list[float] = []
             expansions: list[int] = []
@@ -37,8 +41,10 @@ def main() -> None:
             disconnected = 0
             no_wood = 0
             for seed in range(1, args.seeds + 1):
-                world = mapgen.generate(seed=seed, width=width, height=height, players=args.players, theme=theme)
-                report = mapgen.audit(world)
+                world, report = mapgen.build(seed, width, height, args.players, layout=layout)
+                retried += report["attempt"] > 0
+                if report["detour"] is not None:
+                    detours.append(report["detour"])
                 opens.extend(report["open"])
                 mines.extend(report["mine"])
                 woods.extend(w for w in report["wood"] if w is not None)
@@ -47,10 +53,10 @@ def main() -> None:
                 trees.append(report["trees"])
                 water.append(report["water"])
                 disconnected += not report["connected"]
-            print(f"{size:6s} {width}x{height} {theme.value:9s} seeds {args.seeds}: open {min(opens)}-{max(opens)} (mean {statistics.mean(opens):.0f} of 169), "
+            print(f"{size:6s} {width}x{height} {layout.value:9s} seeds {args.seeds}: open {min(opens)}-{max(opens)} (mean {statistics.mean(opens):.0f} of 169), "
                   f"mine {min(mines):.0f}-{max(mines):.0f} (mean {statistics.mean(mines):.1f}), wood {min(woods):.0f}-{max(woods):.0f} (mean {statistics.mean(woods):.1f}), "
                   f"expansions {min(expansions)}-{max(expansions)}, trees {statistics.mean(trees):.0%}, water {statistics.mean(water):.0%}, "
-                  f"disconnected {disconnected}, bases without wood {no_wood}")
+                  f"detour {min(detours):.2f}-{max(detours):.2f}, retried {retried}, disconnected {disconnected}, bases without wood {no_wood}")
 
 
 if __name__ == "__main__":

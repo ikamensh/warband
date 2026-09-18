@@ -7,7 +7,7 @@ from PIL import Image
 from saga2d import Game
 from warband import textures
 from warband.model import tile_center
-from warband.rules import BuildingType, MapTheme, Resource, Terrain, UnitType
+from warband.rules import BuildingType, Layout, MapTheme, Resource, Terrain, UnitType
 from warband.scene import GameScene, new_game
 from warband.view import FOG_MARGIN, WATER_PERIOD
 from warband import mapgen
@@ -34,11 +34,13 @@ def test_every_tree_and_building_has_a_sprite_and_a_felled_tree_loses_it(play) -
     world, view = scene.world, scene.view
     trees = sum(1 for row in world.terrain for t in row if t is Terrain.TREES)
     assert len(view._trees) == trees
-    assert set(view._buildings) == {b.id for b in world.buildings.values() if view._known(b)}
-    pos = next(p for p in view._trees)
+    in_sight = {b.id for b in world.buildings.values() if b.player == scene.human or world.any_visible(scene.human, b.rect)}
+    assert {b.id for b in world.buildings.values() if view.building_sprite(b.id) is not None} == in_sight
+    pos = next(p for p in view._trees if world.is_visible(scene.human, p))  # one felled out of sight stands until somebody looks: test_fog_memory
     tree_sprite_id = view._trees[pos].sprite_id
     world.terrain[pos[1]][pos[0]] = Terrain.GRASS
-    game.tick(1 / 60)
+    for _ in range(20):  # the player's next look around (a felling they watch is shown at once: test_fog_memory)
+        game.tick(1 / 60)
     assert pos not in view._trees
     assert tree_sprite_id not in game.backend.sprites  # Includes its baked shade and litter.
 
@@ -224,7 +226,7 @@ def test_ground_chunks_cover_the_map_with_a_margin_and_sand_meets_water() -> Non
 @pytest.mark.parametrize("scale", [0.85375, 1.0, 2.0])
 def test_chunk_padding_does_not_paint_grass_beyond_the_playable_map(scale) -> None:
     """The renderer's overlapping chunks must not create a bright strip outside fog."""
-    world = mapgen.generate(seed=3, width=27, height=25)
+    world = mapgen.generate(seed=3, width=48, height=40, layout=Layout.PLAINS)
     for cx, cy in ((0, 0), (3, 0), (0, 3), (3, 3)):
         image = textures.ground_chunk(world.terrain_at, world.in_bounds, cx, cy, scale)
         assert image.size == (round(textures.CHUNK_PX * scale),) * 2
@@ -255,7 +257,7 @@ def test_overlapping_ground_chunks_agree_at_horizontal_and_vertical_seams(scale)
 @pytest.mark.parametrize("scale", [1.0, 2.0])
 def test_forest_and_clearing_share_the_same_ground_across_chunk_edges(theme, scale) -> None:
     """Felling removes the tree sprite, leaving grass rather than a baked dark square."""
-    world = mapgen.generate(seed=3, width=24, height=24, theme=theme)
+    world = mapgen.generate(seed=3, width=48, height=40, theme=theme, layout=Layout.FOREST)
     forest = [textures.ground_chunk(world.terrain_at, world.in_bounds, cx, cy, scale, theme)
               for cx, cy in ((0, 0), (1, 0), (1, 1))]
     assert any(terrain is Terrain.TREES for row in world.terrain for terrain in row)
@@ -369,36 +371,53 @@ def test_walk_frames_follow_the_distance_walked_not_the_clock(play) -> None:
 
 
 def test_a_blow_winds_up_before_it_lands_and_follows_through_after(play) -> None:
-    """Phases of one attack, read off the model's cooldown: guard, wind-up as the cooldown runs
-    out, then strike, follow-through and recovery right after the blow."""
-    from warband.view import FOLLOW, RECOVER, STRIKE, WIND_UP, unit_frame
+    """Phases of one attack, read off the model's own clocks: wind-up while the model has the weapon
+    drawn back, then strike, follow-through and recovery right after the blow, guard otherwise."""
+    from warband.view import FOLLOW, RECOVER, STRIKE, unit_frame
 
     game, scene = play
     u = scene.world.spawn_unit(scene.human, UnitType.FOOTMAN, (10.5, 10.5))
     u.state = "attack"
     full = u.info.cooldown
 
-    def at(cooldown: float) -> str:
-        u.cooldown = cooldown
+    def at(cooldown: float, windup: float = 0.0) -> str:
+        u.cooldown, u.windup = cooldown, windup
         return unit_frame(u, 0.0, 0.0)
 
+    assert at(0.0, u.info.windup) == "wind"  # drawn back, about to land
+    assert at(0.0, 0.01) == "wind"
     assert at(full) == "strike"  # the model has just landed the blow and reset the cooldown
     assert at(full - STRIKE - FOLLOW / 2) == "follow"
     assert at(full - STRIKE - FOLLOW - RECOVER / 2) == "recover"
     assert at(full / 2) == "stand"
-    assert at(WIND_UP / 2) == "wind"  # the next blow is about to land
-    assert at(0.0) == "stand"  # nothing to wind up for: the model strikes as soon as it is in range
+    assert at(0.0) == "stand"  # ready, facing a target it cannot yet strike: guard
 
 
-def test_moving_units_walk_and_attacking_units_swing_on_screen(play) -> None:
-    """The view's sprites cycle through the walk frames while a unit travels and show the blow phases while it fights."""
+def test_shots_in_the_air_have_sprites_that_fly_and_go_when_they_land(play) -> None:
+    """An arrow's sprite appears when it is loosed, moves toward its mark and leaves when the shot lands;
+    a stone lobs above the ground on its way to the point it was aimed at."""
     game, scene = play
     world = scene.world
-    walker = world.spawn_unit(scene.human, UnitType.FOOTMAN, (8.5, 8.5))
-    world.move([walker.id], (14.5, 8.5))
-    frames = set()
+    archer = world.spawn_unit(scene.human, UnitType.ARCHER, (6.5, 6.5))
+    catapult = world.spawn_unit(scene.human, UnitType.CATAPULT, (6.5, 9.5))
+    for u in (archer, catapult):
+        u.facing = 0.0
+    victim = world.spawn_unit(1, UnitType.KNIGHT, (10.4, 6.5))
+    wall = world.place_building(1, BuildingType.FARM, (12, 9))
+    world.hold([victim.id])
+    world.attack([archer.id], victim.id)
+    world.attack([catapult.id], wall.id)
+    seen: dict[str, list[tuple[float, float]]] = {"arrow": [], "stone": []}
     for _ in range(90):
         game.tick(1 / 30)
-        if walker.state == "move":
-            frames.add(scene.view.unit_sprite(walker.id).image.rsplit(".", 1)[-1])
-    assert frames >= set(textures.WALK_FRAMES), frames
+        for p in world.projectiles.values():
+            sprite = scene.view._shots[p.id].sprite
+            assert sprite.visible and sprite.image == p.kind
+            seen[p.kind].append(sprite.position)
+    assert len(seen["arrow"]) >= 2 and len(seen["stone"]) >= 5
+    assert seen["arrow"][-1][0] > seen["arrow"][0][0]  # flew toward the knight
+    stone_x = [x for x, _ in seen["stone"]]
+    assert stone_x == sorted(stone_x) and stone_x[-1] > stone_x[0] + 3 * 32
+    apex = min(y for _, y in seen["stone"])
+    assert apex < seen["stone"][0][1] - 32 and apex < seen["stone"][-1][1] - 32  # up, over and down again
+    assert not world.projectiles and not scene.view._shots  # all landed, all sprites gone

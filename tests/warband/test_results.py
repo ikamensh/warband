@@ -139,7 +139,7 @@ def test_local_scores_keep_one_best_finish_per_run_across_restarts(tmp_path):
     world.winner = 0
     world.time = 600
     board = HighScores(tmp_path)
-    kwargs = dict(player=0, seed=3, difficulty=Difficulty.NORMAL, run_id="same-campaign")
+    kwargs = dict(player=0, seed=3, difficulty=Difficulty.MEDIUM, run_id="same-campaign")
     assert board.record(world, **kwargs) == 1
     first = board.load()
     assert HighScores(tmp_path).load() == first
@@ -162,13 +162,13 @@ def test_leaderboards_are_bounded_and_separate_match_settings(tmp_path):
     world.winner = 0
     for i in range(12):
         world.time = 600 - i
-        board.record(world, player=0, seed=i, difficulty=Difficulty.NORMAL, run_id=f"normal-{i}")
+        board.record(world, player=0, seed=i, difficulty=Difficulty.MEDIUM, run_id=f"normal-{i}")
     assert len(board.load()) == 10
     assert board.load()[0].run_id == "normal-11"
     board.record(world, player=0, seed=3, difficulty=Difficulty.HARD, run_id="hard")
     larger = World(40, 32, [[Terrain.GRASS] * 40 for _ in range(32)], 3)
     larger.winner = 0
-    board.record(larger, player=0, seed=3, difficulty=Difficulty.NORMAL, run_id="larger")
+    board.record(larger, player=0, seed=3, difficulty=Difficulty.MEDIUM, run_id="larger")
     assert len(board.load()) == 12
     assert len({entry.board for entry in board.load()}) == 3
 
@@ -183,7 +183,7 @@ def test_damaged_high_scores_are_reported_and_preserved(tmp_path, damage):
     board = HighScores(tmp_path)
     world = battlefield()
     world.winner = 0
-    kwargs = dict(player=0, seed=3, difficulty=Difficulty.NORMAL, run_id="first")
+    kwargs = dict(player=0, seed=3, difficulty=Difficulty.MEDIUM, run_id="first")
     board.record(world, **kwargs)
     data = json.loads(board.path.read_text())
     if damage == "version":
@@ -208,7 +208,7 @@ def test_result_leaderboard_and_loaded_finish_are_one_frozen_record(tmp_path):
 
     game = Game("Warband scores test", backend="mock", resolution=(1280, 720), theme=build_theme(), save_dir=tmp_path / "saves")
     try:
-        scene = new_game(3, width=40, height=32)
+        scene = new_game(3, width=48, height=40)
         world = scene.world
         for unit in world.player_units(1):
             del world.units[unit.id]
@@ -270,3 +270,24 @@ def test_old_saves_get_a_stable_identity_and_demos_stay_unranked():
     first = load_game(state)
     assert first.run_id == load_game(state).run_id
     assert first.ranked and first.stats["destroyed_value"] == 0
+
+
+def test_high_scores_written_before_the_difficulties_were_merged_still_load(tmp_path):
+    """Normal and Hard were one strength and are now one setting; old boards keep their rows."""
+    from dataclasses import asdict
+
+    from warband.scores import HighScores
+
+    world = battlefield()
+    world.winner = 0
+    world.time = 600
+    board = HighScores(tmp_path)
+    board.record(world, player=0, seed=3, difficulty=Difficulty.MEDIUM, run_id="one")
+    board.record(world, player=0, seed=4, difficulty=Difficulty.MEDIUM, run_id="two")
+    rows = [asdict(entry) for entry in board.load()]
+    rows[0]["difficulty"], rows[1]["difficulty"] = "normal", "hard"
+    board.saves.save(1, {"version": 1, "entries": rows}, "WarbandHighScores")
+
+    loaded = HighScores(tmp_path).load()
+    assert len(loaded) == 2
+    assert {e.difficulty for e in loaded} == {Difficulty.MEDIUM.value}

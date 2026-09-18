@@ -1,0 +1,169 @@
+name: Publish verified Warband
+
+on:
+  workflow_run:
+    workflows: [Native package checks]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: 'Successful Native package checks run on main; never rerun the native producer to retry publication'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: warband-publication-${{ github.event.workflow_run.id || inputs.build_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      source_commit: ${{ steps.source.outputs.source_commit }}
+      python: ${{ steps.identity.outputs.python }}
+      uv: ${{ steps.identity.outputs.uv }}
+    env:
+      BUILD_RUN_ID: ${{ github.event.workflow_run.id || inputs.build_run_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: workflow
+      - name: Resolve trusted native producer provenance
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 workflow/tools/ci_source.py --run-id "$BUILD_RUN_ID" --output "$RUNNER_TEMP/source.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          source = json.loads((Path(os.environ['RUNNER_TEMP']) / 'source.json').read_text())
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print(f"source_commit={source['source_commit']}", file=output)
+              print(f"run_number={source['run_number']}", file=output)
+              for target, artifact in source['artifacts'].items():
+                  print(f"{target}={artifact['id']}", file=output)
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.source.outputs.source_commit }}
+          persist-credentials: false
+          path: warband
+      - name: Recreate the producer's exact identity
+        id: identity
+        working-directory: warband
+        env:
+          BUILD_RUN_NUMBER: ${{ steps.source.outputs.run_number }}
+        run: |
+          python3 tools/ci_release.py prepare --run-id "$BUILD_RUN_ID" --run-number "$BUILD_RUN_NUMBER" --output "$RUNNER_TEMP/identity.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          identity = json.loads((Path(os.environ['RUNNER_TEMP']) / 'identity.json').read_text())
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for key in ('python', 'uv'):
+                  print(f'{key}={identity[key]}', file=output)
+          PY
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ steps.identity.outputs.uv }}
+          python-version: ${{ steps.identity.outputs.python }}
+          enable-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.BUILD_RUN_ID }}
+          artifact-ids: ${{ steps.source.outputs.windows-x64 }}
+          merge-multiple: true
+          path: warband/dist/native/windows-x64
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.BUILD_RUN_ID }}
+          artifact-ids: ${{ steps.source.outputs.darwin-arm64 }}
+          merge-multiple: true
+          path: warband/dist/native/darwin-arm64
+      - name: Validate and stage both platforms without rebuilding
+        working-directory: warband
+        env:
+          BUILD_PYTHON: ${{ steps.identity.outputs.python }}
+        run: |
+          uv run --no-project --python "$BUILD_PYTHON" python tools/ci_publish.py stage \
+            --identity "$RUNNER_TEMP/identity.json" --windows dist/native/windows-x64 \
+            --macos dist/native/darwin-arm64 --output dist/publication
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        id: upload
+        with:
+          name: publication-${{ env.BUILD_RUN_ID }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: warband/dist/publication/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  publish:
+    needs: prepare
+    if: github.ref == 'refs/heads/main' && vars.WARBAND_PUBLISH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: warband-release
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.source_commit }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ needs.prepare.outputs.uv }}
+          python-version: ${{ needs.prepare.outputs.python }}
+          enable-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.prepare.outputs.artifact_id }}
+          merge-multiple: true
+          path: dist/publication
+      - name: Publish or verify the immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_PYTHON: ${{ needs.prepare.outputs.python }}
+        run: |
+          uv run --no-project --python "$BUILD_PYTHON" python tools/ci_publish.py publish \
+            --directory dist/publication > "$RUNNER_TEMP/publication.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: published-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Request independent Saga Online promotion
+        env:
+          GH_TOKEN: ${{ secrets.SAGA_ONLINE_PROMOTION_TOKEN }}
+        run: |
+          test -n "$GH_TOKEN"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])
+          result = json.loads((root / 'publication.json').read_text())
+          request = {'ref': 'main', 'inputs': {
+              'build_run_id': str(result['identity']['run_id']),
+              'release_id': str(result['release_id']),
+              'manifest_sha256': result['manifest_sha256'],
+          }}
+          (root / 'promotion-request.json').write_text(json.dumps(request))
+          PY
+          gh api --method POST repos/ikamensh/saga-online/actions/workflows/warband-promotion.yml/dispatches \
+            --input "$RUNNER_TEMP/promotion-request.json"

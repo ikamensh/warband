@@ -157,8 +157,8 @@ class Campaign:
         return self.missions.index(mission) + 1
 
 
-_ORDER = (Difficulty.EASY, Difficulty.NORMAL, Difficulty.HARD)
-_SHIFT = {Difficulty.EASY: -1, Difficulty.NORMAL: 0, Difficulty.HARD: 1}
+_ORDER = (Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD, Difficulty.MASTER)
+_SHIFT = {Difficulty.EASY: -1, Difficulty.MEDIUM: 0, Difficulty.HARD: 1}  # the campaign's own setting: Master is only ever a shift
 
 
 def shifted(base: Difficulty, campaign: Difficulty) -> Difficulty:
@@ -454,7 +454,7 @@ class Progress:
             raise ValueError("completed missions must be a list of ids")
         if not isinstance(flags, dict):
             raise ValueError("flags must be an object")
-        return cls(data["campaign"], Difficulty(data.get("difficulty", Difficulty.NORMAL.value)), list(completed), dict(flags),
+        return cls(data["campaign"], Difficulty(data.get("difficulty", Difficulty.MEDIUM.value)), list(completed), dict(flags),
                    {k: v for k, v in data.items() if k not in _KNOWN})
 
 

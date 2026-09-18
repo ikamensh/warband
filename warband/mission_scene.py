@@ -15,7 +15,7 @@ from typing import Any
 from saga2d import Anchor, Button, Column, Component, KeyHints, Label, Row, SaveError, Scene, Style
 from saga2d.effects import Banner, Toast
 from warband import mapgen
-from warband.ai import Brain
+from warband.ai import make_brain
 from warband.campaign import Campaign, Mission, Progress, ProgressStore, Run, shifted
 from warband.dialog import DialogScene
 from warband.model import World
@@ -109,7 +109,7 @@ class MissionScene(GameScene):
         self.run = run
         self.mission = run.mission
         self.tutorial = None
-        self.brains = [Brain(side, shifted(level, difficulty)) for side, level in run.ai.items() if run.world.players[side].alive]
+        self.brains = [make_brain(side, shifted(level, difficulty), run.mission.seed) for side, level in run.ai.items() if run.world.players[side].alive]
         self.progress: Progress | None = None
         self.progress_error = ""
         self._rows: dict[str, tuple[Row, _Mark, Label]] = {}

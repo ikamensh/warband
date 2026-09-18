@@ -40,11 +40,14 @@ def test_automatic_archer_fires_then_makes_space_during_recovery():
     for _ in range(5):
         world.step()
     contact = archer.pos
-    world.step()
-    assert enemy.hp < enemy.max_hp
-    assert archer.pos == contact
+    for _ in range(30):  # turns to the foe and draws the bow without giving ground
+        world.step()
+        if archer.cooldown > 0:
+            break
+    assert archer.cooldown > 0 and archer.pos == contact
     for _ in range(12):
         world.step()
+    assert enemy.hp < enemy.max_hp
     assert archer.x < contact[0]
     assert isinstance(archer.order, Attack)
     assert archer.order.target == enemy.id
@@ -67,7 +70,7 @@ def test_manual_archer_order_takes_priority_over_spacing(command):
         world.move([archer.id], (9., 5.5))
     world.update_vision()
     start = archer.pos
-    for _ in range(10):
+    for _ in range(30):
         world.step()
     if command == 'move':
         assert isinstance(archer.order, Move)

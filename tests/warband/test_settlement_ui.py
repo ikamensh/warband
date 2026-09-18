@@ -186,12 +186,35 @@ def test_selection_commands_win_over_settlement_letters(settlement):
     assert scene.settlement_menu == "build" and scene.selection == [peasant.id]
 
 
-def test_settlement_row_draws_plain_keycaps(settlement):
-    """The Settlement buttons draw the letters that open them (mock records the cap text); Plans keeps its chord."""
+def test_settlement_row_advertises_shortcuts_that_bypass_the_command_card(settlement):
+    """The global Train hint must work even while the build catalogue owns plain T for Tower."""
     game, scene = settlement
-    texts = [item["text"] for item in game.backend.texts]
-    for cap in ("B", "T", "U", "Ctrl+P", "G"):
-        assert cap in texts
+    key(game, "b")
+    key(game, "f")
+    assert scene.pending == "plan:farm"
+    for label, cap in (("Build", "Ctrl+B"), ("Train", "Ctrl+T"), ("Upgrade", "Ctrl+U"), ("Assembly", "Ctrl+G")):
+        button = next(b for b in scene.ui.walk() if isinstance(b, Button) and b.text == label)
+        x, y, width, height = button.bounds
+        assert any(item["text"] == cap and x <= item["x"] < x + width and y <= item["y"] < y + height
+                   for item in game.backend.texts)
+    key(game, "t", ctrl=True)
+    assert scene.settlement_menu == "train" and scene.pending is None
+    key(game, "f")
+    assert [p.type for p in scene.world.player_plans(scene.human)] == [UnitType.FOOTMAN]
+
+
+def test_unclaimed_train_letter_exits_worker_build_placement(settlement):
+    """After choosing a worker's farm, its command card has no T, so T falls through to global Train."""
+    game, scene = settlement
+    worker = next(u for u in scene.world.player_units(scene.human) if u.is_worker)
+    scene.select([worker.id])
+    key(game, "b")
+    key(game, "f")
+    assert scene.pending == "build:farm"
+    key(game, "t")
+    assert scene.settlement_menu == "train" and scene.pending is None
+    key(game, "f")
+    assert [p.type for p in scene.world.player_plans(scene.human)] == [UnitType.FOOTMAN]
 
 
 def test_long_plan_list_pages_and_keeps_cancellation_visible(settlement):

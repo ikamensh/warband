@@ -1,17 +1,25 @@
 # Warband
 
-A small Warcraft 2-style real-time strategy game on [Saga2D](../saga2d).
+A small Warcraft 2-style real-time strategy game on [Saga2D](https://pypi.org/project/saga2d/).
+
+Planned work and task order: [Warband backlog](BACKLOG.md).
 
 A top-down map of meadows, woods and lakes under a soft fog of war, in
-summer, winter or wasteland; a base for each of two to four players with a
-gold mine and a wood beside it. Four races — Humans, Orcs, Elves and Dwarves —
+summer, winter or wasteland, in one of five layouts (open plains, deep
+forest, a river with fords, a gold pit in the middle, walled bastions); a base
+for each of two to four players with a gold mine and a wood beside it, a
+natural expansion of its own, and contested mines between, laid out by
+symmetry so every seat gets the same ([docs/warband-maps.md](docs/warband-maps.md)). Four races — Humans, Orcs, Elves and Dwarves —
 share one tech skeleton but differ in names, numbers, look, voice and march,
 each with a passive mechanic and two arts of its own
 ([docs/warband-races.md](docs/warband-races.md)). Peasants mine gold and fell
 trees; farms feed the army; a barracks, lumber mill, blacksmith, stables,
 workshop and church open seven units and the upgrades; guard towers hold the
-line. Three AI difficulties expand, upgrade, raid and attack in growing waves.
-Every finished match is scored into a local top ten. A command card of
+line. Four AI difficulties expand, upgrade, raid and attack; Master plays one of two postures, drawn with the map.
+Every finished match is scored into a local top ten and rated into the
+player's profile — an Elo-scale rating estimated against the difficulty
+ladder, with every match's replay kept to watch again
+([docs/warband-profile.md](docs/warband-profile.md)). A command card of
 portraits and emblems with keycaps, control groups, patrol, camera bookmarks,
 a minimap that pans and orders, three save slots with an autosave, a tutorial
 strip, a codex, a synthesised march per race, and the fallen lying where they
@@ -19,7 +27,7 @@ fell for a while.
 
 ## The campaign
 
-**Campaign** on the title (P) opens *The Thornwood War*: six missions in three
+**Campaign** on the title (A) opens *The Thornwood War*: six missions in three
 acts for the Marches, with briefings, objectives, scripted raids and ambushes,
 dialogue with portraits, three choices that carry across missions, and an
 epilogue that reads them back. One mission is played as the dwarves. The
@@ -36,11 +44,10 @@ design and the persistence rules are in
 
 Warband runs straight from this checkout on macOS and Windows; nothing is
 installed system-wide. You need
-[uv](https://docs.astral.sh/uv/getting-started/installation/) and the two
-repositories Warband depends on, checked out beside this one:
+[uv](https://docs.astral.sh/uv/getting-started/installation/) and the
+sagaforge asset library checked out beside this one:
 
 ```bash
-git clone https://github.com/ikamensh/saga2d-framework.git saga2d
 git clone https://github.com/ikamensh/sagaforge.git
 git clone https://github.com/ikamensh/warband.git
 cd warband
@@ -50,20 +57,26 @@ uv run warband
 `uv run` creates `.venv`, fetches Python and the dependencies when they are
 missing, and opens the title screen; the first start also synthesises the
 sounds and music. **New game** picks map, players, difficulty and race,
-**Continue** resumes the autosave. The framework and the asset library are
-editable path dependencies, so moving to a newer version is a pull in the
-three checkouts and another start:
+**Continue** resumes the autosave, **Profile & replays** shows your rating,
+record and the replays of your matches. Saga2D comes from PyPI at the version pinned
+in `pyproject.toml` and `uv.lock`. The asset library remains an editable path
+dependency. Update the game and asset checkout, then start again:
 
 ```bash
-git -C ../saga2d pull && git -C ../sagaforge pull && git pull
+git -C ../sagaforge pull && git pull
 uv run warband
 ```
+
+For an existing environment that used the editable engine, run
+`uv sync --locked --extra dev --reinstall-package saga2d` once before launching.
+A plain sync can retain an editable install of the same version. This also
+restores the release after local engine testing.
 
 Straight into a match, and the other options:
 
 ```bash
 uv run warband --seed 3                    # skip the title: seed 3, you against one computer player
-uv run warband --seed 3 --race orc --players 4 --size Large --difficulty hard --theme winter
+uv run warband --seed 3 --race orc --players 4 --size Large --difficulty hard --theme winter --layout forest
 uv run warband --fullscreen
 uv run warband --help
 ```
@@ -74,7 +87,7 @@ Ctrl+click is the right-click.
 
 The installed app (`/Applications/Warband.app`, or the Windows installer from
 [games.tachyon-ai.eu](https://games.tachyon-ai.eu/warband/)) is the published
-**0.1.0-preview.4**, which is behind this checkout. Rebuild it from the
+**0.2.0-preview.2**; later checkouts move ahead of it. Rebuild it from the
 working tree with the shared packaging recipe; it refuses an uncommitted tree
 unless you pass `--allow-dirty`:
 
@@ -94,8 +107,8 @@ version.
 
 - **Online**, the default: a two-seat room on the shared server, joined by
   code or invite link, with no port forwarding, VPN or account. The published
-  builds play there. A room created from this checkout is refused with
-  *Unknown match option* while the live server still runs preview.4; a
+  builds play there, and so does a checkout while it still speaks the deployed
+  game id (`warband-v2`) and options; after a rules change that moves them, a
   refresh is a deploy from [saga-online](../saga-online). Guide:
   [play together on Mac and Windows](docs/warband-play-together.md).
 - **Your own server**, for checkout against checkout. Run the room server
@@ -103,7 +116,7 @@ version.
   both clients at it with `--server` or `SAGA2D_SERVER_URL`:
 
   ```bash
-  uv run python -m saga2d.server --games warband.multiplayer:ONLINE   # ws://127.0.0.1:8765
+  uv run python -m saga2d.server --games warband.authority:ONLINE   # ws://127.0.0.1:8765
   uv run warband --online-host --server ws://127.0.0.1:8765           # prints the room code
   uv run warband --online-join CODE --server ws://127.0.0.1:8765
   ```
@@ -124,9 +137,14 @@ version.
 | S / H | stop / hold | B then F B H T M K S W C | build farm · barracks · hall · tower · mill · smith · stables · workshop · church |
 | R | repair a damaged building (peasants) | Mac trackpad | two-finger click or Ctrl+click is the right-click; Cmd-click selects a type |
 | Letters on the card | train and research in the selected building | Ctrl+1-9 / 1-9 | assign / recall a group |
-| Tab / . | next idle peasant / soldier | Space | jump to the last alert |
+| Tab / . | next idle peasant / soldier | Ctrl+A (Cmd+A) | select the whole army |
+| Space | jump to the last alert | Double-click / Ctrl-click | every unit of that type on screen |
 | Arrows, edges, middle-drag | scroll | Wheel, + / − | zoom |
 | F3 / F5 / F9 | pause / quicksave / quickload | Esc, F1, F2, F10 | cancel · help · codex · menu |
+
+In Settings, Tab / Shift+Tab or ↑↓ select a row; ←→ adjust it. Clicking an
+option selects that same row for the keyboard. Enter toggles or increases
+the selected setting.
 
 Guides: [scores](docs/warband-scores.md), [art](docs/warband-art.md),
 [audio](docs/warband-audio.md) and [music](docs/warband-music.md). The Early
