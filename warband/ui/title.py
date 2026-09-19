@@ -32,8 +32,6 @@ RACE_WIDTH = 125
 RACE_KEYS = {Race.HUMAN: "U", Race.ORC: "O", Race.ELF: "V", Race.DWARF: "A"}
 #: Not the first letter: Medium and Master share one, and M is already the map size.
 DIFFICULTY_KEYS = {Difficulty.EASY: "E", Difficulty.MEDIUM: "N", Difficulty.HARD: "H", Difficulty.MASTER: "T", Difficulty.GRANDMASTER: "X"}
-#: Two per row, filling the same width the three-button rows use, so the column lines up.
-DIFFICULTY_WIDTH = (3 * OPTION_WIDTH + 2 * 8 - 8) // 2
 NOTE_WIDTH = 90 + 8 + 3 * OPTION_WIDTH + 2 * 8  # a note under a row of options spans the row and wraps beside the preview
 PREVIEW_KEY = "newgame.preview"
 PREVIEW_BOX = (320, 240)  # the preview fits this many pixels: whole pixels per tile, as many as fit
@@ -345,11 +343,14 @@ class NewGameScene(Scene):
             player_row.add(button)
         options.add(player_row)
         settings = list(Difficulty)
-        for first in range(0, len(settings), 2):
-            row = Row(Label("AI" if first == 0 else "", text_style="body", width=90), spacing=8)
-            for difficulty in settings[first:first + 2]:
-                button = Button(f"{difficulty.value.title()}  {DIFFICULTY_ELO[difficulty]} Elo", hotkey=DIFFICULTY_KEYS[difficulty],
-                                on_click=lambda d=difficulty: self.set_difficulty(d), style=GHOST_BUTTON, width=DIFFICULTY_WIDTH)
+        for first in range(0, len(settings), 3):
+            # Three to a row like the rows around it: five settings on rows of two stood a screen of 680 off its bottom.
+            row = Row(Label("AI, Elo" if first == 0 else "", text_style="body", width=90), spacing=8)
+            shown = settings[first:first + 3]
+            width = (3 * OPTION_WIDTH + 2 * 8 - (len(shown) - 1) * 8) // len(shown)  # a shorter row fills the same width, so the column lines up
+            for difficulty in shown:
+                button = Button(f"{difficulty.value.title()} {DIFFICULTY_ELO[difficulty]}", hotkey=DIFFICULTY_KEYS[difficulty],
+                                on_click=lambda d=difficulty: self.set_difficulty(d), style=GHOST_BUTTON, width=width)
                 self._difficulty_buttons[difficulty] = button
                 row.add(button)
             options.add(row)
