@@ -78,6 +78,15 @@ uv run python tools/arena.py ladder --agents pro,pro2 --seeds 60 --save runs/pro
 uv run python tools/arena.py rate --from runs/*.jsonl --anchor pro --anchor-elo 1450      # one table over saved runs
 ```
 
+```bash
+uv run python tools/evolve.py macro --race orc --out runs/macro-orc.json        # breed an opening undisturbed, for army strength
+uv run python tools/evolve.py run --race orc --out runs/orc-1 --seed-genes runs/macro-orc.json --generations 30   # breed a brain; carries a run on
+uv run python tools/evolve.py best runs/orc-1 --top 3 --out runs/best           # its proven best, and the least alike within reach of it
+uv run python tools/evolve.py trial --race orc --genes runs/best/orc-1-best1.json --seeds 25 --first-seed 500000  # judge genes on fresh boards
+uv run python tools/evolve.py export --genes orc:runs/best/orc-1-best1.json ... --out warband/brains/bred.py      # Grandmaster's table
+uv run python tools/battle_bench.py --left marksmanship                          # set-piece battles: what a unit behaviour is worth
+```
+
 `--save` appends every finished match to a JSON-lines file as it lands, and
 `rate --from` pools any number of them into one table: the rungs of a chain
 are measured in separate runs and rated together.
@@ -501,6 +510,87 @@ another set of seventy. Neither was wrong; both were too small. The
 several-hundred-game figures above are the ones to quote, and the lesson is
 in the rules: a few dozen games is the floor for noticing anything, a few
 hundred for trusting it.
+
+## Bred brains: the search above Master
+
+Master's knobs had been turned one at a time and had stopped answering (above). The step past it came from
+turning many at once, by a genetic search whose only judge is the ladder (`warband/league/evolve.py`,
+`tools/evolve.py`), and from giving it behaviours to compose rather than numbers alone.
+
+**What is bred.** A brain is a composition of behaviours: how it gathers, what it builds and in what order, what
+it researches and when, what army it fields, when it pushes and when it turns back, how it defends, how it
+harasses. Each behaviour is a handful of genes, and a gene is one field of `ProProfile` (or one of three specials:
+the shares of an army plan, the slots of an opening, the priorities of a research order). Crossover moves a
+behaviour whole from one parent or the other, so an opening travels with the numbers that make it work; mutation
+nudges single genes. The behaviours added for the search to compose, each off by default so that `pro` and
+Master's postures play as they did:
+
+* an **opening**: an ordered list of buildings put up one at a time before anything but farms;
+* a **research order** of the brain's own (Marksmanship among it) and **pushes timed** by upgrades and the clock;
+* a **wood crew**, standing (`wood_crew`) or led by what the next purchases lack while their gold is banked
+  (`wood_lead`): the symptom traced in every mirror, three thousand gold afloat at minute three with lumber at 200;
+* a **defence that gathers** behind the hall when outmatched instead of walking in one soldier at a time;
+* a **push that reads the fight where it stands** (`abort_ratio`): the defenders in sight and the towers covering
+  the target against the soldiers that are there. A traced loss had pushes of twelve and fifteen walk into two
+  towers and a barracks that kept answering, each turning round only at half its strength;
+* **prospecting** (`prospect_floor`): a peasant walks to the middle and the corners while the worked mines run low
+  and no other mine is known (below).
+
+**How it is judged.** An individual's fitness is the share of games it takes from a panel — Master's three
+postures and the search's own hall of fame, the best of earlier generations — from both corners of boards every
+individual of a generation shares, on seeds no earlier generation saw. Sixty games are worth six points either
+way, so a record is kept per opponent for as long as an individual survives, and selection reads it shrunk
+towards the population's: thirty lucky games do not outrank three hundred good ones. Brains are bred **per
+race** (the bred side's race is forced, its opponents take every race in turn), because the races do not play
+alike and a quarter of Master's games were decided by the draw; one bred player is a posture per race
+(`pro_ai.RaceBrain`), several for a race whose best few play differently, drawn with the map as Master's are.
+
+**The opening, bred on its own.** A whole match is a noisy judge of an opening, so the opening is first bred
+undisturbed (`evolve macro`): the brain plays alone against an opponent that stands still, and what is scored is
+its army's strength (`pro_ai.strength`) at 210, 270 and 360 seconds over fifteen boards of every size and
+layout. That is deterministic, so a score is exact, a generation takes a minute, and it carries to boards the
+search never saw (human: 877 to 1367 on its own boards, 842 to 1325 on thirty others). The human opening it
+found — three barracks and a blacksmith before anything else, three stables, knights and footmen, fewer hands a
+mine, the wood crew led by demand — took **67.5%** from Master's postures with Master's own engagement rules,
+where the human Vanguard took 48% on the same 120 games. Its limit: strength does not see range, and the elf
+opening it bred fielded no rangers and took 35%; the whole-match search put them back.
+
+**What came out** (round one: 26 generations for orcs and humans, 22 for elves and dwarves, populations of 24 to
+32, about 120,000 matches in all). Each race's roster judged as that race on 150 fresh games against Master's
+three postures, beside the Vanguard on the same boards:
+
+| race | the Vanguard | the bred roster |
+|------|--------------|-----------------|
+| orc | 57% | 87%, 86% |
+| human | 55% | 89%, 89% |
+| elf | 55% | 88% |
+| dwarf | 61% | 93%, 94% |
+
+They are not one player. The orcs' came from the booming lineage (twelve hands a mine, an early second hall,
+out at twelve on better than level terms at about 290 s); the humans' keep the bred opening and march at 226 s or
+at 302 s; the dwarves sit until 380 s behind towers and come out at twenty-three. All but one read the fight at
+their target and turn back when it outweighs them; five of seven research Marksmanship.
+
+**Klondike, and what scouting is for.** Rated on the difficulty protocol the first rosters took 88% from Master
+and lost one game in twenty to Easy, which Master never does. Every one of those losses was on Klondike, where
+home holds twenty thousand gold and the rest lies in a pit in the middle: the bred postures do not scout (a
+scout's sightings measured worse than attacking blind, above), so they never learnt of the pit, mined out in
+four minutes, stalled at ten soldiers short of the army they wait for, and never attacked. By layout against
+Master: plains 100%, crossings 96%, forest 92%, bastion 83%, Klondike 71%. With prospecting the elf champion took
+79% on Klondike boards alone where it had taken 69–70% (72 games each); holding the bank for the hall itself
+(`expand_hold`) took 21–32% there, because the push that comes at 170 s meets no army, and was deleted.
+
+**What the units were given.** Set-piece battles (`tools/battle_bench.py`: two armies of one price sent at each
+other with one attack-move each, a hundred fights from both sides) showed soldiers striking 94% of a battle's
+time, so there was no efficiency to find in how they fight, only in whom:
+
+| behaviour | even battles won | kept? |
+|-----------|------------------|-------|
+| **Marksmanship** (lumber mill, 600 gold 300 lumber): a shooter left to itself looses at the mark in reach it fells in the fewest arrows, through the armour it wears, counting the arrows in the air and the shots being drawn | 68% with six footmen and six archers a side, 77% with ten archers, 63–68% with healers | yes, as an upgrade: a footman in line with a comrade at each side takes one point from an arrow and an archer six, and undrilled shooters loose at whoever is nearest |
+| melee soldiers striking the opponent in reach they fell soonest | 48–53% | no: a soldier in contact has one or two opponents to choose from |
+| the gatherers' split looked at again every five seconds by the rule that places idle hands (`worker_ai.rebalance_workers`) | level in whole matches: Master with it 47.3% and the Warden 53.0% against themselves without, 300 games each | yes, for everyone: raiders at the mine sent every miner to the trees, and when they were gone the miners stayed — a base that had held ended with four thousand lumber, a hundred gold and nobody at the mine. Only jobs the policy gave (`Harvest.placed`); an ordered harvest is its player's |
+
+No shipped brain below Grandmaster researches Marksmanship, so the settings below it play as they did.
 
 ## What each change was worth
 

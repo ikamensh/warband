@@ -15,7 +15,8 @@ each with a passive mechanic and two arts of its own
 ([docs/warband-races.md](docs/warband-races.md)). Peasants mine gold and fell
 trees; farms feed the army; a barracks, lumber mill, blacksmith, stables,
 workshop and church open seven units and the upgrades; guard towers hold the
-line. Four AI difficulties expand, upgrade, raid and attack; Master plays one of two postures, drawn with the map.
+line. Five AI difficulties expand, upgrade, raid and attack; Master plays one of three postures, drawn with the map,
+and Grandmaster a posture bred for the race it leads by a genetic search ([docs/ai-ladder.md](docs/ai-ladder.md)).
 Every finished match is scored into a local top ten and rated into the
 player's profile — an Elo-scale rating estimated against the difficulty
 ladder, with every match's replay kept to watch again
