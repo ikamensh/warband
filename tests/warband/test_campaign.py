@@ -12,7 +12,7 @@ from saga2d import Button, Game, SaveError
 from warband.story.campaign import FORMAT, Progress, ProgressStore
 from warband.story.campaign_scene import CampaignScene
 from warband.story.dialog import DialogScene
-from warband.story.mission_scene import CAMPAIGN_SLOT, MissionResultScene, MissionScene, build_world
+from warband.story.mission_scene import CAMPAIGN_SLOT, MissionPauseScene, MissionResultScene, MissionScene, build_world
 from warband.story.missions import CAMPAIGN
 from warband.sim.model import tile_center
 from warband.sim.rules import SIM_DT, BuildingType, Difficulty, Race, UnitType
@@ -616,3 +616,20 @@ def test_a_camera_cue_never_pans_into_unexplored_ground_but_the_minimap_and_spac
     goal = tuple(scene.run.get("goal"))
     assert "road" in scene.run.fired and scene.last_alert == goal
     assert scene.camera.center == home
+
+
+@pytest.mark.parametrize("kind", list(UNREADABLE))
+def test_a_mission_that_cannot_read_the_progress_does_not_restart_and_says_why(game, kind) -> None:
+    """Restart mission and Retry read the earlier choices from the campaign's progress, and a file this version cannot
+    read raised out of the frame: a mission resumed from Continue or a save, where nothing had read the file, crashed
+    the game.  The pause menu and the result screen say why instead, and the campaign screen can set the file aside."""
+    ProgressStore(game.data_dir).saves.save(1, UNREADABLE[kind], "WarbandCampaign")
+    scene = start(game, "hollowmere")
+    press(game, "escape")
+    press(game, "r")
+    assert isinstance(game.scene, MissionPauseScene) and any(t.startswith("Cannot restart") for t in texts(game))
+    press(game, "escape")
+    game.push(MissionResultScene(scene, won=False))
+    game.tick(1 / 60)
+    press(game, "r")
+    assert isinstance(game.scene, MissionResultScene) and any(t.startswith("Cannot restart") for t in texts(game))

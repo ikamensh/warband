@@ -57,6 +57,17 @@ def current_progress(game, campaign: Campaign, difficulty: Difficulty) -> Progre
     return progress if progress is not None else Progress(campaign.id, difficulty)
 
 
+def restart_mission(game, scene: MissionScene) -> str | None:
+    """Play *scene*'s mission again from its start, with the choices the campaign's progress holds; the reason it cannot
+    when that progress cannot be read.  The campaign screen says why in full and offers to set the file aside."""
+    try:
+        progress = current_progress(game, scene.campaign, scene.difficulty)
+    except SaveError:
+        return "Cannot restart: the campaign progress is unreadable. Campaign says why."
+    start_mission(game, scene.campaign, scene.mission, progress, scene.settings, briefing=False)
+    return None
+
+
 def start_mission(game, campaign: Campaign, mission: Mission, progress: Progress, settings, *, briefing: bool = True) -> None:
     """Build the mission and play its briefing over the current screen, then replace everything with the match."""
     run = build_world(mission, flags=progress.flags)
@@ -265,11 +276,11 @@ class MissionPauseScene(PauseScene):
         panel.add(Button("Restart mission", hotkey="R", on_click=self.restart, style=GHOST_BUTTON, width=260))
         panel.add(Button("Campaign", hotkey="C", on_click=self.campaign, style=GHOST_BUTTON, width=260))
         panel.add(Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=260))
+        self.notice = Label("", text_style="body", text_color=BAD, width=260, wrap=True)
+        panel.add(self.notice)
 
     def restart(self) -> None:
-        scene: MissionScene = self.game_scene  # type: ignore[assignment]
-        progress = current_progress(self.game, scene.campaign, scene.difficulty)
-        start_mission(self.game, scene.campaign, scene.mission, progress, scene.settings, briefing=False)
+        self.notice.text = restart_mission(self.game, self.game_scene) or ""  # type: ignore[arg-type]
 
     def campaign(self) -> None:
         """Back to the campaign screen; the mission is saved first so Continue picks it up where it was."""
@@ -322,6 +333,8 @@ class MissionResultScene(_Overlay):
             panel.add(Row(Button("Retry mission", hotkey="R", on_click=self.retry, style=ACTION_BUTTON, width=200),
                           Button("Campaign", hotkey="C", on_click=self.campaign, style=GHOST_BUTTON, width=150),
                           Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=150), spacing=12))
+        self.notice = Label("", text_style="body", text_color=BAD, width=520, wrap=True)
+        panel.add(self.notice)
         panel.add(KeyHints([("Enter", "continue")] if self.won else [("R", "retry"), ("C", "campaign")]))
 
     def proceed(self) -> None:
@@ -348,9 +361,7 @@ class MissionResultScene(_Overlay):
     def retry(self) -> None:
         if self.won:
             return
-        scene = self.scene
-        progress = current_progress(self.game, scene.campaign, scene.difficulty)
-        start_mission(self.game, scene.campaign, scene.mission, progress, scene.settings, briefing=False)
+        self.notice.text = restart_mission(self.game, self.scene) or ""
 
     def campaign(self) -> None:
         from warband.story.campaign_scene import CampaignScene
