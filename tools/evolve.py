@@ -74,6 +74,57 @@ def _best(state: evolve.State, args: argparse.Namespace) -> None:
         print(f"{path}: {individual.name} {individual.score:.3f} over {individual.games}")
 
 
+def _source(value) -> str:
+    """*value* as the Python that spells it in warband/brains/bred.py: enums by their member, the rest by repr."""
+    from enum import Enum
+
+    if isinstance(value, Enum):
+        return f"{type(value).__name__}.{value.name}"
+    if isinstance(value, dict):
+        return "{" + ", ".join(f"{_source(k)}: {_source(round(v, 3) if isinstance(v, float) else v)}" for k, v in value.items()) + "}"
+    if isinstance(value, tuple):
+        return "(" + "".join(f"{_source(v)}, " for v in value).rstrip(" ") + ")"
+    return repr(value)
+
+
+def _export(args: argparse.Namespace) -> None:
+    """Write warband/brains/bred.py from genes files: ``--genes race:file`` once per posture, in the order they are drawn."""
+    import json
+    import textwrap
+
+    by_race: dict[str, list[tuple[str, dict]]] = {}
+    for term in args.genes or []:
+        race, _, path = term.partition(":")
+        by_race.setdefault(race, []).append((Path(path).stem, json.loads(Path(path).read_text())))
+    lines = []
+    for race in evolve.RACE_VALUES:
+        postures = []
+        for k, (stem, row) in enumerate(by_race.get(race, []), 1):
+            profile = evolve.profile_of(evolve.genes_of(PRO) | row["genes"], f"bred-{race}-{k}")
+            changed = ", ".join(f"{f.name}={_source(getattr(profile, f.name))}" for f in fields(profile)
+                                if getattr(profile, f.name) != getattr(PRO, f.name))
+            body = textwrap.fill(f"replace(PRO, {changed}),", width=124, initial_indent=" " * 8, subsequent_indent=" " * 16)
+            postures.append(f"        # {stem}: {row.get('score', 0):.3f} over {row.get('games', 0)} games of its search\n{body}")
+        lines.append(f"    Race.{race.upper()}: (\n" + "\n".join(postures) + "\n    ),")
+    args.out.write_text(BRED_HEADER + "BRED: Final[dict[Race, tuple[ProProfile, ...]]] = {\n" + "\n".join(lines) + "\n}\n")
+    print(f"wrote {args.out}: " + ", ".join(f"{race} {len(rows)}" for race, rows in by_race.items()))
+
+
+BRED_HEADER = '''"""The postures the genetic search bred, a race's own for each race (written by ``tools/evolve.py export``; bred again
+rather than edited by hand).  :class:`warband.brains.pro_ai.RaceBrain` plays them: the Grandmaster setting.  How they were
+bred and what they measured is in ``docs/ai-ladder.md``."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from typing import Final
+
+from warband.brains.pro_ai import PRO, ProProfile
+from warband.sim.rules import BuildingType, Race, UnitType, Upgrade
+
+'''
+
+
 def _trial(args: argparse.Namespace) -> None:
     """Known profiles with some genes set by hand, against the panel: what one behaviour is worth before it is bred."""
     panel = args.panel.split(",")
@@ -128,7 +179,7 @@ def _macro(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("mode", choices=("run", "show", "profile", "trial", "macro", "best"))
+    parser.add_argument("mode", choices=("run", "show", "profile", "trial", "macro", "best", "export"))
     parser.add_argument("--min-games", type=int, default=150, help="best: only individuals with this many games behind them")
     parser.add_argument("--base", default="pro-vanguard", help="trial: the known profile the genes are set on")
     parser.add_argument("--set", action="append", help="trial: genes set by hand, e.g. research_first=2,tech.blacksmith=1 (repeatable)")
@@ -155,6 +206,9 @@ def main() -> None:
         return
     if args.mode == "macro":
         _macro(args)
+        return
+    if args.mode == "export":
+        _export(args)
         return
     if args.mode in ("show", "profile", "best"):
         state = evolve.load(args.path)
