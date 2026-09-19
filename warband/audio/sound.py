@@ -207,7 +207,7 @@ class SynthBank:
         self._audio.muted = value
 
 
-SOUND_VERSION = "9"
+SOUND_VERSION = "10"
 MUSIC = music.TRACKS
 
 #: ``play_sound(name)`` forwards here when set; ``None`` is silent.
@@ -238,7 +238,7 @@ def apply_volumes(music: float, sfx: float) -> None:
 
 
 def select() -> np.ndarray:
-    return level(mix(tone("E5", 0.08, tau=0.04), (0.05, tone("A5", 0.12, tau=0.06))), 0.5)
+    return level(mix(tone("E5", 0.08, tau=0.04), (0.05, tone("A5", 0.12, tau=0.06))), 0.3)
 
 
 def command() -> np.ndarray:

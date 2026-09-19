@@ -30,6 +30,15 @@ def test_cues_are_voiced_for_every_race_but_humans_and_impacts_follow_the_strike
     assert {suite.battle for suite in music.SUITES.values()} | {music.TITLE_TRACK} <= set(music.TRACKS) and len(music.SUITES) == 4
 
 
+@pytest.mark.parametrize("race", list(Race))
+def test_the_selection_cue_is_softer_than_the_order_cues(race: Race) -> None:
+    """WB-039: selecting answers with the ring and the panel; its cue sits under the cues that confirm an order."""
+    def peak(cue: str) -> float:
+        return float(abs(sound.SOUNDS[voiced(cue, race)]()).max())
+
+    assert peak("select") < 0.7 * min(peak("command"), peak("attack_command"))
+
+
 @pytest.fixture
 def game(tmp_path):
     g = Game("Race sound", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")

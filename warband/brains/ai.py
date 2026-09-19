@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 from warband.sim.model import (MINE_CLEARANCE, Attack, AttackMove, Build, Building, Deposit, Harvest, Move, Point, Pos, Repair, Unit,
-                           World, dist)
+                           World, dist, rect_gap)
 from warband.sim.races import RACES
 from warband.sim.rules import BUILDINGS, BuildingType, Difficulty, Race, Resource, Terrain, UnitType, Upgrade
 from warband.sim.worker_knowledge import KnownMine
@@ -34,6 +34,7 @@ LOW_MINE_GOLD: Final = 6000  # a mine this low means the next hall is planned no
 CLAIM_DISTANCE: Final = 8.0  # a mine with an own hall this near is claimed
 MAX_HALLS: Final = 3
 DEFEND_RADIUS: Final = 9.0
+TOWER_STRIKERS: Final = 8  # peasants sent at an enemy tower frame going up on our ground (WB-044)
 BUILD_MIN_DISTANCE: Final = 2
 BUILD_MAX_DISTANCE: Final = 11
 #: Shared upgrades first, then whatever arts the brain's race has (see :mod:`warband.sim.races`).
@@ -246,10 +247,10 @@ PRO_FOR: Final[dict[Difficulty, tuple[str, ...]]] = {Difficulty.HARD: ("pro-hard
 #: ``tools/arena.py``; the games behind the numbers are in ``docs/ai-ladder.md``. Shown on the New game screen so a player can see what
 #: they are picking rather than guess from a word.
 DIFFICULTY_ELO: Final[dict[Difficulty, int]] = {
-    Difficulty.EASY: 570,
+    Difficulty.EASY: 573,
     Difficulty.MEDIUM: 1000,
-    Difficulty.HARD: 1360,
-    Difficulty.MASTER: 1610,
+    Difficulty.HARD: 1375,
+    Difficulty.MASTER: 1590,
 }
 
 #: One line per setting, for the same screen. Kept short enough to fit beside
@@ -277,6 +278,7 @@ class Brain:
         self._last_defend = 0  # threat size of the last logged "defend with" line
         self._wave_capped = False
         self._last_workforce_target: int | None = None
+        self.strikers: set[int] = set()  # our peasants sent at an enemy tower frame
         self._plan_logged = False
 
     def note(self, world: World, what: str) -> None:
@@ -295,6 +297,7 @@ class Brain:
             self._recover(world)
             return
         self._economy(world)
+        self._strike_towers(world)
         self._repairs(world)
         self._construction(world, rng)
         self._training(world)
@@ -369,6 +372,41 @@ class Brain:
         peasant = min(spare, key=lambda p: dist(p.pos, b.center))
         world.repair([peasant.id], b.id)
         self.log.append((world.time, f"repair {b.type.value} at {b.hp}/{b.max_hp}"))
+
+    def _strike_towers(self, world: World) -> None:
+        """The tower rush's basic answer: peasants pull down an enemy tower frame whose fire would reach a hall
+        of ours or the mine beside it. A frame wears no armour; once the tower stands, they go back to work."""
+        home = [h.rect for h in world.player_buildings(self.player, BuildingType.TOWN_HALL, done=True)]
+        home += [m.rect for m in known_mines(world, self.player)
+                 if any(rect_gap((m.x + m.size / 2, m.y + m.size / 2), rect) <= EXPAND_DISTANCE for rect in home)]
+        frames: list[Building] = []
+        for record in known_enemy_buildings(world, self.player):
+            tower = world.buildings.get(record.id)
+            if tower is None or tower.type is not BuildingType.TOWER or tower.done or not world.any_visible(self.player, tower.rect):
+                continue
+            if any(rect_gap(tower.center, rect) <= tower.info.range + tower.size / 2 for rect in home):
+                frames.append(tower)
+        striking: set[int] = set()
+        standing: list[int] = []
+        for i in sorted(self.strikers):
+            order = world.units[i].order if i in world.units else None
+            if isinstance(order, Attack):
+                target = world.buildings.get(order.target)
+                if target is not None and target.done:
+                    standing.append(i)
+                else:
+                    striking.add(i)
+        if standing:
+            world.release_workers(standing)
+        self.strikers = striking
+        for tower in frames:
+            spare = [p for p in self._peasants(world) if p.id not in self.strikers and p.constructing is None
+                     and not isinstance(p.order, (Build, Repair))]
+            drafted = sorted(spare, key=lambda p: dist(p.pos, tower.center))[:TOWER_STRIKERS - len(self.strikers)]
+            if drafted:
+                world.attack([p.id for p in drafted], tower.id)
+                self.strikers.update(p.id for p in drafted)
+                self.note(world, f"strike tower frame {tower.id} with {len(drafted)} peasants")
 
     # -- Construction -----------------------------------------------------------------
 

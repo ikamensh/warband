@@ -7,7 +7,7 @@ from warband.sim.model import Event, Repair, Attack, AttackMove, Build, Harvest,
 from warband.sim.rules import BUILDINGS, SIM_DT, UNITS, BuildingType, UnitType
 from warband.sim.races import RACES
 from warband.sim.rules import Race
-from warband.ui.scene import GameOverScene, GameScene, HelpScene, LeaveScene, PauseScene, SettingsScene, new_game
+from warband.ui.scene import SELECT_GAP, GameOverScene, GameScene, HelpScene, LeaveScene, PauseScene, SettingsScene, new_game
 from warband.ui.style import build_theme
 from warband.ui.title import NewGameScene, TitleScene
 
@@ -94,6 +94,19 @@ def test_clicking_a_peasant_selects_it_and_shows_its_card(play) -> None:
     assert "Peasant" in shown and {"3", "0", "0.45", "2.4"} <= set(shown)  # damage, armour, range and speed beside their symbols
     assert [c.label for c in scene.card] == ["Move", "Stop", "Attack", "Hold", "Patrol", "Build", "Repair"]
     assert "select" in scene.recent_sounds
+
+
+def test_selecting_again_and_again_chimes_once_in_half_a_minute(play) -> None:
+    """WB-039: selecting is constant in a fight, and a cue on every click drowned the order cues."""
+    game, scene = play
+    first, second = peasants_of(scene)[:2]
+    scene.select([first.id])
+    scene.select([second.id])
+    scene.select([first.id, second.id])
+    assert scene.recent_sounds.count("select") == 1
+    tick(game, SELECT_GAP + 1, dt=0.1)
+    scene.select([second.id])
+    assert scene.recent_sounds.count("select") == 2
 
 
 def test_a_drag_box_selects_every_peasant_and_shift_click_toggles(play) -> None:

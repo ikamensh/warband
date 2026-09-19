@@ -10,8 +10,10 @@ import pytest
 from warband.sim import mapgen
 from warband.league.arena import make_agent
 from warband.sim.model import World, dist, rect_gap
+from warband.brains.ai import PROFILES, Brain
 from warband.brains.pro_ai import PRO_VANGUARD, ProBrain
-from warband.sim.rules import BUILDINGS, SIM_DT, BuildingType, Resource, Terrain, UnitType
+from warband.sim.model import Attack, Harvest
+from warband.sim.rules import BUILDINGS, SIM_DT, BuildingType, Difficulty, Resource, Terrain, UnitType
 
 
 def base(soldiers: int = 0) -> World:
@@ -35,7 +37,7 @@ def base(soldiers: int = 0) -> World:
 SITE = (10, 15)  # two tiles below our mine, where our miners see it
 
 
-def play(world: World, brain: ProBrain, seconds: float) -> None:
+def play(world: World, brain: ProBrain | Brain, seconds: float) -> None:
     rng = random.Random(1)
     while world.time < seconds:
         brain.think(world, rng)
@@ -115,3 +117,49 @@ def test_a_tower_placed_by_the_mine_is_struck_down_and_the_gold_comes_back(postu
             assert world.time < 150.0 + 60.0 + SIM_DT, "the tower still stood a minute on"
     assert lost <= 3, f"the tower killed {lost} peasants"
     assert gold_after > 0, "no gold came in during the last half minute"
+
+
+def test_a_frame_wears_no_armour_and_a_standing_tower_does() -> None:
+    """A peasant's blow of three does three to a tower going up, and one through a standing tower's armour."""
+    world = base()
+    frame = world.place_building(1, BuildingType.TOWER, SITE)
+    frame.progress = 0.0
+    standing = world.place_building(1, BuildingType.TOWER, (14, 16))
+    assert not frame.done and standing.done
+    dealt: dict[int, list[int]] = {frame.id: [], standing.id: []}
+    peasants = world.player_units(0)
+    world.attack([p.id for p in peasants[:4]], frame.id)
+    world.attack([p.id for p in peasants[4:]], standing.id)
+    while world.time < 10.0:
+        world.step()
+        for event in world.take_events():
+            if event.kind == "hit" and event.other in dealt:
+                dealt[event.other].append(event.amount)
+    assert dealt[frame.id] and min(dealt[frame.id]) >= 2, dealt
+    assert dealt[standing.id] and max(dealt[standing.id]) == 1, dealt
+
+
+@pytest.mark.parametrize("difficulty", list(PROFILES))
+def test_every_brain_pulls_down_a_young_tower_frame_by_its_mine_and_goes_back_to_work(difficulty: Difficulty) -> None:
+    """WB-044: Easy and Medium have no rush answer of their own, but their peasants tear down a frame going up in
+    reach of the hall or the mine, and mine again once it is down."""
+    world = base()
+    builder = world.spawn_unit(1, UnitType.PEASANT, (12.5, 16.5))
+    world.build(builder.id, BuildingType.TOWER, SITE)
+    brain = Brain(0, difficulty)
+    play(world, brain, 30.0)
+    assert not world.player_buildings(1, BuildingType.TOWER), [w for _, w in brain.log]
+    play(world, brain, 45.0)
+    assert not any(isinstance(p.order, Attack) and world.entity(p.order.target) is None for p in world.player_units(0))
+    assert any(isinstance(p.order, Harvest) or p.inside is not None for p in world.player_units(0))
+
+
+@pytest.mark.parametrize("difficulty", list(PROFILES))
+def test_a_tower_already_standing_is_left_to_the_army(difficulty: Difficulty) -> None:
+    """Peasants do a point a blow through a standing tower's armour and it kills them: they are not sent."""
+    world = base()
+    world.place_building(1, BuildingType.TOWER, SITE)
+    world.update_vision()
+    brain = Brain(0, difficulty)
+    play(world, brain, 10.0)
+    assert not any(isinstance(p.order, Attack) for p in world.player_units(0))

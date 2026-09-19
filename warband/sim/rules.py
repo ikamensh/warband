@@ -22,6 +22,8 @@ Balance in one table (base values; upgrades in :data:`UPGRADES`):
 | knight   | 900+100   | 90 | 10  | 4     | melee | 0.35 + 1.0         | 270°/s| 3.4   | shock; beats everything at cost; catapults and mass archers wear it down |
 | catapult | 700+200   |100 | 36  | 0     | 2..7  | 0.8 + 3.0          | 150°/s| 1.6   | siege: stones land where aimed, splash friend and foe, ×1.5 vs buildings; helpless inside two tiles |
 | cleric   | 700+50    | 40 | —   | 0     | 3     | —                  | 360°/s| 2.4   | heals 6 hp/s; no attack; protect it     |
+
+A building's armour is :data:`BUILDINGS`' once it stands; a frame still going up wears none.
 """
 
 from __future__ import annotations

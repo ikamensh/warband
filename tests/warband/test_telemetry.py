@@ -51,3 +51,33 @@ def test_the_last_blow_gets_the_kill_priced_at_what_the_victim_cost():
     assert mine.kill_value["footman"] == 400
     assert mine.dealt["footman"] == theirs.taken["peasant"] >= 30, "a peasant has 30 hit points"
     assert mine.lost == theirs.killed == {}
+
+
+def test_a_frame_razed_the_step_it_starts_or_stands_is_still_counted():
+    """Regression (WB-044's ladder): a frame wears no armour, so it can fall in the step its construction
+    starts or it stands, and the tally is read from events after the building has been buried."""
+    from warband.sim import mapgen
+    from warband.sim.model import tile_center
+    from warband.sim.rules import BUILDINGS, BuildingType, UnitType
+    from warband.league.telemetry import Telemetry
+
+    world = mapgen.generate(seed=3, players=2, human=None)
+    world.players[0].gold = world.players[0].lumber = 5000
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    x, y = hall.pos
+    builder = world.spawn_unit(0, UnitType.PEASANT, tile_center((x + 5, y + 5)))
+    world.reveal_all(0)
+    world.build(builder.id, BuildingType.FARM, (x + 6, y + 5))
+    telemetry, events, frame = Telemetry(world), [], None
+    while not any(e.kind == "built" for e in events):
+        world.step()
+        events += world.take_events()
+        frame = frame or next((b for b in world.player_buildings(0, BuildingType.FARM)), None)
+        assert world.time < 60.0
+    frame.hp = 0
+    world.step()
+    assert frame.id not in world.buildings
+    telemetry.observe(world, events + world.take_events())
+    mine = telemetry.tallies[0]
+    assert mine.started["farm"] == mine.completed["farm"] == 1
+    assert mine.spent["farm"] == BUILDINGS[BuildingType.FARM].cost.gold + BUILDINGS[BuildingType.FARM].cost.lumber

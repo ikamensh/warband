@@ -424,7 +424,8 @@ class Event:
     other: int | None = None
     amount: int = 0
     text: str = ""
-    # Strike-time facts survive removal of either participant and network snapshots.
+    # Strike-time facts survive removal of either participant and network snapshots; a recruit's
+    # training and a building's start and completion name its type the same way: either can fall the step it appears.
     source_type: str = ""
     target_type: str = ""
     target_armor: int = 0
@@ -838,6 +839,9 @@ class World:
         return unit.race is Race.ORC and not unit.is_worker and unit.info.damage > 0 and unit.hp * 2 < unit.max_hp
 
     def armor_of(self, entity: Entity) -> int:
+        """A building still going up wears no armour: a frame is scaffolding, so peasants can pull it down."""
+        if isinstance(entity, Building) and not entity.done:
+            return 0
         armor = entity.info.armor
         if isinstance(entity, Unit) and not entity.is_worker:
             armor += ARMOR_BONUS * (self._has(entity.player, Upgrade.ARMOR_1) + self._has(entity.player, Upgrade.ARMOR_2))
@@ -1460,7 +1464,8 @@ class World:
             builder.x, builder.y = tile_center(spot)
         b.builder = None
         assert b.player is not None
-        self.events.append(Event("built", b.center, player=b.player, entity=b.id, text=f"{b.info.name} complete"))
+        self.events.append(Event("built", b.center, player=b.player, entity=b.id, text=f"{b.info.name} complete",
+                                 target_type=b.type.value))
 
     def _deliver_unit(self, b: Building, unit_type: UnitType) -> None:
         assert b.player is not None
@@ -1469,7 +1474,8 @@ class World:
         if spot is None:
             spot = (b.x, b.y + b.size)
         unit = self.spawn_unit(b.player, unit_type, tile_center(spot))
-        self.events.append(Event("trained", unit.pos, player=b.player, entity=unit.id, other=b.id, text=f"{unit.info.name} ready"))
+        self.events.append(Event("trained", unit.pos, player=b.player, entity=unit.id, other=b.id, text=f"{unit.info.name} ready",
+                                     target_type=unit.type.value))
         if b.rally is not None:
             self.smart([unit.id], b.rally)
         elif assembly is not None:
@@ -2206,7 +2212,7 @@ class World:
             self._pay(u.player, BUILDINGS[order.type].cost)
             b = self.place_building(u.player, order.type, order.pos, done=False)
             order.building = b.id
-            self.events.append(Event("construction", b.center, player=u.player, entity=b.id))
+            self.events.append(Event("construction", b.center, player=u.player, entity=b.id, target_type=b.type.value))
             self._start_building(u, b)
             return
         if self._approach(u, (order.pos[0] + size // 2, order.pos[1] + size // 2), (order.pos[0] + size / 2, order.pos[1] + size / 2), dt):

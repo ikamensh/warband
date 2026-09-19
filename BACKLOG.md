@@ -175,6 +175,13 @@ order cues and would sound once however fast the selections come. The
 generators and levels are in `docs/evidence/wb039/` on the machine that made
 them. What unblocks it: Ilya's A, B or C.
 
+**Done 2026-09-19** on branch `wb039-044`. Ilya chose neither candidate: the
+cue plays at most once in 30 seconds (`SELECT_GAP`, `warband/ui/scene.py`) and
+every race's cue is quieter (peak 0.5 to 0.3 for humans and orcs, 0.45 to 0.27
+for elves and dwarves; `SOUND_VERSION` 10). Tests: a burst of selections chimes
+once and again after the gap (`test_scene.py`); each race's cue peaks under
+70% of its order cues (`test_race_sound.py`). Ilya has yet to hear it in a match.
+
 ## WB-044 — Hold the push that comes with a rush tower; strike faster on Hard
 
 What WB-037 left of its acceptance. Against `pro-rush` the defender now stops
@@ -216,6 +223,22 @@ different brain. **Blocked** on Ilya: whether Hard is to meet the rush bar
 at all (and with which handicaps), and whether the defence against a push
 that arrives with a tower is worth an AI project of its own for Master's
 last game or two.
+
+**Decided and done 2026-09-19** on branch `wb039-044`. Ilya: no AI project;
+every AI gets a basic answer (peasants strike a tower too close) and a
+building going up should be easier to destroy. Rules: a frame wears no
+armour (`World.armor_of`); every building has two to four, so the 150%
+multiplier Ilya offered for an unarmoured frame has nothing to apply to. A
+peasant now does three a blow to a tower frame where it did one. Easy and
+Medium (`ai.Brain._strike_towers`) send up to eight peasants at a visible
+enemy tower frame whose fire would reach a hall or a mine by it, and release
+them to work if it stands; Hard and Master keep WB-037's strike. The ladder
+(60 seeds, 720 games, `docs/ai-ladder.md`): 573, 1000, 1375, 1589, every one
+inside the intervals of the day's earlier 570, 1000, 1361, 1608. The ladder
+found that a building razed the step it starts or stands (and a recruit
+killed the step it is trained) crashed the league's telemetry; those events
+now carry their type. Hard is not held to the rush bar. The rules change goes
+live through a server rollout.
 
 ## WB-048 — A building site, not a ghost; no abandoned shells
 
