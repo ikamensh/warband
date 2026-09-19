@@ -132,7 +132,11 @@ the compiled simulation attaches after they load.
   LAN/online scenes, `profile_scene.py`, `score_scene.py` and
   `replay_scene.py` (`ReplayScene` plays a recording back) their screens,
   `tutorial.py` the first match's objectives, `style.py` and `icons.py` the
-  look of the HUD.
+  look of the HUD. `controls.py` holds the three control schemes (Classic,
+  Grid, Modal; `docs/controls.md`): a card command has a letter and a slot,
+  and the scheme picks which is its key; the scene resolves a key as a
+  control group, a Ctrl chord, the card's command, then the scheme's global
+  keys.
 - `warband/story/` — the campaign. `campaign.py` is its engine: speakers,
   lines and choices, objectives and triggers, `Run` (a mission in play, saved
   beside the world), `Progress`/`ProgressStore` (the small cross-version
