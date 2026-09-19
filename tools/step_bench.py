@@ -30,19 +30,38 @@ if __name__ in ("__main__", "__mp_main__"):  # run as a program or as one of its
 
 from warband import mapgen  # noqa: E402
 from warband.model import World, tile_center  # noqa: E402
-from warband.rules import BuildingType, UnitType  # noqa: E402
+from warband.rules import BuildingType, Layout, Terrain, UnitType  # noqa: E402
+
+
+def standing(w: World, tile: tuple[int, int]) -> tuple[float, float]:
+    """*tile*'s centre, or the nearest free one beside a building standing on it (a mine lies in the field)."""
+    if w.building_at(tile) is None:
+        return tile_center(tile)
+    free = w.free_tile_near((tile[0], tile[1], 1, 1), prefer=tile_center(tile))
+    assert free is not None, tile
+    return tile_center(free)
 
 
 def battle_world(seed: int = 3, width: int = 64, height: int = 48) -> World:
-    """Seventy-five units a side on attack-move towards the other side, twelve farms between them."""
-    w = mapgen.generate(seed=seed, width=width, height=height, players=2)
+    """Seventy-five units a side on attack-move towards the other side, twelve farms between them.
+
+    The battlefield is cleared to grass, as map generation carves a road: once the seed drew its own layout,
+    its trees held 72 of the 150 soldiers where they were placed, and 41 were still in them 300 steps on,
+    planning a way out every 0.6 s (WB-024).
+    """
+    w = mapgen.generate(seed=seed, width=width, height=height, players=2, layout=Layout.PLAINS)
     hall = w.player_buildings(0, BuildingType.TOWN_HALL)[0]
     hx, hy = hall.pos
+    for y in range(hy + 3, min(height, hy + 19)):
+        for x in range(hx + 3, min(width, hx + 40)):
+            if w.building_at((x, y)) is None:
+                w.terrain[y][x] = Terrain.GRASS
+                w._blocked[y * w.width + x] = 0
     w.reveal_all(0)
     types = [UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT, UnitType.SCOUT, UnitType.CATAPULT, UnitType.CLERIC]
     for i in range(75):
-        w.spawn_unit(0, types[i % 6], tile_center((hx + 4 + i % 15, hy + 4 + i // 15)))
-        w.spawn_unit(1, types[(i + 1) % 6], tile_center((hx + 22 + i % 15, hy + 4 + i // 15)))
+        w.spawn_unit(0, types[i % 6], standing(w, (hx + 4 + i % 15, hy + 4 + i // 15)))
+        w.spawn_unit(1, types[(i + 1) % 6], standing(w, (hx + 22 + i % 15, hy + 4 + i // 15)))
     for i in range(12):
         w.place_building(0 if i % 2 == 0 else 1, BuildingType.FARM, (hx + 4 + (i % 6) * 3, hy + 11 + (i // 6) * 3))
     w.update_vision()
