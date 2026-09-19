@@ -680,3 +680,23 @@ def test_a_load_in_the_match_leaves_the_abandoned_timeline_behind(play) -> None:
     assert isinstance(loaded, GameScene) and loaded is not scene, "the load kept the scene of the match left behind"
     assert loaded.last_alert is None and loaded.mood == "peace"
     assert "Loaded" in loaded.status and raider.id not in loaded.world.units
+
+
+def test_a_save_keeps_the_camera_bookmarks_and_a_tutorial_hidden_for_the_match(game) -> None:
+    """A quickload brought back no bookmarks, and the tutorial hidden with F4 returned at its first step."""
+    scene = new_game(seed=3, settings={"music": 0, "sfx": 0, "tutorial": True})
+    game.push(scene)
+    game.tick(1 / 60)
+    press(game, "f6", ctrl=True)
+    marked = scene.camera.center
+    press(game, "f4")
+    assert scene.tutorial is None
+    press(game, "f5")
+    press(game, "f9")
+    loaded = game.scene
+    game.tick(1 / 60)
+    assert loaded is not scene and loaded.tutorial is None and not loaded.objectives.visible
+    loaded.camera.center_on(0, 0)
+    press(game, "f6")
+    game.tick(0.5)
+    assert loaded.camera.center == pytest.approx(marked)

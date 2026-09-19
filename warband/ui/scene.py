@@ -2293,7 +2293,8 @@ class GameScene(Scene):
     def get_save_state(self) -> dict:
         return {"version": SAVE_VERSION, "seed": self.seed, "difficulty": self.difficulty.value, "world": self.world.to_dict(),
                 "run_id": self.run_id, "ranked": self.ranked, "replay": self.replay.to_dict() if self.replay is not None else None,
-                "groups": self.groups, "tutorial": self.tutorial.step if self.tutorial is not None else None, "seen": self._memory()}
+                "groups": self.groups, "tutorial": self.tutorial.step if self.tutorial is not None else None, "seen": self._memory(),
+                "bookmarks": {str(slot): list(point) for slot, point in self.bookmarks.items()}}
 
     def _memory(self) -> dict | None:
         """What the player had seen of buildings now out of sight: the view's once there is one, until then what a save brought."""
@@ -2301,11 +2302,15 @@ class GameScene(Scene):
 
     def restore(self, state: dict) -> None:
         """Take back what a save keeps beside the world (see :meth:`get_save_state`), before the scene is entered: what
-        the player had seen of buildings now out of sight, the control groups, the tutorial's step, and the autosave
-        clock, due at the next interval after the save's time rather than on the first frames."""
+        the player had seen of buildings now out of sight, the control groups, the camera bookmarks, the tutorial's step
+        (or that the match had none, hidden with F4), and the autosave clock, due at the next interval after the save's
+        time rather than on the first frames."""
         self._seen = state.get("seen")
         self.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
-        if state.get("tutorial") is not None and self.tutorial is not None:
+        self.bookmarks = {int(slot): (point[0], point[1]) for slot, point in state.get("bookmarks", {}).items()}
+        if "tutorial" in state and state["tutorial"] is None:
+            self.tutorial = None
+        elif state.get("tutorial") is not None and self.tutorial is not None:
             self.tutorial.step = state["tutorial"]
         self._autosave_at = (self.world.time // AUTOSAVE_EVERY + 1) * AUTOSAVE_EVERY
 
