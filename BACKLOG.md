@@ -42,61 +42,13 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 ([`a2212f5`](https://github.com/ikamensh/warband/blob/a2212f53d78ae5c28ec64727eaabc2ac3142d183/BACKLOG.md)); WB-049, merged as `9418ec5`
 ([`9418ec5`](https://github.com/ikamensh/warband/blob/9418ec5babcbf57aed2a2e5939a502fd8477a49d/BACKLOG.md); WB-051, merged as `0a820ff` ([`0a820ff`](https://github.com/ikamensh/warband/blob/0a820ffdfe3b18f8e06a5ed5ac3f89223943f70c/BACKLOG.md); WB-050, merged as `adb5e9b` ([`adb5e9b`](https://github.com/ikamensh/warband/blob/adb5e9b26b5c3b88ce4463f9e15fda14c7ce67bf/BACKLOG.md); WB-048, merged as `4e47b39` ([`4e47b39`](https://github.com/ikamensh/warband/blob/4e47b39fd7c9a75a9440d1cf8557dbc8b793d950/BACKLOG.md))))); WB-039 and WB-044, merged as `f8ba0eb`
 ([`a8951a7`](https://github.com/ikamensh/warband/blob/a8951a7ca8b76c8df9b8e12b87ed8a9e235e7e1f/BACKLOG.md)); WB-053, merged as `7158d46`
-([`dbbb2d1`](https://github.com/ikamensh/warband/blob/dbbb2d132a56e60a7aa4db0fcb66de70a5000aa0/BACKLOG.md)).
+([`dbbb2d1`](https://github.com/ikamensh/warband/blob/dbbb2d132a56e60a7aa4db0fcb66de70a5000aa0/BACKLOG.md)); WB-054, merged as `6505210`
+([`6505210`](https://github.com/ikamensh/warband/blob/65052109213a2e4078d38268626d58c5b0675e2e/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
-| WB-054 | Next | in progress (branch `prereqs`) | Grey out what cannot be had yet, show what it needs, and draw the tech tree | Ilya 2026-09-19 |
 | WB-055 | Next | proposed | A deeper tech tree: the tower behind the mill, the knight behind the smith | Ilya 2026-09-19 |
-
-## WB-054 — What needs what, on the card and in the codex
-
-Asked for on 2026-09-19: units and buildings whose prerequisites the player
-lacks were not greyed out, and nothing showed what needs what. The Build, Train and
-Upgrade catalogues offered every item at full strength from the first second
-(a knight with no stables, a workshop with no blacksmith), and an order for one
-became a plan that waited, for ever when nothing it needed was coming.
-
-**Done when:**
-
-- a catalogue item whose prerequisite the player lacks carries that
-  prerequisite's picture in its corner and names it under the button; while
-  the prerequisite is not even on its way (going up, planned, a builder's next
-  site; an upgrade being researched or planned) the item is greyed out and
-  its click, key and Shift are refused with "Requires a Stables";
-- an item whose prerequisite is on its way stays orderable, reads
-  "after Barracks", and waits for it as a plan, as before;
-- a building's tooltip in the Build catalogue names what it unlocks;
-- the codex has a Tech tree page: the race's buildings as a tree from each
-  prerequisite to what it opens, beside each what it trains and researches,
-  lit by what the player has, every picture naming itself on hover;
-- nothing under `warband/sim` or `warband/online` changes, so the online
-  contract is unchanged and no server rollout is needed;
-- rendered frames looked at, `tools/visual_lint.py` clean on the screens the
-  change touches.
-
-**Done 2026-09-19** (branch `prereqs`). `warband/ui/tech.py` reads the rules
-the other way round (what an item lacks first, whether it is on its way, what
-a building unlocks, the tree). The card greys out and refuses, by click, key,
-Shift, a click while placing and the Modal scheme's repeat, an item whose
-prerequisite nobody is making; its corner shows the prerequisite's picture,
-ringed red, and the caption its name behind a red padlock. Once the
-prerequisite is coming the ring and the name turn gold behind an hourglass,
-and the item is planned to wait, as before; a plan counts as coming only while
-what it waits for is had or coming (a smith planned behind a cancelled
-barracks plan greys the workshop out again). "needs War Camp" did not fit a
-caption (lint: 125 px in 116), hence the glyphs. A Build tooltip names what
-the building unlocks; the codex's fifth page draws the tree (help: F2, then
-5). The planner's spot now sites a building whose prerequisite is only coming
-(ground depends on size alone; before, it answered "No room"). Tests:
-`tests/warband/test_prerequisites.py`; thirteen older tests follow the rule
-(those about keys, counts and paging get a standing barracks or smith, the
-two about planning ahead plan the prerequisite first); lint screens
-`menu_build_at_start`, `menu_train_at_start` and `codex_4` hold their labels to
-their text. Nothing under `sim` or `online` changed and the fingerprint
-matches the recorded one: no server rollout. Frames in
-`docs/evidence/wb-054/`.
 
 ## WB-055 — A deeper tech tree
 
@@ -121,9 +73,9 @@ Town Hall ┬ Barracks ┬ Guard Tower           Town Hall ┬ Barracks ┬ Blac
 
 | change | why | what it costs |
 |---|---|---|
-| Guard Tower needs the Lumber Mill, not the Barracks | the mill opens something; towers shoot the arrows the mill improves (Arrows I/II already raise towers); the barracks stops being the hub of four; the tower rush needs a mill, the same price as a barracks | Warden's `towers_early` ("as soon as the barracks stands, before the mill") and the tower rush posture order a mill first |
+| Guard Tower needs the Lumber Mill, not the Barracks | the mill opens something; towers shoot the arrows the mill improves (Arrows I/II already raise towers); the barracks stops being the hub of four; the tower rush needs a mill, a hundred gold cheaper than a barracks | Warden's `towers_early` ("as soon as the barracks stands, before the mill") and the tower rush posture order a mill first |
 | Knight needs a Blacksmith as well as the Stables | armour comes from the smith; the strongest unit needs two buildings, the scout stays the early raider; the smith opens more than the workshop | a new unit prerequisite (`UnitInfo.requires`) in `can_train` and the settlement's unit plans; the knights posture's `early_tech` gains a smith |
-| to decide: Archer needs the Lumber Mill as well as the Barracks | Warcraft II's rule: the barracks alone gives footmen, the mill (built early anyway, and every brain builds it) adds archers and towers | delays every archer opening by the mill's 35 s; elves, whose rangers are their army, feel it most (they lead the race table) |
+| to decide: Archer needs the Lumber Mill as well as the Barracks | Warcraft II's rule: the barracks alone gives footmen, the mill (built early anyway; the stronger brains want one from the start) adds archers and towers | delays every archer opening by the mill's 35 s; elves, whose rangers are their army, feel it most (they lead the race table) |
 
 A bigger step, not proposed now: a hall upgrade (a Keep) gating the stables,
 workshop, church and the second tiers, as Warcraft II did; that is new art for
@@ -132,10 +84,11 @@ every race and a mechanic of its own.
 All three are rules changes: the online contract and the fingerprint move, a
 server rollout carries them (batched), the brains' openings follow the new
 edges, and the difficulty ratings and the balance league are measured again
-(`tools/balance_report.py`, `tools/arena.py report`). The HUD needs one line:
-`warband.ui.tech.prerequisites` returns a recruit's second building, and the
-card and the codex's tree show it from there. Campaign missions place their
-buildings and spawn their armies directly, so none of them breaks.
+(`tools/balance_report.py`, `tools/arena.py report`). On the HUD, one line in
+`warband.ui.tech.prerequisites` (a recruit's second building) is enough for the
+card; the codex's tree links buildings only, so it would draw that second link
+into the recruit's picture. Campaign missions place their buildings and spawn
+their armies directly, so none of them breaks.
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
