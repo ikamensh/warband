@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from saga2d import Game, SaveError
-from warband.story.campaign import Progress, ProgressStore
+from saga2d import Button, Game, SaveError
+from warband.story.campaign import FORMAT, Progress, ProgressStore
 from warband.story.campaign_scene import CampaignScene
 from warband.story.dialog import DialogScene
 from warband.story.mission_scene import CAMPAIGN_SLOT, MissionResultScene, MissionScene, build_world
@@ -34,6 +34,14 @@ def press(game: Game, key: str, **mods) -> None:
 
 def texts(game: Game) -> list[str]:
     return [t["text"] for t in game.backend.texts]
+
+
+def click(game: Game, label: str) -> None:
+    """Click the button of the top scene that reads *label*."""
+    button = next(b for b in game.scene.ui.walk() if isinstance(b, Button) and b.text == label)
+    x, y, width, height = button.bounds
+    game.backend.inject_click(x + width / 2, y + height / 2)
+    game.tick(1 / 60)
 
 
 def run_for(run, seconds: float) -> None:
@@ -77,6 +85,37 @@ def test_a_progress_file_from_a_newer_warband_is_refused_with_a_reason(tmp_path)
     store.saves.save(1, {"format": 99, "campaign": CAMPAIGN.id, "completed": []}, "WarbandCampaign")
     with pytest.raises(SaveError, match="newer"):
         store.load()
+
+
+UNREADABLE = {
+    "newer": {"format": FORMAT + 1, "campaign": CAMPAIGN.id, "difficulty": "hard", "completed": ["hollowmere", "greywater", "silent_hold", "karst_hold"],
+              "flags": {"truce": True, "powder": True}},
+    "damaged": {"format": FORMAT, "campaign": CAMPAIGN.id, "completed": "hollowmere"},
+}
+
+
+@pytest.mark.parametrize("kind", list(UNREADABLE))
+def test_progress_this_version_cannot_read_is_never_written_over(game, kind) -> None:
+    """A newer Warband's progress, or a damaged one, keeps the player's place for whatever can read it: the campaign
+    screen says why it cannot and offers nothing that writes, and Start over, pressed twice, sets the file aside
+    before a new campaign begins."""
+    store = ProgressStore(game.data_dir)
+    store.saves.save(1, UNREADABLE[kind], "WarbandCampaign")
+    kept = store.path.read_bytes()
+    game.push(CampaignScene())
+    game.tick(1 / 60)
+    assert "Campaign progress unavailable" in texts(game)
+    assert not {"Begin the campaign", "Continue", "Restart mission"} & set(texts(game))
+    for key in ("return", "c", "r", "h"):
+        press(game, key)
+    assert isinstance(game.scene, CampaignScene) and store.path.read_bytes() == kept
+    click(game, "Start over")
+    assert store.path.read_bytes() == kept and "Really start over?" in texts(game)
+    click(game, "Really start over?")
+    assert store.load() is None and json.loads(store.aside.read_text())["state"] == UNREADABLE[kind]
+    assert "Begin the campaign" in texts(game)
+    press(game, "return")
+    assert isinstance(game.scene, DialogScene) and store.load() == Progress(CAMPAIGN.id, Difficulty.MEDIUM)  # the first briefing of a new campaign
 
 
 # -- Mission 1 through the run ---------------------------------------------------------------

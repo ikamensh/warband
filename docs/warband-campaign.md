@@ -98,6 +98,9 @@ state, nothing about art. Rules:
 - Only a `format` *newer* than the game's is refused, with a message that says
   to update the game. Bump `FORMAT` only when an older Warband could misread a
   newer file; adding keys never needs it.
+- A refused or damaged file is never written over: the campaign screen says
+  why and offers only Start over, which first moves the file aside to
+  `save_1.unreadable.json`.
 
 **The mission in play** (slot `campaign`, `save_campaign.json`; the numbered
 slots and quicksave hold mission saves too): an ordinary match save with a
@@ -120,13 +123,14 @@ the campaign screen).
 ## Evidence
 
 - `uv run pytest -q tests/warband/test_campaign.py`: progress round trip with
-  unknown keys and ids, a newer format refused, mission 1's three raids and
-  its two ways to win, the truce granted through the dialogue and refused, the
-  flags shaping missions 5 and 6, a replayed mission asking again, a mission
-  save resumed through Continue with its script intact, a save from another
-  version costing the mission and not the campaign, Start over, the escort won
-  and lost, the dialogue's branching and skipping. `tests/warband/test_layout.py`
-  checks the campaign screen (fresh and under way), a mission with its
+  unknown keys and ids, a newer format refused, a newer or damaged file never
+  written over, mission 1's three raids and its two ways to win, the truce
+  granted through the dialogue and refused, the flags shaping missions 5 and 6,
+  a replayed mission asking again, a mission save resumed through Continue with
+  its script intact, a save from another version costing the mission and not
+  the campaign, Start over, the escort won and lost, the dialogue's branching
+  and skipping. `tests/warband/test_layout.py` checks the campaign screen
+  (fresh, under way and over unreadable progress), a mission with its
   objectives, a line, a choice, both results and the mission pause menu for
   text drawn over text at five window sizes.
 - `tools/verify_campaign.py DIR [--size WxH]` renders the title, the campaign

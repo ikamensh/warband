@@ -2,7 +2,8 @@
 
 A fresh campaign asks for its difficulty and begins; a campaign under way continues from its saved mission when
 that save can be read and from the mission's briefing when it cannot, so no version of Warband loses the player's
-place.  Start over erases the progress after a second press.
+place.  Start over erases the progress after a second press.  Progress this version cannot read (a newer Warband's,
+or a damaged file) is never written over: the screen says why and offers only Start over, which sets the file aside.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from warband.story.dialog import DialogScene
 from warband.story.mission_scene import CAMPAIGN_SLOT, MissionScene, build_world, start_mission
 from warband.story.missions import CAMPAIGN
 from warband.sim.rules import Difficulty
+from warband.ui.profile_scene import home_relative
 from warband.ui.scene import _clock, load_game
 from warband.audio.sound import play_sound
 from warband.ui.style import ACTION_BUTTON, BAD, DIM, GHOST_BUTTON, GOLD, GOOD, MUTED, OVERLAY_STYLE
@@ -32,6 +34,7 @@ class CampaignScene(Scene):
         self.settings = settings
         self.campaign = campaign
         self.progress: Progress | None = None
+        self.unreadable = ""  # why the progress file on disk cannot be read; while it is set, nothing here writes
         self.difficulty = Difficulty.MEDIUM
         self.notice = ""
         self.confirm_reset = False
@@ -43,8 +46,7 @@ class CampaignScene(Scene):
         try:
             self.progress = self.store.load()
         except SaveError as error:
-            self.progress = None
-            self.notice = f"The campaign progress could not be read: {error}"
+            self.unreadable = str(error)
         if self.progress is not None:
             self.difficulty = self.progress.difficulty
         self._build()
@@ -90,12 +92,24 @@ class CampaignScene(Scene):
         panel = Column(spacing=12, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
         panel.add(Label(self.campaign.title, text_style="title"))
         panel.add(Label(self.campaign.tagline, text_style="sub"))
-        if self.progress is None:
+        if self.unreadable:
+            self._build_unreadable(panel)
+        elif self.progress is None:
             self._build_fresh(panel)
         else:
             self._build_under_way(panel)
         panel.add(Label(lambda: self.notice, text_style="body", text_color=BAD, width=760, wrap=True))
         self.ui.add(panel)
+
+    def _build_unreadable(self, panel: Column) -> None:
+        """The player's place is in a file this version cannot read: say why, and offer no way in that would write over it."""
+        panel.add(Label("Campaign progress unavailable", text_style="heading", text_color=BAD))
+        panel.add(Label(self.unreadable, text_style="body", text_color=BAD, width=760, wrap=True))
+        panel.add(Label(f"The file is kept as it is. Start over sets it aside as {self.store.aside.name} and begins the campaign anew.",
+                        text_style="body", width=760, wrap=True))
+        panel.add(Row(Button(lambda: "Really start over?" if self.confirm_reset else "Start over", on_click=self.start_over, style=GHOST_BUTTON, width=190),
+                      Button("Back", hotkey="Esc", on_click=self.back, style=GHOST_BUTTON, width=120), spacing=8))
+        panel.add(Label(f"Kept in {home_relative(self.store.path.parent)}", text_style="sub"))
 
     def _build_fresh(self, panel: Column) -> None:
         panel.add(Label(f"{len(self.campaign.missions)} missions in three acts. The difficulty shifts every computer opponent one step; it is set for the whole campaign.",
@@ -166,7 +180,7 @@ class CampaignScene(Scene):
     # -- Actions --------------------------------------------------------------------------
 
     def set_difficulty(self, difficulty: Difficulty) -> None:
-        if self.progress is not None:
+        if self.progress is not None or self.unreadable:
             return
         self.difficulty = difficulty
         play_sound("button")
@@ -182,7 +196,10 @@ class CampaignScene(Scene):
         self.set_difficulty(Difficulty.HARD)
 
     def continue_campaign(self) -> None:
-        """Begin, resume the saved mission, open the next briefing, or read the epilogue: whatever comes next."""
+        """Begin, resume the saved mission, open the next briefing, or read the epilogue: whatever comes next.  Nothing
+        does while the progress cannot be read: beginning would write a new campaign over it."""
+        if self.unreadable:
+            return
         play_sound("button")
         if self.progress is None:
             self.progress = Progress(self.campaign.id, self.difficulty)
@@ -210,17 +227,24 @@ class CampaignScene(Scene):
         start_mission(self.game, self.campaign, mission, self.progress, self.settings)
 
     def start_over(self) -> None:
-        """Erase the progress and the saved mission; the first press only asks."""
+        """Erase the progress and the saved mission; the first press only asks.  Progress this version cannot read is
+        set aside instead of erased."""
         if not self.confirm_reset:
             self.confirm_reset = True
-            self.notice = "Press Start over again to erase the campaign's progress and its saved mission"
+            self.notice = ("Press Start over again to set the unreadable progress aside and erase its saved mission" if self.unreadable
+                           else "Press Start over again to erase the campaign's progress and its saved mission")
             return
         play_sound("button")
-        self.store.clear()
+        if self.unreadable:
+            self.store.set_aside()
+            self.notice = f"The unreadable progress is kept as {self.store.aside.name}"
+        else:
+            self.store.clear()
+            self.notice = ""
         self.game.save_manager.delete(CAMPAIGN_SLOT)
         self.progress = None
+        self.unreadable = ""
         self.confirm_reset = False
-        self.notice = ""
         self._build()
 
     def back(self) -> None:

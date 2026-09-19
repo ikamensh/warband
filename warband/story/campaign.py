@@ -460,10 +460,13 @@ class Progress:
 
 
 class ProgressStore:
-    """The progress file under the game's data directory, with the save manager's durable writes and backup."""
+    """The progress file under the game's data directory, with the save manager's durable writes and backup.  A file
+    this version cannot read must never be written over: :meth:`set_aside` moves it out of the way first."""
 
     def __init__(self, data_dir) -> None:
         self.saves = SaveManager(data_dir / "campaign")
+        self.path = data_dir / "campaign" / "save_1.json"
+        self.aside = self.path.with_name("save_1.unreadable.json")
 
     def load(self) -> Progress | None:
         saved = self.saves.load(1)
@@ -472,10 +475,15 @@ class ProgressStore:
         try:
             return Progress.from_dict(saved["state"])
         except (KeyError, TypeError, ValueError) as error:
-            raise SaveError(f"cannot read the campaign progress: {error}") from error
+            raise SaveError(f"Cannot read the campaign progress: {error}") from error
 
     def save(self, progress: Progress) -> None:
         self.saves.save(1, progress.to_dict(), "WarbandCampaign", summary={"completed": len(progress.completed)})
 
     def clear(self) -> None:
         self.saves.delete(1)
+
+    def set_aside(self) -> None:
+        """Move a progress file this version cannot read (a newer Warband's, or a damaged one) to :attr:`aside`, so a
+        new campaign begins without writing over it."""
+        self.path.replace(self.aside)

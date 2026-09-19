@@ -4,7 +4,7 @@ import pytest
 
 from saga2d import Game
 from saga2d.testing import assert_no_text_overlap, assert_text_fits, text_boxes
-from warband.story.campaign import Progress, ProgressStore
+from warband.story.campaign import FORMAT, Progress, ProgressStore
 from warband.story.campaign_scene import CampaignScene
 from warband.story.dialog import DialogScene
 from warband.story.mission_scene import MissionResultScene, MissionScene, build_world
@@ -121,6 +121,8 @@ SCREENS = {
     "campaign, fresh": lambda game: game.push(CampaignScene()),
     "campaign, under way": lambda game: (ProgressStore(game.data_dir).save(Progress(CAMPAIGN.id, Difficulty.HARD, completed=["hollowmere", "greywater"], flags={"truce": True})),
                                         game.push(CampaignScene())),
+    "campaign, unreadable": lambda game: (ProgressStore(game.data_dir).saves.save(1, {"format": FORMAT + 1, "campaign": CAMPAIGN.id}, "WarbandCampaign"),
+                                         game.push(CampaignScene())),
     "mission, objectives": lambda game: mission_scene(game, "hollowmere"),
     "dialogue, a line": lambda game: (s := mission_scene(game, "greywater"), game.push(DialogScene(s.mission.briefing, CAMPAIGN.speakers, s.run.vars))),
     "dialogue, a choice": lambda game: (s := mission_scene(game, "karst_hold"), game.push(DialogScene(s.mission.debrief[2:], CAMPAIGN.speakers, s.run.vars))),
