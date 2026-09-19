@@ -360,6 +360,17 @@ def test_shift_adds_a_group_or_a_box_to_the_selection_and_a_shift_click_takes_on
     assert scene.selection == [barracks.id]  # buildings are selected alone: the one clicked
 
 
+def test_in_the_modal_scheme_a_mine_or_a_rival_selected_shows_its_own_panel(game) -> None:
+    """The Modal scheme's home catalogue stands on the card while nothing of the player's own is selected, and the
+    panel took it for a catalogue opened: a gold mine or a rival showed "Train plans", never its gold or hit points."""
+    scene = match(game, "modal")
+    mine = min(scene.world.mines(), key=lambda m: math.dist(m.center, hall_of(scene).center))
+    scene.select([mine.id])
+    for _ in range(2):
+        game.tick(1 / 60)
+    assert f"{mine.gold} gold left" in [t["text"] for t in game.backend.texts]
+
+
 def test_a_rival_unit_that_leaves_sight_leaves_the_selection(game) -> None:
     """A rival unit stayed selected out of sight: its ring followed it through the fog and the panel read out its hit
     points, a spy in every selection."""

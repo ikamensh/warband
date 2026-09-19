@@ -2078,7 +2078,7 @@ class GameScene(Scene):
         self._queue_hits = []
         # A unit as it is; a building as the player knows it, which under the fog is as they last saw it.
         entities = [e for e in (self.world.units.get(i) or self.view.sighting(i) for i in self.selection) if e is not None]
-        if not entities or (self.shown_catalogue is not None and not self._builders()):  # planning for the settlement: what it has in hand
+        if not entities or (self.catalogue is not None and not self._builders()):  # planning for the settlement: what it has in hand
             self._draw_queue(x, y, w)
             self.command_tooltip.visible = bool(self.tooltip)
             return
