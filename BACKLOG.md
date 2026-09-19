@@ -44,7 +44,7 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-048 | Next | proposed | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
-| WB-049 | Next | proposed | Armour and attack types; archers strike the unarmoured harder | User 2026-09-19 |
+| WB-049 | Next | in progress | Armour and attack types; archers strike the unarmoured harder | User 2026-09-19 |
 | WB-050 | Next | proposed | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
 | WB-051 | Next | proposed | Clerics heal in visible single casts and carry a weak attack | User 2026-09-19 |
 | WB-052 | Next | done | Catapults look for a useful shot instead of standing idle in a melee | User 2026-09-19 |
@@ -118,6 +118,29 @@ the multipliers live. The native twins match the source (the fast-simulation
 fingerprints). The league shows no race and no unit pushed out of use,
 measured as the WB-balance league measures it. The rule change goes live
 through a server rollout.
+
+**Started 2026-09-19**, branch `armour-types`. **Acceptance (recorded before
+implementation):**
+
+1. `rules.py` gains `ArmorClass` (unarmoured, light, heavy, fortified) and
+   `AttackType` (normal, piercing, siege), and one table, `DAMAGE_FACTORS`,
+   is the only place a pairing's multiplier lives. It holds siege against
+   fortified at 1.5 (today's `siege` field, which is deleted) and piercing
+   against unarmoured at 1.5; every other pairing is 1.0. Peasants, clerics
+   and catapults are unarmoured, archers and scouts light, footmen and
+   knights heavy; every building is fortified. Archers (every race's) pierce,
+   catapults siege, the rest strike normally. Towers keep a normal attack,
+   because WB-037/WB-044's rush answers were measured on it.
+2. The multiplier applies before armour, as the siege factor did. A frame
+   still wears no armour (`test_a_frame_wears_no_armour_and_a_standing_tower_does`).
+   A save made before the change, with a stone in flight, still loads.
+3. Tests pin: an archer strikes a peasant, a cleric and a catapult for half
+   again its blow and a footman as before; a catapult strikes buildings as
+   before; a tower's arrow strikes a peasant as before; the table covers
+   every unit. The unit panel's armour and damage hints and the codex name
+   the classes. The native twins, the compiled simulation and the fast and
+   slow tiers pass; the fingerprint and `sim_bench` are refreshed. A ladder
+   with the archer, footman and siege archetypes shows none pushed out of use.
 
 ## WB-050 — Footmen hold a line
 
