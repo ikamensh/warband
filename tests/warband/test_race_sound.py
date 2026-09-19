@@ -1,5 +1,6 @@
 """Each race sounds like itself: voiced cues, race weapon Foley and a march of its own."""
 
+import itertools
 import random
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from saga2d import Game
 from warband.audio import music, sound
 from warband.sim.model import Event, World
+from warband.sim.races import RACES
 from warband.sim.rules import BuildingType, Race, Terrain, UnitType
 from warband.ui.scene import GameScene, new_game
 from warband.ui.style import build_theme
@@ -28,6 +30,20 @@ def test_cues_are_voiced_for_every_race_but_humans_and_impacts_follow_the_strike
     assert sound.impact_sound(swing, Race.HUMAN) == "sword_flesh"
     assert "hammer" in sound.combat_sound.WEAPONS and all(f"hammer_{m}_0" in sound.SOUNDS for m in sound.combat_sound.MATERIALS)
     assert {suite.battle for suite in music.SUITES.values()} | {music.TITLE_TRACK} <= set(music.TRACKS) and len(music.SUITES) == 4
+
+
+def test_every_blow_the_rules_allow_names_an_impact_the_bank_plays() -> None:
+    """In every race, whatever the rules give a blow may strike whatever they give hit points: a unit bare or armoured, a
+    building standing or still going up.  Each such hit names a weapon-on-material impact the bank has takes for.  The
+    tables walked are the rules' own, so whatever gains a blow is tried here the day it does: WB-051 armed the cleric,
+    the sound table had no weapon for it, and its first blow in view ended the match with a KeyError."""
+    for race, info in RACES.items():
+        kinds = (*info.units.items(), *info.buildings.items())
+        strikers = [kind for kind, row in kinds if row.damage]
+        struck = [kind for kind, row in kinds if row.hp]  # all but the gold mine: nobody's, and never hit
+        for striker, target, armor, complete in itertools.product(strikers, struck, (0, 2), (True, False)):
+            blow = Event("hit", (1.0, 1.0), source_type=striker.value, target_type=target.value, target_armor=armor, target_complete=complete)
+            assert sound.impact_sound(blow, race) in sound.IMPACTS, (race, striker, target)
 
 
 @pytest.mark.parametrize("race", list(Race))

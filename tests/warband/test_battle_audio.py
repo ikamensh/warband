@@ -7,7 +7,7 @@ import pytest
 from saga2d import Game
 from warband.audio import sound
 from warband.sim.model import Deposit, World
-from warband.sim.rules import BuildingType, Resource, Terrain, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, UNITS, BuildingType, Resource, Terrain, UnitType, Upgrade
 from warband.ui.scene import GameScene
 
 
@@ -60,22 +60,29 @@ def test_automatic_gold_deliveries_do_not_ring(battle):
     assert not scene.recent_sounds
 
 
-@pytest.mark.parametrize("attacker_type, weapon, target_type, material", [
-    (attacker, weapon, target, material)
-    for attacker, weapon in (
-        (UnitType.FOOTMAN, "sword"), (UnitType.PEASANT, "axe"),
-        (UnitType.SCOUT, "spear"), (UnitType.KNIGHT, "lance"),
-        (UnitType.ARCHER, "arrow"), (UnitType.CATAPULT, "stone"), (BuildingType.TOWER, "arrow"),
-    )
+#: Everything the rules give a blow.  The matrix below walks these, not a list of its own, so whatever gains a blow
+#: strikes in a live scene before it ships: WB-051 armed the cleric, and its first blow in view ended the match.
+STRIKERS = [kind for kind, info in (*UNITS.items(), *BUILDINGS.items()) if info.damage]
+#: What each is heard to strike with in the common Foley (a race's own arms are test_race_sound's).
+WEAPONS = {
+    UnitType.FOOTMAN: "sword", UnitType.PEASANT: "axe", UnitType.SCOUT: "spear", UnitType.KNIGHT: "lance",
+    UnitType.ARCHER: "arrow", UnitType.CATAPULT: "stone", UnitType.CLERIC: "arrow", BuildingType.TOWER: "arrow",
+}
+
+
+@pytest.mark.parametrize("attacker_type, target_type, material", [
+    (attacker, target, material)
+    for attacker in STRIKERS
     for target, material in (
         (UnitType.PEASANT, "flesh"), (UnitType.FOOTMAN, "armor"), (UnitType.CATAPULT, "wood"),
         (BuildingType.FARM, "wood"), (BuildingType.TOWER, "stone"),
     )
     if isinstance(attacker, UnitType) or isinstance(target, UnitType)  # towers only shoot units
 ])
-def test_killing_blow_keeps_the_targets_material(battle, target_type, material, attacker_type, weapon):
-    """A victim removed by the simulation must still produce its own impact sound."""
+def test_killing_blow_keeps_the_targets_material(battle, target_type, material, attacker_type):
+    """A victim removed by the simulation must still produce its own impact sound, whoever the rules let strike it."""
     game, scene, world = battle
+    weapon = WEAPONS[attacker_type]  # a new striker: say above what it is heard to hit with
     if attacker_type is UnitType.CATAPULT:
         attacker = world.spawn_unit(0, attacker_type, (7.5, 10.5))  # beyond its minimum range
     elif isinstance(attacker_type, UnitType):

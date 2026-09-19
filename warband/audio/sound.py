@@ -34,11 +34,13 @@ from warband.sim.rules import BuildingType, Race, UnitType
 Generator = Callable[[], np.ndarray]
 IMPACTS = frozenset(f"{weapon}_{material}" for weapon in combat_sound.WEAPONS for material in combat_sound.MATERIALS)
 
+#: What a blow lands as, for everything the rules give one (a unit or building with damage): a striker without a
+#: row here ends the match on its first blow in view.  The cleric's weak blow flies as the model's arrow shot.
 _WEAPONS = {
     UnitType.PEASANT.value: "axe", UnitType.FOOTMAN.value: "sword",
     UnitType.SCOUT.value: "spear", UnitType.KNIGHT.value: "lance",
     UnitType.ARCHER.value: "arrow", UnitType.CATAPULT.value: "stone",
-    BuildingType.TOWER.value: "arrow",
+    UnitType.CLERIC.value: "arrow", BuildingType.TOWER.value: "arrow",
 }
 #: Where a race arms a role differently: orc grunts and axethrowers swing axes and the ogre a club,
 #: dwarven ironguards carry axes and bear riders war hammers.  Every other role keeps the common Foley.
