@@ -28,7 +28,8 @@ WB-012, live as 0.2.34
 Removed 2026-09-19: WB-040, merged as `9c5caa4`
 ([`c49badb`](https://github.com/ikamensh/warband/blob/c49badb5f2baaca0d882f500caa09b38b4139864/BACKLOG.md)); WB-035, merged as `464328e`
 ([`2ad4dcb`](https://github.com/ikamensh/warband/blob/2ad4dcb7723c7d46d7c611fd254caa387a0df3e4/BACKLOG.md)); WB-043, merged as `66d35a5`
-([`0680eb5`](https://github.com/ikamensh/warband/blob/0680eb570c73abba14d3c431f89bedeba5846246/BACKLOG.md)).
+([`0680eb5`](https://github.com/ikamensh/warband/blob/0680eb570c73abba14d3c431f89bedeba5846246/BACKLOG.md)); WB-037, merged as `1b9880f`, live as 0.2.53
+([`5a57cb9`](https://github.com/ikamensh/warband/blob/5a57cb94292cd1e39a20969cfe7c4a3b827fac61/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
@@ -36,7 +37,6 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
 | WB-036 | Next | in progress | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often (branch `rush-draw`) | User 2026-09-18 |
-| WB-037 | Next | done | Answer a tower rush without stopping the economy: one tower by the mine now halts Master's gold | User 2026-09-18 |
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
@@ -186,136 +186,6 @@ does not: on branch `rush-draw`, `pro-rush` is Master's third posture
 (`PRO_FOR`, a third of the games each, drawn from the seed and the seat as
 before), `pro-hard-rush` is deleted, and the Master note names the rush. The
 720-game protocol with it: Easy 867, Hard 1442, Master 1665.
-
-## WB-037 — Answer a tower rush without stopping the economy
-
-Ilya asked on 2026-09-18 whether the computer players stop all mining when
-a tower goes up by their mine, which is strictly worse than any real answer.
-They do. It was measured the same day (script and log in
-`docs/evidence/tower-rush/`): Master played a player with no brain on ten
-seeds, and a finished enemy tower was placed 2–3 tiles behind Master's main
-mine at 150 s. In the next minute Master's gold fell to 0–1,400, against
-6,400–7,600 without the tower. In seven seeds the tower still stood at
-330 s. Master had 0–1 soldiers (12–22 without the tower) and 3–11 peasants
-(15–24 without), and its gold still came in at 0–2,300 a minute. In the
-other three seeds its army killed the tower within about a minute and mining
-resumed.
-
-The code shows three causes:
-
-* The automatic worker policy blocks every tile within the tower's range
-  plus 1.5 (7.5 tiles from its footprint) for automatic harvest and deposit
-  trips (`warband/worker_ai.py`, `_navigation`). A tower within about four
-  tiles of a mine covers every tile the mine is worked from, so no automatic
-  peasant goes to any face, even one the tower cannot reach. A tower that
-  also covers the hall's edge leaves peasants holding gold they cannot
-  deliver. The computer players' peasants are automatic, and so are a
-  human's.
-* Master defends only against enemy *units* within nine tiles of its
-  buildings (`ProBrain._threats`). A tower is a building, and a
-  peasant raising one is inside the construction, so no defence is called.
-  The soldiers meet the tower only when they wander into its range, a few
-  at a time, and they die a few at a time.
-* Orders the brain gives itself (`world.harvest` in `_chop`, builds) are not
-  automatic, so they path over plain ground, through the tower's fire. Where
-  the peasants actually die is still to be traced.
-
-Answers to iterate on, against WB-036's rushing posture:
-
-* A tower going up by the mine or hall is a threat. The army kills the
-  builder or the frame while its hit points are still low (`shell_hp`
-  starts it at a tenth), and peasants do it when there is no army.
-* A finished tower is attacked by a force that gathers out of its range and
-  is big enough to kill it, not by soldiers arriving one by one. Catapults
-  (seven tiles) outrange it.
-* The peasants keep working what is out of range: faces the tower cannot
-  reach, another known mine, the trees. None stands idle while safe work
-  exists, and none carries gold it cannot deliver.
-* `_defend` keeps peasants out of fights because calling them measured about
-  35 Elo worse. That was against soldiers; whether peasants should help
-  against a lone tower is to be measured, not assumed.
-
-The worker policy is part of the model. Changing its margin, or checking the
-faces one by one, moves the authoritative contract, so that part ships with
-the next rules series and its server rollout (with WB-024 and the model
-changes of WB-016). The brain's answers are client-side and need no rollout.
-
-**Done when:** on twenty or more seeds over all five layouts, against
-WB-036's rush posture and the evidence script's placed tower, Master and
-Hard stop the tower or kill it within a minute of its completion in nine
-games of ten, lose no more than three peasants to it, and bring in at least
-70 % of their unrushed gold over the three minutes after it appears. The
-placed tower becomes a regression test: gold resumes and the army does not
-die piecemeal. The fingerprint is refreshed deliberately, and the ladder
-confirms that Master's rating against ordinary opponents did not drop.
-
-**Started 2026-09-19** on branch `rush-answers` (worktree `../warband-rush`),
-off main after WB-036's posture and WB-043 merged. How the acceptance is
-counted (`docs/evidence/wb037/rush_answers.py` in that worktree, git-ignored
-until it becomes a tool): 20 seeds from 5000 on the ladder's boards (the three
-sizes and five layouts cycled by seed), the defender in both corners; the
-Vanguard, the Warden and Hard against `pro-rush`, and against the placed
-tower of `tower_freeze.py`. The rush's tower is the first enemy tower within
-4.5 tiles of the defender's main mine. A game passes when that tower never
-stands or dies within a minute of standing, kills at most three of the
-defender's peasants, and the defender's gold over the three minutes after
-the tower appeared is at least 70% of the same board without the rush
-(against `pro-vanguard`, or no tower placed). Baseline on main `66d35a5`:
-the rush raised its frame in 32, 32 and 35 of 40 games against the
-Vanguard, the Warden and Hard, and 9, 10 and 5 of 40 passed (median gold
-22%, 22%, 26%); against the placed tower 12, 10 and 1 passed.
-
-Traced on seed 5000: the tower went up one tile from the hall, so every
-depot tile was in danger. Carriers holding gold had an escape to safe ground
-but no route on from there, and `World._plan_work_route` then left them
-standing in the fire: eight died holding gold. A worker caught on forbidden
-ground now walks out to the nearest safe ground even when its work cannot be
-reached from there (`World._take_cover`, a model change: contract and
-rollout). With that alone, games with at most three peasants lost went from
-15, 17 and 29 of 40 to 37, 34 and 40. The rusher walks through the base past
-the hall and starts its frame 4 to 15 seconds after it is first seen; inside
-the frame nothing reaches it, and the frame gains 10 hit points a second,
-more than two footmen take off it. Next, measured one at a time: peasants
-hunt a lone enemy builder inside the base; soldiers attack a frame they can
-outpace; a finished tower is struck by a force gathered out of its range.
-
-**Done 2026-09-19, merged into main as `1b9880f`** (`3859e53` on branch
-`rush-answers`) and live with the server rollout recorded in
-[saga-online's `docs/wb037-rollout.md`](../saga-online/docs/wb037-rollout.md)
-(bundle `953a83c6…`, Warband 0.2.53 promoted, public downloads checked).
-Model: a worker caught on forbidden ground walks out to the nearest safe tile
-even when its work cannot be reached from there (`World._take_cover`,
-sharing `World._way_out` with the route planner), and a melee attacker on a
-building aims for an open tile of its ring (`World._siege_spot`): ten of
-twelve peasants had stood a path's end short of a tower whose near side trees
-closed. Brain: a lone enemy peasant inside the base draws a party of five
-from where it is heading (`hunt_party`); a tower on our ground is struck by
-the soldiers at home and as many peasants, miners too, as bring it down in
-twenty seconds, from its frame's last twenty-five seconds on, and a young
-frame the force at hand can outpace is swarmed at once (`strike_seconds`,
-`strike_lead`, `strikers_max`). Tests: `test_rush_answers.py` (the waiting
-builder dies, a young frame falls, and with the answers off neither happens;
-a tower placed behind the mine is down within a minute with the gold back, on
-two seeds for each Master posture, slow tier), a carrier under a tower by the
-hall (`test_worker_ai.py`) and attackers round a building with a closed side
-(`test_melee_positioning.py`); each fails on the code before.
-
-On 20 fresh seeds from 7000 (`docs/evidence/wb037/fresh2.txt`): against the
-placed tower all three counts hold in 38 of 39 games for the Vanguard, 39 of
-40 for the Warden and 32 of 40 for Hard. Against `pro-rush` the tower is
-stopped or killed within a minute of standing in 38, 39 and 30 of 40 games
-and at most three peasants die to it in 37, 37 and 34; all three counts hold
-in 32, 31 and 19, because the rusher's first push arrives as its tower stands
-and the defender keeps 70% of its gold in about half the games with a frame.
-That is the part of the acceptance not met, and Hard's slow strike (43 to 83 s
-in eight placed games) with it: both go on as WB-044, with the same counts.
-Level with the unanswered twins in ordinary play (49%, 50%, 49% over 96 games
-each); the 720-game protocol re-rated Easy 866, Hard 1424, Master 1651 (the
-screen shows 870, 1000, 1420, 1650); fingerprint and `sim_bench.txt`
-refreshed, the bench back to 0.041 ms a step once the ring's occupancy was one
-query per building. Main ran
-[Tests 35410028696](https://github.com/ikamensh/warband/actions/runs/35410028696)
-and [native package checks 35410028686](https://github.com/ikamensh/warband/actions/runs/35410028686).
 
 ## WB-038 — Paint the gold mine
 
