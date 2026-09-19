@@ -41,7 +41,7 @@ from warband.sim.rules import (
     PLUNDER_SHARE, REGROWTH_SECONDS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION, STARTING_GOLD, STARTING_LUMBER,
     ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, SIEGE_BUILDING_WORTH, SIEGE_STEP, SIEGE_WORTH, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
     MAX_QUEUED_ORDERS, UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
-    Terrain, UnitInfo, UnitType, Upgrade,
+    Terrain, UnitInfo, UnitType, Upgrade, ArmorClass, AttackType, damage_factor,
 )
 
 #: The fastest any unit of any race moves, with every upgrade: how far off a friend can be and still walk under a stone
@@ -409,7 +409,7 @@ class Projectile:
     flight: float  # seconds in the air
     damage: int
     splash: float = 0.0
-    siege: float = 1.0
+    attack: AttackType = AttackType.NORMAL
 
     @property
     def lands_at(self) -> float:
@@ -840,6 +840,9 @@ class World:
     def frenzied(self, unit: Unit) -> bool:
         """An orc soldier below half health fights in a frenzy."""
         return unit.race is Race.ORC and not unit.is_worker and unit.info.damage > 0 and unit.hp * 2 < unit.max_hp
+
+    def armor_class_of(self, entity: Entity) -> ArmorClass:
+        return ArmorClass.FORTIFIED if isinstance(entity, Building) else entity.info.armor_class
 
     def armor_of(self, entity: Entity) -> int:
         """A building still going up wears no armour: a frame is scaffolding, so peasants can pull it down."""
@@ -2716,24 +2719,25 @@ class World:
         """One blow from *u* at *target*: a melee hit lands now, an arrow goes up and lands when it arrives."""
         damage = self.damage_of(u)
         if u.info.melee:
-            self._hit(target, damage, player=u.player, source=u.id, source_type=u.type.value, siege=u.info.siege)
+            self._hit(target, damage, player=u.player, source=u.id, source_type=u.type.value, attack=u.info.attack)
         else:
             self._launch_arrow(u, target, damage)
 
     def _launch_arrow(self, shooter: Entity, target: Entity, damage: int) -> Projectile:
         start = self._target_point(shooter)
         aim = self._target_point(target)
-        return self._launch(shooter, "arrow", start, aim, target.id, damage, max(SIM_DT, dist(start, aim) / ARROW_SPEED))
+        attack = shooter.info.attack if isinstance(shooter, Unit) else AttackType.NORMAL  # a tower's arrow strikes a normal blow
+        return self._launch(shooter, "arrow", start, aim, target.id, damage, max(SIM_DT, dist(start, aim) / ARROW_SPEED), attack=attack)
 
     def _launch_stone(self, u: Unit, aim: Point) -> Projectile:
         return self._launch(u, "stone", u.pos, aim, None, self.damage_of(u), self._stone_flight(u.pos, aim),
-                            splash=self.splash_of(u), siege=u.info.siege)
+                            splash=self.splash_of(u), attack=u.info.attack)
 
     def _launch(self, shooter: Entity, kind: str, start: Point, aim: Point, target: int | None, damage: int, flight: float, *,
-                splash: float = 0.0, siege: float = 1.0) -> Projectile:
+                splash: float = 0.0, attack: AttackType = AttackType.NORMAL) -> Projectile:
         assert shooter.player is not None
         p = Projectile(self._new_id(), shooter.player, shooter.id, shooter.type.value, kind, start, aim, target, self.time, flight, damage,
-                       splash=splash, siege=siege)
+                       splash=splash, attack=attack)
         self.projectiles[p.id] = p
         return p
 
@@ -2865,7 +2869,7 @@ class World:
                 continue
             target = self.entity(p.target)
             if target is not None and target.hp > 0 and not (isinstance(target, Unit) and target.hidden):
-                self._hit(target, p.damage, player=p.player, source=p.source, source_type=p.source_type, siege=p.siege, ranged=True)
+                self._hit(target, p.damage, player=p.player, source=p.source, source_type=p.source_type, attack=p.attack, ranged=True)
 
     def _land_stone(self, p: Projectile) -> None:
         """A stone comes down: its full damage within DIRECT_HIT of the point and SPLASH_FRACTION of it out
@@ -2878,22 +2882,24 @@ class World:
             gap = dist(p.aim, unit.pos) - unit.radius
             if gap <= p.splash:
                 self._hit(unit, p.damage if gap <= DIRECT_HIT else splash, player=p.player, source=p.source, source_type=p.source_type,
-                          siege=p.siege, ranged=True)
+                          attack=p.attack, ranged=True)
         for building in list(self.buildings.values()):
             if building.player in (None, p.player) or building.hp <= 0:
                 continue
             gap = rect_gap(p.aim, building.rect)
             if gap <= p.splash:
                 self._hit(building, p.damage if gap <= DIRECT_HIT else splash, player=p.player, source=p.source, source_type=p.source_type,
-                          siege=p.siege, ranged=True)
+                          attack=p.attack, ranged=True)
 
-    def _hit(self, target: Entity, damage: int, *, player: int, source: int, source_type: str, siege: float = 1.0, ranged: bool = False) -> None:
+    def _hit(self, target: Entity, damage: int, *, player: int, source: int, source_type: str,
+             attack: AttackType = AttackType.NORMAL, ranged: bool = False) -> None:
         """*damage* from *player*'s *source* (a unit or building, possibly gone by now) lands on *target*."""
         if target.hp <= 0:
             return  # already down this step (a siege splash after the killing blow)
         armor = self.armor_of(target)
-        if isinstance(target, Building):
-            damage = int(round(damage * siege))
+        factor = damage_factor(attack, self.armor_class_of(target))
+        if factor != 1.0:
+            damage = int(round(damage * factor))
         roll = damage * self.rng.uniform(1 - HIT_VARIANCE, 1 + HIT_VARIANCE)
         dealt = max(1, int(round(roll)) - armor)
         target.hp -= dealt
@@ -3228,12 +3234,19 @@ def _unit_from_dict(d: dict[str, Any], race: Race) -> Unit:
 
 def _projectile_to_dict(p: Projectile) -> dict[str, Any]:
     d = dict(vars(p))
-    d["start"], d["aim"] = list(p.start), list(p.aim)
+    d["start"], d["aim"], d["attack"] = list(p.start), list(p.aim), p.attack.value
     return d
 
 
 def _projectile_from_dict(d: dict[str, Any]) -> Projectile:
-    return Projectile(**{**d, "start": tuple(d["start"]), "aim": tuple(d["aim"])})
+    d = {**d, "start": tuple(d["start"]), "aim": tuple(d["aim"])}
+    if "siege" in d:  # saved before WB-049, which carried the building multiplier: a stone sieges, an archer's arrow pierces
+        siege = d.pop("siege")
+        d["attack"] = (AttackType.SIEGE if siege != 1.0 else AttackType.PIERCING if d["source_type"] == UnitType.ARCHER.value
+                       else AttackType.NORMAL)
+    else:
+        d["attack"] = AttackType(d["attack"])
+    return Projectile(**d)
 
 
 def _building_to_dict(b: Building) -> dict[str, Any]:

@@ -23,6 +23,10 @@ Balance in one table (base values; upgrades in :data:`UPGRADES`):
 | catapult | 700+200   |100 | 36  | 0     | 2..7  | 0.8 + 3.0          | 150°/s| 1.6   | siege: stones land where aimed, splash friend and foe, ×1.5 vs buildings; helpless inside two tiles |
 | cleric   | 700+50    | 40 | —   | 0     | 3     | —                  | 360°/s| 2.4   | heals 6 hp/s; no attack; protect it     |
 
+Armour classes and attack types (WB-049, :data:`DAMAGE_FACTORS`): peasants, clerics and catapults are unarmoured,
+archers and scouts light, footmen and knights heavy, buildings fortified; archers pierce, catapults siege, the rest
+and towers strike normally.  Piercing lands ×1.5 on the unarmoured, siege ×1.5 on buildings, everything else ×1.
+
 A building's armour is :data:`BUILDINGS`' once it stands; a frame still going up wears none.
 """
 
@@ -114,6 +118,21 @@ class Upgrade(IdentityEnum):
     BLASTING_POWDER = "blasting_powder"
 
 
+class ArmorClass(IdentityEnum):
+    """What a unit or building wears, for :data:`DAMAGE_FACTORS`."""
+    UNARMORED = "unarmoured"
+    LIGHT = "light"
+    HEAVY = "heavy"
+    FORTIFIED = "fortified"  # every building
+
+
+class AttackType(IdentityEnum):
+    """What kind of blow a unit or building strikes, for :data:`DAMAGE_FACTORS`."""
+    NORMAL = "normal"
+    PIERCING = "piercing"  # arrows, thrown axes, bolts
+    SIEGE = "siege"  # stones
+
+
 @dataclass(frozen=True)
 class UnitInfo:
     name: str
@@ -131,7 +150,8 @@ class UnitInfo:
     summary: str
     heal: int = 0  # hit points restored per second; a healer has no attack
     splash: float = 0.0  # radius around where a stone lands that also takes damage; a siege engine
-    siege: float = 1.0  # damage multiplier against buildings
+    attack: AttackType = AttackType.NORMAL
+    armor_class: ArmorClass = ArmorClass.LIGHT
     mounted: bool = False  # benefits from HORSES
     windup: float = 0.0  # seconds from the decision to strike to the blow landing; the unit stands committed meanwhile
     turn: float = math.radians(360)  # radians per second the unit pivots
@@ -155,20 +175,22 @@ MELEE: Final = 0.45  # reach of a melee unit: it strikes from the next tile over
 
 UNITS: Final[dict[UnitType, UnitInfo]] = {
     UnitType.PEASANT: UnitInfo("Peasant", Cost(400), 30, 3, 0, MELEE, 1.0, 2.4, 4, 12.0, BuildingType.TOWN_HALL, "p",
-                               "Mines gold, chops lumber, builds and repairs", windup=0.25),
+                               "Mines gold, chops lumber, builds and repairs", windup=0.25, armor_class=ArmorClass.UNARMORED),
     UnitType.FOOTMAN: UnitInfo("Footman", Cost(600), 60, 7, 2, MELEE, 1.0, 2.4, 5, 15.0, BuildingType.BARRACKS, "f",
-                               "Sturdy swordsman; the line of any army", windup=0.3),
+                               "Sturdy swordsman; the line of any army", windup=0.3, armor_class=ArmorClass.HEAVY),
     UnitType.ARCHER: UnitInfo("Archer", Cost(500, 50), 40, 6, 0, 4.0, 1.3, 2.4, 6, 14.0, BuildingType.BARRACKS, "a",
-                              "Shoots from four tiles away; fragile up close", windup=0.35),
+                              "Shoots from four tiles away; fragile up close", windup=0.35, attack=AttackType.PIERCING),
     UnitType.SCOUT: UnitInfo("Scout", Cost(350), 35, 4, 0, MELEE, 0.8, 4.2, 8, 10.0, BuildingType.STABLES, "s",
                              "Fast rider who sees far; raids peasants and archers", mounted=True, windup=0.25, turn=math.radians(450)),
     UnitType.KNIGHT: UnitInfo("Knight", Cost(900, 100), 90, 10, 4, MELEE, 1.0, 3.4, 5, 20.0, BuildingType.STABLES, "k",
-                              "Fast, heavily armoured shock cavalry", mounted=True, windup=0.35, turn=math.radians(270)),
+                              "Fast, heavily armoured shock cavalry", mounted=True, windup=0.35, turn=math.radians(270),
+                              armor_class=ArmorClass.HEAVY),
     UnitType.CATAPULT: UnitInfo("Catapult", Cost(700, 200), 100, 36, 0, 7.0, 3.0, 1.6, 6, 30.0, BuildingType.WORKSHOP, "c",
                                 "Slow siege engine: stones land where aimed, splash friend and foe, ×1.5 against buildings",
-                                splash=1.2, siege=1.5, windup=0.8, turn=math.radians(150), min_range=2.0),
+                                splash=1.2, windup=0.8, turn=math.radians(150), min_range=2.0, attack=AttackType.SIEGE,
+                                armor_class=ArmorClass.UNARMORED),
     UnitType.CLERIC: UnitInfo("Cleric", Cost(700, 50), 40, 0, 0, 3.0, 1.0, 2.4, 5, 20.0, BuildingType.CHURCH, "l",
-                              "Heals wounded allies nearby; cannot fight", heal=6),
+                              "Heals wounded allies nearby; cannot fight", heal=6, armor_class=ArmorClass.UNARMORED),
 }
 
 
@@ -274,6 +296,18 @@ WINDUP_SLACK: Final = 0.5  # tiles a target may slip beyond weapon reach during 
 ARROW_SPEED: Final = 14.0  # tiles per second an arrow, axe or bolt flies; it follows its mark and strikes on arrival
 STONE_SPEED: Final = 7.0  # tiles per second a siege stone covers; it comes down on the ground it was fired at
 STONE_MIN_FLIGHT: Final = 0.4  # seconds even the shortest lob spends in the air
+#: How hard each kind of blow lands on each kind of armour, before armour is subtracted; a pairing not listed is 1.
+#: The one place these multipliers live (WB-049).  Towers strike a normal blow.
+DAMAGE_FACTORS: Final[dict[tuple[AttackType, ArmorClass], float]] = {
+    (AttackType.PIERCING, ArmorClass.UNARMORED): 1.5,
+    (AttackType.SIEGE, ArmorClass.FORTIFIED): 1.5,
+}
+
+
+def damage_factor(attack: AttackType, armor: ArmorClass) -> float:
+    return DAMAGE_FACTORS.get((attack, armor), 1.0)
+
+
 FRIENDLY_MARGIN: Final = 0.3  # tiles beyond its splash a siege crew keeps a stone from its own side when firing on its own
 SIEGE_STEP: Final = 3.0  # tiles beyond its reach a siege crew on its own judgement will roll forward for a clear shot
 SIEGE_WORTH: Final = {UnitType.CATAPULT: 3.0, UnitType.CLERIC: 3.0, UnitType.ARCHER: 2.0}  # what a stone on them is worth to a crew; any other unit 1

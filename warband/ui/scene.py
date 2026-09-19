@@ -26,7 +26,7 @@ from warband.ui.icons import Icon, draw_icon
 from warband.sim.model import Building, Entity, Event, Pos, RuleError, Unit, World
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon
 from warband.sim.races import RACES, RaceInfo
-from warband.sim.rules import BUILDINGS, SIM_DT, UPGRADES, BuildingType, Difficulty, MapTheme, Race, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, DAMAGE_FACTORS, SIM_DT, UPGRADES, ArmorClass, AttackType, BuildingType, Difficulty, MapTheme, Race, UnitType, Upgrade
 from warband.sim.rules import Layout as MapLayout
 from warband.records.profile import MatchResult, Profile, RatingChange, Standing, rated, standing
 from warband.records.replay import Replay, ReplayStore
@@ -81,6 +81,16 @@ PORTRAIT_GAP = 3
 PORTRAIT_COLS = 13
 PORTRAIT_ROWS = 2
 PORTRAITS_PER_PAGE = PORTRAIT_COLS * PORTRAIT_ROWS  # a larger selection pages; the grid's last cell turns the page
+
+
+def armour_name(armor: ArmorClass) -> str:
+    return armor.value if armor is ArmorClass.UNARMORED else f"{armor.value} armour"
+
+
+def attack_hint(attack: AttackType) -> str:
+    """What a kind of blow does beyond its number, from :data:`DAMAGE_FACTORS`, for the unit panel."""
+    better = [f"×{factor:g} against {armor.value if armor is not ArmorClass.FORTIFIED else 'buildings'}" for (kind, armor), factor in DAMAGE_FACTORS.items() if kind is attack]
+    return attack.value + (f", {', '.join(better)}" if better else "")
 
 
 def _clock(seconds: float) -> str:
@@ -1773,8 +1783,9 @@ class GameScene(Scene):
         if isinstance(entity, Unit):
             info = entity.info
             primary = (("health", f"{world.heal_rate(entity):g}/s", "Healing restored per second") if info.heal
-                       else ("damage", str(world.damage_of(entity)), "Damage per strike"))
-            stats = [primary, ("armor", str(world.armor_of(entity)), "Armour, subtracted from every blow"),
+                       else ("damage", str(world.damage_of(entity)), f"Damage per strike; {attack_hint(info.attack)}"))
+            stats = [primary, ("armor", str(world.armor_of(entity)),
+                               f"{armour_name(info.armor_class).capitalize()}; armour is subtracted from every blow"),
                      ("range", f"{world.range_of(entity):g}", "Healing range in tiles" if info.heal else "Attack range in tiles"),
                      ("speed", f"{world.speed_of(entity):g}", "Speed in tiles per second")]
             mx, my = self.mouse
@@ -2269,7 +2280,9 @@ class CodexScene(_Overlay):
             for unit_type, info in race.units.items():
                 rows.append([info.name, str(info.cost), str(info.hp), str(info.damage) if info.damage else f"heal {info.heal}",
                              str(info.armor), "melee" if info.range < 1 else f"{info.range:g}", f"{info.speed:g}",
-                             race.buildings[info.trained_at].name, info.summary])
+                             race.buildings[info.trained_at].name,
+                             f"{info.summary} · {armour_name(info.armor_class)}"
+                             + (f", {info.attack.value}" if info.damage and info.attack is not AttackType.NORMAL else "")])
             return (150, 198, 40, 60, 40, 55, 42, 140, 367), rows
         if self.page == 1:
             rows = [["Building", "Cost", "HP", "Arm", "Size", "Time", "Requires", "What it does"]]

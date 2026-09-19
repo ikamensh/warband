@@ -44,7 +44,7 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-048 | Next | proposed | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
-| WB-049 | Next | in progress | Armour and attack types; archers strike the unarmoured harder | User 2026-09-19 |
+| WB-049 | Next | done | Armour and attack types; archers strike the unarmoured harder | User 2026-09-19 |
 | WB-050 | Next | proposed | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
 | WB-051 | Next | proposed | Clerics heal in visible single casts and carry a weak attack | User 2026-09-19 |
 | WB-052 | Next | done | Catapults look for a useful shot instead of standing idle in a melee | User 2026-09-19 |
@@ -141,6 +141,28 @@ implementation):**
    the classes. The native twins, the compiled simulation and the fast and
    slow tiers pass; the fingerprint and `sim_bench` are refreshed. A ladder
    with the archer, footman and siege archetypes shows none pushed out of use.
+
+**Done 2026-09-19** (branch `armour-types`). `ArmorClass`, `AttackType`,
+`DAMAGE_FACTORS` and `damage_factor` are in `rules.py`; `World._hit` applies
+the factor before armour, and `UnitInfo.siege` is deleted. Projectiles carry
+their attack type, and a save made before the change still loads with its
+shots in flight: a stone is read as siege, an archer's arrow as piercing,
+anything else as normal. `tests/warband/test_armour_types.py` (eight tests)
+pins the archer against peasant, cleric and catapult (half again), against
+a footman (as listed), a footman against a peasant, a tower's arrow against
+a peasant, a stone against a farm, the table and the old save. The frame
+test still passes. The unit panel's damage hint names the attack and what
+it does ("piercing, ×1.5 against unarmoured"), its armour hint the class;
+the codex's role column adds the class and any attack that is not normal.
+Both were looked at, and `tools/visual_lint.py` passes `codex_0` at
+1280x800 and 1200x680 (a longer first wording overflowed 1200x680 and was
+shortened). Ladder, nine agents with the archer, footman, siege, raider
+and cleric archetypes, 12 seeds, 864 matches, branch against main: every
+move is inside the 90% intervals. The siege archetype drops 68 (its
+catapults are unarmoured now) and the raiders 47; the archers -11, the
+clerics -30, the footmen -14, Hard -9, the Vanguard -25, the Warden +6. No
+agent is pushed out of use. Fuzz (seed 81) is clean; the fingerprint and
+`sim_bench` are refreshed. Fast and slow tiers pass (1003 and 486).
 
 ## WB-050 — Footmen hold a line
 

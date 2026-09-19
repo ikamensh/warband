@@ -54,7 +54,7 @@ def test_a_selected_unit_shows_its_numbers_beside_symbols_with_hints(play) -> No
     px, py, pw, ph = scene.selection_panel.bounds
     x, y = px + 16, py + 14  # the card's origin; its damage symbol sits at (x + 88, y + 45)
     hover(game, scene, x + 88 + 10, y + 52)
-    assert scene.tooltip == "Damage per strike"
+    assert scene.tooltip == "Damage per strike; piercing, ×1.5 against unarmoured"  # WB-049: what the table does to its blow
     hover(game, scene, x + 88 + 78 * 2 + 10, y + 52)
     assert scene.tooltip == "Attack range in tiles"
 
