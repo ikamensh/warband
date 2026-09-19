@@ -210,3 +210,29 @@ def test_attackers_at_a_building_whose_near_side_is_closed_spread_round_it():
         world.step()
         striking.update(event.entity for event in world.take_events() if event.kind == "hit" and event.other == farm.id)
     assert len(striking) == len(attackers), f"only {len(striking)} of {len(attackers)} reached the farm"
+
+
+@pytest.mark.parametrize("attacker", [UnitType.FOOTMAN, UnitType.KNIGHT])
+@pytest.mark.parametrize("cover", ["tree", "farm"])
+def test_melee_goes_round_a_single_tree_or_wall_between_it_and_a_foe_standing_still(attacker, cover):
+    """The contact spot on the attacker's side of its foe fell in the tree, the path ended on the open tile short of it,
+    and nothing planned again: a footman stood behind one tree for a minute while the archer it was sent at shot it."""
+    terrain = [[Terrain.GRASS] * 30 for _ in range(24)]
+    if cover == "tree":
+        terrain[12][13] = Terrain.TREES
+    world = World(30, 24, terrain, 2)
+    world.rng.seed(1)
+    world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
+    world.place_building(1, BuildingType.TOWN_HALL, (26, 1))
+    if cover == "farm":
+        world.place_building(1, BuildingType.FARM, (12, 12))
+    archer = world.spawn_unit(1, UnitType.ARCHER, (14.4, 12.5) if cover == "tree" else (14.4, 13.0))
+    world.hold([archer.id])
+    soldier = world.spawn_unit(0, attacker, (6.5, 12.5))
+    world.attack([soldier.id], archer.id)
+    for _ in range(200):
+        world.step()
+        if any(e.kind == "hit" and e.entity == soldier.id and e.other == archer.id for e in world.take_events()):
+            return
+    raise AssertionError(f"no blow in ten seconds; the {attacker.value} stands at {soldier.pos}")
+

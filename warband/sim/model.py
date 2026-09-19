@@ -2168,7 +2168,9 @@ class World:
         return best is not None and self._steer(u, best, dt)
 
     def _melee_position(self, u: Unit, target: Entity) -> Point:
-        """Aim for contact in open ground, rather than the occupied target tile."""
+        """Aim for contact in open ground, rather than the occupied target tile: on the attacker's side of a unit, or,
+        where that side is a tree or a wall, from the open tile round it nearest the attacker.  A path cannot end in a
+        tree: the attacker stopped on the open tile short of it, out of reach, and never planned again."""
         if isinstance(target, Building):
             spot = self._siege_spot(u, target)
             if spot is not None:
@@ -2178,11 +2180,26 @@ class World:
             radius = 0.0
         else:
             point, radius = target.pos, target.radius
-        dx, dy = u.x - point[0], u.y - point[1]
-        distance = hypot(dx, dy) or 1e-6
         reach = radius + u.radius + self.range_of(u) * .8
-        # The spot is on the attacker's side of the target, so a target at the edge of the map puts it
-        # off the map — and a tile lookup truncates x=-0.04 to tile 0, so nothing on the way would notice.
+        contact = self._contact(point, u.pos, reach)
+        if isinstance(target, Unit) and not self.passable(int(contact[0]), int(contact[1])):
+            tx, ty = int(point[0]), int(point[1])
+            best: Point | None = None
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    if (dx or dy) and self.passable(tx + dx, ty + dy):
+                        side = self._contact(point, tile_center((tx + dx, ty + dy)), reach)
+                        if self.passable(int(side[0]), int(side[1])) and (best is None or dist(side, u.pos) < dist(best, u.pos)):
+                            best = side
+            if best is not None:
+                contact = best
+        return contact
+
+    def _contact(self, point: Point, towards: Point, reach: float) -> Point:
+        """The point *reach* from *point* in the direction of *towards*, on the map: a target at its edge would put it off
+        the map, and a tile lookup truncates x=-0.04 to tile 0, so nothing on the way would notice."""
+        dx, dy = towards[0] - point[0], towards[1] - point[1]
+        distance = hypot(dx, dy) or 1e-6
         return self._clamp((point[0] + dx / distance * reach, point[1] + dy / distance * reach))
 
     def _siege_spot(self, u: Unit, target: Building) -> Point | None:
