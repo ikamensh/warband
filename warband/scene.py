@@ -2012,10 +2012,7 @@ class PauseScene(_Overlay):
         self.game.push(LeaveScene(scene, where, verb, lambda: (scene.conclude("left", where), then())))
 
     def new_game(self) -> None:
-        scene = self.game_scene
-        self._leave("New game", lambda: self.game.clear_and_push(
-            new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players), difficulty=scene.difficulty,
-                     theme=scene.world.theme, settings=scene.settings, races=[p.race for p in scene.world.players], layout=scene.world.layout)))
+        self._leave("New game", lambda: self.game.clear_and_push(next_game(self.game_scene)))
 
     def back_to_title(self) -> None:
         from warband.title import TitleScene
@@ -2389,10 +2386,7 @@ class GameOverScene(_Overlay):
                                       players=len(scene.world.players), run_id=scene.run_id, error=self.score_error))
 
     def new_game(self) -> None:
-        scene = self.game_scene
-        self.game.clear_and_push(new_game(scene.seed + 1, width=scene.world.width, height=scene.world.height, players=len(scene.world.players),
-                                          difficulty=scene.difficulty, theme=scene.world.theme, settings=scene.settings,
-                                          races=[p.race for p in scene.world.players], layout=scene.world.layout))
+        self.game.clear_and_push(next_game(self.game_scene))
 
     def back_to_title(self) -> None:
         from warband.title import TitleScene
@@ -2412,6 +2406,30 @@ def new_game(seed: int, width: int = 48, height: int = 40, players: int = 2, *, 
     """*layout* ``None`` draws one from the seed."""
     return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players, theme=theme, races=races, layout=layout), seed,
                      difficulty=difficulty, settings=settings)
+
+
+FAIR_TRIES = 20
+
+
+def fair_map(seed: int, width: int, height: int, players: int, *, theme: MapTheme = MapTheme.SUMMER,
+             races: list[Race | None] | None = None, layout: MapLayout | None = None) -> tuple[int, World]:
+    """The first seed from *seed* on that makes a fair map of these settings, and its map: for a seed the game
+    chooses. A few seeds in a thousand make none at some settings (WB-046); a seed the player gives goes to
+    :func:`mapgen.generate` as given, and fails there."""
+    for candidate in range(seed, seed + FAIR_TRIES):
+        try:
+            return candidate, mapgen.generate(candidate, width, height, players, theme=theme, races=races, layout=layout)
+        except mapgen.NoFairMap:
+            continue
+    raise mapgen.NoFairMap(f"No fair map at {width}x{height} for {players} players from any seed of {seed} to {seed + FAIR_TRIES - 1}.")
+
+
+def next_game(scene: GameScene) -> GameScene:
+    """A new match with *scene*'s settings and races on the next seed that makes a fair map."""
+    world = scene.world
+    seed, fresh = fair_map(scene.seed + 1, world.width, world.height, len(world.players), theme=world.theme,
+                           races=[p.race for p in world.players], layout=world.layout)
+    return GameScene(fresh, seed, difficulty=scene.difficulty, settings=scene.settings)
 
 
 def check_save(state: dict[str, Any]) -> World:

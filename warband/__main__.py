@@ -11,12 +11,13 @@ briefing (for looking at one mission; ``--mission list`` names them).
 from __future__ import annotations
 
 import argparse
+from typing import Any
 
 from saga2d import add_match_arguments, match_from_arguments
 from saga2d import Game, fonts
 from warband import mapgen, sound
 from warband.rules import Difficulty, Layout, MapTheme, Race
-from warband.scene import DEFAULT_SETTINGS, new_game
+from warband.scene import DEFAULT_SETTINGS, fair_map, new_game
 from warband.style import build_theme
 from warband.title import TitleScene
 
@@ -54,15 +55,12 @@ def main() -> None:
     sound.apply_volumes(settings["music"], settings["sfx"])
     from warband.authority import WarbandMatch
     from warband.multiplayer import NetworkGameScene
-    width, height = mapgen.SIZES[args.size]
     layout = None if args.layout == "any" else Layout(args.layout)
-    options = {'seed': args.seed if args.seed is not None else mapgen.fresh_seed(), 'width': width,
-               'height': height, 'theme': args.theme, 'races': [args.race, None], 'layout': args.layout}
     lobby = match_from_arguments(args, parser, title="Warband", game_id="warband-v2",
-                                 create_match=lambda: WarbandMatch(**{**options, 'theme': MapTheme(args.theme), 'races': (Race(args.race), None),
-                                                                      'layout': layout}),
+                                 create_match=lambda: WarbandMatch(**{**lobby_options(args), 'theme': MapTheme(args.theme),
+                                                                      'races': (Race(args.race), None), 'layout': layout}),
                                  create_scene=lambda session, match: NetworkGameScene(session, match, settings=settings),
-                                 create_options=lambda: options, game=game)
+                                 create_options=lambda: lobby_options(args), game=game)
     if lobby is not None:
         game.run(lobby)
         return
@@ -85,6 +83,16 @@ def main() -> None:
     else:
         game.run(TitleScene(size=args.size, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme), race=Race(args.race),
                             layout=layout, settings=settings))
+
+
+def lobby_options(args: argparse.Namespace) -> dict[str, Any]:
+    """The two-seat room a command line hosts or creates: on its ``--seed`` as given, or on a fresh seed that makes a
+    fair map of its settings (WB-046)."""
+    width, height = mapgen.SIZES[args.size]
+    layout = None if args.layout == "any" else Layout(args.layout)
+    seed = args.seed if args.seed is not None else fair_map(mapgen.fresh_seed(), width, height, 2, theme=MapTheme(args.theme),
+                                                            races=[Race(args.race), None], layout=layout)[0]
+    return {'seed': seed, 'width': width, 'height': height, 'theme': args.theme, 'races': [args.race, None], 'layout': args.layout}
 
 
 def selftest(png: str) -> None:

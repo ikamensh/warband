@@ -19,7 +19,7 @@ from warband.races import RACES
 from warband.ai import DIFFICULTY_ELO, DIFFICULTY_NOTES
 from warband.profile import OUTCOME_NAMES, Profile, plural
 from warband.rules import BuildingType, Difficulty, Layout, MapTheme, Race
-from warband.scene import SAVE_SLOTS, HelpScene, SaveBrowserScene, load_game, new_game
+from warband.scene import SAVE_SLOTS, HelpScene, SaveBrowserScene, fair_map, load_game, new_game
 from warband.sound import play_music, play_sound
 from warband.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MENU_BUTTON, MUTED, OVERLAY_STYLE, PANEL_STYLE
 from warband.textures import TILE
@@ -82,9 +82,8 @@ class TitleScene(Scene):
             self.profile = Profile.load(self.game.data_dir)
         except SaveError as error:
             self.profile, self.profile_error = None, str(error)
-        seed = mapgen.fresh_seed()
         width, height = mapgen.SIZES["Medium"]
-        self.backdrop = mapgen.generate(seed=seed, width=width, height=height, players=2, theme=random.choice(list(MapTheme)))
+        _, self.backdrop = fair_map(mapgen.fresh_seed(), width, height, 2, theme=random.choice(list(MapTheme)))
         self.backdrop.reveal_all(0)
         self.view = MapView(self, self.backdrop, 0)
         w, h = self.game.resolution
@@ -184,12 +183,18 @@ class TitleScene(Scene):
         # The room's creator leads the race chosen under New game; the others' are drawn from the seed.  An online
         # room has New game's player count; a LAN host has two seats.
         self.game.push(MatchMenu("Warband multiplayer", "warband-v2",
-                                lambda: WarbandMatch(mapgen.fresh_seed(), width, height, self.theme, races=(self.race, None), layout=self.layout),
+                                lambda: WarbandMatch(self.fair_seed(2), width, height, self.theme, races=(self.race, None), layout=self.layout),
                                 lambda session, match: NetworkGameScene(session, match, settings=self.settings),
-                                create_options=lambda: {'seed': mapgen.fresh_seed(), 'width': width, 'height': height,
+                                create_options=lambda: {'seed': self.fair_seed(self.players), 'width': width, 'height': height,
                                                         'theme': self.theme.value, 'players': self.players,
                                                         'races': [self.race.value] + [None] * (self.players - 1),
                                                         'layout': self.layout.value if self.layout is not None else 'any'}))
+
+    def fair_seed(self, players: int) -> int:
+        """A fresh seed that makes a fair map of New game's settings for *players* seats, the room's creator first."""
+        width, height = mapgen.SIZES[self.size]
+        return fair_map(mapgen.fresh_seed(), width, height, players, theme=self.theme, races=[self.race] + [None] * (players - 1),
+                        layout=self.layout)[0]
 
     def new_game(self) -> None:
         self.sfx("button")
@@ -309,7 +314,8 @@ class NewGameScene(Scene):
         if getattr(self, "game", None) is None:
             return
         width, height = mapgen.SIZES[self.size]
-        world = mapgen.generate(self.seed, width, height, self.players, theme=self.theme, races=self._preview_races(), layout=self.layout)
+        # The screen chose the seed, so a seed that makes no fair map of these settings gives way to the next (WB-046).
+        self.seed, world = fair_map(self.seed, width, height, self.players, theme=self.theme, races=self._preview_races(), layout=self.layout)
         self._preview_world = world
         image = preview_image(world)
         self._preview_pil = image
