@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-047**; a new
+section; git history keeps the record. The last ID given is **WB-052**; a new
 item takes the next one and updates this line.
 
 Done and removed 2026-09-18, every one merged into main (whose code is live as
@@ -45,6 +45,11 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-044 | Next | blocked | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
+| WB-048 | Next | proposed | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
+| WB-049 | Next | proposed | Armour and attack types; archers strike the unarmoured harder | User 2026-09-19 |
+| WB-050 | Next | proposed | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
+| WB-051 | Next | proposed | Clerics heal in visible single casts and carry a weak attack | User 2026-09-19 |
+| WB-052 | Next | proposed | Catapults look for a useful shot instead of standing idle in a melee | User 2026-09-19 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -211,3 +216,125 @@ different brain. **Blocked** on Ilya: whether Hard is to meet the rush bar
 at all (and with which handicaps), and whether the defence against a push
 that arrives with a tower is worth an AI project of its own for Master's
 last game or two.
+
+## WB-048 — A building site, not a ghost; no abandoned shells
+
+Ilya, 2026-09-19: an unfinished building should not be a see-through copy of
+the finished one. It should have its own under-construction look, maybe
+dust and some sign of the work going on. He also wants no abandoned
+construction: it confuses players. Once a building is started it is either
+finished or cancelled.
+
+Today a builder ordered away (`_abandon_construction`, `warband/sim/model.py`)
+leaves the shell where it stands, and another peasant can pick it up with
+`resume_construction`. A cancelled building returns its whole cost
+(`cancel_building`).
+
+**Proposed scope:** the builder stays on the site until it is finished.
+Orders to it are refused or queued until then, and the only way off the site
+is to cancel. If the builder dies, the site is cancelled with the normal refund
+(or a smaller one; to be decided). `resume_construction`, and the code and
+tests for picking up an abandoned site, are deleted. The art is a site for
+each building footprint and race: scaffold and foundations that grow in
+steps with the build's progress, with puffs of dust and a hammering
+animation while the work goes on. It is made the same way as the other
+building art (`docs/warband-art.md`).
+
+**Done when:** no rule path leaves an unfinished building with no builder.
+Tests cover moving the builder, the builder dying, and cancelling. The AIs
+and the settlement queue no longer rely on resuming. Frames of the sites at
+three stages of progress, for each race, have been looked at. The rule change
+changes the online simulation, so it goes live through a server rollout.
+
+## WB-049 — Armour types and attack types
+
+Ilya, 2026-09-19: archers should do extra damage to clerics, catapults and
+peasants, the unarmoured. To do that, introduce armour types and attack
+types, but leave most pairings at 100% for now so the balance is not upset
+too much.
+
+Today armour is a single number subtracted from damage (`armor_of`,
+`_hit`); the only multiplier is the siege factor against buildings.
+
+**Proposed scope:** each unit gets an armour class (for example unarmoured,
+light, heavy, building) and each attacker an attack type (for example
+normal, piercing, siege). One table of multipliers replaces today's
+`siege` factor. At the start, the only multiplier other than 100% besides
+siege is piercing against unarmoured (a first guess is 150%). The unit panel
+and the help table show the classes.
+
+**Done when:** the table is in `warband/sim/rules.py` and is the one place
+the multipliers live. The native twins match the source (the fast-simulation
+fingerprints). The league shows no race and no unit pushed out of use,
+measured as the WB-balance league measures it. The rule change goes live
+through a server rollout.
+
+## WB-050 — Footmen hold a line
+
+Ilya, 2026-09-19: footmen should be slower but more heavily armoured, with a
+formation skill: armour bonus when other footmen stand to their right or
+left. They should also move in a way that keeps the formation. This is for
+every race except the orcs; grunts get a different balance of their own.
+
+**Proposed scope:** footmen get lower speed (below today's 2.4) and more
+armour (above today's 2). A footman gets bonus armour for each friendly
+footman beside it, one to the left and one to the right, measured across its
+facing. Groups of footmen that are ordered to move keep their places in a
+line or block: they move at the speed of the slowest and do not string out.
+This has to fit the elbow-room and step-away spacing (see
+`docs/unit-motion.md`). The grunt keeps today's speed and gets a different
+trait. Its "hits harder as it bleeds" can stay its identity, retuned to fit
+(to be decided with Ilya).
+
+**Done when:** a line of five footmen keeps its shape across a march of at
+least 20 tiles around an obstacle, which is seen in frames. A test pins the
+flank bonus (a footman alone, with one neighbour, with two). The ladder and
+league show the footman is still worth building and the grunt is still a
+real choice. The change goes live through a server rollout. This depends on
+WB-049 if the armour classes change what "armour" means.
+
+## WB-051 — Clerics cast their heals
+
+Ilya, 2026-09-19: healing should be animated, a single cast with a short
+cooldown that restores about 15 hp at a time. Clerics should also have a
+weak attack of their own so they are not sent in to fight at the front.
+
+Today a cleric heals 6 hp/s continuously (`heal_rate`) and has no attack.
+
+**Proposed scope:** a heal is a wind-up, then a visible cast on one wounded
+ally, then a cooldown. The rate stays near today's (15 hp every 2.5 s is
+6 hp/s), so the balance does not move. The cast has an animation on the
+cleric and on its patient, and a sound cue. The cleric gets a weak ranged
+attack, used only when there is no one to heal. `pro_ai`'s
+`retreat_wounded` estimate follows the new rate.
+
+**Done when:** tests pin the cast (its cooldown, the amount, choosing the
+most wounded ally in range) and the attack being used only when no one
+needs healing. The cast has been seen in frames and heard in a match. The
+change goes live through a server rollout.
+
+## WB-052 — Catapults find something useful to do
+
+Ilya, 2026-09-19: catapults seem not to attack when the melee lines meet.
+They should look for somewhere they can shoot usefully and always try to do
+something useful.
+
+Why this happens: a crew firing on its own judgement aims only at its chosen
+target (or where that target is heading). `_aim_point` returns None when a
+friendly unit is within the splash radius plus `FRIENDLY_MARGIN`
+(`warband/sim/model.py`), which is always true in a melee, and the crew then
+waits.
+
+**Proposed scope:** when its target cannot be hit without splashing its own
+side, the crew looks for the best landing point in range. It scores each
+point by the enemy value inside the splash (with extra weight for archers,
+clerics and catapults) and allows no ally inside the splash. It also takes
+buildings in range as targets. If there is no such point, it moves to a place
+from which it can shoot the enemy's back ranks. It never walks into the enemy
+lines inside its minimum range.
+
+**Done when:** in a scripted clash (eight footmen a side, the enemy's
+archers two tiles behind their line, one catapult six tiles back), the
+catapult fires at least every other cooldown and never hits its own side.
+The ladder shows no loss. The change goes live through a server rollout.
+
