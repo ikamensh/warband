@@ -206,3 +206,16 @@ def test_the_leave_confirmation_states_the_cost_of_leaving_a_match_already_rated
     press(game, "return")
     after = Profile.load(game.data_dir).rating
     assert f"→ {round(after.value)} " in stated
+
+
+@pytest.mark.parametrize("saved", [("MissionScene", {"mission": {}}), ("GameScene", {"version": 1, "world": {}})], ids=["another scene's", "damaged"])
+def test_a_save_this_match_cannot_load_is_refused_before_leaving_is_asked(play, saved):
+    """Leaving was asked, and the match counted as left, before the save was found to be one this match cannot load:
+    the player stayed on in a match already recorded as left."""
+    game, scene = play
+    scene_class, state = saved
+    game.save_manager.save(1, state, scene_class, summary={})
+    scene.load_from(1)
+    game.tick(1 / 60)
+    assert game.scene is scene and scene.status.startswith("Could not load")
+    assert Profile.load(game.data_dir).results == []

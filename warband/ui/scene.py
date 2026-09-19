@@ -1593,26 +1593,28 @@ class GameScene(Scene):
 
     def load_from(self, slot: int | str) -> None:
         """Go on from the save in *slot*.  A save of another match leaves this one, so an undecided rated match asks
-        first and counts it as left; a save of this match is a rewind (docs/warband-profile.md)."""
+        first and counts it as left; a save of this match is a rewind (docs/warband-profile.md).  The save is read and
+        its match built before anything is asked, so a save that cannot be played costs nothing."""
         try:
             saved = self.game.save_manager.load(slot)
+            if saved is not None and saved["scene_class"] != type(self).__name__:
+                raise SaveError(f"Slot {slot} holds a {saved['scene_class']} save; cannot load it into {type(self).__name__}")
+            loaded = load_game(saved["state"], settings=self.settings) if saved is not None else None
         except SaveError as exc:
             self.warn(f"Could not load: {exc}")
             return
-        if saved is None:
+        if loaded is None:
             self.warn("Nothing saved there" if slot != "quick" else "No quicksave yet — F5 makes one")
             return
         where = self.leaving()
-        if where is not None and _saved_run_id(saved["state"]) != self.run_id:
-            self.game.push(LeaveScene(self, where, "Load", lambda: (self.conclude("left", where), self._load(slot))))
+        if where is not None and loaded.run_id != self.run_id:
+            self.game.push(LeaveScene(self, where, "Load", lambda: (self.conclude("left", where), self._go_on(loaded))))
             return
-        self._load(slot)
+        self._go_on(loaded)
 
-    def _load(self, slot: int | str) -> None:
-        try:
-            self.game.load(slot, scene=self)
-        except SaveError as exc:
-            self.warn(f"Could not load: {exc}")
+    def _go_on(self, loaded: GameScene) -> None:
+        loaded.say("Loaded")
+        self.game.clear_and_push(loaded)
 
     def open_saves(self, mode: str) -> None:
         self.game.push(SaveBrowserScene(self.game, mode, on_pick=self.save_to if mode == "save" else self.load_from))
@@ -2330,9 +2332,7 @@ class GameScene(Scene):
     def load_save_state(self, state: dict) -> None:
         """A load is a new match scene, in the match as from the title: nothing of the timeline left behind
         (its last alert, its battle mood, where its brains' random stream had got to) follows into the loaded one."""
-        scene = load_game(state, settings=self.settings)
-        scene.say("Loaded")
-        self.game.clear_and_push(scene)
+        self._go_on(load_game(state, settings=self.settings))
 
 
 class _Overlay(Scene):
