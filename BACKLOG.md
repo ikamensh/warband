@@ -43,7 +43,7 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
-| WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
+| WB-038 | Next | ready | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-048 | Next | proposed | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
 | WB-049 | Next | proposed | Armour and attack types; archers strike the unarmoured harder | User 2026-09-19 |
 | WB-050 | Next | proposed | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
@@ -140,6 +140,11 @@ vision judge, is out of credits until 24 September; OpenRouter answered 402
 intact painting was judged by eye against the stand-ins instead: the judge
 runs when Codex is back. What unblocks it: either painter again.
 `tools/restyle.py --mines --looks active dump|render|cut DIR`, then `check`.
+
+**Unblocked 2026-09-19:** Ilya added a new OpenRouter key, checked the same
+day with a status call only: a $20 limit, none of it spent. The active look
+can be painted now. The vision judge still waits for Codex (24 September),
+so until then the active painting is judged by eye, as the intact one was.
 
 ## WB-048 — A building site, not a ghost; no abandoned shells
 
