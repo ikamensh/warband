@@ -245,9 +245,9 @@ class Build:
 
 @dataclass
 class Hold:
-    """Stand here; fight what comes in range but never chase."""
+    """Stand here; fight what comes in range but never chase (a healer heals the wounded in range first)."""
 
-    target: int | None = None  # what the unit is winding up against, while it stays in reach
+    target: int | None = None  # the enemy the unit fights or the friend it heals, while it stays in reach
 
 
 @dataclass
@@ -1915,6 +1915,8 @@ class World:
             u.windup = u.info.windup
 
     def _do_hold(self, u: Unit, order: Hold, dt: float) -> None:
+        """Stand and fight what can be struck from here, never chasing.  A healer treats the wounded in its reach before
+        it strikes anyone, as it does left to itself: its weak blow is the last resort, held or not."""
         u.state = "idle"
         u.path = []
         if u.is_worker or u.info.damage == 0:
@@ -1922,7 +1924,11 @@ class World:
         target = self.entity(order.target) if order.target is not None else None
         if target is not None and not self._hold_keeps(u, target):
             target = order.target = None
-            u.windup = 0.0  # a blow drawn back at it is broken off, never kept for the next foe
+            u.windup = 0.0  # a blow or cast drawn back at it is broken off, never kept for the next
+        if u.info.heal and u.windup <= 0.0 and self.tick % 5 == 0:
+            patient = self._healing_patient(u, u.info.sight, local=True)
+            if patient is not None:
+                target, order.target = patient, patient.id
         if target is None:
             if self.tick % 5:
                 return
@@ -1933,12 +1939,19 @@ class World:
             if target is None or not self._in_range(u, target):
                 return
             order.target = target.id
-        self._fight(u, target, dt, auto=True)
+        if isinstance(target, Unit) and target.player == u.player:
+            self._cast(u, target, dt)
+        else:
+            self._fight(u, target, dt, auto=True)
 
     def _hold_keeps(self, u: Unit, target: Entity) -> bool:
-        """Whether a unit on Hold stays with *target*: while it lives and, unless a blow is drawn back at it already,
-        stands in reach, and for a siege crew while a clear stone can fall on it (looked at every fifth tick, when the
-        crew would choose again).  A crew waiting on a target its own side has closed on would throw at nothing else."""
+        """Whether a unit on Hold stays with *target*: a friend while it is hurt and in the open, an enemy while it lives,
+        and either, unless a blow or a cast is drawn back at it already, while it stands in reach.  A siege crew keeps an
+        enemy only while a clear stone can fall on it (looked at every fifth tick, when the crew would choose again), or
+        it would wait on a target its own side has closed on and throw at nothing else."""
+        if isinstance(target, Unit) and target.player == u.player:
+            return (0 < target.hp < target.max_hp and not target.hidden
+                    and (u.windup > 0.0 or self._gap(u, target) <= self.range_of(u) + 0.05))
         if target.hp <= 0:
             return False
         if u.windup > 0.0:

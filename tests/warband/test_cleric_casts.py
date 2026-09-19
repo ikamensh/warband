@@ -4,7 +4,7 @@ no one in sight needs healing, and an enemy still counts it after the soldiers w
 
 import random
 
-from warband.sim.model import SIM_DT, Attack, Heal, World
+from warband.sim.model import SIM_DT, Attack, Heal, Hold, World
 from warband.sim.rules import BuildingType, Terrain, UnitType
 
 
@@ -103,3 +103,24 @@ def test_an_enemy_takes_on_soldiers_before_a_cleric() -> None:
     world.update_vision()
     run(world, 0.5)
     assert isinstance(footman.order, Attack) and footman.order.target == soldier.id
+
+
+def test_a_cleric_on_hold_heals_the_wounded_in_its_reach_before_it_strikes() -> None:
+    """Held, a cleric still treats a hurt friend beside it rather than strike the enemy in its reach, and strikes only once
+    no one in its reach needs it; it leaves its spot for neither, nor for a friend hurt beyond its reach.  It used to only
+    strike, weakly, while its friend bled."""
+    world = field()
+    cleric = world.spawn_unit(0, UnitType.CLERIC, (5.5, 8.5))
+    beside = world.spawn_unit(0, UnitType.FOOTMAN, (6.5, 8.5))
+    beyond = world.spawn_unit(0, UnitType.FOOTMAN, (5.5, 4.0))  # in its sight, out of its reach
+    enemy = world.spawn_unit(1, UnitType.PEASANT, (5.5, 10.5))
+    world.hold([cleric.id, beside.id, beyond.id, enemy.id])
+    beside.hp, beyond.hp = beside.max_hp - 10, 20
+    world.update_vision()
+    events = run(world, 1.5)
+    assert [(e.other, e.amount) for e in events if e.kind == "heal"] == [(beside.id, 10)]
+    assert not any(e.kind == "hit" and e.entity == cleric.id for e in events)
+    events = run(world, 3.0)
+    assert {e.other for e in events if e.kind == "hit" and e.entity == cleric.id} == {enemy.id}
+    assert not any(e.kind == "heal" for e in events) and beyond.hp == 20
+    assert isinstance(cleric.order, Hold) and cleric.pos == (5.5, 8.5)
