@@ -431,6 +431,23 @@ def test_shots_in_the_air_have_sprites_that_fly_and_go_when_they_land(play) -> N
     assert not world.projectiles and not scene.view.shot_sprites  # all landed, all sprites gone
 
 
+def test_an_arrow_points_along_its_flight_from_its_first_frame(play) -> None:
+    """An arrow took its heading from the trail behind it, so on its first frame, with no trail yet, it pointed east
+    whatever it was loosed at.  Loosed to the north-west it points up and to the left at once."""
+    game, scene = play
+    world = scene.world
+    archer = world.spawn_unit(scene.human, UnitType.ARCHER, (9.5, 9.5))
+    victim = world.spawn_unit(1, UnitType.KNIGHT, (7.0, 7.0))
+    world.hold([victim.id])
+    world.attack([archer.id], victim.id)
+    for _ in range(240):
+        game.tick(1 / 60)
+        if world.projectiles:
+            break
+    (arrow,) = world.projectiles.values()
+    assert -170 < scene.view.shot_sprites[arrow.id].rotation < -100  # about -135° on a screen whose y grows downward
+
+
 def test_a_healers_shot_is_a_mote_of_light_that_flies_straight_from_before_it(play) -> None:
     """The model flies a cleric's weak blow as an arrow (it follows its mark); what is seen is the striker's own: a
     mote of light, first seen before the healer where it holds its staff, straight to its mark.  An archer's arrow

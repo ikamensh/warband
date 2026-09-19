@@ -751,8 +751,13 @@ class MapView:
                 look = shot_look(p)
                 sprite = Sprite(look, position=position, size=SHOT_SIZE[look], layer=RenderLayer.EFFECTS)
                 shot = self._shots[p.id] = _Shot(self.scene.add_sprite(sprite), look)
-            elif shot.look == "arrow" and shot.trail:
-                shot.sprite.rotation = math.degrees(math.atan2(position[1] - shot.trail[-1][2], position[0] - shot.trail[-1][1]))
+            if shot.look == "arrow":  # it points where it flies: from where it just was, or on its first frame to where it will be
+                if shot.trail:
+                    behind, ahead = shot.trail[-1][1:], position
+                else:
+                    ax, ay, above = projectile_point(p, world, now + SIM_DT)
+                    behind, ahead = position, (ax * TILE, (ay - above) * TILE)
+                shot.sprite.rotation = math.degrees(math.atan2(ahead[1] - behind[1], ahead[0] - behind[0]))
             shot.sprite.position = position
             shot.sprite.visible = True
             shot.ground, shot.height = (gx, gy), height
