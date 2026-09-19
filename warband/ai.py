@@ -199,11 +199,16 @@ class Profile:
     harass: bool  # early scouts sent at the enemy's peasants
     reserve: int  # gold kept back before research
     repair: bool  # peasants mend damaged buildings once the fighting there is over
+    first_attack: float = 0.0  # seconds of play before its first wave may go out
 
 
 PROFILES: Final[dict[Difficulty, Profile]] = {
+    # Easy leaves a plain opening its first eight minutes (WB-014). Since soldiers fight soldiers first (b26e016,
+    # 2026-09-15), its wave of ten at four and a half minutes killed a plain opening's first soldiers and then its
+    # peasants, and ai_report's scripted opening beat it 5 times in 32 where it had beaten it 6 in 8; held to
+    # minute eight, 23 in 32.
     Difficulty.EASY: Profile(peasants=7, think_every=2.0, first_wave=10, wave_growth=2, barracks=1, towers=0, tech=False, siege=False,
-                             clerics=False, harass=False, reserve=1500, repair=False),
+                             clerics=False, harass=False, reserve=1500, repair=False, first_attack=480.0),
     # Medium is what Normal and Hard both used to be. They measured 994 and 1000
     # Elo and split their games 55/45, so the fuller of the two plays for both:
     # it techs, sieges, fields healers and sends raiders, which makes a more
@@ -241,17 +246,17 @@ PRO_FOR: Final[dict[Difficulty, tuple[str, ...]]] = {Difficulty.HARD: ("pro-hard
 #: ``tools/arena.py``; the games behind the numbers are in ``docs/ai-ladder.md``. Shown on the New game screen so a player can see what
 #: they are picking rather than guess from a word.
 DIFFICULTY_ELO: Final[dict[Difficulty, int]] = {
-    Difficulty.EASY: 870,
+    Difficulty.EASY: 570,
     Difficulty.MEDIUM: 1000,
-    Difficulty.HARD: 1440,
-    Difficulty.MASTER: 1660,
+    Difficulty.HARD: 1410,
+    Difficulty.MASTER: 1630,
 }
 
 #: One line per setting, for the same screen.
 #: One line per setting, for the same screen. Kept short enough to fit beside
 #: the map preview.
 DIFFICULTY_NOTES: Final[dict[Difficulty, str]] = {
-    Difficulty.EASY: "Seven peasants, one barracks, no upgrades.",
+    Difficulty.EASY: "Seven peasants, one barracks, no attack before minute eight.",
     Difficulty.MEDIUM: "Techs, sieges, heals and raids. The old Normal and Hard, in one.",
     Difficulty.HARD: "Strong, but slow to think and short of workers.",
     Difficulty.MASTER: "Marches at five, towers up at home, or raises a tower by your mine.",
@@ -632,6 +637,8 @@ class Brain:
             if idle:
                 target = min(targets, key=lambda t: dist(t, idle[0].pos))
                 world.attack_move([u.id for u in idle], target)
+            return
+        if world.time < self.profile.first_attack:
             return
         if len(army) >= 3 and self._enemy_soldiers(world) < 3 and (
             self.profile.harass or (self.profile.tech and self.waves_sent > 0)

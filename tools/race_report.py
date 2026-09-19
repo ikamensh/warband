@@ -27,7 +27,7 @@ if __name__ in ("__main__", "__mp_main__"):  # run as a program or as one of its
 
 from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
 from warband import mapgen  # noqa: E402
-from warband.ai import Brain  # noqa: E402
+from warband.ai import make_brain  # noqa: E402
 from warband.rules import SIM_DT, Difficulty, Race  # noqa: E402
 
 MINUTES = 20
@@ -36,7 +36,7 @@ MINUTES = 20
 def match(seed: int, races: tuple[Race, Race], difficulty: Difficulty, *, minutes: int, budget: CpuBudget | None) -> tuple[Race | None, float]:
     """``(winning race or None, minutes played)`` for one AI-versus-AI match."""
     world = mapgen.generate(seed=seed, players=2, human=None, races=races)
-    brains = [Brain(p.id, difficulty) for p in world.players]
+    brains = [make_brain(p.id, difficulty, seed) for p in world.players]  # Hard and Master are a ProBrain, not a Brain
     rng = random.Random(seed)
     for _ in range(int(minutes * 60 / SIM_DT)):
         if world.winner is not None:

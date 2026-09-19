@@ -354,6 +354,7 @@ def _attacks(brain: Brain) -> list[str]:
 def test_an_easy_brain_holds_its_first_wave_until_it_is_full() -> None:
     """Easy is the setting that waits for a full wave; Medium harasses before one."""
     world, brain = _press_world(Difficulty.EASY)
+    world.time = brain.profile.first_attack
     rng = random.Random(1)
     for _ in range(3):
         brain.think(world, rng)
@@ -368,6 +369,21 @@ def test_an_easy_brain_holds_its_first_wave_until_it_is_full() -> None:
             break
     assert brain.attacking
     assert _attacks(brain) != []
+
+
+def test_easy_sends_no_wave_before_minute_eight_however_big_its_army() -> None:
+    """WB-014: a plain opening has no soldiers to speak of before minute four; Easy's wave of ten came at four and
+    a half and took its peasants too, so the scripted opening in tools/ai_report.py stopped beating Easy."""
+    world, brain = _press_world(Difficulty.EASY)
+    brain.wave, brain.waves_sent = 3, 1
+    rng = random.Random(1)
+    while world.time < brain.profile.first_attack - brain.profile.think_every:
+        brain.think(world, rng)
+        world.time += brain.profile.think_every
+    assert not brain.attacking and _attacks(brain) == []
+    world.time = brain.profile.first_attack
+    brain.think(world, rng)
+    assert brain.attacking
 
 
 def test_a_medium_brain_presses_even_before_its_first_wave() -> None:

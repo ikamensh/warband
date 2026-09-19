@@ -149,17 +149,27 @@ odds. `--proximity 0` gives the old flat fit.
 
 What the New game screen offers, and what each one is worth. 60 seeds, both
 corners, every map size, all five layouts in turn, under fog, 720 games,
-Medium anchored at 1000, measured on 2026-09-19 once Master drew the tower
-rush as its third posture ([the rush, rated](#the-rush-rated)):
+Medium anchored at 1000, measured on 2026-09-19 once Easy held its first wave
+to minute eight (WB-014, below) and Master drew the tower rush as its third
+posture ([the rush, rated](#the-rush-rated)):
 
 | setting | Elo | 90% interval | plays |
 |---------|-----|--------------|-------|
-| Easy | 867 | 816 .. 922 | `ai.Brain`, the Easy profile |
+| Easy | 565 | 465 .. 633 | `ai.Brain`, the Easy profile |
 | Medium | 1000 | — | `ai.Brain`, what Normal and Hard both were |
-| Hard | 1442 | 1362 .. 1558 | `pro_ai.ProBrain`, `pro-hard` |
-| Master | 1665 | 1565 .. 1774 | `pro_ai.ProBrain`, `pro-vanguard`, `pro-warden` or `pro-rush`, drawn with the map |
+| Hard | 1405 | 1335 .. 1511 | `pro_ai.ProBrain`, `pro-hard` |
+| Master | 1630 | 1549 .. 1736 | `pro_ai.ProBrain`, `pro-vanguard`, `pro-warden` or `pro-rush`, drawn with the map |
 
-Each beats the one below it 68%, 92% and 78% of the time. Without the rush,
+Each beats the one below it 94%, 92% and 78% of the time. Easy is 300 points
+lower than the day before because it now leaves a plain opening its first
+eight minutes: since soldiers fight soldiers first (`b26e016`, 2026-09-15),
+its wave of ten at four and a half minutes killed a plain opening's first
+soldiers and then its peasants, and `tools/ai_report.py`'s scripted opening,
+which Easy is to lose to (the Early Access gate W01), beat it 5 times in 32
+where it had beaten it 6 in 8; held to minute eight, 23 in 32 (and 10 in 16
+compiled on seeds 1 to 16). The other brains attack it before minute eight
+and it does not answer in kind, hence the drop. With the rush and before the
+hold, the same seeds gave 867, 1442 and 1665. Without the rush,
 after peasants took cover from a tower they could not work beside and melee
 soldiers spread round a building they attack (WB-037,
 [a tower on our ground](#a-tower-on-our-ground)), the same seeds gave 866,
@@ -529,6 +539,7 @@ contradicted the reasoning that produced the change:
 | marching out at eight to ten soldiers on level terms instead of five on a guess (`min_army` 8–10, `attack_ratio` 1.0) | **+40 Elo** — 55–57% against Master over 96 games each, 55% pooled over 576; the one posture change that measured |
 | soldiers seen to die dropped from the enemy count at once (`count_kills`) | +20 Elo alone (53%), about the same on top of the later push |
 | a standing share of the workforce on wood | **−40 to −180 Elo** — 46% at 30%, 31% at 40%, 25% with farms ahead of demand as well; the model's own policy is better |
+| two to four peasants held on the trees for the first three minutes (`opening_choppers`, the ai-arena branch's 2026-09-16 experiment, ported onto the Vanguard for WB-014) | **−130 to −500 Elo** — 32%, 5% and 12% for two, three and four against the plain Vanguard, 96 games each; dropped |
 | an army plan of knights, of archers, or of raiders | **−110 Elo** each (33%); the race plans are right |
 | pro-rush (three soldiers, ratio 0.6), pro-boom (twelve, 1.2, early expansion, towers), hall-first pushes, raiders | within noise (44–52%) |
 | hunting a lone enemy peasant in the base and striking a tower on our ground with peasants (`hunt_party`, `strike_seconds`) | level in ordinary play (49%, 50%, 49% over 96 games each); against a tower rush see [a tower on our ground](#a-tower-on-our-ground) |
