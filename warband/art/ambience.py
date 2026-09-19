@@ -1,5 +1,6 @@
 """Quiet life around visible buildings, driven entirely by simulation time: motes and glints
-over a mine that still holds gold, smoke and a forge glow at a smith.  First built on the
+over a mine that still holds gold, smoke and a forge glow at a smith, and at a site going up its
+builder hammering at the front corner, dust rising from the work and a spark at every strike.  First built on the
 unmerged ``warband`` branch; the geometry matches the buildings in :mod:`warband.art.textures`."""
 
 from __future__ import annotations
@@ -7,8 +8,11 @@ from __future__ import annotations
 import math
 
 from saga2d import RenderLayer
-from warband.sim.rules import BuildingType
+from warband.sim.rules import BuildingType, UnitType
+from warband.art import textures
 from warband.art.textures import PROJECTION, TILE
+
+STRIKE_EVERY = 0.7  # seconds from one hammer blow to the next at a site
 
 
 def draw(scene, world, player: int) -> None:
@@ -20,9 +24,14 @@ def draw(scene, world, player: int) -> None:
         x, y = bx * TILE, by * TILE
         if not (left - 80 < x < right + 80 and top - 80 < y < bottom + 100):
             continue
-        if not building.done or not world.is_visible(player, (int(bx), int(by))):
+        if not world.is_visible(player, (int(bx), int(by))):
             continue
         phase = time + building.id * .37
+        if not building.done:
+            builder = world.units.get(building.builder) if building.builder is not None else None
+            if builder is not None and builder.constructing == building.id:
+                _site_at_work(scene, building, builder, x, y, phase, layer)
+            continue
         if building.type is BuildingType.GOLD_MINE and building.gold > 0:
             # A faint halo grounds the crystals; the glints stay small and bright.
             scene.draw_circle(x, y - 20, 34 + 2 * math.sin(phase), (255, 214, 110, 13), **layer)
@@ -50,3 +59,26 @@ def draw(scene, world, player: int) -> None:
             flicker = .5 + .5 * math.sin(phase * 9)
             forge_x, forge_y = PROJECTION.project((-.29, .564, .49))
             scene.draw_circle(x + forge_x, y + forge_y, 6 + flicker * 2, (255, 169, 78, round(13 + flicker * 9)), **layer)
+
+
+def _site_at_work(scene, building, builder, x: float, y: float, phase: float, layer: dict) -> None:
+    """The builder, hidden inside its site by the rules, hammers at the site's front left corner (the peasant's own blow
+    frames, facing in), with dust rising from the work around the foot of the site and a spark at every strike."""
+    half = building.size * TILE / 2
+    beat = (phase % STRIKE_EVERY) / STRIKE_EVERY
+    frame = "wind" if beat < .45 else "strike" if beat < .6 else "follow" if beat < .75 else "recover"
+    fx, fy = x - half - 4, y + half * .55  # stands just off the front left corner, facing the work to its upper right
+    key = textures.unit_image(scene.game, UnitType.PEASANT, builder.player, textures.facing_index(-math.pi / 4), frame, race=builder.race)
+    placement = textures.placements[key]
+    w, h = placement.size
+    scene.draw_image(key, fx - w / 2, fy + placement.drop - h, w, h, space="world", layer=RenderLayer.EFFECTS)
+    if .45 <= beat < .6:  # the blow lands
+        sx, sy = fx + 13, fy - 12
+        for i in range(4):
+            angle = -math.pi / 2 + (i - 1.5) * .6
+            scene.draw_line(sx, sy, sx + math.cos(angle) * 7, sy + math.sin(angle) * 7, (255, 236, 170, 220), 1, **layer)
+    for i in range(5):  # dust drifting up from the work, each puff on its own clock
+        age = (phase * .45 + i / 5) % 1
+        px = x + (i / 4 - .5) * half * 1.5 + math.sin(phase * .7 + i) * 4
+        py = y + half * .7 - age * 34
+        scene.draw_circle(px, py, 5 + age * 11, (190, 164, 120, round(120 * (1 - age))), **layer)

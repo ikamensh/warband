@@ -55,10 +55,18 @@ images warm incrementally during the match opening.
 The low-poly renders are stand-ins: `tools/restyle.py` repaints every unit and
 every race's nine buildings with an image model and installs the result under
 `warband/assets/restyled/` (the procedure is `../../sagaforge/docs/restyle.md`).
-Buildings come in three looks, each its own sheet per race: `intact`, `active`
-(lit windows and open doors while a building trains or researches) and
+Buildings come in five looks, each its own sheet per race: `intact`, `active`
+(lit windows and open doors while a building trains or researches),
 `damaged` (holed roofs and scorched walls under half hit points, under the
-smoke and flames `view.py` already adds). The stand-ins keep the team hue off
+smoke and flames `view.py` already adds), and two for a site going up
+(WB-048): `founded`, the laid foundation of the first half of the work, and
+`raised`, walls half up in scaffolding for the second. The site looks were
+painted by OpenRouter's image model (`render --provider openrouter`), which
+paints only on its own canvases, so the tool pads each sheet with the key
+colour to the nearest one and crops the painting back. A site is cut
+without rescaling (its height says nothing of its scale), and a few cells
+were taken from the best of several tries; a painting whose cells lost the
+key background is thrown away. The stand-ins keep the team hue off
 roofs, glass and water because the painted frames are recoloured by hue per
 player.
 

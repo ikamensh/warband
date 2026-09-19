@@ -93,9 +93,11 @@ the compiled simulation attaches after they load.
   gets that frame recoloured to its team instead, and so does a building
   whose race has a painted sheet (`<race>.buildings.<look>`: `intact`,
   `active` while it trains or researches, `damaged` under half its hit
-  points; `view.building_look` picks the look, a missing look shows the
-  intact one). The gold mine is nobody's and never recoloured: four of its
-  stand-ins are painted (`mine.<look>`, `tools/restyle.py --mines`), `active`
+  points, and while it goes up `founded` for the first half and `raised`
+  for the second; `view.building_look` picks the look, a missing look
+  shows the intact one, a missing site look the plain site). `ambience.py`
+  draws a site's builder hammering at its corner, with dust and sparks.
+  The gold mine is nobody's and never recoloured: four of its stand-ins are painted (`mine.<look>`, `tools/restyle.py --mines`), `active`
   while a peasant works inside. Portraits use the painted frame too.
   `WARBAND_ART=procedural` keeps the renders; a sheet whose frames no longer
   match `FRAMES` or the building types warns and is ignored. `effects.py`

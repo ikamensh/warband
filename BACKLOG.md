@@ -47,7 +47,7 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
-| WB-048 | Next | proposed | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
+| WB-048 | Next | done | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
 | WB-050 | Next | done | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
@@ -96,6 +96,38 @@ Tests cover moving the builder, the builder dying, and cancelling. The AIs
 and the settlement queue no longer rely on resuming. Frames of the sites at
 three stages of progress, for each race, have been looked at. The rule change
 changes the online simulation, so it goes live through a server rollout.
+
+**Done 2026-09-19** (branch `building-sites`). The acceptance is the
+done-when above, taken as written; the open question of a dead builder's
+refund is answered as the full cost.
+
+Rules: an order to a builder waits behind its work (`_issue` keeps the
+Build order at the front; a stop drops only what was to come), so a started
+building is finished or cancelled. `cancel_building` refunds the whole cost
+and frees the builder, which then does what it was told meanwhile. A
+builder removed while building cancels its site with the full refund, and
+a planned request stands and starts anew. `resume_construction`, its smart
+order and its settlement path are deleted. A save from before, holding a
+shell whose builder walked off, cancels and refunds it on load. `resign`
+now removes buildings before units, since a builder's removal cancels its
+site. Tests: `test_a_builder_finishes_what_it_started...` and
+`test_a_site_whose_builder_is_gone...` (`test_model.py`) and the settlement
+pair; the resume rows are gone from the properties and atomicity tables.
+The AIs never walked a builder off, so the fingerprint and `sim_bench`
+digest are unchanged, and the ladder has nothing to measure. Fuzz (two AI
+games and three monkey runs) is clean.
+
+Art: two painted looks per race, `founded` and `raised` (eight sheets,
+`warband/assets/restyled/<race>.buildings.{founded,raised}`), made with
+`tools/restyle.py --looks founded,raised` on OpenRouter; `docs/warband-art.md`
+says how. A site wears them whole, not the finished building faded; with the
+procedural art it keeps the plain site. `ambience.py` draws the builder
+hammering just off the site's front corner (the peasant's blow frames),
+dust rising from the work, and a spark at each blow. Native frames of a
+farm, barracks and hall at a quarter, half and three quarters, for all four
+races, were looked at (first frames put the builder behind the walls, so it
+was moved out and drawn above). `tools/visual_lint.py` finds nothing. The
+fast and slow tiers pass (1073 and 511).
 
 ## WB-050 — Footmen hold a line
 

@@ -3221,7 +3221,7 @@ class World:
             b = self.buildings.get(unit.constructing)
             if b is not None and b.builder == unit.id and not b.done:
                 b.builder = None
-                self._refund(b.player, b.info.cost)  # a site without its builder is no site: it is cancelled (WB-048)
+                self._refund(unit.player, b.info.cost)  # a site without its builder is no site: it is cancelled (WB-048)
                 self._remove_building(b, reason="cancelled")
 
     def _remove_building(self, b: Building, *, reason: str) -> None:
@@ -3441,9 +3441,10 @@ class World:
         state = data["rng"]
         world.rng.setstate((state[0], tuple(state[1]), state[2]))
         world._index_units()
-        for b in [b for b in world.buildings.values() if not b.done and b.builder is None and b.player is not None and not b.abandoned]:
-            world._refund(b.player, b.info.cost)  # left half built in a save from before WB-048, when a builder could walk off
-            world._remove_building(b, reason="cancelled")
+        for b in [b for b in world.buildings.values() if not b.done and b.builder is None and not b.abandoned]:
+            if b.player is not None:  # left half built in a save from before WB-048, when a builder could walk off
+                world._refund(b.player, b.info.cost)
+                world._remove_building(b, reason="cancelled")
         world._exposed = world._exposed_players()
         world.update_vision()
         world.events.clear()
