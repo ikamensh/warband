@@ -1922,8 +1922,10 @@ class World:
         if target is None:
             if self.tick % 5:
                 return
+            # Only what it can strike from here, measured from its centre: a more dangerous enemy just out of reach
+            # must not keep it from answering one in reach.
             target = (self._siege_choice(u, 0.0) if u.info.splash
-                      else self._nearest_enemy(u.player, u.pos, self.range_of(u) + 1.0, min_radius=u.info.min_range))
+                      else self._nearest_enemy(u.player, u.pos, self.range_of(u) + u.radius + 0.05, min_radius=u.info.min_range + u.radius))
             if target is None or not self._in_range(u, target):
                 return
             order.target = target.id
