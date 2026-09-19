@@ -48,7 +48,7 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-048 | Next | proposed | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
-| WB-050 | Next | proposed | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
+| WB-050 | Next | in progress | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
 | WB-051 | Next | done | Clerics heal in visible single casts and carry a weak attack | User 2026-09-19 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
@@ -121,6 +121,35 @@ flank bonus (a footman alone, with one neighbour, with two). The ladder and
 league show the footman is still worth building and the grunt is still a
 real choice. The change goes live through a server rollout. This depends on
 WB-049 if the armour classes change what "armour" means.
+
+**Started 2026-09-19**, branch `footman-line`. WB-049 is merged; the flank
+bonus adds to the armour number and does not touch the classes.
+**Acceptance (recorded before implementation):**
+
+1. Numbers: the footman walks 2.0 (was 2.4) and wears 3 armour (was 2);
+   the elf Sentinel and dwarf Ironguard keep their tweaks on top (2.15
+   and 3; 1.85 and 4). The orc grunt keeps what it had, 2.4 and 1 armour,
+   its frenzy, and no formation: the fast brawler beside the others' line.
+2. Flank: a footman (not a grunt) wears `FORMATION_ARMOR` (1) more for a
+   friendly footman at its left and 1 more for one at its right, measured
+   across its facing (beside it, not ahead or behind). The unit panel's
+   armour shows it.
+3. Line: a move or attack-move that sends two or more footmen gives them
+   slots in a line across the way they are going, `FORMATION_SPACING`
+   (1 tile) apart, up to `FORMATION_WIDTH` (8) a row with further rows
+   behind, keeping their order from left to right so no two cross. The
+   order keeps its shared target, so group pace still works. On the way a
+   footman more than `FORMATION_SLACK` nearer its slot than the one
+   furthest from its own walks at `FORMATION_HOLD` of its speed, until the
+   line has closed up, unless the line has broken (more than 6 tiles
+   apart).
+4. Tests pin the numbers, the flank bonus (alone, one neighbour, two,
+   one ahead instead), the slots (a line across the march, no crossing),
+   and a line of five keeping its shape over a march of at least 20 tiles
+   around an obstacle; frames of that march are looked at. Saves from
+   before load. The ladder shows the footmen archetype still worth
+   playing and the orcs still a real choice; fuzz, the fingerprint,
+   `sim_bench` and both tiers pass.
 
 ## WB-051 — Clerics cast their heals
 
