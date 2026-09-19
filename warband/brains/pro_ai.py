@@ -127,6 +127,7 @@ class ProProfile:
     opening: tuple[BuildingType, ...] = ()  # put up in this order before anything else but farms, one at a time; twice for two
     opening_hold: bool = False        # …the next of them has first claim on the bank, ahead of soldiers and peasants
     defend_ratio: float = 0.0         # an attack on the base this many times the soldiers at home is met behind the hall, together; 0: at once
+    prospect_floor: int = 0           # with less gold than this left in the mines it works and no other mine known, a peasant goes looking; 0: never
     abort_ratio: float = 0.0          # a push facing this many times its own strength where it fights, towers counted, turns back; 0: never
     avoid_towers: bool = False        # a push goes for what the enemy's known towers do not cover, while there is any
     wood_lead: bool = False           # hands follow the wood the next purchases are short of while the gold for them is banked
@@ -269,6 +270,8 @@ class ProBrain:
         self.commit_strength = 0.0            # what the army was worth when it set out
         self.regroup_until = 0.0              # no new push before this, so a beaten army rebuilds
         self.scouts: list[int] = []
+        self.prospector: int | None = None  # the peasant out looking for the next mine
+        self._prospect_leg = 0              # how many places it has been sent to look
         self.raiders: list[int] = []
         self.rushers: list[int] = []  # peasants walking to the enemy's mine to raise a tower there
         self.rush_drafted = 0
@@ -436,6 +439,45 @@ class ProBrain:
     def _economy(self, world: World) -> None:
         world.assign_workers(self.player)
         self._chop(world)
+        self._prospect(world)
+
+    def _prospect(self, world: World) -> None:
+        """Send a peasant to look for gold while the mines being worked run low and no other is known.
+
+        An expansion goes to a mine the player has seen, and a brain that does not scout has seen its own.  On
+        Klondike, where home holds twenty thousand and the rest lies in a pit in the middle, the bred postures
+        mined out in four minutes, never learnt of the pit, stalled at ten soldiers short of the army they wait
+        for and lost to Easy: most of what Grandmaster lost to anyone.  The middle of the map first, then its
+        corners, nearest first; the peasant goes back to work when a mine is found or the places run out."""
+        profile = self.profile
+        if profile.prospect_floor <= 0 or not profile.expand:
+            return
+        found = self._expansion_site(world) is not None
+        low = sum(mine.gold for mine in self._worked_mines(world)) < profile.prospect_floor
+        if self.prospector is not None and (found or not low or self.prospector not in world.units):
+            if self.prospector in world.units:
+                world.release_workers([self.prospector])
+            self.prospector = None
+        if found or not low:
+            return
+        hall = self._hall(world)
+        if hall is None:
+            return
+        places = [(world.width / 2, world.height / 2)] + sorted(
+            [(3.5, 3.5), (world.width - 3.5, 3.5), (3.5, world.height - 3.5), (world.width - 3.5, world.height - 3.5)],
+            key=lambda corner: dist(corner, hall.center))[1:]
+        if self._prospect_leg >= 2 * len(places):
+            return  # looked everywhere twice: there is nothing to find
+        if self.prospector is None:
+            spare = [p for p in self._free_peasants(world) if p.carrying is None and not p.hidden]
+            if len(spare) < 4:
+                return
+            self.prospector = min(spare, key=lambda p: dist(p.pos, places[0])).id
+        walker = world.units[self.prospector]
+        if not isinstance(walker.order, Move):
+            world.move([walker.id], self._standable(world, places[self._prospect_leg % len(places)]))
+            self._prospect_leg += 1
+            self.note(world, f"prospect: peasant {walker.id} looks for gold")
 
     @staticmethod
     def _on_lumber(peasant: Unit) -> bool:
@@ -1487,7 +1529,7 @@ class ProBrain:
         inside a mine too, who obey as they come out with their load."""
         return [p for p in self._peasants(world) if p.constructing is None and (miners or p.inside is None)
                 and not isinstance(p.order, (Build, Repair)) and p.id not in self.scouts and p.id not in self.rushers
-                and not self._answering(p)]
+                and p.id != self.prospector and not self._answering(p)]
 
     @staticmethod
     def _blows(world: World, unit: Unit, armour: int) -> float:

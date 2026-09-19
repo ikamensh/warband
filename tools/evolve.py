@@ -170,7 +170,7 @@ def _trial(args: argparse.Namespace) -> None:
         population.append(evolve.Individual(f"trial-{Path(path).stem}", evolve.genes_of(PRO) | json.loads(Path(path).read_text())["genes"]))
     evaluator = evolve.Evaluator(args.workers)
     try:
-        seeds = range(args.first_seed, args.first_seed + args.seeds)
+        seeds = range(args.first_seed, args.first_seed + args.seeds * args.seed_step, args.seed_step)
         games = evolve.judge(evaluator, population, panel, {}, args.race, seeds, evolve.arena.DEFAULT_MINUTES)
     finally:
         evaluator.close()
@@ -226,6 +226,7 @@ def main() -> None:
     parser.add_argument("--start", default=None, help="comma separated known profiles the first generation is seeded with")
     parser.add_argument("--seed-genes", default=None, help="run: comma separated JSON files whose \"genes\" join the first generation (a macro search's --out)")
     parser.add_argument("--first-seed", type=int, default=200_000)
+    parser.add_argument("--seed-step", type=int, default=1, help="trial: 5 keeps one layout (the first seed's), since layouts cycle by seed")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--workers", type=int, default=max(1, mp.cpu_count() - 4))
     parser.add_argument("--top", type=int, default=12)

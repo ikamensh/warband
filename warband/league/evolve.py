@@ -143,6 +143,8 @@ GENES: tuple[Gene, ...] = (
     _g("expand_early", "expansion", 0, 1, "bool"),
     _g("max_halls", "expansion", 1, 4, "int"),
     _g("mine_floor", "expansion", 2000, 20000, "int"),
+    _g("prospect.on", "expansion", 0, 1, "bool"),
+    _g("prospect_floor", "expansion", 6000, 30000, "int"),
     _g("attack_ratio", "engagement", 0.5, 2.0),
     _g("retreat_ratio", "engagement", 0.2, 0.8),
     _g("regroup_seconds", "engagement", 10, 90),
@@ -206,6 +208,10 @@ def genes_of(profile: ProProfile) -> Genes:
         elif gene.name.startswith("open."):
             slot = int(gene.name[5:])
             value = float(_OPENING_CODES.index(profile.opening[slot])) if slot < len(profile.opening) else 0.0
+        elif gene.name == "prospect.on":
+            value = float(profile.prospect_floor > 0)
+        elif gene.name == "prospect_floor":
+            value = float(profile.prospect_floor or 16000)
         elif gene.name == "abort.on":
             value = float(profile.abort_ratio > 0.0)
         elif gene.name == "abort_ratio":
@@ -253,6 +259,8 @@ def profile_of(genes: Mapping[str, float], name: str, base: ProProfile = PRO) ->
         changes["defend_ratio"] = 0.0
     if not genes["abort.on"]:
         changes["abort_ratio"] = 0.0
+    if not genes["prospect.on"]:
+        changes["prospect_floor"] = 0
     return replace(base, name=name, **changes)  # type: ignore[arg-type]
 
 
