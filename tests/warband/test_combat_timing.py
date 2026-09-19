@@ -253,8 +253,7 @@ def test_a_crew_firing_on_its_own_judgement_keeps_stones_off_its_own_side() -> N
     world.hold([foe.id, friend.id])
     world.update_vision()
     run(world, 3.0)
-    assert isinstance(catapult.order, Attack) and catapult.order.auto and not world.projectiles
-    assert foe.hp == foe.max_hp and friend.hp == friend.max_hp
+    assert not world.projectiles and foe.hp == foe.max_hp and friend.hp == friend.max_hp
     world.move([friend.id], (9.5, 14.5))
     run(world, 4.0)
     assert foe.hp < foe.max_hp and friend.hp == friend.max_hp

@@ -48,7 +48,7 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 | WB-049 | Next | proposed | Armour and attack types; archers strike the unarmoured harder | User 2026-09-19 |
 | WB-050 | Next | proposed | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
 | WB-051 | Next | proposed | Clerics heal in visible single casts and carry a weak attack | User 2026-09-19 |
-| WB-052 | Next | proposed | Catapults look for a useful shot instead of standing idle in a melee | User 2026-09-19 |
+| WB-052 | Next | done | Catapults look for a useful shot instead of standing idle in a melee | User 2026-09-19 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -266,4 +266,36 @@ lines inside its minimum range.
 archers two tiles behind their line, one catapult six tiles back), the
 catapult fires at least every other cooldown and never hits its own side.
 The ladder shows no loss. The change goes live through a server rollout.
+
+**Done 2026-09-19** (branch `catapult-aim`). Measured before the change on
+the clash of the done-when (`tests/warband/test_siege_judgement.py`): one
+stone in half a minute. From contact the crew stayed locked on the enemy
+soldier in front of its own line, and every aim was refused. When the line
+fell it chased a footman into a map corner, inside its own minimum range.
+Now a crew on its own judgement chooses by what a clear stone would do
+(`World._siege_choice`): every visible enemy within reach plus `SIEGE_STEP`
+(3) tiles is scored by the enemies under the stone (`SIEGE_WORTH`: archers
+2, clerics and catapults 3, anyone else 1, splash at 60%), with a walk to
+reach it counting against it. Buildings count only when no unit can be
+struck, at `SIEGE_BUILDING_WORTH`. The crew may drop the stone a tile beyond
+a unit, where the splash still catches it, and when its target has no clear
+stone it rolls closer, stopping two splashes outside its minimum range. It
+chooses again while its target has no clear stone or stands inside that
+range. The check against friendly fire (`_clear_of_friends`) now also
+catches a friend whose velocity carries it under the stone, and one on its
+way to fight an enemy within arm's length of the landing point (a footman
+after an archer that steps back between shots).
+
+On six seeds of the clash the catapult throws at least every other reload
+(two to four stones in 17 to 21 s, the whole fight), hits its own side
+never, and our side wins with five to seven footmen left. Before, it lost.
+The ladder (`tools/arena.py ladder`, seven agents, 12 seeds, 504 matches,
+branch against main): the siege archetype rises from 1346 to 1428, and every
+other agent stays within noise (Vanguard -20, Warden -36, Hard -16, archers
++11, footmen 0). No agent loses, and none is pushed out of use. Fuzz (seed
+81, two AI games) is clean. The fingerprint is unchanged (its matches field
+no catapult); `tools/sim_bench.txt` is refreshed. The fast and slow tiers
+pass (995 and 486). `docs/unit-motion.md` describes the crew's judgement.
+Under the policy of 2026-09-19 the change goes live in the next batched
+server rollout, not one of its own.
 

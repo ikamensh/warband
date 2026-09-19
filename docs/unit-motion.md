@@ -142,11 +142,23 @@ nearest wall of a building, or a marching unit's position led by the stone's fli
 its current velocity, clamped to the engine's reach. When it comes down (`_land_stone`)
 everything within `DIRECT_HIT` of the point takes the full blow and everything out to the
 splash radius `SPLASH_FRACTION` of it, friend and foe alike, plus the enemy's buildings.
-A crew firing on its own judgement (an automatic or attack-move target) holds fire while
-its own side stands within the splash plus `FRIENDLY_MARGIN` of where the stone would
-fall; a crew the player ordered fires, and the player answers for it. Catapults cannot
-throw inside `min_range` (two tiles), pick their own targets beyond it, and back straight
-away from a target inside it to get range. Saves carry the shots in flight.
+A crew firing on its own judgement (an automatic or attack-move target) never lets a stone
+fall on its own side (`_clear_of_friends`): no friend within the splash plus
+`FRIENDLY_MARGIN` of the landing point, none whose velocity carries it there before the
+stone lands, and none on its way to fight an enemy within arm's length of it (a soldier
+after an archer that steps back between its shots). A crew the player ordered fires, and the
+player answers for it. Catapults cannot throw inside `min_range` (two tiles). On its own
+judgement a crew picks what to throw at by what a clear stone would do (`_siege_choice`,
+WB-052): every visible enemy within its reach plus `SIEGE_STEP` tiles is scored by the
+enemies under the stone (`SIEGE_WORTH`: archers 2, clerics and catapults 3, anyone else 1,
+the splash at `SPLASH_FRACTION`), a walk to reach it counting against it; buildings only
+when no unit can be struck. It may drop the stone a tile beyond a unit, where the splash
+still catches it: a soldier locked with the crew's own line is struck that way, and a crew
+whose target is in reach but has no clear stone rolls closer until one comes down beyond it,
+stopping two splashes outside its minimum range. It looks again every quarter second while its
+target has no clear stone or stands inside the minimum range, and backs straight away from
+one inside it when there is nothing else. Before WB-052 a crew locked on the soldier in front
+of its own line and threw one stone in a whole clash. Saves carry the shots in flight.
 
 **View.** Each shot has a sprite moved every frame, between model steps too (the view
 keeps `_since_tick`), on a flat arc for arrows and a high lob for stones (`projectile_point`);

@@ -275,6 +275,9 @@ ARROW_SPEED: Final = 14.0  # tiles per second an arrow, axe or bolt flies; it fo
 STONE_SPEED: Final = 7.0  # tiles per second a siege stone covers; it comes down on the ground it was fired at
 STONE_MIN_FLIGHT: Final = 0.4  # seconds even the shortest lob spends in the air
 FRIENDLY_MARGIN: Final = 0.3  # tiles beyond its splash a siege crew keeps a stone from its own side when firing on its own
+SIEGE_STEP: Final = 3.0  # tiles beyond its reach a siege crew on its own judgement will roll forward for a clear shot
+SIEGE_WORTH: Final = {UnitType.CATAPULT: 3.0, UnitType.CLERIC: 3.0, UnitType.ARCHER: 2.0}  # what a stone on them is worth to a crew; any other unit 1
+SIEGE_BUILDING_WORTH: Final = 0.5  # a building under a stone, beside a unit's 1: soldiers first, walls when no soldier can be reached
 
 GOLD_PER_TRIP: Final = 100
 LUMBER_PER_TRIP: Final = 100
