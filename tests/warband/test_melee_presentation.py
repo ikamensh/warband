@@ -3,12 +3,12 @@ import math
 
 import pytest
 
-from warband import textures
-from warband.model import World
-from warband.rules import BuildingType, Race, Resource, SIM_DT, Terrain, UnitType
-from warband.scene import GameScene
-from warband.textures import TILE
-from warband.visual_lint import ImageStore, alpha
+from warband.art import textures
+from warband.sim.model import World
+from warband.sim.rules import BuildingType, Race, Resource, SIM_DT, Terrain, UnitType
+from warband.ui.scene import GameScene
+from warband.art.textures import TILE
+from warband.art.visual_lint import ImageStore, alpha
 
 
 def diagonal(first: list, second: list) -> list:
@@ -341,8 +341,8 @@ def test_recorded_contact_survives_replay_speed_and_pause(game, faster):
 
     A fight recorded and then watched back frame by frame, about two seconds: the slow tier. The fast tier's
     replay scene tests watch a whole match back."""
-    from warband.replay import Replay
-    from warband.replay_scene import ReplayScene
+    from warband.records.replay import Replay
+    from warband.ui.replay_scene import ReplayScene
 
     scene, attacker, victim = duel(game, unit_type=UnitType.KNIGHT)
     replay = Replay.begin(scene.world, seed=scene.seed, difficulty=scene.difficulty, human=scene.human)

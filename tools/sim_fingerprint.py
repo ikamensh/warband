@@ -22,10 +22,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from warband import mapgen  # noqa: E402
-from warband.ai import make_brain  # noqa: E402
-from warband.model import World  # noqa: E402
-from warband.rules import SIM_DT, Difficulty  # noqa: E402
+from warband.sim import mapgen  # noqa: E402
+from warband.brains.ai import make_brain  # noqa: E402
+from warband.sim.model import World  # noqa: E402
+from warband.sim.rules import SIM_DT, Difficulty  # noqa: E402
 
 SEEDS = (101, 102, 103, 104)
 MINUTES = 6

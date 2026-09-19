@@ -7,11 +7,11 @@ from dataclasses import replace
 
 import pytest
 
-from warband import mapgen
-from warband.arena import make_agent
-from warband.model import World, dist, rect_gap
-from warband.pro_ai import PRO_VANGUARD, ProBrain
-from warband.rules import BUILDINGS, SIM_DT, BuildingType, Resource, Terrain, UnitType
+from warband.sim import mapgen
+from warband.league.arena import make_agent
+from warband.sim.model import World, dist, rect_gap
+from warband.brains.pro_ai import PRO_VANGUARD, ProBrain
+from warband.sim.rules import BUILDINGS, SIM_DT, BuildingType, Resource, Terrain, UnitType
 
 
 def base(soldiers: int = 0) -> World:

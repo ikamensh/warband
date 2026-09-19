@@ -21,11 +21,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from PIL import Image  # noqa: E402
 from saga2d import Game, fonts  # noqa: E402
-from warband import textures  # noqa: E402
-from warband.model import World  # noqa: E402
-from warband.rules import BuildingType, Terrain, UnitType  # noqa: E402
-from warband.scene import GameScene  # noqa: E402
-from warband.style import build_theme  # noqa: E402
+from warband.art import textures  # noqa: E402
+from warband.sim.model import World  # noqa: E402
+from warband.sim.rules import BuildingType, Terrain, UnitType  # noqa: E402
+from warband.ui.scene import GameScene  # noqa: E402
+from warband.ui.style import build_theme  # noqa: E402
 
 VICTIMS = {"infantry": UnitType.FOOTMAN, "archer": UnitType.ARCHER, "mounted": UnitType.KNIGHT, "siege": UnitType.CATAPULT}
 CELL = (200, 150)  # logical pixels around the victim in every tile of the montage

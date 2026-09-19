@@ -4,9 +4,9 @@ from websockets.sync.client import connect
 
 from saga2d.testing.online import command, handshake, receive, server_fixture
 
-server_url = server_fixture('warband.authority:ONLINE')
-from warband.model import World
-from warband.rules import BuildingType
+server_url = server_fixture('warband.online.authority:ONLINE')
+from warband.sim.model import World
+from warband.sim.rules import BuildingType
 
 
 def test_online_building_plans_need_no_worker_id_and_reject_foreign_player(server_url):

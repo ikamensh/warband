@@ -3,7 +3,7 @@
 import numpy as np
 
 from sagaforge import synth
-from warband import combat_sound
+from warband.audio import combat_sound
 
 
 def test_every_weapon_material_pair_has_safe_impacts() -> None:

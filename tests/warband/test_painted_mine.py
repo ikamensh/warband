@@ -6,13 +6,13 @@ from PIL import Image
 from sagaforge import restyle
 
 from saga2d import Game
-from warband import textures
-from warband.model import World
-from warband.rules import BuildingType, Terrain, UnitType
-from warband.scene import GameScene
-from warband.style import build_theme
-from warband.textures import TILE
-from warband.view import building_look
+from warband.art import textures
+from warband.sim.model import World
+from warband.sim.rules import BuildingType, Terrain, UnitType
+from warband.ui.scene import GameScene
+from warband.ui.style import build_theme
+from warband.art.textures import TILE
+from warband.ui.view import building_look
 
 
 def registered(game, monkeypatch) -> dict[str, Image.Image]:

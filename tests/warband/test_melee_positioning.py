@@ -2,8 +2,8 @@
 
 import pytest
 
-from warband.model import Attack, World
-from warband.rules import BuildingType, Terrain, UnitType
+from warband.sim.model import Attack, World
+from warband.sim.rules import BuildingType, Terrain, UnitType
 
 
 def stationary_worker(world, player, point):

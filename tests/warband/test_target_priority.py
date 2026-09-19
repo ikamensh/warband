@@ -1,8 +1,8 @@
 """Whom a unit fights on its own: fighters before bystanders, anything alive before buildings."""
 import random
 
-from warband.model import Attack, World
-from warband.rules import BuildingType, Terrain, UnitType
+from warband.sim.model import Attack, World
+from warband.sim.rules import BuildingType, Terrain, UnitType
 
 
 def battlefield():

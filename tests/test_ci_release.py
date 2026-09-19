@@ -37,9 +37,10 @@ def checkout(tmp_path):
     (root / ".github/release-pins.json").write_text(json.dumps({
         "sagaforge_commit": "a" * 40, "python": "3.13.2", "uv": "0.12.10", "inno_setup": "6.7.1", "version_run_base": 25,
     }))
-    (root / "warband").mkdir()
+    (root / "warband/online").mkdir(parents=True)
     (root / "warband/__init__.py").write_text('"""A release fixture."""\n')
-    (root / "warband/authority.py").write_text("ONLINE = {}\n")
+    (root / "warband/online/__init__.py").write_text('"""The server game of the fixture."""\n')
+    (root / "warband/online/authority.py").write_text("ONLINE = {}\n")
     (root / ".gitignore").write_text("dist/\n")
     git(root, "add", ".")
     git(root, "commit", "-qm", "fixture")

@@ -6,9 +6,9 @@ import random
 
 import pytest
 
-from warband import mapgen
-from warband.ai import make_brain
-from warband.rules import BuildingType, Difficulty
+from warband.sim import mapgen
+from warband.brains.ai import make_brain
+from warband.sim.rules import BuildingType, Difficulty
 
 
 @pytest.mark.parametrize("seed", [5, 11])

@@ -1,6 +1,6 @@
 # Warband maps: a generator with five layouts
 
-Design note, 2026-09-15, implemented the same day in `warband/mapgen.py`
+Design note, 2026-09-15, implemented the same day in `warband/sim/mapgen.py`
 (the section *What was built* at the end records where the build departs
 from the plan). The fairness audit runs inside the generator; the per-seed
 tests are `tests/warband/test_mapgen.py` and `tests/warband/test_maps.py`,

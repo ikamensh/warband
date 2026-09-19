@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 from sagaforge import restyle
 
-from warband import textures
-from warband.rules import Race, Resource, UnitType
+from warband.art import textures
+from warband.sim.rules import Race, Resource, UnitType
 
 
 def subjects():

@@ -27,11 +27,11 @@ import numpy as np
 from saga2d import Game, fonts
 from sagaforge.synth import SAMPLE_RATE, mix, write_wav
 from saga2d.testing.native_frames import tick
-from warband import combat_sound, deaths, sound, wreckage
-from warband.model import World
-from warband.rules import BuildingType, Terrain, UnitType
-from warband.scene import GameScene
-from warband.style import build_theme
+from warband.audio import combat_sound, deaths, sound, wreckage
+from warband.sim.model import World
+from warband.sim.rules import BuildingType, Terrain, UnitType
+from warband.ui.scene import GameScene
+from warband.ui.style import build_theme
 
 
 def comparison(output: Path) -> dict:

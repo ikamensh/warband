@@ -9,9 +9,9 @@ import pytest
 from saga2d import Game
 from sagaforge import synth
 from sagaforge.synth import pan, tone
-from warband import combat_sound, deaths, sound, wreckage
-from warband.rules import Race
-from warband.sound import SoundBank
+from warband.audio import combat_sound, deaths, sound, wreckage
+from warband.sim.rules import Race
+from warband.audio.sound import SoundBank
 
 
 @pytest.fixture(scope="session")

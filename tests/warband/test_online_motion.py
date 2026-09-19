@@ -10,10 +10,10 @@ import random
 import pytest
 
 from saga2d import CommandError, Game
-from warband.authority import WarbandMatch
-from warband.model import World
-from warband.rules import BuildingType, Terrain, UnitType
-from warband.style import build_theme
+from warband.online.authority import WarbandMatch
+from warband.sim.model import World
+from warband.sim.rules import BuildingType, Terrain, UnitType
+from warband.ui.style import build_theme
 
 FRAME = 1 / 60
 QUIET = {"music": 0, "sfx": 0, "tutorial": False}
@@ -66,7 +66,7 @@ def field() -> WarbandMatch:
 def walk(game: Game, match: WarbandMatch, seat: Seat, arrivals, frames: int = 150):
     """Seat 0's footman walks east while the host steps at 20 Hz and publishes on the frames *arrivals* names;
     where the client draws it on every frame."""
-    from warband.multiplayer import NetworkGameScene
+    from warband.ui.multiplayer import NetworkGameScene
 
     footman = match.world.spawn_unit(0, UnitType.FOOTMAN, (6.5, 12.5))
     footman.facing = 0.0
@@ -122,7 +122,7 @@ def test_after_a_stall_units_are_placed_where_the_snapshot_says_not_slid(game) -
 
 
 def test_a_unit_that_comes_into_sight_is_placed_not_slid(game) -> None:
-    from warband.multiplayer import NetworkGameScene
+    from warband.ui.multiplayer import NetworkGameScene
 
     match = field()
     seat = Seat(match)
@@ -143,7 +143,7 @@ def test_a_unit_that_comes_into_sight_is_placed_not_slid(game) -> None:
 
 
 def test_an_order_given_while_the_seat_waits_is_refused_with_the_reason(game) -> None:
-    from warband.multiplayer import NetworkGameScene
+    from warband.ui.multiplayer import NetworkGameScene
 
     match = field()
     seat = Seat(match)
@@ -165,7 +165,7 @@ def test_over_a_real_socket_a_guest_walks_smoothly_hears_of_a_stall_and_is_place
     import time
 
     from saga2d import MatchClient, MatchHost
-    from warband.multiplayer import NetworkGameScene
+    from warband.ui.multiplayer import NetworkGameScene
 
     match = field()
     footman = match.world.spawn_unit(1, UnitType.FOOTMAN, (6.5, 12.5))

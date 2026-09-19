@@ -1,17 +1,15 @@
 """Warband — a Warcraft 2-style real-time strategy game built on saga2d.
 
-``python -m warband`` starts it.  Package layout:
+``python -m warband`` starts it.  The package's folders go by what their modules are, lowest first:
 
-* ``rules``    — data tables: terrain, units, buildings, costs, timings.
-* ``path``     — A* over the tile grid.
-* ``model``    — the world state, orders and the fixed-step simulation.
-* ``mapgen``   — procedural maps with two bases, gold mines and forests.
-* ``ai``       — the computer opponent.
-* ``textures`` — ground, trees, buildings and units pre-rendered with ``sagaforge.render3d``.
-* ``view``     — sprite reconciliation, fog of war and the world-space overlays.
-* ``scene``    — saga2d scenes: the game, its HUD and command card, pause and help.
-* ``title``    — title screen and match setup.
-* ``sound``    — the sound bank: synthesised effects, cached music, the hooks scenes call.
-* ``music``    — the score: a suite per race, the title's night watch, two endings, and the director that plays them by mood.
-* ``instruments`` — the orchestra the music is written for.
+* ``sim``     — the rules and the simulation the online authority runs; imports nothing above it.
+* ``brains``  — the computer players.
+* ``records`` — the profile, the local top ten and replays.
+* ``league``  — the arena, the balance league and the compiled simulation, for measuring the game.
+* ``online``  — the server's authoritative match and a headless online player.
+* ``art`` and ``audio`` — what the game looks and sounds like.
+* ``ui``      — the saga2d scenes: the match and its HUD, the title and every screen.
+* ``story``   — the campaign.
+
+``tests/warband/test_layers.py`` holds each folder to what it may import.
 """

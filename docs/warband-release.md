@@ -225,8 +225,8 @@ See the in-game help (F1) and codex (F2). Summary:
 
 - Design, code, art generators and music generators: created in this
   repository (see the git history). No third-party art or audio is used;
-  every image and sound is generated at runtime by `warband/textures.py`
-  and `warband/sound.py`.
+  every image and sound is generated at runtime by `warband/art/textures.py`
+  and `warband/audio/sound.py`.
 - Font: Nunito by Vernon Adams, Cyreal and Jacques Le Bailly, SIL Open
   Font License 1.1 (`saga2d/assets/fonts/OFL.txt`).
 - Engine: saga2d (this repository, MIT) on pyglet (BSD), Pillow (HPND),

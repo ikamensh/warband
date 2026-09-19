@@ -19,11 +19,13 @@ from pathlib import Path
 
 import pytest
 
-from warband import ai, fastsim, mapgen, model, path, worker_ai
-from warband.ai import make_brain
-from warband.model import World
-from warband.rules import BUILDINGS, BuildingType, Difficulty, Terrain
-from warband.worker_knowledge import WorkerKnowledge
+from warband.brains import ai
+from warband.league import fastsim
+from warband.sim import mapgen, model, path, worker_ai
+from warband.brains.ai import make_brain
+from warband.sim.model import World
+from warband.sim.rules import BUILDINGS, BuildingType, Difficulty, Terrain
+from warband.sim.worker_knowledge import WorkerKnowledge
 
 pytestmark = [pytest.mark.slow, pytest.mark.xdist_group("fastsim")]  # one worker, one compile
 
@@ -34,11 +36,11 @@ def _run_compiled(script: str) -> str:
     """What *script* prints, run in a fresh process on the compiled simulation of the current sources."""
     build = fastsim.build()
     prelude = ("import sys; sys.path.insert(0, '.')\n"
-               "from warband import fastsim\n"
+               "from warband.league import fastsim\n"
                f"fastsim.attach({str(build)!r})\n"
-               "import warband.model, warband.pro_ai\n"
-               f"assert warband.model.__file__.startswith({str(build)!r}), warband.model.__file__\n"
-               f"assert warband.pro_ai.__file__.startswith({str(build)!r}), warband.pro_ai.__file__\n")
+               "import warband.sim.model, warband.brains.pro_ai\n"
+               f"assert warband.sim.model.__file__.startswith({str(build)!r}), warband.sim.model.__file__\n"
+               f"assert warband.brains.pro_ai.__file__.startswith({str(build)!r}), warband.brains.pro_ai.__file__\n")
     env = {k: v for k, v in os.environ.items() if k not in (fastsim.OPT_OUT, fastsim.ENV)}
     done = subprocess.run([sys.executable, "-c", prelude + script], cwd=ROOT, env=env, capture_output=True, text=True,
                           timeout=900)
@@ -64,8 +66,8 @@ def test_a_build_of_other_sources_is_refused(tmp_path: Path) -> None:
 def _native_searches():
     """The C searches of the current build, loaded beside the Python ones this process runs."""
     build = fastsim.build()
-    location = next((build / "warband").glob("_native.*"))
-    spec = importlib.util.spec_from_file_location("warband._native", location)
+    location = next((build / "warband" / "sim").glob("_native.*"))
+    spec = importlib.util.spec_from_file_location("warband.sim._native", location)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -237,7 +239,7 @@ def test_the_hypot_port_is_math_hypot_run_from_source() -> None:
 
 def test_the_compiled_hypot_is_math_hypot() -> None:
     printed = _run_compiled("import math, random\n"
-                            "import warband.model as model\n"
+                            "import warband.sim.model as model\n"
                             "from tests.warband.test_fastsim import _hypot_cases\n"
                             "assert model.hypot is not math.hypot and model.hypot_port is model.hypot\n"
                             "bad = [(a, b) for a, b in _hypot_cases(random.Random(4), 3_000_000)\n"

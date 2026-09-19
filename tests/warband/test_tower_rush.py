@@ -6,10 +6,10 @@ import random
 
 import pytest
 
-from warband import mapgen
-from warband.model import dist, rect_gap
-from warband.pro_ai import PRO_RUSH, ProBrain
-from warband.rules import BUILDINGS, BuildingType
+from warband.sim import mapgen
+from warband.sim.model import dist, rect_gap
+from warband.brains.pro_ai import PRO_RUSH, ProBrain
+from warband.sim.rules import BUILDINGS, BuildingType
 
 
 @pytest.mark.slow

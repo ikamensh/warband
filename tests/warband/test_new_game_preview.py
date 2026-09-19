@@ -5,11 +5,11 @@ import time
 import pytest
 
 from saga2d import Game
-from warband import mapgen
-from warband.races import RACES
-from warband.rules import Layout
-from warband.style import build_theme
-from warband.title import PREVIEW_BOX, PREVIEW_KEY, NewGameScene, TitleScene, preview_image
+from warband.sim import mapgen
+from warband.sim.races import RACES
+from warband.sim.rules import Layout
+from warband.ui.style import build_theme
+from warband.ui.title import PREVIEW_BOX, PREVIEW_KEY, NewGameScene, TitleScene, preview_image
 
 
 def open_new_game(tmp_path, resolution=(1280, 800)):
@@ -104,7 +104,7 @@ def test_opponent_line_matches_mapgen(tmp_path) -> None:
 
 
 def test_large_preview_generation_is_fast() -> None:
-    from warband.rules import MapTheme, Race
+    from warband.sim.rules import MapTheme, Race
 
     t0 = time.perf_counter()
     world = mapgen.generate(12345, 64, 48, 4, theme=MapTheme.SUMMER, races=[Race.HUMAN, None, None, None])

@@ -31,8 +31,8 @@ this is written; the rest need the owner, the framework or a stronger agent.
   stalls item 3 removes; do it after item 3 lands and measure with
   `tools/ai_report.py`.
 - **The online guest cannot choose a race.** Room options carry the creator's
-  race and the guest's seat is drawn from the seed (`warband/multiplayer.py` `ONLINE`,
-  `warband/title.py`).  Needs a per-seat option at join time in
+  race and the guest's seat is drawn from the seed (`warband/ui/multiplayer.py` `ONLINE`,
+  `warband/ui/title.py`).  Needs a per-seat option at join time in
   `saga2d.online` and the server, plus a server redeploy.
 - **Race balance.** `tools/race_report.py` gave Humans 8–4 and Elves 4–7;
   Drill suits an AI that trains without pause.  Re-measure after item 6, since

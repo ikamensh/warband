@@ -8,10 +8,10 @@ down another road, and a seed from a bug report did not reproduce it.
 import pytest
 
 from saga2d import Game
-from warband.replay import digest
-from warband.rules import BuildingType, UnitType
-from warband.scene import new_game
-from warband.style import build_theme
+from warband.records.replay import digest
+from warband.sim.rules import BuildingType, UnitType
+from warband.ui.scene import new_game
+from warband.ui.style import build_theme
 
 
 def played(blood: bool, seconds: float = 100.0) -> tuple[str, int]:

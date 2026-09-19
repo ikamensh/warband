@@ -12,9 +12,9 @@ story_keys = []
 story = """
 docs/warband-early-access-criteria.md gate W01 requires that Easy loses to a scripted human opening, Hard beats it and Normal is the coin flip. After the proportional-defence, economy, race-plan, endgame and group-pace items the whole AI is stronger: tools/ai_report.py shows the scripted opening losing to Easy on seed 1 (4/6 across seeds 1 to 6) and 0/6 to Normal, where the recorded evidence was 5/6 and 2/6. Retune the profiles so the ladder means what it says while keeping the new behaviour."""
 constraints = """
-Change only the PROFILES table and profile-gated branches in warband/ai.py, tests/warband/test_ai.py, and the W01 row of docs/warband-early-access-progress.md. Do not change rules.py, races.py, the wave cap, the last-stand reveal, race army plans or group pacing. Measured numbers go in the commit message and the W01 row."""
+Change only the PROFILES table and profile-gated branches in warband/brains/ai.py, tests/warband/test_ai.py, and the W01 row of docs/warband-early-access-progress.md. Do not change rules.py, races.py, the wave cap, the last-stand reveal, race army plans or group pacing. Measured numbers go in the commit message and the W01 row."""
 notes = """
-Levers, in this order, each a profile field in `PROFILES` (warband/ai.py) or a branch gated on one:
+Levers, in this order, each a profile field in `PROFILES` (warband/brains/ai.py) or a branch gated on one:
 - Easy: `first_wave` 10 -> 14, `think_every` 2.0 -> 3.0, `peasants` 7 -> 6, `wave_growth` 2, and
   no counter shift in `_choose_unit` (race plans without the visible-enemy adjustment); Easy never
   presses the advantage (already gated).

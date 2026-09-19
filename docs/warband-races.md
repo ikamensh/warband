@@ -6,7 +6,7 @@ AI, the settlement planner, saves and the online protocol never care who is
 playing.  What differs: the names, a few numbers per role, two race arts
 (upgrades only that race researches), one passive mechanic the simulation
 applies, the look of every unit and building, the voice of the player's own
-cues, and the march.  `warband/races.py` holds the data; `warband/rules.py`
+cues, and the march.  `warband/sim/races.py` holds the data; `warband/sim/rules.py`
 holds the skeleton and the arts.
 
 | Race    | Character                            | Passive                                             | Arts                                                        |
@@ -60,7 +60,7 @@ races load as all Humans.
 ## Look and sound
 
 Every unit keeps the same poses and articulation; a per-race `Look` in
-`warband/textures.py` sets skin, hair, metal, cloth and the figure's
+`warband/art/textures.py` sets skin, hair, metal, cloth and the figure's
 proportions (dwarves squat, orcs broad), and race branches draw the
 distinctive parts: tusks and topknots, spiked pauldrons and cleavers, a
 two-headed ogre and a wolf; long ears, winged helms and hoods, a deer, an
@@ -71,18 +71,18 @@ saplings and a moon standard, rune pillars with copper caps) and their own
 hall, supply building, tower, stable beast and shrine ornament.
 
 The command card shows a portrait for every unit and building and a painted
-emblem for every upgrade (`warband/production.py`), with the hotkey in the
+emblem for every upgrade (`warband/art/production.py`), with the hotkey in the
 corner and the name and cost under it; a selected building shows what it is
 making as a portrait with its progress, then the portraits of its queue.  This
 UI was first built on the unmerged `warband` branch and ported onto the races.
 
 The player's own cues — select, command, attack, trained, built, under
-attack — play in the race's voice (`warband/voices.py`): drums and growls for
+attack — play in the race's voice (`warband/audio/voices.py`): drums and growls for
 orcs, bells, harp and flute for elves, anvil and horn for dwarves; humans keep
 the plain cues.  Combat Foley follows the striker: orc grunts and axethrowers
 swing axes, the ogre and the bear rider hit with a blunt "hammer" weapon,
 dwarven ironguards use axes.  Each race marches to its own track
-(`warband/music.py`: `march`, `warpath`, `moonlight`, `anvil`); the title
+(`warband/audio/music.py`: `march`, `warpath`, `moonlight`, `anvil`); the title
 plays the night watch (`vigil`).
 
 ## Balance

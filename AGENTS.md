@@ -25,7 +25,7 @@ uv run python tools/visual_lint.py --evidence DIR   # visual defects in the art 
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms); --scenario four-player|pan-zoom|deaths|restarts, --csv, --gc
 uv run python tools/step_bench.py --repeat 3     # model step times of the same battle without a window, with --profile
 uv run python tools/sim_bench.py --check tools/sim_bench.txt   # processor time of nine whole arena matches, and their results unchanged
-uv run python -m warband.fastsim                 # compile the simulation with mypyc now (the match-running tools do it on first use)
+uv run python -m warband.league.fastsim                 # compile the simulation with mypyc now (the match-running tools do it on first use)
 uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening (the default report is about a minute)
 uv run python tools/arena.py ladder --agents hard,pro --seeds 40   # rate agents against each other, in parallel
 uv run python tools/arena.py report --seeds 24                     # 1v1, free-for-all and jittered-balance ladders
@@ -43,7 +43,7 @@ real breakdown.
 
 ## Layout
 
-- `warband/model.py` — the 20 Hz fixed-step simulation (orders, harvesting,
+- `warband/sim/model.py` — the 20 Hz fixed-step simulation (orders, harvesting,
   construction, supply, upgrades, towers, fog, elimination, JSON saves); no
   saga2d dependency, so rules are tested directly. A blow turns, winds up and
   lands; shots are `Projectile`s that land later, stones on the ground they
@@ -66,7 +66,7 @@ real breakdown.
   and the replay store. `fastsim.py` compiles the simulation modules with mypyc
   for the tools that play many matches, and `_native.c` holds C twins of a few
   of their loops (`docs/fast-simulation.md`).
-- `warband/textures.py` renders ground, props, buildings and units through
+- `warband/art/textures.py` renders ground, props, buildings and units through
   `sagaforge.render3d`; units have nine frames per facing (stand, a four-step
   walk, a four-phase blow) posed by one `Pose` table. A unit whose subject has a
   painted sheet under `warband/assets/restyled/` (made by `tools/restyle.py`
@@ -94,14 +94,14 @@ real breakdown.
   runs it over representative screens at 1280×800 and 1200×680, and checks
   actual native layout metrics when writing evidence. Long runs default to
   `--cpu-percent 25`; native frames are paced at 30 FPS.
-- `warband/sound.py`, `voices.py`, `ambience.py`, `instruments.py`, `music.py` —
+- `warband/audio/sound.py`, `voices.py`, `ambience.py`, `instruments.py`, `music.py` —
   synthesised with `sagaforge.synth`; `music.Director` maps moods to tracks; the bank
   composes in a background thread. `combat_sound.py`, `deaths.py` and `wreckage.py` are
   generated instead: weapon-on-material impacts, each race's death and each material's
   building collapse, from pieces committed under `warband/assets/impacts/`, `deaths/` and
   `wreckage/` (Stable Audio 3 through `sagaforge.foley`; `pieces.py` reads them;
   provenance in each folder's manifest, the procedure in `docs/warband-pieces.md`).
-- `warband/campaign.py` — the campaign engine: speakers, lines and choices,
+- `warband/story/campaign.py` — the campaign engine: speakers, lines and choices,
   objectives and triggers, `Run` (a mission in play, saved beside the world),
   `Progress`/`ProgressStore` (the small cross-version progress file); the
   rules for keeping it playable across versions are in `docs/warband-campaign.md`.
@@ -109,7 +109,7 @@ real breakdown.
   the dialogue overlay, `mission_scene.py` a mission as a match with its result
   and loader, `campaign_scene.py` the campaign screen. `World.scripted` worlds
   never declare a winner or surrender: the mission decides.
-- `warband/scene.py`, `title.py`, `tutorial.py`, `icons.py`, `style.py`,
+- `warband/ui/scene.py`, `title.py`, `tutorial.py`, `icons.py`, `style.py`,
   `score_scene.py`, `profile_scene.py`, `replay_scene.py` — the saga2d scenes
   (the title carries the player's card; `LeaveScene` in `scene.py` is the
   confirmation every way out of an undecided rated match goes through;
@@ -150,14 +150,14 @@ real breakdown.
   last bit, so the same source hashes differently there.
 - The tools that play many matches (`arena`, `tune`, `balance_report`,
   `ai_report`, `race_report`, `sim_bench`, `step_bench`) run the simulation
-  compiled by mypyc from its own source (`warband/fastsim.py`, built on first
+  compiled by mypyc from its own source (`warband/league/fastsim.py`, built on first
   use under `build/fastsim/`, `WARBAND_INTERPRETED=1` to opt out), about ten
   times faster; the game, the online authority and the tests run the source.
   The compiler trusts the annotations of `fastsim.MODULES`: keep mypy over them
   clean, because a value of the wrong type is a `TypeError` in a compiled run
   where the interpreter carried on. Their module constants are `Final` and are
   never bound again (compiled code inlines them; tables are patched in place,
-  as the rulebook variants do). A few loops have a C twin in `warband/_native.c`
+  as the rulebook variants do). A few loops have a C twin in `warband/sim/_native.c`
   (its opening comment lists them): the Python stays the reference, a change
   goes into both, and `tests/warband/test_fastsim.py` holds them to the same
   answers on random inputs and plays the fingerprint compiled. What the

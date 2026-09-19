@@ -3,12 +3,13 @@
 import pytest
 
 from saga2d import Game
-from warband import textures, view
-from warband.races import Race
-from warband.rules import BuildingType, UnitType, Upgrade
-from warband.scene import GameScene
-from warband.style import build_theme
-from warband.textures import TILE
+from warband.art import textures
+from warband.ui import view
+from warband.sim.races import Race
+from warband.sim.rules import BuildingType, UnitType, Upgrade
+from warband.ui.scene import GameScene
+from warband.ui.style import build_theme
+from warband.art.textures import TILE
 
 from tests.warband.battlefield import SETTINGS, field
 

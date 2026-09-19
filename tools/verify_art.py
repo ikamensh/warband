@@ -25,11 +25,11 @@ from PIL import Image  # noqa: E402
 
 from saga2d import Game, Scene, fonts  # noqa: E402
 from saga2d.testing.native_frames import tick  # noqa: E402
-from warband import textures  # noqa: E402
-from warband.model import Harvest, Unit, World  # noqa: E402
-from warband.rules import BUILDINGS, UNITS, BuildingType, MapTheme, Resource, Terrain, UnitType  # noqa: E402
-from warband.scene import GameScene  # noqa: E402
-from warband.style import build_theme  # noqa: E402
+from warband.art import textures  # noqa: E402
+from warband.sim.model import Harvest, Unit, World  # noqa: E402
+from warband.sim.rules import BUILDINGS, UNITS, BuildingType, MapTheme, Resource, Terrain, UnitType  # noqa: E402
+from warband.ui.scene import GameScene  # noqa: E402
+from warband.ui.style import build_theme  # noqa: E402
 
 RESOLUTION = (1280, 800)
 CREAM = (240, 230, 209, 255)

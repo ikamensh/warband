@@ -16,9 +16,9 @@ from PIL import Image  # noqa: E402
 from saga2d import Game, fonts  # noqa: E402
 from saga2d.testing.native_frames import tick  # noqa: E402
 from tools.verify_art import settlement  # noqa: E402
-from warband import textures  # noqa: E402
-from warband.rules import MapTheme, Resource, Terrain  # noqa: E402
-from warband.style import build_theme  # noqa: E402
+from warband.art import textures  # noqa: E402
+from warband.sim.rules import MapTheme, Resource, Terrain  # noqa: E402
+from warband.ui.style import build_theme  # noqa: E402
 
 
 def main(output: Path) -> None:

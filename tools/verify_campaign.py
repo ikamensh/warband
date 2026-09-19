@@ -22,15 +22,15 @@ from PIL import Image, ImageDraw
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from saga2d import Game, fonts  # noqa: E402
-from warband.campaign_scene import CampaignScene  # noqa: E402
-from warband.dialog import DialogScene  # noqa: E402
-from warband.campaign import Run  # noqa: E402
-from warband.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
-from warband.missions import CAMPAIGN  # noqa: E402
-from warband.model import tile_center  # noqa: E402
-from warband.rules import PLAYERS, BuildingType, Difficulty, Terrain, UnitType  # noqa: E402
-from warband.style import build_theme  # noqa: E402
-from warband.title import TitleScene  # noqa: E402
+from warband.story.campaign_scene import CampaignScene  # noqa: E402
+from warband.story.dialog import DialogScene  # noqa: E402
+from warband.story.campaign import Run  # noqa: E402
+from warband.story.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
+from warband.story.missions import CAMPAIGN  # noqa: E402
+from warband.sim.model import tile_center  # noqa: E402
+from warband.sim.rules import PLAYERS, BuildingType, Difficulty, Terrain, UnitType  # noqa: E402
+from warband.ui.style import build_theme  # noqa: E402
+from warband.ui.title import TitleScene  # noqa: E402
 
 
 TERRAIN_COLORS = {Terrain.GRASS: (74, 112, 52), Terrain.TREES: (24, 58, 30), Terrain.WATER: (40, 84, 150), Terrain.ROCK: (112, 106, 100)}

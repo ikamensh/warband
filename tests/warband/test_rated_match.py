@@ -3,12 +3,12 @@
 import pytest
 
 from saga2d import Game
-from warband.profile import EARLY_EXIT_WEIGHT, Profile
-from warband.replay import Playback, ReplayStore
-from warband.rules import BuildingType, UnitType
-from warband.scene import GameOverScene, LeaveScene, PauseScene, load_game, new_game
-from warband.style import build_theme
-from warband.title import TitleScene
+from warband.records.profile import EARLY_EXIT_WEIGHT, Profile
+from warband.records.replay import Playback, ReplayStore
+from warband.sim.rules import BuildingType, UnitType
+from warband.ui.scene import GameOverScene, LeaveScene, PauseScene, load_game, new_game
+from warband.ui.style import build_theme
+from warband.ui.title import TitleScene
 
 
 @pytest.fixture

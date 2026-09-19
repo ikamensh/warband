@@ -2,8 +2,8 @@
 from tools.perf import battle
 import pytest
 
-from warband import textures
-from warband.rules import Race
+from warband.art import textures
+from warband.sim.rules import Race
 
 
 @pytest.mark.slow

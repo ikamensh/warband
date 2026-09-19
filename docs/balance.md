@@ -19,7 +19,7 @@ not a balance problem for a game people play.
 What the instinct gets right is that one scripted brain hides "never used":
 Master never reaches a workshop, so catapults were untested on the ladder.
 So the league is the one brain, `pro_ai.ProBrain`, under twelve settings of
-its knobs that each commit to one way of playing — `warband/archetypes.py`:
+its knobs that each commit to one way of playing — `warband/league/archetypes.py`:
 
 | posture | commits to |
 |---------|-----------|
@@ -51,7 +51,7 @@ Every pair of postures plays every seed from both corners; the map size
 cycles with the seed as on the AI ladder, and the two races are drawn per
 map and pairing (tied to the corner, so both corners of a pairing are one
 fair pair). Seeds start at 70 000, which nothing was tuned on. Every match
-comes back with a `PlayerTally` per player (`warband/telemetry.py`): what
+comes back with a `PlayerTally` per player (`warband/league/telemetry.py`): what
 was trained, built and researched and when, what it cost, damage dealt and
 taken, kills credited to whoever struck last and priced at what the victim
 cost, and a per-minute row of bank, supply and army value. The league is

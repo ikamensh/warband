@@ -4,21 +4,21 @@ import pytest
 
 from saga2d import Game
 from saga2d.testing import assert_no_text_overlap, assert_text_fits, text_boxes
-from warband.campaign import Progress, ProgressStore
-from warband.campaign_scene import CampaignScene
-from warband.dialog import DialogScene
-from warband.mission_scene import MissionResultScene, MissionScene, build_world
-from warband.missions import CAMPAIGN
-from warband.rules import BuildingType, Difficulty, Race, UnitType
-from warband.model import tile_center
-from warband.profile import EARLY_EXIT_WEIGHT, MatchResult, Profile, standing
-from warband.profile_scene import NameScene, ProfileScene
-from warband.replay import Replay, ReplayStore
-from warband.replay_scene import ReplayEndScene, ReplayScene
-from warband.scene import CodexScene, GameOverScene, HelpScene, LeaveScene, PauseScene, SaveBrowserScene, SettingsScene, new_game
-from warband.score_scene import HighScoreScene
-from warband.style import build_theme
-from warband.title import NewGameScene, TitleScene
+from warband.story.campaign import Progress, ProgressStore
+from warband.story.campaign_scene import CampaignScene
+from warband.story.dialog import DialogScene
+from warband.story.mission_scene import MissionResultScene, MissionScene, build_world
+from warband.story.missions import CAMPAIGN
+from warband.sim.rules import BuildingType, Difficulty, Race, UnitType
+from warband.sim.model import tile_center
+from warband.records.profile import EARLY_EXIT_WEIGHT, MatchResult, Profile, standing
+from warband.ui.profile_scene import NameScene, ProfileScene
+from warband.records.replay import Replay, ReplayStore
+from warband.ui.replay_scene import ReplayEndScene, ReplayScene
+from warband.ui.scene import CodexScene, GameOverScene, HelpScene, LeaveScene, PauseScene, SaveBrowserScene, SettingsScene, new_game
+from warband.ui.score_scene import HighScoreScene
+from warband.ui.style import build_theme
+from warband.ui.title import NewGameScene, TitleScene
 
 SIZES = [(1280, 800), (1280, 720), (1440, 900), (1728, 922), (1920, 1080)]  # the HUD is laid out for 1280 wide and up
 SHORTEST = (1280, 720)  # where text runs into text first: the fast tier's size, the others are the slow tier's

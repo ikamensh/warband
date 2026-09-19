@@ -6,7 +6,7 @@
 Needs STABLE_AUDIO_MLX (see ../sagaforge/docs/foley.md).  The prompts below are the source of
 truth; each folder's manifest records what was actually generated.  A rejected piece (silent, or
 a click) is reported at the end: give it a new seed here and run refresh again.  After a refresh,
-bump ``SOUND_VERSION`` in warband/sound.py so the cached cues are mixed again, and run the tests.
+bump ``SOUND_VERSION`` in warband/audio/sound.py so the cached cues are mixed again, and run the tests.
 """
 
 from __future__ import annotations
@@ -18,10 +18,10 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sagaforge.foley import BuildError, Piece, StableAudioMLX, build, sampler  # noqa: E402
-from warband.pieces import ROOT  # noqa: E402
-from warband.rules import Race  # noqa: E402
+from warband.audio.pieces import ROOT  # noqa: E402
+from warband.sim.rules import Race  # noqa: E402
 
-# The game modules (warband.combat_sound, deaths, wreckage) expect these folders and names; they are
+# The game modules (warband.audio.combat_sound, deaths, wreckage) expect these folders and names; they are
 # spelled out here rather than imported because those modules refuse to load without their pieces.
 DEATHS, DEATH_STAGES = "deaths", ("weapon", "body", "settle")
 WRECKAGE, WRECK_STAGES, MATERIALS = "wreckage", ("crack", "collapse", "debris"), ("wood", "stone")

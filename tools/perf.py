@@ -28,11 +28,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from saga2d import Game, fonts  # noqa: E402
 from saga2d.testing import FrameTimer  # noqa: E402
-from warband import path as pathing  # noqa: E402
-from warband import textures  # noqa: E402
-from warband.rules import BuildingType  # noqa: E402
-from warband.scene import GameScene  # noqa: E402
-from warband.style import build_theme  # noqa: E402
+from warband.sim import path as pathing  # noqa: E402
+from warband.art import textures  # noqa: E402
+from warband.sim.rules import BuildingType  # noqa: E402
+from warband.ui.scene import GameScene  # noqa: E402
+from warband.ui.style import build_theme  # noqa: E402
 from tools.step_bench import battle_world  # noqa: E402
 
 
@@ -104,9 +104,9 @@ class PhaseTimer(FrameTimer):
 
 def four_player_world():
     """Four armies of seventy-five, one per player, sent at the map's centre over an 80×64 map."""
-    from warband import mapgen
-    from warband.model import tile_center
-    from warband.rules import UnitType
+    from warband.sim import mapgen
+    from warband.sim.model import tile_center
+    from warband.sim.rules import UnitType
     w = mapgen.generate(seed=3, width=80, height=64, players=4)
     w.reveal_all(0)
     types = [UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT, UnitType.SCOUT, UnitType.CATAPULT, UnitType.CLERIC]
@@ -122,8 +122,8 @@ def four_player_world():
 
 def deaths_world():
     """Two armies spawned in each other's faces: most of them die within the first minute, and their bodies and blood stay."""
-    from warband.model import tile_center
-    from warband.rules import UnitType
+    from warband.sim.model import tile_center
+    from warband.sim.rules import UnitType
     w = battle_world()
     hall = w.player_buildings(0, BuildingType.TOWN_HALL)[0]
     hx, hy = hall.pos

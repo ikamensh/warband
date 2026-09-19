@@ -8,12 +8,12 @@ import json
 import pytest
 
 from saga2d import Game, MatchMenu
-from warband import mapgen
+from warband.sim import mapgen
 from warband.__main__ import lobby_options
-from warband.rules import Layout, Race
-from warband.scene import GameOverScene, GameScene, fair_map, new_game
-from warband.style import build_theme
-from warband.title import NewGameScene, TitleScene
+from warband.sim.rules import Layout, Race
+from warband.ui.scene import GameOverScene, GameScene, fair_map, new_game
+from warband.ui.style import build_theme
+from warband.ui.title import NewGameScene, TitleScene
 
 UNFAIR = 67  # Small, two seats: every try at the forest this seed draws leaves its roads too straight
 

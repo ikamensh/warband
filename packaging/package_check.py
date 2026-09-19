@@ -15,8 +15,8 @@ def online_smoke(endpoint: str) -> dict:
     if not endpoint:
         raise ValueError("The package smoke check requires an explicit --endpoint")
     from saga2d.online import OnlineClient
-    from warband.model import World
-    from warband.rules import BuildingType
+    from warband.sim.model import World
+    from warband.sim.rules import BuildingType
 
     clients = []
 
@@ -147,12 +147,12 @@ def native_smoke(output: Path, endpoint: str) -> dict:
     from saga2d import Game, MatchMenu, fonts
     from saga2d.multiplayer_ui import MatchLobby
     from saga2d.online import OnlineClient
-    from warband import sound
-    from warband.scene import DEFAULT_SETTINGS, GameScene, SettlementPlansScene
-    from warband.style import build_theme
-    from warband.title import NewGameScene, TitleScene
-    from warband.multiplayer import NetworkGameScene, NetworkMenuScene
-    from warband.rules import UnitType
+    from warband.audio import sound
+    from warband.ui.scene import DEFAULT_SETTINGS, GameScene, SettlementPlansScene
+    from warband.ui.style import build_theme
+    from warband.ui.title import NewGameScene, TitleScene
+    from warband.ui.multiplayer import NetworkGameScene, NetworkMenuScene
+    from warband.sim.rules import UnitType
 
     info = build_info()
     images = []

@@ -4,8 +4,8 @@ import gc
 
 import pytest
 
-from warband import mapgen
-from warband.scene import GameScene
+from warband.sim import mapgen
+from warband.ui.scene import GameScene
 
 
 @pytest.mark.slow

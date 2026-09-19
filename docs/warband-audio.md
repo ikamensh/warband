@@ -24,9 +24,9 @@ Impacts play at 65% gain to leave room for a busy battle and alerts.
 The weapon follows the striker's race; a striker that died with its blow
 keeps the common weapon.  Every other role uses the table above whatever its
 race.  A player's own cues — select, command, attack, trained, built, under
-attack — play in the race's voice (`warband/voices.py`): drums and growls for
+attack — play in the race's voice (`warband/audio/voices.py`): drums and growls for
 orcs, bells, harp and flute for elves, anvil and horn for dwarves.  Each race
-marches to its own track (`warband/music.py`); the title plays the night
+marches to its own track (`warband/audio/music.py`); the title plays the night
 watch.  See [warband-races.md](warband-races.md).
 
 | Target | Material |

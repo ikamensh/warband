@@ -10,10 +10,10 @@ from pathlib import Path
 import pytest
 
 from saga2d import Game, SaveError
-from warband.profile import MatchResult, Profile, standing
-from warband.profile_scene import ProfileScene
-from warband.scene import DEFAULT_SETTINGS, GameOverScene, new_game
-from warband.style import build_theme
+from warband.records.profile import MatchResult, Profile, standing
+from warband.ui.profile_scene import ProfileScene
+from warband.ui.scene import DEFAULT_SETTINGS, GameOverScene, new_game
+from warband.ui.style import build_theme
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -21,9 +21,9 @@ PLAY = '''
 import json, sys
 from pathlib import Path
 from saga2d import Game
-from warband.profile import standing
-from warband.scene import DEFAULT_SETTINGS, GameOverScene, new_game
-from warband.style import build_theme
+from warband.records.profile import standing
+from warband.ui.scene import DEFAULT_SETTINGS, GameOverScene, new_game
+from warband.ui.style import build_theme
 data = Path(sys.argv[1])
 game = Game("Warband", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=data / "saves")
 settings = game.settings(DEFAULT_SETTINGS)
@@ -46,12 +46,12 @@ RETURN = '''
 import json, sys
 from pathlib import Path
 from saga2d import Game
-from warband.profile import Profile
-from warband.replay import ReplayStore
-from warband.scene import DEFAULT_SETTINGS
-from warband.scores import HighScores
-from warband.style import build_theme
-from warband.title import TitleScene
+from warband.records.profile import Profile
+from warband.records.replay import ReplayStore
+from warband.ui.scene import DEFAULT_SETTINGS
+from warband.records.scores import HighScores
+from warband.ui.style import build_theme
+from warband.ui.title import TitleScene
 data, run_id = Path(sys.argv[1]), sys.argv[2]
 game = Game("Warband", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=data / "saves")
 settings = game.settings(DEFAULT_SETTINGS)

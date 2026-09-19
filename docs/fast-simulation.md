@@ -2,8 +2,8 @@
 
 The tools that play many matches (ladders, leagues, tuning, the balance and AI
 reports) spend nearly all their time in `World.step` and the brains. They run
-the simulation compiled: `warband/fastsim.py` builds the simulation modules
-with mypyc, and a few of their loops have C twins in `warband/_native.c`. A
+the simulation compiled: `warband/league/fastsim.py` builds the simulation modules
+with mypyc, and a few of their loops have C twins in `warband/sim/_native.c`. A
 match costs about a tenth of what it did and plays out exactly as before, to
 the float bit. The game, the online authority and the tests run the source.
 

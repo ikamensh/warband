@@ -6,10 +6,10 @@ import pytest
 
 from saga2d import Game
 from saga2d.effects import Burst
-from warband.effects import OUTCOMES, UnitDeath
-from warband.rules import UnitType
-from warband.scene import GameScene
-from warband.style import build_theme
+from warband.art.effects import OUTCOMES, UnitDeath
+from warband.sim.rules import UnitType
+from warband.ui.scene import GameScene
+from warband.ui.style import build_theme
 
 from tests.warband.battlefield import SETTINGS, field, live_effects
 

@@ -24,14 +24,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from warband import fastsim  # noqa: E402
+from warband.league import fastsim  # noqa: E402
 
 if __name__ in ("__main__", "__mp_main__"):  # run as a program or as one of its worker processes, not as a library
     fastsim.activate()  # the compiled simulation, unless WARBAND_INTERPRETED is set
 
-from warband import arena  # noqa: E402
-from warband.arena import MatchSpec  # noqa: E402
-from warband.pro_ai import PRO, PRO_PROFILES, ProProfile  # noqa: E402
+from warband.league import arena  # noqa: E402
+from warband.league.arena import MatchSpec  # noqa: E402
+from warband.brains.pro_ai import PRO, PRO_PROFILES, ProProfile  # noqa: E402
 
 #: knob → (low, high). Only knobs worth a search; booleans are settled by ablation.
 KNOBS: dict[str, tuple[float, float]] = {

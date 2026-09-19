@@ -5,10 +5,10 @@ import random
 import pytest
 
 from saga2d import Game
-from warband import sound
-from warband.model import Deposit, World
-from warband.rules import BuildingType, Resource, Terrain, UnitType, Upgrade
-from warband.scene import GameScene
+from warband.audio import sound
+from warband.sim.model import Deposit, World
+from warband.sim.rules import BuildingType, Resource, Terrain, UnitType, Upgrade
+from warband.ui.scene import GameScene
 
 
 def tick_until(game, condition, max_seconds: float = 4.0) -> None:

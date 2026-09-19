@@ -1,6 +1,6 @@
 # Warband procedural art
 
-`warband/textures.py` owns the art recipes. All geometry is rasterized once
+`warband/art/textures.py` owns the art recipes. All geometry is rasterized once
 through Saga2D's existing low-poly renderer and then drawn as atlas sprites.
 No source image files, new runtime dependencies, or simulation/save fields are needed.
 

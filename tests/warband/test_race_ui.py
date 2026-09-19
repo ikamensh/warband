@@ -3,13 +3,13 @@
 import pytest
 
 from saga2d import CommandError, Game
-from warband.authority import ONLINE, WarbandMatch
-from warband.model import tile_center
-from warband.races import RACES
-from warband.rules import BUILDINGS, BuildingType, Race, Terrain, UnitType, Upgrade
-from warband.scene import CodexScene, GameScene, new_game
-from warband.style import build_theme
-from warband.title import RACE_KEYS, TitleScene
+from warband.online.authority import ONLINE, WarbandMatch
+from warband.sim.model import tile_center
+from warband.sim.races import RACES
+from warband.sim.rules import BUILDINGS, BuildingType, Race, Terrain, UnitType, Upgrade
+from warband.ui.scene import CodexScene, GameScene, new_game
+from warband.ui.style import build_theme
+from warband.ui.title import RACE_KEYS, TitleScene
 
 
 @pytest.fixture

@@ -4,7 +4,7 @@
     uv run python tools/balance_report.py --from docs/evidence/balance/league.jsonl   # re-read a league already played
     uv run python tools/balance_report.py --agents pro,knights,siege --seeds 4 --usage-of knights
 
-The postures are ``warband.archetypes``; the readout is ``warband.balance``:
+The postures are ``warband.league.archetypes``; the readout is ``warband.league.balance``:
 the head-to-head matrix and its equilibrium (the mix a player who knew the
 matrix would choose), each posture's pathologies (unspent bank, time at the
 supply cap, matches at the cap), the races, and what every unit, building and
@@ -26,16 +26,16 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 
-from warband import fastsim  # noqa: E402
+from warband.league import fastsim  # noqa: E402
 
 if __name__ in ("__main__", "__mp_main__"):  # run as a program or as one of its worker processes, not as a library
     fastsim.activate()  # the compiled simulation, unless WARBAND_INTERPRETED is set
 
 from arena import load, print_table, run, specs_1v1  # noqa: E402 - the ladder runner in tools/arena.py
-from warband import arena, balance  # noqa: E402
-from warband.archetypes import NAMES  # noqa: E402
-from warband.arena import MatchResult, MatchSpec, win_rate  # noqa: E402
-from warband.rules import Race, UnitType  # noqa: E402
+from warband.league import arena, balance  # noqa: E402
+from warband.league.archetypes import NAMES  # noqa: E402
+from warband.league.arena import MatchResult, MatchSpec, win_rate  # noqa: E402
+from warband.sim.rules import Race, UnitType  # noqa: E402
 
 SEED_BASE = 70_000  # far from the seeds the ladders and the tuner use; nothing was tuned here
 

@@ -16,8 +16,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from verify_deaths import Capture, field, montage  # noqa: E402
 
-from warband.effects import Spray  # noqa: E402
-from warband.rules import UnitType  # noqa: E402
+from warband.art.effects import Spray  # noqa: E402
+from warband.sim.rules import UnitType  # noqa: E402
 
 BLOWS = {"melee": (UnitType.KNIGHT, UnitType.FOOTMAN, 1.3), "arrow": (UnitType.ARCHER, UnitType.PEASANT, 6.0),
          "siege": (UnitType.KNIGHT, UnitType.CATAPULT, 1.3)}

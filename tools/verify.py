@@ -18,10 +18,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from pyglet.window import key, mouse  # noqa: E402
 
 from saga2d import Game, fonts  # noqa: E402
-from warband.model import Build, Harvest, tile_center  # noqa: E402
-from warband.rules import BuildingType, UnitType  # noqa: E402
-from warband.scene import GameScene, PauseScene, new_game  # noqa: E402
-from warband.style import build_theme  # noqa: E402
+from warband.sim.model import Build, Harvest, tile_center  # noqa: E402
+from warband.sim.rules import BuildingType, UnitType  # noqa: E402
+from warband.ui.scene import GameScene, PauseScene, new_game  # noqa: E402
+from warband.ui.style import build_theme  # noqa: E402
 
 
 def main(out: Path) -> None:

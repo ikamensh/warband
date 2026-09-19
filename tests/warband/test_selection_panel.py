@@ -3,9 +3,9 @@
 import pytest
 
 from saga2d import Game
-from warband.rules import UnitType
-from warband.scene import PORTRAITS_PER_PAGE, GameScene
-from warband.style import build_theme
+from warband.sim.rules import UnitType
+from warband.ui.scene import PORTRAITS_PER_PAGE, GameScene
+from warband.ui.style import build_theme
 
 from tests.warband.battlefield import SETTINGS, field
 

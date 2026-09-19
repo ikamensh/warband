@@ -5,11 +5,11 @@ from collections.abc import Iterable
 
 import pytest
 
-from warband import mapgen
+from warband.sim import mapgen
 import math
 
-from warband.model import Attack, AttackMove, Deposit, Harvest, Move, Repair, RuleError, World, dist, tile_center
-from warband.rules import (
+from warband.sim.model import Attack, AttackMove, Deposit, Harvest, Move, Repair, RuleError, World, dist, tile_center
+from warband.sim.rules import (
     BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_GOLD, MINE_SLOTS, MINE_TIME, REPAIR_COST, SIM_DT, UNITS, BuildingType, Cost, Resource,
     Terrain, UnitType, repair_cost,
 )
@@ -499,7 +499,7 @@ def test_patrol_walks_back_and_forth_and_fights_what_it_meets() -> None:
     world.patrol([knight.id], (12.5, 5.5))
     run_until(world, lambda: knight.x > 12.0, 8.0)
     run_until(world, lambda: knight.x < 3.0, 8.0)
-    assert isinstance(knight.order, __import__("warband.model", fromlist=["Patrol"]).Patrol)
+    assert isinstance(knight.order, __import__("warband.sim.model", fromlist=["Patrol"]).Patrol)
     victim = world.spawn_unit(1, UnitType.PEASANT, (8.5, 5.5))
     run_until(world, lambda: victim.id not in world.units, 15.0)
     run_until(world, lambda: knight.x > 12.0, 10.0)  # and carries on patrolling

@@ -6,11 +6,11 @@ from collections.abc import Iterable
 
 import pytest
 
-from warband import mapgen
-from warband.ai import Brain
-from warband.model import RuleError, World, dist
-from warband.races import RACES
-from warband.rules import (
+from warband.sim import mapgen
+from warband.brains.ai import Brain
+from warband.sim.model import RuleError, World, dist
+from warband.sim.races import RACES
+from warband.sim.rules import (
     Layout,
     BUILDINGS, DEEP_MINING_TRIP, GOLD_PER_TRIP, REGROWTH_SECONDS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, Race, Resource, Terrain,
     UnitType, Upgrade,

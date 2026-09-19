@@ -1,8 +1,8 @@
 """Headless harvesting routes must reach a useful resource or depot, even in groups."""
 import random
 import pytest
-from warband.model import World
-from warband.rules import BuildingType, SIM_DT, Terrain, UnitType
+from warband.sim.model import World
+from warband.sim.rules import BuildingType, SIM_DT, Terrain, UnitType
 
 
 @pytest.mark.parametrize('count', [1, 8])

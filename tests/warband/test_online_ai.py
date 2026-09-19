@@ -11,7 +11,7 @@ from websockets.sync.client import connect
 
 from saga2d.testing.online import first_stdout_line, handshake, receive, server_fixture
 
-server_url = server_fixture('warband.authority:ONLINE')
+server_url = server_fixture('warband.online.authority:ONLINE')
 
 
 @pytest.mark.slow
@@ -23,7 +23,7 @@ def test_headless_opponent_joins_and_its_orders_reach_the_authoritative_world(se
         welcome = handshake(human, game="warband-v2", options={"seed": 3, "width": 48, "height": 40})
         initial = receive(human)["state"]["world"]
         result = subprocess.run(
-            [sys.executable, "-m", "warband.online_ai", "--server", server_url,
+            [sys.executable, "-m", "warband.online.online_ai", "--server", server_url,
              "--room", welcome["room"], "--difficulty", "hard", "--duration", "2.5",
              "--report-every", "0.25"],
             cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=15,
@@ -52,7 +52,7 @@ def test_headless_creator_announces_a_room_before_a_human_joins(server_url):
 
     The headless client waits in a real lobby for seconds: the slow tier."""
     process = subprocess.Popen(
-        [sys.executable, "-m", "warband.online_ai", "--server", server_url, "--create",
+        [sys.executable, "-m", "warband.online.online_ai", "--server", server_url, "--create",
          "--difficulty", "hard", "--width", "48", "--height", "40", "--duration", "2"],
         cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
@@ -82,7 +82,7 @@ def test_headless_creator_announces_a_room_before_a_human_joins(server_url):
 def test_headless_client_reports_failed_join_and_bounded_lobby_wait(server_url, arguments, error):
     """A failed connection or absent partner exits nonzero with machine-readable evidence."""
     result = subprocess.run(
-        [sys.executable, "-m", "warband.online_ai", "--server", server_url, *arguments],
+        [sys.executable, "-m", "warband.online.online_ai", "--server", server_url, *arguments],
         cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=5,
     )
     assert result.returncode == 1, result.stderr + result.stdout

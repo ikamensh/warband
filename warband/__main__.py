@@ -15,11 +15,12 @@ from typing import Any
 
 from saga2d import add_match_arguments, match_from_arguments
 from saga2d import Game, fonts
-from warband import mapgen, sound
-from warband.rules import Difficulty, Layout, MapTheme, Race
-from warband.scene import DEFAULT_SETTINGS, fair_map, new_game
-from warband.style import build_theme
-from warband.title import TitleScene
+from warband.sim import mapgen
+from warband.audio import sound
+from warband.sim.rules import Difficulty, Layout, MapTheme, Race
+from warband.ui.scene import DEFAULT_SETTINGS, fair_map, new_game
+from warband.ui.style import build_theme
+from warband.ui.title import TitleScene
 
 
 def main() -> None:
@@ -38,7 +39,7 @@ def main() -> None:
     add_match_arguments(parser)
     args = parser.parse_args()
     if args.mission == "list":
-        from warband.missions import CAMPAIGN
+        from warband.story.missions import CAMPAIGN
 
         for mission in CAMPAIGN.missions:
             print(f"{mission.id:16} {CAMPAIGN.index(mission)}. {mission.title} · {mission.act}")
@@ -53,8 +54,8 @@ def main() -> None:
     fonts.load(game)
     sound.install(game)
     sound.apply_volumes(settings["music"], settings["sfx"])
-    from warband.authority import WarbandMatch
-    from warband.multiplayer import NetworkGameScene
+    from warband.online.authority import WarbandMatch
+    from warband.ui.multiplayer import NetworkGameScene
     layout = None if args.layout == "any" else Layout(args.layout)
     lobby = match_from_arguments(args, parser, title="Warband", game_id="warband-v2",
                                  create_match=lambda: WarbandMatch(**{**lobby_options(args), 'theme': MapTheme(args.theme),
@@ -65,9 +66,9 @@ def main() -> None:
         game.run(lobby)
         return
     if args.campaign or args.mission is not None:
-        from warband.campaign_scene import CampaignScene
-        from warband.mission_scene import MissionScene, build_world, current_progress
-        from warband.missions import CAMPAIGN
+        from warband.story.campaign_scene import CampaignScene
+        from warband.story.mission_scene import MissionScene, build_world, current_progress
+        from warband.story.missions import CAMPAIGN
 
         if args.mission is None:
             game.run(CampaignScene(settings))

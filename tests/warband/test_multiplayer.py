@@ -21,8 +21,8 @@ def converge(host, client, until):
 
 def test_warband_guest_orders_and_host_simulation_stay_in_sync():
     """Guest units move on the authoritative clock; forged ownership is rejected atomically."""
-    from warband.authority import WarbandMatch
-    from warband.model import World
+    from warband.online.authority import WarbandMatch
+    from warband.sim.model import World
     match = WarbandMatch(seed=3)
     host = MatchHost('warband-v2', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
     client = MatchClient('warband-v2', host.address, token='test')
@@ -54,9 +54,9 @@ def test_warband_guest_orders_and_host_simulation_stay_in_sync():
 
 def test_smart_target_identity_and_empty_ground_survive_the_socket():
     """Context orders keep the clicked identity even if a unit crosses the point."""
-    from warband.authority import WarbandMatch
-    from warband.model import Attack, Harvest, Move, Repair, World
-    from warband.rules import BuildingType, Terrain, UnitType
+    from warband.online.authority import WarbandMatch
+    from warband.sim.model import Attack, Harvest, Move, Repair, World
+    from warband.sim.rules import BuildingType, Terrain, UnitType
 
     match = WarbandMatch(seed=3)
     match.world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2)
@@ -100,11 +100,11 @@ def test_smart_target_identity_and_empty_ground_survive_the_socket():
 def test_warband_fatal_impact_keeps_its_material_across_the_socket(tmp_path, audio_schema):
     """Guests hear fatal impacts, with explicit basic audio only for the old schema."""
     from saga2d import Game
-    from warband.model import World
-    from warband.authority import WarbandMatch
-    from warband.multiplayer import NetworkGameScene
-    from warband.rules import BuildingType, Terrain, UnitType
-    from warband.style import build_theme
+    from warband.sim.model import World
+    from warband.online.authority import WarbandMatch
+    from warband.ui.multiplayer import NetworkGameScene
+    from warband.sim.rules import BuildingType, Terrain, UnitType
+    from warband.ui.style import build_theme
 
     match = WarbandMatch(3)
     match.world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2)
@@ -190,8 +190,8 @@ def test_warband_fatal_impact_keeps_its_material_across_the_socket(tmp_path, aud
 
 def test_warband_invalid_cancel_index_is_rejected_without_changing_the_queue():
     """Malformed remote orders are ordinary rejections and cannot crash the host loop."""
-    from warband.authority import WarbandMatch
-    from warband.rules import UnitType, BuildingType
+    from warband.online.authority import WarbandMatch
+    from warband.sim.rules import UnitType, BuildingType
     match = WarbandMatch()
     hall = match.world.player_buildings(1, BuildingType.TOWN_HALL)[0]
     match.world.train(hall.id, UnitType.PEASANT)
@@ -204,8 +204,8 @@ def test_warband_invalid_cancel_index_is_rejected_without_changing_the_queue():
 def test_warband_selection_facts_are_drawn_above_their_background(tmp_path):
     """Native review found the inherited HUD panel covering its immediate text."""
     from saga2d import Game
-    from warband.scene import new_game
-    from warband.style import build_theme
+    from warband.ui.scene import new_game
+    from warband.ui.style import build_theme
     game = Game('selection', backend='mock', theme=build_theme(), save_dir=tmp_path)
     try:
         scene = new_game(3)
@@ -226,9 +226,9 @@ def test_warband_selection_facts_are_drawn_above_their_background(tmp_path):
 def test_warband_host_clock_runs_under_its_menu_and_pauses_on_disconnect(tmp_path):
     """The actual host scene owns time independently of the local pause overlay."""
     from saga2d import Game
-    from warband.authority import WarbandMatch
-    from warband.multiplayer import NetworkGameScene
-    from warband.style import build_theme
+    from warband.online.authority import WarbandMatch
+    from warband.ui.multiplayer import NetworkGameScene
+    from warband.ui.style import build_theme
     match = WarbandMatch()
     host = MatchHost('warband', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
     client = MatchClient('warband', host.address, token='test')
@@ -264,9 +264,9 @@ def test_warband_host_clock_runs_under_its_menu_and_pauses_on_disconnect(tmp_pat
 
 def test_guest_controls_reach_host_and_accepted_state_returns_to_the_scene(tmp_path):
     """The real match scene submits orders without mutating the guest world ahead of the host."""
-    from warband.authority import WarbandMatch
-    from warband.multiplayer import NetworkGameScene
-    from warband.style import build_theme
+    from warband.online.authority import WarbandMatch
+    from warband.ui.multiplayer import NetworkGameScene
+    from warband.ui.style import build_theme
     match = WarbandMatch(3)
     host = MatchHost('warband', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
     client = MatchClient('warband', host.address, token='test')
@@ -292,8 +292,8 @@ def test_guest_controls_reach_host_and_accepted_state_returns_to_the_scene(tmp_p
 
 def test_title_opens_a_usable_host_join_form(tmp_path):
     """Multiplayer is reachable from the title and address entry uses ordinary input."""
-    from warband.style import build_theme
-    from warband.title import TitleScene
+    from warband.ui.style import build_theme
+    from warband.ui.title import TitleScene
     game = Game('title', backend='mock', theme=build_theme(), save_dir=tmp_path)
     try:
         game.push(TitleScene())
@@ -321,11 +321,11 @@ def test_title_opens_a_usable_host_join_form(tmp_path):
 
 def test_received_melee_contact_reacts_once_across_repeated_snapshots(game):
     """Only an authoritative hit recoils; retained event history cannot replay it."""
-    from warband.authority import WarbandMatch
-    from warband.model import World
-    from warband.multiplayer import NetworkGameScene
-    from warband.rules import BuildingType, Terrain, UnitType
-    from warband.textures import TILE
+    from warband.online.authority import WarbandMatch
+    from warband.sim.model import World
+    from warband.ui.multiplayer import NetworkGameScene
+    from warband.sim.rules import BuildingType, Terrain, UnitType
+    from warband.art.textures import TILE
 
     match = WarbandMatch(3)
     match.world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2)
@@ -367,7 +367,7 @@ def test_received_melee_contact_reacts_once_across_repeated_snapshots(game):
         assert scene.world.units[victim.id].hp == victim.hp
         game.tick(1 / 60)  # Advance the reaction from its zero-displacement contact instant.
         assert abs(sprite.rotation) > 0, 'The received hit must have a visible reaction'
-        from warband.effects import Spray
+        from warband.art.effects import Spray
         blood = [e for e in live_effects(scene) if isinstance(e, Spray)]
         assert len(blood) == 1, 'The received hit bleeds once'
         for _ in range(24):

@@ -16,13 +16,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pyglet.window import key, mouse
 from saga2d import Game, fonts
-from warband.model import World
-from warband.rules import Difficulty
-from warband.scene import GameOverScene, load_game, new_game
-from warband.score_scene import HighScoreScene
-from warband.scores import HighScores
-from warband.style import build_theme
-from warband.title import TitleScene
+from warband.sim.model import World
+from warband.sim.rules import Difficulty
+from warband.ui.scene import GameOverScene, load_game, new_game
+from warband.ui.score_scene import HighScoreScene
+from warband.records.scores import HighScores
+from warband.ui.style import build_theme
+from warband.ui.title import TitleScene
 
 
 def verify(out: Path, resolution: tuple[int, int]) -> None:

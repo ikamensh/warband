@@ -7,11 +7,11 @@ from saga2d import Button, Game, MatchMenu
 from saga2d.online import OnlineClient
 from saga2d.testing.online import server_fixture
 
-server_url = server_fixture('warband.authority:ONLINE')
-from warband.multiplayer import NetworkGameScene
-from warband.scene import SettingsScene
-from warband.style import build_theme
-from warband.title import TitleScene
+server_url = server_fixture('warband.online.authority:ONLINE')
+from warband.ui.multiplayer import NetworkGameScene
+from warband.ui.scene import SettingsScene
+from warband.ui.style import build_theme
+from warband.ui.title import TitleScene
 
 
 def wait_for(game, partner, predicate):
@@ -100,9 +100,9 @@ def test_network_result_has_no_solo_rematch_and_escape_leaves(tmp_path, winner):
     """An authoritative victory or defeat ends at the title, never a new local match."""
     from saga2d import MatchClient, MatchHost
     from tests.warband.test_multiplayer import converge
-    from warband.model import World
-    from warband.authority import WarbandMatch
-    from warband.rules import Terrain, UnitType
+    from warband.sim.model import World
+    from warband.online.authority import WarbandMatch
+    from warband.sim.rules import Terrain, UnitType
 
     match = WarbandMatch(3)
     match.world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2)

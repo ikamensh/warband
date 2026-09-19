@@ -28,13 +28,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PIL import Image  # noqa: E402
 from saga2d import Game, MatchClient, MatchHost, fonts  # noqa: E402
 from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
-from warband import textures  # noqa: E402
-from warband.authority import WarbandMatch  # noqa: E402
-from warband.model import World  # noqa: E402
-from warband.multiplayer import NetworkGameScene  # noqa: E402
-from warband.rules import BuildingType, Terrain, UnitType  # noqa: E402
-from warband.scene import GameScene  # noqa: E402
-from warband.style import build_theme  # noqa: E402
+from warband.art import textures  # noqa: E402
+from warband.online.authority import WarbandMatch  # noqa: E402
+from warband.sim.model import World  # noqa: E402
+from warband.ui.multiplayer import NetworkGameScene  # noqa: E402
+from warband.sim.rules import BuildingType, Terrain, UnitType  # noqa: E402
+from warband.ui.scene import GameScene  # noqa: E402
+from warband.ui.style import build_theme  # noqa: E402
 
 
 def field(scenario):

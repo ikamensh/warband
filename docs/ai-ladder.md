@@ -11,7 +11,7 @@ seven and eleven wins depending only on which random stream drives the build
 site jitter. Nothing below a few dozen games means anything, and most of the
 numbers here come from a few hundred.
 
-The ladder is `warband/arena.py`, driven by `tools/arena.py`.
+The ladder is `warband/league/arena.py`, driven by `tools/arena.py`.
 
 ## What the AI is allowed to know
 
@@ -571,8 +571,8 @@ was configured for.
 
 | agent | what it is |
 |-------|------------|
-| `easy`, `normal`, `hard` | the shipped difficulties, `warband.ai.Brain` |
-| `pro` | `warband.pro_ai.ProBrain` |
+| `easy`, `normal`, `hard` | the shipped difficulties, `warband.brains.ai.Brain` |
+| `pro` | `warband.brains.pro_ai.ProBrain` |
 | `pro-*` | one-knob variants of `pro`, used to attribute its strength |
 
 Every `pro-*` name differs from `pro` in exactly one field of `ProProfile`, so
@@ -591,7 +591,7 @@ alone; lockstep online play depends on the simulation being reproducible.
 uv run python tools/sim_fingerprint.py --check tools/sim_fingerprint.txt
 ```
 
-A deliberate change to the rules or to `warband/ai.py` is expected to move it,
+A deliberate change to the rules or to `warband/brains/ai.py` is expected to move it,
 and the recorded file is refreshed in the same commit. The recorded hash is
 macOS's: glibc and the Windows runtime round a few of the simulation's sines,
 cosines and arctangents differently in the last bit, so on Linux or Windows the

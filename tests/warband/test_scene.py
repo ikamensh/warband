@@ -3,13 +3,13 @@
 import pytest
 
 from saga2d import Game
-from warband.model import Event, Repair, Attack, AttackMove, Build, Harvest, Move, tile_center
-from warband.rules import BUILDINGS, SIM_DT, UNITS, BuildingType, UnitType
-from warband.races import RACES
-from warband.rules import Race
-from warband.scene import GameOverScene, GameScene, HelpScene, LeaveScene, PauseScene, SettingsScene, new_game
-from warband.style import build_theme
-from warband.title import NewGameScene, TitleScene
+from warband.sim.model import Event, Repair, Attack, AttackMove, Build, Harvest, Move, tile_center
+from warband.sim.rules import BUILDINGS, SIM_DT, UNITS, BuildingType, UnitType
+from warband.sim.races import RACES
+from warband.sim.rules import Race
+from warband.ui.scene import GameOverScene, GameScene, HelpScene, LeaveScene, PauseScene, SettingsScene, new_game
+from warband.ui.style import build_theme
+from warband.ui.title import NewGameScene, TitleScene
 
 from tests.warband.battlefield import live_effects
 
@@ -67,7 +67,7 @@ def drag_box(game: Game, scene: GameScene, a, b) -> None:
 
 def production_shown(game: Game, scene: GameScene, target) -> bool:
     """The selection panel draws *target*'s portrait or emblem (the building is making it)."""
-    from warband.production import production_image
+    from warband.art.production import production_image
 
     handle = game.assets.image(production_image(game, target, scene.human, scene.player.race))
     px, py, pw, ph = scene.selection_panel.bounds
@@ -360,7 +360,7 @@ def test_an_exposed_rival_shows_where_their_last_holdings_are(play) -> None:
 
 
 def test_a_kill_leaves_a_body_lying_that_fades_and_is_removed(play) -> None:
-    from warband.effects import UnitDeath
+    from warband.art.effects import UnitDeath
 
     game, scene = play
     world = scene.world
@@ -459,7 +459,7 @@ def test_title_continue_loads_the_saved_match(game) -> None:
 
 
 def test_a_blacksmith_researches_with_a_hotkey_and_the_panel_shows_progress(play) -> None:
-    from warband.rules import Upgrade
+    from warband.sim.rules import Upgrade
 
     game, scene = play
     world = scene.world
@@ -485,7 +485,7 @@ def test_a_blacksmith_researches_with_a_hotkey_and_the_panel_shows_progress(play
 
 
 def test_the_codex_lists_every_unit_building_and_upgrade(play) -> None:
-    from warband.scene import CodexScene
+    from warband.ui.scene import CodexScene
 
     game, scene = play
     press(game, "f2")
@@ -505,9 +505,9 @@ def test_the_codex_lists_every_unit_building_and_upgrade(play) -> None:
 
 def test_the_title_offers_every_difficulty_and_saves_keep_it(game) -> None:
     """Each setting is reachable by its key, and the one chosen survives a save."""
-    from warband.ai import DIFFICULTY_ELO, PROFILES
-    from warband.pro_ai import ProBrain
-    from warband.rules import Difficulty
+    from warband.brains.ai import DIFFICULTY_ELO, PROFILES
+    from warband.brains.pro_ai import ProBrain
+    from warband.sim.rules import Difficulty
 
     game.push(TitleScene())
     game.tick(1 / 60)
@@ -546,7 +546,7 @@ def test_double_click_and_ctrl_click_select_every_unit_of_a_type_on_screen(play)
 
 
 def test_patrol_button_and_camera_bookmarks(play) -> None:
-    from warband.model import Patrol
+    from warband.sim.model import Patrol
 
     game, scene = play
     hall = hall_of(scene)
