@@ -1368,7 +1368,7 @@ class World:
         player = self.players[building.player]
         # Per resource: a plan short of lumber claims no gold beyond its price, so a recruit paid in gold alone may go.
         if max(0, player.gold - held.gold) < cost.gold or max(0, player.lumber - held.lumber) < cost.lumber:
-            return "Waiting: your plans and builders have first claim on the gold and lumber"
+            return "Gold and lumber held for your plans"
         return None
 
     @recorded

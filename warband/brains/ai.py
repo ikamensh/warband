@@ -148,6 +148,25 @@ def known_mines(world: World, player: int) -> list[KnownMine]:
     return list(world.worker_knowledge[player].mines.values())
 
 
+def auto_site(world: World, building_type: BuildingType, player: int, near: Point, rng: random.Random,
+              planned: Sequence[tuple[BuildingType, Pos]] = ()) -> Pos | None:
+    """Where the planner puts *building_type* when a player lets it choose, looking from *near* (their camera): a hall
+    by the nearest gold mine they know that no hall of theirs, standing or planned in *planned*, has claimed; anything
+    else about their hall nearest *near*, the way the brains place their own (:func:`site_search`), clear of *planned*."""
+    halls = [b.center for b in world.player_buildings(player, BuildingType.TOWN_HALL)]
+    halls += [(pos[0] + BUILDINGS[kind].size / 2, pos[1] + BUILDINGS[kind].size / 2) for kind, pos in planned if kind is BuildingType.TOWN_HALL]
+    own = [b.center for b in world.player_buildings(player)]
+    anchor = min(halls or own, key=lambda point: dist(point, near)) if halls or own else near
+    if building_type is BuildingType.TOWN_HALL:
+        free = [mine.center for mine in known_mines(world, player)
+                if mine.gold >= LOW_MINE_GOLD and not any(dist(mine.center, hall) <= CLAIM_DISTANCE for hall in halls)]
+        if not free:
+            return None
+        anchor = min(free, key=lambda point: dist(point, anchor))
+    taken = [(pos, BUILDINGS[kind].size) for kind, pos in planned]
+    return site_search(world, building_type, player, anchor, rng, BUILD_MIN_DISTANCE, BUILD_MAX_DISTANCE, taken)
+
+
 def release_arrived(world: World, player: int) -> None:
     """Let go of a Move that is as good as finished.
 

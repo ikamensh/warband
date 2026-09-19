@@ -92,7 +92,7 @@ def test_clicking_a_peasant_selects_it_and_shows_its_card(play) -> None:
     assert scene.selection == [peasant.id]
     shown = texts(game)
     assert "Peasant" in shown and {"3", "0", "0.45", "2.4"} <= set(shown)  # damage, armour, range and speed beside their symbols
-    assert [c.label for c in scene.card] == ["Move", "Stop", "Attack", "Hold", "Patrol", "Build", "Repair"]
+    assert [c.label for c in scene.card] == ["Move", "Stop", "Hold", "Attack", "Patrol", "Build", "Repair"]  # the card's rows
     assert "select" in scene.recent_sounds
 
 
@@ -165,32 +165,39 @@ def test_build_menu_places_a_farm_where_the_mouse_is(play) -> None:
     peasant = peasants_of(scene)[0]
     scene.select([peasant.id])
     press(game, "b")
-    assert scene.build_menu and [c.label for c in scene.card] == [
-        "Farm", "Barracks", "Hall", "Tower", "Mill", "Smith", "Stables", "Workshop", "Church", "Back",
+    assert scene.catalogue == "build" and [c.label for c in scene.card] == [
+        "Farm", "Barracks", "Hall", "Tower", "Mill", "Smith", "Stables", "Workshop", "Church",
     ]
     press(game, "f")
-    assert scene.pending == "build:farm"
+    assert scene.placing is BuildingType.FARM and scene.catalogue == "build"
     site = (hall_of(scene).x + 5, hall_of(scene).y + 4)
     game.backend.inject_mouse_move(*screen_of(scene, (site[0] + 1, site[1] + 1)))
     game.tick(1 / 60)
     assert scene.ghost() is not None and scene.ghost()[2]
     click(game, scene, (site[0] + 1, site[1] + 1))
     assert isinstance(peasant.order, Build) and peasant.order.type is BuildingType.FARM and peasant.order.pos == site
+    assert scene.pending is None and scene.catalogue == "build"  # one site placed; the catalogue stays until Esc
     tick(game, 3.0, 0.1)
     assert any(b.type is BuildingType.FARM for b in world.player_buildings(scene.human))
 
 
-def test_every_building_is_on_the_build_menu_with_its_hotkey_and_its_reason_when_locked(play) -> None:
+def test_every_building_is_on_the_build_menu_with_its_hotkey_and_a_locked_one_is_planned_to_wait(play) -> None:
     # The card once offered only the four opening buildings, so a player could never raise the tech chain.
     game, scene = play
+    scene.world.reveal_all(scene.human)
     scene.select([peasants_of(scene)[0].id])
     press(game, "b")
     hotkeys = {c.label: c.hotkey for c in scene.card}
-    assert hotkeys == {RACES[Race.HUMAN].cards[bt]: BUILDINGS[bt].hotkey.upper() for bt in BuildingType if bt is not BuildingType.GOLD_MINE} | {"Back": "Esc"}
-    press(game, "k")  # a blacksmith needs a barracks first
-    assert scene.pending is None and scene.status == "Requires a Barracks"
+    assert hotkeys == {RACES[Race.HUMAN].cards[bt]: BUILDINGS[bt].hotkey.upper() for bt in BuildingType if bt is not BuildingType.GOLD_MINE}
+    press(game, "k")  # a blacksmith needs a barracks first: placed, it is planned and waits for one
+    assert scene.placing is BuildingType.BLACKSMITH
+    site = (hall_of(scene).x + 5, hall_of(scene).y + 4)
+    click(game, scene, (site[0] + 1.5, site[1] + 1.5))
+    assert [(p.type, p.pos) for p in scene.world.player_plans(scene.human)] == [(BuildingType.BLACKSMITH, site)]
+    assert scene.status == "Blacksmith planned · it waits for a Barracks"
+    press(game, "b")
     press(game, "m")  # a lumber mill only needs the town hall
-    assert scene.pending == "build:lumber_mill"
+    assert scene.placing is BuildingType.LUMBER_MILL
 
 
 def test_r_then_a_click_on_a_damaged_building_sends_the_peasants_to_repair_it(play) -> None:

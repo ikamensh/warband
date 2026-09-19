@@ -195,7 +195,7 @@ UNITS: Final[dict[UnitType, UnitInfo]] = {
                                 "Slow siege engine: stones land where aimed, splash friend and foe, ×1.5 against buildings",
                                 splash=1.2, windup=0.8, turn=math.radians(150), min_range=2.0, attack=AttackType.SIEGE,
                                 armor_class=ArmorClass.UNARMORED),
-    UnitType.CLERIC: UnitInfo("Cleric", Cost(700, 50), 40, 3, 0, 3.0, 2.0, 2.4, 5, 20.0, BuildingType.CHURCH, "l",
+    UnitType.CLERIC: UnitInfo("Cleric", Cost(700, 50), 40, 3, 0, 3.0, 2.0, 2.4, 5, 20.0, BuildingType.CHURCH, "h",  # H for healer: L is Blessing at the church
                               "Heals a wounded ally 15 at a cast; a weak blow when no one needs it", heal=15, windup=0.5,
                               armor_class=ArmorClass.UNARMORED),
 }

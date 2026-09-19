@@ -91,7 +91,7 @@ def main(out: Path) -> None:
     click(peasants[1].pos)
     press(key.B)
     press(key.F)
-    assert scene.pending == "build:farm"
+    assert scene.placing is BuildingType.FARM
     site = (hall.x + 5, hall.y + 4)
     px, py = physical((site[0] + 1, site[1] + 1))
     window.dispatch_event("on_mouse_motion", px, py, 0, 0)

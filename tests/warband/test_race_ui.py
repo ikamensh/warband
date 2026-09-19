@@ -85,12 +85,12 @@ def test_buildings_offer_the_race_units_and_only_its_own_arts(game) -> None:
     game.tick(1 / 60)
     assert scene.tooltip.startswith("Researching Plunder")
     scene.select([])
-    scene.open_settlement("upgrade")
+    scene.open_catalogue("upgrade")
     labels = [c.label for c in scene.card]
     assert "Bloodlust" in labels and "Plunder" in labels and "Horses" not in labels and "Blessing" not in labels
-    scene.open_settlement("train")
+    scene.open_catalogue("train")
     assert [c.label for c in scene.card][:3] == ["Peon", "Grunt", "Axethrower"]
-    scene.open_settlement(None)
+    scene.open_catalogue(None)
     press(game, "f2")
     assert isinstance(game.scene, CodexScene)
     shown = texts(game)

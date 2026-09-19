@@ -62,6 +62,24 @@ def _parts(name: str, color: Color | None = None) -> list[tuple[list[tuple[float
     raise ValueError(f"Unknown icon: {name}")
 
 
+def loop_parts(color: Color = COLORS["gold"]) -> list[tuple[list[tuple[float, float]], Color]]:
+    """Two arrows chasing each other round a ring: endless training.  Quads along each arc and a triangle at its
+    head, each convex, since the backend fans every polygon from its first point."""
+    outer, inner, parts = .44, .27, []
+    for start, end in ((-165.0, -30.0), (15.0, 150.0)):
+        steps = 6
+        for i in range(steps):
+            a, b = (math.radians(start + (end - start) * j / steps) for j in (i, i + 1))
+            parts.append(([(.5 + outer * math.cos(a), .5 + outer * math.sin(a)), (.5 + outer * math.cos(b), .5 + outer * math.sin(b)),
+                           (.5 + inner * math.cos(b), .5 + inner * math.sin(b)), (.5 + inner * math.cos(a), .5 + inner * math.sin(a))], color))
+        head, tip = math.radians(end), math.radians(end + 40)
+        mid = (outer + inner) / 2
+        parts.append(([(.5 + (outer + .08) * math.cos(head), .5 + (outer + .08) * math.sin(head)),
+                       (.5 + mid * math.cos(tip), .5 + mid * math.sin(tip)),
+                       (.5 + (inner - .08) * math.cos(head), .5 + (inner - .08) * math.sin(head))], color))
+    return parts
+
+
 def draw_icon(scene, name: str, x: float, y: float, size: float = 24, color: Color | None = None, space: str = "screen") -> None:
     """Draw *name* immediately with its top-left corner at (x, y)."""
     for points, ink in _parts(name, color):

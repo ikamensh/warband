@@ -40,6 +40,7 @@ from warband.story.mission_scene import MissionResultScene, MissionScene, build_
 from warband.story.missions import CAMPAIGN  # noqa: E402
 from warband.sim.model import World, tile_center  # noqa: E402
 from warband.sim.rules import BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
+from warband.ui.controls import SCHEMES  # noqa: E402
 from warband.ui.scene import TOAST_TOP, CodexScene, GameScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game  # noqa: E402
 from warband.ui.score_scene import HighScoreScene  # noqa: E402
 from warband.ui.style import build_theme  # noqa: E402
@@ -111,11 +112,11 @@ def match(game: Game, *, seed: int = 3, settings: dict | None = None, **kwargs) 
     return scene
 
 
-def town(game: Game, *, race: Race = Race.HUMAN, zoom: float = 1.0) -> GameScene:
-    """The settlement, banner gone, camera on the buildings."""
+def town(game: Game, *, race: Race = Race.HUMAN, zoom: float = 1.0, controls: str = "classic") -> GameScene:
+    """The settlement, banner gone, camera on the buildings, played with *controls*."""
     world = settlement()
     world.players[0].race = race
-    scene = GameScene(world, 17, settings=dict(QUIET))
+    scene = GameScene(world, 17, settings=dict(QUIET, controls=controls))
     game.push(scene)
     scene.paused = True
     ticks(game, 20, 0.2)
@@ -273,7 +274,7 @@ def select_damaged(game: Game) -> None:
 for _menu in ("build", "train", "upgrade"):
     def _menu_screen(game: Game, menu: str = _menu) -> None:
         scene = town(game)
-        scene.toggle_settlement(menu)
+        scene.toggle_catalogue(menu)
         ticks(game)
 
     SCREENS[f"menu_{_menu}"] = _menu_screen
@@ -282,9 +283,9 @@ for _menu in ("build", "train", "upgrade"):
 @screen
 def menu_build_hover(game: Game) -> None:
     scene = town(game)
-    scene.toggle_settlement("build")
+    scene.toggle_catalogue("build")
     ticks(game)
-    button = next(c for c in scene.card_panel.walk() if hasattr(c, "hotkey") or type(c).__name__ == "ProductionButton")
+    button = scene.card_buttons[0]
     x, y, w, h = button.bounds
     move_mouse(game, x + w / 2, y + h / 2)
     ticks(game)
@@ -293,7 +294,7 @@ def menu_build_hover(game: Game) -> None:
 @screen
 def plans(game: Game) -> None:
     scene = town(game)
-    scene.place_plan(BuildingType.FARM, (12.5, 11.5))
+    scene.place(BuildingType.FARM, (12.5, 11.5))
     scene.order_production("train", UnitType.FOOTMAN)
     scene.order_production("upgrade", Upgrade.BLADES_1)
     scene.open_plans()
@@ -320,9 +321,51 @@ def ghost(game: Game) -> None:
     scene = town(game)
     peasant = spawn(scene, UnitType.PEASANT, (10, 12))
     scene.select([peasant.id])
-    scene.start_pending("build:farm")
+    scene.open_catalogue("build")
+    scene.choose_building(BuildingType.FARM)
     move_mouse(game, *scene.camera.world_to_screen(13 * TILE, 12 * TILE))
     ticks(game)
+
+
+@screen
+def shift_build(game: Game) -> None:
+    """A peasant's next sites in gold, the settlement's plans in blue, the next farm's ghost under the pointer."""
+    scene = town(game)
+    world = scene.world
+    peasant = spawn(scene, UnitType.PEASANT, (10, 12))
+    scene.select([peasant.id])
+    scene.open_catalogue("build")
+    scene.choose_building(BuildingType.FARM)
+    for x in (11, 14):
+        scene.place(BuildingType.FARM, (x + 1, 13), keep=True)
+    world.plan_building(scene.human, BuildingType.FARM, (17, 12))
+    move_mouse(game, *scene.camera.world_to_screen(21 * TILE, 13 * TILE))
+    ticks(game)
+
+
+@screen
+def endless_barracks(game: Game) -> None:
+    """A barracks training footmen and archers in turn, endlessly: the loop on both portraits and the line under the readout."""
+    scene = town(game, zoom=1.5)
+    world = scene.world
+    world.players[scene.human].gold = world.players[scene.human].lumber = 5000
+    barracks = own(scene, BuildingType.BARRACKS)
+    for unit_type in (UnitType.FOOTMAN, UnitType.ARCHER):
+        world.set_auto_train(barracks.id, unit_type, True)
+    scene.select([barracks.id])
+    scene.camera.center_on(*(c * TILE for c in barracks.center))
+    ticks(game, 30, 0.1)
+
+
+for _controls in ("grid", "modal"):
+    def _scheme_screen(game: Game, controls: str = _controls) -> None:
+        """The card with this scheme's keys: a peasant's in Grid (Q W E / A S D / Z), the home Train catalogue in Modal."""
+        scene = town(game, controls=controls)
+        if controls == "grid":
+            scene.select([spawn(scene, UnitType.PEASANT, (10, 12)).id])
+        ticks(game)
+
+    SCREENS[f"controls_{_controls}"] = _scheme_screen
 
 
 @screen
@@ -405,10 +448,12 @@ def save_browser(game: Game) -> None:
     ticks(game)
 
 
-@screen
-def help(game: Game) -> None:
-    game.push(HelpScene())
-    ticks(game)
+for _controls in SCHEMES:
+    def _help(game: Game, controls: str = _controls) -> None:
+        game.push(HelpScene(SCHEMES[controls]))
+        ticks(game)
+
+    SCREENS["help" if _controls == "classic" else f"help_{_controls}"] = _help
 
 
 for _page in range(4):

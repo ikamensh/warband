@@ -140,18 +140,22 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
 
 def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = None) -> int:
     from saga2d import Game
-    from warband.ui.scene import GameScene, new_game
+    from warband.ui.controls import SCHEMES
+    from warband.ui.scene import DEFAULT_SETTINGS, GameScene, new_game
     from warband.ui.style import build_theme
     from warband.ui.title import TitleScene
 
-    keys = sorted({k for keys in GameScene.controls for k in ((keys,) if isinstance(keys, str) else keys)} | set("abfhkmpstw123456789") | {"return"})
+    # The scene's own keys, every letter a card or a scheme gives a meaning, and the Modal scheme's punctuation.
+    keys = sorted({k for keys in GameScene.controls for k in ((keys,) if isinstance(keys, str) else keys)}
+                  | set("abcdefghklmpqrstuvwxz123456789") | {"return", "escape", "period", "comma"})
     failures = 0
     for seed in seeds:
         rng = random.Random(seed)
+        controls = list(SCHEMES)[seed % len(SCHEMES)]  # each scheme in turn
         with tempfile.TemporaryDirectory() as save_dir:
             game = Game("Monkey", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=Path(save_dir) / "saves")  # high scores stay in the temp dir too
             try:
-                game.push(TitleScene())
+                game.push(TitleScene(settings=dict(DEFAULT_SETTINGS, controls=controls)))
                 game.tick(1 / 60)
                 for key in ("n", "return"):
                     game.backend.inject_key(key)
@@ -188,7 +192,7 @@ def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = No
                     check_world(scene.world)
             except Exception:
                 failures += 1
-                print(f"monkey seed {seed}, stack {[type(s).__name__ for s in game.scenes]}:")
+                print(f"monkey seed {seed} ({controls} controls), stack {[type(s).__name__ for s in game.scenes]}:")
                 traceback.print_exc(limit=6)
             finally:
                 game.close()
