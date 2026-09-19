@@ -48,7 +48,7 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-048 | Next | proposed | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
-| WB-050 | Next | in progress | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
+| WB-050 | Next | done | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
 | WB-051 | Next | done | Clerics heal in visible single casts and carry a weak attack | User 2026-09-19 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
@@ -150,6 +150,38 @@ bonus adds to the armour number and does not touch the classes.
    before load. The ladder shows the footmen archetype still worth
    playing and the orcs still a real choice; fuzz, the fingerprint,
    `sim_bench` and both tiers pass.
+
+**Done 2026-09-19** (branch `footman-line`). Numbers as in 1 (the grunt's
+tweak is now speed +0.4, armour -2, `formation=False`). `World.flanks` and
+`armor_of` give the flank bonus. `World._line_slots` gives the slots (the
+foremost make the front row; no line under `FORMATION_MARCH`, 4 tiles; a
+slot in the trees or across water goes to the target). `World._march` walks
+straight at each unit's place 3 tiles ahead of the line's middle while the
+way is clear, else paths to its final slot, and the row hold paces the
+line; `docs/unit-motion.md` part 6 has the why of each choice. Three things
+turned up and were fixed. A waypoint within `ARRIVE` snapped every unit
+slower than 2.4 on to it, a small speed-up at every waypoint; now only the
+end of a walk does. The built-in `sum` over floats is compensated since
+Python 3.12 and not in the compiled simulation, so the two parted in the
+last bit; `model._middle` adds up in a loop (`docs/fast-simulation.md`).
+Fuzz found a march stalled by a moving goal replanned every step in the
+woods; the march now only steers at its moving place.
+
+Measured: round a 3-tile rock the five split three and two and are dressed
+again (under 1.5 tiles front to back, each on its side) 5 tiles past it,
+then end in their slots in order; the worst spread on the way is 3.3 tiles
+(it was 5.1 in single file, which lasted to the end). Frames of the start,
+the rock, past it and arrival were looked at. A fleeing peasant now
+outruns a footman, so two tests hold their victim; three triage-free tests
+were adapted to the line (sixteen footmen stand in two rows of eight
+within 5 of the spot). Ladder (nine agents, 12 seeds, 864 matches, branch
+against main): footmen 1179 to 1235, siege 1381 to 1453, the rest within
+their intervals. Race report (Master mirror, 8 seeds a pair, sides
+swapped): orcs 21-25 (22-24 before), humans 28-17 (30-14), elves 20-24
+(19-26), dwarves 22-25 (20-27): the grunt is still a real choice. Fuzz
+(ten AI games on seeds 81, 300 and 500) is clean; step time in a
+150-unit battle is unchanged within noise. The fingerprint and `sim_bench`
+are refreshed, and the fast and slow tiers pass (1016 and 486).
 
 ## WB-051 — Clerics cast their heals
 

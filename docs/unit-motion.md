@@ -208,3 +208,22 @@ apart in a blob of radius 2.9 tiles instead of 1.8. `tests/warband/test_spacing.
 the four properties above; the frames this was judged on are under
 `docs/evidence/spacing/`. This is the cheap half of part 3's item 7, idle life; the
 breathing bob and look-around are still open.
+
+## 6. The marching line (WB-050, 2026-09-19)
+
+A move or attack-move that sends two or more formation units (every race's footman but
+the orc grunt) further than `FORMATION_MARCH` (4 tiles) gives each a slot: a line across
+the march, `FORMATION_SPACING` apart and `FORMATION_WIDTH` (8) a row, the foremost in
+front and each keeping its side (`World._line_slots`; the order's `offset` from the shared
+target, so the group's pace still holds). A slot in the trees or across the water is
+dropped, and that unit goes to the target itself. On the way (`World._march`) each heads
+for its place as the line stands `FORMATION_LOOKAHEAD` (3 tiles) ahead of the line's
+middle, walking straight at it while the way is clear, so the line re-forms as soon as it
+is past what split it; otherwise, and at the end, it follows a path to its final slot
+(a path to a moving place would be planned anew every step and zigzags in the woods).
+A unit more than `FORMATION_SLACK` ahead of its row's laggard walks at `FORMATION_HOLD`;
+rows dress on themselves, because the front row slowing for the back is what blocks the
+back. A formation unit wears `FORMATION_ARMOR` more for a comrade at each side
+(`World.flanks`). Found on the way: a waypoint within `ARRIVE` of a unit counted as reached
+and snapped the unit onto it, so every unit slower than 2.4 tiles/s was sped up at each
+waypoint; now only the end of a walk does.
