@@ -43,7 +43,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-044 | Next | blocked | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
-| WB-046 | Next | in progress (`fair-seeds`) | A seed that makes no fair map crashes the game where the game chose it | WB-042 |
+| WB-046 | Next | done | A seed that makes no fair map crashes the game where the game chose it | WB-042 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -289,3 +289,23 @@ plays. A seed the player gives (`--seed`) still fails with the clear
 goes through the same function and has no test of its own, since no unfair
 seed is known there. The authoritative contract is unchanged, so no server
 rollout.
+
+**Done 2026-09-19:** merged as `59455cc` (branch `fair-seeds`), live as
+0.2.65. `scene.fair_map(seed, width, height, players, ...)` returns the
+first seed from the chosen one that makes a fair map of the settings, with
+its map; it gives up after twenty seeds with the clear `NoFairMap`. Every
+place the game chooses a seed goes through it. The title's backdrop and New
+game's preview do, and the preview keeps the seed it plays, so the screen
+shows it and Start plays it. So do `next_game` after a match (from the pause
+menu and the results), the multiplayer menu's LAN and online rooms
+(`TitleScene.fair_seed`) and the command line's lobby without `--seed`
+(`__main__.lobby_options`). `new_game(seed)` generates a given seed as
+given. `tests/warband/test_fair_seeds.py` holds seven tests from the known
+unfair seed 67 (Small, two seats). The helper plays 68, and a given 67 is
+refused. A resize and a reroll land on 68, and Start plays the seed and map
+shown. New game after a match on 66 plays 68, with the old match's layout
+and races. The LAN match, the online room's options and the command line's
+room are all made on 68. A slow-tier property asks for a fair map within
+twenty seeds at every size, seat count and layout New game offers (300
+examples, 8 s). `docs/warband-maps.md` says where the game's seeds give way
+and the player's do not. The contract stayed `3e324a4f…`, the live server's.
