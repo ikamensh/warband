@@ -42,7 +42,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-042 | Later | proposed | Tests read through public accessors; try property tests for the model and paths | WB-040 |
 | WB-044 | Next | proposed | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
-| WB-045 | Next | in progress | Lift the orcs from 41% of the Master mirror | WB-014 |
+| WB-045 | Next | done | Lift the orcs from 41% of the Master mirror | WB-014 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -287,3 +287,22 @@ not taken); grunts at 125% hit points 45.5%; grunts at 120% damage 46.8%;
 every orc at 120% hit points 46.8%; grunts at 125% hit points with the ogres'
 armour at −1 49.3%. That last keeps the orcs tough and savage and is the one
 put to the full race reports.
+
+**Done 2026-09-19, merged into main as `6ad2779`** (`a6d22f0` on branch
+`orc-balance`) and live with the server rollout recorded in
+[saga-online's `docs/wb045-rollout.md`](../saga-online/docs/wb045-rollout.md)
+(bundle `db6c4681…`, Warband 0.2.61 promoted, public downloads checked). The
+ogres' armour penalty is −1 instead of −2 (the card says thin armour): the
+only candidate that lifted the orcs on Master without lifting them out of the
+band on Medium, where they were already at 55.2%; every other buff helped
+them more there (see the candidates above and `docs/balance.md`). The full
+race reports, 288 matches each: Master human 54.9%, orc 45.1%, elf 50.0%,
+dwarf 50.0%; Medium human 41.3%, orc 53.1%, elf 55.6%, dwarf 50.0%, with the
+humans and elves on Medium at 39.2% and 56.3% before (the Medium brain's
+matter, moved the right way, not by this item's measure pushed out). The
+orcs clear the band on Master by a hair: 45.1% on 142 decided games, a
+standard error of four points. The 720-game protocol: Easy 570, Hard 1361,
+Master 1608 (the screen shows 570, 1000, 1360, 1610); fingerprint and
+`sim_bench.txt` refreshed. Main ran
+[Tests 35416900214](https://github.com/ikamensh/warband/actions/runs/35416900214)
+and [native package checks 35416900239](https://github.com/ikamensh/warband/actions/runs/35416900239).
