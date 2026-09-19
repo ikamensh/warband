@@ -12,7 +12,7 @@ import pytest
 
 from warband.records.replay import Playback, Replay, digest
 from warband.sim.model import Build, RuleError, World
-from warband.sim.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, Terrain, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Cost, Difficulty, Terrain, UnitType, Upgrade
 
 
 def settlement(*, gold: int = 10_000, lumber: int = 10_000, farms: int = 3) -> World:
@@ -81,21 +81,23 @@ def test_endless_training_waits_for_gold_and_farms_and_says_why() -> None:
     assert barracks.queue == [] and world.auto_train_blocker(barracks) == "Not enough farms"
 
 
-def test_what_the_player_asked_for_is_paid_before_endless_training() -> None:
-    """A farm plan short of lumber holds its gold back from the barracks; cancelled, it holds nothing."""
+def test_a_plan_waiting_for_lumber_holds_back_no_gold() -> None:
+    """What a player asked for is paid first, but gold does not sit idle while the lumber a plan waits for comes in.
+
+    The case a player met (their autosave of 2026-09-19): a Barracks planned without its lumber held its 700 gold
+    back from the hall, whose endless peasants stood idle for seconds with 1000 gold in the purse.  Once its lumber
+    is there the plan holds its gold as well, so endless training cannot starve it; cancelled, it holds nothing."""
     world = settlement(gold=1000, lumber=0)
-    barracks = world.place_building(0, BuildingType.BARRACKS, (8, 2))
-    plan = world.plan_building(0, BuildingType.FARM, (12, 12))
-    world.set_auto_train(barracks.id, UnitType.FOOTMAN, True)
-    run(world, 2.0)
-    farm = BUILDINGS[BuildingType.FARM].cost
-    assert world.committed(0) == farm and barracks.queue == []
-    assert world.auto_train_blocker(barracks) == "Your plans are paid first"
-    world.players[0].gold = farm.gold + UNITS[UnitType.FOOTMAN].cost.gold  # the lumber the farm lacks claims no more gold than its price
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    plan = world.plan_building(0, BuildingType.BARRACKS, (12, 12))
+    world.set_auto_train(hall.id, UnitType.PEASANT, True)
     run(world, 1.05)
-    assert barracks.queue == [UnitType.FOOTMAN] and world.players[0].gold == farm.gold
+    assert hall.queue == [UnitType.PEASANT] and world.committed(0) == Cost(0, 0)
+    barracks = BUILDINGS[BuildingType.BARRACKS].cost
+    world.players[0].gold, world.players[0].lumber = 1000, barracks.lumber  # no worker to send: the plan waits, its money there
+    assert world.committed(0) == barracks and world.auto_train_blocker(hall) == "Your plans are paid first"
     world.cancel_plan(0, plan)
-    assert world.committed(0).gold == 0
+    assert world.committed(0) == Cost(0, 0) and world.auto_train_blocker(hall) is None
 
 
 def test_a_builder_on_its_way_holds_the_price_of_its_site() -> None:

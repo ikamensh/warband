@@ -1361,15 +1361,17 @@ class World:
             building.auto.remove(unit_type)
 
     def committed(self, player: int) -> Cost:
-        """What *player*'s unpaid orders will cost: the sites builders are on their way to, and the plans whose
-        prerequisites stand (one that cannot start yet claims nothing).  Endless training spends only the rest."""
-        gold = lumber = 0
+        """What *player*'s unpaid orders hold back of their purse: the sites builders are on their way to, then the
+        plans whose prerequisites stand (one that cannot start yet claims nothing), each from what those before it
+        left.  One still short of lumber holds only lumber, so gold does not sit idle while the lumber it waits for
+        comes in; once its lumber is there it holds its gold too, and endless training, which spends only the rest,
+        cannot starve it."""
+        claims: list[Cost] = []
         walking: set[tuple[BuildingType, Pos]] = set()
         for unit in self.player_units(player):
             for order in unit.orders:
                 if isinstance(order, Build) and order.building is None:
-                    cost = BUILDINGS[order.type].cost
-                    gold, lumber = gold + cost.gold, lumber + cost.lumber
+                    claims.append(BUILDINGS[order.type].cost)
                     walking.add((order.type, order.pos))
         standing = {b.type for b in self.player_buildings(player, done=True)}
         researched = self.players[player].upgrades
@@ -1392,8 +1394,15 @@ class World:
                         or (upgrade.requires is not None and upgrade.requires not in researched)):
                     continue
                 cost = upgrade.cost
-            gold, lumber = gold + cost.gold, lumber + cost.lumber
-        return Cost(gold, lumber)
+            claims.append(cost)
+        purse = self.players[player]
+        gold, lumber = purse.gold, purse.lumber  # what no claim has taken yet
+        for cost in claims:
+            if lumber < cost.lumber:
+                lumber = 0
+            else:
+                gold, lumber = max(0, gold - cost.gold), lumber - cost.lumber
+        return Cost(purse.gold - gold, purse.lumber - lumber)
 
     def auto_train_blocker(self, building: Building) -> str | None:
         """Why *building* cannot start its next endless recruit now (None when it can): the reasons :meth:`can_train`
@@ -1411,8 +1420,7 @@ class World:
                 return f"Research first: {UPGRADES[plan.type].name}"
         cost, held = self.unit_info(building.player, unit_type).cost, self.committed(building.player)
         player = self.players[building.player]
-        # Per resource: a plan short of lumber claims no gold beyond its price, so a recruit paid in gold alone may go.
-        if max(0, player.gold - held.gold) < cost.gold or max(0, player.lumber - held.lumber) < cost.lumber:
+        if player.gold - held.gold < cost.gold or player.lumber - held.lumber < cost.lumber:
             return "Your plans are paid first"
         return None
 
