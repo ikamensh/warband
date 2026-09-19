@@ -37,7 +37,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 ([`13c9911`](https://github.com/ikamensh/warband/blob/13c991194c5b73d2babbd74c931681aee3c4b8a7/BACKLOG.md)); WB-046, merged as `59455cc`, live as 0.2.65
 ([`70b57b2`](https://github.com/ikamensh/warband/blob/70b57b2048b4a0986aecfad4ad5999e7292c0da6/BACKLOG.md)); WB-041, merged as `62e4970`, live as 0.2.67 on
 bundle `3e3dfda8` ([`79bc783`](https://github.com/ikamensh/warband/blob/79bc78340bf30dcabb3a333f6df85b176bc4dcd3/BACKLOG.md)); WB-047, closed on its
-evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1bfbe42c4705f56a6ac0476a0/BACKLOG.md)); WB-038, merged as `75dc68f`, published as a preview ([`75dc68f`](https://github.com/ikamensh/warband/blob/75dc68f231810cdfe83d5ff6f5f47c48cfb5422f/BACKLOG.md)); WB-039 and WB-044, merged as `f8ba0eb`
+evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1bfbe42c4705f56a6ac0476a0/BACKLOG.md)); WB-038, merged as `75dc68f`, published as a preview ([`75dc68f`](https://github.com/ikamensh/warband/blob/75dc68f231810cdfe83d5ff6f5f47c48cfb5422f/BACKLOG.md); WB-052, merged as `a2212f5` ([`a2212f5`](https://github.com/ikamensh/warband/blob/a2212f53d78ae5c28ec64727eaabc2ac3142d183/BACKLOG.md))); WB-039 and WB-044, merged as `f8ba0eb`
 ([`a8951a7`](https://github.com/ikamensh/warband/blob/a8951a7ca8b76c8df9b8e12b87ed8a9e235e7e1f/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
@@ -47,7 +47,6 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 | WB-049 | Next | done | Armour and attack types; archers strike the unarmoured harder | User 2026-09-19 |
 | WB-050 | Next | proposed | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
 | WB-051 | Next | proposed | Clerics heal in visible single casts and carry a weak attack | User 2026-09-19 |
-| WB-052 | Next | done | Catapults look for a useful shot instead of standing idle in a melee | User 2026-09-19 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -207,61 +206,3 @@ attack, used only when there is no one to heal. `pro_ai`'s
 most wounded ally in range) and the attack being used only when no one
 needs healing. The cast has been seen in frames and heard in a match. The
 change goes live through a server rollout.
-
-## WB-052 — Catapults find something useful to do
-
-Ilya, 2026-09-19: catapults seem not to attack when the melee lines meet.
-They should look for somewhere they can shoot usefully and always try to do
-something useful.
-
-Why this happens: a crew firing on its own judgement aims only at its chosen
-target (or where that target is heading). `_aim_point` returns None when a
-friendly unit is within the splash radius plus `FRIENDLY_MARGIN`
-(`warband/sim/model.py`), which is always true in a melee, and the crew then
-waits.
-
-**Proposed scope:** when its target cannot be hit without splashing its own
-side, the crew looks for the best landing point in range. It scores each
-point by the enemy value inside the splash (with extra weight for archers,
-clerics and catapults) and allows no ally inside the splash. It also takes
-buildings in range as targets. If there is no such point, it moves to a place
-from which it can shoot the enemy's back ranks. It never walks into the enemy
-lines inside its minimum range.
-
-**Done when:** in a scripted clash (eight footmen a side, the enemy's
-archers two tiles behind their line, one catapult six tiles back), the
-catapult fires at least every other cooldown and never hits its own side.
-The ladder shows no loss. The change goes live through a server rollout.
-
-**Done 2026-09-19** (branch `catapult-aim`). Measured before the change on
-the clash of the done-when (`tests/warband/test_siege_judgement.py`): one
-stone in half a minute. From contact the crew stayed locked on the enemy
-soldier in front of its own line, and every aim was refused. When the line
-fell it chased a footman into a map corner, inside its own minimum range.
-Now a crew on its own judgement chooses by what a clear stone would do
-(`World._siege_choice`): every visible enemy within reach plus `SIEGE_STEP`
-(3) tiles is scored by the enemies under the stone (`SIEGE_WORTH`: archers
-2, clerics and catapults 3, anyone else 1, splash at 60%), with a walk to
-reach it counting against it. Buildings count only when no unit can be
-struck, at `SIEGE_BUILDING_WORTH`. The crew may drop the stone a tile beyond
-a unit, where the splash still catches it, and when its target has no clear
-stone it rolls closer, stopping two splashes outside its minimum range. It
-chooses again while its target has no clear stone or stands inside that
-range. The check against friendly fire (`_clear_of_friends`) now also
-catches a friend whose velocity carries it under the stone, and one on its
-way to fight an enemy within arm's length of the landing point (a footman
-after an archer that steps back between shots).
-
-On six seeds of the clash the catapult throws at least every other reload
-(two to four stones in 17 to 21 s, the whole fight), hits its own side
-never, and our side wins with five to seven footmen left. Before, it lost.
-The ladder (`tools/arena.py ladder`, seven agents, 12 seeds, 504 matches,
-branch against main): the siege archetype rises from 1346 to 1428, and every
-other agent stays within noise (Vanguard -20, Warden -36, Hard -16, archers
-+11, footmen 0). No agent loses, and none is pushed out of use. Fuzz (seed
-81, two AI games) is clean. The fingerprint is unchanged (its matches field
-no catapult); `tools/sim_bench.txt` is refreshed. The fast and slow tiers
-pass (995 and 486). `docs/unit-motion.md` describes the crew's judgement.
-Under the policy of 2026-09-19 the change goes live in the next batched
-server rollout, not one of its own.
-
