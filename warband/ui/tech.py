@@ -61,13 +61,16 @@ def has(world: World, player: int, item: Prerequisite) -> bool:
 
 
 def coming(world: World, player: int, item: Prerequisite) -> bool:
-    """*item* is on its way: a building going up, planned or a builder's next site; an upgrade researched or planned."""
-    if any(plan.type is item for plan in world.player_plans(player)):
-        return True
+    """*item* is on its way: a building going up or an upgrade being researched; or one planned (a building also as a
+    builder's next site) whose own prerequisites the player has or has coming, since the plan waits for them."""
+    planned = any(plan.type is item for plan in world.player_plans(player))
     if isinstance(item, BuildingType):
-        return (bool(world.player_buildings(player, item, done=False))
-                or any(isinstance(order, Build) and order.type is item for unit in world.player_units(player) for order in unit.orders))
-    return any(building.research is item for building in world.player_buildings(player))
+        if world.player_buildings(player, item, done=False):  # going up
+            return True
+        planned = planned or any(isinstance(order, Build) and order.type is item for unit in world.player_units(player) for order in unit.orders)
+    elif any(building.research is item for building in world.player_buildings(player)):
+        return True
+    return planned and all(has(world, player, first) or coming(world, player, first) for first in prerequisites(item))
 
 
 def need(world: World, player: int, target: Target) -> Need | None:

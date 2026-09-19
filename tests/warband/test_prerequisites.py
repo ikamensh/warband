@@ -174,3 +174,33 @@ def test_the_codex_tech_tree_draws_what_needs_what_lit_by_what_the_player_has(ga
     game.backend.inject_mouse_move(x + w / 2, y + h / 2)
     game.tick(1 / 60)
     assert any(text["text"].startswith("Siege Bower") for text in game.backend.texts)
+
+
+def test_repeating_a_placement_is_refused_once_its_prerequisite_is_no_longer_coming(game) -> None:
+    """The Modal scheme's "." places the last building again where the planner puts it: a tower after a barracks plan
+    that was cancelled since would wait for nothing, so it is refused like the tower's own key."""
+    scene = new_game(seed=3, settings=dict(DEFAULT_SETTINGS, controls="modal", tutorial=False, sfx=0.0, music=0.0), races=[Race.HUMAN, None])
+    game.push(scene)
+    game.tick(1 / 60)
+    barracks = scene.world.plan_building(scene.human, BuildingType.BARRACKS, open_site(scene, BuildingType.BARRACKS))
+    for key in ("b", "t", "t", "escape"):  # Build, Tower, the planner's spot; Modal keeps placing until Esc
+        press(game, key)
+    assert [plan.type for plan in scene.world.player_plans(scene.human)] == [BuildingType.BARRACKS, BuildingType.TOWER]
+    assert scene.attempt("cancel_plan", scene.human, barracks)
+    press(game, "period")
+    assert scene.status == "Requires a Barracks"
+    assert [plan.type for plan in scene.world.player_plans(scene.human)] == [BuildingType.TOWER]
+
+
+def test_a_plan_that_waits_for_nothing_is_not_on_its_way(game) -> None:
+    """A smith planned behind a barracks plan is coming until that plan goes: then the smith would wait for ever, and
+    the workshop it opens is greyed out again."""
+    scene = match(game)
+    world = scene.world
+    barracks = world.plan_building(scene.human, BuildingType.BARRACKS, open_site(scene, BuildingType.BARRACKS))
+    world.plan_building(scene.human, BuildingType.BLACKSMITH, open_site(scene, BuildingType.BLACKSMITH))
+    press(game, "b")
+    assert caption_under(game, button_of(scene, BuildingType.WORKSHOP)) == ["Workshop", "after Smith"]
+    assert scene.attempt("cancel_plan", scene.human, barracks)
+    game.tick(1 / 60)
+    assert caption_under(game, button_of(scene, BuildingType.WORKSHOP)) == ["Workshop", "needs Smith"]

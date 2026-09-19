@@ -952,6 +952,8 @@ class GameScene(Scene):
     def _place_at(self, building_type: BuildingType, site: Pos) -> bool:
         """Put *building_type* at *site*: the selected peasant with the fewest sites ahead of it goes (one that cannot pay
         when it gets there leaves the site as a plan), or the settlement plans it.  Whether it was placed."""
+        if self._refuse_lacking(building_type):  # the prerequisite's plan may have gone since the placement began
+            return False
         size = BUILDINGS[building_type].size
         center = (site[0] + size / 2, site[1] + size / 2)
         if self._site_taken(building_type, site):
@@ -1226,8 +1228,8 @@ class GameScene(Scene):
         return self.race.cards[item] if isinstance(item, BuildingType) else UPGRADE_NAMES[item]
 
     def _refuse_lacking(self, target: ProductionTarget) -> bool:
-        """Warn and say so when *target* lacks a prerequisite that nobody is making: Shift and the Modal scheme's repeat
-        reach the orders without the card's block, and a plan for it would wait for nothing."""
+        """Warn and say so when *target* lacks a prerequisite that nobody is making: Shift, a click while placing and the
+        Modal scheme's repeat reach the orders without the card's block, and a plan for it would wait for nothing."""
         refusal = self._requires(self._need(target))
         if refusal is not None:
             self.warn(refusal)

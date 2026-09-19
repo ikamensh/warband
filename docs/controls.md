@@ -91,8 +91,9 @@ tier; `warband/ui/tech.py` reads them from the rules) carries a picture of that
 in its corner and its name under the button, where the price was: behind a red
 padlock while nothing of the kind is on its way, and the item is greyed out and
 refused by click, key and Shift alike; behind a gold hourglass while it is
-(going up, planned, a builder's next site; researched or planned), and the item
-can be ordered to wait for it. A building's tooltip names what it unlocks, and
+(going up, planned, a builder's next site; being researched or planned; a plan
+only while what it waits for is on its way too), and the item can be ordered to
+wait for it. A building's tooltip names what it unlocks, and
 the codex's fifth page draws the whole tech tree (WB-054).
 `test_every_card_gives_each_command_a_key_of_its_own`
 brings up every card of every race in every scheme and holds each key to one
