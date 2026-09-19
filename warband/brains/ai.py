@@ -264,9 +264,9 @@ def make_brain(player: int, difficulty: Difficulty, seed: int = 0):
     if difficulty in PROFILES:
         return Brain(player, difficulty)
     if difficulty is Difficulty.GRANDMASTER:
-        from warband.brains.bred import BRED  # a table of profiles, imported late as pro_ai is
+        from warband.brains.bred import BRED, BRED_FOR_LAYOUT  # tables of profiles, imported late as pro_ai is
 
-        return RaceBrain(player, BRED, seed)
+        return RaceBrain(player, BRED, seed, BRED_FOR_LAYOUT)
     postures = PRO_FOR[difficulty]
     return ProBrain(player, PRO_PROFILES[postures[(seed + player) % len(postures)]])
 

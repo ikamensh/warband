@@ -369,13 +369,16 @@ def play_task(task: Task) -> MatchResult:
     return arena.play_spec_tuple(packed)
 
 
-def specs_for(name: str, race: str | None, opponents: Sequence[str], seeds: Sequence[int], minutes: float) -> list[MatchSpec]:
+def specs_for(name: str, race: str | None, opponents: Sequence[str], seeds: Sequence[int], minutes: float,
+              layout: str | None = None) -> list[MatchSpec]:
     """*name* against each of *opponents* on each of *seeds*, from both corners; with *race*, *name* plays it and
-    the opponent takes each race in turn."""
+    the opponent takes each race in turn; with *layout*, every board is of that layout (sizes still cycle)."""
     out = []
     for k, opponent in enumerate(opponents):
         for seed in seeds:
             board = arena.board(seed)
+            if layout is not None:
+                board["layout"] = layout
             races = (race, RACE_VALUES[(seed + k) % len(RACE_VALUES)]) if race is not None else None
             out.append(MatchSpec(seed=seed, agents=(name, opponent), minutes=minutes, races=races, **board))
             out.append(MatchSpec(seed=seed, agents=(opponent, name), minutes=minutes,
@@ -416,11 +419,11 @@ class Evaluator:
 
 
 def judge(evaluator: Evaluator, population: Sequence[Individual], panel: Sequence[str], hall: Mapping[str, Genes],
-          race: str | None, seeds: Sequence[int], minutes: float) -> int:
+          race: str | None, seeds: Sequence[int], minutes: float, layout: str | None = None) -> int:
     """Play every individual against the panel on *seeds* and add the games to its record; how many were played."""
     bred = {individual.name: individual.genes for individual in population} | dict(hall)
     by_name = {individual.name: individual for individual in population}
-    specs = [spec for individual in population for spec in specs_for(individual.name, race, panel, seeds, minutes)]
+    specs = [spec for individual in population for spec in specs_for(individual.name, race, panel, seeds, minutes, layout)]
     results = evaluator.play(specs, bred)
     for result in results:
         for seat, name in enumerate(result.spec.agents):
@@ -526,6 +529,7 @@ def macro_search(evaluator: "Evaluator", race: str, base: Genes, *, generations:
 @dataclass
 class Settings:
     race: str | None = None            # the race bred for; None breeds a brain for whatever the seed draws
+    layout: str | None = None          # the one layout bred for; None walks all five
     population: int = 32
     elite: int = 8                     # the best, kept and judged again on the next generation's seeds
     immigrants: int = 2                # drawn at random each generation, so the search does not close on itself
@@ -605,7 +609,7 @@ def step(state: State, evaluator: Evaluator, tag: str, log=print) -> None:
     first = settings.first_seed + state.generation * settings.seeds
     seeds = range(first, first + settings.seeds)
     started = time.perf_counter()
-    games = judge(evaluator, state.population, panel, hall, settings.race, seeds, settings.minutes)
+    games = judge(evaluator, state.population, panel, hall, settings.race, seeds, settings.minutes, settings.layout)
     prior = {opponent: _population_rate(state.population, opponent) for opponent in panel}
     ranked = sorted(state.population, key=lambda i: -fitness(i, panel, prior))
     best = ranked[0]

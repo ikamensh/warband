@@ -121,22 +121,28 @@ def _export(args: argparse.Namespace) -> None:
     import json
     import textwrap
 
-    by_race: dict[str, list[tuple[str, dict]]] = {}
+    by_key: dict[str, list[tuple[str, dict]]] = {}  # "race" or "race@layout" -> its postures, in the order given
     for term in args.genes or []:
-        race, _, path = term.partition(":")
-        by_race.setdefault(race, []).append((Path(path).stem, json.loads(Path(path).read_text())))
-    lines = []
-    for race in evolve.RACE_VALUES:
+        key, _, path = term.partition(":")
+        by_key.setdefault(key, []).append((Path(path).stem, json.loads(Path(path).read_text())))
+
+    def table(key: str, label: str) -> str:
         postures = []
-        for k, (stem, row) in enumerate(by_race.get(race, []), 1):
-            profile = evolve.profile_of(evolve.genes_of(PRO) | row["genes"], f"bred-{race}-{k}")
+        for k, (stem, row) in enumerate(by_key[key], 1):
+            profile = evolve.profile_of(evolve.genes_of(PRO) | row["genes"], f"bred-{key.replace('@', '-')}-{k}")
             changed = ", ".join(f"{f.name}={_source(getattr(profile, f.name))}" for f in fields(profile)
                                 if getattr(profile, f.name) != getattr(PRO, f.name))
             body = textwrap.fill(f"replace(PRO, {changed}),", width=124, initial_indent=" " * 8, subsequent_indent=" " * 16)
             postures.append(f"        # {stem}: {row.get('score', 0):.3f} over {row.get('games', 0)} games of its search\n{body}")
-        lines.append(f"    Race.{race.upper()}: (\n" + "\n".join(postures) + "\n    ),")
-    args.out.write_text(BRED_HEADER + "BRED: Final[dict[Race, tuple[ProProfile, ...]]] = {\n" + "\n".join(lines) + "\n}\n")
-    print(f"wrote {args.out}: " + ", ".join(f"{race} {len(rows)}" for race, rows in by_race.items()))
+        return f"    {label}: (\n" + "\n".join(postures) + "\n    ),"
+
+    races = [table(race, f"Race.{race.upper()}") for race in evolve.RACE_VALUES if race in by_key]
+    layouts = [table(key, f"(Race.{key.partition('@')[0].upper()}, Layout.{key.partition('@')[2].upper()})")
+               for key in by_key if "@" in key]
+    args.out.write_text(BRED_HEADER + "BRED: Final[dict[Race, tuple[ProProfile, ...]]] = {\n" + "\n".join(races) + "\n}\n\n"
+                        "#: A race's postures for one kind of map, where a search on that map alone bred better ones than the race's own.\n"
+                        "BRED_FOR_LAYOUT: Final[dict[tuple[Race, Layout], tuple[ProProfile, ...]]] = {\n" + "\n".join(layouts) + "\n}\n")
+    print(f"wrote {args.out}: " + ", ".join(f"{key} {len(rows)}" for key, rows in by_key.items()))
 
 
 BRED_HEADER = '''"""The postures the genetic search bred, a race's own for each race (written by ``tools/evolve.py export``; bred again
@@ -149,7 +155,7 @@ from dataclasses import replace
 from typing import Final
 
 from warband.brains.pro_ai import PRO, ProProfile
-from warband.sim.rules import BuildingType, Race, UnitType, Upgrade
+from warband.sim.rules import BuildingType, Layout, Race, UnitType, Upgrade
 
 '''
 
@@ -171,7 +177,7 @@ def _trial(args: argparse.Namespace) -> None:
     evaluator = evolve.Evaluator(args.workers)
     try:
         seeds = range(args.first_seed, args.first_seed + args.seeds * args.seed_step, args.seed_step)
-        games = evolve.judge(evaluator, population, panel, {}, args.race, seeds, evolve.arena.DEFAULT_MINUTES)
+        games = evolve.judge(evaluator, population, panel, {}, args.race, seeds, evolve.arena.DEFAULT_MINUTES, args.layout)
     finally:
         evaluator.close()
     print(f"{games} games; race {args.race or 'drawn'}; base {args.base}; seeds from {args.first_seed}")
@@ -223,6 +229,7 @@ def main() -> None:
     parser.add_argument("--seeds", type=int, default=6, help="boards per opponent per generation, each from both corners")
     parser.add_argument("--panel", default="pro-vanguard,pro-warden,pro-rush")
     parser.add_argument("--hall-size", type=int, default=2, help="run: how many of its own champions join the panel")
+    parser.add_argument("--layout", default=None, help="run, trial: play every board on this layout (default: all five in turn)")
     parser.add_argument("--start", default=None, help="comma separated known profiles the first generation is seeded with")
     parser.add_argument("--seed-genes", default=None, help="run: comma separated JSON files whose \"genes\" join the first generation (a macro search's --out)")
     parser.add_argument("--first-seed", type=int, default=200_000)
@@ -254,7 +261,7 @@ def main() -> None:
     else:
         settings = evolve.Settings(race=args.race, population=args.population, elite=args.elite, seeds=args.seeds,
                                    panel=tuple(args.panel.split(",")), first_seed=args.first_seed, seed=args.seed,
-                                   hall_size=args.hall_size)
+                                   hall_size=args.hall_size, layout=args.layout)
         if args.start is not None:
             settings.start = tuple(name for name in args.start.split(",") if name)
         import json

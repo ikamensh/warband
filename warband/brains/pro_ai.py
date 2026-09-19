@@ -42,7 +42,7 @@ from typing import Final
 from warband.brains.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_search
 from warband.sim.model import Attack, Build, Building, Harvest, Move, Point, Pos, Repair, Resource, Unit, World, dist, rect_gap, tile_center
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, MINE_SLOTS, UPGRADES, BuildingType, Cost, Race, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, MINE_SLOTS, UPGRADES, BuildingType, Cost, Layout, Race, UnitType, Upgrade
 from warband.sim.worker_knowledge import KnownMine
 
 _MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
@@ -1642,9 +1642,11 @@ class RaceBrain:
     first pass, once the world says whom this player leads.  A race with several postures draws one from the map's
     seed and the player's seat, as Master draws its three."""
 
-    def __init__(self, player: int, postures: Mapping[Race, Sequence[ProProfile]], seed: int = 0) -> None:
+    def __init__(self, player: int, postures: Mapping[Race, Sequence[ProProfile]], seed: int = 0,
+                 by_layout: Mapping[tuple[Race, Layout], Sequence[ProProfile]] | None = None) -> None:
         self.player = player
         self.postures = postures
+        self.by_layout = by_layout or {}  # a race's postures for one kind of map, where it was bred for it; the New game screen names the map
         self.seed = seed
         self.brain: ProBrain | None = None
 
@@ -1654,6 +1656,7 @@ class RaceBrain:
 
     def think(self, world: World, rng: random.Random) -> None:
         if self.brain is None:
-            options = self.postures[world.players[self.player].race]
+            race = world.players[self.player].race
+            options = self.by_layout.get((race, world.layout)) or self.postures[race]
             self.brain = ProBrain(self.player, options[(self.seed + self.player) % len(options)])
         self.brain.think(world, rng)

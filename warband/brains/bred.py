@@ -8,7 +8,7 @@ from dataclasses import replace
 from typing import Final
 
 from warband.brains.pro_ai import PRO, ProProfile
-from warband.sim.rules import BuildingType, Race, UnitType, Upgrade
+from warband.sim.rules import BuildingType, Layout, Race, UnitType, Upgrade
 
 BRED: Final[dict[Race, tuple[ProProfile, ...]]] = {
     Race.HUMAN: (
@@ -102,4 +102,9 @@ BRED: Final[dict[Race, tuple[ProProfile, ...]]] = {
                 wood_from=9, opening=(BuildingType.BARRACKS, BuildingType.TOWN_HALL, BuildingType.BLACKSMITH,
                 BuildingType.STABLES,), defend_ratio=1.304, abort_ratio=1.5),
     ),
+}
+
+#: A race's postures for one kind of map, where a search on that map alone bred better ones than the race's own.
+BRED_FOR_LAYOUT: Final[dict[tuple[Race, Layout], tuple[ProProfile, ...]]] = {
+
 }
