@@ -6,8 +6,8 @@ from dataclasses import dataclass
 import math
 from typing import Callable
 
-from saga2d.effects import Effect
-from saga2d.rendering import ParticleEmitter, Sprite
+from saga2d.effects import Effect, ease_out
+from saga2d.rendering import ParticleEmitter, RenderLayer, Sprite
 from saga2d.scene import Scene
 from warband.sim.rules import UnitType
 from warband.art.textures import MOUNTED, placements
@@ -36,6 +36,19 @@ class Spray(Effect):
 
     def finish(self) -> None:
         self.emitter.remove()
+
+
+class Flare(Effect):
+    """Light going out where it landed: *image* swells from *size* to twice that and fades."""
+
+    def __init__(self, position: Point, image: str, size: float, *, duration: float = 0.22) -> None:
+        super().__init__(duration)
+        self.position, self.image, self.size = position, image, size
+
+    def draw(self, scene: Scene) -> None:
+        side = self.size * (1 + ease_out(self.t))
+        scene.draw_image(self.image, self.position[0] - side / 2, self.position[1] - side / 2, side, side, opacity=1 - self.t,
+                         space="world", layer=RenderLayer.EFFECTS)
 
 
 class Stain(Effect):

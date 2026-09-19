@@ -66,7 +66,7 @@ STRIKERS = [kind for kind, info in (*UNITS.items(), *BUILDINGS.items()) if info.
 #: What each is heard to strike with in the common Foley (a race's own arms are test_race_sound's).
 WEAPONS = {
     UnitType.FOOTMAN: "sword", UnitType.PEASANT: "axe", UnitType.SCOUT: "spear", UnitType.KNIGHT: "lance",
-    UnitType.ARCHER: "arrow", UnitType.CATAPULT: "stone", UnitType.CLERIC: "arrow", BuildingType.TOWER: "arrow",
+    UnitType.ARCHER: "arrow", UnitType.CATAPULT: "stone", UnitType.CLERIC: "mote", BuildingType.TOWER: "arrow",
 }
 
 

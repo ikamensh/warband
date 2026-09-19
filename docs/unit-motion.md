@@ -168,6 +168,16 @@ player's own stones, red for the enemy's, so a player can step out from under on
 blow's sound and flinch come with the `hit` event, which is now raised when the shot
 lands; a stone that found nothing raises `impact` for its dust and thud.
 
+The model's `kind` says only how a shot behaves: an `arrow` follows its mark, a `stone`
+comes down on the ground. What it looks and sounds like is its striker's, chosen on the
+client from `Projectile.source_type` (`view.SHOT_LOOKS`, as `sound.impact_sound` picks the
+Foley), so a new look is never a rules change. A healer's weak blow (WB-051) is an `arrow`
+in the model and a mote of light on the map: it is first seen `STAFF_REACH` before the
+healer, where the staff is held, flies straight with a short warm tail, goes out in a
+`Flare` with a few sparks on whatever it strikes, body or wall, and draws no blood. It is
+heard as `mote_<material>`, the one impact family synthesised (`sound.mote`, the glass of
+the heal falling instead of rising) rather than cut from Foley pieces.
+
 ## 5. Standing at ease (2026-09-16)
 
 A group sent somewhere used to arrive as one stack, every unit touching its neighbours

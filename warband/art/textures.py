@@ -2207,6 +2207,13 @@ def _ring(px: int, scale: float) -> Image.Image:
     return img
 
 
+def _mote(size: int) -> Image.Image:
+    """A healer's blow in the air: a white-hot point in a halo of warm light that fades out inside the canvas."""
+    halo = _glow(size, 0.24, (255, 200, 84, 235), 0.08)
+    core = _glow(size, 0.14, (255, 255, 236, 255), 0.04)
+    return Image.alpha_composite(halo, core)
+
+
 def _arrow(scale: float) -> Image.Image:
     """A fletched arrow pointing right, 24 logical units long."""
     w, h = round(24 * scale), round(6 * scale)
@@ -2251,5 +2258,6 @@ def register_static(game: Game) -> None:
     assets.image_from_pil("blank", Image.new("RGBA", (px, px), (*WHITE, 255)))
     assets.image_from_pil("arrow", _arrow(scale))
     assets.image_from_pil("stone", _glow(int(px * 0.4), 0.36, (150, 140, 128, 255), 0.06))
+    assets.image_from_pil("mote", _mote(int(px * 0.7)))
     assets.image_from_pil("drop", _glow(max(6, int(px * 0.3)), 0.42, (*WHITE, 255), 0.08))  # a droplet, a chip: a dot with an edge, tinted by its spray
     assets.image_from_pil("stain", _glow(int(px * 1.2), 0.36, (*WHITE, 255), 0.12))  # a soft blotch on the ground, tinted dark red; the blur stays inside the canvas

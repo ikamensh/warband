@@ -4,7 +4,7 @@ import pytest
 
 from saga2d import Game
 from saga2d.effects import Burst
-from warband.art.effects import Spray, Stain
+from warband.art.effects import Flare, Spray, Stain
 from warband.sim.rules import BuildingType, UnitType
 from warband.ui.scene import GameScene
 from warband.ui.style import build_theme
@@ -29,13 +29,17 @@ def sprays(scene: GameScene) -> list[Spray]:
     return [e for e in live_effects(scene) if isinstance(e, Spray)]
 
 
-def first_hit(game: Game, scene: GameScene, attacker: UnitType, target, side: str = "west", *, attacker_player: int = 0, target_player: int = 1):
-    """*attacker* strikes *target* (a unit type or a building type) from the *side*; returns the sprays the first blow made."""
+def first_hit(game: Game, scene: GameScene, attacker: UnitType, target, side: str = "west", *, attacker_player: int = 0, target_player: int = 1,
+              hold: bool = False):
+    """*attacker* strikes *target* (a unit type or a building type) from the *side*; returns the sprays the first blow made.
+    With *hold* a victim stands where it is, so a slow striker's first blow is not answered before it lands."""
     world = scene.world
     at = (20.5, 12.5)
     if isinstance(target, UnitType):
         victim = world.spawn_unit(target_player, target, at)
         victim.hp = victim.max_hp = 500
+        if hold:
+            world.hold([victim.id])
         target_id, health = victim.id, lambda: world.units[victim.id].hp
     else:
         building = world.place_building(target_player, target, (20, 12))
@@ -83,6 +87,18 @@ def test_armour_sparks_and_flesh_alone_does_not(play) -> None:
     scene.settings["blood"] = False
     first_hit(game, scene, UnitType.KNIGHT, UnitType.FOOTMAN)  # plate: sparks
     assert [e for e in live_effects(scene) if isinstance(e, Burst)] and not sprays(scene)
+
+
+@pytest.mark.parametrize("target", [UnitType.PEASANT, UnitType.FOOTMAN, BuildingType.FARM])
+def test_a_mote_of_light_flares_where_it_lands_and_opens_no_wound(play, target) -> None:
+    """A healer strikes with light: whatever it lands on, a body bare or in plate or a wall, the mote goes out in a flare
+    with a few sparks thrown onward, and nothing bleeds or sparks off armour as under steel."""
+    game, scene = play
+    (sparks,) = first_hit(game, scene, UnitType.CLERIC, target, hold=True)
+    assert sparks.image == "spark" and sparks.color != RED and sparks.direction[0] > 0.5
+    (flare,) = [e for e in live_effects(scene) if isinstance(e, Flare)]
+    assert flare.image == "mote"
+    assert not [e for e in live_effects(scene) if isinstance(e, Burst)]
 
 
 def test_a_hit_out_of_sight_shows_nothing(play) -> None:

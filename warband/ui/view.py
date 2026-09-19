@@ -156,8 +156,15 @@ def minimap_terrain(world: World, terrain_at: Callable[[Pos], Terrain] | None = 
 
 STRIDE = 0.22  # tiles travelled per walk frame: feet stay planted instead of sliding, and faster units step faster
 STRIKE, FOLLOW, RECOVER = 0.1, 0.16, 0.16  # seconds after the blow: driven forward, swept across, settling to guard
-TRAIL = {"arrow": 0.12, "stone": 0.45}  # seconds of flight a shot leaves hanging in the air behind it
-TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194)}
+#: Whose shot is not the arrow the model flies it as.  The model tells a shot that follows its mark from a stone
+#: that comes down on the ground; what it looks like is the striker's, as what it lands as is (``sound.impact_sound``):
+#: a healer looses no arrow but a mote of light, from the head of its staff.
+SHOT_LOOKS = {UnitType.CLERIC.value: "mote"}
+SHOT_SIZE = {"arrow": (22, 6), "stone": (14, 14), "mote": (20, 20)}
+STAFF_REACH = 0.4  # tiles before a healer that the head of its staff is held, where its mote is first seen
+TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1}  # seconds of flight a shot leaves hanging in the air behind it
+TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150)}
+TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5)}  # at the shot and where the trail ends
 BAR_OUTLINE = (0, 0, 0, 190)  # the backing and outline of every health and progress bar
 
 
@@ -211,19 +218,26 @@ def _melee_lunge(u: Unit, fraction: float) -> float:
     return 0.0
 
 
+def shot_look(p: Projectile) -> str:
+    """What shot *p* is drawn as: its striker's own look (:data:`SHOT_LOOKS`), or else its kind."""
+    return SHOT_LOOKS.get(p.source_type, p.kind)
+
+
 def projectile_point(p: Projectile, world: World, now: float) -> tuple[float, float, float]:
     """Where a shot is at simulation time *now*: its ground position in tiles and its height above the
-    ground, in tiles.  An arrow flies at its mark's current position on a flat arc; a stone lobs high to
-    the ground it was fired at."""
+    ground, in tiles.  An arrow flies at its mark's current position on a flat arc; a mote of light straight,
+    from the head of the staff held out before the healer; a stone lobs high to the ground it was fired at."""
     t = max(0.0, min(1.0, (now - p.launched) / p.flight))
     x, y = world.shot_ground(p, now)
-    span = dist(p.start, world.shot_mark(p))
-    lift = 1.7 if p.source_type == BuildingType.TOWER.value else 0.55  # loosed from the battlements, or from the shoulder
+    mark = world.shot_mark(p)
+    span = dist(p.start, mark)
     if p.kind == "stone":
-        height = 0.55 + 4 * (0.5 + 0.14 * span) * t * (1 - t)
-    else:
-        height = lift + (0.45 - lift) * t + 0.35 * math.sin(math.pi * t) * min(1.0, span / 4)
-    return x, y, height
+        return x, y, 0.55 + 4 * (0.5 + 0.14 * span) * t * (1 - t)
+    if shot_look(p) == "mote":
+        ahead = STAFF_REACH * (1 - t) / span if span > STAFF_REACH else 0.0  # the drawn start only: the blow is the model's
+        return x + (mark[0] - p.start[0]) * ahead, y + (mark[1] - p.start[1]) * ahead, 1.0 + (0.45 - 1.0) * t
+    lift = 1.7 if p.source_type == BuildingType.TOWER.value else 0.55  # loosed from the battlements, or from the shoulder
+    return x, y, lift + (0.45 - lift) * t + 0.35 * math.sin(math.pi * t) * min(1.0, span / 4)
 
 
 @dataclass
@@ -231,6 +245,7 @@ class _Shot:
     """What the view keeps per projectile in the air."""
 
     sprite: Sprite
+    look: str  # which image, trail and flight: shot_look's answer when it was loosed
     trail: list[tuple[float, float, float]] = field(default_factory=list)  # (view time, x, y) samples in world pixels
     ground: tuple[float, float] = (0.0, 0.0)  # the point on the ground under the shot, in world pixels
     height: float = 0.0  # tiles above it
@@ -733,15 +748,16 @@ class MapView:
             gx, gy = to_world((x, y))
             position = (gx, gy - height * TILE)
             if shot is None:
-                size = (14, 14) if p.kind == "stone" else (22, 6)
-                shot = self._shots[p.id] = _Shot(self.scene.add_sprite(Sprite(p.kind, position=position, size=size, layer=RenderLayer.EFFECTS)))
-            elif p.kind == "arrow" and shot.trail:
+                look = shot_look(p)
+                sprite = Sprite(look, position=position, size=SHOT_SIZE[look], layer=RenderLayer.EFFECTS)
+                shot = self._shots[p.id] = _Shot(self.scene.add_sprite(sprite), look)
+            elif shot.look == "arrow" and shot.trail:
                 shot.sprite.rotation = math.degrees(math.atan2(position[1] - shot.trail[-1][2], position[0] - shot.trail[-1][1]))
             shot.sprite.position = position
             shot.sprite.visible = True
             shot.ground, shot.height = (gx, gy), height
             shot.trail.append((self.time, *position))
-            while self.time - shot.trail[0][0] > TRAIL[p.kind]:
+            while self.time - shot.trail[0][0] > TRAIL[shot.look]:
                 shot.trail.pop(0)
 
     def _draw_projectiles(self) -> None:
@@ -751,10 +767,10 @@ class MapView:
             shot = self._shots.get(p.id)
             if shot is None or not shot.sprite.visible:
                 continue
-            color, hang = TRAIL_COLOR[p.kind], TRAIL[p.kind]
+            color, hang, (head, tail) = TRAIL_COLOR[shot.look], TRAIL[shot.look], TRAIL_WIDTH[shot.look]
             for (_, x0, y0), (t1, x1, y1) in zip(shot.trail, shot.trail[1:]):
                 age = (self.time - t1) / hang
-                scene.draw_line(x0, y0, x1, y1, (*color, round(210 * (1 - age))), 3.0 - 2.0 * age if p.kind == "stone" else 1.5,
+                scene.draw_line(x0, y0, x1, y1, (*color, round(210 * (1 - age))), head + (tail - head) * age,
                                 space="world", layer=RenderLayer.EFFECTS)
             if p.kind != "stone":
                 continue

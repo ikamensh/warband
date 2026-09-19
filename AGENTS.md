@@ -120,12 +120,15 @@ the compiled simulation attaches after they load.
   collapse, from pieces committed under `warband/assets/impacts/`, `deaths/`
   and `wreckage/` (Stable Audio 3 through `sagaforge.foley`; `pieces.py` reads
   them; provenance in each folder's manifest, the procedure in
-  `docs/warband-pieces.md`).
+  `docs/warband-pieces.md`). One impact family is synthesised in `sound.py`
+  instead: a healer's blow lands as `mote_<material>`, light rather than steel.
 - `warband/ui/` — the saga2d scenes. `scene.py` is the match with its HUD
   and command card, pause, help and results (`LeaveScene` is the
   confirmation every way out of an undecided rated match goes through);
   `view.py` keeps sprites in step (units, buildings, shots in the air with
-  their trails) and draws fog, minimap and water; ground out of sight shows
+  their trails; a shot's look is its striker's, `SHOT_LOOKS`, so the model's
+  `arrow` from a healer is drawn as a mote of light and a new look is no
+  rules change) and draws fog, minimap and water; ground out of sight shows
   what the player last saw there (`view.Sighting` per building, saved as the
   scene's `seen`; trees and the minimap's terrain follow the model's own
   per-player memory, `World.worker_knowledge`), and the selection panel reads

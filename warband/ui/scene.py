@@ -21,7 +21,7 @@ from warband.art import ambience
 from warband.audio import deaths, wreckage
 from warband.sim import mapgen
 from warband.brains.ai import DIFFICULTY_ELO, auto_site, make_brain
-from warband.art.effects import Spray, Stain, UnitDeath, death_outcome
+from warband.art.effects import Flare, Spray, Stain, UnitDeath, death_outcome
 from warband.ui.icons import Icon, draw_icon, loop_parts
 from warband.sim.model import Build, Building, Entity, Event, Pos, RuleError, Unit, World
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon
@@ -40,7 +40,7 @@ from warband.ui.style import (
 )
 from warband.art.textures import TILE
 from warband.ui.tutorial import OBJECTIVES, Tutorial
-from warband.ui.view import MapView, Overlay, Sighting, check_memory, rgba, to_tiles, to_world
+from warband.ui.view import SHOT_LOOKS, SHOT_SIZE, MapView, Overlay, Sighting, check_memory, rgba, to_tiles, to_world
 
 DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True, "blood": True,
                                     "controls": "classic"}
@@ -1728,9 +1728,13 @@ class GameScene(Scene):
             self._blows[e.other] = origin  # a killing blow has already removed its target: its death falls away from this
         if isinstance(target, Unit):
             self.view.hit_reaction(target, origin)
-        if e.target_type in FLESH or e.target_type == UnitType.CATAPULT.value:  # a unit, alive or just killed by this
-            wx, wy = to_world(e.pos)
-            struck = (wx, wy - TILE * 0.45)
+        wx, wy = to_world(e.pos)
+        struck = (wx, wy - TILE * 0.45)
+        if SHOT_LOOKS.get(e.source_type) == "mote":  # light opens no wound and chips nothing: it flares where it lands, body or wall
+            self.effects.add(Flare(struck, "mote", SHOT_SIZE["mote"][0]))
+            self.effects.add(Spray(struck, self._away(e.pos, origin), "spark", (255, 232, 150), 5, rng=self.fx_rng, speed=(40, 130),
+                                   size=(3, 6), spread=55.0, lifetime=(0.15, 0.3)))
+        elif e.target_type in FLESH or e.target_type == UnitType.CATAPULT.value:  # a unit, alive or just killed by this
             away = self._away(e.pos, origin)
             if e.target_type == UnitType.CATAPULT.value:
                 self.effects.add(Spray(struck, away, "drop", (222, 184, 118), 10, rng=self.fx_rng, size=(3, 6)))  # pale wood chips off the dark frame

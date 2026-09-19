@@ -9,7 +9,7 @@ from warband.art import textures
 from warband.sim.model import tile_center
 from warband.sim.rules import BuildingType, Layout, MapTheme, Resource, Terrain, UnitType
 from warband.ui.scene import GameScene, new_game
-from warband.ui.view import FOG_MARGIN, WATER_PERIOD
+from warband.ui.view import FOG_MARGIN, STAFF_REACH, WATER_PERIOD
 from warband.sim import mapgen
 from warband.ui.style import build_theme
 from warband.art.textures import TILE
@@ -429,3 +429,34 @@ def test_shots_in_the_air_have_sprites_that_fly_and_go_when_they_land(play) -> N
     apex = min(y for _, y in seen["stone"])
     assert apex < seen["stone"][0][1] - 32 and apex < seen["stone"][-1][1] - 32  # up, over and down again
     assert not world.projectiles and not scene.view.shot_sprites  # all landed, all sprites gone
+
+
+def test_a_healers_shot_is_a_mote_of_light_that_flies_straight_from_before_it(play) -> None:
+    """The model flies a cleric's weak blow as an arrow (it follows its mark); what is seen is the striker's own: a
+    mote of light, first seen before the healer where it holds its staff, straight to its mark.  An archer's arrow
+    beside it keeps its image and rises on its way."""
+    game, scene = play
+    world = scene.world
+    shooters = {"mote": world.spawn_unit(scene.human, UnitType.CLERIC, (6.5, 6.5)), "arrow": world.spawn_unit(scene.human, UnitType.ARCHER, (6.5, 10.5))}
+    seen: dict[str, list[tuple[float, float]]] = {"mote": [], "arrow": []}
+    for shooter in shooters.values():
+        shooter.facing = 0.0
+        victim = world.spawn_unit(1, UnitType.KNIGHT, (shooter.x + 2.9, shooter.y))
+        world.hold([victim.id])
+        world.attack([shooter.id], victim.id)
+    for _ in range(120):
+        game.tick(1 / 60)
+        for p in world.projectiles.values():
+            look = next(name for name, shooter in shooters.items() if shooter.id == p.source)
+            sprite = scene.view.shot_sprites[p.id]
+            assert p.kind == "arrow" and sprite.image == look
+            seen[look].append(sprite.position)
+
+    def rise(path: list[tuple[float, float]]) -> float:
+        """How far above the straight line from its first to its last point the path climbs, in pixels."""
+        (x0, y0), (x1, y1) = path[0], path[-1]
+        return max(y0 + (y1 - y0) * (x - x0) / (x1 - x0) - y for x, y in path)
+
+    assert len(seen["mote"]) >= 5 and len(seen["arrow"]) >= 5
+    assert seen["mote"][0][0] - shooters["mote"].x * TILE >= STAFF_REACH * TILE - 0.01  # never inside the healer's hood
+    assert rise(seen["mote"]) < 0.5 < 3 < rise(seen["arrow"])

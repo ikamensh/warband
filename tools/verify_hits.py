@@ -3,8 +3,9 @@
     uv run python tools/verify_hits.py docs/evidence/blood/after
     uv run python tools/verify_hits.py docs/evidence/blood/after-near --zoom 2
 
-A knight's blow on a footman, an arrow on a peasant, a blow on a catapult: frames every two display
-frames for half a second from the blow; and a crowded fight at normal zoom. Builds on tools/verify_deaths.py.
+A knight's blow on a footman, an arrow on a peasant, a blow on a catapult, a healer's mote of light on a
+peasant: frames every two display frames for half a second from the blow; and a crowded fight at normal zoom.
+Builds on tools/verify_deaths.py.
 The display must be awake (``caffeinate -u``). No real player data is read or written.
 """
 from __future__ import annotations
@@ -20,7 +21,7 @@ from warband.art.effects import Spray  # noqa: E402
 from warband.sim.rules import UnitType  # noqa: E402
 
 BLOWS = {"melee": (UnitType.KNIGHT, UnitType.FOOTMAN, 1.3), "arrow": (UnitType.ARCHER, UnitType.PEASANT, 6.0),
-         "siege": (UnitType.KNIGHT, UnitType.CATAPULT, 1.3)}
+         "siege": (UnitType.KNIGHT, UnitType.CATAPULT, 1.3), "mote": (UnitType.CLERIC, UnitType.PEASANT, 2.5)}
 
 
 class Hits(Capture):

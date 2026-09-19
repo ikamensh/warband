@@ -16,6 +16,7 @@ fade, the moment it is.  A new :data:`SOUND_VERSION` discards the whole cache.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
+import functools
 import os
 from pathlib import Path
 import random
@@ -25,22 +26,26 @@ import time
 import numpy as np
 
 from saga2d import Game
-from sagaforge.synth import BRASS, DARK, GLASS, level, mix, noise, thump, tone, write_wav
+from sagaforge.synth import BELL, BRASS, DARK, GLASS, level, mix, noise, thump, tone, write_wav
 from warband.audio import combat_sound, deaths, music, voices, wreckage
 from warband.sim.model import Event
 from warband.audio.music import Director
 from warband.sim.rules import BuildingType, Race, UnitType
 
 Generator = Callable[[], np.ndarray]
-IMPACTS = frozenset(f"{weapon}_{material}" for weapon in combat_sound.WEAPONS for material in combat_sound.MATERIALS)
+#: A healer strikes with light, not steel: the one impact family synthesised here (:func:`mote`) instead of cut from
+#: Foley pieces.  It keeps the Foley's materials and takes, so the bank and the scene treat it as any other blow.
+MOTE = "mote"
+IMPACTS = frozenset(f"{weapon}_{material}" for weapon in (*combat_sound.WEAPONS, MOTE) for material in combat_sound.MATERIALS)
 
 #: What a blow lands as, for everything the rules give one (a unit or building with damage): a striker without a
-#: row here ends the match on its first blow in view.  The cleric's weak blow flies as the model's arrow shot.
+#: row here ends the match on its first blow in view.  The model flies the cleric's weak blow as an arrow; it is
+#: seen (``view.SHOT_LOOKS``) and heard as a mote of light.
 _WEAPONS = {
     UnitType.PEASANT.value: "axe", UnitType.FOOTMAN.value: "sword",
     UnitType.SCOUT.value: "spear", UnitType.KNIGHT.value: "lance",
     UnitType.ARCHER.value: "arrow", UnitType.CATAPULT.value: "stone",
-    UnitType.CLERIC.value: "arrow", BuildingType.TOWER.value: "arrow",
+    UnitType.CLERIC.value: MOTE, BuildingType.TOWER.value: "arrow",
 }
 #: Where a race arms a role differently: orc grunts and axethrowers swing axes and the ogre a club,
 #: dwarven ironguards carry axes and bear riders war hammers.  Every other role keeps the common Foley.
@@ -209,7 +214,7 @@ class SynthBank:
         self._audio.muted = value
 
 
-SOUND_VERSION = "11"
+SOUND_VERSION = "12"
 MUSIC = music.TRACKS
 
 #: ``play_sound(name)`` forwards here when set; ``None`` is silent.
@@ -294,6 +299,25 @@ def heal() -> np.ndarray:
                      (0.07, tone("G6", 0.35, attack=0.02, tau=0.2, partials=GLASS) * 0.4)), 0.35)
 
 
+def mote(material: str, take: int) -> np.ndarray:
+    """A healer's mote of light lands on *material*: the glass of its cast (:func:`heal`), falling instead of rising and
+    cut short, the light fizzing out, and under them what it struck.  A weak blow, so brief and under the steel; each
+    take a tone apart."""
+    seed = 95 + take
+    body, sting = {  # what it struck, and how much of the sting is left over it
+        "flesh": (thump(160, 70, 0.12, tau=0.04) * 0.5, 0.5),  # a dull thud that swallows half the light
+        "armor": (mix(tone(2093.0, 0.3, attack=0.002, tau=0.08, partials=BELL) * 0.45,
+                      noise(0.03, 3000, 8000, tau=0.008, seed=seed) * 0.25), 0.6),  # it rings off the plate
+        "wood": (mix(thump(300, 140, 0.08, tau=0.03) * 0.5, noise(0.06, 500, 2500, tau=0.02, seed=seed) * 0.3), 0.55),
+        "stone": (mix(thump(210, 90, 0.07, tau=0.025) * 0.4, noise(0.05, 1800, 6000, tau=0.012, seed=seed) * 0.4), 0.6),
+    }[material]
+    pitch = 2 ** ((0, 2, -2)[take] / 12)
+    light = mix(tone(1568.0 * pitch, 0.14, attack=0.003, tau=0.04, partials=GLASS),
+                (0.035, tone(1046.5 * pitch, 0.2, attack=0.003, tau=0.06, partials=GLASS) * 0.8),
+                noise(0.1, 3000, 9000, tau=0.025, seed=90 + take) * 0.2)
+    return level(mix(light * sting, body), 0.55)
+
+
 def under_attack() -> np.ndarray:
     """A horn: low fifth, held."""
     return level(mix(tone("A3", 0.6, attack=0.05, tau=0.4, partials=BRASS), tone("E4", 0.6, attack=0.06, tau=0.35, partials=BRASS) * 0.7), 0.7)
@@ -318,6 +342,7 @@ SOUNDS: dict[str, Callable[[], np.ndarray]] = {
     "select": select, "command": command, "attack_command": attack_command, "button": button, "error": error,
     "impact": impact, "chop": chop, "build_start": build_start, "built": built,
     "trained": trained, "heal": heal, "under_attack": under_attack, "victory": victory, "defeat": defeat,
+    **{f"{MOTE}_{material}_{take}": functools.partial(mote, material, take) for material in combat_sound.MATERIALS for take in range(combat_sound.VARIANTS)},
     **combat_sound.SOUNDS,
     **voices.SOUNDS,
     **deaths.SOUNDS,
