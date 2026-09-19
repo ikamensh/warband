@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from warband.sim import mapgen  # noqa: E402
 from warband.brains.ai import make_brain  # noqa: E402
-from warband.brains.pro_ai import PRO, ProBrain  # noqa: E402
+from warband.brains.pro_ai import PRO, ProBrain, RaceBrain  # noqa: E402
 from warband.sim.model import BLOCKING, World  # noqa: E402
 from warband.sim.rules import BUILDINGS, SIM_DT, BuildingType, Difficulty  # noqa: E402
 from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
@@ -128,7 +128,7 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
             assert any(len(world.player_buildings(p.id, BuildingType.BARRACKS)) for p in world.players), "nobody built a barracks"
             assert sum(armies) > 0 or kills, "nobody trained an army"
             outcomes["decided" if world.winner is not None else "eliminations" if kills else "undecided"] += 1
-            levels = "/".join("P" if isinstance(b, ProBrain) else b.difficulty.value[0].upper() for b in brains)
+            levels = "/".join("P" if isinstance(b, ProBrain) else "G" if isinstance(b, RaceBrain) else b.difficulty.value[0].upper() for b in brains)
             print(f"  seed {seed}: {players} players {width}x{height} [{levels}] → {world.time / 60:.1f} min, winner {world.winner}, armies {armies}, buildings {buildings}")
         except Exception:
             failures += 1
