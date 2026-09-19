@@ -1989,7 +1989,9 @@ class World:
             slots[unit.id] = offset
 
     def _engage(self, u: Unit) -> bool:
-        """Pick up a fight (or a patient) in sight while on the move; True if one was found."""
+        """Pick up a fight (or a patient) in sight while on the move; True if one was found.  Where it was picked up
+        is the chase's home, as for a unit standing idle: past the leash from it the unit gives up, walks back and
+        marches on, rather than following a fleeing foe across the map."""
         if self.tick % 5:
             return False
         patient = self._healing_patient(u, u.info.sight) if u.info.heal else None
@@ -2000,6 +2002,7 @@ class World:
             if target is None:
                 return False
             u.orders.appendleft(Attack(target.id, auto=True))
+        u.home = u.pos
         u.path = []
         u.path_goal = None
         return True

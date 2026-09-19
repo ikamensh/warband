@@ -236,3 +236,29 @@ def test_melee_goes_round_a_single_tree_or_wall_between_it_and_a_foe_standing_st
             return
     raise AssertionError(f"no blow in ten seconds; the {attacker.value} stands at {soldier.pos}")
 
+
+@pytest.mark.parametrize("verb", ["attack_move", "patrol"])
+def test_a_foe_picked_up_on_the_march_is_chased_no_further_than_the_leash(verb):
+    """An attack picked up on its own gives up past the leash (Attack.auto), but one picked up on an attack-move or a
+    patrol set no home to measure from: a footman followed a fleeing scout across the map and through the fog."""
+    world = World(80, 30, [[Terrain.GRASS] * 80 for _ in range(30)], 2)
+    world.rng.seed(1)
+    world.place_building(0, BuildingType.TOWN_HALL, (0, 0))
+    world.place_building(1, BuildingType.TOWN_HALL, (76, 26))
+    footman = world.spawn_unit(0, UnitType.FOOTMAN, (5.5, 15.5))
+    if verb == "attack_move":
+        world.attack_move([footman.id], (12.5, 15.5))
+    else:
+        world.patrol([footman.id], (9.5, 15.5))
+    scout = world.spawn_unit(1, UnitType.SCOUT, (9.5, 15.5))
+    world.hold([scout.id])
+    world.update_vision()
+    for _ in range(10):
+        world.step()
+    assert isinstance(footman.order, Attack) and footman.order.auto
+    world.move([scout.id], (70.5, 3.5))  # it runs off, far out of sight
+    furthest = 0.0
+    for _ in range(600):
+        world.step()
+        furthest = max(furthest, footman.x)
+    assert furthest < 12.5 + 6.0 + 1.0, f"chased to x={furthest:.1f}"
