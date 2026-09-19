@@ -42,7 +42,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-042 | Later | proposed | Tests read through public accessors; try property tests for the model and paths | WB-040 |
 | WB-044 | Next | proposed | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
-| WB-045 | Next | proposed | Lift the orcs from 41% of the Master mirror | WB-014 |
+| WB-045 | Next | in progress | Lift the orcs from 41% of the Master mirror | WB-014 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -277,3 +277,13 @@ Medium, without pushing another race outside 45–55%; the difficulty ratings
 are re-measured with the 720-game protocol; the fingerprint and
 `sim_bench.txt` are refreshed; and, since `races.py` is in the authoritative
 contract, it ships with a server rollout.
+
+**Started 2026-09-19** on branch `orc-balance` (worktree `../warband-rush`).
+Candidates, the orcs against the other three races on Master, 24 seeds both
+ways, 144 matches each (`docs/evidence/wb045/orc_variants.py`): today 41.4%;
+grunts without their armour penalty 55.6%; ogres with one armour less off
+45.1%; both 59.6%; training 7% faster 52.9% (the humans' own passive, so
+not taken); grunts at 125% hit points 45.5%; grunts at 120% damage 46.8%;
+every orc at 120% hit points 46.8%; grunts at 125% hit points with the ogres'
+armour at −1 49.3%. That last keeps the orcs tough and savage and is the one
+put to the full race reports.
