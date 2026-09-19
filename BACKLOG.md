@@ -30,13 +30,13 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 ([`2ad4dcb`](https://github.com/ikamensh/warband/blob/2ad4dcb7723c7d46d7c611fd254caa387a0df3e4/BACKLOG.md)); WB-043, merged as `66d35a5`
 ([`0680eb5`](https://github.com/ikamensh/warband/blob/0680eb570c73abba14d3c431f89bedeba5846246/BACKLOG.md)); WB-037, merged as `1b9880f`, live as 0.2.53
 ([`5a57cb9`](https://github.com/ikamensh/warband/blob/5a57cb94292cd1e39a20969cfe7c4a3b827fac61/BACKLOG.md)); WB-036, merged as `4a77498`, live as 0.2.55
-([`3f22525`](https://github.com/ikamensh/warband/blob/3f22525a4db442d7f8d0d2c02b7532375ad1e075/BACKLOG.md)).
+([`3f22525`](https://github.com/ikamensh/warband/blob/3f22525a4db442d7f8d0d2c02b7532375ad1e075/BACKLOG.md)); WB-024, closed on its evidence as `dd7cf5f`
+([`896c6ea`](https://github.com/ikamensh/warband/blob/896c6eab99fb426d7f0aa02588b0fd1dc1463d07/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
-| WB-024 | Next | closed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
@@ -90,56 +90,6 @@ remove the worktree.
 **Done when:** a recorded report supports the displayed difficulty expectations;
 concrete regressions become small fixes with rule tests, fuzz and refreshed
 fingerprints where appropriate. Do not retune from a few observed matches.
-
-## WB-024 — Plan fewer paths in a melee
-
-The W10 frame gate (late p95 under 16 ms) is missed by one to two milliseconds
-in every scenario WB-009 measured on 2026-09-18 (the W10 row of the
-[progress record](docs/warband-early-access-progress.md), logs under
-`docs/evidence/perf/`). The renderer's share is S2D-016 and S2D-017; the
-model's share is this item.
-
-WB-009's trace of the 150-unit reference battle: a world step averages 3.5 ms
-and 45 % of it is `find_path_grid` (1,621 plans over 240 steps), because an
-attacker plans again whenever its target moves to another tile
-(`_approach`: `path_goal != goal`), throttled only by `REPLAN_EVERY` and the
-stagger; a fallen farm makes many plan at once (28 ms in one step), and a
-match's first step, which plans for every ordered unit at once, is its slowest
-frame (`find_path_grid` 60–100 ms, a frame of 103–125 ms). A unit
-already within a step or two of a target that shuffled inside its reach does
-not need a new path, and a target that moved one tile could keep the old
-path's tail. This changes when units move, so it moves the simulation
-fingerprint and the authoritative contract: it goes with the next rules
-series and its server rollout, not on its own.
-
-**Done when:** the reference battle's plans per step fall by half or more
-with the same fights decided the same way (the arena's ladders unchanged
-within noise), the step's p95 under 3 ms in `tools/step_bench.py`, the late
-p95 of `tools/perf.py` measured before and after, seeded fuzz clean, the
-fingerprint refreshed deliberately with the rest of its series.
-
-**Closed 2026-09-19 without its done-when, merged as `dd7cf5f`** (`b72cfc9`
-on branch `fewer-paths`): the premise was the reference battle's, not the
-model's. Its seed had come to draw a wooded layout, and `battle_world` placed
-72 of its 150 soldiers in trees; 41 were still in them 300 steps on, each
-planning a way out every 0.6 s, and those plans were the "45 % of a step" and
-the 28 ms bursts. The battle now plays on plains with the battlefield cleared
-to grass (as map generation carves a road), a soldier whose cell a building
-stands on is put beside it, and a test holds every soldier to open ground
-(it fails on the old battle). On it, with main's model: 684 plans over 300
-steps (2.28 a step, 150 of them the opening's), shoves that plan 7 of them;
-pathfinding 33 ms over 720 frames of `tools/perf.py`, 0.3 % of frame time,
-where the old battle spent 411 ms; the step 2.25 ms, 5.4 % of it; the
-source's step p95 3.6 ms in `tools/step_bench.py`
-(`WARBAND_INTERPRETED=1`: the tools run the compiled simulation otherwise).
-A rejoin for shoved units, tried first, saved nothing on the clean battle
-and was dropped. The frame p95 is 18–20 ms on the same Mac under other
-sessions' load, set by gen-2 collector pauses of about 25 ms and the
-renderer's end of frame: S2D-016 and S2D-017, recorded in the W10 row of
-`docs/warband-early-access-progress.md`. Nothing in the simulation, contract
-or fingerprint moved. Main ran
-[Tests 35412937637](https://github.com/ikamensh/warband/actions/runs/35412937637)
-and [native package checks 35412937589](https://github.com/ikamensh/warband/actions/runs/35412937589).
 
 ## WB-038 — Paint the gold mine
 
