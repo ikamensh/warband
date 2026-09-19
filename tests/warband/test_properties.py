@@ -1,7 +1,7 @@
 """Properties of the path finder and the model over many inputs rather than a few chosen ones (WB-042): a path steps
-legally and is the shortest there is; two loads of a save play on alike; an order the rules refuse leaves no trace,
-and nothing but a RuleError refuses one; a recording with orders of any kind and value plays back to its match. Each
-runs a few examples in the fast tier and many in the slow one."""
+legally and is the shortest there is; a seed the game chooses leads to a fair map; two loads of a save play on alike;
+an order the rules refuse leaves no trace, and nothing but a RuleError refuses one; a recording with orders of any
+kind and value plays back to its match. Each runs a few examples in the fast tier and many in the slow one."""
 
 import json
 import math
@@ -15,7 +15,8 @@ from warband import mapgen, path
 from warband.ai import make_brain
 from warband.model import RuleError, World
 from warband.replay import Playback, Replay, digest
-from warband.rules import BuildingType, Difficulty, UnitType, Upgrade
+from warband.rules import BuildingType, Difficulty, Layout, UnitType, Upgrade
+from warband.scene import FAIR_TRIES, fair_map
 
 FEW = settings(max_examples=12, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 MANY = settings(max_examples=300, deadline=None, suppress_health_check=[HealthCheck.too_slow])
@@ -99,6 +100,33 @@ def test_a_path_steps_legally_and_is_the_shortest_there_is(case) -> None:
 def test_a_path_steps_legally_and_is_the_shortest_there_is_on_many_grids(case) -> None:
     """Three hundred grids: the slow tier."""
     check_path(case)
+
+
+# -- Maps ---------------------------------------------------------------------------
+
+
+def check_fair_map(seed: int, size: str, players: int, layout: Layout | None) -> None:
+    """At the sizes, seat counts and layouts New game offers (WB-046)."""
+    width, height = mapgen.SIZES[size]
+    chosen, world = fair_map(seed, width, height, players, layout=layout)
+    assert seed <= chosen < seed + FAIR_TRIES and (world.width, world.height, len(world.players)) == (width, height, players)
+
+
+SETTINGS = (st.integers(1, 2**31 - 1), st.sampled_from(sorted(mapgen.SIZES)), st.integers(2, 4), st.sampled_from([None, *Layout]))
+
+
+@FEW
+@given(*SETTINGS)
+def test_a_seed_the_game_chooses_leads_to_a_fair_map(seed: int, size: str, players: int, layout: Layout | None) -> None:
+    check_fair_map(seed, size, players, layout)
+
+
+@pytest.mark.slow
+@MANY
+@given(*SETTINGS)
+def test_a_seed_the_game_chooses_leads_to_a_fair_map_at_every_setting_it_offers(seed: int, size: str, players: int, layout: Layout | None) -> None:
+    """Three hundred seeds, a map generated for each and some many times over: the slow tier."""
+    check_fair_map(seed, size, players, layout)
 
 
 # -- Saves --------------------------------------------------------------------------

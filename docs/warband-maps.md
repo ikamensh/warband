@@ -420,10 +420,17 @@ Everything the layouts have in common, in the order the generator does it.
    listed per layout, and the walkability check uses `path.find_path_grid`
    with the production budget between every hall door and every mine door
    (a flood fill proves connectivity, not that units will find it). A map
-   that fails is regenerated from `seed + 1`, up to eight times, then the
-   generator raises: a layout that cannot make a fair map at some size is a
-   bug to fix, not a fallback to hide. The seed the player sees stays the
-   one they chose; the retry count is deterministic from it.
+   that fails is regenerated from a stream the seed derives
+   (`seed * 16 + attempt`), up to eight times, then the generator raises
+   `NoFairMap`: a layout that cannot make a fair map at some size is a bug
+   to fix, not a fallback to hide, and `tests/warband/test_properties.py`
+   asks for a fair map within twenty seeds at every setting New game offers.
+   A few seeds in a thousand exhaust their eight tries all the same (Small
+   with two seats, Medium with three: WB-046). Where the game drew the seed
+   (New game, the next match, a room, the title's backdrop), it plays the
+   first seed after it that makes a fair map (`scene.fair_map`), and New
+   game shows the seed it plays. A seed the player gives (`--seed`) is
+   generated as given; the retry count is deterministic from it.
 8. **Variation.** Within a layout the seed decides the side the gate faces,
    where the river bends and the fords lie, the shape of every clearing and
    grove, which pit gate is wide. The preview always shows it.
