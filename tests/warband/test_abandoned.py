@@ -139,3 +139,19 @@ def test_an_abandoned_tower_never_looses_another_arrow() -> None:
     for _ in range(100):
         world.step()
     assert not world.projectiles and passer_by.hp == passer_by.max_hp, "a ruin nobody owns shot at a passer-by"
+
+
+def test_gatherers_no_longer_fear_an_abandoned_tower() -> None:
+    """A ruin shoots nothing, yet the automatic gatherers kept its old range as deadly ground: a mine beside the tower
+    of a player who had resigned was left unworked for good."""
+    world = field(3)
+    mine = world.place_building(None, BuildingType.GOLD_MINE, (12, 2))
+    world.place_building(2, BuildingType.TOWER, (17, 3))
+    peasant = world.spawn_unit(0, UnitType.PEASANT, (6.5, 6.5))
+    for player in range(3):
+        world.reveal_all(player)
+    world.resign(2)
+    world.reveal_all(0)  # player 0 sees the ruin for what it is
+    for _ in range(60):
+        world.step()
+    assert peasant.order is not None and peasant.order.target == mine.id

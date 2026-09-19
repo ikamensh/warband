@@ -146,7 +146,7 @@ class WorkerKnowledge:
                 changed = True
         for building in observed.values():
             info = building.info
-            threat_range = info.range + 1.5 if building.done and info.damage else 0.0
+            threat_range = info.range + 1.5 if building.done and info.damage and not building.abandoned else 0.0  # a ruin shoots nothing
             known = self.buildings.get(building.id)
             # Nothing but a structure's threat can change under a fixed id: it is built once and never moves.
             if known is None or known.threat_range != threat_range:
