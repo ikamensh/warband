@@ -20,7 +20,9 @@ Every finished match is scored into a local top ten and rated into the
 player's profile — an Elo-scale rating estimated against the difficulty
 ladder, with every match's replay kept to watch again
 ([docs/warband-profile.md](docs/warband-profile.md)). A command card of
-portraits and emblems with keycaps, control groups, patrol, camera bookmarks,
+portraits and emblems with keycaps in three switchable control schemes,
+endless training, rows of buildings placed with Shift or by the planner,
+control groups, patrol, camera bookmarks,
 a minimap that pans and orders, three save slots with an autosave, a tutorial
 strip, a codex, a synthesised march per race, and the fallen lying where they
 fell for a while.
@@ -130,17 +132,26 @@ version.
 
 ## Controls
 
+Three control schemes, switched under Settings → Controls in a match
+([docs/controls.md](docs/controls.md)): **Classic** (the letter of the name,
+the default), **Grid** (Q W E / A S D / Z X C by the card's position, the
+left hand never moves) and **Modal** (vim-like: with nothing selected letters
+recruit, placing keeps the next building ready until Esc, `.` repeats). Every
+button shows its key; F1 lists the scheme's. The Classic keys:
+
 | Key | Action | Key | Action |
 |-----|--------|-----|--------|
 | Drag / click | select | Right click | move · harvest · attack · rally point |
-| Shift | add to selection / queue orders | A / P | attack-move / patrol |
-| S / H | stop / hold | B then F B H T M K S W C | build farm · barracks · hall · tower · mill · smith · stables · workshop · church |
-| R | repair a damaged building (peasants) | Mac trackpad | two-finger click or Ctrl+click is the right-click; Cmd-click selects a type |
-| Letters on the card | train and research in the selected building | Ctrl+1-9 / 1-9 | assign / recall a group |
+| Shift | add to selection · queue orders · keep placing | A / P | attack-move / patrol |
+| S / H / M | stop / hold / move | B then F B H T M K S W C | build farm · barracks · hall · tower · mill · smith · stables · workshop · church |
+| The building's key again | the planner picks the spot | R | repair a damaged building (peasants) |
+| Letters on the card | train and research in the selected building | Shift+letter, or right-click it | train that unit endlessly (several take turns) |
+| B / T / U / G | plan buildings / units / upgrades, assembly point | Ctrl+B / T / U / G / P | the same from any card, and every plan |
 | Tab / . | next idle peasant / soldier | Ctrl+A (Cmd+A) | select the whole army |
-| Space | jump to the last alert | Double-click / Ctrl-click | every unit of that type on screen |
+| Ctrl+1-9 / 1-9 | assign / recall a group | Double-click / Ctrl-click | every unit of that type on screen |
+| Space | jump to the last alert | Mac trackpad | two-finger click or Ctrl+click is the right-click; Cmd-click selects a type |
 | Arrows, edges, middle-drag | scroll | Wheel, + / − | zoom |
-| F3 / F5 / F9 | pause / quicksave / quickload | Esc, F1, F2, F10 | cancel · help · codex · menu |
+| F3 / F5 / F9 | pause / quicksave / quickload | Esc, F1, F2, F10 | back one level · help · codex · menu |
 
 In Settings, Tab / Shift+Tab or ↑↓ select a row; ←→ adjust it. Clicking an
 option selects that same row for the keyboard. Enter toggles or increases

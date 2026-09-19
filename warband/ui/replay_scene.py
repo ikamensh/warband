@@ -149,7 +149,7 @@ class ReplayMenuScene(_Overlay):
         self.game.push(SettingsScene(self.replay_scene))
 
     def help(self) -> None:
-        self.game.push(HelpScene())
+        self.game.push(HelpScene(self.replay_scene.scheme))
 
     def back_to_title(self) -> None:
         from warband.ui.title import TitleScene

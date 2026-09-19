@@ -91,7 +91,7 @@ def main(out: Path) -> None:
     click(peasants[1].pos)
     press(key.B)
     press(key.F)
-    assert scene.pending == "build:farm"
+    assert scene.placing is BuildingType.FARM
     site = (hall.x + 5, hall.y + 4)
     px, py = physical((site[0] + 1, site[1] + 1))
     window.dispatch_event("on_mouse_motion", px, py, 0, 0)
@@ -118,11 +118,47 @@ def main(out: Path) -> None:
     frames(150)
     assert scene.last_alert is not None
     shot("06_raid")
+
+    # Endless training: Shift with the recruit's letter, and a right-click on a portrait as autocast had it.
+    barracks = world.place_building(scene.human, BuildingType.BARRACKS, (hall.x - 4, hall.y + 4))
+    frames(2)
+    click(barracks.center)
+    assert scene.selection == [barracks.id], scene.selection
+    press(key.F, key.MOD_SHIFT)
+    archer = scene.card_buttons[1]
+    x, y, w, h = archer.bounds
+    s = backend.scale_factor
+    ax, ay = int((x + w / 2) * s + backend.offset_x), int((800 - (y + h / 2)) * s + backend.offset_y)
+    window.dispatch_event("on_mouse_press", ax, ay, mouse.RIGHT, 0)
+    window.dispatch_event("on_mouse_release", ax, ay, mouse.RIGHT, 0)
+    frames(30)
+    assert barracks.auto[0] in (UnitType.FOOTMAN, UnitType.ARCHER) and set(barracks.auto) == {UnitType.FOOTMAN, UnitType.ARCHER}, barracks.auto
+    shot("07_endless")
+
+    # The planner's spot: B, F, and F again with nothing selected plans a farm by the hall.
+    press(key.ESCAPE)
+    press(key.B)
+    press(key.F)
+    press(key.F)
+    assert any(p.type is BuildingType.FARM for p in world.player_plans(scene.human)), world.player_plans(scene.human)
+    shot("08_planner_farm")
+    press(key.ESCAPE)
+
+    # The Grid scheme: keys by the card's place, D builds and Q is the farm.
+    scene.settings["controls"] = "grid"
+    scene.apply_settings()
+    scene.select([world.spawn_unit(scene.human, UnitType.PEASANT, tile_center((hall.x + 4, hall.y + 5))).id])  # those at work are in the mine
+    frames(2)
+    press(key.D)
+    press(key.Q)
+    assert scene.catalogue == "build" and scene.placing is BuildingType.FARM, (scene.catalogue, scene.pending)
+    shot("09_grid")
+    press(key.ESCAPE)
     press(key.ESCAPE)
     press(key.ESCAPE)
     press(key.F10)
     assert isinstance(game.scene, PauseScene)
-    shot("07_pause")
+    shot("10_pause")
     press(key.ESCAPE)
     assert isinstance(game.scene, GameScene)
     game._teardown()

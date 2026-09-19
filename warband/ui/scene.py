@@ -20,19 +20,21 @@ from saga2d.effects import Banner, Burst, Effects, FloatingText, Pulse, Toast
 from warband.art import ambience
 from warband.audio import deaths, wreckage
 from warband.sim import mapgen
-from warband.brains.ai import DIFFICULTY_ELO, make_brain
+from warband.brains.ai import DIFFICULTY_ELO, auto_site, make_brain
 from warband.art.effects import Spray, Stain, UnitDeath, death_outcome
-from warband.ui.icons import Icon, draw_icon
-from warband.sim.model import Building, Entity, Event, Pos, RuleError, Unit, World
+from warband.ui.icons import Icon, draw_icon, loop_parts
+from warband.sim.model import Build, Building, Entity, Event, Pos, RuleError, Unit, World
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon
 from warband.sim.races import RACES, RaceInfo
-from warband.sim.rules import BUILDINGS, DAMAGE_FACTORS, SIM_DT, UPGRADES, ArmorClass, AttackType, BuildingType, Difficulty, MapTheme, Race, UnitType, Upgrade
+from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, SIM_DT, UNITS, UPGRADES, ArmorClass, AttackType, BuildingType, Difficulty, MapTheme, Race,
+                               UnitType, Upgrade)
 from warband.sim.rules import Layout as MapLayout
 from warband.records.profile import MatchResult, Profile, RatingChange, Standing, rated, standing
 from warband.records.replay import Replay, ReplayStore
 from warband.records.scores import HighScores, score_breakdown
 from warband.audio.sound import IMPACTS, apply_volumes, impact_sound, play_music, play_sound
 from warband.audio.voices import voiced
+from warband.ui.controls import CARD_COLS, CHORDS, GRID_KEYS, SCHEMES, Scheme, label as key_label
 from warband.ui.style import (
     ACTION_BUTTON, BAD, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE, RESULTS_STYLE,
 )
@@ -40,7 +42,8 @@ from warband.art.textures import TILE
 from warband.ui.tutorial import OBJECTIVES, Tutorial
 from warband.ui.view import MapView, Overlay, Sighting, check_memory, rgba, to_tiles, to_world
 
-DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True, "blood": True}
+DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True, "blood": True,
+                                    "controls": "classic"}
 FLESH = {u.value for u in UnitType} - {UnitType.CATAPULT.value}  # what bleeds when hit
 SAVE_VERSION = 2  # 2: the world records its layout
 SAVE_SLOTS = 3
@@ -59,11 +62,14 @@ EDGE_SPEED = 900
 KEY_SPEED = 800
 DRAG_THRESHOLD = 5
 GROUP_KEYS = "123456789"
-SETTLEMENT_MENUS = {"b": "build", "t": "train", "u": "upgrade"}
-CARD_COLS = 3
-#: The build menu's order: the opening buildings first, then the tech chain as it unlocks.
+#: The Build catalogue's order, one per slot of the card: the opening buildings first, then the tech chain as it unlocks.
 BUILD_ORDER = (BuildingType.FARM, BuildingType.BARRACKS, BuildingType.TOWN_HALL, BuildingType.TOWER, BuildingType.LUMBER_MILL,
                BuildingType.BLACKSMITH, BuildingType.STABLES, BuildingType.WORKSHOP, BuildingType.CHURCH)
+#: The unit card's slots: moving on the top row (Q W E in Grid), fighting and a peasant's work below.
+UNIT_SLOTS = {"move": 0, "stop": 1, "hold": 2, "attack": 3, "patrol": 4, "build": 5, "repair": 6}
+#: The Upgrade catalogue's slots: each chain's tiers side by side; None stands for the race's two arts.
+UPGRADE_ROWS = ((Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.SIEGE), (Upgrade.ARMOR_1, Upgrade.ARMOR_2, None),
+                (Upgrade.ARROWS_1, Upgrade.ARROWS_2, None))
 #: Names that fit a card button (each race's are in :mod:`warband.sim.races`); the tooltip and the codex use the full ones.
 UPGRADE_NAMES = {Upgrade.BLADES_1: "Blades I", Upgrade.BLADES_2: "Blades II", Upgrade.ARMOR_1: "Armour I", Upgrade.ARMOR_2: "Armour II",
                  Upgrade.ARROWS_1: "Arrows I", Upgrade.ARROWS_2: "Arrows II", Upgrade.HORSES: "Horses", Upgrade.SIEGE: "Siege", Upgrade.BLESSING: "Blessing",
@@ -73,6 +79,7 @@ CARD_WIDTH = 116
 CARD_GAP = 6
 CARD_PANEL_WIDTH = CARD_COLS * CARD_WIDTH + (CARD_COLS - 1) * CARD_GAP + 2 * PANEL_STYLE.padding  # the widest command card
 CARD_ICON = 58  # height of a portrait button; the name sits under it
+CARD_PLAIN = 32  # height of a button without a portrait (the unit card's)
 MINIMAP_WIDTH = 200
 SELECTION_WIDTH = 470
 SELECTION_HEIGHT = 128
@@ -99,21 +106,81 @@ def _clock(seconds: float) -> str:
 
 @dataclass
 class Command:
-    """One command-card button."""
+    """One command-card button.  *letter* is its key in the lettered schemes and *slot* its place on the card, the
+    Grid scheme's key; :attr:`hotkey` is the key it answers to now, given as the card is built."""
 
     label: str
-    hotkey: str
+    letter: str
     action: Callable[[], None]
+    slot: int
     tooltip: str = ""
     cost: str = ""
     blocked: Callable[[], str | None] = field(default=lambda: None)  # why it cannot be used right now
     style: Style = field(default_factory=lambda: CARD_BUTTON)
     target: ProductionTarget | None = None  # a unit, building or upgrade: the button shows its portrait or emblem
     count: Callable[[], int] = field(default=lambda: 0)  # how many are already ordered: shown after the name
+    alt: Callable[[], None] | None = None  # what Shift with its key or click does (a recruit: endless training, or no longer)
+    endless: Callable[[], bool] | None = None  # a recruit: whether it is being trained endlessly (right-click toggles)
+    hotkey: str = ""  # as its keycap shows it
 
     @property
     def key(self) -> str:
-        return {"Esc": "escape"}.get(self.hotkey, self.hotkey.lower())
+        """The key's name, as input events carry it."""
+        return self.hotkey.lower()
+
+
+class CardButton(ProductionButton):
+    """A command's portrait button: a click gives the command, Shift+click its alternative, and a right-click on a
+    recruit toggles its endless training, as Warcraft III toggled autocast.  A loop in the corner marks it endless."""
+
+    def __init__(self, command: Command, player: int, race: Race, **kwargs: Any) -> None:
+        super().__init__(command.target, player, race, hotkey=command.hotkey or None, on_click=command.action, style=command.style, **kwargs)
+        self.command = command
+        self.add(_EndlessMark(self, anchor=Anchor.TOP_LEFT, margin=4))
+
+    def handle_event(self, event: InputEvent) -> bool:
+        """The alternative goes ahead of the enabled check: a recruit the purse cannot pay for yet can still be trained
+        endlessly, which waits for the money; its plain click stays blocked."""
+        command = self.command
+        if (self.visible and event.type == "click" and command.alt is not None and self.hit_test(event.x, event.y)
+                and ((event.button == "right" and command.endless is not None) or (event.button == "left" and event.shift))):
+            command.alt()
+            return True
+        return super().handle_event(event)
+
+
+class _EndlessMark(Component):
+    """Two arrows chasing each other round, in gold, on a recruit trained endlessly."""
+
+    SIZE = 16
+
+    def __init__(self, button: CardButton, **kwargs: Any) -> None:
+        super().__init__(width=self.SIZE, height=self.SIZE, **kwargs)
+        self.button = button
+
+    def on_draw(self) -> None:
+        endless = self.button.command.endless
+        if self._game is None or endless is None or not endless():
+            return
+        x, y, w, h = self.bounds
+        backend = self._game.backend
+        backend.draw_rect(x - 2, y - 2, w + 4, h + 4, (22, 20, 24, 230), order=self._order)
+        for points, ink in loop_parts():
+            backend.draw_polygon([(x + u * w, y + v * h) for u, v in points], ink, order=self._order)
+
+
+class _Slot(Component):
+    """An empty place on the card, keeping the others where their keys say; the Grid scheme draws it faintly."""
+
+    def __init__(self, faint: bool, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.faint = faint
+
+    def on_draw(self) -> None:
+        if self._game is None or not self.faint:
+            return
+        x, y, w, h = self.bounds
+        self._game.backend.draw_rect(x, y, w, h, (255, 255, 255, 8), order=self._order)
 
 
 @dataclass
@@ -161,7 +228,6 @@ class GameScene(Scene):
         ("equal", "plus"): "zoom_in",
         "minus": "zoom_out",
         "tab": "next_idle_peasant",
-        "period": "next_idle_soldier",
         ("ctrl+a", "meta+a"): "select_army",
         "f6": "recall_bookmark_1", "f7": "recall_bookmark_2", "f8": "recall_bookmark_3",
         "ctrl+f6": "set_bookmark_1", "ctrl+f7": "set_bookmark_2", "ctrl+f8": "set_bookmark_3",
@@ -196,9 +262,11 @@ class GameScene(Scene):
         self._autosave_at = AUTOSAVE_EVERY
         self.selection: list[int] = []
         self.groups: dict[str, list[int]] = {}
-        self.pending: str | None = None  # "move" | "attack" | "patrol" | "repair" | "build:<type>"
-        self.build_menu = False
-        self.settlement_menu: str | None = None
+        self.pending: str | None = None  # "move" | "attack" | "patrol" | "repair" | "assembly" | "place:<building type>"
+        self.catalogue: str | None = None  # "build" | "train" | "upgrade": the settlement's catalogue, over the selection's card
+        self._repeat: Callable[[], None] | None = None  # the last recruit or placement once more: the Modal scheme's "."
+        self._site_rng = random.Random(f"sites:{seed}")  # where the planner puts what the player lets it place: not the brains' stream
+        self.settlement_row: Row | None = None  # made with the HUD
         self.paused = False
         self.speed = 1.0
         self.clock = 0.0
@@ -221,6 +289,7 @@ class GameScene(Scene):
         self._game_over = False
         self._card: list[Command] = []
         self._card_buttons: list[Button] = []
+        self._card_signature: tuple | None = None
         self._portraits: list[tuple[int, tuple[int, int, int, int]]] = []
         self._portrait_page, self._portrait_pages = 0, 1  # of a selection too large for one grid
         self._page_tile: tuple[float, float, float, float] | None = None
@@ -286,8 +355,16 @@ class GameScene(Scene):
         self.game.set_fullscreen(bool(self.settings["fullscreen"]))
         if self.tutorial is not None and not self.settings["tutorial"]:
             self.tutorial = None
+        if self.settlement_row is not None:  # the controls may have changed: every keycap follows
+            self._fill_settlement_row()
+            self._refresh_card()
         if hasattr(self.settings, "save"):
             self.settings.save()
+
+    @property
+    def scheme(self) -> Scheme:
+        """The control scheme the settings choose (:mod:`warband.ui.controls`)."""
+        return SCHEMES[self.settings["controls"]]
 
     @property
     def player(self):
@@ -351,15 +428,9 @@ class GameScene(Scene):
             self._army_button(),
             Button("Menu", hotkey="F10", on_click=self.open_menu, style=GHOST_BUTTON),
         ]))
-        # Advertise the chords that always work. Plain letters fall through to these actions only when
-        # the command card does not claim them (for example, T means Tower in the build catalogue).
-        self.ui.add(Row(Label("Settlement", text_style="heading", width=124),
-                        Button("Build", hotkey="Ctrl+B", on_click=lambda: self.toggle_settlement("build"), style=GHOST_BUTTON),
-                        Button("Train", hotkey="Ctrl+T", on_click=lambda: self.toggle_settlement("train"), style=GHOST_BUTTON),
-                        Button("Upgrade", hotkey="Ctrl+U", on_click=lambda: self.toggle_settlement("upgrade"), style=GHOST_BUTTON),
-                        Button(lambda: f"Plans ({self._plan_count()})", hotkey="Ctrl+P", on_click=self.open_plans, style=GHOST_BUTTON, width=152),
-                        Button("Assembly", hotkey="Ctrl+G", on_click=lambda: self.start_pending("assembly"), style=GHOST_BUTTON),
-                        spacing=8, anchor=Anchor.TOP_LEFT, margin=(12, 84), style=PANEL_STYLE, blocks_pointer=True))
+        self.settlement_row = Row(spacing=8, anchor=Anchor.TOP_LEFT, margin=(12, 84), style=PANEL_STYLE, blocks_pointer=True)
+        self._fill_settlement_row()
+        self.ui.add(self.settlement_row)
         world_w, world_h = self.world.width * TILE, self.world.height * TILE
         self.minimap = Minimap(self.view.minimap_key, (world_w, world_h), self.camera, width=MINIMAP_WIDTH,
                                height=self._minimap_height(), on_click=self.minimap_click,
@@ -386,6 +457,21 @@ class GameScene(Scene):
         self.objectives = self._build_objectives()
         self.ui.add(self.objectives)
         self._refresh_card()
+
+    def _fill_settlement_row(self) -> None:
+        """The settlement's buttons, each with the key that reaches it whatever the card shows in this scheme: Ctrl with
+        a letter where the letters belong to the card (Classic, Modal), the plain key beside the grid in Grid."""
+        row, scheme = self.settlement_row, self.scheme
+        assert row is not None
+        row.clear()
+        row.add(Label("Settlement", text_style="heading", width=124))
+        for action, text, click, width in (
+                ("build", "Build", lambda: self.toggle_catalogue("build"), None),
+                ("train", "Train", lambda: self.toggle_catalogue("train"), None),
+                ("upgrade", "Upgrade", lambda: self.toggle_catalogue("upgrade"), None),
+                ("plans", lambda: f"Plans ({self._plan_count()})", self.open_plans, 152),
+                ("assembly", "Assembly", lambda: self.start_pending("assembly"), None)):
+            row.add(Button(text, hotkey=scheme.shortcut(action), on_click=click, style=GHOST_BUTTON, width=width))
 
     def _build_objectives(self) -> Column:
         """The panel under the top-right corner: the tutorial strip here, a mission's objectives in the campaign."""
@@ -420,8 +506,17 @@ class GameScene(Scene):
                 if hasattr(self.settings, "save"):
                     self.settings.save()
         current = self.tutorial.current
-        self.objective_label.text = f"{self.tutorial.step + 1}. {current.text}" if current is not None else ""
+        self.objective_label.text = f"{self.tutorial.step + 1}. {current.text.format(**self.tutorial_keys())}" if current is not None else ""
         self.objective_done.text = f"{self.tutorial.step} of {len(OBJECTIVES) - 1} done" if self.tutorial.step else "F4 hides this; the settings switch it off"
+
+    def tutorial_keys(self) -> dict[str, str]:
+        """The keys the tutorial names, as this scheme has them: B then F builds a farm in Classic, D then Q in Grid."""
+        def key(letter: str, slot: int) -> str:
+            return key_label(self.scheme.card_key(letter, slot))
+        return {"build": key("b", UNIT_SLOTS["build"]), "farm": key(BUILDINGS[BuildingType.FARM].hotkey, BUILD_ORDER.index(BuildingType.FARM)),
+                "barracks": key(BUILDINGS[BuildingType.BARRACKS].hotkey, BUILD_ORDER.index(BuildingType.BARRACKS)),
+                "footman": key(UNITS[UnitType.FOOTMAN].hotkey, BUILDINGS[BuildingType.BARRACKS].trains.index(UnitType.FOOTMAN)),
+                "attack": key("a", UNIT_SLOTS["attack"])}
 
     def _idle_button(self) -> Button:
         self.idle_button = Button(lambda: f"Idle {self._idle_peasant_count()}", hotkey="Tab", on_click=self.next_idle_peasant, style=ACTION_BUTTON)
@@ -478,27 +573,66 @@ class GameScene(Scene):
         return self._autosave_at
 
     def hint(self) -> list[tuple[str, str]]:
+        """The bar at the bottom: what the keys do in the mode the card is in, named as this scheme names them."""
+        scheme = self.scheme
+        placing = self.placing
+        if placing is not None:
+            hints = [("Click", "place"), (self._key_of(placing) + " again", "the planner picks the spot")]
+            return hints + [("Esc", "stop placing") if scheme.sticky else ("Shift+click", "keep placing"), ("Right click", "back")]
         if self.pending is not None:
-            return [("Click", "target"), ("Right click", "cancel"), ("Shift", "queue / keep placing")]
-        if self.build_menu:
-            return [("F B H T M K S W C", "choose a building"), ("Esc", "back")]
-        if self.settlement_menu is not None:
-            letters = " ".join(dict.fromkeys(c.hotkey for c in self._card if c.hotkey and c.hotkey != "Esc"))
-            hints = {"build": [(letters, "choose a building"), ("Shift+click", "keep placing")],
-                     "train": [(letters, "order one"), ("Shift+letter", "order five")],
-                     "upgrade": [(letters, "order")]}[self.settlement_menu]
-            return hints + [("Ctrl+P", "plans"), ("Esc", "back")]
-        if self._own_units():
-            hints = [("Right click", "move / harvest / attack / repair"), ("A", "attack-move"), ("P", "patrol"), ("S", "stop")]
-            if any(u.is_worker for u in self._own_units()):
-                hints.append(("B / R", "build / repair"))
+            return [("Click", "target"), ("Shift+click", "queue"), ("Right click", "cancel")]
+        keys = " ".join(c.hotkey.upper() for c in self._card if c.hotkey)
+        catalogue = self.shown_catalogue
+        if catalogue == "build":
+            return [(keys, "choose a building"), ("Shift+click", "keep placing"), ("Esc", "back")]
+        if catalogue == "train":
+            hints = [(keys, "order one"), ("Shift+key", "train endlessly")]
+            if catalogue == self.catalogue:
+                return hints + [("Esc", "back")]
+            return hints + [(f"{key_label(scheme.keys['build'])} / {key_label(scheme.keys['upgrade'])}", "build / upgrade"),
+                            (key_label(scheme.keys["repeat"]), "repeat"), ("Tab", "idle peasant"), ("Esc", "menu")]
+        if catalogue == "upgrade":
+            return [(keys, "order"), ("Esc", "back")]
+        units = self._own_units()
+        if units:
+            hints = [("Right click", "move / harvest / attack / repair"), (self._slot_key("attack"), "attack-move"),
+                     (self._slot_key("patrol"), "patrol"), (self._slot_key("stop"), "stop")]
+            if any(u.is_worker for u in units):
+                hints.append((f"{self._slot_key('build')} / {self._slot_key('repair')}", "build / repair"))
             return hints + [("Ctrl+1-9", "group"), ("Esc", "deselect")]
         building = self._own_building()
         if building is not None:
-            keys = " ".join(dict.fromkeys(c.hotkey for c in self._card if c.hotkey not in ("X", "C")))
-            return ([(keys, "train / research")] if keys else []) + [("Right click", "rally point"), ("F2", "codex"), ("Esc", "deselect")]
-        return [("Drag", "select"), ("B / T / U", "plan buildings / units / upgrades"), ("G", "assembly"), ("Tab", "idle peasant"), ("Ctrl+A", "army"),
-                ("Space", "last alert"), ("F3", "pause"), ("F1", "help"), ("F2", "codex")]
+            work = " ".join(c.hotkey.upper() for c in self._card if c.hotkey and c.label != "Cancel")
+            hints = [(work, "train / research")] if work else []
+            if any(c.endless is not None for c in self._card):
+                hints.append(("Shift+key", "train endlessly"))
+            return hints + [("Right click", "rally point"), ("Esc", "deselect")]
+        plan = " / ".join(key_label(scheme.keys[action]) for action in ("build", "train", "upgrade"))
+        return [("Drag", "select"), (plan, "plan buildings / units / upgrades"), (key_label(scheme.keys["assembly"]), "assembly"),
+                ("Tab", "idle peasant"), ("Ctrl+A", "army"), ("Space", "last alert"), ("F3", "pause"), ("F1", "help")]
+
+    def _slot_key(self, command: str) -> str:
+        """The key of a command of the unit card, by its name in :data:`UNIT_SLOTS`."""
+        return next((c.hotkey.upper() for c in self._card if c.slot == UNIT_SLOTS[command] and c.target is None), "")
+
+    def _key_of(self, target: ProductionTarget) -> str:
+        """The key of the card's command for *target*."""
+        return next((c.hotkey.upper() for c in self._card if c.target == target), "")
+
+    @property
+    def placing(self) -> BuildingType | None:
+        """The building whose site the next click places, if one is chosen."""
+        return BuildingType(self.pending[6:]) if self.pending is not None and self.pending.startswith("place:") else None
+
+    @property
+    def shown_catalogue(self) -> str | None:
+        """The catalogue on the card: the one opened, or the scheme's home catalogue (the Modal scheme's Train) while
+        nothing that has a card of its own is selected."""
+        if self.catalogue is not None:
+            return self.catalogue
+        if self.scheme.home is not None and not self._own_units() and self._own_building() is None:
+            return self.scheme.home
+        return None
 
     # -- Selection -----------------------------------------------------------------
 
@@ -530,8 +664,7 @@ class GameScene(Scene):
         self.selection = alive
         self._portrait_page = 0
         self.pending = None
-        self.build_menu = False
-        self.settlement_menu = None
+        self.catalogue = None
         self._refresh_card()
         if alive and not quiet:
             self.sfx("select", gap=SELECT_GAP)
@@ -701,41 +834,154 @@ class GameScene(Scene):
             self.sfx("command")
 
     def start_pending(self, mode: str) -> None:
+        """Wait for the click that gives the order *mode*: "move", "attack", "patrol", "repair" or "assembly"."""
         self.pending = mode
-        self.build_menu = False
         if mode == "assembly":
-            self.settlement_menu = None
+            self.catalogue = None
             self.say("Click the map to set an assembly point for new soldiers")
         self._refresh_card()
 
-    def open_build_menu(self) -> None:
-        self.build_menu = True
+    # -- Placing buildings -------------------------------------------------------------
+
+    def choose_building(self, building_type: BuildingType, *, keep: bool = False) -> None:
+        """A building from the Build catalogue: its site follows the pointer until a click places it.  Chosen again
+        while it is being placed, the planner picks the spot (*keep*, from Shift: and the next one stays ready)."""
+        if self.placing is building_type:
+            self.auto_place(building_type, keep=keep)
+            return
+        self.pending = f"place:{building_type.value}"
+        self._refresh_card()
+
+    def place(self, building_type: BuildingType, point: tuple[float, float], *, keep: bool = False) -> None:
+        """A click while placing: *building_type* centred on *point*; *keep* (Shift) leaves the next one ready to place,
+        as the Modal scheme always does."""
+        if self._place_at(building_type, self._site_at(building_type, point)) and not (keep or self.scheme.sticky):
+            self._end_placement()
+
+    def auto_place(self, building_type: BuildingType, *, keep: bool = False) -> None:
+        """Let the planner pick the spot (:func:`warband.brains.ai.auto_site`): about the hall nearest the camera, a hall
+        by the nearest free mine."""
+        planned = [(kind, pos) for kind, pos, _queued in self.pending_sites()]
+        site = auto_site(self.world, building_type, self.human, to_tiles(*self.camera.center), self._site_rng, planned)
+        if site is None:
+            name = self.building_name(building_type)
+            self.warn(f"No free gold mine known for a {name}" if building_type is BuildingType.TOWN_HALL else f"No room for a {name} near your hall")
+            return
+        if self._place_at(building_type, site) and not (keep or self.scheme.sticky):
+            self._end_placement()
+
+    def _site_at(self, building_type: BuildingType, point: tuple[float, float]) -> Pos:
+        size = BUILDINGS[building_type].size
+        return (int(math.floor(point[0] - size / 2 + 0.5)), int(math.floor(point[1] - size / 2 + 0.5)))
+
+    def _builders(self) -> list[Unit]:
+        """The selected peasants: who builds what is placed now.  With none, the settlement plans it."""
+        return [u for u in self._own_units() if u.is_worker]
+
+    def _by_plan(self, building_type: BuildingType) -> bool:
+        """Whether a site placed now becomes a settlement plan: no peasant is selected, or its prerequisite does not stand
+        yet (a plan waits for it; a peasant would be refused)."""
+        requires = BUILDINGS[building_type].requires
+        return not self._builders() or (requires is not None and not self.world.player_buildings(self.human, requires, done=True))
+
+    def _place_at(self, building_type: BuildingType, site: Pos) -> bool:
+        """Put *building_type* at *site*: the selected peasant with the fewest sites ahead of it goes (one that cannot pay
+        when it gets there leaves the site as a plan), or the settlement plans it.  Whether it was placed."""
+        size = BUILDINGS[building_type].size
+        center = (site[0] + size / 2, site[1] + size / 2)
+        if self._site_taken(building_type, site):
+            self.warn("Another building is planned here")
+            return False
+        name = self.building_name(building_type)
+        if not self._by_plan(building_type):
+            builder = min(self._builders(), key=lambda u: (sum(isinstance(o, Build) for o in u.orders), u.hidden, math.dist(u.pos, center)))
+            queue = any(isinstance(order, Build) for order in builder.orders)  # after its other sites, never after a harvest: that one never ends
+            if not self.attempt("build", builder.id, building_type, site, queue=queue, plan_if_short=True):
+                return False
+        elif self.attempt("plan_building", self.human, building_type, site):
+            requires = BUILDINGS[building_type].requires
+            waits = requires is not None and not self.world.player_buildings(self.human, requires, done=True)
+            self.say(f"{name} planned · it waits for a {self.building_name(requires)}" if waits and requires is not None else
+                     f"{name} planned · a worker builds it when the money is there")
+        else:
+            return False
+        self.sfx("command")
+        self._marker(center, (255, 214, 110, 220))
+        self._repeat = lambda: self.auto_place(building_type, keep=True)
+        return True
+
+    def _end_placement(self) -> None:
+        """The site is placed: the pointer is free again, and the Build catalogue stays until Esc, as every catalogue does."""
         self.pending = None
         self._refresh_card()
 
-    def close_build_menu(self) -> None:
-        self.build_menu = False
+    def pending_sites(self) -> list[tuple[BuildingType, Pos, bool]]:
+        """Sites ordered and not yet begun, as ``(building, site, queued)``: the settlement's plans, then the sites the
+        player's builders are on their way to (queued)."""
+        sites = [(plan.type, plan.pos, False) for plan in self.world.player_plans(self.human) if plan.kind == "building" and plan.building is None]
+        planned = {(kind, pos) for kind, pos, _queued in sites}
+        for unit in self.world.player_units(self.human):
+            for order in unit.orders:
+                if isinstance(order, Build) and order.building is None and (order.type, order.pos) not in planned:
+                    sites.append((order.type, order.pos, True))
+        return sites
+
+    def _site_taken(self, building_type: BuildingType, site: Pos) -> bool:
+        size = BUILDINGS[building_type].size
+        return any(site[0] < pos[0] + BUILDINGS[kind].size and pos[0] < site[0] + size and site[1] < pos[1] + BUILDINGS[kind].size
+                   and pos[1] < site[1] + size for kind, pos, _queued in self.pending_sites())
+
+    def _placement_reason(self, building_type: BuildingType, site: Pos) -> str | None:
+        """Why *building_type* cannot be placed at *site* now, as the ghost shows it."""
+        if self._site_taken(building_type, site):
+            return "Another building is planned here"
+        if self._by_plan(building_type):
+            return self.world.can_plan_building(building_type, site, self.human)
+        center = (site[0] + BUILDINGS[building_type].size / 2, site[1] + BUILDINGS[building_type].size / 2)
+        builder = min(self._builders(), key=lambda u: math.dist(u.pos, center))
+        return self.world.can_place(building_type, site, self.human, builder=builder.id)
+
+    # -- Endless training ----------------------------------------------------------------
+
+    def toggle_endless(self, building: Building, unit_type: UnitType) -> None:
+        """Shift with a recruit's key, Shift+click or a right-click at a building: train it endlessly there, or no longer."""
+        on = unit_type not in building.auto
+        if not self.attempt("set_auto_train", building.id, unit_type, on):
+            return
+        self.sfx("button")
+        name = self.building_name(building.type)
+        rotation = [t for t in building.auto if t is not unit_type] + [unit_type] if on else [t for t in building.auto if t is not unit_type]
+        if on:
+            self.say(f"{name}: {', '.join(self.unit_name(t) for t in rotation)} endlessly" + (" in turn" if len(rotation) > 1 else ""))
+        else:
+            self.say(f"{name}: no more endless {self.unit_name(unit_type)}")
         self._refresh_card()
 
-    def _ghost_site(self, building_type: BuildingType) -> Pos:
-        size = BUILDINGS[building_type].size
-        return (int(math.floor(self.hover[0] - size / 2 + 0.5)), int(math.floor(self.hover[1] - size / 2 + 0.5)))
+    def toggle_endless_everywhere(self, unit_type: UnitType) -> None:
+        """The Train catalogue's Shift or right-click: every building that trains *unit_type* trains it endlessly, or
+        none does when every one of them already did."""
+        producers = self._producers(unit_type)
+        where = self.building_name(UNITS[unit_type].trained_at)
+        if not producers:
+            self.warn(f"Requires a {where}")
+            return
+        on = not all(unit_type in b.auto for b in producers)
+        given = sum(self.attempt("set_auto_train", b.id, unit_type, on) for b in producers)
+        if given:
+            self.sfx("button")
+            self.say(f"{self.unit_name(unit_type)} endlessly at {given} {where}" if on else f"No more endless {self.unit_name(unit_type)}")
+        self._refresh_card()
 
-    def place_building(self, building_type: BuildingType, point: tuple[float, float], *, keep: bool = False) -> None:
-        peasants = [u for u in self._own_units() if u.is_worker]
-        if not peasants:
-            self.warn("Select a peasant to build")
+    def _producers(self, unit_type: UnitType) -> list[Building]:
+        """The player's buildings that train *unit_type*, finished or going up."""
+        return [b for b in self.world.player_buildings(self.human) if unit_type in b.info.trains and not b.abandoned]
+
+    def repeat_last(self) -> None:
+        """The Modal scheme's ".": the last recruit or placement once more."""
+        if self._repeat is None:
+            self.say("Nothing to repeat yet: train a unit or place a building first")
             return
-        size = BUILDINGS[building_type].size
-        site = (int(math.floor(point[0] - size / 2 + 0.5)), int(math.floor(point[1] - size / 2 + 0.5)))
-        builder = min(peasants, key=lambda u: (u.hidden, math.dist(u.pos, point)))
-        if not self.attempt("build", builder.id, building_type, site, queue=keep):
-            return
-        self.sfx("command")
-        self._marker((site[0] + size / 2, site[1] + size / 2), (255, 214, 110, 220))
-        if not keep:
-            self.pending = None
-            self._refresh_card()
+        self._repeat()
 
     def unit_name(self, unit_type: UnitType) -> str:
         return self.race.units[unit_type].name
@@ -745,17 +991,31 @@ class GameScene(Scene):
 
     def train(self, unit_type: UnitType) -> None:
         building = self._own_building()
-        if building is not None and self.attempt("train", building.id, unit_type):
+        if building is not None:
+            self._train_at(building.id, unit_type)
+
+    def _train_at(self, building_id: int, unit_type: UnitType) -> None:
+        if self.attempt("train", building_id, unit_type):
             self.sfx("button")
+            self._repeat = lambda: self._train_at(building_id, unit_type)
             self._refresh_card()
 
     def cancel_work(self) -> None:
+        """Cancel the last recruit queued, or the research, and the building's endless training with it: it would only
+        start the next one."""
         building = self._own_building()
-        if building is None or not (building.queue or building.research is not None):
+        if building is None:
             return
-        if self.attempt("cancel_train" if building.queue else "cancel_research", building.id):
-            self.sfx("button")
-            self._refresh_card()
+        stopped = [unit_type for unit_type in list(building.auto) if self.attempt("set_auto_train", building.id, unit_type, False)]
+        if building.queue or building.research is not None:
+            if not self.attempt("cancel_train" if building.queue else "cancel_research", building.id):
+                return
+        elif not stopped:
+            return
+        if stopped:
+            self.say("Endless training stopped")
+        self.sfx("button")
+        self._refresh_card()
 
     def research(self, upgrade: Upgrade) -> None:
         building = self._own_building()
@@ -772,13 +1032,13 @@ class GameScene(Scene):
         self.select([])
 
     def cancel(self) -> None:
+        """Esc: back one level — the pending order (a building being placed goes back to the catalogue), the catalogue,
+        the selection, and then the menu."""
         if self.pending is not None:
             self.pending = None
             self._refresh_card()
-        elif self.settlement_menu is not None:
-            self.open_settlement(None)
-        elif self.build_menu:
-            self.close_build_menu()
+        elif self.catalogue is not None:
+            self.open_catalogue(None)
         elif self.selection:
             self.select([])
         else:
@@ -790,27 +1050,30 @@ class GameScene(Scene):
         return len(self.world.player_plans(self.human)) + sum(len(b.queue) + (b.research is not None)
                                                             for b in self.world.player_buildings(self.human))
 
-    def open_settlement(self, menu: str | None) -> None:
-        self.settlement_menu = menu
-        self.build_menu = False
+    def open_catalogue(self, kind: str | None) -> None:
+        """Show the Build, Train or Upgrade catalogue on the card; None: the selection's card again."""
+        self.catalogue = kind
         self.pending = None
         self._refresh_card()
 
-    def toggle_settlement(self, menu: str) -> None:
-        """Open a plan menu, or close it when it is the one already open."""
-        self.open_settlement(None if self.settlement_menu == menu else menu)
+    def toggle_catalogue(self, kind: str) -> None:
+        """Open a catalogue, or close it when it is the one on the card."""
+        self.open_catalogue(None if self.shown_catalogue == kind else kind)
 
-    def _press_settlement_key(self, key: str, *, chord: bool) -> bool:
-        """B / T / U open a plan menu and G the assembly point; Ctrl+P (a chord only, P being patrol and peasant) opens Plans."""
-        if key in SETTLEMENT_MENUS:
-            self.toggle_settlement(SETTLEMENT_MENUS[key])
-        elif key == "g":
+    def do(self, action: str) -> None:
+        """A global action (:data:`warband.ui.controls.ACTIONS`), from its key or its Ctrl chord."""
+        if action in ("build", "train", "upgrade"):
+            self.toggle_catalogue(action)
+        elif action == "assembly":
             self.start_pending("assembly")
-        elif key == "p" and chord:
+        elif action == "plans":
             self.open_plans()
+        elif action == "idle_soldier":
+            self.next_idle_soldier()
+        elif action == "repeat":
+            self.repeat_last()
         else:
-            return False
-        return True
+            raise ValueError(f"No such action: {action}")
 
     def open_plans(self) -> None:
         self.game.push(SettlementPlansScene(self))
@@ -821,18 +1084,9 @@ class GameScene(Scene):
         info = self.race.units[item] if kind == "train" else UPGRADES[item]
         self.say(f"{info.name} ordered · pay when work starts · manage in Plans")
         self.sfx("button")
+        if kind == "train":
+            self._repeat = lambda: self.order_production(kind, item)
         self._refresh_card()
-
-    def place_plan(self, building_type: BuildingType, point: tuple[float, float], *, keep: bool = False) -> None:
-        size = BUILDINGS[building_type].size
-        site = (int(math.floor(point[0] - size / 2 + 0.5)), int(math.floor(point[1] - size / 2 + 0.5)))
-        if not self.attempt("plan_building", self.human, building_type, site):
-            return
-        self.say(f"{self.building_name(building_type)} planned · a worker will build when ready")
-        self.sfx("command")
-        if not keep:
-            self.pending = None
-            self._refresh_card()
 
     def set_assembly(self, point: tuple[float, float] | None) -> None:
         if not self.attempt("set_assembly", self.human, point):
@@ -902,7 +1156,8 @@ class GameScene(Scene):
         if isinstance(target, UnitType):
             return len(plans) + sum(b.queue.count(target) for b in world.player_buildings(human))
         planned = {p.pos for p in plans}  # a plan's site, once dug, is one of these buildings
-        return len(plans) + sum(1 for b in world.player_buildings(human, target) if not b.done and b.pos not in planned)
+        queued = sum(1 for kind, _pos, by_builder in self.pending_sites() if by_builder and kind is target)  # a builder's next sites
+        return len(plans) + queued + sum(1 for b in world.player_buildings(human, target) if not b.done and b.pos not in planned)
 
     def _upgrades(self) -> list[Upgrade]:
         """The shared upgrades and the player's race arts, in the order of the table."""
@@ -915,121 +1170,154 @@ class GameScene(Scene):
             chains.setdefault(UPGRADES[upgrade].hotkey, []).append(upgrade)
         return {next((u for u in chain if self._upgrade_planned(u) is None), chain[-1]): letter.upper() for letter, chain in chains.items()}
 
-    def _settlement_commands(self) -> list[Command]:
-        commands = []
-        race = self.race
-        catalogue = ((bt, race.buildings[bt]) for bt in BUILD_ORDER) if self.settlement_menu == "build" else (
-            race.units.items() if self.settlement_menu == "train" else ((u, UPGRADES[u]) for u in self._upgrades()))
-        upgrade = self.settlement_menu == "upgrade"
-        upgrade_keys = self._upgrade_keys() if upgrade else {}
-        for item, info in catalogue:
-            if self.settlement_menu == "build":
-                name, key = race.cards[item], info.hotkey.upper()
-                action = lambda bt=item: self.start_pending(f"plan:{bt.value}")
-            elif self.settlement_menu == "train":
-                name, key = info.name, info.hotkey.upper()
-                action = lambda ut=item: self.order_production("train", ut)
-            else:
-                name, key = UPGRADE_NAMES[item], upgrade_keys.get(item, "")
-                action = lambda up=item: self.order_production("upgrade", up)
-            commands.append(Command(name, key, action, tooltip=f"{info.name} — {info.cost} · {info.summary}",
-                                    cost=f"{info.cost.gold} / {info.cost.lumber}",
-                                    blocked=(lambda up=item: self._upgrade_planned(up)) if upgrade else lambda: None,
-                                    target=item, count=(lambda: 0) if upgrade else lambda it=item: self._ordered(it)))
-        commands.append(Command("Back", "Esc", lambda: self.open_settlement(None), tooltip="Back to selection commands"))
+    def _catalogue_commands(self, kind: str) -> list[Command]:
+        """The Build, Train or Upgrade catalogue: everything the settlement can plan, each in its slot."""
+        race, commands = self.race, []
+        if kind == "build":
+            for slot, building_type in enumerate(BUILD_ORDER):
+                info = race.buildings[building_type]
+                requires = info.requires
+                waits = (f" · waits for a {self.building_name(requires)}"
+                         if requires is not None and not self.world.player_buildings(self.human, requires, done=True) else "")
+                commands.append(Command(race.cards[building_type], info.hotkey, lambda bt=building_type: self.choose_building(bt), slot,
+                                        tooltip=f"{info.name} — {info.cost} · {info.summary}{waits} · its key again: the planner picks the spot",
+                                        cost=f"{info.cost.gold} / {info.cost.lumber}", target=building_type,
+                                        style=ACTION_BUTTON if self.placing is building_type else CARD_BUTTON,
+                                        count=lambda bt=building_type: self._ordered(bt), alt=lambda bt=building_type: self.choose_building(bt, keep=True)))
+        elif kind == "train":
+            for slot, (unit_type, info) in enumerate(race.units.items()):
+                commands.append(Command(info.name, info.hotkey, lambda ut=unit_type: self.order_production("train", ut), slot,
+                                        tooltip=f"{info.name} — {info.cost} · {info.summary} · Shift or right-click: endlessly at every "
+                                                f"{self.building_name(info.trained_at)}",
+                                        cost=f"{info.cost.gold} / {info.cost.lumber}", target=unit_type, count=lambda ut=unit_type: self._ordered(ut),
+                                        alt=lambda ut=unit_type: self.toggle_endless_everywhere(ut),
+                                        endless=lambda ut=unit_type: any(ut in b.auto for b in self._producers(ut))))
+        else:
+            letters, arts = self._upgrade_keys(), iter(race.arts)
+            for row, chain in enumerate(UPGRADE_ROWS):
+                for column, listed in enumerate(chain):
+                    upgrade = listed if listed is not None else next(arts)
+                    info = UPGRADES[upgrade]
+                    commands.append(Command(UPGRADE_NAMES[upgrade], letters.get(upgrade, ""), lambda up=upgrade: self.order_production("upgrade", up),
+                                            row * CARD_COLS + column, tooltip=f"{info.name} — {info.cost} · {info.summary}",
+                                            cost=f"{info.cost.gold} / {info.cost.lumber}", blocked=lambda up=upgrade: self._upgrade_planned(up),
+                                            target=upgrade))
         return commands
 
     # -- Command card ----------------------------------------------------------------
 
     def _commands(self) -> list[Command]:
-        if self.settlement_menu is not None:
-            return self._settlement_commands()
-        world = self.world
+        """The card as it stands: the catalogue shown, else the selection's own commands."""
+        catalogue = self.shown_catalogue
+        if catalogue is not None:
+            return self._catalogue_commands(catalogue)
         units = self._own_units()
-        if self.build_menu and any(u.is_worker for u in units):
-            commands = []
-            for building_type in BUILD_ORDER:
-                info = self.race.buildings[building_type]
-                commands.append(Command(
-                    self.race.cards[building_type], info.hotkey.upper(), lambda bt=building_type: self.start_pending(f"build:{bt.value}"),
-                    tooltip=f"{info.name} — {info.cost} · {info.summary}", blocked=lambda bt=building_type: self._build_blocked(bt),
-                    target=building_type, count=lambda bt=building_type: self._ordered(bt),
-                ))
-            commands.append(Command("Back", "Esc", self.close_build_menu, tooltip="Back to the unit commands"))
-            return commands
         if units:
-            commands = [
-                Command("Move", "M", lambda: self.start_pending("move"), tooltip="Move to a spot (right-click does this too)"),
-                Command("Stop", "S", self.command_stop, tooltip="Drop every order"),
-                Command("Attack", "A", lambda: self.start_pending("attack"), tooltip="Attack a target, or attack-move: fight everything on the way", style=DANGER_BUTTON),
-                Command("Hold", "H", self.command_hold, tooltip="Stand here; fight what comes in range but never chase"),
-                Command("Patrol", "P", lambda: self.start_pending("patrol"), tooltip="Walk between here and a spot, fighting whatever turns up"),
-            ]
-            if any(u.is_worker for u in units):
-                commands.append(Command("Build", "B", self.open_build_menu, tooltip="Farms, barracks, halls, towers and the tech buildings", style=ACTION_BUTTON))
-                commands.append(Command("Repair", "R", lambda: self.start_pending("repair"), tooltip="Mend one of your damaged buildings; a full repair costs half its price"))
-            return commands
+            return self._unit_commands(units)
         building = self._own_building()
-        if building is not None:
-            if not building.done:
-                return [Command("Cancel", "C", self.cancel_construction, tooltip="Tear the site down; the cost comes back", style=DANGER_BUTTON)]
-            commands = []
-            for unit_type in building.info.trains:
-                info = self.race.units[unit_type]
-                commands.append(Command(info.name, info.hotkey.upper(), lambda ut=unit_type: self.train(ut),
-                                        tooltip=f"{info.name} — {info.cost} · {info.summary}",
-                                        blocked=lambda ut=unit_type, b=building: world.can_train(b, ut), target=unit_type))
-            for upgrade in building.info.researches:
-                info = UPGRADES[upgrade]
-                if upgrade in self.player.upgrades or not self.race.upgrade_allowed(upgrade):
-                    continue
-                if info.requires is not None and info.requires not in self.player.upgrades and any(
-                        UPGRADES[u].requires is None and u not in self.player.upgrades and u in building.info.researches and UPGRADES[u].hotkey == info.hotkey
-                        for u in building.info.researches):
-                    continue  # the tier below has the same key; show it once its prerequisite is done
-                commands.append(Command(UPGRADE_NAMES[upgrade], info.hotkey.upper(), lambda up=upgrade: self.research(up),
-                                        tooltip=f"{info.name} — {info.cost} · {info.summary}",
-                                        blocked=lambda up=upgrade, b=building: world.can_research(b, up), target=upgrade))
-            if building.info.trains or building.info.researches:
-                commands.append(Command("Cancel", "X", self.cancel_work, tooltip="Cancel the last unit queued, or the research",
-                                        blocked=lambda b=building: None if b.queue or b.research is not None else "Nothing in progress"))
-            return commands
-        return []
+        return self._building_commands(building) if building is not None else []
 
-    def _build_blocked(self, building_type: BuildingType) -> str | None:
-        info = BUILDINGS[building_type]
-        if info.requires is not None and not self.world.player_buildings(self.human, info.requires, done=True):
-            return f"Requires a {self.building_name(info.requires)}"
-        return self.world.can_afford(self.human, info.cost)
+    def _unit_commands(self, units: list[Unit]) -> list[Command]:
+        commands = [
+            Command("Move", "m", lambda: self.start_pending("move"), UNIT_SLOTS["move"], tooltip="Move to a spot (right-click does this too)"),
+            Command("Stop", "s", self.command_stop, UNIT_SLOTS["stop"], tooltip="Drop every order"),
+            Command("Hold", "h", self.command_hold, UNIT_SLOTS["hold"], tooltip="Stand here; fight what comes in range but never chase"),
+            Command("Attack", "a", lambda: self.start_pending("attack"), UNIT_SLOTS["attack"],
+                    tooltip="Attack a target, or attack-move: fight everything on the way", style=DANGER_BUTTON),
+            Command("Patrol", "p", lambda: self.start_pending("patrol"), UNIT_SLOTS["patrol"],
+                    tooltip="Walk between here and a spot, fighting whatever turns up"),
+        ]
+        if any(u.is_worker for u in units):
+            commands.append(Command("Build", "b", lambda: self.open_catalogue("build"), UNIT_SLOTS["build"],
+                                    tooltip="Farms, barracks, halls, towers and the tech buildings, built by these peasants", style=ACTION_BUTTON))
+            commands.append(Command("Repair", "r", lambda: self.start_pending("repair"), UNIT_SLOTS["repair"],
+                                    tooltip="Mend one of your damaged buildings; a full repair costs half its price"))
+        return commands
+
+    def _building_commands(self, building: Building) -> list[Command]:
+        """What it trains, then its research, one chain of tiers a slot, from the first slot on (a chain all researched
+        keeps its slot, so no key moves); Cancel ends the first row, or the second when the work fills the first."""
+        world = self.world
+        if not building.done:
+            return [Command("Cancel", "x", self.cancel_construction, CARD_COLS - 1, tooltip="Tear the site down; the cost comes back",
+                            style=DANGER_BUTTON)]
+        commands = []
+        work: list[UnitType | Upgrade | None] = [*building.info.trains, *self._research_here(building)]
+        for slot, item in enumerate(work):
+            if isinstance(item, UnitType):
+                info = self.race.units[item]
+                commands.append(Command(info.name, info.hotkey, lambda ut=item: self.train(ut), slot,
+                                        tooltip=f"{info.name} — {info.cost} · {info.summary} · Shift or right-click: train endlessly",
+                                        blocked=lambda ut=item, b=building: world.can_train(b, ut), target=item,
+                                        alt=lambda ut=item, b=building: self.toggle_endless(b, ut), endless=lambda ut=item, b=building: ut in b.auto))
+            elif item is not None:  # None: every tier of the chain is researched, and its slot stays empty
+                upgrade = UPGRADES[item]
+                commands.append(Command(UPGRADE_NAMES[item], upgrade.hotkey, lambda up=item: self.research(up), slot,
+                                        tooltip=f"{upgrade.name} — {upgrade.cost} · {upgrade.summary}",
+                                        blocked=lambda up=item, b=building: world.can_research(b, up), target=item))
+        if work:
+            commands.append(Command("Cancel", "x", self.cancel_work, CARD_COLS - 1 if len(work) < CARD_COLS else 2 * CARD_COLS - 1,
+                                    tooltip="Cancel the last unit queued or the research, and endless training",
+                                    blocked=lambda b=building: None if b.queue or b.research is not None or b.auto else "Nothing in progress"))
+        return commands
+
+    def _research_here(self, building: Building) -> list[Upgrade | None]:
+        """*building*'s research slots: each chain of tiers (they share a letter) shows its next tier, None once all are done."""
+        chains: dict[str, list[Upgrade]] = {}
+        for upgrade in building.info.researches:
+            if self.race.upgrade_allowed(upgrade):
+                chains.setdefault(UPGRADES[upgrade].hotkey, []).append(upgrade)
+        return [next((u for u in chain if u not in self.player.upgrades), None) for chain in chains.values()]
+
+    def _catalogue_title(self) -> str | None:
+        """The settlement's catalogue on the card, as the production overview's heading names it (a peasant's Build shows
+        the peasants instead: they build what is placed)."""
+        return f"{self.shown_catalogue.title()} plans" if self.shown_catalogue is not None else None
 
     def _refresh_card(self) -> None:
-        commands = self._commands()
-        self.card_panel.visible = bool(commands)
-        signature = [(c.label, c.hotkey, c.cost, c.target) for c in commands]
-        if signature == [(c.label, c.hotkey, c.cost, c.target) for c in self._card]:
+        """Lay the card out afresh when what it holds changed: each command in its slot, three to a row, with the keys
+        of the scheme on them; empty slots before the last keep the others in place."""
+        commands = sorted(self._commands(), key=lambda c: c.slot)
+        scheme = self.scheme
+        for command in commands:
+            key = scheme.card_key(command.letter, command.slot)
+            command.hotkey = key_label(key) if key else ""
+        back = self.catalogue is not None  # a catalogue opened over the card, not the Modal scheme's home
+        signature = (back, scheme.positional, tuple((c.label, c.hotkey, c.cost, c.target, c.slot, c.style) for c in commands))
+        if signature == self._card_signature:
             self._card = commands
             for command, button in zip(commands, self._card_buttons):
                 button.on_click = command.action
+                if isinstance(button, CardButton):
+                    button.command = command
             return
+        self._card_signature = signature
         self._card = commands
         self._card_buttons = []
         self.card_panel.clear()
+        self.card_panel.visible = bool(commands)
         if not commands:
-            self.card_panel.visible = False
             return
-        self.card_panel.visible = True
-        if self.settlement_menu is not None:
-            self.card_panel.add(Label(f"{self.settlement_menu.title()} plans", text_style="heading"))
-            self.card_panel.add(Label("Cost: gold / lumber · paid when work starts", text_style="caption", width=360, wrap=True))
         portraits = any(c.target is not None for c in commands)
-        for start in range(0, len(commands), CARD_COLS):
+        by_slot = {c.slot: c for c in commands}
+        grid = len(GRID_KEYS)
+        back_slot = (grid - 1 if grid - 1 not in by_slot else grid + CARD_COLS - 1) if back else None  # the bottom-right corner, or below it
+        last = max(commands[-1].slot, back_slot if back_slot is not None else 0)
+        for first in range(0, last + 1, CARD_COLS):
             row = Row(spacing=CARD_GAP)
-            for command in commands[start:start + CARD_COLS]:
+            for slot in range(first, first + CARD_COLS):
+                command = by_slot.get(slot)
+                if slot == back_slot:
+                    row.add(Button("Back", hotkey="Esc", on_click=self.cancel, style=GHOST_BUTTON, width=CARD_WIDTH,
+                                   height=CARD_ICON if portraits else CARD_PLAIN))
+                    continue
+                if command is None:
+                    row.add(_Slot(scheme.positional and slot < grid, width=CARD_WIDTH, height=CARD_ICON if portraits else CARD_PLAIN))
+                    continue
                 captions = []
                 if command.target is not None:
-                    # A portrait or emblem with the hotkey in its corner; the name and any cost sit under it.
-                    button = ProductionButton(command.target, self.human, self.player.race, hotkey=command.hotkey or None, on_click=command.action,
-                                              style=command.style, width=CARD_WIDTH, height=CARD_ICON)
+                    # A portrait or emblem with the key in its corner; the name and any cost sit under it.
+                    button = CardButton(command, self.human, self.player.race, width=CARD_WIDTH, height=CARD_ICON)
 
                     def caption(c=command) -> str:
                         ordered = c.count()
@@ -1037,8 +1325,8 @@ class GameScene(Scene):
 
                     captions.append(Label(caption, text_style="caption", width=CARD_WIDTH, align="center"))
                 else:
-                    button = Button(command.label, hotkey=command.hotkey or None, on_click=command.action, style=command.style, width=CARD_WIDTH,
-                                    height=CARD_ICON if portraits else None)
+                    button = Button(command.label, hotkey=command.hotkey or None, on_click=command.action,
+                                    style=command.style, width=CARD_WIDTH, height=CARD_ICON if portraits else CARD_PLAIN)
                 if command.cost:
                     captions.append(Label(command.cost, text_style="caption", width=CARD_WIDTH, align="center"))
                 self._card_buttons.append(button)
@@ -1056,24 +1344,20 @@ class GameScene(Scene):
                 self.tooltip = command.tooltip + (f"  ({blocked})" if blocked else "")
 
     def _press_card_key(self, key: str, *, shift: bool = False) -> bool:
-        for command in self._card:
-            if command.key == key:
-                if shift and self.settlement_menu == "train" and command.target is not None:
-                    blocked = command.blocked()
-                    if blocked is not None:
-                        self.warn(blocked)
-                        return True
-                    if all(self.attempt("order_unit", self.human, command.target) for _ in range(5)):  # stops at the first refusal, which says why
-                        self.say(f"5 x {self.race.units[command.target].name} ordered - pay when work starts - manage in Plans")
-                        self.sfx("button")
-                    return True
-                blocked = command.blocked()
-                if blocked is None:
-                    command.action()
-                else:
-                    self.warn(blocked)
-                return True
-        return False
+        """The card's command for *key*, if it has one: its action, or with Shift its alternative (endless training, or
+        placing and staying ready to place)."""
+        command = next((c for c in self._card if c.hotkey and c.key == key), None)
+        if command is None:
+            return False
+        if shift and command.alt is not None:
+            command.alt()
+            return True
+        blocked = command.blocked()
+        if blocked is None:
+            command.action()
+        else:
+            self.warn(blocked)
+        return True
 
     # -- Groups ----------------------------------------------------------------------
 
@@ -1162,7 +1446,7 @@ class GameScene(Scene):
         return PauseScene(self)
 
     def open_help(self) -> None:
-        self.game.push(HelpScene())
+        self.game.push(HelpScene(self.scheme))
 
     def open_codex(self) -> None:
         self.game.push(CodexScene(self.world, self.human))
@@ -1193,14 +1477,7 @@ class GameScene(Scene):
     def handle_input(self, event: InputEvent) -> bool:
         self.alt_held = bool(event.alt)  # the engine keeps modifier keys' own presses; their flag on any input is what arrives
         if event.type == "key_press" and event.key is not None:
-            if event.key in GROUP_KEYS:
-                self._group(event.key, assign=event.ctrl or event.meta, add=event.shift)
-                return True
-            if event.ctrl or event.meta:
-                return self._press_settlement_key(event.key, chord=True)
-            if event.alt:
-                return False
-            return self._press_card_key(event.key, shift=event.shift) or self._press_settlement_key(event.key, chord=False)
+            return self.press(event.key, shift=event.shift, chord=event.ctrl or event.meta, alt=event.alt)
         if not event.is_mouse:
             return False
         point = to_tiles(event.world_x, event.world_y)  # type: ignore[arg-type]
@@ -1230,11 +1507,8 @@ class GameScene(Scene):
                 self.box_select(to_tiles(*self.camera.screen_to_world(*start)), to_tiles(*self.camera.screen_to_world(*end)), event.shift)
             return True
         if event.type == "click" and event.button == "right":
-            if self.pending is not None or self.build_menu or self.settlement_menu is not None:
-                self.pending = None
-                self.build_menu = False
-                self.settlement_menu = None
-                self._refresh_card()
+            if self.pending is not None:
+                self.cancel()  # back one level, as Esc: a building being placed goes back to its catalogue
             else:
                 self.command_smart(point, queue=event.shift)
             return True
@@ -1246,6 +1520,27 @@ class GameScene(Scene):
             self._zoom_by(ZOOM_PER_LINE ** lines, (event.x, event.y))
             return True
         return False
+
+    def press(self, key: str, *, shift: bool = False, chord: bool = False, alt: bool = False) -> bool:
+        """A key: a control group, a Ctrl chord to the settlement, then the card's command, then the scheme's global
+        keys (in Classic and Modal those letters answer only while the card leaves them free)."""
+        if key in GROUP_KEYS:
+            self._group(key, assign=chord, add=shift)
+            return True
+        if chord:
+            if key in CHORDS:
+                self.do(CHORDS[key])
+                return True
+            return False
+        if alt:
+            return False
+        if self._press_card_key(key, shift=shift):
+            return True
+        action = self.scheme.action(key)
+        if action is None:
+            return False
+        self.do(action)
+        return True
 
     def _click_panel(self, x: float, y: float, button: str, *, shift: bool) -> bool:
         """Clicks on the selection panel's portraits: pick a unit out of a group, jump to a producer, or cancel its work."""
@@ -1273,6 +1568,10 @@ class GameScene(Scene):
 
     def _execute_pending(self, point: tuple[float, float], *, keep: bool) -> None:
         mode = self.pending
+        placing = self.placing
+        if placing is not None:
+            self.place(placing, point, keep=keep)
+            return
         if mode == "move":
             self.command_move(point, queue=keep)
         elif mode == "attack":
@@ -1283,12 +1582,6 @@ class GameScene(Scene):
             self.command_repair(point, queue=keep)
         elif mode == "assembly":
             self.set_assembly(point)
-        elif mode is not None and mode.startswith("plan:"):
-            self.place_plan(BuildingType(mode[5:]), point, keep=keep)
-            return
-        elif mode is not None and mode.startswith("build:"):
-            self.place_building(BuildingType(mode[6:]), point, keep=keep)
-            return
         if not keep:
             self.pending = None
         self._refresh_card()
@@ -1612,15 +1905,12 @@ class GameScene(Scene):
     # -- Drawing ---------------------------------------------------------------------------
 
     def ghost(self) -> tuple[BuildingType, Pos, bool] | None:
-        if self.pending is None or not self.pending.startswith(("build:", "plan:")) or self.ui.pointer_target(*self.mouse) is not None:
+        """The building being placed where a click would put it, and whether it may go there."""
+        building_type = self.placing
+        if building_type is None or self.ui.pointer_target(*self.mouse) is not None:
             return None
-        building_type = BuildingType(self.pending.split(":", 1)[1])
-        site = self._ghost_site(building_type)
-        builder = next((u.id for u in self._own_units() if u.is_worker), None)
-        reason = (self.world.can_plan_building(building_type, site, self.human) if self.pending.startswith("plan:") else
-                  self.world.can_place(building_type, site, self.human, builder=builder))
-        ok = reason is None
-        return (building_type, site, ok)
+        site = self._site_at(building_type, self.hover)
+        return (building_type, site, self._placement_reason(building_type, site) is None)
 
     def draw(self) -> None:
         hovered = None
@@ -1640,14 +1930,14 @@ class GameScene(Scene):
         self.effects.draw(self)
 
     def _draw_settlement_markers(self) -> None:
-        for plan in self.world.player_plans(self.human):
-            if plan.kind != "building" or plan.building is not None:
-                continue
-            x, y = to_world(plan.pos)
-            size = BUILDINGS[plan.type].size * TILE
-            self.draw_rect(x, y, size, size, (110, 190, 255, 28), border_color=(150, 210, 255, 220), border_width=2, space="world")
-            self.draw_text(f"Planned {self.building_name(plan.type)}", x + size / 2, y - 5, style="caption",
-                           color=(180, 220, 255, 255), anchor_x="center", space="world")
+        """Sites ordered and not yet begun: a plan's in blue, a builder's next sites in gold."""
+        for kind, pos, queued in self.pending_sites():
+            x, y = to_world(pos)
+            size = BUILDINGS[kind].size * TILE
+            fill, border, text = ((255, 214, 110, 26), (255, 214, 110, 210), GOLD) if queued else ((110, 190, 255, 28), (150, 210, 255, 220), (180, 220, 255, 255))
+            self.draw_rect(x, y, size, size, fill, border_color=border, border_width=2, space="world")
+            self.draw_text(f"{'Next' if queued else 'Planned'} {self.building_name(kind)}", x + size / 2, y - 5, style="caption",
+                           color=text, anchor_x="center", space="world")
         if self.player.assembly is not None:
             x, y = to_world(self.player.assembly)
             self.draw_line(x, y, x, y - 32, GOLD, width=3, space="world")
@@ -1666,7 +1956,7 @@ class GameScene(Scene):
         self._queue_hits = []
         # A unit as it is; a building as the player knows it, which under the fog is as they last saw it.
         entities = [e for e in (self.world.units.get(i) or self.view.sighting(i) for i in self.selection) if e is not None]
-        if self.settlement_menu is not None or not entities:
+        if not entities or (self.shown_catalogue is not None and not self._builders()):  # planning for the settlement: what it has in hand
             self._draw_queue(x, y, w)
             self.command_tooltip.visible = bool(self.tooltip)
             return
@@ -1703,10 +1993,11 @@ class GameScene(Scene):
     def _draw_queue(self, x: float, y: float, w: float) -> None:
         """The production overview where the selection would be: one portrait per item being made or waited for."""
         entries = self._queue_entries()
+        title = self._catalogue_title()
         if not entries:
-            if self.settlement_menu is not None:
-                self.draw_text(f"{self.settlement_menu.title()} plans", x + 16, y + 30, style="heading")
-                self.draw_text("Nothing planned yet · plans wait for money and prerequisites", x + 16, y + 58, style="sub")
+            if title is not None:
+                self.draw_text(title, x + 16, y + 30, style="heading")
+                self.draw_text("Nothing planned · plans wait for money and prerequisites", x + 16, y + 58, style="sub")
                 return
             tile = (int(self.hover[0]), int(self.hover[1]))
             text = "Nothing selected"
@@ -1718,7 +2009,7 @@ class GameScene(Scene):
         working = sum(e.state != "waiting" for e in entries)
         waiting = len(entries) - working
         summary = " · ".join(part for part in (f"{working} in progress" if working else "", f"{waiting} waiting" if waiting else "") if part)
-        self.draw_text(f"Production · {summary}", x + 16, y + 30, style="heading")
+        self.draw_text(f"{title or 'Production'} · {summary}", x + 16, y + 30, style="heading")
         size, gap = 34, 4
         room = int((w - 32 + gap) // (size + gap))
         shown = entries if len(entries) <= room else entries[:room - 1]
@@ -1738,6 +2029,11 @@ class GameScene(Scene):
         if len(shown) < len(entries):
             self.draw_text(f"+{len(entries) - len(shown)}", x + 16 + len(shown) * (size + gap), y + 46 + size / 2, style="body", anchor_y="center")
         self.draw_text("Hover for details · click to go there · right-click to cancel", x + 16, y + 106, style="sub")
+
+    def _endless_line(self, building: Building) -> str:
+        """What *building* trains endlessly, the next one first."""
+        names = [self.unit_name(unit_type) for unit_type in building.auto]
+        return "Endless: " + ", ".join(names) + (" in turn" if len(names) > 1 else "")
 
     def _portrait(self, entity: Unit | Sighting, x: float, y: float, size: float) -> None:
         draw_production_icon(self, entity.type, entity.player, entity.race, x, y, size)
@@ -1833,6 +2129,13 @@ class GameScene(Scene):
                 lines.append(f"Under construction {int(entity.built * 100)}%" + (" — no builder: right-click it with a peasant" if unmanned else ""))
             elif building is not None and (building.queue or building.research is not None):
                 self._draw_production(building, tx, y + 44)
+                if building.auto:
+                    self.draw_text(self._endless_line(building), tx, y + 96, style="body", color=GOLD)
+            elif building is not None and building.auto:
+                lines.append(self._endless_line(building))
+                reason = world.auto_train_blocker(building)  # the first named is the next, and waits for this
+                if reason is not None:
+                    lines.append(reason)
             elif building is not None:
                 lines.append(building.info.summary)
                 if building.type is BuildingType.TOWN_HALL:
@@ -2017,7 +2320,7 @@ class PauseScene(_Overlay):
         self.game.push(SettingsScene(self.game_scene))
 
     def help(self) -> None:
-        self.game.push(HelpScene())
+        self.game.push(HelpScene(self.game_scene.scheme))
 
     def resign(self) -> None:
         scene = self.game_scene
@@ -2087,7 +2390,7 @@ class SettingsScene(_Overlay):
     ROWS: tuple[tuple[str, str, str], ...] = (
         ("Music volume", "music", "percent"), ("Sound volume", "sfx", "percent"), ("Edge scrolling", "edge_scroll", "toggle"),
         ("Scroll speed", "scroll_speed", "speed"), ("Fullscreen", "fullscreen", "toggle"), ("Tutorial", "tutorial", "toggle"),
-        ("Blood", "blood", "toggle"),
+        ("Blood", "blood", "toggle"), ("Controls", "controls", "scheme"),
     )
 
     def __init__(self, game_scene: GameScene) -> None:
@@ -2104,6 +2407,8 @@ class SettingsScene(_Overlay):
             return f"{round(value * 100)}%"
         if kind == "speed":
             return f"×{value:g}"
+        if kind == "scheme":
+            return SCHEMES[value].name
         return "On" if value else "Off"
 
     def on_enter(self) -> None:
@@ -2122,6 +2427,7 @@ class SettingsScene(_Overlay):
             ))
             panel.add(row)
         self.ui.focus(next(iter(self.row_keys)))
+        panel.add(Label(lambda: SCHEMES[self.settings["controls"]].summary, text_style="sub", width=420, wrap=True))
         panel.add(Label("Settings are saved when you leave this screen.", text_style="sub"))
         panel.add(KeyHints([("Tab / ↑↓", "select"), ("←→", "adjust"), ("Esc", "close")]))
 
@@ -2132,6 +2438,9 @@ class SettingsScene(_Overlay):
             apply_volumes(self.settings["music"], self.settings["sfx"])
         elif kind == "speed":
             self.settings[key] = round(max(0.5, min(2.0, self.settings[key] + 0.25 * direction)), 2)
+        elif kind == "scheme":
+            order = list(SCHEMES)
+            self.settings[key] = order[(order.index(self.settings[key]) + direction) % len(order)]
         else:
             self.settings[key] = not self.settings[key]
         self.game_scene.sfx("button")
@@ -2200,35 +2509,53 @@ HELP_INTRO = (
     "Peasants gather and build on their own. Plan buildings, units and upgrades for the whole settlement: plans wait for money,",
     "prerequisites and a free worker, and are paid when work starts. Defeat the enemy by destroying its buildings and units.",
 )
-HELP_KEYS = (
-    ("B / T / U / G", "plan a building / unit / upgrade for the settlement, or set the assembly point for new soldiers"),
-    ("Ctrl + letter", "bypass the current card (T is Tower in Build);  Ctrl+P: every plan, its progress and cancel"),
-    ("Shift", "Train: five at once;  Build: keep placing;  otherwise add to the selection or queue an order"),
-    ("Production panel", "with nothing selected: hover an item for its state, click to go to its producer, right-click to cancel"),
-    ("Click / drag / right-click", "select;  box-select;  order whatever fits the target  (Mac trackpad: two-finger click)"),
-    ("Double-click / Ctrl-click", "every unit of that type on screen;  Ctrl+A: the whole army  (Mac: Cmd-click, Cmd+A)"),
-    ("A / P / S / H", "attack-move: fight everything on the way / patrol between two spots / stop / hold position"),
-    ("B / R (peasants)", "build now, with the Build plan menu's letters / repair one of your damaged buildings"),
-    ("Building selected", "its letters train or research there;  right-click the map: its rally point"),
-    ("Ctrl+1-9 / 1-9", "assign / recall a control group;  Tab / . : next idle peasant / soldier"),
-    ("Space", "jump to the last alert;  Ctrl+F6-F8 / F6-F8: set / return to a camera bookmark"),
-    ("Arrows / edges / wheel", "scroll the map (middle-drag too);  wheel or + / −: zoom;  minimap: left-click to look, right-click to send"),
-    ("F3 / F5 / F9", "offline: pause / save / load;  F11: health bars over everyone;  online uses a live match menu"),
-    ("F2 / Esc", "codex: every unit, building and upgrade  /  cancel, deselect, then the menu"),
-)
+
+
+def help_keys(scheme: Scheme) -> list[tuple[str, str]]:
+    """The How to play table for *scheme*: its own keys first, then what every scheme shares."""
+    idle = key_label(scheme.keys["idle_soldier"])
+    if scheme.positional:
+        own = [("Q W E / A S D / Z X C", "the card's buttons by their place, whatever it shows"),
+               ("Units", "Q move, W stop, E hold, A attack-move, S patrol;  peasants: D build, Z repair"),
+               ("A building", "its recruits, then its research, from Q on;  Cancel ends the row (E, or D below a full one)"),
+               ("B / T / G / R / F / V", "Build / Train / Upgrade, the assembly point, every plan, the next idle soldier: beside the grid")]
+    else:
+        own = [("A M P S H / B R", "attack-move, move, patrol, stop, hold;  a peasant's build and repair"),
+               ("A building's letters", "train or research there, as its card shows;  X cancels the last and stops endless training")]
+        if scheme.home is not None:
+            own += [("Nothing selected", "the Train catalogue is open: a letter orders a recruit;  B build, U upgrade, G assembly point"),
+                    ("Modes last", f"placing leaves the next building ready until Esc;  {key_label(scheme.keys['repeat'])} repeats the last "
+                                   f"recruit or placement;  {idle} idle soldier")]
+        else:
+            own += [("B / T / U / G / " + idle, "Build / Train / Upgrade, the assembly point, the next idle soldier, where the card leaves the key free")]
+    return own + [
+        ("Shift", "keep going: queue orders, place more buildings;  with a recruit's key: train it endlessly (right-click too)"),
+        ("A building's key again", "while it is being placed: the planner picks the spot by your hall (a hall: by a free gold mine)"),
+        ("Ctrl + B / T / U / G / P", "Build / Train / Upgrade, the assembly point, every plan, from any card;  Ctrl+A: the army (Mac: Cmd)"),
+        ("Click / drag / right-click", "select;  box-select;  order what fits the target;  double-click or Ctrl-click: that type on screen"),
+        ("1-9 / Ctrl / Shift", "recall / assign / add to a control group;  Tab: the next idle peasant;  Space: the last alert"),
+        ("Arrows / edges / wheel", "scroll (middle-drag too);  wheel or + / −: zoom;  minimap: left-click looks, right-click sends"),
+        ("F1 F2 F3 F5 F9 F11", "help, codex, pause, save, load (offline), health bars;  F6-F8: camera bookmarks, Ctrl+F6-F8 sets"),
+        ("Esc", "back one level: the order, the catalogue, the selection, then the menu"),
+    ]
 
 
 HELP_KEY_WIDTH, HELP_TEXT_WIDTH = 230, 860  # the longest line fits unwrapped, and the panel fits a 1200 px window
 
 
 class HelpScene(_Overlay):
+    """How to play, with the keys of the control scheme in use."""
+
     pause_below = True
 
+    def __init__(self, scheme: Scheme) -> None:
+        self.scheme = scheme
+
     def on_enter(self) -> None:
-        panel = self.panel("How to play")
+        panel = self.panel(f"How to play · {self.scheme.name} controls")
         panel.add(Label(" ".join(HELP_INTRO), text_style="body", width=HELP_KEY_WIDTH + 14 + HELP_TEXT_WIDTH, wrap=True))
         table = Column(spacing=4)
-        for keys, what in HELP_KEYS:
+        for keys, what in help_keys(self.scheme):
             table.add(Row(Label(keys, text_style="hud", width=HELP_KEY_WIDTH, align="right", text_color=GOLD),
                           Label(what, text_style="body", width=HELP_TEXT_WIDTH, wrap=True), spacing=14))
         panel.add(table)

@@ -205,7 +205,7 @@ class NetworkMenuScene(_Overlay):
         self.game.push(SettingsScene(self.game_scene))
 
     def help(self):
-        self.game.push(HelpScene())
+        self.game.push(HelpScene(self.game_scene.scheme))
 
     def leave_match(self):
         from warband.ui.title import TitleScene

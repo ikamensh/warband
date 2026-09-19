@@ -15,7 +15,8 @@ from warband.records.profile import EARLY_EXIT_WEIGHT, MatchResult, Profile, sta
 from warband.ui.profile_scene import NameScene, ProfileScene
 from warband.records.replay import Replay, ReplayStore
 from warband.ui.replay_scene import ReplayEndScene, ReplayScene
-from warband.ui.scene import CodexScene, GameOverScene, HelpScene, LeaveScene, PauseScene, SaveBrowserScene, SettingsScene, new_game
+from warband.ui.controls import SCHEMES
+from warband.ui.scene import DEFAULT_SETTINGS, CodexScene, GameOverScene, HelpScene, LeaveScene, PauseScene, SaveBrowserScene, SettingsScene, new_game
 from warband.ui.score_scene import HighScoreScene
 from warband.ui.style import build_theme
 from warband.ui.title import NewGameScene, TitleScene
@@ -33,8 +34,8 @@ def settle(game: Game, frames: int = 6) -> None:
         game.tick(1 / 60)
 
 
-def match(game: Game, races=None):
-    scene = new_game(seed=5, races=races)
+def match(game: Game, races=None, controls: str = "classic"):
+    scene = new_game(seed=5, races=races, settings=dict(DEFAULT_SETTINGS, controls=controls, tutorial=True))
     game.push(scene)
     settle(game)
     world = scene.world
@@ -99,15 +100,19 @@ SCREENS = {
     "match, twelve units selected, a warning, the tutorial": match,
     "eighteen selected": lambda game: crowd(game, 18),
     "sixty selected, page two": lambda game: crowd(game, 60, page=1),
-    "build menu": lambda game: (match(game), game.scene.select([next(u.id for u in game.scene.world.player_units(game.scene.human) if u.is_worker)]), game.scene.open_build_menu()),
+    "build menu": lambda game: (match(game), game.scene.select([next(u.id for u in game.scene.world.player_units(game.scene.human) if u.is_worker)]), game.scene.open_catalogue("build")),
     "pause": lambda game: game.push(PauseScene(match(game))),
     "settings": lambda game: game.push(SettingsScene(match(game))),
-    "help": lambda game: (match(game), game.push(HelpScene())),
+    "help": lambda game: (match(game), game.push(HelpScene(game.scene.scheme))),
+    "help, grid": lambda game: game.push(HelpScene(SCHEMES["grid"])),
+    "help, modal": lambda game: game.push(HelpScene(SCHEMES["modal"])),
+    "grid, twelve units selected": lambda game: match(game, controls="grid"),
+    "modal, nothing selected: the Train catalogue": lambda game: (match(game, controls="modal"), game.scene.select([]), settle(game)),
     "codex units": lambda game: (s := match(game), game.push(CodexScene(s.world, s.human, 0))),
     "codex buildings": lambda game: (s := match(game), game.push(CodexScene(s.world, s.human, 1))),
     "codex upgrades": lambda game: (s := match(game), game.push(CodexScene(s.world, s.human, 2))),
     "codex races": lambda game: (s := match(game), game.push(CodexScene(s.world, s.human, 3))),
-    "orc match, build menu": lambda game: (match(game, races=[Race.ORC, None]), game.scene.select([next(u.id for u in game.scene.world.player_units(game.scene.human) if u.is_worker)]), game.scene.open_build_menu()),
+    "orc match, build menu": lambda game: (match(game, races=[Race.ORC, None]), game.scene.select([next(u.id for u in game.scene.world.player_units(game.scene.human) if u.is_worker)]), game.scene.open_catalogue("build")),
     "dwarf codex": lambda game: (s := match(game, races=[Race.DWARF, None]), game.push(CodexScene(s.world, s.human, 0))),
     "save browser": lambda game: (match(game), game.push(SaveBrowserScene(game, "save", on_pick=lambda slot: None))),
     "victory": lambda game: (s := match(game), setattr(s.world, "winner", s.human), game.push(GameOverScene(s))),
@@ -150,12 +155,13 @@ def test_no_text_is_drawn_over_other_text(screen: str, size: tuple[int, int], tm
 
 
 @pytest.mark.parametrize("size", sizes())
-def test_help_fits_the_window(size: tuple[int, int], tmp_path) -> None:
-    """Every line of the help screen lies inside the window: a row that runs off the edge teaches nothing.
-    The shortest window is the fast tier's, the other sizes the slow tier's."""
+@pytest.mark.parametrize("screen", ["help", "help, grid", "help, modal"])
+def test_help_fits_the_window(screen: str, size: tuple[int, int], tmp_path) -> None:
+    """Every line of the help screen lies inside the window, in every control scheme: a row that runs off the edge
+    teaches nothing.  The shortest window is the fast tier's, the other sizes the slow tier's."""
     game = Game("Warband layout", backend="mock", resolution=size, theme=build_theme(), save_dir=tmp_path / "saves")
     try:
-        SCREENS["help"](game)
+        SCREENS[screen](game)
         settle(game)
         width, height = size
         outside = [box.text for box in text_boxes(game.backend) if box.space == "screen"

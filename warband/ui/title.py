@@ -19,6 +19,7 @@ from warband.sim.races import RACES
 from warband.brains.ai import DIFFICULTY_ELO, DIFFICULTY_NOTES
 from warband.records.profile import OUTCOME_NAMES, Profile, plural
 from warband.sim.rules import BuildingType, Difficulty, Layout, MapTheme, Race
+from warband.ui.controls import DEFAULT, SCHEMES
 from warband.ui.scene import SAVE_SLOTS, HelpScene, SaveBrowserScene, fair_map, load_game, new_game
 from warband.audio.sound import play_music, play_sound
 from warband.ui.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MENU_BUTTON, MUTED, OVERLAY_STYLE, PANEL_STYLE
@@ -232,7 +233,7 @@ class TitleScene(Scene):
 
     def how_to_play(self) -> None:
         self.sfx("button")
-        self.game.push(HelpScene())
+        self.game.push(HelpScene(SCHEMES[self.settings["controls"] if self.settings is not None else DEFAULT]))
 
     def profile_screen(self) -> None:
         from warband.ui.profile_scene import ProfileScene

@@ -46,6 +46,7 @@ def in_front_of_seat_0(match: WarbandMatch):
     camp = world.place_building(1, BuildingType.BARRACKS, site)
     camp.queue.append(UnitType.FOOTMAN)
     camp.rally = (2.5, 2.5)
+    world.set_auto_train(camp.id, UnitType.ARCHER, True)
     footman = world.spawn_unit(1, UnitType.FOOTMAN, tile_center((site[0] - 1, site[1] - 1)))
     world.move([footman.id], (world.width - 3.5, world.height - 3.5))
     world.update_vision()
@@ -66,6 +67,7 @@ def test_a_seat_has_all_of_its_own_and_of_the_rival_only_what_it_sees_without_it
     assert (stranger['x'], stranger['y'], stranger['hp']) == (footman.x, footman.y, footman.hp)
     works = buildings[camp.id]
     assert works['queue'] == [] and works['train_progress'] == 0 and works['rally'] is None and works['research'] is None
+    assert works['auto'] == [], "what a rival's barracks trains endlessly is its own business"
     far = [u.id for u in world.player_units(1) if not world.is_visible(0, u.tile)]
     assert far and not set(far) & units.keys(), "the rival's units at home travel to seat 0"
     rival_hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0]
@@ -73,6 +75,7 @@ def test_a_seat_has_all_of_its_own_and_of_the_rival_only_what_it_sees_without_it
     theirs = sent(match, 1)['world']
     assert {u['id']: u for u in theirs['units']}[footman.id]['orders'], "a seat's own orders are its own to see"
     assert {b['id']: b for b in theirs['buildings']}[camp.id]['queue'] == ['footman']
+    assert {b['id']: b for b in theirs['buildings']}[camp.id]['auto'] == ['archer']
 
 
 def test_a_worker_in_a_mine_is_nobodys_business_but_its_owners() -> None:

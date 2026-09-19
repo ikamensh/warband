@@ -139,51 +139,60 @@ def key(game, name, **mods):
 
 
 def test_plain_letters_plan_without_a_selection(settlement):
-    """With nothing selected, T opens Train, F orders one, Shift+F five more, T closes; B / U / G do their jobs."""
+    """With nothing selected, T opens Train, F orders one, Shift+F trains footmen endlessly at every barracks (and
+    stops), T closes; B / U / G do their jobs."""
     game, scene = settlement
     key(game, "t")
-    assert scene.settlement_menu == "train"
+    assert scene.catalogue == "train"
     assert "Footman" in [c.label for c in scene.card]
     key(game, "f")
     assert len(scene.world.player_plans(scene.human)) == 1
+    key(game, "f", shift=True)
+    assert scene.status == "Requires a Barracks" and len(scene.world.player_plans(scene.human)) == 1
+    hall = scene.world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    camps = [scene.world.place_building(scene.human, BuildingType.BARRACKS, (hall.x + 6, hall.y + dy)) for dy in (0, 4)]
     sounds = len(scene.recent_sounds)
     key(game, "f", shift=True)
-    assert len(scene.world.player_plans(scene.human)) == 6
-    assert scene.status == "5 x Footman ordered - pay when work starts - manage in Plans"
-    assert list(scene.recent_sounds)[sounds:] == ["button"]
+    assert [c.auto for c in camps] == [[UnitType.FOOTMAN]] * 2 and scene.status == "Footman endlessly at 2 Barracks"
+    assert list(scene.recent_sounds)[sounds:] == ["button"] and next(c for c in scene.card if c.label == "Footman").endless()
+    key(game, "f", shift=True)
+    assert [c.auto for c in camps] == [[], []] and scene.status == "No more endless Footman"
     key(game, "t")
-    assert scene.settlement_menu is None
+    assert scene.catalogue is None
     key(game, "b")
-    assert scene.settlement_menu == "build"
+    assert scene.catalogue == "build"
     key(game, "u")
-    assert scene.settlement_menu == "upgrade"
-    key(game, "b", ctrl=True)  # in the Upgrade menu B is Blades: the chord switches menus past the card
-    assert scene.settlement_menu == "build"
+    assert scene.catalogue == "upgrade"
+    key(game, "b", ctrl=True)  # in the Upgrade catalogue B is Blades: the chord switches catalogues past the card
+    assert scene.catalogue == "build"
     key(game, "f")
-    assert scene.pending.startswith("plan:")
+    assert scene.placing is BuildingType.FARM
     key(game, "g")
-    assert scene.pending == "assembly" and scene.settlement_menu is None
+    assert scene.pending == "assembly" and scene.catalogue is None
     key(game, "p", ctrl=True)
     assert isinstance(game.scene, SettlementPlansScene)
 
 
 def test_selection_commands_win_over_settlement_letters(settlement):
-    """A peasant's B is its own build menu and T in that menu is the tower; Ctrl+B still forces the plan menu."""
+    """A peasant's B opens the Build catalogue for it, where T is the tower; Esc steps back a level at a time; T then
+    opens Train; Ctrl+B builds whatever the card shows."""
     game, scene = settlement
     peasant = next(u for u in scene.world.player_units(scene.human) if u.is_worker)
     scene.select([peasant.id])
     key(game, "b")
-    assert scene.build_menu is True and scene.settlement_menu is None
-    key(game, "t")  # the tower, blocked this early: the card answers, the train menu stays shut
-    assert scene.settlement_menu is None and scene.build_menu and "Requires a Barracks" in scene.status
+    assert scene.catalogue == "build" and scene.card[0].label == "Farm"
+    key(game, "t")  # the tower: the card answers, the Train catalogue stays shut
+    assert scene.placing is BuildingType.TOWER and scene.catalogue == "build"
     key(game, "escape")
-    assert scene.selection == [peasant.id] and not scene.build_menu
+    assert scene.pending is None and scene.catalogue == "build"
+    key(game, "escape")
+    assert scene.catalogue is None and scene.selection == [peasant.id] and scene.card[0].label == "Move"
     key(game, "t")
-    assert scene.settlement_menu == "train" and scene.selection == [peasant.id]
+    assert scene.catalogue == "train" and scene.selection == [peasant.id]
     key(game, "t")
-    assert scene.settlement_menu is None
+    assert scene.catalogue is None
     key(game, "b", ctrl=True)
-    assert scene.settlement_menu == "build" and scene.selection == [peasant.id]
+    assert scene.catalogue == "build" and scene.selection == [peasant.id]
 
 
 def test_settlement_row_advertises_shortcuts_that_bypass_the_command_card(settlement):
@@ -191,28 +200,30 @@ def test_settlement_row_advertises_shortcuts_that_bypass_the_command_card(settle
     game, scene = settlement
     key(game, "b")
     key(game, "f")
-    assert scene.pending == "plan:farm"
+    assert scene.placing is BuildingType.FARM
     for label, cap in (("Build", "Ctrl+B"), ("Train", "Ctrl+T"), ("Upgrade", "Ctrl+U"), ("Assembly", "Ctrl+G")):
         button = next(b for b in scene.ui.walk() if isinstance(b, Button) and b.text == label)
         x, y, width, height = button.bounds
         assert any(item["text"] == cap and x <= item["x"] < x + width and y <= item["y"] < y + height
                    for item in game.backend.texts)
     key(game, "t", ctrl=True)
-    assert scene.settlement_menu == "train" and scene.pending is None
+    assert scene.catalogue == "train" and scene.pending is None
     key(game, "f")
     assert [p.type for p in scene.world.player_plans(scene.human)] == [UnitType.FOOTMAN]
 
 
-def test_unclaimed_train_letter_exits_worker_build_placement(settlement):
-    """After choosing a worker's farm, its command card has no T, so T falls through to global Train."""
+def test_the_build_catalogue_stays_while_placing_so_its_letters_switch_the_building(settlement):
+    """Placing a worker's farm, the card still shows the catalogue: T switches to the tower; Ctrl+T leaves for Train."""
     game, scene = settlement
     worker = next(u for u in scene.world.player_units(scene.human) if u.is_worker)
     scene.select([worker.id])
     key(game, "b")
     key(game, "f")
-    assert scene.pending == "build:farm"
+    assert scene.placing is BuildingType.FARM
     key(game, "t")
-    assert scene.settlement_menu == "train" and scene.pending is None
+    assert scene.placing is BuildingType.TOWER and scene.catalogue == "build"
+    key(game, "t", ctrl=True)
+    assert scene.catalogue == "train" and scene.pending is None
     key(game, "f")
     assert [p.type for p in scene.world.player_plans(scene.human)] == [UnitType.FOOTMAN]
 
@@ -250,7 +261,7 @@ def test_upgrade_letters_order_the_next_tier(settlement):
     key(game, "b")
     assert [p.type for p in scene.world.player_plans(scene.human)] == [Upgrade.BLADES_1, Upgrade.BLADES_2]
     key(game, "b")
-    assert scene.settlement_menu == "upgrade" and scene.status == "Already ordered"
+    assert scene.catalogue == "upgrade" and scene.status == "Already ordered"
 
 
 def test_cards_count_what_is_already_ordered(settlement):
@@ -290,7 +301,7 @@ def test_selection_panel_overviews_production_and_manages_it(settlement):
     key(game, "f")
     place_blueprint(game, scene, BuildingType.FARM)
     key(game, "escape")
-    assert scene.settlement_menu is None and scene.selection == []
+    assert scene.catalogue is None and scene.selection == []
     scene.paused = False
     for _ in range(32):
         game.tick(1 / 30)
