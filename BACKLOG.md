@@ -37,13 +37,12 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 ([`13c9911`](https://github.com/ikamensh/warband/blob/13c991194c5b73d2babbd74c931681aee3c4b8a7/BACKLOG.md)); WB-046, merged as `59455cc`, live as 0.2.65
 ([`70b57b2`](https://github.com/ikamensh/warband/blob/70b57b2048b4a0986aecfad4ad5999e7292c0da6/BACKLOG.md)); WB-041, merged as `62e4970`, live as 0.2.67 on
 bundle `3e3dfda8` ([`79bc783`](https://github.com/ikamensh/warband/blob/79bc78340bf30dcabb3a333f6df85b176bc4dcd3/BACKLOG.md)); WB-047, closed on its
-evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1bfbe42c4705f56a6ac0476a0/BACKLOG.md)); WB-039 and WB-044, merged as `f8ba0eb`
+evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1bfbe42c4705f56a6ac0476a0/BACKLOG.md)); WB-038, merged as `75dc68f`, published as a preview ([`75dc68f`](https://github.com/ikamensh/warband/blob/75dc68f231810cdfe83d5ff6f5f47c48cfb5422f/BACKLOG.md)); WB-039 and WB-044, merged as `f8ba0eb`
 ([`a8951a7`](https://github.com/ikamensh/warband/blob/a8951a7ca8b76c8df9b8e12b87ed8a9e235e7e1f/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
-| WB-038 | Next | ready | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-048 | Next | proposed | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
 | WB-049 | Next | proposed | Armour and attack types; archers strike the unarmoured harder | User 2026-09-19 |
 | WB-050 | Next | proposed | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
@@ -67,84 +66,6 @@ to build until a playtest happens. What unblocks it: one or two fresh players'
 sessions (a recording or notes on what confused them), on a Mac or on Windows.
 The Windows report that came first is closed (WB-021, WB-022), and a Windows
 desktop for scripted checks is [a runbook away](../saga-online/docs/windows-test-box.md).
-
-## WB-038 — Paint the gold mine
-
-Ilya asked on 2026-09-18 why the gold mine is not painted and animated like
-the buildings. The painting procedure has no subject for it:
-`tools/restyle.py` paints one race's units, or one race's nine buildings in
-one look, and the game recolours each painting to its owner's team. The mine
-belongs to no race and no player, so the sheets leave it out
-(`textures.restyled_buildings` skips `BuildingType.GOLD_MINE`). The map
-draws it from twenty low-poly stand-ins (`textures._mine`, one picked by a
-tile hash in `view.py`), and its selection-panel portrait is the low-poly
-render too. It is the last structure on the map still drawn as a stand-in.
-
-The buildings come alive by swapping looks (`view.building_look`): `active`
-(lit windows, open doors) while they train or research, and `damaged` under
-half their hit points. A mine's own states are idle and worked (a peasant
-inside). An exhausted mine is removed from the map, so there is no ruin to
-paint. A neutral `mine` subject would paint a few of the stand-in variants
-in an `intact` and an `active` look (lamps lit, a cart at the mouth), with
-no team colour and no recolouring, keeping each variant's footprint and
-anchor.
-
-**Done when:** painted mine sheets are installed under
-`warband/assets/restyled/`, and the map and the portrait use them (the
-low-poly render stays behind `WARBAND_ART=procedural`). A worked mine wears
-its active look only while the player can see it; out of sight it shows
-what was last seen (WB-027's rule). `tools/visual_lint.py` passes the new
-frames (no drift from the stand-in, no fringe), and native frames of an idle
-and a worked mine on all three map themes are looked at. Presentation only:
-the fingerprint and the contract are unchanged.
-
-**Started 2026-09-19**, branch `painted-mine`.
-
-**Acceptance (recorded before implementation):**
-
-1. `tools/restyle.py` gets a neutral `mine` subject in two looks: `intact`,
-   painted from four of the twenty stand-in variants, and `active` (a worked
-   mine: lamps lit, a cart at the mouth), painted from the installed intact
-   painting. No team colour: the prompt forbids blue and nothing recolours it.
-   The vision judge passes every cell of both looks; each painted variant keeps
-   its stand-in's footprint and anchor.
-2. The map draws a mine from the painted variants (the tile hash picks one of
-   the four), in the active look while a peasant works inside and the player
-   sees it; out of sight it shows the look last seen, as buildings do since
-   WB-027. The selection panel's portrait is the painted intact frame.
-   `WARBAND_ART=procedural` still draws the twenty stand-ins.
-3. Tests: the painted sheets load and a mine's image is painted; a worked mine
-   in sight is active and one out of sight keeps what was seen; the portrait
-   is painted; with procedural art the stand-ins return. `tools/visual_lint.py`
-   passes, and native frames of an idle and a worked mine on the three map
-   themes are looked at. The fingerprint and the contract do not move.
-
-**First part merged 2026-09-19 as `7f7de57`** (`b491200` on `painted-mine`).
-The intact look is painted and installed (`warband/assets/restyled/mine.intact`):
-four stand-ins (0, 5, 10, 15) repainted in the buildings' style, each figure's
-box within 2 px of its stand-in's, no blue; the cut registered at scale 0.99,
-no cell flagged. The map draws only the painted four, never recoloured; the
-portrait is the painting; a mine is `active` while a peasant works inside and
-the player sees it, and keeps the look last seen out of sight (tested; with
-the active sheet made up in the test, since none is painted yet, the intact
-painting shows). The art lint finds nothing new (the same 39 findings as
-main) and checks the painted mines' footprint and drift; native frames of a
-worked and an idle mine on summer, winter and wasteland were looked at. The
-fingerprint and contract are unchanged. The painter is now handed a canvas
-of the sheet's own shape: OpenRouter's model re-laid a portrait sheet out on
-its default 3:2, eight mines instead of four.
-
-**Blocked on a painter for the active look.** Codex, which also runs the
-vision judge, is out of credits until 24 September; OpenRouter answered 402
-(its credit is spent) after the two intact paintings (about $0.07 each). The
-intact painting was judged by eye against the stand-ins instead: the judge
-runs when Codex is back. What unblocks it: either painter again.
-`tools/restyle.py --mines --looks active dump|render|cut DIR`, then `check`.
-
-**Unblocked 2026-09-19:** Ilya added a new OpenRouter key, checked the same
-day with a status call only: a $20 limit, none of it spent. The active look
-can be painted now. The vision judge still waits for Codex (24 September),
-so until then the active painting is judged by eye, as the intact one was.
 
 ## WB-048 — A building site, not a ghost; no abandoned shells
 
