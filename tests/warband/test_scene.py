@@ -104,7 +104,7 @@ def test_selecting_again_and_again_chimes_once_in_half_a_minute(play) -> None:
     scene.select([second.id])
     scene.select([first.id, second.id])
     assert scene.recent_sounds.count("select") == 1
-    tick(game, SELECT_GAP + 1, dt=0.1)
+    scene.clock += SELECT_GAP  # half a minute on the scene's clock, without playing it
     scene.select([second.id])
     assert scene.recent_sounds.count("select") == 2
 
