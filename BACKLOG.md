@@ -40,14 +40,13 @@ bundle `3e3dfda8` ([`79bc783`](https://github.com/ikamensh/warband/blob/79bc7834
 evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1bfbe42c4705f56a6ac0476a0/BACKLOG.md)); WB-038, merged as `75dc68f`, published as a preview
 ([`75dc68f`](https://github.com/ikamensh/warband/blob/75dc68f231810cdfe83d5ff6f5f47c48cfb5422f/BACKLOG.md)); WB-052, merged as `a2212f5`
 ([`a2212f5`](https://github.com/ikamensh/warband/blob/a2212f53d78ae5c28ec64727eaabc2ac3142d183/BACKLOG.md)); WB-049, merged as `9418ec5`
-([`9418ec5`](https://github.com/ikamensh/warband/blob/9418ec5babcbf57aed2a2e5939a502fd8477a49d/BACKLOG.md); WB-051, merged as `0a820ff` ([`0a820ff`](https://github.com/ikamensh/warband/blob/0a820ffdfe3b18f8e06a5ed5ac3f89223943f70c/BACKLOG.md); WB-050, merged as `adb5e9b` ([`adb5e9b`](https://github.com/ikamensh/warband/blob/adb5e9b26b5c3b88ce4463f9e15fda14c7ce67bf/BACKLOG.md)))); WB-039 and WB-044, merged as `f8ba0eb`
+([`9418ec5`](https://github.com/ikamensh/warband/blob/9418ec5babcbf57aed2a2e5939a502fd8477a49d/BACKLOG.md); WB-051, merged as `0a820ff` ([`0a820ff`](https://github.com/ikamensh/warband/blob/0a820ffdfe3b18f8e06a5ed5ac3f89223943f70c/BACKLOG.md); WB-050, merged as `adb5e9b` ([`adb5e9b`](https://github.com/ikamensh/warband/blob/adb5e9b26b5c3b88ce4463f9e15fda14c7ce67bf/BACKLOG.md); WB-048, merged as `4e47b39` ([`4e47b39`](https://github.com/ikamensh/warband/blob/4e47b39fd7c9a75a9440d1cf8557dbc8b793d950/BACKLOG.md))))); WB-039 and WB-044, merged as `f8ba0eb`
 ([`a8951a7`](https://github.com/ikamensh/warband/blob/a8951a7ca8b76c8df9b8e12b87ed8a9e235e7e1f/BACKLOG.md)); WB-053, merged as `7158d46`
 ([`dbbb2d1`](https://github.com/ikamensh/warband/blob/dbbb2d132a56e60a7aa4db0fcb66de70a5000aa0/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
-| WB-048 | Next | done | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -66,64 +65,3 @@ to build until a playtest happens. What unblocks it: one or two fresh players'
 sessions (a recording or notes on what confused them), on a Mac or on Windows.
 The Windows report that came first is closed (WB-021, WB-022), and a Windows
 desktop for scripted checks is [a runbook away](../saga-online/docs/windows-test-box.md).
-
-## WB-048 — A building site, not a ghost; no abandoned shells
-
-Ilya, 2026-09-19: an unfinished building should not be a see-through copy of
-the finished one. It should have its own under-construction look, maybe
-dust and some sign of the work going on. He also wants no abandoned
-construction: it confuses players. Once a building is started it is either
-finished or cancelled.
-
-Today a builder ordered away (`_abandon_construction`, `warband/sim/model.py`)
-leaves the shell where it stands, and another peasant can pick it up with
-`resume_construction`. A cancelled building returns its whole cost
-(`cancel_building`).
-
-**Proposed scope:** the builder stays on the site until it is finished.
-Orders to it are refused or queued until then, and the only way off the site
-is to cancel. If the builder dies, the site is cancelled with the normal refund
-(or a smaller one; to be decided). `resume_construction`, and the code and
-tests for picking up an abandoned site, are deleted. The art is a site for
-each building footprint and race: scaffold and foundations that grow in
-steps with the build's progress, with puffs of dust and a hammering
-animation while the work goes on. It is made the same way as the other
-building art (`docs/warband-art.md`).
-
-**Done when:** no rule path leaves an unfinished building with no builder.
-Tests cover moving the builder, the builder dying, and cancelling. The AIs
-and the settlement queue no longer rely on resuming. Frames of the sites at
-three stages of progress, for each race, have been looked at. The rule change
-changes the online simulation, so it goes live through a server rollout.
-
-**Done 2026-09-19** (branch `building-sites`). The acceptance is the
-done-when above, taken as written; the open question of a dead builder's
-refund is answered as the full cost.
-
-Rules: an order to a builder waits behind its work (`_issue` keeps the
-Build order at the front; a stop drops only what was to come), so a started
-building is finished or cancelled. `cancel_building` refunds the whole cost
-and frees the builder, which then does what it was told meanwhile. A
-builder removed while building cancels its site with the full refund, and
-a planned request stands and starts anew. `resume_construction`, its smart
-order and its settlement path are deleted. A save from before, holding a
-shell whose builder walked off, cancels and refunds it on load. `resign`
-now removes buildings before units, since a builder's removal cancels its
-site. Tests: `test_a_builder_finishes_what_it_started...` and
-`test_a_site_whose_builder_is_gone...` (`test_model.py`) and the settlement
-pair; the resume rows are gone from the properties and atomicity tables.
-The AIs never walked a builder off, so the fingerprint and `sim_bench`
-digest are unchanged, and the ladder has nothing to measure. Fuzz (two AI
-games and three monkey runs) is clean.
-
-Art: two painted looks per race, `founded` and `raised` (eight sheets,
-`warband/assets/restyled/<race>.buildings.{founded,raised}`), made with
-`tools/restyle.py --looks founded,raised` on OpenRouter; `docs/warband-art.md`
-says how. A site wears them whole, not the finished building faded; with the
-procedural art it keeps the plain site. `ambience.py` draws the builder
-hammering just off the site's front corner (the peasant's blow frames),
-dust rising from the work, and a spark at each blow. Native frames of a
-farm, barracks and hall at a quarter, half and three quarters, for all four
-races, were looked at (first frames put the builder behind the walls, so it
-was moved out and drawn above). `tools/visual_lint.py` finds nothing. The
-fast and slow tiers pass (1073 and 511).
