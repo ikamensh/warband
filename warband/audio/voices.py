@@ -34,7 +34,7 @@ def anvil_strike(seed: int = 0) -> np.ndarray:
 
 
 def orc_select() -> np.ndarray:
-    return level(mix(thump(160, 60, 0.12, tau=0.04), noise(0.08, 200, 1200, tau=0.03, seed=101) * 0.5), 0.5)
+    return level(mix(thump(160, 60, 0.12, tau=0.04), noise(0.08, 200, 1200, tau=0.03, seed=101) * 0.5), 0.3)
 
 
 def orc_command() -> np.ndarray:
@@ -70,7 +70,7 @@ def orc_under_attack() -> np.ndarray:
 
 
 def elf_select() -> np.ndarray:
-    return level(mix(tone("D6", 0.1, tau=0.05, partials=BELL), (0.05, tone("A6", 0.12, tau=0.06, partials=BELL) * 0.7)), 0.45)
+    return level(mix(tone("D6", 0.1, tau=0.05, partials=BELL), (0.05, tone("A6", 0.12, tau=0.06, partials=BELL) * 0.7)), 0.27)
 
 
 def elf_command() -> np.ndarray:
@@ -104,7 +104,7 @@ def elf_under_attack() -> np.ndarray:
 
 
 def dwarf_select() -> np.ndarray:
-    return level(anvil_strike(1), 0.45)
+    return level(anvil_strike(1), 0.27)
 
 
 def dwarf_command() -> np.ndarray:

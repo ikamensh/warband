@@ -133,25 +133,22 @@ class Telemetry:
     # -- Purchases ----------------------------------------------------------------
 
     def _trained(self, world: World, event: Event) -> None:
-        unit = world.units[event.entity]
         tally = self.tallies[event.player]
-        key = unit.type.value
+        key = event.target_type
         tally.trained[key] += 1
-        tally.spent[key] += unit.info.cost.gold + unit.info.cost.lumber
+        tally.spent[key] += _price(world.players[event.player].race, key)
         tally.first.setdefault(key, world.time)
 
     def _construction(self, world: World, event: Event) -> None:
-        building = world.buildings[event.entity]
         tally = self.tallies[event.player]
-        key = building.type.value
+        key = event.target_type
         tally.started[key] += 1
-        tally.spent[key] += building.info.cost.gold + building.info.cost.lumber
+        tally.spent[key] += _price(world.players[event.player].race, key)
 
     def _built(self, world: World, event: Event) -> None:
-        building = world.buildings[event.entity]
         tally = self.tallies[event.player]
-        tally.completed[building.type.value] += 1
-        tally.first.setdefault(building.type.value, world.time)
+        tally.completed[event.target_type] += 1
+        tally.first.setdefault(event.target_type, world.time)
 
     def _researched(self, world: World, event: Event) -> None:
         upgrade = _UPGRADE_BY_NAME[event.text]

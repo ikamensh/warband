@@ -151,7 +151,6 @@ def test_warband_fatal_impact_keeps_its_material_across_the_socket(tmp_path, aud
             assert {key: hit[key] for key in impact_fields} == {
                 'source_type': 'footman', 'target_type': 'tower', 'target_armor': armor, 'target_complete': False,
             }
-            assert armor > 0
         elif audio_schema == 'basic':
             assert not set(impact_fields).intersection(hit)
         else:

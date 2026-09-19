@@ -45,6 +45,7 @@ FLESH = {u.value for u in UnitType} - {UnitType.CATAPULT.value}  # what bleeds w
 SAVE_VERSION = 2  # 2: the world records its layout
 SAVE_SLOTS = 3
 AUTOSAVE_EVERY = 120.0  # seconds of match time
+SELECT_GAP = 30.0  # seconds: selecting is constant, and its cue answers only the first selection in a while (WB-039)
 TOAST_TOP = 280  # below the resource, settlement and objectives panels
 HUD_TOP = 158  # just under the Settlement row (which ends at 150): the status line starts here, and the map can scroll clear of it
 HINT_BAR = 28
@@ -523,7 +524,7 @@ class GameScene(Scene):
         self.settlement_menu = None
         self._refresh_card()
         if alive and not quiet:
-            self.sfx("select")
+            self.sfx("select", gap=SELECT_GAP)
 
     def _prune_selection(self) -> None:
         """Drop what is gone; a building razed out of sight stays selected as the player remembers it, until they look."""
