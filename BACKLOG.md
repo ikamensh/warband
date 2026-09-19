@@ -36,7 +36,8 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 ([`493e3bf`](https://github.com/ikamensh/warband/blob/493e3bfb3df8eaefc809dbc0a86c80683eb490a1/BACKLOG.md)); WB-042, merged as `13db600`, published as 0.2.63
 ([`13c9911`](https://github.com/ikamensh/warband/blob/13c991194c5b73d2babbd74c931681aee3c4b8a7/BACKLOG.md)); WB-046, merged as `59455cc`, live as 0.2.65
 ([`70b57b2`](https://github.com/ikamensh/warband/blob/70b57b2048b4a0986aecfad4ad5999e7292c0da6/BACKLOG.md)); WB-041, merged as `62e4970`, live as 0.2.67 on
-bundle `3e3dfda8` ([`79bc783`](https://github.com/ikamensh/warband/blob/79bc78340bf30dcabb3a333f6df85b176bc4dcd3/BACKLOG.md)).
+bundle `3e3dfda8` ([`79bc783`](https://github.com/ikamensh/warband/blob/79bc78340bf30dcabb3a333f6df85b176bc4dcd3/BACKLOG.md)); WB-047, closed on its
+evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1bfbe42c4705f56a6ac0476a0/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
@@ -44,7 +45,6 @@ bundle `3e3dfda8` ([`79bc783`](https://github.com/ikamensh/warband/blob/79bc7834
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-044 | Next | blocked | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
-| WB-047 | Later | closed | Split the four giant modules along their seams | WB-041 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -211,55 +211,3 @@ different brain. **Blocked** on Ilya: whether Hard is to meet the rush bar
 at all (and with which handicaps), and whether the defence against a push
 that arrives with a tower is worth an AI project of its own for Master's
 last game or two.
-
-## WB-047 — Split the four giant modules along their seams
-
-Left by WB-041, which moved the modules into folders and left their insides
-alone: `sim/model.py` (3,148 lines), `ui/scene.py` (2,484), `art/textures.py`
-(2,248) and `brains/pro_ai.py` (1,419). The seams WB-041 proposed are these.
-`model` splits into orders, movement, combat, economy, construction and
-vision; `scene` into the match, the HUD, overlays and input; `textures` into
-terrain, units, buildings and painted sheets; `pro_ai` into economy,
-military and memory. `World` is one class whose methods cross every one of
-model's seams, so its split is not a pure move: mixins or free functions,
-each checked by the fingerprint and by mypyc, which compiles model and
-pro_ai.
-
-**Done when:** each giant is split along seams a reader recognises, and each
-split is its own commit. The fingerprint, the sim_bench digest and the replay
-tests are unchanged, and the compiled simulation builds and runs as fast.
-model's split moves contract files, so it ships with a rollout.
-
-**Closed on evidence 2026-09-19**, before any change. Three of the four
-giants are one class each, not files of loose parts:
-
-| Module | Class | Class lines | Module lines | Methods |
-|---|---|---|---|---|
-| `model.py` | `World` | 2,564 | 3,148 | 174 |
-| `scene.py` | `GameScene` | 1,709 | 2,484 | 150 |
-| `pro_ai.py` | `ProBrain` | 1,179 | 1,419 | 73 |
-
-The rest of `scene.py` is its seven overlay scenes and helpers. Splitting
-these modules along the proposed seams means decomposing a class, not
-moving code:
-
-* `World` and `ProBrain` are compiled by mypyc, which allows multiple
-  inheritance only through traits. Trait attributes are slower in the hot
-  loop, so the alternative is free functions and a rewrite of hundreds of
-  `self.` calls. Every change to `model.py` also moves the contract, which
-  means a server rollout for no change in behaviour.
-* `GameScene` could take mixins, since it is not compiled. But mixins spread
-  one object's state over several files without making it smaller to hold
-  in mind.
-* The overlays could move to `ui/overlays.py`, but they and `GameScene`
-  import each other.
-* `textures.py` is 88 functions under its own sections: ground, props,
-  materials, units, keys and painted sheets, effects, registration. Its 51
-  public names are read as `textures.X` 306 times in 19 files, plus 17
-  import lines. A split would rename all of those for a file a reader
-  already navigates by its sections.
-
-None of this earns its cost now: WB-041's folders answer the request they
-came from. A decomposition of `World` would be a design of its own (for
-instance, the seams as components the world holds). It should wait for a
-need, such as a rule change the single class makes hard.
