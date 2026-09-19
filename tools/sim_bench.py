@@ -37,7 +37,6 @@ if __name__ in ("__main__", "__mp_main__"):  # run as a program or as one of its
 
 from warband.league import arena  # noqa: E402
 from warband.league.arena import MatchSpec  # noqa: E402
-from tools.arena import _board  # noqa: E402
 
 MATCHES = (
     (1, ("master", "master")),
@@ -55,7 +54,7 @@ MATCHES = (
 def specs() -> list[MatchSpec]:
     out = []
     for seed, agents in MATCHES:
-        board = _board(seed)
+        board = arena.board(seed)
         if len(agents) > 2:
             board["width"] = max(board["width"], 64)  # four players need room, as tools/arena.py gives them
         out.append(MatchSpec(seed=seed, agents=agents, **board))

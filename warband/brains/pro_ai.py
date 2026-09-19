@@ -42,7 +42,7 @@ from typing import Final
 from warband.brains.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_search
 from warband.sim.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, rect_gap, tile_center
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, MINE_SLOTS, UPGRADES, BuildingType, Cost, UnitType
+from warband.sim.rules import BUILDINGS, MINE_SLOTS, UPGRADES, BuildingType, Cost, UnitType, Upgrade
 from warband.sim.worker_knowledge import KnownMine
 
 _MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
@@ -117,6 +117,13 @@ class ProProfile:
     strike_seconds: float = 20.0      # a tower on our ground is struck by as many peasants as kill it this fast; 0: never
     strikers_max: int = 16            # …but no more peasants than this
     strike_lead: float = 25.0         # a frame this many seconds from standing is struck already, so the strike is there
+    research_order: tuple[Upgrade, ...] | None = None  # the upgrades it buys, first first, instead of RESEARCH_ORDER
+    research_first: int = 0           # this many of them come before soldiers: their price is held once their building stands idle
+    push_upgrades: int = 0            # a push waits for this many upgrades…
+    push_after: float = 0.0           # …and for this many seconds of play…
+    push_by: float = 600.0            # …but not past this many
+    wood_crew: int = 0                # peasants kept on the trees; 0 leaves the wood to the model's own policy
+    wood_from: int = 8                # …once the workforce is this strong
 
 
 PRO: Final = ProProfile("pro")
@@ -275,6 +282,8 @@ class ProBrain:
         self._observe(world)
         self._economy(world)
         self._tower_rush(world)    # a rush tower's price is held from everything below
+        if self.profile.research_first:
+            self._research(world)  # the upgrades a posture is built on are bought before the soldiers they arm
         self._training(world)      # soldiers get first call on the bank…
         self._construction(world, rng)  # …and buildings buy what is left
         self._research(world)
@@ -443,10 +452,12 @@ class ProBrain:
             # harvest order on ground that no longer holds one is refused.
             world.release_workers([p.id for p in peasants if self._on_lumber(p) and p.carrying is None][1:])
             return
+        crew = self.profile.wood_crew if len(peasants) >= self.profile.wood_from else 0
         if player.lumber >= self.profile.lumber_floor_panic or player.gold < self.profile.panic_gold:
-            return
-        # Never everyone: gold still has to come in, or the next peasant never does.
-        want = min(len(peasants) // 2, max(0, len(peasants) - 2))
+            want = crew
+        else:
+            # Never everyone: gold still has to come in, or the next peasant never does.
+            want = max(crew, min(len(peasants) // 2, max(0, len(peasants) - 2)))
         short = want - sum(1 for p in peasants if self._on_lumber(p))
         if short <= 0:
             return
@@ -666,7 +677,32 @@ class ProBrain:
             elif peasant.id in self.rushers and peasant.constructing is None and not isinstance(order, Build):
                 cost = BUILDINGS[BuildingType.TOWER].cost
                 gold, lumber = gold + cost.gold, lumber + cost.lumber
+        saved = self._saving_for(world)
+        if saved is not None:
+            gold, lumber = gold + saved.gold, lumber + saved.lumber
         return (gold, lumber)
+
+    def _research_order(self) -> tuple[Upgrade, ...]:
+        return self.profile.research_order if self.profile.research_order is not None else RESEARCH_ORDER
+
+    def _saving_for(self, world: World) -> Cost | None:
+        """The price of the upgrade a research-first posture buys next, once the building that researches it stands
+        idle: soldiers bought meanwhile would push it back for as long as the barracks keep asking."""
+        if not self.profile.research or not self.profile.research_first:
+            return None
+        player = world.players[self.player]
+        buildings = world.player_buildings(self.player, done=True)
+        for upgrade in self._research_order()[:self.profile.research_first]:
+            if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):
+                continue
+            info = UPGRADES[upgrade]
+            if info.requires is not None and info.requires not in player.upgrades:
+                continue
+            for building in buildings:
+                if upgrade in building.info.researches:
+                    return info.cost if building.research is None and not building.queue else None
+            return None  # its building does not stand yet: nothing to save for
+        return None
 
     def _spendable(self, world: World) -> tuple[int, int]:
         bank, (gold, lumber) = world.players[self.player], self._held(world)
@@ -883,12 +919,15 @@ class ProBrain:
             return
         player = world.players[self.player]
         buildings = world.player_buildings(self.player, done=True)  # nothing changes until the one order below
-        for upgrade in RESEARCH_ORDER:
+        saved = self._saving_for(world)
+        for upgrade in self._research_order():
             if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):
                 continue
+            cost = UPGRADES[upgrade].cost
             for building in buildings:
-                if upgrade in building.info.researches and world.can_research(building, upgrade) is None \
-                        and self._affordable(world, UPGRADES[upgrade].cost):
+                # The upgrade being saved for is paid out of what was held for it; any other out of what is left.
+                affordable = world.can_afford(self.player, cost) is None if cost is saved else self._affordable(world, cost)
+                if upgrade in building.info.researches and world.can_research(building, upgrade) is None and affordable:
                     world.research(building.id, upgrade)
                     return
 
@@ -992,7 +1031,7 @@ class ProBrain:
                     if dist(unit.pos, point) > 4.0:
                         world.move([unit.id], self._muster(world, point, unit))
             return
-        if world.time < self.regroup_until:
+        if world.time < self.regroup_until or self._push_waits(world):
             self._gather(world, army, hall)
             return
         targets = self._attack_targets(world)
@@ -1014,6 +1053,13 @@ class ProBrain:
             world.attack_move([u.id for u in army], target)
         else:
             self._gather(world, army, hall)
+
+    def _push_waits(self, world: World) -> bool:
+        """Whether a push is still held for the hour and the upgrades the posture times it with."""
+        profile = self.profile
+        if world.time >= profile.push_by:
+            return False
+        return world.time < profile.push_after or len(world.players[self.player].upgrades) < profile.push_upgrades
 
     def _still_there(self, world: World, point: Point) -> bool:
         """Whether anything of the enemy's is still standing where the push was aimed."""

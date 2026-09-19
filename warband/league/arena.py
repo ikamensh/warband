@@ -386,6 +386,21 @@ def _placements(world: World, eliminated: dict[int, float], players: int) -> tup
     return tuple(out)
 
 
+def board(seed: int) -> dict:
+    """The size and layout *seed* is played on, so both corners share a map.
+
+    Both are cycled rather than drawn: eight seeds left to themselves drew
+    plains five times and forest never, and a posture's score swings by
+    thirty points between layouts (docs/balance.md).  The land is not varied:
+    summer, winter and wasteland generate identical terrain, tile for tile,
+    and differ only in how they are drawn.
+    """
+    sizes = list(mapgen.SIZES.values())
+    layouts = [layout.value for layout in Layout]
+    width, height = sizes[seed % len(sizes)]
+    return {"width": width, "height": height, "layout": layouts[seed % len(layouts)]}
+
+
 def playable(spec: MatchSpec) -> bool:
     """Whether a map exists for this spec at all.
 
