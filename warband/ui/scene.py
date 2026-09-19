@@ -301,13 +301,11 @@ class GameScene(Scene):
     }
 
     def __init__(self, world: World, seed: int, *, difficulty: Difficulty = Difficulty.MEDIUM, settings: dict[str, Any] | None = None,
-                 player: int | None = None, run_id: str | None = None, ranked: bool = True, replay: Replay | None = None,
-                 seen: dict | None = None) -> None:
-        """A *ranked* match is recorded from here on (or *replay* goes on recording it, after a load) and rated when it ends.
-        *seen* is what a save's view remembered of ground out of sight (:meth:`MapView.memory`)."""
+                 player: int | None = None, run_id: str | None = None, ranked: bool = True, replay: Replay | None = None) -> None:
+        """A *ranked* match is recorded from here on (or *replay* goes on recording it, after a load) and rated when it ends."""
         self.world = world
         self.view: MapView | None = None  # made on entry: it needs the game
-        self._seen = seen
+        self._seen: dict | None = None  # what a save's view remembered of ground out of sight, until this scene's view takes it over
         self.run_id = run_id if run_id is not None else str(uuid4())  # one leaderboard row per match, however often it is reloaded
         self.ranked = ranked
         self.seed = seed
@@ -2301,6 +2299,16 @@ class GameScene(Scene):
         """What the player had seen of buildings now out of sight: the view's once there is one, until then what a save brought."""
         return self.view.memory() if self.view is not None else self._seen
 
+    def restore(self, state: dict) -> None:
+        """Take back what a save keeps beside the world (see :meth:`get_save_state`), before the scene is entered: what
+        the player had seen of buildings now out of sight, the control groups, the tutorial's step, and the autosave
+        clock, due at the next interval after the save's time rather than on the first frames."""
+        self._seen = state.get("seen")
+        self.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
+        if state.get("tutorial") is not None and self.tutorial is not None:
+            self.tutorial.step = state["tutorial"]
+        self._autosave_at = (self.world.time // AUTOSAVE_EVERY + 1) * AUTOSAVE_EVERY
+
     def get_save_summary(self) -> dict:
         world = self.world
         size = next((name for name, (w, h) in mapgen.SIZES.items() if (w, h) == (world.width, world.height)), f"{world.width}×{world.height}")
@@ -2980,16 +2988,15 @@ def _saved_replay(state: dict[str, Any]) -> Replay | None:
 
 def load_game(state: dict[str, Any], *, settings: dict[str, Any] | None = None) -> GameScene:
     """A game scene from a save slot's ``state`` (see :meth:`GameScene.get_save_state`); a campaign mission's save
-    (it carries a ``mission`` block) comes back as its mission scene."""
+    (it carries a ``mission`` block) comes back as its mission scene.  Either scene then takes back what the save keeps
+    beside the world through the one :meth:`GameScene.restore`, so a mission never comes back with less than a skirmish."""
     if isinstance(state, dict) and "mission" in state:
         from warband.story.mission_scene import load_mission
 
-        return load_mission(state, settings=settings)
-    world = check_save(state)
-    scene = GameScene(world, state["seed"], difficulty=Difficulty(state["difficulty"]), settings=settings,
-                      run_id=_saved_run_id(state), ranked=state.get("ranked", True), replay=_saved_replay(state), seen=state.get("seen"))
-    scene.groups = {k: list(v) for k, v in state.get("groups", {}).items()}
-    if state.get("tutorial") is not None and scene.tutorial is not None:
-        scene.tutorial.step = state["tutorial"]
-    scene._autosave_at = (world.time // AUTOSAVE_EVERY + 1) * AUTOSAVE_EVERY
+        scene = load_mission(state, settings=settings)
+    else:
+        world = check_save(state)
+        scene = GameScene(world, state["seed"], difficulty=Difficulty(state["difficulty"]), settings=settings,
+                          run_id=_saved_run_id(state), ranked=state.get("ranked", True), replay=_saved_replay(state))
+    scene.restore(state)
     return scene

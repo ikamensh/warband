@@ -16,7 +16,7 @@ from warband.story.mission_scene import CAMPAIGN_SLOT, MissionResultScene, Missi
 from warband.story.missions import CAMPAIGN
 from warband.sim.model import tile_center
 from warband.sim.rules import SIM_DT, BuildingType, Difficulty, Race, UnitType
-from warband.ui.scene import load_game
+from warband.ui.scene import AUTOSAVE_EVERY, load_game
 from warband.ui.style import build_theme
 from warband.ui.title import TitleScene
 
@@ -354,6 +354,32 @@ def test_a_mission_lost_just_before_it_was_saved_comes_back_lost() -> None:
     raze(loaded.world, 1)  # the siege broken after all
     run_for(loaded, 1)
     assert loaded.state["break"] == "done" and not loaded.won
+
+
+def test_a_loaded_mission_keeps_what_the_player_had_seen_their_groups_and_the_autosave_clock(game) -> None:
+    """A mission loaded in the match comes back the way a skirmish does, through the same restore step: the raiders'
+    camp, seen once and burned since out of sight, still stands as it was seen; the control groups answer; and the
+    autosave falls due at the next interval, not on the first frames."""
+    scene = start(game, "hollowmere")
+    world = scene.world
+    camp = world.player_buildings(1)[0]
+    world.reveal_all(0)
+    game.tick(1 / 60)  # the view writes down what it saw
+    world.update_vision()  # back to what the village sees
+    assert not world.any_visible(0, camp.rect)
+    camp.hp //= 2  # burned out of sight
+    band = [u.id for u in world.player_units(0)]
+    scene.select(band)
+    press(game, "1", ctrl=True)
+    world.time = 250.0  # two autosaves' worth of the clock gone, the first raid (at five minutes) still to come
+    press(game, "f5")
+    press(game, "f9")  # loaded in the match: a new mission scene, as from the title
+    loaded = game.scene
+    assert isinstance(loaded, MissionScene) and loaded is not scene and "Loaded" in loaded.status
+    assert loaded.groups == {"1": band} and loaded.world.time < loaded.autosave_at <= loaded.world.time + AUTOSAVE_EVERY
+    game.tick(1 / 60)
+    seen = loaded.view.sighting(camp.id)
+    assert seen is not None and seen.hp == camp.max_hp, "loading the mission showed the player a camp burned out of their sight"
 
 
 def test_start_over_asks_twice_and_then_erases(game) -> None:

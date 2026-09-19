@@ -128,9 +128,10 @@ the campaign screen).
   granted through the dialogue and refused, the flags shaping missions 5 and 6,
   a replayed mission asking again, a mission save resumed through Continue with
   its script intact, a mission lost in the frame before its save still lost
-  after it, a save from another version costing the mission and not the
-  campaign, Start over, the escort won and lost, the dialogue's branching and
-  skipping. `tests/warband/test_layout.py` checks the campaign screen
+  after it, a loaded mission keeping what the player had seen, their control
+  groups and the autosave clock (one restore step with the skirmish's), a save
+  from another version costing the mission and not the campaign, Start over,
+  the escort won and lost, the dialogue's branching and skipping. `tests/warband/test_layout.py` checks the campaign screen
   (fresh, under way and over unreadable progress), a mission with its
   objectives, a line, a choice, both results and the mission pause menu for
   text drawn over text at five window sizes.

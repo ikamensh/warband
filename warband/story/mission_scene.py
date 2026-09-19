@@ -3,7 +3,8 @@
 :func:`build_world` draws the mission's map and lets the mission reshape it; :class:`MissionScene` plays it and asks
 the :class:`~warband.story.campaign.Run` what to show after every frame; :class:`MissionResultScene` closes it, records
 the progress and plays the debrief.  A mission's saves (the ``campaign`` slot autosaves, the numbered slots too)
-carry the run beside the world and come back through :func:`load_mission`.
+carry the run beside the world and come back through :func:`~warband.ui.scene.load_game` like any save, which hands
+them to :func:`load_mission`.
 """
 
 from __future__ import annotations
@@ -227,14 +228,10 @@ class MissionScene(GameScene):
     def get_save_summary(self) -> dict:
         return {**super().get_save_summary(), "mode": "campaign", "mission": f"{self.campaign.index(self.mission)}. {self.mission.title}"}
 
-    def load_save_state(self, state: dict) -> None:
-        from warband.ui.scene import load_game
-
-        self.game.clear_and_push(load_game(state, settings=self.settings))
-
 
 def load_mission(state: dict[str, Any], *, settings=None) -> MissionScene:
-    """The mission scene a save holds, or a SaveError saying why it cannot be played by this version."""
+    """The mission scene a save holds, or a SaveError saying why it cannot be played by this version.  Called only by
+    :func:`~warband.ui.scene.load_game`, which then restores what every save keeps beside the world."""
     from warband.story.missions import CAMPAIGN
 
     world = check_save(state)
