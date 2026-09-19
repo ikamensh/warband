@@ -26,7 +26,7 @@ Every scheme shares the modes, the mouse and the modifiers:
 
 | | every scheme |
 |---|---|
-| Shift | keep going: queue an order after the others, place another building, and with a recruit's key train it endlessly |
+| Shift | keep going: queue an order after the others (one that never ends, a patrol, a hold or a harvest, gives way to it), place another building, and with a recruit's key train it endlessly |
 | Esc | back one level: the pending order, the catalogue, the selection, then the menu |
 | Ctrl (Cmd) + B / T / U / G / P | the Build, Train and Upgrade catalogues, the assembly point, every plan, from whatever card is up |
 | a building's key again | while it is being placed: the planner picks the spot |

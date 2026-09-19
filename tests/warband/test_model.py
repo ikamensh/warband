@@ -139,6 +139,31 @@ def test_orders_can_be_queued() -> None:
     assert dist(unit.pos, (6.5, 6.5)) < 0.15
 
 
+@pytest.mark.parametrize("endless", ["patrol", "hold", "harvest"])
+def test_an_order_queued_behind_one_that_never_ends_takes_its_place(endless: str) -> None:
+    """A patrol, a hold and a harvest never end on their own, so an order queued behind one waited for ever: Shift and a
+    click did nothing at all."""
+    world = flat_world(trees=[(20, 3)])
+    unit = world.spawn_unit(0, UnitType.PEASANT if endless == "harvest" else UnitType.FOOTMAN, (3.5, 3.5))
+    if endless == "patrol":
+        world.patrol([unit.id], (8.5, 3.5))
+    elif endless == "hold":
+        world.hold([unit.id])
+    else:
+        world.harvest([unit.id], (20, 3))
+    world.move([unit.id], (6.5, 12.5), queue=True)
+    run_until(world, lambda: dist(unit.pos, (6.5, 12.5)) < 0.3, 8.0)
+
+
+def test_a_queued_patrol_starts_where_the_walk_before_it_ends() -> None:
+    world = flat_world()
+    unit = world.spawn_unit(0, UnitType.FOOTMAN, (3.5, 3.5))
+    world.move([unit.id], (18.5, 3.5))
+    world.patrol([unit.id], (18.5, 15.5), queue=True)
+    run_until(world, lambda: dist(unit.pos, (18.5, 15.5)) < 0.3, 20.0)
+    run_until(world, lambda: dist(unit.pos, (18.5, 3.5)) < 0.3, 10.0)  # back along its beat, not to where it was told
+
+
 # -- Combat -----------------------------------------------------------------------
 
 

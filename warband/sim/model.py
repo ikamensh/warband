@@ -272,6 +272,7 @@ class Patrol:
 
 Order = Move | AttackMove | Attack | Harvest | Deposit | Build | Hold | Heal | Patrol | Repair
 AT_EASE_ORDERS: Final = (Move, AttackMove, Patrol)  # walked at ease: no target to close on, no work to press for
+ENDLESS_ORDERS: Final = (Patrol, Hold, Harvest)  # never end on their own: an order queued behind one takes its place
 
 _ORDER_TYPES: Final[dict[str, type]] = {cls.__name__: cls for cls in (Move, AttackMove, Attack, Harvest, Deposit, Build, Hold, Heal, Patrol, Repair)}
 
@@ -1157,8 +1158,8 @@ class World:
         return (min(max(point[0], 0.05), self.width - 0.05), min(max(point[1], 0.05), self.height - 0.05))
 
     def _issue(self, unit: Unit, order: Order, *, queue: bool = False) -> None:
-        if unit.inside is not None and queue and isinstance(unit.order, Harvest):
-            unit.orders.popleft()  # Finish this trip, then obey the pending manual command.
+        while queue and unit.orders and isinstance(unit.orders[-1], ENDLESS_ORDERS):
+            unit.orders.pop()  # it would wait for ever; a miner inside finishes its trip, then obeys
         if unit.constructing is not None:
             # A started building is finished or cancelled, never left (WB-048): the order waits behind the work.
             if not queue:
@@ -1205,7 +1206,15 @@ class World:
             if unit.is_worker:
                 self._issue(unit, Move(target), queue=queue)
             else:
-                self._issue(unit, Patrol(unit.pos, target), queue=queue)
+                self._issue(unit, Patrol(self._queued_from(unit) if queue else unit.pos, target), queue=queue)
+
+    def _queued_from(self, unit: Unit) -> Point:
+        """Where *unit* stands when an order queued now begins: where the last walk it has still to make ends (an order
+        that never ends gives way to the queued one), or where it is."""
+        for order in reversed(unit.orders):
+            if not isinstance(order, ENDLESS_ORDERS):
+                return self._slot(order) if isinstance(order, (Move, AttackMove)) else unit.pos
+        return unit.pos
 
     @recorded
     def attack(self, unit_ids: list[int], target_id: int, *, queue: bool = False) -> None:
