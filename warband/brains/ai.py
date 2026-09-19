@@ -170,7 +170,9 @@ def auto_site(world: World, building_type: BuildingType, player: int, near: Poin
             return None
         anchor = min(free, key=lambda point: dist(point, anchor))
     taken = [(pos, BUILDINGS[kind].size) for kind, pos in planned]
-    sited = building_type if world.placement_blockers(building_type, player) is not None else UNLOCKED_OF_SIZE[BUILDINGS[building_type].size]
+    requires = BUILDINGS[building_type].requires
+    stands = requires is None or bool(world.player_buildings(player, requires, done=True))
+    sited = building_type if stands else UNLOCKED_OF_SIZE[BUILDINGS[building_type].size]
     return site_search(world, sited, player, anchor, rng, BUILD_MIN_DISTANCE, BUILD_MAX_DISTANCE, taken)
 
 

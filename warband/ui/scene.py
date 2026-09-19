@@ -22,7 +22,7 @@ from warband.audio import deaths, wreckage
 from warband.sim import mapgen
 from warband.brains.ai import DIFFICULTY_ELO, auto_site, make_brain
 from warband.art.effects import Flare, Spray, Stain, UnitDeath, death_outcome
-from warband.ui.icons import Icon, draw_icon, loop_parts
+from warband.ui.icons import Icon, draw_icon, hourglass_parts, lock_parts, loop_parts
 from warband.sim.model import Build, Building, Entity, Event, Pos, RuleError, Unit, World
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
@@ -128,8 +128,8 @@ class Command:
     count: Callable[[], int] = field(default=lambda: 0)  # how many are already ordered: shown after the name
     alt: Callable[[], None] | None = None  # what Shift with its key or click does (a recruit: endless training, or no longer)
     endless: Callable[[], bool] | None = None  # a recruit: whether it is being trained endlessly (right-click toggles)
-    needs: Callable[[], Need | None] | None = None  # a catalogue item: the prerequisite it still lacks (warband.ui.tech)
-    need: Need | None = None  # that, as of this frame: the card draws it
+    catalogue: bool = False  # it plans its target for the settlement, which waits on what the target needs (warband.ui.tech)
+    need: Need | None = None  # what the target still lacks, as of this frame: the card draws it
     hotkey: str = ""  # as its keycap shows it
 
     @property
@@ -205,7 +205,7 @@ class _PriceLine(Label):
     kind is coming (the item is greyed out), behind a gold hourglass while it is (ordered now, the item waits for it).
     It reads the button's command, which the card replaces whenever it is built again."""
 
-    GLYPH = 8  # the padlock's or the hourglass' width, left of the name
+    GLYPH = 9  # the padlock's or the hourglass' size, left of the name
     NEEDS = Style(text_color=BAD)
     AFTER = Style(text_color=GOLD)
 
@@ -226,17 +226,10 @@ class _PriceLine(Label):
         caption = self._game.theme.get_text_style("caption")
         width, _height = self._game.backend.measure_text(self.text, caption.font_size, caption.font or self._game.theme.font)
         x, y, w, h = self.bounds
-        g = self.GLYPH
-        left, top = x + (w - width) / 2 - g - 4, y + h / 2 - g * 0.6 + 1.5  # beside the name, on its middle
-        ink, order, backend = GOLD if need.coming else BAD, self._order, self._game.backend
-        if need.coming:  # an hourglass
-            backend.draw_polygon([(left, top), (left + g, top), (left + g / 2, top + g * 0.6)], ink, order=order)
-            backend.draw_polygon([(left + g / 2, top + g * 0.6), (left + g, top + g * 1.2), (left, top + g * 1.2)], ink, order=order)
-        else:  # a padlock: the shackle over the body
-            for a, b, c, d in ((left + 1.5, top + g * 0.55, left + 1.5, top + 1), (left + 1.5, top + 1, left + g - 1.5, top + 1),
-                               (left + g - 1.5, top + 1, left + g - 1.5, top + g * 0.55)):
-                backend.draw_line(a, b, c, d, ink, 1.6, order=order)
-            backend.draw_rect(left, top + g * 0.55, g, g * 0.65, ink, order=order)
+        size = self.GLYPH
+        left, top = x + (w - width) / 2 - size - 4, y + (h - size) / 2 + 1  # beside the name, on its middle
+        for points, ink in hourglass_parts(GOLD) if need.coming else lock_parts(BAD):
+            self._game.backend.draw_polygon([(left + u * size, top + v * size) for u, v in points], ink, order=self._order)
 
 
 class _Slot(Component):
@@ -1216,8 +1209,10 @@ class GameScene(Scene):
     def _need(self, target: ProductionTarget) -> Need | None:
         return tech.need(self.world, self.human, target)
 
-    def _requires(self, need: Need) -> str:
-        """The refusal for an item whose prerequisite is not even on its way: "Requires a Stables"."""
+    def _requires(self, need: Need | None) -> str | None:
+        """The refusal for an item that lacks a prerequisite nobody is making, "Requires a Stables"; else None."""
+        if need is None or need.coming:
+            return None
         name = self._full_name(need.target)
         if isinstance(need.target, BuildingType):
             return f"Requires {'an' if name[0] in 'AEIOU' else 'a'} {name}"
@@ -1231,21 +1226,18 @@ class GameScene(Scene):
         return self.race.cards[item] if isinstance(item, BuildingType) else UPGRADE_NAMES[item]
 
     def _refuse_lacking(self, target: ProductionTarget) -> bool:
-        """Warn and say so when *target* lacks a prerequisite that is not even on its way: Shift and the Modal scheme's
-        repeat reach the orders without the card's block, and a plan for it would wait for nothing."""
-        need = self._need(target)
-        if need is None or need.coming:
-            return False
-        self.warn(self._requires(need))
-        return True
+        """Warn and say so when *target* lacks a prerequisite that nobody is making: Shift and the Modal scheme's repeat
+        reach the orders without the card's block, and a plan for it would wait for nothing."""
+        refusal = self._requires(self._need(target))
+        if refusal is not None:
+            self.warn(refusal)
+        return refusal is not None
 
     def _refusal(self, command: Command) -> str | None:
-        """Why *command* cannot be given now: a prerequisite that is not even on its way, else its own block.  Brings the
-        card's record of what the command needs up to date."""
-        command.need = command.needs() if command.needs is not None else None
-        if command.need is not None and not command.need.coming:
-            return self._requires(command.need)
-        return command.blocked()
+        """Why *command* cannot be given now: a prerequisite nobody is making, else its own block.  Brings the card's record
+        of what the command's target lacks up to date."""
+        command.need = self._need(command.target) if command.catalogue else None
+        return self._requires(command.need) or command.blocked()
 
     def _upgrade_planned(self, upgrade: Upgrade) -> str | None:
         if upgrade in self.player.upgrades:
@@ -1289,7 +1281,7 @@ class GameScene(Scene):
                                         cost=f"{info.cost.gold} / {info.cost.lumber}", target=building_type,
                                         style=ACTION_BUTTON if self.placing is building_type else CARD_BUTTON,
                                         count=lambda bt=building_type: self._ordered(bt), alt=lambda bt=building_type: self.choose_building(bt, keep=True),
-                                        needs=lambda bt=building_type: self._need(bt)))
+                                        catalogue=True))
         elif kind == "train":
             for slot, (unit_type, info) in enumerate(race.units.items()):
                 commands.append(Command(info.name, info.hotkey, lambda ut=unit_type: self.order_production("train", ut), slot,
@@ -1297,7 +1289,7 @@ class GameScene(Scene):
                                                 f"{self.building_name(info.trained_at)}",
                                         cost=f"{info.cost.gold} / {info.cost.lumber}", target=unit_type, count=lambda ut=unit_type: self._ordered(ut),
                                         alt=lambda ut=unit_type: self.toggle_endless_everywhere(ut),
-                                        endless=lambda ut=unit_type: any(ut in b.auto for b in self._producers(ut)), needs=lambda ut=unit_type: self._need(ut)))
+                                        endless=lambda ut=unit_type: any(ut in b.auto for b in self._producers(ut)), catalogue=True))
         else:
             letters, arts = self._upgrade_keys(), iter(race.arts)
             for row, chain in enumerate(UPGRADE_ROWS):
@@ -1307,7 +1299,7 @@ class GameScene(Scene):
                     commands.append(Command(UPGRADE_NAMES[upgrade], letters.get(upgrade, ""), lambda up=upgrade: self.order_production("upgrade", up),
                                             row * CARD_COLS + column, tooltip=f"{info.name} — {info.cost} · {info.summary}",
                                             cost=f"{info.cost.gold} / {info.cost.lumber}", blocked=lambda up=upgrade: self._upgrade_planned(up),
-                                            target=upgrade, needs=lambda up=upgrade: self._need(up)))
+                                            target=upgrade, catalogue=True))
         return commands
 
     # -- Command card ----------------------------------------------------------------

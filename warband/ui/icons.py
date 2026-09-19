@@ -80,6 +80,25 @@ def loop_parts(color: Color = COLORS["gold"]) -> list[tuple[list[tuple[float, fl
     return parts
 
 
+def lock_parts(color: Color) -> list[tuple[list[tuple[float, float]], Color]]:
+    """A padlock: what an item lacks is not coming.  The shackle is quads along a half ring on two short posts."""
+    outer, inner, top, parts = .3, .17, .4, []
+    for i in range(6):
+        a, b = (math.radians(180 + 180 * j / 6) for j in (i, i + 1))
+        parts.append(([(.5 + outer * math.cos(a), top + outer * math.sin(a)), (.5 + outer * math.cos(b), top + outer * math.sin(b)),
+                       (.5 + inner * math.cos(b), top + inner * math.sin(b)), (.5 + inner * math.cos(a), top + inner * math.sin(a))], color))
+    for x in (.5 - outer, .5 + inner):
+        parts.append(([(x, top), (x + outer - inner, top), (x + outer - inner, .5), (x, .5)], color))
+    parts.append(([(.12, .48), (.88, .48), (.88, 1.0), (.12, 1.0)], color))
+    return parts
+
+
+def hourglass_parts(color: Color) -> list[tuple[list[tuple[float, float]], Color]]:
+    """An hourglass: what an item lacks is on its way, and the item waits for it."""
+    return [([(.1, 0.0), (.9, 0.0), (.9, .1), (.1, .1)], color), ([(.18, .1), (.82, .1), (.5, .5)], color),
+            ([(.5, .5), (.82, .9), (.18, .9)], color), ([(.1, .9), (.9, .9), (.9, 1.0), (.1, 1.0)], color)]
+
+
 def draw_icon(scene, name: str, x: float, y: float, size: float = 24, color: Color | None = None, space: str = "screen") -> None:
     """Draw *name* immediately with its top-left corner at (x, y)."""
     for points, ink in _parts(name, color):
