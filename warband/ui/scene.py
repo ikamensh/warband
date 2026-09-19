@@ -30,7 +30,7 @@ from warband.sim.races import RACES, RaceInfo
 from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, SIM_DT, UNITS, UPGRADES, ArmorClass, AttackType, BuildingType, Difficulty, MapTheme, Race,
                                UnitType, Upgrade)
 from warband.sim.rules import Layout as MapLayout
-from warband.records.profile import MatchResult, Profile, RatingChange, Standing, rated, standing
+from warband.records.profile import MatchResult, Profile, RatingChange, Standing, standing
 from warband.records.replay import Replay, ReplayStore
 from warband.records.scores import HighScores, score_breakdown
 from warband.audio.sound import IMPACTS, apply_volumes, impact_sound, play_music, play_sound
@@ -2513,9 +2513,11 @@ class LeaveScene(_Overlay):
         profile = scene.profile
         assert profile is not None
         before = profile.rating
-        after = rated(before, DIFFICULTY_ELO[scene.difficulty], 0.0, self.where.weight)
+        after = profile.rating_after(scene.run_id, DIFFICULTY_ELO[scene.difficulty], 0.0, self.where.weight)
+        earlier = next((r.outcome for r in profile.results if r.run_id == scene.run_id), None)
         panel = self.panel(f"{self.verb}: leave the match?")
-        panel.add(Label("The match is not decided. Leaving counts against your rating.", text_style="body"))
+        panel.add(Label("The match is not decided. Leaving counts against your rating" +
+                        (f", in place of the {earlier} it already counts." if earlier is not None else "."), text_style="body"))
         panel.add(Label(self.where.reason[0].upper() + self.where.reason[1:], text_style="body", text_color=BAD if self.where.weight == 1.0 else GOLD,
                         width=560, wrap=True))
         panel.add(Label(f"Rating {round(before.value)} → {round(after.value)} ({round(after.value) - round(before.value):+d}) · "

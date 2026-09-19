@@ -239,6 +239,11 @@ class Profile:
         self.name = name
         self.save()
 
+    def rating_after(self, run_id: str, opponent: float, score: float, weight: float) -> Rating:
+        """The rating a result of match *run_id* would leave, as :meth:`record` would record it: in place of any earlier
+        result of that match."""
+        return rated(fold(r for r in self.results if r.run_id != run_id), opponent, score, weight)
+
     def record(self, result: MatchResult) -> RatingChange:
         """Add *result* (replacing an earlier result of the same match) and say what it did to the rating."""
         before = self.rating

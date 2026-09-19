@@ -186,3 +186,23 @@ def test_loading_another_matchs_save_asks_first_and_counts_as_leaving(play):
     press(game, "return")
     assert game.scene.run_id == first.run_id
     assert [(result.run_id, result.outcome) for result in Profile.load(game.data_dir).results] == [(second.run_id, "left")]
+
+
+def test_the_leave_confirmation_states_the_cost_of_leaving_a_match_already_rated(play):
+    """Won, rewound from a save of the match and left: the confirmation added the loss on top of the victory, while the
+    loss replaces the victory in the record, and leaving cost much more than it said."""
+    game, scene = play
+    press(game, "f5")
+    scene.world.resign(1)
+    tick(game, 0.5)
+    assert isinstance(game.scene, GameOverScene)
+    game.clear_and_push(scene)
+    press(game, "f9")  # the same match, rewound
+    tick(game, 0.5)
+    press(game, "escape")
+    press(game, "t")
+    assert isinstance(game.scene, LeaveScene)
+    stated = next(t for t in texts(game) if t.startswith("Rating "))
+    press(game, "return")
+    after = Profile.load(game.data_dir).rating
+    assert f"→ {round(after.value)} " in stated
