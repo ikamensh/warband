@@ -1,4 +1,4 @@
-"""A seat's snapshot is the match as that seat may know it (WB-011).
+"""A seat's snapshot is the match as that seat may know it (WB-011), and so is every answer to its orders.
 
 All of its own; of everyone else's, what its forces see now; of the ground and the mines out of sight,
 what it remembers; of the news, what it saw happen, its own affairs and what is public.  The client
@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from saga2d import Game
+from saga2d import CommandError, Game
 from warband.online.authority import WarbandMatch
 from warband.sim.model import dist, tile_center
 from warband.sim.rules import BuildingType, Terrain, UnitType, Upgrade
@@ -25,6 +25,15 @@ def fogged_match() -> WarbandMatch:
 def sent(match: WarbandMatch, seat: int) -> dict:
     """What travels to *seat*: the snapshot as JSON, the way the server writes it to the socket."""
     return json.loads(json.dumps(match.snapshot(seat)))
+
+
+def answer(match: WarbandMatch, seat: int, action: str, args: list, **kwargs) -> str:
+    """What *seat* is told of an order it sends: "accepted", or the refusal it reads."""
+    try:
+        match.apply(seat, {'action': action, 'args': args, 'kwargs': kwargs})
+    except CommandError as exc:
+        return str(exc)
+    return 'accepted'
 
 
 def site_near(world, player: int, building_type: BuildingType, around: tuple[int, int]) -> tuple[int, int]:
@@ -141,6 +150,46 @@ def test_the_id_counter_says_nothing_beyond_what_was_sent() -> None:
     snapshot = sent(match, 0)['world']
     sent_ids = [e['id'] for key in ('units', 'buildings', 'projectiles') for e in snapshot[key]]
     assert snapshot['next_id'] == max(sent_ids) + 1 < match.world._next_id  # the true counter, which must not be told
+
+
+def test_an_order_may_name_what_the_seat_was_shown_and_anything_else_is_no_target() -> None:
+    """The authority took any id.  An attack on the rival's hall, never seen, walked a footman across the map to
+    it, and the refusals told the ids that stand from those that do not: a client that tried them all counted the
+    rival's army.  What a seat was not shown is now what an id nobody has is."""
+    match = fogged_match()
+    world = match.world
+    in_front_of_seat_0(match)  # a rival barracks and footman in sight, so some rival ids are fair targets
+    footman = world.spawn_unit(0, UnitType.FOOTMAN, world.player_units(0)[0].pos)
+    world.update_vision()
+    shown = {entity['id'] for key in ('units', 'buildings') for entity in sent(match, 0)['world'][key]}
+    assert world.player_buildings(1, BuildingType.TOWN_HALL)[0].id not in shown
+    for target in [*world.units, *world.buildings, 99999]:
+        for action, args, kwargs in (('attack', [[footman.id], target], {}),
+                                     ('smart', [[footman.id], list(footman.pos)], {'target_id': target})):
+            told = answer(match, 0, action, args, **kwargs)
+            assert (told == 'No such target') == (target not in shown), f"{action} on {target}: {told}"
+
+
+def test_a_right_click_finds_what_the_seat_knows_there_and_a_building_it_saw_stays_a_target() -> None:
+    """A right-click that names nothing is picked on the server, and it found a farm the rival raised where seat 0
+    had looked once, out of its sight since: the footman went to strike it, and its orders named the farm."""
+    match = fogged_match()
+    world = match.world
+    world.reveal_all(0)
+    world.update_vision()  # seat 0 has seen the whole map once and now sees only what its forces see
+    rival_hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0]
+    farm = world.place_building(1, BuildingType.FARM, site_near(world, 1, BuildingType.FARM, (rival_hall.x, rival_hall.y)))
+    footman = world.spawn_unit(0, UnitType.FOOTMAN, world.player_units(0)[0].pos)
+    world.update_vision()
+    assert world.is_explored(0, farm.pos) and not world.any_visible(0, farm.rect)
+
+    def orders() -> list[str]:
+        return [order['kind'] for order in {u['id']: u for u in sent(match, 0)['world']['units']}[footman.id]['orders']]
+
+    assert answer(match, 0, 'smart', [[footman.id], list(farm.center)]) == 'accepted' and orders() == ['Move']
+    assert answer(match, 0, 'attack', [[footman.id], farm.id]) == 'No such target'
+    assert answer(match, 0, 'attack', [[footman.id], rival_hall.id]) == 'accepted' and orders() == ['Attack'], \
+        "a hall seat 0 has seen is a target out of its sight"
 
 
 def test_ground_and_mines_out_of_sight_are_as_the_seat_last_saw_them_and_unseen_ones_as_the_map_began() -> None:

@@ -4,7 +4,7 @@ import random
 
 from saga2d import CommandError
 from warband.sim import mapgen
-from warband.sim.model import World, RuleError
+from warband.sim.model import Unit, World, RuleError
 from warband.sim.worker_knowledge import WorkerKnowledge
 from saga2d.server.games import GameSpec, option_choice, option_int, option_keys, option_seed
 from warband.sim.rules import BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
@@ -128,6 +128,21 @@ class WarbandMatch:
                                  for x, (letter, sees, first) in enumerate(zip(now, seen, began))))
         return known
 
+    def _knows(self, player, entity):
+        """Whether seat *player* may name *entity* in an order: all of its own, what its snapshot shows it now, and
+        the buildings it remembers.  Anything else is no target to it, just as an id nobody has is none: an answer
+        that told the two apart would tell it which ids stand on the map, and an order on one would walk its forces
+        there through the fog."""
+        if entity is None:
+            return False
+        if entity.player == player:
+            return True
+        world = self.world
+        if isinstance(entity, Unit):
+            return not entity.hidden and world.is_visible(player, entity.tile)
+        knowledge = world.worker_knowledge[player]
+        return entity.id in knowledge.buildings or knowledge.sees(world.visible[player], entity.x, entity.y, entity.size)
+
     def _recent_events(self, player=None):
         """The news that still rides the snapshots: all of it for the checkpoint, what *player* may hear for a seat."""
         return [[index, dict(fields)] for (index, fields), seen in zip(self.events, self.event_seen) if player is None or player in seen]
@@ -188,6 +203,12 @@ class WarbandMatch:
                 continue  # An explicit empty-ground pick must not target a newer unit position.
             if field in values and type(values[field]) is not int:
                 raise CommandError('Invalid target.')
+        if action == 'smart' and 'target_id' not in values:
+            # A right-click that names nothing picks here, as the seat knows the map: not a farm raised out of its sight.
+            picked = self.world.entity_at(values['point'], visible_to=player)
+            values['target_id'] = picked.id if self._knows(player, picked) else None
+        elif values.get('target_id') is not None and not self._knows(player, self.world.entity(values['target_id'])):
+            raise CommandError('No such target')
         if action == 'cancel_train' and type(values.get('index', -1)) is not int:
             raise CommandError('Choose an item in the training queue.')
         for field, enum in [('building_type', BuildingType), ('unit_type', UnitType), ('upgrade', Upgrade)]:

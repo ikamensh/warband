@@ -106,6 +106,7 @@ def test_old_news_leaves_the_snapshot_and_fresh_news_stays_long_enough_to_be_rea
     for _ in range(EVENT_TICKS):
         match.step()
     assert match.snapshot(0)['events'] == [], "old news still rides every snapshot"
+    match.world.reveal_all(1)  # seat 1 has scouted the hall across the field: a seat names only what it knows
     match.apply(1, {'action': 'attack', 'args': [[raider.id], match.world.player_buildings(0)[0].id], 'kwargs': {}})
     for _ in range(600):
         match.step()

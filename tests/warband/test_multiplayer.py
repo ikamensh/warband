@@ -65,6 +65,7 @@ def test_smart_target_identity_and_empty_ground_survive_the_socket():
     hall = match.world.place_building(1, BuildingType.TOWN_HALL, (3, 3))
     hall.hp -= 20
     mine = match.world.place_building(None, BuildingType.GOLD_MINE, (17, 10))
+    match.world.reveal_all(1)  # the mine, out of the worker's sight, is one its seat has seen: a seat names only what it knows
     match.world.update_vision()
     host = MatchHost('warband-v2', match.apply, match.snapshot, address=('127.0.0.1', 0), token='test')
     client = MatchClient('warband-v2', host.address, token='test')
