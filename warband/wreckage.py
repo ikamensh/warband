@@ -40,16 +40,17 @@ def takes(material: str) -> int:
     return len(pieces.paths(FOLDER, material, "crack"))
 
 
-def _piece(material: str, kind: str, take: int) -> np.ndarray:
+def piece(material: str, kind: str, take: int) -> np.ndarray:
+    """One of a material's pieces (a crack, a collapse or debris), at its level in the mix."""
     return pieces.take(FOLDER, material, kind, take, GAINS[kind])
 
 
 def collapse(material: str, take: int) -> np.ndarray:
     """Crack *take*, the collapse on its heels, and the debris (rotated one take) settling under its tail."""
-    crack = _piece(material, "crack", take)
-    falling = _piece(material, "collapse", take)
+    crack = piece(material, "crack", take)
+    falling = piece(material, "collapse", take)
     debris_at = CRACK_TO_COLLAPSE + len(falling) / SAMPLE_RATE + COLLAPSE_TO_DEBRIS
-    return level(mix(crack, (CRACK_TO_COLLAPSE, falling), (max(CRACK_TO_COLLAPSE, debris_at), _piece(material, "debris", take + 1))), PEAK)
+    return level(mix(crack, (CRACK_TO_COLLAPSE, falling), (max(CRACK_TO_COLLAPSE, debris_at), piece(material, "debris", take + 1))), PEAK)
 
 
 def cue(material: str) -> str:

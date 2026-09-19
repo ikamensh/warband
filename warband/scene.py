@@ -367,7 +367,7 @@ class GameScene(Scene):
                                      style=PANEL_STYLE, visible=False, blocks_pointer=True,
                                      children=[Label(lambda: self.tooltip, text_style="body", wrap=True, width=SELECTION_WIDTH - 24)])
         self.ui.add(self.command_tooltip)
-        self.ui.add(KeyHints(self._hint, anchor=Anchor.BOTTOM_CENTER, margin=5, blocks_pointer=True))
+        self.ui.add(KeyHints(self.hint, anchor=Anchor.BOTTOM_CENTER, margin=5, blocks_pointer=True))
         self.ui.add(Label(lambda: self.status if self.status_timer > 0 else "", text_style="hud", anchor=Anchor.TOP_LEFT,
                           margin=(12, HUD_TOP), width=760, wrap=True, text_color=GOLD, blocks_pointer=True))
         self.objectives = self._build_objectives()
@@ -425,7 +425,46 @@ class GameScene(Scene):
         """Every soldier of the player's, wherever it stands: what the Army button and Ctrl+A select."""
         return [u for u in self.world.player_units(self.human) if not u.is_worker and not u.hidden]
 
-    def _hint(self) -> list[tuple[str, str]]:
+    @property
+    def card(self) -> tuple[Command, ...]:
+        """The command card as it shows now."""
+        return tuple(self._card)
+
+    @property
+    def card_buttons(self) -> tuple[Button, ...]:
+        """The command card's buttons, in the card's order."""
+        return tuple(self._card_buttons)
+
+    @property
+    def portraits(self) -> tuple[tuple[int, tuple[int, int, int, int]], ...]:
+        """The selection panel's portraits on the page shown: each entity's id and its rectangle."""
+        return tuple(self._portraits)
+
+    @property
+    def page_tile(self) -> tuple[float, float, float, float] | None:
+        """The tile that turns the portrait page, when the selection needs more than one."""
+        return self._page_tile
+
+    @property
+    def portrait_page(self) -> int:
+        """The page of the selection's portraits shown; setting it turns to that page, as the page tile would."""
+        return self._portrait_page
+
+    @portrait_page.setter
+    def portrait_page(self, page: int) -> None:
+        self._portrait_page = page
+
+    @property
+    def queue_hits(self) -> tuple[tuple[tuple[float, float, float, float], QueueEntry], ...]:
+        """The production queue's entries on the panel and where each can be clicked."""
+        return tuple(self._queue_hits)
+
+    @property
+    def autosave_at(self) -> float:
+        """The match time of the next autosave."""
+        return self._autosave_at
+
+    def hint(self) -> list[tuple[str, str]]:
         if self.pending is not None:
             return [("Click", "target"), ("Right click", "cancel"), ("Shift", "queue / keep placing")]
         if self.build_menu:
@@ -1546,7 +1585,7 @@ class GameScene(Scene):
 
     # -- Drawing ---------------------------------------------------------------------------
 
-    def _ghost(self) -> tuple[BuildingType, Pos, bool] | None:
+    def ghost(self) -> tuple[BuildingType, Pos, bool] | None:
         if self.pending is None or not self.pending.startswith(("build:", "plan:")) or self.ui.pointer_target(*self.mouse) is not None:
             return None
         building_type = BuildingType(self.pending.split(":", 1)[1])
@@ -1562,7 +1601,7 @@ class GameScene(Scene):
         if self.ui.pointer_target(*self.mouse) is None and self.pending is None:
             entity = self.view.entity_at(self.hover)
             hovered = entity.id if entity is not None else None
-        self.view.draw(Overlay(selected=list(self.selection), hovered=hovered, ghost=self._ghost(), bars_for_all=self.all_bars or self.alt_held,
+        self.view.draw(Overlay(selected=list(self.selection), hovered=hovered, ghost=self.ghost(), bars_for_all=self.all_bars or self.alt_held,
                                rally_for=[b.id for b in [self._own_building()] if b is not None]))
         ambience.draw(self, self.world, self.human)
         self._draw_settlement_markers()

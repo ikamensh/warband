@@ -11,7 +11,7 @@ from warband.rules import UnitType
 from warband.scene import GameScene
 from warband.style import build_theme
 
-from tests.warband.battlefield import SETTINGS, field
+from tests.warband.battlefield import SETTINGS, field, live_effects
 
 
 @pytest.fixture
@@ -47,7 +47,7 @@ def kill(game: Game, scene: GameScene, victim_type: UnitType, side: str) -> Unit
 
 
 def bursts(scene: GameScene) -> int:
-    return sum(isinstance(e, Burst) for e in scene.effects._items)
+    return sum(isinstance(e, Burst) for e in live_effects(scene))
 
 
 @pytest.mark.parametrize("side, sign", [("east", -1), ("west", 1)])
@@ -79,7 +79,7 @@ def test_the_fall_has_weight_and_lands_at_the_feet(play) -> None:
     tick(game, UnitDeath.HOLD - 0.2, 0.1)
     assert body.sprite.opacity == 255 and body.sprite.rotation == body.turn, "lying still until the fade"
     tick(game, 0.2 + UnitDeath.FADE + 0.1, 0.1)
-    assert body.done and body.sprite.is_removed and body not in scene.bodies + [b for b in scene.effects._items]
+    assert body.done and body.sprite.is_removed and body not in scene.bodies + [b for b in live_effects(scene)]
 
 
 @pytest.mark.parametrize("victim, outcome, turn, height", [
@@ -126,4 +126,4 @@ def test_loading_a_save_mid_fall_leaves_nothing_behind(play) -> None:
     assert loaded is not scene and body.sprite.is_removed and loaded.bodies == []
     dust = bursts(loaded)
     tick(game, 1.0)
-    assert not body.landed and bursts(loaded) == dust and body not in loaded.effects._items
+    assert not body.landed and bursts(loaded) == dust and body not in live_effects(loaded)

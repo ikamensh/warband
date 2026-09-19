@@ -55,7 +55,7 @@ def test_the_title_offers_every_race_with_a_hotkey_and_the_match_uses_it(game) -
     click_tile(game, scene, peon.pos)
     assert "Peon" in texts(game)
     press(game, "b")
-    labels = {c.label: c.hotkey for c in scene._card}
+    labels = {c.label: c.hotkey for c in scene.card}
     assert labels["Hall"] == "H" and labels["War Camp"] == "B" and labels["Kennels"] == "S" and "Barracks" not in labels
     press(game, "f5")
     game.clear_and_push(TitleScene())
@@ -76,7 +76,7 @@ def test_buildings_offer_the_race_units_and_only_its_own_arts(game) -> None:
     scene.player.gold, scene.player.lumber = 5000, 5000
     game.tick(1 / 60)
     scene.select([kennels.id])
-    labels = [c.label for c in scene._card]
+    labels = [c.label for c in scene.card]
     assert labels == ["Wolf Rider", "Ogre", "Plunder", "Cancel"]  # Horse Breeding is a Human art
     press(game, "h")
     assert kennels.research is Upgrade.PLUNDER
@@ -86,10 +86,10 @@ def test_buildings_offer_the_race_units_and_only_its_own_arts(game) -> None:
     assert scene.tooltip.startswith("Researching Plunder")
     scene.select([])
     scene.open_settlement("upgrade")
-    labels = [c.label for c in scene._card]
+    labels = [c.label for c in scene.card]
     assert "Bloodlust" in labels and "Plunder" in labels and "Horses" not in labels and "Blessing" not in labels
     scene.open_settlement("train")
-    assert [c.label for c in scene._card][:3] == ["Peon", "Grunt", "Axethrower"]
+    assert [c.label for c in scene.card][:3] == ["Peon", "Grunt", "Axethrower"]
     scene.open_settlement(None)
     press(game, "f2")
     assert isinstance(game.scene, CodexScene)
@@ -114,24 +114,24 @@ def test_a_regrown_tree_gets_a_sprite_and_a_felled_one_loses_it(game) -> None:
     scene.player.upgrades.add(Upgrade.REGROWTH)
     tree, approach = next(
         (pos, (pos[0] + dx, pos[1] + dy))
-        for pos in view._trees for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+        for pos in view.tree_sprites for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
         if world.passable(pos[0] + dx, pos[1] + dy) and world.is_visible(scene.human, pos)
     )
     gatherer = world.spawn_unit(scene.human, UnitType.PEASANT, tile_center(approach))
     world.harvest([gatherer.id], tree)
     for _ in range(100):  # ten seconds at most, in tenths: the felling and the regrowth are waited for
         game.tick(0.1)
-        if tree not in view._trees:
+        if tree not in view.tree_sprites:
             break
-    assert tree not in view._trees and world.terrain_at(tree) is Terrain.GRASS and world.regrowth
+    assert tree not in view.tree_sprites and world.terrain_at(tree) is Terrain.GRASS and world.regrowth
     world.stop([gatherer.id])
     world.move([gatherer.id], hall_center := world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0].center)
     scene.speed = 3.0  # a tenth of a second at three times speed is six steps, the most a frame takes
     for _ in range(220):
         game.tick(0.1)
-        if tree in view._trees:
+        if tree in view.tree_sprites:
             break
-    assert world.terrain_at(tree) is Terrain.TREES and tree in view._trees and view._trees[tree].image.startswith("tree.")
+    assert world.terrain_at(tree) is Terrain.TREES and tree in view.tree_sprites and view.tree_sprites[tree].image.startswith("tree.")
     assert hall_center
 
 

@@ -1,6 +1,7 @@
 """The content layer: the tech chain, research and upgrades, healers, siege engines, lumber mills."""
 
 import random
+from collections.abc import Iterable
 
 import pytest
 
@@ -8,8 +9,11 @@ from warband.model import Attack, Deposit, Heal, Move, RuleError, World, dist, t
 from warband.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Resource, Terrain, UnitType, Upgrade
 
 
-def flat_world(width: int = 30, height: int = 24) -> World:
-    world = World(width, height, [[Terrain.GRASS] * width for _ in range(height)], 2, rng=random.Random(2))
+def flat_world(width: int = 30, height: int = 24, trees: Iterable[tuple[int, int]] = ()) -> World:
+    terrain = [[Terrain.GRASS] * width for _ in range(height)]
+    for x, y in trees:
+        terrain[y][x] = Terrain.TREES
+    world = World(width, height, terrain, 2, rng=random.Random(2))
     for player in world.players:
         player.gold, player.lumber = 20_000, 20_000
         world.reveal_all(player.id)
@@ -173,13 +177,9 @@ def test_scouts_are_fast_and_knights_faster_with_horses() -> None:
 
 
 def test_lumber_goes_to_the_nearest_mill_and_gold_only_to_a_hall() -> None:
-    world = flat_world(40, 20)
+    world = flat_world(40, 20, trees=[(x, y) for x in range(32, 35) for y in range(7, 12)])
     hall = world.place_building(0, BuildingType.TOWN_HALL, (2, 8))
     mill = world.place_building(0, BuildingType.LUMBER_MILL, (26, 8))
-    for x in range(32, 35):
-        for y in range(7, 12):
-            world.terrain[y][x] = Terrain.TREES
-            world._blocked[y * world.width + x] = 1
     peasant = world.spawn_unit(0, UnitType.PEASANT, (30.5, 9.5))
     world.harvest([peasant.id], (32, 9))
     run_until(world, lambda: peasant.carrying is Resource.LUMBER, 10.0)

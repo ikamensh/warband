@@ -1,4 +1,9 @@
-"""The computer players: what a difficulty does with what it has."""
+"""The computer players: what a difficulty does with what it has.
+
+Some tests put the brain's own questions to it (whom it counts as the enemy's
+soldiers, what it would target or train, which orders it has out): a match
+shows them only through outcomes far too noisy to pin, so these call its
+private helpers on purpose."""
 
 import random
 
@@ -309,7 +314,7 @@ def test_a_normal_brain_presses_the_attack_against_a_hall_less_enemy() -> None:
     world.reveal_all(1)
     _place_near(world, 1, BuildingType.FARM, enemy_hall.center)
     _place_near(world, 1, BuildingType.FARM, enemy_hall.center)
-    world._remove_building(enemy_hall, reason="destroyed")
+    world._remove_building(enemy_hall, reason="destroyed")  # staged: a razed hall, without the siege
     for i in range(2):
         world.spawn_unit(1, UnitType.PEASANT, (34.5 + 0.5 * i, 37.5))
     for i in range(5):
@@ -336,7 +341,7 @@ def _press_world(difficulty: Difficulty):
     world.reveal_all(1)
     _place_near(world, 1, BuildingType.FARM, enemy_hall.center)
     _place_near(world, 1, BuildingType.FARM, enemy_hall.center)
-    world._remove_building(enemy_hall, reason="destroyed")
+    world._remove_building(enemy_hall, reason="destroyed")  # staged: a razed hall, without the siege
     for i in range(2):
         world.spawn_unit(1, UnitType.PEASANT, (34.5 + 0.5 * i, 37.5))
     for i in range(5):

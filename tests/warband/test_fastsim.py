@@ -2,7 +2,9 @@
 the bit, and its C searches and painting answer as the Python does.
 
 The first test to need the build compiles the simulation with mypyc, a minute or more on a fresh machine, so the
-module is the slow tier's."""
+module is the slow tier's. The C twins replace private loops (``World._reveal``, ``worker_ai._stamp_units``,
+``_choose_tree``, ``_reach``, ``WorkerKnowledge._stale``), so the tests call those loops by their private names:
+they are what the twins are held to."""
 
 from __future__ import annotations
 

@@ -55,7 +55,7 @@ def crowd(game: Game, count: int, page: int = 0):
     units = [world.spawn_unit(scene.human, UnitType.PEASANT if i % 5 == 0 else UnitType.FOOTMAN, tile_center((hall.x - 6 + i % 12, hall.y + 5 + i // 12)))
              for i in range(count)]
     scene.select([u.id for u in units])
-    scene._portrait_page = page
+    scene.portrait_page = page
     settle(game)
     return scene
 

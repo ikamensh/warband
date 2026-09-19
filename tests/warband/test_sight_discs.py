@@ -3,7 +3,8 @@
 ``World._reveal`` paints a disc that lies wholly on the map a whole row at a time and
 clips each row near an edge; the two paths have to agree with the spans
 :func:`sight_spans` describes, or a unit standing near a border would see differently
-from the same unit two tiles inland.
+from the same unit two tiles inland. The tests call the painter by its private name:
+it is what is under test.
 """
 
 import random

@@ -42,7 +42,7 @@ def test_settings_screen_changes_persist_to_the_file_and_reach_the_camera(game, 
     scene = new_game(seed=3, settings=settings)
     game.push(scene)
     game.tick(1 / 60)
-    assert scene.camera._edge_speed > 0
+    assert scene.camera._edge_speed > 0  # Saga2D's camera turns edge scrolling on and off without saying which (0.3.8)
     press(game, "escape")
     press(game, "s")
     assert isinstance(game.scene, SettingsScene)
@@ -55,7 +55,7 @@ def test_settings_screen_changes_persist_to_the_file_and_reach_the_camera(game, 
     press(game, "right")  # fullscreen on
     assert settings["edge_scroll"] is False and settings["scroll_speed"] == 1.25 and settings["fullscreen"] is True
     press(game, "escape")
-    assert scene.camera._edge_speed == 0 and game.backend.fullscreen is True
+    assert scene.camera._edge_speed == 0 and game.backend.fullscreen is True  # the camera's state, as above
     saved = json.loads((tmp_path / "settings.json").read_text())
     assert saved["edge_scroll"] is False and saved["scroll_speed"] == 1.25
     again = Settings(tmp_path / "settings.json", DEFAULT_SETTINGS)
@@ -98,7 +98,7 @@ def test_quicksave_and_autosave_slots(game) -> None:
     scene.world.time = AUTOSAVE_EVERY - 0.1
     tick(game, 0.5)
     assert game.save_manager.load("autosave") is not None and any("Autosaved" in t for t in texts(game))
-    assert scene._autosave_at == pytest.approx(2 * AUTOSAVE_EVERY)
+    assert scene.autosave_at == pytest.approx(2 * AUTOSAVE_EVERY)
 
 
 def test_damaged_and_foreign_saves_are_refused_with_a_message(game, tmp_path) -> None:

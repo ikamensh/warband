@@ -118,7 +118,7 @@ class ReplayScene(GameScene):
         self.paused = False
         self.say("Skipping to the end…")
 
-    def _hint(self) -> list[tuple[str, str]]:
+    def hint(self) -> list[tuple[str, str]]:
         return [("F3", "pause"), ("PgUp / PgDn", "speed"), ("F4", "fog on / off"), ("End", "skip to the end"), ("F10", "menu"), ("F1", "help")]
 
     def draw(self) -> None:

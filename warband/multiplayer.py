@@ -149,8 +149,8 @@ class NetworkGameScene(GameScene):
     def open_menu(self):
         self.game.push(NetworkMenuScene(self))
 
-    def _hint(self):
-        return [(key, label) for key, label in super()._hint() if key != 'F3']
+    def hint(self):
+        return [(key, label) for key, label in super().hint() if key != 'F3']
 
     def _check_game_over(self):
         if self._game_over:
