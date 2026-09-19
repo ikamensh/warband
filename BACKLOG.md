@@ -40,7 +40,7 @@ bundle `3e3dfda8` ([`79bc783`](https://github.com/ikamensh/warband/blob/79bc7834
 evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1bfbe42c4705f56a6ac0476a0/BACKLOG.md)); WB-038, merged as `75dc68f`, published as a preview
 ([`75dc68f`](https://github.com/ikamensh/warband/blob/75dc68f231810cdfe83d5ff6f5f47c48cfb5422f/BACKLOG.md)); WB-052, merged as `a2212f5`
 ([`a2212f5`](https://github.com/ikamensh/warband/blob/a2212f53d78ae5c28ec64727eaabc2ac3142d183/BACKLOG.md)); WB-049, merged as `9418ec5`
-([`9418ec5`](https://github.com/ikamensh/warband/blob/9418ec5babcbf57aed2a2e5939a502fd8477a49d/BACKLOG.md)); WB-039 and WB-044, merged as `f8ba0eb`
+([`9418ec5`](https://github.com/ikamensh/warband/blob/9418ec5babcbf57aed2a2e5939a502fd8477a49d/BACKLOG.md); WB-051, merged as `0a820ff` ([`0a820ff`](https://github.com/ikamensh/warband/blob/0a820ffdfe3b18f8e06a5ed5ac3f89223943f70c/BACKLOG.md))); WB-039 and WB-044, merged as `f8ba0eb`
 ([`a8951a7`](https://github.com/ikamensh/warband/blob/a8951a7ca8b76c8df9b8e12b87ed8a9e235e7e1f/BACKLOG.md)); WB-053, merged as `7158d46`
 ([`dbbb2d1`](https://github.com/ikamensh/warband/blob/dbbb2d132a56e60a7aa4db0fcb66de70a5000aa0/BACKLOG.md)).
 
@@ -49,7 +49,6 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-048 | Next | proposed | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
 | WB-050 | Next | done | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
-| WB-051 | Next | done | Clerics heal in visible single casts and carry a weak attack | User 2026-09-19 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -182,72 +181,3 @@ swapped): orcs 21-25 (22-24 before), humans 28-17 (30-14), elves 20-24
 (ten AI games on seeds 81, 300 and 500) is clean; step time in a
 150-unit battle is unchanged within noise. The fingerprint and `sim_bench`
 are refreshed, and the fast and slow tiers pass (1016 and 486).
-
-## WB-051 — Clerics cast their heals
-
-Ilya, 2026-09-19: healing should be animated, a single cast with a short
-cooldown that restores about 15 hp at a time. Clerics should also have a
-weak attack of their own so they are not sent in to fight at the front.
-
-Today a cleric heals 6 hp/s continuously (`heal_rate`) and has no attack.
-
-**Proposed scope:** a heal is a wind-up, then a visible cast on one wounded
-ally, then a cooldown. The rate stays near today's (15 hp every 2.5 s is
-6 hp/s), so the balance does not move. The cast has an animation on the
-cleric and on its patient, and a sound cue. The cleric gets a weak ranged
-attack, used only when there is no one to heal. `pro_ai`'s
-`retreat_wounded` estimate follows the new rate.
-
-**Done when:** tests pin the cast (its cooldown, the amount, choosing the
-most wounded ally in range) and the attack being used only when no one
-needs healing. The cast has been seen in frames and heard in a match. The
-change goes live through a server rollout.
-
-**Started 2026-09-19**, branch `cleric-cast`. **Acceptance (recorded before
-implementation):**
-
-1. A heal is a cast: the cleric faces its patient, winds up 0.5 s (the blow
-   frames' wind-up), then restores `heal` hit points at once (15, half
-   again with Blessing), then waits its 2 s cooldown. 15 every 2.5 s is
-   today's 6 hp/s, so `heal_rate` and the AI's estimate are unchanged. A
-   cast whose patient walks more than `WINDUP_SLACK` beyond reach, dies or
-   is healed full meanwhile is lost; a new order breaks it off.
-2. The cleric has a weak ranged blow (3, normal attack, the same range and
-   rhythm). Left to itself it heals first and strikes only when no one in
-   sight needs healing; one striking turns to heal as soon as someone does.
-   A cleric is still no soldier: enemies pick it after soldiers (`_threat`),
-   Arrows and Longbows skip it, frenzy skips an orc's, and the Master AI
-   does not count it in its army.
-3. Each cast is seen and heard: a ring and a rising burst of green sparks
-   on the patient, a small ring on the cleric, "+15" floating up, and a soft
-   chime (`SOUND_VERSION` bumped).
-4. Tests pin the cast (its wind-up, amount, cooldown and the most-wounded
-   choice), the attack used only when nobody needs healing, and the threat
-   order. Frames of a cast are looked at. The fingerprint, `sim_bench`,
-   fuzz, the fast and slow tiers and a ladder with the clerics archetype
-   pass.
-
-**Done 2026-09-19** (branch `cleric-cast`). `World._cast` replaces the
-per-second trickle: face, wind up 0.5 s, restore `heal_amount` (15; 22 with
-Blessing) at once, cool down 2 s; `heal_rate` is that over the period (6/s,
-8.8 blessed). The cleric is 3 damage, 3 range, 0.5 + 2.0, a normal blow; a
-cleric left to itself heals first, strikes only when no one in sight needs
-it, and turns from striking to healing within a quarter second of a friend
-being hurt. `UnitInfo.soldier` (damage and no healing) and a `ranged` that
-excludes healers keep a cleric out of `_threat`'s soldiers, Arrows,
-Longbows, frenzy, and the Master AI's army, soldier yardstick and tower
-strike; the AI still counts a cleric by its healing. A player's attack
-order now makes a cleric strike (it used to follow). On screen a cast shows
-two rings and a green burst on the patient, a small ring on the cleric,
-"+15" rising above the health bar, and a soft chime (`SOUND_VERSION` 11);
-the wind-up raises the staff (the blow frames). Native frames of the
-wind-up and the cast landing were looked at (the first "+15" sat on the
-patient's head and was raised). `tests/warband/test_cleric_casts.py` (six
-tests) pins the cast's amount, rhythm and wind-up, the last cast's
-remainder, a cast broken off by an order, the most wounded first, the blow
-only when no one needs healing, and soldiers before clerics; three triage
-tests allow for the wind-up. Ladder (nine agents, 12 seeds, 864 matches,
-branch against main): every move inside the intervals, clerics -33 the
-largest. Fuzz is clean, the fingerprint and `sim_bench` refreshed, the fast
-and slow tiers pass (1009 and 486). Hearing the chime in a match is left
-for Ilya.
