@@ -104,8 +104,9 @@ def test_every_route_is_found_within_the_pathfinders_budget(layout: Layout) -> N
     """A flood fill proving a mine reachable is not enough: the bounded A* units use must get there too."""
     world = mapgen.generate(seed=4, width=80, height=64, players=4, layout=layout)
     start = door(world, halls(world)[0])
+    blocked = bytearray(0 if world.passable(x, y) else 1 for y in range(world.height) for x in range(world.width))
     for goal in [door(world, h) for h in halls(world)[1:]] + [door(world, m) for m in world.mines()]:
-        route = path.find_path_grid(start, goal, world._blocked, world.width, world.height)
+        route = path.find_path_grid(start, goal, blocked, world.width, world.height)
         assert route and route[-1] == goal, (layout, goal)
 
 

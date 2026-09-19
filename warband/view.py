@@ -15,7 +15,7 @@ draws in screen space.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -286,8 +286,8 @@ class MapView:
         self.fog_key = f"fog.{world.width}x{world.height}"
         self.minimap_key = f"minimap.{world.width}x{world.height}"
         self._minimap_ground = minimap_terrain(world, self.terrain_at)  # as the player knows it: a tree felled out of sight still stands
-        self._register(self.fog_key, self._fog_image())
-        self._register(self.minimap_key, self._minimap_image())
+        self._register(self.fog_key, self.fog_image())
+        self._register(self.minimap_key, self.minimap_image())
         self._fog = scene.add_sprite(Sprite(self.fog_key, position=(-FOG_MARGIN * TILE, -FOG_MARGIN * TILE),
                                             size=((world.width + 2 * FOG_MARGIN) * TILE, (world.height + 2 * FOG_MARGIN) * TILE),
                                             anchor=SpriteAnchor.TOP_LEFT, layer=RenderLayer.EFFECTS, y_sort=True))
@@ -306,16 +306,16 @@ class MapView:
         else:
             self.game.assets.image_from_pil(key, image)
 
-    def _chunk_has_water(self, index: int) -> bool:
+    def chunk_has_water(self, index: int) -> bool:
         world = self.world
         cols = math.ceil(world.width / CHUNK)
         cx, cy = index % cols, index // cols
         return any(world.in_bounds((x, y)) and world.terrain_at((x, y)) is Terrain.WATER
                    for y in range(cy * CHUNK - 1, (cy + 1) * CHUNK + 1) for x in range(cx * CHUNK - 1, (cx + 1) * CHUNK + 1))
 
-    def _chunk_keys(self, index: int) -> list[str]:
+    def chunk_keys(self, index: int) -> list[str]:
         world = self.world
-        phases = textures.WATER_PHASES if self._chunk_has_water(index) else 1
+        phases = textures.WATER_PHASES if self.chunk_has_water(index) else 1
         return [f"ground.{index}.{self._map_key}.{phase}" for phase in range(phases)]
 
     def _paint_chunk(self, index: int, phase: int) -> None:
@@ -328,7 +328,7 @@ class MapView:
         cols, rows = math.ceil(world.width / CHUNK), math.ceil(world.height / CHUNK)
         for index in range(cols * rows):
             cx, cy = index % cols, index // cols
-            self._ground_keys.append(self._chunk_keys(index))
+            self._ground_keys.append(self.chunk_keys(index))
             self._paint_chunk(index, 0)
             # The other phases are painted over the first frames rather than delaying the match.
             self._water_pending.extend((index, phase) for phase in range(1, len(self._ground_keys[index])))
@@ -420,7 +420,7 @@ class MapView:
         self._water_pending.clear()
         self._water_step = 0
         for index, sprite in enumerate(self._ground):
-            keys = self._ground_keys[index] = self._chunk_keys(index)  # the water may lie elsewhere on this map
+            keys = self._ground_keys[index] = self.chunk_keys(index)  # the water may lie elsewhere on this map
             self._paint_chunk(index, 0)
             sprite.image = keys[0]
             self._water_pending.extend((index, phase) for phase in range(1, len(keys)))
@@ -559,10 +559,10 @@ class MapView:
         if world.tick // VISION_EVERY != self._vision_tick:  # what the player knows of the ground changes with what they see
             self._vision_tick = world.tick // VISION_EVERY
             self._sync_trees()
-            self.game.assets.update_image(self.fog_key, self._fog_image())
+            self.game.assets.update_image(self.fog_key, self.fog_image())
         if self.time - self._minimap_time >= 0.25:
             self._minimap_time = self.time
-            self.game.assets.update_image(self.minimap_key, self._minimap_image())
+            self.game.assets.update_image(self.minimap_key, self.minimap_image())
 
     def set_reveal(self, reveal: bool) -> None:
         """Show the whole map, or only what the player sees; the fog and minimap follow on the next sync."""
@@ -774,9 +774,44 @@ class MapView:
     def building_sprite(self, building_id: int) -> Sprite | None:
         return self._buildings.get(building_id)
 
+    @property
+    def tree_sprites(self) -> Mapping[Pos, Sprite]:
+        """The trees the player's map shows, by tile, as the player last saw them."""
+        return self._trees
+
+    @property
+    def ground_sprites(self) -> Sequence[Sprite]:
+        """The ground's chunks, row by row."""
+        return self._ground
+
+    @property
+    def ground_keys(self) -> Sequence[Sequence[str]]:
+        """Each ground chunk's image, or one per water phase for a chunk that holds water."""
+        return self._ground_keys
+
+    @property
+    def water_pending(self) -> int:
+        """Water phases still to be painted, one a frame."""
+        return len(self._water_pending)
+
+    @property
+    def smoke(self) -> Mapping[int, ParticleEmitter]:
+        """The smoke rising from damaged buildings, by building id."""
+        return self._smoke
+
+    @property
+    def fires(self) -> Mapping[int, ParticleEmitter]:
+        """The fires on badly damaged buildings, by building id."""
+        return self._fire
+
+    @property
+    def shot_sprites(self) -> dict[int, Sprite]:
+        """The shots in the air, by projectile id."""
+        return {shot_id: shot.sprite for shot_id, shot in self._shots.items()}
+
     # -- Fog and minimap --------------------------------------------------------------------
 
-    def _fog_image(self) -> Image.Image:
+    def fog_image(self) -> Image.Image:
         world = self.world
         shape = (world.height, world.width)
         visible = np.frombuffer(bytes(world.visible[self.player]), dtype=np.uint8).reshape(shape)
@@ -791,7 +826,7 @@ class MapView:
         image.paste(Image.fromarray(rgba, "RGBA"), (FOG_MARGIN, FOG_MARGIN))
         return image
 
-    def _minimap_image(self) -> Image.Image:
+    def minimap_image(self) -> Image.Image:
         world = self.world
         shape = (world.height, world.width)
         visible = np.frombuffer(bytes(world.visible[self.player]), dtype=np.uint8).reshape(shape) > 0

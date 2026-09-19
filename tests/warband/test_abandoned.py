@@ -80,7 +80,7 @@ def test_an_ai_that_cannot_come_back_surrenders_the_same_way() -> None:
     hall = world.player_buildings(2, BuildingType.TOWN_HALL)[0]
     world.players[2].gold = world.players[2].lumber = 0
     for unit in world.player_units(2):
-        world._remove_unit(unit)
+        world._remove_unit(unit)  # staged: the seat's last units gone, without a fight to lose them in
     world.step()
     assert not world.players[2].alive and world.players[2].surrendered
     assert hall.id in world.buildings and hall.abandoned
@@ -116,13 +116,13 @@ def test_the_scene_shows_a_ruin_grey_on_the_map_the_minimap_and_the_card(tmp_pat
         key = scene.view.building_sprite(farm.id).image
         assert key.endswith(".abandoned") and key != owned_key
         from warband.view import MINIMAP_SCALE
-        minimap = scene.view._minimap_image()
+        minimap = scene.view.minimap_image()
         assert tuple(minimap.getpixel((farm.x * MINIMAP_SCALE, farm.y * MINIMAP_SCALE))[:3]) == (150, 150, 150)
         scene.select([farm.id])
         for _ in range(2):
             game.tick(1 / 60)
         texts = [t["text"] for t in game.backend.texts]
-        assert "Abandoned" in texts and not scene._card, "named for what it is, with nothing to order"
+        assert "Abandoned" in texts and not scene.card, "named for what it is, with nothing to order"
     finally:
         game.close()
 

@@ -2,6 +2,7 @@
 
 import json
 import random
+from collections.abc import Iterable
 
 import pytest
 
@@ -16,8 +17,11 @@ from warband.rules import (
 )
 
 
-def flat_world(races: tuple[Race, ...], width: int = 30, height: int = 24) -> World:
-    world = World(width, height, [[Terrain.GRASS] * width for _ in range(height)], len(races), rng=random.Random(2), races=races)
+def flat_world(races: tuple[Race, ...], width: int = 30, height: int = 24, trees: Iterable[tuple[int, int]] = ()) -> World:
+    terrain = [[Terrain.GRASS] * width for _ in range(height)]
+    for x, y in trees:
+        terrain[y][x] = Terrain.TREES
+    world = World(width, height, terrain, len(races), rng=random.Random(2), races=races)
     for player in world.players:
         player.gold, player.lumber = 20_000, 20_000
         world.reveal_all(player.id)
@@ -186,12 +190,8 @@ def test_elves_see_farther_rangers_shoot_farther_and_longbows_reach_towers_too()
 
 
 def test_regrowth_brings_felled_trees_back_unless_something_stands_there() -> None:
-    world = flat_world((Race.ELF, Race.HUMAN), 40, 20)
+    world = flat_world((Race.ELF, Race.HUMAN), 40, 20, trees=[(x, y) for x in range(12, 14) for y in range(7, 10)])
     world.place_building(0, BuildingType.TOWN_HALL, (2, 8))
-    for x in range(12, 14):
-        for y in range(7, 10):
-            world.terrain[y][x] = Terrain.TREES
-            world._blocked[y * world.width + x] = 1
     gatherer = world.spawn_unit(0, UnitType.PEASANT, (10.5, 8.5))
     world.harvest([gatherer.id], (12, 8))
     run_until(world, lambda: world.terrain_at((12, 8)) is Terrain.GRASS, 12)

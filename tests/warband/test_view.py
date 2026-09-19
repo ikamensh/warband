@@ -33,25 +33,25 @@ def test_every_tree_and_building_has_a_sprite_and_a_felled_tree_loses_it(play) -
     game, scene = play
     world, view = scene.world, scene.view
     trees = sum(1 for row in world.terrain for t in row if t is Terrain.TREES)
-    assert len(view._trees) == trees
+    assert len(view.tree_sprites) == trees
     in_sight = {b.id for b in world.buildings.values() if b.player == scene.human or world.any_visible(scene.human, b.rect)}
     assert {b.id for b in world.buildings.values() if view.building_sprite(b.id) is not None} == in_sight
-    pos = next(p for p in view._trees if world.is_visible(scene.human, p))  # one felled out of sight stands until somebody looks: test_fog_memory
-    tree_sprite_id = view._trees[pos].sprite_id
+    pos = next(p for p in view.tree_sprites if world.is_visible(scene.human, p))  # one felled out of sight stands until somebody looks: test_fog_memory
+    tree_sprite_id = view.tree_sprites[pos].sprite_id
     world.terrain[pos[1]][pos[0]] = Terrain.GRASS
     for _ in range(20):  # the player's next look around (a felling they watch is shown at once: test_fog_memory)
         game.tick(1 / 60)
-    assert pos not in view._trees
+    assert pos not in view.tree_sprites
     assert tree_sprite_id not in game.backend.sprites  # Includes its baked shade and litter.
 
 
 def test_forest_uses_twenty_stable_variants_across_save_reload(play) -> None:
     """A real map uses the full forest asset bank without reshuffling on load."""
     game, scene = play
-    before = {pos: sprite.image for pos, sprite in scene.view._trees.items()}
+    before = {pos: sprite.image for pos, sprite in scene.view.tree_sprites.items()}
     assert len(set(before.values())) >= 20
     scene.view.reset(scene.world.from_dict(scene.world.to_dict()))
-    assert {pos: sprite.image for pos, sprite in scene.view._trees.items()} == before
+    assert {pos: sprite.image for pos, sprite in scene.view.tree_sprites.items()} == before
 
 
 @pytest.mark.slow
@@ -63,7 +63,7 @@ def test_harvesting_worker_swings_axe_then_carries_wood(play) -> None:
     world = scene.world
     tree, approach = next(
         (pos, (pos[0] + dx, pos[1] + dy))
-        for pos in scene.view._trees for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+        for pos in scene.view.tree_sprites for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
         if world.passable(pos[0] + dx, pos[1] + dy)
     )
     worker = world.spawn_unit(scene.human, UnitType.PEASANT, tile_center(approach))
@@ -124,10 +124,10 @@ def test_units_draw_in_front_of_what_stands_behind_them(play) -> None:
     game.tick(1 / 60)
     hall_order = order_of(game, view.building_sprite(hall.id))
     assert order_of(game, view.unit_sprite(front.id)) > hall_order > order_of(game, view.unit_sprite(behind.id))
-    tree = min(view._trees, key=lambda p: abs(p[0] - hall.center[0]) + abs(p[1] - hall.center[1]))
+    tree = min(view.tree_sprites, key=lambda p: abs(p[0] - hall.center[0]) + abs(p[1] - hall.center[1]))
     walker = world.spawn_unit(scene.human, UnitType.FOOTMAN, tile_center((tree[0], tree[1] + 1)))
     game.tick(1 / 60)
-    assert order_of(game, view.unit_sprite(walker.id)) > order_of(game, view._trees[tree])
+    assert order_of(game, view.unit_sprite(walker.id)) > order_of(game, view.tree_sprites[tree])
 
 
 def test_enemies_are_shown_only_where_the_player_can_see(play) -> None:
@@ -152,7 +152,7 @@ def test_enemies_are_shown_only_where_the_player_can_see(play) -> None:
 def test_fog_image_is_clear_where_seen_dim_where_explored_and_black_elsewhere(play) -> None:
     game, scene = play
     world, view = scene.world, scene.view
-    fog = np.asarray(view._fog_image())[FOG_MARGIN:-FOG_MARGIN, FOG_MARGIN:-FOG_MARGIN]
+    fog = np.asarray(view.fog_image())[FOG_MARGIN:-FOG_MARGIN, FOG_MARGIN:-FOG_MARGIN]
     hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
     hx, hy = int(hall.center[0]), int(hall.center[1])
     assert fog[hy, hx, 3] == 0
@@ -162,7 +162,7 @@ def test_fog_image_is_clear_where_seen_dim_where_explored_and_black_elsewhere(pl
     world.update_vision()
     unit.x, unit.y = hall.center[0], hall.center[1]
     world.update_vision()
-    image = np.asarray(view._fog_image())
+    image = np.asarray(view.fog_image())
     assert np.all(image[:FOG_MARGIN, :, 3] == 255)
     assert np.all(image[-FOG_MARGIN:, :, 3] == 255)
     assert np.all(image[:, :FOG_MARGIN, 3] == 255)
@@ -178,7 +178,7 @@ def test_fog_image_is_clear_where_seen_dim_where_explored_and_black_elsewhere(pl
 def test_minimap_image_marks_terrain_buildings_and_units(play) -> None:
     game, scene = play
     world, view = scene.world, scene.view
-    image = view._minimap_image()
+    image = view.minimap_image()
     assert image.size == (world.width * 2, world.height * 2)
     pixels = np.asarray(image)
     hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
@@ -284,12 +284,12 @@ def test_portraits_are_tightly_framed_pictures(play) -> None:
 
 def test_a_new_map_of_the_same_size_reuses_the_ground_fog_and_minimap_images(play) -> None:
     game, scene = play
-    before = len(game.backend._image_sizes)
-    keys = [sprite.image for sprite in scene.view._ground] + [scene.view.fog_key, scene.view.minimap_key]
+    before = len(game.backend._image_sizes)  # the mock backend does not count the images it holds publicly (Saga2D 0.3.8)
+    keys = [sprite.image for sprite in scene.view.ground_sprites] + [scene.view.fog_key, scene.view.minimap_key]
     handles = [game.assets.image(key) for key in keys]
     scene.world = scene.world.from_dict(scene.world.to_dict())
     scene.view.reset(scene.world)
-    assert len(game.backend._image_sizes) == before
+    assert len(game.backend._image_sizes) == before  # the mock's count, as above
     game.tick(1 / 60)  # the unit warmer may now add animation frames
     assert [game.assets.image(key) for key in keys] == handles
     assert Image  # the PIL import is what the view feeds update_image
@@ -301,30 +301,32 @@ def test_a_site_shows_the_building_rising_and_a_battered_building_smokes_then_bu
     hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
     site = world.place_building(scene.human, BuildingType.FARM, (hall.x + 5, hall.y + 4), done=False)
     game.tick(1 / 60)
-    assert view._building_keys[site.id] == "site.2"
+    assert view.building_sprite(site.id).image == "site.2"
     site.progress = site.info.build_time * 0.6
     game.tick(1 / 60)
-    assert view._building_keys[site.id] == textures.building_key(BuildingType.FARM, scene.human) and view.building_sprite(site.id).opacity == 150
+    assert view.building_sprite(site.id).image == textures.building_key(BuildingType.FARM, scene.human) and view.building_sprite(site.id).opacity == 150
     site.progress = site.info.build_time
     site.hp = site.max_hp
     game.tick(1 / 60)
-    assert view.building_sprite(site.id).opacity == 255 and site.id not in view._smoke
+    assert view.building_sprite(site.id).opacity == 255 and site.id not in view.smoke
     site.hp = site.max_hp // 3
     game.tick(1 / 60)
-    assert site.id in view._smoke
+    assert site.id in view.smoke
     for _ in range(30):
         game.tick(1 / 60)
-    assert view._smoke[site.id].particle_count > 0 and site.id not in view._fire
+    assert view.smoke[site.id].particle_count > 0 and site.id not in view.fires
     site.hp = site.max_hp // 5  # under a quarter it blazes as well
     for _ in range(30):
         game.tick(1 / 60)
-    assert site.id in view._fire and view._fire[site.id].particle_count > 0
+    assert site.id in view.fires and view.fires[site.id].particle_count > 0
     site.hp = site.max_hp
     game.tick(1 / 60)
-    assert site.id not in view._smoke and site.id not in view._fire
+    assert site.id not in view.smoke and site.id not in view.fires
 
 
 def flood(world, x0: int, y0: int, size: int = 3) -> None:
+    """Water painted into a generated map where the test needs it, as map generation carves a road: the terrain and
+    the grid the model paths on (the World has no public way to change a tile, and nothing a player does can)."""
     for y in range(y0, y0 + size):
         for x in range(x0, x0 + size):
             world.terrain[y][x] = Terrain.WATER
@@ -339,24 +341,24 @@ def test_water_moves_once_its_phases_are_painted_while_land_stays_still() -> Non
     game.push(scene)
     game.tick(1 / 60)
     view = scene.view
-    assert view._chunk_has_water(0) and len(view._ground_keys[0]) == textures.WATER_PHASES
-    land = next(i for i, keys in enumerate(view._ground_keys) if len(keys) == 1)
-    first = view._ground[0].image
-    while view._water_pending:  # the other phases are painted one per frame; the water waits on phase 0 meanwhile
-        assert view._ground[0].image == first
+    assert view.chunk_has_water(0) and len(view.ground_keys[0]) == textures.WATER_PHASES
+    land = next(i for i, keys in enumerate(view.ground_keys) if len(keys) == 1)
+    first = view.ground_sprites[0].image
+    while view.water_pending:  # the other phases are painted one per frame; the water waits on phase 0 meanwhile
+        assert view.ground_sprites[0].image == first
         game.tick(1 / 60)
-    assert all(game.assets.has_image(key) for key in view._ground_keys[0])
+    assert all(game.assets.has_image(key) for key in view.ground_keys[0])
     for _ in range(int(WATER_PERIOD * 60) + 2):
         game.tick(1 / 60)
-    assert view._ground[0].image != first and view._ground[0].image in view._ground_keys[0]
-    assert view._ground[land].image == view._ground_keys[land][0]
+    assert view.ground_sprites[0].image != first and view.ground_sprites[0].image in view.ground_keys[0]
+    assert view.ground_sprites[land].image == view.ground_keys[land][0]
     # A loaded map of the same size may have its water elsewhere: the chunks are classified again.
     other = mapgen.generate(seed=6, width=48, height=40, players=2)
     flood(other, 20, 20)
     view.reset(other)
-    for index, keys in enumerate(view._ground_keys):
-        assert (len(keys) > 1) == view._chunk_has_water(index)
-    assert len(view._ground_keys[view._ground_keys.index(view._chunk_keys(2 * 6 + 2))]) == textures.WATER_PHASES  # chunk (2, 2) holds (20, 20)
+    for index, keys in enumerate(view.ground_keys):
+        assert (len(keys) > 1) == view.chunk_has_water(index)
+    assert len(view.ground_keys[view.ground_keys.index(view.chunk_keys(2 * 6 + 2))]) == textures.WATER_PHASES  # chunk (2, 2) holds (20, 20)
     game.close()
 
 
@@ -414,7 +416,7 @@ def test_shots_in_the_air_have_sprites_that_fly_and_go_when_they_land(play) -> N
     for _ in range(90):
         game.tick(1 / 30)
         for p in world.projectiles.values():
-            sprite = scene.view._shots[p.id].sprite
+            sprite = scene.view.shot_sprites[p.id]
             assert sprite.visible and sprite.image == p.kind
             seen[p.kind].append(sprite.position)
     assert len(seen["arrow"]) >= 2 and len(seen["stone"]) >= 5
@@ -423,4 +425,4 @@ def test_shots_in_the_air_have_sprites_that_fly_and_go_when_they_land(play) -> N
     assert stone_x == sorted(stone_x) and stone_x[-1] > stone_x[0] + 3 * 32
     apex = min(y for _, y in seen["stone"])
     assert apex < seen["stone"][0][1] - 32 and apex < seen["stone"][-1][1] - 32  # up, over and down again
-    assert not world.projectiles and not scene.view._shots  # all landed, all sprites gone
+    assert not world.projectiles and not scene.view.shot_sprites  # all landed, all sprites gone

@@ -22,7 +22,7 @@ def test_every_material_has_collapse_cues_longer_than_any_one_stage() -> None:
             seconds = len(clip) / SAMPLE_RATE
             assert clip.ndim == 1 and 1.5 <= seconds <= 5.0, (material, take, seconds)
             assert abs(np.abs(clip).max() - wreckage.PEAK) < 0.01 and abs(clip[0]) < 0.01 and abs(clip[-1]) < 0.02, (material, take)
-            falling = len(wreckage._piece(material, "collapse", take)) / SAMPLE_RATE
+            falling = len(wreckage.piece(material, "collapse", take)) / SAMPLE_RATE
             assert seconds >= wreckage.CRACK_TO_COLLAPSE + falling, (material, take)  # the crack first, the mass after it
 
 

@@ -9,7 +9,7 @@ from warband.rules import BuildingType, UnitType
 from warband.scene import GameScene
 from warband.style import build_theme
 
-from tests.warband.battlefield import SETTINGS, field
+from tests.warband.battlefield import SETTINGS, field, live_effects
 
 RED, WOOD = (172, 22, 26), (222, 184, 118)
 
@@ -26,7 +26,7 @@ def play(tmp_path):
 
 
 def sprays(scene: GameScene) -> list[Spray]:
-    return [e for e in scene.effects._items if isinstance(e, Spray)]
+    return [e for e in live_effects(scene) if isinstance(e, Spray)]
 
 
 def first_hit(game: Game, scene: GameScene, attacker: UnitType, target, side: str = "west", *, attacker_player: int = 0, target_player: int = 1):
@@ -82,7 +82,7 @@ def test_armour_sparks_and_flesh_alone_does_not(play) -> None:
     game, scene = play
     scene.settings["blood"] = False
     first_hit(game, scene, UnitType.KNIGHT, UnitType.FOOTMAN)  # plate: sparks
-    assert [e for e in scene.effects._items if isinstance(e, Burst)] and not sprays(scene)
+    assert [e for e in live_effects(scene) if isinstance(e, Burst)] and not sprays(scene)
 
 
 def test_a_hit_out_of_sight_shows_nothing(play) -> None:

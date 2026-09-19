@@ -198,7 +198,12 @@ real breakdown.
   seat's own snapshot.
 - Tests use the mock backend (`game`/`backend` fixtures from
   `saga2d.testing.fixtures`), public behaviour only; fixtures use
-  `save_dir=tmp_path / "saves"` because `data_dir` is its parent.
+  `save_dir=tmp_path / "saves"` because `data_dir` is its parent. What a
+  test needs to read, the view or scene offers as a property; a test that
+  still reads a private member says why beside it (a staged state, a brain's
+  own question, a C twin held to its loop, what the engine does not offer).
+  `tests/warband/test_properties.py` states properties over generated inputs
+  (paths, saves, refused orders, replays) with Hypothesis.
 - The suite has two tiers. A test goes in the fast tier unless it cannot:
   each fast test takes under half a second on the Mac, and CI fails one whose
   setup, call or teardown takes over 3 s (`--budget`; four workers on a runner

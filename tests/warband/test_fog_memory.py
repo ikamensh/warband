@@ -90,7 +90,7 @@ def test_a_building_razed_out_of_sight_stands_on_the_map_until_somebody_looks(pl
 
 
 def minimap_pixel(scene, tile: tuple[int, int]) -> tuple[int, int, int]:
-    pixels = np.asarray(scene.view._minimap_image())
+    pixels = np.asarray(scene.view.minimap_image())
     return tuple(int(c) for c in pixels[tile[1] * 2, tile[0] * 2, :3])
 
 
@@ -107,14 +107,14 @@ def test_the_minimap_shows_out_of_sight_ground_as_last_seen(play) -> None:
     world.spawn_unit(scene.human, UnitType.SCOUT, (site[0] - 1.5, site[1] + 0.5))
     frames(game)
     assert minimap_pixel(scene, site) == world.players[rival].color
-    assert farm.id in {s.id for s in scene.view._sightings.values()}
+    assert scene.view.sighting(farm.id) is not None
 
 
 def test_a_tree_felled_out_of_sight_stands_until_somebody_looks_and_one_grown_back_waits_too(play) -> None:
     game, scene = play
     world, view = scene.world, scene.view
     explore_everything(game, scene)
-    tree = next(pos for pos in view._trees if not world.is_visible(scene.human, pos)
+    tree = next(pos for pos in view.tree_sprites if not world.is_visible(scene.human, pos)
                 and any(world.passable(pos[0] + dx, pos[1] + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))))
     beside = next((tree[0] + dx, tree[1] + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)) if world.passable(tree[0] + dx, tree[1] + dy))
     wooded = minimap_pixel(scene, tree)
@@ -127,11 +127,11 @@ def test_a_tree_felled_out_of_sight_stands_until_somebody_looks_and_one_grown_ba
             break
     assert world.terrain_at(tree).value != "trees", "the rival's worker never felled the tree"
     frames(game)
-    assert tree in view._trees and minimap_pixel(scene, tree) == wooded, "a tree felled out of sight vanished from the player's map"
+    assert tree in view.tree_sprites and minimap_pixel(scene, tree) == wooded, "a tree felled out of sight vanished from the player's map"
     assert view.terrain_at(tree).value == "trees", "the status line names the ground as it is, not as the player knows it"
     world.spawn_unit(scene.human, UnitType.SCOUT, tile_center(beside))
     frames(game)
-    assert tree not in view._trees and minimap_pixel(scene, tree) != wooded and view.terrain_at(tree).value == "grass"
+    assert tree not in view.tree_sprites and minimap_pixel(scene, tree) != wooded and view.terrain_at(tree).value == "grass"
 
 
 @pytest.mark.parametrize("reopen", ["in the match", "from the title"])
@@ -185,7 +185,7 @@ def test_what_a_rival_is_making_stays_private_and_a_fogged_building_reads_as_las
 def test_a_tree_the_player_watches_fall_is_gone_the_frame_it_falls(play) -> None:
     game, scene = play
     world, view = scene.world, scene.view
-    tree, beside = next((pos, (pos[0] + dx, pos[1] + dy)) for pos in view._trees if world.is_visible(scene.human, pos)
+    tree, beside = next((pos, (pos[0] + dx, pos[1] + dy)) for pos in view.tree_sprites if world.is_visible(scene.human, pos)
                         for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)) if world.passable(pos[0] + dx, pos[1] + dy))
     worker = world.spawn_unit(scene.human, UnitType.PEASANT, tile_center(beside))
     world.harvest([worker.id], tree)
@@ -193,7 +193,7 @@ def test_a_tree_the_player_watches_fall_is_gone_the_frame_it_falls(play) -> None
         game.tick(0.1)
         if world.terrain_at(tree) is not Terrain.TREES:
             break
-    assert world.terrain_at(tree) is not Terrain.TREES and tree not in view._trees
+    assert world.terrain_at(tree) is not Terrain.TREES and tree not in view.tree_sprites
 
 
 def test_a_tree_grown_back_out_of_sight_waits_to_be_seen(play) -> None:
@@ -205,10 +205,10 @@ def test_a_tree_grown_back_out_of_sight_waits_to_be_seen(play) -> None:
                  and world.passable(x + 1, y) and not world.is_visible(scene.human, (x + 1, y)))
     world.terrain[glade[1]][glade[0]] = Terrain.TREES  # the elven art at work where nobody watches
     frames(game)
-    assert glade not in view._trees and view.terrain_at(glade) is Terrain.GRASS
+    assert glade not in view.tree_sprites and view.terrain_at(glade) is Terrain.GRASS
     world.spawn_unit(scene.human, UnitType.SCOUT, tile_center((glade[0] + 1, glade[1])))
     frames(game)
-    assert glade in view._trees and view.terrain_at(glade) is Terrain.TREES
+    assert glade in view.tree_sprites and view.terrain_at(glade) is Terrain.TREES
 
 
 def test_a_save_from_before_the_view_remembered_starts_from_the_footprints_the_model_remembers(play) -> None:

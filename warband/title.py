@@ -282,6 +282,16 @@ class NewGameScene(Scene):
         promise = mapgen.PROMISES[drawn]
         return promise if self.layout is not None else f"Any drew {drawn.value.title()} · {promise}"
 
+    @property
+    def preview_world(self) -> World | None:
+        """The map the New game screen previews: the one Start will play."""
+        return self._preview_world
+
+    @property
+    def preview_picture(self) -> PilImage.Image | None:
+        """The preview as drawn beside the settings."""
+        return self._preview_pil
+
     def _preview_races(self) -> list[Race | None]:
         return [self.race] + [None] * (self.players - 1)
 

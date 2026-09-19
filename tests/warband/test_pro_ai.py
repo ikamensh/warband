@@ -4,6 +4,11 @@ Both regressions were found by watching matches rather than by reasoning:
 an army that re-decided every pass oscillated in and out of the enemy base
 without ever fighting, and a remembered enemy count that was a running total
 reported roughly ten times the army that was there.
+
+Many tests put the brain's own questions to it (what it remembers of the enemy,
+what it would attack and with what, what it wishes to build next, where its
+home and front are): a match shows them only through outcomes far too noisy to
+pin, so these call its private helpers on purpose.
 """
 
 from __future__ import annotations

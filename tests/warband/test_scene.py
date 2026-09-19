@@ -11,6 +11,8 @@ from warband.scene import GameOverScene, GameScene, HelpScene, LeaveScene, Pause
 from warband.style import build_theme
 from warband.title import NewGameScene, TitleScene
 
+from tests.warband.battlefield import live_effects
+
 
 @pytest.fixture
 def game(tmp_path):
@@ -90,7 +92,7 @@ def test_clicking_a_peasant_selects_it_and_shows_its_card(play) -> None:
     assert scene.selection == [peasant.id]
     shown = texts(game)
     assert "Peasant" in shown and {"3", "0", "0.45", "2.4"} <= set(shown)  # damage, armour, range and speed beside their symbols
-    assert [c.label for c in scene._card] == ["Move", "Stop", "Attack", "Hold", "Patrol", "Build", "Repair"]
+    assert [c.label for c in scene.card] == ["Move", "Stop", "Attack", "Hold", "Patrol", "Build", "Repair"]
     assert "select" in scene.recent_sounds
 
 
@@ -150,7 +152,7 @@ def test_build_menu_places_a_farm_where_the_mouse_is(play) -> None:
     peasant = peasants_of(scene)[0]
     scene.select([peasant.id])
     press(game, "b")
-    assert scene.build_menu and [c.label for c in scene._card] == [
+    assert scene.build_menu and [c.label for c in scene.card] == [
         "Farm", "Barracks", "Hall", "Tower", "Mill", "Smith", "Stables", "Workshop", "Church", "Back",
     ]
     press(game, "f")
@@ -158,7 +160,7 @@ def test_build_menu_places_a_farm_where_the_mouse_is(play) -> None:
     site = (hall_of(scene).x + 5, hall_of(scene).y + 4)
     game.backend.inject_mouse_move(*screen_of(scene, (site[0] + 1, site[1] + 1)))
     game.tick(1 / 60)
-    assert scene._ghost() is not None and scene._ghost()[2]
+    assert scene.ghost() is not None and scene.ghost()[2]
     click(game, scene, (site[0] + 1, site[1] + 1))
     assert isinstance(peasant.order, Build) and peasant.order.type is BuildingType.FARM and peasant.order.pos == site
     tick(game, 3.0, 0.1)
@@ -170,7 +172,7 @@ def test_every_building_is_on_the_build_menu_with_its_hotkey_and_its_reason_when
     game, scene = play
     scene.select([peasants_of(scene)[0].id])
     press(game, "b")
-    hotkeys = {c.label: c.hotkey for c in scene._card}
+    hotkeys = {c.label: c.hotkey for c in scene.card}
     assert hotkeys == {RACES[Race.HUMAN].cards[bt]: BUILDINGS[bt].hotkey.upper() for bt in BuildingType if bt is not BuildingType.GOLD_MINE} | {"Back": "Esc"}
     press(game, "k")  # a blacksmith needs a barracks first
     assert scene.pending is None and scene.status == "Requires a Barracks"
@@ -194,7 +196,7 @@ def test_r_then_a_click_on_a_damaged_building_sends_the_peasants_to_repair_it(pl
     click(game, scene, farm.center)
     assert isinstance(peasant.order, Repair)
     scene.select([peasant.id])
-    assert ("B / R", "build / repair") in scene._hint()
+    assert ("B / R", "build / repair") in scene.hint()
 
 
 def test_the_town_hall_trains_a_peasant_with_p_and_the_rally_point_by_right_click(play) -> None:
@@ -202,7 +204,7 @@ def test_the_town_hall_trains_a_peasant_with_p_and_the_rally_point_by_right_clic
     world = scene.world
     hall = hall_of(scene)
     click(game, scene, hall.center)
-    assert scene.selection == [hall.id] and [c.label for c in scene._card] == ["Peasant", "Cancel"]
+    assert scene.selection == [hall.id] and [c.label for c in scene.card] == ["Peasant", "Cancel"]
     gold = scene.player.gold
     press(game, "p")
     assert hall.queue == [UnitType.PEASANT] and scene.player.gold == gold - 400
@@ -370,12 +372,12 @@ def test_a_kill_leaves_a_body_lying_that_fades_and_is_removed(play) -> None:
     world.attack([knight.id], victim.id)
     tick(game, 1.5, 0.1)
     assert victim.id not in world.units and scene.stats["units_killed"] == 1
-    death = next(e for e in scene.effects._items if isinstance(e, UnitDeath))
+    death = next(e for e in live_effects(scene) if isinstance(e, UnitDeath))
     assert abs(death.sprite.rotation) > 80 and death.sprite.opacity == 255  # fallen, and lying there
     tick(game, 3.0, 0.1)
     assert not death.done and death.sprite.opacity == 255
     tick(game, UnitDeath.HOLD + UnitDeath.FADE, 0.1)
-    assert death.done and death.sprite.is_removed and not any(isinstance(e, UnitDeath) for e in scene.effects._items)
+    assert death.done and death.sprite.is_removed and not any(isinstance(e, UnitDeath) for e in live_effects(scene))
 
 
 # -- Minimap and camera ---------------------------------------------------------------
@@ -468,9 +470,9 @@ def test_a_blacksmith_researches_with_a_hotkey_and_the_panel_shows_progress(play
     scene.player.gold, scene.player.lumber = 5000, 5000
     game.tick(1 / 60)
     click(game, scene, smith.center)
-    labels = [c.label for c in scene._card]
+    labels = [c.label for c in scene.card]
     assert labels == ["Blades I", "Armour I", "Cancel"]  # tier two waits for tier one
-    assert [c.target for c in scene._card][:2] == [Upgrade.BLADES_1, Upgrade.ARMOR_1]
+    assert [c.target for c in scene.card][:2] == [Upgrade.BLADES_1, Upgrade.ARMOR_1]
     press(game, "b")
     assert smith.research is Upgrade.BLADES_1
     game.tick(1 / 60)
@@ -479,7 +481,7 @@ def test_a_blacksmith_researches_with_a_hotkey_and_the_panel_shows_progress(play
     assert smith.research is None
     scene.player.upgrades.add(Upgrade.BLADES_1)
     scene.select([smith.id])
-    assert [c.label for c in scene._card][0] == "Blades II" and scene._card[0].tooltip.startswith("Tempered Blades")
+    assert [c.label for c in scene.card][0] == "Blades II" and scene.card[0].tooltip.startswith("Tempered Blades")
 
 
 def test_the_codex_lists_every_unit_building_and_upgrade(play) -> None:

@@ -197,7 +197,7 @@ def test_warbands_bank_moves_between_moods_with_crossfades(game, tmp_path, monke
     bank.music("victory")
     assert bank.music_playing == "victory" and game.backend.music_players[-1]["loop"] is False
     game.tick(1.5)  # the battle piece has faded under the fanfare
-    (player_id,) = [pid for pid in game.backend._music_players]
+    (player_id,) = [pid for pid in game.backend._music_players]  # the mock lists its players' state, not their ids (Saga2D 0.3.8)
     game.backend.stop_player(player_id)  # the ending runs out
     game.tick(1 / 60)
     bank.music("victory")

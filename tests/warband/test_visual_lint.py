@@ -117,7 +117,7 @@ def test_every_unit_pose_fits_the_unit_canvas() -> None:
             for carrying in carries:
                 frames = textures.FRAMES + textures.CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else textures.FRAMES
                 for frame in frames:
-                    mesh = textures._unit(unit_type, 0, frame, carrying, race)
+                    mesh = textures._unit(unit_type, 0, frame, carrying, race)  # the mesh itself: the drop is sized for its reach
                     reach = max(r3.bounds(r3.rotate_z(mesh, facing * 45 - 90), textures.PROJECTION)[3] for facing in range(textures.FACINGS))
                     assert reach + textures.PAD <= textures.DROP_UNIT, (race, unit_type, carrying, frame, reach)
 

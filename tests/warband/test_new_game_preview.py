@@ -35,7 +35,7 @@ def test_preview_is_drawn_with_opponents(tmp_path) -> None:
     try:
         scene = game.scene
         assert isinstance(scene, NewGameScene)
-        assert scene._preview_world is not None and scene._preview_pil is not None
+        assert scene.preview_world is not None and scene.preview_picture is not None
         handle = game.assets.image(PREVIEW_KEY)
         drawn = [i["image"] for i in game.backend.images]
         sprites = [s["image"] for s in game.backend.sprites.values()]
@@ -50,10 +50,10 @@ def test_reroll_changes_seed_and_image(tmp_path) -> None:
     try:
         scene = game.scene
         old_seed = scene.seed
-        old_bytes = scene._preview_pil.tobytes()
+        old_bytes = scene.preview_picture.tobytes()
         press(game, "r")
         assert scene.seed != old_seed
-        assert scene._preview_pil.tobytes() != old_bytes
+        assert scene.preview_picture.tobytes() != old_bytes
     finally:
         game.close()
 
@@ -65,7 +65,7 @@ def test_the_preview_fits_its_box_at_whole_pixels_per_tile(tmp_path, key: str, s
         press(game, key)
         scene = game.scene
         assert scene.size == size
-        assert scene._preview_pil.size == pixels
+        assert scene.preview_picture.size == pixels
         assert game.backend.get_image_size(game.assets.image(PREVIEW_KEY)) == PREVIEW_BOX  # one slot, the picture centred in it
     finally:
         game.close()
@@ -78,10 +78,10 @@ def test_the_map_row_picks_a_layout_and_the_caption_says_what_any_drew(tmp_path)
         assert scene.layout is None
         assert any(t.startswith("Any drew ") for t in texts(game))
         press(game, "f")
-        assert scene.layout is Layout.FOREST and scene._preview_world.layout is Layout.FOREST
+        assert scene.layout is Layout.FOREST and scene.preview_world.layout is Layout.FOREST
         assert mapgen.PROMISES[Layout.FOREST] in texts(game)
         press(game, "k")
-        assert scene._preview_world.layout is Layout.KLONDIKE
+        assert scene.preview_world.layout is Layout.KLONDIKE
         press(game, "y")
         assert scene.layout is None
     finally:

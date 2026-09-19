@@ -1,6 +1,7 @@
 """The rules, driven straight through World: orders, economy, combat, construction, fog, saves."""
 
 import random
+from collections.abc import Iterable
 
 import pytest
 
@@ -14,8 +15,10 @@ from warband.rules import (
 )
 
 
-def flat_world(width: int = 24, height: int = 20, players: int = 2) -> World:
+def flat_world(width: int = 24, height: int = 20, players: int = 2, trees: Iterable[tuple[int, int]] = ()) -> World:
     terrain = [[Terrain.GRASS] * width for _ in range(height)]
+    for x, y in trees:
+        terrain[y][x] = Terrain.TREES
     return World(width, height, terrain, players, rng=random.Random(1))
 
 
@@ -50,11 +53,7 @@ def test_a_unit_walks_to_where_it_is_sent_and_stops() -> None:
 
 
 def test_units_path_around_trees_and_never_stand_in_them() -> None:
-    world = flat_world()
-    for y in range(0, 20):
-        if y != 15:
-            world.terrain[y][10] = Terrain.TREES
-            world._blocked[y * world.width + 10] = 1
+    world = flat_world(trees=[(10, y) for y in range(0, 20) if y != 15])
     unit = world.spawn_unit(0, UnitType.KNIGHT, (2.5, 2.5))
     world.move([unit.id], (18.5, 2.5))
     for _ in range(int(20 / SIM_DT)):
@@ -84,13 +83,8 @@ def test_a_walk_ends_when_a_crowd_keeps_the_unit_from_the_exact_spot() -> None:
     # Fuzz seed 2016, the tiles and positions as found: two idle footmen pinned against the trees
     # above and to the right of the spot push the archer back exactly as far as it walks up each
     # tick, so it stood "walking" for the rest of the match.
-    world = flat_world()
     rows = ("#######..", "##..####.", "#....###.", ".....##..", ".....##..")
-    for j, row in enumerate(rows):
-        for i, cell in enumerate(row):
-            if cell == "#":
-                world.terrain[10 + j][5 + i] = Terrain.TREES
-                world._blocked[(10 + j) * world.width + 5 + i] = 1
+    world = flat_world(trees=[(5 + i, 10 + j) for j, row in enumerate(rows) for i, cell in enumerate(row) if cell == "#"])
     world.spawn_unit(0, UnitType.FOOTMAN, (9.999, 12.283))
     world.spawn_unit(0, UnitType.FOOTMAN, (9.999, 12.015))
     archer = world.spawn_unit(0, UnitType.ARCHER, (9.984, 12.67))
@@ -102,12 +96,7 @@ def test_a_walk_ends_when_a_crowd_keeps_the_unit_from_the_exact_spot() -> None:
 def test_a_crowd_cannot_shove_a_unit_through_a_tree_wall() -> None:
     # Fuzz seed 2203: eight overlapping units summed a push of over a tile, and the nudge only checked
     # the destination tile, so units jumped across the forest into an isolated clearing.
-    world = flat_world()
-    for x in range(3, 10):
-        for y in (2, 3, 4):
-            if (x, y) != (6, 3):  # a one-tile clearing inside the wood
-                world.terrain[y][x] = Terrain.TREES
-                world._blocked[y * world.width + x] = 1
+    world = flat_world(trees=[(x, y) for x in range(3, 10) for y in (2, 3, 4) if (x, y) != (6, 3)])  # a one-tile clearing inside the wood
     units = [world.spawn_unit(0, UnitType.FOOTMAN, (6.0 + 0.01 * i, 5.05)) for i in range(10)]
     world.move([u.id for u in units], (6.5, 5.2))
     for _ in range(int(4 / SIM_DT)):
@@ -119,9 +108,7 @@ def test_a_crowd_cannot_shove_a_unit_through_a_tree_wall() -> None:
 def test_a_unit_pushed_into_a_corner_walks_back_to_its_tile_centre_before_the_exact_spot() -> None:
     # The same seed, the other half: a detour to the unit's own tile was inserted into the path, but
     # the waypoint rule still aimed at the exact point across the tree, so every step was refused.
-    world = flat_world()
-    world.terrain[5][4] = Terrain.TREES
-    world._blocked[5 * world.width + 4] = 1
+    world = flat_world(trees=[(4, 5)])
     unit = world.spawn_unit(0, UnitType.FOOTMAN, (5.02, 5.5))
     world.move([unit.id], (4.5, 6.9))
     unit.path, unit.exact, unit.path_goal = [(5, 5)], (4.5, 6.9), (4, 6)  # the state a crowd leaves behind
@@ -246,13 +233,9 @@ def test_being_hit_raises_one_under_attack_alert_per_cooldown() -> None:
 
 
 def base_world() -> tuple[World, int]:
-    world = flat_world()
+    world = flat_world(trees=[(x, y) for x in range(14, 17) for y in range(6, 12)])
     hall = world.place_building(0, BuildingType.TOWN_HALL, (4, 8))
     world.place_building(None, BuildingType.GOLD_MINE, (4, 2))
-    for x in range(14, 17):
-        for y in range(6, 12):
-            world.terrain[y][x] = Terrain.TREES
-            world._blocked[y * world.width + x] = 1
     world.update_vision()
     return world, hall.id
 
@@ -533,11 +516,11 @@ def test_a_hall_less_player_has_its_last_holdings_revealed_once() -> None:
     world.update_vision()
     assert not world.is_visible(0, (farm.x, farm.y))
     assert not events(world, "exposed")
-    world._remove_building(barracks, reason="destroyed")
+    world._remove_building(barracks, reason="destroyed")  # staged: what a siege would end in, without the siege
     world.update_vision()
     assert not world.is_visible(0, (farm.x, farm.y))  # the barracks still trains
     assert not events(world, "exposed")
-    world._remove_building(hall, reason="destroyed")
+    world._remove_building(hall, reason="destroyed")  # staged, as above
     world.update_vision()
     assert world.is_visible(0, (farm.x, farm.y))
     assert world.is_visible(0, (tower.x, tower.y))
@@ -761,7 +744,7 @@ def test_a_loaded_world_remembers_who_is_at_the_mine_face() -> None:
     world.harvest([u.id for u in world.player_units(0)], mine.id)
     run_until(world, lambda: sum(1 for u in world.player_units(0) if u.inside == mine.id) == MINE_SLOTS, 60.0)
     loaded = World.from_dict(world.to_dict())
-    assert loaded._mine_crews == {mine.id: MINE_SLOTS}
+    assert loaded._mine_crews == {mine.id: MINE_SLOTS}  # the places at the face: bookkeeping no order or view shows
     for _ in range(int(60 / SIM_DT)):
         loaded.step()
         assert sum(1 for u in loaded.player_units(0) if u.inside == mine.id) <= MINE_SLOTS

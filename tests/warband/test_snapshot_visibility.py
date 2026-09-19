@@ -116,7 +116,7 @@ def test_the_id_counter_says_nothing_beyond_what_was_sent() -> None:
     match = fogged_match()
     snapshot = sent(match, 0)['world']
     sent_ids = [e['id'] for key in ('units', 'buildings', 'projectiles') for e in snapshot[key]]
-    assert snapshot['next_id'] == max(sent_ids) + 1 < match.world._next_id
+    assert snapshot['next_id'] == max(sent_ids) + 1 < match.world._next_id  # the true counter, which must not be told
 
 
 def test_ground_and_mines_out_of_sight_are_as_the_seat_last_saw_them_and_unseen_ones_as_the_map_began() -> None:
@@ -184,7 +184,9 @@ def test_news_travels_to_who_saw_it_to_its_owner_and_the_public_to_everyone() ->
 
 
 def test_the_checkpoint_keeps_who_saw_what_and_how_the_map_began() -> None:
-    from warband.authority import _checkpoint, _restore
+    from warband.authority import ONLINE
+
+    spec = ONLINE["warband-v2"]
 
     match = fogged_match()
     world = match.world
@@ -194,7 +196,7 @@ def test_the_checkpoint_keeps_who_saw_what_and_how_the_map_began() -> None:
     felled = next((x, y) for y in range(world.height) for x in range(world.width)
                   if world.terrain[y][x] is Terrain.TREES and not world.is_explored(0, (x, y)))
     world.terrain[felled[1]][felled[0]] = Terrain.GRASS
-    restored = _restore(json.loads(json.dumps(_checkpoint(match))))
+    restored = spec.restore(json.loads(json.dumps(spec.checkpoint(match))))
     for seat in (0, 1):
         assert sent(restored, seat) == sent(match, seat)
     assert not any(f.get('entity') == home_unit.id for _i, f in sent(restored, 0)['events'])
