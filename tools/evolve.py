@@ -222,6 +222,7 @@ def main() -> None:
     parser.add_argument("--elite", type=int, default=8)
     parser.add_argument("--seeds", type=int, default=6, help="boards per opponent per generation, each from both corners")
     parser.add_argument("--panel", default="pro-vanguard,pro-warden,pro-rush")
+    parser.add_argument("--hall-size", type=int, default=2, help="run: how many of its own champions join the panel")
     parser.add_argument("--start", default=None, help="comma separated known profiles the first generation is seeded with")
     parser.add_argument("--seed-genes", default=None, help="run: comma separated JSON files whose \"genes\" join the first generation (a macro search's --out)")
     parser.add_argument("--first-seed", type=int, default=200_000)
@@ -251,7 +252,8 @@ def main() -> None:
         print(f"carrying on {out} from generation {state.generation}")
     else:
         settings = evolve.Settings(race=args.race, population=args.population, elite=args.elite, seeds=args.seeds,
-                                   panel=tuple(args.panel.split(",")), first_seed=args.first_seed, seed=args.seed)
+                                   panel=tuple(args.panel.split(",")), first_seed=args.first_seed, seed=args.seed,
+                                   hall_size=args.hall_size)
         if args.start is not None:
             settings.start = tuple(name for name in args.start.split(",") if name)
         import json
