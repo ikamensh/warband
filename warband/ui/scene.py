@@ -1257,10 +1257,13 @@ class GameScene(Scene):
         return refusal is not None
 
     def _refusal(self, command: Command) -> str | None:
-        """Why *command* cannot be given now: a prerequisite nobody is making, else its own block.  Brings the card's record
-        of what the command's target lacks up to date."""
+        """Why *command* cannot be given now: a prerequisite nobody is making, else its own block."""
+        return self._requires(self._lacks(command)) or command.blocked()
+
+    def _lacks(self, command: Command) -> Need | None:
+        """What *command*'s target still lacks, noted on the command for the card to draw."""
         command.need = self._need(command.target) if command.catalogue else None
-        return self._requires(command.need) or command.blocked()
+        return command.need
 
     def _upgrade_planned(self, upgrade: Upgrade) -> str | None:
         if upgrade in self.player.upgrades:
@@ -1403,6 +1406,7 @@ class GameScene(Scene):
         for command in commands:
             key = scheme.card_key(command.letter, command.slot)
             command.hotkey = key_label(key) if key else ""
+            self._lacks(command)  # drawn before the next update when an online snapshot refreshes the card from its timer
         back = self.catalogue is not None  # a catalogue opened over the card, not the Modal scheme's home
         signature = (back, scheme.positional, tuple((c.label, c.hotkey, c.cost, c.target, c.slot, c.style) for c in commands))
         if signature == self._card_signature:

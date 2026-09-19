@@ -204,3 +204,16 @@ def test_a_plan_that_waits_for_nothing_is_not_on_its_way(game) -> None:
     assert scene.attempt("cancel_plan", scene.human, barracks)
     game.tick(1 / 60)
     assert caption_under(game, button_of(scene, BuildingType.WORKSHOP)) == ["Workshop", "needs Smith"]
+
+
+def test_the_card_shows_what_is_lacking_when_it_is_refreshed_from_a_timer(game) -> None:
+    """An online match refreshes the card from its polling timer on every snapshot, after the frame's update: fresh
+    commands then carried no need, and the greyed knight showed its price and no badge on every such frame."""
+    scene = match(game)
+    press(game, "t")
+    scene.every(1 / 60, scene._refresh_card)  # as NetworkGameScene._poll does; the private call is that scene's own
+    shown = set()
+    for _ in range(5):
+        game.tick(1 / 60)
+        shown.add(tuple(caption_under(game, button_of(scene, UnitType.KNIGHT))))
+    assert shown == {("Knight", "needs Stables")}

@@ -152,7 +152,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
     from warband.ui.style import build_theme
     from warband.ui.title import NewGameScene, TitleScene
     from warband.ui.multiplayer import NetworkGameScene, NetworkMenuScene
-    from warband.sim.rules import UnitType
+    from warband.sim.rules import BuildingType, UnitType
 
     info = build_info()
     images = []
@@ -238,17 +238,23 @@ def native_smoke(output: Path, endpoint: str) -> dict:
             wait(lambda: live.world.time >= 2)
             capture("-online-match")
             assert live.selection == []
+            click("Build")
+            click(BuildingType.BARRACKS)
+            click(BuildingType.BARRACKS)  # its button again: the planner picks the spot for the settlement's plan
+            wait(lambda: any(plan.type is BuildingType.BARRACKS for plan in live.world.player_plans(live.human)))
             click("Train")
             capture("-settlement-train")
-            click(UnitType.FOOTMAN)  # the line unit under whatever name this seat's race gives it
+            click(UnitType.FOOTMAN)  # the line unit under whatever name this seat's race gives it: after the barracks, it waits for it
             wait(lambda: any(plan.kind == "unit" for plan in live.world.player_plans(live.human)))
             camera_before = (*live.camera.offset, live.camera.zoom)
             click(f"Plans ({live._plan_count()})")
             assert isinstance(game.scene, SettlementPlansScene)
             capture("-settlement-plans")
             assert (*live.camera.offset, live.camera.zoom) == camera_before
-            click("Cancel")
-            wait(lambda: not live.world.player_plans(live.human))
+            for left in (1, 0):  # the barracks' plan, then the footman's; the overlay lays the rest out afresh before the next click
+                click("Cancel")
+                wait(lambda left=left: len(live.world.player_plans(live.human)) == left
+                     and sum(getattr(b, "text", "") == "Cancel" for b in game.scene.ui.walk()) == left)
             click("Back")
             press(key.F10)
             assert isinstance(game.scene, NetworkMenuScene)
