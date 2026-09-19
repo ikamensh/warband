@@ -582,10 +582,14 @@ class ProBrain:
             wishes.append((BuildingType.FARM, anchor))
         self._opening_next = None
         listed: dict[BuildingType, int] = {}
+        # An opening counts each building once. ``count`` sees a site twice while it goes up, as the building and as
+        # its builder's order, which the knobs above were tuned with; a list that names the second barracks cannot
+        # take the first one's frame for it.
+        begun = [b.type for b in world.player_buildings(player) if not b.done] + [o.type for o in self._ordered(world) if o.building is None]
         for step in profile.opening:
             listed[step] = listed.get(step, 0) + 1
             needs = BUILDINGS[step].requires
-            if count(step) >= listed[step] or (needs is not None and not have(needs)):
+            if have(step) + begun.count(step) >= listed[step] or (needs is not None and not have(needs)):
                 continue  # up already, or waiting for what it needs: the next of the opening goes up meanwhile
             where = self._front_point(world, hall) if step is BuildingType.TOWER else anchor
             if step is BuildingType.TOWN_HALL:
