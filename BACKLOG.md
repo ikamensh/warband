@@ -36,7 +36,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
-| WB-014 | Next | in progress | Revalidate difficulty and race balance after recovered branch work | Suggested |
+| WB-014 | Next | done | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
@@ -106,6 +106,31 @@ report` (how many four-player matches are decided, and by whom). The
 over 96 games a variant; unless a variant clears 55%, it is dropped with its
 numbers in `docs/ai-ladder.md`, and the `warband-arena` worktree is removed.
 
+
+**Done 2026-09-19, merged into main as `18eaf4a`** (`8059c31` on branch
+`balance-check`) and live as Warband 0.2.59. The report is `docs/balance.md`,
+"Revalidated on 2026-09-19", with the difficulty table in
+`docs/ai-ladder.md` and the W01 row of `docs/warband-early-access-progress.md`;
+evidence under `docs/evidence/wb014/`. One regression and one broken tool:
+the Early Access gate W01 had slipped (the scripted opening beat Easy 5 times
+in 32; bisected on main's first-parent history to `b26e016`, 2026-09-15,
+soldiers fight soldiers first, after which Easy's wave of ten at four and a
+half minutes killed the opening's first soldiers and then its peasants).
+Easy now sends no wave before minute eight (`Profile.first_attack`, a test
+pins it): the script beats Easy 10 of 16, and Medium, Hard and Master still
+beat it every time; Easy's rating falls to 565 (the screen shows 570, 1000,
+1410, 1630, and Easy's note says it waits). `tools/race_report.py` asks
+`make_brain`, which it had to since Hard became a ProBrain. Races on Master,
+288 matches: human 55.6%, elf 51.4%, dwarf 51.4%, orc 41.4%, filed as
+WB-045. Four-player free-for-alls of the four settings: 85 of 96 decided,
+median 11.5 minutes, Master 72%, Hard 53%, Medium 47%, Easy 28%. The
+`opening_choppers` experiment, ported onto the Vanguard, lost 32%, 5% and
+12% against it: dropped, its patch kept in the evidence, and the
+`warband-arena` worktree and its merged branch removed. Main ran
+[Tests 35415042900](https://github.com/ikamensh/warband/actions/runs/35415042900)
+and [native package checks 35415042960](https://github.com/ikamensh/warband/actions/runs/35415042960);
+[promotion 35415541698](https://github.com/ikamensh/saga-online/actions/runs/35415541698)
+published 0.2.59.
 
 ## WB-038 — Paint the gold mine
 
