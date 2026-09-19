@@ -31,12 +31,12 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 ([`0680eb5`](https://github.com/ikamensh/warband/blob/0680eb570c73abba14d3c431f89bedeba5846246/BACKLOG.md)); WB-037, merged as `1b9880f`, live as 0.2.53
 ([`5a57cb9`](https://github.com/ikamensh/warband/blob/5a57cb94292cd1e39a20969cfe7c4a3b827fac61/BACKLOG.md)); WB-036, merged as `4a77498`, live as 0.2.55
 ([`3f22525`](https://github.com/ikamensh/warband/blob/3f22525a4db442d7f8d0d2c02b7532375ad1e075/BACKLOG.md)); WB-024, closed on its evidence as `dd7cf5f`
-([`896c6ea`](https://github.com/ikamensh/warband/blob/896c6eab99fb426d7f0aa02588b0fd1dc1463d07/BACKLOG.md)).
+([`896c6ea`](https://github.com/ikamensh/warband/blob/896c6eab99fb426d7f0aa02588b0fd1dc1463d07/BACKLOG.md)); WB-014, merged as `18eaf4a`, live as 0.2.59
+([`5fd2ef4`](https://github.com/ikamensh/warband/blob/5fd2ef41798f8162811b9eb0d286c80c65c9bb26/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
-| WB-014 | Next | done | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
@@ -61,76 +61,6 @@ to build until a playtest happens. What unblocks it: one or two fresh players'
 sessions (a recording or notes on what confused them), on a Mac or on Windows.
 The Windows report that came first is closed (WB-021, WB-022), and a Windows
 desktop for scripted checks is [a runbook away](../saga-online/docs/windows-test-box.md).
-
-## WB-014 — Difficulty and race-balance evidence
-
-The balance work is merged and live as Warband 0.2.30 (2026-09-18: merges
-[`4366789`](https://github.com/ikamensh/warband/commit/4366789) and
-[`faed307`](https://github.com/ikamensh/warband/commit/faed307), then the
-server's [balance rollout](../saga-online/docs/balance-rollout.md)): the mine
-cap (eight at the face), Master expanding when its mine fails, the price and
-race changes, the repair-cost fix, match tallies, the posture league
-(`tools/balance_report.py`), settled matches and layout cycling. The leagues'
-evidence and findings are in [docs/balance.md](docs/balance.md). The ratings
-the New game screen shows were re-measured on merged main with the 720-game
-protocol: Easy 856, Medium 1000, Hard 1353, Master 1589
-([docs/ai-ladder.md](docs/ai-ladder.md)).
-
-Still to check, on current main with the arena and AI-report tools over
-adequate seeded samples: Easy against a basic opening, and free-for-all
-endings. Keep economy/crowding failures distinct from numerical balance.
-
-One experiment is unaccounted for: the `ai-arena` worktree
-(`~/saga/warband-arena`, its branch merged) holds an uncommitted edit to
-`warband/pro_ai.py` from 2026-09-16, an `opening_choppers` knob that keeps two
-to four peasants on the trees for the first three minutes, with the trial
-profiles `pro-open2` to `pro-open4`. It no longer applies cleanly to main (one
-of its three hunks). Port and rate it with `tools/arena.py`, or drop it; then
-remove the worktree.
-
-**Done when:** a recorded report supports the displayed difficulty expectations;
-concrete regressions become small fixes with rule tests, fuzz and refreshed
-fingerprints where appropriate. Do not retune from a few observed matches.
-
-**Started 2026-09-19** on branch `balance-check` (worktree `../warband-rush`)
-by the backlog session; the balance session that did the merged work was
-asked about it and is idle. The displayed ratings were re-measured three
-times that day with the 720-game protocol as the brains changed (WB-043,
-WB-037, WB-036: now Easy 867, Hard 1442, Master 1665). What the report adds,
-measured before any change: each setting against `tools/ai_report.py`'s
-scripted human opening on 16 seeds (Easy is to lose to it, Medium to split
-with it, Hard and Master to beat it), the four races' shares on the ladder
-from `tools/race_report.py`, and free-for-all endings from `tools/arena.py
-report` (how many four-player matches are decided, and by whom). The
-`opening_choppers` experiment is ported onto the Vanguard and rated against it
-over 96 games a variant; unless a variant clears 55%, it is dropped with its
-numbers in `docs/ai-ladder.md`, and the `warband-arena` worktree is removed.
-
-
-**Done 2026-09-19, merged into main as `18eaf4a`** (`8059c31` on branch
-`balance-check`) and live as Warband 0.2.59. The report is `docs/balance.md`,
-"Revalidated on 2026-09-19", with the difficulty table in
-`docs/ai-ladder.md` and the W01 row of `docs/warband-early-access-progress.md`;
-evidence under `docs/evidence/wb014/`. One regression and one broken tool:
-the Early Access gate W01 had slipped (the scripted opening beat Easy 5 times
-in 32; bisected on main's first-parent history to `b26e016`, 2026-09-15,
-soldiers fight soldiers first, after which Easy's wave of ten at four and a
-half minutes killed the opening's first soldiers and then its peasants).
-Easy now sends no wave before minute eight (`Profile.first_attack`, a test
-pins it): the script beats Easy 10 of 16, and Medium, Hard and Master still
-beat it every time; Easy's rating falls to 565 (the screen shows 570, 1000,
-1410, 1630, and Easy's note says it waits). `tools/race_report.py` asks
-`make_brain`, which it had to since Hard became a ProBrain. Races on Master,
-288 matches: human 55.6%, elf 51.4%, dwarf 51.4%, orc 41.4%, filed as
-WB-045. Four-player free-for-alls of the four settings: 85 of 96 decided,
-median 11.5 minutes, Master 72%, Hard 53%, Medium 47%, Easy 28%. The
-`opening_choppers` experiment, ported onto the Vanguard, lost 32%, 5% and
-12% against it: dropped, its patch kept in the evidence, and the
-`warband-arena` worktree and its merged branch removed. Main ran
-[Tests 35415042900](https://github.com/ikamensh/warband/actions/runs/35415042900)
-and [native package checks 35415042960](https://github.com/ikamensh/warband/actions/runs/35415042960);
-[promotion 35415541698](https://github.com/ikamensh/saga-online/actions/runs/35415541698)
-published 0.2.59.
 
 ## WB-038 — Paint the gold mine
 
