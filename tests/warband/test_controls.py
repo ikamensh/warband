@@ -225,7 +225,7 @@ def test_shift_with_a_recruits_key_trains_it_endlessly_and_cancel_stops_it(game,
     press(game, footman.key, shift=True)
     press(game, archer.key, shift=True)
     assert barracks.auto == [UnitType.FOOTMAN, UnitType.ARCHER] and footman.endless()
-    assert scene.status == "Barracks: Footman, Archer endlessly, in turn · paid when each starts, after your plans"
+    assert scene.status == "Barracks: Footman, Archer endlessly in turn"
     for _ in range(12):
         game.tick(0.1)
     assert barracks.queue == [UnitType.FOOTMAN]
@@ -272,7 +272,7 @@ def test_the_building_panel_says_what_is_endless_and_why_it_waits(game) -> None:
     for _ in range(12):
         game.tick(0.1)
     shown = [t["text"] for t in game.backend.texts]
-    assert "Endless: Archer" in shown and "Next: Archer · Not enough gold (500 needed)" in shown
+    assert "Endless: Archer" in shown and "Not enough gold (500 needed)" in shown
 
 
 # -- Placing buildings -------------------------------------------------------------------------------------------------

@@ -1363,12 +1363,12 @@ class World:
         for plan in self.settlement.player_plans(building.player):
             if plan.kind == "upgrade" and isinstance(plan.type, Upgrade) and plan.type in building.info.researches \
                     and self.can_research(building, plan.type) in (None, "Training in progress"):
-                return f"{UPGRADES[plan.type].name} is planned here and goes first"
+                return f"Research first: {UPGRADES[plan.type].name}"
         cost, held = self.unit_info(building.player, unit_type).cost, self.committed(building.player)
         player = self.players[building.player]
         # Per resource: a plan short of lumber claims no gold beyond its price, so a recruit paid in gold alone may go.
         if max(0, player.gold - held.gold) < cost.gold or max(0, player.lumber - held.lumber) < cost.lumber:
-            return "Gold and lumber held for your plans"
+            return "Your plans are paid first"
         return None
 
     @recorded

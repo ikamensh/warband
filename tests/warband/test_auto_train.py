@@ -90,7 +90,7 @@ def test_what_the_player_asked_for_is_paid_before_endless_training() -> None:
     run(world, 2.0)
     farm = BUILDINGS[BuildingType.FARM].cost
     assert world.committed(0) == farm and barracks.queue == []
-    assert world.auto_train_blocker(barracks) == "Gold and lumber held for your plans"
+    assert world.auto_train_blocker(barracks) == "Your plans are paid first"
     world.players[0].gold = farm.gold + UNITS[UnitType.FOOTMAN].cost.gold  # the lumber the farm lacks claims no more gold than its price
     run(world, 1.05)
     assert barracks.queue == [UnitType.FOOTMAN] and world.players[0].gold == farm.gold

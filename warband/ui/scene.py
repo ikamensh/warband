@@ -952,8 +952,7 @@ class GameScene(Scene):
         name = self.building_name(building.type)
         rotation = [t for t in building.auto if t is not unit_type] + [unit_type] if on else [t for t in building.auto if t is not unit_type]
         if on:
-            self.say(f"{name}: {', '.join(self.unit_name(t) for t in rotation)} endlessly" + (", in turn" if len(rotation) > 1 else "")
-                     + " · paid when each starts, after your plans")
+            self.say(f"{name}: {', '.join(self.unit_name(t) for t in rotation)} endlessly" + (" in turn" if len(rotation) > 1 else ""))
         else:
             self.say(f"{name}: no more endless {self.unit_name(unit_type)}")
         self._refresh_card()
@@ -2032,8 +2031,9 @@ class GameScene(Scene):
         self.draw_text("Hover for details · click to go there · right-click to cancel", x + 16, y + 106, style="sub")
 
     def _endless_line(self, building: Building) -> str:
+        """What *building* trains endlessly, the next one first."""
         names = [self.unit_name(unit_type) for unit_type in building.auto]
-        return "Endless: " + ", ".join(names) + (", in turn" if len(names) > 1 else "")
+        return "Endless: " + ", ".join(names) + (" in turn" if len(names) > 1 else "")
 
     def _portrait(self, entity: Unit | Sighting, x: float, y: float, size: float) -> None:
         draw_production_icon(self, entity.type, entity.player, entity.race, x, y, size)
@@ -2133,9 +2133,9 @@ class GameScene(Scene):
                     self.draw_text(self._endless_line(building), tx, y + 96, style="body", color=GOLD)
             elif building is not None and building.auto:
                 lines.append(self._endless_line(building))
-                reason = world.auto_train_blocker(building)
+                reason = world.auto_train_blocker(building)  # the first named is the next, and waits for this
                 if reason is not None:
-                    lines.append(f"Next: {self.unit_name(building.auto[0])} · {reason}")
+                    lines.append(reason)
             elif building is not None:
                 lines.append(building.info.summary)
                 if building.type is BuildingType.TOWN_HALL:
