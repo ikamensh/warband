@@ -1569,7 +1569,7 @@ class World:
                 pending.append((tile, when))
                 continue
             if self.terrain[y][x] is not Terrain.GRASS or self._blocked[y * self.width + x] or any(
-                    not u.hidden and u.tile == tile for u in self.units_near(tile_center(tile), 1.0)):
+                    u.tile == tile for u in self.units_near(tile_center(tile), 1.0)):  # a miner inside comes out where it went in
                 pending.append((tile, self.time + 5.0))  # try again shortly
                 continue
             self.terrain[y][x] = Terrain.TREES

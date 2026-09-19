@@ -230,6 +230,23 @@ def test_regrowth_brings_felled_trees_back_unless_something_stands_there() -> No
     assert copy.terrain_at((12, 9)) is Terrain.TREES and copy.players[0].race is Race.ELF
 
 
+def test_a_felled_tree_does_not_grow_back_onto_a_miner_inside_the_mine() -> None:
+    """A miner comes out where it went in, and regrowth waited only for units in sight: a tree grew on the tile of a
+    miner inside the mine, and it came out in the tree and never moved again, its gold undelivered."""
+    world = flat_world((Race.ELF, Race.HUMAN), 32, 24)
+    world.place_building(0, BuildingType.TOWN_HALL, (2, 2))
+    mine = world.place_building(None, BuildingType.GOLD_MINE, (10, 12))
+    miner = world.spawn_unit(0, UnitType.PEASANT, (9.5, 10.5))
+    world.harvest([miner.id], mine.id)
+    run_until(world, lambda: miner.inside is not None, 10)
+    tile = miner.tile
+    world.regrowth.append((tile, world.time + 0.5))  # staged: an elf felled the tree here with Regrowth a minute ago
+    run_until(world, lambda: miner.inside is None, 10)
+    assert world.terrain_at(tile) is Terrain.GRASS
+    gold = world.players[0].gold
+    run_until(world, lambda: world.players[0].gold > gold, 30)
+
+
 # -- Dwarves: stonework, deep mining and blasting powder ------------------------------------------
 
 
