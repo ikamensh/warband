@@ -101,3 +101,29 @@ def test_a_mixed_selection_shows_every_kind(tmp_path) -> None:
         assert all(inside(rect, scene.selection_panel.bounds) for _, rect in scene.portraits)
     finally:
         game.close()
+
+
+def test_the_panel_says_in_words_what_a_unit_is_doing(tmp_path) -> None:
+    """It spelt out the order's class name: an attack-move read "Attacking-moving" and a repair "Repair"."""
+    from warband.sim.rules import BuildingType
+
+    game = Game("Warband selection", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        scene = GameScene(field(), 0, ranked=False, settings=dict(SETTINGS))
+        game.push(scene)
+        world = scene.world
+        footman = world.spawn_unit(0, UnitType.FOOTMAN, (8.5, 6.5))
+        world.attack_move([footman.id], (30.5, 6.5))
+        farm = world.place_building(0, BuildingType.FARM, (8, 10))
+        farm.hp = farm.max_hp // 2  # staged: a raid's work
+        peasant = world.spawn_unit(0, UnitType.PEASANT, (12.5, 12.5))
+        world.repair([peasant.id], farm.id)
+        said = {}
+        for unit in (footman, peasant):
+            scene.select([unit.id])
+            for _ in range(2):
+                game.tick(1 / 60)
+            said[unit.type] = {t["text"] for t in game.backend.texts}
+        assert "Attack-moving" in said[UnitType.FOOTMAN] and "Repairing" in said[UnitType.PEASANT]
+    finally:
+        game.close()

@@ -23,7 +23,8 @@ from warband.sim import mapgen
 from warband.brains.ai import DIFFICULTY_ELO, auto_site, make_brain
 from warband.art.effects import Flare, Spray, Stain, UnitDeath, death_outcome
 from warband.ui.icons import Icon, draw_icon, hourglass_parts, lock_parts, loop_parts
-from warband.sim.model import Build, Building, Entity, Event, Pos, RuleError, Unit, World
+from warband.sim.model import (Attack, AttackMove, Build, Building, Deposit, Entity, Event, Harvest, Heal, Hold, Move, Patrol, Pos, Repair,
+                                RuleError, Unit, World)
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
 from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, SIM_DT, UNITS, UPGRADES, ArmorClass, AttackType, BuildingType, Difficulty, MapTheme, Race,
@@ -69,6 +70,9 @@ BUILD_ORDER = (BuildingType.FARM, BuildingType.BARRACKS, BuildingType.TOWN_HALL,
                BuildingType.BLACKSMITH, BuildingType.STABLES, BuildingType.WORKSHOP, BuildingType.CHURCH)
 #: The unit card's slots: moving on the top row (Q W E in Grid), fighting and a peasant's work below.
 UNIT_SLOTS = {"move": 0, "stop": 1, "hold": 2, "attack": 3, "patrol": 4, "build": 5, "repair": 6}
+#: What the unit panel says a unit with each order is doing.
+DOING = {Move: "Moving", AttackMove: "Attack-moving", Attack: "Attacking", Harvest: "Harvesting", Deposit: "Delivering",
+         Build: "Going to build", Hold: "Holding position", Heal: "Healing", Patrol: "Patrolling", Repair: "Repairing"}
 #: The Upgrade catalogue's slots: each chain's tiers side by side; None stands for the race's two arts.
 UPGRADE_ROWS = ((Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.SIEGE), (Upgrade.ARMOR_1, Upgrade.ARMOR_2, None),
                 (Upgrade.ARROWS_1, Upgrade.ARROWS_2, None))
@@ -2225,9 +2229,7 @@ class GameScene(Scene):
             elif entity.carrying is not None:
                 lines.append(f"Carrying {entity.carry} {entity.carrying.value}")
             elif order is not None:
-                lines.append(type(order).__name__.replace("AttackMove", "Attack-moving").replace("Move", "Moving").replace("Attack", "Attacking")
-                             .replace("Harvest", "Harvesting").replace("Build", "Going to build").replace("Hold", "Holding position").replace("Heal", "Healing")
-                             .replace("Patrol", "Patrolling"))
+                lines.append(DOING[type(order)])
             else:
                 lines.append("Idle")
         else:
