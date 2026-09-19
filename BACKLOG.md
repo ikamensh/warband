@@ -36,7 +36,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
-| WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
+| WB-024 | Next | closed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
@@ -117,6 +117,29 @@ with the same fights decided the same way (the arena's ladders unchanged
 within noise), the step's p95 under 3 ms in `tools/step_bench.py`, the late
 p95 of `tools/perf.py` measured before and after, seeded fuzz clean, the
 fingerprint refreshed deliberately with the rest of its series.
+
+**Closed 2026-09-19 without its done-when, merged as `dd7cf5f`** (`b72cfc9`
+on branch `fewer-paths`): the premise was the reference battle's, not the
+model's. Its seed had come to draw a wooded layout, and `battle_world` placed
+72 of its 150 soldiers in trees; 41 were still in them 300 steps on, each
+planning a way out every 0.6 s, and those plans were the "45 % of a step" and
+the 28 ms bursts. The battle now plays on plains with the battlefield cleared
+to grass (as map generation carves a road), a soldier whose cell a building
+stands on is put beside it, and a test holds every soldier to open ground
+(it fails on the old battle). On it, with main's model: 684 plans over 300
+steps (2.28 a step, 150 of them the opening's), shoves that plan 7 of them;
+pathfinding 33 ms over 720 frames of `tools/perf.py`, 0.3 % of frame time,
+where the old battle spent 411 ms; the step 2.25 ms, 5.4 % of it; the
+source's step p95 3.6 ms in `tools/step_bench.py`
+(`WARBAND_INTERPRETED=1`: the tools run the compiled simulation otherwise).
+A rejoin for shoved units, tried first, saved nothing on the clean battle
+and was dropped. The frame p95 is 18–20 ms on the same Mac under other
+sessions' load, set by gen-2 collector pauses of about 25 ms and the
+renderer's end of frame: S2D-016 and S2D-017, recorded in the W10 row of
+`docs/warband-early-access-progress.md`. Nothing in the simulation, contract
+or fingerprint moved. Main ran
+[Tests 35412937637](https://github.com/ikamensh/warband/actions/runs/35412937637)
+and [native package checks 35412937589](https://github.com/ikamensh/warband/actions/runs/35412937589).
 
 ## WB-038 — Paint the gold mine
 
