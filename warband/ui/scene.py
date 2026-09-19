@@ -1800,6 +1800,8 @@ class GameScene(Scene):
                 self.sfx("under_attack")
             elif e.kind == "refused" and mine:
                 self.warn(e.text)
+            elif e.kind == "deferred" and mine:
+                self.say(e.text)  # the builder walks off, and the site waits as a plan for the money
             elif e.kind in ("eliminated", "surrendered") and not mine:
                 # Results pause this scene: a new toast would freeze mid-slide underneath them.
                 if self.world.winner is None and self.player.alive:

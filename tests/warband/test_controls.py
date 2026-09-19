@@ -335,6 +335,23 @@ def test_shift_placed_sites_are_all_built_the_one_short_of_money_as_a_plan(game)
     assert {b.pos for b in world.player_buildings(scene.human, BuildingType.FARM)} >= {first, second}
 
 
+def test_a_site_its_builder_cannot_pay_for_says_it_waits_as_a_plan(game) -> None:
+    """The builder leaves a site the purse cannot pay for as a plan (a private "deferred" event); the scene never said
+    so, and the player saw the builder walk away from bare ground."""
+    scene = match(game)
+    peasant = next(p for p in peasants_of(scene) if not p.hidden)
+    scene.select([peasant.id])
+    scene.player.gold = 0
+    press(game, "b")
+    press(game, "f")
+    click(game, scene, centre(BuildingType.FARM, open_ground(scene, BuildingType.FARM, peasant.pos)))
+    for _ in range(150):
+        game.tick(0.1)
+        if scene.world.player_plans(scene.human):
+            break
+    assert scene.status == "Not enough gold (500 needed): the Farm waits as a plan"
+
+
 def test_several_peasants_share_the_sites_placed(game) -> None:
     scene = match(game)
     workers = peasants_of(scene)[:3]
