@@ -27,26 +27,26 @@ def source(tmp_path):
 def test_contract_covers_simulation_without_loading_client_scenes(source):
     """The dedicated server entry point runs independently of the game view; its inputs are inspectable offline."""
     result = subprocess.run([sys.executable, "-c",
-                             "import sys; from warband.authority import ONLINE; "
-                             "assert 'warband.scene' not in sys.modules; assert list(ONLINE) == ['warband-v2']; "
-                             "from tools.package import PACKAGE; assert PACKAGE.online == 'warband.authority:ONLINE'"],
+                             "import sys; from warband.online.authority import ONLINE; "
+                             "assert 'warband.ui.scene' not in sys.modules; assert list(ONLINE) == ['warband-v2']; "
+                             "from tools.package import PACKAGE; assert PACKAGE.online == 'warband.online.authority:ONLINE'"],
                             cwd=ROOT, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     result = contract(source)
     assert result.returncode == 0, result.stderr
     original = json.loads(result.stdout)
     files = set(original["files"])
-    assert {"warband/authority.py", "warband/model.py", "warband/mapgen.py", "warband/rules.py",
-            "warband/races.py", "warband/settlement.py", "warband/worker_ai.py", "warband/path.py"} <= files
-    assert "warband/scene.py" not in files and "warband/textures.py" not in files
-    (source / "warband/textures.py").write_text("raise RuntimeError('Artwork need not import for compatibility')\n")
+    assert {"warband/online/authority.py", "warband/sim/model.py", "warband/sim/mapgen.py", "warband/sim/rules.py",
+            "warband/sim/races.py", "warband/sim/settlement.py", "warband/sim/worker_ai.py", "warband/sim/path.py"} <= files
+    assert "warband/ui/scene.py" not in files and "warband/art/textures.py" not in files
+    (source / "warband/art/textures.py").write_text("raise RuntimeError('Artwork need not import for compatibility')\n")
     assert json.loads(contract(source).stdout) == original
 
 
 @pytest.mark.parametrize("snippet", [
-    "import importlib; importlib.import_module('warband.rules')",
-    "__import__('warband.rules')",
-    "exec('import warband.rules')",
+    "import importlib; importlib.import_module('warband.sim.rules')",
+    "__import__('warband.sim.rules')",
+    "exec('import warband.sim.rules')",
     "eval('123')",
     "RULES = open('balance.json').read()",
     "from pathlib import Path; RULES = Path('balance.json').read_text()",
@@ -55,7 +55,7 @@ def test_contract_covers_simulation_without_loading_client_scenes(source):
 ])
 def test_untracked_authoritative_inputs_are_rejected(source, snippet):
     """Dynamic code, file-backed rules and untracked imports require explicit contract support."""
-    path = source / "warband/authority.py"
+    path = source / "warband/online/authority.py"
     path.write_text(path.read_text() + "\n" + snippet + "\n")
     result = contract(source)
     assert result.returncode != 0 and "Unsupported authoritative" in result.stderr
@@ -90,26 +90,26 @@ def test_every_authoritative_source_byte_and_runtime_pin_affects_identity(source
 
 def test_new_local_imports_and_package_initializers_join_contract_automatically(source):
     """Nested imports, relative imports and function-local imports all add source dependencies without a file list."""
-    path = source / "warband/rules.py"
-    path.write_text(path.read_text() + "\nfrom warband.balance import bonus\n")
-    package = source / "warband/balance"
+    path = source / "warband/sim/rules.py"
+    path.write_text(path.read_text() + "\nfrom warband.sim.bonuses import bonus\n")
+    package = source / "warband/sim/bonuses"
     package.mkdir()
     (package / "__init__.py").write_text("from .bonus import bonus\n")
     (package / "bonus.py").write_text("def bonus():\n    from .. import tuning\n    return tuning.VALUE\n")
-    tuning = source / "warband/tuning.py"
+    tuning = source / "warband/sim/tuning.py"
     tuning.write_text("VALUE = 1\n")
     original = json.loads(contract(source).stdout)
-    assert {"warband/balance/__init__.py", "warband/balance/bonus.py", "warband/tuning.py"} <= original["files"].keys()
+    assert {"warband/sim/bonuses/__init__.py", "warband/sim/bonuses/bonus.py", "warband/sim/tuning.py"} <= original["files"].keys()
     tuning.write_text("VALUE = 2\n")
     assert json.loads(contract(source).stdout)["sha256"] != original["sha256"]
 
 
 def test_import_resolution_prefers_a_package_over_a_same_named_module(source):
     """Python loads the package when both exist; hashing only the old module would miss active rules."""
-    package = source / "warband/rules"
+    package = source / "warband/sim/rules"
     package.mkdir()
     (package / "__init__.py").write_text("VALUE = 1\n")
     result = contract(source)
     assert result.returncode == 0, result.stderr
     files = json.loads(result.stdout)["files"]
-    assert "warband/rules/__init__.py" in files and "warband/rules.py" not in files
+    assert "warband/sim/rules/__init__.py" in files and "warband/sim/rules.py" not in files

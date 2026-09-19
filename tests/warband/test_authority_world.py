@@ -7,8 +7,8 @@ its route and plan again, and the match a seat got depended on how often the oth
 import pytest
 
 from saga2d import CommandError
-from warband.authority import WarbandMatch
-from warband.rules import BuildingType, UnitType
+from warband.online.authority import WarbandMatch
+from warband.sim.rules import BuildingType, UnitType
 
 
 def marched(chatter_every: int | None, ticks: int = 300) -> list[tuple[float, float]]:
@@ -44,7 +44,7 @@ def test_an_accepted_order_is_given_to_the_running_world() -> None:
 def test_a_snapshot_tells_a_seat_neither_the_servers_dice_nor_what_the_other_seat_has_seen() -> None:
     """The save format is the server's; a seat gets the match without the random stream (every damage roll to
     come) and without the other seat's explored ground and remembered map, which also were a third of its bytes."""
-    from warband.model import World
+    from warband.sim.model import World
 
     match = WarbandMatch(seed=3)
     for _ in range(40):
@@ -72,7 +72,7 @@ def test_a_snapshot_is_the_receivers_to_keep() -> None:
 
 
 def test_a_checkpoint_keeps_the_whole_match() -> None:
-    from warband.authority import ONLINE
+    from warband.online.authority import ONLINE
 
     match = WarbandMatch(seed=3)
     for _ in range(40):
@@ -84,7 +84,7 @@ def test_a_checkpoint_keeps_the_whole_match() -> None:
 
 def test_old_news_leaves_the_snapshot_and_fresh_news_stays_long_enough_to_be_read() -> None:
     """Every snapshot once carried the last 128 events for ever: a quarter of its bytes, ten times a second, minutes after the fight."""
-    from warband.authority import EVENT_TICKS
+    from warband.online.authority import EVENT_TICKS
     from tests.warband.battlefield import field
 
     match = WarbandMatch(seed=3)
@@ -116,7 +116,7 @@ def test_old_news_leaves_the_snapshot_and_fresh_news_stays_long_enough_to_be_rea
 
 
 def test_event_numbers_go_on_counting_after_a_restart_in_a_quiet_moment() -> None:
-    from warband.authority import EVENT_TICKS, ONLINE
+    from warband.online.authority import EVENT_TICKS, ONLINE
     from tests.warband.battlefield import field
 
     match = WarbandMatch(seed=3)

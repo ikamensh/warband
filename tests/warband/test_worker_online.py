@@ -6,8 +6,8 @@ import pytest
 
 from saga2d.testing.online import command, handshake, receive, server_fixture
 
-server_url = server_fixture('warband.authority:ONLINE')
-from warband.model import Deposit, Harvest, World
+server_url = server_fixture('warband.online.authority:ONLINE')
+from warband.sim.model import Deposit, Harvest, World
 
 
 @pytest.mark.slow

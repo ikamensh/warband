@@ -6,8 +6,8 @@ twenty orders a second) until the shared server crawled for every room on it.
 """
 import pytest
 
-from warband.model import RuleError
-from warband.rules import MAX_PLANS, MAX_QUEUED_ORDERS, BuildingType, UnitType
+from warband.sim.model import RuleError
+from warband.sim.rules import MAX_PLANS, MAX_QUEUED_ORDERS, BuildingType, UnitType
 from tests.warband.battlefield import field
 
 
@@ -46,9 +46,9 @@ def test_the_hud_says_why_when_the_world_refuses_an_order(tmp_path) -> None:
     """Shift-queueing past a unit's limit is a warning on the status line, whichever way the order was given:
     right click, the Move, Attack and Patrol buttons, the minimap.  A refusal is never an exception in the frame."""
     from saga2d import Game
-    from warband.scene import new_game
-    from warband.style import build_theme
-    from warband.view import to_world
+    from warband.ui.scene import new_game
+    from warband.ui.style import build_theme
+    from warband.ui.view import to_world
 
     game = Game("Warband Limits", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     try:

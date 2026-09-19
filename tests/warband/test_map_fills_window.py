@@ -5,13 +5,13 @@ opens at 1, as it always did."""
 import pytest
 
 from saga2d import Game
-from warband import mapgen
-from warband.mission_scene import MissionScene, build_world
-from warband.missions import CAMPAIGN
-from warband.rules import Difficulty
-from warband.scene import new_game
-from warband.style import build_theme
-from warband.textures import TILE
+from warband.sim import mapgen
+from warband.story.mission_scene import MissionScene, build_world
+from warband.story.missions import CAMPAIGN
+from warband.sim.rules import Difficulty
+from warband.ui.scene import new_game
+from warband.ui.style import build_theme
+from warband.art.textures import TILE
 
 CANVASES = [(1280, 800), (1840, 960), (2480, 1320)]  # a laptop window; a 4K desktop at 200 % and at 150 %
 

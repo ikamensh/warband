@@ -4,8 +4,8 @@ import math
 
 import pytest
 
-from warband.model import ARRIVE, SIM_DT, World
-from warband.rules import BuildingType, Terrain, UnitType
+from warband.sim.model import ARRIVE, SIM_DT, World
+from warband.sim.rules import BuildingType, Terrain, UnitType
 
 
 def field(blocked: set[tuple[int, int]] = frozenset()) -> World:

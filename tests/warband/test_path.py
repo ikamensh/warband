@@ -4,7 +4,7 @@ import random
 
 import pytest
 
-from warband.path import SQRT2, Regions, find_path, find_path_grid, nearest_passable, octile
+from warband.sim.path import SQRT2, Regions, find_path, find_path_grid, nearest_passable, octile
 
 
 def grid(rows: list[str]):

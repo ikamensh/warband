@@ -4,10 +4,10 @@ import pytest
 
 from saga2d import Game
 from saga2d.effects import Burst
-from warband.effects import Spray, Stain
-from warband.rules import BuildingType, UnitType
-from warband.scene import GameScene
-from warband.style import build_theme
+from warband.art.effects import Spray, Stain
+from warband.sim.rules import BuildingType, UnitType
+from warband.ui.scene import GameScene
+from warband.ui.style import build_theme
 
 from tests.warband.battlefield import SETTINGS, field, live_effects
 

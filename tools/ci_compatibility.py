@@ -10,7 +10,7 @@ from pathlib import Path
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
-REGISTRY = "warband.authority:ONLINE"
+REGISTRY = "warband.online.authority:ONLINE"
 # Deliberately narrow: a new I/O, loader or third-party dependency needs review
 # of how its inputs enter this contract. This is a source convention, not a
 # sandbox for hostile Python; code review still owns reflective/dynamic tricks.

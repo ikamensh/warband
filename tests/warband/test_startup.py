@@ -14,9 +14,9 @@ import pytest
 
 from saga2d import Game
 from saga2d.backends.mock_backend import MockBackend
-from warband.scene import GameScene, LeaveScene, PauseScene
-from warband.style import build_theme
-from warband.title import NewGameScene, TitleScene
+from warband.ui.scene import GameScene, LeaveScene, PauseScene
+from warband.ui.style import build_theme
+from warband.ui.title import NewGameScene, TitleScene
 
 # What the OS hands back after ``Game(resolution=None)`` asked for a window fitting a 1920×1080 desktop.
 WINDOWS = {

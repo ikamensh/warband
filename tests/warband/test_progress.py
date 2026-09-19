@@ -6,11 +6,11 @@ import pytest
 
 from saga2d import Game, SaveError
 from saga2d.settings import Settings
-from warband.model import tile_center
-from warband.rules import BuildingType, UnitType
-from warband.scene import AUTOSAVE_EVERY, DEFAULT_SETTINGS, SAVE_VERSION, GameScene, SaveBrowserScene, SettingsScene, check_save, new_game
-from warband.style import build_theme
-from warband.title import TitleScene
+from warband.sim.model import tile_center
+from warband.sim.rules import BuildingType, UnitType
+from warband.ui.scene import AUTOSAVE_EVERY, DEFAULT_SETTINGS, SAVE_VERSION, GameScene, SaveBrowserScene, SettingsScene, check_save, new_game
+from warband.ui.style import build_theme
+from warband.ui.title import TitleScene
 
 
 @pytest.fixture

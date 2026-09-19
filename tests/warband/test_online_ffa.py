@@ -18,7 +18,7 @@ import pytest
 from saga2d.testing.online import command, handshake, receive, server_fixture
 
 GAME = 'warband-v2'
-server_url = server_fixture('warband.authority:ONLINE')
+server_url = server_fixture('warband.online.authority:ONLINE')
 
 
 @contextmanager
@@ -119,7 +119,7 @@ def test_the_online_ai_takes_a_seat_in_a_room_of_three(server_url):
         human = stack.enter_context(connect(server_url, proxy=None, max_queue=None))
         welcome = handshake(human, game=GAME, seats=4, options={'seed': 5, 'width': 64, 'height': 48, 'players': 3})
         bot = subprocess.Popen(
-            [sys.executable, '-m', 'warband.online_ai', '--server', server_url, '--room', welcome['room'],
+            [sys.executable, '-m', 'warband.online.online_ai', '--server', server_url, '--room', welcome['room'],
              '--difficulty', 'hard', '--duration', '2.5', '--report-every', '0.25'],
             cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             env={**os.environ, 'DISPLAY': '', 'PYTHONUNBUFFERED': '1'})
@@ -142,9 +142,9 @@ def test_resigning_from_the_match_menu_asks_first_then_the_player_may_watch_the_
     import sys as _sys
 
     from saga2d import Game
-    from warband.authority import WarbandMatch
-    from warband.multiplayer import NetworkGameScene, NetworkMenuScene, NetworkResultScene, ResignScene
-    from warband.style import build_theme
+    from warband.online.authority import WarbandMatch
+    from warband.ui.multiplayer import NetworkGameScene, NetworkMenuScene, NetworkResultScene, ResignScene
+    from warband.ui.style import build_theme
 
     _sys.path.insert(0, str(Path(__file__).parent))
     from test_online_motion import QUIET, Seat

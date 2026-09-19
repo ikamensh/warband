@@ -9,13 +9,13 @@ import pytest
 
 from saga2d import Game
 from sagaforge.synth import SAMPLE_RATE, pan, tone
-from warband import music, sound
-from warband.instruments import bell
-from warband.model import World
-from warband.music import PIECES, STINGERS, SUITES, TITLE_TRACK, Choice, Director, Key, Score
-from warband.rules import BuildingType, Race, Terrain, UnitType
-from warband.scene import GameScene
-from warband.style import build_theme
+from warband.audio import music, sound
+from warband.audio.instruments import bell
+from warband.sim.model import World
+from warband.audio.music import PIECES, STINGERS, SUITES, TITLE_TRACK, Choice, Director, Key, Score
+from warband.sim.rules import BuildingType, Race, Terrain, UnitType
+from warband.ui.scene import GameScene
+from warband.ui.style import build_theme
 
 
 def test_every_race_has_two_peaceful_pieces_and_a_battle_piece_and_all_are_catalogued() -> None:

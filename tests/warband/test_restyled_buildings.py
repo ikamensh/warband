@@ -11,10 +11,10 @@ import pytest
 from PIL import Image
 
 from sagaforge import restyle
-from warband import textures
-from warband.model import Building
-from warband.rules import BuildingType, Race, UnitType
-from warband.view import building_look
+from warband.art import textures
+from warband.sim.model import Building
+from warband.sim.rules import BuildingType, Race, UnitType
+from warband.ui.view import building_look
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools import restyle as tool  # noqa: E402

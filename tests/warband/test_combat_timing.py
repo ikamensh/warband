@@ -5,8 +5,8 @@ import random
 
 import pytest
 
-from warband.model import Attack, World, dist
-from warband.rules import DIRECT_HIT, SIM_DT, SPLASH_FRACTION, UNITS, WINDUP_SLACK, BuildingType, Terrain, UnitType
+from warband.sim.model import Attack, World, dist
+from warband.sim.rules import DIRECT_HIT, SIM_DT, SPLASH_FRACTION, UNITS, WINDUP_SLACK, BuildingType, Terrain, UnitType
 
 
 def flat_world(width: int = 24, height: int = 20) -> World:

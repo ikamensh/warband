@@ -19,8 +19,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from warband import mapgen  # noqa: E402
-from warband.rules import Layout  # noqa: E402
+from warband.sim import mapgen  # noqa: E402
+from warband.sim.rules import Layout  # noqa: E402
 
 
 def main() -> None:

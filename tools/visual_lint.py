@@ -5,7 +5,7 @@
     uv run python tools/visual_lint.py --evidence DIR      # also write PNGs: each flagged sprite, each screen (pyglet)
     uv run python tools/visual_lint.py --no-images         # skip the art checks (about a minute)
 
-The checks live in :mod:`warband.visual_lint`; this walks the game's screens
+The checks live in :mod:`warband.art.visual_lint`; this walks the game's screens
 on the mock backend (with font-based approximate metrics) and reports what each one drew.
 With ``--evidence`` the same screens are rendered through pyglet so a person
 can look at what the numbers point at; that needs an awake display.  The
@@ -32,19 +32,19 @@ from saga2d import Game, fonts  # noqa: E402
 from saga2d.effects import Toast  # noqa: E402
 from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
 from saga2d.testing.native_frames import tick as native_tick  # noqa: E402
-from warband import visual_lint as lint  # noqa: E402
-from warband.campaign import Progress, ProgressStore  # noqa: E402
-from warband.campaign_scene import CampaignScene  # noqa: E402
-from warband.dialog import DialogScene  # noqa: E402
-from warband.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
-from warband.missions import CAMPAIGN  # noqa: E402
-from warband.model import World, tile_center  # noqa: E402
-from warband.rules import BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
-from warband.scene import TOAST_TOP, CodexScene, GameScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game  # noqa: E402
-from warband.score_scene import HighScoreScene  # noqa: E402
-from warband.style import build_theme  # noqa: E402
-from warband.textures import TILE  # noqa: E402
-from warband.title import TitleScene  # noqa: E402
+from warband.art import visual_lint as lint  # noqa: E402
+from warband.story.campaign import Progress, ProgressStore  # noqa: E402
+from warband.story.campaign_scene import CampaignScene  # noqa: E402
+from warband.story.dialog import DialogScene  # noqa: E402
+from warband.story.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
+from warband.story.missions import CAMPAIGN  # noqa: E402
+from warband.sim.model import World, tile_center  # noqa: E402
+from warband.sim.rules import BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
+from warband.ui.scene import TOAST_TOP, CodexScene, GameScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game  # noqa: E402
+from warband.ui.score_scene import HighScoreScene  # noqa: E402
+from warband.ui.style import build_theme  # noqa: E402
+from warband.art.textures import TILE  # noqa: E402
+from warband.ui.title import TitleScene  # noqa: E402
 
 RESOLUTIONS = ((1280, 800), (1200, 680))
 QUIET = {"tutorial": False, "music": 0.0, "sfx": 0.0, "edge_scroll": False}

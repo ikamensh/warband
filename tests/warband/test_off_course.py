@@ -1,8 +1,8 @@
 """A unit shoved off its path recovers.  Fuzz seeds 1900–1911 on 2026-09-18: six of twelve games had a
 peasant bouncing for the rest of the match between its tile centre and a building corner."""
 
-from warband.model import SIM_DT, Deposit, World, dist
-from warband.rules import GOLD_PER_TRIP, BuildingType, Resource, Terrain, UnitType
+from warband.sim.model import SIM_DT, Deposit, World, dist
+from warband.sim.rules import GOLD_PER_TRIP, BuildingType, Resource, Terrain, UnitType
 
 
 def grass(width: int, height: int) -> World:

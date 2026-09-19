@@ -1,7 +1,7 @@
 # Warband music
 
 Warband's music is composed, not recorded: fifteen original pieces synthesised
-by `warband/music.py` with the orchestra in `warband/instruments.py` on top of
+by `warband/audio/music.py` with the orchestra in `warband/audio/instruments.py` on top of
 `sagaforge.synth`.  Nothing is downloaded or licensed; the WAVs are rendered on the
 player's machine and cached under `~/.warband/music/` (about 170 MB for the
 whole catalogue).
@@ -29,7 +29,7 @@ wraps too, so no loop has a seam.
 
 ## How it plays
 
-`warband.music.Director` turns a **mood** into track changes, and the scenes
+`warband.audio.music.Director` turns a **mood** into track changes, and the scenes
 report their mood through `sound.play_music(mood, race)`:
 
 - `"title"` on the title screen.

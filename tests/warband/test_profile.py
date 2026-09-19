@@ -6,12 +6,12 @@ from datetime import datetime, timezone
 import pytest
 
 from saga2d import SaveError
-from warband.ai import DIFFICULTY_ELO
-from warband.model import World
-from warband.profile import (
+from warband.brains.ai import DIFFICULTY_ELO
+from warband.sim.model import World
+from warband.records.profile import (
     DEVIATION_START, EARLY_EXIT_WEIGHT, RATING_START, MatchResult, Profile, Rating, expected_score, material, rated, standing,
 )
-from warband.rules import UNDER_ATTACK_COOLDOWN, BuildingType, Difficulty, Terrain, UnitType
+from warband.sim.rules import UNDER_ATTACK_COOLDOWN, BuildingType, Difficulty, Terrain, UnitType
 
 
 def result(run_id: str, outcome: str, difficulty: Difficulty = Difficulty.MEDIUM, *, weight: float = 1.0, seconds: int = 600) -> MatchResult:

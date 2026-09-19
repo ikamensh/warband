@@ -18,12 +18,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from saga2d import Camera, Game, Scene, fonts  # noqa: E402
 from saga2d.testing.native_frames import tick  # noqa: E402
-from warband import mapgen  # noqa: E402
-from warband.rules import MapTheme  # noqa: E402
-from warband.scene import GameScene  # noqa: E402
-from warband.style import build_theme  # noqa: E402
-from warband.textures import TILE  # noqa: E402
-from warband.view import MapView, Overlay  # noqa: E402
+from warband.sim import mapgen  # noqa: E402
+from warband.sim.rules import MapTheme  # noqa: E402
+from warband.ui.scene import GameScene  # noqa: E402
+from warband.ui.style import build_theme  # noqa: E402
+from warband.art.textures import TILE  # noqa: E402
+from warband.ui.view import MapView, Overlay  # noqa: E402
 
 
 class Survey(Scene):

@@ -116,7 +116,7 @@ version.
   both clients at it with `--server` or `SAGA2D_SERVER_URL`:
 
   ```bash
-  uv run python -m saga2d.server --games warband.authority:ONLINE   # ws://127.0.0.1:8765
+  uv run python -m saga2d.server --games warband.online.authority:ONLINE   # ws://127.0.0.1:8765
   uv run warband --online-host --server ws://127.0.0.1:8765           # prints the room code
   uv run warband --online-join CODE --server ws://127.0.0.1:8765
   ```
@@ -154,7 +154,7 @@ tracked in [warband-early-access-progress.md](docs/warband-early-access-progress
 
 ## Code
 
-`warband/model.py` is a 20 Hz fixed-step simulation; `path.py` is A*;
+`warband/sim/model.py` is a 20 Hz fixed-step simulation; `path.py` is A*;
 `mapgen.py` lays out and audits the bases; `ai.py` runs each computer player
 from a difficulty profile; `textures.py` renders every prop and unit through
 `sagaforge.render3d`; `sound.py`, `combat_sound.py`, `voices.py` and

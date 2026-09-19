@@ -74,7 +74,7 @@ def pytest_runtest_makereport(item, call):
 def ground_painted_once():
     """A chunk of painted ground is a pure function of the terrain around it, its place, scale, theme and water
     phase, so the session paints each once rather than once per scene: painting took a quarter of the fast tier."""
-    from warband import textures
+    from warband.art import textures
 
     paint, painted = textures.ground_chunk, OrderedDict()
 

@@ -4,9 +4,9 @@ from copy import deepcopy
 
 import pytest
 
-from warband import worker_ai
-from warband.model import Deposit, Harvest, Move, World, dist
-from warband.rules import BuildingType, GOLD_PER_TRIP, MINE_GOLD, Resource, SIM_DT, Terrain, UnitType
+from warband.sim import worker_ai
+from warband.sim.model import Deposit, Harvest, Move, World, dist
+from warband.sim.rules import BuildingType, GOLD_PER_TRIP, MINE_GOLD, Resource, SIM_DT, Terrain, UnitType
 
 
 def economy():

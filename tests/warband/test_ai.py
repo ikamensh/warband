@@ -9,10 +9,10 @@ import random
 
 import pytest
 
-from warband import mapgen
-from warband.ai import DEFEND_RADIUS, PROFILES, Brain
-from warband.model import AttackMove, Harvest, Repair, World, dist, tile_center
-from warband.rules import BuildingType, Difficulty, Layout, Race, SIM_DT, Terrain, UnitType
+from warband.sim import mapgen
+from warband.brains.ai import DEFEND_RADIUS, PROFILES, Brain
+from warband.sim.model import AttackMove, Harvest, Repair, World, dist, tile_center
+from warband.sim.rules import BuildingType, Difficulty, Layout, Race, SIM_DT, Terrain, UnitType
 
 
 def test_normal_and_hard_send_a_peasant_to_mend_a_damaged_building_but_easy_does_not() -> None:
@@ -411,7 +411,7 @@ def test_every_difficulty_has_a_rating_and_a_note_and_they_go_up() -> None:
     what is pinned here is that each setting is rated, described, and stronger
     than the one before it.
     """
-    from warband.ai import DIFFICULTY_ELO, DIFFICULTY_NOTES
+    from warband.brains.ai import DIFFICULTY_ELO, DIFFICULTY_NOTES
 
     assert set(DIFFICULTY_ELO) == set(Difficulty)
     assert set(DIFFICULTY_NOTES) == set(Difficulty)
@@ -424,7 +424,7 @@ def test_every_difficulty_has_a_rating_and_a_note_and_they_go_up() -> None:
 
 def test_every_difficulty_builds_a_brain_that_plays() -> None:
     """Easy and Medium are a Brain, Hard and Master a ProBrain; all four must think."""
-    from warband.ai import make_brain
+    from warband.brains.ai import make_brain
 
     for difficulty in Difficulty:
         world = mapgen.generate(seed=7, players=2, human=None)
@@ -441,7 +441,7 @@ def test_master_draws_its_posture_from_the_seed_and_the_seat_a_third_each() -> N
     seed must agree on who plays which, so the draw depends on the seed and the seat alone; Hard never rushes."""
     from collections import Counter
 
-    from warband.ai import make_brain
+    from warband.brains.ai import make_brain
 
     drawn = Counter(make_brain(seat, Difficulty.MASTER, seed).profile.name for seed in range(300) for seat in range(2))
     assert drawn == {"pro-vanguard": 200, "pro-warden": 200, "pro-rush": 200}, drawn
@@ -453,7 +453,7 @@ def test_master_draws_its_posture_from_the_seed_and_the_seat_a_third_each() -> N
 
 def test_the_shipped_brain_is_bound_by_the_same_fog_the_player_plays_under() -> None:
     """It may not target, expand towards, or count what it has never seen."""
-    from warband.ai import known_enemy_buildings, known_mines
+    from warband.brains.ai import known_enemy_buildings, known_mines
 
     world = mapgen.generate(seed=31, players=2, human=None)
     world.update_vision()

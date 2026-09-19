@@ -8,8 +8,8 @@ schedules matches or how the model reports events.
 
 from __future__ import annotations
 
-from warband.arena import MatchSpec, play
-from warband.rules import Race
+from warband.league.arena import MatchSpec, play
+from warband.sim.rules import Race
 
 
 def test_a_played_match_comes_back_with_a_tally_per_player():
@@ -26,10 +26,10 @@ def test_a_played_match_comes_back_with_a_tally_per_player():
 
 def test_the_last_blow_gets_the_kill_priced_at_what_the_victim_cost():
     """A footman that puts down a peasant is credited a 400-gold kill; the peasant's owner records the loss."""
-    from warband import mapgen
-    from warband.model import tile_center
-    from warband.rules import BuildingType, UnitType
-    from warband.telemetry import Telemetry
+    from warband.sim import mapgen
+    from warband.sim.model import tile_center
+    from warband.sim.rules import BuildingType, UnitType
+    from warband.league.telemetry import Telemetry
 
     world = mapgen.generate(seed=3, players=2, human=None)
     hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]

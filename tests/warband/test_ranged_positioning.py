@@ -3,8 +3,8 @@ import random
 
 import pytest
 
-from warband.model import Attack, Hold, World
-from warband.rules import Terrain, UnitType
+from warband.sim.model import Attack, Hold, World
+from warband.sim.rules import Terrain, UnitType
 
 
 def battlefield():
@@ -56,7 +56,7 @@ def test_automatic_archer_fires_then_makes_space_during_recovery():
 @pytest.mark.parametrize('command', ['attack', 'hold', 'move'])
 def test_manual_archer_order_takes_priority_over_spacing(command):
     """Focus, Hold and movement commands keep the player's requested behavior."""
-    from warband.model import Move
+    from warband.sim.model import Move
 
     world = battlefield()
     archer = world.spawn_unit(0, UnitType.ARCHER, (5.5, 7.5))

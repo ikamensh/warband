@@ -3,15 +3,15 @@
 import pytest
 
 from saga2d import Game
-from warband.ai import DIFFICULTY_ELO
-from warband.profile import MatchResult, Profile
-from warband.profile_scene import NameScene, ProfileScene
-from warband.replay import Replay, ReplayStore
-from warband.replay_scene import ReplayScene
-from warband.rules import Difficulty
-from warband.scene import new_game
-from warband.style import build_theme
-from warband.title import TitleScene
+from warband.brains.ai import DIFFICULTY_ELO
+from warband.records.profile import MatchResult, Profile
+from warband.ui.profile_scene import NameScene, ProfileScene
+from warband.records.replay import Replay, ReplayStore
+from warband.ui.replay_scene import ReplayScene
+from warband.sim.rules import Difficulty
+from warband.ui.scene import new_game
+from warband.ui.style import build_theme
+from warband.ui.title import TitleScene
 
 
 @pytest.fixture

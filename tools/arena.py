@@ -27,14 +27,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from warband import fastsim  # noqa: E402
+from warband.league import fastsim  # noqa: E402
 
 if __name__ in ("__main__", "__mp_main__"):  # run as a program or as one of its worker processes, not as a library
     fastsim.activate()  # the compiled simulation, unless WARBAND_INTERPRETED is set
 
-from warband import arena, mapgen  # noqa: E402
-from warband.arena import AGENTS, MatchResult, MatchSpec, playable, rate, win_rate  # noqa: E402
-from warband.rules import Layout  # noqa: E402
+from warband.league import arena  # noqa: E402
+from warband.sim import mapgen  # noqa: E402
+from warband.league.arena import AGENTS, MatchResult, MatchSpec, playable, rate, win_rate  # noqa: E402
+from warband.sim.rules import Layout  # noqa: E402
 
 
 #: Sizes a ladder walks through, one per seed. The layout is drawn from the

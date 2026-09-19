@@ -10,10 +10,10 @@ import numpy as np
 import pytest
 
 from saga2d import Game
-from warband.model import tile_center
-from warband.rules import BuildingType, Terrain, UnitType
-from warband.scene import load_game, new_game
-from warband.style import build_theme
+from warband.sim.model import tile_center
+from warband.sim.rules import BuildingType, Terrain, UnitType
+from warband.ui.scene import load_game, new_game
+from warband.ui.style import build_theme
 
 FRAME = 1 / 60
 VISION_FRAMES = 20  # frames that are sure to hold a fog recomputation: a step every three, vision every four steps

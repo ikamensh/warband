@@ -2,10 +2,10 @@
 
 import pytest
 
-from warband import mapgen
-from warband.mapgen import audit as fairness
-from warband.model import World
-from warband.rules import Layout, MapTheme, UnitType
+from warband.sim import mapgen
+from warband.sim.mapgen import audit as fairness
+from warband.sim.model import World
+from warband.sim.rules import Layout, MapTheme, UnitType
 
 SEEDS = [pytest.param(range(1, 4), id="seeds 1-3"), pytest.param(range(4, 41), id="seeds 4-40", marks=pytest.mark.slow)]
 

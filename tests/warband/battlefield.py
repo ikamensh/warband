@@ -1,7 +1,7 @@
 """An open field for presentation tests: nothing on it but what a test puts there."""
 
-from warband.model import World
-from warband.rules import BuildingType, Terrain
+from warband.sim.model import World
+from warband.sim.rules import BuildingType, Terrain
 
 SETTINGS = {"tutorial": False, "music": 0, "sfx": 0, "edge_scroll": False}
 

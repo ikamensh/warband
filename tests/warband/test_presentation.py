@@ -3,11 +3,11 @@
 import pytest
 
 from saga2d import Game
-from warband.icons import Icon
-from warband.model import tile_center
-from warband.rules import BuildingType, UnitType
-from warband.scene import new_game
-from warband.style import build_theme
+from warband.ui.icons import Icon
+from warband.sim.model import tile_center
+from warband.sim.rules import BuildingType, UnitType
+from warband.ui.scene import new_game
+from warband.ui.style import build_theme
 
 
 @pytest.fixture

@@ -5,14 +5,14 @@ import pytest
 from PIL import Image
 
 from saga2d import Game
-from warband import textures
-from warband.model import tile_center
-from warband.rules import BuildingType, Layout, MapTheme, Resource, Terrain, UnitType
-from warband.scene import GameScene, new_game
-from warband.view import FOG_MARGIN, WATER_PERIOD
-from warband import mapgen
-from warband.style import build_theme
-from warband.textures import TILE
+from warband.art import textures
+from warband.sim.model import tile_center
+from warband.sim.rules import BuildingType, Layout, MapTheme, Resource, Terrain, UnitType
+from warband.ui.scene import GameScene, new_game
+from warband.ui.view import FOG_MARGIN, WATER_PERIOD
+from warband.sim import mapgen
+from warband.ui.style import build_theme
+from warband.art.textures import TILE
 
 
 @pytest.fixture
@@ -209,7 +209,7 @@ def test_unit_images_are_rendered_on_demand_per_facing_and_frame(play) -> None:
 
 
 def test_ground_chunks_cover_the_map_with_a_margin_and_sand_meets_water() -> None:
-    from warband import mapgen
+    from warband.sim import mapgen
 
     world = mapgen.generate(seed=3)
     chunk = textures.ground_chunk(world.terrain_at, world.in_bounds, 0, 0, 1.0)
@@ -365,7 +365,7 @@ def test_water_moves_once_its_phases_are_painted_while_land_stays_still() -> Non
 def test_walk_frames_follow_the_distance_walked_not_the_clock(play) -> None:
     """Feet stay planted: a unit's walk frame advances with the ground it covers, so a fast unit
     steps faster and a unit held in place keeps its frame."""
-    from warband.view import STRIDE, unit_frame
+    from warband.ui.view import STRIDE, unit_frame
 
     game, scene = play
     u = scene.world.spawn_unit(scene.human, UnitType.FOOTMAN, (10.5, 10.5))
@@ -378,7 +378,7 @@ def test_walk_frames_follow_the_distance_walked_not_the_clock(play) -> None:
 def test_a_blow_winds_up_before_it_lands_and_follows_through_after(play) -> None:
     """Phases of one attack, read off the model's own clocks: wind-up while the model has the weapon
     drawn back, then strike, follow-through and recovery right after the blow, guard otherwise."""
-    from warband.view import FOLLOW, RECOVER, STRIKE, unit_frame
+    from warband.ui.view import FOLLOW, RECOVER, STRIKE, unit_frame
 
     game, scene = play
     u = scene.world.spawn_unit(scene.human, UnitType.FOOTMAN, (10.5, 10.5))

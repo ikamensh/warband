@@ -27,12 +27,12 @@ os.environ["SAGA2D_HEADLESS"] = "1"
 
 from saga2d import Game, fonts  # noqa: E402
 from saga2d.testing.native_frames import tick  # noqa: E402
-from warband import sound  # noqa: E402
-from warband.model import World  # noqa: E402
-from warband.rules import BuildingType, Race, Terrain, UnitType  # noqa: E402
-from warband.scene import GameScene  # noqa: E402
-from warband.style import build_theme  # noqa: E402
-from warband.title import TitleScene  # noqa: E402
+from warband.audio import sound  # noqa: E402
+from warband.sim.model import World  # noqa: E402
+from warband.sim.rules import BuildingType, Race, Terrain, UnitType  # noqa: E402
+from warband.ui.scene import GameScene  # noqa: E402
+from warband.ui.style import build_theme  # noqa: E402
+from warband.ui.title import TitleScene  # noqa: E402
 
 
 def main(out: Path) -> None:

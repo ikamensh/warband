@@ -423,9 +423,9 @@ relevant inputs, not a claim that arbitrary different rules are compatible.
 
 ### Authoritative compatibility contract
 
-`warband.authority:ONLINE` is now the server/package entry point. `WarbandMatch`
+`warband.online.authority:ONLINE` is now the server/package entry point. `WarbandMatch`
 and the create/checkpoint/restore functions were moved without changing their
-ASTs; multiplayer scenes remain in `warband.multiplayer`. Importing the server
+ASTs; multiplayer scenes remain in `warband.ui.multiplayer`. Importing the server
 registry does not import those scenes or artwork. All game, package and test
 callers use the new entry point. Saga Online's service/check scripts and the
 stack-root `make server` command must change to the new registry when these

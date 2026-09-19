@@ -7,8 +7,8 @@ never with an exception the server would take for a crash.
 """
 import pytest
 
-from warband.model import RuleError, World
-from warband.rules import BuildingType, Terrain, UnitType, Upgrade
+from warband.sim.model import RuleError, World
+from warband.sim.rules import BuildingType, Terrain, UnitType, Upgrade
 
 
 def scenario():

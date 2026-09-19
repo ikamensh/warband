@@ -5,11 +5,11 @@ import pytest
 from saga2d import Game, Scene
 from saga2d.testing import text_boxes
 from saga2d.ui import Row
-from warband.production import ProductionButton, production_image
-from warband.races import RACES
-from warband.rules import BUILDINGS, UPGRADES, BuildingType, Race, UnitType, Upgrade
-from warband.scene import new_game
-from warband.style import GOLD, build_theme
+from warband.art.production import ProductionButton, production_image
+from warband.sim.races import RACES
+from warband.sim.rules import BUILDINGS, UPGRADES, BuildingType, Race, UnitType, Upgrade
+from warband.ui.scene import new_game
+from warband.ui.style import GOLD, build_theme
 
 
 def components(parent):

@@ -8,9 +8,9 @@ key = "settlement-hotkeys"
 repo = "https://github.com/ikamensh/warband.git"
 title = "Global hotkeys for settlement production and training"
 story = "A player schedules production without the mouse: Ctrl+B, Ctrl+T and Ctrl+U open the settlement Build, Train and Upgrade menus from anywhere, Ctrl+P opens Plans, Ctrl+G starts placing the assembly point, and inside Train the unit letters order one unit while Shift+letter orders five, so filling a barracks queue is a few keystrokes."
-constraints = "Change only warband/scene.py, tests/warband/test_settlement_ui.py, the HELP_KEYS text in warband/scene.py and the Controls table in docs/warband-release.md. No framework change: saga2d's Button already supports modifier shortcuts (`Button(..., shortcut=\"Ctrl+T\")`, see docs/framework-button-shortcuts.md). The keys must work with or without a selection, offline and in NetworkGameScene, and must not take Ctrl+A, Ctrl+1 to Ctrl+9 or Ctrl+F6 to Ctrl+F8."
+constraints = "Change only warband/ui/scene.py, tests/warband/test_settlement_ui.py, the HELP_KEYS text in warband/ui/scene.py and the Controls table in docs/warband-release.md. No framework change: saga2d's Button already supports modifier shortcuts (`Button(..., shortcut=\"Ctrl+T\")`, see docs/framework-button-shortcuts.md). The keys must work with or without a selection, offline and in NetworkGameScene, and must not take Ctrl+A, Ctrl+1 to Ctrl+9 or Ctrl+F6 to Ctrl+F8."
 notes = """
-Today the Settlement row built in `GameScene.on_enter` (warband/scene.py: `Row(Label("Settlement", ...),
+Today the Settlement row built in `GameScene.on_enter` (warband/ui/scene.py: `Row(Label("Settlement", ...),
 Button("Build", ...), Button("Train", ...), Button("Upgrade", ...), Button(lambda: f"Plans ({...})", ...),
 Button("Assembly point", ...))`) is mouse-only; the only keys are the letters inside an open menu
 (`_settlement_commands`, built from `race.units`, `BUILD_ORDER` and `_upgrades()`), dispatched by
@@ -30,7 +30,7 @@ the command-card key handling (search scene.py for where `command.hotkey` is mat
   and one sound. Upgrades cannot be ordered twice (`_upgrade_planned`), so Shift there behaves
   like the plain key; Build keeps its single placement. Implement this where card hotkeys are
   dispatched, not by adding a second set of Command entries.
-- `HELP_KEYS` in warband/scene.py: extend the "Settlement" line with the keys and the Shift rule.
+- `HELP_KEYS` in warband/ui/scene.py: extend the "Settlement" line with the keys and the Shift rule.
   docs/warband-release.md, Controls table, row "Plan without a selection": the same.
 
 Tests (tests/warband/test_settlement_ui.py, with its `settlement` fixture;

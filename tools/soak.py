@@ -23,11 +23,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from saga2d import Game, fonts  # noqa: E402
-from warband import sound  # noqa: E402
-from warband.ai import make_brain  # noqa: E402
-from warband.rules import Difficulty  # noqa: E402
-from warband.scene import DEFAULT_SETTINGS, GameOverScene, GameScene, new_game  # noqa: E402
-from warband.style import build_theme  # noqa: E402
+from warband.audio import sound  # noqa: E402
+from warband.brains.ai import make_brain  # noqa: E402
+from warband.sim.rules import Difficulty  # noqa: E402
+from warband.ui.scene import DEFAULT_SETTINGS, GameOverScene, GameScene, new_game  # noqa: E402
+from warband.ui.style import build_theme  # noqa: E402
 
 
 MATCH_MINUTES = 20  # an undecided match is reported and the next one starts

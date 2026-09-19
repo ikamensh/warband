@@ -4,7 +4,7 @@
     uv run python tools/fuzz.py --games 40 --monkey 0
 
 AI games run every difficulty against every other — which is both kinds of
-brain, since Hard and Master are :class:`warband.pro_ai.ProBrain` — for up to fifteen simulated minutes,
+brain, since Hard and Master are :class:`warband.brains.pro_ai.ProBrain` — for up to fifteen simulated minutes,
 checking the world every simulated second: units stand on open ground,
 hit points and resources stay in range, buildings never overlap, the
 blocked grid matches the map, hidden units are inside something real.
@@ -25,11 +25,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from warband import mapgen  # noqa: E402
-from warband.ai import make_brain  # noqa: E402
-from warband.pro_ai import PRO, ProBrain  # noqa: E402
-from warband.model import BLOCKING, World  # noqa: E402
-from warband.rules import BUILDINGS, SIM_DT, BuildingType, Difficulty  # noqa: E402
+from warband.sim import mapgen  # noqa: E402
+from warband.brains.ai import make_brain  # noqa: E402
+from warband.brains.pro_ai import PRO, ProBrain  # noqa: E402
+from warband.sim.model import BLOCKING, World  # noqa: E402
+from warband.sim.rules import BUILDINGS, SIM_DT, BuildingType, Difficulty  # noqa: E402
 from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
 
 GAME_MINUTES = 15
@@ -140,9 +140,9 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
 
 def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = None) -> int:
     from saga2d import Game
-    from warband.scene import GameScene, new_game
-    from warband.style import build_theme
-    from warband.title import TitleScene
+    from warband.ui.scene import GameScene, new_game
+    from warband.ui.style import build_theme
+    from warband.ui.title import TitleScene
 
     keys = sorted({k for keys in GameScene.controls for k in ((keys,) if isinstance(keys, str) else keys)} | set("abfhkmpstw123456789") | {"return"})
     failures = 0

@@ -1,7 +1,7 @@
 """Units at ease keep elbow room and loosen a packed crowd (docs/unit-motion.md part 5)."""
 
-from warband.model import World, dist
-from warband.rules import SIM_DT, UNIT_RADIUS, BuildingType, Terrain, UnitType
+from warband.sim.model import World, dist
+from warband.sim.rules import SIM_DT, UNIT_RADIUS, BuildingType, Terrain, UnitType
 
 TOUCHING = 2 * UNIT_RADIUS
 

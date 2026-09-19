@@ -5,8 +5,8 @@ from collections.abc import Iterable
 
 import pytest
 
-from warband.model import Attack, Deposit, Heal, Move, RuleError, World, dist, tile_center
-from warband.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Resource, Terrain, UnitType, Upgrade
+from warband.sim.model import Attack, Deposit, Heal, Move, RuleError, World, dist, tile_center
+from warband.sim.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Resource, Terrain, UnitType, Upgrade
 
 
 def flat_world(width: int = 30, height: int = 24, trees: Iterable[tuple[int, int]] = ()) -> World:

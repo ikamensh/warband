@@ -1,21 +1,21 @@
 # Generated sound pieces: combat impacts, unit deaths and building wreckage
 
 Three Warband sounds are not synthesised: a blow landing, a unit's death and a building
-coming down. All are cues mixed by the game from committed pieces (`warband/pieces.py`
+coming down. All are cues mixed by the game from committed pieces (`warband/audio/pieces.py`
 reads them):
 
-- `warband/combat_sound.py`, from `warband/assets/impacts/`: every weapon (sword, axe,
+- `warband/audio/combat_sound.py`, from `warband/assets/impacts/`: every weapon (sword, axe,
   spear, lance, arrow, siege stone, hammer) on every material (flesh, armour, wood,
   stone), three takes each; the cue is the piece itself, cut so the blow lands as it
   starts. The scene picks weapon and material from the strike (`sound.impact_sound`),
   the bank rotates takes and adds a little pitch variation.
 
-- `warband/deaths.py`, from `warband/assets/deaths/`: a cry, then the weapon hitting the
+- `warband/audio/deaths.py`, from `warband/assets/deaths/`: a cry, then the weapon hitting the
   ground, the body landing and the gear settling; one cue per race and take. The bank
   plays `<race>_death` and picks a take, never the same one twice in a row; the scene
   asks for the dying unit's own race, so an orc grunt dies in an orc's voice whoever
   the player is.
-- `warband/wreckage.py`, from `warband/assets/wreckage/`: the structure cracks, the mass
+- `warband/audio/wreckage.py`, from `warband/assets/wreckage/`: the structure cracks, the mass
   comes down, the debris settles; one cue per material (`wood`, `stone`) and take. The
   scene plays `<material>_collapse` for the building's material (`BUILDING_MATERIALS`
   there also decides which impact Foley a building takes); a site under construction is
@@ -82,7 +82,7 @@ uv run python tools/pieces.py sampler /tmp/pieces   # impacts.wav, deaths.wav an
 
 Change a prompt or a seed in the tool and refresh: only that piece is regenerated, the
 manifest follows. A rejected generation (silent, or a click) is named at the end; give it a
-new seed in `RESEEDED`. After a refresh bump `SOUND_VERSION` in `warband/sound.py` so the
+new seed in `RESEEDED`. After a refresh bump `SOUND_VERSION` in `warband/audio/sound.py` so the
 cached cues are mixed again, and keep `tests/warband/test_deaths.py` and `test_sound.py`
 green, with `test_wreckage.py` and `test_combat_sound.py`: they hold the fall after the cry, the collapse longer than any one stage, armour ringing brighter than flesh and siege stones carrying more bass, the level, the length and the absence of clicks.
 The same seed reproduces the same clip on the same machine, so the committed WAVs and the

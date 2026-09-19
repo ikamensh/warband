@@ -2,8 +2,8 @@
 
 import pytest
 
-from warband.model import Build, Hold, Move, RuleError, World, dist
-from warband.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Terrain, UnitType, Upgrade
+from warband.sim.model import Build, Hold, Move, RuleError, World, dist
+from warband.sim.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Terrain, UnitType, Upgrade
 
 
 def settlement():

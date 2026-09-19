@@ -25,7 +25,7 @@ from PIL import Image, ImageDraw
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sagaforge.synth import SAMPLE_RATE, write_wav  # noqa: E402
-from warband import music  # noqa: E402
+from warband.audio import music  # noqa: E402
 
 
 def spectrogram(clip: np.ndarray, *, width: int = 1600, height: int = 360, bars: int | None = None, bpm: float | None = None) -> Image.Image:

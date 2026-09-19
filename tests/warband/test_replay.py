@@ -8,12 +8,12 @@ from pathlib import Path
 import pytest
 
 from saga2d import SaveError
-from warband import mapgen
-from warband.ai import make_brain
-from warband import model
-from warband.model import RuleError, World
-from warband.replay import ORDERS, Playback, Replay, ReplayStore, apply_order, digest
-from warband.rules import SIM_DT, BuildingType, Difficulty, Terrain, UnitType
+from warband.sim import mapgen
+from warband.brains.ai import make_brain
+from warband.sim import model
+from warband.sim.model import RuleError, World
+from warband.records.replay import ORDERS, Playback, Replay, ReplayStore, apply_order, digest
+from warband.sim.rules import SIM_DT, BuildingType, Difficulty, Terrain, UnitType
 
 
 def played_match(seconds: float = 60.0, *, seed: int = 7, brains=(Difficulty.HARD, Difficulty.MEDIUM), reload_at: float | None = None) -> tuple[World, Replay]:

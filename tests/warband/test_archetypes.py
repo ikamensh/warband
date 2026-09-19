@@ -12,10 +12,10 @@ from dataclasses import replace
 
 import pytest
 
-from warband import arena
-from warband.arena import MatchSpec, play
-from warband.pro_ai import PRO
-from warband.rules import UnitType
+from warband.league import arena
+from warband.league.arena import MatchSpec, play
+from warband.brains.pro_ai import PRO
+from warband.sim.rules import UnitType
 
 
 def _play(name: str, profile, seed: int = 7, minutes: float = 6, opponent: str = "pro"):
@@ -38,7 +38,7 @@ def test_early_tech_goes_up_before_the_bank_overflows():
     """A knights posture lays its stables inside six minutes; the plain brain waits for saturation.
 
     Six minutes of play: the slow tier."""
-    from warband.rules import BuildingType
+    from warband.sim.rules import BuildingType
 
     tally = _play("test-stables-early", replace(PRO, name="test-stables-early", early_tech=(BuildingType.STABLES,)))
     assert tally.started["stables"] >= 1
@@ -49,7 +49,7 @@ def test_research_can_be_switched_off_to_price_the_upgrades():
     """With a smith standing, the brain researches; with research off it never does, smith or not.
 
     Two eight-minute matches: the slow tier."""
-    from warband.rules import BuildingType
+    from warband.sim.rules import BuildingType
 
     smith = replace(PRO, name="test-smith", early_tech=(BuildingType.BLACKSMITH,))
     assert _play("test-smith", smith, minutes=8).researched
@@ -62,7 +62,7 @@ def test_early_tech_names_how_many_and_a_strict_plan_stops_the_barracks():
     """Two stables in the list means two stables; a strict plan of knights trains no footman past its share.
 
     A nine-minute match: the slow tier."""
-    from warband.rules import BuildingType
+    from warband.sim.rules import BuildingType
 
     # Against Easy, so the posture lives long enough to field its plan: against Master it can be
     # dead at five minutes, and then the count says who won rather than what the knobs did.

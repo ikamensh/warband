@@ -12,10 +12,10 @@ import math
 
 import pytest
 
-from warband import arena
-from warband.arena import MatchResult, MatchSpec, Variant, play, rate
-from warband.races import RACES
-from warband.rules import BUILDINGS, UNITS, BuildingType, Race, UnitType
+from warband.league import arena
+from warband.league.arena import MatchResult, MatchSpec, Variant, play, rate
+from warband.sim.races import RACES
+from warband.sim.rules import BUILDINGS, UNITS, BuildingType, Race, UnitType
 
 
 def result(agents: tuple[str, ...], placements: tuple[int, ...]) -> MatchResult:
@@ -252,7 +252,7 @@ def test_a_four_player_game_scores_out_of_its_three_pairings():
 
 def test_a_seed_with_no_fair_map_is_reported_rather_than_raised():
     """mapgen refuses layouts it cannot make fair; a ladder has to survive that."""
-    from warband.arena import playable
+    from warband.league.arena import playable
     assert playable(MatchSpec(seed=1000, agents=("hard", "hard")))
     # Whatever the answer for a given seed, asking must not raise.
     assert playable(MatchSpec(seed=6005, agents=("hard", "hard"))) in (True, False)
@@ -270,7 +270,7 @@ def test_a_ladder_is_played_across_the_map_generator_not_one_map():
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
     from arena import specs_1v1
 
-    from warband import mapgen
+    from warband.sim import mapgen
 
     specs = specs_1v1(["easy", "medium"], range(4000, 4030), "standard", 20.0)
     assert {(s.width, s.height) for s in specs} == set(mapgen.SIZES.values()), "every map size"
@@ -284,8 +284,8 @@ def test_the_land_is_cosmetic_so_a_ladder_need_not_vary_it():
     """Summer, winter and wasteland generate the same terrain tile for tile."""
     from collections import Counter
 
-    from warband import mapgen
-    from warband.rules import MapTheme
+    from warband.sim import mapgen
+    from warband.sim.rules import MapTheme
 
     counts = set()
     for theme in MapTheme:
@@ -298,8 +298,8 @@ def test_the_land_is_cosmetic_so_a_ladder_need_not_vary_it():
 @pytest.mark.slow
 def test_the_layout_comes_from_the_seed_so_a_ladder_sees_all_of_them():
     """Sixty seeds meet most layouts. Their maps are generated twice each, over a second: the slow tier."""
-    from warband import mapgen
-    from warband.arena import MatchSpec, playable
+    from warband.sim import mapgen
+    from warband.league.arena import MatchSpec, playable
 
     drawn = set()
     for seed in range(15000, 15060):
@@ -311,7 +311,7 @@ def test_the_layout_comes_from_the_seed_so_a_ladder_sees_all_of_them():
 
 def test_a_scaled_variant_is_spelled_out_in_its_name():
     """``scale:knight.cost_gold=1.25,tower.hp=0.8`` travels to a worker as a name and patches exactly those numbers."""
-    from warband.arena import ensure_variant, use_variant
+    from warband.league.arena import ensure_variant, use_variant
 
     knight_gold, footman_gold = UNITS[UnitType.KNIGHT].cost.gold, UNITS[UnitType.FOOTMAN].cost.gold
     tower_hp, tower_damage = BUILDINGS[BuildingType.TOWER].hp, BUILDINGS[BuildingType.TOWER].damage
@@ -364,7 +364,7 @@ def test_a_ladder_can_ask_for_a_layout_instead_of_hoping_the_seeds_cover_them():
     league that is five-eighths plains is measuring the map as much as the
     rules. A spec now names its layout, and the runner cycles them.
     """
-    from warband.rules import Layout
+    from warband.sim.rules import Layout
 
     seen = set()
     for layout in Layout:

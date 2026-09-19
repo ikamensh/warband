@@ -3,13 +3,13 @@
 import pytest
 
 from saga2d import Game
-from warband.profile import Profile
-from warband.replay import ReplayStore
-from warband.replay_scene import ReplayEndScene, ReplayMenuScene, ReplayScene
-from warband.rules import SIM_DT
-from warband.scene import GameOverScene, new_game
-from warband.style import build_theme
-from warband.title import TitleScene
+from warband.records.profile import Profile
+from warband.records.replay import ReplayStore
+from warband.ui.replay_scene import ReplayEndScene, ReplayMenuScene, ReplayScene
+from warband.sim.rules import SIM_DT
+from warband.ui.scene import GameOverScene, new_game
+from warband.ui.style import build_theme
+from warband.ui.title import TitleScene
 
 
 @pytest.fixture

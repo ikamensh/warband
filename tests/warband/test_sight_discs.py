@@ -9,8 +9,8 @@ it is what is under test.
 
 import random
 
-from warband.model import World, sight_spans
-from warband.rules import Terrain
+from warband.sim.model import World, sight_spans
+from warband.sim.rules import Terrain
 
 WIDTH, HEIGHT = 24, 21
 

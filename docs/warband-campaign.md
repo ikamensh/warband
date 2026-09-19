@@ -1,9 +1,9 @@
 # Warband campaign: The Thornwood War
 
-Design note and record, 2026-09-15. Implemented: `warband/campaign.py` (the
-engine and the progress file), `warband/missions.py` (the six missions),
-`warband/dialog.py` (the dialogue overlay), `warband/mission_scene.py` (a
-mission as a match, its result, its loader), `warband/campaign_scene.py` (the
+Design note and record, 2026-09-15. Implemented: `warband/story/campaign.py` (the
+engine and the progress file), `warband/story/missions.py` (the six missions),
+`warband/story/dialog.py` (the dialogue overlay), `warband/story/mission_scene.py` (a
+mission as a match, its result, its loader), `warband/story/campaign_scene.py` (the
 campaign screen). Tests: `tests/warband/test_campaign.py`; screens rendered by
 `tools/verify_campaign.py DIR`.
 
@@ -56,7 +56,7 @@ Thornwood warden. Their portraits are the units' own painted frames.
 
 ## How a mission is written
 
-A `Mission` is data plus a few small functions in `warband/missions.py`:
+A `Mission` is data plus a few small functions in `warband/story/missions.py`:
 sides (name, race, base AI level or scripted), map size, theme, layout and seed, the
 briefing and debrief dialogues, a `setup(run)` that reshapes the generated map
 (`run.place`, `run.spawn`, `world.clear_player`, variables for later), the

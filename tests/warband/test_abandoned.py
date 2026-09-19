@@ -3,9 +3,9 @@ for nothing, and every brain ignores; a two-player match still clears the board.
 
 import pytest
 
-from warband.ai import known_enemy_buildings
-from warband.model import World
-from warband.rules import BuildingType, UnitType
+from warband.brains.ai import known_enemy_buildings
+from warband.sim.model import World
+from warband.sim.rules import BuildingType, UnitType
 
 from tests.warband.battlefield import field
 
@@ -96,8 +96,8 @@ def test_the_state_survives_a_save() -> None:
 
 def test_the_scene_shows_a_ruin_grey_on_the_map_the_minimap_and_the_card(tmp_path) -> None:
     from saga2d import Game
-    from warband.scene import GameScene
-    from warband.style import build_theme
+    from warband.ui.scene import GameScene
+    from warband.ui.style import build_theme
     from tests.warband.battlefield import SETTINGS
 
     game = Game("Warband ruins", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
@@ -115,7 +115,7 @@ def test_the_scene_shows_a_ruin_grey_on_the_map_the_minimap_and_the_card(tmp_pat
             game.tick(1 / 60)
         key = scene.view.building_sprite(farm.id).image
         assert key.endswith(".abandoned") and key != owned_key
-        from warband.view import MINIMAP_SCALE
+        from warband.ui.view import MINIMAP_SCALE
         minimap = scene.view.minimap_image()
         assert tuple(minimap.getpixel((farm.x * MINIMAP_SCALE, farm.y * MINIMAP_SCALE))[:3]) == (150, 150, 150)
         scene.select([farm.id])

@@ -5,13 +5,13 @@ import random
 import pytest
 
 from saga2d import Game
-from warband import music, sound
-from warband.model import Event, World
-from warband.rules import BuildingType, Race, Terrain, UnitType
-from warband.scene import GameScene, new_game
-from warband.style import build_theme
-from warband.title import TitleScene
-from warband.voices import CUES, voiced
+from warband.audio import music, sound
+from warband.sim.model import Event, World
+from warband.sim.rules import BuildingType, Race, Terrain, UnitType
+from warband.ui.scene import GameScene, new_game
+from warband.ui.style import build_theme
+from warband.ui.title import TitleScene
+from warband.audio.voices import CUES, voiced
 
 
 def test_cues_are_voiced_for_every_race_but_humans_and_impacts_follow_the_striker() -> None:

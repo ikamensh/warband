@@ -9,7 +9,7 @@ cycled by seed, settled matches stopped early): Master mirrors, Hard against
 Master, Medium against Hard and a four-player free-for-all.  Each match is
 timed by the processor time it took, which other work on the machine
 disturbs far less than the wall clock, and the fastest of ``--repeat`` runs
-counts.  The simulation is the compiled one (:mod:`warband.fastsim`) unless
+counts.  The simulation is the compiled one (:mod:`warband.league.fastsim`) unless
 ``WARBAND_INTERPRETED=1``.
 
 The digest covers every match's result as the arena records it (placements,
@@ -30,13 +30,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from warband import fastsim  # noqa: E402
+from warband.league import fastsim  # noqa: E402
 
 if __name__ in ("__main__", "__mp_main__"):  # run as a program or as one of its worker processes, not as a library
     fastsim.activate()  # the compiled simulation, unless WARBAND_INTERPRETED is set
 
-from warband import arena  # noqa: E402
-from warband.arena import MatchSpec  # noqa: E402
+from warband.league import arena  # noqa: E402
+from warband.league.arena import MatchSpec  # noqa: E402
 from tools.arena import _board  # noqa: E402
 
 MATCHES = (

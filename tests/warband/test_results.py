@@ -4,9 +4,9 @@ import random
 
 import pytest
 
-from warband.ai import Brain
-from warband.model import World
-from warband.rules import UNITS, BuildingType, Difficulty, Terrain, UnitType, Upgrade
+from warband.brains.ai import Brain
+from warband.sim.model import World
+from warband.sim.rules import UNITS, BuildingType, Difficulty, Terrain, UnitType, Upgrade
 
 
 def battlefield(players=2):
@@ -111,7 +111,7 @@ def test_combat_credit_belongs_to_the_attacker_and_survives_a_save():
 
 def test_score_rewards_victory_and_speed_without_rewarding_stockpiles():
     """Only completed matches score; delaying a win or hoarding cannot improve it."""
-    from warband.scores import score_breakdown
+    from warband.records.scores import score_breakdown
 
     world = battlefield()
     world.spawn_unit(1, UnitType.PEASANT, (20.5, 20.5))
@@ -133,7 +133,7 @@ def test_score_rewards_victory_and_speed_without_rewarding_stockpiles():
 
 def test_local_scores_keep_one_best_finish_per_run_across_restarts(tmp_path):
     """Reloading a finished save must not create another leaderboard row."""
-    from warband.scores import HighScores
+    from warband.records.scores import HighScores
 
     world = battlefield()
     world.winner = 0
@@ -155,7 +155,7 @@ def test_local_scores_keep_one_best_finish_per_run_across_restarts(tmp_path):
 
 def test_leaderboards_are_bounded_and_separate_match_settings(tmp_path):
     """An easy win cannot displace a hard win, and each board keeps ten records."""
-    from warband.scores import HighScores
+    from warband.records.scores import HighScores
 
     board = HighScores(tmp_path)
     world = battlefield()
@@ -178,7 +178,7 @@ def test_damaged_high_scores_are_reported_and_preserved(tmp_path, damage):
     """A corrupt record must be visible as an error, never silently replaced."""
     import json
     from saga2d import SaveError
-    from warband.scores import HighScores
+    from warband.records.scores import HighScores
 
     board = HighScores(tmp_path)
     world = battlefield()
@@ -200,11 +200,11 @@ def test_damaged_high_scores_are_reported_and_preserved(tmp_path, damage):
 def test_result_leaderboard_and_loaded_finish_are_one_frozen_record(tmp_path):
     """Use the real scene stack and keyboard to finish, inspect, reload and return."""
     from saga2d import Game
-    from warband.scene import GameOverScene, load_game, new_game
-    from warband.score_scene import HighScoreScene
-    from warband.scores import HighScores
-    from warband.style import build_theme
-    from warband.title import TitleScene
+    from warband.ui.scene import GameOverScene, load_game, new_game
+    from warband.ui.score_scene import HighScoreScene
+    from warband.records.scores import HighScores
+    from warband.ui.style import build_theme
+    from warband.ui.title import TitleScene
 
     game = Game("Warband scores test", backend="mock", resolution=(1280, 720), theme=build_theme(), save_dir=tmp_path / "saves")
     try:
@@ -244,7 +244,7 @@ def test_result_leaderboard_and_loaded_finish_are_one_frozen_record(tmp_path):
 def test_invalid_score_metadata_in_a_match_save_is_rejected(field, value):
     """A broken campaign ID must not silently become a new leaderboard entry."""
     from saga2d import SaveError
-    from warband.scene import GameScene, check_save
+    from warband.ui.scene import GameScene, check_save
 
     state = GameScene(battlefield(), 1).get_save_state()
     if field == "stats":
@@ -257,7 +257,7 @@ def test_invalid_score_metadata_in_a_match_save_is_rejected(field, value):
 
 def test_old_saves_get_a_stable_identity_and_demos_stay_unranked():
     """Missing legacy fields are supported; an explicitly unranked save stays so."""
-    from warband.scene import GameScene, load_game
+    from warband.ui.scene import GameScene, load_game
 
     scene = GameScene(battlefield(), 1, ranked=False)
     state = scene.get_save_state()
@@ -276,7 +276,7 @@ def test_high_scores_written_before_the_difficulties_were_merged_still_load(tmp_
     """Normal and Hard were one strength and are now one setting; old boards keep their rows."""
     from dataclasses import asdict
 
-    from warband.scores import HighScores
+    from warband.records.scores import HighScores
 
     world = battlefield()
     world.winner = 0

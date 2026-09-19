@@ -2,10 +2,10 @@
 import math
 import pytest
 
-from warband.model import World
-from warband.rules import BuildingType, Terrain, UnitType
-from warband.textures import TILE, WALK_FRAMES
-from warband.scene import GameScene
+from warband.sim.model import World
+from warband.sim.rules import BuildingType, Terrain, UnitType
+from warband.art.textures import TILE, WALK_FRAMES
+from warband.ui.scene import GameScene
 
 
 def walking_scene(game, kind=UnitType.FOOTMAN):
@@ -63,8 +63,8 @@ def test_click_and_box_selection_follow_the_presented_unit(game):
 
 def test_replay_motion_is_smooth_pauses_and_reaches_the_recorded_end(game):
     """A recording uses the same presentation clock while retaining its exact result."""
-    from warband.replay import Replay
-    from warband.replay_scene import ReplayScene
+    from warband.records.replay import Replay
+    from warband.ui.replay_scene import ReplayScene
 
     scene, walker = walking_scene(game)
     replay = Replay.begin(scene.world, seed=0, difficulty=scene.difficulty, human=0)
@@ -97,7 +97,7 @@ def test_replay_motion_is_smooth_pauses_and_reaches_the_recorded_end(game):
 @pytest.mark.parametrize("command", ("command_attack", "command_smart"))
 def test_attack_orders_target_the_unit_under_the_presented_pointer(game, command):
     """Both attack-click and right-click must keep a moving enemy's identity."""
-    from warband.model import Attack
+    from warband.sim.model import Attack
 
     scene, walker = walking_scene(game)
     target = scene.world.spawn_unit(1, UnitType.KNIGHT, (13.5, 10.5))
@@ -129,8 +129,8 @@ def test_loading_a_save_restarts_the_same_motion_without_old_frame_time(game):
 
 def test_right_click_ahead_of_a_moving_enemy_orders_empty_ground(game):
     import json
-    from warband.model import Move
-    from warband.replay import Playback, Replay
+    from warband.sim.model import Move
+    from warband.records.replay import Playback, Replay
 
     scene, walker = walking_scene(game)
     target = scene.world.spawn_unit(1, UnitType.KNIGHT, (13.5, 10.5))

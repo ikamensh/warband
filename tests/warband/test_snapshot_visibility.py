@@ -9,9 +9,9 @@ import json
 import pytest
 
 from saga2d import Game
-from warband.authority import WarbandMatch
-from warband.model import dist, tile_center
-from warband.rules import BuildingType, Terrain, UnitType, Upgrade
+from warband.online.authority import WarbandMatch
+from warband.sim.model import dist, tile_center
+from warband.sim.rules import BuildingType, Terrain, UnitType, Upgrade
 
 
 def fogged_match() -> WarbandMatch:
@@ -184,7 +184,7 @@ def test_news_travels_to_who_saw_it_to_its_owner_and_the_public_to_everyone() ->
 
 
 def test_the_checkpoint_keeps_who_saw_what_and_how_the_map_began() -> None:
-    from warband.authority import ONLINE
+    from warband.online.authority import ONLINE
 
     spec = ONLINE["warband-v2"]
 
@@ -228,7 +228,7 @@ class RoomSeat:
 
 @pytest.fixture
 def game(tmp_path):
-    from warband.style import build_theme
+    from warband.ui.style import build_theme
 
     g = Game("Warband WB-011", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     yield g
@@ -242,8 +242,8 @@ def play(game: Game, match: WarbandMatch, ticks: int = 8) -> None:
 
 
 def test_a_client_sees_the_rivals_hall_when_it_looks_remembers_it_after_and_keeps_it_across_a_rejoin(game) -> None:
-    from warband.multiplayer import NetworkGameScene
-    from warband.title import TitleScene
+    from warband.ui.multiplayer import NetworkGameScene
+    from warband.ui.title import TitleScene
 
     quiet = {'music': 0, 'sfx': 0, 'tutorial': False}
     match = fogged_match()

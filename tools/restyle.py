@@ -35,9 +35,9 @@ from PIL import Image  # noqa: E402
 
 from sagaforge import render3d as r3  # noqa: E402
 from sagaforge import restyle  # noqa: E402
-from warband import textures  # noqa: E402
-from warband.races import RACES  # noqa: E402
-from warband.rules import BuildingType, Race, Resource, UnitType  # noqa: E402
+from warband.art import textures  # noqa: E402
+from warband.sim.races import RACES  # noqa: E402
+from warband.sim.rules import BuildingType, Race, Resource, UnitType  # noqa: E402
 
 RESTYLED = Path(__file__).resolve().parent.parent / "warband" / "assets" / "restyled"
 SCALE = 2.0  # sheet pixels per logical unit (units)
@@ -813,10 +813,10 @@ def cmd_showcase(args: argparse.Namespace, subjects: list[Subject]) -> None:
     the same race twice shows the recolouring) attack-move into each other while peasants
     chop the wood behind the line.  The display must be awake."""
     from saga2d import Game, fonts
-    from warband.view import to_world
-    from warband.rules import Terrain
-    from warband.scene import new_game
-    from warband.style import build_theme
+    from warband.ui.view import to_world
+    from warband.sim.rules import Terrain
+    from warband.ui.scene import new_game
+    from warband.ui.style import build_theme
 
     game = Game("Warband showcase", resolution=(960, 600), backend="pyglet", visible=False, theme=build_theme())
     try:

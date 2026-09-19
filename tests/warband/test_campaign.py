@@ -9,15 +9,15 @@ from pathlib import Path
 import pytest
 
 from saga2d import Game, SaveError
-from warband.campaign import Progress, ProgressStore
-from warband.campaign_scene import CampaignScene
-from warband.dialog import DialogScene
-from warband.mission_scene import CAMPAIGN_SLOT, MissionResultScene, MissionScene, build_world
-from warband.missions import CAMPAIGN
-from warband.model import tile_center
-from warband.rules import SIM_DT, BuildingType, Difficulty, Race, UnitType
-from warband.style import build_theme
-from warband.title import TitleScene
+from warband.story.campaign import Progress, ProgressStore
+from warband.story.campaign_scene import CampaignScene
+from warband.story.dialog import DialogScene
+from warband.story.mission_scene import CAMPAIGN_SLOT, MissionResultScene, MissionScene, build_world
+from warband.story.missions import CAMPAIGN
+from warband.sim.model import tile_center
+from warband.sim.rules import SIM_DT, BuildingType, Difficulty, Race, UnitType
+from warband.ui.style import build_theme
+from warband.ui.title import TitleScene
 
 
 @pytest.fixture
@@ -342,7 +342,7 @@ def test_the_silent_hold_is_won_by_maren_at_the_pass_and_lost_with_her(game) -> 
 
 
 def test_dialogue_lines_follow_the_answer_and_escape_skips_to_the_question(game) -> None:
-    from warband.campaign import Choice, Line, Option
+    from warband.story.campaign import Choice, Line, Option
 
     vars: dict = {}
     done = []
@@ -369,8 +369,8 @@ READ_PROGRESS = """
 import json, sys
 from pathlib import Path
 from saga2d import Game
-from warband.campaign_scene import CampaignScene
-from warband.style import build_theme
+from warband.story.campaign_scene import CampaignScene
+from warband.ui.style import build_theme
 data = Path(sys.argv[1])
 game = Game("Warband Campaign", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=data / "saves")
 game.push(CampaignScene())

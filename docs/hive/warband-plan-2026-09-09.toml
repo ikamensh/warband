@@ -37,16 +37,16 @@ files you touch before changing anything.
   `press`, `tick`, `texts`, `click`; `tests/warband/test_model.py` has `flat_world`,
   `run`, `run_until`, `events`; `tests/warband/test_ai.py` shows how to drive a
   `Brain` against `mapgen.generate(seed=5, players=2, human=None)`.
-- The model (`warband/model.py`) is a 20 Hz fixed-step simulation (`SIM_DT` in
-  `warband/rules.py`). Orders are dataclasses in a deque per unit. Every command
+- The model (`warband/sim/model.py`) is a 20 Hz fixed-step simulation (`SIM_DT` in
+  `warband/sim/rules.py`). Orders are dataclasses in a deque per unit. Every command
   has a `can_*` query that returns a reason string or None, and the command raises
   `RuleError` when misused. Clear exceptions over silent fallbacks: never make the
   model swallow an error or invent a default for a real mistake.
 - Saves: `World.to_dict`/`from_dict` must round-trip every new field. The scene's
-  `SAVE_VERSION` (warband/scene.py) guards the schema. A new field that older saves
+  `SAVE_VERSION` (warband/ui/scene.py) guards the schema. A new field that older saves
   lack loads with a sensible default through `saved.get(...)`, and a test must load
   a dict without the field.
-- Multiplayer sends `World.to_dict()` snapshots (warband/multiplayer.py), so new
+- Multiplayer sends `World.to_dict()` snapshots (warband/ui/multiplayer.py), so new
   World state must be plain JSON data (ints, floats, strings, lists, dicts).
 - Delete rather than deprecate: no compatibility shims, no dead code, no TODO
   comments, no commented-out code.
@@ -62,9 +62,9 @@ key = "ai-defence"
 repo = "https://github.com/ikamensh/warband.git"
 title = "The AI defends in proportion to the threat and keeps its attack going"
 story = "A lone enemy scout at a farm no longer recalls the computer's whole army from its attack: the AI answers each threat with a few nearby soldiers sized to the threat, and abandons an attack only when the raid on its base is serious."
-constraints = "Change only warband/ai.py and tests/warband/test_ai.py. Decisions stay observable in Brain.log."
+constraints = "Change only warband/brains/ai.py and tests/warband/test_ai.py. Decisions stay observable in Brain.log."
 notes = """
-Today `Brain._military` (warband/ai.py) reacts to `_threat` (the nearest visible enemy
+Today `Brain._military` (warband/brains/ai.py) reacts to `_threat` (the nearest visible enemy
 within DEFEND_RADIUS of any own building) by setting `attacking = False` and sending
 every soldier there, then returning.
 
@@ -105,11 +105,11 @@ key = "ai-economy"
 repo = "https://github.com/ikamensh/warband.git"
 title = "The AI's economy grows with its halls"
 story = "A computer player that expands to a second mine also grows its workforce: peasants are trained from every hall up to a target that rises with each completed hall, and the new hall's workers mine its own nearest mine, so the AI's late-game income matches its army ambitions."
-constraints = "Change only warband/ai.py, warband/worker_ai.py if the tests show it is needed, and tests/warband/test_ai.py and tests/warband/test_worker_ai.py."
+constraints = "Change only warband/brains/ai.py, warband/sim/worker_ai.py if the tests show it is needed, and tests/warband/test_ai.py and tests/warband/test_worker_ai.py."
 notes = """
 Today `Brain._training` trains peasants from `_hall()` (the first completed hall) only
 while `len(peasants) < profile.peasants`, so an expansion hall adds no workers.
-`assign_idle_workers` in warband/worker_ai.py decides where idle workers go; read it
+`assign_idle_workers` in warband/sim/worker_ai.py decides where idle workers go; read it
 before changing anything.
 
 - Workforce target: `profile.peasants + 5 * (completed halls - 1)`, capped by the supply
@@ -120,7 +120,7 @@ before changing anything.
 - A peasant delivered at an expansion hall should gather at that hall's nearest mine or
   nearest trees. If `assign_idle_workers` already prefers the nearest deposit, no change
   is needed there; if it sends everyone to the first hall's mine, fix it in
-  warband/worker_ai.py with a test in tests/warband/test_worker_ai.py.
+  warband/sim/worker_ai.py with a test in tests/warband/test_worker_ai.py.
 - Log "workforce target N" whenever the target changes.
 
 Tests (tests/warband/test_ai.py): a Normal brain on
@@ -138,9 +138,9 @@ key = "ai-race-play"
 repo = "https://github.com/ikamensh/warband.git"
 title = "Each race's AI builds the army its race is good at, and counters what it sees"
 story = "Orcs field grunts and ogres, Elves lean on rangers and outriders, Dwarves bring crossbows and mortars early, Humans stay balanced, and every computer player shifts its training towards counters of the enemy composition it has seen, so the four races feel different to fight."
-constraints = "Change only warband/ai.py, tests/warband/test_ai.py and the sentence in docs/warband-races.md that says the AI plays every race the same way. Race data stays in warband/races.py; warband/rules.py is untouched."
+constraints = "Change only warband/brains/ai.py, tests/warband/test_ai.py and the sentence in docs/warband-races.md that says the AI plays every race the same way. Race data stays in warband/sim/races.py; warband/sim/rules.py is untouched."
 notes = """
-`Brain._choose_unit` (warband/ai.py) alternates footman/archer by `unit_toggle`, buys
+`Brain._choose_unit` (warband/brains/ai.py) alternates footman/archer by `unit_toggle`, buys
 knights when gold > 1000, catapults after 6 soldiers and clerics at one per six;
 `RESEARCH_ORDER` is shared.
 
@@ -177,7 +177,7 @@ key = "ai-endgame"
 repo = "https://github.com/ikamensh/warband.git"
 title = "Decisive endgames: bounded waves, pressing the advantage, last stand revealed"
 story = "Matches on large maps end: the computer never waits for an army larger than its farms can feed, it presses the attack while the enemy has no army, and a player who has lost every hall and production building has their remaining buildings revealed to everyone, so the last farm can be found."
-constraints = "Change warband/ai.py, warband/model.py, warband/scene.py (one toast) and tests under tests/warband/. Do not change map generation or unit rules."
+constraints = "Change warband/brains/ai.py, warband/sim/model.py, warband/ui/scene.py (one toast) and tests under tests/warband/. Do not change map generation or unit rules."
 notes = """
 Why matches stall: `Brain._military` attacks only when `len(army) >= self.wave`, and
 `self.wave` grows by `profile.wave_growth` after every wave without bound, while
@@ -185,7 +185,7 @@ Why matches stall: `Brain._military` attacks only when `len(army) >= self.wave`,
 required army can never exist. docs/warband-release.md lists "Large maps with three or
 four players can run past twenty minutes without a decision" as a known issue.
 
-AI (warband/ai.py):
+AI (warband/brains/ai.py):
 - Wave bound: the army the brain waits for is `min(self.wave, cap - peasants - 2)` where
   `(used, cap) = world.supply(self.player)` and peasants is `len(self._peasants(world))`,
   never below `profile.first_wave // 2`. Log "wave capped at N" the first time the cap
@@ -197,7 +197,7 @@ AI (warband/ai.py):
 - Hunting: while attacking, idle soldiers already go to the nearest enemy building; make
   `_enemy_targets` prefer buildings of alive players and keep the fall-through to units.
 
-Model (warband/model.py):
+Model (warband/sim/model.py):
 - Last stand: a player who is alive but has no completed hall (`BuildingType.TOWN_HALL`)
   and no completed building that trains units (`info.trains` non-empty) is exposed. In
   `update_vision`, after normal vision, reveal every remaining building of an exposed
@@ -209,7 +209,7 @@ Model (warband/model.py):
   derived from buildings, so saves need nothing new, but recompute the set in `from_dict`
   so the event does not repeat after loading.
 
-Scene (warband/scene.py): on the "exposed" event show a toast
+Scene (warband/ui/scene.py): on the "exposed" event show a toast
 "<name>'s last holdings are revealed" the way the scene turns other events into toasts
 (search for how "victory" or "under attack" is handled).
 
@@ -236,9 +236,9 @@ key = "group-move"
 repo = "https://github.com/ikamensh/warband.git"
 title = "Units ordered together move together"
 story = "When a mixed group is sent somewhere, the fast riders no longer arrive alone: a move or attack-move given to several units paces them to the slowest unit in the group, so the army reaches the fight as one."
-constraints = "Change only warband/model.py and tests/warband/test_model.py. Movement code is deadlock-sensitive: single-unit orders must be unchanged and the fuzz run in the notes must pass."
+constraints = "Change only warband/sim/model.py and tests/warband/test_model.py. Movement code is deadlock-sensitive: single-unit orders must be unchanged and the fuzz run in the notes must pass."
 notes = """
-- `World.move` and `World.attack_move` (warband/model.py) take a list of unit ids. When the
+- `World.move` and `World.attack_move` (warband/sim/model.py) take a list of unit ids. When the
   list has more than one unit, record the group's pace on each issued order (a
   `pace: float | None` field on `Move` and `AttackMove`, the slowest `speed_of` in the
   group at issue time) and make the walking code (`_walk_to`, `_follow`, `_steer`) use
@@ -264,12 +264,12 @@ key = "map-preview"
 repo = "https://github.com/ikamensh/warband.git"
 title = "Map preview on the new-game screen"
 story = "Before starting, the player sees a small picture of the map the seed produces, with terrain, water, trees, mines and every start position in its player colour, plus the opponents' races, and can reroll or change size, land and players until it looks right."
-constraints = "Change only warband/title.py, warband/view.py (only to share the terrain colouring) and tests under tests/warband/. The preview must fit the existing panel at 1280x720; tests/warband/test_layout.py checks the new-game screen at five sizes."
+constraints = "Change only warband/ui/title.py, warband/ui/view.py (only to share the terrain colouring) and tests under tests/warband/. The preview must fit the existing panel at 1280x720; tests/warband/test_layout.py checks the new-game screen at five sizes."
 notes = """
-- `MapView._minimap_terrain` in warband/view.py colours tiles from
+- `MapView._minimap_terrain` in warband/ui/view.py colours tiles from
   `textures.PALETTES[theme].minimap`. Move that colouring into a module-level function
   `minimap_terrain(world) -> np.ndarray` used by MapView and by the preview.
-- `NewGameScene` (warband/title.py) generates the world for the current seed, size,
+- `NewGameScene` (warband/ui/title.py) generates the world for the current seed, size,
   players, theme and race with
   `mapgen.generate(seed, w, h, players, theme=theme, races=[race] + [None] * (players - 1))`,
   draws terrain, a 3x3 block per start hall in the owner's colour (`world.players[i].color`)
@@ -298,9 +298,9 @@ key = "resign"
 repo = "https://github.com/ikamensh/warband.git"
 title = "Resign from the pause menu"
 story = "A player who is losing can concede: the pause menu offers Resign (hotkey R); the match ends at once with the Defeat screen, and the remaining players are credited with the win."
-constraints = "Single-player only: NetworkGameScene in warband/multiplayer.py keeps its own Leave match button and must not change. Change only warband/model.py, warband/scene.py, tests/warband/test_model.py and tests/warband/test_scene.py. No new saved state."
+constraints = "Single-player only: NetworkGameScene in warband/ui/multiplayer.py keeps its own Leave match button and must not change. Change only warband/sim/model.py, warband/ui/scene.py, tests/warband/test_model.py and tests/warband/test_scene.py. No new saved state."
 notes = """
-Model (warband/model.py):
+Model (warband/sim/model.py):
 - Add `World.can_resign(player: int) -> str | None` with the reasons "the match is over"
   (`self.winner is not None`) and "<name> is already out" (`not self.players[player].alive`),
   and `World.resign(player: int)` which raises `RuleError(reason)` when `can_resign` returns one.
@@ -311,7 +311,7 @@ Model (warband/model.py):
   `_check_elimination()` so the player is marked dead and, when one player is left,
   `winner` is set and the existing "victory" event fires.
 
-Scene (warband/scene.py):
+Scene (warband/ui/scene.py):
 - `PauseScene.controls` gains `"r": "resign"` and the panel gains
   `Button("Resign", hotkey="R", on_click=self.resign, style=GHOST_BUTTON, width=260)`
   after "How to play". `resign()` pops the pause menu, then calls

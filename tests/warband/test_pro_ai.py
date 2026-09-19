@@ -17,11 +17,11 @@ import random
 
 import pytest
 
-from warband import mapgen
-from warband.model import dist
-from warband.ai import known_mines
-from warband.pro_ai import PRO, ProBrain, _tower_strength, strength
-from warband.rules import SIM_DT, BuildingType, UnitType
+from warband.sim import mapgen
+from warband.sim.model import dist
+from warband.brains.ai import known_mines
+from warband.brains.pro_ai import PRO, ProBrain, _tower_strength, strength
+from warband.sim.rules import SIM_DT, BuildingType, UnitType
 
 
 def _world_with_army(seed: int = 5):
@@ -215,7 +215,7 @@ def test_more_opponents_mean_a_bigger_margin_is_wanted_before_attacking():
 def test_a_free_for_all_runs_to_placements():
     """Four brains, one map, and a finishing order rather than a winner: six minutes on a large map, the
     slow tier's."""
-    from warband.arena import MatchSpec, play
+    from warband.league.arena import MatchSpec, play
     outcome = play(MatchSpec(seed=21, agents=("pro", "pro", "hard", "medium"), minutes=6, width=64, height=56))
     assert len(outcome.placements) == 4
     assert min(outcome.placements) == 1
@@ -317,8 +317,8 @@ def test_choppers_go_back_to_the_gold_once_the_wood_is_plentiful():
     out — so the wood crew only ever grew, and the league's losers ended with
     five to sixteen thousand lumber unspent while gold was what they lacked.
     """
-    from warband.model import Harvest
-    from warband.rules import Resource
+    from warband.sim.model import Harvest
+    from warband.sim.rules import Resource
 
     world, brain = _world_with_army()
     player = world.players[0]
@@ -347,7 +347,7 @@ def test_a_producer_saves_for_the_unit_the_plan_wants():
     field fifteen scouts for eight knights."""
     from dataclasses import replace
 
-    from warband.model import Building
+    from warband.sim.model import Building
 
     world = mapgen.generate(seed=5, players=2, human=None)
     brain = ProBrain(0, replace(PRO, name="test-knights", scout=False,
@@ -375,7 +375,7 @@ def test_a_producer_saves_for_the_unit_the_plan_wants():
 
 def _brain_with_a_failing_mine(seed: int = 5, gold_left: int = 2000, peasants: int = 12):
     """A settled base whose mine is nearly spent, a second mine known, and money to move."""
-    from warband.rules import MINE_SLOTS
+    from warband.sim.rules import MINE_SLOTS
 
     world = mapgen.generate(seed=seed, players=2, human=None)
     brain = ProBrain(0, PRO)
@@ -442,7 +442,7 @@ def test_choppers_sent_back_to_the_gold_do_not_name_a_mine_that_is_gone():
     holds one. Seed 12 has a mine thirteen tiles from the hall — close enough
     for the brain to want it, too far for anything at home to see it go.
     """
-    from warband.model import Harvest
+    from warband.sim.model import Harvest
 
     world = mapgen.generate(seed=12, players=2, human=None)
     brain = ProBrain(0, PRO)
@@ -474,7 +474,7 @@ def test_choppers_sent_back_to_the_gold_do_not_name_a_mine_that_is_gone():
 def test_a_pro_brain_builds_what_it_orders_its_builders_arrive_to_a_paid_order(posture: str) -> None:
     """WB-043: a build order is paid at the site, and the brain once spent the bank during the walk, so a quarter of
     its orders died on arrival. It holds their price now. Four minutes of two brains' play: the slow tier."""
-    from warband.arena import make_agent
+    from warband.league.arena import make_agent
 
     world = mapgen.generate(seed=17, players=2, human=None)
     agents = [make_agent(posture, 0, 17), make_agent("pro-vanguard", 1, 17)]

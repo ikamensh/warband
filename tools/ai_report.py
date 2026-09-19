@@ -22,15 +22,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from warband import fastsim  # noqa: E402
+from warband.league import fastsim  # noqa: E402
 
 if __name__ in ("__main__", "__mp_main__"):  # run as a program or as one of its worker processes, not as a library
     fastsim.activate()  # the compiled simulation, unless WARBAND_INTERPRETED is set
 
-from warband import mapgen  # noqa: E402
-from warband.ai import make_brain  # noqa: E402
-from warband.model import Harvest, World, dist  # noqa: E402
-from warband.rules import BUILDINGS, SIM_DT, BuildingType, Difficulty, UnitType, Upgrade  # noqa: E402
+from warband.sim import mapgen  # noqa: E402
+from warband.brains.ai import make_brain  # noqa: E402
+from warband.sim.model import Harvest, World, dist  # noqa: E402
+from warband.sim.rules import BUILDINGS, SIM_DT, BuildingType, Difficulty, UnitType, Upgrade  # noqa: E402
 
 MINUTES = 20
 

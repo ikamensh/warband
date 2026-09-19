@@ -21,10 +21,10 @@ from pyglet.window import mouse  # noqa: E402
 
 from saga2d import Button, Game, Label, Row, fonts  # noqa: E402
 from saga2d.testing.native_frames import tick  # noqa: E402
-from warband.rules import BUILDINGS, BuildingType, UnitType, Upgrade  # noqa: E402
-from warband.scene import SettlementPlansScene, new_game  # noqa: E402
-from warband.style import build_theme  # noqa: E402
-from warband.textures import TILE  # noqa: E402
+from warband.sim.rules import BUILDINGS, BuildingType, UnitType, Upgrade  # noqa: E402
+from warband.ui.scene import SettlementPlansScene, new_game  # noqa: E402
+from warband.ui.style import build_theme  # noqa: E402
+from warband.art.textures import TILE  # noqa: E402
 
 
 def verify(out: Path, save_dir: Path) -> None:

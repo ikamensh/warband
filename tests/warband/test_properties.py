@@ -11,12 +11,12 @@ import pytest
 from hypothesis import HealthCheck, assume, given, reject, settings
 from hypothesis import strategies as st
 
-from warband import mapgen, path
-from warband.ai import make_brain
-from warband.model import RuleError, World
-from warband.replay import Playback, Replay, digest
-from warband.rules import BuildingType, Difficulty, Layout, UnitType, Upgrade
-from warband.scene import FAIR_TRIES, fair_map
+from warband.sim import mapgen, path
+from warband.brains.ai import make_brain
+from warband.sim.model import RuleError, World
+from warband.records.replay import Playback, Replay, digest
+from warband.sim.rules import BuildingType, Difficulty, Layout, UnitType, Upgrade
+from warband.ui.scene import FAIR_TRIES, fair_map
 
 FEW = settings(max_examples=12, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 MANY = settings(max_examples=300, deadline=None, suppress_health_check=[HealthCheck.too_slow])

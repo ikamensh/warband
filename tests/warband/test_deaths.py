@@ -9,11 +9,11 @@ import pytest
 from saga2d import Game
 
 from sagaforge.synth import SAMPLE_RATE
-from warband import deaths, sound
-from warband.model import World
-from warband.rules import BuildingType, Race, Terrain, UnitType
-from warband.scene import GameScene
-from warband.sound import SoundBank
+from warband.audio import deaths, sound
+from warband.sim.model import World
+from warband.sim.rules import BuildingType, Race, Terrain, UnitType
+from warband.ui.scene import GameScene
+from warband.audio.sound import SoundBank
 
 
 def low_band_peak_time(clip: np.ndarray) -> float:

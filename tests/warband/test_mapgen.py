@@ -3,9 +3,9 @@ everything reachable within the pathfinder's budget."""
 
 import pytest
 
-from warband import mapgen, path
-from warband.model import World
-from warband.rules import EXPANSION_GOLD, MINE_GOLD, BuildingType, Layout, MapTheme, Terrain, UnitType
+from warband.sim import mapgen, path
+from warband.sim.model import World
+from warband.sim.rules import EXPANSION_GOLD, MINE_GOLD, BuildingType, Layout, MapTheme, Terrain, UnitType
 
 
 def halls(world: World) -> list:

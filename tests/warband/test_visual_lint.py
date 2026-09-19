@@ -8,10 +8,10 @@ import pytest
 from saga2d import Game, RenderLayer, Scene, Sprite, SpriteAnchor
 from saga2d.ui import Label
 from sagaforge import render3d as r3
-from warband import textures, visual_lint
-from warband.rules import Race, Resource, UnitType
-from warband.style import build_theme
-from warband.title import TitleScene
+from warband.art import textures, visual_lint
+from warband.sim.rules import Race, Resource, UnitType
+from warband.ui.style import build_theme
+from warband.ui.title import TitleScene
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools import visual_lint as screens  # noqa: E402

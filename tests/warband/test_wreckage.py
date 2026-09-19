@@ -7,11 +7,11 @@ import pytest
 
 from saga2d import Game
 from sagaforge.synth import SAMPLE_RATE
-from warband import sound, wreckage
-from warband.model import World
-from warband.rules import BuildingType, Race, Terrain, UnitType
-from warband.scene import GameScene
-from warband.sound import SoundBank
+from warband.audio import sound, wreckage
+from warband.sim.model import World
+from warband.sim.rules import BuildingType, Race, Terrain, UnitType
+from warband.ui.scene import GameScene
+from warband.audio.sound import SoundBank
 
 
 def test_every_material_has_collapse_cues_longer_than_any_one_stage() -> None:

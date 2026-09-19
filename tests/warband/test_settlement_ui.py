@@ -6,10 +6,10 @@ import pytest
 
 from saga2d import Button, Game, Label, Row
 from saga2d.testing import assert_no_text_overlap
-from warband.rules import BUILDINGS, UNITS, BuildingType, UnitType, Upgrade
-from warband.scene import SettlementPlansScene, new_game
-from warband.style import build_theme
-from warband.textures import TILE
+from warband.sim.rules import BUILDINGS, UNITS, BuildingType, UnitType, Upgrade
+from warband.ui.scene import SettlementPlansScene, new_game
+from warband.ui.style import build_theme
+from warband.art.textures import TILE
 
 
 @pytest.fixture(params=[(1280, 800), (1280, 720)], ids=["1280x800", "1280x720"])

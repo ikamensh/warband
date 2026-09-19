@@ -13,14 +13,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from saga2d import Game, fonts
-from warband.profile import EARLY_EXIT_WEIGHT, MatchResult, Profile, standing
-from warband.profile_scene import NameScene, ProfileScene
-from warband.replay import ReplayStore
-from warband.replay_scene import ReplayEndScene, ReplayScene
-from warband.rules import Difficulty
-from warband.scene import GameOverScene, LeaveScene, new_game
-from warband.style import build_theme
-from warband.title import TitleScene
+from warband.records.profile import EARLY_EXIT_WEIGHT, MatchResult, Profile, standing
+from warband.ui.profile_scene import NameScene, ProfileScene
+from warband.records.replay import ReplayStore
+from warband.ui.replay_scene import ReplayEndScene, ReplayScene
+from warband.sim.rules import Difficulty
+from warband.ui.scene import GameOverScene, LeaveScene, new_game
+from warband.ui.style import build_theme
+from warband.ui.title import TitleScene
 
 
 def verify(out: Path, resolution: tuple[int, int] = (1280, 800)) -> None:
@@ -82,7 +82,7 @@ def verify(out: Path, resolution: tuple[int, int] = (1280, 800)) -> None:
             shot("leave-even")
             game.pop()
             frames()
-            from warband.rules import UnitType
+            from warband.sim.rules import UnitType
             scene.world.spawn_unit(1, UnitType.FOOTMAN, (hall.center[0] + 2, hall.center[1] + 2))
             game.push(LeaveScene(scene, standing(scene.world, scene.human), "Resign", lambda: None))
             shot("leave-attacked")

@@ -4,8 +4,8 @@ import math
 
 import pytest
 
-from warband.model import Heal, World
-from warband.rules import LEASH, BuildingType, SIM_DT, Terrain, UnitType
+from warband.sim.model import Heal, World
+from warband.sim.rules import LEASH, BuildingType, SIM_DT, Terrain, UnitType
 
 
 def arena(terrain=None):

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from warband.balance import equilibrium
+from warband.league.balance import equilibrium
 
 
 def test_rock_paper_scissors_is_played_a_third_each():
@@ -32,7 +32,7 @@ def test_a_dominant_posture_is_the_whole_meta():
 
 
 def _match(agents, winner, tallies, seed=1):
-    from warband.arena import MatchResult, MatchSpec
+    from warband.league.arena import MatchResult, MatchSpec
     placements = tuple(1 if i == winner else 2 for i in range(len(agents)))
     return MatchResult(spec=MatchSpec(seed=seed, agents=agents), placements=placements, winner=winner,
                        minutes=10.0, steps=12_000, wall=1.0, tallies=tuple(tallies))
@@ -41,7 +41,7 @@ def _match(agents, winner, tallies, seed=1):
 def _tally(race="human", **fields):
     from collections import Counter
 
-    from warband.telemetry import PlayerTally, Sample
+    from warband.league.telemetry import PlayerTally, Sample
     tally = PlayerTally(race=race)
     for name, value in fields.items():
         if name == "timeline":
@@ -53,7 +53,7 @@ def _tally(race="human", **fields):
 
 def test_usage_counts_what_was_bought_and_what_it_earned():
     """Two footmen for 1200 that destroyed 800 of value earned 667 per thousand spent, in half the player-games."""
-    from warband.balance import usage
+    from warband.league.balance import usage
 
     results = [_match(("a", "b"), 0, [
         _tally(trained={"footman": 2}, spent={"footman": 1200}, kill_value={"footman": 800}, lost={"footman": 1},
@@ -70,7 +70,7 @@ def test_usage_counts_what_was_bought_and_what_it_earned():
 
 def test_a_posture_is_read_off_its_own_players_only():
     """Unspent bank, supply-blocked time and matches at the cap are averaged over the games a posture played."""
-    from warband.balance import postures
+    from warband.league.balance import postures
 
     rich = _tally(timeline=[dict(time=0, gold=1000, lumber=500, supply_used=5, supply_cap=9, peasants=5, soldiers=0, army_value=0),
                             dict(time=60, gold=3000, lumber=0, supply_used=9, supply_cap=9, peasants=5, soldiers=4, army_value=2400),
@@ -91,7 +91,7 @@ def test_a_saved_match_gives_back_its_tallies():
     """A played match survives the trip through the ladder's own record format, tallies and settling included."""
     import json
 
-    from warband.arena import MatchSpec, from_record, play, to_record
+    from warband.league.arena import MatchSpec, from_record, play, to_record
 
     played = play(MatchSpec(seed=7, agents=("pro", "rush"), minutes=2))
     assert played.tallies, "a played match carries a tally per player"
@@ -103,7 +103,7 @@ def test_a_saved_match_gives_back_its_tallies():
 
 def test_what_a_posture_fielded_is_the_mean_of_its_own_seats():
     """A knights posture that trained 4 knights in one game and 2 in another fielded 3 a game."""
-    from warband.balance import fielded
+    from warband.league.balance import fielded
 
     results = [_match(("knights", "pro"), 0, [_tally(trained={"knight": 4, "footman": 1}), _tally(trained={"footman": 5})]),
                _match(("pro", "knights"), 1, [_tally(trained={"footman": 3}), _tally(trained={"knight": 2})], seed=2)]
