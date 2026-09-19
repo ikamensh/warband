@@ -1,6 +1,6 @@
 """Evidence for the AI gates: difficulties against a scripted human opening, and how often matches end.
 
-    uv run python tools/ai_report.py                 # 3 difficulties × 4 seeds against the script, 8 Normal-vs-Normal matches
+    uv run python tools/ai_report.py                 # each difficulty × 4 seeds against the script, 8 Medium-vs-Medium matches
     uv run python tools/ai_report.py --seeds 8 --decide 20
     uv run python tools/ai_report.py --seeds 0 --decide 0 --ladder 4   # every pair of difficulties head to head, sides swapped per seed
 
@@ -8,7 +8,9 @@ The script plays a plain human opening through World commands: peasants
 mine and chop, farms keep supply ahead, a barracks then a second one, a
 blacksmith for Sharpened Blades, footmen and archers trained without pause,
 and an attack-move with the whole army every time it reaches twelve.
-Easy should lose to it, Hard should beat it, Normal is the coin flip.
+Easy should lose to it, Hard and Master should beat it (the Early Access gate
+W01). Medium beats it too since soldiers fight soldiers first; on 16 seeds
+on 2026-09-19 the script beat Easy 10 times, the others never (WB-014).
 """
 
 from __future__ import annotations

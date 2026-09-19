@@ -495,6 +495,30 @@ Where mines are few or the ground is broken, aggression pays. The lever is
 in `mapgen`, not in `rules`: fewer mines on open maps, or mines placed so
 that the second one is between the players rather than behind them.
 
+## Revalidated on 2026-09-19 (WB-014)
+
+After WB-043 (held build prices), WB-037 (the answers to a tower rush) and
+WB-036 (Master's third posture), on main, with evidence under
+`docs/evidence/wb014/`:
+
+* **Races**, Master against Master, 24 seeds a pair both ways (288 matches, 6
+  undecided; `tools/race_report.py --seeds 24 --difficulty master`, which had
+  been unable to play Hard or Master since they became a ProBrain and now asks
+  `make_brain`): human 55.6%, elf 51.4%, dwarf 51.4%, orc 41.4%. Pairs: dwarf
+  31–15 orc, human 29–19 orc, human 29–19 dwarf, elf 25–21 human, elf 22–24
+  orc, dwarf 23–25 elf. The orcs sit where the third league left them (41.7%
+  on 96 matches), now on three times the sample; their loss to the dwarves is
+  the widest gap. Not retuned here: that is a balance change with a server
+  rollout, filed as WB-045.
+* **Free-for-all endings**, the four settings in four-player matches, 24 seeds
+  with every seat rotation (96 matches): 85 decided, median 11.5 minutes;
+  placement scores Master 71.9%, Hard 52.8%, Medium 47.4%, Easy 28.0%. Hard
+  barely clears Medium here, where one against one it is 400 points above it:
+  the pro brains' caution in a free-for-all (`ffa_caution`).
+* **Easy against a plain opening**: see [the difficulty
+  settings](ai-ladder.md#the-difficulty-settings). Easy now waits until
+  minute eight before its first wave, and the scripted opening beats it again.
+
 ## What to change next
 
 1. **Re-measure across the layouts**, now that a league can ask for them.
