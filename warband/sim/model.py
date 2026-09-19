@@ -1920,7 +1920,7 @@ class World:
         if u.is_worker or u.info.damage == 0:
             return
         target = self.entity(order.target) if order.target is not None else None
-        if target is not None and (target.hp <= 0 or (u.windup <= 0.0 and not self._in_range(u, target))):
+        if target is not None and not self._hold_keeps(u, target):
             target = order.target = None
             u.windup = 0.0  # a blow drawn back at it is broken off, never kept for the next foe
         if target is None:
@@ -1934,6 +1934,18 @@ class World:
                 return
             order.target = target.id
         self._fight(u, target, dt, auto=True)
+
+    def _hold_keeps(self, u: Unit, target: Entity) -> bool:
+        """Whether a unit on Hold stays with *target*: while it lives and, unless a blow is drawn back at it already,
+        stands in reach, and for a siege crew while a clear stone can fall on it (looked at every fifth tick, when the
+        crew would choose again).  A crew waiting on a target its own side has closed on would throw at nothing else."""
+        if target.hp <= 0:
+            return False
+        if u.windup > 0.0:
+            return True
+        if not self._in_range(u, target):
+            return False
+        return not (u.info.splash and self.tick % 5 == 0 and self._aim_point(u, target, auto=True) is None)
 
     def _do_move(self, u: Unit, order: Move, dt: float) -> None:
         if self._march(u, order, dt):
