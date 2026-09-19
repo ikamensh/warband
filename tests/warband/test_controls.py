@@ -583,3 +583,21 @@ def test_the_authority_takes_endless_training_for_a_seats_own_buildings_only() -
     with pytest.raises(CommandError, match="plan_if_short"):
         match.apply(0, {"action": "build", "args": [world.player_units(0)[0].id, "farm", [9, 9]], "kwargs": {"plan_if_short": 1}})
     assert theirs.auto == []
+
+
+def test_the_hint_bar_says_what_esc_and_a_right_click_will_do(game) -> None:
+    """In the Modal scheme's home catalogue the bar said "Esc menu" while a mine was selected, and Esc deselected it; a
+    site going up, or a farm, offered "Right click: rally point", which means nothing there."""
+    scene = match(game, "modal")
+    mine = min(scene.world.mines(), key=lambda m: math.dist(m.center, hall_of(scene).center))
+    scene.select([mine.id])
+    assert ("Esc", "deselect") in scene.hint()
+    scene.select([])
+    assert ("Esc", "menu") in scene.hint()
+    world, hall = scene.world, hall_of(scene)
+    for site, done in ((world.place_building(scene.human, BuildingType.BARRACKS, open_ground(scene, BuildingType.BARRACKS, hall.center), done=False), False),
+                       (world.place_building(scene.human, BuildingType.FARM, open_ground(scene, BuildingType.FARM, hall.center)), True)):
+        scene.select([site.id])
+        assert not any(what == "rally point" for _, what in scene.hint()), (site.type, done)
+    scene.select([hall.id])
+    assert ("Right click", "rally point") in scene.hint()

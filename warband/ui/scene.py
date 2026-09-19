@@ -659,7 +659,8 @@ class GameScene(Scene):
             if catalogue == self.catalogue:
                 return hints + [("Esc", "back")]
             return hints + [(f"{key_label(scheme.keys['build'])} / {key_label(scheme.keys['upgrade'])}", "build / upgrade"),
-                            (key_label(scheme.keys["repeat"]), "repeat"), ("Tab", "idle peasant"), ("Esc", "menu")]
+                            (key_label(scheme.keys["repeat"]), "repeat"), ("Tab", "idle peasant"),
+                            ("Esc", "deselect" if self.selection else "menu")]  # a mine or a rival selected goes first
         if catalogue == "upgrade":
             return [(keys, "order"), ("Esc", "back")]
         units = self._own_units()
@@ -675,7 +676,9 @@ class GameScene(Scene):
             hints = [(work, "train / research")] if work else []
             if any(c.endless is not None for c in self._card):
                 hints.append(("Shift+key", "train endlessly"))
-            return hints + [("Right click", "rally point"), ("Esc", "deselect")]
+            if building.done and building.info.trains:  # a rally point means something only where recruits walk out
+                hints.append(("Right click", "rally point"))
+            return hints + [("Esc", "deselect")]
         plan = " / ".join(key_label(scheme.keys[action]) for action in ("build", "train", "upgrade"))
         return [("Drag", "select"), (plan, "plan buildings / units / upgrades"), (key_label(scheme.keys["assembly"]), "assembly"),
                 ("Tab", "idle peasant"), ("Ctrl+A", "army"), ("Space", "last alert"), ("F3", "pause"), ("F1", "help")]
