@@ -58,6 +58,22 @@ def _profile(state: evolve.State, name: str | None) -> None:
                                      if getattr(profile, f.name) != getattr(PRO, f.name)) + ")")
 
 
+def _best(state: evolve.State, args: argparse.Namespace) -> None:
+    """Write the run's best proven individuals out as genes files, best first (``--out`` is the folder)."""
+    import json
+
+    panel = evolve.panel_of(state)
+    prior = {o: evolve._population_rate(state.population, o) for o in panel}
+    pool = {i.name: i for i in [*state.hall, *state.population] if i.games >= args.min_games}
+    ranked = sorted(pool.values(), key=lambda i: -evolve.fitness(i, panel, prior))[:args.top]
+    args.out.mkdir(parents=True, exist_ok=True)
+    for place, individual in enumerate(ranked, 1):
+        path = args.out / f"{args.path.name}-best{place}.json"
+        path.write_text(json.dumps({"name": individual.name, "race": state.settings.race, "score": individual.score,
+                                    "games": individual.games, "genes": individual.genes}))
+        print(f"{path}: {individual.name} {individual.score:.3f} over {individual.games}")
+
+
 def _trial(args: argparse.Namespace) -> None:
     """Known profiles with some genes set by hand, against the panel: what one behaviour is worth before it is bred."""
     panel = args.panel.split(",")
@@ -112,7 +128,8 @@ def _macro(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("mode", choices=("run", "show", "profile", "trial", "macro"))
+    parser.add_argument("mode", choices=("run", "show", "profile", "trial", "macro", "best"))
+    parser.add_argument("--min-games", type=int, default=150, help="best: only individuals with this many games behind them")
     parser.add_argument("--base", default="pro-vanguard", help="trial: the known profile the genes are set on")
     parser.add_argument("--set", action="append", help="trial: genes set by hand, e.g. research_first=2,tech.blacksmith=1 (repeatable)")
     parser.add_argument("--genes", action="append", help="trial: a JSON file whose \"genes\" play as they are (repeatable)")
@@ -139,9 +156,9 @@ def main() -> None:
     if args.mode == "macro":
         _macro(args)
         return
-    if args.mode in ("show", "profile"):
+    if args.mode in ("show", "profile", "best"):
         state = evolve.load(args.path)
-        _show(state, args.top) if args.mode == "show" else _profile(state, args.name)
+        {"show": lambda: _show(state, args.top), "profile": lambda: _profile(state, args.name), "best": lambda: _best(state, args)}[args.mode]()
         return
     out: Path = args.out
     tag = out.name
