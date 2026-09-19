@@ -581,8 +581,14 @@ class MapView:
             self.game.assets.update_image(self.minimap_key, self.minimap_image())
 
     def set_reveal(self, reveal: bool) -> None:
-        """Show the whole map, or only what the player sees; the fog and minimap follow on the next sync."""
+        """Show the whole map, or only what the player sees; the fog and minimap follow on the next sync.  With the fog
+        back, what only the reveal showed goes back into it: a building the player never saw is not remembered."""
         self.reveal = reveal
+        if not reveal:
+            known = self.world.worker_knowledge[self.player].buildings
+            for bid, sighting in list(self._sightings.items()):
+                if sighting.player != self.player and bid not in known:
+                    self._forget(bid)
         self._vision_tick = -1
         self._minimap_time = -1.0
 
@@ -603,10 +609,14 @@ class MapView:
             self._sync_smoke(b, self._show(sighting))
         for bid, sighting in list(self._sightings.items()):
             if bid not in world.buildings and (self.reveal or sighting.player == self.player or world.any_visible(self.player, sighting.rect)):
-                del self._sightings[bid]
-                self._buildings.pop(bid).remove()
-                del self._building_keys[bid]
-                self._quench(bid)
+                self._forget(bid)
+
+    def _forget(self, building_id: int) -> None:
+        """Drop the sighting of *building_id* and the sprite that showed it."""
+        del self._sightings[building_id]
+        self._buildings.pop(building_id).remove()
+        del self._building_keys[building_id]
+        self._quench(building_id)
 
     def _show(self, sighting: Sighting) -> Sprite:
         """Keep *sighting* and the sprite that shows it."""

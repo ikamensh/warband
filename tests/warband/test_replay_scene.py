@@ -131,3 +131,25 @@ def test_after_a_recorded_reload_the_hud_reads_the_world_the_playback_goes_on_in
     tick(game, 10.0, 0.25)
     gold = scene._resource_rows[0][0].children[1]  # the purse's label: the engine offers no lookup of a label by its role
     assert scene.world.tick > 40 and scene.player.gold != 1000 and gold.text == str(scene.player.gold)
+
+
+def test_with_the_fog_back_on_a_replay_forgets_what_only_the_reveal_showed(game):
+    """Watched from above, then F4, "the map as the player saw it": the rival hall the player never saw stayed on the
+    map and the minimap, as if remembered, and could be clicked."""
+    from warband.records.replay import Replay
+    from warband.sim.rules import BuildingType, Difficulty
+
+    source = new_game(seed=3, settings={"music": 0, "sfx": 0, "tutorial": False})
+    replay = Replay.begin(source.world, seed=3, difficulty=Difficulty.MEDIUM, human=source.human)
+    replay.end = {"tick": 4000, "digest": "-", "outcome": "defeat"}
+    game.clear_and_push(ReplayScene(replay, settings={"music": 0, "sfx": 0}))
+    scene = game.scene
+    tick(game, 0.1)
+    rival = next(p.id for p in scene.world.players if p.id != scene.human)
+    hall = scene.world.player_buildings(rival, BuildingType.TOWN_HALL)[0]
+    assert scene.reveal and scene.view.sighting(hall.id) is not None
+    press(game, "f4")
+    tick(game, 0.3)
+    assert not scene.reveal and scene.view.sighting(hall.id) is None and scene.view.entity_at(hall.center) is None
+    own = scene.world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    assert scene.view.sighting(own.id) is not None
