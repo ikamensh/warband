@@ -37,14 +37,13 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 ([`13c9911`](https://github.com/ikamensh/warband/blob/13c991194c5b73d2babbd74c931681aee3c4b8a7/BACKLOG.md)); WB-046, merged as `59455cc`, live as 0.2.65
 ([`70b57b2`](https://github.com/ikamensh/warband/blob/70b57b2048b4a0986aecfad4ad5999e7292c0da6/BACKLOG.md)); WB-041, merged as `62e4970`, live as 0.2.67 on
 bundle `3e3dfda8` ([`79bc783`](https://github.com/ikamensh/warband/blob/79bc78340bf30dcabb3a333f6df85b176bc4dcd3/BACKLOG.md)); WB-047, closed on its
-evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1bfbe42c4705f56a6ac0476a0/BACKLOG.md)).
+evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1bfbe42c4705f56a6ac0476a0/BACKLOG.md)); WB-039 and WB-044, merged as `f8ba0eb`
+([`a8951a7`](https://github.com/ikamensh/warband/blob/a8951a7ca8b76c8df9b8e12b87ed8a9e235e7e1f/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
-| WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
-| WB-044 | Next | blocked | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
 | WB-048 | Next | proposed | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
 | WB-049 | Next | proposed | Armour and attack types; archers strike the unarmoured harder | User 2026-09-19 |
 | WB-050 | Next | proposed | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
@@ -141,104 +140,6 @@ vision judge, is out of credits until 24 September; OpenRouter answered 402
 intact painting was judged by eye against the stand-ins instead: the judge
 runs when Codex is back. What unblocks it: either painter again.
 `tools/restyle.py --mines --looks active dump|render|cut DIR`, then `check`.
-
-## WB-039 — A quieter selection
-
-Ilya, 2026-09-18: a chime on every selection is perhaps too much. Every
-selection that picks anything plays the `select` cue (`GameScene.select`
-has a `quiet` flag, but no caller passes it): a click, a drag, Tab to an
-idle peasant, a recalled group, a portrait click. In a fight that is a cue
-every second or two, and it is the brightest one there is. Humans hear two
-rising notes, E5 to A5 (`sound.select`); elves two bells, D6 to A6; dwarves
-an anvil strike with two high rings (`warband/voices.py`). Only the orcs'
-thump is dull.
-
-There are two options. Selection can make no sound at all, because the
-selection ring and the panel already answer. Or it can play one short, soft,
-low tick well under the order cues, once however fast the selections come.
-The order cues stay, because they confirm that something happened.
-
-**Done when:** Ilya chooses after hearing the candidates beside today's cue
-(a listening page like the one made for the death cries), and selection in
-all four race voices is what was chosen. A test pins it: the new cue's level is
-under the order cue's (or there is no sound), and a burst of selections
-plays one sound. `SOUND_VERSION` is bumped so cached WAVs are made again,
-and Ilya has heard it in a match. Presentation only.
-
-**Candidates ready 2026-09-19; blocked on Ilya's choice.** The listening page
-([Warband Selection Sound](https://claude.ai/artifact/ACNyp1fbcJBzSUF7BDusBK))
-plays each race's order cue, today's selection cue and two candidates, singly
-and as a burst of five selections in a second: A, silence; B, one soft wooden
-tick for every race; C, a soft tick in each race's timbre (a muted pluck, a
-drum tap, a low bell, a muffled anvil). Both ticks peak about 8 dB under the
-order cues and would sound once however fast the selections come. The
-generators and levels are in `docs/evidence/wb039/` on the machine that made
-them. What unblocks it: Ilya's A, B or C.
-
-**Done 2026-09-19** on branch `wb039-044`. Ilya chose neither candidate: the
-cue plays at most once in 30 seconds (`SELECT_GAP`, `warband/ui/scene.py`) and
-every race's cue is quieter (peak 0.5 to 0.3 for humans and orcs, 0.45 to 0.27
-for elves and dwarves; `SOUND_VERSION` 10). Tests: a burst of selections chimes
-once and again after the gap (`test_scene.py`); each race's cue peaks under
-70% of its order cues (`test_race_sound.py`). Ilya has yet to hear it in a match.
-
-## WB-044 — Hold the push that comes with a rush tower; strike faster on Hard
-
-What WB-037 left of its acceptance. Against `pro-rush` the defender now stops
-the tower or kills it within a minute of standing in 38 and 39 of 40 games for
-Master's postures, and loses no more than three peasants to it in 37 of 40.
-But the rusher's first push arrives as the tower stands, while the
-defender's peasants are coming back from the strike, and the defender keeps
-70% of its gold in only about half the games where a frame went up. Traced on
-seed 7002: the tower died 21 s after it stood, then five to nine soldiers
-overran a defender with one or two and 1,600 to 2,000 gold banked unspent.
-Hard strikes with its nine peasants and a soldier or two, and in eight of 40
-games against the placed tower that took more than a minute (43 to 83 s).
-
-**Done when:** on 20 fresh seeds over all five layouts, both corners,
-measured as WB-037 counts them (`docs/evidence/wb037/rush_answers.py`, to
-become a tool), Master's postures and Hard hold all three of WB-037's counts
-in nine games of ten against `pro-rush`, and Hard does against the placed
-tower. The ladder shows no loss against ordinary opponents. If Hard's
-handicaps (thinking every second and a half, six peasants a mine, one
-barracks) are what keep it short, the numbers go to Ilya before any
-handicap is touched.
-
-**Measured 2026-09-19** on main after WB-036, WB-014 and WB-045 (branch
-`rush-push`, evidence under `docs/evidence/wb044/`), on WB-037's tuning seeds
-(5000, 20 seeds, both corners): against `pro-rush` all three counts hold in
-35, 37 and 27 of 40 games for the Vanguard, the Warden and Hard, and against
-the placed tower in 40, 38 and 31. The Warden meets nine in ten, the
-Vanguard is a game short, Hard well short (WB-037's fresh seeds from 7000 had
-given the Vanguard 32 and the Warden 31). Traced (Vanguard, seed 5016, corner
-1): the tower died 22 s after it stood, but the defender had no soldier until
-170 s and had struck the frame with ten peasants for 25 s that took nothing
-off it (ten a second against its growth of ten), and the rusher's push then
-met an empty bank. Striking the frame 6 or 12 s before it stands instead of
-25 changed nothing (35 or 36, 37, 25 or 25). Hard with each handicap lifted
-alone, against the rush and the placed tower: thinking as fast as Master 27
-and 32, ten workers a mine 15 and 27, two barracks 29 and 34: no single
-handicap is what keeps it short, and closing the gap would make it a
-different brain. **Blocked** on Ilya: whether Hard is to meet the rush bar
-at all (and with which handicaps), and whether the defence against a push
-that arrives with a tower is worth an AI project of its own for Master's
-last game or two.
-
-**Decided and done 2026-09-19** on branch `wb039-044`. Ilya: no AI project;
-every AI gets a basic answer (peasants strike a tower too close) and a
-building going up should be easier to destroy. Rules: a frame wears no
-armour (`World.armor_of`); every building has two to four, so the 150%
-multiplier Ilya offered for an unarmoured frame has nothing to apply to. A
-peasant now does three a blow to a tower frame where it did one. Easy and
-Medium (`ai.Brain._strike_towers`) send up to eight peasants at a visible
-enemy tower frame whose fire would reach a hall or a mine by it, and release
-them to work if it stands; Hard and Master keep WB-037's strike. The ladder
-(60 seeds, 720 games, `docs/ai-ladder.md`): 573, 1000, 1375, 1589, every one
-inside the intervals of the day's earlier 570, 1000, 1361, 1608. The ladder
-found that a building razed the step it starts or stands (and a recruit
-killed the step it is trained) crashed the league's telemetry; those events
-now carry their type. Hard is not held to the rush bar. The rules change goes
-live through a server rollout.
 
 ## WB-048 — A building site, not a ghost; no abandoned shells
 
