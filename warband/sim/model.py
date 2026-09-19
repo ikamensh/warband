@@ -56,6 +56,16 @@ _math_hypot: Final = math.hypot
 _VELTKAMP: Final = 134217729.0  # 2 ** 27 + 1, which splits a double into halves whose products are exact
 
 
+def _middle(units: list[Unit]) -> Point:
+    """The mean position of *units*, added up in a plain loop: the built-in sum adds floats with compensation since
+    Python 3.12, which the compiled simulation does not, and the two would part in the last bit."""
+    x = y = 0.0
+    for u in units:
+        x += u.x
+        y += u.y
+    return x / len(units), y / len(units)
+
+
 def _two_product(a: float, b: float) -> tuple[float, float]:
     """``(a * b, the exact rounding error of that product)``, as CPython's ``dl_mul`` gets it from fma():
     Shewchuk's TwoProduct, exact wherever nothing underflows."""
@@ -1905,18 +1915,17 @@ class World:
 
     def _march(self, u: Unit, order: Move | AttackMove, dt: float) -> bool:
         """Walk a Move or AttackMove; True once there. A unit in a marching line heads for its place in the line as it
-        stands FORMATION_LOOKAHEAD ahead of the line's middle, so the line re-forms as soon as it is past what split
-        it; its slot at the end is the goal once the middle is that near, or when its place now is not open ground."""
+        stands FORMATION_LOOKAHEAD ahead of the line's middle, walking straight at it while the way is clear, so the
+        line re-forms as soon as it is past what split it.  Otherwise, and once the middle is that near its end, or
+        the unit already stands in its place (a middle held back by the trees must not hold the rest; the row's hold
+        paces it), it follows a path to its slot at the end: a path to a moving place would be planned anew every step."""
         slot = self._slot(order)
         if order.offset is not None:
-            fx, fy, _, cx, cy = self._line(u.player, order)
+            fx, fy, _, cx, cy = self._line(u, order)
             if dist((cx, cy), order.target) > FORMATION_LOOKAHEAD:
                 point = self._clamp((cx + fx * FORMATION_LOOKAHEAD + order.offset[0], cy + fy * FORMATION_LOOKAHEAD + order.offset[1]))
-                regions = self._regions()
-                if self.passable(int(point[0]), int(point[1])) and regions.label(u.tile) == regions.label((int(point[0]), int(point[1]))):
-                    if not self._steer(u, point, dt):  # straight at it when the way is clear; a path keeps a grid row
-                        self._walk_to(u, point, dt)
-                    return False
+                if dist(u.pos, point) > FORMATION_SPACING and self._steer(u, point, dt):
+                    return False  # straight at its place while the way there is clear: a path would keep a grid row
         return self._walk_to(u, slot, dt, settle=True)
 
     def _slot(self, order: Move | AttackMove) -> Point:
@@ -1932,7 +1941,7 @@ class World:
         line = [u for u in units if u.info.formation]
         if len(line) < 2:
             return {}
-        cx, cy = sum(u.x for u in line) / len(line), sum(u.y for u in line) / len(line)
+        cx, cy = _middle(line)
         dx, dy = target[0] - cx, target[1] - cy
         d = hypot(dx, dy)
         if d < FORMATION_MARCH:
@@ -2593,20 +2602,21 @@ class World:
         together: the laggard no more than 6 tiles behind.  A row dresses on itself; rows behind never hold the
         front, which is what stands in their way."""
         assert order.offset is not None
-        fx, fy, lags, _, _ = self._line(u.player, order)
+        fx, fy, lags, _, _ = self._line(u, order)
         sx, sy = self._slot(order)
         return FORMATION_SLACK < lags[self._line_row(order.offset, fx, fy)] - ((sx - u.x) * fx + (sy - u.y) * fy) <= 6.0
 
-    def _line(self, player: int, order: Move | AttackMove) -> tuple[float, float, dict[int, float], float, float]:
-        """A marching line as it stands this step: its heading, each row's laggard (how far along the heading it still
-        has to go to its slot) and its middle.  Memoised for the step."""
-        key = (player, order.target)
+    def _line(self, u: Unit, order: Move | AttackMove) -> tuple[float, float, dict[int, float], float, float]:
+        """*u*'s marching line as it stands this step: its heading, each row's laggard (how far along the heading it
+        still has to go to its slot) and its middle.  Memoised for the step; *u* counts even if a blow earlier in the
+        step has felled it."""
+        key = (u.player, order.target)
         line = self._line_lag.get(key)
         if line is None:
             mates = [v for v in self.units.values()
-                     if v.player == player and not v.hidden and v.hp > 0 and isinstance(v.order, (Move, AttackMove))
-                     and v.order.offset is not None and v.order.target == order.target]
-            cx, cy = sum(v.x for v in mates) / len(mates), sum(v.y for v in mates) / len(mates)
+                     if v is u or (v.player == u.player and not v.hidden and v.hp > 0 and isinstance(v.order, (Move, AttackMove))
+                                   and v.order.offset is not None and v.order.target == order.target)]
+            cx, cy = _middle(mates)
             dx, dy = order.target[0] - cx, order.target[1] - cy
             d = hypot(dx, dy)
             fx, fy = (dx / d, dy / d) if d > 1e-6 else (0.0, 0.0)

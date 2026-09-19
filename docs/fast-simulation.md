@@ -57,6 +57,11 @@ Compiling the same source keeps every one of those properties.
   magnitudes) it hands over to `math.hypot`. The source keeps calling
   `math.hypot`, and the tests compare the port with it on three million pairs,
   specials included.
+- The built-in `sum` over floats is not the same operation compiled: since
+  Python 3.12 CPython adds floats with compensated (Neumaier) summation, and
+  mypyc turns `sum(generator)` into plain additions, so the two part in the
+  last bit. A float that reaches a position (a marching line's middle,
+  WB-050) is added up in a plain loop (`model._middle`).
 - The C twins perform the same floating-point operations in the same order
   (built with `-ffp-contract=off`, so no multiply-add is fused), relax
   neighbours and pop the frontier in the same order, and draw the same random
