@@ -510,6 +510,20 @@ WB-036 (Master's third posture), on main, with evidence under
   on 96 matches), now on three times the sample; their loss to the dwarves is
   the widest gap. Not retuned here: that is a balance change with a server
   rollout, filed as WB-045.
+* **The ogres (WB-045)**: an orc-only change had to hold on both brains, and
+  they disagree. On Medium the orcs were already strong (55.2%) and the
+  humans weak (39.2%), the reverse of Master, because Medium's longer fights
+  pay for hit points and Frenzy where Master's first clash pays for tempo. Of
+  the candidates rated against the other three races (144 matches each,
+  `docs/evidence/wb045/`), every buff that lifted the orcs on Master lifted
+  them further on Medium (training 7% faster: 52.9% and 59.9%; grunts
+  without their armour penalty: 55.6% and 66.7%; grunts at 125% hit points
+  with the ogres' change: 49.3% and 60.1%), except the ogres' armour penalty
+  halved (−2 to −1): 45.1% on Master, 53.1% on Medium. It is applied. The
+  full race reports with it, 288 matches each: Master human 54.9%, orc 45.1%,
+  elf 50.0%, dwarf 50.0%; Medium human 41.3%, orc 53.1%, elf 55.6%, dwarf
+  50.0% (the humans and elves were at 39.2% and 56.3% on Medium before, a
+  Medium-brain matter this change moves the right way).
 * **Free-for-all endings**, the four settings in four-player matches, 24 seeds
   with every seat rotation (96 matches): 85 decided, median 11.5 minutes;
   placement scores Master 71.9%, Hard 52.8%, Medium 47.4%, Easy 28.0%. Hard

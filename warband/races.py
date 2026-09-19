@@ -116,7 +116,7 @@ _ORC_UNITS: Final = {
     UnitType.FOOTMAN: UnitTweak("Grunt", "Brutal axeman; hits harder as it bleeds", hp=1.15, damage=1.1, armor=-1, build_time=1.0),
     UnitType.ARCHER: UnitTweak("Axethrower", "Throws axes four tiles; a sturdy shooter", hp=1.15, build_time=1.0),
     UnitType.SCOUT: UnitTweak("Wolf Rider", "Fast wolf rider; hunts peons and throwers", hp=1.15, build_time=1.0),
-    UnitType.KNIGHT: UnitTweak("Ogre", "Two-headed brute; no armour, all frenzy", hp=1.2, damage=1.1, armor=-2, build_time=1.0),
+    UnitType.KNIGHT: UnitTweak("Ogre", "Two-headed brute; thin armour, all frenzy", hp=1.2, damage=1.1, armor=-1, build_time=1.0),
     UnitType.CATAPULT: UnitTweak("Catapult", "Skulled siege engine: splash, ×1.5 vs walls", hp=1.15, build_time=1.0),
     UnitType.CLERIC: UnitTweak("Shaman", "Mends wounded allies nearby; cannot fight", hp=1.15, build_time=1.0),
 }
