@@ -127,6 +127,8 @@ class ProProfile:
     opening: tuple[BuildingType, ...] = ()  # put up in this order before anything else but farms, one at a time; twice for two
     opening_hold: bool = False        # …the next of them has first claim on the bank, ahead of soldiers and peasants
     defend_ratio: float = 0.0         # an attack on the base this many times the soldiers at home is met behind the hall, together; 0: at once
+    abort_ratio: float = 0.0          # a push facing this many times its own strength where it fights, towers counted, turns back; 0: never
+    avoid_towers: bool = False        # a push goes for what the enemy's known towers do not cover, while there is any
     wood_lead: bool = False           # hands follow the wood the next purchases are short of while the gold for them is banked
     wood_per_hand: int = 300          # …one more chopper for each this much lumber they are short
     wood_release: int = 1000          # …and back to the policy once nothing is short and this much lumber is banked
@@ -1081,7 +1083,7 @@ class ProBrain:
             # each pass walks the army home the moment a tower comes into view, and
             # then straight back out once it is out of view again; an army that
             # oscillates like that never fights at all.
-            if len(army) < 3 or mine < self.profile.retreat_ratio * self.commit_strength:
+            if len(army) < 3 or mine < self.profile.retreat_ratio * self.commit_strength or self._outmatched_at_target(world, army, mine):
                 self.attacking = False
                 self.regroup_until = world.time + self.profile.regroup_seconds
                 self.note(world, f"withdraw at {mine:.0f} of {self.commit_strength:.0f}")
@@ -1134,6 +1136,25 @@ class ProBrain:
             world.attack_move([u.id for u in army], target)
         else:
             self._gather(world, army, hall)
+
+    def _outmatched_at_target(self, world: World, army: list[Unit], mine: float) -> bool:
+        """Whether the push, where it fights, faces more than ``abort_ratio`` times what it has left: the defenders
+        in sight round what it walked at and the towers known to cover it, against the soldiers of the push that
+        are there.
+
+        The push is otherwise judged by what it has lost of itself, which lets it lose half an army to two towers
+        and a barracks that keeps answering before it turns round.  This reads the fight itself, only once the
+        army stands in it (an estimate made on the way walks an army home each time a tower drifts out of sight),
+        and the regrouping that follows a withdrawal keeps it from walking straight back."""
+        if self.profile.abort_ratio <= 0.0 or self.target is None:
+            return False
+        target = self.target
+        there = [u for u in army if dist(u.pos, target) <= 12.0]
+        if len(there) < 3:
+            return False  # not there yet
+        defenders = [e for e in self._enemies(world) if not e.is_worker and e.info.soldier and dist(e.pos, target) <= 12.0]
+        theirs = strength(world, defenders) + _tower_strength(world, self.player, target, 9.0)
+        return theirs > self.profile.abort_ratio * strength(world, there)
 
     def _push_waits(self, world: World) -> bool:
         """Whether a push is still held for the hour and the upgrades the posture times it with."""
@@ -1268,6 +1289,11 @@ class ProBrain:
         theirs = [record for record in buildings if record.player == victim] or buildings
         # A structure we have seen, we know the kind of; one razed while we were
         # not looking reads as unknown and stays a place worth walking to.
+        if self.profile.avoid_towers:
+            towers = [t for t in self._knowledge(world).threats if t.player is not None and t.player != self.player]
+            open_ground = [record for record in theirs
+                           if not any(dist(record.center, t.center) <= t.threat_range + 1.0 for t in towers)]
+            theirs = open_ground or theirs  # all of it under their arrows: the comparison of forces prices the towers
         production = [record.center for record in theirs
                       if getattr(world.buildings.get(record.id), "type", None) in wanted]
         if production:
