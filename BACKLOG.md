@@ -110,9 +110,7 @@ item of its own when taken up.
   money went elsewhere on its way, though its plan stands and retries; a harvest order on an unreachable
   tree or mine is dropped without a word; a regrowth entry under a building retries every 5 s for ever;
   chop progress and repair charge carry over to the next tree or building.
-- **Scene**: the Modal scheme's hint bar says "Esc menu" while something is selected (Esc deselects);
-  a site under construction offers "Right click: rally point" and a right-click does nothing there;
-  Settings → Tutorial switched on in a match does nothing; a rival's building in sight shows its
+- **Scene**: Settings → Tutorial switched on in a match does nothing; a rival's building in sight shows its
   painted "active" look while it trains, which online (whose snapshots hide its queue) it does not.
 - **Campaign and replays**: `Run.from_dict` passes the saved vars through the constructor's filter, so
   a mission's own remembered choice (Greywater's truce) is dropped on load, harmless while every reader
@@ -120,8 +118,6 @@ item of its own when taken up.
   the campaign screen has no Restore backup as the profile's has; `Playback.run()` never ends for a
   replay file with order rows after its end tick; the replay digest leaves out terrain, projectiles,
   plans and the random stream.
-- **Docs**: `docs/warband-play-together.md`'s troubleshooting row "right-click the unfinished building"
-  describes a site left without its builder, which since WB-048 cannot happen.
 - **Engine (Saga2D)**: a key held when an overlay comes up is released over the overlay, and the camera
   keeps its held direction; Warband clears it on reveal, the engine could for every game.
 

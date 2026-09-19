@@ -231,7 +231,7 @@ new room and share its new code.
 | The worker walks instead of gathering | Select a Peasant and right-click directly on the mine or tree. Right-clicking bare ground orders movement. |
 | A worker waits instead of finding a job | Stop/Hold may have parked it. Give another order, or explore a safe resource and route. Automatic work does not scout through unknown terrain. |
 | A plan is waiting | Open Plans and read its reason. Order any missing prerequisite, add a Farm for supply, or make a worker and safe route available. |
-| A construction site has no builder | A settlement plan can assign another available worker. To choose one yourself, select a Peasant and right-click the unfinished building. |
+| A construction site vanished | A site whose builder falls is cancelled and its cost refunded. A site built from a plan stays planned, and another worker starts it anew. |
 | Text is too small | Open F10 → Settings, use **+** beside **Fullscreen** to set it to **On**, then press Esc to apply it. |
 | Panels overlap even in fullscreen | Send a screenshot and your display size with the report. Resizing the window scales the layout and may not fix an overlap. |
 | The Mac app says damaged, or Windows reports malware | Download a fresh copy from the release linked above. If the alert persists, stop and report its exact wording. |
