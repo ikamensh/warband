@@ -252,16 +252,21 @@ def make_brain(player: int, difficulty: Difficulty, seed: int = 0):
 
     Easy and Medium are this module's :class:`Brain`; Hard and Master are
     :class:`warband.brains.pro_ai.ProBrain`, which is a different and much stronger
-    player. Master has three postures of about one strength, and *seed* — the
+    player; Grandmaster is a ProBrain too, on a posture bred for the race it leads
+    (:class:`warband.brains.pro_ai.RaceBrain`). Master has three postures of about one strength, and *seed* — the
     map's — draws which one this player gets, a third of the games each, so
     every client of an online match and every replay of a seed agree, and two
     Master players in one game differ.
     Imported late because ``pro_ai`` imports this module.
     """
-    from warband.brains.pro_ai import PRO_PROFILES, ProBrain
+    from warband.brains.pro_ai import PRO_PROFILES, ProBrain, RaceBrain
 
     if difficulty in PROFILES:
         return Brain(player, difficulty)
+    if difficulty is Difficulty.GRANDMASTER:
+        from warband.brains.bred import BRED  # a table of profiles, imported late as pro_ai is
+
+        return RaceBrain(player, BRED, seed)
     postures = PRO_FOR[difficulty]
     return ProBrain(player, PRO_PROFILES[postures[(seed + player) % len(postures)]])
 
@@ -279,6 +284,7 @@ DIFFICULTY_ELO: Final[dict[Difficulty, int]] = {
     Difficulty.MEDIUM: 1000,
     Difficulty.HARD: 1375,
     Difficulty.MASTER: 1590,
+    Difficulty.GRANDMASTER: 1900,
 }
 
 #: One line per setting, for the same screen. Kept short enough to fit beside
@@ -288,6 +294,7 @@ DIFFICULTY_NOTES: Final[dict[Difficulty, str]] = {
     Difficulty.MEDIUM: "Techs, sieges, heals and raids. The old Normal and Hard, in one.",
     Difficulty.HARD: "Strong, but slow to think and short of workers.",
     Difficulty.MASTER: "Marches at five, towers up at home, or raises a tower by your mine.",
+    Difficulty.GRANDMASTER: "Bred by a genetic search: an opening and an army of its race's own.",
 }
 
 

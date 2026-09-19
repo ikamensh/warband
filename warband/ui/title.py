@@ -31,7 +31,7 @@ OPTION_WIDTH = 180
 RACE_WIDTH = 125
 RACE_KEYS = {Race.HUMAN: "U", Race.ORC: "O", Race.ELF: "V", Race.DWARF: "A"}
 #: Not the first letter: Medium and Master share one, and M is already the map size.
-DIFFICULTY_KEYS = {Difficulty.EASY: "E", Difficulty.MEDIUM: "N", Difficulty.HARD: "H", Difficulty.MASTER: "T"}
+DIFFICULTY_KEYS = {Difficulty.EASY: "E", Difficulty.MEDIUM: "N", Difficulty.HARD: "H", Difficulty.MASTER: "T", Difficulty.GRANDMASTER: "X"}
 #: Two per row, filling the same width the three-button rows use, so the column lines up.
 DIFFICULTY_WIDTH = (3 * OPTION_WIDTH + 2 * 8 - 8) // 2
 NOTE_WIDTH = 90 + 8 + 3 * OPTION_WIDTH + 2 * 8  # a note under a row of options spans the row and wraps beside the preview
@@ -259,7 +259,7 @@ class NewGameScene(Scene):
     pause_below = False
     pop_on_cancel = True
     controls = {"s": "size_small", "m": "size_medium", "l": "size_large", "2": "players_2", "3": "players_3", "4": "players_4",
-                "e": "easy", "n": "medium", "h": "hard", "t": "master", "g": "summer", "w": "winter", "d": "wasteland", "r": "reroll", ("return", "space"): "start",
+                "e": "easy", "n": "medium", "h": "hard", "t": "master", "x": "grandmaster", "g": "summer", "w": "winter", "d": "wasteland", "r": "reroll", ("return", "space"): "start",
                 "u": "humans", "o": "orcs", "v": "elves", "a": "dwarves",
                 "p": "plains", "f": "forest", "c": "crossings", "k": "klondike", "b": "bastion", "y": "any_layout"}
 
@@ -345,7 +345,7 @@ class NewGameScene(Scene):
             player_row.add(button)
         options.add(player_row)
         settings = list(Difficulty)
-        for first in (0, 2):
+        for first in range(0, len(settings), 2):
             row = Row(Label("AI" if first == 0 else "", text_style="body", width=90), spacing=8)
             for difficulty in settings[first:first + 2]:
                 button = Button(f"{difficulty.value.title()}  {DIFFICULTY_ELO[difficulty]} Elo", hotkey=DIFFICULTY_KEYS[difficulty],
@@ -494,6 +494,9 @@ class NewGameScene(Scene):
 
     def master(self) -> None:
         self.set_difficulty(Difficulty.MASTER)
+
+    def grandmaster(self) -> None:
+        self.set_difficulty(Difficulty.GRANDMASTER)
 
     def size_small(self) -> None:
         self.set_size("Small")

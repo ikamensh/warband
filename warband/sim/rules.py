@@ -397,6 +397,7 @@ class Difficulty(IdentityEnum):
     MEDIUM = "medium"
     HARD = "hard"
     MASTER = "master"
+    GRANDMASTER = "grandmaster"  # postures bred by a genetic search, a race's own for each race (warband/brains/bred.py)
 
 
 class MapTheme(IdentityEnum):
