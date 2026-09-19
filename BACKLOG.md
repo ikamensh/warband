@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-055**; a new
+section; git history keeps the record. The last ID given is **WB-056**; a new
 item takes the next one and updates this line.
 
 Done and removed 2026-09-18, every one merged into main (whose code is live as
@@ -49,6 +49,7 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-055 | Next | proposed | A deeper tech tree: the tower behind the mill, the knight behind the smith | Ilya 2026-09-19 |
+| WB-056 | Later | proposed | Bug-hunt leftovers: small defects confirmed on 2026-09-19 and not yet fixed | Bug hunt 2026-09-19 |
 
 ## WB-055 — A deeper tech tree
 
@@ -89,6 +90,40 @@ edges, and the difficulty ratings and the balance league are measured again
 card; the codex's tree links buildings only, so it would draw that second link
 into the recruit's picture. Campaign missions place their buildings and spawn
 their armies directly, so none of them breaks.
+
+## WB-056 — Bug-hunt leftovers
+
+The bug hunt of 2026-09-19 (main `cbb4b62`) found about forty defects and fixed thirty-six of them;
+these were confirmed with a script but left, being minor, latent or needing a decision. Each is a small
+item of its own when taken up.
+
+- **Online, fog leaks through refusals and picks** (a rules change; the fingerprint may move): placement
+  refusals still tell a seat what stands on ground it explored but does not see now ("Something is in
+  the way", "A unit is in the way", a mine it never saw in "Too close to the gold mine"); a recruit's
+  rally resolves its target without the seat's knowledge, so a rival building raised out of sight on
+  the rally point is attacked; snapshot projectiles carry their shooter's id and start point when the
+  shooter is out of sight.
+- **Rules**: Plate Armour ("+1 armour for soldiers") also armours clerics (`World.armor_of` gives it to
+  every non-worker); a unit killed earlier in a step still acts in it (strikes, casts, walks), by id
+  order; no draw when the last two players fall in one step; `stop` leaves `Unit.ease`, so a stopped
+  unit finishes its elbow-room step; a builder the settlement sent is "refused: Not enough gold" when the
+  money went elsewhere on its way, though its plan stands and retries; a harvest order on an unreachable
+  tree or mine is dropped without a word; a regrowth entry under a building retries every 5 s for ever;
+  chop progress and repair charge carry over to the next tree or building.
+- **Scene**: the Modal scheme's hint bar says "Esc menu" while something is selected (Esc deselects);
+  a site under construction offers "Right click: rally point" and a right-click does nothing there;
+  Settings → Tutorial switched on in a match does nothing; a rival's building in sight shows its
+  painted "active" look while it trains, which online (whose snapshots hide its queue) it does not.
+- **Campaign and replays**: `Run.from_dict` passes the saved vars through the constructor's filter, so
+  a mission's own remembered choice (Greywater's truce) is dropped on load, harmless while every reader
+  takes a missing truce for False; `shifted()` has no Master row, a KeyError for a hand-edited progress;
+  the campaign screen has no Restore backup as the profile's has; `Playback.run()` never ends for a
+  replay file with order rows after its end tick; the replay digest leaves out terrain, projectiles,
+  plans and the random stream.
+- **Docs**: `docs/warband-play-together.md`'s troubleshooting row "right-click the unfinished building"
+  describes a site left without its builder, which since WB-048 cannot happen.
+- **Engine (Saga2D)**: a key held when an overlay comes up is released over the overlay, and the camera
+  keeps its held direction; Warband clears it on reveal, the engine could for every game.
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
