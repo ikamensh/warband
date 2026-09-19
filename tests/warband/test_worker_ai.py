@@ -4,6 +4,7 @@ from copy import deepcopy
 
 import pytest
 
+from warband import worker_ai
 from warband.model import Deposit, Harvest, Move, World, dist
 from warband.rules import BuildingType, GOLD_PER_TRIP, MINE_GOLD, Resource, SIM_DT, Terrain, UnitType
 
@@ -288,6 +289,26 @@ def test_a_worker_caught_inside_enemy_range_walks_out_instead_of_freezing():
     assert dist(worker.pos, start) > 2.0, (worker.pos, worker.path, worker.state)
     run(world, 20.0)
     assert worker.carrying is None and world.players[0].gold == 1000 + GOLD_PER_TRIP
+
+
+def test_a_carrier_whose_every_depot_is_under_fire_walks_out_of_it_and_waits():
+    """WB-037: a rush tower went up a tile from the hall, so no depot tile was safe. Carriers holding gold had an
+    escape to safe ground but no route on from there, and waited in the tower's fire until it killed them, one
+    by one. A worker caught in danger walks out even when its work cannot be reached from the safe side."""
+    world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2)
+    world.place_building(0, BuildingType.TOWN_HALL, (10, 10))
+    world.place_building(1, BuildingType.TOWN_HALL, (27, 19))
+    tower = world.place_building(1, BuildingType.TOWER, (14, 10))
+    worker = world.spawn_unit(0, UnitType.PEASANT, (13.5, 15.5))  # two tiles short of the hall, in the fire
+    worker.carrying, worker.carry = Resource.GOLD, GOLD_PER_TRIP
+    worker.orders.append(Deposit(auto=True))
+    world.reveal_all(0)
+    world.update_vision()
+    run(world, 12.0)
+    assert worker.id in world.units, "it stood in the tower's fire"
+    safe = worker_ai.safe_navigation(world, 0)
+    assert not safe[worker.tile[1] * world.width + worker.tile[0]], (worker.pos, tower.rect)
+    assert worker.carrying is Resource.GOLD and world.players[0].gold == 1000, "it carried the gold through the fire"
 
 
 def test_expansion_worker_prefers_its_own_halls_mine():
