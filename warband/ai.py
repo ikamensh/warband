@@ -248,11 +248,10 @@ PRO_FOR: Final[dict[Difficulty, tuple[str, ...]]] = {Difficulty.HARD: ("pro-hard
 DIFFICULTY_ELO: Final[dict[Difficulty, int]] = {
     Difficulty.EASY: 570,
     Difficulty.MEDIUM: 1000,
-    Difficulty.HARD: 1410,
-    Difficulty.MASTER: 1630,
+    Difficulty.HARD: 1360,
+    Difficulty.MASTER: 1610,
 }
 
-#: One line per setting, for the same screen.
 #: One line per setting, for the same screen. Kept short enough to fit beside
 #: the map preview.
 DIFFICULTY_NOTES: Final[dict[Difficulty, str]] = {

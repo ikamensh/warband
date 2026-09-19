@@ -149,18 +149,20 @@ odds. `--proximity 0` gives the old flat fit.
 
 What the New game screen offers, and what each one is worth. 60 seeds, both
 corners, every map size, all five layouts in turn, under fog, 720 games,
-Medium anchored at 1000, measured on 2026-09-19 once Easy held its first wave
-to minute eight (WB-014, below) and Master drew the tower rush as its third
-posture ([the rush, rated](#the-rush-rated)):
+Medium anchored at 1000, measured on 2026-09-19 once the ogres' armour penalty
+was halved (WB-045, `docs/balance.md`), Easy held its first wave to minute
+eight (WB-014, below) and Master drew the tower rush as its third posture
+([the rush, rated](#the-rush-rated)):
 
 | setting | Elo | 90% interval | plays |
 |---------|-----|--------------|-------|
-| Easy | 565 | 465 .. 633 | `ai.Brain`, the Easy profile |
+| Easy | 570 | 479 .. 637 | `ai.Brain`, the Easy profile |
 | Medium | 1000 | — | `ai.Brain`, what Normal and Hard both were |
-| Hard | 1405 | 1335 .. 1511 | `pro_ai.ProBrain`, `pro-hard` |
-| Master | 1630 | 1549 .. 1736 | `pro_ai.ProBrain`, `pro-vanguard`, `pro-warden` or `pro-rush`, drawn with the map |
+| Hard | 1361 | 1293 .. 1441 | `pro_ai.ProBrain`, `pro-hard` |
+| Master | 1608 | 1533 .. 1710 | `pro_ai.ProBrain`, `pro-vanguard`, `pro-warden` or `pro-rush`, drawn with the map |
 
-Each beats the one below it 94%, 92% and 78% of the time. Easy is 300 points
+Each beats the one below it 94%, 90% and 81% of the time; before the ogres'
+change the same seeds gave 565, 1405 and 1630. Easy is 300 points
 lower than the day before because it now leaves a plain opening its first
 eight minutes: since soldiers fight soldiers first (`b26e016`, 2026-09-15),
 its wave of ten at four and a half minutes killed a plain opening's first
