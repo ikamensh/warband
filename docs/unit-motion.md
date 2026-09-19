@@ -159,7 +159,9 @@ still catches it: a soldier locked with the crew's own line is struck that way, 
 whose target is in reach but has no clear stone rolls closer until one comes down beyond it,
 stopping two splashes outside its minimum range. It looks again every quarter second while its
 target has no clear stone or stands inside the minimum range, and backs straight away from
-one inside it when there is nothing else. Before WB-052 a crew locked on the soldier in front
+one inside it when there is nothing else. A crew on Hold chooses the same way among what it
+can throw at from where it stands, nothing inside its minimum range, and looks again as often
+while its target has no clear stone. Before WB-052 a crew locked on the soldier in front
 of its own line and threw one stone in a whole clash. Saves carry the shots in flight.
 
 **View.** Each shot has a sprite moved every frame, between model steps too (the view

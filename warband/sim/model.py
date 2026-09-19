@@ -1934,7 +1934,7 @@ class World:
                 return
             # Only what it can strike from here, measured from its centre: a more dangerous enemy just out of reach
             # must not keep it from answering one in reach.
-            target = (self._siege_choice(u, 0.0) if u.info.splash
+            target = (self._siege_choice(u, 0.0, standing=True) if u.info.splash
                       else self._nearest_enemy(u.player, u.pos, self.range_of(u) + u.radius + 0.05, min_radius=u.info.min_range + u.radius))
             if target is None or not self._in_range(u, target):
                 return
@@ -3156,10 +3156,12 @@ class World:
                     return False
         return True
 
-    def _siege_choice(self, u: Unit, step: float) -> Entity | None:
+    def _siege_choice(self, u: Unit, step: float, *, standing: bool = False) -> Entity | None:
         """What a siege crew on its own judgement throws at next: of the enemies it can see within its reach
         plus *step* tiles, the one whose clear stone is worth the most (:meth:`_stone_worth`), a walk to
-        reach it counting against it.  None when no stone can fall clear of its own side."""
+        reach it counting against it.  A crew *standing* its ground passes over a unit inside its minimum range,
+        which only rolling back would let it throw at, though a stone dropped beyond it would land outside.  None
+        when no stone can fall clear of its own side."""
         reach = self.range_of(u) + u.radius
         radius = reach + step
         best: Entity | None = None
@@ -3168,7 +3170,7 @@ class World:
             if enemy.player == u.player or enemy.hidden or enemy.hp <= 0 or not self.is_visible(u.player, enemy.tile):
                 continue
             walk = dist(u.pos, enemy.pos) - reach
-            if walk > step:
+            if walk > step or (standing and not self._in_range(u, enemy)):
                 continue
             spot = self._aim_point(u, enemy, auto=True)
             if spot is None:

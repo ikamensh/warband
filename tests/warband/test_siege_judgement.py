@@ -82,3 +82,24 @@ def test_a_catapult_on_hold_looks_again_when_its_target_has_no_clear_stone() -> 
             break
     assert struck == {archer.id}
     assert isinstance(catapult.order, Hold) and catapult.pos == (10.5, 8.5)
+
+
+def test_a_catapult_on_hold_throws_at_what_it_can_reach_past_an_archer_inside_its_minimum_range() -> None:
+    """A held crew with an archer shooting it from inside its minimum range, where it cannot throw, throws at the footman
+    in its reach instead.  It used to settle on the archer, worth more, because a stone dropped a tile beyond it would
+    land outside the minimum range, then find it too close and throw at nothing."""
+    world = World(30, 20, [[Terrain.GRASS] * 30 for _ in range(20)], 2, rng=random.Random(1))
+    catapult = world.spawn_unit(0, UnitType.CATAPULT, (10.5, 8.5))
+    catapult.facing = math.pi
+    archer = world.spawn_unit(1, UnitType.ARCHER, (8.3, 8.5))
+    footman = world.spawn_unit(1, UnitType.FOOTMAN, (10.5, 14.2))
+    world.hold([catapult.id, archer.id, footman.id])
+    world.update_vision()
+    assert world.range_of(catapult) >= 5.0 and catapult.info.min_range > 1.5  # the footman's gap, and the archer's
+    struck: set[int] = set()
+    for _ in range(int(round(4.0 / SIM_DT))):
+        world.step()
+        struck |= {e.other for e in world.take_events() if e.kind == "hit" and e.entity == catapult.id}
+        if footman.id in struck:
+            break
+    assert struck == {footman.id}
