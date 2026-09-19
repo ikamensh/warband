@@ -33,7 +33,8 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 ([`3f22525`](https://github.com/ikamensh/warband/blob/3f22525a4db442d7f8d0d2c02b7532375ad1e075/BACKLOG.md)); WB-024, closed on its evidence as `dd7cf5f`
 ([`896c6ea`](https://github.com/ikamensh/warband/blob/896c6eab99fb426d7f0aa02588b0fd1dc1463d07/BACKLOG.md)); WB-014, merged as `18eaf4a`, live as 0.2.59
 ([`5fd2ef4`](https://github.com/ikamensh/warband/blob/5fd2ef41798f8162811b9eb0d286c80c65c9bb26/BACKLOG.md)); WB-045, merged as `6ad2779`, live as 0.2.61
-([`493e3bf`](https://github.com/ikamensh/warband/blob/493e3bfb3df8eaefc809dbc0a86c80683eb490a1/BACKLOG.md)).
+([`493e3bf`](https://github.com/ikamensh/warband/blob/493e3bfb3df8eaefc809dbc0a86c80683eb490a1/BACKLOG.md)); WB-042, merged as `13db600`, published as 0.2.63
+([`13c9911`](https://github.com/ikamensh/warband/blob/13c991194c5b73d2babbd74c931681aee3c4b8a7/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
@@ -41,7 +42,6 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
-| WB-042 | Later | done | Tests read through public accessors; try property tests for the model and paths | WB-040 |
 | WB-044 | Next | blocked | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
 | WB-046 | Next | in progress (`fair-seeds`) | A seed that makes no fair map crashes the game where the game chose it | WB-042 |
 
@@ -224,63 +224,6 @@ fingerprint and the replay tests are unchanged by the move, since it is
 only a move. The suite, fuzz, a packaged native build and the online smoke
 pass; saga-online's references are updated and the rollout is done.
 AGENTS.md describes the tree and says where new code goes.
-
-## WB-042 — Tests through public accessors, and property tests
-
-Left from WB-040: 172 lines in 26 test files still reach into private members,
-most often `view._trees` (22), `scene._card` (17), `_page_tile` (10),
-`_blocked` (10), `_portraits` (9), `effects._items` (9) and `_ground_keys` (8).
-Each is a missing public accessor or a test of internals: give the view and
-the scene what the tests need to read, or test through what the player sees.
-Then try `hypothesis` for the model and pathfinding, a few examples in the
-fast tier and more in the slow one: every order atomic from any state, save,
-load and replay round-trip from any seed and moment, paths keep their
-invariants.
-
-**Done when:** no test reads a private member of `warband/`, or each that does
-says why; the property tests that earn their keep run in the tiers, and the
-rest are recorded here with what they found.
-
-**Done 2026-09-19:** merged as `13db600` (branch `public-tests`), published
-as 0.2.63. Private reads in the tests went from 172 lines in 26 files to 67
-in 13, each with its reason beside it: a staged state (a unit or building
-removed without the fight, water or a gate carved as map generation would),
-a brain's own questions (`test_ai`, `test_pro_ai`), the C twins held to the
-private loops they replace (`test_fastsim`, `test_sight_discs`), the true id
-counter a snapshot must not tell, and what Saga2D 0.3.8 does not offer (its
-effects list, read in one helper; the mock's players and image count; the
-camera's edge speed). The view and the scene offer the rest as properties:
-tree and ground sprites, ground keys, water still to paint, smoke, fires and
-shots; the fog and minimap images and chunk classification; the command card
-and its buttons, portraits, page tile and page, queue hits, next autosave,
-ghost and key hints; New game's preview world and picture. Trees are planted
-through `flat_world(trees=...)`, and the checkpoint test goes through
-`ONLINE["warband-v2"]`.
-
-`tests/warband/test_properties.py` states four properties with Hypothesis (a
-dev dependency), each with a few examples in the fast tier and many in the
-slow one. A path steps legally and is the shortest there is, checked against
-Dijkstra on 3 to 14 tile grids; an unreachable goal ends as near as anything
-reachable. Two loads of a save play on alike. An order the rules refuse
-leaves no trace, and only a RuleError refuses one (24 orders, any ids,
-points, tiles and types). A recording with orders of any kind and value,
-given among two brains' at any moments, plays back through JSON to its match
-bit for bit. What they found, none of it worth more than recording:
-
-* An order for a seat out of range raises IndexError (for -1, it acts for
-  the last seat). Nothing online can send one: the authority gives each
-  seat's orders with that seat's own index.
-* A load is not bit-exact with the world saved. A load brings sight up to
-  date with where the units stand, and a unit's path, replanning clock and
-  progress watchdog are not saved, so a peasant walking when the match was
-  saved plans afresh. Replays play from the start and the order log, and the
-  online authority is the one world there is, so nothing depends on it.
-* A few seeds in a thousand make no fair map, and the New game screen
-  crashed on one: WB-046.
-
-Saga2D offers no public list of a scene's live effects, nor the mock
-backend's players and images; the tests read those in three places and say
-so, which is not a game need that would earn an engine change.
 
 ## WB-044 — Hold the push that comes with a rush tower; strike faster on Hard
 
