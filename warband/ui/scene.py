@@ -1393,7 +1393,7 @@ class GameScene(Scene):
                 self.effects.add(FloatingText(f"{e.text} researched", (wx, wy - TILE), GOLD, rise=26, duration=1.8))
                 self._refresh_card()
             elif e.kind == "heal" and self._visible(e.pos):
-                self.effects.add(Pulse(to_world(e.pos), (140, 255, 160, 200), radius=(4, 16), rings=1, duration=0.4))
+                self._show_heal(e)
             elif e.kind == "tree_felled":
                 self.view.tree_felled((int(e.pos[0]), int(e.pos[1])))
                 if mine and self._audible(e.pos):
@@ -1470,6 +1470,19 @@ class GameScene(Scene):
         if self._audible(event.pos):
             source = self.world.entity(event.entity) if event.entity is not None else None
             self.sfx(impact_sound(event, source.race if source is not None else Race.HUMAN))  # a striker dead with its blow keeps the common Foley
+
+    def _show_heal(self, e: Event) -> None:
+        """A cleric's cast lands: rings and rising sparks on the patient, a small ring on the cleric, the amount
+        floating up, and a soft chime."""
+        wx, wy = to_world(e.pos)
+        self.effects.add(Pulse((wx, wy), (140, 255, 160, 220), radius=(6, 26), rings=2, duration=0.7))
+        self.effects.add(Burst((wx, wy), (170, 255, 180, 240), 14, size=12.0, speed=(40, 120)))
+        self.effects.add(FloatingText(f"+{e.amount}", (wx, wy - TILE * 1.3), (150, 255, 170, 255), rise=22, duration=1.0))
+        cleric = self.world.units.get(e.entity) if e.entity is not None else None
+        if cleric is not None:
+            self.effects.add(Pulse(to_world(cleric.pos), (200, 255, 210, 180), radius=(4, 14), rings=1, duration=0.45))
+        if self._audible(e.pos):
+            self.sfx("heal", gap=0.2)
 
     def _show_death(self, e: Event) -> None:
         blow = self._blows.pop(e.entity, None)
@@ -1782,7 +1795,8 @@ class GameScene(Scene):
             self.draw_text(f"{entity.hp}/{entity.max_hp}", tx + 188, y + 34, style="sub")
         if isinstance(entity, Unit):
             info = entity.info
-            primary = (("health", f"{world.heal_rate(entity):g}/s", "Healing restored per second") if info.heal
+            primary = (("health", f"+{world.heal_amount(entity)}", f"Healing per cast, one every {info.period:g} s; its own blow is {world.damage_of(entity)}")
+                       if info.heal
                        else ("damage", str(world.damage_of(entity)), f"Damage per strike; {attack_hint(info.attack)}"))
             stats = [primary, ("armor", str(world.armor_of(entity)),
                                f"{armour_name(info.armor_class).capitalize()}; armour is subtracted from every blow"),

@@ -106,14 +106,15 @@ def test_arrows_horses_siege_and_blessing_change_the_matching_stats() -> None:
     assert world.damage_of(archer) == base[0] + 4 and world.damage_of(tower) == base[1] + 4
     assert world.speed_of(knight) == pytest.approx(base[2] + 0.8)
     assert world.range_of(catapult) == base[3] + 1 and world.damage_of(catapult) > base[4]
-    assert world.heal_rate(cleric) == pytest.approx(base[5] * 1.5)
+    assert world.heal_amount(cleric) == round(UNITS[UnitType.CLERIC].heal * 1.5)  # a blessed cast restores half again
+    assert world.heal_rate(cleric) == pytest.approx(world.heal_amount(cleric) / cleric.info.period) and world.heal_rate(cleric) > base[5]
     assert world.armor_of(knight) == UNITS[UnitType.KNIGHT].armor + 1 and world.armor_of(cleric) == 1
 
 
 # -- Clerics ------------------------------------------------------------------------------
 
 
-def test_clerics_heal_the_wounded_on_their_own_and_never_attack() -> None:
+def test_clerics_heal_the_wounded_on_their_own_and_strike_only_on_order_or_when_no_one_needs_them() -> None:
     world = flat_world()
     cleric = world.spawn_unit(0, UnitType.CLERIC, (5.5, 5.5))
     hurt = world.spawn_unit(0, UnitType.FOOTMAN, (8.5, 5.5))
@@ -125,11 +126,9 @@ def test_clerics_heal_the_wounded_on_their_own_and_never_attack() -> None:
     run(world, 2.0)
     assert not cleric.orders and dist(cleric.pos, (5.5, 5.5)) < 1.5
     enemy = world.spawn_unit(1, UnitType.FOOTMAN, (12.5, 5.5))
+    world.update_vision()
     world.attack([cleric.id], enemy.id)
-    assert isinstance(cleric.order, Move)  # a healer follows, it does not fight
-    world.stop([cleric.id])
-    run(world, 3.0)
-    assert not any(isinstance(o, Attack) for o in cleric.orders)
+    assert isinstance(cleric.order, Attack)  # WB-051: its weak blow is the player's to use
 
 
 def test_clerics_on_attack_move_tend_the_wounded_along_the_way() -> None:

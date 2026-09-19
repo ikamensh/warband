@@ -186,11 +186,10 @@ PRO_PROFILES: Final[dict[str, ProProfile]] = {"pro": PRO, PRO_VANGUARD.name: PRO
 # -- Force comparison ---------------------------------------------------------------
 
 def _dps(world: World, unit: Unit) -> float:
-    damage = world.damage_of(unit)
-    if damage <= 0:
-        # A cleric adds to a fight by undoing damage; count its healing as if it were damage.
-        return world.heal_rate(unit) * 0.8 if unit.info.heal else 0.0
-    return damage / unit.info.period
+    if unit.info.heal:
+        # A cleric adds to a fight by undoing damage; count its healing as if it were damage (its own blow is a last resort).
+        return world.heal_rate(unit) * 0.8
+    return world.damage_of(unit) / unit.info.period
 
 
 def _effective_hp(world: World, unit: Unit) -> float:
@@ -1117,7 +1116,7 @@ class ProBrain:
 
     def _typical_soldier(self, world: World) -> float:
         """What one average soldier of ours is worth, as a yardstick for unseen enemies."""
-        army = [u for u in self._army(world) if u.info.damage > 0]
+        army = [u for u in self._army(world) if u.info.soldier]
         return strength(world, army) / len(army) if army else 20.0
 
     def _victim(self, world: World) -> int | None:
@@ -1249,7 +1248,7 @@ class ProBrain:
         if not self.profile.strike_seconds:
             return False
         towers = sorted(self._open_towers(world), key=lambda t: (t.hp, t.id))
-        fighters = [u for u in army if u.info.damage]
+        fighters = [u for u in army if u.info.soldier]
         for tower in towers:
             armour = world.armor_of(tower)
             pace = 0.0  # what the strike takes off the tower a second
@@ -1297,7 +1296,7 @@ class ProBrain:
 
     def _open_towers(self, world: World) -> list[Building]:
         """The towers on our ground with no enemy soldier standing by."""
-        soldiers = [e for e in self._enemies(world) if not e.is_worker and e.info.damage]
+        soldiers = [e for e in self._enemies(world) if not e.is_worker and e.info.soldier]
         return [t for t in self._home_towers(world) if not any(dist(e.pos, t.center) < 8.0 for e in soldiers)]
 
     def _answering(self, peasant: Unit) -> bool:
@@ -1333,7 +1332,7 @@ class ProBrain:
         if not home:
             return
         enemies = self._enemies(world)
-        soldiers = [e for e in enemies if not e.is_worker and e.info.damage]
+        soldiers = [e for e in enemies if not e.is_worker and e.info.soldier]
         intruders = {e.id: e for e in enemies if e.is_worker and min(rect_gap(e.pos, rect) for rect in home) <= 8.0
                      and not any(dist(s.pos, e.pos) < 6.0 for s in soldiers)}
         gone = [i for i, target in self.hunters.items() if target not in intruders]
@@ -1403,7 +1402,7 @@ class ProBrain:
         self._hunt_builders(world)
         if not self.profile.retreat_wounded:
             return
-        army = [u for u in world.player_units(self.player) if not u.is_worker and u.info.damage > 0]
+        army = [u for u in world.player_units(self.player) if not u.is_worker and u.info.soldier]
         if not army:
             return
         if not self._enemies(world):

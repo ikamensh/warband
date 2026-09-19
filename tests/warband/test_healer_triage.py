@@ -44,7 +44,7 @@ def test_healer_treats_an_ally_under_visible_fire_before_a_nearer_safe_ally():
     assert world.is_visible(0, enemy.tile)
     advance(world, .25)
     injured_hp = threatened.hp
-    advance(world, .5)
+    advance(world, 1.0)  # the cast's wind-up
     assert isinstance(healer.order, Heal) and healer.order.target == threatened.id
     assert threatened.hp > injured_hp
     assert safe.hp == 20
@@ -63,7 +63,7 @@ def test_an_urgent_distant_patient_does_not_mask_useful_reachable_treatment():
     world.hold([current.id, nearby.id, distant.id, enemy.id])
     world.update_vision()
     world = loaded_heal(world, healer, current, automatic=True)
-    advance(world, .75)
+    advance(world, 1.25)  # a retarget, then the cast's wind-up
     assert world.units[distant.id].hp == 1  # The urgent alternative was present throughout.
     assert world.units[nearby.id].hp > 10
     assert isinstance(world.units[healer.id].order, Heal)
@@ -108,7 +108,7 @@ def test_acquired_healing_keeps_its_intent_and_underlying_journey_after_loading(
         alternative.hp = 10
         match.hold([alternative.id])
         match.update_vision()
-        advance(match, .5)
+        advance(match, 1.25)  # a retarget once the cast in hand has landed, then the next cast's wind-up
         assert isinstance(actor.order, Heal) and actor.order.auto and actor.order.target == alternative.id
         assert alternative.hp > 10
     assert world.to_dict() == loaded.to_dict()

@@ -839,7 +839,7 @@ class World:
 
     def frenzied(self, unit: Unit) -> bool:
         """An orc soldier below half health fights in a frenzy."""
-        return unit.race is Race.ORC and not unit.is_worker and unit.info.damage > 0 and unit.hp * 2 < unit.max_hp
+        return unit.race is Race.ORC and not unit.is_worker and unit.info.soldier and unit.hp * 2 < unit.max_hp
 
     def armor_class_of(self, entity: Entity) -> ArmorClass:
         return ArmorClass.FORTIFIED if isinstance(entity, Building) else entity.info.armor_class
@@ -883,11 +883,16 @@ class World:
             speed += HORSES_BONUS
         return speed
 
+    def heal_amount(self, unit: Unit) -> int:
+        """Hit points one of *unit*'s casts restores."""
+        amount = unit.info.heal
+        if amount and self._has(unit.player, Upgrade.BLESSING):
+            amount = int(round(amount * BLESSING_BONUS))
+        return amount
+
     def heal_rate(self, unit: Unit) -> float:
-        rate = float(unit.info.heal)
-        if rate and self._has(unit.player, Upgrade.BLESSING):
-            rate *= BLESSING_BONUS
-        return rate
+        """Hit points per second *unit* restores while it has a patient: one cast each wind-up and cooldown."""
+        return self.heal_amount(unit) / unit.info.period if unit.info.heal else 0.0
 
     # -- Economy queries -----------------------------------------------------------
 
@@ -1598,11 +1603,10 @@ class World:
                     return
                 u.path, u.path_goal, u.exact = [], None, None
         elif self.tick % 5 == 0:
-            if u.info.heal:
-                patient = self._healing_patient(u, u.info.sight)
-                if patient is not None:
-                    u.home = u.pos
-                    u.orders.appendleft(Heal(patient.id, auto=True))
+            patient = self._healing_patient(u, u.info.sight) if u.info.heal else None
+            if patient is not None:
+                u.home = u.pos
+                u.orders.appendleft(Heal(patient.id, auto=True))
             else:
                 target = self._auto_target(u)
                 if target is not None:
@@ -1711,7 +1715,7 @@ class World:
             if order.auto and u.home is not None and not u.orders and dist(u.pos, u.home) > 1.0:
                 u.orders.append(Move(u.home))
             return
-        if order.auto and self.tick % 5 == 0:
+        if order.auto and u.windup <= 0.0 and self.tick % 5 == 0:  # a cast once begun goes to its patient
             nearby = self._healing_patient(u, u.info.sight, local=True)
             if nearby is not None and nearby is not patient and self._healing_priority(u, nearby) > self._healing_priority(u, patient) * 1.25:
                 order.target, patient = nearby.id, nearby
@@ -1719,20 +1723,8 @@ class World:
             self._finish_order(u)
             u.orders.appendleft(Move(u.home))
             return
-        if self._gap(u, patient) <= self.range_of(u) + 0.05:
-            u.path = []
-            u.path_goal = None
-            self._turn_toward(u, patient.pos, dt)
-            u.state = "attack"
-            u.charge += self.heal_rate(u) * dt
-            u.timer += dt
-            if u.charge >= 1.0:
-                amount = min(int(u.charge), patient.max_hp - patient.hp)
-                u.charge -= int(u.charge)
-                patient.hp += amount
-                if u.timer >= 0.5:
-                    u.timer = 0.0
-                    self.events.append(Event("heal", patient.pos, player=u.player, entity=u.id, other=patient.id, amount=amount))
+        if u.windup > 0.0 or self._gap(u, patient) <= self.range_of(u) + 0.05:
+            self._cast(u, patient, dt)
             return
         if self._steer(u, patient.pos, dt):
             return
@@ -1741,6 +1733,28 @@ class World:
             self._plan(u, goal, patient.pos)
         if self._follow(u, dt) and u.path_goal != goal and self.time >= u.replan_at:
             self._plan(u, goal, patient.pos)
+
+    def _cast(self, u: Unit, patient: Unit, dt: float) -> None:
+        """A healer in reach faces its patient, winds up, and restores :meth:`heal_amount` at once; then its
+        cooldown.  A patient that walked off beyond reach and :data:`WINDUP_SLACK` meanwhile is not reached."""
+        u.path = []
+        u.path_goal = None
+        faced = self._turn_toward(u, patient.pos, dt)
+        u.state = "attack"
+        if u.windup > 0.0:
+            u.windup -= dt
+            if u.windup > 1e-9:
+                return
+            u.windup = 0.0
+            u.cooldown = u.info.cooldown
+            if self._gap(u, patient) > self.range_of(u) + WINDUP_SLACK:
+                return
+            amount = min(self.heal_amount(u), patient.max_hp - patient.hp)
+            patient.hp += amount
+            self.events.append(Event("heal", patient.pos, player=u.player, entity=u.id, other=patient.id, amount=amount))
+            return
+        if faced and u.cooldown <= 0.0:
+            u.windup = u.info.windup
 
     def _do_hold(self, u: Unit, order: Hold, dt: float) -> None:
         u.state = "idle"
@@ -1768,10 +1782,8 @@ class World:
         """Pick up a fight (or a patient) in sight while on the move; True if one was found."""
         if self.tick % 5:
             return False
-        if u.info.heal:
-            patient = self._healing_patient(u, u.info.sight)
-            if patient is None:
-                return False
+        patient = self._healing_patient(u, u.info.sight) if u.info.heal else None
+        if patient is not None:
             u.orders.appendleft(Heal(patient.id, auto=True))
         else:
             target = self._auto_target(u)
@@ -1812,6 +1824,14 @@ class World:
             self._finish_order(u)
             u.orders.appendleft(Move(u.home))
             return
+        if order.auto and u.info.heal and self.tick % 5 == 0:
+            patient = self._healing_patient(u, u.info.sight)
+            if patient is not None:  # a healer strikes only while no one needs it
+                home = u.home
+                self._finish_order(u)
+                u.home = home
+                u.orders.appendleft(Heal(patient.id, auto=True))
+                return
         if order.auto and u.info.splash and self.tick % 5 == 0:
             if (u.info.min_range and self._gap(u, target) < u.info.min_range) or not self._in_range(u, target) \
                     or self._aim_point(u, target, auto=True) is None:
@@ -2670,7 +2690,7 @@ class World:
     def _threat(self, entity: Entity) -> int:
         """Whom to fight first, lowest first: soldiers, other units (workers, healers), towers, other buildings."""
         if isinstance(entity, Unit):
-            return 0 if entity.info.damage and not entity.is_worker else 1
+            return 0 if entity.info.soldier and not entity.is_worker else 1
         return 2 if entity.info.damage and entity.done else 3
 
     def _retarget(self, u: Unit, order: Attack, target: Entity) -> None:

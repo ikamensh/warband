@@ -207,7 +207,7 @@ class SynthBank:
         self._audio.muted = value
 
 
-SOUND_VERSION = "10"
+SOUND_VERSION = "11"
 MUSIC = music.TRACKS
 
 #: ``play_sound(name)`` forwards here when set; ``None`` is silent.
@@ -286,6 +286,12 @@ def trained() -> np.ndarray:
     return level(mix(tone("E5", 0.14, attack=0.01, tau=0.08, partials=BRASS) * 0.6, (0.12, tone("A5", 0.22, attack=0.01, tau=0.12, partials=BRASS) * 0.6)), 0.55)
 
 
+def heal() -> np.ndarray:
+    """A cleric's cast lands: a soft rising glass chime, well under the order cues."""
+    return level(mix(tone("C6", 0.25, attack=0.02, tau=0.14, partials=GLASS) * 0.5,
+                     (0.07, tone("G6", 0.35, attack=0.02, tau=0.2, partials=GLASS) * 0.4)), 0.35)
+
+
 def under_attack() -> np.ndarray:
     """A horn: low fifth, held."""
     return level(mix(tone("A3", 0.6, attack=0.05, tau=0.4, partials=BRASS), tone("E4", 0.6, attack=0.06, tau=0.35, partials=BRASS) * 0.7), 0.7)
@@ -309,7 +315,7 @@ def defeat() -> np.ndarray:
 SOUNDS: dict[str, Callable[[], np.ndarray]] = {
     "select": select, "command": command, "attack_command": attack_command, "button": button, "error": error,
     "impact": impact, "chop": chop, "build_start": build_start, "built": built,
-    "trained": trained, "under_attack": under_attack, "victory": victory, "defeat": defeat,
+    "trained": trained, "heal": heal, "under_attack": under_attack, "victory": victory, "defeat": defeat,
     **combat_sound.SOUNDS,
     **voices.SOUNDS,
     **deaths.SOUNDS,

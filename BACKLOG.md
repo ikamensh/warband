@@ -46,7 +46,7 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 | WB-048 | Next | proposed | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
 | WB-049 | Next | done | Armour and attack types; archers strike the unarmoured harder | User 2026-09-19 |
 | WB-050 | Next | proposed | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
-| WB-051 | Next | in progress | Clerics heal in visible single casts and carry a weak attack | User 2026-09-19 |
+| WB-051 | Next | done | Clerics heal in visible single casts and carry a weak attack | User 2026-09-19 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -230,3 +230,28 @@ implementation):**
    order. Frames of a cast are looked at. The fingerprint, `sim_bench`,
    fuzz, the fast and slow tiers and a ladder with the clerics archetype
    pass.
+
+**Done 2026-09-19** (branch `cleric-cast`). `World._cast` replaces the
+per-second trickle: face, wind up 0.5 s, restore `heal_amount` (15; 22 with
+Blessing) at once, cool down 2 s; `heal_rate` is that over the period (6/s,
+8.8 blessed). The cleric is 3 damage, 3 range, 0.5 + 2.0, a normal blow; a
+cleric left to itself heals first, strikes only when no one in sight needs
+it, and turns from striking to healing within a quarter second of a friend
+being hurt. `UnitInfo.soldier` (damage and no healing) and a `ranged` that
+excludes healers keep a cleric out of `_threat`'s soldiers, Arrows,
+Longbows, frenzy, and the Master AI's army, soldier yardstick and tower
+strike; the AI still counts a cleric by its healing. A player's attack
+order now makes a cleric strike (it used to follow). On screen a cast shows
+two rings and a green burst on the patient, a small ring on the cleric,
+"+15" rising above the health bar, and a soft chime (`SOUND_VERSION` 11);
+the wind-up raises the staff (the blow frames). Native frames of the
+wind-up and the cast landing were looked at (the first "+15" sat on the
+patient's head and was raised). `tests/warband/test_cleric_casts.py` (six
+tests) pins the cast's amount, rhythm and wind-up, the last cast's
+remainder, a cast broken off by an order, the most wounded first, the blow
+only when no one needs healing, and soldiers before clerics; three triage
+tests allow for the wind-up. Ladder (nine agents, 12 seeds, 864 matches,
+branch against main): every move inside the intervals, clerics -33 the
+largest. Fuzz is clean, the fingerprint and `sim_bench` refreshed, the fast
+and slow tiers pass (1009 and 486). Hearing the chime in a match is left
+for Ilya.

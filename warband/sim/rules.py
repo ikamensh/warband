@@ -21,7 +21,7 @@ Balance in one table (base values; upgrades in :data:`UPGRADES`):
 | scout    | 350       | 35 | 4   | 0     | melee | 0.25 + 0.8         | 450°/s| 4.2   | fast raider, sight 8; kills archers, peasants; loses to footmen |
 | knight   | 900+100   | 90 | 10  | 4     | melee | 0.35 + 1.0         | 270°/s| 3.4   | shock; beats everything at cost; catapults and mass archers wear it down |
 | catapult | 700+200   |100 | 36  | 0     | 2..7  | 0.8 + 3.0          | 150°/s| 1.6   | siege: stones land where aimed, splash friend and foe, ×1.5 vs buildings; helpless inside two tiles |
-| cleric   | 700+50    | 40 | —   | 0     | 3     | —                  | 360°/s| 2.4   | heals 6 hp/s; no attack; protect it     |
+| cleric   | 700+50    | 40 | 3   | 0     | 3     | 0.5 + 2.0          | 360°/s| 2.4   | heals 15 a cast (6 hp/s); a weak blow only when no one needs healing; protect it |
 
 Armour classes and attack types (WB-049, :data:`DAMAGE_FACTORS`): peasants, clerics and catapults are unarmoured,
 archers and scouts light, footmen and knights heavy, buildings fortified; archers pierce, catapults siege, the rest
@@ -148,7 +148,7 @@ class UnitInfo:
     trained_at: BuildingType
     hotkey: str
     summary: str
-    heal: int = 0  # hit points restored per second; a healer has no attack
+    heal: int = 0  # hit points one cast restores, a wind-up and a cooldown apart; a healer's own blow is weak and its last resort
     splash: float = 0.0  # radius around where a stone lands that also takes damage; a siege engine
     attack: AttackType = AttackType.NORMAL
     armor_class: ArmorClass = ArmorClass.LIGHT
@@ -168,7 +168,13 @@ class UnitInfo:
 
     @property
     def ranged(self) -> bool:
-        return self.range >= 1 and self.damage > 0
+        """A shooter: Arrows and Longbows are its upgrades (a healer's blow is not)."""
+        return self.range >= 1 and self.damage > 0 and not self.heal
+
+    @property
+    def soldier(self) -> bool:
+        """It fights for a living: a worker's or a healer's blow does not make it one (the unit may still be a worker)."""
+        return self.damage > 0 and not self.heal
 
 
 MELEE: Final = 0.45  # reach of a melee unit: it strikes from the next tile over, diagonals included
@@ -189,8 +195,9 @@ UNITS: Final[dict[UnitType, UnitInfo]] = {
                                 "Slow siege engine: stones land where aimed, splash friend and foe, ×1.5 against buildings",
                                 splash=1.2, windup=0.8, turn=math.radians(150), min_range=2.0, attack=AttackType.SIEGE,
                                 armor_class=ArmorClass.UNARMORED),
-    UnitType.CLERIC: UnitInfo("Cleric", Cost(700, 50), 40, 0, 0, 3.0, 1.0, 2.4, 5, 20.0, BuildingType.CHURCH, "l",
-                              "Heals wounded allies nearby; cannot fight", heal=6, armor_class=ArmorClass.UNARMORED),
+    UnitType.CLERIC: UnitInfo("Cleric", Cost(700, 50), 40, 3, 0, 3.0, 2.0, 2.4, 5, 20.0, BuildingType.CHURCH, "l",
+                              "Heals a wounded ally 15 at a cast; a weak blow when no one needs it", heal=15, windup=0.5,
+                              armor_class=ArmorClass.UNARMORED),
 }
 
 
