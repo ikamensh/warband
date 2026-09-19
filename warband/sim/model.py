@@ -1692,6 +1692,7 @@ class World:
                 builder.orders.popleft()
         self._refund(b.player, b.info.cost)
         self._remove_building(b, reason="cancelled")
+        self.settlement.site_lost(b.id, cancelled=True)
 
     # -- Units ----------------------------------------------------------------------
 
@@ -2466,6 +2467,7 @@ class World:
             self._pay(u.player, BUILDINGS[order.type].cost)
             b = self.place_building(u.player, order.type, order.pos, done=False)
             order.building = b.id
+            self.settlement.founded(b)
             self.events.append(Event("construction", b.center, player=u.player, entity=b.id, target_type=b.type.value))
             self._start_building(u, b)
             return
@@ -3241,6 +3243,8 @@ class World:
             self._remove_unit(unit)
         for building in [b for b in self.buildings.values() if b.hp <= 0 and b.type is not BuildingType.GOLD_MINE]:
             self._remove_building(building, reason="destroyed")
+            if not building.done:
+                self.settlement.site_lost(building.id, cancelled=False)
 
     def _remove_unit(self, unit: Unit) -> None:
         self._leave_mine(unit)
@@ -3253,6 +3257,7 @@ class World:
                 b.builder = None
                 self._refund(unit.player, b.info.cost)  # a site without its builder is no site: it is cancelled (WB-048)
                 self._remove_building(b, reason="cancelled")
+                self.settlement.site_lost(b.id, cancelled=False)
 
     def _remove_building(self, b: Building, *, reason: str) -> None:
         del self.buildings[b.id]

@@ -13,7 +13,7 @@ from warband.sim import path as pathing
 from warband.sim.rules import BUILDINGS, MAX_PLANS, SIM_DT, UNITS, UPGRADES, BuildingType, UnitType, Upgrade
 
 if TYPE_CHECKING:
-    from warband.sim.model import Unit, World
+    from warband.sim.model import Building, Unit, World
 
 
 @dataclass
@@ -91,6 +91,7 @@ class Settlement:
         plan = next((plan for plan in self.player_plans(player) if plan.id == plan_id), None)
         if plan is None:
             raise RuleError("No such settlement plan")
+        self.plans.remove(plan)
         if plan.kind == "building":
             building = self._site(plan)
             if building is not None and not building.done:
@@ -98,7 +99,24 @@ class Settlement:
             worker = self.world.units.get(plan.worker)
             if worker is not None and isinstance(worker.order, Build) and worker.order.type is plan.type and worker.order.pos == plan.pos:
                 self.world._finish_order(worker)
-        self.plans.remove(plan)
+
+    def founded(self, site: Building) -> None:
+        """A builder has founded *site*: the plan for that building on that ground knows its site from now on."""
+        for plan in self.plans:
+            if plan.kind == "building" and plan.building is None and plan.player == site.player and plan.type is site.type \
+                    and plan.pos == site.pos:
+                plan.building = site.id
+                return
+
+    def site_lost(self, site_id: int, *, cancelled: bool) -> None:
+        """The site *site_id* is gone before it stood.  Cancelled by its player, its plan goes with it; razed, or left
+        without its builder, the request stands for another worker to start anew."""
+        for plan in list(self.plans):
+            if plan.building == site_id:
+                if cancelled:
+                    self.plans.remove(plan)
+                else:
+                    plan.building, plan.worker, plan.status = None, None, "Queued"
 
     def _unit(self, plan: Plan) -> None:
         world = self.world

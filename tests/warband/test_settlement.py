@@ -132,6 +132,39 @@ def test_a_planned_site_whose_builder_dies_is_cancelled_and_refunded_and_the_req
     assert [plan.type for plan in world.player_plans(0)] == [BuildingType.FARM]  # the request stands: another peasant starts it anew
 
 
+@pytest.mark.parametrize("lost", ["cancelled", "razed", "builder killed"])
+@pytest.mark.parametrize("after", [0.0, 1.5])
+def test_a_planned_site_lost_is_the_same_whenever_it_goes(lost, after):
+    """A plan learned its site only on its once-a-second look, and let go of a site it knew once it was gone.  So a site
+    cancelled from its own card in its first second was founded again and paid again, and one razed or left without its
+    builder after it was forgotten.  Now the player's cancel ends the plan; a site lost otherwise leaves the request
+    standing, for another peasant to start anew."""
+    world = settlement()
+    first = world.spawn_unit(0, UnitType.PEASANT, (9.5, 10.5))
+    world.spawn_unit(0, UnitType.PEASANT, (6.5, 14.5))  # free to take the request up
+    world.plan_building(0, BuildingType.FARM, (10, 10))
+    advance_until(world, lambda: first.constructing is not None, seconds=5)
+    for _ in range(round(after / SIM_DT)):
+        world.step()
+    site = world.buildings[first.constructing]
+    purse = (world.players[0].gold, world.players[0].lumber)
+    if lost == "cancelled":
+        world.cancel_building(site.id)
+    elif lost == "razed":
+        site.hp = -1000  # staged: a raid's work, overkill so the step's construction cannot lift it back
+    else:
+        first.hp = 0
+    for _ in range(round(4.0 / SIM_DT)):
+        world.step()
+    cost = BUILDINGS[BuildingType.FARM].cost
+    again = [b for b in world.player_buildings(0, BuildingType.FARM) if b.pos == (10, 10)]
+    if lost == "cancelled":
+        assert not world.player_plans(0) and not again
+        assert (world.players[0].gold, world.players[0].lumber) == (purse[0] + cost.gold, purse[1] + cost.lumber)
+    else:
+        assert [plan.type for plan in world.player_plans(0)] == [BuildingType.FARM] and again and again[0].id != site.id
+
+
 @pytest.mark.parametrize("phase", ["pending", "travelling", "building"])
 def test_cancelling_a_saved_building_plan_releases_its_worker_and_refunds_only_paid_work(phase):
     """Cancellation stays safe before payment, during approach, and after a construction shell exists."""
