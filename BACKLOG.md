@@ -35,14 +35,14 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 ([`5fd2ef4`](https://github.com/ikamensh/warband/blob/5fd2ef41798f8162811b9eb0d286c80c65c9bb26/BACKLOG.md)); WB-045, merged as `6ad2779`, live as 0.2.61
 ([`493e3bf`](https://github.com/ikamensh/warband/blob/493e3bfb3df8eaefc809dbc0a86c80683eb490a1/BACKLOG.md)); WB-042, merged as `13db600`, published as 0.2.63
 ([`13c9911`](https://github.com/ikamensh/warband/blob/13c991194c5b73d2babbd74c931681aee3c4b8a7/BACKLOG.md)); WB-046, merged as `59455cc`, live as 0.2.65
-([`70b57b2`](https://github.com/ikamensh/warband/blob/70b57b2048b4a0986aecfad4ad5999e7292c0da6/BACKLOG.md)).
+([`70b57b2`](https://github.com/ikamensh/warband/blob/70b57b2048b4a0986aecfad4ad5999e7292c0da6/BACKLOG.md)); WB-041, merged as `62e4970`, live as 0.2.67 on
+bundle `3e3dfda8` ([`79bc783`](https://github.com/ikamensh/warband/blob/79bc78340bf30dcabb3a333f6df85b176bc4dcd3/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
-| WB-041 | Next | done | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-044 | Next | blocked | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
 | WB-047 | Later | proposed | Split the four giant modules along their seams | WB-041 |
 
@@ -169,120 +169,6 @@ drum tap, a low bell, a muffled anvil). Both ticks peak about 8 dB under the
 order cues and would sound once however fast the selections come. The
 generators and levels are in `docs/evidence/wb039/` on the machine that made
 them. What unblocks it: Ilya's A, B or C.
-
-## WB-041 — Folders for the source tree
-
-Ilya, 2026-09-18: the package has no folder structure, so group what
-belongs together, the way a person would. `warband/` holds 43 modules side
-by side, from 17 lines to 2,887. Four of them hold nearly half of its 18,900
-lines:
-`model.py` (2,887), `scene.py` (2,398), `textures.py` (2,215) and
-`pro_ai.py` (1,148). The imports already fall into layers, so the folders
-can follow them. A proposal, not a decision:
-
-```
-warband/
-  sim/     rules, races, model, path, mapgen, settlement, worker_ai, worker_knowledge
-  online/  authority (the server's game), online_ai (a headless player)
-  ai/      ai, pro_ai, archetypes
-  arena/   arena, balance, telemetry
-  player/  profile, scores, replay
-  art/     textures, effects, ambience, production, visual_lint
-  audio/   sound, voices, music, instruments, pieces, combat_sound, deaths, wreckage
-  ui/      scene, view, title, multiplayer, profile_scene, replay_scene, score_scene, tutorial, style, icons
-```
-
-`sim/` is today's authoritative closure: `tools/ci_compatibility.py`
-hashes `authority` and everything it imports. A test keeps the layers
-honest, either an AST walk or `import-linter`: `sim` imports nothing above
-it; `ai`, `arena` and `player` never import `art`, `audio` or `ui`; and
-`art` and `audio` never import `ui`. After the move, split the four giants
-along their seams, each split its own pure move: `model` into orders,
-movement, combat, economy, construction and vision; `scene` into the match,
-the HUD, overlays and input; `textures` into terrain, units, buildings and
-painted sheets; `pro_ai` into economy, military and memory.
-
-What moves with it:
-
-* Imports in the package, the tools and the 79 test files (the tests can
-  mirror the new tree), and the hidden imports in `tools/package.py`. 58
-  docs name `warband/<module>.py` paths; `make check-links` catches links
-  but not paths written in prose.
-* The authoritative contract hashes file paths, and saga-online names
-  `warband.authority:ONLINE` in 11 places and `warband.online_ai` in 4. So
-  the move changes the contract and ships with a server rollout. The next
-  rules series (WB-024, WB-016, WB-037) is the natural one. Saves and
-  replays are JSON, with no pickles, so no stored class paths need
-  migrating.
-* Every open branch conflicts with a tree move (the campaign, `fast-sim`,
-  rules work). Do it right after they land and tell the running sessions
-  first. Make the move one mechanical commit, `git mv` plus import rewrites
-  and nothing else, so history and blame follow the files.
-
-**Done when:** `warband/` holds only `__init__.py`, `__main__.py` and the
-subpackages, and the layer test is in the suite. The simulation
-fingerprint and the replay tests are unchanged by the move, since it is
-only a move. The suite, fuzz, a packaged native build and the online smoke
-pass; saga-online's references are updated and the rollout is done.
-AGENTS.md describes the tree and says where new code goes.
-
-**Started 2026-09-19** on branch `package-folders`, with the folders taken
-from the proposal. Four names differ, so that no folder is named after a
-module inside it and none reads as the model's `Player`: `brains/` (ai,
-pro_ai), `league/` (arena, balance, telemetry, archetypes and fastsim: what
-plays many matches), `records/` (profile, scores, replay) and `story/` (the
-campaign's five modules, which the proposal predates). `archetypes` goes to
-the league, whose postures it holds; `_native.c` goes to `sim`. The layer
-test is a table of what each folder may import, stricter than the
-proposal's three rules. `sim` imports only itself; `brains`, `records`,
-`art` and `audio` only `sim`; `league` and `online` `sim` and `brains`; `ui`
-and `story` anything. The tests stay flat. Splitting the four giants is
-WB-047, so that this stays a move.
-
-Checked before merging: the fingerprint and the sim_bench digest are
-unchanged; the compiled ladder beats the interpreted one, so the compiled
-modules are found in their folders, in the workers too; fuzz and both tiers
-pass; `--selftest` starts a match; CI's native build passes. Then comes the
-rollout, since the contract's paths and registry move. saga-online's
-registries, runtime attestation, promotion gate, rehearsal and verify tools,
-tests and docs change, and so does the stack root's `make server`. It
-follows WB-045's procedure.
-
-**Done 2026-09-19:** merged as `62e4970` (branch `package-folders`: the
-move `3e459ab`, the layer test `dbae175`, AGENTS.md `178f034`), live as
-0.2.67 on server bundle `3e3dfda8…` (saga-online `docs/wb041-rollout.md`).
-`warband/` holds `__init__.py`, `__main__.py`, `assets/` and the nine
-folders. The move is one commit: git mv plus rewrites in 191 files (imports,
-dotted names and paths in the package, tools, tests, docs and CI; this
-backlog keeps its flat names), with 50 renames that `git log --follow` and
-blame follow. Beyond names the move needed four things:
-
-* fastsim compiles `sim.*` and `brains.*` and puts the build's folders first
-  on those subpackages' paths, since the build holds no `__init__.py`; the C
-  twins are `warband.sim._native`.
-* `pieces` and `textures` find `assets/` one folder up.
-* Two contract tests and the release fixture build their packages in the new
-  tree.
-* The split import lines keep their `noqa`.
-
-`tests/warband/test_layers.py` checks three things: each folder imports
-only what its row allows, `warband/` holds only its entries, and every
-`__init__.py` is its docstring alone. A planted art-to-ui import fails it.
-
-Unchanged by the move: the fingerprint (`464b308e…`), the sim_bench digest
-(`693ec3ce…`), the replay tests, and the same match on the live and moved
-authorities (snapshots and checkpoints every 600 steps, each restoring the
-other's checkpoint). The compiled ladder takes 1.1 s against 5.7 s
-interpreted, so the compiled modules are found, in the workers too. Both
-tiers pass (1468 tests), and so do fuzz (2 games), `--selftest` (its frame
-looked at), CI's native build on Windows and Mac, and the online journey
-against the public server.
-
-The rollout moved saga-online's registries, runtime attestation, promotion
-gate, installer and tools. One journey tool built `warband.style` from the
-game's name and failed against the live server first; it now has a test.
-Saga2D's and Tribes' docs and the stack root's `make server` follow. The
-giants' splits are WB-047.
 
 ## WB-044 — Hold the push that comes with a rush tower; strike faster on Hard
 
