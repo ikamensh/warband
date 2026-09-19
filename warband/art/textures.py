@@ -2135,9 +2135,16 @@ def warm_units(game: Game, players: list[int], races: list[Race] | None = None):
                         yield unit_image(game, unit_type, player, facing, frame, carrying, race=race)
 
 
-#: The looks a finished building can wear: as built, busy training or researching, and under
-#: half its hit points.  Only painted sheets tell them apart; the low-poly render has one look.
-BUILDING_LOOKS = ("intact", "active", "damaged")
+#: The looks a building can wear: as built, busy training or researching, under half its hit points, and while it
+#: goes up (WB-048): founded for the first half of its construction, raised for the second.  Only painted sheets
+#: tell them apart; the low-poly render has one look, and a site without its painting is drawn as a plain site.
+BUILDING_LOOKS = ("intact", "active", "damaged", "founded", "raised")
+SITE_LOOKS = ("founded", "raised")
+
+
+def has_look(race: Race, look: str) -> bool:
+    """Whether *race*'s buildings have a painting in *look* (a site look has no stand-in to fall back on)."""
+    return restyled_buildings(race, look) is not None
 
 
 def building_key(building_type: BuildingType, player: int, race: Race = Race.HUMAN, look: str = "intact") -> str:

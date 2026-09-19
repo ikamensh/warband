@@ -295,16 +295,19 @@ def test_a_new_map_of_the_same_size_reuses_the_ground_fog_and_minimap_images(pla
     assert Image  # the PIL import is what the view feeds update_image
 
 
-def test_a_site_shows_the_building_rising_and_a_battered_building_smokes_then_burns(play) -> None:
+def test_a_site_shows_its_foundation_then_its_walls_raised_and_a_battered_building_smokes_then_burns(play) -> None:
     game, scene = play
     world, view = scene.world, scene.view
     hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
     site = world.place_building(scene.human, BuildingType.FARM, (hall.x + 5, hall.y + 4), done=False)
     game.tick(1 / 60)
-    assert view.building_sprite(site.id).image == "site.2"
+    race = world.race_of(scene.human)  # WB-048: a site wears its own painting, whole, not the building faded in
+    assert view.building_sprite(site.id).image == textures.building_key(BuildingType.FARM, scene.human, race, "founded")
+    assert view.building_sprite(site.id).opacity == 255
     site.progress = site.info.build_time * 0.6
     game.tick(1 / 60)
-    assert view.building_sprite(site.id).image == textures.building_key(BuildingType.FARM, scene.human) and view.building_sprite(site.id).opacity == 150
+    assert view.building_sprite(site.id).image == textures.building_key(BuildingType.FARM, scene.human, race, "raised")
+    assert view.building_sprite(site.id).opacity == 255
     site.progress = site.info.build_time
     site.hp = site.max_hp
     game.tick(1 / 60)

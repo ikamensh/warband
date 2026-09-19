@@ -44,13 +44,14 @@ def rgba(color: tuple[int, int, int], alpha: int = 255) -> Color:
 
 
 def building_look(b: Building, worked: Collection[int] = ()) -> str:
-    """Which painted look a building wears: damaged under half its hit points, active while it
-    trains or researches, intact otherwise (and while it is still going up).  A gold mine is
-    active while a peasant works inside it: its id is among *worked*."""
+    """Which painted look a building wears: going up, founded for the first half of its construction
+    and raised for the second; damaged under half its hit points, active while it trains or
+    researches, intact otherwise.  A gold mine is active while a peasant works inside it: its id
+    is among *worked*."""
     if b.type is BuildingType.GOLD_MINE:
         return "active" if b.id in worked else "intact"
     if not b.done:
-        return "intact"
+        return "founded" if b.progress < b.info.build_time / 2 else "raised"
     if b.hp < b.max_hp / 2:
         return "damaged"
     if b.queue or b.research is not None:
@@ -596,11 +597,16 @@ class MapView:
         """Keep *sighting* and the sprite that shows it."""
         self._sightings[sighting.id] = sighting
         x, y, size, _ = sighting.rect
-        rising = 0.5 <= sighting.built < 1.0  # the second half of construction shows the building going up
+        # A site wears its painted founded or raised look; without the painting (the low-poly art), a plain site for
+        # the first half and the building faded in for the second.
+        painted_site = not sighting.done and sighting.type is not BuildingType.GOLD_MINE and textures.has_look(sighting.race, sighting.look)
+        rising = not painted_site and 0.5 <= sighting.built < 1.0
         if sighting.type is BuildingType.GOLD_MINE:
             key = textures.mine_image(self.game, textures.scatter(x, y, 8) % textures.mine_variants(), sighting.look)
-        elif sighting.built >= 0.5:
+        elif sighting.done or painted_site:
             key = textures.building_image(self.game, sighting.type, sighting.player, sighting.race, sighting.look, abandoned=sighting.abandoned)  # type: ignore[arg-type]
+        elif rising:
+            key = textures.building_image(self.game, sighting.type, sighting.player, sighting.race, "intact", abandoned=sighting.abandoned)  # type: ignore[arg-type]
         else:
             key = f"site.{size}"
         sprite = self._buildings.get(sighting.id)

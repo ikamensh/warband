@@ -347,26 +347,55 @@ def test_a_peasant_builds_a_farm_which_then_feeds_more_units() -> None:
         world.build(peasant.id, BuildingType.FARM, (12, 12))
 
 
-def test_an_interrupted_site_can_be_cancelled_for_a_refund_or_resumed() -> None:
+def test_a_builder_finishes_what_it_started_and_obeys_afterwards_unless_the_site_is_cancelled() -> None:
+    """WB-048: a started building is finished or cancelled, never left half built.  An order to its builder waits
+    behind the work (a stop drops only what was to come); cancelling refunds the whole cost and frees the builder,
+    which then does what it was told meanwhile."""
     world, _hall = base_world()
     world.reveal_all(0)
     a = world.spawn_unit(0, UnitType.PEASANT, (8.5, 8.5))
-    b = world.spawn_unit(0, UnitType.PEASANT, (8.5, 12.5))
     world.build(a.id, BuildingType.FARM, (10, 10))
     run(world, 4.0)
     farm = next(x for x in world.buildings.values() if x.type is BuildingType.FARM)
-    world.move([a.id], (2.5, 15.5))
-    assert a.constructing is None and farm.builder is None
     progress = farm.progress
+    world.move([a.id], (2.5, 15.5))
+    world.stop([a.id])
+    world.move([a.id], (2.5, 15.5))
     run(world, 2.0)
-    assert farm.progress == progress
-    world.resume_construction([b.id], farm.id)
-    run_until(world, lambda: farm.builder == b.id and farm.progress > progress, 15.0)
-    assert farm.builder == b.id and farm.progress > progress
+    assert a.constructing == farm.id and farm.builder == a.id and farm.progress > progress
+    assert [type(o).__name__ for o in a.orders] == ["Build", "Move"]
     gold = world.players[0].gold
     world.cancel_building(farm.id)
     assert farm.id not in world.buildings and world.players[0].gold == gold + 500
-    assert b.constructing is None and not b.orders
+    assert a.constructing is None and isinstance(a.order, Move)
+    world.build(a.id, BuildingType.FARM, (10, 10))
+    run_until(world, lambda: a.constructing is not None, 10.0)
+    world.move([a.id], (2.5, 15.5))
+    run_until(world, lambda: a.constructing is None, 40.0)
+    farm = next(x for x in world.buildings.values() if x.type is BuildingType.FARM)
+    assert farm.done and isinstance(a.order, Move)  # built, then off where it was sent
+
+
+def test_a_site_whose_builder_is_gone_is_cancelled_and_one_left_in_an_old_save_is_refunded_on_load() -> None:
+    world, _hall = base_world()
+    world.reveal_all(0)
+    a = world.spawn_unit(0, UnitType.PEASANT, (8.5, 8.5))
+    world.build(a.id, BuildingType.FARM, (10, 10))
+    run(world, 2.0)
+    farm = next(x for x in world.buildings.values() if x.type is BuildingType.FARM)
+    data = world.to_dict()
+    gold = world.players[0].gold
+    a.hp = 0
+    world.step()
+    assert farm.id not in world.buildings and world.players[0].gold == gold + 500
+    for unit in data["units"]:  # a save from before WB-048, where the builder had walked off
+        if unit["id"] == a.id:
+            unit["constructing"], unit["orders"] = None, []
+    for building in data["buildings"]:
+        if building["id"] == farm.id:
+            building["builder"] = None
+    loaded = World.from_dict(data)
+    assert farm.id not in loaded.buildings and loaded.players[0].gold == gold + 500
 
 
 def test_a_shell_under_construction_gains_hit_points_at_the_build_rate_and_keeps_its_wounds() -> None:

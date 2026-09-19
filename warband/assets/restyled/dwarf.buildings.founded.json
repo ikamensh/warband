@@ -1,0 +1,97 @@
+{
+ "cell": [
+  255,
+  376
+ ],
+ "cols": 3,
+ "rows": 3,
+ "origin": [
+  127.5,
+  257.8651324672157
+ ],
+ "scale": 2.5,
+ "pad": [
+  0,
+  0
+ ],
+ "chroma": [
+  255,
+  0,
+  255
+ ],
+ "grid": false,
+ "cells": [
+  {
+   "key": "building.dwarf.town_hall.founded.0",
+   "col": 0,
+   "row": 0,
+   "tags": {
+    "building": "town_hall"
+   }
+  },
+  {
+   "key": "building.dwarf.farm.founded.0",
+   "col": 1,
+   "row": 0,
+   "tags": {
+    "building": "farm"
+   }
+  },
+  {
+   "key": "building.dwarf.barracks.founded.0",
+   "col": 2,
+   "row": 0,
+   "tags": {
+    "building": "barracks"
+   }
+  },
+  {
+   "key": "building.dwarf.tower.founded.0",
+   "col": 0,
+   "row": 1,
+   "tags": {
+    "building": "tower"
+   }
+  },
+  {
+   "key": "building.dwarf.lumber_mill.founded.0",
+   "col": 1,
+   "row": 1,
+   "tags": {
+    "building": "lumber_mill"
+   }
+  },
+  {
+   "key": "building.dwarf.blacksmith.founded.0",
+   "col": 2,
+   "row": 1,
+   "tags": {
+    "building": "blacksmith"
+   }
+  },
+  {
+   "key": "building.dwarf.stables.founded.0",
+   "col": 0,
+   "row": 2,
+   "tags": {
+    "building": "stables"
+   }
+  },
+  {
+   "key": "building.dwarf.workshop.founded.0",
+   "col": 1,
+   "row": 2,
+   "tags": {
+    "building": "workshop"
+   }
+  },
+  {
+   "key": "building.dwarf.church.founded.0",
+   "col": 2,
+   "row": 2,
+   "tags": {
+    "building": "church"
+   }
+  }
+ ]
+}

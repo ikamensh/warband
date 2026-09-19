@@ -1160,7 +1160,13 @@ class World:
         if unit.inside is not None and queue and isinstance(unit.order, Harvest):
             unit.orders.popleft()  # Finish this trip, then obey the pending manual command.
         if unit.constructing is not None:
-            self._abandon_construction(unit)
+            # A started building is finished or cancelled, never left (WB-048): the order waits behind the work.
+            if not queue:
+                while len(unit.orders) > 1:
+                    unit.orders.pop()
+            unit.orders.append(order)
+            unit.auto_work = not isinstance(order, Hold)
+            return
         unit.auto_work = not isinstance(order, Hold)
         if not queue:
             unit.orders.clear()
@@ -1222,7 +1228,9 @@ class World:
         for unit in self._own_units(unit_ids):
             unit.auto_work = False
             if unit.constructing is not None:
-                self._abandon_construction(unit)
+                while len(unit.orders) > 1:  # it stops what it was to do next; the building it is raising, only a cancel stops
+                    unit.orders.pop()
+                continue
             unit.orders.clear()
             unit.path = []
             unit.path_goal = None
@@ -1432,11 +1440,6 @@ class World:
             return "attack"
         workers = [u.id for u in units if u.is_worker]
         others = [u.id for u in units if not u.is_worker]
-        if workers and isinstance(target, Building) and target.player == player and not target.done:
-            self.resume_construction(workers, target.id)
-            if others:
-                self.move(others, point, queue=queue)
-            return "build"
         if workers and isinstance(target, Building) and target.player == player and target.done and target.hp < target.max_hp and target.type is not BuildingType.GOLD_MINE:
             self.repair(workers, target.id, queue=queue)
             if others:
@@ -1638,8 +1641,8 @@ class World:
         self._launch_arrow(b, target, self.damage_of(b))
         b.cooldown = info.cooldown
 
-    def _abandon_construction(self, unit: Unit) -> None:
-        """A builder ordered away leaves the site; the shell stays for another peasant to finish (or to be cancelled)."""
+    def _release_builder(self, unit: Unit) -> None:
+        """The builder of a cancelled site steps out beside it."""
         b = self.buildings.get(unit.constructing) if unit.constructing is not None else None
         unit.constructing = None
         if b is not None and b.builder == unit.id:
@@ -1658,22 +1661,11 @@ class World:
             raise RuleError("Finished buildings cannot be cancelled")
         builder = self.units.get(b.builder) if b.builder is not None else None
         if builder is not None:
-            self._abandon_construction(builder)
+            self._release_builder(builder)
             if builder.orders and isinstance(builder.orders[0], Build):
                 builder.orders.popleft()
         self._refund(b.player, b.info.cost)
         self._remove_building(b, reason="cancelled")
-
-    @recorded
-    def resume_construction(self, unit_ids: list[int], building_id: int) -> None:
-        b = self.buildings.get(building_id)
-        if b is None or b.done:
-            raise RuleError("Nothing to resume")
-        units = self._own_units(unit_ids)
-        if not all(unit.is_worker for unit in units):
-            raise RuleError("Only peasants can build")
-        for unit in units:
-            self._issue(unit, Build(b.type, b.pos, building=b.id))
 
     # -- Units ----------------------------------------------------------------------
 
@@ -3224,11 +3216,13 @@ class World:
         self._leave_mine(unit)
         del self.units[unit.id]
         self.players[unit.player].stats["units_lost"] += 1
+        self.events.append(Event("death", unit.pos, player=unit.player, entity=unit.id, text=unit.type.value))
         if unit.constructing is not None:
             b = self.buildings.get(unit.constructing)
-            if b is not None and b.builder == unit.id:
+            if b is not None and b.builder == unit.id and not b.done:
                 b.builder = None
-        self.events.append(Event("death", unit.pos, player=unit.player, entity=unit.id, text=unit.type.value))
+                self._refund(b.player, b.info.cost)  # a site without its builder is no site: it is cancelled (WB-048)
+                self._remove_building(b, reason="cancelled")
 
     def _remove_building(self, b: Building, *, reason: str) -> None:
         del self.buildings[b.id]
@@ -3337,13 +3331,13 @@ class World:
             pos = units[0].pos
         else:
             pos = (0.0, 0.0)
-        for unit in units:
-            self._remove_unit(unit)
-        for building in owned:
+        for building in owned:  # before the units: a builder removed from its site would cancel it (WB-048)
             if len(self.players) >= 3:
                 self._abandon(building)  # the others fight on around what is left
             else:
                 self._remove_building(building, reason="resigned")
+        for unit in units:
+            self._remove_unit(unit)
         self.events.append(Event("resigned", pos, player=player, text=self.players[player].name))
         self._check_elimination()
 
@@ -3447,6 +3441,9 @@ class World:
         state = data["rng"]
         world.rng.setstate((state[0], tuple(state[1]), state[2]))
         world._index_units()
+        for b in [b for b in world.buildings.values() if not b.done and b.builder is None and b.player is not None and not b.abandoned]:
+            world._refund(b.player, b.info.cost)  # left half built in a save from before WB-048, when a builder could walk off
+            world._remove_building(b, reason="cancelled")
         world._exposed = world._exposed_players()
         world.update_vision()
         world.events.clear()

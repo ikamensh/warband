@@ -181,14 +181,12 @@ class Settlement:
         if worker is None:
             plan.status = "Waiting for an available worker and safe route"
             return
-        if building is None:
-            reason = world.can_place(plan.type, plan.pos, plan.player, builder=worker.id)
-            if reason is not None:
-                plan.status = reason
-                return
-            world.build(worker.id, plan.type, plan.pos)
-        else:
-            world.resume_construction([worker.id], building.id)
+        assert building is None, "a site is never without its builder (WB-048)"
+        reason = world.can_place(plan.type, plan.pos, plan.player, builder=worker.id)
+        if reason is not None:
+            plan.status = reason
+            return
+        world.build(worker.id, plan.type, plan.pos)
         plan.worker, plan.status = worker.id, "Builder en route"
 
     def _site(self, plan: Plan):

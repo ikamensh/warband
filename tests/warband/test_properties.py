@@ -218,7 +218,6 @@ def order(data, world: World):
         "set_auto_train": lambda: world.set_auto_train(one, unit, data.draw(st.booleans())),
         "smart": lambda: world.smart(units, point, queue=queue),
         "cancel_building": lambda: world.cancel_building(one),
-        "resume_construction": lambda: world.resume_construction(units, one),
         "plan_building": lambda: world.plan_building(player, building, tile),
         "order_unit": lambda: world.order_unit(player, unit),
         "order_upgrade": lambda: world.order_upgrade(player, upgrade),

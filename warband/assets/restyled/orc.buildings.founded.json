@@ -1,0 +1,97 @@
+{
+ "cell": [
+  255,
+  378
+ ],
+ "cols": 3,
+ "rows": 3,
+ "origin": [
+  127.5,
+  260.8003222687543
+ ],
+ "scale": 2.5,
+ "pad": [
+  0,
+  0
+ ],
+ "chroma": [
+  255,
+  0,
+  255
+ ],
+ "grid": false,
+ "cells": [
+  {
+   "key": "building.orc.town_hall.founded.0",
+   "col": 0,
+   "row": 0,
+   "tags": {
+    "building": "town_hall"
+   }
+  },
+  {
+   "key": "building.orc.farm.founded.0",
+   "col": 1,
+   "row": 0,
+   "tags": {
+    "building": "farm"
+   }
+  },
+  {
+   "key": "building.orc.barracks.founded.0",
+   "col": 2,
+   "row": 0,
+   "tags": {
+    "building": "barracks"
+   }
+  },
+  {
+   "key": "building.orc.tower.founded.0",
+   "col": 0,
+   "row": 1,
+   "tags": {
+    "building": "tower"
+   }
+  },
+  {
+   "key": "building.orc.lumber_mill.founded.0",
+   "col": 1,
+   "row": 1,
+   "tags": {
+    "building": "lumber_mill"
+   }
+  },
+  {
+   "key": "building.orc.blacksmith.founded.0",
+   "col": 2,
+   "row": 1,
+   "tags": {
+    "building": "blacksmith"
+   }
+  },
+  {
+   "key": "building.orc.stables.founded.0",
+   "col": 0,
+   "row": 2,
+   "tags": {
+    "building": "stables"
+   }
+  },
+  {
+   "key": "building.orc.workshop.founded.0",
+   "col": 1,
+   "row": 2,
+   "tags": {
+    "building": "workshop"
+   }
+  },
+  {
+   "key": "building.orc.church.founded.0",
+   "col": 2,
+   "row": 2,
+   "tags": {
+    "building": "church"
+   }
+  }
+ ]
+}

@@ -121,8 +121,10 @@ def test_building_look_follows_health_and_work() -> None:
     assert building_look(hall) == "active"
     hall.hp = 500
     assert building_look(hall) == "damaged"
-    site = Building(2, BuildingType.FARM, 0, 3, 3, 40, progress=20.0)
-    assert building_look(site) == "intact"
+    site = Building(2, BuildingType.FARM, 0, 3, 3, 40, progress=5.0)
+    assert building_look(site) == "founded"  # WB-048: the first half of construction
+    site.progress = site.info.build_time * 0.6
+    assert building_look(site) == "raised"
 
 
 def test_the_tool_lays_the_nine_buildings_out_on_one_sheet_with_a_shared_anchor() -> None:

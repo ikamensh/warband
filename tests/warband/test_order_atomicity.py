@@ -38,8 +38,6 @@ REFUSED = {
     "harvest with a soldier among the peasants": lambda w, e: w.harvest([e["peasant"], e["footman"]], e["mine"]),
     "harvest where no trees stand": lambda w, e: w.harvest([e["peasant"]], (3, 20)),
     "peasants released with a soldier among them": lambda w, e: w.release_workers([e["peasant"], e["footman"]]),
-    "construction resumed with a soldier among the peasants": lambda w, e: w.resume_construction([e["peasant"], e["footman"]], e["site"]),
-    "construction resumed on a finished hall": lambda w, e: w.resume_construction([e["peasant"]], e["hall"]),
     "repair of an undamaged hall": lambda w, e: w.repair([e["peasant"]], e["hall"]),
     "repair by soldiers": lambda w, e: w.repair([e["footman"]], e["hall"]),
     "a building on the wood": lambda w, e: w.build(e["peasant"], BuildingType.FARM, (20, 12)),

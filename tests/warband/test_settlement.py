@@ -102,25 +102,34 @@ def test_global_upgrades_wait_for_prerequisites_without_a_stalled_unit_blocking_
         world.order_upgrade(0, Upgrade.BLADES_2)
 
 
-@pytest.mark.parametrize("interrupt", ["stop", "hold", "death"])
-def test_a_planned_site_finds_a_replacement_when_its_builder_leaves(interrupt):
-    """An unfinished settlement request survives a parked or dead builder without charging twice."""
+@pytest.mark.parametrize("interrupt", ["stop", "hold"])
+def test_a_planned_site_keeps_its_builder_through_a_stop_or_a_hold(interrupt):
+    """WB-048: a started building is finished, whatever its builder is told meanwhile, and charged once."""
     world = settlement()
     first = world.spawn_unit(0, UnitType.PEASANT, (9.5, 10.5))
-    second = world.spawn_unit(0, UnitType.PEASANT, (7.5, 12.5))
     world.plan_building(0, BuildingType.FARM, (10, 10))
     advance_until(world, lambda: first.constructing is not None, seconds=5)
     farm = world.buildings[first.constructing]
-    if interrupt == "death":
-        first.hp = 0
-        world.step()
-    else:
-        getattr(world, interrupt)([first.id])
+    getattr(world, interrupt)([first.id])
     paid = (world.players[0].gold, world.players[0].lumber)
-    advance_until(world, lambda: farm.builder == second.id, seconds=10)
-    assert first.id not in world.units or not first.auto_work
     advance_until(world, lambda: farm.done)
-    assert (world.players[0].gold, world.players[0].lumber) == paid
+    assert farm.builder is None and first.constructing is None and (world.players[0].gold, world.players[0].lumber) == paid
+
+
+def test_a_planned_site_whose_builder_dies_is_cancelled_and_refunded_and_the_request_stands():
+    world = settlement()
+    first = world.spawn_unit(0, UnitType.PEASANT, (9.5, 10.5))
+    world.plan_building(0, BuildingType.FARM, (10, 10))
+    advance_until(world, lambda: first.constructing is not None, seconds=5)
+    farm = world.buildings[first.constructing]
+    paid = (world.players[0].gold, world.players[0].lumber)
+    first.hp = 0
+    world.step()
+    world.step()
+    cost = BUILDINGS[BuildingType.FARM].cost
+    assert farm.id not in world.buildings
+    assert (world.players[0].gold, world.players[0].lumber) == (paid[0] + cost.gold, paid[1] + cost.lumber)
+    assert [plan.type for plan in world.player_plans(0)] == [BuildingType.FARM]  # the request stands: another peasant starts it anew
 
 
 @pytest.mark.parametrize("phase", ["pending", "travelling", "building"])

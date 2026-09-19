@@ -224,6 +224,22 @@ DAMAGED: dict[BuildingType, str] = {
     BuildingType.WORKSHOP: "the crane is broken, the siege chassis has lost a wheel and the bench is overturned",
     BuildingType.CHURCH: "the spire is cracked and leaning, the roof is holed and the window is broken",
 }
+#: How each building looks half built (the *raised* look, shown from half its construction on).
+RAISED: dict[BuildingType, str] = {
+    BuildingType.TOWN_HALL: "the keep's walls stand half high in scaffolding, the gate towers are stumps and the roof is not yet on",
+    BuildingType.FARM: "the house walls stand half high with bare roof rafters and the fields are staked out but not yet sown",
+    BuildingType.BARRACKS: "the walls stand half high in scaffolding with bare rafters, the yard is marked out and the targets are not yet up",
+    BuildingType.TOWER: "the tower stands only half its height inside a scaffold of poles and ladders, with no top",
+    BuildingType.LUMBER_MILL: "the shed is a timber frame without a roof and the saw lies on the ground beside it",
+    BuildingType.BLACKSMITH: "the walls stand half high, the chimney is a stump and the anvil stands in the open",
+    BuildingType.STABLES: "the stalls are a timber frame without a roof and the paddock fence is half built; no animal yet",
+    BuildingType.WORKSHOP: "the shed is a timber frame without a roof and the crane is not yet raised",
+    BuildingType.CHURCH: "the nave walls stand half high in scaffolding and the bell tower is a stump without its spire",
+}
+#: How each building looks just begun (the *founded* look, shown for the first half of its construction).
+FOUNDED: dict[BuildingType, str] = {bt: "only its foundation: the footprint of its walls laid in a low course of stone or timber sills, "
+                                        "no higher than a knee, with heaps of its materials beside it"
+                                    for bt in BuildingType if bt is not BuildingType.GOLD_MINE}
 TEAM_BUILDINGS = ("Blue is the faction colour: it appears exactly where the stand-in has it (banners, pennants, flags, a saddle blanket, "
                   "the hall's roof) and must stay this blue; put no blue anywhere else: roofs are grey, brown, green or red, windows amber, "
                   "water dark green.")
@@ -243,9 +259,22 @@ LOOK_BRIEF = {
                 "torn or fallen, dark scorch marks. The building must stay recognisable as the same building with the same footprint and "
                 "outline; no flames and no smoke (the game draws them), no people."),
 }
-LOOK_DETAILS = {"active": ACTIVE, "damaged": DAMAGED}
+LOOK_BRIEF["raised"] = ("still under construction and half built: its walls stand to about half their height inside a scaffold of "
+                        "poles, planks and ladders, roofs are bare rafters or not yet there, towers and chimneys are stumps, and stacks of "
+                        "planks and cut stone and a rope hoist stand on its ground patch. The same footprint, ground patch and position; "
+                        "only the outline is lower. No people, no smoke.")
+LOOK_BRIEF["founded"] = ("just begun: nothing stands yet. On the same ground patch, in the same place and at the same size, only the "
+                         "foundation is laid: the outline of the walls in a low course of stone or timber sills, stakes and a string "
+                         "line at the corners, heaps of stone, logs and planks, a few tools. Nothing rises higher than a knee, so the "
+                         "sprite is mostly its ground patch. This holds for every cell, the great hall and the towers too: no gate, "
+                         "tower, keep, wall or roof may stand, only their outline on the ground. The faction's blue appears only on one "
+                         "small pennant on a stake. Every cell keeps the flat magenta background around its ground patch. No people, "
+                         "no smoke.")
+LOOK_DETAILS = {"active": ACTIVE, "damaged": DAMAGED, "raised": RAISED, "founded": FOUNDED}
 #: What the judge must not see in a look (the game draws smoke and flames on a damaged building itself).
 LOOK_FORBIDDEN = {"active": "smoke (lit torches, braziers, lanterns and a roaring furnace are the point of this look)",
+                  "raised": "people, smoke, or a finished roof",
+                  "founded": "people, smoke, or any wall standing higher than a knee",
                   "damaged": "smoke or fire spreading on the building (a torch or furnace that was lit in the painting above is fine)"}
 BUILDING_JUDGE = """You are checking a repainted sprite sheet of buildings against its stand-ins. The image shows, for each row, the
 low-poly stand-in buildings above and the painted buildings below, labelled "row N: ..." (naming the building in each column) and "col N".
@@ -307,6 +336,19 @@ ASPECTS = ("1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:
 def aspect_ratio(size: tuple[int, int]) -> str:
     """The painter's canvas nearest a sheet of *size*: a canvas of another shape makes the model lay the cells out anew."""
     return min(ASPECTS, key=lambda a: abs(math.log(size[0] / size[1] * int(a.split(":")[1]) / int(a.split(":")[0]))))
+
+
+def pad_to_aspect(image: Image.Image, ratio: str) -> tuple[Image.Image, tuple[int, int, int, int]]:
+    """*image* centred on a canvas of the key colour shaped exactly *ratio*, and where it sits on it: the model paints on
+    its own canvases only, and a sheet of another shape comes back stretched, its grid and margin no longer where the cut
+    looks for them.  The painting is scaled back to the canvas and cut out of it at the box."""
+    rw, rh = (int(part) for part in ratio.split(":"))
+    w, h = image.size
+    cw, ch = (w, math.ceil(w * rh / rw)) if w * rh >= h * rw else (math.ceil(h * rw / rh), h)
+    canvas = Image.new("RGB", (cw, ch), restyle.MAGENTA)
+    left, top = (cw - w) // 2, (ch - h) // 2
+    canvas.paste(image.convert("RGB"), (left, top))
+    return canvas, (left, top, left + w, top + h)
 
 
 def geometry(sheet: restyle.Sheet, what: str) -> str:
@@ -624,8 +666,15 @@ def cmd_render(args: argparse.Namespace, subjects: list[Subject]) -> None:
         if args.provider == "codex":
             restyle.render_with_codex(args.dir / f"{name}.png", text, out)
         else:
-            usage = restyle.render_with_openrouter(args.dir / f"{name}.png", text, out, model=args.model, api_key=restyle.openrouter_api_key(),
-                                                   aspect_ratio=aspect_ratio(Image.open(args.dir / f"{name}.png").size))
+            sheet_png = Image.open(args.dir / f"{name}.png")
+            ratio = aspect_ratio(sheet_png.size)
+            padded, box = pad_to_aspect(sheet_png, ratio)
+            send = args.dir / name / "padded.png"
+            send.parent.mkdir(parents=True, exist_ok=True)
+            padded.save(send)
+            usage = restyle.render_with_openrouter(send, text, out, model=args.model, api_key=restyle.openrouter_api_key(), aspect_ratio=ratio)
+            painted = Image.open(out).convert("RGB").resize(padded.size, Image.LANCZOS)
+            painted.crop(box).save(out)
             (args.dir / name / "usage.json").write_text(json.dumps(usage, indent=1))
         return f"{name}: wrote {out}"
 
@@ -643,7 +692,9 @@ def cmd_cut(args: argparse.Namespace, subjects: list[Subject]) -> None:
             print(f"{name}: no {rendered.name} yet")
             continue
         sheet = restyle.Sheet.load(args.dir / name)
-        result = restyle.cut(sheet, Image.open(rendered), Image.open(args.dir / f"{name}.png"))
+        # A site stands on the same ground patch as its building but is far lower: its height says nothing of the scale.
+        result = restyle.cut(sheet, Image.open(rendered), Image.open(args.dir / f"{name}.png"),
+                             rescale=not name.endswith(tuple(f".{look}" for look in textures.SITE_LOOKS)))
         flagged = result.flagged
         print(f"{name}: scale {result.registration.scale:.2f} shift ({result.registration.dx:.0f}, {result.registration.dy:.0f}), "
               f"{len(flagged)} of {len(result.report)} cells flagged")
