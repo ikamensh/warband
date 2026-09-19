@@ -284,7 +284,7 @@ DIFFICULTY_ELO: Final[dict[Difficulty, int]] = {
     Difficulty.MEDIUM: 1000,
     Difficulty.HARD: 1375,
     Difficulty.MASTER: 1590,
-    Difficulty.GRANDMASTER: 1900,
+    Difficulty.GRANDMASTER: 1896,  # round one's rosters, 1200-game protocol, 90% interval 1825..2007; re-measure with the final table
 }
 
 #: One line per setting, for the same screen. Kept short enough to fit beside

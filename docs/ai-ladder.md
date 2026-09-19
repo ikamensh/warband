@@ -576,8 +576,9 @@ and lost one game in twenty to Easy, which Master never does. Every one of those
 home holds twenty thousand gold and the rest lies in a pit in the middle: the bred postures do not scout (a
 scout's sightings measured worse than attacking blind, above), so they never learnt of the pit, mined out in
 four minutes, stalled at ten soldiers short of the army they wait for, and never attacked. By layout against
-Master: plains 100%, crossings 96%, forest 92%, bastion 83%, Klondike 71%. With prospecting the elf champion took
-79% on Klondike boards alone where it had taken 69–70% (72 games each); holding the bank for the hall itself
+Master: plains 100%, crossings 96%, forest 92%, bastion 83%, Klondike 71% (24 games a layout, so the order is
+firmer than the numbers). With prospecting the elf champion took 79% on Klondike boards alone where it had taken
+69–70%: 72 games each, about five points either way, so suggestive rather than settled; holding the bank for the hall itself
 (`expand_hold`) took 21–32% there, because the push that comes at 170 s meets no army, and was deleted.
 
 **What the units were given.** Set-piece battles (`tools/battle_bench.py`: two armies of one price sent at each
