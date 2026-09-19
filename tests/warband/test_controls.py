@@ -233,9 +233,10 @@ def test_shift_with_a_recruits_key_trains_it_endlessly_and_cancel_stops_it(game,
     scene.select([barracks.id])
     footman, archer = scene.card[0], scene.card[1]
     press(game, footman.key, shift=True)
+    assert barracks.queue == [UnitType.FOOTMAN]  # switched on at an idle barracks, the first starts at once
     press(game, archer.key, shift=True)
-    assert barracks.auto == [UnitType.FOOTMAN, UnitType.ARCHER] and footman.endless()
-    assert scene.status == "Barracks: Footman, Archer endlessly in turn"
+    assert barracks.auto == [UnitType.ARCHER, UnitType.FOOTMAN] and footman.endless()  # the archer goes next
+    assert scene.status == "Barracks: Archer, Footman endlessly in turn"
     for _ in range(12):
         game.tick(0.1)
     assert barracks.queue == [UnitType.FOOTMAN]
@@ -251,11 +252,11 @@ def test_a_right_click_on_a_recruit_toggles_endless_training_as_autocast_did(gam
     game.tick(1 / 60)
     archer = scene.card_buttons[1]
     click_button(game, archer, "right")
-    assert barracks.auto == [UnitType.ARCHER] and barracks.queue == []  # endless, and nothing ordered by the click itself
+    assert barracks.auto == [UnitType.ARCHER] and barracks.queue == [UnitType.ARCHER]  # endless, which starts the first at once
     click_button(game, archer, "left", shift=True)
-    assert barracks.auto == []
+    assert barracks.auto == [] and barracks.queue == [UnitType.ARCHER]  # no longer endless; the one in training goes on
     click_button(game, archer)
-    assert barracks.queue == [UnitType.ARCHER]
+    assert barracks.queue == [UnitType.ARCHER, UnitType.ARCHER]  # a plain click orders one
 
 
 def test_a_recruit_the_purse_cannot_pay_for_yet_is_still_made_endless_by_a_right_click(game) -> None:

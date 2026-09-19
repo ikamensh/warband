@@ -1017,8 +1017,9 @@ class GameScene(Scene):
             return
         self.sfx("button")
         name = self.building_name(building.type)
-        rotation = [t for t in building.auto if t is not unit_type] + [unit_type] if on else [t for t in building.auto if t is not unit_type]
+        rotation = [t for t in building.auto if t is not unit_type]
         if on:
+            rotation.insert(0, unit_type)  # the one switched on goes next, as World.set_auto_train has it
             self.say(f"{name}: {', '.join(self.unit_name(t) for t in rotation)} endlessly" + (" in turn" if len(rotation) > 1 else ""))
         else:
             self.say(f"{name}: no more endless {self.unit_name(unit_type)}")

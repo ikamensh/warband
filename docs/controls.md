@@ -103,9 +103,13 @@ command, and Grid's keys to the grid.
 
 A building trains one or several unit types endlessly (`World.set_auto_train`,
 a recorded order, so replays and the online authority see it); several take
-turns, strictly, the next one first in `Building.auto`. It starts a recruit
-only when it stands idle, once a second after the settlement's plans have had
-their turn or at once when the last recruit walks out, and only from what the
+turns, strictly, the next one first in `Building.auto`, and the one switched on
+last goes next. A new building takes up what every building of its kind its
+owner has trains endlessly (a player's second and third barracks once stood
+idle beside the first one's endless archers). It starts a recruit only when it
+stands idle: at once when switched on (a player who saw nothing happen clicked
+again, and switched it off) or when the last recruit walks out, otherwise once
+a second after the settlement's plans have had their turn, and only from what the
 player's unpaid orders have not claimed (`World.committed`: sites builders are
 walking to, then plans whose prerequisites stand, each from what those before
 it left), per resource: what a player asked for is paid first, but a site
@@ -113,7 +117,8 @@ still short of lumber holds only lumber, so a farm waiting for lumber does not
 hold back a peasant or a footman paid in gold; once its lumber is there it
 holds its gold too, and endless training cannot starve it (a Barracks waiting
 for lumber once stopped a player's endless peasants with a thousand gold in
-the purse). Research planned at the building goes before its next recruit. `World.auto_train_blocker` says why the next one waits; the building's
+the purse). Research planned at the building goes before its next recruit.
+`World.auto_train_blocker` says why the next one waits; the building's
 panel shows the rotation and that reason, and a loop marks each endless recruit
 on the card. Shift with the recruit's key (or Shift+click, or a right-click on
 its button) toggles it at the selected building; the same from the Train

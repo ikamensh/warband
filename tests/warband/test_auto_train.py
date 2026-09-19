@@ -55,6 +55,34 @@ def test_two_types_on_endless_training_take_turns() -> None:
     assert world.players[0].gold == 10_000 - gold and barracks.queue == [UnitType.FOOTMAN]
 
 
+def test_switched_on_endless_training_starts_at_once() -> None:
+    """A player switched it on, saw nothing happen for half a second and clicked again, which switched it off (their
+    autosave of 2026-09-19): an idle building that can pay starts the recruit as the order is given."""
+    world = settlement()
+    barracks = world.place_building(0, BuildingType.BARRACKS, (8, 2))
+    run(world, 0.5)  # between two of the building's once-a-second looks
+    world.set_auto_train(barracks.id, UnitType.ARCHER, True)
+    assert barracks.queue == [UnitType.ARCHER]
+
+
+def test_a_new_building_takes_up_the_endless_training_its_kind_shares() -> None:
+    """A player met it (their autosave of 2026-09-19): endless archers at their barracks, two more barracks built, and
+    those stood idle for over a minute until the order was given again.  A site takes up what every building of its
+    kind its owner has trains endlessly, and trains it once it stands; kin that disagree hand down nothing."""
+    world = settlement()
+    first = world.place_building(0, BuildingType.BARRACKS, (8, 2))
+    world.set_auto_train(first.id, UnitType.ARCHER, True)
+    peasant = world.spawn_unit(0, UnitType.PEASANT, (14.5, 8.5))
+    world.build(peasant.id, BuildingType.BARRACKS, (14, 2))
+    run_until(world, lambda t: peasant.constructing is not None, seconds=10)
+    second = world.buildings[peasant.constructing]
+    assert second.auto == [UnitType.ARCHER]
+    run_until(world, lambda t: bool(second.queue), seconds=BUILDINGS[BuildingType.BARRACKS].build_time + 2)
+    assert second.queue == [UnitType.ARCHER]
+    world.set_auto_train(second.id, UnitType.ARCHER, False)
+    assert world.place_building(0, BuildingType.BARRACKS, (20, 2)).auto == []
+
+
 def test_a_recruit_walks_out_and_the_next_starts_the_same_step() -> None:
     world = settlement()
     barracks = world.place_building(0, BuildingType.BARRACKS, (8, 2))
@@ -154,13 +182,13 @@ def test_a_site_going_up_keeps_its_standing_order_and_a_save_keeps_the_turn() ->
     world.set_auto_train(site.id, UnitType.ARCHER, True)
     world.set_auto_train(site.id, UnitType.ARCHER, True)  # on twice is still on, and keeps its place
     run(world, 2.0)
-    assert site.queue == [] and site.auto == [UnitType.FOOTMAN, UnitType.ARCHER]
+    assert site.queue == [] and site.auto == [UnitType.ARCHER, UnitType.FOOTMAN]  # the one switched on last goes next
     site.progress = site.info.build_time
     run(world, 1.05)
-    assert site.queue == [UnitType.FOOTMAN] and site.auto == [UnitType.ARCHER, UnitType.FOOTMAN]
+    assert site.queue == [UnitType.ARCHER] and site.auto == [UnitType.FOOTMAN, UnitType.ARCHER]
     world = World.from_dict(world.to_dict())
-    assert world.buildings[site.id].auto == [UnitType.ARCHER, UnitType.FOOTMAN]
-    assert run_until(world, lambda t: len(t) == 2) == ["footman", "archer"]
+    assert world.buildings[site.id].auto == [UnitType.FOOTMAN, UnitType.ARCHER]
+    assert run_until(world, lambda t: len(t) == 2) == ["archer", "footman"]
 
 
 def test_a_rival_or_nobody_cannot_be_told_to_train_endlessly() -> None:

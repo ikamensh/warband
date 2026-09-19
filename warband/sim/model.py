@@ -1344,11 +1344,13 @@ class World:
 
     @recorded
     def set_auto_train(self, building_id: int, unit_type: UnitType, on: bool) -> None:
-        """Have a building train *unit_type* endlessly (*on*), or stop; several types at one building take turns.
+        """Have a building train *unit_type* endlessly (*on*), or stop; several types at one building take turns, the
+        one switched on last going next.
 
         A standing order, which a site still going up keeps until it stands.  It starts a recruit whenever the
         building stands idle and its owner can pay from what their unpaid orders have not claimed
-        (:meth:`committed`), so what a player asked for comes before what they left running."""
+        (:meth:`committed`), so what a player asked for comes before what they left running; switched on at an idle
+        building, at once (a player who saw nothing happen clicked again, and switched it off)."""
         building = self.buildings.get(building_id)
         if building is None or building.player is None or building.abandoned:
             raise RuleError("No such building")
@@ -1356,7 +1358,9 @@ class World:
             info = self.unit_info(building.player, unit_type)
             raise RuleError(f"{info.name}s are trained at the {self.building_info(building.player, info.trained_at).name}")
         if on and unit_type not in building.auto:
-            building.auto.append(unit_type)
+            building.auto.insert(0, unit_type)  # what was just asked for goes next
+            if not building.queue and building.research is None:
+                self._auto_train(building)
         elif not on and unit_type in building.auto:
             building.auto.remove(unit_type)
 
@@ -1484,6 +1488,11 @@ class World:
             building.progress = info.build_time
         if building_type is BuildingType.GOLD_MINE:
             building.gold = MINE_GOLD
+        if player is not None and info.trains:
+            # It takes up what every building of its kind its owner has trains endlessly: a player who has a barracks
+            # train archers for ever and builds another means the new one too (they once stood idle for a minute).
+            kin = [b.auto for b in self.player_buildings(player, building_type)]
+            building.auto = [unit_type for unit_type in info.trains if kin and all(unit_type in auto for auto in kin)]
         self.buildings[building.id] = building
         self._building_epoch += 1
         self._set_blocked(building, True)
