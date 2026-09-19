@@ -192,6 +192,24 @@ def test_a_right_click_finds_what_the_seat_knows_there_and_a_building_it_saw_sta
         "a hall seat 0 has seen is a target out of its sight"
 
 
+def test_a_site_on_ground_the_seat_never_explored_is_unexplored_whatever_stands_there() -> None:
+    """The placement rules looked at the ground before they asked whether the seat had ever seen it, and the refusal
+    went back to the seat: "Something is in the way" traced the rival's hall under the fog, and "Needs open ground"
+    told its trees from the ground they were felled on."""
+    match = fogged_match()
+    world = match.world
+    rival_hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0]
+    x0, y0 = rival_hall.pos
+    sites = [(x, y) for y in range(y0 - 2, y0 + rival_hall.size + 1) for x in range(x0 - 2, x0 + rival_hall.size + 1)]
+    sites += [(x, y) for y in range(world.height - 1) for x in range(world.width - 1)
+              if world.terrain[y][x] is Terrain.TREES and not world.is_explored(0, (x, y))][:8]
+    assert not any(world.is_explored(0, site) for site in sites)
+    peasant = next(unit for unit in world.player_units(0) if unit.is_worker)
+    told = {answer(match, 0, 'plan_building', [0, 'farm', list(site)]) for site in sites}
+    told |= {answer(match, 0, 'build', [peasant.id, 'farm', list(site)], plan_if_short=True) for site in sites}
+    assert told == {'Unexplored'}
+
+
 def test_ground_and_mines_out_of_sight_are_as_the_seat_last_saw_them_and_unseen_ones_as_the_map_began() -> None:
     match = fogged_match()
     world = match.world

@@ -1081,19 +1081,22 @@ class World:
                           builder: int | None = None, ignore_units: bool = False) -> str | None:
         size = BUILDINGS[building_type].size
         left, top = pos
-        width, height = self.width, self.height
+        width = self.width
+        if left < 0 or top < 0 or left + size > width or top + size > self.height:
+            return "Off the map"
         terrain, blocked, explored = self.terrain, self._blocked, self.explored[player]
+        # A site that reaches into ground the player has never seen is unexplored, whatever stands there: online the
+        # refusal goes back to the seat, and "Something is in the way" traced a rival's hall under the fog.
         for y in range(top, top + size):
             for x in range(left, left + size):
-                if not (0 <= x < width and 0 <= y < height):
-                    return "Off the map"
+                if not explored[y * width + x]:
+                    return "Unexplored"
+        for y in range(top, top + size):
+            for x in range(left, left + size):
                 if terrain[y][x] is not Terrain.GRASS:
                     return "Needs open ground"
-                index = y * width + x
-                if blocked[index]:
+                if blocked[y * width + x]:
                     return "Something is in the way"
-                if not explored[index]:
-                    return "Unexplored"
         if not ignore_units:
             for unit in self.units.values():
                 if unit.id == builder or unit.hidden:
