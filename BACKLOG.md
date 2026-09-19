@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-043**; a new
+section; git history keeps the record. The last ID given is **WB-044**; a new
 item takes the next one and updates this line.
 
 Done and removed 2026-09-18, every one merged into main (whose code is live as
@@ -35,12 +35,13 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
-| WB-036 | Next | in progress | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often | User 2026-09-18 |
-| WB-037 | Next | in progress | Answer a tower rush without stopping the economy: one tower by the mine now halts Master's gold (branch `rush-answers`) | User 2026-09-18 |
+| WB-036 | Next | in progress | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often (branch `rush-draw`) | User 2026-09-18 |
+| WB-037 | Next | done | Answer a tower rush without stopping the economy: one tower by the mine now halts Master's gold | User 2026-09-18 |
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-042 | Later | proposed | Tests read through public accessors; try property tests for the model and paths | WB-040 |
+| WB-044 | Next | proposed | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -176,6 +177,16 @@ The posture was merged into main as `ee363e5` on 2026-09-19 (no difficulty
 plays it); the rush's own held price became every order's in WB-043. The
 rating waits for WB-037.
 
+**Rated 2026-09-19** on WB-037's final code (`3859e53`), 48 fresh seeds from
+45000 on the ladder's boards, both corners (`docs/evidence/wb036/rating/`):
+`pro-rush` took 56.2% against the Vanguard and 49.5% against the Warden, 96
+games each, and rates 1013 between them (Warden 1025, Vanguard 962);
+`pro-hard-rush` took 42.2% against plain Hard. So Master draws it and Hard
+does not: on branch `rush-draw`, `pro-rush` is Master's third posture
+(`PRO_FOR`, a third of the games each, drawn from the seed and the seat as
+before), `pro-hard-rush` is deleted, and the Master note names the rush. The
+720-game protocol with it: Easy 867, Hard 1442, Master 1665.
+
 ## WB-037 — Answer a tower rush without stopping the economy
 
 Ilya asked on 2026-09-18 whether the computer players stop all mining when
@@ -267,6 +278,44 @@ the frame nothing reaches it, and the frame gains 10 hit points a second,
 more than two footmen take off it. Next, measured one at a time: peasants
 hunt a lone enemy builder inside the base; soldiers attack a frame they can
 outpace; a finished tower is struck by a force gathered out of its range.
+
+**Done 2026-09-19, merged into main as `1b9880f`** (`3859e53` on branch
+`rush-answers`) and live with the server rollout recorded in
+[saga-online's `docs/wb037-rollout.md`](../saga-online/docs/wb037-rollout.md)
+(bundle `953a83c6…`, Warband 0.2.53 promoted, public downloads checked).
+Model: a worker caught on forbidden ground walks out to the nearest safe tile
+even when its work cannot be reached from there (`World._take_cover`,
+sharing `World._way_out` with the route planner), and a melee attacker on a
+building aims for an open tile of its ring (`World._siege_spot`): ten of
+twelve peasants had stood a path's end short of a tower whose near side trees
+closed. Brain: a lone enemy peasant inside the base draws a party of five
+from where it is heading (`hunt_party`); a tower on our ground is struck by
+the soldiers at home and as many peasants, miners too, as bring it down in
+twenty seconds, from its frame's last twenty-five seconds on, and a young
+frame the force at hand can outpace is swarmed at once (`strike_seconds`,
+`strike_lead`, `strikers_max`). Tests: `test_rush_answers.py` (the waiting
+builder dies, a young frame falls, and with the answers off neither happens;
+a tower placed behind the mine is down within a minute with the gold back, on
+two seeds for each Master posture, slow tier), a carrier under a tower by the
+hall (`test_worker_ai.py`) and attackers round a building with a closed side
+(`test_melee_positioning.py`); each fails on the code before.
+
+On 20 fresh seeds from 7000 (`docs/evidence/wb037/fresh2.txt`): against the
+placed tower all three counts hold in 38 of 39 games for the Vanguard, 39 of
+40 for the Warden and 32 of 40 for Hard. Against `pro-rush` the tower is
+stopped or killed within a minute of standing in 38, 39 and 30 of 40 games
+and at most three peasants die to it in 37, 37 and 34; all three counts hold
+in 32, 31 and 19, because the rusher's first push arrives as its tower stands
+and the defender keeps 70% of its gold in about half the games with a frame.
+That is the part of the acceptance not met, and Hard's slow strike (43 to 83 s
+in eight placed games) with it: both go on as WB-044, with the same counts.
+Level with the unanswered twins in ordinary play (49%, 50%, 49% over 96 games
+each); the 720-game protocol re-rated Easy 866, Hard 1424, Master 1651 (the
+screen shows 870, 1000, 1420, 1650); fingerprint and `sim_bench.txt`
+refreshed, the bench back to 0.041 ms a step once the ring's occupancy was one
+query per building. Main ran
+[Tests 35410028696](https://github.com/ikamensh/warband/actions/runs/35410028696)
+and [native package checks 35410028686](https://github.com/ikamensh/warband/actions/runs/35410028686).
 
 ## WB-038 — Paint the gold mine
 
@@ -445,3 +494,25 @@ invariants.
 **Done when:** no test reads a private member of `warband/`, or each that does
 says why; the property tests that earn their keep run in the tiers, and the
 rest are recorded here with what they found.
+
+## WB-044 — Hold the push that comes with a rush tower; strike faster on Hard
+
+What WB-037 left of its acceptance. Against `pro-rush` the defender now stops
+the tower or kills it within a minute of standing in 38 and 39 of 40 games for
+Master's postures, and loses no more than three peasants to it in 37 of 40.
+But the rusher's first push arrives as the tower stands, while the
+defender's peasants are coming back from the strike, and the defender keeps
+70% of its gold in only about half the games where a frame went up. Traced on
+seed 7002: the tower died 21 s after it stood, then five to nine soldiers
+overran a defender with one or two and 1,600 to 2,000 gold banked unspent.
+Hard strikes with its nine peasants and a soldier or two, and in eight of 40
+games against the placed tower that took more than a minute (43 to 83 s).
+
+**Done when:** on 20 fresh seeds over all five layouts, both corners,
+measured as WB-037 counts them (`docs/evidence/wb037/rush_answers.py`, to
+become a tool), Master's postures and Hard hold all three of WB-037's counts
+in nine games of ten against `pro-rush`, and Hard does against the placed
+tower. The ladder shows no loss against ordinary opponents. If Hard's
+handicaps (thinking every second and a half, six peasants a mine, one
+barracks) are what keep it short, the numbers go to Ilya before any
+handicap is touched.
