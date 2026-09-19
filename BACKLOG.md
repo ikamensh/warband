@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-052**; a new
+section; git history keeps the record. The last ID given is **WB-053**; a new
 item takes the next one and updates this line.
 
 Done and removed 2026-09-18, every one merged into main (whose code is live as
@@ -46,6 +46,7 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 | WB-048 | Next | proposed | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
 | WB-050 | Next | proposed | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
 | WB-051 | Next | done | Clerics heal in visible single casts and carry a weak attack | User 2026-09-19 |
+| WB-053 | Next | done | Systematic controls: three switchable schemes, endless training, Shift-placing and the planner's spot | User 2026-09-19 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -186,3 +187,53 @@ branch against main): every move inside the intervals, clerics -33 the
 largest. Fuzz is clean, the fingerprint and `sim_bench` refreshed, the fast
 and slow tiers pass (1009 and 486). Hearing the chime in a match is left
 for Ilya.
+
+## WB-053 — Systematic controls
+
+Ilya, 2026-09-19: make the hotkeys systematic and more convenient; train
+some units endlessly ("auto-train archers", not twenty orders), several at
+one building alternating; Shift-build (pick a farm, click many spots) and an
+auto-build where the AI places the building; take it holistically, vim-like
+(keys by mode and selection, most things one key), with two or three
+control approaches switchable in the menu.
+
+**Acceptance** (recorded as the goal was set, 2026-09-19; branch `controls`):
+
+1. Rules: `World.set_auto_train` (recorded; the authority accepts it for a
+   seat's own buildings and hides a rival's), strict turns among several
+   types, training only from what unpaid orders have not claimed and after
+   research planned there; `build(plan_if_short=True)` leaves a site its
+   builder cannot pay for as a plan. Brains use neither: the fingerprint
+   does not move. Atomicity rows, property tests and a replay to the bit.
+2. Three schemes in `warband/ui/controls.py`, switched in Settings: Classic,
+   Grid, Modal; every card lays out on fixed slots; each command of every
+   card of every race has one key of its own in each scheme, and Grid's
+   globals never meet the grid.
+3. Endless training by Shift with the key, Shift+click or a right-click on
+   the portrait (at a building, or from the Train catalogue at every
+   producer), shown on the card and on the building's panel with why the
+   next one waits; Cancel stops it.
+4. One Build catalogue for peasants and plans that stays while placing;
+   Shift keeps placing (Modal always), sites queue behind a peasant's other
+   sites and spread over the selection, the ones short of money or a
+   prerequisite become plans, queued sites are drawn and a taken site is
+   refused; the building's key again lets the planner (`brains.ai.auto_site`)
+   pick the spot, a hall by a free mine.
+5. Help, hints, tutorial and keycaps follow the scheme; fuzz monkeys play all
+   three; `tools/visual_lint.py` is clean with new screens; native frames
+   through `tools/verify.py` with the new gestures are looked at.
+
+**Done 2026-09-19** (branch `controls`, `00c3f2c`..`836bb04`): all five.
+The design is `docs/controls.md`. On the way a real bug fell out: a build
+queued with Shift behind a peasant's harvest never ran (a harvest order
+never ends), so Shift-placing with a working peasant built nothing; sites now
+queue only behind other sites. The cleric's key is H (healer): L was both
+Cleric and Blessing at the church. Tests: `tests/warband/test_auto_train.py`
+(13) and `tests/warband/test_controls.py` (35), the order atomicity,
+property, snapshot, layout and lint suites extended; both tiers pass, the
+fingerprint matches main's, fuzz (2 AI games, 12 monkeys over the three
+schemes) is clean, `tools/visual_lint.py` finds nothing, and `tools/verify.py`
+passes with frames of endless training, the planner's farm and Grid looked
+at. Live online after the next server rollout (a contract change). Trying
+the schemes in a real match is left for Ilya.
+
