@@ -106,6 +106,40 @@ def test_a_new_order_breaks_off_a_wind_up() -> None:
     assert foe.hp == foe.max_hp
 
 
+@pytest.mark.parametrize("broken_off_by", ["stop", "the foe falling to another", "an attack queued behind the hold"])
+def test_a_blow_broken_off_is_not_kept_for_the_next_foe(broken_off_by: str) -> None:
+    """A footman told to stop mid-swing, or holding when the foe it swings at is felled by someone else or when an attack
+    is queued behind the hold, lowers its sword: the next foe, behind it, is struck only once it has turned round and
+    drawn back afresh.  It used to keep the blow drawn back and land it on the next foe at once, facing away."""
+    info = UNITS[UnitType.FOOTMAN]
+    world = flat_world()
+    ours = world.spawn_unit(0, UnitType.FOOTMAN, (5.5, 5.5))
+    ours.facing = 0.0
+    foe = world.spawn_unit(1, UnitType.PEASANT, (6.4, 5.5))
+    world.hold([foe.id])
+    if broken_off_by == "stop":
+        world.attack([ours.id], foe.id)
+    else:
+        world.hold([ours.id])
+    world.update_vision()
+    while ours.windup <= 0.0:
+        world.step()
+    behind = world.spawn_unit(1, UnitType.PEASANT, (4.6, 5.5))
+    world.hold([behind.id])
+    world.update_vision()
+    appeared = world.time
+    if broken_off_by == "an attack queued behind the hold":
+        world.attack([ours.id], behind.id, queue=True)
+    else:
+        if broken_off_by == "stop":
+            world.stop([ours.id])
+        foe.hp = 0  # felled by someone else's shot
+    world.step()
+    assert ours.windup == 0.0
+    assert first_hit(world, ours.id, 2.0) - appeared >= math.pi / info.turn + info.windup - SIM_DT
+    assert abs(ours.facing) == pytest.approx(math.pi, abs=0.01)
+
+
 def test_a_melee_unit_swings_on_the_run_and_catches_a_target_walking_away() -> None:
     """A knight after a fleeing peasant lands its blows: the wind-up does not root it while the peasant walks on."""
     world = flat_world(40, 10)

@@ -1161,6 +1161,8 @@ class World:
     def _issue(self, unit: Unit, order: Order, *, queue: bool = False) -> None:
         while queue and unit.orders and isinstance(unit.orders[-1], ENDLESS_ORDERS):
             unit.orders.pop()  # it would wait for ever; a miner inside finishes its trip, then obeys
+            if not unit.orders:
+                unit.windup = 0.0  # what it was doing gives way: a blow being drawn back is broken off
         if unit.constructing is not None:
             # A started building is finished or cancelled, never left (WB-048): the order waits behind the work.
             if not queue:
@@ -1244,6 +1246,7 @@ class World:
             unit.orders.clear()
             unit.path = []
             unit.path_goal = None
+            unit.windup = 0.0  # a blow being drawn back is broken off
             unit.state = "idle"
             unit.home = None
 
@@ -1919,6 +1922,7 @@ class World:
         target = self.entity(order.target) if order.target is not None else None
         if target is not None and (target.hp <= 0 or (u.windup <= 0.0 and not self._in_range(u, target))):
             target = order.target = None
+            u.windup = 0.0  # a blow drawn back at it is broken off, never kept for the next foe
         if target is None:
             if self.tick % 5:
                 return

@@ -131,7 +131,9 @@ view shows `wind` for exactly that long. The blow at the end lands if the target
 within reach plus `WINDUP_SLACK` (half a tile) and costs the cooldown either way, so a
 swing at air is a swing lost. A shooter stands through its wind-up; a melee unit with an
 attack order keeps closing on its target meanwhile, or a knight after a fleeing peasant
-would swing at air forever. A new order breaks a wind-up off. The period between blows is
+would swing at air forever. A new order breaks a wind-up off, and so do Stop and the fall of
+the target it was drawn back at: a blow is never kept for the next foe, which is faced and
+drawn back at afresh. The period between blows is
 `UnitInfo.period` = wind-up + cooldown, which is what the AI's strength maths divides by.
 
 **Shots.** `World.projectiles` holds every arrow, axe, bolt and stone in the air
