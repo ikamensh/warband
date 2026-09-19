@@ -389,6 +389,11 @@ class GameScene(Scene):
         play_music("peace", self.player.race)
 
     def on_reveal(self) -> None:
+        # A key or button held when an overlay came up was let go over it, and the overlay kept the release: the map
+        # scrolled on for ever, and a box being dragged stayed drawn.
+        self.camera.disable_key_scroll()
+        self.camera.enable_key_scroll(speed=KEY_SPEED * float(self.settings["scroll_speed"]))
+        self._drag_start = self._drag_end = None
         self._refresh_card()  # the Plans overlay may have cancelled what the card's keys and counts describe
 
     def _make_view(self) -> MapView:

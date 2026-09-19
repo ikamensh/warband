@@ -360,6 +360,32 @@ def test_shift_adds_a_group_or_a_box_to_the_selection_and_a_shift_click_takes_on
     assert scene.selection == [barracks.id]  # buildings are selected alone: the one clicked
 
 
+def test_a_key_or_a_drag_let_go_over_an_overlay_is_let_go_in_the_match(game) -> None:
+    """The overlay on top takes the release: an arrow key let go under the pause menu scrolled the map on for ever, and
+    a box dragged when the help screen came up stayed drawn on the map."""
+    scene = match(game)
+    scene.camera.disable_edge_scroll()  # the pointer is left where the drag ended
+    scene.camera.zoom = 2.0
+    scene.camera.center_on(0, scene.world.height * 16)
+    game.backend.inject_key("right")
+    hall = hall_of(scene)
+    x0, y0 = screen_of(scene, (hall.x - 2, hall.y - 2))
+    x1, y1 = screen_of(scene, (hall.x + 6, hall.y + 6))
+    game.backend.inject_click(x0, y0)
+    game.backend.inject_drag(x1, y1, x1 - x0, y1 - y0)
+    game.tick(0.1)
+    press(game, "f1")
+    game.backend.inject_key("right", type="key_release")
+    game.backend.inject_release(x1, y1)
+    game.tick(1 / 60)
+    press(game, "escape")
+    start = scene.camera.center
+    for _ in range(5):
+        game.tick(0.1)
+    assert scene.camera.center == start, "the map scrolls with no key held"
+    assert not [r for r in game.backend.rects if r["color"] == (120, 255, 140, 40)], "the drag's box is still drawn"
+
+
 def test_in_the_modal_scheme_a_mine_or_a_rival_selected_shows_its_own_panel(game) -> None:
     """The Modal scheme's home catalogue stands on the card while nothing of the player's own is selected, and the
     panel took it for a catalogue opened: a gold mine or a rival showed "Train plans", never its gold or hit points."""
