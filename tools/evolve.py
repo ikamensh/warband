@@ -58,6 +58,27 @@ def _profile(state: evolve.State, name: str | None) -> None:
                                      if getattr(profile, f.name) != getattr(PRO, f.name)) + ")")
 
 
+_STYLE_SCALES = {"first_attack": 300.0, "peak_army": 30.0, "towers": 3.0, "halls": 2.0, "barracks": 4.0}
+
+
+def _style_gap(a: evolve.Individual, b: evolve.Individual) -> float:
+    """How differently two individuals played: their timing and size on a common scale, and the shares of what they trained."""
+    import math
+
+    gap = 0.0
+    for key, scale in _STYLE_SCALES.items():
+        x, y = a.mean_style(key), b.mean_style(key)
+        if not (math.isnan(x) or math.isnan(y)):
+            gap += ((x - y) / scale) ** 2
+    units = sorted({k for i in (a, b) for k in i.style if k.startswith("trained.") and k not in ("trained.games", "trained.peasant")})
+    totals = [sum(i.mean_style(k) for k in units if k in i.style) or 1.0 for i in (a, b)]
+    for key in units:
+        x = a.mean_style(key) / totals[0] if key in a.style else 0.0
+        y = b.mean_style(key) / totals[1] if key in b.style else 0.0
+        gap += (x - y) ** 2
+    return math.sqrt(gap)
+
+
 def _best(state: evolve.State, args: argparse.Namespace) -> None:
     """Write the run's best proven individuals out as genes files, best first (``--out`` is the folder)."""
     import json
@@ -65,7 +86,15 @@ def _best(state: evolve.State, args: argparse.Namespace) -> None:
     panel = evolve.panel_of(state)
     prior = {o: evolve._population_rate(state.population, o) for o in panel}
     pool = {i.name: i for i in [*state.hall, *state.population] if i.games >= args.min_games}
-    ranked = sorted(pool.values(), key=lambda i: -evolve.fitness(i, panel, prior))[:args.top]
+    by_fitness = sorted(pool.values(), key=lambda i: -evolve.fitness(i, panel, prior))
+    # The best, then of those within --within of it the ones that play least like the ones already chosen: a roster of
+    # one strength and several players, not a champion and its siblings.
+    ranked = by_fitness[:1]
+    near = [i for i in by_fitness[1:] if evolve.fitness(i, panel, prior) >= evolve.fitness(by_fitness[0], panel, prior) - args.within]
+    while near and len(ranked) < args.top:
+        chosen = max(near, key=lambda i: min(_style_gap(i, other) for other in ranked))
+        ranked.append(chosen)
+        near.remove(chosen)
     args.out.mkdir(parents=True, exist_ok=True)
     for place, individual in enumerate(ranked, 1):
         path = args.out / f"{args.path.name}-best{place}.json"
@@ -181,6 +210,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("mode", choices=("run", "show", "profile", "trial", "macro", "best", "export"))
     parser.add_argument("--min-games", type=int, default=150, help="best: only individuals with this many games behind them")
+    parser.add_argument("--within", type=float, default=0.04, help="best: how far below the best's fitness a different player may be")
     parser.add_argument("--base", default="pro-vanguard", help="trial: the known profile the genes are set on")
     parser.add_argument("--set", action="append", help="trial: genes set by hand, e.g. research_first=2,tech.blacksmith=1 (repeatable)")
     parser.add_argument("--genes", action="append", help="trial: a JSON file whose \"genes\" play as they are (repeatable)")
