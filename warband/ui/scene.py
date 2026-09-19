@@ -979,7 +979,7 @@ class GameScene(Scene):
             return False
         name = self.building_name(building_type)
         if not self._by_plan(building_type):
-            builder = min(self._builders(), key=lambda u: (sum(isinstance(o, Build) for o in u.orders), u.hidden, math.dist(u.pos, center)))
+            builder = self._builder_for(center)
             queue = any(isinstance(order, Build) for order in builder.orders)  # after its other sites, never after a harvest: that one never ends
             if not self.attempt("build", builder.id, building_type, site, queue=queue, plan_if_short=True):
                 return False
@@ -1023,8 +1023,12 @@ class GameScene(Scene):
         if self._by_plan(building_type):
             return self.world.can_plan_building(building_type, site, self.human)
         center = (site[0] + BUILDINGS[building_type].size / 2, site[1] + BUILDINGS[building_type].size / 2)
-        builder = min(self._builders(), key=lambda u: math.dist(u.pos, center))
-        return self.world.can_place(building_type, site, self.human, builder=builder.id)
+        return self.world.can_place(building_type, site, self.human, builder=self._builder_for(center).id)
+
+    def _builder_for(self, center: tuple[float, float]) -> Unit:
+        """Which of the selected peasants a site centred on *center* goes to: the one with the fewest sites ahead of it,
+        out in the open, nearest.  The ghost asks the same peasant as the click, whom the ground may not hold back."""
+        return min(self._builders(), key=lambda u: (sum(isinstance(o, Build) for o in u.orders), u.hidden, math.dist(u.pos, center)))
 
     # -- Endless training ----------------------------------------------------------------
 

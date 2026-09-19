@@ -360,6 +360,30 @@ def test_shift_adds_a_group_or_a_box_to_the_selection_and_a_shift_click_takes_on
     assert scene.selection == [barracks.id]  # buildings are selected alone: the one clicked
 
 
+def test_the_ghost_says_what_the_click_will_do(game) -> None:
+    """The ghost asked the nearest selected peasant, whom the ground does not count as in its own way, while the click
+    gave the site to the peasant with the fewest sites ahead: a green ghost, then "A unit is in the way"."""
+    scene = match(game)
+    world = scene.world
+    hall = hall_of(scene)
+    p1, p2 = [p for p in peasants_of(scene) if not p.hidden][:2]
+    spot = open_ground(scene, BuildingType.FARM, hall.center)
+    far = open_ground(scene, BuildingType.FARM, (hall.center[0], hall.center[1] + 8), skip=(spot,))
+    world.build(p1.id, BuildingType.FARM, far, plan_if_short=True)  # a site ahead of the first peasant
+    world.stop([p2.id])
+    scene.select([p1.id, p2.id])
+    press(game, "b")
+    press(game, "f")
+    p1.x, p1.y = spot[0] + 1.0, spot[1] + 1.0  # staged: the first peasant stands where the next farm goes
+    game.backend.inject_mouse_move(*screen_of(scene, centre(BuildingType.FARM, spot)))
+    game.tick(1 / 60)
+    _, site, placeable = scene.ghost()
+    p1.x, p1.y = spot[0] + 1.0, spot[1] + 1.0
+    click(game, scene, centre(BuildingType.FARM, spot))
+    placed = any(isinstance(order, Build) and order.pos == site for unit in (p1, p2) for order in unit.orders)
+    assert site == spot and placeable == placed
+
+
 def test_a_key_or_a_drag_let_go_over_an_overlay_is_let_go_in_the_match(game) -> None:
     """The overlay on top takes the release: an arrow key let go under the pause menu scrolled the map on for ever, and
     a box dragged when the help screen came up stayed drawn on the map."""
