@@ -127,3 +127,15 @@ def test_the_panel_says_in_words_what_a_unit_is_doing(tmp_path) -> None:
         assert "Attack-moving" in said[UnitType.FOOTMAN] and "Repairing" in said[UnitType.PEASANT]
     finally:
         game.close()
+
+
+def test_shift_and_a_click_on_a_portrait_takes_that_unit_out_of_the_selection(tmp_path) -> None:
+    game, scene, ids = start(tmp_path, (1280, 800), 3)
+    try:
+        chosen, (x, y, w, h) = scene.portraits[1]
+        game.backend.inject_click(x + w / 2, y + h / 2, "left", shift=True)
+        game.backend.inject_release(x + w / 2, y + h / 2, "left", shift=True)
+        game.tick(1 / 60)
+        assert sorted(scene.selection) == sorted(i for i in ids if i != chosen)
+    finally:
+        game.close()

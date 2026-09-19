@@ -712,21 +712,24 @@ class GameScene(Scene):
                 return b
         return None
 
-    def select(self, ids: list[int], *, add: bool = False, quiet: bool = False) -> None:
+    def select(self, ids: list[int], *, add: bool = False, toggle: bool = False, quiet: bool = False) -> None:
+        """Select *ids*: *add* joins them to the selection (Shift and a box or a group's key), *toggle* also takes out
+        those already in it (Shift and a click on one)."""
         alive = [i for i in ids if self.world.entity(i) is not None]
-        if add:
+        if add or toggle:
             merged = list(self.selection)
             for i in alive:
-                if i in merged:
-                    merged.remove(i)
-                else:
+                if i not in merged:
                     merged.append(i)
+                elif toggle:
+                    merged.remove(i)
             alive = merged
         own = [i for i in alive if getattr(self.world.entity(i), "player", None) == self.human]
         if own and len(alive) > len(own):
             alive = own  # mixing in enemies makes no sense; keep what is ours
         if len(alive) > 1:
-            alive = [i for i in alive if isinstance(self.world.entity(i), Unit)]  # buildings are selected alone
+            units = [i for i in alive if isinstance(self.world.entity(i), Unit)]
+            alive = units or alive[-1:]  # buildings are selected alone: the last one named
         self.selection = alive
         self._portrait_page = 0
         self.pending = None
@@ -754,7 +757,7 @@ class GameScene(Scene):
         if (double or ctrl) and isinstance(entity, Unit) and entity.player == self.human:
             self.select_same_type(entity, add=shift)
         elif shift and entity.player == self.human:
-            self.select([entity.id], add=True)
+            self.select([entity.id], toggle=True)
         else:
             self.select([entity.id])
 
@@ -762,7 +765,7 @@ class GameScene(Scene):
         """Every unit of *unit*'s type that is on screen (a double-click or ctrl-click)."""
         left, top, right, bottom = self.camera.visible_world_rect()
         same = [u.id for u in self.view.units_in_rect(to_tiles(left, top), to_tiles(right, bottom), player=self.human) if u.type is unit.type]
-        self.select(same if not add else [i for i in same if i not in self.selection], add=add)
+        self.select(same, add=add)
 
     def select_army(self) -> None:
         """The Army button, Ctrl+A or Cmd+A on a Mac."""
@@ -1652,7 +1655,7 @@ class GameScene(Scene):
         if button == "left":
             for entity_id, (px, py, size, _) in self._portraits:
                 if px <= x < px + size and py <= y < py + size:
-                    self.select([entity_id], add=shift)
+                    self.select([entity_id], toggle=shift)  # with Shift, the unit leaves the selection
                     return True
             if self._page_tile is not None:
                 px, py, pw, ph = self._page_tile

@@ -335,6 +335,31 @@ def test_shift_placed_sites_are_all_built_the_one_short_of_money_as_a_plan(game)
     assert {b.pos for b in world.player_buildings(scene.human, BuildingType.FARM)} >= {first, second}
 
 
+def test_shift_adds_a_group_or_a_box_to_the_selection_and_a_shift_click_takes_one_out(game) -> None:
+    """Shift adds to the selection (README), but Shift and a group's key or a box took out whatever of it was already
+    selected, and a Shift-click on a second building left nothing selected at all."""
+    scene = match(game)
+    ps = [p for p in peasants_of(scene) if not p.hidden][:3]
+    scene.select([ps[0].id, ps[1].id])
+    press(game, "1", ctrl=True)
+    scene.select([ps[0].id])
+    press(game, "1", shift=True)
+    assert sorted(scene.selection) == sorted([ps[0].id, ps[1].id])
+    press(game, "1", shift=True)  # once more: the group stays
+    assert sorted(scene.selection) == sorted([ps[0].id, ps[1].id])
+    xs, ys = [p.x for p in ps], [p.y for p in ps]
+    scene.box_select((min(xs) - 1, min(ys) - 1), (max(xs) + 1, max(ys) + 1), shift=True)
+    assert sorted(scene.selection) == sorted(p.id for p in ps)
+    scene.click_select(ps[2].pos, shift=True)  # one already selected goes, as in every RTS
+    assert sorted(scene.selection) == sorted([ps[0].id, ps[1].id])
+    hall = hall_of(scene)
+    barracks = scene.world.place_building(scene.human, BuildingType.BARRACKS, open_ground(scene, BuildingType.BARRACKS, hall.center))
+    game.tick(1 / 60)
+    scene.click_select(hall.center, shift=False)
+    scene.click_select(barracks.center, shift=True)
+    assert scene.selection == [barracks.id]  # buildings are selected alone: the one clicked
+
+
 def test_a_selected_site_that_stands_shows_its_card(game) -> None:
     """A selected site that finished kept the site's card, Cancel alone, until the selection changed: no recruits,
     and X did nothing."""
