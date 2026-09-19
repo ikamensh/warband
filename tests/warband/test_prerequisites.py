@@ -5,9 +5,9 @@ import pytest
 
 from saga2d import Game
 from warband.art.production import production_image
-from warband.sim.rules import BuildingType, Race, UnitType
+from warband.sim.rules import BUILDINGS, BuildingType, Race, UnitType, Upgrade
 from warband.ui.scene import DEFAULT_SETTINGS, GameScene, new_game
-from warband.ui.style import build_theme
+from warband.ui.style import BAD, GOLD, build_theme
 
 
 @pytest.fixture
@@ -43,10 +43,12 @@ def open_site(scene: GameScene, kind: BuildingType) -> tuple[int, int]:
 
 
 def caption_under(game: Game, button) -> list[str]:
-    """The lines drawn under *button*: its name, then its price or what it waits for."""
+    """The lines drawn under *button*: its name, then its price or the name of what it lacks, told here as the colour
+    and the glyph beside it tell it: "needs …" in red, "after …" in gold."""
     x, y, w, h = button.bounds
     lines = [t for t in game.backend.texts if x <= t["x"] < x + w and y + h <= t["y"] < y + h + 40]
-    return [t["text"] for t in sorted(lines, key=lambda t: t["y"])]
+    told = {BAD: "needs ", GOLD: "after "}
+    return [told.get(tuple(t["color"]), "") + t["text"] for t in sorted(lines, key=lambda t: t["y"])]
 
 
 def test_a_recruit_without_its_building_is_greyed_out_names_it_and_is_refused(game) -> None:
@@ -121,3 +123,54 @@ def test_the_caption_follows_the_need_after_the_card_is_refreshed_unchanged(game
     assert scene.attempt("plan_building", scene.human, BuildingType.BARRACKS, open_site(scene, BuildingType.BARRACKS))
     game.tick(1 / 60)
     assert caption_under(game, button_of(scene, UnitType.FOOTMAN)) == ["Footman", "after Barracks"]
+
+
+def hover(game: Game, button) -> None:
+    x, y, w, h = button.bounds
+    game.backend.inject_mouse_move(x + w / 2, y + h / 2)
+    game.tick(1 / 60)
+
+
+def test_hovering_says_what_a_building_unlocks_and_what_an_item_waits_for(game) -> None:
+    scene = match(game)
+    press(game, "b")
+    hover(game, button_of(scene, BuildingType.BARRACKS))
+    assert "unlocks the Guard Tower, Blacksmith, Stables and Church" in scene.tooltip
+    hover(game, button_of(scene, BuildingType.TOWER))
+    assert scene.tooltip.endswith("(Requires a Barracks)")
+    hover(game, button_of(scene, BuildingType.FARM))
+    assert "unlocks" not in scene.tooltip
+    assert scene.attempt("plan_building", scene.human, BuildingType.BARRACKS, open_site(scene, BuildingType.BARRACKS))
+    hover(game, button_of(scene, BuildingType.TOWER))
+    assert scene.tooltip.endswith("ordered now, it waits for the Barracks")
+
+
+def test_the_codex_tech_tree_draws_what_needs_what_lit_by_what_the_player_has(game) -> None:
+    """F2 then 5: every building, recruit and research of the race is a picture that names itself on hover; a line runs
+    into each building from the one it needs; what the player has is bright, what is coming dimmer, the rest faint."""
+    from warband.sim.races import RACES
+    from warband.ui.tech import TechTree
+
+    scene = match(game, Race.ELF)
+    assert scene.attempt("plan_building", scene.human, BuildingType.BARRACKS, open_site(scene, BuildingType.BARRACKS))
+    press(game, "f2")
+    press(game, "5")
+    tree = next(component for component in game.scene.ui.walk() if isinstance(component, TechTree))
+    race = RACES[Race.ELF]
+    shown = {picture.target: picture for picture in tree.pictures}
+    assert set(shown) == {*BuildingType, *UnitType, *(u for u in Upgrade if race.upgrade_allowed(u))} - {BuildingType.GOLD_MINE}
+    drawn = {image["image"]: image for image in game.backend.images}
+    opacity = {target: drawn[game.assets.image(production_image(game, target, scene.human, Race.ELF))]["opacity"] for target in shown}
+    assert opacity[BuildingType.TOWN_HALL] == 1 and opacity[UnitType.PEASANT] == 1
+    assert opacity[BuildingType.BARRACKS] == opacity[UnitType.ARCHER] < 1  # planned
+    assert opacity[BuildingType.WORKSHOP] < opacity[BuildingType.BARRACKS] and opacity[Upgrade.LONGBOWS] == opacity[BuildingType.WORKSHOP]
+    for kind in BuildingType:
+        requires = BUILDINGS[kind].requires
+        if requires is None:
+            continue
+        (px, py, pw, _ph), (cx, cy, _cw, ch) = shown[requires].bounds, shown[kind].bounds
+        assert any(line["x1"] >= px + pw and line["x2"] <= cx and abs(line["y2"] - (cy + ch / 2)) < 1 for line in game.backend.lines), kind
+    x, y, w, h = shown[BuildingType.WORKSHOP].bounds
+    game.backend.inject_mouse_move(x + w / 2, y + h / 2)
+    game.tick(1 / 60)
+    assert any(text["text"].startswith("Siege Bower") for text in game.backend.texts)

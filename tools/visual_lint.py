@@ -280,6 +280,20 @@ for _menu in ("build", "train", "upgrade"):
     SCREENS[f"menu_{_menu}"] = _menu_screen
 
 
+for _menu in ("build", "train"):
+    def _menu_at_start(game: Game, menu: str = _menu) -> None:
+        """The catalogue on the first minute: what lacks its prerequisite greyed out, its picture in the corner and
+        "needs …" under it; with a barracks planned, what it opens reads "after Barracks"."""
+        scene = match(game, settings=QUIET)
+        scene.open_catalogue("build")
+        scene.choose_building(BuildingType.BARRACKS)
+        scene.choose_building(BuildingType.BARRACKS)  # the planner's spot
+        scene.open_catalogue(menu)
+        ticks(game)
+
+    SCREENS[f"menu_{_menu}_at_start"] = _menu_at_start
+
+
 @screen
 def menu_build_hover(game: Game) -> None:
     scene = town(game)
@@ -468,7 +482,7 @@ for _controls in SCHEMES:
     SCREENS["help" if _controls == "classic" else f"help_{_controls}"] = _help
 
 
-for _page in range(4):
+for _page in range(5):
     def _codex(game: Game, page: int = _page) -> None:
         scene = town(game, race=Race.DWARF)
         game.push(CodexScene(scene.world, scene.human, page))

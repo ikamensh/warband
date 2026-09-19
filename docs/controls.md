@@ -85,7 +85,16 @@ no key moves; Cancel ends the first row, or the second when three items fill
 the first. The catalogues keep their table's order (the Upgrade catalogue puts
 each chain's tiers side by side, the race's two arts at the ends of the second
 and third rows), with Back on Esc in the bottom-right corner, or below it when
-the nine slots are taken. `test_every_card_gives_each_command_a_key_of_its_own`
+the nine slots are taken. A catalogue item that lacks what it needs (a
+building's prerequisite, a recruit's building, an upgrade's building or lower
+tier; `warband/ui/tech.py` reads them from the rules) carries a picture of that
+in its corner and its name under the button, where the price was: behind a red
+padlock while nothing of the kind is on its way, and the item is greyed out and
+refused by click, key and Shift alike; behind a gold hourglass while it is
+(going up, planned, a builder's next site; researched or planned), and the item
+can be ordered to wait for it. A building's tooltip names what it unlocks, and
+the codex's fifth page draws the whole tech tree (WB-054).
+`test_every_card_gives_each_command_a_key_of_its_own`
 brings up every card of every race in every scheme and holds each key to one
 command, and Grid's keys to the grid.
 
@@ -123,7 +132,9 @@ forever). A builder sets out whatever the purse holds (`build(plan_if_short=True
 and a site it cannot pay for when it gets there is left as a settlement plan
 (a private "deferred" event), built by a free worker once the money is there:
 what a player places gets built. A site whose prerequisite does not stand yet
-is planned, to wait for it. Sites ordered and not begun are drawn: a
+but is on its way is planned, to wait for it (the planner sites it as the first
+building of its size would be: ground depends on size alone); one whose
+prerequisite nobody is making is refused, since its plan would wait for ever. Sites ordered and not begun are drawn: a
 builder's next sites in gold, the settlement's plans in blue; the ghost refuses
 a site already taken, and a catalogue counts them.
 

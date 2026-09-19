@@ -39,7 +39,7 @@ from warband.ui.style import (
     ACTION_BUTTON, BAD, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE, RESULTS_STYLE,
 )
 from warband.ui import tech
-from warband.ui.tech import Need, Prerequisite
+from warband.ui.tech import Need, Prerequisite, TechTree
 from warband.art.textures import TILE
 from warband.ui.tutorial import OBJECTIVES, Tutorial
 from warband.ui.view import SHOT_LOOKS, SHOT_SIZE, MapView, Overlay, Sighting, check_memory, rgba, to_tiles, to_world
@@ -100,6 +100,11 @@ def attack_hint(attack: AttackType) -> str:
     """What a kind of blow does beyond its number, from :data:`DAMAGE_FACTORS`, for the unit panel."""
     better = [f"×{factor:g} against {armor.value if armor is not ArmorClass.FORTIFIED else 'buildings'}" for (kind, armor), factor in DAMAGE_FACTORS.items() if kind is attack]
     return attack.value + (f", {', '.join(better)}" if better else "")
+
+
+def listing(names: list[str]) -> str:
+    """"A", "A and B", "A, B and C"."""
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
 
 
 def _clock(seconds: float) -> str:
@@ -196,10 +201,11 @@ class _NeedBadge(Component):
 
 
 class _PriceLine(Label):
-    """Under a catalogue item: its price, or what it lacks first — "needs Stables" in red while nothing of the kind is
-    coming (the item is greyed out), "after Barracks" in gold while it is (ordered now, the item waits for it).  It
-    reads the button's command, which the card replaces whenever it is built again."""
+    """Under a catalogue item: its price, or the name of what it lacks first — behind a red padlock while nothing of the
+    kind is coming (the item is greyed out), behind a gold hourglass while it is (ordered now, the item waits for it).
+    It reads the button's command, which the card replaces whenever it is built again."""
 
+    GLYPH = 8  # the padlock's or the hourglass' width, left of the name
     NEEDS = Style(text_color=BAD)
     AFTER = Style(text_color=GOLD)
 
@@ -209,14 +215,28 @@ class _PriceLine(Label):
 
     def _text(self) -> str:
         command = self.button.command
-        if command.need is None:
-            return command.cost
-        return f"{'after' if command.need.coming else 'needs'} {self.name(command.need.target)}"
+        return command.cost if command.need is None else self.name(command.need.target)
 
     def on_draw(self) -> None:
         need = self.button.command.need
         self.style = None if need is None else self.AFTER if need.coming else self.NEEDS
         super().on_draw()
+        if need is None or self._game is None:
+            return
+        caption = self._game.theme.get_text_style("caption")
+        width, _height = self._game.backend.measure_text(self.text, caption.font_size, caption.font or self._game.theme.font)
+        x, y, w, h = self.bounds
+        g = self.GLYPH
+        left, top = x + (w - width) / 2 - g - 4, y + h / 2 - g * 0.6 + 1.5  # beside the name, on its middle
+        ink, order, backend = GOLD if need.coming else BAD, self._order, self._game.backend
+        if need.coming:  # an hourglass
+            backend.draw_polygon([(left, top), (left + g, top), (left + g / 2, top + g * 0.6)], ink, order=order)
+            backend.draw_polygon([(left + g / 2, top + g * 0.6), (left + g, top + g * 1.2), (left, top + g * 1.2)], ink, order=order)
+        else:  # a padlock: the shackle over the body
+            for a, b, c, d in ((left + 1.5, top + g * 0.55, left + 1.5, top + 1), (left + 1.5, top + 1, left + g - 1.5, top + 1),
+                               (left + g - 1.5, top + 1, left + g - 1.5, top + g * 0.55)):
+                backend.draw_line(a, b, c, d, ink, 1.6, order=order)
+            backend.draw_rect(left, top + g * 0.55, g, g * 0.65, ink, order=order)
 
 
 class _Slot(Component):
@@ -1198,10 +1218,13 @@ class GameScene(Scene):
 
     def _requires(self, need: Need) -> str:
         """The refusal for an item whose prerequisite is not even on its way: "Requires a Stables"."""
+        name = self._full_name(need.target)
         if isinstance(need.target, BuildingType):
-            name = self.building_name(need.target)
             return f"Requires {'an' if name[0] in 'AEIOU' else 'a'} {name}"
-        return f"Requires {UPGRADES[need.target].name}"
+        return f"Requires {name}"
+
+    def _full_name(self, item: Prerequisite) -> str:
+        return self.building_name(item) if isinstance(item, BuildingType) else UPGRADES[item].name
 
     def card_name(self, item: Prerequisite) -> str:
         """A building's or an upgrade's name as short as a card button's caption needs it."""
@@ -1259,8 +1282,10 @@ class GameScene(Scene):
         if kind == "build":
             for slot, building_type in enumerate(BUILD_ORDER):
                 info = race.buildings[building_type]
+                opened = [self.building_name(kind) for kind in tech.unlocks(building_type)]
+                unlocks = f" · unlocks the {listing(opened)}" if opened else ""
                 commands.append(Command(race.cards[building_type], info.hotkey, lambda bt=building_type: self.choose_building(bt), slot,
-                                        tooltip=f"{info.name} — {info.cost} · {info.summary} · its key again: the planner picks the spot",
+                                        tooltip=f"{info.name} — {info.cost} · {info.summary}{unlocks} · its key again: the planner picks the spot",
                                         cost=f"{info.cost.gold} / {info.cost.lumber}", target=building_type,
                                         style=ACTION_BUTTON if self.placing is building_type else CARD_BUTTON,
                                         count=lambda bt=building_type: self._ordered(bt), alt=lambda bt=building_type: self.choose_building(bt, keep=True),
@@ -1422,7 +1447,8 @@ class GameScene(Scene):
             button.enabled = blocked is None
             x, y, w, h = button.bounds
             if x <= mx < x + w and y <= my < y + h:  # a disabled button still explains itself
-                self.tooltip = command.tooltip + (f"  ({blocked})" if blocked else "")
+                waits = f" · ordered now, it waits for the {self._full_name(command.need.target)}" if command.need is not None and blocked is None else ""
+                self.tooltip = command.tooltip + waits + (f"  ({blocked})" if blocked else "")
 
     def _press_card_key(self, key: str, *, shift: bool = False) -> bool:
         """The card's command for *key*, if it has one: its action, or with Shift its alternative (endless training, or
@@ -2620,7 +2646,7 @@ def help_keys(scheme: Scheme) -> list[tuple[str, str]]:
         ("Click / drag / right-click", "select;  box-select;  order what fits the target;  double-click or Ctrl-click: that type on screen"),
         ("1-9 / Ctrl / Shift", "recall / assign / add to a control group;  Tab: the next idle peasant;  Space: the last alert"),
         ("Arrows / edges / wheel", "scroll (middle-drag too);  wheel or + / −: zoom;  minimap: left-click looks, right-click sends"),
-        ("F1 F2 F3 F5 F9 F11", "help, codex, pause, save, load (offline), health bars;  F6-F8: camera bookmarks, Ctrl+F6-F8 sets"),
+        ("F1 F2 F3 F5 F9 F11", "help, codex (5: the tech tree), pause, save, load (offline), health bars;  F6-F8: camera bookmarks, Ctrl+F6-F8 sets"),
         ("Esc", "back one level: the order, the catalogue, the selection, then the menu"),
     ]
 
@@ -2647,15 +2673,18 @@ class HelpScene(_Overlay):
         panel.add(KeyHints([("Esc", "close")]))
 
 
-CODEX_PAGES = ("Units", "Buildings", "Upgrades", "Races")
+CODEX_PAGES = ("Units", "Buildings", "Upgrades", "Races", "Tech tree")
+TREE_LEGEND = ("A line runs from what a building needs into it; beside each, what it trains and researches. Bright: yours · "
+               "dimmer: on its way · faint: not yet. Hover a picture for what it is.")
 
 
 class CodexScene(_Overlay):
-    """The player's race: every unit, building and upgrade with its numbers, then the four races side by side;
-    1/2/3/4 or Tab switch pages."""
+    """The player's race: every unit, building and upgrade with its numbers, the four races side by side, and the tech
+    tree (what needs what, lit by what the player has); 1-5 or Tab switch pages."""
 
     pause_below = True
-    controls = {"1": "page_units", "2": "page_buildings", "3": "page_upgrades", "4": "page_races", "tab": "next_page", "f2": "close"}
+    controls = {"1": "page_units", "2": "page_buildings", "3": "page_upgrades", "4": "page_races", "5": "page_tree", "tab": "next_page",
+                "f2": "close"}
 
     def __init__(self, world: World, player: int, page: int = 0) -> None:
         self.world = world
@@ -2664,7 +2693,7 @@ class CodexScene(_Overlay):
 
     def on_enter(self) -> None:
         race = RACES[self.world.players[self.player].race]
-        panel = self.panel(f"Codex — the {race.name}" if self.page < 3 else "Codex — the four races")
+        panel = self.panel("Codex — the four races" if self.page == 3 else f"Codex — the {race.name}")
         tabs = Row(spacing=8)
         for i, name in enumerate(CODEX_PAGES):
             tabs.add(Button(name, hotkey=str(i + 1), on_click=lambda i=i: self.show(i), style=ACTION_BUTTON if i == self.page else GHOST_BUTTON, width=150))
@@ -2672,6 +2701,9 @@ class CodexScene(_Overlay):
         table = Column(spacing=3)
         if self.page == 3:
             table = self._race_table(race.name)
+        elif self.page == 4:
+            tree = TechTree(self.world, self.player)
+            table = Column(tree, Label(TREE_LEGEND, text_style="sub", width=tree.get_preferred_size()[0], wrap=True), spacing=12)
         else:
             widths, rows = self._rows()
             for cells in rows:
@@ -2679,7 +2711,7 @@ class CodexScene(_Overlay):
                                       wrap=i == len(cells) - 1)
                                 for i, (text, width) in enumerate(zip(cells, widths))], spacing=8))
         panel.add(table)
-        panel.add(KeyHints([("1 2 3 4", "page"), ("Tab", "next"), ("Esc", "close")]))
+        panel.add(KeyHints([("1-5", "page"), ("Tab", "next"), ("Esc", "close")]))
 
     def _race_table(self, own: str) -> Column:
         """The four races side by side: character, passive and arts, wrapped so every window fits."""
@@ -2745,6 +2777,9 @@ class CodexScene(_Overlay):
 
     def page_races(self) -> None:
         self.show(3)
+
+    def page_tree(self) -> None:
+        self.show(4)
 
     def next_page(self) -> None:
         self.show((self.page + 1) % len(CODEX_PAGES))

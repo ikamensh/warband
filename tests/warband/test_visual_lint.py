@@ -122,11 +122,14 @@ def test_every_unit_pose_fits_the_unit_canvas() -> None:
                     assert reach + textures.PAD <= textures.DROP_UNIT, (race, unit_type, carrying, frame, reach)
 
 
-SCREENS = ("title", "new_game_elf", "new_game_master", "select_peasant", "select_town_hall", "select_army", "select_60_units", "town_at_work", "menu_build_hover", "menu_train_hover", "plans", "alerts", "battle_wood",
-           "help", "codex_0", "codex_2", "codex_3", "save_browser", "game_over_won", "high_scores",
+SCREENS = ("title", "new_game_elf", "new_game_master", "select_peasant", "select_town_hall", "select_army", "select_60_units", "town_at_work", "menu_build_hover", "menu_train_hover",
+           "menu_build_at_start", "menu_train_at_start", "plans", "alerts", "battle_wood",
+           "help", "codex_0", "codex_2", "codex_3", "codex_4", "save_browser", "game_over_won", "high_scores",
            "campaign_fresh", "campaign_under_way", "mission_raid", "mission_choice", "mission_result")
 
 
+#: Screens whose every label must hold its text: the overlays' tables, and the catalogues' captions of what an item needs.
+OVERFLOW_CHECKED = ("help", "codex_0", "codex_2", "codex_3", "codex_4", "save_browser", "menu_build_at_start", "menu_train_at_start")
 SMALLEST = min(screens.RESOLUTIONS)
 FAST_SCREENS = {"title", "select_army", "town_at_work", "battle_wood", "menu_build_hover", "help", "mission_raid"}
 
@@ -141,5 +144,5 @@ def test_the_screens_draw_nothing_over_anything(name: str, resolution: tuple[int
     smallest window, and the slow tier every screen in every window. The layout tests keep text off text
     on every screen in the fast tier."""
     findings = screens.run_screen(name, resolution, None)
-    visible = [f for f in findings if f.check in VISIBLE or (f.check == "overflow" and name in ("help", "codex_0", "codex_2", "codex_3", "save_browser"))]
+    visible = [f for f in findings if f.check in VISIBLE or (f.check == "overflow" and name in OVERFLOW_CHECKED)]
     assert not visible, "\n".join(str(f) for f in visible)

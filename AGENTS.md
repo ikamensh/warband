@@ -137,7 +137,10 @@ the compiled simulation attaches after they load.
   LAN/online scenes, `profile_scene.py`, `score_scene.py` and
   `replay_scene.py` (`ReplayScene` plays a recording back) their screens,
   `tutorial.py` the first match's objectives, `style.py` and `icons.py` the
-  look of the HUD. `controls.py` holds the three control schemes (Classic,
+  look of the HUD. `tech.py` reads what needs what from the rules the other
+  way round: what a catalogue item still lacks and whether it is on its way
+  (the card greys out and refuses what nobody is making), and the codex's tech
+  tree. `controls.py` holds the three control schemes (Classic,
   Grid, Modal; `docs/controls.md`): a card command has a letter and a slot,
   and the scheme picks which is its key; the scene resolves a key as a
   control group, a Ctrl chord, the card's command, then the scheme's global
