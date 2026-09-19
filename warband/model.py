@@ -1578,8 +1578,13 @@ class World:
     def _idle(self, u: Unit, dt: float) -> None:
         u.state = "idle"
         if u.is_worker:
-            if u.auto_work and self.tick % round(1 / SIM_DT) == 0:
+            second = self.tick % round(1 / SIM_DT) == 0
+            if u.auto_work and second:
                 worker_ai.assign_idle_workers(self, u.player)
+            if not u.orders and u.auto_work and (second or u.path_goal is not None):
+                if self._take_cover(u, dt, worker_ai.safe_navigation(self, u.player)):
+                    return
+                u.path, u.path_goal, u.exact = [], None, None
         elif self.tick % 5 == 0:
             if u.info.heal:
                 patient = self._healing_patient(u, u.info.sight)
@@ -1908,6 +1913,9 @@ class World:
     def _melee_position(self, u: Unit, target: Entity) -> Point:
         """Aim for contact in open ground, rather than the occupied target tile."""
         if isinstance(target, Building):
+            spot = self._siege_spot(u, target)
+            if spot is not None:
+                return spot
             x, y, w, h = target.rect
             point = (min(max(u.x, x), x + w), min(max(u.y, y), y + h))
             radius = 0.0
@@ -1919,6 +1927,31 @@ class World:
         # The spot is on the attacker's side of the target, so a target at the edge of the map puts it
         # off the map — and a tile lookup truncates x=-0.04 to tile 0, so nothing on the way would notice.
         return self._clamp((point[0] + dx / distance * reach, point[1] + dy / distance * reach))
+
+    def _siege_spot(self, u: Unit, target: Building) -> Point | None:
+        """The centre of the open tile round *target* nearest *u*, one nobody else stands on first; None when the
+        whole ring is closed.
+
+        The point on the attacker's side of a building is a tree or a wall when that side is closed, and a path
+        cannot end there: the attacker stopped a path's end short of it for good. Twelve peasants sent at a tower
+        in a clearing stood so, ten of them idle, and it lost a point a second where they could take twelve
+        (WB-037). A melee blow reaches from any tile of the ring, diagonals included."""
+        x, y, w, h = target.rect
+        width, height, blocked = self.width, self.height, self._blocked
+        occupied = {(int(other.x), int(other.y)) for other in self.units_near(target.center, max(w, h) / 2 + 1.5)
+                    if other is not u and not other.hidden}
+        best: Point | None = None
+        best_taken, best_d = True, math.inf
+        for ty in range(max(0, y - 1), min(height, y + h + 1)):
+            for tx in range(max(0, x - 1), min(width, x + w + 1)):
+                if blocked[ty * width + tx] or x <= tx < x + w and y <= ty < y + h:
+                    continue
+                centre = (tx + 0.5, ty + 0.5)
+                taken = (tx, ty) in occupied
+                d = hypot(u.x - centre[0], u.y - centre[1])
+                if (not taken and best_taken) or (taken == best_taken and d < best_d):
+                    best, best_taken, best_d = centre, taken, d
+        return best
 
     def _melee_opponent(self, u: Unit) -> Entity | None:
         """Finish visible opponents already in reach before pursuing another target."""
@@ -2049,12 +2082,14 @@ class World:
             hall = next((b for b in depots if rect_gap(u.pos, b.rect) - u.radius <= TOUCH), None)
             if hall is None:
                 if self.time < u.replan_at:
-                    u.state = "idle"
+                    if not self._take_cover(u, dt, navigation):
+                        u.state = "idle"
                     return
                 order.target = self._plan_work_route(u, {b.id: b.rect for b in depots}, navigation)
                 hall = self.buildings.get(order.target) if order.target is not None else None
         if hall is None:
-            u.state = "idle"
+            if not self._take_cover(u, dt, navigation):
+                u.state = "idle"
             return
         if rect_gap(u.pos, hall.rect) - u.radius <= TOUCH:
             player = self.players[u.player]
@@ -2068,6 +2103,26 @@ class World:
             return
         if self._approach_work(u, hall.rect, dt, navigation):
             order.target = None  # a new wall or threat may require another depot
+
+    def _take_cover(self, u: Unit, dt: float, navigation: bytearray) -> bool:
+        """Walk an automatic worker caught on ground its safe map forbids out to the nearest ground it allows, even
+        when its work cannot be reached from there; True while it is on its way.
+
+        Its trip would go through the escape when the work lay beyond; when nothing it could work or deliver to is
+        safe (a tower beside the hall), standing still waiting for the danger to pass is standing in the fire:
+        a tower by the hall killed every carrier holding gold beside it, one by one (WB-037)."""
+        width = self.width
+        tx, ty = u.tile
+        if navigation is self._blocked or not navigation[ty * width + tx]:
+            return False
+        goal = u.path_goal
+        if goal is None or navigation[goal[1] * width + goal[0]] or self._next_waypoint(u, precise=True) is None:
+            escape = self._way_out(u.tile, navigation)
+            if escape is None:
+                return False  # no way out: nothing to do but wait for the danger to pass
+            u.path, u.path_goal, u.exact = escape, escape[-1], tile_center(escape[-1])
+        self._follow(u, dt, navigation=navigation, precise=True)
+        return True
 
     def _worker_navigation(self, u: Unit) -> bytearray:
         for order in u.orders:
@@ -2098,13 +2153,10 @@ class World:
         u.progress, u.last_distance = 0.0, math.inf
         u.path, u.path_goal, u.exact = [], None, None
         if navigation[start[1] * self.width + start[0]]:
-            def allowed(x: int, y: int) -> bool:
-                return 0 <= x < self.width and 0 <= y < self.height and not navigation[y * self.width + x]
-            nearest = pathing.nearest_passable(start, allowed)
-            found = self._escape(start, nearest) if nearest is not None else None
-            if found is None or nearest is None:
+            found = self._way_out(start, navigation)
+            if found is None:
                 return None  # forbidden ground with no way out: wait for the danger to pass
-            escape, start = found, nearest
+            escape, start = found, found[-1]
         route = pathing.find_work_path(start, costs, navigation, self.width, self.height)
         if route is None:
             return None
@@ -2255,6 +2307,16 @@ class World:
         if self._region_map is None or self._region_map.grid != self._blocked:
             self._region_map = pathing.Regions(self._blocked, self.width, self.height)
         return self._region_map
+
+    def _way_out(self, start: Pos, navigation: bytearray) -> list[Pos] | None:
+        """Real-ground steps from *start*, which *navigation* forbids, to the nearest tile it allows; None when no
+        such tile is near or real ground does not lead there."""
+        width, height = self.width, self.height
+
+        def allowed(x: int, y: int) -> bool:
+            return 0 <= x < width and 0 <= y < height and not navigation[y * width + x]
+        nearest = pathing.nearest_passable(start, allowed)
+        return self._escape(start, nearest) if nearest is not None else None
 
     def _escape(self, start: Pos, nearest: Pos) -> list[Pos] | None:
         """Real-ground steps from *start*, which the safe map forbids (an enemy came close), to *nearest*, which it

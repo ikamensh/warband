@@ -149,21 +149,23 @@ odds. `--proximity 0` gives the old flat fit.
 
 What the New game screen offers, and what each one is worth. 60 seeds, both
 corners, every map size, all five layouts in turn, under fog, 720 games,
-Medium anchored at 1000, measured on 2026-09-19 once the pro brains held a
-build order's price while its builder walks (`hold_builds`, below):
+Medium anchored at 1000, measured on 2026-09-19 once peasants took cover from
+a tower they could not work beside and melee soldiers spread round a building
+they attack (WB-037, [a tower on our ground](#a-tower-on-our-ground)):
 
 | setting | Elo | 90% interval | plays |
 |---------|-----|--------------|-------|
-| Easy | 857 | 795 .. 910 | `ai.Brain`, the Easy profile |
+| Easy | 866 | 813 .. 922 | `ai.Brain`, the Easy profile |
 | Medium | 1000 | — | `ai.Brain`, what Normal and Hard both were |
-| Hard | 1400 | 1335 .. 1485 | `pro_ai.ProBrain`, `pro-hard` |
-| Master | 1615 | 1535 .. 1701 | `pro_ai.ProBrain`, `pro-vanguard` or `pro-warden`, drawn with the map |
+| Hard | 1424 | 1362 .. 1510 | `pro_ai.ProBrain`, `pro-hard` |
+| Master | 1651 | 1570 .. 1759 | `pro_ai.ProBrain`, `pro-vanguard` or `pro-warden`, drawn with the map |
 
-Each beats the one below it 69%, 88% and 78% of the time. The hold moved Hard
-47 points and Master 26 from the measurement before it, on 2026-09-18 after the
-balance merge (mine cap, prices, race numbers; `docs/balance.md`) and the rules
-that went live with Warband 0.2.26: 856, 1353 and 1589, with steps of 69%, 87%
-and 80%. Before that measurement the screen had
+Each beats the one below it 68%, 92% and 79% of the time. The same seeds had
+given 857, 1400 and 1615 earlier that day, once the pro brains held a build
+order's price while its builder walks (`hold_builds`, below), and 856, 1353
+and 1589 before the hold, on 2026-09-18 after the balance merge (mine cap,
+prices, race numbers; `docs/balance.md`) and the rules that went live with
+Warband 0.2.26, with steps of 69%, 87% and 80%. Before that measurement the screen had
 shown 740, 1250 and 1510: Easy and Hard were outside their intervals, and
 Master's number had been inferred from the brain it replaced rather than
 measured. Master is measured directly now. The 720 games took five minutes
@@ -381,6 +383,45 @@ comment in `_send_scout` says why. The rush itself was dropped: the
 builder's order dies on arrival after a forty-second walk, five times a
 game, and feeds peasants to the first soldiers.
 
+### A tower on our ground
+
+WB-036 built the rush the ai-2000 push had dropped: a peasant walks to the far
+side of the enemy's main mine and raises a tower there as soon as its own
+barracks stands (`pro-rush`, `pro-hard-rush`). Against it the brains stopped
+mining for minutes: a tower one tile from the hall left every depot in danger,
+carriers waited in its fire with their gold until it killed them, and soldiers
+went at it one or two at a time. What WB-037 changed, and what it measured
+(`docs/evidence/wb037/rush_answers.py`: the Vanguard, the Warden and Hard,
+both corners, 20 fresh seeds over the ladder's boards; a game passes when the
+tower never stands or dies within a minute of standing, kills at most three
+peasants, and the defender's gold over the next three minutes is at least 70%
+of the same board without it):
+
+* A worker caught on forbidden ground walks out to safe ground even when its
+  work cannot be reached from there (`World._take_cover`). Games with at most
+  three peasants lost went from 15–29 of 40 to 34–40.
+* A melee attacker on a building aims for an open tile of its ring, not the
+  point on its own side, which a tree or a wall can close (`World._siege_spot`):
+  ten of twelve peasants had stood a path's end short of a tower in a clearing.
+* A lone enemy peasant inside the base draws five peasants from where it is
+  heading (`ProProfile.hunt_party`). A builder that waits dies; one walking
+  straight to its site often gets there first, so a frame still goes up in
+  about half the games against Master, where four in five had one before.
+* A tower on our ground is struck by the soldiers at home and as many peasants
+  as bring it down in twenty seconds, from its frame's last twenty-five
+  seconds on; a young frame the force at hand can outpace is swarmed at once
+  (`strike_seconds`, `strike_lead`).
+
+Against a tower placed finished behind the mine at 150 s, Master passes 38 of
+39 and 39 of 40 games, Hard 32 of 40. Against the rush itself its tower is
+stopped or killed in time in 38 and 39 of 40 games, but the rusher's own
+first push arrives as it stands and the defender, its peasants just back from
+the strike, keeps 70% of its gold in only half the games where a frame went
+up: all three hold in 32 and 31 of 40 games for Master, 19 for Hard, which
+has nine peasants and a soldier or two when the tower stands. Against their
+unanswered twins (`-unanswered`) the answers are level in ordinary play: 49%,
+50% and 49% over 96 games each.
+
 ### The wasp that would not live
 
 Master's defence sends the whole army at any enemy unit within nine tiles
@@ -475,6 +516,7 @@ contradicted the reasoning that produced the change:
 | a standing share of the workforce on wood | **−40 to −180 Elo** — 46% at 30%, 31% at 40%, 25% with farms ahead of demand as well; the model's own policy is better |
 | an army plan of knights, of archers, or of raiders | **−110 Elo** each (33%); the race plans are right |
 | pro-rush (three soldiers, ratio 0.6), pro-boom (twelve, 1.2, early expansion, towers), hall-first pushes, raiders | within noise (44–52%) |
+| hunting a lone enemy peasant in the base and striking a tower on our ground with peasants (`hunt_party`, `strike_seconds`) | level in ordinary play (49%, 50%, 49% over 96 games each); against a tower rush see [a tower on our ground](#a-tower-on-our-ground) |
 | holding a build order's price while its builder walks (`hold_builds`): the brain had spent it on soldiers, peasants and research during the walk, and 227 of 838 orders over twenty Master mirrors died on arrival, unpaid; none do now | **+60 to +100 Elo** — 65% for the Vanguard, 62% for the Warden, 59% for Hard against the same posture without it, 96 games each; Hard's and Master's displayed ratings re-measured |
 | a supply-blocked barracks counting as saturated, a second or third barracks ahead of the gate, gathering three or five before walking, race-aware postures for dwarves and orcs | within noise (48–56%, 48 games each) |
 

@@ -46,6 +46,7 @@ from warband.rules import BUILDINGS, MINE_SLOTS, UPGRADES, BuildingType, Cost, U
 from warband.worker_knowledge import KnownMine
 
 _MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
+WALK_OVER: Final = 4.0  # seconds the peasants sent at a frame by our own mine or hall take to reach it
 STRICT_SLACK: Final = 0.1  # how far past its planned share a type may run under a strict plan
 BUILD_MIN_DISTANCE: Final = 2
 BUILD_MAX_DISTANCE: Final = 12
@@ -112,6 +113,10 @@ class ProProfile:
     rush_towers: int = 0              # towers raised beside the enemy's main mine as soon as a barracks stands (one-on-one only)
     rush_builders: int = 1            # peasants that walk there, look and raise them; the brain holds their price meanwhile
     rush_tries: int = 3               # builders it drafts in all before it gives the rush up
+    hunt_party: int = 5               # peasants sent at a lone enemy peasant inside our base, before it raises a frame there
+    strike_seconds: float = 20.0      # a tower on our ground is struck by as many peasants as kill it this fast; 0: never
+    strikers_max: int = 16            # …but no more peasants than this
+    strike_lead: float = 25.0         # a frame this many seconds from standing is struck already, so the strike is there
 
 
 PRO: Final = ProProfile("pro")
@@ -165,6 +170,10 @@ _TRIALS: Final = (
     replace(PRO_VANGUARD, name="pro-vanguard-nohold", hold_builds=False),
     replace(PRO_WARDEN, name="pro-warden-nohold", hold_builds=False),
     replace(PRO_HARD, name="pro-hard-nohold", hold_builds=False),
+    # Before WB-037 a brain let a lone enemy peasant walk into its base and left a tower there standing: these do.
+    replace(PRO_VANGUARD, name="pro-vanguard-unanswered", hunt_party=0, strike_seconds=0.0),
+    replace(PRO_WARDEN, name="pro-warden-unanswered", hunt_party=0, strike_seconds=0.0),
+    replace(PRO_HARD, name="pro-hard-unanswered", hunt_party=0, strike_seconds=0.0),
 )
 #: The tower rush (WB-036): a peasant walks to the enemy's start as soon as the first barracks stands and
 #: raises a tower beside their main mine. Hard's version keeps Hard's handicaps.
@@ -242,6 +251,8 @@ class ProBrain:
         self.rush_drafted = 0
         self.rush_over = False
         self._hurt: set[int] = set()  # soldiers pulled out to heal
+        self.hunters: dict[int, int] = {}  # our peasants sent at an enemy peasant inside our base: hunter -> its prey
+        self.strikers: set[int] = set()    # our peasants sent at an enemy tower standing on our ground
         self.log: list[tuple[float, str]] = []
         self._seen: dict[int, dict[UnitType, float]] = {}  # per opponent: most of each kind ever seen at once
         self._seen_at: dict[int, float] = {}               # …and when that opponent was last looked at
@@ -425,7 +436,8 @@ class ProBrain:
         """
         player = world.players[self.player]
         peasants = [p for p in self._peasants(world)
-                    if not p.hidden and not isinstance(p.order, (Build, Repair)) and p.id not in self.scouts]
+                    if not p.hidden and not isinstance(p.order, (Build, Repair)) and p.id not in self.scouts
+                    and not self._answering(p)]
         if player.lumber >= self.profile.lumber_stock:
             # Let go of the axe and let the model's own policy place them. Naming a
             # mine here crashed a league sixty matches in: the brain chose from the
@@ -453,7 +465,8 @@ class ProBrain:
         target = min(damaged, key=lambda b: b.hp / b.max_hp)
         if world._nearest_enemy(self.player, target.center, 8.0) is not None:
             return
-        spare = [p for p in self._peasants(world) if not p.hidden and p.carrying is None and not isinstance(p.order, Build)]
+        spare = [p for p in self._peasants(world) if not p.hidden and p.carrying is None and not isinstance(p.order, Build)
+                 and not self._answering(p)]
         if spare:
             world.repair([min(spare, key=lambda p: dist(p.pos, target.center)).id], target.id)
 
@@ -612,7 +625,7 @@ class ProBrain:
         if free <= 0:
             return
         builders = [p for p in self._peasants(world)
-                    if not p.hidden and not isinstance(p.order, (Build, Repair))]
+                    if not p.hidden and not isinstance(p.order, (Build, Repair)) and not self._answering(p)]
         if not builders:
             return
         # Ground already spoken for by an order in flight: can_place cannot know
@@ -730,7 +743,7 @@ class ProBrain:
         self.rushers = [i for i in self.rushers if i in world.units]
         while len(self.rushers) < profile.rush_builders and self.rush_drafted < profile.rush_tries:
             spare = [p for p in self._peasants(world) if not p.hidden and p.id not in self.rushers
-                     and not isinstance(p.order, (Build, Repair)) and p.constructing is None]
+                     and not isinstance(p.order, (Build, Repair)) and p.constructing is None and not self._answering(p)]
             if not spare:
                 break
             drafted = min(spare, key=lambda p: dist(p.pos, start))
@@ -938,6 +951,8 @@ class ProBrain:
         if threats and not (self.attacking and strength(world, threats)
                             < self.profile.ignore_raid_ratio * strength(world, army)):
             self._defend(world, guards + army, threats)
+            return
+        if self._strike_towers(world, guards + ([] if self.attacking else army)):
             return
         self._post(world, guards)
         hall = self._hall(world)
@@ -1170,7 +1185,8 @@ class ProBrain:
                 self.scouts = [riders[0].id]
             else:
                 spare = [p for p in self._peasants(world)
-                         if not p.hidden and p.carrying is None and not isinstance(p.order, (Build, Repair))]
+                         if not p.hidden and p.carrying is None and not isinstance(p.order, (Build, Repair))
+                         and not self._answering(p)]
                 if len(spare) > 3:
                     # Drafted with a harvest order in hand, the peasant keeps it:
                     # the ring move below is only given to a scout with nothing to
@@ -1198,6 +1214,147 @@ class ProBrain:
                                                            min(max(ring[1], 1.0), world.height - 1.0))))
 
     # -- Combat ----------------------------------------------------------------------
+
+    def _home(self, world: World) -> list[tuple[int, int, int, int]]:
+        """The ground a tower would take from us: our halls and the mines they work."""
+        halls = self._halls(world)
+        mines = [m.rect for m in known_mines(world, self.player)
+                 if any(rect_gap((m.x + m.size / 2, m.y + m.size / 2), h.rect) <= 10.0 for h in halls)]
+        return [h.rect for h in halls] + mines
+
+    def _home_towers(self, world: World) -> list[Building]:
+        """Enemy towers we can see, standing or going up, whose fire reaches a hall of ours or a mine it works."""
+        home = self._home(world)
+        towers = []
+        for record in self._known_enemy_buildings(world):
+            tower = world.buildings.get(record.id)
+            if tower is None or tower.type is not BuildingType.TOWER or not world.any_visible(self.player, tower.rect):
+                continue
+            if any(rect_gap(tower.center, rect) <= tower.info.range + tower.size / 2 for rect in home):
+                towers.append(tower)
+        return towers
+
+    def _strike_towers(self, world: World, army: list[Unit]) -> bool:
+        """Bring down a tower on our ground (WB-037): a young frame if the peasants and soldiers at hand can
+        outpace its building, else the frame in its last ``strike_lead`` seconds, so the strike is there as it
+        stands, fast enough to be done in ``strike_seconds``; whether anything was sent.
+
+        A tower by the mine or the hall stops the gold for as long as it stands, and soldiers sent a few at a
+        time die a few at a time. A peasant's blow does a point through its armour, so a dozen peasants take
+        twelve points a second off it where the tower kills one of them every six seconds, and a frame gains
+        only ten or twelve a second: a dozen peasants and a footman bring a young frame down before it stands,
+        for nothing but the mining they miss. Not while enemy soldiers stand by it: the ordinary defence meets
+        them first.
+        """
+        self.strikers = {i for i in self.strikers if i in world.units and isinstance(world.units[i].order, Attack)}
+        if not self.profile.strike_seconds:
+            return False
+        towers = sorted(self._open_towers(world), key=lambda t: (t.hp, t.id))
+        fighters = [u for u in army if u.info.damage]
+        for tower in towers:
+            armour = world.armor_of(tower)
+            pace = 0.0  # what the strike takes off the tower a second
+            for unit in fighters:
+                pace += self._blows(world, unit, armour)
+            for i in self.strikers:
+                striker = world.units[i]
+                if isinstance(striker.order, Attack) and striker.order.target == tower.id:
+                    pace += self._blows(world, striker, armour)
+            spare = sorted(self._free_peasants(world, miners=True),
+                           key=lambda p: dist(p.pos, tower.center))[:self.profile.strikers_max]
+            if tower.done:
+                need = tower.hp / self.profile.strike_seconds
+            else:
+                info = tower.info
+                left = info.build_time - tower.progress
+                # Its growth, and its hit points spread over what is left of the building once they have walked over.
+                need = (info.hp - max(1, info.hp // 10)) / info.build_time + tower.hp / max(1.0, left - WALK_OVER)
+                if left > self.profile.strike_lead:
+                    near = [p for p in spare if dist(p.pos, tower.center) <= 16.0]
+                    reach = pace
+                    for peasant in near:
+                        reach += self._blows(world, peasant, armour)
+                    if reach < need:
+                        continue  # it stands whatever we do: meet it then
+                    need, spare = math.inf, near  # everyone in reach: the sooner it falls, the sooner they mine again
+                else:
+                    need = tower.hp / self.profile.strike_seconds
+            drafted: list[int] = []
+            for peasant in spare:
+                if pace >= need:
+                    break
+                drafted.append(peasant.id)
+                pace += self._blows(world, peasant, armour)
+            if drafted:
+                world.attack(drafted, tower.id)
+                self.strikers.update(drafted)
+                self.note(world, f"strike tower {tower.id}{'' if tower.done else ' frame'} with {len(drafted)} peasants "
+                                 f"and {len(fighters)} soldiers")
+            idle = [u.id for u in fighters if not (isinstance(u.order, Attack) and u.order.target == tower.id)]
+            if idle:
+                world.attack(idle, tower.id)
+            return True
+        return False
+
+    def _open_towers(self, world: World) -> list[Building]:
+        """The towers on our ground with no enemy soldier standing by."""
+        soldiers = [e for e in self._enemies(world) if not e.is_worker and e.info.damage]
+        return [t for t in self._home_towers(world) if not any(dist(e.pos, t.center) < 8.0 for e in soldiers)]
+
+    def _answering(self, peasant: Unit) -> bool:
+        """Whether *peasant* is out answering a rush, so no other job takes it."""
+        return peasant.id in self.hunters or peasant.id in self.strikers
+
+    def _free_peasants(self, world: World, *, miners: bool = False) -> list[Unit]:
+        """Peasants a rush's answer may draft: not building and on no other errand; with *miners*, the ones
+        inside a mine too, who obey as they come out with their load."""
+        return [p for p in self._peasants(world) if p.constructing is None and (miners or p.inside is None)
+                and not isinstance(p.order, (Build, Repair)) and p.id not in self.scouts and p.id not in self.rushers
+                and not self._answering(p)]
+
+    @staticmethod
+    def _blows(world: World, unit: Unit, armour: int) -> float:
+        """What *unit* takes off something wearing *armour*, a second."""
+        return max(1, world.damage_of(unit) - armour) / unit.info.period
+
+    def _hunt_builders(self, world: World) -> None:
+        """A lone enemy peasant inside our base is a tower or a barracks about to go up by the hall or the mine: the
+        peasants nearest it drop their work and kill it while it is still walking or waiting (WB-037).
+
+        Once it is inside its frame nothing reaches it, and a tower's frame gains ten hit points a second, more than
+        two footmen take off it; on the way in, a party of peasants settles it in a few seconds if it can catch it,
+        so the party is drawn from where it will be. They go only where no enemy soldier is near, and are let go
+        once it is dead, out of sight or out of the base.
+        """
+        self.hunters = {i: target for i, target in self.hunters.items()
+                        if i in world.units and isinstance(world.units[i].order, Attack)}
+        if not self.profile.hunt_party:
+            return
+        home = self._home(world)
+        if not home:
+            return
+        enemies = self._enemies(world)
+        soldiers = [e for e in enemies if not e.is_worker and e.info.damage]
+        intruders = {e.id: e for e in enemies if e.is_worker and min(rect_gap(e.pos, rect) for rect in home) <= 8.0
+                     and not any(dist(s.pos, e.pos) < 6.0 for s in soldiers)}
+        gone = [i for i, target in self.hunters.items() if target not in intruders]
+        if gone:
+            world.release_workers(gone)
+            for i in gone:
+                del self.hunters[i]
+        for prey in intruders.values():
+            want = self.profile.hunt_party - sum(1 for target in self.hunters.values() if target == prey.id)
+            if want <= 0:
+                continue
+            # A chase at the same speed never closes: the ones ahead of it, where it will be in a few seconds, meet it.
+            ahead = (prey.x + 2.5 * prey.vx, prey.y + 2.5 * prey.vy)
+            free = sorted((dist(p.pos, ahead), p.id) for p in self._free_peasants(world) if dist(p.pos, prey.pos) <= 12.0)
+            drafted = [i for _, i in free[:want]]
+            if drafted:
+                world.attack(drafted, prey.id)
+                for i in drafted:
+                    self.hunters[i] = prey.id
+                self.note(world, f"hunt peasant {prey.id} with {len(drafted)}")
 
     def _withdraw_if_hurt(self, world: World, unit: Unit) -> bool:
         """Walk a nearly-dead soldier out of reach. A body that lives is damage next fight.
@@ -1244,6 +1401,7 @@ class ProBrain:
     def _combat(self, world: World) -> None:
         """Take the nearly dead out of the fight. The fighting itself is the model's."""
         release_arrived(world, self.player)
+        self._hunt_builders(world)
         if not self.profile.retreat_wounded:
             return
         army = [u for u in world.player_units(self.player) if not u.is_worker and u.info.damage > 0]

@@ -188,3 +188,25 @@ def test_a_soldier_closing_on_a_foe_at_the_map_edge_stays_on_the_map():
         world.step()
         for unit in world.units.values():
             assert 0 <= unit.x <= world.width and 0 <= unit.y <= world.height, ("unit off the map", unit)
+
+
+def test_attackers_at_a_building_whose_near_side_is_closed_spread_round_it():
+    """WB-037: twelve peasants sent at a tower in a clearing aimed at the point on their side of it, a tree, and
+    stood a path's end short of it for good; ten of them never struck. Every attacker finds an open tile of the ring."""
+    terrain = [[Terrain.GRASS] * 24 for _ in range(20)]
+    for y in range(5, 15):
+        terrain[y][11] = Terrain.TREES  # the whole side facing the attackers
+    world = World(24, 20, terrain, 2)
+    world.rng.seed(1)
+    world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
+    world.place_building(1, BuildingType.TOWN_HALL, (20, 16))  # so the farm's owner is still in the game
+    farm = world.place_building(1, BuildingType.FARM, (12, 9))
+    attackers = [world.spawn_unit(0, UnitType.PEASANT, (4.5, 7.5 + i)) for i in range(8)]
+    world.reveal_all(0)
+    world.update_vision()
+    world.attack([u.id for u in attackers], farm.id)
+    striking = set()
+    for _ in range(round(25 / 0.05)):
+        world.step()
+        striking.update(event.entity for event in world.take_events() if event.kind == "hit" and event.other == farm.id)
+    assert len(striking) == len(attackers), f"only {len(striking)} of {len(attackers)} reached the farm"
