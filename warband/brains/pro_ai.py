@@ -42,7 +42,7 @@ from typing import Final
 from warband.brains.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_search
 from warband.sim.model import Attack, Build, Building, Harvest, Move, Point, Pos, Repair, Resource, Unit, World, dist, rect_gap, tile_center
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, MINE_SLOTS, UPGRADES, BuildingType, Cost, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, MINE_SLOTS, UPGRADES, BuildingType, Cost, Race, UnitType, Upgrade
 from warband.sim.worker_knowledge import KnownMine
 
 _MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
@@ -1565,7 +1565,23 @@ class ProBrain:
             self._withdraw_if_hurt(world, unit)
 
 
-def register_agents(register) -> None:
-    """Add every profile here to an arena registry."""
-    for name, profile in PRO_PROFILES.items():
-        register(name, lambda player, p=profile: ProBrain(player, p))
+class RaceBrain:
+    """A player whose posture is its race's own: bred brains are bred per race, so which one plays is settled at the
+    first pass, once the world says whom this player leads.  A race with several postures draws one from the map's
+    seed and the player's seat, as Master draws its three."""
+
+    def __init__(self, player: int, postures: Mapping[Race, Sequence[ProProfile]], seed: int = 0) -> None:
+        self.player = player
+        self.postures = postures
+        self.seed = seed
+        self.brain: ProBrain | None = None
+
+    @property
+    def log(self) -> list[tuple[float, str]]:
+        return self.brain.log if self.brain is not None else []
+
+    def think(self, world: World, rng: random.Random) -> None:
+        if self.brain is None:
+            options = self.postures[world.players[self.player].race]
+            self.brain = ProBrain(self.player, options[(self.seed + self.player) % len(options)])
+        self.brain.think(world, rng)

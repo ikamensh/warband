@@ -62,12 +62,16 @@ def _trial(args: argparse.Namespace) -> None:
     """Known profiles with some genes set by hand, against the panel: what one behaviour is worth before it is bred."""
     panel = args.panel.split(",")
     population = []
-    for k, text in enumerate(args.set or [""]):
+    for k, text in enumerate(args.set or ([] if args.genes else [""])):
         genes = evolve.genes_of(evolve._known_profile(args.base))
         for term in filter(None, text.split(",")):
             name, _, value = term.partition("=")
             genes[name] = evolve.GENE[name].clip(float(value))
         population.append(evolve.Individual(f"trial-{k}" + (f"[{text}]" if text else f"[{args.base}]"), genes))
+    for path in args.genes or []:
+        import json
+
+        population.append(evolve.Individual(f"trial-{Path(path).stem}", evolve.genes_of(PRO) | json.loads(Path(path).read_text())["genes"]))
     evaluator = evolve.Evaluator(args.workers)
     try:
         seeds = range(args.first_seed, args.first_seed + args.seeds)
@@ -86,6 +90,8 @@ def _macro(args: argparse.Namespace) -> None:
     import random
 
     base = evolve.genes_of(evolve._known_profile(args.base))
+    if args.genes:  # carry an earlier search on
+        base = base | json.loads(Path(args.genes[0]).read_text())["genes"]
     evaluator = evolve.Evaluator(args.workers)
     seeds = range(args.first_seed, args.first_seed + args.seeds)
     try:
@@ -109,6 +115,7 @@ def main() -> None:
     parser.add_argument("mode", choices=("run", "show", "profile", "trial", "macro"))
     parser.add_argument("--base", default="pro-vanguard", help="trial: the known profile the genes are set on")
     parser.add_argument("--set", action="append", help="trial: genes set by hand, e.g. research_first=2,tech.blacksmith=1 (repeatable)")
+    parser.add_argument("--genes", action="append", help="trial: a JSON file whose \"genes\" play as they are (repeatable)")
     parser.add_argument("path", nargs="?", type=Path, help="show, profile: the run's folder")
     parser.add_argument("--out", type=Path, help="run: the run's folder; an existing run is carried on")
     parser.add_argument("--race", default=None, choices=evolve.RACE_VALUES, help="breed for this race (default: whatever the seed draws)")
@@ -118,6 +125,7 @@ def main() -> None:
     parser.add_argument("--seeds", type=int, default=6, help="boards per opponent per generation, each from both corners")
     parser.add_argument("--panel", default="pro-vanguard,pro-warden,pro-rush")
     parser.add_argument("--start", default=None, help="comma separated known profiles the first generation is seeded with")
+    parser.add_argument("--seed-genes", default=None, help="run: comma separated JSON files whose \"genes\" join the first generation (a macro search's --out)")
     parser.add_argument("--first-seed", type=int, default=200_000)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--workers", type=int, default=max(1, mp.cpu_count() - 4))
@@ -145,7 +153,10 @@ def main() -> None:
                                    panel=tuple(args.panel.split(",")), first_seed=args.first_seed, seed=args.seed)
         if args.start is not None:
             settings.start = tuple(name for name in args.start.split(",") if name)
-        state = evolve.found(settings, tag)
+        import json
+
+        bred = [json.loads(Path(path).read_text())["genes"] for path in (args.seed_genes.split(",") if args.seed_genes else [])]
+        state = evolve.found(settings, tag, bred)
     evaluator = evolve.Evaluator(args.workers)
     try:
         for _ in range(args.generations):

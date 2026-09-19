@@ -361,7 +361,7 @@ def assign_idle_workers(world: World, player: int) -> None:
         for resource in choices:
             target = view.choose(worker, resource, loads)
             if target is not None:
-                world._issue(worker, Harvest(target, auto=True))
+                world._issue(worker, Harvest(target, auto=True, placed=True))
                 crews[resource] += 1
                 loads[target] += 1
                 break
@@ -394,13 +394,13 @@ def rebalance_workers(world: World, player: int) -> None:
     view = _view(world, player)
     for worker in workers:
         order = worker.order
-        if (not isinstance(order, Harvest) or not order.auto or worker.carrying is not None or worker.hidden or worker.hp <= 0
+        if (not isinstance(order, Harvest) or not order.placed or worker.carrying is not None or worker.hidden or worker.hp <= 0
                 or (rich is Resource.GOLD) != isinstance(order.target, int)):
             continue
         target = view.choose(worker, poor, loads)
         if target is None:
             return  # no safe walk to the other resource from here: the raiders are still about
-        world._issue(worker, Harvest(target, auto=True))
+        world._issue(worker, Harvest(target, auto=True, placed=True))
         return
 
 

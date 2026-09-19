@@ -355,3 +355,54 @@ def test_a_worker_walled_in_with_the_danger_waits_instead_of_crashing():
     world._blocked[11 * world.width + 8] = 0
     run(world, 30.0)
     assert worker.carrying is None and world.players[0].gold == 1000 + GOLD_PER_TRIP
+
+
+def _on_gold(worker) -> bool:
+    return worker.inside is not None or worker.carrying is Resource.GOLD or any(isinstance(o, Harvest) and isinstance(o.target, int) for o in worker.orders)
+
+
+def test_miners_driven_to_the_trees_go_back_to_the_mine_once_it_is_safe():
+    """The policy places a peasant once, and raiders at the mine send every miner to the trees, the one safe job left.
+    When the raiders were gone the miners stayed: a base that had held ended with four thousand lumber, a hundred
+    gold and nobody at the mine.  The split is looked at again by the rule that placed them."""
+    terrain = [[Terrain.GRASS] * 24 for _ in range(18)]
+    for x in range(1, 14):
+        for y in range(9, 17):
+            terrain[y][x] = Terrain.TREES  # a wood that outlasts the test: nobody leaves it for want of a tree
+    world = World(24, 18, terrain, 2)
+    world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
+    world.place_building(1, BuildingType.TOWN_HALL, (19, 13))
+    world.place_building(None, BuildingType.GOLD_MINE, (9, 1))
+    workers = [world.spawn_unit(0, UnitType.PEASANT, (5.5 + 0.8 * k, 5.5)) for k in range(6)]
+    world.players[0].gold, world.players[0].lumber = 0, 1000
+    world.update_vision()
+    run(world, 12)
+    assert sum(_on_gold(w) for w in workers) >= 5, "with gold the shortage they mine"
+    for worker in workers:
+        worker.hp = 10_000  # nobody dies of the raid: what is read is where the living work
+    raiders = [world.spawn_unit(1, UnitType.FOOTMAN, spot) for spot in ((8.4, 2.5), (12.6, 2.5), (10.5, 0.4), (10.5, 4.6))]
+    world.hold([raider.id for raider in raiders])  # one at each side of the mine, standing their ground
+    run(world, 40)
+    assert sum(_on_gold(w) for w in workers) <= 1, "the mine is no place to work: they fell trees instead"
+    for raider in raiders:
+        raider.hp = 0  # the raiders are gone (buried at the end of the next step)
+    world.players[0].gold = 0
+    run(world, 45)
+    assert sum(_on_gold(w) for w in workers) >= 4, "one hand every five seconds, back to the gold"
+
+
+def test_a_harvest_the_player_ordered_is_not_rebalanced_away():
+    """Only jobs the policy gave are its to change: peasants sent to the trees by hand stay there, whatever the bank says."""
+    terrain = [[Terrain.GRASS] * 24 for _ in range(18)]
+    for x in range(1, 9):
+        terrain[12][x] = terrain[13][x] = Terrain.TREES
+    world = World(24, 18, terrain, 2)
+    world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
+    world.place_building(1, BuildingType.TOWN_HALL, (19, 13))
+    world.place_building(None, BuildingType.GOLD_MINE, (9, 1))
+    workers = [world.spawn_unit(0, UnitType.PEASANT, (5.5 + 0.8 * k, 5.5)) for k in range(4)]
+    world.update_vision()
+    world.harvest([w.id for w in workers], (4, 12))
+    world.players[0].gold, world.players[0].lumber = 0, 9000
+    run(world, 40)
+    assert not any(_on_gold(w) for w in workers)

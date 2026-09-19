@@ -558,11 +558,12 @@ def _name(state: State, tag: str) -> str:
     return f"{tag}-{state.counter}"
 
 
-def found(settings: Settings, tag: str) -> State:
-    """The first generation: the known brains, mutants of them, and the rest drawn at random."""
+def found(settings: Settings, tag: str, bred: Sequence[Genes] = ()) -> State:
+    """The first generation: the known brains and *bred* (genes an earlier search found), mutants of them, and the
+    rest drawn at random."""
     rng = random.Random(settings.seed)
     state = State(settings=settings)
-    starts = [genes_of(_known_profile(name)) for name in settings.start]
+    starts = [genes_of(_known_profile(name)) for name in settings.start] + [genes_of(PRO) | dict(genes) for genes in bred]
     for genes in starts:
         state.population.append(Individual(_name(state, tag), genes))
     while len(state.population) < settings.population:

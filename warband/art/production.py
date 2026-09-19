@@ -122,6 +122,14 @@ def _research_emblem(upgrade: Upgrade, scale: float) -> Image.Image:
         line([(.33, .42), (.67, .42)], _GOLD, .03)
         for cx, cy in ((.30, .87), (.44, .90), (.60, .89), (.74, .86)):
             ellipse((cx - .07, cy - .045, cx + .07, cy + .045), _GOLD, _INK, .012)
+    elif upgrade is Upgrade.MARKSMANSHIP:
+        # A straw target, an arrow in its gold.
+        ellipse((.16, .16, .84, .84), _LIGHT, _INK, .015)
+        ellipse((.28, .28, .72, .72), (168, 58, 48, 255))
+        ellipse((.40, .40, .60, .60), _GOLD)
+        line([(.5, .5), (.86, .20)], _WOOD, .035)
+        polygon([(.86, .20), (.74, .20), (.80, .26), (.86, .32)], _LIGHT)
+        polygon([(.5, .5), (.58, .40), (.60, .48)], _STEEL)
     elif upgrade is Upgrade.LONGBOWS:
         # A tall bow, strung, with an arrow on the string.
         arc(.30, .5, .34, -80, 80, _WOOD, .05)

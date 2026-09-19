@@ -73,14 +73,16 @@ UNIT_SLOTS = {"move": 0, "stop": 1, "hold": 2, "attack": 3, "patrol": 4, "build"
 #: What the unit panel says a unit with each order is doing.
 DOING = {Move: "Moving", AttackMove: "Attack-moving", Attack: "Attacking", Harvest: "Harvesting", Deposit: "Delivering",
          Build: "Going to build", Hold: "Holding position", Heal: "Healing", Patrol: "Patrolling", Repair: "Repairing"}
-#: The Upgrade catalogue's slots: each chain's tiers side by side; None stands for the race's two arts.
-UPGRADE_ROWS = ((Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.SIEGE), (Upgrade.ARMOR_1, Upgrade.ARMOR_2, None),
-                (Upgrade.ARROWS_1, Upgrade.ARROWS_2, None))
+#: The Upgrade catalogue's slots, one per chain of tiers (it shows the next tier to order, as a building's own card
+#: does): the soldiers' chains on the top row, the engines' and the shooters' drill below; None stands for the race's
+#: two arts.  Nine upgrades with their tiers side by side filled the card; the tenth did not fit a nine-key grid.
+UPGRADE_SLOTS = ((Upgrade.BLADES_1, Upgrade.BLADES_2), (Upgrade.ARMOR_1, Upgrade.ARMOR_2), (Upgrade.ARROWS_1, Upgrade.ARROWS_2),
+                 (Upgrade.SIEGE,), (Upgrade.MARKSMANSHIP,), None, None)
 #: Names that fit a card button (each race's are in :mod:`warband.sim.races`); the tooltip and the codex use the full ones.
 UPGRADE_NAMES = {Upgrade.BLADES_1: "Blades I", Upgrade.BLADES_2: "Blades II", Upgrade.ARMOR_1: "Armour I", Upgrade.ARMOR_2: "Armour II",
                  Upgrade.ARROWS_1: "Arrows I", Upgrade.ARROWS_2: "Arrows II", Upgrade.HORSES: "Horses", Upgrade.SIEGE: "Siege", Upgrade.BLESSING: "Blessing",
                  Upgrade.BLOODLUST: "Bloodlust", Upgrade.PLUNDER: "Plunder", Upgrade.LONGBOWS: "Longbows", Upgrade.REGROWTH: "Regrowth",
-                 Upgrade.DEEP_MINING: "Mining", Upgrade.BLASTING_POWDER: "Powder"}
+                 Upgrade.DEEP_MINING: "Mining", Upgrade.BLASTING_POWDER: "Powder", Upgrade.MARKSMANSHIP: "Marksmen"}
 CARD_WIDTH = 116
 CARD_GAP = 6
 CARD_PANEL_WIDTH = CARD_COLS * CARD_WIDTH + (CARD_COLS - 1) * CARD_GAP + 2 * PANEL_STYLE.padding  # the widest command card
@@ -1286,17 +1288,6 @@ class GameScene(Scene):
         queued = sum(1 for kind, _pos, by_builder in self.pending_sites() if by_builder and kind is target)  # a builder's next sites
         return len(plans) + queued + sum(1 for b in world.player_buildings(human, target) if not b.done and b.pos not in planned)
 
-    def _upgrades(self) -> list[Upgrade]:
-        """The shared upgrades and the player's race arts, in the order of the table."""
-        return [u for u in Upgrade if self.race.upgrade_allowed(u)]
-
-    def _upgrade_keys(self) -> dict[Upgrade, str]:
-        """Tiers share a letter: it goes to the lowest tier still to order, or stays on the top one so the key keeps answering."""
-        chains: dict[str, list[Upgrade]] = {}
-        for upgrade in self._upgrades():
-            chains.setdefault(UPGRADES[upgrade].hotkey, []).append(upgrade)
-        return {next((u for u in chain if self._upgrade_planned(u) is None), chain[-1]): letter.upper() for letter, chain in chains.items()}
-
     def _catalogue_commands(self, kind: str) -> list[Command]:
         """The Build, Train or Upgrade catalogue: everything the settlement can plan, each in its slot."""
         race, commands = self.race, []
@@ -1320,15 +1311,16 @@ class GameScene(Scene):
                                         alt=lambda ut=unit_type: self.toggle_endless_everywhere(ut),
                                         endless=lambda ut=unit_type: any(ut in b.auto for b in self._producers(ut)), catalogue=True))
         else:
-            letters, arts = self._upgrade_keys(), iter(race.arts)
-            for row, chain in enumerate(UPGRADE_ROWS):
-                for column, listed in enumerate(chain):
-                    upgrade = listed if listed is not None else next(arts)
-                    info = UPGRADES[upgrade]
-                    commands.append(Command(UPGRADE_NAMES[upgrade], letters.get(upgrade, ""), lambda up=upgrade: self.order_production("upgrade", up),
-                                            row * CARD_COLS + column, tooltip=f"{info.name} — {info.cost} · {info.summary}",
-                                            cost=f"{info.cost.gold} / {info.cost.lumber}", blocked=lambda up=upgrade: self._upgrade_planned(up),
-                                            target=upgrade, catalogue=True))
+            arts = iter(race.arts)
+            for slot, listed in enumerate(UPGRADE_SLOTS):
+                chain = listed if listed is not None else (next(arts),)
+                # The lowest tier still to order, or the top one once every tier is: the key keeps answering ("Already ordered").
+                upgrade = next((u for u in chain if self._upgrade_planned(u) is None), chain[-1])
+                info = UPGRADES[upgrade]
+                commands.append(Command(UPGRADE_NAMES[upgrade], info.hotkey, lambda up=upgrade: self.order_production("upgrade", up), slot,
+                                        tooltip=f"{info.name} — {info.cost} · {info.summary}",
+                                        cost=f"{info.cost.gold} / {info.cost.lumber}", blocked=lambda up=upgrade: self._upgrade_planned(up),
+                                        target=upgrade, catalogue=True))
         return commands
 
     # -- Command card ----------------------------------------------------------------

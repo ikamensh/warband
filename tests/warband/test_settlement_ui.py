@@ -269,12 +269,13 @@ def test_long_plan_list_pages_and_keeps_cancellation_visible(settlement):
 
 def test_upgrade_letters_order_the_next_tier(settlement):
     """U then B orders Blades I, B again Blades II (after Blades I); a third B is answered by the card rather than
-    opening Build."""
+    opening Build.  A chain shows its next tier to order in one slot, so every upgrade, Marksmanship the tenth, has a
+    key on a nine-key grid."""
     game, scene = settlement
     stand(scene, BuildingType.BLACKSMITH)
     key(game, "u")
     caps = {c.label: c.hotkey for c in scene.card}
-    assert caps["Blades I"] == "B" and caps["Blades II"] == "" and caps["Horses"] == "H"
+    assert caps["Blades I"] == "B" and "Blades II" not in caps and caps["Horses"] == "H" and caps["Marksmen"] == "M"
     key(game, "b")
     assert [p.type for p in scene.world.player_plans(scene.human)] == [Upgrade.BLADES_1]
     assert {c.label: c.hotkey for c in scene.card}["Blades II"] == "B"

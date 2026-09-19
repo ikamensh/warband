@@ -225,6 +225,7 @@ class Attack:
 class Harvest:
     target: int | Pos  # a gold mine's id, or a tree tile
     auto: bool = False  # Automatic jobs use known safe ground for both trips.
+    placed: bool = False  # the automatic policy's own choice of job, which it may change again; an ordered one is its player's
 
 
 @dataclass
@@ -557,7 +558,6 @@ class World:
         self._mine_crews: dict[int, int] = {}  # mine id → peasants at its face; kept as they enter and leave
         self.worker_knowledge = [WorkerKnowledge(width, height) for _ in self.players]
         self._worker_ai_checks: dict[int, int] = {}
-        self.rebalance_players: set[int] = set()  # EXPERIMENT: whose gatherers are rebalanced, while its worth is measured
         self._worker_ai_views: dict[int, tuple[int, Any]] = {}
         self._worker_ai_navigation: dict[int, tuple[int, bytearray]] = {}
         self._worker_ai_routes: dict[int, Any] = {}  # worker_ai._Routes per player, kept across ticks
@@ -1568,7 +1568,7 @@ class World:
             self._regrow()
         if self.tick % round(worker_ai.REBALANCE_EVERY / SIM_DT) == 0:
             for player in self.players:
-                if player.alive and player.id in self.rebalance_players:
+                if player.alive:
                     worker_ai.rebalance_workers(self, player.id)
         if self.tick % VISION_EVERY == 0:
             self.update_vision()
@@ -3043,7 +3043,7 @@ class World:
         damage, attack = self.damage_of(u), u.info.attack
         pending = self._pending_damage()
         best: Unit | None = None
-        best_threat, best_arrows, best_d = 9, 0, 0.0
+        best_threat, best_arrows, best_d, best_dealt = 9, 0, 0.0, 0
         for enemy in self.units_near(u.pos, self.range_of(u) + 2 * UNIT_RADIUS + 0.05):
             if enemy.player == u.player or enemy.hidden or enemy.hp <= 0 or not self.is_visible(u.player, enemy.tile):
                 continue
@@ -3055,11 +3055,15 @@ class World:
             dealt = max(1, int(round(damage * damage_factor(attack, enemy.info.armor_class))) - self.armor_of(enemy))
             threat, arrows, d = self._threat(enemy), -(-left // dealt), dist(u.pos, enemy.pos)
             if best is None or (threat, arrows, d, enemy.id) < (best_threat, best_arrows, best_d, best.id):
-                best, best_threat, best_arrows, best_d = enemy, threat, arrows, d
+                best, best_threat, best_arrows, best_d, best_dealt = enemy, threat, arrows, d, dealt
+        if best is not None:
+            pending[best.id] = pending.get(best.id, 0) + best_dealt  # its own arrow, as good as loosed: the next shooter this step counts it
         return best
 
     def _pending_damage(self) -> dict[int, int]:
-        """What the arrows in the air are expected to take off each unit they fly at, by its id; worked out once a step."""
+        """What is already on its way to each unit, by its id: the arrows in the air and the shots being drawn back
+        at it, each at what it is expected to take off through the armour.  Worked out once a step; a drilled
+        shooter that picks its mark later in the step adds its own."""
         if self._pending_tick != self.tick:
             self._pending_tick = self.tick
             pending: dict[int, int] = {}
@@ -3068,6 +3072,14 @@ class World:
                 if target is not None:
                     dealt = max(1, int(round(p.damage * damage_factor(p.attack, target.info.armor_class))) - self.armor_of(target))
                     pending[target.id] = pending.get(target.id, 0) + dealt
+            for shooter in self.units.values():
+                order = shooter.order
+                if shooter.windup > 0.0 and shooter.info.ranged and not shooter.info.splash and isinstance(order, Attack):
+                    target = self.units.get(order.target)
+                    if target is not None:
+                        dealt = max(1, int(round(self.damage_of(shooter) * damage_factor(shooter.info.attack, target.info.armor_class)))
+                                    - self.armor_of(target))
+                        pending[target.id] = pending.get(target.id, 0) + dealt
             self._pending = pending
         return self._pending
 
@@ -3631,7 +3643,7 @@ def _unit_to_dict(u: Unit) -> dict[str, Any]:
         "id": u.id, "type": u.type.value, "player": u.player, "x": u.x, "y": u.y, "hp": u.hp, "facing": u.facing,
         "orders": [_order_to_dict(o) for o in u.orders], "cooldown": u.cooldown, "windup": u.windup, "vx": u.vx, "vy": u.vy,
         "worker_orders": [{"index": index, "auto": order.auto,
-                           **({"target": order.target} if isinstance(order, Deposit) else {})}
+                           **({"target": order.target} if isinstance(order, Deposit) else {"placed": order.placed})}
                           for index, order in enumerate(u.orders) if isinstance(order, (Harvest, Deposit))],
         "carrying": u.carrying.value if u.carrying else None, "carry": u.carry, "timer": u.timer,
         "inside": u.inside, "constructing": u.constructing, "home": list(u.home) if u.home else None, "state": u.state,
@@ -3652,6 +3664,8 @@ def _unit_from_dict(d: dict[str, Any], race: Race) -> Unit:
         order.auto = state["auto"]
         if isinstance(order, Deposit):
             order.target = state["target"]
+        else:
+            order.placed = state.get("placed", False)  # a save from before the policy marked its own jobs: all read as ordered
     return u
 
 
