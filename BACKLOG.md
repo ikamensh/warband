@@ -36,7 +36,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
-| WB-036 | Next | in progress | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often (branch `rush-draw`) | User 2026-09-18 |
+| WB-036 | Next | done | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often | User 2026-09-18 |
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
@@ -186,6 +186,23 @@ does not: on branch `rush-draw`, `pro-rush` is Master's third posture
 (`PRO_FOR`, a third of the games each, drawn from the seed and the seat as
 before), `pro-hard-rush` is deleted, and the Master note names the rush. The
 720-game protocol with it: Easy 867, Hard 1442, Master 1665.
+
+**Done 2026-09-19, merged into main as `4a77498`** (`15440cb` on branch
+`rush-draw`) and live as Warband 0.2.55. `ai.PRO_FOR[MASTER]` is
+`pro-vanguard`, `pro-warden` and `pro-rush`, drawn by `(seed + player) % 3`
+as before; `pro-hard-rush` is deleted. A test pins the draw to the seed and
+seat and counts 200 of each posture over 300 seeds and two seats, two Masters
+in one game differ, and Hard is always `pro-hard`. The New game screen shows
+870, 1000, 1440 and 1660 Elo and Master's note names the rush ("Marches at
+five, towers up at home, or raises a tower by your mine."): looked at on
+the lint's new `new_game_master` screen at 1280×800 and 1200×680, one line,
+no finding. `sim_bench.txt` refreshed (its Master games now draw the rush);
+the fingerprint's games do not, and it holds. The brains are outside the
+contract: no rollout. Main ran
+[Tests 35412063319](https://github.com/ikamensh/warband/actions/runs/35412063319)
+and [native package checks 35412063275](https://github.com/ikamensh/warband/actions/runs/35412063275);
+[promotion 35412595777](https://github.com/ikamensh/saga-online/actions/runs/35412595777)
+published 0.2.55.
 
 ## WB-038 — Paint the gold mine
 
