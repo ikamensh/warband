@@ -535,14 +535,14 @@ class GameScene(Scene):
         row, scheme = self.settlement_row, self.scheme
         assert row is not None
         row.clear()
-        row.add(Label("Settlement", text_style="heading", width=124))
-        for action, text, click, width in (
-                ("build", "Build", lambda: self.toggle_catalogue("build"), None),
-                ("train", "Train", lambda: self.toggle_catalogue("train"), None),
-                ("upgrade", "Upgrade", lambda: self.toggle_catalogue("upgrade"), None),
-                ("plans", lambda: f"Plans ({self._plan_count()})", self.open_plans, 152),
-                ("assembly", "Assembly", lambda: self.start_pending("assembly"), None)):
-            row.add(Button(text, hotkey=scheme.shortcut(action), on_click=click, style=GHOST_BUTTON, width=width))
+        row.add(Label("Settlement", text_style="heading"))  # sized to its text: a fixed 124 was narrower than the font draws it
+        for action, text, click in (
+                ("build", "Build", lambda: self.toggle_catalogue("build")),
+                ("train", "Train", lambda: self.toggle_catalogue("train")),
+                ("upgrade", "Upgrade", lambda: self.toggle_catalogue("upgrade")),
+                ("plans", lambda: f"Plans ({self._plan_count()})", self.open_plans),
+                ("assembly", "Assembly", lambda: self.start_pending("assembly"))):
+            row.add(Button(text, hotkey=scheme.shortcut(action), on_click=click, style=GHOST_BUTTON))
 
     def _build_objectives(self) -> Column:
         """The panel under the top-right corner: the tutorial strip here, a mission's objectives in the campaign."""
