@@ -25,7 +25,7 @@ uv run python tools/visual_lint.py --evidence DIR   # visual defects in the art 
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms); --scenario four-player|pan-zoom|deaths|restarts, --csv, --gc
 uv run python tools/step_bench.py --repeat 3     # model step times of the same battle without a window, with --profile
 uv run python tools/sim_bench.py --check tools/sim_bench.txt   # processor time of nine whole arena matches, and their results unchanged
-uv run python -m warband.league.fastsim                 # compile the simulation with mypyc now (the match-running tools do it on first use)
+uv run python -m warband.league.fastsim          # compile the simulation with mypyc now (the match-running tools do it on first use)
 uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening (the default report is about a minute)
 uv run python tools/arena.py ladder --agents hard,pro --seeds 40   # rate agents against each other, in parallel
 uv run python tools/arena.py report --seeds 24                     # 1v1, free-for-all and jittered-balance ladders
@@ -43,80 +43,105 @@ real breakdown.
 
 ## Layout
 
-- `warband/sim/model.py` — the 20 Hz fixed-step simulation (orders, harvesting,
-  construction, supply, upgrades, towers, fog, elimination, JSON saves); no
-  saga2d dependency, so rules are tested directly. A blow turns, winds up and
-  lands; shots are `Projectile`s that land later, stones on the ground they
-  were fired at (`docs/unit-motion.md` part 4). `rules.py` holds the tables,
-  `races.py` the four races' names, numbers and arts, `path.py` bounded A*,
-  `mapgen.py` the five map layouts, their symmetry and audit, `ai.py` a Brain
-  per player for the lower difficulties (`PROFILES`) plus `make_brain`, which
-  is what every caller should use — Hard and Master are `pro_ai.ProBrain`, not
-  a Brain, and Master draws one of three postures (`PRO_VANGUARD`, `PRO_WARDEN`,
-  the tower rush `PRO_RUSH`) from the map seed and the player's slot — and `DIFFICULTY_ELO`, the measured
-  ratings the New game screen shows; `pro_ai.py` a stronger
-  `ProBrain` driven by a `ProProfile` of knobs, `arena.py` the ladder that
-  rates them (1v1, free-for-all placements, jittered rulebooks,
-  Bradley-Terry ratings on the Elo scale), `worker_ai.py`/`worker_knowledge.py` the
-  automatic gatherers, `settlement.py`/`production.py` building plans and the
-  command card, `scores.py` the local top ten, `profile.py` the player's name,
-  results and Glicko-updated rating on the ladder's Elo scale plus the
-  standing rule for leaving a match, `replay.py` the recording of a match (the
-  start world plus the order log `@recorded` fills in `model.py`), its playback
-  and the replay store. `fastsim.py` compiles the simulation modules with mypyc
-  for the tools that play many matches, and `_native.c` holds C twins of a few
-  of their loops (`docs/fast-simulation.md`).
-- `warband/art/textures.py` renders ground, props, buildings and units through
-  `sagaforge.render3d`; units have nine frames per facing (stand, a four-step
-  walk, a four-phase blow) posed by one `Pose` table. A unit whose subject has a
-  painted sheet under `warband/assets/restyled/` (made by `tools/restyle.py`
-  through `sagaforge.restyle`; every unit of every race) gets that frame
-  recoloured to its team instead, and so does a building whose race has a
-  painted sheet (`<race>.buildings.<look>`: `intact`, `active` while it trains
-  or researches, `damaged` under half its hit points; `view.building_look`
-  picks the look, a missing look shows the intact one). The gold mine is
-  nobody's and never recoloured: four of its stand-ins are painted
-  (`mine.<look>`, `tools/restyle.py --mines`), `active` while a peasant works
-  inside. Portraits use the painted frame too. `WARBAND_ART=procedural` keeps the renders; a sheet whose
-  frames no longer match `FRAMES` or the building types warns and is ignored.
+`warband/` holds `__init__.py`, `__main__.py` (the entry point of
+`python -m warband`, the frozen app and `--selftest`), `assets/` and nine
+folders, lowest first. `tests/warband/test_layers.py` holds each folder to
+what it may import: `sim` nothing but itself; `brains`, `records`, `art` and
+`audio` only `sim`; `league` and `online` `sim` and `brains`; `ui` and
+`story` anything. A folder's `__init__.py` is its docstring alone: the
+authoritative contract hashes those of the package, `sim` and `online`, and
+the compiled simulation attaches after they load.
+
+- `warband/sim/` — the rules and the simulation, everything the online
+  authority runs. `model.py` is the 20 Hz fixed-step simulation (orders,
+  harvesting, construction, supply, upgrades, towers, fog, elimination, JSON
+  saves); no saga2d dependency, so rules are tested directly. A blow turns,
+  winds up and lands; shots are `Projectile`s that land later, stones on the
+  ground they were fired at (`docs/unit-motion.md` part 4). `rules.py` holds
+  the tables, `races.py` the four races' names, numbers and arts, `path.py`
+  bounded A*, `mapgen.py` the five map layouts, their symmetry and audit,
+  `worker_ai.py`/`worker_knowledge.py` the automatic gatherers,
+  `settlement.py` building plans. `_native.c` holds C twins of a few loops of
+  the compiled simulation (`docs/fast-simulation.md`).
+- `warband/brains/` — the computer players. `ai.py` holds a Brain per player
+  for the lower difficulties (`PROFILES`) plus `make_brain`, which is what
+  every caller should use — Hard and Master are `pro_ai.ProBrain`, not a
+  Brain, and Master draws one of three postures (`PRO_VANGUARD`,
+  `PRO_WARDEN`, the tower rush `PRO_RUSH`) from the map seed and the player's
+  slot — and `DIFFICULTY_ELO`, the measured ratings the New game screen
+  shows; `pro_ai.py` the stronger `ProBrain` driven by a `ProProfile` of knobs.
+- `warband/league/` — what plays many matches to measure the game.
+  `arena.py` is the ladder that rates brains (1v1, free-for-all placements,
+  jittered rulebooks, Bradley-Terry ratings on the Elo scale); `balance.py`
+  reads the balance league, `archetypes.py` holds its postures and
+  `telemetry.py` its tallies; `fastsim.py` compiles `sim` and `brains` with
+  mypyc for the tools that play many matches.
+- `warband/records/` — what is kept of a player's matches: `profile.py` the
+  player's name, results and Glicko-updated rating on the ladder's Elo scale
+  plus the standing rule for leaving a match, `scores.py` the local top ten,
+  `replay.py` the recording of a match (the start world plus the order log
+  `@recorded` fills in `model.py`), its playback and the replay store.
+- `warband/online/` — `authority.py` holds the authoritative match, and its
+  `ONLINE` table registers `warband-v2` with `saga2d.server` (the server
+  loads `warband.online.authority:ONLINE`); `online_ai.py` is the headless AI
+  client that can sit in a room.
+- `warband/art/` — `textures.py` renders ground, props, buildings and units
+  through `sagaforge.render3d`; units have nine frames per facing (stand, a
+  four-step walk, a four-phase blow) posed by one `Pose` table. A unit whose
+  subject has a painted sheet under `warband/assets/restyled/` (made by
+  `tools/restyle.py` through `sagaforge.restyle`; every unit of every race)
+  gets that frame recoloured to its team instead, and so does a building
+  whose race has a painted sheet (`<race>.buildings.<look>`: `intact`,
+  `active` while it trains or researches, `damaged` under half its hit
+  points; `view.building_look` picks the look, a missing look shows the
+  intact one). The gold mine is nobody's and never recoloured: four of its
+  stand-ins are painted (`mine.<look>`, `tools/restyle.py --mines`), `active`
+  while a peasant works inside. Portraits use the painted frame too.
+  `WARBAND_ART=procedural` keeps the renders; a sheet whose frames no longer
+  match `FRAMES` or the building types warns and is ignored. `effects.py`
+  holds transient animations and lingering bodies, `ambience.py` the life
+  around visible buildings, `production.py` the command card's portraits and
+  emblems. `visual_lint.py` finds visual defects: in every registered image
+  (empty, clipped, chroma fringe, a painted frame off its render, a team
+  recolour that did not take) and in what a scene drew on the mock backend
+  with approximate font metrics (text over text or off screen, labels
+  narrower than their text, panels over each other, sprites drawn over what
+  they stand behind); `tools/visual_lint.py` runs it over representative
+  screens at 1280×800 and 1200×680, and checks actual native layout metrics
+  when writing evidence. Long runs default to `--cpu-percent 25`; native
+  frames are paced at 30 FPS.
+- `warband/audio/` — `sound.py`, `voices.py`, `instruments.py` and
+  `music.py` are synthesised with `sagaforge.synth`; `music.Director` maps
+  moods to tracks; the bank composes in a background thread.
+  `combat_sound.py`, `deaths.py` and `wreckage.py` are generated instead:
+  weapon-on-material impacts, each race's death and each material's building
+  collapse, from pieces committed under `warband/assets/impacts/`, `deaths/`
+  and `wreckage/` (Stable Audio 3 through `sagaforge.foley`; `pieces.py` reads
+  them; provenance in each folder's manifest, the procedure in
+  `docs/warband-pieces.md`).
+- `warband/ui/` — the saga2d scenes. `scene.py` is the match with its HUD
+  and command card, pause, help and results (`LeaveScene` is the
+  confirmation every way out of an undecided rated match goes through);
   `view.py` keeps sprites in step (units, buildings, shots in the air with
   their trails) and draws fog, minimap and water; ground out of sight shows
   what the player last saw there (`view.Sighting` per building, saved as the
   scene's `seen`; trees and the minimap's terrain follow the model's own
   per-player memory, `World.worker_knowledge`), and the selection panel reads
-  the sighting, never a rival's live building; `effects.py` transient
-  animations and lingering bodies. `visual_lint.py`
-  finds visual defects: in every registered image (empty, clipped, chroma
-  fringe, a painted frame off its render, a team recolour that did not take)
-  and in what a scene drew on the mock backend with approximate font metrics (text
-  over text or off screen, labels narrower than their text, panels over each
-  other, sprites drawn over what they stand behind); `tools/visual_lint.py`
-  runs it over representative screens at 1280×800 and 1200×680, and checks
-  actual native layout metrics when writing evidence. Long runs default to
-  `--cpu-percent 25`; native frames are paced at 30 FPS.
-- `warband/audio/sound.py`, `voices.py`, `ambience.py`, `instruments.py`, `music.py` —
-  synthesised with `sagaforge.synth`; `music.Director` maps moods to tracks; the bank
-  composes in a background thread. `combat_sound.py`, `deaths.py` and `wreckage.py` are
-  generated instead: weapon-on-material impacts, each race's death and each material's
-  building collapse, from pieces committed under `warband/assets/impacts/`, `deaths/` and
-  `wreckage/` (Stable Audio 3 through `sagaforge.foley`; `pieces.py` reads them;
-  provenance in each folder's manifest, the procedure in `docs/warband-pieces.md`).
-- `warband/story/campaign.py` — the campaign engine: speakers, lines and choices,
-  objectives and triggers, `Run` (a mission in play, saved beside the world),
-  `Progress`/`ProgressStore` (the small cross-version progress file); the
-  rules for keeping it playable across versions are in `docs/warband-campaign.md`.
-  `missions.py` is the content (The Thornwood War, six missions), `dialog.py`
-  the dialogue overlay, `mission_scene.py` a mission as a match with its result
-  and loader, `campaign_scene.py` the campaign screen. `World.scripted` worlds
-  never declare a winner or surrender: the mission decides.
-- `warband/ui/scene.py`, `title.py`, `tutorial.py`, `icons.py`, `style.py`,
-  `score_scene.py`, `profile_scene.py`, `replay_scene.py` — the saga2d scenes
-  (the title carries the player's card; `LeaveScene` in `scene.py` is the
-  confirmation every way out of an undecided rated match goes through;
-  `ReplayScene` plays a recording back). `multiplayer.py` contains LAN/online
-  scenes; `authority.py` contains the authoritative match and its `ONLINE` table
-  registers `warband-v2` with `saga2d.server`.
-  `online_ai.py` is the headless AI client that can sit in a room.
+  the sighting, never a rival's live building. `title.py` holds the title
+  (which carries the player's card) and New game, `multiplayer.py` the
+  LAN/online scenes, `profile_scene.py`, `score_scene.py` and
+  `replay_scene.py` (`ReplayScene` plays a recording back) their screens,
+  `tutorial.py` the first match's objectives, `style.py` and `icons.py` the
+  look of the HUD.
+- `warband/story/` — the campaign. `campaign.py` is its engine: speakers,
+  lines and choices, objectives and triggers, `Run` (a mission in play, saved
+  beside the world), `Progress`/`ProgressStore` (the small cross-version
+  progress file); the rules for keeping it playable across versions are in
+  `docs/warband-campaign.md`. `missions.py` is the content (The Thornwood
+  War, six missions), `dialog.py` the dialogue overlay, `mission_scene.py` a
+  mission as a match with its result and loader, `campaign_scene.py` the
+  campaign screen. `World.scripted` worlds never declare a winner or
+  surrender: the mission decides.
 - `packaging/package_check.py` — the diagnostics the frozen app runs.
   `packaging/icon.png` is the picture the builds carry (the engine shapes it
   per platform); `icon-schematic.png` is the composition `tools/make_icon.py`
@@ -126,6 +151,14 @@ real breakdown.
   rig and its timing, what cinematic motion still needs), the play-together and Windows guides, and
   `docs/hive/` plans for the hive orchestrator (`iteration-plan.toml` is the
   hive's working file at the root).
+
+New code goes in the lowest folder whose imports it needs: a rule, or
+anything the server must run, in `sim`; a computer player's decision in
+`brains`; what a player keeps between matches in `records`; a tool's engine
+that plays many matches in `league`; the server's game in `online`; images
+in `art` and sounds in `audio`; scenes and the HUD in `ui`; the campaign in
+`story`. A new folder, or a new row in `test_layers.py`'s table, is a design
+decision of its own.
 
 ## Rules
 
