@@ -30,6 +30,8 @@ uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a
 uv run python tools/arena.py ladder --agents hard,pro --seeds 40   # rate agents against each other, in parallel
 uv run python tools/arena.py report --seeds 24                     # 1v1, free-for-all and jittered-balance ladders
 uv run python tools/tune.py --rounds 12 --games 48                 # hill-climb a ProProfile's numbers
+uv run python tools/evolve.py run --race orc --out DIR             # breed a brain for a race on the ladder; macro, best, trial, export: docs/ai-ladder.md
+uv run python tools/battle_bench.py --left marksmanship            # set-piece battles: what a unit behaviour is worth
 uv run python tools/sim_fingerprint.py --check tools/sim_fingerprint.txt   # the simulation is bit-for-bit unchanged
 uv run python tools/music.py render DIR          # WAV, spectrogram and stats per track
 uv run python tools/pieces.py refresh            # regenerate the impact, death and wreckage pieces with Stable Audio 3 (needs STABLE_AUDIO_MLX; see docs/warband-pieces.md)
@@ -60,7 +62,9 @@ the compiled simulation attaches after they load.
   ground they were fired at (`docs/unit-motion.md` part 4). `rules.py` holds
   the tables, `races.py` the four races' names, numbers and arts, `path.py`
   bounded A*, `mapgen.py` the five map layouts, their symmetry and audit,
-  `worker_ai.py`/`worker_knowledge.py` the automatic gatherers,
+  `worker_ai.py`/`worker_knowledge.py` the automatic gatherers (placed when
+  idle, and the split looked at again every five seconds: `Harvest.placed`
+  marks the policy's own jobs, an ordered harvest stays its player's),
   `settlement.py` building plans. `_native.c` holds C twins of a few loops of
   the compiled simulation (`docs/fast-simulation.md`).
 - `warband/brains/` — the computer players. `ai.py` holds a Brain per player
@@ -69,12 +73,17 @@ the compiled simulation attaches after they load.
   Brain, and Master draws one of three postures (`PRO_VANGUARD`,
   `PRO_WARDEN`, the tower rush `PRO_RUSH`) from the map seed and the player's
   slot — and `DIFFICULTY_ELO`, the measured ratings the New game screen
-  shows; `pro_ai.py` the stronger `ProBrain` driven by a `ProProfile` of knobs.
+  shows; `pro_ai.py` the stronger `ProBrain` driven by a `ProProfile` of knobs,
+  and `RaceBrain`, which plays a posture of its race's own: Grandmaster, from
+  `bred.py`, the table `tools/evolve.py export` writes (bred again, never
+  edited by hand).
 - `warband/league/` — what plays many matches to measure the game.
   `arena.py` is the ladder that rates brains (1v1, free-for-all placements,
   jittered rulebooks, Bradley-Terry ratings on the Elo scale); `balance.py`
   reads the balance league, `archetypes.py` holds its postures and
-  `telemetry.py` its tallies; `fastsim.py` compiles `sim` and `brains` with
+  `telemetry.py` its tallies; `evolve.py` is the genetic search that breeds
+  brains (genes grouped by behaviour, judged by ladder matches on fresh seeds;
+  `docs/ai-ladder.md`); `fastsim.py` compiles `sim` and `brains` with
   mypyc for the tools that play many matches.
 - `warband/records/` — what is kept of a player's matches: `profile.py` the
   player's name, results and Glicko-updated rating on the ladder's Elo scale
