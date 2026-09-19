@@ -36,7 +36,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
-| WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
+| WB-014 | Next | in progress | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
@@ -90,6 +90,21 @@ remove the worktree.
 **Done when:** a recorded report supports the displayed difficulty expectations;
 concrete regressions become small fixes with rule tests, fuzz and refreshed
 fingerprints where appropriate. Do not retune from a few observed matches.
+
+**Started 2026-09-19** on branch `balance-check` (worktree `../warband-rush`)
+by the backlog session; the balance session that did the merged work was
+asked about it and is idle. The displayed ratings were re-measured three
+times that day with the 720-game protocol as the brains changed (WB-043,
+WB-037, WB-036: now Easy 867, Hard 1442, Master 1665). What the report adds,
+measured before any change: each setting against `tools/ai_report.py`'s
+scripted human opening on 16 seeds (Easy is to lose to it, Medium to split
+with it, Hard and Master to beat it), the four races' shares on the ladder
+from `tools/race_report.py`, and free-for-all endings from `tools/arena.py
+report` (how many four-player matches are decided, and by whom). The
+`opening_choppers` experiment is ported onto the Vanguard and rated against it
+over 96 games a variant; unless a variant clears 55%, it is dropped with its
+numbers in `docs/ai-ladder.md`, and the `warband-arena` worktree is removed.
+
 
 ## WB-038 — Paint the gold mine
 
