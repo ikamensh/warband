@@ -109,3 +109,25 @@ def test_the_end_of_a_left_match_is_shown_as_such(game, recorded):
     assert isinstance(game.scene, ReplayEndScene) and scene.world.tick == recorded.end["tick"]
     assert any("left the match" in t for t in texts(game))
     assert scene.length == pytest.approx(recorded.end["tick"] * SIM_DT)
+
+
+def test_after_a_recorded_reload_the_hud_reads_the_world_the_playback_goes_on_in(game):
+    """A recording that went on from a save plays on in a world restored from it, and the HUD's purse, supply and
+    clock still read the world before, frozen at the moment of the save."""
+    from warband.records.replay import Replay
+    from warband.sim import mapgen
+    from warband.sim.rules import Difficulty
+
+    world = mapgen.generate(seed=3)
+    replay = Replay.begin(world, seed=3, difficulty=Difficulty.EASY, human=0)
+    for _ in range(40):
+        world.step()
+    replay.reloaded(world)
+    for _ in range(400):
+        world.step()
+    replay.finish(world, "left")
+    game.clear_and_push(ReplayScene(replay, settings={"music": 0, "sfx": 0}))
+    scene = game.scene
+    tick(game, 10.0, 0.25)
+    gold = scene._resource_rows[0][0].children[1]  # the purse's label: the engine offers no lookup of a label by its role
+    assert scene.world.tick > 40 and scene.player.gold != 1000 and gold.text == str(scene.player.gold)

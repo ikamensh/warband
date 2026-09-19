@@ -335,6 +335,25 @@ def test_shift_placed_sites_are_all_built_the_one_short_of_money_as_a_plan(game)
     assert {b.pos for b in world.player_buildings(scene.human, BuildingType.FARM)} >= {first, second}
 
 
+def test_a_selected_site_that_stands_shows_its_card(game) -> None:
+    """A selected site that finished kept the site's card, Cancel alone, until the selection changed: no recruits,
+    and X did nothing."""
+    scene = match(game)
+    world = scene.world
+    peasant = next(p for p in peasants_of(scene) if not p.hidden)
+    world.build(peasant.id, BuildingType.BARRACKS, open_ground(scene, BuildingType.BARRACKS, peasant.pos))
+    for _ in range(150):
+        game.tick(0.1)
+        if peasant.constructing is not None:
+            break
+    site = world.buildings[peasant.constructing]
+    scene.select([site.id])
+    assert [c.label for c in scene.card] == ["Cancel"]
+    site.progress = site.info.build_time - 0.05  # staged: the forty seconds of building
+    game.tick(0.1)
+    assert site.done and "Footman" in [c.label for c in scene.card]
+
+
 def test_a_site_its_builder_cannot_pay_for_says_it_waits_as_a_plan(game) -> None:
     """The builder leaves a site the purse cannot pay for as a plan (a private "deferred" event); the scene never said
     so, and the player saw the builder walk away from bare ground."""

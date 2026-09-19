@@ -466,26 +466,25 @@ class GameScene(Scene):
     # -- HUD ---------------------------------------------------------------------
 
     def _build_hud(self) -> None:
-        world, player = self.world, self.player
-
+        # Every reading goes through self.world when it is drawn: a replay goes on in another world after a reload.
         def supply_text() -> str:
-            used, cap = world.supply(self.human)
+            used, cap = self.world.supply(self.human)
             return f"{used}/{cap}"
 
         # Resources as symbol + number; hovering a symbol names it in the tooltip panel.
         self._resource_rows = [
-            (Row(Icon("gold", size=22), Label(lambda: str(player.gold), text_style="hud", text_color=GOLD), spacing=6),
+            (Row(Icon("gold", size=22), Label(lambda: str(self.player.gold), text_style="hud", text_color=GOLD), spacing=6),
              "Gold — mined by workers; every unit, building and upgrade costs some"),
-            (Row(Icon("lumber", size=22), Label(lambda: str(player.lumber), text_style="hud", text_color=LUMBER), spacing=6),
+            (Row(Icon("lumber", size=22), Label(lambda: str(self.player.lumber), text_style="hud", text_color=LUMBER), spacing=6),
              "Lumber — felled by workers; buildings, upgrades and engines need it"),
             (Row(Icon("supply", size=22), Label(supply_text, text_style="hud"), spacing=6),
              "Supply used / capacity — farms and halls feed the army"),
         ]
         self.ui.add(Panel(anchor=Anchor.TOP_LEFT, margin=12, layout=Layout.HORIZONTAL, spacing=12, style=PANEL_STYLE, blocks_pointer=True, children=[
-            Label(player.name, text_style="title", text_color=rgba(player.color)),
+            Label(self.player.name, text_style="title", text_color=rgba(self.player.color)),
             Label(self.race.name, text_style="sub"),
             *(row for row, _hint in self._resource_rows),
-            Label(lambda: _clock(world.time), text_style="sub"),
+            Label(lambda: _clock(self.world.time), text_style="sub"),
             Label(lambda: "Paused" if self.paused else f"×{self.speed:g}" if self.speed != 1 else "", text_style="hud", text_color=BAD),
             self._idle_button(),
             self._army_button(),
@@ -1780,6 +1779,7 @@ class GameScene(Scene):
                 self.sfx("built")
                 wx, wy = to_world(e.pos)
                 self.effects.add(FloatingText(e.text, (wx, wy - TILE), GOLD, rise=26, duration=1.6))
+                self._refresh_card()  # a selected site that stands trades Cancel for its recruits and research
             elif e.kind == "construction" and mine:
                 self.sfx("build_start")
             elif e.kind == "researched" and mine:
