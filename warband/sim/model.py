@@ -291,6 +291,7 @@ class Player:
     alive: bool = True
     surrendered: bool = False
     last_alert: float = -1000.0
+    last_hit: float = -1000.0  # when a rival's blow last landed on anything of theirs; the alert above sounds at most once a cooldown
     upgrades: set[Upgrade] = field(default_factory=set)
     assembly: Point | None = None
     race: Race = Race.HUMAN
@@ -3219,6 +3220,7 @@ class World:
             return  # a stone on one's own side hurts, but is no attack to answer or to raise the alarm for; nobody answers for a ruin
         if target.player is not None:
             victim = self.players[target.player]
+            victim.last_hit = self.time
             if self.time - victim.last_alert >= UNDER_ATTACK_COOLDOWN:
                 victim.last_alert = self.time
                 self.events.append(Event("under_attack", self._target_point(target), player=target.player, entity=target.id))
@@ -3424,7 +3426,7 @@ class World:
             "width": self.width, "height": self.height, "theme": self.theme.value, "layout": self.layout.value,
             "terrain": ["".join(t.value[0] for t in row) for row in self.terrain],
             "players": [{"id": p.id, "name": p.name, "human": p.human, "race": p.race.value, "gold": p.gold, "lumber": p.lumber, "alive": p.alive,
-                         "surrendered": p.surrendered, "stats": dict(p.stats), "last_alert": p.last_alert,
+                         "surrendered": p.surrendered, "stats": dict(p.stats), "last_alert": p.last_alert, "last_hit": p.last_hit,
                          "upgrades": sorted(u.value for u in p.upgrades),
                          "assembly": list(p.assembly) if p.assembly is not None else None} for p in self.players],
             "regrowth": [[list(tile), when] for tile, when in self.regrowth],
@@ -3451,6 +3453,7 @@ class World:
             p.human = saved["human"]
             p.name = saved.get("name", p.name)
             p.gold, p.lumber, p.alive, p.last_alert = saved["gold"], saved["lumber"], saved["alive"], saved["last_alert"]
+            p.last_hit = saved.get("last_hit", p.last_alert)  # saves from before it: the alert stands in
             p.upgrades = {Upgrade(u) for u in saved["upgrades"]}
             p.assembly = tuple(saved["assembly"]) if saved.get("assembly") is not None else None
             p.surrendered = saved.get("surrendered", False)

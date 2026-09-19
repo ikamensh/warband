@@ -11,7 +11,7 @@ from warband.sim.model import World
 from warband.records.profile import (
     DEVIATION_START, EARLY_EXIT_WEIGHT, RATING_START, MatchResult, Profile, Rating, expected_score, material, rated, standing,
 )
-from warband.sim.rules import UNDER_ATTACK_COOLDOWN, BuildingType, Difficulty, Terrain, UnitType
+from warband.sim.rules import SIM_DT, UNDER_ATTACK_COOLDOWN, BuildingType, Difficulty, Terrain, UnitType
 
 
 def result(run_id: str, outcome: str, difficulty: Difficulty = Difficulty.MEDIUM, *, weight: float = 1.0, seconds: int = 600) -> MatchResult:
@@ -128,7 +128,7 @@ def test_leaving_under_attack_or_behind_counts_in_full():
     assert standing(at_the_gates, 0).under_attack and standing(at_the_gates, 0).weight == 1.0
     struck = battlefield()
     struck.time = 100.0
-    struck.players[0].last_alert = 100.0 - UNDER_ATTACK_COOLDOWN / 2
+    struck.players[0].last_hit = 100.0 - UNDER_ATTACK_COOLDOWN / 2
     assert standing(struck, 0).under_attack and "under attack" in standing(struck, 0).reason
     struck.time += UNDER_ATTACK_COOLDOWN
     assert not standing(struck, 0).under_attack
@@ -141,6 +141,29 @@ def test_leaving_under_attack_or_behind_counts_in_full():
     for _ in range(4):
         ahead.spawn_unit(0, UnitType.KNIGHT, (6.5, 4.5))
     assert not standing(ahead, 0).behind and standing(ahead, 0).weight == EARLY_EXIT_WEIGHT
+
+
+def test_a_player_struck_a_moment_ago_is_under_attack_however_long_the_raid_went_on():
+    """The rule read the last alarm, which sounds at most once in UNDER_ATTACK_COOLDOWN, so it dated the raid from its
+    first blow: struck two seconds ago, under fire for twenty, a player left for a fifth of a loss."""
+    world = battlefield()
+    knight = world.spawn_unit(0, UnitType.KNIGHT, (20.5, 12.5))  # out in the field, far from every building
+    archer = world.spawn_unit(1, UnitType.ARCHER, (20.5, 16.5))
+    world.spawn_unit(0, UnitType.ARCHER, (4.5, 9.5))  # material even besides
+    world.hold([knight.id])
+    world.attack([archer.id], knight.id)
+    while not any(e.kind == "hit" and e.player == 0 for e in world.take_events()):
+        world.step()
+    first = world.time
+    while world.time < first + UNDER_ATTACK_COOLDOWN - 0.6:
+        world.step()
+    world.move([archer.id], (20.5, 25.5))  # the raid breaks off
+    while world.time < first + UNDER_ATTACK_COOLDOWN + 0.5:
+        world.step()
+    assert standing(world, 0).under_attack
+    for _ in range(round(UNDER_ATTACK_COOLDOWN / SIM_DT)):
+        world.step()
+    assert not standing(world, 0).under_attack
 
 
 def test_material_counts_only_what_stands_finished_and_alive():

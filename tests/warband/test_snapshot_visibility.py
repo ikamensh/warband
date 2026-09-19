@@ -117,12 +117,14 @@ def test_the_rivals_purse_research_plans_and_alarms_stay_home_until_the_match_is
     rival.upgrades.add(Upgrade.BLADES_1)
     rival.stats["units_trained"] = 17
     rival.last_alert = (40.5, 30.5)
+    rival.last_hit = 12.5
     rival.assembly = (41.5, 31.5)
     hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0]
     world.plan_building(1, BuildingType.FARM, site_near(world, 1, BuildingType.FARM, (hall.x, hall.y)))
     snapshot = sent(match, 0)['world']
     theirs = snapshot['players'][1]
-    assert (theirs['gold'], theirs['lumber'], theirs['upgrades'], theirs['last_alert'], theirs['assembly']) == (0, 0, [], None, None)
+    assert (theirs['gold'], theirs['lumber'], theirs['upgrades'], theirs['last_alert'], theirs['last_hit'], theirs['assembly']) == (
+        0, 0, [], None, None, None)
     assert not any(theirs['stats'].values()) and theirs['stats'].keys() == rival.stats.keys()
     assert (theirs['name'], theirs['race'], theirs['alive']) == (rival.name, rival.race.value, True)
     assert not [plan for plan in snapshot['settlement']['plans'] if plan['player'] == 1]

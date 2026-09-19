@@ -89,7 +89,8 @@ class WarbandMatch:
             if seat != player:
                 data['explored'][seat], data['worker_knowledge'][seat] = unexplored, unknown
                 if world.winner is None:
-                    record.update(gold=0, lumber=0, upgrades=[], stats=dict.fromkeys(record['stats'], 0), last_alert=None, assembly=None)
+                    record.update(gold=0, lumber=0, upgrades=[], stats=dict.fromkeys(record['stats'], 0), last_alert=None, last_hit=None,
+                                  assembly=None)
         visible, knowledge = world.visible[player], world.worker_knowledge[player]
         data['units'] = [d if unit.player == player else {**d, **STRANGER_UNIT}
                          for unit, d in zip(world.units.values(), data['units'])

@@ -299,8 +299,9 @@ def material(world: World, player: int) -> int:
 
 
 def under_attack(world: World, player: int) -> bool:
-    """A blow landed on *player* within the alert cooldown, or an enemy fighter stands within :data:`GATES` of their buildings."""
-    if world.time - world.players[player].last_alert < UNDER_ATTACK_COOLDOWN:
+    """A rival's blow landed on *player* within the alert cooldown, or an enemy fighter stands within :data:`GATES` of their
+    buildings.  The last blow, not the last alert: that sounds at most once a cooldown, and dated a long raid from its first."""
+    if world.time - world.players[player].last_hit < UNDER_ATTACK_COOLDOWN:
         return True
     for building in world.player_buildings(player):
         for unit in world.units_near(building.center, GATES):
