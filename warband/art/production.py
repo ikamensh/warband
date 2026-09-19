@@ -178,7 +178,8 @@ def production_image(game, target: ProductionTarget, player: int | None, race: R
     return key
 
 
-def _fit(game, key, x, y, size):
+def fit(game, key, x, y, size):
+    """Where *key*'s image goes to stand centred in a square of *size* at (x, y), undistorted: ``(x, y, width, height)``."""
     width, height = game.backend.get_image_size(game.assets.image(key))
     ratio = size / max(width, height)
     width, height = width * ratio, height * ratio
@@ -189,7 +190,7 @@ def draw_production_icon(scene, target: ProductionTarget, player: int | None, ra
                          opacity: float = 1.0) -> None:
     """Draw a target centred in a square, without distorting its portrait."""
     key = production_image(scene.game, target, player, race)
-    scene.draw_image(key, *_fit(scene.game, key, x, y, size), opacity=opacity)
+    scene.draw_image(key, *fit(scene.game, key, x, y, size), opacity=opacity)
 
 
 class ProductionIcon(Component):
@@ -208,7 +209,7 @@ class ProductionIcon(Component):
             enabled = enabled and component.enabled
             component = component.parent
         self._game.backend.draw_image(
-            self._game.assets.image(key), *_fit(self._game, key, x, y, min(width, height)),
+            self._game.assets.image(key), *fit(self._game, key, x, y, min(width, height)),
             opacity=1 if enabled else .38, order=self._order,
         )
 

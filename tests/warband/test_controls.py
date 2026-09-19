@@ -86,6 +86,13 @@ def open_ground(scene: GameScene, kind: BuildingType, near, *, skip=()) -> tuple
     raise AssertionError(f"no room for a {kind.value}")
 
 
+def stand(scene: GameScene, *kinds: BuildingType) -> None:
+    """Finished *kinds* of the player's by the hall, for a test about keys rather than prerequisites: what they open can
+    be ordered at once (WB-054 greys out what is not even on its way)."""
+    for kind in kinds:
+        scene.world.place_building(scene.human, kind, open_ground(scene, kind, hall_of(scene).center))
+
+
 def centre(kind: BuildingType, site) -> tuple[float, float]:
     size = BUILDINGS[kind].size
     return site[0] + size / 2, site[1] + size / 2
@@ -133,6 +140,7 @@ def test_every_card_gives_each_command_a_key_of_its_own(game, controls: str, rac
 def test_a_card_command_answers_to_its_key(game, controls: str) -> None:
     """The key a button shows is the key it answers to: each of the Build catalogue's buildings starts its placement."""
     scene = match(game, controls)
+    stand(scene, BuildingType.BARRACKS, BuildingType.BLACKSMITH)  # every building open
     scene.open_catalogue("build")
     for command in list(scene.card):
         press(game, command.key)
@@ -146,6 +154,7 @@ def test_a_card_command_answers_to_its_key(game, controls: str) -> None:
 
 def test_grid_keys_go_by_the_card_position(game) -> None:
     scene = match(game, "grid")
+    stand(scene, BuildingType.BARRACKS)
     peasant = peasants_of(scene)[0]
     scene.select([peasant.id])
     assert [(c.label, c.hotkey) for c in scene.card] == [("Move", "Q"), ("Stop", "W"), ("Hold", "E"), ("Attack", "A"), ("Patrol", "S"),
@@ -182,6 +191,7 @@ def test_the_tutorial_and_the_help_name_the_keys_of_the_scheme(game) -> None:
 
 def test_modal_nothing_selected_is_the_train_catalogue_and_dot_repeats(game) -> None:
     scene = match(game, "modal")
+    stand(scene, BuildingType.BARRACKS)
     scene.select([])
     assert scene.shown_catalogue == "train" and scene.card[1].label == "Footman"
     press(game, "f")
@@ -359,12 +369,21 @@ def test_a_buildings_key_again_lets_the_planner_pick_the_spot(game) -> None:
     assert math.dist(mine.center, centre(BuildingType.TOWN_HALL, site)) < 8 and math.dist(mine.center, hall.center) > 8
 
 
-def test_a_peasant_asked_for_a_building_without_its_prerequisite_plans_it(game) -> None:
+def test_a_peasant_asked_for_a_building_whose_prerequisite_is_only_coming_plans_it(game) -> None:
+    """A tower needs a barracks: refused while none is coming; once the peasant is sent to build one, the tower placed
+    is a plan that waits for it (the peasant cannot start it)."""
     scene = match(game)
-    scene.select([peasants_of(scene)[0].id])
+    peasant = peasants_of(scene)[0]
+    scene.select([peasant.id])
     press(game, "b")
-    press(game, "t")  # a tower needs a barracks: placed, it waits for one as a plan
-    site = open_ground(scene, BuildingType.TOWER, hall_of(scene).center)
+    press(game, "t")
+    assert scene.placing is None and scene.status == "Requires a Barracks"
+    press(game, "b")
+    barracks = open_ground(scene, BuildingType.BARRACKS, hall_of(scene).center)
+    click(game, scene, centre(BuildingType.BARRACKS, barracks))
+    assert isinstance(peasant.order, Build) and peasant.order.type is BuildingType.BARRACKS
+    press(game, "t")
+    site = open_ground(scene, BuildingType.TOWER, hall_of(scene).center, skip=[barracks])
     click(game, scene, centre(BuildingType.TOWER, site))
     assert [(p.type, p.pos) for p in scene.world.player_plans(scene.human)] == [(BuildingType.TOWER, site)]
     assert scene.status == "Guard Tower planned · it waits for a Barracks"

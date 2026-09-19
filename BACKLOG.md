@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-053**; a new
+section; git history keeps the record. The last ID given is **WB-054**; a new
 item takes the next one and updates this line.
 
 Done and removed 2026-09-18, every one merged into main (whose code is live as
@@ -47,6 +47,33 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
+| WB-054 | Next | in progress (branch `prereqs`) | Grey out what cannot be had yet, show what it needs, and draw the tech tree | Ilya 2026-09-19 |
+
+## WB-054 — What needs what, on the card and in the codex
+
+Asked for on 2026-09-19: units and buildings whose prerequisites the player
+lacks were not greyed out, and nothing showed what needs what. The Build, Train and
+Upgrade catalogues offered every item at full strength from the first second
+(a knight with no stables, a workshop with no blacksmith), and an order for one
+became a plan that waited, for ever when nothing it needed was coming.
+
+**Done when:**
+
+- a catalogue item whose prerequisite the player lacks carries that
+  prerequisite's picture in its corner and names it under the button; while
+  the prerequisite is not even on its way (going up, planned, a builder's next
+  site; an upgrade being researched or planned) the item is greyed out and
+  its click, key and Shift are refused with "Requires a Stables";
+- an item whose prerequisite is on its way stays orderable, reads
+  "after Barracks", and waits for it as a plan, as before;
+- a building's tooltip in the Build catalogue names what it unlocks;
+- the codex has a Tech tree page: the race's buildings as a tree from each
+  prerequisite to what it opens, beside each what it trains and researches,
+  lit by what the player has, every picture naming itself on hover;
+- nothing under `warband/sim` or `warband/online` changes, so the online
+  contract is unchanged and no server rollout is needed;
+- rendered frames looked at, `tools/visual_lint.py` clean on the screens the
+  change touches.
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 

@@ -62,6 +62,16 @@ def place_blueprint(game, scene, kind):
     raise AssertionError("No legal visible blueprint site")
 
 
+def stand(scene, kind):
+    """A finished *kind* of the player's, for a test about something other than prerequisites: what it opens can be
+    ordered at once (WB-054 greys out what is not even on its way)."""
+    hall = scene.world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    sites = sorted(((x, y) for y in range(scene.world.height) for x in range(scene.world.width)), key=lambda p: math.dist(p, hall.center))
+    site = next(site for site in sites if scene.world.can_plan_building(kind, site, scene.human) is None
+                and not scene.world.units_in_rect(site[0] - 1, site[1] - 1, site[0] + BUILDINGS[kind].size + 1, site[1] + BUILDINGS[kind].size + 1))
+    return scene.world.place_building(scene.human, kind, site)
+
+
 def test_settlement_controls_are_available_without_selection(settlement):
     """The unselected opening exposes planning tools and leaves the tutorial clear of the HUD."""
     game, scene = settlement
@@ -72,26 +82,29 @@ def test_settlement_controls_are_available_without_selection(settlement):
 
 
 def test_empty_selection_can_plan_wait_cancel_and_set_assembly(settlement):
-    """Unpaid requests survive missing requirements and can be managed without selecting their producer."""
+    """Unpaid requests survive missing requirements (the money, a prerequisite on its way) and can be managed without
+    selecting their producer."""
     game, scene = settlement
     world, player = scene.world, scene.player
     player.gold = player.lumber = 0
     click(game, "Build")
-    click(game, "Farm")
-    site = place_blueprint(game, scene, BuildingType.FARM)
+    click(game, "Barracks")
+    site = place_blueprint(game, scene, BuildingType.BARRACKS)
+    click(game, "Smith")  # after the barracks
+    place_blueprint(game, scene, BuildingType.BLACKSMITH)
     click(game, "Train")
     click(game, "Footman")
     click(game, "Upgrade")
-    click(game, "Blades I")
+    click(game, "Blades I")  # after the smith
     plans = world.player_plans(scene.human)
-    assert {p.type for p in plans} == {BuildingType.FARM, UnitType.FOOTMAN, Upgrade.BLADES_1}
-    assert next(p for p in plans if p.kind == "building").pos == site
+    assert [p.type for p in plans] == [BuildingType.BARRACKS, BuildingType.BLACKSMITH, UnitType.FOOTMAN, Upgrade.BLADES_1]
+    assert plans[0].pos == site
     assert player.gold == player.lumber == 0 and scene.selection == []
     scene.paused = False
     for _ in range(32):
         game.tick(1 / 30)
     scene.paused = True
-    click(game, "Plans (3)")
+    click(game, "Plans (4)")
     assert isinstance(game.scene, SettlementPlansScene)
     text = "\n".join(item["text"] for item in game.backend.texts)
     assert "Not enough gold" in text and "Requires a Barracks" in text
@@ -99,7 +112,7 @@ def test_empty_selection_can_plan_wait_cancel_and_set_assembly(settlement):
     row = next(r for r in game.scene.ui.walk() if isinstance(r, Row)
                and any(isinstance(label, Label) and label.text == "Sharpened Blades" for label in r.walk()))
     click_button(game, next(b for b in row.walk() if isinstance(b, Button) and b.text == "Cancel"))
-    assert {p.type for p in world.player_plans(scene.human)} == {BuildingType.FARM, UnitType.FOOTMAN}
+    assert {p.type for p in world.player_plans(scene.human)} == {BuildingType.BARRACKS, BuildingType.BLACKSMITH, UnitType.FOOTMAN}
     click(game, "Back")
     click(game, "Assembly")
     target = world.player_units(scene.human)[0].pos
@@ -107,7 +120,7 @@ def test_empty_selection_can_plan_wait_cancel_and_set_assembly(settlement):
     game.backend.inject_click(x, y)
     game.tick(1 / 30)
     assert player.assembly == pytest.approx(target, abs=0.05)
-    click(game, "Plans (2)")
+    click(game, "Plans (3)")
     click(game, "Clear assembly point")
     assert player.assembly is None
 
@@ -145,12 +158,13 @@ def test_plain_letters_plan_without_a_selection(settlement):
     key(game, "t")
     assert scene.catalogue == "train"
     assert "Footman" in [c.label for c in scene.card]
-    key(game, "f")
-    assert len(scene.world.player_plans(scene.human)) == 1
-    key(game, "f", shift=True)
-    assert scene.status == "Requires a Barracks" and len(scene.world.player_plans(scene.human)) == 1
+    for mods in ({}, {"shift": True}):  # no barracks, none coming: neither an order nor endless training
+        key(game, "f", **mods)
+        assert scene.status == "Requires a Barracks" and not scene.world.player_plans(scene.human)
     hall = scene.world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
     camps = [scene.world.place_building(scene.human, BuildingType.BARRACKS, (hall.x + 6, hall.y + dy)) for dy in (0, 4)]
+    key(game, "f")
+    assert len(scene.world.player_plans(scene.human)) == 1
     sounds = len(scene.recent_sounds)
     key(game, "f", shift=True)
     assert [c.auto for c in camps] == [[UnitType.FOOTMAN]] * 2 and scene.status == "Footman endlessly at 2 Barracks"
@@ -177,6 +191,7 @@ def test_selection_commands_win_over_settlement_letters(settlement):
     """A peasant's B opens the Build catalogue for it, where T is the tower; Esc steps back a level at a time; T then
     opens Train; Ctrl+B builds whatever the card shows."""
     game, scene = settlement
+    stand(scene, BuildingType.BARRACKS)
     peasant = next(u for u in scene.world.player_units(scene.human) if u.is_worker)
     scene.select([peasant.id])
     key(game, "b")
@@ -198,6 +213,7 @@ def test_selection_commands_win_over_settlement_letters(settlement):
 def test_settlement_row_advertises_shortcuts_that_bypass_the_command_card(settlement):
     """The global Train hint must work even while the build catalogue owns plain T for Tower."""
     game, scene = settlement
+    stand(scene, BuildingType.BARRACKS)
     key(game, "b")
     key(game, "f")
     assert scene.placing is BuildingType.FARM
@@ -215,6 +231,7 @@ def test_settlement_row_advertises_shortcuts_that_bypass_the_command_card(settle
 def test_the_build_catalogue_stays_while_placing_so_its_letters_switch_the_building(settlement):
     """Placing a worker's farm, the card still shows the catalogue: T switches to the tower; Ctrl+T leaves for Train."""
     game, scene = settlement
+    stand(scene, BuildingType.BARRACKS)
     worker = next(u for u in scene.world.player_units(scene.human) if u.is_worker)
     scene.select([worker.id])
     key(game, "b")
@@ -231,6 +248,7 @@ def test_the_build_catalogue_stays_while_placing_so_its_letters_switch_the_build
 def test_long_plan_list_pages_and_keeps_cancellation_visible(settlement):
     """Large requests stay within the screen and deleting a page's final entry returns to a valid page."""
     game, scene = settlement
+    stand(scene, BuildingType.BARRACKS)
     scene.player.gold = scene.player.lumber = 0
     click(game, "Train")
     for _ in range(6):
@@ -250,8 +268,10 @@ def test_long_plan_list_pages_and_keeps_cancellation_visible(settlement):
 
 
 def test_upgrade_letters_order_the_next_tier(settlement):
-    """U then B orders Blades I, B again Blades II; a third B is answered by the card rather than opening Build."""
+    """U then B orders Blades I, B again Blades II (after Blades I); a third B is answered by the card rather than
+    opening Build."""
     game, scene = settlement
+    stand(scene, BuildingType.BLACKSMITH)
     key(game, "u")
     caps = {c.label: c.hotkey for c in scene.card}
     assert caps["Blades I"] == "B" and caps["Blades II"] == "" and caps["Horses"] == "H"
@@ -268,6 +288,7 @@ def test_cards_count_what_is_already_ordered(settlement):
     """Two F presses caption the portrait 'Footman ×2'; a peasant plan keeps counting once the hall is training it."""
     game, scene = settlement
     world, player = scene.world, scene.player
+    stand(scene, BuildingType.BARRACKS)
     player.gold = player.lumber = 0
     key(game, "t")
     key(game, "f")

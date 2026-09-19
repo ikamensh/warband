@@ -24,7 +24,7 @@ from warband.brains.ai import DIFFICULTY_ELO, auto_site, make_brain
 from warband.art.effects import Flare, Spray, Stain, UnitDeath, death_outcome
 from warband.ui.icons import Icon, draw_icon, loop_parts
 from warband.sim.model import Build, Building, Entity, Event, Pos, RuleError, Unit, World
-from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon
+from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
 from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, SIM_DT, UNITS, UPGRADES, ArmorClass, AttackType, BuildingType, Difficulty, MapTheme, Race,
                                UnitType, Upgrade)
@@ -38,6 +38,8 @@ from warband.ui.controls import CARD_COLS, CHORDS, GRID_KEYS, SCHEMES, Scheme, l
 from warband.ui.style import (
     ACTION_BUTTON, BAD, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE, RESULTS_STYLE,
 )
+from warband.ui import tech
+from warband.ui.tech import Need, Prerequisite
 from warband.art.textures import TILE
 from warband.ui.tutorial import OBJECTIVES, Tutorial
 from warband.ui.view import SHOT_LOOKS, SHOT_SIZE, MapView, Overlay, Sighting, check_memory, rgba, to_tiles, to_world
@@ -121,6 +123,8 @@ class Command:
     count: Callable[[], int] = field(default=lambda: 0)  # how many are already ordered: shown after the name
     alt: Callable[[], None] | None = None  # what Shift with its key or click does (a recruit: endless training, or no longer)
     endless: Callable[[], bool] | None = None  # a recruit: whether it is being trained endlessly (right-click toggles)
+    needs: Callable[[], Need | None] | None = None  # a catalogue item: the prerequisite it still lacks (warband.ui.tech)
+    need: Need | None = None  # that, as of this frame: the card draws it
     hotkey: str = ""  # as its keycap shows it
 
     @property
@@ -135,8 +139,9 @@ class CardButton(ProductionButton):
 
     def __init__(self, command: Command, player: int, race: Race, **kwargs: Any) -> None:
         super().__init__(command.target, player, race, hotkey=command.hotkey or None, on_click=command.action, style=command.style, **kwargs)
-        self.command = command
+        self.command, self.player, self.race = command, player, race
         self.add(_EndlessMark(self, anchor=Anchor.TOP_LEFT, margin=4))
+        self.add(_NeedBadge(self, anchor=Anchor.BOTTOM_LEFT, margin=5))
 
     def handle_event(self, event: InputEvent) -> bool:
         """The alternative goes ahead of the enabled check: a recruit the purse cannot pay for yet can still be trained
@@ -167,6 +172,51 @@ class _EndlessMark(Component):
         backend.draw_rect(x - 2, y - 2, w + 4, h + 4, (22, 20, 24, 230), order=self._order)
         for points, ink in loop_parts():
             backend.draw_polygon([(x + u * w, y + v * h) for u, v in points], ink, order=self._order)
+
+
+class _NeedBadge(Component):
+    """In a catalogue item's corner while it lacks a prerequisite: that building's portrait (or that upgrade's emblem),
+    at full strength on the greyed button, ringed red while nothing of it is coming and gold while it is."""
+
+    SIZE = 24
+
+    def __init__(self, button: CardButton, **kwargs: Any) -> None:
+        super().__init__(width=self.SIZE, height=self.SIZE, **kwargs)
+        self.button = button
+
+    def on_draw(self) -> None:
+        need = self.button.command.need
+        if self._game is None or need is None:
+            return
+        game, (x, y, w, h) = self._game, self.bounds
+        game.backend.draw_rect(x - 2, y - 2, w + 4, h + 4, GOLD if need.coming else BAD, order=self._order)
+        game.backend.draw_rect(x - 1, y - 1, w + 2, h + 2, (22, 20, 24, 255), order=self._order)
+        key = production_image(game, need.target, self.button.player, self.button.race)
+        game.backend.draw_image(game.assets.image(key), *fit(game, key, x, y, w), order=self._order)
+
+
+class _PriceLine(Label):
+    """Under a catalogue item: its price, or what it lacks first — "needs Stables" in red while nothing of the kind is
+    coming (the item is greyed out), "after Barracks" in gold while it is (ordered now, the item waits for it).  It
+    reads the button's command, which the card replaces whenever it is built again."""
+
+    NEEDS = Style(text_color=BAD)
+    AFTER = Style(text_color=GOLD)
+
+    def __init__(self, button: CardButton, name: Callable[[Prerequisite], str], **kwargs: Any) -> None:
+        self.button, self.name = button, name
+        super().__init__(self._text, text_style="caption", **kwargs)
+
+    def _text(self) -> str:
+        command = self.button.command
+        if command.need is None:
+            return command.cost
+        return f"{'after' if command.need.coming else 'needs'} {self.name(command.need.target)}"
+
+    def on_draw(self) -> None:
+        need = self.button.command.need
+        self.style = None if need is None else self.AFTER if need.coming else self.NEEDS
+        super().on_draw()
 
 
 class _Slot(Component):
@@ -846,6 +896,8 @@ class GameScene(Scene):
     def choose_building(self, building_type: BuildingType, *, keep: bool = False) -> None:
         """A building from the Build catalogue: its site follows the pointer until a click places it.  Chosen again
         while it is being placed, the planner picks the spot (*keep*, from Shift: and the next one stays ready)."""
+        if self._refuse_lacking(building_type):
+            return
         if self.placing is building_type:
             self.auto_place(building_type, keep=keep)
             return
@@ -1079,7 +1131,7 @@ class GameScene(Scene):
         self.game.push(SettlementPlansScene(self))
 
     def order_production(self, kind: str, item: UnitType | Upgrade) -> None:
-        if not self.attempt("order_unit" if kind == "train" else "order_upgrade", self.human, item):
+        if self._refuse_lacking(item) or not self.attempt("order_unit" if kind == "train" else "order_upgrade", self.human, item):
             return
         info = self.race.units[item] if kind == "train" else UPGRADES[item]
         self.say(f"{info.name} ordered · pay when work starts · manage in Plans")
@@ -1141,6 +1193,37 @@ class GameScene(Scene):
             entries.append(QueueEntry(plan.type, f"{info.name} · {plan.status}", "waiting", 0.0, goto, cancel))
         return entries
 
+    def _need(self, target: ProductionTarget) -> Need | None:
+        return tech.need(self.world, self.human, target)
+
+    def _requires(self, need: Need) -> str:
+        """The refusal for an item whose prerequisite is not even on its way: "Requires a Stables"."""
+        if isinstance(need.target, BuildingType):
+            name = self.building_name(need.target)
+            return f"Requires {'an' if name[0] in 'AEIOU' else 'a'} {name}"
+        return f"Requires {UPGRADES[need.target].name}"
+
+    def card_name(self, item: Prerequisite) -> str:
+        """A building's or an upgrade's name as short as a card button's caption needs it."""
+        return self.race.cards[item] if isinstance(item, BuildingType) else UPGRADE_NAMES[item]
+
+    def _refuse_lacking(self, target: ProductionTarget) -> bool:
+        """Warn and say so when *target* lacks a prerequisite that is not even on its way: Shift and the Modal scheme's
+        repeat reach the orders without the card's block, and a plan for it would wait for nothing."""
+        need = self._need(target)
+        if need is None or need.coming:
+            return False
+        self.warn(self._requires(need))
+        return True
+
+    def _refusal(self, command: Command) -> str | None:
+        """Why *command* cannot be given now: a prerequisite that is not even on its way, else its own block.  Brings the
+        card's record of what the command needs up to date."""
+        command.need = command.needs() if command.needs is not None else None
+        if command.need is not None and not command.need.coming:
+            return self._requires(command.need)
+        return command.blocked()
+
     def _upgrade_planned(self, upgrade: Upgrade) -> str | None:
         if upgrade in self.player.upgrades:
             return "Already researched"
@@ -1176,14 +1259,12 @@ class GameScene(Scene):
         if kind == "build":
             for slot, building_type in enumerate(BUILD_ORDER):
                 info = race.buildings[building_type]
-                requires = info.requires
-                waits = (f" · waits for a {self.building_name(requires)}"
-                         if requires is not None and not self.world.player_buildings(self.human, requires, done=True) else "")
                 commands.append(Command(race.cards[building_type], info.hotkey, lambda bt=building_type: self.choose_building(bt), slot,
-                                        tooltip=f"{info.name} — {info.cost} · {info.summary}{waits} · its key again: the planner picks the spot",
+                                        tooltip=f"{info.name} — {info.cost} · {info.summary} · its key again: the planner picks the spot",
                                         cost=f"{info.cost.gold} / {info.cost.lumber}", target=building_type,
                                         style=ACTION_BUTTON if self.placing is building_type else CARD_BUTTON,
-                                        count=lambda bt=building_type: self._ordered(bt), alt=lambda bt=building_type: self.choose_building(bt, keep=True)))
+                                        count=lambda bt=building_type: self._ordered(bt), alt=lambda bt=building_type: self.choose_building(bt, keep=True),
+                                        needs=lambda bt=building_type: self._need(bt)))
         elif kind == "train":
             for slot, (unit_type, info) in enumerate(race.units.items()):
                 commands.append(Command(info.name, info.hotkey, lambda ut=unit_type: self.order_production("train", ut), slot,
@@ -1191,7 +1272,7 @@ class GameScene(Scene):
                                                 f"{self.building_name(info.trained_at)}",
                                         cost=f"{info.cost.gold} / {info.cost.lumber}", target=unit_type, count=lambda ut=unit_type: self._ordered(ut),
                                         alt=lambda ut=unit_type: self.toggle_endless_everywhere(ut),
-                                        endless=lambda ut=unit_type: any(ut in b.auto for b in self._producers(ut))))
+                                        endless=lambda ut=unit_type: any(ut in b.auto for b in self._producers(ut)), needs=lambda ut=unit_type: self._need(ut)))
         else:
             letters, arts = self._upgrade_keys(), iter(race.arts)
             for row, chain in enumerate(UPGRADE_ROWS):
@@ -1201,7 +1282,7 @@ class GameScene(Scene):
                     commands.append(Command(UPGRADE_NAMES[upgrade], letters.get(upgrade, ""), lambda up=upgrade: self.order_production("upgrade", up),
                                             row * CARD_COLS + column, tooltip=f"{info.name} — {info.cost} · {info.summary}",
                                             cost=f"{info.cost.gold} / {info.cost.lumber}", blocked=lambda up=upgrade: self._upgrade_planned(up),
-                                            target=upgrade))
+                                            target=upgrade, needs=lambda up=upgrade: self._need(up)))
         return commands
 
     # -- Command card ----------------------------------------------------------------
@@ -1328,7 +1409,7 @@ class GameScene(Scene):
                     button = Button(command.label, hotkey=command.hotkey or None, on_click=command.action,
                                     style=command.style, width=CARD_WIDTH, height=CARD_ICON if portraits else CARD_PLAIN)
                 if command.cost:
-                    captions.append(Label(command.cost, text_style="caption", width=CARD_WIDTH, align="center"))
+                    captions.append(_PriceLine(button, self.card_name, width=CARD_WIDTH, align="center"))
                 self._card_buttons.append(button)
                 row.add(Column(button, *captions, spacing=3) if captions else button)
             self.card_panel.add(row)
@@ -1337,7 +1418,7 @@ class GameScene(Scene):
         mx, my = self.mouse
         self.tooltip = next((hint for row, hint in self._resource_rows if row.hit_test(mx, my)), "")
         for command, button in zip(self._card, self._card_buttons):
-            blocked = command.blocked()
+            blocked = self._refusal(command)
             button.enabled = blocked is None
             x, y, w, h = button.bounds
             if x <= mx < x + w and y <= my < y + h:  # a disabled button still explains itself
@@ -1352,7 +1433,7 @@ class GameScene(Scene):
         if shift and command.alt is not None:
             command.alt()
             return True
-        blocked = command.blocked()
+        blocked = self._refusal(command)
         if blocked is None:
             command.action()
         else:

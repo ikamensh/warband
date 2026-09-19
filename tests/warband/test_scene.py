@@ -181,7 +181,7 @@ def test_build_menu_places_a_farm_where_the_mouse_is(play) -> None:
     assert any(b.type is BuildingType.FARM for b in world.player_buildings(scene.human))
 
 
-def test_every_building_is_on_the_build_menu_with_its_hotkey_and_a_locked_one_is_planned_to_wait(play) -> None:
+def test_every_building_is_on_the_build_menu_with_its_hotkey_and_a_locked_one_waits_for_its_prerequisite(play) -> None:
     # The card once offered only the four opening buildings, so a player could never raise the tech chain.
     game, scene = play
     scene.world.reveal_all(scene.human)
@@ -189,11 +189,16 @@ def test_every_building_is_on_the_build_menu_with_its_hotkey_and_a_locked_one_is
     press(game, "b")
     hotkeys = {c.label: c.hotkey for c in scene.card}
     assert hotkeys == {RACES[Race.HUMAN].cards[bt]: BUILDINGS[bt].hotkey.upper() for bt in BuildingType if bt is not BuildingType.GOLD_MINE}
-    press(game, "k")  # a blacksmith needs a barracks first: placed, it is planned and waits for one
+    press(game, "k")  # a blacksmith needs a barracks, and none is coming
+    assert scene.placing is None and scene.status == "Requires a Barracks"
+    site = (hall_of(scene).x + 5, hall_of(scene).y + 4)  # the blacksmith's
+    barracks = next((x, y) for y in range(scene.world.height) for x in range(scene.world.width)
+                    if scene.world.can_plan_building(BuildingType.BARRACKS, (x, y), scene.human) is None and max(abs(x - site[0]), abs(y - site[1])) > 4)
+    assert scene.attempt("plan_building", scene.human, BuildingType.BARRACKS, barracks)
+    press(game, "k")  # the barracks is planned: placed, the blacksmith is planned too and waits for it
     assert scene.placing is BuildingType.BLACKSMITH
-    site = (hall_of(scene).x + 5, hall_of(scene).y + 4)
     click(game, scene, (site[0] + 1.5, site[1] + 1.5))
-    assert [(p.type, p.pos) for p in scene.world.player_plans(scene.human)] == [(BuildingType.BLACKSMITH, site)]
+    assert [(p.type, p.pos) for p in scene.world.player_plans(scene.human)][1:] == [(BuildingType.BLACKSMITH, site)]
     assert scene.status == "Blacksmith planned · it waits for a Barracks"
     press(game, "b")
     press(game, "m")  # a lumber mill only needs the town hall

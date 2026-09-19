@@ -37,6 +37,10 @@ DEFEND_RADIUS: Final = 9.0
 TOWER_STRIKERS: Final = 8  # peasants sent at an enemy tower frame going up on our ground (WB-044)
 BUILD_MIN_DISTANCE: Final = 2
 BUILD_MAX_DISTANCE: Final = 11
+#: A building of each size that needs no other: the ground a site needs depends on its size alone, so the planner sites
+#: a building whose prerequisite has not stood up yet as this one would be sited (:func:`auto_site`).
+UNLOCKED_OF_SIZE: Final[dict[int, BuildingType]] = {info.size: kind for kind, info in BUILDINGS.items()
+                                                   if info.requires is None and kind is not BuildingType.GOLD_MINE}
 #: Shared upgrades first, then whatever arts the brain's race has (see :mod:`warband.sim.races`).
 RESEARCH_ORDER: Final = (Upgrade.BLADES_1, Upgrade.ARMOR_1, Upgrade.ARROWS_1, Upgrade.HORSES, Upgrade.PLUNDER, Upgrade.DEEP_MINING, Upgrade.LONGBOWS,
                   Upgrade.BLADES_2, Upgrade.ARMOR_2, Upgrade.ARROWS_2, Upgrade.SIEGE, Upgrade.BLESSING, Upgrade.BLOODLUST, Upgrade.REGROWTH,
@@ -152,7 +156,9 @@ def auto_site(world: World, building_type: BuildingType, player: int, near: Poin
               planned: Sequence[tuple[BuildingType, Pos]] = ()) -> Pos | None:
     """Where the planner puts *building_type* when a player lets it choose, looking from *near* (their camera): a hall
     by the nearest gold mine they know that no hall of theirs, standing or planned in *planned*, has claimed; anything
-    else about their hall nearest *near*, the way the brains place their own (:func:`site_search`), clear of *planned*."""
+    else about their hall nearest *near*, the way the brains place their own (:func:`site_search`), clear of *planned*.
+    A building whose prerequisite does not stand yet is sited as :data:`UNLOCKED_OF_SIZE` would be, for a plan that
+    waits for the prerequisite: the world's own search offers no spot at all before it stands."""
     halls = [b.center for b in world.player_buildings(player, BuildingType.TOWN_HALL)]
     halls += [(pos[0] + BUILDINGS[kind].size / 2, pos[1] + BUILDINGS[kind].size / 2) for kind, pos in planned if kind is BuildingType.TOWN_HALL]
     own = [b.center for b in world.player_buildings(player)]
@@ -164,7 +170,8 @@ def auto_site(world: World, building_type: BuildingType, player: int, near: Poin
             return None
         anchor = min(free, key=lambda point: dist(point, anchor))
     taken = [(pos, BUILDINGS[kind].size) for kind, pos in planned]
-    return site_search(world, building_type, player, anchor, rng, BUILD_MIN_DISTANCE, BUILD_MAX_DISTANCE, taken)
+    sited = building_type if world.placement_blockers(building_type, player) is not None else UNLOCKED_OF_SIZE[BUILDINGS[building_type].size]
+    return site_search(world, sited, player, anchor, rng, BUILD_MIN_DISTANCE, BUILD_MAX_DISTANCE, taken)
 
 
 def release_arrived(world: World, player: int) -> None:
