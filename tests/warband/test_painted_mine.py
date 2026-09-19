@@ -3,7 +3,6 @@ wears its active look only while the player sees it; out of sight it shows the l
 
 import pytest
 from PIL import Image
-from sagaforge import restyle
 
 from saga2d import Game
 from warband.art import textures
@@ -56,24 +55,18 @@ def test_a_mine_is_active_only_while_worked() -> None:
     assert building_look(mine, {mine.id + 1}) == "intact"
 
 
-@pytest.fixture
-def lit(tmp_path, monkeypatch):
-    """The installed sheets, with a worked look beside the mine's: its intact frames brightened, so the two tell apart."""
-    for sheet in textures.RESTYLED.iterdir():
-        (tmp_path / sheet.name).symlink_to(sheet)
-    sheet, frames = textures.restyled_mines()
-    keys = [(textures.mine_key(variant, "active"), {"variant": variant}) for variant in textures.PAINTED_MINES]
-    active = restyle.Sheet.layout(keys, cols=sheet.cols, cell=sheet.cell, origin=sheet.origin, scale=sheet.scale)
-    brighter = {key: Image.merge("RGBA", [band.point(lambda c: min(255, c + 60)) for band in frames[textures.mine_key(tags["variant"])].split()[:3]]
-                                 + [frames[textures.mine_key(tags["variant"])].split()[3]]) for key, tags in keys}
-    restyle.save_frames(restyle.Cut(brighter, restyle.Registration(1.0, 0.0, 0.0), ()), active, tmp_path / "mine.active")
-    monkeypatch.setattr(textures, "RESTYLED", tmp_path)
-    textures.restyled_mines.cache_clear()
-    yield
-    textures.restyled_mines.cache_clear()
+def test_the_worked_look_is_painted_over_the_intact_one() -> None:
+    """Both looks are installed, in one layout: a worked mine stands exactly where the idle one does, and differs."""
+    (intact, idle), (active, worked) = textures.restyled_mines("intact"), textures.restyled_mines("active")
+    assert (active.cols, active.cell, active.origin, active.scale, active.drop) == (intact.cols, intact.cell, intact.origin, intact.scale, intact.drop)
+    for variant in textures.PAINTED_MINES:
+        a, b = idle[textures.mine_key(variant)], worked[textures.mine_key(variant, "active")]
+        assert a.size == b.size and a != b
+        box, lit = a.split()[3].getbbox(), b.split()[3].getbbox()
+        assert all(abs(p - q) <= 4 for p, q in zip(box, lit)), f"mine {variant} moved when worked: {box} -> {lit}"
 
 
-def test_a_worked_mine_is_lit_while_seen_and_out_of_sight_keeps_the_look_last_seen(tmp_path, lit) -> None:
+def test_a_worked_mine_is_lit_while_seen_and_out_of_sight_keeps_the_look_last_seen(tmp_path) -> None:
     game = Game("Warband mine", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     try:
         world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2)
