@@ -98,7 +98,7 @@ _HUMAN_UNITS: Final = {
     UnitType.SCOUT: UnitTweak("Scout", "Fast rider who sees far; raids workers", build_time=0.85),
     UnitType.KNIGHT: UnitTweak("Knight", "Fast, heavily armoured shock cavalry", build_time=0.85),
     UnitType.CATAPULT: UnitTweak("Catapult", "Siege engine: splash, ×1.5 vs buildings", build_time=0.85),
-    UnitType.CLERIC: UnitTweak("Cleric", "Heals wounded allies nearby; cannot fight", build_time=0.85),
+    UnitType.CLERIC: UnitTweak("Cleric", "Heals wounded allies; smites weakly when none need healing", build_time=0.85),
 }
 _HUMAN_BUILDINGS: Final = {
     BuildingType.TOWN_HALL: BuildingTweak("Town Hall", "Hall", "Trains peasants; takes gold and lumber"),
@@ -120,7 +120,7 @@ _ORC_UNITS: Final = {
     UnitType.SCOUT: UnitTweak("Wolf Rider", "Fast wolf rider; hunts peons and throwers", hp=1.15, build_time=1.0),
     UnitType.KNIGHT: UnitTweak("Ogre", "Two-headed brute; thin armour, all frenzy", hp=1.2, damage=1.1, armor=-1, build_time=1.0),
     UnitType.CATAPULT: UnitTweak("Catapult", "Skulled siege engine: splash, ×1.5 vs walls", hp=1.15, build_time=1.0),
-    UnitType.CLERIC: UnitTweak("Shaman", "Mends wounded allies nearby; cannot fight", hp=1.15, build_time=1.0),
+    UnitType.CLERIC: UnitTweak("Shaman", "Mends wounded allies; hexes weakly when none need mending", hp=1.15, build_time=1.0),
 }
 _ORC_BUILDINGS: Final = {
     BuildingType.TOWN_HALL: BuildingTweak("Great Hall", "Hall", "Trains peons; takes gold and lumber"),
@@ -141,7 +141,7 @@ _ELF_UNITS: Final = {
     UnitType.SCOUT: UnitTweak("Outrider", "Fleet deer rider who sees farthest of all", hp=0.95, speed=0.15, sight=2),
     UnitType.KNIGHT: UnitTweak("Stag Knight", "Antlered shock cavalry, swift but light", hp=0.95, speed=0.15, sight=2),
     UnitType.CATAPULT: UnitTweak("Ballista", "Living-wood siege engine: splash, ×1.5", hp=0.95, speed=0.15, sight=2),
-    UnitType.CLERIC: UnitTweak("Druid", "Heals wounded allies nearby; cannot fight", hp=0.95, speed=0.15, sight=2),
+    UnitType.CLERIC: UnitTweak("Druid", "Tends wounded allies; stings weakly when none need tending", hp=0.95, speed=0.15, sight=2),
 }
 _ELF_BUILDINGS: Final = {
     BuildingType.TOWN_HALL: BuildingTweak("Moon Hall", "Hall", "Trains gatherers; takes gold and lumber"),
@@ -162,7 +162,7 @@ _DWARF_UNITS: Final = {
     UnitType.SCOUT: UnitTweak("Ram Rider", "Fast ram rider; raids miners and crossbows", hp=1.1, speed=-0.15),
     UnitType.KNIGHT: UnitTweak("Bear Rider", "Armoured shock cavalry on a war bear", hp=1.1, armor=1, speed=-0.15),
     UnitType.CATAPULT: UnitTweak("Mortar", "Iron mortar: wide splash, ×1.5 vs buildings", hp=1.1, speed=-0.15),
-    UnitType.CLERIC: UnitTweak("Runepriest", "Heals wounded allies nearby; cannot fight", hp=1.1, speed=-0.15),
+    UnitType.CLERIC: UnitTweak("Runepriest", "Heals wounded allies; strikes weakly when none need healing", hp=1.1, speed=-0.15),
 }
 _DWARF_BUILDINGS: Final = {
     BuildingType.TOWN_HALL: BuildingTweak("Deep Hold", "Hold", "Trains miners; takes gold and lumber", hp=1.25, armor=2),

@@ -292,6 +292,18 @@ def menu_build_hover(game: Game) -> None:
 
 
 @screen
+def menu_train_hover(game: Game) -> None:
+    """The longest tooltip the card has: the dwarves' healer, its cost in two resources and what it does."""
+    scene = town(game, race=Race.DWARF)
+    scene.toggle_catalogue("train")
+    ticks(game)
+    button = next(b for command, b in zip(scene.card, scene.card_buttons) if command.target is UnitType.CLERIC)
+    x, y, w, h = button.bounds
+    move_mouse(game, x + w / 2, y + h / 2)
+    ticks(game)
+
+
+@screen
 def plans(game: Game) -> None:
     scene = town(game)
     scene.place(BuildingType.FARM, (12.5, 11.5))

@@ -2,6 +2,7 @@
 
 import json
 import random
+import re
 from collections.abc import Iterable
 
 import pytest
@@ -59,6 +60,20 @@ def test_every_race_fields_every_role_from_the_same_buildings_with_the_same_hotk
         for building_type, card in info.cards.items():
             assert len(card) <= 8, (race, building_type, card)
     assert {UPGRADES[u].race for u in Upgrade} == {None, *Race}
+
+
+#: The ways of saying a unit has no blow that the game has used ("cannot fight") or might.
+HARMLESS = re.compile(r"cannot fight|can ?not fight|can't fight|does not fight|never fights|no attack|unarmed|harmless|defen[cs]eless", re.IGNORECASE)
+
+
+def test_no_unit_the_rules_give_a_blow_is_described_as_unable_to_fight() -> None:
+    """A race's summary of a unit is what the train button and the codex tell the player.  WB-051 gave the cleric a
+    weak blow, and every race's healer went on reading "cannot fight".  The tables walked are the rules' own, so
+    whatever gains a blow is checked the day it does."""
+    told = [(race.value, unit_type, unit) for race, info in RACES.items() for unit_type, unit in info.units.items()]
+    told += [("base", unit_type, unit) for unit_type, unit in UNITS.items()]
+    for race, unit_type, unit in told:
+        assert not (unit.damage and HARMLESS.search(unit.summary)), (race, unit_type, unit.summary)
 
 
 def test_names_and_numbers_differ_by_race_and_a_unit_reports_its_race() -> None:
