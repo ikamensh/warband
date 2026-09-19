@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-045**; a new
+section; git history keeps the record. The last ID given is **WB-046**; a new
 item takes the next one and updates this line.
 
 Done and removed 2026-09-18, every one merged into main (whose code is live as
@@ -43,6 +43,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-042 | Later | proposed | Tests read through public accessors; try property tests for the model and paths | WB-040 |
 | WB-044 | Next | blocked | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
+| WB-046 | Now | in progress (`fair-seeds`) | A seed that makes no fair map crashes the game where the game chose it | WB-042 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -281,3 +282,26 @@ different brain. **Blocked** on Ilya: whether Hard is to meet the rush bar
 at all (and with which handicaps), and whether the defence against a push
 that arrives with a tower is worth an AI project of its own for Master's
 last game or two.
+
+## WB-046 — A seed the game chose that makes no fair map
+
+Found by WB-042's replay property: `mapgen.generate` refuses a few seeds in a
+thousand with `NoFairMap` at some settings. Of the first 300 seeds, Small with
+two seats fails on 67 (Forest, "roads too straight") and Medium with three on
+33, 53, 109 and 213 (Crossings); none of 20,000 fails at the title backdrop's
+Medium with two. The local game does not catch it. Pressing R on the New game
+screen onto such a seed ends in a traceback, and so does changing the size,
+seats, race or layout onto one, New game after a match (the next seed), and
+hosting a LAN match. An online room is refused with advice to choose a larger
+map, where the next seed would do.
+
+**Done when:** wherever the game chooses the seed, it plays the first seed
+from its choice that makes a fair map of the settings. That covers the title's
+backdrop, New game's draw and reroll, New game after a match, a LAN or online
+room from the multiplayer menu, and the command line's lobby without
+`--seed`. The New game screen shows that seed and previews the map Start
+plays. A seed the player gives (`--seed`) still fails with the clear
+`NoFairMap`. Each path has a test from a seed known to be unfair; the backdrop
+goes through the same function and has no test of its own, since no unfair
+seed is known there. The authoritative contract is unchanged, so no server
+rollout.
