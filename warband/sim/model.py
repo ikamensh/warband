@@ -144,6 +144,7 @@ EASE_STEP: Final = 0.4  # tiles of the step, give or take EASE_STEP_VARIANCE
 EASE_STEP_VARIANCE: Final = 0.3
 EASE_JITTER: Final = 0.7  # radians either side of straight away from the crowd the step may veer
 EASE_GAIN: Final = 0.1  # tiles more room the spot must offer than where the unit stands, so nobody steps into a neighbour
+AUTO_EVERY: Final = round(1 / SIM_DT)  # ticks between an idle building's looks at its endless recruits: the settlement's second
 
 
 def recorded(method):
@@ -227,6 +228,7 @@ class Build:
     type: BuildingType
     pos: Pos
     building: int | None = None  # set once construction has started
+    plan_if_short: bool = False  # a site the builder cannot pay for on arrival is left as a settlement plan, not refused
 
 
 @dataclass
@@ -362,6 +364,7 @@ class Building:
     research_progress: float = 0.0
     abandoned: bool = False  # left behind by a resigned or surrendered player: nobody's, attackable, inert
     race: Race = Race.HUMAN  # its owner's; a gold mine is nobody's
+    auto: list[UnitType] = field(default_factory=list)  # trained endlessly, in turn: the next one first (set_auto_train)
 
     def __post_init__(self) -> None:
         # Type, race and position are fixed once a building is placed, so its stats and
@@ -1228,7 +1231,12 @@ class World:
             self._issue(unit, Harvest(target), queue=queue)
 
     @recorded
-    def build(self, unit_id: int, building_type: BuildingType, pos: Pos, *, queue: bool = False) -> None:
+    def build(self, unit_id: int, building_type: BuildingType, pos: Pos, *, queue: bool = False, plan_if_short: bool = False) -> None:
+        """Send a peasant to put up *building_type* at *pos*; it pays when it gets there.
+
+        With *plan_if_short* it sets out whatever the purse holds, and a site it cannot pay for on arrival is left
+        to the settlement as a plan, built by a free worker once the money is there, rather than refused: what a
+        player places is built (a row of farms placed with Shift, say)."""
         unit = self.units.get(unit_id)
         if unit is None or not unit.is_worker:
             raise RuleError("Only peasants can build")
@@ -1236,10 +1244,10 @@ class World:
         info = BUILDINGS[building_type]
         if building_type is BuildingType.GOLD_MINE:
             raise RuleError("Gold mines cannot be built")
-        reason = self.can_afford(unit.player, info.cost) or self.can_place(building_type, pos, unit.player, builder=unit.id)
+        reason = (None if plan_if_short else self.can_afford(unit.player, info.cost)) or self.can_place(building_type, pos, unit.player, builder=unit.id)
         if reason is not None:
             raise RuleError(reason)
-        self._issue(unit, Build(building_type, pos), queue=queue)
+        self._issue(unit, Build(building_type, pos, plan_if_short=plan_if_short), queue=queue)
 
     @recorded
     def repair(self, unit_ids: list[int], building_id: int, *, queue: bool = False) -> None:
@@ -1288,6 +1296,80 @@ class World:
         if building is None or building.player is None:
             raise RuleError("No such building")
         building.rally = self._clamp(point) if point is not None else None
+
+    @recorded
+    def set_auto_train(self, building_id: int, unit_type: UnitType, on: bool) -> None:
+        """Have a building train *unit_type* endlessly (*on*), or stop; several types at one building take turns.
+
+        A standing order, which a site still going up keeps until it stands.  It starts a recruit whenever the
+        building stands idle and its owner can pay from what their unpaid orders have not claimed
+        (:meth:`committed`), so what a player asked for comes before what they left running."""
+        building = self.buildings.get(building_id)
+        if building is None or building.player is None or building.abandoned:
+            raise RuleError("No such building")
+        if unit_type not in building.info.trains:
+            info = self.unit_info(building.player, unit_type)
+            raise RuleError(f"{info.name}s are trained at the {self.building_info(building.player, info.trained_at).name}")
+        if on and unit_type not in building.auto:
+            building.auto.append(unit_type)
+        elif not on and unit_type in building.auto:
+            building.auto.remove(unit_type)
+
+    def committed(self, player: int) -> Cost:
+        """What *player*'s unpaid orders will cost: the sites builders are on their way to, and the plans whose
+        prerequisites stand (one that cannot start yet claims nothing).  Endless training spends only the rest."""
+        gold = lumber = 0
+        walking: set[tuple[BuildingType, Pos]] = set()
+        for unit in self.player_units(player):
+            for order in unit.orders:
+                if isinstance(order, Build) and order.building is None:
+                    cost = BUILDINGS[order.type].cost
+                    gold, lumber = gold + cost.gold, lumber + cost.lumber
+                    walking.add((order.type, order.pos))
+        standing = {b.type for b in self.player_buildings(player, done=True)}
+        researched = self.players[player].upgrades
+        for plan in self.settlement.player_plans(player):
+            if plan.kind == "building":
+                assert isinstance(plan.type, BuildingType)
+                info = BUILDINGS[plan.type]
+                if plan.building is not None or (plan.type, plan.pos) in walking or (info.requires is not None and info.requires not in standing):
+                    continue
+                cost = info.cost
+            elif plan.kind == "unit":
+                assert isinstance(plan.type, UnitType)
+                if UNITS[plan.type].trained_at not in standing:
+                    continue
+                cost = UNITS[plan.type].cost
+            else:
+                assert isinstance(plan.type, Upgrade)
+                upgrade = UPGRADES[plan.type]
+                if (not any(plan.type in BUILDINGS[kind].researches for kind in standing)
+                        or (upgrade.requires is not None and upgrade.requires not in researched)):
+                    continue
+                cost = upgrade.cost
+            gold, lumber = gold + cost.gold, lumber + cost.lumber
+        return Cost(gold, lumber)
+
+    def auto_train_blocker(self, building: Building) -> str | None:
+        """Why *building* cannot start its next endless recruit now (None when it can): the reasons :meth:`can_train`
+        gives, gold and lumber the player's unpaid orders claim, or research planned here, which goes first."""
+        if not building.auto:
+            return "Nothing to train endlessly"
+        assert building.player is not None
+        unit_type = building.auto[0]
+        reason = self.can_train(building, unit_type)
+        if reason is not None:
+            return reason
+        for plan in self.settlement.player_plans(building.player):
+            if plan.kind == "upgrade" and isinstance(plan.type, Upgrade) and plan.type in building.info.researches \
+                    and self.can_research(building, plan.type) in (None, "Training in progress"):
+                return f"{UPGRADES[plan.type].name} is planned here and goes first"
+        cost, held = self.unit_info(building.player, unit_type).cost, self.committed(building.player)
+        player = self.players[building.player]
+        # Per resource: a plan short of lumber claims no gold beyond its price, so a recruit paid in gold alone may go.
+        if max(0, player.gold - held.gold) < cost.gold or max(0, player.lumber - held.lumber) < cost.lumber:
+            return "Waiting: your plans and builders have first claim on the gold and lumber"
+        return None
 
     @recorded
     def smart(self, unit_ids: list[int], point: Point, *, queue: bool = False,
@@ -1450,6 +1532,7 @@ class World:
                 if b.done:
                     self._finish_construction(b, builder)
             return
+        delivered = False
         if b.queue:
             unit_type = b.queue[0]
             b.train_progress += dt
@@ -1457,14 +1540,28 @@ class World:
                 b.queue.pop(0)
                 b.train_progress = 0.0
                 self._deliver_unit(b, unit_type)
+                delivered = True
         elif b.research is not None:
             b.research_progress += dt
             if b.research_progress >= UPGRADES[b.research].time:
                 upgrade, b.research, b.research_progress = b.research, None, 0.0
                 self.players[b.player].upgrades.add(upgrade)
                 self.events.append(Event("researched", b.center, player=b.player, entity=b.id, text=UPGRADES[upgrade].name))
+        # Endless training looks when a recruit walks out, and otherwise once a second after the plans have had theirs.
+        if b.auto and not b.queue and b.research is None and (delivered or self.tick % AUTO_EVERY == 0):
+            self._auto_train(b)
         if info.damage:
             self._tower_shoot(b, dt)
+
+    def _auto_train(self, b: Building) -> None:
+        """Start the next of *b*'s endless recruits, when nothing stands in its way; the next type then waits its turn."""
+        if self.auto_train_blocker(b) is not None:
+            return
+        assert b.player is not None
+        unit_type = b.auto.pop(0)
+        b.auto.append(unit_type)
+        self._pay(b.player, self.unit_info(b.player, unit_type).cost)
+        b.queue.append(unit_type)
 
     def _finish_construction(self, b: Building, builder: Unit) -> None:
         builder.constructing = None
@@ -2245,7 +2342,12 @@ class World:
         size = BUILDINGS[order.type].size
         rect = (order.pos[0], order.pos[1], size, size)
         if rect_gap(u.pos, rect) - u.radius <= TOUCH:
-            reason = self.can_afford(u.player, BUILDINGS[order.type].cost) or self.can_place(order.type, order.pos, u.player, builder=u.id)
+            short = self.can_afford(u.player, BUILDINGS[order.type].cost)
+            placement = self.can_place(order.type, order.pos, u.player, builder=u.id)
+            if short is not None and placement is None and order.plan_if_short and self._leave_plan(u, order, short):
+                self._finish_order(u)
+                return
+            reason = short or placement
             if reason is not None:
                 self.events.append(Event("refused", u.pos, player=u.player, entity=u.id, text=f"Cannot build: {reason}"))
                 self._finish_order(u)
@@ -2259,6 +2361,18 @@ class World:
         if self._approach(u, (order.pos[0] + size // 2, order.pos[1] + size // 2), (order.pos[0] + size / 2, order.pos[1] + size / 2), dt):
             self.events.append(Event("refused", u.pos, player=u.player, entity=u.id, text="Cannot reach the building site"))
             self._finish_order(u)
+
+    def _leave_plan(self, u: Unit, order: Build, short: str) -> bool:
+        """Leave the site *u* cannot pay for to the settlement; False when no plan can be made there (plans full,
+        or one already on the ground), and the site is refused as any other."""
+        try:
+            self.settlement.plan_building(u.player, order.type, order.pos)
+        except RuleError:
+            return False
+        name = self.building_info(u.player, order.type).name
+        self.events.append(Event("deferred", u.pos, player=u.player, entity=u.id, text=f"{short}: the {name} waits as a plan",
+                                 target_type=order.type.value))
+        return True
 
     def _do_repair(self, u: Unit, order: Repair, dt: float) -> None:
         b = self.buildings.get(order.target)
@@ -3096,6 +3210,7 @@ class World:
         b.train_progress = 0.0
         b.research, b.research_progress = None, 0.0
         b.rally = None
+        b.auto.clear()
         for unit in self.units.values():
             if unit.inside == b.id:
                 unit.inside = None
@@ -3203,6 +3318,8 @@ def _order_to_dict(order: Order) -> dict[str, Any]:
         return {"kind": "Deposit"}
     d: dict[str, Any] = {"kind": type(order).__name__}
     for key, value in vars(order).items():
+        if key == "plan_if_short" and not value:
+            continue  # only a player's own placements carry it: a build as every brain gives it reads as before
         d[key] = value.value if hasattr(value, "value") else (list(value) if isinstance(value, tuple) else value)
     return d
 
@@ -3275,6 +3392,7 @@ def _building_to_dict(b: Building) -> dict[str, Any]:
         "queue": [t.value for t in b.queue], "train_progress": b.train_progress, "rally": list(b.rally) if b.rally else None,
         "gold": b.gold, "builder": b.builder, "cooldown": b.cooldown,
         "research": b.research.value if b.research else None, "research_progress": b.research_progress, "abandoned": b.abandoned,
+        "auto": [t.value for t in b.auto],
     }
 
 
@@ -3283,7 +3401,7 @@ def _building_from_dict(d: dict[str, Any], race: Race) -> Building:
                     queue=[UnitType(t) for t in d["queue"]], train_progress=d["train_progress"],
                     rally=tuple(d["rally"]) if d["rally"] else None, gold=d["gold"], builder=d["builder"], cooldown=d["cooldown"],
                     research=Upgrade(d["research"]) if d["research"] else None, research_progress=d["research_progress"],
-                    abandoned=d.get("abandoned", False))
+                    abandoned=d.get("abandoned", False), auto=[UnitType(t) for t in d.get("auto", [])])  # saves from before endless training
 
 
 # At the end, as it imports this module: the automatic worker policy the simulation consults.

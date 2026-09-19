@@ -54,6 +54,11 @@ REFUSED = {
     "an art of another race": lambda w, e: w.order_upgrade(0, Upgrade.BLOODLUST),
     "a plan that is not there": lambda w, e: w.cancel_plan(0, 77),
     "a rally point for nothing": lambda w, e: w.set_rally(9999, (3.0, 3.0)),
+    "endless knights from the hall": lambda w, e: w.set_auto_train(e["hall"], UnitType.KNIGHT, True),
+    "endless training at a building that is not there": lambda w, e: w.set_auto_train(9999, UnitType.PEASANT, True),
+    "endless training at a gold mine": lambda w, e: w.set_auto_train(e["mine"], UnitType.PEASANT, True),
+    "a building by a soldier that may wait for the money": lambda w, e: w.build(e["footman"], BuildingType.FARM, (14, 20), plan_if_short=True),
+    "a building on the wood that may wait for the money": lambda w, e: w.build(e["peasant"], BuildingType.FARM, (20, 12), plan_if_short=True),
     "a context order on a target that is gone": lambda w, e: w.smart([e["peasant"], e["footman"]], (3.0, 3.0), target_id=9999),
 }
 

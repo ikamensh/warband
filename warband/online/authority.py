@@ -10,7 +10,7 @@ from saga2d.server.games import GameSpec, option_choice, option_int, option_keys
 from warband.sim.rules import BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
 
 GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'stop', 'hold'}
-BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building'}
+BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building', 'set_auto_train'}
 SETTLEMENT_ORDERS = {'plan_building', 'order_unit', 'order_upgrade', 'set_assembly', 'cancel_plan'}
 SEAT_ORDERS = SETTLEMENT_ORDERS | {'resign'}  # orders about the seat's own player, named in the order
 ORDERS = GROUP_ORDERS | BUILDING_ORDERS | SEAT_ORDERS | {'build'}
@@ -18,14 +18,14 @@ ORDERS = GROUP_ORDERS | BUILDING_ORDERS | SEAT_ORDERS | {'build'}
 EVENT_TICKS = 100
 #: What a seat is told of the server's random stream: a fixed state, so no client can read the damage rolls to come.
 NO_DICE = random.Random(0).getstate()
-#: News for its owner alone: what it trains and researches, what it is refused, its deposits, alarms and plunder.
-PRIVATE_EVENTS = frozenset({'trained', 'researched', 'refused', 'deposit', 'under_attack', 'plunder'})
+#: News for its owner alone: what it trains and researches, what it is refused or left to plans, its deposits, alarms and plunder.
+PRIVATE_EVENTS = frozenset({'trained', 'researched', 'refused', 'deferred', 'deposit', 'under_attack', 'plunder'})
 #: The match's public news, told to every seat wherever it happened.
 PUBLIC_EVENTS = frozenset({'victory', 'eliminated', 'surrendered', 'resigned', 'exposed'})
 #: What a seat learns of a unit it sees but does not own is where it stands and how it moves and strikes, not where it is going.
 STRANGER_UNIT = {'orders': [], 'worker_orders': [], 'home': None, 'constructing': None, 'auto_work': False}
 #: Of a building it sees but does not own: footprint, hit points, construction and abandonment, not its work.
-STRANGER_BUILDING = {'queue': [], 'train_progress': 0.0, 'rally': None, 'builder': None, 'research': None, 'research_progress': 0.0}
+STRANGER_BUILDING = {'queue': [], 'train_progress': 0.0, 'rally': None, 'builder': None, 'research': None, 'research_progress': 0.0, 'auto': []}
 
 
 def _terrain_rows(world):
@@ -164,6 +164,10 @@ class WarbandMatch:
                 self.world.units if action == 'build' else self.world.buildings)
         if 'queue' in kwargs and type(kwargs['queue']) is not bool:
             raise CommandError('Queue must be true or false.')
+        if 'plan_if_short' in kwargs and type(kwargs['plan_if_short']) is not bool:
+            raise CommandError('plan_if_short must be true or false.')
+        if action == 'set_auto_train' and type(values['on']) is not bool:
+            raise CommandError('Endless training is switched on or off.')
         for field in ('target', 'point', 'pos'):
             if field not in values:
                 continue
