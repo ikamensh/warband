@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-046**; a new
+section; git history keeps the record. The last ID given is **WB-047**; a new
 item takes the next one and updates this line.
 
 Done and removed 2026-09-18, every one merged into main (whose code is live as
@@ -42,8 +42,9 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
-| WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
+| WB-041 | Next | in progress (`package-folders`) | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-044 | Next | blocked | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
+| WB-047 | Later | proposed | Split the four giant modules along their seams | WB-041 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -225,6 +226,28 @@ only a move. The suite, fuzz, a packaged native build and the online smoke
 pass; saga-online's references are updated and the rollout is done.
 AGENTS.md describes the tree and says where new code goes.
 
+**Started 2026-09-19** on branch `package-folders`, with the folders taken
+from the proposal. Four names differ, so that no folder is named after a
+module inside it and none reads as the model's `Player`: `brains/` (ai,
+pro_ai), `league/` (arena, balance, telemetry, archetypes and fastsim: what
+plays many matches), `records/` (profile, scores, replay) and `story/` (the
+campaign's five modules, which the proposal predates). `archetypes` goes to
+the league, whose postures it holds; `_native.c` goes to `sim`. The layer
+test is a table of what each folder may import, stricter than the
+proposal's three rules. `sim` imports only itself; `brains`, `records`,
+`art` and `audio` only `sim`; `league` and `online` `sim` and `brains`; `ui`
+and `story` anything. The tests stay flat. Splitting the four giants is
+WB-047, so that this stays a move.
+
+Checked before merging: the fingerprint and the sim_bench digest are
+unchanged; the compiled ladder beats the interpreted one, so the compiled
+modules are found in their folders, in the workers too; fuzz and both tiers
+pass; `--selftest` starts a match; CI's native build passes. Then comes the
+rollout, since the contract's paths and registry move. saga-online's
+registries, runtime attestation, promotion gate, rehearsal and verify tools,
+tests and docs change, and so does the stack root's `make server`. It
+follows WB-045's procedure.
+
 ## WB-044 — Hold the push that comes with a rush tower; strike faster on Hard
 
 What WB-037 left of its acceptance. Against `pro-rush` the defender now stops
@@ -266,3 +289,21 @@ different brain. **Blocked** on Ilya: whether Hard is to meet the rush bar
 at all (and with which handicaps), and whether the defence against a push
 that arrives with a tower is worth an AI project of its own for Master's
 last game or two.
+
+## WB-047 — Split the four giant modules along their seams
+
+Left by WB-041, which moved the modules into folders and left their insides
+alone: `sim/model.py` (3,148 lines), `ui/scene.py` (2,484), `art/textures.py`
+(2,248) and `brains/pro_ai.py` (1,419). The seams WB-041 proposed are these.
+`model` splits into orders, movement, combat, economy, construction and
+vision; `scene` into the match, the HUD, overlays and input; `textures` into
+terrain, units, buildings and painted sheets; `pro_ai` into economy,
+military and memory. `World` is one class whose methods cross every one of
+model's seams, so its split is not a pure move: mixins or free functions,
+each checked by the fingerprint and by mypyc, which compiles model and
+pro_ai.
+
+**Done when:** each giant is split along seams a reader recognises, and each
+split is its own commit. The fingerprint, the sim_bench digest and the replay
+tests are unchanged, and the compiled simulation builds and runs as fast.
+model's split moves contract files, so it ships with a rollout.
