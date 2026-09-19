@@ -34,7 +34,8 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 ([`896c6ea`](https://github.com/ikamensh/warband/blob/896c6eab99fb426d7f0aa02588b0fd1dc1463d07/BACKLOG.md)); WB-014, merged as `18eaf4a`, live as 0.2.59
 ([`5fd2ef4`](https://github.com/ikamensh/warband/blob/5fd2ef41798f8162811b9eb0d286c80c65c9bb26/BACKLOG.md)); WB-045, merged as `6ad2779`, live as 0.2.61
 ([`493e3bf`](https://github.com/ikamensh/warband/blob/493e3bfb3df8eaefc809dbc0a86c80683eb490a1/BACKLOG.md)); WB-042, merged as `13db600`, published as 0.2.63
-([`13c9911`](https://github.com/ikamensh/warband/blob/13c991194c5b73d2babbd74c931681aee3c4b8a7/BACKLOG.md)).
+([`13c9911`](https://github.com/ikamensh/warband/blob/13c991194c5b73d2babbd74c931681aee3c4b8a7/BACKLOG.md)); WB-046, merged as `59455cc`, live as 0.2.65
+([`70b57b2`](https://github.com/ikamensh/warband/blob/70b57b2048b4a0986aecfad4ad5999e7292c0da6/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
@@ -43,7 +44,6 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-044 | Next | blocked | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
-| WB-046 | Next | done | A seed that makes no fair map crashes the game where the game chose it | WB-042 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -266,46 +266,3 @@ different brain. **Blocked** on Ilya: whether Hard is to meet the rush bar
 at all (and with which handicaps), and whether the defence against a push
 that arrives with a tower is worth an AI project of its own for Master's
 last game or two.
-
-## WB-046 — A seed the game chose that makes no fair map
-
-Found by WB-042's replay property: `mapgen.generate` refuses a few seeds in a
-thousand with `NoFairMap` at some settings. Of the first 300 seeds, Small with
-two seats fails on 67 (Forest, "roads too straight") and Medium with three on
-33, 53, 109 and 213 (Crossings); none of 20,000 fails at the title backdrop's
-Medium with two. The local game does not catch it. Pressing R on the New game
-screen onto such a seed ends in a traceback, and so does changing the size,
-seats, race or layout onto one, New game after a match (the next seed), and
-hosting a LAN match. An online room is refused with advice to choose a larger
-map, where the next seed would do.
-
-**Done when:** wherever the game chooses the seed, it plays the first seed
-from its choice that makes a fair map of the settings. That covers the title's
-backdrop, New game's draw and reroll, New game after a match, a LAN or online
-room from the multiplayer menu, and the command line's lobby without
-`--seed`. The New game screen shows that seed and previews the map Start
-plays. A seed the player gives (`--seed`) still fails with the clear
-`NoFairMap`. Each path has a test from a seed known to be unfair; the backdrop
-goes through the same function and has no test of its own, since no unfair
-seed is known there. The authoritative contract is unchanged, so no server
-rollout.
-
-**Done 2026-09-19:** merged as `59455cc` (branch `fair-seeds`), live as
-0.2.65. `scene.fair_map(seed, width, height, players, ...)` returns the
-first seed from the chosen one that makes a fair map of the settings, with
-its map; it gives up after twenty seeds with the clear `NoFairMap`. Every
-place the game chooses a seed goes through it. The title's backdrop and New
-game's preview do, and the preview keeps the seed it plays, so the screen
-shows it and Start plays it. So do `next_game` after a match (from the pause
-menu and the results), the multiplayer menu's LAN and online rooms
-(`TitleScene.fair_seed`) and the command line's lobby without `--seed`
-(`__main__.lobby_options`). `new_game(seed)` generates a given seed as
-given. `tests/warband/test_fair_seeds.py` holds seven tests from the known
-unfair seed 67 (Small, two seats). The helper plays 68, and a given 67 is
-refused. A resize and a reroll land on 68, and Start plays the seed and map
-shown. New game after a match on 66 plays 68, with the old match's layout
-and races. The LAN match, the online room's options and the command line's
-room are all made on 68. A slow-tier property asks for a fair map within
-twenty seeds at every size, seat count and layout New game offers (300
-examples, 8 s). `docs/warband-maps.md` says where the game's seeds give way
-and the player's do not. The contract stayed `3e324a4f…`, the live server's.
