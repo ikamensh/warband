@@ -513,6 +513,7 @@ def test_the_codex_lists_every_unit_building_and_upgrade(play) -> None:
     shown = texts(game)
     for unit_type in UnitType:
         assert UNITS[unit_type].name in shown
+    assert f"heal {UNITS[UnitType.CLERIC].heal}" in shown  # what a healer's cast restores, not its own weak blow (WB-051 gave it one)
     press(game, "2")
     shown = texts(game)
     assert "Lumber Mill" in shown and "Church" in shown

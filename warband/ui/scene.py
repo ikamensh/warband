@@ -2623,12 +2623,12 @@ class CodexScene(_Overlay):
         if self.page == 0:
             rows = [["Unit", "Cost", "HP", "Dmg", "Arm", "Rng", "Spd", "Trained at", "Role"]]
             for unit_type, info in race.units.items():
-                rows.append([info.name, str(info.cost), str(info.hp), str(info.damage) if info.damage else f"heal {info.heal}",
+                rows.append([info.name, str(info.cost), str(info.hp), f"heal {info.heal}" if info.heal else str(info.damage),  # its blow is in its role
                              str(info.armor), "melee" if info.range < 1 else f"{info.range:g}", f"{info.speed:g}",
                              race.buildings[info.trained_at].name,
                              f"{info.summary} · {armour_name(info.armor_class)}"
                              + (f", {info.attack.value}" if info.damage and info.attack is not AttackType.NORMAL else "")])
-            return (150, 198, 40, 60, 40, 55, 42, 140, 367), rows
+            return (150, 198, 40, 66, 40, 55, 42, 140, 361), rows  # "heal 15" is the widest Dmg
         if self.page == 1:
             rows = [["Building", "Cost", "HP", "Arm", "Size", "Time", "Requires", "What it does"]]
             for building_type, info in race.buildings.items():
