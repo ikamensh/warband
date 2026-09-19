@@ -40,7 +40,7 @@ from dataclasses import dataclass, replace
 from typing import Final
 
 from warband.brains.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_search
-from warband.sim.model import Attack, Build, Building, Harvest, Point, Pos, Repair, Resource, Unit, World, dist, rect_gap, tile_center
+from warband.sim.model import Attack, Build, Building, Harvest, Move, Point, Pos, Repair, Resource, Unit, World, dist, rect_gap, tile_center
 from warband.sim.races import RACES
 from warband.sim.rules import BUILDINGS, MINE_SLOTS, UPGRADES, BuildingType, Cost, UnitType, Upgrade
 from warband.sim.worker_knowledge import KnownMine
@@ -124,6 +124,12 @@ class ProProfile:
     push_by: float = 600.0            # …but not past this many
     wood_crew: int = 0                # peasants kept on the trees; 0 leaves the wood to the model's own policy
     wood_from: int = 8                # …once the workforce is this strong
+    opening: tuple[BuildingType, ...] = ()  # put up in this order before anything else but farms, one at a time; twice for two
+    opening_hold: bool = False        # …the next of them has first claim on the bank, ahead of soldiers and peasants
+    defend_ratio: float = 0.0         # an attack on the base this many times the soldiers at home is met behind the hall, together; 0: at once
+    wood_lead: bool = False           # hands follow the wood the next purchases are short of while the gold for them is banked
+    wood_per_hand: int = 300          # …one more chopper for each this much lumber they are short
+    wood_release: int = 1000          # …and back to the policy once nothing is short and this much lumber is banked
 
 
 PRO: Final = ProProfile("pro")
@@ -238,6 +244,16 @@ def _tower_strength(world: World, player: int, point: Point, radius: float = 9.0
     return math.sqrt(damage * body)
 
 
+def _tower_strength_own(world: World, player: int, point: Point, radius: float = 9.0) -> float:
+    """What *player*'s own standing towers around *point* add to its defence, as :func:`_tower_strength` prices an enemy's."""
+    damage = body = 0.0
+    for building in world.player_buildings(player, BuildingType.TOWER, done=True):
+        if dist(building.center, point) <= radius:
+            damage += world.damage_of(building) / building.info.cooldown
+            body += building.hp
+    return math.sqrt(damage * body)
+
+
 class ProBrain:
     """One per AI player; ``think`` every simulation step, as with :class:`warband.brains.ai.Brain`."""
 
@@ -258,6 +274,8 @@ class ProBrain:
         self._hurt: set[int] = set()  # soldiers pulled out to heal
         self.hunters: dict[int, int] = {}  # our peasants sent at an enemy peasant inside our base: hunter -> its prey
         self.strikers: set[int] = set()    # our peasants sent at an enemy tower standing on our ground
+        self.lumber_short = 0  # the wood the purchases it has the gold for are waiting on; see _shortfall
+        self._opening_next: BuildingType | None = None  # the building of the opening that goes up next, while one is left
         self.log: list[tuple[float, str]] = []
         self._seen: dict[int, dict[UnitType, float]] = {}  # per opponent: most of each kind ever seen at once
         self._seen_at: dict[int, float] = {}               # …and when that opponent was last looked at
@@ -453,6 +471,13 @@ class ProBrain:
             world.release_workers([p.id for p in peasants if self._on_lumber(p) and p.carrying is None][1:])
             return
         crew = self.profile.wood_crew if len(peasants) >= self.profile.wood_from else 0
+        if self.profile.wood_lead:
+            choppers = [p for p in peasants if self._on_lumber(p)]
+            if self.lumber_short > 0:
+                crew = max(crew, min(len(peasants) // 2, -(-self.lumber_short // self.profile.wood_per_hand)))
+            elif player.lumber >= self.profile.wood_release and len(choppers) > crew:
+                world.release_workers([p.id for p in choppers if p.carrying is None][:len(choppers) - crew])
+                return
         if player.lumber >= self.profile.lumber_floor_panic or player.gold < self.profile.panic_gold:
             want = crew
         else:
@@ -511,6 +536,24 @@ class ProBrain:
         farms_coming = going_up.count(BuildingType.FARM) + going_up.count(BuildingType.TOWN_HALL)
         if cap - used + 4 * farms_coming < headroom:
             wishes.append((BuildingType.FARM, anchor))
+        self._opening_next = None
+        listed: dict[BuildingType, int] = {}
+        for step in profile.opening:
+            listed[step] = listed.get(step, 0) + 1
+            needs = BUILDINGS[step].requires
+            if count(step) >= listed[step] or (needs is not None and not have(needs)):
+                continue  # up already, or waiting for what it needs: the next of the opening goes up meanwhile
+            where = self._front_point(world, hall) if step is BuildingType.TOWER else anchor
+            if step is BuildingType.TOWN_HALL:
+                site = self._expansion_site(world)
+                if site is None:
+                    continue
+                where = site
+            # One at a time, in order, and nothing else but farms: an opening is a plan, and the cheaper building
+            # further down the list is what the bank would otherwise buy first.
+            self._opening_next = step
+            wishes.append((step, where))
+            return wishes
         if count(BuildingType.BARRACKS) < 1:
             wishes.append((BuildingType.BARRACKS, anchor))
             # The mill sits behind the barracks here and costs a hundred gold
@@ -628,7 +671,27 @@ class ProBrain:
         """
         return [p.order for p in self._peasants(world) if isinstance(p.order, Build)]
 
+    def _shortfall(self, world: World, wishes: Sequence[tuple[BuildingType, Point]]) -> int:
+        """The lumber the wished-for buildings lack while the gold for them is in the bank, the list walked in order
+        with what is left: the symptom of a bank of three thousand gold that buys nothing because every barracks
+        and farm on the list wants wood the brain is not chopping."""
+        gold, lumber = self._spendable(world)
+        lumber -= self.profile.lumber_floor
+        short = 0
+        for wanted, _anchor in wishes:
+            cost = BUILDINGS[wanted].cost
+            if gold < cost.gold:
+                break  # gold binds from here on: more wood would buy nothing
+            gold -= cost.gold
+            if lumber < cost.lumber:
+                short += cost.lumber - max(0, lumber)
+            lumber -= cost.lumber
+        return short
+
     def _construction(self, world: World, rng: random.Random) -> None:
+        wishes = self._wish_list(world)
+        if self.profile.wood_lead:
+            self.lumber_short = self._shortfall(world, wishes)
         sites = [b for b in world.player_buildings(self.player) if not b.done]
         free = self.profile.max_sites - len(sites) - len(self._ordered(world))
         if free <= 0:
@@ -640,13 +703,13 @@ class ProBrain:
         # Ground already spoken for by an order in flight: can_place cannot know
         # about it, so two buildings would otherwise be sent to the same tile.
         taken = [(o.pos, BUILDINGS[o.type].size) for o in self._ordered(world)]
-        for wanted, anchor in self._wish_list(world):
+        for wanted, anchor in wishes:
             if free <= 0 or not builders:
                 break
             cost = BUILDINGS[wanted].cost
-            if world.can_afford(self.player, cost) is not None or not self._affordable(world, cost):
+            if world.can_afford(self.player, cost) is not None or not self._payable(world, cost):
                 continue
-            if self._spendable(world)[1] - cost.lumber < self.profile.lumber_floor:
+            if self._spendable(world)[1] - cost.lumber < self.profile.lumber_floor and wanted is not self._opening_next:
                 continue
             site = self._site(world, wanted, anchor, rng, taken)
             if site is None:
@@ -677,15 +740,33 @@ class ProBrain:
             elif peasant.id in self.rushers and peasant.constructing is None and not isinstance(order, Build):
                 cost = BUILDINGS[BuildingType.TOWER].cost
                 gold, lumber = gold + cost.gold, lumber + cost.lumber
-        saved = self._saving_for(world)
-        if saved is not None:
+        for saved in self._saving_for(world):
             gold, lumber = gold + saved.gold, lumber + saved.lumber
         return (gold, lumber)
 
     def _research_order(self) -> tuple[Upgrade, ...]:
         return self.profile.research_order if self.profile.research_order is not None else RESEARCH_ORDER
 
-    def _saving_for(self, world: World) -> Cost | None:
+    def _saving_for(self, world: World) -> list[Cost]:
+        """The prices held for what the posture buys ahead of soldiers: the next building of its opening and the
+        next upgrade of a research-first posture.  The purchase itself is paid out of what was held for it."""
+        saved = []
+        if self.profile.opening_hold and self._opening_next is not None:
+            saved.append(BUILDINGS[self._opening_next].cost)
+        upgrade = self._saving_upgrade(world)
+        if upgrade is not None:
+            saved.append(upgrade)
+        return saved
+
+    def _payable(self, world: World, cost: Cost) -> bool:
+        """Whether *cost* can be paid now: one of the prices being saved for out of the whole bank but for the other
+        holds, anything else out of what is left."""
+        if not any(cost is saved for saved in self._saving_for(world)):
+            return self._affordable(world, cost)
+        gold, lumber = self._spendable(world)
+        return gold >= 0 and lumber >= 0  # what is left once every hold is counted, its own among them
+
+    def _saving_upgrade(self, world: World) -> Cost | None:
         """The price of the upgrade a research-first posture buys next, once the building that researches it stands
         idle: soldiers bought meanwhile would push it back for as long as the barracks keep asking."""
         if not self.profile.research or not self.profile.research_first:
@@ -919,15 +1000,12 @@ class ProBrain:
             return
         player = world.players[self.player]
         buildings = world.player_buildings(self.player, done=True)  # nothing changes until the one order below
-        saved = self._saving_for(world)
         for upgrade in self._research_order():
             if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):
                 continue
             cost = UPGRADES[upgrade].cost
             for building in buildings:
-                # The upgrade being saved for is paid out of what was held for it; any other out of what is left.
-                affordable = world.can_afford(self.player, cost) is None if cost is saved else self._affordable(world, cost)
-                if upgrade in building.info.researches and world.can_research(building, upgrade) is None and affordable:
+                if upgrade in building.info.researches and world.can_research(building, upgrade) is None and self._payable(world, cost):
                     world.research(building.id, upgrade)
                     return
 
@@ -987,7 +1065,10 @@ class ProBrain:
         threats = self._threats(world)
         if threats and not (self.attacking and strength(world, threats)
                             < self.profile.ignore_raid_ratio * strength(world, army)):
-            self._defend(world, guards + army, threats)
+            if self._outmatched_at_home(world, guards + army, threats):
+                self._fall_back(world, guards + army, threats)
+            else:
+                self._defend(world, guards + army, threats)
             return
         if self._strike_towers(world, guards + ([] if self.attacking else army)):
             return
@@ -1212,6 +1293,32 @@ class ProBrain:
                                                for b in world.player_buildings(self.player))).pos
         self.attacking = False
         world.attack_move([u.id for u in army if not isinstance(u.order, Attack)], point)
+
+    def _outmatched_at_home(self, world: World, army: list[Unit], threats: list[Unit]) -> bool:
+        """Whether the attack on the base is more than the soldiers at home can meet (``defend_ratio``)."""
+        if self.profile.defend_ratio <= 0.0:
+            return False
+        hall = self._hall(world)
+        if hall is None:
+            return False
+        ours = strength(world, army) + _tower_strength_own(world, self.player, hall.center)
+        return strength(world, threats) > self.profile.defend_ratio * ours
+
+    def _fall_back(self, world: World, army: list[Unit], threats: list[Unit]) -> None:
+        """Gather behind the hall, away from the attack, rather than walk into it one soldier at a time: the ones
+        the barracks turns out join there, and the defence goes in together once it is a match."""
+        hall = self._hall(world)
+        if hall is None:
+            return
+        tx = sum(u.x for u in threats) / len(threats)
+        ty = sum(u.y for u in threats) / len(threats)
+        hx, hy = hall.center
+        away = dist((hx, hy), (tx, ty)) or 1.0
+        point = self._standable(world, (hx + (hx - tx) / away * 5.0, hy + (hy - ty) / away * 5.0))
+        self.attacking = False
+        for unit in army:
+            if dist(unit.pos, point) > 3.0 and not (isinstance(unit.order, Move) and dist(unit.order.target, point) < 4.0):
+                world.move([unit.id], self._muster(world, point, unit))
 
     def _send_scout(self, world: World, army: list[Unit]) -> None:
         """Keep one pair of eyes on the enemy: a rider if we have one, a peasant if not.

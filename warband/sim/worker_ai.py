@@ -367,6 +367,43 @@ def assign_idle_workers(world: World, player: int) -> None:
                 break
 
 
+REBALANCE_EVERY: Final = 5.0  # seconds between a player's looks at how its automatic gatherers are split
+REBALANCE_RATIO: Final = 4.0  # a resource this many times better served than the other gives up a hand
+
+
+def rebalance_workers(world: World, player: int) -> None:
+    """Move one automatic gatherer from the resource the policy finds far better served to the one it finds starved.
+
+    The policy places a peasant once, when it is idle, and a peasant keeps its job for good.  Raiders at the mine
+    send every miner to the trees, the one safe job left, and when the raiders were gone the miners stayed there: a
+    base that had held ended the game with four thousand lumber, a hundred gold and nobody at the mine.  So the
+    split is looked at again every :data:`REBALANCE_EVERY` seconds by the rule that placed them, and when one
+    resource is :data:`REBALANCE_RATIO` times better served a hand with nothing in it changes jobs, if a safe
+    walk leads to the other.  Only jobs the policy gave: a harvest a player or a brain ordered is theirs.
+    """
+    workers = sorted((unit for unit in world.player_units(player) if unit.is_worker), key=lambda unit: unit.id)
+    crews, loads = _assignments(workers)
+    reserves = _reserves(world, player, workers)
+    stock = {Resource.GOLD: world.players[player].gold, Resource.LUMBER: world.players[player].lumber}
+    trip = {Resource.GOLD: GOLD_PER_TRIP, Resource.LUMBER: LUMBER_PER_TRIP}
+    served = {resource: (stock[resource] + crews[resource] * trip[resource] * 3) / reserves[resource] for resource in Resource}
+    rich = max(Resource, key=lambda resource: served[resource])
+    poor = Resource.LUMBER if rich is Resource.GOLD else Resource.GOLD
+    if crews[rich] <= 1 or served[rich] < REBALANCE_RATIO * served[poor]:
+        return
+    view = _view(world, player)
+    for worker in workers:
+        order = worker.order
+        if (not isinstance(order, Harvest) or not order.auto or worker.carrying is not None or worker.hidden or worker.hp <= 0
+                or (rich is Resource.GOLD) != isinstance(order.target, int)):
+            continue
+        target = view.choose(worker, poor, loads)
+        if target is None:
+            return  # no safe walk to the other resource from here: the raiders are still about
+        world._issue(worker, Harvest(target, auto=True))
+        return
+
+
 def choose_replacement(world: World, worker: Unit, resource: Resource) -> int | Pos | None:
     """Continue an exhausted resource job using the same information and safety limits."""
     workers = [unit for unit in world.player_units(worker.player) if unit.is_worker and unit.id != worker.id]

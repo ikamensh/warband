@@ -557,6 +557,7 @@ class World:
         self._mine_crews: dict[int, int] = {}  # mine id → peasants at its face; kept as they enter and leave
         self.worker_knowledge = [WorkerKnowledge(width, height) for _ in self.players]
         self._worker_ai_checks: dict[int, int] = {}
+        self.rebalance_players: set[int] = set()  # EXPERIMENT: whose gatherers are rebalanced, while its worth is measured
         self._worker_ai_views: dict[int, tuple[int, Any]] = {}
         self._worker_ai_navigation: dict[int, tuple[int, bytearray]] = {}
         self._worker_ai_routes: dict[int, Any] = {}  # worker_ai._Routes per player, kept across ticks
@@ -573,6 +574,8 @@ class World:
         self._pace_groups: dict[tuple[int, Point, float], bool] = {}  # per step, see _group_together()
         self._line_lag: dict[tuple[int, Point], tuple[float, float, dict[int, float], float, float]] = {}  # per step, see _line()
         self._dangers: dict[int, float] = {}  # per step, see _danger_to()
+        self._pending: dict[int, int] = {}  # per step, see _pending_damage()
+        self._pending_tick = -1
 
     # -- Ids and lookups -----------------------------------------------------------
 
@@ -1563,6 +1566,10 @@ class World:
         self._bury_the_dead()
         if self.regrowth and self.tick % round(1 / SIM_DT) == 0:
             self._regrow()
+        if self.tick % round(worker_ai.REBALANCE_EVERY / SIM_DT) == 0:
+            for player in self.players:
+                if player.alive and player.id in self.rebalance_players:
+                    worker_ai.rebalance_workers(self, player.id)
         if self.tick % VISION_EVERY == 0:
             self.update_vision()
         self._check_elimination()
@@ -2094,6 +2101,11 @@ class World:
                 if better is not None and self._threat(better) < threat:
                     target = better
                     self._retarget(u, order, better)
+        if order.auto and u.cooldown <= 0 and u.info.ranged and not u.info.splash and self._has(u.player, Upgrade.MARKSMANSHIP):
+            mark = self._mark(u)  # a drilled shooter ready to loose picks its mark anew with each arrow
+            if mark is not None and mark is not target:
+                target = mark
+                self._retarget(u, order, mark)
         if order.auto and u.type is UnitType.ARCHER and u.cooldown > 0 and self._ranged_retreat(u, target, dt):
             return
         if order.auto and u.cooldown <= 0 and self.range_of(u) < 1:
@@ -3022,6 +3034,42 @@ class World:
         if isinstance(entity, Unit):
             return 0 if entity.info.soldier and not entity.is_worker else 1
         return 2 if entity.info.damage and entity.done else 3
+
+    def _mark(self, u: Unit) -> Unit | None:
+        """The enemy in reach a drilled shooter (Marksmanship) looses at next: a soldier before a bystander, then the
+        one the fewest of its arrows fell, through the armour it wears and counting the arrows already on their way
+        to it; one those arrows fell already is passed over.  None when nobody is in reach: the shooter keeps the
+        target it was closing on.  A shooter left to itself only: an order to attack names its own mark."""
+        damage, attack = self.damage_of(u), u.info.attack
+        pending = self._pending_damage()
+        best: Unit | None = None
+        best_threat, best_arrows, best_d = 9, 0, 0.0
+        for enemy in self.units_near(u.pos, self.range_of(u) + 2 * UNIT_RADIUS + 0.05):
+            if enemy.player == u.player or enemy.hidden or enemy.hp <= 0 or not self.is_visible(u.player, enemy.tile):
+                continue
+            if not self._in_range(u, enemy):
+                continue
+            left = enemy.hp - pending.get(enemy.id, 0)
+            if left <= 0:
+                continue  # the arrows in the air fell it
+            dealt = max(1, int(round(damage * damage_factor(attack, enemy.info.armor_class))) - self.armor_of(enemy))
+            threat, arrows, d = self._threat(enemy), -(-left // dealt), dist(u.pos, enemy.pos)
+            if best is None or (threat, arrows, d, enemy.id) < (best_threat, best_arrows, best_d, best.id):
+                best, best_threat, best_arrows, best_d = enemy, threat, arrows, d
+        return best
+
+    def _pending_damage(self) -> dict[int, int]:
+        """What the arrows in the air are expected to take off each unit they fly at, by its id; worked out once a step."""
+        if self._pending_tick != self.tick:
+            self._pending_tick = self.tick
+            pending: dict[int, int] = {}
+            for p in self.projectiles.values():
+                target = self.units.get(p.target) if p.target is not None else None
+                if target is not None:
+                    dealt = max(1, int(round(p.damage * damage_factor(p.attack, target.info.armor_class))) - self.armor_of(target))
+                    pending[target.id] = pending.get(target.id, 0) + dealt
+            self._pending = pending
+        return self._pending
 
     def _retarget(self, u: Unit, order: Attack, target: Entity) -> None:
         order.target = target.id

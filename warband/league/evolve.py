@@ -57,9 +57,9 @@ class Gene:
     behaviour: str  # crossover moves a behaviour as one piece
     low: float
     high: float
-    kind: str = "float"  # "float", "int" or "bool"
+    kind: str = "float"  # "float", "int", "bool" or "choice" (an integer code with no order)
 
-    def clip(self, value: float) -> float:
+    def clip(self, value: float) -> float:  # a choice is an integer code like any other
         value = min(self.high, max(self.low, value))
         if self.kind == "float":
             return round(value, 3)
@@ -72,6 +72,8 @@ class Gene:
         """*value* moved by a normal step of *scale* of the range; a boolean flips, a small integer moves one."""
         if self.kind == "bool":
             return 1.0 - value
+        if self.kind == "choice":
+            return self.draw(rng)  # codes are names, not sizes: a step to the next one means nothing
         step = rng.gauss(0.0, scale * (self.high - self.low))
         if self.kind == "int" and abs(step) < 1.0:
             step = math.copysign(1.0, step)
@@ -82,6 +84,11 @@ _PLAN_TYPES: tuple[UnitType, ...] = (UnitType.FOOTMAN, UnitType.ARCHER, UnitType
                                      UnitType.CATAPULT, UnitType.CLERIC)
 _TECH_TYPES: tuple[tuple[BuildingType, int], ...] = ((BuildingType.BARRACKS, 4), (BuildingType.BLACKSMITH, 1), (BuildingType.STABLES, 3),
                                                      (BuildingType.WORKSHOP, 2), (BuildingType.CHURCH, 2))
+#: What a slot of an opening may hold, by its code; 0 leaves the slot empty.
+_OPENING_CODES: tuple[BuildingType | None, ...] = (None, BuildingType.BARRACKS, BuildingType.LUMBER_MILL, BuildingType.TOWER,
+                                                   BuildingType.BLACKSMITH, BuildingType.STABLES, BuildingType.TOWN_HALL,
+                                                   BuildingType.CHURCH, BuildingType.WORKSHOP)
+OPENING_SLOTS = 6
 #: The chains a research order is built from, and each race's first and second art, in RESEARCH_ORDER's order.
 _CHAINS: dict[str, tuple[Upgrade, Upgrade]] = {"blades": (Upgrade.BLADES_1, Upgrade.BLADES_2), "armor": (Upgrade.ARMOR_1, Upgrade.ARMOR_2),
                                                "arrows": (Upgrade.ARROWS_1, Upgrade.ARROWS_2)}
@@ -98,6 +105,7 @@ def research_order(genes: Mapping[str, float]) -> tuple[Upgrade, ...]:
     scored += [(genes["res.arts"], art) for art in _FIRST_ARTS]
     scored += [(genes["res.arts"] - 0.5, art) for art in _SECOND_ARTS]
     scored.append((-0.75, Upgrade.SIEGE))
+    scored.append((genes["res.marks"], Upgrade.MARKSMANSHIP))
     return tuple(upgrade for _score, upgrade in sorted(scored, key=lambda row: -row[0]))
 
 
@@ -117,12 +125,17 @@ GENES: tuple[Gene, ...] = (
     _g("soldiers_before_workers", "economy", 0, 10, "int"),
     _g("wood_crew", "economy", 0, 8, "int"),
     _g("wood_from", "economy", 5, 16, "int"),
+    _g("wood_lead", "economy", 0, 1, "bool"),
+    _g("wood_per_hand", "economy", 100, 600, "int"),
+    _g("wood_release", "economy", 400, 2500, "int"),
     _g("supply_slack", "construction", 1, 10, "int"),
     _g("supply_per_producer", "construction", 0.0, 4.0),
     _g("max_sites", "construction", 2, 7, "int"),
     _g("surplus_gold", "construction", 200, 2500, "int"),
     _g("lumber_floor", "construction", 0, 500, "int"),
     _g("barracks_first", "construction", 0, 1, "bool"),
+    *(_g(f"open.{k}", "opening", 0, len(_OPENING_CODES) - 1, "choice") for k in range(OPENING_SLOTS)),
+    _g("opening_hold", "opening", 0, 1, "bool"),
     _g("barracks_per_hall", "construction", 1, 6, "int"),
     _g("gold_per_barracks", "construction", 600, 3000, "int"),
     _g("max_producers", "construction", 4, 14, "int"),
@@ -142,6 +155,8 @@ GENES: tuple[Gene, ...] = (
     _g("push_after", "engagement", 0, 420),
     _g("push_by", "engagement", 240, 720),
     _g("guards", "defence", 0, 4, "int"),
+    _g("defend.on", "defence", 0, 1, "bool"),
+    _g("defend_ratio", "defence", 0.5, 3.0),
     _g("towers_early", "defence", 0, 3, "int"),
     _g("tower_count", "defence", 0, 6, "int"),
     _g("raid", "harass", 0, 1, "bool"),
@@ -160,7 +175,7 @@ GENES: tuple[Gene, ...] = (
     _g("research", "tech", 0, 1, "bool"),
     _g("research_first", "tech", 0, 4, "int"),
     _g("res.on", "tech", 0, 1, "bool"),
-    *(_g(f"res.{chain}", "tech", 0.0, 1.0) for chain in (*_CHAINS, "arts")),
+    *(_g(f"res.{chain}", "tech", 0.0, 1.0) for chain in (*_CHAINS, "arts", "marks")),
     *(_g(f"tech.{t.value}", "tech", 0, most, "int") for t, most in _TECH_TYPES),
     _g("retreat_wounded", "micro", 0, 1, "bool"),
     _g("retreat_hp", "micro", 0.1, 0.5),
@@ -185,14 +200,21 @@ def genes_of(profile: ProProfile) -> Genes:
             value = float(plan.get(UnitType(gene.name[5:]), 0.0)) if plan is not None else 1.0 / len(_PLAN_TYPES)
         elif gene.name.startswith("tech."):
             value = float(profile.early_tech.count(BuildingType(gene.name[5:])))
+        elif gene.name.startswith("open."):
+            slot = int(gene.name[5:])
+            value = float(_OPENING_CODES.index(profile.opening[slot])) if slot < len(profile.opening) else 0.0
+        elif gene.name == "defend.on":
+            value = float(profile.defend_ratio > 0.0)
+        elif gene.name == "defend_ratio":
+            value = profile.defend_ratio or 1.5
         elif gene.name == "res.on":
             value = float(profile.research_order is not None)
         elif gene.name.startswith("res."):
             order = profile.research_order
-            first = _FIRST_ARTS if gene.name == "res.arts" else _CHAINS[gene.name[4:]][:1]
+            first = {"res.arts": _FIRST_ARTS, "res.marks": (Upgrade.MARKSMANSHIP,)}.get(gene.name) or _CHAINS[gene.name[4:]][:1]
             # Where the chain stands in the profile's own order, as a priority; the default order's where it has none.
             places = [order.index(u) for u in first if u in order] if order is not None else []
-            value = 1.0 - min(places) / 10.0 if places else {"res.blades": 1.0, "res.armor": 0.9, "res.arrows": 0.8, "res.arts": 0.7}[gene.name]
+            value = 1.0 - min(places) / 10.0 if places else {"res.blades": 1.0, "res.armor": 0.9, "res.arrows": 0.8, "res.arts": 0.7, "res.marks": 0.6}[gene.name]
         else:
             value = float(getattr(profile, gene.name))
         genes[gene.name] = gene.clip(value)
@@ -218,6 +240,10 @@ def profile_of(genes: Mapping[str, float], name: str, base: ProProfile = PRO) ->
         changes["army_plan"] = None
     changes["early_tech"] = tuple(t for t, _most in _TECH_TYPES for _ in range(int(genes[f"tech.{t.value}"])))
     changes["research_order"] = research_order(genes) if genes["res.on"] else None
+    opening = [_OPENING_CODES[int(genes[f"open.{k}"])] for k in range(OPENING_SLOTS)]
+    changes["opening"] = tuple(step for step in opening if step is not None)
+    if not genes["defend.on"]:
+        changes["defend_ratio"] = 0.0
     return replace(base, name=name, **changes)  # type: ignore[arg-type]
 
 
@@ -289,7 +315,8 @@ class Individual:
 
     @classmethod
     def from_record(cls, row: Mapping) -> "Individual":
-        return cls(name=row["name"], genes=dict(row["genes"]), born=row["born"], parents=tuple(row["parents"]),
+        """A gene added since the record was kept takes the value that spells ``pro``: the behaviour as it was."""
+        return cls(name=row["name"], genes=genes_of(PRO) | dict(row["genes"]), born=row["born"], parents=tuple(row["parents"]),
                    record={k: list(v) for k, v in row["record"].items()}, style={k: list(v) for k, v in row["style"].items()})
 
 
@@ -350,6 +377,12 @@ class Evaluator:
             self.pool.terminate()
             self.pool.join()
 
+    def map(self, function, tasks: Sequence) -> list:
+        """*function* over *tasks*, in their order."""
+        if self.pool is None:
+            return [function(task) for task in tasks]
+        return self.pool.map(function, tasks, chunksize=2)
+
     def play(self, specs: Sequence[MatchSpec], bred: Mapping[str, Genes]) -> list[MatchResult]:
         usable: dict[tuple, bool] = {}
         tasks: list[Task] = []
@@ -377,6 +410,97 @@ def judge(evaluator: Evaluator, population: Sequence[Individual], panel: Sequenc
             if name in by_name:
                 by_name[name].add(result.spec.agents[1 - seat], result, seat)
     return len(results)
+
+
+# -- Macro: an opening judged on its own --------------------------------------------------
+
+MACRO_CHECKPOINTS: tuple[tuple[float, float], ...] = ((210.0, 1.0), (270.0, 1.0), (360.0, 0.5))  # (seconds, weight)
+#: The behaviours an opening is made of.  A macro search breeds these alone; the rest stay as the base has them.
+MACRO_BEHAVIOURS: frozenset[str] = frozenset({"economy", "construction", "opening", "tech", "army"})
+
+
+class _Passive:
+    """The opponent of a macro trial: it stands where it started, so nothing but the build is being measured."""
+
+    def think(self, world, rng) -> None:
+        return None
+
+
+def military_worth(world, player: int) -> float:
+    """How much fight *player*'s soldiers have in them, as the brain itself compares armies (:func:`strength`):
+    linear in the number of like soldiers, and the upgrades they carry are in their blows and their armour."""
+    from warband.brains.pro_ai import strength
+
+    return strength(world, [unit for unit in world.player_units(player) if not unit.is_worker])
+
+
+def macro_task(task: tuple[Genes, str, int]) -> float:
+    """One opening played out undisturbed on one board: its army's strength at the checkpoints, weighted and added."""
+    from warband.sim import mapgen
+    from warband.sim.rules import SIM_DT, Layout, MapTheme
+
+    genes, race, seed = task
+    board = arena.board(seed)
+    other = RACE_VALUES[seed % len(RACE_VALUES)]
+    try:
+        world = mapgen.generate(seed=seed, width=board["width"], height=board["height"], players=2, human=None,
+                                theme=MapTheme.SUMMER, races=(Race(race), Race(other)), layout=Layout(board["layout"]))
+    except ValueError:
+        return math.nan  # no fair map from this seed at this size
+    # Nothing to attack with and nobody to scout: the opening alone.
+    profile = replace(profile_of(genes, "macro"), min_army=10_000, scout=False, raid=False, rush_towers=0)
+    brain, rng = ProBrain(0, profile), random.Random(seed * 1000003)
+    score, checkpoints = 0.0, list(MACRO_CHECKPOINTS)
+    while checkpoints:
+        brain.think(world, rng)
+        world.step()
+        world.take_events()
+        if world.time >= checkpoints[0][0]:
+            score += checkpoints.pop(0)[1] * military_worth(world, 0)
+    return score
+
+
+def macro_judge(evaluator: "Evaluator", population: Sequence[Genes], race: str, seeds: Sequence[int]) -> list[float]:
+    """The mean macro score of each of *population* over *seeds* (boards with no fair map left out)."""
+    tasks = [(genes, race, seed) for genes in population for seed in seeds]
+    scores = evaluator.map(macro_task, tasks)
+    out = []
+    for k in range(len(population)):
+        mine = [v for v in scores[k * len(seeds):(k + 1) * len(seeds)] if not math.isnan(v)]
+        out.append(statistics.fmean(mine) if mine else 0.0)
+    return out
+
+
+def macro_search(evaluator: "Evaluator", race: str, base: Genes, *, generations: int, population: int, seeds: Sequence[int],
+                 rng: random.Random, log=print) -> tuple[Genes, float]:
+    """Breed the opening behaviours of *base* for military worth at the checkpoints; the best genes and their score.
+
+    The boards are the same every generation: an undisturbed opening is deterministic, so a score is exact and the
+    survivors need no second look.  What it is bred on is fifteen boards of every size and layout, not one."""
+    genes_in_play = [gene for gene in GENES if gene.behaviour in MACRO_BEHAVIOURS]
+
+    def vary(genes: Genes, rate: float) -> Genes:
+        out = dict(genes)
+        for gene in [g for g in genes_in_play if rng.random() < rate] or [rng.choice(genes_in_play)]:
+            out[gene.name] = gene.nudge(out[gene.name], rng, 0.2)
+        return out
+
+    pool = [dict(base)] + [vary(base, 0.3) for _ in range(population - 1)]
+    scores = macro_judge(evaluator, pool, race, seeds)
+    for generation in range(generations):
+        ranked = sorted(zip(scores, range(len(pool))), reverse=True)
+        keep = [pool[i] for _s, i in ranked[:population // 4]]
+        kept_scores = [s for s, _i in ranked[:population // 4]]
+        children = []
+        while len(keep) + len(children) < population:
+            a, b = rng.choice(keep), rng.choice(keep)
+            child = {gene.name: (a if rng.random() < 0.5 else b)[gene.name] for gene in GENES}
+            children.append(vary(child, 0.1))
+        pool = keep + children
+        scores = kept_scores + macro_judge(evaluator, children, race, seeds)
+        log(f"macro {race} gen {generation:3d}: best {max(scores):8.0f}  median {statistics.median(scores):8.0f}")
+    best = max(range(len(pool)), key=lambda i: scores[i])
+    return pool[best], scores[best]
 
 
 # -- The search ------------------------------------------------------------------------

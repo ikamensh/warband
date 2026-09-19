@@ -107,6 +107,7 @@ class Upgrade(IdentityEnum):
     ARROWS_1 = "arrows_1"
     ARROWS_2 = "arrows_2"
     SIEGE = "siege"
+    MARKSMANSHIP = "marksmanship"
     # Race arts: only that race researches them.
     HORSES = "horses"
     BLESSING = "blessing"
@@ -235,7 +236,7 @@ BUILDINGS: Final[dict[BuildingType, BuildingInfo]] = {
                                      requires=BuildingType.BARRACKS, damage=8, range=6.0, cooldown=1.5),
     BuildingType.LUMBER_MILL: BuildingInfo("Lumber Mill", Cost(600, 450), 600, 2, 3, 35.0, 4, 0, "m",
                                            "Lumber is delivered here; researches better arrows",
-                                           researches=(Upgrade.ARROWS_1, Upgrade.ARROWS_2, Upgrade.LONGBOWS, Upgrade.REGROWTH),
+                                           researches=(Upgrade.ARROWS_1, Upgrade.ARROWS_2, Upgrade.MARKSMANSHIP, Upgrade.LONGBOWS, Upgrade.REGROWTH),
                                            requires=BuildingType.TOWN_HALL, deposits=frozenset({Resource.LUMBER})),
     BuildingType.BLACKSMITH: BuildingInfo("Blacksmith", Cost(800, 450), 600, 3, 3, 40.0, 4, 0, "k",
                                           "Researches sharper blades and plate armour",
@@ -275,6 +276,8 @@ UPGRADES: Final[dict[Upgrade, UpgradeInfo]] = {
     Upgrade.ARROWS_1: UpgradeInfo("Bodkin Arrows", Cost(300, 300), 40.0, "r", "+2 damage for archers and towers"),
     Upgrade.ARROWS_2: UpgradeInfo("Broadhead Arrows", Cost(900, 500), 60.0, "r", "+2 more damage for archers and towers", requires=Upgrade.ARROWS_1),
     Upgrade.SIEGE: UpgradeInfo("Siege Engineering", Cost(1000, 500), 60.0, "e", "+1 range and +25 % damage for siege engines"),
+    Upgrade.MARKSMANSHIP: UpgradeInfo("Marksmanship", Cost(600, 300), 45.0, "m",
+                                      "Shooters pick the mark in reach they fell soonest and waste no arrow on the dying"),
     Upgrade.HORSES: UpgradeInfo("Horse Breeding", Cost(900, 300), 50.0, "h", "+0.8 speed for scouts and knights", race=Race.HUMAN),
     Upgrade.BLESSING: UpgradeInfo("Blessing", Cost(800, 400), 50.0, "l", "Clerics heal half again as fast", race=Race.HUMAN),
     Upgrade.BLOODLUST: UpgradeInfo("Bloodlust", Cost(700, 300), 50.0, "l", "Frenzy doubles: wounded orcs deal +50 % damage", race=Race.ORC),

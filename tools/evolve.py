@@ -80,9 +80,33 @@ def _trial(args: argparse.Namespace) -> None:
               + f"  first {i.mean_style('first_attack'):4.0f} peak {i.mean_style('peak_army'):4.1f}  {i.name}")
 
 
+def _macro(args: argparse.Namespace) -> None:
+    """Breed an opening for military worth at the checkpoints, undisturbed, and say what it changed."""
+    import json
+    import random
+
+    base = evolve.genes_of(evolve._known_profile(args.base))
+    evaluator = evolve.Evaluator(args.workers)
+    seeds = range(args.first_seed, args.first_seed + args.seeds)
+    try:
+        before = evolve.macro_judge(evaluator, [base], args.race, seeds)[0]
+        print(f"{args.base} as {args.race}: {before:.0f} over {args.seeds} boards", flush=True)
+        best, score = evolve.macro_search(evaluator, args.race, base, generations=args.generations, population=args.population,
+                                          seeds=seeds, rng=random.Random(args.seed), log=lambda text: print(text, flush=True))
+        fresh = range(args.first_seed + 1000, args.first_seed + 1000 + 2 * args.seeds)
+        check = evolve.macro_judge(evaluator, [base, best], args.race, fresh)
+    finally:
+        evaluator.close()
+    print(f"best {score:.0f} (from {before:.0f}); on {len(fresh)} boards it never saw: {check[1]:.0f} against {check[0]:.0f}")
+    print("changed: " + ", ".join(f"{k}={v:g}" for k, v in best.items() if v != base[k]))
+    if args.out is not None:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps({"race": args.race, "base": args.base, "score": score, "fresh": check, "genes": best}))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("mode", choices=("run", "show", "profile", "trial"))
+    parser.add_argument("mode", choices=("run", "show", "profile", "trial", "macro"))
     parser.add_argument("--base", default="pro-vanguard", help="trial: the known profile the genes are set on")
     parser.add_argument("--set", action="append", help="trial: genes set by hand, e.g. research_first=2,tech.blacksmith=1 (repeatable)")
     parser.add_argument("path", nargs="?", type=Path, help="show, profile: the run's folder")
@@ -103,6 +127,9 @@ def main() -> None:
 
     if args.mode == "trial":
         _trial(args)
+        return
+    if args.mode == "macro":
+        _macro(args)
         return
     if args.mode in ("show", "profile"):
         state = evolve.load(args.path)

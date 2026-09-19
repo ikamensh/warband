@@ -87,8 +87,22 @@ def register(name: str, factory: AgentFactory) -> None:
     AGENTS[name] = factory
 
 
+class _Thrifty:
+    """EXPERIMENT: an agent whose automatic gatherers are rebalanced (``thrifty:<agent>``)."""
+
+    def __init__(self, inner: Agent, player: int) -> None:
+        self.inner, self.player = inner, player
+        self.log = getattr(inner, "log", [])
+
+    def think(self, world: World, rng: random.Random) -> None:
+        world.rebalance_players.add(self.player)
+        self.inner.think(world, rng)
+
+
 def make_agent(name: str, player: int, seed: int = 0) -> Agent:
     """*seed* is the match's: a difficulty with more than one posture draws one from it."""
+    if name.startswith("thrifty:"):
+        return _Thrifty(make_agent(name[8:], player, seed), player)
     if name not in AGENTS:
         raise KeyError(f"unknown agent {name!r}; known: {', '.join(sorted(AGENTS))}")
     return AGENTS[name](player, seed)
