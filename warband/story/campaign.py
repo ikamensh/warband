@@ -405,6 +405,9 @@ class Run:
                 if state not in ("hidden", "open", "done", "failed"):
                     raise ValueError(f"objective {objective_id!r} in unknown state {state!r}")
                 run.state[objective_id] = state
+        # A failed objective lost the mission when it failed, and is never looked at again; the result shows a frame
+        # later, so a save can fall between the two.
+        run.lost = next((o.text for o in mission.objectives if run.state[o.id] == "failed"), None)
         return run
 
     def remembered(self) -> dict[str, Any]:

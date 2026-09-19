@@ -16,6 +16,7 @@ from warband.story.mission_scene import CAMPAIGN_SLOT, MissionResultScene, Missi
 from warband.story.missions import CAMPAIGN
 from warband.sim.model import tile_center
 from warband.sim.rules import SIM_DT, BuildingType, Difficulty, Race, UnitType
+from warband.ui.scene import load_game
 from warband.ui.style import build_theme
 from warband.ui.title import TitleScene
 
@@ -338,6 +339,21 @@ def test_a_mission_save_from_another_version_costs_the_mission_not_the_campaign(
     press(game, "escape")
     assert isinstance(game.scene, MissionScene) and game.scene.mission.id == "greywater"
     assert store.load().completed == ["hollowmere"] and store.load().flags == {"truce": True}
+
+
+def test_a_mission_lost_just_before_it_was_saved_comes_back_lost() -> None:
+    """A failed objective loses the mission at once and its result shows a frame later: a save in between (the pause
+    menu's Campaign, or the autosave falling due) must bring the mission back lost, not undecided and still winnable."""
+    run = build_world(mission("karst_hold"), flags={"truce": True})
+    run.hall(0).hp = 0  # Karst's Deep Hold falls
+    run_for(run, SIM_DT)  # the step buries it and the script loses the mission
+    assert run.lost == "Karst's Deep Hold must stand"
+    saved = MissionScene(CAMPAIGN, run, difficulty=Difficulty.MEDIUM).get_save_state()
+    loaded = load_game(json.loads(json.dumps(saved))).run
+    assert loaded.lost == run.lost and loaded.state["hold"] == "failed"
+    raze(loaded.world, 1)  # the siege broken after all
+    run_for(loaded, 1)
+    assert loaded.state["break"] == "done" and not loaded.won
 
 
 def test_start_over_asks_twice_and_then_erases(game) -> None:
