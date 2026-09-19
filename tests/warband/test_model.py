@@ -146,6 +146,7 @@ def test_a_footman_kills_a_peasant_and_the_death_is_reported() -> None:
     world = flat_world()
     footman = world.spawn_unit(0, UnitType.FOOTMAN, (2.5, 2.5))
     peasant = world.spawn_unit(1, UnitType.PEASANT, (6.5, 2.5))
+    world.hold([peasant.id])  # a fleeing peasant outruns a footman since WB-050
     world.attack([footman.id], peasant.id)
     run(world, 12.0)
     assert peasant.id not in world.units

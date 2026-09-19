@@ -16,7 +16,7 @@ Balance in one table (base values; upgrades in :data:`UPGRADES`):
 | unit     | cost      | hp | dmg | armor | range | wind-up + cooldown | turn  | speed | role, counters                          |
 |----------|-----------|----|-----|-------|-------|--------------------|-------|-------|-----------------------------------------|
 | peasant  | 400       | 30 | 3   | 0     | melee | 0.25 + 1.0         | 360°/s| 2.4   | economy; anything kills it              |
-| footman  | 600       | 60 | 7   | 2     | melee | 0.3 + 1.0          | 360°/s| 2.4   | line; beats archers, loses to knights   |
+| footman  | 600       | 60 | 7   | 3     | melee | 0.3 + 1.0          | 360°/s| 2.0   | line: +1 armour per footman at its side, marches in formation; beats archers, loses to knights |
 | archer   | 500+50    | 40 | 6   | 0     | 4     | 0.35 + 1.3         | 360°/s| 2.4   | ranged; the answer to armour, dies to scouts/knights |
 | scout    | 350       | 35 | 4   | 0     | melee | 0.25 + 0.8         | 450°/s| 4.2   | fast raider, sight 8; kills archers, peasants; loses to footmen |
 | knight   | 900+100   | 90 | 10  | 4     | melee | 0.35 + 1.0         | 270°/s| 3.4   | shock; beats everything at cost; catapults and mass archers wear it down |
@@ -152,6 +152,7 @@ class UnitInfo:
     splash: float = 0.0  # radius around where a stone lands that also takes damage; a siege engine
     attack: AttackType = AttackType.NORMAL
     armor_class: ArmorClass = ArmorClass.LIGHT
+    formation: bool = False  # marches in a line and wears FORMATION_ARMOR more for each such neighbour beside it
     mounted: bool = False  # benefits from HORSES
     windup: float = 0.0  # seconds from the decision to strike to the blow landing; the unit stands committed meanwhile
     turn: float = math.radians(360)  # radians per second the unit pivots
@@ -182,8 +183,9 @@ MELEE: Final = 0.45  # reach of a melee unit: it strikes from the next tile over
 UNITS: Final[dict[UnitType, UnitInfo]] = {
     UnitType.PEASANT: UnitInfo("Peasant", Cost(400), 30, 3, 0, MELEE, 1.0, 2.4, 4, 12.0, BuildingType.TOWN_HALL, "p",
                                "Mines gold, chops lumber, builds and repairs", windup=0.25, armor_class=ArmorClass.UNARMORED),
-    UnitType.FOOTMAN: UnitInfo("Footman", Cost(600), 60, 7, 2, MELEE, 1.0, 2.4, 5, 15.0, BuildingType.BARRACKS, "f",
-                               "Sturdy swordsman; the line of any army", windup=0.3, armor_class=ArmorClass.HEAVY),
+    UnitType.FOOTMAN: UnitInfo("Footman", Cost(600), 60, 7, 3, MELEE, 1.0, 2.0, 5, 15.0, BuildingType.BARRACKS, "f",
+                               "Slow shield-wall swordsman; tougher with a comrade at each side", windup=0.3,
+                               armor_class=ArmorClass.HEAVY, formation=True),
     UnitType.ARCHER: UnitInfo("Archer", Cost(500, 50), 40, 6, 0, 4.0, 1.3, 2.4, 6, 14.0, BuildingType.BARRACKS, "a",
                               "Shoots from four tiles away; fragile up close", windup=0.35, attack=AttackType.PIERCING),
     UnitType.SCOUT: UnitInfo("Scout", Cost(350), 35, 4, 0, MELEE, 0.8, 4.2, 8, 10.0, BuildingType.STABLES, "s",
@@ -316,6 +318,13 @@ def damage_factor(attack: AttackType, armor: ArmorClass) -> float:
 
 
 FRIENDLY_MARGIN: Final = 0.3  # tiles beyond its splash a siege crew keeps a stone from its own side when firing on its own
+FORMATION_ARMOR: Final = 1  # armour a formation unit gains for each such friend at its left and at its right
+FORMATION_SPACING: Final = 1.0  # tiles between neighbours in a marching line
+FORMATION_WIDTH: Final = 8  # a line this long; more stand in rows behind
+FORMATION_MARCH: Final = 4.0  # tiles a group must go before its formation units form a line; nearer, they gather
+FORMATION_SLACK: Final = 1.0  # tiles nearer its slot than the line's laggard before a marcher waits for it
+FORMATION_HOLD: Final = 0.6  # of its speed a marcher that is ahead of its line walks
+FORMATION_LOOKAHEAD: Final = 3.0  # tiles ahead of a marching line's middle each member aims for its place
 SIEGE_STEP: Final = 3.0  # tiles beyond its reach a siege crew on its own judgement will roll forward for a clear shot
 SIEGE_WORTH: Final = {UnitType.CATAPULT: 3.0, UnitType.CLERIC: 3.0, UnitType.ARCHER: 2.0}  # what a stone on them is worth to a crew; any other unit 1
 SIEGE_BUILDING_WORTH: Final = 0.5  # a building under a stone, beside a unit's 1: soldiers first, walls when no soldier can be reached

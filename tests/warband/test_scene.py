@@ -665,6 +665,7 @@ def test_a_load_in_the_match_leaves_the_abandoned_timeline_behind(play) -> None:
     rival = next(p.id for p in world.players if p.id != scene.human)
     victim = world.player_units(scene.human)[0]
     raider = world.spawn_unit(rival, UnitType.FOOTMAN, (victim.x + 0.9, victim.y))
+    world.hold([victim.id])  # a fleeing peasant outruns a footman since WB-050
     world.attack([raider.id], victim.id)
     tick(game, 4.0, 0.1)
     assert scene.last_alert is not None and scene.mood == "battle"

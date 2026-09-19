@@ -39,7 +39,7 @@ from warband.sim.rules import (
     ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLASTING_POWDER_BONUS, BLESSING_BONUS, BLOODLUST_BONUS, BUILDINGS, CHOP_TIME, DEEP_MINING_TRIP,
     FRENZY_BONUS, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MINE_GOLD, MINE_SLOTS, MINE_TIME, PLAYERS,
     PLUNDER_SHARE, REGROWTH_SECONDS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION, STARTING_GOLD, STARTING_LUMBER,
-    ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, SIEGE_BUILDING_WORTH, SIEGE_STEP, SIEGE_WORTH, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
+    FORMATION_ARMOR, FORMATION_HOLD, FORMATION_LOOKAHEAD, FORMATION_MARCH, FORMATION_SLACK, FORMATION_SPACING, FORMATION_WIDTH, ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, SIEGE_BUILDING_WORTH, SIEGE_STEP, SIEGE_WORTH, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
     MAX_QUEUED_ORDERS, UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
     Terrain, UnitInfo, UnitType, Upgrade, ArmorClass, AttackType, damage_factor,
 )
@@ -195,12 +195,14 @@ class RuleError(Exception):
 class Move:
     target: Point
     pace: float | None = None  # slowest speed_of in the group at issue time; None: walk at full speed
+    offset: Point | None = None  # a marching line's slot, from the group's shared target (WB-050); None: the target itself
 
 
 @dataclass
 class AttackMove:
     target: Point
     pace: float | None = None  # as Move.pace
+    offset: Point | None = None  # as Move.offset
 
 
 @dataclass
@@ -557,6 +559,7 @@ class World:
         self._exposed: set[int] = set()  # players whose last holdings stand revealed
         self._region_map: pathing.Regions | None = None  # walkable regions of the static grid, see _regions()
         self._pace_groups: dict[tuple[int, Point, float], bool] = {}  # per step, see _group_together()
+        self._line_lag: dict[tuple[int, Point], tuple[float, float, dict[int, float], float, float]] = {}  # per step, see _line()
         self._dangers: dict[int, float] = {}  # per step, see _danger_to()
 
     # -- Ids and lookups -----------------------------------------------------------
@@ -844,6 +847,25 @@ class World:
         """An orc soldier below half health fights in a frenzy."""
         return unit.race is Race.ORC and not unit.is_worker and unit.info.soldier and unit.hp * 2 < unit.max_hp
 
+    def flanks(self, unit: Unit) -> int:
+        """How many of *unit*'s sides, left and right across its facing, a friend of the same formation guards: a
+        comrade beside it, not ahead or behind."""
+        if not unit.info.formation:
+            return 0
+        fx, fy = math.cos(unit.facing), math.sin(unit.facing)
+        left = right = False
+        for v in self.units_near(unit.pos, 1.5 * FORMATION_SPACING + UNIT_RADIUS):
+            if v is unit or v.player != unit.player or v.type is not unit.type or v.hidden or v.hp <= 0:
+                continue
+            dx, dy = v.x - unit.x, v.y - unit.y
+            ahead, side = dx * fx + dy * fy, dy * fx - dx * fy
+            if abs(ahead) <= 0.6 and 0.3 <= abs(side) <= 1.5 * FORMATION_SPACING:
+                if side > 0:
+                    left = True
+                else:
+                    right = True
+        return int(left) + int(right)
+
     def armor_class_of(self, entity: Entity) -> ArmorClass:
         return ArmorClass.FORTIFIED if isinstance(entity, Building) else entity.info.armor_class
 
@@ -854,6 +876,8 @@ class World:
         armor = entity.info.armor
         if isinstance(entity, Unit) and not entity.is_worker:
             armor += ARMOR_BONUS * (self._has(entity.player, Upgrade.ARMOR_1) + self._has(entity.player, Upgrade.ARMOR_2))
+        if isinstance(entity, Unit) and entity.info.formation:
+            armor += FORMATION_ARMOR * self.flanks(entity)
         return armor
 
     def range_of(self, unit: Unit) -> float:
@@ -1143,16 +1167,19 @@ class World:
         target = self._clamp(target)
         units = self._own_units(unit_ids, queue=queue)
         pace = min((self.speed_of(u) for u in units), default=None) if len(units) > 1 and not queue else None
+        slots = {} if queue else self._line_slots(units, target)
         for unit in units:
-            self._issue(unit, Move(target, pace=pace), queue=queue)
+            self._issue(unit, Move(target, pace=pace, offset=slots.get(unit.id)), queue=queue)
 
     @recorded
     def attack_move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         target = self._clamp(target)
         units = self._own_units(unit_ids, queue=queue)
         pace = min((self.speed_of(u) for u in units), default=None) if len(units) > 1 and not queue else None
+        slots = {} if queue else self._line_slots(units, target)
         for unit in units:
-            self._issue(unit, AttackMove(target, pace=pace) if not unit.is_worker else Move(target, pace=pace), queue=queue)
+            self._issue(unit, AttackMove(target, pace=pace, offset=slots.get(unit.id)) if not unit.is_worker else Move(target, pace=pace),
+                        queue=queue)
 
     @recorded
     def patrol(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
@@ -1476,6 +1503,7 @@ class World:
         self.time += dt
         self.tick += 1
         self._pace_groups.clear()
+        self._line_lag.clear()
         self._dangers.clear()
         self._index_units()
         self.settlement.update()
@@ -1872,8 +1900,64 @@ class World:
         self._fight(u, target, dt, auto=True)
 
     def _do_move(self, u: Unit, order: Move, dt: float) -> None:
-        if self._walk_to(u, order.target, dt, settle=True):
+        if self._march(u, order, dt):
             self._finish_order(u)
+
+    def _march(self, u: Unit, order: Move | AttackMove, dt: float) -> bool:
+        """Walk a Move or AttackMove; True once there. A unit in a marching line heads for its place in the line as it
+        stands FORMATION_LOOKAHEAD ahead of the line's middle, so the line re-forms as soon as it is past what split
+        it; its slot at the end is the goal once the middle is that near, or when its place now is not open ground."""
+        slot = self._slot(order)
+        if order.offset is not None:
+            fx, fy, _, cx, cy = self._line(u.player, order)
+            if dist((cx, cy), order.target) > FORMATION_LOOKAHEAD:
+                point = self._clamp((cx + fx * FORMATION_LOOKAHEAD + order.offset[0], cy + fy * FORMATION_LOOKAHEAD + order.offset[1]))
+                regions = self._regions()
+                if self.passable(int(point[0]), int(point[1])) and regions.label(u.tile) == regions.label((int(point[0]), int(point[1]))):
+                    if not self._steer(u, point, dt):  # straight at it when the way is clear; a path keeps a grid row
+                        self._walk_to(u, point, dt)
+                    return False
+        return self._walk_to(u, slot, dt, settle=True)
+
+    def _slot(self, order: Move | AttackMove) -> Point:
+        """Where a Move or AttackMove takes its unit: its slot in a marching line, or the shared target."""
+        if order.offset is None:
+            return order.target
+        return self._clamp((order.target[0] + order.offset[0], order.target[1] + order.offset[1]))
+
+    def _line_slots(self, units: list[Unit], target: Point) -> dict[int, Point]:
+        """Offsets from *target* that stand the formation units among *units* in a line across the way they are
+        going (WB-050): FORMATION_SPACING apart, FORMATION_WIDTH a row, further rows behind, each keeping its place
+        from left to right so no two cross on the way.  Empty for fewer than two of them."""
+        line = [u for u in units if u.info.formation]
+        if len(line) < 2:
+            return {}
+        cx, cy = sum(u.x for u in line) / len(line), sum(u.y for u in line) / len(line)
+        dx, dy = target[0] - cx, target[1] - cy
+        d = hypot(dx, dy)
+        if d < FORMATION_MARCH:
+            return {}  # a step aside is no march: the group gathers at the spot
+        fx, fy = dx / d, dy / d
+        px, py = -fy, fx  # across the march
+        line.sort(key=lambda u: (-((u.x - cx) * fx + (u.y - cy) * fy), u.id))  # the foremost make the front row
+        rows = [line[i:i + FORMATION_WIDTH] for i in range(0, len(line), FORMATION_WIDTH)]
+        slots: dict[int, Point] = {}
+        for row, members in enumerate(rows):
+            members.sort(key=lambda u: (-((u.x - cx) * px + (u.y - cy) * py), u.id))  # then each keeps its side
+            width = len(members)
+            for col, unit in enumerate(members):
+                self._place_in_line(slots, unit, target, fx, fy, ((width - 1) / 2 - col) * FORMATION_SPACING, row * FORMATION_SPACING)
+        return slots
+
+    def _place_in_line(self, slots: dict[int, Point], unit: Unit, target: Point, fx: float, fy: float, side: float, back: float) -> None:
+        """Give *unit* the slot *side* across and *back* behind *target* on heading (fx, fy), unless the slot stands
+        in the trees or across the water from it: that one goes to the spot itself."""
+        px, py = -fy, fx
+        offset = (px * side - fx * back, py * side - fy * back)
+        sx, sy = self._clamp((target[0] + offset[0], target[1] + offset[1]))
+        regions = self._regions()
+        if self.passable(int(sx), int(sy)) and regions.label(unit.tile) == regions.label((int(sx), int(sy))):
+            slots[unit.id] = offset
 
     def _engage(self, u: Unit) -> bool:
         """Pick up a fight (or a patient) in sight while on the move; True if one was found."""
@@ -1894,7 +1978,7 @@ class World:
     def _do_attack_move(self, u: Unit, order: AttackMove, dt: float) -> None:
         if self._engage(u):
             return
-        if self._walk_to(u, order.target, dt, settle=True):
+        if self._march(u, order, dt):
             self._finish_order(u)
 
     def _do_patrol(self, u: Unit, order: Patrol, dt: float) -> None:
@@ -2496,9 +2580,50 @@ class World:
         """
         base = self.speed_of(u)
         order = u.order
-        if not isinstance(order, (Move, AttackMove)) or order.pace is None or order.pace >= base:
+        if not isinstance(order, (Move, AttackMove)):
             return base
-        return order.pace if self._group_together(u.player, order.target, order.pace) else base
+        speed = order.pace if order.pace is not None and order.pace < base and self._group_together(u.player, order.target, order.pace) else base
+        if order.offset is not None and self._ahead_of_line(u, order):
+            speed *= FORMATION_HOLD
+        return speed
+
+    def _ahead_of_line(self, u: Unit, order: Move | AttackMove) -> bool:
+        """Whether *u*, marching in a line, is more than FORMATION_SLACK further along the march than its row's
+        laggard (each measured to its own slot along the way the line is going), while the row still holds
+        together: the laggard no more than 6 tiles behind.  A row dresses on itself; rows behind never hold the
+        front, which is what stands in their way."""
+        assert order.offset is not None
+        fx, fy, lags, _, _ = self._line(u.player, order)
+        sx, sy = self._slot(order)
+        return FORMATION_SLACK < lags[self._line_row(order.offset, fx, fy)] - ((sx - u.x) * fx + (sy - u.y) * fy) <= 6.0
+
+    def _line(self, player: int, order: Move | AttackMove) -> tuple[float, float, dict[int, float], float, float]:
+        """A marching line as it stands this step: its heading, each row's laggard (how far along the heading it still
+        has to go to its slot) and its middle.  Memoised for the step."""
+        key = (player, order.target)
+        line = self._line_lag.get(key)
+        if line is None:
+            mates = [v for v in self.units.values()
+                     if v.player == player and not v.hidden and v.hp > 0 and isinstance(v.order, (Move, AttackMove))
+                     and v.order.offset is not None and v.order.target == order.target]
+            cx, cy = sum(v.x for v in mates) / len(mates), sum(v.y for v in mates) / len(mates)
+            dx, dy = order.target[0] - cx, order.target[1] - cy
+            d = hypot(dx, dy)
+            fx, fy = (dx / d, dy / d) if d > 1e-6 else (0.0, 0.0)
+            lags: dict[int, float] = {}
+            for v in mates:
+                vo = v.order
+                assert isinstance(vo, (Move, AttackMove)) and vo.offset is not None
+                sx, sy = self._slot(vo)
+                row = self._line_row(vo.offset, fx, fy)
+                lags[row] = max(lags.get(row, 0.0), (sx - v.x) * fx + (sy - v.y) * fy)
+            line = self._line_lag[key] = (fx, fy, lags, cx, cy)
+        return line
+
+    @staticmethod
+    def _line_row(offset: Point, fx: float, fy: float) -> int:
+        """Which row of its line a slot stands in: how many FORMATION_SPACING it is behind the front."""
+        return int(round(-(offset[0] * fx + offset[1] * fy) / FORMATION_SPACING))
 
     def _group_together(self, player: int, target: Point, pace: float) -> bool:
         """Whether every unit of *player* pacing towards *target* is within 6 tiles of the one leading the
@@ -2575,7 +2700,9 @@ class World:
         d = hypot(dx, dy)
         speed = self._effective_speed(u)
         step = speed * dt - spent  # what is left of this tick's travel
-        if d <= step or d <= ARRIVE:
+        # Only the end of the walk counts as reached within ARRIVE: snapping onto a waypoint on the way from further
+        # than the tick's travel sped every unit slower than ARRIVE a tick up at each one (WB-050's footmen showed it).
+        if d <= step or (d <= ARRIVE and len(u.path) <= 1):
             if navigation is not None and not self._line_clear(u.pos, waypoint, navigation=navigation):
                 u.path_goal = None
                 return False
@@ -2915,7 +3042,8 @@ class World:
 
     def _clear_of_friends(self, u: Unit, spot: Point) -> bool:
         """Whether a stone from *u* coming down on *spot* stays off its own side: no friend stands within its splash
-        and :data:`FRIENDLY_MARGIN`, is walking into it before the stone lands, or is on its way to fight an enemy within arm's
+        and :data:`FRIENDLY_MARGIN`, is walking into it before the stone lands (by its velocity, or by the move it is
+        under orders to make), or is on its way to fight an enemy within arm's
         length of it (a soldier after an archer that steps back between its shots)."""
         keep_clear = self.splash_of(u) + FRIENDLY_MARGIN
         flight = self._stone_flight(u.pos, spot)
@@ -2928,6 +3056,12 @@ class World:
             if hypot(ally.x + ally.vx * flight - sx, ally.y + ally.vy * flight - sy) - ally.radius <= keep_clear:
                 return False
             order = ally.order
+            if isinstance(order, (Move, AttackMove)):  # standing for a moment, it walks on: where it will be by then
+                gx, gy = self._slot(order)
+                left = hypot(gx - ally.x, gy - ally.y)
+                walk = min(left, self.speed_of(ally) * flight)
+                if left > 1e-6 and hypot(ally.x + (gx - ally.x) / left * walk - sx, ally.y + (gy - ally.y) / left * walk - sy) - ally.radius <= keep_clear:
+                    return False
             if isinstance(order, Attack):
                 foe = self.entity(order.target)
                 # It will stand at arm's length of its foe, on whichever side it comes from.
@@ -3335,6 +3469,8 @@ def _order_from_dict(d: dict[str, Any]) -> Order:
     elif kind in (Move, AttackMove):
         fields["target"] = tuple(fields["target"])
         fields.setdefault("pace", None)  # saves from before the group pace existed
+        offset = fields.get("offset")  # absent from saves before the marching line (WB-050)
+        fields["offset"] = tuple(offset) if offset is not None else None
     elif kind is Patrol:
         fields["start"], fields["end"] = tuple(fields["start"]), tuple(fields["end"])
     return kind(**fields)

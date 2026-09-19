@@ -34,6 +34,7 @@ class UnitTweak:
     speed: float = 0.0  # added
     sight: int = 0  # added
     build_time: float = 1.0  # multiplier
+    formation: bool = True  # False: this race's unit does not march in a line though the base one does
 
 
 @dataclass(frozen=True)
@@ -68,7 +69,7 @@ def _units(tweaks: dict[UnitType, UnitTweak]) -> dict[UnitType, UnitInfo]:
         out[unit_type] = replace(
             base, name=t.name, summary=t.summary, hp=int(round(base.hp * t.hp)), damage=int(round(base.damage * t.damage)),
             armor=base.armor + t.armor, range=base.range + (t.range if base.ranged else 0.0), speed=round(base.speed + t.speed, 2),
-            sight=base.sight + t.sight, build_time=round(base.build_time * t.build_time, 2),
+            sight=base.sight + t.sight, build_time=round(base.build_time * t.build_time, 2), formation=base.formation and t.formation,
         )
     return out
 
@@ -92,7 +93,7 @@ def _race(name: str, adjective: str, tagline: str, passive: str, arts: tuple[Upg
 
 _HUMAN_UNITS: Final = {
     UnitType.PEASANT: UnitTweak("Peasant", "Mines gold, chops lumber, builds, repairs", build_time=0.85),
-    UnitType.FOOTMAN: UnitTweak("Footman", "Sturdy swordsman; the line of any army", build_time=0.85),
+    UnitType.FOOTMAN: UnitTweak("Footman", "Slow shield-wall swordsman; tougher with a comrade at each side", build_time=0.85),
     UnitType.ARCHER: UnitTweak("Archer", "Shoots from four tiles; fragile up close", build_time=0.85),
     UnitType.SCOUT: UnitTweak("Scout", "Fast rider who sees far; raids workers", build_time=0.85),
     UnitType.KNIGHT: UnitTweak("Knight", "Fast, heavily armoured shock cavalry", build_time=0.85),
@@ -113,7 +114,8 @@ _HUMAN_BUILDINGS: Final = {
 
 _ORC_UNITS: Final = {
     UnitType.PEASANT: UnitTweak("Peon", "Digs gold, hacks lumber, builds and repairs", hp=1.15),
-    UnitType.FOOTMAN: UnitTweak("Grunt", "Brutal axeman; hits harder as it bleeds", hp=1.15, damage=1.1, armor=-1, build_time=1.0),
+    UnitType.FOOTMAN: UnitTweak("Grunt", "Brutal axeman, fast and alone; hits harder as it bleeds", hp=1.15, damage=1.1, armor=-2, speed=0.4,
+                                build_time=1.0, formation=False),
     UnitType.ARCHER: UnitTweak("Axethrower", "Throws axes four tiles; a sturdy shooter", hp=1.15, build_time=1.0),
     UnitType.SCOUT: UnitTweak("Wolf Rider", "Fast wolf rider; hunts peons and throwers", hp=1.15, build_time=1.0),
     UnitType.KNIGHT: UnitTweak("Ogre", "Two-headed brute; thin armour, all frenzy", hp=1.2, damage=1.1, armor=-1, build_time=1.0),
@@ -134,7 +136,7 @@ _ORC_BUILDINGS: Final = {
 
 _ELF_UNITS: Final = {
     UnitType.PEASANT: UnitTweak("Gatherer", "Mines gold, fells trees, builds and repairs", hp=0.95, speed=0.15, sight=2),
-    UnitType.FOOTMAN: UnitTweak("Sentinel", "Light swordsman; quick on their feet", hp=0.95, speed=0.15, sight=2),
+    UnitType.FOOTMAN: UnitTweak("Sentinel", "Light swordsman in a line; quick on their feet", hp=0.95, speed=0.15, sight=2),
     UnitType.ARCHER: UnitTweak("Ranger", "Shoots from five tiles; fragile up close", hp=0.95, range=1.0, speed=0.15, sight=2),
     UnitType.SCOUT: UnitTweak("Outrider", "Fleet deer rider who sees farthest of all", hp=0.95, speed=0.15, sight=2),
     UnitType.KNIGHT: UnitTweak("Stag Knight", "Antlered shock cavalry, swift but light", hp=0.95, speed=0.15, sight=2),
@@ -155,7 +157,7 @@ _ELF_BUILDINGS: Final = {
 
 _DWARF_UNITS: Final = {
     UnitType.PEASANT: UnitTweak("Miner", "Mines gold, chops lumber, builds, repairs", hp=1.1, speed=-0.15),
-    UnitType.FOOTMAN: UnitTweak("Ironguard", "Armoured axeman behind a round shield", hp=1.1, armor=1, speed=-0.15),
+    UnitType.FOOTMAN: UnitTweak("Ironguard", "Armoured axeman in a wall of round shields", hp=1.1, armor=1, speed=-0.15),
     UnitType.ARCHER: UnitTweak("Crossbowman", "Shoots from four tiles; hardy for a shooter", hp=1.1, speed=-0.15),
     UnitType.SCOUT: UnitTweak("Ram Rider", "Fast ram rider; raids miners and crossbows", hp=1.1, speed=-0.15),
     UnitType.KNIGHT: UnitTweak("Bear Rider", "Armoured shock cavalry on a war bear", hp=1.1, armor=1, speed=-0.15),

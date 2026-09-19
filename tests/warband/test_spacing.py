@@ -49,7 +49,7 @@ def test_a_crowd_sent_to_a_point_still_arrives_and_settles():
     world.move([u.id for u in units], target)
     run(world, 22)
     assert all(not u.orders for u in units)
-    assert all(dist(u.pos, target) < 4.0 for u in units)
+    assert all(dist(u.pos, target) < 5.0 for u in units)  # footmen stand as two rows of eight across the march (WB-050)
     assert min(nearest(units)) > TOUCHING + 0.1
 
 
