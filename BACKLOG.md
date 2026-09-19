@@ -42,7 +42,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
-| WB-041 | Next | in progress (`package-folders`) | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
+| WB-041 | Next | done | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-044 | Next | blocked | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
 | WB-047 | Later | proposed | Split the four giant modules along their seams | WB-041 |
 
@@ -247,6 +247,42 @@ rollout, since the contract's paths and registry move. saga-online's
 registries, runtime attestation, promotion gate, rehearsal and verify tools,
 tests and docs change, and so does the stack root's `make server`. It
 follows WB-045's procedure.
+
+**Done 2026-09-19:** merged as `62e4970` (branch `package-folders`: the
+move `3e459ab`, the layer test `dbae175`, AGENTS.md `178f034`), live as
+0.2.67 on server bundle `3e3dfda8…` (saga-online `docs/wb041-rollout.md`).
+`warband/` holds `__init__.py`, `__main__.py`, `assets/` and the nine
+folders. The move is one commit: git mv plus rewrites in 191 files (imports,
+dotted names and paths in the package, tools, tests, docs and CI; this
+backlog keeps its flat names), with 50 renames that `git log --follow` and
+blame follow. Beyond names the move needed four things:
+
+* fastsim compiles `sim.*` and `brains.*` and puts the build's folders first
+  on those subpackages' paths, since the build holds no `__init__.py`; the C
+  twins are `warband.sim._native`.
+* `pieces` and `textures` find `assets/` one folder up.
+* Two contract tests and the release fixture build their packages in the new
+  tree.
+* The split import lines keep their `noqa`.
+
+`tests/warband/test_layers.py` checks three things: each folder imports
+only what its row allows, `warband/` holds only its entries, and every
+`__init__.py` is its docstring alone. A planted art-to-ui import fails it.
+
+Unchanged by the move: the fingerprint (`464b308e…`), the sim_bench digest
+(`693ec3ce…`), the replay tests, and the same match on the live and moved
+authorities (snapshots and checkpoints every 600 steps, each restoring the
+other's checkpoint). The compiled ladder takes 1.1 s against 5.7 s
+interpreted, so the compiled modules are found, in the workers too. Both
+tiers pass (1468 tests), and so do fuzz (2 games), `--selftest` (its frame
+looked at), CI's native build on Windows and Mac, and the online journey
+against the public server.
+
+The rollout moved saga-online's registries, runtime attestation, promotion
+gate, installer and tools. One journey tool built `warband.style` from the
+game's name and failed against the live server first; it now has a test.
+Saga2D's and Tribes' docs and the stack root's `make server` follow. The
+giants' splits are WB-047.
 
 ## WB-044 — Hold the push that comes with a rush tower; strike faster on Hard
 
