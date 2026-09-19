@@ -37,14 +37,13 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 ([`13c9911`](https://github.com/ikamensh/warband/blob/13c991194c5b73d2babbd74c931681aee3c4b8a7/BACKLOG.md)); WB-046, merged as `59455cc`, live as 0.2.65
 ([`70b57b2`](https://github.com/ikamensh/warband/blob/70b57b2048b4a0986aecfad4ad5999e7292c0da6/BACKLOG.md)); WB-041, merged as `62e4970`, live as 0.2.67 on
 bundle `3e3dfda8` ([`79bc783`](https://github.com/ikamensh/warband/blob/79bc78340bf30dcabb3a333f6df85b176bc4dcd3/BACKLOG.md)); WB-047, closed on its
-evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1bfbe42c4705f56a6ac0476a0/BACKLOG.md)); WB-038, merged as `75dc68f`, published as a preview ([`75dc68f`](https://github.com/ikamensh/warband/blob/75dc68f231810cdfe83d5ff6f5f47c48cfb5422f/BACKLOG.md); WB-052, merged as `a2212f5` ([`a2212f5`](https://github.com/ikamensh/warband/blob/a2212f53d78ae5c28ec64727eaabc2ac3142d183/BACKLOG.md))); WB-039 and WB-044, merged as `f8ba0eb`
+evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1bfbe42c4705f56a6ac0476a0/BACKLOG.md)); WB-038, merged as `75dc68f`, published as a preview ([`75dc68f`](https://github.com/ikamensh/warband/blob/75dc68f231810cdfe83d5ff6f5f47c48cfb5422f/BACKLOG.md); WB-052, merged as `a2212f5` ([`a2212f5`](https://github.com/ikamensh/warband/blob/a2212f53d78ae5c28ec64727eaabc2ac3142d183/BACKLOG.md); WB-049, merged as `9418ec5` ([`9418ec5`](https://github.com/ikamensh/warband/blob/9418ec5babcbf57aed2a2e5939a502fd8477a49d/BACKLOG.md)))); WB-039 and WB-044, merged as `f8ba0eb`
 ([`a8951a7`](https://github.com/ikamensh/warband/blob/a8951a7ca8b76c8df9b8e12b87ed8a9e235e7e1f/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-048 | Next | proposed | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
-| WB-049 | Next | done | Armour and attack types; archers strike the unarmoured harder | User 2026-09-19 |
 | WB-050 | Next | proposed | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
 | WB-051 | Next | done | Clerics heal in visible single casts and carry a weak attack | User 2026-09-19 |
 
@@ -94,74 +93,6 @@ Tests cover moving the builder, the builder dying, and cancelling. The AIs
 and the settlement queue no longer rely on resuming. Frames of the sites at
 three stages of progress, for each race, have been looked at. The rule change
 changes the online simulation, so it goes live through a server rollout.
-
-## WB-049 — Armour types and attack types
-
-Ilya, 2026-09-19: archers should do extra damage to clerics, catapults and
-peasants, the unarmoured. To do that, introduce armour types and attack
-types, but leave most pairings at 100% for now so the balance is not upset
-too much.
-
-Today armour is a single number subtracted from damage (`armor_of`,
-`_hit`); the only multiplier is the siege factor against buildings.
-
-**Proposed scope:** each unit gets an armour class (for example unarmoured,
-light, heavy, building) and each attacker an attack type (for example
-normal, piercing, siege). One table of multipliers replaces today's
-`siege` factor. At the start, the only multiplier other than 100% besides
-siege is piercing against unarmoured (a first guess is 150%). The unit panel
-and the help table show the classes.
-
-**Done when:** the table is in `warband/sim/rules.py` and is the one place
-the multipliers live. The native twins match the source (the fast-simulation
-fingerprints). The league shows no race and no unit pushed out of use,
-measured as the WB-balance league measures it. The rule change goes live
-through a server rollout.
-
-**Started 2026-09-19**, branch `armour-types`. **Acceptance (recorded before
-implementation):**
-
-1. `rules.py` gains `ArmorClass` (unarmoured, light, heavy, fortified) and
-   `AttackType` (normal, piercing, siege), and one table, `DAMAGE_FACTORS`,
-   is the only place a pairing's multiplier lives. It holds siege against
-   fortified at 1.5 (today's `siege` field, which is deleted) and piercing
-   against unarmoured at 1.5; every other pairing is 1.0. Peasants, clerics
-   and catapults are unarmoured, archers and scouts light, footmen and
-   knights heavy; every building is fortified. Archers (every race's) pierce,
-   catapults siege, the rest strike normally. Towers keep a normal attack,
-   because WB-037/WB-044's rush answers were measured on it.
-2. The multiplier applies before armour, as the siege factor did. A frame
-   still wears no armour (`test_a_frame_wears_no_armour_and_a_standing_tower_does`).
-   A save made before the change, with a stone in flight, still loads.
-3. Tests pin: an archer strikes a peasant, a cleric and a catapult for half
-   again its blow and a footman as before; a catapult strikes buildings as
-   before; a tower's arrow strikes a peasant as before; the table covers
-   every unit. The unit panel's armour and damage hints and the codex name
-   the classes. The native twins, the compiled simulation and the fast and
-   slow tiers pass; the fingerprint and `sim_bench` are refreshed. A ladder
-   with the archer, footman and siege archetypes shows none pushed out of use.
-
-**Done 2026-09-19** (branch `armour-types`). `ArmorClass`, `AttackType`,
-`DAMAGE_FACTORS` and `damage_factor` are in `rules.py`; `World._hit` applies
-the factor before armour, and `UnitInfo.siege` is deleted. Projectiles carry
-their attack type, and a save made before the change still loads with its
-shots in flight: a stone is read as siege, an archer's arrow as piercing,
-anything else as normal. `tests/warband/test_armour_types.py` (eight tests)
-pins the archer against peasant, cleric and catapult (half again), against
-a footman (as listed), a footman against a peasant, a tower's arrow against
-a peasant, a stone against a farm, the table and the old save. The frame
-test still passes. The unit panel's damage hint names the attack and what
-it does ("piercing, ×1.5 against unarmoured"), its armour hint the class;
-the codex's role column adds the class and any attack that is not normal.
-Both were looked at, and `tools/visual_lint.py` passes `codex_0` at
-1280x800 and 1200x680 (a longer first wording overflowed 1200x680 and was
-shortened). Ladder, nine agents with the archer, footman, siege, raider
-and cleric archetypes, 12 seeds, 864 matches, branch against main: every
-move is inside the 90% intervals. The siege archetype drops 68 (its
-catapults are unarmoured now) and the raiders 47; the archers -11, the
-clerics -30, the footmen -14, Hard -9, the Vanguard -25, the Warden +6. No
-agent is pushed out of use. Fuzz (seed 81) is clean; the fingerprint and
-`sim_bench` are refreshed. Fast and slow tiers pass (1003 and 486).
 
 ## WB-050 — Footmen hold a line
 
