@@ -1578,9 +1578,25 @@ class GameScene(Scene):
         self.sfx("button")
 
     def load_from(self, slot: int | str) -> None:
+        """Go on from the save in *slot*.  A save of another match leaves this one, so an undecided rated match asks
+        first and counts it as left; a save of this match is a rewind (docs/warband-profile.md)."""
         try:
-            if self.game.load(slot, scene=self) is None:
-                self.warn("Nothing saved there" if slot != "quick" else "No quicksave yet — F5 makes one")
+            saved = self.game.save_manager.load(slot)
+        except SaveError as exc:
+            self.warn(f"Could not load: {exc}")
+            return
+        if saved is None:
+            self.warn("Nothing saved there" if slot != "quick" else "No quicksave yet — F5 makes one")
+            return
+        where = self.leaving()
+        if where is not None and _saved_run_id(saved["state"]) != self.run_id:
+            self.game.push(LeaveScene(self, where, "Load", lambda: (self.conclude("left", where), self._load(slot))))
+            return
+        self._load(slot)
+
+    def _load(self, slot: int | str) -> None:
+        try:
+            self.game.load(slot, scene=self)
         except SaveError as exc:
             self.warn(f"Could not load: {exc}")
 

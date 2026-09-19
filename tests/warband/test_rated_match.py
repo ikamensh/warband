@@ -171,3 +171,18 @@ def test_a_finished_save_reopened_does_not_rate_the_match_twice(play):
     assert game.scene.game_scene.rating_change.replaced
     again = Profile.load(game.data_dir)
     assert len(again.results) == len(first.results) == 1
+
+
+def test_loading_another_matchs_save_asks_first_and_counts_as_leaving(play):
+    """Loading a save of another match left an undecided rated match without a word and without a result, the one way
+    out that did not go through the leave confirmation.  A save of the same match is a rewind and costs nothing."""
+    game, first = play
+    press(game, "f5")
+    second = new_game(seed=5, settings={"music": 0, "sfx": 0, "tutorial": False})
+    game.clear_and_push(second)
+    game.tick(1 / 60)
+    press(game, "f9")
+    assert isinstance(game.scene, LeaveScene)
+    press(game, "return")
+    assert game.scene.run_id == first.run_id
+    assert [(result.run_id, result.outcome) for result in Profile.load(game.data_dir).results] == [(second.run_id, "left")]
