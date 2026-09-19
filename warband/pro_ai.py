@@ -175,13 +175,12 @@ _TRIALS: Final = (
     replace(PRO_WARDEN, name="pro-warden-unanswered", hunt_party=0, strike_seconds=0.0),
     replace(PRO_HARD, name="pro-hard-unanswered", hunt_party=0, strike_seconds=0.0),
 )
-#: The tower rush (WB-036): a peasant walks to the enemy's start as soon as the first barracks stands and
-#: raises a tower beside their main mine. Hard's version keeps Hard's handicaps.
+#: The tower rush (WB-036), Master's third posture: the Vanguard, with a peasant that walks to the far side of
+#: the enemy's main mine as its first barracks goes up and raises a tower there once it stands. Rated after
+#: WB-037's answers: 56% against the Vanguard and level with the Warden; Hard's version lost 42% to plain Hard.
 PRO_RUSH: Final = replace(PRO_VANGUARD, name="pro-rush", rush_towers=1)
-PRO_HARD_RUSH: Final = replace(PRO_HARD, name="pro-hard-rush", rush_towers=1)
 PRO_PROFILES: Final[dict[str, ProProfile]] = {"pro": PRO, PRO_VANGUARD.name: PRO_VANGUARD, PRO_WARDEN.name: PRO_WARDEN,
-                                       PRO_RUSH.name: PRO_RUSH, PRO_HARD_RUSH.name: PRO_HARD_RUSH,
-                                       **{p.name: p for p in _TRIALS}}
+                                       PRO_RUSH.name: PRO_RUSH, **{p.name: p for p in _TRIALS}}
 
 
 # -- Force comparison ---------------------------------------------------------------

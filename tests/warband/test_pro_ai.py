@@ -94,16 +94,6 @@ def test_a_sighting_fades_once_the_enemy_is_out_of_sight():
     assert brain.remembered(1).get(UnitType.ARCHER, 0.0) < seen
 
 
-def test_master_draws_one_of_two_postures_from_the_seed():
-    from warband.ai import make_brain
-    from warband.pro_ai import PRO_VANGUARD, PRO_WARDEN
-    from warband.rules import Difficulty
-    first, second = make_brain(0, Difficulty.MASTER, seed=4), make_brain(0, Difficulty.MASTER, seed=5)
-    assert {first.profile.name, second.profile.name} == {PRO_VANGUARD.name, PRO_WARDEN.name}
-    assert make_brain(0, Difficulty.MASTER, seed=4).profile is first.profile, "the same seed draws the same posture"
-    assert make_brain(1, Difficulty.MASTER, seed=4).profile is not first.profile, "two Masters in one game differ"
-
-
 def test_barracks_first_wishes_for_nothing_else_until_it_stands():
     from dataclasses import replace
     world, brain = _world_with_army()

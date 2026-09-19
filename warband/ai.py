@@ -218,9 +218,10 @@ def make_brain(player: int, difficulty: Difficulty, seed: int = 0):
 
     Easy and Medium are this module's :class:`Brain`; Hard and Master are
     :class:`warband.pro_ai.ProBrain`, which is a different and much stronger
-    player. Master has two postures of one strength, and *seed* — the map's —
-    draws which one this player gets, so every client of an online match and
-    every replay of a seed agree, and two Master players in one game differ.
+    player. Master has three postures of about one strength, and *seed* — the
+    map's — draws which one this player gets, a third of the games each, so
+    every client of an online match and every replay of a seed agree, and two
+    Master players in one game differ.
     Imported late because ``pro_ai`` imports this module.
     """
     from warband.pro_ai import PRO_PROFILES, ProBrain
@@ -233,7 +234,7 @@ def make_brain(player: int, difficulty: Difficulty, seed: int = 0):
 
 #: Which ProBrain profiles stand behind each of the upper difficulties.
 PRO_FOR: Final[dict[Difficulty, tuple[str, ...]]] = {Difficulty.HARD: ("pro-hard",),
-                                              Difficulty.MASTER: ("pro-vanguard", "pro-warden")}
+                                              Difficulty.MASTER: ("pro-vanguard", "pro-warden", "pro-rush")}
 
 #: What each setting is worth, measured on the ladder and anchored at Medium =
 #: 1000, over every map size and all five layouts. Produced by
@@ -242,8 +243,8 @@ PRO_FOR: Final[dict[Difficulty, tuple[str, ...]]] = {Difficulty.HARD: ("pro-hard
 DIFFICULTY_ELO: Final[dict[Difficulty, int]] = {
     Difficulty.EASY: 870,
     Difficulty.MEDIUM: 1000,
-    Difficulty.HARD: 1420,
-    Difficulty.MASTER: 1650,
+    Difficulty.HARD: 1440,
+    Difficulty.MASTER: 1660,
 }
 
 #: One line per setting, for the same screen.
@@ -253,7 +254,7 @@ DIFFICULTY_NOTES: Final[dict[Difficulty, str]] = {
     Difficulty.EASY: "Seven peasants, one barracks, no upgrades.",
     Difficulty.MEDIUM: "Techs, sieges, heals and raids. The old Normal and Hard, in one.",
     Difficulty.HARD: "Strong, but slow to think and short of workers.",
-    Difficulty.MASTER: "Vanguard marches at five; Warden towers up, marches at eight.",
+    Difficulty.MASTER: "Marches at five, towers up at home, or raises a tower by your mine.",
 }
 
 

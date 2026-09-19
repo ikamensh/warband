@@ -52,8 +52,8 @@ real breakdown.
   `mapgen.py` the five map layouts, their symmetry and audit, `ai.py` a Brain
   per player for the lower difficulties (`PROFILES`) plus `make_brain`, which
   is what every caller should use — Hard and Master are `pro_ai.ProBrain`, not
-  a Brain, and Master draws one of two postures (`PRO_VANGUARD`, `PRO_WARDEN`)
-  from the map seed and the player's slot — and `DIFFICULTY_ELO`, the measured
+  a Brain, and Master draws one of three postures (`PRO_VANGUARD`, `PRO_WARDEN`,
+  the tower rush `PRO_RUSH`) from the map seed and the player's slot — and `DIFFICULTY_ELO`, the measured
   ratings the New game screen shows; `pro_ai.py` a stronger
   `ProBrain` driven by a `ProProfile` of knobs, `arena.py` the ladder that
   rates them (1v1, free-for-all placements, jittered rulebooks,

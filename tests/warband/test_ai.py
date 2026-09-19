@@ -415,6 +415,21 @@ def test_every_difficulty_builds_a_brain_that_plays() -> None:
         assert len(world.player_units(0)) > 3, difficulty
 
 
+def test_master_draws_its_posture_from_the_seed_and_the_seat_a_third_each() -> None:
+    """WB-036: the tower rush is Master's third posture. Every client of an online match and every replay of a
+    seed must agree on who plays which, so the draw depends on the seed and the seat alone; Hard never rushes."""
+    from collections import Counter
+
+    from warband.ai import make_brain
+
+    drawn = Counter(make_brain(seat, Difficulty.MASTER, seed).profile.name for seed in range(300) for seat in range(2))
+    assert drawn == {"pro-vanguard": 200, "pro-warden": 200, "pro-rush": 200}, drawn
+    assert make_brain(1, Difficulty.MASTER, 41).profile is make_brain(1, Difficulty.MASTER, 41).profile
+    assert make_brain(0, Difficulty.MASTER, 41).profile is not make_brain(1, Difficulty.MASTER, 41).profile, \
+        "two Masters in one game differ"
+    assert {make_brain(seat, Difficulty.HARD, seed).profile.name for seed in range(30) for seat in range(4)} == {"pro-hard"}
+
+
 def test_the_shipped_brain_is_bound_by_the_same_fog_the_player_plays_under() -> None:
     """It may not target, expand towards, or count what it has never seen."""
     from warband.ai import known_enemy_buildings, known_mines

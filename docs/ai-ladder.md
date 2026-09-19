@@ -149,19 +149,21 @@ odds. `--proximity 0` gives the old flat fit.
 
 What the New game screen offers, and what each one is worth. 60 seeds, both
 corners, every map size, all five layouts in turn, under fog, 720 games,
-Medium anchored at 1000, measured on 2026-09-19 once peasants took cover from
-a tower they could not work beside and melee soldiers spread round a building
-they attack (WB-037, [a tower on our ground](#a-tower-on-our-ground)):
+Medium anchored at 1000, measured on 2026-09-19 once Master drew the tower
+rush as its third posture ([the rush, rated](#the-rush-rated)):
 
 | setting | Elo | 90% interval | plays |
 |---------|-----|--------------|-------|
-| Easy | 866 | 813 .. 922 | `ai.Brain`, the Easy profile |
+| Easy | 867 | 816 .. 922 | `ai.Brain`, the Easy profile |
 | Medium | 1000 | — | `ai.Brain`, what Normal and Hard both were |
-| Hard | 1424 | 1362 .. 1510 | `pro_ai.ProBrain`, `pro-hard` |
-| Master | 1651 | 1570 .. 1759 | `pro_ai.ProBrain`, `pro-vanguard` or `pro-warden`, drawn with the map |
+| Hard | 1442 | 1362 .. 1558 | `pro_ai.ProBrain`, `pro-hard` |
+| Master | 1665 | 1565 .. 1774 | `pro_ai.ProBrain`, `pro-vanguard`, `pro-warden` or `pro-rush`, drawn with the map |
 
-Each beats the one below it 68%, 92% and 79% of the time. The same seeds had
-given 857, 1400 and 1615 earlier that day, once the pro brains held a build
+Each beats the one below it 68%, 92% and 78% of the time. Without the rush,
+after peasants took cover from a tower they could not work beside and melee
+soldiers spread round a building they attack (WB-037,
+[a tower on our ground](#a-tower-on-our-ground)), the same seeds gave 866,
+1424 and 1651; earlier that day 857, 1400 and 1615, once the pro brains held a build
 order's price while its builder walks (`hold_builds`, below), and 856, 1353
 and 1589 before the hold, on 2026-09-18 after the balance merge (mine cap,
 prices, race numbers; `docs/balance.md`) and the rules that went live with
@@ -387,7 +389,7 @@ game, and feeds peasants to the first soldiers.
 
 WB-036 built the rush the ai-2000 push had dropped: a peasant walks to the far
 side of the enemy's main mine and raises a tower there as soon as its own
-barracks stands (`pro-rush`, `pro-hard-rush`). Against it the brains stopped
+barracks stands (`pro-rush`; Hard's version rated lower and is gone). Against it the brains stopped
 mining for minutes: a tower one tile from the hall left every depot in danger,
 carriers waited in its fire with their gold until it killed them, and soldiers
 went at it one or two at a time. What WB-037 changed, and what it measured
@@ -421,6 +423,19 @@ up: all three hold in 32 and 31 of 40 games for Master, 19 for Hard, which
 has nine peasants and a soldier or two when the tower stands. Against their
 unanswered twins (`-unanswered`) the answers are level in ordinary play: 49%,
 50% and 49% over 96 games each.
+
+### The rush, rated
+
+WB-036's posture, rated once WB-037 had given the brains their answers to
+it: 48 fresh seeds from 45000 on the ladder's boards, both corners, 96 games
+a pairing (`docs/evidence/wb036/rating/`). `pro-rush` took 56.2% against
+the Vanguard it is built on and 49.5% against the Warden, and rates 1013
+between them (Warden 1025, Vanguard 962). Hard's version, which kept Hard's
+handicaps, took 42.2% against plain Hard. So Master draws the rush as a third
+posture, a third of its games (`ai.PRO_FOR`), and Hard never does; the Hard
+version is gone. The rush lands against Master often enough to matter: a
+tower goes up in about half the games, and the defender keeps 70% of its gold
+in about half of those, where its first push comes with the tower (WB-044).
 
 ### The wasp that would not live
 
