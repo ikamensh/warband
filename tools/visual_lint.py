@@ -164,6 +164,17 @@ for _race in Race:
 
 
 @screen
+def new_game_master(game: Game) -> None:
+    """The longest of the difficulty notes, under the buttons it describes."""
+    game.push(TitleScene())
+    ticks(game)
+    game.scene.new_game()
+    ticks(game)
+    game.scene.set_difficulty(Difficulty.MASTER)
+    ticks(game)
+
+
+@screen
 def match_start(game: Game) -> None:
     match(game)
     ticks(game, 30)  # the banner has slid in and holds
