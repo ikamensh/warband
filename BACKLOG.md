@@ -40,7 +40,7 @@ bundle `3e3dfda8` ([`79bc783`](https://github.com/ikamensh/warband/blob/79bc7834
 evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1bfbe42c4705f56a6ac0476a0/BACKLOG.md)); WB-038, merged as `75dc68f`, published as a preview
 ([`75dc68f`](https://github.com/ikamensh/warband/blob/75dc68f231810cdfe83d5ff6f5f47c48cfb5422f/BACKLOG.md)); WB-052, merged as `a2212f5`
 ([`a2212f5`](https://github.com/ikamensh/warband/blob/a2212f53d78ae5c28ec64727eaabc2ac3142d183/BACKLOG.md)); WB-049, merged as `9418ec5`
-([`9418ec5`](https://github.com/ikamensh/warband/blob/9418ec5babcbf57aed2a2e5939a502fd8477a49d/BACKLOG.md); WB-051, merged as `0a820ff` ([`0a820ff`](https://github.com/ikamensh/warband/blob/0a820ffdfe3b18f8e06a5ed5ac3f89223943f70c/BACKLOG.md))); WB-039 and WB-044, merged as `f8ba0eb`
+([`9418ec5`](https://github.com/ikamensh/warband/blob/9418ec5babcbf57aed2a2e5939a502fd8477a49d/BACKLOG.md); WB-051, merged as `0a820ff` ([`0a820ff`](https://github.com/ikamensh/warband/blob/0a820ffdfe3b18f8e06a5ed5ac3f89223943f70c/BACKLOG.md); WB-050, merged as `adb5e9b` ([`adb5e9b`](https://github.com/ikamensh/warband/blob/adb5e9b26b5c3b88ce4463f9e15fda14c7ce67bf/BACKLOG.md)))); WB-039 and WB-044, merged as `f8ba0eb`
 ([`a8951a7`](https://github.com/ikamensh/warband/blob/a8951a7ca8b76c8df9b8e12b87ed8a9e235e7e1f/BACKLOG.md)); WB-053, merged as `7158d46`
 ([`dbbb2d1`](https://github.com/ikamensh/warband/blob/dbbb2d132a56e60a7aa4db0fcb66de70a5000aa0/BACKLOG.md)).
 
@@ -48,7 +48,6 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-048 | Next | done | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
-| WB-050 | Next | done | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -128,88 +127,3 @@ farm, barracks and hall at a quarter, half and three quarters, for all four
 races, were looked at (first frames put the builder behind the walls, so it
 was moved out and drawn above). `tools/visual_lint.py` finds nothing. The
 fast and slow tiers pass (1073 and 511).
-
-## WB-050 — Footmen hold a line
-
-Ilya, 2026-09-19: footmen should be slower but more heavily armoured, with a
-formation skill: armour bonus when other footmen stand to their right or
-left. They should also move in a way that keeps the formation. This is for
-every race except the orcs; grunts get a different balance of their own.
-
-**Proposed scope:** footmen get lower speed (below today's 2.4) and more
-armour (above today's 2). A footman gets bonus armour for each friendly
-footman beside it, one to the left and one to the right, measured across its
-facing. Groups of footmen that are ordered to move keep their places in a
-line or block: they move at the speed of the slowest and do not string out.
-This has to fit the elbow-room and step-away spacing (see
-`docs/unit-motion.md`). The grunt keeps today's speed and gets a different
-trait. Its "hits harder as it bleeds" can stay its identity, retuned to fit
-(to be decided with Ilya).
-
-**Done when:** a line of five footmen keeps its shape across a march of at
-least 20 tiles around an obstacle, which is seen in frames. A test pins the
-flank bonus (a footman alone, with one neighbour, with two). The ladder and
-league show the footman is still worth building and the grunt is still a
-real choice. The change goes live through a server rollout. This depends on
-WB-049 if the armour classes change what "armour" means.
-
-**Started 2026-09-19**, branch `footman-line`. WB-049 is merged; the flank
-bonus adds to the armour number and does not touch the classes.
-**Acceptance (recorded before implementation):**
-
-1. Numbers: the footman walks 2.0 (was 2.4) and wears 3 armour (was 2);
-   the elf Sentinel and dwarf Ironguard keep their tweaks on top (2.15
-   and 3; 1.85 and 4). The orc grunt keeps what it had, 2.4 and 1 armour,
-   its frenzy, and no formation: the fast brawler beside the others' line.
-2. Flank: a footman (not a grunt) wears `FORMATION_ARMOR` (1) more for a
-   friendly footman at its left and 1 more for one at its right, measured
-   across its facing (beside it, not ahead or behind). The unit panel's
-   armour shows it.
-3. Line: a move or attack-move that sends two or more footmen gives them
-   slots in a line across the way they are going, `FORMATION_SPACING`
-   (1 tile) apart, up to `FORMATION_WIDTH` (8) a row with further rows
-   behind, keeping their order from left to right so no two cross. The
-   order keeps its shared target, so group pace still works. On the way a
-   footman more than `FORMATION_SLACK` nearer its slot than the one
-   furthest from its own walks at `FORMATION_HOLD` of its speed, until the
-   line has closed up, unless the line has broken (more than 6 tiles
-   apart).
-4. Tests pin the numbers, the flank bonus (alone, one neighbour, two,
-   one ahead instead), the slots (a line across the march, no crossing),
-   and a line of five keeping its shape over a march of at least 20 tiles
-   around an obstacle; frames of that march are looked at. Saves from
-   before load. The ladder shows the footmen archetype still worth
-   playing and the orcs still a real choice; fuzz, the fingerprint,
-   `sim_bench` and both tiers pass.
-
-**Done 2026-09-19** (branch `footman-line`). Numbers as in 1 (the grunt's
-tweak is now speed +0.4, armour -2, `formation=False`). `World.flanks` and
-`armor_of` give the flank bonus. `World._line_slots` gives the slots (the
-foremost make the front row; no line under `FORMATION_MARCH`, 4 tiles; a
-slot in the trees or across water goes to the target). `World._march` walks
-straight at each unit's place 3 tiles ahead of the line's middle while the
-way is clear, else paths to its final slot, and the row hold paces the
-line; `docs/unit-motion.md` part 6 has the why of each choice. Three things
-turned up and were fixed. A waypoint within `ARRIVE` snapped every unit
-slower than 2.4 on to it, a small speed-up at every waypoint; now only the
-end of a walk does. The built-in `sum` over floats is compensated since
-Python 3.12 and not in the compiled simulation, so the two parted in the
-last bit; `model._middle` adds up in a loop (`docs/fast-simulation.md`).
-Fuzz found a march stalled by a moving goal replanned every step in the
-woods; the march now only steers at its moving place.
-
-Measured: round a 3-tile rock the five split three and two and are dressed
-again (under 1.5 tiles front to back, each on its side) 5 tiles past it,
-then end in their slots in order; the worst spread on the way is 3.3 tiles
-(it was 5.1 in single file, which lasted to the end). Frames of the start,
-the rock, past it and arrival were looked at. A fleeing peasant now
-outruns a footman, so two tests hold their victim; three triage-free tests
-were adapted to the line (sixteen footmen stand in two rows of eight
-within 5 of the spot). Ladder (nine agents, 12 seeds, 864 matches, branch
-against main): footmen 1179 to 1235, siege 1381 to 1453, the rest within
-their intervals. Race report (Master mirror, 8 seeds a pair, sides
-swapped): orcs 21-25 (22-24 before), humans 28-17 (30-14), elves 20-24
-(19-26), dwarves 22-25 (20-27): the grunt is still a real choice. Fuzz
-(ten AI games on seeds 81, 300 and 500) is clean; step time in a
-150-unit battle is unchanged within noise. The fingerprint and `sim_bench`
-are refreshed, and the fast and slow tiers pass (1016 and 486).
