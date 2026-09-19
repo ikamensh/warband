@@ -685,8 +685,7 @@ class MapView:
             self._travel[u.id] = self._travel.get(u.id, 0.0) + math.dist(position, last)
             self._last_pos[u.id] = position
             sprite = self._units.get(u.id)
-            shown = not u.hidden and (self.reveal or u.player == self.player or world.is_visible(self.player, u.tile))
-            if not shown:
+            if not self.shows(u):
                 reaction = self._recoil.pop(u.id, None)
                 if sprite is not None:
                     sprite.visible = False
@@ -924,6 +923,10 @@ class MapView:
 
     def _seen(self, building: Building) -> bool:
         return self.reveal or building.player == self.player or self.world.any_visible(self.player, building.rect)
+
+    def shows(self, unit: Unit) -> bool:
+        """Whether *unit* is on the map as the player sees it: out of a mine and a site, and theirs or in their sight."""
+        return not unit.hidden and (self.reveal or unit.player == self.player or self.world.is_visible(self.player, unit.tile))
 
     def _draw_bars(self, overlay: Overlay) -> None:
         """Health over every wounded, selected or hovered unit and building (over everything while Alt is held);

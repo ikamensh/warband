@@ -360,6 +360,22 @@ def test_shift_adds_a_group_or_a_box_to_the_selection_and_a_shift_click_takes_on
     assert scene.selection == [barracks.id]  # buildings are selected alone: the one clicked
 
 
+def test_a_rival_unit_that_leaves_sight_leaves_the_selection(game) -> None:
+    """A rival unit stayed selected out of sight: its ring followed it through the fog and the panel read out its hit
+    points, a spy in every selection."""
+    scene = match(game)
+    world = scene.world
+    hall = hall_of(scene)
+    rival = world.spawn_unit(1, UnitType.FOOTMAN, (hall.center[0] + 3, hall.center[1] + 3))
+    world.update_vision()
+    scene.select([rival.id])
+    assert scene.selection == [rival.id]
+    rival.x, rival.y = world.width - 2.5, world.height - 2.5  # staged: it has walked off into the fog
+    world.update_vision()
+    game.tick(1 / 60)
+    assert scene.selection == []
+
+
 def test_a_selected_site_that_stands_shows_its_card(game) -> None:
     """A selected site that finished kept the site's card, Cancel alone, until the selection changed: no recruits,
     and X did nothing."""

@@ -739,11 +739,18 @@ class GameScene(Scene):
             self.sfx("select", gap=SELECT_GAP)
 
     def _prune_selection(self) -> None:
-        """Drop what is gone; a building razed out of sight stays selected as the player remembers it, until they look."""
+        """Drop what is gone, and a rival's unit out of sight; a building razed out of sight stays selected as the player
+        remembers it, until they look."""
         before = list(self.selection)
-        self.selection = [i for i in self.selection if self.world.entity(i) is not None or self.view.sighting(i) is not None]
+        self.selection = [i for i in self.selection if self._selectable(i)]
         if self.selection != before:
             self._refresh_card()
+
+    def _selectable(self, entity_id: int) -> bool:
+        unit = self.world.units.get(entity_id)
+        if unit is not None:
+            return unit.player == self.human or self.view.shows(unit)
+        return entity_id in self.world.buildings or self.view.sighting(entity_id) is not None
 
     def click_select(self, point: tuple[float, float], shift: bool, ctrl: bool = False) -> None:
         entity = self.view.entity_at(point)
