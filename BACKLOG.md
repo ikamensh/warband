@@ -46,7 +46,7 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 | WB-048 | Next | proposed | Show construction as a building site, and let a started building only finish or be cancelled | User 2026-09-19 |
 | WB-049 | Next | done | Armour and attack types; archers strike the unarmoured harder | User 2026-09-19 |
 | WB-050 | Next | proposed | Footmen hold a line: slower, better armoured, stronger with a neighbour at each side | User 2026-09-19 |
-| WB-051 | Next | proposed | Clerics heal in visible single casts and carry a weak attack | User 2026-09-19 |
+| WB-051 | Next | in progress | Clerics heal in visible single casts and carry a weak attack | User 2026-09-19 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -206,3 +206,27 @@ attack, used only when there is no one to heal. `pro_ai`'s
 most wounded ally in range) and the attack being used only when no one
 needs healing. The cast has been seen in frames and heard in a match. The
 change goes live through a server rollout.
+
+**Started 2026-09-19**, branch `cleric-cast`. **Acceptance (recorded before
+implementation):**
+
+1. A heal is a cast: the cleric faces its patient, winds up 0.5 s (the blow
+   frames' wind-up), then restores `heal` hit points at once (15, half
+   again with Blessing), then waits its 2 s cooldown. 15 every 2.5 s is
+   today's 6 hp/s, so `heal_rate` and the AI's estimate are unchanged. A
+   cast whose patient walks more than `WINDUP_SLACK` beyond reach, dies or
+   is healed full meanwhile is lost; a new order breaks it off.
+2. The cleric has a weak ranged blow (3, normal attack, the same range and
+   rhythm). Left to itself it heals first and strikes only when no one in
+   sight needs healing; one striking turns to heal as soon as someone does.
+   A cleric is still no soldier: enemies pick it after soldiers (`_threat`),
+   Arrows and Longbows skip it, frenzy skips an orc's, and the Master AI
+   does not count it in its army.
+3. Each cast is seen and heard: a ring and a rising burst of green sparks
+   on the patient, a small ring on the cleric, "+15" floating up, and a soft
+   chime (`SOUND_VERSION` bumped).
+4. Tests pin the cast (its wind-up, amount, cooldown and the most-wounded
+   choice), the attack used only when nobody needs healing, and the threat
+   order. Frames of a cast are looked at. The fingerprint, `sim_bench`,
+   fuzz, the fast and slow tiers and a ladder with the clerics archetype
+   pass.
