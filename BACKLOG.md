@@ -41,9 +41,9 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
-| WB-042 | Later | proposed | Tests read through public accessors; try property tests for the model and paths | WB-040 |
+| WB-042 | Later | done | Tests read through public accessors; try property tests for the model and paths | WB-040 |
 | WB-044 | Next | blocked | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
-| WB-046 | Now | in progress (`fair-seeds`) | A seed that makes no fair map crashes the game where the game chose it | WB-042 |
+| WB-046 | Next | in progress (`fair-seeds`) | A seed that makes no fair map crashes the game where the game chose it | WB-042 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -240,6 +240,47 @@ invariants.
 **Done when:** no test reads a private member of `warband/`, or each that does
 says why; the property tests that earn their keep run in the tiers, and the
 rest are recorded here with what they found.
+
+**Done 2026-09-19:** merged as `13db600` (branch `public-tests`), published
+as 0.2.63. Private reads in the tests went from 172 lines in 26 files to 67
+in 13, each with its reason beside it: a staged state (a unit or building
+removed without the fight, water or a gate carved as map generation would),
+a brain's own questions (`test_ai`, `test_pro_ai`), the C twins held to the
+private loops they replace (`test_fastsim`, `test_sight_discs`), the true id
+counter a snapshot must not tell, and what Saga2D 0.3.8 does not offer (its
+effects list, read in one helper; the mock's players and image count; the
+camera's edge speed). The view and the scene offer the rest as properties:
+tree and ground sprites, ground keys, water still to paint, smoke, fires and
+shots; the fog and minimap images and chunk classification; the command card
+and its buttons, portraits, page tile and page, queue hits, next autosave,
+ghost and key hints; New game's preview world and picture. Trees are planted
+through `flat_world(trees=...)`, and the checkpoint test goes through
+`ONLINE["warband-v2"]`.
+
+`tests/warband/test_properties.py` states four properties with Hypothesis (a
+dev dependency), each with a few examples in the fast tier and many in the
+slow one. A path steps legally and is the shortest there is, checked against
+Dijkstra on 3 to 14 tile grids; an unreachable goal ends as near as anything
+reachable. Two loads of a save play on alike. An order the rules refuse
+leaves no trace, and only a RuleError refuses one (24 orders, any ids,
+points, tiles and types). A recording with orders of any kind and value,
+given among two brains' at any moments, plays back through JSON to its match
+bit for bit. What they found, none of it worth more than recording:
+
+* An order for a seat out of range raises IndexError (for -1, it acts for
+  the last seat). Nothing online can send one: the authority gives each
+  seat's orders with that seat's own index.
+* A load is not bit-exact with the world saved. A load brings sight up to
+  date with where the units stand, and a unit's path, replanning clock and
+  progress watchdog are not saved, so a peasant walking when the match was
+  saved plans afresh. Replays play from the start and the order log, and the
+  online authority is the one world there is, so nothing depends on it.
+* A few seeds in a thousand make no fair map, and the New game screen
+  crashed on one: WB-046.
+
+Saga2D offers no public list of a scene's live effects, nor the mock
+backend's players and images; the tests read those in three places and say
+so, which is not a game need that would earn an engine change.
 
 ## WB-044 — Hold the push that comes with a rush tower; strike faster on Hard
 
