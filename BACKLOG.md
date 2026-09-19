@@ -29,14 +29,14 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 ([`c49badb`](https://github.com/ikamensh/warband/blob/c49badb5f2baaca0d882f500caa09b38b4139864/BACKLOG.md)); WB-035, merged as `464328e`
 ([`2ad4dcb`](https://github.com/ikamensh/warband/blob/2ad4dcb7723c7d46d7c611fd254caa387a0df3e4/BACKLOG.md)); WB-043, merged as `66d35a5`
 ([`0680eb5`](https://github.com/ikamensh/warband/blob/0680eb570c73abba14d3c431f89bedeba5846246/BACKLOG.md)); WB-037, merged as `1b9880f`, live as 0.2.53
-([`5a57cb9`](https://github.com/ikamensh/warband/blob/5a57cb94292cd1e39a20969cfe7c4a3b827fac61/BACKLOG.md)).
+([`5a57cb9`](https://github.com/ikamensh/warband/blob/5a57cb94292cd1e39a20969cfe7c4a3b827fac61/BACKLOG.md)); WB-036, merged as `4a77498`, live as 0.2.55
+([`3f22525`](https://github.com/ikamensh/warband/blob/3f22525a4db442d7f8d0d2c02b7532375ad1e075/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-014 | Next | proposed | Revalidate difficulty and race balance after recovered branch work | Suggested |
 | WB-024 | Next | proposed | Plan fewer paths in a melee: the world step's largest cost is attackers replanning after every shuffle | WB-009 |
-| WB-036 | Next | done | Try a tower-rush posture; if it rates higher, Hard plays it now and then and Master often | User 2026-09-18 |
 | WB-038 | Next | blocked | Paint the gold mine with the image model, with a worked look, like every building | User 2026-09-18 |
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
@@ -117,92 +117,6 @@ with the same fights decided the same way (the arena's ladders unchanged
 within noise), the step's p95 under 3 ms in `tools/step_bench.py`, the late
 p95 of `tools/perf.py` measured before and after, seeded fuzz clean, the
 fingerprint refreshed deliberately with the rest of its series.
-
-## WB-036 — A tower rush for Hard and Master
-
-Ilya asked on 2026-09-18 for a "cannon rush" brain: if it lifts the rating,
-Hard plays it with a small chance and Master with a medium one. Warband has
-no cannons. Its static defence is the Guard Tower: 700 gold and 250 lumber,
-400 hit points, armour 3, two tiles square, 35 s to build, needs a
-barracks, and shoots 8 damage every 1.5 s at six tiles. The rush is an early
-peasant walking to the enemy's gold mine and raising one or two towers
-beside it.
-
-The ai-2000 push tried it once and dropped it without a rating: the
-builder's order died on arrival after a forty-second walk, five times a game
-([the scout that never left](docs/ai-ladder.md#the-scout-that-never-left)).
-First find out why the order dies and fix that. Then give `ProProfile` the
-knobs (how many towers, when, where, how many builders) and register the
-posture for `tools/arena.py`. Hard's version keeps Hard's handicaps
-(`PRO_HARD`: slow thinking, six workers a mine), so Hard stays below Master.
-
-Rate it only after WB-037. Against today's answers, a finished tower by the
-mine stops Master's gold for minutes (WB-037's measurement), so a rush would
-win on that bug rather than on play that also beats a human. Build the
-posture first as the opponent WB-037 iterates against; rate it once those
-answers are in.
-
-`make_brain` picks a difficulty's posture from `PRO_FOR` by
-`(seed + player) % len(postures)`, which gives every posture an equal share. A small or medium
-share needs a weighted draw that still depends only on the seed and the
-player, so every client of an online match and every replay agree. Start
-from one Hard game in eight and one Master game in three.
-
-**Done when:** the rush posture is rated after WB-037 with `tools/arena.py
-ladder` against `pro-hard`, `pro-vanguard` and `pro-warden`, on fresh seeds
-over all five layouts, at least 96 games a pairing. If it scores above the
-postures it would join, Hard and Master draw it at the chosen shares; a test
-pins the draw to the seed and player and checks its shares over many seeds;
-the New game screen's ratings are re-measured with the 720-game protocol and
-its notes mention the rush; the fingerprint is refreshed deliberately. If it
-does not, its numbers go into [docs/ai-ladder.md](docs/ai-ladder.md) and the
-knobs are deleted. The brains are outside the authoritative contract
-(`warband/ai.py` and `pro_ai.py` are not in its import closure), so no
-server rollout is needed.
-
-**Started 2026-09-19**, branch `tower-rush` (worktree `../warband-rush`), with
-WB-037 on the same branch: the posture comes first, then the answers, then
-the rating. Why the order died, found first: a build order is paid at the site,
-and the brain spent the bank on soldiers during the walk, so the order was
-dropped on arrival. The brain now holds a rush tower's price while its builder
-walks, and picks the site with the mine in sight (no refusal in twelve traced
-games). What killed the rush after that was the builders: sent to the enemy's
-hall, all three drafted died there in every game. Walking instead to the far
-side of their main mine (the reflection of our own through the map's centre) as
-the first barracks goes up, and ordering the tower the moment it stands, the
-tower went up by 106–135 s in four seeds of six; against the Warden's front
-tower the builders still died. Knobs: `rush_towers`, `rush_builders`,
-`rush_tries`; postures `pro-rush` (the Vanguard's) and `pro-hard-rush`.
-The posture was merged into main as `ee363e5` on 2026-09-19 (no difficulty
-plays it); the rush's own held price became every order's in WB-043. The
-rating waits for WB-037.
-
-**Rated 2026-09-19** on WB-037's final code (`3859e53`), 48 fresh seeds from
-45000 on the ladder's boards, both corners (`docs/evidence/wb036/rating/`):
-`pro-rush` took 56.2% against the Vanguard and 49.5% against the Warden, 96
-games each, and rates 1013 between them (Warden 1025, Vanguard 962);
-`pro-hard-rush` took 42.2% against plain Hard. So Master draws it and Hard
-does not: on branch `rush-draw`, `pro-rush` is Master's third posture
-(`PRO_FOR`, a third of the games each, drawn from the seed and the seat as
-before), `pro-hard-rush` is deleted, and the Master note names the rush. The
-720-game protocol with it: Easy 867, Hard 1442, Master 1665.
-
-**Done 2026-09-19, merged into main as `4a77498`** (`15440cb` on branch
-`rush-draw`) and live as Warband 0.2.55. `ai.PRO_FOR[MASTER]` is
-`pro-vanguard`, `pro-warden` and `pro-rush`, drawn by `(seed + player) % 3`
-as before; `pro-hard-rush` is deleted. A test pins the draw to the seed and
-seat and counts 200 of each posture over 300 seeds and two seats, two Masters
-in one game differ, and Hard is always `pro-hard`. The New game screen shows
-870, 1000, 1440 and 1660 Elo and Master's note names the rush ("Marches at
-five, towers up at home, or raises a tower by your mine."): looked at on
-the lint's new `new_game_master` screen at 1280×800 and 1200×680, one line,
-no finding. `sim_bench.txt` refreshed (its Master games now draw the rush);
-the fingerprint's games do not, and it holds. The brains are outside the
-contract: no rollout. Main ran
-[Tests 35412063319](https://github.com/ikamensh/warband/actions/runs/35412063319)
-and [native package checks 35412063275](https://github.com/ikamensh/warband/actions/runs/35412063275);
-[promotion 35412595777](https://github.com/ikamensh/saga-online/actions/runs/35412595777)
-published 0.2.55.
 
 ## WB-038 — Paint the gold mine
 
