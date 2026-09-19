@@ -32,7 +32,8 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 ([`5a57cb9`](https://github.com/ikamensh/warband/blob/5a57cb94292cd1e39a20969cfe7c4a3b827fac61/BACKLOG.md)); WB-036, merged as `4a77498`, live as 0.2.55
 ([`3f22525`](https://github.com/ikamensh/warband/blob/3f22525a4db442d7f8d0d2c02b7532375ad1e075/BACKLOG.md)); WB-024, closed on its evidence as `dd7cf5f`
 ([`896c6ea`](https://github.com/ikamensh/warband/blob/896c6eab99fb426d7f0aa02588b0fd1dc1463d07/BACKLOG.md)); WB-014, merged as `18eaf4a`, live as 0.2.59
-([`5fd2ef4`](https://github.com/ikamensh/warband/blob/5fd2ef41798f8162811b9eb0d286c80c65c9bb26/BACKLOG.md)).
+([`5fd2ef4`](https://github.com/ikamensh/warband/blob/5fd2ef41798f8162811b9eb0d286c80c65c9bb26/BACKLOG.md)); WB-045, merged as `6ad2779`, live as 0.2.61
+([`493e3bf`](https://github.com/ikamensh/warband/blob/493e3bfb3df8eaefc809dbc0a86c80683eb490a1/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
@@ -42,7 +43,6 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-042 | Later | proposed | Tests read through public accessors; try property tests for the model and paths | WB-040 |
 | WB-044 | Next | proposed | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
-| WB-045 | Next | done | Lift the orcs from 41% of the Master mirror | WB-014 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -261,48 +261,3 @@ tower. The ladder shows no loss against ordinary opponents. If Hard's
 handicaps (thinking every second and a half, six peasants a mine, one
 barracks) are what keep it short, the numbers go to Ilya before any
 handicap is touched.
-
-## WB-045 — Lift the orcs from 41% of the Master mirror
-
-Found revalidating the balance for WB-014 (2026-09-19, `docs/balance.md`,
-"Revalidated"): on 288 Master-against-Master matches, 24 seeds a pair both
-ways, the orcs won 41.4% (human 55.6%, elf 51.4%, dwarf 51.4%); the dwarves
-beat them 31–15 and the humans 29–19. The third league had left them at 41.7%
-on 96 matches once their training penalty was removed, and said a few hundred
-matches would settle the order: they have.
-
-**Done when:** a change to the orcs' numbers (`warband/races.py`) brings them
-within 45–55% on a fresh 288-match `tools/race_report.py` on Master, and on
-Medium, without pushing another race outside 45–55%; the difficulty ratings
-are re-measured with the 720-game protocol; the fingerprint and
-`sim_bench.txt` are refreshed; and, since `races.py` is in the authoritative
-contract, it ships with a server rollout.
-
-**Started 2026-09-19** on branch `orc-balance` (worktree `../warband-rush`).
-Candidates, the orcs against the other three races on Master, 24 seeds both
-ways, 144 matches each (`docs/evidence/wb045/orc_variants.py`): today 41.4%;
-grunts without their armour penalty 55.6%; ogres with one armour less off
-45.1%; both 59.6%; training 7% faster 52.9% (the humans' own passive, so
-not taken); grunts at 125% hit points 45.5%; grunts at 120% damage 46.8%;
-every orc at 120% hit points 46.8%; grunts at 125% hit points with the ogres'
-armour at −1 49.3%. That last keeps the orcs tough and savage and is the one
-put to the full race reports.
-
-**Done 2026-09-19, merged into main as `6ad2779`** (`a6d22f0` on branch
-`orc-balance`) and live with the server rollout recorded in
-[saga-online's `docs/wb045-rollout.md`](../saga-online/docs/wb045-rollout.md)
-(bundle `db6c4681…`, Warband 0.2.61 promoted, public downloads checked). The
-ogres' armour penalty is −1 instead of −2 (the card says thin armour): the
-only candidate that lifted the orcs on Master without lifting them out of the
-band on Medium, where they were already at 55.2%; every other buff helped
-them more there (see the candidates above and `docs/balance.md`). The full
-race reports, 288 matches each: Master human 54.9%, orc 45.1%, elf 50.0%,
-dwarf 50.0%; Medium human 41.3%, orc 53.1%, elf 55.6%, dwarf 50.0%, with the
-humans and elves on Medium at 39.2% and 56.3% before (the Medium brain's
-matter, moved the right way, not by this item's measure pushed out). The
-orcs clear the band on Master by a hair: 45.1% on 142 decided games, a
-standard error of four points. The 720-game protocol: Easy 570, Hard 1361,
-Master 1608 (the screen shows 570, 1000, 1360, 1610); fingerprint and
-`sim_bench.txt` refreshed. Main ran
-[Tests 35416900214](https://github.com/ikamensh/warband/actions/runs/35416900214)
-and [native package checks 35416900239](https://github.com/ikamensh/warband/actions/runs/35416900239).
