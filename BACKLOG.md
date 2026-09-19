@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-044**; a new
+section; git history keeps the record. The last ID given is **WB-045**; a new
 item takes the next one and updates this line.
 
 Done and removed 2026-09-18, every one merged into main (whose code is live as
@@ -42,6 +42,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-042 | Later | proposed | Tests read through public accessors; try property tests for the model and paths | WB-040 |
 | WB-044 | Next | proposed | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
+| WB-045 | Next | proposed | Lift the orcs from 41% of the Master mirror | WB-014 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -305,3 +306,19 @@ tower. The ladder shows no loss against ordinary opponents. If Hard's
 handicaps (thinking every second and a half, six peasants a mine, one
 barracks) are what keep it short, the numbers go to Ilya before any
 handicap is touched.
+
+## WB-045 — Lift the orcs from 41% of the Master mirror
+
+Found revalidating the balance for WB-014 (2026-09-19, `docs/balance.md`,
+"Revalidated"): on 288 Master-against-Master matches, 24 seeds a pair both
+ways, the orcs won 41.4% (human 55.6%, elf 51.4%, dwarf 51.4%); the dwarves
+beat them 31–15 and the humans 29–19. The third league had left them at 41.7%
+on 96 matches once their training penalty was removed, and said a few hundred
+matches would settle the order: they have.
+
+**Done when:** a change to the orcs' numbers (`warband/races.py`) brings them
+within 45–55% on a fresh 288-match `tools/race_report.py` on Master, and on
+Medium, without pushing another race outside 45–55%; the difficulty ratings
+are re-measured with the 720-game protocol; the fingerprint and
+`sim_bench.txt` are refreshed; and, since `races.py` is in the authoritative
+contract, it ships with a server rollout.
