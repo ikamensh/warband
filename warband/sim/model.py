@@ -2609,11 +2609,15 @@ class World:
         """Whether *u*, marching in a line, is more than FORMATION_SLACK further along the march than its row's
         laggard (each measured to its own slot along the way the line is going), while the row still holds
         together: the laggard no more than 6 tiles behind.  A row dresses on itself; rows behind never hold the
-        front, which is what stands in their way."""
+        front, which is what stands in their way.  A unit felled earlier in the step, after a comrade drew the line
+        without it, may find its row gone from it: nothing holds it back."""
         assert order.offset is not None
         fx, fy, lags, _, _ = self._line(u, order)
+        lag = lags.get(self._line_row(order.offset, fx, fy))
+        if lag is None:
+            return False
         sx, sy = self._slot(order)
-        return FORMATION_SLACK < lags[self._line_row(order.offset, fx, fy)] - ((sx - u.x) * fx + (sy - u.y) * fy) <= 6.0
+        return FORMATION_SLACK < lag - ((sx - u.x) * fx + (sy - u.y) * fy) <= 6.0
 
     def _line(self, u: Unit, order: Move | AttackMove) -> tuple[float, float, dict[int, float], float, float]:
         """*u*'s marching line as it stands this step: its heading, each row's laggard (how far along the heading it

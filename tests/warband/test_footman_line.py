@@ -119,3 +119,21 @@ def test_a_save_from_before_the_line_loads() -> None:
     assert all(u.order.offset is None for u in copy.units.values() if u.order is not None)
     again = World.from_dict(world.to_dict())
     assert [again.units[u.id].order for u in pair] == [u.order for u in pair]
+
+
+def test_a_footman_felled_earlier_in_the_step_does_not_bring_the_match_down() -> None:
+    """A unit killed earlier in a step still takes its turn in it.  A marching footman alone in its row, felled after a
+    comrade drew the step's line without it, found its row missing from the line: KeyError, and the match, or an
+    online room, was over."""
+    world = field()
+    knight = world.spawn_unit(1, UnitType.KNIGHT, (3.5, 14.5))  # spawned first: its blow lands before the footmen move
+    front = [world.spawn_unit(0, UnitType.FOOTMAN, (6.5, 8.5 + i)) for i in range(8)]
+    rear = world.spawn_unit(0, UnitType.FOOTMAN, (4.5, 12.5))  # alone in the second row, and the last to take its turn
+    world.move([f.id for f in (*front, rear)], (34.5, 12.5))
+    rear.hp = 2
+    world.attack([knight.id], rear.id)
+    for _ in range(200):
+        world.step()
+        if rear.id not in world.units:
+            break
+    assert rear.id not in world.units and all(f.id in world.units for f in front)
