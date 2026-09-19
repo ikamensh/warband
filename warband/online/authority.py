@@ -9,7 +9,7 @@ from warband.sim.worker_knowledge import WorkerKnowledge
 from saga2d.server.games import GameSpec, option_choice, option_int, option_keys, option_seed
 from warband.sim.rules import BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
 
-GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'stop', 'hold'}
+GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'stop', 'hold', 'release_workers'}
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building', 'set_auto_train'}
 SETTLEMENT_ORDERS = {'plan_building', 'order_unit', 'order_upgrade', 'set_assembly', 'cancel_plan'}
 SEAT_ORDERS = SETTLEMENT_ORDERS | {'resign'}  # orders about the seat's own player, named in the order

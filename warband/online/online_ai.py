@@ -28,12 +28,12 @@ from typing import Callable
 from saga2d import CommandError
 from saga2d.online import OnlineClient, server_endpoint
 from warband.brains.ai import make_brain
+from warband.online.authority import GROUP_ORDERS, ORDERS
 from warband.sim.model import World, tile_center
 from warband.sim.rules import Difficulty, MapTheme
 
 POLL_INTERVAL = 0.05
 ORDER_INTERVAL = 0.08  # At most 12.5 orders/s, below the public server's 20/s allowance.
-_BRAIN_ORDERS = frozenset({"move", "attack_move", "repair", "build", "train", "research", "set_rally"})
 
 
 def _wire(value):
@@ -51,6 +51,11 @@ class _PlanningWorld:
 
     Applying each proposed order locally lets later decisions see spent resources
     and assigned workers. These speculative changes are never published as state.
+    Every order the authority takes (``authority.ORDERS``) is sent, a harvest as
+    the right-click it is online, and assigning idle workers stays on the copy,
+    for the server does that for every seat each second. Any other order the world
+    takes from a player is refused here: one that changed the copy alone was a
+    decision the server never heard of (the brain hunted an intruder nobody attacked).
     """
 
     def __init__(self, data):
@@ -58,13 +63,15 @@ class _PlanningWorld:
         self.commands = []
 
     def __getattr__(self, name):
-        if name in _BRAIN_ORDERS:
+        if name in ORDERS:
             return lambda *args, **kwargs: self._order(name, *args, **kwargs)
+        if getattr(getattr(World, name, None), "is_order", False):
+            raise AttributeError(f"The online authority takes no {name} order, so a brain may not give it online")
         return getattr(self.world, name)
 
     def _order(self, action, *args, **kwargs):
         # World accepts an empty selection as a no-op; the network requires one.
-        if action in {"move", "attack_move", "repair"} and not args[0]:
+        if action in GROUP_ORDERS and not args[0]:
             return None
         result = getattr(self.world, action)(*args, **kwargs)
         self.commands.append({"action": action, "args": _wire(args), "kwargs": _wire(kwargs)})
@@ -74,6 +81,10 @@ class _PlanningWorld:
         # Harvest is a model command, while online players right-click resources.
         point = self.world.buildings[target].center if isinstance(target, int) else tile_center(target)
         return self._order("smart", unit_ids, point, queue=queue)
+
+    def assign_workers(self, player):
+        # The copy does it now for the decisions later in the same pass, which look at who is on gold and who on lumber.
+        self.world.assign_workers(player)
 
 
 def _state_evidence(client):
