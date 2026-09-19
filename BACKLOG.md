@@ -42,7 +42,7 @@ Removed 2026-09-19: WB-040, merged as `9c5caa4`
 | WB-039 | Next | blocked | Stop chiming on every selection | User 2026-09-18 |
 | WB-041 | Next | proposed | Give the package folders: group the 43 flat modules by what they are | User 2026-09-18 |
 | WB-042 | Later | proposed | Tests read through public accessors; try property tests for the model and paths | WB-040 |
-| WB-044 | Next | proposed | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
+| WB-044 | Next | blocked | Hold the push that comes with a rush tower; strike faster on Hard | WB-037 |
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
@@ -261,3 +261,23 @@ tower. The ladder shows no loss against ordinary opponents. If Hard's
 handicaps (thinking every second and a half, six peasants a mine, one
 barracks) are what keep it short, the numbers go to Ilya before any
 handicap is touched.
+
+**Measured 2026-09-19** on main after WB-036, WB-014 and WB-045 (branch
+`rush-push`, evidence under `docs/evidence/wb044/`), on WB-037's tuning seeds
+(5000, 20 seeds, both corners): against `pro-rush` all three counts hold in
+35, 37 and 27 of 40 games for the Vanguard, the Warden and Hard, and against
+the placed tower in 40, 38 and 31. The Warden meets nine in ten, the
+Vanguard is a game short, Hard well short (WB-037's fresh seeds from 7000 had
+given the Vanguard 32 and the Warden 31). Traced (Vanguard, seed 5016, corner
+1): the tower died 22 s after it stood, but the defender had no soldier until
+170 s and had struck the frame with ten peasants for 25 s that took nothing
+off it (ten a second against its growth of ten), and the rusher's push then
+met an empty bank. Striking the frame 6 or 12 s before it stands instead of
+25 changed nothing (35 or 36, 37, 25 or 25). Hard with each handicap lifted
+alone, against the rush and the placed tower: thinking as fast as Master 27
+and 32, ten workers a mine 15 and 27, two barracks 29 and 34: no single
+handicap is what keeps it short, and closing the gap would make it a
+different brain. **Blocked** on Ilya: whether Hard is to meet the rush bar
+at all (and with which handicaps), and whether the defence against a push
+that arrives with a tower is worth an AI project of its own for Master's
+last game or two.
