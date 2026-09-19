@@ -82,9 +82,12 @@ Move, Stop, Hold on the first row, Attack, Patrol and a peasant's Build on the
 second, Repair on the third. A building's recruits and research chains fill
 from the first slot, a chain keeping its slot once all its tiers are done so
 no key moves; Cancel ends the first row, or the second when three items fill
-the first. The catalogues keep their table's order (the Upgrade catalogue puts
-each chain's tiers side by side, the race's two arts at the ends of the second
-and third rows), with Back on Esc in the bottom-right corner, or below it when
+the first. The catalogues keep their table's order (the Upgrade catalogue gives
+each chain one slot, which shows the next tier to order as a building's own
+card does: blades, armour and arrows on the first row, siege, Marksmanship and
+the race's first art on the second, its second art on the third; with the tiers
+side by side a tenth upgrade had no key on a nine-key grid), with Back on Esc in
+the bottom-right corner, or below it when
 the nine slots are taken. A catalogue item that lacks what it needs (a
 building's prerequisite, a recruit's building, an upgrade's building or lower
 tier; `warband/ui/tech.py` reads them from the rules) carries a picture of that
