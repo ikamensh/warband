@@ -24,8 +24,10 @@ PRIVATE_EVENTS = frozenset({'trained', 'researched', 'refused', 'deferred', 'dep
 PUBLIC_EVENTS = frozenset({'victory', 'eliminated', 'surrendered', 'resigned', 'exposed'})
 #: What a seat learns of a unit it sees but does not own is where it stands and how it moves and strikes, not where it is going.
 STRANGER_UNIT = {'orders': [], 'worker_orders': [], 'home': None, 'constructing': None, 'auto_work': False}
-#: Of a building it sees but does not own: footprint, hit points, construction and abandonment, not its work.
-STRANGER_BUILDING = {'queue': [], 'train_progress': 0.0, 'rally': None, 'builder': None, 'research': None, 'research_progress': 0.0, 'auto': []}
+#: Of a building it sees but does not own: footprint, hit points, construction and abandonment, not its work.  A site
+#: keeps its builder's id (the builder itself is inside, out of sight): a site with none is one from a save older than
+#: WB-048, and a load removes it.
+STRANGER_BUILDING = {'queue': [], 'train_progress': 0.0, 'rally': None, 'research': None, 'research_progress': 0.0, 'auto': []}
 
 
 def _terrain_rows(world):

@@ -78,6 +78,25 @@ def test_a_seat_has_all_of_its_own_and_of_the_rival_only_what_it_sees_without_it
     assert {b['id']: b for b in theirs['buildings']}[camp.id]['auto'] == ['archer']
 
 
+def test_a_rivals_building_going_up_in_sight_stays_in_the_seats_world() -> None:
+    """The snapshot left a rival site's builder out with the rest of its work, and loading it took the site for one
+    left half built in a save from before WB-048, when builders could walk off, and removed it: online, a seat never
+    saw a rival's building go up, a tower beside its hall included, until it stood."""
+    from warband.sim.model import World
+
+    match = fogged_match()
+    world = match.world
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    site = world.place_building(1, BuildingType.FARM, site_near(world, 0, BuildingType.FARM, (hall.x + hall.size + 3, hall.y)), done=False)
+    builder = next(u for u in world.player_units(1) if u.is_worker and not u.hidden)
+    world._start_building(builder, site)  # staged: a rival peasant raising it where seat 0 looks, without its walk across the map
+    world.update_vision()
+    assert world.is_visible(0, site.tiles()[0])
+    seen = World.from_dict(sent(match, 0)['world'])
+    assert site.id in seen.buildings and not seen.buildings[site.id].done
+    assert builder.id not in seen.units, "the builder is inside its site, out of sight"
+
+
 def test_a_worker_in_a_mine_is_nobodys_business_but_its_owners() -> None:
     match = fogged_match()
     world = match.world
