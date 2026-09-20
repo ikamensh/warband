@@ -37,8 +37,8 @@ from warband.audio.sound import IMPACTS, apply_volumes, impact_sound, play_music
 from warband.audio.voices import voiced
 from warband.ui.controls import CARD_COLS, CHORDS, GRID_KEYS, SCHEMES, Scheme, label as key_label
 from warband.ui.style import (
-    ACTION_BUTTON, BAD, BODY, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, HURT, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE,
-    RESULTS_STYLE,
+    ACTION_BUTTON, ARMED_BUTTON, BAD, BODY, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, HURT, LUMBER, MUTED, OVERLAY_STYLE,
+    PANEL_STYLE, RESULTS_STYLE,
 )
 from warband.ui import tech
 from warband.ui.tech import Need, Prerequisite, TechTree
@@ -53,6 +53,9 @@ SAVE_VERSION = 2  # 2: the world records its layout
 SAVE_SLOTS = 3
 AUTOSAVE_EVERY = 120.0  # seconds of match time
 SELECT_GAP = 30.0  # seconds: selecting is constant, and its cue answers only the first selection in a while (WB-039)
+PENDING_ASKS = {"move": "Click where to move", "attack": "Click a target, or the ground to attack-move there",
+                "patrol": "Click the far end of the patrol", "repair": "Click one of your damaged buildings",
+                "assembly": "Click the map to set an assembly point for new soldiers"}
 PLANS_PRICE = 126  # the price column on the Plans screen: the widest price and a little air
 SUPPLY_WARNING = 2  # units of room left in the farms: from here the supply pair warns before it blocks
 SHORT_FLASH = 1.5  # seconds a resource the purse was short of stays red in the top bar
@@ -1011,11 +1014,13 @@ class GameScene(Scene):
             self.sfx("command")
 
     def start_pending(self, mode: str) -> None:
-        """Wait for the click that gives the order *mode*: "move", "attack", "patrol", "repair" or "assembly"."""
+        """Wait for the click that gives the order *mode*: "move", "attack", "patrol", "repair" or "assembly".  The
+        mode is armed until that click or Esc, which nothing said before: it says what to click, and the card lights
+        the button whose mode it is, the way the Build catalogue lights the building being placed."""
         self.pending = mode
         if mode == "assembly":
             self.catalogue = None
-            self.say("Click the map to set an assembly point for new soldiers")
+        self.say(PENDING_ASKS[mode])
         self._refresh_card()
 
     # -- Placing buildings -------------------------------------------------------------
@@ -1431,20 +1436,25 @@ class GameScene(Scene):
         return self._building_commands(building) if building is not None else []
 
     def _unit_commands(self, units: list[Unit]) -> list[Command]:
+        def armed(mode: str, style: Style = CARD_BUTTON) -> Style:
+            """The button of the mode waiting for its click stands lit, so an armed card is not a silent one."""
+            return ARMED_BUTTON if self.pending == mode else style
+
         commands = [
-            Command("Move", "m", lambda: self.start_pending("move"), UNIT_SLOTS["move"], tooltip="Move to a spot (right-click does this too)"),
+            Command("Move", "m", lambda: self.start_pending("move"), UNIT_SLOTS["move"], tooltip="Move to a spot (right-click does this too)",
+                    style=armed("move")),
             Command("Stop", "s", self.command_stop, UNIT_SLOTS["stop"], tooltip="Drop every order"),
             Command("Hold", "h", self.command_hold, UNIT_SLOTS["hold"], tooltip="Stand here; fight what comes in range but never chase"),
             Command("Attack", "a", lambda: self.start_pending("attack"), UNIT_SLOTS["attack"],
-                    tooltip="Attack a target, or attack-move: fight everything on the way", style=DANGER_BUTTON),
+                    tooltip="Attack a target, or attack-move: fight everything on the way", style=armed("attack", DANGER_BUTTON)),
             Command("Patrol", "p", lambda: self.start_pending("patrol"), UNIT_SLOTS["patrol"],
-                    tooltip="Walk between here and a spot, fighting whatever turns up"),
+                    tooltip="Walk between here and a spot, fighting whatever turns up", style=armed("patrol")),
         ]
         if any(u.is_worker for u in units):
             commands.append(Command("Build", "b", lambda: self.open_catalogue("build"), UNIT_SLOTS["build"],
                                     tooltip="Farms, barracks, halls, towers and the tech buildings, built by these peasants", style=ACTION_BUTTON))
             commands.append(Command("Repair", "r", lambda: self.start_pending("repair"), UNIT_SLOTS["repair"],
-                                    tooltip="Mend one of your damaged buildings; a full repair costs half its price"))
+                                    tooltip="Mend one of your damaged buildings; a full repair costs half its price", style=armed("repair")))
         return commands
 
     def _building_commands(self, building: Building) -> list[Command]:

@@ -102,6 +102,12 @@ the codex's fifth page draws the whole tech tree (WB-054).
 brings up every card of every race in every scheme and holds each key to one
 command, and Grid's keys to the grid.
 
+A command that waits for a click — Move, Attack, Patrol, Repair, the assembly
+point — arms its mode: the status line says what the click will do and the card
+lights that button in gold until the click or Esc, the way the Build catalogue
+lights the building being placed. Pressing A or P changed nothing a player
+could see before that.
+
 ## Reading the numbers
 
 Every button that costs something — a catalogue item, and a building's own

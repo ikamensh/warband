@@ -248,6 +248,18 @@ def select_upgraded(game: Game) -> None:
 
 
 @screen
+def pending_attack(game: Game) -> None:
+    """The attack mode armed and waiting for its click: the card's button lit and the status line saying what to
+    click, where pressing A once said nothing at all."""
+    scene = town(game)
+    units = [spawn(scene, UnitType.FOOTMAN, (9 + i, 12)) for i in range(3)]
+    scene.select([u.id for u in units])
+    ticks(game)
+    scene.start_pending("attack")
+    ticks(game)
+
+
+@screen
 def select_site(game: Game) -> None:
     scene = town(game)
     world = scene.world

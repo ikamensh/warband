@@ -7,8 +7,8 @@ from warband.sim.model import Event, Repair, Attack, AttackMove, Build, Harvest,
 from warband.sim.rules import BUILDINGS, SIM_DT, UNITS, BuildingType, UnitType
 from warband.sim.races import RACES
 from warband.sim.rules import Race
-from warband.ui.scene import SELECT_GAP, GameOverScene, GameScene, HelpScene, LeaveScene, PauseScene, SettingsScene, new_game
-from warband.ui.style import build_theme
+from warband.ui.scene import PENDING_ASKS, SELECT_GAP, GameOverScene, GameScene, HelpScene, LeaveScene, PauseScene, SettingsScene, new_game
+from warband.ui.style import ARMED_BUTTON, build_theme
 from warband.ui.title import NewGameScene, TitleScene
 
 from tests.warband.battlefield import live_effects
@@ -157,6 +157,24 @@ def test_attack_hotkey_then_click_is_an_attack_move_and_m_is_a_move(play) -> Non
     assert isinstance(footman.order, Move)
     press(game, "s")
     assert not footman.orders
+
+
+def test_an_armed_mode_says_what_to_click_and_lights_its_button(play) -> None:
+    """Pressing A or P used to change nothing a player could see until they clicked: the status line now says what
+    the click will do and the card lights the button whose mode is armed, as it lights a building being placed."""
+    game, scene = play
+    footman = scene.world.spawn_unit(scene.human, UnitType.FOOTMAN, tile_center((hall_of(scene).x + 4, hall_of(scene).y + 4)))
+    game.tick(1 / 60)
+    scene.select([footman.id])
+    game.tick(1 / 60)
+    armed = lambda: [c.label for c in scene.card if c.style is ARMED_BUTTON]  # noqa: E731
+    assert armed() == []
+    press(game, "a")
+    assert scene.status == PENDING_ASKS["attack"] and armed() == ["Attack"]
+    press(game, "p")
+    assert scene.status == PENDING_ASKS["patrol"] and armed() == ["Patrol"]
+    press(game, "escape")
+    assert scene.pending is None and armed() == []
 
 
 def test_build_menu_places_a_farm_where_the_mouse_is(play) -> None:
