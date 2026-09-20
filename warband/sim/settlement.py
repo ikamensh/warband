@@ -216,7 +216,6 @@ class Settlement:
 
     def _worker(self, plan: Plan) -> Unit | None:
         from warband.sim.model import TOUCH, Deposit, Harvest, rect_gap, tile_center
-        from warband.sim.rules import UNIT_RADIUS
         from warband.sim.worker_ai import safe_navigation
 
         world = self.world
@@ -226,7 +225,8 @@ class Settlement:
         goals = {(x, y): 0.0
                  for y in range(max(0, plan.pos[1] - 1), min(world.height, plan.pos[1] + size + 1))
                  for x in range(max(0, plan.pos[0] - 1), min(world.width, plan.pos[0] + size + 1))
-                 if not navigation[y * world.width + x] and rect_gap(tile_center((x, y)), rect) <= TOUCH + UNIT_RADIUS}
+                 if not navigation[y * world.width + x]
+                 and rect_gap(tile_center((x, y)), rect) <= TOUCH + UNITS[UnitType.PEASANT].radius}  # a peasant's body: _reach's test
         candidates = []
         for worker in world.player_units(plan.player):
             if (not worker.is_worker or not worker.auto_work or worker.hidden or worker.hp <= 0 or worker.carrying is not None

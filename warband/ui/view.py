@@ -162,6 +162,8 @@ STRIKE, FOLLOW, RECOVER = 0.1, 0.16, 0.16  # seconds after the blow: driven forw
 SHOT_LOOKS = {UnitType.CLERIC.value: "mote"}
 SHOT_SIZE = {"arrow": (22, 6), "stone": (14, 14), "mote": (20, 20)}
 STAFF_REACH = 0.4  # tiles before a healer that the head of its staff is held, where its mote is first seen
+RING_FLATTEN = 0.62  # a circle on the ground seen from the game's elevation is this much shorter than it is wide
+PICK_SLACK = 0.35  # tiles beyond a unit's body a click still picks it: the figure stands above the ground point it is clicked at
 TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1}  # seconds of flight a shot leaves hanging in the air behind it
 TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150)}
 TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5)}  # at the shot and where the trail ends
@@ -542,7 +544,7 @@ class MapView:
             if unit.hidden or sprite is None or not sprite.visible:
                 continue
             gap = math.dist(point, self.unit_position(unit)) - unit.radius
-            if gap <= 0.35 and gap < distance:
+            if gap <= PICK_SLACK and gap < distance:
                 nearest, distance = unit, gap
         if nearest is not None:
             return nearest
@@ -984,7 +986,9 @@ class MapView:
                 if entity.hidden:
                     continue
                 wx, wy = to_world(self.unit_position(entity))
-                self._ring(wx, wy + 2, TILE * 0.42, TILE * 0.26, color if eid in overlay.selected else rgba(color[:3], 120))
+                # The ring is the body: what the click picks and what the crowd keeps clear (rules.UnitInfo.radius).
+                self._ring(wx, wy + 2, TILE * entity.radius, TILE * entity.radius * RING_FLATTEN,
+                           color if eid in overlay.selected else rgba(color[:3], 120))
             else:
                 x, y, w, h = entity.rect
                 left, top = x * TILE, y * TILE

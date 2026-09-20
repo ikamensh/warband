@@ -152,6 +152,12 @@ class UnitInfo:
     trained_at: BuildingType
     hotkey: str
     summary: str
+    #: Tiles from its centre the unit's body fills: what it may not be pushed into, and what a blow, a
+    #: stone's splash and a click all measure from.  A little under the drawn figure's own footprint;
+    #: the numbers and how they were measured are in ``docs/unit-motion.md`` part 7.  The races draw the
+    #: same role at different sizes but share one body, and a jittered rulebook never moves a radius, so
+    #: :data:`MAX_UNIT_RADIUS` holds for the whole match.
+    radius: float
     heal: int = 0  # hit points one cast restores, a wind-up and a cooldown apart; a healer's own blow is weak and its last resort
     splash: float = 0.0  # radius around where a stone lands that also takes damage; a siege engine
     attack: AttackType = AttackType.NORMAL
@@ -186,23 +192,23 @@ MELEE: Final = 0.45  # reach of a melee unit: it strikes from the next tile over
 
 UNITS: Final[dict[UnitType, UnitInfo]] = {
     UnitType.PEASANT: UnitInfo("Peasant", Cost(400), 30, 3, 0, MELEE, 1.0, 2.4, 4, 12.0, BuildingType.TOWN_HALL, "p",
-                               "Mines gold, chops lumber, builds and repairs", windup=0.25, armor_class=ArmorClass.UNARMORED),
+                               "Mines gold, chops lumber, builds and repairs", radius=0.36, windup=0.25, armor_class=ArmorClass.UNARMORED),
     UnitType.FOOTMAN: UnitInfo("Footman", Cost(600), 60, 7, 3, MELEE, 1.0, 2.0, 5, 15.0, BuildingType.BARRACKS, "f",
-                               "Slow shield-wall swordsman; tougher with a comrade at each side", windup=0.3,
+                               "Slow shield-wall swordsman; tougher with a comrade at each side", radius=0.42, windup=0.3,
                                armor_class=ArmorClass.HEAVY, formation=True),
     UnitType.ARCHER: UnitInfo("Archer", Cost(500, 50), 40, 6, 0, 4.0, 1.3, 2.4, 6, 14.0, BuildingType.BARRACKS, "a",
-                              "Shoots from four tiles away; fragile up close", windup=0.35, attack=AttackType.PIERCING),
+                              "Shoots from four tiles away; fragile up close", radius=0.42, windup=0.35, attack=AttackType.PIERCING),
     UnitType.SCOUT: UnitInfo("Scout", Cost(350), 35, 4, 0, MELEE, 0.8, 4.2, 8, 10.0, BuildingType.STABLES, "s",
-                             "Fast rider who sees far; raids peasants and archers", mounted=True, windup=0.25, turn=math.radians(450)),
+                             "Fast rider who sees far; raids peasants and archers", radius=0.48, mounted=True, windup=0.25, turn=math.radians(450)),
     UnitType.KNIGHT: UnitInfo("Knight", Cost(900, 100), 90, 10, 4, MELEE, 1.0, 3.4, 5, 20.0, BuildingType.STABLES, "k",
-                              "Fast, heavily armoured shock cavalry", mounted=True, windup=0.35, turn=math.radians(270),
+                              "Fast, heavily armoured shock cavalry", radius=0.56, mounted=True, windup=0.35, turn=math.radians(270),
                               armor_class=ArmorClass.HEAVY),
     UnitType.CATAPULT: UnitInfo("Catapult", Cost(700, 200), 100, 36, 0, 7.0, 3.0, 1.6, 6, 30.0, BuildingType.WORKSHOP, "c",
                                 "Slow siege engine: stones land where aimed, splash friend and foe, ×1.5 against buildings",
-                                splash=1.2, windup=0.8, turn=math.radians(150), min_range=2.0, attack=AttackType.SIEGE,
+                                radius=0.62, splash=1.2, windup=0.8, turn=math.radians(150), min_range=2.0, attack=AttackType.SIEGE,
                                 armor_class=ArmorClass.UNARMORED),
     UnitType.CLERIC: UnitInfo("Cleric", Cost(700, 50), 40, 3, 0, 3.0, 2.0, 2.4, 5, 20.0, BuildingType.CHURCH, "h",  # H for healer: L is Blessing at the church
-                              "Heals a wounded ally 15 at a cast; a weak blow when no one needs it", heal=15, windup=0.5,
+                              "Heals a wounded ally 15 at a cast; a weak blow when no one needs it", radius=0.38, heal=15, windup=0.5,
                               armor_class=ArmorClass.UNARMORED),
 }
 
@@ -350,9 +356,14 @@ def an(name: str) -> str:
     return f"{'an' if name[:1].upper() in 'AEIOU' else 'a'} {name}"
 
 
-FRIENDLY_MARGIN: Final = 0.3  # tiles beyond its splash a siege crew keeps a stone from its own side when firing on its own
+FRIENDLY_MARGIN: Final = 0.45  # tiles beyond its splash a siege crew keeps a stone from its own side when firing on its own.
+# The crew leads a friend by the walking it does of its own accord; a shove from the crowd is not in that velocity, and a
+# body the size of a knight's is shoved harder and further than the old one-size body was.  Over the twelve clash seeds of
+# tests/warband/test_siege_judgement.py, 0.3 put stones on our own footmen in five of them (the shipped 0.35-tile bodies
+# did it in two: the test's first six seeds were lucky) and 0.4 in one; 0.45 is the least that is clean.  It is also as far
+# as this can go: at 0.5 the crew holds fire behind a line locked with the enemy and a catapult's damage falls by a third.
 FORMATION_ARMOR: Final = 1  # armour a formation unit gains for each such friend at its left and at its right
-FORMATION_SPACING: Final = 1.0  # tiles between neighbours in a marching line
+FORMATION_SPACING: Final = 1.0  # tiles between neighbours in a marching line: a footman's body is 0.84 wide, so a line still has daylight in it
 FORMATION_WIDTH: Final = 8  # a line this long; more stand in rows behind
 FORMATION_MARCH: Final = 4.0  # tiles a group must go before its formation units form a line; nearer, they gather
 FORMATION_SLACK: Final = 1.0  # tiles nearer its slot than the line's laggard before a marcher waits for it
@@ -390,7 +401,9 @@ MINE_GOLD: Final = 50_000  # a base mine; expansion mines hold EXPANSION_GOLD
 EXPANSION_GOLD: Final = 30_000
 STARTING_GOLD: Final = 1000
 STARTING_LUMBER: Final = 500
-UNIT_RADIUS: Final = 0.35
+#: The largest body any unit has: what a search that must not miss a unit whose body reaches into it pads by
+#: (the bodies themselves are :attr:`UnitInfo.radius`).  A jittered rulebook never moves a radius, so this holds.
+MAX_UNIT_RADIUS: Final = max(info.radius for info in UNITS.values())
 LEASH: Final = 6.0  # how far an idle unit chases before it walks home
 UNDER_ATTACK_COOLDOWN: Final = 20.0
 SIM_DT: Final = 0.05  # the simulation runs at 20 Hz regardless of the frame rate

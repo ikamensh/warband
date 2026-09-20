@@ -185,7 +185,7 @@ the heal falling instead of rising) rather than cut from Foley pieces.
 ## 5. Standing at ease (2026-09-16)
 
 A group sent somewhere used to arrive as one stack, every unit touching its neighbours
-(`UNIT_RADIUS` apart, twice 0.35 tiles), and stand like that until the next order: sixteen
+(a body apart, `UnitInfo.radius` each), and stand like that until the next order: sixteen
 footmen were one overlapping mass of blue. Real troops loosen up when nothing is happening.
 Two things now happen in the model, both only for units *at ease*: neither fighting (an
 `Attack`, `Heal` or `Hold` order, a wind-up, or the `attack` state), nor working (a peasant
@@ -198,11 +198,12 @@ a unit at ease a soft push away from any neighbour closer than touching plus `SP
 overlap push and a marching column loosens rather than scatters. The push moves the unit
 that wants room, never the one it is making room for: a peasant idling against a footman
 hitting a wall steps back, the footman keeps its reach. Fights, mining queues and building
-sites are untouched; `unit_at`, weapon reach and the melee positioning all still use
-`UNIT_RADIUS`.
+sites are untouched; `unit_at`, weapon reach and the melee positioning all measure from the
+same body, `UnitInfo.radius`.
 
 **Stepping away (`_ease`, `_elbow_room`).** A standing unit with a neighbour's centre closer
-than `EASE_SPACE` (one tile) is crowded. Every `EASE_EVERY` ticks it rolls `EASE_CHANCE`
+than its own two bodies and `EASE_SPACE` (0.3 tiles) is crowded, so a catapult asks for the
+room a catapult takes. Every `EASE_EVERY` ticks it rolls `EASE_CHANCE`
 (about once every two seconds) and, when the roll comes up, picks a spot `EASE_STEP` give or
 take `EASE_STEP_VARIANCE` away from the weighted middle of its close neighbours, veered by
 up to `EASE_JITTER` either side so the crowd does not explode radially. The spot must be on
@@ -241,3 +242,92 @@ back. A formation unit wears `FORMATION_ARMOR` more for a comrade at each side
 (`World.flanks`). Found on the way: a waypoint within `ARRIVE` of a unit counted as reached
 and snapped the unit onto it, so every unit slower than 2.4 tiles/s was sped up at each
 waypoint; now only the end of a walk does.
+
+## 7. A body per unit type (2026-09-20)
+
+Every unit used to fill the same 0.35 tiles, so a catapult and a peasant were the same
+thing to the crowd, to a stone's splash and to a click, and the drawn figures stood
+inside each other. `UnitInfo.radius` is now a body per unit type.
+
+**How the numbers were measured.** The shipped art is the painted sheet under
+`warband/assets/restyled/`, one cell per facing and frame, anchored at the figure's feet
+(`restyle.Sheet.origin`, `scale`; `TILE` is 32 logical pixels to the tile). For the
+`stand` frame of all eight facings of all four races, the silhouette (alpha ≥ 64) is read
+as a column histogram, and the body is the half-span holding the **central 90 % of the
+opaque pixels** — the figure's mass, not the lance or the raised axe one thin column of it
+holds out. Averaged over facings and races:
+
+| unit | drawn body | widest point | radius | share of the body |
+|------|-----------:|-------------:|-------:|------------------:|
+| peasant  | 0.419 | 0.95 | 0.36 | 0.86 |
+| cleric   | 0.431 | 0.85 | 0.38 | 0.88 |
+| footman  | 0.488 | 1.01 | 0.42 | 0.86 |
+| archer   | 0.492 | 0.94 | 0.42 | 0.85 |
+| scout    | 0.565 | 1.05 | 0.48 | 0.85 |
+| knight   | 0.652 | 1.20 | 0.56 | 0.86 |
+| catapult | 0.733 | 1.14 | 0.62 | 0.85 |
+
+The chosen radius is a flat ~0.86 of the drawn body: close to the figure, a little less,
+so bodies nearly touch rather than interpenetrate. The races are drawn at noticeably
+different sizes (an orc footman's body measures 0.62, an elf's 0.36), but one role is one
+body: a per-race radius would be a race balance change, and the rulebook reads better with
+seven numbers than twenty-eight.
+
+**What the body is.** The radius is what the crowd keeps clear (`World._separate`), what a
+reach is measured to (`World._gap` is edge to edge, so `MELEE` and a weapon's `range` are
+gaps between bodies and a bigger body reaches further in centre distance), what a stone's
+splash measures from (`_land_stone`), and the ring the player sees and clicks
+(`view.MapView`). It is **not** terrain clearance: a walker is a point against the blocked
+grid, so a catapult 1.24 tiles wide still goes through a one-tile gate, and the bodies of
+the units at a tree or a wall overlap the tiles they are working.
+
+A search that must not miss a unit whose *body* reaches into it pads its bucket scan with
+`rules.MAX_UNIT_RADIUS`, the largest body there is, and then tests the exact distance
+against that neighbour's own radius. There is no one-size `UNIT_RADIUS` any more: every
+place that used it was one of these two things.
+
+The gatherers are untouched by all of it: twelve peasants on a mine and a wood, over three
+minutes and five seeds, bring in 11,400 gold and 5,000 lumber where they brought 11,500 and
+4,800. The crowd step costs more, because a peasant now has to look two bucket cells out
+rather than one to find the catapult that might be leaning on it: 600 steps of a
+160-unit march take 1.61 s against 1.37 s from source, and nine whole arena matches run at
+0.073 ms a step compiled against 0.058. Frames are unmoved -- `tools/perf.py` gives p95
+31.9 ms against 32.1 on the same loaded machine.
+
+**What it cost the catapult** (measured with `tools/battle_bench.py`, 60 fights a pairing,
+half from each side, against the same tool run from `main` at f5ec5b1). Mirror armies are
+unmoved: footman, archer and knight compositions win the same half of their fights and the
+winner keeps within a few points of what it kept. Two catapults are not:
+
+| pairing | main | with bodies |
+|---|---|---|
+| `footman:7,catapult:2` vs `footman:10` | 90.0 % won, 4 draws | 26.7 % won, 21 draws |
+| `footman:4,catapult:4` vs `archer:11` | 98.3 % won | 98.3 % won |
+| `footman:7` vs `footman:10` (no engines) | 0.0 % won | 0.0 % won |
+
+So the melee arithmetic is unchanged and shelling a standing line is unchanged; what fell
+away is the catapult *behind its own line*. Two things move it, one a little and one a lot:
+
+* a stone catches a unit whose *body* is inside the splash, so the caught disc grows with
+  the body — +9 % of area for a footman, +17 % for the full-damage disc — but at rest the
+  bodies stand `2r + SPACING` apart instead of 0.90 tiles, which is 25 % less dense. Net,
+  about a sixth fewer units under a stone, and the measured damage per stone bears it out
+  (41 against 47);
+* and the crew holds fire far more often, because `_clear_of_friends` measures to a
+  friend's body too. This is the big one, and `FRIENDLY_MARGIN` is its dial. Over twelve
+  seeds of a seven-footmen-and-two-catapults clash:
+
+  | margin | stones thrown | damage on the enemy | damage on our own | our units left |
+  |-------:|--------------:|--------------------:|------------------:|---------------:|
+  | 0.30 | 6.8 | 371 | 1.8 | 4.6 |
+  | 0.40 | 7.1 | 327 | 0.0 | 3.0 |
+  | 0.45 | 7.2 | 308 | 0.0 | 1.1 |
+  | 0.50 | 5.1 | 209 | 0.0 | 0.2 |
+
+  The margin cannot simply go back down: at 0.3 the new bodies put stones on our own
+  footmen in five of the twelve clash seeds of `test_siege_judgement` (the shipped
+  0.35-tile bodies did it in two — the test's first six seeds were lucky) and 0.4 in one,
+  so 0.45 is the least that is clean on all twelve.
+
+Rebalancing the catapult is deliberately not done here: its cost and damage are untouched,
+and the numbers above are the starting point for whoever does it.

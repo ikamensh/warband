@@ -172,6 +172,9 @@ def test_the_brain_plays_a_match_without_raising_and_builds_an_army():
     world = mapgen.generate(seed=12, players=2, human=None)
     brains = [ProBrain(0, PRO), ProBrain(1, PRO)]
     rngs = [random.Random(i) for i in range(2)]
+    # The most soldiers each side ever had at once, not the ones still standing at the end: whether the army
+    # was trained is the brain's business, whether it survived the other brain's attack is the match's.
+    army = [0, 0]
     for _ in range(int(240 / SIM_DT)):
         if world.winner is not None:
             break
@@ -179,8 +182,10 @@ def test_the_brain_plays_a_match_without_raising_and_builds_an_army():
             brain.think(world, rng)
         world.step()
         world.take_events()
+        for player in (0, 1):
+            army[player] = max(army[player], sum(1 for u in world.player_units(player) if not u.is_worker))
     for player in (0, 1):
-        assert any(not u.is_worker for u in world.player_units(player)), f"player {player} trained nothing"
+        assert army[player], f"player {player} trained nothing"
         assert len(world.player_buildings(player, done=True)) > 2
 
 

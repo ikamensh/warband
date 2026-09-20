@@ -2,7 +2,7 @@
 import random
 
 from warband.sim.model import Attack, Hold, World
-from warband.sim.rules import SIM_DT, UNIT_RADIUS, BuildingType, Terrain, UnitType
+from warband.sim.rules import SIM_DT, UNITS, BuildingType, Terrain, UnitType
 
 
 def battlefield():
@@ -67,8 +67,9 @@ def test_a_unit_on_hold_answers_the_enemy_in_its_reach_whatever_stands_just_beyo
     for ours_type, soldier_gap in ((UnitType.FOOTMAN, 1.0), (UnitType.ARCHER, 4.3)):
         world = battlefield()
         ours = world.spawn_unit(0, ours_type, (5.5, 5.5))
-        peasant = world.spawn_unit(1, UnitType.PEASANT, (6.2, 5.5))
-        soldier = world.spawn_unit(1, UnitType.FOOTMAN, (5.5, 5.5 + 2 * UNIT_RADIUS + soldier_gap))
+        # Toe to toe, not inside each other: a body apart, so the crowd never shoves the held unit off its spot.
+        peasant = world.spawn_unit(1, UnitType.PEASANT, (5.5 + UNITS[ours_type].radius + UNITS[UnitType.PEASANT].radius + 0.02, 5.5))
+        soldier = world.spawn_unit(1, UnitType.FOOTMAN, (5.5, 5.5 + UNITS[ours_type].radius + UNITS[UnitType.FOOTMAN].radius + soldier_gap))
         world.hold([ours.id, soldier.id])
         world.attack([peasant.id], ours.id)
         world.update_vision()

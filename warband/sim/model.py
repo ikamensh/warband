@@ -41,7 +41,7 @@ from warband.sim.rules import (
     MINE_SLOTS, MINE_TIME, PLAYERS,
     PLUNDER_SHARE, REGROWTH_SECONDS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION, STARTING_GOLD, STARTING_LUMBER,
     FORMATION_ARMOR, FORMATION_HOLD, FORMATION_LOOKAHEAD, FORMATION_MARCH, FORMATION_SLACK, FORMATION_SPACING, FORMATION_WIDTH, ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, SIEGE_BUILDING_WORTH, SIEGE_STEP, SIEGE_WORTH, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
-    MAX_QUEUED_ORDERS, UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
+    MAX_QUEUED_ORDERS, MAX_UNIT_RADIUS, UNDER_ATTACK_COOLDOWN, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
     Terrain, UnitInfo, UnitType, Upgrade, UpgradeInfo, ArmorClass, AttackType, an, damage_factor, listing,
 )
 
@@ -135,12 +135,15 @@ if isinstance(hypot, FunctionType):  # run from source: math.hypot is far quicke
 BLOCKING: Final = frozenset({Terrain.WATER, Terrain.TREES, Terrain.ROCK})
 ARRIVE: Final = 0.12  # a unit is "there" within this many tiles of its target point
 TOUCH: Final = 0.4  # gap at which a peasant can enter a mine, deliver, or start building (a diagonal neighbour counts)
+CHOP_HOLD: Final = 0.3  # tiles past that reach a chopping worker may be jostled and still keep its swing; beyond it,
+# it has to walk back and the chop starts over.  A mine keeps its peasant inside and a site keeps its builder, so
+# felling a tree is the one long job done in the open: without this, a crowd at one tree resets each other for ever.
 STUCK_AFTER: Final = 0.8  # seconds without progress before a unit paths again around the units in its way
 REPLAN_EVERY: Final = 0.6  # a unit plans at most this often unless it gets a new order (a melee would otherwise plan every tick)
 REPLAN_STAGGER: Final = 8  # ticks over which units spread their next plans by id, so a crowd does not plan in lockstep
 STEER_RANGE: Final = 4.0  # within this many tiles a unit walks straight at its target when the line is clear, without A*
 LOCAL_EXPANSIONS: Final = 700  # A* budget for the detours around other units; those goals are close
-SETTLE_WITHIN: Final = 1.0  # a plain walk counts as arrived when a crowd keeps the unit this close to its spot without progress
+SETTLE_WITHIN: Final = 0.65  # beyond its own body, how near its spot a crowd may hold a unit for a plain walk to count as arrived
 MINE_CLEARANCE: Final = 2  # tiles kept free around a gold mine so peasants can get in and out
 SIDESTEP: Final = 0.6  # lateral share of the push when walking units collide
 MAX_PUSH: Final = 0.25  # tiles a crowd can shove a unit in one step; eight overlapping units once summed to a jump over a tree wall
@@ -148,7 +151,7 @@ MAX_PUSH: Final = 0.25  # tiles a crowd can shove a unit in one step; eight over
 # elbow room, and a unit hemmed in by its neighbours takes a short step away from them now and then.
 SPACING: Final = 0.2  # tiles of clearance beyond touching that units at ease keep between each other; a soft push
 SPACING_WEIGHT: Final = 0.15  # share of the missing clearance closed per step, gentler than the overlap push
-EASE_SPACE: Final = 1.0  # a standing unit with a neighbour's centre closer than this feels crowded
+EASE_SPACE: Final = 0.3  # clearance beyond its own diameter a standing unit wants; nearer than that and it feels crowded
 EASE_EVERY: Final = 5  # ticks between a crowded unit's chances to step away
 EASE_CHANCE: Final = 0.12  # that a crowded unit steps away at one of those chances: about once every two seconds
 EASE_STEP: Final = 0.4  # tiles of the step, give or take EASE_STEP_VARIANCE
@@ -334,14 +337,13 @@ class Unit:
     replan_at: float = 0.0  # simulation time from which the unit may plan again
     auto_work: bool = True  # Stop/Hold parks a worker until another order is given.
 
-    radius = UNIT_RADIUS
-
     def __post_init__(self) -> None:
         # Type and race are fixed for life, so the stats they select are read once
         # rather than through RACES on every one of a match's millions of lookups.
         self.info: UnitInfo = RACES[self.race].units[self.type]
         self.max_hp: int = self.info.hp
         self.is_worker: bool = self.type is UnitType.PEASANT
+        self.radius: float = self.info.radius  # its body: a catapult fills far more ground than a peasant
 
     @property
     def pos(self) -> Point:
@@ -619,7 +621,7 @@ class World:
     def unit_at(self, point: Point, radius: float = 0.5, *, player: int | None = None, visible_to: int | None = None) -> Unit | None:
         """The nearest unit whose body is within *radius* of *point*."""
         best, best_d = None, math.inf
-        for unit in self.units_near(point, radius + UNIT_RADIUS):
+        for unit in self.units_near(point, radius + MAX_UNIT_RADIUS):
             if unit.hidden or (player is not None and unit.player != player):
                 continue
             if visible_to is not None and not self.is_visible(visible_to, unit.tile):
@@ -876,7 +878,7 @@ class World:
             return 0
         fx, fy = math.cos(unit.facing), math.sin(unit.facing)
         left = right = False
-        for v in self.units_near(unit.pos, 1.5 * FORMATION_SPACING + UNIT_RADIUS):
+        for v in self.units_near(unit.pos, 1.5 * FORMATION_SPACING + MAX_UNIT_RADIUS):
             if v is unit or v.player != unit.player or v.type is not unit.type or v.hidden or v.hp <= 0:
                 continue
             dx, dy = v.x - unit.x, v.y - unit.y
@@ -1824,7 +1826,8 @@ class World:
         """A spot a short step away from the neighbours crowding *u*, or None when it has room already,
         is boxed in, or the step would end nearer to someone else than where it stands."""
         ax = ay = 0.0
-        for v in self.units_near(u.pos, EASE_SPACE):
+        space = self._ease_space(u)
+        for v in self.units_near(u.pos, space):
             if v is u or v.hidden:
                 continue
             dx, dy = u.x - v.x, u.y - v.y
@@ -1832,7 +1835,7 @@ class World:
             if d < 1e-6:
                 angle = (u.id * 2.399) % (2 * math.pi)
                 dx, dy, d = math.cos(angle), math.sin(angle), 1.0
-            weight = (EASE_SPACE - d) / d  # the closer, the more it counts
+            weight = (space - d) / d  # the closer, the more it counts
             ax += dx * weight
             ay += dy * weight
         if not (ax or ay):
@@ -1844,10 +1847,16 @@ class World:
             return None
         return spot if self._room(u, spot) >= self._room(u, u.pos) + EASE_GAIN else None
 
+    @staticmethod
+    def _ease_space(u: Unit) -> float:
+        """How near a neighbour's centre has to be for *u* to feel crowded: its own body's width and
+        :data:`EASE_SPACE` on top, so a catapult asks for the room a catapult takes."""
+        return 2 * u.radius + EASE_SPACE
+
     def _room(self, u: Unit, point: Point) -> float:
-        """How far *point* is from the nearest unit other than *u*, as far as EASE_SPACE plus the
+        """How far *point* is from the nearest unit other than *u*, as far as its ease space plus the
         gain a step must make matters: anything beyond is all the room a standing unit asks for."""
-        return min((dist(point, v.pos) for v in self.units_near(point, EASE_SPACE + EASE_GAIN) if v is not u and not v.hidden),
+        return min((dist(point, v.pos) for v in self.units_near(point, self._ease_space(u) + EASE_GAIN) if v is not u and not v.hidden),
                    default=math.inf)
 
     def _danger_to(self, patient: Unit) -> float:
@@ -1880,10 +1889,13 @@ class World:
         return value * (.25 + missing_fraction) * urgency / (1 + travel)
 
     def _healing_patient(self, healer: Unit, radius: float, *, local: bool = False) -> Unit | None:
-        """The wounded ally most worth treating: under fire first, then the most hurt, then the nearest."""
-        patients = [unit for unit in self.units_near(healer.pos, radius + UNIT_RADIUS)
+        """The wounded ally most worth treating: under fire first, then the most hurt, then the nearest.
+
+        *radius* reaches the patient's body, not its centre, so a catapult is noticed as far out as a peasant is
+        (the bucket scan is padded by the largest body there is and the distance below is the exact test)."""
+        patients = [unit for unit in self.units_near(healer.pos, radius + MAX_UNIT_RADIUS)
                     if unit is not healer and unit.player == healer.player and not unit.hidden
-                    and 0 < unit.hp < unit.max_hp
+                    and 0 < unit.hp < unit.max_hp and dist(healer.pos, unit.pos) - unit.radius <= radius
                     and (not local or self._gap(healer, unit) <= self.range_of(healer) + .05)]
         return max(patients, key=lambda unit: (self._healing_priority(healer, unit), -dist(healer.pos, unit.pos), -unit.id), default=None)
 
@@ -2304,7 +2316,7 @@ class World:
 
     def _melee_opponent(self, u: Unit) -> Entity | None:
         """Finish visible opponents already in reach before pursuing another target."""
-        radius = self.range_of(u) + u.radius + UNIT_RADIUS + .05
+        radius = self.range_of(u) + u.radius + MAX_UNIT_RADIUS + .05
         opponents = [enemy for enemy in self.units_near(u.pos, radius)
                      if enemy.player != u.player and not enemy.hidden and enemy.hp > 0
                      and self.is_visible(u.player, enemy.tile) and self._in_range(u, enemy)]
@@ -2366,7 +2378,8 @@ class World:
             return
         navigation = self._worker_navigation(u)
         rect = (tile[0], tile[1], 1, 1)
-        if rect_gap(u.pos, rect) - u.radius <= TOUCH and not navigation[u.tile[1] * self.width + u.tile[0]]:
+        gap = rect_gap(u.pos, rect) - u.radius
+        if gap <= TOUCH and not navigation[u.tile[1] * self.width + u.tile[0]]:
             u.path = []
             u.state = "chop"
             self._turn_toward(u, tile_center(tile), dt)
@@ -2381,7 +2394,8 @@ class World:
                 self.events.append(Event("tree_felled", tile_center(tile), player=u.player, entity=u.id))
                 u.orders.appendleft(Deposit())
             return
-        u.timer = 0.0
+        if gap > TOUCH + CHOP_HOLD:
+            u.timer = 0.0  # it has walked off, or been shoved right out of the tree's reach: the swing is lost
         if self._approach_work(u, rect, dt, navigation):
             self._finish_order(u)
 
@@ -2767,7 +2781,7 @@ class World:
 
     def _walk_to(self, u: Unit, target: Point, dt: float, *, settle: bool = False) -> bool:
         """Move towards *target*; True once there is nothing left to walk (arrived, or as near as the
-        map allows).  With *settle*, a crowd holding the unit within SETTLE_WITHIN of the spot also
+        map allows).  With *settle*, a crowd holding the unit within its body and SETTLE_WITHIN of the spot also
         counts as arrived: a plain walk ends there, while a peasant keeps pressing for its mine."""
         return self._approach(u, (int(target[0]), int(target[1])), target, dt, settle=settle)
 
@@ -2871,7 +2885,7 @@ class World:
         else:
             u.progress += dt
             if u.progress >= STUCK_AFTER and u.path_goal is not None:
-                if settle and remaining <= SETTLE_WITHIN:
+                if settle and remaining <= u.radius + SETTLE_WITHIN:
                     u.path = []
                     u.exact = None
                     u.state = "idle"
@@ -2944,14 +2958,16 @@ class World:
     def _separate(self) -> None:
         """Push overlapping units apart, never into blocked tiles."""
         # The neighbour scan is :meth:`units_near` inlined: it runs for every unit on every
-        # step, and the bucket rows it walks are only ever three cells wide.
+        # step, and the bucket rows it walks are a handful of cells wide.
         moves: list[tuple[Unit, float, float]] = []
         width, height, buckets = self.width, self.height, self._buckets
-        radius = 2 * UNIT_RADIUS + SPACING
-        reach, r2 = int(radius) + 1, radius * radius
         for u in self.units.values():
             if u.hidden:
                 continue
+            # Its own body plus the largest body that could be leaning on it, plus the elbow room at ease:
+            # the catapult sets how far every unit has to look, its own size how far the answer can matter.
+            radius = u.radius + MAX_UNIT_RADIUS + SPACING
+            reach, r2 = int(radius) + 1, radius * radius
             px = py = 0.0
             ux, uy = u.x, u.y
             moving = u.state == "move"
@@ -3051,9 +3067,16 @@ class World:
         return dist(source.center, target.center) - source.size / 2 - target.size / 2
 
     def _in_range(self, u: Unit, target: Entity) -> bool:
+        """Whether *u* can strike *target* from where it stands: its reach measured edge to edge.
+
+        Bodies overlap — a knight's shoulders reach over the wall it is hacking at, a unit is shoved
+        into another — and the gap is then negative.  That is nearer than touching, never further, so
+        a minimum range is judged against a gap of nothing: a catapult still refuses what it is on
+        top of, and a swordsman standing inside a farm's corner still swings at it."""
         if isinstance(target, Unit) and target.hidden:
             return False
-        return u.info.min_range <= self._gap(u, target) <= self.range_of(u) + 0.05
+        gap = self._gap(u, target)
+        return u.info.min_range <= max(gap, 0.0) and gap <= self.range_of(u) + 0.05
 
     def _threat(self, entity: Entity) -> int:
         """Whom to fight first, lowest first: soldiers, other units (workers, healers), towers, other buildings."""
@@ -3070,7 +3093,7 @@ class World:
         pending = self._pending_damage()
         best: Unit | None = None
         best_threat, best_arrows, best_d, best_dealt = 9, 0, 0.0, 0
-        for enemy in self.units_near(u.pos, self.range_of(u) + 2 * UNIT_RADIUS + 0.05):
+        for enemy in self.units_near(u.pos, self.range_of(u) + u.radius + MAX_UNIT_RADIUS + 0.05):
             if enemy.player == u.player or enemy.hidden or enemy.hp <= 0 or not self.is_visible(u.player, enemy.tile):
                 continue
             if not self._in_range(u, enemy):
@@ -3122,7 +3145,7 @@ class World:
         best_threat, best_d = 4, math.inf
         px, py = point
         visible, width, height = self.visible[player], self.width, self.height
-        for unit in self.units_near(point, radius + UNIT_RADIUS):
+        for unit in self.units_near(point, radius + MAX_UNIT_RADIUS):
             if unit.player == player or unit.hidden or unit.hp <= 0:
                 continue
             x, y = int(unit.x), int(unit.y)
@@ -3223,7 +3246,7 @@ class World:
         keep_clear = self.splash_of(u) + FRIENDLY_MARGIN
         flight = self._stone_flight(u.pos, spot)
         sx, sy = spot
-        for ally in self.units_near(spot, keep_clear + UNIT_RADIUS + _FASTEST * flight):
+        for ally in self.units_near(spot, keep_clear + MAX_UNIT_RADIUS + _FASTEST * flight):
             if ally.player != u.player or ally is u or ally.hidden or ally.hp <= 0:
                 continue
             if dist(spot, ally.pos) - ally.radius <= keep_clear:
@@ -3255,7 +3278,7 @@ class World:
         radius = reach + step
         best: Entity | None = None
         best_worth = 0.0
-        for enemy in self.units_near(u.pos, radius + UNIT_RADIUS):
+        for enemy in self.units_near(u.pos, radius + MAX_UNIT_RADIUS):
             if enemy.player == u.player or enemy.hidden or enemy.hp <= 0 or not self.is_visible(u.player, enemy.tile):
                 continue
             walk = dist(u.pos, enemy.pos) - reach
@@ -3295,7 +3318,7 @@ class World:
         :data:`SIEGE_WORTH`, in full within :data:`DIRECT_HIT` and :data:`SPLASH_FRACTION` of it out to the splash."""
         splash = self.splash_of(u)
         worth = 0.0
-        for enemy in self.units_near(spot, splash + UNIT_RADIUS):
+        for enemy in self.units_near(spot, splash + MAX_UNIT_RADIUS):
             if enemy.player == u.player or enemy.hidden or enemy.hp <= 0 or not self.is_visible(u.player, enemy.tile):
                 continue
             gap = dist(spot, enemy.pos) - enemy.radius
@@ -3321,7 +3344,7 @@ class World:
         to the splash radius, on every unit standing there, friend or foe, and on the enemy's buildings."""
         self.events.append(Event("impact", p.aim, player=p.player, entity=p.source, text=p.kind, source_type=p.source_type))
         splash = int(p.damage * SPLASH_FRACTION)
-        for unit in list(self.units_near(p.aim, p.splash + UNIT_RADIUS)):
+        for unit in list(self.units_near(p.aim, p.splash + MAX_UNIT_RADIUS)):
             if unit.hidden or unit.hp <= 0:
                 continue
             gap = dist(p.aim, unit.pos) - unit.radius

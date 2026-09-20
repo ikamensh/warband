@@ -16,7 +16,7 @@ from typing import Final
 from warband.sim import path as pathing
 from warband.sim.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Unit, World, hypot, rect_gap, tile_center
 from warband.sim.worker_knowledge import WorkerKnowledge, _Building
-from warband.sim.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_SLOTS, SIM_DT, UNITS, UNIT_RADIUS, BuildingType, Resource, Terrain
+from warband.sim.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_SLOTS, SIM_DT, UNITS, BuildingType, Resource, Terrain, UnitType
 
 try:
     from warband.sim import _native  # threat painting in C, built only with the compiled simulation (warband/league/fastsim.py)
@@ -35,11 +35,14 @@ _REACH: Final[dict[tuple[int, int], tuple[tuple[int, int], ...]]] = {}
 
 
 def _reach(width: int, height: int) -> tuple[tuple[int, int], ...]:
-    """Offsets from a footprint's corner whose tile centre is close enough to work it from, in scan order."""
+    """Offsets from a footprint's corner whose tile centre is close enough to work it from, in scan order.
+
+    A peasant's own body, since a peasant is who works: the gap :meth:`World._gap` measures is from
+    its edge, so a tile it can reach from is one whose centre is within TOUCH of the rect plus that body."""
     found = _REACH.get((width, height))
     if found is None:
         found = tuple((dx, dy) for dy in range(-1, height + 1) for dx in range(-1, width + 1)
-                      if rect_gap(tile_center((dx, dy)), (0, 0, width, height)) <= TOUCH + UNIT_RADIUS)
+                      if rect_gap(tile_center((dx, dy)), (0, 0, width, height)) <= TOUCH + UNITS[UnitType.PEASANT].radius)
         _REACH[(width, height)] = found
     return found
 

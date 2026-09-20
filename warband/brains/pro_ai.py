@@ -889,8 +889,9 @@ class ProBrain:
             self.rush_drafted += 1
             self.note(world, f"rush: drafted peasant {drafted.id}")
         if not self.rushers:
-            self._end_rush(world)
-            return
+            if self.rush_drafted >= profile.rush_tries:
+                self._end_rush(world)  # every try spent and none of them left alive
+            return  # nobody to spare this tick (all of them building, mending or answering a raid): look again next one
         post = self._standable(world, self._behind(guess, start, 4.0))
         for rusher in [world.units[i] for i in self.rushers]:
             if rusher.constructing is not None or isinstance(rusher.order, Build):

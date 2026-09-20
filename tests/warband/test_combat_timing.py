@@ -283,7 +283,7 @@ def test_a_crew_firing_on_its_own_judgement_keeps_stones_off_its_own_side() -> N
     fall, and throws as soon as they are clear."""
     world, catapult = siege_world()
     foe = world.spawn_unit(1, UnitType.KNIGHT, (9.5, 8.5))
-    friend = world.spawn_unit(0, UnitType.FOOTMAN, (9.5, 9.9))  # out of sword reach of the knight, inside the stone's splash
+    friend = world.spawn_unit(0, UnitType.FOOTMAN, (9.5, 10.2))  # out of sword reach of the knight, inside the stone's splash
     world.hold([foe.id, friend.id])
     world.update_vision()
     run(world, 3.0)
@@ -301,7 +301,7 @@ def test_a_catapult_cannot_throw_inside_two_tiles_and_backs_away_to_get_range() 
     run(world, 1.0)
     assert foe.hp == foe.max_hp and catapult.x < 6.5  # wheeling back rather than throwing
     run(world, 4.0)
-    assert foe.hp < foe.max_hp and dist(catapult.pos, foe.pos) - 2 * catapult.radius >= 2.0
+    assert foe.hp < foe.max_hp and dist(catapult.pos, foe.pos) - catapult.radius - foe.radius >= 2.0  # the gap, edge to edge
 
 
 def test_a_catapult_left_to_itself_ignores_what_stands_at_its_wheels_for_what_it_can_throw_at() -> None:
