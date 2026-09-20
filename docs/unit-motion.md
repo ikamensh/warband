@@ -144,25 +144,31 @@ nearest wall of a building, or a marching unit's position led by the stone's fli
 its current velocity, clamped to the engine's reach. When it comes down (`_land_stone`)
 everything within `DIRECT_HIT` of the point takes the full blow and everything out to the
 splash radius `SPLASH_FRACTION` of it, friend and foe alike, plus the enemy's buildings.
-A crew firing on its own judgement (an automatic or attack-move target) never lets a stone
-fall on its own side (`_clear_of_friends`): no friend within the splash plus
-`FRIENDLY_MARGIN` of the landing point, none whose velocity carries it there before the
-stone lands, and none on its way to fight an enemy within arm's length of it (a soldier
-after an archer that steps back between its shots). A crew the player ordered fires, and the
-player answers for it. Catapults cannot throw inside `min_range` (two tiles). On its own
-judgement a crew picks what to throw at by what a clear stone would do (`_siege_choice`,
-WB-052): every visible enemy within its reach plus `SIEGE_STEP` tiles is scored by the
-enemies under the stone (`SIEGE_WORTH`: archers 2, clerics and catapults 3, anyone else 1,
-the splash at `SPLASH_FRACTION`), a walk to reach it counting against it; buildings only
-when no unit can be struck. It may drop the stone a tile beyond a unit, where the splash
-still catches it: a soldier locked with the crew's own line is struck that way, and a crew
-whose target is in reach but has no clear stone rolls closer until one comes down beyond it,
-stopping two splashes outside its minimum range. It looks again every quarter second while its
-target has no clear stone or stands inside the minimum range, and backs straight away from
-one inside it when there is nothing else. A crew on Hold chooses the same way among what it
-can throw at from where it stands, nothing inside its minimum range, and looks again as often
-while its target has no clear stone. Before WB-052 a crew locked on the soldier in front
-of its own line and threw one stone in a whole clash. Saves carry the shots in flight.
+A crew firing on its own judgement (an automatic or attack-move target) weighs the trade
+before it lets a stone go (`_aim_trade`): the enemies under the landing point score
+`SIEGE_WORTH` each (archers 2, clerics and catapults 3, anyone else 1, in full within
+`DIRECT_HIT` and at `SPLASH_FRACTION` out to the splash) against `FRIENDLY_WORTH` — two — for
+each of our own under it (`_friendly_cost`), and the crew throws the point that comes out
+furthest ahead, or holds when none does. A friend counts where it comes nearest: where it
+stands, where its velocity carries it before the stone lands, where the move it is under
+orders to make carries it, or at arm's length of the enemy it is walking up to fight (a
+soldier after an archer that steps back between its shots) — and `FRIENDLY_MARGIN` further
+out than the splash on top, because all of that is a guess. A crew the player ordered fires:
+it prefers a point clear of our own side and takes the target's own ground when there is
+none, and the player answers for the splash. Catapults cannot throw inside `min_range` (two
+tiles). A crew picks *what* to throw at by the same trade (`_siege_choice`, WB-052): every
+visible enemy within its reach plus `SIEGE_STEP` tiles, a walk to reach it counting against
+it; buildings only when no unit can be struck. It may drop the stone a tile beyond a unit,
+where the splash still catches it: a soldier locked with the crew's own line is struck that
+way, and a crew whose target is in reach but has no stone worth throwing rolls closer until
+one comes down ahead, stopping two splashes outside its minimum range. It looks again every
+quarter second while its target has no stone worth throwing or stands inside the minimum
+range, and backs straight away from one inside it when there is nothing else. A crew on Hold
+chooses the same way among what it can throw at from where it stands, nothing inside its
+minimum range, and looks again as often. Before WB-052 a crew locked on the soldier in front
+of its own line and threw one stone in a whole clash; until the trade replaced a flat veto it
+threw one every thirty-one seconds against a reload of under four, which is
+[the balance note](balance.md). Saves carry the shots in flight.
 
 **View.** Each shot has a sprite moved every frame, between model steps too (the view
 keeps `_since_tick`), on a flat arc for arrows and a high lob for stones (`projectile_point`);
@@ -313,7 +319,8 @@ away is the catapult *behind its own line*. Two things move it, one a little and
   bodies stand `2r + SPACING` apart instead of 0.90 tiles, which is 25 % less dense. Net,
   about a sixth fewer units under a stone, and the measured damage per stone bears it out
   (41 against 47);
-* and the crew holds fire far more often, because `_clear_of_friends` measures to a
+* and the crew holds fire far more often, because `_clear_of_friends` (now `_friendly_cost`,
+  part 4) measures to a
   friend's body too. This is the big one, and `FRIENDLY_MARGIN` is its dial. Over twelve
   seeds of a seven-footmen-and-two-catapults clash:
 
@@ -329,5 +336,8 @@ away is the catapult *behind its own line*. Two things move it, one a little and
   0.35-tile bodies did it in two — the test's first six seeds were lucky) and 0.4 in one,
   so 0.45 is the least that is clean on all twelve.
 
-Rebalancing the catapult is deliberately not done here: its cost and damage are untouched,
-and the numbers above are the starting point for whoever does it.
+Rebalancing the catapult was deliberately not done here: its cost and damage were left as
+they were, and the numbers above were the starting point. What was done with them, the same
+day, is [the balance note](balance.md): the crew's veto became a trade, which is where nearly
+all of the 90.0 % had gone, and the catapult was then priced for the player who aims it,
+whose stones were never subject to the veto in the first place.

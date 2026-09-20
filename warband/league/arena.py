@@ -115,7 +115,8 @@ for _profile in ARCHETYPES:
 
 #: Multiplicative knobs a variant may turn. ``cost_gold``/``cost_lumber`` scale a
 #: price; the rest scale the matching field of the unit, building or upgrade.
-UNIT_FIELDS = ("hp", "damage", "speed", "range", "build_time", "cost_gold", "cost_lumber")
+UNIT_FIELDS = ("hp", "damage", "speed", "range", "build_time", "cost_gold", "cost_lumber", "windup", "cooldown",
+               "splash", "min_range")  # a radius is never scaled: rules.MAX_UNIT_RADIUS holds for the whole match
 BUILDING_FIELDS = ("hp", "build_time", "cost_gold", "cost_lumber", "damage", "range")
 UPGRADE_FIELDS = ("cost_gold", "cost_lumber", "time")
 
@@ -160,6 +161,10 @@ def _scaled_unit(info, factors: Mapping[str, float]):
         range=info.range if info.range < 1 else round(info.range * factors.get("range", 1.0), 3),
         build_time=max(0.5, round(info.build_time * factors.get("build_time", 1.0), 3)),
         cost=_scaled_cost(info.cost, factors),
+        windup=round(info.windup * factors.get("windup", 1.0), 3),
+        cooldown=round(info.cooldown * factors.get("cooldown", 1.0), 3),
+        splash=round(info.splash * factors.get("splash", 1.0), 3),
+        min_range=round(info.min_range * factors.get("min_range", 1.0), 3),
     )
 
 

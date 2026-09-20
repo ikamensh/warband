@@ -5,13 +5,15 @@ soldiers, what it would target or train, which orders it has out): a match
 shows them only through outcomes far too noisy to pin, so these call its
 private helpers on purpose."""
 
+import math
 import random
 
 import pytest
 
 from warband.sim import mapgen
 from warband.brains.ai import DEFEND_RADIUS, PROFILES, Brain
-from warband.sim.model import AttackMove, Harvest, Repair, World, dist, tile_center
+from warband.brains.pro_ai import PRO, ProBrain
+from warband.sim.model import AttackMove, Harvest, Repair, Unit, World, dist, tile_center
 from warband.sim.rules import BuildingType, Difficulty, Layout, Race, SIM_DT, Terrain, UnitType
 
 
@@ -474,3 +476,25 @@ def test_the_shipped_brain_is_bound_by_the_same_fog_the_player_plays_under() -> 
     assert known_enemy_buildings(world, 0), "once looked at, it is known"
     assert brain._enemy_soldiers(world) == 1
     assert any(dist(t, enemy_hall.center) <= 3.0 for t in brain._enemy_targets(world))
+
+
+def test_a_soldier_standing_where_the_brain_wants_it_is_not_ordered_there_again() -> None:
+    """A soldier gathering at the front waits at its own place around the gathering point, nudged per unit and nudged
+    again onto standable ground, so its place can be several tiles from the point itself.  Judged by its distance from
+    the point alone — as ``_gather``, ``_post`` and the reinforcement wait all did — a soldier whose place the trees
+    pushed further off was ordered onto ground it was already standing on, every pass of the brain: it finished the
+    walk in a step, went idle, and was sent again.  Fuzz found it on seed 81 as an archer of a bred orc posture that
+    had not moved a tile in twenty seconds.  All three now go through ``_send_to_muster``, which is what this pins.
+    """
+    world = World(40, 30, [[Terrain.GRASS] * 40 for _ in range(30)], 2, human=None)
+    world.place_building(0, BuildingType.TOWN_HALL, (4, 4))
+    brain = ProBrain(0, PRO)
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    unit = world.spawn_unit(0, UnitType.ARCHER, (12.0, 12.0))
+    point = brain._front_point(world, hall)  # the brain's own questions: where it gathers, and this unit's place in it
+    unit.x, unit.y = brain._muster(world, point, unit)
+    brain._send_to_muster(world, point, unit)
+    assert not unit.orders, "a soldier already standing at its place was sent there again"
+    unit.x, unit.y = unit.x + 3.0, unit.y
+    brain._send_to_muster(world, point, unit)
+    assert unit.orders, "a soldier three tiles off its place has to be sent to it"

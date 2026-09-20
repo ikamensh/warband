@@ -51,6 +51,7 @@ WALK_OVER: Final = 4.0  # seconds the peasants sent at a frame by our own mine o
 STRICT_SLACK: Final = 0.1  # how far past its planned share a type may run under a strict plan
 BUILD_MIN_DISTANCE: Final = 2
 BUILD_MAX_DISTANCE: Final = 12
+MUSTERED: Final = 1.0  # tiles from the place the brain wants it within which a soldier counts as standing there
 
 
 @dataclass(frozen=True)
@@ -1135,7 +1136,7 @@ class ProBrain:
                 point = self._front_point(world, hall)
                 for unit in waiting:
                     if dist(unit.pos, point) > 4.0:
-                        world.move([unit.id], self._muster(world, point, unit))
+                        self._send_to_muster(world, point, unit)
             return
         if world.time < self.regroup_until or self._push_waits(world):
             self._gather(world, army, hall)
@@ -1202,14 +1203,16 @@ class ProBrain:
         return tile_center(tile) if tile is not None else self._front_point(world, hall)
 
     def _post(self, world: World, guards: list[Unit]) -> None:
-        """Send the home guard back to the hall whenever it has nothing to do."""
+        """Send the home guard back to the hall whenever it has nothing to do, and leave it at its post once it is
+        standing there (:meth:`_send_to_muster`)."""
         hall = self._hall(world)
         if hall is None:
             return
         home = self._home_point(world, hall)
         for guard in guards:
-            if not guard.orders and dist(guard.pos, hall.center) > 6.0:
-                world.move([guard.id], self._muster(world, home, guard))
+            if guard.orders or dist(guard.pos, hall.center) <= 6.0:
+                continue
+            self._send_to_muster(world, home, guard)
 
     def _caution(self, world: World) -> float:
         """How much more careful to be than in a duel.
@@ -1236,7 +1239,7 @@ class ProBrain:
         for unit in army:
             if unit.orders or dist(unit.pos, point) <= 4.0:
                 continue
-            world.move([unit.id], self._muster(world, point, unit))
+            self._send_to_muster(world, point, unit)
 
     def _muster(self, world: World, point: Point, unit: Unit) -> Point:
         """*point*, nudged so the whole army is not walking at one tile.
@@ -1248,6 +1251,18 @@ class ProBrain:
         angle = (unit.id % 12) / 12.0 * 2.0 * math.pi
         spread = 1.0 + unit.id % 3
         return self._standable(world, (point[0] + spread * math.cos(angle), point[1] + spread * math.sin(angle)))
+
+    def _send_to_muster(self, world: World, point: Point, unit: Unit) -> None:
+        """Send *unit* to its own place around *point*, and leave it alone once it stands there.
+
+        Its place is nudged per unit and nudged again onto standable ground, so it can be several tiles from
+        *point*: a soldier judged by its distance from *point* alone was ordered onto ground it was already
+        standing on, every pass of the brain, for the rest of the match.  It finished the walk in one step,
+        went idle, and was sent again; fuzz reads a unit ordered about once a second and never getting
+        anywhere as a stalled unit, which is what it was (seed 81, an archer of a bred orc posture)."""
+        post = self._muster(world, point, unit)
+        if dist(unit.pos, post) > MUSTERED:
+            world.move([unit.id], post)
 
     def _defenders_near(self, world: World, point: Point, radius: float = 12.0) -> float:
         """What is waiting at *point*: the soldiers we can see, the towers covering it,

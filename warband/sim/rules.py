@@ -20,7 +20,7 @@ Balance in one table (base values; upgrades in :data:`UPGRADES`):
 | archer   | 500+50    | 40 | 6   | 0     | 4     | 0.35 + 1.3         | 360°/s| 2.4   | ranged; the answer to armour, dies to scouts/knights |
 | scout    | 350       | 35 | 4   | 0     | melee | 0.25 + 0.8         | 450°/s| 4.2   | fast raider, sight 8; kills archers, peasants; loses to footmen |
 | knight   | 900+100   | 90 | 10  | 4     | melee | 0.35 + 1.0         | 270°/s| 3.4   | shock; beats everything at cost; catapults and mass archers wear it down |
-| catapult | 700+200   |100 | 36  | 0     | 2..7  | 0.8 + 3.0          | 150°/s| 1.6   | siege: stones land where aimed, splash friend and foe, ×1.5 vs buildings; helpless inside two tiles |
+| catapult | 900+300   | 80 | 36  | 0     | 2..7  | 0.8 + 4.0          | 150°/s| 1.6   | siege: stones land where aimed, splash friend and foe, ×1.5 vs buildings; helpless inside two tiles |
 | cleric   | 700+50    | 40 | 3   | 0     | 3     | 0.5 + 2.0          | 360°/s| 2.4   | heals 15 a cast (6 hp/s); a weak blow only when no one needs healing; protect it |
 
 Armour classes and attack types (WB-049, :data:`DAMAGE_FACTORS`): peasants, clerics and catapults are unarmoured,
@@ -203,7 +203,7 @@ UNITS: Final[dict[UnitType, UnitInfo]] = {
     UnitType.KNIGHT: UnitInfo("Knight", Cost(900, 100), 90, 10, 4, MELEE, 1.0, 3.4, 5, 20.0, BuildingType.STABLES, "k",
                               "Fast, heavily armoured shock cavalry", radius=0.56, mounted=True, windup=0.35, turn=math.radians(270),
                               armor_class=ArmorClass.HEAVY),
-    UnitType.CATAPULT: UnitInfo("Catapult", Cost(700, 200), 100, 36, 0, 7.0, 3.0, 1.6, 6, 30.0, BuildingType.WORKSHOP, "c",
+    UnitType.CATAPULT: UnitInfo("Catapult", Cost(900, 300), 80, 36, 0, 7.0, 4.0, 1.6, 6, 30.0, BuildingType.WORKSHOP, "c",
                                 "Slow siege engine: stones land where aimed, splash friend and foe, ×1.5 against buildings",
                                 radius=0.62, splash=1.2, windup=0.8, turn=math.radians(150), min_range=2.0, attack=AttackType.SIEGE,
                                 armor_class=ArmorClass.UNARMORED),
@@ -356,12 +356,19 @@ def an(name: str) -> str:
     return f"{'an' if name[:1].upper() in 'AEIOU' else 'a'} {name}"
 
 
-FRIENDLY_MARGIN: Final = 0.45  # tiles beyond its splash a siege crew keeps a stone from its own side when firing on its own.
-# The crew leads a friend by the walking it does of its own accord; a shove from the crowd is not in that velocity, and a
-# body the size of a knight's is shoved harder and further than the old one-size body was.  Over the twelve clash seeds of
-# tests/warband/test_siege_judgement.py, 0.3 put stones on our own footmen in five of them (the shipped 0.35-tile bodies
-# did it in two: the test's first six seeds were lucky) and 0.4 in one; 0.45 is the least that is clean.  It is also as far
-# as this can go: at 0.5 the crew holds fire behind a line locked with the enemy and a catapult's damage falls by a third.
+FRIENDLY_MARGIN: Final = 0.45  # tiles beyond its splash a siege crew counts one of its own as standing under the stone.
+# Where a friend will be when the stone lands is a guess: the crew leads it by the walking it does of its own accord, and a
+# shove from the crowd is not in that velocity, the more so since a body the size of a knight's is shoved harder and further
+# than the old one-size body was.  Over the twelve clash seeds of tests/warband/test_siege_judgement.py, a veto at 0.3 put
+# stones on our own footmen in five of them (the shipped 0.35-tile bodies did it in two: the test's first six seeds were
+# lucky) and 0.4 in one; 0.45 is the least that was clean.
+FRIENDLY_WORTH: Final = 2.0  # what one of our own under a stone costs the crew, against SIEGE_WORTH's 1 for one of theirs.
+# A crew on its own judgement used to veto any stone that could touch its own side, which behind a line locked with the enemy
+# is every stone there is: in the set piece of docs/balance.md it threw a stone every thirty-one seconds where its reload is
+# under four, and seven footmen and two catapults lost to ten footmen.  It weighs the trade instead (World._aim_trade), and
+# two of ours for one of theirs is what it takes.  It is the least that is clean: at 1.5 the crew shells its own line on the
+# clash seeds of tests/warband/test_siege_judgement.py, and 3.0 is markedly more timid where it is pressed (against twelve
+# footmen the same two catapults win 30% of the set piece rather than 72%).
 FORMATION_ARMOR: Final = 1  # armour a formation unit gains for each such friend at its left and at its right
 FORMATION_SPACING: Final = 1.0  # tiles between neighbours in a marching line: a footman's body is 0.84 wide, so a line still has daylight in it
 FORMATION_WIDTH: Final = 8  # a line this long; more stand in rows behind

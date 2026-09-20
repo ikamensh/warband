@@ -41,7 +41,7 @@ from warband.sim.rules import (
     FRENZY_BONUS, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MASTER_WEAPON_BONUS, MINE_GOLD,
     MINE_SLOTS, MINE_TIME, PLAYERS,
     PLUNDER_SHARE, REGROWTH_SECONDS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION, STARTING_GOLD, STARTING_LUMBER,
-    FORMATION_ARMOR, FORMATION_HOLD, FORMATION_LOOKAHEAD, FORMATION_MARCH, FORMATION_SLACK, FORMATION_SPACING, FORMATION_WIDTH, ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, SIEGE_BUILDING_WORTH, SIEGE_STEP, SIEGE_WORTH, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
+    FORMATION_ARMOR, FORMATION_HOLD, FORMATION_LOOKAHEAD, FORMATION_MARCH, FORMATION_SLACK, FORMATION_SPACING, FORMATION_WIDTH, ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, FRIENDLY_WORTH, SIEGE_BUILDING_WORTH, SIEGE_STEP, SIEGE_WORTH, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
     MAX_QUEUED_ORDERS, MAX_UNIT_RADIUS, UNDER_ATTACK_COOLDOWN, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
     Terrain, UnitInfo, UnitType, Upgrade, UpgradeInfo, ArmorClass, AttackType, an, damage_factor, listing,
 )
@@ -3308,12 +3308,21 @@ class World:
 
     def _aim_point(self, u: Unit, target: Entity, *, auto: bool) -> Point | None:
         """Where a siege crew drops its stone on *target*: the nearest wall of a building, or ahead of a
-        marching unit by the stone's flight so it comes down where the unit will be.  None when there is
-        no shot: every landing point is inside the engine's minimum range, or the crew is firing on its
-        own judgement (*auto*) and its own side stands where the stone would fall.  On its own judgement
+        marching unit by the stone's flight so it comes down where the unit will be.  On its own judgement
         a crew may also drop the stone a tile beyond a unit, from where the splash still reaches it: a
-        soldier locked with the crew's own line is caught that way without a stone on the line.  A crew
-        ordered to fire by the player fires, and the player answers for the splash."""
+        soldier locked with the crew's own line is caught that way without a stone on the line.
+
+        A crew firing on its own judgement (*auto*) throws the stone that trades best: what it would do to
+        the enemy under it (:meth:`_stone_worth`) against :data:`FRIENDLY_WORTH` for each of our own
+        (:meth:`_friendly_cost`).  It holds its stone when nothing comes down ahead, and None says so; so
+        does a target every landing point of which is inside the engine's minimum range.  A crew ordered to
+        fire by the player fires — it prefers a point clear of our own side and takes the target's own
+        ground when there is none — and the player answers for the splash."""
+        return self._aim_trade(u, target, auto=auto)[0]
+
+    def _aim_trade(self, u: Unit, target: Entity, *, auto: bool) -> tuple[Point | None, float]:
+        """:meth:`_aim_point` with what the stone it chose trades beside it, which is what a crew choosing among
+        targets goes by (:meth:`_siege_choice`).  A player-ordered stone is not weighed: its worth is zero."""
         if isinstance(target, Building):
             x, y, w, h = target.rect
             spots = [(min(max(u.x, x), x + w), min(max(u.y, y), y + h))]
@@ -3335,48 +3344,68 @@ class World:
                     spots.append(self._clamp((here[0] + (here[0] - u.x) / off * beyond, here[1] + (here[1] - u.y) / off * beyond)))
         spots = [spot for spot in spots if dist(u.pos, spot) - u.radius >= u.info.min_range]
         if not spots:
-            return None
+            return None, 0.0
+        if not auto:
+            for spot in spots:
+                if self._friendly_cost(u, spot) <= 0.0:
+                    return spot, 0.0
+            return spots[-1], 0.0
+        gain = SIEGE_BUILDING_WORTH if isinstance(target, Building) else 0.0  # the wall itself, beside whoever stands at it
+        best: Point | None = None
+        best_trade = 0.0
         for spot in spots:
-            if self._clear_of_friends(u, spot):
-                return spot
-        return None if auto else spots[-1]
+            trade = gain + self._stone_worth(u, spot) - FRIENDLY_WORTH * self._friendly_cost(u, spot)
+            if trade > best_trade:
+                best, best_trade = spot, trade
+        return best, best_trade
 
-    def _clear_of_friends(self, u: Unit, spot: Point) -> bool:
-        """Whether a stone from *u* coming down on *spot* stays off its own side: no friend stands within its splash
-        and :data:`FRIENDLY_MARGIN`, is walking into it before the stone lands (by its velocity, or by the move it is
-        under orders to make), or is on its way to fight an enemy within arm's
-        length of it (a soldier after an archer that steps back between its shots)."""
-        keep_clear = self.splash_of(u) + FRIENDLY_MARGIN
+    def _friendly_cost(self, u: Unit, spot: Point) -> float:
+        """What a stone from *u* coming down on *spot* would cost its own side: each friend under it counts its
+        :data:`SIEGE_WORTH`, in full within :data:`DIRECT_HIT` and :data:`SPLASH_FRACTION` of it out to the splash,
+        and :data:`FRIENDLY_MARGIN` further out again on both, because where a friend will stand when the stone
+        lands is a guess.  A friend counts where it comes nearest: where it stands, where its velocity carries it
+        before the stone lands, where the move it is under orders to make carries it, or at arm's length of the
+        enemy it is walking up to fight (a soldier after an archer that steps back between its shots).  Zero is a
+        landing point clear of our own side."""
+        splash = self.splash_of(u)
+        keep_clear = splash + FRIENDLY_MARGIN
+        full = DIRECT_HIT + FRIENDLY_MARGIN
         flight = self._stone_flight(u.pos, spot)
         sx, sy = spot
+        cost = 0.0
         for ally in self.units_near(spot, keep_clear + MAX_UNIT_RADIUS + _FASTEST * flight):
             if ally.player != u.player or ally is u or ally.hidden or ally.hp <= 0:
                 continue
-            if dist(spot, ally.pos) - ally.radius <= keep_clear:
-                return False
-            if hypot(ally.x + ally.vx * flight - sx, ally.y + ally.vy * flight - sy) - ally.radius <= keep_clear:
-                return False
+            gap = dist(spot, ally.pos) - ally.radius
+            near = hypot(ally.x + ally.vx * flight - sx, ally.y + ally.vy * flight - sy) - ally.radius
+            if near < gap:
+                gap = near
             order = ally.order
             if isinstance(order, (Move, AttackMove)):  # standing for a moment, it walks on: where it will be by then
                 gx, gy = self._slot(order)
                 left = hypot(gx - ally.x, gy - ally.y)
-                walk = min(left, self.speed_of(ally) * flight)
-                if left > 1e-6 and hypot(ally.x + (gx - ally.x) / left * walk - sx, ally.y + (gy - ally.y) / left * walk - sy) - ally.radius <= keep_clear:
-                    return False
+                if left > 1e-6:
+                    walk = min(left, self.speed_of(ally) * flight)
+                    near = hypot(ally.x + (gx - ally.x) / left * walk - sx, ally.y + (gy - ally.y) / left * walk - sy) - ally.radius
+                    if near < gap:
+                        gap = near
             if isinstance(order, Attack):
                 foe = self.entity(order.target)
                 # It will stand at arm's length of its foe, on whichever side it comes from.
-                if (isinstance(foe, Unit) and not self._in_range(ally, foe)
-                        and dist(spot, foe.pos) - foe.radius - self.range_of(ally) - 2 * ally.radius <= keep_clear):
-                    return False
-        return True
+                if isinstance(foe, Unit) and not self._in_range(ally, foe):
+                    near = dist(spot, foe.pos) - foe.radius - self.range_of(ally) - 2 * ally.radius
+                    if near < gap:
+                        gap = near
+            if gap <= keep_clear:
+                cost += SIEGE_WORTH.get(ally.type, 1.0) * (1.0 if gap <= full else SPLASH_FRACTION)
+        return cost
 
     def _siege_choice(self, u: Unit, step: float, *, standing: bool = False) -> Entity | None:
         """What a siege crew on its own judgement throws at next: of the enemies it can see within its reach
-        plus *step* tiles, the one whose clear stone is worth the most (:meth:`_stone_worth`), a walk to
+        plus *step* tiles, the one whose stone trades best (:meth:`_aim_trade`), a walk to
         reach it counting against it.  A crew *standing* its ground passes over a unit inside its minimum range,
         which only rolling back would let it throw at, though a stone dropped beyond it would land outside.  None
-        when no stone can fall clear of its own side."""
+        when no stone the crew can throw comes down ahead on the trade."""
         reach = self.range_of(u) + u.radius
         radius = reach + step
         best: Entity | None = None
@@ -3387,10 +3416,10 @@ class World:
             walk = dist(u.pos, enemy.pos) - reach
             if walk > step or (standing and not self._in_range(u, enemy)):
                 continue
-            spot = self._aim_point(u, enemy, auto=True)
+            spot, trade = self._aim_trade(u, enemy, auto=True)
             if spot is None:
                 continue
-            worth = self._stone_worth(u, spot) / (1.0 + max(0.0, walk))
+            worth = trade / (1.0 + max(0.0, walk))
             if worth > best_worth:
                 best, best_worth = enemy, worth
         if best is not None:
@@ -3401,10 +3430,11 @@ class World:
             walk = rect_gap(u.pos, building.rect) - reach
             if walk > step or not any(self.is_visible(u.player, tile) for tile in building.tiles()):
                 continue
-            spot = self._aim_point(u, building, auto=True)
+            spot, trade = self._aim_trade(u, building, auto=True)
             if spot is None:
                 continue
-            worth = SIEGE_BUILDING_WORTH * (2.0 if building.info.damage and building.done else 1.0) / (1.0 + max(0.0, walk))
+            # A tower counts double: its wall is in the trade already, and a tower's wall is worth two.
+            worth = (trade + (SIEGE_BUILDING_WORTH if building.info.damage and building.done else 0.0)) / (1.0 + max(0.0, walk))
             if worth > best_worth:
                 best, best_worth = building, worth
         return best
