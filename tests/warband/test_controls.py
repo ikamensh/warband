@@ -418,7 +418,7 @@ def test_in_the_modal_scheme_a_mine_or_a_rival_selected_shows_its_own_panel(game
     scene.select([mine.id])
     for _ in range(2):
         game.tick(1 / 60)
-    assert f"{mine.gold} gold left" in [t["text"] for t in game.backend.texts]
+    assert f"{mine.gold:,} gold left" in [t["text"] for t in game.backend.texts]
 
 
 def test_a_rival_unit_that_leaves_sight_leaves_the_selection(game) -> None:

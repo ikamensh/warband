@@ -2351,7 +2351,7 @@ class GameScene(Scene):
         self.draw_text(owner, tx + 6 + self.game.backend.measure_text(name, heading.font_size, heading.font)[0], y + 16, style="sub", color=color)
         lines: list[str] = []
         if isinstance(entity, Sighting) and entity.type is BuildingType.GOLD_MINE:
-            lines.append(f"{entity.gold} gold left")
+            lines.append(f"{entity.gold:,} gold left")  # five digits: grouped, as every other number this size is
         else:
             self.draw_rect(tx, y + 26, 180, 8, (0, 0, 0, 160), radius=3)
             frac = entity.hp / max(1, entity.max_hp)
