@@ -13,6 +13,7 @@ BODY: Color = (222, 218, 210, 255)
 MUTED: Color = (172, 168, 160, 255)
 DIM: Color = (130, 126, 120, 255)
 GOOD: Color = (130, 225, 140, 255)
+HURT: Color = (240, 200, 80, 255)  # between GOOD and BAD: a health bar's middle band, and the world bars' own amber
 BAD: Color = (240, 130, 110, 255)
 PANEL_BG: Color = (22, 20, 24, 228)
 HAIRLINE: Color = (255, 255, 255, 34)

@@ -102,6 +102,33 @@ the codex's fifth page draws the whole tech tree (WB-054).
 brings up every card of every race in every scheme and holds each key to one
 command, and Grid's keys to the grid.
 
+## Reading the numbers
+
+Every button that costs something — a catalogue item, and a building's own
+recruits and research — carries its price under it in the top bar's own
+symbols: the coin and its number, the log and its number, and no second number
+at all for a thing that takes no lumber (it used to read "400 / 0"). A number
+the purse cannot cover now is red, which greys nothing out: the plan is still
+worth making and waits for its money. The symbols keep their own colours
+wherever a price is drawn — a symbol says which resource, its number says how
+that resource stands — and the codex and the Plans screen price things the same
+way. A tooltip adds how long the thing takes and, for a building, how many it
+feeds.
+
+The top bar warns before a refusal does. Supply goes amber with two places left
+and red once the farms are full; gold or lumber goes red for a second and a half
+after an order was refused for want of it (the scene matches the words
+`World.can_afford` refuses with, and `tests/warband/test_prices.py` holds the two
+together). Hovering gold or lumber says how many peasants are on it.
+
+A selected unit's numbers are what it was listed with, and what research or the
+comrades at its elbows added stands beside them in gold; a melee unit's reach
+reads "melee". `tests/warband/test_prices.py` and
+`tests/warband/test_selection_panel.py` hold this reading, the lint walks
+`hud_warnings` and `select_upgraded`, and because a price is drawn rather than
+laid out as a label the lint measures what it needs against the box it was
+given.
+
 ## Endless training
 
 A building trains one or several unit types endlessly (`World.set_auto_train`,

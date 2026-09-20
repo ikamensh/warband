@@ -37,7 +37,8 @@ from warband.audio.sound import IMPACTS, apply_volumes, impact_sound, play_music
 from warband.audio.voices import voiced
 from warband.ui.controls import CARD_COLS, CHORDS, GRID_KEYS, SCHEMES, Scheme, label as key_label
 from warband.ui.style import (
-    ACTION_BUTTON, BAD, BODY, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE, RESULTS_STYLE,
+    ACTION_BUTTON, BAD, BODY, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, HURT, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE,
+    RESULTS_STYLE,
 )
 from warband.ui import tech
 from warband.ui.tech import Need, Prerequisite, TechTree
@@ -111,6 +112,11 @@ def attack_hint(attack: AttackType) -> str:
     """What a kind of blow does beyond its number, from :data:`DAMAGE_FACTORS`, for the unit panel."""
     better = [f"×{factor:g} against {armor.value if armor is not ArmorClass.FORTIFIED else 'buildings'}" for (kind, armor), factor in DAMAGE_FACTORS.items() if kind is attack]
     return attack.value + (f", {', '.join(better)}" if better else "")
+
+
+def health_ink(fraction: float) -> tuple[int, int, int, int]:
+    """A health bar's colour, the three bands the bars over the battlefield use: whole, hurt, and nearly gone."""
+    return GOOD if fraction > 0.5 else HURT if fraction > 0.25 else BAD
 
 
 def peasants(count: int) -> str:
@@ -2239,7 +2245,7 @@ class GameScene(Scene):
             self._portrait(entity, px + 3, py + 2, size - 6)
             frac = entity.hp / max(1, entity.max_hp)
             self.draw_rect(px, py + size + 2, size, 4, (0, 0, 0, 160))
-            self.draw_rect(px, py + size + 2, size * frac, 4, GOOD if frac > 0.5 else BAD)
+            self.draw_rect(px, py + size + 2, size * frac, 4, health_ink(frac))
 
     def _draw_queue(self, x: float, y: float, w: float) -> None:
         """The production overview where the selection would be: one portrait per item being made or waited for."""
@@ -2338,7 +2344,7 @@ class GameScene(Scene):
         else:
             self.draw_rect(tx, y + 26, 180, 8, (0, 0, 0, 160), radius=3)
             frac = entity.hp / max(1, entity.max_hp)
-            self.draw_rect(tx, y + 26, 180 * frac, 8, GOOD if frac > 0.5 else (240, 200, 80, 255) if frac > 0.25 else BAD, radius=3)
+            self.draw_rect(tx, y + 26, 180 * frac, 8, health_ink(frac), radius=3)
             self.draw_text(f"{entity.hp}/{entity.max_hp}", tx + 188, y + 34, style="sub")
         if isinstance(entity, Unit):
             info = entity.info
