@@ -553,16 +553,16 @@ class GameScene(Scene):
                      if room <= SUPPLY_WARNING else f"{room} to spare")
             return f"Supply used / capacity — every unit takes one, farms and halls feed them; {crowd}"
 
-        # Resources as symbol + number; hovering a symbol names it in the tooltip panel.  The numbers carry the
-        # warnings a player acts on (:meth:`_update_resources`), so each pair is kept to be coloured.
-        self._resources: dict[str, tuple[Icon, Label, Style | None]] = {}
-        self._resource_rows = []
         def gold_hint() -> str:
             return f"Gold — every unit, building and upgrade costs some; {peasants(self._gatherers(Resource.GOLD))} mining"
 
         def lumber_hint() -> str:
             return f"Lumber — buildings, upgrades and engines need it; {peasants(self._gatherers(Resource.LUMBER))} chopping"
 
+        # Resources as symbol + number; hovering a symbol names it in the tooltip panel.  The numbers carry the
+        # warnings a player acts on (:meth:`_update_resources`), so each pair is kept to be coloured.
+        self._resources: dict[str, tuple[Icon, Label, Style | None]] = {}
+        self._resource_rows: list[tuple[Row, Callable[[], str]]] = []
         for name, reading, ink, hint in (
                 ("gold", lambda: str(self.player.gold), GOLD, gold_hint),
                 ("lumber", lambda: str(self.player.lumber), LUMBER, lumber_hint),
@@ -1550,8 +1550,8 @@ class GameScene(Scene):
 
     def _update_card(self) -> None:
         mx, my = self.mouse
-        hint = next((hint for row, hint in self._resource_rows if row.hit_test(mx, my)), "")
-        self.tooltip = hint() if callable(hint) else hint
+        hovered = next((hint for row, hint in self._resource_rows if row.hit_test(mx, my)), None)
+        self.tooltip = hovered() if hovered is not None else ""
         for command, button in zip(self._card, self._card_buttons):
             blocked = self._refusal(command)
             button.enabled = blocked is None
