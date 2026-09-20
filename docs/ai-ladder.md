@@ -586,7 +586,8 @@ three postures, beside the Vanguard on the same boards:
 They are not one player. The orcs' came from the booming lineage (twelve hands a mine, an early second hall,
 out at twelve on better than level terms at about 290 s); the humans' keep the bred opening and march at 226 s or
 at 302 s; the dwarves sit until 380 s behind towers and come out at twenty-three. All but one read the fight at
-their target and turn back when it outweighs them; five of seven research Marksmanship.
+their target and turn back when it outweighs them; five of the seven have Marksmanship in a research order of
+their own (of the final nine postures six have such an order, and two put it among their first six upgrades).
 
 **Klondike, and what scouting is for.** Rated on the difficulty protocol the first rosters took 88% from Master
 and lost one game in twenty to Easy, which Master never does. Every one of those losses was on Klondike, where
@@ -608,11 +609,11 @@ on Bastion alone, the two layouts it is weakest on, found one posture worth keep
 opening of three barracks and three stables starves on twenty thousand gold). The other seven specialists scored
 level with the postures they were bred from. `RaceBrain` takes such a posture for a race on one kind of map
 (`bred.BRED_FOR_LAYOUT`): the New game screen names the map, so it is fair knowledge. With it, and with
-prospecting in seven of nine postures, Grandmaster's games against Easy and Medium went from 94–96% to 98%.
+prospecting in five of the nine postures, Grandmaster's games against Easy and Medium went from 94–96% to 98%.
 
 What a 2000 still needs is therefore not more generations of these genes. Two things the traces point at, neither
 built: **siege** (no brain reaches a workshop in a decided game, and a towered base is what the bred pushes turn
-back from, since six of nine postures read the fight at their target and leave when two towers outweigh them),
+back from, since all nine postures read the fight at their target and leave when two towers outweigh them),
 and an **engagement rule that uses sightings** (every posture attacks blind; avoiding ground under known towers
 was written, could not be tested without scouting, and was deleted unused, as was buying upgrades ahead of
 soldiers).
