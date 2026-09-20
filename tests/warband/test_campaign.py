@@ -356,6 +356,22 @@ def test_a_mission_lost_just_before_it_was_saved_comes_back_lost() -> None:
     assert loaded.state["break"] == "done" and not loaded.won
 
 
+def test_a_mission_save_keeps_the_answer_the_player_gave_it(game) -> None:
+    """The emissary is answered in the middle of Greywater Ford and the answer is one the campaign remembers.
+    A save taken between the answer and the end of the mission must bring it back, or the mission loses the
+    objective the answer opens and the campaign never learns the choice."""
+    run = build_world(mission("greywater"), flags={})
+    run.set("truce", False)
+    run_for(run, SIM_DT)
+    assert run.state["raze"] == "open" and run.remembered() == {"truce": False}
+    saved = MissionScene(CAMPAIGN, run, difficulty=Difficulty.MEDIUM).get_save_state()
+    loaded = load_game(json.loads(json.dumps(saved))).run
+    assert loaded.get("truce") is False
+    assert loaded.remembered() == {"truce": False}
+    run_for(loaded, SIM_DT)
+    assert loaded.state["raze"] == "open"
+
+
 def test_a_loaded_mission_keeps_what_the_player_had_seen_their_groups_and_the_autosave_clock(game) -> None:
     """A mission loaded in the match comes back the way a skirmish does, through the same restore step: the raiders'
     camp, seen once and burned since out of sight, still stands as it was seen; the control groups answer; and the

@@ -397,6 +397,10 @@ class Run:
         if not isinstance(data.get("vars"), dict) or not isinstance(data.get("fired"), dict) or not isinstance(data.get("state"), dict):
             raise ValueError("mission block needs vars, fired and state objects")
         run = cls(mission, world, flags=data["vars"])
+        # Verbatim, not through the constructor's filter: those are this run's own variables, and the answers it
+        # already gave are among them.  Dropping them lost the choice the player made before the save (the emissary
+        # at Greywater Ford), with it the objective the answer opens and the flag the campaign remembers.
+        run.vars = dict(data["vars"])
         run.fired = {str(k): float(v) for k, v in data["fired"].items()}
         if "ai" in data:
             run.ai = {int(side): Difficulty(level) for side, level in data["ai"].items()}
