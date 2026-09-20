@@ -80,6 +80,27 @@ def test_the_lint_sees_a_price_wider_than_its_column(tmp_path, width, flagged) -
     finally:
         game.close()
     assert ("overflow" in checks) is flagged
+class Orphaned(Scene):
+    """A wrapped label whose own line break lands after a line the box already wraps."""
+
+    def on_enter(self) -> None:
+        self.ui.add(Label("No rated matches yet. Beat the computer to earn a rating;\nleaving a match early counts against it.",
+                          text_style="sub", width=376, wrap=True))
+        self.ui.add(Label("Two short lines,\nneither of which wraps.", text_style="sub", width=376, wrap=True))
+
+
+def test_the_lint_sees_a_line_break_that_orphans_what_the_wrapper_left(tmp_path) -> None:
+    """The title card read "...to earn / a rating; / leaving a match...": the wrapper broke the sentence and the
+    hard break then started a new line, leaving two words alone.  A break after a line that fits is fine."""
+    game = Game("Lint", backend="mock", resolution=(640, 480), theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        visual_lint.use_real_text_metrics(game)
+        game.push(Orphaned())
+        game.tick(1 / 60)
+        orphans = [f for f in visual_lint.lint_frame(game) if f.check == "orphan"]
+    finally:
+        game.close()
+    assert len(orphans) == 1 and "No rated matches yet" in orphans[0].detail
 
 
 def test_text_lint_checks_the_active_overlay_not_its_paused_background(tmp_path) -> None:

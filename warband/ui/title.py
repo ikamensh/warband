@@ -138,8 +138,8 @@ class TitleScene(Scene):
         card.add(Label(f"Rating {rating}" + (" · provisional" if rating.provisional else ""), text_style="heading", text_color=GOLD))
         history = profile.history()
         if not history:
-            card.add(Label("No rated matches yet. Beat the computer to earn a rating;\nleaving a match early counts against it.",
-                           text_style="sub", width=CARD_WIDTH - 24, wrap=True))
+            card.add(Label("No rated matches yet. Beat the computer to earn a rating; leaving a match early counts against it.",
+                           text_style="sub", width=CARD_WIDTH - 24, wrap=True))  # no hard break: the wrapper orphans what is left of the line
         else:
             card.add(Label(f"{plural(counts['victories'], 'victory', 'victories')} · {plural(counts['defeats'], 'defeat')} · {counts['left']} left early",
                            text_style="body"))

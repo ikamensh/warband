@@ -477,6 +477,14 @@ def lint_layout(game: Game, scene: Any) -> list[Finding]:
         elif getattr(component, "natural_width", 0) > w + 1:  # a price: its symbols and numbers, wider than its column
             numbers = " ".join(text for _name, text, _ink in component.pairs)
             findings.append(Finding("overflow", f"{_label(component)}({numbers!r})", f"{component.natural_width} px of symbols in a {w} px box"))
+        elif isinstance(component, Label) and component._wrap and "\n" in str(component.text):
+            # A hard break in a wrapped label fights the wrapper: the wrapper breaks where it must and the
+            # break then starts a new line, leaving whatever was left of the old one alone on its own.
+            resolved = component._resolve()
+            for paragraph in str(component.text).split("\n")[:-1]:
+                if backend.measure_text(paragraph, resolved.font_size, resolved.font)[0] > w + 1:
+                    findings.append(Finding("orphan", _label(component),
+                                            f"a line break follows {paragraph[:40]!r}, which the {w} px box already wraps"))
         elif isinstance(component, Button) and component._width is not None:
             resolved = component._resolve()
             iw, tw, kw, _ = component._content_size(resolved)
