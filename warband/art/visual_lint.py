@@ -50,7 +50,9 @@ HOP = 3.0  # logical pixels the feet may move between frames of one facing befor
 SLIDE = 4.0  # logical pixels the figure may shift sideways between frames of one facing
 TURN_SLIDE = 6.0  # ... or between facings
 FLOAT = 4.0  # logical pixels between the lowest solid pixel and the anchor before a subject floats
-RECOLOUR_MIN = 0.01  # share of pixels a team recolour must change
+TEAM_MARK = 100  # pixels of the team's colour a picture must wear before a player can tell whose it is: the
+#: smallest banner that reads is the elven Stag Pens' site at 218 px; the ones nobody can read are 68 and under.
+RECOLOUR_TOOK = 0.9  # share of the pixels wearing the team's colour that the recolour must move
 DRIFT = 12.0  # logical pixels a painted figure may sit from the render it repaints
 TEXT_SLACK = 0.2  # share of a text box's height above and below the letters (ascender and descender room)
 DRIFT_FRAMES = ("stand", "walk1", "walk3", "strike", "chop3")  # the frames compared against their render
@@ -142,7 +144,11 @@ def figure(image: Image.Image, placement: textures.Placement) -> Figure | None:
 
 def lint_image(key: str, image: Image.Image, *, painted: bool = False, cropped: bool = False) -> list[Finding]:
     """Checks that need nothing but the image: empty, cut off by its canvas (unless it was
-    *cropped* to its figure on purpose), chroma residue."""
+    *cropped* to its figure on purpose), chroma residue.
+
+    *painted* belongs to a frame as the chroma key left it.  A picture resampled from one — a portrait — is
+    not that frame: LANCZOS rings a hard edge into faint alpha a few pixels out, which reads as the key's
+    field.  The frame it came from carries the checks."""
     a = alpha(image)
     findings = []
     if not (a >= SOLID).any():
@@ -220,15 +226,33 @@ def lint_building(key: str, image: Image.Image, placement: textures.Placement, s
     return findings
 
 
+#: A hue no team wears, to find the pixels the recolour is aimed at: what :func:`sagaforge.restyle.recolor`
+#: moves out of the first team's colour is what any other team's colour would move.
+_PROBE = (0, 255, 0)
+
+
+def team_pixels(base: Image.Image, visible: np.ndarray) -> np.ndarray:
+    """The visible pixels of *base* that a team recolour moves: the picture's ownership mark."""
+    probe = np.asarray(restyle.recolor(base, textures.team_color(0), _PROBE)).astype(int)
+    return (np.abs(probe[..., :3] - np.asarray(base.convert("RGBA")).astype(int)[..., :3]).sum(axis=-1) > 12) & visible
+
+
 def lint_recolour(key: str, base: Image.Image, other: Image.Image) -> list[Finding]:
+    """The second team's picture against the first's.  Two things can be wrong, and a share of the whole
+    figure told them apart for neither: a banner on a 3x3 building is under a percent of it however well it
+    recolours.  So ask what the picture wears of the team's colour, and then whether the recolour moved it."""
     a, b = np.asarray(base.convert("RGBA")), np.asarray(other.convert("RGBA"))
     if a.shape != b.shape:
         return [Finding("recolour", key, f"team frame is {other.size}, the base {base.size}", other)]
     visible = a[..., 3] >= SOLID
+    wearing = team_pixels(base, visible)
+    if wearing.sum() < TEAM_MARK:
+        return [Finding("team colour", key, f"the picture wears {int(wearing.sum())} px of the team's colour: "
+                                            f"both players' look the same", other)]
     changed = (np.abs(a[..., :3].astype(int) - b[..., :3].astype(int)).sum(axis=-1) > 12) & visible
-    share = changed.sum() / max(1, visible.sum())
-    if share < RECOLOUR_MIN:
-        return [Finding("recolour", key, f"team colour changed {share:.1%} of the figure", other)]
+    took = (changed & wearing).sum() / wearing.sum()
+    if took < RECOLOUR_TOOK:
+        return [Finding("recolour", key, f"the recolour moved {took:.0%} of the {int(wearing.sum())} px wearing the team's colour", other)]
     return []
 
 
@@ -347,7 +371,7 @@ def unit_subjects(players: tuple[int, ...] = (0,)) -> Iterator[tuple[str, Race, 
 def lint_images(game: Game, store: ImageStore, *, budget: CpuBudget | None = None) -> list[Finding]:
     """Every check on every registered image (call :func:`register_everything` first)."""
     findings: list[Finding] = []
-    painted_keys = {key for key in game.assets._images if key.startswith(("unit.", "building.", "portrait."))}
+    painted_keys = {key for key in game.assets._images if key.startswith(("unit.", "building."))}  # a portrait is a resample of one
     for key in list(game.assets._images):
         if budget is not None:
             budget.checkpoint()
