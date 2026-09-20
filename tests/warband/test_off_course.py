@@ -1,7 +1,8 @@
 """A unit shoved off its path recovers.  Fuzz seeds 1900–1911 on 2026-09-18: six of twelve games had a
-peasant bouncing for the rest of the match between its tile centre and a building corner."""
+peasant bouncing for the rest of the match between its tile centre and a building corner.  Fuzz seeds
+0–15 on 2026-09-20: fifteen footmen marching in a line stood between two points for the rest of theirs."""
 
-from warband.sim.model import SIM_DT, Deposit, World, dist
+from warband.sim.model import SIM_DT, AttackMove, Deposit, World, dist, tile_center
 from warband.sim.rules import GOLD_PER_TRIP, BuildingType, Resource, Terrain, UnitType
 
 
@@ -66,3 +67,52 @@ def test_a_worker_whose_next_tile_turns_dangerous_at_a_waypoint_waits_there_for_
     assert worker.pos == (11.5, 9.5) and worker.state == "move", (worker.pos, worker.state)
     run(world, 20.0)
     assert worker.carrying is None and world.players[0].gold == 1000 + GOLD_PER_TRIP, (worker.pos, worker.path)
+
+
+# The ground around the footman of fuzz seed 5 who stood still from 09:53 to the end of the match, as the map
+# generated it: the window (54, 5)–(70, 21) of an 80×64 wasteland, rock and water south-west of where it stood.
+STALL_WINDOW = (54, 5)
+STALL_GROUND = ("wgggggggggggggggg", "ggggggggggggggggg", "ggggggggggggggggg", "ggggggggggggggggg",
+                "gggggwwgggggggggg", "ggggwwwwggggggggg", "gggggwwwggggggggg", "ggggrrggggggggggg",
+                "ggggrrggggggggggg", "ggggrrggggggggggg", "gggrrrggggggggggg", "rrrrrrggggggggggg",
+                "rrrgggggggggggggg", "rrrgggggggggggggg", "wrttggggggggggggr", "wwttgggggrggggwww",
+                "wrtttgggggggggwww")
+
+
+def stall_world() -> World:
+    letters = {terrain.value[0]: terrain for terrain in Terrain}
+    ground = [[Terrain.GRASS] * 71 for _ in range(64)]
+    for dy, row in enumerate(STALL_GROUND):
+        for dx, letter in enumerate(row):
+            ground[STALL_WINDOW[1] + dy][STALL_WINDOW[0] + dx] = letters[letter]
+    world = World(71, 64, ground, 2)
+    for player in world.players:
+        player.human = True
+    return world
+
+
+def test_a_marcher_does_not_take_a_shortcut_that_walks_it_back_up_its_own_path() -> None:
+    """A unit in a marching line walks straight at its place in the line while that line is clear, instead of
+    pathing to a place that moves every step.  At this spot the shortcut and the route disagreed: the shortcut
+    was clear from where the footman stood, and a fifth of a tile along it the shortcut was blocked, so the
+    step planned a route that walked it straight back.  It stepped between the two points, 20 times a second,
+    for the remaining five minutes of the match.  The staged path and order are the ones the seed produced.
+    """
+    world = stall_world()
+    marcher = world.spawn_unit(0, UnitType.FOOTMAN, (62.029052762287016, 13.033595984741991))
+    world.attack_move([marcher.id], (2.5, 61.5))
+    # The line it marched in had fallen around it, so its slot sits where the seed left it, and it is part way
+    # along a route round the rock: both are state, not an order, and a fresh order would have neither.
+    marcher.orders[0] = AttackMove((2.5, 61.5), pace=2.0, offset=(0.3073827445110006, 0.39435497762407523))
+    marcher.path = [(62, 12), (62, 11), (62, 10), (62, 9), (61, 8)]
+    marcher.path_goal = (2, 61)
+
+    ahead = tile_center(marcher.path[0])
+    before = dist(marcher.pos, ahead)
+    world.step()
+    assert dist(marcher.pos, ahead) < before, "the shortcut walked the marcher back up its own route"
+
+    start = marcher.pos
+    for _ in range(round(1.0 / SIM_DT)):
+        world.step()
+    assert dist(start, marcher.pos) > 1.0, "the marcher stepped between two points instead of getting on"
