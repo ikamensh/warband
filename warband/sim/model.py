@@ -1985,9 +1985,24 @@ class World:
             fx, fy, _, cx, cy = self._line(u, order)
             if dist((cx, cy), order.target) > FORMATION_LOOKAHEAD:
                 point = self._clamp((cx + fx * FORMATION_LOOKAHEAD + order.offset[0], cy + fy * FORMATION_LOOKAHEAD + order.offset[1]))
-                if dist(u.pos, point) > FORMATION_SPACING and self._steer(u, point, dt):
+                if dist(u.pos, point) > FORMATION_SPACING and self._along_its_route(u, point) and self._steer(u, point, dt):
                     return False  # straight at its place while the way there is clear: a path would keep a grid row
         return self._walk_to(u, slot, dt, settle=True)
+
+    def _along_its_route(self, u: Unit, point: Point) -> bool:
+        """Whether walking straight at *point* would not undo the route *u* is already walking.
+
+        The shortcut and the path can disagree where the way round an obstacle goes: the shortcut moved the
+        unit a fraction of a tile, from where the straight line was no longer clear, so the next step planned
+        a path that walked it back — and it stepped between the two for the rest of the match.  A unit with no
+        path has nothing to undo.
+        """
+        if not u.path:
+            return True
+        ahead = tile_center(u.path[0])
+        sx, sy = point[0] - u.x, point[1] - u.y
+        ax, ay = ahead[0] - u.x, ahead[1] - u.y
+        return sx * ax + sy * ay >= 0.0
 
     def _slot(self, order: Move | AttackMove) -> Point:
         """Where a Move or AttackMove takes its unit: its slot in a marching line, or the shared target."""

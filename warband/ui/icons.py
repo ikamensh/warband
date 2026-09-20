@@ -22,8 +22,6 @@ COLORS: dict[str, Color] = {
     "gold": (255, 214, 110, 255), "lumber": (206, 162, 105, 255), "supply": (232, 215, 161, 255), "health": (130, 225, 155, 255),
     "damage": (237, 205, 164, 255), "armor": (159, 192, 221, 255), "range": (210, 185, 228, 255), "speed": (221, 201, 155, 255),
 }
-LABELS = {"gold": "Gold", "lumber": "Lumber", "supply": "Supply used / capacity", "health": "Health", "damage": "Damage",
-          "armor": "Armour", "range": "Range", "speed": "Movement speed"}
 
 
 def _parts(name: str, color: Color | None = None) -> list[tuple[list[tuple[float, float]], Color]]:

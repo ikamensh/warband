@@ -17,7 +17,6 @@ from warband.sim.rules import BuildingType
 
 FOLDER = "wreckage"
 MATERIALS = ("wood", "stone")
-STAGES = ("crack", "collapse", "debris")
 #: Seconds from the crack to the mass coming down, and from the end of the collapse piece to the debris.
 CRACK_TO_COLLAPSE = 0.3
 COLLAPSE_TO_DEBRIS = -0.35
