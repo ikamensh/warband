@@ -1,8 +1,8 @@
-"""Make Warband's application icon, ``packaging/icon.png``.
+"""Make Warband's application icon, ``warband/assets/icon.png``.
 
     uv run python tools/make_icon.py schematic           # draw packaging/icon-schematic.png
     uv run python tools/make_icon.py paint DIR           # have the image model paint it; candidates land in DIR
-    uv run python tools/make_icon.py install CANDIDATE   # square it, size it and write packaging/icon.png
+    uv run python tools/make_icon.py install CANDIDATE   # square it, size it and write warband/assets/icon.png
 
 The schematic fixes the composition (the knights' blue shield with its gold
 cross over a crossed sword and axe, on the title screen's dark earth) and is
@@ -21,7 +21,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMATIC = ROOT / "packaging" / "icon-schematic.png"
-ICON = ROOT / "packaging" / "icon.png"
+ICON = ROOT / "warband" / "assets" / "icon.png"  # inside the package: the running game wears it too
 SIDE = 1024
 OVERSAMPLE = 4
 

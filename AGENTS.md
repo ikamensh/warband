@@ -37,7 +37,7 @@ uv run python tools/music.py render DIR          # WAV, spectrogram and stats pe
 uv run python tools/pieces.py refresh            # regenerate the impact, death and wreckage pieces with Stable Audio 3 (needs STABLE_AUDIO_MLX; see docs/warband-pieces.md)
 uv run python tools/restyle.py refresh DIR          # painted unit and building sprites: the whole procedure; see ../sagaforge/docs/restyle.md
 uv run --extra package python tools/package.py build --version 0.1.0   # standalone build; verify DIR / install too
-uv run python tools/make_icon.py schematic       # the app icon: schematic, then `paint DIR` (image model) and `install CANDIDATE` write packaging/icon.png
+uv run python tools/make_icon.py schematic       # the app icon: schematic, then `paint DIR` (image model) and `install CANDIDATE` write warband/assets/icon.png
 ```
 
 Never time frames under a profiler or tracemalloc; `tools/perf.py` gives the
@@ -164,9 +164,10 @@ the compiled simulation attaches after they load.
   campaign screen. `World.scripted` worlds never declare a winner or
   surrender: the mission decides.
 - `packaging/package_check.py` — the diagnostics the frozen app runs.
-  `packaging/icon.png` is the picture the builds carry (the engine shapes it
-  per platform); `icon-schematic.png` is the composition `tools/make_icon.py`
-  draws and the image model painted it from.
+  `warband/assets/icon.png` is the picture the builds carry and the running
+  game wears in the Dock and the taskbar (`Game(icon=...)`; the engine shapes
+  it per platform); `packaging/icon-schematic.png` is the composition
+  `tools/make_icon.py` draws and the image model painted it from.
 - `docs/` — Early Access criteria and progress (`warband-early-access-*.md`),
   design notes per feature (`unit-motion.md`: why units looked timid, the nine-frame
   rig and its timing, what cinematic motion still needs), the play-together and Windows guides, and

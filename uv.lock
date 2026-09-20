@@ -632,16 +632,16 @@ wheels = [
 
 [[package]]
 name = "saga2d"
-version = "0.3.8"
+version = "0.3.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pillow" },
     { name = "pyglet" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7d/75/f562bec6f8cfdde7a692d6f98eae22e84f27d07078f329bdabc84ad07c88/saga2d-0.3.8.tar.gz", hash = "sha256:333987cb3419791e91a9eee178e276a304373fe937c9d1f6caabc739d2a3f5bf", size = 670785 }
+sdist = { url = "https://files.pythonhosted.org/packages/b0/62/15cc64fa4bd6f3b8b268d29d31ee28757d012854764c59b98022b167a255/saga2d-0.3.10.tar.gz", hash = "sha256:26f7bd735adacd1e83c877e6a21459fc45c508a495ae8fc38da72701b3962219", size = 665875 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3b/17/c761c1e1b8ed4dd6e7f5636ed0508b93668cd492b5b9f5e78951e1274d9f/saga2d-0.3.8-py3-none-any.whl", hash = "sha256:0f79d1c70d7c760620ccffab2b284b2eedbad8b9412270268980593db6b7d65d", size = 515588 },
+    { url = "https://files.pythonhosted.org/packages/a9/38/52a17275779d671f064bf06d0b25515300a8a3528971a293dbac628bfec2/saga2d-0.3.10-py3-none-any.whl", hash = "sha256:5eeffde39814238fafeebe45f3c1ba3ad8373f37433404ffaf61093290a9e9fa", size = 518151 },
 ]
 
 [[package]]
@@ -713,13 +713,13 @@ package = [
 
 [package.metadata]
 requires-dist = [
-    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.168.0" },
+    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.168" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=2.3.1" },
     { name = "pyinstaller", marker = "extra == 'package'", specifier = "==6.22.2" },
     { name = "pyinstaller-hooks-contrib", marker = "extra == 'package'", specifier = "==2026.7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.2" },
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.8" },
-    { name = "saga2d", specifier = "==0.3.8" },
+    { name = "saga2d", specifier = "==0.3.10" },
     { name = "sagaforge", editable = "../sagaforge" },
     { name = "setuptools", marker = "extra == 'dev'", specifier = ">=84" },
 ]
