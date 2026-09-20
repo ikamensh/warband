@@ -20,7 +20,7 @@ from warband.brains.ai import DIFFICULTY_ELO, DIFFICULTY_NOTES
 from warband.records.profile import OUTCOME_NAMES, Profile, plural
 from warband.sim.rules import BuildingType, Difficulty, Layout, MapTheme, Race
 from warband.ui.controls import DEFAULT, SCHEMES
-from warband.ui.scene import SAVE_SLOTS, HelpScene, SaveBrowserScene, fair_map, load_game, new_game
+from warband.ui.scene import SAVE_SLOTS, CodexScene, HelpScene, SaveBrowserScene, codex_world, fair_map, load_game, new_game
 from warband.audio.sound import play_music, play_sound
 from warband.ui.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MENU_BUTTON, MUTED, OVERLAY_STYLE, PANEL_STYLE
 from warband.art.textures import TILE
@@ -115,7 +115,9 @@ class TitleScene(Scene):
         menu.add(Button("Multiplayer", shortcut="M", on_click=self.multiplayer, style=MENU_BUTTON, width=300))
         menu.add(Button("Load game", hotkey="L", on_click=self.load_game, style=MENU_BUTTON, width=300))
         menu.add(Button("High scores", hotkey="B", on_click=self.high_scores, style=MENU_BUTTON, width=300))
-        menu.add(Button("How to play", hotkey="H", on_click=self.how_to_play, style=MENU_BUTTON, width=300))
+        # The two screens that explain the game share a row: a ninth full-width button pushed the title off a 680 px window.
+        menu.add(Row(Button("How to play", hotkey="H", on_click=self.how_to_play, style=MENU_BUTTON, width=180),
+                     Button("Codex", shortcut="F2", on_click=self.codex, style=MENU_BUTTON, width=112), spacing=8))
         menu.add(Button("Quit", hotkey="Q", on_click=self.quit, style=MENU_BUTTON, width=300))
         where = f"slot {newest}" if isinstance(newest, int) else "the campaign mission" if newest == "campaign" else f"the {newest}" if newest else None
         menu.add(Label(f"Continue resumes {where}" if where else "No saved game yet — the match autosaves every two minutes", text_style="caption"))
@@ -232,6 +234,11 @@ class TitleScene(Scene):
     def how_to_play(self) -> None:
         self.sfx("button")
         self.game.push(HelpScene(SCHEMES[self.settings["controls"] if self.settings is not None else DEFAULT]))
+
+    def codex(self) -> None:
+        """Every unit, building and upgrade before a match is started, for the race chosen under New game."""
+        self.sfx("button")
+        self.game.push(CodexScene(codex_world(self.race), 0, in_match=False))
 
     def profile_screen(self) -> None:
         from warband.ui.profile_scene import ProfileScene

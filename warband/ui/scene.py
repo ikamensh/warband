@@ -28,7 +28,7 @@ from warband.sim.model import (Attack, AttackMove, Build, Building, Deposit, Ent
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
 from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, SIM_DT, UNITS, UPGRADES, ArmorClass, AttackType, BuildingType, Cost,
-                               Difficulty, MapTheme, Race, Resource, UnitType, Upgrade, an)
+                               Difficulty, MapTheme, Race, Resource, Terrain, UnitType, Upgrade, an)
 from warband.sim.rules import Layout as MapLayout
 from warband.records.profile import MatchResult, Profile, RatingChange, Standing, standing
 from warband.records.replay import Replay, ReplayStore
@@ -2864,22 +2864,30 @@ class HelpScene(_Overlay):
 
 
 CODEX_PAGES = ("Units", "Buildings", "Upgrades", "Races", "Tech tree")
-TREE_LEGEND = ("A line runs from what a building needs into it; beside each, what it trains and researches. Bright: yours · "
-               "dimmer: on its way · faint: not yet. Hover a picture for what it is.")
+TREE_LEGEND = "A line runs from what a building needs into it; beside each, what it trains and researches. {}Hover a picture for what it is."
+TREE_LIGHTING = "Bright: yours · dimmer: on its way · faint: not yet. "  # only in a match: outside one there is nothing to stand short of
+
+
+def codex_world(race: Race) -> World:
+    """A world of one tile and one player for the codex read outside a match, from the title screen: all it carries is
+    the race whose tables the pages show.  Nobody holds anything in it, so the codex is read with *in_match* false."""
+    return World(1, 1, [[Terrain.GRASS]], 1, races=[race])
 
 
 class CodexScene(_Overlay):
     """The player's race: every unit, building and upgrade with its numbers, the four races side by side, and the tech
-    tree (what needs what, lit by what the player has); 1-5 or Tab switch pages."""
+    tree (what needs what, lit by what the player has); 1-5 or Tab switch pages.  Read from the title instead of from a
+    match (*in_match* false, :func:`codex_world`), nobody holds anything and the tree is lit as the plain reference."""
 
     pause_below = True
     controls = {"1": "page_units", "2": "page_buildings", "3": "page_upgrades", "4": "page_races", "5": "page_tree", "tab": "next_page",
                 "f2": "close"}
 
-    def __init__(self, world: World, player: int, page: int = 0) -> None:
+    def __init__(self, world: World, player: int, page: int = 0, *, in_match: bool = True) -> None:
         self.world = world
         self.player = player
         self.page = page
+        self.in_match = in_match
 
     def on_enter(self) -> None:
         race = RACES[self.world.players[self.player].race]
@@ -2892,8 +2900,9 @@ class CodexScene(_Overlay):
         if self.page == 3:
             table = self._race_table(race.name)
         elif self.page == 4:
-            tree = TechTree(self.world, self.player)
-            table = Column(tree, Label(TREE_LEGEND, text_style="sub", width=tree.get_preferred_size()[0], wrap=True), spacing=12)
+            tree = TechTree(self.world, self.player, in_match=self.in_match)
+            legend = TREE_LEGEND.format(TREE_LIGHTING if self.in_match else "")
+            table = Column(tree, Label(legend, text_style="sub", width=tree.get_preferred_size()[0], wrap=True), spacing=12)
         else:
             widths, rows = self._rows()
             for cells in rows:
@@ -2961,7 +2970,7 @@ class CodexScene(_Overlay):
         raise ValueError(f"no table for page {self.page}")
 
     def show(self, page: int) -> None:
-        self.game.replace(CodexScene(self.world, self.player, page))
+        self.game.replace(CodexScene(self.world, self.player, page, in_match=self.in_match))
 
     def page_units(self) -> None:
         self.show(0)

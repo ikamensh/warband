@@ -61,7 +61,9 @@ uv run warband
 missing, and opens the title screen; the first start also synthesises the
 sounds and music. **New game** picks map, players, difficulty and race,
 **Continue** resumes the autosave, **Profile & replays** shows your rating,
-record and the replays of your matches. Saga2D comes from PyPI at the version pinned
+record and the replays of your matches, and **Codex** (F2) reads every unit,
+building, upgrade and the tech tree of the race New game is set to, before one
+is started. Saga2D comes from PyPI at the version pinned
 in `pyproject.toml` and `uv.lock`. The asset library remains an editable path
 dependency. Update the game and asset checkout, then start again:
 

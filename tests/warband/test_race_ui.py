@@ -8,6 +8,7 @@ from warband.sim.model import tile_center
 from warband.sim.races import RACES
 from warband.sim.rules import BUILDINGS, BuildingType, Race, Terrain, UnitType, Upgrade
 from warband.ui.scene import CodexScene, GameScene, new_game
+from warband.ui.tech import BRIGHT, TechTree
 from warband.ui.style import build_theme
 from warband.ui.title import RACE_KEYS, TitleScene
 
@@ -62,6 +63,31 @@ def test_the_title_offers_every_race_with_a_hotkey_and_the_match_uses_it(game) -
     game.tick(1 / 60)
     press(game, "c")
     assert isinstance(game.scene, GameScene) and game.scene.player.race is Race.ORC and game.scene.race.name == "Orcs"
+
+
+def test_the_title_opens_the_codex_for_the_race_chosen_under_new_game(game) -> None:
+    """The codex is readable before a match is started: F2 on the title, the race New game is set to, nothing owned."""
+    game.push(TitleScene())
+    game.tick(1 / 60)
+    press(game, "f2")
+    assert isinstance(game.scene, CodexScene)
+    shown = texts(game)
+    assert "Codex — the Humans" in shown and "Footman" in shown and "Grunt" not in shown
+    press(game, "3")  # upgrades: none is researched outside a match, so none is ticked
+    assert not any(t.endswith(" ✓") for t in texts(game))
+    press(game, "5")  # the tech tree is the plain reference out of a match: no settlement to light it by
+    assert RACES[Race.HUMAN].buildings[BuildingType.BARRACKS].name in texts(game)
+    tree = game.scene.ui.find(lambda c: isinstance(c, TechTree))
+    assert all(picture.opacity == BRIGHT for picture in tree.pictures)
+    assert not any("faint: not yet" in t for t in texts(game))
+    press(game, "escape")
+    assert isinstance(game.scene, TitleScene)
+    press(game, "n")
+    press(game, RACE_KEYS[Race.ORC].lower())
+    press(game, "escape")
+    press(game, "f2")
+    shown = texts(game)
+    assert "Codex — the Orcs" in shown and "Grunt" in shown and "Footman" not in shown
 
 
 def test_buildings_offer_the_race_units_and_only_its_own_arts(game) -> None:

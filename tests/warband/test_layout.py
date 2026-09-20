@@ -16,7 +16,8 @@ from warband.ui.profile_scene import NameScene, ProfileScene
 from warband.records.replay import Replay, ReplayStore
 from warband.ui.replay_scene import ReplayEndScene, ReplayScene
 from warband.ui.controls import SCHEMES
-from warband.ui.scene import DEFAULT_SETTINGS, CodexScene, GameOverScene, HelpScene, LeaveScene, PauseScene, SaveBrowserScene, SettingsScene, new_game
+from warband.ui.scene import (DEFAULT_SETTINGS, CodexScene, GameOverScene, HelpScene, LeaveScene, PauseScene, SaveBrowserScene, SettingsScene,
+                               codex_world, new_game)
 from warband.ui.score_scene import HighScoreScene
 from warband.ui.style import build_theme
 from warband.ui.title import NewGameScene, TitleScene
@@ -112,6 +113,8 @@ SCREENS = {
     "codex buildings": lambda game: (s := match(game), game.push(CodexScene(s.world, s.human, 1))),
     "codex upgrades": lambda game: (s := match(game), game.push(CodexScene(s.world, s.human, 2))),
     "codex races": lambda game: (s := match(game), game.push(CodexScene(s.world, s.human, 3))),
+    "codex from the title": lambda game: (game.push(TitleScene()), settle(game), game.scene.codex()),
+    "codex tech tree, no match": lambda game: game.push(CodexScene(codex_world(Race.HUMAN), 0, 4, in_match=False)),
     "orc match, build menu": lambda game: (match(game, races=[Race.ORC, None]), game.scene.select([next(u.id for u in game.scene.world.player_units(game.scene.human) if u.is_worker)]), game.scene.open_catalogue("build")),
     "dwarf codex": lambda game: (s := match(game, races=[Race.DWARF, None]), game.push(CodexScene(s.world, s.human, 0))),
     "save browser": lambda game: (match(game), game.push(SaveBrowserScene(game, "save", on_pick=lambda slot: None))),

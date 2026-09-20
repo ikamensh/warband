@@ -136,7 +136,9 @@ class _Picture(Component):
 class TechTree(Component):
     """The race's buildings as a tree, left to right: a line runs from each prerequisite into what it opens, and beside
     each building stand what it trains and researches.  Lit by the player's settlement as it stands when the tree is
-    made (the codex pauses the match): bright what they have, dimmer what is on its way, faint the rest."""
+    made (the codex pauses the match): bright what they have, dimmer what is on its way, faint the rest.  Outside a
+    match there is no settlement to light it by, and *in_match* false stands the whole tree bright: the reference it
+    then is, where faint would read as something the player is short of."""
 
     COLUMN = 292  # from one column's left edge to the next
     ROW = 70
@@ -145,18 +147,22 @@ class TechTree(Component):
     ICON = 28
     NAME = 26  # the name's line, above the building's pictures
 
-    def __init__(self, world: World, player: int, **kwargs: Any) -> None:
+    def __init__(self, world: World, player: int, *, in_match: bool = True, **kwargs: Any) -> None:
         self.places = tree()
         columns = 1 + max(column for column, _row in self.places.values())
         rows = 1 + max(row for _column, row in self.places.values())
         super().__init__(width=(columns - 1) * self.COLUMN + self.NODE, height=round((rows - 1) * self.ROW) + self.NAME + self.ICON, **kwargs)
         race = world.players[player].race
         info = RACES[race]
-        self.lit = {kind: level(world, player, kind) for kind in self.places}
+
+        def brightness(target: Target) -> float:
+            return level(world, player, target) if in_match else BRIGHT
+
+        self.lit = {kind: brightness(kind) for kind in self.places}
         self.pictures: list[_Picture] = []
 
         def picture(target: Target, x: int, y: int, size: int, tooltip: str) -> None:
-            self.pictures.append(_Picture(target, player, race, size, level(world, player, target), tooltip,
+            self.pictures.append(_Picture(target, player, race, size, brightness(target), tooltip,
                                           anchor=Anchor.TOP_LEFT, margin=(x, y)))
             self.add(self.pictures[-1])
 

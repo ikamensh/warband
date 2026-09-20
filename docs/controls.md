@@ -97,7 +97,9 @@ refused by click, key and Shift alike; behind a gold hourglass while it is
 (going up, planned, a builder's next site; being researched or planned; a plan
 only while what it waits for is on its way too), and the item can be ordered to
 wait for it. A building's tooltip names what it unlocks, and
-the codex's fifth page draws the whole tech tree (WB-054).
+the codex's fifth page draws the whole tech tree (WB-054). The title screen
+opens the same codex, on F2 there too, for the race New game is set to: outside
+a match nobody holds anything, so the tree stands plainly lit rather than faint.
 `test_every_card_gives_each_command_a_key_of_its_own`
 brings up every card of every race in every scheme and holds each key to one
 command, and Grid's keys to the grid.

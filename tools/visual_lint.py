@@ -152,6 +152,17 @@ def title_first_frame(game: Game) -> None:
     ticks(game, 1)
 
 
+@screen
+def codex_from_title(game: Game) -> None:
+    """The codex read before a match: the race New game is set to, and a tech tree nobody stands in."""
+    game.push(TitleScene())
+    ticks(game)
+    game.scene.codex()
+    ticks(game)
+    game.scene.page_tree()
+    ticks(game)
+
+
 for _race in Race:
     def _new_game(game: Game, race: Race = _race) -> None:
         game.push(TitleScene())
