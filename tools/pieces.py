@@ -22,7 +22,9 @@ from warband.audio.pieces import ROOT  # noqa: E402
 from warband.sim.rules import Race  # noqa: E402
 
 # The game modules (warband.audio.combat_sound, deaths, wreckage) expect these folders and names; they are
-# spelled out here rather than imported because those modules refuse to load without their pieces.
+# spelled out here rather than imported because those modules refuse to load without their pieces, and this
+# is the tool that makes them.  They are the one place the stage names live: the modules name their own
+# stages where they place them, and each kept a STAGES nothing read, which looked like this table's source.
 DEATHS, DEATH_STAGES = "deaths", ("weapon", "body", "settle")
 WRECKAGE, WRECK_STAGES, MATERIALS = "wreckage", ("crack", "collapse", "debris"), ("wood", "stone")
 IMPACTS, WEAPONS, TARGETS, IMPACT_TAKES = "impacts", ("sword", "axe", "spear", "lance", "arrow", "stone", "hammer"), ("flesh", "armor", "wood", "stone"), 3

@@ -177,10 +177,6 @@ def cymbal(seed: int = 0) -> np.ndarray:
                      tone(3100, 1.2, attack=0.004, tau=0.4, partials=((1, 1.0), (1.48, 0.7), (2.13, 0.5), (2.9, 0.3))) * 0.25), 1.0)
 
 
-def woodblock(seed: int = 0) -> np.ndarray:
-    return tone(1200, 0.06, attack=0.001, tau=0.015, partials=((1, 1.0), (2.4, 0.4)))
-
-
 def anvil(seed: int = 0) -> np.ndarray:
     from warband.audio.voices import anvil_strike
 

@@ -16,7 +16,6 @@ from warband.audio import pieces
 from warband.sim.rules import Race
 
 FOLDER = "deaths"
-STAGES = ("weapon", "body", "settle")
 #: When the weapon hits the ground, in seconds from the end of the cry (negative: before the voice cuts off).
 FALL_START = -0.15
 WEAPON_TO_BODY = 0.18
