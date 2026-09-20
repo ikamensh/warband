@@ -64,7 +64,9 @@ the compiled simulation attaches after they load.
   bounded A*, `mapgen.py` the five map layouts, their symmetry and audit,
   `worker_ai.py`/`worker_knowledge.py` the automatic gatherers (placed when
   idle, and the split looked at again every five seconds: `Harvest.placed`
-  marks the policy's own jobs, an ordered harvest stays its player's),
+  marks the policy's own jobs, an ordered harvest stays its player's, and a
+  worker its player lately had in hand is left alone the longer the further
+  from a depot it stands, `manual_hold`: `docs/worker-hands-off.md`),
   `settlement.py` building plans. `_native.c` holds C twins of a few loops of
   the compiled simulation (`docs/fast-simulation.md`).
 - `warband/brains/` — the computer players. `ai.py` holds a Brain per player

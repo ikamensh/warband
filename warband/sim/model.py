@@ -345,6 +345,12 @@ class Unit:
     charge: float = 0.0  # healing accumulated below one hit point
     replan_at: float = 0.0  # simulation time from which the unit may plan again
     auto_work: bool = True  # Stop/Hold parks a worker until another order is given.
+    # Simulation time at which a player or a brain last had this worker in hand: the moment an order of theirs was
+    # given, and again the moment the last of them ran out and it stood idle.  None while it is nobody's but the
+    # automatic policy's, which is how every peasant starts and what the policy leaves behind when it claims one.
+    # The gatherer policy keeps its hands off a worker commanded recently, the longer the further from home it
+    # stands (:func:`warband.sim.worker_ai.manual_hold`).
+    commanded: float | None = None
 
     def __post_init__(self) -> None:
         # Type and race are fixed for life, so the stats they select are read once
@@ -1183,7 +1189,10 @@ class World:
     def _clamp(self, point: Point) -> Point:
         return (min(max(point[0], 0.05), self.width - 0.05), min(max(point[1], 0.05), self.height - 0.05))
 
-    def _issue(self, unit: Unit, order: Order, *, queue: bool = False) -> None:
+    def _issue(self, unit: Unit, order: Order, *, queue: bool = False, manual: bool = True) -> None:
+        """Put *order* on *unit*.  *manual* is the default because an order comes from a player or a brain; the
+        automatic gatherer policy passes False, and the worker it claims is no longer anybody's to hold."""
+        unit.commanded = self.time if manual else None
         while queue and unit.orders and isinstance(unit.orders[-1], ENDLESS_ORDERS):
             unit.orders.pop()  # it would wait for ever; a miner inside finishes its trip, then obeys
             if not unit.orders:
@@ -1298,6 +1307,7 @@ class World:
             unit.path = []
             unit.path_goal = None
             unit.state = "idle"
+            unit.commanded = None  # handed back on purpose: the policy places it again at once
 
     @recorded
     def harvest(self, unit_ids: list[int], target: int | Pos, *, queue: bool = False) -> None:
@@ -1700,6 +1710,7 @@ class World:
         builder.constructing = None
         if builder.orders and isinstance(builder.orders[0], Build):
             builder.orders.popleft()
+            self._stood_down(builder)
         spot = self.free_tile_near(b.rect)
         if spot is not None:
             builder.x, builder.y = tile_center(spot)
@@ -1803,9 +1814,20 @@ class World:
         elif isinstance(order, Salvage):
             self._do_salvage(u, order, dt)
 
+    def _stood_down(self, u: Unit) -> None:
+        """*u* has run out of the orders it was given and is standing about.
+
+        The automatic gatherer policy's hands-off window runs from here rather than from the order that sent it:
+        a walk across the map and the tower at the end of it would spend the whole window before the peasant ever
+        stood still (:func:`warband.sim.worker_ai.manual_hold`).
+        """
+        if not u.orders and u.commanded is not None:
+            u.commanded = self.time
+
     def _finish_order(self, u: Unit) -> None:
         if u.orders:
             u.orders.popleft()
+        self._stood_down(u)
         u.path = []
         u.path_goal = None
         u.exact = None
@@ -3796,6 +3818,7 @@ def _unit_to_dict(u: Unit) -> dict[str, Any]:
         "carrying": u.carrying.value if u.carrying else None, "carry": u.carry, "timer": u.timer,
         "inside": u.inside, "constructing": u.constructing, "home": list(u.home) if u.home else None, "state": u.state,
         "ease": list(u.ease) if u.ease else None, "charge": u.charge, "auto_work": u.auto_work,
+        "commanded": u.commanded,
     }
 
 
@@ -3803,7 +3826,8 @@ def _unit_from_dict(d: dict[str, Any], race: Race) -> Unit:
     u = Unit(d["id"], UnitType(d["type"]), d["player"], d["x"], d["y"], d["hp"], race=race, facing=d["facing"], cooldown=d["cooldown"],
              windup=d.get("windup", 0.0), vx=d.get("vx", 0.0), vy=d.get("vy", 0.0), carrying=Resource(d["carrying"]) if d["carrying"] else None, carry=d["carry"], timer=d["timer"],
              inside=d["inside"], constructing=d["constructing"], home=tuple(d["home"]) if d["home"] else None, state=d["state"],
-             ease=tuple(d["ease"]) if d.get("ease") else None, charge=d["charge"], auto_work=d.get("auto_work", True))
+             ease=tuple(d["ease"]) if d.get("ease") else None, charge=d["charge"], auto_work=d.get("auto_work", True),
+             commanded=d.get("commanded"))  # a save from before the hands-off window: every worker is the policy's
     u.orders = deque(_order_from_dict(o) for o in d["orders"])
     for state in d.get("worker_orders", []):
         order = u.orders[state["index"]]

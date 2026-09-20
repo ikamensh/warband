@@ -376,6 +376,45 @@ def _salvagers(workers: list[Unit]) -> int:
 SALVAGE_REACH: Final = 24.0  # tiles of safe walking from a depot; a ruin further off is not the policy's to fetch
 SALVAGE_CREW: Final = 6  # workers a player needs before the policy can spare one of them for a ruin
 
+# -- Hands off a worker its player is using (WB-059) ----------------------------
+#
+# The policy used to take any idle peasant, wherever it stood.  Send one across the map to raise a forward tower
+# and the second it finished the policy walked it home to a mine: the player's intention, overruled without a
+# word.  So a worker its player has had in hand is left alone for a while, and how long is how far from home it
+# stands -- the same safe walk to a depot the gatherers route by, not a straight line to a point.
+HOME_REACH: Final = 8.0  # tiles of safe walking from a depot: inside the base, where an idle peasant is plainly spare
+AUTO_REACH: Final = 24.0  # and out here it is plainly not; the hold ramps between the two and holds at the far one
+MANUAL_HOLD: Final = 45.0  # seconds the policy leaves a worker commanded AUTO_REACH or further from home alone
+
+
+def manual_hold(distance: float) -> float:
+    """Seconds the policy keeps its hands off a worker its player last had in hand, *distance* tiles of safe walking
+    from the nearest depot (infinity when no safe walk leads to one, which is as far from home as it gets).
+
+    Nothing at all inside :data:`HOME_REACH`: a peasant that put up a farm beside the hall and went back to the mine
+    is what everybody wants and what the whole policy is for, and the complaint was never about it.  From there the
+    hold ramps to :data:`MANUAL_HOLD` at :data:`AUTO_REACH`, which is a base's reach and where a peasant is
+    obviously away on business of its own.  Forty-five seconds is long enough to place a second tower without the
+    policy interfering and short enough that a peasant its player forgot is not lost for the match; a peasant meant
+    to stand for good is what Stop and Hold are for (``Unit.auto_work``), and those hold it unconditionally.
+    """
+    if distance >= AUTO_REACH:
+        return MANUAL_HOLD
+    if distance <= HOME_REACH:
+        return 0.0
+    return MANUAL_HOLD * (distance - HOME_REACH) / (AUTO_REACH - HOME_REACH)
+
+
+def _held(view: _View, worker: Unit, now: float) -> bool:
+    """Whether *worker* is still its player's to command rather than the policy's to place."""
+    commanded = worker.commanded
+    if commanded is None:
+        return False
+    since = now - commanded
+    if since >= MANUAL_HOLD:
+        return False  # past the longest hold there is: no depot field need be walked to know it
+    return since < manual_hold(view.depot_distance_at(worker.tile, Resource.GOLD))
+
 
 def assign_idle_workers(world: World, player: int) -> None:
     """Fill empty queues once per second; never interrupt a player's active job.
@@ -402,19 +441,21 @@ def assign_idle_workers(world: World, player: int) -> None:
     for worker in idle:
         if worker.carrying is not None:
             if view.depot_distance_at(worker.tile, worker.carrying) < math.inf:
-                worker.orders.append(Deposit(auto=True))
+                worker.orders.append(Deposit(auto=True))  # a load in hand goes home whoever sent it for it
             continue
+        if _held(view, worker, world.time):
+            continue  # its player has it: not the policy's to send anywhere
         if spare:
             ruin = view.ruin(worker)
             if ruin is not None:
-                world._issue(worker, Salvage(ruin, auto=True))
+                world._issue(worker, Salvage(ruin, auto=True), manual=False)
                 spare = False
                 continue
         choices = sorted(Resource, key=lambda resource: (stock[resource] + crews[resource] * trip[resource] * 3) / reserves[resource])
         for resource in choices:
             target = view.choose(worker, resource, loads)
             if target is not None:
-                world._issue(worker, Harvest(target, auto=True, placed=True))
+                world._issue(worker, Harvest(target, auto=True, placed=True), manual=False)
                 crews[resource] += 1
                 loads[target] += 1
                 break
@@ -453,7 +494,7 @@ def rebalance_workers(world: World, player: int) -> None:
         target = view.choose(worker, poor, loads)
         if target is None:
             return  # no safe walk to the other resource from here: the raiders are still about
-        world._issue(worker, Harvest(target, auto=True, placed=True))
+        world._issue(worker, Harvest(target, auto=True, placed=True), manual=False)
         return
 
 
