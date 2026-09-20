@@ -20,13 +20,14 @@ def scenario():
     hall = world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
     their_hall = world.place_building(1, BuildingType.TOWN_HALL, (34, 25))
     mine = world.place_building(None, BuildingType.GOLD_MINE, (10, 10))
+    smith = world.place_building(0, BuildingType.BLACKSMITH, (14, 1))
     site = world.place_building(0, BuildingType.FARM, (6, 6), done=False)
     peasant = world.spawn_unit(0, UnitType.PEASANT, (5.5, 5.5))
     footman = world.spawn_unit(0, UnitType.FOOTMAN, (5.5, 4.5))
     raider = world.spawn_unit(1, UnitType.FOOTMAN, (30.5, 24.5))
     world.reveal_all(0)
     world.reveal_all(1)
-    return world, {"hall": hall.id, "their_hall": their_hall.id, "mine": mine.id, "site": site.id,
+    return world, {"hall": hall.id, "their_hall": their_hall.id, "mine": mine.id, "site": site.id, "smith": smith.id,
                    "peasant": peasant.id, "footman": footman.id, "raider": raider.id}
 
 
@@ -47,6 +48,9 @@ REFUSED = {
     "a queue slot that is not there": lambda w, e: w.cancel_train(e["hall"], 3),
     "a queue slot before the first": lambda w, e: w.cancel_train(e["hall"], -3),
     "research that is not running": lambda w, e: w.cancel_research(e["hall"]),
+    # A tier behind more than one thing: the refusal names every one of them, and pays for none.
+    "a master weapon without its tier or the keep": lambda w, e: w.research(e["smith"], Upgrade.BLADES_3),
+    "the keep away from the hall": lambda w, e: w.research(e["smith"], Upgrade.KEEP),
     "a finished hall cancelled": lambda w, e: w.cancel_building(e["hall"]),
     "a plan off the map": lambda w, e: w.plan_building(0, BuildingType.FARM, (39, 29)),
     "an art of another race": lambda w, e: w.order_upgrade(0, Upgrade.BLOODLUST),

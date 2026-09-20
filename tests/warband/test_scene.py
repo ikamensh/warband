@@ -250,7 +250,7 @@ def test_the_town_hall_trains_a_peasant_with_p_and_the_rally_point_by_right_clic
     world = scene.world
     hall = hall_of(scene)
     click(game, scene, hall.center)
-    assert scene.selection == [hall.id] and [c.label for c in scene.card] == ["Peasant", "Cancel"]
+    assert scene.selection == [hall.id] and [c.label for c in scene.card] == ["Peasant", "Keep", "Cancel"]
     gold = scene.player.gold
     press(game, "p")
     assert hall.queue == [UnitType.PEASANT] and scene.player.gold == gold - 400

@@ -86,7 +86,6 @@ class PlayerTally:
 
 _UNIT_NAMES = frozenset(t.value for t in UnitType)
 _BUILDING_NAMES = frozenset(t.value for t in BuildingType)
-_UPGRADE_BY_NAME = {info.name: upgrade for upgrade, info in UPGRADES.items()}
 
 
 def _price(race: Race, key: str) -> int:
@@ -151,7 +150,7 @@ class Telemetry:
         tally.first.setdefault(event.target_type, world.time)
 
     def _researched(self, world: World, event: Event) -> None:
-        upgrade = _UPGRADE_BY_NAME[event.text]
+        upgrade = Upgrade(event.target_type)  # never the event's text: each race names its own Keep
         tally = self.tallies[event.player]
         tally.researched[upgrade.value] += 1
         tally.spent[upgrade.value] += UPGRADES[upgrade].cost.gold + UPGRADES[upgrade].cost.lumber

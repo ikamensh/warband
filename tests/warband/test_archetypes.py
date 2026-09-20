@@ -45,6 +45,22 @@ def test_early_tech_goes_up_before_the_bank_overflows():
 
 
 @pytest.mark.slow
+def test_a_brain_raises_the_keep_to_reach_the_tier_behind_it():
+    """A research order that names a second tier but not the Keep in front of it still reaches that tier: every
+    posture in bred.py is such an order, bred before the gate existed and never edited by hand, so a brain that
+    stopped at the gate would silently lose the whole upper half of the tree.
+
+    Eight minutes of play, long enough to bank the gate and the tier under it: the slow tier."""
+    from warband.sim.rules import BuildingType, Upgrade
+
+    profile = replace(PRO, name="test-keep", early_tech=(BuildingType.BLACKSMITH,),
+                      research_order=(Upgrade.BLADES_2,))  # the tier alone: the Keep and Blades I are the rules' business
+    tally = _play("test-keep", profile, minutes=8)
+    # Neither is in the order; each is bought only because Tempered Blades cannot be had without it.
+    assert tally.researched["keep"] == 1 and tally.researched["blades_1"] == 1
+
+
+@pytest.mark.slow
 def test_research_can_be_switched_off_to_price_the_upgrades():
     """With a smith standing, the brain researches; with research off it never does, smith or not.
 

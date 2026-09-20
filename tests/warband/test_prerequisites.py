@@ -175,6 +175,54 @@ def test_the_codex_tech_tree_draws_what_needs_what_lit_by_what_the_player_has(ga
     game.backend.inject_mouse_move(x + w / 2, y + h / 2)
     game.tick(1 / 60)
     assert any(text["text"].startswith("Siege Bower") for text in game.backend.texts)
+    # The Keep stands beside the hall that raises it, and what waits for it says so by the race's name for it.
+    assert {Upgrade.KEEP, Upgrade.BLADES_3, Upgrade.ARROWS_3} <= set(shown)
+    x, y, w, h = shown[Upgrade.BLADES_2].bounds
+    game.backend.inject_mouse_move(x + w / 2, y + h / 2)
+    game.tick(1 / 60)
+    assert "after Sharpened Blades and Moonspire" in " ".join(text["text"] for text in game.backend.texts)  # the tooltip wraps
+
+
+def test_the_keep_greys_out_the_second_tier_until_it_is_on_its_way(game) -> None:
+    """A tier can lack two things at once.  With Sharpened Blades in, Blades II still waits for the Keep: the card
+    names the Keep, not the tier the player already has, and refuses the key.  Planned, the Keep turns it to "after"
+    and the order waits for it."""
+    scene = match(game)
+    hall = scene.world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    scene.world.place_building(scene.human, BuildingType.BLACKSMITH, (hall.x + 5, hall.y + 5))
+    scene.player.upgrades.add(Upgrade.BLADES_1)
+    press(game, "u")
+    game.tick(1 / 60)
+    blades = button_of(scene, Upgrade.BLADES_2)
+    assert not blades.enabled and caption_under(game, blades) == ["Blades II", "needs Keep"]
+    press(game, "b")
+    assert scene.status == "Requires Keep" and not scene.world.player_plans(scene.human)
+    press(game, "k")  # the Keep, at the hall that raises it
+    game.tick(1 / 60)
+    assert [plan.type for plan in scene.world.player_plans(scene.human)] == [Upgrade.KEEP]
+    blades = button_of(scene, Upgrade.BLADES_2)
+    assert blades.enabled and caption_under(game, blades) == ["Blades II", "after Keep"]
+    press(game, "b")
+    assert [plan.type for plan in scene.world.player_plans(scene.human)] == [Upgrade.KEEP, Upgrade.BLADES_2]
+
+
+def test_the_hall_card_offers_the_keep_and_the_smith_the_master_weapon(game) -> None:
+    """What the player can reach through the card, not only what the rules allow: the Keep is a hall command, and
+    the smith's blades slot shows the third tier once the second is in, refused by name until the Keep stands."""
+    scene = match(game)
+    hall = scene.world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    scene.select([hall.id])
+    game.tick(1 / 60)
+    assert "Keep" in [command.label for command in scene.card]
+    smith = scene.world.place_building(scene.human, BuildingType.BLACKSMITH, (hall.x + 5, hall.y + 5))
+    scene.player.upgrades.update({Upgrade.BLADES_1, Upgrade.BLADES_2})
+    scene.player.gold = scene.player.lumber = 9000
+    scene.select([smith.id])
+    game.tick(1 / 60)
+    blades = next(command for command in scene.card if command.target is Upgrade.BLADES_3)
+    assert blades.label == "Blades III" and blades.blocked() == "Requires Keep"
+    scene.player.upgrades.add(Upgrade.KEEP)
+    assert blades.blocked() is None
 
 
 def test_repeating_a_placement_is_refused_once_its_prerequisite_is_no_longer_coming(game) -> None:

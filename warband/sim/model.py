@@ -37,11 +37,12 @@ from warband.sim.rules import (
     Layout,
     REPAIR_CHUNK, REPAIR_RATE, repair_cost,
     ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLASTING_POWDER_BONUS, BLESSING_BONUS, BLOODLUST_BONUS, BUILDINGS, CHOP_TIME, DEEP_MINING_TRIP,
-    FRENZY_BONUS, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MINE_GOLD, MINE_SLOTS, MINE_TIME, PLAYERS,
+    FRENZY_BONUS, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MASTER_WEAPON_BONUS, MINE_GOLD,
+    MINE_SLOTS, MINE_TIME, PLAYERS,
     PLUNDER_SHARE, REGROWTH_SECONDS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION, STARTING_GOLD, STARTING_LUMBER,
     FORMATION_ARMOR, FORMATION_HOLD, FORMATION_LOOKAHEAD, FORMATION_MARCH, FORMATION_SLACK, FORMATION_SPACING, FORMATION_WIDTH, ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, SIEGE_BUILDING_WORTH, SIEGE_STEP, SIEGE_WORTH, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
     MAX_QUEUED_ORDERS, UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
-    Terrain, UnitInfo, UnitType, Upgrade, ArmorClass, AttackType, an, damage_factor,
+    Terrain, UnitInfo, UnitType, Upgrade, UpgradeInfo, ArmorClass, AttackType, an, damage_factor, listing,
 )
 
 #: The fastest any unit of any race moves, with every upgrade: how far off a friend can be and still walk under a stone
@@ -842,6 +843,10 @@ class World:
     def building_info(self, player: int | None, building_type: BuildingType) -> BuildingInfo:
         return RACES[self.race_of(player)].buildings[building_type]
 
+    def upgrade_info(self, player: int | None, upgrade: Upgrade) -> UpgradeInfo:
+        """What *upgrade* is for *player*'s race: every race names its own Keep."""
+        return RACES[self.race_of(player)].upgrades[upgrade]
+
     def damage_of(self, entity: Entity) -> int:
         """Listed damage plus every upgrade its owner has researched, and an orc's frenzy."""
         info = entity.info
@@ -850,8 +855,10 @@ class World:
             return 0
         if isinstance(entity, Unit) and entity.info.melee and not entity.is_worker:
             damage += BLADES_BONUS * (self._has(entity.player, Upgrade.BLADES_1) + self._has(entity.player, Upgrade.BLADES_2))
+            damage += MASTER_WEAPON_BONUS * self._has(entity.player, Upgrade.BLADES_3)
         if (isinstance(entity, Building) or entity.info.ranged) and entity.type is not UnitType.CATAPULT:
             damage += ARROWS_BONUS * (self._has(entity.player, Upgrade.ARROWS_1) + self._has(entity.player, Upgrade.ARROWS_2))
+            damage += MASTER_WEAPON_BONUS * self._has(entity.player, Upgrade.ARROWS_3)
         if isinstance(entity, Unit) and entity.type is UnitType.CATAPULT and self._has(entity.player, Upgrade.SIEGE):
             damage = int(round(damage * SIEGE_DAMAGE_BONUS))
         if isinstance(entity, Unit) and self.frenzied(entity):
@@ -971,7 +978,7 @@ class World:
         if len(building.queue) >= 5:
             return "Queue is full"
         if building.research is not None:
-            return f"Researching {UPGRADES[building.research].name}"
+            return f"Researching {self.upgrade_info(building.player, building.research).name}"
         reason = self.can_afford(building.player, info.cost)
         if reason is not None:
             return reason
@@ -981,9 +988,9 @@ class World:
         return None
 
     def can_research(self, building: Building, upgrade: Upgrade) -> str | None:
-        info = UPGRADES[upgrade]
         if building.player is None or not building.done:
             return "Still under construction"
+        info = self.upgrade_info(building.player, upgrade)
         if upgrade not in building.info.researches:
             return f"{info.name} is not researched here"
         player = self.players[building.player]
@@ -993,10 +1000,11 @@ class World:
             return "Already researched"
         if any(b.research is upgrade and b.player == building.player and not b.abandoned for b in self.buildings.values()):
             return "Already being researched"
-        if info.requires is not None and info.requires not in player.upgrades:
-            return f"Requires {UPGRADES[info.requires].name}"
+        missing = [self.upgrade_info(building.player, needed).name for needed in info.requires if needed not in player.upgrades]
+        if missing:
+            return f"Requires {listing(missing)}"
         if building.research is not None:
-            return f"Researching {UPGRADES[building.research].name}"
+            return f"Researching {self.upgrade_info(building.player, building.research).name}"
         if building.queue:
             return "Training in progress"
         return self.can_afford(building.player, info.cost)
@@ -1414,7 +1422,7 @@ class World:
                 assert isinstance(plan.type, Upgrade)
                 upgrade = UPGRADES[plan.type]
                 if (not any(plan.type in BUILDINGS[kind].researches for kind in standing)
-                        or (upgrade.requires is not None and upgrade.requires not in researched)):
+                        or any(needed not in researched for needed in upgrade.requires)):
                     continue
                 cost = upgrade.cost
             claims.append(cost)
@@ -1440,7 +1448,7 @@ class World:
         for plan in self.settlement.player_plans(building.player):
             if plan.kind == "upgrade" and isinstance(plan.type, Upgrade) and plan.type in building.info.researches \
                     and self.can_research(building, plan.type) in (None, "Training in progress"):
-                return f"Research first: {UPGRADES[plan.type].name}"
+                return f"Research first: {self.upgrade_info(building.player, plan.type).name}"
         cost, held = self.unit_info(building.player, unit_type).cost, self.committed(building.player)
         player = self.players[building.player]
         if player.gold - held.gold < cost.gold or player.lumber - held.lumber < cost.lumber:
@@ -1627,7 +1635,10 @@ class World:
             if b.research_progress >= UPGRADES[b.research].time:
                 upgrade, b.research, b.research_progress = b.research, None, 0.0
                 self.players[b.player].upgrades.add(upgrade)
-                self.events.append(Event("researched", b.center, player=b.player, entity=b.id, text=UPGRADES[upgrade].name))
+                # The text is the name the player's race gives it; target_type is the upgrade itself, for whoever
+                # is counting rather than reading (warband.league.telemetry).
+                self.events.append(Event("researched", b.center, player=b.player, entity=b.id,
+                                         text=self.upgrade_info(b.player, upgrade).name, target_type=upgrade.value))
         # Endless training looks when a recruit walks out, and otherwise once a second after the plans have had theirs.
         if b.auto and not b.queue and b.research is None and (delivered or self.tick % AUTO_EVERY == 0):
             self._auto_train(b)

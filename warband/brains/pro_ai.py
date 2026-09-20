@@ -39,7 +39,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Final
 
-from warband.brains.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_search
+from warband.brains.ai import (ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_search,
+                              with_prerequisites)
 from warband.sim.model import Attack, Build, Building, Harvest, Move, Point, Pos, Repair, Resource, Unit, World, dist, rect_gap, tile_center
 from warband.sim.races import RACES
 from warband.sim.rules import BUILDINGS, MINE_SLOTS, UPGRADES, BuildingType, Cost, Layout, Race, UnitType, Upgrade
@@ -1022,14 +1023,15 @@ class ProBrain:
             return
         player = world.players[self.player]
         buildings = world.player_buildings(self.player, done=True)  # nothing changes until the one order below
-        for upgrade in self._research_order():
-            if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):
+        for wanted in self._research_order():
+            if wanted in player.upgrades or not RACES[player.race].upgrade_allowed(wanted):
                 continue
-            cost = UPGRADES[upgrade].cost
-            for building in buildings:
-                if upgrade in building.info.researches and world.can_research(building, upgrade) is None and self._payable(world, cost):
-                    world.research(building.id, upgrade)
-                    return
+            for upgrade in with_prerequisites(player.upgrades, wanted):
+                cost = UPGRADES[upgrade].cost
+                for building in buildings:
+                    if upgrade in building.info.researches and world.can_research(building, upgrade) is None and self._payable(world, cost):
+                        world.research(building.id, upgrade)
+                        return
 
     # -- Military -------------------------------------------------------------------
 

@@ -44,8 +44,9 @@ The letter of the name, as Warcraft II had it. A unit card is M move, S stop,
 H hold, A attack, P patrol, B build, R repair; the Build catalogue F farm,
 B barracks, H hall, T tower, M mill, K smith, S stables, W workshop, C church;
 recruits F footman, A archer, S scout, K knight, C catapult, H healer (the
-cleric: L is Blessing at the church), P peasant; research B blades, A armour,
-R arrows, E siege and a letter for each race's art; X cancels. The letters are
+cleric: L is Blessing at the church), P peasant; research K the Keep (at the
+hall), B blades, A armour, R arrows, E siege and a letter for each race's art;
+X cancels. The letters are
 the roles', the same for every race (an orc's Grunt is F). B, T, U and G open
 the catalogues and set the assembly point whenever the card leaves the letter
 free, `.` finds the next idle soldier. The easiest to learn: the key is in the
@@ -84,13 +85,14 @@ from the first slot, a chain keeping its slot once all its tiers are done so
 no key moves; Cancel ends the first row, or the second when three items fill
 the first. The catalogues keep their table's order (the Upgrade catalogue gives
 each chain one slot, which shows the next tier to order as a building's own
-card does: blades, armour and arrows on the first row, siege, Marksmanship and
-the race's first art on the second, its second art on the third; with the tiers
-side by side a tenth upgrade had no key on a nine-key grid), with Back on Esc in
+card does: the Keep, blades and armour on the first row, arrows, siege and
+Marksmanship on the second, the race's two arts on the third; with the tiers
+side by side, eight chains fill a nine-key grid and a ninth would not), with Back on Esc in
 the bottom-right corner, or below it when
 the nine slots are taken. A catalogue item that lacks what it needs (a
-building's prerequisite, a recruit's building, an upgrade's building or lower
-tier; `warband/ui/tech.py` reads them from the rules) carries a picture of that
+building's prerequisite, a recruit's building, an upgrade's building and every
+upgrade it waits for — its lower tier, the Keep, or both; `warband/ui/tech.py`
+reads them from the rules, and names the one nobody is making) carries a picture of that
 in its corner and its name under the button, where the price was: behind a red
 padlock while nothing of the kind is on its way, and the item is greyed out and
 refused by click, key and Shift alike; behind a gold hourglass while it is

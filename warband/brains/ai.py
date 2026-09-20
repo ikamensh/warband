@@ -21,7 +21,7 @@ from typing import Any, Final
 from warband.sim.model import (MINE_CLEARANCE, Attack, AttackMove, Build, Building, Deposit, Harvest, Move, Point, Pos, Repair, Unit,
                            World, dist, rect_gap)
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, BuildingType, Difficulty, Race, Resource, Terrain, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, UPGRADES, BuildingType, Difficulty, Race, Resource, Terrain, UnitType, Upgrade
 from warband.sim.worker_knowledge import KnownMine
 
 try:
@@ -41,10 +41,25 @@ BUILD_MAX_DISTANCE: Final = 11
 #: a building whose prerequisite has not stood up yet as this one would be sited (:func:`auto_site`).
 UNLOCKED_OF_SIZE: Final[dict[int, BuildingType]] = {info.size: kind for kind, info in BUILDINGS.items()
                                                    if info.requires is None and kind is not BuildingType.GOLD_MINE}
-#: Shared upgrades first, then whatever arts the brain's race has (see :mod:`warband.sim.races`).
+#: Shared upgrades first, then whatever arts the brain's race has (see :mod:`warband.sim.races`).  The Keep stands
+#: where the first tier is bought out and the second is worth its gate; the master weapons come last of all.
 RESEARCH_ORDER: Final = (Upgrade.BLADES_1, Upgrade.ARMOR_1, Upgrade.ARROWS_1, Upgrade.HORSES, Upgrade.PLUNDER, Upgrade.DEEP_MINING, Upgrade.LONGBOWS,
-                  Upgrade.BLADES_2, Upgrade.ARMOR_2, Upgrade.ARROWS_2, Upgrade.SIEGE, Upgrade.BLESSING, Upgrade.BLOODLUST, Upgrade.REGROWTH,
-                  Upgrade.BLASTING_POWDER)
+                  Upgrade.KEEP, Upgrade.BLADES_2, Upgrade.ARMOR_2, Upgrade.ARROWS_2, Upgrade.SIEGE, Upgrade.BLESSING, Upgrade.BLOODLUST,
+                  Upgrade.REGROWTH, Upgrade.BLASTING_POWDER, Upgrade.BLADES_3, Upgrade.ARROWS_3)
+
+
+def with_prerequisites(researched: set[Upgrade], upgrade: Upgrade) -> list[Upgrade]:
+    """*upgrade* behind every upgrade it waits for that the player has not got, lowest first.  A research order
+    names the tier a brain wants, not the gates on the way to it: the rules moved the Keep in front of the second
+    tier, and ``bred.py`` is bred once and never edited, so its orders would silently stop at the gate."""
+    wanted: list[Upgrade] = []
+    for needed in UPGRADES[upgrade].requires:
+        if needed not in researched:
+            for lower in with_prerequisites(researched, needed):
+                if lower not in wanted:
+                    wanted.append(lower)
+    wanted.append(upgrade)
+    return wanted
 
 #: Target shares of the army by skeleton type: FOOTMAN line, ARCHER ranged,
 #: SCOUT raider, KNIGHT shock, CATAPULT siege, CLERIC healer.  Shares of types
@@ -623,14 +638,15 @@ class Brain:
         if player.gold < self.profile.reserve or self.saving:
             return
         buildings = world.player_buildings(self.player, done=True)  # nothing changes until the one order below
-        for upgrade in RESEARCH_ORDER:
-            if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):
+        for wanted in RESEARCH_ORDER:
+            if wanted in player.upgrades or not RACES[player.race].upgrade_allowed(wanted):
                 continue
-            for building in buildings:
-                if upgrade in building.info.researches and world.can_research(building, upgrade) is None:
-                    world.research(building.id, upgrade)
-                    self.note(world, f"research {upgrade.value}")
-                    return
+            for upgrade in with_prerequisites(player.upgrades, wanted):
+                for building in buildings:
+                    if upgrade in building.info.researches and world.can_research(building, upgrade) is None:
+                        world.research(building.id, upgrade)
+                        self.note(world, f"research {upgrade.value}")
+                        return
 
     def _muster_point(self, world: World, hall: Building) -> Point:
         """Between the hall and the map centre: the side the enemy comes from."""

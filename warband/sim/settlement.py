@@ -139,7 +139,7 @@ class Settlement:
         from warband.sim.races import RACES
 
         if not RACES[self.world.players[player].race].upgrade_allowed(upgrade):
-            raise RuleError(f"{UPGRADES[upgrade].name} is {an(RACES[UPGRADES[upgrade].race].adjective)} art")
+            raise RuleError(f"{self.world.upgrade_info(player, upgrade).name} is {an(RACES[UPGRADES[upgrade].race].adjective)} art")
         if upgrade in self.world.players[player].upgrades:
             raise RuleError("Already researched")
         if any(b.research is upgrade for b in self.world.player_buildings(player)):

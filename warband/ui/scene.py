@@ -27,8 +27,8 @@ from warband.sim.model import (Attack, AttackMove, Build, Building, Deposit, Ent
                                 RuleError, Unit, World)
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
-from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, SIM_DT, UNITS, UPGRADES, ArmorClass, AttackType, BuildingType, Cost,
-                               Difficulty, MapTheme, Race, Resource, Terrain, UnitType, Upgrade, an)
+from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, SIM_DT, UNITS, ArmorClass, AttackType, BuildingType, Cost,
+                               Difficulty, MapTheme, Race, Resource, Terrain, UnitType, Upgrade, an, listing)
 from warband.sim.rules import Layout as MapLayout
 from warband.records.profile import MatchResult, Profile, RatingChange, Standing, standing
 from warband.records.replay import Replay, ReplayStore
@@ -83,16 +83,11 @@ UNIT_SLOTS = {"move": 0, "stop": 1, "hold": 2, "attack": 3, "patrol": 4, "build"
 DOING = {Move: "Moving", AttackMove: "Attack-moving", Attack: "Attacking", Harvest: "Harvesting", Deposit: "Delivering",
          Build: "Going to build", Hold: "Holding position", Heal: "Healing", Patrol: "Patrolling", Repair: "Repairing"}
 #: The Upgrade catalogue's slots, one per chain of tiers (it shows the next tier to order, as a building's own card
-#: does, and nothing at all once every tier of the chain is researched): the soldiers' chains on the top row, the
-#: engines' and the shooters' drill below; None stands for the race's two arts.  Nine upgrades with their tiers side
-#: by side filled the card; the tenth did not fit a nine-key grid.
-UPGRADE_SLOTS = ((Upgrade.BLADES_1, Upgrade.BLADES_2), (Upgrade.ARMOR_1, Upgrade.ARMOR_2), (Upgrade.ARROWS_1, Upgrade.ARROWS_2),
-                 (Upgrade.SIEGE,), (Upgrade.MARKSMANSHIP,), None, None)
-#: Names that fit a card button (each race's are in :mod:`warband.sim.races`); the tooltip and the codex use the full ones.
-UPGRADE_NAMES = {Upgrade.BLADES_1: "Blades I", Upgrade.BLADES_2: "Blades II", Upgrade.ARMOR_1: "Armour I", Upgrade.ARMOR_2: "Armour II",
-                 Upgrade.ARROWS_1: "Arrows I", Upgrade.ARROWS_2: "Arrows II", Upgrade.HORSES: "Horses", Upgrade.SIEGE: "Siege", Upgrade.BLESSING: "Blessing",
-                 Upgrade.BLOODLUST: "Bloodlust", Upgrade.PLUNDER: "Plunder", Upgrade.LONGBOWS: "Longbows", Upgrade.REGROWTH: "Regrowth",
-                 Upgrade.DEEP_MINING: "Mining", Upgrade.BLASTING_POWDER: "Powder", Upgrade.MARKSMANSHIP: "Marksmen"}
+#: does, and nothing at all once every tier of the chain is researched): the Keep that gates the rest, blades and
+#: armour on the top row, arrows, the engines and the shooters' drill on the second; None stands for the race's two
+#: arts, on the third.  Eight chains fill a nine-key grid; a ninth would not.
+UPGRADE_SLOTS = ((Upgrade.KEEP,), (Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.BLADES_3), (Upgrade.ARMOR_1, Upgrade.ARMOR_2),
+                 (Upgrade.ARROWS_1, Upgrade.ARROWS_2, Upgrade.ARROWS_3), (Upgrade.SIEGE,), (Upgrade.MARKSMANSHIP,), None, None)
 CARD_WIDTH = 116
 CARD_GAP = 6
 CARD_PANEL_WIDTH = CARD_COLS * CARD_WIDTH + (CARD_COLS - 1) * CARD_GAP + 2 * PANEL_STYLE.padding  # the widest command card
@@ -136,11 +131,6 @@ def build_time(seconds: float) -> str:
 def feeds(supply: int) -> str:
     """" · feeds 4" for a building that raises the supply cap, nothing for one that does not."""
     return f" · feeds {supply}" if supply else ""
-
-
-def listing(names: list[str]) -> str:
-    """"A", "A and B", "A, B and C"."""
-    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
 
 
 def _clock(seconds: float) -> str:
@@ -1274,7 +1264,7 @@ class GameScene(Scene):
     def order_production(self, kind: str, item: UnitType | Upgrade) -> None:
         if self._refuse_lacking(item) or not self.attempt("order_unit" if kind == "train" else "order_upgrade", self.human, item):
             return
-        info = self.race.units[item] if kind == "train" else UPGRADES[item]
+        info = self.race.units[item] if kind == "train" else self.race.upgrades[item]
         self.say(f"{info.name} ordered · pay when work starts · manage in Plans")
         self.sfx("button")
         if kind == "train":
@@ -1315,12 +1305,12 @@ class GameScene(Scene):
                 else:
                     entries.append(QueueEntry(unit_type, f"{info.name} · queued at the {building.info.name}, {index} ahead", "queued", 0.0, look, cancel))
             if building.research is not None:
-                info = UPGRADES[building.research]
+                info = race.upgrades[building.research]
                 progress = building.research_progress / info.time
                 entries.append(QueueEntry(building.research, f"{info.name} · researching {int(progress * 100)}% at the {building.info.name}", "working",
                                           progress, look, lambda b=building: self.attempt("cancel_research", b.id)))
         for plan in plans:
-            info = {"building": race.buildings, "unit": race.units, "upgrade": UPGRADES}[plan.kind][plan.type]
+            info = {"building": race.buildings, "unit": race.units, "upgrade": race.upgrades}[plan.kind][plan.type]
             cancel = lambda pid=plan.id: self.attempt("cancel_plan", human, pid)
             site = next((b for b in world.player_buildings(human, plan.type) if b.pos == plan.pos), None) if plan.kind == "building" else None
             if site is not None:
@@ -1347,11 +1337,11 @@ class GameScene(Scene):
         return f"Requires {name}"
 
     def _full_name(self, item: Prerequisite) -> str:
-        return self.building_name(item) if isinstance(item, BuildingType) else UPGRADES[item].name
+        return self.building_name(item) if isinstance(item, BuildingType) else self.race.upgrades[item].name
 
     def card_name(self, item: Prerequisite) -> str:
         """A building's or an upgrade's name as short as a card button's caption needs it."""
-        return self.race.cards[item] if isinstance(item, BuildingType) else UPGRADE_NAMES[item]
+        return self.race.cards[item] if isinstance(item, BuildingType) else self.race.upgrades[item].card
 
     def _refuse_lacking(self, target: ProductionTarget) -> bool:
         """Warn and say so when *target* lacks a prerequisite that nobody is making: Shift, a click while placing and the
@@ -1420,8 +1410,8 @@ class GameScene(Scene):
                 upgrade = next((u for u in chain if self._upgrade_planned(u) is None), chain[-1])
                 if upgrade in self.player.upgrades:
                     continue
-                info = UPGRADES[upgrade]
-                commands.append(Command(UPGRADE_NAMES[upgrade], info.hotkey, lambda up=upgrade: self.order_production("upgrade", up), slot,
+                info = race.upgrades[upgrade]
+                commands.append(Command(info.card, info.hotkey, lambda up=upgrade: self.order_production("upgrade", up), slot,
                                         tooltip=f"{info.name} — {info.cost}{build_time(info.time)} · {info.summary}",
                                         cost=info.cost, blocked=lambda up=upgrade: self._upgrade_planned(up),
                                         target=upgrade, catalogue=True))
@@ -1480,8 +1470,8 @@ class GameScene(Scene):
                                         cost=info.cost, blocked=lambda ut=item, b=building: world.can_train(b, ut), target=item,
                                         alt=lambda ut=item, b=building: self.toggle_endless(b, ut), endless=lambda ut=item, b=building: ut in b.auto))
             elif item is not None:  # None: every tier of the chain is researched, and its slot stays empty
-                upgrade = UPGRADES[item]
-                commands.append(Command(UPGRADE_NAMES[item], upgrade.hotkey, lambda up=item: self.research(up), slot,
+                upgrade = self.race.upgrades[item]
+                commands.append(Command(upgrade.card, upgrade.hotkey, lambda up=item: self.research(up), slot,
                                         tooltip=f"{upgrade.name} — {upgrade.cost}{build_time(upgrade.time)} · {upgrade.summary}",
                                         cost=upgrade.cost, blocked=lambda up=item, b=building: world.can_research(b, up), target=item))
         if work:
@@ -1495,7 +1485,7 @@ class GameScene(Scene):
         chains: dict[str, list[Upgrade]] = {}
         for upgrade in building.info.researches:
             if self.race.upgrade_allowed(upgrade):
-                chains.setdefault(UPGRADES[upgrade].hotkey, []).append(upgrade)
+                chains.setdefault(self.race.upgrades[upgrade].hotkey, []).append(upgrade)
         return [next((u for u in chain if u not in self.player.upgrades), None) for chain in chains.values()]
 
     def _catalogue_title(self) -> str | None:
@@ -2328,7 +2318,8 @@ class GameScene(Scene):
         else:
             target = building.research
             assert target is not None
-            progress, hint = building.research_progress / UPGRADES[target].time, f"Researching {UPGRADES[target].name}"
+            researching = self.world.upgrade_info(building.player, target)
+            progress, hint = building.research_progress / researching.time, f"Researching {researching.name}"
         self.draw_rect(x, y, 36, 36, (255, 214, 110, 18), border_color=(255, 214, 110, 140), border_width=1, radius=5)
         draw_production_icon(self, target, building.player, building.race, x + 3, y + 3, 30)
         self.draw_text(f"{int(progress * 100)}%", x + 44, y + 15, style="body")
@@ -2540,7 +2531,7 @@ class SettlementPlansScene(_Overlay):
         entries = []
         race = self.game_scene.race
         for plan in world.player_plans(human):
-            catalogue = {"building": race.buildings, "unit": race.units, "upgrade": UPGRADES}[plan.kind]
+            catalogue = {"building": race.buildings, "unit": race.units, "upgrade": race.upgrades}[plan.kind]
             info = catalogue[plan.type]
             building = world.buildings.get(plan.building)
             status = plan.status
@@ -2560,7 +2551,7 @@ class SettlementPlansScene(_Overlay):
                                 f"Training {progress}% · {len(building.queue)} in queue · current one paid", price_pairs(info.cost),
                                 "Cancel last", lambda bid=building.id: self._cancel("cancel_train", bid)))
             if building.research is not None:
-                info = UPGRADES[building.research]
+                info = race.upgrades[building.research]
                 progress = int(100 * building.research_progress / info.time)
                 entries.append((("research", building.id), f"{building.info.name}: {info.name}",
                                 f"Researching {progress}% · paid", price_pairs(info.cost), "Cancel",
@@ -2936,7 +2927,8 @@ class CodexScene(_Overlay):
                           Label(info.tagline, text_style="body", width=700), spacing=10))
             block.add(Row(Label("", width=120), Label(info.passive, text_style="body", width=700, wrap=True), spacing=10))
             for art in info.arts:
-                block.add(Row(Label("", width=120), Label(f"{UPGRADES[art].name} — {UPGRADES[art].summary}", text_style="sub", width=700, wrap=True), spacing=10))
+                block.add(Row(Label("", width=120), Label(f"{info.upgrades[art].name} — {info.upgrades[art].summary}", text_style="sub", width=700,
+                                                          wrap=True), spacing=10))
             table.add(block)
         return table
 
@@ -2966,15 +2958,17 @@ class CodexScene(_Overlay):
                              race.buildings[info.requires].name if info.requires else "—", info.summary])
             return (150, 130, 50, 40, 50, 50, 60, 130, 432), rows
         if self.page == 2:
-            rows = [["Upgrade", "Cost", "Time", "Where", "Requires", "Effect"]]
-            for upgrade, info in UPGRADES.items():
+            # Where an upgrade is researched is the tech tree's own picture (page 5), where it stands beside that
+            # building: a column repeating it cost the room the third tiers and their prerequisites need.
+            rows = [["Upgrade", "Cost", "Time", "Requires", "Effect"]]
+            for upgrade, info in race.upgrades.items():
                 if not race.upgrade_allowed(upgrade):
                     continue
-                where = next(b for b, binfo in BUILDINGS.items() if upgrade in binfo.researches)
-                requires = UPGRADES[info.requires].name if info.requires else f"{race.adjective} art" if info.race is not None else "—"
-                rows.append([info.name + (" ✓" if upgrade in have else ""), price_pairs(info.cost), f"{info.time:g}s", race.buildings[where].name,
+                requires = (listing([race.upgrades[u].name for u in info.requires]) if info.requires
+                            else f"{race.adjective} art" if info.race is not None else "—")
+                rows.append([info.name + (" ✓" if upgrade in have else ""), price_pairs(info.cost), f"{info.time:g}s",
                              requires, info.summary])
-            return (190, 130, 50, 130, 165, 451), rows
+            return (200, 134, 50, 300, 440), rows  # "Broadhead Arrows and Stronghold" is the widest Requires
         raise ValueError(f"no table for page {self.page}")
 
     def show(self, page: int) -> None:

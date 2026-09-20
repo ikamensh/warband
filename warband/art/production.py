@@ -58,15 +58,30 @@ def _research_emblem(upgrade: Upgrade, scale: float) -> Image.Image:
     ellipse((.035, .035, .965, .965), (63, 58, 48, 255), _GOLD, .025)
     ellipse((.085, .085, .915, .915), _INK, (103, 91, 66, 255), .012)
     tier = 0
-    if upgrade in (Upgrade.BLADES_1, Upgrade.BLADES_2):
-        tier = 1 if upgrade is Upgrade.BLADES_1 else 2
+    if upgrade is Upgrade.KEEP:
+        # A crenellated keep under its banner: the hall raised.
+        polygon([(.18, .88), (.18, .40), (.82, .40), (.82, .88)], _SHADE)
+        polygon([(.18, .40), (.50, .40), (.50, .88), (.18, .88)], (118, 148, 170, 255))
+        for x in (.18, .34, .50, .66):  # battlements
+            polygon([(x, .40), (x + .11, .40), (x + .11, .29), (x, .29)], _SHADE)
+        polygon([(.41, .88), (.41, .62), (.50, .54), (.59, .62), (.59, .88)], _INK)
+        polygon([(.44, .88), (.44, .64), (.50, .58), (.56, .64), (.56, .88)], _WOOD)
+        for y in (.52, .64, .76):  # courses of stone
+            line([(.18, y), (.82, y)], (66, 92, 112, 255), .012)
+        line([(.50, .29), (.50, .12)], _LIGHT, .022)  # the staff stops short of the ring
+        polygon([(.52, .14), (.78, .19), (.52, .26)], _GOLD)
+    elif upgrade in (Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.BLADES_3):
+        tier = 1 if upgrade is Upgrade.BLADES_1 else 2 if upgrade is Upgrade.BLADES_2 else 3
         polygon([(.73, .16), (.84, .15), (.84, .27), (.42, .70), (.31, .59)], _STEEL)
         polygon([(.84, .15), (.79, .27), (.37, .66), (.31, .59)], _LIGHT)
         line([(.26, .54), (.47, .75)], _GOLD, .055)
         line([(.34, .65), (.21, .79)], _WOOD, .075)
         ellipse((.15, .76, .25, .86), _GOLD)
-        if tier == 2:
+        if tier >= 2:
             polygon([(.53, .43), (.57, .38), (.62, .42), (.58, .47)], _GOLD)
+        if tier == 3:  # a second stone, and the edge itself runed in gold
+            polygon([(.66, .30), (.70, .25), (.75, .29), (.71, .34)], _GOLD)
+            line([(.78, .21), (.40, .61)], _GOLD, .016)
     elif upgrade in (Upgrade.ARMOR_1, Upgrade.ARMOR_2):
         tier = 1 if upgrade is Upgrade.ARMOR_1 else 2
         polygon([(.23, .20), (.77, .20), (.75, .57), (.65, .75), (.5, .85), (.35, .75), (.25, .57)], _STEEL)
@@ -74,16 +89,19 @@ def _research_emblem(upgrade: Upgrade, scale: float) -> Image.Image:
         line([(.29, .28), (.31, .54), (.40, .69)], _LIGHT, .025)
         if tier == 2:
             polygon([(.44, .32), (.56, .32), (.56, .46), (.67, .46), (.66, .57), (.56, .57), (.56, .71), (.44, .71), (.44, .57), (.34, .57), (.33, .46), (.44, .46)], _GOLD)
-    elif upgrade in (Upgrade.ARROWS_1, Upgrade.ARROWS_2):
-        tier = 1 if upgrade is Upgrade.ARROWS_1 else 2
+    elif upgrade in (Upgrade.ARROWS_1, Upgrade.ARROWS_2, Upgrade.ARROWS_3):
+        tier = 1 if upgrade is Upgrade.ARROWS_1 else 2 if upgrade is Upgrade.ARROWS_2 else 3
         line([(.24, .76), (.70, .30)], _WOOD, .045)
         polygon([(.61, .28), (.84, .16), (.72, .39), (.70, .30)], _STEEL)
         polygon([(.70, .30), (.84, .16), (.72, .39)], _LIGHT)
         polygon([(.17, .67), (.25, .58), (.38, .58), (.28, .69)], _LIGHT)
         polygon([(.29, .84), (.39, .74), (.39, .62), (.28, .73)], _STEEL)
-        if tier == 2:
+        if tier >= 2:
             polygon([(.59, .29), (.84, .16), (.71, .42), (.67, .34), (.58, .33)], _GOLD)
             line([(.28, .66), (.34, .72)], _GOLD, .035)
+        if tier == 3:  # the fletching gilded too
+            polygon([(.17, .67), (.25, .58), (.38, .58), (.28, .69)], _GOLD)
+            polygon([(.29, .84), (.39, .74), (.39, .62), (.28, .73)], _GOLD)
     elif upgrade is Upgrade.HORSES:
         polygon([(.28, .78), (.37, .59), (.32, .47), (.31, .30), (.42, .18), (.42, .31), (.55, .22), (.67, .29), (.73, .46), (.83, .55), (.80, .66), (.66, .67), (.57, .54), (.51, .62), (.55, .81)], _GOLD)
         polygon([(.31, .30), (.27, .45), (.28, .61), (.18, .78), (.28, .78), (.37, .59), (.32, .47)], _WOOD)
@@ -166,11 +184,11 @@ def _research_emblem(upgrade: Upgrade, scale: float) -> Image.Image:
         raise ValueError(f"No production emblem for {upgrade!r}")
 
     if tier:
-        # A Roman numeral badge makes both research tiers legible at 32px.
+        # A Roman numeral badge makes every research tier legible at 32px.
         ellipse((.02, .65, .35, .98), _INK, _GOLD, .018)
-        centers = (.185,) if tier == 1 else (.145, .225)
-        for x in centers:
-            line([(x, .73), (x, .90)], _LIGHT, .043)
+        centers = (.185,), (.145, .225), (.115, .185, .255)
+        for x in centers[tier - 1]:
+            line([(x, .73), (x, .90)], _LIGHT, .038)
     return image.resize((edge, edge), Image.Resampling.LANCZOS)
 
 

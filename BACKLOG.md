@@ -80,9 +80,42 @@ Town Hall ┬ Barracks ┬ Guard Tower           Town Hall ┬ Barracks ┬ Blac
 | Knight needs a Blacksmith as well as the Stables | armour comes from the smith; the strongest unit needs two buildings, the scout stays the early raider; the smith opens more than the workshop | a new unit prerequisite (`UnitInfo.requires`) in `can_train` and the settlement's unit plans; the knights posture's `early_tech` gains a smith |
 | to decide: Archer needs the Lumber Mill as well as the Barracks | Warcraft II's rule: the barracks alone gives footmen, the mill (built early anyway; the stronger brains want one from the start) adds archers and towers | delays every archer opening by the mill's 35 s; elves, whose rangers are their army, feel it most (they lead the race table) |
 
-A bigger step, not proposed now: a hall upgrade (a Keep) gating the stables,
-workshop, church and the second tiers, as Warcraft II did; that is new art for
-every race and a mechanic of its own.
+**Done, in part: the hall upgrade.**  A Keep is researched at the Town Hall
+(1500 gold, 800 lumber, 90 s; each race names it — Stronghold, Moonspire,
+Stonehold), and behind it stand Blades II, Armour II, Arrows II and two new
+third tiers of the weapon lines, Masterwork Blades (3000/600, 120 s, +4 melee)
+and Masterwork Arrows (1800/1000, 120 s, +4 for shooters and towers).  Armour
+keeps two tiers, and the race arts, Siege and Marksmanship stay ungated: the
+gate is the shared stat ladder's upper half, not a toll on everything.  It
+needed no new mechanic — `UpgradeInfo.requires` became a tuple — and no new
+art: the hall keeps its look, and the Keep is an emblem like any other
+research.  A visible Keep (a painted sheet per race) is still a job of its own.
+
+The three building links above (tower behind the mill, knight behind the smith,
+archer behind the mill) are still open.
+
+**What the gate costs the brains, measured.**  Sixteen seats of 20-minute
+Master and Grandmaster matches (seeds 11-14), with the gate and with its
+`requires` patched back out:
+
+| researched by | without the gate | with the Keep |
+|---|---|---|
+| Blades II | 5/16 | 2/16 |
+| Arrows II | 6/16 | 1/16 |
+| Armour II | 4/16 | 1/16 |
+| the Keep | — | 4/16 |
+
+No tier became unreachable (`brains.ai.with_prerequisites` buys the gate on
+the way to what the research order names, which is what keeps `bred.py`'s
+frozen orders working), but fewer are reached: a brain buys an upgrade in
+whatever window its bank happens to leave, never saving for one, and 1500 gold
+and 800 lumber in front of the tier makes those windows rarer.  Both seats pay
+it alike, so the ladder is unmoved (`hard` 912 against `pro` 1088 over 80
+matches, and `ai_report --seeds 3 --decide 0` unchanged: the scripted opening
+takes 2/3 from Easy and 0/3 from every setting above it).  A human who does
+save for it gains on them.  **Open:** a `save_for_research` hold in
+`ProProfile`, so a brain banks for a gate the way it banks for a build; worth
+what `tools/arena.py` says it is worth and nothing else.
 
 All three are rules changes: the online contract and the fingerprint move, a
 server rollout carries them (batched), the brains' openings follow the new

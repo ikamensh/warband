@@ -88,6 +88,11 @@ def play(tmp_path, race):
     game.close()
 
 
+def lower_tiers(upgrade: Upgrade) -> set[Upgrade]:
+    """Everything *upgrade* waits for, and what those wait for: the Keep and the tiers under it."""
+    return {lower for needed in UPGRADES[upgrade].requires for lower in ({needed} | lower_tiers(needed))}
+
+
 def producer_of(scene, target):
     hall = scene.world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
     kind = (RACES[scene.player.race].units[target].trained_at if isinstance(target, UnitType)
@@ -103,10 +108,10 @@ def test_every_unit_and_upgrade_of_the_race_has_an_operable_production_icon(play
     Each race's own units and arts only: another race's art is refused, as test_races checks."""
     game, scene = play
     race = RACES[race]
-    info = race.units[target] if isinstance(target, UnitType) else UPGRADES[target]
+    info = race.units[target] if isinstance(target, UnitType) else race.upgrades[target]
     building = producer_of(scene, target)
-    if isinstance(target, Upgrade) and info.requires:
-        scene.player.upgrades.add(info.requires)
+    if isinstance(target, Upgrade):
+        scene.player.upgrades.update(lower_tiers(target))  # the card of a chain shows its lowest tier still to research
     scene.player.gold = scene.player.lumber = 5000
     scene.select([building.id])
     for _ in range(3):

@@ -100,12 +100,15 @@ class Race(IdentityEnum):
 
 
 class Upgrade(IdentityEnum):
+    KEEP = "keep"  # the hall itself: the gate in front of the upper rungs of the stat ladders
     BLADES_1 = "blades_1"
     BLADES_2 = "blades_2"
+    BLADES_3 = "blades_3"
     ARMOR_1 = "armor_1"
     ARMOR_2 = "armor_2"
     ARROWS_1 = "arrows_1"
     ARROWS_2 = "arrows_2"
+    ARROWS_3 = "arrows_3"
     SIEGE = "siege"
     MARKSMANSHIP = "marksmanship"
     # Race arts: only that race researches them.
@@ -227,7 +230,8 @@ class BuildingInfo:
 
 BUILDINGS: Final[dict[BuildingType, BuildingInfo]] = {
     BuildingType.TOWN_HALL: BuildingInfo("Town Hall", Cost(1200, 800), 1200, 3, 3, 60.0, 6, 5, "h",
-                                         "Trains peasants; gold and lumber are delivered here", trains=(UnitType.PEASANT,),
+                                         "Trains peasants; gold and lumber are delivered here; raises the Keep",
+                                         trains=(UnitType.PEASANT,), researches=(Upgrade.KEEP,),
                                          deposits=frozenset({Resource.GOLD, Resource.LUMBER})),
     BuildingType.FARM: BuildingInfo("Farm", Cost(500, 250), 400, 2, 2, 25.0, 3, 4, "f", "Feeds four units"),
     BuildingType.BARRACKS: BuildingInfo("Barracks", Cost(700, 450), 800, 3, 3, 40.0, 5, 0, "b", "Trains footmen and archers",
@@ -236,12 +240,13 @@ BUILDINGS: Final[dict[BuildingType, BuildingInfo]] = {
                                      requires=BuildingType.BARRACKS, damage=8, range=6.0, cooldown=1.5),
     BuildingType.LUMBER_MILL: BuildingInfo("Lumber Mill", Cost(600, 450), 600, 2, 3, 35.0, 4, 0, "m",
                                            "Lumber is delivered here; researches better arrows",
-                                           researches=(Upgrade.ARROWS_1, Upgrade.ARROWS_2, Upgrade.MARKSMANSHIP, Upgrade.LONGBOWS, Upgrade.REGROWTH),
+                                           researches=(Upgrade.ARROWS_1, Upgrade.ARROWS_2, Upgrade.ARROWS_3, Upgrade.MARKSMANSHIP,
+                                                       Upgrade.LONGBOWS, Upgrade.REGROWTH),
                                            requires=BuildingType.TOWN_HALL, deposits=frozenset({Resource.LUMBER})),
     BuildingType.BLACKSMITH: BuildingInfo("Blacksmith", Cost(800, 450), 600, 3, 3, 40.0, 4, 0, "k",
                                           "Researches sharper blades and plate armour",
-                                          researches=(Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.ARMOR_1, Upgrade.ARMOR_2, Upgrade.BLOODLUST,
-                                                      Upgrade.DEEP_MINING),
+                                          researches=(Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.BLADES_3, Upgrade.ARMOR_1, Upgrade.ARMOR_2,
+                                                      Upgrade.BLOODLUST, Upgrade.DEEP_MINING),
                                           requires=BuildingType.BARRACKS),
     BuildingType.STABLES: BuildingInfo("Stables", Cost(1000, 300), 700, 3, 3, 45.0, 4, 0, "s",
                                        "Trains scouts and knights; breeds faster horses",
@@ -263,32 +268,46 @@ class UpgradeInfo:
     cost: Cost
     time: float
     hotkey: str
+    card: str  # short enough for a command-card button (each race's own are in :mod:`warband.sim.races`)
     summary: str
-    requires: Upgrade | None = None
+    requires: tuple[Upgrade, ...] = ()  # every upgrade this one waits for: its own lower tier, the Keep, or both
     race: Race | None = None  # a race art: nobody else can research it
 
 
 UPGRADES: Final[dict[Upgrade, UpgradeInfo]] = {
-    Upgrade.BLADES_1: UpgradeInfo("Sharpened Blades", Cost(500, 100), 40.0, "b", "+2 damage for melee units"),
-    Upgrade.BLADES_2: UpgradeInfo("Tempered Blades", Cost(1500, 300), 60.0, "b", "+2 more damage for melee units", requires=Upgrade.BLADES_1),
-    Upgrade.ARMOR_1: UpgradeInfo("Plate Armour", Cost(300, 300), 40.0, "a", "+1 armour for soldiers"),
-    Upgrade.ARMOR_2: UpgradeInfo("Heavy Plate", Cost(900, 500), 60.0, "a", "+1 more armour for soldiers", requires=Upgrade.ARMOR_1),
-    Upgrade.ARROWS_1: UpgradeInfo("Bodkin Arrows", Cost(300, 300), 40.0, "r", "+2 damage for archers and towers"),
-    Upgrade.ARROWS_2: UpgradeInfo("Broadhead Arrows", Cost(900, 500), 60.0, "r", "+2 more damage for archers and towers", requires=Upgrade.ARROWS_1),
-    Upgrade.SIEGE: UpgradeInfo("Siege Engineering", Cost(1000, 500), 60.0, "e", "+1 range and +25 % damage for siege engines"),
-    Upgrade.MARKSMANSHIP: UpgradeInfo("Marksmanship", Cost(600, 300), 45.0, "m",
+    Upgrade.KEEP: UpgradeInfo("Keep", Cost(1500, 800), 90.0, "k", "Keep", "Raises the hall, opening the upper tiers"),
+    Upgrade.BLADES_1: UpgradeInfo("Sharpened Blades", Cost(500, 100), 40.0, "b", "Blades I", "+2 damage for melee units"),
+    Upgrade.BLADES_2: UpgradeInfo("Tempered Blades", Cost(1500, 300), 60.0, "b", "Blades II", "+2 more damage for melee units",
+                                  requires=(Upgrade.BLADES_1, Upgrade.KEEP)),
+    Upgrade.BLADES_3: UpgradeInfo("Masterwork Blades", Cost(3000, 600), 120.0, "b", "Blades III", "+4 more damage for melee units",
+                                  requires=(Upgrade.BLADES_2, Upgrade.KEEP)),
+    Upgrade.ARMOR_1: UpgradeInfo("Plate Armour", Cost(300, 300), 40.0, "a", "Armour I", "+1 armour for soldiers"),
+    Upgrade.ARMOR_2: UpgradeInfo("Heavy Plate", Cost(900, 500), 60.0, "a", "Armour II", "+1 more armour for soldiers",
+                                 requires=(Upgrade.ARMOR_1, Upgrade.KEEP)),
+    Upgrade.ARROWS_1: UpgradeInfo("Bodkin Arrows", Cost(300, 300), 40.0, "r", "Arrows I", "+2 damage for archers and towers"),
+    Upgrade.ARROWS_2: UpgradeInfo("Broadhead Arrows", Cost(900, 500), 60.0, "r", "Arrows II", "+2 more damage for archers and towers",
+                                  requires=(Upgrade.ARROWS_1, Upgrade.KEEP)),
+    Upgrade.ARROWS_3: UpgradeInfo("Masterwork Arrows", Cost(1800, 1000), 120.0, "r", "Arrows III",
+                                  "+4 more damage for archers and towers", requires=(Upgrade.ARROWS_2, Upgrade.KEEP)),
+    Upgrade.SIEGE: UpgradeInfo("Siege Engineering", Cost(1000, 500), 60.0, "e", "Siege", "+1 range and +25 % damage for siege engines"),
+    Upgrade.MARKSMANSHIP: UpgradeInfo("Marksmanship", Cost(600, 300), 45.0, "m", "Marksmen",
                                       "Shooters pick the mark in reach they fell soonest and waste no arrow on the dying"),
-    Upgrade.HORSES: UpgradeInfo("Horse Breeding", Cost(900, 300), 50.0, "h", "+0.8 speed for scouts and knights", race=Race.HUMAN),
-    Upgrade.BLESSING: UpgradeInfo("Blessing", Cost(800, 400), 50.0, "l", "Clerics heal half again as fast", race=Race.HUMAN),
-    Upgrade.BLOODLUST: UpgradeInfo("Bloodlust", Cost(700, 300), 50.0, "l", "Frenzy doubles: wounded orcs deal +50 % damage", race=Race.ORC),
-    Upgrade.PLUNDER: UpgradeInfo("Plunder", Cost(600, 200), 45.0, "h", "Razing a building loots a fifth of its gold", race=Race.ORC),
-    Upgrade.LONGBOWS: UpgradeInfo("Longbows", Cost(700, 400), 50.0, "l", "+1 range for rangers and towers", race=Race.ELF),
-    Upgrade.REGROWTH: UpgradeInfo("Regrowth", Cost(500, 500), 45.0, "g", "Trees felled by elves grow back after a minute", race=Race.ELF),
-    Upgrade.DEEP_MINING: UpgradeInfo("Deep Mining", Cost(600, 300), 45.0, "d", "Miners bring 150 gold per trip", race=Race.DWARF),
-    Upgrade.BLASTING_POWDER: UpgradeInfo("Blasting Powder", Cost(900, 400), 50.0, "p", "Mortar splash reaches half again as far", race=Race.DWARF),
+    Upgrade.HORSES: UpgradeInfo("Horse Breeding", Cost(900, 300), 50.0, "h", "Horses", "+0.8 speed for scouts and knights", race=Race.HUMAN),
+    Upgrade.BLESSING: UpgradeInfo("Blessing", Cost(800, 400), 50.0, "l", "Blessing", "Clerics heal half again as fast", race=Race.HUMAN),
+    Upgrade.BLOODLUST: UpgradeInfo("Bloodlust", Cost(700, 300), 50.0, "l", "Bloodlust", "Frenzy doubles: wounded orcs deal +50 % damage",
+                                   race=Race.ORC),
+    Upgrade.PLUNDER: UpgradeInfo("Plunder", Cost(600, 200), 45.0, "h", "Plunder", "Razing a building loots a fifth of its gold", race=Race.ORC),
+    Upgrade.LONGBOWS: UpgradeInfo("Longbows", Cost(700, 400), 50.0, "l", "Longbows", "+1 range for rangers and towers", race=Race.ELF),
+    Upgrade.REGROWTH: UpgradeInfo("Regrowth", Cost(500, 500), 45.0, "g", "Regrowth", "Trees felled by elves grow back after a minute",
+                                  race=Race.ELF),
+    Upgrade.DEEP_MINING: UpgradeInfo("Deep Mining", Cost(600, 300), 45.0, "d", "Mining", "Miners bring 150 gold per trip", race=Race.DWARF),
+    Upgrade.BLASTING_POWDER: UpgradeInfo("Blasting Powder", Cost(900, 400), 50.0, "p", "Powder", "Mortar splash reaches half again as far",
+                                         race=Race.DWARF),
 }
 
 BLADES_BONUS: Final = 2
+#: The master weapons are worth two of the tiers below them, for well over twice their price and twice their hour.
+MASTER_WEAPON_BONUS: Final = 4
 ARMOR_BONUS: Final = 1
 ARROWS_BONUS: Final = 2
 HORSES_BONUS: Final = 0.8
@@ -318,6 +337,11 @@ DAMAGE_FACTORS: Final[dict[tuple[AttackType, ArmorClass], float]] = {
 
 def damage_factor(attack: AttackType, armor: ArmorClass) -> float:
     return DAMAGE_FACTORS.get((attack, armor), 1.0)
+
+
+def listing(names: list[str]) -> str:
+    """"A", "A and B", "A, B and C"."""
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
 
 
 def an(name: str) -> str:

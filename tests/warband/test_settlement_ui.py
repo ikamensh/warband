@@ -268,42 +268,48 @@ def test_long_plan_list_pages_and_keeps_cancellation_visible(settlement):
 
 
 def test_upgrade_letters_order_the_next_tier(settlement):
-    """U then B orders Blades I, B again Blades II (after Blades I); a third B is answered by the card rather than
-    opening Build.  A chain shows its next tier to order in one slot, so every upgrade, Marksmanship the tenth, has a
-    key on a nine-key grid."""
+    """U then B orders Blades I; B again is refused while the Keep the second tier needs is nowhere, and taken once K
+    has ordered it.  A chain shows its next tier to order in one slot, so every upgrade, the Keep the ninth, has a key
+    on a nine-key grid."""
     game, scene = settlement
     stand(scene, BuildingType.BLACKSMITH)
     key(game, "u")
     caps = {c.label: c.hotkey for c in scene.card}
-    assert caps["Blades I"] == "B" and "Blades II" not in caps and caps["Horses"] == "H" and caps["Marksmen"] == "M"
+    assert caps["Blades I"] == "B" and "Blades II" not in caps and caps["Keep"] == "K" and caps["Marksmen"] == "M"
     key(game, "b")
     assert [p.type for p in scene.world.player_plans(scene.human)] == [Upgrade.BLADES_1]
     assert {c.label: c.hotkey for c in scene.card}["Blades II"] == "B"
+    key(game, "b")  # the second tier waits for a Keep nobody is raising
+    assert [p.type for p in scene.world.player_plans(scene.human)] == [Upgrade.BLADES_1] and scene.status == "Requires Keep"
+    key(game, "k")
     key(game, "b")
-    assert [p.type for p in scene.world.player_plans(scene.human)] == [Upgrade.BLADES_1, Upgrade.BLADES_2]
+    assert [p.type for p in scene.world.player_plans(scene.human)] == [Upgrade.BLADES_1, Upgrade.KEEP, Upgrade.BLADES_2]
+    key(game, "b")
+    assert [p.type for p in scene.world.player_plans(scene.human)][-1] is Upgrade.BLADES_3
     key(game, "b")
     assert scene.catalogue == "upgrade" and scene.status == "Already ordered"
 
 
 def test_a_finished_chain_leaves_the_upgrade_card(settlement):
-    """What cannot be ordered again is not on the card: once both tiers of Blades are researched its slot is empty,
-    where it used to stand there answering "Already researched".  The keys of the other chains do not move."""
+    """What cannot be ordered again is not on the card: once all three tiers of Blades are researched its slot is
+    empty, where it used to stand there answering "Already researched".  The keys of the other chains do not move."""
     game, scene = settlement
+    hall = scene.world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
     smith = stand(scene, BuildingType.BLACKSMITH)
     key(game, "u")
     assert {c.label: c.hotkey for c in scene.card}["Blades I"] == "B"
-    for upgrade in (Upgrade.BLADES_1, Upgrade.BLADES_2):
+    for building, upgrade in ((hall, Upgrade.KEEP), (smith, Upgrade.BLADES_1), (smith, Upgrade.BLADES_2), (smith, Upgrade.BLADES_3)):
         scene.player.gold = scene.player.lumber = 5000
-        scene.world.research(smith.id, upgrade)
-        while smith.research is not None:
+        scene.world.research(building.id, upgrade)
+        while building.research is not None:
             scene.world.step()
     game.tick(1 / 30)  # the "researched" event lays the card out again
     caps = {c.label: c.hotkey for c in scene.card}
-    assert "Blades I" not in caps and "Blades II" not in caps
+    assert "Blades I" not in caps and "Blades II" not in caps and "Blades III" not in caps and "Keep" not in caps
     assert caps["Armour I"] == "A" and caps["Marksmen"] == "M"  # every other chain kept its slot and its key
     scene.select([smith.id])
     game.tick(1 / 30)
-    assert "Blades II" not in [c.label for c in scene.card]  # the smith's own card drops it too
+    assert "Blades III" not in [c.label for c in scene.card]  # the smith's own card drops it too
 
 
 def test_a_settlement_with_nothing_left_to_research_still_leads_back(settlement):

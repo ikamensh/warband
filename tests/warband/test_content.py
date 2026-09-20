@@ -80,7 +80,57 @@ def test_every_unit_and_building_is_reachable_through_the_chain() -> None:
             assert chain not in seen, f"{building_type} requires itself"
             seen.add(chain)
             chain = BUILDINGS[chain].requires
+    for upgrade in Upgrade:  # an upgrade that waits for itself, however far round, is a button nobody can ever press
+        seen, edge = set(), [upgrade]
+        while edge:
+            needed = edge.pop()
+            assert needed is not upgrade or not seen, f"{upgrade} requires itself"
+            if needed not in seen:
+                seen.add(needed)
+                edge.extend(UPGRADES[needed].requires)
     assert len(UnitType) >= 7 and len([b for b in BuildingType if b is not BuildingType.GOLD_MINE]) >= 8 and len(Upgrade) >= 6
+
+
+def test_the_keep_gates_the_upper_tiers_and_the_master_weapons() -> None:
+    """The hall researches a Keep, and behind it stand the second tier of every stat and the third of the two weapon
+    lines: each is refused by name until both its lower tier and the Keep are in."""
+    world = flat_world()
+    hall = world.place_building(0, BuildingType.TOWN_HALL, (2, 2))
+    world.place_building(0, BuildingType.BARRACKS, (6, 2))
+    smith = world.place_building(0, BuildingType.BLACKSMITH, (10, 2))
+    mill = world.place_building(0, BuildingType.LUMBER_MILL, (14, 2))
+    for building, upgrade in ((smith, Upgrade.BLADES_2), (smith, Upgrade.ARMOR_2), (mill, Upgrade.ARROWS_2), (mill, Upgrade.ARROWS_3)):
+        assert "Keep" in world.can_research(building, upgrade), upgrade
+    assert world.can_research(smith, Upgrade.BLADES_3) == "Requires Tempered Blades and Keep"
+    assert world.can_research(smith, Upgrade.KEEP) == "Keep is not researched here"
+
+    world.research(hall.id, Upgrade.KEEP)
+    run(world, UPGRADES[Upgrade.KEEP].time + 0.1)
+    assert Upgrade.KEEP in world.players[0].upgrades
+    assert world.can_research(smith, Upgrade.BLADES_2) == "Requires Sharpened Blades"  # the gate is open; the tier is not
+    for upgrade in (Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.BLADES_3):
+        assert world.can_research(smith, upgrade) is None
+        world.research(smith.id, upgrade)
+        run(world, UPGRADES[upgrade].time + 0.1)
+    assert world.can_research(hall, Upgrade.KEEP) == "Already researched"
+
+
+def test_the_master_weapons_are_worth_two_tiers_and_leave_armour_alone() -> None:
+    """The third tier of each weapon line is the only one to add four: a very expensive, long research for a step
+    twice what the tiers below it gave.  Armour has no third tier to give."""
+    world = flat_world()
+    footman = world.spawn_unit(0, UnitType.FOOTMAN, (5.5, 8.5))
+    archer = world.spawn_unit(0, UnitType.ARCHER, (6.5, 8.5))
+    tower = world.place_building(0, BuildingType.TOWER, (10, 10))
+    base = (world.damage_of(footman), world.damage_of(archer), world.damage_of(tower))
+    world.players[0].upgrades.update({Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.ARROWS_1, Upgrade.ARROWS_2})
+    assert (world.damage_of(footman), world.damage_of(archer)) == (base[0] + 4, base[1] + 4)
+    world.players[0].upgrades.update({Upgrade.BLADES_3, Upgrade.ARROWS_3})
+    assert world.damage_of(footman) == base[0] + 8
+    assert world.damage_of(archer) == base[1] + 8 and world.damage_of(tower) == base[2] + 8
+    assert {u for u in Upgrade if u.value.startswith("armor_")} == {Upgrade.ARMOR_1, Upgrade.ARMOR_2}
+    assert UPGRADES[Upgrade.BLADES_3].cost.gold >= 2 * UPGRADES[Upgrade.BLADES_2].cost.gold
+    assert UPGRADES[Upgrade.BLADES_3].time >= 2 * UPGRADES[Upgrade.BLADES_2].time
 
 
 def test_buildings_and_units_need_their_prerequisites() -> None:
@@ -106,7 +156,7 @@ def test_research_costs_time_and_money_and_upgrades_apply_to_the_right_units() -
     footman = world.spawn_unit(0, UnitType.FOOTMAN, (5.5, 8.5))
     archer = world.spawn_unit(0, UnitType.ARCHER, (6.5, 8.5))
     peasant = world.spawn_unit(0, UnitType.PEASANT, (7.5, 8.5))
-    assert world.can_research(smith, Upgrade.BLADES_2) == "Requires Sharpened Blades"
+    assert world.can_research(smith, Upgrade.BLADES_2) == "Requires Sharpened Blades and Keep"
     assert world.can_research(smith, Upgrade.ARROWS_1) == "Bodkin Arrows is not researched here"
     gold = world.players[0].gold
     world.research(smith.id, Upgrade.BLADES_1)
