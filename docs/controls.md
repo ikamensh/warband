@@ -114,8 +114,9 @@ Every button that costs something — a catalogue item, and a building's own
 recruits and research — carries its price under it in the top bar's own
 symbols: the coin and its number, the log and its number, and no second number
 at all for a thing that takes no lumber (it used to read "400 / 0"). A number
-the purse cannot cover now is red, which greys nothing out: the plan is still
-worth making and waits for its money. The symbols keep their own colours
+the purse cannot cover now is red; in a catalogue that greys nothing out, since
+the plan is still worth making and waits for its money, while a building's own
+card refuses the order until the money is there, as it always has. The symbols keep their own colours
 wherever a price is drawn — a symbol says which resource, its number says how
 that resource stands — and the codex and the Plans screen price things the same
 way. A tooltip adds how long the thing takes and, for a building, how many it
@@ -131,7 +132,7 @@ A selected unit's numbers are what it was listed with, and what research or the
 comrades at its elbows added stands beside them in gold; a melee unit's reach
 reads "melee". `tests/warband/test_prices.py` and
 `tests/warband/test_selection_panel.py` hold this reading, the lint walks
-`hud_warnings` and `select_upgraded`, and because a price is drawn rather than
+`hud_warnings`, `select_upgraded` and `pending_attack`, and because a price is drawn rather than
 laid out as a label the lint measures what it needs against the box it was
 given.
 
