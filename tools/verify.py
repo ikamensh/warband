@@ -1,6 +1,6 @@
 """Drive Warband through the real pyglet backend and save frames to look at.
 
-    uv run python tools/verify.py /tmp/warband_shots
+    uv run python tools/verify.py docs/evidence/verify
 
 Real window events are dispatched (mouse presses, drags, key presses and a
 wheel scroll), so this exercises the pyglet event handlers and the GPU
@@ -10,12 +10,11 @@ before saving its PNG.  The display must be awake (``caffeinate -u -t 3``).
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from pyglet.window import key, mouse  # noqa: E402
 
 from saga2d import Game, fonts  # noqa: E402
 from warband.sim.model import Build, Harvest, tile_center  # noqa: E402
@@ -25,6 +24,10 @@ from warband.ui.style import build_theme  # noqa: E402
 
 
 def main(out: Path) -> None:
+    # Imported here, not at the top: pyglet.window opens a shadow window as it loads, so importing it
+    # made even --help need an awake display.
+    from pyglet.window import key, mouse
+
     out.mkdir(parents=True, exist_ok=True)
     game = Game("Warband verify", resolution=(1280, 800), backend="pyglet", visible=False, theme=build_theme())
     backend = game.backend
@@ -167,4 +170,6 @@ def main(out: Path) -> None:
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1] if len(sys.argv) > 1 else "/tmp/warband_shots"))
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("out", nargs="?", type=Path, default=Path("docs/evidence/verify"), help="where the frames go")
+    main(parser.parse_args().out)

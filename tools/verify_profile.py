@@ -6,6 +6,7 @@ Isolated from the player's own profile, saves and replays (a temporary data dire
 
 from __future__ import annotations
 
+import argparse
 import sys
 import tempfile
 from pathlib import Path
@@ -112,4 +113,6 @@ def verify(out: Path, resolution: tuple[int, int] = (1280, 800)) -> None:
 
 
 if __name__ == "__main__":
-    verify(Path(sys.argv[1] if len(sys.argv) > 1 else "docs/evidence/profile"))
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("out", nargs="?", type=Path, default=Path("docs/evidence/profile"), help="where the frames go")
+    verify(parser.parse_args().out)

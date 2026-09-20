@@ -1,6 +1,6 @@
 """Capture Warband's registered art and real lumber harvesting through pyglet.
 
-    uv run python tools/verify_art.py /tmp/warband_art
+    uv run python tools/verify_art.py docs/evidence/art
 
 Produces labeled asset sheets, settlement views at normal and close zoom,
 and four chopping stills plus a GIF from actual World.harvest orders. All
@@ -10,6 +10,7 @@ and run this separately from other expensive verification jobs.
 
 from __future__ import annotations
 
+import argparse
 import math
 import os
 import random
@@ -229,4 +230,6 @@ def main(output: Path) -> None:
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1] if len(sys.argv) > 1 else "/tmp/warband_art"))
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("out", nargs="?", type=Path, default=Path("docs/evidence/art"), help="where the sheets go")
+    main(parser.parse_args().out)
