@@ -175,6 +175,9 @@ def test_an_armed_mode_says_what_to_click_and_lights_its_button(play) -> None:
     assert scene.status == PENDING_ASKS["patrol"] and armed() == ["Patrol"]
     press(game, "escape")
     assert scene.pending is None and armed() == []
+    press(game, "a")
+    click(game, scene, (hall_of(scene).x + 8, hall_of(scene).y + 4))
+    assert armed() == [], "the click disarms the mode, so the card cannot go on claiming it"
 
 
 def test_build_menu_places_a_farm_where_the_mouse_is(play) -> None:
