@@ -222,6 +222,17 @@ for _count in (18, 60):
     SCREENS[f"select_{_count}_units"] = _select_many
 
 
+@screen
+def select_60_archers(game: Game) -> None:
+    """Sixty of one kind, on the first of three pages: the heading names the armour class the whole selection
+    shares, and light armour with a page marker is the widest that row ever gets."""
+    scene = town(game)
+    units = [spawn(scene, UnitType.ARCHER, (6 + i % 12, 9 + i // 12)) for i in range(60)]
+    scene.select([u.id for u in units])
+    scene.camera.center_on(12 * TILE, 11 * TILE)
+    ticks(game)
+
+
 for _building in BuildingType:
     def _select_building(game: Game, kind: BuildingType = _building) -> None:
         scene = town(game)

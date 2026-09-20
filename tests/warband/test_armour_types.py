@@ -1,16 +1,21 @@
 """Armour classes and attack types (WB-049): one table says how hard each kind of blow lands on each kind of armour.
 Piercing blows (every race's archers) land half again as hard on the unarmoured (peasants, clerics, catapults), siege
-stones half again as hard on buildings, and everything else as listed."""
+stones half again as hard on buildings, and everything else as listed.  The end of the module is where the player is
+told: the codex's tables, which a player reads beside the card of the unit they have selected."""
 
 import random
 
 import pytest
 
+from saga2d import Game
+from saga2d.ui import Label
 from warband.sim.model import SIM_DT, World
 from warband.sim.races import RACES
 from warband.sim.rules import (
     DAMAGE_FACTORS, HIT_VARIANCE, UNITS, ArmorClass, AttackType, BuildingType, Race, Terrain, UnitType, damage_factor,
 )
+from warband.ui.scene import PAGE_LEGENDS, CodexScene, armour_name
+from warband.ui.style import build_theme
 
 
 def field() -> World:
@@ -122,3 +127,38 @@ def test_a_save_from_before_the_armour_classes_loads_with_its_stone_in_flight() 
     copy = World.from_dict(data)
     assert [p.attack for p in copy.projectiles.values()] == [AttackType.SIEGE]
     assert World.from_dict(world.to_dict()).projectiles == world.projectiles
+
+
+def codex(tmp_path, page: int, race: Race = Race.HUMAN) -> tuple[Game, list[str]]:
+    """*race*'s codex open at *page* in the smallest window, and every label on it: a wrapped cell is drawn line by
+    line, so the table is read off the UI tree rather than off the text the backend took."""
+    game = Game("Warband codex", backend="mock", resolution=(1200, 680), theme=build_theme(), save_dir=tmp_path / "saves")
+    world = World(1, 1, [[Terrain.GRASS]], 1, races=[race])
+    game.push(CodexScene(world, 0, page, in_match=False))
+    game.tick(1 / 60)
+    return game, [str(c.text) for c in game.scene.ui.walk() if isinstance(c, Label)]
+
+
+@pytest.mark.parametrize("race", list(Race), ids=lambda r: r.value)
+def test_the_codex_names_every_unit_s_armour_class_and_its_blow_where_it_is_not_the_plain_one(tmp_path, race) -> None:
+    """The unit page's Role column names what every unit wears; it has no room to name a normal blow as well.  At
+    1200×680 the page already stands 672 px of 680, and ", normal" on every row wraps the human and orc tables
+    28 px past the window.  The card of a selected unit names both halves, always."""
+    game, labels = codex(tmp_path, 0, race)
+    try:
+        for unit_type, info in RACES[race].units.items():
+            wanted = armour_name(info.armor_class) + (f", {info.attack.value}" if info.attack is not AttackType.NORMAL else "")
+            assert any(text.endswith(wanted) for text in labels), (unit_type, wanted, labels)
+    finally:
+        game.close()
+
+
+def test_the_codex_says_once_that_every_building_is_fortified(tmp_path) -> None:
+    """The building page has no room for a class column and no need of one: every building wears the same armour,
+    so the page says it in a line under the table."""
+    game, labels = codex(tmp_path, 1)
+    try:
+        assert PAGE_LEGENDS[1] in labels
+        assert "fortified" in PAGE_LEGENDS[1] and "×1.5" in PAGE_LEGENDS[1]
+    finally:
+        game.close()

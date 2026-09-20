@@ -98,6 +98,8 @@ CARD_PLAIN = 32  # height of a button without a portrait (the unit card's)
 MINIMAP_WIDTH = 200
 SELECTION_WIDTH = 470
 SELECTION_HEIGHT = 128
+CARD_TEXT = 88  # a selected entity's text starts here, right of its portrait
+CARD_RIGHT = SELECTION_WIDTH - 16 - CARD_TEXT - PANEL_STYLE.padding  # 354 px of room for a card's text, from its left edge
 PORTRAIT = 30  # a selected unit's portrait in the panel
 PORTRAIT_GAP = 3
 PORTRAIT_COLS = 13
@@ -113,6 +115,26 @@ def attack_hint(attack: AttackType) -> str:
     """What a kind of blow does beyond its number, from :data:`DAMAGE_FACTORS`, for the unit panel."""
     better = [f"×{factor:g} against {armor.value if armor is not ArmorClass.FORTIFIED else 'buildings'}" for (kind, armor), factor in DAMAGE_FACTORS.items() if kind is attack]
     return attack.value + (f", {', '.join(better)}" if better else "")
+
+
+def defence_line(armor: ArmorClass, attack: AttackType) -> str:
+    """"heavy armour · normal blows": both sides of :data:`DAMAGE_FACTORS`' table for one unit.  The pair is the
+    fact a player acts on — armour alone is half a table — so the selection panel says it under the stats and the
+    command card repeats it in the tooltip of whatever trains the unit."""
+    return f"{armour_name(armor)} · {attack.value} blows"
+
+
+def armour_hint(armor: ArmorClass) -> str:
+    """What lands harder on this armour, from :data:`DAMAGE_FACTORS`: the same table :func:`attack_hint` reads from
+    the striker's side, read here from the wearer's."""
+    worse = [f"{kind.value} blows land ×{factor:g}" for (kind, wearing), factor in DAMAGE_FACTORS.items() if wearing is armor]
+    return armour_name(armor).capitalize() + (f" · {', '.join(worse)}" if worse else "")
+
+
+def armour_class_of(entity: Unit | Sighting) -> ArmorClass:
+    """What a selected entity wears.  Buildings are fortified to a one; a unit that belongs to no player wears its
+    own kind's armour like any other."""
+    return ArmorClass.FORTIFIED if isinstance(entity, Sighting) else entity.info.armor_class
 
 
 def health_ink(fraction: float) -> tuple[int, int, int, int]:
@@ -413,6 +435,7 @@ class GameScene(Scene):
         self._portrait_page, self._portrait_pages = 0, 1  # of a selection too large for one grid
         self._page_tile: tuple[float, float, float, float] | None = None
         self._queue_hits: list[tuple[tuple[float, float, float, float], QueueEntry]] = []
+        self._armour_notes: list[str] = []  # what the panel said about armour and blows in the frame just drawn
         self._sound_times: dict[str, float] = {}
         self._battle_voices: deque[float] = deque()
         self._fights: deque[float] = deque()
@@ -703,6 +726,12 @@ class GameScene(Scene):
     def portraits(self) -> tuple[tuple[int, tuple[int, int, int, int]], ...]:
         """The selection panel's portraits on the page shown: each entity's id and its rectangle."""
         return tuple(self._portraits)
+
+    @property
+    def armour_notes(self) -> tuple[str, ...]:
+        """What the selection panel said about armour and blows in the frame just drawn: a selected unit's class and
+        kind of blow, a building's class, or the class a whole selection shares."""
+        return tuple(self._armour_notes)
 
     @property
     def page_tile(self) -> tuple[float, float, float, float] | None:
@@ -1412,7 +1441,8 @@ class GameScene(Scene):
         elif kind == "train":
             for slot, (unit_type, info) in enumerate(race.units.items()):
                 commands.append(Command(info.name, info.hotkey, lambda ut=unit_type: self.order_production("train", ut), slot,
-                                        tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)} · {info.summary} · Shift or right-click: "
+                                        tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)} · {info.summary} · "
+                                                f"{defence_line(info.armor_class, info.attack)} · Shift or right-click: "
                                                 f"endlessly at every {self.building_name(info.trained_at)}",
                                         cost=info.cost, target=unit_type, count=lambda ut=unit_type: self._ordered(ut),
                                         alt=lambda ut=unit_type: self.toggle_endless_everywhere(ut),
@@ -1485,8 +1515,8 @@ class GameScene(Scene):
             if isinstance(item, UnitType):
                 info = self.race.units[item]
                 commands.append(Command(info.name, info.hotkey, lambda ut=item: self.train(ut), slot,
-                                        tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)} · {info.summary} · Shift or right-click: "
-                                                f"train endlessly",
+                                        tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)} · {info.summary} · "
+                                                f"{defence_line(info.armor_class, info.attack)} · Shift or right-click: train endlessly",
                                         cost=info.cost, blocked=lambda ut=item, b=building: world.can_train(b, ut), target=item,
                                         alt=lambda ut=item, b=building: self.toggle_endless(b, ut), endless=lambda ut=item, b=building: ut in b.auto))
             elif item is not None:  # None: every tier of the chain is researched, and its slot stays empty
@@ -2249,6 +2279,7 @@ class GameScene(Scene):
         self._portraits = []
         self._page_tile = None
         self._queue_hits = []
+        self._armour_notes = []
         # A unit as it is; a building as the player knows it, which under the fog is as they last saw it.
         entities = [e for e in (self.world.units.get(i) or self.view.sighting(i) for i in self.selection) if e is not None]
         if not entities or (self.catalogue is not None and not self._builders()):  # planning for the settlement: what it has in hand
@@ -2269,6 +2300,15 @@ class GameScene(Scene):
         self._page_tile = None
         heading = f"{len(entities)} units" + (f" · page {page + 1} of {pages}" if pages > 1 else "")
         self.draw_text(heading, x + 16, y + 30, style="heading")
+        wearing = {armour_class_of(e) for e in entities}
+        if len(wearing) == 1:  # a blob of one armour class says so; a mixed one has no answer to give
+            # The pair does not fit here: "60 units · page 1 of 3" is 219 px of heading and the whole
+            # "· light armour · piercing blows" another 237 of sub, 42 px past the panel's 442.  The class alone
+            # is 120, and the kind of blow stays on the card of the one unit a player clicks.
+            style = self.game.theme.get_text_style("heading")
+            self._armour_notes.append(armour_name(next(iter(wearing))))
+            self.draw_text(f"· {self._armour_notes[-1]}", x + 24 + self.game.backend.measure_text(heading, style.font_size, style.font)[0],
+                           y + 30, style="sub")
         size, gap = PORTRAIT, PORTRAIT_GAP
         cells = list(entities[page * per_page:(page + 1) * per_page])
         for i in range(len(cells) + (1 if pages > 1 else 0)):
@@ -2370,7 +2410,7 @@ class GameScene(Scene):
         own = entity.player == self.human
         self.draw_rect(x, y, 72, 72, (255, 255, 255, 16), border_color=(255, 255, 255, 40), border_width=1, radius=6)
         self._portrait(entity, x + 4, y + 4, 64)
-        tx = x + 88
+        tx = x + CARD_TEXT
         abandoned = isinstance(entity, Sighting) and entity.abandoned
         owner = "Abandoned" if abandoned else world.players[entity.player].name if entity.player is not None else "Neutral"
         name = entity.info.name if isinstance(entity, Unit) else RACES[entity.race].buildings[entity.type].name
@@ -2386,6 +2426,12 @@ class GameScene(Scene):
             frac = entity.hp / max(1, entity.max_hp)
             self.draw_rect(tx, y + 26, 180 * frac, 8, health_ink(frac), radius=3)
             self.draw_text(f"{entity.hp}/{entity.max_hp}", tx + 188, y + 34, style="sub")
+            if isinstance(entity, Sighting):
+                # Every building is fortified, and a card of one may be full of what it is making: the class alone
+                # goes in the corner beside the hit points, the one spot free in every state.  "Fortified armour"
+                # (140 px of sub) would run into hit points four digits wide; the word alone takes 67 of 77.
+                self._armour_notes.append(armour_class_of(entity).value.capitalize())
+                self.draw_text(self._armour_notes[-1], tx + CARD_RIGHT, y + 34, style="sub", anchor_x="right")
         if isinstance(entity, Unit):
             info = entity.info
             # Each stat is the number the unit was listed with; what research or the shield wall adds stands beside
@@ -2398,7 +2444,7 @@ class GameScene(Scene):
                              f"Damage per strike; {attack_hint(info.attack)}"))
             stats = [primary,
                      ("armor", f"{info.armor:g}", world.armor_of(entity) - info.armor,
-                      f"{armour_name(info.armor_class).capitalize()}; armour is subtracted from every blow"
+                      f"{armour_hint(info.armor_class)} · armour is subtracted from every blow"
                       + (f" · +{flanked} from the comrades at its elbows" if flanked else "")),
                      ("range", "melee" if info.range < 1 else f"{info.range:g}", world.range_of(entity) - info.range,
                       "Healing range in tiles" if info.heal else "Reaches the next tile over" if info.range < 1 else "Attack range in tiles"),
@@ -2416,6 +2462,8 @@ class GameScene(Scene):
                     self.tooltip = hint
             if world.frenzied(entity):
                 self.draw_text("Frenzy!", tx + 4 * 78, y + 60, style="body", color=BAD)
+            self._armour_notes.append(defence_line(info.armor_class, info.attack).capitalize())
+            lines.append(self._armour_notes[-1])  # under the numbers it qualifies
             order = entity.order
             if not own:
                 pass
@@ -2889,6 +2937,9 @@ class HelpScene(_Overlay):
 
 
 CODEX_PAGES = ("Units", "Buildings", "Upgrades", "Races", "Tech tree")
+#: What a page's table cannot say row by row: the armour class every building shares, which the unit page carries
+#: per unit in its Role column.
+PAGE_LEGENDS = {1: "Every building is fortified: a catapult's stone lands ×1.5 on one, and a tower's arrow strikes a normal blow."}
 TREE_LEGEND = "A line runs from what a building needs into it; beside each, what it trains and researches. {}Hover a picture for what it is."
 TREE_LIGHTING = "Bright: yours · dimmer: on its way · faint: not yet. "  # only in a match: outside one there is nothing to stand short of
 
@@ -2933,6 +2984,8 @@ class CodexScene(_Overlay):
             for cells in rows:
                 table.add(Row(*[self._cell(cell, width, first=i == 0, last=i == len(cells) - 1)
                                 for i, (cell, width) in enumerate(zip(cells, widths))], spacing=8))
+            if self.page in PAGE_LEGENDS:
+                table.add(Label(PAGE_LEGENDS[self.page], text_style="sub", width=sum(widths) + 8 * (len(widths) - 1), wrap=True))
         panel.add(table)
         panel.add(KeyHints([("1-5", "page"), ("Tab", "next"), ("Esc", "close")]))
 
@@ -2971,8 +3024,12 @@ class CodexScene(_Overlay):
                 rows.append([info.name, price_pairs(info.cost), str(info.hp), f"heal {info.heal}" if info.heal else str(info.damage),  # its blow is in its role
                              str(info.armor), "melee" if info.range < 1 else f"{info.range:g}", f"{info.speed:g}", f"{info.build_time:g}s",
                              race.buildings[info.trained_at].name,
+                             # The Role column has no room for the kind of blow on every row: spelling out "normal"
+                             # wraps a line at 1200×680, where the page already stands 672 px of 680 tall (the orc
+                             # and human tables first).  The blow is named where it is not the plain one; the card of
+                             # a selected unit names both, always.
                              f"{info.summary} · {armour_name(info.armor_class)}"
-                             + (f", {info.attack.value}" if info.damage and info.attack is not AttackType.NORMAL else "")])
+                             + (f", {info.attack.value}" if info.attack is not AttackType.NORMAL else "")])
             return (150, 130, 40, 66, 40, 55, 42, 50, 140, 371), rows  # "heal 15" is the widest Dmg, 1200 gold and 800 lumber the widest Cost
         if self.page == 1:
             rows = [["Building", "Cost", "HP", "Arm", "Size", "Time", "Feeds", "Requires", "What it does"]]
