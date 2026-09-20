@@ -295,6 +295,21 @@ for _menu in ("build", "train"):
 
 
 @screen
+def hud_warnings(game: Game) -> None:
+    """The top bar saying what stops production: the supply pair red with the farms full, and gold red for a
+    moment after a recruit was refused for want of it, with the card's prices red beside their symbols."""
+    scene = town(game)
+    scene.player.gold, scene.player.lumber = 120, 80
+    for i in range(scene.world.supply(scene.human)[1]):
+        spawn(scene, UnitType.FOOTMAN, (5 + i % 10, 14 + i // 10))
+    scene.select([own(scene, BuildingType.TOWN_HALL).id])
+    ticks(game)
+    scene.warn(scene.world.can_train(own(scene, BuildingType.TOWN_HALL), UnitType.PEASANT))
+    scene.toggle_catalogue("build")
+    ticks(game)
+
+
+@screen
 def menu_build_hover(game: Game) -> None:
     scene = town(game)
     scene.toggle_catalogue("build")

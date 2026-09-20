@@ -52,8 +52,11 @@ SAVE_VERSION = 2  # 2: the world records its layout
 SAVE_SLOTS = 3
 AUTOSAVE_EVERY = 120.0  # seconds of match time
 SELECT_GAP = 30.0  # seconds: selecting is constant, and its cue answers only the first selection in a while (WB-039)
+PLANS_PRICE = 126  # the price column on the Plans screen: the widest price and a little air
 SUPPLY_WARNING = 2  # units of room left in the farms: from here the supply pair warns before it blocks
-SUPPLY_STYLES: dict[tuple[int, int, int, int] | None, Style | None] = {None: None, BAD: Style(text_color=BAD), GOLD: Style(text_color=GOLD)}
+SHORT_FLASH = 1.5  # seconds a resource the purse was short of stays red in the top bar
+SHORT_OF = {"gold": "Not enough gold", "lumber": "Not enough lumber"}  # how World.can_afford names each; tests/warband/test_prices.py holds it
+ALERT_STYLES: dict[tuple[int, int, int, int], Style] = {BAD: Style(text_color=BAD), GOLD: Style(text_color=GOLD)}
 TOAST_TOP = 280  # below the resource, settlement and objectives panels
 HUD_TOP = 158  # just under the Settlement row (which ends at 150): the status line starts here, and the map can scroll clear of it
 HINT_BAR = 28
@@ -386,6 +389,8 @@ class GameScene(Scene):
         self.recent_sounds: deque[str] = deque(maxlen=48)
         self.status = ""
         self.status_timer = 0.0
+        self.short_of: str | None = None  # the resource the last refusal was short of, red in the top bar while it lasts
+        self.short_timer = 0.0
         self.tooltip = ""
         self.mouse = (0, 0)
         self.hover: tuple[float, float] = (0.0, 0.0)  # in tiles
@@ -487,6 +492,11 @@ class GameScene(Scene):
         """The human player's race: its names and numbers are what the HUD shows."""
         return RACES[self.player.race]
 
+    def resource_pair(self, name: str) -> tuple[Icon, Label]:
+        """The top bar's symbol and number for ``"gold"``, ``"lumber"`` or ``"supply"``: what the warnings colour."""
+        icon, label, _plain = self._resources[name]
+        return icon, label
+
     @property
     def purse(self) -> tuple[int, int]:
         """The gold and lumber the player holds now: a price the purse cannot cover is drawn in red."""
@@ -532,18 +542,17 @@ class GameScene(Scene):
                      if room <= SUPPLY_WARNING else f"{room} to spare")
             return f"Supply used / capacity — every unit takes one, farms and halls feed them; {crowd}"
 
-        # Resources as symbol + number; hovering a symbol names it in the tooltip panel.  The supply pair goes
-        # amber as the farms fill and red once they are full, the reading an RTS player looks for before training.
-        self.supply_icon = Icon("supply", size=22)
-        self.supply_label = Label(supply_text, text_style="hud")
-        self.supply_row = Row(self.supply_icon, self.supply_label, spacing=6)  # the pair the warning colours
-        self._resource_rows = [
-            (Row(Icon("gold", size=22), Label(lambda: str(self.player.gold), text_style="hud", text_color=GOLD), spacing=6),
-             "Gold — mined by workers; every unit, building and upgrade costs some"),
-            (Row(Icon("lumber", size=22), Label(lambda: str(self.player.lumber), text_style="hud", text_color=LUMBER), spacing=6),
-             "Lumber — felled by workers; buildings, upgrades and engines need it"),
-            (self.supply_row, supply_hint),
-        ]
+        # Resources as symbol + number; hovering a symbol names it in the tooltip panel.  The numbers carry the
+        # warnings a player acts on (:meth:`_update_resources`), so each pair is kept to be coloured.
+        self._resources: dict[str, tuple[Icon, Label, Style | None]] = {}
+        self._resource_rows = []
+        for name, reading, ink, hint in (
+                ("gold", lambda: str(self.player.gold), GOLD, "Gold — mined by workers; every unit, building and upgrade costs some"),
+                ("lumber", lambda: str(self.player.lumber), LUMBER, "Lumber — felled by workers; buildings, upgrades and engines need it"),
+                ("supply", supply_text, None, supply_hint)):
+            icon, label = Icon(name, size=22), Label(reading, text_style="hud", text_color=ink)
+            self._resources[name] = (icon, label, label.style)
+            self._resource_rows.append((Row(icon, label, spacing=6), hint))
         self.ui.add(Panel(anchor=Anchor.TOP_LEFT, margin=12, layout=Layout.HORIZONTAL, spacing=12, style=PANEL_STYLE, blocks_pointer=True, children=[
             Label(self.player.name, text_style="title", text_color=rgba(self.player.color)),
             Label(self.race.name, text_style="sub"),
@@ -884,7 +893,11 @@ class GameScene(Scene):
         self.status_timer = 3.0
 
     def warn(self, text: str) -> None:
+        """Say *text* and sound the refusal; one that names a resource the purse is short of also reddens that
+        number in the top bar, so the reason is where the player is looking as well as in the status line."""
         self.say(text)
+        self.short_of = next((name for name, refusal in SHORT_OF.items() if text.startswith(refusal)), None)
+        self.short_timer = SHORT_FLASH if self.short_of is not None else 0.0
         self.sfx("error")
 
     def _marker(self, point: tuple[float, float], color: tuple[int, int, int, int]) -> None:
@@ -1788,6 +1801,7 @@ class GameScene(Scene):
     def update(self, dt: float) -> None:
         self.clock += dt
         self.status_timer = max(0.0, self.status_timer - dt)
+        self.short_timer = max(0.0, self.short_timer - dt)
         if self._warm is not None:
             for _ in range(6):
                 if next(self._warm, None) is None:
@@ -1810,7 +1824,7 @@ class GameScene(Scene):
         self.stains = [s for s in self.stains if not s.done]
         self.view.sync(0.0 if self.paused else dt, fraction=self._motion_fraction())
         self._update_card()
-        self._update_supply()
+        self._update_resources()
         self.idle_button.visible = self._idle_peasant_count() > 0
         self.army_button.visible = bool(self._army())
         self._update_objectives()
@@ -1820,13 +1834,18 @@ class GameScene(Scene):
             self.say("Autosaved")
         self._check_game_over()
 
-    def _update_supply(self) -> None:
-        """The supply pair says how near the cap the army is: red once it is full (nothing more can be trained),
-        amber within :data:`SUPPLY_WARNING` of it, plain otherwise."""
+    def _update_resources(self) -> None:
+        """The warnings the three numbers carry: supply red once the farms are full (nothing more can be trained),
+        amber within :data:`SUPPLY_WARNING` of it; gold or lumber red for a moment after an order was refused for
+        want of it, the flash an RTS gives with "not enough minerals".  The symbols keep their own colours, as
+        they do beside a price: a symbol says which resource, its number says how that resource stands."""
         used, cap = self.world.supply(self.human)
-        ink = BAD if used >= cap else GOLD if cap - used <= SUPPLY_WARNING else None
-        self.supply_icon.color = ink
-        self.supply_label.style = SUPPLY_STYLES[ink]
+        warnings = {"supply": BAD if used >= cap else GOLD if cap - used <= SUPPLY_WARNING else None}
+        if self.short_timer > 0 and self.short_of is not None:
+            warnings[self.short_of] = BAD
+        for name, (_icon, label, plain) in self._resources.items():
+            ink = warnings.get(name)
+            label.style = ALERT_STYLES[ink] if ink is not None else plain
 
     def _motion_fraction(self) -> float:
         if self._game_over or self.world.winner is not None or not self.player.alive:
@@ -2467,21 +2486,24 @@ class SettlementPlansScene(_Overlay):
             status = plan.status
             if building is not None:
                 status = f"Building {int(100 * building.progress / building.info.build_time)}%"
-            detail = f"{status} · {'Paid' if building is not None else 'Cost'} {info.cost}"
-            entries.append((("plan", plan.id), info.name, detail, "Cancel",
+            paid = building is not None
+            # What waits still has to be paid for, so its price is weighed against the purse and reddens what the
+            # player cannot cover yet; what is already under way is paid, and its price is only a reminder.
+            price = price_pairs(info.cost, None if paid else self.game_scene.purse)
+            entries.append((("plan", plan.id), info.name, f"{status} · {'paid' if paid else 'to pay'}", price, "Cancel",
                             lambda pid=plan.id: self._cancel("cancel_plan", human, pid)))
         for building in world.player_buildings(human):
             if building.queue:
                 info = race.units[building.queue[0]]
                 progress = int(100 * building.train_progress / info.build_time)
                 entries.append((("train", building.id), f"{building.info.name}: {info.name}",
-                                f"Training {progress}% · {len(building.queue)} in queue · current cost {info.cost} paid", "Cancel last",
-                                lambda bid=building.id: self._cancel("cancel_train", bid)))
+                                f"Training {progress}% · {len(building.queue)} in queue · current one paid", price_pairs(info.cost),
+                                "Cancel last", lambda bid=building.id: self._cancel("cancel_train", bid)))
             if building.research is not None:
                 info = UPGRADES[building.research]
                 progress = int(100 * building.research_progress / info.time)
                 entries.append((("research", building.id), f"{building.info.name}: {info.name}",
-                                f"Researching {progress}% · {info.cost} paid", "Cancel",
+                                f"Researching {progress}% · paid", price_pairs(info.cost), "Cancel",
                                 lambda bid=building.id: self._cancel("cancel_research", bid)))
         return entries
 
@@ -2497,14 +2519,15 @@ class SettlementPlansScene(_Overlay):
             self._row_controls = []
             if not visible:
                 self.rows.add(Label("No pending plans or production.", text_style="heading", width=660))
-            for _key, title, detail, label, action in visible:
-                heading = Label(title, text_style="body", width=510)
-                status = Label(detail, text_style="sub", width=510, wrap=True)
+            for _key, title, detail, pairs, label, action in visible:
+                heading = Label(title, text_style="body", width=380)
+                status = Label(detail, text_style="sub", width=380, wrap=True)
+                price = Price(pairs, size=14, text_style="body", width=PLANS_PRICE)
                 cancel = Button(label, on_click=action, style=GHOST_BUTTON, width=130)
-                self.rows.add(Row(Column(heading, status, spacing=3), cancel, spacing=20))
-                self._row_controls.append((heading, status, cancel))
-        for (_key, title, detail, label, action), (heading, status, cancel) in zip(visible, self._row_controls):
-            heading.text, status.text, cancel.text, cancel.on_click = title, detail, label, action
+                self.rows.add(Row(Column(heading, status, spacing=3), price, cancel, spacing=12))
+                self._row_controls.append((heading, status, price, cancel))
+        for (_key, title, detail, pairs, label, action), (heading, status, price, cancel) in zip(visible, self._row_controls):
+            heading.text, status.text, price.pairs, cancel.text, cancel.on_click = title, detail, pairs, label, action
         self.page_label.text = f"{self.page + 1} / {pages}"
         self.previous.enabled, self.next.enabled = self.page > 0, self.page + 1 < pages
         self.clear_assembly.enabled = self.game_scene.player.assembly is not None

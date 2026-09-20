@@ -7,9 +7,9 @@ and turn a number red when the purse is short.  These hold Warband's cards and c
 import pytest
 
 from saga2d import Game
-from warband.sim.rules import BUILDINGS, UNITS, BuildingType, UnitType
+from warband.sim.rules import BUILDINGS, UNITS, BuildingType, Cost, UnitType
 from warband.ui.icons import COLORS
-from warband.ui.scene import DEFAULT_SETTINGS, CodexScene, GameScene, new_game
+from warband.ui.scene import DEFAULT_SETTINGS, SHORT_FLASH, SHORT_OF, CodexScene, GameScene, new_game
 from warband.ui.style import BAD, BODY, GOLD, build_theme
 
 
@@ -99,15 +99,21 @@ def test_a_building_says_what_its_recruits_cost_on_its_own_card(game) -> None:
     assert symbols_under(game, button_of(scene, UnitType.PEASANT)) == ["gold"]
 
 
-def supply_pair(game: Game, scene: GameScene) -> tuple[str, tuple[int, int, int, int], set[tuple[int, int, int, int]]]:
-    """What the top bar's supply pair says, the ink of its number, and the colours its symbol is drawn in (each
-    facet is a shade of the one ink the symbol is given, and that ink is among them)."""
-    row = scene.supply_row.bounds
-    inside = lambda x, y: row[0] <= x < row[0] + row[2] and row[1] <= y < row[1] + row[3]  # noqa: E731
-    number = next(t for t in game.backend.texts if "/" in str(t["text"]) and inside(t["x"], t["y"]))
+def shades(color: tuple[int, int, int, int]) -> set[tuple[int, int, int, int]]:
+    """The lighter and darker facets a symbol is drawn with beside its own colour."""
+    return {tuple(round(c * 0.6) for c in color[:3]) + (color[3],), tuple(min(255, round(c * 1.2)) for c in color[:3]) + (color[3],)}
+
+
+def top_bar(game: Game, scene: GameScene, name: str) -> tuple[str, tuple[int, int, int, int], set[tuple[int, int, int, int]]]:
+    """What the top bar's pair for *name* says, the ink of its number, and the colours its symbol is drawn in
+    (each facet is a shade of the one ink the symbol is given, and that ink is among them)."""
+    icon, label = scene.resource_pair(name)
+    ix, iy, iw, ih = icon.bounds
+    lx, ly, lw, lh = label.bounds
+    number = next(t for t in game.backend.texts if lx <= t["x"] < lx + lw and ly <= t["y"] < ly + lh)
     facets = {tuple(p["color"]) for p in game.backend.polygons
-              if inside(min(q[0] for q in p["points"]), min(q[1] for q in p["points"]))}
-    return number["text"], tuple(number["color"]), facets
+              if ix <= min(q[0] for q in p["points"]) < ix + iw and iy <= min(q[1] for q in p["points"]) < iy + ih}
+    return str(number["text"]), tuple(number["color"]), facets
 
 
 def test_the_supply_pair_warns_as_the_farms_fill_and_reddens_when_they_are_full(game) -> None:
@@ -120,18 +126,18 @@ def test_the_supply_pair_warns_as_the_farms_fill_and_reddens_when_they_are_full(
     game.tick(1 / 60)
     used, cap = world.supply(scene.human)
     assert cap - used > 2
-    text, ink, facets = supply_pair(game, scene)
+    text, ink, facets = top_bar(game, scene, "supply")
     assert text == f"{used}/{cap}" and ink not in (BAD, GOLD) and COLORS["supply"] in facets
     for i in range(cap - used - 2):  # fill the farms to within two of the cap
         world.spawn_unit(scene.human, UnitType.PEASANT, (hall.x + 2 + i, hall.y + 2))
     game.tick(1 / 60)
-    _text, ink, facets = supply_pair(game, scene)
-    assert ink == GOLD and GOLD in facets
+    _text, ink, facets = top_bar(game, scene, "supply")
+    assert ink == GOLD and facets == {COLORS["supply"], *shades(COLORS["supply"])}, "the symbol keeps its own colour"
     for i in range(2):
         world.spawn_unit(scene.human, UnitType.PEASANT, (hall.x - 2 - i, hall.y + 2))
     game.tick(1 / 60)
-    _text, ink, facets = supply_pair(game, scene)
-    assert world.supply(scene.human)[0] >= cap and ink == BAD and BAD in facets
+    _text, ink, facets = top_bar(game, scene, "supply")
+    assert world.supply(scene.human)[0] >= cap and ink == BAD and BAD not in facets
 
 
 def test_the_codex_prices_things_in_the_same_symbols_as_the_card(game) -> None:
@@ -146,3 +152,28 @@ def test_the_codex_prices_things_in_the_same_symbols_as_the_card(game) -> None:
     assert str(barracks.cost) not in drawn and "Cost" in drawn
     assert {str(barracks.cost.gold), str(barracks.cost.lumber)} <= drawn
     assert f"+{farm.supply}" in drawn and {COLORS["gold"], COLORS["lumber"], COLORS["supply"]} <= facets
+
+
+def test_an_order_refused_for_want_of_gold_reddens_the_gold_in_the_top_bar(game) -> None:
+    """An RTS answers "not enough minerals" and reddens the counter; a line of status text on the far side of the
+    screen is easy to miss while the eye is on the card.  The red fades on its own."""
+    scene = match(game)
+    scene.player.gold = 0
+    hall = scene.world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    scene.select([hall.id])
+    game.tick(1 / 60)
+    press(game, UNITS[UnitType.PEASANT].hotkey)
+    assert scene.status.startswith(SHORT_OF["gold"])
+    assert top_bar(game, scene, "gold")[1] == BAD and top_bar(game, scene, "lumber")[1] != BAD
+    game.tick(SHORT_FLASH)
+    game.tick(1 / 60)
+    assert top_bar(game, scene, "gold")[1] != BAD
+
+
+def test_the_top_bar_knows_the_words_the_rules_refuse_with(game) -> None:
+    """The flash reads the refusal the simulation wrote; a reword there would quietly end it, so hold the two
+    together here rather than leave a dead feature."""
+    scene = match(game)
+    world = scene.world
+    assert world.can_afford(scene.human, Cost(scene.player.gold + 1)).startswith(SHORT_OF["gold"])
+    assert world.can_afford(scene.human, Cost(0, scene.player.lumber + 1)).startswith(SHORT_OF["lumber"])
