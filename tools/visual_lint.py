@@ -234,6 +234,20 @@ def select_busy_hall(game: Game) -> None:
 
 
 @screen
+def select_upgraded(game: Game) -> None:
+    """A footman whose blades and plate are researched, with a comrade at each elbow: every number the research
+    and the shield wall raised carries its gold mark."""
+    scene = town(game)
+    scene.world.players[scene.human].upgrades.update({Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.ARMOR_1})
+    middle = spawn(scene, UnitType.FOOTMAN, (10, 12))
+    for side in (-1, 1):
+        spawn(scene, UnitType.FOOTMAN, (10 + side, 12))
+    scene.select([middle.id])
+    scene.camera.center_on(10 * TILE, 12 * TILE)
+    ticks(game)
+
+
+@screen
 def select_site(game: Game) -> None:
     scene = town(game)
     world = scene.world

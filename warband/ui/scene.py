@@ -27,8 +27,8 @@ from warband.sim.model import (Attack, AttackMove, Build, Building, Deposit, Ent
                                 RuleError, Unit, World)
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
-from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, SIM_DT, UNITS, UPGRADES, ArmorClass, AttackType, BuildingType, Cost, Difficulty, MapTheme,
-                               Race, UnitType, Upgrade)
+from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, SIM_DT, UNITS, UPGRADES, ArmorClass, AttackType, BuildingType, Cost,
+                               Difficulty, MapTheme, Race, Resource, UnitType, Upgrade)
 from warband.sim.rules import Layout as MapLayout
 from warband.records.profile import MatchResult, Profile, RatingChange, Standing, standing
 from warband.records.replay import Replay, ReplayStore
@@ -111,6 +111,11 @@ def attack_hint(attack: AttackType) -> str:
     """What a kind of blow does beyond its number, from :data:`DAMAGE_FACTORS`, for the unit panel."""
     better = [f"×{factor:g} against {armor.value if armor is not ArmorClass.FORTIFIED else 'buildings'}" for (kind, armor), factor in DAMAGE_FACTORS.items() if kind is attack]
     return attack.value + (f", {', '.join(better)}" if better else "")
+
+
+def peasants(count: int) -> str:
+    """"1 peasant", "3 peasants"."""
+    return f"{count} peasant" + ("" if count == 1 else "s")
 
 
 def build_time(seconds: float) -> str:
@@ -546,9 +551,15 @@ class GameScene(Scene):
         # warnings a player acts on (:meth:`_update_resources`), so each pair is kept to be coloured.
         self._resources: dict[str, tuple[Icon, Label, Style | None]] = {}
         self._resource_rows = []
+        def gold_hint() -> str:
+            return f"Gold — every unit, building and upgrade costs some; {peasants(self._gatherers(Resource.GOLD))} mining"
+
+        def lumber_hint() -> str:
+            return f"Lumber — buildings, upgrades and engines need it; {peasants(self._gatherers(Resource.LUMBER))} chopping"
+
         for name, reading, ink, hint in (
-                ("gold", lambda: str(self.player.gold), GOLD, "Gold — mined by workers; every unit, building and upgrade costs some"),
-                ("lumber", lambda: str(self.player.lumber), LUMBER, "Lumber — felled by workers; buildings, upgrades and engines need it"),
+                ("gold", lambda: str(self.player.gold), GOLD, gold_hint),
+                ("lumber", lambda: str(self.player.lumber), LUMBER, lumber_hint),
                 ("supply", supply_text, None, supply_hint)):
             icon, label = Icon(name, size=22), Label(reading, text_style="hud", text_color=ink)
             self._resources[name] = (icon, label, label.style)
@@ -656,6 +667,14 @@ class GameScene(Scene):
     def _idle_button(self) -> Button:
         self.idle_button = Button(lambda: f"Idle {self._idle_peasant_count()}", hotkey="Tab", on_click=self.next_idle_peasant, style=ACTION_BUTTON)
         return self.idle_button
+
+    def _gatherers(self, resource: Resource) -> int:
+        """How many of the player's peasants are working *resource*: the harvest each is on (a mine's id is gold, a
+        tree's tile lumber), or, for one on its way home with nothing else to do, the load it carries."""
+        jobs = (next((Resource.GOLD if isinstance(order.target, int) else Resource.LUMBER for order in unit.orders if isinstance(order, Harvest)),
+                     unit.carrying)
+                for unit in self.world.player_units(self.human) if unit.is_worker)
+        return sum(job is resource for job in jobs)
 
     def _idle_peasant_count(self) -> int:
         return sum(1 for u in self.world.player_units(self.human) if u.is_worker and not u.orders and not u.hidden)
@@ -2323,18 +2342,30 @@ class GameScene(Scene):
             self.draw_text(f"{entity.hp}/{entity.max_hp}", tx + 188, y + 34, style="sub")
         if isinstance(entity, Unit):
             info = entity.info
-            primary = (("health", f"+{world.heal_amount(entity)}", f"Healing per cast, one every {info.period:g} s; its own blow is {world.damage_of(entity)}")
+            # Each stat is the number the unit was listed with; what research or the shield wall adds stands beside
+            # it in gold, the way an RTS marks an upgraded stat instead of quietly showing a bigger number.
+            flanked = FORMATION_ARMOR * world.flanks(entity) if info.formation else 0
+            primary = (("health", f"+{info.heal:g}", world.heal_amount(entity) - info.heal,
+                        f"Healing per cast, one every {info.period:g} s; its own blow is {world.damage_of(entity)}")
                        if info.heal
-                       else ("damage", str(world.damage_of(entity)), f"Damage per strike; {attack_hint(info.attack)}"))
-            stats = [primary, ("armor", str(world.armor_of(entity)),
-                               f"{armour_name(info.armor_class).capitalize()}; armour is subtracted from every blow"),
-                     ("range", f"{world.range_of(entity):g}", "Healing range in tiles" if info.heal else "Attack range in tiles"),
-                     ("speed", f"{world.speed_of(entity):g}", "Speed in tiles per second")]
+                       else ("damage", f"{info.damage:g}", world.damage_of(entity) - info.damage,
+                             f"Damage per strike; {attack_hint(info.attack)}"))
+            stats = [primary,
+                     ("armor", f"{info.armor:g}", world.armor_of(entity) - info.armor,
+                      f"{armour_name(info.armor_class).capitalize()}; armour is subtracted from every blow"
+                      + (f" · +{flanked} from the comrades at its elbows" if flanked else "")),
+                     ("range", "melee" if info.range < 1 else f"{info.range:g}", world.range_of(entity) - info.range,
+                      "Healing range in tiles" if info.heal else "Reaches the next tile over" if info.range < 1 else "Attack range in tiles"),
+                     ("speed", f"{info.speed:g}", world.speed_of(entity) - info.speed, "Speed in tiles per second")]
             mx, my = self.mouse
-            for i, (icon, value, hint) in enumerate(stats):
+            body = self.game.theme.get_text_style("body")
+            for i, (icon, text, raised, hint) in enumerate(stats):
                 sx = tx + i * 78
                 draw_icon(self, icon, sx, y + 45, 19)
-                self.draw_text(value, sx + 24, y + 60, style="body")
+                self.draw_text(text, sx + 24, y + 60, style="body")
+                if raised > 0:
+                    width, _height = self.game.backend.measure_text(text, body.font_size, body.font)
+                    self.draw_text(f"+{raised:g}", sx + 28 + width, y + 60, style="body", color=GOLD)
                 if sx <= mx < sx + 74 and y + 42 <= my < y + 64:
                     self.tooltip = hint
             if world.frenzied(entity):

@@ -1,13 +1,14 @@
-"""What a thing costs, told in symbols: the command card, the codex, and the red of a purse that cannot pay.
+"""Reading resources: what a thing costs, whether the purse can pay it, and what the top bar warns about.
 
 An RTS player reads a price at a glance — StarCraft's cards carry a mineral and a gas symbol with their numbers,
-and turn a number red when the purse is short.  These hold Warband's cards and codex to the same reading.
+and turn a number red when the purse is short, answer a refusal by reddening the counter it names, and say how
+many workers are on each resource.  These hold Warband's cards, codex and top bar to the same reading.
 """
 
 import pytest
 
 from saga2d import Game
-from warband.sim.rules import BUILDINGS, UNITS, BuildingType, Cost, UnitType
+from warband.sim.rules import BUILDINGS, UNITS, BuildingType, Cost, Terrain, UnitType
 from warband.ui.icons import COLORS
 from warband.ui.scene import DEFAULT_SETTINGS, SHORT_FLASH, SHORT_OF, CodexScene, GameScene, new_game
 from warband.ui.style import BAD, BODY, GOLD, build_theme
@@ -177,3 +178,27 @@ def test_the_top_bar_knows_the_words_the_rules_refuse_with(game) -> None:
     world = scene.world
     assert world.can_afford(scene.human, Cost(scene.player.gold + 1)).startswith(SHORT_OF["gold"])
     assert world.can_afford(scene.human, Cost(0, scene.player.lumber + 1)).startswith(SHORT_OF["lumber"])
+
+
+def test_the_top_bar_says_how_many_peasants_are_on_each_resource(game) -> None:
+    """The count of workers on minerals and on gas is the first thing a StarCraft player checks; Warband places
+    its peasants itself, so the bar has to say where they went."""
+    scene = match(game)
+    world = scene.world
+    peasants = [u for u in world.player_units(scene.human) if u.is_worker]
+    mine = next(b for b in world.buildings.values() if b.type is BuildingType.GOLD_MINE)
+    hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    trees = min(((x, y) for y in range(world.height) for x in range(world.width) if world.terrain_at((x, y)) is Terrain.TREES),
+                key=lambda t: abs(t[0] - hall.x) + abs(t[1] - hall.y))  # a stand they can reach, as the corner's may not be
+    world.harvest([peasants[0].id], mine.id)
+    world.harvest([p.id for p in peasants[1:]], trees)
+    icon, _label = scene.resource_pair("gold")
+    x, y, w, h = icon.bounds
+    game.backend.inject_mouse_move(x + w / 2, y + h / 2)
+    game.tick(1 / 60)
+    assert "1 peasant mining" in scene.tooltip
+    icon, _label = scene.resource_pair("lumber")
+    x, y, w, h = icon.bounds
+    game.backend.inject_mouse_move(x + w / 2, y + h / 2)
+    game.tick(1 / 60)
+    assert f"{len(peasants) - 1} peasants chopping" in scene.tooltip

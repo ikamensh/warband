@@ -3,9 +3,10 @@
 import pytest
 
 from saga2d import Game
-from warband.sim.rules import UnitType
+from warband.sim.rules import BLADES_BONUS, FORMATION_ARMOR, UNITS, UnitType, Upgrade
 from warband.ui.scene import PORTRAITS_PER_PAGE, GameScene
-from warband.ui.style import build_theme
+from warband.ui.icons import COLORS
+from warband.ui.style import GOLD, build_theme
 
 from tests.warband.battlefield import SETTINGS, field
 
@@ -137,5 +138,44 @@ def test_shift_and_a_click_on_a_portrait_takes_that_unit_out_of_the_selection(tm
         game.backend.inject_release(x + w / 2, y + h / 2, "left", shift=True)
         game.tick(1 / 60)
         assert sorted(scene.selection) == sorted(i for i in ids if i != chosen)
+    finally:
+        game.close()
+
+
+def gold_marks(game: Game) -> list[str]:
+    """The gold "+N" marks on the card, left to right: what research or the field added to a listed number."""
+    marks = [t for t in game.backend.texts if str(t["text"]).startswith("+") and tuple(t["color"]) == GOLD]
+    return [str(t["text"]) for t in sorted(marks, key=lambda t: t["x"])]
+
+
+def symbol_at(game: Game, color) -> tuple[float, float]:
+    """The middle of the symbol drawn in *color*: where a player would put the pointer to ask what it is."""
+    facets = [p for p in game.backend.polygons if tuple(p["color"]) == color]
+    points = [q for p in facets for q in p["points"]]
+    return (min(q[0] for q in points) + max(q[0] for q in points)) / 2, (min(q[1] for q in points) + max(q[1] for q in points)) / 2
+
+
+def test_research_and_the_shield_wall_are_marked_beside_the_number_they_raise(tmp_path) -> None:
+    """A bigger number says nothing about why: what an upgrade or a comrade adds stands beside the listed number
+    in gold, the way an RTS marks an upgraded stat, and the armour explains its own on hover."""
+    game = Game("Warband upgrades", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        scene = GameScene(field(), 0, ranked=False, settings=dict(SETTINGS))
+        game.push(scene)
+        world = scene.world
+        listed = UNITS[UnitType.FOOTMAN]
+        alone = world.spawn_unit(0, UnitType.FOOTMAN, (8.5, 6.5))
+        scene.select([alone.id])
+        for _ in range(2):
+            game.tick(1 / 60)
+        assert gold_marks(game) == [] and str(listed.damage) in [str(t["text"]) for t in game.backend.texts]
+        world.players[0].upgrades.add(Upgrade.BLADES_1)  # staged: the blacksmith's research, finished
+        for side in (-1, 1):  # a comrade at each elbow, which is the shield wall's own armour
+            world.spawn_unit(0, UnitType.FOOTMAN, (8.5 + side, 6.5))
+        game.tick(1 / 60)
+        assert gold_marks(game) == [f"+{BLADES_BONUS}", f"+{2 * FORMATION_ARMOR}"]
+        game.backend.inject_mouse_move(*symbol_at(game, COLORS["armor"]))
+        game.tick(1 / 60)
+        assert "elbows" in scene.tooltip
     finally:
         game.close()

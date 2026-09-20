@@ -91,7 +91,7 @@ def test_clicking_a_peasant_selects_it_and_shows_its_card(play) -> None:
     click(game, scene, peasant.pos)
     assert scene.selection == [peasant.id]
     shown = texts(game)
-    assert "Peasant" in shown and {"3", "0", "0.45", "2.4"} <= set(shown)  # damage, armour, range and speed beside their symbols
+    assert "Peasant" in shown and {"3", "0", "melee", "2.4"} <= set(shown)  # damage, armour, reach and speed beside their symbols
     assert [c.label for c in scene.card] == ["Move", "Stop", "Hold", "Attack", "Patrol", "Build", "Repair"]  # the card's rows
     assert "select" in scene.recent_sounds
 
