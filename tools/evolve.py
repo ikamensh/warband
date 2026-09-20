@@ -218,7 +218,7 @@ def main() -> None:
     parser.add_argument("--min-games", type=int, default=150, help="best: only individuals with this many games behind them")
     parser.add_argument("--within", type=float, default=0.04, help="best: how far below the best's fitness a different player may be")
     parser.add_argument("--base", default="pro-vanguard", help="trial: the known profile the genes are set on")
-    parser.add_argument("--set", action="append", help="trial: genes set by hand, e.g. research_first=2,tech.blacksmith=1 (repeatable)")
+    parser.add_argument("--set", action="append", help="trial: genes set by hand, e.g. abort.on=1,abort_ratio=1.2 (repeatable)")
     parser.add_argument("--genes", action="append", help="trial: a JSON file whose \"genes\" play as they are (repeatable)")
     parser.add_argument("path", nargs="?", type=Path, help="show, profile: the run's folder")
     parser.add_argument("--out", type=Path, help="run: the run's folder; an existing run is carried on")

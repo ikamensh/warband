@@ -11,7 +11,7 @@ from dataclasses import replace
 import pytest
 
 from warband.brains.ai import known_mines, make_brain
-from warband.brains.bred import BRED
+from warband.brains.bred import BRED, BRED_FOR_LAYOUT
 from warband.brains.pro_ai import PRO, PRO_VANGUARD, ProBrain
 from warband.sim import mapgen
 from warband.sim.model import World
@@ -29,16 +29,26 @@ def play(world: World, brain, seconds: float, seed: int = 1) -> None:
 def test_every_race_has_a_posture_and_grandmaster_plays_its_race_s_own() -> None:
     assert set(BRED) == set(Race) and all(BRED[race] for race in Race)
     for race in Race:
-        world = mapgen.generate(seed=5, players=2, human=None, races=(race, Race.HUMAN))
+        world = mapgen.generate(seed=5, players=2, human=None, races=(race, Race.HUMAN), layout=Layout.PLAINS)
         brain = make_brain(0, Difficulty.GRANDMASTER, seed=5)
         play(world, brain, 1.0)
         assert brain.brain.profile in BRED[race], race  # the posture it settled on at its first pass: a bred brain's own question
 
 
+def test_on_a_map_a_race_was_bred_for_grandmaster_plays_that_map_s_posture() -> None:
+    """The New game screen names the kind of map, so a posture bred on it alone is fair knowledge to play by."""
+    assert BRED_FOR_LAYOUT, "the table holds at least the one specialist that beat its race's own posture"
+    for (race, layout), postures in BRED_FOR_LAYOUT.items():
+        world = mapgen.generate(seed=600003, width=48, height=40, players=2, human=None, races=(race, Race.ORC), layout=layout)
+        brain = make_brain(0, Difficulty.GRANDMASTER, seed=1)
+        play(world, brain, 1.0)
+        assert brain.brain.profile in postures, (race, layout)  # as above: the posture it settled on
+
+
 def test_two_grandmasters_of_one_race_draw_different_postures_where_the_race_has_two() -> None:
     """As Master's are: the map's seed and the seat draw it, so a replay and every client agree, and a mirror differs."""
     race = next(race for race in Race if len(BRED[race]) > 1)
-    world = mapgen.generate(seed=6, players=2, human=None, races=(race, race))
+    world = mapgen.generate(seed=6, players=2, human=None, races=(race, race), layout=Layout.PLAINS)
     brains = [make_brain(seat, Difficulty.GRANDMASTER, seed=6) for seat in (0, 1)]
     for brain in brains:
         play(world, brain, 0.5)

@@ -118,7 +118,6 @@ class ProProfile:
     strikers_max: int = 16            # …but no more peasants than this
     strike_lead: float = 25.0         # a frame this many seconds from standing is struck already, so the strike is there
     research_order: tuple[Upgrade, ...] | None = None  # the upgrades it buys, first first, instead of RESEARCH_ORDER
-    research_first: int = 0           # this many of them come before soldiers: their price is held once their building stands idle
     push_upgrades: int = 0            # a push waits for this many upgrades…
     push_after: float = 0.0           # …and for this many seconds of play…
     push_by: float = 600.0            # …but not past this many
@@ -129,7 +128,6 @@ class ProProfile:
     defend_ratio: float = 0.0         # an attack on the base this many times the soldiers at home is met behind the hall, together; 0: at once
     prospect_floor: int = 0           # with less gold than this left in the mines it works and no other mine known, a peasant goes looking; 0: never
     abort_ratio: float = 0.0          # a push facing this many times its own strength where it fights, towers counted, turns back; 0: never
-    avoid_towers: bool = False        # a push goes for what the enemy's known towers do not cover, while there is any
     wood_lead: bool = False           # hands follow the wood the next purchases are short of while the gold for them is banked
     wood_per_hand: int = 300          # …one more chopper for each this much lumber they are short
     wood_release: int = 1000          # …and back to the policy once nothing is short and this much lumber is banked
@@ -305,8 +303,6 @@ class ProBrain:
         self._observe(world)
         self._economy(world)
         self._tower_rush(world)    # a rush tower's price is held from everything below
-        if self.profile.research_first:
-            self._research(world)  # the upgrades a posture is built on are bought before the soldiers they arm
         self._training(world)      # soldiers get first call on the bank…
         self._construction(world, rng)  # …and buildings buy what is left
         self._research(world)
@@ -796,14 +792,11 @@ class ProBrain:
         return self.profile.research_order if self.profile.research_order is not None else RESEARCH_ORDER
 
     def _saving_for(self, world: World) -> list[Cost]:
-        """The prices held for what the posture buys ahead of soldiers: the next building of its opening and the
-        next upgrade of a research-first posture.  The purchase itself is paid out of what was held for it."""
+        """The prices held for what the posture buys ahead of soldiers: the next building of its opening.  The
+        purchase itself is paid out of what was held for it."""
         saved = []
         if self.profile.opening_hold and self._opening_next is not None:
             saved.append(BUILDINGS[self._opening_next].cost)
-        upgrade = self._saving_upgrade(world)
-        if upgrade is not None:
-            saved.append(upgrade)
         return saved
 
     def _payable(self, world: World, cost: Cost) -> bool:
@@ -813,25 +806,6 @@ class ProBrain:
             return self._affordable(world, cost)
         gold, lumber = self._spendable(world)
         return gold >= 0 and lumber >= 0  # what is left once every hold is counted, its own among them
-
-    def _saving_upgrade(self, world: World) -> Cost | None:
-        """The price of the upgrade a research-first posture buys next, once the building that researches it stands
-        idle: soldiers bought meanwhile would push it back for as long as the barracks keep asking."""
-        if not self.profile.research or not self.profile.research_first:
-            return None
-        player = world.players[self.player]
-        buildings = world.player_buildings(self.player, done=True)
-        for upgrade in self._research_order()[:self.profile.research_first]:
-            if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):
-                continue
-            info = UPGRADES[upgrade]
-            if info.requires is not None and info.requires not in player.upgrades:
-                continue
-            for building in buildings:
-                if upgrade in building.info.researches:
-                    return info.cost if building.research is None and not building.queue else None
-            return None  # its building does not stand yet: nothing to save for
-        return None
 
     def _spendable(self, world: World) -> tuple[int, int]:
         bank, (gold, lumber) = world.players[self.player], self._held(world)
@@ -1335,11 +1309,6 @@ class ProBrain:
         theirs = [record for record in buildings if record.player == victim] or buildings
         # A structure we have seen, we know the kind of; one razed while we were
         # not looking reads as unknown and stays a place worth walking to.
-        if self.profile.avoid_towers:
-            towers = [t for t in self._knowledge(world).threats if t.player is not None and t.player != self.player]
-            open_ground = [record for record in theirs
-                           if not any(dist(record.center, t.center) <= t.threat_range + 1.0 for t in towers)]
-            theirs = open_ground or theirs  # all of it under their arrows: the comparison of forces prices the towers
         production = [record.center for record in theirs
                       if getattr(world.buildings.get(record.id), "type", None) in wanted]
         if production:

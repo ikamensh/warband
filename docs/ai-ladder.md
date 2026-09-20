@@ -156,7 +156,24 @@ odds. `--proximity 0` gives the old flat fit.
 
 ## The difficulty settings
 
-What the New game screen offers, and what each one is worth. 60 seeds, both
+What the New game screen offers, and what each one is worth: 60 seeds it had never been bred or measured on, both
+corners, every map size, all five layouts in turn, under fog, 1200 games, Medium anchored at 1000, measured on
+2026-09-20 with Grandmaster's final table and the gatherers' second look in the rules
+([bred brains](#bred-brains-the-search-above-master)):
+
+| setting | Elo | 90% interval | plays |
+|---------|-----|--------------|-------|
+| Easy | 559 | 469 .. 629 | `ai.Brain`, the Easy profile |
+| Medium | 1000 | — | `ai.Brain`, what Normal and Hard both were |
+| Hard | 1378 | 1317 .. 1466 | `pro_ai.ProBrain`, `pro-hard` |
+| Master | 1573 | 1506 .. 1659 | `pro_ai.ProBrain`, `pro-vanguard`, `pro-warden` or `pro-rush`, drawn with the map |
+| Grandmaster | 1917 | 1841 .. 2036 | `pro_ai.RaceBrain`: a posture bred for the race it leads (`brains/bred.py`), two a race, drawn with the map |
+
+Each beats the one below it 95%, 91%, 76% and 89% of the time. Grandmaster takes 89.2% from Master, 95.0% from
+Hard and 98.3% from Medium and from Easy. It was asked to be a 2000 and is not one: 2000 is 92% against Master,
+and the interval reaches it without the measurement doing so. What keeps it short is below.
+
+The measurement before it, of the four settings then: 60 seeds, both
 corners, every map size, all five layouts in turn, under fog, 720 games,
 Medium anchored at 1000, measured on 2026-09-19 once frames lost their armour
 and Easy and Medium pull down a tower frame on their ground (WB-044), after the
@@ -556,7 +573,7 @@ where the human Vanguard took 48% on the same 120 games. Its limit: strength doe
 opening it bred fielded no rangers and took 35%; the whole-match search put them back.
 
 **What came out** (round one: 26 generations for orcs and humans, 22 for elves and dwarves, populations of 24 to
-32, about 120,000 matches in all). Each race's roster judged as that race on 150 fresh games against Master's
+32, about 120,000 matches in all; rated 1896 on the protocol above, 88.3% against Master). Each race's roster judged as that race on 150 fresh games against Master's
 three postures, beside the Vanguard on the same boards:
 
 | race | the Vanguard | the bred roster |
@@ -580,6 +597,25 @@ Master: plains 100%, crossings 96%, forest 92%, bastion 83%, Klondike 71% (24 ga
 firmer than the numbers). With prospecting the elf champion took 79% on Klondike boards alone where it had taken
 69–70%: 72 games each, about five points either way, so suggestive rather than settled; holding the bank for the hall itself
 (`expand_hold`) took 21–32% there, because the push that comes at 170 s meets no army, and was deleted.
+
+**Round two, map specialists, and where it stopped.** A second round of eighteen generations a race, from
+round one's rosters with the newer genes in play (the fight read at the target, prospecting), changed nothing a
+hundred and eighty fresh games could see: orc 91.7% to 92.2%, human 89.4% to 89.4%, elf 86.7% to 87.8%, dwarf 95.0%
+to 93.3%, round one's champion beside round two's on the same boards, a standard error of two points. The search
+has levelled at about nine games in ten against Master's postures. Breeding every race again on Klondike alone and
+on Bastion alone, the two layouts it is weakest on, found one posture worth keeping: the humans' on Klondike,
+**87.3%** where their own posture takes 64.7% there (150 games each; a plain opening out at 190 s, where the bred
+opening of three barracks and three stables starves on twenty thousand gold). The other seven specialists scored
+level with the postures they were bred from. `RaceBrain` takes such a posture for a race on one kind of map
+(`bred.BRED_FOR_LAYOUT`): the New game screen names the map, so it is fair knowledge. With it, and with
+prospecting in seven of nine postures, Grandmaster's games against Easy and Medium went from 94–96% to 98%.
+
+What a 2000 still needs is therefore not more generations of these genes. Two things the traces point at, neither
+built: **siege** (no brain reaches a workshop in a decided game, and a towered base is what the bred pushes turn
+back from, since six of nine postures read the fight at their target and leave when two towers outweigh them),
+and an **engagement rule that uses sightings** (every posture attacks blind; avoiding ground under known towers
+was written, could not be tested without scouting, and was deleted unused, as was buying upgrades ahead of
+soldiers).
 
 **What the units were given.** Set-piece battles (`tools/battle_bench.py`: two armies of one price sent at each
 other with one attack-move each, a hundred fights from both sides) showed soldiers striking 94% of a battle's
