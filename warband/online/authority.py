@@ -9,7 +9,7 @@ from warband.sim.worker_knowledge import WorkerKnowledge
 from saga2d.server.games import GameSpec, option_choice, option_int, option_keys, option_seed
 from warband.sim.rules import BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
 
-GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'stop', 'hold', 'release_workers'}
+GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'salvage', 'stop', 'hold', 'release_workers'}
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building', 'set_auto_train'}
 SETTLEMENT_ORDERS = {'plan_building', 'order_unit', 'order_upgrade', 'set_assembly', 'cancel_plan'}
 SEAT_ORDERS = SETTLEMENT_ORDERS | {'resign'}  # orders about the seat's own player, named in the order
@@ -18,8 +18,9 @@ ORDERS = GROUP_ORDERS | BUILDING_ORDERS | SEAT_ORDERS | {'build'}
 EVENT_TICKS = 100
 #: What a seat is told of the server's random stream: a fixed state, so no client can read the damage rolls to come.
 NO_DICE = random.Random(0).getstate()
-#: News for its owner alone: what it trains and researches, what it is refused or left to plans, its deposits, alarms and plunder.
-PRIVATE_EVENTS = frozenset({'trained', 'researched', 'refused', 'deferred', 'deposit', 'under_attack', 'plunder'})
+#: News for its owner alone: what it trains and researches, what it is refused or left to plans, its deposits, what it
+#: salvages, its alarms and its plunder.
+PRIVATE_EVENTS = frozenset({'trained', 'researched', 'refused', 'deferred', 'deposit', 'salvage', 'under_attack', 'plunder'})
 #: The match's public news, told to every seat wherever it happened.
 PUBLIC_EVENTS = frozenset({'victory', 'eliminated', 'surrendered', 'resigned', 'exposed'})
 #: What a seat learns of a unit it sees but does not own is where it stands and how it moves and strikes, not where it is going.

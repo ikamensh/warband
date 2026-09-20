@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-from warband.sim.model import (MINE_CLEARANCE, Attack, AttackMove, Build, Building, Deposit, Harvest, Move, Point, Pos, Repair, Unit,
+from warband.sim.model import (MINE_CLEARANCE, Attack, AttackMove, Build, Building, Deposit, Harvest, Move, Point, Pos, Repair, Salvage, Unit,
                            World, dist, rect_gap)
 from warband.sim.races import RACES
 from warband.sim.rules import BUILDINGS, UPGRADES, BuildingType, Difficulty, Race, Resource, Terrain, UnitType, Upgrade
@@ -451,7 +451,7 @@ class Brain:
         self.strikers = striking
         for tower in frames:
             spare = [p for p in self._peasants(world) if p.id not in self.strikers and p.constructing is None
-                     and not isinstance(p.order, (Build, Repair))]
+                     and not isinstance(p.order, (Build, Repair, Salvage))]
             drafted = sorted(spare, key=lambda p: dist(p.pos, tower.center))[:TOWER_STRIKERS - len(self.strikers)]
             if drafted:
                 world.attack([p.id for p in drafted], tower.id)
@@ -463,7 +463,7 @@ class Brain:
     def _construction(self, world: World, rng: random.Random) -> None:
         if any(not b.done for b in world.player_buildings(self.player)):
             return  # one site at a time; a builder in trouble would otherwise stall the whole plan
-        peasants = [p for p in self._peasants(world) if not p.hidden and p.carrying is None and not isinstance(p.order, Repair)]
+        peasants = [p for p in self._peasants(world) if not p.hidden and p.carrying is None and not isinstance(p.order, (Repair, Salvage))]
         if not peasants:
             return
         hall = self._hall(world)

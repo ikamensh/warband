@@ -14,13 +14,13 @@ The keyboard works in **modes**, and the command card always shows the mode's
 commands with their keys on them:
 
 - the **selection's card**: a unit card (move, stop, hold, attack, patrol; a
-  peasant's build and repair), a building's card (what it trains, its
+  peasant's build, repair and salvage), a building's card (what it trains, its
   research, cancel);
 - the settlement's **catalogues**: Build, Train and Upgrade, which plan for the
   whole settlement (paid when work starts) or, with peasants selected, have
   those peasants build;
-- a **pending order**: a target to click (move, attack, patrol, repair, the
-  assembly point) or a building's site under the pointer.
+- a **pending order**: a target to click (move, attack, patrol, repair,
+  salvage, the assembly point) or a building's site under the pointer.
 
 Every scheme shares the modes, the mouse and the modifiers:
 
@@ -41,7 +41,7 @@ tutorial follow at once.
 ### Classic
 
 The letter of the name, as Warcraft II had it. A unit card is M move, S stop,
-H hold, A attack, P patrol, B build, R repair; the Build catalogue F farm,
+H hold, A attack, P patrol, B build, R repair, V salvage; the Build catalogue F farm,
 B barracks, H hall, T tower, M mill, K smith, S stables, W workshop, C church;
 recruits F footman, A archer, S scout, K knight, C catapult, H healer (the
 cleric: L is Blessing at the church), P peasant; research K the Keep (at the
@@ -56,8 +56,8 @@ name.
 
 The card is a three-column grid and its keys are its places, Q W E / A S D /
 Z X C, whatever it shows: the left hand never moves. A unit card is Q move,
-W stop, E hold, A attack-move, S patrol, D build, Z repair (Attack stays on A,
-as in every scheme); the Build catalogue's nine buildings fill the grid; a
+W stop, E hold, A attack-move, S patrol, D build, Z repair, X salvage (Attack
+stays on A, as in every scheme); the Build catalogue's nine buildings fill the grid; a
 building's recruits and research fill it from Q, Cancel ending the row. The
 global actions sit beside the grid where no card reaches: B build, T train,
 G upgrade, R assembly point, F plans, V the next idle soldier. The fastest once
@@ -80,7 +80,7 @@ Every card is laid out on the same grid of slots, so the Grid keys are the
 places and the other schemes see the same layout: an empty slot keeps the
 others where their keys say (Grid draws it faintly). A unit card fills
 Move, Stop, Hold on the first row, Attack, Patrol and a peasant's Build on the
-second, Repair on the third. A building's recruits and research chains fill
+second, a peasant's Repair and Salvage on the third. A building's recruits and research chains fill
 from the first slot, a chain keeping its slot once all its tiers are done so
 no key moves; Cancel ends the first row, or the second when three items fill
 the first. The catalogues keep their table's order (the Upgrade catalogue gives
@@ -106,8 +106,8 @@ a match nobody holds anything, so the tree stands plainly lit rather than faint.
 brings up every card of every race in every scheme and holds each key to one
 command, and Grid's keys to the grid.
 
-A command that waits for a click — Move, Attack, Patrol, Repair, the assembly
-point — arms its mode: the status line says what the click will do and the card
+A command that waits for a click — Move, Attack, Patrol, Repair, Salvage, the
+assembly point — arms its mode: the status line says what the click will do and the card
 lights that button in gold until the click or Esc, the way the Build catalogue
 lights the building being placed. Pressing A or P changed nothing a player
 could see before that.
@@ -199,4 +199,6 @@ Both rules are in the authority's contract: live once a server rollout carries
 this Warband; until then a client of this version and the live server disagree
 on the order set (the promotion gate holds the published build back). The
 authority checks `set_auto_train`'s building belongs to the seat and that `on`
-and `plan_if_short` are booleans.
+and `plan_if_short` are booleans. `salvage` is a group order like `repair`: the
+authority holds its peasants to the seat, and the rules refuse everything else
+([salvage](salvage.md)).

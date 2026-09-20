@@ -41,7 +41,7 @@ from typing import Final
 
 from warband.brains.ai import (ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_search,
                               with_prerequisites)
-from warband.sim.model import Attack, Build, Building, Harvest, Move, Point, Pos, Repair, Resource, Unit, World, dist, rect_gap, tile_center
+from warband.sim.model import Attack, Build, Building, Harvest, Move, Point, Pos, Repair, Resource, Salvage, Unit, World, dist, rect_gap, tile_center
 from warband.sim.races import RACES
 from warband.sim.rules import BUILDINGS, MINE_SLOTS, UPGRADES, BuildingType, Cost, Layout, Race, UnitType, Upgrade
 from warband.sim.worker_knowledge import KnownMine
@@ -502,7 +502,7 @@ class ProBrain:
         """
         player = world.players[self.player]
         peasants = [p for p in self._peasants(world)
-                    if not p.hidden and not isinstance(p.order, (Build, Repair)) and p.id not in self.scouts
+                    if not p.hidden and not isinstance(p.order, (Build, Repair, Salvage)) and p.id not in self.scouts
                     and not self._answering(p)]
         if player.lumber >= self.profile.lumber_stock:
             # Let go of the axe and let the model's own policy place them. Naming a
@@ -742,7 +742,7 @@ class ProBrain:
         if free <= 0:
             return
         builders = [p for p in self._peasants(world)
-                    if not p.hidden and not isinstance(p.order, (Build, Repair)) and not self._answering(p)]
+                    if not p.hidden and not isinstance(p.order, (Build, Repair, Salvage)) and not self._answering(p)]
         if not builders:
             return
         # Ground already spoken for by an order in flight: can_place cannot know
@@ -881,7 +881,7 @@ class ProBrain:
         self.rushers = [i for i in self.rushers if i in world.units]
         while len(self.rushers) < profile.rush_builders and self.rush_drafted < profile.rush_tries:
             spare = [p for p in self._peasants(world) if not p.hidden and p.id not in self.rushers
-                     and not isinstance(p.order, (Build, Repair)) and p.constructing is None and not self._answering(p)]
+                     and not isinstance(p.order, (Build, Repair, Salvage)) and p.constructing is None and not self._answering(p)]
             if not spare:
                 break
             drafted = min(spare, key=lambda p: dist(p.pos, start))
@@ -1380,7 +1380,7 @@ class ProBrain:
                 self.scouts = [riders[0].id]
             else:
                 spare = [p for p in self._peasants(world)
-                         if not p.hidden and p.carrying is None and not isinstance(p.order, (Build, Repair))
+                         if not p.hidden and p.carrying is None and not isinstance(p.order, (Build, Repair, Salvage))
                          and not self._answering(p)]
                 if len(spare) > 3:
                     # Drafted with a harvest order in hand, the peasant keeps it:
@@ -1504,7 +1504,7 @@ class ProBrain:
         """Peasants a rush's answer may draft: not building and on no other errand; with *miners*, the ones
         inside a mine too, who obey as they come out with their load."""
         return [p for p in self._peasants(world) if p.constructing is None and (miners or p.inside is None)
-                and not isinstance(p.order, (Build, Repair)) and p.id not in self.scouts and p.id not in self.rushers
+                and not isinstance(p.order, (Build, Repair, Salvage)) and p.id not in self.scouts and p.id not in self.rushers
                 and p.id != self.prospector and not self._answering(p)]
 
     @staticmethod

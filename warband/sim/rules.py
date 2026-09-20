@@ -397,6 +397,41 @@ def repair_cost(info: BuildingInfo, hp_before: int, hp_after: int, max_hp: int) 
         return math.ceil(price * REPAIR_COST * hp / max_hp)
     return Cost(so_far(info.cost.gold, hp_after) - so_far(info.cost.gold, hp_before),
                 so_far(info.cost.lumber, hp_after) - so_far(info.cost.lumber, hp_before))
+
+
+# Salvage is repair run backwards: a peasant tears hit points out of a building and carries the materials home.
+# A ruin nobody holds comes apart at the rate one is mended at; a building someone still holds resists, and comes
+# apart at a quarter of it, which is why a peasant crew is never a siege engine (a catapult puts about fourteen
+# hit points a second into a building from seven tiles away, a salvaging peasant two from arm's length).
+SALVAGE_RATE: Final = 8.0  # hit points a peasant tears out of a ruin per second
+SALVAGE_HELD_RATE: Final = 2.0  # hit points a second out of a building its owner still holds
+SALVAGE_CHUNK: Final = 10  # hit points torn out at a time, each paid out on its own
+SALVAGE_SHARE: Final = 0.25  # share of a building's price that tearing all of its hit points out returns
+
+
+def salvage_yield(info: BuildingInfo, hp_before: int, hp_after: int, max_hp: int) -> int:
+    """What tearing a building from *hp_before* down to *hp_after* of *max_hp* is worth, as one number.
+
+    SALVAGE_SHARE of the whole price, gold and lumber together, pro rata over the hit points and counted from
+    full: what somebody else's blows already broke is value nobody gets back, so a building bombarded to a
+    sliver holds almost nothing and the prize is one still standing whole.  As :func:`repair_cost` does, it is
+    the difference of two running totals, so a salvage is worth the same however many chunks it is torn out in;
+    rounded down, so it never pays out more than the share.  Which resource the payout comes as is
+    :func:`salvage_resource`'s draw."""
+    price = info.cost.gold + info.cost.lumber
+    def so_far(gone: int) -> int:
+        return math.floor(price * SALVAGE_SHARE * gone / max_hp)
+    return so_far(max_hp - hp_after) - so_far(max_hp - hp_before)
+
+
+def salvage_resource(info: BuildingInfo, roll: float) -> Resource:
+    """Which resource a salvaged chunk comes out as, drawn from *roll* in [0, 1).
+
+    Weighted by what the building is made of, so a farm that cost 500 gold and 250 lumber gives up gold twice as
+    often as lumber and a full salvage is worth, on average, exactly the share of each: it reads as pulling
+    materials out of the building that is there."""
+    price = info.cost.gold + info.cost.lumber
+    return Resource.GOLD if roll * price < info.cost.gold else Resource.LUMBER
 MINE_GOLD: Final = 50_000  # a base mine; expansion mines hold EXPANSION_GOLD
 EXPANSION_GOLD: Final = 30_000
 STARTING_GOLD: Final = 1000

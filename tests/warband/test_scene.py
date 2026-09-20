@@ -3,7 +3,7 @@
 import pytest
 
 from saga2d import Game
-from warband.sim.model import Event, Repair, Attack, AttackMove, Build, Harvest, Move, tile_center
+from warband.sim.model import Event, Repair, Salvage, Attack, AttackMove, Build, Harvest, Move, tile_center
 from warband.sim.rules import BUILDINGS, SIM_DT, UNITS, BuildingType, UnitType
 from warband.sim.races import RACES
 from warband.sim.rules import Race
@@ -92,7 +92,7 @@ def test_clicking_a_peasant_selects_it_and_shows_its_card(play) -> None:
     assert scene.selection == [peasant.id]
     shown = texts(game)
     assert "Peasant" in shown and {"3", "0", "melee", "2.4"} <= set(shown)  # damage, armour, reach and speed beside their symbols
-    assert [c.label for c in scene.card] == ["Move", "Stop", "Hold", "Attack", "Patrol", "Build", "Repair"]  # the card's rows
+    assert [c.label for c in scene.card] == ["Move", "Stop", "Hold", "Attack", "Patrol", "Build", "Repair", "Salvage"]  # the card's rows
     assert "select" in scene.recent_sounds
 
 
@@ -242,7 +242,51 @@ def test_r_then_a_click_on_a_damaged_building_sends_the_peasants_to_repair_it(pl
     click(game, scene, farm.center)
     assert isinstance(peasant.order, Repair)
     scene.select([peasant.id])
-    assert ("B / R", "build / repair") in scene.hint()
+    assert ("B / R / V", "build / repair / salvage") in scene.hint()
+
+
+def test_v_then_a_click_on_a_ruin_sends_the_peasants_to_salvage_it(play) -> None:
+    """What the rules allow the player must be able to reach: the card's own button, armed, and a refusal that
+    reaches the status line instead of throwing in the frame."""
+    game, scene = play
+    world = scene.world
+    hall = hall_of(scene)
+    peasant = peasants_of(scene)[0]
+    scene.select([peasant.id])
+    assert [c.label for c in scene.card][-1] == "Salvage"
+    press(game, "v")
+    assert scene.pending == "salvage" and scene.status == PENDING_ASKS["salvage"]
+    assert scene.card[-1].style is ARMED_BUTTON, "the armed button stands lit"
+    click(game, scene, hall.center)
+    assert scene.pending is None and scene.status == "Peasants salvage ruins and rival buildings"
+    assert peasant.order is None, "and nothing was ordered"
+    farm = world.place_building(1, BuildingType.FARM, (hall.x + 6, hall.y + 4))
+    farm.abandoned = True  # staged: a ruin beside the hall, as a rival's resignation leaves one
+    scene.view.set_reveal(True)
+    tick(game, 0.2)
+    press(game, "v")
+    click(game, scene, farm.center)
+    assert isinstance(peasant.order, Salvage) and peasant.order.target == farm.id
+
+
+def test_a_right_click_on_a_ruin_sets_the_peasants_salvaging(play) -> None:
+    """The context order the player actually gives: a right-click on a ruin must not go on meaning attack, which is
+    what every rival's building means and what a ruin meant before."""
+    game, scene = play
+    world = scene.world
+    hall = hall_of(scene)
+    ruin = world.place_building(1, BuildingType.FARM, (hall.x + 6, hall.y + 4))
+    ruin.abandoned = True  # staged: what a rival's resignation leaves behind, without playing one out
+    scene.view.set_reveal(True)
+    peasant = peasants_of(scene)[0]
+    scene.select([peasant.id])
+    tick(game, 0.2)
+    click(game, scene, ruin.center, "right")
+    assert isinstance(peasant.order, Salvage) and peasant.order.target == ruin.id
+    footman = world.spawn_unit(scene.human, UnitType.FOOTMAN, tile_center((hall.x + 4, hall.y + 4)))
+    scene.select([footman.id])
+    click(game, scene, ruin.center, "right")
+    assert isinstance(footman.order, Attack), "a soldier on its own still razes it"
 
 
 def test_the_town_hall_trains_a_peasant_with_p_and_the_rally_point_by_right_click(play) -> None:

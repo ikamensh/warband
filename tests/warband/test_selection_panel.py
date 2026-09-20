@@ -119,13 +119,17 @@ def test_the_panel_says_in_words_what_a_unit_is_doing(tmp_path) -> None:
         farm.hp = farm.max_hp // 2  # staged: a raid's work
         peasant = world.spawn_unit(0, UnitType.PEASANT, (12.5, 12.5))
         world.repair([peasant.id], farm.id)
+        ruin = world.place_building(1, BuildingType.FARM, (20, 10))
+        ruin.abandoned = True  # staged: a rival's resignation, without playing one out
+        wrecker = world.spawn_unit(0, UnitType.PEASANT, (18.5, 10.5))
+        world.salvage([wrecker.id], ruin.id)
         said = {}
-        for unit in (footman, peasant):
+        for unit in (footman, peasant, wrecker):
             scene.select([unit.id])
             for _ in range(2):
                 game.tick(1 / 60)
-            said[unit.type] = {t["text"] for t in game.backend.texts}
-        assert "Attack-moving" in said[UnitType.FOOTMAN] and "Repairing" in said[UnitType.PEASANT]
+            said[unit.id] = {t["text"] for t in game.backend.texts}
+        assert "Attack-moving" in said[footman.id] and "Repairing" in said[peasant.id] and "Salvaging" in said[wrecker.id]
     finally:
         game.close()
 

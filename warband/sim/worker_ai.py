@@ -14,7 +14,7 @@ import math
 from typing import Final
 
 from warband.sim import path as pathing
-from warband.sim.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Unit, World, hypot, rect_gap, tile_center
+from warband.sim.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Salvage, Unit, World, hypot, rect_gap, tile_center
 from warband.sim.worker_knowledge import WorkerKnowledge, _Building
 from warband.sim.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_SLOTS, SIM_DT, UNITS, BuildingType, Resource, Terrain, UnitType
 
@@ -266,6 +266,34 @@ class _View:
         return owners[route[-1] if route else worker.tile].target if route is not None else None
 
 
+    def ruin(self, worker: Unit) -> int | None:
+        """The ruin the policy should put *worker* on: the id of one it remembers standing whole and nobody's, whose
+        working edge is safe ground within :data:`SALVAGE_REACH` of a depot, cheapest for *worker* to walk to; None
+        when it remembers none it can reach.  The ruin is remembered, not seen, exactly as a mine is: a record of one
+        somebody razed since costs one wasted walk and is then forgotten."""
+        knowledge = self.world.worker_knowledge[self.player]
+        field, width = self._depot_field(Resource.GOLD), self.world.width
+        goals: dict[Pos, float] = {}
+        owners: dict[Pos, int] = {}
+        for building in knowledge.buildings.values():
+            if not building.ruin:
+                continue
+            for tile in self.access(building.rect):
+                distance = field[tile[1] * width + tile[0]]
+                if distance > SALVAGE_REACH:
+                    continue
+                cost = 2 * distance
+                held = goals.get(tile)  # the cheaper claim on a tile wins, the older building on a tie
+                if held is None or cost < held or (cost == held and building.id < owners[tile]):
+                    goals[tile], owners[tile] = cost, building.id
+        if not goals:
+            return None
+        route = pathing.find_work_path(worker.tile, goals, self.blocked, width, self.world.height)
+        if route is None:
+            return None
+        return owners[route[-1] if route else worker.tile]  # a route ends on a claimed tile, as every work path does
+
+
 def _choose_tree(start: Pos, trees: Sequence[int], felling: set[int], remembered: list[Terrain | None], field: Sequence[float],
                  blocked: bytes | bytearray, width: int, height: int) -> Pos | None:
     """The tree a worker at *start* should fell next, or None.  Every remembered tree nobody is felling (*trees* and
@@ -340,8 +368,23 @@ def _reserves(world: World, player: int, workers: list[Unit]) -> dict[Resource, 
             Resource.LUMBER: max(lumber, sum(cost.lumber for cost in planned))}
 
 
+def _salvagers(workers: list[Unit]) -> int:
+    """How many of *workers* the policy has put on a ruin."""
+    return sum(1 for worker in workers for order in worker.orders if isinstance(order, Salvage) and order.auto)
+
+
+SALVAGE_REACH: Final = 24.0  # tiles of safe walking from a depot; a ruin further off is not the policy's to fetch
+SALVAGE_CREW: Final = 6  # workers a player needs before the policy can spare one of them for a ruin
+
+
 def assign_idle_workers(world: World, player: int) -> None:
-    """Fill empty queues once per second; never interrupt a player's active job."""
+    """Fill empty queues once per second; never interrupt a player's active job.
+
+    A ruin within reach is taken apart too, by one hand and no more: it pays about a third of what a peasant
+    earns at a mine, so it is work for a crew that can spare somebody (:data:`SALVAGE_CREW`) and never work the
+    mine and the trees give up.  The hand comes back to the resources the moment the ruin is gone, and
+    :func:`rebalance_workers` never touches it: only a harvest the policy placed changes jobs.
+    """
     previous = world._worker_ai_checks.get(player)
     if previous is not None and world.tick - previous < round(1 / SIM_DT):
         return
@@ -355,11 +398,18 @@ def assign_idle_workers(world: World, player: int) -> None:
     crews, loads = _assignments(workers)
     stock = {Resource.GOLD: world.players[player].gold, Resource.LUMBER: world.players[player].lumber}
     trip = {Resource.GOLD: GOLD_PER_TRIP, Resource.LUMBER: LUMBER_PER_TRIP}
+    spare = _salvagers(workers) == 0 and len(workers) >= SALVAGE_CREW
     for worker in idle:
         if worker.carrying is not None:
             if view.depot_distance_at(worker.tile, worker.carrying) < math.inf:
                 worker.orders.append(Deposit(auto=True))
             continue
+        if spare:
+            ruin = view.ruin(worker)
+            if ruin is not None:
+                world._issue(worker, Salvage(ruin, auto=True))
+                spare = False
+                continue
         choices = sorted(Resource, key=lambda resource: (stock[resource] + crews[resource] * trip[resource] * 3) / reserves[resource])
         for resource in choices:
             target = view.choose(worker, resource, loads)

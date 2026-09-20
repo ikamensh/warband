@@ -193,7 +193,7 @@ def unit_frame(u: Unit, travel: float, time: float) -> str:
             return "stand"
         phase = (u.timer / CHOP_PERIOD) % 1.0
         return textures.CHOP_FRAMES[0 if phase < 0.25 else 1 if phase < 0.45 else 2 if phase < 0.7 else 3]
-    if u.state == "repair":
+    if u.state in ("repair", "salvage"):  # the same swing of the hammer, one way or the other
         return "strike" if (time * 2 + u.id * 0.37) % 1.0 < 0.35 else "stand"
     return "stand"
 

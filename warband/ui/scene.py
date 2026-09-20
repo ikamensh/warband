@@ -23,7 +23,7 @@ from warband.sim import mapgen
 from warband.brains.ai import DIFFICULTY_ELO, auto_site, make_brain
 from warband.art.effects import Flare, Spray, Stain, UnitDeath, death_outcome
 from warband.ui.icons import Icon, Pair, Price, draw_icon, draw_price, hourglass_parts, lock_parts, loop_parts, price_pairs, price_width
-from warband.sim.model import (Attack, AttackMove, Build, Building, Deposit, Entity, Event, Harvest, Heal, Hold, Move, Patrol, Pos, Repair,
+from warband.sim.model import (Attack, AttackMove, Build, Building, Deposit, Entity, Event, Harvest, Heal, Hold, Move, Patrol, Pos, Repair, Salvage,
                                 RuleError, Unit, World)
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
@@ -55,6 +55,7 @@ AUTOSAVE_EVERY = 120.0  # seconds of match time
 SELECT_GAP = 30.0  # seconds: selecting is constant, and its cue answers only the first selection in a while (WB-039)
 PENDING_ASKS = {"move": "Click where to move", "attack": "Click a target, or the ground to attack-move there",
                 "patrol": "Click the far end of the patrol", "repair": "Click one of your damaged buildings",
+                "salvage": "Click a ruin, or a rival's building, to tear apart",
                 "assembly": "Click the map to set an assembly point for new soldiers"}
 PLANS_PRICE = 126  # the price column on the Plans screen: the widest price and a little air
 SUPPLY_WARNING = 2  # units of room left in the farms: from here the supply pair warns before it blocks
@@ -78,10 +79,11 @@ GROUP_KEYS = "123456789"
 BUILD_ORDER = (BuildingType.FARM, BuildingType.BARRACKS, BuildingType.TOWN_HALL, BuildingType.TOWER, BuildingType.LUMBER_MILL,
                BuildingType.BLACKSMITH, BuildingType.STABLES, BuildingType.WORKSHOP, BuildingType.CHURCH)
 #: The unit card's slots: moving on the top row (Q W E in Grid), fighting and a peasant's work below.
-UNIT_SLOTS = {"move": 0, "stop": 1, "hold": 2, "attack": 3, "patrol": 4, "build": 5, "repair": 6}
+UNIT_SLOTS = {"move": 0, "stop": 1, "hold": 2, "attack": 3, "patrol": 4, "build": 5, "repair": 6, "salvage": 7}
 #: What the unit panel says a unit with each order is doing.
 DOING = {Move: "Moving", AttackMove: "Attack-moving", Attack: "Attacking", Harvest: "Harvesting", Deposit: "Delivering",
-         Build: "Going to build", Hold: "Holding position", Heal: "Healing", Patrol: "Patrolling", Repair: "Repairing"}
+         Build: "Going to build", Hold: "Holding position", Heal: "Healing", Patrol: "Patrolling", Repair: "Repairing",
+         Salvage: "Salvaging"}
 #: The Upgrade catalogue's slots, one per chain of tiers (it shows the next tier to order, as a building's own card
 #: does, and nothing at all once every tier of the chain is researched): the Keep that gates the rest, blades and
 #: armour on the top row, arrows, the engines and the shooters' drill on the second; None stands for the race's two
@@ -377,7 +379,7 @@ class GameScene(Scene):
         self._autosave_at = AUTOSAVE_EVERY
         self.selection: list[int] = []
         self.groups: dict[str, list[int]] = {}
-        self.pending: str | None = None  # "move" | "attack" | "patrol" | "repair" | "assembly" | "place:<building type>"
+        self.pending: str | None = None  # "move" | "attack" | "patrol" | "repair" | "salvage" | "assembly" | "place:<building type>"
         self.catalogue: str | None = None  # "build" | "train" | "upgrade": the settlement's catalogue, over the selection's card
         self._repeat: Callable[[], None] | None = None  # the last recruit or placement once more: the Modal scheme's "."
         self._site_rng = random.Random(f"sites:{seed}")  # where the planner puts what the player lets it place: not the brains' stream
@@ -750,10 +752,11 @@ class GameScene(Scene):
             return ([(keys, "order")] if keys else []) + [("Esc", "back")]
         units = self._own_units()
         if units:
-            hints = [("Right click", "move / harvest / attack / repair"), (self._slot_key("attack"), "attack-move"),
+            hints = [("Right click", "move / harvest / attack / repair / salvage"), (self._slot_key("attack"), "attack-move"),
                      (self._slot_key("patrol"), "patrol"), (self._slot_key("stop"), "stop")]
             if any(u.is_worker for u in units):
-                hints.append((f"{self._slot_key('build')} / {self._slot_key('repair')}", "build / repair"))
+                hints.append((f"{self._slot_key('build')} / {self._slot_key('repair')} / {self._slot_key('salvage')}",
+                              "build / repair / salvage"))
             return hints + [("Ctrl+1-9", "group"), ("Esc", "deselect")]
         building = self._own_building()
         if building is not None:
@@ -945,13 +948,17 @@ class GameScene(Scene):
         if units:
             ids = [u.id for u in units]
             target = self.view.entity_at(point)
-            attack = self._enemy(target)  # the only context order that strikes: smart on anything else moves, mends, mines or builds
+            # A ruin with peasants selected is loot, not an enemy: it goes to World.smart, which sets them salvaging
+            # and any soldiers along razing it.  Everything else a rival owns is an attack, the only context order
+            # that strikes: smart on anything else moves, mends, mines or builds.
+            salvage = isinstance(target, Building) and target.abandoned and target.done and any(u.is_worker for u in units)
+            attack = self._enemy(target) and not salvage
             if attack:
                 given = self.attempt("attack", ids, target.id, queue=queue)
             else:
                 given = self.attempt("smart", ids, point, queue=queue, target_id=target.id if target is not None else None)
             if given:
-                self._marker(point, (255, 80, 70, 220) if attack else (120, 255, 140, 220))
+                self._marker(point, (255, 80, 70, 220) if attack else (255, 214, 110, 220) if salvage else (120, 255, 140, 220))
                 self.sfx("attack_command" if attack else "command")
             return
         building = self._own_building()
@@ -966,6 +973,15 @@ class GameScene(Scene):
             self.warn("Click one of your damaged buildings")
         elif self.attempt("repair", workers, target.id, queue=queue):
             self._marker(point, (120, 255, 140, 220))
+            self.sfx("command")
+
+    def command_salvage(self, point: tuple[float, float], *, queue: bool = False) -> None:
+        workers = [u.id for u in self._own_units() if u.is_worker]
+        target = self.view.entity_at(point)
+        if not workers or not isinstance(target, Building):
+            self.warn("Click a ruin, or a rival's building, to tear apart")
+        elif self.attempt("salvage", workers, target.id, queue=queue):
+            self._marker(point, (255, 214, 110, 220))
             self.sfx("command")
 
     def command_move(self, point: tuple[float, float], *, queue: bool = False) -> None:
@@ -1005,7 +1021,7 @@ class GameScene(Scene):
             self.sfx("command")
 
     def start_pending(self, mode: str) -> None:
-        """Wait for the click that gives the order *mode*: "move", "attack", "patrol", "repair" or "assembly".  The
+        """Wait for the click that gives the order *mode*: "move", "attack", "patrol", "repair", "salvage" or "assembly".  The
         mode is armed until that click or Esc, which nothing said before: it says what to click, and the card lights
         the button whose mode it is, the way the Build catalogue lights the building being placed."""
         self.pending = mode
@@ -1450,6 +1466,10 @@ class GameScene(Scene):
                                     tooltip="Farms, barracks, halls, towers and the tech buildings, built by these peasants", style=ACTION_BUTTON))
             commands.append(Command("Repair", "r", lambda: self.start_pending("repair"), UNIT_SLOTS["repair"],
                                     tooltip="Mend one of your damaged buildings; a full repair costs half its price", style=armed("repair")))
+            commands.append(Command("Salvage", "v", lambda: self.start_pending("salvage"), UNIT_SLOTS["salvage"],
+                                    tooltip="Tear a ruin, or a rival's building, apart for a quarter of what it is made of; "
+                                            "one someone still holds comes apart slowly and raises their alarm",
+                                    style=armed("salvage", DANGER_BUTTON)))
         return commands
 
     def _building_commands(self, building: Building) -> list[Command]:
@@ -1823,6 +1843,8 @@ class GameScene(Scene):
             self.command_patrol(point, queue=keep)
         elif mode == "repair":
             self.command_repair(point, queue=keep)
+        elif mode == "salvage":
+            self.command_salvage(point, queue=keep)
         elif mode == "assembly":
             self.set_assembly(point)
         if not keep:
@@ -1971,6 +1993,10 @@ class GameScene(Scene):
                 self.effects.add(Toast(f"{e.text}'s last holdings are revealed", [e.text], hold=4.0, top=self.toast_top))
             elif e.kind == "exhausted":
                 self.effects.add(FloatingText("Mine exhausted", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), MUTED, rise=20, duration=1.5))
+            elif e.kind == "salvage" and mine and self._visible(e.pos):
+                color = GOLD if e.text == "gold" else LUMBER
+                self.effects.add(FloatingText(f"+{e.amount} {e.text}", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), color,
+                                              rise=22, duration=1.2))
             elif e.kind == "plunder" and mine:
                 self.effects.add(FloatingText(f"+{e.amount} gold plundered", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), GOLD, rise=26, duration=1.8))
 
@@ -2816,11 +2842,11 @@ def help_keys(scheme: Scheme) -> list[tuple[str, str]]:
     idle = key_label(scheme.keys["idle_soldier"])
     if scheme.positional:
         own = [("Q W E / A S D / Z X C", "the card's buttons by their place, whatever it shows"),
-               ("Units", "Q move, W stop, E hold, A attack-move, S patrol;  peasants: D build, Z repair"),
+               ("Units", "Q move, W stop, E hold, A attack-move, S patrol;  peasants: D build, Z repair, X salvage"),
                ("A building", "its recruits, then its research, from Q on;  Cancel ends the row (E, or D below a full one)"),
                ("B / T / G / R / F / V", "Build / Train / Upgrade, the assembly point, every plan, the next idle soldier: beside the grid")]
     else:
-        own = [("A M P S H / B R", "attack-move, move, patrol, stop, hold;  a peasant's build and repair"),
+        own = [("A M P S H / B R V", "attack-move, move, patrol, stop, hold;  a peasant's build, repair and salvage"),
                ("A building's letters", "train or research there, as its card shows;  X cancels the last and stops endless training")]
         if scheme.home is not None:
             own += [("Nothing selected", "the Train catalogue is open: a letter orders a recruit;  B build, U upgrade, G assembly point"),

@@ -36,6 +36,7 @@ from warband.sim.worker_knowledge import WorkerKnowledge
 from warband.sim.rules import (
     Layout,
     REPAIR_CHUNK, REPAIR_RATE, repair_cost,
+    SALVAGE_CHUNK, SALVAGE_HELD_RATE, SALVAGE_RATE, salvage_resource, salvage_yield,
     ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLASTING_POWDER_BONUS, BLESSING_BONUS, BLOODLUST_BONUS, BUILDINGS, CHOP_TIME, DEEP_MINING_TRIP,
     FRENZY_BONUS, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MASTER_WEAPON_BONUS, MINE_GOLD,
     MINE_SLOTS, MINE_TIME, PLAYERS,
@@ -267,6 +268,14 @@ class Repair:
 
 
 @dataclass
+class Salvage:
+    """Tear a rival's building or a ruin apart for what it is made of: repair run backwards."""
+
+    target: int  # the building
+    auto: bool = False  # the automatic worker policy's own job on a ruin; it walks by known safe ground
+
+
+@dataclass
 class Patrol:
     """Walk between two points forever, fighting (or healing) whatever turns up."""
 
@@ -275,11 +284,11 @@ class Patrol:
     outbound: bool = True
 
 
-Order = Move | AttackMove | Attack | Harvest | Deposit | Build | Hold | Heal | Patrol | Repair
+Order = Move | AttackMove | Attack | Harvest | Deposit | Build | Hold | Heal | Patrol | Repair | Salvage
 AT_EASE_ORDERS: Final = (Move, AttackMove, Patrol)  # walked at ease: no target to close on, no work to press for
 ENDLESS_ORDERS: Final = (Patrol, Hold, Harvest)  # never end on their own: an order queued behind one takes its place
 
-_ORDER_TYPES: Final[dict[str, type]] = {cls.__name__: cls for cls in (Move, AttackMove, Attack, Harvest, Deposit, Build, Hold, Heal, Patrol, Repair)}
+_ORDER_TYPES: Final[dict[str, type]] = {cls.__name__: cls for cls in (Move, AttackMove, Attack, Harvest, Deposit, Build, Hold, Heal, Patrol, Repair, Salvage)}
 
 
 # -- Entities ------------------------------------------------------------------
@@ -1340,6 +1349,28 @@ class World:
             self._issue(u, Repair(b.id), queue=queue)
 
     @recorded
+    def salvage(self, unit_ids: list[int], building_id: int, *, queue: bool = False) -> None:
+        """Peasants among *unit_ids* tear a ruin, or a rival's standing building, apart for its materials.
+
+        Never one of your own: the context order on your own building already means Repair, and a mis-click that
+        dissolved your hall would be unforgivable; nor a gold mine, which nobody built, nor a site, whose
+        materials are not in it yet."""
+        workers = [u for u in self._own_units(unit_ids, queue=queue) if u.is_worker]
+        if not workers:
+            raise RuleError("Only peasants can salvage")
+        b = self.buildings.get(building_id)
+        if b is None:
+            raise RuleError("No such building")
+        if b.type is BuildingType.GOLD_MINE:
+            raise RuleError("A gold mine is nobody's to salvage")
+        if b.player is not None and b.player == workers[0].player and not b.abandoned:
+            raise RuleError("Peasants salvage ruins and rival buildings")
+        if not b.done:
+            raise RuleError("There is nothing in a site to salvage")
+        for u in workers:
+            self._issue(u, Salvage(b.id), queue=queue)
+
+    @recorded
     def train(self, building_id: int, unit_type: UnitType) -> None:
         building = self.buildings.get(building_id)
         if building is None:
@@ -1476,11 +1507,19 @@ class World:
         if target_id not in ("at_point", None) and target is None:
             raise RuleError("No such target")
         tile = (int(point[0]), int(point[1]))
+        workers = [u.id for u in units if u.is_worker]
+        others = [u.id for u in units if not u.is_worker]
+        if workers and isinstance(target, Building) and target.abandoned and target.done and target.player != player:
+            # A ruin is loot, not an enemy: the peasants pick it apart, and any soldiers along raze it as before.
+            # Neither order can be refused from here -- the room was taken above and a ruin of one's own is not one
+            # of these -- so the pair is as atomic as a single order.
+            self.salvage(workers, target.id, queue=queue)
+            if others:
+                self.attack(others, target.id, queue=queue)
+            return "salvage"
         if target is not None and target.player is not None and target.player != player:
             self.attack(unit_ids, target.id, queue=queue)
             return "attack"
-        workers = [u.id for u in units if u.is_worker]
-        others = [u.id for u in units if not u.is_worker]
         if workers and isinstance(target, Building) and target.player == player and target.done and target.hp < target.max_hp and target.type is not BuildingType.GOLD_MINE:
             self.repair(workers, target.id, queue=queue)
             if others:
@@ -1761,6 +1800,8 @@ class World:
             self._do_patrol(u, order, dt)
         elif isinstance(order, Repair):
             self._do_repair(u, order, dt)
+        elif isinstance(order, Salvage):
+            self._do_salvage(u, order, dt)
 
     def _finish_order(self, u: Unit) -> None:
         if u.orders:
@@ -2489,7 +2530,7 @@ class World:
 
     def _worker_navigation(self, u: Unit) -> bytearray:
         for order in u.orders:
-            if isinstance(order, (Harvest, Deposit)) and order.auto:
+            if isinstance(order, (Harvest, Deposit, Salvage)) and order.auto:
                 return worker_ai.safe_navigation(self, u.player)
         return self._blocked
 
@@ -2627,6 +2668,46 @@ class World:
             u.charge = 0.0
             self._finish_order(u)
 
+    def _do_salvage(self, u: Unit, order: Salvage, dt: float) -> None:
+        b = self.buildings.get(order.target)
+        if b is None or not b.done or b.hp <= 0 or (b.player is not None and b.player == u.player and not b.abandoned):
+            u.charge = 0.0
+            self._finish_order(u)
+            return
+        navigation = self._worker_navigation(u)
+        if rect_gap(u.pos, b.rect) - u.radius > TOUCH:
+            if self._approach_work(u, b.rect, dt, navigation):
+                self.events.append(Event("refused", u.pos, player=u.player, entity=u.id, text="Cannot reach the building"))
+                self._finish_order(u)
+            return
+        u.path = []
+        u.path_goal = None
+        u.state = "salvage"
+        self._turn_toward(u, b.center, dt)
+        u.charge += (SALVAGE_RATE if b.abandoned else SALVAGE_HELD_RATE) * dt
+        if u.charge < SALVAGE_CHUNK:
+            return
+        u.charge -= SALVAGE_CHUNK
+        torn = min(SALVAGE_CHUNK, b.hp)
+        worth = salvage_yield(b.info, b.hp, b.hp - torn, b.max_hp)
+        b.hp -= torn
+        resource = salvage_resource(b.info, self.rng.random())
+        player = self.players[u.player]
+        if resource is Resource.GOLD:
+            player.gold += worth
+        else:
+            player.lumber += worth
+        self.events.append(Event("salvage", b.center, player=u.player, entity=u.id, other=b.id, amount=worth, text=resource.value))
+        if not b.abandoned:
+            # A building dissolving in silence would be a nasty surprise: its owner hears the same alarm a blow raises.
+            self._alarm(b)
+        if b.hp <= 0:
+            if not b.abandoned and b.player is not None:
+                self._tally_kill(b, u.player)
+                self._plunder(b, u.player, u.id)
+            u.charge = 0.0
+            self._finish_order(u)
+
     def _start_building(self, u: Unit, b: Building) -> None:
         b.builder = u.id
         u.constructing = b.id
@@ -2666,7 +2747,7 @@ class World:
             blocked = bytearray(grid)
             width = self.width
             for v in self.units.values():
-                if v is not u and not v.hidden and v.state in ("idle", "attack", "chop", "repair") and (navigation is None or v.player == u.player or self.is_visible(u.player, v.tile)):
+                if v is not u and not v.hidden and v.state in ("idle", "attack", "chop", "repair", "salvage") and (navigation is None or v.player == u.player or self.is_visible(u.player, v.tile)):
                     tx, ty = v.tile
                     if (tx, ty) != target and 0 <= tx < width and 0 <= ty < self.height:
                         blocked[ty * width + tx] = 1
@@ -3374,26 +3455,16 @@ class World:
         own = target.player == player
         abandoned = isinstance(target, Building) and target.abandoned
         if target.hp <= 0 and target.player is not None and not own and not abandoned:
-            stats = self.players[player].stats
-            stats["units_killed" if isinstance(target, Unit) else "buildings_razed"] += 1
-            stats["destroyed_value"] += target.info.cost.gold + target.info.cost.lumber
+            self._tally_kill(target, player)
         self.events.append(Event("hit", self._target_point(target), player=target.player, entity=source, other=target.id,
                                  amount=dealt, text="ranged" if ranged else "melee", source_type=source_type,
                                  target_type=target.type.value, target_armor=armor,
                                  target_complete=not isinstance(target, Building) or target.done))
         if own or abandoned:
             return  # a stone on one's own side hurts, but is no attack to answer or to raise the alarm for; nobody answers for a ruin
-        if target.player is not None:
-            victim = self.players[target.player]
-            victim.last_hit = self.time
-            if self.time - victim.last_alert >= UNDER_ATTACK_COOLDOWN:
-                victim.last_alert = self.time
-                self.events.append(Event("under_attack", self._target_point(target), player=target.player, entity=target.id))
-        if isinstance(target, Building) and target.hp <= 0 and self._has(player, Upgrade.PLUNDER):
-            loot = int(target.info.cost.gold * PLUNDER_SHARE)
-            if loot:
-                self.players[player].gold += loot
-                self.events.append(Event("plunder", target.center, player=player, entity=source, other=target.id, amount=loot))
+        self._alarm(target)
+        if isinstance(target, Building) and target.hp <= 0:
+            self._plunder(target, player, source)
         striker = self.units.get(source)
         if striker is not None and isinstance(target, Unit) and target.hp > 0 and self._threat(target) == 0:
             current = target.order
@@ -3404,6 +3475,31 @@ class World:
                 busy_with = self.entity(current.target)
                 if busy_with is None or self._threat(striker) < self._threat(busy_with):
                     self._retarget(target, current, striker)  # a soldier busy on a bystander or a building answers whoever hits it
+
+    def _tally_kill(self, target: Entity, player: int) -> None:
+        """*player* brought a rival's *target* down: their tally of it.  A ruin is nobody's and counts for nothing."""
+        stats = self.players[player].stats
+        stats["units_killed" if isinstance(target, Unit) else "buildings_razed"] += 1
+        stats["destroyed_value"] += target.info.cost.gold + target.info.cost.lumber
+
+    def _alarm(self, target: Entity) -> None:
+        """*target*'s owner learns it is being attacked, at most once a cooldown."""
+        if target.player is None:
+            return
+        victim = self.players[target.player]
+        victim.last_hit = self.time
+        if self.time - victim.last_alert >= UNDER_ATTACK_COOLDOWN:
+            victim.last_alert = self.time
+            self.events.append(Event("under_attack", self._target_point(target), player=target.player, entity=target.id))
+
+    def _plunder(self, building: Building, player: int, source: int) -> None:
+        """An orc's Plunder on a building *player*'s *source* has just razed: a share of its gold, torn down or torn apart."""
+        if not self._has(player, Upgrade.PLUNDER):
+            return
+        loot = int(building.info.cost.gold * PLUNDER_SHARE)
+        if loot:
+            self.players[player].gold += loot
+            self.events.append(Event("plunder", building.center, player=player, entity=source, other=building.id, amount=loot))
 
     def _bury_the_dead(self) -> None:
         for unit in [u for u in self.units.values() if u.hp <= 0]:

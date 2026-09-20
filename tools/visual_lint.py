@@ -271,6 +271,22 @@ def pending_attack(game: Game) -> None:
 
 
 @screen
+def pending_salvage(game: Game) -> None:
+    """A peasant's Salvage armed over a ruin: the card's eighth button lit under Repair, the status line saying what
+    to click, and the grey ruin it is meant for on the ground."""
+    scene = town(game)
+    ruin = scene.world.place_building(1, BuildingType.FARM, (12, 12))
+    ruin.abandoned = True  # staged: what a rival's resignation leaves behind, without playing one out
+    scene.world.update_vision()
+    scene.world.reveal_all(scene.human)
+    peasant = spawn(scene, UnitType.PEASANT, (10, 13))
+    scene.select([peasant.id])
+    ticks(game)
+    scene.start_pending("salvage")
+    ticks(game)
+
+
+@screen
 def select_site(game: Game) -> None:
     scene = town(game)
     world = scene.world

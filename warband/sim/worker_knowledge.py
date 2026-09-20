@@ -49,10 +49,15 @@ class _Building:
     size: int
     player: int | None
     threat_range: float = 0.0
+    ruin: bool = False  # a finished building nobody owns any more: what a peasant may be sent to salvage
 
     @property
     def center(self) -> tuple[float, float]:
         return self.x + self.size / 2, self.y + self.size / 2
+
+    @property
+    def rect(self) -> tuple[int, int, int, int]:
+        return self.x, self.y, self.size, self.size
 
 
 class WorkerKnowledge:
@@ -147,11 +152,13 @@ class WorkerKnowledge:
         for building in observed.values():
             info = building.info
             threat_range = info.range + 1.5 if building.done and info.damage and not building.abandoned else 0.0  # a ruin shoots nothing
+            ruin = building.abandoned and building.done
             known = self.buildings.get(building.id)
-            # Nothing but a structure's threat can change under a fixed id: it is built once and never moves.
-            if known is None or known.threat_range != threat_range:
+            # Nothing but a structure's threat and its fall to a ruin can change under a fixed id: it is built once
+            # and never moves.
+            if known is None or known.threat_range != threat_range or known.ruin != ruin:
                 self.buildings[building.id] = _Building(building.id, building.x, building.y, building.size,
-                                                        building.player, threat_range)
+                                                        building.player, threat_range, ruin)
                 changed = True
             if building.type is BuildingType.GOLD_MINE:
                 mine = self.mines.get(building.id)
