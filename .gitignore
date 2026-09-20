@@ -14,5 +14,5 @@ dist/
 *.gif
 docs/evidence/
 !warband/assets/restyled/*.png
-!packaging/icon.png
+!warband/assets/icon.png
 !packaging/icon-schematic.png

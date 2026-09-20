@@ -11,6 +11,7 @@ briefing (for looking at one mission; ``--mission list`` names them).
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from typing import Any
 
 from saga2d import add_match_arguments, match_from_arguments
@@ -21,6 +22,8 @@ from warband.sim.rules import Difficulty, Layout, MapTheme, Race
 from warband.ui.scene import DEFAULT_SETTINGS, fair_map, new_game
 from warband.ui.style import build_theme
 from warband.ui.title import TitleScene
+
+ICON = Path(__file__).parent / "assets" / "icon.png"  # what the Dock, the taskbar and the built app draw Warband under
 
 
 def main() -> None:
@@ -47,7 +50,7 @@ def main() -> None:
     if args.selftest:
         selftest(args.selftest)
         return
-    game = Game("Warband", resolution=None, fullscreen=args.fullscreen, theme=build_theme())
+    game = Game("Warband", resolution=None, fullscreen=args.fullscreen, theme=build_theme(), icon=ICON)
     settings = game.settings(DEFAULT_SETTINGS)
     if args.fullscreen:
         settings["fullscreen"] = True
@@ -101,7 +104,7 @@ def selftest(png: str) -> None:
     import os
 
     os.environ["SAGA2D_SILENT"] = "1"
-    game = Game("Warband", resolution=(1280, 800), visible=False, theme=build_theme())
+    game = Game("Warband", resolution=(1280, 800), visible=False, theme=build_theme(), icon=ICON)
     fonts.load(game)
     bank = sound.install(game)
     game.push(TitleScene(settings=game.settings(DEFAULT_SETTINGS)))

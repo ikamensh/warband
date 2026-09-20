@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Ilya Kamenshchikov", email = "ilya.kamenshchikov@gmail.com" }]
-dependencies = ["saga2d==0.3.8", "sagaforge"]
+dependencies = ["saga2d==0.3.10", "sagaforge"]
 
 [project.optional-dependencies]
 dev = ["pytest>=9.0.2", "pytest-xdist>=3.8", "mypy>=2.3.1", "setuptools>=84", "hypothesis>=6.168"]  # mypy brings mypyc, which compiles the simulation (warband/league/fastsim.py)
