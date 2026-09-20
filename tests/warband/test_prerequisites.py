@@ -43,8 +43,9 @@ def open_site(scene: GameScene, kind: BuildingType) -> tuple[int, int]:
 
 
 def caption_under(game: Game, button) -> list[str]:
-    """The lines drawn under *button*: its name, then its price or the name of what it lacks, told here as the colour
-    and the glyph beside it tell it: "needs …" in red, "after …" in gold."""
+    """The lines drawn under *button*: its name, then its price (its numbers, drawn beside their symbols: see
+    test_prices.py) or the name of what it lacks, told here as the colour and the glyph beside it tell it:
+    "needs …" in red, "after …" in gold."""
     x, y, w, h = button.bounds
     lines = [t for t in game.backend.texts if x <= t["x"] < x + w and y + h <= t["y"] < y + h + 40]
     told = {BAD: "needs ", GOLD: "after "}
@@ -59,7 +60,7 @@ def test_a_recruit_without_its_building_is_greyed_out_names_it_and_is_refused(ga
     knight, peasant = button_of(scene, UnitType.KNIGHT), button_of(scene, UnitType.PEASANT)
     assert not knight.enabled and peasant.enabled
     assert caption_under(game, knight) == ["Knight", "needs Stables"]
-    assert caption_under(game, peasant) == ["Peasant", "400 / 0"]
+    assert caption_under(game, peasant) == ["Peasant", "400"]  # no lumber, so no second number
     press(game, "k")
     assert scene.status == "Requires a Stables" and not scene.world.player_plans(scene.human)
 

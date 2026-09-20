@@ -450,6 +450,9 @@ def lint_layout(game: Game, scene: Any) -> list[Finding]:
             tw, _ = backend.measure_text(component.text, resolved.font_size, resolved.font)
             if tw > w + 1:
                 findings.append(Finding("overflow", _label(component), f"text {tw} px wide in a {w} px label"))
+        elif getattr(component, "natural_width", 0) > w + 1:  # a price: its symbols and numbers, wider than its column
+            numbers = " ".join(text for _name, text, _ink in component.pairs)
+            findings.append(Finding("overflow", f"{_label(component)}({numbers!r})", f"{component.natural_width} px of symbols in a {w} px box"))
         elif isinstance(component, Button) and component._width is not None:
             resolved = component._resolve()
             iw, tw, kw, _ = component._content_size(resolved)

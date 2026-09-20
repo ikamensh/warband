@@ -22,13 +22,13 @@ from warband.audio import deaths, wreckage
 from warband.sim import mapgen
 from warband.brains.ai import DIFFICULTY_ELO, auto_site, make_brain
 from warband.art.effects import Flare, Spray, Stain, UnitDeath, death_outcome
-from warband.ui.icons import Icon, draw_icon, hourglass_parts, lock_parts, loop_parts
+from warband.ui.icons import Icon, Pair, Price, draw_icon, draw_price, hourglass_parts, lock_parts, loop_parts, price_pairs, price_width
 from warband.sim.model import (Attack, AttackMove, Build, Building, Deposit, Entity, Event, Harvest, Heal, Hold, Move, Patrol, Pos, Repair,
                                 RuleError, Unit, World)
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
-from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, SIM_DT, UNITS, UPGRADES, ArmorClass, AttackType, BuildingType, Difficulty, MapTheme, Race,
-                               UnitType, Upgrade)
+from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, SIM_DT, UNITS, UPGRADES, ArmorClass, AttackType, BuildingType, Cost, Difficulty, MapTheme,
+                               Race, UnitType, Upgrade)
 from warband.sim.rules import Layout as MapLayout
 from warband.records.profile import MatchResult, Profile, RatingChange, Standing, standing
 from warband.records.replay import Replay, ReplayStore
@@ -37,7 +37,7 @@ from warband.audio.sound import IMPACTS, apply_volumes, impact_sound, play_music
 from warband.audio.voices import voiced
 from warband.ui.controls import CARD_COLS, CHORDS, GRID_KEYS, SCHEMES, Scheme, label as key_label
 from warband.ui.style import (
-    ACTION_BUTTON, BAD, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE, RESULTS_STYLE,
+    ACTION_BUTTON, BAD, BODY, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, LUMBER, MUTED, OVERLAY_STYLE, PANEL_STYLE, RESULTS_STYLE,
 )
 from warband.ui import tech
 from warband.ui.tech import Need, Prerequisite, TechTree
@@ -52,6 +52,8 @@ SAVE_VERSION = 2  # 2: the world records its layout
 SAVE_SLOTS = 3
 AUTOSAVE_EVERY = 120.0  # seconds of match time
 SELECT_GAP = 30.0  # seconds: selecting is constant, and its cue answers only the first selection in a while (WB-039)
+SUPPLY_WARNING = 2  # units of room left in the farms: from here the supply pair warns before it blocks
+SUPPLY_STYLES: dict[tuple[int, int, int, int] | None, Style | None] = {None: None, BAD: Style(text_color=BAD), GOLD: Style(text_color=GOLD)}
 TOAST_TOP = 280  # below the resource, settlement and objectives panels
 HUD_TOP = 158  # just under the Settlement row (which ends at 150): the status line starts here, and the map can scroll clear of it
 HINT_BAR = 28
@@ -108,6 +110,16 @@ def attack_hint(attack: AttackType) -> str:
     return attack.value + (f", {', '.join(better)}" if better else "")
 
 
+def build_time(seconds: float) -> str:
+    """" · 25 s", how long a thing takes to make: the third thing a player weighs after its price."""
+    return f" · {seconds:g} s"
+
+
+def feeds(supply: int) -> str:
+    """" · feeds 4" for a building that raises the supply cap, nothing for one that does not."""
+    return f" · feeds {supply}" if supply else ""
+
+
 def listing(names: list[str]) -> str:
     """"A", "A and B", "A, B and C"."""
     return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
@@ -127,7 +139,7 @@ class Command:
     action: Callable[[], None]
     slot: int
     tooltip: str = ""
-    cost: str = ""
+    cost: Cost | None = None  # what it takes, drawn under the button as symbols and numbers
     blocked: Callable[[], str | None] = field(default=lambda: None)  # why it cannot be used right now
     style: Style = field(default_factory=lambda: CARD_BUTTON)
     target: ProductionTarget | None = None  # a unit, building or upgrade: the button shows its portrait or emblem
@@ -206,36 +218,64 @@ class _NeedBadge(Component):
         game.backend.draw_image(game.assets.image(key), *fit(game, key, x, y, w), order=self._order)
 
 
-class _PriceLine(Label):
-    """Under a catalogue item: its price, or the name of what it lacks first — behind a red padlock while nothing of the
-    kind is coming (the item is greyed out), behind a gold hourglass while it is (ordered now, the item waits for it).
-    It reads the button's command, which the card replaces whenever it is built again."""
+class _PriceLine(Component):
+    """Under a card button: what it costs, the coin and the log with their numbers, each number red while the purse
+    cannot pay it (a plan is still worth making: it waits for the money).  While the item lacks a prerequisite the
+    price gives way to the name of what it lacks — behind a red padlock while nothing of the kind is coming (the
+    item is greyed out), behind a gold hourglass while it is (ordered now, the item waits for it).  It reads the
+    button's command, which the card replaces whenever it is built again."""
 
-    GLYPH = 9  # the padlock's or the hourglass' size, left of the name
-    NEEDS = Style(text_color=BAD)
-    AFTER = Style(text_color=GOLD)
+    GLYPH = 9    # the padlock's or the hourglass' size, left of the name
+    SYMBOL = 12  # the coin's and the log's
 
-    def __init__(self, button: CardButton, name: Callable[[Prerequisite], str], **kwargs: Any) -> None:
-        self.button, self.name = button, name
-        super().__init__(self._text, text_style="caption", **kwargs)
+    def __init__(self, button: CardButton, scene: GameScene, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.button, self.scene = button, scene
 
-    def _text(self) -> str:
+    @property
+    def pairs(self) -> list[Pair]:
+        """The price as it stands, each number weighed against the purse; nothing while the item names what it
+        lacks instead."""
         command = self.button.command
-        return command.cost if command.need is None else self.name(command.need.target)
+        return [] if command.need is not None or command.cost is None else price_pairs(command.cost, self.scene.purse)
+
+    def _caption(self) -> tuple[int, str | None]:
+        style = self._game.theme.get_text_style("caption")
+        return style.font_size, style.font or self._game.theme.font
+
+    @property
+    def natural_width(self) -> int:
+        """What the line needs: the price, or the glyph and the name of what the item lacks.  ``visual_lint``
+        reads it, so a price too wide for a card button is a finding and not something to spot by eye."""
+        if self._game is None:
+            return 0
+        need = self.button.command.need
+        if need is None:
+            return math.ceil(price_width(self._game, self.pairs, self.SYMBOL, *self._caption()))
+        return math.ceil(self._game.backend.measure_text(self.scene.card_name(need.target), *self._caption())[0]) + self.GLYPH + 4
+
+    def get_preferred_size(self) -> tuple[int, int]:
+        return (self._width or 0, self._height if self._height is not None else self.SYMBOL + 2)
 
     def on_draw(self) -> None:
-        need = self.button.command.need
-        self.style = None if need is None else self.AFTER if need.coming else self.NEEDS
-        super().on_draw()
-        if need is None or self._game is None:
+        if self._game is None:
             return
-        caption = self._game.theme.get_text_style("caption")
-        width, _height = self._game.backend.measure_text(self.text, caption.font_size, caption.font or self._game.theme.font)
-        x, y, w, h = self.bounds
+        game, (x, y, w, h) = self._game, self.bounds
+        font_size, font = self._caption()
+        need = self.button.command.need
+        if need is None:
+            pairs = self.pairs
+            width = price_width(game, pairs, self.SYMBOL, font_size, font)
+            draw_price(game, pairs, x + (w - width) / 2, y + (h - self.SYMBOL) / 2, self.SYMBOL, font_size, font, order=self._order)
+            return
+        text = self.scene.card_name(need.target)
+        width, _height = game.backend.measure_text(text, font_size, font)
+        game.backend.draw_text(text, x + w / 2, y + h / 2, font_size, GOLD if need.coming else BAD, font=font,
+                               anchor_x="center", anchor_y="center", order=self._order)
         size = self.GLYPH
         left, top = x + (w - width) / 2 - size - 4, y + (h - size) / 2 + 1  # beside the name, on its middle
         for points, ink in hourglass_parts(GOLD) if need.coming else lock_parts(BAD):
-            self._game.backend.draw_polygon([(left + u * size, top + v * size) for u, v in points], ink, order=self._order)
+            game.backend.draw_polygon([(left + u * size, top + v * size) for u, v in points], ink, order=self._order)
 
 
 class _Slot(Component):
@@ -448,6 +488,11 @@ class GameScene(Scene):
         return RACES[self.player.race]
 
     @property
+    def purse(self) -> tuple[int, int]:
+        """The gold and lumber the player holds now: a price the purse cannot cover is drawn in red."""
+        return self.player.gold, self.player.lumber
+
+    @property
     def stats(self) -> dict[str, int]:
         """The player's battle record, kept by the simulation so kills are attributed to the striker."""
         return self.player.stats
@@ -480,14 +525,24 @@ class GameScene(Scene):
             used, cap = self.world.supply(self.human)
             return f"{used}/{cap}"
 
-        # Resources as symbol + number; hovering a symbol names it in the tooltip panel.
+        def supply_hint() -> str:
+            used, cap = self.world.supply(self.human)
+            room = cap - used
+            crowd = ("no room for another unit: build a farm" if room <= 0 else f"room for {room} more"
+                     if room <= SUPPLY_WARNING else f"{room} to spare")
+            return f"Supply used / capacity — every unit takes one, farms and halls feed them; {crowd}"
+
+        # Resources as symbol + number; hovering a symbol names it in the tooltip panel.  The supply pair goes
+        # amber as the farms fill and red once they are full, the reading an RTS player looks for before training.
+        self.supply_icon = Icon("supply", size=22)
+        self.supply_label = Label(supply_text, text_style="hud")
+        self.supply_row = Row(self.supply_icon, self.supply_label, spacing=6)  # the pair the warning colours
         self._resource_rows = [
             (Row(Icon("gold", size=22), Label(lambda: str(self.player.gold), text_style="hud", text_color=GOLD), spacing=6),
              "Gold — mined by workers; every unit, building and upgrade costs some"),
             (Row(Icon("lumber", size=22), Label(lambda: str(self.player.lumber), text_style="hud", text_color=LUMBER), spacing=6),
              "Lumber — felled by workers; buildings, upgrades and engines need it"),
-            (Row(Icon("supply", size=22), Label(supply_text, text_style="hud"), spacing=6),
-             "Supply used / capacity — farms and halls feed the army"),
+            (self.supply_row, supply_hint),
         ]
         self.ui.add(Panel(anchor=Anchor.TOP_LEFT, margin=12, layout=Layout.HORIZONTAL, spacing=12, style=PANEL_STYLE, blocks_pointer=True, children=[
             Label(self.player.name, text_style="title", text_color=rgba(self.player.color)),
@@ -1297,17 +1352,18 @@ class GameScene(Scene):
                 opened = [self.building_name(kind) for kind in tech.unlocks(building_type)]
                 unlocks = f" · unlocks the {listing(opened)}" if opened else ""
                 commands.append(Command(race.cards[building_type], info.hotkey, lambda bt=building_type: self.choose_building(bt), slot,
-                                        tooltip=f"{info.name} — {info.cost} · {info.summary}{unlocks} · its key again: the planner picks the spot",
-                                        cost=f"{info.cost.gold} / {info.cost.lumber}", target=building_type,
+                                        tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)}{feeds(info.supply)} · {info.summary}"
+                                                f"{unlocks} · its key again: the planner picks the spot",
+                                        cost=info.cost, target=building_type,
                                         style=ACTION_BUTTON if self.placing is building_type else CARD_BUTTON,
                                         count=lambda bt=building_type: self._ordered(bt), alt=lambda bt=building_type: self.choose_building(bt, keep=True),
                                         catalogue=True))
         elif kind == "train":
             for slot, (unit_type, info) in enumerate(race.units.items()):
                 commands.append(Command(info.name, info.hotkey, lambda ut=unit_type: self.order_production("train", ut), slot,
-                                        tooltip=f"{info.name} — {info.cost} · {info.summary} · Shift or right-click: endlessly at every "
-                                                f"{self.building_name(info.trained_at)}",
-                                        cost=f"{info.cost.gold} / {info.cost.lumber}", target=unit_type, count=lambda ut=unit_type: self._ordered(ut),
+                                        tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)} · {info.summary} · Shift or right-click: "
+                                                f"endlessly at every {self.building_name(info.trained_at)}",
+                                        cost=info.cost, target=unit_type, count=lambda ut=unit_type: self._ordered(ut),
                                         alt=lambda ut=unit_type: self.toggle_endless_everywhere(ut),
                                         endless=lambda ut=unit_type: any(ut in b.auto for b in self._producers(ut)), catalogue=True))
         else:
@@ -1318,8 +1374,8 @@ class GameScene(Scene):
                 upgrade = next((u for u in chain if self._upgrade_planned(u) is None), chain[-1])
                 info = UPGRADES[upgrade]
                 commands.append(Command(UPGRADE_NAMES[upgrade], info.hotkey, lambda up=upgrade: self.order_production("upgrade", up), slot,
-                                        tooltip=f"{info.name} — {info.cost} · {info.summary}",
-                                        cost=f"{info.cost.gold} / {info.cost.lumber}", blocked=lambda up=upgrade: self._upgrade_planned(up),
+                                        tooltip=f"{info.name} — {info.cost}{build_time(info.time)} · {info.summary}",
+                                        cost=info.cost, blocked=lambda up=upgrade: self._upgrade_planned(up),
                                         target=upgrade, catalogue=True))
         return commands
 
@@ -1366,14 +1422,15 @@ class GameScene(Scene):
             if isinstance(item, UnitType):
                 info = self.race.units[item]
                 commands.append(Command(info.name, info.hotkey, lambda ut=item: self.train(ut), slot,
-                                        tooltip=f"{info.name} — {info.cost} · {info.summary} · Shift or right-click: train endlessly",
-                                        blocked=lambda ut=item, b=building: world.can_train(b, ut), target=item,
+                                        tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)} · {info.summary} · Shift or right-click: "
+                                                f"train endlessly",
+                                        cost=info.cost, blocked=lambda ut=item, b=building: world.can_train(b, ut), target=item,
                                         alt=lambda ut=item, b=building: self.toggle_endless(b, ut), endless=lambda ut=item, b=building: ut in b.auto))
             elif item is not None:  # None: every tier of the chain is researched, and its slot stays empty
                 upgrade = UPGRADES[item]
                 commands.append(Command(UPGRADE_NAMES[item], upgrade.hotkey, lambda up=item: self.research(up), slot,
-                                        tooltip=f"{upgrade.name} — {upgrade.cost} · {upgrade.summary}",
-                                        blocked=lambda up=item, b=building: world.can_research(b, up), target=item))
+                                        tooltip=f"{upgrade.name} — {upgrade.cost}{build_time(upgrade.time)} · {upgrade.summary}",
+                                        cost=upgrade.cost, blocked=lambda up=item, b=building: world.can_research(b, up), target=item))
         if work:
             commands.append(Command("Cancel", "x", self.cancel_work, CARD_COLS - 1 if len(work) < CARD_COLS else 2 * CARD_COLS - 1,
                                     tooltip="Cancel the last unit queued or the research, and endless training",
@@ -1447,15 +1504,16 @@ class GameScene(Scene):
                 else:
                     button = Button(command.label, hotkey=command.hotkey or None, on_click=command.action,
                                     style=command.style, width=CARD_WIDTH, height=CARD_ICON if portraits else CARD_PLAIN)
-                if command.cost:
-                    captions.append(_PriceLine(button, self.card_name, width=CARD_WIDTH, align="center"))
+                if command.cost is not None:
+                    captions.append(_PriceLine(button, self, width=CARD_WIDTH))
                 self._card_buttons.append(button)
                 row.add(Column(button, *captions, spacing=3) if captions else button)
             self.card_panel.add(row)
 
     def _update_card(self) -> None:
         mx, my = self.mouse
-        self.tooltip = next((hint for row, hint in self._resource_rows if row.hit_test(mx, my)), "")
+        hint = next((hint for row, hint in self._resource_rows if row.hit_test(mx, my)), "")
+        self.tooltip = hint() if callable(hint) else hint
         for command, button in zip(self._card, self._card_buttons):
             blocked = self._refusal(command)
             button.enabled = blocked is None
@@ -1752,6 +1810,7 @@ class GameScene(Scene):
         self.stains = [s for s in self.stains if not s.done]
         self.view.sync(0.0 if self.paused else dt, fraction=self._motion_fraction())
         self._update_card()
+        self._update_supply()
         self.idle_button.visible = self._idle_peasant_count() > 0
         self.army_button.visible = bool(self._army())
         self._update_objectives()
@@ -1760,6 +1819,14 @@ class GameScene(Scene):
             self.game.save(self.AUTOSAVE_SLOT, scene=self)
             self.say("Autosaved")
         self._check_game_over()
+
+    def _update_supply(self) -> None:
+        """The supply pair says how near the cap the army is: red once it is full (nothing more can be trained),
+        amber within :data:`SUPPLY_WARNING` of it, plain otherwise."""
+        used, cap = self.world.supply(self.human)
+        ink = BAD if used >= cap else GOLD if cap - used <= SUPPLY_WARNING else None
+        self.supply_icon.color = ink
+        self.supply_label.style = SUPPLY_STYLES[ink]
 
     def _motion_fraction(self) -> float:
         if self._game_over or self.world.winner is not None or not self.player.alive:
@@ -2755,11 +2822,17 @@ class CodexScene(_Overlay):
         else:
             widths, rows = self._rows()
             for cells in rows:
-                table.add(Row(*[Label(text, text_style="hud" if i == 0 else "body", width=width, text_color=GOLD if i == 0 else None,
-                                      wrap=i == len(cells) - 1)
-                                for i, (text, width) in enumerate(zip(cells, widths))], spacing=8))
+                table.add(Row(*[self._cell(cell, width, first=i == 0, last=i == len(cells) - 1)
+                                for i, (cell, width) in enumerate(zip(cells, widths))], spacing=8))
         panel.add(table)
         panel.add(KeyHints([("1-5", "page"), ("Tab", "next"), ("Esc", "close")]))
+
+    def _cell(self, cell: str | list[Pair], width: int, *, first: bool, last: bool) -> Component:
+        """One cell of a page's table: a price as its symbols and numbers, anything else as text — the name of the
+        row in gold, the last column wrapped."""
+        if isinstance(cell, list):
+            return Price(cell, size=14, text_style="body", width=width)
+        return Label(cell, text_style="hud" if first else "body", width=width, text_color=GOLD if first else None, wrap=last)
 
     def _race_table(self, own: str) -> Column:
         """The four races side by side: character, passive and arts, wrapped so every window fits."""
@@ -2775,30 +2848,31 @@ class CodexScene(_Overlay):
             table.add(block)
         return table
 
-    def _rows(self) -> tuple[tuple[int, ...], list[list[str]]]:
-        """The page's column widths and its rows, the header first.  The widths fit the widest
-        name, cost and building of every race at 1200 px; the last column wraps."""
+    def _rows(self) -> tuple[tuple[int, ...], list[list[str | list[Pair]]]]:
+        """The page's column widths and its rows, the header first.  A cost is the symbols and numbers the HUD
+        and the command card use, not a sentence.  The widths fit the widest name, cost and building of every
+        race at 1200 px; the last column wraps."""
         player = self.world.players[self.player]
         have = player.upgrades
         race = RACES[player.race]
         if self.page == 0:
-            rows = [["Unit", "Cost", "HP", "Dmg", "Arm", "Rng", "Spd", "Trained at", "Role"]]
+            rows: list[list[str | list[Pair]]] = [["Unit", "Cost", "HP", "Dmg", "Arm", "Rng", "Spd", "Time", "Trained at", "Role"]]
             for unit_type, info in race.units.items():
-                rows.append([info.name, str(info.cost), str(info.hp), f"heal {info.heal}" if info.heal else str(info.damage),  # its blow is in its role
-                             str(info.armor), "melee" if info.range < 1 else f"{info.range:g}", f"{info.speed:g}",
+                rows.append([info.name, price_pairs(info.cost), str(info.hp), f"heal {info.heal}" if info.heal else str(info.damage),  # its blow is in its role
+                             str(info.armor), "melee" if info.range < 1 else f"{info.range:g}", f"{info.speed:g}", f"{info.build_time:g}s",
                              race.buildings[info.trained_at].name,
                              f"{info.summary} · {armour_name(info.armor_class)}"
                              + (f", {info.attack.value}" if info.damage and info.attack is not AttackType.NORMAL else "")])
-            return (150, 198, 40, 66, 40, 55, 42, 140, 361), rows  # "heal 15" is the widest Dmg
+            return (150, 130, 40, 66, 40, 55, 42, 50, 140, 371), rows  # "heal 15" is the widest Dmg, 1200 gold and 800 lumber the widest Cost
         if self.page == 1:
-            rows = [["Building", "Cost", "HP", "Arm", "Size", "Time", "Requires", "What it does"]]
+            rows = [["Building", "Cost", "HP", "Arm", "Size", "Time", "Feeds", "Requires", "What it does"]]
             for building_type, info in race.buildings.items():
                 if building_type is BuildingType.GOLD_MINE:
                     continue
-                rows.append([info.name, str(info.cost), str(info.hp), str(info.armor), f"{info.size}×{info.size}", f"{info.build_time:g}s",
-                             race.buildings[info.requires].name if info.requires else "—",
-                             info.summary + (f" · supply +{info.supply}" if info.supply else "")])
-            return (150, 198, 50, 40, 50, 50, 130, 420), rows
+                rows.append([info.name, price_pairs(info.cost), str(info.hp), str(info.armor), f"{info.size}×{info.size}", f"{info.build_time:g}s",
+                             [("supply", f"+{info.supply}", BODY)] if info.supply else "—",
+                             race.buildings[info.requires].name if info.requires else "—", info.summary])
+            return (150, 130, 50, 40, 50, 50, 60, 130, 432), rows
         if self.page == 2:
             rows = [["Upgrade", "Cost", "Time", "Where", "Requires", "Effect"]]
             for upgrade, info in UPGRADES.items():
@@ -2806,9 +2880,9 @@ class CodexScene(_Overlay):
                     continue
                 where = next(b for b, binfo in BUILDINGS.items() if upgrade in binfo.researches)
                 requires = UPGRADES[info.requires].name if info.requires else f"{race.adjective} art" if info.race is not None else "—"
-                rows.append([info.name + (" ✓" if upgrade in have else ""), str(info.cost), f"{info.time:g}s", race.buildings[where].name, requires,
-                             info.summary])
-            return (190, 198, 50, 130, 165, 383), rows
+                rows.append([info.name + (" ✓" if upgrade in have else ""), price_pairs(info.cost), f"{info.time:g}s", race.buildings[where].name,
+                             requires, info.summary])
+            return (190, 130, 50, 130, 165, 451), rows
         raise ValueError(f"no table for page {self.page}")
 
     def show(self, page: int) -> None:

@@ -1,8 +1,11 @@
-"""Small colour-coded HUD symbols: resources in the top bar, a unit's numbers on its card.
+"""Small colour-coded HUD symbols: resources in the top bar, a unit's numbers on its card, prices everywhere.
 
 Each symbol is a few flat polygons in unit coordinates, drawn at any size in
 one of the panel's colours, so the HUD stays readable at a glance without a
-word beside every number.  First built on the unmerged ``warband`` branch.
+word beside every number.  A price is drawn from the same symbols
+(:func:`price_pairs`, :func:`draw_price`, :class:`Price`), so the coin on a
+command card is the coin in the top bar.  First built on the unmerged
+``warband`` branch.
 """
 
 from __future__ import annotations
@@ -10,6 +13,8 @@ from __future__ import annotations
 import math
 
 from saga2d.ui import Component
+from warband.sim.rules import Cost
+from warband.ui.style import BAD, BODY
 
 Color = tuple[int, int, int, int]
 
@@ -118,3 +123,64 @@ class Icon(Component):
         x, y, w, h = self.bounds
         for points, ink in _parts(self.name, self.color):
             self._game.backend.draw_polygon([(x + u * w, y + v * h) for u, v in points], ink, order=self._order)
+
+
+Pair = tuple[str, str, Color]  # a symbol, the number beside it and that number's ink
+
+PRICE_GAP = 3      # between a symbol and its number
+PRICE_SPACING = 9  # between one resource and the next
+
+
+def price_pairs(cost: Cost, purse: tuple[int, int] | None = None) -> list[Pair]:
+    """*cost* as symbols and numbers: the coin always, the log only when it takes lumber (a price reads "400",
+    not "400 / 0").  Given *purse* — the gold and lumber the player holds now — a number the purse cannot cover
+    turns red, so a glance at a card says what is out of reach, as StarCraft's cost lines do.  The symbols keep
+    their own colours: they say which resource, the number says whether it is there."""
+    pairs = [("gold", str(cost.gold), BAD if purse is not None and purse[0] < cost.gold else BODY)]
+    if cost.lumber:
+        pairs.append(("lumber", str(cost.lumber), BAD if purse is not None and purse[1] < cost.lumber else BODY))
+    return pairs
+
+
+def price_width(game, pairs: list[Pair], size: float, font_size: int, font: str | None = None) -> float:
+    """How wide :func:`draw_price` draws *pairs*."""
+    width = sum(size + PRICE_GAP + game.backend.measure_text(text, font_size, font)[0] + PRICE_SPACING for _name, text, _ink in pairs)
+    return max(0.0, width - PRICE_SPACING)
+
+
+def draw_price(game, pairs: list[Pair], x: float, y: float, size: float, font_size: int, font: str | None = None, order: int = 0) -> None:
+    """Draw each symbol and its number from (x, y), the symbols *size* square and the numbers on their middle."""
+    for name, text, ink in pairs:
+        for points, tint in _parts(name):
+            game.backend.draw_polygon([(x + u * size, y + v * size) for u, v in points], tint, order=order)
+        x += size + PRICE_GAP
+        game.backend.draw_text(text, x, y + size / 2, font_size, ink, font=font, anchor_x="left", anchor_y="center", order=order)
+        x += game.backend.measure_text(text, font_size, font)[0] + PRICE_SPACING
+
+
+class Price(Component):
+    """A price in a layout: the symbols and their numbers, as wide as they need (the codex's cost column)."""
+
+    def __init__(self, pairs: list[Pair], *, size: int = 14, text_style: str = "body", **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.pairs, self.size, self.text_style = pairs, size, text_style
+
+    def _font(self) -> tuple[int, str | None]:
+        style = self._game.theme.get_text_style(self.text_style)
+        return style.font_size, style.font or self._game.theme.font
+
+    @property
+    def natural_width(self) -> int:
+        """How wide the symbols and numbers are drawn, whatever box the layout gives them: a column narrower than
+        this crowds the one beside it, which is what ``visual_lint`` looks for."""
+        return 0 if self._game is None else math.ceil(price_width(self._game, self.pairs, self.size, *self._font()))
+
+    def get_preferred_size(self) -> tuple[int, int]:
+        return (self._width if self._width is not None else self.natural_width,
+                self._height if self._height is not None else self.size)
+
+    def on_draw(self) -> None:
+        if self._game is None:
+            return
+        x, y, _w, h = self.bounds
+        draw_price(self._game, self.pairs, x, y + (h - self.size) / 2, self.size, *self._font(), order=self._order)

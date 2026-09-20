@@ -9,7 +9,8 @@ from saga2d import Game, RenderLayer, Scene, Sprite, SpriteAnchor
 from saga2d.ui import Label
 from sagaforge import render3d as r3
 from warband.art import textures, visual_lint
-from warband.sim.rules import Race, Resource, UnitType
+from warband.sim.rules import Cost, Race, Resource, UnitType
+from warband.ui.icons import Price, price_pairs
 from warband.ui.style import build_theme
 from warband.ui.title import TitleScene
 
@@ -54,6 +55,31 @@ def test_the_lint_sees_text_over_text_and_text_wider_than_its_box(tmp_path) -> N
     finally:
         game.close()
     assert {"text-overlap", "overflow"} <= checks
+
+
+class Priced(Scene):
+    """A price in a box too narrow for its symbols and numbers."""
+
+    def __init__(self, width: int) -> None:
+        self.width = width
+
+    def on_enter(self) -> None:
+        self.ui.add(Price(price_pairs(Cost(1200, 800)), size=14, width=self.width))
+
+
+@pytest.mark.parametrize("width, flagged", [(40, True), (200, False)])
+def test_the_lint_sees_a_price_wider_than_its_column(tmp_path, width, flagged) -> None:
+    """A price is drawn as symbols and numbers, not laid out as a label, so nothing about it is wider than its
+    box unless the lint measures what it needs: the codex once ran a building's lumber into the next column."""
+    game = Game("Lint", backend="mock", resolution=(640, 480), theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        visual_lint.use_real_text_metrics(game)
+        game.push(Priced(width))
+        game.tick(1 / 60)
+        checks = {f.check for f in visual_lint.lint_frame(game)}
+    finally:
+        game.close()
+    assert ("overflow" in checks) is flagged
 
 
 def test_text_lint_checks_the_active_overlay_not_its_paused_background(tmp_path) -> None:
