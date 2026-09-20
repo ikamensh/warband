@@ -1,22 +1,30 @@
 """Warband's neutral creatures: the beasts that belong to nobody.
 
-A troll, a venom-spitting giant spider and a stone golem — plus a wolf that is
-parked — drawn with the same low-poly renderer, the same camera and the same
-nine frames per facing as the units in :mod:`warband.art.textures`, so they
-stand beside a footman without looking imported from another game.  They reuse
-that module's helpers (:func:`~warband.art.textures._unit_rod`, the shadow, the
-colours) and its :data:`~warband.art.textures.POSES` table; what they do not
-reuse is the team colour.  **A neutral creature is nobody's**: no mesh here
-takes a player, and ``test_monsters.py`` holds every face to a palette that
-carries none of the four team hues.
+A wolf, a troll, a venom-spitting giant spider and a stone golem, drawn with the
+same low-poly renderer, the same camera and the same nine frames per facing as
+the units in :mod:`warband.art.textures`, so they stand beside a footman without
+looking imported from another game.  They reuse that module's helpers
+(:func:`~warband.art.textures._unit_rod`, the shadow, the colours) and its
+:data:`~warband.art.textures.POSES` table; what they do not reuse is the team
+colour.  **A neutral creature is nobody's**: no mesh here takes a player,
+:func:`monster_image` takes none either, and ``test_monsters.py`` holds every
+face to a palette that carries none of the four team hues.
+
+The meshes are the stand-ins.  What the game draws is the painted sheet each
+creature has under ``warband/assets/restyled`` (``tools/restyle.py --monsters``,
+:func:`restyled_monster`), which is a gold mine's kind of sheet rather than a
+unit's: nothing recolours it, because there is no player to recolour it for.  A
+sheet that no longer holds every frame warns and is ignored, and
+``WARBAND_ART=procedural`` keeps the renders.
 
 Each of them is a shape no unit in the game already owns, which is a harder bar
 than it sounds: ``warband/sim/races.py`` makes the orc knight an **Ogre**, the
 orc scout a **Wolf Rider** and the dwarf knight a **Bear Rider** on a war bear,
 and a neutral creature has no team colour to tell it from a mounted enemy at
-32 px.  The wolf in this file is exactly that collision — it is the orc scout's
-mount without its rider — so it is finished but parked, kept for the montages
-rather than for a rule table.
+32 px.  The wolf is exactly that collision — it is the orc scout's mount without
+its rider — and it was parked for it until the painting settled the question:
+the orc rides a *grey* wolf, this one is painted russet, and at 32 px on the
+parade the two are not the same animal.
 
 Each creature declares a :class:`Creature` rig, which says how the shared pose
 is carried:
@@ -42,16 +50,20 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Callable, Iterator
+
+from PIL import Image
 
 from saga2d import Game
 from sagaforge import render3d as r3
+from sagaforge import restyle
 from sagaforge.render3d import Mesh
 
 from warband.art.textures import (
     BONE, DROP_UNIT, FACINGS, FRAMES, FUR_WOLF, INK, PAD, POSES, PROJECTION, TUSK, UNIT_SCALE,
-    Color, _BOB, _LEG_LIFT, _LEG_SWING, _prop, _shadow, _shift, _unit_panel, _unit_pitch,
-    _unit_rod, darker,
+    WALK_FRAMES, Color, Placement, _BOB, _LEG_LIFT, _LEG_SWING, _painted, _prop, _shadow, _shift,
+    _unit_panel, _unit_pitch, _unit_rod, darker, figure_top, placements,
 )
 from warband.sim.rules import IdentityEnum
 
@@ -693,13 +705,50 @@ def monster_key(monster: Monster, facing: int, frame: str) -> str:
     return f"monster.{monster.value}.{facing}.{frame}"
 
 
+def monster_sheet(monster: Monster) -> str:
+    """The name of one creature's painted sheet under ``warband/assets/restyled``."""
+    return f"monster.{monster.value}"
+
+
+@lru_cache(maxsize=None)
+def restyled_monster(monster: Monster) -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
+    """The hand-painted frames of one creature (every facing and frame), or None when it has no
+    sheet, or a stale one.  ``tools/restyle.py --monsters`` paints them; a sheet whose frames no
+    longer match :data:`~warband.art.textures.FRAMES` warns and is ignored, exactly as a unit's
+    does, and ``WARBAND_ART=procedural`` keeps the renders.
+
+    Unlike a unit's sheet there is no player in it and no recolouring after it: a creature is
+    nobody's, so the painted cell is what the game draws."""
+    return _painted(monster_sheet(monster),
+                    [monster_key(monster, facing, frame) for facing in range(FACINGS) for frame in FRAMES])
+
+
+@lru_cache(maxsize=None)
+def monster_heads(monster: Monster) -> tuple[float, ...]:
+    """Per facing, how far above its feet a painted creature reaches standing or walking: what a
+    health bar hangs over, since a painted cell is far taller than the creature in it."""
+    painted = restyled_monster(monster)
+    if painted is None:
+        raise ValueError(f"no painted sheet for {monster.value}")
+    sheet, frames = painted
+    return tuple(max(figure_top(sheet, frames[monster_key(monster, facing, name)]) for name in ("stand",) + WALK_FRAMES)
+                 for facing in range(FACINGS))
+
+
 def monster_image(game: Game, monster: Monster, facing: int, frame: str) -> str:
-    """Register (once) and return the key of one creature image.  Never recoloured: a neutral
-    creature has no player, so unlike :func:`~warband.art.textures.unit_image` this takes none."""
+    """Register (once) and return the key of one creature image: the painted frame where the
+    creature has a sheet, the low-poly render otherwise.  Never recoloured: a neutral creature
+    has no player, so unlike :func:`~warband.art.textures.unit_image` this takes none."""
     key = monster_key(monster, facing, frame)
     if not game.assets.has_image(key):
-        mesh = r3.rotate_z(monster_mesh(monster, frame), facing * 45 - 90)
-        game.assets.image_from_pil(key, _prop(key, mesh, DROP_UNIT, game.backend.scale_factor))
+        painted = restyled_monster(monster)
+        if painted is None:
+            mesh = r3.rotate_z(monster_mesh(monster, frame), facing * 45 - 90)
+            game.assets.image_from_pil(key, _prop(key, mesh, DROP_UNIT, game.backend.scale_factor))
+        else:
+            sheet, frames = painted
+            placements[key] = Placement(sheet.logical_size, sheet.drop, head=monster_heads(monster)[facing])
+            game.assets.image_from_pil(key, frames[key])
     return key
 
 
@@ -712,9 +761,18 @@ def warm_monsters(game: Game) -> Iterator[str]:
 
 
 def monster_portrait_image(game: Game, monster: Monster) -> str:
-    """A tightly framed picture of a creature at rest, for the selection panel."""
+    """A tightly framed picture of a creature at rest, for the selection panel: the painted frame
+    facing the viewer where there is one, the low-poly render otherwise."""
     key = f"portrait.monster.{monster.value}"
     if not game.assets.has_image(key):
+        painted = restyled_monster(monster)
+        if painted is not None:
+            frame = painted[1][monster_key(monster, 2, "stand")]
+            figure = frame.crop(frame.split()[3].getbbox())
+            fit = 128 * game.backend.scale_factor / max(figure.size)
+            game.assets.image_from_pil(key, figure.resize((max(1, round(figure.width * fit)), max(1, round(figure.height * fit))),
+                                                          Image.LANCZOS))
+            return key
         mesh = monster_mesh(monster, "stand")
         min_x, min_y, max_x, max_y = r3.bounds(mesh, PROJECTION)
         w, h = max_x - min_x + 2 * PAD, max_y - min_y + 2 * PAD

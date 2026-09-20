@@ -8,6 +8,13 @@ grass.  Then the same creatures beside a footman, a knight and a catapult at the
 zoom (``TILE`` = 32 px), which is the only picture that says whether a silhouette reads.
 Finally the art lint over every frame.
 
+A creature with a painted sheet under ``warband/assets/restyled`` (``tools/restyle.py
+--monsters``) is drawn from it, so these are the painted pictures; ``compare-<creature>.png``
+puts every facing's low-poly stand-in row directly above the painted one, which is how a
+painting is judged against what it was painted from.  ``--procedural`` draws the stand-ins
+instead and writes its files with a ``-standin`` suffix, so the two sets can be laid side by
+side.
+
 ``--zoom`` sets the contact sheets' magnification (2 by default, 1 for gameplay size); the
 parade is always drawn at 1.  The display must be awake (``caffeinate -u``).
 """
@@ -23,6 +30,8 @@ os.environ.setdefault("SAGA2D_SILENT", "1")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from PIL import Image  # noqa: E402
+
+from sagaforge import restyle  # noqa: E402
 
 from saga2d import Game, Scene, fonts  # noqa: E402
 from warband.art import monsters, textures, visual_lint  # noqa: E402
@@ -80,7 +89,8 @@ class Paddock(Scene):
 
 
 class Capture:
-    def __init__(self) -> None:
+    def __init__(self, suffix: str = "") -> None:
+        self.suffix = suffix
         self.temporary = tempfile.TemporaryDirectory(prefix="warband-monsters-")
         self.game = Game("Warband monsters", resolution=RESOLUTION, visible=False, theme=build_theme(),
                          save_dir=Path(self.temporary.name) / "saves")
@@ -120,8 +130,8 @@ class Capture:
         sheet = Image.new("RGB", (RESOLUTION[0], 2 * RESOLUTION[1]), (24, 34, 30))
         for index, band in enumerate(bands):
             sheet.paste(band, (0, index * RESOLUTION[1]))
-        sheet.save(output / f"{monster.value}-frames.png")
-        print(f"  {output / f'{monster.value}-frames.png'}", flush=True)
+        sheet.save(output / f"{monster.value}-frames{self.suffix}.png")
+        print(f"  {output / f'{monster.value}-frames{self.suffix}.png'}", flush=True)
 
     #: The units a neutral creature could be taken for.  The orc knight *is* an ogre, the orc
     #: scout rides a wolf and the dwarf knight rides a war bear, so these three stand in the
@@ -154,12 +164,40 @@ class Capture:
                 scene.stand(monsters.monster_image(self.game, monster, 2, frame), 150 + column * 64, y)
                 if index == 0:
                     scene.label(frame, 150 + column * 64, 420, 11)
-        self.shoot(scene, output, "parade-1x")
+        self.shoot(scene, output, f"parade-1x{self.suffix}")
 
     def close(self) -> None:
         self.game._teardown()
         self.game.backend.quit()
         self.temporary.cleanup()
+
+
+def compare(monster: Monster, output: Path, suffix: str) -> None:
+    """Every facing of every frame, the low-poly stand-in row above the painted row.
+
+    This is the picture that says what the painter changed and what it moved: the pair of rows
+    share a cell, an anchor and a scale, so a creature that grew a limb, left its ground or
+    turned another way shows up as a mismatch between the two strips."""
+    painted = monsters.restyled_monster(monster)
+    if painted is None:
+        print(f"  {monster.value}: no painted sheet, nothing to compare")
+        return
+    sheet, frames = painted
+    from restyle import Monsters  # the tool that built the sheet renders the stand-ins the same way
+
+    _, stand_ins = Monsters(monster).build_sheet()
+    bands = []
+    for facing in range(textures.FACINGS):
+        keys = [monsters.monster_key(monster, facing, frame) for frame in textures.FRAMES]
+        bands += [restyle.strip(stand_ins, keys, scale=0.5), restyle.strip(frames, keys, scale=0.5)]
+    picture = Image.new("RGB", (max(b.width for b in bands), sum(b.height for b in bands)), (24, 34, 30))
+    y = 0
+    for band in bands:
+        picture.paste(band, (0, y), band)
+        y += band.height
+    path = output / f"compare-{monster.value}{suffix}.png"
+    picture.save(path)
+    print(f"  {path}", flush=True)
 
 
 def lint() -> list[visual_lint.Finding]:
@@ -186,15 +224,25 @@ def main() -> None:
     parser.add_argument("output", type=Path)
     parser.add_argument("--zoom", type=float, default=2.0, help="magnification of the contact sheets (1 is gameplay)")
     parser.add_argument("--creatures", default=",".join(m.value for m in Monster), help="comma-separated creatures")
+    parser.add_argument("--procedural", action="store_true",
+                        help="draw the low-poly stand-ins instead of the painted sheets (files get a -standin suffix)")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    capture = Capture()
+    if args.procedural:  # what _painted reads, so the creatures fall back to their renders
+        textures.RESTYLED_ART = False
+        monsters.restyled_monster.cache_clear()
+        monsters.monster_heads.cache_clear()
+    suffix = "-standin" if args.procedural else ""
+    capture = Capture(suffix)
     try:
         for name in args.creatures.split(","):
             capture.sheet(Monster(name), args.output, args.zoom)
         capture.parade(args.output)
     finally:
         capture.close()
+    if not args.procedural:
+        for name in args.creatures.split(","):
+            compare(Monster(name), args.output, suffix)
     findings = lint()
     print(f"lint: {len(findings)} findings")
     for finding in findings:

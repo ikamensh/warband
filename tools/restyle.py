@@ -10,13 +10,15 @@
                                                             # --patch only the rows with questioned cells
 
 A *subject* is one unit of one race (a carrying peasant is its own subject), the nine
-buildings of one race in one look, or (``--mines``) four of the gold mine's stand-ins in a look: ``intact`` is painted from the low-poly stand-ins;
-``active`` (producing) and ``damaged`` are painted from the installed intact painting, so
-a building keeps its identity across its looks.  ``--race`` picks the race; ``--units``
+buildings of one race in one look, (``--mines``) four of the gold mine's stand-ins in a look, or
+(``--monsters``) one of the neutral creatures in every facing and frame.  A building's ``intact``
+look is painted from the low-poly stand-ins; ``active`` (producing) and ``damaged`` are painted
+from the installed intact painting, so a building keeps its identity across its looks.  ``--race`` picks the race; ``--units``
 and ``--buildings`` (with ``--looks``) narrow the subjects, which are all of the race by
 default.  ``render --provider openrouter --model ...`` uses an OpenRouter image model
 instead of Codex's built-in tool.  Sheets are rendered for player 0; the game recolours
-them per player.
+them per player.  A gold mine and a neutral creature are nobody's: nothing recolours them,
+and their prompts forbid the team colour outright.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -35,7 +38,7 @@ from PIL import Image  # noqa: E402
 
 from sagaforge import render3d as r3  # noqa: E402
 from sagaforge import restyle  # noqa: E402
-from warband.art import textures  # noqa: E402
+from warband.art import monsters, textures  # noqa: E402
 from warband.sim.races import RACES  # noqa: E402
 from warband.sim.rules import BuildingType, Race, Resource, UnitType  # noqa: E402
 
@@ -365,6 +368,43 @@ def background(sheet: restyle.Sheet) -> str:
             f"or extra objects. Output the same {w}x{h} layout.")
 
 
+def figure_sheet(frames: tuple[str, ...], mesh: Callable[[str, int], r3.Mesh],
+                 key: Callable[[str, int], str]) -> tuple[restyle.Sheet, dict[str, Image.Image]]:
+    """One figure's frames laid out facings across and frames down, every frame's feet on the same
+    point of its cell: the cell is the widest and tallest any frame needs, so one `Placement` places
+    them all.  *mesh* builds one (frame, facing) already turned to the camera and *key* names it;
+    a unit and a neutral creature differ in nothing else here."""
+    meshes = {(frame, facing): mesh(frame, facing) for frame in frames for facing in range(textures.FACINGS)}
+    bounds = [r3.bounds(m, textures.PROJECTION) for m in meshes.values()]
+    half_w = max(max(-b[0], b[2]) for b in bounds)
+    top, below = max(-b[1] for b in bounds), max(b[3] for b in bounds)
+    cell = (int(2 * half_w * SCALE) + 2 * MARGIN, int((top + below) * SCALE) + 2 * MARGIN)
+    origin = (cell[0] / 2, MARGIN + top * SCALE)
+    keys = [(key(frame, facing), {"frame": frame, "facing": facing})
+            for frame in frames for facing in range(textures.FACINGS)]
+    sheet = restyle.Sheet.layout(keys, cols=textures.FACINGS, cell=cell, origin=origin, scale=SCALE)
+    images = {k: r3.render(meshes[(tags["frame"], tags["facing"])], textures.PROJECTION, scale=SCALE,
+                           canvas=(cell[0] / SCALE, cell[1] / SCALE), origin=(origin[0] / SCALE, origin[1] / SCALE))
+              for k, tags in keys}
+    return sheet, images
+
+
+def figure_preview(name: str, sequence: list[str], sheet: restyle.Sheet, original: dict[str, Image.Image],
+                   painted: dict[str, Image.Image], out: Path) -> Path:
+    """A GIF of *sequence*, every facing side by side, the stand-ins above the painting."""
+    gif_frames = []
+    for frame in sequence:
+        keys = [sheet.find(frame=frame, facing=f).key for f in range(textures.FACINGS)]
+        gif_frames.append(stacked([restyle.strip(original, keys, scale=0.5), restyle.strip(painted, keys, scale=0.5)]))
+    path = out / f"{name}.gif"
+    restyle.gif(gif_frames, path, ms=180)
+    return path
+
+
+#: The walk twice round, then the blow: what a preview GIF plays.
+WALK_AND_BLOW = list(textures.WALK_FRAMES) * 2 + ["stand", "wind", "wind", "strike", "follow", "recover", "stand"]
+
+
 @dataclass(frozen=True)
 class Unit:
     """One unit of one race in every facing and frame (a carrying peasant is its own subject)."""
@@ -393,21 +433,10 @@ class Unit:
 
     def build_sheet(self) -> tuple[restyle.Sheet, dict[str, Image.Image]]:
         """The unit's frames laid out facings across, frames down, every frame's feet on the same point."""
-        frames = self.frames()
-        meshes = {(frame, facing): r3.rotate_z(textures._unit(self.unit, 0, frame, self.carrying, self.race), facing * 45 - 90)
-                  for frame in frames for facing in range(textures.FACINGS)}
-        bounds = [r3.bounds(m, textures.PROJECTION) for m in meshes.values()]
-        half_w = max(max(-b[0], b[2]) for b in bounds)
-        top, below = max(-b[1] for b in bounds), max(b[3] for b in bounds)
-        cell = (int(2 * half_w * SCALE) + 2 * MARGIN, int((top + below) * SCALE) + 2 * MARGIN)
-        origin = (cell[0] / 2, MARGIN + top * SCALE)
-        keys = [(textures.unit_key(self.unit, 0, facing, frame, self.carrying, self.race), {"frame": frame, "facing": facing})
-                for frame in frames for facing in range(textures.FACINGS)]
-        sheet = restyle.Sheet.layout(keys, cols=textures.FACINGS, cell=cell, origin=origin, scale=SCALE)
-        images = {key: r3.render(meshes[(tags["frame"], tags["facing"])], textures.PROJECTION, scale=SCALE,
-                                 canvas=(cell[0] / SCALE, cell[1] / SCALE), origin=(origin[0] / SCALE, origin[1] / SCALE))
-                  for key, tags in keys}
-        return sheet, images
+        return figure_sheet(
+            self.frames(),
+            lambda frame, facing: r3.rotate_z(textures._unit(self.unit, 0, frame, self.carrying, self.race), facing * 45 - 90),
+            lambda frame, facing: textures.unit_key(self.unit, 0, facing, frame, self.carrying, self.race))
 
     def prompt(self, sheet: restyle.Sheet) -> str:
         rows = ", ".join(FRAME_NAMES[f] for f in dict.fromkeys(c.tags["frame"] for c in sheet.cells))
@@ -428,17 +457,8 @@ class Unit:
 
     def preview(self, sheet: restyle.Sheet, frames: dict[str, Image.Image], out: Path) -> Path:
         """A GIF strip per facing: the walk, then the blow (and the chop), stand-ins above the painting."""
-        _, original = self.build_sheet()
-        sequence = list(textures.WALK_FRAMES) * 2 + ["stand", "wind", "wind", "strike", "follow", "recover", "stand"]
-        if self.unit is UnitType.PEASANT and self.carrying is None:
-            sequence += list(textures.CHOP_FRAMES) * 2
-        gif_frames = []
-        for frame in sequence:
-            keys = [sheet.find(frame=frame, facing=f).key for f in range(textures.FACINGS)]
-            gif_frames.append(stacked([restyle.strip(original, keys, scale=0.5), restyle.strip(frames, keys, scale=0.5)]))
-        path = out / f"{self.name}.gif"
-        restyle.gif(gif_frames, path, ms=180)
-        return path
+        chop = list(textures.CHOP_FRAMES) * 2 if self.unit is UnitType.PEASANT and self.carrying is None else []
+        return figure_preview(self.name, WALK_AND_BLOW + chop, sheet, self.build_sheet()[1], frames, out)
 
 
 @dataclass(frozen=True)
@@ -613,7 +633,164 @@ class Mines:
         return path
 
 
-Subject = Unit | Buildings | Mines
+# -- The neutral creatures ---------------------------------------------------------------
+
+#: A creature is nobody's, so unlike a unit it carries no team colour at all and nothing that
+#: says somebody owns it.  The judge is told the same thing in its own words.
+NEUTRAL = ("This creature belongs to no faction and nobody owns, rides or commands it: no blue and no team colour "
+           "anywhere on it, and no banner, pennant, flag, sash, tabard, painted emblem, saddle, harness, reins, "
+           "bridle, barding, armour, weapon or rider. It is a wild thing on an empty field.")
+MONSTER_SUBJECTS: dict[monsters.Monster, str] = {
+    monsters.Monster.TROLL: "a wild troll: a huge hunched brute half again a knight's height, with cold mossy blue-green hide, a pale "
+                            "grey-green belly, near-black limbs, long heavy bare arms that hang past its knees and end in bone claws, a "
+                            "small head thrust forward on a horizontal neck with a wide fanged mouth and sunken eyes, and a ridge of pale "
+                            "bone spines down its back, biggest over the shoulders",
+    monsters.Monster.SPIDER: "a giant venom-spitting spider: a bulbous abdomen of dark purple-black chitin behind, eight long legs that "
+                             "knee high above its back, paler purple leg joints, two small palps and a pair of bone-white fangs at the "
+                             "front, and one small violet hourglass mark on the crown of the abdomen",
+    monsters.Monster.GOLEM: "a stone golem: a lumbering man-shaped construct of stacked grey granite slabs set slightly out of true, a "
+                            "slab of shoulders far wider than its hips, no neck, a blocky head with one dark recess where a face would be, "
+                            "short column legs and heavy block fists, with pale quartz seams running through the crevices",
+    # Russet, not grey: the orc scout rides a great *grey* wolf, and a neutral creature has no team
+    # colour to tell it from that mount at 32 px, so the coat has to do the telling.
+    monsters.Monster.WOLF: "a great wild wolf: a lean, low, long-legged pack predator in shaggy russet-brown fur with a darker band of fur "
+                           "along the spine, a pale cream throat, belly and muzzle, a thick ruff at the shoulders, upright ears, pale "
+                           "yellow eyes, a long brush tail and a jaw of white teeth that opens",
+}
+#: Known shortcomings of the low-poly stand-ins that the painter is asked to correct in place.
+MONSTER_FIXES: dict[monsters.Monster, str] = {
+    monsters.Monster.TROLL: "the arms hang from the shoulder slabs and the clawed fists are at their ends, never floating beside the body; "
+                            "the bone spines grow out of the spine itself, largest over the shoulders; the head is carried forward at chest "
+                            "height on a neck that leaves the chest, not perched on top of the shoulders",
+    monsters.Monster.SPIDER: "all eight legs meet the body at the thorax between the head and the abdomen, four a side, and each knee stands "
+                             "above the back; the fangs hang under the front of the head between the palps; the abdomen is joined to the "
+                             "thorax by a waist, never floating behind it",
+    # A painter that broadens the stance breaks two rules at once: the golem's stand-in is already
+    # within a pixel of the two-tile width a sprite may have, and spreading the feet swings the
+    # figure's lowest band off its anchor as it turns.
+    monsters.Monster.GOLEM: "every slab rests on the one below with visible joints between them; the fists are at the ends of the arms and "
+                            "the arms hang from the shoulder slab; the head sits straight on the shoulders with no neck; the two leg columns "
+                            "stay exactly as far apart as they are in the stand-in and each foot stays on the same spot on the ground: the "
+                            "golem never widens its stance, and the painted creature is no wider than the stand-in at any point",
+    monsters.Monster.WOLF: "the head is at the end of the neck ahead of the shoulders and the tail hangs from the hindquarters; each of the "
+                           "four paws stands on the ground exactly where the stand-in puts it; the open mouth in the attack rows shows teeth, "
+                           "and the ears stay on top of the skull",
+}
+#: What every painted cell must contain, for the judge to count.
+MONSTER_INVENTORY: dict[monsters.Monster, str] = {
+    monsters.Monster.TROLL: "one creature standing on two legs, two arms, one head, no weapon, no armour, no rider",
+    monsters.Monster.SPIDER: "one creature, exactly eight legs, one abdomen, one head with fangs, no weapon, no rider",
+    monsters.Monster.GOLEM: "one creature standing on two legs, two arms, one head, no weapon, no armour, no rider",
+    monsters.Monster.WOLF: "one animal standing on four legs, one head, one tail, no saddle, no harness, no rider",
+}
+#: The shared :data:`FRAME_NAMES` call the four attack rows a weapon drawn back, driven at the enemy
+#: and swept across the body.  A creature has no weapon: the first render was stopped and the sheets
+#: re-dumped when that text was read back off a creature's prompt, because a painter told there is a
+#: weapon paints one.  Each creature's blow is its own body, so each names its own rows.
+MONSTER_ATTACK: dict[monsters.Monster, dict[str, str]] = {
+    monsters.Monster.TROLL: {"wind": "wind-up: reared back with both clawed arms raised high above the head, weight back",
+                             "strike": "strike: lunging forward, both arms raked down at the enemy in front",
+                             "follow": "follow-through: the arms swept low across the body, the torso twisted the other way",
+                             "recover": "recovering: rising back to a hunched guard, arms hanging"},
+    monsters.Monster.SPIDER: {"wind": "wind-up: crouched back, the abdomen tipped down and the front legs drawn in",
+                              "strike": "strike: reared up on the back legs, the front legs raised and the fangs thrown forward to spit",
+                              "follow": "follow-through: snapping back down, a drop of violet venom flying away ahead of the fangs",
+                              "recover": "recovering: settling back onto all eight legs"},
+    monsters.Monster.GOLEM: {"wind": "wind-up: both stone fists raised straight overhead, the body leaning back",
+                             "strike": "strike: both fists slammed down onto the ground in front of its feet",
+                             "follow": "follow-through: the fists still on the ground, the body hunched over them",
+                             "recover": "recovering: straightening back up, the fists lifted to its sides"},
+    monsters.Monster.WOLF: {"wind": "wind-up: crouched low on the haunches, the head drawn back, ready to spring",
+                            "strike": "strike: lunging forward with the front half off the ground and the jaws gaping wide at the enemy",
+                            "follow": "follow-through: the jaws closing on the bite, the front legs reaching ahead",
+                            "recover": "recovering: dropping back onto all four paws at guard"},
+}
+MONSTER_STYLE = ("Re-render every cell as a polished, appealing game sprite in a rich hand-painted fantasy style "
+                 "(Warcraft 2 / Heroes of Might and Magic feel): readable silhouette, volumetric shading, the texture of "
+                 "hide, fur, chitin or stone as the creature calls for, light from the upper left, a small soft dark contact "
+                 "shadow under the feet. Sprites will be shown at about half this size, so keep shapes bold and edges crisp.")
+MONSTER_PLAUSIBLE = ("The reference is a rough low-poly stand-in built out of boxes and spheres. Where its construction is "
+                     "anatomically implausible (a limb that does not meet the body, a head that floats off its neck, a joint "
+                     "that bends the wrong way), draw the plausible creature in the same place, at the same size, without "
+                     "changing the pose or moving the feet.")
+MONSTER_JUDGE = """You are checking a repainted sprite sheet of one neutral creature against its stand-ins. The image shows, for each
+row, the low-poly stand-in creatures above and the painted creatures below, labelled "row N: ..." (the pose that row holds) and
+"col N" (the direction it faces).
+
+Work cell by cell, painted row only. Compare each painted creature with the stand-in directly above it, with its description and
+with the inventory. A cell is wrong if:
+- it is not the creature described, or holds two creatures, or holds a rider or a second animal;
+- its pose, facing, size or silhouette differs clearly from the stand-in (a limb in another place, the body turned another way,
+  the feet off the ground the stand-in stands on);
+- a limb, the head, the tail or another major part is missing, added or doubled: count the legs against the inventory;
+- it carries anything that says somebody owns it: a saddle, harness, reins, bridle, barding, armour, a weapon, a banner, a
+  pennant, a sash, a tabard or a painted emblem;
+- it contains people, text, a background, or ground other than its own small contact shadow.
+Style, texture, hide colour and detail may differ freely; the painter is allowed to make the creature prettier and fiercer.
+
+Reply with one JSON object and nothing else:
+{"cells": [{"row": 0, "col": 0, "legs": 4, "ok": true, "issue": ""}, ...]}
+List every cell of the rows shown. Keep issues short and concrete, like "lost the tail" or "wears a saddle"."""
+
+
+@dataclass(frozen=True)
+class Monsters:
+    """One neutral creature in every facing and frame.  Like the gold mine it belongs to nobody
+    and is never team-recoloured, so the painted cell is exactly what the game draws."""
+
+    monster: monsters.Monster
+    stage = 0  # painted from the stand-ins
+    chunk = (2, 4)
+
+    @property
+    def name(self) -> str:
+        return monsters.monster_sheet(self.monster)
+
+    @property
+    def description(self) -> str:
+        return MONSTER_SUBJECTS[self.monster]
+
+    @property
+    def inventory(self) -> str:
+        return MONSTER_INVENTORY[self.monster]
+
+    @property
+    def judge(self) -> str:
+        return MONSTER_JUDGE
+
+    def build_sheet(self) -> tuple[restyle.Sheet, dict[str, Image.Image]]:
+        """The creature's frames laid out facings across, frames down, every frame's feet on the same point."""
+        return figure_sheet(
+            textures.FRAMES,
+            lambda frame, facing: r3.rotate_z(monsters.monster_mesh(self.monster, frame), facing * 45 - 90),
+            lambda frame, facing: monsters.monster_key(self.monster, facing, frame))
+
+    def frame_name(self, frame: str) -> str:
+        return MONSTER_ATTACK[self.monster].get(frame, FRAME_NAMES[frame])
+
+    def prompt(self, sheet: restyle.Sheet) -> str:
+        rows = ", ".join(self.frame_name(f) for f in dict.fromkeys(c.tags["frame"] for c in sheet.cells))
+        return (f"Edit target: the attached sprite sheet of one neutral creature from a 2D real-time strategy game (Warcraft 2 style, "
+                f"3/4 top-down camera). {geometry(sheet, 'creature centred')} Rows, top to bottom: {rows}. Columns, left to right: the "
+                f"creature facing {FACINGS}.\n\n"
+                f"The creature is {self.description}.\n\n{NEUTRAL}\n\n{MONSTER_STYLE}\n\n"
+                f"{MONSTER_PLAUSIBLE} In particular: {MONSTER_FIXES[self.monster]}.\n\n"
+                f"Keep exactly: each creature's position, scale, pose, facing direction, lean, twist, limb placement and feet position; "
+                f"the poses differ from row to row on purpose (a walk cycle and the phases of a blow), so each row must keep its own pose. "
+                f"{background(sheet)}")
+
+    def row_names(self, sheet: restyle.Sheet) -> list[str]:
+        return [self.frame_name(f) for f in dict.fromkeys(c.tags["frame"] for c in sheet.cells)]
+
+    def cell_name(self, cell: restyle.Cell) -> str:
+        return f"row {cell.row} ({self.frame_name(cell.tags['frame'])}), column {cell.col}"
+
+    def preview(self, sheet: restyle.Sheet, frames: dict[str, Image.Image], out: Path) -> Path:
+        """A GIF strip per facing: the walk, then the blow, stand-ins above the painting."""
+        return figure_preview(self.name, WALK_AND_BLOW, sheet, self.build_sheet()[1], frames, out)
+
+
+Subject = Unit | Buildings | Mines | Monsters
 
 
 def stacked(strips: list[Image.Image]) -> Image.Image:
@@ -630,6 +807,9 @@ def selected(args: argparse.Namespace) -> list[Subject]:
     or ``--buildings`` narrows them."""
     if args.mines:
         return [Mines(look) for look in args.looks.split(",") if look in textures.MINE_LOOKS]
+    if args.monsters:
+        names = [m.value for m in monsters.Monster] if args.creatures == "all" else args.creatures.split(",")
+        return [Monsters(monsters.Monster(name)) for name in names]
     race = Race(args.race)
     everything = args.units is None and not args.buildings
     subjects: list[Subject] = []
@@ -683,6 +863,19 @@ def cmd_render(args: argparse.Namespace, subjects: list[Subject]) -> None:
             print(line)
 
 
+def settled(result: restyle.Cut) -> restyle.Cut:
+    """*result* with the key's field cleared and its strays removed once more, and nothing else touched.
+
+    :func:`sagaforge.restyle.cut` clears the field first and removes the strays after, because a stray
+    can hide a sliver of field; the reverse is true too, and each hides a little of the other.  A
+    creature's sheet showed both: a halo of twenty to fifty pixels around a stray the cut had taken
+    off, and a thread of the grid line that the registration's own shift slid in from the next cell
+    once the field around it was gone.  A second pass takes the last of each and then finds nothing
+    (checked over every committed creature frame), so one is enough."""
+    return restyle.Cut({key: restyle.declutter(restyle.clear_residue(frame)) for key, frame in result.frames.items()},
+                       result.registration, result.report)
+
+
 def cmd_cut(args: argparse.Namespace, subjects: list[Subject]) -> None:
     RESTYLED.mkdir(parents=True, exist_ok=True)
     for subject in subjects:
@@ -703,7 +896,7 @@ def cmd_cut(args: argparse.Namespace, subjects: list[Subject]) -> None:
         if len(flagged) > args.tolerate:
             print(f"   rejected (more than {args.tolerate} flagged); re-render or raise --tolerate")
             continue
-        restyle.save_frames(result, sheet, RESTYLED / name)
+        restyle.save_frames(settled(result), sheet, RESTYLED / name)
         print(f"   installed {RESTYLED / name}.png")
 
 
@@ -782,6 +975,7 @@ def cmd_check(args: argparse.Namespace, subjects: list[Subject]) -> None:
             if len(result.flagged) > args.tolerate:
                 print(f"   the candidate failed the geometry checks ({len(result.flagged)} flagged)")
                 continue
+            result = settled(result)
             restyle.save_frames(result, sheet, candidate / name)
             candidate_verdicts = check_one(args, subject, candidate)
             count = len(questioned(candidate_verdicts))
@@ -821,7 +1015,7 @@ def patch_cells(args: argparse.Namespace, subject: Subject, verdicts: list[dict]
         text = subject.prompt(row_sheet)
         text += "\n\nIn a previous painting of this row these cells were wrong; do not repeat it: " + "; ".join(f"column {v['col']}: {v['issue']}" for v in wanted) + "."
         restyle.render_with_codex(folder / "row.png", text, folder / f"{args.provider}.png")
-        result = restyle.cut(row_sheet, Image.open(folder / f"{args.provider}.png"), Image.open(folder / "row.png"))
+        result = settled(restyle.cut(row_sheet, Image.open(folder / f"{args.provider}.png"), Image.open(folder / "row.png")))
         if len(result.flagged) > args.tolerate:
             print(f"   row {row}: the patch failed the geometry checks ({len(result.flagged)} flagged)")
             continue
@@ -843,7 +1037,7 @@ def patch_cells(args: argparse.Namespace, subject: Subject, verdicts: list[dict]
                 print(f"   row {row} col {v['col']}: the patch was questioned too; kept")
     if replaced:
         merged = restyle.Cut(painted, restyle.Registration(1.0, 0.0, 0.0), ())
-        restyle.save_frames(merged, sheet, RESTYLED / name)
+        restyle.save_frames(settled(merged), sheet, RESTYLED / name)
     return replaced
 
 
@@ -921,6 +1115,8 @@ def main() -> None:
     parser.add_argument("--buildings", action="store_true", help="the race's building sheets (default with no --units: yes)")
     parser.add_argument("--looks", default=",".join(LOOKS), help=f"comma-separated building looks (default: {','.join(LOOKS)})")
     parser.add_argument("--mines", action="store_true", help="the gold mine's sheets instead (no race; looks intact and active)")
+    parser.add_argument("--monsters", action="store_true", help="the neutral creatures instead (no race, no team colour)")
+    parser.add_argument("--creatures", default="all", help="comma-separated creatures for --monsters (default: all of them)")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("dump"); p.add_argument("dir", type=Path); p.set_defaults(run=cmd_dump)
     p = sub.add_parser("render"); p.add_argument("dir", type=Path); p.add_argument("--provider", default="codex", choices=["codex", "openrouter"])
