@@ -1962,10 +1962,14 @@ class GameScene(Scene):
                 self.warn(e.text)
             elif e.kind == "deferred" and mine:
                 self.say(e.text)  # the builder walks off, and the site waits as a plan for the money
-            elif e.kind in ("eliminated", "surrendered") and not mine:
+            elif e.kind in ("eliminated", "surrendered") or (e.kind == "resigned" and e.entity is None):
                 # Results pause this scene: a new toast would freeze mid-slide underneath them.
-                if self.world.winner is None and self.player.alive:
-                    self.effects.add(Toast("A rival falls", [e.text], accent=GOOD, hold=4.0, top=self.toast_top))
+                # A building torn down by its owner's concession is a "resigned" event too; the concession itself
+                # names no entity.
+                if not mine and self.world.winner is None and self.player.alive:
+                    title = "A rival concedes" if e.kind == "resigned" else "A rival falls"
+                    text = f"{e.text} resigns" if e.kind == "resigned" else e.text
+                    self.effects.add(Toast(title, [text], accent=GOOD, hold=4.0, top=self.toast_top))
             elif e.kind == "exposed":
                 self.effects.add(Toast(f"{e.text}'s last holdings are revealed", [e.text], hold=4.0, top=self.toast_top))
             elif e.kind == "exhausted":

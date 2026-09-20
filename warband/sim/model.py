@@ -3492,6 +3492,9 @@ class World:
         for unit in units:
             self._remove_unit(unit)
         self.events.append(Event("resigned", pos, player=player, text=self.players[player].name))
+        # Out by their own hand, before the elimination sweep: a conceded match was announced twice, and the
+        # second announcement ("has fallen") was the one the HUD showed.
+        self.players[player].alive = False
         self._check_elimination()
 
     def _abandon(self, b: Building) -> None:

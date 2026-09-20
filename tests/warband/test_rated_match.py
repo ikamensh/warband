@@ -65,14 +65,31 @@ def test_a_victory_is_rated_and_its_replay_kept(play):
 
 @pytest.mark.parametrize("players", [2, 3])
 def test_rival_falls_notice_only_appears_while_the_match_continues(game, players):
-    """FFA still announces an eliminated rival; victory must not freeze a new toast behind the result."""
+    """FFA still announces a rival who goes out; victory must not freeze a new toast behind the result.
+    A rival who concedes is named for what they did: the match used to announce a resignation twice, and
+    the second announcement said they had fallen."""
     scene = new_game(seed=3, players=players, settings={"music": 0, "sfx": 0, "tutorial": False})
     game.push(scene)
     game.tick(1 / 60)
     scene.world.resign(1)
     tick(game, 0.5)
-    assert ("A rival falls" in texts(game)) == (players == 3)
+    assert ("A rival concedes" in texts(game)) == (players == 3)
+    assert "A rival falls" not in texts(game)
     assert isinstance(game.scene, GameOverScene) == (players == 2)
+
+
+def test_a_rival_who_is_wiped_out_falls(game):
+    """The other way out: nothing left on the map, and the notice says so."""
+    scene = new_game(seed=3, players=3, settings={"music": 0, "sfx": 0, "tutorial": False})
+    game.push(scene)
+    game.tick(1 / 60)
+    world = scene.world
+    for unit in world.player_units(1):
+        unit.hp = 0
+    for building in world.player_buildings(1):
+        building.hp = 0
+    tick(game, 0.5)
+    assert not world.players[1].alive and "A rival falls" in texts(game)
 
 
 def test_resigning_on_even_terms_asks_first_and_counts_a_fifth_of_a_loss(play):
