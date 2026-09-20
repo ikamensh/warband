@@ -332,6 +332,27 @@ for _menu in ("build", "train"):
 
 
 @screen
+def menu_upgrade_researched(game: Game) -> None:
+    """The Upgrade catalogue later in a match: Blades, researched to its top tier, has left the card and its slot
+    stands empty, while Arrows shows the tier above the one being researched with its hourglass."""
+    scene = town(game)
+    scene.player.upgrades.update({Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.ARMOR_1})
+    scene.player.gold = scene.player.lumber = 5000
+    scene.world.research(own(scene, BuildingType.LUMBER_MILL).id, Upgrade.ARROWS_1)
+    scene.toggle_catalogue("upgrade")
+    ticks(game)
+
+
+@screen
+def menu_upgrade_all_done(game: Game) -> None:
+    """Nothing left to research: the card holds no orders at all, only the way back, and the readout says why."""
+    scene = town(game)
+    scene.player.upgrades.update(u for u in Upgrade if scene.race.upgrade_allowed(u))
+    scene.toggle_catalogue("upgrade")
+    ticks(game)
+
+
+@screen
 def hud_warnings(game: Game) -> None:
     """The top bar saying what stops production: the supply pair red with the farms full, and gold red for a
     moment after a recruit was refused for want of it, with the card's prices red beside their symbols."""

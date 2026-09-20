@@ -83,8 +83,9 @@ UNIT_SLOTS = {"move": 0, "stop": 1, "hold": 2, "attack": 3, "patrol": 4, "build"
 DOING = {Move: "Moving", AttackMove: "Attack-moving", Attack: "Attacking", Harvest: "Harvesting", Deposit: "Delivering",
          Build: "Going to build", Hold: "Holding position", Heal: "Healing", Patrol: "Patrolling", Repair: "Repairing"}
 #: The Upgrade catalogue's slots, one per chain of tiers (it shows the next tier to order, as a building's own card
-#: does): the soldiers' chains on the top row, the engines' and the shooters' drill below; None stands for the race's
-#: two arts.  Nine upgrades with their tiers side by side filled the card; the tenth did not fit a nine-key grid.
+#: does, and nothing at all once every tier of the chain is researched): the soldiers' chains on the top row, the
+#: engines' and the shooters' drill below; None stands for the race's two arts.  Nine upgrades with their tiers side
+#: by side filled the card; the tenth did not fit a nine-key grid.
 UPGRADE_SLOTS = ((Upgrade.BLADES_1, Upgrade.BLADES_2), (Upgrade.ARMOR_1, Upgrade.ARMOR_2), (Upgrade.ARROWS_1, Upgrade.ARROWS_2),
                  (Upgrade.SIEGE,), (Upgrade.MARKSMANSHIP,), None, None)
 #: Names that fit a card button (each race's are in :mod:`warband.sim.races`); the tooltip and the codex use the full ones.
@@ -756,7 +757,7 @@ class GameScene(Scene):
                             (key_label(scheme.keys["repeat"]), "repeat"), ("Tab", "idle peasant"),
                             ("Esc", "deselect" if self.selection else "menu")]  # a mine or a rival selected goes first
         if catalogue == "upgrade":
-            return [(keys, "order"), ("Esc", "back")]
+            return ([(keys, "order")] if keys else []) + [("Esc", "back")]
         units = self._own_units()
         if units:
             hints = [("Right click", "move / harvest / attack / repair"), (self._slot_key("attack"), "attack-move"),
@@ -1414,8 +1415,11 @@ class GameScene(Scene):
             arts = iter(race.arts)
             for slot, listed in enumerate(UPGRADE_SLOTS):
                 chain = listed if listed is not None else (next(arts),)
-                # The lowest tier still to order, or the top one once every tier is: the key keeps answering ("Already ordered").
+                # The lowest tier still to order, or the top one while that one is being researched ("Already ordered").
+                # A chain whose every tier is done leaves the card, as it leaves the building's own: its slot stays empty.
                 upgrade = next((u for u in chain if self._upgrade_planned(u) is None), chain[-1])
+                if upgrade in self.player.upgrades:
+                    continue
                 info = UPGRADES[upgrade]
                 commands.append(Command(UPGRADE_NAMES[upgrade], info.hotkey, lambda up=upgrade: self.order_production("upgrade", up), slot,
                                         tooltip=f"{info.name} — {info.cost}{build_time(info.time)} · {info.summary}",
@@ -1521,14 +1525,17 @@ class GameScene(Scene):
         self._card = commands
         self._card_buttons = []
         self.card_panel.clear()
-        self.card_panel.visible = bool(commands)
-        if not commands:
+        self.card_panel.visible = bool(commands) or back  # an emptied catalogue (every upgrade researched) still leads back
+        if not self.card_panel.visible:
             return
         portraits = any(c.target is not None for c in commands)
         by_slot = {c.slot: c for c in commands}
         grid = len(GRID_KEYS)
-        back_slot = (grid - 1 if grid - 1 not in by_slot else grid + CARD_COLS - 1) if back else None  # the bottom-right corner, or below it
-        last = max(commands[-1].slot, back_slot if back_slot is not None else 0)
+        # Back stands in the bottom-right corner of the grid, or below it when a command holds that slot; on an empty
+        # card it takes the corner of a single row, which is the same corner of the screen the panel is anchored to.
+        corner = grid - 1 if by_slot else CARD_COLS - 1
+        back_slot = (corner if corner not in by_slot else grid + CARD_COLS - 1) if back else None
+        last = max([c.slot for c in commands] + [back_slot if back_slot is not None else 0])
         for first in range(0, last + 1, CARD_COLS):
             row = Row(spacing=CARD_GAP)
             for slot in range(first, first + CARD_COLS):
@@ -2269,7 +2276,8 @@ class GameScene(Scene):
         if not entries:
             if title is not None:
                 self.draw_text(title, x + 16, y + 30, style="heading")
-                self.draw_text("Nothing planned · plans wait for money and prerequisites", x + 16, y + 58, style="sub")
+                note = "Nothing planned · plans wait for money and prerequisites" if self._card else "Every upgrade is researched"
+                self.draw_text(note, x + 16, y + 58, style="sub")
                 return
             tile = (int(self.hover[0]), int(self.hover[1]))
             text = "Nothing selected"

@@ -285,6 +285,40 @@ def test_upgrade_letters_order_the_next_tier(settlement):
     assert scene.catalogue == "upgrade" and scene.status == "Already ordered"
 
 
+def test_a_finished_chain_leaves_the_upgrade_card(settlement):
+    """What cannot be ordered again is not on the card: once both tiers of Blades are researched its slot is empty,
+    where it used to stand there answering "Already researched".  The keys of the other chains do not move."""
+    game, scene = settlement
+    smith = stand(scene, BuildingType.BLACKSMITH)
+    key(game, "u")
+    assert {c.label: c.hotkey for c in scene.card}["Blades I"] == "B"
+    for upgrade in (Upgrade.BLADES_1, Upgrade.BLADES_2):
+        scene.player.gold = scene.player.lumber = 5000
+        scene.world.research(smith.id, upgrade)
+        while smith.research is not None:
+            scene.world.step()
+    game.tick(1 / 30)  # the "researched" event lays the card out again
+    caps = {c.label: c.hotkey for c in scene.card}
+    assert "Blades I" not in caps and "Blades II" not in caps
+    assert caps["Armour I"] == "A" and caps["Marksmen"] == "M"  # every other chain kept its slot and its key
+    scene.select([smith.id])
+    game.tick(1 / 30)
+    assert "Blades II" not in [c.label for c in scene.card]  # the smith's own card drops it too
+
+
+def test_a_settlement_with_nothing_left_to_research_still_leads_back(settlement):
+    """With every upgrade of the race researched the Upgrade card holds no orders at all; it still shows Back, and
+    the readout says why it is empty instead of "Nothing planned"."""
+    game, scene = settlement
+    scene.player.upgrades.update(u for u in Upgrade if scene.race.upgrade_allowed(u))
+    scene.open_catalogue("upgrade")
+    game.tick(1 / 30)
+    assert scene.card == ()
+    assert "Every upgrade is researched" in [item["text"] for item in game.backend.texts]
+    click(game, "Back")
+    assert scene.catalogue is None
+
+
 def test_cards_count_what_is_already_ordered(settlement):
     """Two F presses caption the portrait 'Footman ×2'; a peasant plan keeps counting once the hall is training it."""
     game, scene = settlement
