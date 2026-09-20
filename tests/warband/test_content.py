@@ -1,12 +1,13 @@
 """The content layer: the tech chain, research and upgrades, healers, siege engines, lumber mills."""
 
 import random
+import re
 from collections.abc import Iterable
 
 import pytest
 
 from warband.sim.model import Attack, Deposit, Heal, Move, RuleError, World, dist, tile_center
-from warband.sim.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Resource, Terrain, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Race, Resource, Terrain, UnitType, Upgrade
 
 
 def flat_world(width: int = 30, height: int = 24, trees: Iterable[tuple[int, int]] = ()) -> World:
@@ -33,6 +34,38 @@ def run_until(world: World, condition, max_seconds: float) -> None:
     raise AssertionError(f"not reached within {max_seconds}s")
 
 
+# -- What a refusal reads like -------------------------------------------------------
+
+
+def refusals(race: Race) -> set[str]:
+    """Every reason the rules can give a player of *race* for refusing an order of the catalogue."""
+    world = World(24, 24, [[Terrain.GRASS] * 24 for _ in range(24)], 2, human=0, races=[race, race])
+    for player in world.players:
+        world.reveal_all(player.id)
+    placed = []
+    for index, kind in enumerate(BUILDINGS):
+        if kind is BuildingType.GOLD_MINE:
+            world.place_building(None, kind, (20, 20))
+            continue
+        placed.append(world.place_building(0, kind, (1 + index % 4 * 4, 1 + index // 4 * 4)))
+    site = world.place_building(0, BuildingType.FARM, (1, 16), done=False)
+    said = {world.can_train(b, u) for b in [*placed, site] for u in UnitType}
+    said |= {world.can_research(b, up) for b in placed for up in Upgrade}
+    said |= {world.can_place(kind, pos, 0) for kind in BUILDINGS for pos in ((1, 1), (23, 23), (-1, 5), (20, 20))}
+    said |= {world.can_plan_building(kind, (2, 2), 0) for kind in BUILDINGS}
+    said |= {world.auto_train_blocker(b) for b in placed}
+    return {reason for reason in said if reason}
+
+
+@pytest.mark.parametrize("race", list(Race))
+def test_a_refusal_names_things_the_way_english_does(race: Race) -> None:
+    """The races name an Altar, an Orchard and an Engine Works, and one Footman makes Footmen: a message that
+    glues "a" or "s" onto a name from the tables gets one of them wrong for some race."""
+    for reason in refusals(race):
+        assert not re.search(r"\ba [aeiouAEIOU]", reason), reason
+        assert not re.search(r"\b(man|Man)s\b", reason), reason
+
+
 # -- Tech chain ----------------------------------------------------------------------
 
 
@@ -57,7 +90,7 @@ def test_buildings_and_units_need_their_prerequisites() -> None:
     barracks = world.place_building(0, BuildingType.BARRACKS, (6, 2))
     assert world.can_place(BuildingType.STABLES, (10, 10), 0) is None
     assert world.can_place(BuildingType.WORKSHOP, (10, 10), 0) == "Requires a Blacksmith"
-    assert world.can_train(barracks, UnitType.KNIGHT) == "Knights are trained at the Stables"
+    assert world.can_train(barracks, UnitType.KNIGHT) == "The Knight is trained at the Stables"
     stables = world.place_building(0, BuildingType.STABLES, (10, 2))
     assert world.can_train(stables, UnitType.KNIGHT) is None and world.can_train(hall, UnitType.PEASANT) is None
 

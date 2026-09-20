@@ -28,7 +28,7 @@ from warband.sim.model import (Attack, AttackMove, Build, Building, Deposit, Ent
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
 from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, SIM_DT, UNITS, UPGRADES, ArmorClass, AttackType, BuildingType, Cost,
-                               Difficulty, MapTheme, Race, Resource, UnitType, Upgrade)
+                               Difficulty, MapTheme, Race, Resource, UnitType, Upgrade, an)
 from warband.sim.rules import Layout as MapLayout
 from warband.records.profile import MatchResult, Profile, RatingChange, Standing, standing
 from warband.records.replay import Replay, ReplayStore
@@ -1049,7 +1049,8 @@ class GameScene(Scene):
         site = auto_site(self.world, building_type, self.human, to_tiles(*self.camera.center), self._site_rng, planned)
         if site is None:
             name = self.building_name(building_type)
-            self.warn(f"No free gold mine known for a {name}" if building_type is BuildingType.TOWN_HALL else f"No room for a {name} near your hall")
+            self.warn(f"No free gold mine known for {an(name)}" if building_type is BuildingType.TOWN_HALL
+                      else f"No room for {an(name)} near your hall")
             return
         if self._place_at(building_type, site) and not (keep or self.scheme.sticky):
             self._end_placement()
@@ -1087,7 +1088,7 @@ class GameScene(Scene):
         elif self.attempt("plan_building", self.human, building_type, site):
             requires = BUILDINGS[building_type].requires
             waits = requires is not None and not self.world.player_buildings(self.human, requires, done=True)
-            self.say(f"{name} planned · it waits for a {self.building_name(requires)}" if waits and requires is not None else
+            self.say(f"{name} planned · it waits for {an(self.building_name(requires))}" if waits and requires is not None else
                      f"{name} planned · a worker builds it when the money is there")
         else:
             return False
@@ -1154,7 +1155,7 @@ class GameScene(Scene):
         producers = self._producers(unit_type)
         where = self.building_name(UNITS[unit_type].trained_at)
         if not producers:
-            self.warn(f"Requires a {where}")
+            self.warn(f"Requires {an(where)}")
             return
         on = not all(unit_type in b.auto for b in producers)
         given = sum(self.attempt("set_auto_train", b.id, unit_type, on) for b in producers)

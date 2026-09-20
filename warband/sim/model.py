@@ -41,7 +41,7 @@ from warband.sim.rules import (
     PLUNDER_SHARE, REGROWTH_SECONDS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION, STARTING_GOLD, STARTING_LUMBER,
     FORMATION_ARMOR, FORMATION_HOLD, FORMATION_LOOKAHEAD, FORMATION_MARCH, FORMATION_SLACK, FORMATION_SPACING, FORMATION_WIDTH, ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, SIEGE_BUILDING_WORTH, SIEGE_STEP, SIEGE_WORTH, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
     MAX_QUEUED_ORDERS, UNDER_ATTACK_COOLDOWN, UNIT_RADIUS, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
-    Terrain, UnitInfo, UnitType, Upgrade, ArmorClass, AttackType, damage_factor,
+    Terrain, UnitInfo, UnitType, Upgrade, ArmorClass, AttackType, an, damage_factor,
 )
 
 #: The fastest any unit of any race moves, with every upgrade: how far off a friend can be and still walk under a stone
@@ -967,7 +967,7 @@ class World:
         if building.player is None or not building.done:
             return "Still under construction"
         if info.trained_at is not building.type:
-            return f"{info.name}s are trained at the {self.building_info(building.player, info.trained_at).name}"
+            return f"The {info.name} is trained at the {self.building_info(building.player, info.trained_at).name}"
         if len(building.queue) >= 5:
             return "Queue is full"
         if building.research is not None:
@@ -988,7 +988,7 @@ class World:
             return f"{info.name} is not researched here"
         player = self.players[building.player]
         if not RACES[player.race].upgrade_allowed(upgrade):
-            return f"{info.name} is a {RACES[info.race].adjective} art"  # type: ignore[index]
+            return f"{info.name} is {an(RACES[info.race].adjective)} art"  # type: ignore[index]
         if upgrade in player.upgrades:
             return "Already researched"
         if any(b.research is upgrade and b.player == building.player and not b.abandoned for b in self.buildings.values()):
@@ -1028,7 +1028,7 @@ class World:
         info = BUILDINGS[building_type]
         if info.requires is not None and not any(b.player == player and b.type is info.requires and b.done
                                                  for b in self.buildings.values()):
-            return f"Requires a {self.building_info(player, info.requires).name}"
+            return f"Requires {an(self.building_info(player, info.requires).name)}"
         return self._placement_reason(building_type, pos, player, builder=builder)
 
     def placement_blockers(self, building_type: BuildingType, player: int
@@ -1375,7 +1375,7 @@ class World:
             raise RuleError("No such building")
         if unit_type not in building.info.trains:
             info = self.unit_info(building.player, unit_type)
-            raise RuleError(f"{info.name}s are trained at the {self.building_info(building.player, info.trained_at).name}")
+            raise RuleError(f"The {info.name} is trained at the {self.building_info(building.player, info.trained_at).name}")
         if on and unit_type not in building.auto:
             building.auto.insert(0, unit_type)  # what was just asked for goes next
             if not building.queue and building.research is None:

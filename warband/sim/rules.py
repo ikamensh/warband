@@ -320,6 +320,12 @@ def damage_factor(attack: AttackType, armor: ArmorClass) -> float:
     return DAMAGE_FACTORS.get((attack, armor), 1.0)
 
 
+def an(name: str) -> str:
+    """*name* behind its indefinite article.  The races name an Altar, an Orchard and an Engine Works, so
+    every message that puts "a" in front of one of these tables' names goes through this."""
+    return f"{'an' if name[:1].upper() in 'AEIOU' else 'a'} {name}"
+
+
 FRIENDLY_MARGIN: Final = 0.3  # tiles beyond its splash a siege crew keeps a stone from its own side when firing on its own
 FORMATION_ARMOR: Final = 1  # armour a formation unit gains for each such friend at its left and at its right
 FORMATION_SPACING: Final = 1.0  # tiles between neighbours in a marching line

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from warband.sim import path as pathing
-from warband.sim.rules import BUILDINGS, MAX_PLANS, SIM_DT, UNITS, UPGRADES, BuildingType, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, MAX_PLANS, SIM_DT, UNITS, UPGRADES, BuildingType, UnitType, Upgrade, an
 
 if TYPE_CHECKING:
     from warband.sim.model import Building, Unit, World
@@ -123,7 +123,7 @@ class Settlement:
         producer_type = UNITS[plan.type].trained_at
         producers = world.player_buildings(plan.player, producer_type, done=True)
         if not producers:
-            plan.status = f"Requires a {world.building_info(plan.player, producer_type).name}"
+            plan.status = f"Requires {an(world.building_info(plan.player, producer_type).name)}"
             return
         producers.sort(key=lambda b: (sum(world.unit_info(plan.player, item).build_time for item in b.queue) - b.train_progress, b.id))
         for producer in producers:
@@ -139,7 +139,7 @@ class Settlement:
         from warband.sim.races import RACES
 
         if not RACES[self.world.players[player].race].upgrade_allowed(upgrade):
-            raise RuleError(f"{UPGRADES[upgrade].name} is a {RACES[UPGRADES[upgrade].race].adjective} art")
+            raise RuleError(f"{UPGRADES[upgrade].name} is {an(RACES[UPGRADES[upgrade].race].adjective)} art")
         if upgrade in self.world.players[player].upgrades:
             raise RuleError("Already researched")
         if any(b.research is upgrade for b in self.world.player_buildings(player)):
@@ -156,7 +156,7 @@ class Settlement:
         producers = [b for b in world.player_buildings(plan.player, done=True) if plan.type in b.info.researches]
         if not producers:
             producer_type = next(kind for kind, info in BUILDINGS.items() if plan.type in info.researches)
-            plan.status = f"Requires a {world.building_info(plan.player, producer_type).name}"
+            plan.status = f"Requires {an(world.building_info(plan.player, producer_type).name)}"
             return
         for producer in sorted(producers, key=lambda b: b.id):
             reason = world.can_research(producer, plan.type)
@@ -189,7 +189,7 @@ class Settlement:
         if building is None:
             info = BUILDINGS[plan.type]
             if info.requires is not None and not world.player_buildings(plan.player, info.requires, done=True):
-                plan.status = f"Requires a {world.building_info(plan.player, info.requires).name}"
+                plan.status = f"Requires {an(world.building_info(plan.player, info.requires).name)}"
                 return
             reason = world.can_afford(plan.player, info.cost)
             if reason is not None:
