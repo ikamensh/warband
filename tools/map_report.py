@@ -2,6 +2,9 @@
 
     uv run python tools/map_report.py [--seeds 100] [--players 2]
 
+Only the sizes and layouts that can seat that many players are reported; ``mapgen.sizes_for`` and
+``mapgen.layouts_for`` say which those are.
+
 For each size and layout, generates the seeds and prints the range and mean of
 open ground around each hall, the distance to the nearest mine and to wood,
 the number of mines beyond the main ones, the terrain mix, the detour a walk
@@ -28,8 +31,9 @@ def main() -> None:
     parser.add_argument("--seeds", type=int, default=100)
     parser.add_argument("--players", type=int, default=2)
     args = parser.parse_args()
-    for size, (width, height) in mapgen.SIZES.items():
-        for layout in Layout:
+    for size in mapgen.sizes_for(args.players):
+        width, height = mapgen.dimensions(size, args.players)
+        for layout in mapgen.layouts_for(width, height, args.players):
             opens: list[int] = []
             detours: list[float] = []
             retried = 0

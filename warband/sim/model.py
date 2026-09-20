@@ -522,6 +522,18 @@ def sight_spans(radius: int) -> list[tuple[int, int, bytes]]:
     return _SIGHT[radius]
 
 
+def _disc_box(discs: set[tuple[Pos, int]]) -> tuple[int, int, int, int] | None:
+    """The tiles a player's sight discs can possibly light, as ``(left, top, right, bottom)``,
+    inclusive; ``None`` when they have nothing left to see with."""
+    if not discs:
+        return None
+    left = min(x - r for (x, _y), r in discs)
+    top = min(y - r for (_x, y), r in discs)
+    right = max(x + r for (x, _y), r in discs)
+    bottom = max(y + r for (_x, y), r in discs)
+    return (left, top, right, bottom)
+
+
 def or_into(target: bytearray, source: bytes | bytearray) -> None:
     """``target[i] |= source[i]`` for every byte of two flag grids, done in C through big integers."""
     if _native is not None:
@@ -562,6 +574,7 @@ class World:
         self.orders: list[list[Any]] | None = None  # the order log a replay is made of, see :func:`recorded`
         self._order_depth = 0
         self._next_id = 1
+        self.path_budget = pathing.budget(width, height)  # a route across a big map costs more than one across a small
         self._blocked = bytearray(width * height)
         for y in range(height):
             for x in range(width):
@@ -770,7 +783,7 @@ class World:
                 self._sight_layers[player.id] = (frozenset(discs), bytes(visible))
             self._paint(visible, moving[player.id] - discs)
             or_into(self.explored[player.id], visible)
-            self.worker_knowledge[player.id].refresh(self, player.id)
+            self.worker_knowledge[player.id].refresh(self, player.id, _disc_box(discs | moving[player.id]))
         self._reveal_last_standings()
         self._vision_epoch += 1
 
@@ -2775,7 +2788,7 @@ class World:
                         blocked[ty * width + tx] = 1
             u.path = escape + pathing.find_path_grid(start, target, blocked, width, self.height, max_expansions=LOCAL_EXPANSIONS)
         else:
-            u.path = escape + pathing.find_path_grid(start, target, grid, self.width, self.height)
+            u.path = escape + pathing.find_path_grid(start, target, grid, self.width, self.height, max_expansions=self.path_budget)
         u.path_goal = goal  # the goal as asked, so a repeated request is recognised
         u.last_distance = math.inf
         u.progress = 0.0

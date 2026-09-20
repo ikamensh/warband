@@ -1,6 +1,7 @@
-"""Model step times of a 150-unit battle, without a window: the simulation alone.
+"""Model step times without a window: the simulation alone.
 
     uv run python tools/step_bench.py [--steps 300] [--repeat 3] [--profile]
+    uv run python tools/step_bench.py --scenario seats --seats 16 [--steps 3000]
 
 Two armies of six unit types meet between twelve farms on a large map and
 are ordered at each other; the world is then stepped in place.  The step
@@ -9,12 +10,18 @@ is reported (other work on the machine only ever makes a run slower).
 ``--profile`` adds a cProfile breakdown of the last run (the profiler
 roughly doubles the times, so read it for shares, not for milliseconds).  ``tools/perf.py`` times whole frames on the real
 backend with this same battle.
+
+``--scenario seats`` plays a real match of ``--seats`` computer players instead, on the biggest map
+that seats them, and times the step and the brains apart: what a match of many seats costs is fog,
+worker memory and brains per seat as much as it is units.  The simulation runs at 20 Hz, so a step
+over 50 ms is a match that cannot keep time.
 """
 
 from __future__ import annotations
 
 import argparse
 import cProfile
+import random
 import pstats
 import statistics
 import sys
@@ -29,7 +36,7 @@ if __name__ in ("__main__", "__mp_main__"):  # run as a program or as one of its
     fastsim.activate()  # the compiled simulation, unless WARBAND_INTERPRETED is set
 
 from warband.sim import mapgen  # noqa: E402
-from warband.sim.model import World, tile_center  # noqa: E402
+from warband.sim.model import World, tile_center  # noqa: E402  (Difficulty and make_brain are imported where used: the brains are only wanted by --scenario seats)
 from warband.sim.rules import BuildingType, Layout, Terrain, UnitType  # noqa: E402
 
 
@@ -72,18 +79,41 @@ def battle_world(seed: int = 3, width: int = 64, height: int = 48) -> World:
     return w
 
 
+def seats_world(seats: int, seed: int = 3) -> tuple[World, list]:
+    """A match of *seats* computer players on the biggest map that seats them, and their brains."""
+    from warband.brains.ai import make_brain
+    from warband.sim.rules import Difficulty
+    size = mapgen.sizes_for(seats)[-1]
+    width, height = mapgen.dimensions(size, seats)
+    world = mapgen.generate(seed=seed, width=width, height=height, players=seats, human=None, layout=Layout.PLAINS)
+    return world, [make_brain(p.id, Difficulty.HARD, seed) for p in world.players]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--steps", type=int, default=300)
     parser.add_argument("--repeat", type=int, default=1, help="runs; the one with the lowest mean is reported")
     parser.add_argument("--profile", action="store_true", help="print a cProfile breakdown of the last run")
+    parser.add_argument("--scenario", choices=("battle", "seats"), default="battle",
+                        help="the 150-unit reference battle, or a real match of --seats computer players")
+    parser.add_argument("--seats", type=int, default=16, help="seats for --scenario seats")
     args = parser.parse_args()
     profiler = cProfile.Profile() if args.profile else None
-    runs: list[tuple[list[float], World]] = []
+    runs: list[tuple[list[float], World, list[float]]] = []
     for run in range(args.repeat):
-        world = battle_world()
+        thinking: list[float] = []
+        rng = random.Random(7)
+        if args.scenario == "seats":
+            world, brains = seats_world(args.seats)
+        else:
+            world, brains = battle_world(), []
         times: list[float] = []
         for _ in range(args.steps):
+            if brains:
+                started = time.perf_counter()
+                for brain in brains:
+                    brain.think(world, rng)
+                thinking.append((time.perf_counter() - started) * 1000)
             started = time.perf_counter()
             if profiler is not None and run == args.repeat - 1:
                 profiler.enable()
@@ -91,9 +121,13 @@ def main() -> None:
             if profiler is not None and run == args.repeat - 1:
                 profiler.disable()
             times.append((time.perf_counter() - started) * 1000)
-        runs.append((times, world))
-    times, world = min(runs, key=lambda run: statistics.mean(run[0]))
+        runs.append((times, world, thinking))
+    times, world, thinking = min(runs, key=lambda run: statistics.mean(run[0]))
     ordered = sorted(times)
+    if thinking:
+        think_order = sorted(thinking)
+        print(f"{len(world.players)} seats on {world.width}x{world.height}: brains mean {statistics.mean(thinking):.2f} ms, "
+              f"p95 {think_order[int(len(think_order) * 0.95)]:.2f} ms, max {think_order[-1]:.2f} ms a step")
     print(f"{args.steps} steps, {len(world.units)} units alive at the end, first step {times[0]:.1f} ms")
     print(f"per step: mean {statistics.mean(times):.2f} ms, p50 {ordered[len(ordered) // 2]:.2f} ms, "
           f"p95 {ordered[int(len(ordered) * 0.95)]:.2f} ms, max {ordered[-1]:.2f} ms; total {sum(times):.0f} ms")

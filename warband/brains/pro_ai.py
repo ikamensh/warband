@@ -41,6 +41,7 @@ from typing import Final
 
 from warband.brains.ai import (ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_search,
                               with_prerequisites)
+from warband.sim import mapgen
 from warband.sim.model import Attack, Build, Building, Harvest, Move, Point, Pos, Repair, Resource, Salvage, Unit, World, dist, rect_gap, tile_center
 from warband.sim.races import RACES
 from warband.sim.rules import BUILDINGS, MINE_SLOTS, UPGRADES, BuildingType, Cost, Layout, Race, UnitType, Upgrade
@@ -356,12 +357,11 @@ class ProBrain:
     def _unexplored_corner(self, world: World) -> Point:
         """Somewhere worth looking when nothing of theirs has been found yet.
 
-        Starts sit in the corners, so the far one from ours is the first guess.
+        Starts sit one to a cell of the map's grid, so the cell furthest from ours is the first guess.
         """
         hall = self._hall(world)
         here = hall.center if hall is not None else (world.width / 2, world.height / 2)
-        corners = [(2.5, 2.5), (world.width - 2.5, 2.5), (2.5, world.height - 2.5),
-                   (world.width - 2.5, world.height - 2.5)]
+        corners = mapgen.start_guesses(world.width, world.height, len(world.players))
         return max(corners, key=lambda c: dist(c, here))
 
     def _known_mines(self, world: World) -> list[KnownMine]:
@@ -462,7 +462,7 @@ class ProBrain:
         if hall is None:
             return
         places = [(world.width / 2, world.height / 2)] + sorted(
-            [(3.5, 3.5), (world.width - 3.5, 3.5), (3.5, world.height - 3.5), (world.width - 3.5, world.height - 3.5)],
+            mapgen.start_guesses(world.width, world.height, len(world.players), 3.5),
             key=lambda corner: dist(corner, hall.center))[1:]
         if self._prospect_leg >= 2 * len(places):
             return  # looked everywhere twice: there is nothing to find

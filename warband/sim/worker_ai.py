@@ -66,7 +66,14 @@ class _Routes:
 
 
 def _navigation(world: World, player: int) -> bytearray:
-    """Remember static terrain and towers; only visible mobile enemies add danger."""
+    """Remember static terrain and towers; only visible mobile enemies add danger.
+
+    The walk over every unit on the map costs a seat a pass of its own, so sixteen seats pay for
+    sixteen passes a tick.  Sharing one pass between them is not the same simulation: a seat's grid
+    is frozen at its own first use of the tick, by which time the units ahead of it in the step have
+    moved, and a shared snapshot would freeze them all at the first seat's instant (measured on
+    2026-09-20: a sixth off the step, and a different match).  See docs/warband-maps.md.
+    """
     knowledge = world.worker_knowledge[player]
     width, height = world.width, world.height
     visible = world.visible[player]

@@ -30,10 +30,10 @@ from saga2d import Game, fonts  # noqa: E402
 from saga2d.testing import FrameTimer  # noqa: E402
 from warband.sim import path as pathing  # noqa: E402
 from warband.art import textures  # noqa: E402
-from warband.sim.rules import BuildingType  # noqa: E402
+from warband.sim.rules import BuildingType, Layout  # noqa: E402
 from warband.ui.scene import GameScene  # noqa: E402
 from warband.ui.style import build_theme  # noqa: E402
-from tools.step_bench import battle_world  # noqa: E402
+from tools.step_bench import battle_world, standing  # noqa: E402
 
 
 class PhaseTimer(FrameTimer):
@@ -120,6 +120,34 @@ def four_player_world():
     return w
 
 
+def crowd_world(seats: int = 16, each: int = 40):
+    """*seats* armies on the biggest map that seats them, all sent at its middle.
+
+    A sixteen-player match is not the reference battle with more units: it is sixteen fog layers,
+    sixteen memories of the ground and sixteen sets of team-recoloured sprites as well.  Forty
+    soldiers a seat is what a long free-for-all looks like when the middle is finally fought over.
+    """
+    from warband.sim import mapgen
+    from warband.sim.model import tile_center
+    from warband.sim.rules import UnitType
+    size = mapgen.sizes_for(seats)[-1]
+    width, height = mapgen.dimensions(size, seats)
+    w = mapgen.generate(seed=3, width=width, height=height, players=seats, layout=Layout.PLAINS)
+    w.reveal_all(0)
+    types = [UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT, UnitType.SCOUT, UnitType.CATAPULT, UnitType.CLERIC]
+    middle = (width / 2, height / 2)
+    for player, hall in enumerate(sorted((b for b in w.buildings.values() if b.type is BuildingType.TOWN_HALL and b.player is not None),
+                                         key=lambda b: b.player)):
+        hx, hy = hall.pos
+        for i in range(each):
+            spot = (min(width - 2, hx + 4 + i % 8), min(height - 2, hy + 4 + i // 8))
+            w.spawn_unit(player, types[(i + player) % 6], standing(w, spot))
+    w.update_vision()
+    for p in w.players:
+        w.attack_move([u.id for u in w.player_units(p.id) if not u.is_worker], tile_center((int(middle[0]), int(middle[1]))))
+    return w
+
+
 def deaths_world():
     """Two armies spawned in each other's faces: most of them die within the first minute, and their bodies and blood stay."""
     from warband.sim.model import tile_center
@@ -169,9 +197,10 @@ def restarts(game: Game, first, args) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--scenario", choices=("reference", "four-player", "pan-zoom", "deaths", "restarts"), default="reference",
-                        help="the 150-unit reference battle; four armies of 75; the reference battle under a panning, zooming camera; "
-                             "two armies dying in each other's faces; or three fresh matches in a row with their first frames set apart")
+    parser.add_argument("--scenario", choices=("reference", "four-player", "sixteen-player", "pan-zoom", "deaths", "restarts"), default="reference",
+                        help="the 150-unit reference battle; four armies of 75; sixteen armies of 40 on the biggest map that seats them; "
+                             "the reference battle under a panning, zooming camera; two armies dying in each other's faces; "
+                             "or three fresh matches in a row with their first frames set apart")
     parser.add_argument("--frames", type=int, default=720)
     parser.add_argument("--profile", help="dump cProfile stats of the last 120 frames to this file")
     parser.add_argument("--csv", type=Path, help="write every frame's time and each phase's share of it to this file")
@@ -184,6 +213,9 @@ def main() -> None:
     fonts.load(game)
     if args.scenario == "four-player":
         scene = battle(game, four_player_world(), camera_on=(40 * 32, 30 * 32))
+    elif args.scenario == "sixteen-player":
+        crowd = crowd_world()
+        scene = battle(game, crowd, camera_on=(crowd.width * 16, crowd.height * 16))
     elif args.scenario == "deaths":
         scene = battle(game, deaths_world())
     else:

@@ -2528,7 +2528,7 @@ class GameScene(Scene):
 
     def get_save_summary(self) -> dict:
         world = self.world
-        size = next((name for name, (w, h) in mapgen.SIZES.items() if (w, h) == (world.width, world.height)), f"{world.width}×{world.height}")
+        size = mapgen.size_name(world.width, world.height, len(world.players))
         return {"map": f"{size} {world.theme.value} {world.layout.value}", "players": len(world.players), "difficulty": self.difficulty.value, "clock": _clock(world.time),
                 "player": f"{self.player.name} ({self.race.name})"}
 
@@ -3079,6 +3079,10 @@ class CodexScene(_Overlay):
         self.game.pop()
 
 
+WARBANDS_PER_COLUMN = 8  # fates listed down one column of the results before a second one starts
+WARBAND_COLUMN = 264  # a column of them, name and race and fate side by side
+
+
 class GameOverScene(_Overlay):
     """The result: the score and how it was earned, the battle record, every warband's fate, and the local rank."""
 
@@ -3105,19 +3109,17 @@ class GameOverScene(_Overlay):
             score.add(Row(Label(name, text_style="body", width=300), Label(f"{value:,}", text_style="heading", width=100), spacing=12))
         score.add(Label("Combat: 1 point per 10 resources destroyed.\nSurvivors: 1 per 20; research: 1 per 10.\nSwift victory: 2 per second before 20:00.",
                         text_style="sub", width=420, wrap=True))
-        summary = Column(spacing=12, width=420)
+        columns = -(-len(world.players) // WARBANDS_PER_COLUMN)
+        width = 420 if columns < 2 else columns * WARBAND_COLUMN + (columns - 1) * 16
+        summary = Column(spacing=12, width=width)
         summary.add(Label(f"Battle record · {_clock(world.time)}", text_style="heading"))
         stats = scene.stats
         summary.add(Label(f"{stats['units_killed']} enemy units defeated · {stats['units_lost']} units lost", text_style="body"))
         summary.add(Label(f"{stats['buildings_razed']} buildings razed · {stats['buildings_lost']} lost", text_style="body"))
         summary.add(Label("Warbands", text_style="heading"))
-        for player in world.players:
-            status = ("Victorious" if world.winner == player.id else "Surrendered" if player.surrendered
-                      else "Still fighting" if player.alive else "Eliminated")
-            summary.add(Row(Label(f"{player.name} · {RACES[player.race].name}", text_style="body", width=200),
-                            Label(status, text_style="body", text_color=GOOD if player.id == world.winner else MUTED), spacing=10))
+        summary.add(self._warbands(world, columns))
         if any(p.surrendered for p in world.players):
-            summary.add(Label("Surrender: no units or queued recruits,\nand no affordable way to train another.", text_style="sub", width=420, wrap=True))
+            summary.add(Label("Surrender: no units or queued recruits,\nand no affordable way to train another.", text_style="sub", width=width, wrap=True))
         panel.add(Row(score, summary, spacing=28))
         notice = "Demo battle · not ranked"
         if scene.ranked:
@@ -3133,6 +3135,27 @@ class GameOverScene(_Overlay):
                       Button("High scores", hotkey="B", on_click=self.high_scores, style=GHOST_BUTTON, width=210),
                       Button("Back to title", hotkey="T", on_click=self.back_to_title, style=GHOST_BUTTON, width=210),
                       Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=190), spacing=12))
+
+    def _warbands(self, world: World, columns: int) -> Row:
+        """Every warband and its fate.  Sixteen of them stood a results panel off the bottom of a
+        680-pixel window, so beyond eight they run in columns of eight instead of one long list."""
+        grid = Row(spacing=16)
+        wide = columns < 2
+        for first in range(0, len(world.players), WARBANDS_PER_COLUMN):
+            column = Column(spacing=6, margin=0, width=420 if wide else WARBAND_COLUMN)
+            for player in world.players[first:first + WARBANDS_PER_COLUMN]:
+                status = ("Victorious" if world.winner == player.id else "Surrendered" if player.surrendered
+                          else "Still fighting" if player.alive else "Eliminated")
+                colour = GOOD if player.id == world.winner else MUTED
+                if wide:
+                    column.add(Row(Label(f"{player.name} · {RACES[player.race].name}", text_style="body", width=200),
+                                   Label(status, text_style="body", text_color=colour), spacing=10))
+                else:
+                    column.add(Row(Label(player.name, text_style="body", width=84),
+                                   Label(RACES[player.race].name, text_style="sub", width=76),
+                                   Label(status, text_style="sub", text_color=colour, width=92), spacing=6))
+            grid.add(column)
+        return grid
 
     def _rating_text(self) -> str:
         scene = self.game_scene
@@ -3160,7 +3183,9 @@ class GameOverScene(_Overlay):
         from warband.ui.title import TitleScene
 
         scene = self.game_scene
-        size = next((name for name, dimensions in mapgen.SIZES.items() if dimensions == (scene.world.width, scene.world.height)), "Medium")
+        seats = len(scene.world.players)
+        size = mapgen.size_name(scene.world.width, scene.world.height, seats)
+        size = size if size in mapgen.SIZES else (mapgen.sizes_for(seats) or ("Medium",))[0]
         self.game.clear_and_push(TitleScene(size=size, players=len(scene.world.players), difficulty=scene.difficulty, theme=scene.world.theme,
                                            race=scene.player.race, layout=scene.world.layout, settings=scene.settings))
 

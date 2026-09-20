@@ -5,6 +5,7 @@ import random
 import pytest
 
 from warband.brains.ai import Brain
+from warband.sim import mapgen
 from warband.sim.model import World
 from warband.sim.rules import UNITS, BuildingType, Difficulty, Terrain, UnitType, Upgrade
 
@@ -226,7 +227,8 @@ def test_result_leaderboard_and_loaded_finish_are_one_frozen_record(tmp_path):
             game.backend.inject_key(key)
             game.tick(.1)
             assert isinstance(game.scene, expected)
-        for count in (3, 4, 2):
+        counts = mapgen.SEAT_COUNTS
+        for count in counts[1:] + counts[:1]:
             game.backend.inject_key("p")
             game.tick(.1)
             assert game.scene.players == count

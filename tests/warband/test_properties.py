@@ -106,13 +106,17 @@ def test_a_path_steps_legally_and_is_the_shortest_there_is_on_many_grids(case) -
 
 
 def check_fair_map(seed: int, size: str, players: int, layout: Layout | None) -> None:
-    """At the sizes, seat counts and layouts New game offers (WB-046)."""
-    width, height = mapgen.SIZES[size]
+    """At the sizes, seat counts and layouts New game offers (WB-046).  A size that cannot seat this many
+    gives way to one that can, exactly as the New game screen moves it."""
+    if size not in mapgen.sizes_for(players, layout):
+        size = (mapgen.sizes_for(players, layout) or mapgen.sizes_for(players))[0]
+    width, height = mapgen.dimensions(size, players)
     chosen, world = fair_map(seed, width, height, players, layout=layout)
     assert seed <= chosen < seed + FAIR_TRIES and (world.width, world.height, len(world.players)) == (width, height, players)
 
 
-SETTINGS = (st.integers(1, 2**31 - 1), st.sampled_from(sorted(mapgen.SIZES)), st.integers(2, 4), st.sampled_from([None, *Layout]))
+SETTINGS = (st.integers(1, 2**31 - 1), st.sampled_from(sorted(mapgen.SIZES)),
+            st.sampled_from(mapgen.SEAT_COUNTS), st.sampled_from([None, *Layout]))
 
 
 @FEW

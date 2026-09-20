@@ -20,6 +20,7 @@ from typing import Any, Final
 
 from warband.sim.model import (MINE_CLEARANCE, Attack, AttackMove, Build, Building, Deposit, Harvest, Move, Point, Pos, Repair, Salvage, Unit,
                            World, dist, rect_gap)
+from warband.sim import mapgen
 from warband.sim.races import RACES
 from warband.sim.rules import BUILDINGS, UPGRADES, BuildingType, Difficulty, Race, Resource, Terrain, UnitType, Upgrade
 from warband.sim.worker_knowledge import KnownMine
@@ -782,8 +783,7 @@ class Brain:
         # at home until the clock runs out. Starts sit in the corners.
         hall = self._hall(world)
         here = hall.center if hall is not None else (world.width / 2, world.height / 2)
-        corners = [(2.5, 2.5), (world.width - 2.5, 2.5), (2.5, world.height - 2.5),
-                   (world.width - 2.5, world.height - 2.5)]
+        corners = mapgen.start_guesses(world.width, world.height, len(world.players))
         return [max(corners, key=lambda c: dist(c, here))]
 
     def _threats(self, world: World) -> list[Unit]:

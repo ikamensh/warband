@@ -28,7 +28,8 @@ class HighScoreScene(_Overlay):
             self.entries = HighScores(self.game.data_dir).load()
         except SaveError as error:
             self.error = str(error)
-        self.sizes = list(dict.fromkeys([*mapgen.SIZES.values(), *((e.width, e.height) for e in self.entries), self.size]))
+        self.sizes = list(dict.fromkeys([*(mapgen.dimensions(n, self.players) for n in mapgen.SIZES),
+                                         *((e.width, e.height) for e in self.entries), self.size]))
         self._build()
 
     def _build(self) -> None:
@@ -36,7 +37,7 @@ class HighScoreScene(_Overlay):
         panel = self.panel("High scores")
         panel.style = RESULTS_STYLE
         panel.add(Label("Local top 10 · best finish per match · ties favour the faster battle", text_style="body"))
-        size_name = next((n for n, dimensions in mapgen.SIZES.items() if dimensions == self.size), f"{self.size[0]}×{self.size[1]}")
+        size_name = mapgen.size_name(*self.size, self.players)
         panel.add(Row(Button(f"AI: {self.difficulty.value.title()}", hotkey="D", on_click=self.cycle_difficulty, style=GHOST_BUTTON, width=230),
                       Button(f"Map: {size_name}", hotkey="M", on_click=self.cycle_size, style=GHOST_BUTTON, width=230),
                       Button(f"{self.players} players", hotkey="P", on_click=self.cycle_players, style=GHOST_BUTTON, width=230), spacing=12))
@@ -77,5 +78,6 @@ class HighScoreScene(_Overlay):
         self._build()
 
     def cycle_players(self) -> None:
-        self.players = 2 if self.players == 4 else self.players + 1
+        counts = mapgen.SEAT_COUNTS
+        self.players = counts[(counts.index(self.players) + 1) % len(counts)] if self.players in counts else counts[0]
         self._build()

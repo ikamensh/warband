@@ -24,18 +24,21 @@ from warband.ui.scene import SAVE_SLOTS, CodexScene, HelpScene, SaveBrowserScene
 from warband.audio.sound import play_music, play_sound
 from warband.ui.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MENU_BUTTON, MUTED, OVERLAY_STYLE, PANEL_STYLE
 from warband.art.textures import TILE
-from warband.ui.view import MapView, minimap_terrain, to_world
+from warband.ui.view import NEUTRAL_MINIMAP, MapView, minimap_terrain, to_world
 
-PLAYER_COUNTS = (2, 3, 4)
 OPTION_WIDTH = 180
+SIZE_WIDTH = 86  # six sizes on one row, as wide as three options: a second row of them stood the panel off a 680-pixel screen
+COUNT_WIDTH = 72  # seven seat counts share the width three options take
 RACE_WIDTH = 125
+#: Only the three sizes that shipped have a letter of their own; the rest are reached with the
+#: stepper keys, because the screen's free letters ran out before the sizes did.
+SIZE_KEYS = {"Small": "S", "Medium": "M", "Large": "L"}
 RACE_KEYS = {Race.HUMAN: "U", Race.ORC: "O", Race.ELF: "V", Race.DWARF: "A"}
 #: Not the first letter: Medium and Master share one, and M is already the map size.
 DIFFICULTY_KEYS = {Difficulty.EASY: "E", Difficulty.MEDIUM: "N", Difficulty.HARD: "H", Difficulty.MASTER: "T", Difficulty.GRANDMASTER: "X"}
 NOTE_WIDTH = 90 + 8 + 3 * OPTION_WIDTH + 2 * 8  # a note under a row of options spans the row and wraps beside the preview
 PREVIEW_KEY = "newgame.preview"
 PREVIEW_BOX = (320, 240)  # the preview fits this many pixels: whole pixels per tile, as many as fit
-PREVIEW_MINE = (232, 196, 70)
 LAYOUT_KEYS: dict[Layout | None, str] = {Layout.PLAINS: "P", Layout.FOREST: "F", Layout.CROSSINGS: "C", Layout.KLONDIKE: "K", Layout.BASTION: "B", None: "Y"}
 
 
@@ -47,7 +50,7 @@ def preview_image(world: World) -> PilImage.Image:
         if b.type is BuildingType.TOWN_HALL and b.player is not None:
             img[b.y:b.y + b.size, b.x:b.x + b.size] = world.players[b.player].color
         elif b.type is BuildingType.GOLD_MINE:
-            img[b.y:b.y + b.size, b.x:b.x + b.size] = PREVIEW_MINE
+            img[b.y:b.y + b.size, b.x:b.x + b.size] = NEUTRAL_MINIMAP
     scale = min(PREVIEW_BOX[0] // world.width, PREVIEW_BOX[1] // world.height)
     pixels = np.repeat(np.repeat(img.clip(0, 255).astype(np.uint8), scale, 0), scale, 1)
     return PilImage.fromarray(pixels, "RGB")
@@ -176,26 +179,65 @@ class TitleScene(Scene):
         if self.settings is None or self.settings["sfx"] > 0:
             play_sound(name)
 
+    def room_refusal(self) -> str | None:
+        """Why a room cannot be made of New game's settings, or ``None``.
+
+        Playing against other people is the game engine's to size, not Warband's: a LAN host takes
+        one guest (``saga2d.network.MatchHost``) and an online room holds what every client declares
+        it can join (``saga2d.online.SEATS``, four in the release Warband pins, which the room server
+        enforces).  Sixteen seats are a match against the computer on one machine.  Saying so is
+        better than quietly seating four of them.  See docs/warband-maps.md, "Sixteen seats online"."""
+        from warband.online.authority import ONLINE_SEATS, ONLINE_SIZE
+        width, height = mapgen.dimensions(self.size, self.players)
+        if self.players > ONLINE_SEATS:
+            return (f"An online room seats {ONLINE_SEATS} and a LAN host 2, not {self.players}: how many can play "
+                    f"together is the game engine's limit, not Warband's. Play {self.players} against the computer, "
+                    f"or set Players to {ONLINE_SEATS} or fewer for multiplayer.")
+        if (width, height) > ONLINE_SIZE:
+            return (f"A room plays maps up to {ONLINE_SIZE[0]}×{ONLINE_SIZE[1]}, not {width}×{height}. "
+                    f"Choose Large or smaller for multiplayer.")
+        return None
+
     def multiplayer(self) -> None:
         from saga2d import MatchMenu
         from warband.online.authority import WarbandMatch
         from warband.ui.multiplayer import NetworkGameScene
-        width, height = mapgen.SIZES[self.size]
+        refused = self.room_refusal()
+        if refused is not None:
+            self.notice = refused
+            self.sfx("error")
+            return
         # The room's creator leads the race chosen under New game; the others' are drawn from the seed.  An online
         # room has New game's player count; a LAN host has two seats.
+        seats = self.players
+        lan = self.map_size(2)
+        room = self.map_size(seats)
+        self.notice = ""
         self.game.push(MatchMenu("Warband multiplayer", "warband-v2",
-                                lambda: WarbandMatch(self.fair_seed(2), width, height, self.theme, races=(self.race, None), layout=self.layout),
+                                lambda: WarbandMatch(self.fair_seed(2), *lan, self.theme, races=(self.race, None),
+                                                     layout=None if self.room_layout(2) == 'any' else Layout(self.room_layout(2))),
                                 lambda session, match: NetworkGameScene(session, match, settings=self.settings),
-                                create_options=lambda: {'seed': self.fair_seed(self.players), 'width': width, 'height': height,
-                                                        'theme': self.theme.value, 'players': self.players,
-                                                        'races': [self.race.value] + [None] * (self.players - 1),
-                                                        'layout': self.layout.value if self.layout is not None else 'any'}))
+                                create_options=lambda: {'seed': self.fair_seed(seats), 'width': room[0], 'height': room[1],
+                                                        'theme': self.theme.value, 'players': seats,
+                                                        'races': [self.race.value] + [None] * (seats - 1),
+                                                        'layout': self.room_layout(seats)}))
+
+    def map_size(self, players: int) -> tuple[int, int]:
+        """The map New game's size makes for *players* seats, moved to a size that seats them if it does not."""
+        size = self.size if self.size in mapgen.sizes_for(players) else mapgen.sizes_for(players)[0]
+        return mapgen.dimensions(size, players)
+
+    def room_layout(self, players: int) -> str:
+        """The layout a room of *players* asks for: ``any`` where the chosen one does not fit their grid."""
+        width, height = self.map_size(players)
+        return self.layout.value if self.layout in mapgen.layouts_for(width, height, players) else 'any'
 
     def fair_seed(self, players: int) -> int:
         """A fresh seed that makes a fair map of New game's settings for *players* seats, the room's creator first."""
-        width, height = mapgen.SIZES[self.size]
+        width, height = self.map_size(players)
+        chosen = self.room_layout(players)
         return fair_map(mapgen.fresh_seed(), width, height, players, theme=self.theme, races=[self.race] + [None] * (players - 1),
-                        layout=self.layout)[0]
+                        layout=None if chosen == 'any' else Layout(chosen))[0]
 
     def new_game(self) -> None:
         self.sfx("button")
@@ -263,7 +305,8 @@ class NewGameScene(Scene):
     transparent = True
     pause_below = False
     pop_on_cancel = True
-    controls = {"s": "size_small", "m": "size_medium", "l": "size_large", "2": "players_2", "3": "players_3", "4": "players_4",
+    controls = {"s": "size_small", "m": "size_medium", "l": "size_large", "bracketleft": "smaller", "bracketright": "bigger",
+                "2": "players_2", "3": "players_3", "4": "players_4", "minus": "fewer_seats", "equal": "more_seats",
                 "e": "easy", "n": "medium", "h": "hard", "t": "master", "x": "grandmaster", "g": "summer", "w": "winter", "d": "wasteland", "r": "reroll", ("return", "space"): "start",
                 "u": "humans", "o": "orcs", "v": "elves", "a": "dwarves",
                 "p": "plains", "f": "forest", "c": "crossings", "k": "klondike", "b": "bastion", "y": "any_layout"}
@@ -285,6 +328,7 @@ class NewGameScene(Scene):
         self._difficulty_buttons: dict[Difficulty, Button] = {}
         self._race_buttons: dict[Race, Button] = {}
         self._layout_buttons: dict[Layout | None, Button] = {}
+        self._moved = ""  # what the screen had to move to keep the settings playable, for the note under them
 
     def _layout_text(self) -> str:
         if self._preview_world is None:
@@ -306,6 +350,18 @@ class NewGameScene(Scene):
     def _preview_races(self) -> list[Race | None]:
         return [self.race] + [None] * (self.players - 1)
 
+    @property
+    def dimensions(self) -> tuple[int, int]:
+        """The map this size makes for this many seats: the nominal size rounded up to whole cells."""
+        return mapgen.dimensions(self.size, self.players)
+
+    def _settings_note(self) -> str:
+        """What the seat count means, and what the screen moved to keep it playable."""
+        width, height = self.dimensions
+        note = f"{self.size} is {width}×{height} tiles here: you and {plural(self.players - 1, 'computer player')}"
+        keys = f"{', '.join(SIZE_KEYS.values())} and [ ] choose the size; 2, 3, 4 and − + the players."
+        return f"{note}. {self._moved}. {keys}" if self._moved else f"{note}. {keys}"
+
     def _difficulty_text(self) -> str:
         """The rating beside the chosen setting, and what it plays like."""
         return DIFFICULTY_NOTES[self.difficulty]
@@ -313,13 +369,17 @@ class NewGameScene(Scene):
     def _opponents_text(self) -> str:
         if self._preview_world is None:
             return "Opponents: …"
-        return "Opponents: " + ", ".join(RACES[p.race].name for p in self._preview_world.players[1:])
+        races = [RACES[p.race].name for p in self._preview_world.players[1:]]
+        tally = {name: races.count(name) for name in dict.fromkeys(races)}
+        # A sixteen-seat list of races would run off the panel, so beyond a handful they are counted.
+        shown = races if len(races) <= 4 else [f"{n}× {name}" for name, n in tally.items()]
+        return "Opponents: " + ", ".join(shown)
 
     def _refresh_preview(self) -> None:
         """Regenerate the preview world and its image under one asset key."""
         if getattr(self, "game", None) is None:
             return
-        width, height = mapgen.SIZES[self.size]
+        width, height = self.dimensions
         # The screen chose the seed, so a seed that makes no fair map of these settings gives way to the next (WB-046).
         self.seed, world = fair_map(self.seed, width, height, self.players, theme=self.theme, races=self._preview_races(), layout=self.layout)
         self._preview_world = world
@@ -335,17 +395,23 @@ class NewGameScene(Scene):
 
     def on_enter(self) -> None:
         """The options in a column on the left, the preview and the opponents beside them, Start below."""
+        self._settle("players")  # the title may carry a pair the sizes no longer offer
         self._refresh_preview()
         options = Column(spacing=6, margin=0)
         size_row = Row(Label("Map size", text_style="body", width=90), spacing=8)
-        for name, (w, h) in mapgen.SIZES.items():
-            button = Button(f"{name} {w}×{h}", hotkey=name[0], on_click=lambda n=name: self.set_size(n), style=GHOST_BUTTON, width=OPTION_WIDTH)
+        for name in mapgen.SIZES:
+            # The tiles a size makes are the seats' business too, so they are named in the note beside
+            # the preview rather than on the button, which keeps the six of them to one row.
+            # No keycap on the button: six of them across the width three options take leaves no room for
+            # one, and the note beside the preview names the keys instead.
+            button = Button(name, on_click=lambda n=name: self.set_size(n), style=GHOST_BUTTON, width=SIZE_WIDTH)
             self._size_buttons[name] = button
             size_row.add(button)
         options.add(size_row)
         player_row = Row(Label("Players", text_style="body", width=90), spacing=8)
-        for count in PLAYER_COUNTS:
-            button = Button(f"{count}  (you + {count - 1} AI)", hotkey=str(count), on_click=lambda c=count: self.set_players(c), style=GHOST_BUTTON, width=OPTION_WIDTH)
+        for count in mapgen.SEAT_COUNTS:
+            button = Button(str(count), hotkey=str(count) if count <= 4 else None, on_click=lambda c=count: self.set_players(c),
+                            style=GHOST_BUTTON, width=COUNT_WIDTH)
             self._player_buttons[count] = button
             player_row.add(button)
         options.add(player_row)
@@ -387,7 +453,9 @@ class NewGameScene(Scene):
         options.add(Row(Label(lambda: f"Seed {self.seed}", text_style="body", width=90 + 8 + OPTION_WIDTH),
                         Button("Reroll", hotkey="R", on_click=self.reroll, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
         side = Column(Image(PREVIEW_KEY, width=PREVIEW_BOX[0], height=PREVIEW_BOX[1]),
-                      Label(lambda: self._opponents_text(), text_style="sub"), spacing=8, margin=0)
+                      Label(lambda: self._opponents_text(), text_style="sub", width=PREVIEW_BOX[0], wrap=True),
+                      Label(lambda: self._settings_note(), text_style="sub", width=PREVIEW_BOX[0], wrap=True),
+                      spacing=8, margin=0)
         # The race's character runs under the whole row: beside the preview it would wrap, and the panel must fit a 680 px window.
         race_note = Label(lambda: f"{RACES[self.race].tagline} · {RACES[self.race].passive}", text_style="sub", width=NOTE_WIDTH + 24 + PREVIEW_BOX[0])
         panel = Column(Label("New game", text_style="title"), Row(options, side, spacing=24), race_note,
@@ -402,6 +470,8 @@ class NewGameScene(Scene):
             button.style = ACTION_BUTTON if name == self.size else GHOST_BUTTON
         for count, button in self._player_buttons.items():
             button.style = ACTION_BUTTON if count == self.players else GHOST_BUTTON
+        for layout, button in self._layout_buttons.items():
+            button.enabled = layout is None or layout in mapgen.layouts_for(*self.dimensions, self.players)
         for difficulty, button in self._difficulty_buttons.items():
             button.style = ACTION_BUTTON if difficulty == self.difficulty else GHOST_BUTTON
         for theme, button in self._theme_buttons.items():
@@ -415,17 +485,63 @@ class NewGameScene(Scene):
         w, h = self.game.resolution
         self.draw_rect(0, 0, w, h, (4, 6, 12, 140))
 
+    def _settle(self, moving: str) -> None:
+        """Keep size, seats and layout a combination that makes a fair map, and say what moved.
+
+        Size and seats constrain each other — sixteen seats do not fit a Small map and two seats
+        rattle around an Epic one — so whichever the player did not just touch gives way; greying
+        out both rows instead would leave the screen with no way from one end to the other.  A
+        layout the pair cannot hold falls back to Any, which draws from the ones it can."""
+        moved = []
+        if mapgen.refusal(*self.dimensions, self.players, None) is not None:
+            if moving == "players":
+                sizes = mapgen.sizes_for(self.players)
+                order = list(mapgen.SIZES)
+                self.size = min(sizes, key=lambda n: abs(order.index(n) - order.index(self.size)))
+                moved.append(f"{self.players} seats need {self.size}")
+            else:
+                counts = mapgen.offered(self.size)
+                self.players = min(counts, key=lambda c: abs(c - self.players))
+                moved.append(f"a {self.size} map seats {self.players}")
+        if self.layout is not None and self.layout not in mapgen.layouts_for(*self.dimensions, self.players):
+            moved.append(f"{self.layout.value.title()} wants another grid of seats, so the map is Any")
+            self.layout = None
+            self.title.layout = None
+        self._moved = "; ".join(moved)
+
     def set_size(self, name: str) -> None:
         self.size = name
+        self._settle("size")
         self.title.sfx("button")
         self._restyle()
         self._refresh_preview()
 
     def set_players(self, count: int) -> None:
         self.players = count
+        self._settle("players")
         self.title.sfx("button")
         self._restyle()
         self._refresh_preview()
+
+    def _step_size(self, by: int) -> None:
+        names = list(mapgen.SIZES)
+        self.set_size(names[max(0, min(len(names) - 1, names.index(self.size) + by))])
+
+    def _step_players(self, by: int) -> None:
+        counts = mapgen.SEAT_COUNTS
+        self.set_players(counts[max(0, min(len(counts) - 1, counts.index(self.players) + by))])
+
+    def smaller(self) -> None:
+        self._step_size(-1)
+
+    def bigger(self) -> None:
+        self._step_size(1)
+
+    def fewer_seats(self) -> None:
+        self._step_players(-1)
+
+    def more_seats(self) -> None:
+        self._step_players(1)
 
     def set_difficulty(self, difficulty: Difficulty) -> None:
         self.difficulty = difficulty
@@ -446,6 +562,8 @@ class NewGameScene(Scene):
         self._refresh_preview()
 
     def set_layout(self, layout: Layout | None) -> None:
+        if layout is not None and layout not in mapgen.layouts_for(*self.dimensions, self.players):
+            return  # the button is greyed out; a key press must not reach past it either
         self.layout = layout
         self.title.layout = layout  # multiplayer rooms use the layout chosen here
         self.title.sfx("button")
@@ -531,6 +649,6 @@ class NewGameScene(Scene):
 
     def start(self) -> None:
         self.title.sfx("button")
-        width, height = mapgen.SIZES[self.size]
+        width, height = self.dimensions
         self.game.clear_and_push(new_game(self.seed, width=width, height=height, players=self.players, difficulty=self.difficulty, theme=self.theme,
                                           settings=self.title.settings, races=[self.race] + [None] * (self.players - 1), layout=self.layout))

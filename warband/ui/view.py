@@ -168,6 +168,12 @@ TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1}  # seconds of flight a shot 
 TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150)}
 TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5)}  # at the shot and where the trail ends
 BAR_OUTLINE = (0, 0, 0, 190)  # the backing and outline of every health and progress bar
+#: Nobody's building on the minimap and on the New game preview: a gold mine, and the one thing on
+#: either picture that is not a seat.  The gold it used to be, (232, 196, 70), is three units of
+#: CIE76 from Amber, so an Amber player's halls were their own mines; this straw is twenty-seven
+#: from the nearest seat colour and forty-three from any ground.
+NEUTRAL_MINIMAP = (255, 255, 159)
+ABANDONED_MINIMAP = (150, 150, 150)
 
 
 def unit_frame(u: Unit, travel: float, time: float) -> str:
@@ -874,7 +880,7 @@ class MapView:
         img = self._minimap_ground * np.where(visible, 1.0, np.where(explored, 0.6, 0.18))[..., None]
         for b in self._sightings.values():  # as last seen: a rival's new hall is not on the minimap before it is on the map
             x, y, w, h = b.rect
-            img[y:y + h, x:x + w] = (150, 150, 150) if b.abandoned else (232, 196, 70) if b.player is None else world.players[b.player].color
+            img[y:y + h, x:x + w] = ABANDONED_MINIMAP if b.abandoned else NEUTRAL_MINIMAP if b.player is None else world.players[b.player].color
         for u in world.units.values():
             if u.hidden or not (u.player == self.player or visible[u.tile[1], u.tile[0]]):
                 continue

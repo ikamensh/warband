@@ -461,12 +461,33 @@ class PlayerInfo:
     color: tuple[int, int, int]
 
 
+#: A seat's name and colour, dealt in this order.  Eight bright hues spread round the wheel first,
+#: then deeper and lighter ones between them, so a four- or eight-player game uses the colours that
+#: differ most.  Every one keeps enough saturation and brightness to survive the team recolour of a
+#: painted sprite (art/textures.recolor scales a sprite by the target's saturation and value, so a
+#: pastel or a near-black would give a colourless or a black army), and stands at least as far from
+#: every theme's ground as the four that shipped do.  The numbers, including what a protanope and a
+#: deuteranope see, are in docs/warband-maps.md; the closest pair for red-green vision is Crimson
+#: against Viridian, which is the pair Warband has always had.
 PLAYERS: Final[list[PlayerInfo]] = [
     PlayerInfo("Azure", (70, 130, 255)),
     PlayerInfo("Crimson", (225, 70, 60)),
     PlayerInfo("Viridian", (80, 190, 110)),
     PlayerInfo("Amber", (245, 190, 60)),
+    PlayerInfo("Violet", (208, 139, 255)),
+    PlayerInfo("Aqua", (59, 216, 255)),
+    PlayerInfo("Magenta", (217, 54, 125)),
+    PlayerInfo("Lime", (196, 247, 36)),
+    PlayerInfo("Cobalt", (39, 50, 180)),
+    PlayerInfo("Umber", (128, 78, 4)),
+    PlayerInfo("Mint", (109, 204, 182)),
+    PlayerInfo("Indigo", (99, 8, 225)),
+    PlayerInfo("Maroon", (124, 0, 23)),
+    PlayerInfo("Olive", (141, 149, 16)),
+    PlayerInfo("Rose", (244, 137, 148)),
+    PlayerInfo("Slate", (119, 154, 210)),
 ]
+MAX_PLAYERS: Final = len(PLAYERS)  # the seats a match can hold: one to a colour
 
 
 class Difficulty(IdentityEnum):

@@ -9,7 +9,7 @@ from warband.art import textures
 from warband.sim.model import tile_center
 from warband.sim.rules import BuildingType, Layout, MapTheme, Resource, Terrain, UnitType
 from warband.ui.scene import GameScene, new_game
-from warband.ui.view import FOG_MARGIN, STAFF_REACH, WATER_PERIOD
+from warband.ui.view import FOG_MARGIN, NEUTRAL_MINIMAP, STAFF_REACH, WATER_PERIOD
 from warband.sim import mapgen
 from warband.ui.style import build_theme
 from warband.art.textures import TILE
@@ -184,7 +184,7 @@ def test_minimap_image_marks_terrain_buildings_and_units(play) -> None:
     hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
     assert tuple(pixels[hall.y * 2, hall.x * 2, :3]) == world.players[scene.human].color
     mine = world.mines()[0]
-    assert tuple(pixels[mine.y * 2, mine.x * 2, :3]) == (232, 196, 70)
+    assert tuple(pixels[mine.y * 2, mine.x * 2, :3]) == NEUTRAL_MINIMAP  # nobody's, and no seat's colour either
     assert tuple(pixels[(world.height - 2) * 2, (world.width - 2) * 2, :3]) != (0, 0, 0)  # dark, not black
 
 

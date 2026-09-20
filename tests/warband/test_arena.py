@@ -270,10 +270,10 @@ def test_a_ladder_is_played_across_the_map_generator_not_one_map():
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
     from arena import specs_1v1
 
-    from warband.sim import mapgen
+    from warband.league import arena
 
     specs = specs_1v1(["easy", "medium"], range(4000, 4030), "standard", 20.0)
-    assert {(s.width, s.height) for s in specs} == set(mapgen.SIZES.values()), "every map size"
+    assert {(s.width, s.height) for s in specs} == set(arena.LADDER_SIZES), "every board the ladder plays"
     # Both corners of a seed must be the same board, or the swap is not a swap.
     for spec in specs:
         twin = next(o for o in specs if o.seed == spec.seed and o.agents == spec.agents[::-1])

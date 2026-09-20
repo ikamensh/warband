@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-058**; a new
+section; git history keeps the record. The last ID given is **WB-060**; a new
 item takes the next one and updates this line.
 
 Done and removed 2026-09-18, every one merged into main (whose code is live as
@@ -52,6 +52,8 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 | WB-056 | Later | proposed | Bug-hunt leftovers: small defects confirmed on 2026-09-19 and not yet fixed | Bug hunt 2026-09-19 |
 | WB-057 | Next | proposed | The smallest canvas the game lays out for: a 1024x768 or 1280x720 desktop gets a HUD off the screen | Bug hunt 2026-09-20 |
 | WB-058 | Later | proposed | Bug-hunt leftovers 2026-09-20: a site nobody owns by its colour, two strike frames that hop, crowded workers | Bug hunt 2026-09-20 |
+| WB-059 | Next | proposed | A route nobody can reach costs the whole pathfinder budget, and the budget grows with the map | Sixteen seats 2026-09-20 |
+| WB-060 | Later | proposed | Sixteen seats online: an engine release, a snapshot that is not one world per seat, and room capacity | Sixteen seats 2026-09-20 |
 
 ## WB-055 — A deeper tech tree
 
@@ -233,3 +235,51 @@ to build until a playtest happens. What unblocks it: one or two fresh players'
 sessions (a recording or notes on what confused them), on a Mac or on Windows.
 The Windows report that came first is closed (WB-021, WB-022), and a Windows
 desktop for scripted checks is [a runbook away](../saga-online/docs/windows-test-box.md).
+
+## WB-059 — A route nobody can reach costs the whole budget
+
+`path.budget(width, height)` grows the A\* bound with the map's area (3 000 expansions up to Large's
+5 120 tiles, 13 921 on Epic's 23 760), because a route across a big map needs it or a unit gives up
+halfway and walks into a wall. What that costs is paid by the requests that *fail*: A\* that runs out
+returns the nearest reachable tile, so a goal nobody can reach burns the whole bound. Measured on
+2026-09-20 with sixteen armies converging on the middle of a 180x132 map (`tools/perf.py --scenario
+sixteen-player`): **16 % of path requests did not reach their goal**, `find_path_grid` cost 1.29 ms a
+call against 0.11 ms on the four-player 80x64 board, and it was 39 % of all the time spent; the
+simulation step ran 36 ms, which is every third frame over its budget while a full-map brawl lasts.
+
+The walkable-region map (`path.Regions`, which `World._regions` already builds and keeps) can answer
+"nothing of yours can reach that tile" without a search, which is most of the failures. It is not a
+speed change: a different answer for an unreachable goal is a different match, so it moves
+`tools/sim_fingerprint.txt` and `tools/sim_bench.txt` and wants a server rollout behind it. The other
+half of the fix is a hierarchical route (region to region, then tile to tile) so that a long route
+costs its length rather than its area.
+
+Acceptance: `tools/perf.py --scenario sixteen-player` holds `world.step` under 16 ms; `--scenario
+reference` and `four-player` do not regress; both records refreshed in the same commit.
+
+## WB-060 — Sixteen seats online
+
+The offline game seats sixteen since 2026-09-20; a room still seats four and this is why
+(`warband/online/authority.py`, `ONLINE_SEATS`, and docs/warband-maps.md, "Sixteen seats online"):
+
+1. **The engine caps it, at both ends.** A LAN host takes exactly one guest
+   (`saga2d.network.MatchHost`: "Host one guest. Seat 0 belongs to the host, seat 1 to the guest"),
+   and online every client declares `saga2d.online.SEATS` in its hello while the room server refuses
+   a room with more seats than the client can play — 4 in the Saga2D Warband pins, so a sixteen-seat
+   room is one no client built today can join. Raising either is a Saga2D release, the three-game
+   cohort rebuilt and a rollout — engine work, not Warband's.
+2. **The snapshot is one whole world per seat.** `WarbandMatch.snapshot` rebuilds `World.to_dict()`
+   for each seat and the room publishes one per seat per tick, so a publish is O(seats² × area):
+   about 5.8 MB/s of JSON at four seats on a Large map and about 92 MB/s at sixteen, against a hard
+   8 MB `MAX_SNAPSHOT` whose breach fails the whole room. A delta or a compact fog encoding is a
+   project of its own, and changing the snapshot's shape means `warband-v3`, not an edit of
+   `warband-v2`.
+3. **Capacity.** The live unit runs `--max-connections 96` on one VM at `MemoryMax=1200M` and
+   `CPUQuota=150%`: 24 full four-seat rooms, or 6 sixteen-seat ones.
+
+Until then the refusal is honest and tested: `TitleScene.room_refusal` says what a room holds instead
+of quietly seating four of sixteen, `_create` refuses the options with a `CommandError`, and
+`tests/warband/test_many_seats.py` holds both.
+
+Acceptance: a sixteen-seat room hosted, joined by sixteen clients and played to a result, with the
+publish rate measured; or a decision that rooms stay at four and the cap is documented as final.

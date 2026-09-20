@@ -99,8 +99,8 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
     outcomes: Counter[str] = Counter()
     for seed in seeds:
         rng = random.Random(seed)
-        players = rng.choice((2, 2, 3, 4))
-        width, height = rng.choice(list(mapgen.SIZES.values()))
+        players = rng.choice((2, 2, 3, 4, 6, 8, 16))
+        width, height = mapgen.dimensions(rng.choice(mapgen.sizes_for(players)), players)
         try:
             world = mapgen.generate(seed=seed, width=width, height=height, players=players, human=None)
             # Every setting, which now means both kinds of brain: Hard and Master

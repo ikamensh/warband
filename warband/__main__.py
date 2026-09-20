@@ -30,7 +30,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Warband — a small Warcraft 2-style real-time strategy game")
     parser.add_argument("--seed", type=int, default=None, help="start this map directly, skipping the title screen")
     parser.add_argument("--size", choices=list(mapgen.SIZES), default="Medium")
-    parser.add_argument("--players", type=int, default=2, choices=(2, 3, 4))
+    parser.add_argument("--players", type=int, default=2, choices=range(2, mapgen.MAX_PLAYERS + 1), metavar="N",
+                        help=f"seats, 2 to {mapgen.MAX_PLAYERS}; a size that cannot seat them is refused")
     parser.add_argument("--difficulty", choices=[d.value for d in Difficulty], default="medium")
     parser.add_argument("--theme", choices=[t.value for t in MapTheme], default="summer")
     parser.add_argument("--race", choices=[r.value for r in Race], default="human", help="your race; the computer players' are drawn from the seed")
@@ -80,8 +81,11 @@ def main() -> None:
         run = build_world(CAMPAIGN.mission(args.mission), flags=progress.flags)
         game.run(MissionScene(CAMPAIGN, run, difficulty=progress.difficulty, settings=settings))
         return
+    refused = mapgen.refusal(*mapgen.dimensions(args.size, args.players), args.players, layout)
+    if refused is not None:
+        parser.error(f"{refused}. Sizes for {args.players}: {', '.join(mapgen.sizes_for(args.players, layout)) or 'none'}.")
     if args.seed is not None:
-        width, height = mapgen.SIZES[args.size]
+        width, height = mapgen.dimensions(args.size, args.players)
         game.run(new_game(args.seed, width=width, height=height, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme),
                           settings=settings, races=[Race(args.race)] + [None] * (args.players - 1), layout=layout))
     else:
@@ -92,7 +96,8 @@ def main() -> None:
 def lobby_options(args: argparse.Namespace) -> dict[str, Any]:
     """The two-seat room a command line hosts or creates: on its ``--seed`` as given, or on a fresh seed that makes a
     fair map of its settings (WB-046)."""
-    width, height = mapgen.SIZES[args.size]
+    size = args.size if args.size in mapgen.sizes_for(2) else mapgen.sizes_for(2)[0]
+    width, height = mapgen.dimensions(size, 2)
     layout = None if args.layout == "any" else Layout(args.layout)
     seed = args.seed if args.seed is not None else fair_map(mapgen.fresh_seed(), width, height, 2, theme=MapTheme(args.theme),
                                                             races=[Race(args.race), None], layout=layout)[0]

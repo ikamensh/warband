@@ -36,10 +36,22 @@ def _terrain_rows(world):
     return ["".join(t.value[0] for t in row) for row in world.terrain]
 
 
+#: The most seats a Warband room can hold.  The offline game seats sixteen, but every client
+#: declares ``saga2d.online.SEATS`` in its hello and the server refuses a room with more seats than
+#: the client can play; that number is 4 in the Saga2D this pins, so a room is four whatever the
+#: authority would allow.  Raising it is an engine release, not a Warband change — and a snapshot
+#: that is not one whole world per seat per tick.  See docs/warband-maps.md, "Sixteen seats online".
+ONLINE_SEATS = 4
+#: The largest map a room may ask for.  The offline game goes to 180x132; a room stays where it was
+#: so that the options in :data:`ONLINE` keep the shape and the range the live server already
+#: speaks, and one seat's snapshot stays the size it is today.
+ONLINE_SIZE = (80, 64)
+
+
 class WarbandMatch:
     def __init__(self, seed=3, width=48, height=40, theme=MapTheme.SUMMER, races=None, layout=None, players=2):
-        """*players* humans, two to four; *races* names each seat's race, a ``None`` seat drawn from the seed, and so
-        is a ``None`` *layout*."""
+        """*players* humans, two to :data:`ONLINE_SEATS`; *races* names each seat's race, a ``None`` seat drawn from
+        the seed, and so is a ``None`` *layout*."""
         self.seed = seed
         self.world = mapgen.generate(seed, width, height, players=players, theme=theme, races=races, layout=layout)
         for player in self.world.players:
@@ -232,7 +244,7 @@ class WarbandMatch:
 def _create(options):
     """Validate resource-bounded creation options before generating any map."""
     option_keys(options, {'seed', 'width', 'height', 'theme', 'races', 'layout', 'players'})
-    players = option_int(options, 'players', 2, 2, 4)
+    players = option_int(options, 'players', 2, 2, ONLINE_SEATS)
     races = options.get('races', [None] * players)
     if (not isinstance(races, list) or len(races) != players
             or any(race is not None and (not isinstance(race, str) or race not in {r.value for r in Race})
@@ -240,8 +252,8 @@ def _create(options):
         raise CommandError(f'races must name {players} seats, each a race or null.')
     layout = option_choice(options, 'layout', 'any', {each.value for each in Layout} | {'any'})
     try:
-        return WarbandMatch(option_seed(options, 3), width=option_int(options, 'width', 48, 48, 80),
-                            height=option_int(options, 'height', 40, 40, 64),
+        return WarbandMatch(option_seed(options, 3), width=option_int(options, 'width', 48, 48, ONLINE_SIZE[0]),
+                            height=option_int(options, 'height', 40, 40, ONLINE_SIZE[1]),
                             theme=MapTheme(option_choice(options, 'theme', 'summer', {t.value for t in MapTheme})),
                             races=[Race(race) if race is not None else None for race in races],
                             layout=None if layout == 'any' else Layout(layout), players=players)

@@ -37,6 +37,7 @@ import statistics
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from typing import Final
 
 from warband.sim import mapgen
 from warband.brains.ai import make_brain
@@ -391,6 +392,12 @@ def _placements(world: World, eliminated: dict[int, float], players: int) -> tup
     return tuple(out)
 
 
+#: The boards the ladder plays on.  They are the three sizes New game offered when the measured
+#: ratings (brains.DIFFICULTY_ELO) and the balance league were played, and they are kept here
+#: rather than read from mapgen.SIZES so that offering a new size never moves a rating.
+LADDER_SIZES: Final[tuple[tuple[int, int], ...]] = ((48, 40), (64, 48), (80, 64))
+
+
 def board(seed: int) -> dict:
     """The size and layout *seed* is played on, so both corners share a map.
 
@@ -400,7 +407,7 @@ def board(seed: int) -> dict:
     summer, winter and wasteland generate identical terrain, tile for tile,
     and differ only in how they are drawn.
     """
-    sizes = list(mapgen.SIZES.values())
+    sizes = list(LADDER_SIZES)
     layouts = [layout.value for layout in Layout]
     width, height = sizes[seed % len(sizes)]
     return {"width": width, "height": height, "layout": layouts[seed % len(layouts)]}

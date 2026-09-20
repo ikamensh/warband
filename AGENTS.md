@@ -24,6 +24,8 @@ uv run python tools/verify_deaths.py DIR         # one death per unit category f
 uv run python tools/visual_lint.py --evidence DIR   # visual defects in the art and on every screen; PNGs of what it flags (--screens NAME, --no-images)
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms); --scenario four-player|pan-zoom|deaths|restarts, --csv, --gc
 uv run python tools/step_bench.py --repeat 3     # model step times of the same battle without a window, with --profile
+uv run python tools/step_bench.py --scenario seats --seats 16 --steps 12000   # a real sixteen-seat match, step and brains timed apart
+uv run python tools/perf.py --scenario sixteen-player           # frames with sixteen armies on the biggest map that seats them
 uv run python tools/sim_bench.py --check tools/sim_bench.txt   # processor time of nine whole arena matches, and their results unchanged
 uv run python -m warband.league.fastsim          # compile the simulation with mypyc now (the match-running tools do it on first use)
 uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening (the default report is about a minute)
@@ -61,7 +63,10 @@ the compiled simulation attaches after they load.
   winds up and lands; shots are `Projectile`s that land later, stones on the
   ground they were fired at (`docs/unit-motion.md` part 4). `rules.py` holds
   the tables, `races.py` the four races' names, numbers and arts, `path.py`
-  bounded A*, `mapgen.py` the five map layouts, their symmetry and audit,
+  bounded A* on a budget that grows with the map, `mapgen.py` the five map
+  layouts, the grid of congruent cells that deals two to sixteen seats one each,
+  and the audit (`grid`, `dimensions`, `refusal`, `offered`, `sizes_for` and
+  `layouts_for` say which size, seat count and layout make a fair map together),
   `worker_ai.py`/`worker_knowledge.py` the automatic gatherers (placed when
   idle, and the split looked at again every five seconds: `Harvest.placed`
   marks the policy's own jobs, an ordered harvest stays its player's, and a

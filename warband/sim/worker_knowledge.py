@@ -72,6 +72,7 @@ class WorkerKnowledge:
         self._spans: dict[tuple[int, int, int], tuple[tuple[int, int], ...]] = {}
         self._trees: set[int] = set()
         self._tree_order: tuple[int, ...] | None = None
+        self._lit_box: tuple[int, int, int, int] | None = None  # what refresh() was told the fog covers
         self.version = 0  # counts the times blocked and threats were stamped anew, the only times they change
 
     @property
@@ -94,6 +95,9 @@ class WorkerKnowledge:
 
     def sees(self, visible: bytearray, x: int, y: int, size: int) -> bool:
         """Whether any tile of a footprint lies in *visible*, a fog grid of this map's shape."""
+        box = self._lit_box
+        if box is not None and (x + size <= box[0] or x > box[2] or y + size <= box[1] or y > box[3]):
+            return False  # nothing of this player's sees anywhere near it; see refresh()
         if _any_lit is not None:
             return _any_lit(visible, x, y, size, size, self.width, self.height)
         for start, stop in self.spans(x, y, size):
@@ -121,9 +125,18 @@ class WorkerKnowledge:
         self._trees, self._tree_order = trees, None
         self._stamp_buildings()
 
-    def refresh(self, world: World, player: int) -> None:
+    def refresh(self, world: World, player: int, lit_box: tuple[int, int, int, int] | None = None) -> None:
+        """*lit_box* bounds the lit tiles as ``(left, top, right, bottom)``, inclusive.
+
+        Whether a structure is seen is asked of every structure on the map, once per seat: with
+        sixteen seats and sixteen bases that is a few thousand footprint scans five times a second,
+        and all but a handful of them look at fog that is nowhere near.  The caller knows where the
+        seat's sight discs are, so it says so, and the rest are refused by four comparisons.  The
+        answers are the same either way; leaving it out only makes the work longer.
+        """
         if (world.width, world.height) != (self.width, self.height):
             raise ValueError("Worker knowledge dimensions must match the world")
+        self._lit_box = lit_box
         visible = world.visible[player]
         width = self.width
         remembered, terrain_blocked, trees = self.terrain, self._terrain_blocked, self._trees
