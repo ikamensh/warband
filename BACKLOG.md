@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-056**; a new
+section; git history keeps the record. The last ID given is **WB-058**; a new
 item takes the next one and updates this line.
 
 Done and removed 2026-09-18, every one merged into main (whose code is live as
@@ -50,6 +50,8 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 | WB-013 | Next | blocked | Turn fresh-player and cross-platform playtests into reproducible fixes | Suggested |
 | WB-055 | Next | proposed | A deeper tech tree: the tower behind the mill, the knight behind the smith | Ilya 2026-09-19 |
 | WB-056 | Later | proposed | Bug-hunt leftovers: small defects confirmed on 2026-09-19 and not yet fixed | Bug hunt 2026-09-19 |
+| WB-057 | Next | proposed | The smallest canvas the game lays out for: a 1024x768 or 1280x720 desktop gets a HUD off the screen | Bug hunt 2026-09-20 |
+| WB-058 | Later | proposed | Bug-hunt leftovers 2026-09-20: a site nobody owns by its colour, two strike frames that hop, crowded workers | Bug hunt 2026-09-20 |
 
 ## WB-055 — A deeper tech tree
 
@@ -95,7 +97,9 @@ their armies directly, so none of them breaks.
 
 The bug hunt of 2026-09-19 (main `cbb4b62`) found about forty defects and fixed thirty-six of them;
 these were confirmed with a script but left, being minor, latent or needing a decision. Each is a small
-item of its own when taken up.
+item of its own when taken up. The campaign's dropped choice was one of them, called harmless here: it
+is not (the objective the answer opens never shows, and the campaign never learns the choice), and it
+is fixed as of 2026-09-20.
 
 - **Online, fog leaks through refusals and picks** (a rules change; the fingerprint may move): placement
   refusals still tell a seat what stands on ground it explored but does not see now ("Something is in
@@ -112,14 +116,72 @@ item of its own when taken up.
   chop progress and repair charge carry over to the next tree or building.
 - **Scene**: Settings → Tutorial switched on in a match does nothing; a rival's building in sight shows its
   painted "active" look while it trains, which online (whose snapshots hide its queue) it does not.
-- **Campaign and replays**: `Run.from_dict` passes the saved vars through the constructor's filter, so
-  a mission's own remembered choice (Greywater's truce) is dropped on load, harmless while every reader
-  takes a missing truce for False; `shifted()` has no Master row, a KeyError for a hand-edited progress;
+- **Campaign and replays**: `shifted()` has no Master row, a KeyError for a hand-edited progress;
   the campaign screen has no Restore backup as the profile's has; `Playback.run()` never ends for a
   replay file with order rows after its end tick; the replay digest leaves out terrain, projectiles,
   plans and the random stream.
 - **Engine (Saga2D)**: a key held when an overlay comes up is released over the overlay, and the camera
   keeps its held direction; Warband clears it on reveal, the engine could for every game.
+
+## WB-057 — The smallest canvas the game lays out for
+
+`Game(resolution=None)` fits the canvas to the desktop (`saga2d.game._fit_screen`: the window less a
+margin, divided down while it is taller than 1440 units). Nothing holds it *up*, and every layout in the
+game is made for 1200x680 or more — `tools/visual_lint.py` walks 1280x800 and 1200x680, and
+`tests/warband/test_startup.py` starts on 1920x1080 and 4K desktops. Below 1200 px wide there is no
+coverage and no fit. Measured on 2026-09-20, walking every screen of the lint at the canvas each desktop
+actually gives:
+
+| desktop | canvas | findings | screens |
+|---------|--------|----------|---------|
+| 1024x768 | 944x648 | 628 | 63 |
+| 1280x720 | 1200x600 | 85 | 17 |
+| 1366x768 | 1286x648 | 8 | 8 |
+| 1280x800 and every larger desktop | | 0 | 0 |
+
+A 1366x768 laptop is an ordinary machine and it loses the top and bottom of the New game screen (the
+column is 674 px on a 648 px canvas), 8 px of Settings, 24 px of the codex's units page, 6 px of its tech
+tree, and the title's hint line sits under the menu. A 1280x720 desktop clips "WARBAND" itself — the
+engine's own text check says so on every frame. A 1024x768 desktop puts most of the HUD off the screen.
+
+Two ways, both worth something:
+
+* **A floor in the engine.** `Game(resolution=None, minimum=...)` never returns a canvas smaller than the
+  size a game's layouts are made for; a smaller window then shows the whole canvas scaled down with bars,
+  which the backend already does (`test_startup`'s "a small window" is 960x500 on an 1840x960 canvas). One
+  change, every screen and every display at once, and the 1200x680 design stands. It costs an engine
+  release and the cohort upgrade and server rollout behind it.
+* **Layouts that fit 648.** Trim the five screens that overflow a 1366x768 laptop. No engine release, no
+  rollout, and it is the display most likely to be someone's. It does nothing for 1200x600 or 944x648,
+  and every screen written afterwards has to remember the constraint.
+
+Acceptance either way: the lint walks the canvases of the desktops above, and the startup matrix gains
+one of them.
+
+## WB-058 — Bug-hunt leftovers 2026-09-20
+
+The hunt of 2026-09-20 (main `6846e47`) fixed twenty-nine defects. These are confirmed and left, each
+needing a decision or a piece of art rather than a patch.
+
+- **Twelve pictures a player cannot tell the owner of.** `tools/visual_lint.py` reports what a picture
+  wears of the team's colour: `human.farm/tower/lumber_mill/stables/workshop.founded`,
+  `elf.lumber_mill.founded` and `dwarf.lumber_mill/stables/workshop.founded` wear none at all,
+  `human.blacksmith.founded` 8 px, `dwarf.blacksmith.founded` 68 px, and `unit.elf.scout` 33 px where
+  every other scout wears 167 or more. The smallest mark that reads is the elven Stag Pens' site at
+  218 px. Either the sheets gain a pennant (`tools/restyle.py`, an image model), or the view draws an
+  owner's mark for a site itself.
+- **Four painted strike frames hop.** `unit.orc.scout.{2,3}.strike` and `unit.elf.knight.{1,2}.strike`
+  stand 10-14 px above the render they repaint, so the rider jumps as it strikes. Repaint the frames, or
+  place a painted frame by its own centroid against its render.
+- **Workers crowd a spot and stand still.** `tools/fuzz.py` reports a unit that stays within a tile for
+  twenty seconds as a deadlock. Two are not: a third peasant sent to a tree edge two others are already
+  chopping waits about 25 s beside it instead of taking another tree (fuzz seed 3), and twenty-odd
+  peasants delivering to one hall jam at its door, each of them still for 20 s at a time (fuzz seed 106,
+  four players, twelve minutes in). The rules already say a mine saturates at eight peasants; nothing
+  says what a hall's door or a tree's edge holds. Either the worker policy spreads them, or the fuzz
+  check learns to tell a queue from a deadlock.
+- **A catapult's minimum range is nowhere in the HUD.** `UnitInfo.min_range` is 2.0 and the codex and the
+  selection panel show only the 7. A player learns it by watching a stone refuse to fly.
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
