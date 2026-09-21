@@ -211,7 +211,7 @@ def test_more_opponents_mean_a_bigger_margin_is_wanted_before_attacking():
     """Every extra player is someone who profits from a fight you started."""
     world = mapgen.generate(seed=9, players=3, human=None)
     brain = ProBrain(0, PRO)
-    bystanders = sum(1 for p in world.players if p.id != 0 and p.alive) - 1
+    bystanders = sum(1 for p in world.players[:world.seats] if p.id != 0 and p.alive) - 1  # the wilds are nobody's rival
     assert bystanders == 1
     assert PRO.attack_ratio * (1 + PRO.ffa_caution * bystanders) > PRO.attack_ratio
 

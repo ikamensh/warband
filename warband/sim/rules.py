@@ -74,6 +74,12 @@ class UnitType(IdentityEnum):
     KNIGHT = "knight"
     CATAPULT = "catapult"
     CLERIC = "cleric"
+    # The neutral creatures: nobody trains them, no race names them, and they are never team-coloured.
+    # Their values are :class:`warband.art.monsters.Monster`'s, so the art is reached with ``Monster(unit.type.value)``.
+    WOLF = "wolf"
+    TROLL = "troll"
+    SPIDER = "spider"
+    GOLEM = "golem"
 
 
 class BuildingType(IdentityEnum):
@@ -88,6 +94,7 @@ class BuildingType(IdentityEnum):
     CHURCH = "church"
     GOLD_MINE = "gold_mine"
     GOLD_SEAM = "gold_seam"  # the endless one; :class:`MineInfo` is what tells the two deposits apart
+    LAIR = "lair"  # a creature camp's den: nobody's, the guards' respawn anchor and the hoard they sit on
 
 
 class Race(IdentityEnum):
@@ -168,6 +175,10 @@ class UnitInfo:
     windup: float = 0.0  # seconds from the decision to strike to the blow landing; the unit stands committed meanwhile
     turn: float = math.radians(360)  # radians per second the unit pivots
     min_range: float = 0.0  # nothing closer than this gap can be struck (a catapult cannot drop a stone at its own wheels)
+    #: Hit points a creature knits back per second once nothing has struck it for :data:`REGEN_CALM` seconds.
+    #: Out of combat, never during it: continuous regeneration would put a hard floor under the damage needed to
+    #: kill the thing at all, and with blows rolling 75-125 % every camp at that floor would be a coin flip.
+    regen: float = 0.0
 
     @property
     def melee(self) -> bool:
@@ -182,6 +193,16 @@ class UnitInfo:
     def ranged(self) -> bool:
         """A shooter: Arrows and Longbows are its upgrades (a healer's blow is not)."""
         return self.range >= 1 and self.damage > 0 and not self.heal
+
+    @property
+    def siege(self) -> bool:
+        """A siege engine: its shot lands on the ground it was fired at and splashes.
+
+        Not merely "its blow splashes": a golem's slam does too, and it is a melee brute that judges
+        nothing, aims at nothing and never vetoes its own blow.  Every rule about aiming a stone, the
+        crew's own judgement and its minimum range asks this rather than :attr:`splash`.
+        """
+        return self.splash > 0.0 and not self.melee
 
     @property
     def soldier(self) -> bool:
@@ -212,6 +233,52 @@ UNITS: Final[dict[UnitType, UnitInfo]] = {
                               "Heals a wounded ally 15 at a cast; a weak blow when no one needs it", radius=0.38, heal=15, windup=0.5,
                               armor_class=ArmorClass.UNARMORED),
 }
+
+#: What a player can train, in card order: everything but the neutral creatures.  Every loop that means
+#: "the game's units" walks this rather than :class:`UnitType`, which now also holds the wilds.
+PLAYABLE_UNITS: Final[tuple[UnitType, ...]] = (UnitType.PEASANT, UnitType.FOOTMAN, UnitType.ARCHER, UnitType.SCOUT,
+                                               UnitType.KNIGHT, UnitType.CATAPULT, UnitType.CLERIC)
+
+
+# -- The wilds ---------------------------------------------------------------------
+#
+# Neutral creatures guard the contested deposits.  Each is chosen for a unit the balance data says is
+# dead weight, and each is a shape the roster does not already own (docs/warband-monsters.md):
+#
+# | creature | hp  | dmg | armour        | range | wind-up + cooldown | speed | what it rewards                       |
+# |----------|-----|-----|---------------|-------|--------------------|-------|---------------------------------------|
+# | wolf     |  40 |   6 | 0 light       | melee | 0.2 + 0.9          | 4.0   | nothing: the cheap minute-two camp    |
+# | spider   |  45 |   8 | 0 light       | 5     | 0.4 + 1.6          | 2.2   | the scout, which closes the five tiles|
+# | troll    | 220 |  14 | 0 unarmoured  | melee | 0.45 + 1.4         | 1.9   | the archer: piercing lands x1.5 on it |
+# | golem    | 170 |  18 | 2 heavy, splash| melee | 0.7 + 2.5         | 1.3   | the archer again, by punishing clumps |
+#
+# The troll is deliberately *unarmoured* rather than a high-armour sponge: armour is flat subtraction
+# with a floor of one, so plating it would make an archer's arrow land for 1 and turn every camp into a
+# knights-only check.  High hit points and no armour cost time and exposure instead, and leave the
+# archer the efficient answer.  Its regeneration is out-of-combat only (:attr:`UnitInfo.regen`).
+
+WILD_UNITS: Final[dict[UnitType, UnitInfo]] = {
+    UnitType.WOLF: UnitInfo("Dire Wolf", Cost(0), 40, 6, 0, MELEE, 0.9, 4.0, 7, 0.0, BuildingType.LAIR, "",
+                            "A pack hunter: fast, fragile and never alone", radius=0.40, windup=0.2,
+                            turn=math.radians(450)),
+    UnitType.SPIDER: UnitInfo("Venom Spider", Cost(0), 45, 8, 0, 5.0, 1.6, 2.2, 7, 0.0, BuildingType.LAIR, "",
+                              "Spits venom from five tiles; helpless once something reaches it", radius=0.45, windup=0.4),
+    UnitType.TROLL: UnitInfo("Troll", Cost(0), 220, 14, 0, MELEE, 1.4, 1.9, 6, 0.0, BuildingType.LAIR, "",
+                             "Bare-skinned and hard to put down; knits its wounds back once left alone",
+                             radius=0.58, windup=0.45, armor_class=ArmorClass.UNARMORED, regen=8.0),
+    UnitType.GOLEM: UnitInfo("Stone Golem", Cost(0), 170, 18, 2, MELEE, 2.5, 1.3, 5, 0.0, BuildingType.LAIR, "",
+                             "Slams the ground: every enemy around its mark is caught", radius=0.60, splash=1.3,
+                             windup=0.7, turn=math.radians(150), armor_class=ArmorClass.HEAVY),
+}
+UNITS.update(WILD_UNITS)
+CREATURES: Final[tuple[UnitType, ...]] = tuple(WILD_UNITS)
+#: Buildings nobody names: the two gold deposits and the lair.  No race tweaks them and no race draws them.
+WILD_BUILDINGS: Final[frozenset[BuildingType]] = frozenset({BuildingType.GOLD_MINE, BuildingType.GOLD_SEAM, BuildingType.LAIR})
+#: What a player builds, in card order: everything the wilds do not own.  Every loop that means "the game's
+#: buildings" -- a race's names, the painted sheets, a jittered rulebook, the art lint -- walks this.
+BUILT: Final[tuple[BuildingType, ...]] = tuple(bt for bt in BuildingType if bt not in WILD_BUILDINGS)
+
+REGEN_CALM: Final = 6.0  # seconds since the last blow landed on it before a creature's regeneration starts
 
 
 # -- Gold deposits -----------------------------------------------------------------
@@ -302,6 +369,11 @@ BUILDINGS: Final[dict[BuildingType, BuildingInfo]] = {
     BuildingType.GOLD_SEAM: BuildingInfo("Gold Seam", Cost(0), 0, 0, 5, 0.0, 0, 0, "",
                                          f"A wide seam that never runs dry: {SEAM_PER_TRIP} gold a trip",
                                          mine=MineInfo(SEAM_PER_TRIP, SEAM_SLOTS, endless=True)),
+    # A den wears a building's fortified armour, so a siege stone lands on it at x1.5: the catapult's price rise
+    # left it with nothing to do before the first walls, and a camp is that job.  Its hoard is its
+    # :attr:`~warband.sim.model.Building.gold`, paid out whole to whoever brings it down.
+    BuildingType.LAIR: BuildingInfo("Lair", Cost(0), 900, 2, 3, 0.0, 4, 0, "",
+                                    "A creature den: its guards come back from it until it is torn down"),
 }
 
 
@@ -477,6 +549,19 @@ STARTING_LUMBER: Final = 500
 #: (the bodies themselves are :attr:`UnitInfo.radius`).  A jittered rulebook never moves a radius, so this holds.
 MAX_UNIT_RADIUS: Final = max(info.radius for info in UNITS.values())
 LEASH: Final = 6.0  # how far an idle unit chases before it walks home
+
+# -- Creature camps ----------------------------------------------------------------
+# A camp is a lair with its guards placed around it, and it resets rather than streaming.  A den that
+# emitted units would either eat an army during the fight (no decision in it) or trickle so slowly that
+# clearing it is beating down an undefended building; a camp that comes back once it is left alone makes
+# the decision crisp instead -- clear the whole thing, lair and all, in one committed push and it is yours
+# for good; break off and you paid units for nothing.
+CAMP_WATCH: Final = 7.0  # tiles from the lair within which an intruder rouses the camp…
+CAMP_HOLD: Final = 11.0  # …and beyond which the camp counts it gone and settles back
+CAMP_CALM: Final = 8.0  # seconds with nobody in CAMP_HOLD before a camp starts putting itself back together
+CAMP_REGEN: Final = 10.0  # hit points a settled guard standing at its post knits back per second
+CAMP_RESPAWN: Final = 25.0  # seconds a settled camp takes to bring one fallen guard back out of the lair
+CAMP_POST: Final = 2.6  # tiles from the lair's middle a guard is posted
 UNDER_ATTACK_COOLDOWN: Final = 20.0
 SIM_DT: Final = 0.05  # the simulation runs at 20 Hz regardless of the frame rate
 VISION_EVERY: Final = 4  # ticks between fog recomputations
@@ -518,6 +603,12 @@ PLAYERS: Final[list[PlayerInfo]] = [
     PlayerInfo("Slate", (119, 154, 210)),
 ]
 MAX_PLAYERS: Final = len(PLAYERS)  # the seats a match can hold: one to a colour
+#: The wilds.  Every world has one seat past its playable ones, and the neutral creatures and their lairs
+#: belong to it.  It exists because ``Unit.player`` is a plain ``int`` that the simulation indexes
+#: ``self.players`` with on every step: a ``-1`` sentinel would quietly answer with the last real seat.
+#: It is alive for ever, owns no purse, no supply and no economy, and is out of victory and elimination;
+#: its colour is the bone-grey of the creature sheets, which no player wears.
+NEUTRAL: Final = PlayerInfo("Wilds", (150, 148, 140))
 
 
 class Difficulty(IdentityEnum):

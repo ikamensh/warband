@@ -31,6 +31,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Final
 
+from warband.sim import camps as camping
 from warband.sim import path as pathing
 from warband.sim.model import Pos, World, tile_center
 from warband.sim.rules import BUILDINGS, EXPANSION_GOLD, MAX_PLAYERS, MINE_GOLD, BuildingType, Layout, MapTheme, Race, Terrain, UnitType
@@ -88,6 +89,25 @@ _SITE_ROOM: Final = 60  # open tiles within six of a natural or third, so a hall
 _MIN_CELL: Final = (24, 20)  # the smallest share of a map that has ever made a fair base: Small with four seats
 _MAX_CELL: Final = 5000  # the largest share a seat can hold: beyond it the walk to the next base is the whole match
 _GLADE_ROOM: Final = 1300  # tiles of a Forest cell per extra clearing cut in it, beyond the two the layout always cuts
+#: A creature camp squats beside a *contested* deposit -- a third mine or a gold seam -- and never beside a
+#: seat's own mine or its natural.  That is the whole placement rule, and it is what the camps are for: the
+#: opening is untouched, the expansion every build order needs is free, and the ground a player has to leave
+#: home for is held by something.  A seat that wants the middle now has to take it from somebody at minute
+#: four, which is a job for an army that is otherwise pure cost until the timing push (docs/balance.md).
+# Tiles between the deposit's middle and its lair's: near enough to guard it, not on top of it.  Two numbers
+# rather than a pair, because a Final tuple is a value the compiled simulation does not always set
+# (mypyc inlines a Final scalar and leaves a Final tuple's slot empty; docs/fast-simulation.md).
+_CAMP_NEAREST: Final = 4.5
+_CAMP_FURTHEST: Final = 9.0
+_CAMP_SPACING: Final = 5  # Chebyshev tiles between a lair's corner and any other footprint's: two tiles of daylight
+_CAMP_ROOM: Final = 40  # open tiles within six of a lair, so an army has somewhere to fight
+#: What each kind of camp is made of and what its den is sitting on.  A third mine draws one of the two
+#: small camps; the endless seam, worth the most and standing furthest out, is always the big one.
+_ROSTERS: Final[dict[str, tuple[tuple[UnitType, ...], int]]] = {
+    "den": ((UnitType.WOLF,) * 4, 500),
+    "nest": ((UnitType.SPIDER, UnitType.SPIDER, UnitType.WOLF, UnitType.WOLF), 600),
+    "lair": ((UnitType.TROLL, UnitType.GOLEM, UnitType.SPIDER, UnitType.SPIDER), 1500),
+}
 
 Point = tuple[float, float]
 
@@ -199,15 +219,16 @@ def _layout_refusal(spec: _Spec, cols: int, rows: int, cw: int, ch: int) -> str 
 
 
 def generate(seed: int, width: int = 48, height: int = 40, players: int = 2, human: int | None = 0, theme: MapTheme = MapTheme.SUMMER,
-             races: Sequence[Race | None] | None = None, layout: Layout | None = None) -> World:
+             races: Sequence[Race | None] | None = None, layout: Layout | None = None, wilds: bool = True) -> World:
     """*races* names each player's race; ``None`` entries are drawn from the seed, so a seed reproduces
     the whole match.  Without a list the *human* leads Humans and the computer players are drawn.
-    *layout* ``None`` draws one from the seed."""
-    return build(seed, width, height, players, human, theme, races, layout)[0]
+    *layout* ``None`` draws one from the seed.  *wilds* ``False`` leaves the contested deposits unguarded,
+    which is how a map is measured against one with camps on it."""
+    return build(seed, width, height, players, human, theme, races, layout, wilds)[0]
 
 
 def build(seed: int, width: int = 48, height: int = 40, players: int = 2, human: int | None = 0, theme: MapTheme = MapTheme.SUMMER,
-          races: Sequence[Race | None] | None = None, layout: Layout | None = None) -> tuple[World, dict]:
+          races: Sequence[Race | None] | None = None, layout: Layout | None = None, wilds: bool = True) -> tuple[World, dict]:
     """:func:`generate` plus the audit report of the map it settled on (``attempt`` counts the retries)."""
     if not 2 <= players <= MAX_PLAYERS:
         raise ValueError(f"2 to {MAX_PLAYERS} players, not {players}")
@@ -226,7 +247,7 @@ def build(seed: int, width: int = 48, height: int = 40, players: int = 2, human:
     problems: list[str] = []
     without: tuple[World, dict] | None = None  # the best map so far that is fair but is missing something wished for
     for attempt in range(RETRIES):
-        world, report = _attempt(random.Random(seed * 16 + attempt), seed, width, height, players, human, theme, chosen, layout)
+        world, report = _attempt(random.Random(seed * 16 + attempt), seed, width, height, players, human, theme, chosen, layout, wilds)
         report["attempt"] = attempt
         if not report["problems"]:
             if not report["wishes"]:
@@ -754,14 +775,15 @@ def _forest_roads(cv: _Canvas, rng: random.Random, hc: Pos, natural: Pos | None,
 # -- Sites -------------------------------------------------------------------------
 
 
-def _fits(cv: _Canvas, pos: Pos, rects: list[tuple[Pos, int]], size: int = 3) -> bool:
+def _fits(cv: _Canvas, pos: Pos, rects: list[tuple[Pos, int]], size: int = 3, spacing: int | None = None) -> bool:
     """Every copy of a *size* mine at *pos* lies off the edge, on ground without water, rock or a
     layout's wall, clear of other footprints and *_SITE_SPACING* from other mine sites.
 
     A deposit wider than the three tiles every mine had wants that much more room on each side, and
     *slack* is that much and no more: it is zero for two 3x3 sites, so every map that was drawn
     before the seams existed is drawn exactly as it was."""
-    spacing = _SITE_SPACING[cv.wide]
+    if spacing is None:
+        spacing = _SITE_SPACING[cv.wide]
     for image in cv.rect_images(pos, size):
         for x, y in _block(image, size=size):
             if not cv.inside(x, y) or cv.grid[y][x] in (Terrain.WATER, Terrain.ROCK) or (x, y) in cv.protected:
@@ -791,9 +813,9 @@ def _canonical_sites(cv: _Canvas, size: int = 3) -> Iterable[Pos]:
 
 
 def _pick(cv: _Canvas, scored: list[tuple[float, Pos]], rects: list[tuple[Pos, int]], clearable: bool,
-          size: int = 3, room: int = _SITE_ROOM) -> Pos | None:
+          size: int = 3, room: int = _SITE_ROOM, spacing: int | None = None) -> Pos | None:
     for _score, pos in sorted(scored, reverse=True):
-        if _fits(cv, pos, rects, size) and _room(cv, pos, clearable, size) >= room:
+        if _fits(cv, pos, rects, size, spacing) and _room(cv, pos, clearable, size) >= room:
             return pos
     return None
 
@@ -862,11 +884,45 @@ def _seam_site(cv: _Canvas, rng: random.Random, spec: _Spec, halls: list[Point],
     return _pick(cv, scored, rects, spec.third_clearing > 0, size, _SEAM_ROOM)
 
 
+def _camp_site(cv: _Canvas, rng: random.Random, anchor: Point, rects: list[tuple[Pos, int]]) -> Pos | None:
+    """A lair site guarding the deposit whose middle is *anchor*, within reach of it, on
+    ground with room to fight over, and clear of every footprint already claimed.
+
+    A camp is placed the way a mine is -- one canonical site, one copy to a cell -- so every seat faces the
+    same camp at the same remove from the same deposit and the audit's congruence still holds.  Its own
+    spacing is tighter than a deposit's (:data:`_CAMP_SPACING`), because a den that had to keep a mine's
+    distance from the dig it guards would not be guarding it.
+    """
+    scored = []
+    for pos in _canonical_sites(cv):
+        away = _dist(_mine_centre(pos), anchor)
+        if not _CAMP_NEAREST <= away <= _CAMP_FURTHEST:
+            continue
+        scored.append((-away + rng.uniform(0.0, 2.0), pos))  # as close to the deposit as the ground allows
+    return _pick(cv, scored, rects, True, 3, _CAMP_ROOM, _CAMP_SPACING)
+
+
+def _guard(cv: _Canvas, rng: random.Random, deposit: Pos, size: int, kind: str, rects: list[tuple[Pos, int]],
+           dens: list[tuple[Pos, str]]) -> None:
+    """Put a camp of *kind* beside the deposit at *deposit*, if there is room for one.
+
+    A camp is a wish, never a fault: an unguarded deposit is a poorer map, not an unfair one, and a
+    layout whose walls leave no room beside a dig would otherwise refuse the whole seed.
+    """
+    spot = _camp_site(cv, rng, _mine_centre(deposit, size), rects)
+    if spot is None:
+        return
+    rects += [(image, 3) for image in cv.rect_images(spot, 3)]
+    cv.paint(_block(spot), Terrain.GRASS)
+    cv.paint(cv.within(_mine_centre(spot), 4), Terrain.GRASS, over=(Terrain.TREES,))
+    dens.append((spot, kind))
+
+
 # -- Assembly ----------------------------------------------------------------------
 
 
 def _attempt(rng: random.Random, seed: int, width: int, height: int, players: int, human: int | None, theme: MapTheme,
-             races: list[Race], layout: Layout) -> tuple[World, dict]:
+             races: list[Race], layout: Layout, wilds: bool = True) -> tuple[World, dict]:
     spec = _SPECS[layout]
     cv = _Canvas(width, height, players)
     clearing = _clearing(spec, cv.cw, cv.ch, cv.wide)
@@ -906,6 +962,10 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
         else:  # the empty cell's stays, neutral
             _claim(cv, natural, EXPANSION_GOLD, rects, mines, clearing=spec.natural_clearing)
     thirds: list[Pos] = []
+    # Every camp on the map, in the order they are raised: one canonical den to a contested deposit, copied
+    # to every cell as the deposit itself is.  A seat's own mine and its natural are never guarded -- the
+    # opening is untouched and the first expansion is free; what a seat has to leave home for is held.
+    dens: list[tuple[Pos, str]] = []
     for _ in range(_third_orbits(spec, cv.cw, cv.ch)):
         third = _third_site(cv, rng, spec, halls, rects, walls.prefer_third)
         if third is None:
@@ -913,12 +973,16 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
             break
         thirds.append(third)
         _claim(cv, third, EXPANSION_GOLD, rects, mines, clearing=spec.third_clearing)
+        if wilds:
+            _guard(cv, rng, third, 3, rng.choice(("den", "nest")), rects, dens)
     if _wants_a_seam(spec, width, height, cv.cw, cv.ch):
         seam = _seam_site(cv, rng, spec, halls, rects)
         if seam is None:
             wishes.append("no room for a gold seam")
         else:  # an endless deposit holds no stock: what it gives is a trip at a time, as long as it is held
             _claim(cv, seam, 0, rects, mines, clearing=spec.third_clearing, kind=BuildingType.GOLD_SEAM)
+            if wilds:  # the richest prize and the furthest out: the big camp, every time
+                _guard(cv, rng, seam, BUILDINGS[BuildingType.GOLD_SEAM].size, "lair", rects, dens)
     mines += walls.mines
     cv.symmetrize()
     if layout is Layout.FOREST:
@@ -931,6 +995,10 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
         world.place_building(seat, BuildingType.TOWN_HALL, pos)
     for pos, kind, gold in mines:
         world.place_building(None, kind, pos).gold = gold
+    for den, camp_kind in dens:
+        roster, hoard = _ROSTERS[camp_kind]
+        for image in cv.rect_images(den, 3):
+            camping.place(world, image, list(roster), hoard)
     for seat in range(players):
         for i in range(3):
             world.spawn_unit(seat, UnitType.PEASANT, tile_center(cv.images((hall[0] + i, hall[1] + 3))[seat]))
@@ -1044,6 +1112,7 @@ def audit(world: World) -> dict:
     report["connected"] = all(d in region for d in doors + mine_doors)
     report["expansions"] = len(world.mines()) - len(halls)
     report["seams"] = sum(1 for m in world.mines() if m.type is BuildingType.GOLD_SEAM)
+    report["camps"] = len(world.camps)
     total = world.width * world.height
     report["trees"] = sum(1 for row in world.terrain for t in row if t is Terrain.TREES) / total
     report["water"] = sum(1 for row in world.terrain for t in row if t is Terrain.WATER) / total

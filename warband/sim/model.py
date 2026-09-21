@@ -42,7 +42,7 @@ from warband.sim.rules import (
     MINE_TIME, PLAYERS,
     PLUNDER_SHARE, REGROWTH_SECONDS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION, STARTING_GOLD, STARTING_LUMBER,
     FORMATION_ARMOR, FORMATION_HOLD, FORMATION_LOOKAHEAD, FORMATION_MARCH, FORMATION_SLACK, FORMATION_SPACING, FORMATION_WIDTH, ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, FRIENDLY_WORTH, SIEGE_BUILDING_WORTH, SIEGE_STEP, SIEGE_WORTH, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
-    MAX_QUEUED_ORDERS, MAX_UNIT_RADIUS, UNDER_ATTACK_COOLDOWN, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
+    CREATURES, MAX_QUEUED_ORDERS, MAX_UNIT_RADIUS, NEUTRAL, REGEN_CALM, UNDER_ATTACK_COOLDOWN, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
     Terrain, UnitInfo, UnitType, Upgrade, UpgradeInfo, ArmorClass, AttackType, an, damage_factor, listing,
 )
 
@@ -160,6 +160,21 @@ EASE_STEP_VARIANCE: Final = 0.3
 EASE_JITTER: Final = 0.7  # radians either side of straight away from the crowd the step may veer
 EASE_GAIN: Final = 0.1  # tiles more room the spot must offer than where the unit stands, so nobody steps into a neighbour
 AUTO_EVERY: Final = round(1 / SIM_DT)  # ticks between an idle building's looks at its endless recruits: the settlement's second
+
+
+#: The neutral creatures, as a set to ask a unit's type of on every spawn and every load.
+WILD: Final[frozenset[UnitType]] = frozenset(CREATURES)
+
+
+def unit_stats(race: Race, unit_type: UnitType) -> UnitInfo:
+    """The numbers a unit reports: its race's own, or the shared table's for a neutral creature.
+
+    Every race fields the same seven roles and names them; the wilds are nobody's, so no race has an
+    entry for one and a creature reads :data:`~warband.sim.rules.UNITS` straight.  It is the shared
+    table rather than a table of its own, so a rulebook variant that patches ``UNITS`` in place is
+    still the rulebook the simulation runs.
+    """
+    return UNITS[unit_type] if unit_type in WILD else RACES[race].units[unit_type]
 
 
 def recorded(method):
@@ -300,6 +315,10 @@ class Player:
     name: str
     color: tuple[int, int, int]
     human: bool = False
+    #: The wilds: the one seat past :attr:`World.seats` that owns the neutral creatures and their lairs.
+    #: It never wins, is never eliminated, has no purse, no supply, no research and no plans, and no
+    #: client may ever drive it.  Every loop that means "a playing seat" reads ``world.seats``.
+    neutral: bool = False
     gold: int = STARTING_GOLD
     lumber: int = STARTING_LUMBER
     alive: bool = True
@@ -342,7 +361,8 @@ class Unit:
     state: str = "idle"  # idle | move | attack | chop | build
     progress: float = 0.0
     last_distance: float = math.inf
-    charge: float = 0.0  # healing accumulated below one hit point
+    charge: float = 0.0  # healing accumulated below one hit point, and a creature's regeneration below one
+    struck: float = -1000.0  # simulation time a blow last landed on it: what "out of combat" means to a creature
     replan_at: float = 0.0  # simulation time from which the unit may plan again
     auto_work: bool = True  # Stop/Hold parks a worker until another order is given.
     # Simulation time at which a player or a brain last had this worker in hand: the moment an order of theirs was
@@ -355,7 +375,7 @@ class Unit:
     def __post_init__(self) -> None:
         # Type and race are fixed for life, so the stats they select are read once
         # rather than through RACES on every one of a match's millions of lookups.
-        self.info: UnitInfo = RACES[self.race].units[self.type]
+        self.info: UnitInfo = unit_stats(self.race, self.type)
         self.max_hp: int = self.info.hp
         self.is_worker: bool = self.type is UnitType.PEASANT
         self.radius: float = self.info.radius  # its body: a catapult fills far more ground than a peasant
@@ -433,6 +453,24 @@ class Building:
 
 
 Entity = Unit | Building
+
+
+@dataclass
+class Camp:
+    """A creature camp: its lair, the roster posted round it, and how its reset is going.
+
+    The three lists run together, one entry per post: what kind of creature holds it, where that
+    creature stands when the camp is settled, and which unit is standing it now (an id no longer in
+    the world is a post the lair has yet to refill).  The rules are in :mod:`warband.sim.camps`.
+    """
+
+    lair: int
+    kinds: list[str]  # UnitType values, one per post
+    posts: list[Point]
+    guards: list[int]
+    roused: bool = False
+    quiet_since: float = -1.0  # when the last intruder left; negative while the camp is in a fight
+    rebuild_at: float = 0.0  # simulation time the lair next sends a fallen guard out
 
 
 @dataclass
@@ -569,9 +607,16 @@ class World:
         self.theme = theme
         self.layout = layout
         self.scripted = scripted  # a mission decides the outcome: elimination still happens, but nobody surrenders and no winner is declared
+        #: How many seats are playing.  ``self.players`` holds one more: the wilds, which own the neutral
+        #: creatures.  Everything that means "a seat in the match" counts these, never ``len(self.players)``.
+        self.seats = player_count
         self.players = [Player(i, PLAYERS[i].name, PLAYERS[i].color, human=(i == human), race=races[i] if races is not None else Race.HUMAN)
                         for i in range(player_count)]
+        #: The wilds' seat number: the index every creature and every lair carries as its ``player``.
+        self.neutral = player_count
+        self.players.append(Player(self.neutral, NEUTRAL.name, NEUTRAL.color, neutral=True))
         self.regrowth: list[tuple[Pos, float]] = []  # (felled tree tile, simulation time it grows back) — the elven art
+        self.camps: list[Camp] = []  # the creature camps on the map; :mod:`warband.sim.camps` runs them
         self.units: dict[int, Unit] = {}
         self.buildings: dict[int, Building] = {}
         self.projectiles: dict[int, Projectile] = {}
@@ -591,6 +636,11 @@ class World:
                     self._blocked[y * width + x] = 1
         self.explored = [bytearray(width * height) for _ in self.players]
         self.visible = [bytearray(width * height) for _ in self.players]
+        # The wilds have no fog: a creature is roused by what walks up to it, and its own reach is its sight
+        # radius and its camp's leash, so nothing is gained by painting discs for a seat that never decides
+        # anything from them.  update_vision leaves these two alone.
+        self.explored[self.neutral][:] = b"\x01" * (width * height)
+        self.visible[self.neutral][:] = b"\x01" * (width * height)
         # Units by tile, refilled each step.  Every tile keeps its list for the world's life, so that indexing
         # the units allocates nothing but room for the tiles someone stands on.
         self._buckets: list[list[Unit]] = [[] for _ in range(width * height)]
@@ -781,7 +831,7 @@ class World:
         moving: list[set[tuple[Pos, int]]] = [set() for _ in self.players]
         for unit in self.units.values():
             moving[unit.player].add((unit.tile, unit.info.sight))
-        for player in self.players:
+        for player in self.players[:self.seats]:  # the wilds have no fog: their grids are all ones and stay so
             visible = self.visible[player.id]
             discs = standing[player.id]
             layer = self._sight_layers.get(player.id)
@@ -809,14 +859,14 @@ class World:
         return any(b.player == player_id for b in self.buildings.values())
 
     def _exposed_players(self) -> set[int]:
-        return {p.id for p in self.players if self._is_exposed(p.id)}
+        return {p.id for p in self.players[:self.seats] if self._is_exposed(p.id)}
 
     def _reveal_last_standings(self) -> None:
         for exposed_id in sorted(self._exposed_players()):
             holdings = [b for b in self.buildings.values() if b.player == exposed_id]
             if not holdings:
                 continue
-            for viewer in self.players:
+            for viewer in self.players[:self.seats]:
                 if viewer.id == exposed_id:
                     continue
                 visible = self.visible[viewer.id]
@@ -878,7 +928,7 @@ class World:
 
     def unit_info(self, player: int | None, unit_type: UnitType) -> UnitInfo:
         """What *unit_type* is for *player*'s race: its name, numbers and training time."""
-        return RACES[self.race_of(player)].units[unit_type]
+        return unit_stats(self.race_of(player), unit_type)
 
     def building_info(self, player: int | None, building_type: BuildingType) -> BuildingInfo:
         return RACES[self.race_of(player)].buildings[building_type]
@@ -1012,7 +1062,12 @@ class World:
         p.lumber += cost.lumber
 
     def supply(self, player: int) -> tuple[int, int]:
-        """``(used, cap)``: units alive plus units queued, against finished farms and halls."""
+        """``(used, cap)``: units alive plus units queued, against finished farms and halls.
+
+        The wilds are fed by nobody and feed nobody: their creatures are placed with the map, not
+        trained, so they neither take supply nor have any."""
+        if self.players[player].neutral:
+            return (0, 0)
         used = len(self.player_units(player)) + sum(len(b.queue) for b in self.player_buildings(player))
         cap = sum(b.info.supply for b in self.player_buildings(player, done=True))
         return used, cap
@@ -1583,7 +1638,7 @@ class World:
 
     def spawn_unit(self, player: int, unit_type: UnitType, point: Point) -> Unit:
         race = self.race_of(player)
-        unit = Unit(self._new_id(), unit_type, player, point[0], point[1], RACES[race].units[unit_type].hp, race=race)
+        unit = Unit(self._new_id(), unit_type, player, point[0], point[1], unit_stats(race, unit_type).hp, race=race)
         self.units[unit.id] = unit
         self._bucket(unit)
         self.players[player].alive = True  # a side cleared by a mission comes back with its first unit
@@ -1646,6 +1701,8 @@ class World:
         self._dangers.clear()
         self._index_units()
         self.settlement.update()
+        if self.camps and self.tick % camps.EVERY == 0:
+            camps.update(self)
         for building in list(self.buildings.values()):
             self._update_building(building, dt)
         for unit in list(self.units.values()):
@@ -1657,7 +1714,7 @@ class World:
         if self.regrowth and self.tick % round(1 / SIM_DT) == 0:
             self._regrow()
         if self.tick % round(worker_ai.REBALANCE_EVERY / SIM_DT) == 0:
-            for player in self.players:
+            for player in self.players[:self.seats]:
                 if player.alive:
                     worker_ai.rebalance_workers(self, player.id)
         if self.tick % VISION_EVERY == 0:
@@ -1807,6 +1864,15 @@ class World:
     def _update_unit(self, u: Unit, dt: float) -> None:
         cooldown = u.cooldown - dt
         u.cooldown = cooldown if cooldown > 0.0 else 0.0
+        regen = u.info.regen
+        if regen and u.hp < u.max_hp and self.time - u.struck >= REGEN_CALM:
+            # Out of combat only.  Continuous regeneration would put a hard floor under the damage needed to
+            # kill the thing at all, and with blows rolling 75-125 % a camp sitting at that floor is a coin flip.
+            u.charge += regen * dt
+            whole = int(u.charge)
+            if whole:
+                u.charge -= whole
+                u.hp = min(u.max_hp, u.hp + whole)
         x, y = u.x, u.y
         self._act(u, dt)
         u.vx, u.vy = (u.x - x) / dt, (u.y - y) / dt  # its own walking, before the crowd shoves it
@@ -1877,7 +1943,11 @@ class World:
                 if self._take_cover(u, dt, worker_ai.safe_navigation(self, u.player)):
                     return
                 u.path, u.path_goal, u.exact = [], None, None
-        elif self.tick % 5 == 0:
+        elif self.tick % 5 == 0 and not self.players[u.player].neutral:
+            # A creature picks no fight of its own.  Its camp decides, as one (:mod:`warband.sim.camps`):
+            # a guard that answered whatever wandered into its own sight could be pulled out of the camp
+            # one at a time from beyond the camp's watch, which is the cheese the shared aggro exists to
+            # stop.  Being hit still answers, through :meth:`_hit`.
             patient = self._healing_patient(u, u.info.sight) if u.info.heal else None
             if patient is not None:
                 u.home = u.pos
@@ -1893,7 +1963,7 @@ class World:
     def _auto_target(self, u: Unit) -> Entity | None:
         """The enemy a fighter that is left to itself takes on: a siege crew the best clear stone in reach or a
         short roll forward, anyone else the first to fight in sight."""
-        if u.info.splash:
+        if u.info.siege:
             return self._siege_choice(u, SIEGE_STEP)
         return self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range)
 
@@ -2061,7 +2131,7 @@ class World:
                 return
             # Only what it can strike from here, measured from its centre: a more dangerous enemy just out of reach
             # must not keep it from answering one in reach.
-            target = (self._siege_choice(u, 0.0, standing=True) if u.info.splash
+            target = (self._siege_choice(u, 0.0, standing=True) if u.info.siege
                       else self._nearest_enemy(u.player, u.pos, self.range_of(u) + u.radius + 0.05, min_radius=u.info.min_range + u.radius))
             if target is None or not self._in_range(u, target):
                 return
@@ -2085,7 +2155,7 @@ class World:
             return True
         if not self._in_range(u, target):
             return False
-        return not (u.info.splash and self.tick % 5 == 0 and self._aim_point(u, target, auto=True) is None)
+        return not (u.info.siege and self.tick % 5 == 0 and self._aim_point(u, target, auto=True) is None)
 
     def _do_move(self, u: Unit, order: Move, dt: float) -> None:
         if self._march(u, order, dt):
@@ -2218,7 +2288,7 @@ class World:
                 u.home = home
                 u.orders.appendleft(Heal(patient.id, auto=True))
                 return
-        if order.auto and u.info.splash and self.tick % 5 == 0:
+        if order.auto and u.info.siege and self.tick % 5 == 0:
             if (u.info.min_range and self._gap(u, target) < u.info.min_range) or not self._in_range(u, target) \
                     or self._aim_point(u, target, auto=True) is None:
                 better = self._siege_choice(u, SIEGE_STEP)  # no clear stone at this one: look for one that is
@@ -2233,7 +2303,7 @@ class World:
                 if better is not None and self._threat(better) < threat:
                     target = better
                     self._retarget(u, order, better)
-        if order.auto and u.cooldown <= 0 and u.info.ranged and not u.info.splash and self._has(u.player, Upgrade.MARKSMANSHIP):
+        if order.auto and u.cooldown <= 0 and u.info.ranged and not u.info.siege and self._has(u.player, Upgrade.MARKSMANSHIP):
             mark = self._mark(u)  # a drilled shooter ready to loose picks its mark anew with each arrow
             if mark is not None and mark is not target:
                 target = mark
@@ -2289,7 +2359,7 @@ class World:
             u.state = "attack"
             if not faced or u.cooldown > 0.0:
                 return
-            if u.info.splash and self._aim_point(u, target, auto=auto) is None:
+            if u.info.siege and self._aim_point(u, target, auto=auto) is None:
                 return  # no clear shot: the crew waits rather than drop a stone on its own side
             u.windup = u.info.windup  # drawn back from now; the blow lands that many seconds on
             if u.windup <= 0.0:
@@ -2300,7 +2370,7 @@ class World:
         if target.hp <= 0 or (isinstance(target, Unit) and target.hidden) or self._gap(u, target) > self.range_of(u) + WINDUP_SLACK:
             u.cooldown = u.info.cooldown  # swung at air
             return
-        if u.info.splash:
+        if u.info.siege:
             aim = self._aim_point(u, target, auto=auto)
             if aim is None:
                 return  # friends walked under the shot while the arm was cranked: wait for a clear one
@@ -3263,7 +3333,7 @@ class World:
                     pending[target.id] = pending.get(target.id, 0) + dealt
             for shooter in self.units.values():
                 order = shooter.order
-                if shooter.windup > 0.0 and shooter.info.ranged and not shooter.info.splash and isinstance(order, Attack):
+                if shooter.windup > 0.0 and shooter.info.ranged and not shooter.info.siege and isinstance(order, Attack):
                     target = self.units.get(order.target)
                     if target is not None:
                         dealt = max(1, int(round(self.damage_of(shooter) * damage_factor(shooter.info.attack, target.info.armor_class)))
@@ -3319,8 +3389,27 @@ class World:
         damage = self.damage_of(u)
         if u.info.melee:
             self._hit(target, damage, player=u.player, source=u.id, source_type=u.type.value, attack=u.info.attack)
+            if u.info.splash:
+                self._slam(u, target, damage)
         else:
             self._launch_arrow(u, target, damage)
+
+    def _slam(self, u: Unit, target: Entity, damage: int) -> None:
+        """A melee striker whose blow splashes (the golem) catches every other enemy around its mark.
+
+        Its own side is spared, unlike a stone's: a camp whose guards knocked each other down as they
+        swung would clear itself, and the lesson the slam teaches -- do not walk a melee ball into it --
+        lands either way.  The share beyond the mark is a stone's :data:`SPLASH_FRACTION`.
+        """
+        spot = self._target_point(target)
+        reach = self.splash_of(u)
+        splash = damage * SPLASH_FRACTION
+        for other in self.units_near(spot, reach + MAX_UNIT_RADIUS):
+            if other is target or other.player == u.player or other.hidden or other.hp <= 0:
+                continue
+            if dist(other.pos, spot) - other.radius > reach:
+                continue
+            self._hit(other, int(round(splash)), player=u.player, source=u.id, source_type=u.type.value, attack=u.info.attack)
 
     def _launch_arrow(self, shooter: Entity, target: Entity, damage: int) -> Projectile:
         start = self._target_point(shooter)
@@ -3479,7 +3568,7 @@ class World:
     def _siege_creeps(self, u: Unit, target: Entity, auto: bool) -> bool:
         """A crew on its own judgement whose target, though in reach, has no clear stone rolls closer: from nearer, the
         stone can come down beyond the target, clear of its own side.  It stops two splashes outside its minimum range."""
-        return (auto and u.info.splash > 0.0 and isinstance(target, Unit) and u.windup <= 0.0
+        return (auto and u.info.siege and isinstance(target, Unit) and u.windup <= 0.0
                 and self._gap(u, target) > u.info.min_range + 2 * self.splash_of(u)
                 and self._aim_point(u, target, auto=True) is None)
 
@@ -3541,6 +3630,8 @@ class World:
         roll = damage * self.rng.uniform(1 - HIT_VARIANCE, 1 + HIT_VARIANCE)
         dealt = max(1, int(round(roll)) - armor)
         target.hp -= dealt
+        if isinstance(target, Unit):
+            target.struck = self.time  # a creature knits nothing back while something is still hitting it
         own = target.player == player
         abandoned = isinstance(target, Building) and target.abandoned
         if target.hp <= 0 and target.player is not None and not own and not abandoned:
@@ -3554,6 +3645,7 @@ class World:
         self._alarm(target)
         if isinstance(target, Building) and target.hp <= 0:
             self._plunder(target, player, source)
+            self._hoard(target, player, source)
         striker = self.units.get(source)
         if striker is not None and isinstance(target, Unit) and target.hp > 0 and self._threat(target) == 0:
             current = target.order
@@ -3589,6 +3681,18 @@ class World:
         if loot:
             self.players[player].gold += loot
             self.events.append(Event("plunder", building.center, player=player, entity=source, other=building.id, amount=loot))
+
+    def _hoard(self, building: Building, player: int, source: int) -> None:
+        """What a den was sitting on, paid whole to whoever brought it down.
+
+        The lair is the payout as well as the respawn anchor, so a camp cleared but left standing is a
+        camp not yet cashed in.  Nothing but a lair carries gold it did not dig up, and a player's own
+        buildings never do, so the test is the stock itself."""
+        if building.type is not BuildingType.LAIR or building.gold <= 0 or player >= self.seats:
+            return
+        loot, building.gold = building.gold, 0
+        self.players[player].gold += loot
+        self.events.append(Event("hoard", building.center, player=player, entity=source, other=building.id, amount=loot))
 
     def _bury_the_dead(self) -> None:
         for unit in [u for u in self.units.values() if u.hp <= 0]:
@@ -3719,7 +3823,7 @@ class World:
         else:
             pos = (0.0, 0.0)
         for building in owned:  # before the units: a builder removed from its site would cancel it (WB-048)
-            if len(self.players) >= 3:
+            if self.seats >= 3:
                 self._abandon(building)  # the others fight on around what is left
             else:
                 self._remove_building(building, reason="resigned")
@@ -3748,7 +3852,7 @@ class World:
         self.events.append(Event("abandoned", b.center, player=b.player, entity=b.id, text=b.type.value))
 
     def _check_elimination(self) -> None:
-        for player in self.players:
+        for player in self.players[:self.seats]:  # the wilds are never eliminated and never win
             if not player.alive or any(unit.player == player.id for unit in self.units.values()):
                 continue
             buildings = self.player_buildings(player.id)
@@ -3761,14 +3865,14 @@ class World:
                 player.alive = False
                 player.surrendered = True
                 for building in buildings:
-                    if len(self.players) >= 3:
+                    if self.seats >= 3:
                         self._abandon(building)
                     else:
                         self._remove_building(building, reason="abandoned")
                 self.events.append(Event("surrendered", (0.0, 0.0), player=player.id,
                                          text=f"{player.name} surrenders: no units and no way to recruit"))
-        alive = [p for p in self.players if p.alive]
-        if self.winner is None and not self.scripted and len(alive) == 1 and len(self.players) > 1:
+        alive = [p for p in self.players[:self.seats] if p.alive]
+        if self.winner is None and not self.scripted and len(alive) == 1 and self.seats > 1:
             self.winner = alive[0].id
             self.events.append(Event("victory", (0.0, 0.0), player=self.winner, text=f"{alive[0].name} wins"))
 
@@ -3779,10 +3883,13 @@ class World:
             "width": self.width, "height": self.height, "theme": self.theme.value, "layout": self.layout.value,
             "terrain": ["".join(t.value[0] for t in row) for row in self.terrain],
             "players": [{"id": p.id, "name": p.name, "human": p.human, "race": p.race.value, "gold": p.gold, "lumber": p.lumber, "alive": p.alive,
+                         "neutral": p.neutral,
                          "surrendered": p.surrendered, "stats": dict(p.stats), "last_alert": p.last_alert, "last_hit": p.last_hit,
                          "upgrades": sorted(u.value for u in p.upgrades),
                          "assembly": list(p.assembly) if p.assembly is not None else None} for p in self.players],
             "regrowth": [[list(tile), when] for tile, when in self.regrowth],
+            "camps": [{"lair": c.lair, "kinds": list(c.kinds), "posts": [list(p) for p in c.posts], "guards": list(c.guards),
+                       "roused": c.roused, "quiet_since": c.quiet_since, "rebuild_at": c.rebuild_at} for c in self.camps],
             "units": [_unit_to_dict(u) for u in self.units.values()],
             "buildings": [_building_to_dict(b) for b in self.buildings.values()],
             "projectiles": [_projectile_to_dict(p) for p in self.projectiles.values()],
@@ -3798,10 +3905,14 @@ class World:
         letters = {t.value[0]: t for t in Terrain}
         terrain = [[letters[c] for c in row] for row in data["terrain"]]
         human = next((p["id"] for p in data["players"] if p["human"]), None)
-        world = cls(data["width"], data["height"], terrain, len(data["players"]), human=human, theme=MapTheme(data["theme"]),
-                    races=[Race(p.get("race", Race.HUMAN.value)) for p in data["players"]], layout=Layout(data["layout"]),
+        seats = [p for p in data["players"] if not p.get("neutral")]
+        world = cls(data["width"], data["height"], terrain, len(seats), human=human, theme=MapTheme(data["theme"]),
+                    races=[Race(p.get("race", Race.HUMAN.value)) for p in seats], layout=Layout(data["layout"]),
                     scripted=data.get("scripted", False))
         world.regrowth = [((tile[0], tile[1]), when) for tile, when in data.get("regrowth", [])]
+        world.camps = [Camp(lair=c["lair"], kinds=list(c["kinds"]), posts=[(p[0], p[1]) for p in c["posts"]],
+                            guards=list(c["guards"]), roused=c["roused"], quiet_since=c["quiet_since"],
+                            rebuild_at=c["rebuild_at"]) for c in data.get("camps", [])]
         for p, saved in zip(world.players, data["players"]):
             p.human = saved["human"]
             p.name = saved.get("name", p.name)
@@ -3885,7 +3996,7 @@ def _unit_to_dict(u: Unit) -> dict[str, Any]:
         "carrying": u.carrying.value if u.carrying else None, "carry": u.carry, "timer": u.timer,
         "inside": u.inside, "constructing": u.constructing, "home": list(u.home) if u.home else None, "state": u.state,
         "ease": list(u.ease) if u.ease else None, "charge": u.charge, "auto_work": u.auto_work,
-        "commanded": u.commanded,
+        "commanded": u.commanded, "struck": u.struck,
     }
 
 
@@ -3894,7 +4005,7 @@ def _unit_from_dict(d: dict[str, Any], race: Race) -> Unit:
              windup=d.get("windup", 0.0), vx=d.get("vx", 0.0), vy=d.get("vy", 0.0), carrying=Resource(d["carrying"]) if d["carrying"] else None, carry=d["carry"], timer=d["timer"],
              inside=d["inside"], constructing=d["constructing"], home=tuple(d["home"]) if d["home"] else None, state=d["state"],
              ease=tuple(d["ease"]) if d.get("ease") else None, charge=d["charge"], auto_work=d.get("auto_work", True),
-             commanded=d.get("commanded"))  # a save from before the hands-off window: every worker is the policy's
+             commanded=d.get("commanded"), struck=d.get("struck", -1000.0))  # a save from before the hands-off window: every worker is the policy's
     u.orders = deque(_order_from_dict(o) for o in d["orders"])
     for state in d.get("worker_orders", []):
         order = u.orders[state["index"]]
@@ -3943,5 +4054,5 @@ def _building_from_dict(d: dict[str, Any], race: Race) -> Building:
                     abandoned=d.get("abandoned", False), auto=[UnitType(t) for t in d.get("auto", [])])  # saves from before endless training
 
 
-# At the end, as it imports this module: the automatic worker policy the simulation consults.
-from warband.sim import worker_ai  # noqa: E402
+# At the end, as they import this module: the automatic worker policy and the creature camps the simulation runs.
+from warband.sim import camps, worker_ai  # noqa: E402

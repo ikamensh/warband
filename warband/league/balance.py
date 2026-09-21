@@ -26,7 +26,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from warband.league.arena import MatchResult
-from warband.sim.rules import BUILDINGS, BuildingType, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, BuildingType, UnitType, Upgrade
 
 
 def equilibrium(payoff: list[list[float]], rounds: int = 20_000, step: float = 2.0) -> list[float]:
@@ -102,13 +102,10 @@ class Usage:
 def usage(results: Iterable[MatchResult], agent: str | None = None) -> list[Usage]:
     """Every unit, building and upgrade, over all players (or only *agent*'s seats)."""
     rows: dict[str, Usage] = {}
-    for kind, names in (("unit", (t.value for t in UnitType)), ("building", (t.value for t in BuildingType)),
+    for kind, names in (("unit", (t.value for t in PLAYABLE_UNITS)), ("building", (t.value for t in BUILT)),
                         ("upgrade", (u.value for u in Upgrade))):
         for key in names:
             rows[key] = Usage(key=key, kind=kind)
-    for kind, info in BUILDINGS.items():
-        if info.mine is not None:
-            rows.pop(kind.value)  # a deposit is nobody's: no player ever builds one
     for result in results:
         for seat, tally in enumerate(result.tallies):
             if agent is not None and result.spec.agents[seat] != agent:
@@ -196,7 +193,7 @@ def postures(results: Iterable[MatchResult]) -> list[Posture]:
     return sorted(table.values(), key=lambda p: -p.score)
 
 
-_SOLDIERS = frozenset(t.value for t in UnitType if t is not UnitType.PEASANT)
+_SOLDIERS = frozenset(t.value for t in PLAYABLE_UNITS if t is not UnitType.PEASANT)
 
 
 def fielded(results: Iterable[MatchResult]) -> dict[str, Counter[str]]:

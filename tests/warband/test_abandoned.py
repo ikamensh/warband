@@ -24,7 +24,7 @@ def test_a_resignation_among_three_or_more_leaves_the_buildings_standing_as_nobo
     farm, site, footman, peasant = base(world, 1, (20, 10))
     world.train(world.player_buildings(1, BuildingType.TOWN_HALL)[0].id, UnitType.PEASANT) if world.players[1].gold >= 500 else None
     world.resign(1)
-    assert not world.players[1].alive and world.winner is None and sum(p.alive for p in world.players) == 3
+    assert not world.players[1].alive and world.winner is None and sum(p.alive for p in world.players[:world.seats]) == 3
     assert farm.id in world.buildings and site.id in world.buildings and footman.id not in world.units and peasant.id not in world.units
     assert farm.abandoned and site.abandoned and farm.player == 1, "kept for what it was, but nobody's"
     assert world.player_buildings(1) == [] and not any(b.queue or b.research for b in (farm, site))

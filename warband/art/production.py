@@ -16,8 +16,11 @@ from typing import TypeAlias
 from PIL import Image, ImageDraw
 
 from saga2d.ui import Anchor, Button, Component, KeyHints
-from warband.sim.rules import BuildingType, Race, UnitType, Upgrade
+from warband.sim.rules import CREATURES, BuildingType, Race, UnitType, Upgrade
+from warband.art.monsters import Monster, lair_portrait_image, monster_portrait_image
 from warband.art.textures import portrait_image
+
+_CREATURES = frozenset(CREATURES)  # the neutral creatures: their pictures are monsters.py's, not textures.py's
 
 ProductionTarget: TypeAlias = UnitType | BuildingType | Upgrade
 
@@ -194,6 +197,10 @@ def _research_emblem(upgrade: Upgrade, scale: float) -> Image.Image:
 
 def production_image(game, target: ProductionTarget, player: int | None, race: Race = Race.HUMAN) -> str:
     """Register once and return the portrait or emblem for a production target."""
+    if target in _CREATURES:
+        return monster_portrait_image(game, Monster(target.value))  # nobody's, so no player and no race
+    if target is BuildingType.LAIR:
+        return lair_portrait_image(game)
     if isinstance(target, (UnitType, BuildingType)):
         return portrait_image(game, target, player, race)
     if not isinstance(target, Upgrade):

@@ -66,7 +66,7 @@ def check_world(world: World) -> None:
         else:
             assert world.passable(*u.tile), ("unit on a blocked tile", u, world.terrain_at(u.tile))
         assert world.players[u.player].alive, ("unit of a dead player", u)
-    for p in world.players:
+    for p in world.players[:world.seats]:  # the wilds are alive whether or not a camp is still standing
         assert p.gold >= 0 and p.lumber >= 0, ("negative resources", p)
         has_stuff = bool(world.player_units(p.id)) or bool(world.player_buildings(p.id))
         assert p.alive == has_stuff, ("alive without anything, or dead with something", p)
@@ -107,7 +107,7 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
             # are ProBrains, and they drive the model down paths the others never
             # take (several build orders in flight, wounded soldiers walking home,
             # peasants sent scouting). The invariants have to hold there too.
-            brains = [make_brain(p.id, rng.choice(list(Difficulty)), seed) for p in world.players]
+            brains = [make_brain(p.id, rng.choice(list(Difficulty)), seed) for p in world.players[:world.seats]]
             check_world(world)
             stalled: dict[int, tuple[tuple[float, float], float]] = {}
             for tick in range(int(GAME_MINUTES * 60 / SIM_DT)):
@@ -122,10 +122,11 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
                 if tick % 20 == 0:
                     check_world(world)
                     check_progress(world, stalled)
-            kills = sum(1 for p in world.players if not p.alive)
-            armies = [len([u for u in world.player_units(p.id) if not u.is_worker]) for p in world.players]
-            buildings = [len(world.player_buildings(p.id)) for p in world.players]
-            assert any(len(world.player_buildings(p.id, BuildingType.BARRACKS)) for p in world.players), "nobody built a barracks"
+            seats = world.players[:world.seats]
+            kills = sum(1 for p in seats if not p.alive)
+            armies = [len([u for u in world.player_units(p.id) if not u.is_worker]) for p in seats]
+            buildings = [len(world.player_buildings(p.id)) for p in seats]
+            assert any(len(world.player_buildings(p.id, BuildingType.BARRACKS)) for p in seats), "nobody built a barracks"
             assert sum(armies) > 0 or kills, "nobody trained an army"
             outcomes["decided" if world.winner is not None else "eliminations" if kills else "undecided"] += 1
             levels = "/".join("P" if isinstance(b, ProBrain) else "G" if isinstance(b, RaceBrain) else b.difficulty.value[0].upper() for b in brains)

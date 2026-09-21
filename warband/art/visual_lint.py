@@ -41,7 +41,7 @@ from saga2d.ui import Button, Component, Label
 from saga2d.ui.components import KEYCAP_GAP
 from sagaforge import restyle
 from warband.art import textures
-from warband.sim.rules import BUILDINGS, BuildingType, MapTheme, Race, Resource, UnitType
+from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, BuildingType, MapTheme, Race, Resource, UnitType
 
 SOLID = 160  # alpha from which a pixel counts as the figure itself, not its shadow or fringe
 EDGE = 96  # alpha from which a pixel at the canvas edge means the figure was cut off
@@ -346,14 +346,14 @@ def register_everything(game: Game, *, players: tuple[int, ...] = (0, 1), budget
             if _race is race:
                 textures.unit_image(game, unit_type, player, 2, "stand", carrying, race=race)  # one frame per team, for the recolour check
         for player in players:
-            for building_type in BuildingType:
-                if BUILDINGS[building_type].mine is not None:
-                    continue
+            for building_type in BUILT:
                 for look in textures.BUILDING_LOOKS:
                     textures.building_image(game, building_type, player, race, look)
                     if budget is not None:
                         budget.checkpoint()
-        for subject in (*UnitType, *BuildingType):
+        for subject in (*PLAYABLE_UNITS, *BuildingType):
+            if subject is BuildingType.LAIR:
+                continue  # a den is nobody's and no race's: warband.art.monsters draws it, and its own test lints it
             textures.portrait_image(game, subject, 0, race)
     for upgrade in Upgrade:
         production_image(game, upgrade, 0)
@@ -361,7 +361,7 @@ def register_everything(game: Game, *, players: tuple[int, ...] = (0, 1), budget
 
 def unit_subjects(players: tuple[int, ...] = (0,)) -> Iterator[tuple[str, Race, UnitType, Resource | None, int]]:
     for race in Race:
-        for unit_type in UnitType:
+        for unit_type in PLAYABLE_UNITS:  # a creature is nobody's: tests/warband/test_monsters.py lints those
             carries: tuple[Resource | None, ...] = (None, Resource.GOLD, Resource.LUMBER) if unit_type is UnitType.PEASANT else (None,)
             for carrying in carries:
                 for player in players:
@@ -394,9 +394,7 @@ def lint_images(game: Game, store: ImageStore, *, budget: CpuBudget | None = Non
         if game.assets.has_image(team):
             findings += lint_recolour(team, store.image(base), store.image(team))
     for race in Race:
-        for building_type in BuildingType:
-            if BUILDINGS[building_type].mine is not None:
-                continue
+        for building_type in BUILT:
             for look in textures.BUILDING_LOOKS:
                 key = textures.building_key(building_type, 0, race, look)
                 if not game.assets.has_image(key):

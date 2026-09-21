@@ -28,7 +28,7 @@ from saga2d import Game, Scene, fonts  # noqa: E402
 from saga2d.testing.native_frames import tick  # noqa: E402
 from warband.art import textures  # noqa: E402
 from warband.sim.model import Harvest, Unit, World  # noqa: E402
-from warband.sim.rules import BUILDINGS, UNITS, BuildingType, MapTheme, Resource, Terrain, UnitType  # noqa: E402
+from warband.sim.rules import BUILDINGS, PLAYABLE_UNITS, UNITS, BuildingType, MapTheme, Resource, Terrain, UnitType  # noqa: E402
 from warband.ui.scene import GameScene  # noqa: E402
 from warband.ui.style import build_theme  # noqa: E402
 
@@ -106,7 +106,7 @@ def capture_sheets(game: Game, output: Path) -> None:
           [Card(textures.building_image(game, kind, 0), BUILDINGS[kind].name, role) for kind, role in roles.items()], 3)
 
     cards = [Card(textures.unit_image(game, kind, 0, 2, frame), UNITS[kind].name, label)
-             for frame, label in (("stand", "At rest"), ("walk1", "On the move"), ("strike", "In action")) for kind in UnitType]
+             for frame, label in (("stand", "At rest"), ("walk1", "On the move"), ("strike", "In action")) for kind in PLAYABLE_UNITS]
     sheet("02_units", "Read the army at a glance", "Seven roles in their actual stand, movement and action poses.", cards, 7, 2.6)
 
     cards = [Card(textures.unit_image(game, UnitType.PEASANT, 0, 0, frame), label, "Lumber harvesting")

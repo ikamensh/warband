@@ -43,7 +43,7 @@ def test_a_match_of_many_seats_plays(seats: int, tmp_path) -> None:
     size = mapgen.sizes_for(seats)[0]
     width, height = mapgen.dimensions(size, seats)
     world = mapgen.generate(seed=5, width=width, height=height, players=seats, human=None, layout=Layout.PLAINS)
-    brains = [make_brain(p.id, Difficulty.HARD, 5) for p in world.players]
+    brains = [make_brain(p.id, Difficulty.HARD, 5) for p in world.players[:world.seats]]
     import random
 
     rng = random.Random(5)
@@ -52,8 +52,8 @@ def test_a_match_of_many_seats_plays(seats: int, tmp_path) -> None:
             brain.think(world, rng)
         world.step()
     assert world.winner is None, "nobody wins a two-minute free-for-all"
-    assert all(p.alive for p in world.players), [p.id for p in world.players if not p.alive]
-    for player in world.players:
+    assert all(p.alive for p in world.players[:world.seats]), [p.id for p in world.players[:world.seats] if not p.alive]
+    for player in world.players[:world.seats]:
         assert world.player_buildings(player.id, BuildingType.TOWN_HALL), player.id
         assert world.player_units(player.id), player.id
     assert len(world.units) > 3 * seats, "every seat should have trained something"
@@ -68,7 +68,7 @@ def test_a_sixteen_seat_match_opens_and_ticks_in_a_window(tmp_path) -> None:
         game.push(scene)
         for _ in range(60):
             game.tick(0.1)
-        assert isinstance(game.scene, GameScene) and len(scene.world.players) == 16
+        assert isinstance(game.scene, GameScene) and scene.world.seats == 16
         assert scene.view.minimap_image().size[0] > 0
         assert len(scene.brains) == 15
     finally:
@@ -112,7 +112,7 @@ def test_a_room_refuses_more_seats_than_a_client_can_join() -> None:
     with pytest.raises(CommandError, match="width must be an integer from 48 to 80"):
         _create({"seed": 3, "players": 2, "width": 144, "height": 108})
     match = _create({"seed": 3, "players": ONLINE_SEATS, "width": ONLINE_SIZE[0], "height": ONLINE_SIZE[1]})
-    assert len(match.world.players) == ONLINE_SEATS
+    assert match.world.seats == ONLINE_SEATS
 
 
 def test_the_online_table_keeps_the_options_the_live_server_speaks() -> None:

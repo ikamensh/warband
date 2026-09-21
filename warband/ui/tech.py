@@ -17,7 +17,7 @@ from saga2d import Anchor, Component, Label
 from warband.art.production import fit, production_image
 from warband.sim.model import Build, World
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Race, UnitType, Upgrade, listing
+from warband.sim.rules import BUILDINGS, BUILT, UNITS, UPGRADES, BuildingType, Race, UnitType, Upgrade, listing
 
 Target = UnitType | BuildingType | Upgrade
 Prerequisite = BuildingType | Upgrade
@@ -105,7 +105,7 @@ def tree() -> dict[BuildingType, tuple[int, float]]:
         places[kind] = (column, row)
         return row
 
-    roots = [kind for kind, info in BUILDINGS.items() if info.requires is None and info.mine is None]
+    roots = [kind for kind in BUILT if BUILDINGS[kind].requires is None]  # nobody builds a deposit or a lair
     for root in sorted(roots, key=lambda kind: not unlocks(kind)):
         place(root, 0)
     return places

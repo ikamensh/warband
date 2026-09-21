@@ -49,6 +49,7 @@ and :data:`DEATH_OUTCOME` says how each one goes down.
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Callable, Iterator
@@ -61,7 +62,7 @@ from sagaforge import restyle
 from sagaforge.render3d import Mesh
 
 from warband.art.textures import (
-    BONE, DROP_UNIT, FACINGS, FRAMES, FUR_WOLF, INK, PAD, POSES, PROJECTION, TUSK, UNIT_SCALE,
+    BONE, DROP_UNIT, FACINGS, FRAMES, FUR_WOLF, INK, PAD, POSES, PROJECTION, TILE, TUSK, UNIT_SCALE,
     WALK_FRAMES, Color, Placement, _BOB, _LEG_LIFT, _LEG_SWING, _painted, _prop, _shadow, _shift,
     _unit_panel, _unit_pitch, _unit_rod, darker, figure_top, placements,
 )
@@ -774,6 +775,86 @@ def monster_portrait_image(game: Game, monster: Monster) -> str:
                                                           Image.LANCZOS))
             return key
         mesh = monster_mesh(monster, "stand")
+        min_x, min_y, max_x, max_y = r3.bounds(mesh, PROJECTION)
+        w, h = max_x - min_x + 2 * PAD, max_y - min_y + 2 * PAD
+        px = 128 * game.backend.scale_factor / max(w, h)
+        game.assets.image_from_pil(key, r3.render(mesh, PROJECTION, scale=px, canvas=(w, h), origin=(-min_x + PAD, -min_y + PAD)))
+    return key
+
+
+# -- The lair --------------------------------------------------------------------------
+
+#: The rock the den is piled out of: the golem's granite, darkened, so a camp reads as one thing.
+LAIR_ROCK = (98, 101, 106)
+LAIR_DARK = (54, 57, 62)
+LAIR_MOUTH = (22, 20, 26)  # the hole itself: darker than INK, because a cave mouth has no light in it
+
+
+def lair_mesh() -> Mesh:
+    """A creature den: a horseshoe of dark boulders opening towards the viewer, a black mouth under a
+    lintel slab, and bone spines driven into the trodden earth in front of it.
+
+    It is nobody's, like the gold mine it stands beside, so no team colour goes anywhere near it, and
+    like the mine it has to say one thing at a glance on three tiles of ground: *something lives here,
+    and it eats*.  The camera looks from +y, so the opening faces that way and the cairn stands behind
+    it; a ring closed all the way round hid the mouth completely and read as a boulder.
+    """
+    rng = random.Random(51023)
+    mesh = _shadow(1.30)
+    # The cairn: the far half of a ring, biggest at the back, leaning inwards over the mouth.
+    for i in range(11):
+        angle = math.pi * (1.06 + 0.88 * i / 10)  # pi..2pi is the far side: away from the camera
+        x, y = math.cos(angle) * rng.uniform(0.80, 1.06), math.sin(angle) * rng.uniform(0.60, 0.84) - 0.10
+        mesh += r3.sphere((x, y, rng.uniform(0.22, 0.52)), rng.uniform(0.34, 0.50), LAIR_ROCK, rings=3, sides=6)
+    for i in range(5):
+        angle = math.pi * (1.18 + 0.64 * i / 4)
+        x, y = math.cos(angle) * rng.uniform(0.40, 0.60), math.sin(angle) * rng.uniform(0.28, 0.44) - 0.06
+        mesh += r3.sphere((x, y, rng.uniform(0.70, 1.02)), rng.uniform(0.30, 0.44), LAIR_DARK, rings=3, sides=6)
+    # The mouth: a black recess in the near face, under a lintel slab, between two jamb boulders.
+    mesh += r3.box((0.0, 0.10, 0.34), (0.92, 1.02, 0.68), LAIR_MOUTH)
+    # The brow over the hole is two leaning boulders, not a slab: a flat lintel read as a shelf.
+    for x, radius, lift in ((-0.34, 0.46, 0.80), (0.36, 0.42, 0.86)):
+        mesh += r3.sphere((x, 0.24, lift), radius, LAIR_ROCK, rings=3, sides=6)
+    for x in (-0.82, 0.84):
+        mesh += r3.sphere((x, 0.26, 0.32), 0.46, LAIR_ROCK, rings=3, sides=6)
+        mesh += r3.sphere((x * 0.86, 0.12, 0.84), 0.32, LAIR_DARK, rings=3, sides=6)
+    # A skull set on the brow.  Grey stone alone reads as the map's own rock outcrop at the game's zoom;
+    # this is the one mark that says at a glance that the hole is somebody's front door.
+    mesh += r3.sphere((0.0, 0.46, 1.16), 0.24, TUSK, rings=4, sides=7)
+    mesh += r3.box((0.0, 0.62, 1.03), (0.26, 0.22, 0.17), TUSK)  # the muzzle, thrust towards the viewer
+    for x in (-0.10, 0.10):
+        mesh += r3.sphere((x, 0.60, 1.20), 0.075, LAIR_MOUTH, rings=3, sides=5)
+    # Bone spines planted either side of the mouth: thick and near upright, so they read at the game's zoom.
+    for x, lean, height in ((-1.10, -0.12, 1.12), (1.12, 0.10, 0.96), (-0.70, -0.05, 0.78), (0.76, 0.06, 0.70)):
+        top = (x + lean, 0.94 + lean * 0.3, height)
+        mesh += _unit_rod((x, 0.94, 0.0), top, 0.085, BONE)
+        mesh += r3.sphere(top, 0.135, TUSK, rings=3, sides=6)
+    # What has been dragged in and gnawed, on the trodden earth in front.
+    for _ in range(6):
+        angle, radius = rng.uniform(0, math.tau), rng.uniform(0.55, 1.05)
+        x, y = math.cos(angle) * radius, abs(math.sin(angle)) * radius * 0.55 + 0.95
+        mesh += _unit_rod((x, y, 0.03), (x + rng.uniform(-0.22, 0.22), y + rng.uniform(-0.10, 0.10), 0.07), 0.055, BONE)
+    return mesh
+
+
+def lair_image(game: Game) -> str:
+    """Register (once) and return the key of the creature den's picture.
+
+    One picture, never recoloured and never painted per race: the lair belongs to the wilds, exactly
+    as the gold mine belongs to nobody (:func:`~warband.art.textures.mine_image`).
+    """
+    key = "building.lair"
+    if not game.assets.has_image(key):
+        front = 1.5 * TILE
+        game.assets.image_from_pil(key, _prop(key, lair_mesh(), front + PAD, game.backend.scale_factor, front=front))
+    return key
+
+
+def lair_portrait_image(game: Game) -> str:
+    """A tightly framed picture of the den, for the selection panel."""
+    key = "portrait.lair"
+    if not game.assets.has_image(key):
+        mesh = lair_mesh()
         min_x, min_y, max_x, max_y = r3.bounds(mesh, PROJECTION)
         w, h = max_x - min_x + 2 * PAD, max_y - min_y + 2 * PAD
         px = 128 * game.backend.scale_factor / max(w, h)

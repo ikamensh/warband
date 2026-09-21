@@ -7,7 +7,7 @@ from PIL import Image
 from saga2d import Game
 from warband.art import textures
 from warband.sim.model import tile_center
-from warband.sim.rules import BuildingType, Layout, MapTheme, Resource, Terrain, UnitType
+from warband.sim.rules import BUILT, PLAYABLE_UNITS, BuildingType, Layout, MapTheme, Resource, Terrain, UnitType
 from warband.ui.scene import GameScene, new_game
 from warband.ui.view import FOG_MARGIN, NEUTRAL_MINIMAP, STAFF_REACH, WATER_PERIOD
 from warband.sim import mapgen
@@ -193,7 +193,7 @@ def test_unit_images_are_rendered_on_demand_per_facing_and_frame(play) -> None:
     key = textures.unit_image(game, UnitType.KNIGHT, 1, 6, "strike")
     placement = textures.placements[key]
     assert game.assets.has_image(key) and 0 < placement.drop < placement.size[1]  # the feet lie inside the image
-    for unit_type in UnitType:  # every unit, frame and carry variant renders (a missing colour name would raise here)
+    for unit_type in PLAYABLE_UNITS:  # every unit, frame and carry variant renders (a missing colour name would raise here)
         for frame in textures.FRAMES:
             textures.unit_image(game, unit_type, 1, 3, frame)
     for carrying in (Resource.GOLD, Resource.LUMBER):
@@ -203,9 +203,8 @@ def test_unit_images_are_rendered_on_demand_per_facing_and_frame(play) -> None:
     assert textures.facing_index(0.0) == 0 and textures.facing_index(3.1416 / 2) == 2 and textures.facing_index(-3.1416 / 2) == 6
     other = textures.unit_image(game, UnitType.KNIGHT, 1, 6, "strike")
     assert other == key
-    for building_type in BuildingType:
-        if textures.BUILDINGS[building_type].mine is None:  # a deposit is nobody's building: deposit_image draws it
-            assert textures.placements[textures.building_image(game, building_type, 0)].size[0] >= textures.BUILDINGS[building_type].size * TILE * 0.8
+    for building_type in BUILT:  # a deposit and a lair are nobody's: deposit_image and monsters.lair_image draw those
+        assert textures.placements[textures.building_image(game, building_type, 0)].size[0] >= textures.BUILDINGS[building_type].size * TILE * 0.8
 
 
 def test_ground_chunks_cover_the_map_with_a_margin_and_sand_meets_water() -> None:

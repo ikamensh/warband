@@ -228,7 +228,7 @@ class ResignScene(_Overlay):
         world = self.game_scene.world
         panel = self.panel("Resign the match?")
         others = ("Your forces lay down their arms. Your buildings stay, abandoned, and the others fight on."
-                  if len(world.players) >= 3 else "Your forces lay down their arms, and your opponent wins.")
+                  if world.seats >= 3 else "Your forces lay down their arms, and your opponent wins.")
         panel.add(Label(others, text_style="body", width=520, wrap=True))
         panel.add(Button("Resign", hotkey="Enter", on_click=self.confirm, style=ACTION_BUTTON, width=280))
         panel.add(Button("Keep fighting", hotkey="Esc", on_click=self.cancel, style=GHOST_BUTTON, width=280))

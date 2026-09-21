@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gc
+import itertools
 import json
 import math
 import random
@@ -48,7 +49,8 @@ from warband.ui.view import SHOT_LOOKS, SHOT_SIZE, MapView, Overlay, Sighting, c
 
 DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True, "blood": True,
                                     "controls": "classic"}
-FLESH = {u.value for u in UnitType} - {UnitType.CATAPULT.value}  # what bleeds when hit
+#: What bleeds when hit.  A catapult is timber and a golem is stone; the other three creatures are meat.
+FLESH = {u.value for u in UnitType} - {UnitType.CATAPULT.value, UnitType.GOLEM.value}
 SAVE_VERSION = 2  # 2: the world records its layout
 SAVE_SLOTS = 3
 AUTOSAVE_EVERY = 120.0  # seconds of match time
@@ -391,7 +393,7 @@ class GameScene(Scene):
         self.profile_error = ""
         self.rating_change: RatingChange | None = None  # what the finished or abandoned match did to the rating
         self._resignation: Standing | None = None  # where the player stood when they resigned
-        self.brains = [make_brain(p.id, difficulty, seed) for p in world.players if not p.human]
+        self.brains = [make_brain(p.id, difficulty, seed) for p in world.players[:world.seats] if not p.human]
         self.rng = random.Random(seed)  # the computer players' stream, and nothing else's: what is drawn must not move the match
         self.fx_rng = random.Random(seed)  # sparks, blood and dust
         self.settings = settings if settings is not None else dict(DEFAULT_SETTINGS)  # a saga2d Settings when the game runs
@@ -456,11 +458,15 @@ class GameScene(Scene):
         self.apply_settings()
         self._build_hud()
         self.center_base(instant=True)
-        rivals = ", ".join(f"the {RACES[p.race].name} of {p.name}" for p in self.world.players if p.id != self.human)
+        rivals = ", ".join(f"the {RACES[p.race].name} of {p.name}" for p in self.world.players[:self.world.seats] if p.id != self.human)
         self.effects.add(Banner("Warband", subtitle=f"The {self.race.name} of {self.player.name} against {rivals}", accent=rgba(self.player.color)))
-        from warband.art import textures
+        from warband.art import monsters, textures
 
-        self._warm = textures.warm_units(self.game, [p.id for p in self.world.players], [p.race for p in self.world.players])
+        # A creature is nobody's, so it is not among the seats' units and needs warming of its own; without
+        # it the first fight at a camp renders every frame of every guard cold, which the benchmark sees.
+        seats = self.world.players[:self.world.seats]
+        warm = textures.warm_units(self.game, [p.id for p in seats], [p.race for p in seats])
+        self._warm = itertools.chain(warm, monsters.warm_monsters(self.game)) if self.world.camps else warm
         play_music("peace", self.player.race)
 
     def on_reveal(self) -> None:
@@ -2210,14 +2216,14 @@ class GameScene(Scene):
         try:
             ReplayStore(self.game.data_dir).save(self.run_id, self.replay, {
                 "name": self.player.name, "outcome": outcome, "race": self.player.race.value, "difficulty": self.difficulty.value,
-                "players": len(world.players), "size": f"{world.width}×{world.height}", "clock": _clock(world.time), "seed": self.seed})
+                "players": world.seats, "size": f"{world.width}×{world.height}", "clock": _clock(world.time), "seed": self.seed})
             kept = True
         except SaveError as error:
             kept = False
             self.say(f"Replay not saved: {error}")
         weight, reason = (where.weight, where.reason) if where is not None else (1.0, "")
         result = MatchResult(self.run_id, datetime.now(timezone.utc).isoformat(), outcome, weight, reason, self.difficulty.value,
-                             DIFFICULTY_ELO[self.difficulty], len(world.players) - 1, self.player.race.value, world.width, world.height,
+                             DIFFICULTY_ELO[self.difficulty], world.seats - 1, self.player.race.value, world.width, world.height,
                              world.theme.value, world.layout.value, self.seed, int(world.time), kept)
         try:
             self.rating_change = self.profile.record(result)
@@ -2531,8 +2537,8 @@ class GameScene(Scene):
 
     def get_save_summary(self) -> dict:
         world = self.world
-        size = mapgen.size_name(world.width, world.height, len(world.players))
-        return {"map": f"{size} {world.theme.value} {world.layout.value}", "players": len(world.players), "difficulty": self.difficulty.value, "clock": _clock(world.time),
+        size = mapgen.size_name(world.width, world.height, world.seats)
+        return {"map": f"{size} {world.theme.value} {world.layout.value}", "players": world.seats, "difficulty": self.difficulty.value, "clock": _clock(world.time),
                 "player": f"{self.player.name} ({self.race.name})"}
 
     def load_save_state(self, state: dict) -> None:
@@ -3104,7 +3110,7 @@ class GameOverScene(_Overlay):
         points = score_breakdown(world, scene.human)
         panel = self.panel("Victory!" if self.won else "Defeat")
         panel.style = RESULTS_STYLE
-        panel.add(Label(f"{scene.race.name} · {scene.difficulty.value.title()} AI · {world.width}×{world.height} · {len(world.players)} players · "
+        panel.add(Label(f"{scene.race.name} · {scene.difficulty.value.title()} AI · {world.width}×{world.height} · {world.seats} players · "
                         f"{world.theme.value.title()} · Seed {scene.seed}", text_style="body"))
         score = Column(spacing=10, width=420)
         score.add(Label(f"{sum(points.values()):,} points", text_style="banner"))
@@ -3112,7 +3118,7 @@ class GameOverScene(_Overlay):
             score.add(Row(Label(name, text_style="body", width=300), Label(f"{value:,}", text_style="heading", width=100), spacing=12))
         score.add(Label("Combat: 1 point per 10 resources destroyed.\nSurvivors: 1 per 20; research: 1 per 10.\nSwift victory: 2 per second before 20:00.",
                         text_style="sub", width=420, wrap=True))
-        columns = -(-len(world.players) // WARBANDS_PER_COLUMN)
+        columns = -(-world.seats // WARBANDS_PER_COLUMN)
         width = 420 if columns < 2 else columns * WARBAND_COLUMN + (columns - 1) * 16
         summary = Column(spacing=12, width=width)
         summary.add(Label(f"Battle record · {_clock(world.time)}", text_style="heading"))
@@ -3144,7 +3150,7 @@ class GameOverScene(_Overlay):
         680-pixel window, so beyond eight they run in columns of eight instead of one long list."""
         grid = Row(spacing=16)
         wide = columns < 2
-        for first in range(0, len(world.players), WARBANDS_PER_COLUMN):
+        for first in range(0, world.seats, WARBANDS_PER_COLUMN):
             column = Column(spacing=6, margin=0, width=420 if wide else WARBAND_COLUMN)
             for player in world.players[first:first + WARBANDS_PER_COLUMN]:
                 status = ("Victorious" if world.winner == player.id else "Surrendered" if player.surrendered
@@ -3177,7 +3183,7 @@ class GameOverScene(_Overlay):
 
         scene = self.game_scene
         self.game.push(HighScoreScene(difficulty=scene.difficulty, size=(scene.world.width, scene.world.height),
-                                      players=len(scene.world.players), run_id=scene.run_id, error=self.score_error))
+                                      players=scene.world.seats, run_id=scene.run_id, error=self.score_error))
 
     def new_game(self) -> None:
         self.game.clear_and_push(next_game(self.game_scene))
@@ -3186,10 +3192,10 @@ class GameOverScene(_Overlay):
         from warband.ui.title import TitleScene
 
         scene = self.game_scene
-        seats = len(scene.world.players)
+        seats = scene.world.seats
         size = mapgen.size_name(scene.world.width, scene.world.height, seats)
         size = size if size in mapgen.SIZES else (mapgen.sizes_for(seats) or ("Medium",))[0]
-        self.game.clear_and_push(TitleScene(size=size, players=len(scene.world.players), difficulty=scene.difficulty, theme=scene.world.theme,
+        self.game.clear_and_push(TitleScene(size=size, players=scene.world.seats, difficulty=scene.difficulty, theme=scene.world.theme,
                                            race=scene.player.race, layout=scene.world.layout, settings=scene.settings))
 
     def quit(self) -> None:
@@ -3223,8 +3229,8 @@ def fair_map(seed: int, width: int, height: int, players: int, *, theme: MapThem
 def next_game(scene: GameScene) -> GameScene:
     """A new match with *scene*'s settings and races on the next seed that makes a fair map."""
     world = scene.world
-    seed, fresh = fair_map(scene.seed + 1, world.width, world.height, len(world.players), theme=world.theme,
-                           races=[p.race for p in world.players], layout=world.layout)
+    seed, fresh = fair_map(scene.seed + 1, world.width, world.height, world.seats, theme=world.theme,
+                           races=[p.race for p in world.players[:world.seats]], layout=world.layout)
     return GameScene(fresh, seed, difficulty=scene.difficulty, settings=scene.settings)
 
 

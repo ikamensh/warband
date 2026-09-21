@@ -4,7 +4,7 @@ import pytest
 
 from saga2d import Game
 from warband.sim.model import Event, Repair, Salvage, Attack, AttackMove, Build, Harvest, Move, tile_center
-from warband.sim.rules import BUILDINGS, SIM_DT, UNITS, BuildingType, UnitType
+from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, SIM_DT, UNITS, BuildingType, UnitType
 from warband.sim.races import RACES
 from warband.sim.rules import Race
 from warband.ui.scene import PENDING_ASKS, SELECT_GAP, GameOverScene, GameScene, HelpScene, LeaveScene, PauseScene, SettingsScene, new_game
@@ -209,7 +209,7 @@ def test_every_building_is_on_the_build_menu_with_its_hotkey_and_a_locked_one_wa
     scene.select([peasants_of(scene)[0].id])
     press(game, "b")
     hotkeys = {c.label: c.hotkey for c in scene.card}
-    assert hotkeys == {RACES[Race.HUMAN].cards[bt]: BUILDINGS[bt].hotkey.upper() for bt in BuildingType if BUILDINGS[bt].mine is None}
+    assert hotkeys == {RACES[Race.HUMAN].cards[bt]: BUILDINGS[bt].hotkey.upper() for bt in BUILT}
     press(game, "k")  # a blacksmith needs a barracks, and none is coming
     assert scene.placing is None and scene.status == "Requires a Barracks"
     site = (hall_of(scene).x + 5, hall_of(scene).y + 4)  # the blacksmith's
@@ -529,7 +529,7 @@ def test_title_new_game_flow_with_hotkeys(game) -> None:
     press(game, "return")
     scene = game.scene
     assert isinstance(scene, GameScene)
-    assert (scene.world.width, scene.world.height) == (48, 40) and len(scene.world.players) == 3 and len(scene.brains) == 2
+    assert (scene.world.width, scene.world.height) == (48, 40) and scene.world.seats == 3 and len(scene.brains) == 2
 
 
 def test_title_continue_loads_the_saved_match(game) -> None:
@@ -581,7 +581,7 @@ def test_the_codex_lists_every_unit_building_and_upgrade(play) -> None:
     press(game, "f2")
     assert isinstance(game.scene, CodexScene)
     shown = texts(game)
-    for unit_type in UnitType:
+    for unit_type in PLAYABLE_UNITS:
         assert UNITS[unit_type].name in shown
     assert f"heal {UNITS[UnitType.CLERIC].heal}" in shown  # what a healer's cast restores, not its own weak blow (WB-051 gave it one)
     press(game, "2")

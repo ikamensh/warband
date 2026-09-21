@@ -380,6 +380,25 @@ ratings and the league above were measured on maps that have none, and still
 hold. The design and the measurements are in
 [the maps note](warband-maps.md#the-gold-seam-2026-09-21).
 
+### Creature camps: a job for the army at minute four (2026-09-21)
+
+The same equilibrium again, from the other side. A seam gives an army a
+*reason* to hold ground; a **creature camp** gives it something to do to get
+there. Every contested deposit — the thirds and the seam, never a seat's own
+mine and never its natural — is guarded by a lair and its creatures, so the
+army a player builds before the timing push has a use that is not suicide into
+towers, and the middle of the map has to be taken from somebody at minute four.
+
+The measurement that matters is not a win rate but whether every side can use
+it: `tools/creep_report.py` reports lairs torn down against units lost to the
+wilds. Over 60 matches a side on Medium, `pro` cleared 0.74 lairs a match for
+1.17 units and `medium` 0.94 for 1.45 — a soldier and a half per den, against
+its hoard and the deposit it sat on. On the ladder, `pro` scores 63.7 % against
+`hard` with the camps and 70.0 % without, about one and a half standard errors
+apart on 80 games each, while peak army rises from 13 to 17 (`hard`) and 19 to
+21 (`pro`) and kills from 20 to 24 and 28 to 34. The design is in
+[the creatures note](warband-monsters.md).
+
 The shape of the incentive: a hand at a seam earns 2.9 gold a second against
 a miner's 12.8, so it is never the place to put the next peasant. But an
 expansion mine's 30 000 gold is drunk by a saturated crew in three and a

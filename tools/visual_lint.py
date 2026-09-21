@@ -39,7 +39,7 @@ from warband.story.dialog import DialogScene  # noqa: E402
 from warband.story.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
 from warband.story.missions import CAMPAIGN  # noqa: E402
 from warband.sim.model import World, tile_center  # noqa: E402
-from warband.sim.rules import BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
+from warband.sim.rules import BUILT, PLAYABLE_UNITS, BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
 from warband.ui.controls import SCHEMES  # noqa: E402
 from warband.ui.scene import TOAST_TOP, CodexScene, GameScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game  # noqa: E402
 from warband.ui.score_scene import HighScoreScene  # noqa: E402
@@ -201,7 +201,7 @@ def match_tutorial(game: Game) -> None:
     ticks(game)
 
 
-for _unit in UnitType:
+for _unit in PLAYABLE_UNITS:
     def _select_unit(game: Game, unit_type: UnitType = _unit) -> None:
         scene = town(game, zoom=2.0)
         unit = spawn(scene, unit_type, (10, 12))
@@ -234,7 +234,7 @@ def select_60_archers(game: Game) -> None:
     ticks(game)
 
 
-for _building in BuildingType:
+for _building in BUILT:
     def _select_building(game: Game, kind: BuildingType = _building) -> None:
         scene = town(game)
         building = next(b for b in scene.world.buildings.values() if b.type is kind)

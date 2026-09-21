@@ -54,7 +54,7 @@ class WarbandMatch:
         the seed, and so is a ``None`` *layout*."""
         self.seed = seed
         self.world = mapgen.generate(seed, width, height, players=players, theme=theme, races=races, layout=layout)
-        for player in self.world.players:
+        for player in self.world.players[:self.world.seats]:  # never the wilds: no client sits in that seat
             player.human = True
         self.events = []  # [number, fields] of the recent ones, oldest first
         self.event_ticks = []  # the tick each of them happened at
@@ -78,7 +78,7 @@ class WarbandMatch:
     def _witnesses(self, event):
         """The seats that may hear of *event*: all of them for public news, its owner alone for its private
         affairs, otherwise its owner and every seat that sees where it happens."""
-        seats = range(len(self.world.players))
+        seats = range(self.world.seats)
         if event.kind in PUBLIC_EVENTS:
             return list(seats)
         if event.kind in PRIVATE_EVENTS:
@@ -167,7 +167,7 @@ class WarbandMatch:
             self._events()
 
     def apply(self, player, command):
-        if player not in range(len(self.world.players)) or self.world.winner is not None or not self.world.players[player].alive:
+        if player not in range(self.world.seats) or self.world.winner is not None or not self.world.players[player].alive:
             raise CommandError('This faction cannot issue orders.')
         action, args, kwargs = command.get('action'), command.get('args'), command.get('kwargs', {})
         if not isinstance(action, str) or action not in ORDERS or not isinstance(args, list) or not isinstance(kwargs, dict):
@@ -279,7 +279,7 @@ def _restore(snapshot):
     match.event_id = snapshot.get('event_id', max((event[0] for event in match.events), default=0))  # older checkpoints carry none
     # A checkpoint from before WB-011 kept no record of who saw what, nor of the map's beginning: its last news
     # goes to every seat once, and the ground as it stands now stands for how it began.
-    match.event_seen = snapshot.get('event_seen', [list(range(len(match.world.players)))] * len(match.events))
+    match.event_seen = snapshot.get('event_seen', [list(range(match.world.seats))] * len(match.events))
     match.begun = snapshot.get('begun', _terrain_rows(match.world))
     return match
 
@@ -290,4 +290,4 @@ def _needed(match, player):
 
 
 ONLINE = {'warband-v2': GameSpec(_create, _checkpoint, _restore, realtime=True,
-                                 seats=lambda match: len(match.world.players), needed=_needed)}
+                                 seats=lambda match: match.world.seats, needed=_needed)}

@@ -36,7 +36,8 @@ MINUTES = 20
 def match(seed: int, races: tuple[Race, Race], difficulty: Difficulty, *, minutes: int, budget: CpuBudget | None) -> tuple[Race | None, float]:
     """``(winning race or None, minutes played)`` for one AI-versus-AI match."""
     world = mapgen.generate(seed=seed, players=2, human=None, races=races)
-    brains = [make_brain(p.id, difficulty, seed) for p in world.players]  # Hard and Master are a ProBrain, not a Brain
+    # Hard and Master are a ProBrain, not a Brain; the wilds are nobody's seat and have no brain at all.
+    brains = [make_brain(p.id, difficulty, seed) for p in world.players[:world.seats]]
     rng = random.Random(seed)
     for _ in range(int(minutes * 60 / SIM_DT)):
         if world.winner is not None:

@@ -411,6 +411,16 @@ Everything the layouts have in common, in the order the generator does it.
 4. **Thirds.** 30 000 gold in the contested middle, equidistant to the two
    nearest halls within 3 tiles. Two players: two; three: two plus the empty
    seat's; four: four. Small drops one, Large adds one.
+4b. **Camps.** A creature den beside every contested deposit — the thirds and
+   the endless seam, never a seat's own mine and never its natural (2026-09-21).
+   One canonical site per deposit, copied a cell at a time like the deposit
+   itself, four to nine tiles from it, with its own tighter spacing (a den that
+   kept a mine's distance from the dig it guards would not be guarding it) and
+   40 open tiles around it for an army to fight in. A camp is a **wish**, not a
+   fault: a layout whose own walls leave no room beside a dig gets an unguarded
+   deposit rather than a refused seed, and Klondike gets none at all because its
+   expansion gold is already inside a rock ring. `mapgen.build(..., wilds=False)`
+   draws the same maps unguarded. See `docs/warband-monsters.md`.
 5. **Layout pass.** The layout's own terrain on the wedge, before the copy.
 6. **Routes.** Layouts build their paths deliberately (Forest cuts them,
    Crossings leaves fords, Klondike and Bastion leave gates). Carving stays

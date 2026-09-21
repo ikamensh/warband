@@ -5,7 +5,7 @@ import pytest
 
 from saga2d import Game
 from warband.art.production import production_image
-from warband.sim.rules import BUILDINGS, BuildingType, Race, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, BuildingType, Race, UnitType, Upgrade
 from warband.ui.scene import DEFAULT_SETTINGS, GameScene, new_game
 from warband.ui.style import BAD, GOLD, build_theme
 
@@ -159,14 +159,13 @@ def test_the_codex_tech_tree_draws_what_needs_what_lit_by_what_the_player_has(ga
     tree = next(component for component in game.scene.ui.walk() if isinstance(component, TechTree))
     race = RACES[Race.ELF]
     shown = {picture.target: picture for picture in tree.pictures}
-    deposits = {bt for bt, info in BUILDINGS.items() if info.mine is not None}  # nobody's, and on nobody's tech tree
-    assert set(shown) == {*BuildingType, *UnitType, *(u for u in Upgrade if race.upgrade_allowed(u))} - deposits
+    assert set(shown) == {*BUILT, *PLAYABLE_UNITS, *(u for u in Upgrade if race.upgrade_allowed(u))}
     drawn = {image["image"]: image for image in game.backend.images}
     opacity = {target: drawn[game.assets.image(production_image(game, target, scene.human, Race.ELF))]["opacity"] for target in shown}
     assert opacity[BuildingType.TOWN_HALL] == 1 and opacity[UnitType.PEASANT] == 1
     assert opacity[BuildingType.BARRACKS] == opacity[UnitType.ARCHER] < 1  # planned
     assert opacity[BuildingType.WORKSHOP] < opacity[BuildingType.BARRACKS] and opacity[Upgrade.LONGBOWS] == opacity[BuildingType.WORKSHOP]
-    for kind in BuildingType:
+    for kind in BUILT:
         requires = BUILDINGS[kind].requires
         if requires is None:
             continue

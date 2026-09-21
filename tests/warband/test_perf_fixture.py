@@ -2,8 +2,19 @@
 from tools.perf import battle
 import pytest
 
-from warband.art import textures
-from warband.sim.rules import Race
+from warband.art import monsters, textures
+from warband.art.monsters import Monster
+from warband.sim.rules import CREATURES, Race
+
+WILD = frozenset(CREATURES)
+
+
+def frame_key(unit, facing: int, frame: str) -> str:
+    """The key the view will ask for when it draws this unit: a creature is nobody's, so its picture
+    comes out of ``warband.art.monsters`` and takes no player and no race (``view._sync_units``)."""
+    if unit.type in WILD:
+        return monsters.monster_key(Monster(unit.type.value), facing, frame)
+    return textures.unit_key(unit.type, unit.player, facing, frame, race=unit.race)
 
 
 @pytest.mark.slow
@@ -12,13 +23,13 @@ def test_mixed_army_benchmark_warms_the_actual_factions(game):
 
     Warming every faction's frames for a 150-unit battle takes two seconds: the slow tier."""
     scene = battle(game)
-    assert any(player.race is not Race.HUMAN for player in scene.world.players)
+    assert any(player.race is not Race.HUMAN for player in scene.world.players[:scene.world.seats])
     missing = {
-        textures.unit_key(unit.type, unit.player, facing, frame, race=unit.race)
+        frame_key(unit, facing, frame)
         for unit in scene.world.units.values()
         for facing in range(textures.FACINGS)
         for frame in textures.FRAMES
-        if not game.assets.has_image(textures.unit_key(unit.type, unit.player, facing, frame, race=unit.race))
+        if not game.assets.has_image(frame_key(unit, facing, frame))
     }
     assert not missing, f"Benchmark started with {len(missing)} cold combat frames"
 

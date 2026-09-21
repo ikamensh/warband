@@ -7,7 +7,7 @@ from saga2d.testing import text_boxes
 from saga2d.ui import Row
 from warband.art.production import ProductionButton, production_image
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, UPGRADES, BuildingType, Race, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, PLAYABLE_UNITS, UPGRADES, BuildingType, Race, UnitType, Upgrade
 from warband.ui.scene import new_game
 from warband.ui.style import GOLD, build_theme
 
@@ -101,7 +101,7 @@ def producer_of(scene, target):
 
 
 @pytest.mark.parametrize("race, target", [pytest.param(race, target, id=f"{race.value}-{target.value}")
-                                          for race in (Race.HUMAN, Race.DWARF) for target in (*UnitType, *Upgrade)
+                                          for race in (Race.HUMAN, Race.DWARF) for target in (*PLAYABLE_UNITS, *Upgrade)
                                           if not isinstance(target, Upgrade) or RACES[race].upgrade_allowed(target)])
 def test_every_unit_and_upgrade_of_the_race_has_an_operable_production_icon(play, race, target) -> None:
     """The portrait names itself on hover, trains or researches on click, and then shows in the panel's readout.

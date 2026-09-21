@@ -12,7 +12,7 @@ from saga2d.ui import Label
 from warband.sim.model import SIM_DT, World
 from warband.sim.races import RACES
 from warband.sim.rules import (
-    DAMAGE_FACTORS, HIT_VARIANCE, UNITS, ArmorClass, AttackType, BuildingType, Race, Terrain, UnitType, damage_factor,
+    DAMAGE_FACTORS, HIT_VARIANCE, PLAYABLE_UNITS, UNITS, ArmorClass, AttackType, BuildingType, Race, Terrain, UnitType, damage_factor,
 )
 from warband.ui.scene import PAGE_LEGENDS, CodexScene, armour_name
 from warband.ui.style import build_theme
@@ -101,7 +101,7 @@ def test_the_table_covers_every_unit_of_every_race_and_most_pairings_are_even() 
             assert isinstance(info.armor_class, ArmorClass) and isinstance(info.attack, AttackType), (race, unit_type)
             assert info.attack is UNITS[unit_type].attack and info.armor_class is UNITS[unit_type].armor_class
     assert UNITS[UnitType.ARCHER].attack is AttackType.PIERCING and UNITS[UnitType.CATAPULT].attack is AttackType.SIEGE
-    assert {t for t, info in UNITS.items() if info.armor_class is ArmorClass.UNARMORED} == {
+    assert {t for t in PLAYABLE_UNITS if UNITS[t].armor_class is ArmorClass.UNARMORED} == {
         UnitType.PEASANT, UnitType.CLERIC, UnitType.CATAPULT}
     uneven = {pair: factor for pair, factor in DAMAGE_FACTORS.items() if factor != 1.0}
     assert uneven == {(AttackType.PIERCING, ArmorClass.UNARMORED): 1.5, (AttackType.SIEGE, ArmorClass.FORTIFIED): 1.5}

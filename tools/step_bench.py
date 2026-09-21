@@ -86,7 +86,7 @@ def seats_world(seats: int, seed: int = 3) -> tuple[World, list]:
     size = mapgen.sizes_for(seats)[-1]
     width, height = mapgen.dimensions(size, seats)
     world = mapgen.generate(seed=seed, width=width, height=height, players=seats, human=None, layout=Layout.PLAINS)
-    return world, [make_brain(p.id, Difficulty.HARD, seed) for p in world.players]
+    return world, [make_brain(p.id, Difficulty.HARD, seed) for p in world.players[:world.seats]]
 
 
 def main() -> None:
@@ -126,7 +126,7 @@ def main() -> None:
     ordered = sorted(times)
     if thinking:
         think_order = sorted(thinking)
-        print(f"{len(world.players)} seats on {world.width}x{world.height}: brains mean {statistics.mean(thinking):.2f} ms, "
+        print(f"{world.seats} seats on {world.width}x{world.height}: brains mean {statistics.mean(thinking):.2f} ms, "
               f"p95 {think_order[int(len(think_order) * 0.95)]:.2f} ms, max {think_order[-1]:.2f} ms a step")
     print(f"{args.steps} steps, {len(world.units)} units alive at the end, first step {times[0]:.1f} ms")
     print(f"per step: mean {statistics.mean(times):.2f} ms, p50 {ordered[len(ordered) // 2]:.2f} ms, "

@@ -15,7 +15,7 @@ from warband.ui.scene import GameOverScene, GameScene, fair_map, new_game
 from warband.ui.style import build_theme
 from warband.ui.title import NewGameScene, TitleScene
 
-UNFAIR = 67  # Small, two seats: every try at the forest this seed draws leaves its roads too straight
+UNFAIR = 28  # Small, two seats: every try at the forest this seed draws leaves its roads too straight
 
 
 def unfair(**settings) -> int:
@@ -89,7 +89,7 @@ def test_new_game_after_a_match_plays_the_next_fair_seed(tmp_path) -> None:
     game = mock_game(tmp_path)
     try:
         match = new_game(UNFAIR - 1, 48, 40, 2, layout=Layout.FOREST)
-        races = [p.race for p in match.world.players]
+        races = [p.race for p in match.world.players[:match.world.seats]]
         unfair(races=races, layout=Layout.FOREST)
         game.push(match)
         game.tick(1 / 60)
@@ -98,7 +98,7 @@ def test_new_game_after_a_match_plays_the_next_fair_seed(tmp_path) -> None:
         game.tick(1 / 60)
         press(game, "n")
         assert isinstance(game.scene, GameScene) and game.scene is not match and game.scene.seed == UNFAIR + 1
-        assert game.scene.world.layout is Layout.FOREST and [p.race for p in game.scene.world.players] == races
+        assert game.scene.world.layout is Layout.FOREST and [p.race for p in game.scene.world.players[:game.scene.world.seats]] == races
     finally:
         game.close()
 

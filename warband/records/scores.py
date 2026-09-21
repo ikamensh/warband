@@ -123,7 +123,7 @@ class HighScores:
         points = score_breakdown(world, player)
         owner = world.players[player]
         entry = ScoreEntry(run_id, owner.name, owner.race.value, sum(points.values()), int(world.time), world.width, world.height,
-                           len(world.players), difficulty.value, world.theme.value, seed, world.winner == player,
+                           world.seats, difficulty.value, world.theme.value, seed, world.winner == player,
                            datetime.now(timezone.utc).isoformat())
         entries = self.load()
         original = entries

@@ -13,7 +13,8 @@ from warband.sim.model import RuleError, World, dist
 from warband.sim.races import RACES
 from warband.sim.rules import (
     Layout,
-    BUILDINGS, DEEP_MINING_TRIP, GOLD_PER_TRIP, REGROWTH_SECONDS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, Race, Resource, Terrain,
+    BUILDINGS, DEEP_MINING_TRIP, GOLD_PER_TRIP, PLAYABLE_UNITS, REGROWTH_SECONDS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, Race,
+    Resource, Terrain,
     UnitType, Upgrade,
 )
 
@@ -23,7 +24,7 @@ def flat_world(races: tuple[Race, ...], width: int = 30, height: int = 24, trees
     for x, y in trees:
         terrain[y][x] = Terrain.TREES
     world = World(width, height, terrain, len(races), rng=random.Random(2), races=races)
-    for player in world.players:
+    for player in world.players[:world.seats]:
         player.gold, player.lumber = 20_000, 20_000
         world.reveal_all(player.id)
     return world
@@ -47,7 +48,7 @@ def run_until(world: World, condition, max_seconds: float) -> None:
 
 def test_every_race_fields_every_role_from_the_same_buildings_with_the_same_hotkeys_and_costs() -> None:
     for race, info in RACES.items():
-        assert set(info.units) == set(UnitType) and set(info.buildings) == set(BuildingType)
+        assert set(info.units) == set(PLAYABLE_UNITS) and set(info.buildings) == set(BuildingType)
         names = [u.name for u in info.units.values()] + [b.name for b in info.buildings.values() if b.name != "Gold Mine"]
         assert len(set(names)) == len(names), (race, "duplicate name")
         for unit_type, unit in info.units.items():
@@ -114,22 +115,22 @@ def test_the_ai_researches_only_its_own_race_arts() -> None:
     """Two Medium brains with every building up research for four hundred seconds, each its own race's art and
     no other's. Minutes of play: the slow tier."""
     world = mapgen.generate(seed=11, players=2, human=None, races=(Race.ELF, Race.DWARF))
-    for player in world.players:
+    for player in world.players[:world.seats]:
         player.gold, player.lumber = 50_000, 50_000
-    for player in world.players:
+    for player in world.players[:world.seats]:
         hall = world.player_buildings(player.id, BuildingType.TOWN_HALL)[0]
         dx, dy = (4 if hall.x < world.width / 2 else -4), (4 if hall.y < world.height / 2 else -4)  # towards the middle
         world.place_building(player.id, BuildingType.BARRACKS, (hall.x + dx, hall.y + dy))
         world.place_building(player.id, BuildingType.LUMBER_MILL, (hall.x + 2 * dx, hall.y + dy))
         world.place_building(player.id, BuildingType.BLACKSMITH, (hall.x + dx, hall.y + 2 * dy))
         world.place_building(player.id, BuildingType.STABLES, (hall.x + 2 * dx, hall.y + 2 * dy))
-    brains = [Brain(p.id, Difficulty.MEDIUM) for p in world.players]
+    brains = [Brain(p.id, Difficulty.MEDIUM) for p in world.players[:world.seats]]
     rng = random.Random(1)
     for _ in range(int(400 / SIM_DT)):
         for brain in brains:
             brain.think(world, rng)
         world.step()
-    researched = [set(p.upgrades) for p in world.players]
+    researched = [set(p.upgrades) for p in world.players[:world.seats]]
     assert Upgrade.LONGBOWS in researched[0] and Upgrade.DEEP_MINING in researched[1]
     for upgrades, race in zip(researched, (Race.ELF, Race.DWARF)):
         assert all(UPGRADES[u].race in (None, race) for u in upgrades), (race, upgrades)
@@ -304,7 +305,7 @@ def test_races_survive_a_save_and_an_old_save_means_humans() -> None:
     world = mapgen.generate(seed=4, players=2, races=(Race.DWARF, Race.ELF))
     data = json.loads(json.dumps(world.to_dict()))
     copy = World.from_dict(data)
-    assert [p.race for p in copy.players] == [Race.DWARF, Race.ELF]
+    assert [p.race for p in copy.players[:copy.seats]] == [Race.DWARF, Race.ELF]
     hall = copy.player_buildings(0, BuildingType.TOWN_HALL)[0]
     assert hall.race is Race.DWARF and hall.info.name == "Deep Hold" and hall.hp == hall.max_hp
     assert all(u.info.name == "Gatherer" for u in copy.player_units(1))
@@ -319,13 +320,13 @@ def test_races_survive_a_save_and_an_old_save_means_humans() -> None:
 def test_a_match_between_two_races_plays_out_under_the_ai() -> None:
     """Two Medium brains of different races play four minutes: the slow tier."""
     world = mapgen.generate(seed=9, players=2, human=None, races=(Race.ORC, Race.DWARF), layout=Layout.BASTION)  # walls: no raid empties an army
-    brains = [Brain(p.id, Difficulty.MEDIUM) for p in world.players]
+    brains = [Brain(p.id, Difficulty.MEDIUM) for p in world.players[:world.seats]]
     rng = random.Random(9)
     for _ in range(int(240 / SIM_DT)):
         for brain in brains:
             brain.think(world, rng)
         world.step()
-    for player in world.players:
+    for player in world.players[:world.seats]:
         trained = [what for _, what in brains[player.id].log if what.startswith("train ")]
         assert trained, player.race  # soldiers were fielded, whatever the fighting since did to them
         assert all(u.race is player.race for u in world.player_units(player.id)), player.race

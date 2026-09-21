@@ -9,7 +9,7 @@ from saga2d import Game, RenderLayer, Scene, Sprite, SpriteAnchor
 from saga2d.ui import Label
 from sagaforge import render3d as r3
 from warband.art import textures, visual_lint
-from warband.sim.rules import Cost, Race, Resource, UnitType
+from warband.sim.rules import PLAYABLE_UNITS, Cost, Race, Resource, UnitType
 from warband.ui.icons import Price, price_pairs
 from warband.ui.scene import CodexScene, codex_world
 from warband.ui.style import build_theme
@@ -178,7 +178,7 @@ def test_every_unit_pose_fits_the_unit_canvas() -> None:
     Every race's every pose in all eight facings takes about two seconds: the slow tier, which a change to the
     art runs before it is pushed."""
     for race in Race:
-        for unit_type in UnitType:
+        for unit_type in PLAYABLE_UNITS:
             carries = (None, Resource.GOLD, Resource.LUMBER) if unit_type is UnitType.PEASANT else (None,)
             for carrying in carries:
                 frames = textures.FRAMES + textures.CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else textures.FRAMES

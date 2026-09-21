@@ -48,7 +48,7 @@ from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parents[1]  # warband/, whose subpackages hold the modules
 BUILDS = PACKAGE.parent / "build" / "fastsim"
-MODULES = ("sim.rules", "sim.races", "sim.path", "sim.worker_knowledge", "sim.model", "sim.mapgen", "sim.worker_ai",
+MODULES = ("sim.rules", "sim.races", "sim.path", "sim.worker_knowledge", "sim.model", "sim.camps", "sim.mapgen", "sim.worker_ai",
            "brains.ai", "brains.pro_ai")
 NATIVE = "sim/_native.c"  # the loops written twice, in C, built alongside; see its opening comment
 RECIPE = "3"  # bumped when the build itself changes, so that no build made the old way is reused

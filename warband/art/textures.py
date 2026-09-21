@@ -37,7 +37,7 @@ from saga2d import Game
 from sagaforge import render3d as r3
 from sagaforge import restyle
 from sagaforge.render3d import Mesh
-from warband.sim.rules import BUILDINGS, PLAYERS, BuildingType, MapTheme, Race, Resource, Terrain, UnitType
+from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, PLAYERS, BuildingType, MapTheme, Race, Resource, Terrain, UnitType
 
 TILE = 32
 ELEVATION = 50.0
@@ -2126,7 +2126,7 @@ def stride_heads(race: Race, unit_type: UnitType, carrying: Resource | None) -> 
 def restyled_buildings(race: Race, look: str = "intact") -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
     """The hand-painted buildings of one race in one look (one frame per building type, the
     gold mine excluded), or None."""
-    return _painted(f"{race.value}.buildings.{look}", [building_key(bt, 0, race, look) for bt in BuildingType if BUILDINGS[bt].mine is None])
+    return _painted(f"{race.value}.buildings.{look}", [building_key(bt, 0, race, look) for bt in BUILT])
 
 
 def mine_key(variant: int, look: str = "intact") -> str:
@@ -2209,7 +2209,7 @@ def warm_units(game: Game, players: list[int], races: list[Race] | None = None):
     scene can spread the cost over its first frames instead of hitching in the first battle."""
     for index, player in enumerate(players):
         race = races[index] if races is not None else Race.HUMAN
-        for unit_type in UnitType:
+        for unit_type in PLAYABLE_UNITS:  # a creature is nobody's: warband.art.monsters warms those
             carries: tuple[Resource | None, ...] = (None, Resource.GOLD, Resource.LUMBER) if unit_type is UnitType.PEASANT else (None,)
             for carrying in carries:
                 frames = FRAMES + CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else FRAMES
@@ -2297,6 +2297,14 @@ def _mote(size: int) -> Image.Image:
     return Image.alpha_composite(halo, core)
 
 
+def _venom(size: int) -> Image.Image:
+    """A spider's spit in the air: a violet droplet with a pale core.  Violet is the one strong hue no
+    player wears (Azure, Crimson, Viridian, Amber), which is why the creatures' venom is that colour."""
+    halo = _glow(size, 0.26, (168, 92, 196, 230), 0.09)
+    core = _glow(size, 0.13, (236, 214, 255, 255), 0.05)
+    return Image.alpha_composite(halo, core)
+
+
 def _arrow(scale: float) -> Image.Image:
     """A fletched arrow pointing right, 24 logical units long."""
     w, h = round(24 * scale), round(6 * scale)
@@ -2342,5 +2350,6 @@ def register_static(game: Game) -> None:
     assets.image_from_pil("arrow", _arrow(scale))
     assets.image_from_pil("stone", _glow(int(px * 0.4), 0.36, (150, 140, 128, 255), 0.06))
     assets.image_from_pil("mote", _mote(int(px * 0.7)))
+    assets.image_from_pil("venom", _venom(int(px * 0.6)))
     assets.image_from_pil("drop", _glow(max(6, int(px * 0.3)), 0.42, (*WHITE, 255), 0.08))  # a droplet, a chip: a dot with an edge, tinted by its spray
     assets.image_from_pil("stain", _glow(int(px * 1.2), 0.36, (*WHITE, 255), 0.12))  # a soft blotch on the ground, tinted dark red; the blur stays inside the canvas

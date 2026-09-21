@@ -20,7 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Final
 
-from warband.sim.rules import BUILDINGS, UNITS, UPGRADES, BuildingInfo, BuildingType, Race, UnitInfo, UnitType, Upgrade, UpgradeInfo
+from warband.sim.rules import (BUILDINGS, UNITS, UPGRADES, WILD_BUILDINGS, BuildingInfo, BuildingType, Race, UnitInfo, UnitType,
+                               Upgrade, UpgradeInfo)
 
 
 @dataclass(frozen=True)
@@ -73,9 +74,14 @@ class RaceInfo:
 
 
 def _units(tweaks: dict[UnitType, UnitTweak]) -> dict[UnitType, UnitInfo]:
+    """The seven roles a race fields, as that race names and tweaks them.
+
+    The neutral creatures are not among them: no race names one, so none has an entry for one, and a
+    creature's numbers come out of the shared table instead (:func:`warband.sim.model.unit_stats`).
+    """
     out: dict[UnitType, UnitInfo] = {}
-    for unit_type, base in UNITS.items():
-        t = tweaks[unit_type]
+    for unit_type, t in tweaks.items():
+        base = UNITS[unit_type]
         out[unit_type] = replace(
             base, name=t.name, summary=t.summary, hp=int(round(base.hp * t.hp)), damage=int(round(base.damage * t.damage)),
             armor=base.armor + t.armor, range=base.range + (t.range if base.ranged else 0.0), speed=round(base.speed + t.speed, 2),
@@ -87,8 +93,8 @@ def _units(tweaks: dict[UnitType, UnitTweak]) -> dict[UnitType, UnitInfo]:
 def _buildings(tweaks: dict[BuildingType, BuildingTweak]) -> dict[BuildingType, BuildingInfo]:
     out: dict[BuildingType, BuildingInfo] = {}
     for building_type, base in BUILDINGS.items():
-        if base.mine is not None:
-            out[building_type] = base  # a gold deposit is nobody's: no race names it, tweaks it or draws it
+        if building_type in WILD_BUILDINGS:
+            out[building_type] = base  # a deposit and a lair are nobody's: no race names them, tweaks them or draws them
             continue
         t = tweaks[building_type]
         out[building_type] = replace(base, name=t.name, summary=t.summary, hp=int(round(base.hp * t.hp)), armor=base.armor + t.armor)

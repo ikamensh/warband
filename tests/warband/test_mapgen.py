@@ -20,7 +20,7 @@ def door(world: World, building) -> tuple[int, int]:
 
 def images(world: World, pos: tuple[int, int], size: int = 1) -> set[tuple[int, int]]:
     """Where the map's symmetry sends a tile, or the top-left of a *size* square: one copy a cell."""
-    return set(mapgen.cell_images(world.width, world.height, len(world.players), pos, size))
+    return set(mapgen.cell_images(world.width, world.height, world.seats, pos, size))
 
 
 @pytest.mark.parametrize("seed", range(1, 7))
@@ -81,7 +81,7 @@ def test_every_seat_holds_a_congruent_copy_of_the_first(players: int) -> None:
     """The fairness the audit rests on: each cell is the canonical one, tile for tile, whatever the grid."""
     width, height = mapgen.dimensions(mapgen.sizes_for(players)[0], players)
     world = mapgen.generate(seed=5, width=width, height=height, players=players)
-    assert len(world.players) == players
+    assert world.seats == players
     _assert_congruent(world, players)
 
 
@@ -157,7 +157,17 @@ def test_bastion_walls_every_base_behind_one_gate() -> None:
 
 
 def test_any_layout_is_drawn_from_the_seed() -> None:
-    drawn = {mapgen.generate(seed=seed).layout for seed in range(1, 30)}
+    """Every layout comes up, and a seed always draws the same one.
+
+    A seed here and there makes no fair map at all (tests/warband/test_fair_seeds.py), and which ones
+    move whenever the generator draws differently; the claim is about the draw, so a refused seed is
+    passed over rather than pinned down."""
+    drawn = set()
+    for seed in range(1, 60):
+        try:
+            drawn.add(mapgen.generate(seed=seed).layout)
+        except mapgen.NoFairMap:
+            continue
     assert drawn == set(Layout)
     assert mapgen.generate(seed=17).layout is mapgen.generate(seed=17).layout
 

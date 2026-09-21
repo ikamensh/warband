@@ -21,6 +21,7 @@ uv run python tools/verify.py DIR                # a match through real pyglet e
 uv run python tools/verify_profile.py DIR        # title card, profile, rating on the results, leave confirmations, a replay: frames to look at
 uv run python tools/verify_campaign.py DIR       # the campaign's screens rendered by the real backend; uv run warband --mission ID plays one
 uv run python tools/verify_deaths.py DIR         # one death per unit category from both sides and a mass-casualty scene, as montages to look at (--zoom 2 for near)
+uv run python tools/verify_camp.py DIR           # a creature camp on the map, an army walking up to it, the fight, and each creature's card
 uv run python tools/visual_lint.py --evidence DIR   # visual defects in the art and on every screen; PNGs of what it flags (--screens NAME, --no-images)
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms); --scenario four-player|pan-zoom|deaths|restarts, --csv, --gc
 uv run python tools/step_bench.py --repeat 3     # model step times of the same battle without a window, with --profile
@@ -29,6 +30,7 @@ uv run python tools/perf.py --scenario sixteen-player           # frames with si
 uv run python tools/sim_bench.py --check tools/sim_bench.txt   # processor time of nine whole arena matches, and their results unchanged
 uv run python -m warband.league.fastsim          # compile the simulation with mypyc now (the match-running tools do it on first use)
 uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening (the default report is about a minute)
+uv run python tools/creep_report.py --agents pro,pro --seeds 12   # can the brains clear a creature camp? camps cleared against units fed to one
 uv run python tools/arena.py ladder --agents hard,pro --seeds 40   # rate agents against each other, in parallel
 uv run python tools/arena.py report --seeds 24                     # 1v1, free-for-all and jittered-balance ladders
 uv run python tools/tune.py --rounds 12 --games 48                 # hill-climb a ProProfile's numbers
@@ -78,7 +80,15 @@ the compiled simulation attaches after they load.
   marks the policy's own jobs, an ordered harvest stays its player's, and a
   worker its player lately had in hand is left alone the longer the further
   from a depot it stands, `manual_hold`: `docs/worker-hands-off.md`),
-  `settlement.py` building plans. `_native.c` holds C twins of a few loops of
+  `settlement.py` building plans.  `camps.py` holds the neutral creature camps:
+  a lair with its guards posted round it, which rouse as one, leash to the camp
+  and put themselves back together when left alone, and which mapgen places
+  beside every *contested* deposit (a third mine or the seam, never a seat's own
+  mine and never its natural).  They belong to the wilds, the one seat past
+  `World.seats` (`Player.neutral`): everything that means "a seat in the match"
+  counts `world.seats`, never `len(world.players)`, and the wilds are out of
+  victory, elimination, fog, supply, the league's tallies and the authority's
+  own seats.  `docs/warband-monsters.md`. `_native.c` holds C twins of a few loops of
   the compiled simulation (`docs/fast-simulation.md`).
 - `warband/brains/` — the computer players. `ai.py` holds a Brain per player
   for the lower difficulties (`PROFILES`) plus `make_brain`, which is what
@@ -230,6 +240,11 @@ decision of its own.
   goes into both, and `tests/warband/test_fastsim.py` holds them to the same
   answers on random inputs and plays the fingerprint compiled. What the
   compiler rewards and punishes is in `docs/fast-simulation.md`.
+- A camp is only a feature if every side can use one. `tools/creep_report.py`
+  is the gate: lairs cleared per match against units lost to the wilds per lair
+  (`trickle`). A brain that feeds soldiers into a camp a few at a time is
+  pouring them into a sink, because a camp mends its wounded and calls its dead
+  back out of the den; that failure is what the number is for.
 - Claims about an AI being stronger are settled by `tools/arena.py`, not by
   watching a match. The same two brains on the same twelve seeds swing
   between seven and eleven wins on the random stream alone, so nothing under

@@ -316,5 +316,5 @@ def under_attack(world: World, player: int) -> bool:
 
 
 def standing(world: World, player: int) -> Standing:
-    rivals = [p.id for p in world.players if p.id != player and p.alive]
+    rivals = [p.id for p in world.players[:world.seats] if p.id != player and p.alive]
     return Standing(material(world, player), max((material(world, rival) for rival in rivals), default=0), under_attack(world, player))

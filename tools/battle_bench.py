@@ -134,7 +134,7 @@ def aim_crews(world: World, player: int) -> None:
     """One look by a hand-driving player at its siege crews: any crew without a live target in reach is
     right-clicked onto the best mark there is.  A crew already throwing at something is left alone."""
     for crew in world.player_units(player):
-        if not crew.info.splash or crew.hp <= 0:
+        if not crew.info.siege or crew.hp <= 0:
             continue
         order = crew.order
         if isinstance(order, Attack) and not order.auto:

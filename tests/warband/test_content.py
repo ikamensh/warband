@@ -7,7 +7,7 @@ from collections.abc import Iterable
 import pytest
 
 from warband.sim.model import Attack, Deposit, Heal, Move, RuleError, World, dist, tile_center
-from warband.sim.rules import BUILDINGS, SIM_DT, UNITS, UPGRADES, BuildingType, Race, Resource, Terrain, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, SIM_DT, UNITS, UPGRADES, BuildingType, Race, Resource, Terrain, UnitType, Upgrade
 
 
 def flat_world(width: int = 30, height: int = 24, trees: Iterable[tuple[int, int]] = ()) -> World:
@@ -49,7 +49,7 @@ def refusals(race: Race) -> set[str]:
             continue
         placed.append(world.place_building(0, kind, (1 + index % 4 * 4, 1 + index // 4 * 4)))
     site = world.place_building(0, BuildingType.FARM, (1, 16), done=False)
-    said = {world.can_train(b, u) for b in [*placed, site] for u in UnitType}
+    said = {world.can_train(b, u) for b in [*placed, site] for u in PLAYABLE_UNITS}
     said |= {world.can_research(b, up) for b in placed for up in Upgrade}
     said |= {world.can_place(kind, pos, 0) for kind in BUILDINGS for pos in ((1, 1), (23, 23), (-1, 5), (20, 20))}
     said |= {world.can_plan_building(kind, (2, 2), 0) for kind in BUILDINGS}
@@ -71,7 +71,7 @@ def test_a_refusal_names_things_the_way_english_does(race: Race) -> None:
 
 def test_every_unit_and_building_is_reachable_through_the_chain() -> None:
     trained = {u for info in BUILDINGS.values() for u in info.trains}
-    assert trained == set(UnitType)
+    assert trained == set(PLAYABLE_UNITS)
     researched = {u for info in BUILDINGS.values() for u in info.researches}
     assert researched == set(Upgrade)
     for building_type, info in BUILDINGS.items():
@@ -88,7 +88,7 @@ def test_every_unit_and_building_is_reachable_through_the_chain() -> None:
             if needed not in seen:
                 seen.add(needed)
                 edge.extend(UPGRADES[needed].requires)
-    assert len(UnitType) >= 7 and len([b for b in BuildingType if b is not BuildingType.GOLD_MINE]) >= 8 and len(Upgrade) >= 6
+    assert len(PLAYABLE_UNITS) >= 7 and len(BUILT) >= 8 and len(Upgrade) >= 6
 
 
 def test_the_keep_gates_the_upper_tiers_and_the_master_weapons() -> None:

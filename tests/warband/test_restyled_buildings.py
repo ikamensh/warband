@@ -14,13 +14,14 @@ from sagaforge import restyle
 from warband.art import textures
 from warband.sim.model import Building
 from warband.sim.rules import BUILDINGS, BuildingType, Race, UnitType
+from warband.sim.rules import BUILT as rules_built
 from warband.ui.view import building_look
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools import restyle as tool  # noqa: E402
 
 CELL = (40, 60)
-BUILT = [bt for bt in BuildingType if BUILDINGS[bt].mine is None]
+BUILT = list(rules_built)
 
 
 def paint(folder: Path, race: Race, look: str, types: list[BuildingType] = BUILT) -> None:

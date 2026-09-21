@@ -112,7 +112,7 @@ def check_fair_map(seed: int, size: str, players: int, layout: Layout | None) ->
         size = (mapgen.sizes_for(players, layout) or mapgen.sizes_for(players))[0]
     width, height = mapgen.dimensions(size, players)
     chosen, world = fair_map(seed, width, height, players, layout=layout)
-    assert seed <= chosen < seed + FAIR_TRIES and (world.width, world.height, len(world.players)) == (width, height, players)
+    assert seed <= chosen < seed + FAIR_TRIES and (world.width, world.height, world.seats) == (width, height, players)
 
 
 SETTINGS = (st.integers(1, 2**31 - 1), st.sampled_from(sorted(mapgen.SIZES)),
@@ -198,7 +198,7 @@ def order(data, world: World):
     tile = (data.draw(st.integers(-1, world.width)), data.draw(st.integers(-1, world.height)))
     # The seats in the match: an order for one that is not raises IndexError (or, for -1, acts for the last seat),
     # which nothing online can send, since the authority gives each seat's orders with that seat's own index.
-    player = data.draw(st.integers(0, len(world.players) - 1))
+    player = data.draw(st.integers(0, world.seats - 1))
     queue = data.draw(st.booleans())
     building, unit = data.draw(st.sampled_from(list(BuildingType))), data.draw(st.sampled_from(list(UnitType)))
     upgrade = data.draw(st.sampled_from(list(Upgrade)))

@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from saga2d import Game, fonts  # noqa: E402
 from saga2d.testing import FrameTimer  # noqa: E402
 from warband.sim import path as pathing  # noqa: E402
-from warband.art import textures  # noqa: E402
+from warband.art import monsters, textures  # noqa: E402
 from warband.sim.rules import BuildingType, Layout  # noqa: E402
 from warband.ui.scene import GameScene  # noqa: E402
 from warband.ui.style import build_theme  # noqa: E402
@@ -171,8 +171,12 @@ def battle(game: Game, world=None, *, camera_on: tuple[float, float] | None = No
     hx, hy = hall.pos
     scene.camera.center_on(*(camera_on if camera_on is not None else ((hx + 20) * 32, (hy + 7) * 32)))
     scene.select([u.id for u in w.player_units(0) if not u.is_worker][:12])
-    for _ in textures.warm_units(game, [p.id for p in w.players], [p.race for p in w.players]):
+    seats = w.players[:w.seats]  # the wilds field no units of their own; their creatures warm separately
+    for _ in textures.warm_units(game, [p.id for p in seats], [p.race for p in seats]):
         pass
+    if w.camps:
+        for _ in monsters.warm_monsters(game):
+            pass
     return scene
 
 

@@ -22,11 +22,14 @@ import numpy as np
 from PIL import Image
 
 from saga2d import Game, ParticleEmitter, RenderLayer, Scene, Sprite, SpriteAnchor
-from warband.art import textures
+from warband.art import monsters, textures
+from warband.art.monsters import Monster
 from warband.sim.model import Building, Entity, Pos, Projectile, Unit, World, dist
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, SIM_DT, VISION_EVERY, BuildingType, Race, Terrain, UnitType, UPGRADES
+from warband.sim.rules import BUILDINGS, CREATURES, SIM_DT, VISION_EVERY, BuildingType, Race, Terrain, UnitType, UPGRADES
 from warband.art.textures import CHUNK, CHUNK_PX, TILE
+
+CREATURE_SET = frozenset(CREATURES)  # the neutral creatures, asked of a unit's type on every frame
 
 WATER_PERIOD = 0.45  # seconds between water phase changes
 WATER_CYCLE = (0, 1, 2, 1)  # ping-pong through the phases so the ripples never jump
@@ -50,6 +53,8 @@ def building_look(b: Building, worked: Collection[int] = ()) -> str:
     is among *worked*."""
     if b.info.mine is not None:
         return "active" if b.id in worked else "intact"
+    if b.type is BuildingType.LAIR:
+        return "intact"  # the den is drawn once, whatever has happened to it
     if not b.done:
         return "founded" if b.progress < b.info.build_time / 2 else "raised"
     if b.hp < b.max_hp / 2:
@@ -159,14 +164,14 @@ STRIKE, FOLLOW, RECOVER = 0.1, 0.16, 0.16  # seconds after the blow: driven forw
 #: Whose shot is not the arrow the model flies it as.  The model tells a shot that follows its mark from a stone
 #: that comes down on the ground; what it looks like is the striker's, as what it lands as is (``sound.impact_sound``):
 #: a healer looses no arrow but a mote of light, from the head of its staff.
-SHOT_LOOKS = {UnitType.CLERIC.value: "mote"}
-SHOT_SIZE = {"arrow": (22, 6), "stone": (14, 14), "mote": (20, 20)}
+SHOT_LOOKS = {UnitType.CLERIC.value: "mote", UnitType.SPIDER.value: "venom"}
+SHOT_SIZE = {"arrow": (22, 6), "stone": (14, 14), "mote": (20, 20), "venom": (16, 16)}
 STAFF_REACH = 0.4  # tiles before a healer that the head of its staff is held, where its mote is first seen
 RING_FLATTEN = 0.62  # a circle on the ground seen from the game's elevation is this much shorter than it is wide
 PICK_SLACK = 0.35  # tiles beyond a unit's body a click still picks it: the figure stands above the ground point it is clicked at
-TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1}  # seconds of flight a shot leaves hanging in the air behind it
-TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150)}
-TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5)}  # at the shot and where the trail ends
+TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1, "venom": 0.14}  # seconds of flight a shot leaves hanging in the air behind it
+TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150), "venom": (198, 132, 226)}
+TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5), "venom": (2.6, 0.5)}  # at the shot and where the trail ends
 BAR_OUTLINE = (0, 0, 0, 190)  # the backing and outline of every health and progress bar
 #: Nobody's building on the minimap and on the New game preview: a gold deposit, and the one thing on
 #: either picture that is not a seat.  The gold it used to be, (232, 196, 70), is three units of
@@ -241,7 +246,7 @@ def projectile_point(p: Projectile, world: World, now: float) -> tuple[float, fl
     span = dist(p.start, mark)
     if p.kind == "stone":
         return x, y, 0.55 + 4 * (0.5 + 0.14 * span) * t * (1 - t)
-    if shot_look(p) == "mote":
+    if shot_look(p) in ("mote", "venom"):
         ahead = STAFF_REACH * (1 - t) / span if span > STAFF_REACH else 0.0  # the drawn start only: the blow is the model's
         return x + (mark[0] - p.start[0]) * ahead, y + (mark[1] - p.start[1]) * ahead, 1.0 + (0.45 - 1.0) * t
     lift = 1.7 if p.source_type == BuildingType.TOWER.value else 0.55  # loosed from the battlements, or from the shoulder
@@ -633,9 +638,12 @@ class MapView:
         # A site wears its painted founded or raised look; without the painting (the low-poly art), a plain site for
         # the first half and the building faded in for the second.
         deposit = BUILDINGS[sighting.type].mine
-        painted_site = not sighting.done and deposit is None and textures.has_look(sighting.race, sighting.look)
-        rising = not painted_site and 0.5 <= sighting.built < 1.0
-        if deposit is not None:
+        lair = sighting.type is BuildingType.LAIR
+        painted_site = not sighting.done and deposit is None and not lair and textures.has_look(sighting.race, sighting.look)
+        rising = not painted_site and not lair and 0.5 <= sighting.built < 1.0
+        if lair:
+            key = monsters.lair_image(self.game)  # one den, never a race's and never a team's
+        elif deposit is not None:
             key = textures.deposit_image(self.game, sighting.type, textures.scatter(x, y, 8) % textures.mine_variants(), sighting.look)
         elif sighting.done or painted_site:
             key = textures.building_image(self.game, sighting.type, sighting.player, sighting.race, sighting.look, abandoned=sighting.abandoned)  # type: ignore[arg-type]
@@ -713,7 +721,11 @@ class MapView:
                 continue
             # Draw the combat tool with free hands; the model keeps the worker's load.
             carrying = None if u.state == "attack" else u.carrying
-            key = textures.unit_image(self.game, u.type, u.player, textures.facing_index(u.facing), self._frame(u), carrying, race=u.race)
+            facing, frame = textures.facing_index(u.facing), self._frame(u)
+            # A creature is nobody's: its sheet takes no player and is never team-recoloured, so it is
+            # reached through warband.art.monsters rather than through the units' own table.
+            key = (monsters.monster_image(self.game, Monster(u.type.value), facing, frame) if u.type in CREATURE_SET
+                   else textures.unit_image(self.game, u.type, u.player, facing, frame, carrying, race=u.race))
             if sprite is None:
                 sprite = self._units[u.id] = self._prop(key, position)
                 self._unit_keys[u.id] = key

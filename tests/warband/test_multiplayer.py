@@ -42,7 +42,7 @@ def test_warband_guest_orders_and_host_simulation_stay_in_sync():
         converge(host, client, lambda: client.state['world']['tick'] == match.world.tick)
         assert match.world.units[guest.id].pos != original
         restored = World.from_dict(client.state['world'])
-        assert all(p.human for p in restored.players)
+        assert all(p.human for p in restored.players[:restored.seats])
         import json
         assert client.state == json.loads(json.dumps(match.snapshot(1))), "the guest is sent its seat's snapshot, exactly"
         own = [u for u in match.world.to_dict()['units'] if u['player'] == 1]

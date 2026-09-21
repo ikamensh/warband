@@ -138,7 +138,7 @@ class Playback:
     def __init__(self, replay: Replay) -> None:
         self.replay = replay
         self.world = World.from_dict(replay.start)
-        if not 0 <= replay.human < len(self.world.players):
+        if not 0 <= replay.human < self.world.seats:
             raise ValueError("the replay's human seat is not on the map")
         self._next = 0
 

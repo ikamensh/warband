@@ -37,7 +37,7 @@ from warband.league.arena import AGENTS, MatchResult, MatchSpec, playable, rate,
 
 
 def specs_1v1(agents: list[str], seeds: range, variant: str, minutes: float,
-              neighbours: int | None = None, against: list[str] | None = None) -> list[MatchSpec]:
+              neighbours: int | None = None, against: list[str] | None = None, wilds: bool = True) -> list[MatchSpec]:
     """Every unordered pair, on every seed, from both corners.
 
     With *neighbours*, only agents within that many places of each other in
@@ -54,8 +54,8 @@ def specs_1v1(agents: list[str], seeds: range, variant: str, minutes: float,
             continue
         for seed in seeds:
             board = arena.board(seed)
-            out.append(MatchSpec(seed=seed, agents=(a, b), variant=variant, minutes=minutes, **board))
-            out.append(MatchSpec(seed=seed, agents=(b, a), variant=variant, minutes=minutes, **board))
+            out.append(MatchSpec(seed=seed, agents=(a, b), variant=variant, minutes=minutes, wilds=wilds, **board))
+            out.append(MatchSpec(seed=seed, agents=(b, a), variant=variant, minutes=minutes, wilds=wilds, **board))
     return out
 
 
@@ -213,6 +213,8 @@ def main() -> None:
                         help="1v1: only agents this close in the --agents list meet (default: every pair)")
     parser.add_argument("--against", default=None,
                         help="1v1: comma separated panel; every agent meets only these (default: every pair)")
+    parser.add_argument("--no-wilds", dest="wilds", action="store_false",
+                        help="leave the contested deposits unguarded, to rate the same ladder without creature camps")
     parser.add_argument("--workers", type=int, default=max(1, mp.cpu_count() - 2))
     args = parser.parse_args()
 
@@ -239,8 +241,8 @@ def main() -> None:
 
     if args.mode in ("ladder", "report"):
         print("\n== 1v1 ==")
-        results = run(specs_1v1(agents, seeds, "standard", args.minutes, args.neighbours, against), args.workers, "1v1",
-                      args.save)
+        results = run(specs_1v1(agents, seeds, "standard", args.minutes, args.neighbours, against, args.wilds),
+                      args.workers, "1v1", args.save)
         table(results)
     if args.mode in ("ffa", "report"):
         players = args.players if args.mode == "ffa" else min(4, max(3, len(agents)))

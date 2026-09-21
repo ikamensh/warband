@@ -40,7 +40,7 @@ from sagaforge import render3d as r3  # noqa: E402
 from sagaforge import restyle  # noqa: E402
 from warband.art import monsters, textures  # noqa: E402
 from warband.sim.races import RACES  # noqa: E402
-from warband.sim.rules import BUILDINGS, BuildingType, Race, Resource, UnitType  # noqa: E402
+from warband.sim.rules import BUILDINGS, BUILT, BuildingType, Race, Resource, UnitType  # noqa: E402
 
 RESTYLED = Path(__file__).resolve().parent.parent / "warband" / "assets" / "restyled"
 SCALE = 2.0  # sheet pixels per logical unit (units)
@@ -143,7 +143,7 @@ PLAUSIBLE = ("The reference is a rough low-poly stand-in. Where its construction
 
 # -- Buildings --------------------------------------------------------------------------
 
-BUILDING_TYPES = [bt for bt in BuildingType if BUILDINGS[bt].mine is None]
+BUILDING_TYPES = list(BUILT)
 LOOKS = textures.BUILDING_LOOKS  # intact, active, damaged
 ARCHITECTURE: dict[Race, str] = {
     Race.HUMAN: "human: a medieval kingdom that builds in grey stone, oak timber and white plaster under thatch and grey slate",

@@ -3,7 +3,7 @@
 import pytest
 
 from saga2d import Game
-from warband.sim.rules import BLADES_BONUS, FORMATION_ARMOR, UNITS, UnitType, Upgrade
+from warband.sim.rules import BLADES_BONUS, FORMATION_ARMOR, PLAYABLE_UNITS, UNITS, UnitType, Upgrade
 from warband.ui.scene import PORTRAITS_PER_PAGE, GameScene
 from warband.ui.icons import COLORS
 from warband.ui.style import GOLD, build_theme
@@ -203,7 +203,7 @@ def drawn(game: Game) -> set[str]:
     return {str(t["text"]) for t in game.backend.texts}
 
 
-@pytest.mark.parametrize("unit_type", list(UnitType), ids=lambda u: u.value)
+@pytest.mark.parametrize("unit_type", list(PLAYABLE_UNITS), ids=lambda u: u.value)
 def test_the_card_names_what_a_selected_unit_wears_and_how_it_strikes(tmp_path, unit_type) -> None:
     """Armour class and attack type were reachable only by hovering the armour stat.  The pair is what a player
     acts on — armour alone is half of DAMAGE_FACTORS' two-sided table — so the card states both under the numbers."""
