@@ -14,6 +14,8 @@ from warband.ui.style import build_theme
 from warband.art.textures import TILE
 
 CANVASES = [(1280, 800), (1840, 960), (2480, 1320)]  # a laptop window; a 4K desktop at 200 % and at 150 %
+FAST_SIZES = ("Small", "Medium", "Large")
+SIZES = [pytest.param(name) if name in FAST_SIZES else pytest.param(name, marks=pytest.mark.slow) for name in mapgen.SIZES]
 
 
 def assert_the_map_fills_the_view(scene) -> None:
@@ -32,8 +34,11 @@ def assert_the_map_fills_the_view(scene) -> None:
 
 
 @pytest.mark.parametrize("canvas", CANVASES, ids=[f"{w}x{h}" for w, h in CANVASES])
-@pytest.mark.parametrize("size", list(mapgen.SIZES))
+@pytest.mark.parametrize("size", SIZES)
 def test_a_match_opens_with_its_map_filling_the_window(size: str, canvas: tuple[int, int], tmp_path) -> None:
+    """Every size on every canvas.  The three shipped sizes are the fast tier's; a board added for many seats draws
+    four to thirteen times their area — an Epic one takes most of the three-second budget on a runner at four
+    workers — so those sizes are the slow tier's."""
     players = mapgen.offered(size)[0]  # the fewest seats the size holds: the biggest sizes need several
     width, height = mapgen.dimensions(size, players)
     game = Game("Warband camera", backend="mock", resolution=canvas, theme=build_theme(), save_dir=tmp_path / "saves")
