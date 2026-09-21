@@ -119,17 +119,16 @@ SETTINGS = (st.integers(1, 2**31 - 1), st.sampled_from(sorted(mapgen.SIZES)),
             st.sampled_from(mapgen.SEAT_COUNTS), st.sampled_from([None, *Layout]))
 
 
-@FEW
-@given(*SETTINGS)
-def test_a_seed_the_game_chooses_leads_to_a_fair_map(seed: int, size: str, players: int, layout: Layout | None) -> None:
-    check_fair_map(seed, size, players, layout)
-
-
 @pytest.mark.slow
 @MANY
 @given(*SETTINGS)
 def test_a_seed_the_game_chooses_leads_to_a_fair_map_at_every_setting_it_offers(seed: int, size: str, players: int, layout: Layout | None) -> None:
-    """Three hundred seeds, a map generated for each and some many times over: the slow tier."""
+    """Three hundred seeds, a map generated for each and some many times over: the slow tier.
+
+    There is no fast twin of this: once the boards for many seats exist, a dozen generated maps is
+    over the fast tier's whole budget, and a twelve-example subset of this test proved nothing this
+    one does not.  The fast tier gets its fairness from test_maps.py, which walks the three shipped
+    sizes against every layout deterministically."""
     check_fair_map(seed, size, players, layout)
 
 

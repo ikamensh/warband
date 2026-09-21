@@ -138,8 +138,11 @@ def test_the_portrait_comes_from_the_painting(game, painted, monkeypatch) -> Non
     assert image.width / image.height == pytest.approx(20 / 38, abs=0.05)
 
 
+@pytest.mark.slow
 def test_the_tool_lays_a_creature_out_facings_across_and_frames_down() -> None:
-    """The sheet the painter is given: one creature, nine rows of eight, every frame on one anchor."""
+    """The sheet the painter is given: one creature, nine rows of eight, every frame on one anchor.
+
+    Slow: building the sheet renders all seventy-two cells, which is over the fast tier's budget on a runner."""
     subject = tool.Monsters(Monster.TROLL)
     sheet, images = subject.build_sheet()
     assert subject.name == "monster.troll"
@@ -184,8 +187,11 @@ def test_the_committed_sheet_is_free_of_edge_strays(monster: Monster) -> None:
     assert {key: count for key, count in field.items() if count} == {}, "the key's faint field far from the figure"
 
 
+@pytest.mark.slow
 def test_a_unit_and_a_creature_are_laid_out_by_the_same_helper() -> None:
     """``figure_sheet`` builds both, so a unit's sheet is pinned here beside the creatures'.
+
+    Slow: it builds two whole sheets, which is over the fast tier's budget on a runner.
 
     The two differ in nothing but which mesh a (frame, facing) is and what it is called: the cell is
     the widest and tallest any frame needs, the anchor is the same point of every cell, and the

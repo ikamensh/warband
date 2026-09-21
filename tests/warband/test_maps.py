@@ -8,14 +8,19 @@ from warband.sim.model import World
 from warband.sim.rules import Layout, MapTheme, UnitType
 
 SEEDS = [pytest.param(range(1, 4), id="seeds 1-3"), pytest.param(range(4, 41), id="seeds 4-40", marks=pytest.mark.slow)]
+#: The three shipped sizes are the fast tier's representative matrix.  The sizes added for many seats
+#: draw four to thirteen times their area, which a runner cannot generate inside the three-second
+#: budget however few seeds it is given, so they are the slow tier's.
+FAST_SIZES = ("Small", "Medium", "Large")
+SIZES = [pytest.param(name) if name in FAST_SIZES else pytest.param(name, marks=pytest.mark.slow) for name in mapgen.SIZES]
 
 
 @pytest.mark.parametrize("seeds", SEEDS)
 @pytest.mark.parametrize("layout", list(Layout))
-@pytest.mark.parametrize("size", list(mapgen.SIZES))
+@pytest.mark.parametrize("size", SIZES)
 def test_every_seed_gives_every_player_a_fair_start(size: str, layout: Layout, seeds: range) -> None:
     """Forty seeds of every size and layout take about twenty seconds, so the fast tier checks the first three
-    of each and the slow tier the other thirty-seven.  Each seed takes the next seat count the size offers for
+    of each of the three shipped sizes and the slow tier the other thirty-seven and the larger boards.  Each seed takes the next seat count the size offers for
     the layout, so every offered pairing is generated."""
     counts = mapgen.offered(size, layout)
     assert counts, (size, layout, "no seat count at all", mapgen.refusal(*mapgen.dimensions(size, 2), 2, layout))
