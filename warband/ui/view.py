@@ -46,9 +46,9 @@ def rgba(color: tuple[int, int, int], alpha: int = 255) -> Color:
 def building_look(b: Building, worked: Collection[int] = ()) -> str:
     """Which painted look a building wears: going up, founded for the first half of its construction
     and raised for the second; damaged under half its hit points, active while it trains or
-    researches, intact otherwise.  A gold mine is active while a peasant works inside it: its id
+    researches, intact otherwise.  A gold deposit is active while a peasant works inside it: its id
     is among *worked*."""
-    if b.type is BuildingType.GOLD_MINE:
+    if b.info.mine is not None:
         return "active" if b.id in worked else "intact"
     if not b.done:
         return "founded" if b.progress < b.info.build_time / 2 else "raised"
@@ -168,7 +168,7 @@ TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1}  # seconds of flight a shot 
 TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150)}
 TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5)}  # at the shot and where the trail ends
 BAR_OUTLINE = (0, 0, 0, 190)  # the backing and outline of every health and progress bar
-#: Nobody's building on the minimap and on the New game preview: a gold mine, and the one thing on
+#: Nobody's building on the minimap and on the New game preview: a gold deposit, and the one thing on
 #: either picture that is not a seat.  The gold it used to be, (232, 196, 70), is three units of
 #: CIE76 from Amber, so an Amber player's halls were their own mines; this straw is twenty-seven
 #: from the nearest seat colour and forty-three from any ground.
@@ -632,10 +632,11 @@ class MapView:
         x, y, size, _ = sighting.rect
         # A site wears its painted founded or raised look; without the painting (the low-poly art), a plain site for
         # the first half and the building faded in for the second.
-        painted_site = not sighting.done and sighting.type is not BuildingType.GOLD_MINE and textures.has_look(sighting.race, sighting.look)
+        deposit = BUILDINGS[sighting.type].mine
+        painted_site = not sighting.done and deposit is None and textures.has_look(sighting.race, sighting.look)
         rising = not painted_site and 0.5 <= sighting.built < 1.0
-        if sighting.type is BuildingType.GOLD_MINE:
-            key = textures.mine_image(self.game, textures.scatter(x, y, 8) % textures.mine_variants(), sighting.look)
+        if deposit is not None:
+            key = textures.deposit_image(self.game, sighting.type, textures.scatter(x, y, 8) % textures.mine_variants(), sighting.look)
         elif sighting.done or painted_site:
             key = textures.building_image(self.game, sighting.type, sighting.player, sighting.race, sighting.look, abandoned=sighting.abandoned)  # type: ignore[arg-type]
         elif rising:
@@ -664,7 +665,7 @@ class MapView:
     def _sync_smoke(self, b: Building, sprite: Sprite) -> None:
         """A damaged building smoulders under half health and burns under a quarter: smoke from the
         roof, then flames licking up from it."""
-        seen = b.done and b.type is not BuildingType.GOLD_MINE and (self.reveal or self.world.is_visible(self.player, (int(b.center[0]), int(b.center[1]))))
+        seen = b.done and b.info.mine is None and (self.reveal or self.world.is_visible(self.player, (int(b.center[0]), int(b.center[1]))))
         wx, wy = to_world(b.center)
         roof = (wx, wy - b.size * TILE * 0.5)
         self._toggle_emitter(self._smoke, b.id, seen and b.hp < b.max_hp / 2, lambda: ParticleEmitter(
@@ -922,7 +923,7 @@ class MapView:
 
     def _health_bar(self, entity: Entity, x: float, y: float, width: float) -> None:
         """A health bar *width* wide centred on *x* with its fill's top at *y*."""
-        if isinstance(entity, Building) and entity.type is BuildingType.GOLD_MINE:
+        if isinstance(entity, Building) and entity.info.mine is not None:
             return
         frac = max(0.0, min(1.0, entity.hp / max(1, entity.max_hp)))
         color = (110, 230, 110, 255) if frac > 0.5 else (240, 200, 80, 255) if frac > 0.25 else (240, 90, 70, 255)

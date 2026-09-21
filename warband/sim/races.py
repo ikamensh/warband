@@ -87,8 +87,8 @@ def _units(tweaks: dict[UnitType, UnitTweak]) -> dict[UnitType, UnitInfo]:
 def _buildings(tweaks: dict[BuildingType, BuildingTweak]) -> dict[BuildingType, BuildingInfo]:
     out: dict[BuildingType, BuildingInfo] = {}
     for building_type, base in BUILDINGS.items():
-        if building_type is BuildingType.GOLD_MINE:
-            out[building_type] = base
+        if base.mine is not None:
+            out[building_type] = base  # a gold deposit is nobody's: no race names it, tweaks it or draws it
             continue
         t = tweaks[building_type]
         out[building_type] = replace(base, name=t.name, summary=t.summary, hp=int(round(base.hp * t.hp)), armor=base.armor + t.armor)

@@ -33,7 +33,7 @@ from typing import Final
 
 from warband.sim import path as pathing
 from warband.sim.model import Pos, World, tile_center
-from warband.sim.rules import EXPANSION_GOLD, MAX_PLAYERS, MINE_GOLD, BuildingType, Layout, MapTheme, Race, Terrain, UnitType
+from warband.sim.rules import BUILDINGS, EXPANSION_GOLD, MAX_PLAYERS, MINE_GOLD, BuildingType, Layout, MapTheme, Race, Terrain, UnitType
 
 SIZES: Final[dict[str, tuple[int, int]]] = {
     # Nominal tiles; :func:`dimensions` rounds a size up to whole cells of the seat count's grid.
@@ -73,6 +73,14 @@ PROMISES: Final[dict[Layout, str]] = {
 RETRIES: Final = 8
 KLONDIKE_START_GOLD: Final = 20_000
 POOR_GOLD: Final = 10_000  # the coward's gold: a far corner mine on Klondike
+#: A gold seam is the endless deposit (:class:`~warband.sim.rules.MineInfo`): five tiles across instead of
+#: three, twenty gold a trip instead of a hundred, and it never runs out.  It is worth what holding it is
+#: worth, so it goes on the maps whose matches are long and whose middle is far from home, and nowhere else:
+#: the three shipped sizes keep the economy their difficulty ratings and their balance league were measured on.
+_SEAM_MAP: Final = 5200  # tiles of map a seam wants more of; a Large (80x64) is 5120
+_SEAM_CELL: Final = 1000  # tiles of a seat's own cell: a smaller share has no middle to put a five-tile dig in
+_SEAM_AWAY: Final = 18  # tiles from every hall: past the natural, out where a seat has to go and stay
+_SEAM_ROOM: Final = 110  # open tiles within eight of a seam, against _SITE_ROOM within six of a natural
 _MARGIN: Final = 7  # tiles from a cell's corner to a corner hall's top-left
 _CLEARING: Final = 7  # radius of open ground around the hall's middle tile
 _SITE_SPACING: Final = {True: 8, False: 7}  # Chebyshev tiles between mine sites, by whether the cell spans the map (mirrored cells are tighter)
@@ -216,12 +224,21 @@ def build(seed: int, width: int = 48, height: int = 40, players: int = 2, human:
     wanted: list[Race | None] = list(races) if races is not None else [Race.HUMAN if i == human else None for i in range(players)]
     chosen = draw_races(wanted, random.Random(seed ^ 0x5ACE))
     problems: list[str] = []
+    without: tuple[World, dict] | None = None  # the best map so far that is fair but is missing something wished for
     for attempt in range(RETRIES):
         world, report = _attempt(random.Random(seed * 16 + attempt), seed, width, height, players, human, theme, chosen, layout)
+        report["attempt"] = attempt
         if not report["problems"]:
-            report["attempt"] = attempt
-            return world, report
-        problems = report["problems"]
+            if not report["wishes"]:
+                return world, report
+            if without is None:
+                without = (world, report)
+        problems = report["problems"] or report["wishes"]
+    # A fault makes a map unfair and there is nothing to do but raise; a wish is a feature the layout's
+    # own walls left no room for on this seed.  A gold seam is the one wish there is: eight seeds are
+    # given the chance to fit one in, and a map that has everything else is a map, not a refusal.
+    if without is not None:
+        return without
     raise NoFairMap(f"No fair {layout.value} map at {width}x{height} for {players} players from seed {seed} in {RETRIES} tries: {problems}.")
 
 
@@ -420,13 +437,13 @@ class _Canvas:
         return out
 
 
-def _block(pos: Pos, gap: int = 1) -> list[Pos]:
-    """A 3x3 mine at *pos* and *gap* tiles around it."""
-    return [(pos[0] + dx, pos[1] + dy) for dy in range(-gap, 3 + gap) for dx in range(-gap, 3 + gap)]
+def _block(pos: Pos, gap: int = 1, size: int = 3) -> list[Pos]:
+    """A *size* mine at *pos* and *gap* tiles around it."""
+    return [(pos[0] + dx, pos[1] + dy) for dy in range(-gap, size + gap) for dx in range(-gap, size + gap)]
 
 
-def _mine_centre(pos: Pos) -> Point:
-    return (pos[0] + 1.5, pos[1] + 1.5)
+def _mine_centre(pos: Pos, size: int = 3) -> Point:
+    return (pos[0] + size / 2, pos[1] + size / 2)
 
 
 def _dist(a: Point, b: Point) -> float:
@@ -495,16 +512,25 @@ class _Spec:
     natural_clearing: int = 0  # trees cut around the natural (Forest)
     third_clearing: int = 0
     thirds: bool = True  # contested mines in the middle (Klondike keeps its gold in the pit instead)
+    seam: bool = False  # an endless gold seam out in the shared ground, where the map is big enough for one
     contested: int | None = None  # how many tiles nearer one hall than the next a third may be; None: the symmetry's default
     start_gold: int = MINE_GOLD
 
 
+#: Three of the five layouts hold a seam, and each for its own reason.  Plains is open ground where
+#: expansions lie exposed, so a deposit nobody can exhaust is exactly the thing to fight over.
+#: Crossings already asks who holds the fords, and a seam on the far bank gives the answer a price.
+#: Bastion promises a boom in safety and then a fight for the middle, and the seam is what the middle
+#: is finally worth.  Forest has none: its clearings and roads are cut by hand and a five-tile dig
+#: with its open ground around it would take a base's worth of woods out of a layout whose whole
+#: promise is that the woods are thick.  Klondike has none either: little gold at home and the rest
+#: in a walled pit is a deliberate shape of economy, and an endless trickle outside the pit unmakes it.
 _SPECS: Final[dict[Layout, _Spec]] = {
-    Layout.PLAINS: _Spec(Layout.PLAINS),
+    Layout.PLAINS: _Spec(Layout.PLAINS, seam=True),
     Layout.FOREST: _Spec(Layout.FOREST, clearing=9, natural_range=(13, 18), natural_clearing=5, third_clearing=4),  # a full base needs the room; four seats get less, see _clearing
-    Layout.CROSSINGS: _Spec(Layout.CROSSINGS, contested=14),  # the river runs down the bisector; thirds sit on its banks
+    Layout.CROSSINGS: _Spec(Layout.CROSSINGS, contested=14, seam=True),  # the river runs down the bisector; thirds sit on its banks
     Layout.KLONDIKE: _Spec(Layout.KLONDIKE, clearing=6, natural=False, thirds=False, start_gold=KLONDIKE_START_GOLD),
-    Layout.BASTION: _Spec(Layout.BASTION, natural_range=(12, 18)),
+    Layout.BASTION: _Spec(Layout.BASTION, natural_range=(12, 18), seam=True),
 }
 
 
@@ -515,7 +541,7 @@ class _Walls:
     gates: set[Pos]
     fords: set[Pos]
     rects: list[tuple[Pos, int]]  # footprints the site search must avoid, all seats
-    mines: list[tuple[Pos, int]]  # (top-left, gold) of the layout's own mines, all seats
+    mines: list[tuple[Pos, BuildingType, int]]  # (top-left, kind, gold) of the layout's own mines, all seats
     prefer_natural: Callable[[Pos], float] | None = None
     prefer_third: Callable[[Pos], float] | None = None
 
@@ -535,6 +561,14 @@ def _third_orbits(spec: _Spec, cw: int, ch: int) -> int:
         return 0
     room = cw * ch
     return 0 if room < 625 else 1 if room < 1250 else 2
+
+
+def _wants_a_seam(spec: _Spec, width: int, height: int, cw: int, ch: int) -> bool:
+    """Whether this map gets an endless seam (one, copied to every seat, so one seat one seam): on a
+    layout that holds them, on a map bigger than the shipped three, where a seat's own cell has the
+    middle ground to put it in.  A match on a map that size is a long one, which is what a deposit
+    whose worth is how long you keep it is for."""
+    return spec.seam and width * height >= _SEAM_MAP and cw * ch >= _SEAM_CELL
 
 
 def _pit_inner(width: int, height: int) -> int:
@@ -605,13 +639,13 @@ def _pit(cv: _Canvas, rng: random.Random, hc: Pos, walls: _Walls) -> None:
     for ox, oy in offsets:
         pos = (round(cx + ox) - 1, round(cy + oy) - 1)
         for image in cv.rect_images(pos, 3):
-            walls.mines.append((image, EXPANSION_GOLD))
+            walls.mines.append((image, BuildingType.GOLD_MINE, EXPANSION_GOLD))
             walls.rects.append((image, 3))
     if cv.wide:
         poor = (cv.cw - _MARGIN - 3, _MARGIN)
         cv.paint(_block(poor), Terrain.GRASS)
         for image in cv.rect_images(poor, 3):
-            walls.mines.append((image, POOR_GOLD))
+            walls.mines.append((image, BuildingType.GOLD_MINE, POOR_GOLD))
             walls.rects.append((image, 3))
 
 
@@ -720,58 +754,68 @@ def _forest_roads(cv: _Canvas, rng: random.Random, hc: Pos, natural: Pos | None,
 # -- Sites -------------------------------------------------------------------------
 
 
-def _fits(cv: _Canvas, pos: Pos, rects: list[tuple[Pos, int]]) -> bool:
-    """Every copy of a mine at *pos* lies off the edge, on ground without water, rock or a layout's
-    wall, clear of other footprints and *_SITE_SPACING* from other mine sites."""
+def _fits(cv: _Canvas, pos: Pos, rects: list[tuple[Pos, int]], size: int = 3) -> bool:
+    """Every copy of a *size* mine at *pos* lies off the edge, on ground without water, rock or a
+    layout's wall, clear of other footprints and *_SITE_SPACING* from other mine sites.
+
+    A deposit wider than the three tiles every mine had wants that much more room on each side, and
+    *slack* is that much and no more: it is zero for two 3x3 sites, so every map that was drawn
+    before the seams existed is drawn exactly as it was."""
     spacing = _SITE_SPACING[cv.wide]
-    for image in cv.rect_images(pos, 3):
-        for x, y in _block(image):
+    for image in cv.rect_images(pos, size):
+        for x, y in _block(image, size=size):
             if not cv.inside(x, y) or cv.grid[y][x] in (Terrain.WATER, Terrain.ROCK) or (x, y) in cv.protected:
                 return False
-        for (rx, ry), size in rects:
-            if size == 3 and max(abs(rx - image[0]), abs(ry - image[1])) < spacing:
+        for (rx, ry), other in rects:
+            slack = (size - 3) + (other - 3)
+            if max(abs(rx - image[0]), abs(ry - image[1])) < spacing + slack:
                 return False
-            if rx - 2 <= image[0] <= rx + size + 1 and ry - 2 <= image[1] <= ry + size + 1:
+            if rx - 2 - slack <= image[0] <= rx + other + 1 + slack and ry - 2 - slack <= image[1] <= ry + other + 1 + slack:
                 return False
     return True
 
 
-def _room(cv: _Canvas, pos: Pos, clearable: bool) -> int:
+def _room(cv: _Canvas, pos: Pos, clearable: bool, size: int = 3) -> int:
+    """Open tiles around a *size* site: within six of a 3x3 one, and a tile further out for every tile it is wider."""
     kinds = (Terrain.GRASS, Terrain.TREES) if clearable else (Terrain.GRASS,)
-    return sum(1 for x, y in cv.within(_mine_centre(pos), 6) if cv.grid[y][x] in kinds)
+    return sum(1 for x, y in cv.within(_mine_centre(pos, size), 6 + (size - 3)) if cv.grid[y][x] in kinds)
 
 
-def _canonical_sites(cv: _Canvas) -> Iterable[Pos]:
-    """Every mine site the canonical cell can hold, with room for the block and its ring.  A cell
+def _canonical_sites(cv: _Canvas, size: int = 3) -> Iterable[Pos]:
+    """Every *size* mine site the canonical cell can hold, with room for the block and its ring.  A cell
     edge that is the map's edge wants a tile more margin than one a neighbouring cell mirrors."""
-    right = cv.cw - 6 if cv.cols == 1 else cv.cw - 5
-    for y in range(2, cv.ch - 5):
+    right = cv.cw - 3 - size if cv.cols == 1 else cv.cw - 2 - size
+    for y in range(2, cv.ch - 2 - size):
         for x in range(2, right + 1):
             yield (x, y)
 
 
-def _pick(cv: _Canvas, scored: list[tuple[float, Pos]], rects: list[tuple[Pos, int]], clearable: bool) -> Pos | None:
+def _pick(cv: _Canvas, scored: list[tuple[float, Pos]], rects: list[tuple[Pos, int]], clearable: bool,
+          size: int = 3, room: int = _SITE_ROOM) -> Pos | None:
     for _score, pos in sorted(scored, reverse=True):
-        if _fits(cv, pos, rects) and _room(cv, pos, clearable) >= _SITE_ROOM:
+        if _fits(cv, pos, rects, size) and _room(cv, pos, clearable, size) >= room:
             return pos
     return None
 
 
-def _claim(cv: _Canvas, pos: Pos, gold: int, rects: list[tuple[Pos, int]], mines: list[tuple[Pos, int]], *, clearing: int = 0) -> None:
-    """Take a canonical mine site: one mine of *gold* in every cell, the ground under and around it
-    cleared, and its footprints added to what later searches must keep away from.
+def _claim(cv: _Canvas, pos: Pos, gold: int, rects: list[tuple[Pos, int]], mines: list[tuple[Pos, BuildingType, int]], *,
+           clearing: int = 0, kind: BuildingType = BuildingType.GOLD_MINE) -> None:
+    """Take a canonical deposit site: one deposit of *kind* holding *gold* in every cell, the ground
+    under and around it cleared, and its footprints added to what later searches must keep away from.
 
-    This is the whole of placing a kind of mine, so a new one — a low-yield mine that never runs
-    out, say — is a site search of its own (``_natural_site`` and ``_third_site`` are the two there
-    are, both scoring :func:`_canonical_sites` and picking through :func:`_pick`) and a call here.
-    The order mines are claimed in is the order they are built in, which the simulation's own order
-    follows, so a new kind goes after the ones above it rather than among them.
+    Its footprint is whatever the rules give that kind, so a wider deposit needs nothing said here.
+    This is the whole of placing a kind of deposit: a new one is a site search of its own
+    (``_natural_site``, ``_third_site`` and ``_seam_site`` are the three there are, all scoring
+    :func:`_canonical_sites` and picking through :func:`_pick`) and a call here.  The order deposits
+    are claimed in is the order they are built in, which the simulation's own order follows, so a new
+    kind goes after the ones above it rather than among them.
     """
-    rects += [(image, 3) for image in cv.rect_images(pos, 3)]
-    cv.paint(_block(pos), Terrain.GRASS)
+    size = BUILDINGS[kind].size
+    rects += [(image, size) for image in cv.rect_images(pos, size)]
+    cv.paint(_block(pos, size=size), Terrain.GRASS)
     if clearing:
-        cv.paint(cv.within(_mine_centre(pos), clearing), Terrain.GRASS, over=(Terrain.TREES,))
-    mines += [(image, gold) for image in cv.rect_images(pos, 3)]
+        cv.paint(cv.within(_mine_centre(pos, size), clearing), Terrain.GRASS, over=(Terrain.TREES,))
+    mines += [(image, kind, gold) for image in cv.rect_images(pos, size)]
 
 
 def _natural_site(cv: _Canvas, rng: random.Random, spec: _Spec, hc: Pos, halls: list[Point], rects: list[tuple[Pos, int]],
@@ -801,6 +845,21 @@ def _third_site(cv: _Canvas, rng: random.Random, spec: _Spec, halls: list[Point]
             continue
         scored.append((-(near[1] - near[0]) + rng.uniform(0, 6) + (prefer(pos) if prefer else 0.0), pos))
     return _pick(cv, scored, rects, spec.third_clearing > 0)
+
+
+def _seam_site(cv: _Canvas, rng: random.Random, spec: _Spec, halls: list[Point], rects: list[tuple[Pos, int]]) -> Pos | None:
+    """Ground worth leaving home for: :data:`_SEAM_AWAY` tiles from every hall, as evenly shared
+    between two of them as a third is, and with :data:`_SEAM_ROOM` open tiles around it for the hall
+    and the towers whoever means to keep it will want."""
+    size = BUILDINGS[BuildingType.GOLD_SEAM].size
+    scored = []
+    for pos in _canonical_sites(cv, size):
+        c = _mine_centre(pos, size)
+        near = sorted(_dist(c, hall) for hall in halls)
+        if near[0] < _SEAM_AWAY or near[1] - near[0] > (spec.contested or (6 if cv.wide else 12)):
+            continue
+        scored.append((-(near[1] - near[0]) + rng.uniform(0, 6), pos))
+    return _pick(cv, scored, rects, spec.third_clearing > 0, size, _SEAM_ROOM)
 
 
 # -- Assembly ----------------------------------------------------------------------
@@ -833,11 +892,12 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
     halls = [_mine_centre(pos) for pos in cv.rect_images(hall, 3)][:players]
     rects = [(pos, 3) for pos in cv.rect_images(hall, 3)] + [(pos, 3) for pos in cv.rect_images(main, 3)] + walls.rects
     problems: list[str] = []
+    wishes: list[str] = []  # what this seed could not fit in but another might; see build()
     # The mines the map will hold, in the order they are placed: a seat's own, then whatever the
     # site searches find.  A new kind of mine is a search for its canonical site and one _claim.
-    mines: list[tuple[Pos, int]] = [(pos, spec.start_gold) for pos in cv.rect_images(main, 3)[:players]]
+    mines: list[tuple[Pos, BuildingType, int]] = [(pos, BuildingType.GOLD_MINE, spec.start_gold) for pos in cv.rect_images(main, 3)[:players]]
     if layout is Layout.KLONDIKE:
-        mines += [(pos, POOR_GOLD) for pos in cv.rect_images(main, 3)[players:]]  # an empty cell's corner
+        mines += [(pos, BuildingType.GOLD_MINE, POOR_GOLD) for pos in cv.rect_images(main, 3)[players:]]  # an empty cell's corner
     natural: Pos | None = None
     if spec.natural:
         natural = _natural_site(cv, rng, spec, hc, halls, rects, walls.prefer_natural)
@@ -853,6 +913,12 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
             break
         thirds.append(third)
         _claim(cv, third, EXPANSION_GOLD, rects, mines, clearing=spec.third_clearing)
+    if _wants_a_seam(spec, width, height, cv.cw, cv.ch):
+        seam = _seam_site(cv, rng, spec, halls, rects)
+        if seam is None:
+            wishes.append("no room for a gold seam")
+        else:  # an endless deposit holds no stock: what it gives is a trip at a time, as long as it is held
+            _claim(cv, seam, 0, rects, mines, clearing=spec.third_clearing, kind=BuildingType.GOLD_SEAM)
     mines += walls.mines
     cv.symmetrize()
     if layout is Layout.FOREST:
@@ -863,8 +929,8 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
     world = World(width, height, cv.grid, players, human=human, rng=random.Random(seed), theme=theme, races=races, layout=layout)
     for seat, pos in enumerate(cv.rect_images(hall, 3)[:players]):
         world.place_building(seat, BuildingType.TOWN_HALL, pos)
-    for pos, gold in mines:
-        world.place_building(None, BuildingType.GOLD_MINE, pos).gold = gold
+    for pos, kind, gold in mines:
+        world.place_building(None, kind, pos).gold = gold
     for seat in range(players):
         for i in range(3):
             world.spawn_unit(seat, UnitType.PEASANT, tile_center(cv.images((hall[0] + i, hall[1] + 3))[seat]))
@@ -872,6 +938,7 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
     world.update_vision()
     report = _audit(world, cv, spec, walls, natural)
     report["problems"] = problems + report["problems"]
+    report["wishes"] = wishes  # nothing the audit looks at is a wish: an unfair map is a fault, every time
     return world, report
 
 
@@ -976,6 +1043,7 @@ def audit(world: World) -> dict:
         report["wood"].append(None if tree is None else max(abs(tree[0] - cx), abs(tree[1] - cy)))
     report["connected"] = all(d in region for d in doors + mine_doors)
     report["expansions"] = len(world.mines()) - len(halls)
+    report["seams"] = sum(1 for m in world.mines() if m.type is BuildingType.GOLD_SEAM)
     total = world.width * world.height
     report["trees"] = sum(1 for row in world.terrain for t in row if t is Terrain.TREES) / total
     report["water"] = sum(1 for row in world.terrain for t in row if t is Terrain.WATER) / total
@@ -1024,7 +1092,7 @@ def _audit(world: World, cv: _Canvas, spec: _Spec, walls: _Walls, natural: Pos |
             problems.append("the banks join off the fords")
     elif layout is Layout.KLONDIKE:
         gates = frozenset(cv.orbit(walls.gates))
-        pit = [world.free_tile_near((x, y, 3, 3)) for (x, y), gold in walls.mines if gold == EXPANSION_GOLD]
+        pit = [world.free_tile_near((x, y, 3, 3)) for (x, y), _kind, gold in walls.mines if gold == EXPANSION_GOLD]
         if any(door in reachable(world, doors[0], shut=gates) for door in pit):
             problems.append("the pit is open beside its gates")
     elif layout is Layout.BASTION and natural is not None:

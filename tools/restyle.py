@@ -40,7 +40,7 @@ from sagaforge import render3d as r3  # noqa: E402
 from sagaforge import restyle  # noqa: E402
 from warband.art import monsters, textures  # noqa: E402
 from warband.sim.races import RACES  # noqa: E402
-from warband.sim.rules import BuildingType, Race, Resource, UnitType  # noqa: E402
+from warband.sim.rules import BUILDINGS, BuildingType, Race, Resource, UnitType  # noqa: E402
 
 RESTYLED = Path(__file__).resolve().parent.parent / "warband" / "assets" / "restyled"
 SCALE = 2.0  # sheet pixels per logical unit (units)
@@ -143,7 +143,7 @@ PLAUSIBLE = ("The reference is a rough low-poly stand-in. Where its construction
 
 # -- Buildings --------------------------------------------------------------------------
 
-BUILDING_TYPES = [bt for bt in BuildingType if bt is not BuildingType.GOLD_MINE]
+BUILDING_TYPES = [bt for bt in BuildingType if BUILDINGS[bt].mine is None]
 LOOKS = textures.BUILDING_LOOKS  # intact, active, damaged
 ARCHITECTURE: dict[Race, str] = {
     Race.HUMAN: "human: a medieval kingdom that builds in grey stone, oak timber and white plaster under thatch and grey slate",
@@ -242,7 +242,7 @@ RAISED: dict[BuildingType, str] = {
 #: How each building looks just begun (the *founded* look, shown for the first half of its construction).
 FOUNDED: dict[BuildingType, str] = {bt: "only its foundation: the footprint of its walls laid in a low course of stone or timber sills, "
                                         "no higher than a knee, with heaps of its materials beside it"
-                                    for bt in BuildingType if bt is not BuildingType.GOLD_MINE}
+                                    for bt in BUILDING_TYPES}
 TEAM_BUILDINGS = ("Blue is the faction colour: it appears exactly where the stand-in has it (banners, pennants, flags, a saddle blanket, "
                   "the hall's roof) and must stay this blue; put no blue anywhere else: roofs are grey, brown, green or red, windows amber, "
                   "water dark green.")

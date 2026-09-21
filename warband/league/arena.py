@@ -249,7 +249,7 @@ def shuffled_variant(seed: int, spread: float = 0.25) -> Variant:
     jitter = lambda: math.exp(rng.uniform(-spread, spread))  # noqa: E731 - symmetric in multiply and divide
     units = {t: {f: jitter() for f in ("hp", "damage", "cost_gold", "build_time")} for t in UnitType}
     buildings = {t: {f: jitter() for f in ("hp", "cost_gold", "build_time")} for t in BuildingType
-                 if t is not BuildingType.GOLD_MINE}
+                 if BUILDINGS[t].mine is None}
     return Variant(f"shuffle-{seed}", units=units, buildings=buildings)
 
 

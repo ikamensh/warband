@@ -368,6 +368,27 @@ the dry-mine rulebook saw no second hall in 336 seats. Scarcity — a mine
 below `mine_floor`, or every place at the face taken — now opens that gate
 too, while the old mine still has the gold to pay for the move.
 
+### The gold seam: a reason to hold ground (2026-09-21)
+
+The same equilibrium — `mass` at 77 % and `turtle` at 76 %, and nothing else
+played — is what the **gold seam** is aimed at. It is a second kind of
+deposit, five tiles across, twenty gold a trip against a hundred, twelve
+places at its face against eight, and it never runs out. It sits in the
+shared ground at least eighteen tiles from every hall, on Plains, Crossings
+and Bastion, and only on maps bigger than the three shipped sizes — so the
+ratings and the league above were measured on maps that have none, and still
+hold. The design and the measurements are in
+[the maps note](warband-maps.md#the-gold-seam-2026-09-21).
+
+The shape of the incentive: a hand at a seam earns 2.9 gold a second against
+a miner's 12.8, so it is never the place to put the next peasant. But an
+expansion mine's 30 000 gold is drunk by a saturated crew in three and a
+quarter minutes, while a hall at a seam pays 34.8 gold a second for as long
+as it stands — the same 30 000 in fourteen and a half minutes, and every
+minute after that for nothing. Taken in the third minute of a long match it
+out-earns an expansion mine; taken in the fifteenth it is a rounding error.
+A posture that waits at home is paying for the wait.
+
 ### Prices
 
 Applied as measured in the experiments table above: knight 800 → 900 gold,

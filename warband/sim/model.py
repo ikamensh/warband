@@ -39,7 +39,7 @@ from warband.sim.rules import (
     SALVAGE_CHUNK, SALVAGE_HELD_RATE, SALVAGE_RATE, salvage_resource, salvage_yield,
     ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLASTING_POWDER_BONUS, BLESSING_BONUS, BLOODLUST_BONUS, BUILDINGS, CHOP_TIME, DEEP_MINING_TRIP,
     FRENZY_BONUS, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MASTER_WEAPON_BONUS, MINE_GOLD,
-    MINE_SLOTS, MINE_TIME, PLAYERS,
+    MINE_TIME, PLAYERS,
     PLUNDER_SHARE, REGROWTH_SECONDS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION, STARTING_GOLD, STARTING_LUMBER,
     FORMATION_ARMOR, FORMATION_HOLD, FORMATION_LOOKAHEAD, FORMATION_MARCH, FORMATION_SLACK, FORMATION_SPACING, FORMATION_WIDTH, ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, FRIENDLY_WORTH, SIEGE_BUILDING_WORTH, SIEGE_STEP, SIEGE_WORTH, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
     MAX_QUEUED_ORDERS, MAX_UNIT_RADIUS, UNDER_ATTACK_COOLDOWN, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
@@ -145,7 +145,7 @@ REPLAN_STAGGER: Final = 8  # ticks over which units spread their next plans by i
 STEER_RANGE: Final = 4.0  # within this many tiles a unit walks straight at its target when the line is clear, without A*
 LOCAL_EXPANSIONS: Final = 700  # A* budget for the detours around other units; those goals are close
 SETTLE_WITHIN: Final = 0.65  # beyond its own body, how near its spot a crowd may hold a unit for a plain walk to count as arrived
-MINE_CLEARANCE: Final = 2  # tiles kept free around a gold mine so peasants can get in and out
+MINE_CLEARANCE: Final = 2  # tiles kept free around a gold deposit so peasants can get in and out
 SIDESTEP: Final = 0.6  # lateral share of the push when walking units collide
 MAX_PUSH: Final = 0.25  # tiles a crowd can shove a unit in one step; eight overlapping units once summed to a jump over a tree wall
 # Standing at ease (docs/unit-motion.md part 5): units that are neither fighting nor working keep a little
@@ -415,6 +415,15 @@ class Building:
     @property
     def done(self) -> bool:
         return self.progress >= self._build_time
+
+    @property
+    def has_gold(self) -> bool:
+        """Whether there is still gold to fetch here: a seam, which never runs out, or a mine with stock left.
+
+        Asked of anything on the map, so it answers False for a barracks as readily as for a spent mine.
+        Never ask :attr:`gold` instead: a seam's stock is zero and always was."""
+        mine = self.info.mine
+        return mine is not None and (mine.endless or self.gold > 0)
 
     def tiles(self) -> tuple[Pos, ...]:
         return self._tiles
@@ -687,7 +696,8 @@ class World:
                 and b.player is not None and b.player == player and not b.abandoned and (done is None or b.done == done)]
 
     def mines(self) -> list[Building]:
-        return [b for b in self.buildings.values() if b.type is BuildingType.GOLD_MINE]
+        """Every gold deposit on the map, spent or not: the mines and the endless seams alike."""
+        return [b for b in self.buildings.values() if b.info.mine is not None]
 
     def units_near(self, point: Point, radius: float) -> list[Unit]:
         """Units whose centre lies within *radius* tiles of *point* (via the spatial buckets of the current step)."""
@@ -952,8 +962,16 @@ class World:
             radius *= BLASTING_POWDER_BONUS
         return radius
 
-    def gold_per_trip(self, player: int) -> int:
-        return DEEP_MINING_TRIP if self._has(player, Upgrade.DEEP_MINING) else GOLD_PER_TRIP
+    def gold_per_trip(self, player: int, mine: Building) -> int:
+        """The gold one of *player*'s peasants brings up from *mine*.
+
+        The trip belongs to the deposit: a gold mine gives :data:`GOLD_PER_TRIP`, an endless seam its
+        own much smaller :data:`SEAM_PER_TRIP`.  A dwarf's Deep Mining is about the miners, not the
+        rock, so it raises either in the same proportion (100 to 150, and 20 to 30) rather than by a
+        flat amount that would treble what the seam is worth."""
+        info = mine.info.mine
+        assert info is not None, "only a gold deposit has a trip"  # every caller has just asked has_gold
+        return info.trip * DEEP_MINING_TRIP // GOLD_PER_TRIP if self._has(player, Upgrade.DEEP_MINING) else info.trip
 
     def speed_of(self, unit: Unit) -> float:
         info = unit.info
@@ -1079,7 +1097,7 @@ class World:
                                                  for b in self.buildings.values()):
             return None
         standing = [(unit.x, unit.y, unit.radius) for unit in self.units.values() if not unit.hidden]
-        mines = [building.rect for building in self.buildings.values() if building.type is BuildingType.GOLD_MINE]
+        mines = [building.rect for building in self.buildings.values() if building.info.mine is not None]
         return standing, mines
 
     def placeable(self, building_type: BuildingType, player: int, positions: Iterable[Pos]) -> Iterator[Pos]:
@@ -1146,8 +1164,8 @@ class World:
                     return "A unit is in the way"
         rect = (left, top, size, size)
         for mine in self.buildings.values():
-            if mine.type is BuildingType.GOLD_MINE and rects_gap(rect, mine.rect) < MINE_CLEARANCE:
-                return "Too close to the gold mine"
+            if mine.info.mine is not None and rects_gap(rect, mine.rect) < MINE_CLEARANCE:
+                return f"Too close to the {mine.info.name.lower()}"
         return None
 
     def can_plan_building(self, building_type: BuildingType, pos: Pos, player: int) -> str | None:
@@ -1271,8 +1289,8 @@ class World:
         target = self.entity(target_id)
         if target is None:
             raise RuleError("No such target")
-        if isinstance(target, Building) and target.type is BuildingType.GOLD_MINE:
-            raise RuleError("A gold mine cannot be attacked")
+        if isinstance(target, Building) and target.info.mine is not None:
+            raise RuleError(f"A {target.info.name.lower()} cannot be attacked")
         units = self._own_units(unit_ids, queue=queue)
         if any(target.player == unit.player for unit in units):
             raise RuleError("Cannot attack your own")
@@ -1326,7 +1344,7 @@ class World:
     def harvest(self, unit_ids: list[int], target: int | Pos, *, queue: bool = False) -> None:
         if isinstance(target, int):
             mine = self.buildings.get(target)
-            if mine is None or mine.type is not BuildingType.GOLD_MINE:
+            if mine is None or mine.info.mine is None:
                 raise RuleError("Not a gold mine")
         elif not self.in_bounds(target) or self.terrain_at(target) is not Terrain.TREES:
             raise RuleError("No trees there")
@@ -1348,7 +1366,7 @@ class World:
             raise RuleError("Only peasants can build")
         self._own_units([unit_id], queue=queue)
         info = BUILDINGS[building_type]
-        if building_type is BuildingType.GOLD_MINE:
+        if info.mine is not None:
             raise RuleError("Gold mines cannot be built")
         reason = (None if plan_if_short else self.can_afford(unit.player, info.cost)) or self.can_place(building_type, pos, unit.player, builder=unit.id)
         if reason is not None:
@@ -1362,7 +1380,7 @@ class World:
         if not workers:
             raise RuleError("Only peasants can repair")
         b = self.buildings.get(building_id)
-        if b is None or b.player != workers[0].player or b.type is BuildingType.GOLD_MINE:
+        if b is None or b.player != workers[0].player or b.info.mine is not None:
             raise RuleError("Peasants repair your own buildings")
         if not b.done:
             raise RuleError("Finish building it first")
@@ -1384,8 +1402,8 @@ class World:
         b = self.buildings.get(building_id)
         if b is None:
             raise RuleError("No such building")
-        if b.type is BuildingType.GOLD_MINE:
-            raise RuleError("A gold mine is nobody's to salvage")
+        if b.info.mine is not None:
+            raise RuleError(f"A {b.info.name.lower()} is nobody's to salvage")
         if b.player is not None and b.player == workers[0].player and not b.abandoned:
             raise RuleError("Peasants salvage ruins and rival buildings")
         if not b.done:
@@ -1543,12 +1561,12 @@ class World:
         if target is not None and target.player is not None and target.player != player:
             self.attack(unit_ids, target.id, queue=queue)
             return "attack"
-        if workers and isinstance(target, Building) and target.player == player and target.done and target.hp < target.max_hp and target.type is not BuildingType.GOLD_MINE:
+        if workers and isinstance(target, Building) and target.player == player and target.done and target.hp < target.max_hp and target.info.mine is None:
             self.repair(workers, target.id, queue=queue)
             if others:
                 self.move(others, point, queue=queue)
             return "repair"
-        if workers and isinstance(target, Building) and target.type is BuildingType.GOLD_MINE:
+        if workers and isinstance(target, Building) and target.info.mine is not None:
             self.harvest(workers, target.id, queue=queue)
             if others:
                 self.move(others, point, queue=queue)
@@ -1577,8 +1595,8 @@ class World:
         building = Building(self._new_id(), building_type, player, pos[0], pos[1], info.hp if done else shell_hp(info, 0.0), race=race)
         if done:
             building.progress = info.build_time
-        if building_type is BuildingType.GOLD_MINE:
-            building.gold = MINE_GOLD
+        if info.mine is not None and not info.mine.endless:
+            building.gold = MINE_GOLD  # what a seam holds is nothing: it gives its trip and is still there
         if player is not None and info.trains:
             # It takes up what every building of its kind its owner has trains endlessly: a player who has a barracks
             # train archers for ever and builds another means the new one too (they once stood idle for a minute).
@@ -1674,7 +1692,7 @@ class World:
     # -- Buildings -------------------------------------------------------------------
 
     def _update_building(self, b: Building, dt: float) -> None:
-        if b.type is BuildingType.GOLD_MINE or b.player is None or b.abandoned:  # a ruin nobody owns builds, trains and shoots nothing
+        if b.info.mine is not None or b.player is None or b.abandoned:  # a ruin nobody owns builds, trains and shoots nothing
             return
         info = b.info
         if not b.done:
@@ -2180,7 +2198,7 @@ class World:
     def _do_attack(self, u: Unit, order: Attack, dt: float) -> None:
         target = self.entity(order.target)
         if (target is None or target.hp <= 0 or (isinstance(target, Unit) and target.hidden)
-                or (isinstance(target, Building) and target.type is BuildingType.GOLD_MINE)):
+                or (isinstance(target, Building) and target.info.mine is not None)):
             self._finish_order(u)
             if order.auto and u.home is not None and not u.orders:
                 u.orders.append(Move(u.home))
@@ -2416,7 +2434,7 @@ class World:
                 return
         if isinstance(order.target, int):
             mine = self.buildings.get(order.target)
-            if mine is None or mine.gold <= 0:
+            if mine is None or not mine.has_gold:
                 replacement = worker_ai.choose_replacement(self, u, Resource.GOLD)
                 if replacement is None:
                     self._finish_order(u)
@@ -2426,7 +2444,9 @@ class World:
                 return  # a remembered replacement may still be hidden by fog
             navigation = self._worker_navigation(u)
             if rect_gap(u.pos, mine.rect) - u.radius <= TOUCH and not navigation[u.tile[1] * self.width + u.tile[0]]:
-                if self._mine_crews.get(mine.id, 0) >= MINE_SLOTS:
+                deposit = mine.info.mine
+                assert deposit is not None  # has_gold said so
+                if self._mine_crews.get(mine.id, 0) >= deposit.slots:
                     u.path = []
                     u.path_goal = None
                     u.state = "idle"  # every place at the face is taken: wait at the mouth for one to free
@@ -2494,8 +2514,12 @@ class World:
             return
         if u.timer > 0:
             return
-        taken = min(self.gold_per_trip(u.player), mine.gold)
-        mine.gold -= taken
+        deposit = mine.info.mine
+        assert deposit is not None, "a peasant was inside something that is not a gold deposit"
+        taken = self.gold_per_trip(u.player, mine)
+        if not deposit.endless:  # a seam gives its trip and is no smaller for it; a mine hands over what it has left
+            taken = min(taken, mine.gold)
+            mine.gold -= taken
         u.carrying, u.carry = Resource.GOLD, taken
         self._leave_mine(u)
         # Emerge where this worker entered. Teleporting every miner to the same
@@ -2504,7 +2528,7 @@ class World:
             u.orders.append(Deposit(auto=True))
         elif isinstance(u.order, Harvest):
             u.orders.appendleft(Deposit(auto=u.order.auto))
-        if mine.gold <= 0:
+        if not deposit.endless and mine.gold <= 0:
             self._remove_building(mine, reason="exhausted")
 
     def _do_deposit(self, u: Unit, dt: float) -> None:
@@ -3569,7 +3593,7 @@ class World:
     def _bury_the_dead(self) -> None:
         for unit in [u for u in self.units.values() if u.hp <= 0]:
             self._remove_unit(unit)
-        for building in [b for b in self.buildings.values() if b.hp <= 0 and b.type is not BuildingType.GOLD_MINE]:
+        for building in [b for b in self.buildings.values() if b.hp <= 0 and b.info.mine is None]:
             self._remove_building(building, reason="destroyed")
             if not building.done:
                 self.settlement.site_lost(building.id, cancelled=False)
@@ -3608,7 +3632,7 @@ class World:
 
 
     def _nearest_mine(self, point: Point, max_distance: float = 14.0) -> Building | None:
-        mines = [m for m in self.mines() if m.gold > 0 and dist(m.center, point) <= max_distance]
+        mines = [m for m in self.mines() if m.has_gold and dist(m.center, point) <= max_distance]
         return min(mines, key=lambda m: dist(m.center, point)) if mines else None
 
     def nearest_tree(self, point: Point, radius: int) -> Pos | None:

@@ -99,6 +99,7 @@ def settlement() -> World:
     for kind, pos in buildings.items():
         world.place_building(0, kind, pos)
     world.place_building(None, BuildingType.GOLD_MINE, (32, 17))
+    world.place_building(None, BuildingType.GOLD_SEAM, (33, 25))  # five tiles of workings beside the three of a mine
     world.place_building(1, BuildingType.TOWN_HALL, (43, 30))
     world.update_vision()
     world.reveal_all(0)

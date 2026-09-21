@@ -26,6 +26,7 @@ import math
 import os
 import random
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -56,6 +57,12 @@ ROCK_VARIANTS = 20
 MINE_VARIANTS = 20
 PAINTED_MINES = (0, 5, 10, 15)  # the stand-in variants the painted mine sheets repaint; the map draws only these when they exist
 MINE_LOOKS = ("intact", "active")  # a mine is worked while a peasant is inside; it is never damaged
+#: A gold seam is drawn as three mine faces cut into one bank of rock: the middle one at its own size
+#: at the front and the two beside it smaller and further back, which is what "further away" looks like
+#: in this projection.  Nothing is ever enlarged -- a painted frame blown up to five tiles would be a
+#: smear -- so the seam's width comes from how far apart the three stand.
+SEAM_BACK = 0.84  # of its own size each flanking working is drawn
+SEAM_LIFT = 0.75  # tiles up the picture they stand, which is back across the ground
 
 Color = tuple[int, int, int]
 
@@ -484,6 +491,84 @@ def _resource_image(kind: str, variant: int, theme: MapTheme, scale: float) -> I
     mesh = {"tree": _tree, "rock": _rock}[kind](variant, theme)
     image = _prop(f"{kind}.{theme.value}.{variant}", mesh, DROP_TREE, scale, min_width=40 if kind == "tree" else 0)
     return _tree_ground(image, variant, theme, scale) if kind == "tree" else image
+
+
+def _mine_face(game: Game, variant: int, look: str) -> tuple[Image.Image, Placement]:
+    """One gold mine's picture and placement: the painted frame where there is one, the low-poly render
+    otherwise.  What :func:`mine_image` registers, before it is registered, so a seam can be built of them."""
+    if restyled_mines() is None:
+        image = _resource_image("mine", variant, MapTheme.SUMMER, game.backend.scale_factor)
+        return image, placements[f"mine.{variant}"]  # recorded by _prop inside _resource_image
+    if restyled_mines(look) is None:
+        look = "intact"
+    sheet, frames = restyled_mines(look)
+    frame = frames[mine_key(PAINTED_MINES[variant], look)]
+    return frame, Placement(sheet.logical_size, sheet.drop, 1.5 * TILE, head=figure_top(sheet, frame))
+
+
+def _figure_width(image: Image.Image, placement: Placement) -> float:
+    """How wide the picture in *image* actually is, in logical units: its cell is mostly empty air."""
+    box = image.split()[3].point(lambda alpha: 255 if alpha >= 64 else 0).getbbox()
+    if box is None:
+        raise ValueError("a mine face with no picture in it")
+    return (box[2] - box[0]) * placement.size[0] / image.width
+
+
+def _bank_of_workings(faces: Sequence[tuple[Image.Image, Placement]], tiles: int) -> tuple[Image.Image, Placement]:
+    """*faces* (middle first, then the two beside it) drawn into one picture *tiles* wide.
+
+    Everything is measured in logical units, which are the pixels a tile's :data:`TILE` is counted in;
+    each face knows its own pixels per logical unit from its placement.  A face is anchored at the
+    middle of its own footprint, :attr:`Placement.front` above the line it stands on, so laying the
+    three out is a matter of where their anchors go: the middle one far enough down the picture that
+    it stands on the seam's own front line, the others :data:`SEAM_LIFT` tiles up the picture (which
+    is back across the ground) and far enough aside that the three together are *tiles* wide.  They
+    are pasted back to front, so the nearest working is the one that overlaps the others."""
+    middle, *flanks = faces
+    px = middle[0].width / middle[1].size[0]
+    front = tiles * TILE / 2
+    lead = front - middle[1].front  # the middle working stands at the front of the footprint, not at its centre
+    spread = max(0.0, (tiles * TILE - SEAM_BACK * _figure_width(*middle)) / 2)
+    laid = [(middle[0], middle[1], 1.0, 0.0, lead)]
+    for side, (image, placement) in zip((-1.0, 1.0), flanks):
+        laid.insert(0, (image, placement, SEAM_BACK, side * spread, lead - SEAM_LIFT * TILE))
+    boxes = [(dx - scale * placement.size[0] / 2, dy - scale * (placement.size[1] - placement.drop),
+              dx + scale * placement.size[0] / 2, dy + scale * placement.drop)
+             for _image, placement, scale, dx, dy in laid]
+    left, top = min(b[0] for b in boxes), min(b[1] for b in boxes)
+    right, bottom = max(b[2] for b in boxes), max(b[3] for b in boxes)
+    canvas = Image.new("RGBA", (round((right - left) * px), round((bottom - top) * px)))
+    for (image, _placement, _scale, _dx, _dy), box in zip(laid, boxes):
+        fitted = image.resize((max(1, round((box[2] - box[0]) * px)), max(1, round((box[3] - box[1]) * px))), Image.LANCZOS)
+        canvas.alpha_composite(fitted, (round((box[0] - left) * px), round((box[1] - top) * px)))
+    figure = canvas.split()[3].point(lambda alpha: 255 if alpha >= 64 else 0).getbbox()
+    if figure is None:
+        raise ValueError("a bank of workings with nothing in it")
+    size = ((right - left), (bottom - top))
+    return canvas, Placement(size, drop=bottom, front=front, head=-top - figure[1] / px)
+
+
+def seam_image(game: Game, variant: int, look: str = "intact") -> str:
+    """Register (once) and return the key of a gold seam's image: a bank of three mine faces, the
+    middle one *variant* and its neighbours the next two, in *look*.  Nobody owns it, so nothing
+    recolours it."""
+    if look not in MINE_LOOKS:
+        raise ValueError(f"unknown mine look {look!r}")
+    key = f"seam.{variant}.{look}"
+    if not game.assets.has_image(key):
+        kinds = mine_variants()
+        faces = [_mine_face(game, (variant + offset) % kinds, look) for offset in (0, 1, 2)]
+        image, placement = _bank_of_workings(faces, BUILDINGS[BuildingType.GOLD_SEAM].size)
+        placements[key] = placement
+        game.assets.image_from_pil(key, image)
+    return key
+
+
+def deposit_image(game: Game, building_type: BuildingType, variant: int, look: str = "intact") -> str:
+    """The key of a gold deposit's image: a seam is a bank of workings, a mine one face of rock."""
+    if building_type is BuildingType.GOLD_SEAM:
+        return seam_image(game, variant, look)
+    return mine_image(game, variant, look)
 
 
 def mine_image(game: Game, variant: int, look: str = "intact") -> str:
@@ -2041,7 +2126,7 @@ def stride_heads(race: Race, unit_type: UnitType, carrying: Resource | None) -> 
 def restyled_buildings(race: Race, look: str = "intact") -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
     """The hand-painted buildings of one race in one look (one frame per building type, the
     gold mine excluded), or None."""
-    return _painted(f"{race.value}.buildings.{look}", [building_key(bt, 0, race, look) for bt in BuildingType if bt is not BuildingType.GOLD_MINE])
+    return _painted(f"{race.value}.buildings.{look}", [building_key(bt, 0, race, look) for bt in BuildingType if BUILDINGS[bt].mine is None])
 
 
 def mine_key(variant: int, look: str = "intact") -> str:
@@ -2086,8 +2171,8 @@ def _painted_portrait(subject: UnitType | BuildingType, player: int, race: Race)
     """The subject's painted frame (a unit facing the viewer at rest) cropped to its figure, or None."""
     if isinstance(subject, UnitType):
         painted, key = restyled_frames(race, subject, None), unit_key(subject, 0, 2, "stand", None, race)
-    elif subject is BuildingType.GOLD_MINE:
-        painted, key, player = restyled_mines(), mine_key(PAINTED_MINES[0]), 0  # nobody's mine: never recoloured
+    elif BUILDINGS[subject].mine is not None:
+        painted, key, player = restyled_mines(), mine_key(PAINTED_MINES[0]), 0  # nobody's rock: never recoloured
     else:
         painted, key = restyled_buildings(race), building_key(subject, 0, race)
     if painted is None:
@@ -2108,7 +2193,7 @@ def portrait_image(game: Game, subject: UnitType | BuildingType, player: int | N
             return key
         if isinstance(subject, UnitType):
             mesh = r3.rotate_z(_unit(subject, player or 0, "stand", None, race), 0)
-        elif subject is BuildingType.GOLD_MINE:
+        elif BUILDINGS[subject].mine is not None:
             mesh = _mine()
         else:
             mesh = _building(subject, player or 0, race)

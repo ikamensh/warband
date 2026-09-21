@@ -44,12 +44,12 @@ LAYOUT_KEYS: dict[Layout | None, str] = {Layout.PLAINS: "P", Layout.FOREST: "F",
 
 def preview_image(world: World) -> PilImage.Image:
     """A small picture of *world*: terrain, a 3x3 block per start hall in the
-    owner's colour and every mine in gold, at as many whole pixels per tile as fit ``PREVIEW_BOX``."""
+    owner's colour and every gold deposit in gold, at as many whole pixels per tile as fit ``PREVIEW_BOX``."""
     img = minimap_terrain(world)
     for b in world.buildings.values():
         if b.type is BuildingType.TOWN_HALL and b.player is not None:
             img[b.y:b.y + b.size, b.x:b.x + b.size] = world.players[b.player].color
-        elif b.type is BuildingType.GOLD_MINE:
+        elif b.info.mine is not None:
             img[b.y:b.y + b.size, b.x:b.x + b.size] = NEUTRAL_MINIMAP
     scale = min(PREVIEW_BOX[0] // world.width, PREVIEW_BOX[1] // world.height)
     pixels = np.repeat(np.repeat(img.clip(0, 255).astype(np.uint8), scale, 0), scale, 1)

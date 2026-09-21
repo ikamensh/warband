@@ -209,7 +209,7 @@ def test_every_building_is_on_the_build_menu_with_its_hotkey_and_a_locked_one_wa
     scene.select([peasants_of(scene)[0].id])
     press(game, "b")
     hotkeys = {c.label: c.hotkey for c in scene.card}
-    assert hotkeys == {RACES[Race.HUMAN].cards[bt]: BUILDINGS[bt].hotkey.upper() for bt in BuildingType if bt is not BuildingType.GOLD_MINE}
+    assert hotkeys == {RACES[Race.HUMAN].cards[bt]: BUILDINGS[bt].hotkey.upper() for bt in BuildingType if BUILDINGS[bt].mine is None}
     press(game, "k")  # a blacksmith needs a barracks, and none is coming
     assert scene.placing is None and scene.status == "Requires a Barracks"
     site = (hall_of(scene).x + 5, hall_of(scene).y + 4)  # the blacksmith's

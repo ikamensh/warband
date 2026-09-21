@@ -204,7 +204,7 @@ def test_unit_images_are_rendered_on_demand_per_facing_and_frame(play) -> None:
     other = textures.unit_image(game, UnitType.KNIGHT, 1, 6, "strike")
     assert other == key
     for building_type in BuildingType:
-        if building_type is not BuildingType.GOLD_MINE:
+        if textures.BUILDINGS[building_type].mine is None:  # a deposit is nobody's building: deposit_image draws it
             assert textures.placements[textures.building_image(game, building_type, 0)].size[0] >= textures.BUILDINGS[building_type].size * TILE * 0.8
 
 

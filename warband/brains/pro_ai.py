@@ -39,12 +39,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Final
 
-from warband.brains.ai import (ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_search,
+from warband.brains.ai import (ARMY_PLANS, RESEARCH_ORDER, _shift, hall_first, known_enemy_buildings, known_mines, release_arrived, site_search,
                               with_prerequisites)
 from warband.sim import mapgen
 from warband.sim.model import Attack, Build, Building, Harvest, Move, Point, Pos, Repair, Resource, Salvage, Unit, World, dist, rect_gap, tile_center
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, MINE_SLOTS, UPGRADES, BuildingType, Cost, Layout, Race, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, GOLD_PER_TRIP, UPGRADES, BuildingType, Cost, Layout, Race, UnitType, Upgrade
 from warband.sim.worker_knowledge import KnownMine
 
 _MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
@@ -416,11 +416,11 @@ class ProBrain:
     # -- Economy -------------------------------------------------------------------
 
     def _worked_mines(self, world: World) -> list[KnownMine]:
-        """Mines with gold left inside reach of one of our halls."""
+        """Deposits with gold still coming out of them inside reach of one of our halls."""
         halls = self._halls(world)
         if not halls:
             return []
-        return [m for m in self._known_mines(world) if m.gold > 0 and min(dist(m.center, h.center) for h in halls) < 14.0]
+        return [m for m in self._known_mines(world) if m.has_gold and min(dist(m.center, h.center) for h in halls) < 14.0]
 
     def _worker_target(self, world: World) -> int:
         """Peasants worth having: what the mines being worked can absorb.
@@ -430,7 +430,9 @@ class ProBrain:
         same target reached over forty seconds a worker — because the economy
         that pays for the army is the thing being delayed.
         """
-        mines = max(1, len(self._worked_mines(world)))
+        # A deposit is worth the hands its trip is worth: an endless seam pays a fifth of a mine, so it
+        # earns a fifth of the crew.  Hiring ten peasants for a seam would be paying a mine's wages for it.
+        mines = max(1.0, sum(m.trip / GOLD_PER_TRIP for m in self._worked_mines(world)))
         wanted = round(mines * self.profile.workers_per_mine / (1.0 - self.profile.lumber_share))
         return min(self.profile.max_workers, wanted)
 
@@ -535,7 +537,7 @@ class ProBrain:
 
     def _repairs(self, world: World) -> None:
         damaged = [b for b in world.player_buildings(self.player, done=True)
-                   if b.hp < b.max_hp * 0.6 and b.type is not BuildingType.GOLD_MINE]
+                   if b.hp < b.max_hp * 0.6 and b.info.mine is None]
         if not damaged or any(isinstance(p.order, Repair) for p in self._peasants(world)):
             return
         target = min(damaged, key=lambda b: b.hp / b.max_hp)
@@ -667,11 +669,13 @@ class ProBrain:
         mines = self._worked_mines(world)
         if not mines:
             return True
+        # A seam brings up no stock at all, so it counts for nothing here on purpose: an economy that
+        # rests on one is exactly an economy that has to go and find another mine.
         if sum(mine.gold for mine in mines) < self.profile.mine_floor * len(mines):
             return True
         miners = sum(1 for p in self._peasants(world)
                      if p.inside is not None or any(isinstance(o, Harvest) and isinstance(o.target, int) for o in p.orders))
-        return miners >= MINE_SLOTS * len(mines)
+        return miners >= sum(mine.slots for mine in mines)
 
     def _producers_saturated(self, world: World) -> bool:
         """Whether the buildings already standing are the bottleneck rather than the bank.
@@ -689,21 +693,25 @@ class ProBrain:
         return player.gold >= self.profile.surplus_gold
 
     def _expansion_site(self, world: World) -> Point | None:
-        """An unclaimed mine with gold in it, nearest to home."""
+        """An unclaimed deposit still giving gold, nearest to home; a seam only once no mine will do.
+
+        A seam pays a fifth of a mine's trip and never runs out, so it is the expansion to take when the
+        mines are drunk or claimed, not the one to take first (:func:`~warband.brains.ai.hall_first`)."""
         halls = self._halls(world)
         if not halls:
             return None
         claimed = [h.center for h in world.player_buildings(self.player, BuildingType.TOWN_HALL)]
-        best, best_distance = None, math.inf
+        best, best_rank = None, (True, math.inf)
         for mine in self._known_mines(world):
-            if mine.gold <= 0 or min(dist(mine.center, c) for c in claimed) < 12.0:
+            if not mine.has_gold or min(dist(mine.center, c) for c in claimed) < 12.0:
                 continue
             away = min(dist(mine.center, h.center) for h in halls)
             enemy_halls = [r.center for r in self._known_enemy_buildings(world)]
             if enemy_halls and min(dist(mine.center, c) for c in enemy_halls) < away:
                 continue  # not ours to take yet
-            if away < best_distance:
-                best, best_distance = mine.center, away
+            rank = hall_first(mine, away)
+            if rank < best_rank:
+                best, best_rank = mine.center, rank
         return best
 
     def _ordered(self, world: World) -> list[Build]:

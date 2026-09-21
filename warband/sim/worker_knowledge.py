@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Final, TYPE_CHECKING
 
-from warband.sim.rules import BuildingType, Terrain
+from warband.sim.rules import GOLD_PER_TRIP, MINE_SLOTS, Terrain
 
 try:
     from warband.sim import _native  # the footprint test in C, built only with the compiled simulation (warband/league/fastsim.py)
@@ -26,11 +26,28 @@ BLOCKING: Final = (Terrain.WATER, Terrain.TREES, Terrain.ROCK)
 
 @dataclass(frozen=True)
 class KnownMine:
+    """A gold deposit as the player last saw it: where it stands, what it still holds, and what it is.
+
+    *trip*, *slots* and *endless* are the deposit's own numbers (:class:`~warband.sim.rules.MineInfo`),
+    remembered with it because the decisions made under fog need them and the building itself may be
+    out of sight.  A seam's *gold* is zero and always was, so what is worth walking to is
+    :attr:`has_gold`, as it is of the building itself, never the number.  The defaults are what every deposit was before seams existed,
+    which is what a save written then means."""
+
     id: int
     x: int
     y: int
     size: int
     gold: int
+    trip: int = GOLD_PER_TRIP
+    slots: int = MINE_SLOTS
+    endless: bool = False
+
+    @property
+    def has_gold(self) -> bool:
+        """Whether there is still gold to fetch here, as :attr:`~warband.sim.model.Building.has_gold` asks it
+        of the deposit itself: a seam always, a mine while its stock lasts."""
+        return self.endless or self.gold > 0
 
     @property
     def rect(self) -> tuple[int, int, int, int]:
@@ -173,10 +190,12 @@ class WorkerKnowledge:
                 self.buildings[building.id] = _Building(building.id, building.x, building.y, building.size,
                                                         building.player, threat_range, ruin)
                 changed = True
-            if building.type is BuildingType.GOLD_MINE:
+            deposit = info.mine
+            if deposit is not None:
                 mine = self.mines.get(building.id)
                 if mine is None or mine.gold != building.gold:
-                    self.mines[building.id] = KnownMine(building.id, building.x, building.y, building.size, building.gold)
+                    self.mines[building.id] = KnownMine(building.id, building.x, building.y, building.size, building.gold,
+                                                        deposit.trip, deposit.slots, deposit.endless)
             else:
                 self.mines.pop(building.id, None)
         if changed:  # the grid still stands as it was unless remembered terrain or a footprint changed

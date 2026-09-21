@@ -66,7 +66,13 @@ the compiled simulation attaches after they load.
   bounded A* on a budget that grows with the map, `mapgen.py` the five map
   layouts, the grid of congruent cells that deals two to sixteen seats one each,
   and the audit (`grid`, `dimensions`, `refusal`, `offered`, `sizes_for` and
-  `layouts_for` say which size, seat count and layout make a fair map together),
+  `layouts_for` say which size, seat count and layout make a fair map together;
+  a map bigger than the shipped three also gets an endless five-tile gold seam
+  in the shared ground on Plains, Crossings and Bastion, which `build` treats as
+  a wish rather than a fault: `docs/warband-maps.md`).  A gold deposit is a
+  building whose `BuildingInfo.mine` is set (`rules.MineInfo`: its trip, its
+  places at the face, whether it runs out); a seam's `gold` is nothing at all,
+  so what is worth mining is `Building.has_gold` and `KnownMine.spent`,
   `worker_ai.py`/`worker_knowledge.py` the automatic gatherers (placed when
   idle, and the split looked at again every five seconds: `Harvest.placed`
   marks the policy's own jobs, an ordered harvest stays its player's, and a

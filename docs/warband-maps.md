@@ -834,12 +834,148 @@ with `CommandError`; both refusals are held to by
 
 ### The seam for another kind of mine
 
-`_claim(cv, pos, gold, rects, mines, clearing=...)` is the whole of placing a
-kind of mine: one mine in every cell, the ground under and around it cleared,
-and its footprints added to what later site searches keep away from. A new kind
-— a low-yield mine that never runs out, say — is a site search of its own
-(`_natural_site` and `_third_site` are the two there are, both scoring
-`_canonical_sites` and picking through `_pick`) plus one call to `_claim`, made
-after the existing claims so the order mines are built in does not move.
-`MINE_GOLD`, `EXPANSION_GOLD`, `POOR_GOLD` and `KLONDIKE_START_GOLD` are
-untouched.
+`_claim(cv, pos, gold, rects, mines, clearing=..., kind=...)` is the whole of
+placing a kind of deposit: one in every cell, the ground under and around it
+cleared, and its footprints added to what later site searches keep away from.
+Its footprint is whatever the rules give that kind, so a new kind is a site
+search of its own (`_natural_site`, `_third_site` and `_seam_site` are the
+three there are, all scoring `_canonical_sites` and picking through `_pick`)
+plus one call to `_claim`, made after the existing claims so the order deposits
+are built in does not move. `MINE_GOLD`, `EXPANSION_GOLD`, `POOR_GOLD` and
+`KLONDIKE_START_GOLD` are untouched.
+
+## The gold seam (2026-09-21)
+
+> "Add a low-yield, endless mine on some maps. They take more space, give 20
+> gold per run."
+
+The **gold seam** is a second kind of deposit: `BuildingType.GOLD_SEAM`, five
+tiles across against a mine's three, `SEAM_PER_TRIP` = 20 gold a trip against
+`GOLD_PER_TRIP` = 100, `SEAM_SLOTS` = 12 places at its face against
+`MINE_SLOTS` = 8, and it never runs out.
+
+### Endless is a kind, not a number
+
+`rules.MineInfo` hangs off `BuildingInfo.mine` and carries a deposit's `trip`,
+its `slots` and whether it is `endless`; a building with one is a deposit and a
+building without one is not, which is what every `is BuildingType.GOLD_MINE`
+test in the game became. A seam's `Building.gold` is **zero and stays zero** —
+it has no stock, it has a trip — so the question "is there gold to fetch here"
+is `Building.has_gold`, and `KnownMine.has_gold` of what a player remembers
+under fog. Nothing reads the number and infers a promise from it, and a mine
+that is out still reads as out.
+
+The kind rides in the save because a building's `type` always did.
+`WorkerKnowledge.KnownMine` grew `trip`, `slots` and `endless` beside `gold`,
+because every decision made under fog is made from the memory rather than from
+the building: a seam remembered as a mine holding nothing is a seam nobody ever
+walks back to. Their defaults are a plain gold mine's, which is exactly what a
+save written before the seams existed means. `WarbandMatch.snapshot` needed no
+change: it already sends a seat the mines it remembers, and it sends the
+building's own type with it.
+
+### The trip belongs to the deposit
+
+`World.gold_per_trip(player, mine)` takes the deposit. A dwarf's Deep Mining is
+an art of the miners, not of the rock, so it multiplies a trip rather than
+adding to it: 100 becomes 150 as it always did, and 20 becomes 30. Adding the
+mine's flat fifty would have trebled what an endless deposit is worth, and to
+one race alone.
+
+### What it is worth
+
+A deposit's face serves its slots every `MINE_TIME`, so its ceiling is
+`slots * trip / MINE_TIME`: **160 gold a second at a mine, 48 at a seam** (32,
+had the seam kept a mine's eight places). Measured over four minutes with a
+crew standing next to it:
+
+| crew | mine, 6 tiles out | seam, 6 tiles out | mine, 20 tiles out | seam, 20 tiles out |
+|------|-------------------|-------------------|--------------------|--------------------|
+| 4    | 58.8 g/s          | 11.8 g/s          | 18.8 g/s           | 3.8 g/s            |
+| 8    | 114.6             | 22.9              | 36.7               | 7.3                |
+| 12   | 153.3             | 34.8              | 52.1               | 10.7               |
+| 20   | 155.4             | 44.1              | 86.7               | 16.4               |
+
+A mine next door saturates at twelve hands and about 155 gold a second; a seam
+climbs past twelve because it has twelve places, and reaches about 44. A hand
+at a seam earns 2.9 gold a second against a miner's 12.8 — a fifth, as the
+trip says, until the extra slots push it to a little over a quarter.
+
+**Twelve places at the face, not a mine's eight.** Five tiles of workings have
+more mouth than three, and the number decides what a committed player gets for
+committing. Measured six tiles from a hall, a seam with eight places is capped
+at about 31 gold a second however many hands are thrown at it (22.9 at eight
+hands, 30.7 at twelve, 31.1 at sixteen); with twelve places the same crews
+reach 22.9, 34.8 and 42.4. Twenty tiles out — the seam without a hall of its
+own — the two are within a gold a second of each other (17.2 against 16.4 at
+twenty hands), because there the walk is the limit and not the face. So the
+extra places pay only once somebody has put a hall beside the seam and means to
+hold it, which is exactly the thing worth rewarding.
+
+That makes the seam a poor place to put the next peasant and a good place to
+put the next twenty minutes. An expansion mine holds `EXPANSION_GOLD` = 30 000
+and a saturated crew drinks it in **three and a quarter minutes**; a hall at a
+seam pays 34.8 gold a second for as long as it stands, which is the same 30 000
+in **fourteen and a half minutes** and every minute after that for nothing.
+Taken in the third minute of a twenty-minute match it out-earns an expansion
+mine; taken in the fifteenth it is a rounding error. Its worth is how early you
+take it and how long you keep it, which is what a reason to leave home is
+supposed to be.
+
+Without a hall beside it — walking the twenty tiles back to the one at home —
+twelve hands bring 10.7 gold a second. That is the trickle a player gets for
+free, and the argument for the hall.
+
+### Where it goes
+
+`_seam_site` looks for shared ground: at least `_SEAM_AWAY` = 18 tiles from
+every hall (past the natural, out where a seat has to go and stay), as evenly
+shared between the two nearest halls as a third is, and with `_SEAM_ROOM` = 110
+open tiles within eight for the hall and the towers whoever means to keep it
+will want.
+
+**Three layouts hold one.** Plains is open ground where expansions lie exposed,
+so a deposit nobody can exhaust is exactly the thing to fight over. Crossings
+already asks who holds the fords, and a seam on the far bank gives the answer a
+price. Bastion promises a boom in safety and then a fight for the middle, and
+the seam is what the middle is finally worth. **Forest has none**: its
+clearings and roads are cut by hand, and a five-tile dig with its open ground
+around it would take a base's worth of woods out of a layout whose whole
+promise is that the woods are thick. **Klondike has none either**: little gold
+at home and the rest in a walled pit is a deliberate shape of economy, and an
+endless trickle outside the pit unmakes it.
+
+**Only maps bigger than the shipped three.** `_seam_orbits` asks for
+`_SEAM_MAP` = 5200 tiles of map (a Large is 5120) and `_SEAM_CELL` = 1000 tiles
+of a seat's own cell. So Small, Medium and Large never hold a seam at any seat
+count or layout, and Huge, Giant and Epic do wherever a cell has the middle
+ground for one — which leaves out Huge with sixteen seats (27 × 21 a seat) and
+Giant with sixteen (36 × 27). Two reasons, and they agree: a permanent trickle
+is worth most where matches are long and the middle is far from home, and the
+measured difficulty ratings (`brains.DIFFICULTY_ELO`), the balance league and
+`league.arena`'s own `LADDER_SIZES` all live on the three shipped sizes, which
+therefore keep exactly the economy they were measured with. The simulation
+fingerprint does not move.
+
+**A seam is a wish, not a fault.** `build` separates `report["problems"]`, which
+make a map unfair and are worth raising `NoFairMap` over, from
+`report["wishes"]`, which are features a seed left no room for. Eight seeds get
+the chance to fit a seam in, and a map that has everything else is a map rather
+than a refusal. Over twenty seeds every Huge two-seat Plains, Crossings and
+Bastion map got its two; the thin six-seat strips on Crossings (24 × 108 a
+seat) get none, because the river cross and the thirds have already taken the
+shared ground. `tools/map_report.py` prints a `seams` column.
+
+### The picture
+
+A seam is drawn as **three painted mine faces set into one bank of rock**: the
+middle one at its own size standing on the footprint's front line, and the two
+beside it at `SEAM_BACK` = 0.84 of their size and `SEAM_LIFT` = 0.75 tiles up
+the picture, which is what standing further back looks like in this projection.
+They are pasted back to front so the nearest working overlaps the others, and
+the spread is computed from the middle face's own figure width so the three
+together come to five tiles. **Nothing is ever enlarged**: the painted frames
+were made for a three-tile mine and blown up to five they would be a smear.
+`textures.deposit_image` picks the bank or the single face by kind, and the
+whole thing wears the `active` look — lanterns lit in every mouth — while
+anybody is inside. `tools/verify_map.py` renders one with a crew at its face.

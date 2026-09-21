@@ -105,7 +105,7 @@ def tree() -> dict[BuildingType, tuple[int, float]]:
         places[kind] = (column, row)
         return row
 
-    roots = [kind for kind, info in BUILDINGS.items() if info.requires is None and kind is not BuildingType.GOLD_MINE]
+    roots = [kind for kind, info in BUILDINGS.items() if info.requires is None and info.mine is None]
     for root in sorted(roots, key=lambda kind: not unlocks(kind)):
         place(root, 0)
     return places

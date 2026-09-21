@@ -159,7 +159,8 @@ def test_the_codex_tech_tree_draws_what_needs_what_lit_by_what_the_player_has(ga
     tree = next(component for component in game.scene.ui.walk() if isinstance(component, TechTree))
     race = RACES[Race.ELF]
     shown = {picture.target: picture for picture in tree.pictures}
-    assert set(shown) == {*BuildingType, *UnitType, *(u for u in Upgrade if race.upgrade_allowed(u))} - {BuildingType.GOLD_MINE}
+    deposits = {bt for bt, info in BUILDINGS.items() if info.mine is not None}  # nobody's, and on nobody's tech tree
+    assert set(shown) == {*BuildingType, *UnitType, *(u for u in Upgrade if race.upgrade_allowed(u))} - deposits
     drawn = {image["image"]: image for image in game.backend.images}
     opacity = {target: drawn[game.assets.image(production_image(game, target, scene.human, Race.ELF))]["opacity"] for target in shown}
     assert opacity[BuildingType.TOWN_HALL] == 1 and opacity[UnitType.PEASANT] == 1

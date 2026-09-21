@@ -156,6 +156,7 @@ def settlement() -> tuple[GameScene, list[Unit], list[tuple[int, int]]]:
     for kind, pos in buildings.items():
         world.place_building(0, kind, pos)
     world.place_building(None, BuildingType.GOLD_MINE, (32, 17))
+    world.place_building(None, BuildingType.GOLD_SEAM, (33, 25))  # five tiles of workings beside the three of a mine
     world.place_building(1, BuildingType.TOWN_HALL, (43, 30))
     parade = [world.spawn_unit(0, kind, (5.5 + index * 3, 13.5)) for index, kind in enumerate(UnitType)]
     for unit in parade:

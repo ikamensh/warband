@@ -7,7 +7,8 @@ Only the sizes and layouts that can seat that many players are reported; ``mapge
 
 For each size and layout, generates the seeds and prints the range and mean of
 open ground around each hall, the distance to the nearest mine and to wood,
-the number of mines beyond the main ones, the terrain mix, the detour a walk
+the number of mines beyond the main ones and how many of those are endless
+gold seams, the terrain mix, the detour a walk
 between the first two halls makes over the straight line, how many seeds
 needed a retry to pass the audit, and how many maps were not fully connected
 (the test suite requires zero).
@@ -40,6 +41,7 @@ def main() -> None:
             mines: list[float] = []
             woods: list[float] = []
             expansions: list[int] = []
+            seams: list[int] = []
             trees: list[float] = []
             water: list[float] = []
             disconnected = 0
@@ -54,12 +56,13 @@ def main() -> None:
                 woods.extend(w for w in report["wood"] if w is not None)
                 no_wood += sum(1 for w in report["wood"] if w is None)
                 expansions.append(report["expansions"])
+                seams.append(report["seams"])
                 trees.append(report["trees"])
                 water.append(report["water"])
                 disconnected += not report["connected"]
             print(f"{size:6s} {width}x{height} {layout.value:9s} seeds {args.seeds}: open {min(opens)}-{max(opens)} (mean {statistics.mean(opens):.0f} of 169), "
                   f"mine {min(mines):.0f}-{max(mines):.0f} (mean {statistics.mean(mines):.1f}), wood {min(woods):.0f}-{max(woods):.0f} (mean {statistics.mean(woods):.1f}), "
-                  f"expansions {min(expansions)}-{max(expansions)}, trees {statistics.mean(trees):.0%}, water {statistics.mean(water):.0%}, "
+                  f"expansions {min(expansions)}-{max(expansions)}, seams {min(seams)}-{max(seams)}, trees {statistics.mean(trees):.0%}, water {statistics.mean(water):.0%}, "
                   f"detour {min(detours):.2f}-{max(detours):.2f}, retried {retried}, disconnected {disconnected}, bases without wood {no_wood}")
 
 

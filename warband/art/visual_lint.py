@@ -337,6 +337,7 @@ def register_everything(game: Game, *, players: tuple[int, ...] = (0, 1), budget
     for variant in range(textures.mine_variants()):
         for look in textures.MINE_LOOKS:
             textures.mine_image(game, variant, look)
+            textures.seam_image(game, variant, look)
     for race in Race:
         for _ in textures.warm_units(game, [0], [race]):
             if budget is not None:
@@ -346,7 +347,7 @@ def register_everything(game: Game, *, players: tuple[int, ...] = (0, 1), budget
                 textures.unit_image(game, unit_type, player, 2, "stand", carrying, race=race)  # one frame per team, for the recolour check
         for player in players:
             for building_type in BuildingType:
-                if building_type is BuildingType.GOLD_MINE:
+                if BUILDINGS[building_type].mine is not None:
                     continue
                 for look in textures.BUILDING_LOOKS:
                     textures.building_image(game, building_type, player, race, look)
@@ -394,7 +395,7 @@ def lint_images(game: Game, store: ImageStore, *, budget: CpuBudget | None = Non
             findings += lint_recolour(team, store.image(base), store.image(team))
     for race in Race:
         for building_type in BuildingType:
-            if building_type is BuildingType.GOLD_MINE:
+            if BUILDINGS[building_type].mine is not None:
                 continue
             for look in textures.BUILDING_LOOKS:
                 key = textures.building_key(building_type, 0, race, look)
@@ -409,8 +410,13 @@ def lint_images(game: Game, store: ImageStore, *, budget: CpuBudget | None = Non
             key = textures.mine_key(variant, look)
             if game.assets.has_image(key):
                 findings += lint_building(key, store.image(key), textures.placements[key], BUILDINGS[BuildingType.GOLD_MINE].size)
+    for variant in range(textures.mine_variants()):  # the seam is built of mine faces, but it stands on five tiles of its own
+        for look in textures.MINE_LOOKS:
+            key = f"seam.{variant}.{look}"
+            if game.assets.has_image(key):
+                findings += lint_building(key, store.image(key), textures.placements[key], BUILDINGS[BuildingType.GOLD_SEAM].size)
     for key in list(game.assets._images):
-        if key.startswith(("tree.", "rock.", "mine.")):
+        if key.startswith(("tree.", "rock.", "mine.", "seam.")):
             fig = figure(store.image(key), textures.placements[key])
             if fig is not None and fig.feet < -FLOAT:
                 findings.append(Finding("floating", key, f"solid content ends {-fig.feet:.1f} px above the anchor", store.image(key)))

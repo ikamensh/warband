@@ -32,7 +32,7 @@ def draw(scene, world, player: int) -> None:
             if builder is not None and builder.constructing == building.id:
                 _site_at_work(scene, building, builder, x, y, phase, layer)
             continue
-        if building.type is BuildingType.GOLD_MINE and building.gold > 0:
+        if building.has_gold:
             # A faint halo grounds the crystals; the glints stay small and bright.
             scene.draw_circle(x, y - 20, 34 + 2 * math.sin(phase), (255, 214, 110, 13), **layer)
             for i in range(7):

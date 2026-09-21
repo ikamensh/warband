@@ -32,6 +32,21 @@ except ImportError:  # the source runs, as it does in the game
 
 EXPAND_DISTANCE: Final = 14.0  # a mine farther than this from the hall gets a hall of its own
 LOW_MINE_GOLD: Final = 6000  # a mine this low means the next hall is planned now, while gold still comes in
+
+
+def worth_a_hall(mine: KnownMine) -> bool:
+    """Whether a deposit is worth putting a hall beside: a mine with gold still coming out, or a seam.
+
+    A seam is always worth one -- it never runs dry -- but it pays a fifth of a mine's trip, so
+    :func:`hall_first` ranks a seam behind every mine a brain could take instead."""
+    return mine.endless or mine.gold >= LOW_MINE_GOLD
+
+
+def hall_first(mine: KnownMine, away: float) -> tuple[bool, float]:
+    """How a brain orders the deposits it could put its next hall at: gold that runs out first, then
+    whichever is nearest.  Taking the seam ahead of a rich mine would trade a hundred gold a trip for
+    twenty; the seam does not run away while the mines are drunk."""
+    return (mine.endless, away)
 CLAIM_DISTANCE: Final = 8.0  # a mine with an own hall this near is claimed
 MAX_HALLS: Final = 3
 DEFEND_RADIUS: Final = 9.0
@@ -41,7 +56,7 @@ BUILD_MAX_DISTANCE: Final = 11
 #: A building of each size that needs no other: the ground a site needs depends on its size alone, so the planner sites
 #: a building whose prerequisite has not stood up yet as this one would be sited (:func:`auto_site`).
 UNLOCKED_OF_SIZE: Final[dict[int, BuildingType]] = {info.size: kind for kind, info in BUILDINGS.items()
-                                                   if info.requires is None and kind is not BuildingType.GOLD_MINE}
+                                                   if info.requires is None and info.mine is None}
 #: Shared upgrades first, then whatever arts the brain's race has (see :mod:`warband.sim.races`).  The Keep stands
 #: where the first tier is bought out and the second is worth its gate; the master weapons come last of all.
 RESEARCH_ORDER: Final = (Upgrade.BLADES_1, Upgrade.ARMOR_1, Upgrade.ARROWS_1, Upgrade.HORSES, Upgrade.PLUNDER, Upgrade.DEEP_MINING, Upgrade.LONGBOWS,
@@ -180,11 +195,11 @@ def auto_site(world: World, building_type: BuildingType, player: int, near: Poin
     own = [b.center for b in world.player_buildings(player)]
     anchor = min(halls or own, key=lambda point: dist(point, near)) if halls or own else near
     if building_type is BuildingType.TOWN_HALL:
-        free = [mine.center for mine in known_mines(world, player)
-                if mine.gold >= LOW_MINE_GOLD and not any(dist(mine.center, hall) <= CLAIM_DISTANCE for hall in halls)]
+        free = [mine for mine in known_mines(world, player)
+                if worth_a_hall(mine) and not any(dist(mine.center, hall) <= CLAIM_DISTANCE for hall in halls)]
         if not free:
             return None
-        anchor = min(free, key=lambda point: dist(point, anchor))
+        anchor = min(free, key=lambda mine: hall_first(mine, dist(mine.center, anchor))).center
     taken = [(pos, BUILDINGS[kind].size) for kind, pos in planned]
     requires = BUILDINGS[building_type].requires
     stands = requires is None or bool(world.player_buildings(player, requires, done=True))
@@ -411,7 +426,7 @@ class Brain:
         """One peasant mends the most damaged building, once no enemy is near it."""
         if not self.profile.repair or any(isinstance(p.order, Repair) for p in self._peasants(world)):
             return
-        damaged = [b for b in world.player_buildings(self.player, done=True) if b.hp < b.max_hp * 0.7 and b.type is not BuildingType.GOLD_MINE]
+        damaged = [b for b in world.player_buildings(self.player, done=True) if b.hp < b.max_hp * 0.7 and b.info.mine is None]
         if not damaged:
             return
         b = min(damaged, key=lambda b: b.hp / b.max_hp)
@@ -529,11 +544,11 @@ class Brain:
         halls = world.player_buildings(player, BuildingType.TOWN_HALL)
         if len(halls) >= MAX_HALLS or any(not h.done for h in halls):
             return None
-        if worked is not None and worked.gold >= LOW_MINE_GOLD and dist(worked.center, hall.center) <= EXPAND_DISTANCE:
+        if worked is not None and worth_a_hall(worked) and dist(worked.center, hall.center) <= EXPAND_DISTANCE:
             return None
-        free = [m for m in known_mines(world, self.player) if m.gold >= LOW_MINE_GOLD
+        free = [m for m in known_mines(world, self.player) if worth_a_hall(m)
                 and not any(dist(m.center, h.center) <= CLAIM_DISTANCE for h in halls)]
-        return min(free, key=lambda m: dist(m.center, hall.center)) if free else None
+        return min(free, key=lambda m: hall_first(m, dist(m.center, hall.center))) if free else None
 
     def _site(self, world: World, building_type: BuildingType, anchor: Point, rng: random.Random) -> Pos | None:
         return site_search(world, building_type, self.player, anchor, rng, BUILD_MIN_DISTANCE, BUILD_MAX_DISTANCE)

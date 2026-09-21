@@ -38,7 +38,7 @@ class Settlement:
         return [plan for plan in self.plans if plan.player == player]
 
     def can_plan_building(self, building_type: BuildingType, pos: tuple[int, int], player: int) -> str | None:
-        if building_type is BuildingType.GOLD_MINE:
+        if BUILDINGS[building_type].mine is not None:
             return "Gold mines cannot be built"
         reason = self.world._placement_reason(building_type, pos, player, ignore_units=True)
         if reason is not None:

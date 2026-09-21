@@ -38,7 +38,7 @@ GAME_MINUTES = 15
 def check_world(world: World) -> None:
     blocked_by_building = set()
     for b in world.buildings.values():
-        assert b.hp <= max(b.max_hp, 1) and (b.hp > 0 or b.type is BuildingType.GOLD_MINE), ("building hp", b)
+        assert b.hp <= max(b.max_hp, 1) and (b.hp > 0 or b.info.mine is not None), ("building hp", b)
         assert 0 <= b.progress <= b.info.build_time, ("progress", b)
         for tile in b.tiles():
             assert world.in_bounds(tile), ("building off map", b)
@@ -59,7 +59,7 @@ def check_world(world: World) -> None:
         assert 0 <= u.x <= world.width and 0 <= u.y <= world.height, ("unit off map", u)
         if u.inside is not None:
             mine = world.buildings.get(u.inside)
-            assert mine is not None and mine.type is BuildingType.GOLD_MINE, ("inside a missing mine", u)
+            assert mine is not None and mine.info.mine is not None, ("inside a missing mine", u)
         elif u.constructing is not None:
             site = world.buildings.get(u.constructing)
             assert site is not None and site.builder == u.id and not site.done, ("constructing a missing site", u)

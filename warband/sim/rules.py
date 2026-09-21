@@ -87,6 +87,7 @@ class BuildingType(IdentityEnum):
     WORKSHOP = "workshop"
     CHURCH = "church"
     GOLD_MINE = "gold_mine"
+    GOLD_SEAM = "gold_seam"  # the endless one; :class:`MineInfo` is what tells the two deposits apart
 
 
 class Race(IdentityEnum):
@@ -213,6 +214,37 @@ UNITS: Final[dict[UnitType, UnitInfo]] = {
 }
 
 
+# -- Gold deposits -----------------------------------------------------------------
+
+GOLD_PER_TRIP: Final = 100
+MINE_SLOTS: Final = 8  # peasants at a gold mine's face at once; the rest wait their turn at the mouth.
+MINE_TIME: Final = 5.0  # seconds a peasant spends inside a deposit per trip
+# The face serves its slots every MINE_TIME, so a deposit yields at most
+# slots * trip / MINE_TIME: 160 gold a second at a mine, 48 at a seam.  With the
+# walk to the hall on top, a mine next door is saturated by about ten peasants
+# and a distant one by a few more: hiring past that earns nothing, and the way
+# to more gold is another mine.
+SEAM_PER_TRIP: Final = 20  # a fifth of a mine's trip, for ever: a seam is held, not spent
+SEAM_SLOTS: Final = 12  # its five tiles of face take half again what a mine's three do
+
+
+@dataclass(frozen=True)
+class MineInfo:
+    """What a gold deposit gives the peasants who work it.
+
+    *trip* is the gold one brings up (a dwarf's Deep Mining raises it in proportion:
+    :meth:`~warband.sim.model.World.gold_per_trip`), *slots* how many work the face at once, and
+    *endless* whether the deposit ever runs out.  A mine's :attr:`~warband.sim.model.Building.gold`
+    is its stock: it falls with every trip and the mine is gone when it reaches zero.  An endless
+    seam holds no stock at all -- its ``gold`` is zero and stays zero -- and keeps giving, so what
+    is worth working is asked as :attr:`~warband.sim.model.Building.has_gold`, never of the number.
+    """
+
+    trip: int
+    slots: int
+    endless: bool = False
+
+
 @dataclass(frozen=True)
 class BuildingInfo:
     name: str
@@ -232,6 +264,7 @@ class BuildingInfo:
     damage: int = 0
     range: float = 0.0
     cooldown: float = 1.0
+    mine: MineInfo | None = None  # set on the gold deposits alone, and on nothing a player can build
 
 
 BUILDINGS: Final[dict[BuildingType, BuildingInfo]] = {
@@ -264,7 +297,11 @@ BUILDINGS: Final[dict[BuildingType, BuildingInfo]] = {
     BuildingType.CHURCH: BuildingInfo("Church", Cost(900, 400), 600, 3, 3, 45.0, 5, 0, "c",
                                       "Trains clerics; blesses their healing",
                                       trains=(UnitType.CLERIC,), researches=(Upgrade.BLESSING,), requires=BuildingType.BARRACKS),
-    BuildingType.GOLD_MINE: BuildingInfo("Gold Mine", Cost(0), 0, 0, 3, 0.0, 0, 0, "", "Peasants mine gold here"),
+    BuildingType.GOLD_MINE: BuildingInfo("Gold Mine", Cost(0), 0, 0, 3, 0.0, 0, 0, "", "Peasants mine gold here",
+                                         mine=MineInfo(GOLD_PER_TRIP, MINE_SLOTS)),
+    BuildingType.GOLD_SEAM: BuildingInfo("Gold Seam", Cost(0), 0, 0, 5, 0.0, 0, 0, "",
+                                         f"A wide seam that never runs dry: {SEAM_PER_TRIP} gold a trip",
+                                         mine=MineInfo(SEAM_PER_TRIP, SEAM_SLOTS, endless=True)),
 }
 
 
@@ -380,14 +417,7 @@ SIEGE_STEP: Final = 3.0  # tiles beyond its reach a siege crew on its own judgem
 SIEGE_WORTH: Final = {UnitType.CATAPULT: 3.0, UnitType.CLERIC: 3.0, UnitType.ARCHER: 2.0}  # what a stone on them is worth to a crew; any other unit 1
 SIEGE_BUILDING_WORTH: Final = 0.5  # a building under a stone, beside a unit's 1: soldiers first, walls when no soldier can be reached
 
-GOLD_PER_TRIP: Final = 100
 LUMBER_PER_TRIP: Final = 100
-MINE_SLOTS: Final = 8  # peasants at a mine's face at once; the rest wait their turn at the mouth.
-# The face serves MINE_SLOTS peasants every MINE_TIME, so a mine yields at most
-# MINE_SLOTS * GOLD_PER_TRIP / MINE_TIME.  With the walk to the hall on top, a
-# mine next door is saturated by about ten peasants and a distant one by a few
-# more: hiring past that earns nothing, and the way to more gold is another mine.
-MINE_TIME: Final = 5.0  # seconds a peasant spends inside a mine per trip
 CHOP_TIME: Final = 5.0  # seconds to fell a tree
 REPAIR_RATE: Final = 8.0  # hit points a peasant mends per second
 REPAIR_CHUNK: Final = 10  # hit points paid for at a time while repairing
@@ -439,7 +469,7 @@ def salvage_resource(info: BuildingInfo, roll: float) -> Resource:
     materials out of the building that is there."""
     price = info.cost.gold + info.cost.lumber
     return Resource.GOLD if roll * price < info.cost.gold else Resource.LUMBER
-MINE_GOLD: Final = 50_000  # a base mine; expansion mines hold EXPANSION_GOLD
+MINE_GOLD: Final = 50_000  # a base mine; expansion mines hold EXPANSION_GOLD, and an endless seam no stock at all
 EXPANSION_GOLD: Final = 30_000
 STARTING_GOLD: Final = 1000
 STARTING_LUMBER: Final = 500

@@ -26,7 +26,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from warband.league.arena import MatchResult
-from warband.sim.rules import BuildingType, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, BuildingType, UnitType, Upgrade
 
 
 def equilibrium(payoff: list[list[float]], rounds: int = 20_000, step: float = 2.0) -> list[float]:
@@ -106,7 +106,9 @@ def usage(results: Iterable[MatchResult], agent: str | None = None) -> list[Usag
                         ("upgrade", (u.value for u in Upgrade))):
         for key in names:
             rows[key] = Usage(key=key, kind=kind)
-    rows.pop(BuildingType.GOLD_MINE.value)
+    for kind, info in BUILDINGS.items():
+        if info.mine is not None:
+            rows.pop(kind.value)  # a deposit is nobody's: no player ever builds one
     for result in results:
         for seat, tally in enumerate(result.tallies):
             if agent is not None and result.spec.agents[seat] != agent:

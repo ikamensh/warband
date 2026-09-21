@@ -20,6 +20,7 @@ def scenario():
     hall = world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
     their_hall = world.place_building(1, BuildingType.TOWN_HALL, (34, 25))
     mine = world.place_building(None, BuildingType.GOLD_MINE, (10, 10))
+    seam = world.place_building(None, BuildingType.GOLD_SEAM, (24, 10))
     smith = world.place_building(0, BuildingType.BLACKSMITH, (14, 1))
     site = world.place_building(0, BuildingType.FARM, (6, 6), done=False)
     their_site = world.place_building(1, BuildingType.BARRACKS, (30, 22), done=False)
@@ -28,7 +29,7 @@ def scenario():
     raider = world.spawn_unit(1, UnitType.FOOTMAN, (30.5, 24.5))
     world.reveal_all(0)
     world.reveal_all(1)
-    return world, {"hall": hall.id, "their_hall": their_hall.id, "mine": mine.id, "site": site.id, "smith": smith.id,
+    return world, {"hall": hall.id, "their_hall": their_hall.id, "mine": mine.id, "seam": seam.id, "site": site.id, "smith": smith.id,
                    "their_site": their_site.id,
                    "peasant": peasant.id, "footman": footman.id, "raider": raider.id}
 
@@ -37,6 +38,7 @@ REFUSED = {
     "attack on your own": lambda w, e: w.attack([e["peasant"], e["footman"]], e["hall"]),
     "attack with a unit the target belongs to": lambda w, e: w.attack([e["footman"], e["raider"]], e["their_hall"]),
     "attack on a mine": lambda w, e: w.attack([e["footman"]], e["mine"]),
+    "attack on a gold seam": lambda w, e: w.attack([e["footman"]], e["seam"]),
     "attack on nothing": lambda w, e: w.attack([e["footman"]], 9999),
     "harvest with a soldier among the peasants": lambda w, e: w.harvest([e["peasant"], e["footman"]], e["mine"]),
     "harvest where no trees stand": lambda w, e: w.harvest([e["peasant"]], (3, 20)),
@@ -46,6 +48,8 @@ REFUSED = {
     "salvage of your own hall": lambda w, e: w.salvage([e["peasant"]], e["hall"]),
     "salvage by soldiers": lambda w, e: w.salvage([e["footman"]], e["their_hall"]),
     "salvage of a gold mine": lambda w, e: w.salvage([e["peasant"]], e["mine"]),
+    "salvage of a gold seam": lambda w, e: w.salvage([e["peasant"]], e["seam"]),
+    "repair of a gold seam": lambda w, e: w.repair([e["peasant"]], e["seam"]),
     "salvage of your own site": lambda w, e: w.salvage([e["peasant"]], e["site"]),
     "salvage of a rival's site": lambda w, e: w.salvage([e["peasant"]], e["their_site"]),
     "salvage of nothing": lambda w, e: w.salvage([e["peasant"]], 9999),

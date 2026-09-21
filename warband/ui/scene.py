@@ -1080,7 +1080,7 @@ class GameScene(Scene):
 
     def auto_place(self, building_type: BuildingType, *, keep: bool = False) -> None:
         """Let the planner pick the spot (:func:`warband.brains.ai.auto_site`): about the hall nearest the camera, a hall
-        by the nearest free mine."""
+        by the nearest free deposit."""
         planned = [(kind, pos) for kind, pos, _queued in self.pending_sites()]
         site = auto_site(self.world, building_type, self.human, to_tiles(*self.camera.center), self._site_rng, planned)
         if site is None:
@@ -2419,8 +2419,11 @@ class GameScene(Scene):
         heading = self.game.theme.get_text_style("heading")  # the name's style: the owner follows wherever the theme ends it
         self.draw_text(owner, tx + 6 + self.game.backend.measure_text(name, heading.font_size, heading.font)[0], y + 16, style="sub", color=color)
         lines: list[str] = []
-        if isinstance(entity, Sighting) and entity.type is BuildingType.GOLD_MINE:
-            lines.append(f"{entity.gold:,} gold left")  # five digits: grouped, as every other number this size is
+        deposit = BUILDINGS[entity.type].mine if isinstance(entity, Sighting) else None
+        if deposit is not None:
+            # A mine is worth as much as it still holds, so it says so in five grouped digits; a seam holds
+            # nothing and never will, so a number there would be a lie and it says what a trip brings instead.
+            lines.append(f"Never runs dry · {deposit.trip} gold a trip" if deposit.endless else f"{entity.gold:,} gold left")
         else:
             self.draw_rect(tx, y + 26, 180, 8, (0, 0, 0, 160), radius=3)
             frac = entity.hp / max(1, entity.max_hp)
@@ -3034,7 +3037,7 @@ class CodexScene(_Overlay):
         if self.page == 1:
             rows = [["Building", "Cost", "HP", "Arm", "Size", "Time", "Feeds", "Requires", "What it does"]]
             for building_type, info in race.buildings.items():
-                if building_type is BuildingType.GOLD_MINE:
+                if info.mine is not None:
                     continue
                 rows.append([info.name, price_pairs(info.cost), str(info.hp), str(info.armor), f"{info.size}×{info.size}", f"{info.build_time:g}s",
                              [("supply", f"+{info.supply}", BODY)] if info.supply else "—",
