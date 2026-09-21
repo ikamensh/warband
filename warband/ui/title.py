@@ -25,6 +25,7 @@ from warband.audio.sound import play_music, play_sound
 from warband.ui.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MENU_BUTTON, MUTED, OVERLAY_STYLE, PANEL_STYLE
 from warband.art.textures import TILE
 from warband.ui.view import NEUTRAL_MINIMAP, MapView, minimap_terrain, to_world
+from warband.ui.version import running_build
 
 OPTION_WIDTH = 180
 SIZE_WIDTH = 86  # six sizes on one row, as wide as three options: a second row of them stood the panel off a 680-pixel screen
@@ -127,6 +128,7 @@ class TitleScene(Scene):
         self._block = Column(Label("", height=150), Row(menu, self._card(), spacing=36), spacing=0, anchor=Anchor.CENTER, margin=0)
         self.ui.add(self._block)
         self.ui.add(Label("Every command has a hotkey — the keycaps show them · F1 in game for help", text_style="caption", anchor=Anchor.BOTTOM_CENTER, margin=12))
+        self.ui.add(Label(running_build(), text_style="caption", anchor=Anchor.BOTTOM_RIGHT, margin=12))
 
     def _card(self) -> Column:
         """Who is playing and how they stand: name, rating, record and the last few results."""

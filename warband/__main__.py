@@ -22,6 +22,7 @@ from warband.sim.rules import Difficulty, Layout, MapTheme, Race
 from warband.ui.scene import DEFAULT_SETTINGS, fair_map, new_game
 from warband.ui.style import build_theme
 from warband.ui.title import TitleScene
+from warband.ui.version import running_build
 
 ICON = Path(__file__).parent / "assets" / "icon.png"  # what the Dock, the taskbar and the built app draw Warband under
 
@@ -37,6 +38,7 @@ def main() -> None:
     parser.add_argument("--race", choices=[r.value for r in Race], default="human", help="your race; the computer players' are drawn from the seed")
     parser.add_argument("--layout", choices=[each.value for each in Layout] + ["any"], default="any", help="the map's shape; any draws one from the seed")
     parser.add_argument("--fullscreen", action="store_true")
+    parser.add_argument("--version", action="version", version="Warband " + running_build(), help="name this build and exit")
     parser.add_argument("--campaign", action="store_true", help="open the campaign screen")
     parser.add_argument("--mission", metavar="ID", help="start this campaign mission directly (or 'list')")
     parser.add_argument("--selftest", metavar="PNG", help="start a match in a hidden window, save one frame to PNG and exit (for packaged builds)")

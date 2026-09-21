@@ -43,6 +43,7 @@ from warband.ui.style import (
 )
 from warband.ui import tech
 from warband.ui.tech import Need, Prerequisite, TechTree
+from warband.ui.version import running_build
 from warband.art.textures import TILE
 from warband.ui.tutorial import OBJECTIVES, Tutorial
 from warband.ui.view import SHOT_LOOKS, SHOT_SIZE, MapView, Overlay, Sighting, check_memory, rgba, to_tiles, to_world
@@ -2688,6 +2689,7 @@ class PauseScene(_Overlay):
         panel.add(Button("New game", hotkey="N", on_click=self.new_game, style=GHOST_BUTTON, width=260))
         panel.add(Button("Back to title", hotkey="T", on_click=self.back_to_title, style=GHOST_BUTTON, width=260))
         panel.add(Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=260))
+        panel.add(Label(f"Warband {running_build()}", text_style="caption"))  # which build a player is reporting on, without leaving the match
 
     def save(self) -> None:
         self.game.pop()
