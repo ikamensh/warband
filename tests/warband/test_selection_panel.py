@@ -3,7 +3,9 @@
 import pytest
 
 from saga2d import Game
-from warband.sim.rules import BLADES_BONUS, FORMATION_ARMOR, UNITS, UnitType, Upgrade
+from saga2d.testing import text_boxes
+from warband.art.visual_lint import use_real_text_metrics
+from warband.sim.rules import BLADES_BONUS, FORMATION_ARMOR, UNITS, BuildingType, Race, UnitType, Upgrade
 from warband.ui.scene import PORTRAITS_PER_PAGE, GameScene
 from warband.ui.icons import COLORS
 from warband.ui.style import GOLD, build_theme
@@ -106,8 +108,6 @@ def test_a_mixed_selection_shows_every_kind(tmp_path) -> None:
 
 def test_the_panel_says_in_words_what_a_unit_is_doing(tmp_path) -> None:
     """It spelt out the order's class name: an attack-move read "Attacking-moving" and a repair "Repair"."""
-    from warband.sim.rules import BuildingType
-
     game = Game("Warband selection", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     try:
         scene = GameScene(field(), 0, ranked=False, settings=dict(SETTINGS))
@@ -177,5 +177,78 @@ def test_research_and_the_shield_wall_are_marked_beside_the_number_they_raise(tm
         game.backend.inject_mouse_move(*symbol_at(game, COLORS["armor"]))
         game.tick(1 / 60)
         assert "elbows" in scene.tooltip
+    finally:
+        game.close()
+
+
+def panel_texts(game: Game, scene: GameScene) -> list:
+    """The boxes of the texts the panel drew into itself.
+
+    The card and the production readout are drawn straight to the screen, not laid out, so nothing but their own
+    width holds them to the panel: a text that starts inside it is the panel's.
+    """
+    x, y, w, h = scene.selection_panel.bounds
+    return [b for b in text_boxes(game.backend)
+            if b.space == "screen" and x <= b.left < x + w and y <= (b.top + b.bottom) / 2 < y + h]
+
+
+def panel_scene(tmp_path, race, resolution=(1280, 800)) -> tuple[Game, GameScene]:
+    """A match of *race* with one of every building standing, each far enough from the next to be its own.
+
+    The mock backend measures text by the character; the card wraps and the assertions measure by the game's own
+    faces, so the panel is checked against the widths a player sees."""
+    game = Game("Warband panel", backend="mock", resolution=resolution, theme=build_theme(), save_dir=tmp_path / "saves")
+    use_real_text_metrics(game)
+    world = field()
+    world.players[0].race = race
+    for i, kind in enumerate(k for k in BuildingType if k is not BuildingType.GOLD_MINE):
+        world.place_building(0, kind, (4 + i % 5 * 6, 6 + i // 5 * 6))
+    scene = GameScene(world, 0, ranked=False, settings=dict(SETTINGS))
+    game.push(scene)
+    return game, scene
+
+
+#: One race in the smallest window is the fast tier's share; every race in both windows takes a second each.
+CARD_MATRIX = [pytest.param(race, resolution, id=f"{race.value}-{resolution[0]}x{resolution[1]}",
+                            marks=() if (race, resolution) == (Race.HUMAN, (1200, 680)) else pytest.mark.slow)
+               for race in Race for resolution in ((1280, 800), (1200, 680))]
+
+
+@pytest.mark.parametrize("race, resolution", CARD_MATRIX)
+def test_every_building_card_stays_inside_the_selection_panel(tmp_path, race, resolution) -> None:
+    """A card line is written straight to the screen at a fixed column, so a long one used to run out of the panel
+    and over the command card beside it: a site with no builder said so on the same line as its percentage, and the
+    elves' Grove Mill and the humans' Blacksmith have summaries wider than the column.  Every race's every
+    building, whole and going up, with and without a builder, is ten cards in three states, which is a second of
+    drawing: the other races and the larger window are the slow tier's."""
+    game, scene = panel_scene(tmp_path, race, resolution)
+    try:
+        peasant = scene.world.spawn_unit(0, UnitType.PEASANT, (2.5, 2.5))
+        game.tick(1 / 60)  # the panel is laid out on the first frame and drawn into from the second
+        for building in list(scene.world.buildings.values()):
+            for progress, builder in ((1.0, None), (0.3, peasant.id), (0.3, None)):  # staged: whole, going up with a builder, and abandoned
+                building.progress = building.info.build_time * progress
+                building.builder = builder
+                scene.select([building.id])
+                game.tick(1 / 60)
+                panel = scene.selection_panel.bounds
+                for box in panel_texts(game, scene):
+                    assert inside((box.left, box.top, box.width, box.height), panel), (building.type, progress, builder, str(box), panel)
+    finally:
+        game.close()
+
+
+def test_an_empty_catalogue_says_why_inside_the_panel(tmp_path) -> None:
+    """The build menu with nothing planned: its note was one line wider than the panel."""
+    game, scene = panel_scene(tmp_path, Race.HUMAN, (1200, 680))
+    try:
+        scene.toggle_catalogue("build")
+        for _ in range(2):
+            game.tick(1 / 60)
+        panel = scene.selection_panel.bounds
+        boxes = panel_texts(game, scene)
+        assert any("Nothing planned" in b.text for b in boxes)
+        for box in boxes:
+            assert inside((box.left, box.top, box.width, box.height), panel), (str(box), panel)
     finally:
         game.close()

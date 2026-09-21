@@ -101,6 +101,9 @@ CARD_PLAIN = 32  # height of a button without a portrait (the unit card's)
 MINIMAP_WIDTH = 200
 SELECTION_WIDTH = 470
 SELECTION_HEIGHT = 128
+PANEL_INSET = 16  # what the selection panel draws into itself sits this far inside it
+CARD_PORTRAIT_GAP = 88  # the card's text column starts this far right of its portrait's left edge
+CARD_TEXT_WIDTH = SELECTION_WIDTH - PANEL_INSET - CARD_PORTRAIT_GAP - PANEL_STYLE.padding  # ... and ends inside the panel: a longer line ran over the command card
 PORTRAIT = 30  # a selected unit's portrait in the panel
 PORTRAIT_GAP = 3
 PORTRAIT_COLS = 13
@@ -2240,7 +2243,7 @@ class GameScene(Scene):
             self.command_tooltip.visible = bool(self.tooltip)
             return
         if len(entities) == 1:
-            self._draw_entity_card(entities[0], x + 16, y + 14)
+            self._draw_entity_card(entities[0], x + PANEL_INSET, y + 14)
         else:
             self._draw_portrait_grid(entities, x, y)
         self.command_tooltip.visible = bool(self.tooltip)
@@ -2252,11 +2255,11 @@ class GameScene(Scene):
         self._portrait_page = page = min(self._portrait_page, pages - 1)
         self._page_tile = None
         heading = f"{len(entities)} units" + (f" · page {page + 1} of {pages}" if pages > 1 else "")
-        self.draw_text(heading, x + 16, y + 30, style="heading")
+        self.draw_text(heading, x + PANEL_INSET, y + 30, style="heading")
         size, gap = PORTRAIT, PORTRAIT_GAP
         cells = list(entities[page * per_page:(page + 1) * per_page])
         for i in range(len(cells) + (1 if pages > 1 else 0)):
-            px, py = x + 16 + (i % PORTRAIT_COLS) * (size + gap), y + 44 + (i // PORTRAIT_COLS) * (size + 9)
+            px, py = x + PANEL_INSET + (i % PORTRAIT_COLS) * (size + gap), y + 44 + (i // PORTRAIT_COLS) * (size + 9)
             self.draw_rect(px, py, size, size, (255, 255, 255, 18), border_color=(255, 255, 255, 40), border_width=1, radius=4)
             if i == len(cells):  # the page tile
                 self._page_tile = (px, py, size, size)
@@ -2275,27 +2278,28 @@ class GameScene(Scene):
         title = self._catalogue_title()
         if not entries:
             if title is not None:
-                self.draw_text(title, x + 16, y + 30, style="heading")
-                note = "Nothing planned · plans wait for money and prerequisites" if self._card else "Every upgrade is researched"
-                self.draw_text(note, x + 16, y + 58, style="sub")
+                self.draw_text(title, x + PANEL_INSET, y + 30, style="heading")
+                notes = ("Nothing planned", "Plans wait for money and prerequisites") if self._card else ("Every upgrade is researched",)
+                for i, note in enumerate(notes):  # two rows: one line of both is wider than the panel
+                    self.draw_text(note, x + PANEL_INSET, y + 58 + i * 20, style="sub")
                 return
             tile = (int(self.hover[0]), int(self.hover[1]))
             text = "Nothing selected"
             if self.world.in_bounds(tile) and self.world.is_explored(self.human, tile):
                 text = f"{self.view.terrain_at(tile).value.title()} ({tile[0]}, {tile[1]})"
-            self.draw_text(text, x + 16, y + 30, style="heading")
-            self.draw_text("Drag to select units · right-click to order them", x + 16, y + 58, style="sub")
+            self.draw_text(text, x + PANEL_INSET, y + 30, style="heading")
+            self.draw_text("Drag to select units · right-click to order them", x + PANEL_INSET, y + 58, style="sub")
             return
         working = sum(e.state != "waiting" for e in entries)
         waiting = len(entries) - working
         summary = " · ".join(part for part in (f"{working} in progress" if working else "", f"{waiting} waiting" if waiting else "") if part)
-        self.draw_text(f"{title or 'Production'} · {summary}", x + 16, y + 30, style="heading")
+        self.draw_text(f"{title or 'Production'} · {summary}", x + PANEL_INSET, y + 30, style="heading")
         size, gap = 34, 4
-        room = int((w - 32 + gap) // (size + gap))
+        room = int((w - 2 * PANEL_INSET + gap) // (size + gap))
         shown = entries if len(entries) <= room else entries[:room - 1]
         mx, my = self.mouse
         for i, entry in enumerate(shown):
-            px, py = x + 16 + i * (size + gap), y + 46
+            px, py = x + PANEL_INSET + i * (size + gap), y + 46
             self._queue_hits.append(((px, py, size, size + 6), entry))
             hovered = px <= mx < px + size and py <= my < py + size + 6
             border = (255, 214, 110, 200) if entry.state == "working" else (255, 255, 255, 90 if hovered else 40)
@@ -2307,8 +2311,8 @@ class GameScene(Scene):
             if hovered:
                 self.tooltip = entry.hint
         if len(shown) < len(entries):
-            self.draw_text(f"+{len(entries) - len(shown)}", x + 16 + len(shown) * (size + gap), y + 46 + size / 2, style="body", anchor_y="center")
-        self.draw_text("Hover for details · click to go there · right-click to cancel", x + 16, y + 106, style="sub")
+            self.draw_text(f"+{len(entries) - len(shown)}", x + PANEL_INSET + len(shown) * (size + gap), y + 46 + size / 2, style="body", anchor_y="center")
+        self.draw_text("Hover for details · click to go there · right-click to cancel", x + PANEL_INSET, y + 106, style="sub")
 
     def _endless_line(self, building: Building) -> str:
         """What *building* trains endlessly, the next one first."""
@@ -2353,7 +2357,7 @@ class GameScene(Scene):
         own = entity.player == self.human
         self.draw_rect(x, y, 72, 72, (255, 255, 255, 16), border_color=(255, 255, 255, 40), border_width=1, radius=6)
         self._portrait(entity, x + 4, y + 4, 64)
-        tx = x + 88
+        tx = x + CARD_PORTRAIT_GAP
         abandoned = isinstance(entity, Sighting) and entity.abandoned
         owner = "Abandoned" if abandoned else world.players[entity.player].name if entity.player is not None else "Neutral"
         name = entity.info.name if isinstance(entity, Unit) else RACES[entity.race].buildings[entity.type].name
@@ -2415,8 +2419,9 @@ class GameScene(Scene):
         else:
             building = world.buildings.get(entity.id) if own else None  # the player's own, as it is: what it is making, who builds it
             if not entity.done:
-                unmanned = building is not None and building.builder is None
-                lines.append(f"Under construction {int(entity.built * 100)}%" + (" — no builder: right-click it with a peasant" if unmanned else ""))
+                lines.append(f"Under construction {int(entity.built * 100)}%")
+                if building is not None and building.builder is None:  # a row of its own: one line of both runs out of the panel
+                    lines.append("No builder · right-click it with a peasant")
             elif building is not None and (building.queue or building.research is not None):
                 self._draw_production(building, tx, y + 44)
                 if building.auto:
@@ -2430,10 +2435,22 @@ class GameScene(Scene):
                 lines.append(building.info.summary)
                 if building.type is BuildingType.TOWN_HALL:
                     lines.append("Rally point set" if building.rally is not None else "Right-click the map to set a rally point")
-        ly = y + 82 if isinstance(entity, Unit) else y + 50
-        for line in lines[:2]:
+        # The card writes straight to the screen, so nothing but this holds a line to the panel: one too long for
+        # the column used to run over the command card beside it.  A unit's two rows start under its stats; a
+        # building's three under its health bar.
+        ly, rows = (y + 82, 2) if isinstance(entity, Unit) else (y + 50, 3)
+        for line in self._card_lines(lines, rows):
             self.draw_text(line, tx, ly, style="body")
             ly += 22
+
+    def _card_lines(self, lines: list[str], rows: int) -> list[str]:
+        """*lines* wrapped into the card's text column, at most *rows* of them, the last one elided if it must be."""
+        wrapped: list[str] = []
+        for line in lines:
+            wrapped += self.layout_text(line, CARD_TEXT_WIDTH, style="body", max_lines=rows - len(wrapped)).lines
+            if len(wrapped) >= rows:
+                break
+        return wrapped[:rows]
 
     # -- Save / load ------------------------------------------------------------------------
 
