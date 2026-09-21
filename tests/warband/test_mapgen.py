@@ -156,12 +156,19 @@ def test_bastion_walls_every_base_behind_one_gate() -> None:
         assert not any(door(world, m) in inside for m in world.mines() if m.gold == EXPANSION_GOLD)  # the natural is outside
 
 
-def test_any_layout_is_drawn_from_the_seed() -> None:
-    """Every layout comes up, and a seed always draws the same one.
+def test_a_seed_always_draws_the_same_layout() -> None:
+    """Two maps of one seed are the same layout: the cheap half of the draw's claim, and the fast tier's."""
+    assert mapgen.generate(seed=17).layout is mapgen.generate(seed=17).layout
 
-    A seed here and there makes no fair map at all (tests/warband/test_fair_seeds.py), and which ones
-    move whenever the generator draws differently; the claim is about the draw, so a refused seed is
-    passed over rather than pinned down."""
+
+@pytest.mark.slow
+def test_every_layout_is_drawn_by_some_seed() -> None:
+    """Every layout comes up over fifty-nine seeds.
+
+    Fifty-nine whole maps, over a second on the Mac and four times that on a runner at four workers:
+    the slow tier's.  A seed here and there makes no fair map at all
+    (tests/warband/test_fair_seeds.py), and which ones move whenever the generator draws differently;
+    the claim is about the draw, so a refused seed is passed over rather than pinned down."""
     drawn = set()
     for seed in range(1, 60):
         try:
@@ -169,7 +176,6 @@ def test_any_layout_is_drawn_from_the_seed() -> None:
         except mapgen.NoFairMap:
             continue
     assert drawn == set(Layout)
-    assert mapgen.generate(seed=17).layout is mapgen.generate(seed=17).layout
 
 
 def test_map_edges_are_forest_and_sizes_are_respected() -> None:

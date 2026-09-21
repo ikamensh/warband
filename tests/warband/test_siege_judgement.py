@@ -10,6 +10,8 @@ the trade rarely pays — but it no longer holds fire all clash to save a graze.
 import math
 import random
 
+import pytest
+
 from warband.sim.model import SIM_DT, Hold, World
 from warband.sim.rules import FRIENDLY_WORTH, SIEGE_WORTH, Terrain, UnitType
 
@@ -50,13 +52,23 @@ def fight(world: World, catapult: int, ours: set[int], seconds: float) -> tuple[
     return launches, friendly, hostile
 
 
-def test_in_a_clash_the_catapult_keeps_throwing_and_its_own_line_stands_through_it() -> None:
+#: Twelve clashes of up to half a minute each take a second on the Mac and four times that on a runner at four
+#: workers, over the fast tier's budget, so four of them are the fast tier's representative set and the rest the
+#: slow tier's.  The trade is claimed over whichever clashes ran, seed by seed and over the set.
+CLASHES = [pytest.param(range(1, 5), id="seeds 1-4"), pytest.param(range(5, 13), id="seeds 5-12", marks=pytest.mark.slow)]
+
+
+@pytest.mark.parametrize("seeds", CLASHES)
+def test_in_a_clash_the_catapult_keeps_throwing_and_its_own_line_stands_through_it(seeds: range) -> None:
     """From the moment the lines meet until the fight is decided or half a minute has passed, the crew lets a stone go
     at least every other reload, and what its stones cost our own side stays a fraction of what they cost the enemy:
     the crew takes the occasional graze for a good trade, never a stone on the line.  It used to hold fire instead,
-    for the whole clash."""
+    for the whole clash.
+
+    Four clashes are the fast tier's; the other eight take the whole set past the three-second budget on a runner
+    at four workers, so they run in the slow tier."""
     ours_lost = theirs_lost = 0
-    for seed in range(1, 13):
+    for seed in seeds:
         world, catapult, ours = clash(seed)
         while not any(e.kind == "hit" and e.other in ours for e in world.take_events()):  # the first blow between the lines
             world.step()
@@ -67,7 +79,7 @@ def test_in_a_clash_the_catapult_keeps_throwing_and_its_own_line_stands_through_
         end = min(world.time, contact + 30.0)
         cycle = 2 * (world.units[catapult].info.windup + world.units[catapult].info.cooldown) if catapult in world.units else 7.6
         assert len(launches) >= int((end - contact) / cycle), f"seed {seed}: {len(launches)} stones in {end - contact:.1f} s"
-    assert ours_lost * 10 < theirs_lost, f"over the twelve clashes the stones cost us {ours_lost} against {theirs_lost}"
+    assert ours_lost * 10 < theirs_lost, f"over these clashes the stones cost us {ours_lost} against {theirs_lost}"
 
 
 def test_a_catapult_on_hold_looks_again_when_its_target_has_no_clear_stone() -> None:
