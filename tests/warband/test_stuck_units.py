@@ -127,7 +127,7 @@ def test_no_unit_is_wedged_in_a_played_match(seed):
     line to meet, and this is the shape that has frozen units for a whole match before."""
     rng = random.Random(seed)
     world = mapgen.generate(seed=seed, width=64, height=64, players=2, human=None)
-    brains = [make_brain(p.id, rng.choice(list(Difficulty)), seed) for p in world.players[:world.seats]]
+    brains = [make_brain(p.id, rng.choice(list(Difficulty)), seed) for p in world.players]
     watch = Watch()
     play(world, 300.0, watch, brains)
     assert sum(len(world.player_units(p.id)) for p in world.players) > 0

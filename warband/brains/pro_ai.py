@@ -40,7 +40,7 @@ from dataclasses import dataclass, replace
 from typing import Final
 
 from warband.brains.ai import (ARMY_PLANS, CAMP_REACH, RESEARCH_ORDER, _shift, guarded, hall_first, known_camps, known_enemy_buildings,
-                              known_mines, site_search, with_prerequisites)
+                              known_mines, release_arrived, site_search, with_prerequisites)
 from warband.sim import mapgen
 from warband.sim.model import Attack, Build, Building, Harvest, Move, Point, Pos, Repair, Resource, Salvage, Unit, World, dist, rect_gap, tile_center
 from warband.sim.races import RACES
@@ -52,6 +52,7 @@ WALK_OVER: Final = 4.0  # seconds the peasants sent at a frame by our own mine o
 STRICT_SLACK: Final = 0.1  # how far past its planned share a type may run under a strict plan
 BUILD_MIN_DISTANCE: Final = 2
 BUILD_MAX_DISTANCE: Final = 12
+MUSTERED: Final = 1.0  # tiles from the place the brain wants it within which a soldier counts as standing there
 
 
 @dataclass(frozen=True)
@@ -1364,13 +1365,9 @@ class ProBrain:
         *point*: a soldier judged by its distance from *point* alone was ordered onto ground it was already
         standing on, every pass of the brain, for the rest of the match.  It finished the walk in one step,
         went idle, and was sent again; fuzz reads a unit ordered about once a second and never getting
-        anywhere as a stalled unit, which is what it was (seed 81, an archer of a bred orc posture).
-
-        Whether it is there is the world's answer (:meth:`~warband.sim.model.World.stands_at`), which is the
-        same one the world ends the walk on: a brain with a tolerance of its own sent a footman after a post a
-        knight was standing on every half second, and the world gave it up again every half second (seed 92)."""
+        anywhere as a stalled unit, which is what it was (seed 81, an archer of a bred orc posture)."""
         post = self._muster(world, point, unit)
-        if not world.stands_at(unit, post):
+        if dist(unit.pos, post) > MUSTERED:
             world.move([unit.id], post)
 
     def _defenders_near(self, world: World, point: Point, radius: float = 12.0) -> float:
@@ -1486,7 +1483,7 @@ class ProBrain:
         self.attacking = False
         for unit in army:
             if dist(unit.pos, point) > 3.0 and not (isinstance(unit.order, Move) and dist(unit.order.target, point) < 4.0):
-                self._send_to_muster(world, point, unit)
+                world.move([unit.id], self._muster(world, point, unit))
 
     def _send_scout(self, world: World, army: list[Unit]) -> None:
         """Keep one pair of eyes on the enemy: a rider if we have one, a peasant if not.
@@ -1719,6 +1716,7 @@ class ProBrain:
 
     def _combat(self, world: World) -> None:
         """Take the nearly dead out of the fight. The fighting itself is the model's."""
+        release_arrived(world, self.player)
         self._hunt_builders(world)
         if not self.profile.retreat_wounded:
             return
