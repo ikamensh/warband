@@ -91,12 +91,16 @@ def test_explicit_healing_survives_loading_even_when_a_better_patient_is_nearby(
 @pytest.mark.parametrize("player", [0, 1])
 def test_acquired_healing_keeps_its_intent_and_underlying_journey_after_loading(command, player):
     """Moving healers still triage after loading, then finish their interrupted route."""
-    world = arena()
-    healer = world.spawn_unit(player, UnitType.CLERIC, (6.5, 6.5))
-    patient = world.spawn_unit(player, UnitType.FOOTMAN, (11.5, 6.5))
+    # A wide field with the halls in its far corners: a healer with nobody left to treat takes up whatever
+    # enemy it can see, and a hall within its five tiles of sight would be one -- not what this test is about.
+    world = World(40, 18, [[Terrain.GRASS] * 40 for _ in range(18)], 2)
+    world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
+    world.place_building(1, BuildingType.TOWN_HALL, (35, 13))
+    healer = world.spawn_unit(player, UnitType.CLERIC, (10.5, 8.5))
+    patient = world.spawn_unit(player, UnitType.FOOTMAN, (15.5, 8.5))
     patient.hp = 10
     world.hold([patient.id])
-    destination = (18.0, 6.5)
+    destination = (22.0, 8.5)
     getattr(world, command)([healer.id], destination)
     world.update_vision()
     advance(world, .25)
@@ -171,7 +175,8 @@ def test_a_healer_that_took_up_a_patient_by_itself_goes_home_past_the_leash():
     world = arena()
     post = (4.5, 8.5)
     cleric = world.spawn_unit(0, UnitType.CLERIC, post)
-    knight = world.spawn_unit(0, UnitType.KNIGHT, (5.5, 8.5))  # faster than a cleric: it cannot be caught
+    # Far enough that neither asks the other for elbow room, so the cleric's post is where it still stands.
+    knight = world.spawn_unit(0, UnitType.KNIGHT, (6.0, 8.5))  # faster than a cleric: it cannot be caught
     knight.hp = 1
     advance(world, 0.5)
     assert isinstance(cleric.orders[0], Heal) and cleric.orders[0].auto and cleric.home == post

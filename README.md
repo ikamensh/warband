@@ -7,9 +7,10 @@ Planned work and task order: [Warband backlog](BACKLOG.md).
 A top-down map of meadows, woods and lakes under a soft fog of war, in
 summer, winter or wasteland, in one of five layouts (open plains, deep
 forest, a river with fords, a gold pit in the middle, walled bastions); a base
-for each of two to four players with a gold mine and a wood beside it, a
+for each of two to sixteen players with a gold mine and a wood beside it, a
 natural expansion of its own, and contested mines between, laid out by
-symmetry so every seat gets the same ([docs/warband-maps.md](docs/warband-maps.md)). Four races — Humans, Orcs, Elves and Dwarves —
+symmetry — every seat holds one congruent cell of a grid — so every seat gets
+the same ([docs/warband-maps.md](docs/warband-maps.md)). Four races — Humans, Orcs, Elves and Dwarves —
 share one tech skeleton but differ in names, numbers, look, voice and march,
 each with a passive mechanic and two arts of its own
 ([docs/warband-races.md](docs/warband-races.md)). Peasants mine gold and fell
@@ -59,7 +60,10 @@ uv run warband
 
 `uv run` creates `.venv`, fetches Python and the dependencies when they are
 missing, and opens the title screen; the first start also synthesises the
-sounds and music. **New game** picks map, players, difficulty and race,
+sounds and music. **New game** picks map size (S, M, L or `[` and `]` through
+all six), players (2, 3, 4 or `-` and `=` through 2, 3, 4, 6, 8, 12 and 16),
+difficulty and race — it moves whichever of size and seats you did not touch
+rather than offering a pairing with no fair map —
 **Continue** resumes the autosave, **Profile & replays** shows your rating,
 record and the replays of your matches, and **Codex** (F2) reads every unit,
 building, upgrade and the tech tree of the race New game is set to, before one
@@ -82,6 +86,7 @@ Straight into a match, and the other options:
 ```bash
 uv run warband --seed 3                    # skip the title: seed 3, you against one computer player
 uv run warband --seed 3 --race orc --players 4 --size Large --difficulty hard --theme winter --layout forest
+uv run warband --seed 3 --players 16 --size Epic              # sixteen seats need Giant or Epic; a size that cannot seat them is refused
 uv run warband --fullscreen
 uv run warband --help
 ```

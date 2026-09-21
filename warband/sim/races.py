@@ -4,8 +4,8 @@ Every race fields the same seven roles from the same nine buildings with the
 same hotkeys and costs, so the AI, the settlement planner, the saves and the
 network protocol never care who is playing.  A race changes the names, a few
 numbers per role (built into the :class:`UnitInfo` / :class:`BuildingInfo` a
-unit or building reports), which two race arts it may research, and one
-passive mechanic the simulation applies:
+unit or building reports), what it calls the Keep its hall is raised to, which
+two race arts it may research, and one passive mechanic the simulation applies:
 
 | race   | passive                                                  | arts                         |
 |--------|----------------------------------------------------------|------------------------------|
@@ -20,7 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Final
 
-from warband.sim.rules import BUILDINGS, UNITS, UPGRADES, BuildingInfo, BuildingType, Race, UnitInfo, UnitType, Upgrade
+from warband.sim.rules import (BUILDINGS, UNITS, UPGRADES, WILD_BUILDINGS, BuildingInfo, BuildingType, Race, UnitInfo, UnitType,
+                               Upgrade, UpgradeInfo)
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,15 @@ class BuildingTweak:
 
 
 @dataclass(frozen=True)
+class UpgradeTweak:
+    """A race's own name for an upgrade the shared table names once.  Only the Keep is renamed so far: every race
+    already names its hall, so the hall it is raised to is the race's own too."""
+
+    name: str
+    card: str  # short enough for a command-card button
+
+
+@dataclass(frozen=True)
 class RaceInfo:
     name: str  # "Orcs"
     adjective: str  # "Orcish"
@@ -55,6 +65,7 @@ class RaceInfo:
     arts: tuple[Upgrade, ...]
     units: dict[UnitType, UnitInfo]
     buildings: dict[BuildingType, BuildingInfo]
+    upgrades: dict[Upgrade, UpgradeInfo]
     cards: dict[BuildingType, str]
 
     def upgrade_allowed(self, upgrade: Upgrade) -> bool:
@@ -63,9 +74,14 @@ class RaceInfo:
 
 
 def _units(tweaks: dict[UnitType, UnitTweak]) -> dict[UnitType, UnitInfo]:
+    """The seven roles a race fields, as that race names and tweaks them.
+
+    The neutral creatures are not among them: no race names one, so none has an entry for one, and a
+    creature's numbers come out of the shared table instead (:func:`warband.sim.model.unit_stats`).
+    """
     out: dict[UnitType, UnitInfo] = {}
-    for unit_type, base in UNITS.items():
-        t = tweaks[unit_type]
+    for unit_type, t in tweaks.items():
+        base = UNITS[unit_type]
         out[unit_type] = replace(
             base, name=t.name, summary=t.summary, hp=int(round(base.hp * t.hp)), damage=int(round(base.damage * t.damage)),
             armor=base.armor + t.armor, range=base.range + (t.range if base.ranged else 0.0), speed=round(base.speed + t.speed, 2),
@@ -77,17 +93,27 @@ def _units(tweaks: dict[UnitType, UnitTweak]) -> dict[UnitType, UnitInfo]:
 def _buildings(tweaks: dict[BuildingType, BuildingTweak]) -> dict[BuildingType, BuildingInfo]:
     out: dict[BuildingType, BuildingInfo] = {}
     for building_type, base in BUILDINGS.items():
-        if building_type is BuildingType.GOLD_MINE:
-            out[building_type] = base
+        if building_type in WILD_BUILDINGS:
+            out[building_type] = base  # a deposit and a lair are nobody's: no race names them, tweaks them or draws them
             continue
         t = tweaks[building_type]
         out[building_type] = replace(base, name=t.name, summary=t.summary, hp=int(round(base.hp * t.hp)), armor=base.armor + t.armor)
     return out
 
 
+def _upgrades(tweaks: dict[Upgrade, UpgradeTweak]) -> dict[Upgrade, UpgradeInfo]:
+    """Every upgrade as this race names it: the shared table, with the tweaked ones renamed."""
+    out: dict[Upgrade, UpgradeInfo] = {}
+    for upgrade, base in UPGRADES.items():
+        t = tweaks.get(upgrade)
+        out[upgrade] = base if t is None else replace(base, name=t.name, card=t.card)
+    return out
+
+
 def _race(name: str, adjective: str, tagline: str, passive: str, arts: tuple[Upgrade, ...],
-          units: dict[UnitType, UnitTweak], buildings: dict[BuildingType, BuildingTweak]) -> RaceInfo:
-    return RaceInfo(name, adjective, tagline, passive, arts, _units(units), _buildings(buildings),
+          units: dict[UnitType, UnitTweak], buildings: dict[BuildingType, BuildingTweak],
+          upgrades: dict[Upgrade, UpgradeTweak]) -> RaceInfo:
+    return RaceInfo(name, adjective, tagline, passive, arts, _units(units), _buildings(buildings), _upgrades(upgrades),
                     {bt: t.card for bt, t in buildings.items()})
 
 
@@ -112,6 +138,10 @@ _HUMAN_BUILDINGS: Final = {
     BuildingType.CHURCH: BuildingTweak("Church", "Church", "Trains clerics; blesses their healing"),
 }
 
+_HUMAN_UPGRADES: Final = {
+    Upgrade.KEEP: UpgradeTweak("Keep", "Keep"),
+}
+
 _ORC_UNITS: Final = {
     UnitType.PEASANT: UnitTweak("Peon", "Digs gold, hacks lumber, builds and repairs", hp=1.15),
     UnitType.FOOTMAN: UnitTweak("Grunt", "Brutal axeman, fast and alone; hits harder as it bleeds", hp=1.15, damage=1.1, armor=-2, speed=0.4,
@@ -132,6 +162,10 @@ _ORC_BUILDINGS: Final = {
     BuildingType.STABLES: BuildingTweak("Kennels", "Kennels", "Trains wolf riders and ogres; Plunder"),
     BuildingType.WORKSHOP: BuildingTweak("Siege Yard", "Yard", "Builds catapults; improves siege engines"),
     BuildingType.CHURCH: BuildingTweak("Altar", "Altar", "Trains shamans"),
+}
+
+_ORC_UPGRADES: Final = {
+    Upgrade.KEEP: UpgradeTweak("Stronghold", "Stronghold"),
 }
 
 _ELF_UNITS: Final = {
@@ -155,6 +189,10 @@ _ELF_BUILDINGS: Final = {
     BuildingType.CHURCH: BuildingTweak("Moonwell", "Moonwell", "Trains druids"),
 }
 
+_ELF_UPGRADES: Final = {
+    Upgrade.KEEP: UpgradeTweak("Moonspire", "Moonspire"),
+}
+
 _DWARF_UNITS: Final = {
     UnitType.PEASANT: UnitTweak("Miner", "Mines gold, chops lumber, builds, repairs", hp=1.1, speed=-0.15),
     UnitType.FOOTMAN: UnitTweak("Ironguard", "Armoured axeman in a wall of round shields", hp=1.1, armor=1, speed=-0.15),
@@ -176,15 +214,22 @@ _DWARF_BUILDINGS: Final = {
     BuildingType.CHURCH: BuildingTweak("Rune Shrine", "Shrine", "Trains runepriests", hp=1.25, armor=2),
 }
 
+_DWARF_UPGRADES: Final = {
+    Upgrade.KEEP: UpgradeTweak("Stonehold", "Stonehold"),
+}
+
 RACES: Final[dict[Race, RaceInfo]] = {
     Race.HUMAN: _race("Humans", "Human", "Drilled, balanced, and blessed with the fastest horses",
-                      "Drill: every unit trains 15 % faster", (Upgrade.HORSES, Upgrade.BLESSING), _HUMAN_UNITS, _HUMAN_BUILDINGS),
+                      "Drill: every unit trains 15 % faster", (Upgrade.HORSES, Upgrade.BLESSING), _HUMAN_UNITS, _HUMAN_BUILDINGS,
+                      _HUMAN_UPGRADES),
     Race.ORC: _race("Orcs", "Orcish", "Tough, savage, and deadliest when bleeding",
-                    "Frenzy: soldiers below half health deal +25 % damage", (Upgrade.BLOODLUST, Upgrade.PLUNDER), _ORC_UNITS, _ORC_BUILDINGS),
+                    "Frenzy: soldiers below half health deal +25 % damage", (Upgrade.BLOODLUST, Upgrade.PLUNDER), _ORC_UNITS, _ORC_BUILDINGS,
+                    _ORC_UPGRADES),
     Race.ELF: _race("Elves", "Elven", "Swift, far-sighted, and at home among the trees",
-                    "Keen eyes: +2 sight for every unit, rangers shoot a tile farther", (Upgrade.LONGBOWS, Upgrade.REGROWTH), _ELF_UNITS, _ELF_BUILDINGS),
+                    "Keen eyes: +2 sight for every unit, rangers shoot a tile farther", (Upgrade.LONGBOWS, Upgrade.REGROWTH), _ELF_UNITS, _ELF_BUILDINGS,
+                    _ELF_UPGRADES),
     Race.DWARF: _race("Dwarves", "Dwarven", "Slow, sturdy, and housed in stone",
                       "Stonework: buildings have +25 % hit points and +2 armour", (Upgrade.DEEP_MINING, Upgrade.BLASTING_POWDER), _DWARF_UNITS,
-                      _DWARF_BUILDINGS),
+                      _DWARF_BUILDINGS, _DWARF_UPGRADES),
 }
 

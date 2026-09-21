@@ -29,6 +29,18 @@ _STEPS: Final[tuple[tuple[int, int, float], ...]] = (
     (1, 1, SQRT2), (1, -1, SQRT2), (-1, 1, SQRT2), (-1, -1, SQRT2),
 )
 MAX_EXPANSIONS: Final = 3000
+_BUDGET_AREA: Final = 5120  # the largest map the budget above was chosen for: Large, 80x64
+
+
+def budget(width: int, height: int) -> int:
+    """How many expansions a route across a map this size may cost.
+
+    Three thousand is what every shipped size up to Large has always had, and A* that runs out of
+    budget returns the nearest reachable tile: a unit walks into a wall instead of round it.  A map
+    of many seats is several times the area, so the bound grows with it and no map is a maze the
+    pathfinder gives up in merely because it is big.
+    """
+    return max(MAX_EXPANSIONS, width * height * MAX_EXPANSIONS // _BUDGET_AREA)
 
 _STEP_OFFSETS: Final[dict[int, tuple[tuple[tuple[int, ...], tuple[int, ...]], ...]]] = {}
 

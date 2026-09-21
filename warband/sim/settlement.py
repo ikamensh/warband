@@ -38,7 +38,7 @@ class Settlement:
         return [plan for plan in self.plans if plan.player == player]
 
     def can_plan_building(self, building_type: BuildingType, pos: tuple[int, int], player: int) -> str | None:
-        if building_type is BuildingType.GOLD_MINE:
+        if BUILDINGS[building_type].mine is not None:
             return "Gold mines cannot be built"
         reason = self.world._placement_reason(building_type, pos, player, ignore_units=True)
         if reason is not None:
@@ -139,7 +139,7 @@ class Settlement:
         from warband.sim.races import RACES
 
         if not RACES[self.world.players[player].race].upgrade_allowed(upgrade):
-            raise RuleError(f"{UPGRADES[upgrade].name} is {an(RACES[UPGRADES[upgrade].race].adjective)} art")
+            raise RuleError(f"{self.world.upgrade_info(player, upgrade).name} is {an(RACES[UPGRADES[upgrade].race].adjective)} art")
         if upgrade in self.world.players[player].upgrades:
             raise RuleError("Already researched")
         if any(b.research is upgrade for b in self.world.player_buildings(player)):
@@ -216,7 +216,6 @@ class Settlement:
 
     def _worker(self, plan: Plan) -> Unit | None:
         from warband.sim.model import TOUCH, Deposit, Harvest, rect_gap, tile_center
-        from warband.sim.rules import UNIT_RADIUS
         from warband.sim.worker_ai import safe_navigation
 
         world = self.world
@@ -226,7 +225,8 @@ class Settlement:
         goals = {(x, y): 0.0
                  for y in range(max(0, plan.pos[1] - 1), min(world.height, plan.pos[1] + size + 1))
                  for x in range(max(0, plan.pos[0] - 1), min(world.width, plan.pos[0] + size + 1))
-                 if not navigation[y * world.width + x] and rect_gap(tile_center((x, y)), rect) <= TOUCH + UNIT_RADIUS}
+                 if not navigation[y * world.width + x]
+                 and rect_gap(tile_center((x, y)), rect) <= TOUCH + UNITS[UnitType.PEASANT].radius}  # a peasant's body: _reach's test
         candidates = []
         for worker in world.player_units(plan.player):
             if (not worker.is_worker or not worker.auto_work or worker.hidden or worker.hp <= 0 or worker.carrying is not None

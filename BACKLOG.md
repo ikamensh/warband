@@ -11,39 +11,8 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-058**; a new
+section; git history keeps the record. The last ID given is **WB-060**; a new
 item takes the next one and updates this line.
-
-Done and removed 2026-09-18, every one merged into main (whose code is live as
-Warband 0.2.30): WB-001 to WB-009, WB-015, WB-017 to WB-023 and WB-025 to
-WB-034. Their acceptance and evidence are in
-[the backlog at `1a6e08b`](https://github.com/ikamensh/warband/blob/1a6e08b73872cb595756a9d4ba7bc96c685c5ef0/BACKLOG.md).
-Removed later the same day, each with its record in the backlog at the
-commit named: WB-011 and WB-016, live as Warband 0.2.32
-([`8a13fae`](https://github.com/ikamensh/warband/blob/8a13faeb65a0457ec0cd65d53e0461f01a734b49/BACKLOG.md));
-WB-010, live as 0.2.33
-([`5cb5959`](https://github.com/ikamensh/warband/blob/5cb5959df79bc09042e6f597736d7e43240a15a2/BACKLOG.md));
-WB-012, live as 0.2.34
-([`12ecf88`](https://github.com/ikamensh/warband/blob/12ecf88fef5ba74fe6c29a76bdf4defcf0774a02/BACKLOG.md)).
-Removed 2026-09-19: WB-040, merged as `9c5caa4`
-([`c49badb`](https://github.com/ikamensh/warband/blob/c49badb5f2baaca0d882f500caa09b38b4139864/BACKLOG.md)); WB-035, merged as `464328e`
-([`2ad4dcb`](https://github.com/ikamensh/warband/blob/2ad4dcb7723c7d46d7c611fd254caa387a0df3e4/BACKLOG.md)); WB-043, merged as `66d35a5`
-([`0680eb5`](https://github.com/ikamensh/warband/blob/0680eb570c73abba14d3c431f89bedeba5846246/BACKLOG.md)); WB-037, merged as `1b9880f`, live as 0.2.53
-([`5a57cb9`](https://github.com/ikamensh/warband/blob/5a57cb94292cd1e39a20969cfe7c4a3b827fac61/BACKLOG.md)); WB-036, merged as `4a77498`, live as 0.2.55
-([`3f22525`](https://github.com/ikamensh/warband/blob/3f22525a4db442d7f8d0d2c02b7532375ad1e075/BACKLOG.md)); WB-024, closed on its evidence as `dd7cf5f`
-([`896c6ea`](https://github.com/ikamensh/warband/blob/896c6eab99fb426d7f0aa02588b0fd1dc1463d07/BACKLOG.md)); WB-014, merged as `18eaf4a`, live as 0.2.59
-([`5fd2ef4`](https://github.com/ikamensh/warband/blob/5fd2ef41798f8162811b9eb0d286c80c65c9bb26/BACKLOG.md)); WB-045, merged as `6ad2779`, live as 0.2.61
-([`493e3bf`](https://github.com/ikamensh/warband/blob/493e3bfb3df8eaefc809dbc0a86c80683eb490a1/BACKLOG.md)); WB-042, merged as `13db600`, published as 0.2.63
-([`13c9911`](https://github.com/ikamensh/warband/blob/13c991194c5b73d2babbd74c931681aee3c4b8a7/BACKLOG.md)); WB-046, merged as `59455cc`, live as 0.2.65
-([`70b57b2`](https://github.com/ikamensh/warband/blob/70b57b2048b4a0986aecfad4ad5999e7292c0da6/BACKLOG.md)); WB-041, merged as `62e4970`, live as 0.2.67 on
-bundle `3e3dfda8` ([`79bc783`](https://github.com/ikamensh/warband/blob/79bc78340bf30dcabb3a333f6df85b176bc4dcd3/BACKLOG.md)); WB-047, closed on its
-evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1bfbe42c4705f56a6ac0476a0/BACKLOG.md)); WB-038, merged as `75dc68f`, published as a preview
-([`75dc68f`](https://github.com/ikamensh/warband/blob/75dc68f231810cdfe83d5ff6f5f47c48cfb5422f/BACKLOG.md)); WB-052, merged as `a2212f5`
-([`a2212f5`](https://github.com/ikamensh/warband/blob/a2212f53d78ae5c28ec64727eaabc2ac3142d183/BACKLOG.md)); WB-049, merged as `9418ec5`
-([`9418ec5`](https://github.com/ikamensh/warband/blob/9418ec5babcbf57aed2a2e5939a502fd8477a49d/BACKLOG.md); WB-051, merged as `0a820ff` ([`0a820ff`](https://github.com/ikamensh/warband/blob/0a820ffdfe3b18f8e06a5ed5ac3f89223943f70c/BACKLOG.md); WB-050, merged as `adb5e9b` ([`adb5e9b`](https://github.com/ikamensh/warband/blob/adb5e9b26b5c3b88ce4463f9e15fda14c7ce67bf/BACKLOG.md); WB-048, merged as `4e47b39` ([`4e47b39`](https://github.com/ikamensh/warband/blob/4e47b39fd7c9a75a9440d1cf8557dbc8b793d950/BACKLOG.md))))); WB-039 and WB-044, merged as `f8ba0eb`
-([`a8951a7`](https://github.com/ikamensh/warband/blob/a8951a7ca8b76c8df9b8e12b87ed8a9e235e7e1f/BACKLOG.md)); WB-053, merged as `7158d46`
-([`dbbb2d1`](https://github.com/ikamensh/warband/blob/dbbb2d132a56e60a7aa4db0fcb66de70a5000aa0/BACKLOG.md)); WB-054, merged as `6505210`
-([`6505210`](https://github.com/ikamensh/warband/blob/65052109213a2e4078d38268626d58c5b0675e2e/BACKLOG.md)).
 
 | ID | Priority | Status | Task | Origin |
 |---|---|---|---|---|
@@ -52,6 +21,8 @@ evidence ([`70ec7cb`](https://github.com/ikamensh/warband/blob/70ec7cb9089f0ad1b
 | WB-056 | Later | proposed | Bug-hunt leftovers: small defects confirmed on 2026-09-19 and not yet fixed | Bug hunt 2026-09-19 |
 | WB-057 | Next | proposed | The smallest canvas the game lays out for: a 1024x768 or 1280x720 desktop gets a HUD off the screen | Bug hunt 2026-09-20 |
 | WB-058 | Later | proposed | Bug-hunt leftovers 2026-09-20: a site nobody owns by its colour, two strike frames that hop, crowded workers | Bug hunt 2026-09-20 |
+| WB-059 | Next | proposed | A route nobody can reach costs the whole pathfinder budget, and the budget grows with the map | Sixteen seats 2026-09-20 |
+| WB-060 | Later | proposed | Sixteen seats online: an engine release, a snapshot that is not one world per seat, and room capacity | Sixteen seats 2026-09-20 |
 
 ## WB-055 — A deeper tech tree
 
@@ -80,9 +51,42 @@ Town Hall ┬ Barracks ┬ Guard Tower           Town Hall ┬ Barracks ┬ Blac
 | Knight needs a Blacksmith as well as the Stables | armour comes from the smith; the strongest unit needs two buildings, the scout stays the early raider; the smith opens more than the workshop | a new unit prerequisite (`UnitInfo.requires`) in `can_train` and the settlement's unit plans; the knights posture's `early_tech` gains a smith |
 | to decide: Archer needs the Lumber Mill as well as the Barracks | Warcraft II's rule: the barracks alone gives footmen, the mill (built early anyway; the stronger brains want one from the start) adds archers and towers | delays every archer opening by the mill's 35 s; elves, whose rangers are their army, feel it most (they lead the race table) |
 
-A bigger step, not proposed now: a hall upgrade (a Keep) gating the stables,
-workshop, church and the second tiers, as Warcraft II did; that is new art for
-every race and a mechanic of its own.
+**Done, in part: the hall upgrade.**  A Keep is researched at the Town Hall
+(1500 gold, 800 lumber, 90 s; each race names it — Stronghold, Moonspire,
+Stonehold), and behind it stand Blades II, Armour II, Arrows II and two new
+third tiers of the weapon lines, Masterwork Blades (3000/600, 120 s, +4 melee)
+and Masterwork Arrows (1800/1000, 120 s, +4 for shooters and towers).  Armour
+keeps two tiers, and the race arts, Siege and Marksmanship stay ungated: the
+gate is the shared stat ladder's upper half, not a toll on everything.  It
+needed no new mechanic — `UpgradeInfo.requires` became a tuple — and no new
+art: the hall keeps its look, and the Keep is an emblem like any other
+research.  A visible Keep (a painted sheet per race) is still a job of its own.
+
+The three building links above (tower behind the mill, knight behind the smith,
+archer behind the mill) are still open.
+
+**What the gate costs the brains, measured.**  Sixteen seats of 20-minute
+Master and Grandmaster matches (seeds 11-14), with the gate and with its
+`requires` patched back out:
+
+| researched by | without the gate | with the Keep |
+|---|---|---|
+| Blades II | 5/16 | 2/16 |
+| Arrows II | 6/16 | 1/16 |
+| Armour II | 4/16 | 1/16 |
+| the Keep | — | 4/16 |
+
+No tier became unreachable (`brains.ai.with_prerequisites` buys the gate on
+the way to what the research order names, which is what keeps `bred.py`'s
+frozen orders working), but fewer are reached: a brain buys an upgrade in
+whatever window its bank happens to leave, never saving for one, and 1500 gold
+and 800 lumber in front of the tier makes those windows rarer.  Both seats pay
+it alike, so the ladder is unmoved (`hard` 912 against `pro` 1088 over 80
+matches, and `ai_report --seeds 3 --decide 0` unchanged: the scripted opening
+takes 2/3 from Easy and 0/3 from every setting above it).  A human who does
+save for it gains on them.  **Open:** a `save_for_research` hold in
+`ProProfile`, so a brain banks for a gate the way it banks for a build; worth
+what `tools/arena.py` says it is worth and nothing else.
 
 All three are rules changes: the online contract and the fingerprint move, a
 server rollout carries them (batched), the brains' openings follow the new
@@ -200,3 +204,51 @@ to build until a playtest happens. What unblocks it: one or two fresh players'
 sessions (a recording or notes on what confused them), on a Mac or on Windows.
 The Windows report that came first is closed (WB-021, WB-022), and a Windows
 desktop for scripted checks is [a runbook away](../saga-online/docs/windows-test-box.md).
+
+## WB-059 — A route nobody can reach costs the whole budget
+
+`path.budget(width, height)` grows the A\* bound with the map's area (3 000 expansions up to Large's
+5 120 tiles, 13 921 on Epic's 23 760), because a route across a big map needs it or a unit gives up
+halfway and walks into a wall. What that costs is paid by the requests that *fail*: A\* that runs out
+returns the nearest reachable tile, so a goal nobody can reach burns the whole bound. Measured on
+2026-09-20 with sixteen armies converging on the middle of a 180x132 map (`tools/perf.py --scenario
+sixteen-player`): **16 % of path requests did not reach their goal**, `find_path_grid` cost 1.29 ms a
+call against 0.11 ms on the four-player 80x64 board, and it was 39 % of all the time spent; the
+simulation step ran 36 ms, which is every third frame over its budget while a full-map brawl lasts.
+
+The walkable-region map (`path.Regions`, which `World._regions` already builds and keeps) can answer
+"nothing of yours can reach that tile" without a search, which is most of the failures. It is not a
+speed change: a different answer for an unreachable goal is a different match, so it moves
+`tools/sim_fingerprint.txt` and `tools/sim_bench.txt` and wants a server rollout behind it. The other
+half of the fix is a hierarchical route (region to region, then tile to tile) so that a long route
+costs its length rather than its area.
+
+Acceptance: `tools/perf.py --scenario sixteen-player` holds `world.step` under 16 ms; `--scenario
+reference` and `four-player` do not regress; both records refreshed in the same commit.
+
+## WB-060 — Sixteen seats online
+
+The offline game seats sixteen since 2026-09-20; a room still seats four and this is why
+(`warband/online/authority.py`, `ONLINE_SEATS`, and docs/warband-maps.md, "Sixteen seats online"):
+
+1. **The engine caps it, at both ends.** A LAN host takes exactly one guest
+   (`saga2d.network.MatchHost`: "Host one guest. Seat 0 belongs to the host, seat 1 to the guest"),
+   and online every client declares `saga2d.online.SEATS` in its hello while the room server refuses
+   a room with more seats than the client can play — 4 in the Saga2D Warband pins, so a sixteen-seat
+   room is one no client built today can join. Raising either is a Saga2D release, the three-game
+   cohort rebuilt and a rollout — engine work, not Warband's.
+2. **The snapshot is one whole world per seat.** `WarbandMatch.snapshot` rebuilds `World.to_dict()`
+   for each seat and the room publishes one per seat per tick, so a publish is O(seats² × area):
+   about 5.8 MB/s of JSON at four seats on a Large map and about 92 MB/s at sixteen, against a hard
+   8 MB `MAX_SNAPSHOT` whose breach fails the whole room. A delta or a compact fog encoding is a
+   project of its own, and changing the snapshot's shape means `warband-v3`, not an edit of
+   `warband-v2`.
+3. **Capacity.** The live unit runs `--max-connections 96` on one VM at `MemoryMax=1200M` and
+   `CPUQuota=150%`: 24 full four-seat rooms, or 6 sixteen-seat ones.
+
+Until then the refusal is honest and tested: `TitleScene.room_refusal` says what a room holds instead
+of quietly seating four of sixteen, `_create` refuses the options with a `CommandError`, and
+`tests/warband/test_many_seats.py` holds both.
+
+Acceptance: a sixteen-seat room hosted, joined by sixteen clients and played to a result, with the
+publish rate measured; or a decision that rooms stay at four and the cap is documented as final.

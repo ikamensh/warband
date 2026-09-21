@@ -67,6 +67,7 @@ STRIKERS = [kind for kind, info in (*UNITS.items(), *BUILDINGS.items()) if info.
 WEAPONS = {
     UnitType.FOOTMAN: "sword", UnitType.PEASANT: "axe", UnitType.SCOUT: "spear", UnitType.KNIGHT: "lance",
     UnitType.ARCHER: "arrow", UnitType.CATAPULT: "stone", UnitType.CLERIC: "mote", BuildingType.TOWER: "arrow",
+    UnitType.WOLF: "axe", UnitType.TROLL: "axe", UnitType.GOLEM: "hammer", UnitType.SPIDER: "arrow",
 }
 
 

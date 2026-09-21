@@ -9,8 +9,9 @@ from saga2d import Game, RenderLayer, Scene, Sprite, SpriteAnchor
 from saga2d.ui import Anchor, Label, Panel
 from sagaforge import render3d as r3
 from warband.art import textures, visual_lint
-from warband.sim.rules import Cost, Race, Resource, UnitType
+from warband.sim.rules import PLAYABLE_UNITS, Cost, Race, Resource, UnitType
 from warband.ui.icons import Price, price_pairs
+from warband.ui.scene import CodexScene, codex_world
 from warband.ui.style import build_theme
 from warband.ui.title import TitleScene
 
@@ -186,6 +187,24 @@ def test_the_lint_sees_a_sprite_drawn_over_the_one_it_stands_behind(tmp_path) ->
         game.close()
 
 
+@pytest.mark.parametrize("page", [0, 1, 2], ids=["units", "buildings", "upgrades"])
+@pytest.mark.parametrize("race", list(Race), ids=lambda r: r.value)
+def test_every_race_s_codex_tables_fit_the_smallest_window(page: int, race: Race, tmp_path) -> None:
+    """The codex's tables are the tallest thing the game draws and each race writes its own: the unit page stands
+    672 px of 680, so one word added to a wrapped column costs a line and pushes the page off the screen for
+    whichever race's summaries are longest.  The screens above walk one race's codex; this walks all four, with the
+    same font metrics — the mock backend's own measurements are too coarse to see the wrap."""
+    game = Game("Lint", backend="mock", resolution=SMALLEST, theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        visual_lint.use_real_text_metrics(game)
+        game.push(CodexScene(codex_world(race), 0, page, in_match=False))
+        game.tick(1 / 60)
+        findings = [f for f in visual_lint.lint_layout(game, game.scene) if f.check in VISIBLE]
+        assert not findings, "\n".join(str(f) for f in findings)
+    finally:
+        game.close()
+
+
 @pytest.mark.slow
 def test_every_unit_pose_fits_the_unit_canvas() -> None:
     """A pose reaching below the padding would raise while rendering the low-poly art.
@@ -193,7 +212,7 @@ def test_every_unit_pose_fits_the_unit_canvas() -> None:
     Every race's every pose in all eight facings takes about two seconds: the slow tier, which a change to the
     art runs before it is pushed."""
     for race in Race:
-        for unit_type in UnitType:
+        for unit_type in PLAYABLE_UNITS:
             carries = (None, Resource.GOLD, Resource.LUMBER) if unit_type is UnitType.PEASANT else (None,)
             for carrying in carries:
                 frames = textures.FRAMES + textures.CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else textures.FRAMES
@@ -203,7 +222,7 @@ def test_every_unit_pose_fits_the_unit_canvas() -> None:
                     assert reach + textures.PAD <= textures.DROP_UNIT, (race, unit_type, carrying, frame, reach)
 
 
-SCREENS = ("title", "new_game_elf", "new_game_master", "select_peasant", "select_town_hall", "select_army", "select_60_units", "town_at_work", "menu_build_hover", "menu_train_hover",
+SCREENS = ("title", "new_game_elf", "new_game_master", "select_peasant", "pending_salvage", "select_town_hall", "select_army", "select_60_units", "select_60_archers", "town_at_work", "menu_build_hover", "menu_train_hover",
            "menu_build_at_start", "menu_train_at_start", "menu_upgrade_researched", "menu_upgrade_all_done", "plans", "alerts", "battle_wood",
            "help", "codex_0", "codex_2", "codex_3", "codex_4", "save_browser", "game_over_won", "high_scores",
            "campaign_fresh", "campaign_under_way", "mission_raid", "mission_choice", "mission_result")

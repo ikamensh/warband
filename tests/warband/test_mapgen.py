@@ -18,11 +18,9 @@ def door(world: World, building) -> tuple[int, int]:
     return spot
 
 
-def images(world: World, pos: tuple[int, int]) -> set[tuple[int, int]]:
-    """Where the map's symmetry sends a tile: the opposite corner for two players, both mirrors too for more."""
-    x, y = pos
-    far = (world.width - 1 - x, world.height - 1 - y)
-    return {far} if len(world.players) == 2 else {far, (far[0], y), (x, far[1])}
+def images(world: World, pos: tuple[int, int], size: int = 1) -> set[tuple[int, int]]:
+    """Where the map's symmetry sends a tile, or the top-left of a *size* square: one copy a cell."""
+    return set(mapgen.cell_images(world.width, world.height, world.seats, pos, size))
 
 
 @pytest.mark.parametrize("seed", range(1, 7))
@@ -52,27 +50,39 @@ def test_every_base_has_a_hall_a_mine_a_wood_and_a_way_to_the_others(seed: int, 
 @pytest.mark.parametrize("layout", list(Layout))
 def test_the_map_is_symmetric_so_every_seat_gets_the_same(players: int, layout: Layout) -> None:
     """Terrain and mines map onto themselves under the symmetry; halls onto other halls."""
-    world = mapgen.generate(seed=5, players=players, layout=layout)
-    for y in range(world.height):
-        for x in range(world.width):
-            for ix, iy in images(world, (x, y)):
-                assert world.terrain[iy][ix] is world.terrain[y][x], (x, y)
+    _assert_congruent(mapgen.generate(seed=5, players=players, layout=layout), players)
+
+
+def _assert_congruent(world: World, players: int) -> None:
+    cols, rows = mapgen.grid(players)
+    cw, ch = world.width // cols, world.height // rows
+    rim = lambda x, y: x in (0, world.width - 1) or y in (0, world.height - 1)
+    for y in range(ch):
+        for x in range(cw):
+            spots = images(world, (x, y))
+            if any(rim(*spot) for spot in spots):
+                continue  # the map's rim is a frame outside play, not a cell's ground: mapgen._Canvas.frame
+            for ix, iy in spots:
+                assert world.terrain[iy][ix] is world.terrain[y][x], (x, y, ix, iy)
     mines = {m.pos for m in world.mines()}
     for m in world.mines():
-        if players == 3 and m.gold != EXPANSION_GOLD:
-            continue  # the empty fourth corner has no start mine, only its natural
-        for x, y in _rect_images(world, m.pos):
+        if m.gold != EXPANSION_GOLD and players < cols * rows:
+            continue  # a cell with no seat has no start mine, only the natural everyone's cell has
+        for x, y in images(world, m.pos, 3):
             assert (x, y) in mines, (m.pos, (x, y))
-    if players in (2, 4):
+    if players == cols * rows:
         hall_spots = {h.pos for h in halls(world)}
         for h in halls(world):
-            assert _rect_images(world, h.pos) <= hall_spots
+            assert images(world, h.pos, 3) <= hall_spots
 
 
-def _rect_images(world: World, pos: tuple[int, int]) -> set[tuple[int, int]]:
-    x, y = pos
-    far = (world.width - 3 - x, world.height - 3 - y)
-    return {far} if len(world.players) == 2 else {far, (far[0], y), (x, far[1])}
+@pytest.mark.parametrize("players", mapgen.SEAT_COUNTS)
+def test_every_seat_holds_a_congruent_copy_of_the_first(players: int) -> None:
+    """The fairness the audit rests on: each cell is the canonical one, tile for tile, whatever the grid."""
+    width, height = mapgen.dimensions(mapgen.sizes_for(players)[0], players)
+    world = mapgen.generate(seed=5, width=width, height=height, players=players)
+    assert world.seats == players
+    _assert_congruent(world, players)
 
 
 def test_three_players_leave_the_fourth_corner_to_a_neutral_mine() -> None:
@@ -147,7 +157,17 @@ def test_bastion_walls_every_base_behind_one_gate() -> None:
 
 
 def test_any_layout_is_drawn_from_the_seed() -> None:
-    drawn = {mapgen.generate(seed=seed).layout for seed in range(1, 30)}
+    """Every layout comes up, and a seed always draws the same one.
+
+    A seed here and there makes no fair map at all (tests/warband/test_fair_seeds.py), and which ones
+    move whenever the generator draws differently; the claim is about the draw, so a refused seed is
+    passed over rather than pinned down."""
+    drawn = set()
+    for seed in range(1, 60):
+        try:
+            drawn.add(mapgen.generate(seed=seed).layout)
+        except mapgen.NoFairMap:
+            continue
     assert drawn == set(Layout)
     assert mapgen.generate(seed=17).layout is mapgen.generate(seed=17).layout
 

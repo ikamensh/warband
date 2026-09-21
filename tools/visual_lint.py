@@ -39,7 +39,7 @@ from warband.story.dialog import DialogScene  # noqa: E402
 from warband.story.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
 from warband.story.missions import CAMPAIGN  # noqa: E402
 from warband.sim.model import World, tile_center  # noqa: E402
-from warband.sim.rules import BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
+from warband.sim.rules import BUILT, PLAYABLE_UNITS, BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
 from warband.ui.controls import SCHEMES  # noqa: E402
 from warband.ui.scene import TOAST_TOP, CodexScene, GameScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game  # noqa: E402
 from warband.ui.score_scene import HighScoreScene  # noqa: E402
@@ -99,6 +99,7 @@ def settlement() -> World:
     for kind, pos in buildings.items():
         world.place_building(0, kind, pos)
     world.place_building(None, BuildingType.GOLD_MINE, (32, 17))
+    world.place_building(None, BuildingType.GOLD_SEAM, (33, 25))  # five tiles of workings beside the three of a mine
     world.place_building(1, BuildingType.TOWN_HALL, (43, 30))
     world.update_vision()
     world.reveal_all(0)
@@ -200,7 +201,7 @@ def match_tutorial(game: Game) -> None:
     ticks(game)
 
 
-for _unit in UnitType:
+for _unit in PLAYABLE_UNITS:
     def _select_unit(game: Game, unit_type: UnitType = _unit) -> None:
         scene = town(game, zoom=2.0)
         unit = spawn(scene, unit_type, (10, 12))
@@ -222,7 +223,18 @@ for _count in (18, 60):
     SCREENS[f"select_{_count}_units"] = _select_many
 
 
-for _building in BuildingType:
+@screen
+def select_60_archers(game: Game) -> None:
+    """Sixty of one kind, on the first of three pages: the heading names the armour class the whole selection
+    shares, and light armour with a page marker is the widest that row ever gets."""
+    scene = town(game)
+    units = [spawn(scene, UnitType.ARCHER, (6 + i % 12, 9 + i // 12)) for i in range(60)]
+    scene.select([u.id for u in units])
+    scene.camera.center_on(12 * TILE, 11 * TILE)
+    ticks(game)
+
+
+for _building in BUILT:
     def _select_building(game: Game, kind: BuildingType = _building) -> None:
         scene = town(game)
         building = next(b for b in scene.world.buildings.values() if b.type is kind)
@@ -267,6 +279,22 @@ def pending_attack(game: Game) -> None:
     scene.select([u.id for u in units])
     ticks(game)
     scene.start_pending("attack")
+    ticks(game)
+
+
+@screen
+def pending_salvage(game: Game) -> None:
+    """A peasant's Salvage armed over a ruin: the card's eighth button lit under Repair, the status line saying what
+    to click, and the grey ruin it is meant for on the ground."""
+    scene = town(game)
+    ruin = scene.world.place_building(1, BuildingType.FARM, (12, 12))
+    ruin.abandoned = True  # staged: what a rival's resignation leaves behind, without playing one out
+    scene.world.update_vision()
+    scene.world.reveal_all(scene.human)
+    peasant = spawn(scene, UnitType.PEASANT, (10, 13))
+    scene.select([peasant.id])
+    ticks(game)
+    scene.start_pending("salvage")
     ticks(game)
 
 

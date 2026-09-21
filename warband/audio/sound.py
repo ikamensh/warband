@@ -46,6 +46,10 @@ _WEAPONS = {
     UnitType.SCOUT.value: "spear", UnitType.KNIGHT.value: "lance",
     UnitType.ARCHER.value: "arrow", UnitType.CATAPULT.value: "stone",
     UnitType.CLERIC.value: MOTE, BuildingType.TOWER.value: "arrow",
+    # The wilds, out of the same families: claws and fangs tear as an axe does, a golem's fists land as a
+    # war hammer, and a spider's spit arrives as a shot.
+    UnitType.WOLF.value: "axe", UnitType.TROLL.value: "axe",
+    UnitType.GOLEM.value: "hammer", UnitType.SPIDER.value: "arrow",
 }
 #: Where a race arms a role differently: orc grunts and axethrowers swing axes and the ogre a club,
 #: dwarven ironguards carry axes and bear riders war hammers.  Every other role keeps the common Foley.

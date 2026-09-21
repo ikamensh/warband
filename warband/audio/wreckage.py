@@ -27,6 +27,7 @@ BUILDING_MATERIALS = {
     BuildingType.TOWN_HALL: "stone", BuildingType.TOWER: "stone", BuildingType.BLACKSMITH: "stone", BuildingType.CHURCH: "stone",
     BuildingType.FARM: "wood", BuildingType.BARRACKS: "wood", BuildingType.LUMBER_MILL: "wood", BuildingType.STABLES: "wood",
     BuildingType.WORKSHOP: "wood",
+    BuildingType.LAIR: "stone",  # a cairn of boulders: it cracks and comes down as a tower does
 }
 
 

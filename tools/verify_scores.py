@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pyglet.window import key, mouse
 from saga2d import Game, fonts
+from warband.sim import mapgen
 from warband.sim.model import World
 from warband.sim.rules import Difficulty
 from warband.ui.scene import GameOverScene, load_game, new_game
@@ -82,7 +83,7 @@ def verify(out: Path, resolution: tuple[int, int]) -> None:
             press(key.B)
             assert isinstance(game.scene, HighScoreScene)
             assert len(HighScores(game.data_dir).load()) == 10
-            for count in (3, 4, 2):
+            for count in mapgen.SEAT_COUNTS[1:] + mapgen.SEAT_COUNTS[:1]:
                 press(key.P)
                 assert game.scene.players == count
             shot("leaderboard")

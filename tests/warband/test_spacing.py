@@ -1,9 +1,9 @@
 """Units at ease keep elbow room and loosen a packed crowd (docs/unit-motion.md part 5)."""
 
 from warband.sim.model import World, dist
-from warband.sim.rules import SIM_DT, UNIT_RADIUS, BuildingType, Terrain, UnitType
+from warband.sim.rules import SIM_DT, UNITS, BuildingType, Terrain, UnitType
 
-TOUCHING = 2 * UNIT_RADIUS
+TOUCHING = 2 * UNITS[UnitType.FOOTMAN].radius  # the block below is footmen: shoulder to shoulder is two bodies
 
 
 def open_field(width: int = 30, height: int = 24) -> World:

@@ -5,7 +5,7 @@ import pytest
 
 from warband.art import textures
 from warband.sim.model import World
-from warband.sim.rules import BuildingType, Race, Resource, SIM_DT, Terrain, UnitType
+from warband.sim.rules import BuildingType, Race, Resource, SIM_DT, Terrain, UNITS, UnitType
 from warband.ui.scene import GameScene
 from warband.art.textures import TILE
 from warband.art.visual_lint import ImageStore, alpha
@@ -108,7 +108,10 @@ def duel(game, *, damaging=True, race=Race.HUMAN, unit_type=UnitType.FOOTMAN):
         player.race = race
     world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
     world.place_building(1, BuildingType.TOWN_HALL, (34, 25))
-    attacker = world.spawn_unit(0, unit_type, (17.5, 13.5))
+    # Toe to toe and standing still: a hair further apart than the two bodies, so neither shoves the other
+    # out of the frames this measures (a knight is 1.12 tiles wide and used to be placed inside its opponent).
+    apart = 2 * UNITS[unit_type].radius + 0.05
+    attacker = world.spawn_unit(0, unit_type, (18.5 - apart, 13.5))
     victim = world.spawn_unit(1, unit_type, (18.5, 13.5))
     attacker.facing, victim.facing = 0.0, math.pi
     if not damaging:
@@ -141,7 +144,7 @@ def test_actual_melee_contact_displaces_the_drawn_victim(game, race, unit_type):
         journeys.append(frames)
     control, hit = journeys
     assert hit[-1][0] < control[-1][0], "The fixture must deliver actual damage"
-    assert all(a[1] == b[1] == (18.5, 13.5) for a, b in zip(control, hit))
+    assert all(a[1] == b[1] == victim.pos for a, b in zip(control, hit))
     assert max(math.dist(a[2], b[2]) for a, b in zip(control, hit)) > 0.5, "Damaging hits have no drawn recoil"
 
 
@@ -163,11 +166,11 @@ def test_melee_loads_back_then_drives_forward_without_moving_its_ground_point(ga
     Every race's art is the slow tier's; the fast tier draws one race per case.
     """
     scene, attacker, victim = duel(game, race=race, unit_type=unit_type)
-    initial_hp = attacker.hp
+    stood, initial_hp = attacker.pos, attacker.hp
     wind, contact = [], []
     for _ in range(28):
         game.tick(1 / 60)
-        assert attacker.pos == (17.5, 13.5)
+        assert attacker.pos == stood
         assert attacker.hp == initial_hp
         offset = scene.view.unit_sprite(attacker.id).x - attacker.x * TILE
         if attacker.windup > 0:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gc
+import itertools
 import json
 import math
 import random
@@ -23,12 +24,12 @@ from warband.sim import mapgen
 from warband.brains.ai import DIFFICULTY_ELO, auto_site, make_brain
 from warband.art.effects import Flare, Spray, Stain, UnitDeath, death_outcome
 from warband.ui.icons import Icon, Pair, Price, draw_icon, draw_price, hourglass_parts, lock_parts, loop_parts, price_pairs, price_width
-from warband.sim.model import (Attack, AttackMove, Build, Building, Deposit, Entity, Event, Harvest, Heal, Hold, Move, Patrol, Pos, Repair,
+from warband.sim.model import (Attack, AttackMove, Build, Building, Deposit, Entity, Event, Harvest, Heal, Hold, Move, Patrol, Pos, Repair, Salvage,
                                 RuleError, Unit, World)
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
-from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, SIM_DT, UNITS, UPGRADES, ArmorClass, AttackType, BuildingType, Cost,
-                               Difficulty, MapTheme, Race, Resource, Terrain, UnitType, Upgrade, an)
+from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, SIM_DT, UNITS, ArmorClass, AttackType, BuildingType, Cost,
+                               Difficulty, MapTheme, Race, Resource, Terrain, UnitType, Upgrade, an, listing)
 from warband.sim.rules import Layout as MapLayout
 from warband.records.profile import MatchResult, Profile, RatingChange, Standing, standing
 from warband.records.replay import Replay, ReplayStore
@@ -42,19 +43,22 @@ from warband.ui.style import (
 )
 from warband.ui import tech
 from warband.ui.tech import Need, Prerequisite, TechTree
+from warband.ui.version import running_build
 from warband.art.textures import TILE
 from warband.ui.tutorial import OBJECTIVES, Tutorial
 from warband.ui.view import SHOT_LOOKS, SHOT_SIZE, MapView, Overlay, Sighting, check_memory, rgba, to_tiles, to_world
 
 DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True, "blood": True,
                                     "controls": "classic"}
-FLESH = {u.value for u in UnitType} - {UnitType.CATAPULT.value}  # what bleeds when hit
+#: What bleeds when hit.  A catapult is timber and a golem is stone; the other three creatures are meat.
+FLESH = {u.value for u in UnitType} - {UnitType.CATAPULT.value, UnitType.GOLEM.value}
 SAVE_VERSION = 2  # 2: the world records its layout
 SAVE_SLOTS = 3
 AUTOSAVE_EVERY = 120.0  # seconds of match time
 SELECT_GAP = 30.0  # seconds: selecting is constant, and its cue answers only the first selection in a while (WB-039)
 PENDING_ASKS = {"move": "Click where to move", "attack": "Click a target, or the ground to attack-move there",
                 "patrol": "Click the far end of the patrol", "repair": "Click one of your damaged buildings",
+                "salvage": "Click a ruin, or a rival's building, to tear apart",
                 "assembly": "Click the map to set an assembly point for new soldiers"}
 PLANS_PRICE = 126  # the price column on the Plans screen: the widest price and a little air
 SUPPLY_WARNING = 2  # units of room left in the farms: from here the supply pair warns before it blocks
@@ -78,21 +82,17 @@ GROUP_KEYS = "123456789"
 BUILD_ORDER = (BuildingType.FARM, BuildingType.BARRACKS, BuildingType.TOWN_HALL, BuildingType.TOWER, BuildingType.LUMBER_MILL,
                BuildingType.BLACKSMITH, BuildingType.STABLES, BuildingType.WORKSHOP, BuildingType.CHURCH)
 #: The unit card's slots: moving on the top row (Q W E in Grid), fighting and a peasant's work below.
-UNIT_SLOTS = {"move": 0, "stop": 1, "hold": 2, "attack": 3, "patrol": 4, "build": 5, "repair": 6}
+UNIT_SLOTS = {"move": 0, "stop": 1, "hold": 2, "attack": 3, "patrol": 4, "build": 5, "repair": 6, "salvage": 7}
 #: What the unit panel says a unit with each order is doing.
 DOING = {Move: "Moving", AttackMove: "Attack-moving", Attack: "Attacking", Harvest: "Harvesting", Deposit: "Delivering",
-         Build: "Going to build", Hold: "Holding position", Heal: "Healing", Patrol: "Patrolling", Repair: "Repairing"}
+         Build: "Going to build", Hold: "Holding position", Heal: "Healing", Patrol: "Patrolling", Repair: "Repairing",
+         Salvage: "Salvaging"}
 #: The Upgrade catalogue's slots, one per chain of tiers (it shows the next tier to order, as a building's own card
-#: does, and nothing at all once every tier of the chain is researched): the soldiers' chains on the top row, the
-#: engines' and the shooters' drill below; None stands for the race's two arts.  Nine upgrades with their tiers side
-#: by side filled the card; the tenth did not fit a nine-key grid.
-UPGRADE_SLOTS = ((Upgrade.BLADES_1, Upgrade.BLADES_2), (Upgrade.ARMOR_1, Upgrade.ARMOR_2), (Upgrade.ARROWS_1, Upgrade.ARROWS_2),
-                 (Upgrade.SIEGE,), (Upgrade.MARKSMANSHIP,), None, None)
-#: Names that fit a card button (each race's are in :mod:`warband.sim.races`); the tooltip and the codex use the full ones.
-UPGRADE_NAMES = {Upgrade.BLADES_1: "Blades I", Upgrade.BLADES_2: "Blades II", Upgrade.ARMOR_1: "Armour I", Upgrade.ARMOR_2: "Armour II",
-                 Upgrade.ARROWS_1: "Arrows I", Upgrade.ARROWS_2: "Arrows II", Upgrade.HORSES: "Horses", Upgrade.SIEGE: "Siege", Upgrade.BLESSING: "Blessing",
-                 Upgrade.BLOODLUST: "Bloodlust", Upgrade.PLUNDER: "Plunder", Upgrade.LONGBOWS: "Longbows", Upgrade.REGROWTH: "Regrowth",
-                 Upgrade.DEEP_MINING: "Mining", Upgrade.BLASTING_POWDER: "Powder", Upgrade.MARKSMANSHIP: "Marksmen"}
+#: does, and nothing at all once every tier of the chain is researched): the Keep that gates the rest, blades and
+#: armour on the top row, arrows, the engines and the shooters' drill on the second; None stands for the race's two
+#: arts, on the third.  Eight chains fill a nine-key grid; a ninth would not.
+UPGRADE_SLOTS = ((Upgrade.KEEP,), (Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.BLADES_3), (Upgrade.ARMOR_1, Upgrade.ARMOR_2),
+                 (Upgrade.ARROWS_1, Upgrade.ARROWS_2, Upgrade.ARROWS_3), (Upgrade.SIEGE,), (Upgrade.MARKSMANSHIP,), None, None)
 CARD_WIDTH = 116
 CARD_GAP = 6
 CARD_PANEL_WIDTH = CARD_COLS * CARD_WIDTH + (CARD_COLS - 1) * CARD_GAP + 2 * PANEL_STYLE.padding  # the widest command card
@@ -101,9 +101,8 @@ CARD_PLAIN = 32  # height of a button without a portrait (the unit card's)
 MINIMAP_WIDTH = 200
 SELECTION_WIDTH = 470
 SELECTION_HEIGHT = 128
-PANEL_INSET = 16  # what the selection panel draws into itself sits this far inside it
-CARD_PORTRAIT_GAP = 88  # the card's text column starts this far right of its portrait's left edge
-CARD_TEXT_WIDTH = SELECTION_WIDTH - PANEL_INSET - CARD_PORTRAIT_GAP - PANEL_STYLE.padding  # ... and ends inside the panel: a longer line ran over the command card
+CARD_TEXT = 88  # a selected entity's text starts here, right of its portrait
+CARD_RIGHT = SELECTION_WIDTH - 16 - CARD_TEXT - PANEL_STYLE.padding  # 354 px of room for a card's text, from its left edge
 PORTRAIT = 30  # a selected unit's portrait in the panel
 PORTRAIT_GAP = 3
 PORTRAIT_COLS = 13
@@ -119,6 +118,26 @@ def attack_hint(attack: AttackType) -> str:
     """What a kind of blow does beyond its number, from :data:`DAMAGE_FACTORS`, for the unit panel."""
     better = [f"×{factor:g} against {armor.value if armor is not ArmorClass.FORTIFIED else 'buildings'}" for (kind, armor), factor in DAMAGE_FACTORS.items() if kind is attack]
     return attack.value + (f", {', '.join(better)}" if better else "")
+
+
+def defence_line(armor: ArmorClass, attack: AttackType) -> str:
+    """"heavy armour · normal blows": both sides of :data:`DAMAGE_FACTORS`' table for one unit.  The pair is the
+    fact a player acts on — armour alone is half a table — so the selection panel says it under the stats and the
+    command card repeats it in the tooltip of whatever trains the unit."""
+    return f"{armour_name(armor)} · {attack.value} blows"
+
+
+def armour_hint(armor: ArmorClass) -> str:
+    """What lands harder on this armour, from :data:`DAMAGE_FACTORS`: the same table :func:`attack_hint` reads from
+    the striker's side, read here from the wearer's."""
+    worse = [f"{kind.value} blows land ×{factor:g}" for (kind, wearing), factor in DAMAGE_FACTORS.items() if wearing is armor]
+    return armour_name(armor).capitalize() + (f" · {', '.join(worse)}" if worse else "")
+
+
+def armour_class_of(entity: Unit | Sighting) -> ArmorClass:
+    """What a selected entity wears.  Buildings are fortified to a one; a unit that belongs to no player wears its
+    own kind's armour like any other."""
+    return ArmorClass.FORTIFIED if isinstance(entity, Sighting) else entity.info.armor_class
 
 
 def health_ink(fraction: float) -> tuple[int, int, int, int]:
@@ -139,11 +158,6 @@ def build_time(seconds: float) -> str:
 def feeds(supply: int) -> str:
     """" · feeds 4" for a building that raises the supply cap, nothing for one that does not."""
     return f" · feeds {supply}" if supply else ""
-
-
-def listing(names: list[str]) -> str:
-    """"A", "A and B", "A, B and C"."""
-    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
 
 
 def _clock(seconds: float) -> str:
@@ -380,7 +394,7 @@ class GameScene(Scene):
         self.profile_error = ""
         self.rating_change: RatingChange | None = None  # what the finished or abandoned match did to the rating
         self._resignation: Standing | None = None  # where the player stood when they resigned
-        self.brains = [make_brain(p.id, difficulty, seed) for p in world.players if not p.human]
+        self.brains = [make_brain(p.id, difficulty, seed) for p in world.players[:world.seats] if not p.human]
         self.rng = random.Random(seed)  # the computer players' stream, and nothing else's: what is drawn must not move the match
         self.fx_rng = random.Random(seed)  # sparks, blood and dust
         self.settings = settings if settings is not None else dict(DEFAULT_SETTINGS)  # a saga2d Settings when the game runs
@@ -390,7 +404,7 @@ class GameScene(Scene):
         self._autosave_at = AUTOSAVE_EVERY
         self.selection: list[int] = []
         self.groups: dict[str, list[int]] = {}
-        self.pending: str | None = None  # "move" | "attack" | "patrol" | "repair" | "assembly" | "place:<building type>"
+        self.pending: str | None = None  # "move" | "attack" | "patrol" | "repair" | "salvage" | "assembly" | "place:<building type>"
         self.catalogue: str | None = None  # "build" | "train" | "upgrade": the settlement's catalogue, over the selection's card
         self._repeat: Callable[[], None] | None = None  # the last recruit or placement once more: the Modal scheme's "."
         self._site_rng = random.Random(f"sites:{seed}")  # where the planner puts what the player lets it place: not the brains' stream
@@ -424,6 +438,7 @@ class GameScene(Scene):
         self._portrait_page, self._portrait_pages = 0, 1  # of a selection too large for one grid
         self._page_tile: tuple[float, float, float, float] | None = None
         self._queue_hits: list[tuple[tuple[float, float, float, float], QueueEntry]] = []
+        self._armour_notes: list[str] = []  # what the panel said about armour and blows in the frame just drawn
         self._sound_times: dict[str, float] = {}
         self._battle_voices: deque[float] = deque()
         self._fights: deque[float] = deque()
@@ -444,11 +459,15 @@ class GameScene(Scene):
         self.apply_settings()
         self._build_hud()
         self.center_base(instant=True)
-        rivals = ", ".join(f"the {RACES[p.race].name} of {p.name}" for p in self.world.players if p.id != self.human)
+        rivals = ", ".join(f"the {RACES[p.race].name} of {p.name}" for p in self.world.players[:self.world.seats] if p.id != self.human)
         self.effects.add(Banner("Warband", subtitle=f"The {self.race.name} of {self.player.name} against {rivals}", accent=rgba(self.player.color)))
-        from warband.art import textures
+        from warband.art import monsters, textures
 
-        self._warm = textures.warm_units(self.game, [p.id for p in self.world.players], [p.race for p in self.world.players])
+        # A creature is nobody's, so it is not among the seats' units and needs warming of its own; without
+        # it the first fight at a camp renders every frame of every guard cold, which the benchmark sees.
+        seats = self.world.players[:self.world.seats]
+        warm = textures.warm_units(self.game, [p.id for p in seats], [p.race for p in seats])
+        self._warm = itertools.chain(warm, monsters.warm_monsters(self.game)) if self.world.camps else warm
         play_music("peace", self.player.race)
 
     def on_reveal(self) -> None:
@@ -716,6 +735,12 @@ class GameScene(Scene):
         return tuple(self._portraits)
 
     @property
+    def armour_notes(self) -> tuple[str, ...]:
+        """What the selection panel said about armour and blows in the frame just drawn: a selected unit's class and
+        kind of blow, a building's class, or the class a whole selection shares."""
+        return tuple(self._armour_notes)
+
+    @property
     def page_tile(self) -> tuple[float, float, float, float] | None:
         """The tile that turns the portrait page, when the selection needs more than one."""
         return self._page_tile
@@ -763,10 +788,11 @@ class GameScene(Scene):
             return ([(keys, "order")] if keys else []) + [("Esc", "back")]
         units = self._own_units()
         if units:
-            hints = [("Right click", "move / harvest / attack / repair"), (self._slot_key("attack"), "attack-move"),
+            hints = [("Right click", "move / harvest / attack / repair / salvage"), (self._slot_key("attack"), "attack-move"),
                      (self._slot_key("patrol"), "patrol"), (self._slot_key("stop"), "stop")]
             if any(u.is_worker for u in units):
-                hints.append((f"{self._slot_key('build')} / {self._slot_key('repair')}", "build / repair"))
+                hints.append((f"{self._slot_key('build')} / {self._slot_key('repair')} / {self._slot_key('salvage')}",
+                              "build / repair / salvage"))
             return hints + [("Ctrl+1-9", "group"), ("Esc", "deselect")]
         building = self._own_building()
         if building is not None:
@@ -958,13 +984,17 @@ class GameScene(Scene):
         if units:
             ids = [u.id for u in units]
             target = self.view.entity_at(point)
-            attack = self._enemy(target)  # the only context order that strikes: smart on anything else moves, mends, mines or builds
+            # A ruin with peasants selected is loot, not an enemy: it goes to World.smart, which sets them salvaging
+            # and any soldiers along razing it.  Everything else a rival owns is an attack, the only context order
+            # that strikes: smart on anything else moves, mends, mines or builds.
+            salvage = isinstance(target, Building) and target.abandoned and target.done and any(u.is_worker for u in units)
+            attack = self._enemy(target) and not salvage
             if attack:
                 given = self.attempt("attack", ids, target.id, queue=queue)
             else:
                 given = self.attempt("smart", ids, point, queue=queue, target_id=target.id if target is not None else None)
             if given:
-                self._marker(point, (255, 80, 70, 220) if attack else (120, 255, 140, 220))
+                self._marker(point, (255, 80, 70, 220) if attack else (255, 214, 110, 220) if salvage else (120, 255, 140, 220))
                 self.sfx("attack_command" if attack else "command")
             return
         building = self._own_building()
@@ -979,6 +1009,15 @@ class GameScene(Scene):
             self.warn("Click one of your damaged buildings")
         elif self.attempt("repair", workers, target.id, queue=queue):
             self._marker(point, (120, 255, 140, 220))
+            self.sfx("command")
+
+    def command_salvage(self, point: tuple[float, float], *, queue: bool = False) -> None:
+        workers = [u.id for u in self._own_units() if u.is_worker]
+        target = self.view.entity_at(point)
+        if not workers or not isinstance(target, Building):
+            self.warn("Click a ruin, or a rival's building, to tear apart")
+        elif self.attempt("salvage", workers, target.id, queue=queue):
+            self._marker(point, (255, 214, 110, 220))
             self.sfx("command")
 
     def command_move(self, point: tuple[float, float], *, queue: bool = False) -> None:
@@ -1018,7 +1057,7 @@ class GameScene(Scene):
             self.sfx("command")
 
     def start_pending(self, mode: str) -> None:
-        """Wait for the click that gives the order *mode*: "move", "attack", "patrol", "repair" or "assembly".  The
+        """Wait for the click that gives the order *mode*: "move", "attack", "patrol", "repair", "salvage" or "assembly".  The
         mode is armed until that click or Esc, which nothing said before: it says what to click, and the card lights
         the button whose mode it is, the way the Build catalogue lights the building being placed."""
         self.pending = mode
@@ -1048,7 +1087,7 @@ class GameScene(Scene):
 
     def auto_place(self, building_type: BuildingType, *, keep: bool = False) -> None:
         """Let the planner pick the spot (:func:`warband.brains.ai.auto_site`): about the hall nearest the camera, a hall
-        by the nearest free mine."""
+        by the nearest free deposit."""
         planned = [(kind, pos) for kind, pos, _queued in self.pending_sites()]
         site = auto_site(self.world, building_type, self.human, to_tiles(*self.camera.center), self._site_rng, planned)
         if site is None:
@@ -1277,7 +1316,7 @@ class GameScene(Scene):
     def order_production(self, kind: str, item: UnitType | Upgrade) -> None:
         if self._refuse_lacking(item) or not self.attempt("order_unit" if kind == "train" else "order_upgrade", self.human, item):
             return
-        info = self.race.units[item] if kind == "train" else UPGRADES[item]
+        info = self.race.units[item] if kind == "train" else self.race.upgrades[item]
         self.say(f"{info.name} ordered · pay when work starts · manage in Plans")
         self.sfx("button")
         if kind == "train":
@@ -1318,12 +1357,12 @@ class GameScene(Scene):
                 else:
                     entries.append(QueueEntry(unit_type, f"{info.name} · queued at the {building.info.name}, {index} ahead", "queued", 0.0, look, cancel))
             if building.research is not None:
-                info = UPGRADES[building.research]
+                info = race.upgrades[building.research]
                 progress = building.research_progress / info.time
                 entries.append(QueueEntry(building.research, f"{info.name} · researching {int(progress * 100)}% at the {building.info.name}", "working",
                                           progress, look, lambda b=building: self.attempt("cancel_research", b.id)))
         for plan in plans:
-            info = {"building": race.buildings, "unit": race.units, "upgrade": UPGRADES}[plan.kind][plan.type]
+            info = {"building": race.buildings, "unit": race.units, "upgrade": race.upgrades}[plan.kind][plan.type]
             cancel = lambda pid=plan.id: self.attempt("cancel_plan", human, pid)
             site = next((b for b in world.player_buildings(human, plan.type) if b.pos == plan.pos), None) if plan.kind == "building" else None
             if site is not None:
@@ -1350,11 +1389,11 @@ class GameScene(Scene):
         return f"Requires {name}"
 
     def _full_name(self, item: Prerequisite) -> str:
-        return self.building_name(item) if isinstance(item, BuildingType) else UPGRADES[item].name
+        return self.building_name(item) if isinstance(item, BuildingType) else self.race.upgrades[item].name
 
     def card_name(self, item: Prerequisite) -> str:
         """A building's or an upgrade's name as short as a card button's caption needs it."""
-        return self.race.cards[item] if isinstance(item, BuildingType) else UPGRADE_NAMES[item]
+        return self.race.cards[item] if isinstance(item, BuildingType) else self.race.upgrades[item].card
 
     def _refuse_lacking(self, target: ProductionTarget) -> bool:
         """Warn and say so when *target* lacks a prerequisite that nobody is making: Shift, a click while placing and the
@@ -1409,7 +1448,8 @@ class GameScene(Scene):
         elif kind == "train":
             for slot, (unit_type, info) in enumerate(race.units.items()):
                 commands.append(Command(info.name, info.hotkey, lambda ut=unit_type: self.order_production("train", ut), slot,
-                                        tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)} · {info.summary} · Shift or right-click: "
+                                        tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)} · {info.summary} · "
+                                                f"{defence_line(info.armor_class, info.attack)} · Shift or right-click: "
                                                 f"endlessly at every {self.building_name(info.trained_at)}",
                                         cost=info.cost, target=unit_type, count=lambda ut=unit_type: self._ordered(ut),
                                         alt=lambda ut=unit_type: self.toggle_endless_everywhere(ut),
@@ -1423,8 +1463,8 @@ class GameScene(Scene):
                 upgrade = next((u for u in chain if self._upgrade_planned(u) is None), chain[-1])
                 if upgrade in self.player.upgrades:
                     continue
-                info = UPGRADES[upgrade]
-                commands.append(Command(UPGRADE_NAMES[upgrade], info.hotkey, lambda up=upgrade: self.order_production("upgrade", up), slot,
+                info = race.upgrades[upgrade]
+                commands.append(Command(info.card, info.hotkey, lambda up=upgrade: self.order_production("upgrade", up), slot,
                                         tooltip=f"{info.name} — {info.cost}{build_time(info.time)} · {info.summary}",
                                         cost=info.cost, blocked=lambda up=upgrade: self._upgrade_planned(up),
                                         target=upgrade, catalogue=True))
@@ -1463,6 +1503,10 @@ class GameScene(Scene):
                                     tooltip="Farms, barracks, halls, towers and the tech buildings, built by these peasants", style=ACTION_BUTTON))
             commands.append(Command("Repair", "r", lambda: self.start_pending("repair"), UNIT_SLOTS["repair"],
                                     tooltip="Mend one of your damaged buildings; a full repair costs half its price", style=armed("repair")))
+            commands.append(Command("Salvage", "v", lambda: self.start_pending("salvage"), UNIT_SLOTS["salvage"],
+                                    tooltip="Tear a ruin, or a rival's building, apart for a quarter of what it is made of; "
+                                            "one someone still holds comes apart slowly and raises their alarm",
+                                    style=armed("salvage", DANGER_BUTTON)))
         return commands
 
     def _building_commands(self, building: Building) -> list[Command]:
@@ -1478,13 +1522,13 @@ class GameScene(Scene):
             if isinstance(item, UnitType):
                 info = self.race.units[item]
                 commands.append(Command(info.name, info.hotkey, lambda ut=item: self.train(ut), slot,
-                                        tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)} · {info.summary} · Shift or right-click: "
-                                                f"train endlessly",
+                                        tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)} · {info.summary} · "
+                                                f"{defence_line(info.armor_class, info.attack)} · Shift or right-click: train endlessly",
                                         cost=info.cost, blocked=lambda ut=item, b=building: world.can_train(b, ut), target=item,
                                         alt=lambda ut=item, b=building: self.toggle_endless(b, ut), endless=lambda ut=item, b=building: ut in b.auto))
             elif item is not None:  # None: every tier of the chain is researched, and its slot stays empty
-                upgrade = UPGRADES[item]
-                commands.append(Command(UPGRADE_NAMES[item], upgrade.hotkey, lambda up=item: self.research(up), slot,
+                upgrade = self.race.upgrades[item]
+                commands.append(Command(upgrade.card, upgrade.hotkey, lambda up=item: self.research(up), slot,
                                         tooltip=f"{upgrade.name} — {upgrade.cost}{build_time(upgrade.time)} · {upgrade.summary}",
                                         cost=upgrade.cost, blocked=lambda up=item, b=building: world.can_research(b, up), target=item))
         if work:
@@ -1498,7 +1542,7 @@ class GameScene(Scene):
         chains: dict[str, list[Upgrade]] = {}
         for upgrade in building.info.researches:
             if self.race.upgrade_allowed(upgrade):
-                chains.setdefault(UPGRADES[upgrade].hotkey, []).append(upgrade)
+                chains.setdefault(self.race.upgrades[upgrade].hotkey, []).append(upgrade)
         return [next((u for u in chain if u not in self.player.upgrades), None) for chain in chains.values()]
 
     def _catalogue_title(self) -> str | None:
@@ -1836,6 +1880,8 @@ class GameScene(Scene):
             self.command_patrol(point, queue=keep)
         elif mode == "repair":
             self.command_repair(point, queue=keep)
+        elif mode == "salvage":
+            self.command_salvage(point, queue=keep)
         elif mode == "assembly":
             self.set_assembly(point)
         if not keep:
@@ -1984,6 +2030,10 @@ class GameScene(Scene):
                 self.effects.add(Toast(f"{e.text}'s last holdings are revealed", [e.text], hold=4.0, top=self.toast_top))
             elif e.kind == "exhausted":
                 self.effects.add(FloatingText("Mine exhausted", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), MUTED, rise=20, duration=1.5))
+            elif e.kind == "salvage" and mine and self._visible(e.pos):
+                color = GOLD if e.text == "gold" else LUMBER
+                self.effects.add(FloatingText(f"+{e.amount} {e.text}", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), color,
+                                              rise=22, duration=1.2))
             elif e.kind == "plunder" and mine:
                 self.effects.add(FloatingText(f"+{e.amount} gold plundered", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), GOLD, rise=26, duration=1.8))
 
@@ -2167,14 +2217,14 @@ class GameScene(Scene):
         try:
             ReplayStore(self.game.data_dir).save(self.run_id, self.replay, {
                 "name": self.player.name, "outcome": outcome, "race": self.player.race.value, "difficulty": self.difficulty.value,
-                "players": len(world.players), "size": f"{world.width}×{world.height}", "clock": _clock(world.time), "seed": self.seed})
+                "players": world.seats, "size": f"{world.width}×{world.height}", "clock": _clock(world.time), "seed": self.seed})
             kept = True
         except SaveError as error:
             kept = False
             self.say(f"Replay not saved: {error}")
         weight, reason = (where.weight, where.reason) if where is not None else (1.0, "")
         result = MatchResult(self.run_id, datetime.now(timezone.utc).isoformat(), outcome, weight, reason, self.difficulty.value,
-                             DIFFICULTY_ELO[self.difficulty], len(world.players) - 1, self.player.race.value, world.width, world.height,
+                             DIFFICULTY_ELO[self.difficulty], world.seats - 1, self.player.race.value, world.width, world.height,
                              world.theme.value, world.layout.value, self.seed, int(world.time), kept)
         try:
             self.rating_change = self.profile.record(result)
@@ -2236,6 +2286,7 @@ class GameScene(Scene):
         self._portraits = []
         self._page_tile = None
         self._queue_hits = []
+        self._armour_notes = []
         # A unit as it is; a building as the player knows it, which under the fog is as they last saw it.
         entities = [e for e in (self.world.units.get(i) or self.view.sighting(i) for i in self.selection) if e is not None]
         if not entities or (self.catalogue is not None and not self._builders()):  # planning for the settlement: what it has in hand
@@ -2243,7 +2294,7 @@ class GameScene(Scene):
             self.command_tooltip.visible = bool(self.tooltip)
             return
         if len(entities) == 1:
-            self._draw_entity_card(entities[0], x + PANEL_INSET, y + 14)
+            self._draw_entity_card(entities[0], x + 16, y + 14)
         else:
             self._draw_portrait_grid(entities, x, y)
         self.command_tooltip.visible = bool(self.tooltip)
@@ -2255,11 +2306,20 @@ class GameScene(Scene):
         self._portrait_page = page = min(self._portrait_page, pages - 1)
         self._page_tile = None
         heading = f"{len(entities)} units" + (f" · page {page + 1} of {pages}" if pages > 1 else "")
-        self.draw_text(heading, x + PANEL_INSET, y + 30, style="heading")
+        self.draw_text(heading, x + 16, y + 30, style="heading")
+        wearing = {armour_class_of(e) for e in entities}
+        if len(wearing) == 1:  # a blob of one armour class says so; a mixed one has no answer to give
+            # The pair does not fit here: "60 units · page 1 of 3" is 219 px of heading and the whole
+            # "· light armour · piercing blows" another 237 of sub, 42 px past the panel's 442.  The class alone
+            # is 120, and the kind of blow stays on the card of the one unit a player clicks.
+            style = self.game.theme.get_text_style("heading")
+            self._armour_notes.append(armour_name(next(iter(wearing))))
+            self.draw_text(f"· {self._armour_notes[-1]}", x + 24 + self.game.backend.measure_text(heading, style.font_size, style.font)[0],
+                           y + 30, style="sub")
         size, gap = PORTRAIT, PORTRAIT_GAP
         cells = list(entities[page * per_page:(page + 1) * per_page])
         for i in range(len(cells) + (1 if pages > 1 else 0)):
-            px, py = x + PANEL_INSET + (i % PORTRAIT_COLS) * (size + gap), y + 44 + (i // PORTRAIT_COLS) * (size + 9)
+            px, py = x + 16 + (i % PORTRAIT_COLS) * (size + gap), y + 44 + (i // PORTRAIT_COLS) * (size + 9)
             self.draw_rect(px, py, size, size, (255, 255, 255, 18), border_color=(255, 255, 255, 40), border_width=1, radius=4)
             if i == len(cells):  # the page tile
                 self._page_tile = (px, py, size, size)
@@ -2278,28 +2338,28 @@ class GameScene(Scene):
         title = self._catalogue_title()
         if not entries:
             if title is not None:
-                self.draw_text(title, x + PANEL_INSET, y + 30, style="heading")
+                self.draw_text(title, x + 16, y + 30, style="heading")
                 notes = ("Nothing planned", "Plans wait for money and prerequisites") if self._card else ("Every upgrade is researched",)
-                for i, note in enumerate(notes):  # two rows: one line of both is wider than the panel
-                    self.draw_text(note, x + PANEL_INSET, y + 58 + i * 20, style="sub")
+                for i, note in enumerate(notes):  # two rows: one line of both is 458 px, wider than the panel
+                    self.draw_text(note, x + 16, y + 58 + i * 20, style="sub")
                 return
             tile = (int(self.hover[0]), int(self.hover[1]))
             text = "Nothing selected"
             if self.world.in_bounds(tile) and self.world.is_explored(self.human, tile):
                 text = f"{self.view.terrain_at(tile).value.title()} ({tile[0]}, {tile[1]})"
-            self.draw_text(text, x + PANEL_INSET, y + 30, style="heading")
-            self.draw_text("Drag to select units · right-click to order them", x + PANEL_INSET, y + 58, style="sub")
+            self.draw_text(text, x + 16, y + 30, style="heading")
+            self.draw_text("Drag to select units · right-click to order them", x + 16, y + 58, style="sub")
             return
         working = sum(e.state != "waiting" for e in entries)
         waiting = len(entries) - working
         summary = " · ".join(part for part in (f"{working} in progress" if working else "", f"{waiting} waiting" if waiting else "") if part)
-        self.draw_text(f"{title or 'Production'} · {summary}", x + PANEL_INSET, y + 30, style="heading")
+        self.draw_text(f"{title or 'Production'} · {summary}", x + 16, y + 30, style="heading")
         size, gap = 34, 4
-        room = int((w - 2 * PANEL_INSET + gap) // (size + gap))
+        room = int((w - 32 + gap) // (size + gap))
         shown = entries if len(entries) <= room else entries[:room - 1]
         mx, my = self.mouse
         for i, entry in enumerate(shown):
-            px, py = x + PANEL_INSET + i * (size + gap), y + 46
+            px, py = x + 16 + i * (size + gap), y + 46
             self._queue_hits.append(((px, py, size, size + 6), entry))
             hovered = px <= mx < px + size and py <= my < py + size + 6
             border = (255, 214, 110, 200) if entry.state == "working" else (255, 255, 255, 90 if hovered else 40)
@@ -2311,8 +2371,8 @@ class GameScene(Scene):
             if hovered:
                 self.tooltip = entry.hint
         if len(shown) < len(entries):
-            self.draw_text(f"+{len(entries) - len(shown)}", x + PANEL_INSET + len(shown) * (size + gap), y + 46 + size / 2, style="body", anchor_y="center")
-        self.draw_text("Hover for details · click to go there · right-click to cancel", x + PANEL_INSET, y + 106, style="sub")
+            self.draw_text(f"+{len(entries) - len(shown)}", x + 16 + len(shown) * (size + gap), y + 46 + size / 2, style="body", anchor_y="center")
+        self.draw_text("Hover for details · click to go there · right-click to cancel", x + 16, y + 106, style="sub")
 
     def _endless_line(self, building: Building) -> str:
         """What *building* trains endlessly, the next one first."""
@@ -2332,7 +2392,8 @@ class GameScene(Scene):
         else:
             target = building.research
             assert target is not None
-            progress, hint = building.research_progress / UPGRADES[target].time, f"Researching {UPGRADES[target].name}"
+            researching = self.world.upgrade_info(building.player, target)
+            progress, hint = building.research_progress / researching.time, f"Researching {researching.name}"
         self.draw_rect(x, y, 36, 36, (255, 214, 110, 18), border_color=(255, 214, 110, 140), border_width=1, radius=5)
         draw_production_icon(self, target, building.player, building.race, x + 3, y + 3, 30)
         self.draw_text(f"{int(progress * 100)}%", x + 44, y + 15, style="body")
@@ -2357,7 +2418,7 @@ class GameScene(Scene):
         own = entity.player == self.human
         self.draw_rect(x, y, 72, 72, (255, 255, 255, 16), border_color=(255, 255, 255, 40), border_width=1, radius=6)
         self._portrait(entity, x + 4, y + 4, 64)
-        tx = x + CARD_PORTRAIT_GAP
+        tx = x + CARD_TEXT
         abandoned = isinstance(entity, Sighting) and entity.abandoned
         owner = "Abandoned" if abandoned else world.players[entity.player].name if entity.player is not None else "Neutral"
         name = entity.info.name if isinstance(entity, Unit) else RACES[entity.race].buildings[entity.type].name
@@ -2366,13 +2427,22 @@ class GameScene(Scene):
         heading = self.game.theme.get_text_style("heading")  # the name's style: the owner follows wherever the theme ends it
         self.draw_text(owner, tx + 6 + self.game.backend.measure_text(name, heading.font_size, heading.font)[0], y + 16, style="sub", color=color)
         lines: list[str] = []
-        if isinstance(entity, Sighting) and entity.type is BuildingType.GOLD_MINE:
-            lines.append(f"{entity.gold:,} gold left")  # five digits: grouped, as every other number this size is
+        deposit = BUILDINGS[entity.type].mine if isinstance(entity, Sighting) else None
+        if deposit is not None:
+            # A mine is worth as much as it still holds, so it says so in five grouped digits; a seam holds
+            # nothing and never will, so a number there would be a lie and it says what a trip brings instead.
+            lines.append(f"Never runs dry · {deposit.trip} gold a trip" if deposit.endless else f"{entity.gold:,} gold left")
         else:
             self.draw_rect(tx, y + 26, 180, 8, (0, 0, 0, 160), radius=3)
             frac = entity.hp / max(1, entity.max_hp)
             self.draw_rect(tx, y + 26, 180 * frac, 8, health_ink(frac), radius=3)
             self.draw_text(f"{entity.hp}/{entity.max_hp}", tx + 188, y + 34, style="sub")
+            if isinstance(entity, Sighting):
+                # Every building is fortified, and a card of one may be full of what it is making: the class alone
+                # goes in the corner beside the hit points, the one spot free in every state.  "Fortified armour"
+                # (140 px of sub) would run into hit points four digits wide; the word alone takes 67 of 77.
+                self._armour_notes.append(armour_class_of(entity).value.capitalize())
+                self.draw_text(self._armour_notes[-1], tx + CARD_RIGHT, y + 34, style="sub", anchor_x="right")
         if isinstance(entity, Unit):
             info = entity.info
             # Each stat is the number the unit was listed with; what research or the shield wall adds stands beside
@@ -2385,7 +2455,7 @@ class GameScene(Scene):
                              f"Damage per strike; {attack_hint(info.attack)}"))
             stats = [primary,
                      ("armor", f"{info.armor:g}", world.armor_of(entity) - info.armor,
-                      f"{armour_name(info.armor_class).capitalize()}; armour is subtracted from every blow"
+                      f"{armour_hint(info.armor_class)} · armour is subtracted from every blow"
                       + (f" · +{flanked} from the comrades at its elbows" if flanked else "")),
                      ("range", "melee" if info.range < 1 else f"{info.range:g}", world.range_of(entity) - info.range,
                       "Healing range in tiles" if info.heal else "Reaches the next tile over" if info.range < 1 else "Attack range in tiles"),
@@ -2403,6 +2473,8 @@ class GameScene(Scene):
                     self.tooltip = hint
             if world.frenzied(entity):
                 self.draw_text("Frenzy!", tx + 4 * 78, y + 60, style="body", color=BAD)
+            self._armour_notes.append(defence_line(info.armor_class, info.attack).capitalize())
+            lines.append(self._armour_notes[-1])  # under the numbers it qualifies
             order = entity.order
             if not own:
                 pass
@@ -2435,7 +2507,7 @@ class GameScene(Scene):
                 lines.append(building.info.summary)
                 if building.type is BuildingType.TOWN_HALL:
                     lines.append("Rally point set" if building.rally is not None else "Right-click the map to set a rally point")
-        # The card writes straight to the screen, so nothing but this holds a line to the panel: one too long for
+        # The card writes straight to the screen, so nothing but this holds a line to CARD_RIGHT: one too long for
         # the column used to run over the command card beside it.  A unit's two rows start under its stats; a
         # building's three under its health bar.
         ly, rows = (y + 82, 2) if isinstance(entity, Unit) else (y + 50, 3)
@@ -2444,12 +2516,15 @@ class GameScene(Scene):
             ly += 22
 
     def _card_lines(self, lines: list[str], rows: int) -> list[str]:
-        """*lines* wrapped into the card's text column, at most *rows* of them, the last one elided if it must be."""
+        """*lines* wrapped into the card's column and fitted to *rows*.
+
+        A line runs on only into the rows the lines after it do not need, so the last of them is never crowded
+        out; one that still does not fit ends in an ellipsis rather than leaving the panel."""
+        said = lines[:rows]
         wrapped: list[str] = []
-        for line in lines:
-            wrapped += self.layout_text(line, CARD_TEXT_WIDTH, style="body", max_lines=rows - len(wrapped)).lines
-            if len(wrapped) >= rows:
-                break
+        for i, line in enumerate(said):
+            room = rows - len(wrapped) - (len(said) - i - 1)
+            wrapped += self.layout_text(line, CARD_RIGHT, style="body", max_lines=room).lines
         return wrapped[:rows]
 
     # -- Save / load ------------------------------------------------------------------------
@@ -2480,8 +2555,8 @@ class GameScene(Scene):
 
     def get_save_summary(self) -> dict:
         world = self.world
-        size = next((name for name, (w, h) in mapgen.SIZES.items() if (w, h) == (world.width, world.height)), f"{world.width}×{world.height}")
-        return {"map": f"{size} {world.theme.value} {world.layout.value}", "players": len(world.players), "difficulty": self.difficulty.value, "clock": _clock(world.time),
+        size = mapgen.size_name(world.width, world.height, world.seats)
+        return {"map": f"{size} {world.theme.value} {world.layout.value}", "players": world.seats, "difficulty": self.difficulty.value, "clock": _clock(world.time),
                 "player": f"{self.player.name} ({self.race.name})"}
 
     def load_save_state(self, state: dict) -> None:
@@ -2557,7 +2632,7 @@ class SettlementPlansScene(_Overlay):
         entries = []
         race = self.game_scene.race
         for plan in world.player_plans(human):
-            catalogue = {"building": race.buildings, "unit": race.units, "upgrade": UPGRADES}[plan.kind]
+            catalogue = {"building": race.buildings, "unit": race.units, "upgrade": race.upgrades}[plan.kind]
             info = catalogue[plan.type]
             building = world.buildings.get(plan.building)
             status = plan.status
@@ -2577,7 +2652,7 @@ class SettlementPlansScene(_Overlay):
                                 f"Training {progress}% · {len(building.queue)} in queue · current one paid", price_pairs(info.cost),
                                 "Cancel last", lambda bid=building.id: self._cancel("cancel_train", bid)))
             if building.research is not None:
-                info = UPGRADES[building.research]
+                info = race.upgrades[building.research]
                 progress = int(100 * building.research_progress / info.time)
                 entries.append((("research", building.id), f"{building.info.name}: {info.name}",
                                 f"Researching {progress}% · paid", price_pairs(info.cost), "Cancel",
@@ -2631,6 +2706,7 @@ class PauseScene(_Overlay):
         panel.add(Button("New game", hotkey="N", on_click=self.new_game, style=GHOST_BUTTON, width=260))
         panel.add(Button("Back to title", hotkey="T", on_click=self.back_to_title, style=GHOST_BUTTON, width=260))
         panel.add(Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=260))
+        panel.add(Label(f"Warband {running_build()}", text_style="caption"))  # which build a player is reporting on, without leaving the match
 
     def save(self) -> None:
         self.game.pop()
@@ -2842,11 +2918,11 @@ def help_keys(scheme: Scheme) -> list[tuple[str, str]]:
     idle = key_label(scheme.keys["idle_soldier"])
     if scheme.positional:
         own = [("Q W E / A S D / Z X C", "the card's buttons by their place, whatever it shows"),
-               ("Units", "Q move, W stop, E hold, A attack-move, S patrol;  peasants: D build, Z repair"),
+               ("Units", "Q move, W stop, E hold, A attack-move, S patrol;  peasants: D build, Z repair, X salvage"),
                ("A building", "its recruits, then its research, from Q on;  Cancel ends the row (E, or D below a full one)"),
                ("B / T / G / R / F / V", "Build / Train / Upgrade, the assembly point, every plan, the next idle soldier: beside the grid")]
     else:
-        own = [("A M P S H / B R", "attack-move, move, patrol, stop, hold;  a peasant's build and repair"),
+        own = [("A M P S H / B R V", "attack-move, move, patrol, stop, hold;  a peasant's build, repair and salvage"),
                ("A building's letters", "train or research there, as its card shows;  X cancels the last and stops endless training")]
         if scheme.home is not None:
             own += [("Nothing selected", "the Train catalogue is open: a letter orders a recruit;  B build, U upgrade, G assembly point"),
@@ -2889,6 +2965,9 @@ class HelpScene(_Overlay):
 
 
 CODEX_PAGES = ("Units", "Buildings", "Upgrades", "Races", "Tech tree")
+#: What a page's table cannot say row by row: the armour class every building shares, which the unit page carries
+#: per unit in its Role column.
+PAGE_LEGENDS = {1: "Every building is fortified: a catapult's stone lands ×1.5 on one, and a tower's arrow strikes a normal blow."}
 TREE_LEGEND = "A line runs from what a building needs into it; beside each, what it trains and researches. {}Hover a picture for what it is."
 TREE_LIGHTING = "Bright: yours · dimmer: on its way · faint: not yet. "  # only in a match: outside one there is nothing to stand short of
 
@@ -2933,6 +3012,8 @@ class CodexScene(_Overlay):
             for cells in rows:
                 table.add(Row(*[self._cell(cell, width, first=i == 0, last=i == len(cells) - 1)
                                 for i, (cell, width) in enumerate(zip(cells, widths))], spacing=8))
+            if self.page in PAGE_LEGENDS:
+                table.add(Label(PAGE_LEGENDS[self.page], text_style="sub", width=sum(widths) + 8 * (len(widths) - 1), wrap=True))
         panel.add(table)
         panel.add(KeyHints([("1-5", "page"), ("Tab", "next"), ("Esc", "close")]))
 
@@ -2953,7 +3034,8 @@ class CodexScene(_Overlay):
                           Label(info.tagline, text_style="body", width=700), spacing=10))
             block.add(Row(Label("", width=120), Label(info.passive, text_style="body", width=700, wrap=True), spacing=10))
             for art in info.arts:
-                block.add(Row(Label("", width=120), Label(f"{UPGRADES[art].name} — {UPGRADES[art].summary}", text_style="sub", width=700, wrap=True), spacing=10))
+                block.add(Row(Label("", width=120), Label(f"{info.upgrades[art].name} — {info.upgrades[art].summary}", text_style="sub", width=700,
+                                                          wrap=True), spacing=10))
             table.add(block)
         return table
 
@@ -2970,28 +3052,34 @@ class CodexScene(_Overlay):
                 rows.append([info.name, price_pairs(info.cost), str(info.hp), f"heal {info.heal}" if info.heal else str(info.damage),  # its blow is in its role
                              str(info.armor), "melee" if info.range < 1 else f"{info.range:g}", f"{info.speed:g}", f"{info.build_time:g}s",
                              race.buildings[info.trained_at].name,
+                             # The Role column has no room for the kind of blow on every row: spelling out "normal"
+                             # wraps a line at 1200×680, where the page already stands 672 px of 680 tall (the orc
+                             # and human tables first).  The blow is named where it is not the plain one; the card of
+                             # a selected unit names both, always.
                              f"{info.summary} · {armour_name(info.armor_class)}"
-                             + (f", {info.attack.value}" if info.damage and info.attack is not AttackType.NORMAL else "")])
+                             + (f", {info.attack.value}" if info.attack is not AttackType.NORMAL else "")])
             return (150, 130, 40, 66, 40, 55, 42, 50, 140, 371), rows  # "heal 15" is the widest Dmg, 1200 gold and 800 lumber the widest Cost
         if self.page == 1:
             rows = [["Building", "Cost", "HP", "Arm", "Size", "Time", "Feeds", "Requires", "What it does"]]
             for building_type, info in race.buildings.items():
-                if building_type is BuildingType.GOLD_MINE:
+                if info.mine is not None:
                     continue
                 rows.append([info.name, price_pairs(info.cost), str(info.hp), str(info.armor), f"{info.size}×{info.size}", f"{info.build_time:g}s",
                              [("supply", f"+{info.supply}", BODY)] if info.supply else "—",
                              race.buildings[info.requires].name if info.requires else "—", info.summary])
             return (150, 130, 50, 40, 50, 50, 60, 130, 432), rows
         if self.page == 2:
-            rows = [["Upgrade", "Cost", "Time", "Where", "Requires", "Effect"]]
-            for upgrade, info in UPGRADES.items():
+            # Where an upgrade is researched is the tech tree's own picture (page 5), where it stands beside that
+            # building: a column repeating it cost the room the third tiers and their prerequisites need.
+            rows = [["Upgrade", "Cost", "Time", "Requires", "Effect"]]
+            for upgrade, info in race.upgrades.items():
                 if not race.upgrade_allowed(upgrade):
                     continue
-                where = next(b for b, binfo in BUILDINGS.items() if upgrade in binfo.researches)
-                requires = UPGRADES[info.requires].name if info.requires else f"{race.adjective} art" if info.race is not None else "—"
-                rows.append([info.name + (" ✓" if upgrade in have else ""), price_pairs(info.cost), f"{info.time:g}s", race.buildings[where].name,
+                requires = (listing([race.upgrades[u].name for u in info.requires]) if info.requires
+                            else f"{race.adjective} art" if info.race is not None else "—")
+                rows.append([info.name + (" ✓" if upgrade in have else ""), price_pairs(info.cost), f"{info.time:g}s",
                              requires, info.summary])
-            return (190, 130, 50, 130, 165, 451), rows
+            return (200, 134, 50, 300, 440), rows  # "Broadhead Arrows and Stronghold" is the widest Requires
         raise ValueError(f"no table for page {self.page}")
 
     def show(self, page: int) -> None:
@@ -3019,6 +3107,10 @@ class CodexScene(_Overlay):
         self.game.pop()
 
 
+WARBANDS_PER_COLUMN = 8  # fates listed down one column of the results before a second one starts
+WARBAND_COLUMN = 264  # a column of them, name and race and fate side by side
+
+
 class GameOverScene(_Overlay):
     """The result: the score and how it was earned, the battle record, every warband's fate, and the local rank."""
 
@@ -3037,7 +3129,7 @@ class GameOverScene(_Overlay):
         points = score_breakdown(world, scene.human)
         panel = self.panel("Victory!" if self.won else "Defeat")
         panel.style = RESULTS_STYLE
-        panel.add(Label(f"{scene.race.name} · {scene.difficulty.value.title()} AI · {world.width}×{world.height} · {len(world.players)} players · "
+        panel.add(Label(f"{scene.race.name} · {scene.difficulty.value.title()} AI · {world.width}×{world.height} · {world.seats} players · "
                         f"{world.theme.value.title()} · Seed {scene.seed}", text_style="body"))
         score = Column(spacing=10, width=420)
         score.add(Label(f"{sum(points.values()):,} points", text_style="banner"))
@@ -3045,19 +3137,17 @@ class GameOverScene(_Overlay):
             score.add(Row(Label(name, text_style="body", width=300), Label(f"{value:,}", text_style="heading", width=100), spacing=12))
         score.add(Label("Combat: 1 point per 10 resources destroyed.\nSurvivors: 1 per 20; research: 1 per 10.\nSwift victory: 2 per second before 20:00.",
                         text_style="sub", width=420, wrap=True))
-        summary = Column(spacing=12, width=420)
+        columns = -(-world.seats // WARBANDS_PER_COLUMN)
+        width = 420 if columns < 2 else columns * WARBAND_COLUMN + (columns - 1) * 16
+        summary = Column(spacing=12, width=width)
         summary.add(Label(f"Battle record · {_clock(world.time)}", text_style="heading"))
         stats = scene.stats
         summary.add(Label(f"{stats['units_killed']} enemy units defeated · {stats['units_lost']} units lost", text_style="body"))
         summary.add(Label(f"{stats['buildings_razed']} buildings razed · {stats['buildings_lost']} lost", text_style="body"))
         summary.add(Label("Warbands", text_style="heading"))
-        for player in world.players:
-            status = ("Victorious" if world.winner == player.id else "Surrendered" if player.surrendered
-                      else "Still fighting" if player.alive else "Eliminated")
-            summary.add(Row(Label(f"{player.name} · {RACES[player.race].name}", text_style="body", width=200),
-                            Label(status, text_style="body", text_color=GOOD if player.id == world.winner else MUTED), spacing=10))
+        summary.add(self._warbands(world, columns))
         if any(p.surrendered for p in world.players):
-            summary.add(Label("Surrender: no units or queued recruits,\nand no affordable way to train another.", text_style="sub", width=420, wrap=True))
+            summary.add(Label("Surrender: no units or queued recruits,\nand no affordable way to train another.", text_style="sub", width=width, wrap=True))
         panel.add(Row(score, summary, spacing=28))
         notice = "Demo battle · not ranked"
         if scene.ranked:
@@ -3073,6 +3163,27 @@ class GameOverScene(_Overlay):
                       Button("High scores", hotkey="B", on_click=self.high_scores, style=GHOST_BUTTON, width=210),
                       Button("Back to title", hotkey="T", on_click=self.back_to_title, style=GHOST_BUTTON, width=210),
                       Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=190), spacing=12))
+
+    def _warbands(self, world: World, columns: int) -> Row:
+        """Every warband and its fate.  Sixteen of them stood a results panel off the bottom of a
+        680-pixel window, so beyond eight they run in columns of eight instead of one long list."""
+        grid = Row(spacing=16)
+        wide = columns < 2
+        for first in range(0, world.seats, WARBANDS_PER_COLUMN):
+            column = Column(spacing=6, margin=0, width=420 if wide else WARBAND_COLUMN)
+            for player in world.players[first:first + WARBANDS_PER_COLUMN]:
+                status = ("Victorious" if world.winner == player.id else "Surrendered" if player.surrendered
+                          else "Still fighting" if player.alive else "Eliminated")
+                colour = GOOD if player.id == world.winner else MUTED
+                if wide:
+                    column.add(Row(Label(f"{player.name} · {RACES[player.race].name}", text_style="body", width=200),
+                                   Label(status, text_style="body", text_color=colour), spacing=10))
+                else:
+                    column.add(Row(Label(player.name, text_style="body", width=84),
+                                   Label(RACES[player.race].name, text_style="sub", width=76),
+                                   Label(status, text_style="sub", text_color=colour, width=92), spacing=6))
+            grid.add(column)
+        return grid
 
     def _rating_text(self) -> str:
         scene = self.game_scene
@@ -3091,7 +3202,7 @@ class GameOverScene(_Overlay):
 
         scene = self.game_scene
         self.game.push(HighScoreScene(difficulty=scene.difficulty, size=(scene.world.width, scene.world.height),
-                                      players=len(scene.world.players), run_id=scene.run_id, error=self.score_error))
+                                      players=scene.world.seats, run_id=scene.run_id, error=self.score_error))
 
     def new_game(self) -> None:
         self.game.clear_and_push(next_game(self.game_scene))
@@ -3100,8 +3211,10 @@ class GameOverScene(_Overlay):
         from warband.ui.title import TitleScene
 
         scene = self.game_scene
-        size = next((name for name, dimensions in mapgen.SIZES.items() if dimensions == (scene.world.width, scene.world.height)), "Medium")
-        self.game.clear_and_push(TitleScene(size=size, players=len(scene.world.players), difficulty=scene.difficulty, theme=scene.world.theme,
+        seats = scene.world.seats
+        size = mapgen.size_name(scene.world.width, scene.world.height, seats)
+        size = size if size in mapgen.SIZES else (mapgen.sizes_for(seats) or ("Medium",))[0]
+        self.game.clear_and_push(TitleScene(size=size, players=scene.world.seats, difficulty=scene.difficulty, theme=scene.world.theme,
                                            race=scene.player.race, layout=scene.world.layout, settings=scene.settings))
 
     def quit(self) -> None:
@@ -3135,8 +3248,8 @@ def fair_map(seed: int, width: int, height: int, players: int, *, theme: MapThem
 def next_game(scene: GameScene) -> GameScene:
     """A new match with *scene*'s settings and races on the next seed that makes a fair map."""
     world = scene.world
-    seed, fresh = fair_map(scene.seed + 1, world.width, world.height, len(world.players), theme=world.theme,
-                           races=[p.race for p in world.players], layout=world.layout)
+    seed, fresh = fair_map(scene.seed + 1, world.width, world.height, world.seats, theme=world.theme,
+                           races=[p.race for p in world.players[:world.seats]], layout=world.layout)
     return GameScene(fresh, seed, difficulty=scene.difficulty, settings=scene.settings)
 
 

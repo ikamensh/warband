@@ -5,14 +5,14 @@ import pytest
 from sagaforge import restyle
 
 from warband.art import textures
-from warband.sim.rules import Race, Resource, UnitType
+from warband.sim.rules import PLAYABLE_UNITS, Race, Resource, UnitType
 
 
 def subjects():
     """Every painted subject, listed without loading a sheet: each race's units (the peasant also with each load)
     and its buildings in each look."""
     for race in Race:
-        for unit in UnitType:
+        for unit in PLAYABLE_UNITS:
             for carrying in ((None,) if unit is not UnitType.PEASANT else (None, Resource.GOLD, Resource.LUMBER)):
                 yield race, unit, carrying
         for look in ("intact", "active", "damaged"):

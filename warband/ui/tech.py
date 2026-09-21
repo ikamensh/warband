@@ -17,7 +17,7 @@ from saga2d import Anchor, Component, Label
 from warband.art.production import fit, production_image
 from warband.sim.model import Build, World
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Race, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, BUILT, UNITS, UPGRADES, BuildingType, Race, UnitType, Upgrade, listing
 
 Target = UnitType | BuildingType | Upgrade
 Prerequisite = BuildingType | Upgrade
@@ -29,14 +29,14 @@ def researched_at(upgrade: Upgrade) -> BuildingType:
 
 def prerequisites(target: Target) -> tuple[Prerequisite, ...]:
     """What *target* needs directly, in the order a player meets it: a unit its building, a building the one it
-    requires, an upgrade the building that researches it and then its lower tier.  Every race shares these."""
+    requires, an upgrade the building that researches it and then every upgrade it waits for (its lower tier, the
+    Keep, or both).  Every race shares these."""
     if isinstance(target, UnitType):
         return (UNITS[target].trained_at,)
     if isinstance(target, BuildingType):
         requires = BUILDINGS[target].requires
         return () if requires is None else (requires,)
-    lower = UPGRADES[target].requires
-    return (researched_at(target),) + (() if lower is None else (lower,))
+    return (researched_at(target),) + UPGRADES[target].requires
 
 
 def unlocks(building: BuildingType) -> list[BuildingType]:
@@ -46,8 +46,8 @@ def unlocks(building: BuildingType) -> list[BuildingType]:
 
 @dataclass(frozen=True)
 class Need:
-    """The first prerequisite of an item that the player lacks, and whether it is on its way: then an order for the
-    item is planned and waits for it, where otherwise it would wait for something nobody is making."""
+    """A prerequisite of an item that the player lacks, and whether it is on its way: then an order for the item is
+    planned and waits for it, where otherwise it would wait for something nobody is making."""
 
     target: Prerequisite
     coming: bool
@@ -74,13 +74,18 @@ def coming(world: World, player: int, item: Prerequisite) -> bool:
 
 
 def need(world: World, player: int, target: Target) -> Need | None:
-    """What *target* waits for, or None when the player has everything it needs (or, an upgrade, has it already)."""
+    """What *target* waits for, or None when the player has everything it needs (or, an upgrade, has it already).
+    An item can lack more than one thing at once — the second tier of blades wants the first tier *and* the Keep —
+    and it is the one nobody is making that decides: an order given anyway would wait for ever, so that one is what
+    the card names and refuses.  Only when every lacking prerequisite is on its way does the first of them read
+    "after …" and the order wait for it."""
     if isinstance(target, Upgrade) and target in world.players[player].upgrades:
         return None
-    for item in prerequisites(target):
-        if not has(world, player, item):
-            return Need(item, coming(world, player, item))
-    return None
+    lacking = [item for item in prerequisites(target) if not has(world, player, item)]
+    if not lacking:
+        return None
+    stalled = next((item for item in lacking if not coming(world, player, item)), None)
+    return Need(lacking[0], True) if stalled is None else Need(stalled, False)
 
 
 def tree() -> dict[BuildingType, tuple[int, float]]:
@@ -100,7 +105,7 @@ def tree() -> dict[BuildingType, tuple[int, float]]:
         places[kind] = (column, row)
         return row
 
-    roots = [kind for kind, info in BUILDINGS.items() if info.requires is None and kind is not BuildingType.GOLD_MINE]
+    roots = [kind for kind in BUILT if BUILDINGS[kind].requires is None]  # nobody builds a deposit or a lair
     for root in sorted(roots, key=lambda kind: not unlocks(kind)):
         place(root, 0)
     return places
@@ -177,8 +182,8 @@ class TechTree(Component):
                 if isinstance(item, UnitType):
                     tooltip = f"{info.units[item].name} — {info.units[item].cost} · {info.units[item].summary}"
                 else:
-                    upgrade = UPGRADES[item]
-                    after = f" · after {UPGRADES[upgrade.requires].name}" if upgrade.requires is not None else ""
+                    upgrade = info.upgrades[item]
+                    after = f" · after {listing([info.upgrades[u].name for u in upgrade.requires])}" if upgrade.requires else ""
                     tooltip = f"{upgrade.name} — {upgrade.cost} · {upgrade.summary}{after}"
                 picture(item, x + self.PORTRAIT + 8 + index * (self.ICON + 4), y + self.NAME, self.ICON, tooltip)
 

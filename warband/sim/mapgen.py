@@ -22,6 +22,7 @@ its reasons are in docs/warband-maps.md.
 
 from __future__ import annotations
 
+import functools
 import heapq
 import math
 import random
@@ -30,11 +31,39 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Final
 
+from warband.sim import camps as camping
 from warband.sim import path as pathing
 from warband.sim.model import Pos, World, tile_center
-from warband.sim.rules import EXPANSION_GOLD, MINE_GOLD, BuildingType, Layout, MapTheme, Race, Terrain, UnitType
+from warband.sim.rules import BUILDINGS, EXPANSION_GOLD, MAX_PLAYERS, MINE_GOLD, BuildingType, Layout, MapTheme, Race, Terrain, UnitType
 
-SIZES: Final[dict[str, tuple[int, int]]] = {"Small": (48, 40), "Medium": (64, 48), "Large": (80, 64)}
+SIZES: Final[dict[str, tuple[int, int]]] = {
+    # Nominal tiles; :func:`dimensions` rounds a size up to whole cells of the seat count's grid.
+    # The first three are what shipped and are left where they are: the measured difficulty ratings
+    # (brains.DIFFICULTY_ELO) and the balance league were played on them, and league.arena keeps its
+    # own copy of them so a new entry here never moves the ladder.
+    "Small": (48, 40),      # 1 920 tiles
+    "Medium": (64, 48),     # 3 072
+    "Large": (80, 64),      # 5 120
+    "Huge": (108, 84),      # 9 072
+    "Giant": (144, 108),    # 15 552
+    "Epic": (180, 132),     # 23 760 — sixteen seats at the per-seat room a Large four-player map gives
+}
+#: The seat counts New game offers: every one of them tiles a map exactly (three fills three of four cells).
+SEAT_COUNTS: Final[tuple[int, ...]] = (2, 3, 4, 6, 8, 12, 16)
+#: Seats to the ``cols x rows`` grid of congruent cells they are dealt.  Two and four are the point
+#: reflection and the two mirrors that shipped; three fills three cells of the four.  A count that
+#: leaves a cell empty leaves its natural behind as a neutral mine, as three players always have.
+#:
+#: Every axis has an even number of cells or exactly one, and no other count will do.  Neighbouring
+#: cells mirror each other, so the canonical column a map edge shows alternates along the axis: with
+#: an even number the two edges show the same one and the map's rim is a single orbit, and with one
+#: cell the two edges *are* the two ends of the cell.  With an odd number they differ, and then one
+#: seat's rim is the forest fringe while another's is open ground, or one seat's share of a feature
+#: on a crossing of cells is cut off by the map's edge.
+_GRIDS: Final[dict[int, tuple[int, int]]] = {
+    2: (1, 2), 3: (2, 2), 4: (2, 2), 5: (6, 1), 6: (6, 1), 7: (4, 2), 8: (4, 2),
+    9: (6, 2), 10: (6, 2), 11: (6, 2), 12: (6, 2), 13: (4, 4), 14: (4, 4), 15: (4, 4), 16: (4, 4),
+}
 PROMISES: Final[dict[Layout, str]] = {
     Layout.PLAINS: "Open ground: raids come early, expansions lie exposed",
     Layout.FOREST: "Deep woods: narrow roads, hidden clearings, chop your own way through",
@@ -45,10 +74,40 @@ PROMISES: Final[dict[Layout, str]] = {
 RETRIES: Final = 8
 KLONDIKE_START_GOLD: Final = 20_000
 POOR_GOLD: Final = 10_000  # the coward's gold: a far corner mine on Klondike
-_MARGIN: Final = 7  # tiles from the map edge to the hall's top-left
+#: A gold seam is the endless deposit (:class:`~warband.sim.rules.MineInfo`): five tiles across instead of
+#: three, twenty gold a trip instead of a hundred, and it never runs out.  It is worth what holding it is
+#: worth, so it goes on the maps whose matches are long and whose middle is far from home, and nowhere else:
+#: the three shipped sizes keep the economy their difficulty ratings and their balance league were measured on.
+_SEAM_MAP: Final = 5200  # tiles of map a seam wants more of; a Large (80x64) is 5120
+_SEAM_CELL: Final = 1000  # tiles of a seat's own cell: a smaller share has no middle to put a five-tile dig in
+_SEAM_AWAY: Final = 18  # tiles from every hall: past the natural, out where a seat has to go and stay
+_SEAM_ROOM: Final = 110  # open tiles within eight of a seam, against _SITE_ROOM within six of a natural
+_MARGIN: Final = 7  # tiles from a cell's corner to a corner hall's top-left
 _CLEARING: Final = 7  # radius of open ground around the hall's middle tile
-_SITE_SPACING: Final = {True: 8, False: 7}  # Chebyshev tiles between mine sites, by point symmetry (mirror quadrants are tighter)
+_SITE_SPACING: Final = {True: 8, False: 7}  # Chebyshev tiles between mine sites, by whether the cell spans the map (mirrored cells are tighter)
 _SITE_ROOM: Final = 60  # open tiles within six of a natural or third, so a hall and farms fit
+_MIN_CELL: Final = (24, 20)  # the smallest share of a map that has ever made a fair base: Small with four seats
+_MAX_CELL: Final = 5000  # the largest share a seat can hold: beyond it the walk to the next base is the whole match
+_GLADE_ROOM: Final = 1300  # tiles of a Forest cell per extra clearing cut in it, beyond the two the layout always cuts
+#: A creature camp squats beside a *contested* deposit -- a third mine or a gold seam -- and never beside a
+#: seat's own mine or its natural.  That is the whole placement rule, and it is what the camps are for: the
+#: opening is untouched, the expansion every build order needs is free, and the ground a player has to leave
+#: home for is held by something.  A seat that wants the middle now has to take it from somebody at minute
+#: four, which is a job for an army that is otherwise pure cost until the timing push (docs/balance.md).
+# Tiles between the deposit's middle and its lair's: near enough to guard it, not on top of it.  Two numbers
+# rather than a pair, because a Final tuple is a value the compiled simulation does not always set
+# (mypyc inlines a Final scalar and leaves a Final tuple's slot empty; docs/fast-simulation.md).
+_CAMP_NEAREST: Final = 4.5
+_CAMP_FURTHEST: Final = 9.0
+_CAMP_SPACING: Final = 5  # Chebyshev tiles between a lair's corner and any other footprint's: two tiles of daylight
+_CAMP_ROOM: Final = 40  # open tiles within six of a lair, so an army has somewhere to fight
+#: What each kind of camp is made of and what its den is sitting on.  A third mine draws one of the two
+#: small camps; the endless seam, worth the most and standing furthest out, is always the big one.
+_ROSTERS: Final[dict[str, tuple[tuple[UnitType, ...], int]]] = {
+    "den": ((UnitType.WOLF,) * 4, 500),
+    "nest": ((UnitType.SPIDER, UnitType.SPIDER, UnitType.WOLF, UnitType.WOLF), 600),
+    "lair": ((UnitType.TROLL, UnitType.GOLEM, UnitType.SPIDER, UnitType.SPIDER), 1500),
+}
 
 Point = tuple[float, float]
 
@@ -62,34 +121,145 @@ class NoFairMap(ValueError):
     """The layout cannot make a fair map at that size for that many players."""
 
 
+def grid(seats: int) -> tuple[int, int]:
+    """The ``cols x rows`` grid of congruent cells *seats* are dealt, one seat a cell.
+
+    Two seats get one column of two cells (the point reflection that shipped), three and four a
+    two-by-two (the two mirrors that shipped, with three leaving one cell empty).  Above that the
+    grid is the one that wastes fewest cells while keeping them as square as a base wants."""
+    if not 1 <= seats <= MAX_PLAYERS:
+        raise ValueError(f"1 to {MAX_PLAYERS} players, not {seats}")
+    return (1, 1) if seats == 1 else _GRIDS[seats]
+
+
+
+def dimensions(size: str, seats: int) -> tuple[int, int]:
+    """The nominal *size* rounded up until the seat count's grid divides it exactly.
+
+    Cells must be congruent to the tile, so a map is only ever as wide as a whole number of cells.
+    Every shipped size already divides by the grids of two, three and four seats, so those maps are
+    the maps they always were."""
+    width, height = SIZES[size]
+    cols, rows = grid(seats)
+    return (-(-width // cols) * cols, -(-height // rows) * rows)
+
+
+def refusal(width: int, height: int, seats: int, layout: Layout | None) -> str | None:
+    """Why this map cannot be fair for this many seats, or ``None`` when it can.
+
+    A seat's share of the map has to hold a base; some layouts want more of it than others, and an
+    unfair map is worse than a refused one.  Under Any (``layout=None``) the seed draws from the
+    layouts this map can hold, so Any is refused only when none of them can."""
+    cols, rows = grid(seats)
+    if width % cols or height % rows:
+        return f"{seats} seats need {cols}x{rows} whole cells, which {width}x{height} tiles do not make"
+    cw, ch = width // cols, height // rows
+    if cw < _MIN_CELL[0] or ch < _MIN_CELL[1]:
+        return f"{seats} seats leave {cw}x{ch} tiles each; a base needs {_MIN_CELL[0]}x{_MIN_CELL[1]}"
+    if cw * ch > _MAX_CELL:
+        return f"{seats} seats on {width}x{height} tiles give each {cw * ch} tiles to hold, more than {_MAX_CELL}"
+    if layout is not None:
+        return _layout_refusal(_SPECS[layout], cols, rows, cw, ch)
+    reasons = [_layout_refusal(_SPECS[candidate], cols, rows, cw, ch) for candidate in Layout]
+    return None if any(why is None for why in reasons) else reasons[0]
+
+
+def layouts_for(width: int, height: int, seats: int) -> tuple[Layout, ...]:
+    """The layouts this map can hold fairly for this many seats: what Any draws from."""
+    return tuple(one for one in Layout if _layout_refusal(_SPECS[one], *grid(seats), width // grid(seats)[0], height // grid(seats)[1]) is None)
+
+
+def offered(size: str, layout: Layout | None = None) -> tuple[int, ...]:
+    """The seat counts a size can seat fairly, biggest map to most seats."""
+    return tuple(n for n in SEAT_COUNTS if refusal(*dimensions(size, n), n, layout) is None)
+
+
+def start_guesses(width: int, height: int, seats: int, inset: float = 2.5) -> list[Point]:
+    """Where a brain that has found nobody yet should go looking for them.
+
+    Up to four seats sit in the map's corners, and the corners are the guess they have always been.
+    Beyond that the seats are dealt one to a cell of a grid, so the guess is the middle of each
+    cell; a map whose shape is nobody's (a mission, a test) falls back to the corners."""
+    cols, rows = grid(seats) if 2 <= seats <= MAX_PLAYERS else (2, 2)
+    if seats <= 4 or width % cols or height % rows:
+        return [(inset, inset), (width - inset, inset), (inset, height - inset), (width - inset, height - inset)]
+    cw, ch = width // cols, height // rows
+    return [(col * cw + cw / 2, row * ch + ch / 2) for row in range(rows) for col in range(cols)]
+
+
+def size_name(width: int, height: int, seats: int) -> str:
+    """What this map would be called on the New game screen, or its tiles when it is nobody's size."""
+    for name in SIZES:
+        if dimensions(name, seats) == (width, height):
+            return name
+    return f"{width}×{height}"
+
+
+def sizes_for(seats: int, layout: Layout | None = None) -> tuple[str, ...]:
+    """The sizes that seat this many fairly, in the order :data:`SIZES` lists them."""
+    return tuple(name for name in SIZES if refusal(*dimensions(name, seats), seats, layout) is None)
+
+
+def _layout_refusal(spec: _Spec, cols: int, rows: int, cw: int, ch: int) -> str | None:
+    """What a layout's own walls need of a cell that the cell does not have."""
+    hall = _hall_corner(cols, rows, cw, ch)
+    if spec.layout is Layout.BASTION:
+        # The ring is drawn round the hall and must close inside the cell: where the hall sits in a
+        # cell's middle there is no map edge to lean the ring against, as there is with two cells.
+        reach = 2 * (_CLEARING + 4.0 + 1)
+        if (cols > 2 and cw < reach) or (rows > 2 and ch < reach):
+            return f"Bastion's tree ring needs {int(reach)} tiles across a cell, not {cw}x{ch}"
+    if spec.layout is Layout.KLONDIKE:
+        # The pit sits where cells meet; a base that stands inside its rock ring is no base.
+        junction = _junction(cols, rows, cw, ch)
+        keep = _clearing(spec, cw, ch, cols == 1) + _pit_inner(cw * cols, ch * rows) + 4
+        if _dist(_mine_centre(hall), junction) < keep:
+            return f"Klondike's pit would swallow a base {cw}x{ch} tiles from it"
+    return None
+
+
 def generate(seed: int, width: int = 48, height: int = 40, players: int = 2, human: int | None = 0, theme: MapTheme = MapTheme.SUMMER,
-             races: Sequence[Race | None] | None = None, layout: Layout | None = None) -> World:
+             races: Sequence[Race | None] | None = None, layout: Layout | None = None, wilds: bool = True) -> World:
     """*races* names each player's race; ``None`` entries are drawn from the seed, so a seed reproduces
     the whole match.  Without a list the *human* leads Humans and the computer players are drawn.
-    *layout* ``None`` draws one from the seed."""
-    return build(seed, width, height, players, human, theme, races, layout)[0]
+    *layout* ``None`` draws one from the seed.  *wilds* ``False`` leaves the contested deposits unguarded,
+    which is how a map is measured against one with camps on it."""
+    return build(seed, width, height, players, human, theme, races, layout, wilds)[0]
 
 
 def build(seed: int, width: int = 48, height: int = 40, players: int = 2, human: int | None = 0, theme: MapTheme = MapTheme.SUMMER,
-          races: Sequence[Race | None] | None = None, layout: Layout | None = None) -> tuple[World, dict]:
+          races: Sequence[Race | None] | None = None, layout: Layout | None = None, wilds: bool = True) -> tuple[World, dict]:
     """:func:`generate` plus the audit report of the map it settled on (``attempt`` counts the retries)."""
-    if not 2 <= players <= 4:
-        raise ValueError("2 to 4 players")
+    if not 2 <= players <= MAX_PLAYERS:
+        raise ValueError(f"2 to {MAX_PLAYERS} players, not {players}")
     if races is not None and len(races) != players:
         raise ValueError(f"{players} players need {players} races, not {len(races)}")
     if min(width, height) < 40:
-        raise ValueError(f"maps are at least 40 tiles on their shorter side, not {width}x{height}: four symmetric seats need the room")
+        raise ValueError(f"maps are at least 40 tiles on their shorter side, not {width}x{height}: symmetric seats need the room")
+    why = refusal(width, height, players, layout)
+    if why is not None:
+        raise NoFairMap(f"No fair map at {width}x{height} for {players} players: {why}.")
     if layout is None:
-        layout = random.Random(seed ^ 0x1A70).choice(list(Layout))
+        choices = layouts_for(width, height, players) if width % grid(players)[0] == 0 and height % grid(players)[1] == 0 else ()
+        layout = random.Random(seed ^ 0x1A70).choice(choices or list(Layout))
     wanted: list[Race | None] = list(races) if races is not None else [Race.HUMAN if i == human else None for i in range(players)]
     chosen = draw_races(wanted, random.Random(seed ^ 0x5ACE))
     problems: list[str] = []
+    without: tuple[World, dict] | None = None  # the best map so far that is fair but is missing something wished for
     for attempt in range(RETRIES):
-        world, report = _attempt(random.Random(seed * 16 + attempt), seed, width, height, players, human, theme, chosen, layout)
+        world, report = _attempt(random.Random(seed * 16 + attempt), seed, width, height, players, human, theme, chosen, layout, wilds)
+        report["attempt"] = attempt
         if not report["problems"]:
-            report["attempt"] = attempt
-            return world, report
-        problems = report["problems"]
+            if not report["wishes"]:
+                return world, report
+            if without is None:
+                without = (world, report)
+        problems = report["problems"] or report["wishes"]
+    # A fault makes a map unfair and there is nothing to do but raise; a wish is a feature the layout's
+    # own walls left no room for on this seed.  A gold seam is the one wish there is: eight seeds are
+    # given the chance to fit one in, and a map that has everything else is a map, not a refusal.
+    if without is not None:
+        return without
     raise NoFairMap(f"No fair {layout.value} map at {width}x{height} for {players} players from seed {seed} in {RETRIES} tries: {problems}.")
 
 
@@ -107,58 +277,160 @@ def draw_races(races: list[Race | None], rng: random.Random) -> list[Race]:
 # -- Canvas ------------------------------------------------------------------------
 
 
+@functools.lru_cache(maxsize=None)
+def _cells(cols: int, rows: int) -> tuple[tuple[int, int, bool, bool], ...]:
+    """Every cell as ``(col, row, flip_x, flip_y)``, in seat order.
+
+    Neighbouring cells are mirror images of each other, so the cell they share a border with shows
+    the same tiles from both sides and every cell is an exact congruent copy of the canonical one.
+    A grid one cell wide (or one tall) has no border to mirror across on that axis, so its cells
+    alternate in *both* axes instead: that is the point reflection two seats have always had.
+    Seats take the cells in checkerboard order, so the first two are diagonally opposite and a
+    count that does not fill the grid (three seats of four) leaves a corner cell empty, as before."""
+    out = []
+    for parity in (0, 1):
+        for row in range(rows):
+            for col in range(cols):
+                if (col + row) % 2 != parity:
+                    continue
+                flip_x = row % 2 if cols == 1 else col % 2
+                flip_y = col % 2 if rows == 1 else row % 2
+                out.append((col, row, bool(flip_x), bool(flip_y)))
+    return tuple(out)
+
+
+def _fold(cols: int, rows: int, cw: int, ch: int, pos: Pos, size: int = 1) -> Pos:
+    """Which square of the canonical cell the *size* square at *pos* is a copy of.
+
+    Layout passes draw features that straddle a junction of cells and corridors are carved wherever
+    they are needed, so a square handed back is not always one of the canonical cell's own."""
+    col, lx = divmod(pos[0], cw)
+    row, ly = divmod(pos[1], ch)
+    flip_x = row % 2 if cols == 1 else col % 2
+    flip_y = col % 2 if rows == 1 else row % 2
+    return (cw - size - lx if flip_x else lx, ch - size - ly if flip_y else ly)
+
+
+def _images(cols: int, rows: int, cw: int, ch: int, pos: Pos, size: int = 1) -> tuple[Pos, ...]:
+    """The copies of the *size* square whose top-left is the canonical *pos*, one a cell, seat order."""
+    x, y = pos
+    return tuple((col * cw + (cw - size - x if fx else x), row * ch + (ch - size - y if fy else y))
+                 for col, row, fx, fy in _cells(cols, rows))
+
+
+def cell_images(width: int, height: int, seats: int, pos: Pos, size: int = 1) -> tuple[Pos, ...]:
+    """Where a map of this shape sends the *size* square at *pos*: one copy per cell, in seat order.
+
+    Whatever the generator draws for the first seat, every other seat has exactly; this is the
+    symmetry the audit and the tests read.  *pos* may be in any cell — it is folded into the
+    canonical one first, so the orbit of a square is the same wherever it is named from."""
+    cols, rows = grid(seats)
+    cw, ch = width // cols, height // rows
+    return _images(cols, rows, cw, ch, _fold(cols, rows, cw, ch, pos, size), size)
+
+
+def _hall_corner(cols: int, rows: int, cw: int, ch: int) -> Pos:
+    """The hall's top-left tile inside the canonical cell.
+
+    With one or two cells on an axis the mirror throws a hall near the cell's edge out to the map's
+    own edge, which is where halls have always stood.  With three or more it would throw two halls
+    together against their shared border instead, so the hall sits in the middle of the cell and
+    every seat is the same distance from the next."""
+    x = _MARGIN if cols <= 2 else (cw - 3) // 2
+    y = _MARGIN if rows <= 2 else (ch - 3) // 2
+    return (x, y)
+
+
+def _junction(cols: int, rows: int, cw: int, ch: int) -> Point:
+    """Where cells meet at the canonical cell's far corner: the map's centre when the grid is one
+    or two cells each way, and one of several crossings on a bigger grid.  A feature drawn around
+    it in the canonical cell is assembled whole by the copies, which is how the pit and the river
+    have always been built."""
+    return (cw - 0.5 if cols > 1 else (cw - 1) / 2, ch - 0.5 if rows > 1 else (ch - 1) / 2)
+
+
 class _Canvas:
     """The terrain under construction and the symmetry that copies the first seat to the others.
 
-    Everything is drawn for the first seat in the *canonical* part of the map (the top half
-    under point symmetry, the top-left quadrant under the mirror); :meth:`symmetrize` copies it
-    onto the images.  Self-symmetric features (a pit on the centre, a river through it) are
-    drawn whole and survive the copy unchanged."""
+    The map is a ``cols x rows`` grid of congruent cells, one to a seat.  Everything is drawn for
+    the first seat in the *canonical* cell (the top-left one, ``cw`` by ``ch`` tiles);
+    :meth:`symmetrize` copies it onto the images.  A feature that straddles a junction of cells (a
+    pit on it, a river through it) is drawn whole and the copies reassemble it."""
 
     def __init__(self, width: int, height: int, seats: int) -> None:
         self.w, self.h = width, height
-        self.point = seats == 2
+        self.cols, self.rows = grid(seats)
+        if width % self.cols or height % self.rows:
+            raise ValueError(f"{seats} seats need {self.cols}x{self.rows} whole cells, not {width}x{height}")
+        self.cw, self.ch = width // self.cols, height // self.rows
+        #: The canonical cell spans the map's full width: the roomy half-map two seats share.
+        self.wide = self.cols == 1
         self.grid = [[Terrain.GRASS] * width for _ in range(height)]
         self.protected: set[Pos] = set()  # walls no corridor may be carved through
-        self.centre: Point = ((width - 1) / 2, (height - 1) / 2)
+        #: Where the canonical cell meets its neighbours; the centre of the map on a small grid.
+        self.junction: Point = _junction(self.cols, self.rows, self.cw, self.ch)
 
     def images(self, pos: Pos) -> tuple[Pos, ...]:
-        """*pos* and its copies, in seat order: self, opposite corner, then across and down."""
-        x, y = pos
-        far = (self.w - 1 - x, self.h - 1 - y)
-        if self.point:
-            return ((x, y), far)
-        return ((x, y), far, (far[0], y), (x, far[1]))
+        """*pos* and its copies, one per cell, in seat order.  A tile outside the canonical cell is
+        folded into it first, so the orbit of any tile of the map is the orbit of its canonical one."""
+        here = pos if 0 <= pos[0] < self.cw and 0 <= pos[1] < self.ch else _fold(self.cols, self.rows, self.cw, self.ch, pos)
+        return _images(self.cols, self.rows, self.cw, self.ch, here)
 
     def rect_images(self, pos: Pos, size: int) -> tuple[Pos, ...]:
-        """Top-left tiles of the copies of a *size* square at *pos*, in seat order."""
-        x, y = pos
-        fx, fy = self.w - size - x, self.h - size - y
-        if self.point:
-            return ((x, y), (fx, fy))
-        return ((x, y), (fx, fy), (fx, y), (x, fy))
+        """Top-left tiles of the copies of a *size* square at *pos*, in seat order.  *pos* is a
+        canonical tile: a footprint is only ever placed inside one cell."""
+        return _images(self.cols, self.rows, self.cw, self.ch, pos, size)
 
     def orbit(self, tiles: Iterable[Pos]) -> set[Pos]:
         return {image for tile in tiles for image in self.images(tile)}
 
-    def canonical(self, x: int, y: int) -> bool:
-        return y < self.h // 2 and (self.point or x < self.w // 2)
-
     def symmetrize(self) -> None:
         grid = self.grid
-        for y in range(self.h // 2):
-            for x in range(self.w if self.point else self.w // 2):
+        for y in range(self.ch):
+            for x in range(self.cw):
                 kind = grid[y][x]
                 for ix, iy in self.images((x, y))[1:]:
                     grid[iy][ix] = kind
         self.protected = self.orbit(self.protected)
 
+    def frame(self) -> None:
+        """Forest round the whole map, once the copying is done.
+
+        The rim is the map's frame, not a cell's ground: the canonical column it shows in one cell
+        is an inner column of the next, which a road may need open.  So the rim is painted like any
+        other tile while the map is drawn and put back to forest here, at the end."""
+        for x in range(self.w):
+            self.grid[0][x] = self.grid[self.h - 1][x] = Terrain.TREES
+        for y in range(self.h):
+            self.grid[y][0] = self.grid[y][self.w - 1] = Terrain.TREES
+
     def symmetric(self, terrain: list[list[Terrain]]) -> bool:
-        return all(terrain[iy][ix] is terrain[y][x] for y in range(self.h) for x in range(self.w) for ix, iy in self.images((x, y)))
+        """Every cell is the canonical one, tile for tile, on every tile of it that is in play.
+
+        Reading the canonical cell alone covers the map: the cells partition it.  A tile whose
+        copies include one on the map's rim is left out — with more than two cells on an axis the
+        rim is a cell's own column in one place and an inner one in another, and the rim is a frame
+        nobody walks on, so what stands there decides no match."""
+        for y in range(self.ch):
+            for x in range(self.cw):
+                images = self.images((x, y))
+                if any(not self.inside(ix, iy) for ix, iy in images):
+                    continue
+                kind = terrain[y][x]
+                if any(terrain[iy][ix] is not kind for ix, iy in images):
+                    return False
+        return True
 
     def inside(self, x: int, y: int) -> bool:
         """Within the map and off its edge row, which stays forest."""
         return 0 < x < self.w - 1 and 0 < y < self.h - 1
+
+    def disc(self, centre: Point, radius: float) -> list[Pos]:
+        """:meth:`within`, but the map's rim counts: see :meth:`frame`."""
+        cx, cy = centre
+        r = int(radius) + 1
+        return [(x, y) for y in range(int(cy) - r, int(cy) + r + 2) for x in range(int(cx) - r, int(cx) + r + 2)
+                if 0 <= x < self.w and 0 <= y < self.h and (x - cx) ** 2 + (y - cy) ** 2 <= radius * radius]
 
     def within(self, centre: Point, radius: float) -> list[Pos]:
         cx, cy = centre
@@ -186,13 +458,13 @@ class _Canvas:
         return out
 
 
-def _block(pos: Pos, gap: int = 1) -> list[Pos]:
-    """A 3x3 mine at *pos* and *gap* tiles around it."""
-    return [(pos[0] + dx, pos[1] + dy) for dy in range(-gap, 3 + gap) for dx in range(-gap, 3 + gap)]
+def _block(pos: Pos, gap: int = 1, size: int = 3) -> list[Pos]:
+    """A *size* mine at *pos* and *gap* tiles around it."""
+    return [(pos[0] + dx, pos[1] + dy) for dy in range(-gap, size + gap) for dx in range(-gap, size + gap)]
 
 
-def _mine_centre(pos: Pos) -> Point:
-    return (pos[0] + 1.5, pos[1] + 1.5)
+def _mine_centre(pos: Pos, size: int = 3) -> Point:
+    return (pos[0] + size / 2, pos[1] + size / 2)
 
 
 def _dist(a: Point, b: Point) -> float:
@@ -261,16 +533,25 @@ class _Spec:
     natural_clearing: int = 0  # trees cut around the natural (Forest)
     third_clearing: int = 0
     thirds: bool = True  # contested mines in the middle (Klondike keeps its gold in the pit instead)
+    seam: bool = False  # an endless gold seam out in the shared ground, where the map is big enough for one
     contested: int | None = None  # how many tiles nearer one hall than the next a third may be; None: the symmetry's default
     start_gold: int = MINE_GOLD
 
 
+#: Three of the five layouts hold a seam, and each for its own reason.  Plains is open ground where
+#: expansions lie exposed, so a deposit nobody can exhaust is exactly the thing to fight over.
+#: Crossings already asks who holds the fords, and a seam on the far bank gives the answer a price.
+#: Bastion promises a boom in safety and then a fight for the middle, and the seam is what the middle
+#: is finally worth.  Forest has none: its clearings and roads are cut by hand and a five-tile dig
+#: with its open ground around it would take a base's worth of woods out of a layout whose whole
+#: promise is that the woods are thick.  Klondike has none either: little gold at home and the rest
+#: in a walled pit is a deliberate shape of economy, and an endless trickle outside the pit unmakes it.
 _SPECS: Final[dict[Layout, _Spec]] = {
-    Layout.PLAINS: _Spec(Layout.PLAINS),
+    Layout.PLAINS: _Spec(Layout.PLAINS, seam=True),
     Layout.FOREST: _Spec(Layout.FOREST, clearing=9, natural_range=(13, 18), natural_clearing=5, third_clearing=4),  # a full base needs the room; four seats get less, see _clearing
-    Layout.CROSSINGS: _Spec(Layout.CROSSINGS, contested=14),  # the river runs down the bisector; thirds sit on its banks
+    Layout.CROSSINGS: _Spec(Layout.CROSSINGS, contested=14, seam=True),  # the river runs down the bisector; thirds sit on its banks
     Layout.KLONDIKE: _Spec(Layout.KLONDIKE, clearing=6, natural=False, thirds=False, start_gold=KLONDIKE_START_GOLD),
-    Layout.BASTION: _Spec(Layout.BASTION, natural_range=(12, 18)),
+    Layout.BASTION: _Spec(Layout.BASTION, natural_range=(12, 18), seam=True),
 }
 
 
@@ -281,47 +562,59 @@ class _Walls:
     gates: set[Pos]
     fords: set[Pos]
     rects: list[tuple[Pos, int]]  # footprints the site search must avoid, all seats
-    mines: list[tuple[Pos, int]]  # (top-left, gold) of the layout's own mines, all seats
+    mines: list[tuple[Pos, BuildingType, int]]  # (top-left, kind, gold) of the layout's own mines, all seats
     prefer_natural: Callable[[Pos], float] | None = None
     prefer_third: Callable[[Pos], float] | None = None
 
 
-def _clearing(spec: _Spec, width: int, height: int, seats: int) -> int:
-    """The base clearing's radius: Forest's generous nine shrinks to eight, then seven, where four
-    seats share a small map, or the woods between them would be too thin to matter."""
-    if spec.layout is not Layout.FOREST or seats == 2:
+def _clearing(spec: _Spec, cw: int, ch: int, wide: bool) -> int:
+    """The base clearing's radius: Forest's generous nine shrinks to eight, then seven, where a
+    seat's cell is small, or the woods between the seats would be too thin to matter."""
+    if spec.layout is not Layout.FOREST or wide:
         return spec.clearing
-    return 8 if width * height >= 3000 else 7
+    return 8 if cw * ch >= 750 else 7
 
 
-def _third_orbits(spec: _Spec, width: int, height: int, seats: int) -> int:
-    """How many contested mine sites (each copied to every seat) a map gets: four seats need
-    a Large map before the middle has room for any."""
-    area = width * height
+def _third_orbits(spec: _Spec, cw: int, ch: int) -> int:
+    """How many contested mine sites (each copied to every seat) a map gets, by the room a seat
+    has: a cell under 625 tiles has no middle to put one in."""
     if not spec.thirds:
         return 0
-    if seats == 2:
-        return 1 if area < 2500 else 2
-    return 0 if area < 2500 else 1 if area < 5000 else 2
+    room = cw * ch
+    return 0 if room < 625 else 1 if room < 1250 else 2
+
+
+def _wants_a_seam(spec: _Spec, width: int, height: int, cw: int, ch: int) -> bool:
+    """Whether this map gets an endless seam (one, copied to every seat, so one seat one seam): on a
+    layout that holds them, on a map bigger than the shipped three, where a seat's own cell has the
+    middle ground to put it in.  A match on a map that size is a long one, which is what a deposit
+    whose worth is how long you keep it is for."""
+    return spec.seam and width * height >= _SEAM_MAP and cw * ch >= _SEAM_CELL
+
+
+def _pit_inner(width: int, height: int) -> int:
+    """The open radius inside Klondike's rock ring."""
+    return max(6, min(9, round(min(width, height) * 0.18)))
 
 
 def _river(cv: _Canvas, rng: random.Random, walls: _Walls) -> None:
-    """Two players: one river from the centre to the far edge, wandering, and its reflection.
-    Four: a straight cross of two rivers of varying width.  A wide ford on the centre, a narrow
-    one near each end, rock outcrops on the banks beside the centre ford."""
-    cx, cy = cv.centre
-    radius = 1.5 if min(cv.w, cv.h) < (48 if cv.point else 64) else 2.0 if min(cv.w, cv.h) < 64 else 2.5
-    headings = [-math.pi / 4] if cv.point else [math.pi, -math.pi / 2]
+    """Two players: one river from the crossing of the cells to the far edge, wandering, and its
+    reflection.  Any other grid: a straight cross of two rivers of varying width, which the copies
+    repeat at every crossing of cells, so each cell is moated on two sides.  A wide ford on the
+    crossing, a narrow one near each end, rock outcrops on the banks beside the wide ford."""
+    cx, cy = cv.junction
+    radius = 1.5 if min(cv.w, cv.h) < (48 if cv.wide else 64) else 2.0 if min(cv.w, cv.h) < 64 else 2.5
+    headings = [-math.pi / 4] if cv.wide else [math.pi, -math.pi / 2]
     fords: set[Pos] = set()
     for base in headings:
         points: list[Point] = []
         x, y, heading, travelled = cx, cy, base, 0.0
         while cv.inside(round(x), round(y)):
             points.append((x, y))
-            if cv.point and travelled > 5:
+            if cv.wide and travelled > 5:
                 heading = min(base + 0.7, max(base - 0.7, heading + rng.uniform(-0.4, 0.4)))
             x, y, travelled = x + 3 * math.cos(heading), y + 3 * math.sin(heading), travelled + 3
-        widths = [radius if cv.point else radius + rng.uniform(0, 0.8) for _ in points]
+        widths = [radius if cv.wide else radius + rng.uniform(0, 0.8) for _ in points]
         widths = [sum(widths[max(0, i - 2):i + 3]) / len(widths[max(0, i - 2):i + 3]) for i in range(len(widths))]  # smoothed: the cross swells and narrows
         tiles: set[Pos] = set()
         for point, width in zip(points, widths):
@@ -349,10 +642,12 @@ def _cut(river: set[Pos], at: Point, heading: float, half_length: float) -> set[
 
 
 def _pit(cv: _Canvas, rng: random.Random, hc: Pos, walls: _Walls) -> None:
-    """A rock ring on the centre with a gate towards every seat; the gold inside, and a poor mine
-    in each empty corner when two play."""
-    cx, cy = cv.centre
-    inner = max(6, min(9, round(min(cv.w, cv.h) * 0.18)))
+    """A rock ring on the crossing of the cells with a gate towards every seat; the gold inside,
+    and a poor mine in the far half of the cell when the cell spans the map.  On a grid of more
+    than two cells an axis the copies build one pit at every crossing, one for each group of four
+    cells that meet there."""
+    cx, cy = cv.junction
+    inner = _pit_inner(cv.w, cv.h)
     ring = cv.band((cx, cy), inner, inner + 3)
     cv.paint(ring, Terrain.ROCK)
     cv.paint(cv.within((cx, cy), inner - 0.5), Terrain.GRASS)
@@ -361,17 +656,17 @@ def _pit(cv: _Canvas, rng: random.Random, hc: Pos, walls: _Walls) -> None:
     cv.paint(gate, Terrain.GRASS)
     walls.gates = set(gate)
     cv.protected |= set(ring) - set(gate)
-    offsets = [(-3.5, -1.5)] + ([(3.5, -3.5)] if inner >= 8 else []) if cv.point else [(-3.5, -2.5)]
+    offsets = [(-3.5, -1.5)] + ([(3.5, -3.5)] if inner >= 8 else []) if cv.wide else [(-3.5, -2.5)]
     for ox, oy in offsets:
         pos = (round(cx + ox) - 1, round(cy + oy) - 1)
         for image in cv.rect_images(pos, 3):
-            walls.mines.append((image, EXPANSION_GOLD))
+            walls.mines.append((image, BuildingType.GOLD_MINE, EXPANSION_GOLD))
             walls.rects.append((image, 3))
-    if cv.point:
-        poor = (cv.w - _MARGIN - 3, _MARGIN)
+    if cv.wide:
+        poor = (cv.cw - _MARGIN - 3, _MARGIN)
         cv.paint(_block(poor), Terrain.GRASS)
         for image in cv.rect_images(poor, 3):
-            walls.mines.append((image, POOR_GOLD))
+            walls.mines.append((image, BuildingType.GOLD_MINE, POOR_GOLD))
             walls.rects.append((image, 3))
 
 
@@ -379,9 +674,9 @@ def _ring(cv: _Canvas, rng: random.Random, hc: Pos, walls: _Walls) -> None:
     """A tree ring round the base clearing with a three-tile gate facing along the home edge.
     Mirror maps get a thinner ring and gates along the map's long axis, so the quadrant beside
     keeps room for the natural and the two facing gates share the middle column."""
-    band = cv.band(hc, _CLEARING + 1, _CLEARING + 4.5) if cv.point else cv.band(hc, _CLEARING + 1, _CLEARING + 3.5)  # the main mine's far corner is 7.8 out
+    band = cv.band(hc, _CLEARING + 1, _CLEARING + 4.5) if cv.wide else cv.band(hc, _CLEARING + 1, _CLEARING + 3.5)  # the main mine's far corner is 7.8 out
     cv.paint(band, Terrain.TREES)
-    angle = rng.choice((0.0, math.pi / 2)) if cv.point else 0.0
+    angle = rng.choice((0.0, math.pi / 2)) if cv.wide else 0.0
     gate = cv.along_ray(band, hc, angle, 1.5)
     cv.paint(gate, Terrain.GRASS)
     walls.gates = set(gate)
@@ -414,16 +709,65 @@ def _road(cv: _Canvas, rng: random.Random, a: Pos, b: Pos) -> None:
             cv.paint([t for t in ((x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)) if cv.inside(*t)], Terrain.GRASS, over=(Terrain.TREES,))
 
 
+def _glades(cv: _Canvas, rng: random.Random, hc: Pos) -> list[Pos]:
+    """Extra clearings for a cell with room to spare, so a big Forest map is woods with glades in
+    it rather than one solid block of trees: one per :data:`_GLADE_ROOM` tiles beyond the two the
+    layout always cuts.  Every shipped cell is small enough to get none."""
+    wanted = max(0, cv.cw * cv.ch // _GLADE_ROOM - 1)
+    out: list[Pos] = []
+    for _ in range(wanted):
+        best: Pos | None = None
+        best_score = 0.0
+        for _try in range(40):
+            spot = (rng.randrange(6, cv.cw - 6), rng.randrange(6, cv.ch - 6))
+            near = min([_dist(spot, hc)] + [_dist(spot, other) for other in out])
+            if near > best_score:
+                best, best_score = spot, near
+        if best is None or best_score < 12:
+            break
+        out.append(best)
+    return out
+
+
+def _meetings(cv: _Canvas) -> list[Pos]:
+    """Where the canonical cell's roads must reach for the woods to be one road network.
+
+    With at most two cells on each axis every cell meets every other at one point — the middle of
+    the map — and one road to it is the whole network, which is what shipped.  On a bigger grid the
+    cells meet along borders of two kinds (the mirror shows the cell's near column at one and its
+    far column at the next), so a road must reach the middle of every border; leave one out and the
+    connector tunnels a dead-straight corridor through the trees to join what the roads did not."""
+    if cv.cols <= 2 and cv.rows <= 2:
+        return [(round(cv.junction[0]), round(cv.junction[1]))]
+    across = [(0, cv.ch // 2), (cv.cw - 1, cv.ch // 2)] if cv.cols > 1 else []
+    down = [(cv.cw // 2, 0), (cv.cw // 2, cv.ch - 1)] if cv.rows > 1 else []
+    return across + down
+
+
 def _forest_roads(cv: _Canvas, rng: random.Random, hc: Pos, natural: Pos | None, thirds: list[Pos]) -> None:
-    """The middle clearing, and roads: hall to natural, natural to middle, hall to middle, thirds to middle."""
-    middle = (round(cv.centre[0]), round(cv.centre[1]))
-    cv.paint(cv.within(cv.centre, 5.5), Terrain.GRASS, over=(Terrain.TREES,))
+    """The middle clearing, and roads: hall to natural, natural to the meeting, hall to every
+    meeting, thirds to the nearest one, and a leg through every glade a roomy cell earns."""
+    meetings = _meetings(cv)
+    middle = meetings[0]
+    if cv.cols <= 2 and cv.rows <= 2:
+        cv.paint(cv.within(cv.junction, 5.5), Terrain.GRASS, over=(Terrain.TREES,))
+    else:
+        for meeting in meetings:
+            # A clearing, not a road end: where the mirror is in the other axis (a grid one cell
+            # tall) the copies of a single tile land diagonally apart, and nothing walks a diagonal.
+            cv.paint(cv.disc(meeting, 2.5), Terrain.GRASS, over=(Terrain.TREES,))
     legs = [(hc, middle)]
     if natural is not None:
         door = (natural[0] + 1, natural[1] + 1)
         legs = [(hc, door), (door, middle), (hc, middle)]
+    legs += [(hc, other) for other in meetings[1:]]
+    nearest = lambda spot: min(meetings, key=lambda m: _dist(spot, m))
     for third in thirds:
-        legs.append(((third[0] + 1, third[1] + 1), middle))
+        door = (third[0] + 1, third[1] + 1)
+        legs.append((door, nearest(door)))
+    for glade in _glades(cv, rng, hc):
+        cv.paint(cv.within(glade, 5.0), Terrain.GRASS, over=(Terrain.TREES,))
+        legs.append((glade, nearest(glade)))
     for a, b in legs:
         _road(cv, rng, a, b)
 
@@ -431,46 +775,76 @@ def _forest_roads(cv: _Canvas, rng: random.Random, hc: Pos, natural: Pos | None,
 # -- Sites -------------------------------------------------------------------------
 
 
-def _fits(cv: _Canvas, pos: Pos, rects: list[tuple[Pos, int]]) -> bool:
-    """Every copy of a mine at *pos* lies off the edge, on ground without water, rock or a layout's
-    wall, clear of other footprints and *_SITE_SPACING* from other mine sites."""
-    spacing = _SITE_SPACING[cv.point]
-    for image in cv.rect_images(pos, 3):
-        for x, y in _block(image):
+def _fits(cv: _Canvas, pos: Pos, rects: list[tuple[Pos, int]], size: int = 3, spacing: int | None = None) -> bool:
+    """Every copy of a *size* mine at *pos* lies off the edge, on ground without water, rock or a
+    layout's wall, clear of other footprints and *_SITE_SPACING* from other mine sites.
+
+    A deposit wider than the three tiles every mine had wants that much more room on each side, and
+    *slack* is that much and no more: it is zero for two 3x3 sites, so every map that was drawn
+    before the seams existed is drawn exactly as it was."""
+    if spacing is None:
+        spacing = _SITE_SPACING[cv.wide]
+    for image in cv.rect_images(pos, size):
+        for x, y in _block(image, size=size):
             if not cv.inside(x, y) or cv.grid[y][x] in (Terrain.WATER, Terrain.ROCK) or (x, y) in cv.protected:
                 return False
-        for (rx, ry), size in rects:
-            if size == 3 and max(abs(rx - image[0]), abs(ry - image[1])) < spacing:
+        for (rx, ry), other in rects:
+            slack = (size - 3) + (other - 3)
+            if max(abs(rx - image[0]), abs(ry - image[1])) < spacing + slack:
                 return False
-            if rx - 2 <= image[0] <= rx + size + 1 and ry - 2 <= image[1] <= ry + size + 1:
+            if rx - 2 - slack <= image[0] <= rx + other + 1 + slack and ry - 2 - slack <= image[1] <= ry + other + 1 + slack:
                 return False
     return True
 
 
-def _room(cv: _Canvas, pos: Pos, clearable: bool) -> int:
+def _room(cv: _Canvas, pos: Pos, clearable: bool, size: int = 3) -> int:
+    """Open tiles around a *size* site: within six of a 3x3 one, and a tile further out for every tile it is wider."""
     kinds = (Terrain.GRASS, Terrain.TREES) if clearable else (Terrain.GRASS,)
-    return sum(1 for x, y in cv.within(_mine_centre(pos), 6) if cv.grid[y][x] in kinds)
+    return sum(1 for x, y in cv.within(_mine_centre(pos, size), 6 + (size - 3)) if cv.grid[y][x] in kinds)
 
 
-def _canonical_sites(cv: _Canvas) -> Iterable[Pos]:
-    right = cv.w - 6 if cv.point else cv.w // 2 - 5
-    for y in range(2, cv.h // 2 - 5):
+def _canonical_sites(cv: _Canvas, size: int = 3) -> Iterable[Pos]:
+    """Every *size* mine site the canonical cell can hold, with room for the block and its ring.  A cell
+    edge that is the map's edge wants a tile more margin than one a neighbouring cell mirrors."""
+    right = cv.cw - 3 - size if cv.cols == 1 else cv.cw - 2 - size
+    for y in range(2, cv.ch - 2 - size):
         for x in range(2, right + 1):
             yield (x, y)
 
 
-def _pick(cv: _Canvas, scored: list[tuple[float, Pos]], rects: list[tuple[Pos, int]], clearable: bool) -> Pos | None:
+def _pick(cv: _Canvas, scored: list[tuple[float, Pos]], rects: list[tuple[Pos, int]], clearable: bool,
+          size: int = 3, room: int = _SITE_ROOM, spacing: int | None = None) -> Pos | None:
     for _score, pos in sorted(scored, reverse=True):
-        if _fits(cv, pos, rects) and _room(cv, pos, clearable) >= _SITE_ROOM:
+        if _fits(cv, pos, rects, size, spacing) and _room(cv, pos, clearable, size) >= room:
             return pos
     return None
+
+
+def _claim(cv: _Canvas, pos: Pos, gold: int, rects: list[tuple[Pos, int]], mines: list[tuple[Pos, BuildingType, int]], *,
+           clearing: int = 0, kind: BuildingType = BuildingType.GOLD_MINE) -> None:
+    """Take a canonical deposit site: one deposit of *kind* holding *gold* in every cell, the ground
+    under and around it cleared, and its footprints added to what later searches must keep away from.
+
+    Its footprint is whatever the rules give that kind, so a wider deposit needs nothing said here.
+    This is the whole of placing a kind of deposit: a new one is a site search of its own
+    (``_natural_site``, ``_third_site`` and ``_seam_site`` are the three there are, all scoring
+    :func:`_canonical_sites` and picking through :func:`_pick`) and a call here.  The order deposits
+    are claimed in is the order they are built in, which the simulation's own order follows, so a new
+    kind goes after the ones above it rather than among them.
+    """
+    size = BUILDINGS[kind].size
+    rects += [(image, size) for image in cv.rect_images(pos, size)]
+    cv.paint(_block(pos, size=size), Terrain.GRASS)
+    if clearing:
+        cv.paint(cv.within(_mine_centre(pos, size), clearing), Terrain.GRASS, over=(Terrain.TREES,))
+    mines += [(image, kind, gold) for image in cv.rect_images(pos, size)]
 
 
 def _natural_site(cv: _Canvas, rng: random.Random, spec: _Spec, hc: Pos, halls: list[Point], rects: list[tuple[Pos, int]],
                   prefer: Callable[[Pos], float] | None) -> Pos | None:
     """As far out as the range allows, half again nearer its own hall than any other."""
     low, high = spec.natural_range
-    if not cv.point:
+    if not cv.wide:
         low = min(low, 9 if spec.layout is not Layout.FOREST else 10)
     scored = []
     for pos in _canonical_sites(cv):
@@ -489,23 +863,72 @@ def _third_site(cv: _Canvas, rng: random.Random, spec: _Spec, halls: list[Point]
     for pos in _canonical_sites(cv):
         c = _mine_centre(pos)
         near = sorted(_dist(c, hall) for hall in halls)
-        if near[0] < 12 or near[1] - near[0] > (spec.contested or (6 if cv.point else 12)):
+        if near[0] < 12 or near[1] - near[0] > (spec.contested or (6 if cv.wide else 12)):
             continue
         scored.append((-(near[1] - near[0]) + rng.uniform(0, 6) + (prefer(pos) if prefer else 0.0), pos))
     return _pick(cv, scored, rects, spec.third_clearing > 0)
+
+
+def _seam_site(cv: _Canvas, rng: random.Random, spec: _Spec, halls: list[Point], rects: list[tuple[Pos, int]]) -> Pos | None:
+    """Ground worth leaving home for: :data:`_SEAM_AWAY` tiles from every hall, as evenly shared
+    between two of them as a third is, and with :data:`_SEAM_ROOM` open tiles around it for the hall
+    and the towers whoever means to keep it will want."""
+    size = BUILDINGS[BuildingType.GOLD_SEAM].size
+    scored = []
+    for pos in _canonical_sites(cv, size):
+        c = _mine_centre(pos, size)
+        near = sorted(_dist(c, hall) for hall in halls)
+        if near[0] < _SEAM_AWAY or near[1] - near[0] > (spec.contested or (6 if cv.wide else 12)):
+            continue
+        scored.append((-(near[1] - near[0]) + rng.uniform(0, 6), pos))
+    return _pick(cv, scored, rects, spec.third_clearing > 0, size, _SEAM_ROOM)
+
+
+def _camp_site(cv: _Canvas, rng: random.Random, anchor: Point, rects: list[tuple[Pos, int]]) -> Pos | None:
+    """A lair site guarding the deposit whose middle is *anchor*, within reach of it, on
+    ground with room to fight over, and clear of every footprint already claimed.
+
+    A camp is placed the way a mine is -- one canonical site, one copy to a cell -- so every seat faces the
+    same camp at the same remove from the same deposit and the audit's congruence still holds.  Its own
+    spacing is tighter than a deposit's (:data:`_CAMP_SPACING`), because a den that had to keep a mine's
+    distance from the dig it guards would not be guarding it.
+    """
+    scored = []
+    for pos in _canonical_sites(cv):
+        away = _dist(_mine_centre(pos), anchor)
+        if not _CAMP_NEAREST <= away <= _CAMP_FURTHEST:
+            continue
+        scored.append((-away + rng.uniform(0.0, 2.0), pos))  # as close to the deposit as the ground allows
+    return _pick(cv, scored, rects, True, 3, _CAMP_ROOM, _CAMP_SPACING)
+
+
+def _guard(cv: _Canvas, rng: random.Random, deposit: Pos, size: int, kind: str, rects: list[tuple[Pos, int]],
+           dens: list[tuple[Pos, str]]) -> None:
+    """Put a camp of *kind* beside the deposit at *deposit*, if there is room for one.
+
+    A camp is a wish, never a fault: an unguarded deposit is a poorer map, not an unfair one, and a
+    layout whose walls leave no room beside a dig would otherwise refuse the whole seed.
+    """
+    spot = _camp_site(cv, rng, _mine_centre(deposit, size), rects)
+    if spot is None:
+        return
+    rects += [(image, 3) for image in cv.rect_images(spot, 3)]
+    cv.paint(_block(spot), Terrain.GRASS)
+    cv.paint(cv.within(_mine_centre(spot), 4), Terrain.GRASS, over=(Terrain.TREES,))
+    dens.append((spot, kind))
 
 
 # -- Assembly ----------------------------------------------------------------------
 
 
 def _attempt(rng: random.Random, seed: int, width: int, height: int, players: int, human: int | None, theme: MapTheme,
-             races: list[Race], layout: Layout) -> tuple[World, dict]:
+             races: list[Race], layout: Layout, wilds: bool = True) -> tuple[World, dict]:
     spec = _SPECS[layout]
-    cv = _Canvas(width, height, 2 if players == 2 else 4)
-    seats = len(cv.images((0, 0)))
-    clearing = _clearing(spec, width, height, seats)
-    hall, hc = (_MARGIN, _MARGIN), (_MARGIN + 1, _MARGIN + 1)
-    main = (_MARGIN - 5, _MARGIN - 4)
+    cv = _Canvas(width, height, players)
+    clearing = _clearing(spec, cv.cw, cv.ch, cv.wide)
+    hall = _hall_corner(cv.cols, cv.rows, cv.cw, cv.ch)
+    hc = (hall[0] + 1, hall[1] + 1)
+    main = (hall[0] - 5, hall[1] - 4)
     if layout is Layout.FOREST:
         cv.paint(((x, y) for y in range(height) for x in range(width)), Terrain.TREES)
     else:
@@ -513,7 +936,7 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
     cv.symmetrize()
     cv.paint(cv.within(hc, clearing), Terrain.GRASS)
     cv.paint(_block(main), Terrain.GRASS)
-    _clump(cv, (_MARGIN + 9, _MARGIN + 1), 2.6, rng)
+    _clump(cv, (hall[0] + 9, hall[1] + 1), 2.6, rng)
     walls = _Walls(set(), set(), [], [])
     if layout is Layout.CROSSINGS:
         _river(cv, rng, walls)
@@ -525,52 +948,65 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
     halls = [_mine_centre(pos) for pos in cv.rect_images(hall, 3)][:players]
     rects = [(pos, 3) for pos in cv.rect_images(hall, 3)] + [(pos, 3) for pos in cv.rect_images(main, 3)] + walls.rects
     problems: list[str] = []
+    wishes: list[str] = []  # what this seed could not fit in but another might; see build()
+    # The mines the map will hold, in the order they are placed: a seat's own, then whatever the
+    # site searches find.  A new kind of mine is a search for its canonical site and one _claim.
+    mines: list[tuple[Pos, BuildingType, int]] = [(pos, BuildingType.GOLD_MINE, spec.start_gold) for pos in cv.rect_images(main, 3)[:players]]
+    if layout is Layout.KLONDIKE:
+        mines += [(pos, BuildingType.GOLD_MINE, POOR_GOLD) for pos in cv.rect_images(main, 3)[players:]]  # an empty cell's corner
     natural: Pos | None = None
     if spec.natural:
         natural = _natural_site(cv, rng, spec, hc, halls, rects, walls.prefer_natural)
         if natural is None:
             problems.append("no room for a natural")
-        else:
-            rects += [(pos, 3) for pos in cv.rect_images(natural, 3)]
-            cv.paint(_block(natural), Terrain.GRASS)
-            if spec.natural_clearing:
-                cv.paint(cv.within(_mine_centre(natural), spec.natural_clearing), Terrain.GRASS, over=(Terrain.TREES,))
+        else:  # the empty cell's stays, neutral
+            _claim(cv, natural, EXPANSION_GOLD, rects, mines, clearing=spec.natural_clearing)
     thirds: list[Pos] = []
-    for _ in range(_third_orbits(spec, width, height, seats)):
+    # Every camp on the map, in the order they are raised: one canonical den to a contested deposit, copied
+    # to every cell as the deposit itself is.  A seat's own mine and its natural are never guarded -- the
+    # opening is untouched and the first expansion is free; what a seat has to leave home for is held.
+    dens: list[tuple[Pos, str]] = []
+    for _ in range(_third_orbits(spec, cv.cw, cv.ch)):
         third = _third_site(cv, rng, spec, halls, rects, walls.prefer_third)
         if third is None:
             problems.append("no room for a third mine")
             break
         thirds.append(third)
-        rects += [(pos, 3) for pos in cv.rect_images(third, 3)]
-        cv.paint(_block(third), Terrain.GRASS)
-        if spec.third_clearing:
-            cv.paint(cv.within(_mine_centre(third), spec.third_clearing), Terrain.GRASS, over=(Terrain.TREES,))
+        _claim(cv, third, EXPANSION_GOLD, rects, mines, clearing=spec.third_clearing)
+        if wilds:
+            _guard(cv, rng, third, 3, rng.choice(("den", "nest")), rects, dens)
+    if _wants_a_seam(spec, width, height, cv.cw, cv.ch):
+        seam = _seam_site(cv, rng, spec, halls, rects)
+        if seam is None:
+            wishes.append("no room for a gold seam")
+        else:  # an endless deposit holds no stock: what it gives is a trip at a time, as long as it is held
+            _claim(cv, seam, 0, rects, mines, clearing=spec.third_clearing, kind=BuildingType.GOLD_SEAM)
+            if wilds:  # the richest prize and the furthest out: the big camp, every time
+                _guard(cv, rng, seam, BUILDINGS[BuildingType.GOLD_SEAM].size, "lair", rects, dens)
+    mines += walls.mines
     cv.symmetrize()
     if layout is Layout.FOREST:
         _forest_roads(cv, rng, hc, natural, thirds)
         cv.symmetrize()
 
+    cv.frame()
     world = World(width, height, cv.grid, players, human=human, rng=random.Random(seed), theme=theme, races=races, layout=layout)
     for seat, pos in enumerate(cv.rect_images(hall, 3)[:players]):
         world.place_building(seat, BuildingType.TOWN_HALL, pos)
-    mines: list[tuple[Pos, int]] = [(pos, spec.start_gold) for pos in cv.rect_images(main, 3)[:players]]
-    if players == 3 and layout is Layout.KLONDIKE:
-        mines.append((cv.rect_images(main, 3)[3], POOR_GOLD))  # the empty seat's corner
-    if natural is not None:
-        mines += [(pos, EXPANSION_GOLD) for pos in cv.rect_images(natural, 3)]  # the empty seat's stays, neutral
-    for third in thirds:
-        mines += [(pos, EXPANSION_GOLD) for pos in cv.rect_images(third, 3)]
-    mines += walls.mines
-    for pos, gold in mines:
-        world.place_building(None, BuildingType.GOLD_MINE, pos).gold = gold
+    for pos, kind, gold in mines:
+        world.place_building(None, kind, pos).gold = gold
+    for den, camp_kind in dens:
+        roster, hoard = _ROSTERS[camp_kind]
+        for image in cv.rect_images(den, 3):
+            camping.place(world, image, list(roster), hoard)
     for seat in range(players):
         for i in range(3):
-            world.spawn_unit(seat, UnitType.PEASANT, tile_center(cv.images((_MARGIN + i, _MARGIN + 3))[seat]))
+            world.spawn_unit(seat, UnitType.PEASANT, tile_center(cv.images((hall[0] + i, hall[1] + 3))[seat]))
     _connect(world, cv)
     world.update_vision()
     report = _audit(world, cv, spec, walls, natural)
     report["problems"] = problems + report["problems"]
+    report["wishes"] = wishes  # nothing the audit looks at is a wish: an unfair map is a fault, every time
     return world, report
 
 
@@ -648,6 +1084,8 @@ def _carve(world: World, cv: _Canvas, route: list[Pos]) -> None:
     for x, y in route:
         for brush in ((x, y), (x + 1, y), (x, y + 1)):
             for nx, ny in cv.images(brush):
+                # A tile whose copies include one on the rim is carved everywhere but there: the rim
+                # is a frame outside play, and leaving it would wall two cells off from each other.
                 if cv.inside(nx, ny) and (nx, ny) not in cv.protected and world.building_at((nx, ny)) is None \
                         and world.terrain_at((nx, ny)) is not Terrain.GRASS:
                     world.terrain[ny][nx] = Terrain.GRASS
@@ -673,6 +1111,8 @@ def audit(world: World) -> dict:
         report["wood"].append(None if tree is None else max(abs(tree[0] - cx), abs(tree[1] - cy)))
     report["connected"] = all(d in region for d in doors + mine_doors)
     report["expansions"] = len(world.mines()) - len(halls)
+    report["seams"] = sum(1 for m in world.mines() if m.type is BuildingType.GOLD_SEAM)
+    report["camps"] = len(world.camps)
     total = world.width * world.height
     report["trees"] = sum(1 for row in world.terrain for t in row if t is Terrain.TREES) / total
     report["water"] = sum(1 for row in world.terrain for t in row if t is Terrain.WATER) / total
@@ -683,7 +1123,7 @@ def _route(world: World, start: Pos, goal: Pos) -> list[Pos] | None:
     """The production pathfinder's route, or None when its budget runs out first."""
     if start == goal:
         return []
-    route = pathing.find_path_grid(start, goal, world._blocked, world.width, world.height)
+    route = pathing.find_path_grid(start, goal, world._blocked, world.width, world.height, max_expansions=world.path_budget)
     return route if route and route[-1] == goal else None
 
 
@@ -721,7 +1161,7 @@ def _audit(world: World, cv: _Canvas, spec: _Spec, walls: _Walls, natural: Pos |
             problems.append("the banks join off the fords")
     elif layout is Layout.KLONDIKE:
         gates = frozenset(cv.orbit(walls.gates))
-        pit = [world.free_tile_near((x, y, 3, 3)) for (x, y), gold in walls.mines if gold == EXPANSION_GOLD]
+        pit = [world.free_tile_near((x, y, 3, 3)) for (x, y), _kind, gold in walls.mines if gold == EXPANSION_GOLD]
         if any(door in reachable(world, doors[0], shut=gates) for door in pit):
             problems.append("the pit is open beside its gates")
     elif layout is Layout.BASTION and natural is not None:

@@ -5,7 +5,7 @@ import pytest
 from saga2d import Game
 from saga2d.testing import text_boxes
 from warband.art.visual_lint import use_real_text_metrics
-from warband.sim.rules import BLADES_BONUS, FORMATION_ARMOR, UNITS, BuildingType, Race, UnitType, Upgrade
+from warband.sim.rules import BLADES_BONUS, FORMATION_ARMOR, PLAYABLE_UNITS, UNITS, BuildingType, Race, UnitType, Upgrade
 from warband.ui.scene import PORTRAITS_PER_PAGE, GameScene
 from warband.ui.icons import COLORS
 from warband.ui.style import GOLD, build_theme
@@ -108,6 +108,8 @@ def test_a_mixed_selection_shows_every_kind(tmp_path) -> None:
 
 def test_the_panel_says_in_words_what_a_unit_is_doing(tmp_path) -> None:
     """It spelt out the order's class name: an attack-move read "Attacking-moving" and a repair "Repair"."""
+    from warband.sim.rules import BuildingType
+
     game = Game("Warband selection", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     try:
         scene = GameScene(field(), 0, ranked=False, settings=dict(SETTINGS))
@@ -119,13 +121,17 @@ def test_the_panel_says_in_words_what_a_unit_is_doing(tmp_path) -> None:
         farm.hp = farm.max_hp // 2  # staged: a raid's work
         peasant = world.spawn_unit(0, UnitType.PEASANT, (12.5, 12.5))
         world.repair([peasant.id], farm.id)
+        ruin = world.place_building(1, BuildingType.FARM, (20, 10))
+        ruin.abandoned = True  # staged: a rival's resignation, without playing one out
+        wrecker = world.spawn_unit(0, UnitType.PEASANT, (18.5, 10.5))
+        world.salvage([wrecker.id], ruin.id)
         said = {}
-        for unit in (footman, peasant):
+        for unit in (footman, peasant, wrecker):
             scene.select([unit.id])
             for _ in range(2):
                 game.tick(1 / 60)
-            said[unit.type] = {t["text"] for t in game.backend.texts}
-        assert "Attack-moving" in said[UnitType.FOOTMAN] and "Repairing" in said[UnitType.PEASANT]
+            said[unit.id] = {t["text"] for t in game.backend.texts}
+        assert "Attack-moving" in said[footman.id] and "Repairing" in said[peasant.id] and "Salvaging" in said[wrecker.id]
     finally:
         game.close()
 
@@ -177,6 +183,118 @@ def test_research_and_the_shield_wall_are_marked_beside_the_number_they_raise(tm
         game.backend.inject_mouse_move(*symbol_at(game, COLORS["armor"]))
         game.tick(1 / 60)
         assert "elbows" in scene.tooltip
+    finally:
+        game.close()
+
+
+#: What the card says a unit wears and how it strikes: both sides of the damage table, in the words a player reads.
+#: A new kind of unit — a neutral creature guarding a camp among them — states its own row here: the card is where
+#: a player learns which of their units to send at it.
+ARMOUR_NOTES = {
+    UnitType.PEASANT: "Unarmoured · normal blows",
+    UnitType.FOOTMAN: "Heavy armour · normal blows",
+    UnitType.ARCHER: "Light armour · piercing blows",
+    UnitType.SCOUT: "Light armour · normal blows",
+    UnitType.KNIGHT: "Heavy armour · normal blows",
+    UnitType.CATAPULT: "Unarmoured · siege blows",
+    UnitType.CLERIC: "Unarmoured · normal blows",
+}
+
+
+def drawn(game: Game) -> set[str]:
+    return {str(t["text"]) for t in game.backend.texts}
+
+
+@pytest.mark.parametrize("unit_type", list(PLAYABLE_UNITS), ids=lambda u: u.value)
+def test_the_card_names_what_a_selected_unit_wears_and_how_it_strikes(tmp_path, unit_type) -> None:
+    """Armour class and attack type were reachable only by hovering the armour stat.  The pair is what a player
+    acts on — armour alone is half of DAMAGE_FACTORS' two-sided table — so the card states both under the numbers."""
+    game, scene, _ids = start(tmp_path, (1200, 680), 1, kinds=(unit_type,))
+    try:
+        assert scene.armour_notes == (ARMOUR_NOTES[unit_type],)
+        assert ARMOUR_NOTES[unit_type] in drawn(game)
+    finally:
+        game.close()
+
+
+def test_a_rival_s_unit_states_its_armour_as_readily_as_your_own(tmp_path) -> None:
+    """The note is read off the unit's own kind, not off a seat: what a player must read to pick whom to send at a
+    creature guarding a camp, which belongs to no player at all."""
+    game, scene, _ids = start(tmp_path, (1280, 800), 1, kinds=(UnitType.PEASANT,))
+    try:
+        rival = scene.world.spawn_unit(1, UnitType.ARCHER, (9.5, 6.5))  # under the peasant's nose: a selection in fog is dropped
+        scene.world.update_vision()
+        scene.select([rival.id])
+        for _ in range(2):
+            game.tick(1 / 60)
+        assert scene.armour_notes == (ARMOUR_NOTES[UnitType.ARCHER],)
+    finally:
+        game.close()
+
+
+def test_a_building_s_card_says_it_is_fortified_whatever_it_is_doing(tmp_path) -> None:
+    """A building's card fills up with what it is making, so its class goes in the corner beside the hit points,
+    the one spot free in every state."""
+    from warband.sim.rules import BuildingType
+
+    game = Game("Warband armour", backend="mock", resolution=(1200, 680), theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        scene = GameScene(field(), 0, ranked=False, settings=dict(SETTINGS))
+        game.push(scene)
+        hall = scene.world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+        scene.select([hall.id])
+        for _ in range(3):
+            game.tick(1 / 60)
+        assert scene.armour_notes == ("Fortified",) and "Fortified" in drawn(game)
+        scene.world.players[0].gold = 5000
+        scene.train(UnitType.PEASANT)
+        scene.world.set_auto_train(hall.id, UnitType.PEASANT, True)
+        game.tick(1 / 60)
+        assert scene.armour_notes == ("Fortified",), "a hall training endlessly still says what it wears"
+    finally:
+        game.close()
+
+
+def test_a_selection_of_one_kind_names_the_armour_it_shares_and_a_mixed_one_does_not(tmp_path) -> None:
+    """A blob shows portraits, not stats; the one stat a blob can honestly share is its armour class.  The pair
+    does not fit that row: "60 units · page 1 of 3" and "· light armour · piercing blows" want 485 px of 442."""
+    game, scene, _ids = start(tmp_path, (1200, 680), 18, kinds=(UnitType.FOOTMAN,))
+    try:
+        assert scene.armour_notes == ("heavy armour",)
+        assert "18 units · heavy armour" == " · ".join(["18 units", *scene.armour_notes])
+    finally:
+        game.close()
+    game, scene, _ids = start(tmp_path, (1200, 680), 18, kinds=(UnitType.FOOTMAN, UnitType.PEASANT))
+    try:
+        assert scene.armour_notes == ()
+    finally:
+        game.close()
+
+
+def test_the_armour_stat_explains_what_lands_harder_on_it(tmp_path) -> None:
+    """The card carries the fact; the hover carries the reading of the table from the wearer's side, which the
+    tooltip never gave: an unarmoured unit says that piercing blows land half again as hard."""
+    game, scene, ids = start(tmp_path, (1280, 800), 1, kinds=(UnitType.PEASANT,))
+    try:
+        game.backend.inject_mouse_move(*symbol_at(game, COLORS["armor"]))
+        game.tick(1 / 60)
+        assert "piercing blows land ×1.5" in scene.tooltip
+        assert "armour is subtracted from every blow" in scene.tooltip
+    finally:
+        game.close()
+
+
+def test_the_card_that_trains_a_unit_says_what_it_will_wear_and_strike(tmp_path) -> None:
+    """A player choosing what to build decides before the unit exists: the train catalogue's tooltip carries the
+    same pair the unit's own card will."""
+    game, scene, ids = start(tmp_path, (1280, 800), 1, kinds=(UnitType.PEASANT,))
+    try:
+        scene.open_catalogue("train")
+        game.tick(1 / 60)
+        tips = {c.label: c.tooltip for c in scene.card}
+        assert "light armour · piercing blows" in tips["Archer"]
+        assert "heavy armour · normal blows" in tips["Footman"]
+        assert "unarmoured · siege blows" in tips["Catapult"]
     finally:
         game.close()
 

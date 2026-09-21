@@ -35,7 +35,7 @@ from arena import load, print_table, run, specs_1v1  # noqa: E402 - the ladder r
 from warband.league import arena, balance  # noqa: E402
 from warband.league.archetypes import NAMES  # noqa: E402
 from warband.league.arena import MatchResult, MatchSpec, win_rate  # noqa: E402
-from warband.sim.rules import Race, UnitType  # noqa: E402
+from warband.sim.rules import PLAYABLE_UNITS, Race, UnitType  # noqa: E402
 
 SEED_BASE = 70_000  # far from the seeds the ladders and the tuner use; nothing was tuned here
 
@@ -84,7 +84,7 @@ def report(results: list[MatchResult], agents: list[str], usage_of: str | None) 
               f"{p.peak_army:9.0f} {_minutes(p.first_soldier):>11}")
     print("  unspent: gold+lumber in the bank at the end; blocked: share of minutes at the supply cap; 1st soldier in minutes")
 
-    kinds = [t.value for t in UnitType if t is not UnitType.PEASANT]
+    kinds = [t.value for t in PLAYABLE_UNITS if t is not UnitType.PEASANT]
     print("\n== fielded (units trained per game, so a posture is what its name says) ==")
     print(f"  {'posture':<12} " + "".join(f"{k[:8]:>9}" for k in kinds))
     for name, counts in balance.fielded(results).items():

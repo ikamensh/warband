@@ -154,8 +154,13 @@ see costs, prerequisites and why an action is unavailable.
 Movement, building, repair and patrol orders, including Shift-queued tasks,
 keep priority. Settlement construction may borrow a gatherer, even one you
 sent to a particular resource, after it delivers its cargo. Workers return
-to automatic gathering when their other jobs are complete.
-To keep a worker where you put it, select it and use **Stop (S)** or
+to automatic gathering when their other jobs are complete — but not at once,
+and not everywhere. A peasant you have just been commanding is left standing
+for a while once its work runs out, and the further from your nearest depot it
+stands the longer: nothing beside your hall, up to about three quarters of a
+minute out on the open map. Send one across to raise a forward tower and it
+keeps its post instead of walking home to a mine.
+To keep a worker where you put it for good, select it and use **Stop (S)** or
 **Hold (H)**; this switches off its automatic work and prevents assignment
 to a settlement plan until you give it another order. A worker with no known
 safe work may wait for you to explore or clear the route.

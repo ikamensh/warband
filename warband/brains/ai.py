@@ -18,10 +18,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-from warband.sim.model import (MINE_CLEARANCE, Attack, AttackMove, Build, Building, Deposit, Harvest, Move, Point, Pos, Repair, Unit,
-                           World, dist, rect_gap)
+from warband.sim.model import (MINE_CLEARANCE, Attack, AttackMove, Build, Building, Deposit, Harvest, Move, Point, Pos, Repair, Salvage, Unit,
+                           World, dist, rect_gap, tile_center)
+from warband.sim import mapgen
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, BuildingType, Difficulty, Race, Resource, Terrain, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, PLAYABLE_UNITS, UPGRADES, BuildingType, Difficulty, Race, Resource, Terrain, UnitType, Upgrade
 from warband.sim.worker_knowledge import KnownMine
 
 try:
@@ -31,6 +32,25 @@ except ImportError:  # the source runs, as it does in the game
 
 EXPAND_DISTANCE: Final = 14.0  # a mine farther than this from the hall gets a hall of its own
 LOW_MINE_GOLD: Final = 6000  # a mine this low means the next hall is planned now, while gold still comes in
+
+
+def worth_a_hall(mine: KnownMine) -> bool:
+    """Whether a deposit is worth putting a hall beside: a mine with gold still coming out, or a seam.
+
+    A seam is always worth one -- it never runs dry -- but it pays a fifth of a mine's trip, so
+    :func:`hall_first` ranks a seam behind every mine a brain could take instead."""
+    return mine.endless or mine.gold >= LOW_MINE_GOLD
+
+
+def hall_first(mine: KnownMine, away: float) -> tuple[bool, float]:
+    """How a brain orders the deposits it could put its next hall at: gold that runs out first, then
+    whichever is nearest.  Taking the seam ahead of a rich mine would trade a hundred gold a trip for
+    twenty; the seam does not run away while the mines are drunk."""
+    return (mine.endless, away)
+CREEP_REACH: Final = 34.0  # tiles from home a camp has to be within before an army is walked to it
+CREEP_RETRY: Final = 120.0  # seconds a camp that beat the army off is left alone
+CREEP_PATIENCE: Final = 150.0  # seconds the army will stand at a den before giving it up, whatever it has left:
+# a lair it cannot reach or cannot break would otherwise hold the whole army at it for the rest of the match
 CLAIM_DISTANCE: Final = 8.0  # a mine with an own hall this near is claimed
 MAX_HALLS: Final = 3
 DEFEND_RADIUS: Final = 9.0
@@ -40,11 +60,26 @@ BUILD_MAX_DISTANCE: Final = 11
 #: A building of each size that needs no other: the ground a site needs depends on its size alone, so the planner sites
 #: a building whose prerequisite has not stood up yet as this one would be sited (:func:`auto_site`).
 UNLOCKED_OF_SIZE: Final[dict[int, BuildingType]] = {info.size: kind for kind, info in BUILDINGS.items()
-                                                   if info.requires is None and kind is not BuildingType.GOLD_MINE}
-#: Shared upgrades first, then whatever arts the brain's race has (see :mod:`warband.sim.races`).
+                                                   if info.requires is None and info.mine is None}
+#: Shared upgrades first, then whatever arts the brain's race has (see :mod:`warband.sim.races`).  The Keep stands
+#: where the first tier is bought out and the second is worth its gate; the master weapons come last of all.
 RESEARCH_ORDER: Final = (Upgrade.BLADES_1, Upgrade.ARMOR_1, Upgrade.ARROWS_1, Upgrade.HORSES, Upgrade.PLUNDER, Upgrade.DEEP_MINING, Upgrade.LONGBOWS,
-                  Upgrade.BLADES_2, Upgrade.ARMOR_2, Upgrade.ARROWS_2, Upgrade.SIEGE, Upgrade.BLESSING, Upgrade.BLOODLUST, Upgrade.REGROWTH,
-                  Upgrade.BLASTING_POWDER)
+                  Upgrade.KEEP, Upgrade.BLADES_2, Upgrade.ARMOR_2, Upgrade.ARROWS_2, Upgrade.SIEGE, Upgrade.BLESSING, Upgrade.BLOODLUST,
+                  Upgrade.REGROWTH, Upgrade.BLASTING_POWDER, Upgrade.BLADES_3, Upgrade.ARROWS_3)
+
+
+def with_prerequisites(researched: set[Upgrade], upgrade: Upgrade) -> list[Upgrade]:
+    """*upgrade* behind every upgrade it waits for that the player has not got, lowest first.  A research order
+    names the tier a brain wants, not the gates on the way to it: the rules moved the Keep in front of the second
+    tier, and ``bred.py`` is bred once and never edited, so its orders would silently stop at the gate."""
+    wanted: list[Upgrade] = []
+    for needed in UPGRADES[upgrade].requires:
+        if needed not in researched:
+            for lower in with_prerequisites(researched, needed):
+                if lower not in wanted:
+                    wanted.append(lower)
+    wanted.append(upgrade)
+    return wanted
 
 #: Target shares of the army by skeleton type: FOOTMAN line, ARCHER ranged,
 #: SCOUT raider, KNIGHT shock, CATAPULT siege, CLERIC healer.  Shares of types
@@ -77,7 +112,32 @@ def known_enemy_buildings(world: World, player: int) -> list:
     ground again, which is exactly what a player would believe.
     """
     return [record for record in world.worker_knowledge[player].buildings.values()
-            if record.player is not None and record.player != player and world.players[record.player].alive]
+            if record.player is not None and record.player != player and world.players[record.player].alive
+            and not world.players[record.player].neutral]  # a lair is a camp to clear, never an opponent to beat
+
+
+CAMP_REACH: Final = 10.0  # tiles from a remembered lair its guards hold: what a brain keeps its halls and peasants out of
+
+
+def known_camps(world: World, player: int) -> list:
+    """The creature lairs *player* has laid eyes on, as its own memory records them.
+
+    A camp is not an opponent -- it never grows, never attacks and never wins -- so it is kept out of
+    :func:`known_enemy_buildings` and asked for separately by the brains that go and clear one.
+    """
+    return [record for record in world.worker_knowledge[player].buildings.values()
+            if record.player is not None and world.players[record.player].neutral]
+
+
+def guarded(world: World, player: int, point: Point, reach: float = CAMP_REACH) -> bool:
+    """Whether a camp *player* knows about holds the ground at *point*.
+
+    A deposit with a lair beside it is not an expansion: a hall put up there is a hall whose peasants
+    walk into the guards, and the brain that does that feeds them one at a time for the whole match.
+    Clear the camp first and the ground stops being guarded, because the lair leaves the memory with it.
+    """
+    return any(dist(record.center, point) < reach for record in known_camps(world, player)
+               if record.id in world.buildings)
 
 
 _RINGS: Final[dict[tuple[int, int], tuple[tuple[float, int, int], ...]]] = {}
@@ -164,11 +224,12 @@ def auto_site(world: World, building_type: BuildingType, player: int, near: Poin
     own = [b.center for b in world.player_buildings(player)]
     anchor = min(halls or own, key=lambda point: dist(point, near)) if halls or own else near
     if building_type is BuildingType.TOWN_HALL:
-        free = [mine.center for mine in known_mines(world, player)
-                if mine.gold >= LOW_MINE_GOLD and not any(dist(mine.center, hall) <= CLAIM_DISTANCE for hall in halls)]
+        free = [mine for mine in known_mines(world, player)
+                if worth_a_hall(mine) and not any(dist(mine.center, hall) <= CLAIM_DISTANCE for hall in halls)
+                and not guarded(world, player, mine.center)]
         if not free:
             return None
-        anchor = min(free, key=lambda point: dist(point, anchor))
+        anchor = min(free, key=lambda mine: hall_first(mine, dist(mine.center, anchor))).center
     taken = [(pos, BUILDINGS[kind].size) for kind, pos in planned]
     requires = BUILDINGS[building_type].requires
     stands = requires is None or bool(world.player_buildings(player, requires, done=True))
@@ -229,6 +290,7 @@ class Profile:
     reserve: int  # gold kept back before research
     repair: bool  # peasants mend damaged buildings once the fighting there is over
     first_attack: float = 0.0  # seconds of play before its first wave may go out
+    creep: bool = False  # sends its army to clear a creature camp when it is plainly big enough
 
 
 PROFILES: Final[dict[Difficulty, Profile]] = {
@@ -243,7 +305,7 @@ PROFILES: Final[dict[Difficulty, Profile]] = {
     # it techs, sieges, fields healers and sends raiders, which makes a more
     # interesting opponent at the same strength.
     Difficulty.MEDIUM: Profile(peasants=14, think_every=0.5, first_wave=8, wave_growth=4, barracks=3, towers=3, tech=True, siege=True,
-                               clerics=True, harass=True, reserve=500, repair=True),
+                               clerics=True, harass=True, reserve=500, repair=True, creep=True),
 }
 
 
@@ -315,6 +377,10 @@ class Brain:
         self._last_workforce_target: int | None = None
         self.strikers: set[int] = set()  # our peasants sent at an enemy tower frame
         self._plan_logged = False
+        self.creeping: int | None = None  # the lair the army is clearing
+        self.creep_size = 0  # how many soldiers set out to clear it
+        self.creep_until = 0.0  # when it gives that camp up whatever it has left
+        self.camp_retry: dict[int, float] = {}  # lair id -> when that camp is worth trying again
 
     def note(self, world: World, what: str) -> None:
         self.log.append((world.time, what))
@@ -395,7 +461,7 @@ class Brain:
         """One peasant mends the most damaged building, once no enemy is near it."""
         if not self.profile.repair or any(isinstance(p.order, Repair) for p in self._peasants(world)):
             return
-        damaged = [b for b in world.player_buildings(self.player, done=True) if b.hp < b.max_hp * 0.7 and b.type is not BuildingType.GOLD_MINE]
+        damaged = [b for b in world.player_buildings(self.player, done=True) if b.hp < b.max_hp * 0.7 and b.info.mine is None]
         if not damaged:
             return
         b = min(damaged, key=lambda b: b.hp / b.max_hp)
@@ -436,7 +502,7 @@ class Brain:
         self.strikers = striking
         for tower in frames:
             spare = [p for p in self._peasants(world) if p.id not in self.strikers and p.constructing is None
-                     and not isinstance(p.order, (Build, Repair))]
+                     and not isinstance(p.order, (Build, Repair, Salvage))]
             drafted = sorted(spare, key=lambda p: dist(p.pos, tower.center))[:TOWER_STRIKERS - len(self.strikers)]
             if drafted:
                 world.attack([p.id for p in drafted], tower.id)
@@ -448,7 +514,7 @@ class Brain:
     def _construction(self, world: World, rng: random.Random) -> None:
         if any(not b.done for b in world.player_buildings(self.player)):
             return  # one site at a time; a builder in trouble would otherwise stall the whole plan
-        peasants = [p for p in self._peasants(world) if not p.hidden and p.carrying is None and not isinstance(p.order, Repair)]
+        peasants = [p for p in self._peasants(world) if not p.hidden and p.carrying is None and not isinstance(p.order, (Repair, Salvage))]
         if not peasants:
             return
         hall = self._hall(world)
@@ -513,11 +579,12 @@ class Brain:
         halls = world.player_buildings(player, BuildingType.TOWN_HALL)
         if len(halls) >= MAX_HALLS or any(not h.done for h in halls):
             return None
-        if worked is not None and worked.gold >= LOW_MINE_GOLD and dist(worked.center, hall.center) <= EXPAND_DISTANCE:
+        if worked is not None and worth_a_hall(worked) and dist(worked.center, hall.center) <= EXPAND_DISTANCE:
             return None
-        free = [m for m in known_mines(world, self.player) if m.gold >= LOW_MINE_GOLD
-                and not any(dist(m.center, h.center) <= CLAIM_DISTANCE for h in halls)]
-        return min(free, key=lambda m: dist(m.center, hall.center)) if free else None
+        free = [m for m in known_mines(world, self.player) if worth_a_hall(m)
+                and not any(dist(m.center, h.center) <= CLAIM_DISTANCE for h in halls)
+                and not guarded(world, self.player, m.center)]
+        return min(free, key=lambda m: hall_first(m, dist(m.center, hall.center))) if free else None
 
     def _site(self, world: World, building_type: BuildingType, anchor: Point, rng: random.Random) -> Pos | None:
         return site_search(world, building_type, self.player, anchor, rng, BUILD_MIN_DISTANCE, BUILD_MAX_DISTANCE)
@@ -547,7 +614,7 @@ class Brain:
                 world.train(hall.id, UnitType.PEASANT)
         first = halls[0] if halls else None
         army = self._army(world)
-        counts = {t: sum(1 for u in army if u.type is t) for t in UnitType}
+        counts = {t: sum(1 for u in army if u.type is t) for t in PLAYABLE_UNITS}
         for building in world.player_buildings(player, done=True):
             if not building.info.trains or building.type is BuildingType.TOWN_HALL or self.saving:
                 continue
@@ -623,14 +690,15 @@ class Brain:
         if player.gold < self.profile.reserve or self.saving:
             return
         buildings = world.player_buildings(self.player, done=True)  # nothing changes until the one order below
-        for upgrade in RESEARCH_ORDER:
-            if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):
+        for wanted in RESEARCH_ORDER:
+            if wanted in player.upgrades or not RACES[player.race].upgrade_allowed(wanted):
                 continue
-            for building in buildings:
-                if upgrade in building.info.researches and world.can_research(building, upgrade) is None:
-                    world.research(building.id, upgrade)
-                    self.note(world, f"research {upgrade.value}")
-                    return
+            for upgrade in with_prerequisites(player.upgrades, wanted):
+                for building in buildings:
+                    if upgrade in building.info.researches and world.can_research(building, upgrade) is None:
+                        world.research(building.id, upgrade)
+                        self.note(world, f"research {upgrade.value}")
+                        return
 
     def _muster_point(self, world: World, hall: Building) -> Point:
         """Between the hall and the map centre: the side the enemy comes from."""
@@ -662,12 +730,65 @@ class Brain:
 
     # -- Military --------------------------------------------------------------------
 
+    def _creep(self, world: World, army: list[Unit]) -> bool:
+        """Clear a creature camp.  True when the army has been given the job.
+
+        The whole army goes at once and stays until the lair is down: a camp that mends its wounded and
+        calls its dead back out of the den is a bottomless sink for soldiers fed into it a few at a time,
+        which is the one failure mode worth writing a rule against.  An army worn down past half of what
+        it set out with gives the camp up and does not come back to that one for a while.
+        """
+        lair = world.buildings.get(self.creeping) if self.creeping is not None else None
+        if self.creeping is not None and lair is None:
+            self.note(world, "camp cleared")
+            self.creeping = None
+        if lair is not None:
+            if len(army) < max(2, self.creep_size // 2) or world.time >= self.creep_until:
+                self.camp_retry[lair.id] = world.time + CREEP_RETRY
+                self.creeping = None
+                self.note(world, f"break off the camp with {len(army)} left")
+                hall = self._hall(world)
+                if hall is not None:
+                    world.move([u.id for u in army], self._muster_point(world, hall))
+                return True
+            idle = [u.id for u in army if not u.orders]
+            if idle:
+                world.attack_move(idle, self._beside(world, lair.rect, lair.center))
+            return True
+        if len(army) < self._required_wave(world):
+            return False
+        here = [record for record in known_camps(world, self.player)
+                if record.id in world.buildings and world.time >= self.camp_retry.get(record.id, 0.0)]
+        if not here:
+            return False
+        hall = self._hall(world)
+        origin = hall.center if hall is not None else army[0].pos
+        target = min(here, key=lambda record: dist(record.center, origin))
+        if dist(target.center, origin) > CREEP_REACH:
+            return False
+        self.creeping = target.id
+        self.creep_size = len(army)
+        self.creep_until = world.time + CREEP_PATIENCE
+        world.attack_move([u.id for u in army], self._beside(world, target.rect, target.center))
+        self.note(world, f"clear the camp with {len(army)}")
+        return True
+
+    @staticmethod
+    def _beside(world: World, rect: tuple[int, int, int, int], center: Point) -> Point:
+        """Somewhere a soldier can stand next to a footprint.  A building's centre is inside its own
+        blocked ground: a unit sent there paths towards it and stops a tile short for good, which fuzz
+        reports as a stalled unit."""
+        tile = world.free_tile_near(rect, prefer=center)
+        return tile_center(tile) if tile is not None else center
+
     def _military(self, world: World, rng: random.Random) -> None:
         army = self._army(world)
         if self.profile.harass:
             self._raid(world)
             army = [u for u in army if u.id not in self.raiders]
         threats = self._threats(world)
+        if self.profile.creep and not threats and self._creep(world, army):
+            return
         if threats:
             threat = self._threat_point(world, threats)
             size = len(threats)
@@ -766,16 +887,22 @@ class Brain:
         # at home until the clock runs out. Starts sit in the corners.
         hall = self._hall(world)
         here = hall.center if hall is not None else (world.width / 2, world.height / 2)
-        corners = [(2.5, 2.5), (world.width - 2.5, 2.5), (2.5, world.height - 2.5),
-                   (world.width - 2.5, world.height - 2.5)]
+        corners = mapgen.start_guesses(world.width, world.height, world.seats)
         return [max(corners, key=lambda c: dist(c, here))]
 
     def _threats(self, world: World) -> list[Unit]:
-        """Visible enemies within DEFEND_RADIUS of one of our buildings."""
+        """Visible enemies within DEFEND_RADIUS of one of our buildings.
+
+        A creature is never one: a camp is leashed to its lair and comes at nobody who has not walked
+        into it, so answering one as a raid would march the army out at ground it was never losing.
+        Clearing a camp is :meth:`_creep`'s decision, taken once and carried through.
+        """
         own = world.player_buildings(self.player)
         out: list[Unit] = []
         for unit in world.units.values():
             if unit.player == self.player or unit.hidden or not world.is_visible(self.player, unit.tile):
+                continue
+            if world.players[unit.player].neutral:
                 continue
             for b in own:
                 if dist(unit.pos, b.center) < DEFEND_RADIUS:

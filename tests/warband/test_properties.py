@@ -106,26 +106,29 @@ def test_a_path_steps_legally_and_is_the_shortest_there_is_on_many_grids(case) -
 
 
 def check_fair_map(seed: int, size: str, players: int, layout: Layout | None) -> None:
-    """At the sizes, seat counts and layouts New game offers (WB-046)."""
-    width, height = mapgen.SIZES[size]
+    """At the sizes, seat counts and layouts New game offers (WB-046).  A size that cannot seat this many
+    gives way to one that can, exactly as the New game screen moves it."""
+    if size not in mapgen.sizes_for(players, layout):
+        size = (mapgen.sizes_for(players, layout) or mapgen.sizes_for(players))[0]
+    width, height = mapgen.dimensions(size, players)
     chosen, world = fair_map(seed, width, height, players, layout=layout)
-    assert seed <= chosen < seed + FAIR_TRIES and (world.width, world.height, len(world.players)) == (width, height, players)
+    assert seed <= chosen < seed + FAIR_TRIES and (world.width, world.height, world.seats) == (width, height, players)
 
 
-SETTINGS = (st.integers(1, 2**31 - 1), st.sampled_from(sorted(mapgen.SIZES)), st.integers(2, 4), st.sampled_from([None, *Layout]))
-
-
-@FEW
-@given(*SETTINGS)
-def test_a_seed_the_game_chooses_leads_to_a_fair_map(seed: int, size: str, players: int, layout: Layout | None) -> None:
-    check_fair_map(seed, size, players, layout)
+SETTINGS = (st.integers(1, 2**31 - 1), st.sampled_from(sorted(mapgen.SIZES)),
+            st.sampled_from(mapgen.SEAT_COUNTS), st.sampled_from([None, *Layout]))
 
 
 @pytest.mark.slow
 @MANY
 @given(*SETTINGS)
 def test_a_seed_the_game_chooses_leads_to_a_fair_map_at_every_setting_it_offers(seed: int, size: str, players: int, layout: Layout | None) -> None:
-    """Three hundred seeds, a map generated for each and some many times over: the slow tier."""
+    """Three hundred seeds, a map generated for each and some many times over: the slow tier.
+
+    There is no fast twin of this: once the boards for many seats exist, a dozen generated maps is
+    over the fast tier's whole budget, and a twelve-example subset of this test proved nothing this
+    one does not.  The fast tier gets its fairness from test_maps.py, which walks the three shipped
+    sizes against every layout deterministically."""
     check_fair_map(seed, size, players, layout)
 
 
@@ -194,7 +197,7 @@ def order(data, world: World):
     tile = (data.draw(st.integers(-1, world.width)), data.draw(st.integers(-1, world.height)))
     # The seats in the match: an order for one that is not raises IndexError (or, for -1, acts for the last seat),
     # which nothing online can send, since the authority gives each seat's orders with that seat's own index.
-    player = data.draw(st.integers(0, len(world.players) - 1))
+    player = data.draw(st.integers(0, world.seats - 1))
     queue = data.draw(st.booleans())
     building, unit = data.draw(st.sampled_from(list(BuildingType))), data.draw(st.sampled_from(list(UnitType)))
     upgrade = data.draw(st.sampled_from(list(Upgrade)))

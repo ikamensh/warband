@@ -368,6 +368,46 @@ the dry-mine rulebook saw no second hall in 336 seats. Scarcity — a mine
 below `mine_floor`, or every place at the face taken — now opens that gate
 too, while the old mine still has the gold to pay for the move.
 
+### The gold seam: a reason to hold ground (2026-09-21)
+
+The same equilibrium — `mass` at 77 % and `turtle` at 76 %, and nothing else
+played — is what the **gold seam** is aimed at. It is a second kind of
+deposit, five tiles across, twenty gold a trip against a hundred, twelve
+places at its face against eight, and it never runs out. It sits in the
+shared ground at least eighteen tiles from every hall, on Plains, Crossings
+and Bastion, and only on maps bigger than the three shipped sizes — so the
+ratings and the league above were measured on maps that have none, and still
+hold. The design and the measurements are in
+[the maps note](warband-maps.md#the-gold-seam-2026-09-21).
+
+### Creature camps: a job for the army at minute four (2026-09-21)
+
+The same equilibrium again, from the other side. A seam gives an army a
+*reason* to hold ground; a **creature camp** gives it something to do to get
+there. Every contested deposit — the thirds and the seam, never a seat's own
+mine and never its natural — is guarded by a lair and its creatures, so the
+army a player builds before the timing push has a use that is not suicide into
+towers, and the middle of the map has to be taken from somebody at minute four.
+
+The measurement that matters is not a win rate but whether every side can use
+it: `tools/creep_report.py` reports lairs torn down against units lost to the
+wilds. Over 60 matches a side on Medium, `pro` cleared 0.74 lairs a match for
+1.17 units and `medium` 0.94 for 1.45 — a soldier and a half per den, against
+its hoard and the deposit it sat on. On the ladder, `pro` scores 63.7 % against
+`hard` with the camps and 70.0 % without, about one and a half standard errors
+apart on 80 games each, while peak army rises from 13 to 17 (`hard`) and 19 to
+21 (`pro`) and kills from 20 to 24 and 28 to 34. The design is in
+[the creatures note](warband-monsters.md).
+
+The shape of the incentive: a hand at a seam earns 2.9 gold a second against
+a miner's 12.8, so it is never the place to put the next peasant. But an
+expansion mine's 30 000 gold is drunk by a saturated crew in three and a
+quarter minutes, while a hall at a seam pays 34.8 gold a second for as long
+as it stands — the same 30 000 in fourteen and a half minutes, and every
+minute after that for nothing. Taken in the third minute of a long match it
+out-earns an expansion mine; taken in the fifteenth it is a rounding error.
+A posture that waits at home is paying for the wait.
+
 ### Prices
 
 Applied as measured in the experiments table above: knight 800 → 900 gold,
@@ -532,6 +572,154 @@ WB-036 (Master's third posture), on main, with evidence under
 * **Easy against a plain opening**: see [the difficulty
   settings](ai-ladder.md#the-difficulty-settings). Easy now waits until
   minute eight before its first wave, and the scripted opening beats it again.
+
+## The catapult, and the two weapons it was (2026-09-20)
+
+A player said catapults were too strong for their price. Every number in this
+document said the opposite — the siege posture scored 34.7% in the second
+league and catapults earned 650 per 1,000 spent — and both were right, because
+they were not talking about the same weapon.
+
+`model._aim_point` used to end `return None if auto else spots[-1]`. A crew
+firing on its own judgement refused a landing point its own side could be
+standing on; a crew a player right-clicked onto a target fired anyway, and the
+player answered for the splash. The league only ever plays brains, so every reading here is the
+first weapon. `tools/battle_bench.py --aimed left|right|both` now drives a
+side's crews the way a player does — every half second a crew with no live
+target in reach is right-clicked onto the enemy its stone is worth most on —
+so the second one can be measured too.
+
+The gap was the whole complaint. Seven footmen and two catapults against ten
+footmen, 60 fights a pairing, half from each side:
+
+| | on its own judgement | aimed by hand |
+|---|---:|---:|
+| won | 26.7% | 100.0% |
+| stones thrown in the clash | one every 31 s | one every 5.4 s |
+| damage on the enemy | 358 | 564 |
+| damage on our own side | 0 | 248 |
+| of nine units left | 1.5 | 3.7 |
+
+A catapult's reload is 3.8 seconds. The crew was firing at an eighth of its
+rate and the player at seven tenths, so they were not the same unit at all: at
+the old price the hand-aimed pair was worth three times what it cost (seven
+footmen and two catapults held sixteen footmen: 5,400 gold of infantry against
+1,800 of engines) and the crews' own pair twice.
+
+### The crew now weighs the trade
+
+Refusing every stone that could touch our own side means refusing every stone
+there is once the lines meet, and the per-unit bodies of
+[unit-motion part 7](unit-motion.md) made it worse: fatter bodies are shoved
+further, so `FRIENDLY_MARGIN` had to rise from 0.3 to 0.45 and the same
+pairing fell from 90.0% to 26.7%.
+
+`_clear_of_friends` is now `_friendly_cost`, which weighs a friend exactly
+where it used to place it — where it stands, where its velocity carries it,
+where its move order carries it, at arm's length of the enemy it is walking up
+to fight — but returns what it would cost rather than a veto: each friend under
+the stone counts its `SIEGE_WORTH`, in full within `DIRECT_HIT` and
+`SPLASH_FRACTION` out to the splash, `FRIENDLY_MARGIN` further out again on
+both because the prediction is a guess. `_aim_trade` then throws the landing
+point with the best `enemy − FRIENDLY_WORTH × ours`, and holds when nothing
+comes down ahead. `_siege_choice` picks its target by the same number.
+
+`FRIENDLY_WORTH` is two of ours for one of theirs, which is the least that is
+clean. Won is the set piece again, 60 fights a pairing; the damage columns are
+the same seven footmen and two catapults against ten footmen over twelve seeds:
+
+| our own count | won vs footman:10 | vs footman:12 | damage on the enemy | on our own |
+|---|---:|---:|---:|---:|
+| the old veto | 26.7% | 6.7% | 358 | 0 |
+| ×5 | 50.0% | — | 344 | 2 |
+| ×3 | 91.7% | 30.0% | 412 | 16 |
+| **×2** | **95.0%** | **71.7%** | **425** | **29** |
+| ×1.5 | 98.3% | — | 458 | 54 |
+| ×1 | 98.3% | — | 504 | 77 |
+
+At 1.5 and below the crew shells its own line on the clash seeds of
+`tests/warband/test_siege_judgement.py`; at 3 it holds fire where it is pressed. `FRIENDLY_MARGIN` was not touched: it is the slop in
+the prediction, not the appetite for a trade, and it is already the least value
+that keeps stones off our own footmen with the new bodies.
+
+### Then the price
+
+With its crew fixed the catapult was the best thing per gold in the game, and
+for the brains as much as for the player. Six postures on four maps from both
+corners, 120 matches and 240 player-games a rulebook — the price-experiment
+shape, so roughly eight points of noise on a posture's score and far less on
+the usage columns:
+
+| rulebook | `siege` | value per 1,000 | trade | a game | workshops |
+|---|---:|---:|---:|---:|---:|
+| before the crew's judgement changed | 50.0% | 1,417 | 2.65 | 2.11 | 48% |
+| with the trade | 60.0% | 1,457 | 2.77 | 2.19 | 48% |
+| price 900 → 1,200 | 47.5% | 1,255 | 2.20 | 1.95 | 47% |
+| damage 36 → 30 | 47.5% | 1,222 | 2.23 | 1.99 | 48% |
+| reload 3.0 → 4.0 | 55.0% | 1,325 | 2.50 | 2.12 | 50% |
+| price and damage | 50.0% | 1,119 | 2.16 | 1.85 | 47% |
+| price and reload | 47.5% | 1,116 | 2.17 | 1.73 | 47% |
+| price and reload 4.5 | 45.0% | 1,098 | 2.07 | 1.80 | 47% |
+| price, reload and damage 32 | 47.5% | 1,010 | 1.89 | 1.88 | 48% |
+| price 1,750 and reload | 48.8% | 1,106 | 2.17 | 1.51 | 48% |
+| **price, reload and 80 hit points** | **46.2%** | **1,029** | **1.76** | **1.87** | **45%** |
+| price, reload, 70 hit points, damage 34 | 40.0% | 946 | 1.57 | 1.85 | 47% |
+
+In the same league the archer destroys 1,003 per 1,000 spent and trades 1.35,
+the knight 799 and 1.17, the footman 538 and 0.71. **Applied: `Cost(700, 200)`
+→ `Cost(900, 300)`, cooldown 3.0 → 4.0 and 100 → 80 hit points.** That is the
+price the catapult carried before the second league cut it, restored now that
+the crew can use the thing; a stone every 4.8 seconds instead of 3.8; and the
+one lever measured to cost a hand-driven crew more than a brain's, because a
+brain keeps its engines further back than a player does.
+
+Damage, splash, range, minimum range, speed, the wind-up, the ×1.5 against
+buildings and Siege Engineering are all untouched: they are what the unit is,
+and three hands on one unit is already two more than a price. The workshop's
+own price is untouched too — the path is still reached in 45% of player-games.
+
+What it comes to, 60 fights a pairing.  The left army is always seven footmen
+and two catapults, which came to 6,000 gold-plus-lumber before and 6,600 after,
+so its equal-price opponent in footmen goes from ten to eleven and the two
+fixed opponents below go from ten per cent richer than it to exactly its price:
+
+| against | before, on its own | before, aimed | after, on its own | after, aimed |
+|---|---:|---:|---:|---:|
+| its price in footmen | 26.7% | 100.0% | 61.7% | 96.7% |
+| twelve archers (6,600) | 100.0% | 90.0% | 96.7% | 66.7% |
+| six knights and a footman (6,600) | 50.0% | 88.3% | 26.7% | 61.7% |
+| what a catapult is worth, against footmen | 2.0× its price | 3.0× | 1.2× | 2.0× |
+
+(The last row is where the win rate crosses a half as footmen are added: before,
+the pair held sixteen footmen aimed and about thirteen on its own; after,
+fifteen and under twelve, against a price that rose by a third.)
+
+The player's catapult falls from three times its price to twice; the brains'
+from twice to a little over its price, having been lifted four-fold by the
+judgement first, so the `siege` posture lands at 46.2% against the 50.0% it
+had before any of this. The remaining gap between the two is a player picking
+better ground and pushing the engines into range, which is skill, not a rule.
+
+### What it did to the difficulty ladder
+
+Nothing that shows. The same 400-match ladder (`tools/arena.py ladder --agents
+easy,medium,hard,master,grandmaster --seeds 20`) run either side of the whole
+change: Grandmaster 1488 → 1575, Master 1347 → 1395, Hard 1222 → 1188, Medium
+the anchor, Easy 515 → 517. Every one of those is inside its own 90% interval,
+and the order and the gaps are unchanged, so `brains.ai.DIFFICULTY_ELO` stands.
+(The absolute numbers are lower than that table throughout: a Bradley-Terry fit
+reads against the field it was played in, and five agents on twenty seeds is
+not the measurement the shipped table came from.)
+
+### What is stale above
+
+The second league's readings on the catapult — 650 per 1,000, a trade of 0.97,
+the siege posture at 34.7% — are three leagues and a dozen changes old
+(the price cut, the mine cap, WB-052's siege judgement, the Keep, the bodies).
+On this branch, before anything here, the catapult already destroyed 1,417 per
+1,000 and traded 2.65. Read the dated sections downwards; the price experiments
+above are the record of what was tried in September, not the state of the game.
+
 
 ## What to change next
 

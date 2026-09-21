@@ -406,3 +406,118 @@ def test_a_harvest_the_player_ordered_is_not_rebalanced_away():
     world.players[0].gold, world.players[0].lumber = 0, 9000
     run(world, 40)
     assert not any(_on_gold(w) for w in workers)
+
+
+# -- Hands off a worker its player is using (WB-059) ----------------------------
+
+
+def forward_post():
+    """A base in one corner of a wide open map; the far corner is a good thirty tiles of walking from the hall.
+
+    The tower rush the complaint names: a barracks so a tower may be raised, and a purse that can pay for it.
+    """
+    terrain = [[Terrain.GRASS] * 40 for _ in range(24)]
+    terrain[8][5] = Terrain.TREES
+    world = World(40, 24, terrain, 2)
+    world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
+    world.place_building(0, BuildingType.BARRACKS, (1, 6))
+    world.place_building(None, BuildingType.GOLD_MINE, (7, 3))
+    world.players[0].gold, world.players[0].lumber = 5000, 5000
+    worker = world.spawn_unit(0, UnitType.PEASANT, (4.5, 4.5))
+    world.update_vision()
+    return world, worker
+
+
+def test_a_peasant_sent_across_the_map_is_not_walked_home_to_a_mine():
+    """The complaint itself: send a peasant to the far side and the policy claimed it the moment it stood still,
+    and walked it back to the gold.  Far from home and lately in its player's hand, it is not the policy's."""
+    world, worker = forward_post()
+    world.move([worker.id], (35.5, 20.5))
+    run(world, 30)
+    assert dist(worker.pos, (35.5, 20.5)) < 1.5, "it should have walked there by now"
+    assert not worker.orders, "the move is done"
+    arrived = worker.pos
+    run(world, 30)
+    assert not any(isinstance(order, (Harvest, Deposit)) for order in worker.orders), worker.orders
+    assert dist(worker.pos, arrived) < 1.0, "it stays where it was put"
+
+
+def test_a_peasant_that_raised_a_forward_tower_keeps_its_post():
+    """The scenario in full: the walk, the tower, and then the policy leaving the builder where the player put it."""
+    world, worker = forward_post()
+    world.move([worker.id], (33.5, 19.5))  # a tower goes up on ground somebody has looked at
+    run(world, 30)
+    world.build(worker.id, BuildingType.TOWER, (32, 18))
+    run(world, 45)
+    tower = next(b for b in world.player_buildings(0, done=True) if b.type is BuildingType.TOWER)
+    assert tower.done and not worker.hidden, "the tower stands and its builder is out of it"
+    post = worker.pos
+    run(world, 30)
+    assert not any(isinstance(order, (Harvest, Deposit)) for order in worker.orders), worker.orders
+    assert dist(worker.pos, post) < 1.5
+
+
+def test_the_hold_runs_out_and_a_forgotten_peasant_goes_back_to_work():
+    """A peasant that never works again is a bug of its own: the hold is a courtesy, not a parking brake.
+    Stop and Hold are the parking brake, and they are unconditional."""
+    world, worker = forward_post()
+    world.players[0].gold, world.players[0].lumber = 0, 5000
+    world.move([worker.id], (35.5, 20.5))
+    run(world, 30)
+    assert not worker.orders
+    run(world, worker_ai.MANUAL_HOLD + 2)
+    assert any(isinstance(order, Harvest) for order in worker.orders), "past the hold it is the policy's again"
+
+
+def test_a_peasant_ordered_beside_the_hall_goes_straight_back_to_work():
+    """The hold is square in the walk home, so at the base it is all but nothing: a peasant that put up a farm
+    by the hall and went back to the mine is what the policy is for, and the complaint was never about it."""
+    world, worker = forward_post()
+    world.players[0].gold, world.players[0].lumber = 0, 5000
+    world.move([worker.id], (4.5, 4.5))
+    run(world, 3)
+    assert any(isinstance(order, Harvest) for order in worker.orders), worker.orders
+
+
+def test_the_policy_claims_a_worker_outright_and_a_release_hands_one_back():
+    """A job the policy placed is nobody's to hold, and ``release_workers`` says the same on purpose: both leave
+    the worker free for the next placement, where an order of the player's own would hold it."""
+    world, worker = forward_post()
+    world.players[0].gold, world.players[0].lumber = 0, 5000
+    run(world, 2)
+    assert any(isinstance(order, Harvest) for order in worker.orders)
+    assert worker.commanded is None, "the policy's own hand is not a command"
+    world.harvest([worker.id], (5, 8))
+    assert worker.commanded == world.time
+    world.release_workers([worker.id])
+    assert worker.commanded is None
+
+
+@pytest.mark.parametrize("distance, seconds", [
+    (0.0, 0.0), (worker_ai.HOME_REACH, 0.0), (16.0, worker_ai.MANUAL_HOLD / 2),
+    (worker_ai.AUTO_REACH, worker_ai.MANUAL_HOLD), (90.0, worker_ai.MANUAL_HOLD), (float("inf"), worker_ai.MANUAL_HOLD)])
+def test_the_hold_ramps_between_the_base_and_the_open_map(distance, seconds):
+    """Nothing inside the base, everything out on the map, and a straight ramp between the two."""
+    assert worker_ai.manual_hold(distance) == pytest.approx(seconds)
+
+
+def test_a_commanded_worker_survives_a_save_and_a_snapshot_keeps_it_from_a_stranger():
+    """The hold is part of the match, so it is saved with it; it is also an intention, so a rival is not told it."""
+    from warband.online.authority import WarbandMatch
+
+    world, worker = forward_post()
+    world.move([worker.id], (35.5, 20.5))
+    run(world, 30)
+    stamp = worker.commanded
+    assert stamp is not None
+    reloaded = World.from_dict(deepcopy(world.to_dict()))
+    assert reloaded.units[worker.id].commanded == stamp
+
+    match = WarbandMatch(seed=3, players=2)
+    peasant = next(u for u in match.world.player_units(0) if u.is_worker)
+    match.world.move([peasant.id], peasant.pos)
+    assert peasant.commanded is not None
+    mine = next(u for u in match.snapshot(0)["world"]["units"] if u["id"] == peasant.id)
+    assert mine["commanded"] == peasant.commanded
+    seen = [u for u in match.snapshot(1)["world"]["units"] if u["id"] == peasant.id]
+    assert all(u["commanded"] is None for u in seen), "a stranger is not told whose hand a peasant is in"

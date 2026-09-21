@@ -39,10 +39,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Final
 
-from warband.brains.ai import ARMY_PLANS, RESEARCH_ORDER, _shift, known_enemy_buildings, known_mines, release_arrived, site_search
-from warband.sim.model import Attack, Build, Building, Harvest, Move, Point, Pos, Repair, Resource, Unit, World, dist, rect_gap, tile_center
+from warband.brains.ai import (ARMY_PLANS, CAMP_REACH, RESEARCH_ORDER, _shift, guarded, hall_first, known_camps, known_enemy_buildings,
+                              known_mines, release_arrived, site_search, with_prerequisites)
+from warband.sim import mapgen
+from warband.sim.model import Attack, Build, Building, Harvest, Move, Point, Pos, Repair, Resource, Salvage, Unit, World, dist, rect_gap, tile_center
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, MINE_SLOTS, UPGRADES, BuildingType, Cost, Layout, Race, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, GOLD_PER_TRIP, PLAYABLE_UNITS, UPGRADES, BuildingType, Cost, Layout, Race, UnitType, Upgrade
 from warband.sim.worker_knowledge import KnownMine
 
 _MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
@@ -50,6 +52,7 @@ WALK_OVER: Final = 4.0  # seconds the peasants sent at a frame by our own mine o
 STRICT_SLACK: Final = 0.1  # how far past its planned share a type may run under a strict plan
 BUILD_MIN_DISTANCE: Final = 2
 BUILD_MAX_DISTANCE: Final = 12
+MUSTERED: Final = 1.0  # tiles from the place the brain wants it within which a soldier counts as standing there
 
 
 @dataclass(frozen=True)
@@ -98,6 +101,18 @@ class ProProfile:
     ffa_caution: float = 0.8           # how much more careful each extra opponent makes it
     expand: bool = True
     expand_early: bool = False        # a second mine before production has saturated
+    # Creeping: the one job an army has before the timing push.  docs/balance.md measures the standing
+    # equilibrium as mass 77 % / turtle 76 %, which is to say that an army built before the push is pure
+    # cost; a camp is somewhere to spend it that is not suicide into towers.
+    creep: bool = True
+    creep_from: float = 150.0          # no camp before this: the opening comes first
+    creep_army: int = 6                # never walk at a camp with fewer soldiers than this
+    creep_ratio: float = 1.5           # …nor without this much more strength than the camp is reckoned to have
+    creep_prior: float = 4.0           # a camp nobody has looked at is priced at this many of our own soldiers
+    creep_reach: float = 34.0          # tiles from home a camp has to be within to be worth the walk
+    creep_abort: float = 0.55          # break off once the push has lost this much of what it set out with
+    creep_patience: float = 150.0      # …or once the lair has stood this long under the army, whatever it has left
+    creep_retry: float = 120.0         # …and leave that camp alone for this long
     siege: bool = True
     clerics: bool = True
     counter_from: float = 0.3         # an enemy more than this fraction shooters is answered with riders
@@ -282,6 +297,11 @@ class ProBrain:
         self.log: list[tuple[float, str]] = []
         self._seen: dict[int, dict[UnitType, float]] = {}  # per opponent: most of each kind ever seen at once
         self._seen_at: dict[int, float] = {}               # …and when that opponent was last looked at
+        self.creeping: int | None = None   # the lair the army is clearing
+        self.creep_strength = 0.0          # what the army was worth when it set out to clear it
+        self.creep_until = 0.0             # …and when it gives that camp up whatever it has left
+        self.camp_seen: dict[int, float] = {}   # per lair: the most its guards were ever seen to be worth
+        self.camp_retry: dict[int, float] = {}  # …and when a camp that beat the army off is worth trying again
 
     def note(self, world: World, what: str) -> None:
         self.log.append((world.time, what))
@@ -354,12 +374,11 @@ class ProBrain:
     def _unexplored_corner(self, world: World) -> Point:
         """Somewhere worth looking when nothing of theirs has been found yet.
 
-        Starts sit in the corners, so the far one from ours is the first guess.
+        Starts sit one to a cell of the map's grid, so the cell furthest from ours is the first guess.
         """
         hall = self._hall(world)
         here = hall.center if hall is not None else (world.width / 2, world.height / 2)
-        corners = [(2.5, 2.5), (world.width - 2.5, 2.5), (2.5, world.height - 2.5),
-                   (world.width - 2.5, world.height - 2.5)]
+        corners = mapgen.start_guesses(world.width, world.height, world.seats)
         return max(corners, key=lambda c: dist(c, here))
 
     def _known_mines(self, world: World) -> list[KnownMine]:
@@ -385,7 +404,7 @@ class ProBrain:
                 seen = current.setdefault(unit.player, {})
                 seen[unit.type] = seen.get(unit.type, 0.0) + 1.0
         fade = 0.99 ** (self.profile.think_every / 0.4)
-        for player in world.players:
+        for player in world.players[:world.seats]:  # the wilds are no opponent to keep a memory of
             if player.id == self.player or not player.alive:
                 continue
             now = current.get(player.id, {})
@@ -414,11 +433,11 @@ class ProBrain:
     # -- Economy -------------------------------------------------------------------
 
     def _worked_mines(self, world: World) -> list[KnownMine]:
-        """Mines with gold left inside reach of one of our halls."""
+        """Deposits with gold still coming out of them inside reach of one of our halls."""
         halls = self._halls(world)
         if not halls:
             return []
-        return [m for m in self._known_mines(world) if m.gold > 0 and min(dist(m.center, h.center) for h in halls) < 14.0]
+        return [m for m in self._known_mines(world) if m.has_gold and min(dist(m.center, h.center) for h in halls) < 14.0]
 
     def _worker_target(self, world: World) -> int:
         """Peasants worth having: what the mines being worked can absorb.
@@ -428,7 +447,9 @@ class ProBrain:
         same target reached over forty seconds a worker — because the economy
         that pays for the army is the thing being delayed.
         """
-        mines = max(1, len(self._worked_mines(world)))
+        # A deposit is worth the hands its trip is worth: an endless seam pays a fifth of a mine, so it
+        # earns a fifth of the crew.  Hiring ten peasants for a seam would be paying a mine's wages for it.
+        mines = max(1.0, sum(m.trip / GOLD_PER_TRIP for m in self._worked_mines(world)))
         wanted = round(mines * self.profile.workers_per_mine / (1.0 - self.profile.lumber_share))
         return min(self.profile.max_workers, wanted)
 
@@ -460,7 +481,7 @@ class ProBrain:
         if hall is None:
             return
         places = [(world.width / 2, world.height / 2)] + sorted(
-            [(3.5, 3.5), (world.width - 3.5, 3.5), (3.5, world.height - 3.5), (world.width - 3.5, world.height - 3.5)],
+            mapgen.start_guesses(world.width, world.height, world.seats, 3.5),
             key=lambda corner: dist(corner, hall.center))[1:]
         if self._prospect_leg >= 2 * len(places):
             return  # looked everywhere twice: there is nothing to find
@@ -501,7 +522,7 @@ class ProBrain:
         """
         player = world.players[self.player]
         peasants = [p for p in self._peasants(world)
-                    if not p.hidden and not isinstance(p.order, (Build, Repair)) and p.id not in self.scouts
+                    if not p.hidden and not isinstance(p.order, (Build, Repair, Salvage)) and p.id not in self.scouts
                     and not self._answering(p)]
         if player.lumber >= self.profile.lumber_stock:
             # Let go of the axe and let the model's own policy place them. Naming a
@@ -533,7 +554,7 @@ class ProBrain:
 
     def _repairs(self, world: World) -> None:
         damaged = [b for b in world.player_buildings(self.player, done=True)
-                   if b.hp < b.max_hp * 0.6 and b.type is not BuildingType.GOLD_MINE]
+                   if b.hp < b.max_hp * 0.6 and b.info.mine is None]
         if not damaged or any(isinstance(p.order, Repair) for p in self._peasants(world)):
             return
         target = min(damaged, key=lambda b: b.hp / b.max_hp)
@@ -665,11 +686,13 @@ class ProBrain:
         mines = self._worked_mines(world)
         if not mines:
             return True
+        # A seam brings up no stock at all, so it counts for nothing here on purpose: an economy that
+        # rests on one is exactly an economy that has to go and find another mine.
         if sum(mine.gold for mine in mines) < self.profile.mine_floor * len(mines):
             return True
         miners = sum(1 for p in self._peasants(world)
                      if p.inside is not None or any(isinstance(o, Harvest) and isinstance(o.target, int) for o in p.orders))
-        return miners >= MINE_SLOTS * len(mines)
+        return miners >= sum(mine.slots for mine in mines)
 
     def _producers_saturated(self, world: World) -> bool:
         """Whether the buildings already standing are the bottleneck rather than the bank.
@@ -687,21 +710,27 @@ class ProBrain:
         return player.gold >= self.profile.surplus_gold
 
     def _expansion_site(self, world: World) -> Point | None:
-        """An unclaimed mine with gold in it, nearest to home."""
+        """An unclaimed deposit still giving gold, nearest to home; a seam only once no mine will do.
+
+        A seam pays a fifth of a mine's trip and never runs out, so it is the expansion to take when the
+        mines are drunk or claimed, not the one to take first (:func:`~warband.brains.ai.hall_first`)."""
         halls = self._halls(world)
         if not halls:
             return None
         claimed = [h.center for h in world.player_buildings(self.player, BuildingType.TOWN_HALL)]
-        best, best_distance = None, math.inf
+        best, best_rank = None, (True, math.inf)
         for mine in self._known_mines(world):
-            if mine.gold <= 0 or min(dist(mine.center, c) for c in claimed) < 12.0:
+            if not mine.has_gold or min(dist(mine.center, c) for c in claimed) < 12.0:
                 continue
+            if guarded(world, self.player, mine.center):
+                continue  # a deposit with a live camp beside it is not an expansion; clear it first
             away = min(dist(mine.center, h.center) for h in halls)
             enemy_halls = [r.center for r in self._known_enemy_buildings(world)]
             if enemy_halls and min(dist(mine.center, c) for c in enemy_halls) < away:
                 continue  # not ours to take yet
-            if away < best_distance:
-                best, best_distance = mine.center, away
+            rank = hall_first(mine, away)
+            if rank < best_rank:
+                best, best_rank = mine.center, rank
         return best
 
     def _ordered(self, world: World) -> list[Build]:
@@ -741,7 +770,7 @@ class ProBrain:
         if free <= 0:
             return
         builders = [p for p in self._peasants(world)
-                    if not p.hidden and not isinstance(p.order, (Build, Repair)) and not self._answering(p)]
+                    if not p.hidden and not isinstance(p.order, (Build, Repair, Salvage)) and not self._answering(p)]
         if not builders:
             return
         # Ground already spoken for by an order in flight: can_place cannot know
@@ -820,7 +849,7 @@ class ProBrain:
         through the centre, so it is the reflection of our own main mine."""
         hall = self._hall(world)
         mines = self._known_mines(world)
-        if hall is None or not mines or len(world.players) != 2:
+        if hall is None or not mines or world.seats != 2:
             return None
         ours = min(mines, key=lambda m: dist((m.x + m.size / 2, m.y + m.size / 2), hall.center))
         return (world.width - (ours.x + ours.size / 2), world.height - (ours.y + ours.size / 2))
@@ -833,7 +862,7 @@ class ProBrain:
     def _enemy_start(self, world: World) -> Point | None:
         """Where the one opponent started: the point reflection of our own start through the centre."""
         hall = self._hall(world)
-        if hall is None or len(world.players) != 2:
+        if hall is None or world.seats != 2:
             return None
         return (world.width - hall.center[0], world.height - hall.center[1])
 
@@ -880,7 +909,7 @@ class ProBrain:
         self.rushers = [i for i in self.rushers if i in world.units]
         while len(self.rushers) < profile.rush_builders and self.rush_drafted < profile.rush_tries:
             spare = [p for p in self._peasants(world) if not p.hidden and p.id not in self.rushers
-                     and not isinstance(p.order, (Build, Repair)) and p.constructing is None and not self._answering(p)]
+                     and not isinstance(p.order, (Build, Repair, Salvage)) and p.constructing is None and not self._answering(p)]
             if not spare:
                 break
             drafted = min(spare, key=lambda p: dist(p.pos, start))
@@ -888,8 +917,9 @@ class ProBrain:
             self.rush_drafted += 1
             self.note(world, f"rush: drafted peasant {drafted.id}")
         if not self.rushers:
-            self._end_rush(world)
-            return
+            if self.rush_drafted >= profile.rush_tries:
+                self._end_rush(world)  # every try spent and none of them left alive
+            return  # nobody to spare this tick (all of them building, mending or answering a raid): look again next one
         post = self._standable(world, self._behind(guess, start, 4.0))
         for rusher in [world.units[i] for i in self.rushers]:
             if rusher.constructing is not None or isinstance(rusher.order, Build):
@@ -932,7 +962,7 @@ class ProBrain:
                     break
                 if len(hall.queue) < 2 and world.can_train(hall, UnitType.PEASANT) is None and self._affordable(world, world.unit_info(player, UnitType.PEASANT).cost):
                     world.train(hall.id, UnitType.PEASANT)
-        counts = {t: sum(1 for u in army if u.type is t) for t in UnitType}
+        counts = {t: sum(1 for u in army if u.type is t) for t in PLAYABLE_UNITS}
         targets = self._army_targets(world)
         wishes: list[tuple[float, UnitType, Building]] = []
         for building in world.player_buildings(player, done=True):
@@ -1022,14 +1052,15 @@ class ProBrain:
             return
         player = world.players[self.player]
         buildings = world.player_buildings(self.player, done=True)  # nothing changes until the one order below
-        for upgrade in self._research_order():
-            if upgrade in player.upgrades or not RACES[player.race].upgrade_allowed(upgrade):
+        for wanted in self._research_order():
+            if wanted in player.upgrades or not RACES[player.race].upgrade_allowed(wanted):
                 continue
-            cost = UPGRADES[upgrade].cost
-            for building in buildings:
-                if upgrade in building.info.researches and world.can_research(building, upgrade) is None and self._payable(world, cost):
-                    world.research(building.id, upgrade)
-                    return
+            for upgrade in with_prerequisites(player.upgrades, wanted):
+                cost = UPGRADES[upgrade].cost
+                for building in buildings:
+                    if upgrade in building.info.researches and world.can_research(building, upgrade) is None and self._payable(world, cost):
+                        world.research(building.id, upgrade)
+                        return
 
     # -- Military -------------------------------------------------------------------
 
@@ -1071,6 +1102,8 @@ class ProBrain:
         for unit in self._enemies(world):
             if unit.info.damage == 0 and unit.is_worker:
                 continue
+            if world.players[unit.player].neutral:
+                continue  # a camp is leashed to its lair: it takes no ground, so there is nothing to answer
             if any(dist(unit.pos, b.center) < 9.0 for b in own):
                 out.append(unit)
         return out
@@ -1093,6 +1126,8 @@ class ProBrain:
                 self._defend(world, guards + army, threats)
             return
         if self._strike_towers(world, guards + ([] if self.attacking else army)):
+            return
+        if self._creep(world, guards + army):
             return
         self._post(world, guards)
         hall = self._hall(world)
@@ -1132,7 +1167,7 @@ class ProBrain:
                 point = self._front_point(world, hall)
                 for unit in waiting:
                     if dist(unit.pos, point) > 4.0:
-                        world.move([unit.id], self._muster(world, point, unit))
+                        self._send_to_muster(world, point, unit)
             return
         if world.time < self.regroup_until or self._push_waits(world):
             self._gather(world, army, hall)
@@ -1156,6 +1191,81 @@ class ProBrain:
             world.attack_move([u.id for u in army], target)
         else:
             self._gather(world, army, hall)
+
+    def _camp_strength(self, world: World, record) -> float:
+        """What a camp is reckoned to be worth: the most its guards were ever seen to be worth at once,
+        and never less than :attr:`ProProfile.creep_prior` soldiers of ours.
+
+        A camp never grows, so the high-water mark is the whole truth once it has been looked at.  Until
+        then the floor is what keeps two soldiers from strolling into a troll: a brain that priced an
+        unseen camp at nothing would feed the army in a few at a time, and a camp that mends its wounded
+        and calls its dead back out of the den takes that for ever.
+        """
+        here = [u for u in world.units.values()
+                if world.players[u.player].neutral and u.hp > 0 and not u.hidden
+                and dist(u.pos, record.center) <= CAMP_REACH and world.is_visible(self.player, u.tile)]
+        best = max(self.camp_seen.get(record.id, 0.0), strength(world, here))
+        self.camp_seen[record.id] = best
+        return max(best, self.profile.creep_prior * self._typical_soldier(world))
+
+    def _creep(self, world: World, army: list[Unit]) -> bool:
+        """Clear a creature camp.  True when the army has been given that job and nothing else.
+
+        The whole army goes at once and stays until the lair is down, because the lair is both the
+        payout and the thing that puts the camp back together.  A push worn past ``creep_abort`` of what
+        it set out with gives up and leaves that camp alone for ``creep_retry`` seconds: trickling
+        soldiers into a camp that heals and respawns is a sink with no bottom to it.
+        """
+        profile = self.profile
+        if not profile.creep or self.attacking:
+            return False
+        lair = world.buildings.get(self.creeping) if self.creeping is not None else None
+        if self.creeping is not None and lair is None:
+            self.note(world, "camp cleared")
+            self.creeping = None
+        if lair is not None:
+            mine = strength(world, army)
+            # The patience is not a nicety: a den the army cannot reach or cannot break would otherwise hold
+            # the whole army at it for the rest of the match, and reinforcements keep the strength test from
+            # ever tripping.  Fuzz reports that as an army of stalled units.
+            if len(army) < 3 or mine < profile.creep_abort * self.creep_strength or world.time >= self.creep_until:
+                self.camp_retry[lair.id] = world.time + profile.creep_retry
+                self.creeping = None
+                self.regroup_until = world.time + profile.regroup_seconds
+                self.note(world, f"break off the camp at {mine:.0f} of {self.creep_strength:.0f}")
+                hall = self._hall(world)
+                if hall is not None:
+                    home = self._front_point(world, hall)
+                    for unit in army:
+                        world.move([unit.id], self._muster(world, home, unit))
+                return True
+            spot = self._standable(world, lair.center)
+            idle = [u.id for u in army if not u.orders]
+            if idle:
+                world.attack_move(idle, spot)
+            return True
+        if world.time < max(profile.creep_from, self.regroup_until) or self._push_waits(world):
+            return False
+        hall = self._hall(world)
+        origin = hall.center if hall is not None else (army[0].pos if army else None)
+        if origin is None:
+            return False
+        here = [record for record in known_camps(world, self.player)
+                if record.id in world.buildings and world.time >= self.camp_retry.get(record.id, 0.0)
+                and dist(record.center, origin) <= profile.creep_reach]
+        if not here:
+            return False
+        target = min(here, key=lambda record: dist(record.center, origin))
+        mine = strength(world, army)
+        theirs = self._camp_strength(world, target)
+        if len(army) < profile.creep_army or mine < profile.creep_ratio * theirs:
+            return False
+        self.creeping = target.id
+        self.creep_strength = mine
+        self.creep_until = world.time + profile.creep_patience
+        self.note(world, f"clear the camp with {len(army)} ({mine:.0f} against {theirs:.0f})")
+        world.attack_move([u.id for u in army], self._standable(world, target.center))
+        return True
 
     def _outmatched_at_target(self, world: World, army: list[Unit], mine: float) -> bool:
         """Whether the push, where it fights, faces more than ``abort_ratio`` times what it has left: the defenders
@@ -1199,14 +1309,16 @@ class ProBrain:
         return tile_center(tile) if tile is not None else self._front_point(world, hall)
 
     def _post(self, world: World, guards: list[Unit]) -> None:
-        """Send the home guard back to the hall whenever it has nothing to do."""
+        """Send the home guard back to the hall whenever it has nothing to do, and leave it at its post once it is
+        standing there (:meth:`_send_to_muster`)."""
         hall = self._hall(world)
         if hall is None:
             return
         home = self._home_point(world, hall)
         for guard in guards:
-            if not guard.orders and dist(guard.pos, hall.center) > 6.0:
-                world.move([guard.id], self._muster(world, home, guard))
+            if guard.orders or dist(guard.pos, hall.center) <= 6.0:
+                continue
+            self._send_to_muster(world, home, guard)
 
     def _caution(self, world: World) -> float:
         """How much more careful to be than in a duel.
@@ -1217,7 +1329,7 @@ class ProBrain:
         player game without this, which is barely ahead of the brain it
         replaced — so every extra opponent buys back some of the caution.
         """
-        bystanders = sum(1 for p in world.players if p.id != self.player and p.alive) - 1
+        bystanders = sum(1 for p in world.players[:world.seats] if p.id != self.player and p.alive) - 1
         return 1.0 + self.profile.ffa_caution * max(0, bystanders)
 
     def _army_centre(self, world: World, army: list[Unit]) -> Point | None:
@@ -1233,7 +1345,7 @@ class ProBrain:
         for unit in army:
             if unit.orders or dist(unit.pos, point) <= 4.0:
                 continue
-            world.move([unit.id], self._muster(world, point, unit))
+            self._send_to_muster(world, point, unit)
 
     def _muster(self, world: World, point: Point, unit: Unit) -> Point:
         """*point*, nudged so the whole army is not walking at one tile.
@@ -1245,6 +1357,18 @@ class ProBrain:
         angle = (unit.id % 12) / 12.0 * 2.0 * math.pi
         spread = 1.0 + unit.id % 3
         return self._standable(world, (point[0] + spread * math.cos(angle), point[1] + spread * math.sin(angle)))
+
+    def _send_to_muster(self, world: World, point: Point, unit: Unit) -> None:
+        """Send *unit* to its own place around *point*, and leave it alone once it stands there.
+
+        Its place is nudged per unit and nudged again onto standable ground, so it can be several tiles from
+        *point*: a soldier judged by its distance from *point* alone was ordered onto ground it was already
+        standing on, every pass of the brain, for the rest of the match.  It finished the walk in one step,
+        went idle, and was sent again; fuzz reads a unit ordered about once a second and never getting
+        anywhere as a stalled unit, which is what it was (seed 81, an archer of a bred orc posture)."""
+        post = self._muster(world, point, unit)
+        if dist(unit.pos, post) > MUSTERED:
+            world.move([unit.id], post)
 
     def _defenders_near(self, world: World, point: Point, radius: float = 12.0) -> float:
         """What is waiting at *point*: the soldiers we can see, the towers covering it,
@@ -1295,7 +1419,7 @@ class ProBrain:
         player grows is how a free-for-all is lost by the one who started it.
         """
         seen = {record.player for record in self._known_enemy_buildings(world)}
-        living = [p.id for p in world.players if p.id != self.player and p.alive and p.id in seen]
+        living = [p.id for p in world.players[:world.seats] if p.id != self.player and p.alive and p.id in seen]
         if not living:
             return None
         return min(living, key=lambda p: sum(self.remembered(p).values()))
@@ -1377,7 +1501,7 @@ class ProBrain:
                 self.scouts = [riders[0].id]
             else:
                 spare = [p for p in self._peasants(world)
-                         if not p.hidden and p.carrying is None and not isinstance(p.order, (Build, Repair))
+                         if not p.hidden and p.carrying is None and not isinstance(p.order, (Build, Repair, Salvage))
                          and not self._answering(p)]
                 if len(spare) > 3:
                     # Drafted with a harvest order in hand, the peasant keeps it:
@@ -1501,7 +1625,7 @@ class ProBrain:
         """Peasants a rush's answer may draft: not building and on no other errand; with *miners*, the ones
         inside a mine too, who obey as they come out with their load."""
         return [p for p in self._peasants(world) if p.constructing is None and (miners or p.inside is None)
-                and not isinstance(p.order, (Build, Repair)) and p.id not in self.scouts and p.id not in self.rushers
+                and not isinstance(p.order, (Build, Repair, Salvage)) and p.id not in self.scouts and p.id not in self.rushers
                 and p.id != self.prospector and not self._answering(p)]
 
     @staticmethod

@@ -23,7 +23,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 
-from warband.sim.model import Building, Event, Unit, World
+from warband.sim.model import Building, Event, Unit, World, unit_stats
 from warband.sim.races import RACES
 from warband.sim.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Race, UnitType, Upgrade
 
@@ -61,6 +61,9 @@ class PlayerTally:
     dealt: Counter[str] = field(default_factory=Counter)     # damage landed by each own unit type
     taken: Counter[str] = field(default_factory=Counter)     # damage received by each own unit or building type
     friendly: Counter[str] = field(default_factory=Counter)  # damage own siege landed on own side, by victim type
+    lost_to_wilds: Counter[str] = field(default_factory=Counter)  # own units a neutral creature put down, by type
+    camps_cleared: int = 0  # creature lairs this player tore down: a camp is cleared for good only when the lair falls
+    hoard: int = 0  # gold taken out of the lairs it tore down
     unattributed: int = 0  # blows whose striker was gone before the event was read (no dealt/kill credit)
     timeline: list[Sample] = field(default_factory=list)
 
@@ -84,15 +87,14 @@ class PlayerTally:
         return cls(**rest, **counters, timeline=timeline)
 
 
-_UNIT_NAMES = frozenset(t.value for t in UnitType)
+_UNIT_NAMES = frozenset(t.value for t in UnitType)  # the wilds too: a creature costs nothing and still has a price
 _BUILDING_NAMES = frozenset(t.value for t in BuildingType)
-_UPGRADE_BY_NAME = {info.name: upgrade for upgrade, info in UPGRADES.items()}
 
 
 def _price(race: Race, key: str) -> int:
     """What *key* (a unit, building or upgrade value) costs *race*, gold and lumber together."""
     if key in _UNIT_NAMES:
-        cost = RACES[race].units[UnitType(key)].cost
+        cost = unit_stats(race, UnitType(key)).cost  # a creature is nobody's: no race names one, and it costs nothing
     elif key in _BUILDING_NAMES:
         cost = RACES[race].buildings[BuildingType(key)].cost
     else:
@@ -102,7 +104,9 @@ def _price(race: Race, key: str) -> int:
 
 class Telemetry:
     def __init__(self, world: World) -> None:
-        self.tallies: tuple[PlayerTally, ...] = tuple(PlayerTally(race=p.race.value) for p in world.players)
+        # One tally per playing seat.  The wilds keep none: what a creature killed is its victim's loss and
+        # the razer's kill, and nobody reads a column for a side that buys nothing and never wins.
+        self.tallies: tuple[PlayerTally, ...] = tuple(PlayerTally(race=p.race.value) for p in world.players[:world.seats])
         self._last_hitter: dict[int, tuple[int, str]] = {}  # target id → (striker's player, striker's type)
         self._next_sample = 0.0
         self.observe(world, [])
@@ -151,7 +155,7 @@ class Telemetry:
         tally.first.setdefault(event.target_type, world.time)
 
     def _researched(self, world: World, event: Event) -> None:
-        upgrade = _UPGRADE_BY_NAME[event.text]
+        upgrade = Upgrade(event.target_type)  # never the event's text: each race names its own Keep
         tally = self.tallies[event.player]
         tally.researched[upgrade.value] += 1
         tally.spent[upgrade.value] += UPGRADES[upgrade].cost.gold + UPGRADES[upgrade].cost.lumber
@@ -159,8 +163,12 @@ class Telemetry:
 
     # -- Blows --------------------------------------------------------------------
 
+    def _tally(self, player: int | None) -> PlayerTally | None:
+        """The seat's tally, or None for the wilds and for what nobody owns."""
+        return self.tallies[player] if player is not None and player < len(self.tallies) else None
+
     def _hit(self, world: World, event: Event) -> None:
-        victim = self.tallies[event.player] if event.player is not None else None
+        victim = self._tally(event.player)
         if victim is not None:
             victim.taken[event.target_type] += event.amount
         striker = world.entity(event.entity)
@@ -173,29 +181,48 @@ class Telemetry:
             if victim is not None:
                 victim.friendly[event.target_type] += event.amount
             return
-        self.tallies[striker.player].dealt[striker_type] += event.amount
+        dealer = self._tally(striker.player)
+        if dealer is not None:
+            dealer.dealt[striker_type] += event.amount
         self._last_hitter[event.other] = (striker.player, striker_type)
 
     def _death(self, world: World, event: Event) -> None:
-        self._fallen(event, self.tallies[event.player].lost, "killed")
+        victim = self._tally(event.player)
+        self._fallen(event, victim.lost if victim is not None else None, "killed", victim)
 
     def _destroyed(self, world: World, event: Event) -> None:
-        if event.player is None:
-            return
-        self._fallen(event, self.tallies[event.player].razed, "destroyed")
+        victim = self._tally(event.player)
+        self._fallen(event, victim.razed if victim is not None else None, "destroyed", victim)
 
-    def _fallen(self, event: Event, lost: Counter[str], credit: str) -> None:
-        lost[event.text] += 1
+    def _hoard(self, world: World, event: Event) -> None:
+        tally = self._tally(event.player)
+        if tally is not None:
+            tally.hoard += event.amount
+
+    def _fallen(self, event: Event, lost: Counter[str] | None, credit: str, victim: PlayerTally | None) -> None:
+        if lost is not None:
+            lost[event.text] += 1
         hitter = self._last_hitter.pop(event.entity, None)
         if hitter is None:
             return
         player, striker_type = hitter
-        tally = self.tallies[player]
+        tally = self._tally(player)
+        if tally is None:
+            # A creature's kill.  The wilds keep no book of their own, so what is recorded is the seat's
+            # side of it: units lost to a camp are the measure of a brain that feeds one.
+            if victim is not None and credit == "killed":
+                victim.lost_to_wilds[event.text] += 1
+            return
         getattr(tally, credit)[event.text] += 1
-        tally.kill_value[striker_type] += _price(Race(self.tallies[event.player].race), event.text)
+        if event.text == BuildingType.LAIR.value:
+            tally.camps_cleared += 1  # the lair is the camp: cleared for good only once it is down
+        # A creature and its lair cost nothing, so clearing a camp adds no kill value: the hoard is
+        # what that is worth, and it arrives as gold.
+        tally.kill_value[striker_type] += _price(Race(victim.race if victim is not None else tally.race), event.text)
 
 
 _HANDLERS = {
+    "hoard": Telemetry._hoard,
     "trained": Telemetry._trained,
     "construction": Telemetry._construction,
     "built": Telemetry._built,

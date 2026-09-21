@@ -23,7 +23,7 @@ from typing import Any, Callable
 
 from saga2d import SaveError, SaveManager
 from warband.sim.model import Building, Point, Pos, Unit, World, dist, rects_gap, tile_center
-from warband.sim.rules import BUILDINGS, MINE_GOLD, BuildingType, Difficulty, Layout, MapTheme, Race, Terrain, UnitType
+from warband.sim.rules import BUILDINGS, BuildingType, Difficulty, Layout, MapTheme, Race, Terrain, UnitType
 
 FORMAT = 1  # of the progress file; bump only when an older Warband could misread a newer file
 MINE_CLEARANCE = 2
@@ -338,9 +338,7 @@ class Run:
             for pos in candidates:
                 if self.footprint_free(building_type, pos):
                     building = self.world.place_building(side, building_type, pos, done=done)
-                    if building_type is BuildingType.GOLD_MINE:
-                        building.gold = MINE_GOLD
-                    else:
+                    if BUILDINGS[building_type].mine is None:  # World.place_building fills a deposit itself
                         self.world.players[side].alive = True  # a side cleared by the setup is back with its first holding
                     self.world.update_vision()
                     return building

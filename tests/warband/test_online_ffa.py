@@ -46,7 +46,7 @@ def test_three_humans_play_one_room_each_seeing_its_own(server_url):
         ready = [state(socket, lambda message: message['ready']) for socket in sockets]
         for seat, message in enumerate(ready):
             seen = message['state']['world']
-            assert len(seen['players']) == 3 and message['player'] == seat
+            assert len([p for p in seen['players'] if not p['neutral']]) == 3 and message['player'] == seat
             assert {u['player'] for u in seen['units']} == {seat}, "a seat was sent another's workers at home"
         own = next(u for u in ready[2]['state']['world']['units'] if u['player'] == 2)
         command(sockets[2], {'action': 'move', 'args': [[own['id']], [own['x'] + 2, own['y']]]})

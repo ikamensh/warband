@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Final, TYPE_CHECKING
 
-from warband.sim.rules import BuildingType, Terrain
+from warband.sim.rules import GOLD_PER_TRIP, MINE_SLOTS, Terrain
 
 try:
     from warband.sim import _native  # the footprint test in C, built only with the compiled simulation (warband/league/fastsim.py)
@@ -26,11 +26,28 @@ BLOCKING: Final = (Terrain.WATER, Terrain.TREES, Terrain.ROCK)
 
 @dataclass(frozen=True)
 class KnownMine:
+    """A gold deposit as the player last saw it: where it stands, what it still holds, and what it is.
+
+    *trip*, *slots* and *endless* are the deposit's own numbers (:class:`~warband.sim.rules.MineInfo`),
+    remembered with it because the decisions made under fog need them and the building itself may be
+    out of sight.  A seam's *gold* is zero and always was, so what is worth walking to is
+    :attr:`has_gold`, as it is of the building itself, never the number.  The defaults are what every deposit was before seams existed,
+    which is what a save written then means."""
+
     id: int
     x: int
     y: int
     size: int
     gold: int
+    trip: int = GOLD_PER_TRIP
+    slots: int = MINE_SLOTS
+    endless: bool = False
+
+    @property
+    def has_gold(self) -> bool:
+        """Whether there is still gold to fetch here, as :attr:`~warband.sim.model.Building.has_gold` asks it
+        of the deposit itself: a seam always, a mine while its stock lasts."""
+        return self.endless or self.gold > 0
 
     @property
     def rect(self) -> tuple[int, int, int, int]:
@@ -49,10 +66,15 @@ class _Building:
     size: int
     player: int | None
     threat_range: float = 0.0
+    ruin: bool = False  # a finished building nobody owns any more: what a peasant may be sent to salvage
 
     @property
     def center(self) -> tuple[float, float]:
         return self.x + self.size / 2, self.y + self.size / 2
+
+    @property
+    def rect(self) -> tuple[int, int, int, int]:
+        return self.x, self.y, self.size, self.size
 
 
 class WorkerKnowledge:
@@ -67,6 +89,7 @@ class WorkerKnowledge:
         self._spans: dict[tuple[int, int, int], tuple[tuple[int, int], ...]] = {}
         self._trees: set[int] = set()
         self._tree_order: tuple[int, ...] | None = None
+        self._lit_box: tuple[int, int, int, int] | None = None  # what refresh() was told the fog covers
         self.version = 0  # counts the times blocked and threats were stamped anew, the only times they change
 
     @property
@@ -89,6 +112,9 @@ class WorkerKnowledge:
 
     def sees(self, visible: bytearray, x: int, y: int, size: int) -> bool:
         """Whether any tile of a footprint lies in *visible*, a fog grid of this map's shape."""
+        box = self._lit_box
+        if box is not None and (x + size <= box[0] or x > box[2] or y + size <= box[1] or y > box[3]):
+            return False  # nothing of this player's sees anywhere near it; see refresh()
         if _any_lit is not None:
             return _any_lit(visible, x, y, size, size, self.width, self.height)
         for start, stop in self.spans(x, y, size):
@@ -116,9 +142,18 @@ class WorkerKnowledge:
         self._trees, self._tree_order = trees, None
         self._stamp_buildings()
 
-    def refresh(self, world: World, player: int) -> None:
+    def refresh(self, world: World, player: int, lit_box: tuple[int, int, int, int] | None = None) -> None:
+        """*lit_box* bounds the lit tiles as ``(left, top, right, bottom)``, inclusive.
+
+        Whether a structure is seen is asked of every structure on the map, once per seat: with
+        sixteen seats and sixteen bases that is a few thousand footprint scans five times a second,
+        and all but a handful of them look at fog that is nowhere near.  The caller knows where the
+        seat's sight discs are, so it says so, and the rest are refused by four comparisons.  The
+        answers are the same either way; leaving it out only makes the work longer.
+        """
         if (world.width, world.height) != (self.width, self.height):
             raise ValueError("Worker knowledge dimensions must match the world")
+        self._lit_box = lit_box
         visible = world.visible[player]
         width = self.width
         remembered, terrain_blocked, trees = self.terrain, self._terrain_blocked, self._trees
@@ -147,16 +182,20 @@ class WorkerKnowledge:
         for building in observed.values():
             info = building.info
             threat_range = info.range + 1.5 if building.done and info.damage and not building.abandoned else 0.0  # a ruin shoots nothing
+            ruin = building.abandoned and building.done
             known = self.buildings.get(building.id)
-            # Nothing but a structure's threat can change under a fixed id: it is built once and never moves.
-            if known is None or known.threat_range != threat_range:
+            # Nothing but a structure's threat and its fall to a ruin can change under a fixed id: it is built once
+            # and never moves.
+            if known is None or known.threat_range != threat_range or known.ruin != ruin:
                 self.buildings[building.id] = _Building(building.id, building.x, building.y, building.size,
-                                                        building.player, threat_range)
+                                                        building.player, threat_range, ruin)
                 changed = True
-            if building.type is BuildingType.GOLD_MINE:
+            deposit = info.mine
+            if deposit is not None:
                 mine = self.mines.get(building.id)
                 if mine is None or mine.gold != building.gold:
-                    self.mines[building.id] = KnownMine(building.id, building.x, building.y, building.size, building.gold)
+                    self.mines[building.id] = KnownMine(building.id, building.x, building.y, building.size, building.gold,
+                                                        deposit.trip, deposit.slots, deposit.endless)
             else:
                 self.mines.pop(building.id, None)
         if changed:  # the grid still stands as it was unless remembered terrain or a footprint changed

@@ -22,11 +22,14 @@ import numpy as np
 from PIL import Image
 
 from saga2d import Game, ParticleEmitter, RenderLayer, Scene, Sprite, SpriteAnchor
-from warband.art import textures
+from warband.art import monsters, textures
+from warband.art.monsters import Monster
 from warband.sim.model import Building, Entity, Pos, Projectile, Unit, World, dist
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, SIM_DT, VISION_EVERY, BuildingType, Race, Terrain, UnitType, UPGRADES
+from warband.sim.rules import BUILDINGS, CREATURES, SIM_DT, VISION_EVERY, BuildingType, Race, Terrain, UnitType, UPGRADES
 from warband.art.textures import CHUNK, CHUNK_PX, TILE
+
+CREATURE_SET = frozenset(CREATURES)  # the neutral creatures, asked of a unit's type on every frame
 
 WATER_PERIOD = 0.45  # seconds between water phase changes
 WATER_CYCLE = (0, 1, 2, 1)  # ping-pong through the phases so the ripples never jump
@@ -46,10 +49,12 @@ def rgba(color: tuple[int, int, int], alpha: int = 255) -> Color:
 def building_look(b: Building, worked: Collection[int] = ()) -> str:
     """Which painted look a building wears: going up, founded for the first half of its construction
     and raised for the second; damaged under half its hit points, active while it trains or
-    researches, intact otherwise.  A gold mine is active while a peasant works inside it: its id
+    researches, intact otherwise.  A gold deposit is active while a peasant works inside it: its id
     is among *worked*."""
-    if b.type is BuildingType.GOLD_MINE:
+    if b.info.mine is not None:
         return "active" if b.id in worked else "intact"
+    if b.type is BuildingType.LAIR:
+        return "intact"  # the den is drawn once, whatever has happened to it
     if not b.done:
         return "founded" if b.progress < b.info.build_time / 2 else "raised"
     if b.hp < b.max_hp / 2:
@@ -159,13 +164,21 @@ STRIKE, FOLLOW, RECOVER = 0.1, 0.16, 0.16  # seconds after the blow: driven forw
 #: Whose shot is not the arrow the model flies it as.  The model tells a shot that follows its mark from a stone
 #: that comes down on the ground; what it looks like is the striker's, as what it lands as is (``sound.impact_sound``):
 #: a healer looses no arrow but a mote of light, from the head of its staff.
-SHOT_LOOKS = {UnitType.CLERIC.value: "mote"}
-SHOT_SIZE = {"arrow": (22, 6), "stone": (14, 14), "mote": (20, 20)}
+SHOT_LOOKS = {UnitType.CLERIC.value: "mote", UnitType.SPIDER.value: "venom"}
+SHOT_SIZE = {"arrow": (22, 6), "stone": (14, 14), "mote": (20, 20), "venom": (16, 16)}
 STAFF_REACH = 0.4  # tiles before a healer that the head of its staff is held, where its mote is first seen
-TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1}  # seconds of flight a shot leaves hanging in the air behind it
-TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150)}
-TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5)}  # at the shot and where the trail ends
+RING_FLATTEN = 0.62  # a circle on the ground seen from the game's elevation is this much shorter than it is wide
+PICK_SLACK = 0.35  # tiles beyond a unit's body a click still picks it: the figure stands above the ground point it is clicked at
+TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1, "venom": 0.14}  # seconds of flight a shot leaves hanging in the air behind it
+TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150), "venom": (198, 132, 226)}
+TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5), "venom": (2.6, 0.5)}  # at the shot and where the trail ends
 BAR_OUTLINE = (0, 0, 0, 190)  # the backing and outline of every health and progress bar
+#: Nobody's building on the minimap and on the New game preview: a gold deposit, and the one thing on
+#: either picture that is not a seat.  The gold it used to be, (232, 196, 70), is three units of
+#: CIE76 from Amber, so an Amber player's halls were their own mines; this straw is twenty-seven
+#: from the nearest seat colour and forty-three from any ground.
+NEUTRAL_MINIMAP = (255, 255, 159)
+ABANDONED_MINIMAP = (150, 150, 150)
 
 
 def unit_frame(u: Unit, travel: float, time: float) -> str:
@@ -191,7 +204,7 @@ def unit_frame(u: Unit, travel: float, time: float) -> str:
             return "stand"
         phase = (u.timer / CHOP_PERIOD) % 1.0
         return textures.CHOP_FRAMES[0 if phase < 0.25 else 1 if phase < 0.45 else 2 if phase < 0.7 else 3]
-    if u.state == "repair":
+    if u.state in ("repair", "salvage"):  # the same swing of the hammer, one way or the other
         return "strike" if (time * 2 + u.id * 0.37) % 1.0 < 0.35 else "stand"
     return "stand"
 
@@ -233,7 +246,7 @@ def projectile_point(p: Projectile, world: World, now: float) -> tuple[float, fl
     span = dist(p.start, mark)
     if p.kind == "stone":
         return x, y, 0.55 + 4 * (0.5 + 0.14 * span) * t * (1 - t)
-    if shot_look(p) == "mote":
+    if shot_look(p) in ("mote", "venom"):
         ahead = STAFF_REACH * (1 - t) / span if span > STAFF_REACH else 0.0  # the drawn start only: the blow is the model's
         return x + (mark[0] - p.start[0]) * ahead, y + (mark[1] - p.start[1]) * ahead, 1.0 + (0.45 - 1.0) * t
     lift = 1.7 if p.source_type == BuildingType.TOWER.value else 0.55  # loosed from the battlements, or from the shoulder
@@ -542,7 +555,7 @@ class MapView:
             if unit.hidden or sprite is None or not sprite.visible:
                 continue
             gap = math.dist(point, self.unit_position(unit)) - unit.radius
-            if gap <= 0.35 and gap < distance:
+            if gap <= PICK_SLACK and gap < distance:
                 nearest, distance = unit, gap
         if nearest is not None:
             return nearest
@@ -624,10 +637,14 @@ class MapView:
         x, y, size, _ = sighting.rect
         # A site wears its painted founded or raised look; without the painting (the low-poly art), a plain site for
         # the first half and the building faded in for the second.
-        painted_site = not sighting.done and sighting.type is not BuildingType.GOLD_MINE and textures.has_look(sighting.race, sighting.look)
-        rising = not painted_site and 0.5 <= sighting.built < 1.0
-        if sighting.type is BuildingType.GOLD_MINE:
-            key = textures.mine_image(self.game, textures.scatter(x, y, 8) % textures.mine_variants(), sighting.look)
+        deposit = BUILDINGS[sighting.type].mine
+        lair = sighting.type is BuildingType.LAIR
+        painted_site = not sighting.done and deposit is None and not lair and textures.has_look(sighting.race, sighting.look)
+        rising = not painted_site and not lair and 0.5 <= sighting.built < 1.0
+        if lair:
+            key = monsters.lair_image(self.game)  # one den, never a race's and never a team's
+        elif deposit is not None:
+            key = textures.deposit_image(self.game, sighting.type, textures.scatter(x, y, 8) % textures.mine_variants(), sighting.look)
         elif sighting.done or painted_site:
             key = textures.building_image(self.game, sighting.type, sighting.player, sighting.race, sighting.look, abandoned=sighting.abandoned)  # type: ignore[arg-type]
         elif rising:
@@ -656,7 +673,7 @@ class MapView:
     def _sync_smoke(self, b: Building, sprite: Sprite) -> None:
         """A damaged building smoulders under half health and burns under a quarter: smoke from the
         roof, then flames licking up from it."""
-        seen = b.done and b.type is not BuildingType.GOLD_MINE and (self.reveal or self.world.is_visible(self.player, (int(b.center[0]), int(b.center[1]))))
+        seen = b.done and b.info.mine is None and (self.reveal or self.world.is_visible(self.player, (int(b.center[0]), int(b.center[1]))))
         wx, wy = to_world(b.center)
         roof = (wx, wy - b.size * TILE * 0.5)
         self._toggle_emitter(self._smoke, b.id, seen and b.hp < b.max_hp / 2, lambda: ParticleEmitter(
@@ -704,7 +721,11 @@ class MapView:
                 continue
             # Draw the combat tool with free hands; the model keeps the worker's load.
             carrying = None if u.state == "attack" else u.carrying
-            key = textures.unit_image(self.game, u.type, u.player, textures.facing_index(u.facing), self._frame(u), carrying, race=u.race)
+            facing, frame = textures.facing_index(u.facing), self._frame(u)
+            # A creature is nobody's: its sheet takes no player and is never team-recoloured, so it is
+            # reached through warband.art.monsters rather than through the units' own table.
+            key = (monsters.monster_image(self.game, Monster(u.type.value), facing, frame) if u.type in CREATURE_SET
+                   else textures.unit_image(self.game, u.type, u.player, facing, frame, carrying, race=u.race))
             if sprite is None:
                 sprite = self._units[u.id] = self._prop(key, position)
                 self._unit_keys[u.id] = key
@@ -872,7 +893,7 @@ class MapView:
         img = self._minimap_ground * np.where(visible, 1.0, np.where(explored, 0.6, 0.18))[..., None]
         for b in self._sightings.values():  # as last seen: a rival's new hall is not on the minimap before it is on the map
             x, y, w, h = b.rect
-            img[y:y + h, x:x + w] = (150, 150, 150) if b.abandoned else (232, 196, 70) if b.player is None else world.players[b.player].color
+            img[y:y + h, x:x + w] = ABANDONED_MINIMAP if b.abandoned else NEUTRAL_MINIMAP if b.player is None else world.players[b.player].color
         for u in world.units.values():
             if u.hidden or not (u.player == self.player or visible[u.tile[1], u.tile[0]]):
                 continue
@@ -914,7 +935,7 @@ class MapView:
 
     def _health_bar(self, entity: Entity, x: float, y: float, width: float) -> None:
         """A health bar *width* wide centred on *x* with its fill's top at *y*."""
-        if isinstance(entity, Building) and entity.type is BuildingType.GOLD_MINE:
+        if isinstance(entity, Building) and entity.info.mine is not None:
             return
         frac = max(0.0, min(1.0, entity.hp / max(1, entity.max_hp)))
         color = (110, 230, 110, 255) if frac > 0.5 else (240, 200, 80, 255) if frac > 0.25 else (240, 90, 70, 255)
@@ -984,7 +1005,9 @@ class MapView:
                 if entity.hidden:
                     continue
                 wx, wy = to_world(self.unit_position(entity))
-                self._ring(wx, wy + 2, TILE * 0.42, TILE * 0.26, color if eid in overlay.selected else rgba(color[:3], 120))
+                # The ring is the body: what the click picks and what the crowd keeps clear (rules.UnitInfo.radius).
+                self._ring(wx, wy + 2, TILE * entity.radius, TILE * entity.radius * RING_FLATTEN,
+                           color if eid in overlay.selected else rgba(color[:3], 120))
             else:
                 x, y, w, h = entity.rect
                 left, top = x * TILE, y * TILE

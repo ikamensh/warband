@@ -34,10 +34,11 @@ def assert_the_map_fills_the_view(scene) -> None:
 @pytest.mark.parametrize("canvas", CANVASES, ids=[f"{w}x{h}" for w, h in CANVASES])
 @pytest.mark.parametrize("size", list(mapgen.SIZES))
 def test_a_match_opens_with_its_map_filling_the_window(size: str, canvas: tuple[int, int], tmp_path) -> None:
-    width, height = mapgen.SIZES[size]
+    players = mapgen.offered(size)[0]  # the fewest seats the size holds: the biggest sizes need several
+    width, height = mapgen.dimensions(size, players)
     game = Game("Warband camera", backend="mock", resolution=canvas, theme=build_theme(), save_dir=tmp_path / "saves")
     try:
-        scene = new_game(seed=3, width=width, height=height)
+        scene = new_game(seed=3, width=width, height=height, players=players)
         game.push(scene)
         game.tick(1 / 60)
         _left, inset_top, _right, inset_bottom = scene.camera.insets

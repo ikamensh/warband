@@ -14,9 +14,9 @@ import math
 from typing import Final
 
 from warband.sim import path as pathing
-from warband.sim.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Unit, World, hypot, rect_gap, tile_center
+from warband.sim.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Salvage, Unit, World, hypot, rect_gap, tile_center
 from warband.sim.worker_knowledge import WorkerKnowledge, _Building
-from warband.sim.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_SLOTS, SIM_DT, UNITS, UNIT_RADIUS, BuildingType, Resource, Terrain
+from warband.sim.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_TIME, SIM_DT, UNITS, BuildingType, Resource, Terrain, UnitType
 
 try:
     from warband.sim import _native  # threat painting in C, built only with the compiled simulation (warband/league/fastsim.py)
@@ -31,15 +31,24 @@ class _Site:
     access: tuple[Pos, ...]
 
 
+#: The turn a peasant spends at a deposit's face, counted in tiles of walking.  A walk is worth what it
+#: fetches, and what it fetches depends on the trip *and* on the time at the face, so this is what makes
+#: two deposits comparable: see :meth:`_View.choose`.  At the shared table's pace, which every race's
+#: peasant is within a sixteenth of, because the policy weighs walks rather than timing them.
+FACE_WALK: Final = MINE_TIME * UNITS[UnitType.PEASANT].speed
+
 _REACH: Final[dict[tuple[int, int], tuple[tuple[int, int], ...]]] = {}
 
 
 def _reach(width: int, height: int) -> tuple[tuple[int, int], ...]:
-    """Offsets from a footprint's corner whose tile centre is close enough to work it from, in scan order."""
+    """Offsets from a footprint's corner whose tile centre is close enough to work it from, in scan order.
+
+    A peasant's own body, since a peasant is who works: the gap :meth:`World._gap` measures is from
+    its edge, so a tile it can reach from is one whose centre is within TOUCH of the rect plus that body."""
     found = _REACH.get((width, height))
     if found is None:
         found = tuple((dx, dy) for dy in range(-1, height + 1) for dx in range(-1, width + 1)
-                      if rect_gap(tile_center((dx, dy)), (0, 0, width, height)) <= TOUCH + UNIT_RADIUS)
+                      if rect_gap(tile_center((dx, dy)), (0, 0, width, height)) <= TOUCH + UNITS[UnitType.PEASANT].radius)
         _REACH[(width, height)] = found
     return found
 
@@ -63,7 +72,14 @@ class _Routes:
 
 
 def _navigation(world: World, player: int) -> bytearray:
-    """Remember static terrain and towers; only visible mobile enemies add danger."""
+    """Remember static terrain and towers; only visible mobile enemies add danger.
+
+    The walk over every unit on the map costs a seat a pass of its own, so sixteen seats pay for
+    sixteen passes a tick.  Sharing one pass between them is not the same simulation: a seat's grid
+    is frozen at its own first use of the tick, by which time the units ahead of it in the step have
+    moved, and a shared snapshot would freeze them all at the first seat's instant (measured on
+    2026-09-20: a sixth off the step, and a different match).  See docs/warband-maps.md.
+    """
     knowledge = world.worker_knowledge[player]
     width, height = world.width, world.height
     visible = world.visible[player]
@@ -207,7 +223,7 @@ class _View:
         found = []
         if resource is Resource.GOLD:
             for mine in knowledge.mines.values():
-                if mine.gold > 0:
+                if mine.has_gold:
                     found.append(_Site(mine.id, mine.center, self.access(mine.rect)))
         else:
             width = self.world.width
@@ -247,20 +263,57 @@ class _View:
             target = site.target
             load = loads.get(target, 0)  # what loads[target] is, without a call to Counter.__missing__
             mine = knowledge.mines.get(target)  # type: ignore[arg-type]
-            if mine is None or mine.gold <= 0:
+            if mine is None or not mine.has_gold:
                 continue
-            if load >= MINE_SLOTS:
+            if load >= mine.slots:
                 continue  # every place at that face is spoken for; another hand there would only queue
             penalty = load * 1.5
             for tile in site.access:
                 distance = field[tile[1] * width + tile[0]]
                 if distance < math.inf:
                     cost = 2 * distance + penalty
+                    if mine.trip != GOLD_PER_TRIP:
+                        # A walk is worth what it fetches.  A round trip is the walk plus the turn at the face
+                        # (FACE_WALK), and what it brings is the deposit's own trip, so a deposit paying a fifth
+                        # is worth the same walk only from a fifth of the distance -- the cost here is what a
+                        # gold mine at the same gold a second would have cost.  Without it a peasant trudged
+                        # past a mine to a nearer seam and earned a fifth as much.  A full mine is skipped
+                        # above, so the seam still takes the hands a saturated face cannot.  A mine's own trip
+                        # is GOLD_PER_TRIP and takes none of this arithmetic, here or in the fingerprint.
+                        cost = (cost + FACE_WALK) * GOLD_PER_TRIP / mine.trip - FACE_WALK
                     held = goals.get(tile)  # the cheaper claim on a tile wins, the one nearer the map's top left on a tie
                     if held is None or cost < held or (cost == held and site.position < owners[tile].position):
                         goals[tile], owners[tile] = cost, site
         route = pathing.find_work_path(worker.tile, goals, self.blocked, self.world.width, self.world.height)
         return owners[route[-1] if route else worker.tile].target if route is not None else None
+
+
+    def ruin(self, worker: Unit) -> int | None:
+        """The ruin the policy should put *worker* on: the id of one it remembers standing whole and nobody's, whose
+        working edge is safe ground within :data:`SALVAGE_REACH` of a depot, cheapest for *worker* to walk to; None
+        when it remembers none it can reach.  The ruin is remembered, not seen, exactly as a mine is: a record of one
+        somebody razed since costs one wasted walk and is then forgotten."""
+        knowledge = self.world.worker_knowledge[self.player]
+        field, width = self._depot_field(Resource.GOLD), self.world.width
+        goals: dict[Pos, float] = {}
+        owners: dict[Pos, int] = {}
+        for building in knowledge.buildings.values():
+            if not building.ruin:
+                continue
+            for tile in self.access(building.rect):
+                distance = field[tile[1] * width + tile[0]]
+                if distance > SALVAGE_REACH:
+                    continue
+                cost = 2 * distance
+                held = goals.get(tile)  # the cheaper claim on a tile wins, the older building on a tie
+                if held is None or cost < held or (cost == held and building.id < owners[tile]):
+                    goals[tile], owners[tile] = cost, building.id
+        if not goals:
+            return None
+        route = pathing.find_work_path(worker.tile, goals, self.blocked, width, self.world.height)
+        if route is None:
+            return None
+        return owners[route[-1] if route else worker.tile]  # a route ends on a claimed tile, as every work path does
 
 
 def _choose_tree(start: Pos, trees: Sequence[int], felling: set[int], remembered: list[Terrain | None], field: Sequence[float],
@@ -312,17 +365,32 @@ def safe_navigation(world: World, player: int) -> bytearray:
     return cached[1]
 
 
-def _assignments(workers: list[Unit]) -> tuple[Counter, Counter]:
+def _assignments(world: World, player: int, workers: list[Unit]) -> tuple[Counter, Counter, Counter]:
+    """``(hands per resource, hands per source, what a round of those hands' trips fetches)``.
+
+    The third is what the resource is actually served by: a hand at an endless seam brings a fifth of a
+    hand at a gold mine, and counting it as a whole miner once told a base working nothing but a seam
+    that its gold was fine.  Every gold mine pays a full trip, so this is the hand count times
+    :data:`GOLD_PER_TRIP` wherever no seam is worked, exactly as it was."""
+    mines = world.worker_knowledge[player].mines
     crews: Counter[Resource] = Counter()
     loads: Counter[int | Pos] = Counter()
+    incoming: Counter[Resource] = Counter()
     for worker in workers:
         harvest = next((order for order in worker.orders if isinstance(order, Harvest)), None)
         if harvest is not None:
-            crews[Resource.GOLD if isinstance(harvest.target, int) else Resource.LUMBER] += 1
+            gold = isinstance(harvest.target, int)
+            resource = Resource.GOLD if gold else Resource.LUMBER
+            crews[resource] += 1
             loads[harvest.target] += 1
+            known = mines.get(harvest.target) if gold else None  # type: ignore[arg-type]
+            incoming[resource] += known.trip if known is not None else (GOLD_PER_TRIP if gold else LUMBER_PER_TRIP)
         elif worker.carrying is not None:
+            # A load in hand with no job behind it: count it at the plain trip, as it always was.  What it
+            # came out of is not written down anywhere, and a hand between jobs is nobody's crew for long.
             crews[worker.carrying] += 1
-    return crews, loads
+            incoming[worker.carrying] += GOLD_PER_TRIP if worker.carrying is Resource.GOLD else LUMBER_PER_TRIP
+    return crews, loads, incoming
 
 
 def _reserves(world: World, player: int, workers: list[Unit]) -> dict[Resource, int]:
@@ -337,8 +405,62 @@ def _reserves(world: World, player: int, workers: list[Unit]) -> dict[Resource, 
             Resource.LUMBER: max(lumber, sum(cost.lumber for cost in planned))}
 
 
+def _salvagers(workers: list[Unit]) -> int:
+    """How many of *workers* the policy has put on a ruin."""
+    return sum(1 for worker in workers for order in worker.orders if isinstance(order, Salvage) and order.auto)
+
+
+SALVAGE_REACH: Final = 24.0  # tiles of safe walking from a depot; a ruin further off is not the policy's to fetch
+SALVAGE_CREW: Final = 6  # workers a player needs before the policy can spare one of them for a ruin
+
+# -- Hands off a worker its player is using (WB-059) ----------------------------
+#
+# The policy used to take any idle peasant, wherever it stood.  Send one across the map to raise a forward tower
+# and the second it finished the policy walked it home to a mine: the player's intention, overruled without a
+# word.  So a worker its player has had in hand is left alone for a while, and how long is how far from home it
+# stands -- the same safe walk to a depot the gatherers route by, not a straight line to a point.
+HOME_REACH: Final = 8.0  # tiles of safe walking from a depot: inside the base, where an idle peasant is plainly spare
+AUTO_REACH: Final = 24.0  # and out here it is plainly not; the hold ramps between the two and holds at the far one
+MANUAL_HOLD: Final = 45.0  # seconds the policy leaves a worker commanded AUTO_REACH or further from home alone
+
+
+def manual_hold(distance: float) -> float:
+    """Seconds the policy keeps its hands off a worker its player last had in hand, *distance* tiles of safe walking
+    from the nearest depot (infinity when no safe walk leads to one, which is as far from home as it gets).
+
+    Nothing at all inside :data:`HOME_REACH`: a peasant that put up a farm beside the hall and went back to the mine
+    is what everybody wants and what the whole policy is for, and the complaint was never about it.  From there the
+    hold ramps to :data:`MANUAL_HOLD` at :data:`AUTO_REACH`, which is a base's reach and where a peasant is
+    obviously away on business of its own.  Forty-five seconds is long enough to place a second tower without the
+    policy interfering and short enough that a peasant its player forgot is not lost for the match; a peasant meant
+    to stand for good is what Stop and Hold are for (``Unit.auto_work``), and those hold it unconditionally.
+    """
+    if distance >= AUTO_REACH:
+        return MANUAL_HOLD
+    if distance <= HOME_REACH:
+        return 0.0
+    return MANUAL_HOLD * (distance - HOME_REACH) / (AUTO_REACH - HOME_REACH)
+
+
+def _held(view: _View, worker: Unit, now: float) -> bool:
+    """Whether *worker* is still its player's to command rather than the policy's to place."""
+    commanded = worker.commanded
+    if commanded is None:
+        return False
+    since = now - commanded
+    if since >= MANUAL_HOLD:
+        return False  # past the longest hold there is: no depot field need be walked to know it
+    return since < manual_hold(view.depot_distance_at(worker.tile, Resource.GOLD))
+
+
 def assign_idle_workers(world: World, player: int) -> None:
-    """Fill empty queues once per second; never interrupt a player's active job."""
+    """Fill empty queues once per second; never interrupt a player's active job.
+
+    A ruin within reach is taken apart too, by one hand and no more: it pays about a third of what a peasant
+    earns at a mine, so it is work for a crew that can spare somebody (:data:`SALVAGE_CREW`) and never work the
+    mine and the trees give up.  The hand comes back to the resources the moment the ruin is gone, and
+    :func:`rebalance_workers` never touches it: only a harvest the policy placed changes jobs.
+    """
     previous = world._worker_ai_checks.get(player)
     if previous is not None and world.tick - previous < round(1 / SIM_DT):
         return
@@ -349,20 +471,29 @@ def assign_idle_workers(world: World, player: int) -> None:
         return
     view = _view(world, player)
     reserves = _reserves(world, player, workers)
-    crews, loads = _assignments(workers)
+    crews, loads, incoming = _assignments(world, player, workers)
     stock = {Resource.GOLD: world.players[player].gold, Resource.LUMBER: world.players[player].lumber}
-    trip = {Resource.GOLD: GOLD_PER_TRIP, Resource.LUMBER: LUMBER_PER_TRIP}
+    spare = _salvagers(workers) == 0 and len(workers) >= SALVAGE_CREW
     for worker in idle:
         if worker.carrying is not None:
             if view.depot_distance_at(worker.tile, worker.carrying) < math.inf:
-                worker.orders.append(Deposit(auto=True))
+                worker.orders.append(Deposit(auto=True))  # a load in hand goes home whoever sent it for it
             continue
-        choices = sorted(Resource, key=lambda resource: (stock[resource] + crews[resource] * trip[resource] * 3) / reserves[resource])
+        if _held(view, worker, world.time):
+            continue  # its player has it: not the policy's to send anywhere
+        if spare:
+            ruin = view.ruin(worker)
+            if ruin is not None:
+                world._issue(worker, Salvage(ruin, auto=True), manual=False)
+                spare = False
+                continue
+        choices = sorted(Resource, key=lambda resource: (stock[resource] + incoming[resource] * 3) / reserves[resource])
         for resource in choices:
             target = view.choose(worker, resource, loads)
             if target is not None:
-                world._issue(worker, Harvest(target, auto=True, placed=True))
+                world._issue(worker, Harvest(target, auto=True, placed=True), manual=False)
                 crews[resource] += 1
+                incoming[resource] += world.worker_knowledge[player].mines[target].trip if isinstance(target, int) else LUMBER_PER_TRIP
                 loads[target] += 1
                 break
 
@@ -382,11 +513,10 @@ def rebalance_workers(world: World, player: int) -> None:
     walk leads to the other.  Only jobs the policy gave: a harvest a player or a brain ordered is theirs.
     """
     workers = sorted((unit for unit in world.player_units(player) if unit.is_worker), key=lambda unit: unit.id)
-    crews, loads = _assignments(workers)
+    crews, loads, incoming = _assignments(world, player, workers)
     reserves = _reserves(world, player, workers)
     stock = {Resource.GOLD: world.players[player].gold, Resource.LUMBER: world.players[player].lumber}
-    trip = {Resource.GOLD: GOLD_PER_TRIP, Resource.LUMBER: LUMBER_PER_TRIP}
-    served = {resource: (stock[resource] + crews[resource] * trip[resource] * 3) / reserves[resource] for resource in Resource}
+    served = {resource: (stock[resource] + incoming[resource] * 3) / reserves[resource] for resource in Resource}
     rich = max(Resource, key=lambda resource: served[resource])
     poor = Resource.LUMBER if rich is Resource.GOLD else Resource.GOLD
     if crews[rich] <= 1 or served[rich] < REBALANCE_RATIO * served[poor]:
@@ -400,12 +530,12 @@ def rebalance_workers(world: World, player: int) -> None:
         target = view.choose(worker, poor, loads)
         if target is None:
             return  # no safe walk to the other resource from here: the raiders are still about
-        world._issue(worker, Harvest(target, auto=True, placed=True))
+        world._issue(worker, Harvest(target, auto=True, placed=True), manual=False)
         return
 
 
 def choose_replacement(world: World, worker: Unit, resource: Resource) -> int | Pos | None:
     """Continue an exhausted resource job using the same information and safety limits."""
     workers = [unit for unit in world.player_units(worker.player) if unit.is_worker and unit.id != worker.id]
-    _, loads = _assignments(workers)
+    _crews, loads, _incoming = _assignments(world, worker.player, workers)
     return _view(world, worker.player).choose(worker, resource, loads)

@@ -9,7 +9,7 @@ from warband.sim.worker_knowledge import WorkerKnowledge
 from saga2d.server.games import GameSpec, option_choice, option_int, option_keys, option_seed
 from warband.sim.rules import BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
 
-GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'stop', 'hold', 'release_workers'}
+GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'salvage', 'stop', 'hold', 'release_workers'}
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building', 'set_auto_train'}
 SETTLEMENT_ORDERS = {'plan_building', 'order_unit', 'order_upgrade', 'set_assembly', 'cancel_plan'}
 SEAT_ORDERS = SETTLEMENT_ORDERS | {'resign'}  # orders about the seat's own player, named in the order
@@ -18,12 +18,14 @@ ORDERS = GROUP_ORDERS | BUILDING_ORDERS | SEAT_ORDERS | {'build'}
 EVENT_TICKS = 100
 #: What a seat is told of the server's random stream: a fixed state, so no client can read the damage rolls to come.
 NO_DICE = random.Random(0).getstate()
-#: News for its owner alone: what it trains and researches, what it is refused or left to plans, its deposits, alarms and plunder.
-PRIVATE_EVENTS = frozenset({'trained', 'researched', 'refused', 'deferred', 'deposit', 'under_attack', 'plunder'})
+#: News for its owner alone: what it trains and researches, what it is refused or left to plans, its deposits, what it
+#: salvages, its alarms and its plunder.
+PRIVATE_EVENTS = frozenset({'trained', 'researched', 'refused', 'deferred', 'deposit', 'salvage', 'under_attack', 'plunder'})
 #: The match's public news, told to every seat wherever it happened.
 PUBLIC_EVENTS = frozenset({'victory', 'eliminated', 'surrendered', 'resigned', 'exposed'})
-#: What a seat learns of a unit it sees but does not own is where it stands and how it moves and strikes, not where it is going.
-STRANGER_UNIT = {'orders': [], 'worker_orders': [], 'home': None, 'constructing': None, 'auto_work': False}
+#: What a seat learns of a unit it sees but does not own is where it stands and how it moves and strikes, not where it is
+#: going, nor how lately its owner had it in hand.
+STRANGER_UNIT = {'orders': [], 'worker_orders': [], 'home': None, 'constructing': None, 'auto_work': False, 'commanded': None}
 #: Of a building it sees but does not own: footprint, hit points, construction and abandonment, not its work.  A site
 #: keeps its builder's id (the builder itself is inside, out of sight): a site with none is one from a save older than
 #: WB-048, and a load removes it.
@@ -34,13 +36,25 @@ def _terrain_rows(world):
     return ["".join(t.value[0] for t in row) for row in world.terrain]
 
 
+#: The most seats a Warband room can hold.  The offline game seats sixteen, but every client
+#: declares ``saga2d.online.SEATS`` in its hello and the server refuses a room with more seats than
+#: the client can play; that number is 4 in the Saga2D this pins, so a room is four whatever the
+#: authority would allow.  Raising it is an engine release, not a Warband change — and a snapshot
+#: that is not one whole world per seat per tick.  See docs/warband-maps.md, "Sixteen seats online".
+ONLINE_SEATS = 4
+#: The largest map a room may ask for.  The offline game goes to 180x132; a room stays where it was
+#: so that the options in :data:`ONLINE` keep the shape and the range the live server already
+#: speaks, and one seat's snapshot stays the size it is today.
+ONLINE_SIZE = (80, 64)
+
+
 class WarbandMatch:
     def __init__(self, seed=3, width=48, height=40, theme=MapTheme.SUMMER, races=None, layout=None, players=2):
-        """*players* humans, two to four; *races* names each seat's race, a ``None`` seat drawn from the seed, and so
-        is a ``None`` *layout*."""
+        """*players* humans, two to :data:`ONLINE_SEATS`; *races* names each seat's race, a ``None`` seat drawn from
+        the seed, and so is a ``None`` *layout*."""
         self.seed = seed
         self.world = mapgen.generate(seed, width, height, players=players, theme=theme, races=races, layout=layout)
-        for player in self.world.players:
+        for player in self.world.players[:self.world.seats]:  # never the wilds: no client sits in that seat
             player.human = True
         self.events = []  # [number, fields] of the recent ones, oldest first
         self.event_ticks = []  # the tick each of them happened at
@@ -64,7 +78,7 @@ class WarbandMatch:
     def _witnesses(self, event):
         """The seats that may hear of *event*: all of them for public news, its owner alone for its private
         affairs, otherwise its owner and every seat that sees where it happens."""
-        seats = range(len(self.world.players))
+        seats = range(self.world.seats)
         if event.kind in PUBLIC_EVENTS:
             return list(seats)
         if event.kind in PRIVATE_EVENTS:
@@ -153,7 +167,7 @@ class WarbandMatch:
             self._events()
 
     def apply(self, player, command):
-        if player not in range(len(self.world.players)) or self.world.winner is not None or not self.world.players[player].alive:
+        if player not in range(self.world.seats) or self.world.winner is not None or not self.world.players[player].alive:
             raise CommandError('This faction cannot issue orders.')
         action, args, kwargs = command.get('action'), command.get('args'), command.get('kwargs', {})
         if not isinstance(action, str) or action not in ORDERS or not isinstance(args, list) or not isinstance(kwargs, dict):
@@ -230,7 +244,7 @@ class WarbandMatch:
 def _create(options):
     """Validate resource-bounded creation options before generating any map."""
     option_keys(options, {'seed', 'width', 'height', 'theme', 'races', 'layout', 'players'})
-    players = option_int(options, 'players', 2, 2, 4)
+    players = option_int(options, 'players', 2, 2, ONLINE_SEATS)
     races = options.get('races', [None] * players)
     if (not isinstance(races, list) or len(races) != players
             or any(race is not None and (not isinstance(race, str) or race not in {r.value for r in Race})
@@ -238,8 +252,8 @@ def _create(options):
         raise CommandError(f'races must name {players} seats, each a race or null.')
     layout = option_choice(options, 'layout', 'any', {each.value for each in Layout} | {'any'})
     try:
-        return WarbandMatch(option_seed(options, 3), width=option_int(options, 'width', 48, 48, 80),
-                            height=option_int(options, 'height', 40, 40, 64),
+        return WarbandMatch(option_seed(options, 3), width=option_int(options, 'width', 48, 48, ONLINE_SIZE[0]),
+                            height=option_int(options, 'height', 40, 40, ONLINE_SIZE[1]),
                             theme=MapTheme(option_choice(options, 'theme', 'summer', {t.value for t in MapTheme})),
                             races=[Race(race) if race is not None else None for race in races],
                             layout=None if layout == 'any' else Layout(layout), players=players)
@@ -265,7 +279,7 @@ def _restore(snapshot):
     match.event_id = snapshot.get('event_id', max((event[0] for event in match.events), default=0))  # older checkpoints carry none
     # A checkpoint from before WB-011 kept no record of who saw what, nor of the map's beginning: its last news
     # goes to every seat once, and the ground as it stands now stands for how it began.
-    match.event_seen = snapshot.get('event_seen', [list(range(len(match.world.players)))] * len(match.events))
+    match.event_seen = snapshot.get('event_seen', [list(range(match.world.seats))] * len(match.events))
     match.begun = snapshot.get('begun', _terrain_rows(match.world))
     return match
 
@@ -276,4 +290,4 @@ def _needed(match, player):
 
 
 ONLINE = {'warband-v2': GameSpec(_create, _checkpoint, _restore, realtime=True,
-                                 seats=lambda match: len(match.world.players), needed=_needed)}
+                                 seats=lambda match: match.world.seats, needed=_needed)}

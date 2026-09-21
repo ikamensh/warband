@@ -9,7 +9,7 @@ from pathlib import Path
 
 from saga2d import SaveError, SaveManager
 from warband.sim.model import World
-from warband.sim.rules import UPGRADES, Difficulty, MapTheme, Race
+from warband.sim.rules import MAX_PLAYERS, UPGRADES, Difficulty, MapTheme, Race
 
 
 def score_breakdown(world: World, player: int) -> dict[str, int]:
@@ -55,7 +55,7 @@ class ScoreEntry:
         for name in ("score", "seconds", "width", "height", "players", "seed"):
             if type(getattr(self, name)) is not int:
                 raise ValueError(f"High-score {name} must be an integer")
-        if min(self.score, self.seconds) < 0 or min(self.width, self.height) < 1 or self.players not in (2, 3, 4):
+        if min(self.score, self.seconds) < 0 or min(self.width, self.height) < 1 or not 2 <= self.players <= MAX_PLAYERS:
             raise ValueError("Invalid high-score match values")
         for name in ("run_id", "player", "completed_at"):
             if not isinstance(getattr(self, name), str) or not getattr(self, name).strip():
@@ -123,7 +123,7 @@ class HighScores:
         points = score_breakdown(world, player)
         owner = world.players[player]
         entry = ScoreEntry(run_id, owner.name, owner.race.value, sum(points.values()), int(world.time), world.width, world.height,
-                           len(world.players), difficulty.value, world.theme.value, seed, world.winner == player,
+                           world.seats, difficulty.value, world.theme.value, seed, world.winner == player,
                            datetime.now(timezone.utc).isoformat())
         entries = self.load()
         original = entries

@@ -90,14 +90,15 @@ def test_global_upgrades_wait_for_prerequisites_without_a_stalled_unit_blocking_
     world.players[0].gold = world.players[0].lumber = 10_000
     world.place_building(0, BuildingType.BLACKSMITH, (8, 2))
     world.order_unit(0, UnitType.CATAPULT)  # no workshop; this queue must not block research
-    world.order_upgrade(0, Upgrade.BLADES_1)
-    world.order_upgrade(0, Upgrade.BLADES_2)
+    ordered = (Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.KEEP)  # the second tier waits for the Keep, planned last
+    for upgrade in ordered:
+        world.order_upgrade(0, upgrade)
     with pytest.raises(RuleError, match="planned"):
         world.order_upgrade(0, Upgrade.BLADES_1)
-    advance_until(world, lambda: Upgrade.BLADES_2 in world.players[0].upgrades, seconds=110)
-    assert Upgrade.BLADES_1 in world.players[0].upgrades
+    advance_until(world, lambda: Upgrade.BLADES_2 in world.players[0].upgrades, seconds=220)
+    assert Upgrade.BLADES_1 in world.players[0].upgrades and Upgrade.KEEP in world.players[0].upgrades
     assert len(world.player_plans(0)) == 1 and world.player_plans(0)[0].type is UnitType.CATAPULT
-    assert world.players[0].gold == 10_000 - sum(UPGRADES[item].cost.gold for item in (Upgrade.BLADES_1, Upgrade.BLADES_2))
+    assert world.players[0].gold == 10_000 - sum(UPGRADES[item].cost.gold for item in ordered)
     with pytest.raises(RuleError, match="researched"):
         world.order_upgrade(0, Upgrade.BLADES_2)
 

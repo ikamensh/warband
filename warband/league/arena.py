@@ -37,12 +37,13 @@ import statistics
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from typing import Final
 
 from warband.sim import mapgen
 from warband.brains.ai import make_brain
 from warband.sim.model import World
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Difficulty, Layout, MapTheme, Race, SIM_DT, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, Layout, MapTheme, Race, UnitType, Upgrade
 from warband.league.telemetry import PlayerTally, Telemetry
 
 ELO_SCALE = 400.0 / math.log(10.0)  # Elo points per unit of Bradley-Terry log-strength
@@ -115,7 +116,8 @@ for _profile in ARCHETYPES:
 
 #: Multiplicative knobs a variant may turn. ``cost_gold``/``cost_lumber`` scale a
 #: price; the rest scale the matching field of the unit, building or upgrade.
-UNIT_FIELDS = ("hp", "damage", "speed", "range", "build_time", "cost_gold", "cost_lumber")
+UNIT_FIELDS = ("hp", "damage", "speed", "range", "build_time", "cost_gold", "cost_lumber", "windup", "cooldown",
+               "splash", "min_range")  # a radius is never scaled: rules.MAX_UNIT_RADIUS holds for the whole match
 BUILDING_FIELDS = ("hp", "build_time", "cost_gold", "cost_lumber", "damage", "range")
 UPGRADE_FIELDS = ("cost_gold", "cost_lumber", "time")
 
@@ -160,6 +162,10 @@ def _scaled_unit(info, factors: Mapping[str, float]):
         range=info.range if info.range < 1 else round(info.range * factors.get("range", 1.0), 3),
         build_time=max(0.5, round(info.build_time * factors.get("build_time", 1.0), 3)),
         cost=_scaled_cost(info.cost, factors),
+        windup=round(info.windup * factors.get("windup", 1.0), 3),
+        cooldown=round(info.cooldown * factors.get("cooldown", 1.0), 3),
+        splash=round(info.splash * factors.get("splash", 1.0), 3),
+        min_range=round(info.min_range * factors.get("min_range", 1.0), 3),
     )
 
 
@@ -241,9 +247,10 @@ def shuffled_variant(seed: int, spread: float = 0.25) -> Variant:
     """
     rng = random.Random(seed ^ 0xBA1A)
     jitter = lambda: math.exp(rng.uniform(-spread, spread))  # noqa: E731 - symmetric in multiply and divide
-    units = {t: {f: jitter() for f in ("hp", "damage", "cost_gold", "build_time")} for t in UnitType}
-    buildings = {t: {f: jitter() for f in ("hp", "cost_gold", "build_time")} for t in BuildingType
-                 if t is not BuildingType.GOLD_MINE}
+    # Only what a player buys: a jittered rulebook is a balance question about the seven units and nine
+    # buildings a seat can have, and moving a creature's numbers would measure the wilds instead.
+    units = {t: {f: jitter() for f in ("hp", "damage", "cost_gold", "build_time")} for t in PLAYABLE_UNITS}
+    buildings = {t: {f: jitter() for f in ("hp", "cost_gold", "build_time")} for t in BUILT}
     return Variant(f"shuffle-{seed}", units=units, buildings=buildings)
 
 
@@ -296,6 +303,8 @@ class MatchSpec:
     races: tuple[str, ...] | None = None  # race value per player; None draws them from the seed
     theme: str = MapTheme.SUMMER.value
     layout: str | None = None  # None draws it from the seed
+    wilds: bool = True  # creature camps on the contested deposits; False leaves them unguarded, which is
+    # how a ladder with camps is compared against the same ladder without them (tools/creep_report.py)
     # Size, land and layout are spelled out here and varied by the runner. The
     # layout used to be left to the seed, on the grounds that a few dozen seeds
     # meet all five — but a league of eight seeds drew plains five times and
@@ -386,6 +395,12 @@ def _placements(world: World, eliminated: dict[int, float], players: int) -> tup
     return tuple(out)
 
 
+#: The boards the ladder plays on.  They are the three sizes New game offered when the measured
+#: ratings (brains.DIFFICULTY_ELO) and the balance league were played, and they are kept here
+#: rather than read from mapgen.SIZES so that offering a new size never moves a rating.
+LADDER_SIZES: Final[tuple[tuple[int, int], ...]] = ((48, 40), (64, 48), (80, 64))
+
+
 def board(seed: int) -> dict:
     """The size and layout *seed* is played on, so both corners share a map.
 
@@ -395,7 +410,7 @@ def board(seed: int) -> dict:
     summer, winter and wasteland generate identical terrain, tile for tile,
     and differ only in how they are drawn.
     """
-    sizes = list(mapgen.SIZES.values())
+    sizes = list(LADDER_SIZES)
     layouts = [layout.value for layout in Layout]
     width, height = sizes[seed % len(sizes)]
     return {"width": width, "height": height, "layout": layouts[seed % len(layouts)]}
@@ -411,7 +426,7 @@ def playable(spec: MatchSpec) -> bool:
     try:
         mapgen.generate(seed=spec.seed, width=spec.width, height=spec.height,
                         players=spec.players, human=None, theme=MapTheme(spec.theme),
-                        layout=Layout(spec.layout) if spec.layout is not None else None)
+                        layout=Layout(spec.layout) if spec.layout is not None else None, wilds=spec.wilds)
     except ValueError:
         return False
     return True
@@ -471,7 +486,7 @@ def play(spec: MatchSpec, *, settle: bool = True) -> MatchResult:
     races = tuple(Race(r) for r in spec.races) if spec.races is not None else None
     world = mapgen.generate(seed=spec.seed, width=spec.width, height=spec.height, players=spec.players,
                             human=None, theme=MapTheme(spec.theme), races=races,
-                            layout=Layout(spec.layout) if spec.layout is not None else None)
+                            layout=Layout(spec.layout) if spec.layout is not None else None, wilds=spec.wilds)
     agents = [make_agent(name, player, spec.seed) for player, name in enumerate(spec.agents)]
     # A stream per player: whose turn it is to draw must not depend on who else is playing.
     rngs = [random.Random(spec.seed * 1000003 + player) for player in range(spec.players)]
@@ -491,7 +506,7 @@ def play(spec: MatchSpec, *, settle: bool = True) -> MatchResult:
         world.step()
         telemetry.observe(world, world.take_events())
         steps += 1
-        for player in world.players:
+        for player in world.players[:spec.players]:
             if not player.alive and player.id not in eliminated:
                 eliminated[player.id] = world.time
         if steps % 20 == 0:
@@ -510,7 +525,7 @@ def play(spec: MatchSpec, *, settle: bool = True) -> MatchResult:
     return MatchResult(spec=spec, placements=_placements(world, eliminated, spec.players),
                        winner=world.winner if world.winner is not None else settled,
                        minutes=world.time / 60, steps=steps, wall=time.perf_counter() - started, styles=styles,
-                       races=tuple(p.race.value for p in world.players),
+                       races=tuple(p.race.value for p in world.players[:spec.players]),
                        settled=settled is not None, tallies=telemetry.tallies)
 
 
@@ -541,7 +556,7 @@ def register_profiles(profiles: Sequence[tuple[str, object]]) -> None:
 
 #: The order :func:`play_spec_tuple` expects, and the only thing that crosses
 #: a process boundary.
-SPEC_FIELDS = ("seed", "agents", "variant", "minutes", "width", "height", "races", "theme", "layout")
+SPEC_FIELDS = ("seed", "agents", "variant", "minutes", "width", "height", "races", "theme", "layout", "wilds")
 
 
 def play_spec_tuple(packed: tuple) -> MatchResult:

@@ -21,12 +21,16 @@ uv run python tools/verify.py DIR                # a match through real pyglet e
 uv run python tools/verify_profile.py DIR        # title card, profile, rating on the results, leave confirmations, a replay: frames to look at
 uv run python tools/verify_campaign.py DIR       # the campaign's screens rendered by the real backend; uv run warband --mission ID plays one
 uv run python tools/verify_deaths.py DIR         # one death per unit category from both sides and a mass-casualty scene, as montages to look at (--zoom 2 for near)
+uv run python tools/verify_camp.py DIR           # a creature camp on the map, an army walking up to it, the fight, and each creature's card
 uv run python tools/visual_lint.py --evidence DIR   # visual defects in the art and on every screen; PNGs of what it flags (--screens NAME, --no-images)
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms); --scenario four-player|pan-zoom|deaths|restarts, --csv, --gc
 uv run python tools/step_bench.py --repeat 3     # model step times of the same battle without a window, with --profile
+uv run python tools/step_bench.py --scenario seats --seats 16 --steps 12000   # a real sixteen-seat match, step and brains timed apart
+uv run python tools/perf.py --scenario sixteen-player           # frames with sixteen armies on the biggest map that seats them
 uv run python tools/sim_bench.py --check tools/sim_bench.txt   # processor time of nine whole arena matches, and their results unchanged
 uv run python -m warband.league.fastsim          # compile the simulation with mypyc now (the match-running tools do it on first use)
 uv run python tools/ai_report.py --seeds 3 --decide 0   # difficulties against a scripted opening (the default report is about a minute)
+uv run python tools/creep_report.py --agents pro,pro --seeds 12   # can the brains clear a creature camp? camps cleared against units fed to one
 uv run python tools/arena.py ladder --agents hard,pro --seeds 40   # rate agents against each other, in parallel
 uv run python tools/arena.py report --seeds 24                     # 1v1, free-for-all and jittered-balance ladders
 uv run python tools/tune.py --rounds 12 --games 48                 # hill-climb a ProProfile's numbers
@@ -61,11 +65,30 @@ the compiled simulation attaches after they load.
   winds up and lands; shots are `Projectile`s that land later, stones on the
   ground they were fired at (`docs/unit-motion.md` part 4). `rules.py` holds
   the tables, `races.py` the four races' names, numbers and arts, `path.py`
-  bounded A*, `mapgen.py` the five map layouts, their symmetry and audit,
+  bounded A* on a budget that grows with the map, `mapgen.py` the five map
+  layouts, the grid of congruent cells that deals two to sixteen seats one each,
+  and the audit (`grid`, `dimensions`, `refusal`, `offered`, `sizes_for` and
+  `layouts_for` say which size, seat count and layout make a fair map together;
+  a map bigger than the shipped three also gets an endless five-tile gold seam
+  in the shared ground on Plains, Crossings and Bastion, which `build` treats as
+  a wish rather than a fault: `docs/warband-maps.md`).  A gold deposit is a
+  building whose `BuildingInfo.mine` is set (`rules.MineInfo`: its trip, its
+  places at the face, whether it runs out); a seam's `gold` is nothing at all,
+  so what is worth mining is `Building.has_gold` and `KnownMine.spent`,
   `worker_ai.py`/`worker_knowledge.py` the automatic gatherers (placed when
   idle, and the split looked at again every five seconds: `Harvest.placed`
-  marks the policy's own jobs, an ordered harvest stays its player's),
-  `settlement.py` building plans. `_native.c` holds C twins of a few loops of
+  marks the policy's own jobs, an ordered harvest stays its player's, and a
+  worker its player lately had in hand is left alone the longer the further
+  from a depot it stands, `manual_hold`: `docs/worker-hands-off.md`),
+  `settlement.py` building plans.  `camps.py` holds the neutral creature camps:
+  a lair with its guards posted round it, which rouse as one, leash to the camp
+  and put themselves back together when left alone, and which mapgen places
+  beside every *contested* deposit (a third mine or the seam, never a seat's own
+  mine and never its natural).  They belong to the wilds, the one seat past
+  `World.seats` (`Player.neutral`): everything that means "a seat in the match"
+  counts `world.seats`, never `len(world.players)`, and the wilds are out of
+  victory, elimination, fog, supply, the league's tallies and the authority's
+  own seats.  `docs/warband-monsters.md`. `_native.c` holds C twins of a few loops of
   the compiled simulation (`docs/fast-simulation.md`).
 - `warband/brains/` — the computer players. `ai.py` holds a Brain per player
   for the lower difficulties (`PROFILES`) plus `make_brain`, which is what
@@ -146,7 +169,10 @@ the compiled simulation attaches after they load.
   LAN/online scenes, `profile_scene.py`, `score_scene.py` and
   `replay_scene.py` (`ReplayScene` plays a recording back) their screens,
   `tutorial.py` the first match's objectives, `style.py` and `icons.py` the
-  look of the HUD. `tech.py` reads what needs what from the rules the other
+  look of the HUD. `version.py` names the build that is running — a published
+  build's version and commit, or a checkout's commit — which the title screen,
+  the pause panel and `--version` show, so a report or a screenshot says which
+  build it came from. `tech.py` reads what needs what from the rules the other
   way round: what a catalogue item still lacks and whether it is on its way
   (the card greys out and refuses what nobody is making), and the codex's tech
   tree. `controls.py` holds the three control schemes (Classic,
@@ -217,6 +243,11 @@ decision of its own.
   goes into both, and `tests/warband/test_fastsim.py` holds them to the same
   answers on random inputs and plays the fingerprint compiled. What the
   compiler rewards and punishes is in `docs/fast-simulation.md`.
+- A camp is only a feature if every side can use one. `tools/creep_report.py`
+  is the gate: lairs cleared per match against units lost to the wilds per lair
+  (`trickle`). A brain that feeds soldiers into a camp a few at a time is
+  pouring them into a sink, because a camp mends its wounded and calls its dead
+  back out of the den; that failure is what the number is for.
 - Claims about an AI being stronger are settled by `tools/arena.py`, not by
   watching a match. The same two brains on the same twelve seeds swing
   between seven and eleven wins on the random stream alone, so nothing under

@@ -318,7 +318,7 @@ def test_a_mission_save_keeps_the_script_where_it_was_and_continue_resumes_it(ga
     loaded = game.scene
     assert isinstance(loaded, MissionScene) and loaded is not scene
     assert loaded.run.fired.keys() == {"raid_1"} and loaded.run.state == run.state and loaded.run.get("camp") == run.get("camp")
-    assert [p.name for p in loaded.world.players] == ["Hollowmere", "Bloodfang Raiders"] and loaded.world.scripted
+    assert [p.name for p in loaded.world.players[:loaded.world.seats]] == ["Hollowmere", "Bloodfang Raiders"] and loaded.world.scripted
     past_the_banner(game)
     assert "1. Hollowmere" in texts(game) and "Hold Hollowmere against the raids" in texts(game)
     assert loaded.AUTOSAVE_SLOT == CAMPAIGN_SLOT and not loaded.ranked

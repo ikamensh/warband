@@ -172,6 +172,9 @@ def test_the_brain_plays_a_match_without_raising_and_builds_an_army():
     world = mapgen.generate(seed=12, players=2, human=None)
     brains = [ProBrain(0, PRO), ProBrain(1, PRO)]
     rngs = [random.Random(i) for i in range(2)]
+    # The most soldiers each side ever had at once, not the ones still standing at the end: whether the army
+    # was trained is the brain's business, whether it survived the other brain's attack is the match's.
+    army = [0, 0]
     for _ in range(int(240 / SIM_DT)):
         if world.winner is not None:
             break
@@ -179,8 +182,10 @@ def test_the_brain_plays_a_match_without_raising_and_builds_an_army():
             brain.think(world, rng)
         world.step()
         world.take_events()
+        for player in (0, 1):
+            army[player] = max(army[player], sum(1 for u in world.player_units(player) if not u.is_worker))
     for player in (0, 1):
-        assert any(not u.is_worker for u in world.player_units(player)), f"player {player} trained nothing"
+        assert army[player], f"player {player} trained nothing"
         assert len(world.player_buildings(player, done=True)) > 2
 
 
@@ -206,7 +211,7 @@ def test_more_opponents_mean_a_bigger_margin_is_wanted_before_attacking():
     """Every extra player is someone who profits from a fight you started."""
     world = mapgen.generate(seed=9, players=3, human=None)
     brain = ProBrain(0, PRO)
-    bystanders = sum(1 for p in world.players if p.id != 0 and p.alive) - 1
+    bystanders = sum(1 for p in world.players[:world.seats] if p.id != 0 and p.alive) - 1  # the wilds are nobody's rival
     assert bystanders == 1
     assert PRO.attack_ratio * (1 + PRO.ffa_caution * bystanders) > PRO.attack_ratio
 

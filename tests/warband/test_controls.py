@@ -158,7 +158,7 @@ def test_grid_keys_go_by_the_card_position(game) -> None:
     peasant = peasants_of(scene)[0]
     scene.select([peasant.id])
     assert [(c.label, c.hotkey) for c in scene.card] == [("Move", "Q"), ("Stop", "W"), ("Hold", "E"), ("Attack", "A"), ("Patrol", "S"),
-                                                         ("Build", "D"), ("Repair", "Z")]
+                                                         ("Build", "D"), ("Repair", "Z"), ("Salvage", "X")]
     press(game, "a")
     assert scene.pending == "attack"
     press(game, "escape")

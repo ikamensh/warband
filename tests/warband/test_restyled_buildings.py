@@ -13,14 +13,15 @@ from PIL import Image
 from sagaforge import restyle
 from warband.art import textures
 from warband.sim.model import Building
-from warband.sim.rules import BuildingType, Race, UnitType
+from warband.sim.rules import BUILDINGS, BuildingType, Race, UnitType
+from warband.sim.rules import BUILT as rules_built
 from warband.ui.view import building_look
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools import restyle as tool  # noqa: E402
 
 CELL = (40, 60)
-BUILT = [bt for bt in BuildingType if bt is not BuildingType.GOLD_MINE]
+BUILT = list(rules_built)
 
 
 def paint(folder: Path, race: Race, look: str, types: list[BuildingType] = BUILT) -> None:
@@ -175,7 +176,8 @@ def test_selection_defaults_to_every_subject_of_the_race() -> None:
     parse = tool.argparse.ArgumentParser()
     parse.add_argument("--race", default="human"); parse.add_argument("--units", default=None)
     parse.add_argument("--buildings", action="store_true"); parse.add_argument("--looks", default="intact,active,damaged")
-    parse.add_argument("--mines", action="store_true")
+    parse.add_argument("--mines", action="store_true"); parse.add_argument("--monsters", action="store_true")
+    parse.add_argument("--creatures", default="all")
     names = [s.name for s in tool.selected(parse.parse_args(["--race", "elf"]))]
     assert names[:3] == ["elf.peasant", "elf.peasant.gold", "elf.peasant.lumber"] and names[-3:] == ["elf.buildings.intact", "elf.buildings.active", "elf.buildings.damaged"]
     assert [s.name for s in tool.selected(parse.parse_args(["--buildings", "--looks", "damaged"]))] == ["human.buildings.damaged"]
