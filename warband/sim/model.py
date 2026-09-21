@@ -144,7 +144,7 @@ REPLAN_EVERY: Final = 0.6  # a unit plans at most this often unless it gets a ne
 REPLAN_STAGGER: Final = 8  # ticks over which units spread their next plans by id, so a crowd does not plan in lockstep
 STEER_RANGE: Final = 4.0  # within this many tiles a unit walks straight at its target when the line is clear, without A*
 LOCAL_EXPANSIONS: Final = 700  # A* budget for the detours around other units; those goals are close
-SETTLE_WITHIN: Final = 0.65  # beyond its own body, how near its spot a crowd may hold a unit for a plain walk to count as arrived
+SETTLE_WITHIN: Final = 0.65  # room beyond its own body a unit wants at its spot; past that it looks for somewhere nearer to stand
 MINE_CLEARANCE: Final = 2  # tiles kept free around a gold deposit so peasants can get in and out
 SIDESTEP: Final = 0.6  # lateral share of the push when walking units collide
 MAX_PUSH: Final = 0.25  # tiles a crowd can shove a unit in one step; eight overlapping units once summed to a jump over a tree wall
@@ -2989,10 +2989,43 @@ class World:
             together = self._pace_groups[key] = all(dist(m.pos, leader) <= 6.0 for m in mates)
         return together
 
+    def stands_at(self, u: Unit, point: Point) -> bool:
+        """Whether *u* is at *point*, or as near it as the crowd standing in the way allows.
+
+        A walk ends where the unit reaches the point, and a point holds one body: order an army to a
+        muster and most of it can never arrive.  How near a soldier may come is not a distance of its
+        own but the bodies between it and the spot, so the ground is asked instead of measured: is
+        every step of the way in held by somebody who is not going anywhere?  A pile twenty deep
+        answers as readily as a single knight on the spot.  Ground the map blocks does not answer it
+        at all -- that is the planner's business, and it walks the unit round -- and neither does a
+        unit walking an order of its own, or a queue filing through a gate would give up at the back
+        of itself rather than wait its turn.
+
+        The simulation ends a settling walk on this answer, and a brain asks it before ordering
+        another, so a soldier is never sent where the simulation would stop it at once.  Two
+        answers to the one question was a soldier let go of its order at one distance and sent
+        after it again at another, twice a second, taking no further part in the match (fuzz
+        seed 92: a footman a tile and a bit from a muster a knight was standing on).
+        """
+        gap = dist(u.pos, point)
+        room = u.radius + SETTLE_WITHIN
+        if gap <= room:
+            return True
+        dx, dy = (point[0] - u.x) / gap, (point[1] - u.y) / gap
+        walked = room
+        while walked < gap:
+            x, y = u.x + dx * walked, u.y + dy * walked
+            if not any(v is not u and not v.hidden and not (v.state == "move" and v.orders)
+                       and hypot(v.x - x, v.y - y) < v.radius + u.radius
+                       for v in self.units_near((x, y), u.radius + MAX_UNIT_RADIUS)):
+                return False  # nobody settled on this step of the way: the walk still has somewhere to go
+            walked += u.radius  # a step no wider than the unit, so no room it would fit in is stepped over
+        return True
+
     def _walk_to(self, u: Unit, target: Point, dt: float, *, settle: bool = False) -> bool:
         """Move towards *target*; True once there is nothing left to walk (arrived, or as near as the
-        map allows).  With *settle*, a crowd holding the unit within its body and SETTLE_WITHIN of the spot also
-        counts as arrived: a plain walk ends there, while a peasant keeps pressing for its mine."""
+        map allows).  With *settle*, a unit the crowd holds as near the spot as :meth:`stands_at` allows
+        also counts as arrived: a plain walk ends there, while a peasant keeps pressing for its mine."""
         return self._approach(u, (int(target[0]), int(target[1])), target, dt, settle=settle)
 
     def _approach(self, u: Unit, goal: Pos, exact: Point, dt: float, *, settle: bool = False) -> bool:
@@ -3084,6 +3117,7 @@ class World:
         u.x, u.y = nx, ny
         # Progress watchdog: closing on the goal resets it; a stretch without progress paths
         # again around the units in the way.
+        aim: Point | None = None
         if u.path_goal is None:
             remaining = 0.0
         else:
@@ -3095,7 +3129,7 @@ class World:
         else:
             u.progress += dt
             if u.progress >= STUCK_AFTER and u.path_goal is not None:
-                if settle and remaining <= u.radius + SETTLE_WITHIN:
+                if settle and aim is not None and self.stands_at(u, aim):
                     u.path = []
                     u.exact = None
                     u.state = "idle"
