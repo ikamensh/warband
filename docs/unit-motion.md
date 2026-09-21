@@ -341,3 +341,74 @@ they were, and the numbers above were the starting point. What was done with the
 day, is [the balance note](balance.md): the crew's veto became a trade, which is where nearly
 all of the 90.0 % had gone, and the catapult was then priced for the player who aims it,
 whose stones were never subject to the veto in the first place.
+
+## 8. As near as the crowd allows (2026-09-21)
+
+A walk ends where the unit reaches its point, and a point holds one body. Order twenty soldiers
+to a muster and nineteen of them cannot stand on it, so nineteen keep an order they can never
+finish — which is a soldier standing in the crowd for the rest of the match, taking no further
+part in it. Both brains carried a patch for that: `release_arrived` let go of any Move whose
+target was within `ARRIVED_WITHIN` (1.5 tiles) by re-ordering the unit to where it already stood.
+`ProBrain._send_to_muster` then sent a soldier after its post again beyond `MUSTERED` (1.0). A
+soldier the crowd held **between** those two numbers was cancelled and re-ordered twice a second:
+it walked two ticks towards its post, was released, drifted eight ticks back on the crowd's push,
+and was sent again, for as long as the match lasted. `tools/fuzz.py --games 8 --monkey 0 --seed 85`
+caught it on seed 92 — footman 164 of player 3, a tile and a bit from a muster post a knight was
+standing on, in the same place twenty seconds later. Left alone it would have walked in and
+arrived in 1.6 s; it was the two rules fighting, not the crowd, that pinned it.
+
+Both sides now ask the world the one question, `World.stands_at(unit, point)`: **is the unit at
+that point, or as near it as the crowd standing in the way allows?** It walks the line from the
+unit to the point in steps no wider than the unit's own body, and asks of each step whether a
+body is standing on it. The unit is there when every step of the way in is held by somebody who
+is not going anywhere. That is how a pile twenty deep is answered as readily as a single knight
+on the spot — the old test, a fixed `SETTLE_WITHIN` beyond the unit's own body, only ever
+described the innermost ring, and it takes two bodies to make the gap, not one.
+
+Two things deliberately do not answer it:
+
+* **ground the map blocks.** That is the planner's business, and it walks the unit round. Counting
+  a wall as "the way is full" made a queue at a one-tile gate give up at the back of itself
+  (`test_twice_the_crowd_through_the_same_gate_still_clears`).
+* **a unit walking an order of its own.** It will move on, so waiting behind it is not arriving.
+  The settling cascades from the front instead: whoever arrives first stops, and becomes the wall
+  the one behind it settles against.
+
+`World._follow` ends a settling walk on this answer once the progress watchdog says the unit is
+going nowhere (`STUCK_AFTER`), so a fresh order still walks the whole way; `_send_to_muster` asks
+it before ordering another walk, and `_march` asks it before taking the marching line's shortcut. `release_arrived`, `ARRIVED_WITHIN` and `MUSTERED` are gone: a
+soldier is never sent where the simulation would stop it at once, which no pair of numbers either
+side of a walk can promise. It is also the human player's army that is fixed — `release_arrived`
+only ever ran for a brain.
+
+Measured: nine whole arena matches run at 0.058 ms a step against 0.057 before, and the staged
+150-unit battle of `tools/step_bench.py` at a mean 0.38 ms a step against 0.37, so the walk costs
+nothing measurable — `stands_at` is asked about 200 times in a whole match. What moves is the
+matches themselves: they run about 7 % longer in simulated time, and 48 ladder matches of
+`hard` against `pro` went 75.0 % to `pro` where they went 68.8 %, all 48 decided where one was
+not. `tools/sim_fingerprint.txt` and `tools/sim_bench.txt` moved with the rules change.
+
+**The shortcut that marched a unit back out of its slot.** The first landing of this went in and came
+straight back out: CI was red on Linux, where the gate queue of `tests/warband/test_stuck_units.py`
+wedged a footman for the last three minutes of the run. The scenario is bit-identical on macOS with and
+without the change, so the divergence was the Linux runtime's own rounding taking that crowd of
+sixty-six somewhere this Mac never goes — which is what the note at the top of this file about glibc
+rounding sines differently in the last bit looks like from the other end. A Linux container reproduced
+it in eight seconds and the trace was unambiguous.
+
+It was not the crowd at all. A unit in a marching line heads for the place `FORMATION_LOOKAHEAD` ahead
+of the line's middle, and once it has walked in to its slot at the end of the march that place is
+*behind* it: the shortcut cleared its plan (`_steer` drops `path`, `path_goal` and `exact`) and walked
+it a tile and a half back out, the next step planned the way in again, and it stepped between the two
+with a period of 1.3 seconds. Its stragglers were still queueing at the wall, so the line's middle never
+caught up and the shortcut never switched off. Worse, each turn reset the progress watchdog, so
+`u.progress` sat at 0.00 for ever and the settling walk could never end: the footman finished at rest
+*exactly on its slot*, in the move state, holding an order it had already completed.
+
+`_along_its_route` (part of WB-050's own fix, b68271eb) is meant to refuse a shortcut that undoes the
+route the unit is walking, but it answers "nothing to undo" for a unit with no path — which is precisely
+the unit that has just arrived. So `_march` now asks `stands_at` first: **a unit already standing at its
+slot never takes the shortcut**, because there is nothing left to march to. It costs nothing measurable
+(the staged 150-unit battle runs a shade faster with it, on fewer wasted replans).
+`tests/warband/test_off_course.py` holds the step-out itself, staged from that run's own five marchers,
+their offsets and the wall that holds them back; the twenty-second wedge stays the gate queue's job.

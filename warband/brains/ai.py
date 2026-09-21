@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-from warband.sim.model import (MINE_CLEARANCE, Attack, AttackMove, Build, Building, Deposit, Harvest, Move, Point, Pos, Repair, Salvage, Unit,
+from warband.sim.model import (MINE_CLEARANCE, Attack, AttackMove, Build, Building, Deposit, Harvest, Point, Pos, Repair, Salvage, Unit,
                            World, dist, rect_gap, tile_center)
 from warband.sim import mapgen
 from warband.sim.races import RACES
@@ -97,9 +97,6 @@ ARMY_PLANS: Final[dict[Race, dict[UnitType, float]]] = {
 }
 
 _MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
-
-
-ARRIVED_WITHIN: Final = 1.5  # a soldier this near its destination has arrived, whatever the order says
 
 
 def known_enemy_buildings(world: World, player: int) -> list:
@@ -237,26 +234,6 @@ def auto_site(world: World, building_type: BuildingType, player: int, near: Poin
     return site_search(world, sited, player, anchor, rng, BUILD_MIN_DISTANCE, BUILD_MAX_DISTANCE, taken)
 
 
-def release_arrived(world: World, player: int) -> None:
-    """Let go of a Move that is as good as finished.
-
-    A Move ends only when the unit reaches the point itself. Order a whole army
-    to one coordinate — which is what a muster point is — and the soldiers that
-    cannot stand on it stop a fraction of a tile short and keep the order for
-    the rest of the game, taking no further part in it. Re-issuing the move to
-    where the unit already stands completes it.
-
-    Found by ``tools/fuzz.py``: an archer stalled twenty seconds two thirds of
-    a tile from a muster point, with the tile it wanted occupied.
-    """
-    for unit in world.player_units(player):
-        if unit.is_worker:
-            continue
-        order = unit.order
-        if isinstance(order, Move) and dist(unit.pos, order.target) < ARRIVED_WITHIN:
-            world.move([unit.id], unit.pos)
-
-
 def _shift(plan: dict[UnitType, float], deltas: dict[UnitType, float]) -> None:
     """Move share between plan entries in place.  A shift whose types are not
     all in the plan is skipped; the survivors are clamped at zero and
@@ -390,7 +367,6 @@ class Brain:
         if world.time < self.next_think or not world.players[self.player].alive or world.winner is not None:
             return
         self.next_think = world.time + self.profile.think_every
-        release_arrived(world, self.player)
         if not self._plan_logged:
             self._plan_logged = True
             self.note(world, f"army plan {world.players[self.player].race.value}")
