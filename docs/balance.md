@@ -93,7 +93,7 @@ the base formation setting. Base units may omit costs, heal, splash,
 min_range and regen (zero), attack (`"normal"`), armor_class (`"light"`),
 formation/mounted (`false`), and turn_deg (`360`). Other fields must appear
 in the entry or its defaults. Misspelled keys, wrong types and missing
-required fields fail generation, including invalid defaults that every
+required fields fail startup validation, including invalid defaults that every
 entry overrides.
 
 To *try* a price before committing to it, skip the files: a `scale:` variant
