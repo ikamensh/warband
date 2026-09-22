@@ -1,5 +1,6 @@
 """Quiet life around visible buildings, driven entirely by simulation time: motes and glints
-over a mine that still holds gold, smoke and a forge glow at a smith, and at a site going up its
+over a mine that still holds gold, smoke and a forge glow at a smith, a den breathing its own
+tint with spores off its mouth and glints on its tips, and at a site going up its
 builder hammering at the front corner, dust rising from the work and a spark at every strike.  First built on the
 unmerged ``warband`` branch; the geometry matches the buildings in :mod:`warband.art.textures`."""
 
@@ -50,6 +51,11 @@ def draw(scene, world, player: int) -> None:
                     size, alpha = 4 * strength, round(220 * strength)
                     scene.draw_line(x + dx - size, y + dy, x + dx + size, y + dy, (255, 250, 230, alpha), 1, **layer)
                     scene.draw_line(x + dx, y + dy - size * 1.4, x + dx, y + dy + size * 1.4, (255, 250, 230, alpha), 1, **layer)
+        elif building.type is BuildingType.LAIR:
+            # A den breathes: a slow halo pulse in its own tint, spores or dust rising from its mouth,
+            # and glints on its tips.  The anchors live with the meshes that placed them
+            # (:data:`warband.art.monsters.LAIR_ANCHORS`), so the life and the den agree.
+            _lair_alive(scene, world, building, x, y, phase, layer)
         elif building.type is BuildingType.BLACKSMITH:
             # Three drifting puffs from the chimney and a flicker at the furnace mouth.
             chimney_x, chimney_y = PROJECTION.project((-.72, -.51, 2.39))
@@ -59,6 +65,39 @@ def draw(scene, world, player: int) -> None:
             flicker = .5 + .5 * math.sin(phase * 9)
             forge_x, forge_y = PROJECTION.project((-.29, .564, .49))
             scene.draw_circle(x + forge_x, y + forge_y, 6 + flicker * 2, (255, 169, 78, round(13 + flicker * 9)), **layer)
+
+
+def _lair_alive(scene, world, building, x: float, y: float, phase: float, layer: dict) -> None:
+    """One den breathing: a slow halo pulse in its own tint, motes rising from its mouth, glints on
+    its tips, and the wolf den's breath puffing at its mouth on a slower clock."""
+    from warband.art.monsters import LAIR_ANCHORS, LairKind, lair_kind_for_camp
+
+    camp = next((c for c in world.camps if c.lair == building.id), None)
+    kind = lair_kind_for_camp(camp) if camp is not None else LairKind.WOLF
+    anchors = LAIR_ANCHORS[kind]
+    halo = anchors["halo"]
+    breath = 0.5 + 0.5 * math.sin(phase * 2.1)  # about three seconds a breath
+    scene.draw_circle(x, y - 24, 30 + 3 * math.sin(phase * 2.1), (*halo, round(11 + breath * 7)), **layer)
+    mx, my = PROJECTION.project(anchors["mouth"])
+    for i in range(5):  # spores or dust off the mouth, each on its own clock
+        lift = (phase * .18 + i / 5) % 1
+        px = x + mx + math.cos(phase * .9 + i * 2.4) * 8
+        py = y + my - lift * 44
+        alpha = round(150 * math.sin(lift * math.pi))
+        size = 1.2 + .6 * math.sin(phase * 1.7 + i)
+        scene.draw_circle(px, py, size, (*halo, alpha), **layer)
+    for index, tip in enumerate(anchors["glints"]):
+        dx, dy = PROJECTION.project(tip)
+        strength = max(0.0, math.sin(phase * 1.6 + index * 1.8)) ** 8
+        if strength > .05:
+            size, alpha = 4 * strength, round(220 * strength)
+            scene.draw_line(x + dx - size, y + dy, x + dx + size, y + dy, (255, 250, 230, alpha), 1, **layer)
+            scene.draw_line(x + dx, y + dy - size * 1.4, x + dx, y + dy + size * 1.4, (255, 250, 230, alpha), 1, **layer)
+    if kind is LairKind.WOLF:  # breath puffing at the mouth, slower than the spore drift
+        for i in range(2):
+            age = (phase * .25 + i / 2) % 1
+            scene.draw_circle(x + mx + age * 6, y + my - age * 16, 2 + age * 5, (200, 195, 185, round(60 * (1 - age))),
+                              **layer)
 
 
 def _site_at_work(scene, building, builder, x: float, y: float, phase: float, layer: dict) -> None:

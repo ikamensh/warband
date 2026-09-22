@@ -335,7 +335,8 @@ def test_the_den_is_a_picture_the_art_lint_passes(tmp_path) -> None:
     game = Game("Warband den", backend="mock", resolution=(640, 480), theme=build_theme(), save_dir=tmp_path / "saves")
     try:
         store = visual_lint.ImageStore(game)  # before the renders: it hooks the backend's loader
-        keys = [monsters.lair_image(game), monsters.lair_portrait_image(game)]
+        keys = [monsters.lair_image(game, kind, look) for kind in monsters.LairKind for look in monsters.LAIR_LOOKS]
+        keys += [monsters.lair_portrait_image(game, kind) for kind in monsters.LairKind]
         findings = [finding for key in keys for finding in visual_lint.lint_image(key, store.image(key))]
         assert not findings, [str(finding) for finding in findings]
     finally:

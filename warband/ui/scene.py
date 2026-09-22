@@ -471,7 +471,10 @@ class GameScene(Scene):
         # it the first fight at a camp renders every frame of every guard cold, which the benchmark sees.
         seats = self.world.players[:self.world.seats]
         warm = textures.warm_units(self.game, [p.id for p in seats], [p.race for p in seats])
-        self._warm = itertools.chain(warm, monsters.warm_monsters(self.game)) if self.world.camps else warm
+        if self.world.camps:
+            self._warm = itertools.chain(warm, monsters.warm_monsters(self.game), monsters.warm_lairs(self.game))
+        else:
+            self._warm = warm
         play_music("peace", self.player.race)
 
     def on_reveal(self) -> None:
@@ -2403,6 +2406,12 @@ class GameScene(Scene):
         return "Endless: " + ", ".join(names) + (" in turn" if len(names) > 1 else "")
 
     def _portrait(self, entity: Unit | Sighting, x: float, y: float, size: float) -> None:
+        if isinstance(entity, Sighting) and entity.type is BuildingType.LAIR:
+            from warband.art.monsters import LairKind, lair_portrait_image
+
+            key = lair_portrait_image(self.game, LairKind(entity.lair_kind))
+            self.draw_image(key, *fit(self.game, key, x, y, size))
+            return
         draw_production_icon(self, entity.type, entity.player, entity.race, x, y, size)
 
     def _draw_production(self, building: Building, x: float, y: float) -> None:
@@ -2444,7 +2453,12 @@ class GameScene(Scene):
         tx = x + CARD_TEXT
         abandoned = isinstance(entity, Sighting) and entity.abandoned
         owner = "Abandoned" if abandoned else world.players[entity.player].name if entity.player is not None else "Neutral"
-        name = entity.info.name if isinstance(entity, Unit) else RACES[entity.race].buildings[entity.type].name
+        if isinstance(entity, Sighting) and entity.type is BuildingType.LAIR:
+            from warband.art.monsters import LAIR_NAMES, LairKind
+
+            name = LAIR_NAMES[LairKind(entity.lair_kind)]
+        else:
+            name = entity.info.name if isinstance(entity, Unit) else RACES[entity.race].buildings[entity.type].name
         self.draw_text(f"{name}", tx, y + 16, style="heading")
         color = MUTED if abandoned else rgba(world.players[entity.player].color) if entity.player is not None else GOLD
         heading = self.game.theme.get_text_style("heading")  # the name's style: the owner follows wherever the theme ends it

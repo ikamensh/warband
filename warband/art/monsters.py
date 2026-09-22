@@ -44,6 +44,13 @@ The rules are somebody else's business.  This module offers the images:
 :func:`monster_portrait_image` for the selection panel.  A caller that has
 added a ``UnitType`` per creature reaches the art with ``Monster(unit.type.value)``,
 and :data:`DEATH_OUTCOME` says how each one goes down.
+
+Each creature also names a den: :class:`LairKind` holds the four, one per creature, and
+:func:`lair_kind_for_roster` reads whose den a camp is from the roster it was raised with.
+:func:`lair_image` draws one in its intact or damaged look, :func:`lair_portrait_image`
+its selection-panel picture, and :data:`LAIR_ANCHORS` tells :mod:`warband.art.ambience`
+where each den breathes from.  The dens share a footprint, a dark mouth and a bone-white
+mark, so every camp reads as a camp; silhouette and palette tell them apart.
 """
 
 from __future__ import annotations
@@ -52,7 +59,7 @@ import math
 import random
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Callable, Iterator
+from typing import Any, Callable, Iterator
 
 from PIL import Image
 
@@ -66,7 +73,7 @@ from warband.art.textures import (
     WALK_FRAMES, Color, Placement, _BOB, _LEG_LIFT, _LEG_SWING, _painted, _prop, _shadow, _shift,
     _unit_panel, _unit_pitch, _unit_rod, darker, figure_top, placements,
 )
-from warband.sim.rules import IdentityEnum
+from warband.sim.rules import IdentityEnum, UnitType
 
 
 class Monster(IdentityEnum):
@@ -782,15 +789,76 @@ def monster_portrait_image(game: Game, monster: Monster) -> str:
     return key
 
 
-# -- The lair --------------------------------------------------------------------------
+# -- The lairs -------------------------------------------------------------------------
 
-#: The rock the den is piled out of: the golem's granite, darkened, so a camp reads as one thing.
+#: The rock the dens are piled out of: the golem's granite, darkened, so every camp reads as one thing.
 LAIR_ROCK = (98, 101, 106)
 LAIR_DARK = (54, 57, 62)
 LAIR_MOUTH = (22, 20, 26)  # the hole itself: darker than INK, because a cave mouth has no light in it
+#: Trampled silk a spider nest stands on, and the drapes strung across it.
+SILK_GROUND = (178, 164, 178)
+SILK = (226, 218, 230)
+#: Packed earth of the spider's dome.
+NEST_EARTH = (104, 88, 66)
+NEST_DARK = (78, 64, 50)
+#: Cream of a spider's egg sacs: bone-white, like the skull on a wolf den, so the nest keeps the
+#: camps' shared mark of something living here.
+SAC = (232, 224, 200)
 
 
-def lair_mesh() -> Mesh:
+class LairKind(IdentityEnum):
+    """Whose den a camp is: one lair per creature, named by the guard it was raised for.
+
+    A camp's roster is mixed, so the toughest guard names the den (:data:`LAIR_PRECEDENCE`):
+    a wolf pack gets an earth den, a spider-led camp a silk nest, and the big seam camp its
+    troll mound, after the 220-hit-point anchor listed first in its roster.  The values are
+    the names a rule table would use, so ``LairKind(UnitType.TROLL.value)`` is the troll's.
+    """
+
+    WOLF = "wolf"
+    SPIDER = "spider"
+    TROLL = "troll"
+    GOLEM = "golem"
+
+
+#: Toughest first: the guard whose hide the den is built to house.  Hit points, strongest to
+#: weakest (troll 220, golem 170, spider 45, wolf 40), so the order is the threat order and never
+#: a second table to keep beside the rules.
+LAIR_PRECEDENCE: tuple[UnitType, ...] = (UnitType.TROLL, UnitType.GOLEM, UnitType.SPIDER, UnitType.WOLF)
+
+#: What the selection panel calls each den: a name of its own, not one shared "Lair".
+LAIR_NAMES: dict[LairKind, str] = {
+    LairKind.WOLF: "Wolf Den",
+    LairKind.SPIDER: "Spider Nest",
+    LairKind.TROLL: "Troll Mound",
+    LairKind.GOLEM: "Stone Cairn",
+}
+
+#: The looks a den wears: whole, or under half its hit points like every other building
+#: (:func:`warband.ui.view.building_look`).  A den is raised complete, so there are no
+#: founded/raised looks, and it trains nothing, so no active one either.
+LAIR_LOOKS = ("intact", "damaged")
+
+
+def lair_kind_for_roster(kinds: list[UnitType | str]) -> LairKind:
+    """Whose den a camp holding *kinds* is: the toughest guard present names it.
+
+    A den with no known guards reads as the common wolf den.  An unknown kind raises,
+    because a roster holds only what :class:`~warband.sim.rules.UnitType` names.
+    """
+    known = [UnitType(kind) for kind in kinds]
+    for unit_type in LAIR_PRECEDENCE:
+        if unit_type in known:
+            return LairKind(unit_type.value)
+    return LairKind.WOLF
+
+
+def lair_kind_for_camp(camp) -> LairKind:
+    """Whose den *camp* is, from the roster it was raised with (:attr:`kinds` are unit names)."""
+    return lair_kind_for_roster(list(camp.kinds))
+
+
+def _wolf_den(damaged: bool) -> Mesh:
     """A creature den: a horseshoe of dark boulders opening towards the viewer, a black mouth under a
     lintel slab, and bone spines driven into the trodden earth in front of it.
 
@@ -802,14 +870,16 @@ def lair_mesh() -> Mesh:
     rng = random.Random(51023)
     mesh = _shadow(1.30)
     # The cairn: the far half of a ring, biggest at the back, leaning inwards over the mouth.
-    for i in range(11):
+    cairn = 11 if not damaged else 7
+    for i in range(cairn):
         angle = math.pi * (1.06 + 0.88 * i / 10)  # pi..2pi is the far side: away from the camera
         x, y = math.cos(angle) * rng.uniform(0.80, 1.06), math.sin(angle) * rng.uniform(0.60, 0.84) - 0.10
         mesh += r3.sphere((x, y, rng.uniform(0.22, 0.52)), rng.uniform(0.34, 0.50), LAIR_ROCK, rings=3, sides=6)
-    for i in range(5):
-        angle = math.pi * (1.18 + 0.64 * i / 4)
-        x, y = math.cos(angle) * rng.uniform(0.40, 0.60), math.sin(angle) * rng.uniform(0.28, 0.44) - 0.06
-        mesh += r3.sphere((x, y, rng.uniform(0.70, 1.02)), rng.uniform(0.30, 0.44), LAIR_DARK, rings=3, sides=6)
+    if not damaged:
+        for i in range(5):
+            angle = math.pi * (1.18 + 0.64 * i / 4)
+            x, y = math.cos(angle) * rng.uniform(0.40, 0.60), math.sin(angle) * rng.uniform(0.28, 0.44) - 0.06
+            mesh += r3.sphere((x, y, rng.uniform(0.70, 1.02)), rng.uniform(0.30, 0.44), LAIR_DARK, rings=3, sides=6)
     # The mouth: a black recess in the near face, under a lintel slab, between two jamb boulders.
     mesh += r3.box((0.0, 0.10, 0.34), (0.92, 1.02, 0.68), LAIR_MOUTH)
     # The brow over the hole is two leaning boulders, not a slab: a flat lintel read as a shelf.
@@ -819,42 +889,267 @@ def lair_mesh() -> Mesh:
         mesh += r3.sphere((x, 0.26, 0.32), 0.46, LAIR_ROCK, rings=3, sides=6)
         mesh += r3.sphere((x * 0.86, 0.12, 0.84), 0.32, LAIR_DARK, rings=3, sides=6)
     # A skull set on the brow.  Grey stone alone reads as the map's own rock outcrop at the game's zoom;
-    # this is the one mark that says at a glance that the hole is somebody's front door.
-    mesh += r3.sphere((0.0, 0.46, 1.16), 0.24, TUSK, rings=4, sides=7)
-    mesh += r3.box((0.0, 0.62, 1.03), (0.26, 0.22, 0.17), TUSK)  # the muzzle, thrust towards the viewer
+    # this is the one mark that says at a glance that the hole is somebody's front door.  Torn down,
+    # it lies knocked into the dirt in front.
+    skull = (0.0, 0.46, 1.16) if not damaged else (0.28, 0.95, 0.14)
+    mesh += r3.sphere((skull[0], skull[1], skull[2]), 0.24, TUSK, rings=4, sides=7)
+    mesh += r3.box((skull[0], skull[1] + 0.16, skull[2] - 0.13), (0.26, 0.22, 0.17), TUSK)  # the muzzle, thrust towards the viewer
     for x in (-0.10, 0.10):
-        mesh += r3.sphere((x, 0.60, 1.20), 0.075, LAIR_MOUTH, rings=3, sides=5)
+        mesh += r3.sphere((skull[0] + x, skull[1] + 0.14, skull[2] + 0.04), 0.075, LAIR_MOUTH, rings=3, sides=5)
     # Bone spines planted either side of the mouth: thick and near upright, so they read at the game's zoom.
-    for x, lean, height in ((-1.10, -0.12, 1.12), (1.12, 0.10, 0.96), (-0.70, -0.05, 0.78), (0.76, 0.06, 0.70)):
+    spines = ((-1.10, -0.12, 1.12), (1.12, 0.10, 0.96), (-0.70, -0.05, 0.78), (0.76, 0.06, 0.70))
+    for index, (x, lean, height) in enumerate(spines):
+        if damaged and index >= 2:  # the smaller pair snapped: stubs in the dirt
+            mesh += _unit_rod((x, 0.94, 0.0), (x + lean, 0.94 + lean * 0.3, 0.25), 0.085, BONE)
+            continue
         top = (x + lean, 0.94 + lean * 0.3, height)
         mesh += _unit_rod((x, 0.94, 0.0), top, 0.085, BONE)
         mesh += r3.sphere(top, 0.135, TUSK, rings=3, sides=6)
-    # What has been dragged in and gnawed, on the trodden earth in front.
+    # What has been dragged in and gnawed, on the trodden earth in front: its own stream, so the
+    # scatter lies the same whether the crown above it stands or has fallen.
+    foreground = random.Random(51024)
     for _ in range(6):
-        angle, radius = rng.uniform(0, math.tau), rng.uniform(0.55, 1.05)
+        angle, radius = foreground.uniform(0, math.tau), foreground.uniform(0.55, 1.05)
         x, y = math.cos(angle) * radius, abs(math.sin(angle)) * radius * 0.55 + 0.95
-        mesh += _unit_rod((x, y, 0.03), (x + rng.uniform(-0.22, 0.22), y + rng.uniform(-0.10, 0.10), 0.07), 0.055, BONE)
+        mesh += _unit_rod((x, y, 0.03), (x + foreground.uniform(-0.22, 0.22), y + foreground.uniform(-0.10, 0.10), 0.07),
+                          0.055, BONE)
+    if damaged:  # the crown's fall: rubble across the mouth's step
+        for x, z, radius in ((-0.45, 0.14, 0.22), (0.10, 0.10, 0.28), (0.55, 0.16, 0.18)):
+            mesh += r3.sphere((x, 0.72, z), radius, LAIR_DARK, rings=3, sides=6)
     return mesh
 
 
-def lair_image(game: Game) -> str:
-    """Register (once) and return the key of the creature den's picture.
+def _spider_nest(damaged: bool) -> Mesh:
+    """A low silk nest: a packed-earth dome under draped silk, cream egg sacs to one side and a low
+    dark slit for a mouth, with violet venom beading at its corners.
 
-    One picture, never recoloured and never painted per race: the lair belongs to the wilds, exactly
-    as the gold mine belongs to nobody (:func:`~warband.art.textures.mine_image`).
+    Low and wide where the wolf den is tall and ringed, so the two never share a silhouette; the
+    sacs are the bone-white mark every den carries, and the mouth faces the camera like every den's.
     """
-    key = "building.lair"
+    rng = random.Random(51071)
+    mesh = _shadow(1.30)
+    mesh += r3.flat([(1.35 * math.cos(a), 1.10 * math.sin(a) + 0.15) for a in (i * math.tau / 14 for i in range(14))],
+                    0.02, SILK_GROUND)  # trampled silk the nest stands on
+    # The dome: overlapping earth, flatter and wider than any cairn.
+    for center, radius, color in (((0, -0.35, 0.30), 0.62, NEST_EARTH), ((-0.55, -0.15, 0.22), 0.52, NEST_DARK),
+                                  ((0.55, -0.20, 0.24), 0.55, NEST_EARTH), ((0, -0.10, 0.55), 0.55, NEST_EARTH),
+                                  ((-0.25, 0.05, 0.30), 0.42, NEST_DARK), ((0.30, 0.05, 0.32), 0.44, NEST_EARTH)):
+        if damaged and center[2] > 0.5:
+            continue  # the crown caved in
+        mesh += r3.sphere(center, radius, color, rings=3, sides=7)
+    # Silk drapes from the dome to stakes in the dirt: two-sided sheets the camera always sees.
+    drapes = [([(-0.75, 0.05, 0.75), (-0.20, 0.10, 0.80), (-0.40, 1.35, 0.05), (-0.90, 1.30, 0.05)]),
+              ([(0.75, 0.00, 0.70), (0.25, 0.10, 0.78), (0.45, 1.30, 0.05), (0.95, 1.25, 0.05)]),
+              ([(-0.10, -0.55, 0.85), (0.35, -0.45, 0.80), (0.60, -1.05, 0.05), (0.10, -1.10, 0.05)])]
+    for index, points in enumerate(drapes):
+        if damaged and index == 2:
+            continue  # torn away
+        mesh += _unit_panel(points, SILK)
+    for x in (-0.90, 0.95):  # the stakes the silk is strung from
+        mesh += _unit_rod((x, 1.27, 0.0), (x, 1.27, 0.55), 0.04, darker(SILK_GROUND, 0.6), sides=5)
+    # The sacs: a crowded clutch on the right, two apart on the left, cream against the dark earth.
+    sacs = [(0.80, 0.30, 0.16, 0.19), (1.00, 0.45, 0.13, 0.15), (0.62, 0.48, 0.12, 0.14), (0.90, 0.62, 0.11, 0.13),
+            (-0.85, 0.35, 0.13, 0.15), (-0.65, 0.55, 0.10, 0.12)]
+    for x, y, z, radius in sacs if not damaged else sacs[:3]:
+        mesh += r3.sphere((x, y, z), radius, SAC, rings=3, sides=6)
+        mesh += r3.sphere((x - radius * 0.3, y - radius * 0.2, z + radius * 0.45), radius * 0.45, SILK, rings=2, sides=5)
+    # The mouth: a low wide slit under the dome's lip, venom beading at its corners.
+    mesh += r3.box((0.0, 0.30, 0.20), (0.95 if not damaged else 1.10, 0.55, 0.40), LAIR_MOUTH)
+    for x in (-0.42, 0.42):
+        mesh += r3.sphere((x, 0.52, 0.16), 0.055, VENOM, rings=2, sides=5)
+    for _ in range(4):
+        angle, radius = rng.uniform(0, math.tau), rng.uniform(0.60, 1.00)
+        x, y = math.cos(angle) * radius, abs(math.sin(angle)) * radius * 0.5 + 1.00
+        mesh += _unit_rod((x, y, 0.03), (x + rng.uniform(-0.18, 0.18), y + rng.uniform(-0.08, 0.08), 0.06), 0.045, BONE)
+    if damaged:
+        for x, z, radius in ((-0.30, 0.12, 0.20), (0.35, 0.10, 0.24)):
+            mesh += r3.sphere((x, 0.90, z), radius, NEST_DARK, rings=3, sides=6)
+    return mesh
+
+
+def _troll_mound(damaged: bool) -> Mesh:
+    """A mossy tor: tall boulders patched with the troll's own cold blue-green, a ribcage arch
+    framing a tall dark mouth, and small pale mushrooms at its foot.
+
+    The tallest den, single-peaked where the wolf den is a ring and the cairn is stepped; the ribs
+    are its bone-white mark, grown to an arch because a troll's den would be built of what it ate.
+    """
+    rng = random.Random(51091)
+    mesh = _shadow(1.30)
+    # The tor: one peak, biggest stone at the back.
+    stones = [((0, -0.30, 0.45), 0.75, LAIR_ROCK), ((-0.60, -0.10, 0.32), 0.55, LAIR_DARK),
+              ((0.60, -0.15, 0.36), 0.60, LAIR_ROCK), ((0, -0.30, 1.10), 0.60, LAIR_ROCK),
+              ((-0.20, -0.25, 1.65), 0.45, LAIR_DARK)]
+    for center, radius, color in stones if not damaged else stones[:3]:
+        mesh += r3.sphere(center, radius, color, rings=3, sides=7)
+    # Moss in the troll's own hide colours, on the camera faces.
+    for center, radius in (((-0.35, 0.28, 0.75), 0.28), ((0.40, 0.25, 0.90), 0.24), ((0.05, 0.30, 1.30), 0.30),
+                           ((-0.15, 0.05, 1.70), 0.22), ((0.55, -0.05, 0.55), 0.18)):
+        if damaged and center[2] > 1.2:
+            continue
+        mesh += r3.sphere(center, radius, TROLL_HIDE, rings=3, sides=6)
+        mesh += r3.sphere((center[0] - 0.06, center[1] + 0.05, center[2] + radius * 0.5), radius * 0.55, TROLL_BELLY,
+                          rings=2, sides=5)
+    # The mouth: a tall dark arch at the foot of the tor.
+    mesh += r3.box((0.0, 0.25, 0.50), (0.80 if not damaged else 0.95, 0.65, 1.00), LAIR_MOUTH)
+    # The ribs: three arches a side over the mouth, ground to crown, of heavy bone.
+    for side in (-1, 1):
+        for depth, reach in ((0.45, 0.62), (0.58, 0.74), (0.71, 0.86)):
+            joints = [(side * reach, depth + 0.25, 0.05), (side * (reach - 0.15), depth + 0.12, 0.55),
+                      (side * (reach - 0.32), depth, 0.95), (side * (reach - 0.45), depth - 0.08, 1.25)]
+            if damaged and depth > 0.6:
+                joints = joints[:2]  # the outer ribs snapped off
+            for start, end in zip(joints, joints[1:]):
+                mesh += _unit_rod(start, end, 0.055, BONE, sides=5)
+            if not damaged or depth <= 0.6:
+                mesh += r3.sphere(joints[-1], 0.085, TUSK, rings=3, sides=5)
+    # Mushrooms at the foot: pale stems, moss-dark caps.
+    for x, y, height in ((-0.95, 0.55, 0.22), (1.00, 0.40, 0.18), (-0.70, 0.85, 0.15)):
+        mesh += _unit_rod((x, y, 0.0), (x, y, height), 0.035, TUSK, sides=5)
+        mesh += r3.cone((x, y, height), 0.09, 0.08, TROLL_LIMBS, sides=6)
+    for _ in range(4):
+        angle, radius = rng.uniform(0, math.tau), rng.uniform(0.60, 1.00)
+        x, y = math.cos(angle) * radius, abs(math.sin(angle)) * radius * 0.5 + 1.00
+        mesh += _unit_rod((x, y, 0.03), (x + rng.uniform(-0.18, 0.18), y + rng.uniform(-0.08, 0.08), 0.06), 0.05, BONE)
+    if damaged:
+        for x, z, radius in ((-0.40, 0.14, 0.24), (0.30, 0.12, 0.20), (0.65, 0.16, 0.16)):
+            mesh += r3.sphere((x, 0.95, z), radius, LAIR_DARK, rings=3, sides=6)
+    return mesh
+
+
+def _golem_cairn(damaged: bool) -> Mesh:
+    """A cairn of stacked granite slabs, each course set slightly out of true the way the golem's own
+    shoulders sit, with pale quartz seams across the joints and a square dark mouth under a lintel.
+
+    Stepped and square where the mound is peaked and the nest is low; the seams catch the light the
+    way the golem's do, and a small skull rides the cap slab for the camps' shared mark.
+    """
+    rng = random.Random(51121)
+    mesh = _shadow(1.30)
+    slabs = [((0, -0.10, 0.30), (2.00, 1.50, 0.60), GOLEM_DARK, 0.0),
+             ((0.05, -0.10, 0.85), (1.70, 1.30, 0.50), GOLEM_STONE, 5.0),
+             ((-0.05, -0.15, 1.30), (1.30, 1.00, 0.45), darker(GOLEM_STONE, 0.88), -6.0),
+             ((0, -0.10, 1.62), (0.80, 0.70, 0.30), GOLEM_STONE, 3.0)]
+    for index, (center, size, color, turn) in enumerate(slabs):
+        if damaged and index == 3:
+            center, turn = (0.45, 0.05, 1.15), 18.0  # the cap knocked askew
+        slab = r3.rotate_z(r3.box((0, 0, 0), size, color), turn, about=(0, 0))
+        mesh += [r3.Face(tuple((p[0] + center[0], p[1] + center[1], p[2] + center[2]) for p in face.points), face.color)
+                 for face in slab]
+    # Quartz seams across the course joints, on the camera faces.
+    seams = [((-0.30, 0.56, 0.62), (0.55, 0.03, 0.06)), ((0.35, 0.56, 1.10), (0.45, 0.03, 0.06)),
+             ((-0.10, 0.36, 1.52), (0.40, 0.03, 0.05))]
+    for center, size in seams if not damaged else seams[:1]:
+        mesh += r3.box(center, size, GOLEM_SEAM)
+    # The mouth: a square opening between the base slabs, under a lintel.
+    mesh += r3.box((0.0, 0.45, 0.30), (0.70 if not damaged else 0.85, 0.45, 0.60), LAIR_MOUTH)
+    mesh += r3.box((0.0, 0.45, 0.68), (0.95, 0.55, 0.18), GOLEM_DARK)
+    # The skull on the cap: grey slabs alone read as a rock pile at the game's zoom.
+    skull = (0.0, -0.05, 1.92) if not damaged else (0.55, 0.60, 0.14)
+    mesh += r3.sphere(skull, 0.20, TUSK, rings=3, sides=6)
+    mesh += r3.box((skull[0], skull[1] + 0.14, skull[2] - 0.10), (0.22, 0.18, 0.14), TUSK)
+    for x in (-0.08, 0.08):
+        mesh += r3.sphere((skull[0] + x, skull[1] + 0.12, skull[2] + 0.03), 0.06, LAIR_MOUTH, rings=3, sides=5)
+    # Stone chips knocked off in front.
+    for _ in range(5 if not damaged else 9):
+        angle, radius = rng.uniform(0, math.tau), rng.uniform(0.60, 1.10)
+        x, y = math.cos(angle) * radius, abs(math.sin(angle)) * radius * 0.5 + 1.00
+        mesh += r3.box((x, y, 0.06), (rng.uniform(0.10, 0.22), rng.uniform(0.08, 0.16), 0.12), GOLEM_DARK)
+    return mesh
+
+
+_LAIRS = {
+    LairKind.WOLF: _wolf_den,
+    LairKind.SPIDER: _spider_nest,
+    LairKind.TROLL: _troll_mound,
+    LairKind.GOLEM: _golem_cairn,
+}
+
+#: Where each den lives and breathes, in mesh coordinates: the mouth its breath and dust rise
+#: from, the tips its glints flash on, and the tint of the halo that hangs over it while it stands.
+#: :mod:`warband.art.ambience` draws all three from here, so a den's life and its mesh agree.
+LAIR_ANCHORS: dict[LairKind, dict[str, Any]] = {
+    LairKind.WOLF: {"mouth": (0.0, 0.90, 0.35), "glints": [(-0.34, 0.24, 1.10), (0.36, 0.24, 1.15)],
+                    "halo": (150, 140, 120)},
+    LairKind.SPIDER: {"mouth": (0.0, 0.55, 0.25), "glints": [(-0.42, 0.52, 0.20), (0.42, 0.52, 0.20)],
+                      "halo": (168, 92, 196)},
+    LairKind.TROLL: {"mouth": (0.0, 0.50, 0.55), "glints": [(-0.35, 0.28, 1.05), (0.40, 0.25, 1.20)],
+                     "halo": (110, 160, 130)},
+    LairKind.GOLEM: {"mouth": (0.0, 0.62, 0.30), "glints": [(-0.30, 0.56, 0.65), (0.35, 0.56, 1.13)],
+                     "halo": (226, 222, 207)},
+}
+
+
+def lair_mesh(kind: LairKind | str = LairKind.WOLF, look: str = "intact") -> Mesh:
+    """One den's mesh: *kind* names whose it is, *look* whether it stands whole or torn down to half."""
+    if look not in LAIR_LOOKS:
+        raise ValueError(f"unknown lair look {look!r}")
+    return _LAIRS[LairKind(kind)](damaged=look == "damaged")
+
+
+def lair_key(kind: LairKind | str, look: str = "intact") -> str:
+    """The asset key of one den's picture."""
+    return f"building.lair.{LairKind(kind).value}.{look}"
+
+
+@lru_cache(maxsize=None)
+def restyled_lair(look: str = "intact") -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
+    """The hand-painted dens in one look (one cell per kind), or None when there is no sheet, or a
+    stale one.  ``tools/restyle.py --lairs`` paints them; like a gold mine's sheet there is no
+    player in it and nothing recolours it.  ``WARBAND_ART=procedural`` keeps the renders."""
+    return _painted(f"lair.{look}", [lair_key(kind, look) for kind in LairKind])
+
+
+def lair_image(game: Game, kind: LairKind | str = LairKind.WOLF, look: str = "intact") -> str:
+    """Register (once) and return the key of one den's picture: the painted cell where the lairs
+    have a sheet in *look* (a look without a sheet shows the intact painting), the low-poly
+    render otherwise.
+
+    Never recoloured and never per race: a den belongs to the wilds, exactly as the gold mine
+    belongs to nobody (:func:`~warband.art.textures.mine_image`).
+    """
+    if look not in LAIR_LOOKS:
+        raise ValueError(f"unknown lair look {look!r}")
+    kind = LairKind(kind)
+    painted = restyled_lair(look) or (restyled_lair() if look != "intact" else None)
+    if painted is None:
+        key = lair_key(kind, look)
+        if not game.assets.has_image(key):
+            front = 1.5 * TILE
+            game.assets.image_from_pil(key, _prop(key, lair_mesh(kind, look), front + PAD, game.backend.scale_factor,
+                                                  front=front))
+        return key
+    sheet, frames = painted
+    show = look if restyled_lair(look) is not None else "intact"
+    key = lair_key(kind, show)
     if not game.assets.has_image(key):
-        front = 1.5 * TILE
-        game.assets.image_from_pil(key, _prop(key, lair_mesh(), front + PAD, game.backend.scale_factor, front=front))
+        placements[key] = Placement(sheet.logical_size, sheet.drop, 1.5 * TILE, head=figure_top(sheet, frames[key]))
+        game.assets.image_from_pil(key, frames[key])
     return key
 
 
-def lair_portrait_image(game: Game) -> str:
-    """A tightly framed picture of the den, for the selection panel."""
-    key = "portrait.lair"
+def warm_lairs(game: Game) -> Iterator[str]:
+    """Every den image, one per step, for a scene to spread over its opening frames."""
+    for kind in LairKind:
+        for look in LAIR_LOOKS:
+            yield lair_image(game, kind, look)
+
+
+def lair_portrait_image(game: Game, kind: LairKind | str = LairKind.WOLF) -> str:
+    """A tightly framed picture of one den, for the selection panel: the painted cell where there
+    is one, the low-poly render otherwise."""
+    kind = LairKind(kind)
+    key = f"portrait.lair.{kind.value}"
     if not game.assets.has_image(key):
-        mesh = lair_mesh()
+        painted = restyled_lair()
+        if painted is not None:
+            frame = painted[1][lair_key(kind)]
+            figure = frame.crop(frame.split()[3].getbbox())
+            fit = 128 * game.backend.scale_factor / max(figure.size)
+            game.assets.image_from_pil(key, figure.resize((max(1, round(figure.width * fit)), max(1, round(figure.height * fit))),
+                                                          Image.LANCZOS))
+            return key
+        mesh = lair_mesh(kind)
         min_x, min_y, max_x, max_y = r3.bounds(mesh, PROJECTION)
         w, h = max_x - min_x + 2 * PAD, max_y - min_y + 2 * PAD
         px = 128 * game.backend.scale_factor / max(w, h)

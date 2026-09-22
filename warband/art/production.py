@@ -200,6 +200,7 @@ def production_image(game, target: ProductionTarget, player: int | None, race: R
     if target in _CREATURES:
         return monster_portrait_image(game, Monster(target.value))  # nobody's, so no player and no race
     if target is BuildingType.LAIR:
+        # A catalogue never lists a den; the selection panel draws its own portrait per kind.
         return lair_portrait_image(game)
     if isinstance(target, (UnitType, BuildingType)):
         return portrait_image(game, target, player, race)

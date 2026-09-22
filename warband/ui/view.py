@@ -54,7 +54,9 @@ def building_look(b: Building, worked: Collection[int] = ()) -> str:
     if b.info.mine is not None:
         return "active" if b.id in worked else "intact"
     if b.type is BuildingType.LAIR:
-        return "intact"  # the den is drawn once, whatever has happened to it
+        # A den is raised complete and trains nothing, so it wears only intact and damaged: whole,
+        # or torn down to half its hit points like every other building.
+        return "damaged" if b.hp < b.max_hp / 2 else "intact"
     if not b.done:
         return "founded" if b.progress < b.info.build_time / 2 else "raised"
     if b.hp < b.max_hp / 2:
@@ -101,6 +103,7 @@ class Sighting:
     gold: int  # what a mine held
     abandoned: bool
     look: str  # the painted look it wore, see :func:`building_look`
+    lair_kind: str = "wolf"  # whose den it is, for a lair: a :class:`~warband.art.monsters.LairKind` value
 
     @classmethod
     def of(cls, b: Building, worked: Collection[int] = ()) -> Sighting:
@@ -124,14 +127,16 @@ class Sighting:
 
     def to_dict(self) -> dict:
         return {"id": self.id, "type": self.type.value, "player": self.player, "race": self.race.value, "rect": list(self.rect), "hp": self.hp,
-                "max_hp": self.max_hp, "built": self.built, "gold": self.gold, "abandoned": self.abandoned, "look": self.look}
+                "max_hp": self.max_hp, "built": self.built, "gold": self.gold, "abandoned": self.abandoned, "look": self.look,
+                "lair_kind": self.lair_kind}
 
     @classmethod
     def from_dict(cls, d: dict) -> Sighting:
         if d["look"] not in textures.BUILDING_LOOKS:
             raise ValueError(f"unknown building look {d['look']!r}")
+        kind = monsters.LairKind(d.get("lair_kind", "wolf"))  # saves from before the dens diverged remember none
         return cls(d["id"], BuildingType(d["type"]), d["player"], Race(d["race"]), tuple(d["rect"]), d["hp"], d["max_hp"], d["built"], d["gold"],
-                   d["abandoned"], d["look"])
+                   d["abandoned"], d["look"], kind.value)
 
 
 def check_memory(memory: dict, world: World) -> None:
@@ -619,6 +624,12 @@ class MapView:
                 sighting = Sighting.of(b, worked)
             else:
                 sighting.refresh(b, worked)
+            if sighting.type is BuildingType.LAIR:
+                # Whose den it is never changes: the roster it was raised with names it, so looking at it
+                # again cannot rename it, and a den remembered out of sight keeps the kind it was seen with.
+                camp = next((c for c in world.camps if c.lair == b.id), None)
+                if camp is not None:
+                    sighting.lair_kind = monsters.lair_kind_for_camp(camp).value
             self._sync_smoke(b, self._show(sighting))
         for bid, sighting in list(self._sightings.items()):
             if bid not in world.buildings and (self.reveal or sighting.player == self.player or world.any_visible(self.player, sighting.rect)):
@@ -642,7 +653,8 @@ class MapView:
         painted_site = not sighting.done and deposit is None and not lair and textures.has_look(sighting.race, sighting.look)
         rising = not painted_site and not lair and 0.5 <= sighting.built < 1.0
         if lair:
-            key = monsters.lair_image(self.game)  # one den, never a race's and never a team's
+            # One den per creature, never a race's and never a team's.
+            key = monsters.lair_image(self.game, monsters.LairKind(sighting.lair_kind), sighting.look)
         elif deposit is not None:
             key = textures.deposit_image(self.game, sighting.type, textures.scatter(x, y, 8) % textures.mine_variants(), sighting.look)
         elif sighting.done or painted_site:
