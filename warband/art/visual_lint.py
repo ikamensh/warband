@@ -11,7 +11,8 @@ Two kinds of evidence, both from the mock backend so no window is needed:
   sideways while it turns, frames that are pixel-identical), poses against
   the unit canvas' padding, and buildings against their footprint.
 * **Frames** — after a tick, :func:`lint_frame` reads what the scene drew and
-  laid out: texts drawn over each other or off screen, labels and buttons
+  laid out: texts drawn over each other, off screen or out of the panel they
+  were drawn into, labels and buttons
   whose text is wider than the width they were given (with font-based approximate
   metrics, see :func:`use_real_text_metrics`), HUD panels overlapping each
   other or leaving the screen, sprites drawn at another size than their
@@ -507,6 +508,38 @@ def lint_layout(game: Game, scene: Any) -> list[Finding]:
     return findings
 
 
+def lint_panel_texts(game: Game, scene: Any) -> list[Finding]:
+    """Text drawn into a HUD panel stays inside it.
+
+    :func:`lint_layout` walks the UI tree, so it only sees text a component
+    was given a width for.  What a scene draws into a panel itself is laid
+    out by nothing — the selection panel's card writes its lines straight to
+    the screen — so a line too long for the panel simply runs over whatever
+    is beside it.  A text that *begins* inside one of the scene's panels was
+    drawn into it and may not cross its edges; one that begins outside is
+    passing over it (a toast sliding by) and is left alone.  A text centred
+    on a panel is a laid-out label's, and :func:`lint_layout` measures those.
+    """
+    floor = UI_ORDER_BASE + (len(game.scenes) - 1) * UI_ORDER_STRIDE
+    panels = [c for c in scene.ui.children if _visible(c)]
+    findings = []
+    for box in text_boxes(game.backend):
+        if box.space != "screen" or (len(game.scenes) > 1 and box.order < floor):
+            continue
+        # The box spans ascender to descender; the letters fill about its middle three fifths.
+        top, bottom = box.top + box.height * TEXT_SLACK, box.bottom - box.height * TEXT_SLACK
+        start = (box.left, (top + bottom) / 2)
+        for panel in panels:
+            px, py, pw, ph = panel.bounds
+            if not (px <= start[0] < px + pw and py <= start[1] < py + ph):
+                continue
+            if box.right > px + pw + 1 or top < py - 1 or bottom > py + ph + 1:
+                findings.append(Finding("text-out-of-panel", repr(box.text),
+                                        f"{box} crosses {_label(panel)} ({px:.0f}, {py:.0f}, {pw:.0f}, {ph:.0f})"))
+            break
+    return findings
+
+
 def lint_texts(game: Game) -> list[Finding]:
     """Check screen text in the active scene; overlays may cover paused animations below."""
     width, height = game.resolution
@@ -562,7 +595,7 @@ def lint_sprites(game: Game, store: ImageStore) -> list[Finding]:
 def lint_frame(game: Game, store: ImageStore | None = None) -> list[Finding]:
     """Everything the last tick drew and laid out on the top scene."""
     scene = game.scene
-    findings = lint_texts(game) + lint_layout(game, scene)
+    findings = lint_texts(game) + lint_panel_texts(game, scene) + lint_layout(game, scene)
     if store is not None:
         findings += lint_sprites(game, store)
     return findings

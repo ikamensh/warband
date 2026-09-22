@@ -2339,8 +2339,9 @@ class GameScene(Scene):
         if not entries:
             if title is not None:
                 self.draw_text(title, x + 16, y + 30, style="heading")
-                note = "Nothing planned · plans wait for money and prerequisites" if self._card else "Every upgrade is researched"
-                self.draw_text(note, x + 16, y + 58, style="sub")
+                notes = ("Nothing planned", "Plans wait for money and prerequisites") if self._card else ("Every upgrade is researched",)
+                for i, note in enumerate(notes):  # two rows: one line of both is 458 px, wider than the panel
+                    self.draw_text(note, x + 16, y + 58 + i * 20, style="sub")
                 return
             tile = (int(self.hover[0]), int(self.hover[1]))
             text = "Nothing selected"
@@ -2490,8 +2491,9 @@ class GameScene(Scene):
         else:
             building = world.buildings.get(entity.id) if own else None  # the player's own, as it is: what it is making, who builds it
             if not entity.done:
-                unmanned = building is not None and building.builder is None
-                lines.append(f"Under construction {int(entity.built * 100)}%" + (" — no builder: right-click it with a peasant" if unmanned else ""))
+                lines.append(f"Under construction {int(entity.built * 100)}%")
+                if building is not None and building.builder is None:  # a row of its own: one line of both runs out of the panel
+                    lines.append("No builder · right-click it with a peasant")
             elif building is not None and (building.queue or building.research is not None):
                 self._draw_production(building, tx, y + 44)
                 if building.auto:
@@ -2505,10 +2507,25 @@ class GameScene(Scene):
                 lines.append(building.info.summary)
                 if building.type is BuildingType.TOWN_HALL:
                     lines.append("Rally point set" if building.rally is not None else "Right-click the map to set a rally point")
-        ly = y + 82 if isinstance(entity, Unit) else y + 50
-        for line in lines[:2]:
+        # The card writes straight to the screen, so nothing but this holds a line to CARD_RIGHT: one too long for
+        # the column used to run over the command card beside it.  A unit's two rows start under its stats; a
+        # building's three under its health bar.
+        ly, rows = (y + 82, 2) if isinstance(entity, Unit) else (y + 50, 3)
+        for line in self._card_lines(lines, rows):
             self.draw_text(line, tx, ly, style="body")
             ly += 22
+
+    def _card_lines(self, lines: list[str], rows: int) -> list[str]:
+        """*lines* wrapped into the card's column and fitted to *rows*.
+
+        A line runs on only into the rows the lines after it do not need, so the last of them is never crowded
+        out; one that still does not fit ends in an ellipsis rather than leaving the panel."""
+        said = lines[:rows]
+        wrapped: list[str] = []
+        for i, line in enumerate(said):
+            room = rows - len(wrapped) - (len(said) - i - 1)
+            wrapped += self.layout_text(line, CARD_RIGHT, style="body", max_lines=room).lines
+        return wrapped[:rows]
 
     # -- Save / load ------------------------------------------------------------------------
 

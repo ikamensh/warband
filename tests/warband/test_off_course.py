@@ -2,12 +2,15 @@
 peasant bouncing for the rest of the match between its tile centre and a building corner.  Fuzz seeds
 0–15 on 2026-09-20: fifteen footmen marching in a line stood between two points for the rest of theirs."""
 
-from warband.sim.model import SIM_DT, AttackMove, Deposit, World, dist, tile_center
+from warband.sim.model import SIM_DT, AttackMove, Deposit, Move, World, dist, tile_center
 from warband.sim.rules import GOLD_PER_TRIP, BuildingType, Resource, Terrain, UnitType
 
 
-def grass(width: int, height: int) -> World:
-    world = World(width, height, [[Terrain.GRASS] * width for _ in range(height)], 2)
+def grass(width: int, height: int, walls: frozenset[tuple[int, int]] = frozenset()) -> World:
+    terrain = [[Terrain.GRASS] * width for _ in range(height)]
+    for x, y in walls:
+        terrain[y][x] = Terrain.ROCK
+    world = World(width, height, terrain, 2)
     for player in world.players:
         player.human = True
     return world
@@ -116,3 +119,47 @@ def test_a_marcher_does_not_take_a_shortcut_that_walks_it_back_up_its_own_path()
     for _ in range(round(1.0 / SIM_DT)):
         world.step()
     assert dist(start, marcher.pos) > 1.0, "the marcher stepped between two points instead of getting on"
+
+
+# The marching line of the gate queue (``tests/warband/test_stuck_units.py``) at 33.45 s, as a Linux run
+# left it: five footmen sharing one Move, two of them still queueing at the wall and holding the line's
+# middle back at the far side of the wall, and footman 7 walked right in to its slot at the front.
+MARCH_TARGET = (30.5, 12.5)
+MARCH_PACE = 1.3
+MARCH = [
+    (UnitType.FOOTMAN, (29.41217186676659, 14.766483390143815), (-0.9940185940857511, 2.2938890632748103)),   # the one that wedged
+    (UnitType.FOOTMAN, (18.242869350114134, 15.486105595692344), (-0.5964111564514507, 1.3763334379648862)),
+    (UnitType.FOOTMAN, (19.213069653705556, 12.332509738422743), (-0.19880371881715023, 0.45877781265496204)),
+    (UnitType.FOOTMAN, (29.986885703775922, 12.313665463555179), (0.19880371881715023, -0.45877781265496204)),
+    (UnitType.FOOTMAN, (30.342564602551903, 10.519656713794488), (0.9940185940857511, -2.2938890632748103)),
+]
+
+
+def test_a_marcher_that_has_walked_into_its_slot_does_not_march_back_out_of_it() -> None:
+    """A marching line's shortcut aims at the place ahead of the line's middle.  Once a unit has walked in
+    to its slot at the end, that place is *behind* it, so the shortcut cleared the unit's plan and walked it
+    most of a tile back out; the next step planned the way in again, and it stepped between the two.  Its
+    progress watchdog was reset at every turn, so the walk could never end either: in the gate queue of
+    ``tests/warband/test_stuck_units.py`` this footman stood on its slot, in the move state, holding an
+    order it had already finished, for the last three minutes of the run (on Linux, where that crowd of
+    sixty-six takes a turn this Mac does not).
+
+    The positions, the order and the offsets are the ones that run produced at 33.45 s, and the wall with
+    its one open tile is what holds the two stragglers, and so the line's middle, back.  Five marchers get
+    through it in seconds where sixty-six took minutes, so what is pinned here is the step out itself
+    rather than how long it went on: the unit must stay in the place it reached.
+    """
+    world = grass(40, 24, walls=frozenset((20, y) for y in range(24) if y != 12))  # the queue's wall, one tile open
+    marchers = [world.spawn_unit(0, unit_type, pos) for unit_type, pos, _offset in MARCH]
+    world.move([u.id for u in marchers], MARCH_TARGET)
+    for marcher, (_type, _pos, offset) in zip(marchers, MARCH):
+        marcher.orders[0] = Move(MARCH_TARGET, pace=MARCH_PACE, offset=offset)  # the slots that march dealt
+    watched, slot = marchers[0], (MARCH_TARGET[0] + MARCH[0][2][0], MARCH_TARGET[1] + MARCH[0][2][1])
+    assert dist(watched.pos, slot) < 0.1, "the marcher starts the seed's run all but standing in its place"
+
+    strayed = 0.0
+    for _ in range(round(5.0 / SIM_DT)):
+        world.step()
+        strayed = max(strayed, dist(watched.pos, slot))
+    assert strayed < 0.35, f"the shortcut marched it {strayed:.2f} tiles back out of the slot it had reached"
+    assert not watched.orders and watched.state == "idle", (watched.pos, list(watched.orders), watched.state)

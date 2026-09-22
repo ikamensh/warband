@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from saga2d import Game, RenderLayer, Scene, Sprite, SpriteAnchor
-from saga2d.ui import Label
+from saga2d.ui import Anchor, Label, Panel
 from sagaforge import render3d as r3
 from warband.art import textures, visual_lint
 from warband.sim.rules import PLAYABLE_UNITS, Cost, Race, Resource, UnitType
@@ -18,7 +18,7 @@ from warband.ui.title import TitleScene
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools import visual_lint as screens  # noqa: E402
 
-VISIBLE = {"text-overlap", "panel-overlap", "off-screen", "text-off-screen", "draw-order", "stretched"}
+VISIBLE = {"text-overlap", "panel-overlap", "off-screen", "text-off-screen", "text-out-of-panel", "draw-order", "stretched"}
 
 
 @pytest.mark.parametrize("resolution", screens.RESOLUTIONS)
@@ -102,6 +102,40 @@ def test_the_lint_sees_a_line_break_that_orphans_what_the_wrapper_left(tmp_path)
     finally:
         game.close()
     assert len(orphans) == 1 and "No rated matches yet" in orphans[0].detail
+
+
+class Spilling(Scene):
+    """A panel with a line drawn into it that is wider than the panel, and one that fits."""
+
+    spill = "a line far wider than the panel it was drawn into"
+
+    def on_enter(self) -> None:
+        self.panel = Panel(anchor=Anchor.TOP_LEFT, margin=20, width=200, height=80)
+        self.ui.add(self.panel)
+
+    def draw(self) -> None:
+        x, y, _w, _h = self.panel.bounds
+        self.draw_text("fits", x + 10, y + 30)
+        self.draw_text(self.spill, x + 10, y + 60)
+
+
+def test_the_lint_sees_text_drawn_into_a_panel_running_out_of_it(tmp_path) -> None:
+    """The selection panel's card is drawn straight to the screen, not laid out, so nothing held its lines to the
+    panel: a site's "no builder" line crossed the panel and ran over the command card beside it."""
+    game = Game("Lint", backend="mock", resolution=(640, 480), theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        visual_lint.use_real_text_metrics(game)
+        scene = Spilling()
+        game.push(scene)
+        for _ in range(2):  # the panel is laid out on the first frame and drawn into from the second
+            game.tick(1 / 60)
+        findings = visual_lint.lint_panel_texts(game, scene)
+        assert [f.check for f in findings] == ["text-out-of-panel"] and Spilling.spill in findings[0].subject
+        scene.spill = "short"
+        game.tick(1 / 60)
+        assert not visual_lint.lint_panel_texts(game, scene)
+    finally:
+        game.close()
 
 
 def test_text_lint_checks_the_active_overlay_not_its_paused_background(tmp_path) -> None:
