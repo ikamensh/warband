@@ -165,10 +165,13 @@ def test_the_creatures_are_their_own_subjects() -> None:
     parse.add_argument("--race", default="human"); parse.add_argument("--units", default=None)
     parse.add_argument("--buildings", action="store_true"); parse.add_argument("--looks", default="intact,active,damaged")
     parse.add_argument("--mines", action="store_true"); parse.add_argument("--monsters", action="store_true")
+    parse.add_argument("--lairs", action="store_true")
     parse.add_argument("--creatures", default="all")
     assert [s.name for s in tool.selected(parse.parse_args(["--monsters"]))] == [f"monster.{m.value}" for m in Monster]
     assert [s.name for s in tool.selected(parse.parse_args(["--monsters", "--creatures", "golem"]))] == ["monster.golem"]
     assert all(s.stage == 0 for s in tool.selected(parse.parse_args(["--monsters"]))), "painted from the stand-ins"
+    assert [s.name for s in tool.selected(parse.parse_args(["--lairs"]))] == ["lair.intact", "lair.damaged"]
+    assert [s.stage for s in tool.selected(parse.parse_args(["--lairs"]))] == [0, 1], "damaged is painted from the intact painting"
 
 
 @pytest.mark.slow
