@@ -68,7 +68,9 @@ the compiled simulation attaches after they load.
    ground they were fired at (`docs/unit-motion.md` part 4). `rules.py` holds
    the tables, `races.py` the four races' names, numbers and arts — both
    generated from `warband/constants/` by `tools/balance_tables.py` (never
-   edit a GENERATED region by hand) — `path.py`
+   edit a GENERATED region by hand; unit files and each race's units/buildings
+   use one `defaults` table plus individual overrides, expanded only at
+   generation time: `docs/balance.md`) — `path.py`
   bounded A* on a budget that grows with the map, `mapgen.py` the five map
   layouts, the grid of congruent cells that deals two to sixteen seats one each,
   and the audit (`grid`, `dimensions`, `refusal`, `offered`, `sizes_for` and
@@ -307,7 +309,9 @@ decision of its own.
   changes is built once per session (painted ground: `ground_painted_once`
   in `tests/conftest.py`); nothing mutable is shared between tests.
 - Run at most one expensive local job at a time; long CLIs default to
-  `--cpu-percent 25`. Evidence you produce goes under `docs/evidence/`
-  (git-ignored); the pre-split evidence lives in the archived monorepo.
+  `--cpu-percent 25`. Iterate verification in a temporary directory; retain only
+  useful final output in `~/saga/evidence/warband/<topic>/`, replacing older output
+  for that topic. Pass output paths explicitly, regardless of older CLI defaults.
+  Follow `~/saga/AGENTS.md` for retention and worktree cleanup.
 - Clear exceptions over silent fallbacks. Delete rather than deprecate.
   Commit each working increment.

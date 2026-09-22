@@ -9,7 +9,176 @@ the live tables and constants must say what the TOML says.  Either drift
 fails here with the command that fixes it.
 """
 
+import json
 import math
+import shutil
+import subprocess
+import sys
+import tomllib
+
+import pytest
+
+
+@pytest.fixture
+def constants(tmp_path):
+    from tools.balance_tables import CONSTANTS
+
+    return shutil.copytree(CONSTANTS, tmp_path / "constants")
+
+
+def _write_toml(path, doc):
+    """Write test inputs independently of the checked-in TOML's layout."""
+    def value(item):
+        if isinstance(item, dict):
+            return "{ " + ", ".join(f"{k} = {value(v)}" for k, v in item.items()) + " }"
+        return json.dumps(item)
+
+    path.write_text("\n".join(f"{k} = {value(v)}" for k, v in doc.items()), encoding="utf-8")
+
+
+@pytest.mark.parametrize("filename,section,key", [
+    ("units.toml", (), "armor"),
+    ("neutrals.toml", (), "trained_at"),
+    ("races.toml", ("orc", "units"), "hp_mult"),
+    ("races.toml", ("dwarf", "buildings"), "hp_mult"),
+])
+def test_shared_defaults_and_explicit_exceptions_generate_the_same_game(constants, filename, section, key):
+    """Factoring repeated values into defaults preserves every generated rule, including exceptions."""
+    from tools.balance_tables import emit, load
+
+    before = emit(load())
+    path = constants / filename
+    doc = tomllib.loads(path.read_text())
+    rows = doc
+    for part in section:
+        rows = rows[part]
+    inherited = rows.pop("defaults", {})
+    for name, row in rows.items():
+        rows[name] = inherited | row
+    _write_toml(path, doc)
+    assert emit(load(constants)) == before
+
+    entries = list(rows.values())
+    shared = entries[0][key]
+    rows["defaults"] = {key: shared}
+    for row in entries:
+        if row.get(key) == shared:
+            del row[key]
+    _write_toml(path, doc)
+
+    assert emit(load(constants)) == before
+
+
+@pytest.mark.parametrize("key,shared,override", [
+    ("armor_add", 3, 0), ("hp_mult", 1.2, 1.0), ("formation", True, False),
+])
+def test_explicit_neutral_and_false_modifiers_override_shared_defaults(constants, key, shared, override):
+    """An explicit zero, one or false resets a shared modifier; it is never treated as absent."""
+    from tools.balance_tables import load
+
+    path = constants / "races.toml"
+    doc = tomllib.loads(path.read_text())
+    units = doc["human"]["units"]
+    units.setdefault("defaults", {})[key] = shared
+    for name, row in units.items():
+        if name != "defaults":
+            row.pop(key, None)
+    units["footman"][key] = override
+    _write_toml(path, doc)
+
+    loaded = load(constants).races["human"]["units"]
+    assert loaded["peasant"][key] == shared
+    assert loaded["footman"][key] == override
+
+
+@pytest.mark.parametrize("section,key,bad", [
+    ("defaults", "armour", 0),
+    ("defaults", "hp", True),
+    ("defaults", "speed", "fast"),
+    ("defaults", "attack", "magic"),
+    ("peasant", "armor", False),
+    ("peasant", "formation", 1),
+    ("peasant", "range", "near"),
+])
+def test_invalid_values_fail_even_in_overridden_defaults(constants, section, key, bad):
+    """Misspellings and wrong types must name the bad field, even when defaults would go unused."""
+    from tools.balance_tables import BalanceError, load
+
+    path = constants / "units.toml"
+    doc = tomllib.loads(path.read_text())
+    doc.setdefault(section, {})[key] = bad
+    _write_toml(path, doc)
+
+    with pytest.raises(BalanceError, match=rf"units\.toml\.{section}.*{key}"):
+        load(constants)
+
+
+@pytest.mark.parametrize("missing", ["hp", "peasant"])
+def test_defaults_do_not_hide_missing_required_stats_or_roles(constants, missing):
+    """Defaults may supply a field, but cannot invent a missing role or an unspecified required stat."""
+    from tools.balance_tables import BalanceError, load
+
+    path = constants / "units.toml"
+    doc = tomllib.loads(path.read_text())
+    if missing == "hp":
+        doc["peasant"].pop("hp", None)
+        doc.get("defaults", {}).pop("hp", None)
+    else:
+        del doc[missing]
+    _write_toml(path, doc)
+
+    with pytest.raises(BalanceError, match=rf"units\.toml.*missing.*{missing}"):
+        load(constants)
+
+
+@pytest.mark.slow
+def test_editing_and_regenerating_constants_leaves_a_running_game_unchanged(tmp_path):
+    """A real isolated process keeps playing its original rules after a tuner regenerates its files."""
+    from tools.balance_tables import ROOT
+
+    package = tmp_path / "warband"
+    package.mkdir()
+    shutil.copy(ROOT / "warband/__init__.py", package)
+    for folder in ("sim", "constants"):
+        shutil.copytree(ROOT / "warband" / folder, package / folder, ignore=shutil.ignore_patterns("__pycache__"))
+    (tmp_path / "tools").mkdir()
+    shutil.copy(ROOT / "tools/balance_tables.py", tmp_path / "tools")
+    script = '''
+from pathlib import Path
+import re
+import subprocess
+import sys
+from warband.sim.model import World
+from warband.sim.rules import Race, Terrain, UnitType
+
+world = World(20, 20, [[Terrain.GRASS] * 20 for _ in range(20)], 2,
+              races=[Race.HUMAN, Race.ORC], scripted=True)
+world.spawn_unit(0, UnitType.FOOTMAN, (6.5, 6.5))
+world.spawn_unit(1, UnitType.ARCHER, (10.5, 6.5))
+world.step()
+
+def play(match):
+    knight = match.spawn_unit(0, UnitType.KNIGHT, (5.5, 5.5))
+    match.attack_move([knight.id], (10.5, 6.5))
+    for _ in range(100):
+        match.step()
+    return match.to_dict()
+
+expected = play(World.from_dict(world.to_dict()))
+old_hp = world.unit_info(0, UnitType.FOOTMAN).hp
+path = Path("warband/constants/units.toml")
+source = path.read_text()
+path.write_text(re.sub(r"(?m)^hp = .*", "hp = 9999", source))
+subprocess.run([sys.executable, "tools/balance_tables.py"], check=True, capture_output=True)
+assert "hp=9999" in Path("warband/sim/rules.py").read_text()
+assert world.unit_info(0, UnitType.FOOTMAN).hp == old_hp
+# Even broken TOML cannot affect an already launched match or its new units.
+for path in Path("warband/constants").glob("*.toml"):
+    path.write_text("this is no longer valid TOML")
+assert play(world) == expected
+'''
+    done = subprocess.run([sys.executable, "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    assert done.returncode == 0, done.stderr
 
 
 def _norm(value):

@@ -9,7 +9,8 @@ The numbers a tuner edits live in ``warband/constants/units.toml``,
 the matching Python tables from them.  The simulation itself keeps running
 plain Python literals: the online contract (``tools/ci_compatibility.py``)
 hashes the simulation's sources and forbids file-backed rules there, so the
-TOML never loads at runtime.  Every generated region carries the same fields,
+TOML never loads at runtime. Shared defaults are expanded by this tool, not
+by the game. Every generated region carries the same fields,
 explicitly and in dataclass order, except a building's ``mine`` which is
 omitted when there is none.
 """
@@ -166,16 +167,10 @@ def _check_sections(doc: dict, path: Path, known: tuple[str, ...], what: str) ->
 # order.  What stays in code (SIM_DT, the order bounds, the pathfinder's
 # budgets, the seats) is not tunable balance and never enters these schemas.
 
-UNIT_KEYS = {"name", "gold", "lumber", "hp", "damage", "armor", "range", "cooldown", "speed", "sight", "build_time",
-             "trained_at", "hotkey", "summary", "radius", "heal", "splash", "attack", "armor_class", "formation",
-             "mounted", "windup", "turn_deg", "min_range", "regen"}
 BUILDING_KEYS = {"name", "gold", "lumber", "hp", "armor", "size", "build_time", "sight", "supply", "hotkey", "summary",
                  "trains", "researches", "requires", "deposits", "damage", "range", "cooldown", "mine_trip", "mine_slots",
                  "mine_endless"}
 UPGRADE_KEYS = {"name", "gold", "lumber", "time", "hotkey", "card", "summary", "requires", "race"}
-UNIT_TWEAK_KEYS = {"name", "summary", "hp_mult", "damage_mult", "armor_add", "range_add", "speed_add", "sight_add",
-                   "build_time_mult", "formation"}
-BUILDING_TWEAK_KEYS = {"name", "card", "summary", "hp_mult", "armor_add"}
 UPGRADE_TWEAK_KEYS = {"name", "card"}
 
 #: Scalar schemas: section -> {toml key: (CONSTANT, int|float)}.  Sections are
@@ -259,42 +254,57 @@ class Tables:
     siege_worth: dict[str, float] = field(default_factory=dict)  # unit value -> worth
 
 
-def _unit(entry: dict, where: str) -> dict:
-    _no_extra(entry, UNIT_KEYS, where)
-    ranged = entry.get("range")
-    if isinstance(ranged, str):
-        if ranged != "melee":
-            raise BalanceError(f"{where}.range: expected a distance in tiles or \"melee\", got {ranged!r}")
-        reach: float | str = "melee"
-    else:
-        reach = _float(entry, "range", where)
-    return {
-        "name": _str(entry, "name", where),
-        "gold": _int(entry, "gold", where, 0),
-        "lumber": _int(entry, "lumber", where, 0),
-        "hp": _int(entry, "hp", where),
-        "damage": _int(entry, "damage", where),
-        "armor": _int(entry, "armor", where),
-        "range": reach,
-        "cooldown": _float(entry, "cooldown", where),
-        "speed": _float(entry, "speed", where),
-        "sight": _int(entry, "sight", where),
-        "build_time": _float(entry, "build_time", where),
-        "trained_at": _enum(entry, "trained_at", where, BUILDINGS + ("lair",)),
-        "hotkey": _str(entry, "hotkey", where),
-        "summary": _str(entry, "summary", where),
-        "radius": _float(entry, "radius", where),
-        "heal": _int(entry, "heal", where, 0),
-        "splash": _float(entry, "splash", where, 0.0),
-        "attack": _enum(entry, "attack", where, ATTACKS, "normal"),
-        "armor_class": _enum(entry, "armor_class", where, ARMOR_CLASSES, "light"),
-        "formation": _bool(entry, "formation", where, False),
-        "mounted": _bool(entry, "mounted", where, False),
-        "windup": _float(entry, "windup", where),
-        "turn_deg": _int(entry, "turn_deg", where, 360),
-        "min_range": _float(entry, "min_range", where, 0.0),
-        "regen": _float(entry, "regen", where, 0.0),
-    }
+def _reach(entry: dict, key: str, where: str) -> float | str:
+    if entry.get(key) == "melee":
+        return "melee"
+    return _float(entry, key, where)
+
+
+# Field -> (reader, optional reader arguments). One schema validates both a
+# shared default and a complete entry; omitted optional fields keep their
+# established values. This is authoring code only, never a runtime loader.
+UNIT_SCHEMA = {
+    "name": (_str,), "gold": (_int, 0), "lumber": (_int, 0),
+    "hp": (_int,), "damage": (_int,), "armor": (_int,), "range": (_reach,),
+    "cooldown": (_float,), "speed": (_float,), "sight": (_int,), "build_time": (_float,),
+    "trained_at": (_enum, BUILDINGS), "hotkey": (_str,), "summary": (_str,), "radius": (_float,),
+    "heal": (_int, 0), "splash": (_float, 0.0), "attack": (_enum, ATTACKS, "normal"),
+    "armor_class": (_enum, ARMOR_CLASSES, "light"), "formation": (_bool, False), "mounted": (_bool, False),
+    "windup": (_float,), "turn_deg": (_int, 360), "min_range": (_float, 0.0), "regen": (_float, 0.0),
+}
+UNIT_TWEAK_SCHEMA = {
+    "name": (_str,), "summary": (_str,), "hp_mult": (_float, 1.0), "damage_mult": (_float, 1.0),
+    "armor_add": (_int, 0), "range_add": (_float, 0.0), "speed_add": (_float, 0.0),
+    "sight_add": (_int, 0), "build_time_mult": (_float, 1.0), "formation": (_bool, True),
+}
+BUILDING_TWEAK_SCHEMA = {
+    "name": (_str,), "card": (_str,), "summary": (_str,), "hp_mult": (_float, 1.0), "armor_add": (_int, 0),
+}
+
+
+def _fields(entry: dict, schema: dict, where: str, *, partial: bool = False) -> dict:
+    if not isinstance(entry, dict):
+        raise BalanceError(f"{where}: expected a table, got {entry!r}")
+    _no_extra(entry, set(schema), where)
+    return {key: schema[key][0](entry, key, where, *schema[key][1:])
+            for key in (entry if partial else schema)}
+
+
+def _rows(doc: dict, names: tuple[str, ...], schema: dict, where: str) -> dict[str, dict]:
+    """Required rows with one optional defaults table; explicit row values win."""
+    if not isinstance(doc, dict):
+        raise BalanceError(f"{where}: expected a table, got {doc!r}")
+    _no_extra(doc, set(names) | {"defaults"}, where)
+    # Validate defaults on their own, even when every row overrides a bad value.
+    defaults = _fields(doc.get("defaults", {}), schema, f"{where}.defaults", partial=True)
+    out = {}
+    for name in names:
+        location = f"{where}.{name}"
+        if name not in doc:
+            raise BalanceError(f"{where}: missing [{name}]")
+        entry = _fields(doc[name], schema, location, partial=True)
+        out[name] = _fields(defaults | entry, schema, location)
+    return out
 
 
 def _building(entry: dict, where: str, section: str) -> dict:
@@ -349,33 +359,6 @@ def _upgrade(entry: dict, where: str) -> dict:
         "summary": _str(entry, "summary", where),
         "requires": list(requires),
         "race": race,
-    }
-
-
-def _unit_tweak(entry: dict, where: str) -> dict:
-    _no_extra(entry, UNIT_TWEAK_KEYS, where)
-    return {
-        "name": _str(entry, "name", where),
-        "summary": _str(entry, "summary", where),
-        "hp_mult": _float(entry, "hp_mult", where, 1.0),
-        "damage_mult": _float(entry, "damage_mult", where, 1.0),
-        "armor_add": _int(entry, "armor_add", where, 0),
-        "range_add": _float(entry, "range_add", where, 0.0),
-        "speed_add": _float(entry, "speed_add", where, 0.0),
-        "sight_add": _int(entry, "sight_add", where, 0),
-        "build_time_mult": _float(entry, "build_time_mult", where, 1.0),
-        "formation": _bool(entry, "formation", where, True),
-    }
-
-
-def _building_tweak(entry: dict, where: str) -> dict:
-    _no_extra(entry, BUILDING_TWEAK_KEYS, where)
-    return {
-        "name": _str(entry, "name", where),
-        "card": _str(entry, "card", where),
-        "summary": _str(entry, "summary", where),
-        "hp_mult": _float(entry, "hp_mult", where, 1.0),
-        "armor_add": _int(entry, "armor_add", where, 0),
     }
 
 
@@ -445,25 +428,12 @@ def _race(doc: dict, race: str) -> dict:
     if not isinstance(entry, dict):
         raise BalanceError(f"{RACES_TOML.name}: missing [{race}]")
     _no_extra(entry, {"name", "adjective", "tagline", "passive", "arts", "units", "buildings", "upgrades"}, where)
-    units = entry.get("units", {})
-    buildings = entry.get("buildings", {})
+    units = _rows(entry.get("units", {}), PLAYABLE, UNIT_TWEAK_SCHEMA, f"{where}.units")
+    buildings = _rows(entry.get("buildings", {}), BUILT, BUILDING_TWEAK_SCHEMA, f"{where}.buildings")
     upgrades = entry.get("upgrades", {})
-    built = BUILT
-    for kind, table, known in (("units", units, PLAYABLE), ("buildings", buildings, built), ("upgrades", upgrades, UPGRADES)):
-        if not isinstance(table, dict):
-            raise BalanceError(f"{where}.{kind}: expected a table, got {table!r}")
-        for key in table:
-            if key not in known:
-                raise BalanceError(f"{where}.{kind}: unexpected [{key}]")
-    for unit in PLAYABLE:
-        if unit not in units:
-            raise BalanceError(f"{where}.units: missing [{unit}]: every race fields every role")
-    for building in BUILDINGS:
-        if building in DEPOSITS or building == "lair":
-            if building in buildings:
-                raise BalanceError(f"{where}.buildings: [{building}] is nobody's: no race names it")
-        elif building not in buildings:
-            raise BalanceError(f"{where}.buildings: missing [{building}]: every race names every building")
+    if not isinstance(upgrades, dict):
+        raise BalanceError(f"{where}.upgrades: expected a table, got {upgrades!r}")
+    _no_extra(upgrades, set(UPGRADES), f"{where}.upgrades")
     arts = entry.get("arts", [])
     if not isinstance(arts, list) or any(not isinstance(v, str) or v not in UPGRADES for v in arts):
         raise BalanceError(f"{where}.arts: expected upgrade names, got {arts!r}")
@@ -473,22 +443,19 @@ def _race(doc: dict, race: str) -> dict:
         "tagline": _str(entry, "tagline", where),
         "passive": _str(entry, "passive", where),
         "arts": list(arts),
-        "units": {u: _unit_tweak(units[u], _at(RACES_TOML, f"{race}.units.{u}")) for u in PLAYABLE},
-        "buildings": {b: _building_tweak(buildings[b], _at(RACES_TOML, f"{race}.buildings.{b}"))
-                      for b in BUILDINGS if b not in DEPOSITS and b != "lair"},
+        "units": units,
+        "buildings": buildings,
         "upgrades": {u: _upgrade_tweak(upgrades[u], _at(RACES_TOML, f"{race}.upgrades.{u}")) for u in upgrades},
     }
 
 
-def load() -> Tables:
-    """The TOML files as normalized tables, or a BalanceError naming what is wrong."""
-    units_doc = _read(UNITS_TOML)
-    neutrals_doc = _read(NEUTRALS_TOML)
-    buildings_doc = _read(BUILDINGS_TOML)
-    upgrades_doc = _read(UPGRADES_TOML)
-    races_doc = _read(RACES_TOML)
-    _check_sections(units_doc, UNITS_TOML, PLAYABLE, "unit")
-    _check_sections(neutrals_doc, NEUTRALS_TOML, WILDS, "neutral")
+def load(constants: Path = CONSTANTS) -> Tables:
+    """A constants directory as normalized tables, or a BalanceError naming what is wrong."""
+    units_doc = _read(constants / UNITS_TOML.name)
+    neutrals_doc = _read(constants / NEUTRALS_TOML.name)
+    buildings_doc = _read(constants / BUILDINGS_TOML.name)
+    upgrades_doc = _read(constants / UPGRADES_TOML.name)
+    races_doc = _read(constants / RACES_TOML.name)
     _check_sections(buildings_doc, BUILDINGS_TOML, BUILDINGS, "building")
     _check_sections(upgrades_doc, UPGRADES_TOML, UPGRADES + ("effects",), "upgrade")
     for race in RACES:
@@ -497,12 +464,6 @@ def load() -> Tables:
     for section in races_doc:
         if section not in RACES:
             raise BalanceError(f"{RACES_TOML.name}: unexpected race [{section}]; known: {', '.join(RACES)}")
-    for unit in PLAYABLE:
-        if unit not in units_doc:
-            raise BalanceError(f"{UNITS_TOML.name}: missing [{unit}]")
-    for unit in WILDS:
-        if unit not in neutrals_doc:
-            raise BalanceError(f"{NEUTRALS_TOML.name}: missing [{unit}]")
     for building in BUILDINGS:
         if building not in buildings_doc:
             raise BalanceError(f"{BUILDINGS_TOML.name}: missing [{building}]")
@@ -510,14 +471,14 @@ def load() -> Tables:
         if upgrade not in upgrades_doc:
             raise BalanceError(f"{UPGRADES_TOML.name}: missing [{upgrade}]")
     tables = Tables()
-    tables.units = {u: _unit(units_doc[u], _at(UNITS_TOML, u)) for u in PLAYABLE}
-    tables.wilds = {u: _unit(neutrals_doc[u], _at(NEUTRALS_TOML, u)) for u in WILDS}
+    tables.units = _rows(units_doc, PLAYABLE, UNIT_SCHEMA, UNITS_TOML.name)
+    tables.wilds = _rows(neutrals_doc, WILDS, UNIT_SCHEMA, NEUTRALS_TOML.name)
     tables.buildings = {b: _building(buildings_doc[b], _at(BUILDINGS_TOML, b), b) for b in BUILDINGS}
     tables.upgrades = {u: _upgrade(upgrades_doc[u], _at(UPGRADES_TOML, u)) for u in UPGRADES}
     tables.races = {r: _race(races_doc, r) for r in RACES}
-    economy_doc = _read(ECONOMY_TOML)
-    combat_doc = _read(COMBAT_TOML)
-    behavior_doc = _read(BEHAVIOR_TOML)
+    economy_doc = _read(constants / ECONOMY_TOML.name)
+    combat_doc = _read(constants / COMBAT_TOML.name)
+    behavior_doc = _read(constants / BEHAVIOR_TOML.name)
     for doc, path, sections in ((economy_doc, ECONOMY_TOML, tuple(ECONOMY_SCHEMA)),
                                 (behavior_doc, BEHAVIOR_TOML, tuple(BEHAVIOR_SCHEMA))):
         for section in doc:

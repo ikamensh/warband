@@ -41,7 +41,7 @@ one fielded per game.
 
 ## Tuning the numbers
 
-Edit the TOML, not the Python. The tunable numbers are seven commented
+Edit the TOML, not the Python. The tunable numbers are eight commented
 files in `warband/constants/`:
 
 - `units.toml` — every soldier and worker: cost, hit
@@ -64,12 +64,35 @@ cooldown — planner internals and protocol, not balance. `behavior.toml`
 names the boundary at its top.
 
 Then run `uv run python tools/balance_tables.py` from the repository root,
-which rewrites the GENERATED regions of `warband/sim/rules.py` and `races.py`.
+which rewrites the GENERATED regions of `warband/sim/rules.py`, `races.py`
+and `model.py`.
 `tests/warband/test_balance_tables.py` fails until the two agree, so a tuned
-checkout cannot be committed half-applied. What is deliberately not in the
-TOML stays in code: what an upgrade *does* (the `*_BONUS` constants in
-`rules.py`), how a blow lands (`model.py`), the race passives' mechanics, and
-the map generator's stocks.
+checkout cannot be committed half-applied. The game never reads TOML:
+editing these files, even regenerating the Python, cannot change the rules
+of an already launched game. Restart to use regenerated rules. The generated
+sources remain part of the online compatibility hash and compile with mypyc.
+
+`units.toml` and `neutrals.toml` each have a `[defaults]` table. Every entry
+overrides those values. Each race's `units` and `buildings` table follows the
+same rule, so a racial bonus appears once:
+
+```toml
+[orc.units]
+defaults = { hp_mult = 1.15 }
+peasant = { name = "Peon", summary = "Digs gold, hacks lumber, builds and repairs" }
+knight = { name = "Ogre", summary = "Two-headed brute; thin armour, all frenzy", hp_mult = 1.2, damage_mult = 1.1, armor_add = -1 }
+```
+
+Every playable role and building still needs its own entry; the example
+above omits the other roles for brevity. There is no inheritance between
+entries or files. An explicit value always wins, including `0`, `1.0` and
+`false`. Omitted racial modifiers mean multiply by one, add zero, and retain
+the base formation setting. Base units may omit costs, heal, splash,
+min_range and regen (zero), attack (`"normal"`), armor_class (`"light"`),
+formation/mounted (`false`), and turn_deg (`360`). Other fields must appear
+in the entry or its defaults. Misspelled keys, wrong types and missing
+required fields fail generation, including invalid defaults that every
+entry overrides.
 
 To *try* a price before committing to it, skip the files: a `scale:` variant
 patches the numbers in every worker for one league — see below.
