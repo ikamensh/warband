@@ -1,15 +1,7 @@
 # Warband's economy: what work takes, what stocks the map, what repair costs.
 #
-# This is the file to edit to change harvest timings, mine stocks, starting
-# resources, or what mending and salvaging cost. After editing, run from the
-# repository root:
-#
-#     uv run python tools/balance_tables.py
-#
-# which rewrites the matching constants in warband/sim/rules.py (marked
-# GENERATED there; never edit those regions by hand).
-# tests/warband/test_balance_tables.py fails until the two agree, so a tuned
-# checkout cannot be committed half-applied.
+# Read once at startup. Edit and restart to use new values; no generation step.
+# See docs/balance.md for validation.
 #
 # The face serves its slots every mine_time, so a deposit yields at most
 # slots * trip / mine_time (the trips and slots are buildings.toml's): 160

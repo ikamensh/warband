@@ -19,6 +19,7 @@ STDLIB = {"__future__", "array", "collections", "copy", "dataclasses", "enum", "
 ENGINE_IMPORTS = {"saga2d": {"CommandError"},
                   "saga2d.server.games": {"GameSpec", "option_choice", "option_int", "option_keys", "option_seed"}}
 UNTRACKED = {"__import__", "eval", "exec", "open", "read_bytes", "read_text", "import_module"}
+CONFIG = "warband.sim.config"
 
 
 def fingerprint(root: Path) -> dict:
@@ -44,10 +45,24 @@ def fingerprint(root: Path) -> dict:
         parts = module.split(".")
         pending.extend(".".join(parts[:i]) for i in range(1, len(parts)))
         package = module if path.name == "__init__.py" else module.rpartition(".")[0]
-        for node in ast.walk(ast.parse(source, filename=name)):
+        tree = ast.parse(source, filename=name)
+        if module == CONFIG:
+            # The reviewed loader has one file input: its literal FILES tuple.
+            inputs = next(node.value for node in tree.body
+                          if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+                          and node.target.id == "FILES")
+            names = ast.literal_eval(inputs)
+            if (not isinstance(names, tuple) or not names
+                    or any(not isinstance(n, str) or Path(n).name != n or not n.endswith(".toml") for n in names)):
+                raise ValueError("Unsupported authoritative configuration file list")
+            for filename in names:
+                data = root / "warband" / "assets" / "constants" / filename
+                files[data.relative_to(root).as_posix()] = hashlib.sha256(data.read_bytes()).hexdigest()
+        for node in ast.walk(tree):
             if ((isinstance(node, ast.Name) and node.id in UNTRACKED)
                     or (isinstance(node, ast.Attribute) and node.attr in UNTRACKED)):
-                raise ValueError(f"Unsupported authoritative input in {name}:{node.lineno}: {ast.unparse(node)}")
+                if not (module == CONFIG and ast.unparse(node) == "(constants / name).read_text"):
+                    raise ValueError(f"Unsupported authoritative input in {name}:{node.lineno}: {ast.unparse(node)}")
             if isinstance(node, ast.Import):
                 imports = [alias.name for alias in node.names]
             elif isinstance(node, ast.ImportFrom):
@@ -64,6 +79,8 @@ def fingerprint(root: Path) -> dict:
                 if item == "warband" or item.startswith("warband."):
                     pending.append(item)
                 elif item.split(".")[0] in STDLIB:
+                    continue
+                elif module == CONFIG and item in {"pathlib", "tomllib"}:
                     continue
                 elif (isinstance(node, ast.ImportFrom) and item in ENGINE_IMPORTS
                       and {alias.name for alias in node.names} <= ENGINE_IMPORTS[item]):

@@ -1,15 +1,7 @@
 # Warband's behaviour: how lines march, how camps reset, how crowds feel.
 #
-# This is the file to edit to change formation marching, creature camps, crowd
-# spacing, or how far an idle unit chases. After editing, run from the
-# repository root:
-#
-#     uv run python tools/balance_tables.py
-#
-# which rewrites the matching constants in warband/sim/rules.py and
-# warband/sim/model.py (marked GENERATED there; never edit those regions by
-# hand). tests/warband/test_balance_tables.py fails until the two agree, so a
-# tuned checkout cannot be committed half-applied.
+# Read once at startup. Edit and restart to use new values; no generation step.
+# See docs/balance.md for validation.
 #
 # What stays in code, deliberately: the pathfinder's budgets and cadence
 # (STUCK_AFTER, REPLAN_*, STEER_RANGE, LOCAL_EXPANSIONS, SETTLE_WITHIN,

@@ -1,16 +1,8 @@
-"""The balance tables are edited as TOML and generated into the simulation.
-
-A tuner edits the files in ``warband/constants/`` (units, neutrals,
-buildings, upgrades, races, economy, combat, behaviour), then runs
-``uv run python tools/balance_tables.py`` to rewrite the GENERATED regions of
-``warband/sim/rules.py``, ``races.py`` and ``model.py``.  This holds the two
-together: the regions must be exactly what the tool emits from the TOML, and
-the live tables and constants must say what the TOML says.  Either drift
-fails here with the command that fixes it.
-"""
+"""TOML authoring defaults, strict validation, typed runtime tables and per-process snapshots."""
 
 import json
 import math
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -21,7 +13,7 @@ import pytest
 
 @pytest.fixture
 def constants(tmp_path):
-    from tools.balance_tables import CONSTANTS
+    from warband.sim.config import CONSTANTS
 
     return shutil.copytree(CONSTANTS, tmp_path / "constants")
 
@@ -42,11 +34,11 @@ def _write_toml(path, doc):
     ("races.toml", ("orc", "units"), "hp_mult"),
     ("races.toml", ("dwarf", "buildings"), "hp_mult"),
 ])
-def test_shared_defaults_and_explicit_exceptions_generate_the_same_game(constants, filename, section, key):
-    """Factoring repeated values into defaults preserves every generated rule, including exceptions."""
-    from tools.balance_tables import emit, load
+def test_shared_defaults_and_explicit_exceptions_load_the_same_game(constants, filename, section, key):
+    """Factoring repeated values into defaults preserves every normalized rule, including exceptions."""
+    from warband.sim.config import load
 
-    before = emit(load())
+    before = load()
     path = constants / filename
     doc = tomllib.loads(path.read_text())
     rows = doc
@@ -56,7 +48,7 @@ def test_shared_defaults_and_explicit_exceptions_generate_the_same_game(constant
     for name, row in rows.items():
         rows[name] = inherited | row
     _write_toml(path, doc)
-    assert emit(load(constants)) == before
+    assert load(constants) == before
 
     entries = list(rows.values())
     shared = entries[0][key]
@@ -66,7 +58,7 @@ def test_shared_defaults_and_explicit_exceptions_generate_the_same_game(constant
             del row[key]
     _write_toml(path, doc)
 
-    assert emit(load(constants)) == before
+    assert load(constants) == before
 
 
 @pytest.mark.parametrize("key,shared,override", [
@@ -74,7 +66,7 @@ def test_shared_defaults_and_explicit_exceptions_generate_the_same_game(constant
 ])
 def test_explicit_neutral_and_false_modifiers_override_shared_defaults(constants, key, shared, override):
     """An explicit zero, one or false resets a shared modifier; it is never treated as absent."""
-    from tools.balance_tables import load
+    from warband.sim.config import load
 
     path = constants / "races.toml"
     doc = tomllib.loads(path.read_text())
@@ -102,7 +94,7 @@ def test_explicit_neutral_and_false_modifiers_override_shared_defaults(constants
 ])
 def test_invalid_values_fail_even_in_overridden_defaults(constants, section, key, bad):
     """Misspellings and wrong types must name the bad field, even when defaults would go unused."""
-    from tools.balance_tables import BalanceError, load
+    from warband.sim.config import BalanceError, load
 
     path = constants / "units.toml"
     doc = tomllib.loads(path.read_text())
@@ -116,7 +108,7 @@ def test_invalid_values_fail_even_in_overridden_defaults(constants, section, key
 @pytest.mark.parametrize("missing", ["hp", "peasant"])
 def test_defaults_do_not_hide_missing_required_stats_or_roles(constants, missing):
     """Defaults may supply a field, but cannot invent a missing role or an unspecified required stat."""
-    from tools.balance_tables import BalanceError, load
+    from warband.sim.config import BalanceError, load
 
     path = constants / "units.toml"
     doc = tomllib.loads(path.read_text())
@@ -132,24 +124,30 @@ def test_defaults_do_not_hide_missing_required_stats_or_roles(constants, missing
 
 
 @pytest.mark.slow
-def test_editing_and_regenerating_constants_leaves_a_running_game_unchanged(tmp_path):
-    """A real isolated process keeps playing its original rules after a tuner regenerates its files."""
-    from tools.balance_tables import ROOT
+def test_edits_apply_on_next_launch_and_leave_a_running_game_unchanged(tmp_path):
+    """Real processes prove edits apply on the next launch, while an existing match keeps its snapshot."""
+    ROOT = Path(__file__).resolve().parents[2]
 
     package = tmp_path / "warband"
     package.mkdir()
     shutil.copy(ROOT / "warband/__init__.py", package)
-    for folder in ("sim", "constants"):
+    for folder in ("sim", "assets/constants"):
         shutil.copytree(ROOT / "warband" / folder, package / folder, ignore=shutil.ignore_patterns("__pycache__"))
-    (tmp_path / "tools").mkdir()
-    shutil.copy(ROOT / "tools/balance_tables.py", tmp_path / "tools")
     script = '''
 from pathlib import Path
 import re
 import subprocess
 import sys
-from warband.sim.model import World
 from warband.sim.rules import Race, Terrain, UnitType
+from warband.sim import config
+
+# rules captures every file, even before a later import needs the race tables.
+race_path = Path("warband/assets/constants/races.toml")
+race_name = config.current().races["human"]["name"]
+race_path.write_text(race_path.read_text().replace('name = "Humans"', 'name = "Changed"'))
+from warband.sim.model import World
+from warband.sim.races import RACES
+assert RACES[Race.HUMAN].name == race_name
 
 world = World(20, 20, [[Terrain.GRASS] * 20 for _ in range(20)], 2,
               races=[Race.HUMAN, Race.ORC], scripted=True)
@@ -166,14 +164,23 @@ def play(match):
 
 expected = play(World.from_dict(world.to_dict()))
 old_hp = world.unit_info(0, UnitType.FOOTMAN).hp
-path = Path("warband/constants/units.toml")
+path = Path("warband/assets/constants/units.toml")
 source = path.read_text()
 path.write_text(re.sub(r"(?m)^hp = .*", "hp = 9999", source))
-subprocess.run([sys.executable, "tools/balance_tables.py"], check=True, capture_output=True)
-assert "hp=9999" in Path("warband/sim/rules.py").read_text()
+fresh = subprocess.run([sys.executable, "-c",
+    "from warband.sim.rules import UNITS, UnitType; print(UNITS[UnitType.FOOTMAN].hp)"],
+    check=True, capture_output=True, text=True)
+assert fresh.stdout.strip() == "9999", fresh.stdout
 assert world.unit_info(0, UnitType.FOOTMAN).hp == old_hp
+try:
+    config.install(config.read_sources())
+except RuntimeError as exc:
+    assert "already loaded" in str(exc)
+else:
+    raise AssertionError("a running process replaced its balance snapshot")
 # Even broken TOML cannot affect an already launched match or its new units.
-for path in Path("warband/constants").glob("*.toml"):
+for filename in config.FILES:
+    path = config.CONSTANTS / filename
     path.write_text("this is no longer valid TOML")
 assert play(world) == expected
 '''
@@ -191,13 +198,9 @@ def _norm(value):
 
 
 def test_the_toml_balance_tables_match_the_simulation() -> None:
-    from tools.balance_tables import SCALAR_REGIONS, check, load
-
+    from warband.sim.config import BEHAVIOR_SCHEMA, load
     from warband.sim import model, races, rules
 
-    regions = check()
-    assert not regions, ("the GENERATED regions are not what the TOML says:\n" + "\n\n".join(regions)
-                         + "\nrun `uv run python tools/balance_tables.py` to regenerate.")
     tables = load()
     found = []
 
@@ -254,10 +257,10 @@ def test_the_toml_balance_tables_match_the_simulation() -> None:
     agree("buildings.toml [gold_seam].summary", rules.BUILDINGS[rules.BuildingType.GOLD_SEAM].summary,
           seam["summary"].replace("{trip}", str(seam["mine_trip"])))
 
-    for region, consts in SCALAR_REGIONS.items():
-        home = model if region == "movement" else rules
-        for const in consts:
-            agree(f"warband/constants {const}", getattr(home, const), tables.scalars[const])
+    movement = {name for name, kind in BEHAVIOR_SCHEMA["movement"].values()}
+    for const, value in tables.scalars.items():
+        home = model if const in movement else rules
+        agree(f"constants {const}", getattr(home, const), value)
     agree("combat.toml [[damage_bonus]]",
           sorted((attack.value, armor.value, factor) for (attack, armor), factor in rules.DAMAGE_FACTORS.items()),
           sorted((b["attack"], b["armor"], b["factor"]) for b in tables.damage_bonus))
@@ -314,4 +317,4 @@ def test_the_toml_balance_tables_match_the_simulation() -> None:
             agree(f"races.toml [{race}.upgrades.{upgrade}].card", info.card, t["card"])
 
     assert not found, ("the TOML and the simulation disagree:\n" + "\n".join(found)
-                       + "\nrun `uv run python tools/balance_tables.py` to regenerate.")
+)

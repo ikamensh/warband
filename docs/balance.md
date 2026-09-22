@@ -42,7 +42,7 @@ one fielded per game.
 ## Tuning the numbers
 
 Edit the TOML, not the Python. The tunable numbers are eight commented
-files in `warband/constants/`:
+files in `warband/assets/constants/`:
 
 - `units.toml` — every soldier and worker: cost, hit
   points, damage, armour, range, timings, sight, body.
@@ -63,14 +63,16 @@ bounds, the pathfinder's budgets and cadence, the seats, and the alert
 cooldown — planner internals and protocol, not balance. `behavior.toml`
 names the boundary at its top.
 
-Then run `uv run python tools/balance_tables.py` from the repository root,
-which rewrites the GENERATED regions of `warband/sim/rules.py`, `races.py`
-and `model.py`.
-`tests/warband/test_balance_tables.py` fails until the two agree, so a tuned
-checkout cannot be committed half-applied. The game never reads TOML:
-editing these files, even regenerating the Python, cannot change the rules
-of an already launched game. Restart to use regenerated rules. The generated
-sources remain part of the online compatibility hash and compile with mypyc.
+Restart after editing. The simulation reads all eight files once at startup,
+validates them, and builds its typed rule tables. File edits cannot affect an
+already launched game, even if another table is imported later. No generator
+or duplicate Python catalogue needs updating.
+
+The TOMLs ship under `warband/assets/constants/`, alongside the other bundled
+game data. Their bytes join the simulation sources in the online compatibility
+hash. A compiled league build captures its startup snapshot and gives that
+same snapshot to every spawned worker; changes made during a run apply to the
+next run, never just some matches in a league.
 
 `units.toml` and `neutrals.toml` each have a `[defaults]` table. Every entry
 overrides those values. Each race's `units` and `buildings` table follows the

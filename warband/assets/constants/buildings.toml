@@ -1,13 +1,7 @@
 # Warband's buildings: what a hall costs, what a tower shoots, what a mine gives.
 #
-# This is the file to edit to change a building's price, hit points or work.
-# After editing, run from the repository root:
-#
-#     uv run python tools/balance_tables.py
-#
-# which rewrites the matching tables in warband/sim/rules.py (marked GENERATED
-# there; never edit those regions by hand). tests/warband/test_balance_tables.py
-# fails until the two agree, so a tuned checkout cannot be committed half-applied.
+# Read once at startup. Edit and restart to use new values; no generation step.
+# See docs/balance.md for validation.
 #
 # Conventions: times are seconds, distances tiles. `trains` and `researches`
 # name what the building makes; `requires` names the building that must stand

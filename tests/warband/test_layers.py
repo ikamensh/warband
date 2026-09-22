@@ -40,8 +40,7 @@ def imported_folders(path: Path, folder: str) -> set[str]:
 
 
 def test_the_package_holds_its_entry_modules_its_assets_and_the_folders() -> None:
-    assert {p.name for p in PACKAGE.iterdir() if p.name != "__pycache__"} == {"__init__.py", "__main__.py", "assets",
-                                                                            "constants"} | FOLDERS
+    assert {p.name for p in PACKAGE.iterdir() if p.name != "__pycache__"} == {"__init__.py", "__main__.py", "assets"} | FOLDERS
 
 
 @pytest.mark.parametrize("folder", sorted(FOLDERS))

@@ -1,15 +1,7 @@
 # Warband's combat: how shots fly, how stones splash, who counts as what.
 #
-# This is the file to edit to change projectile speeds, the armour rule, or
-# how a siege crew weighs its own side against the enemy's. After editing, run
-# from the repository root:
-#
-#     uv run python tools/balance_tables.py
-#
-# which rewrites the matching constants in warband/sim/rules.py (marked
-# GENERATED there; never edit those regions by hand).
-# tests/warband/test_balance_tables.py fails until the two agree, so a tuned
-# checkout cannot be committed half-applied.
+# Read once at startup. Edit and restart to use new values; no generation step.
+# See docs/balance.md for validation.
 #
 # Armour is a flat subtraction with a floor of one, which decides several
 # matchups before any posture plays (docs/balance.md does the arithmetic).

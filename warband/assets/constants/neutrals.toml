@@ -1,6 +1,6 @@
 # Wild creatures; no race tweaks them. Camp behavior lives in behavior.toml.
-# Edit, then run: uv run python tools/balance_tables.py
-# The game uses generated Python, never these files. See docs/balance.md.
+# Read once at startup. Edit and restart to use new values; no generation step.
+# See docs/balance.md for defaults and validation.
 # Seconds, tiles, degrees/second. "melee" uses combat.toml's shared reach.
 # Entries override defaults; optional field defaults are listed in docs/balance.md.
 # Body radius affects pathing for every race and is never balance-jittered.

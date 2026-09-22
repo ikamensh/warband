@@ -1,6 +1,6 @@
 # Race differences from units.toml / buildings.toml; prices and hotkeys stay shared.
-# Edit, then run: uv run python tools/balance_tables.py
-# The game uses generated Python, never this file. See docs/balance.md.
+# Read once at startup. Edit and restart to use new values; no generation step.
+# See docs/balance.md for defaults and validation.
 # Each units/buildings table has optional defaults; individual values override them.
 # Omitted modifiers: *_mult = 1, *_add = 0, formation = true (keep the base setting).
 # range_add affects ranged units only; formation = false opts out of shield walls.

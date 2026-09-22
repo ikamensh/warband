@@ -23,6 +23,7 @@ from enum import Enum
 from types import FunctionType
 from typing import Any, Final, Iterable, Iterator, Literal
 
+from warband.sim import config
 from warband.sim import path as pathing
 from warband.sim.races import RACES
 try:
@@ -147,19 +148,17 @@ LOCAL_EXPANSIONS: Final = 700  # A* budget for the detours around other units; t
 SETTLE_WITHIN: Final = 0.65  # beyond its own body, how near its spot a crowd may hold a unit for a plain walk to count as arrived
 MINE_CLEARANCE: Final = 2  # tiles kept free around a gold deposit so peasants can get in and out
 SIDESTEP: Final = 0.6  # lateral share of the push when walking units collide
-# The crowd's numbers are warband/constants/behavior.toml's; the pathfinder's budgets below them stay in code.
-# generated-begin movement: from warband/constants/behavior.toml — do not edit by hand; run tools/balance_tables.py
-MAX_PUSH: Final = 0.25
-SPACING: Final = 0.2
-SPACING_WEIGHT: Final = 0.15
-EASE_SPACE: Final = 0.3
-EASE_EVERY: Final = 5
-EASE_CHANCE: Final = 0.12
-EASE_STEP: Final = 0.4
-EASE_STEP_VARIANCE: Final = 0.3
-EASE_JITTER: Final = 0.7
-EASE_GAIN: Final = 0.1
-# generated-end movement
+# The crowd's numbers are warband/assets/constants/behavior.toml's; the pathfinder's budgets above stay in code.
+MAX_PUSH: Final = config.number('MAX_PUSH')
+SPACING: Final = config.number('SPACING')
+SPACING_WEIGHT: Final = config.number('SPACING_WEIGHT')
+EASE_SPACE: Final = config.number('EASE_SPACE')
+EASE_EVERY: Final = config.integer('EASE_EVERY')
+EASE_CHANCE: Final = config.number('EASE_CHANCE')
+EASE_STEP: Final = config.number('EASE_STEP')
+EASE_STEP_VARIANCE: Final = config.number('EASE_STEP_VARIANCE')
+EASE_JITTER: Final = config.number('EASE_JITTER')
+EASE_GAIN: Final = config.number('EASE_GAIN')
 AUTO_EVERY: Final = round(1 / SIM_DT)  # ticks between an idle building's looks at its endless recruits: the settlement's second
 
 

@@ -46,12 +46,14 @@ import sysconfig
 import tempfile
 from pathlib import Path
 
+from warband.sim import config as balance_config
+
 PACKAGE = Path(__file__).resolve().parents[1]  # warband/, whose subpackages hold the modules
 BUILDS = PACKAGE.parent / "build" / "fastsim"
 MODULES = ("sim.rules", "sim.races", "sim.path", "sim.worker_knowledge", "sim.model", "sim.camps", "sim.mapgen", "sim.worker_ai",
            "brains.ai", "brains.pro_ai")
 NATIVE = "sim/_native.c"  # the loops written twice, in C, built alongside; see its opening comment
-RECIPE = "3"  # bumped when the build itself changes, so that no build made the old way is reused
+RECIPE = "4"  # each build carries its startup balance snapshot for spawned workers
 ENV = "WARBAND_FASTSIM"  # the build a process activated, for the worker processes it starts
 OPT_OUT = "WARBAND_INTERPRETED"
 
@@ -61,13 +63,22 @@ def source(module: str) -> str:
     return module.replace(".", "/") + ".py"
 
 
-def key() -> str:
-    """The name of the build these sources make on this interpreter."""
+def source_key() -> str:
+    """Code and interpreter identity, independent of mutable authoring files."""
     digest = hashlib.sha256()
-    for name in (*(source(module) for module in MODULES), NATIVE):
+    for name in (*(source(module) for module in MODULES), "sim/config.py", NATIVE):
         digest.update(name.encode() + b"\0" + (PACKAGE / name).read_bytes() + b"\0")
     digest.update(f"{RECIPE}|{sys.implementation.cache_tag}|{sysconfig.get_platform()}".encode())
     return digest.hexdigest()[:20]
+
+
+def _key(sources: dict[str, str]) -> str:
+    return hashlib.sha256((source_key() + json.dumps(sources, sort_keys=True)).encode()).hexdigest()[:20]
+
+
+def key() -> str:
+    """A build's identity covers both its code and this process's frozen balance inputs."""
+    return _key(balance_config.sources())
 
 
 def build() -> Path:
@@ -100,6 +111,7 @@ setup(name="warband-fastsim", packages=[], py_modules=[], ext_modules=modules,
                            f"shows why):\n{done.stdout[-4000:]}\n{done.stderr[-4000:]}")
     for scratch in ("mypy", "c", "obj"):
         shutil.rmtree(staging / scratch)
+    (staging / "constants.json").write_text(json.dumps(balance_config.sources(), sort_keys=True), encoding="utf-8")
     try:
         staging.rename(target)
     except OSError:  # another process finished the same build first; theirs is as good
@@ -110,9 +122,12 @@ setup(name="warband-fastsim", packages=[], py_modules=[], ext_modules=modules,
 def attach(path: str | os.PathLike[str]) -> None:
     """Import :data:`MODULES` from the build at *path* from now on; it must match the current sources."""
     root = Path(path)
-    if root.name != key():
+    if not root.is_dir():
+        raise ImportError(f"the compiled simulation {root.name} is missing or was built from other sources")
+    sources = json.loads((root / "constants.json").read_text(encoding="utf-8"))
+    if root.name != _key(sources):
         raise ImportError(f"the compiled simulation {root.name} was built from other sources: the current ones "
-                          f"make {key()}")
+                          f"make {_key(sources)}")
     # The build holds no __init__.py, so each source package stays the package, with the build's directory first
     # on its path; the packages' own __init__.py import none of MODULES.
     packages = {name: importlib.import_module(f"warband.{name}") for name in dict.fromkeys(m.partition(".")[0] for m in MODULES)}
@@ -121,6 +136,7 @@ def attach(path: str | os.PathLike[str]) -> None:
     loaded = sorted(name for name in sys.modules if name.startswith("warband.") and name[8:] in MODULES)
     if loaded:
         raise RuntimeError(f"the compiled simulation must be activated before it is imported; already loaded: {loaded}")
+    balance_config.install(sources)
     for name, package in packages.items():
         package.__path__.insert(0, str(root / "warband" / name))  # a compiled module is found before its source
     sys.path.insert(0, str(root))  # mypyc's shared library of the whole group

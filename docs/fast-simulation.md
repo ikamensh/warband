@@ -125,7 +125,14 @@ entity.
 ## The server
 
 The contract the online server is checked against
-(`tools/ci_compatibility.py`) hashes the simulation's source, so a speed change
+(`tools/ci_compatibility.py`) hashes the simulation's source and balance TOMLs, so a speed change
 like this one moves it and needs a server rollout even though every result is
 the same. `fastsim.py` and `_native` stay out of the authority's import
 closure: the server runs the source.
+
+Balance TOMLs are read once per run, not compiled into Python source. The
+compiled build key includes the loader and its exact startup inputs; the build
+keeps those inputs in `constants.json`. `attach` installs that snapshot before
+loading any compiled rule tables. Spawned workers therefore keep their parent's
+balance even after the authoring files change. Source-code changes still cause
+an inherited build to be refused.
