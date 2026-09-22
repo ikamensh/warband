@@ -23,7 +23,7 @@ from warband.audio import deaths, wreckage
 from warband.sim import mapgen
 from warband.brains.ai import DIFFICULTY_ELO, auto_site, make_brain
 from warband.art.effects import Flare, Spray, Stain, UnitDeath, death_outcome
-from warband.ui.icons import Icon, Pair, Price, draw_icon, draw_price, hourglass_parts, lock_parts, loop_parts, price_pairs, price_width
+from warband.ui.icons import Icon, Pair, Price, ResourceFloat, draw_icon, draw_price, hourglass_parts, lock_parts, loop_parts, price_pairs, price_width
 from warband.sim.model import (Attack, AttackMove, Build, Building, Deposit, Entity, Event, Harvest, Heal, Hold, Move, Patrol, Pos, Repair, Salvage,
                                 RuleError, Unit, World)
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
@@ -2053,10 +2053,12 @@ class GameScene(Scene):
                 self.effects.add(FloatingText("Mine exhausted", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), MUTED, rise=20, duration=1.5))
             elif e.kind == "salvage" and mine and self._visible(e.pos):
                 color = GOLD if e.text == "gold" else LUMBER
-                self.effects.add(FloatingText(f"+{e.amount} {e.text}", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), color,
-                                              rise=22, duration=1.2))
+                self.effects.add(ResourceFloat(e.amount, "gold" if e.text == "gold" else "lumber",
+                                               (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), color=color,
+                                               rise=22, duration=1.2))
             elif e.kind == "plunder" and mine:
-                self.effects.add(FloatingText(f"+{e.amount} gold plundered", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), GOLD, rise=26, duration=1.8))
+                self.effects.add(ResourceFloat(e.amount, "gold", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE),
+                                               color=GOLD, suffix="plundered", rise=26, duration=1.8))
 
     def _visible(self, point: tuple[float, float]) -> bool:
         return self.world.is_visible(self.human, (int(point[0]), int(point[1])))

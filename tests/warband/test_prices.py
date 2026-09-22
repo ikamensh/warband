@@ -8,10 +8,13 @@ many workers are on each resource.  These hold Warband's cards, codex and top ba
 import pytest
 
 from saga2d import Game
-from warband.sim.rules import BUILDINGS, UNITS, BuildingType, Cost, Terrain, UnitType
-from warband.ui.icons import COLORS
+from warband.sim.model import World
+from warband.sim.rules import BUILDINGS, UNITS, BuildingType, Cost, Race, Terrain, UnitType, Upgrade
+from warband.ui.icons import COLORS, ResourceFloat
 from warband.ui.scene import DEFAULT_SETTINGS, SHORT_FLASH, SHORT_OF, CodexScene, GameScene, new_game
 from warband.ui.style import BAD, BODY, GOLD, build_theme
+
+from tests.warband.battlefield import field, live_effects
 
 
 @pytest.fixture
@@ -202,3 +205,60 @@ def test_the_top_bar_says_how_many_peasants_are_on_each_resource(game) -> None:
     game.backend.inject_mouse_move(x + w / 2, y + h / 2)
     game.tick(1 / 60)
     assert f"{len(peasants) - 1} peasants chopping" in scene.tooltip
+
+
+def test_salvage_floats_a_symbol_not_a_word(game) -> None:
+    """A refund reads "+N" and the log, never "+N lumber": the symbol is the top bar's and the card's."""
+    world = field(3)
+    ruin = world.place_building(1, BuildingType.FARM, (8, 4))
+    world.resign(1)
+    assert ruin.abandoned
+    peasant = world.spawn_unit(0, UnitType.PEASANT, (7.5, 4.5))
+    world.reveal_all(0)
+    scene = GameScene(world, 0, ranked=False, settings=dict(DEFAULT_SETTINGS, tutorial=False, sfx=0.0, music=0.0))
+    game.push(scene)
+    game.tick(1 / 60)
+    world.salvage([peasant.id], ruin.id)
+    seen = None
+    for _ in range(300):
+        game.tick(0.1)
+        floats = [e for e in live_effects(scene) if isinstance(e, ResourceFloat)]
+        if floats:
+            seen = floats[0]
+            break
+    assert seen is not None, "the salvage paid out while watched"
+    assert seen.resource in ("gold", "lumber") and seen.text == f"+{seen.amount}"
+    drawn = {str(t["text"]) for t in game.backend.texts}
+    assert f"+{seen.amount}" in drawn
+    assert f"+{seen.amount} {seen.resource}" not in drawn
+    assert COLORS[seen.resource] in {tuple(p["color"]) for p in game.backend.polygons}, "the symbol in its own colour"
+
+
+def test_plunder_floats_a_symbol_not_a_word(game) -> None:
+    """Loot reads "+N" and the coin with its qualifier, never "+N gold plundered" in words alone."""
+    world = World(30, 24, [[Terrain.GRASS] * 30 for _ in range(24)], 2, races=(Race.ORC, Race.HUMAN))
+    for index, corner in enumerate(((1, 1), (24, 18))):
+        world.place_building(index, BuildingType.TOWN_HALL, corner)
+        world.players[index].gold = world.players[index].lumber = 20_000
+    world.reveal_all(0)
+    world.players[0].upgrades.add(Upgrade.PLUNDER)
+    ogre = world.spawn_unit(0, UnitType.KNIGHT, (3.5, 8.5))
+    farm = world.place_building(1, BuildingType.FARM, (6, 8))
+    farm.hp = 5  # staged: one blow away, so the test watches the loot and not the siege
+    scene = GameScene(world, 0, ranked=False, settings=dict(DEFAULT_SETTINGS, tutorial=False, sfx=0.0, music=0.0))
+    game.push(scene)
+    game.tick(1 / 60)
+    world.attack([ogre.id], farm.id)
+    seen = None
+    for _ in range(300):
+        game.tick(0.1)
+        floats = [e for e in live_effects(scene) if isinstance(e, ResourceFloat) and e.suffix == "plundered"]
+        if floats:
+            seen = floats[0]
+            break
+    assert seen is not None, "the raiders looted while watched"
+    assert seen.resource == "gold" and seen.text == f"+{seen.amount}"
+    drawn = {str(t["text"]) for t in game.backend.texts}
+    assert f"+{seen.amount}" in drawn and "plundered" in drawn
+    assert f"+{seen.amount} gold plundered" not in drawn
+    assert COLORS["gold"] in {tuple(p["color"]) for p in game.backend.polygons}, "the coin in its own colour"
