@@ -1,0 +1,134 @@
+# Workers and soldiers; race modifiers live in races.toml.
+# Read once at startup. Edit and restart to use new values; no generation step.
+# See docs/balance.md for defaults and validation.
+# Seconds, tiles, degrees/second. "melee" uses combat.toml's shared reach.
+# Entries override defaults; optional field defaults are listed in docs/balance.md.
+# Body radius affects pathing for every race and is never balance-jittered.
+
+[defaults]
+armor = 0
+range = "melee"
+cooldown = 1.0
+speed = 2.4
+sight = 5
+
+[peasant]
+name = "Peasant"
+gold = 400
+hp = 30
+damage = 3
+sight = 4
+build_time = 12.0
+trained_at = "town_hall"
+hotkey = "p"
+summary = "Mines gold, chops lumber, builds and repairs"
+radius = 0.36
+windup = 0.25
+armor_class = "unarmoured"
+
+[footman]
+name = "Footman"
+gold = 600
+hp = 60
+damage = 7
+armor = 3
+speed = 2.0
+build_time = 15.0
+trained_at = "barracks"
+hotkey = "f"
+summary = "Slow shield-wall swordsman; tougher with a comrade at each side"
+radius = 0.42
+windup = 0.3
+armor_class = "heavy"
+formation = true
+
+[archer]
+name = "Archer"
+gold = 500
+lumber = 50
+hp = 40
+damage = 6
+range = 4.0
+cooldown = 1.3
+sight = 6
+build_time = 14.0
+trained_at = "barracks"
+hotkey = "a"
+summary = "Shoots from four tiles away; fragile up close"
+radius = 0.42
+windup = 0.35
+attack = "piercing"
+
+[scout]
+name = "Scout"
+gold = 350
+hp = 35
+damage = 4
+cooldown = 0.8
+speed = 4.2
+sight = 8
+build_time = 10.0
+trained_at = "stables"
+hotkey = "s"
+summary = "Fast rider who sees far; raids peasants and archers"
+radius = 0.48
+windup = 0.25
+turn_deg = 450
+mounted = true
+
+[knight]
+name = "Knight"
+gold = 900
+lumber = 100
+hp = 90
+damage = 10
+armor = 4
+speed = 3.4
+build_time = 20.0
+trained_at = "stables"
+hotkey = "k"
+summary = "Fast, heavily armoured shock cavalry"
+radius = 0.56
+windup = 0.35
+turn_deg = 270
+armor_class = "heavy"
+mounted = true
+
+[catapult]
+name = "Catapult"
+gold = 900
+lumber = 300
+hp = 60
+damage = 30
+range = 7.0
+cooldown = 4.0
+speed = 1.6
+sight = 6
+build_time = 30.0
+trained_at = "workshop"
+hotkey = "c"
+summary = "Slow siege engine: stones land where aimed, splash friend and foe, ×1.5 against buildings"
+radius = 0.62
+splash = 1.2
+windup = 0.8
+turn_deg = 150
+min_range = 2.0
+attack = "siege"
+armor_class = "unarmoured"
+
+[cleric]
+name = "Cleric"
+gold = 700
+lumber = 50
+hp = 40
+damage = 3
+range = 3.0
+cooldown = 2.0
+build_time = 20.0
+trained_at = "church"
+hotkey = "h" # H for healer; L is Blessing
+summary = "Heals a wounded ally 15 at a cast; a weak blow when no one needs it"
+radius = 0.38
+heal = 15
+windup = 0.5
+armor_class = "unarmoured"

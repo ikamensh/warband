@@ -39,6 +39,66 @@ its knobs that each commit to one way of playing — `warband/league/archetypes.
 A posture is checked to be what its name says: the report prints what each
 one fielded per game.
 
+## Tuning the numbers
+
+Edit the TOML, not the Python. The tunable numbers are eight commented
+files in `warband/assets/constants/`:
+
+- `units.toml` — every soldier and worker: cost, hit
+  points, damage, armour, range, timings, sight, body.
+- `neutrals.toml` — the four wild creatures, tuned the same way.
+- `buildings.toml` — every building: cost, hit points, work, the
+  tower's shot, and the two deposits (gold per trip, places at the face).
+- `upgrades.toml` — every research: price, time, and what it does.
+- `races.toml` — what each race renames and retunes on top.
+- `economy.toml` — harvest timings, mine stocks, starting resources,
+  what mending and salvaging cost.
+- `combat.toml` — melee reach, projectile speeds, the armour rule,
+  and how a siege crew weighs its own side against the enemy's.
+- `behavior.toml` — formation marching, creature camps, crowd
+  spacing, how far an idle unit chases.
+
+What stays in code, deliberately: the engine timing (`SIM_DT`), the order
+bounds, the pathfinder's budgets and cadence, the seats, and the alert
+cooldown — planner internals and protocol, not balance. `behavior.toml`
+names the boundary at its top.
+
+Restart after editing. The simulation reads all eight files once at startup,
+validates them, and builds its typed rule tables. File edits cannot affect an
+already launched game, even if another table is imported later. No generator
+or duplicate Python catalogue needs updating.
+
+The TOMLs ship under `warband/assets/constants/`, alongside the other bundled
+game data. Their bytes join the simulation sources in the online compatibility
+hash. A compiled league build captures its startup snapshot and gives that
+same snapshot to every spawned worker; changes made during a run apply to the
+next run, never just some matches in a league.
+
+`units.toml` and `neutrals.toml` each have a `[defaults]` table. Every entry
+overrides those values. Each race's `units` and `buildings` table follows the
+same rule, so a racial bonus appears once:
+
+```toml
+[orc.units]
+defaults = { hp_mult = 1.15 }
+peasant = { name = "Peon", summary = "Digs gold, hacks lumber, builds and repairs" }
+knight = { name = "Ogre", summary = "Two-headed brute; thin armour, all frenzy", hp_mult = 1.2, damage_mult = 1.1, armor_add = -1 }
+```
+
+Every playable role and building still needs its own entry; the example
+above omits the other roles for brevity. There is no inheritance between
+entries or files. An explicit value always wins, including `0`, `1.0` and
+`false`. Omitted racial modifiers mean multiply by one, add zero, and retain
+the base formation setting. Base units may omit costs, heal, splash,
+min_range and regen (zero), attack (`"normal"`), armor_class (`"light"`),
+formation/mounted (`false`), and turn_deg (`360`). Other fields must appear
+in the entry or its defaults. Misspelled keys, wrong types and missing
+required fields fail startup validation, including invalid defaults that every
+entry overrides.
+
+To *try* a price before committing to it, skip the files: a `scale:` variant
+patches the numbers in every worker for one league — see below.
+
 ## Running it
 
 ```bash

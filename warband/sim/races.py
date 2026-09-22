@@ -1,5 +1,8 @@
 """The four races: what differs on top of the shared skeleton in :mod:`warband.sim.rules`.
 
+Names and modifiers come from the process's startup snapshot of
+``warband/assets/constants/races.toml``. Edits apply on the next launch.
+
 Every race fields the same seven roles from the same nine buildings with the
 same hotkeys and costs, so the AI, the settlement planner, the saves and the
 network protocol never care who is playing.  A race changes the names, a few
@@ -19,6 +22,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from typing import Final
+
+from warband.sim import config
 
 from warband.sim.rules import (BUILDINGS, UNITS, UPGRADES, WILD_BUILDINGS, BuildingInfo, BuildingType, Race, UnitInfo, UnitType,
                                Upgrade, UpgradeInfo)
@@ -110,126 +115,18 @@ def _upgrades(tweaks: dict[Upgrade, UpgradeTweak]) -> dict[Upgrade, UpgradeInfo]
     return out
 
 
-def _race(name: str, adjective: str, tagline: str, passive: str, arts: tuple[Upgrade, ...],
-          units: dict[UnitType, UnitTweak], buildings: dict[BuildingType, BuildingTweak],
-          upgrades: dict[Upgrade, UpgradeTweak]) -> RaceInfo:
-    return RaceInfo(name, adjective, tagline, passive, arts, _units(units), _buildings(buildings), _upgrades(upgrades),
-                    {bt: t.card for bt, t in buildings.items()})
+def _race(race: Race) -> RaceInfo:
+    r = config.current().races[race.value]
+    units = {UnitType(u): UnitTweak(
+        t["name"], t["summary"], hp=t["hp_mult"], damage=t["damage_mult"], armor=t["armor_add"],
+        range=t["range_add"], speed=t["speed_add"], sight=t["sight_add"], build_time=t["build_time_mult"],
+        formation=t["formation"],
+    ) for u, t in r["units"].items()}
+    buildings = {BuildingType(b): BuildingTweak(t["name"], t["card"], t["summary"], hp=t["hp_mult"], armor=t["armor_add"])
+                 for b, t in r["buildings"].items()}
+    upgrades = {Upgrade(u): UpgradeTweak(t["name"], t["card"]) for u, t in r["upgrades"].items()}
+    return RaceInfo(r["name"], r["adjective"], r["tagline"], r["passive"], tuple(Upgrade(a) for a in r["arts"]),
+                    _units(units), _buildings(buildings), _upgrades(upgrades), {bt: t.card for bt, t in buildings.items()})
 
 
-_HUMAN_UNITS: Final = {
-    UnitType.PEASANT: UnitTweak("Peasant", "Mines gold, chops lumber, builds, repairs", build_time=0.85),
-    UnitType.FOOTMAN: UnitTweak("Footman", "Slow shield-wall swordsman; tougher with a comrade at each side", build_time=0.85),
-    UnitType.ARCHER: UnitTweak("Archer", "Shoots from four tiles; fragile up close", build_time=0.85),
-    UnitType.SCOUT: UnitTweak("Scout", "Fast rider who sees far; raids workers", build_time=0.85),
-    UnitType.KNIGHT: UnitTweak("Knight", "Fast, heavily armoured shock cavalry", build_time=0.85),
-    UnitType.CATAPULT: UnitTweak("Catapult", "Siege engine: splash, ×1.5 vs buildings", build_time=0.85),
-    UnitType.CLERIC: UnitTweak("Cleric", "Heals wounded allies; smites weakly when none need healing", build_time=0.85),
-}
-_HUMAN_BUILDINGS: Final = {
-    BuildingType.TOWN_HALL: BuildingTweak("Town Hall", "Hall", "Trains peasants; takes gold and lumber"),
-    BuildingType.FARM: BuildingTweak("Farm", "Farm", "Feeds four units"),
-    BuildingType.BARRACKS: BuildingTweak("Barracks", "Barracks", "Trains footmen and archers"),
-    BuildingType.TOWER: BuildingTweak("Guard Tower", "Tower", "Shoots at enemies six tiles away"),
-    BuildingType.LUMBER_MILL: BuildingTweak("Lumber Mill", "Mill", "Takes lumber; researches better arrows"),
-    BuildingType.BLACKSMITH: BuildingTweak("Blacksmith", "Smith", "Researches sharper blades and plate armour"),
-    BuildingType.STABLES: BuildingTweak("Stables", "Stables", "Trains scouts and knights; breeds horses"),
-    BuildingType.WORKSHOP: BuildingTweak("Workshop", "Workshop", "Builds catapults; improves siege engines"),
-    BuildingType.CHURCH: BuildingTweak("Church", "Church", "Trains clerics; blesses their healing"),
-}
-
-_HUMAN_UPGRADES: Final = {
-    Upgrade.KEEP: UpgradeTweak("Keep", "Keep"),
-}
-
-_ORC_UNITS: Final = {
-    UnitType.PEASANT: UnitTweak("Peon", "Digs gold, hacks lumber, builds and repairs", hp=1.15),
-    UnitType.FOOTMAN: UnitTweak("Grunt", "Brutal axeman, fast and alone; hits harder as it bleeds", hp=1.15, damage=1.1, armor=-2, speed=0.4,
-                                build_time=1.0, formation=False),
-    UnitType.ARCHER: UnitTweak("Axethrower", "Throws axes four tiles; a sturdy shooter", hp=1.15, build_time=1.0),
-    UnitType.SCOUT: UnitTweak("Wolf Rider", "Fast wolf rider; hunts peons and throwers", hp=1.15, build_time=1.0),
-    UnitType.KNIGHT: UnitTweak("Ogre", "Two-headed brute; thin armour, all frenzy", hp=1.2, damage=1.1, armor=-1, build_time=1.0),
-    UnitType.CATAPULT: UnitTweak("Catapult", "Skulled siege engine: splash, ×1.5 vs walls", hp=1.15, build_time=1.0),
-    UnitType.CLERIC: UnitTweak("Shaman", "Mends wounded allies; hexes weakly when none need mending", hp=1.15, build_time=1.0),
-}
-_ORC_BUILDINGS: Final = {
-    BuildingType.TOWN_HALL: BuildingTweak("Great Hall", "Hall", "Trains peons; takes gold and lumber"),
-    BuildingType.FARM: BuildingTweak("Pig Farm", "Pig Farm", "Feeds four units"),
-    BuildingType.BARRACKS: BuildingTweak("War Camp", "War Camp", "Trains grunts and axethrowers"),
-    BuildingType.TOWER: BuildingTweak("Watch Tower", "Tower", "Hurls axes at enemies six tiles away"),
-    BuildingType.LUMBER_MILL: BuildingTweak("Sawmill", "Sawmill", "Takes lumber; researches heavier axes"),
-    BuildingType.BLACKSMITH: BuildingTweak("Forge", "Forge", "Researches blades, hide armour, Bloodlust"),
-    BuildingType.STABLES: BuildingTweak("Kennels", "Kennels", "Trains wolf riders and ogres; Plunder"),
-    BuildingType.WORKSHOP: BuildingTweak("Siege Yard", "Yard", "Builds catapults; improves siege engines"),
-    BuildingType.CHURCH: BuildingTweak("Altar", "Altar", "Trains shamans"),
-}
-
-_ORC_UPGRADES: Final = {
-    Upgrade.KEEP: UpgradeTweak("Stronghold", "Stronghold"),
-}
-
-_ELF_UNITS: Final = {
-    UnitType.PEASANT: UnitTweak("Gatherer", "Mines gold, fells trees, builds and repairs", hp=0.95, speed=0.15, sight=2),
-    UnitType.FOOTMAN: UnitTweak("Sentinel", "Light swordsman in a line; quick on their feet", hp=0.95, speed=0.15, sight=2),
-    UnitType.ARCHER: UnitTweak("Ranger", "Shoots from five tiles; fragile up close", hp=0.95, range=1.0, speed=0.15, sight=2),
-    UnitType.SCOUT: UnitTweak("Outrider", "Fleet deer rider who sees farthest of all", hp=0.95, speed=0.15, sight=2),
-    UnitType.KNIGHT: UnitTweak("Stag Knight", "Antlered shock cavalry, swift but light", hp=0.95, speed=0.15, sight=2),
-    UnitType.CATAPULT: UnitTweak("Ballista", "Living-wood siege engine: splash, ×1.5", hp=0.95, speed=0.15, sight=2),
-    UnitType.CLERIC: UnitTweak("Druid", "Tends wounded allies; stings weakly when none need tending", hp=0.95, speed=0.15, sight=2),
-}
-_ELF_BUILDINGS: Final = {
-    BuildingType.TOWN_HALL: BuildingTweak("Moon Hall", "Hall", "Trains gatherers; takes gold and lumber"),
-    BuildingType.FARM: BuildingTweak("Orchard", "Orchard", "Feeds four units"),
-    BuildingType.BARRACKS: BuildingTweak("Warden Lodge", "Lodge", "Trains sentinels and rangers"),
-    BuildingType.TOWER: BuildingTweak("Watch Tree", "Eyrie", "Shoots at enemies six tiles away"),
-    BuildingType.LUMBER_MILL: BuildingTweak("Grove Mill", "Mill", "Takes lumber; arrows, Longbows and Regrowth"),
-    BuildingType.BLACKSMITH: BuildingTweak("Silversmith", "Smith", "Researches keener blades and silver mail"),
-    BuildingType.STABLES: BuildingTweak("Stag Pens", "Pens", "Trains outriders and stag knights"),
-    BuildingType.WORKSHOP: BuildingTweak("Siege Bower", "Bower", "Builds ballistae; improves siege engines"),
-    BuildingType.CHURCH: BuildingTweak("Moonwell", "Moonwell", "Trains druids"),
-}
-
-_ELF_UPGRADES: Final = {
-    Upgrade.KEEP: UpgradeTweak("Moonspire", "Moonspire"),
-}
-
-_DWARF_UNITS: Final = {
-    UnitType.PEASANT: UnitTweak("Miner", "Mines gold, chops lumber, builds, repairs", hp=1.1, speed=-0.15),
-    UnitType.FOOTMAN: UnitTweak("Ironguard", "Armoured axeman in a wall of round shields", hp=1.1, armor=1, speed=-0.15),
-    UnitType.ARCHER: UnitTweak("Crossbowman", "Shoots from four tiles; hardy for a shooter", hp=1.1, speed=-0.15),
-    UnitType.SCOUT: UnitTweak("Ram Rider", "Fast ram rider; raids miners and crossbows", hp=1.1, speed=-0.15),
-    UnitType.KNIGHT: UnitTweak("Bear Rider", "Armoured shock cavalry on a war bear", hp=1.1, armor=1, speed=-0.15),
-    UnitType.CATAPULT: UnitTweak("Mortar", "Iron mortar: wide splash, ×1.5 vs buildings", hp=1.1, speed=-0.15),
-    UnitType.CLERIC: UnitTweak("Runepriest", "Heals wounded allies; strikes weakly when none need healing", hp=1.1, speed=-0.15),
-}
-_DWARF_BUILDINGS: Final = {
-    BuildingType.TOWN_HALL: BuildingTweak("Deep Hold", "Hold", "Trains miners; takes gold and lumber", hp=1.25, armor=2),
-    BuildingType.FARM: BuildingTweak("Brewhouse", "Brewery", "Feeds four units", hp=1.25, armor=2),
-    BuildingType.BARRACKS: BuildingTweak("Guard Hall", "Barracks", "Trains ironguards and crossbowmen", hp=1.25, armor=2),
-    BuildingType.TOWER: BuildingTweak("Bolt Tower", "Tower", "Shoots at enemies six tiles away", hp=1.25, armor=2),
-    BuildingType.LUMBER_MILL: BuildingTweak("Timber Works", "Timber", "Takes lumber; researches better bolts", hp=1.25, armor=2),
-    BuildingType.BLACKSMITH: BuildingTweak("Forge", "Forge", "Researches axes, plate and Deep Mining", hp=1.25, armor=2),
-    BuildingType.STABLES: BuildingTweak("Beast Pens", "Pens", "Trains ram riders and bear riders", hp=1.25, armor=2),
-    BuildingType.WORKSHOP: BuildingTweak("Engine Works", "Engines", "Builds mortars; siege and Blasting Powder", hp=1.25, armor=2),
-    BuildingType.CHURCH: BuildingTweak("Rune Shrine", "Shrine", "Trains runepriests", hp=1.25, armor=2),
-}
-
-_DWARF_UPGRADES: Final = {
-    Upgrade.KEEP: UpgradeTweak("Stonehold", "Stonehold"),
-}
-
-RACES: Final[dict[Race, RaceInfo]] = {
-    Race.HUMAN: _race("Humans", "Human", "Drilled, balanced, and blessed with the fastest horses",
-                      "Drill: every unit trains 15 % faster", (Upgrade.HORSES, Upgrade.BLESSING), _HUMAN_UNITS, _HUMAN_BUILDINGS,
-                      _HUMAN_UPGRADES),
-    Race.ORC: _race("Orcs", "Orcish", "Tough, savage, and deadliest when bleeding",
-                    "Frenzy: soldiers below half health deal +25 % damage", (Upgrade.BLOODLUST, Upgrade.PLUNDER), _ORC_UNITS, _ORC_BUILDINGS,
-                    _ORC_UPGRADES),
-    Race.ELF: _race("Elves", "Elven", "Swift, far-sighted, and at home among the trees",
-                    "Keen eyes: +2 sight for every unit, rangers shoot a tile farther", (Upgrade.LONGBOWS, Upgrade.REGROWTH), _ELF_UNITS, _ELF_BUILDINGS,
-                    _ELF_UPGRADES),
-    Race.DWARF: _race("Dwarves", "Dwarven", "Slow, sturdy, and housed in stone",
-                      "Stonework: buildings have +25 % hit points and +2 armour", (Upgrade.DEEP_MINING, Upgrade.BLASTING_POWDER), _DWARF_UNITS,
-                      _DWARF_BUILDINGS, _DWARF_UPGRADES),
-}
-
+RACES: Final[dict[Race, RaceInfo]] = {race: _race(race) for race in Race}

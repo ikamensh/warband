@@ -1,0 +1,64 @@
+# Wild creatures; no race tweaks them. Camp behavior lives in behavior.toml.
+# Read once at startup. Edit and restart to use new values; no generation step.
+# See docs/balance.md for defaults and validation.
+# Seconds, tiles, degrees/second. "melee" uses combat.toml's shared reach.
+# Entries override defaults; optional field defaults are listed in docs/balance.md.
+# Body radius affects pathing for every race and is never balance-jittered.
+
+[defaults]
+armor = 0
+range = "melee"
+sight = 7
+build_time = 0.0
+trained_at = "lair"
+hotkey = ""
+
+[wolf]
+name = "Dire Wolf"
+hp = 40
+damage = 6
+cooldown = 0.9
+speed = 4.0
+summary = "A pack hunter: fast, fragile and never alone"
+radius = 0.4
+windup = 0.2
+turn_deg = 450
+
+[spider]
+name = "Venom Spider"
+hp = 45
+damage = 8
+range = 5.0
+cooldown = 1.6
+speed = 2.2
+summary = "Spits venom from five tiles; helpless once something reaches it"
+radius = 0.45
+windup = 0.4
+
+[troll]
+name = "Troll"
+hp = 220
+damage = 14
+cooldown = 1.4
+speed = 1.9
+sight = 6
+summary = "Bare-skinned and hard to put down; knits its wounds back once left alone"
+radius = 0.58
+windup = 0.45
+armor_class = "unarmoured"
+regen = 8.0 # hp/second, out of combat
+
+[golem]
+name = "Stone Golem"
+hp = 170
+damage = 18
+armor = 2
+cooldown = 2.5
+speed = 1.3
+sight = 5
+summary = "Slams the ground: every enemy around its mark is caught"
+radius = 0.6
+splash = 1.3 # a slam, not aimed siege
+windup = 0.7
+turn_deg = 150
+armor_class = "heavy"

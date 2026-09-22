@@ -50,7 +50,9 @@ real breakdown.
 ## Layout
 
 `warband/` holds `__init__.py`, `__main__.py` (the entry point of
-`python -m warband`, the frozen app and `--selftest`), `assets/` and nine
+`python -m warband`, the frozen app and `--selftest`), `assets/`,
+`assets/constants/` (the tunable numbers as TOML: units, buildings, upgrades,
+races, economy, combat, behaviour) and nine
 folders, lowest first. `tests/warband/test_layers.py` holds each folder to
 what it may import: `sim` nothing but itself; `brains`, `records`, `art` and
 `audio` only `sim`; `league` and `online` `sim` and `brains`; `ui` and
@@ -63,8 +65,11 @@ the compiled simulation attaches after they load.
   harvesting, construction, supply, upgrades, towers, fog, elimination, JSON
   saves); no saga2d dependency, so rules are tested directly. A blow turns,
   winds up and lands; shots are `Projectile`s that land later, stones on the
-  ground they were fired at (`docs/unit-motion.md` part 4). `rules.py` holds
-  the tables, `races.py` the four races' names, numbers and arts, `path.py`
+   ground they were fired at (`docs/unit-motion.md` part 4). `rules.py` holds
+   the tables, `races.py` the four races' names, numbers and arts — both
+   loaded once from `warband/assets/constants/` by `sim/config.py`. Edit TOML
+   and restart: there is no generation step. Unit files and each race's
+   units/buildings use `defaults` plus overrides (`docs/balance.md`) — `path.py`
   bounded A* on a budget that grows with the map, `mapgen.py` the five map
   layouts, the grid of congruent cells that deals two to sixteen seats one each,
   and the audit (`grid`, `dimensions`, `refusal`, `offered`, `sizes_for` and
@@ -303,7 +308,9 @@ decision of its own.
   changes is built once per session (painted ground: `ground_painted_once`
   in `tests/conftest.py`); nothing mutable is shared between tests.
 - Run at most one expensive local job at a time; long CLIs default to
-  `--cpu-percent 25`. Evidence you produce goes under `docs/evidence/`
-  (git-ignored); the pre-split evidence lives in the archived monorepo.
+  `--cpu-percent 25`. Iterate verification in a temporary directory; retain only
+  useful final output in `~/saga/evidence/warband/<topic>/`, replacing older output
+  for that topic. Pass output paths explicitly, regardless of older CLI defaults.
+  Follow `~/saga/AGENTS.md` for retention and worktree cleanup.
 - Clear exceptions over silent fallbacks. Delete rather than deprecate.
   Commit each working increment.

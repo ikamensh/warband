@@ -12,6 +12,7 @@ import importlib.util
 import math
 import os
 import random
+import shutil
 import subprocess
 import sys
 from array import array
@@ -61,6 +62,25 @@ def test_the_compiled_simulation_plays_the_source_fingerprint() -> None:
 def test_a_build_of_other_sources_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ImportError, match="other sources"):
         fastsim.attach(tmp_path / "0123456789abcdef0123")
+
+
+def test_a_spawned_worker_uses_its_parents_balance_snapshot(tmp_path: Path) -> None:
+    """A real compiled worker inherits the parent's constants even after a tuner edits the TOMLs."""
+    build = fastsim.build()
+    package = tmp_path / "warband"
+    package.mkdir()
+    shutil.copyfile(ROOT / "warband/__init__.py", package / "__init__.py")
+    for name in ("sim", "brains", "league", "assets/constants"):
+        shutil.copytree(ROOT / "warband" / name, package / name, ignore=shutil.ignore_patterns("__pycache__"))
+    units = package / "assets/constants/units.toml"
+    import re
+    units.write_text(re.sub(r"(?m)^hp = .*", "hp = 9999", units.read_text(encoding="utf-8")), encoding="utf-8")
+    script = (f"from warband.league import fastsim; fastsim.attach({str(build)!r})\n"
+              "from warband.sim.rules import UNITS, UnitType\n"
+              f"assert UNITS[UnitType.FOOTMAN].hp == {model.UNITS[model.UnitType.FOOTMAN].hp}\n"
+              f"assert fastsim.key() == {build.name!r}\n")
+    done = subprocess.run([sys.executable, "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    assert done.returncode == 0, done.stderr
 
 
 def _native_searches():

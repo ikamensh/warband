@@ -1,0 +1,132 @@
+# Race differences from units.toml / buildings.toml; prices and hotkeys stay shared.
+# Read once at startup. Edit and restart to use new values; no generation step.
+# See docs/balance.md for defaults and validation.
+# Each units/buildings table has optional defaults; individual values override them.
+# Omitted modifiers: *_mult = 1, *_add = 0, formation = true (keep the base setting).
+# range_add affects ranged units only; formation = false opts out of shield walls.
+# Passive mechanics live in sim/model.py; art lives in art/textures.py.
+
+[human]
+name = "Humans"
+adjective = "Human"
+tagline = "Drilled, balanced, and blessed with the fastest horses"
+passive = "Drill: every unit trains 15 % faster"
+arts = ["horses", "blessing"]
+
+[human.units]
+defaults = { build_time_mult = 0.85 }
+peasant = { name = "Peasant", summary = "Mines gold, chops lumber, builds, repairs" }
+footman = { name = "Footman", summary = "Slow shield-wall swordsman; tougher with a comrade at each side" }
+archer = { name = "Archer", summary = "Shoots from four tiles; fragile up close" }
+scout = { name = "Scout", summary = "Fast rider who sees far; raids workers" }
+knight = { name = "Knight", summary = "Fast, heavily armoured shock cavalry" }
+catapult = { name = "Catapult", summary = "Siege engine: splash, ×1.5 vs buildings" }
+cleric = { name = "Cleric", summary = "Heals wounded allies; smites weakly when none need healing" }
+
+[human.buildings]
+town_hall = { name = "Town Hall", card = "Hall", summary = "Trains peasants; takes gold and lumber" }
+farm = { name = "Farm", card = "Farm", summary = "Feeds four units" }
+barracks = { name = "Barracks", card = "Barracks", summary = "Trains footmen and archers" }
+tower = { name = "Guard Tower", card = "Tower", summary = "Shoots at enemies six tiles away" }
+lumber_mill = { name = "Lumber Mill", card = "Mill", summary = "Takes lumber; researches better arrows" }
+blacksmith = { name = "Blacksmith", card = "Smith", summary = "Researches sharper blades and plate armour" }
+stables = { name = "Stables", card = "Stables", summary = "Trains scouts and knights; breeds horses" }
+workshop = { name = "Workshop", card = "Workshop", summary = "Builds catapults; improves siege engines" }
+church = { name = "Church", card = "Church", summary = "Trains clerics; blesses their healing" }
+
+[human.upgrades]
+keep = { name = "Keep", card = "Keep" }
+
+[orc]
+name = "Orcs"
+adjective = "Orcish"
+tagline = "Tough, savage, and deadliest when bleeding"
+passive = "Frenzy: soldiers below half health deal +25 % damage"
+arts = ["bloodlust", "plunder"]
+
+[orc.units]
+defaults = { hp_mult = 1.15 }
+peasant = { name = "Peon", summary = "Digs gold, hacks lumber, builds and repairs" }
+footman = { name = "Grunt", summary = "Brutal axeman, fast and alone; hits harder as it bleeds", damage_mult = 1.1, armor_add = -2, speed_add = 0.4, formation = false }
+archer = { name = "Axethrower", summary = "Throws axes four tiles; a sturdy shooter" }
+scout = { name = "Wolf Rider", summary = "Fast wolf rider; hunts peons and throwers" }
+knight = { name = "Ogre", summary = "Two-headed brute; thin armour, all frenzy", hp_mult = 1.2, damage_mult = 1.1, armor_add = -1 }
+catapult = { name = "Catapult", summary = "Skulled siege engine: splash, ×1.5 vs walls" }
+cleric = { name = "Shaman", summary = "Mends wounded allies; hexes weakly when none need mending" }
+
+[orc.buildings]
+town_hall = { name = "Great Hall", card = "Hall", summary = "Trains peons; takes gold and lumber" }
+farm = { name = "Pig Farm", card = "Pig Farm", summary = "Feeds four units" }
+barracks = { name = "War Camp", card = "War Camp", summary = "Trains grunts and axethrowers" }
+tower = { name = "Watch Tower", card = "Tower", summary = "Hurls axes at enemies six tiles away" }
+lumber_mill = { name = "Sawmill", card = "Sawmill", summary = "Takes lumber; researches heavier axes" }
+blacksmith = { name = "Forge", card = "Forge", summary = "Researches blades, hide armour, Bloodlust" }
+stables = { name = "Kennels", card = "Kennels", summary = "Trains wolf riders and ogres; Plunder" }
+workshop = { name = "Siege Yard", card = "Yard", summary = "Builds catapults; improves siege engines" }
+church = { name = "Altar", card = "Altar", summary = "Trains shamans" }
+
+[orc.upgrades]
+keep = { name = "Stronghold", card = "Stronghold" }
+
+[elf]
+name = "Elves"
+adjective = "Elven"
+tagline = "Swift, far-sighted, and at home among the trees"
+passive = "Keen eyes: +2 sight for every unit, rangers shoot a tile farther"
+arts = ["longbows", "regrowth"]
+
+[elf.units]
+defaults = { hp_mult = 0.95, speed_add = 0.15, sight_add = 2 }
+peasant = { name = "Gatherer", summary = "Mines gold, fells trees, builds and repairs" }
+footman = { name = "Sentinel", summary = "Light swordsman in a line; quick on their feet" }
+archer = { name = "Ranger", summary = "Shoots from five tiles; fragile up close", range_add = 1.0 }
+scout = { name = "Outrider", summary = "Fleet deer rider who sees farthest of all" }
+knight = { name = "Stag Knight", summary = "Antlered shock cavalry, swift but light" }
+catapult = { name = "Ballista", summary = "Living-wood siege engine: splash, ×1.5" }
+cleric = { name = "Druid", summary = "Tends wounded allies; stings weakly when none need tending" }
+
+[elf.buildings]
+town_hall = { name = "Moon Hall", card = "Hall", summary = "Trains gatherers; takes gold and lumber" }
+farm = { name = "Orchard", card = "Orchard", summary = "Feeds four units" }
+barracks = { name = "Warden Lodge", card = "Lodge", summary = "Trains sentinels and rangers" }
+tower = { name = "Watch Tree", card = "Eyrie", summary = "Shoots at enemies six tiles away" }
+lumber_mill = { name = "Grove Mill", card = "Mill", summary = "Takes lumber; arrows, Longbows and Regrowth" }
+blacksmith = { name = "Silversmith", card = "Smith", summary = "Researches keener blades and silver mail" }
+stables = { name = "Stag Pens", card = "Pens", summary = "Trains outriders and stag knights" }
+workshop = { name = "Siege Bower", card = "Bower", summary = "Builds ballistae; improves siege engines" }
+church = { name = "Moonwell", card = "Moonwell", summary = "Trains druids" }
+
+[elf.upgrades]
+keep = { name = "Moonspire", card = "Moonspire" }
+
+[dwarf]
+name = "Dwarves"
+adjective = "Dwarven"
+tagline = "Slow, sturdy, and housed in stone"
+passive = "Stonework: buildings have +25 % hit points and +2 armour"
+arts = ["deep_mining", "blasting_powder"]
+
+[dwarf.units]
+defaults = { hp_mult = 1.1, speed_add = -0.15 }
+peasant = { name = "Miner", summary = "Mines gold, chops lumber, builds, repairs" }
+footman = { name = "Ironguard", summary = "Armoured axeman in a wall of round shields", armor_add = 1 }
+archer = { name = "Crossbowman", summary = "Shoots from four tiles; hardy for a shooter" }
+scout = { name = "Ram Rider", summary = "Fast ram rider; raids miners and crossbows" }
+knight = { name = "Bear Rider", summary = "Armoured shock cavalry on a war bear", armor_add = 1 }
+catapult = { name = "Mortar", summary = "Iron mortar: wide splash, ×1.5 vs buildings" }
+cleric = { name = "Runepriest", summary = "Heals wounded allies; strikes weakly when none need healing" }
+
+[dwarf.buildings]
+defaults = { hp_mult = 1.25, armor_add = 2 }
+town_hall = { name = "Deep Hold", card = "Hold", summary = "Trains miners; takes gold and lumber" }
+farm = { name = "Brewhouse", card = "Brewery", summary = "Feeds four units" }
+barracks = { name = "Guard Hall", card = "Barracks", summary = "Trains ironguards and crossbowmen" }
+tower = { name = "Bolt Tower", card = "Tower", summary = "Shoots at enemies six tiles away" }
+lumber_mill = { name = "Timber Works", card = "Timber", summary = "Takes lumber; researches better bolts" }
+blacksmith = { name = "Forge", card = "Forge", summary = "Researches axes, plate and Deep Mining" }
+stables = { name = "Beast Pens", card = "Pens", summary = "Trains ram riders and bear riders" }
+workshop = { name = "Engine Works", card = "Engines", summary = "Builds mortars; siege and Blasting Powder" }
+church = { name = "Rune Shrine", card = "Shrine", summary = "Trains runepriests" }
+
+[dwarf.upgrades]
+keep = { name = "Stonehold", card = "Stonehold" }

@@ -23,6 +23,7 @@ from enum import Enum
 from types import FunctionType
 from typing import Any, Final, Iterable, Iterator, Literal
 
+from warband.sim import config
 from warband.sim import path as pathing
 from warband.sim.races import RACES
 try:
@@ -148,18 +149,17 @@ TRUNK_ROUTES: Final = 64  # shared march corridors kept per static grid: one tru
 SETTLE_WITHIN: Final = 0.65  # room beyond its own body a unit wants at its spot; past that it looks for somewhere nearer to stand
 MINE_CLEARANCE: Final = 2  # tiles kept free around a gold deposit so peasants can get in and out
 SIDESTEP: Final = 0.6  # lateral share of the push when walking units collide
-MAX_PUSH: Final = 0.25  # tiles a crowd can shove a unit in one step; eight overlapping units once summed to a jump over a tree wall
-# Standing at ease (docs/unit-motion.md part 5): units that are neither fighting nor working keep a little
-# elbow room, and a unit hemmed in by its neighbours takes a short step away from them now and then.
-SPACING: Final = 0.2  # tiles of clearance beyond touching that units at ease keep between each other; a soft push
-SPACING_WEIGHT: Final = 0.15  # share of the missing clearance closed per step, gentler than the overlap push
-EASE_SPACE: Final = 0.3  # clearance beyond its own diameter a standing unit wants; nearer than that and it feels crowded
-EASE_EVERY: Final = 5  # ticks between a crowded unit's chances to step away
-EASE_CHANCE: Final = 0.12  # that a crowded unit steps away at one of those chances: about once every two seconds
-EASE_STEP: Final = 0.4  # tiles of the step, give or take EASE_STEP_VARIANCE
-EASE_STEP_VARIANCE: Final = 0.3
-EASE_JITTER: Final = 0.7  # radians either side of straight away from the crowd the step may veer
-EASE_GAIN: Final = 0.1  # tiles more room the spot must offer than where the unit stands, so nobody steps into a neighbour
+# The crowd's numbers are warband/assets/constants/behavior.toml's; the pathfinder's budgets above stay in code.
+MAX_PUSH: Final = config.number('MAX_PUSH')
+SPACING: Final = config.number('SPACING')
+SPACING_WEIGHT: Final = config.number('SPACING_WEIGHT')
+EASE_SPACE: Final = config.number('EASE_SPACE')
+EASE_EVERY: Final = config.integer('EASE_EVERY')
+EASE_CHANCE: Final = config.number('EASE_CHANCE')
+EASE_STEP: Final = config.number('EASE_STEP')
+EASE_STEP_VARIANCE: Final = config.number('EASE_STEP_VARIANCE')
+EASE_JITTER: Final = config.number('EASE_JITTER')
+EASE_GAIN: Final = config.number('EASE_GAIN')
 AUTO_EVERY: Final = round(1 / SIM_DT)  # ticks between an idle building's looks at its endless recruits: the settlement's second
 
 

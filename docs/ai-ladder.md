@@ -611,6 +611,14 @@ level with the postures they were bred from. `RaceBrain` takes such a posture fo
 (`bred.BRED_FOR_LAYOUT`): the New game screen names the map, so it is fair knowledge. With it, and with
 prospecting in five of the nine postures, Grandmaster's games against Easy and Medium went from 94–96% to 98%.
 
+The later `ai-ga2` experiment was retired on 2026-09-22. Its three remaining commits added training by map
+size or opposing race and two small-map postures, but established no gain over the shipped roster on the same
+boards. Its last ladder used different seeds, so its lower rating was not evidence of a regression either.
+The branch still failed two posture-selection tests, including distinct postures for same-race opponents;
+the same three checks passed on main. Rules and balance had also changed since those searches. The branch
+and its saved experiment output were removed; the genetic search, shipped race rosters and proven Klondike
+specialist remain. Revisit specialization when a repeatable weakness on current rules justifies a controlled trial.
+
 What a 2000 still needs is therefore not more generations of these genes. Two things the traces point at, neither
 built: **siege** (no brain reaches a workshop in a decided game, and a towered base is what the bred pushes turn
 back from, since all nine postures read the fight at their target and leave when two towers outweigh them),

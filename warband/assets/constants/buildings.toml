@@ -1,0 +1,213 @@
+# Warband's buildings: what a hall costs, what a tower shoots, what a mine gives.
+#
+# Read once at startup. Edit and restart to use new values; no generation step.
+# See docs/balance.md for validation.
+#
+# Conventions: times are seconds, distances tiles. `trains` and `researches`
+# name what the building makes; `requires` names the building that must stand
+# first (omit it when there is none); `deposits` names what can be delivered
+# there. The tower's `damage`, `range` and `cooldown` are its shot; every other
+# building leaves them at zero.
+#
+# The two deposits are buildings too: `mine_trip` is the gold one peasant
+# brings up per trip, `mine_slots` how many work the face at once, and
+# `mine_endless` whether it ever runs out. The same numbers also feed the
+# named constants (GOLD_PER_TRIP and friends) the worker policy prices with,
+# so there is one source, not two. The face serves its slots every MINE_TIME
+# seconds (a mechanic's timing, kept in rules.py), so a deposit yields at most
+# slots * trip / MINE_TIME: 160 gold a second at a mine, 48 at a seam. With
+# the walk to the hall on top, a mine next door is saturated by about ten
+# peasants and a distant one by a few more: hiring past that earns nothing,
+# and the way to more gold is another mine.
+#
+# What is NOT here: how long construction takes to start (model.py), the
+# repair and salvage rates (REPAIR_* and SALVAGE_* in rules.py), and the
+# per-race names and stonework (races.toml). The mine's and seam's stocks
+# (MINE_GOLD, EXPANSION_GOLD) live with the map generator that places them.
+
+[town_hall]
+name = "Town Hall"
+gold = 1200
+lumber = 800
+hp = 1200
+armor = 3
+size = 3
+build_time = 60.0
+sight = 6
+supply = 5
+hotkey = "h"
+summary = "Trains peasants; gold and lumber are delivered here; raises the Keep"
+trains = ["peasant"]
+researches = ["keep"]
+deposits = ["gold", "lumber"]
+
+[farm]
+name = "Farm"
+gold = 500
+lumber = 250
+hp = 400
+armor = 2
+size = 2
+build_time = 25.0
+sight = 3
+supply = 4
+hotkey = "f"
+summary = "Feeds four units"
+
+[barracks]
+name = "Barracks"
+gold = 700
+lumber = 450
+hp = 800
+armor = 3
+size = 3
+build_time = 40.0
+sight = 5
+supply = 0
+hotkey = "b"
+summary = "Trains footmen and archers"
+trains = ["footman", "archer"]
+requires = "town_hall"
+
+[tower]
+name = "Guard Tower"
+gold = 700
+lumber = 250
+hp = 400
+armor = 3
+size = 2
+build_time = 35.0
+sight = 8
+supply = 0
+hotkey = "t"
+summary = "Shoots at enemies six tiles away"
+requires = "barracks"
+damage = 8
+range = 6.0
+cooldown = 1.5
+
+[lumber_mill]
+name = "Lumber Mill"
+gold = 600
+lumber = 450
+hp = 600
+armor = 2
+size = 3
+build_time = 35.0
+sight = 4
+supply = 0
+hotkey = "m"
+summary = "Lumber is delivered here; researches better arrows"
+researches = ["arrows_1", "arrows_2", "arrows_3", "marksmanship", "longbows", "regrowth"]
+requires = "town_hall"
+deposits = ["lumber"]
+
+[blacksmith]
+name = "Blacksmith"
+gold = 800
+lumber = 450
+hp = 600
+armor = 3
+size = 3
+build_time = 40.0
+sight = 4
+supply = 0
+hotkey = "k"
+summary = "Researches sharper blades and plate armour"
+researches = ["blades_1", "blades_2", "blades_3", "armor_1", "armor_2", "bloodlust", "deep_mining"]
+requires = "barracks"
+
+[stables]
+name = "Stables"
+gold = 1000
+lumber = 300
+hp = 700
+armor = 3
+size = 3
+build_time = 45.0
+sight = 4
+supply = 0
+hotkey = "s"
+summary = "Trains scouts and knights; breeds faster horses"
+trains = ["scout", "knight"]
+researches = ["horses", "plunder"]
+requires = "barracks"
+
+[workshop]
+name = "Workshop"
+gold = 700
+lumber = 350
+hp = 600
+armor = 3
+size = 3
+build_time = 45.0
+sight = 4
+supply = 0
+hotkey = "w"
+summary = "Builds catapults; improves siege engines"
+trains = ["catapult"]
+researches = ["siege", "blasting_powder"]
+requires = "blacksmith"
+
+[church]
+name = "Church"
+gold = 900
+lumber = 400
+hp = 600
+armor = 3
+size = 3
+build_time = 45.0
+sight = 5
+supply = 0
+hotkey = "c"
+summary = "Trains clerics; blesses their healing"
+trains = ["cleric"]
+researches = ["blessing"]
+requires = "barracks"
+
+# Nobody's buildings: no race names them, tweaks them or draws them, and no
+# hotkey trains from them. The lair wears a building's fortified armour, so a
+# siege stone lands on it at x1.5; its hoard is its `gold`, paid out whole to
+# whoever brings it down.
+
+[gold_mine]
+name = "Gold Mine"
+hp = 0
+armor = 0
+size = 3
+build_time = 0.0
+sight = 0
+supply = 0
+hotkey = ""
+summary = "Peasants mine gold here"
+mine_trip = 100
+mine_slots = 8
+mine_endless = false
+
+[gold_seam]
+name = "Gold Seam"
+hp = 0
+armor = 0
+size = 5
+build_time = 0.0
+sight = 0
+supply = 0
+hotkey = ""
+# {trip} is filled in from mine_trip below, so the card always says the true number.
+summary = "A wide seam that never runs dry: {trip} gold a trip"
+mine_trip = 20
+mine_slots = 12
+mine_endless = true
+
+[lair]
+name = "Lair"
+hp = 900
+armor = 2
+size = 3
+build_time = 0.0
+sight = 4
+supply = 0
+hotkey = ""
+# A den wears a building's fortified armour, so a siege stone lands on it at
+# x1.5; its hoard is its gold, paid out whole to whoever brings it down.
+summary = "A creature den: its guards come back from it until it is torn down"

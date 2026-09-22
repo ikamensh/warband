@@ -21,6 +21,7 @@ def source(tmp_path):
         shutil.copyfile(ROOT / name, tmp_path / name)
     shutil.copytree(ROOT / ".github", tmp_path / ".github")
     shutil.copytree(ROOT / "warband", tmp_path / "warband", ignore=shutil.ignore_patterns("assets", "__pycache__"))
+    shutil.copytree(ROOT / "warband/assets/constants", tmp_path / "warband/assets/constants")
     return tmp_path
 
 
@@ -39,6 +40,8 @@ def test_contract_covers_simulation_without_loading_client_scenes(source):
     assert {"warband/online/authority.py", "warband/sim/model.py", "warband/sim/mapgen.py", "warband/sim/rules.py",
             "warband/sim/races.py", "warband/sim/settlement.py", "warband/sim/worker_ai.py", "warband/sim/path.py"} <= files
     assert "warband/ui/scene.py" not in files and "warband/art/textures.py" not in files
+    assert {f"warband/assets/constants/{name}.toml" for name in
+            ("units", "neutrals", "races", "buildings", "upgrades", "economy", "combat", "behavior")} <= files
     (source / "warband/art/textures.py").write_text("raise RuntimeError('Artwork need not import for compatibility')\n")
     assert json.loads(contract(source).stdout) == original
 
@@ -60,6 +63,14 @@ def test_untracked_authoritative_inputs_are_rejected(source, snippet):
     result = contract(source)
     assert result.returncode != 0 and "Unsupported authoritative" in result.stderr
     assert not result.stdout
+
+
+def test_the_balance_loader_cannot_add_undeclared_file_inputs(source):
+    """Supporting the bundled TOMLs must not permit arbitrary file-backed rules in the loader."""
+    path = source / "warband/sim/config.py"
+    path.write_text(path.read_text() + '\nEXTRA = Path("other-rules.json").read_text()\n')
+    result = contract(source)
+    assert result.returncode != 0 and "Unsupported authoritative input" in result.stderr
 
 
 @pytest.mark.slow

@@ -1,5 +1,9 @@
 """Static game data.  Nothing here mutates.
 
+Balance values are read once from ``warband/assets/constants/*.toml`` when the
+simulation starts. Edit those files and restart to use new values; a running
+process keeps its validated snapshot, including races imported later.
+
 Distances are in tiles, times in seconds of simulation time.  A unit's
 ``range`` is the largest gap between its edge and the target's edge at
 which it can strike (or heal); melee units must all but touch.
@@ -10,18 +14,6 @@ catapult arm cranked down), lands the blow, and waits ``cooldown`` before
 the next wind-up may start.  Shots are projectiles: an arrow follows its
 mark and strikes when it arrives, a siege stone comes down on the ground it
 was fired at, on whoever stands there by then.
-
-Balance in one table (base values; upgrades in :data:`UPGRADES`):
-
-| unit     | cost      | hp | dmg | armor | range | wind-up + cooldown | turn  | speed | role, counters                          |
-|----------|-----------|----|-----|-------|-------|--------------------|-------|-------|-----------------------------------------|
-| peasant  | 400       | 30 | 3   | 0     | melee | 0.25 + 1.0         | 360°/s| 2.4   | economy; anything kills it              |
-| footman  | 600       | 60 | 7   | 3     | melee | 0.3 + 1.0          | 360°/s| 2.0   | line: +1 armour per footman at its side, marches in formation; beats archers, loses to knights |
-| archer   | 500+50    | 40 | 6   | 0     | 4     | 0.35 + 1.3         | 360°/s| 2.4   | ranged; the answer to armour, dies to scouts/knights |
-| scout    | 350       | 35 | 4   | 0     | melee | 0.25 + 0.8         | 450°/s| 4.2   | fast raider, sight 8; kills archers, peasants; loses to footmen |
-| knight   | 900+100   | 90 | 10  | 4     | melee | 0.35 + 1.0         | 270°/s| 3.4   | shock; beats everything at cost; catapults and mass archers wear it down |
-| catapult | 900+300   | 80 | 36  | 0     | 2..7  | 0.8 + 4.0          | 150°/s| 1.6   | siege: stones land where aimed, splash friend and foe, ×1.5 vs buildings; helpless inside two tiles |
-| cleric   | 700+50    | 40 | 3   | 0     | 3     | 0.5 + 2.0          | 360°/s| 2.4   | heals 15 a cast (6 hp/s); a weak blow only when no one needs healing; protect it |
 
 Armour classes and attack types (WB-049, :data:`DAMAGE_FACTORS`): peasants, clerics and catapults are unarmoured,
 archers and scouts light, footmen and knights heavy, buildings fortified; archers pierce, catapults siege, the rest
@@ -35,7 +27,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 from enum import Enum
-from typing import Final
+from typing import Any, Final
+
+from warband.sim import config
 
 
 class IdentityEnum(Enum):
@@ -210,29 +204,20 @@ class UnitInfo:
         return self.damage > 0 and not self.heal
 
 
-MELEE: Final = 0.45  # reach of a melee unit: it strikes from the next tile over, diagonals included
+MELEE: Final = config.number('MELEE')
 
-UNITS: Final[dict[UnitType, UnitInfo]] = {
-    UnitType.PEASANT: UnitInfo("Peasant", Cost(400), 30, 3, 0, MELEE, 1.0, 2.4, 4, 12.0, BuildingType.TOWN_HALL, "p",
-                               "Mines gold, chops lumber, builds and repairs", radius=0.36, windup=0.25, armor_class=ArmorClass.UNARMORED),
-    UnitType.FOOTMAN: UnitInfo("Footman", Cost(600), 60, 7, 3, MELEE, 1.0, 2.0, 5, 15.0, BuildingType.BARRACKS, "f",
-                               "Slow shield-wall swordsman; tougher with a comrade at each side", radius=0.42, windup=0.3,
-                               armor_class=ArmorClass.HEAVY, formation=True),
-    UnitType.ARCHER: UnitInfo("Archer", Cost(500, 50), 40, 6, 0, 4.0, 1.3, 2.4, 6, 14.0, BuildingType.BARRACKS, "a",
-                              "Shoots from four tiles away; fragile up close", radius=0.42, windup=0.35, attack=AttackType.PIERCING),
-    UnitType.SCOUT: UnitInfo("Scout", Cost(350), 35, 4, 0, MELEE, 0.8, 4.2, 8, 10.0, BuildingType.STABLES, "s",
-                             "Fast rider who sees far; raids peasants and archers", radius=0.48, mounted=True, windup=0.25, turn=math.radians(450)),
-    UnitType.KNIGHT: UnitInfo("Knight", Cost(900, 100), 90, 10, 4, MELEE, 1.0, 3.4, 5, 20.0, BuildingType.STABLES, "k",
-                              "Fast, heavily armoured shock cavalry", radius=0.56, mounted=True, windup=0.35, turn=math.radians(270),
-                              armor_class=ArmorClass.HEAVY),
-    UnitType.CATAPULT: UnitInfo("Catapult", Cost(900, 300), 80, 36, 0, 7.0, 4.0, 1.6, 6, 30.0, BuildingType.WORKSHOP, "c",
-                                "Slow siege engine: stones land where aimed, splash friend and foe, ×1.5 against buildings",
-                                radius=0.62, splash=1.2, windup=0.8, turn=math.radians(150), min_range=2.0, attack=AttackType.SIEGE,
-                                armor_class=ArmorClass.UNARMORED),
-    UnitType.CLERIC: UnitInfo("Cleric", Cost(700, 50), 40, 3, 0, 3.0, 2.0, 2.4, 5, 20.0, BuildingType.CHURCH, "h",  # H for healer: L is Blessing at the church
-                              "Heals a wounded ally 15 at a cast; a weak blow when no one needs it", radius=0.38, heal=15, windup=0.5,
-                              armor_class=ArmorClass.UNARMORED),
-}
+def _unit(u: dict[str, Any]) -> UnitInfo:
+    return UnitInfo(
+        name=u["name"], cost=Cost(u["gold"], u["lumber"]), hp=u["hp"], damage=u["damage"], armor=u["armor"],
+        range=MELEE if u["range"] == "melee" else u["range"], cooldown=u["cooldown"], speed=u["speed"], sight=u["sight"],
+        build_time=u["build_time"], trained_at=BuildingType(u["trained_at"]), hotkey=u["hotkey"], summary=u["summary"],
+        radius=u["radius"], heal=u["heal"], splash=u["splash"], attack=AttackType(u["attack"]),
+        armor_class=ArmorClass(u["armor_class"]), formation=u["formation"], mounted=u["mounted"], windup=u["windup"],
+        turn=math.radians(u["turn_deg"]), min_range=u["min_range"], regen=u["regen"],
+    )
+
+
+UNITS: Final[dict[UnitType, UnitInfo]] = {UnitType(u): _unit(info) for u, info in config.current().units.items()}
 
 #: What a player can train, in card order: everything but the neutral creatures.  Every loop that means
 #: "the game's units" walks this rather than :class:`UnitType`, which now also holds the wilds.
@@ -257,19 +242,7 @@ PLAYABLE_UNITS: Final[tuple[UnitType, ...]] = (UnitType.PEASANT, UnitType.FOOTMA
 # knights-only check.  High hit points and no armour cost time and exposure instead, and leave the
 # archer the efficient answer.  Its regeneration is out-of-combat only (:attr:`UnitInfo.regen`).
 
-WILD_UNITS: Final[dict[UnitType, UnitInfo]] = {
-    UnitType.WOLF: UnitInfo("Dire Wolf", Cost(0), 40, 6, 0, MELEE, 0.9, 4.0, 7, 0.0, BuildingType.LAIR, "",
-                            "A pack hunter: fast, fragile and never alone", radius=0.40, windup=0.2,
-                            turn=math.radians(450)),
-    UnitType.SPIDER: UnitInfo("Venom Spider", Cost(0), 45, 8, 0, 5.0, 1.6, 2.2, 7, 0.0, BuildingType.LAIR, "",
-                              "Spits venom from five tiles; helpless once something reaches it", radius=0.45, windup=0.4),
-    UnitType.TROLL: UnitInfo("Troll", Cost(0), 220, 14, 0, MELEE, 1.4, 1.9, 6, 0.0, BuildingType.LAIR, "",
-                             "Bare-skinned and hard to put down; knits its wounds back once left alone",
-                             radius=0.58, windup=0.45, armor_class=ArmorClass.UNARMORED, regen=8.0),
-    UnitType.GOLEM: UnitInfo("Stone Golem", Cost(0), 170, 18, 2, MELEE, 2.5, 1.3, 5, 0.0, BuildingType.LAIR, "",
-                             "Slams the ground: every enemy around its mark is caught", radius=0.60, splash=1.3,
-                             windup=0.7, turn=math.radians(150), armor_class=ArmorClass.HEAVY),
-}
+WILD_UNITS: Final[dict[UnitType, UnitInfo]] = {UnitType(u): _unit(info) for u, info in config.current().wilds.items()}
 UNITS.update(WILD_UNITS)
 CREATURES: Final[tuple[UnitType, ...]] = tuple(WILD_UNITS)
 #: Buildings nobody names: the two gold deposits and the lair.  No race tweaks them and no race draws them.
@@ -278,21 +251,20 @@ WILD_BUILDINGS: Final[frozenset[BuildingType]] = frozenset({BuildingType.GOLD_MI
 #: buildings" -- a race's names, the painted sheets, a jittered rulebook, the art lint -- walks this.
 BUILT: Final[tuple[BuildingType, ...]] = tuple(bt for bt in BuildingType if bt not in WILD_BUILDINGS)
 
-REGEN_CALM: Final = 6.0  # seconds since the last blow landed on it before a creature's regeneration starts
+REGEN_CALM: Final = config.number('REGEN_CALM')
 
 
 # -- Gold deposits -----------------------------------------------------------------
 
-GOLD_PER_TRIP: Final = 100
-MINE_SLOTS: Final = 8  # peasants at a gold mine's face at once; the rest wait their turn at the mouth.
-MINE_TIME: Final = 5.0  # seconds a peasant spends inside a deposit per trip
-# The face serves its slots every MINE_TIME, so a deposit yields at most
-# slots * trip / MINE_TIME: 160 gold a second at a mine, 48 at a seam.  With the
-# walk to the hall on top, a mine next door is saturated by about ten peasants
-# and a distant one by a few more: hiring past that earns nothing, and the way
+GOLD_PER_TRIP: Final[int] = config.current().buildings["gold_mine"]["mine_trip"]
+MINE_SLOTS: Final[int] = config.current().buildings["gold_mine"]["mine_slots"]
+SEAM_PER_TRIP: Final[int] = config.current().buildings["gold_seam"]["mine_trip"]
+SEAM_SLOTS: Final[int] = config.current().buildings["gold_seam"]["mine_slots"]
+MINE_TIME: Final = config.number('MINE_TIME')
+# The face serves its slots every MINE_TIME, so a deposit yields at most slots * trip / MINE_TIME. With the
+# walk to the hall on top, a mine next door is saturated by about ten peasants and a distant one by a few
+# more (the trips and slots are warband/assets/constants/buildings.toml's): hiring past that earns nothing, and the way
 # to more gold is another mine.
-SEAM_PER_TRIP: Final = 20  # a fifth of a mine's trip, for ever: a seam is held, not spent
-SEAM_SLOTS: Final = 12  # its five tiles of face take half again what a mine's three do
 
 
 @dataclass(frozen=True)
@@ -334,47 +306,21 @@ class BuildingInfo:
     mine: MineInfo | None = None  # set on the gold deposits alone, and on nothing a player can build
 
 
-BUILDINGS: Final[dict[BuildingType, BuildingInfo]] = {
-    BuildingType.TOWN_HALL: BuildingInfo("Town Hall", Cost(1200, 800), 1200, 3, 3, 60.0, 6, 5, "h",
-                                         "Trains peasants; gold and lumber are delivered here; raises the Keep",
-                                         trains=(UnitType.PEASANT,), researches=(Upgrade.KEEP,),
-                                         deposits=frozenset({Resource.GOLD, Resource.LUMBER})),
-    BuildingType.FARM: BuildingInfo("Farm", Cost(500, 250), 400, 2, 2, 25.0, 3, 4, "f", "Feeds four units"),
-    BuildingType.BARRACKS: BuildingInfo("Barracks", Cost(700, 450), 800, 3, 3, 40.0, 5, 0, "b", "Trains footmen and archers",
-                                        trains=(UnitType.FOOTMAN, UnitType.ARCHER), requires=BuildingType.TOWN_HALL),
-    BuildingType.TOWER: BuildingInfo("Guard Tower", Cost(700, 250), 400, 3, 2, 35.0, 8, 0, "t", "Shoots at enemies six tiles away",
-                                     requires=BuildingType.BARRACKS, damage=8, range=6.0, cooldown=1.5),
-    BuildingType.LUMBER_MILL: BuildingInfo("Lumber Mill", Cost(600, 450), 600, 2, 3, 35.0, 4, 0, "m",
-                                           "Lumber is delivered here; researches better arrows",
-                                           researches=(Upgrade.ARROWS_1, Upgrade.ARROWS_2, Upgrade.ARROWS_3, Upgrade.MARKSMANSHIP,
-                                                       Upgrade.LONGBOWS, Upgrade.REGROWTH),
-                                           requires=BuildingType.TOWN_HALL, deposits=frozenset({Resource.LUMBER})),
-    BuildingType.BLACKSMITH: BuildingInfo("Blacksmith", Cost(800, 450), 600, 3, 3, 40.0, 4, 0, "k",
-                                          "Researches sharper blades and plate armour",
-                                          researches=(Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.BLADES_3, Upgrade.ARMOR_1, Upgrade.ARMOR_2,
-                                                      Upgrade.BLOODLUST, Upgrade.DEEP_MINING),
-                                          requires=BuildingType.BARRACKS),
-    BuildingType.STABLES: BuildingInfo("Stables", Cost(1000, 300), 700, 3, 3, 45.0, 4, 0, "s",
-                                       "Trains scouts and knights; breeds faster horses",
-                                       trains=(UnitType.SCOUT, UnitType.KNIGHT), researches=(Upgrade.HORSES, Upgrade.PLUNDER),
-                                       requires=BuildingType.BARRACKS),
-    BuildingType.WORKSHOP: BuildingInfo("Workshop", Cost(700, 350), 600, 3, 3, 45.0, 4, 0, "w",
-                                        "Builds catapults; improves siege engines",
-                                        trains=(UnitType.CATAPULT,), researches=(Upgrade.SIEGE, Upgrade.BLASTING_POWDER), requires=BuildingType.BLACKSMITH),
-    BuildingType.CHURCH: BuildingInfo("Church", Cost(900, 400), 600, 3, 3, 45.0, 5, 0, "c",
-                                      "Trains clerics; blesses their healing",
-                                      trains=(UnitType.CLERIC,), researches=(Upgrade.BLESSING,), requires=BuildingType.BARRACKS),
-    BuildingType.GOLD_MINE: BuildingInfo("Gold Mine", Cost(0), 0, 0, 3, 0.0, 0, 0, "", "Peasants mine gold here",
-                                         mine=MineInfo(GOLD_PER_TRIP, MINE_SLOTS)),
-    BuildingType.GOLD_SEAM: BuildingInfo("Gold Seam", Cost(0), 0, 0, 5, 0.0, 0, 0, "",
-                                         f"A wide seam that never runs dry: {SEAM_PER_TRIP} gold a trip",
-                                         mine=MineInfo(SEAM_PER_TRIP, SEAM_SLOTS, endless=True)),
-    # A den wears a building's fortified armour, so a siege stone lands on it at x1.5: the catapult's price rise
-    # left it with nothing to do before the first walls, and a camp is that job.  Its hoard is its
-    # :attr:`~warband.sim.model.Building.gold`, paid out whole to whoever brings it down.
-    BuildingType.LAIR: BuildingInfo("Lair", Cost(0), 900, 2, 3, 0.0, 4, 0, "",
-                                    "A creature den: its guards come back from it until it is torn down"),
-}
+def _building(b: dict[str, Any]) -> BuildingInfo:
+    mine = MineInfo(b["mine_trip"], b["mine_slots"], b["mine_endless"]) if b["mine_trip"] or b["mine_slots"] else None
+    return BuildingInfo(
+        name=b["name"], cost=Cost(b["gold"], b["lumber"]), hp=b["hp"], armor=b["armor"], size=b["size"],
+        build_time=b["build_time"], sight=b["sight"], supply=b["supply"], hotkey=b["hotkey"],
+        summary=b["summary"].replace("{trip}", str(b["mine_trip"])),
+        trains=tuple(UnitType(u) for u in b["trains"]), researches=tuple(Upgrade(u) for u in b["researches"]),
+        requires=None if b["requires"] is None else BuildingType(b["requires"]),
+        deposits=frozenset(Resource(r) for r in b["deposits"]), damage=b["damage"], range=b["range"],
+        cooldown=b["cooldown"], mine=mine,
+    )
+
+
+BUILDINGS: Final[dict[BuildingType, BuildingInfo]] = {BuildingType(b): _building(info)
+                                                   for b, info in config.current().buildings.items()}
 
 
 @dataclass(frozen=True)
@@ -389,64 +335,42 @@ class UpgradeInfo:
     race: Race | None = None  # a race art: nobody else can research it
 
 
-UPGRADES: Final[dict[Upgrade, UpgradeInfo]] = {
-    Upgrade.KEEP: UpgradeInfo("Keep", Cost(1500, 800), 90.0, "k", "Keep", "Raises the hall, opening the upper tiers"),
-    Upgrade.BLADES_1: UpgradeInfo("Sharpened Blades", Cost(500, 100), 40.0, "b", "Blades I", "+2 damage for melee units"),
-    Upgrade.BLADES_2: UpgradeInfo("Tempered Blades", Cost(1500, 300), 60.0, "b", "Blades II", "+2 more damage for melee units",
-                                  requires=(Upgrade.BLADES_1, Upgrade.KEEP)),
-    Upgrade.BLADES_3: UpgradeInfo("Masterwork Blades", Cost(3000, 600), 120.0, "b", "Blades III", "+4 more damage for melee units",
-                                  requires=(Upgrade.BLADES_2, Upgrade.KEEP)),
-    Upgrade.ARMOR_1: UpgradeInfo("Plate Armour", Cost(300, 300), 40.0, "a", "Armour I", "+1 armour for soldiers"),
-    Upgrade.ARMOR_2: UpgradeInfo("Heavy Plate", Cost(900, 500), 60.0, "a", "Armour II", "+1 more armour for soldiers",
-                                 requires=(Upgrade.ARMOR_1, Upgrade.KEEP)),
-    Upgrade.ARROWS_1: UpgradeInfo("Bodkin Arrows", Cost(300, 300), 40.0, "r", "Arrows I", "+2 damage for archers and towers"),
-    Upgrade.ARROWS_2: UpgradeInfo("Broadhead Arrows", Cost(900, 500), 60.0, "r", "Arrows II", "+2 more damage for archers and towers",
-                                  requires=(Upgrade.ARROWS_1, Upgrade.KEEP)),
-    Upgrade.ARROWS_3: UpgradeInfo("Masterwork Arrows", Cost(1800, 1000), 120.0, "r", "Arrows III",
-                                  "+4 more damage for archers and towers", requires=(Upgrade.ARROWS_2, Upgrade.KEEP)),
-    Upgrade.SIEGE: UpgradeInfo("Siege Engineering", Cost(1000, 500), 60.0, "e", "Siege", "+1 range and +25 % damage for siege engines"),
-    Upgrade.MARKSMANSHIP: UpgradeInfo("Marksmanship", Cost(600, 300), 45.0, "m", "Marksmen",
-                                      "Shooters pick the mark in reach they fell soonest and waste no arrow on the dying"),
-    Upgrade.HORSES: UpgradeInfo("Horse Breeding", Cost(900, 300), 50.0, "h", "Horses", "+0.8 speed for scouts and knights", race=Race.HUMAN),
-    Upgrade.BLESSING: UpgradeInfo("Blessing", Cost(800, 400), 50.0, "l", "Blessing", "Clerics heal half again as fast", race=Race.HUMAN),
-    Upgrade.BLOODLUST: UpgradeInfo("Bloodlust", Cost(700, 300), 50.0, "l", "Bloodlust", "Frenzy doubles: wounded orcs deal +50 % damage",
-                                   race=Race.ORC),
-    Upgrade.PLUNDER: UpgradeInfo("Plunder", Cost(600, 200), 45.0, "h", "Plunder", "Razing a building loots a fifth of its gold", race=Race.ORC),
-    Upgrade.LONGBOWS: UpgradeInfo("Longbows", Cost(700, 400), 50.0, "l", "Longbows", "+1 range for rangers and towers", race=Race.ELF),
-    Upgrade.REGROWTH: UpgradeInfo("Regrowth", Cost(500, 500), 45.0, "g", "Regrowth", "Trees felled by elves grow back after a minute",
-                                  race=Race.ELF),
-    Upgrade.DEEP_MINING: UpgradeInfo("Deep Mining", Cost(600, 300), 45.0, "d", "Mining", "Miners bring 150 gold per trip", race=Race.DWARF),
-    Upgrade.BLASTING_POWDER: UpgradeInfo("Blasting Powder", Cost(900, 400), 50.0, "p", "Powder", "Mortar splash reaches half again as far",
-                                         race=Race.DWARF),
-}
+def _upgrade(u: dict[str, Any]) -> UpgradeInfo:
+    return UpgradeInfo(
+        name=u["name"], cost=Cost(u["gold"], u["lumber"]), time=u["time"], hotkey=u["hotkey"], card=u["card"],
+        summary=u["summary"].replace("{trip}", str(config.integer("DEEP_MINING_TRIP"))),
+        requires=tuple(Upgrade(r) for r in u["requires"]), race=None if u["race"] is None else Race(u["race"]),
+    )
 
-BLADES_BONUS: Final = 2
-#: The master weapons are worth two of the tiers below them, for well over twice their price and twice their hour.
-MASTER_WEAPON_BONUS: Final = 4
-ARMOR_BONUS: Final = 1
-ARROWS_BONUS: Final = 2
-HORSES_BONUS: Final = 0.8
-SIEGE_RANGE_BONUS: Final = 1.0
-SIEGE_DAMAGE_BONUS: Final = 1.25
-BLESSING_BONUS: Final = 1.5
-FRENZY_BONUS: Final = 1.25  # an orc below half health hits this much harder…
-BLOODLUST_BONUS: Final = 1.5  # …and this much with Bloodlust
-PLUNDER_SHARE: Final = 0.2  # of a razed building's gold cost
-LONGBOWS_BONUS: Final = 1.0
-REGROWTH_SECONDS: Final = 60.0
-DEEP_MINING_TRIP: Final = 150
-BLASTING_POWDER_BONUS: Final = 1.5
-SPLASH_FRACTION: Final = 0.6  # share of the damage a stone deals beyond DIRECT_HIT of where it lands, out to the splash radius
-DIRECT_HIT: Final = 0.5  # tiles from where a stone lands within which it deals its full damage
-WINDUP_SLACK: Final = 0.5  # tiles a target may slip beyond weapon reach during the wind-up and still be struck
-ARROW_SPEED: Final = 14.0  # tiles per second an arrow, axe or bolt flies; it follows its mark and strikes on arrival
-STONE_SPEED: Final = 7.0  # tiles per second a siege stone covers; it comes down on the ground it was fired at
-STONE_MIN_FLIGHT: Final = 0.4  # seconds even the shortest lob spends in the air
+
+UPGRADES: Final[dict[Upgrade, UpgradeInfo]] = {Upgrade(u): _upgrade(info) for u, info in config.current().upgrades.items()}
+
+BLADES_BONUS: Final = config.integer('BLADES_BONUS')
+MASTER_WEAPON_BONUS: Final = config.integer('MASTER_WEAPON_BONUS')
+ARMOR_BONUS: Final = config.integer('ARMOR_BONUS')
+ARROWS_BONUS: Final = config.integer('ARROWS_BONUS')
+HORSES_BONUS: Final = config.number('HORSES_BONUS')
+SIEGE_RANGE_BONUS: Final = config.number('SIEGE_RANGE_BONUS')
+SIEGE_DAMAGE_BONUS: Final = config.number('SIEGE_DAMAGE_BONUS')
+BLESSING_BONUS: Final = config.number('BLESSING_BONUS')
+FRENZY_BONUS: Final = config.number('FRENZY_BONUS')
+BLOODLUST_BONUS: Final = config.number('BLOODLUST_BONUS')
+PLUNDER_SHARE: Final = config.number('PLUNDER_SHARE')
+LONGBOWS_BONUS: Final = config.number('LONGBOWS_BONUS')
+REGROWTH_SECONDS: Final = config.number('REGROWTH_SECONDS')
+DEEP_MINING_TRIP: Final = config.integer('DEEP_MINING_TRIP')
+BLASTING_POWDER_BONUS: Final = config.number('BLASTING_POWDER_BONUS')
+SPLASH_FRACTION: Final = config.number('SPLASH_FRACTION')
+DIRECT_HIT: Final = config.number('DIRECT_HIT')
+WINDUP_SLACK: Final = config.number('WINDUP_SLACK')
+ARROW_SPEED: Final = config.number('ARROW_SPEED')
+STONE_SPEED: Final = config.number('STONE_SPEED')
+STONE_MIN_FLIGHT: Final = config.number('STONE_MIN_FLIGHT')
+HIT_VARIANCE: Final = config.number('HIT_VARIANCE')
 #: How hard each kind of blow lands on each kind of armour, before armour is subtracted; a pairing not listed is 1.
 #: The one place these multipliers live (WB-049).  Towers strike a normal blow.
 DAMAGE_FACTORS: Final[dict[tuple[AttackType, ArmorClass], float]] = {
-    (AttackType.PIERCING, ArmorClass.UNARMORED): 1.5,
-    (AttackType.SIEGE, ArmorClass.FORTIFIED): 1.5,
+    (AttackType(b["attack"]), ArmorClass(b["armor"])): b["factor"] for b in config.current().damage_bonus
 }
 
 
@@ -465,35 +389,24 @@ def an(name: str) -> str:
     return f"{'an' if name[:1].upper() in 'AEIOU' else 'a'} {name}"
 
 
-FRIENDLY_MARGIN: Final = 0.45  # tiles beyond its splash a siege crew counts one of its own as standing under the stone.
-# Where a friend will be when the stone lands is a guess: the crew leads it by the walking it does of its own accord, and a
-# shove from the crowd is not in that velocity, the more so since a body the size of a knight's is shoved harder and further
-# than the old one-size body was.  Over the twelve clash seeds of tests/warband/test_siege_judgement.py, a veto at 0.3 put
-# stones on our own footmen in five of them (the shipped 0.35-tile bodies did it in two: the test's first six seeds were
-# lucky) and 0.4 in one; 0.45 is the least that was clean.
-FRIENDLY_WORTH: Final = 2.0  # what one of our own under a stone costs the crew, against SIEGE_WORTH's 1 for one of theirs.
-# A crew on its own judgement used to veto any stone that could touch its own side, which behind a line locked with the enemy
-# is every stone there is: in the set piece of docs/balance.md it threw a stone every thirty-one seconds where its reload is
-# under four, and seven footmen and two catapults lost to ten footmen.  It weighs the trade instead (World._aim_trade), and
-# two of ours for one of theirs is what it takes.  It is the least that is clean: at 1.5 the crew shells its own line on the
-# clash seeds of tests/warband/test_siege_judgement.py, and 3.0 is markedly more timid where it is pressed (against twelve
-# footmen the same two catapults win 30% of the set piece rather than 72%).
-FORMATION_ARMOR: Final = 1  # armour a formation unit gains for each such friend at its left and at its right
-FORMATION_SPACING: Final = 1.0  # tiles between neighbours in a marching line: a footman's body is 0.84 wide, so a line still has daylight in it
-FORMATION_WIDTH: Final = 8  # a line this long; more stand in rows behind
-FORMATION_MARCH: Final = 4.0  # tiles a group must go before its formation units form a line; nearer, they gather
-FORMATION_SLACK: Final = 1.0  # tiles nearer its slot than the line's laggard before a marcher waits for it
-FORMATION_HOLD: Final = 0.6  # of its speed a marcher that is ahead of its line walks
-FORMATION_LOOKAHEAD: Final = 3.0  # tiles ahead of a marching line's middle each member aims for its place
-SIEGE_STEP: Final = 3.0  # tiles beyond its reach a siege crew on its own judgement will roll forward for a clear shot
-SIEGE_WORTH: Final = {UnitType.CATAPULT: 3.0, UnitType.CLERIC: 3.0, UnitType.ARCHER: 2.0}  # what a stone on them is worth to a crew; any other unit 1
-SIEGE_BUILDING_WORTH: Final = 0.5  # a building under a stone, beside a unit's 1: soldiers first, walls when no soldier can be reached
+FRIENDLY_MARGIN: Final = config.number('FRIENDLY_MARGIN')
+FRIENDLY_WORTH: Final = config.number('FRIENDLY_WORTH')
+FORMATION_ARMOR: Final = config.integer('FORMATION_ARMOR')
+FORMATION_SPACING: Final = config.number('FORMATION_SPACING')
+FORMATION_WIDTH: Final = config.integer('FORMATION_WIDTH')
+FORMATION_MARCH: Final = config.number('FORMATION_MARCH')
+FORMATION_SLACK: Final = config.number('FORMATION_SLACK')
+FORMATION_HOLD: Final = config.number('FORMATION_HOLD')
+FORMATION_LOOKAHEAD: Final = config.number('FORMATION_LOOKAHEAD')
+SIEGE_STEP: Final = config.number("SIEGE_STEP")
+SIEGE_WORTH: Final[dict[UnitType, float]] = {UnitType(u): worth for u, worth in config.current().siege_worth.items()}
+SIEGE_BUILDING_WORTH: Final = config.number("SIEGE_BUILDING_WORTH")
 
-LUMBER_PER_TRIP: Final = 100
-CHOP_TIME: Final = 5.0  # seconds to fell a tree
-REPAIR_RATE: Final = 8.0  # hit points a peasant mends per second
-REPAIR_CHUNK: Final = 10  # hit points paid for at a time while repairing
-REPAIR_COST: Final = 0.5  # share of a building's price that mending all of its hit points costs
+LUMBER_PER_TRIP: Final = config.integer('LUMBER_PER_TRIP')
+CHOP_TIME: Final = config.number('CHOP_TIME')
+REPAIR_RATE: Final = config.number('REPAIR_RATE')
+REPAIR_CHUNK: Final = config.integer('REPAIR_CHUNK')
+REPAIR_COST: Final = config.number('REPAIR_COST')
 
 
 def repair_cost(info: BuildingInfo, hp_before: int, hp_after: int, max_hp: int) -> Cost:
@@ -512,10 +425,10 @@ def repair_cost(info: BuildingInfo, hp_before: int, hp_after: int, max_hp: int) 
 # A ruin nobody holds comes apart at the rate one is mended at; a building someone still holds resists, and comes
 # apart at a quarter of it, which is why a peasant crew is never a siege engine (a catapult puts about fourteen
 # hit points a second into a building from seven tiles away, a salvaging peasant two from arm's length).
-SALVAGE_RATE: Final = 8.0  # hit points a peasant tears out of a ruin per second
-SALVAGE_HELD_RATE: Final = 2.0  # hit points a second out of a building its owner still holds
-SALVAGE_CHUNK: Final = 10  # hit points torn out at a time, each paid out on its own
-SALVAGE_SHARE: Final = 0.25  # share of a building's price that tearing all of its hit points out returns
+SALVAGE_RATE: Final = config.number('SALVAGE_RATE')
+SALVAGE_HELD_RATE: Final = config.number('SALVAGE_HELD_RATE')
+SALVAGE_CHUNK: Final = config.integer('SALVAGE_CHUNK')
+SALVAGE_SHARE: Final = config.number('SALVAGE_SHARE')
 
 
 def salvage_yield(info: BuildingInfo, hp_before: int, hp_after: int, max_hp: int) -> int:
@@ -541,14 +454,14 @@ def salvage_resource(info: BuildingInfo, roll: float) -> Resource:
     materials out of the building that is there."""
     price = info.cost.gold + info.cost.lumber
     return Resource.GOLD if roll * price < info.cost.gold else Resource.LUMBER
-MINE_GOLD: Final = 50_000  # a base mine; expansion mines hold EXPANSION_GOLD, and an endless seam no stock at all
-EXPANSION_GOLD: Final = 30_000
-STARTING_GOLD: Final = 1000
-STARTING_LUMBER: Final = 500
+MINE_GOLD: Final = config.integer('MINE_GOLD')
+EXPANSION_GOLD: Final = config.integer('EXPANSION_GOLD')
+STARTING_GOLD: Final = config.integer('STARTING_GOLD')
+STARTING_LUMBER: Final = config.integer('STARTING_LUMBER')
 #: The largest body any unit has: what a search that must not miss a unit whose body reaches into it pads by
 #: (the bodies themselves are :attr:`UnitInfo.radius`).  A jittered rulebook never moves a radius, so this holds.
 MAX_UNIT_RADIUS: Final = max(info.radius for info in UNITS.values())
-LEASH: Final = 6.0  # how far an idle unit chases before it walks home
+LEASH: Final = config.number('LEASH')
 
 # -- Creature camps ----------------------------------------------------------------
 # A camp is a lair with its guards placed around it, and it resets rather than streaming.  A den that
@@ -556,18 +469,17 @@ LEASH: Final = 6.0  # how far an idle unit chases before it walks home
 # clearing it is beating down an undefended building; a camp that comes back once it is left alone makes
 # the decision crisp instead -- clear the whole thing, lair and all, in one committed push and it is yours
 # for good; break off and you paid units for nothing.
-CAMP_WATCH: Final = 7.0  # tiles from the lair within which an intruder rouses the camp…
-CAMP_HOLD: Final = 11.0  # …and beyond which the camp counts it gone and settles back
-CAMP_CALM: Final = 8.0  # seconds with nobody in CAMP_HOLD before a camp starts putting itself back together
-CAMP_REGEN: Final = 10.0  # hit points a settled guard standing at its post knits back per second
-CAMP_RESPAWN: Final = 25.0  # seconds a settled camp takes to bring one fallen guard back out of the lair
-CAMP_POST: Final = 2.6  # tiles from the lair's middle a guard is posted
+CAMP_WATCH: Final = config.number('CAMP_WATCH')
+CAMP_HOLD: Final = config.number('CAMP_HOLD')
+CAMP_CALM: Final = config.number('CAMP_CALM')
+CAMP_REGEN: Final = config.number('CAMP_REGEN')
+CAMP_RESPAWN: Final = config.number('CAMP_RESPAWN')
+CAMP_POST: Final = config.number('CAMP_POST')
 UNDER_ATTACK_COOLDOWN: Final = 20.0
 SIM_DT: Final = 0.05  # the simulation runs at 20 Hz regardless of the frame rate
 VISION_EVERY: Final = 4  # ticks between fog recomputations
 MAX_PLANS: Final = 64  # settlement plans a player may have waiting: each is looked at every second and travels in every online snapshot
 MAX_QUEUED_ORDERS: Final = 32  # orders a unit may have queued behind the one it is carrying out
-HIT_VARIANCE: Final = 0.25  # damage rolls between 75 % and 125 % of the listed value
 
 
 @dataclass(frozen=True)
