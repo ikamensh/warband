@@ -1,5 +1,12 @@
 """Static game data.  Nothing here mutates.
 
+To change what a unit, building or upgrade costs or does, edit the TOML next
+to this file -- ``units.toml``, ``buildings.toml``, ``upgrades.toml`` -- and
+run ``uv run python tools/balance_tables.py`` from the repository root, which
+rewrites the GENERATED regions below.  Never edit those regions by hand;
+``tests/warband/test_balance_tables.py`` fails until the two agree.  The
+per-race tweaks live in ``races.toml`` the same way.
+
 Distances are in tiles, times in seconds of simulation time.  A unit's
 ``range`` is the largest gap between its edge and the target's edge at
 which it can strike (or heal); melee units must all but touch.
@@ -212,27 +219,17 @@ class UnitInfo:
 
 MELEE: Final = 0.45  # reach of a melee unit: it strikes from the next tile over, diagonals included
 
+# generated-begin units: from warband/sim/units.toml — do not edit by hand; run tools/balance_tables.py
 UNITS: Final[dict[UnitType, UnitInfo]] = {
-    UnitType.PEASANT: UnitInfo("Peasant", Cost(400), 30, 3, 0, MELEE, 1.0, 2.4, 4, 12.0, BuildingType.TOWN_HALL, "p",
-                               "Mines gold, chops lumber, builds and repairs", radius=0.36, windup=0.25, armor_class=ArmorClass.UNARMORED),
-    UnitType.FOOTMAN: UnitInfo("Footman", Cost(600), 60, 7, 3, MELEE, 1.0, 2.0, 5, 15.0, BuildingType.BARRACKS, "f",
-                               "Slow shield-wall swordsman; tougher with a comrade at each side", radius=0.42, windup=0.3,
-                               armor_class=ArmorClass.HEAVY, formation=True),
-    UnitType.ARCHER: UnitInfo("Archer", Cost(500, 50), 40, 6, 0, 4.0, 1.3, 2.4, 6, 14.0, BuildingType.BARRACKS, "a",
-                              "Shoots from four tiles away; fragile up close", radius=0.42, windup=0.35, attack=AttackType.PIERCING),
-    UnitType.SCOUT: UnitInfo("Scout", Cost(350), 35, 4, 0, MELEE, 0.8, 4.2, 8, 10.0, BuildingType.STABLES, "s",
-                             "Fast rider who sees far; raids peasants and archers", radius=0.48, mounted=True, windup=0.25, turn=math.radians(450)),
-    UnitType.KNIGHT: UnitInfo("Knight", Cost(900, 100), 90, 10, 4, MELEE, 1.0, 3.4, 5, 20.0, BuildingType.STABLES, "k",
-                              "Fast, heavily armoured shock cavalry", radius=0.56, mounted=True, windup=0.35, turn=math.radians(270),
-                              armor_class=ArmorClass.HEAVY),
-    UnitType.CATAPULT: UnitInfo("Catapult", Cost(900, 300), 80, 36, 0, 7.0, 4.0, 1.6, 6, 30.0, BuildingType.WORKSHOP, "c",
-                                "Slow siege engine: stones land where aimed, splash friend and foe, ×1.5 against buildings",
-                                radius=0.62, splash=1.2, windup=0.8, turn=math.radians(150), min_range=2.0, attack=AttackType.SIEGE,
-                                armor_class=ArmorClass.UNARMORED),
-    UnitType.CLERIC: UnitInfo("Cleric", Cost(700, 50), 40, 3, 0, 3.0, 2.0, 2.4, 5, 20.0, BuildingType.CHURCH, "h",  # H for healer: L is Blessing at the church
-                              "Heals a wounded ally 15 at a cast; a weak blow when no one needs it", radius=0.38, heal=15, windup=0.5,
-                              armor_class=ArmorClass.UNARMORED),
+    UnitType.PEASANT: UnitInfo(name='Peasant', cost=Cost(400), hp=30, damage=3, armor=0, range=MELEE, cooldown=1.0, speed=2.4, sight=4, build_time=12.0, trained_at=BuildingType.TOWN_HALL, hotkey='p', summary='Mines gold, chops lumber, builds and repairs', radius=0.36, heal=0, splash=0.0, attack=AttackType.NORMAL, armor_class=ArmorClass.UNARMORED, formation=False, mounted=False, windup=0.25, turn=math.radians(360), min_range=0.0, regen=0.0),
+    UnitType.FOOTMAN: UnitInfo(name='Footman', cost=Cost(600), hp=60, damage=7, armor=3, range=MELEE, cooldown=1.0, speed=2.0, sight=5, build_time=15.0, trained_at=BuildingType.BARRACKS, hotkey='f', summary='Slow shield-wall swordsman; tougher with a comrade at each side', radius=0.42, heal=0, splash=0.0, attack=AttackType.NORMAL, armor_class=ArmorClass.HEAVY, formation=True, mounted=False, windup=0.3, turn=math.radians(360), min_range=0.0, regen=0.0),
+    UnitType.ARCHER: UnitInfo(name='Archer', cost=Cost(500, 50), hp=40, damage=6, armor=0, range=4.0, cooldown=1.3, speed=2.4, sight=6, build_time=14.0, trained_at=BuildingType.BARRACKS, hotkey='a', summary='Shoots from four tiles away; fragile up close', radius=0.42, heal=0, splash=0.0, attack=AttackType.PIERCING, armor_class=ArmorClass.LIGHT, formation=False, mounted=False, windup=0.35, turn=math.radians(360), min_range=0.0, regen=0.0),
+    UnitType.SCOUT: UnitInfo(name='Scout', cost=Cost(350), hp=35, damage=4, armor=0, range=MELEE, cooldown=0.8, speed=4.2, sight=8, build_time=10.0, trained_at=BuildingType.STABLES, hotkey='s', summary='Fast rider who sees far; raids peasants and archers', radius=0.48, heal=0, splash=0.0, attack=AttackType.NORMAL, armor_class=ArmorClass.LIGHT, formation=False, mounted=True, windup=0.25, turn=math.radians(450), min_range=0.0, regen=0.0),
+    UnitType.KNIGHT: UnitInfo(name='Knight', cost=Cost(900, 100), hp=90, damage=10, armor=4, range=MELEE, cooldown=1.0, speed=3.4, sight=5, build_time=20.0, trained_at=BuildingType.STABLES, hotkey='k', summary='Fast, heavily armoured shock cavalry', radius=0.56, heal=0, splash=0.0, attack=AttackType.NORMAL, armor_class=ArmorClass.HEAVY, formation=False, mounted=True, windup=0.35, turn=math.radians(270), min_range=0.0, regen=0.0),
+    UnitType.CATAPULT: UnitInfo(name='Catapult', cost=Cost(900, 300), hp=80, damage=36, armor=0, range=7.0, cooldown=4.0, speed=1.6, sight=6, build_time=30.0, trained_at=BuildingType.WORKSHOP, hotkey='c', summary='Slow siege engine: stones land where aimed, splash friend and foe, ×1.5 against buildings', radius=0.62, heal=0, splash=1.2, attack=AttackType.SIEGE, armor_class=ArmorClass.UNARMORED, formation=False, mounted=False, windup=0.8, turn=math.radians(150), min_range=2.0, regen=0.0),
+    UnitType.CLERIC: UnitInfo(name='Cleric', cost=Cost(700, 50), hp=40, damage=3, armor=0, range=3.0, cooldown=2.0, speed=2.4, sight=5, build_time=20.0, trained_at=BuildingType.CHURCH, hotkey='h', summary='Heals a wounded ally 15 at a cast; a weak blow when no one needs it', radius=0.38, heal=15, splash=0.0, attack=AttackType.NORMAL, armor_class=ArmorClass.UNARMORED, formation=False, mounted=False, windup=0.5, turn=math.radians(360), min_range=0.0, regen=0.0),
 }
+# generated-end units
 
 #: What a player can train, in card order: everything but the neutral creatures.  Every loop that means
 #: "the game's units" walks this rather than :class:`UnitType`, which now also holds the wilds.
@@ -257,19 +254,14 @@ PLAYABLE_UNITS: Final[tuple[UnitType, ...]] = (UnitType.PEASANT, UnitType.FOOTMA
 # knights-only check.  High hit points and no armour cost time and exposure instead, and leave the
 # archer the efficient answer.  Its regeneration is out-of-combat only (:attr:`UnitInfo.regen`).
 
+# generated-begin wilds: from warband/sim/units.toml — do not edit by hand; run tools/balance_tables.py
 WILD_UNITS: Final[dict[UnitType, UnitInfo]] = {
-    UnitType.WOLF: UnitInfo("Dire Wolf", Cost(0), 40, 6, 0, MELEE, 0.9, 4.0, 7, 0.0, BuildingType.LAIR, "",
-                            "A pack hunter: fast, fragile and never alone", radius=0.40, windup=0.2,
-                            turn=math.radians(450)),
-    UnitType.SPIDER: UnitInfo("Venom Spider", Cost(0), 45, 8, 0, 5.0, 1.6, 2.2, 7, 0.0, BuildingType.LAIR, "",
-                              "Spits venom from five tiles; helpless once something reaches it", radius=0.45, windup=0.4),
-    UnitType.TROLL: UnitInfo("Troll", Cost(0), 220, 14, 0, MELEE, 1.4, 1.9, 6, 0.0, BuildingType.LAIR, "",
-                             "Bare-skinned and hard to put down; knits its wounds back once left alone",
-                             radius=0.58, windup=0.45, armor_class=ArmorClass.UNARMORED, regen=8.0),
-    UnitType.GOLEM: UnitInfo("Stone Golem", Cost(0), 170, 18, 2, MELEE, 2.5, 1.3, 5, 0.0, BuildingType.LAIR, "",
-                             "Slams the ground: every enemy around its mark is caught", radius=0.60, splash=1.3,
-                             windup=0.7, turn=math.radians(150), armor_class=ArmorClass.HEAVY),
+    UnitType.WOLF: UnitInfo(name='Dire Wolf', cost=Cost(0), hp=40, damage=6, armor=0, range=MELEE, cooldown=0.9, speed=4.0, sight=7, build_time=0.0, trained_at=BuildingType.LAIR, hotkey='', summary='A pack hunter: fast, fragile and never alone', radius=0.4, heal=0, splash=0.0, attack=AttackType.NORMAL, armor_class=ArmorClass.LIGHT, formation=False, mounted=False, windup=0.2, turn=math.radians(450), min_range=0.0, regen=0.0),
+    UnitType.SPIDER: UnitInfo(name='Venom Spider', cost=Cost(0), hp=45, damage=8, armor=0, range=5.0, cooldown=1.6, speed=2.2, sight=7, build_time=0.0, trained_at=BuildingType.LAIR, hotkey='', summary='Spits venom from five tiles; helpless once something reaches it', radius=0.45, heal=0, splash=0.0, attack=AttackType.NORMAL, armor_class=ArmorClass.LIGHT, formation=False, mounted=False, windup=0.4, turn=math.radians(360), min_range=0.0, regen=0.0),
+    UnitType.TROLL: UnitInfo(name='Troll', cost=Cost(0), hp=220, damage=14, armor=0, range=MELEE, cooldown=1.4, speed=1.9, sight=6, build_time=0.0, trained_at=BuildingType.LAIR, hotkey='', summary='Bare-skinned and hard to put down; knits its wounds back once left alone', radius=0.58, heal=0, splash=0.0, attack=AttackType.NORMAL, armor_class=ArmorClass.UNARMORED, formation=False, mounted=False, windup=0.45, turn=math.radians(360), min_range=0.0, regen=8.0),
+    UnitType.GOLEM: UnitInfo(name='Stone Golem', cost=Cost(0), hp=170, damage=18, armor=2, range=MELEE, cooldown=2.5, speed=1.3, sight=5, build_time=0.0, trained_at=BuildingType.LAIR, hotkey='', summary='Slams the ground: every enemy around its mark is caught', radius=0.6, heal=0, splash=1.3, attack=AttackType.NORMAL, armor_class=ArmorClass.HEAVY, formation=False, mounted=False, windup=0.7, turn=math.radians(150), min_range=0.0, regen=0.0),
 }
+# generated-end wilds
 UNITS.update(WILD_UNITS)
 CREATURES: Final[tuple[UnitType, ...]] = tuple(WILD_UNITS)
 #: Buildings nobody names: the two gold deposits and the lair.  No race tweaks them and no race draws them.
@@ -283,16 +275,17 @@ REGEN_CALM: Final = 6.0  # seconds since the last blow landed on it before a cre
 
 # -- Gold deposits -----------------------------------------------------------------
 
+# generated-begin deposits: from warband/sim/buildings.toml — do not edit by hand; run tools/balance_tables.py
 GOLD_PER_TRIP: Final = 100
-MINE_SLOTS: Final = 8  # peasants at a gold mine's face at once; the rest wait their turn at the mouth.
+MINE_SLOTS: Final = 8
+SEAM_PER_TRIP: Final = 20
+SEAM_SLOTS: Final = 12
+# generated-end deposits
 MINE_TIME: Final = 5.0  # seconds a peasant spends inside a deposit per trip
-# The face serves its slots every MINE_TIME, so a deposit yields at most
-# slots * trip / MINE_TIME: 160 gold a second at a mine, 48 at a seam.  With the
-# walk to the hall on top, a mine next door is saturated by about ten peasants
-# and a distant one by a few more: hiring past that earns nothing, and the way
+# The face serves its slots every MINE_TIME, so a deposit yields at most slots * trip / MINE_TIME. With the
+# walk to the hall on top, a mine next door is saturated by about ten peasants and a distant one by a few
+# more (the trips and slots are warband/sim/buildings.toml's): hiring past that earns nothing, and the way
 # to more gold is another mine.
-SEAM_PER_TRIP: Final = 20  # a fifth of a mine's trip, for ever: a seam is held, not spent
-SEAM_SLOTS: Final = 12  # its five tiles of face take half again what a mine's three do
 
 
 @dataclass(frozen=True)
@@ -334,47 +327,22 @@ class BuildingInfo:
     mine: MineInfo | None = None  # set on the gold deposits alone, and on nothing a player can build
 
 
+# generated-begin buildings: from warband/sim/buildings.toml — do not edit by hand; run tools/balance_tables.py
 BUILDINGS: Final[dict[BuildingType, BuildingInfo]] = {
-    BuildingType.TOWN_HALL: BuildingInfo("Town Hall", Cost(1200, 800), 1200, 3, 3, 60.0, 6, 5, "h",
-                                         "Trains peasants; gold and lumber are delivered here; raises the Keep",
-                                         trains=(UnitType.PEASANT,), researches=(Upgrade.KEEP,),
-                                         deposits=frozenset({Resource.GOLD, Resource.LUMBER})),
-    BuildingType.FARM: BuildingInfo("Farm", Cost(500, 250), 400, 2, 2, 25.0, 3, 4, "f", "Feeds four units"),
-    BuildingType.BARRACKS: BuildingInfo("Barracks", Cost(700, 450), 800, 3, 3, 40.0, 5, 0, "b", "Trains footmen and archers",
-                                        trains=(UnitType.FOOTMAN, UnitType.ARCHER), requires=BuildingType.TOWN_HALL),
-    BuildingType.TOWER: BuildingInfo("Guard Tower", Cost(700, 250), 400, 3, 2, 35.0, 8, 0, "t", "Shoots at enemies six tiles away",
-                                     requires=BuildingType.BARRACKS, damage=8, range=6.0, cooldown=1.5),
-    BuildingType.LUMBER_MILL: BuildingInfo("Lumber Mill", Cost(600, 450), 600, 2, 3, 35.0, 4, 0, "m",
-                                           "Lumber is delivered here; researches better arrows",
-                                           researches=(Upgrade.ARROWS_1, Upgrade.ARROWS_2, Upgrade.ARROWS_3, Upgrade.MARKSMANSHIP,
-                                                       Upgrade.LONGBOWS, Upgrade.REGROWTH),
-                                           requires=BuildingType.TOWN_HALL, deposits=frozenset({Resource.LUMBER})),
-    BuildingType.BLACKSMITH: BuildingInfo("Blacksmith", Cost(800, 450), 600, 3, 3, 40.0, 4, 0, "k",
-                                          "Researches sharper blades and plate armour",
-                                          researches=(Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.BLADES_3, Upgrade.ARMOR_1, Upgrade.ARMOR_2,
-                                                      Upgrade.BLOODLUST, Upgrade.DEEP_MINING),
-                                          requires=BuildingType.BARRACKS),
-    BuildingType.STABLES: BuildingInfo("Stables", Cost(1000, 300), 700, 3, 3, 45.0, 4, 0, "s",
-                                       "Trains scouts and knights; breeds faster horses",
-                                       trains=(UnitType.SCOUT, UnitType.KNIGHT), researches=(Upgrade.HORSES, Upgrade.PLUNDER),
-                                       requires=BuildingType.BARRACKS),
-    BuildingType.WORKSHOP: BuildingInfo("Workshop", Cost(700, 350), 600, 3, 3, 45.0, 4, 0, "w",
-                                        "Builds catapults; improves siege engines",
-                                        trains=(UnitType.CATAPULT,), researches=(Upgrade.SIEGE, Upgrade.BLASTING_POWDER), requires=BuildingType.BLACKSMITH),
-    BuildingType.CHURCH: BuildingInfo("Church", Cost(900, 400), 600, 3, 3, 45.0, 5, 0, "c",
-                                      "Trains clerics; blesses their healing",
-                                      trains=(UnitType.CLERIC,), researches=(Upgrade.BLESSING,), requires=BuildingType.BARRACKS),
-    BuildingType.GOLD_MINE: BuildingInfo("Gold Mine", Cost(0), 0, 0, 3, 0.0, 0, 0, "", "Peasants mine gold here",
-                                         mine=MineInfo(GOLD_PER_TRIP, MINE_SLOTS)),
-    BuildingType.GOLD_SEAM: BuildingInfo("Gold Seam", Cost(0), 0, 0, 5, 0.0, 0, 0, "",
-                                         f"A wide seam that never runs dry: {SEAM_PER_TRIP} gold a trip",
-                                         mine=MineInfo(SEAM_PER_TRIP, SEAM_SLOTS, endless=True)),
-    # A den wears a building's fortified armour, so a siege stone lands on it at x1.5: the catapult's price rise
-    # left it with nothing to do before the first walls, and a camp is that job.  Its hoard is its
-    # :attr:`~warband.sim.model.Building.gold`, paid out whole to whoever brings it down.
-    BuildingType.LAIR: BuildingInfo("Lair", Cost(0), 900, 2, 3, 0.0, 4, 0, "",
-                                    "A creature den: its guards come back from it until it is torn down"),
+    BuildingType.TOWN_HALL: BuildingInfo(name='Town Hall', cost=Cost(1200, 800), hp=1200, armor=3, size=3, build_time=60.0, sight=6, supply=5, hotkey='h', summary='Trains peasants; gold and lumber are delivered here; raises the Keep', trains=(UnitType.PEASANT,), researches=(Upgrade.KEEP,), deposits=frozenset({Resource.GOLD, Resource.LUMBER}), damage=0, range=0.0, cooldown=1.0),
+    BuildingType.FARM: BuildingInfo(name='Farm', cost=Cost(500, 250), hp=400, armor=2, size=2, build_time=25.0, sight=3, supply=4, hotkey='f', summary='Feeds four units', trains=(), researches=(), damage=0, range=0.0, cooldown=1.0),
+    BuildingType.BARRACKS: BuildingInfo(name='Barracks', cost=Cost(700, 450), hp=800, armor=3, size=3, build_time=40.0, sight=5, supply=0, hotkey='b', summary='Trains footmen and archers', trains=(UnitType.FOOTMAN, UnitType.ARCHER), researches=(), requires=BuildingType.TOWN_HALL, damage=0, range=0.0, cooldown=1.0),
+    BuildingType.TOWER: BuildingInfo(name='Guard Tower', cost=Cost(700, 250), hp=400, armor=3, size=2, build_time=35.0, sight=8, supply=0, hotkey='t', summary='Shoots at enemies six tiles away', trains=(), researches=(), requires=BuildingType.BARRACKS, damage=8, range=6.0, cooldown=1.5),
+    BuildingType.LUMBER_MILL: BuildingInfo(name='Lumber Mill', cost=Cost(600, 450), hp=600, armor=2, size=3, build_time=35.0, sight=4, supply=0, hotkey='m', summary='Lumber is delivered here; researches better arrows', trains=(), researches=(Upgrade.ARROWS_1, Upgrade.ARROWS_2, Upgrade.ARROWS_3, Upgrade.MARKSMANSHIP, Upgrade.LONGBOWS, Upgrade.REGROWTH), requires=BuildingType.TOWN_HALL, deposits=frozenset({Resource.LUMBER}), damage=0, range=0.0, cooldown=1.0),
+    BuildingType.BLACKSMITH: BuildingInfo(name='Blacksmith', cost=Cost(800, 450), hp=600, armor=3, size=3, build_time=40.0, sight=4, supply=0, hotkey='k', summary='Researches sharper blades and plate armour', trains=(), researches=(Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.BLADES_3, Upgrade.ARMOR_1, Upgrade.ARMOR_2, Upgrade.BLOODLUST, Upgrade.DEEP_MINING), requires=BuildingType.BARRACKS, damage=0, range=0.0, cooldown=1.0),
+    BuildingType.STABLES: BuildingInfo(name='Stables', cost=Cost(1000, 300), hp=700, armor=3, size=3, build_time=45.0, sight=4, supply=0, hotkey='s', summary='Trains scouts and knights; breeds faster horses', trains=(UnitType.SCOUT, UnitType.KNIGHT), researches=(Upgrade.HORSES, Upgrade.PLUNDER), requires=BuildingType.BARRACKS, damage=0, range=0.0, cooldown=1.0),
+    BuildingType.WORKSHOP: BuildingInfo(name='Workshop', cost=Cost(700, 350), hp=600, armor=3, size=3, build_time=45.0, sight=4, supply=0, hotkey='w', summary='Builds catapults; improves siege engines', trains=(UnitType.CATAPULT,), researches=(Upgrade.SIEGE, Upgrade.BLASTING_POWDER), requires=BuildingType.BLACKSMITH, damage=0, range=0.0, cooldown=1.0),
+    BuildingType.CHURCH: BuildingInfo(name='Church', cost=Cost(900, 400), hp=600, armor=3, size=3, build_time=45.0, sight=5, supply=0, hotkey='c', summary='Trains clerics; blesses their healing', trains=(UnitType.CLERIC,), researches=(Upgrade.BLESSING,), requires=BuildingType.BARRACKS, damage=0, range=0.0, cooldown=1.0),
+    BuildingType.GOLD_MINE: BuildingInfo(name='Gold Mine', cost=Cost(0), hp=0, armor=0, size=3, build_time=0.0, sight=0, supply=0, hotkey='', summary='Peasants mine gold here', trains=(), researches=(), damage=0, range=0.0, cooldown=1.0, mine=MineInfo(trip=100, slots=8)),
+    BuildingType.GOLD_SEAM: BuildingInfo(name='Gold Seam', cost=Cost(0), hp=0, armor=0, size=5, build_time=0.0, sight=0, supply=0, hotkey='', summary=f'A wide seam that never runs dry: {SEAM_PER_TRIP} gold a trip', trains=(), researches=(), damage=0, range=0.0, cooldown=1.0, mine=MineInfo(trip=20, slots=12, endless=True)),
+    BuildingType.LAIR: BuildingInfo(name='Lair', cost=Cost(0), hp=900, armor=2, size=3, build_time=0.0, sight=4, supply=0, hotkey='', summary='A creature den: its guards come back from it until it is torn down', trains=(), researches=(), damage=0, range=0.0, cooldown=1.0),
 }
+# generated-end buildings
 
 
 @dataclass(frozen=True)
@@ -389,36 +357,29 @@ class UpgradeInfo:
     race: Race | None = None  # a race art: nobody else can research it
 
 
+# generated-begin upgrades: from warband/sim/upgrades.toml — do not edit by hand; run tools/balance_tables.py
 UPGRADES: Final[dict[Upgrade, UpgradeInfo]] = {
-    Upgrade.KEEP: UpgradeInfo("Keep", Cost(1500, 800), 90.0, "k", "Keep", "Raises the hall, opening the upper tiers"),
-    Upgrade.BLADES_1: UpgradeInfo("Sharpened Blades", Cost(500, 100), 40.0, "b", "Blades I", "+2 damage for melee units"),
-    Upgrade.BLADES_2: UpgradeInfo("Tempered Blades", Cost(1500, 300), 60.0, "b", "Blades II", "+2 more damage for melee units",
-                                  requires=(Upgrade.BLADES_1, Upgrade.KEEP)),
-    Upgrade.BLADES_3: UpgradeInfo("Masterwork Blades", Cost(3000, 600), 120.0, "b", "Blades III", "+4 more damage for melee units",
-                                  requires=(Upgrade.BLADES_2, Upgrade.KEEP)),
-    Upgrade.ARMOR_1: UpgradeInfo("Plate Armour", Cost(300, 300), 40.0, "a", "Armour I", "+1 armour for soldiers"),
-    Upgrade.ARMOR_2: UpgradeInfo("Heavy Plate", Cost(900, 500), 60.0, "a", "Armour II", "+1 more armour for soldiers",
-                                 requires=(Upgrade.ARMOR_1, Upgrade.KEEP)),
-    Upgrade.ARROWS_1: UpgradeInfo("Bodkin Arrows", Cost(300, 300), 40.0, "r", "Arrows I", "+2 damage for archers and towers"),
-    Upgrade.ARROWS_2: UpgradeInfo("Broadhead Arrows", Cost(900, 500), 60.0, "r", "Arrows II", "+2 more damage for archers and towers",
-                                  requires=(Upgrade.ARROWS_1, Upgrade.KEEP)),
-    Upgrade.ARROWS_3: UpgradeInfo("Masterwork Arrows", Cost(1800, 1000), 120.0, "r", "Arrows III",
-                                  "+4 more damage for archers and towers", requires=(Upgrade.ARROWS_2, Upgrade.KEEP)),
-    Upgrade.SIEGE: UpgradeInfo("Siege Engineering", Cost(1000, 500), 60.0, "e", "Siege", "+1 range and +25 % damage for siege engines"),
-    Upgrade.MARKSMANSHIP: UpgradeInfo("Marksmanship", Cost(600, 300), 45.0, "m", "Marksmen",
-                                      "Shooters pick the mark in reach they fell soonest and waste no arrow on the dying"),
-    Upgrade.HORSES: UpgradeInfo("Horse Breeding", Cost(900, 300), 50.0, "h", "Horses", "+0.8 speed for scouts and knights", race=Race.HUMAN),
-    Upgrade.BLESSING: UpgradeInfo("Blessing", Cost(800, 400), 50.0, "l", "Blessing", "Clerics heal half again as fast", race=Race.HUMAN),
-    Upgrade.BLOODLUST: UpgradeInfo("Bloodlust", Cost(700, 300), 50.0, "l", "Bloodlust", "Frenzy doubles: wounded orcs deal +50 % damage",
-                                   race=Race.ORC),
-    Upgrade.PLUNDER: UpgradeInfo("Plunder", Cost(600, 200), 45.0, "h", "Plunder", "Razing a building loots a fifth of its gold", race=Race.ORC),
-    Upgrade.LONGBOWS: UpgradeInfo("Longbows", Cost(700, 400), 50.0, "l", "Longbows", "+1 range for rangers and towers", race=Race.ELF),
-    Upgrade.REGROWTH: UpgradeInfo("Regrowth", Cost(500, 500), 45.0, "g", "Regrowth", "Trees felled by elves grow back after a minute",
-                                  race=Race.ELF),
-    Upgrade.DEEP_MINING: UpgradeInfo("Deep Mining", Cost(600, 300), 45.0, "d", "Mining", "Miners bring 150 gold per trip", race=Race.DWARF),
-    Upgrade.BLASTING_POWDER: UpgradeInfo("Blasting Powder", Cost(900, 400), 50.0, "p", "Powder", "Mortar splash reaches half again as far",
-                                         race=Race.DWARF),
+    Upgrade.KEEP: UpgradeInfo(name='Keep', cost=Cost(1500, 800), time=90.0, hotkey='k', card='Keep', summary='Raises the hall, opening the upper tiers', requires=()),
+    Upgrade.BLADES_1: UpgradeInfo(name='Sharpened Blades', cost=Cost(500, 100), time=40.0, hotkey='b', card='Blades I', summary='+2 damage for melee units', requires=()),
+    Upgrade.BLADES_2: UpgradeInfo(name='Tempered Blades', cost=Cost(1500, 300), time=60.0, hotkey='b', card='Blades II', summary='+2 more damage for melee units', requires=(Upgrade.BLADES_1, Upgrade.KEEP)),
+    Upgrade.BLADES_3: UpgradeInfo(name='Masterwork Blades', cost=Cost(3000, 600), time=120.0, hotkey='b', card='Blades III', summary='+4 more damage for melee units', requires=(Upgrade.BLADES_2, Upgrade.KEEP)),
+    Upgrade.ARMOR_1: UpgradeInfo(name='Plate Armour', cost=Cost(300, 300), time=40.0, hotkey='a', card='Armour I', summary='+1 armour for soldiers', requires=()),
+    Upgrade.ARMOR_2: UpgradeInfo(name='Heavy Plate', cost=Cost(900, 500), time=60.0, hotkey='a', card='Armour II', summary='+1 more armour for soldiers', requires=(Upgrade.ARMOR_1, Upgrade.KEEP)),
+    Upgrade.ARROWS_1: UpgradeInfo(name='Bodkin Arrows', cost=Cost(300, 300), time=40.0, hotkey='r', card='Arrows I', summary='+2 damage for archers and towers', requires=()),
+    Upgrade.ARROWS_2: UpgradeInfo(name='Broadhead Arrows', cost=Cost(900, 500), time=60.0, hotkey='r', card='Arrows II', summary='+2 more damage for archers and towers', requires=(Upgrade.ARROWS_1, Upgrade.KEEP)),
+    Upgrade.ARROWS_3: UpgradeInfo(name='Masterwork Arrows', cost=Cost(1800, 1000), time=120.0, hotkey='r', card='Arrows III', summary='+4 more damage for archers and towers', requires=(Upgrade.ARROWS_2, Upgrade.KEEP)),
+    Upgrade.SIEGE: UpgradeInfo(name='Siege Engineering', cost=Cost(1000, 500), time=60.0, hotkey='e', card='Siege', summary='+1 range and +25 % damage for siege engines', requires=()),
+    Upgrade.MARKSMANSHIP: UpgradeInfo(name='Marksmanship', cost=Cost(600, 300), time=45.0, hotkey='m', card='Marksmen', summary='Shooters pick the mark in reach they fell soonest and waste no arrow on the dying', requires=()),
+    Upgrade.HORSES: UpgradeInfo(name='Horse Breeding', cost=Cost(900, 300), time=50.0, hotkey='h', card='Horses', summary='+0.8 speed for scouts and knights', requires=(), race=Race.HUMAN),
+    Upgrade.BLESSING: UpgradeInfo(name='Blessing', cost=Cost(800, 400), time=50.0, hotkey='l', card='Blessing', summary='Clerics heal half again as fast', requires=(), race=Race.HUMAN),
+    Upgrade.BLOODLUST: UpgradeInfo(name='Bloodlust', cost=Cost(700, 300), time=50.0, hotkey='l', card='Bloodlust', summary='Frenzy doubles: wounded orcs deal +50 % damage', requires=(), race=Race.ORC),
+    Upgrade.PLUNDER: UpgradeInfo(name='Plunder', cost=Cost(600, 200), time=45.0, hotkey='h', card='Plunder', summary='Razing a building loots a fifth of its gold', requires=(), race=Race.ORC),
+    Upgrade.LONGBOWS: UpgradeInfo(name='Longbows', cost=Cost(700, 400), time=50.0, hotkey='l', card='Longbows', summary='+1 range for rangers and towers', requires=(), race=Race.ELF),
+    Upgrade.REGROWTH: UpgradeInfo(name='Regrowth', cost=Cost(500, 500), time=45.0, hotkey='g', card='Regrowth', summary='Trees felled by elves grow back after a minute', requires=(), race=Race.ELF),
+    Upgrade.DEEP_MINING: UpgradeInfo(name='Deep Mining', cost=Cost(600, 300), time=45.0, hotkey='d', card='Mining', summary='Miners bring 150 gold per trip', requires=(), race=Race.DWARF),
+    Upgrade.BLASTING_POWDER: UpgradeInfo(name='Blasting Powder', cost=Cost(900, 400), time=50.0, hotkey='p', card='Powder', summary='Mortar splash reaches half again as far', requires=(), race=Race.DWARF),
 }
+# generated-end upgrades
 
 BLADES_BONUS: Final = 2
 #: The master weapons are worth two of the tiers below them, for well over twice their price and twice their hour.

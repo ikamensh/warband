@@ -64,7 +64,9 @@ the compiled simulation attaches after they load.
   saves); no saga2d dependency, so rules are tested directly. A blow turns,
   winds up and lands; shots are `Projectile`s that land later, stones on the
   ground they were fired at (`docs/unit-motion.md` part 4). `rules.py` holds
-  the tables, `races.py` the four races' names, numbers and arts, `path.py`
+   the tables (generated from `units.toml`, `buildings.toml`, `upgrades.toml`
+   by `tools/balance_tables.py`; never edit a GENERATED region by hand),
+   `races.py` the four races' names, numbers and arts (generated from `races.toml`), `path.py`
   bounded A* on a budget that grows with the map, `mapgen.py` the five map
   layouts, the grid of congruent cells that deals two to sixteen seats one each,
   and the audit (`grid`, `dimensions`, `refusal`, `offered`, `sizes_for` and

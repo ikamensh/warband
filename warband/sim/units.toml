@@ -1,0 +1,244 @@
+# Warband's units: every soldier, worker and creature in one place.
+#
+# This is the file to edit to change what a unit costs, how hard it hits and
+# how fast it trains. After editing, run from the repository root:
+#
+#     uv run python tools/balance_tables.py
+#
+# which rewrites the matching tables in warband/sim/rules.py (marked GENERATED
+# there; never edit those regions by hand). tests/warband/test_balance_tables.py
+# fails until the two agree, so a tuned checkout cannot be committed half-applied.
+#
+# Conventions: times are seconds, distances tiles. `range = "melee"` is the
+# shared melee reach (rules.MELEE: a blow from the next tile over, diagonals
+# included); anything else is a distance in tiles. `turn_deg` is degrees per
+# second. Costs are `gold` and `lumber` (omit lumber when it is zero).
+#
+# What is NOT here: how a blow lands (warband/sim/model.py), what an upgrade
+# adds to a stat (the *_BONUS constants in rules.py), the per-race tweaks
+# (races.toml: orc hit points, elf speed, dwarf armour), and the neutral
+# creatures' placement and respawn (CAMP_* in rules.py, warband/sim/camps.py).
+# The body `radius` is shared by every race and never jittered by balance
+# variants (rules.MAX_UNIT_RADIUS); changing one moves pathing and combat for
+# every army, so think twice.
+
+[peasant]
+name = "Peasant"
+gold = 400
+hp = 30
+damage = 3
+armor = 0
+range = "melee"
+cooldown = 1.0
+speed = 2.4
+sight = 4
+build_time = 12.0
+trained_at = "town_hall"
+hotkey = "p"
+summary = "Mines gold, chops lumber, builds and repairs"
+radius = 0.36
+windup = 0.25
+turn_deg = 360
+armor_class = "unarmoured"
+
+[footman]
+name = "Footman"
+gold = 600
+hp = 60
+damage = 7
+armor = 3
+range = "melee"
+cooldown = 1.0
+speed = 2.0
+sight = 5
+build_time = 15.0
+trained_at = "barracks"
+hotkey = "f"
+summary = "Slow shield-wall swordsman; tougher with a comrade at each side"
+radius = 0.42
+windup = 0.3
+turn_deg = 360
+armor_class = "heavy"
+formation = true
+
+[archer]
+name = "Archer"
+gold = 500
+lumber = 50
+hp = 40
+damage = 6
+armor = 0
+range = 4.0
+cooldown = 1.3
+speed = 2.4
+sight = 6
+build_time = 14.0
+trained_at = "barracks"
+hotkey = "a"
+summary = "Shoots from four tiles away; fragile up close"
+radius = 0.42
+windup = 0.35
+turn_deg = 360
+attack = "piercing"
+armor_class = "light"
+
+[scout]
+name = "Scout"
+gold = 350
+hp = 35
+damage = 4
+armor = 0
+range = "melee"
+cooldown = 0.8
+speed = 4.2
+sight = 8
+build_time = 10.0
+trained_at = "stables"
+hotkey = "s"
+summary = "Fast rider who sees far; raids peasants and archers"
+radius = 0.48
+windup = 0.25
+turn_deg = 450
+mounted = true
+
+[knight]
+name = "Knight"
+gold = 900
+lumber = 100
+hp = 90
+damage = 10
+armor = 4
+range = "melee"
+cooldown = 1.0
+speed = 3.4
+sight = 5
+build_time = 20.0
+trained_at = "stables"
+hotkey = "k"
+summary = "Fast, heavily armoured shock cavalry"
+radius = 0.56
+windup = 0.35
+turn_deg = 270
+armor_class = "heavy"
+mounted = true
+
+[catapult]
+name = "Catapult"
+gold = 900
+lumber = 300
+hp = 80
+damage = 36
+armor = 0
+range = 7.0
+cooldown = 4.0
+speed = 1.6
+sight = 6
+build_time = 30.0
+trained_at = "workshop"
+hotkey = "c"
+summary = "Slow siege engine: stones land where aimed, splash friend and foe, ×1.5 against buildings"
+radius = 0.62
+splash = 1.2
+windup = 0.8
+turn_deg = 150
+min_range = 2.0
+attack = "siege"
+armor_class = "unarmoured"
+
+[cleric]
+name = "Cleric"
+gold = 700
+lumber = 50
+hp = 40
+damage = 3
+armor = 0
+range = 3.0
+cooldown = 2.0
+speed = 2.4
+sight = 5
+build_time = 20.0
+trained_at = "church"
+hotkey = "h" # H for healer: L is Blessing at the church
+summary = "Heals a wounded ally 15 at a cast; a weak blow when no one needs it"
+radius = 0.38
+heal = 15
+windup = 0.5
+turn_deg = 360
+armor_class = "unarmoured"
+
+# -- The wilds -----------------------------------------------------------------
+# Neutral creatures guard the contested deposits (docs/warband-monsters.md).
+# Nobody trains them and no race names or tweaks them: their numbers are used
+# as they stand. No hotkey, no build time, trained "at" the lair for form's sake.
+
+[wolf]
+name = "Dire Wolf"
+hp = 40
+damage = 6
+armor = 0
+range = "melee"
+cooldown = 0.9
+speed = 4.0
+sight = 7
+build_time = 0.0
+trained_at = "lair"
+hotkey = ""
+summary = "A pack hunter: fast, fragile and never alone"
+radius = 0.40
+windup = 0.2
+turn_deg = 450
+
+[spider]
+name = "Venom Spider"
+hp = 45
+damage = 8
+armor = 0
+range = 5.0
+cooldown = 1.6
+speed = 2.2
+sight = 7
+build_time = 0.0
+trained_at = "lair"
+hotkey = ""
+summary = "Spits venom from five tiles; helpless once something reaches it"
+radius = 0.45
+windup = 0.4
+turn_deg = 360
+
+[troll]
+name = "Troll"
+hp = 220
+damage = 14
+armor = 0
+range = "melee"
+cooldown = 1.4
+speed = 1.9
+sight = 6
+build_time = 0.0
+trained_at = "lair"
+hotkey = ""
+summary = "Bare-skinned and hard to put down; knits its wounds back once left alone"
+radius = 0.58
+windup = 0.45
+turn_deg = 360
+armor_class = "unarmoured"
+regen = 8.0 # hit points per second, out of combat only (rules.REGEN_CALM)
+
+[golem]
+name = "Stone Golem"
+hp = 170
+damage = 18
+armor = 2
+range = "melee"
+cooldown = 2.5
+speed = 1.3
+sight = 5
+build_time = 0.0
+trained_at = "lair"
+hotkey = ""
+summary = "Slams the ground: every enemy around its mark is caught"
+radius = 0.60
+splash = 1.3 # a brute's slam, not aimed siege: it never judges its own blow
+windup = 0.7
+turn_deg = 150
+armor_class = "heavy"

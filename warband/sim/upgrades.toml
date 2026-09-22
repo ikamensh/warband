@@ -1,0 +1,206 @@
+# Warband's upgrades: what research costs, how long it takes, who may buy it.
+#
+# This is the file to edit to change a price or a research time. After editing,
+# run from the repository root:
+#
+#     uv run python tools/balance_tables.py
+#
+# which rewrites the matching table in warband/sim/rules.py (marked GENERATED
+# there; never edit that region by hand). tests/warband/test_balance_tables.py
+# fails until the two agree, so a tuned checkout cannot be committed half-applied.
+#
+# Conventions: `time` is seconds. `requires` names the upgrades (and, by
+# convention, the Keep) that must be researched first; omit it when there are
+# none. `race` names the one race that may research a race art; omit it for
+# the shared ladder every race climbs. `card` is the short name on the
+# command-card button; `hotkey` its key.
+#
+# What is NOT here: what an upgrade DOES (the *_BONUS constants in rules.py,
+# applied in model.py: blades add BLADES_BONUS damage, plate adds ARMOR_BONUS
+# armour, and so on). A price change lives here; an effect change lives there.
+
+[keep]
+name = "Keep"
+gold = 1500
+lumber = 800
+time = 90.0
+hotkey = "k"
+card = "Keep"
+summary = "Raises the hall, opening the upper tiers"
+
+[blades_1]
+name = "Sharpened Blades"
+gold = 500
+lumber = 100
+time = 40.0
+hotkey = "b"
+card = "Blades I"
+summary = "+2 damage for melee units"
+
+[blades_2]
+name = "Tempered Blades"
+gold = 1500
+lumber = 300
+time = 60.0
+hotkey = "b"
+card = "Blades II"
+summary = "+2 more damage for melee units"
+requires = ["blades_1", "keep"]
+
+[blades_3]
+name = "Masterwork Blades"
+gold = 3000
+lumber = 600
+time = 120.0
+hotkey = "b"
+card = "Blades III"
+summary = "+4 more damage for melee units"
+requires = ["blades_2", "keep"]
+
+[armor_1]
+name = "Plate Armour"
+gold = 300
+lumber = 300
+time = 40.0
+hotkey = "a"
+card = "Armour I"
+summary = "+1 armour for soldiers"
+
+[armor_2]
+name = "Heavy Plate"
+gold = 900
+lumber = 500
+time = 60.0
+hotkey = "a"
+card = "Armour II"
+summary = "+1 more armour for soldiers"
+requires = ["armor_1", "keep"]
+
+[arrows_1]
+name = "Bodkin Arrows"
+gold = 300
+lumber = 300
+time = 40.0
+hotkey = "r"
+card = "Arrows I"
+summary = "+2 damage for archers and towers"
+
+[arrows_2]
+name = "Broadhead Arrows"
+gold = 900
+lumber = 500
+time = 60.0
+hotkey = "r"
+card = "Arrows II"
+summary = "+2 more damage for archers and towers"
+requires = ["arrows_1", "keep"]
+
+[arrows_3]
+name = "Masterwork Arrows"
+gold = 1800
+lumber = 1000
+time = 120.0
+hotkey = "r"
+card = "Arrows III"
+summary = "+4 more damage for archers and towers"
+requires = ["arrows_2", "keep"]
+
+[siege]
+name = "Siege Engineering"
+gold = 1000
+lumber = 500
+time = 60.0
+hotkey = "e"
+card = "Siege"
+summary = "+1 range and +25 % damage for siege engines"
+
+[marksmanship]
+name = "Marksmanship"
+gold = 600
+lumber = 300
+time = 45.0
+hotkey = "m"
+card = "Marksmen"
+summary = "Shooters pick the mark in reach they fell soonest and waste no arrow on the dying"
+
+# -- Race arts: only that race researches them (races.toml says which) --------
+
+[horses]
+name = "Horse Breeding"
+gold = 900
+lumber = 300
+time = 50.0
+hotkey = "h"
+card = "Horses"
+summary = "+0.8 speed for scouts and knights"
+race = "human"
+
+[blessing]
+name = "Blessing"
+gold = 800
+lumber = 400
+time = 50.0
+hotkey = "l"
+card = "Blessing"
+summary = "Clerics heal half again as fast"
+race = "human"
+
+[bloodlust]
+name = "Bloodlust"
+gold = 700
+lumber = 300
+time = 50.0
+hotkey = "l"
+card = "Bloodlust"
+summary = "Frenzy doubles: wounded orcs deal +50 % damage"
+race = "orc"
+
+[plunder]
+name = "Plunder"
+gold = 600
+lumber = 200
+time = 45.0
+hotkey = "h"
+card = "Plunder"
+summary = "Razing a building loots a fifth of its gold"
+race = "orc"
+
+[longbows]
+name = "Longbows"
+gold = 700
+lumber = 400
+time = 50.0
+hotkey = "l"
+card = "Longbows"
+summary = "+1 range for rangers and towers"
+race = "elf"
+
+[regrowth]
+name = "Regrowth"
+gold = 500
+lumber = 500
+time = 45.0
+hotkey = "g"
+card = "Regrowth"
+summary = "Trees felled by elves grow back after a minute"
+race = "elf"
+
+[deep_mining]
+name = "Deep Mining"
+gold = 600
+lumber = 300
+time = 45.0
+hotkey = "d"
+card = "Mining"
+summary = "Miners bring 150 gold per trip"
+race = "dwarf"
+
+[blasting_powder]
+name = "Blasting Powder"
+gold = 900
+lumber = 400
+time = 50.0
+hotkey = "p"
+card = "Powder"
+summary = "Mortar splash reaches half again as far"
+race = "dwarf"

@@ -39,6 +39,29 @@ its knobs that each commit to one way of playing — `warband/league/archetypes.
 A posture is checked to be what its name says: the report prints what each
 one fielded per game.
 
+## Tuning the numbers
+
+Edit the TOML, not the Python. The whole balance surface is four commented
+files beside the simulation:
+
+- `warband/sim/units.toml` — every soldier, worker and creature: cost, hit
+  points, damage, armour, range, timings, sight, body.
+- `warband/sim/buildings.toml` — every building: cost, hit points, work, the
+  tower's shot, and the two deposits (gold per trip, places at the face).
+- `warband/sim/upgrades.toml` — every research: price and time.
+- `warband/sim/races.toml` — what each race renames and retunes on top.
+
+Then run `uv run python tools/balance_tables.py` from the repository root,
+which rewrites the GENERATED regions of `warband/sim/rules.py` and `races.py`.
+`tests/warband/test_balance_tables.py` fails until the two agree, so a tuned
+checkout cannot be committed half-applied. What is deliberately not in the
+TOML stays in code: what an upgrade *does* (the `*_BONUS` constants in
+`rules.py`), how a blow lands (`model.py`), the race passives' mechanics, and
+the map generator's stocks.
+
+To *try* a price before committing to it, skip the files: a `scale:` variant
+patches the numbers in every worker for one league — see below.
+
 ## Running it
 
 ```bash

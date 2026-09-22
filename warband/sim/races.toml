@@ -1,0 +1,659 @@
+# Warband's races: what differs on top of the shared skeleton.
+#
+# This is the file to edit to rename a race's units, retune its edge, or move
+# an art. After editing, run from the repository root:
+#
+#     uv run python tools/balance_tables.py
+#
+# which rewrites the matching tables in warband/sim/races.py (marked GENERATED
+# there; never edit those regions by hand). tests/warband/test_balance_tables.py
+# fails until the two agree, so a tuned checkout cannot be committed half-applied.
+#
+# Every race fields the same seven roles from the same nine buildings with the
+# same hotkeys and costs (units.toml, buildings.toml), so the AI, the
+# settlement planner, saves and the online protocol never care who is playing.
+# A unit entry here tweaks the shared role: `hp_mult`, `damage_mult` and
+# `build_time_mult` multiply the base value, `armor_add`, `range_add`,
+# `speed_add` and `sight_add` add to it (`range_add` only matters for ranged
+# units), and `formation = false` opts a unit out of the shield-wall line.
+# A building entry renames it and multiplies its hit points (`hp_mult`) or
+# adds armour (`armor_add`). An upgrade entry only renames it (upgrades.toml
+# holds the price); only the Keep is renamed so far.
+#
+# What is NOT here: the passive mechanics themselves (Drill, Frenzy, keen
+# eyes, Stonework are applied in model.py from the *_BONUS constants in
+# rules.py). The human `build_time_mult = 0.85` below IS Drill; the orc
+# toughness here is the half of Frenzy you can see on the card. The look of
+# every unit and building lives in warband/art/textures.py.
+
+[human]
+name = "Humans"
+adjective = "Human"
+tagline = "Drilled, balanced, and blessed with the fastest horses"
+passive = "Drill: every unit trains 15 % faster"
+arts = ["horses", "blessing"]
+
+[human.units.peasant]
+name = "Peasant"
+summary = "Mines gold, chops lumber, builds, repairs"
+hp_mult = 1.0
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.0
+sight_add = 0
+build_time_mult = 0.85
+formation = true
+
+[human.units.footman]
+name = "Footman"
+summary = "Slow shield-wall swordsman; tougher with a comrade at each side"
+hp_mult = 1.0
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.0
+sight_add = 0
+build_time_mult = 0.85
+formation = true
+
+[human.units.archer]
+name = "Archer"
+summary = "Shoots from four tiles; fragile up close"
+hp_mult = 1.0
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.0
+sight_add = 0
+build_time_mult = 0.85
+formation = true
+
+[human.units.scout]
+name = "Scout"
+summary = "Fast rider who sees far; raids workers"
+hp_mult = 1.0
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.0
+sight_add = 0
+build_time_mult = 0.85
+formation = true
+
+[human.units.knight]
+name = "Knight"
+summary = "Fast, heavily armoured shock cavalry"
+hp_mult = 1.0
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.0
+sight_add = 0
+build_time_mult = 0.85
+formation = true
+
+[human.units.catapult]
+name = "Catapult"
+summary = "Siege engine: splash, ×1.5 vs buildings"
+hp_mult = 1.0
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.0
+sight_add = 0
+build_time_mult = 0.85
+formation = true
+
+[human.units.cleric]
+name = "Cleric"
+summary = "Heals wounded allies; smites weakly when none need healing"
+hp_mult = 1.0
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.0
+sight_add = 0
+build_time_mult = 0.85
+formation = true
+
+[human.buildings.town_hall]
+name = "Town Hall"
+card = "Hall"
+summary = "Trains peasants; takes gold and lumber"
+hp_mult = 1.0
+armor_add = 0
+
+[human.buildings.farm]
+name = "Farm"
+card = "Farm"
+summary = "Feeds four units"
+hp_mult = 1.0
+armor_add = 0
+
+[human.buildings.barracks]
+name = "Barracks"
+card = "Barracks"
+summary = "Trains footmen and archers"
+hp_mult = 1.0
+armor_add = 0
+
+[human.buildings.tower]
+name = "Guard Tower"
+card = "Tower"
+summary = "Shoots at enemies six tiles away"
+hp_mult = 1.0
+armor_add = 0
+
+[human.buildings.lumber_mill]
+name = "Lumber Mill"
+card = "Mill"
+summary = "Takes lumber; researches better arrows"
+hp_mult = 1.0
+armor_add = 0
+
+[human.buildings.blacksmith]
+name = "Blacksmith"
+card = "Smith"
+summary = "Researches sharper blades and plate armour"
+hp_mult = 1.0
+armor_add = 0
+
+[human.buildings.stables]
+name = "Stables"
+card = "Stables"
+summary = "Trains scouts and knights; breeds horses"
+hp_mult = 1.0
+armor_add = 0
+
+[human.buildings.workshop]
+name = "Workshop"
+card = "Workshop"
+summary = "Builds catapults; improves siege engines"
+hp_mult = 1.0
+armor_add = 0
+
+[human.buildings.church]
+name = "Church"
+card = "Church"
+summary = "Trains clerics; blesses their healing"
+hp_mult = 1.0
+armor_add = 0
+
+[human.upgrades.keep]
+name = "Keep"
+card = "Keep"
+
+[orc]
+name = "Orcs"
+adjective = "Orcish"
+tagline = "Tough, savage, and deadliest when bleeding"
+passive = "Frenzy: soldiers below half health deal +25 % damage"
+arts = ["bloodlust", "plunder"]
+
+[orc.units.peasant]
+name = "Peon"
+summary = "Digs gold, hacks lumber, builds and repairs"
+hp_mult = 1.15
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.0
+sight_add = 0
+build_time_mult = 1.0
+formation = true
+
+[orc.units.footman]
+name = "Grunt"
+summary = "Brutal axeman, fast and alone; hits harder as it bleeds"
+hp_mult = 1.15
+damage_mult = 1.1
+armor_add = -2
+range_add = 0.0
+speed_add = 0.4
+sight_add = 0
+build_time_mult = 1.0
+formation = false
+
+[orc.units.archer]
+name = "Axethrower"
+summary = "Throws axes four tiles; a sturdy shooter"
+hp_mult = 1.15
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.0
+sight_add = 0
+build_time_mult = 1.0
+formation = true
+
+[orc.units.scout]
+name = "Wolf Rider"
+summary = "Fast wolf rider; hunts peons and throwers"
+hp_mult = 1.15
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.0
+sight_add = 0
+build_time_mult = 1.0
+formation = true
+
+[orc.units.knight]
+name = "Ogre"
+summary = "Two-headed brute; thin armour, all frenzy"
+hp_mult = 1.2
+damage_mult = 1.1
+armor_add = -1
+range_add = 0.0
+speed_add = 0.0
+sight_add = 0
+build_time_mult = 1.0
+formation = true
+
+[orc.units.catapult]
+name = "Catapult"
+summary = "Skulled siege engine: splash, ×1.5 vs walls"
+hp_mult = 1.15
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.0
+sight_add = 0
+build_time_mult = 1.0
+formation = true
+
+[orc.units.cleric]
+name = "Shaman"
+summary = "Mends wounded allies; hexes weakly when none need mending"
+hp_mult = 1.15
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.0
+sight_add = 0
+build_time_mult = 1.0
+formation = true
+
+[orc.buildings.town_hall]
+name = "Great Hall"
+card = "Hall"
+summary = "Trains peons; takes gold and lumber"
+hp_mult = 1.0
+armor_add = 0
+
+[orc.buildings.farm]
+name = "Pig Farm"
+card = "Pig Farm"
+summary = "Feeds four units"
+hp_mult = 1.0
+armor_add = 0
+
+[orc.buildings.barracks]
+name = "War Camp"
+card = "War Camp"
+summary = "Trains grunts and axethrowers"
+hp_mult = 1.0
+armor_add = 0
+
+[orc.buildings.tower]
+name = "Watch Tower"
+card = "Tower"
+summary = "Hurls axes at enemies six tiles away"
+hp_mult = 1.0
+armor_add = 0
+
+[orc.buildings.lumber_mill]
+name = "Sawmill"
+card = "Sawmill"
+summary = "Takes lumber; researches heavier axes"
+hp_mult = 1.0
+armor_add = 0
+
+[orc.buildings.blacksmith]
+name = "Forge"
+card = "Forge"
+summary = "Researches blades, hide armour, Bloodlust"
+hp_mult = 1.0
+armor_add = 0
+
+[orc.buildings.stables]
+name = "Kennels"
+card = "Kennels"
+summary = "Trains wolf riders and ogres; Plunder"
+hp_mult = 1.0
+armor_add = 0
+
+[orc.buildings.workshop]
+name = "Siege Yard"
+card = "Yard"
+summary = "Builds catapults; improves siege engines"
+hp_mult = 1.0
+armor_add = 0
+
+[orc.buildings.church]
+name = "Altar"
+card = "Altar"
+summary = "Trains shamans"
+hp_mult = 1.0
+armor_add = 0
+
+[orc.upgrades.keep]
+name = "Stronghold"
+card = "Stronghold"
+
+[elf]
+name = "Elves"
+adjective = "Elven"
+tagline = "Swift, far-sighted, and at home among the trees"
+passive = "Keen eyes: +2 sight for every unit, rangers shoot a tile farther"
+arts = ["longbows", "regrowth"]
+
+[elf.units.peasant]
+name = "Gatherer"
+summary = "Mines gold, fells trees, builds and repairs"
+hp_mult = 0.95
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.15
+sight_add = 2
+build_time_mult = 1.0
+formation = true
+
+[elf.units.footman]
+name = "Sentinel"
+summary = "Light swordsman in a line; quick on their feet"
+hp_mult = 0.95
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.15
+sight_add = 2
+build_time_mult = 1.0
+formation = true
+
+[elf.units.archer]
+name = "Ranger"
+summary = "Shoots from five tiles; fragile up close"
+hp_mult = 0.95
+damage_mult = 1.0
+armor_add = 0
+range_add = 1.0
+speed_add = 0.15
+sight_add = 2
+build_time_mult = 1.0
+formation = true
+
+[elf.units.scout]
+name = "Outrider"
+summary = "Fleet deer rider who sees farthest of all"
+hp_mult = 0.95
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.15
+sight_add = 2
+build_time_mult = 1.0
+formation = true
+
+[elf.units.knight]
+name = "Stag Knight"
+summary = "Antlered shock cavalry, swift but light"
+hp_mult = 0.95
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.15
+sight_add = 2
+build_time_mult = 1.0
+formation = true
+
+[elf.units.catapult]
+name = "Ballista"
+summary = "Living-wood siege engine: splash, ×1.5"
+hp_mult = 0.95
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.15
+sight_add = 2
+build_time_mult = 1.0
+formation = true
+
+[elf.units.cleric]
+name = "Druid"
+summary = "Tends wounded allies; stings weakly when none need tending"
+hp_mult = 0.95
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = 0.15
+sight_add = 2
+build_time_mult = 1.0
+formation = true
+
+[elf.buildings.town_hall]
+name = "Moon Hall"
+card = "Hall"
+summary = "Trains gatherers; takes gold and lumber"
+hp_mult = 1.0
+armor_add = 0
+
+[elf.buildings.farm]
+name = "Orchard"
+card = "Orchard"
+summary = "Feeds four units"
+hp_mult = 1.0
+armor_add = 0
+
+[elf.buildings.barracks]
+name = "Warden Lodge"
+card = "Lodge"
+summary = "Trains sentinels and rangers"
+hp_mult = 1.0
+armor_add = 0
+
+[elf.buildings.tower]
+name = "Watch Tree"
+card = "Eyrie"
+summary = "Shoots at enemies six tiles away"
+hp_mult = 1.0
+armor_add = 0
+
+[elf.buildings.lumber_mill]
+name = "Grove Mill"
+card = "Mill"
+summary = "Takes lumber; arrows, Longbows and Regrowth"
+hp_mult = 1.0
+armor_add = 0
+
+[elf.buildings.blacksmith]
+name = "Silversmith"
+card = "Smith"
+summary = "Researches keener blades and silver mail"
+hp_mult = 1.0
+armor_add = 0
+
+[elf.buildings.stables]
+name = "Stag Pens"
+card = "Pens"
+summary = "Trains outriders and stag knights"
+hp_mult = 1.0
+armor_add = 0
+
+[elf.buildings.workshop]
+name = "Siege Bower"
+card = "Bower"
+summary = "Builds ballistae; improves siege engines"
+hp_mult = 1.0
+armor_add = 0
+
+[elf.buildings.church]
+name = "Moonwell"
+card = "Moonwell"
+summary = "Trains druids"
+hp_mult = 1.0
+armor_add = 0
+
+[elf.upgrades.keep]
+name = "Moonspire"
+card = "Moonspire"
+
+[dwarf]
+name = "Dwarves"
+adjective = "Dwarven"
+tagline = "Slow, sturdy, and housed in stone"
+passive = "Stonework: buildings have +25 % hit points and +2 armour"
+arts = ["deep_mining", "blasting_powder"]
+
+[dwarf.units.peasant]
+name = "Miner"
+summary = "Mines gold, chops lumber, builds, repairs"
+hp_mult = 1.1
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = -0.15
+sight_add = 0
+build_time_mult = 1.0
+formation = true
+
+[dwarf.units.footman]
+name = "Ironguard"
+summary = "Armoured axeman in a wall of round shields"
+hp_mult = 1.1
+damage_mult = 1.0
+armor_add = 1
+range_add = 0.0
+speed_add = -0.15
+sight_add = 0
+build_time_mult = 1.0
+formation = true
+
+[dwarf.units.archer]
+name = "Crossbowman"
+summary = "Shoots from four tiles; hardy for a shooter"
+hp_mult = 1.1
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = -0.15
+sight_add = 0
+build_time_mult = 1.0
+formation = true
+
+[dwarf.units.scout]
+name = "Ram Rider"
+summary = "Fast ram rider; raids miners and crossbows"
+hp_mult = 1.1
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = -0.15
+sight_add = 0
+build_time_mult = 1.0
+formation = true
+
+[dwarf.units.knight]
+name = "Bear Rider"
+summary = "Armoured shock cavalry on a war bear"
+hp_mult = 1.1
+damage_mult = 1.0
+armor_add = 1
+range_add = 0.0
+speed_add = -0.15
+sight_add = 0
+build_time_mult = 1.0
+formation = true
+
+[dwarf.units.catapult]
+name = "Mortar"
+summary = "Iron mortar: wide splash, ×1.5 vs buildings"
+hp_mult = 1.1
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = -0.15
+sight_add = 0
+build_time_mult = 1.0
+formation = true
+
+[dwarf.units.cleric]
+name = "Runepriest"
+summary = "Heals wounded allies; strikes weakly when none need healing"
+hp_mult = 1.1
+damage_mult = 1.0
+armor_add = 0
+range_add = 0.0
+speed_add = -0.15
+sight_add = 0
+build_time_mult = 1.0
+formation = true
+
+[dwarf.buildings.town_hall]
+name = "Deep Hold"
+card = "Hold"
+summary = "Trains miners; takes gold and lumber"
+hp_mult = 1.25
+armor_add = 2
+
+[dwarf.buildings.farm]
+name = "Brewhouse"
+card = "Brewery"
+summary = "Feeds four units"
+hp_mult = 1.25
+armor_add = 2
+
+[dwarf.buildings.barracks]
+name = "Guard Hall"
+card = "Barracks"
+summary = "Trains ironguards and crossbowmen"
+hp_mult = 1.25
+armor_add = 2
+
+[dwarf.buildings.tower]
+name = "Bolt Tower"
+card = "Tower"
+summary = "Shoots at enemies six tiles away"
+hp_mult = 1.25
+armor_add = 2
+
+[dwarf.buildings.lumber_mill]
+name = "Timber Works"
+card = "Timber"
+summary = "Takes lumber; researches better bolts"
+hp_mult = 1.25
+armor_add = 2
+
+[dwarf.buildings.blacksmith]
+name = "Forge"
+card = "Forge"
+summary = "Researches axes, plate and Deep Mining"
+hp_mult = 1.25
+armor_add = 2
+
+[dwarf.buildings.stables]
+name = "Beast Pens"
+card = "Pens"
+summary = "Trains ram riders and bear riders"
+hp_mult = 1.25
+armor_add = 2
+
+[dwarf.buildings.workshop]
+name = "Engine Works"
+card = "Engines"
+summary = "Builds mortars; siege and Blasting Powder"
+hp_mult = 1.25
+armor_add = 2
+
+[dwarf.buildings.church]
+name = "Rune Shrine"
+card = "Shrine"
+summary = "Trains runepriests"
+hp_mult = 1.25
+armor_add = 2
+
+[dwarf.upgrades.keep]
+name = "Stonehold"
+card = "Stonehold"

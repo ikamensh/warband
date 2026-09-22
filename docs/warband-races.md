@@ -6,8 +6,10 @@ AI, the settlement planner, saves and the online protocol never care who is
 playing.  What differs: the names, a few numbers per role, two race arts
 (upgrades only that race researches), one passive mechanic the simulation
 applies, the look of every unit and building, the voice of the player's own
-cues, and the march.  `warband/sim/races.py` holds the data; `warband/sim/rules.py`
-holds the skeleton and the arts.
+cues, and the march.  `warband/sim/races.toml` holds the data (generated into
+`races.py` by `tools/balance_tables.py`); `warband/sim/rules.py` holds the
+skeleton and the arts (its tables come from `units.toml`, `buildings.toml`
+and `upgrades.toml` the same way).
 
 | Race    | Character                            | Passive                                             | Arts                                                        |
 |---------|--------------------------------------|-----------------------------------------------------|-------------------------------------------------------------|
