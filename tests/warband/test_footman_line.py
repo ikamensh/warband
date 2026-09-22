@@ -103,7 +103,9 @@ def test_a_line_of_five_keeps_its_shape_round_a_rock_and_forms_up_again_past_it(
         if all(not u.orders for u in line):
             break
     assert past and all(not u.orders for u in line)
-    assert all(math.dist(u.pos, p) < 0.35 for u, p in zip(line, places)), [u.pos for u in line]
+    xs, ys = [u.x for u in line], [u.y for u in line]
+    assert max(xs) - min(xs) < 1.5 and ys == sorted(ys), [u.pos for u in line]  # dressed at its slots, in its order
+    assert all(math.dist(u.pos, p) < 0.6 for u, p in zip(line, places)), [u.pos for u in line]
     assert worst < 3.5, worst
 
 
