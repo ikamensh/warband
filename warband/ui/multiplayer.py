@@ -29,6 +29,9 @@ def _room_memory(game):
 
 
 class NetworkGameScene(GameScene):
+    #: The match plays on elsewhere; freezing snapshots locally would desync it.
+    auto_pause_on_background = False
+
     def __init__(self, session, match=None, *, settings=None):
         self.session, self.match = session, match
         self._revision = session.revision

@@ -357,6 +357,9 @@ class GameScene(Scene):
 
     background_color = (8, 10, 14, 255)
     AUTOSAVE_SLOT = "autosave"
+    #: Pause while the window is in the background, and resume on return.
+    #: A network match keeps playing elsewhere, so it opts out.
+    auto_pause_on_background = True
     controls = {
         "escape": "cancel",
         "f1": "open_help",
@@ -410,6 +413,7 @@ class GameScene(Scene):
         self._site_rng = random.Random(f"sites:{seed}")  # where the planner puts what the player lets it place: not the brains' stream
         self.settlement_row: Row | None = None  # made with the HUD
         self.paused = False
+        self._auto_paused = False  # this pause came from the window going to the background: the return undoes it
         self.speed = 1.0
         self.clock = 0.0
         self.effects = Effects()
@@ -1720,6 +1724,23 @@ class GameScene(Scene):
     def toggle_pause(self) -> None:
         self.paused = not self.paused
         self.sfx("button")
+
+    def on_background(self) -> None:
+        """Freeze an undecided local match while nobody watches; the return resumes it.
+
+        Flag-only, no pause menu: pushing scenes from here would tangle the
+        stack under modal confirmations. A manual pause, a decided match and
+        a network match are left alone.
+        """
+        if (self.auto_pause_on_background and not self.paused and not self._auto_paused
+                and not self._game_over and self.world.winner is None and self.player.alive):
+            self._auto_paused = True
+            self.paused = True
+
+    def on_foreground(self) -> None:
+        if self._auto_paused:
+            self._auto_paused = False
+            self.paused = False
 
     def open_menu(self) -> None:
         self.game.push(self.pause_menu())
