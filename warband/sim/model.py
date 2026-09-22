@@ -144,6 +144,7 @@ REPLAN_EVERY: Final = 0.6  # a unit plans at most this often unless it gets a ne
 REPLAN_STAGGER: Final = 8  # ticks over which units spread their next plans by id, so a crowd does not plan in lockstep
 STEER_RANGE: Final = 4.0  # within this many tiles a unit walks straight at its target when the line is clear, without A*
 LOCAL_EXPANSIONS: Final = 700  # A* budget for the detours around other units; those goals are close
+TRUNK_ROUTES: Final = 64  # shared march corridors kept per static grid: one trunk per shared target and start region
 SETTLE_WITHIN: Final = 0.65  # room beyond its own body a unit wants at its spot; past that it looks for somewhere nearer to stand
 MINE_CLEARANCE: Final = 2  # tiles kept free around a gold deposit so peasants can get in and out
 SIDESTEP: Final = 0.6  # lateral share of the push when walking units collide
@@ -553,6 +554,28 @@ def tile_center(pos: Pos) -> Point:
     return (pos[0] + 0.5, pos[1] + 0.5)
 
 
+def _trunk_side(stations: list[Pos], end: Pos, slot: Pos) -> int:
+    """Which side of the trunk's axis *slot* lies on: the sign of the corridor's heading crossed
+    with the offset from its end to the slot, on-axis counting as 1.  Marches whose slots fan out
+    round both sides of whatever the corridor rounds take one trunk each, so a line still splits.
+    """
+    dx, dy = end[0] - stations[0][0], end[1] - stations[0][1]
+    sx, sy = slot[0] - end[0], slot[1] - end[1]
+    return 1 if dx * sy - dy * sx >= 0 else -1
+
+
+def _corridor_side(stations: list[Pos], end: Pos) -> int:
+    """Which side of its own axis the corridor runs on: the sign of its heading crossed with the
+    offset from its start to its middle tile.  A corridor that tie-breaks to the other side of an
+    obstacle than its slots asked for files under the side it walks, never the side it serves, so
+    two corridors never share a key and followers never funnel through the wrong side.
+    """
+    middle = stations[len(stations) // 2]
+    dx, dy = end[0] - stations[0][0], end[1] - stations[0][1]
+    mx, my = middle[0] - stations[0][0], middle[1] - stations[0][1]
+    return 1 if dx * my - dy * mx >= 0 else -1
+
+
 def _sight_spans(radius: int) -> list[tuple[int, int, bytes]]:
     """Per row offset of a sight disc: how far it reaches sideways (the largest dx with
     dx² + dy² ≤ r² + r) and the run of flags that paints the row."""
@@ -661,6 +684,7 @@ class World:
         self.settlement = Settlement(self)
         self._exposed: set[int] = set()  # players whose last holdings stand revealed
         self._region_map: pathing.Regions | None = None  # walkable regions of the static grid, see _regions()
+        self._route_cache: dict[tuple[Pos, int, int], tuple[list[Pos], Pos]] = {}  # march trunks, see _join_march()
         self._pace_groups: dict[tuple[int, Point, float], bool] = {}  # per step, see _group_together()
         self._line_lag: dict[tuple[int, Point], tuple[float, float, dict[int, float], float, float]] = {}  # per step, see _line()
         self._dangers: dict[int, float] = {}  # per step, see _danger_to()
@@ -1671,6 +1695,11 @@ class World:
         for x, y in building.tiles():
             if self.in_bounds((x, y)):
                 self._blocked[y * self.width + x] = 1 if flag else 0
+        self._note_grid_changed()
+
+    def _note_grid_changed(self) -> None:
+        """The static grid changed under the units' feet: shared march trunks walked the old one."""
+        self._route_cache.clear()
 
     def free_tile_near(self, rect: tuple[int, int, int, int], *, prefer: Point | None = None) -> Pos | None:
         """A passable tile adjacent to *rect*, nearest *prefer* (default: the rect's front)."""
@@ -1735,6 +1764,7 @@ class World:
                 continue
             self.terrain[y][x] = Terrain.TREES
             self._blocked[y * self.width + x] = 1
+            self._note_grid_changed()
             for unit in self.units.values():
                 if tile in unit.path:
                     unit.path = []
@@ -2561,6 +2591,7 @@ class World:
                 u.timer = 0.0
                 self.terrain[tile[1]][tile[0]] = Terrain.GRASS
                 self._blocked[tile[1] * self.width + tile[0]] = 0
+                self._note_grid_changed()
                 u.carrying, u.carry = Resource.LUMBER, LUMBER_PER_TRIP
                 if self._has(u.player, Upgrade.REGROWTH):
                     self.regrowth.append((tile, self.time + REGROWTH_SECONDS))
@@ -2888,6 +2919,8 @@ class World:
                     if (tx, ty) != target and 0 <= tx < width and 0 <= ty < self.height:
                         blocked[ty * width + tx] = 1
             u.path = escape + pathing.find_path_grid(start, target, blocked, width, self.height, max_expansions=LOCAL_EXPANSIONS)
+        elif navigation is None and isinstance(u.order, (Move, AttackMove)) and self._join_march(u, start, goal, exact, target):
+            return
         else:
             u.path = escape + pathing.find_path_grid(start, target, grid, self.width, self.height, max_expansions=self.path_budget)
         u.path_goal = goal  # the goal as asked, so a repeated request is recognised
@@ -2899,6 +2932,113 @@ class World:
             reached = (u.path[-1] if u.path else start) == goal_tile
             if reached and passable(*goal_tile):
                 u.exact = exact
+
+    def _join_march(self, u: Unit, start: Pos, goal: Pos, exact: Point | None, target: Pos) -> bool:
+        """Walk the march the unit's order shares with its group: one trunk path per shared target and
+        side, planned once, then a short head from the unit's own tile onto it and a short tail to its
+        own slot.
+
+        An army ordered across the map planned every soldier's whole route separately, each on the budget
+        a big map allows; now the first unit plans the corridor from its tile to the order's shared target
+        and the rest splice onto it, each with its own formation slot at the end.  A unit whose slot lies
+        across the corridor's axis from the trunk's own side plans a second trunk rather than funnel through
+        the wrong side of whatever the corridor rounds, so a line still splits round a rock and dresses past
+        it; a unit that only needs to know which side its own corridor takes finds out with a local probe,
+        not a full search, so a converging army still plans once.  The corridor is the static grid's, so
+        rivals converging on the same ground share it too; the detours round other units stay per-unit local
+        searches, as do patrols, chases and all worker routing.  A unit that cannot reach the trunk or its
+        slot within the local budget plans alone as before.  True when the unit walks shared tiles.
+        """
+        order = u.order
+        assert isinstance(order, (Move, AttackMove))
+        if start == target:
+            # Standing on its slot already: the solo search is empty and the walk ends at the
+            # exact point, while a trunk would march the unit out to the shared target and back.
+            return False
+        shared: Pos = (int(order.target[0]), int(order.target[1]))
+        regions = self._regions()
+        region = regions.label(start)
+        for side in (1, -1):
+            cached = self._route_cache.get((shared, region, side))
+            if cached is not None and _trunk_side(cached[0], cached[1], target) == side:
+                if self._walk_trunk(u, start, goal, exact, target, cached[0], cached[1]):
+                    return True
+                return False
+        end = shared
+        if not self.passable(*end):
+            # As a blocked goal in _plan: aim at the tile beside it on this side, from the start.
+            nearest = pathing.nearest_passable(end, self.passable, prefer=start)
+            if nearest is not None:
+                end = nearest
+        end = regions.reachable_goal(start, end)
+        if any((shared, region, side) in self._route_cache for side in (1, -1)):
+            # Another corridor already serves this ground: probe which side this unit's own takes,
+            # and join it, rather than planning the whole way there to find out.
+            probe = pathing.find_path_grid(start, end, self._blocked, self.width, self.height,
+                                           max_expansions=LOCAL_EXPANSIONS)
+            if probe and probe[-1] == end:
+                stations = [start] + probe
+                key = (shared, region, _corridor_side(stations, end))
+                existing = self._route_cache.get(key)
+                if existing is not None:
+                    return self._walk_trunk(u, start, goal, exact, target, existing[0], existing[1])
+                return self._store_trunk(u, start, goal, exact, target, key, stations, end)
+            if probe:
+                key = (shared, region, _corridor_side([start] + probe, end))
+                existing = self._route_cache.get(key)
+                if existing is not None:
+                    return self._walk_trunk(u, start, goal, exact, target, existing[0], existing[1])
+        trunk = pathing.find_path_grid(start, end, self._blocked, self.width, self.height,
+                                       max_expansions=self.path_budget)
+        stations = [start] + trunk
+        key = (shared, region, _corridor_side(stations, end))
+        existing = self._route_cache.get(key)
+        if existing is not None:
+            # Another corridor already walks this side: join it rather than file a second.
+            return self._walk_trunk(u, start, goal, exact, target, existing[0], existing[1])
+        return self._store_trunk(u, start, goal, exact, target, key, stations, end)
+
+    def _store_trunk(self, u: Unit, start: Pos, goal: Pos, exact: Point | None, target: Pos,
+                     key: tuple[Pos, int, int], stations: list[Pos], end: Pos) -> bool:
+        """File the corridor *stations* under *key* for the marches to come, and walk it now."""
+        if len(self._route_cache) >= TRUNK_ROUTES:
+            self._route_cache.clear()
+        self._route_cache[key] = (stations, end)
+        return self._walk_trunk(u, start, goal, exact, target, stations, end)
+
+    def _walk_trunk(self, u: Unit, start: Pos, goal: Pos, exact: Point | None, target: Pos,
+                    stations: list[Pos], end: Pos) -> bool:
+        """Splice the unit onto the trunk *stations* ending at *end*: head to the nearest station,
+        the trunk's own tiles on, tail to the unit's slot.  False when either end is beyond a local search.
+        """
+        best, best_h = 0, pathing.octile(start, stations[0])
+        for index in range(1, len(stations)):
+            h = pathing.octile(start, stations[index])
+            if h < best_h:
+                best, best_h = index, h
+        head: list[Pos] = []
+        if stations[best] != start:
+            head = pathing.find_path_grid(start, stations[best], self._blocked, self.width, self.height,
+                                          max_expansions=LOCAL_EXPANSIONS)
+            if not head or head[-1] != stations[best]:
+                return False
+        tail: list[Pos] = []
+        if end != target:
+            tail = pathing.find_path_grid(end, target, self._blocked, self.width, self.height,
+                                          max_expansions=LOCAL_EXPANSIONS)
+            if not tail or tail[-1] != target:
+                return False
+        u.path = head + stations[best + 1:] + tail
+        u.path_goal = goal  # the goal as asked, so a repeated request is recognised
+        u.last_distance = math.inf
+        u.progress = 0.0
+        u.exact = None
+        if exact is not None:
+            goal_tile = (int(exact[0]), int(exact[1]))
+            reached = (u.path[-1] if u.path else start) == goal_tile
+            if reached and self.passable(*goal_tile):
+                u.exact = exact
+        return True
 
     def _regions(self) -> pathing.Regions:
         """The walkable regions of the static grid, rebuilt after a building or a tree changed it."""
