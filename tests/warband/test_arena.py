@@ -340,7 +340,7 @@ def test_a_settled_match_stops_before_the_last_building_falls():
     farms. Stopping changes what is measured only if it calls a different
     winner, which is what this pins.
     """
-    spec = MatchSpec(seed=101, agents=("pro", "easy"), minutes=20)
+    spec = MatchSpec(seed=102, agents=("pro", "easy"), minutes=20)
     quick, full = play(spec), play(spec, settle=False)
     assert full.winner is not None and quick.winner == full.winner
     assert quick.settled and not full.settled
