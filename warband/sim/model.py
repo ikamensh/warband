@@ -140,6 +140,9 @@ TOUCH: Final = 0.4  # gap at which a peasant can enter a mine, deliver, or start
 CHOP_HOLD: Final = 0.3  # tiles past that reach a chopping worker may be jostled and still keep its swing; beyond it,
 # it has to walk back and the chop starts over.  A mine keeps its peasant inside and a site keeps its builder, so
 # felling a tree is the one long job done in the open: without this, a crowd at one tree resets each other for ever.
+MINE_HOLD: Final = 0.3  # tiles past the face a worker holding a mouth tile may be jostled and still keep its queue;
+# beyond it, it walks back to the claimed tile.  One shove moves at most MAX_PUSH, so a single shove is absorbed
+# and only a sustained push sends it back: without this, the mouth crowd walks every shove back and forth for ever.
 STUCK_AFTER: Final = 0.8  # seconds without progress before a unit paths again around the units in its way
 REPLAN_EVERY: Final = 0.6  # a unit plans at most this often unless it gets a new order (a melee would otherwise plan every tick)
 REPLAN_STAGGER: Final = 8  # ticks over which units spread their next plans by id, so a crowd does not plan in lockstep
@@ -148,7 +151,11 @@ LOCAL_EXPANSIONS: Final = 700  # A* budget for the detours around other units; t
 TRUNK_ROUTES: Final = 64  # shared march corridors kept per static grid: one trunk per shared target and start region
 SETTLE_WITHIN: Final = 0.65  # room beyond its own body a unit wants at its spot; past that it looks for somewhere nearer to stand
 MINE_CLEARANCE: Final = 2  # tiles kept free around a gold deposit so peasants can get in and out
+CLAIM_WEIGHT: Final = 0.6  # crowding cost of a fellow worker's claimed work tile: enough to break the tie between
+# two mouth tiles the same walk away, never enough to send a worker round the far side of the building
 SIDESTEP: Final = 0.6  # lateral share of the push when walking units collide
+QUEUE_HOLD: Final = 0.25  # share of a fellow worker's shove a queued worker (idle on a harvest or salvage
+# order) takes: the queue holds its tiles while its crew files past, instead of boiling through the doorway
 # The crowd's numbers are warband/assets/constants/behavior.toml's; the pathfinder's budgets above stay in code.
 MAX_PUSH: Final = config.number('MAX_PUSH')
 SPACING: Final = config.number('SPACING')
@@ -2550,12 +2557,19 @@ class World:
                 u.path_goal = None
                 return  # a remembered replacement may still be hidden by fog
             navigation = self._worker_navigation(u)
-            if rect_gap(u.pos, mine.rect) - u.radius <= TOUCH and not navigation[u.tile[1] * self.width + u.tile[0]]:
-                deposit = mine.info.mine
-                assert deposit is not None  # has_gold said so
+            deposit = mine.info.mine
+            assert deposit is not None  # has_gold said so
+            tile_open = not navigation[u.tile[1] * self.width + u.tile[0]]
+            if rect_gap(u.pos, mine.rect) - u.radius <= TOUCH and tile_open:
                 if self._mine_crews.get(mine.id, 0) >= deposit.slots:
                     u.path = []
-                    u.path_goal = None
+                    if not self._holds_mouth(u, mine.rect, navigation):
+                        u.path_goal = None  # no tile to hold: stand unclaimed until a replan gives one
+                        u.exact = None
+                    # Otherwise the claimed mouth tile stands: fellow workers plan round it, and if the
+                    # crowd shoves this one out it walks back to the same tile instead of planning a new
+                    # scrum.  Entering the face needs no claim, only proximity, so the wait changes nothing
+                    # about whose turn it is.
                     u.state = "idle"  # every place at the face is taken: wait at the mouth for one to free
                     return
                 self._mine_crews[mine.id] = self._mine_crews.get(mine.id, 0) + 1
@@ -2565,6 +2579,11 @@ class World:
                 u.path_goal = None
                 u.state = "idle"
                 return
+            if (not u.path and tile_open and self._mine_crews.get(mine.id, 0) >= deposit.slots
+                    and rect_gap(u.pos, mine.rect) - u.radius <= TOUCH + MINE_HOLD
+                    and self._holds_mouth(u, mine.rect, navigation)):
+                u.state = "idle"  # jostled just off the mouth while holding a tile: keep the queue
+                return  # rather than walk back through it every shove, as a chop holds its swing
             if self._approach_work(u, mine.rect, dt, navigation):
                 self._finish_order(u)
             return
@@ -2704,7 +2723,20 @@ class World:
 
     def _plan_work_route(self, u: Unit, targets: dict[int, tuple[int, int, int, int]],
                          navigation: bytearray) -> int | None:
-        """Choose a reachable interaction edge by travel distance and local crowding."""
+        """Choose a reachable interaction edge by travel distance and local crowding.
+
+        Besides the bodies already standing there, a tile is charged for every
+        fellow worker that has already claimed it (its own ``path_goal``): without
+        that, a crowd plans in lockstep and every one of them walks to the same
+        mouth tile, through each other, every replan.  The claims are intentions,
+        read in unit id order, so the spread is deterministic.
+        """
+        claims: dict[Pos, float] = {}
+        for v in self.units.values():
+            if (v is u or v.player != u.player or v.hidden or v.hp <= 0 or v.path_goal is None
+                    or not isinstance(v.order, (Harvest, Deposit, Salvage))):
+                continue
+            claims[v.path_goal] = claims.get(v.path_goal, 0.0) + CLAIM_WEIGHT
         owners: dict[Pos, int] = {}
         costs: dict[Pos, float] = {}
         for target, rect in targets.items():
@@ -2716,11 +2748,12 @@ class World:
                     if navigation[ty * self.width + tx] or rect_gap(point, rect) - u.radius > TOUCH:
                         continue
                     owners[tile] = target
-                    costs[tile] = sum(max(0.0, 1.0 - dist(v.pos, point)) * 2
-                                      for v in self.units_near(point, 1.0)
-                                      if v is not u and not v.hidden and v.player == u.player)
+                    costs[tile] = (sum(max(0.0, 1.0 - dist(v.pos, point)) * 2
+                                       for v in self.units_near(point, 1.0)
+                                       if v is not u and not v.hidden and v.player == u.player)
+                                   + claims.get(tile, 0.0))
         start, escape = u.tile, []
-        u.replan_at = self.time + REPLAN_EVERY
+        u.replan_at = self.time + REPLAN_EVERY + (u.id % REPLAN_STAGGER) * SIM_DT
         u.progress, u.last_distance = 0.0, math.inf
         u.path, u.path_goal, u.exact = [], None, None
         if navigation[start[1] * self.width + start[0]]:
@@ -2736,6 +2769,12 @@ class World:
         u.path, u.path_goal, u.exact = route, goal, tile_center(goal)
         return owners[goal]
 
+
+    def _holds_mouth(self, u: Unit, rect: tuple[int, int, int, int], navigation: bytearray) -> bool:
+        """Whether *u* holds a claimed work tile at *rect*'s mouth: a path goal on open ground within reach of it."""
+        goal = u.path_goal
+        return (goal is not None and not navigation[goal[1] * self.width + goal[0]]
+                and rect_gap((goal[0] + 0.5, goal[1] + 0.5), rect) - u.radius <= TOUCH)
 
     def _approach_work(self, u: Unit, rect: tuple[int, int, int, int], dt: float,
                        navigation: bytearray) -> bool:
@@ -3395,6 +3434,12 @@ class World:
                             angle = (u.id * 2.399) % (2 * math.pi)
                             dx, dy, d = math.cos(angle), math.sin(angle), 1.0
                         weight = 0.5 if v.state == "move" or not moving else 0.2
+                        if (u.is_worker and v.is_worker and u.player == v.player and not moving
+                                and isinstance(u.order, (Harvest, Salvage))):
+                            # A queued worker holds its mouth tile while its own crew files past, instead of
+                            # being bowled out of it and walking back through the file every shove: the file
+                            # still parts round it at its own weight, and anything else shoves it as before.
+                            weight *= QUEUE_HOLD
                         px += dx / d * overlap * weight
                         py += dy / d * overlap * weight
                         if moving:

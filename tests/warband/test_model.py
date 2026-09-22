@@ -790,6 +790,52 @@ def test_a_mine_works_only_so_many_peasants_at_once() -> None:
     assert crowd >= lean, "the extra hands must not make the mine slower"
 
 
+def test_a_crowd_at_one_mine_queues_instead_of_swirling() -> None:
+    """Sixteen peasants on one mine walk barely further per trip than four do, and hardly ever reverse.
+
+    They used to all aim at the same mouth tile every replan, then shove each other out of it and walk
+    every shove back: twice the walk per trip and five hard reversals of each.  Now a claimed mouth tile
+    spreads the plans, a waiter keeps its tile, a shove inside MINE_HOLD is absorbed, and a queued worker
+    holds its ground while its crew files past.  The walk and the reversals are read off public positions
+    and orders; the thresholds sit a third above what the queue measures and below what the scrum did.
+    """
+    world, _hall = base_world()
+    mine = world.mines()[0]
+    for i in range(16):
+        world.spawn_unit(0, UnitType.PEASANT, (4.5 + i % 6, 5.5 + i // 6))
+    crew = list(world.player_units(0))
+    world.players[0].gold = 0
+    world.harvest([u.id for u in crew], mine.id)
+    previous = {u.id: u.pos for u in crew}
+    heading: dict[int, tuple[float, float]] = {}
+    walk, reversals = 0.0, 0
+    for _ in range(int(120 / SIM_DT)):
+        world.step()
+        for unit in crew:
+            alive = world.units.get(unit.id)
+            if alive is None or alive.hidden:
+                if alive is not None:
+                    previous[alive.id] = alive.pos
+                heading.pop(unit.id, None)
+                continue
+            step = dist(alive.pos, previous[alive.id])
+            if isinstance(alive.order, Harvest):
+                walk += step
+                vector = (alive.pos[0] - previous[alive.id][0], alive.pos[1] - previous[alive.id][1])
+                if step > 1e-9 and unit.id in heading:
+                    last = heading[unit.id]
+                    cosine = (last[0] * vector[0] + last[1] * vector[1]) / (math.hypot(*last) * math.hypot(*vector))
+                    if cosine < 0.0:
+                        reversals += 1
+                if step > 1e-9:
+                    heading[unit.id] = vector
+            previous[alive.id] = alive.pos
+    trips = len(events(world, "deposit"))
+    assert trips > 0 and world.players[0].gold >= 16000, "the queue must not starve the face"
+    assert walk / trips < 4.0, f"{walk / trips:.2f} tiles walked per trip: the crowd is milling again"
+    assert reversals / trips < 4.0, f"{reversals / trips:.2f} reversals per trip: the crowd is swirling again"
+
+
 def test_a_loaded_world_remembers_who_is_at_the_mine_face() -> None:
     """Crews are counted rather than stored, so a save and load must rebuild the count or the cap leaks."""
     world, _hall = base_world()
