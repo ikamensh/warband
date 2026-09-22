@@ -3,8 +3,9 @@
     uv run python tools/balance_tables.py          # rewrite the GENERATED regions of warband/sim/rules.py and races.py
     uv run python tools/balance_tables.py --check  # fail if a region differs (tests/warband/test_balance_tables.py runs this)
 
-The numbers a tuner edits live in ``warband/sim/units.toml``,
-``buildings.toml``, ``upgrades.toml`` and ``races.toml``; this tool rewrites
+The numbers a tuner edits live in ``warband/constants/units.toml``,
+``buildings.toml``, ``upgrades.toml``, ``races.toml``, ``economy.toml``,
+``combat.toml`` and ``behavior.toml``; this tool rewrites
 the matching Python tables from them.  The simulation itself keeps running
 plain Python literals: the online contract (``tools/ci_compatibility.py``)
 hashes the simulation's sources and forbids file-backed rules there, so the
@@ -26,13 +27,18 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 SIM = ROOT / "warband" / "sim"
-UNITS_TOML = SIM / "units.toml"
-BUILDINGS_TOML = SIM / "buildings.toml"
-UPGRADES_TOML = SIM / "upgrades.toml"
-RACES_TOML = SIM / "races.toml"
+CONSTANTS = ROOT / "warband" / "constants"
+UNITS_TOML = CONSTANTS / "units.toml"
+BUILDINGS_TOML = CONSTANTS / "buildings.toml"
+UPGRADES_TOML = CONSTANTS / "upgrades.toml"
+RACES_TOML = CONSTANTS / "races.toml"
+ECONOMY_TOML = CONSTANTS / "economy.toml"
+COMBAT_TOML = CONSTANTS / "combat.toml"
+BEHAVIOR_TOML = CONSTANTS / "behavior.toml"
 
 RULES_PY = SIM / "rules.py"
 RACES_PY = SIM / "races.py"
+MODEL_PY = SIM / "model.py"
 
 PLAYABLE = ("peasant", "footman", "archer", "scout", "knight", "catapult", "cleric")
 WILDS = ("wolf", "spider", "troll", "golem")
@@ -153,8 +159,11 @@ def _check_sections(doc: dict, path: Path, known: tuple[str, ...], what: str) ->
 # Plain values keyed by the enum value each section is named for: "melee" is
 # resolved to the shared reach, missing keys to the dataclass defaults, so the
 # emitter and the drift check share one reading of the TOML.
-
-MELEE_RANGE = 0.45  # rules.MELEE, spelled out where both sides compare against it
+#
+# Scalars land in one flat table keyed by CONSTANT name, whatever file and
+# section they come from; a region is just the CONSTANTs it emits, in file
+# order.  What stays in code (SIM_DT, the order bounds, the pathfinder's
+# budgets, the seats) is not tunable balance and never enters these schemas.
 
 UNIT_KEYS = {"name", "gold", "lumber", "hp", "damage", "armor", "range", "cooldown", "speed", "sight", "build_time",
              "trained_at", "hotkey", "summary", "radius", "heal", "splash", "attack", "armor_class", "formation",
@@ -168,6 +177,74 @@ UNIT_TWEAK_KEYS = {"name", "summary", "hp_mult", "damage_mult", "armor_add", "ra
 BUILDING_TWEAK_KEYS = {"name", "card", "summary", "hp_mult", "armor_add"}
 UPGRADE_TWEAK_KEYS = {"name", "card"}
 
+#: Scalar schemas: section -> {toml key: (CONSTANT, int|float)}.  Sections are
+#: required whole: a missing or misspelled key fails, never silently defaults.
+ECONOMY_SCHEMA = {
+    "work": {"mine_time": ("MINE_TIME", float), "lumber_per_trip": ("LUMBER_PER_TRIP", int),
+             "chop_time": ("CHOP_TIME", float)},
+    "setup": {"mine_gold": ("MINE_GOLD", int), "expansion_gold": ("EXPANSION_GOLD", int),
+              "starting_gold": ("STARTING_GOLD", int), "starting_lumber": ("STARTING_LUMBER", int)},
+    "repair": {"rate": ("REPAIR_RATE", float), "chunk": ("REPAIR_CHUNK", int), "cost_share": ("REPAIR_COST", float)},
+    "salvage": {"rate": ("SALVAGE_RATE", float), "held_rate": ("SALVAGE_HELD_RATE", float),
+                "chunk": ("SALVAGE_CHUNK", int), "share": ("SALVAGE_SHARE", float)},
+}
+EFFECTS_SCHEMA = {"blades_bonus": ("BLADES_BONUS", int), "master_weapon_bonus": ("MASTER_WEAPON_BONUS", int),
+                  "armor_bonus": ("ARMOR_BONUS", int), "arrows_bonus": ("ARROWS_BONUS", int),
+                  "horses_bonus": ("HORSES_BONUS", float), "siege_range_bonus": ("SIEGE_RANGE_BONUS", float),
+                  "siege_damage_bonus": ("SIEGE_DAMAGE_BONUS", float), "blessing_bonus": ("BLESSING_BONUS", float),
+                  "frenzy_bonus": ("FRENZY_BONUS", float), "bloodlust_bonus": ("BLOODLUST_BONUS", float),
+                  "plunder_share": ("PLUNDER_SHARE", float), "longbows_bonus": ("LONGBOWS_BONUS", float),
+                  "regrowth_seconds": ("REGROWTH_SECONDS", float), "deep_mining_trip": ("DEEP_MINING_TRIP", int),
+                  "blasting_powder_bonus": ("BLASTING_POWDER_BONUS", float)}
+COMBAT_SCALARS = {"melee_range": ("MELEE", float), "arrow_speed": ("ARROW_SPEED", float),
+                  "stone_speed": ("STONE_SPEED", float), "stone_min_flight": ("STONE_MIN_FLIGHT", float),
+                  "windup_slack": ("WINDUP_SLACK", float), "hit_variance": ("HIT_VARIANCE", float),
+                  "splash_fraction": ("SPLASH_FRACTION", float), "direct_hit": ("DIRECT_HIT", float)}
+SIEGE_SCALARS = {"step": ("SIEGE_STEP", float), "building_worth": ("SIEGE_BUILDING_WORTH", float)}
+FRIENDLY_SCALARS = {"margin": ("FRIENDLY_MARGIN", float), "worth": ("FRIENDLY_WORTH", float)}
+BEHAVIOR_SCHEMA = {
+    "formation": {"armor": ("FORMATION_ARMOR", int), "spacing": ("FORMATION_SPACING", float),
+                  "width": ("FORMATION_WIDTH", int), "march": ("FORMATION_MARCH", float),
+                  "slack": ("FORMATION_SLACK", float), "hold": ("FORMATION_HOLD", float),
+                  "lookahead": ("FORMATION_LOOKAHEAD", float)},
+    "camps": {"watch": ("CAMP_WATCH", float), "hold": ("CAMP_HOLD", float), "calm": ("CAMP_CALM", float),
+              "regen": ("CAMP_REGEN", float), "respawn": ("CAMP_RESPAWN", float), "post": ("CAMP_POST", float),
+              "regen_calm": ("REGEN_CALM", float)},
+    "movement": {"max_push": ("MAX_PUSH", float), "spacing": ("SPACING", float),
+                 "spacing_weight": ("SPACING_WEIGHT", float), "ease_space": ("EASE_SPACE", float),
+                 "ease_every": ("EASE_EVERY", int), "ease_chance": ("EASE_CHANCE", float),
+                 "ease_step": ("EASE_STEP", float), "ease_step_variance": ("EASE_STEP_VARIANCE", float),
+                 "ease_jitter": ("EASE_JITTER", float), "ease_gain": ("EASE_GAIN", float)},
+    "pursuit": {"leash": ("LEASH", float)},
+}
+
+#: Generated scalar regions: region -> the CONSTANTs it emits, in file order.
+#: The drift test reads this same table, so regions and checks cannot drift apart.
+SCALAR_REGIONS = {
+    "melee": ("MELEE",),
+    "mine_time": ("MINE_TIME",),
+    "lumber": ("LUMBER_PER_TRIP", "CHOP_TIME"),
+    "repair": ("REPAIR_RATE", "REPAIR_CHUNK", "REPAIR_COST"),
+    "salvage": ("SALVAGE_RATE", "SALVAGE_HELD_RATE", "SALVAGE_CHUNK", "SALVAGE_SHARE"),
+    "setup": ("MINE_GOLD", "EXPANSION_GOLD", "STARTING_GOLD", "STARTING_LUMBER"),
+    "upgrade_effects": ("BLADES_BONUS", "MASTER_WEAPON_BONUS", "ARMOR_BONUS", "ARROWS_BONUS", "HORSES_BONUS",
+                        "SIEGE_RANGE_BONUS", "SIEGE_DAMAGE_BONUS", "BLESSING_BONUS", "FRENZY_BONUS",
+                        "BLOODLUST_BONUS", "PLUNDER_SHARE", "LONGBOWS_BONUS", "REGROWTH_SECONDS",
+                        "DEEP_MINING_TRIP", "BLASTING_POWDER_BONUS"),
+    "combat": ("SPLASH_FRACTION", "DIRECT_HIT", "WINDUP_SLACK", "ARROW_SPEED", "STONE_SPEED", "STONE_MIN_FLIGHT",
+               "HIT_VARIANCE"),
+    "friendly_fire": ("FRIENDLY_MARGIN", "FRIENDLY_WORTH"),
+    "formation": ("FORMATION_ARMOR", "FORMATION_SPACING", "FORMATION_WIDTH", "FORMATION_MARCH", "FORMATION_SLACK",
+                  "FORMATION_HOLD", "FORMATION_LOOKAHEAD"),
+    "regen_calm": ("REGEN_CALM",),
+    "camps": ("CAMP_WATCH", "CAMP_HOLD", "CAMP_CALM", "CAMP_REGEN", "CAMP_RESPAWN", "CAMP_POST"),
+    "pursuit": ("LEASH",),
+    "movement": ("MAX_PUSH", "SPACING", "SPACING_WEIGHT", "EASE_SPACE", "EASE_EVERY", "EASE_CHANCE", "EASE_STEP",
+                 "EASE_STEP_VARIANCE", "EASE_JITTER", "EASE_GAIN"),
+}
+#: Where a scalar region's CONSTANTs live: rules, except the crowd's in model.
+SCALAR_MODULE = {"movement": "model"}
+
 
 @dataclass
 class Tables:
@@ -176,6 +253,9 @@ class Tables:
     buildings: dict[str, dict] = field(default_factory=dict)
     upgrades: dict[str, dict] = field(default_factory=dict)
     races: dict[str, dict] = field(default_factory=dict)
+    scalars: dict[str, int | float] = field(default_factory=dict)  # CONSTANT -> value, from every TOML
+    damage_bonus: list[dict] = field(default_factory=list)  # {attack, armor, factor}, in listed order
+    siege_worth: dict[str, float] = field(default_factory=dict)  # unit value -> worth
 
 
 def _unit(entry: dict, where: str) -> dict:
@@ -303,6 +383,61 @@ def _upgrade_tweak(entry: dict, where: str) -> dict:
     return {"name": _str(entry, "name", where), "card": _str(entry, "card", where)}
 
 
+def _schema_section(doc: dict, path: Path, section: str, schema: dict[str, tuple[str, type]], scalars: dict) -> None:
+    """File [section]'s numbers into *scalars* by CONSTANT name; a missing or misspelled key fails."""
+    where = _at(path, section)
+    entry = doc.get(section)
+    if not isinstance(entry, dict):
+        raise BalanceError(f"{path.name}: missing [{section}]")
+    _no_extra(entry, set(schema), where)
+    for key, (const, kind) in schema.items():
+        scalars[const] = _int(entry, key, where) if kind is int else _float(entry, key, where)
+
+
+def _combat(doc: dict, tables: Tables) -> None:
+    where = COMBAT_TOML.name
+    _no_extra(doc, set(COMBAT_SCALARS) | {"damage_bonus", "siege", "friendly_fire"}, where)
+    for key in COMBAT_SCALARS:
+        if key not in doc:
+            raise BalanceError(f"{where}: missing {key}")
+    for key, (const, kind) in COMBAT_SCALARS.items():
+        tables.scalars[const] = _int(doc, key, where) if kind is int else _float(doc, key, where)
+    bonuses = doc.get("damage_bonus")
+    if not isinstance(bonuses, list) or not bonuses:
+        raise BalanceError(f"{where}: [[damage_bonus]] needs at least one pairing")
+    for bonus in bonuses:
+        if not isinstance(bonus, dict):
+            raise BalanceError(f"{where}: a damage bonus must be a table, got {bonus!r}")
+        _no_extra(bonus, {"attack", "armor", "factor"}, where)
+        tables.damage_bonus.append({
+            "attack": _enum(bonus, "attack", where, ATTACKS),
+            "armor": _enum(bonus, "armor", where, ARMOR_CLASSES),
+            "factor": _float(bonus, "factor", where),
+        })
+    siege = doc.get("siege")
+    if not isinstance(siege, dict):
+        raise BalanceError(f"{where}: missing [siege]")
+    _no_extra(siege, set(SIEGE_SCALARS) | {"target_worth"}, _at(COMBAT_TOML, "siege"))
+    for key, (const, kind) in SIEGE_SCALARS.items():
+        tables.scalars[const] = _float(siege, key, _at(COMBAT_TOML, "siege"))
+    worth = siege.get("target_worth")
+    if not isinstance(worth, dict) or not worth:
+        raise BalanceError(f"{where}: [siege.target_worth] needs at least one unit")
+    for unit, factor in worth.items():
+        if unit not in PLAYABLE:
+            raise BalanceError(f"{_at(COMBAT_TOML, 'siege.target_worth')}: expected a unit, got {unit!r}")
+        _reject_bool(factor, _at(COMBAT_TOML, "siege.target_worth"), unit)
+        if not isinstance(factor, (int, float)):
+            raise BalanceError(f"{_at(COMBAT_TOML, 'siege.target_worth')}.{unit}: expected a number, got {factor!r}")
+        tables.siege_worth[unit] = float(factor)
+    friendly = doc.get("friendly_fire")
+    if not isinstance(friendly, dict):
+        raise BalanceError(f"{where}: missing [friendly_fire]")
+    _no_extra(friendly, set(FRIENDLY_SCALARS), _at(COMBAT_TOML, "friendly_fire"))
+    for key, (const, kind) in FRIENDLY_SCALARS.items():
+        tables.scalars[const] = _float(friendly, key, _at(COMBAT_TOML, "friendly_fire"))
+
+
 def _race(doc: dict, race: str) -> dict:
     where = _at(RACES_TOML, race)
     entry = doc.get(race)
@@ -352,7 +487,7 @@ def load() -> Tables:
     races_doc = _read(RACES_TOML)
     _check_sections(units_doc, UNITS_TOML, PLAYABLE + WILDS, "unit")
     _check_sections(buildings_doc, BUILDINGS_TOML, BUILDINGS, "building")
-    _check_sections(upgrades_doc, UPGRADES_TOML, UPGRADES, "upgrade")
+    _check_sections(upgrades_doc, UPGRADES_TOML, UPGRADES + ("effects",), "upgrade")
     for race in RACES:
         if race not in races_doc or not isinstance(races_doc[race], dict):
             raise BalanceError(f"{RACES_TOML.name}: missing [{race}]")
@@ -374,6 +509,23 @@ def load() -> Tables:
     tables.buildings = {b: _building(buildings_doc[b], _at(BUILDINGS_TOML, b), b) for b in BUILDINGS}
     tables.upgrades = {u: _upgrade(upgrades_doc[u], _at(UPGRADES_TOML, u)) for u in UPGRADES}
     tables.races = {r: _race(races_doc, r) for r in RACES}
+    economy_doc = _read(ECONOMY_TOML)
+    combat_doc = _read(COMBAT_TOML)
+    behavior_doc = _read(BEHAVIOR_TOML)
+    for doc, path, sections in ((economy_doc, ECONOMY_TOML, tuple(ECONOMY_SCHEMA)),
+                                (behavior_doc, BEHAVIOR_TOML, tuple(BEHAVIOR_SCHEMA))):
+        for section in doc:
+            if section not in sections:
+                raise BalanceError(f"{path.name}: unexpected [{section}]; known: {', '.join(sections)}")
+        for section in sections:
+            if section not in doc:
+                raise BalanceError(f"{path.name}: missing [{section}]")
+    for section, schema in ECONOMY_SCHEMA.items():
+        _schema_section(economy_doc, ECONOMY_TOML, section, schema, tables.scalars)
+    for section, schema in BEHAVIOR_SCHEMA.items():
+        _schema_section(behavior_doc, BEHAVIOR_TOML, section, schema, tables.scalars)
+    _schema_section(upgrades_doc, UPGRADES_TOML, "effects", EFFECTS_SCHEMA, tables.scalars)
+    _combat(combat_doc, tables)
     return tables
 
 
@@ -431,9 +583,10 @@ def _mine(info: dict) -> str:
 
 
 def _summary(building: str, info: dict) -> str:
-    # The seam's card says its true trip: {trip} is the placeholder, filled from the deposit below.
+    # The seam's card says its true trip: {trip} is rendered from the deposit below at codegen time.
     if "{trip}" in info["summary"]:
-        return "f" + repr(info["summary"]).replace("{trip}", "{SEAM_PER_TRIP}")
+        assert building == "gold_seam", "only the seam's summary names its trip"
+        return repr(info["summary"].replace("{trip}", str(info["mine_trip"])))
     assert building != "gold_seam", "only the seam's summary names its trip"
     return repr(info["summary"])
 
@@ -451,12 +604,21 @@ def _building_entry(building: str, b: dict) -> str:
             f"cooldown={_num(b['cooldown'])}{_mine(b)}),")
 
 
-def _upgrade_entry(upgrade: str, u: dict) -> str:
+def _upgrade_entry(upgrade: str, u: dict, trip: int) -> str:
     requires = "(" + ", ".join(_upgrade_member(r) for r in u["requires"]) + ("," if len(u["requires"]) == 1 else "") + ")"
     race = f", race={_race_member(u['race'])}" if u["race"] is not None else ""
     return (f"    {_upgrade_member(upgrade)}: UpgradeInfo(name={u['name']!r}, cost={_cost(u['gold'], u['lumber'])}, "
-            f"time={_num(u['time'])}, hotkey={u['hotkey']!r}, card={u['card']!r}, summary={u['summary']!r}, "
+            f"time={_num(u['time'])}, hotkey={u['hotkey']!r}, card={u['card']!r}, summary={_upgrade_summary(upgrade, u, trip)}, "
             f"requires={requires}{race}),")
+
+
+def _upgrade_summary(upgrade: str, u: dict, trip: int) -> str:
+    # Deep Mining's card says its true trip: {trip} is rendered from [effects] at codegen time.
+    if "{trip}" in u["summary"]:
+        if upgrade != "deep_mining":
+            raise BalanceError(f"{UPGRADES_TOML.name} [{upgrade}].summary: only deep_mining names its trip")
+        return repr(u["summary"].replace("{trip}", str(trip)))
+    return repr(u["summary"])
 
 
 def _unit_tweak_entry(unit: str, t: dict) -> str:
@@ -486,7 +648,7 @@ def emit(tables: Tables) -> dict[str, str]:
         "buildings": "BUILDINGS: Final[dict[BuildingType, BuildingInfo]] = {\n" + "\n".join(
             _building_entry(b, tables.buildings[b]) for b in BUILDINGS) + "\n}",
         "upgrades": "UPGRADES: Final[dict[Upgrade, UpgradeInfo]] = {\n" + "\n".join(
-            _upgrade_entry(u, tables.upgrades[u]) for u in UPGRADES) + "\n}",
+            _upgrade_entry(u, tables.upgrades[u], tables.scalars["DEEP_MINING_TRIP"]) for u in UPGRADES) + "\n}",
     }
     for race in RACES:
         r = tables.races[race]
@@ -504,6 +666,20 @@ def emit(tables: Tables) -> dict[str, str]:
         f"{tables.races[race]['tagline']!r}, {tables.races[race]['passive']!r}, "
         f"({', '.join(_upgrade_member(a) for a in tables.races[race]['arts'])}), "
         f"_{race.upper()}_UNITS, _{race.upper()}_BUILDINGS, _{race.upper()}_UPGRADES)," for race in RACES) + "\n}"
+    for region, consts in SCALAR_REGIONS.items():
+        try:
+            values = [(const, tables.scalars[const]) for const in consts]
+        except KeyError as exc:
+            raise BalanceError(f"no value for {exc} (a schema forgot it)") from exc
+        regions[region] = "\n".join(f"{const}: Final = {value!r}" for const, value in values)
+    regions["damage_factors"] = (
+        "DAMAGE_FACTORS: Final[dict[tuple[AttackType, ArmorClass], float]] = {\n" + "\n".join(
+            f"    ({_attack(b['attack'])}, {_armor_class(b['armor'])}): {b['factor']!r},"
+            for b in tables.damage_bonus) + "\n}")
+    regions["siege"] = (
+        f"SIEGE_STEP: Final = {tables.scalars['SIEGE_STEP']!r}\n"
+        "SIEGE_WORTH: Final = {" + ", ".join(f"{_unit_type(u)}: {f!r}" for u, f in tables.siege_worth.items()) + "}\n"
+        f"SIEGE_BUILDING_WORTH: Final = {tables.scalars['SIEGE_BUILDING_WORTH']!r}")
     return regions
 
 
@@ -530,11 +706,27 @@ TARGETS: tuple[tuple[Path, str, str], ...] = (
     (RACES_PY, "dwarf_buildings", "races.toml"),
     (RACES_PY, "dwarf_upgrades", "races.toml"),
     (RACES_PY, "races", "races.toml"),
+    (RULES_PY, "melee", "combat.toml"),
+    (RULES_PY, "upgrade_effects", "upgrades.toml"),
+    (RULES_PY, "mine_time", "economy.toml"),
+    (RULES_PY, "lumber", "economy.toml"),
+    (RULES_PY, "repair", "economy.toml"),
+    (RULES_PY, "salvage", "economy.toml"),
+    (RULES_PY, "setup", "economy.toml"),
+    (RULES_PY, "combat", "combat.toml"),
+    (RULES_PY, "damage_factors", "combat.toml"),
+    (RULES_PY, "friendly_fire", "combat.toml"),
+    (RULES_PY, "siege", "combat.toml"),
+    (RULES_PY, "formation", "behavior.toml"),
+    (RULES_PY, "regen_calm", "behavior.toml"),
+    (RULES_PY, "camps", "behavior.toml"),
+    (RULES_PY, "pursuit", "behavior.toml"),
+    (MODEL_PY, "movement", "behavior.toml"),
 )
 
 
 def _begin(name: str, source: str) -> str:
-    return f"# generated-begin {name}: from warband/sim/{source} — do not edit by hand; run tools/balance_tables.py"
+    return f"# generated-begin {name}: from warband/constants/{source} — do not edit by hand; run tools/balance_tables.py"
 
 
 def _end(name: str) -> str:
@@ -566,7 +758,7 @@ def check() -> list[str]:
         if want != path.read_text(encoding="utf-8"):
             have = path.read_text(encoding="utf-8").splitlines()
             diff = "\n".join(list(difflib.unified_diff(have, want.splitlines(), lineterm="", n=1))[:24])
-            found.append(f"{path.relative_to(ROOT).as_posix()} region {name!r} differs from warband/sim/{source}:\n{diff}")
+            found.append(f"{path.relative_to(ROOT).as_posix()} region {name!r} differs from warband/constants/{source}:\n{diff}")
     return found
 
 

@@ -50,7 +50,9 @@ real breakdown.
 ## Layout
 
 `warband/` holds `__init__.py`, `__main__.py` (the entry point of
-`python -m warband`, the frozen app and `--selftest`), `assets/` and nine
+`python -m warband`, the frozen app and `--selftest`), `assets/`,
+`constants/` (the tunable numbers as TOML: units, buildings, upgrades,
+races, economy, combat, behaviour) and nine
 folders, lowest first. `tests/warband/test_layers.py` holds each folder to
 what it may import: `sim` nothing but itself; `brains`, `records`, `art` and
 `audio` only `sim`; `league` and `online` `sim` and `brains`; `ui` and
@@ -63,10 +65,10 @@ the compiled simulation attaches after they load.
   harvesting, construction, supply, upgrades, towers, fog, elimination, JSON
   saves); no saga2d dependency, so rules are tested directly. A blow turns,
   winds up and lands; shots are `Projectile`s that land later, stones on the
-  ground they were fired at (`docs/unit-motion.md` part 4). `rules.py` holds
-   the tables (generated from `units.toml`, `buildings.toml`, `upgrades.toml`
-   by `tools/balance_tables.py`; never edit a GENERATED region by hand),
-   `races.py` the four races' names, numbers and arts (generated from `races.toml`), `path.py`
+   ground they were fired at (`docs/unit-motion.md` part 4). `rules.py` holds
+   the tables, `races.py` the four races' names, numbers and arts — both
+   generated from `warband/constants/` by `tools/balance_tables.py` (never
+   edit a GENERATED region by hand) — `path.py`
   bounded A* on a budget that grows with the map, `mapgen.py` the five map
   layouts, the grid of congruent cells that deals two to sixteen seats one each,
   and the audit (`grid`, `dimensions`, `refusal`, `offered`, `sizes_for` and

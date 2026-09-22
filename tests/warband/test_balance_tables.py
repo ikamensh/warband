@@ -1,10 +1,11 @@
 """The balance tables are edited as TOML and generated into the simulation.
 
-A tuner edits ``warband/sim/units.toml``, ``buildings.toml``, ``upgrades.toml``
-and ``races.toml``, then runs ``uv run python tools/balance_tables.py`` to
-rewrite the GENERATED regions of ``warband/sim/rules.py`` and ``races.py``.
-This holds the two together: the regions must be exactly what the tool emits
-from the TOML, and the live tables must say what the TOML says.  Either drift
+A tuner edits the files in ``warband/constants/`` (units, buildings, upgrades,
+races, economy, combat, behaviour), then runs
+``uv run python tools/balance_tables.py`` to rewrite the GENERATED regions of
+``warband/sim/rules.py``, ``races.py`` and ``model.py``.  This holds the two
+together: the regions must be exactly what the tool emits from the TOML, and
+the live tables and constants must say what the TOML says.  Either drift
 fails here with the command that fixes it.
 """
 
@@ -21,9 +22,9 @@ def _norm(value):
 
 
 def test_the_toml_balance_tables_match_the_simulation() -> None:
-    from tools.balance_tables import check, load
+    from tools.balance_tables import SCALAR_REGIONS, check, load
 
-    from warband.sim import races, rules
+    from warband.sim import model, races, rules
 
     regions = check()
     assert not regions, ("the GENERATED regions are not what the TOML says:\n" + "\n\n".join(regions)
@@ -37,7 +38,7 @@ def test_the_toml_balance_tables_match_the_simulation() -> None:
 
     for unit, u in {**tables.units, **tables.wilds}.items():
         live = rules.UNITS[rules.UnitType(unit)]
-        reach = rules.MELEE if u["range"] == "melee" else u["range"]
+        reach = tables.scalars["MELEE"] if u["range"] == "melee" else u["range"]
         for key, want in (("name", u["name"]), ("hp", u["hp"]), ("damage", u["damage"]), ("armor", u["armor"]),
                           ("range", reach), ("cooldown", u["cooldown"]), ("speed", u["speed"]), ("sight", u["sight"]),
                           ("build_time", u["build_time"]), ("hotkey", u["hotkey"]), ("summary", u["summary"]),
@@ -59,11 +60,16 @@ def test_the_toml_balance_tables_match_the_simulation() -> None:
         agree(f"buildings.toml deposit {key}", getattr(rules, key), want)
     for building, b in tables.buildings.items():
         live = rules.BUILDINGS[rules.BuildingType(building)]
-        for key, want in (("name", b["name"]), ("hp", b["hp"]), ("armor", b["armor"]), ("size", b["size"]),
-                          ("build_time", b["build_time"]), ("sight", b["sight"]), ("supply", b["supply"]),
-                          ("hotkey", b["hotkey"]), ("damage", b["damage"]), ("range", b["range"]),
-                          ("cooldown", b["cooldown"])):
+        keys = (("name", b["name"]), ("hp", b["hp"]), ("armor", b["armor"]), ("size", b["size"]),
+                ("build_time", b["build_time"]), ("sight", b["sight"]), ("supply", b["supply"]),
+                ("hotkey", b["hotkey"]), ("damage", b["damage"]), ("range", b["range"]),
+                ("cooldown", b["cooldown"]))
+        for key, want in keys:
             agree(f"buildings.toml [{building}].{key}", getattr(live, key), want)
+        if building == "gold_seam":
+            pass  # its summary renders {trip} from the deposit; checked below
+        else:
+            agree(f"buildings.toml [{building}].summary", live.summary, b["summary"])
         agree(f"buildings.toml [{building}].gold", live.cost.gold, b["gold"])
         agree(f"buildings.toml [{building}].lumber", live.cost.lumber, b["lumber"])
         agree(f"buildings.toml [{building}].trains", live.trains, b["trains"])
@@ -79,10 +85,25 @@ def test_the_toml_balance_tables_match_the_simulation() -> None:
     agree("buildings.toml [gold_seam].summary", rules.BUILDINGS[rules.BuildingType.GOLD_SEAM].summary,
           seam["summary"].replace("{trip}", str(seam["mine_trip"])))
 
+    for region, consts in SCALAR_REGIONS.items():
+        home = model if region == "movement" else rules
+        for const in consts:
+            agree(f"warband/constants {const}", getattr(home, const), tables.scalars[const])
+    agree("combat.toml [[damage_bonus]]",
+          sorted((attack.value, armor.value, factor) for (attack, armor), factor in rules.DAMAGE_FACTORS.items()),
+          sorted((b["attack"], b["armor"], b["factor"]) for b in tables.damage_bonus))
+    agree("combat.toml [siege.target_worth]",
+          {unit.value: factor for unit, factor in rules.SIEGE_WORTH.items()}, tables.siege_worth)
+    agree("upgrades.toml [deep_mining].summary", rules.UPGRADES[rules.Upgrade.DEEP_MINING].summary,
+          tables.upgrades["deep_mining"]["summary"].replace("{trip}", str(tables.scalars["DEEP_MINING_TRIP"])))
+
     for upgrade, u in tables.upgrades.items():
         live = rules.UPGRADES[rules.Upgrade(upgrade)]
-        for key, want in (("name", u["name"]), ("time", u["time"]), ("hotkey", u["hotkey"]), ("card", u["card"]),
-                          ("summary", u["summary"])):
+        keys = (("name", u["name"]), ("time", u["time"]), ("hotkey", u["hotkey"]), ("card", u["card"]),
+                ("summary", u["summary"]))
+        if upgrade == "deep_mining":
+            keys = keys[:-1]  # its summary renders {trip} from [effects]; checked below
+        for key, want in keys:
             agree(f"upgrades.toml [{upgrade}].{key}", getattr(live, key), want)
         agree(f"upgrades.toml [{upgrade}].gold", live.cost.gold, u["gold"])
         agree(f"upgrades.toml [{upgrade}].lumber", live.cost.lumber, u["lumber"])

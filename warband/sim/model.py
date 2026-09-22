@@ -147,18 +147,19 @@ LOCAL_EXPANSIONS: Final = 700  # A* budget for the detours around other units; t
 SETTLE_WITHIN: Final = 0.65  # beyond its own body, how near its spot a crowd may hold a unit for a plain walk to count as arrived
 MINE_CLEARANCE: Final = 2  # tiles kept free around a gold deposit so peasants can get in and out
 SIDESTEP: Final = 0.6  # lateral share of the push when walking units collide
-MAX_PUSH: Final = 0.25  # tiles a crowd can shove a unit in one step; eight overlapping units once summed to a jump over a tree wall
-# Standing at ease (docs/unit-motion.md part 5): units that are neither fighting nor working keep a little
-# elbow room, and a unit hemmed in by its neighbours takes a short step away from them now and then.
-SPACING: Final = 0.2  # tiles of clearance beyond touching that units at ease keep between each other; a soft push
-SPACING_WEIGHT: Final = 0.15  # share of the missing clearance closed per step, gentler than the overlap push
-EASE_SPACE: Final = 0.3  # clearance beyond its own diameter a standing unit wants; nearer than that and it feels crowded
-EASE_EVERY: Final = 5  # ticks between a crowded unit's chances to step away
-EASE_CHANCE: Final = 0.12  # that a crowded unit steps away at one of those chances: about once every two seconds
-EASE_STEP: Final = 0.4  # tiles of the step, give or take EASE_STEP_VARIANCE
+# The crowd's numbers are warband/constants/behavior.toml's; the pathfinder's budgets below them stay in code.
+# generated-begin movement: from warband/constants/behavior.toml — do not edit by hand; run tools/balance_tables.py
+MAX_PUSH: Final = 0.25
+SPACING: Final = 0.2
+SPACING_WEIGHT: Final = 0.15
+EASE_SPACE: Final = 0.3
+EASE_EVERY: Final = 5
+EASE_CHANCE: Final = 0.12
+EASE_STEP: Final = 0.4
 EASE_STEP_VARIANCE: Final = 0.3
-EASE_JITTER: Final = 0.7  # radians either side of straight away from the crowd the step may veer
-EASE_GAIN: Final = 0.1  # tiles more room the spot must offer than where the unit stands, so nobody steps into a neighbour
+EASE_JITTER: Final = 0.7
+EASE_GAIN: Final = 0.1
+# generated-end movement
 AUTO_EVERY: Final = round(1 / SIM_DT)  # ticks between an idle building's looks at its endless recruits: the settlement's second
 
 

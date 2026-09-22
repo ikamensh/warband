@@ -41,15 +41,26 @@ one fielded per game.
 
 ## Tuning the numbers
 
-Edit the TOML, not the Python. The whole balance surface is four commented
-files beside the simulation:
+Edit the TOML, not the Python. The tunable numbers are seven commented
+files in `warband/constants/`:
 
-- `warband/sim/units.toml` — every soldier, worker and creature: cost, hit
+- `units.toml` — every soldier, worker and creature: cost, hit
   points, damage, armour, range, timings, sight, body.
-- `warband/sim/buildings.toml` — every building: cost, hit points, work, the
+- `buildings.toml` — every building: cost, hit points, work, the
   tower's shot, and the two deposits (gold per trip, places at the face).
-- `warband/sim/upgrades.toml` — every research: price and time.
-- `warband/sim/races.toml` — what each race renames and retunes on top.
+- `upgrades.toml` — every research: price, time, and what it does.
+- `races.toml` — what each race renames and retunes on top.
+- `economy.toml` — harvest timings, mine stocks, starting resources,
+  what mending and salvaging cost.
+- `combat.toml` — melee reach, projectile speeds, the armour rule,
+  and how a siege crew weighs its own side against the enemy's.
+- `behavior.toml` — formation marching, creature camps, crowd
+  spacing, how far an idle unit chases.
+
+What stays in code, deliberately: the engine timing (`SIM_DT`), the order
+bounds, the pathfinder's budgets and cadence, the seats, and the alert
+cooldown — planner internals and protocol, not balance. `behavior.toml`
+names the boundary at its top.
 
 Then run `uv run python tools/balance_tables.py` from the repository root,
 which rewrites the GENERATED regions of `warband/sim/rules.py` and `races.py`.

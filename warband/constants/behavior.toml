@@ -1,0 +1,60 @@
+# Warband's behaviour: how lines march, how camps reset, how crowds feel.
+#
+# This is the file to edit to change formation marching, creature camps, crowd
+# spacing, or how far an idle unit chases. After editing, run from the
+# repository root:
+#
+#     uv run python tools/balance_tables.py
+#
+# which rewrites the matching constants in warband/sim/rules.py and
+# warband/sim/model.py (marked GENERATED there; never edit those regions by
+# hand). tests/warband/test_balance_tables.py fails until the two agree, so a
+# tuned checkout cannot be committed half-applied.
+#
+# What stays in code, deliberately: the pathfinder's budgets and cadence
+# (STUCK_AFTER, REPLAN_*, STEER_RANGE, LOCAL_EXPANSIONS, SETTLE_WITHIN,
+# MINE_CLEARANCE, SIDESTEP in model.py) are planner internals, and mistuning
+# them breaks movement before it rebalances anything. SIM_DT, VISION_EVERY and
+# the order bounds are engine timing and protocol, not balance.
+
+[formation]
+armor = 1 # armour a formation unit gains for each such friend at its left and at its right
+spacing = 1.0 # tiles between neighbours in a marching line: a footman's body is 0.84 wide, so a line still has daylight in it
+width = 8 # a line this long; more stand in rows behind
+march = 4.0 # tiles a group must go before its formation units form a line; nearer, they gather
+slack = 1.0 # tiles nearer its slot than the line's laggard before a marcher waits for it
+hold = 0.6 # of its speed a marcher that is ahead of its line walks
+lookahead = 3.0 # tiles ahead of a marching line's middle each member aims for its place
+
+# A camp is a lair with its guards placed around it, and it resets rather than
+# streaming (docs/warband-monsters.md): clear the whole thing, lair and all,
+# in one committed push and it is yours for good; break off and you paid units
+# for nothing.
+
+[camps]
+watch = 7.0 # tiles from the lair within which an intruder rouses the camp…
+hold = 11.0 # …and beyond which the camp counts it gone and settles back
+calm = 8.0 # seconds with nobody in hold before a camp starts putting itself back together
+regen = 10.0 # hit points a settled guard standing at its post knits back per second
+respawn = 25.0 # seconds a settled camp takes to bring one fallen guard back out of the lair
+post = 2.6 # tiles from the lair's middle a guard is posted
+regen_calm = 6.0 # seconds since the last blow landed on a creature before its regeneration starts
+
+# Standing at ease (docs/unit-motion.md part 5): units that are neither
+# fighting nor working keep a little elbow room, and a unit hemmed in by its
+# neighbours takes a short step away from them now and then.
+
+[movement]
+max_push = 0.25 # tiles a crowd can shove a unit in one step; eight overlapping units once summed to a jump over a tree wall
+spacing = 0.2 # tiles of clearance beyond touching that units at ease keep between each other; a soft push
+spacing_weight = 0.15 # share of the missing clearance closed per step, gentler than the overlap push
+ease_space = 0.3 # clearance beyond its own diameter a standing unit wants; nearer than that and it feels crowded
+ease_every = 5 # ticks between a crowded unit's chances to step away
+ease_chance = 0.12 # that a crowded unit steps away at one of those chances: about once every two seconds
+ease_step = 0.4 # tiles of the step, give or take ease_step_variance
+ease_step_variance = 0.3
+ease_jitter = 0.7 # radians either side of straight away from the crowd the step may veer
+ease_gain = 0.1 # tiles more room the spot must offer than where the unit stands, so nobody steps into a neighbour
+
+[pursuit]
+leash = 6.0 # how far an idle unit chases before it walks home

@@ -1,11 +1,11 @@
 """Static game data.  Nothing here mutates.
 
-To change what a unit, building or upgrade costs or does, edit the TOML next
-to this file -- ``units.toml``, ``buildings.toml``, ``upgrades.toml`` -- and
-run ``uv run python tools/balance_tables.py`` from the repository root, which
-rewrites the GENERATED regions below.  Never edit those regions by hand;
-``tests/warband/test_balance_tables.py`` fails until the two agree.  The
-per-race tweaks live in ``races.toml`` the same way.
+To change what a unit, building or upgrade costs or does, or what the
+economy, combat and behaviour numbers are, edit the TOML in
+``warband/constants/`` and run ``uv run python tools/balance_tables.py`` from
+the repository root, which rewrites the GENERATED regions below.  Never edit
+those regions by hand; ``tests/warband/test_balance_tables.py`` fails until
+the two agree.
 
 Distances are in tiles, times in seconds of simulation time.  A unit's
 ``range`` is the largest gap between its edge and the target's edge at
@@ -217,9 +217,11 @@ class UnitInfo:
         return self.damage > 0 and not self.heal
 
 
-MELEE: Final = 0.45  # reach of a melee unit: it strikes from the next tile over, diagonals included
+# generated-begin melee: from warband/constants/combat.toml — do not edit by hand; run tools/balance_tables.py
+MELEE: Final = 0.45
+# generated-end melee
 
-# generated-begin units: from warband/sim/units.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin units: from warband/constants/units.toml — do not edit by hand; run tools/balance_tables.py
 UNITS: Final[dict[UnitType, UnitInfo]] = {
     UnitType.PEASANT: UnitInfo(name='Peasant', cost=Cost(400), hp=30, damage=3, armor=0, range=MELEE, cooldown=1.0, speed=2.4, sight=4, build_time=12.0, trained_at=BuildingType.TOWN_HALL, hotkey='p', summary='Mines gold, chops lumber, builds and repairs', radius=0.36, heal=0, splash=0.0, attack=AttackType.NORMAL, armor_class=ArmorClass.UNARMORED, formation=False, mounted=False, windup=0.25, turn=math.radians(360), min_range=0.0, regen=0.0),
     UnitType.FOOTMAN: UnitInfo(name='Footman', cost=Cost(600), hp=60, damage=7, armor=3, range=MELEE, cooldown=1.0, speed=2.0, sight=5, build_time=15.0, trained_at=BuildingType.BARRACKS, hotkey='f', summary='Slow shield-wall swordsman; tougher with a comrade at each side', radius=0.42, heal=0, splash=0.0, attack=AttackType.NORMAL, armor_class=ArmorClass.HEAVY, formation=True, mounted=False, windup=0.3, turn=math.radians(360), min_range=0.0, regen=0.0),
@@ -254,7 +256,7 @@ PLAYABLE_UNITS: Final[tuple[UnitType, ...]] = (UnitType.PEASANT, UnitType.FOOTMA
 # knights-only check.  High hit points and no armour cost time and exposure instead, and leave the
 # archer the efficient answer.  Its regeneration is out-of-combat only (:attr:`UnitInfo.regen`).
 
-# generated-begin wilds: from warband/sim/units.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin wilds: from warband/constants/units.toml — do not edit by hand; run tools/balance_tables.py
 WILD_UNITS: Final[dict[UnitType, UnitInfo]] = {
     UnitType.WOLF: UnitInfo(name='Dire Wolf', cost=Cost(0), hp=40, damage=6, armor=0, range=MELEE, cooldown=0.9, speed=4.0, sight=7, build_time=0.0, trained_at=BuildingType.LAIR, hotkey='', summary='A pack hunter: fast, fragile and never alone', radius=0.4, heal=0, splash=0.0, attack=AttackType.NORMAL, armor_class=ArmorClass.LIGHT, formation=False, mounted=False, windup=0.2, turn=math.radians(450), min_range=0.0, regen=0.0),
     UnitType.SPIDER: UnitInfo(name='Venom Spider', cost=Cost(0), hp=45, damage=8, armor=0, range=5.0, cooldown=1.6, speed=2.2, sight=7, build_time=0.0, trained_at=BuildingType.LAIR, hotkey='', summary='Spits venom from five tiles; helpless once something reaches it', radius=0.45, heal=0, splash=0.0, attack=AttackType.NORMAL, armor_class=ArmorClass.LIGHT, formation=False, mounted=False, windup=0.4, turn=math.radians(360), min_range=0.0, regen=0.0),
@@ -270,21 +272,25 @@ WILD_BUILDINGS: Final[frozenset[BuildingType]] = frozenset({BuildingType.GOLD_MI
 #: buildings" -- a race's names, the painted sheets, a jittered rulebook, the art lint -- walks this.
 BUILT: Final[tuple[BuildingType, ...]] = tuple(bt for bt in BuildingType if bt not in WILD_BUILDINGS)
 
-REGEN_CALM: Final = 6.0  # seconds since the last blow landed on it before a creature's regeneration starts
+# generated-begin regen_calm: from warband/constants/behavior.toml — do not edit by hand; run tools/balance_tables.py
+REGEN_CALM: Final = 6.0
+# generated-end regen_calm
 
 
 # -- Gold deposits -----------------------------------------------------------------
 
-# generated-begin deposits: from warband/sim/buildings.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin deposits: from warband/constants/buildings.toml — do not edit by hand; run tools/balance_tables.py
 GOLD_PER_TRIP: Final = 100
 MINE_SLOTS: Final = 8
 SEAM_PER_TRIP: Final = 20
 SEAM_SLOTS: Final = 12
 # generated-end deposits
-MINE_TIME: Final = 5.0  # seconds a peasant spends inside a deposit per trip
+# generated-begin mine_time: from warband/constants/economy.toml — do not edit by hand; run tools/balance_tables.py
+MINE_TIME: Final = 5.0
+# generated-end mine_time
 # The face serves its slots every MINE_TIME, so a deposit yields at most slots * trip / MINE_TIME. With the
 # walk to the hall on top, a mine next door is saturated by about ten peasants and a distant one by a few
-# more (the trips and slots are warband/sim/buildings.toml's): hiring past that earns nothing, and the way
+# more (the trips and slots are warband/constants/buildings.toml's): hiring past that earns nothing, and the way
 # to more gold is another mine.
 
 
@@ -327,7 +333,7 @@ class BuildingInfo:
     mine: MineInfo | None = None  # set on the gold deposits alone, and on nothing a player can build
 
 
-# generated-begin buildings: from warband/sim/buildings.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin buildings: from warband/constants/buildings.toml — do not edit by hand; run tools/balance_tables.py
 BUILDINGS: Final[dict[BuildingType, BuildingInfo]] = {
     BuildingType.TOWN_HALL: BuildingInfo(name='Town Hall', cost=Cost(1200, 800), hp=1200, armor=3, size=3, build_time=60.0, sight=6, supply=5, hotkey='h', summary='Trains peasants; gold and lumber are delivered here; raises the Keep', trains=(UnitType.PEASANT,), researches=(Upgrade.KEEP,), deposits=frozenset({Resource.GOLD, Resource.LUMBER}), damage=0, range=0.0, cooldown=1.0),
     BuildingType.FARM: BuildingInfo(name='Farm', cost=Cost(500, 250), hp=400, armor=2, size=2, build_time=25.0, sight=3, supply=4, hotkey='f', summary='Feeds four units', trains=(), researches=(), damage=0, range=0.0, cooldown=1.0),
@@ -339,7 +345,7 @@ BUILDINGS: Final[dict[BuildingType, BuildingInfo]] = {
     BuildingType.WORKSHOP: BuildingInfo(name='Workshop', cost=Cost(700, 350), hp=600, armor=3, size=3, build_time=45.0, sight=4, supply=0, hotkey='w', summary='Builds catapults; improves siege engines', trains=(UnitType.CATAPULT,), researches=(Upgrade.SIEGE, Upgrade.BLASTING_POWDER), requires=BuildingType.BLACKSMITH, damage=0, range=0.0, cooldown=1.0),
     BuildingType.CHURCH: BuildingInfo(name='Church', cost=Cost(900, 400), hp=600, armor=3, size=3, build_time=45.0, sight=5, supply=0, hotkey='c', summary='Trains clerics; blesses their healing', trains=(UnitType.CLERIC,), researches=(Upgrade.BLESSING,), requires=BuildingType.BARRACKS, damage=0, range=0.0, cooldown=1.0),
     BuildingType.GOLD_MINE: BuildingInfo(name='Gold Mine', cost=Cost(0), hp=0, armor=0, size=3, build_time=0.0, sight=0, supply=0, hotkey='', summary='Peasants mine gold here', trains=(), researches=(), damage=0, range=0.0, cooldown=1.0, mine=MineInfo(trip=100, slots=8)),
-    BuildingType.GOLD_SEAM: BuildingInfo(name='Gold Seam', cost=Cost(0), hp=0, armor=0, size=5, build_time=0.0, sight=0, supply=0, hotkey='', summary=f'A wide seam that never runs dry: {SEAM_PER_TRIP} gold a trip', trains=(), researches=(), damage=0, range=0.0, cooldown=1.0, mine=MineInfo(trip=20, slots=12, endless=True)),
+    BuildingType.GOLD_SEAM: BuildingInfo(name='Gold Seam', cost=Cost(0), hp=0, armor=0, size=5, build_time=0.0, sight=0, supply=0, hotkey='', summary='A wide seam that never runs dry: 20 gold a trip', trains=(), researches=(), damage=0, range=0.0, cooldown=1.0, mine=MineInfo(trip=20, slots=12, endless=True)),
     BuildingType.LAIR: BuildingInfo(name='Lair', cost=Cost(0), hp=900, armor=2, size=3, build_time=0.0, sight=4, supply=0, hotkey='', summary='A creature den: its guards come back from it until it is torn down', trains=(), researches=(), damage=0, range=0.0, cooldown=1.0),
 }
 # generated-end buildings
@@ -357,7 +363,7 @@ class UpgradeInfo:
     race: Race | None = None  # a race art: nobody else can research it
 
 
-# generated-begin upgrades: from warband/sim/upgrades.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin upgrades: from warband/constants/upgrades.toml — do not edit by hand; run tools/balance_tables.py
 UPGRADES: Final[dict[Upgrade, UpgradeInfo]] = {
     Upgrade.KEEP: UpgradeInfo(name='Keep', cost=Cost(1500, 800), time=90.0, hotkey='k', card='Keep', summary='Raises the hall, opening the upper tiers', requires=()),
     Upgrade.BLADES_1: UpgradeInfo(name='Sharpened Blades', cost=Cost(500, 100), time=40.0, hotkey='b', card='Blades I', summary='+2 damage for melee units', requires=()),
@@ -381,8 +387,8 @@ UPGRADES: Final[dict[Upgrade, UpgradeInfo]] = {
 }
 # generated-end upgrades
 
+# generated-begin upgrade_effects: from warband/constants/upgrades.toml — do not edit by hand; run tools/balance_tables.py
 BLADES_BONUS: Final = 2
-#: The master weapons are worth two of the tiers below them, for well over twice their price and twice their hour.
 MASTER_WEAPON_BONUS: Final = 4
 ARMOR_BONUS: Final = 1
 ARROWS_BONUS: Final = 2
@@ -390,25 +396,31 @@ HORSES_BONUS: Final = 0.8
 SIEGE_RANGE_BONUS: Final = 1.0
 SIEGE_DAMAGE_BONUS: Final = 1.25
 BLESSING_BONUS: Final = 1.5
-FRENZY_BONUS: Final = 1.25  # an orc below half health hits this much harder…
-BLOODLUST_BONUS: Final = 1.5  # …and this much with Bloodlust
-PLUNDER_SHARE: Final = 0.2  # of a razed building's gold cost
+FRENZY_BONUS: Final = 1.25
+BLOODLUST_BONUS: Final = 1.5
+PLUNDER_SHARE: Final = 0.2
 LONGBOWS_BONUS: Final = 1.0
 REGROWTH_SECONDS: Final = 60.0
 DEEP_MINING_TRIP: Final = 150
 BLASTING_POWDER_BONUS: Final = 1.5
-SPLASH_FRACTION: Final = 0.6  # share of the damage a stone deals beyond DIRECT_HIT of where it lands, out to the splash radius
-DIRECT_HIT: Final = 0.5  # tiles from where a stone lands within which it deals its full damage
-WINDUP_SLACK: Final = 0.5  # tiles a target may slip beyond weapon reach during the wind-up and still be struck
-ARROW_SPEED: Final = 14.0  # tiles per second an arrow, axe or bolt flies; it follows its mark and strikes on arrival
-STONE_SPEED: Final = 7.0  # tiles per second a siege stone covers; it comes down on the ground it was fired at
-STONE_MIN_FLIGHT: Final = 0.4  # seconds even the shortest lob spends in the air
+# generated-end upgrade_effects
+# generated-begin combat: from warband/constants/combat.toml — do not edit by hand; run tools/balance_tables.py
+SPLASH_FRACTION: Final = 0.6
+DIRECT_HIT: Final = 0.5
+WINDUP_SLACK: Final = 0.5
+ARROW_SPEED: Final = 14.0
+STONE_SPEED: Final = 7.0
+STONE_MIN_FLIGHT: Final = 0.4
+HIT_VARIANCE: Final = 0.25
+# generated-end combat
 #: How hard each kind of blow lands on each kind of armour, before armour is subtracted; a pairing not listed is 1.
 #: The one place these multipliers live (WB-049).  Towers strike a normal blow.
+# generated-begin damage_factors: from warband/constants/combat.toml — do not edit by hand; run tools/balance_tables.py
 DAMAGE_FACTORS: Final[dict[tuple[AttackType, ArmorClass], float]] = {
     (AttackType.PIERCING, ArmorClass.UNARMORED): 1.5,
     (AttackType.SIEGE, ArmorClass.FORTIFIED): 1.5,
 }
+# generated-end damage_factors
 
 
 def damage_factor(attack: AttackType, armor: ArmorClass) -> float:
@@ -426,35 +438,34 @@ def an(name: str) -> str:
     return f"{'an' if name[:1].upper() in 'AEIOU' else 'a'} {name}"
 
 
-FRIENDLY_MARGIN: Final = 0.45  # tiles beyond its splash a siege crew counts one of its own as standing under the stone.
-# Where a friend will be when the stone lands is a guess: the crew leads it by the walking it does of its own accord, and a
-# shove from the crowd is not in that velocity, the more so since a body the size of a knight's is shoved harder and further
-# than the old one-size body was.  Over the twelve clash seeds of tests/warband/test_siege_judgement.py, a veto at 0.3 put
-# stones on our own footmen in five of them (the shipped 0.35-tile bodies did it in two: the test's first six seeds were
-# lucky) and 0.4 in one; 0.45 is the least that was clean.
-FRIENDLY_WORTH: Final = 2.0  # what one of our own under a stone costs the crew, against SIEGE_WORTH's 1 for one of theirs.
-# A crew on its own judgement used to veto any stone that could touch its own side, which behind a line locked with the enemy
-# is every stone there is: in the set piece of docs/balance.md it threw a stone every thirty-one seconds where its reload is
-# under four, and seven footmen and two catapults lost to ten footmen.  It weighs the trade instead (World._aim_trade), and
-# two of ours for one of theirs is what it takes.  It is the least that is clean: at 1.5 the crew shells its own line on the
-# clash seeds of tests/warband/test_siege_judgement.py, and 3.0 is markedly more timid where it is pressed (against twelve
-# footmen the same two catapults win 30% of the set piece rather than 72%).
-FORMATION_ARMOR: Final = 1  # armour a formation unit gains for each such friend at its left and at its right
-FORMATION_SPACING: Final = 1.0  # tiles between neighbours in a marching line: a footman's body is 0.84 wide, so a line still has daylight in it
-FORMATION_WIDTH: Final = 8  # a line this long; more stand in rows behind
-FORMATION_MARCH: Final = 4.0  # tiles a group must go before its formation units form a line; nearer, they gather
-FORMATION_SLACK: Final = 1.0  # tiles nearer its slot than the line's laggard before a marcher waits for it
-FORMATION_HOLD: Final = 0.6  # of its speed a marcher that is ahead of its line walks
-FORMATION_LOOKAHEAD: Final = 3.0  # tiles ahead of a marching line's middle each member aims for its place
-SIEGE_STEP: Final = 3.0  # tiles beyond its reach a siege crew on its own judgement will roll forward for a clear shot
-SIEGE_WORTH: Final = {UnitType.CATAPULT: 3.0, UnitType.CLERIC: 3.0, UnitType.ARCHER: 2.0}  # what a stone on them is worth to a crew; any other unit 1
-SIEGE_BUILDING_WORTH: Final = 0.5  # a building under a stone, beside a unit's 1: soldiers first, walls when no soldier can be reached
+# generated-begin friendly_fire: from warband/constants/combat.toml — do not edit by hand; run tools/balance_tables.py
+FRIENDLY_MARGIN: Final = 0.45
+FRIENDLY_WORTH: Final = 2.0
+# generated-end friendly_fire
+# generated-begin formation: from warband/constants/behavior.toml — do not edit by hand; run tools/balance_tables.py
+FORMATION_ARMOR: Final = 1
+FORMATION_SPACING: Final = 1.0
+FORMATION_WIDTH: Final = 8
+FORMATION_MARCH: Final = 4.0
+FORMATION_SLACK: Final = 1.0
+FORMATION_HOLD: Final = 0.6
+FORMATION_LOOKAHEAD: Final = 3.0
+# generated-end formation
+# generated-begin siege: from warband/constants/combat.toml — do not edit by hand; run tools/balance_tables.py
+SIEGE_STEP: Final = 3.0
+SIEGE_WORTH: Final = {UnitType.CATAPULT: 3.0, UnitType.CLERIC: 3.0, UnitType.ARCHER: 2.0}
+SIEGE_BUILDING_WORTH: Final = 0.5
+# generated-end siege
 
+# generated-begin lumber: from warband/constants/economy.toml — do not edit by hand; run tools/balance_tables.py
 LUMBER_PER_TRIP: Final = 100
-CHOP_TIME: Final = 5.0  # seconds to fell a tree
-REPAIR_RATE: Final = 8.0  # hit points a peasant mends per second
-REPAIR_CHUNK: Final = 10  # hit points paid for at a time while repairing
-REPAIR_COST: Final = 0.5  # share of a building's price that mending all of its hit points costs
+CHOP_TIME: Final = 5.0
+# generated-end lumber
+# generated-begin repair: from warband/constants/economy.toml — do not edit by hand; run tools/balance_tables.py
+REPAIR_RATE: Final = 8.0
+REPAIR_CHUNK: Final = 10
+REPAIR_COST: Final = 0.5
+# generated-end repair
 
 
 def repair_cost(info: BuildingInfo, hp_before: int, hp_after: int, max_hp: int) -> Cost:
@@ -473,10 +484,12 @@ def repair_cost(info: BuildingInfo, hp_before: int, hp_after: int, max_hp: int) 
 # A ruin nobody holds comes apart at the rate one is mended at; a building someone still holds resists, and comes
 # apart at a quarter of it, which is why a peasant crew is never a siege engine (a catapult puts about fourteen
 # hit points a second into a building from seven tiles away, a salvaging peasant two from arm's length).
-SALVAGE_RATE: Final = 8.0  # hit points a peasant tears out of a ruin per second
-SALVAGE_HELD_RATE: Final = 2.0  # hit points a second out of a building its owner still holds
-SALVAGE_CHUNK: Final = 10  # hit points torn out at a time, each paid out on its own
-SALVAGE_SHARE: Final = 0.25  # share of a building's price that tearing all of its hit points out returns
+# generated-begin salvage: from warband/constants/economy.toml — do not edit by hand; run tools/balance_tables.py
+SALVAGE_RATE: Final = 8.0
+SALVAGE_HELD_RATE: Final = 2.0
+SALVAGE_CHUNK: Final = 10
+SALVAGE_SHARE: Final = 0.25
+# generated-end salvage
 
 
 def salvage_yield(info: BuildingInfo, hp_before: int, hp_after: int, max_hp: int) -> int:
@@ -502,14 +515,18 @@ def salvage_resource(info: BuildingInfo, roll: float) -> Resource:
     materials out of the building that is there."""
     price = info.cost.gold + info.cost.lumber
     return Resource.GOLD if roll * price < info.cost.gold else Resource.LUMBER
-MINE_GOLD: Final = 50_000  # a base mine; expansion mines hold EXPANSION_GOLD, and an endless seam no stock at all
-EXPANSION_GOLD: Final = 30_000
+# generated-begin setup: from warband/constants/economy.toml — do not edit by hand; run tools/balance_tables.py
+MINE_GOLD: Final = 50000
+EXPANSION_GOLD: Final = 30000
 STARTING_GOLD: Final = 1000
 STARTING_LUMBER: Final = 500
+# generated-end setup
 #: The largest body any unit has: what a search that must not miss a unit whose body reaches into it pads by
 #: (the bodies themselves are :attr:`UnitInfo.radius`).  A jittered rulebook never moves a radius, so this holds.
 MAX_UNIT_RADIUS: Final = max(info.radius for info in UNITS.values())
-LEASH: Final = 6.0  # how far an idle unit chases before it walks home
+# generated-begin pursuit: from warband/constants/behavior.toml — do not edit by hand; run tools/balance_tables.py
+LEASH: Final = 6.0
+# generated-end pursuit
 
 # -- Creature camps ----------------------------------------------------------------
 # A camp is a lair with its guards placed around it, and it resets rather than streaming.  A den that
@@ -517,18 +534,19 @@ LEASH: Final = 6.0  # how far an idle unit chases before it walks home
 # clearing it is beating down an undefended building; a camp that comes back once it is left alone makes
 # the decision crisp instead -- clear the whole thing, lair and all, in one committed push and it is yours
 # for good; break off and you paid units for nothing.
-CAMP_WATCH: Final = 7.0  # tiles from the lair within which an intruder rouses the camp…
-CAMP_HOLD: Final = 11.0  # …and beyond which the camp counts it gone and settles back
-CAMP_CALM: Final = 8.0  # seconds with nobody in CAMP_HOLD before a camp starts putting itself back together
-CAMP_REGEN: Final = 10.0  # hit points a settled guard standing at its post knits back per second
-CAMP_RESPAWN: Final = 25.0  # seconds a settled camp takes to bring one fallen guard back out of the lair
-CAMP_POST: Final = 2.6  # tiles from the lair's middle a guard is posted
+# generated-begin camps: from warband/constants/behavior.toml — do not edit by hand; run tools/balance_tables.py
+CAMP_WATCH: Final = 7.0
+CAMP_HOLD: Final = 11.0
+CAMP_CALM: Final = 8.0
+CAMP_REGEN: Final = 10.0
+CAMP_RESPAWN: Final = 25.0
+CAMP_POST: Final = 2.6
+# generated-end camps
 UNDER_ATTACK_COOLDOWN: Final = 20.0
 SIM_DT: Final = 0.05  # the simulation runs at 20 Hz regardless of the frame rate
 VISION_EVERY: Final = 4  # ticks between fog recomputations
 MAX_PLANS: Final = 64  # settlement plans a player may have waiting: each is looked at every second and travels in every online snapshot
 MAX_QUEUED_ORDERS: Final = 32  # orders a unit may have queued behind the one it is carrying out
-HIT_VARIANCE: Final = 0.25  # damage rolls between 75 % and 125 % of the listed value
 
 
 @dataclass(frozen=True)

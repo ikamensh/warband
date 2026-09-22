@@ -1,9 +1,10 @@
 """The four races: what differs on top of the shared skeleton in :mod:`warband.sim.rules`.
 
-To rename a race's units or retune its edge, edit ``races.toml`` next to this
-file and run ``uv run python tools/balance_tables.py`` from the repository
-root, which rewrites the GENERATED regions below.  Never edit those regions
-by hand; ``tests/warband/test_balance_tables.py`` fails until the two agree.
+To rename a race's units or retune its edge, edit
+``warband/constants/races.toml`` and run ``uv run python tools/balance_tables.py``
+from the repository root, which rewrites the GENERATED regions below.  Never
+edit those regions by hand; ``tests/warband/test_balance_tables.py`` fails
+until the two agree.
 
 Every race fields the same seven roles from the same nine buildings with the
 same hotkeys and costs, so the AI, the settlement planner, the saves and the
@@ -122,7 +123,7 @@ def _race(name: str, adjective: str, tagline: str, passive: str, arts: tuple[Upg
                     {bt: t.card for bt, t in buildings.items()})
 
 
-# generated-begin human_units: from warband/sim/races.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin human_units: from warband/constants/races.toml — do not edit by hand; run tools/balance_tables.py
 _HUMAN_UNITS: Final = {
     UnitType.PEASANT: UnitTweak('Peasant', 'Mines gold, chops lumber, builds, repairs', hp=1.0, damage=1.0, armor=0, range=0.0, speed=0.0, sight=0, build_time=0.85, formation=True),
     UnitType.FOOTMAN: UnitTweak('Footman', 'Slow shield-wall swordsman; tougher with a comrade at each side', hp=1.0, damage=1.0, armor=0, range=0.0, speed=0.0, sight=0, build_time=0.85, formation=True),
@@ -133,7 +134,7 @@ _HUMAN_UNITS: Final = {
     UnitType.CLERIC: UnitTweak('Cleric', 'Heals wounded allies; smites weakly when none need healing', hp=1.0, damage=1.0, armor=0, range=0.0, speed=0.0, sight=0, build_time=0.85, formation=True),
 }
 # generated-end human_units
-# generated-begin human_buildings: from warband/sim/races.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin human_buildings: from warband/constants/races.toml — do not edit by hand; run tools/balance_tables.py
 _HUMAN_BUILDINGS: Final = {
     BuildingType.TOWN_HALL: BuildingTweak('Town Hall', 'Hall', 'Trains peasants; takes gold and lumber', hp=1.0, armor=0),
     BuildingType.FARM: BuildingTweak('Farm', 'Farm', 'Feeds four units', hp=1.0, armor=0),
@@ -146,13 +147,13 @@ _HUMAN_BUILDINGS: Final = {
     BuildingType.CHURCH: BuildingTweak('Church', 'Church', 'Trains clerics; blesses their healing', hp=1.0, armor=0),
 }
 # generated-end human_buildings
-# generated-begin human_upgrades: from warband/sim/races.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin human_upgrades: from warband/constants/races.toml — do not edit by hand; run tools/balance_tables.py
 _HUMAN_UPGRADES: Final = {
     Upgrade.KEEP: UpgradeTweak('Keep', 'Keep'),
 }
 # generated-end human_upgrades
 
-# generated-begin orc_units: from warband/sim/races.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin orc_units: from warband/constants/races.toml — do not edit by hand; run tools/balance_tables.py
 _ORC_UNITS: Final = {
     UnitType.PEASANT: UnitTweak('Peon', 'Digs gold, hacks lumber, builds and repairs', hp=1.15, damage=1.0, armor=0, range=0.0, speed=0.0, sight=0, build_time=1.0, formation=True),
     UnitType.FOOTMAN: UnitTweak('Grunt', 'Brutal axeman, fast and alone; hits harder as it bleeds', hp=1.15, damage=1.1, armor=-2, range=0.0, speed=0.4, sight=0, build_time=1.0, formation=False),
@@ -163,7 +164,7 @@ _ORC_UNITS: Final = {
     UnitType.CLERIC: UnitTweak('Shaman', 'Mends wounded allies; hexes weakly when none need mending', hp=1.15, damage=1.0, armor=0, range=0.0, speed=0.0, sight=0, build_time=1.0, formation=True),
 }
 # generated-end orc_units
-# generated-begin orc_buildings: from warband/sim/races.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin orc_buildings: from warband/constants/races.toml — do not edit by hand; run tools/balance_tables.py
 _ORC_BUILDINGS: Final = {
     BuildingType.TOWN_HALL: BuildingTweak('Great Hall', 'Hall', 'Trains peons; takes gold and lumber', hp=1.0, armor=0),
     BuildingType.FARM: BuildingTweak('Pig Farm', 'Pig Farm', 'Feeds four units', hp=1.0, armor=0),
@@ -176,13 +177,13 @@ _ORC_BUILDINGS: Final = {
     BuildingType.CHURCH: BuildingTweak('Altar', 'Altar', 'Trains shamans', hp=1.0, armor=0),
 }
 # generated-end orc_buildings
-# generated-begin orc_upgrades: from warband/sim/races.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin orc_upgrades: from warband/constants/races.toml — do not edit by hand; run tools/balance_tables.py
 _ORC_UPGRADES: Final = {
     Upgrade.KEEP: UpgradeTweak('Stronghold', 'Stronghold'),
 }
 # generated-end orc_upgrades
 
-# generated-begin elf_units: from warband/sim/races.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin elf_units: from warband/constants/races.toml — do not edit by hand; run tools/balance_tables.py
 _ELF_UNITS: Final = {
     UnitType.PEASANT: UnitTweak('Gatherer', 'Mines gold, fells trees, builds and repairs', hp=0.95, damage=1.0, armor=0, range=0.0, speed=0.15, sight=2, build_time=1.0, formation=True),
     UnitType.FOOTMAN: UnitTweak('Sentinel', 'Light swordsman in a line; quick on their feet', hp=0.95, damage=1.0, armor=0, range=0.0, speed=0.15, sight=2, build_time=1.0, formation=True),
@@ -193,7 +194,7 @@ _ELF_UNITS: Final = {
     UnitType.CLERIC: UnitTweak('Druid', 'Tends wounded allies; stings weakly when none need tending', hp=0.95, damage=1.0, armor=0, range=0.0, speed=0.15, sight=2, build_time=1.0, formation=True),
 }
 # generated-end elf_units
-# generated-begin elf_buildings: from warband/sim/races.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin elf_buildings: from warband/constants/races.toml — do not edit by hand; run tools/balance_tables.py
 _ELF_BUILDINGS: Final = {
     BuildingType.TOWN_HALL: BuildingTweak('Moon Hall', 'Hall', 'Trains gatherers; takes gold and lumber', hp=1.0, armor=0),
     BuildingType.FARM: BuildingTweak('Orchard', 'Orchard', 'Feeds four units', hp=1.0, armor=0),
@@ -206,13 +207,13 @@ _ELF_BUILDINGS: Final = {
     BuildingType.CHURCH: BuildingTweak('Moonwell', 'Moonwell', 'Trains druids', hp=1.0, armor=0),
 }
 # generated-end elf_buildings
-# generated-begin elf_upgrades: from warband/sim/races.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin elf_upgrades: from warband/constants/races.toml — do not edit by hand; run tools/balance_tables.py
 _ELF_UPGRADES: Final = {
     Upgrade.KEEP: UpgradeTweak('Moonspire', 'Moonspire'),
 }
 # generated-end elf_upgrades
 
-# generated-begin dwarf_units: from warband/sim/races.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin dwarf_units: from warband/constants/races.toml — do not edit by hand; run tools/balance_tables.py
 _DWARF_UNITS: Final = {
     UnitType.PEASANT: UnitTweak('Miner', 'Mines gold, chops lumber, builds, repairs', hp=1.1, damage=1.0, armor=0, range=0.0, speed=-0.15, sight=0, build_time=1.0, formation=True),
     UnitType.FOOTMAN: UnitTweak('Ironguard', 'Armoured axeman in a wall of round shields', hp=1.1, damage=1.0, armor=1, range=0.0, speed=-0.15, sight=0, build_time=1.0, formation=True),
@@ -223,7 +224,7 @@ _DWARF_UNITS: Final = {
     UnitType.CLERIC: UnitTweak('Runepriest', 'Heals wounded allies; strikes weakly when none need healing', hp=1.1, damage=1.0, armor=0, range=0.0, speed=-0.15, sight=0, build_time=1.0, formation=True),
 }
 # generated-end dwarf_units
-# generated-begin dwarf_buildings: from warband/sim/races.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin dwarf_buildings: from warband/constants/races.toml — do not edit by hand; run tools/balance_tables.py
 _DWARF_BUILDINGS: Final = {
     BuildingType.TOWN_HALL: BuildingTweak('Deep Hold', 'Hold', 'Trains miners; takes gold and lumber', hp=1.25, armor=2),
     BuildingType.FARM: BuildingTweak('Brewhouse', 'Brewery', 'Feeds four units', hp=1.25, armor=2),
@@ -236,13 +237,13 @@ _DWARF_BUILDINGS: Final = {
     BuildingType.CHURCH: BuildingTweak('Rune Shrine', 'Shrine', 'Trains runepriests', hp=1.25, armor=2),
 }
 # generated-end dwarf_buildings
-# generated-begin dwarf_upgrades: from warband/sim/races.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin dwarf_upgrades: from warband/constants/races.toml — do not edit by hand; run tools/balance_tables.py
 _DWARF_UPGRADES: Final = {
     Upgrade.KEEP: UpgradeTweak('Stonehold', 'Stonehold'),
 }
 # generated-end dwarf_upgrades
 
-# generated-begin races: from warband/sim/races.toml — do not edit by hand; run tools/balance_tables.py
+# generated-begin races: from warband/constants/races.toml — do not edit by hand; run tools/balance_tables.py
 RACES: Final[dict[Race, RaceInfo]] = {
     Race.HUMAN: _race('Humans', 'Human', 'Drilled, balanced, and blessed with the fastest horses', 'Drill: every unit trains 15 % faster', (Upgrade.HORSES, Upgrade.BLESSING), _HUMAN_UNITS, _HUMAN_BUILDINGS, _HUMAN_UPGRADES),
     Race.ORC: _race('Orcs', 'Orcish', 'Tough, savage, and deadliest when bleeding', 'Frenzy: soldiers below half health deal +25 % damage', (Upgrade.BLOODLUST, Upgrade.PLUNDER), _ORC_UNITS, _ORC_BUILDINGS, _ORC_UPGRADES),

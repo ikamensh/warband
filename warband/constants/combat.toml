@@ -1,0 +1,67 @@
+# Warband's combat: how shots fly, how stones splash, who counts as what.
+#
+# This is the file to edit to change projectile speeds, the armour rule, or
+# how a siege crew weighs its own side against the enemy's. After editing, run
+# from the repository root:
+#
+#     uv run python tools/balance_tables.py
+#
+# which rewrites the matching constants in warband/sim/rules.py (marked
+# GENERATED there; never edit those regions by hand).
+# tests/warband/test_balance_tables.py fails until the two agree, so a tuned
+# checkout cannot be committed half-applied.
+#
+# Armour is a flat subtraction with a floor of one, which decides several
+# matchups before any posture plays (docs/balance.md does the arithmetic).
+# `melee_range` is the shared melee reach every units.toml `range = "melee"`
+# resolves to: a blow from the next tile over, diagonals included.
+
+melee_range = 0.45
+arrow_speed = 14.0 # tiles per second an arrow, axe or bolt flies; it follows its mark and strikes on arrival
+stone_speed = 7.0 # tiles per second a siege stone covers; it comes down on the ground it was fired at
+stone_min_flight = 0.4 # seconds even the shortest lob spends in the air
+windup_slack = 0.5 # tiles a target may slip beyond weapon reach during the wind-up and still be struck
+hit_variance = 0.25 # damage rolls between 75 % and 125 % of the listed value
+splash_fraction = 0.6 # share of the damage a stone deals beyond direct_hit of where it lands, out to the splash radius
+direct_hit = 0.5 # tiles from where a stone lands within which it deals its full damage
+
+# How hard each kind of blow lands on each kind of armour, before armour is
+# subtracted; a pairing not listed is 1. The one place these multipliers live
+# (WB-049). Towers strike a normal blow. Piercing lands x1.5 on the
+# unarmoured, siege x1.5 on buildings, everything else x1.
+
+[[damage_bonus]]
+attack = "piercing"
+armor = "unarmoured"
+factor = 1.5
+
+[[damage_bonus]]
+attack = "siege"
+armor = "fortified"
+factor = 1.5
+
+# A siege crew on its own judgement weighs the trade instead of refusing every
+# stone that could touch its own side (docs/balance.md measured why): it
+# throws the landing point with the best enemy minus friendly_worth times
+# ours, and holds when nothing comes down ahead.
+
+[siege]
+step = 3.0 # tiles beyond its reach a siege crew on its own judgement will roll forward for a clear shot
+building_worth = 0.5 # a building under a stone, beside a unit's 1: soldiers first, walls when no soldier can be reached
+
+[friendly_fire]
+margin = 0.45 # tiles beyond its splash a siege crew counts one of its own as standing under the stone
+worth = 2.0 # what one of our own under a stone costs the crew, against a target's 1
+# Both are the least that is clean, measured over the twelve clash seeds of
+# tests/warband/test_siege_judgement.py: a margin of 0.3 put stones on our own
+# footmen in five of them, and a worth of 1.5 shells its own line, while 3.0
+# is markedly more timid where the crew is pressed. Where a friend will be
+# when the stone lands is a guess: the crew leads it by the walking it does of
+# its own accord, and a shove from the crowd is not in that velocity.
+
+# What a stone on each of these is worth to a crew; any other unit is 1.
+
+[siege.target_worth]
+catapult = 3.0
+cleric = 3.0
+archer = 2.0
