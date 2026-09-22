@@ -1,0 +1,5 @@
+* '+2 lumber' should be +2 "symbol for lumber" (salvage)
+* peasants mining gold often swirl and move inefficiently when they are many
+* neutral monsters - different lairs per monster type, animate lairs with image model
+* neutral monsters - different monsters (or just different skins) per landscape (winter vs desert different)
+* random map generator - make it more diverse, in terms of strategies that do well per template. If you lack AI strategies, then its part of the task. AI, e.g. grandmaster, is currently very passive in 16 player games for example.
