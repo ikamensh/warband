@@ -10,8 +10,9 @@
                                                             # --patch only the rows with questioned cells
 
 A *subject* is one unit of one race (a carrying peasant is its own subject), the nine
-buildings of one race in one look, (``--mines``) four of the gold mine's stand-ins in a look, or
-(``--monsters``) one of the neutral creatures in every facing and frame.  A building's ``intact``
+buildings of one race in one look, (``--mines``) four of the gold mine's stand-ins in a look,
+(``--monsters``) one of the neutral creatures in every facing and frame, or (``--lairs``) the
+four creature dens in one look.  A building's ``intact``
 look is painted from the low-poly stand-ins; ``active`` (producing) and ``damaged`` are painted
 from the installed intact painting, so a building keeps its identity across its looks.  ``--race`` picks the race; ``--units``
 and ``--buildings`` (with ``--looks``) narrow the subjects, which are all of the race by
@@ -790,7 +791,148 @@ class Monsters:
         return figure_preview(self.name, WALK_AND_BLOW, sheet, self.build_sheet()[1], frames, out)
 
 
-Subject = Unit | Buildings | Mines | Monsters
+# -- The dens ------------------------------------------------------------------------------
+
+#: One den per creature.  A den belongs to nobody, like a gold mine: no blue, no banners, and
+#: nothing recolours it.  The intact look is painted from the stand-ins; the damaged look from
+#: the installed intact painting, so a torn-down den keeps its identity.
+LAIR_SUBJECTS: dict[monsters.LairKind, str] = {
+    monsters.LairKind.WOLF: ("a wolf den: a horseshoe of dark grey boulders opening towards the viewer, a black cave "
+                             "mouth between two jamb boulders under leaning brow boulders, a pale animal skull set on "
+                             "the brow, bone spines planted in the trodden earth before it and gnawed bones scattered about"),
+    monsters.LairKind.SPIDER: ("a spider nest: a low wide dome of packed dark earth draped with pale silk sheets strung "
+                               "from stakes in the dirt, a crowded clutch of cream egg sacs to one side, a low wide black "
+                               "slit mouth under the dome's lip with violet venom beading at its corners"),
+    monsters.LairKind.TROLL: ("a troll mound: a tall tor of grey boulders patched with cold blue-green moss, a tall black "
+                              "arched mouth at its foot framed by a ribcage arch of heavy bone rising over it, small pale "
+                              "mushrooms at its foot and gnawed bones scattered before it"),
+    monsters.LairKind.GOLEM: ("a stone cairn: square courses of grey granite slabs stacked slightly out of true, pale "
+                              "quartz seams across the course joints, a square black mouth under a stone lintel, stone "
+                              "chips scattered before it and a small pale skull sitting on the cap slab"),
+}
+LAIR_FIXES: dict[monsters.LairKind, str] = {
+    monsters.LairKind.WOLF: "the skull rests on the brow boulders and the bone spines stand planted in the ground, never floating",
+    monsters.LairKind.SPIDER: "the egg sacs rest on the ground beside the dome and the silk hangs from the dome down to its stakes",
+    monsters.LairKind.TROLL: "the ribs stand on the ground framing the mouth and the moss lies on the rock faces",
+    monsters.LairKind.GOLEM: "every slab rests on the one below with visible joints between them and the skull sits on the cap slab",
+}
+LAIR_INVENTORY: dict[monsters.LairKind, str] = {
+    monsters.LairKind.WOLF: "one den: a ring of boulders, one dark mouth, one skull, bone spines, no banner",
+    monsters.LairKind.SPIDER: "one nest: one earth dome, silk drapes, a clutch of egg sacs, one dark slit mouth, no banner",
+    monsters.LairKind.TROLL: "one mound: one tor of boulders, one dark arched mouth, one ribcage arch, no banner",
+    monsters.LairKind.GOLEM: "one cairn: stacked slabs, one dark square mouth, one skull, no banner",
+}
+LAIR_STYLE = ("Re-render every cell as a polished, appealing sprite in a rich hand-painted fantasy style "
+              "(Warcraft 2 / Heroes of Might and Magic feel): weathered rock and earth with volumetric shading, "
+              "pale silk and bone with soft highlights, light from the upper left, a soft dark shadow on the ground "
+              "at the foot of the stones. The den belongs to no faction: no blue, no banners or flags. Sprites will "
+              "be shown at about a third of this size, so keep shapes bold, edges crisp and details large.")
+LAIR_DAMAGED = ("battle-damaged: the crown stones toppled into rubble at the foot of the den, the bone mark knocked "
+                "into the dirt, dark scorch marks on the rock. The den must stay recognisable as the same den with "
+                "the same footprint and outline; no flames and no smoke (the game draws them), no people.")
+LAIR_JUDGE = """You are checking a repainted sprite sheet of creature dens against their stand-ins. The image shows, for each row, the
+low-poly stand-in dens above and the painted dens below, labelled "row N: ..." and "col N".
+
+Work cell by cell, painted row only. Compare each painted den with the stand-in directly above it. A cell is wrong if:
+- it is not the den described: a boulder den with a skull, an earth nest with silk and egg sacs, a mossy tor with a ribcage arch, a stacked-slab cairn;
+- its footprint, height or silhouette differs clearly from the stand-in, or it left its patch of ground;
+- the mouth, the bone mark (skull, sacs, ribs) or the den's identifying part (silk, moss, quartz seams) is missing or moved;
+- any blue appears, or a banner or flag;
+- it contains people, animals, smoke or text.
+Style, texture and detail may differ freely; the painter is allowed to make the den prettier.
+
+Reply with one JSON object and nothing else:
+{"cells": [{"row": 0, "col": 0, "ok": true, "issue": ""}, ...]}
+List every cell of the rows shown. Keep issues short and concrete, like "lost the skull" or "mouth is blue"."""
+
+
+@dataclass(frozen=True)
+class Lairs:
+    """The four dens in one look, which belong to no race and no player: nothing recolours them.
+    The intact look is painted from the stand-ins, the damaged look from the installed intact painting."""
+
+    look: str = "intact"
+    chunk = (1, 2)
+
+    @property
+    def stage(self) -> int:
+        return 0 if self.look == "intact" else 1
+
+    @property
+    def name(self) -> str:
+        return f"lair.{self.look}"
+
+    @property
+    def description(self) -> str:
+        return "four creature dens: " + "; ".join(LAIR_SUBJECTS[kind] for kind in monsters.LairKind)
+
+    @property
+    def inventory(self) -> str:
+        return "one den per cell, the one the row label names for that column"
+
+    @property
+    def judge(self) -> str:
+        if self.look == "intact":
+            return LAIR_JUDGE
+        return LOOK_JUDGE.format(look=self.look, brief=LAIR_DAMAGED, forbidden="people or smoke")
+
+    def build_sheet(self) -> tuple[restyle.Sheet, dict[str, Image.Image]]:
+        keys = [(monsters.lair_key(kind, self.look), {"kind": kind.value}) for kind in monsters.LairKind]
+        if self.look != "intact":
+            intact = Lairs()
+            if not restyle.file(RESTYLED / intact.name, "png").exists():
+                raise FileNotFoundError(f"{self.name} is painted from the intact painting: install {intact.name} first")
+            base, painted = restyle.load_frames(RESTYLED / intact.name)
+            sheet = restyle.Sheet.layout(keys, cols=base.cols, cell=base.cell, origin=base.origin, scale=base.scale)
+            return sheet, {key: painted[monsters.lair_key(monsters.LairKind(tags["kind"]))] for key, tags in keys}
+        meshes = {kind: monsters.lair_mesh(kind) for kind in monsters.LairKind}
+        bounds = [r3.bounds(m, textures.PROJECTION) for m in meshes.values()]
+        half_w = max(max(-b[0], b[2]) for b in bounds)
+        top, below = max(-b[1] for b in bounds), max(b[3] for b in bounds)
+        height = int((top + below) * BUILDING_SCALE) + 2 * MARGIN
+        cell = (max(int(2 * half_w * BUILDING_SCALE) + 2 * MARGIN, round(height * 3 / 4)), height)
+        origin = (cell[0] / 2, MARGIN + top * BUILDING_SCALE)
+        sheet = restyle.Sheet.layout(keys, cols=2, cell=cell, origin=origin, scale=BUILDING_SCALE)
+        images = {key: r3.render(meshes[monsters.LairKind(tags["kind"])], textures.PROJECTION, scale=BUILDING_SCALE,
+                                 canvas=(cell[0] / BUILDING_SCALE, cell[1] / BUILDING_SCALE),
+                                 origin=(origin[0] / BUILDING_SCALE, origin[1] / BUILDING_SCALE))
+                  for key, tags in keys}
+        return sheet, images
+
+    def prompt(self, sheet: restyle.Sheet) -> str:
+        kinds = [monsters.LairKind(c.tags["kind"]) for c in sheet.cells]
+        head = (f"Edit target: the attached sprite sheet of {len(sheet.cells)} creature dens from a 2D real-time "
+                f"strategy game (Warcraft 2 style, a 3/4 top-down camera on square ground tiles). "
+                f"{geometry(sheet, 'den')} Each cell is a den seen from the front, its dark mouth facing the viewer; "
+                f"the cells, left to right: ")
+        if self.look == "intact":
+            cells = "; ".join(f"{i + 1}, {LAIR_SUBJECTS[kind]}" for i, kind in enumerate(kinds))
+            fixes = "; ".join(f"cell {i + 1}: {LAIR_FIXES[kind]}" for i, kind in enumerate(kinds))
+            return (f"{head}{cells}.\n\n{LAIR_STYLE}\n\n{PLAUSIBLE_BUILDINGS}\n\n"
+                    f"Keep exactly: each den's position, footprint, overall height and silhouette, and where its mouth, "
+                    f"bone mark and identifying parts are. In particular: {fixes}. "
+                    f"No people, no animals, no smoke, no text. {background(sheet)}")
+        cells = "; ".join(f"{i + 1}, {LAIR_SUBJECTS[kind]}" for i, kind in enumerate(kinds))
+        return (f"{head}{cells}. The dens are already painted.\n\nRepaint every den in exactly the same place, style, "
+                f"colours and shape, but {LAIR_DAMAGED} The damage stays on the den itself: no dirt, ground or rubble "
+                f"spreads beyond the den's own small patch. Put no blue anywhere. {background(sheet)}")
+
+    def row_names(self, sheet: restyle.Sheet) -> list[str]:
+        return [", ".join(f"col {c.col} {c.tags['kind']} den" for c in sheet.cells if c.row == row) for row in range(sheet.rows)]
+
+    def cell_name(self, cell: restyle.Cell) -> str:
+        return f"row {cell.row}, column {cell.col} (a {cell.tags['kind']} den)"
+
+    def preview(self, sheet: restyle.Sheet, frames: dict[str, Image.Image], out: Path) -> Path:
+        """One PNG: the originals (stand-ins, or the intact painting for the damaged look) above the painting."""
+        _, original = self.build_sheet()
+        keys = [c.key for c in sheet.cells]
+        path = out / f"{self.name}.png"
+        stacked([restyle.strip(original, keys, scale=0.5), restyle.strip(frames, keys, scale=0.5)]).save(path)
+        return path
+
+
+Subject = Unit | Buildings | Mines | Monsters | Lairs
 
 
 def stacked(strips: list[Image.Image]) -> Image.Image:
@@ -805,6 +947,11 @@ def stacked(strips: list[Image.Image]) -> Image.Image:
 def selected(args: argparse.Namespace) -> list[Subject]:
     """The subjects the options name: every unit and building look of the race unless ``--units``
     or ``--buildings`` narrows them."""
+    if args.lairs:
+        looks = [look for look in args.looks.split(",") if look in monsters.LAIR_LOOKS]
+        if not looks:
+            raise SystemExit(f"no lair look in {args.looks!r}; the lair looks are {', '.join(monsters.LAIR_LOOKS)}")
+        return [Lairs(look) for look in looks]
     if args.mines:
         return [Mines(look) for look in args.looks.split(",") if look in textures.MINE_LOOKS]
     if args.monsters:
@@ -1116,6 +1263,7 @@ def main() -> None:
     parser.add_argument("--looks", default=",".join(LOOKS), help=f"comma-separated building looks (default: {','.join(LOOKS)})")
     parser.add_argument("--mines", action="store_true", help="the gold mine's sheets instead (no race; looks intact and active)")
     parser.add_argument("--monsters", action="store_true", help="the neutral creatures instead (no race, no team colour)")
+    parser.add_argument("--lairs", action="store_true", help="the four creature dens instead (no race, no team colour)")
     parser.add_argument("--creatures", default="all", help="comma-separated creatures for --monsters (default: all of them)")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("dump"); p.add_argument("dir", type=Path); p.set_defaults(run=cmd_dump)

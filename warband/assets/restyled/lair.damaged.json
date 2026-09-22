@@ -1,0 +1,57 @@
+{
+ "cell": [
+  229,
+  278
+ ],
+ "cols": 2,
+ "rows": 2,
+ "origin": [
+  114.5,
+  152.8133856500683
+ ],
+ "scale": 2.5,
+ "pad": [
+  0,
+  0
+ ],
+ "chroma": [
+  255,
+  0,
+  255
+ ],
+ "grid": false,
+ "cells": [
+  {
+   "key": "building.lair.wolf.damaged",
+   "col": 0,
+   "row": 0,
+   "tags": {
+    "kind": "wolf"
+   }
+  },
+  {
+   "key": "building.lair.spider.damaged",
+   "col": 1,
+   "row": 0,
+   "tags": {
+    "kind": "spider"
+   }
+  },
+  {
+   "key": "building.lair.troll.damaged",
+   "col": 0,
+   "row": 1,
+   "tags": {
+    "kind": "troll"
+   }
+  },
+  {
+   "key": "building.lair.golem.damaged",
+   "col": 1,
+   "row": 1,
+   "tags": {
+    "kind": "golem"
+   }
+  }
+ ]
+}

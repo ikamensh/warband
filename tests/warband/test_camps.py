@@ -337,7 +337,10 @@ def test_the_den_is_a_picture_the_art_lint_passes(tmp_path) -> None:
         store = visual_lint.ImageStore(game)  # before the renders: it hooks the backend's loader
         keys = [monsters.lair_image(game, kind, look) for kind in monsters.LairKind for look in monsters.LAIR_LOOKS]
         keys += [monsters.lair_portrait_image(game, kind) for kind in monsters.LairKind]
-        findings = [finding for key in keys for finding in visual_lint.lint_image(key, store.image(key))]
+        findings = [finding for key in keys
+                    for finding in visual_lint.lint_image(key, store.image(key),
+                                                          painted=key.startswith("building.lair."),
+                                                          cropped=key.startswith("portrait."))]
         assert not findings, [str(finding) for finding in findings]
     finally:
         game.close()

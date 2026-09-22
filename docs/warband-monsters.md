@@ -62,6 +62,27 @@ brings it down (`World._hoard`, beside `_plunder`).  It wears a building's **for
 siege stone lands on it at ×1.5 — which is what hands a catapult a job before the first walls, after its
 price rise left it with none.
 
+## The dens
+
+One den per creature, named by the toughest guard in the camp's roster
+(`monsters.lair_kind_for_roster`, toughest first: troll, golem, spider, wolf): a wolf pack gets an
+earth **Wolf Den**, a spider-led camp a silk **Spider Nest**, and the big seam camp its mossy
+**Troll Mound**, after the 220-hit-point anchor listed first in its roster.  A golem-led camp would
+raise a **Stone Cairn** of stacked slabs; no generated roster fields one yet, so the cairn waits on
+custom camps and whatever roster wants it next.  Every den keeps the camps' shared footprint (3×3,
+so placement, leash and collision never hear of it), a dark mouth facing the camera and a
+bone-white mark — skull, egg sacs, ribs — so each still reads as *a neutral camp* while silhouette
+and palette tell them apart.
+
+A den wears **intact** and **damaged** looks like any other building (whole, or torn down to half
+its hit points), painted as `lair.intact` from the stand-ins and `lair.damaged` from the intact
+painting (`tools/restyle.py --lairs`).  It breathes, too: a slow halo pulse in its own tint, spores
+or dust off its mouth and glints on its tips (`art.ambience`, anchors in `LAIR_ANCHORS`), following
+the mine's pattern rather than a unit's frames — buildings do not animate, their life is overlaid.
+The selection panel says each den's own name and shows its own portrait.  The minimap deliberately
+does not distinguish them: at six pixels a hue per den collides with a seat colour or reads as noise,
+so every den keeps the one neutral-camp mark and the shared affordance wins there.
+
 ## The four
 
 Each is chosen for a unit the balance data says is dead weight.

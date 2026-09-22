@@ -211,6 +211,34 @@ that one word is what a creature has instead of a team panel.
 Had it not read, the file, the registry entry, the tests and the sheet would have gone; the draft
 is recoverable from the `wb-monster-art` branch.  It read.
 
+## The dens
+
+Each creature names a den (`monsters.LairKind`, `lair_kind_for_roster`): a boulder-ringed **wolf
+den** with a skull and bone spines, a low **spider nest** of earth under silk drapes with cream egg
+sacs and violet venom at its slit mouth, a tall mossy **troll mound** with a ribcage arch over its
+mouth, and a stepped **stone cairn** with quartz seams and a skull on its cap.  Same 3×3 footprint,
+same dark mouth facing the camera, same bone-white mark — one camp language, four silhouettes.
+The wolf den is the old shared den untouched; the other three are new meshes in the same helpers
+and colours, each with a damaged look (crown toppled, mark knocked down, rubble at the foot) that
+keeps the footprint.
+
+They are painted like the mines, because like a mine a den is nobody's and never recoloured:
+`tools/restyle.py --lairs` (`Lairs` in the tool) paints `lair.intact` — four cells on one sheet at
+building scale — from the stand-ins, then `lair.damaged` from the installed intact painting.
+Rendered with the OpenRouter provider (Gemini 3.1 Flash Image, about fifteen cents a sheet): intact
+cut at 0 of 4 flagged; damaged took three rolls, the first two filling the cells' backgrounds with
+dirt instead of the key, fixed by telling the damaged prompt the damage stays on the den itself.
+The vision judge questioned 1 of 8 cells, the troll's moss for reading blue — kept as a false
+alarm, since the teal is the troll's own hide colour, nothing recolours a den, and there is no
+banner to confuse it with.  The runtime (`monsters.restyled_lair`) prefers the painting per look
+and falls back to the render per kind, exactly as the mines do.
+
+```sh
+uv run python tools/restyle.py --lairs --looks intact dump DIR        # the stand-in sheet and its prompt
+uv run python tools/restyle.py --lairs refresh DIR --provider openrouter   # intact, then damaged, then previews
+uv run python tools/restyle.py --lairs check DIR                      # the vision judge, cell by cell
+```
+
 ## What codex was asked for, and what had to be fixed by hand
 
 The meshes were authored with `codex exec`, five passes, each one fed the rendered sheets from

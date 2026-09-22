@@ -138,6 +138,37 @@ def test_a_sighting_remembers_whose_den_it_saw(tmp_path) -> None:
         Sighting.from_dict({**sighting.to_dict(), "lair_kind": "dragon"})
 
 
+def test_every_den_breathes_its_own_tint(tmp_path) -> None:
+    """The animate half: each den gets a halo pulse, motes off its mouth and glints on its tips,
+    in its own tint, drawn through the same ambience pass as the mines."""
+    from warband.art import ambience
+    from warband.ui.scene import GameScene
+
+    from tests.warband.battlefield import SETTINGS, field
+
+    game = Game("Warband den breath", backend="mock", resolution=(1280, 800), theme=build_theme(),
+                save_dir=tmp_path / "saves")
+    try:
+        scene = GameScene(field(), 0, ranked=False, settings=dict(SETTINGS))
+        game.push(scene)
+        world = scene.world
+        world.reveal_all(0)
+        tints = {}
+        for kind, roster in ((LairKind.WOLF, [UnitType.WOLF] * 3), (LairKind.SPIDER, [UnitType.SPIDER] * 3),
+                             (LairKind.TROLL, [UnitType.TROLL]), (LairKind.GOLEM, [UnitType.GOLEM])):
+            camp = camps.place(world, (5 + 7 * list(LairKind).index(kind), 25), roster, 500)
+            lair = world.buildings[camp.lair]
+            scene.camera.center_on(lair.center[0] * 32, lair.center[1] * 32)
+            game.backend.circles.clear()
+            ambience.draw(scene, world, 0)
+            drawn = list(game.backend.circles)
+            assert len(drawn) >= 7, (kind, len(drawn))  # the halo, five motes and the breath
+            tints[kind] = {tuple(circle["color"][:3]) for circle in drawn}
+        assert tints[LairKind.WOLF] != tints[LairKind.SPIDER], "a wolf den must not breathe spider violet"
+    finally:
+        game.close()
+
+
 def test_the_view_draws_each_den_in_its_own_kind_and_look(tmp_path) -> None:
     """Through the real sprite path: four camps, four dens, each key naming its kind."""
     from warband.ui.scene import GameScene
