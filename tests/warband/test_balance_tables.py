@@ -40,7 +40,7 @@ def test_shared_defaults_and_explicit_exceptions_load_the_same_game(constants, f
 
     before = load()
     path = constants / filename
-    doc = tomllib.loads(path.read_text())
+    doc = tomllib.loads(path.read_text(encoding="utf-8"))
     rows = doc
     for part in section:
         rows = rows[part]
@@ -69,7 +69,7 @@ def test_explicit_neutral_and_false_modifiers_override_shared_defaults(constants
     from warband.sim.config import load
 
     path = constants / "races.toml"
-    doc = tomllib.loads(path.read_text())
+    doc = tomllib.loads(path.read_text(encoding="utf-8"))
     units = doc["human"]["units"]
     units.setdefault("defaults", {})[key] = shared
     for name, row in units.items():
@@ -97,7 +97,7 @@ def test_invalid_values_fail_even_in_overridden_defaults(constants, section, key
     from warband.sim.config import BalanceError, load
 
     path = constants / "units.toml"
-    doc = tomllib.loads(path.read_text())
+    doc = tomllib.loads(path.read_text(encoding="utf-8"))
     doc.setdefault(section, {})[key] = bad
     _write_toml(path, doc)
 
@@ -111,7 +111,7 @@ def test_defaults_do_not_hide_missing_required_stats_or_roles(constants, missing
     from warband.sim.config import BalanceError, load
 
     path = constants / "units.toml"
-    doc = tomllib.loads(path.read_text())
+    doc = tomllib.loads(path.read_text(encoding="utf-8"))
     if missing == "hp":
         doc["peasant"].pop("hp", None)
         doc.get("defaults", {}).pop("hp", None)
@@ -144,7 +144,7 @@ from warband.sim import config
 # rules captures every file, even before a later import needs the race tables.
 race_path = Path("warband/assets/constants/races.toml")
 race_name = config.current().races["human"]["name"]
-race_path.write_text(race_path.read_text().replace('name = "Humans"', 'name = "Changed"'))
+race_path.write_text(race_path.read_text(encoding="utf-8").replace('name = "Humans"', 'name = "Changed"'), encoding="utf-8")
 from warband.sim.model import World
 from warband.sim.races import RACES
 assert RACES[Race.HUMAN].name == race_name
@@ -165,8 +165,8 @@ def play(match):
 expected = play(World.from_dict(world.to_dict()))
 old_hp = world.unit_info(0, UnitType.FOOTMAN).hp
 path = Path("warband/assets/constants/units.toml")
-source = path.read_text()
-path.write_text(re.sub(r"(?m)^hp = .*", "hp = 9999", source))
+source = path.read_text(encoding="utf-8")
+path.write_text(re.sub(r"(?m)^hp = .*", "hp = 9999", source), encoding="utf-8")
 fresh = subprocess.run([sys.executable, "-c",
     "from warband.sim.rules import UNITS, UnitType; print(UNITS[UnitType.FOOTMAN].hp)"],
     check=True, capture_output=True, text=True)
@@ -181,7 +181,7 @@ else:
 # Even broken TOML cannot affect an already launched match or its new units.
 for filename in config.FILES:
     path = config.CONSTANTS / filename
-    path.write_text("this is no longer valid TOML")
+    path.write_text("this is no longer valid TOML", encoding="utf-8")
 assert play(world) == expected
 '''
     done = subprocess.run([sys.executable, "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30)

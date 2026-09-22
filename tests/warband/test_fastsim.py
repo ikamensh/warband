@@ -74,7 +74,7 @@ def test_a_spawned_worker_uses_its_parents_balance_snapshot(tmp_path: Path) -> N
         shutil.copytree(ROOT / "warband" / name, package / name, ignore=shutil.ignore_patterns("__pycache__"))
     units = package / "assets/constants/units.toml"
     import re
-    units.write_text(re.sub(r"(?m)^hp = .*", "hp = 9999", units.read_text()))
+    units.write_text(re.sub(r"(?m)^hp = .*", "hp = 9999", units.read_text(encoding="utf-8")), encoding="utf-8")
     script = (f"from warband.league import fastsim; fastsim.attach({str(build)!r})\n"
               "from warband.sim.rules import UNITS, UnitType\n"
               f"assert UNITS[UnitType.FOOTMAN].hp == {model.UNITS[model.UnitType.FOOTMAN].hp}\n"
