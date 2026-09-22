@@ -44,8 +44,9 @@ one fielded per game.
 Edit the TOML, not the Python. The tunable numbers are seven commented
 files in `warband/constants/`:
 
-- `units.toml` — every soldier, worker and creature: cost, hit
+- `units.toml` — every soldier and worker: cost, hit
   points, damage, armour, range, timings, sight, body.
+- `neutrals.toml` — the four wild creatures, tuned the same way.
 - `buildings.toml` — every building: cost, hit points, work, the
   tower's shot, and the two deposits (gold per trip, places at the face).
 - `upgrades.toml` — every research: price, time, and what it does.

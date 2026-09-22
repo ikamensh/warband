@@ -4,8 +4,8 @@
     uv run python tools/balance_tables.py --check  # fail if a region differs (tests/warband/test_balance_tables.py runs this)
 
 The numbers a tuner edits live in ``warband/constants/units.toml``,
-``buildings.toml``, ``upgrades.toml``, ``races.toml``, ``economy.toml``,
-``combat.toml`` and ``behavior.toml``; this tool rewrites
+``neutrals.toml``, ``buildings.toml``, ``upgrades.toml``, ``races.toml``,
+``economy.toml``, ``combat.toml`` and ``behavior.toml``; this tool rewrites
 the matching Python tables from them.  The simulation itself keeps running
 plain Python literals: the online contract (``tools/ci_compatibility.py``)
 hashes the simulation's sources and forbids file-backed rules there, so the
@@ -32,6 +32,7 @@ UNITS_TOML = CONSTANTS / "units.toml"
 BUILDINGS_TOML = CONSTANTS / "buildings.toml"
 UPGRADES_TOML = CONSTANTS / "upgrades.toml"
 RACES_TOML = CONSTANTS / "races.toml"
+NEUTRALS_TOML = CONSTANTS / "neutrals.toml"
 ECONOMY_TOML = CONSTANTS / "economy.toml"
 COMBAT_TOML = CONSTANTS / "combat.toml"
 BEHAVIOR_TOML = CONSTANTS / "behavior.toml"
@@ -480,12 +481,14 @@ def _race(doc: dict, race: str) -> dict:
 
 
 def load() -> Tables:
-    """The four TOML files as normalized tables, or a BalanceError naming what is wrong."""
+    """The TOML files as normalized tables, or a BalanceError naming what is wrong."""
     units_doc = _read(UNITS_TOML)
+    neutrals_doc = _read(NEUTRALS_TOML)
     buildings_doc = _read(BUILDINGS_TOML)
     upgrades_doc = _read(UPGRADES_TOML)
     races_doc = _read(RACES_TOML)
-    _check_sections(units_doc, UNITS_TOML, PLAYABLE + WILDS, "unit")
+    _check_sections(units_doc, UNITS_TOML, PLAYABLE, "unit")
+    _check_sections(neutrals_doc, NEUTRALS_TOML, WILDS, "neutral")
     _check_sections(buildings_doc, BUILDINGS_TOML, BUILDINGS, "building")
     _check_sections(upgrades_doc, UPGRADES_TOML, UPGRADES + ("effects",), "upgrade")
     for race in RACES:
@@ -494,9 +497,12 @@ def load() -> Tables:
     for section in races_doc:
         if section not in RACES:
             raise BalanceError(f"{RACES_TOML.name}: unexpected race [{section}]; known: {', '.join(RACES)}")
-    for unit in PLAYABLE + WILDS:
+    for unit in PLAYABLE:
         if unit not in units_doc:
             raise BalanceError(f"{UNITS_TOML.name}: missing [{unit}]")
+    for unit in WILDS:
+        if unit not in neutrals_doc:
+            raise BalanceError(f"{NEUTRALS_TOML.name}: missing [{unit}]")
     for building in BUILDINGS:
         if building not in buildings_doc:
             raise BalanceError(f"{BUILDINGS_TOML.name}: missing [{building}]")
@@ -505,7 +511,7 @@ def load() -> Tables:
             raise BalanceError(f"{UPGRADES_TOML.name}: missing [{upgrade}]")
     tables = Tables()
     tables.units = {u: _unit(units_doc[u], _at(UNITS_TOML, u)) for u in PLAYABLE}
-    tables.wilds = {u: _unit(units_doc[u], _at(UNITS_TOML, u)) for u in WILDS}
+    tables.wilds = {u: _unit(neutrals_doc[u], _at(NEUTRALS_TOML, u)) for u in WILDS}
     tables.buildings = {b: _building(buildings_doc[b], _at(BUILDINGS_TOML, b), b) for b in BUILDINGS}
     tables.upgrades = {u: _upgrade(upgrades_doc[u], _at(UPGRADES_TOML, u)) for u in UPGRADES}
     tables.races = {r: _race(races_doc, r) for r in RACES}
@@ -689,7 +695,7 @@ def emit(tables: Tables) -> dict[str, str]:
 #: file itself says where its numbers come from.
 TARGETS: tuple[tuple[Path, str, str], ...] = (
     (RULES_PY, "units", "units.toml"),
-    (RULES_PY, "wilds", "units.toml"),
+    (RULES_PY, "wilds", "neutrals.toml"),
     (RULES_PY, "deposits", "buildings.toml"),
     (RULES_PY, "buildings", "buildings.toml"),
     (RULES_PY, "upgrades", "upgrades.toml"),

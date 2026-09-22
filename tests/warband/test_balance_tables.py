@@ -1,7 +1,7 @@
 """The balance tables are edited as TOML and generated into the simulation.
 
-A tuner edits the files in ``warband/constants/`` (units, buildings, upgrades,
-races, economy, combat, behaviour), then runs
+A tuner edits the files in ``warband/constants/`` (units, neutrals,
+buildings, upgrades, races, economy, combat, behaviour), then runs
 ``uv run python tools/balance_tables.py`` to rewrite the GENERATED regions of
 ``warband/sim/rules.py``, ``races.py`` and ``model.py``.  This holds the two
 together: the regions must be exactly what the tool emits from the TOML, and

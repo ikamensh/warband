@@ -1,23 +1,23 @@
-# Warband's units: every soldier, worker and creature in one place.
+# Warband's units: every soldier and worker in one place.
 #
 # This is the file to edit to change what a unit costs, how hard it hits and
 # how fast it trains. After editing, run from the repository root:
 #
 #     uv run python tools/balance_tables.py
 #
-# which rewrites the matching tables in warband/sim/rules.py (marked GENERATED
-# there; never edit those regions by hand). tests/warband/test_balance_tables.py
+# which rewrites the UNITS table in warband/sim/rules.py (marked GENERATED
+# there; never edit that region by hand). tests/warband/test_balance_tables.py
 # fails until the two agree, so a tuned checkout cannot be committed half-applied.
 #
 # Conventions: times are seconds, distances tiles. `range = "melee"` is the
-# shared melee reach (rules.MELEE: a blow from the next tile over, diagonals
+# shared melee reach (combat.toml: a blow from the next tile over, diagonals
 # included); anything else is a distance in tiles. `turn_deg` is degrees per
 # second. Costs are `gold` and `lumber` (omit lumber when it is zero).
 #
 # What is NOT here: how a blow lands (warband/sim/model.py), what an upgrade
-# adds to a stat (the *_BONUS constants in rules.py), the per-race tweaks
+# adds to a stat (upgrades.toml's [effects]), the per-race tweaks
 # (races.toml: orc hit points, elf speed, dwarf armour), and the neutral
-# creatures' placement and respawn (CAMP_* in rules.py, warband/sim/camps.py).
+# creatures (neutrals.toml: nobody trains them, no race names them).
 # The body `radius` is shared by every race and never jittered by balance
 # variants (rules.MAX_UNIT_RADIUS); changing one moves pathing and combat for
 # every army, so think twice.
@@ -165,80 +165,3 @@ heal = 15
 windup = 0.5
 turn_deg = 360
 armor_class = "unarmoured"
-
-# -- The wilds -----------------------------------------------------------------
-# Neutral creatures guard the contested deposits (docs/warband-monsters.md).
-# Nobody trains them and no race names or tweaks them: their numbers are used
-# as they stand. No hotkey, no build time, trained "at" the lair for form's sake.
-
-[wolf]
-name = "Dire Wolf"
-hp = 40
-damage = 6
-armor = 0
-range = "melee"
-cooldown = 0.9
-speed = 4.0
-sight = 7
-build_time = 0.0
-trained_at = "lair"
-hotkey = ""
-summary = "A pack hunter: fast, fragile and never alone"
-radius = 0.40
-windup = 0.2
-turn_deg = 450
-
-[spider]
-name = "Venom Spider"
-hp = 45
-damage = 8
-armor = 0
-range = 5.0
-cooldown = 1.6
-speed = 2.2
-sight = 7
-build_time = 0.0
-trained_at = "lair"
-hotkey = ""
-summary = "Spits venom from five tiles; helpless once something reaches it"
-radius = 0.45
-windup = 0.4
-turn_deg = 360
-
-[troll]
-name = "Troll"
-hp = 220
-damage = 14
-armor = 0
-range = "melee"
-cooldown = 1.4
-speed = 1.9
-sight = 6
-build_time = 0.0
-trained_at = "lair"
-hotkey = ""
-summary = "Bare-skinned and hard to put down; knits its wounds back once left alone"
-radius = 0.58
-windup = 0.45
-turn_deg = 360
-armor_class = "unarmoured"
-regen = 8.0 # hit points per second, out of combat only (rules.REGEN_CALM)
-
-[golem]
-name = "Stone Golem"
-hp = 170
-damage = 18
-armor = 2
-range = "melee"
-cooldown = 2.5
-speed = 1.3
-sight = 5
-build_time = 0.0
-trained_at = "lair"
-hotkey = ""
-summary = "Slams the ground: every enemy around its mark is caught"
-radius = 0.60
-splash = 1.3 # a brute's slam, not aimed siege: it never judges its own blow
-windup = 0.7
-turn_deg = 150
-armor_class = "heavy"

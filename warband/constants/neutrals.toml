@@ -1,0 +1,95 @@
+# Warband's neutrals: the wild creatures that guard the contested deposits.
+#
+# This is the file to edit to change what a creature costs (nothing: nobody
+# trains them), how hard it hits and how long it takes to bring down. After
+# editing, run from the repository root:
+#
+#     uv run python tools/balance_tables.py
+#
+# which rewrites the WILD_UNITS table in warband/sim/rules.py (marked
+# GENERATED there; never edit that region by hand).
+# tests/warband/test_balance_tables.py fails until the two agree, so a tuned
+# checkout cannot be committed half-applied.
+#
+# Conventions are units.toml's: times are seconds, distances tiles,
+# `range = "melee"` is the shared melee reach, `turn_deg` degrees per second.
+# Nobody trains these and no race names or tweaks them (races.toml holds the
+# seven player roles alone), so their numbers are used as they stand. No
+# hotkey, no build time, trained "at" the lair for form's sake. Each is chosen
+# for a unit the balance data says is dead weight, and each is a shape the
+# roster does not already own (docs/warband-monsters.md).
+#
+# What is NOT here: where camps stand and how they reset (behavior.toml's
+# [camps], warband/sim/camps.py), and the player units (units.toml).
+
+[wolf]
+name = "Dire Wolf"
+hp = 40
+damage = 6
+armor = 0
+range = "melee"
+cooldown = 0.9
+speed = 4.0
+sight = 7
+build_time = 0.0
+trained_at = "lair"
+hotkey = ""
+summary = "A pack hunter: fast, fragile and never alone"
+radius = 0.40
+windup = 0.2
+turn_deg = 450
+
+[spider]
+name = "Venom Spider"
+hp = 45
+damage = 8
+armor = 0
+range = 5.0
+cooldown = 1.6
+speed = 2.2
+sight = 7
+build_time = 0.0
+trained_at = "lair"
+hotkey = ""
+summary = "Spits venom from five tiles; helpless once something reaches it"
+radius = 0.45
+windup = 0.4
+turn_deg = 360
+
+[troll]
+name = "Troll"
+hp = 220
+damage = 14
+armor = 0
+range = "melee"
+cooldown = 1.4
+speed = 1.9
+sight = 6
+build_time = 0.0
+trained_at = "lair"
+hotkey = ""
+summary = "Bare-skinned and hard to put down; knits its wounds back once left alone"
+radius = 0.58
+windup = 0.45
+turn_deg = 360
+armor_class = "unarmoured"
+regen = 8.0 # hit points per second, out of combat only (rules.REGEN_CALM)
+
+[golem]
+name = "Stone Golem"
+hp = 170
+damage = 18
+armor = 2
+range = "melee"
+cooldown = 2.5
+speed = 1.3
+sight = 5
+build_time = 0.0
+trained_at = "lair"
+hotkey = ""
+summary = "Slams the ground: every enemy around its mark is caught"
+radius = 0.60
+splash = 1.3 # a brute's slam, not aimed siege: it never judges its own blow
+windup = 0.7
+turn_deg = 150
+armor_class = "heavy"
