@@ -51,7 +51,7 @@ from warband.sim import config as balance_config
 PACKAGE = Path(__file__).resolve().parents[1]  # warband/, whose subpackages hold the modules
 BUILDS = PACKAGE.parent / "build" / "fastsim"
 MODULES = ("sim.rules", "sim.races", "sim.path", "sim.worker_knowledge", "sim.model", "sim.camps", "sim.mapgen", "sim.worker_ai",
-           "brains.ai", "brains.pro_ai")
+           "brains.ai", "brains.pro_profiles", "brains.pro_force", "brains.pro_core", "brains.pro_economy", "brains.pro_ai")
 NATIVE = "sim/_native.c"  # the loops written twice, in C, built alongside; see its opening comment
 RECIPE = "4"  # each build carries its startup balance snapshot for spawned workers
 ENV = "WARBAND_FASTSIM"  # the build a process activated, for the worker processes it starts
