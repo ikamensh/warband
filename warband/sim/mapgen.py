@@ -581,7 +581,14 @@ def _third_orbits(spec: _Spec, cw: int, ch: int) -> int:
     if not spec.thirds:
         return 0
     room = cw * ch
-    return 0 if room < 625 else 1 if room < 1250 else 2
+    orbits = 0 if room < 625 else 1 if room < 1250 else 2
+    # Plains is open ground where expansions lie exposed: fewer mines there
+    # contest the second base, so waiting at home costs what Klondike charges
+    # for the pit. The other layouts keep their mines; Forest's woods and
+    # Bastion's ring already make a second base safe.
+    if spec.layout is Layout.PLAINS:
+        orbits = min(orbits, 1)
+    return orbits
 
 
 def _wants_a_seam(spec: _Spec, width: int, height: int, cw: int, ch: int) -> bool:
@@ -944,6 +951,12 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
         _pit(cv, rng, hc, walls)
     elif layout is Layout.BASTION:
         _ring(cv, rng, hc, walls)
+    elif layout is Layout.PLAINS:
+        # The second base lies forward, between the players, rather than
+        # behind: taking it means standing where the enemy walks, so an
+        # early raid pays and waiting at home costs.
+        junction = cv.junction
+        walls.prefer_natural = lambda pos: -_dist(_mine_centre(pos), junction)
     cv.symmetrize()
     halls = [_mine_centre(pos) for pos in cv.rect_images(hall, 3)][:players]
     rects = [(pos, 3) for pos in cv.rect_images(hall, 3)] + [(pos, 3) for pos in cv.rect_images(main, 3)] + walls.rects
@@ -974,7 +987,16 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
         thirds.append(third)
         _claim(cv, third, EXPANSION_GOLD, rects, mines, clearing=spec.third_clearing)
         if wilds:
-            _guard(cv, rng, third, 3, rng.choice(("den", "nest")), rects, dens)
+            # Plains dens fall to a raid; elsewhere the small camps mix, so
+            # creeping stays a skirmish everywhere a timing push can afford.
+            # (Forest lairs were tried: trickle 7 units per lair, a sink the
+            # gate in docs/balance.md refuses.) Single-element choices still
+            # draw once, so other layouts' streams come out as before.
+            if layout is Layout.PLAINS:
+                camp_kind = rng.choice(("den",))
+            else:
+                camp_kind = rng.choice(("den", "nest"))
+            _guard(cv, rng, third, 3, camp_kind, rects, dens)
     if _wants_a_seam(spec, width, height, cv.cw, cv.ch):
         seam = _seam_site(cv, rng, spec, halls, rects)
         if seam is None:

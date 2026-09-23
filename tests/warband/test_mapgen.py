@@ -126,6 +126,14 @@ def test_forest_is_woods_joined_by_winding_roads() -> None:
     assert report["detour"] >= 1.1
 
 
+def test_plains_contests_its_mines_with_fewer_thirds() -> None:
+    """Open ground where expansions lie exposed: fewer contested mines than the
+    woods or the ring, so waiting at home costs."""
+    plains, forest = mapgen._SPECS[Layout.PLAINS], mapgen._SPECS[Layout.FOREST]
+    assert mapgen._third_orbits(plains, 64, 24) == 1
+    assert mapgen._third_orbits(forest, 64, 24) == 2
+
+
 def test_crossings_join_the_banks_only_at_the_fords() -> None:
     world, report = mapgen.build(seed=3, layout=Layout.CROSSINGS)
     fords = frozenset(map(tuple, report["fords"]))
