@@ -239,6 +239,37 @@ uv run python tools/restyle.py --lairs refresh DIR --provider openrouter   # int
 uv run python tools/restyle.py --lairs check DIR                      # the vision judge, cell by cell
 ```
 
+## Landscape coats
+
+The wilds wear the ground they stand on.  Summer is the painted sheet (or the stand-in) as it
+stands; winter and the wasteland are procedural coats over it — per-channel gains plus a blend
+towards a landscape colour, masked by brightness so a cave mouth, a nose or dark chitin stays
+dark on every landscape while the coat takes the weather (`monsters.COATS` for the creatures,
+`monsters.LAIR_COATS` for the dens, `ambience.landscape_halo` for the breath).  The same coat
+tints the stand-in render where there is no sheet, so both paths agree, and the silhouette never
+moves: only the palette does.  Summer keeps the sheet's own asset key; the other landscapes are
+suffixed (`.winter`, `.wasteland`), so every landscape's coat is its own registered image and the
+view, the warm-up and the selection cards all draw the world's own.
+
+| landscape | wolf | spider | troll | golem | dens |
+|---|---|---|---|---|---|
+| Summer | russet, as painted | dark chitin, violet venom | mossy blue-green | granite grey | as painted |
+| Winter | snow wolf: pale grey-white | frost-pale chitin, venom kept violet | ice troll: pale, cold | snow dust on the slabs | snow-dusted crowns, cool tint |
+| Wasteland | dune wolf: sandy blonde | sun-bleached chitin | sand troll: dusty | sandstone slabs | sand drifted at the stones, warm tint |
+
+A wolf reads as a wolf everywhere; what changes is the weather on it.  The coats keep clear of
+the team hues the same way the meshes do, the bone-white marks and dark mouths survive every
+landscape (a test holds the mouths dark), and the names, rosters, minimap mark and ambience
+anchors do not vary at all — the dens are told apart by silhouette and coat, never renamed.
+
+No repaint was needed and none was run: the coats are procedural tints over the committed
+sheets, so there are no per-landscape sheets for `tools/restyle.py` to paint.  (The pipeline is
+there if a coat ever wants a painter's hand instead of arithmetic: `--monsters`/`--lairs` dump
+the stand-ins and their prompts without a model.)  Roster variants per landscape — ice trolls
+with different rules from sand trolls — were deferred deliberately: they would be a sim change
+(new kinds or per-theme rosters, fingerprint and balance surface included) for no gameplay, and
+the creep gate holds on every landscape today precisely because the theme never enters the sim.
+
 ## What codex was asked for, and what had to be fixed by hand
 
 The meshes were authored with `codex exec`, five passes, each one fed the rendered sheets from

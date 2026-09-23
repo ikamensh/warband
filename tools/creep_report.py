@@ -37,7 +37,7 @@ if __name__ in ("__main__", "__mp_main__"):  # run as a program or as one of its
 from warband.league import arena  # noqa: E402
 from warband.league.arena import MatchSpec  # noqa: E402
 from warband.sim import mapgen  # noqa: E402
-from warband.sim.rules import CREATURES  # noqa: E402
+from warband.sim.rules import CREATURES, MapTheme  # noqa: E402
 
 CREATURE_NAMES = frozenset(t.value for t in CREATURES)
 
@@ -48,6 +48,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--seeds", type=int, default=12)
     ap.add_argument("--size", default="Medium", choices=list(mapgen.SIZES))
     ap.add_argument("--layout", default=None, help="one layout, or every one the map can hold")
+    ap.add_argument("--theme", default=MapTheme.SUMMER.value, choices=[t.value for t in MapTheme],
+                    help="the landscape the camps stand on: the gate holds on every one")
     ap.add_argument("--minutes", type=float, default=20.0)
     ap.add_argument("--workers", type=int, default=max(1, mp.cpu_count() // 4))
     args = ap.parse_args(argv)
@@ -55,7 +57,8 @@ def main(argv: list[str] | None = None) -> int:
     agents = tuple(args.agents.split(","))
     width, height = mapgen.dimensions(args.size, len(agents))
     layouts = [args.layout] if args.layout else [l.value for l in mapgen.layouts_for(width, height, len(agents))]
-    specs = [MatchSpec(seed=1000 + seed, agents=agents, width=width, height=height, minutes=args.minutes, layout=layout)
+    specs = [MatchSpec(seed=1000 + seed, agents=agents, width=width, height=height, minutes=args.minutes, layout=layout,
+                       theme=args.theme)
              for seed in range(args.seeds) for layout in layouts]
     rows: dict[str, list[tuple[int, int, int, int]]] = {name: [] for name in agents}
     packed = [tuple(spec.__dict__[f] for f in arena.SPEC_FIELDS) for spec in specs]
@@ -69,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
             tally = result.tallies[seat]
             rows[name].append((tally.camps_cleared, sum(v for k, v in tally.killed.items() if k in CREATURE_NAMES),
                                sum(tally.lost_to_wilds.values()), tally.hoard))
-    print(f"{len(specs)} matches, {args.size} {width}x{height}, layouts {','.join(layouts)}")
+    print(f"{len(specs)} matches, {args.size} {width}x{height}, layouts {','.join(layouts)}, theme {args.theme}")
     print(f"{'agent':10} {'camps':>7} {'killed':>7} {'lost':>7} {'trickle':>8} {'hoard':>7}")
     for name, seats in rows.items():
         if not seats:

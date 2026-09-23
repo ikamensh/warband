@@ -105,10 +105,11 @@ def test_nothing_recolours_a_creature(game, painted, monkeypatch) -> None:
 
 
 def test_monster_image_takes_no_player() -> None:
-    """The signature is the rule: there is no player to paint a creature for."""
+    """The signature is the rule: there is no player to paint a creature for — but there is a
+    landscape, whose coat the image wears off summer."""
     import inspect
 
-    assert list(inspect.signature(monsters.monster_image).parameters) == ["game", "monster", "facing", "frame"]
+    assert list(inspect.signature(monsters.monster_image).parameters) == ["game", "monster", "facing", "frame", "theme"]
 
 
 def test_a_stale_sheet_warns_and_falls_back_to_the_render(game, painted) -> None:

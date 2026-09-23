@@ -653,8 +653,8 @@ class MapView:
         painted_site = not sighting.done and deposit is None and not lair and textures.has_look(sighting.race, sighting.look)
         rising = not painted_site and not lair and 0.5 <= sighting.built < 1.0
         if lair:
-            # One den per creature, never a race's and never a team's.
-            key = monsters.lair_image(self.game, monsters.LairKind(sighting.lair_kind), sighting.look)
+            # One den per creature, never a race's and never a team's — wearing the match's landscape.
+            key = monsters.lair_image(self.game, monsters.LairKind(sighting.lair_kind), sighting.look, self.world.theme)
         elif deposit is not None:
             key = textures.deposit_image(self.game, sighting.type, textures.scatter(x, y, 8) % textures.mine_variants(), sighting.look)
         elif sighting.done or painted_site:
@@ -735,8 +735,9 @@ class MapView:
             carrying = None if u.state == "attack" else u.carrying
             facing, frame = textures.facing_index(u.facing), self._frame(u)
             # A creature is nobody's: its sheet takes no player and is never team-recoloured, so it is
-            # reached through warband.art.monsters rather than through the units' own table.
-            key = (monsters.monster_image(self.game, Monster(u.type.value), facing, frame) if u.type in CREATURE_SET
+            # reached through warband.art.monsters rather than through the units' own table — in the
+            # match's landscape coat, like the ground it stands on.
+            key = (monsters.monster_image(self.game, Monster(u.type.value), facing, frame, world.theme) if u.type in CREATURE_SET
                    else textures.unit_image(self.game, u.type, u.player, facing, frame, carrying, race=u.race))
             if sprite is None:
                 sprite = self._units[u.id] = self._prop(key, position)

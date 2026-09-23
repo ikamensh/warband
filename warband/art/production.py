@@ -16,7 +16,7 @@ from typing import TypeAlias
 from PIL import Image, ImageDraw
 
 from saga2d.ui import Anchor, Button, Component, KeyHints
-from warband.sim.rules import CREATURES, BuildingType, Race, UnitType, Upgrade
+from warband.sim.rules import CREATURES, BuildingType, MapTheme, Race, UnitType, Upgrade
 from warband.art.monsters import Monster, lair_portrait_image, monster_portrait_image
 from warband.art.textures import portrait_image
 
@@ -195,13 +195,15 @@ def _research_emblem(upgrade: Upgrade, scale: float) -> Image.Image:
     return image.resize((edge, edge), Image.Resampling.LANCZOS)
 
 
-def production_image(game, target: ProductionTarget, player: int | None, race: Race = Race.HUMAN) -> str:
-    """Register once and return the portrait or emblem for a production target."""
+def production_image(game, target: ProductionTarget, player: int | None, race: Race = Race.HUMAN,
+                     theme: MapTheme = MapTheme.SUMMER) -> str:
+    """Register once and return the portrait or emblem for a production target.  A creature wears
+    the match's landscape coat, like on the map; everything else is theme-blind."""
     if target in _CREATURES:
-        return monster_portrait_image(game, Monster(target.value))  # nobody's, so no player and no race
+        return monster_portrait_image(game, Monster(target.value), theme)  # nobody's, so no player and no race
     if target is BuildingType.LAIR:
         # A catalogue never lists a den; the selection panel draws its own portrait per kind.
-        return lair_portrait_image(game)
+        return lair_portrait_image(game, theme=theme)
     if isinstance(target, (UnitType, BuildingType)):
         return portrait_image(game, target, player, race)
     if not isinstance(target, Upgrade):
@@ -221,9 +223,9 @@ def fit(game, key, x, y, size):
 
 
 def draw_production_icon(scene, target: ProductionTarget, player: int | None, race: Race, x: float, y: float, size: float, *,
-                         opacity: float = 1.0) -> None:
+                         opacity: float = 1.0, theme: MapTheme = MapTheme.SUMMER) -> None:
     """Draw a target centred in a square, without distorting its portrait."""
-    key = production_image(scene.game, target, player, race)
+    key = production_image(scene.game, target, player, race, theme)
     scene.draw_image(key, *fit(scene.game, key, x, y, size), opacity=opacity)
 
 

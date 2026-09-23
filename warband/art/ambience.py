@@ -9,11 +9,31 @@ from __future__ import annotations
 import math
 
 from saga2d import RenderLayer
-from warband.sim.rules import BuildingType, UnitType
+from warband.sim.rules import BuildingType, MapTheme, UnitType
 from warband.art import textures
 from warband.art.textures import PROJECTION, TILE
 
 STRIKE_EVERY = 0.7  # seconds from one hammer blow to the next at a site
+
+#: The air a den breathes on each landscape: summer is its own tint, winter breathes cold white
+#: and waste warm dust.  Mixed into the den's own halo tint so the kind still reads — a spider
+#: nest breathes violet everywhere, frosted violet on snow and dusty violet on waste.
+LANDSCAPE_AIR: dict[MapTheme, tuple[int, int, int] | None] = {
+    MapTheme.SUMMER: None,
+    MapTheme.WINTER: (232, 238, 246),
+    MapTheme.WASTELAND: (214, 184, 136),
+}
+
+
+def landscape_halo(hue: tuple[int, int, int], theme: MapTheme | str) -> tuple[int, int, int]:
+    """A den's halo tint on *theme*: its own hue on summer, breathed through the landscape's air
+    elsewhere.  Unknown landscapes breathe summer air (monsters.coerce_theme)."""
+    from warband.art.monsters import coerce_theme
+
+    air = LANDSCAPE_AIR[coerce_theme(theme)]
+    if air is None:
+        return hue
+    return tuple(round(h * 0.65 + a * 0.35) for h, a in zip(hue, air))  # type: ignore[return-value]
 
 
 def draw(scene, world, player: int) -> None:
@@ -75,7 +95,7 @@ def _lair_alive(scene, world, building, x: float, y: float, phase: float, layer:
     camp = next((c for c in world.camps if c.lair == building.id), None)
     kind = lair_kind_for_camp(camp) if camp is not None else LairKind.WOLF
     anchors = LAIR_ANCHORS[kind]
-    halo = anchors["halo"]
+    halo = landscape_halo(anchors["halo"], world.theme)
     breath = 0.5 + 0.5 * math.sin(phase * 2.1)  # about three seconds a breath
     scene.draw_circle(x, y - 24, 30 + 3 * math.sin(phase * 2.1), (*halo, round(11 + breath * 7)), **layer)
     mx, my = PROJECTION.project(anchors["mouth"])

@@ -177,6 +177,20 @@ minutes long and a camp is not opened before `creep_from` at 2.5: the brains tak
 worth the walk in the time they have, and go at the enemy otherwise, which is the decision the feature
 is supposed to create rather than a toll it collects.
 
+## Landscapes
+
+The wilds look different on every landscape and play the same on all of them.  Winter wolves are
+pale, waste wolves sandy; the nests, mounds and cairns carry snow dust or sand drift to match —
+[the coats](warband-monsters-art.md#landscape-coats) are presentation only, keyed by the match's
+`MapTheme` in `warband/art/monsters.py`.  The rosters, stats, placement and brains never hear of
+the theme: `mapgen` draws the same camps from the same seed on summer, winter and waste (a test
+holds the camps equal across all three), so the gate below holds on every landscape by
+construction rather than by triple measurement.  Measured anyway
+(`tools/creep_report.py --agents pro,pro --seeds 4 --theme <each>`, 20 matches a landscape,
+2026-09-23): **0.70 camps, 4.03 killed, 1.80 lost, trickle 2.57, hoard 385 — bit-for-bit identical
+on all three**.  (The trickle reads higher than the 1.54–1.57 of the twelve-seed runs above;
+that is small-sample seed noise, and it is the same noise on every landscape.)
+
 ## Fuzz
 
 `uv run python -u tools/fuzz.py --games 12 --monkey 4 --seed 81` (2026-09-21): **12 AI games, 1 failed;
@@ -196,7 +210,10 @@ the wilds as a seat alive with nothing. `race_report` and `step_bench` seated th
 ```sh
 uv run python tools/creep_report.py --agents pro,pro --seeds 12      # the gate: can the brains creep?
 uv run python tools/creep_report.py --agents medium,medium --seeds 12
+uv run python tools/creep_report.py --agents pro,pro --seeds 4 --theme winter      # the gate on each landscape
+uv run python tools/creep_report.py --agents pro,pro --seeds 4 --theme wasteland
 uv run python tools/arena.py ladder --agents hard,pro --seeds 40     # the ladder, with camps on the maps
-uv run pytest -q tests/warband/test_camps.py
+uv run pytest -q tests/warband/test_camps.py tests/warband/test_monster_themes.py
 uv run python tools/verify_camp.py docs/evidence/camps                # frames of a camp to look at
+uv run python tools/verify_camp.py docs/evidence/camps --theme winter # the winter coats, against waste
 ```

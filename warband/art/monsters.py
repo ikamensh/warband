@@ -43,7 +43,10 @@ The rules are somebody else's business.  This module offers the images:
 :func:`monster_image` for one frame, :func:`warm_monsters` for all of them and
 :func:`monster_portrait_image` for the selection panel.  A caller that has
 added a ``UnitType`` per creature reaches the art with ``Monster(unit.type.value)``,
-and :data:`DEATH_OUTCOME` says how each one goes down.
+and :data:`DEATH_OUTCOME` says how each one goes down.  Every image takes the match's
+landscape (:class:`~warband.sim.rules.MapTheme`) and wears its coat off summer —
+:data:`COATS` for the creatures, :data:`LAIR_COATS` for the dens — so the wilds look
+at home on snow and on waste while reading as themselves everywhere.
 
 Each creature also names a den: :class:`LairKind` holds the four, one per creature, and
 :func:`lair_kind_for_roster` reads whose den a camp is from the roster it was raised with.
@@ -61,6 +64,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Callable, Iterator
 
+import numpy as np
 from PIL import Image
 
 from saga2d import Game
@@ -73,7 +77,7 @@ from warband.art.textures import (
     WALK_FRAMES, Color, Placement, _BOB, _LEG_LIFT, _LEG_SWING, _painted, _prop, _shadow, _shift,
     _unit_panel, _unit_pitch, _unit_rod, darker, figure_top, placements,
 )
-from warband.sim.rules import IdentityEnum, UnitType
+from warband.sim.rules import IdentityEnum, MapTheme, UnitType
 
 
 class Monster(IdentityEnum):
@@ -685,6 +689,71 @@ CREATURES: dict[Monster, Creature] = {
 }
 
 
+# -- Landscape coats -----------------------------------------------------------------
+#
+# The wilds look different on different ground: a wolf reads pale on snow and sandy on waste,
+# while still reading as a wolf everywhere.  Summer is the painted sheet (or the stand-in) as it
+# stands; winter and wasteland are procedural coats over it — per-channel gains plus a blend
+# towards a landscape colour, masked by brightness so a cave mouth, a nose or dark chitin stays
+# dark on every landscape while the coat takes the weather.  The same coat tints the stand-in
+# render where there is no sheet, so both paths agree, and the silhouette never moves: only the
+# palette does.  The rosters are the same on every landscape (mapgen draws the same camps from
+# the same seed whatever the theme), so this is presentation only — no rules, no fingerprint.
+
+#: A coat: per-channel gains, the landscape colour blended in, and how far (0 to 1).
+Coat = tuple[tuple[float, float, float], "Color", float]
+
+#: Winter white and waste sand, as the ground palettes in textures.PALETTES paint them.
+SNOW = (232, 238, 246)
+SAND = (214, 184, 136)
+
+COATS: dict[tuple[Monster, MapTheme], Coat] = {
+    (Monster.WOLF, MapTheme.WINTER): ((0.92, 0.97, 1.10), (236, 241, 249), 0.50),  # a snow wolf: pale grey-white
+    (Monster.WOLF, MapTheme.WASTELAND): ((1.10, 1.01, 0.85), (218, 188, 140), 0.48),  # a dune wolf: sandy blonde
+    (Monster.SPIDER, MapTheme.WINTER): ((0.92, 0.97, 1.09), (214, 226, 238), 0.38),  # frost-pale chitin
+    (Monster.SPIDER, MapTheme.WASTELAND): ((1.09, 1.01, 0.86), (212, 190, 152), 0.38),  # sun-bleached chitin
+    (Monster.TROLL, MapTheme.WINTER): ((0.90, 0.96, 1.08), (204, 222, 232), 0.38),  # an ice troll: pale, cold
+    (Monster.TROLL, MapTheme.WASTELAND): ((1.10, 1.01, 0.84), (208, 180, 134), 0.40),  # a sand troll: dusty
+    (Monster.GOLEM, MapTheme.WINTER): ((0.93, 0.98, 1.08), (234, 240, 248), 0.40),  # snow dust on the slabs
+    (Monster.GOLEM, MapTheme.WASTELAND): ((1.10, 1.02, 0.86), (216, 188, 142), 0.40),  # sandstone slabs
+}
+
+
+def coerce_theme(theme: MapTheme | str) -> MapTheme:
+    """*theme* as a :class:`~warband.sim.rules.MapTheme`, falling back to summer.
+
+    A landscape the coats do not know (a string from an old save, a theme added later) wears
+    the summer coat rather than failing: the fallback is the rule, and a test holds it.
+    """
+    try:
+        return MapTheme(theme)
+    except ValueError:
+        return MapTheme.SUMMER
+
+
+def _themed(image: Image.Image, coat: Coat) -> Image.Image:
+    """*image* in *coat*: gains everywhere, the landscape colour blended into what is lit.
+
+    The blend is masked by brightness — pixels near black keep their darkness — so the mouths,
+    eyes and dark chitin that say *camp* and *creature* survive every landscape.  Alpha is
+    untouched throughout.
+    """
+    gains, blend, amount = coat
+    arr = np.asarray(image).astype(np.float32)
+    rgb = arr[..., :3] * np.array(gains, dtype=np.float32)
+    mask = np.clip((rgb.mean(axis=-1, keepdims=True) - 8.0) / 70.0, 0.0, 1.0)
+    rgb += (np.array(blend, dtype=np.float32) - rgb) * (amount * mask)
+    arr[..., :3] = np.clip(rgb, 0.0, 255.0)
+    return Image.fromarray(arr.astype(np.uint8), "RGBA")
+
+
+def monster_asset_key(monster: Monster, facing: int, frame: str, theme: MapTheme | str = MapTheme.SUMMER) -> str:
+    """The asset key of one creature frame on one landscape: the sheet key on summer, suffixed
+    with the landscape elsewhere, so every landscape's coat is its own registered image."""
+    theme = coerce_theme(theme)
+    return monster_key(monster, facing, frame) + ("" if theme is MapTheme.SUMMER else f".{theme.value}")
+
+
 def _posed(mesh: Mesh, frame: str, creature: Creature) -> Mesh:
     """Apply the frame's shared :class:`~warband.art.textures.Pose` to one creature's rig."""
     pose = POSES.get(frame)
@@ -743,40 +812,54 @@ def monster_heads(monster: Monster) -> tuple[float, ...]:
                  for facing in range(FACINGS))
 
 
-def monster_image(game: Game, monster: Monster, facing: int, frame: str) -> str:
-    """Register (once) and return the key of one creature image: the painted frame where the
-    creature has a sheet, the low-poly render otherwise.  Never recoloured: a neutral creature
-    has no player, so unlike :func:`~warband.art.textures.unit_image` this takes none."""
-    key = monster_key(monster, facing, frame)
+def monster_image(game: Game, monster: Monster, facing: int, frame: str, theme: MapTheme | str = MapTheme.SUMMER) -> str:
+    """Register (once) and return the key of one creature image on one landscape: the painted
+    frame where the creature has a sheet, the low-poly render otherwise, wearing the landscape's
+    coat off summer.  Never recoloured: a neutral creature has no player, so unlike
+    :func:`~warband.art.textures.unit_image` this takes none — and the coat keeps clear of the
+    team hues for the same reason (``test_monsters.py`` holds the winter and waste frames to it)."""
+    theme = coerce_theme(theme)
+    key = monster_asset_key(monster, facing, frame, theme)
     if not game.assets.has_image(key):
         painted = restyled_monster(monster)
         if painted is None:
             mesh = r3.rotate_z(monster_mesh(monster, frame), facing * 45 - 90)
-            game.assets.image_from_pil(key, _prop(key, mesh, DROP_UNIT, game.backend.scale_factor))
+            image = _prop(key, mesh, DROP_UNIT, game.backend.scale_factor)
         else:
             sheet, frames = painted
             placements[key] = Placement(sheet.logical_size, sheet.drop, head=monster_heads(monster)[facing])
-            game.assets.image_from_pil(key, frames[key])
+            image = frames[monster_key(monster, facing, frame)]
+        coat = COATS.get((monster, theme))
+        if coat is not None:
+            image = _themed(image, coat)
+        game.assets.image_from_pil(key, image)
     return key
 
 
-def warm_monsters(game: Game) -> Iterator[str]:
-    """Every creature image, one per step, for a scene to spread over its opening frames."""
+def warm_monsters(game: Game, theme: MapTheme | str = MapTheme.SUMMER) -> Iterator[str]:
+    """Every creature image on one landscape, one per step, for a scene to spread over its opening
+    frames.  A scene warms its world's own landscape only: three landscapes' coats are three sets."""
+    theme = coerce_theme(theme)
     for monster in Monster:
         for facing in range(FACINGS):
             for frame in FRAMES:
-                yield monster_image(game, monster, facing, frame)
+                yield monster_image(game, monster, facing, frame, theme)
 
 
-def monster_portrait_image(game: Game, monster: Monster) -> str:
+def monster_portrait_image(game: Game, monster: Monster, theme: MapTheme | str = MapTheme.SUMMER) -> str:
     """A tightly framed picture of a creature at rest, for the selection panel: the painted frame
-    facing the viewer where there is one, the low-poly render otherwise."""
-    key = f"portrait.monster.{monster.value}"
+    facing the viewer where there is one, the low-poly render otherwise — wearing the landscape's
+    coat, so the card shows the animal standing on that landscape."""
+    theme = coerce_theme(theme)
+    key = f"portrait.monster.{monster.value}" + ("" if theme is MapTheme.SUMMER else f".{theme.value}")
     if not game.assets.has_image(key):
         painted = restyled_monster(monster)
         if painted is not None:
             frame = painted[1][monster_key(monster, 2, "stand")]
             figure = frame.crop(frame.split()[3].getbbox())
+            coat = COATS.get((monster, theme))
+            if coat is not None:
+                figure = _themed(figure, coat)
             fit = 128 * game.backend.scale_factor / max(figure.size)
             game.assets.image_from_pil(key, figure.resize((max(1, round(figure.width * fit)), max(1, round(figure.height * fit))),
                                                           Image.LANCZOS))
@@ -785,7 +868,11 @@ def monster_portrait_image(game: Game, monster: Monster) -> str:
         min_x, min_y, max_x, max_y = r3.bounds(mesh, PROJECTION)
         w, h = max_x - min_x + 2 * PAD, max_y - min_y + 2 * PAD
         px = 128 * game.backend.scale_factor / max(w, h)
-        game.assets.image_from_pil(key, r3.render(mesh, PROJECTION, scale=px, canvas=(w, h), origin=(-min_x + PAD, -min_y + PAD)))
+        image = r3.render(mesh, PROJECTION, scale=px, canvas=(w, h), origin=(-min_x + PAD, -min_y + PAD))
+        coat = COATS.get((monster, theme))
+        if coat is not None:
+            image = _themed(image, coat)
+        game.assets.image_from_pil(key, image)
     return key
 
 
@@ -1100,51 +1187,89 @@ def restyled_lair(look: str = "intact") -> tuple[restyle.Sheet, dict[str, Image.
     return _painted(f"lair.{look}", [lair_key(kind, look) for kind in LairKind])
 
 
-def lair_image(game: Game, kind: LairKind | str = LairKind.WOLF, look: str = "intact") -> str:
-    """Register (once) and return the key of one den's picture: the painted cell where the lairs
-    have a sheet in *look* (a look without a sheet shows the intact painting), the low-poly
-    render otherwise.
+def lair_asset_key(kind: LairKind | str, look: str = "intact", theme: MapTheme | str = MapTheme.SUMMER) -> str:
+    """The asset key of one den's picture on one landscape: the sheet key on summer, suffixed
+    with the landscape elsewhere, so every landscape's coat is its own registered image."""
+    theme = coerce_theme(theme)
+    return lair_key(kind, look) + ("" if theme is MapTheme.SUMMER else f".{theme.value}")
+
+
+#: The dens wear the weather too: snow dust on the crowns in winter, sand drifted against the
+#: stones on waste.  The same brightness-masked coats as the creatures, milder — a den's dark
+#: mouth and bone-white mark are the shared camp affordance and must survive every landscape.
+LAIR_COATS: dict[tuple[LairKind, MapTheme], Coat] = {
+    (LairKind.WOLF, MapTheme.WINTER): ((0.92, 0.97, 1.09), (234, 240, 248), 0.38),
+    (LairKind.WOLF, MapTheme.WASTELAND): ((1.09, 1.01, 0.86), (214, 186, 140), 0.38),
+    (LairKind.SPIDER, MapTheme.WINTER): ((0.92, 0.97, 1.09), (216, 226, 238), 0.34),
+    (LairKind.SPIDER, MapTheme.WASTELAND): ((1.09, 1.01, 0.87), (210, 188, 152), 0.34),
+    (LairKind.TROLL, MapTheme.WINTER): ((0.90, 0.96, 1.08), (206, 222, 232), 0.34),
+    (LairKind.TROLL, MapTheme.WASTELAND): ((1.10, 1.01, 0.85), (206, 178, 134), 0.34),
+    (LairKind.GOLEM, MapTheme.WINTER): ((0.93, 0.98, 1.08), (234, 240, 248), 0.38),
+    (LairKind.GOLEM, MapTheme.WASTELAND): ((1.10, 1.02, 0.86), (214, 186, 140), 0.38),
+}
+
+
+def lair_image(game: Game, kind: LairKind | str = LairKind.WOLF, look: str = "intact",
+               theme: MapTheme | str = MapTheme.SUMMER) -> str:
+    """Register (once) and return the key of one den's picture on one landscape: the painted cell
+    where the lairs have a sheet in *look* (a look without a sheet shows the intact painting),
+    the low-poly render otherwise, wearing the landscape's coat off summer.
 
     Never recoloured and never per race: a den belongs to the wilds, exactly as the gold mine
     belongs to nobody (:func:`~warband.art.textures.mine_image`).
     """
     if look not in LAIR_LOOKS:
         raise ValueError(f"unknown lair look {look!r}")
+    theme = coerce_theme(theme)
     kind = LairKind(kind)
     painted = restyled_lair(look) or (restyled_lair() if look != "intact" else None)
     if painted is None:
-        key = lair_key(kind, look)
+        key = lair_asset_key(kind, look, theme)
         if not game.assets.has_image(key):
             front = 1.5 * TILE
-            game.assets.image_from_pil(key, _prop(key, lair_mesh(kind, look), front + PAD, game.backend.scale_factor,
-                                                  front=front))
+            image = _prop(key, lair_mesh(kind, look), front + PAD, game.backend.scale_factor, front=front)
+            coat = LAIR_COATS.get((kind, theme))
+            if coat is not None:
+                image = _themed(image, coat)
+            game.assets.image_from_pil(key, image)
         return key
     sheet, frames = painted
     show = look if restyled_lair(look) is not None else "intact"
-    key = lair_key(kind, show)
+    base = lair_key(kind, show)
+    key = base + ("" if theme is MapTheme.SUMMER else f".{theme.value}")
     if not game.assets.has_image(key):
-        placements[key] = Placement(sheet.logical_size, sheet.drop, 1.5 * TILE, head=figure_top(sheet, frames[key]))
-        game.assets.image_from_pil(key, frames[key])
+        placements[key] = Placement(sheet.logical_size, sheet.drop, 1.5 * TILE, head=figure_top(sheet, frames[base]))
+        image = frames[base]
+        coat = LAIR_COATS.get((kind, theme))
+        if coat is not None:
+            image = _themed(image, coat)
+        game.assets.image_from_pil(key, image)
     return key
 
 
-def warm_lairs(game: Game) -> Iterator[str]:
-    """Every den image, one per step, for a scene to spread over its opening frames."""
+def warm_lairs(game: Game, theme: MapTheme | str = MapTheme.SUMMER) -> Iterator[str]:
+    """Every den image on one landscape, one per step, for a scene to spread over its opening frames."""
+    theme = coerce_theme(theme)
     for kind in LairKind:
         for look in LAIR_LOOKS:
-            yield lair_image(game, kind, look)
+            yield lair_image(game, kind, look, theme)
 
 
-def lair_portrait_image(game: Game, kind: LairKind | str = LairKind.WOLF) -> str:
+def lair_portrait_image(game: Game, kind: LairKind | str = LairKind.WOLF, theme: MapTheme | str = MapTheme.SUMMER) -> str:
     """A tightly framed picture of one den, for the selection panel: the painted cell where there
-    is one, the low-poly render otherwise."""
+    is one, the low-poly render otherwise — wearing the landscape's coat, so the card shows the
+    den standing on that landscape."""
+    theme = coerce_theme(theme)
     kind = LairKind(kind)
-    key = f"portrait.lair.{kind.value}"
+    key = f"portrait.lair.{kind.value}" + ("" if theme is MapTheme.SUMMER else f".{theme.value}")
     if not game.assets.has_image(key):
         painted = restyled_lair()
         if painted is not None:
             frame = painted[1][lair_key(kind)]
             figure = frame.crop(frame.split()[3].getbbox())
+            coat = LAIR_COATS.get((kind, theme))
+            if coat is not None:
+                figure = _themed(figure, coat)
             fit = 128 * game.backend.scale_factor / max(figure.size)
             game.assets.image_from_pil(key, figure.resize((max(1, round(figure.width * fit)), max(1, round(figure.height * fit))),
                                                           Image.LANCZOS))
@@ -1153,5 +1278,9 @@ def lair_portrait_image(game: Game, kind: LairKind | str = LairKind.WOLF) -> str
         min_x, min_y, max_x, max_y = r3.bounds(mesh, PROJECTION)
         w, h = max_x - min_x + 2 * PAD, max_y - min_y + 2 * PAD
         px = 128 * game.backend.scale_factor / max(w, h)
-        game.assets.image_from_pil(key, r3.render(mesh, PROJECTION, scale=px, canvas=(w, h), origin=(-min_x + PAD, -min_y + PAD)))
+        image = r3.render(mesh, PROJECTION, scale=px, canvas=(w, h), origin=(-min_x + PAD, -min_y + PAD))
+        coat = LAIR_COATS.get((kind, theme))
+        if coat is not None:
+            image = _themed(image, coat)
+        game.assets.image_from_pil(key, image)
     return key

@@ -469,10 +469,12 @@ class GameScene(Scene):
 
         # A creature is nobody's, so it is not among the seats' units and needs warming of its own; without
         # it the first fight at a camp renders every frame of every guard cold, which the benchmark sees.
+        # The coats are per landscape, so only this world's own is warmed.
         seats = self.world.players[:self.world.seats]
         warm = textures.warm_units(self.game, [p.id for p in seats], [p.race for p in seats])
         if self.world.camps:
-            self._warm = itertools.chain(warm, monsters.warm_monsters(self.game), monsters.warm_lairs(self.game))
+            self._warm = itertools.chain(warm, monsters.warm_monsters(self.game, self.world.theme),
+                                         monsters.warm_lairs(self.game, self.world.theme))
         else:
             self._warm = warm
         play_music("peace", self.player.race)
@@ -2409,10 +2411,10 @@ class GameScene(Scene):
         if isinstance(entity, Sighting) and entity.type is BuildingType.LAIR:
             from warband.art.monsters import LairKind, lair_portrait_image
 
-            key = lair_portrait_image(self.game, LairKind(entity.lair_kind))
+            key = lair_portrait_image(self.game, LairKind(entity.lair_kind), self.world.theme)
             self.draw_image(key, *fit(self.game, key, x, y, size))
             return
-        draw_production_icon(self, entity.type, entity.player, entity.race, x, y, size)
+        draw_production_icon(self, entity.type, entity.player, entity.race, x, y, size, theme=self.world.theme)
 
     def _draw_production(self, building: Building, x: float, y: float) -> None:
         """What a building is making: the target's portrait with its progress, then the queue's portraits."""

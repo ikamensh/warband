@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from saga2d import Game, fonts  # noqa: E402
 from warband.sim import camps, mapgen  # noqa: E402
 from warband.sim.model import tile_center  # noqa: E402
-from warband.sim.rules import BuildingType, Terrain, UnitType  # noqa: E402
+from warband.sim.rules import BuildingType, MapTheme, Terrain, UnitType  # noqa: E402
 from warband.ui.scene import GameScene  # noqa: E402
 from warband.ui.style import build_theme  # noqa: E402
 
@@ -58,9 +58,9 @@ def free_spot(world, near_x: int, near_y: int) -> tuple[int, int]:
     return best
 
 
-def main(out: Path) -> int:
+def main(out: Path, theme: MapTheme = MapTheme.SUMMER) -> int:
     out.mkdir(parents=True, exist_ok=True)
-    world = mapgen.generate(SEED, *SIZE, players=2, human=0)
+    world = mapgen.generate(SEED, *SIZE, players=2, human=0, theme=theme)
     if not world.camps:
         print(f"seed {SEED} drew no camps; nothing to look at")
         return 1
@@ -146,4 +146,7 @@ def main(out: Path) -> int:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("out", type=Path)
-    raise SystemExit(main(parser.parse_args().out))
+    parser.add_argument("--theme", choices=[t.value for t in MapTheme], default=MapTheme.SUMMER.value,
+                        help="the landscape the camp stands on: winter and waste wear their own coats")
+    args = parser.parse_args()
+    raise SystemExit(main(args.out, MapTheme(args.theme)))
