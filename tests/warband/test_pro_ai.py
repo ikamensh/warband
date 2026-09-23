@@ -216,6 +216,35 @@ def test_more_opponents_mean_a_bigger_margin_is_wanted_before_attacking():
     assert PRO.attack_ratio * (1 + PRO.ffa_caution * bystanders) > PRO.attack_ratio
 
 
+def test_caution_stops_growing_past_five_seats():
+    """Regression: uncapped caution needed twelve times the strength and sixty
+    soldiers to leave home in sixteen seats, so no attack ever went out."""
+    two = mapgen.generate(seed=9, players=2, human=None)
+    four = mapgen.generate(seed=9, players=4, human=None)
+    six = mapgen.generate(seed=11, width=144, height=108, players=6, human=None)
+    assert ProBrain(0, PRO)._caution(two) == 1.0
+    assert ProBrain(0, PRO)._caution(four) == 1.0 + PRO.ffa_caution * 2
+    assert ProBrain(0, PRO)._caution(six) == 1.0 + PRO.ffa_caution * 3
+
+
+def test_unknown_ground_is_priced_as_one_opponent_not_all():
+    """Regression: summing every seat's army for an unexplored point scaled the
+    pessimism with the seat count and blocked every blind attack in a big game."""
+    world = mapgen.generate(seed=9, players=3, human=None)
+    brain = ProBrain(0, PRO)
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    first = [world.spawn_unit(1, UnitType.FOOTMAN, (hall.center[0] + 1 + i * 0.5, hall.center[1] + 1))
+             for i in range(8)]
+    second = [world.spawn_unit(2, UnitType.FOOTMAN, (hall.center[0] + 1 + i * 0.5, hall.center[1] + 2))
+              for i in range(8)]
+    world.update_vision()
+    corner = brain._unexplored_corner(world)
+    assert brain._owner_of(world, corner) is None
+    one = max(strength(world, first), strength(world, second))
+    assert brain._defenders_near(world, corner) == pytest.approx(one)
+    assert brain._defenders_near(world, corner) < strength(world, first + second)
+
+
 @pytest.mark.slow
 def test_a_free_for_all_runs_to_placements():
     """Four brains, one map, and a finishing order rather than a winner: six minutes on a large map, the

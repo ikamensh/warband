@@ -1327,9 +1327,14 @@ class ProBrain:
         The posture that rates 1562 Elo one against one rates 1022 in a four
         player game without this, which is barely ahead of the brain it
         replaced — so every extra opponent buys back some of the caution.
+
+        Beyond a five-seat game the extra seats fight each other as much as
+        they watch us, so caution stops growing: uncapped, sixteen seats need
+        twelve times the strength and sixty soldiers to leave home, and no
+        attack ever goes out.
         """
         bystanders = sum(1 for p in world.players[:world.seats] if p.id != self.player and p.alive) - 1
-        return 1.0 + self.profile.ffa_caution * max(0, bystanders)
+        return 1.0 + self.profile.ffa_caution * min(max(0, bystanders), 3)
 
     def _army_centre(self, world: World, army: list[Unit]) -> Point | None:
         if not army:
@@ -1386,20 +1391,44 @@ class ProBrain:
         # that walks home the moment the attack starts. Counting only what is
         # near the target is how a push goes out against an estimate of twelve
         # and meets two hundred.
-        theirs = [u for u in self._enemies(world)
-                  if not u.is_worker and (owner is None or u.player == owner)]
-        counted = sum(self.remembered(owner).values()) if owner is not None else sum(self.remembered().values())
-        hidden = max(0.0, counted - len(theirs))
-        seen = (strength(world, theirs) + _tower_strength(world, self.player, point)
-                + 0.5 * hidden * self._typical_soldier(world))
+        if owner is not None:
+            theirs = [u for u in self._enemies(world) if not u.is_worker and u.player == owner]
+            counted = sum(self.remembered(owner).values())
+            hidden = max(0.0, counted - len(theirs))
+            seen = (strength(world, theirs) + _tower_strength(world, self.player, point)
+                    + 0.5 * hidden * self._typical_soldier(world))
+        else:
+            # Unknown ground could hold any one opponent, not all of them at
+            # once: summing every seat's army scales the pessimism with the
+            # seat count and blocks every blind attack in a big game. Price
+            # the strongest single opponent instead; with one opponent the
+            # two are the same.
+            foes = [u for u in self._enemies(world) if not u.is_worker]
+            by_player: dict[int, list[Unit]] = {}
+            for foe in foes:
+                by_player.setdefault(foe.player, []).append(foe)
+            best = 0.0
+            best_n = 0
+            for group in by_player.values():
+                s = strength(world, group)
+                if s > best:
+                    best, best_n = s, len(group)
+            counted = 0.0
+            for p in world.players[:world.seats]:
+                if p.id != self.player and p.alive:
+                    counted = max(counted, sum(self.remembered(p.id).values()))
+            hidden = max(0.0, counted - best_n)
+            seen = best + _tower_strength(world, self.player, point) + 0.5 * hidden * self._typical_soldier(world)
         if world.time - self.last_seen(owner) > self.profile.stale_seconds:
             # Nobody has looked at them lately. An enemy nobody has looked at is not
             # an enemy of zero strength — assuming so is how an army of ten walks
             # into a defended base and dies. Until a scout says otherwise, credit
             # them with a game as good as ours, which means no attack goes out on
-            # no information at all.
-            seen = max(seen, self.profile.symmetry_prior * self._caution(world)
-                       * strength(world, self._army(world)))
+            # no information at all. Without the caution factor: it already
+            # multiplies the attack threshold, and counting it twice squares
+            # the care (2.6² needs five times our strength in a four-player
+            # game, 12.2² fifty times in sixteen).
+            seen = max(seen, self.profile.symmetry_prior * strength(world, self._army(world)))
         return seen
 
     def _owner_of(self, world: World, point: Point) -> int | None:
