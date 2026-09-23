@@ -64,12 +64,12 @@ def _assert_congruent(world: World, players: int) -> None:
                 continue  # the map's rim is a frame outside play, not a cell's ground: mapgen._Canvas.frame
             for ix, iy in spots:
                 assert world.terrain[iy][ix] is world.terrain[y][x], (x, y, ix, iy)
-    mines = {m.pos for m in world.mines()}
+    mines = {m.pos: (m.type, m.gold) for m in world.mines()}
     for m in world.mines():
         if m.gold != EXPANSION_GOLD and players < cols * rows:
             continue  # a cell with no seat has no start mine, only the natural everyone's cell has
         for x, y in images(world, m.pos, 3):
-            assert (x, y) in mines, (m.pos, (x, y))
+            assert mines.get((x, y)) == (m.type, m.gold), (m.pos, (x, y))
     if players == cols * rows:
         hall_spots = {h.pos for h in halls(world)}
         for h in halls(world):
@@ -134,6 +134,17 @@ def test_plains_contests_its_mines_with_fewer_thirds() -> None:
     assert mapgen._third_orbits(forest, 64, 24) == 2
 
 
+@pytest.mark.parametrize(("layout", "gold"), ((Layout.PLAINS, 15_000), (Layout.CROSSINGS, 20_000)))
+def test_open_and_ford_maps_put_early_pressure_on_the_natural(layout: Layout, gold: int) -> None:
+    """The home mine runs short during ordinary matches, while a free natural remains available."""
+    world = mapgen.generate(seed=9, players=2, layout=layout)
+    for hall in halls(world):
+        main = min(world.mines(), key=lambda mine: _dist(mine.center, hall.center))
+        assert main.gold == gold
+        assert any(mine.gold == EXPANSION_GOLD and 12 <= _dist(mine.center, hall.center) <= 18
+                   for mine in world.mines())
+
+
 def test_crossings_join_the_banks_only_at_the_fords() -> None:
     world, report = mapgen.build(seed=3, layout=Layout.CROSSINGS)
     fords = frozenset(map(tuple, report["fords"]))
@@ -141,6 +152,17 @@ def test_crossings_join_the_banks_only_at_the_fords() -> None:
     a, b = (door(world, h) for h in halls(world))
     assert b in mapgen.reachable(world, a)
     assert b not in mapgen.reachable(world, a, shut=fords)
+
+
+@pytest.mark.parametrize("players", (2, 4))
+@pytest.mark.parametrize("seed", range(1, 7))
+def test_crossings_natural_faces_the_central_ford(seed: int, players: int) -> None:
+    """The first expansion pulls each seat toward the river instead of back to the rim."""
+    world = mapgen.generate(seed=seed, players=players, layout=Layout.CROSSINGS)
+    hall = halls(world)[0]
+    natural = min((mine for mine in world.mines() if mine.gold == EXPANSION_GOLD),
+                  key=lambda mine: _dist(mine.center, hall.center))
+    assert _dist(natural.center, (world.width / 2, world.height / 2)) < 14
 
 
 def test_klondike_keeps_its_gold_in_a_pit_behind_gates() -> None:
@@ -162,6 +184,27 @@ def test_bastion_walls_every_base_behind_one_gate() -> None:
         assert all(_dist(tile, hall.center) < 13 for tile in inside), hall.player
         assert any(door(world, m) in inside for m in world.mines() if m.gold == MINE_GOLD)  # the main mine is inside the ring
         assert not any(door(world, m) in inside for m in world.mines() if m.gold == EXPANSION_GOLD)  # the natural is outside
+
+
+def test_bastion_gate_cannot_be_sealed_by_buildings() -> None:
+    """Fuzz seed 82, Huge: a farm at (8, 16) left one lane, then a barracks at
+    (7, 19) sealed it; soldiers gathered at (26, 3) with no route out."""
+    world, report = mapgen.build(seed=82, width=108, height=84, players=2, human=None)
+    assert world.layout is Layout.BASTION
+    assert (8, 16) in map(tuple, report["gates"])
+    # These four trees were chopped before the barracks was founded in the match.
+    for x, y in ((7, 20), (8, 20), (7, 21), (8, 21)):
+        world.terrain[y][x] = Terrain.GRASS
+        world._blocked[y * world.width + x] = 0
+    world.reveal_all(0)
+    assert world._placement_reason(BuildingType.FARM, (7, 17), 0, ignore_units=True) is None
+    world.place_building(0, BuildingType.FARM, (8, 16))
+    assert world._placement_reason(BuildingType.BARRACKS, (7, 19), 0, ignore_units=True) == "Keep the gate open"
+    assert (7, 19) not in world.placeable(BuildingType.BARRACKS, 0, [(7, 19)])
+    restored = World.from_dict(world.to_dict())
+    assert restored.gates == world.gates
+    assert restored.gate_links == world.gate_links
+    assert restored._placement_reason(BuildingType.BARRACKS, (7, 19), 0, ignore_units=True) == "Keep the gate open"
 
 
 def test_a_seed_always_draws_the_same_layout() -> None:

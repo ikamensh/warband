@@ -15,12 +15,14 @@ import pytest
 from warband.league import arena
 from warband.league.arena import MatchSpec, play
 from warband.brains.pro_ai import PRO
-from warband.sim.rules import UnitType
+from warband.sim.rules import Layout, UnitType
 
 
-def _play(name: str, profile, seed: int = 7, minutes: float = 6, opponent: str = "pro"):
+def _play(name: str, profile, seed: int = 7, minutes: float = 6, opponent: str = "pro",
+          layout: Layout | None = None):
     arena.register_profiles([(name, profile)])
-    return play(MatchSpec(seed=seed, agents=(name, opponent), minutes=minutes)).tallies[0]
+    return play(MatchSpec(seed=seed, agents=(name, opponent), minutes=minutes,
+                          layout=layout.value if layout is not None else None)).tallies[0]
 
 
 @pytest.mark.slow
@@ -83,13 +85,13 @@ def test_early_tech_names_how_many_and_a_strict_plan_stops_the_barracks():
     from warband.sim.rules import BuildingType
 
     # Against Easy, so the posture lives long enough to field its plan: against Master it can be
-    # dead at five minutes, and then the count says who won rather than what the knobs did. Seed 12
-    # banks its knights with margin on either platform's timeline; on seed 7 the Linux match
-    # trains only three in nine minutes.
+    # dead at five minutes, and then the count says who won rather than what the knobs did. Bastion
+    # keeps the main-mine economy fixed while this test prices the plan's two-stables knob. Seed 12
+    # banks its knights with margin on either platform's timeline.
     tally = _play("test-two-stables", replace(PRO, name="test-two-stables", barracks_per_hall=1, strict_plan=True,
                                               early_tech=(BuildingType.STABLES, BuildingType.STABLES),
                                               army_plan={UnitType.FOOTMAN: 0.2, UnitType.KNIGHT: 0.8}),
-                  minutes=9, opponent="easy", seed=12)
+                  minutes=9, opponent="easy", seed=12, layout=Layout.BASTION)
     assert tally.started["stables"] >= 2
     soldiers = tally.trained["footman"] + tally.trained["knight"] + tally.trained["scout"]
     assert tally.trained["knight"] >= 4

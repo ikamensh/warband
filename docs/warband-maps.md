@@ -39,7 +39,7 @@ between halls is about 43 tiles):
 |------|-------|----------------------|
 | Walk corner to corner, Medium | footman 18 s, knight 13 s, scout 10 s, catapult 27 s | Rush distance is short by nature; a layout lengthens it with detours, not size |
 | Walk corner to corner, Large (64 × 48) | footman 25 s, catapult 38 s | Large is where three paths and a long flank route fit |
-| Main mine | 50 000 gold; five peasants take about 49 gold/s, empty in 17 min | A match that runs long *must* expand; the natural is not optional |
+| Main mine | 50 000 gold in Forest and Bastion; 15 000 on Plains; 20 000 on Crossings and Klondike | The latter three layouts press players to leave the safe start during an ordinary match |
 | Expansion mine | 30 000 gold; five peasants empty it in 10 min | Thirds get fought over twice: taking them and holding them |
 | A tree | 5 s to fell, 100 lumber, blocks movement | Forest is a **soft wall**: three tiles thick costs one peasant 15 s. Elves with Regrowth get it back after 60 s |
 | Water and rock | block movement, permanent | The only hard walls; no boats, no flying, no high ground |
@@ -963,9 +963,10 @@ ground for one — which leaves out Huge with sixteen seats (27 × 21 a seat) an
 Giant with sixteen (36 × 27). Two reasons, and they agree: a permanent trickle
 is worth most where matches are long and the middle is far from home, and the
 measured difficulty ratings (`brains.DIFFICULTY_ELO`), the balance league and
-`league.arena`'s own `LADDER_SIZES` all live on the three shipped sizes, which
-therefore keep exactly the economy they were measured with. The simulation
-fingerprint does not move.
+`league.arena`'s own `LADDER_SIZES` all live on the three shipped sizes. The seam
+left their economy and simulation fingerprint unchanged when it was added;
+the opening mine stocks were subsequently retuned in the strategy diversity
+pass below.
 
 **A seam is a wish, not a fault.** `build` separates `report["problems"]`, which
 make a map unfair and are worth raising `NoFairMap` over, from
@@ -989,3 +990,62 @@ were made for a three-tile mine and blown up to five they would be a smear.
 `textures.deposit_image` picks the bank or the single face by kind, and the
 whole thing wears the `active` look — lanterns lit in every mouth — while
 anybody is inside. `tools/verify_map.py` renders one with a crew at its face.
+
+## Strategy diversity pass (2026-09-23)
+
+The layouts were visually distinct, but a measured five-plan round robin on
+unchanged main (`5a24655`) found the same defensive opening effective on
+Plains, Forest, Crossings and Bastion. A 50 000-gold main mine on all four
+let a player wait through the ordinary match without taking the natural.
+Klondike's short home mine was the one clear exception.
+
+Plains now starts with 15 000 gold in each seat's main mine. It keeps its free
+natural and open routes: a rush can punish a delayed expansion, while an
+economic opening can still take the exposed second mine. Crossings starts with
+20 000, and its natural is picked toward the central ford when a fair site is
+available. Holding a crossing therefore matters to the first expansion,
+rather than only to a later contested third. Forest, Klondike and Bastion keep
+their previous mine stocks and terrain. Bastion also refuses a building site
+at a gate if its footprint would cut the route from the hall to the natural:
+fuzz seed 82 showed an AI sealing its own exit with a barracks. A farm or
+tower can still occupy part of a gate when an open route remains. Gate tiles
+and the hall-to-natural links are saved with the world. These changes are
+symmetric for every seat and make no new kind of mine.
+
+`tools/map_strategy_report.py` makes the comparison repeatable. It plays
+rush, boom, turtle, knights and siege against every other plan, twice per
+pair to exchange seats, on every layout. Each seed uses the same size and
+races for a pairing on all five layouts. A seed is left out everywhere if
+even one layout cannot generate it fairly; an interrupted match file is
+refused rather than scored. The final check used seeds 5000–5011, cycling
+Small, Medium and Large: 1200 matches per build, 96 per plan and layout.
+Scores below are the share of points against the other four plans, counting
+a draw as half a point.
+
+| Layout | Unchanged main | Retuned map |
+|--------|----------------|-------------|
+| Plains | turtle 75%, boom 68%, rush 16% | rush 60%, turtle 55%, boom 52% |
+| Forest | turtle 79%, boom 66% | same results |
+| Crossings | boom 75%, turtle 68%, rush 13%, knights 42% | knights 56%, boom 54%, turtle 54%, rush 43% |
+| Klondike | rush 67% | same results |
+| Bastion | turtle 76%, boom 62%, siege 59% | boom 71%, turtle 70%, siege 54% |
+
+Across the four layouts that previously played alike (excluding Klondike),
+the mean pairwise difference between their five-plan score profiles rose
+from **6.6 to 13.9 percentage points**. Resampling the twelve paired seeds
+puts the increase at 4.0–10.2 points in 95% of samples. The layouts still
+share some successful plans: rush remains strong on both Plains and Klondike,
+and Forest and Bastion still reward defensive play, though Forest favors
+turtle and Bastion favors boom in this panel. Crossings rewards mobility
+more than siege in this panel; its siege score fell from 53% to 42%.
+
+The exact reproduction is:
+
+```bash
+uv run python tools/map_strategy_report.py --seeds 12 --first-seed 5000 --workers 4 --out /tmp/warband-map-strategies.jsonl
+uv run python tools/map_strategy_report.py --from /tmp/warband-map-strategies.jsonl --baseline /path/to/unchanged-main-matches.jsonl
+```
+
+The generator audit made 100 seeds at each of the three shipped sizes for
+two and four seats on both changed layouts: 1200 maps, no refusals or
+disconnections. Retries stayed close to unchanged main.

@@ -546,10 +546,12 @@ class _Spec:
 #: with its open ground around it would take a base's worth of woods out of a layout whose whole
 #: promise is that the woods are thick.  Klondike has none either: little gold at home and the rest
 #: in a walled pit is a deliberate shape of economy, and an endless trickle outside the pit unmakes it.
+#: Plains and Crossings also have short home mines: their free naturals should be fought over
+#: during an ordinary match, before a player has already won from one safe deposit.
 _SPECS: Final[dict[Layout, _Spec]] = {
-    Layout.PLAINS: _Spec(Layout.PLAINS, seam=True),
+    Layout.PLAINS: _Spec(Layout.PLAINS, seam=True, start_gold=15_000),
     Layout.FOREST: _Spec(Layout.FOREST, clearing=9, natural_range=(13, 18), natural_clearing=5, third_clearing=4),  # a full base needs the room; four seats get less, see _clearing
-    Layout.CROSSINGS: _Spec(Layout.CROSSINGS, contested=14, seam=True),  # the river runs down the bisector; thirds sit on its banks
+    Layout.CROSSINGS: _Spec(Layout.CROSSINGS, contested=14, seam=True, start_gold=20_000),  # the river runs down the bisector; thirds sit on its banks
     Layout.KLONDIKE: _Spec(Layout.KLONDIKE, clearing=6, natural=False, thirds=False, start_gold=KLONDIKE_START_GOLD),
     Layout.BASTION: _Spec(Layout.BASTION, natural_range=(12, 18), seam=True),
 }
@@ -639,6 +641,8 @@ def _river(cv: _Canvas, rng: random.Random, walls: _Walls) -> None:
                 spot = (cx + along * dx - across * dy, cy + along * dy + across * dx)
                 cv.paint(cv.within(spot, 1.5), Terrain.ROCK, over=(Terrain.GRASS, Terrain.TREES))
     walls.fords = fords
+    # Bias the first expansion toward the central passage, where the opponent can contest it.
+    walls.prefer_natural = lambda pos: -_dist(_mine_centre(pos), cv.junction)
     walls.prefer_third = lambda pos: -min(_dist(_mine_centre(pos), f) for f in cv.orbit(fords))
 
 
@@ -1027,6 +1031,10 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
     _connect(world, cv)
     world.update_vision()
     report = _audit(world, cv, spec, walls, natural)
+    if layout is Layout.BASTION:
+        world.gates = frozenset(cv.orbit(walls.gates))
+        if natural is not None:
+            world.gate_links = tuple(zip(cv.rect_images(hall, 3)[:players], cv.rect_images(natural, 3)[:players]))
     report["problems"] = problems + report["problems"]
     report["wishes"] = wishes  # nothing the audit looks at is a wish: an unfair map is a fault, every time
     return world, report

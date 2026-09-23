@@ -636,6 +636,8 @@ class World:
         self.terrain = terrain
         self.theme = theme
         self.layout = layout
+        self.gates: frozenset[Pos] = frozenset()  # Bastion's passable ring openings; a new building must leave a route through each
+        self.gate_links: tuple[tuple[Pos, Pos], ...] = ()  # each base hall and the mine outside its ring
         self.scripted = scripted  # a mission decides the outcome: elimination still happens, but nobody surrenders and no winner is declared
         #: How many seats are playing.  ``self.players`` holds one more: the wilds, which own the neutral
         #: creatures.  Everything that means "a seat in the match" counts these, never ``len(self.players)``.
@@ -1220,6 +1222,9 @@ class World:
             rect = (left, top, size, size)
             if any(rects_gap(rect, mine) < MINE_CLEARANCE for mine in mines):
                 continue
+            if self.gates and any((x, y) in self.gates for y in range(top, bottom) for x in range(left, right)):
+                if self._closes_gate(pos, size):
+                    continue
             yield pos
 
     def _placement_reason(self, building_type: BuildingType, pos: Pos, player: int, *,
@@ -1252,7 +1257,46 @@ class World:
         for mine in self.buildings.values():
             if mine.info.mine is not None and rects_gap(rect, mine.rect) < MINE_CLEARANCE:
                 return f"Too close to the {mine.info.name.lower()}"
+        if self.gates and any((x, y) in self.gates for y in range(top, top + size) for x in range(left, left + size)):
+            if self._closes_gate(pos, size):
+                return "Keep the gate open"
         return None
+
+    def _closes_gate(self, pos: Pos, size: int) -> bool:
+        """Whether this footprint removes the route from a Bastion base to its natural.
+
+        Only placements touching the few gate tiles call this search.  Use all
+        open doors around each building, so closing a single dead-end tile or
+        one of several doors is still allowed.
+        """
+        left, top = pos
+        footprint = {(x, y) for y in range(top, top + size) for x in range(left, left + size)}
+        width, height, blocked = self.width, self.height, self._blocked
+        def doors(site: Pos) -> set[Pos]:
+            x, y = site
+            edge = {(x - 1, row) for row in range(y, y + 3)} | {(x + 3, row) for row in range(y, y + 3)}
+            edge |= {(col, y - 1) for col in range(x, x + 3)} | {(col, y + 3) for col in range(x, x + 3)}
+            return {tile for tile in edge if tile not in footprint and self.passable(*tile)}
+
+        for hall, natural in self.gate_links:
+            if max(abs(left - hall[0]), abs(top - hall[1])) > 24:
+                continue
+            starts, ends = doors(hall), doors(natural)
+            if not starts or not ends:
+                return True
+            seen = set(starts)
+            queue = deque(starts)
+            while queue and seen.isdisjoint(ends):
+                x, y = queue.popleft()
+                for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                    near = (nx, ny)
+                    if (0 <= nx < width and 0 <= ny < height and near not in seen and near not in footprint
+                            and not blocked[ny * width + nx]):
+                        seen.add(near)
+                        queue.append(near)
+            if seen.isdisjoint(ends):
+                return True
+        return False
 
     def can_plan_building(self, building_type: BuildingType, pos: Pos, player: int) -> str | None:
         """Check a blueprint's ground; resources, prerequisites and workers may arrive later."""
@@ -4112,6 +4156,8 @@ class World:
     def to_dict(self) -> dict[str, Any]:
         return {
             "width": self.width, "height": self.height, "theme": self.theme.value, "layout": self.layout.value,
+            "gates": [list(tile) for tile in sorted(self.gates)],
+            "gate_links": [[list(hall), list(natural)] for hall, natural in self.gate_links],
             "terrain": ["".join(t.value[0] for t in row) for row in self.terrain],
             "players": [{"id": p.id, "name": p.name, "human": p.human, "race": p.race.value, "gold": p.gold, "lumber": p.lumber, "alive": p.alive,
                          "neutral": p.neutral,
@@ -4140,6 +4186,8 @@ class World:
         world = cls(data["width"], data["height"], terrain, len(seats), human=human, theme=MapTheme(data["theme"]),
                     races=[Race(p.get("race", Race.HUMAN.value)) for p in seats], layout=Layout(data["layout"]),
                     scripted=data.get("scripted", False))
+        world.gates = frozenset((x, y) for x, y in data.get("gates", []))
+        world.gate_links = tuple(((hall[0], hall[1]), (natural[0], natural[1])) for hall, natural in data.get("gate_links", []))
         world.regrowth = [((tile[0], tile[1]), when) for tile, when in data.get("regrowth", [])]
         world.camps = [Camp(lair=c["lair"], kinds=list(c["kinds"]), posts=[(p[0], p[1]) for p in c["posts"]],
                             guards=list(c["guards"]), roused=c["roused"], quiet_since=c["quiet_since"],

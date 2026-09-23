@@ -164,7 +164,9 @@ def site_search(world: World, building_type: BuildingType, player: int, anchor: 
     size = BUILDINGS[building_type].size
     left, top = int(anchor[0]) - size // 2, int(anchor[1]) - size // 2
     ring = site_ring(near + size, far)
-    if _native is not None:
+    if _native is not None and not world.gates:
+        # The native scanner only knows ground and nearby bodies.  Bastion
+        # sites also have to preserve a walkable route through the gate.
         return _native.site_search(ring, left, top, rng.random, *site_inputs(world, building_type, player, taken))
     candidates = [(distance + rng.random() * 2, (left + dx, top + dy)) for distance, dx, dy in ring]
     return first_site(world, building_type, player, candidates, taken)

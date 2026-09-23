@@ -10,8 +10,8 @@ open ground around each hall, the distance to the nearest mine and to wood,
 the number of mines beyond the main ones and how many of those are endless
 gold seams, the terrain mix, the detour a walk
 between the first two halls makes over the straight line, how many seeds
-needed a retry to pass the audit, and how many maps were not fully connected
-(the test suite requires zero).
+needed a retry to pass the audit, how many seeds had no fair map after every
+retry, and how many maps were not fully connected (the test suite requires zero).
 """
 
 from __future__ import annotations
@@ -46,8 +46,13 @@ def main() -> None:
             water: list[float] = []
             disconnected = 0
             no_wood = 0
+            refused = 0
             for seed in range(1, args.seeds + 1):
-                world, report = mapgen.build(seed, width, height, args.players, layout=layout)
+                try:
+                    world, report = mapgen.build(seed, width, height, args.players, layout=layout)
+                except mapgen.NoFairMap:
+                    refused += 1
+                    continue
                 retried += report["attempt"] > 0
                 if report["detour"] is not None:
                     detours.append(report["detour"])
@@ -60,10 +65,12 @@ def main() -> None:
                 trees.append(report["trees"])
                 water.append(report["water"])
                 disconnected += not report["connected"]
+            if not opens:
+                raise RuntimeError(f"no fair {layout.value} map at {size} for {args.players} players")
             print(f"{size:6s} {width}x{height} {layout.value:9s} seeds {args.seeds}: open {min(opens)}-{max(opens)} (mean {statistics.mean(opens):.0f} of 169), "
                   f"mine {min(mines):.0f}-{max(mines):.0f} (mean {statistics.mean(mines):.1f}), wood {min(woods):.0f}-{max(woods):.0f} (mean {statistics.mean(woods):.1f}), "
                   f"expansions {min(expansions)}-{max(expansions)}, seams {min(seams)}-{max(seams)}, trees {statistics.mean(trees):.0%}, water {statistics.mean(water):.0%}, "
-                  f"detour {min(detours):.2f}-{max(detours):.2f}, retried {retried}, disconnected {disconnected}, bases without wood {no_wood}")
+                  f"detour {min(detours):.2f}-{max(detours):.2f}, retried {retried}, refused {refused}, disconnected {disconnected}, bases without wood {no_wood}")
 
 
 if __name__ == "__main__":
