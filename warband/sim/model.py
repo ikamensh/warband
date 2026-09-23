@@ -1454,6 +1454,8 @@ class World:
         info = BUILDINGS[building_type]
         if info.mine is not None:
             raise RuleError("Gold mines cannot be built")
+        if info.build_time <= 0:
+            raise RuleError(f"{info.name} cannot be built")
         reason = (None if plan_if_short else self.can_afford(unit.player, info.cost)) or self.can_place(building_type, pos, unit.player, builder=unit.id)
         if reason is not None:
             raise RuleError(reason)
