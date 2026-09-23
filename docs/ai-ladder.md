@@ -36,9 +36,19 @@ it had been leaning on it.
 It also broke the game until exploration was added. An army with no remembered
 target simply stands at home, so fog-honest matches ran to the twenty-minute
 cap instead of ending around seven, and the ladder slowed to a third of its
-pace. Both brains now walk at the far corner when they have found nothing:
-starts sit in corners, which is a guess a player can make from the map's shape
-rather than something read out of the model.
+pace. In a duel both brains walk at the far corner when they have found
+nothing: starts sit in corners, which is a guess a player can make from the
+map's shape rather than something read out of the model.
+
+On maps with more than four seats, starts sit in grid cells. A blind strong
+brain sends a viable army toward the nearest unexplored rival cell. Its
+estimate of an unseen opponent is capped at the force its own posture
+considers large enough to leave home; otherwise the estimate grows with its
+army and can make the FFA attack condition impossible to satisfy. A blind
+expedition uses part of the FFA caution margin to discover an opponent. Once
+it has a recent sighting, the full margin applies to deciding whether to
+attack that opponent. Retreat and regroup still respond to losses and
+defenders encountered at the target.
 
 **Resources.** Nothing in either brain writes gold or lumber. Every purchase
 goes through `can_afford`, `can_train`, `can_research` and `build`, which are

@@ -89,11 +89,19 @@ class _ProBrainCore:
     def _unexplored_corner(self, world: World) -> Point:
         """Somewhere worth looking when nothing of theirs has been found yet.
 
-        Starts sit one to a cell of the map's grid, so the cell furthest from ours is the first guess.
+        In a duel the opposite corner is the only likely rival. With more
+        seats, try the nearest unexplored rival cell first; crossing the
+        whole board before looking next door delays every first encounter.
         """
         hall = self._hall(world)
         here = hall.center if hall is not None else (world.width / 2, world.height / 2)
         corners = mapgen.start_guesses(world.width, world.height, world.seats)
+        if world.seats > 4:
+            own_cell = min(corners, key=lambda point: dist(point, here))
+            unknown = [point for point in corners if point != own_cell
+                       and not world.is_explored(self.player, (int(point[0]), int(point[1])))]
+            if unknown:
+                return min(unknown, key=lambda point: dist(point, here))
         return max(corners, key=lambda c: dist(c, here))
 
     def _known_mines(self, world: World) -> list[KnownMine]:

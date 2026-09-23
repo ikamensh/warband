@@ -14,14 +14,16 @@ pin, so these call its private helpers on purpose.
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 
 import pytest
 
 from warband.sim import mapgen
 from warband.sim.model import dist
 from warband.brains.ai import known_mines
+from warband.brains.bred import BRED
 from warband.brains.pro_ai import PRO, ProBrain, _tower_strength, strength
-from warband.sim.rules import SIM_DT, BuildingType, UnitType
+from warband.sim.rules import SIM_DT, BuildingType, Race, UnitType
 
 
 def _world_with_army(seed: int = 5):
@@ -125,12 +127,12 @@ def test_an_army_out_on_the_map_still_defends_its_base():
 
 
 def test_an_enemy_nobody_has_looked_at_is_not_assumed_to_be_harmless():
-    """Regression: an unseen enemy read as strength zero, so ten soldiers walked in blind."""
+    """An unseen enemy has a finite prior, even before the first scout reports."""
     world, brain = _world_with_army()
     army = _spawn(world, 0, UnitType.FOOTMAN, 2, 10)
     world.time = 600.0  # long past any sighting
     enemy_hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0].center
-    assert brain._defenders_near(world, enemy_hall) >= strength(world, army) * PRO.symmetry_prior
+    assert brain._defenders_near(world, enemy_hall) == pytest.approx(strength(world, army[:PRO.min_army]) * PRO.symmetry_prior)
 
 
 # -- Committing to a push --------------------------------------------------------
@@ -243,6 +245,79 @@ def test_unknown_ground_is_priced_as_one_opponent_not_all():
     one = max(strength(world, first), strength(world, second))
     assert brain._defenders_near(world, corner) == pytest.approx(one)
     assert brain._defenders_near(world, corner) < strength(world, first + second)
+
+
+@pytest.mark.parametrize("posture", BRED[Race.HUMAN])
+def test_a_blind_grandmaster_army_explores_in_a_large_free_for_all(posture):
+    """A viable army must leave home even if this posture never sends a scout.
+
+    Six seats reach the same capped FFA caution as sixteen; this keeps the
+    exact passivity decision cheap enough for the fast tier.
+    """
+    world = mapgen.generate(seed=11, width=144, height=108, players=6, human=None, wilds=False)
+    brain = ProBrain(0, replace(posture, creep=False))
+    assert not brain.profile.scout
+    assert not brain._known_enemy_buildings(world)
+    _spawn(world, 0, UnitType.FOOTMAN, 2, 25)
+    world.time = 650.0
+
+    brain._military(world)
+
+    assert brain.attacking, "the army needs to discover an opponent before it can judge one"
+    home = world.player_buildings(0, BuildingType.TOWN_HALL)[0].center
+    guesses = mapgen.start_guesses(world.width, world.height, world.seats)
+    own_cell = min(guesses, key=lambda point: dist(point, home))
+    nearby = min((point for point in guesses if point != own_cell), key=lambda point: dist(point, home))
+    assert brain.target == nearby, "look in a nearby rival cell before crossing the entire map"
+
+
+def test_a_scouted_enemy_keeps_the_full_free_for_all_attack_margin():
+    """The blind expedition rule must not turn a known costly fight into a push."""
+    world = mapgen.generate(seed=11, width=144, height=108, players=6, human=None, wilds=False)
+    brain = ProBrain(0, replace(BRED[Race.HUMAN][0], creep=False))
+    _spawn(world, 0, UnitType.FOOTMAN, 2, 25)
+    for player in range(1, 6):
+        _spawn(world, player, UnitType.FOOTMAN, 2, 20)
+    world.reveal_all(0)
+    world.time = 650.0
+    brain._observe(world)
+
+    brain._military(world)
+
+    assert not brain.attacking
+
+
+def test_a_stale_base_sighting_does_not_hold_a_large_army_home():
+    """Remembering a hall without recent defenders still permits an expedition."""
+    world = mapgen.generate(seed=11, width=144, height=108, players=6, human=None, wilds=False)
+    brain = ProBrain(0, replace(BRED[Race.HUMAN][1], creep=False))
+    world.reveal_all(0)
+    world.update_vision()
+    assert brain._known_enemy_buildings(world)
+    _spawn(world, 0, UnitType.FOOTMAN, 2, 25)
+    world.time = 650.0
+
+    brain._military(world)
+
+    assert brain.attacking
+
+
+def test_a_visible_field_army_keeps_the_full_ffa_margin_without_a_known_base():
+    """Seeing soldiers in the field is information even before finding their hall."""
+    world = mapgen.generate(seed=11, width=144, height=108, players=6, human=None, wilds=False)
+    brain = ProBrain(0, replace(BRED[Race.HUMAN][0], creep=False))
+    _spawn(world, 0, UnitType.FOOTMAN, 2, 25)
+    world.spawn_unit(0, UnitType.SCOUT, (70.5, 54.5))
+    for index in range(12):
+        world.spawn_unit(1, UnitType.FOOTMAN, (72.5 + index * 0.5, 54.5))
+    world.update_vision()
+    assert not brain._known_enemy_buildings(world)
+    brain._observe(world)
+    world.time = 650.0
+
+    brain._military(world)
+
+    assert not brain.attacking
 
 
 @pytest.mark.slow

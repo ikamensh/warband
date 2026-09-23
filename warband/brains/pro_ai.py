@@ -133,6 +133,14 @@ class ProBrain(_ProBrainEconomy):
         target = min(targets, key=lambda t: dist(t, origin))
         theirs = self._defenders_near(world, target)
         care = self._caution(world)
+        owner = self._owner_of(world, target)
+        blind = (world.time - self.last_seen(owner) > self.profile.stale_seconds
+                 if owner is not None else not self._enemies(world))
+        if blind:
+            # An expedition is how a blind army gets the information needed for
+            # a proper attack decision. Requiring the full FFA victory margin
+            # before it has found anybody can keep it home for the entire game.
+            care = 1.0 + 0.25 * (care - 1.0)
         if len(army) < self.profile.min_army * care:
             self._gather(world, army, hall)
             return
@@ -374,15 +382,13 @@ class ProBrain(_ProBrainEconomy):
             hidden = max(0.0, counted - best_n)
             seen = best + _tower_strength(world, self.player, point) + 0.5 * hidden * self._typical_soldier(world)
         if world.time - self.last_seen(owner) > self.profile.stale_seconds:
-            # Nobody has looked at them lately. An enemy nobody has looked at is not
-            # an enemy of zero strength — assuming so is how an army of ten walks
-            # into a defended base and dies. Until a scout says otherwise, credit
-            # them with a game as good as ours, which means no attack goes out on
-            # no information at all. Without the caution factor: it already
-            # multiplies the attack threshold, and counting it twice squares
-            # the care (2.6² needs five times our strength in a four-player
-            # game, 12.2² fifty times in sixteen).
-            seen = max(seen, self.profile.symmetry_prior * strength(world, self._army(world)))
+            # An unseen opponent still has an army. Price one up to the size
+            # this posture considers a viable expedition. Beyond that, tying
+            # the estimate to our own growing force makes the attack condition
+            # mathematically impossible for cautious FFA profiles.
+            army = self._army(world)
+            prior = self.profile.symmetry_prior * min(len(army), self.profile.min_army) * self._typical_soldier(world)
+            seen = max(seen, prior)
         return seen
 
     def _owner_of(self, world: World, point: Point) -> int | None:
