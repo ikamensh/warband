@@ -15,7 +15,7 @@ import pytest
 from warband.sim import mapgen
 from warband.brains.ai import make_brain
 from warband.sim.model import World
-from warband.sim.rules import SIM_DT, UNITS, Difficulty, Terrain, UnitType
+from warband.sim.rules import SIM_DT, UNITS, BuildingType, Difficulty, Terrain, UnitType
 
 STALL = 20.0  # seconds within a tile, in the move state, that count as wedged (tools/fuzz.py's rule)
 EVERY = 20  # ticks between samples, as the fuzz tool samples
@@ -138,3 +138,33 @@ def test_no_unit_is_wedged_in_a_played_match(seed):
     play(world, 300.0, watch, brains)
     assert sum(len(world.player_units(p.id)) for p in world.players) > 0
     assert len(watch.walkers) > 20, "a match where nothing walked would pass the watchdog without testing it"
+
+
+def test_attackers_held_out_of_reach_by_their_own_crowd_wait_their_turn_instead_of_pressing_into_it():
+    """Fuzz seed 81 at 8 min 46 s (180×132): seven archers sent at a barracks across a band of trees, where the one
+    tile on their side from which it is in reach is the nearest their route can end (the barracks' side of the trees is
+    another region).  The first archers on it shoot; the rest pressed towards it through them in the move state for as
+    long as the barracks stood, which the fuzz watchdog reads as a wedged unit.  They wait their turn now, and try the
+    way in again after a while.  The seed's tiles cut out round the choke opened a way round the trees that the whole
+    map closes, so this is the choke itself: the trees, the barracks and the one tile of the seed."""
+    terrain = [[Terrain.GRASS] * 30 for _ in range(20)]
+    for y in range(20):
+        for x in range(9, 14):
+            if (x, y) != (9, 9):  # the one tile in reach
+                terrain[y][x] = Terrain.TREES
+    world = World(30, 20, terrain, 2)
+    for player in world.players[:world.seats]:
+        player.human = True
+    barracks = world.place_building(1, BuildingType.BARRACKS, (14, 8))
+    archers = [world.spawn_unit(0, UnitType.ARCHER, (3.5 + (i % 3) * 0.9, 7.5 + (i // 3) * 0.9)) for i in range(7)]
+    world.reveal_all(0)
+    world.attack([u.id for u in archers], barracks.id)
+    pressing = {u.id: 0.0 for u in archers}
+    worst = 0.0
+    for _ in range(round(90.0 / SIM_DT)):
+        world.step()
+        for u in archers:
+            pressing[u.id] = pressing[u.id] + SIM_DT if u.state == "move" else 0.0
+            worst = max(worst, pressing[u.id])
+    assert worst < 15.0, f"an archer pressed into its own crowd for {worst:.1f} s"
+    assert barracks.hp < barracks.max_hp / 2, "the ones in reach shoot, and take turns"

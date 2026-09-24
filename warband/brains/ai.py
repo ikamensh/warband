@@ -116,6 +116,18 @@ def known_enemy_buildings(world: World, player: int) -> list:
 CAMP_REACH: Final = 10.0  # tiles from a remembered lair its guards hold: what a brain keeps its halls and peasants out of
 
 
+#: Tiles a moving threat may drift from where a soldier is already attack-moving before the order is given again.  An order
+#: given anew every pass to a soldier wedged in a crowd restarts its walk, and with it the watchdog that would have walked
+#: it round the bodies in its way: fuzz seed 82 had a footman pressed into its own crowd for good.
+REDIRECT: Final = 2.0
+
+
+def heading_to(unit: Unit, point: Point) -> bool:
+    """Whether *unit* is already attack-moving to within :data:`REDIRECT` of *point*."""
+    order = unit.order
+    return isinstance(order, AttackMove) and dist(order.target, point) <= REDIRECT
+
+
 def known_camps(world: World, player: int) -> list:
     """The creature lairs *player* has laid eyes on, as its own memory records them.
 
@@ -773,7 +785,7 @@ class Brain:
             if 2 * size >= len(army):
                 self.attacking = False
                 for unit in army:
-                    if not isinstance(unit.order, Attack):
+                    if not isinstance(unit.order, Attack) and not heading_to(unit, threat):
                         world.attack_move([unit.id], threat)
                 if size != self._last_defend:
                     self.note(world, f"defend with {len(army)} against {size}")

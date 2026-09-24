@@ -3,7 +3,7 @@
 import pytest
 
 from warband.sim.model import Attack, World
-from warband.sim.rules import BuildingType, Terrain, UnitType
+from warband.sim.rules import SIM_DT, BuildingType, Terrain, UnitType
 
 
 def stationary_worker(world, player, point):
@@ -262,3 +262,24 @@ def test_a_foe_picked_up_on_the_march_is_chased_no_further_than_the_leash(verb):
         world.step()
         furthest = max(furthest, footman.x)
     assert furthest < 12.5 + 6.0 + 1.0, f"chased to x={furthest:.1f}"
+
+
+def test_a_chase_is_given_up_once_the_foe_is_out_of_sight_even_by_a_unit_that_never_left_home():
+    """The leash is measured from where the chase began, so a unit that cannot get anywhere never passes it: fuzz seed 81
+    had a footman wedged in its own army's crowd chasing a footman sixteen tiles off, in the move state, for good.  A foe
+    that got clean away, out of the chaser's sight and two tiles more, is let go.  The pocket of rock stands in for the
+    crowd."""
+    rock = {(x, y) for x in range(3, 8) for y in range(3, 8)} - {(5, 5)}
+    world = World(40, 12, [[Terrain.ROCK if (x, y) in rock else Terrain.GRASS for x in range(40)] for y in range(12)], 2)
+    world.rng.seed(1)
+    footman = world.spawn_unit(0, UnitType.FOOTMAN, (5.5, 5.5))
+    rider = world.spawn_unit(1, UnitType.KNIGHT, (9.5, 5.5))
+    world.hold([rider.id])
+    world.update_vision()
+    for _ in range(10):
+        world.step()
+    assert isinstance(footman.order, Attack) and footman.order.auto, "it takes the rider on"
+    world.move([rider.id], (38.5, 5.5))
+    for _ in range(round(12.0 / SIM_DT)):
+        world.step()
+    assert not any(isinstance(order, Attack) for order in footman.orders), list(footman.orders)

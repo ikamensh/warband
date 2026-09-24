@@ -15,7 +15,7 @@ from typing import Final
 from warband.brains.pro_force import _tower_strength, _tower_strength_own, strength
 from warband.brains.pro_profiles import PRO, PRO_PROFILES, PRO_RUSH, PRO_VANGUARD, PRO_WARDEN, ProProfile
 
-from warband.brains.ai import CAMP_REACH, known_camps, known_mines
+from warband.brains.ai import CAMP_REACH, heading_to, known_camps, known_mines
 from warband.sim.model import Attack, Build, Building, Move, Point, Repair, Salvage, Unit, World, dist, rect_gap, tile_center
 from warband.sim.rules import BuildingType, Layout, Race, UnitType
 
@@ -449,7 +449,9 @@ class ProBrain(_ProBrainEconomy):
         point = min(threats, key=lambda u: min(dist(u.pos, b.center)
                                                for b in world.player_buildings(self.player))).pos
         self.attacking = False
-        world.attack_move([u.id for u in army if not isinstance(u.order, Attack)], point)
+        stale = [u.id for u in army if not isinstance(u.order, Attack) and not heading_to(u, point)]
+        if stale:
+            world.attack_move(stale, point)
 
     def _outmatched_at_home(self, world: World, army: list[Unit], threats: list[Unit]) -> bool:
         """Whether the attack on the base is more than the soldiers at home can meet (``defend_ratio``)."""

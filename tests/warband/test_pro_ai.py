@@ -596,3 +596,22 @@ def test_a_pro_brain_builds_what_it_orders_its_builders_arrive_to_a_paid_order(p
         unpaid += [event.text for event in world.take_events()
                    if event.kind == "refused" and event.player == 0 and event.text.startswith("Cannot build: Not enough")]
     assert not unpaid, unpaid
+
+
+def test_a_defence_is_not_ordered_again_to_soldiers_already_on_their_way_to_the_threat():
+    """The threat moves a little between passes; a soldier already attack-moving to it keeps the order it has.  Given
+    anew every pass, the order restarted the walk of a soldier wedged in its own crowd, and with it the watchdog that
+    would have walked it round the bodies in its way (fuzz seed 82).  ``_defend`` is the brain's own step, called as
+    ``_military`` calls it."""
+    world = mapgen.generate(seed=31, players=2, human=None)
+    brain = ProBrain(0, PRO)
+    army = _spawn(world, 0, UnitType.FOOTMAN, 3, 4)
+    threat = _spawn(world, 1, UnitType.FOOTMAN, 9, 1)
+    brain._defend(world, army, threat)
+    orders = [u.order for u in army]
+    threat[0].x += 0.6  # it steps aside
+    brain._defend(world, army, threat)
+    assert [u.order for u in army] == orders and all(a is b for a, b in zip((u.order for u in army), orders))
+    threat[0].x += 6.0  # it got well away: the soldiers go after it
+    brain._defend(world, army, threat)
+    assert all(u.order is not before for u, before in zip(army, orders))

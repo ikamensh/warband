@@ -146,6 +146,8 @@ MINE_HOLD: Final = 0.3  # tiles past the face a worker holding a mouth tile may 
 STUCK_AFTER: Final = 0.8  # seconds without progress before a unit paths again around the units in its way
 REPLAN_EVERY: Final = 0.6  # a unit plans at most this often unless it gets a new order (a melee would otherwise plan every tick)
 REPLAN_STAGGER: Final = 8  # ticks over which units spread their next plans by id, so a crowd does not plan in lockstep
+LOST_BEYOND: Final = 2.0  # tiles past its own sight at which a unit left to itself lets a foe it was chasing go
+ATTACK_QUEUE_WAIT: Final = 2.0  # seconds an attacker held out of reach by its own side's crowd waits before it tries the way in again
 ROUTE_CONE: Final = math.cos(math.radians(45))  # a marching line's straight walk to its place is taken within this of its route's way
 STEER_RANGE: Final = 4.0  # within this many tiles a unit walks straight at its target when the line is clear, without A*
 LOCAL_EXPANSIONS: Final = 700  # A* budget for the detours around other units; those goals are close
@@ -2382,7 +2384,10 @@ class World:
         if u.windup > 0.0:
             self._fight(u, target, dt, auto=order.auto, chase=True)  # committed: the blow is drawn back, whatever else moves
             return
-        if order.auto and u.home is not None and dist(u.pos, u.home) > LEASH:
+        if order.auto and u.home is not None and (dist(u.pos, u.home) > LEASH
+                                                  or (isinstance(target, Unit) and self._gap(u, target) > u.info.sight + LOST_BEYOND)):
+            # Past the leash from where the chase began, or the foe got clean away: out of sight and more.  A unit wedged
+            # in a crowd never passes its leash, and it chased a footman sixteen tiles off for good (fuzz seed 81).
             self._finish_order(u)
             u.orders.appendleft(Move(u.home))
             return
@@ -2441,8 +2446,15 @@ class World:
         goal_tile = (int(aim[0]), int(aim[1]))
         if u.path_goal is None or (dist(tile_center(u.path_goal), tile_center(goal_tile)) > 1.5 and self.time >= u.replan_at):
             self._plan(u, goal_tile, aim)
-        if self._follow(u, dt) and u.path_goal != goal_tile and self.time >= u.replan_at:
+        if self._follow(u, dt, settle=True) and self.time >= u.replan_at:
+            # Nothing left to walk and still out of reach.  A goal that moved is planned for again at once; one that has
+            # not is as near as the ground goes, or the unit's own side holds the way in (a settled crowd,
+            # stands_at): it tries again after a wait, rather than pressing into the crowd for as long as the target
+            # stands (fuzz seed 81: seven archers at a barracks behind a gap in the trees two archers wide).
+            waited = u.path_goal == goal_tile
             self._plan(u, goal_tile, aim)
+            if waited:
+                u.replan_at = self.time + ATTACK_QUEUE_WAIT + (u.id % REPLAN_STAGGER) * SIM_DT
 
     def _fight(self, u: Unit, target: Entity, dt: float, *, auto: bool, chase: bool = False) -> None:
         """Face *target*, wind up and strike.  The blow at the end of the wind-up lands if the target is
