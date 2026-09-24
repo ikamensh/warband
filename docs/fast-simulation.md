@@ -123,6 +123,21 @@ game runs the simulation compiled too. `warband.__main__.main` calls
   bit on one OS, so a replay recorded by either plays on either there. Across
   OSes they never did (above).
 
+Measured on Ilya's 12-seat match on a 144×108 map (replay `6ede8f53`, the
+world at tick 19,000 with about 400 units, the 2720×2320 px canvas, load 2–9;
+`~/saga/evidence/warband/compiled-game/`), in a real `Game.run()` through
+saga2d's telemetry, from 70 s on:
+
+| | FPS, median | frame p95 | frame p99 | step per frame | frames ≥ 50 ms |
+|---|---|---|---|---|---|
+| source | 45.9 | 38.4 ms | 59.5 ms | 4.85 ms | 2.4% |
+| compiled | 52.4 | 23.9 ms | 34.9 ms | 0.76 ms | 0.8% |
+
+A step costs 10–11 ms from source and 1.5–1.7 ms compiled there (FrameTimer,
+two interleaved runs each), less than the 11.6× of a bare playback, since the
+game's step shares the processor's caches with drawing. What remains of the
+frame is drawing: `view.sync` 4–5 ms and the batch's draw and flip 7–9 ms.
+
 Running the suite compiled (`pytest --compiled`) found three crashes that the
 tools never met, because only the game's own code hands the simulation such
 values: a save with a queued order (`vars()` of a compiled dataclass; now

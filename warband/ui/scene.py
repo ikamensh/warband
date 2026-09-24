@@ -2372,7 +2372,7 @@ class GameScene(Scene):
         return {"run": self.run_id, "map": f"{world.width}x{world.height}", "seats": world.seats, "tick": world.tick,
                 "units": len(world.units), "buildings": len(world.buildings), "speed": self.speed, "paused": self.paused,
                 "zoom": round(self.camera.zoom, 2), "behind_s": round(self._behind, 1),
-                "sim": "compiled" if fastsim.compiled() else "source"}
+                "simulation": "compiled" if fastsim.compiled() else "source"}
 
     @property
     def mood(self) -> str:
