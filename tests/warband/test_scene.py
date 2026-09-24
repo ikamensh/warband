@@ -187,11 +187,11 @@ def test_build_menu_places_a_farm_where_the_mouse_is(play) -> None:
     scene.select([peasant.id])
     press(game, "b")
     assert scene.catalogue == "build" and [c.label for c in scene.card] == [
-        "Farm", "Barracks", "Hall", "Tower", "Mill", "Smith", "Stables", "Workshop", "Church",
+        "Farm", "Barracks", "Hall", "Tower", "Mill", "Smith", "Stables", "Workshop", "Church", "Vault",
     ]
     press(game, "f")
     assert scene.placing is BuildingType.FARM and scene.catalogue == "build"
-    site = (hall_of(scene).x + 5, hall_of(scene).y + 4)
+    site = (hall_of(scene).x + 4, hall_of(scene).y + 5)  # beside the ley rift south-east of the hall, which is kept for a vault
     game.backend.inject_mouse_move(*screen_of(scene, (site[0] + 1, site[1] + 1)))
     game.tick(1 / 60)
     assert scene.ghost() is not None and scene.ghost()[2]
@@ -212,7 +212,7 @@ def test_every_building_is_on_the_build_menu_with_its_hotkey_and_a_locked_one_wa
     assert hotkeys == {RACES[Race.HUMAN].cards[bt]: BUILDINGS[bt].hotkey.upper() for bt in BUILT}
     press(game, "k")  # a blacksmith needs a barracks, and none is coming
     assert scene.placing is None and scene.status == "Requires a Barracks"
-    site = (hall_of(scene).x + 5, hall_of(scene).y + 4)  # the blacksmith's
+    site = (hall_of(scene).x + 3, hall_of(scene).y + 5)  # the blacksmith's, clear of the ley rift south-east of the hall
     barracks = next((x, y) for y in range(scene.world.height) for x in range(scene.world.width)
                     if scene.world.can_plan_building(BuildingType.BARRACKS, (x, y), scene.human) is None and max(abs(x - site[0]), abs(y - site[1])) > 4)
     assert scene.attempt("plan_building", scene.human, BuildingType.BARRACKS, barracks)

@@ -29,7 +29,7 @@ def hover(game, scene, x, y):
 def test_the_hud_shows_resources_as_symbols_that_explain_themselves(play) -> None:
     game, scene = play
     icons = [c for c in scene.ui.walk() if isinstance(c, Icon)]
-    assert [icon.name for icon in icons] == ["gold", "lumber", "supply"]
+    assert [icon.name for icon in icons] == ["gold", "lumber", "aether", "supply"]
     texts = [t["text"] for t in game.backend.texts]
     assert str(scene.player.gold) in texts and str(scene.player.lumber) in texts and not any(t.startswith("Gold ") for t in texts)
     x, y, w, h = icons[1].bounds

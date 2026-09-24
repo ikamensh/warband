@@ -67,7 +67,7 @@ def test_a_frame_razed_the_step_it_starts_or_stands_is_still_counted():
     x, y = hall.pos
     builder = world.spawn_unit(0, UnitType.PEASANT, tile_center((x + 5, y + 5)))
     world.reveal_all(0)
-    world.build(builder.id, BuildingType.FARM, (x + 6, y + 5))
+    world.build(builder.id, BuildingType.FARM, (x + 6, y + 7))  # clear of the ley rift kept for a vault at (x + 6, y + 4)
     telemetry, events, frame = Telemetry(world), [], None
     while not any(e.kind == "built" for e in events):
         world.step()

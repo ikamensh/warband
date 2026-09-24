@@ -29,6 +29,7 @@ def scenario():
     raider = world.spawn_unit(1, UnitType.FOOTMAN, (30.5, 24.5))
     flyer = world.spawn_unit(0, UnitType.FLYING_MACHINE, (7.5, 4.5))
     their_flyer = world.spawn_unit(1, UnitType.FLYING_MACHINE, (28.5, 24.5))
+    world.lay_rifts([(6, 20)])
     world.reveal_all(0)
     world.reveal_all(1)
     return world, {"hall": hall.id, "their_hall": their_hall.id, "mine": mine.id, "seam": seam.id, "site": site.id, "smith": smith.id,
@@ -81,6 +82,8 @@ REFUSED = {
     "endless training at a gold mine": lambda w, e: w.set_auto_train(e["mine"], UnitType.PEASANT, True),
     "a building by a soldier that may wait for the money": lambda w, e: w.build(e["footman"], BuildingType.FARM, (14, 20), plan_if_short=True),
     "a building on the wood that may wait for the money": lambda w, e: w.build(e["peasant"], BuildingType.FARM, (20, 12), plan_if_short=True),
+    "a farm on a ley rift": lambda w, e: w.build(e["peasant"], BuildingType.FARM, (6, 20)),
+    "a vault half on a ley rift": lambda w, e: w.plan_building(0, BuildingType.VAULT, (7, 21)),
     "a context order on a target that is gone": lambda w, e: w.smart([e["peasant"], e["footman"]], (3.0, 3.0), target_id=9999),
 }
 

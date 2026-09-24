@@ -26,7 +26,7 @@ PEAK = 0.8
 BUILDING_MATERIALS = {
     BuildingType.TOWN_HALL: "stone", BuildingType.TOWER: "stone", BuildingType.BLACKSMITH: "stone", BuildingType.CHURCH: "stone",
     BuildingType.FARM: "wood", BuildingType.BARRACKS: "wood", BuildingType.LUMBER_MILL: "wood", BuildingType.STABLES: "wood",
-    BuildingType.WORKSHOP: "wood",
+    BuildingType.WORKSHOP: "wood", BuildingType.VAULT: "stone",  # its plinth and stakes: the cube itself is light
     BuildingType.LAIR: "stone",  # a cairn of boulders: it cracks and comes down as a tower does
 }
 

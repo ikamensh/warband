@@ -26,7 +26,7 @@ BEHAVIOR_TOML = Path("behavior.toml")
 
 PLAYABLE = ("peasant", "footman", "archer", "knight", "catapult", "flying_machine", "cleric")
 WILDS = ("wolf", "spider", "troll", "golem")
-BUILDINGS = ("town_hall", "farm", "barracks", "tower", "lumber_mill", "blacksmith", "stables", "workshop", "church",
+BUILDINGS = ("town_hall", "farm", "barracks", "tower", "lumber_mill", "blacksmith", "stables", "workshop", "church", "vault",
              "gold_mine", "gold_seam", "lair")
 DEPOSITS = ("gold_mine", "gold_seam")
 #: What a player builds: everything the wilds do not own (rules.BUILT walks the same set).
@@ -163,6 +163,7 @@ ECONOMY_SCHEMA = {
     "repair": {"rate": ("REPAIR_RATE", float), "chunk": ("REPAIR_CHUNK", int), "cost_share": ("REPAIR_COST", float)},
     "salvage": {"rate": ("SALVAGE_RATE", float), "held_rate": ("SALVAGE_HELD_RATE", float),
                 "chunk": ("SALVAGE_CHUNK", int), "share": ("SALVAGE_SHARE", float)},
+    "aether": {"store": ("AETHER_STORE", int), "every": ("AETHER_EVERY", float), "reach": ("AETHER_REACH", float)},
 }
 EFFECTS_SCHEMA = {"blades_bonus": ("BLADES_BONUS", int), "master_weapon_bonus": ("MASTER_WEAPON_BONUS", int),
                   "armor_bonus": ("ARMOR_BONUS", int), "arrows_bonus": ("ARROWS_BONUS", int),

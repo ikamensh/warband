@@ -153,7 +153,9 @@ PLAUSIBLE = ("The reference is a rough low-poly stand-in. Where its construction
 
 # -- Buildings --------------------------------------------------------------------------
 
-BUILDING_TYPES = list(BUILT)
+#: The buildings a sheet is painted with: every one but those the committed sheets were made without
+#: (textures.UNPAINTED, the Aether Vault).  Take one out of UNPAINTED to have the next repaint include it.
+BUILDING_TYPES = [bt for bt in BUILT if bt not in textures.UNPAINTED]
 LOOKS = textures.BUILDING_LOOKS  # intact, active, damaged
 ARCHITECTURE: dict[Race, str] = {
     Race.HUMAN: "human: a medieval kingdom that builds in grey stone, oak timber and white plaster under thatch and grey slate",
@@ -168,6 +170,8 @@ _FARMYARD = "a round haystack and a fence along the front"
 _STABLE = "a long timber stable with three arched stalls under a straw-coloured gable roof and a blue banner; a fenced paddock with {beast}, and a hay trough"
 _CHURCH = ("a cross-shaped nave under green-teal shingle roofs, an octagonal bell tower with a conical spire topped by {top}, "
            "{window} arched window over the door, two blue banners, steps")
+_VAULT = ("on a low stone plinth over a crack of violet light, held a hand's breadth off the plinth by four taut chains to stakes at "
+          "its corners, straining upward:")
 #: What each building is, per race (the prompt prefixes the race's name for it).
 BUILDING_SUBJECTS: dict[tuple[Race, BuildingType], str] = {
     (Race.HUMAN, BuildingType.TOWN_HALL): f"a square stone keep under a dark blue pyramid roof with a small blue-roofed turret and a pennant on top; {_GATE}",
@@ -191,6 +195,10 @@ BUILDING_SUBJECTS: dict[tuple[Race, BuildingType], str] = {
     (Race.ORC, BuildingType.CHURCH): _CHURCH.format(top="a skull on a pole between bone spikes", window="an orange-lit"),
     (Race.ELF, BuildingType.CHURCH): _CHURCH.format(top="a gold crescent moon", window="an amber"),
     (Race.DWARF, BuildingType.CHURCH): _CHURCH.format(top="a copper hammer", window="an amber"),
+    (Race.HUMAN, BuildingType.VAULT): f"{_VAULT} a cube of violet glass framed in gold, glowing from within, a blue banner on its front",
+    (Race.ORC, BuildingType.VAULT): f"{_VAULT} a cage of bone bars lashed with hide round a glowing violet orb, a bone spike on top and a blue pennant",
+    (Race.ELF, BuildingType.VAULT): f"{_VAULT} a reliquary of violet crystal framed in silver, turned on its corner like a diamond, a blue pennant",
+    (Race.DWARF, BuildingType.VAULT): f"{_VAULT} a block of granite banded in copper, violet light shining out of the runes cut into it, a blue pennant",
 }
 for _race in Race:  # the same in every race but its materials
     BUILDING_SUBJECTS[(_race, BuildingType.BARRACKS)] = ("a long hall under a grey gable roof with an arched door between two blue banners; a palisade "
@@ -212,6 +220,7 @@ BUILDING_FIXES: dict[BuildingType, str] = {
     BuildingType.STABLES: "the animal stands on the ground inside the paddock, seen from the side",
     BuildingType.WORKSHOP: "the crane's jib rests on its post and brace, and the siege chassis stands on its wheels",
     BuildingType.CHURCH: "the bell tower is joined to the nave and the ornament on the spire stands upright",
+    BuildingType.VAULT: "the cube floats just above its plinth and each chain runs taut from a lower corner of the cube to a stake",
 }
 #: How each building shows that it is at work (the *active* look).
 ACTIVE: dict[BuildingType, str] = {
@@ -224,6 +233,7 @@ ACTIVE: dict[BuildingType, str] = {
     BuildingType.STABLES: "the stall doors stand open with warm light inside and the animal is saddled and bridled, ready to ride",
     BuildingType.WORKSHOP: "the crane hoists a beam, lanterns burn and tools lie out on the bench",
     BuildingType.CHURCH: "the window and door glow with warm light from inside and the bell swings in its tower",
+    BuildingType.VAULT: "the cube blazes violet and motes of light stream up into it out of the crack",
 }
 #: How each building shows battle damage (the *damaged* look; the game adds smoke and flames).
 DAMAGED: dict[BuildingType, str] = {
@@ -236,6 +246,7 @@ DAMAGED: dict[BuildingType, str] = {
     BuildingType.STABLES: "the roof is broken open and the paddock fence is smashed; the animal is unhurt",
     BuildingType.WORKSHOP: "the crane is broken, the siege chassis has lost a wheel and the bench is overturned",
     BuildingType.CHURCH: "the spire is cracked and leaning, the roof is holed and the window is broken",
+    BuildingType.VAULT: "the cube is cracked and leaking violet light, one chain is broken and a stake is torn out",
 }
 #: How each building looks half built (the *raised* look, shown from half its construction on).
 RAISED: dict[BuildingType, str] = {
@@ -248,6 +259,7 @@ RAISED: dict[BuildingType, str] = {
     BuildingType.STABLES: "the stalls are a timber frame without a roof and the paddock fence is half built; no animal yet",
     BuildingType.WORKSHOP: "the shed is a timber frame without a roof and the crane is not yet raised",
     BuildingType.CHURCH: "the nave walls stand half high in scaffolding and the bell tower is a stump without its spire",
+    BuildingType.VAULT: "the plinth is laid and the stakes are driven, the chains lie slack and the cube is not yet raised",
 }
 #: How each building looks just begun (the *founded* look, shown for the first half of its construction).
 FOUNDED: dict[BuildingType, str] = {bt: "only its foundation: the footprint of its walls laid in a low course of stone or timber sills, "

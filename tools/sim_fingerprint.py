@@ -42,7 +42,7 @@ def digest_world(world: World, out: hashlib._Hash) -> None:
         out.update(f"B{b.id},{b.player},{b.type.value},{b.x},{b.y},{b.hp!r},{b.progress!r},"
                    f"{len(b.queue)},{b.research};".encode())
     for p in world.players:
-        out.update(f"P{p.id},{p.gold},{p.lumber},{p.alive},{sorted(u.value for u in p.upgrades)};".encode())
+        out.update(f"P{p.id},{p.gold},{p.lumber},{p.aether},{p.alive},{sorted(u.value for u in p.upgrades)};".encode())
 
 
 def fingerprint(seeds=SEEDS, minutes: int = MINUTES) -> str:

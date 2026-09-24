@@ -35,7 +35,7 @@ _any_lit: Final = None if _native is None else _native.any_lit  # looked up once
 from warband.sim.settlement import Plan, Settlement
 from warband.sim.worker_knowledge import WorkerKnowledge
 from warband.sim.rules import (
-    Layout,
+    AETHER_REACH, AETHER_STORE, AETHER_TICKS, Layout,
     REPAIR_CHUNK, REPAIR_RATE, repair_cost,
     SALVAGE_CHUNK, SALVAGE_HELD_RATE, SALVAGE_RATE, salvage_resource, salvage_yield,
     ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLASTING_POWDER_BONUS, BLESSING_BONUS, BLOODLUST_BONUS, BUILDINGS, CHOP_TIME, DEEP_MINING_TRIP,
@@ -154,6 +154,8 @@ LOCAL_EXPANSIONS: Final = 700  # A* budget for the detours around other units; t
 TRUNK_ROUTES: Final = 64  # shared march corridors kept per static grid: one trunk per shared target and start region
 SETTLE_WITHIN: Final = 0.65  # room beyond its own body a unit wants at its spot; past that it looks for somewhere nearer to stand
 MINE_CLEARANCE: Final = 2  # tiles kept free around a gold deposit so peasants can get in and out
+GATE_REACH: Final = 2  # tiles round a Bastion gate within which a new building is asked whether it seals the base in
+RIFT: Final = BUILDINGS[BuildingType.VAULT].size  # tiles across a ley rift: the vault that taps it stands square on it
 CLAIM_WEIGHT: Final = 0.6  # crowding cost of a fellow worker's claimed work tile: enough to break the tie between
 # two mouth tiles the same walk away, never enough to send a worker round the far side of the building
 SIDESTEP: Final = 0.6  # lateral share of the push when walking units collide
@@ -334,6 +336,10 @@ class Player:
     neutral: bool = False
     gold: int = STARTING_GOLD
     lumber: int = STARTING_LUMBER
+    #: Aether in store (WB-063), never above :meth:`World.aether_cap`; nobody carries it, the vaults draw it.
+    aether: int = 0
+    #: Steps of drawing toward the next aether, one per drawing vault per step: an aether is AETHER_TICKS of them.
+    aether_charge: int = 0
     alive: bool = True
     surrendered: bool = False
     last_alert: float = -1000.0
@@ -644,6 +650,11 @@ class World:
         self.theme = theme
         self.layout = layout
         self.gates: frozenset[Pos] = frozenset()  # Bastion's passable ring openings; a new building must leave a route through each
+        #: The ley rifts (WB-063): the top-left tiles of squares the vault's size, laid by the map generator and
+        #: fixed for the match.  Ground, not buildings: nobody owns one, units walk over it, and a vault set
+        #: square on one draws aether.  :meth:`lay_rifts` sets them; ``_rift_tiles`` maps each tile to its rift.
+        self.rifts: tuple[Pos, ...] = ()
+        self._rift_tiles: dict[Pos, Pos] = {}
         self.gate_links: tuple[tuple[Pos, Pos], ...] = ()  # each base hall and the mine outside its ring
         self.scripted = scripted  # a mission decides the outcome: elimination still happens, but nobody surrenders and no winner is declared
         #: How many seats are playing.  ``self.players`` holds one more: the wilds, which own the neutral
@@ -1112,6 +1123,88 @@ class World:
         cap = sum(b.info.supply for b in self.player_buildings(player, done=True))
         return used, cap
 
+    # -- Aether ----------------------------------------------------------------------
+
+    def lay_rifts(self, rifts: Iterable[Pos]) -> None:
+        """Put the map's ley rifts down: the top-left tiles of squares :data:`RIFT` across."""
+        self.rifts = tuple(sorted((x, y) for x, y in rifts))
+        self._rift_tiles = {(x + dx, y + dy): (x, y) for x, y in self.rifts for dy in range(RIFT) for dx in range(RIFT)}
+        if len(self._rift_tiles) != RIFT * RIFT * len(self.rifts):
+            raise ValueError(f"ley rifts overlap: {self.rifts}")
+
+    def rift_at(self, tile: Pos) -> Pos | None:
+        """The rift a tile belongs to, as its top-left tile, or None."""
+        return self._rift_tiles.get(tile)
+
+    def taps(self, building: Building) -> bool:
+        """Whether *building* is a vault standing square on a ley rift, which draws once it is finished."""
+        return building.type is BuildingType.VAULT and self._rift_tiles.get(building.pos) == building.pos
+
+    def vaults(self, player: int) -> list[Building]:
+        """*player*'s finished vaults: what holds their aether and what reaches."""
+        return self.player_buildings(player, BuildingType.VAULT, done=True)
+
+    def aether_cap(self, player: int) -> int:
+        """The most aether *player* can hold: :data:`AETHER_STORE` for every finished vault."""
+        return AETHER_STORE * len(self.vaults(player))
+
+    def aether_rate(self, player: int) -> float:
+        """Aether a second *player*'s vaults draw now: one every AETHER_EVERY seconds from each finished vault on a
+        rift, and nothing while the store is full."""
+        vaults = self.vaults(player)
+        if self.players[player].aether >= AETHER_STORE * len(vaults):
+            return 0.0
+        return sum(1 for b in vaults if self.taps(b)) / (AETHER_TICKS * SIM_DT)
+
+    def in_reach(self, player: int, point: Point) -> bool:
+        """Whether *point* lies within :data:`AETHER_REACH` tiles of the middle of one of *player*'s finished vaults.
+        Squared distances, so the answer is plain arithmetic on every platform."""
+        reach = AETHER_REACH * AETHER_REACH
+        for b in self.vaults(player):
+            dx, dy = point[0] - b.center[0], point[1] - b.center[1]
+            if dx * dx + dy * dy <= reach:
+                return True
+        return False
+
+    def _draw_aether(self) -> None:
+        """Every finished vault standing square on a rift gives its owner a step of charge, and every AETHER_TICKS
+        steps of it are an aether, until the store is full: then nothing is drawn and nothing is saved up."""
+        if not self._rift_tiles:
+            return  # a map without rifts (a mission's, an old save's): no vault draws
+        count = len(self.players)
+        drawing = [0] * count
+        caps = [0] * count
+        for b in self.buildings.values():
+            if b.type is BuildingType.VAULT and b.player is not None and not b.abandoned and b.done:
+                owner = b.player
+                caps[owner] += AETHER_STORE
+                if self._rift_tiles.get(b.pos) == b.pos:
+                    drawing[owner] += 1
+        for owner in range(count):
+            if drawing[owner] == 0:
+                continue
+            p = self.players[owner]
+            cap = caps[owner]
+            if p.aether >= cap:
+                p.aether_charge = 0
+                continue
+            charge = p.aether_charge + drawing[owner]
+            if charge >= AETHER_TICKS:
+                p.aether = min(cap, p.aether + charge // AETHER_TICKS)
+                charge = 0 if p.aether >= cap else charge % AETHER_TICKS
+            p.aether_charge = charge
+
+    def _spill(self, player: int | None, where: Point) -> None:
+        """A vault of *player*'s is gone: the cap fell with it, and what no longer fits spills at once."""
+        if player is None or player >= self.seats:
+            return
+        p = self.players[player]
+        cap = self.aether_cap(player)
+        if p.aether > cap:
+            spilled = p.aether - cap
+            p.aether = cap
+            self.events.append(Event("spilled", where, player=player, amount=spilled))
+
     def can_train(self, building: Building, unit_type: UnitType) -> str | None:
         info = self.unit_info(building.player, unit_type)
         if building.player is None or not building.done:
@@ -1229,9 +1322,10 @@ class World:
             rect = (left, top, size, size)
             if any(rects_gap(rect, mine) < MINE_CLEARANCE for mine in mines):
                 continue
-            if self.gates and any((x, y) in self.gates for y in range(top, bottom) for x in range(left, right)):
-                if self._closes_gate(pos, size):
-                    continue
+            if self._rift_tiles and self._off_rift(building_type, left, top, size):
+                continue
+            if self.gates and self._by_gate(left, top, size) and self._closes_gate(pos, size):
+                continue
             yield pos
 
     def _placement_reason(self, building_type: BuildingType, pos: Pos, player: int, *,
@@ -1264,15 +1358,39 @@ class World:
         for mine in self.buildings.values():
             if mine.info.mine is not None and rects_gap(rect, mine.rect) < MINE_CLEARANCE:
                 return f"Too close to the {mine.info.name.lower()}"
-        if self.gates and any((x, y) in self.gates for y in range(top, top + size) for x in range(left, left + size)):
-            if self._closes_gate(pos, size):
-                return "Keep the gate open"
+        if self._rift_tiles and self._off_rift(building_type, left, top, size):
+            return ("Set the vault square on the ley rift" if building_type is BuildingType.VAULT
+                    else "Keep the ley rift for a vault")
+        if self.gates and self._by_gate(left, top, size) and self._closes_gate(pos, size):
+            return "Keep the gate open"
         return None
+
+    def _off_rift(self, building_type: BuildingType, left: int, top: int, size: int) -> bool:
+        """Whether a footprint covers part of a ley rift without being a vault square on it.  A rift is kept for its
+        vault: a farm on it would deny it for good, and a vault half on it would draw nothing and deny it as well."""
+        tiles = self._rift_tiles
+        for y in range(top, top + size):
+            for x in range(left, left + size):
+                rift = tiles.get((x, y))
+                if rift is not None and (building_type is not BuildingType.VAULT or rift != (left, top)):
+                    return True
+        return False
+
+    def _by_gate(self, left: int, top: int, size: int) -> bool:
+        """Whether a footprint stands on a Bastion gate or within :data:`GATE_REACH` tiles of one: where it may seal the
+        way out, alone or with the trees round the gate (fuzz seed 82: a tower on the tiles just outside a gate whose
+        other side was forest)."""
+        gates = self.gates
+        for y in range(top - GATE_REACH, top + size + GATE_REACH):
+            for x in range(left - GATE_REACH, left + size + GATE_REACH):
+                if (x, y) in gates:
+                    return True
+        return False
 
     def _closes_gate(self, pos: Pos, size: int) -> bool:
         """Whether this footprint removes the route from a Bastion base to its natural.
 
-        Only placements touching the few gate tiles call this search.  Use all
+        Only placements on or beside the few gate tiles (:meth:`_by_gate`) call this search.  Use all
         open doors around each building, so closing a single dead-end tile or
         one of several doors is still allowed.
         """
@@ -1808,6 +1926,7 @@ class World:
         self._land_projectiles()
         self._separate()
         self._bury_the_dead()
+        self._draw_aether()
         if self.regrowth and self.tick % round(1 / SIM_DT) == 0:
             self._regrow()
         if self.tick % round(worker_ai.REBALANCE_EVERY / SIM_DT) == 0:
@@ -4212,6 +4331,8 @@ class World:
                 if unit.orders and isinstance(unit.orders[0], Build):
                     unit.orders.popleft()
         self.events.append(Event(reason, b.center, player=b.player, entity=b.id, text=b.type.value))
+        if b.type is BuildingType.VAULT and b.done:
+            self._spill(b.player, b.center)
 
     # -- Helpers for orders ----------------------------------------------------------
 
@@ -4275,7 +4396,9 @@ class World:
         for building in self.player_buildings(player):
             del self.buildings[building.id]
             self._set_blocked(building, False)
+        self._building_epoch += 1
         self.players[player].alive = False
+        self.players[player].aether = self.players[player].aether_charge = 0
         self._index_units()
 
     def can_resign(self, player: int) -> str | None:
@@ -4331,6 +4454,8 @@ class World:
             if unit.constructing == b.id:
                 unit.constructing = None
         self.events.append(Event("abandoned", b.center, player=b.player, entity=b.id, text=b.type.value))
+        if b.type is BuildingType.VAULT and b.done:
+            self._spill(b.player, b.center)
 
     def _check_elimination(self) -> None:
         for player in self.players[:self.seats]:  # the wilds are never eliminated and never win
@@ -4363,9 +4488,11 @@ class World:
         return {
             "width": self.width, "height": self.height, "theme": self.theme.value, "layout": self.layout.value,
             "gates": [list(tile) for tile in sorted(self.gates)],
+            "rifts": [list(rift) for rift in self.rifts],
             "gate_links": [[list(hall), list(natural)] for hall, natural in self.gate_links],
             "terrain": ["".join(t.value[0] for t in row) for row in self.terrain],
-            "players": [{"id": p.id, "name": p.name, "human": p.human, "race": p.race.value, "gold": p.gold, "lumber": p.lumber, "alive": p.alive,
+            "players": [{"id": p.id, "name": p.name, "human": p.human, "race": p.race.value, "gold": p.gold, "lumber": p.lumber,
+                         "aether": p.aether, "aether_charge": p.aether_charge, "alive": p.alive,
                          "neutral": p.neutral,
                          "surrendered": p.surrendered, "stats": dict(p.stats), "last_alert": p.last_alert, "last_hit": p.last_hit,
                          "upgrades": sorted(u.value for u in p.upgrades),
@@ -4393,6 +4520,7 @@ class World:
                     races=[Race(p.get("race", Race.HUMAN.value)) for p in seats], layout=Layout(data["layout"]),
                     scripted=data.get("scripted", False))
         world.gates = frozenset((x, y) for x, y in data.get("gates", []))
+        world.lay_rifts((x, y) for x, y in data.get("rifts", []))  # a save from before the ley rifts has none
         world.gate_links = tuple(((hall[0], hall[1]), (natural[0], natural[1])) for hall, natural in data.get("gate_links", []))
         world.regrowth = [((tile[0], tile[1]), when) for tile, when in data.get("regrowth", [])]
         world.camps = [Camp(lair=c["lair"], kinds=list(c["kinds"]), posts=[(p[0], p[1]) for p in c["posts"]],
@@ -4402,6 +4530,7 @@ class World:
             p.human = saved["human"]
             p.name = saved.get("name", p.name)
             p.gold, p.lumber, p.alive, p.last_alert = saved["gold"], saved["lumber"], saved["alive"], saved["last_alert"]
+            p.aether, p.aether_charge = saved.get("aether", 0), saved.get("aether_charge", 0)  # a save from before the aether holds none
             p.last_hit = saved.get("last_hit", p.last_alert)  # saves from before it: the alert stands in
             p.upgrades = {Upgrade(u) for u in saved["upgrades"]}
             p.assembly = tuple(saved["assembly"]) if saved.get("assembly") is not None else None

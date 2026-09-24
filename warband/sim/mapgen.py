@@ -33,8 +33,9 @@ from typing import Final
 
 from warband.sim import camps as camping
 from warband.sim import path as pathing
-from warband.sim.model import Pos, World, tile_center
-from warband.sim.rules import BUILDINGS, EXPANSION_GOLD, MAX_PLAYERS, MINE_GOLD, BuildingType, Layout, MapTheme, Race, Terrain, UnitType
+from warband.sim.model import MINE_CLEARANCE, RIFT, Pos, World, rects_gap, tile_center
+from warband.sim.rules import (BUILDINGS, EXPANSION_GOLD, MAX_PLAYERS, MINE_GOLD, BuildingType, Layout, MapTheme, Race, Terrain,
+                               UnitType)
 
 SIZES: Final[dict[str, tuple[int, int]]] = {
     # Nominal tiles; :func:`dimensions` rounds a size up to whole cells of the seat count's grid.
@@ -108,6 +109,23 @@ _ROSTERS: Final[dict[str, tuple[tuple[UnitType, ...], int]]] = {
     "nest": ((UnitType.SPIDER, UnitType.SPIDER, UnitType.WOLF, UnitType.WOLF), 600),
     "lair": ((UnitType.TROLL, UnitType.GOLEM, UnitType.SPIDER, UnitType.SPIDER), 1500),
 }
+
+#: Ley rifts (WB-063).  Every seat gets one near its hall, in its own cell, and a cell with room for a middle gets a
+#: contested one out in the shared ground: each a canonical site copied a cell at a time, like a mine.  They are laid
+#: last, on the finished ground, from a stream of their own (seeded apart from the map's), and they never paint a tile:
+#: a rift goes only on open grass the first hall can already walk to.  So every map that was drawn before them is
+#: drawn exactly as it was, with its rifts on top, and a seed that made a fair map still makes the same one.
+_RIFT_SALT: Final = 0x21F7
+_RIFT_HOME: Final = (4.5, 8.0)  # tiles from the hall's middle to its rift's: in the clearing, off the hall's doorstep
+_RIFT_HALL_GAP: Final = 2  # tiles of daylight between a rift and a hall or any other building of a seat's
+_RIFT_DEPOSIT_GAP: Final = 3  # ...and between a rift and a deposit: a vault never stands in a mine's mouth
+_RIFT_WALL_GAP: Final = 2  # tiles between a rift and a gate or a ford, which a vault must never plug
+_RIFT_SPACING: Final = 6  # Chebyshev tiles between two rifts' squares
+_RIFT_CELL: Final = 750  # tiles of a seat's cell that earn it a contested rift: Small with two seats has one, with four none
+_RIFT_AWAY: Final = 12  # tiles from every hall to a contested rift's middle: a third mine's distance
+_RIFT_ROOM: Final = 36  # open tiles within four of a contested rift's middle, so its vault never plugs a road
+_RIFT_RING: Final = 8  # of the twelve tiles round a rift, how many must be open ground the first hall reaches
+_RIFT_LAIR: Final = 6.0  # tiles from a lair's middle to a rift's: outside its guards' ring, not outside its watch
 
 Point = tuple[float, float]
 
@@ -247,7 +265,8 @@ def build(seed: int, width: int = 48, height: int = 40, players: int = 2, human:
     problems: list[str] = []
     without: tuple[World, dict] | None = None  # the best map so far that is fair but is missing something wished for
     for attempt in range(RETRIES):
-        world, report = _attempt(random.Random(seed * 16 + attempt), seed, width, height, players, human, theme, chosen, layout, wilds)
+        world, report = _attempt(random.Random(seed * 16 + attempt), seed, width, height, players, human, theme, chosen, layout, wilds,
+                                 random.Random((seed * 16 + attempt) ^ _RIFT_SALT))
         report["attempt"] = attempt
         if not report["problems"]:
             if not report["wishes"]:
@@ -933,7 +952,7 @@ def _guard(cv: _Canvas, rng: random.Random, deposit: Pos, size: int, kind: str, 
 
 
 def _attempt(rng: random.Random, seed: int, width: int, height: int, players: int, human: int | None, theme: MapTheme,
-             races: list[Race], layout: Layout, wilds: bool = True) -> tuple[World, dict]:
+             races: list[Race], layout: Layout, wilds: bool, rift_rng: random.Random) -> tuple[World, dict]:
     spec = _SPECS[layout]
     cv = _Canvas(width, height, players)
     clearing = _clearing(spec, cv.cw, cv.ch, cv.wide)
@@ -1029,6 +1048,8 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
         for i in range(3):
             world.spawn_unit(seat, UnitType.PEASANT, tile_center(cv.images((hall[0] + i, hall[1] + 3))[seat]))
     _connect(world, cv)
+    if not _lay_rifts(world, cv, walls, hall, main, rift_rng):
+        problems.append("no room for a ley rift")
     world.update_vision()
     report = _audit(world, cv, spec, walls, natural)
     if layout is Layout.BASTION:
@@ -1038,6 +1059,109 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
     report["problems"] = problems + report["problems"]
     report["wishes"] = wishes  # nothing the audit looks at is a wish: an unfair map is a fault, every time
     return world, report
+
+
+# -- Ley rifts ---------------------------------------------------------------------
+
+
+def _lay_rifts(world: World, cv: _Canvas, walls: _Walls, hall: Pos, main: Pos, rng: random.Random) -> bool:
+    """Lay every seat's rift near its hall and, where the cell has room, a contested one in the shared ground; whether
+    the seats' own could be laid (the contested one is a nicety: a cell without room for it simply has none).
+
+    Each is a canonical site whose every copy is on open grass the first hall can walk to, clear of buildings,
+    deposits, units, camps, gates and fords: the ground a vault is placed on by the rules, with room around it."""
+    region = reachable(world, _doors(world)[0][0])
+    walls_near = cv.orbit(walls.gates | walls.fords)
+    halls = [_mine_centre(pos) for pos in cv.rect_images(hall, 3)]  # every cell's, a seatless one's too: the grid decides what is shared
+    hall_middle = _mine_centre(hall)
+    left, top = min(hall[0], main[0]), min(hall[1], main[1])
+    right, bottom = max(hall[0], main[0]) + 3, max(hall[1], main[1]) + 3
+    shelter = (left - 1, top - 1, right - left + 2, bottom - top + 2)  # hall, main mine and the walk between, a tile round
+    mine_middle = _mine_centre(main)
+    home = []
+    for pos in _rift_sites(cv):
+        middle = _mine_centre(pos, RIFT)
+        away = _dist(middle, hall_middle)
+        if not _RIFT_HOME[0] <= away <= _RIFT_HOME[1] or rects_gap((pos[0], pos[1], RIFT, RIFT), shelter) == 0:
+            continue
+        home.append((-abs(away - 6.0) + 0.15 * _dist(middle, mine_middle) + rng.uniform(0.0, 1.5), pos))
+    laid: list[Pos] = []
+    spot = _pick_rift(world, cv, home, region, walls_near, laid)
+    if spot is None:
+        return False
+    laid += cv.rect_images(spot, RIFT)
+    if cv.cw * cv.ch >= _RIFT_CELL:
+        contested = []
+        tolerance = _SPECS[world.layout].contested or (6 if cv.wide else 12)
+        for pos in _rift_sites(cv):
+            middle = _mine_centre(pos, RIFT)
+            near = sorted(_dist(middle, other) for other in halls)
+            if near[0] < _RIFT_AWAY or near[1] - near[0] > tolerance:
+                continue
+            contested.append((-(near[1] - near[0]) + rng.uniform(0.0, 3.0), pos))
+        spot = _pick_rift(world, cv, contested, region, walls_near, laid, room=_RIFT_ROOM)
+        if spot is not None:
+            laid += cv.rect_images(spot, RIFT)
+    world.lay_rifts(laid)
+    return True
+
+
+def _rift_sites(cv: _Canvas) -> Iterable[Pos]:
+    """Every square a rift can take inside the canonical cell, a tile in from its edges."""
+    for y in range(1, cv.ch - RIFT):
+        for x in range(1, cv.cw - RIFT):
+            yield (x, y)
+
+
+def _pick_rift(world: World, cv: _Canvas, scored: list[tuple[float, Pos]], region: set[Pos], walls: set[Pos], laid: list[Pos], *,
+               room: int = 0) -> Pos | None:
+    """The best-scored canonical rift site whose every copy :func:`_rift_fits`, and whose copies keep
+    :data:`_RIFT_SPACING` from one another: a site on a cell's border would otherwise stand beside its mirror image."""
+    for _score, pos in sorted(scored, reverse=True):
+        images = cv.rect_images(pos, RIFT)
+        if any(rects_gap((a[0], a[1], RIFT, RIFT), (b[0], b[1], RIFT, RIFT)) < _RIFT_SPACING
+               for i, a in enumerate(images) for b in images[i + 1:]):
+            continue
+        if all(_rift_fits(world, cv, image, region, walls, laid, room) for image in images):
+            return pos
+    return None
+
+
+def _rift_fits(world: World, cv: _Canvas, pos: Pos, region: set[Pos], walls: set[Pos], laid: list[Pos], room: int) -> bool:
+    """Whether a rift at *pos* is ground a vault can be set on and walked round: its square open grass the first
+    hall reaches, inside the map with most of the ring round it open too; clear of every building, deposit and wall
+    by the gaps above, of every unit, and of a camp's lair and its guards (not of its watch: a rift out in the shared
+    ground may be held by a camp, as the deposits there are); *room* open tiles within four of its middle."""
+    x, y = pos
+    rect = (x, y, RIFT, RIFT)
+    ring = 0
+    for ty in range(y - 1, y + RIFT + 1):
+        for tx in range(x - 1, x + RIFT + 1):
+            if not cv.inside(tx, ty):
+                return False
+            if x <= tx < x + RIFT and y <= ty < y + RIFT:
+                if world.terrain[ty][tx] is not Terrain.GRASS or (tx, ty) not in region:
+                    return False
+            elif world.passable(tx, ty) and (tx, ty) in region:
+                ring += 1
+    if ring < _RIFT_RING:
+        return False
+    if any(rects_gap(rect, (other[0], other[1], RIFT, RIFT)) < _RIFT_SPACING for other in laid):
+        return False
+    for b in world.buildings.values():
+        gap = _RIFT_DEPOSIT_GAP if b.info.mine is not None or b.player == world.neutral else _RIFT_HALL_GAP
+        if rects_gap(rect, b.rect) < gap:
+            return False
+    middle = _mine_centre(pos, RIFT)
+    for camp in world.camps:
+        lair = world.buildings.get(camp.lair)
+        if lair is not None and _dist(middle, lair.center) < _RIFT_LAIR:
+            return False
+    if any(x - 1 <= u.x < x + RIFT + 1 and y - 1 <= u.y < y + RIFT + 1 for u in world.units.values()):
+        return False
+    if any(x - _RIFT_WALL_GAP <= tx < x + RIFT + _RIFT_WALL_GAP and y - _RIFT_WALL_GAP <= ty < y + RIFT + _RIFT_WALL_GAP for tx, ty in walls):
+        return False
+    return room == 0 or sum(1 for tx, ty in cv.within(middle, 4.0) if world.passable(tx, ty)) >= room
 
 
 # -- Connectivity ------------------------------------------------------------------
@@ -1127,19 +1251,22 @@ def _carve(world: World, cv: _Canvas, route: list[Pos]) -> None:
 
 def audit(world: World) -> dict:
     """The numbers a fair start needs, per base: open ground within six tiles of the hall, the
-    distance to the nearest mine and to wood, whether every door and mine share one region,
-    how many mines there are beyond the main ones, and the terrain mix."""
+    distance to the nearest mine, to wood and to a ley rift, whether every door, mine and rift
+    share one region, how many mines there are beyond the main ones, and the terrain mix."""
     halls = [b for b in world.buildings.values() if b.type is BuildingType.TOWN_HALL]
     doors, mine_doors = _doors(world)
     region = reachable(world, doors[0])
-    report: dict = {"players": len(halls), "layout": world.layout.value, "open": [], "mine": [], "wood": []}
+    report: dict = {"players": len(halls), "layout": world.layout.value, "open": [], "mine": [], "wood": [], "rift": []}
     for hall in halls:
         cx, cy = int(hall.center[0]), int(hall.center[1])
         report["open"].append(sum(1 for dx in range(-6, 7) for dy in range(-6, 7) if world.passable(cx + dx, cy + dy)))
         report["mine"].append(min(max(abs(m.center[0] - hall.center[0]), abs(m.center[1] - hall.center[1])) for m in world.mines()))
         tree = world.nearest_tree(hall.center, 12)
         report["wood"].append(None if tree is None else max(abs(tree[0] - cx), abs(tree[1] - cy)))
-    report["connected"] = all(d in region for d in doors + mine_doors)
+        report["rift"].append(min((max(abs(x + RIFT / 2 - hall.center[0]), abs(y + RIFT / 2 - hall.center[1])) for x, y in world.rifts),
+                                  default=None))
+    report["connected"] = all(d in region for d in doors + mine_doors + list(world.rifts))
+    report["rifts"] = len(world.rifts)
     report["expansions"] = len(world.mines()) - len(halls)
     report["seams"] = sum(1 for m in world.mines() if m.type is BuildingType.GOLD_SEAM)
     report["camps"] = len(world.camps)
@@ -1147,6 +1274,26 @@ def audit(world: World) -> dict:
     report["trees"] = sum(1 for row in world.terrain for t in row if t is Terrain.TREES) / total
     report["water"] = sum(1 for row in world.terrain for t in row if t is Terrain.WATER) / total
     return report
+
+
+def _rift_problems(world: World, cv: _Canvas) -> list[str]:
+    """What is unfair about the ley rifts: a seat without one of its own near its hall, a rift whose copies are not
+    all rifts, or one a vault could not be set on by the rules as the map begins."""
+    problems: list[str] = []
+    rifts = set(world.rifts)
+    halls = [b for b in world.buildings.values() if b.type is BuildingType.TOWN_HALL]  # placed in seat order
+    for hall in halls:
+        own = [r for r in rifts if max(abs(r[0] + RIFT / 2 - hall.center[0]), abs(r[1] + RIFT / 2 - hall.center[1])) <= _RIFT_HOME[1]]
+        if not any(all(_dist(_mine_centre(r, RIFT), other.center) > _dist(_mine_centre(r, RIFT), hall.center) for other in halls
+                       if other is not hall) for r in own):
+            problems.append(f"seat {hall.player} has no ley rift of its own")
+    if any(not set(cv.rect_images(_fold(cv.cols, cv.rows, cv.cw, cv.ch, rift, RIFT), RIFT)) <= rifts for rift in world.rifts):
+        problems.append("the ley rifts are not symmetric")
+    for x, y in world.rifts:
+        if any(world.terrain[ty][tx] is not Terrain.GRASS or not world.passable(tx, ty) for ty in range(y, y + RIFT) for tx in range(x, x + RIFT)) \
+                or any(m.info.mine is not None and rects_gap((x, y, RIFT, RIFT), m.rect) < MINE_CLEARANCE for m in world.buildings.values()):
+            problems.append(f"no vault can stand on the ley rift at {(x, y)}")
+    return problems
 
 
 def _route(world: World, start: Pos, goal: Pos) -> list[Pos] | None:
@@ -1171,9 +1318,10 @@ def _audit(world: World, cv: _Canvas, spec: _Spec, walls: _Walls, natural: Pos |
     if any(world.terrain_at(tile) is not Terrain.GRASS for b in world.buildings.values() for tile in b.tiles()):
         problems.append("a building stands on trees, water or rock")
     doors, mine_doors = _doors(world)
-    routes = {goal: _route(world, doors[0], goal) for goal in doors[1:] + mine_doors}
+    routes = {goal: _route(world, doors[0], goal) for goal in doors[1:] + mine_doors + list(world.rifts)}
     if any(route is None for route in routes.values()):
         problems.append("a route exceeds the pathfinder's budget")
+    problems += _rift_problems(world, cv)
     report["detour"] = None
     route = routes.get(doors[1])
     if route is not None:

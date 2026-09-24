@@ -10,6 +10,7 @@ does not move for it.
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
 from typing import Any
 
@@ -91,7 +92,8 @@ def need(world: World, player: int, target: Target) -> Need | None:
 def tree() -> dict[BuildingType, tuple[int, float]]:
     """Each building's place in the tech tree, ``(column, row)``: the column is how many prerequisites deep it stands;
     a building that opens none takes a row of its own, one that opens several sits across the middle of theirs.  The
-    roots, which need nothing, go top down, those that open something first."""
+    roots, which need nothing, go top down, those that open something first; a root that opens nothing (the farm)
+    takes the first row its column leaves free, rather than a row of the tree's own below everything."""
     places: dict[BuildingType, tuple[int, float]] = {}
     rows = 0
 
@@ -107,7 +109,12 @@ def tree() -> dict[BuildingType, tuple[int, float]]:
 
     roots = [kind for kind in BUILT if BUILDINGS[kind].requires is None]  # nobody builds a deposit or a lair
     for root in sorted(roots, key=lambda kind: not unlocks(kind)):
-        place(root, 0)
+        if unlocks(root):
+            place(root, 0)
+            continue
+        taken = [row for column, row in places.values() if column == 0]
+        free = next(row for row in itertools.count() if all(abs(row - other) >= 1 for other in taken))
+        places[root] = (0, float(free))
     return places
 
 

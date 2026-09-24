@@ -24,7 +24,6 @@ item takes the next one and updates this line.
 | WB-059 | Next | proposed | A route nobody can reach costs the whole pathfinder budget, and the budget grows with the map | Sixteen seats 2026-09-20 |
 | WB-060 | Later | proposed | Sixteen seats online: an engine release, a snapshot that is not one world per seat, and room capacity | Sixteen seats 2026-09-20 |
 | WB-062 | Now | proposed | Buffs and debuffs: orc Rage as a ten-second buff, Bleeding from every archer's shot | Ilya 2026-09-24 |
-| WB-063 | Now | proposed | Magic I: Aether, a third resource drawn from ley rifts into chained vaults | Ilya 2026-09-24 |
 | WB-061 | Now | proposed | Global commands with levels: Fortify, Withdraw, Scout, Harass, Gold, Lumber | Ilya 2026-09-24 |
 | WB-066 | Now | proposed | Magic II: the Mage Tower, one spell of three per level, cast anywhere, dearer beyond the vaults | Ilya 2026-09-24 |
 | WB-067 | Now | proposed | Magic III: the computer players research, choose and cast; the nine spells balanced | Ilya 2026-09-24 |
@@ -330,39 +329,6 @@ five numbers are the whole vocabulary and a spell is a row, not code.
    `tools/visual_lint.py` clean.
 5. Fingerprint and `sim_bench.txt` refreshed in the same commit; fuzz run;
    mypy over `fastsim.MODULES` clean and the compiled run matches.
-
-## WB-063 — Magic I: Aether, rifts and vaults
-
-**Design.** A third resource, **Aether**, violet and restless. It rises from
-**ley rifts**, cracks in the ground where light streams up: one near every
-seat's base and contested ones in the shared ground, dealt by mapgen as
-fairly as the mines (the audit covers them). Nobody owns a rift.
-
-- The **Aether Vault** (race names: Arcane Vault, Spirit Cage, Moon
-  Reliquary, Rune Vault; 2×2, 400 gold 200 lumber, needs a Town Hall) is a
-  cube of glass or stone full of aether that pulls upward, held to the ground
-  by chains. Built on a rift, it draws: 1 aether every 2 s. Built anywhere
-  else it only stores and reaches. One vault per rift.
-- **Saturation**: a player's store is capped at 100 per finished vault. A
-  vault on a rift adds nothing past the cap, and a vault lost lowers the cap
-  and spills what no longer fits (a raid on vaults is a raid on the mana
-  pool).
-- **Reach**: 10 tiles round each finished vault. WB-066's spells cost triple
-  and cool down triple when cast beyond every vault's reach, so a forward
-  vault is a real decision.
-- The HUD shows aether beside gold and lumber as *stored / cap*; the vault's
-  card shows its draw and whether it stands on a rift; a translucent circle
-  shows reach while a vault is selected or a spell is aimed.
-- Seen: the rift streams motes upward; a drawing vault's cube glows and
-  strains at its chains; a full store stops the motes.
-- Brains that reach the mid game build a vault on their own rift (the
-  spending comes in WB-067), so the economy is exercised by the league.
-
-**Acceptance.** Mapgen places rifts fairly for every size, layout and seat
-count (the audit extended); rules tests for draw, cap, spill, one vault per
-rift, reach; saves and snapshots carry aether (a rival's store is private,
-like gold); fog remembers rifts like mines; the HUD, the vault and the rift
-rendered and looked at; visual lint; fingerprint refreshed.
 
 ## WB-061 — Global commands with levels
 

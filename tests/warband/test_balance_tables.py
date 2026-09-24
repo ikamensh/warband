@@ -226,6 +226,11 @@ def test_the_toml_balance_tables_match_the_simulation() -> None:
         agree(f"units.toml [{unit}].mounted", live.mounted, u["mounted"])
         agree(f"units.toml [{unit}].turn", live.turn, math.radians(u["turn_deg"]))
 
+    def rendered(summary: str, trip: int = 0) -> str:
+        """A summary as the player reads it: a deposit's trip, a vault's store and reach put in from the tables."""
+        return (summary.replace("{trip}", str(trip)).replace("{store}", str(tables.scalars["AETHER_STORE"]))
+                .replace("{reach}", f"{tables.scalars['AETHER_REACH']:g}"))
+
     mine, seam = tables.buildings["gold_mine"], tables.buildings["gold_seam"]
     for key, want in (("GOLD_PER_TRIP", mine["mine_trip"]), ("MINE_SLOTS", mine["mine_slots"]),
                       ("SEAM_PER_TRIP", seam["mine_trip"]), ("SEAM_SLOTS", seam["mine_slots"])):
@@ -238,10 +243,7 @@ def test_the_toml_balance_tables_match_the_simulation() -> None:
                 ("cooldown", b["cooldown"]))
         for key, want in keys:
             agree(f"buildings.toml [{building}].{key}", getattr(live, key), want)
-        if building == "gold_seam":
-            pass  # its summary renders {trip} from the deposit; checked below
-        else:
-            agree(f"buildings.toml [{building}].summary", live.summary, b["summary"])
+        agree(f"buildings.toml [{building}].summary", live.summary, rendered(b["summary"], b["mine_trip"]))
         agree(f"buildings.toml [{building}].gold", live.cost.gold, b["gold"])
         agree(f"buildings.toml [{building}].lumber", live.cost.lumber, b["lumber"])
         agree(f"buildings.toml [{building}].trains", live.trains, b["trains"])
@@ -254,8 +256,6 @@ def test_the_toml_balance_tables_match_the_simulation() -> None:
             agree(f"buildings.toml [{building}].endless", live.mine.endless, b["mine_endless"])
         else:
             agree(f"buildings.toml [{building}].mine", live.mine, None)
-    agree("buildings.toml [gold_seam].summary", rules.BUILDINGS[rules.BuildingType.GOLD_SEAM].summary,
-          seam["summary"].replace("{trip}", str(seam["mine_trip"])))
 
     movement = {name for name, kind in BEHAVIOR_SCHEMA["movement"].values()}
     for const, value in tables.scalars.items():
@@ -308,7 +308,7 @@ def test_the_toml_balance_tables_match_the_simulation() -> None:
             base = rules.BUILDINGS[rules.BuildingType(building)]
             info = live.buildings[rules.BuildingType(building)]
             agree(f"races.toml [{race}.buildings.{building}].name", info.name, t["name"])
-            agree(f"races.toml [{race}.buildings.{building}].summary", info.summary, t["summary"])
+            agree(f"races.toml [{race}.buildings.{building}].summary", info.summary, rendered(t["summary"]))
             agree(f"races.toml [{race}.buildings.{building}].hp", info.hp, int(round(base.hp * t["hp_mult"])))
             agree(f"races.toml [{race}.buildings.{building}].armor", info.armor, base.armor + t["armor_add"])
         for upgrade, t in r["upgrades"].items():

@@ -26,7 +26,7 @@ from typing import Final
 from warband.sim import config
 
 from warband.sim.rules import (BUILDINGS, UNITS, UPGRADES, WILD_BUILDINGS, BuildingInfo, BuildingType, Race, UnitInfo, UnitType,
-                               Upgrade, UpgradeInfo)
+                               Upgrade, UpgradeInfo, fill)
 
 
 @dataclass(frozen=True)
@@ -102,7 +102,7 @@ def _buildings(tweaks: dict[BuildingType, BuildingTweak]) -> dict[BuildingType, 
             out[building_type] = base  # a deposit and a lair are nobody's: no race names them, tweaks them or draws them
             continue
         t = tweaks[building_type]
-        out[building_type] = replace(base, name=t.name, summary=t.summary, hp=int(round(base.hp * t.hp)), armor=base.armor + t.armor)
+        out[building_type] = replace(base, name=t.name, summary=fill(t.summary), hp=int(round(base.hp * t.hp)), armor=base.armor + t.armor)
     return out
 
 

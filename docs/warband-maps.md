@@ -1007,7 +1007,11 @@ available. Holding a crossing therefore matters to the first expansion,
 rather than only to a later contested third. Forest, Klondike and Bastion keep
 their previous mine stocks and terrain. Bastion also refuses a building site
 at a gate if its footprint would cut the route from the hall to the natural:
-fuzz seed 82 showed an AI sealing its own exit with a barracks. A farm or
+fuzz seed 82 showed an AI sealing its own exit with a barracks. Since
+2026-09-24 a site within two tiles of a gate is asked too: the same seed, in
+WB-063's run, had a tower on the two open tiles just outside a gate whose other
+side was forest, and the elven army stood at its own ring for the rest of the
+match. A farm or
 tower can still occupy part of a gate when an open route remains. Gate tiles
 and the hall-to-natural links are saved with the world. These changes are
 symmetric for every seat and make no new kind of mine.
@@ -1049,3 +1053,79 @@ uv run python tools/map_strategy_report.py --from /tmp/warband-map-strategies.js
 The generator audit made 100 seeds at each of the three shipped sizes for
 two and four seats on both changed layouts: 1200 maps, no refusals or
 disconnections. Retries stayed close to unchanged main.
+
+## Ley rifts (2026-09-24, WB-063)
+
+A **ley rift** is ground, not a building: a square the Aether Vault's size
+(2 × 2) where violet light wells out of a crack. Nobody owns one and units
+walk over it; a vault set square on it draws aether. `World.rifts` holds their
+top-left tiles, fixed for the match and saved with it. They are public ground
+the way the map as it began is: every seat's snapshot carries them all, and the
+view draws one only where the seat has explored (dimmed under the fog like the
+grass it is torn in), so a rift never needs remembering — it never changes, and
+the vault that caps it is a building the fog already remembers.
+
+**A rift is kept for its vault.** A footprint that covers any rift tile is
+refused unless it is a vault standing exactly on the rift ("Keep the ley rift
+for a vault", "Set the vault square on the ley rift"): a farm on a rival's rift
+would deny it for good, and a vault half on it would draw nothing and deny it
+too. That makes *one vault per rift* structural. `World.placeable` and the C
+site search (`_native.site_search`, fed by `brains.ai.site_inputs`) say the same.
+
+### Where they go
+
+`mapgen._lay_rifts` runs last, after the connector has carved the corridors, on
+the finished ground:
+
+- **Every seat's own rift**, in its own cell, 4.5 to 8 tiles from the hall's
+  middle: in the base clearing, off the hall's doorstep (two tiles of daylight)
+  and three from any deposit, never between the hall and its main mine, clear
+  of the peasants the seat starts with. On Bastion that is inside the ring.
+- **A contested rift** in the shared ground of a cell of at least 750 tiles:
+  twelve tiles or more from every hall, no nearer one hall than the next by more
+  than a third mine may be (every cell's hall counts, a seatless one's too, so
+  three seats get the rift four would), with 36 open tiles within four of it so
+  its vault never plugs a road, and six tiles from a lair's middle (outside its
+  guards; a camp may hold it, as camps hold the deposits there).
+
+Each is one canonical site copied a cell at a time, so every seat's rifts are
+congruent. A rift goes only on open grass the first hall already reaches, eight
+of the twelve tiles round it open too, clear of gates and fords: **it never
+paints a tile**. It is drawn from a stream of its own (`seed * 16 + attempt`
+salted), so the map's own stream is untouched. The consequence is measured, not
+hoped for: over 1 119 maps (twenty seeds of every layout and seat count the
+three shipped sizes offer, three of every pairing the bigger ones offer), every
+map's terrain, buildings and retry count are identical to the map the same seed
+made before the rifts, and every seat's own rift is within eight tiles of its
+hall. A seed that made a fair map still makes the same one (`scene.fair_map`).
+
+**The seat's own rift is a fault; the contested one a nicety.** No room for a
+seat's own rift is a problem that retries the seed (it never happened in the
+survey); no room for a contested one leaves the map without it and is not a
+wish either, since a wish would retry and change the map. How often a map gets
+its contested rifts:
+
+| | 2 seats | 3 | 4 | 6 | 8 | 12 | 16 |
+|---|---|---|---|---|---|---|---|
+| Small | 87 % | — | — | | | | |
+| Medium | 72 % | 58 % | 52 % | | | | |
+| Large | 95 % | 89 % | 85 % | | | | |
+| Huge | 14/15 | 11/15 | 13/15 | | 11/15 | | — |
+| Giant | | 14/15 | 14/15 | 11/15 | 13/15 | 13/15 | 5/15 |
+| Epic | | | | 12/15 | 15/15 | 12/15 | 9/15 |
+
+— a cell under 750 tiles (Small with three or four seats, Huge with sixteen) has
+no middle to put one in. Forest has them least: its open ground is its clearings,
+and the deposits and camps fill those.
+
+### What the audit checks
+
+`audit` reports `rifts` (how many) and `rift` (per hall, the Chebyshev distance
+to the nearest rift's middle), and `connected` includes every rift. `_audit`
+adds each rift to the production pathfinder's routes and `_rift_problems` fails
+a map where a seat has no rift of its own (within eight tiles of its hall, nearer
+it than any other hall), where a rift's copies are not all rifts, or where no
+vault could be set on a rift by the rules as the map begins (grass, open, two
+tiles from every deposit). `tests/warband/test_maps.py` asserts the per-seat
+distances over its seeds, sizes and layouts, and `tests/warband/test_mapgen.py`
+the congruence, a vault placeable on each seat's rift, and the contested rifts.

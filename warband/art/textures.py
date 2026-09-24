@@ -1122,7 +1122,117 @@ def _building_body(building_type: BuildingType, player: int, race: Race, m: Mate
         mesh += r3.box((0.1, 1.13, 0.1), (0.88, 0.31, 0.18), m.stone)
         mesh += r3.box((0.1, 1.31, 0.055), (1.03, 0.19, 0.09), m.stone_dark)
         return mesh
+    if building_type is BuildingType.VAULT:
+        return _vault(race, m, team)
     raise ValueError(building_type)
+
+
+#: Aether (WB-063): violet, the one strong hue no seat wears.  The vault's store, the rift's light and the HUD's figure.
+AETHER = (170, 104, 240)
+AETHER_LIGHT = (224, 196, 255)
+AETHER_DEEP = (104, 52, 170)
+
+
+def _chain(start: r3.Vec3, end: r3.Vec3, color: Color, links: int = 5, radius: float = 0.03) -> Mesh:
+    """A taut chain: a thin bar with *links* rings strung along it, alternately across and along the pull."""
+    mesh = _timber(start, end, radius * 0.6, darker(color, 0.75), sides=4)
+    for i in range(links):
+        t = (i + 0.5) / links
+        centre = tuple(a + (b - a) * t for a, b in zip(start, end))
+        size = (0.1, 0.035, 0.075) if i % 2 else (0.035, 0.1, 0.075)
+        mesh += r3.box(centre, size, color)
+    return mesh
+
+
+def _edges(centre: r3.Vec3, side: float, color: Color, thickness: float = 0.06) -> Mesh:
+    """The twelve edges of a cube as bars: a frame that leaves its faces to show."""
+    cx, cy, cz = centre
+    h = side / 2
+    mesh: Mesh = []
+    for a in (-h, h):
+        for b in (-h, h):
+            mesh += r3.box((cx + a, cy + b, cz), (thickness, thickness, side + thickness), color)
+            mesh += r3.box((cx + a, cy, cz + b), (thickness, side + thickness, thickness), color)
+            mesh += r3.box((cx, cy + a, cz + b), (side + thickness, thickness, thickness), color)
+    return mesh
+
+
+def _vault(race: Race, m: Materials, team: Color) -> Mesh:
+    """The Aether Vault, 2x2: a cube full of aether that pulls upward, held a hand's breadth off its plinth by four
+    chains to stakes at its corners.  Each race builds the cube its own way: a gold-framed glass case (Arcane Vault),
+    a bone-barred cage round a ball of it (Spirit Cage), a silver reliquary turned on its corner (Moon Reliquary),
+    a rune-cut stone block banded in copper with the light in its runes (Rune Vault)."""
+    mesh = _yard(2, (132, 120, 150))
+    mesh += r3.box((0, 0, 0.1), (1.1, 1.1, 0.2), m.stone_dark)  # the plinth the rift is capped with
+    mesh += r3.flat([(-0.4, -0.4), (0.4, -0.4), (0.4, 0.4), (-0.4, 0.4)], 0.205, AETHER)
+    # Whose it is, where every race shows it: the plinth's front and side hung with the team's cloth.
+    mesh += r3.facing(_facing_quad((0, 0.556, 0.1), 0.5, 0.085), team, VIEW)
+    mesh += r3.facing([(0.556, -0.5, 0.015), (0.556, 0.5, 0.015), (0.556, 0.5, 0.185), (0.556, -0.5, 0.185)], team, VIEW)
+    z0, side = 0.5, 1.02  # the cube floats: its underside a hand above the plinth
+    half = side / 2
+    chain_colour = {Race.HUMAN: (196, 200, 212), Race.ORC: (150, 140, 128), Race.ELF: (236, 240, 250), Race.DWARF: COPPER}[race]
+    anchor = 0.84
+    reach = 0.7 if race is Race.ELF else 0.94  # where on the cube's underside a chain takes hold: the reliquary stands on its corner
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            ax, ay = sx * anchor, sy * anchor
+            if race is Race.ORC:
+                mesh += r3.cone((ax, ay, 0.02), 0.08, 0.46, BONE, sides=4)
+            elif race is Race.ELF:
+                mesh += _timber((ax, ay, 0.0), (ax * 0.97, ay * 0.97, 0.36), 0.065, m.wood_dark, sides=5)
+                mesh += r3.sphere((ax, ay, 0.42), 0.1, (118, 178, 112), rings=3, sides=5)
+            else:
+                stone = m.stone if race is Race.HUMAN else m.stone_dark
+                mesh += r3.cylinder((ax, ay, 0.0), 0.1, 0.34, stone, sides=6)
+                mesh += r3.cylinder((ax, ay, 0.34), 0.12, 0.05, darker(stone, 0.75), sides=6)
+            if race is Race.ELF:
+                corner = (sx * half * reach * 1.41, 0.0, z0 + half) if sx == sy else (0.0, sy * half * reach * 1.41, z0 + half)
+            else:
+                corner = (sx * half * reach, sy * half * reach, z0 + 0.03)
+            mesh += _chain((ax, ay, 0.36), corner, chain_colour)
+    centre = (0.0, 0.0, z0 + half)
+    if race is Race.ORC:
+        # A cage of bone bars round a ball of aether, lashed top and bottom with hide.
+        mesh += r3.sphere(centre, half * 0.78, AETHER, rings=5, sides=10)
+        mesh += r3.sphere((-0.06, 0.06, z0 + half + 0.12), half * 0.4, AETHER_LIGHT, rings=3, sides=8)
+        mesh += _edges(centre, side, (124, 92, 56), 0.08)
+        for i in range(1, 4):
+            offset = -half + side * i / 4
+            for x, y in ((offset, half), (offset, -half), (half, offset), (-half, offset)):
+                mesh += r3.box((x, y, z0 + half), (0.045, 0.045, side), BONE)
+            mesh += r3.box((offset, 0, z0 + side), (0.045, side, 0.045), BONE)
+        mesh += r3.cone((0, 0, z0 + side + 0.04), 0.1, 0.34, BONE, sides=4)
+        mesh += _unit_panel([(half, half + 0.03, z0 + side - 0.05), (half, half + 0.03, z0 + side - 0.4), (half - 0.26, half + 0.03, z0 + side - 0.22)], team)
+        return mesh
+    if race is Race.DWARF:
+        # Rune-cut stone, the light showing only where the runes are cut, banded in copper.
+        mesh += r3.box(centre, (side, side, side), m.stone)
+        for z in (z0 + 0.12, z0 + side - 0.12):
+            mesh += r3.box((0, 0, z), (side + 0.05, side + 0.05, 0.08), COPPER)
+        for x, tall in ((-0.24, 0.2), (0.0, 0.28), (0.24, 0.2)):
+            mesh += r3.facing(_facing_quad((x, half + 0.012, z0 + half), 0.045, tall), AETHER_LIGHT, VIEW)
+        for y in (-0.24, 0.0, 0.24):
+            mesh += r3.facing([(half + 0.012, y - 0.04, z0 + half - 0.22), (half + 0.012, y + 0.04, z0 + half - 0.22),
+                               (half + 0.012, y + 0.04, z0 + half + 0.22), (half + 0.012, y - 0.04, z0 + half + 0.22)], AETHER, VIEW)
+        rune = [(-0.3, -0.06), (-0.06, -0.3), (0.06, -0.3), (0.3, -0.06), (0.3, 0.06), (0.06, 0.3), (-0.06, 0.3), (-0.3, 0.06)]
+        mesh += r3.flat(rune, z0 + side + 0.005, AETHER_LIGHT)
+        mesh += _pennant(-half + 0.06, half - 0.06, z0 + side, 0.4, team)
+        return mesh
+    # A case of glass full of light: the Arcane Vault square, the Moon Reliquary turned on its corner.
+    frame = GOLD if race is Race.HUMAN else (228, 232, 244)
+    case = r3.box(centre, (side, side, side), AETHER) + _edges(centre, side, frame)
+    core = half * 0.62
+    case += r3.flat([(-core, -core), (core, -core), (core, core), (-core, core)], z0 + side + 0.01, AETHER_LIGHT)
+    case += r3.facing(_facing_quad((0, half + 0.01, z0 + half), core, core), AETHER_LIGHT, VIEW)
+    case += r3.flat([(-core * 0.4, -core * 0.4), (core * 0.4, -core * 0.4), (core * 0.4, core * 0.4), (-core * 0.4, core * 0.4)],
+                    z0 + side + 0.02, (250, 244, 255))
+    if race is Race.ELF:
+        case = r3.rotate_z(case, 45)
+        case += r3.sphere((0, 0, z0 + side + 0.16), 0.11, (238, 242, 250), rings=3, sides=6)
+        case += _pennant(0.06, 0.0, z0 + side + 0.22, 0.36, team)
+    else:
+        case += r3.pyramid((0, 0, z0 + side + 0.03), (0.22, 0.22), 0.22, frame)
+    return mesh + case
 
 
 
@@ -2239,11 +2349,29 @@ def stride_heads(race: Race, unit_type: UnitType, carrying: Resource | None) -> 
                  for facing in range(FACINGS))
 
 
+#: Buildings the committed painted sheets were made without: the Aether Vault (WB-063) came after them and the
+#: image model that paints is not always to hand.  One of these is drawn low-poly beside its painted neighbours,
+#: and a sheet is stale only when it lacks one of the others.  ``tools/restyle.py`` paints every building in
+#: :data:`~warband.sim.rules.BUILT`; once a sheet holds one of these, that painting is used.
+UNPAINTED: frozenset[BuildingType] = frozenset({BuildingType.VAULT})
+
+
 @lru_cache(maxsize=None)
 def restyled_buildings(race: Race, look: str = "intact") -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
     """The hand-painted buildings of one race in one look (one frame per building type, the
     gold mine excluded), or None."""
-    return _painted(f"{race.value}.buildings.{look}", [building_key(bt, 0, race, look) for bt in BUILT])
+    return _painted(f"{race.value}.buildings.{look}", [building_key(bt, 0, race, look) for bt in BUILT if bt not in UNPAINTED])
+
+
+def painted_building(building_type: BuildingType, race: Race, look: str = "intact") -> tuple[restyle.Sheet, Image.Image] | None:
+    """*race*'s painted frame of *building_type* in *look*, with its sheet, or None where there is none (no sheet
+    in that look, or a building the sheet was made without: :data:`UNPAINTED`)."""
+    painted = restyled_buildings(race, look)
+    if painted is None:
+        return None
+    sheet, frames = painted
+    frame = frames.get(building_key(building_type, 0, race, look))
+    return None if frame is None else (sheet, frame)
 
 
 def mine_key(variant: int, look: str = "intact") -> str:
@@ -2291,15 +2419,19 @@ def unit_image(game: Game, unit_type: UnitType, player: int, facing: int, frame:
 
 def _painted_portrait(subject: UnitType | BuildingType, player: int, race: Race) -> Image.Image | None:
     """The subject's painted frame (a unit facing the viewer at rest) cropped to its figure, or None."""
+    frame: Image.Image | None = None
     if isinstance(subject, UnitType):
-        painted, key = restyled_frames(race, subject, None), unit_key(subject, 0, 2, "stand", None, race)
+        painted = restyled_frames(race, subject, None)
+        frame = None if painted is None else painted[1][unit_key(subject, 0, 2, "stand", None, race)]
     elif BUILDINGS[subject].mine is not None:
-        painted, key, player = restyled_mines(), mine_key(PAINTED_MINES[0]), 0  # nobody's rock: never recoloured
+        mines = restyled_mines()
+        frame, player = (None if mines is None else mines[1][mine_key(PAINTED_MINES[0])]), 0  # nobody's rock: never recoloured
     else:
-        painted, key = restyled_buildings(race), building_key(subject, 0, race)
-    if painted is None:
+        building = painted_building(subject, race)
+        frame = None if building is None else building[1]
+    if frame is None:
         return None
-    image = _recoloured(painted[1][key], player)
+    image = _recoloured(frame, player)
     return image.crop(image.split()[3].getbbox())
 
 
@@ -2352,8 +2484,11 @@ BUILDING_LOOKS = ("intact", "active", "damaged", "founded", "raised")
 SITE_LOOKS = ("founded", "raised")
 
 
-def has_look(race: Race, look: str) -> bool:
-    """Whether *race*'s buildings have a painting in *look* (a site look has no stand-in to fall back on)."""
+def has_look(race: Race, look: str, building_type: BuildingType | None = None) -> bool:
+    """Whether *race*'s buildings have a painting in *look* (a site look has no stand-in to fall back on), and of
+    *building_type* in it when one is named: a building the sheets were made without has none."""
+    if building_type is not None:
+        return painted_building(building_type, race, look) is not None
     return restyled_buildings(race, look) is not None
 
 
@@ -2370,17 +2505,16 @@ def building_image(game: Game, building_type: BuildingType, player: int, race: R
     and lightened: the ghost of a site ordered and not yet begun."""
     if look not in BUILDING_LOOKS:
         raise ValueError(f"unknown building look {look!r}")
-    if look != "intact" and restyled_buildings(race, look) is None:
+    if look != "intact" and painted_building(building_type, race, look) is None:
         look = "intact"
     key = building_key(building_type, player, race, look) + (".abandoned" if abandoned else "") + (".planned" if planned else "")
     if not game.assets.has_image(key):
-        restyled = restyled_buildings(race, look)
+        restyled = painted_building(building_type, race, look)
         front = BUILDINGS[building_type].size / 2 * TILE
         if restyled is None:
             image = _prop(key, _building(building_type, player, race), front + PAD, game.backend.scale_factor, front=front)
         else:
-            sheet, frames = restyled
-            painted = frames[building_key(building_type, 0, race, look)]
+            sheet, painted = restyled
             placements[key] = Placement(sheet.logical_size, sheet.drop, front, head=figure_top(sheet, painted))
             image = _recoloured(painted, player)
         game.assets.image_from_pil(key, _greyed(image, RUIN_GREY) if abandoned else _greyed(image, PLAN_GREY) if planned else image)
@@ -2437,6 +2571,45 @@ def _venom(size: int) -> Image.Image:
     return Image.alpha_composite(halo, core)
 
 
+#: The crack of a ley rift, in the rift's own square (0-1 each way): a jagged line across it, wider in the middle.
+RIFT_CRACK = ((0.1, 0.34), (0.27, 0.4), (0.36, 0.28), (0.52, 0.47), (0.66, 0.5), (0.63, 0.66), (0.9, 0.72))
+RIFT_WIDTH = (0.03, 0.07, 0.1, 0.13, 0.1, 0.07, 0.03)
+
+
+def _crack_outline(points: list[tuple[float, float]], widths: list[float]) -> list[tuple[float, float]]:
+    """The outline of a line *widths* wide at each of its *points*: one side out, the other back."""
+    left, right = [], []
+    for i, (x, y) in enumerate(points):
+        ax, ay = points[max(0, i - 1)]
+        bx, by = points[min(len(points) - 1, i + 1)]
+        dx, dy = bx - ax, by - ay
+        length = math.hypot(dx, dy)
+        nx, ny = -dy / length, dx / length
+        half = widths[i] / 2
+        left.append((x + nx * half, y + ny * half))
+        right.append((x - nx * half, y - ny * half))
+    return left + right[::-1]
+
+
+def rift_image(scale: float) -> Image.Image:
+    """A ley rift on the ground, the vault's footprint square: a jagged crack in dark earth with violet light welling
+    up out of it, white-hot along its floor, and a haze round it.  The motes it streams are drawn live
+    (:mod:`warband.art.ambience`)."""
+    tiles = BUILDINGS[BuildingType.VAULT].size
+    px = round(tiles * TILE * scale)
+    points = [(x * px, y * px) for x, y in RIFT_CRACK]
+    haze = Image.new("RGBA", (px, px), (0, 0, 0, 0))
+    ImageDraw.Draw(haze).line(points, fill=(*AETHER, 170), width=max(2, round(px * 0.2)), joint="curve")
+    haze = haze.filter(ImageFilter.GaussianBlur(px * 0.08))
+    crack = Image.new("RGBA", (px, px), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(crack)
+    draw.polygon(_crack_outline(points, [w * px + 5 * scale for w in RIFT_WIDTH]), fill=(58, 38, 52, 255))  # the torn earth
+    draw.polygon(_crack_outline(points, [w * px for w in RIFT_WIDTH]), fill=(*AETHER, 255))
+    draw.polygon(_crack_outline(points, [w * px * 0.4 for w in RIFT_WIDTH]), fill=(*AETHER_LIGHT, 255))
+    draw.line(points[1:-1], fill=(252, 246, 255, 255), width=max(1, round(scale)), joint="curve")
+    return Image.alpha_composite(haze, crack)
+
+
 def _arrow(scale: float) -> Image.Image:
     """A fletched arrow pointing right, 24 logical units long."""
     w, h = round(24 * scale), round(6 * scale)
@@ -2483,5 +2656,6 @@ def register_static(game: Game) -> None:
     assets.image_from_pil("stone", _glow(int(px * 0.4), 0.36, (150, 140, 128, 255), 0.06))
     assets.image_from_pil("mote", _mote(int(px * 0.7)))
     assets.image_from_pil("venom", _venom(int(px * 0.6)))
+    assets.image_from_pil("rift", rift_image(scale))
     assets.image_from_pil("drop", _glow(max(6, int(px * 0.3)), 0.42, (*WHITE, 255), 0.08))  # a droplet, a chip: a dot with an edge, tinted by its spray
     assets.image_from_pil("stain", _glow(int(px * 1.2), 0.36, (*WHITE, 255), 0.12))  # a soft blotch on the ground, tinted dark red; the blur stays inside the canvas

@@ -165,6 +165,25 @@ trains = ["cleric"]
 researches = ["blessing"]
 requires = "barracks"
 
+# The Aether Vault (WB-063): a cube full of aether, chained to the ground. Standing
+# square on a ley rift it draws aether into its owner's store; anywhere else it
+# only stores and reaches. How much it stores, how fast it draws and how far it
+# reaches are economy.toml's [aether]; the ley rifts themselves are the map's.
+
+[vault]
+name = "Aether Vault"
+gold = 400
+lumber = 200
+hp = 500
+armor = 3
+size = 2
+build_time = 35.0
+sight = 4
+supply = 0
+hotkey = "v"
+summary = "Draws a rift's aether; holds {store}, reaches {reach} tiles"
+requires = "town_hall"
+
 # Nobody's buildings: no race names them, tweaks them or draws them, and no
 # hotkey trains from them. The lair wears a building's fortified armour, so a
 # siege stone lands on it at x1.5; its hoard is its `gold`, paid out whole to

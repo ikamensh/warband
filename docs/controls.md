@@ -43,7 +43,7 @@ tutorial follow at once.
 
 The letter of the name, as Warcraft II had it. A unit card is M move, S stop,
 H hold, A attack, P patrol, B build, R repair, V salvage; the Build catalogue F farm,
-B barracks, H hall, T tower, M mill, K smith, S stables, W workshop, C church;
+B barracks, H hall, T tower, M mill, K smith, S stables, W workshop, C church, V vault;
 recruits F footman, A archer, K knight, C catapult, M flying machine, H healer (the
 cleric: L is Blessing at the church), P peasant; research K the Keep (at the
 hall), B blades, A armour, R arrows, E siege and a letter for each race's art;
@@ -58,12 +58,24 @@ name.
 The card is a three-column grid and its keys are its places, Q W E / A S D /
 Z X C, whatever it shows: the left hand never moves. A unit card is Q move,
 W stop, E hold, A attack-move, S patrol, D build, Z repair, X salvage (Attack
-stays on A, as in every scheme); the Build catalogue's nine buildings fill the grid; a
+stays on A, as in every scheme); the Build catalogue's first nine buildings fill the grid; a
 building's recruits and research fill it from Q, Cancel ending the row. The
 global actions sit beside the grid where no card reaches: B build, T train,
 G upgrade, R assembly point, F plans, V the next idle soldier. The fastest once
 learned, and the same for every race. It assumes a QWERTY keyboard: pyglet
 reports keys by their letter, not their place.
+
+**The row below the grid.** Since the Aether Vault (WB-063) the Build catalogue
+holds ten buildings, one more than the grid has places. The card goes on in a
+fourth row, as it already did for Back, and that row takes the column of keys
+beside the grid, top to bottom: R, F, V. So the vault is R in the Build
+catalogue (and WB-066's Mage Tower will be F). While a card holds those keys
+they are the card's, as a card's command always comes before a global key;
+the assembly point and the plans stay one chord away on Ctrl+G and Ctrl+P, and
+nothing but the Build catalogue reaches that row. The alternatives were worse:
+a second page of the catalogue would cost every building past the ninth a key
+and a turn of the page, and a key off the left hand (U, I, O…) would break the
+promise that the hand never moves.
 
 ### Modal
 

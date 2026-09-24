@@ -29,7 +29,7 @@ from warband.sim import mapgen  # noqa: E402
 from warband.brains.ai import make_brain  # noqa: E402
 from warband.brains.pro_ai import PRO, ProBrain, RaceBrain  # noqa: E402
 from warband.sim.model import BLOCKING, World  # noqa: E402
-from warband.sim.rules import BUILDINGS, SIM_DT, BuildingType, Difficulty  # noqa: E402
+from warband.sim.rules import AETHER_TICKS, BUILDINGS, SIM_DT, BuildingType, Difficulty  # noqa: E402
 from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
 
 GAME_MINUTES = 15
@@ -49,6 +49,9 @@ def check_world(world: World) -> None:
             builder = world.units.get(b.builder)
             assert builder is not None and builder.constructing == b.id, ("dangling builder", b)
         assert len(b.queue) <= 5
+        for tile in b.tiles():  # a ley rift is kept for the vault standing square on it
+            rift = world.rift_at(tile)
+            assert rift is None or (b.type is BuildingType.VAULT and b.pos == rift), ("a building on a ley rift", b, rift)
     for y in range(world.height):
         for x in range(world.width):
             blocked = world._blocked[y * world.width + x]
@@ -68,6 +71,7 @@ def check_world(world: World) -> None:
         assert world.players[u.player].alive, ("unit of a dead player", u)
     for p in world.players[:world.seats]:  # the wilds are alive whether or not a camp is still standing
         assert p.gold >= 0 and p.lumber >= 0, ("negative resources", p)
+        assert 0 <= p.aether <= world.aether_cap(p.id) and 0 <= p.aether_charge < AETHER_TICKS, ("aether out of its store", p)
         has_stuff = bool(world.player_units(p.id)) or bool(world.player_buildings(p.id))
         assert p.alive == has_stuff, ("alive without anything, or dead with something", p)
         visible, explored = world.visible[p.id], world.explored[p.id]

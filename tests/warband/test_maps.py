@@ -35,6 +35,7 @@ def test_every_seed_gives_every_player_a_fair_start(size: str, layout: Layout, s
         assert all(w is not None and w <= 12 for w in r["wood"]), (size, layout, seed, "no wood in reach", r["wood"])
         assert r["expansions"] >= 2, (size, layout, seed, "too few mines beyond the main ones")
         assert r["players"] == players, (size, layout, seed, "a seat lost its hall")
+        assert r["rifts"] >= players and all(d is not None and d <= 8 for d in r["rift"]), (size, layout, seed, "a seat without its ley rift", r["rift"])
         low, high = (0.35, 0.80) if layout is Layout.FOREST else (0.08, 0.50)
         assert low <= r["trees"] <= high and r["water"] <= 0.25, (size, layout, seed, r["trees"], r["water"])
         peasants = [u for u in world.units.values() if u.type is UnitType.PEASANT]

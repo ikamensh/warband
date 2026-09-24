@@ -8,6 +8,7 @@ Color = tuple[int, int, int, int]
 
 GOLD: Color = (255, 214, 110, 255)
 LUMBER: Color = (196, 150, 96, 255)
+AETHER: Color = (206, 170, 255, 255)  # the violet no seat wears: the third resource's number in the top bar
 TEXT: Color = (242, 238, 230, 255)
 BODY: Color = (222, 218, 210, 255)
 MUTED: Color = (172, 168, 160, 255)

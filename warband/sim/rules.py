@@ -90,6 +90,7 @@ class BuildingType(IdentityEnum):
     STABLES = "stables"
     WORKSHOP = "workshop"
     CHURCH = "church"
+    VAULT = "vault"  # the Aether Vault: draws aether while it stands square on a ley rift (WB-063)
     GOLD_MINE = "gold_mine"
     GOLD_SEAM = "gold_seam"  # the endless one; :class:`MineInfo` is what tells the two deposits apart
     LAIR = "lair"  # a creature camp's den: nobody's, the guards' respawn anchor and the hoard they sit on
@@ -283,6 +284,25 @@ MINE_TIME: Final = config.number('MINE_TIME')
 # to more gold is another mine.
 
 
+# -- Aether -------------------------------------------------------------------------
+#
+# The third resource, and nobody carries it (WB-063).  It rises from the ley rifts the map generator lays
+# down (:attr:`~warband.sim.model.World.rifts`, each a square the vault's size), and a finished vault standing
+# square on one draws it straight into its owner's store: an integer, counted in whole steps, so nothing drifts.
+# The store holds AETHER_STORE for each finished vault; a vault lost spills what no longer fits.  AETHER_REACH
+# is how far round a finished vault's middle a spell is cast at its plain price (WB-066).
+AETHER_STORE: Final = config.integer('AETHER_STORE')
+AETHER_EVERY: Final = config.number('AETHER_EVERY')
+AETHER_REACH: Final = config.number('AETHER_REACH')
+
+
+def fill(summary: str, trip: int = 0) -> str:
+    """A summary from the tables with its numbers put in: a deposit's ``{trip}``, a vault's ``{store}`` and
+    ``{reach}``, so the text a player reads always says the number the rules use."""
+    return (summary.replace("{trip}", str(trip)).replace("{store}", str(AETHER_STORE))
+            .replace("{reach}", f"{AETHER_REACH:g}"))
+
+
 @dataclass(frozen=True)
 class MineInfo:
     """What a gold deposit gives the peasants who work it.
@@ -327,7 +347,7 @@ def _building(b: dict[str, Any]) -> BuildingInfo:
     return BuildingInfo(
         name=b["name"], cost=Cost(b["gold"], b["lumber"]), hp=b["hp"], armor=b["armor"], size=b["size"],
         build_time=b["build_time"], sight=b["sight"], supply=b["supply"], hotkey=b["hotkey"],
-        summary=b["summary"].replace("{trip}", str(b["mine_trip"])),
+        summary=fill(b["summary"], b["mine_trip"]),
         trains=tuple(UnitType(u) for u in b["trains"]), researches=tuple(Upgrade(u) for u in b["researches"]),
         requires=None if b["requires"] is None else BuildingType(b["requires"]),
         deposits=frozenset(Resource(r) for r in b["deposits"]), damage=b["damage"], range=b["range"],
@@ -493,6 +513,10 @@ CAMP_RESPAWN: Final = config.number('CAMP_RESPAWN')
 CAMP_POST: Final = config.number('CAMP_POST')
 UNDER_ATTACK_COOLDOWN: Final = 20.0
 SIM_DT: Final = 0.05  # the simulation runs at 20 Hz regardless of the frame rate
+#: Steps a vault on a rift takes to draw one aether: AETHER_EVERY in whole steps, so the draw is counted in integers.
+AETHER_TICKS: Final[int] = round(AETHER_EVERY / SIM_DT)
+if AETHER_TICKS < 1 or abs(AETHER_TICKS * SIM_DT - AETHER_EVERY) > 1e-9:
+    raise config.BalanceError(f"economy.toml [aether].every: {AETHER_EVERY} s is not a whole number of {SIM_DT} s steps")
 VISION_EVERY: Final = 4  # ticks between fog recomputations
 MAX_PLANS: Final = 64  # settlement plans a player may have waiting: each is looked at every second and travels in every online snapshot
 MAX_QUEUED_ORDERS: Final = 32  # orders a unit may have queued behind the one it is carrying out

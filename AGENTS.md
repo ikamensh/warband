@@ -47,8 +47,9 @@ of the package, `sim` and `online`.
   online authority runs, with no saga2d dependency. `model.py` (the World:
   orders, harvesting, construction, fog, saves), `rules.py` and `races.py`
   (tables that `config.py` loads from TOML), `path.py`, `mapgen.py` (layouts,
-  a cell per seat, the fairness audit, the endless gold seam:
-  `docs/warband-maps.md`), `worker_ai.py` (the automatic gatherers:
+  a cell per seat, the fairness audit, the endless gold seam, the ley rifts
+  aether is drawn from: `docs/warband-maps.md`; aether itself:
+  `docs/warband-magic.md`), `worker_ai.py` (the automatic gatherers:
   `docs/worker-hands-off.md`), `settlement.py`, `camps.py` (neutral creature
   camps: `docs/warband-monsters.md`), `_native.c` (C twins of a few loops).
 - `brains/` — the computer players (`docs/ai-ladder.md`). Build one with
@@ -68,7 +69,9 @@ of the package, `sim` and `online`.
   facing from one `Pose` table); painted sheets under `assets/restyled/`
   (`tools/restyle.py`) replace frames, recoloured per team
   (`docs/warband-art.md`). `WARBAND_ART=procedural` keeps the renders; a sheet
-  that no longer matches `FRAMES` or the building types warns and is ignored.
+  that no longer matches `FRAMES` or the building types warns and is ignored,
+  but for the buildings the sheets were made without (`textures.UNPAINTED`,
+  the Aether Vault), which are drawn low-poly beside them.
   `effects.py`, `ambience.py` and `production.py` hold transient effects, the
   life around buildings and the card's portraits; `visual_lint.py` finds
   visual defects.

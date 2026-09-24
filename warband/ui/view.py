@@ -26,9 +26,9 @@ from PIL import Image
 from saga2d import Game, ParticleEmitter, RenderLayer, Scene, Sprite, SpriteAnchor
 from warband.art import monsters, textures
 from warband.art.monsters import Monster
-from warband.sim.model import Building, Entity, Pos, Projectile, Unit, World, dist
+from warband.sim.model import RIFT, Building, Entity, Pos, Projectile, Unit, World, dist
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, CREATURES, SIM_DT, VISION_EVERY, BuildingType, Race, Terrain, UnitType, UPGRADES
+from warband.sim.rules import AETHER_REACH, BUILDINGS, CREATURES, SIM_DT, VISION_EVERY, BuildingType, Race, Terrain, UnitType, UPGRADES
 from warband.art.textures import CHUNK, CHUNK_PX, TILE
 
 CREATURE_SET = frozenset(CREATURES)  # the neutral creatures, asked of a unit's type on every frame
@@ -87,6 +87,8 @@ class Overlay:
     plans: list[tuple[BuildingType, Pos]] = field(default_factory=list)  # sites ordered and not begun: building, top-left tile
     rally_for: list[int] = field(default_factory=list)
     bars_for_all: bool = False  # Alt held: every visible unit and building shows its health
+    reach: list[tuple[float, float]] = field(default_factory=list)  # the middles of vaults whose reach is shown (tiles)
+    rifts_lit: bool = False  # a vault is being placed: every ley rift the player knows is picked out
 
 
 @dataclass
@@ -150,6 +152,11 @@ def check_memory(memory: dict, world: World) -> None:
             raise ValueError("a remembered building lies off the map")
 
 
+def _rect_tiles(rect: tuple[int, int, int, int]) -> list[Pos]:
+    x, y, w, h = rect
+    return [(x + dx, y + dy) for dy in range(h) for dx in range(w)]
+
+
 def minimap_terrain(world: World, terrain_at: Callable[[Pos], Terrain] | None = None) -> np.ndarray:
     """Terrain colours for *world* from ``textures.PALETTES[theme].minimap``: the ground as it
     is, or as *terrain_at* tells it (what a player remembers of it).
@@ -196,6 +203,9 @@ PLAN_OPACITY = 0.45
 #: from the nearest seat colour and forty-three from any ground.
 NEUTRAL_MINIMAP = (255, 255, 159)
 ABANDONED_MINIMAP = (150, 150, 150)
+RIFT_MINIMAP = textures.AETHER_LIGHT  # a ley rift: the one violet on the minimap, where no seat's colour is
+REACH_FILL = (*textures.AETHER, 30)  # the ground a vault reaches, washed violet
+REACH_EDGE = (*textures.AETHER_LIGHT, 190)
 
 
 def unit_frame(u: Unit, travel: float, time: float) -> str:
@@ -322,6 +332,7 @@ class MapView:
         self._water_step = 0
         self._trees: dict[Pos, Sprite] = {}
         self._rocks: dict[Pos, Sprite] = {}
+        self._rifts: list[Sprite] = []
         self._buildings: dict[int, Sprite] = {}
         self._building_keys: dict[int, str] = {}
         self._sightings: dict[int, Sighting] = {}  # every building the player has seen, as they last saw it
@@ -350,6 +361,7 @@ class MapView:
         self._build_ground()
         self._build_edge()
         self._build_props()
+        self._build_rifts()
         self._recall(memory)
         self.sync()
 
@@ -446,6 +458,19 @@ class MapView:
                 elif terrain is Terrain.ROCK:
                     self._rocks[(x, y)] = self._prop(f"rock.{world.theme.value}.{textures.scatter(x, y, 4) % textures.ROCK_VARIANTS}", (x + 0.5, y + 0.5))
 
+    def _build_rifts(self) -> None:
+        """A crack of light on the ground for every ley rift: ground, like the grass it is torn in, so the fog hides one
+        nobody has explored and dims one out of sight, and it lies under whatever walks or stands on it."""
+        for sprite in self._rifts:
+            sprite.remove()
+        self._rifts = [self.scene.add_sprite(Sprite("rift", position=(x * TILE, y * TILE), size=(RIFT * TILE, RIFT * TILE),
+                                                    anchor=SpriteAnchor.TOP_LEFT, layer=RenderLayer.OBJECTS))
+                       for x, y in self.world.rifts]
+
+    @property
+    def rift_sprites(self) -> Sequence[Sprite]:
+        return tuple(self._rifts)
+
     def reset(self, world: World, memory: dict | None = None) -> None:
         """Point the view at another world of the same size (after loading a save), with the *memory* saved with it."""
         if (world.width, world.height) != (self.world.width, self.world.height):
@@ -481,6 +506,7 @@ class MapView:
             sprite.image = keys[0]
             self._water_pending.extend((index, phase) for phase in range(1, len(keys)))
         self._build_props()
+        self._build_rifts()
         self._minimap_ground = minimap_terrain(world, self.terrain_at)
         self._recall(memory)
         self.sync()
@@ -682,7 +708,7 @@ class MapView:
         # the first half and the building faded in for the second.
         deposit = BUILDINGS[sighting.type].mine
         lair = sighting.type is BuildingType.LAIR
-        painted_site = not sighting.done and deposit is None and not lair and textures.has_look(sighting.race, sighting.look)
+        painted_site = not sighting.done and deposit is None and not lair and textures.has_look(sighting.race, sighting.look, sighting.type)
         rising = not painted_site and not lair and 0.5 <= sighting.built < 1.0
         if lair:
             # One den per creature, never a race's and never a team's — wearing the match's landscape.
@@ -936,6 +962,10 @@ class MapView:
         if self.reveal:
             visible[:] = explored[:] = True
         img = self._minimap_ground * np.where(visible, 1.0, np.where(explored, 0.6, 0.18))[..., None]
+        for x, y in world.rifts:  # ground: shown where explored, dimmed out of sight, under a vault that stands on it
+            lit = 1.0 if visible[y:y + RIFT, x:x + RIFT].any() else 0.6
+            if explored[y:y + RIFT, x:x + RIFT].any():
+                img[y:y + RIFT, x:x + RIFT] = np.array(RIFT_MINIMAP, dtype=np.float32) * lit
         for b in self._sightings.values():  # as last seen: a rival's new hall is not on the minimap before it is on the map
             x, y, w, h = b.rect
             img[y:y + h, x:x + w] = ABANDONED_MINIMAP if b.abandoned else NEUTRAL_MINIMAP if b.player is None else world.players[b.player].color
@@ -1036,8 +1066,39 @@ class MapView:
             elif building.player == self.player and building.research is not None:
                 self._progress_bar(left, top, w, h, building.research_progress / UPGRADES[building.research].time, work=True)
 
+    def draw_reach(self, centres: Sequence[tuple[float, float]]) -> None:
+        """The ground a vault reaches: a violet wash :data:`~warband.sim.rules.AETHER_REACH` tiles round each of
+        *centres* (tiles), edged in light.  Drawn over the fog, since a spell may be aimed into it (WB-066)."""
+        radius = AETHER_REACH * TILE
+        sides = 72
+        for cx, cy in centres:
+            x, y = to_world((cx, cy))
+            self.scene.draw_circle(x, y, radius, REACH_FILL, space="world", layer=RenderLayer.UI_WORLD)
+            points = [(x + radius * math.cos(math.tau * i / sides), y + radius * math.sin(math.tau * i / sides)) for i in range(sides)]
+            for i in range(sides):
+                (x1, y1), (x2, y2) = points[i], points[(i + 1) % sides]
+                self.scene.draw_line(x1, y1, x2, y2, REACH_EDGE, 2.0, space="world", layer=RenderLayer.UI_WORLD)
+
+    def _draw_rifts_lit(self) -> None:
+        """While a vault is placed: every rift the player has explored and knows to be free ringed in pulsing light."""
+        pulse = 0.6 + 0.4 * math.sin(self.time * 4.0)
+        explored = self.world.explored[self.player]
+        taken = {tile for sighting in self._sightings.values() for tile in _rect_tiles(sighting.rect)}  # as the player last saw it
+        for x, y in self.world.rifts:
+            if not (self.reveal or any(explored[(y + dy) * self.world.width + x + dx] for dy in range(RIFT) for dx in range(RIFT))):
+                continue
+            if (x, y) in taken:
+                continue
+            self.scene.draw_rect(x * TILE, y * TILE, RIFT * TILE, RIFT * TILE, (*textures.AETHER, round(40 * pulse)),
+                                 border_color=(*textures.AETHER_LIGHT, round(255 * pulse)), border_width=2, space="world",
+                                 layer=RenderLayer.UI_WORLD)
+
     def draw(self, overlay: Overlay) -> None:
         world, scene = self.world, self.scene
+        if overlay.reach:
+            self.draw_reach(overlay.reach)
+        if overlay.rifts_lit:
+            self._draw_rifts_lit()
         self._draw_wood_chips()
         self._draw_projectiles()
         self._draw_melee_trails()

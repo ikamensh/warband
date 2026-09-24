@@ -19,8 +19,8 @@ EVENT_TICKS = 100
 #: What a seat is told of the server's random stream: a fixed state, so no client can read the damage rolls to come.
 NO_DICE = random.Random(0).getstate()
 #: News for its owner alone: what it trains and researches, what it is refused or left to plans, its deposits, what it
-#: salvages, its alarms and its plunder.
-PRIVATE_EVENTS = frozenset({'trained', 'researched', 'refused', 'deferred', 'deposit', 'salvage', 'under_attack', 'plunder'})
+#: salvages, its alarms, its plunder and the aether a lost vault spilled.
+PRIVATE_EVENTS = frozenset({'trained', 'researched', 'refused', 'deferred', 'deposit', 'salvage', 'under_attack', 'plunder', 'spilled'})
 #: The match's public news, told to every seat wherever it happened.
 PUBLIC_EVENTS = frozenset({'victory', 'eliminated', 'surrendered', 'resigned', 'exposed'})
 #: What a seat learns of a unit it sees but does not own is where it stands and how it moves and strikes, not where it is
@@ -92,7 +92,7 @@ class WarbandMatch:
         All of its own.  Of everyone else's, what it sees now, without intentions: a unit's orders and home, a
         building's work.  The ground and the mines out of sight as it last saw them, ground it never saw as the
         map began, mines it never saw not at all.  Of the news, what it saw happen, its own affairs and what is
-        public.  The other seats' purse, research and scores once the match is decided, their plans and memory
+        public.  The other seats' purse (gold, lumber and aether), research and scores once the match is decided, their plans and memory
         never, and the server's random stream never: a fixed state stands in for it."""
         world = self.world
         data = world.to_dict()
@@ -103,8 +103,8 @@ class WarbandMatch:
             if seat != player:
                 data['explored'][seat], data['worker_knowledge'][seat] = unexplored, unknown
                 if world.winner is None:
-                    record.update(gold=0, lumber=0, upgrades=[], stats=dict.fromkeys(record['stats'], 0), last_alert=None, last_hit=None,
-                                  assembly=None)
+                    record.update(gold=0, lumber=0, aether=0, aether_charge=0, upgrades=[], stats=dict.fromkeys(record['stats'], 0),
+                                  last_alert=None, last_hit=None, assembly=None)
         visible, knowledge = world.visible[player], world.worker_knowledge[player]
         data['units'] = [d if unit.player == player else {**d, **STRANGER_UNIT}
                          for unit, d in zip(world.units.values(), data['units'])

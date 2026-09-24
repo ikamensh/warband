@@ -922,20 +922,21 @@ static Py_ssize_t rects_gap(const Py_ssize_t *a, const Py_ssize_t *b) {
 /* ai.site_search from the ring, the corner, rng.random and ai.site_inputs: every spot of the ring scored by
    its distance plus two random draws of a tile, drawn in ring order whether or not any spot can do; then
    the first in sorted order that no taken site crowds, whose ground is open grass the player has explored,
-   with no unit standing on it, far enough from every gold mine, and a tile clear of every one of the
-   player's buildings.  None when there is none. */
+   with no unit standing on it, far enough from every gold mine, a tile clear of every one of the player's
+   buildings, and off every ley rift unless it is a vault square on one (model.World._off_rift).  None when
+   there is none. */
 static PyObject *site_search(PyObject *self, PyObject *args) {
-    PyObject *ring_obj, *draw, *taken_obj, *rows, *grass, *blocked_obj, *explored_obj, *standing_obj, *mines_obj, *own_obj;
-    Py_ssize_t origin_x, origin_y, size, width, height, clearance;
-    int possible;
-    if (!PyArg_ParseTuple(args, "OnnOpnOO!OOOOOOnnn", &ring_obj, &origin_x, &origin_y, &draw, &possible, &size, &taken_obj,
+    PyObject *ring_obj, *draw, *taken_obj, *rows, *grass, *blocked_obj, *explored_obj, *standing_obj, *mines_obj, *own_obj, *rifts_obj;
+    Py_ssize_t origin_x, origin_y, size, width, height, clearance, rift;
+    int possible, vault;
+    if (!PyArg_ParseTuple(args, "OnnOpnOO!OOOOOOnnnOnp", &ring_obj, &origin_x, &origin_y, &draw, &possible, &size, &taken_obj,
                           &PyList_Type, &rows, &grass, &blocked_obj, &explored_obj, &standing_obj, &mines_obj, &own_obj,
-                          &width, &height, &clearance))
+                          &width, &height, &clearance, &rifts_obj, &rift, &vault))
         return NULL;
     if (PyList_GET_SIZE(rows) < height) { PyErr_SetString(PyExc_ValueError, "the terrain has too few rows"); return NULL; }
-    PyObject *ring = NULL, *taken = NULL, *standing = NULL, *mines = NULL, *own = NULL, *result = NULL;
+    PyObject *ring = NULL, *taken = NULL, *standing = NULL, *mines = NULL, *own = NULL, *rifts = NULL, *result = NULL;
     Candidate *order = NULL;
-    Py_ssize_t *taken_at = NULL, *mine_rects = NULL, *own_rects = NULL;
+    Py_ssize_t *taken_at = NULL, *mine_rects = NULL, *own_rects = NULL, *rift_at = NULL;
     double *units = NULL;
     Grid blocked, explored;
     int blocked_open = 0, explored_open = 0;
@@ -944,18 +945,21 @@ static PyObject *site_search(PyObject *self, PyObject *args) {
     if ((standing = PySequence_Fast(standing_obj, "standing is a sequence of (x, y, radius)")) == NULL) goto out;
     if ((mines = PySequence_Fast(mines_obj, "mines is a sequence of rectangles")) == NULL) goto out;
     if ((own = PySequence_Fast(own_obj, "own is a sequence of rectangles")) == NULL) goto out;
+    if ((rifts = PySequence_Fast(rifts_obj, "rifts is a sequence of (x, y)")) == NULL) goto out;
     if (grid_open(blocked_obj, width * height, &blocked) < 0) goto out;
     blocked_open = 1;
     if (grid_open(explored_obj, width * height, &explored) < 0) goto out;
     explored_open = 1;
     Py_ssize_t count = PySequence_Fast_GET_SIZE(ring), ntaken = PySequence_Fast_GET_SIZE(taken);
     Py_ssize_t nunits = PySequence_Fast_GET_SIZE(standing), nmines = PySequence_Fast_GET_SIZE(mines), nown = PySequence_Fast_GET_SIZE(own);
+    Py_ssize_t nrifts = PySequence_Fast_GET_SIZE(rifts);
     order = PyMem_Malloc((size_t)(count + 1) * sizeof(Candidate));
     taken_at = PyMem_Malloc((size_t)(3 * ntaken + 1) * sizeof(Py_ssize_t));
     units = PyMem_Malloc((size_t)(3 * nunits + 1) * sizeof(double));
     mine_rects = PyMem_Malloc((size_t)(4 * nmines + 1) * sizeof(Py_ssize_t));
     own_rects = PyMem_Malloc((size_t)(4 * nown + 1) * sizeof(Py_ssize_t));
-    if (order == NULL || taken_at == NULL || units == NULL || mine_rects == NULL || own_rects == NULL) { PyErr_NoMemory(); goto out; }
+    rift_at = PyMem_Malloc((size_t)(2 * nrifts + 1) * sizeof(Py_ssize_t));
+    if (order == NULL || taken_at == NULL || units == NULL || mine_rects == NULL || own_rects == NULL || rift_at == NULL) { PyErr_NoMemory(); goto out; }
     for (Py_ssize_t i = 0; i < count; i++) {  /* distance + rng.random() * 2, in ring order */
         PyObject *item = PySequence_Fast_GET_ITEM(ring, i);
         Py_ssize_t offset[2];
@@ -995,6 +999,8 @@ static PyObject *site_search(PyObject *self, PyObject *args) {
         if (read_ints(PySequence_Fast_GET_ITEM(mines, i), &mine_rects[4 * i], 4, "a mine is (x, y, width, height)") < 0) goto out;
     for (Py_ssize_t i = 0; i < nown; i++)
         if (read_ints(PySequence_Fast_GET_ITEM(own, i), &own_rects[4 * i], 4, "a building is (x, y, width, height)") < 0) goto out;
+    for (Py_ssize_t i = 0; i < nrifts; i++)
+        if (read_ints(PySequence_Fast_GET_ITEM(rifts, i), &rift_at[2 * i], 2, "a rift is (x, y)") < 0) goto out;
     /* Every check but the standing units depends on the spot alone, so it is made first for every
        candidate and only the spots that pass it are sorted: usually none do, and nothing is sorted.  The
        first of those in sorted order that no unit stands on is the first candidate in sorted order that
@@ -1029,6 +1035,10 @@ static PyObject *site_search(PyObject *self, PyObject *args) {
             Py_ssize_t gap_y = max3(other[1] - bottom, top - (other[1] + other[3]), 0);
             if ((gap_x > gap_y ? gap_x : gap_y) < 1) ok = 0;
         }
+        for (Py_ssize_t r = 0; ok && r < nrifts; r++) {  /* a rift is kept for the vault square on it */
+            Py_ssize_t rx = rift_at[2 * r], ry = rift_at[2 * r + 1];
+            if (left < rx + rift && rx < right && top < ry + rift && ry < bottom && !(vault && left == rx && top == ry)) ok = 0;
+        }
         if (ok) order[kept++] = order[c];
     }
     qsort(order, (size_t)kept, sizeof(Candidate), compare_candidates);
@@ -1050,6 +1060,7 @@ out:
     PyMem_Free(units);
     PyMem_Free(mine_rects);
     PyMem_Free(own_rects);
+    PyMem_Free(rift_at);
     if (explored_open) grid_close(&explored);
     if (blocked_open) grid_close(&blocked);
     Py_XDECREF(ring);
@@ -1057,6 +1068,7 @@ out:
     Py_XDECREF(standing);
     Py_XDECREF(mines);
     Py_XDECREF(own);
+    Py_XDECREF(rifts);
     return result;
 }
 

@@ -9,7 +9,7 @@ from saga2d import Button, CommandError, Game
 from warband.online.authority import WarbandMatch
 from warband.sim.model import Build, Harvest, tile_center
 from warband.sim.rules import BUILDINGS, BuildingType, Race, UnitType
-from warband.ui.controls import CHORDS, GRID_KEYS, SCHEMES
+from warband.ui.controls import CHORDS, GRID_BELOW, GRID_KEYS, SCHEMES
 from warband.ui.scene import BUILD_ORDER, DEFAULT_SETTINGS, GameScene, HelpScene, SettingsScene, new_game
 from warband.ui.style import build_theme
 
@@ -121,19 +121,23 @@ def contexts(scene: GameScene):
 @pytest.mark.parametrize("race", list(Race))
 def test_every_card_gives_each_command_a_key_of_its_own(game, controls: str, race: Race) -> None:
     """In each scheme and for each race: every command of every card has a key, no two share one, and in Grid none
-    is a key the scheme keeps for its global actions (they sit beside the grid)."""
+    on the grid is a key the scheme keeps for its global actions (they sit beside the grid); the row below the grid,
+    which only the Build catalogue reaches, takes the keys beside it in order."""
     scene = match(game, controls, race)
     scheme = SCHEMES[controls]
     for name, bring_up in contexts(scene):
         bring_up()
         keys = [c.hotkey for c in scene.card]
-        assert keys or name in ("farm", "tower"), (controls, race, name)  # what neither trains nor researches has no card
+        assert keys or name in ("farm", "tower", "vault"), (controls, race, name)  # what neither trains nor researches has no card
         # A tier waiting behind the one before shares its chain's letter, which only the next tier to order shows.
         assert all(k or (name == "upgrade" and not scheme.positional) for k in keys), (controls, race, name, keys)
         taken = [k.lower() for k in keys if k]
         assert len(taken) == len(set(taken)), (controls, race, name, keys)
         if scheme.positional:
-            assert set(taken) <= set(GRID_KEYS) and not set(taken) & set(scheme.keys.values()), (name, keys)
+            on_grid = {c.hotkey.lower() for c in scene.card if c.hotkey and c.slot < len(GRID_KEYS)}
+            below = [(c.slot, c.hotkey.lower()) for c in scene.card if c.hotkey and c.slot >= len(GRID_KEYS)]
+            assert on_grid <= set(GRID_KEYS) and not on_grid & set(scheme.keys.values()), (name, keys)
+            assert all(key == GRID_BELOW[slot - len(GRID_KEYS)] for slot, key in below) and (not below or name == "build"), (name, below)
 
 
 @pytest.mark.parametrize("controls", list(SCHEMES))
@@ -163,7 +167,8 @@ def test_grid_keys_go_by_the_card_position(game) -> None:
     assert scene.pending == "attack"
     press(game, "escape")
     press(game, "d")
-    assert scene.catalogue == "build" and [c.hotkey for c in scene.card] == [k.upper() for k in GRID_KEYS]
+    # Ten buildings: the grid's nine, and the vault on the row below it, which takes R, the key beside the grid.
+    assert scene.catalogue == "build" and [c.hotkey for c in scene.card] == [k.upper() for k in GRID_KEYS + GRID_BELOW[:1]]
     press(game, "q")
     assert scene.placing is BuildingType.FARM
     press(game, "t")  # beside the grid: the Train catalogue, whatever the card shows

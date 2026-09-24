@@ -20,7 +20,7 @@ from warband.brains.ai import make_brain
 from warband.story.campaign import Campaign, Mission, Progress, ProgressStore, Run, shifted
 from warband.story.dialog import DialogScene
 from warband.sim.model import World
-from warband.sim.rules import Difficulty
+from warband.sim.rules import BuildingType, Difficulty
 from warband.ui.scene import HUD_TOP, GameScene, PauseScene, _clock, _Overlay, check_save
 from warband.ui.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MUTED, PANEL_STYLE, RESULTS_STYLE, TEXT
 from warband.ui.view import rgba, to_world
@@ -46,6 +46,11 @@ def build_world(mission: Mission, *, flags: dict[str, Any]) -> Run:
     name_sides(world, mission)
     run = Run(mission, world, flags=flags)
     mission.setup(run)
+    # A mission raises what it needs where it needs it: a rift one of its buildings now stands on (a tower of the
+    # Court of Thorns) is the mission's ground, not a rift nobody can ever tap.
+    world.lay_rifts(rift for rift in world.rifts
+                    if not any(world.rift_at(tile) == rift and not (b.type is BuildingType.VAULT and b.pos == rift)
+                               for b in world.buildings.values() for tile in b.tiles()))
     world.update_vision()
     world.take_events()
     return run

@@ -25,6 +25,10 @@ from typing import Final
 
 CARD_COLS: Final = 3
 GRID_KEYS: Final = ("q", "w", "e", "a", "s", "d", "z", "x", "c")  # the card's nine slots, row by row
+#: The row below the grid, which only a catalogue longer than nine reaches (the Build catalogue since the Aether Vault,
+#: WB-063): the column of keys beside the grid, top to bottom.  Those are Grid's global keys otherwise, and while a card
+#: holds them they are its; the assembly point and the plans stay on Ctrl+G and Ctrl+P.
+GRID_BELOW: Final = ("r", "f", "v")
 #: With Ctrl (Cmd on a Mac) in every scheme: the settlement from whatever the card shows, and cancel mode.  A chord
 #: is resolved before any card, so no card's letter, now or later, can take one from a scheme.
 CHORDS: Final = {"b": "build", "t": "train", "u": "upgrade", "g": "assembly", "p": "plans", "x": "cancel"}
@@ -49,9 +53,13 @@ class Scheme:
     home: str | None = None  # the catalogue open while nothing that has a card is selected
 
     def card_key(self, letter: str, slot: int) -> str:
-        """The key of a card command with *letter* in *slot*: the slot's, in a positional scheme."""
+        """The key of a card command with *letter* in *slot*: the slot's, in a positional scheme, and past the grid the
+        key beside it (:data:`GRID_BELOW`)."""
         if self.positional:
-            return GRID_KEYS[slot] if slot < len(GRID_KEYS) else ""
+            if slot < len(GRID_KEYS):
+                return GRID_KEYS[slot]
+            below = slot - len(GRID_KEYS)
+            return GRID_BELOW[below] if below < len(GRID_BELOW) else ""
         return letter
 
     def action(self, key: str) -> str | None:

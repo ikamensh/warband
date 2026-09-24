@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-from warband.sim.model import (MINE_CLEARANCE, Attack, AttackMove, Build, Building, Deposit, Harvest, Point, Pos, Repair, Salvage, Unit,
+from warband.sim.model import (MINE_CLEARANCE, RIFT, Attack, AttackMove, Build, Building, Deposit, Harvest, Point, Pos, Repair, Salvage, Unit,
                            World, dist, rect_gap, tile_center)
 from warband.sim import mapgen
 from warband.sim.races import RACES
@@ -332,12 +332,13 @@ def first_site(world: World, building_type: BuildingType, player: int, candidate
 
 def site_inputs(world: World, building_type: BuildingType, player: int, taken: Sequence[tuple[Pos, int]]) -> tuple[Any, ...]:
     """What ``warband.sim._native.site_search`` needs beside the ring to search as :func:`first_site` does: first whether
-    any spot can do at all (the prerequisite stands), then the ground and what stands on it."""
+    any spot can do at all (the prerequisite stands), then the ground and what stands on it, and the ley rifts, which
+    only a vault may stand on, square."""
     blockers = world.placement_blockers(building_type, player)
     standing, mines = blockers if blockers is not None else ([], [])
     return (blockers is not None, BUILDINGS[building_type].size, taken, world.terrain, Terrain.GRASS, world._blocked,
             world.explored[player], standing, mines, [b.rect for b in world.player_buildings(player)], world.width,
-            world.height, MINE_CLEARANCE)
+            world.height, MINE_CLEARANCE, world.rifts, RIFT, building_type is BuildingType.VAULT)
 
 
 def site_ring(inner: int, outer: int) -> tuple[tuple[float, int, int], ...]:

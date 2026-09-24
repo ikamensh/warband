@@ -21,6 +21,18 @@ expansion_gold = 30_000
 starting_gold = 1000
 starting_lumber = 500
 
+# Aether (WB-063) is nobody's to carry: it rises from the ley rifts the map
+# generator lays down and a finished vault standing square on one draws it
+# straight into its owner's store, `every` seconds an aether. The store holds
+# `store` for each finished vault, so a lost vault spills what no longer fits.
+# `reach` is how far round a finished vault a spell is cast at its plain price
+# (WB-066 triples the cost and the cooldown beyond every vault's reach).
+
+[aether]
+store = 100 # aether each finished vault holds
+every = 2.0 # seconds a vault on a rift takes to draw one aether; a whole number of simulation steps
+reach = 10.0 # tiles round a finished vault's middle
+
 # Mending is repair run at REPAIR_COST of a building's price, pro rata over
 # the hit points and charged as the difference of two rounded-up running
 # totals, so a repair costs the same however many chunks it is paid in.

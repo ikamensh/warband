@@ -24,12 +24,12 @@ from warband.sim import mapgen
 from warband.brains.ai import DIFFICULTY_ELO, auto_site, make_brain
 from warband.art.effects import Flare, Spray, Stain, UnitDeath, death_outcome
 from warband.ui.icons import Icon, Pair, Price, ResourceFloat, draw_icon, draw_price, hourglass_parts, lock_parts, loop_parts, price_pairs, price_width
-from warband.sim.model import (Attack, AttackMove, Build, Building, Deposit, Entity, Event, Harvest, Heal, Hold, Move, Patrol, Pos, Repair, Salvage,
+from warband.sim.model import (RIFT, Attack, AttackMove, Build, Building, Deposit, Entity, Event, Harvest, Heal, Hold, Move, Patrol, Pos, Repair, Salvage,
                                 RuleError, Unit, World)
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
-from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, SIM_DT, UNITS, ArmorClass, AttackType, BuildingType, Cost,
-                               Difficulty, MapTheme, Race, Resource, Terrain, UnitInfo, UnitType, Upgrade, an, listing)
+from warband.sim.rules import (AETHER_EVERY, AETHER_STORE, BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, SIM_DT, UNITS, ArmorClass, AttackType,
+                               BuildingType, Cost, Difficulty, MapTheme, Race, Resource, Terrain, UnitInfo, UnitType, Upgrade, an, listing)
 from warband.sim.rules import Layout as MapLayout
 from warband.records.profile import MatchResult, Profile, RatingChange, Standing, plural, standing
 from warband.records.replay import Replay, ReplayStore
@@ -38,7 +38,7 @@ from warband.audio.sound import IMPACTS, apply_volumes, impact_sound, play_music
 from warband.audio.voices import voiced
 from warband.ui.controls import CARD_COLS, CHORDS, GRID_KEYS, SCHEMES, Scheme, label as key_label
 from warband.ui.style import (
-    ACTION_BUTTON, ARMED_BUTTON, BAD, BODY, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, HURT, LUMBER, MUTED, OVERLAY_STYLE,
+    ACTION_BUTTON, AETHER, ARMED_BUTTON, BAD, BODY, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, HURT, LUMBER, MUTED, OVERLAY_STYLE,
     PANEL_STYLE, RESULTS_STYLE,
 )
 from warband.ui import tech
@@ -87,7 +87,7 @@ DRAG_THRESHOLD = 5
 GROUP_KEYS = "123456789"
 #: The Build catalogue's order, one per slot of the card: the opening buildings first, then the tech chain as it unlocks.
 BUILD_ORDER = (BuildingType.FARM, BuildingType.BARRACKS, BuildingType.TOWN_HALL, BuildingType.TOWER, BuildingType.LUMBER_MILL,
-               BuildingType.BLACKSMITH, BuildingType.STABLES, BuildingType.WORKSHOP, BuildingType.CHURCH)
+               BuildingType.BLACKSMITH, BuildingType.STABLES, BuildingType.WORKSHOP, BuildingType.CHURCH, BuildingType.VAULT)
 #: The unit card's slots: moving on the top row (Q W E in Grid), fighting and a peasant's work below.
 UNIT_SLOTS = {"move": 0, "stop": 1, "hold": 2, "attack": 3, "patrol": 4, "build": 5, "repair": 6, "salvage": 7}
 #: What the unit panel says a unit with each order is doing.
@@ -582,7 +582,8 @@ class GameScene(Scene):
         return RACES[self.player.race]
 
     def resource_pair(self, name: str) -> tuple[Icon, Label]:
-        """The top bar's symbol and number for ``"gold"``, ``"lumber"`` or ``"supply"``: what the warnings colour."""
+        """The top bar's symbol and number for ``"gold"``, ``"lumber"``, ``"aether"`` or ``"supply"``: what the warnings
+        colour."""
         icon, label, _plain = self._resources[name]
         return icon, label
 
@@ -637,6 +638,21 @@ class GameScene(Scene):
         def lumber_hint() -> str:
             return f"Lumber — buildings, upgrades and engines need it; {peasants(self._gatherers(Resource.LUMBER))} chopping"
 
+        def aether_text() -> str:
+            return f"{self.player.aether}/{self.world.aether_cap(self.human)}"
+
+        def aether_hint() -> str:
+            vaults = self.world.vaults(self.human)
+            drawing = sum(1 for vault in vaults if self.world.taps(vault))
+            if not vaults:
+                state = f"build {an(self.building_name(BuildingType.VAULT))} on a ley rift to draw it"
+            elif self.player.aether >= self.world.aether_cap(self.human):
+                state = "the store is full: another vault holds more"
+            else:
+                state = f"{drawing} of {len(vaults)} vault{'s' if len(vaults) != 1 else ''} drawing"
+            return (f"Aether — stored / what your vaults hold, {AETHER_STORE} each; a vault on a ley rift draws one every "
+                    f"{AETHER_EVERY:g} s; {state}")
+
         # Resources as symbol + number; hovering a symbol names it in the tooltip panel.  The numbers carry the
         # warnings a player acts on (:meth:`_update_resources`), so each pair is kept to be coloured.
         self._resources: dict[str, tuple[Icon, Label, Style | None]] = {}
@@ -644,6 +660,7 @@ class GameScene(Scene):
         for name, reading, ink, hint in (
                 ("gold", lambda: str(self.player.gold), GOLD, gold_hint),
                 ("lumber", lambda: str(self.player.lumber), LUMBER, lumber_hint),
+                ("aether", aether_text, AETHER, aether_hint),
                 ("supply", supply_text, None, supply_hint)):
             icon, label = Icon(name, size=22), Label(reading, text_style="hud", text_color=ink)
             self._resources[name] = (icon, label, label.style)
@@ -833,6 +850,9 @@ class GameScene(Scene):
         placing = self.placing
         if placing is not None:
             hints = [("Click", "place"), (self._key_of(placing) + " again", "the planner picks the spot")]
+            if placing is BuildingType.VAULT:
+                on_rift = self.rift_near(self.hover) is not None
+                hints.append(("On a ley rift", "it draws aether") if on_rift else ("Off the ley rifts", "it stores and reaches but draws nothing"))
             return hints + [("Esc", "stop placing") if scheme.sticky else ("Shift+click", "keep placing"), ("Right click", "back")]
         if self.pending is not None:
             return [("Click", "target"), ("Shift+click", "queue"), ("Right click", "cancel")]
@@ -1156,7 +1176,9 @@ class GameScene(Scene):
         """Let the planner pick the spot (:func:`warband.brains.ai.auto_site`): about the hall nearest the camera, a hall
         by the nearest free deposit."""
         planned = [(kind, pos) for kind, pos, _queued in self.pending_sites()]
-        site = auto_site(self.world, building_type, self.human, to_tiles(*self.camera.center), self._site_rng, planned)
+        site = self._free_rift() if building_type is BuildingType.VAULT else None
+        if site is None:
+            site = auto_site(self.world, building_type, self.human, to_tiles(*self.camera.center), self._site_rng, planned)
         if site is None:
             name = self.building_name(building_type)
             self.warn(f"No free gold mine known for {an(name)}" if building_type is BuildingType.TOWN_HALL
@@ -1166,8 +1188,30 @@ class GameScene(Scene):
             self._end_placement()
 
     def _site_at(self, building_type: BuildingType, point: tuple[float, float]) -> Pos:
+        """Where *building_type* centred on *point* goes: a vault snaps square onto a ley rift the pointer is on or
+        beside, which is the one place it draws."""
+        if building_type is BuildingType.VAULT:
+            rift = self.rift_near(point)
+            if rift is not None:
+                return rift
         size = BUILDINGS[building_type].size
         return (int(math.floor(point[0] - size / 2 + 0.5)), int(math.floor(point[1] - size / 2 + 0.5)))
+
+    def rift_near(self, point: tuple[float, float]) -> Pos | None:
+        """The ley rift the player knows of under *point* or within a tile of it, the nearest when there are two."""
+        near = [(x, y) for x, y in self.world.rifts
+                if x - 1 <= point[0] < x + RIFT + 1 and y - 1 <= point[1] < y + RIFT + 1 and self._rift_known((x, y))]
+        return min(near, key=lambda r: math.dist(point, (r[0] + RIFT / 2, r[1] + RIFT / 2)), default=None)
+
+    def _rift_known(self, rift: Pos) -> bool:
+        """Whether the player has explored any of *rift*: ground they have never seen holds no rift for them."""
+        return any(self.world.is_explored(self.human, (rift[0] + dx, rift[1] + dy)) for dy in range(RIFT) for dx in range(RIFT))
+
+    def _free_rift(self) -> Pos | None:
+        """The known ley rift nearest the camera that a vault may be placed square on now, for the planner's pick."""
+        centre = to_tiles(*self.camera.center)
+        free = [r for r in self.world.rifts if self._rift_known(r) and self._placement_reason(BuildingType.VAULT, r) is None]
+        return min(free, key=lambda r: math.dist(centre, (r[0] + RIFT / 2, r[1] + RIFT / 2)), default=None)
 
     def _builders(self) -> list[Unit]:
         """The selected peasants: who builds what is placed now.  With none, the settlement plans it."""
@@ -2283,6 +2327,8 @@ class GameScene(Scene):
             elif e.kind == "plunder" and mine:
                 self.effects.add(ResourceFloat(e.amount, "gold", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE),
                                                color=GOLD, suffix="plundered", rise=26, duration=1.8))
+            elif e.kind == "spilled" and mine:
+                self.warn(f"A vault lost: {e.amount} aether spilled, and your store holds less")
 
     def _visible(self, point: tuple[float, float]) -> bool:
         return self.world.is_visible(self.human, (int(point[0]), int(point[1])))
@@ -2498,7 +2544,8 @@ class GameScene(Scene):
             entity = self.view.entity_at(self.hover)
             hovered = entity.id if entity is not None else None
         self.view.draw(Overlay(selected=list(self.selection), hovered=hovered, ghost=self.ghost(), plans=[(kind, pos) for kind, pos, _ in self.pending_sites()],
-                               bars_for_all=self.all_bars or self.alt_held, rally_for=[b.id for b in [self._own_building()] if b is not None]))
+                               bars_for_all=self.all_bars or self.alt_held, rally_for=[b.id for b in [self._own_building()] if b is not None],
+                               reach=self.reach_shown(), rifts_lit=self.placing is BuildingType.VAULT))
         ambience.draw(self, self.world, self.human)
         self._draw_assembly()
         if self._drag_start is not None and self._drag_end is not None and math.dist(self._drag_start, self._drag_end) >= DRAG_THRESHOLD:
@@ -2511,6 +2558,17 @@ class GameScene(Scene):
         self.draw_rect(0, h - HINT_BAR, w, HINT_BAR, (8, 10, 14, 180))
         self._draw_selection_panel()
         self.effects.draw(self)
+
+    def reach_shown(self) -> list[tuple[float, float]]:
+        """Whose reach the map washes violet: the vault selected, once it stands, or the site of one being placed.
+        (WB-066 adds every vault's while a spell is aimed.)"""
+        if self.placing is BuildingType.VAULT and self.ui.pointer_target(*self.mouse) is None:
+            x, y = self._site_at(BuildingType.VAULT, self.hover)
+            return [(x + RIFT / 2, y + RIFT / 2)]
+        building = self._own_building()
+        if building is not None and building.type is BuildingType.VAULT and building.done:
+            return [building.center]
+        return []
 
     def _draw_cancel_mode(self) -> None:
         """Cancel mode on the map: what a click, or the box being dragged, would take back outlined in red, and a red
@@ -2776,10 +2834,16 @@ class GameScene(Scene):
                 reason = world.auto_train_blocker(building)  # the first named is the next, and waits for this
                 if reason is not None:
                     lines.append(reason)
+            elif building is not None and building.type is BuildingType.VAULT:
+                lines += self._vault_lines(building)
             elif building is not None:
                 lines.append(building.info.summary)
                 if building.type is BuildingType.TOWN_HALL:
                     lines.append("Rally point set" if building.rally is not None else "Right-click the map to set a rally point")
+        if isinstance(entity, Sighting) and entity.type is BuildingType.VAULT and not own and entity.done:
+            # A rival's vault: whether it stands on a rift is ground anyone can see; what it holds is its owner's.
+            lines.append("On a ley rift: it draws aether" if self.world.rift_at(entity.rect[:2]) == entity.rect[:2]
+                         else "Off the ley rifts: it draws nothing")
         # The card writes straight to the screen, so nothing but this holds a line to CARD_RIGHT: one too long for
         # the column used to run over the command card beside it.  A unit's two rows start under its stats; a
         # building's three under its health bar.
@@ -2787,6 +2851,16 @@ class GameScene(Scene):
         for line in self._card_lines(lines, rows):
             self.draw_text(line, tx, ly, style="body")
             ly += 22
+
+    def _vault_lines(self, vault: Building) -> list[str]:
+        """A finished vault of the player's: what it draws and whether it stands on a rift, then what the store holds."""
+        world = self.world
+        store = f"Stores {AETHER_STORE} · you hold {self.player.aether}/{world.aether_cap(self.human)} aether"
+        if not world.taps(vault):
+            return ["Off the ley rifts: it stores and reaches, but draws nothing", store]
+        if self.player.aether >= world.aether_cap(self.human):
+            return ["On a ley rift · the store is full, so it draws nothing", store]
+        return [f"On a ley rift · draws 1 aether every {AETHER_EVERY:g} s", store]
 
     def _card_lines(self, lines: list[str], rows: int) -> list[str]:
         """*lines* wrapped into the card's column and fitted to *rows*.
@@ -3181,8 +3255,8 @@ class SaveBrowserScene(_Overlay):
 
 
 HELP_INTRO = (
-    "Peasants gather and build on their own. Plan buildings, units and upgrades for the whole settlement: plans wait for money,",
-    "prerequisites and a free worker, and are paid when work starts. Defeat the enemy by destroying its buildings and units.",
+    "Peasants gather and build on their own; plans for the settlement wait for money, prerequisites and a free worker and are paid",
+    "when work starts. A vault on a violet ley rift draws aether. Defeat the enemy by destroying its buildings and units.",
 )
 
 
@@ -3190,7 +3264,7 @@ def help_keys(scheme: Scheme) -> list[tuple[str, str]]:
     """The How to play table for *scheme*: its own keys first, then what every scheme shares."""
     idle = key_label(scheme.keys["idle_soldier"])
     if scheme.positional:
-        own = [("Q W E / A S D / Z X C", "the card's buttons by their place, whatever it shows"),
+        own = [("Q W E / A S D / Z X C", "the card's buttons by their place, whatever it shows; a fourth row, R F V"),
                ("Units", "Q move, W stop, E hold, A attack-move, S patrol;  peasants: D build, Z repair, X salvage"),
                ("A building", "its recruits, then its research, from Q on;  Cancel ends the row (E, or D below a full one)"),
                ("B / T / G / R / F / V", "Build / Train / Upgrade, the assembly point, every plan, the next idle soldier: beside the grid")]

@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools import restyle as tool  # noqa: E402
 
 CELL = (40, 60)
-BUILT = list(rules_built)
+BUILT = [bt for bt in rules_built if bt not in textures.UNPAINTED]  # what the committed sheets hold
 
 
 def paint(folder: Path, race: Race, look: str, types: list[BuildingType] = BUILT) -> None:
@@ -104,6 +104,19 @@ def test_a_stale_sheet_warns_and_is_ignored(game, painted) -> None:
     assert textures.placements[textures.building_image(game, BuildingType.FARM, 0, Race.HUMAN)].drop == 34
 
 
+def test_a_building_the_sheets_were_made_without_is_drawn_low_poly_beside_the_painted_ones(game, painted) -> None:
+    """The Aether Vault came after the painted sheets: they stay in use for the nine they hold, and the vault is the
+    low-poly render in every look (WB-063)."""
+    paint(painted, Race.HUMAN, "intact")
+    paint(painted, Race.HUMAN, "active")
+    sheet = textures.restyled_buildings(Race.HUMAN)
+    assert sheet is not None
+    assert textures.placements[textures.building_image(game, BuildingType.FARM, 0, Race.HUMAN)].drop == sheet[0].drop  # painted
+    vault = textures.building_image(game, BuildingType.VAULT, 0, Race.HUMAN, "damaged")
+    assert vault == "building.human.vault.intact.0" and textures.placements[vault].front == textures.TILE  # a 2x2 render's own
+    assert textures.has_look(Race.HUMAN, "active") and not textures.has_look(Race.HUMAN, "active", BuildingType.VAULT)
+
+
 def test_portraits_come_from_the_painted_frame(game, painted, monkeypatch) -> None:
     paint(painted, Race.ORC, "intact")
     images = registered(game, monkeypatch)
@@ -128,7 +141,7 @@ def test_building_look_follows_health_and_work() -> None:
     assert building_look(site) == "raised"
 
 
-def test_the_tool_lays_the_nine_buildings_out_on_one_sheet_with_a_shared_anchor() -> None:
+def test_the_tool_lays_the_nine_painted_buildings_out_on_one_sheet_with_a_shared_anchor() -> None:
     subject = tool.Buildings(Race.DWARF)
     sheet, images = subject.build_sheet()
     assert sheet.cols == 3 and sheet.rows == 3 and len(sheet.cells) == 9

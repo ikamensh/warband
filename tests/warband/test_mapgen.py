@@ -4,7 +4,7 @@ everything reachable within the pathfinder's budget."""
 import pytest
 
 from warband.sim import mapgen, path
-from warband.sim.model import World
+from warband.sim.model import RIFT, World
 from warband.sim.rules import EXPANSION_GOLD, MINE_GOLD, BuildingType, Layout, MapTheme, Terrain, UnitType
 
 
@@ -70,6 +70,9 @@ def _assert_congruent(world: World, players: int) -> None:
             continue  # a cell with no seat has no start mine, only the natural everyone's cell has
         for x, y in images(world, m.pos, 3):
             assert mines.get((x, y)) == (m.type, m.gold), (m.pos, (x, y))
+    rifts = set(world.rifts)
+    for rift in rifts:
+        assert images(world, rift, RIFT) <= rifts, ("a ley rift without its copies", rift)
     if players == cols * rows:
         hall_spots = {h.pos for h in halls(world)}
         for h in halls(world):
@@ -207,6 +210,23 @@ def test_bastion_gate_cannot_be_sealed_by_buildings() -> None:
     assert restored._placement_reason(BuildingType.BARRACKS, (7, 19), 0, ignore_units=True) == "Keep the gate open"
 
 
+def test_bastion_gate_cannot_be_sealed_from_just_outside_it() -> None:
+    """Fuzz seed 82, Huge (WB-063's run): with a farm on the gate's corner, a tower on the two tiles just outside it
+    sealed an elven base in, the forest on the gate's other side doing the rest; its army stood at the ring for good.
+    The tower did not touch a gate tile, so nothing asked."""
+    world, report = mapgen.build(seed=82, width=108, height=84, players=2, human=None)
+    assert world.layout is Layout.BASTION and (9, 19) in map(tuple, report["gates"])
+    assert all(world.terrain_at(tile) is Terrain.TREES for tile in ((7, 20), (8, 20)))
+    for x, y in ((5, 15), (6, 15), (7, 15), (6, 16)):  # chopped by the elves' gatherers before the farm went up
+        world.terrain[y][x] = Terrain.GRASS
+        world._blocked[y * world.width + x] = 0
+    world.reveal_all(0)
+    world.place_building(0, BuildingType.FARM, (8, 16))
+    assert world._placement_reason(BuildingType.TOWER, (9, 20), 0, ignore_units=True) == "Keep the gate open"
+    assert (9, 20) not in world.placeable(BuildingType.TOWER, 0, [(9, 20)])
+    assert world._placement_reason(BuildingType.TOWER, (11, 20), 0, ignore_units=True) is None  # beside the way out, not across it
+
+
 def test_a_seed_always_draws_the_same_layout() -> None:
     """Two maps of one seed are the same layout: the cheap half of the draw's claim, and the fast tier's."""
     assert mapgen.generate(seed=17).layout is mapgen.generate(seed=17).layout
@@ -257,3 +277,31 @@ def test_no_building_stands_on_trees_water_or_rock(layout: Layout) -> None:
         world = mapgen.generate(seed=seed, width=64, height=48, players=players, layout=layout)
         for building in world.buildings.values():
             assert all(world.terrain_at(tile) is Terrain.GRASS for tile in building.tiles()), (layout, players, building.pos)
+
+
+@pytest.mark.parametrize("players", (2, 3, 4))
+@pytest.mark.parametrize("layout", list(Layout))
+def test_every_seat_has_a_ley_rift_by_its_hall_a_vault_can_stand_on(players: int, layout: Layout) -> None:
+    """Inside its own cell, a few tiles off the hall: explored from the start, open to walk to, and ground the
+    seat may set a vault on as the match begins.  The rift is the seat's own: nearer its hall than any other."""
+    world = mapgen.generate(seed=7, width=64, height=48, players=players, layout=layout)
+    for hall in halls(world):
+        own = [r for r in world.rifts if max(abs(r[0] + RIFT / 2 - hall.center[0]), abs(r[1] + RIFT / 2 - hall.center[1])) <= 8]
+        assert own, (layout, players, hall.player)
+        region = mapgen.reachable(world, door(world, hall))
+        for rift in own:
+            middle = (rift[0] + RIFT / 2, rift[1] + RIFT / 2)
+            assert all(_dist(middle, other.center) > _dist(middle, hall.center) for other in halls(world) if other is not hall)
+            assert rift in region
+            assert world.can_place(BuildingType.VAULT, rift, hall.player) is None, (layout, players, hall.player, rift)
+
+
+def test_a_cell_with_room_for_a_middle_gets_a_contested_rift_too() -> None:
+    """Medium with two seats: each seat's own and one out in the shared ground, a third mine's distance from
+    every hall.  Small with four seats has no middle to put one in."""
+    world = mapgen.generate(seed=5, width=64, height=48, players=2, layout=Layout.PLAINS)
+    assert len(world.rifts) == 4
+    far = [r for r in world.rifts if min(_dist((r[0] + 1, r[1] + 1), h.center) for h in halls(world)) >= 12]
+    assert len(far) == 2
+    small = mapgen.generate(seed=5, width=48, height=40, players=4, layout=Layout.PLAINS)
+    assert len(small.rifts) == 4
