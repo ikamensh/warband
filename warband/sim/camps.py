@@ -28,7 +28,7 @@ from __future__ import annotations
 import math
 from typing import Final
 
-from warband.sim.model import Attack, Camp, Move, Point, Unit, World, dist, hypot, tile_center
+from warband.sim.model import Attack, Camp, Move, Point, Unit, World, dist, hypot, plain_sum, tile_center
 from warband.sim.rules import (CAMP_CALM, CAMP_HOLD, CAMP_POST, CAMP_REGEN, CAMP_RESPAWN, CAMP_WATCH, SIM_DT,
                                BuildingType, UnitType)
 
@@ -44,7 +44,7 @@ def centre(world: World, camp: Camp) -> Point:
     lair = world.buildings.get(camp.lair)
     if lair is not None:
         return lair.center
-    return (sum(x for x, _y in camp.posts) / len(camp.posts), sum(y for _x, y in camp.posts) / len(camp.posts))
+    return (plain_sum(x for x, _y in camp.posts) / len(camp.posts), plain_sum(y for _x, y in camp.posts) / len(camp.posts))
 
 
 def guards(world: World, camp: Camp) -> list[Unit]:

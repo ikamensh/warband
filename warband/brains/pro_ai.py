@@ -16,7 +16,7 @@ from warband.brains.pro_force import _tower_strength, _tower_strength_own, stren
 from warband.brains.pro_profiles import PRO, PRO_PROFILES, PRO_RUSH, PRO_VANGUARD, PRO_WARDEN, ProProfile
 
 from warband.brains.ai import CAMP_REACH, RAIDERS, answer_flyers, heading_to, known_camps, known_mines, lost_track
-from warband.sim.model import Attack, Build, Building, Move, Point, Repair, Salvage, Unit, World, dist, rect_gap, tile_center
+from warband.sim.model import Attack, Build, Building, Move, Point, Repair, Salvage, Unit, World, dist, int_sum, plain_sum, rect_gap, tile_center
 from warband.sim.rules import BuildingType, Layout, Race, UnitType
 
 from warband.brains.pro_economy import _ProBrainEconomy
@@ -298,13 +298,13 @@ class ProBrain(_ProBrainEconomy):
         twelve times the strength and sixty soldiers to leave home, and no
         attack ever goes out.
         """
-        bystanders = sum(1 for p in world.players[:world.seats] if p.id != self.player and p.alive) - 1
+        bystanders = int_sum(1 for p in world.players[:world.seats] if p.id != self.player and p.alive) - 1
         return 1.0 + self.profile.ffa_caution * min(max(0, bystanders), 3)
 
     def _army_centre(self, world: World, army: list[Unit]) -> Point | None:
         if not army:
             return None
-        return (sum(u.x for u in army) / len(army), sum(u.y for u in army) / len(army))
+        return (plain_sum(u.x for u in army) / len(army), plain_sum(u.y for u in army) / len(army))
 
     def _gather(self, world: World, army: list[Unit], hall: Building | None) -> None:
         """Wait in one place. An army that trickles forward is an army that loses twice."""
@@ -358,7 +358,7 @@ class ProBrain(_ProBrainEconomy):
         # and meets two hundred.
         if owner is not None:
             theirs = [u for u in self._enemies(world) if not u.is_worker and u.player == owner]
-            counted = sum(self.remembered(owner).values())
+            counted = plain_sum(self.remembered(owner).values())
             hidden = max(0.0, counted - len(theirs))
             seen = (strength(world, theirs) + _tower_strength(world, self.player, point)
                     + 0.5 * hidden * self._typical_soldier(world))
@@ -381,7 +381,7 @@ class ProBrain(_ProBrainEconomy):
             counted = 0.0
             for p in world.players[:world.seats]:
                 if p.id != self.player and p.alive:
-                    counted = max(counted, sum(self.remembered(p.id).values()))
+                    counted = max(counted, plain_sum(self.remembered(p.id).values()))
             hidden = max(0.0, counted - best_n)
             seen = best + _tower_strength(world, self.player, point) + 0.5 * hidden * self._typical_soldier(world)
         if world.time - self.last_seen(owner) > self.profile.stale_seconds:
@@ -417,7 +417,7 @@ class ProBrain(_ProBrainEconomy):
         living = [p.id for p in world.players[:world.seats] if p.id != self.player and p.alive and p.id in seen]
         if not living:
             return None
-        return min(living, key=lambda p: sum(self.remembered(p).values()))
+        return min(living, key=lambda p: plain_sum(self.remembered(p).values()))
 
     def _attack_targets(self, world: World) -> list[Point]:
         """What is worth walking to: the weakest opponent's production, then anything of theirs."""
@@ -472,8 +472,8 @@ class ProBrain(_ProBrainEconomy):
         hall = self._hall(world)
         if hall is None:
             return
-        tx = sum(u.x for u in threats) / len(threats)
-        ty = sum(u.y for u in threats) / len(threats)
+        tx = plain_sum(u.x for u in threats) / len(threats)
+        ty = plain_sum(u.y for u in threats) / len(threats)
         hx, hy = hall.center
         away = dist((hx, hy), (tx, ty)) or 1.0
         point = self._standable(world, (hx + (hx - tx) / away * 5.0, hy + (hy - ty) / away * 5.0))
@@ -647,7 +647,7 @@ class ProBrain(_ProBrainEconomy):
             for i in gone:
                 del self.hunters[i]
         for prey in intruders.values():
-            want = self.profile.hunt_party - sum(1 for target in self.hunters.values() if target == prey.id)
+            want = self.profile.hunt_party - int_sum(1 for target in self.hunters.values() if target == prey.id)
             if want <= 0:
                 continue
             # A chase at the same speed never closes: the ones ahead of it, where it will be in a few seconds, meet it.

@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 from warband.sim.model import (MINE_CLEARANCE, RIFT, Attack, AttackMove, Build, Building, Deposit, Harvest, Point, Pos, Repair, Salvage, Unit,
-                           World, dist, rect_gap, tile_center)
+                           World, dist, int_sum, plain_sum, rect_gap, tile_center)
 from warband.sim import mapgen
 from warband.sim.races import RACES
 from warband.sim.rules import BUILDINGS, PLAYABLE_UNITS, UPGRADES, BuildingType, Difficulty, Race, Resource, Terrain, UnitType, Upgrade
@@ -228,7 +228,7 @@ class Hunt:
             if unit.flying and unit.id not in party:
                 party[unit.id] = -1
         if not any(world.units[uid].flying for uid in party) or world.time - self.since >= HUNT_FLYERS_ALONE:
-            walking = sum(1 for uid in party if not world.units[uid].flying)
+            walking = int_sum(1 for uid in party if not world.units[uid].flying)
             spare = sorted((u for u in soldiers if u.id not in party), key=lambda u: (-world.speed_of(u), u.id))
             for unit in spare[:max(0, HUNT_PARTY - walking)]:
                 party[unit.id] = -1
@@ -392,7 +392,7 @@ def _shift(plan: dict[UnitType, float], deltas: dict[UnitType, float]) -> None:
         plan[unit_type] += delta
     for unit_type in plan:
         plan[unit_type] = max(0.0, plan[unit_type])
-    total = sum(plan.values())
+    total = plain_sum(plan.values())
     if total > 0:
         for unit_type in plan:
             plan[unit_type] /= total
@@ -739,7 +739,7 @@ class Brain:
                 world.train(hall.id, UnitType.PEASANT)
         first = halls[0] if halls else None
         army = self._army(world)
-        counts = {t: sum(1 for u in army if u.type is t) for t in PLAYABLE_UNITS}
+        counts = {t: int_sum(1 for u in army if u.type is t) for t in PLAYABLE_UNITS}
         for building in world.player_buildings(player, done=True):
             if not building.info.trains or building.type is BuildingType.TOWN_HALL or self.saving:
                 continue
@@ -765,7 +765,7 @@ class Brain:
             plan.pop(UnitType.CATAPULT, None)
         if not self.profile.clerics:
             plan.pop(UnitType.CLERIC, None)
-        total = sum(plan.values())
+        total = plain_sum(plan.values())
         if total > 0:
             plan = {unit_type: share / total for unit_type, share in plan.items()}
         archers = melee = knights = 0
@@ -787,7 +787,7 @@ class Brain:
         return plan
 
     def _choose_unit(self, world: World, building: Building, counts: dict[UnitType, int]) -> UnitType | None:
-        soldiers = sum(counts.values())
+        soldiers = int_sum(counts.values())
         if building.type is BuildingType.WORKSHOP:
             threshold = 4 if world.players[self.player].race is Race.DWARF else 6
             if soldiers < threshold:
@@ -845,9 +845,9 @@ class Brain:
 
     def _enemy_soldiers(self, world: World) -> int:
         """Living enemy soldiers (units that are not workers) of alive players."""
-        return sum(1 for u in world.units.values() if u.player != self.player and world.players[u.player].alive
-                   and not u.is_worker and u.info.damage and u.hp > 0 and not u.hidden
-                   and world.is_visible(self.player, u.tile))
+        return int_sum(1 for u in world.units.values() if u.player != self.player and world.players[u.player].alive
+                       and not u.is_worker and u.info.damage and u.hp > 0 and not u.hidden
+                       and world.is_visible(self.player, u.tile))
 
     # -- Military --------------------------------------------------------------------
 
