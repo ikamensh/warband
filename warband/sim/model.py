@@ -3135,6 +3135,11 @@ class World:
               navigation: bytearray | None = None) -> None:
         """Path from the unit's tile to *goal*; the last step aims at *exact* when the goal tile is open."""
         assert not u.flying, "a flyer is never routed: _approach and _steer fly it straight"
+        if goal != u.path_goal:
+            # A new goal starts the progress watchdog again; a new route to the same one is no progress.  A stuck unit
+            # plans round the crowd time and again, and a restart at each plan read it as getting somewhere most of the
+            # time, to the crowd step and to stands_at alike.
+            u.last_distance, u.progress = math.inf, 0.0
         start = u.tile
         grid = self._blocked if navigation is None else navigation
         def passable(x: int, y: int) -> bool:
@@ -3178,8 +3183,6 @@ class World:
         else:
             u.path = escape + pathing.find_path_grid(start, target, grid, self.width, self.height, max_expansions=self.path_budget)
         u.path_goal = goal  # the goal as asked, so a repeated request is recognised
-        u.last_distance = math.inf
-        u.progress = 0.0
         u.exact = None
         if exact is not None:
             goal_tile = (int(exact[0]), int(exact[1]))
@@ -3284,8 +3287,6 @@ class World:
                 return False
         u.path = head + stations[best + 1:] + tail
         u.path_goal = goal  # the goal as asked, so a repeated request is recognised
-        u.last_distance = math.inf
-        u.progress = 0.0
         u.exact = None
         if exact is not None:
             goal_tile = (int(exact[0]), int(exact[1]))
@@ -3561,7 +3562,8 @@ class World:
             nx, ny = u.x, u.y  # the way round the body in front would cross blocked ground: wait behind it
         u.x, u.y = nx, ny
         # Progress watchdog: closing on the goal resets it; a stretch without progress paths
-        # again around the units in the way.
+        # again around the units in the way.  A unit going nowhere looks again at most every
+        # REPLAN_EVERY: whether the crowd holds its spot, and else for a way round the crowd.
         aim: Point | None = None
         if u.path_goal is None:
             remaining = 0.0
@@ -3573,15 +3575,14 @@ class World:
             u.progress = 0.0
         else:
             u.progress += dt
-            if u.progress >= STUCK_AFTER and u.path_goal is not None:
+            if u.progress >= STUCK_AFTER and u.path_goal is not None and self.time >= u.replan_at:
                 if settle and aim is not None and self.stands_at(u, aim):
                     u.path = []
                     u.exact = None
                     u.state = "idle"
                     return True
-                if self.time >= u.replan_at:
-                    self._plan(u, u.path_goal, u.exact, around_units=True, navigation=navigation)
-                    u.last_distance = remaining
+                self._plan(u, u.path_goal, u.exact, around_units=True, navigation=navigation)
+                u.last_distance = remaining
         return False
 
     def _line_clear(self, a: Point, b: Point, *, navigation: bytearray | None = None) -> bool:
@@ -3744,9 +3745,11 @@ class World:
                             weight *= QUEUE_HOLD
                         px += dx / d * overlap * weight
                         py += dy / d * overlap * weight
-                        if moving:
+                        if moving and (u.progress < STUCK_AFTER or dy * hx - dx * hy >= 0.0):
                             # Walking units also step to their own right, so two meeting head-on pass
                             # each other instead of pushing each other back along the same line forever.
+                            # One going nowhere does not step into a body on that side: the step slid it back
+                            # round that body's core to where its own stride had taken it from, every tick.
                             px += -hy * overlap * SIDESTEP
                             py += hx * overlap * SIDESTEP
             if px or py:

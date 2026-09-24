@@ -499,3 +499,38 @@ every neighbour), so the next flyer is a row and its art.
   layer, bobbing, its rotor or wings always turning, with a shadow and the selection ring on the ground
   below; the pointer and a dragged box take the body drawn in the air (`MapView.body_point`). A shot climbs
   to it, and a kill drops it out of the air ("crash").
+
+## 11. Going nowhere (2026-09-24)
+
+Fuzz seed 81 on `07cb63d` (six players, 180×132) reported knight 938 standing twenty seconds at the bottom of a
+notch, holding a Move home whose path was the passage beside it. A barracks going up at (121, 3) and the trees
+below it left row 6 one tile wide for four tiles, with a dead end one tile across at (121, 7). A Grandmaster
+army had chased a raider along it; once the raider was gone, `_gather` sent home the soldiers that had arrived
+while the ones still marching kept their attack-move to its last position (the brain's side of it, left for a
+change of its own), so the army met itself in the passage. Staged from the seed's positions with no brain at
+all, the jam at 405 s left four soldiers wedged for good after the rest had gone. Two faults made the passage a
+trap; two-way traffic down a plain one-tile corridor, drawn apart from the seed, already cleared in seconds.
+
+1. **A step to the right, into a body on the right.** A footman heading east along the passage had the knight at
+   the notch's mouth on its right, their centres exactly their core apart. Each tick its stride slid it round the
+   knight's core towards the room above, and `_separate`'s step to the right (how two walkers meeting head-on
+   pass) pushed it into the knight, which `_keep_clear` turned into a slide back round the core, to the float
+   where the stride began. A walker going nowhere (`STUCK_AFTER`) now takes that step only round a body on its
+   left or dead ahead. A crowd that is moving steps as before, so the lanes two-way traffic forms and the swirl
+   that packs a muster are what they were: dropping the step for everybody (tried first) left the last soldier of
+   a muster on the rim of the pile, and a file of archers queueing for a single tile pressed into itself for 17 s
+   where it had for 9.
+2. **A watchdog that restarted at every plan.** `_plan` set `progress` back to zero each time it ran, and a stuck
+   walker plans round the crowd time and again, so a soldier stuck for seconds read as getting somewhere most of
+   the time: to the rule above, and to `stands_at`, which counts a walker going nowhere as part of the wall. In the
+   seed a catapult attack-moving into the passage pressed into two frozen soldiers for four seconds, and settled
+   only when a peasant happened to stand in its way. A new goal restarts the watchdog; a new route to the same
+   one does not. A walker going nowhere looks again at most every `REPLAN_EVERY` (whether the crowd holds its
+   spot, else a way round), the cadence the restart used to give it: asked every tick instead, soldiers of a
+   muster settled in the jam's first second and were shoved out of the pile by those still walking in.
+
+`tests/warband/test_stuck_units.py` stages the seed at 405, 406 and 410 s. Either half alone fails at 410 s:
+without the step rule twelve soldiers wedge in the passage for good, without the watchdog the notch stands still
+for 29 s. With both, the three moments clear in 16 to 26 s with nobody standing still for more than 9, and the
+whole seed-81 match on `07cb63d` runs its fifteen minutes clean. `tools/sim_fingerprint.txt` and `tools/sim_bench.txt` moved
+with the rules change.
