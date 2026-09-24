@@ -616,6 +616,40 @@ def town_at_work(game: Game) -> None:
 
 
 @screen
+def commands_pips(game: Game) -> None:
+    """The Commands row with a level on three buttons: Scout pressed three times, Withdraw twice, Gold once, each within
+    the window another press would raise it in, and the status line saying what the last press did."""
+    scene = town(game)
+    for i in range(8):
+        spawn(scene, UnitType.FOOTMAN if i % 2 else UnitType.KNIGHT, (26 + i % 4, 12 + i // 4))
+    spawn(scene, UnitType.PEASANT, (10, 12))
+    for command, times in (("scout", 3), ("withdraw", 2), ("gold", 1)):
+        for _ in range(times):
+            scene.command(command)
+    ticks(game)
+
+
+@screen
+def commands_tags(game: Game) -> None:
+    """Units at work for the side's commands, each tag over its unit's health bar: a flyer scouting, knights riding at
+    the rival's workers, and a wounded footman walking home."""
+    scene = town(game, zoom=1.5)
+    flyer = spawn(scene, UnitType.FLYING_MACHINE, (14, 13))
+    for i in range(3):
+        spawn(scene, UnitType.KNIGHT, (17 + i, 14))
+    footman = spawn(scene, UnitType.FOOTMAN, (15, 15))
+    footman.hp = footman.max_hp // 3
+    scene.world.update_vision()  # what they see is seen before the scout picks where to look
+    scene.select([flyer.id])
+    for command in ("scout", "harass", "withdraw"):
+        scene.command(command)
+    ticks(game, 12, 0.05)
+    tagged = [scene.world.units[uid] for uid in scene.adjutant.tags]
+    scene.camera.center_on(*(sum(c) / len(tagged) * TILE for c in zip(*(u.pos for u in tagged))))
+    ticks(game)
+
+
+@screen
 def battle_wood(game: Game) -> None:
     scene = town(game, zoom=2.0)
     for i, tile in enumerate(((30, 2), (31, 3), (33, 2), (34, 4), (36, 3), (29, 5))):

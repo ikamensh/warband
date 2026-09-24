@@ -30,6 +30,7 @@ Every scheme shares the modes, the mouse and the modifiers:
 | Esc | back one level: the pending order, the catalogue, the selection, then the menu |
 | Ctrl (Cmd) + B / T / U / G / P | the Build, Train and Upgrade catalogues, the assembly point, every plan, from whatever card is up |
 | Ctrl (Cmd) + X | cancel mode: a click takes back a plan, a site or a building's work, a box all of them ([below](#cancel-mode)) |
+| Ctrl (Cmd) + F / W / S / R / M / L | the side's commands: Fortify, Withdraw, Scout, Harass, Gold, Lumber; again within 1.5 s, the next level ([below](#the-sides-commands)) |
 | a building's key again | while it is being placed: the planner picks the spot |
 | right-click a recruit's button | train it endlessly, or no longer (Warcraft III toggled autocast this way) |
 | 1-9, Ctrl/Shift+1-9, Tab, Ctrl+A, Space, F-keys | groups, the idle peasant, the army, the last alert, help, codex, pause, saves, bookmarks |
@@ -231,11 +232,85 @@ back, the recruit in training last; then the research. The first refusal stops
 the click or the box there and its reason stays on the status line, so what it
 interrupted is a prefix of that order: a building no longer endless, with its
 recruit in training still at it, never a building still endless with its queue
-gone. An online match (`NetworkGameScene.cancel_burst`) gives at most 20 of these
+gone. An online match (`NetworkGameScene.order_burst`) gives at most 20 of these
 orders at once and 10 a second after that, whole targets only, because the room
 server drops a connection past 40 at once; a box over more says how many are
 left for the next one. Offline there is no such limit.
 `tests/warband/test_cancel_mode.py` holds all of it.
+
+## The side's commands
+
+Asked for on 2026-09-24 (WB-061): orders for the whole side rather than for what
+is selected. A row of six buttons under the Settlement row, headed "Ctrl +", and a
+chord each: **Fortify** Ctrl+F, **Withdraw** Ctrl+W, **Scout** Ctrl+S, **Harass**
+Ctrl+R, **Gold** Ctrl+M, **Lumber** Ctrl+L (Cmd on a Mac). Each button's keycap is
+the chord's letter under the row's "Ctrl +": with the whole chord on every button the
+row was as wide as the Settlement row, and in a 1200×680 window the Build
+catalogue's four rows (the Aether Vault's, WB-063) reach up beside it; this row ends
+short of them. Pressed again within
+1.5 s a command reaches its next level, up to three: three gold pips on its button
+count the levels while another press would raise it. Each press acts at once for
+its step, and a level asks for so many in all, so the second press adds what the
+first left short of it, never as many again:
+
+| command | level 1 | level 2 | level 3 |
+|---|---|---|---|
+| Scout | one unit: a flyer, else the fastest soldier | a quarter of the soldiers | half of them |
+| Harass | a raiding party of up to three of the fastest soldiers | a quarter | half |
+| Withdraw | the wounded (below half) home | the soldiers outside the base, most exposed first, half | every soldier |
+| Fortify | one tower planned at the most exposed approach | three | six, and Withdraw 1 |
+| Gold / Lumber | the idle workers and a quarter of the other resource's | half | all |
+
+- **Scout** takes flyers first, then the fastest soldiers. A scout goes to the
+  nearest ground the side has not seen for a minute (the hunt's squares,
+  `brains.ai.Squares`), or for twenty seconds where it knows a rival building,
+  looks from outside the fire of every tower the side knows and on a straight way
+  clear of them, goes on once it has come within its own sight of that spot, and
+  comes home below half health.
+- **Harass** sends the fastest soldiers, never a worker and never the unarmed
+  flyer, at the nearest rival workers the side knows of: those it sees and the
+  mines it remembers beside a rival's buildings, none under a known tower's fire.
+  The raiders strike workers first, wait ten seconds where they raid for workers to
+  come out of their mine, then go on to the next place, and ride home the moment a
+  rival soldier or a tower comes into sight. The raid ends at home. With no rival
+  worker known it refuses: "No rival workers known: scout first".
+- **Withdraw** walks soldiers (never workers) to their nearest hall: a move, not an
+  attack-move. Most exposed is most rival soldiers in sight beside it, then farthest
+  from home.
+- **Fortify** plans towers (paid when work starts, as every plan) at the approaches
+  from the nearest rival the side knows of, or from the map's middle while it knows
+  none: the one facing it first, then those beside it and a ring further out, one
+  tower an approach, none on the walk between a hall and its mine. With no Barracks
+  it refuses: no tower can be built yet.
+- **Gold** and **Lumber** give ordered harvests, which the worker policy leaves
+  alone: the nearest mine by a hall, or the remembered trees nearest a depot, two
+  workers to a tree.
+
+Scout, Harass and Withdraw stand: over each unit working for one a tag says what
+it is doing ("scouting", "harassing", "withdrawing"), above where its health bar
+goes, and the button's tooltip counts them. A unit leaves its command when its player gives
+it an order by hand (`GameScene.attempt` says which units an order names), when it
+dies, when it is home, and when it stops walking home for a fight of its own. What the adjutant (`warband/brains/adjutant.py`) knows
+is what the seat knows: its own units and buildings, the rivals it sees now, the
+buildings, mines and trees it remembers and when it last saw each square; never the
+world under the fog (`tests/warband/test_commands.py` puts a tower, a hall and a
+soldier in the fog and finds every order unchanged). It is not saved: a loaded
+match starts with no standing commands.
+
+**Why Ctrl with these letters.** A chord is resolved before any card, in every
+scheme, as cancel mode's Ctrl+X is: no card's letter, now or a later race's, can
+shadow one, and Grid keeps its plain letters for the grid. The letters are the
+names' where they are free: F, W, S and L. Harass is R for raid, since Cmd+H hides
+the game on a Mac (and Cmd+Q quits it: pyglet's application menu binds both), and
+Gold is M for mine, since G is the assembly point's. None of the six is taken by the
+system in a pyglet window on Windows, Linux or a Mac.
+
+**What it gives.** Only orders that already exist, through `GameScene.attempt`, so
+a refusal is the status line's and replays, the online authority's contract and the
+simulation fingerprint do not move. Online the commands share cancel mode's
+allowance (`NetworkGameScene.order_burst`): 20 orders at once between them and 10 a
+second after, under the room server's 40; a scout or a raider the allowance leaves
+unsent goes when it comes back.
 
 ## Placing buildings
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gc
+import inspect
 import itertools
 import json
 import math
@@ -21,6 +22,7 @@ from saga2d.effects import Banner, Burst, Effects, FloatingText, Pulse, Toast
 from warband.art import ambience
 from warband.audio import deaths, wreckage
 from warband.sim import mapgen
+from warband.brains.adjutant import COMMANDS, MAX_LEVEL, NAMES as COMMAND_NAMES, TAGS, Adjutant
 from warband.brains.ai import DIFFICULTY_ELO, auto_site, make_brain
 from warband.art.effects import Flare, Spray, Stain, UnitDeath, death_outcome
 from warband.ui.icons import Icon, Pair, Price, ResourceFloat, draw_icon, draw_price, hourglass_parts, lock_parts, loop_parts, price_pairs, price_width
@@ -32,11 +34,11 @@ from warband.sim.rules import (AETHER_EVERY, AETHER_STORE, BUILDINGS, DAMAGE_FAC
                                BuildingType, Cost, Difficulty, MapTheme, Race, Resource, Terrain, UnitInfo, UnitType, Upgrade, an, listing)
 from warband.sim.rules import Layout as MapLayout
 from warband.records.profile import MatchResult, Profile, RatingChange, Standing, plural, standing
-from warband.records.replay import Replay, ReplayStore
+from warband.records.replay import ORDERS, Replay, ReplayStore
 from warband.records.scores import HighScores, score_breakdown
 from warband.audio.sound import IMPACTS, apply_volumes, impact_sound, play_music, play_sound
 from warband.audio.voices import voiced
-from warband.ui.controls import CARD_COLS, CHORDS, GRID_KEYS, SCHEMES, Scheme, label as key_label
+from warband.ui.controls import ACTIONS, CARD_COLS, CHORDS, GRID_KEYS, SCHEMES, Scheme, label as key_label
 from warband.ui.style import (
     ACTION_BUTTON, AETHER, ARMED_BUTTON, BAD, BODY, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, HURT, LUMBER, MUTED, OVERLAY_STYLE,
     PANEL_STYLE, RESULTS_STYLE,
@@ -73,7 +75,14 @@ SHORT_FLASH = 1.5  # seconds a resource the purse was short of stays red in the 
 SHORT_OF = {"gold": "Not enough gold", "lumber": "Not enough lumber"}  # how World.can_afford names each; tests/warband/test_prices.py holds it
 ALERT_STYLES: dict[tuple[int, int, int, int], Style] = {BAD: Style(text_color=BAD), GOLD: Style(text_color=GOLD)}
 TOAST_TOP = 280  # below the resource, settlement and objectives panels
-HUD_TOP = 158  # just under the Settlement row (which ends at 150): the status line starts here, and the map can scroll clear of it
+COMMANDS_TOP = 156  # the Commands row, just under the Settlement row (which ends at 148)
+HUD_TOP = 228  # just under the Commands row (which ends at 220): the status line starts here, and the map can scroll clear of it
+PIP = 3.0  # radius of a command's level pip
+TAG_INKS = {"scouting": (150, 205, 255, 255), "harassing": (255, 150, 120, 255), "withdrawing": GOLD}  # a command's tag over a unit
+#: The World orders that name units, by the parameter that does (``unit_ids`` or ``unit_id``): a unit the player gives
+#: one of these leaves any command the adjutant had it on.
+UNIT_PARAMETERS = {name: parameter for name in ORDERS
+                   if (parameter := list(inspect.signature(getattr(World, name)).parameters)[1]) in ("unit_ids", "unit_id")}
 HINT_BAR = 28
 PANEL_MARGIN = (12, HINT_BAR + 10)
 MAX_STEPS_PER_FRAME = 6
@@ -378,6 +387,37 @@ class CancelTarget:
         return x <= point[0] < x + w and y <= point[1] < y + h
 
 
+class CommandButton(Button):
+    """One of the side's commands on the HUD (WB-061): its name and the letter its Ctrl chord takes (the row's heading
+    says Ctrl), and while another press would raise its level, a pip for each level the last presses reached."""
+
+    def __init__(self, scene: GameScene, command: str, **kwargs: Any) -> None:
+        self.scene, self.command = scene, command
+        super().__init__(COMMAND_NAMES[command], on_click=lambda: scene.command(command), **kwargs)
+
+    @property
+    def hint(self) -> str:
+        """What the tooltip panel says while the pointer is over it: what the command does, and who works for it."""
+        working = len(self.scene.adjutant.members(self.command)) if self.command in TAGS else 0
+        return (f"{COMMAND_NAMES[self.command]}: {ACTIONS[self.command]} · press again within 1.5 s for the next level"
+                + (f" · {working} {TAGS[self.command]} now" if working else ""))
+
+    @property
+    def pips(self) -> int:
+        """The level shown: that of the last press, while another would raise it; 0 after."""
+        return self.scene.adjutant.level(self.command, self.scene.clock)
+
+    def on_draw(self) -> None:
+        super().on_draw()
+        level = self.pips
+        if self._game is None or not level:
+            return
+        x, y, w, h = self.bounds
+        for pip in range(MAX_LEVEL):
+            self._game.backend.draw_circle(x + w / 2 + (pip - 1) * 3.5 * PIP, y + h - PIP - 3, PIP,
+                                           GOLD if pip < level else (255, 255, 255, 60), order=self._order)
+
+
 class _SelectionPanel(Component):
     """Route the immediate-drawn portraits and production queue through the UI tree."""
 
@@ -399,9 +439,10 @@ class GameScene(Scene):
     #: Pause while the window is in the background, and resume on return.
     #: A network match keeps playing elsewhere, so it opts out.
     auto_pause_on_background = True
-    #: How many orders cancel mode may give at once, and so in one click or box; the allowance comes back at half
-    #: of it a second.  None: as many as it takes.  A match played elsewhere sets it under its server's rate limit.
-    cancel_burst: int | None = None
+    #: How many orders cancel mode and the adjutant's commands may give at once, and so in one click, box or pass; the
+    #: allowance comes back at half of it a second.  None: as many as it takes.  A match played elsewhere sets it under
+    #: its server's rate limit.
+    order_burst: int | None = None
     controls = {
         "escape": "cancel",
         "f1": "open_help",
@@ -452,9 +493,13 @@ class GameScene(Scene):
         self.pending: str | None = None  # "move" | "attack" | "patrol" | "repair" | "salvage" | "assembly" | "place:<building type>" | CANCEL
         self.catalogue: str | None = None  # "build" | "train" | "upgrade": the settlement's catalogue, over the selection's card
         self._repeat: Callable[[], None] | None = None  # the last recruit or placement once more: the Modal scheme's "."
-        self._cancel_allowance = (float(self.cancel_burst or 0), 0.0)  # orders cancel mode may still give, as of a scene clock
+        self._allowance_left = (float(self.order_burst or 0), 0.0)  # orders cancel mode and the adjutant may still give, as of a scene clock
+        #: The side's commands (Fortify, Withdraw, Scout, Harass, Gold, Lumber): decided for the player's seat from what it
+        #: knows, given through attempt within the allowance.
+        self.adjutant = Adjutant(self.human, self._on_behalf, random.Random(f"adjutant:{seed}"))
         self._site_rng = random.Random(f"sites:{seed}")  # where the planner puts what the player lets it place: not the brains' stream
         self.settlement_row: Row | None = None  # made with the HUD
+        self.command_buttons: dict[str, CommandButton] = {}  # the Commands row's, made with the HUD
         self.paused = False
         self._auto_paused = False  # this pause came from the window going to the background: the return undoes it
         self.speed = 1.0
@@ -478,6 +523,7 @@ class GameScene(Scene):
         self._drag_start: tuple[int, int] | None = None
         self._drag_end: tuple[int, int] | None = None
         self._game_over = False
+        self._banner_until = -math.inf  # the opening banner has the middle of the screen to itself until then
         self._card: list[Command] = []
         self._card_buttons: list[Button] = []
         self._card_signature: tuple | None = None
@@ -507,7 +553,11 @@ class GameScene(Scene):
         self._build_hud()
         self.center_base(instant=True)
         rivals = ", ".join(f"the {RACES[p.race].name} of {p.name}" for p in self.world.players[:self.world.seats] if p.id != self.human)
-        self.effects.add(Banner("Warband", subtitle=f"The {self.race.name} of {self.player.name} against {rivals}", accent=rgba(self.player.color)))
+        banner = Banner("Warband", subtitle=f"The {self.race.name} of {self.player.name} against {rivals}", accent=rgba(self.player.color))
+        self.effects.add(banner)
+        # The band crosses the window at 40 % of its height, where a short window's tutorial panel reaches under the
+        # Commands row: the panel waits for it to pass, as a mission's objectives do.
+        self._banner_until = self.clock + banner.duration
         from warband.art import monsters, textures
 
         # A creature is nobody's, so it is not among the seats' units and needs warming of its own; without
@@ -563,6 +613,7 @@ class GameScene(Scene):
             self.tutorial = None
         if self.settlement_row is not None:  # the controls may have changed: every keycap follows
             self._fill_settlement_row()
+            self._fill_command_row()
             self._refresh_card()
         if hasattr(self.settings, "save"):
             self.settings.save()
@@ -678,6 +729,9 @@ class GameScene(Scene):
         self.settlement_row = Row(spacing=8, anchor=Anchor.TOP_LEFT, margin=(12, 84), style=PANEL_STYLE, blocks_pointer=True)
         self._fill_settlement_row()
         self.ui.add(self.settlement_row)
+        self.command_row = Row(spacing=8, anchor=Anchor.TOP_LEFT, margin=(12, COMMANDS_TOP), style=PANEL_STYLE, blocks_pointer=True)
+        self._fill_command_row()
+        self.ui.add(self.command_row)
         world_w, world_h = self.world.width * TILE, self.world.height * TILE
         self.minimap = Minimap(self.view.minimap_key, (world_w, world_h), self.camera, width=MINIMAP_WIDTH,
                                height=self._minimap_height(), on_click=self.minimap_click,
@@ -725,6 +779,20 @@ class GameScene(Scene):
                 self.cancel_button = button
             row.add(button)
 
+    def _fill_command_row(self) -> None:
+        """The side's six commands under the settlement's row, behind "Ctrl +": each button's keycap is the letter of its
+        chord, the same in every scheme.  The full chords ("Ctrl+F") would make the row as wide as the settlement's, and
+        in a 1200×680 window the Build catalogue's four rows (WB-063) reach up beside it: this row ends short of them."""
+        row = self.command_row
+        row.clear()
+        row.add(Label("Ctrl +", text_style="heading"))
+        self.command_buttons = {}
+        for name in COMMANDS:
+            chord = self.scheme.shortcut(name)
+            assert chord.startswith("Ctrl+"), chord  # the heading says Ctrl for all of them
+            self.command_buttons[name] = CommandButton(self, name, hotkey=chord.removeprefix("Ctrl+"), style=GHOST_BUTTON)
+            row.add(self.command_buttons[name])
+
     def _build_objectives(self) -> Column:
         """The panel under the top-right corner: the tutorial strip here, a mission's objectives in the campaign."""
         panel = Column(spacing=4, anchor=Anchor.TOP_RIGHT, margin=(12, HUD_TOP), style=PANEL_STYLE, blocks_pointer=True)
@@ -751,6 +819,7 @@ class GameScene(Scene):
         if self.tutorial is None:
             self.objectives.visible = False
             return
+        self.objectives.visible = self.clock >= self._banner_until
         if self.tutorial.update(self):
             self.sfx("built")
             if self.tutorial.finished:
@@ -865,7 +934,7 @@ class GameScene(Scene):
             if catalogue == self.catalogue:
                 return hints + [("Esc", "back")]
             return hints + [(f"{key_label(scheme.keys['build'])} / {key_label(scheme.keys['upgrade'])}", "build / upgrade"),
-                            (key_label(scheme.keys["repeat"]), "repeat"), ("Tab", "idle peasant"),
+                            (key_label(scheme.keys["repeat"]), "repeat"), (command_keys(scheme), "commands"), ("Tab", "idle peasant"),
                             ("Esc", "deselect" if self.selection else "menu")]  # a mine or a rival selected goes first
         if catalogue == "upgrade":
             return ([(keys, "order")] if keys else []) + [("Esc", "back")]
@@ -889,8 +958,9 @@ class GameScene(Scene):
                 hints.append(("Right click", "rally point"))
             return hints + [("Esc", "deselect")]
         plan = " / ".join(key_label(scheme.keys[action]) for action in ("build", "train", "upgrade"))
-        return [("Drag", "select"), (plan, "plan buildings / units / upgrades"), (key_label(scheme.keys["assembly"]), "assembly"),
-                ("Tab", "idle peasant"), ("Ctrl+A", "army"), ("Space", "last alert"), ("F3", "pause"), ("F1", "help")]
+        # The Army button in the top bar carries its Ctrl+A; its place here went to the side's commands, to fit 1200 px.
+        return [("Drag", "select"), (plan, "build / train / upgrade"), (key_label(scheme.keys["assembly"]), "assembly"),
+                (command_keys(scheme), "commands"), ("Tab", "idle peasant"), ("Space", "last alert"), ("F3", "pause"), ("F1", "help")]
 
     def _slot_key(self, command: str) -> str:
         """The key of a command of the unit card, by its name in :data:`UNIT_SLOTS`."""
@@ -1054,13 +1124,30 @@ class GameScene(Scene):
 
     def attempt(self, action: str, *args, **kwargs) -> bool:
         """Give an order for the player.  When the rules refuse it, the status line says why and this is False.
-        Every button, key and click goes through here, so a refusal is never an exception in the frame."""
+        Every button, key and click goes through here, so a refusal is never an exception in the frame.  The units it
+        names are in the player's hand now: they leave any command the adjutant had them on."""
+        if not self._attempt(action, args, kwargs):
+            return False
+        parameter = UNIT_PARAMETERS.get(action)
+        if parameter is not None:
+            self.adjutant.release(args[0] if parameter == "unit_ids" else [args[0]])
+        return True
+
+    def _attempt(self, action: str, args: tuple, kwargs: dict) -> bool:
         try:
             self.order(action, *args, **kwargs)
         except RuleError as exc:
             self.warn(str(exc))
             return False
         return True
+
+    def _on_behalf(self, action: str, *args, **kwargs) -> bool | None:
+        """An order the adjutant gives for the player: as :meth:`attempt` gives it, so a refusal is the status line's,
+        within the allowance (:attr:`order_burst`).  Whether it was given; None while the allowance is spent."""
+        if self._allowance() < 1:
+            return None
+        self._spend()
+        return self._attempt(action, args, kwargs)
 
     def _enemy(self, target: Entity | None) -> bool:
         return target is not None and target.player is not None and target.player != self.human
@@ -1519,16 +1606,20 @@ class GameScene(Scene):
                  + (f" · {left} more: cancel again in a moment" if left else ""))
 
     def _give(self, action: str, args: tuple) -> bool:
-        if self.cancel_burst is not None:
-            self._cancel_allowance = (self._allowance() - 1, self.clock)
+        self._spend()
         return self.attempt(action, *args)
 
+    def _spend(self) -> None:
+        if self.order_burst is not None:
+            self._allowance_left = (self._allowance() - 1, self.clock)
+
     def _allowance(self) -> float:
-        """How many orders cancel mode may give now: what is left of its burst and what has come back since."""
-        if self.cancel_burst is None:
+        """How many orders cancel mode and the adjutant may give now: what is left of the burst and what has come back
+        since."""
+        if self.order_burst is None:
             return math.inf
-        left, since = self._cancel_allowance
-        return min(self.cancel_burst, left + (self.clock - since) * self.cancel_burst / 2)
+        left, since = self._allowance_left
+        return min(self.order_burst, left + (self.clock - since) * self.order_burst / 2)
 
     def _cancel_summary(self, targets: list[CancelTarget], verb: str = "") -> str:
         """*targets* in words: the one's own, or how many plans, sites and buildings' work; "" for none."""
@@ -1570,8 +1661,20 @@ class GameScene(Scene):
             self.repeat_last()
         elif action == "cancel":
             self.toggle_cancel_mode()
+        elif action in COMMANDS:
+            self.command(action)
         else:
             raise ValueError(f"No such action: {action}")
+
+    def command(self, name: str) -> None:
+        """One of the side's commands (WB-061), from its Ctrl chord or its button: pressed again within 1.5 s, its next
+        level.  The status line says what it did, or why it could not; a press whose orders the rules refused leaves
+        the refusal there."""
+        report = self.adjutant.press(self.world, name, self.clock)
+        if report.said:
+            (self.warn if report.refused else self.say)(report.said)
+        if not report.refused:
+            self.sfx("command")
 
     def open_plans(self) -> None:
         self.game.push(SettlementPlansScene(self))
@@ -1882,6 +1985,9 @@ class GameScene(Scene):
         mx, my = self.mouse
         hovered = next((hint for row, hint in self._resource_rows if row.hit_test(mx, my)), None)
         self.tooltip = hovered() if hovered is not None else ""
+        pointed = next((button for button in self.command_buttons.values() if button.hit_test(mx, my)), None)
+        if pointed is not None:
+            self.tooltip = pointed.hint
         for command, button in zip(self._card, self._card_buttons):
             blocked = self._refusal(command)
             button.enabled = blocked is None
@@ -2196,6 +2302,9 @@ class GameScene(Scene):
                     break
         self._advance(dt)
         self._handle_events(self.world.take_events())
+        if not self._game_over:
+            for news in self.adjutant.think(self.world):
+                self.say(news)
         if not self._game_over:
             play_music(self.mood, self.player.race)
         self._prune_selection()
@@ -2545,7 +2654,8 @@ class GameScene(Scene):
             hovered = entity.id if entity is not None else None
         self.view.draw(Overlay(selected=list(self.selection), hovered=hovered, ghost=self.ghost(), plans=[(kind, pos) for kind, pos, _ in self.pending_sites()],
                                bars_for_all=self.all_bars or self.alt_held, rally_for=[b.id for b in [self._own_building()] if b is not None],
-                               reach=self.reach_shown(), rifts_lit=self.placing is BuildingType.VAULT))
+                               reach=self.reach_shown(), rifts_lit=self.placing is BuildingType.VAULT,
+                               tags={uid: (tag, TAG_INKS[tag]) for uid, tag in self.adjutant.tags.items()}))
         ambience.draw(self, self.world, self.human)
         self._draw_assembly()
         if self._drag_start is not None and self._drag_end is not None and math.dist(self._drag_start, self._drag_end) >= DRAG_THRESHOLD:
@@ -3260,6 +3370,12 @@ HELP_INTRO = (
 )
 
 
+def command_keys(scheme: Scheme, sep: str = "/") -> str:
+    """The side's commands' keys, as a keycap reads them together: ``Ctrl+F/W/S/R/M/L``."""
+    shortcuts = [scheme.shortcut(name) for name in COMMANDS]
+    return "Ctrl+" + sep.join(shortcut.removeprefix("Ctrl+") for shortcut in shortcuts)
+
+
 def help_keys(scheme: Scheme) -> list[tuple[str, str]]:
     """The How to play table for *scheme*: its own keys first, then what every scheme shares."""
     idle = key_label(scheme.keys["idle_soldier"])
@@ -3282,10 +3398,11 @@ def help_keys(scheme: Scheme) -> list[tuple[str, str]]:
         ("A building's key again", "while it is being placed: the planner picks the spot by your hall (a hall: by a free gold mine)"),
         ("Ctrl + B / T / U / G / P", "Build / Train / Upgrade, the assembly point, every plan, from any card;  Ctrl+A: the army (Mac: Cmd)"),
         ("Ctrl + X", "cancel mode: a click takes back a plan, a site or a building's training and research;  drag: a box of them"),
+        (command_keys(scheme, " ").replace("+", " + ", 1), "Fortify, Withdraw, Scout, Harass, Gold, Lumber;  again within 1.5 s: its next level, up to three"),
         ("Click / drag / right-click", "select;  box-select;  order what fits the target;  double-click or Ctrl-click: that type on screen"),
         ("1-9 / Ctrl / Shift", "recall / assign / add to a control group;  Tab: the next idle peasant;  Space: the last alert"),
         ("Arrows / edges / wheel", "scroll (middle-drag too);  wheel or + / −: zoom;  minimap: left-click looks, right-click sends"),
-        ("F1 F2 F3 F5 F9 F11", "help, codex (5: the tech tree), pause, save, load (offline), health bars;  F6-F8: camera bookmarks, Ctrl+F6-F8 sets"),
+        ("F1 F2 F3 F5 F9 F11", "help, codex (5: tech tree), pause, save, load (offline), health bars;  F6-F8 bookmarks (Ctrl sets)"),
         ("Esc", "back one level: the order, the catalogue, the selection, then the menu"),
     ]
 

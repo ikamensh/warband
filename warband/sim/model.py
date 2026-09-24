@@ -59,9 +59,32 @@ _math_hypot: Final = math.hypot
 _VELTKAMP: Final = 134217729.0  # 2 ** 27 + 1, which splits a double into halves whose products are exact
 
 
+def plain_sum(values: Iterable[float]) -> float:
+    """*values* added left to right, every addition rounded on its own.
+
+    The built-in ``sum`` adds floats with compensation (Neumaier's) since Python 3.12, and mypyc compiles
+    ``sum(generator)`` into plain additions, so one ``sum()`` gives the source and the compiled simulation
+    (warband/league/fastsim.py) two answers a last bit apart, and a decision taken on it can go two ways.  This
+    loop is the same additions in both.  No module the league compiles calls the built-in ``sum``: floats add
+    here, integers in :func:`int_sum` (``tests/warband/test_sums.py``)."""
+    total = 0.0
+    for value in values:
+        total += value
+    return total
+
+
+def int_sum(values: Iterable[int]) -> int:
+    """The total of *values*, integers, which add exactly either way: counts and prices, in the modules where
+    :func:`plain_sum` says why no ``sum()`` is left.  The annotation keeps floats out, as mypy refuses one and the
+    compiled build needs mypy clean."""
+    total = 0
+    for value in values:
+        total += value
+    return total
+
+
 def _middle(units: list[Unit]) -> Point:
-    """The mean position of *units*, added up in a plain loop: the built-in sum adds floats with compensation since
-    Python 3.12, which the compiled simulation does not, and the two would part in the last bit."""
+    """The mean position of *units*, both coordinates added in one plain loop, as :func:`plain_sum` adds."""
     x = y = 0.0
     for u in units:
         x += u.x
@@ -1119,8 +1142,8 @@ class World:
         trained, so they neither take supply nor have any."""
         if self.players[player].neutral:
             return (0, 0)
-        used = len(self.player_units(player)) + sum(len(b.queue) for b in self.player_buildings(player))
-        cap = sum(b.info.supply for b in self.player_buildings(player, done=True))
+        used = len(self.player_units(player)) + int_sum(len(b.queue) for b in self.player_buildings(player))
+        cap = int_sum(b.info.supply for b in self.player_buildings(player, done=True))
         return used, cap
 
     # -- Aether ----------------------------------------------------------------------
@@ -1154,7 +1177,7 @@ class World:
         vaults = self.vaults(player)
         if self.players[player].aether >= AETHER_STORE * len(vaults):
             return 0.0
-        return sum(1 for b in vaults if self.taps(b)) / (AETHER_TICKS * SIM_DT)
+        return int_sum(1 for b in vaults if self.taps(b)) / (AETHER_TICKS * SIM_DT)
 
     def in_reach(self, player: int, point: Point) -> bool:
         """Whether *point* lies within :data:`AETHER_REACH` tiles of the middle of one of *player*'s finished vaults.
@@ -1805,6 +1828,11 @@ class World:
         player = units[0].player
         if target_id == "at_point":
             target = self.entity_at(point, visible_to=player)
+            if (target is not None and target.player is not None and target.player != player
+                    and any(u.info.damage for u in units) and not any(self.can_strike(u, target) for u in units)):
+                # A rival over the point that none of them can strike (a flyer above a melee recruit's rally point) is
+                # not what a point means to them: the ground under it is.  Named by id, it is still refused below.
+                target = None
         else:
             target = self.entity(target_id) if target_id is not None else None
         if target_id not in ("at_point", None) and target is None:
@@ -1814,11 +1842,15 @@ class World:
         others = [u.id for u in units if not u.is_worker]
         if workers and isinstance(target, Building) and target.abandoned and target.done and target.player != player:
             # A ruin is loot, not an enemy: the peasants pick it apart, and any soldiers along raze it as before.
-            # Neither order can be refused from here -- the room was taken above and a ruin of one's own is not one
-            # of these -- so the pair is as atomic as a single order.
+            # Neither order can be refused from here -- the room was taken above, a ruin of one's own is not one of
+            # these, and soldiers with no blow among them go along instead of razing -- so the pair is as atomic as a
+            # single order.
             self.salvage(workers, target.id, queue=queue)
             if others:
-                self.attack(others, target.id, queue=queue)
+                if any(self.can_strike(u, target) for u in units if not u.is_worker):
+                    self.attack(others, target.id, queue=queue)
+                else:
+                    self.move(others, point, queue=queue)  # a flying machine has no weapon: it goes and looks
             return "salvage"
         if target is not None and target.player is not None and target.player != player:
             if not any(u.info.damage for u in units):
@@ -2663,7 +2695,7 @@ class World:
             if dist(point, target.pos) - u.radius - target.radius > self.range_of(u):
                 continue
             gap = min(dist(point, enemy.pos) - u.radius - enemy.radius for enemy in threats)
-            crowd = sum(max(0, u.radius + ally.radius + .2 - dist(point, ally.pos)) for ally in allies)
+            crowd = plain_sum(max(0, u.radius + ally.radius + .2 - dist(point, ally.pos)) for ally in allies)
             score = gap - 1.5 * crowd
             if score > best_score:
                 best, best_score = point, score
@@ -2955,9 +2987,9 @@ class World:
                     if navigation[ty * self.width + tx] or rect_gap(point, rect) - u.radius > TOUCH:
                         continue
                     owners[tile] = target
-                    costs[tile] = (sum(max(0.0, 1.0 - dist(v.pos, point)) * 2
-                                       for v in self.units_near(point, 1.0)
-                                       if v is not u and not v.hidden and not v.flying and v.player == u.player)
+                    costs[tile] = (plain_sum(max(0.0, 1.0 - dist(v.pos, point)) * 2
+                                             for v in self.units_near(point, 1.0)
+                                             if v is not u and not v.hidden and not v.flying and v.player == u.player)
                                    + claims.get(tile, 0.0))
         start, escape = u.tile, []
         u.replan_at = self.time + REPLAN_EVERY + (u.id % REPLAN_STAGGER) * SIM_DT
@@ -4372,8 +4404,8 @@ class World:
         buildings = self.player_buildings(player)
         refunds = [b.info.cost for b in buildings if not b.done]
         refunds += [UPGRADES[b.research].cost for b in buildings if b.research is not None]
-        gold = owner.gold + sum(c.gold for c in refunds)
-        lumber = owner.lumber + sum(c.lumber for c in refunds)
+        gold = owner.gold + int_sum(c.gold for c in refunds)
+        lumber = owner.lumber + int_sum(c.lumber for c in refunds)
         used, cap = self.supply(player)
         if used >= cap:
             return None

@@ -87,6 +87,7 @@ class Overlay:
     plans: list[tuple[BuildingType, Pos]] = field(default_factory=list)  # sites ordered and not begun: building, top-left tile
     rally_for: list[int] = field(default_factory=list)
     bars_for_all: bool = False  # Alt held: every visible unit and building shows its health
+    tags: dict[int, tuple[str, Color]] = field(default_factory=dict)  # unit id -> the command it works for, and its ink
     reach: list[tuple[float, float]] = field(default_factory=list)  # the middles of vaults whose reach is shown (tiles)
     rifts_lit: bool = False  # a vault is being placed: every ley rift the player knows is picked out
 
@@ -193,6 +194,8 @@ TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1, "venom": 0.14}  # seconds of
 TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150), "venom": (198, 132, 226)}
 TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5), "venom": (2.6, 0.5)}  # at the shot and where the trail ends
 BAR_OUTLINE = (0, 0, 0, 190)  # the backing and outline of every health and progress bar
+TAG_FONT = 12  # screen pixels of a command's tag over a unit, at any zoom
+TAG_BACKING = (10, 12, 20, 180)
 #: A site ordered and not yet begun, the settlement's plan or a builder's next site, is the ghost of its building
 #: (``textures.building_image(planned=True)``) at this opacity, on the ground under the units: a fight there is drawn
 #: over it, and whatever lies on that ground shows through it.  No caption: a row of them a tile apart ran together.
@@ -336,6 +339,7 @@ class MapView:
         self._buildings: dict[int, Sprite] = {}
         self._building_keys: dict[int, str] = {}
         self._sightings: dict[int, Sighting] = {}  # every building the player has seen, as they last saw it
+        self._bar_boxes: list[tuple[float, float, float, float]] = []  # the health bars drawn this frame: left, top, right, bottom
         self._units: dict[int, Sprite] = {}
         self._travel: dict[int, float] = {}  # distance each unit has walked, for its stride
         self._last_pos: dict[int, tuple[float, float]] = {}
@@ -1015,6 +1019,8 @@ class MapView:
         frac = max(0.0, min(1.0, entity.hp / max(1, entity.max_hp)))
         color = (110, 230, 110, 255) if frac > 0.5 else (240, 200, 80, 255) if frac > 0.25 else (240, 90, 70, 255)
         self._bar(x - width / 2, y, width, width * frac, color)
+        px = 1 / self.scene.camera.zoom
+        self._bar_boxes.append((x - width / 2 - px, y - px, x + width / 2 + px, y + 6 * px))
 
     def _progress_bar(self, left: float, top: float, w: int, h: int, frac: float, *, work: bool) -> None:
         """A gold bar in five segments along a building's bottom edge; *work* adds the pulsing mark of a building making something."""
@@ -1040,6 +1046,7 @@ class MapView:
         world = self.world
         shown = set(overlay.selected) | ({overlay.hovered} if overlay.hovered is not None else set())
         px = 1 / self.scene.camera.zoom
+        self._bar_boxes = []
         for uid, sprite in self._units.items():
             unit = world.units.get(uid)
             if unit is None or not sprite.visible:
@@ -1065,6 +1072,46 @@ class MapView:
                 self._progress_bar(left, top, w, h, building.train_progress / RACES[building.race].units[building.queue[0]].build_time, work=True)
             elif building.player == self.player and building.research is not None:
                 self._progress_bar(left, top, w, h, building.research_progress / UPGRADES[building.research].time, work=True)
+        self._draw_tags(overlay)
+
+    def _draw_tags(self, overlay: Overlay) -> None:
+        """Over each unit working for one of the side's commands, what it is doing for it ("scouting"), on a dark
+        backing: above where its health bar goes, with three pixels of air.  The same size on the screen at any zoom.  A
+        tag covers no health bar and no other tag: one that would climbs above what it meets, and a group at work for
+        one command reads one tag."""
+        px = 1 / self.scene.camera.zoom
+        size = max(1, round(TAG_FONT * px))
+        style = self.game.theme.get_text_style("caption")
+        font = style.font or self.game.theme.font
+        drawn: list[tuple[str, float, float, float, float]] = []  # text, left, top, right, bottom
+        for uid, (text, ink) in sorted(overlay.tags.items()):
+            sprite = self._units.get(uid)
+            if sprite is None or not sprite.visible or uid not in self.world.units:
+                continue
+            placement = textures.placements[self._unit_keys[uid]]
+            bottom = sprite.y - placement.drop - placement.head - 13 * px  # the bar's outline begins a pixel above 9 px up
+            width, height = self.game.backend.measure_text(text, size, font)
+            pad = 4 * px
+            left, right = sprite.x - width / 2 - pad, sprite.x + width / 2 + pad
+            for _ in range(4):
+                top = bottom - height
+                tags = [other for other in drawn if left < other[3] and other[1] < right and top < other[4] and other[2] < bottom]
+                if any(other[0] == text for other in tags):
+                    break  # its group's tag says it already
+                crossed = [box[1] for box in self._bar_boxes if left < box[2] and box[0] < right and top < box[3] and box[1] < bottom]
+                crossed += [other[2] for other in tags]
+                if not crossed:
+                    break
+                bottom = min(crossed) - px
+            else:
+                continue
+            if tags and any(other[0] == text for other in tags):
+                continue
+            drawn.append((text, left, bottom - height, right, bottom))
+            self.scene.draw_rect(left, bottom - height, right - left, height, TAG_BACKING, radius=height / 2,
+                                 space="world", layer=RenderLayer.UI_WORLD)
+            self.scene.draw_text(text, sprite.x, bottom, font_size=size, color=ink, font=font, anchor_x="center", anchor_y="bottom",
+                                 space="world", layer=RenderLayer.UI_WORLD)
 
     def draw_reach(self, centres: Sequence[tuple[float, float]]) -> None:
         """The ground a vault reaches: a violet wash :data:`~warband.sim.rules.AETHER_REACH` tiles round each of

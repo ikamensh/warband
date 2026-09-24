@@ -14,7 +14,7 @@ import math
 from typing import Final
 
 from warband.sim import path as pathing
-from warband.sim.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Salvage, Unit, World, hypot, rect_gap, tile_center
+from warband.sim.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Salvage, Unit, World, hypot, int_sum, rect_gap, tile_center
 from warband.sim.worker_knowledge import WorkerKnowledge, _Building
 from warband.sim.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_TIME, SIM_DT, UNITS, BuildingType, Resource, Terrain, UnitType
 
@@ -401,13 +401,13 @@ def _reserves(world: World, player: int, workers: list[Unit]) -> dict[Resource, 
     lumber = max([farm.lumber] + [2 * cost.lumber for cost in production])
     planned = [BUILDINGS[order.type].cost for worker in workers for order in worker.orders
                if isinstance(order, Build) and order.building is None]
-    return {Resource.GOLD: max(gold, sum(cost.gold for cost in planned)),
-            Resource.LUMBER: max(lumber, sum(cost.lumber for cost in planned))}
+    return {Resource.GOLD: max(gold, int_sum(cost.gold for cost in planned)),
+            Resource.LUMBER: max(lumber, int_sum(cost.lumber for cost in planned))}
 
 
 def _salvagers(workers: list[Unit]) -> int:
     """How many of *workers* the policy has put on a ruin."""
-    return sum(1 for worker in workers for order in worker.orders if isinstance(order, Salvage) and order.auto)
+    return int_sum(1 for worker in workers for order in worker.orders if isinstance(order, Salvage) and order.auto)
 
 
 SALVAGE_REACH: Final = 24.0  # tiles of safe walking from a depot; a ruin further off is not the policy's to fetch

@@ -9,7 +9,7 @@ from typing import Final
 
 from warband.brains.ai import (ARMY_PLANS, RESEARCH_ORDER, _shift, guarded, hall_first, site_search, with_prerequisites)
 from warband.sim import mapgen
-from warband.sim.model import Build, Building, Harvest, Move, Point, Pos, Repair, Resource, Salvage, Unit, World, dist, rect_gap
+from warband.sim.model import Build, Building, Harvest, Move, Point, Pos, Repair, Resource, Salvage, Unit, World, dist, int_sum, plain_sum, rect_gap
 from warband.sim.races import RACES
 from warband.sim.rules import BUILDINGS, GOLD_PER_TRIP, PLAYABLE_UNITS, UPGRADES, BuildingType, Cost, UnitType, Upgrade
 from warband.sim.worker_knowledge import KnownMine
@@ -41,7 +41,7 @@ class _ProBrainEconomy(_ProBrainCore):
         """
         # A deposit is worth the hands its trip is worth: an endless seam pays a fifth of a mine, so it
         # earns a fifth of the crew.  Hiring ten peasants for a seam would be paying a mine's wages for it.
-        mines = max(1.0, sum(m.trip / GOLD_PER_TRIP for m in self._worked_mines(world)))
+        mines = max(1.0, plain_sum(m.trip / GOLD_PER_TRIP for m in self._worked_mines(world)))
         wanted = round(mines * self.profile.workers_per_mine / (1.0 - self.profile.lumber_share))
         return min(self.profile.max_workers, wanted)
 
@@ -62,7 +62,7 @@ class _ProBrainEconomy(_ProBrainCore):
         if profile.prospect_floor <= 0 or not profile.expand:
             return
         found = self._expansion_site(world) is not None
-        low = sum(mine.gold for mine in self._worked_mines(world)) < profile.prospect_floor
+        low = int_sum(mine.gold for mine in self._worked_mines(world)) < profile.prospect_floor
         if self.prospector is not None and (found or not low or self.prospector not in world.units):
             if self.prospector in world.units:
                 world.release_workers([self.prospector])
@@ -136,7 +136,7 @@ class _ProBrainEconomy(_ProBrainCore):
         else:
             # Never everyone: gold still has to come in, or the next peasant never does.
             want = max(crew, min(len(peasants) // 2, max(0, len(peasants) - 2)))
-        short = want - sum(1 for p in peasants if self._on_lumber(p))
+        short = want - int_sum(1 for p in peasants if self._on_lumber(p))
         if short <= 0:
             return
         for peasant in [p for p in peasants if not self._on_lumber(p) and p.carrying is None][:short]:
@@ -181,8 +181,8 @@ class _ProBrainEconomy(_ProBrainCore):
         wishes: list[tuple[BuildingType, Point]] = []
 
         used, cap = world.supply(player)
-        producers = sum(count(t) for t in (BuildingType.BARRACKS, BuildingType.STABLES,
-                                           BuildingType.WORKSHOP, BuildingType.CHURCH))
+        producers = int_sum(count(t) for t in (BuildingType.BARRACKS, BuildingType.STABLES,
+                                               BuildingType.WORKSHOP, BuildingType.CHURCH))
         headroom = profile.supply_slack + int(profile.supply_per_producer * producers)
         farms_coming = going_up.count(BuildingType.FARM) + going_up.count(BuildingType.TOWN_HALL)
         if cap - used + 4 * farms_coming < headroom:
@@ -278,11 +278,11 @@ class _ProBrainEconomy(_ProBrainCore):
             return True
         # A seam brings up no stock at all, so it counts for nothing here on purpose: an economy that
         # rests on one is exactly an economy that has to go and find another mine.
-        if sum(mine.gold for mine in mines) < self.profile.mine_floor * len(mines):
+        if int_sum(mine.gold for mine in mines) < self.profile.mine_floor * len(mines):
             return True
-        miners = sum(1 for p in self._peasants(world)
-                     if p.inside is not None or any(isinstance(o, Harvest) and isinstance(o.target, int) for o in p.orders))
-        return miners >= sum(mine.slots for mine in mines)
+        miners = int_sum(1 for p in self._peasants(world)
+                         if p.inside is not None or any(isinstance(o, Harvest) and isinstance(o.target, int) for o in p.orders))
+        return miners >= int_sum(mine.slots for mine in mines)
 
     def _producers_saturated(self, world: World) -> bool:
         """Whether the buildings already standing are the bottleneck rather than the bank.
@@ -490,8 +490,8 @@ class _ProBrainEconomy(_ProBrainCore):
             return
         barracks = bool(world.player_buildings(self.player, BuildingType.BARRACKS, done=True))
         mine = self._rush_mine(world, guess)
-        if mine is not None and sum(1 for b in world.player_buildings(self.player, BuildingType.TOWER)
-                                    if rect_gap(b.center, mine.rect) <= 4.5) >= profile.rush_towers:
+        if mine is not None and int_sum(1 for b in world.player_buildings(self.player, BuildingType.TOWER)
+                                        if rect_gap(b.center, mine.rect) <= 4.5) >= profile.rush_towers:
             self._end_rush(world)
             return
         self.rushers = [i for i in self.rushers if i in world.units]
@@ -544,15 +544,15 @@ class _ProBrainEconomy(_ProBrainCore):
             target = self._worker_target(world)
             peasants = len(self._peasants(world))
             for hall in halls:
-                if peasants + sum(len(h.queue) for h in halls) >= target:
+                if peasants + int_sum(len(h.queue) for h in halls) >= target:
                     break
                 if len(hall.queue) < 2 and world.can_train(hall, UnitType.PEASANT) is None and self._affordable(world, world.unit_info(player, UnitType.PEASANT).cost):
                     world.train(hall.id, UnitType.PEASANT)
-        counts = {t: sum(1 for u in army if u.type is t) for t in PLAYABLE_UNITS}
+        counts = {t: int_sum(1 for u in army if u.type is t) for t in PLAYABLE_UNITS}
         # The eyes are no share of the army: the one flying machine a scouting posture keeps is counted apart, those in
         # training with it, or a workshop would start another while the first is still on the stocks.
-        counts[UnitType.FLYING_MACHINE] = (sum(1 for u in self._units(world) if u.type is UnitType.FLYING_MACHINE)
-                                           + sum(b.queue.count(UnitType.FLYING_MACHINE) for b in world.player_buildings(player)))
+        counts[UnitType.FLYING_MACHINE] = (int_sum(1 for u in self._units(world) if u.type is UnitType.FLYING_MACHINE)
+                                           + int_sum(b.queue.count(UnitType.FLYING_MACHINE) for b in world.player_buildings(player)))
         targets = self._army_targets(world)
         wishes: list[tuple[float, UnitType, Building]] = []
         for building in world.player_buildings(player, done=True):
@@ -594,15 +594,15 @@ class _ProBrainEconomy(_ProBrainCore):
         for unit_type, share in ((UnitType.CATAPULT, self.profile.siege_share),
                                  (UnitType.CLERIC, self.profile.cleric_share)):
             if share > 0 and unit_type in plan:
-                rest = sum(v for t, v in plan.items() if t is not unit_type) or 1.0
+                rest = plain_sum(v for t, v in plan.items() if t is not unit_type) or 1.0
                 plan = {t: (share if t is unit_type else v * (1.0 - share) / rest) for t, v in plan.items()}
-        total = sum(plan.values())
+        total = plain_sum(plan.values())
         if total > 0:
             plan = {t: share / total for t, share in plan.items()}
         seen = self.remembered()
         archers = seen.get(UnitType.ARCHER, 0.0)
         knights = seen.get(UnitType.KNIGHT, 0.0)
-        melee = sum(seen.get(t, 0.0) for t in _MELEE_TYPES)
+        melee = plain_sum(seen.get(t, 0.0) for t in _MELEE_TYPES)
         total = archers + melee
         # Answer shooters with whatever closes the distance, in proportion to how
         # many of them there are. The old rule only fired when archers outnumbered
@@ -624,7 +624,7 @@ class _ProBrainEconomy(_ProBrainCore):
         A scouting posture's workshop makes its one flying machine before anything else."""
         if building.type is BuildingType.WORKSHOP and self.profile.scout and counts.get(UnitType.FLYING_MACHINE, 0) < 1:
             return math.inf, UnitType.FLYING_MACHINE
-        soldiers = sum(n for t, n in counts.items() if t is not UnitType.FLYING_MACHINE)
+        soldiers = int_sum(n for t, n in counts.items() if t is not UnitType.FLYING_MACHINE)
         best: tuple[float, UnitType] | None = None
         for unit_type in targets:
             if unit_type not in building.info.trains:

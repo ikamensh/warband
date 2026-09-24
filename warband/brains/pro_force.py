@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from warband.sim.model import Point, Unit, World, dist
+from warband.sim.model import Point, Unit, World, dist, plain_sum
 from warband.sim.rules import BuildingType
 
 def _dps(world: World, unit: Unit) -> float:
@@ -28,8 +28,8 @@ def strength(world: World, units: list[Unit]) -> float:
     therefore ranks armies exactly as comparing the square law would, and the
     root keeps the ratios the brain is tuned against readable.
     """
-    damage = sum(_dps(world, u) for u in units)
-    body = sum(_effective_hp(world, u) for u in units)
+    damage = plain_sum(_dps(world, u) for u in units)
+    body = plain_sum(_effective_hp(world, u) for u in units)
     return math.sqrt(damage * body)
 
 

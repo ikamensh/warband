@@ -206,6 +206,7 @@ def test_long_tutorial_objective_fits_its_panel(tmp_path) -> None:
         worker = next(unit for unit in scene.world.player_units(scene.human) if unit.is_worker)
         scene.select([worker.id])
         scene.world.harvest([worker.id], scene.world.mines()[0].id)
+        game.tick(2.0)  # the panel waits for the opening banner to pass
         settle(game)
         assert scene.tutorial.current.text == "Right-click a tree with another peasant for lumber"
         x, y, width, height = scene.objectives.bounds

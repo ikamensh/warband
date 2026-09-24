@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 from warband.sim.model import (MINE_CLEARANCE, RIFT, Attack, AttackMove, Build, Building, Deposit, Harvest, Point, Pos, Repair, Salvage, Unit,
-                           World, dist, rect_gap, tile_center)
+                           World, dist, int_sum, plain_sum, rect_gap, tile_center)
 from warband.sim import mapgen
 from warband.sim.races import RACES
 from warband.sim.rules import BUILDINGS, PLAYABLE_UNITS, UPGRADES, BuildingType, Difficulty, Race, Resource, Terrain, UnitType, Upgrade
@@ -172,26 +172,15 @@ def lost_track(world: World, player: int, guess: Point) -> bool:
                    and world.is_visible(player, unit.tile) for unit in world.units.values())
 
 
-class Hunt:
-    """The search a side makes for rivals it has lost track of (:func:`lost_track`): the last peasant of a razed base,
-    or a hall raised where nobody has looked.  Without it a won match ran to the clock, the winner's army standing on
-    the ground its expedition had guessed and cleared, and nobody going anywhere else (Master mirrors ran to the cap 36
-    times in 288 once the scout riders that used to stumble on such a peasant were gone, WB-064).
-
-    The side keeps, for each square of :data:`HUNT_SQUARE` tiles, when it last saw its middle, from the first pass of
-    the match on: its own sight, nothing else.  While it has lost track, its flyers search, and after
-    :data:`HUNT_FLYERS_ALONE` seconds (at once, with no flyer) its :data:`HUNT_PARTY` fastest soldiers join them.  A
-    searcher with nothing to do takes the nearest square that is due (unseen for :data:`HUNT_DUE` seconds, or never
-    seen) and nobody else is bound for, or with none due the least recently seen; the square it was bound for counts as
-    seen once it stops, so ground it cannot reach is not asked for again and again.  Soldiers attack-move: what they
-    find they fight, and the army follows up, because what they see is what the brain's attack targets are made of."""
+class Squares:
+    """When a side last saw each square of :data:`HUNT_SQUARE` tiles, and which square a searcher goes to next: the
+    memory the hunt (:class:`Hunt`) and the player's scouts (``warband.brains.adjutant``) search by.  A square counts as
+    seen when the side sees its middle, from the first look on: its own sight, nothing else."""
 
     def __init__(self) -> None:
         self.seen: list[float] = []  # per square, row after row: when the side last saw its middle (-inf: never)
         self.columns = 0
         self.next_look = 0.0
-        self.since = -1.0  # when the side lost track; negative while it has not
-        self.party: dict[int, int] = {}  # a searcher's id -> the square it was sent to (-1: not sent yet)
 
     def middle(self, world: World, square: int) -> Point:
         """The middle of *square*'s tiles inside the map."""
@@ -199,9 +188,13 @@ class Hunt:
         y = min((square // self.columns) * HUNT_SQUARE + HUNT_SQUARE // 2, world.height - 1)
         return (x + 0.5, y + 0.5)
 
-    def look(self, world: World, player: int) -> None:
-        """Note the squares whose middle *player* sees now; every :data:`HUNT_LOOK` seconds."""
-        if world.time < self.next_look:
+    def square_at(self, point: Point) -> int:
+        """The square *point* (tiles, inside the map) lies in."""
+        return int(point[1]) // HUNT_SQUARE * self.columns + int(point[0]) // HUNT_SQUARE
+
+    def look(self, world: World, player: int, *, now: bool = False) -> None:
+        """Note the squares whose middle *player* sees now; every :data:`HUNT_LOOK` seconds, or *now*."""
+        if world.time < self.next_look and not now:
             return
         self.next_look = world.time + HUNT_LOOK
         if not self.seen:
@@ -213,10 +206,42 @@ class Hunt:
             if visible[int(y) * width + int(x)]:
                 self.seen[square] = world.time
 
+    def pick(self, world: World, origin: Point, candidates: list[int], due: float,
+             early: dict[int, float] | None = None) -> int:
+        """The nearest of *candidates* that is due (unseen for *due* seconds, or for its own time in *early*); with
+        none due, the least recently seen."""
+        now = world.time
+        ready = [square for square in candidates
+                 if now - self.seen[square] >= (due if early is None else early.get(square, due))]
+        if ready:
+            return min(ready, key=lambda square: (dist(origin, self.middle(world, square)), square))
+        return min(candidates, key=lambda square: (self.seen[square], dist(origin, self.middle(world, square)), square))
+
+
+class Hunt:
+    """The search a side makes for rivals it has lost track of (:func:`lost_track`): the last peasant of a razed base,
+    or a hall raised where nobody has looked.  Without it a won match ran to the clock, the winner's army standing on
+    the ground its expedition had guessed and cleared, and nobody going anywhere else (Master mirrors ran to the cap 36
+    times in 288 once the scout riders that used to stumble on such a peasant were gone, WB-064).
+
+    The side keeps, for each square of :data:`HUNT_SQUARE` tiles, when it last saw its middle (:class:`Squares`).
+    While it has lost track, its flyers search, and after :data:`HUNT_FLYERS_ALONE` seconds (at once, with no flyer)
+    its :data:`HUNT_PARTY` fastest soldiers join them.  A searcher with nothing to do takes the nearest square that is
+    due (unseen for :data:`HUNT_DUE` seconds, or never seen) and nobody else is bound for, or with none due the least
+    recently seen; the square it was bound for counts as seen once it stops, so ground it cannot reach is not asked for
+    again and again.  Soldiers attack-move: what they find they fight, and the army follows up, because what they see
+    is what the brain's attack targets are made of."""
+
+    def __init__(self) -> None:
+        self.squares = Squares()
+        self.since = -1.0  # when the side lost track; negative while it has not
+        self.party: dict[int, int] = {}  # a searcher's id -> the square it was sent to (-1: not sent yet)
+
     def step(self, world: World, player: int, soldiers: list[Unit], lost: bool) -> set[int]:
         """Look, and while *lost* keep the searchers searching; the ids of the searchers, which the brain's army leaves
         to the hunt.  *soldiers* are those the brain could spare for it."""
-        self.look(world, player)
+        squares = self.squares
+        squares.look(world, player)
         if not lost:
             self.since = -1.0
             self.party.clear()
@@ -228,7 +253,7 @@ class Hunt:
             if unit.flying and unit.id not in party:
                 party[unit.id] = -1
         if not any(world.units[uid].flying for uid in party) or world.time - self.since >= HUNT_FLYERS_ALONE:
-            walking = sum(1 for uid in party if not world.units[uid].flying)
+            walking = int_sum(1 for uid in party if not world.units[uid].flying)
             spare = sorted((u for u in soldiers if u.id not in party), key=lambda u: (-world.speed_of(u), u.id))
             for unit in spare[:max(0, HUNT_PARTY - walking)]:
                 party[unit.id] = -1
@@ -238,27 +263,19 @@ class Hunt:
             if square >= 0 and unit.orders:
                 continue
             if square >= 0:
-                self.seen[square] = world.time  # as near as the ground lets it come: looked at
+                squares.seen[square] = world.time  # as near as the ground lets it come: looked at
                 taken.discard(square)
-            square = self._next(world, unit.pos, taken)
+            every = range(len(squares.seen))
+            square = squares.pick(world, unit.pos, [square for square in every if square not in taken] or list(every), HUNT_DUE)
             party[uid] = square
             taken.add(square)
-            point = self.middle(world, square)
+            point = squares.middle(world, square)
             if unit.info.damage:
                 world.attack_move([uid], point)
             else:
                 world.move([uid], point)
         self.party = party
         return set(party)
-
-    def _next(self, world: World, origin: Point, taken: set[int]) -> int:
-        """The nearest square that is due and nobody is bound for; with none due, the least recently seen."""
-        now = world.time
-        free = [square for square in range(len(self.seen)) if square not in taken] or list(range(len(self.seen)))
-        due = [square for square in free if now - self.seen[square] >= HUNT_DUE]
-        if due:
-            return min(due, key=lambda square: (dist(origin, self.middle(world, square)), square))
-        return min(free, key=lambda square: (self.seen[square], dist(origin, self.middle(world, square)), square))
 
 
 def known_camps(world: World, player: int) -> list:
@@ -392,7 +409,7 @@ def _shift(plan: dict[UnitType, float], deltas: dict[UnitType, float]) -> None:
         plan[unit_type] += delta
     for unit_type in plan:
         plan[unit_type] = max(0.0, plan[unit_type])
-    total = sum(plan.values())
+    total = plain_sum(plan.values())
     if total > 0:
         for unit_type in plan:
             plan[unit_type] /= total
@@ -739,7 +756,7 @@ class Brain:
                 world.train(hall.id, UnitType.PEASANT)
         first = halls[0] if halls else None
         army = self._army(world)
-        counts = {t: sum(1 for u in army if u.type is t) for t in PLAYABLE_UNITS}
+        counts = {t: int_sum(1 for u in army if u.type is t) for t in PLAYABLE_UNITS}
         for building in world.player_buildings(player, done=True):
             if not building.info.trains or building.type is BuildingType.TOWN_HALL or self.saving:
                 continue
@@ -765,7 +782,7 @@ class Brain:
             plan.pop(UnitType.CATAPULT, None)
         if not self.profile.clerics:
             plan.pop(UnitType.CLERIC, None)
-        total = sum(plan.values())
+        total = plain_sum(plan.values())
         if total > 0:
             plan = {unit_type: share / total for unit_type, share in plan.items()}
         archers = melee = knights = 0
@@ -787,7 +804,7 @@ class Brain:
         return plan
 
     def _choose_unit(self, world: World, building: Building, counts: dict[UnitType, int]) -> UnitType | None:
-        soldiers = sum(counts.values())
+        soldiers = int_sum(counts.values())
         if building.type is BuildingType.WORKSHOP:
             threshold = 4 if world.players[self.player].race is Race.DWARF else 6
             if soldiers < threshold:
@@ -845,9 +862,9 @@ class Brain:
 
     def _enemy_soldiers(self, world: World) -> int:
         """Living enemy soldiers (units that are not workers) of alive players."""
-        return sum(1 for u in world.units.values() if u.player != self.player and world.players[u.player].alive
-                   and not u.is_worker and u.info.damage and u.hp > 0 and not u.hidden
-                   and world.is_visible(self.player, u.tile))
+        return int_sum(1 for u in world.units.values() if u.player != self.player and world.players[u.player].alive
+                       and not u.is_worker and u.info.damage and u.hp > 0 and not u.hidden
+                       and world.is_visible(self.player, u.tile))
 
     # -- Military --------------------------------------------------------------------
 

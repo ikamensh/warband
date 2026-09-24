@@ -245,6 +245,17 @@ def test_a_right_click_on_a_ruin_sets_the_peasants_salvaging_and_the_soldiers_ra
     assert type(footman.order).__name__ == "Attack", "a soldier has no crowbar; it razes the ruin as before"
 
 
+def test_a_right_click_on_a_ruin_with_an_unarmed_flyer_along_sends_it_to_look() -> None:
+    """The flying machine has no weapon to raze with: it goes along, and the peasant's salvage is not left half given
+    by a refusal (the attack it was once handed said no after the peasant had set out)."""
+    world = field(3)
+    farm = ruined(world)
+    peasant = salvager(world)
+    flyer = world.spawn_unit(0, UnitType.FLYING_MACHINE, (17.5, 10.5))
+    assert world.smart([peasant.id, flyer.id], farm.center) == "salvage"
+    assert isinstance(peasant.order, Salvage) and type(flyer.order).__name__ == "Move"
+
+
 def test_a_right_click_on_a_rivals_standing_building_still_means_attack() -> None:
     """Salvaging one is slow and dangerous: it is an armed choice, never what a click meant to be an attack does."""
     world = field(2)

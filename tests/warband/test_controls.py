@@ -10,6 +10,7 @@ from warband.online.authority import WarbandMatch
 from warband.sim.model import Build, Harvest, tile_center
 from warband.sim.rules import BUILDINGS, BuildingType, Race, UnitType
 from warband.ui.controls import CHORDS, GRID_BELOW, GRID_KEYS, SCHEMES
+from warband.brains.adjutant import COMMANDS
 from warband.ui.scene import BUILD_ORDER, DEFAULT_SETTINGS, GameScene, HelpScene, SettingsScene, new_game
 from warband.ui.style import build_theme
 
@@ -563,6 +564,8 @@ def test_ctrl_chords_reach_the_settlement_in_every_scheme(game, controls: str) -
     scene = match(game, controls)
     scene.select([peasants_of(scene)[0].id])
     for letter, action in CHORDS.items():
+        if action in COMMANDS:
+            continue  # the side's commands give orders, not modes: tests/warband/test_commands.py
         press(game, letter, ctrl=True)
         if action == "plans":
             assert type(game.scene).__name__ == "SettlementPlansScene"

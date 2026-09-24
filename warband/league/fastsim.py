@@ -24,8 +24,8 @@ was promised) raises ``TypeError`` there, where the interpreter would have
 carried on; ``mypy`` over :data:`MODULES` must stay clean for a build to exist.
 
 :func:`activate` is called by ``tools/arena.py``, ``tune.py``,
-``balance_report.py``, ``ai_report.py``, ``race_report.py``, ``sim_bench.py``
-and ``step_bench.py`` when they run as programs, before they import the
+``balance_report.py``, ``ai_report.py``, ``race_report.py``, ``sim_bench.py``,
+``step_bench.py`` and ``fuzz.py`` when they run as programs, before they import the
 simulation, and again in the worker processes they spawn, which run the same
 script as ``__mp_main__`` and take the parent's build from ``WARBAND_FASTSIM``.
 A process that only imports one of them as a library stays as it was.  The

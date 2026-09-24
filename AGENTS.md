@@ -164,13 +164,15 @@ keeps where code goes and the rules below.
   A `World.scripted` world never declares a winner or surrenders: the mission
   decides.
 - The tools that play many matches (`arena`, `tune`, `balance_report`,
-  `ai_report`, `race_report`, `sim_bench`, `step_bench`) run the simulation
+  `ai_report`, `race_report`, `sim_bench`, `step_bench`, `fuzz`) run the simulation
   compiled by mypyc (`league/fastsim.py`, built on first use under
   `build/fastsim/`; `WARBAND_INTERPRETED=1` opts out), about ten times faster;
   the game, the online authority and the tests run the source. Keep mypy clean
   over `fastsim.MODULES`: a value of the wrong type is a `TypeError` in a
   compiled run where the interpreter carried on. Their module constants are
-  `Final` and never bound again (tables are patched in place). A C twin in
+  `Final` and never bound again (tables are patched in place). They call no
+  bare `sum()`: floats add in `model.plain_sum`, integers in `model.int_sum`
+  (`tests/warband/test_sums.py`). A C twin in
   `sim/_native.c` (its opening comment lists them) changes with its Python
   reference, and `tests/warband/test_fastsim.py` holds them to the same
   answers. `docs/fast-simulation.md` says what the compiler rewards and

@@ -184,6 +184,26 @@ def test_melee_ordered_at_a_flyer_is_refused_and_a_mixed_group_sends_its_shooter
     assert isinstance(footman.order, Move), "melee follows the fight it cannot strike in"
 
 
+def test_a_recruit_sent_to_a_rally_point_under_a_rival_flyer_walks_to_the_ground_beneath_it() -> None:
+    """A barracks' rally point with a rival flyer hovering over it: the footman trained there is delivered by the
+    context order at the point, which once ordered an attack on the flyer, was refused, and raised out of the step
+    (seen by the WB-062 race games).  To a unit that cannot strike it, a flyer over a point is the ground under it."""
+    world = grass()
+    world.players[0].gold = world.players[0].lumber = 5000
+    world.place_building(0, BuildingType.TOWN_HALL, (1, 12))  # room for the recruits
+    barracks = world.place_building(0, BuildingType.BARRACKS, (4, 4))
+    rally = (14.5, 6.5)
+    world.set_rally(barracks.id, rally)
+    flyer = world.spawn_unit(1, UnitType.FLYING_MACHINE, rally)
+    world.update_vision()
+    assert world.smart([world.spawn_unit(0, UnitType.FOOTMAN, (9.5, 9.5)).id], rally) == "move"
+    world.train(barracks.id, UnitType.FOOTMAN)
+    run(world, world.unit_info(0, UnitType.FOOTMAN).build_time + 6.0)  # trained, delivered and walked there: no RuleError
+    recruits = [u for u in world.units.values() if u.player == 0 and u.type is UnitType.FOOTMAN]
+    assert len(recruits) == 2 and min(dist(u.pos, rally) for u in recruits) < 1.5
+    assert flyer.hp == flyer.max_hp
+
+
 def test_a_flying_machine_has_no_weapon_to_order_and_sent_at_an_enemy_it_goes_and_looks() -> None:
     world, flyer, footman = duel(UnitType.FLYING_MACHINE, target=UnitType.FOOTMAN)
     with pytest.raises(RuleError, match="has no weapon"):

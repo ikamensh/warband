@@ -33,7 +33,7 @@ from typing import Final
 
 from warband.sim import camps as camping
 from warband.sim import path as pathing
-from warband.sim.model import MINE_CLEARANCE, RIFT, Pos, World, rects_gap, tile_center
+from warband.sim.model import MINE_CLEARANCE, RIFT, Pos, World, int_sum, plain_sum, rects_gap, tile_center
 from warband.sim.rules import (BUILDINGS, EXPANSION_GOLD, MAX_PLAYERS, MINE_GOLD, BuildingType, Layout, MapTheme, Race, Terrain,
                                UnitType)
 
@@ -643,7 +643,7 @@ def _river(cv: _Canvas, rng: random.Random, walls: _Walls) -> None:
                 heading = min(base + 0.7, max(base - 0.7, heading + rng.uniform(-0.4, 0.4)))
             x, y, travelled = x + 3 * math.cos(heading), y + 3 * math.sin(heading), travelled + 3
         widths = [radius if cv.wide else radius + rng.uniform(0, 0.8) for _ in points]
-        widths = [sum(widths[max(0, i - 2):i + 3]) / len(widths[max(0, i - 2):i + 3]) for i in range(len(widths))]  # smoothed: the cross swells and narrows
+        widths = [plain_sum(widths[max(0, i - 2):i + 3]) / len(widths[max(0, i - 2):i + 3]) for i in range(len(widths))]  # smoothed: the cross swells and narrows
         tiles: set[Pos] = set()
         for point, width in zip(points, widths):
             tiles.update(cv.within(point, width))
@@ -830,7 +830,7 @@ def _fits(cv: _Canvas, pos: Pos, rects: list[tuple[Pos, int]], size: int = 3, sp
 def _room(cv: _Canvas, pos: Pos, clearable: bool, size: int = 3) -> int:
     """Open tiles around a *size* site: within six of a 3x3 one, and a tile further out for every tile it is wider."""
     kinds = (Terrain.GRASS, Terrain.TREES) if clearable else (Terrain.GRASS,)
-    return sum(1 for x, y in cv.within(_mine_centre(pos, size), 6 + (size - 3)) if cv.grid[y][x] in kinds)
+    return int_sum(1 for x, y in cv.within(_mine_centre(pos, size), 6 + (size - 3)) if cv.grid[y][x] in kinds)
 
 
 def _canonical_sites(cv: _Canvas, size: int = 3) -> Iterable[Pos]:
@@ -1161,7 +1161,7 @@ def _rift_fits(world: World, cv: _Canvas, pos: Pos, region: set[Pos], walls: set
         return False
     if any(x - _RIFT_WALL_GAP <= tx < x + RIFT + _RIFT_WALL_GAP and y - _RIFT_WALL_GAP <= ty < y + RIFT + _RIFT_WALL_GAP for tx, ty in walls):
         return False
-    return room == 0 or sum(1 for tx, ty in cv.within(middle, 4.0) if world.passable(tx, ty)) >= room
+    return room == 0 or int_sum(1 for tx, ty in cv.within(middle, 4.0) if world.passable(tx, ty)) >= room
 
 
 # -- Connectivity ------------------------------------------------------------------
@@ -1259,7 +1259,7 @@ def audit(world: World) -> dict:
     report: dict = {"players": len(halls), "layout": world.layout.value, "open": [], "mine": [], "wood": [], "rift": []}
     for hall in halls:
         cx, cy = int(hall.center[0]), int(hall.center[1])
-        report["open"].append(sum(1 for dx in range(-6, 7) for dy in range(-6, 7) if world.passable(cx + dx, cy + dy)))
+        report["open"].append(int_sum(1 for dx in range(-6, 7) for dy in range(-6, 7) if world.passable(cx + dx, cy + dy)))
         report["mine"].append(min(max(abs(m.center[0] - hall.center[0]), abs(m.center[1] - hall.center[1])) for m in world.mines()))
         tree = world.nearest_tree(hall.center, 12)
         report["wood"].append(None if tree is None else max(abs(tree[0] - cx), abs(tree[1] - cy)))
@@ -1268,11 +1268,11 @@ def audit(world: World) -> dict:
     report["connected"] = all(d in region for d in doors + mine_doors + list(world.rifts))
     report["rifts"] = len(world.rifts)
     report["expansions"] = len(world.mines()) - len(halls)
-    report["seams"] = sum(1 for m in world.mines() if m.type is BuildingType.GOLD_SEAM)
+    report["seams"] = int_sum(1 for m in world.mines() if m.type is BuildingType.GOLD_SEAM)
     report["camps"] = len(world.camps)
     total = world.width * world.height
-    report["trees"] = sum(1 for row in world.terrain for t in row if t is Terrain.TREES) / total
-    report["water"] = sum(1 for row in world.terrain for t in row if t is Terrain.WATER) / total
+    report["trees"] = int_sum(1 for row in world.terrain for t in row if t is Terrain.TREES) / total
+    report["water"] = int_sum(1 for row in world.terrain for t in row if t is Terrain.WATER) / total
     return report
 
 
@@ -1325,7 +1325,7 @@ def _audit(world: World, cv: _Canvas, spec: _Spec, walls: _Walls, natural: Pos |
     report["detour"] = None
     route = routes.get(doors[1])
     if route is not None:
-        walk = sum(pathing.octile(a, b) for a, b in zip([doors[0]] + route, route))
+        walk = plain_sum(pathing.octile(a, b) for a, b in zip([doors[0]] + route, route))
         report["detour"] = walk / _dist(doors[0], doors[1])
     layout = spec.layout
     if layout is Layout.FOREST:

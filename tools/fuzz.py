@@ -9,7 +9,14 @@ checking the world every simulated second: units stand on open ground,
 hit points and resources stay in range, buildings never overlap, the
 blocked grid matches the map, hidden units are inside something real.
 The monkey runs feed the game scene random keys, clicks, drags and scrolls
-on the mock backend, including through every overlay.
+on the mock backend, including through every overlay, and press the side's
+commands in runs of up to three.
+
+Both run the compiled simulation (``warband.league.fastsim``, bit-identical to
+the source the game runs; ``WARBAND_INTERPRETED=1`` runs the source), and the
+whole-map checks are bitwise, so a check costs little beside a step.  At the
+default ``--cpu-percent 25`` a run takes four times its processor time; give it
+more when nothing else is running.
 """
 
 from __future__ import annotations
@@ -25,6 +32,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from warband.league import fastsim  # noqa: E402
+
+if __name__ == "__main__":  # run as a program, not imported as a library
+    fastsim.activate()  # the compiled simulation, bit-identical to the source, unless WARBAND_INTERPRETED is set
+
 from warband.sim import mapgen  # noqa: E402
 from warband.brains.ai import make_brain  # noqa: E402
 from warband.brains.pro_ai import PRO, ProBrain, RaceBrain  # noqa: E402
@@ -33,6 +45,7 @@ from warband.sim.rules import AETHER_TICKS, BUILDINGS, SIM_DT, BuildingType, Dif
 from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
 
 GAME_MINUTES = 15
+TRUTH = bytes([0] + [1] * 255)  # a bytes.translate table: any nonzero byte to 1
 
 
 def check_world(world: World) -> None:
@@ -52,11 +65,13 @@ def check_world(world: World) -> None:
         for tile in b.tiles():  # a ley rift is kept for the vault standing square on it
             rift = world.rift_at(tile)
             assert rift is None or (b.type is BuildingType.VAULT and b.pos == rift), ("a building on a ley rift", b, rift)
-    for y in range(world.height):
-        for x in range(world.width):
-            blocked = world._blocked[y * world.width + x]
-            expected = world.terrain[y][x] in BLOCKING or (x, y) in blocked_by_building
-            assert bool(blocked) == expected, ("blocked grid mismatch", (x, y))
+    expected = bytearray(t in BLOCKING for row in world.terrain for t in row)
+    for x, y in blocked_by_building:
+        expected[y * world.width + x] = 1
+    blocked = world._blocked.translate(TRUTH)
+    if blocked != expected:
+        i = next(i for i, (have, want) in enumerate(zip(blocked, expected)) if have != want)
+        raise AssertionError(("blocked grid mismatch", (i % world.width, i // world.width)))
     for u in world.units.values():
         assert 0 < u.hp <= u.max_hp, ("unit hp", u)
         assert 0 <= u.x <= world.width and 0 <= u.y <= world.height, ("unit off map", u)
@@ -74,8 +89,8 @@ def check_world(world: World) -> None:
         assert 0 <= p.aether <= world.aether_cap(p.id) and 0 <= p.aether_charge < AETHER_TICKS, ("aether out of its store", p)
         has_stuff = bool(world.player_units(p.id)) or bool(world.player_buildings(p.id))
         assert p.alive == has_stuff, ("alive without anything, or dead with something", p)
-        visible, explored = world.visible[p.id], world.explored[p.id]
-        assert all(explored[i] for i in range(len(visible)) if visible[i]), "visible but unexplored"
+        visible, explored = (int.from_bytes(tiles[p.id].translate(TRUTH)) for tiles in (world.visible, world.explored))
+        assert not visible & ~explored, "visible but unexplored"  # as bitsets: a tile seen is a tile explored
 
 
 STALL_SECONDS = 20.0
@@ -145,7 +160,8 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
 
 def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = None) -> int:
     from saga2d import Game
-    from warband.ui.controls import SCHEMES
+    from warband.brains.adjutant import COMMANDS
+    from warband.ui.controls import CHORDS, SCHEMES
     from warband.ui.scene import DEFAULT_SETTINGS, GameScene, new_game
     from warband.ui.style import build_theme
     from warband.ui.title import TitleScene
@@ -153,6 +169,7 @@ def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = No
     # The scene's own keys, every letter a card or a scheme gives a meaning, and the Modal scheme's punctuation.
     keys = sorted({k for keys in GameScene.controls for k in ((keys,) if isinstance(keys, str) else keys)}
                   | set("abcdefghklmpqrstuvwxz123456789") | {"return", "escape", "period", "comma"})
+    commands = [letter for letter, action in CHORDS.items() if action in COMMANDS]
     failures = 0
     for seed in seeds:
         rng = random.Random(seed)
@@ -170,6 +187,11 @@ def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = No
                     roll = rng.random()
                     if roll < 0.03:  # cancel mode, which a random letter with a random Ctrl reaches too seldom to click in
                         game.backend.inject_key("x", ctrl=True)
+                    elif roll < 0.06:  # one of the side's commands, pressed up to three times in a row: its levels
+                        letter = rng.choice(commands)
+                        for _ in range(rng.choice((1, 2, 3))):
+                            game.backend.inject_key(letter, ctrl=True)
+                            game.tick(rng.choice((1 / 60, 0.3, 1.0)))
                     elif roll < 0.4:
                         game.backend.inject_key(rng.choice(keys), shift=rng.random() < 0.15, ctrl=rng.random() < 0.15)
                     elif roll < 0.75:

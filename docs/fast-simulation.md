@@ -60,8 +60,11 @@ Compiling the same source keeps every one of those properties.
 - The built-in `sum` over floats is not the same operation compiled: since
   Python 3.12 CPython adds floats with compensated (Neumaier) summation, and
   mypyc turns `sum(generator)` into plain additions, so the two part in the
-  last bit. A float that reaches a position (a marching line's middle,
-  WB-050) is added up in a plain loop (`model._middle`).
+  last bit, and a decision can go either way on it (a marching line's middle,
+  WB-050; a computer player's choice in fuzz match 84). So no module of
+  `MODULES` calls `sum`: floats add in `model.plain_sum`, a plain loop, and
+  integers in `model.int_sum`, whose annotation keeps floats out;
+  `tests/warband/test_sums.py` refuses a bare `sum(`.
 - The C twins perform the same floating-point operations in the same order
   (built with `-ffp-contract=off`, so no multiply-add is fused), relax
   neighbours and pop the frontier in the same order, and draw the same random
