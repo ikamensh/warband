@@ -186,7 +186,7 @@ BEHAVIOR_SCHEMA = {
     "camps": {"watch": ("CAMP_WATCH", float), "hold": ("CAMP_HOLD", float), "calm": ("CAMP_CALM", float),
               "regen": ("CAMP_REGEN", float), "respawn": ("CAMP_RESPAWN", float), "post": ("CAMP_POST", float),
               "regen_calm": ("REGEN_CALM", float)},
-    "movement": {"max_push": ("MAX_PUSH", float), "spacing": ("SPACING", float),
+    "movement": {"max_push": ("MAX_PUSH", float), "core": ("CORE", float), "spacing": ("SPACING", float),
                  "spacing_weight": ("SPACING_WEIGHT", float), "ease_space": ("EASE_SPACE", float),
                  "ease_every": ("EASE_EVERY", int), "ease_chance": ("EASE_CHANCE", float),
                  "ease_step": ("EASE_STEP", float), "ease_step_variance": ("EASE_STEP_VARIANCE", float),

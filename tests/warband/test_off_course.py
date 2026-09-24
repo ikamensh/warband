@@ -44,11 +44,12 @@ def test_a_worker_shoved_onto_a_blocked_corner_plans_again_instead_of_bouncing()
     assert peasant.state == "idle" and not peasant.orders
 
 
-def test_a_worker_whose_next_tile_turns_dangerous_at_a_waypoint_waits_there_for_its_plan() -> None:
-    """The tick's leftover travel goes on through a waypoint (WB-017).  When the next tile has just
-    become forbidden ground (an enemy came into view) inside the unit's replan window, the way on is
-    refused while the unit stands at its tile centre: it waits there for the plan instead of spending
-    the leftover towards the forbidden tile and walking back to the centre next tick."""
+def test_a_worker_whose_next_tile_turns_dangerous_waits_on_its_own_tile_for_its_plan() -> None:
+    """When the tile ahead has just become forbidden ground (an enemy came into view) inside the unit's replan
+    window, the way on is refused: the worker keeps off it and waits on its own tile for the plan, rather than
+    spending its travel towards the forbidden tile and walking back (WB-017).  A straight walk passes a
+    waypoint whose successor is a clear step away without going to its centre first, so the worker is caught
+    just onto (11, 9) and already heading for (10, 9)."""
     world = grass(30, 20)
     world.place_building(0, BuildingType.TOWN_HALL, (2, 8))
     world.place_building(1, BuildingType.TOWN_HALL, (26, 16))
@@ -59,15 +60,17 @@ def test_a_worker_whose_next_tile_turns_dangerous_at_a_waypoint_waits_there_for_
     world.update_vision()
     world.step()
     assert worker.path[:2] == [(11, 9), (10, 9)], worker.path
-    per_tick = world.speed_of(worker) * SIM_DT
-    while dist(worker.pos, (11.5, 9.5)) > per_tick:
+    while worker.path[0] != (10, 9):
         world.step()
-    assert worker.path[0] == (11, 9) and world.time < worker.replan_at
+    assert worker.tile == (11, 9) and world.time < worker.replan_at, (worker.pos, world.time, worker.replan_at)
     footman = world.spawn_unit(1, UnitType.FOOTMAN, (8.5, 9.5))  # its reach covers (10, 9) but not (11, 9)
     world.hold([footman.id])
     world.update_vision()
-    world.step()  # arrives at (11.5, 9.5) with travel to spare, and the tile beyond is forbidden now
-    assert worker.pos == (11.5, 9.5) and worker.state == "move", (worker.pos, worker.state)
+    replan = worker.replan_at
+    while world.time < replan:
+        world.step()
+        assert worker.tile == (11, 9), (world.time, worker.pos)
+    assert dist(worker.pos, (11.5, 9.5)) < 0.13, worker.pos  # waiting at its centre, not pressing on
     run(world, 20.0)
     assert worker.carrying is None and world.players[0].gold == 1000 + GOLD_PER_TRIP, (worker.pos, worker.path)
 

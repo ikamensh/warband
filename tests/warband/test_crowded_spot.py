@@ -7,10 +7,11 @@ second, so the footman shuffled on the spot for the rest of the match.  The grou
 crowd was the whole of the obstacle, which is why a Move to it could never finish.
 """
 
+import math
 import random
 
 from warband.brains.ai import make_brain
-from warband.sim.model import ARRIVE, SIM_DT, Unit, World, dist
+from warband.sim.model import ARRIVE, SIM_DT, SPACING, Unit, World, dist
 from warband.sim.rules import BuildingType, Difficulty, Race, Terrain, UnitType
 
 # The neighbourhood as the seed left it: the six buildings whose ground comes within five tiles of the
@@ -96,7 +97,10 @@ def test_every_soldier_of_an_army_sent_to_one_coordinate_ends_its_walk() -> None
     run(world, 15.0)
     holding = [(u.id, u.type.value, round(dist(u.pos, SPOT), 2)) for u in army if u.orders]
     assert not holding, holding
-    assert dist(footman.pos, SPOT) < 2.0, footman.pos  # they crowd around the spot, not give up on the way
+    # They crowd around the spot, not give up on the way: within the disc their bodies fill packed as close as a
+    # crowd at rest stands, a body and its elbow room each (the densest packing of discs covers pi / sqrt(12)).
+    packed = math.sqrt(sum((u.radius + SPACING / 2) ** 2 for u in army) / (math.pi / math.sqrt(12)))
+    assert dist(footman.pos, SPOT) < packed, (footman.pos, packed)
 
 
 def test_no_soldier_of_a_mustering_army_is_ordered_about_without_getting_anywhere() -> None:

@@ -146,6 +146,7 @@ MINE_HOLD: Final = 0.3  # tiles past the face a worker holding a mouth tile may 
 STUCK_AFTER: Final = 0.8  # seconds without progress before a unit paths again around the units in its way
 REPLAN_EVERY: Final = 0.6  # a unit plans at most this often unless it gets a new order (a melee would otherwise plan every tick)
 REPLAN_STAGGER: Final = 8  # ticks over which units spread their next plans by id, so a crowd does not plan in lockstep
+ROUTE_CONE: Final = math.cos(math.radians(45))  # a marching line's straight walk to its place is taken within this of its route's way
 STEER_RANGE: Final = 4.0  # within this many tiles a unit walks straight at its target when the line is clear, without A*
 LOCAL_EXPANSIONS: Final = 700  # A* budget for the detours around other units; those goals are close
 TRUNK_ROUTES: Final = 64  # shared march corridors kept per static grid: one trunk per shared target and start region
@@ -159,6 +160,8 @@ QUEUE_HOLD: Final = 0.25  # share of a fellow worker's shove a queued worker (id
 # The crowd's numbers are warband/assets/constants/behavior.toml's; the pathfinder's budgets above stay in code.
 MAX_PUSH: Final = config.number('MAX_PUSH')
 SPACING: Final = config.number('SPACING')
+CORE: Final = config.number('CORE')
+CORE_TOLERANCE: Final = 1e-9  # tiles of rounding a body on the edge of another's core is allowed
 SPACING_WEIGHT: Final = config.number('SPACING_WEIGHT')
 EASE_SPACE: Final = config.number('EASE_SPACE')
 EASE_EVERY: Final = config.integer('EASE_EVERY')
@@ -2262,24 +2265,32 @@ class World:
             fx, fy, _, cx, cy = self._line(u, order)
             if dist((cx, cy), order.target) > FORMATION_LOOKAHEAD:
                 point = self._clamp((cx + fx * FORMATION_LOOKAHEAD + order.offset[0], cy + fy * FORMATION_LOOKAHEAD + order.offset[1]))
-                if dist(u.pos, point) > FORMATION_SPACING and self._along_its_route(u, point) and self._steer(u, point, dt):
+                if (dist(u.pos, point) > FORMATION_SPACING and self._along_its_route(u, slot, point)
+                        and self._steer(u, point, dt, dressing=True, keep_path=True)):
                     return False  # straight at its place while the way there is clear: a path would keep a grid row
         return self._walk_to(u, slot, dt, settle=True)
 
-    def _along_its_route(self, u: Unit, point: Point) -> bool:
-        """Whether walking straight at *point* would not undo the route *u* is already walking.
+    def _along_its_route(self, u: Unit, slot: Point, point: Point) -> bool:
+        """Whether walking straight at *point* heads the way *u*'s route to *slot* goes, within :data:`ROUTE_CONE`.
 
-        The shortcut and the path can disagree where the way round an obstacle goes: the shortcut moved the
-        unit a fraction of a tile, from where the straight line was no longer clear, so the next step planned
-        a path that walked it back — and it stepped between the two for the rest of the match.  A unit with no
-        path has nothing to undo.
+        The route is planned first, and kept while the unit walks the shortcut (the waypoints it has walked
+        past are dropped), so there is always a way to compare with.  The two disagree where the way round an
+        obstacle goes.  The line's place ahead lies straight across a wall whose gate is ten tiles aside: the
+        shortcut walked each footman at the rock and the path walked it back, turn about, ten seconds lost on
+        a twenty-second march.  And before that, stepping a fraction of a tile between the two for the rest of
+        the match once the shortcut had cleared the path it was meant to be checked against.
         """
-        if not u.path:
-            return True
-        ahead = tile_center(u.path[0])
+        goal = (int(slot[0]), int(slot[1]))
+        if u.path_goal != goal:
+            self._plan(u, goal, slot)
+        path = u.path
+        while (len(path) > 1 and dist(u.pos, tile_center(path[1])) <= dist(tile_center(path[0]), tile_center(path[1]))
+               and self._line_clear(u.pos, tile_center(path[1]))):
+            path.pop(0)  # walked past on the shortcut: the next waypoint is no further than this one was from it
+        ahead = tile_center(path[min(2, len(path) - 1)]) if path else slot
         sx, sy = point[0] - u.x, point[1] - u.y
         ax, ay = ahead[0] - u.x, ahead[1] - u.y
-        return sx * ax + sy * ay >= 0.0
+        return sx * ax + sy * ay >= ROUTE_CONE * hypot(sx, sy) * hypot(ax, ay)
 
     def _slot(self, order: Move | AttackMove) -> Point:
         """Where a Move or AttackMove takes its unit: its slot in a marching line, or the shared target."""
@@ -3003,7 +3014,13 @@ class World:
                     tx, ty = v.tile
                     if (tx, ty) != target and 0 <= tx < width and 0 <= ty < self.height:
                         blocked[ty * width + tx] = 1
-            u.path = escape + pathing.find_path_grid(start, target, blocked, width, self.height, max_expansions=LOCAL_EXPANSIONS)
+            detour = pathing.find_path_grid(start, target, blocked, width, self.height, max_expansions=LOCAL_EXPANSIONS)
+            if start != target and (not detour or detour[-1] != target):
+                # No way round the bodies standing about (they fill a gate) or none found on the local budget: the
+                # nearest tile the search reached is not the goal, and walking it out would end the order there, on
+                # the wrong side of the wall.  Press on through them instead; the crowd step makes room.
+                detour = pathing.find_path_grid(start, target, grid, width, self.height, max_expansions=self.path_budget)
+            u.path = escape + detour
         elif navigation is None and isinstance(u.order, (Move, AttackMove)) and self._join_march(u, start, goal, exact, target):
             return
         else:
@@ -3149,19 +3166,24 @@ class World:
         route = pathing.find_path_grid(start, nearest, self._blocked, self.width, self.height, max_expansions=LOCAL_EXPANSIONS)
         return route if route and route[-1] == nearest else None
 
-    def _effective_speed(self, u: Unit) -> float:
+    def _effective_speed(self, u: Unit, *, dressing: bool = False) -> float:
         """How fast *u* walks right now: its own speed, capped to its order's group pace.
 
         The cap holds only while a paced Move/AttackMove is the current order (an
         engaged unit fights at full speed), and releases once the group stretches
         more than 6 tiles from its leading unit, so a stuck unit never holds the rest.
+        *dressing* is a marching line's straight walk to its place on open ground: only
+        there does a unit ahead of its row wait for it.  On a path, through a gate or down
+        a corridor, nobody can stand abreast, and a front that waits for its row only
+        slows the file behind it (twelve footmen took 45 s down a corridor peasants
+        cleared in 16).
         """
         base = self.speed_of(u)
         order = u.order
         if not isinstance(order, (Move, AttackMove)):
             return base
         speed = order.pace if order.pace is not None and order.pace < base and self._group_together(u.player, order.target, order.pace) else base
-        if order.offset is not None and self._ahead_of_line(u, order):
+        if dressing and order.offset is not None and self._ahead_of_line(u, order):
             speed *= FORMATION_HOLD
         return speed
 
@@ -3228,8 +3250,11 @@ class World:
         muster and most of it can never arrive.  How near a soldier may come is not a distance of its
         own but the bodies between it and the spot, so the ground is asked instead of measured: is
         every step of the way in held by somebody who is not going anywhere?  A pile twenty deep
-        answers as readily as a single knight on the spot.  Ground the map blocks does not answer it
-        at all -- that is the planner's business, and it walks the unit round -- and neither does a
+        answers as readily as a single knight on the spot.  The way in is the straight line, or across
+        blocked ground the unit's own route round it (to where the route ends, when the spot itself is
+        out of reach); a unit with rock between it and the spot and no route there is not there.
+        Ground the map blocks never counts as the crowd -- that is the planner's business, and it walks
+        the unit round -- and neither does a
         unit that is still getting somewhere, or a queue filing through a gate would give up at the
         back of itself rather than wait its turn.  A unit whose own progress watchdog says it is
         going nowhere (:data:`STUCK_AFTER`) is part of the wall, order or no order, so the settling
@@ -3242,19 +3267,31 @@ class World:
         after it again at another, twice a second, taking no further part in the match (fuzz
         seed 92: a footman a tile and a bit from a muster a knight was standing on).
         """
-        gap = dist(u.pos, point)
+        if self._line_clear(u.pos, point):
+            way = [u.pos, point]
+        elif u.path and u.path_goal == (int(point[0]), int(point[1])):
+            # Across a wall the way in is the unit's own route round it, not the line through the rock: the
+            # crowd on the far side of a gate is no reason to stop on this one (a muster just past a gate).
+            way = [u.pos, *(tile_center(step) for step in u.path)]
+            if u.path[-1] == u.path_goal:
+                way.append(point)  # else the spot is out of reach and the walk ends where its route does, nearest to it
+        else:
+            return False  # blocked ground between it and the spot, and no route there: it is not there
         room = u.radius + SETTLE_WITHIN
-        if gap <= room:
-            return True
-        dx, dy = (point[0] - u.x) / gap, (point[1] - u.y) / gap
         walked = room
-        while walked < gap:
-            x, y = u.x + dx * walked, u.y + dy * walked
-            if not any(v is not u and not v.hidden and not (v.state == "move" and v.orders and v.progress < STUCK_AFTER)
-                       and hypot(v.x - x, v.y - y) < v.radius + u.radius
-                       for v in self.units_near((x, y), u.radius + MAX_UNIT_RADIUS)):
-                return False  # nobody settled on this step of the way: the walk still has somewhere to go
-            walked += u.radius  # a step no wider than the unit, so no room it would fit in is stepped over
+        for (ax, ay), (bx, by) in zip(way, way[1:]):
+            leg = hypot(bx - ax, by - ay)
+            if leg < 1e-9:
+                continue
+            dx, dy = (bx - ax) / leg, (by - ay) / leg
+            while walked < leg:
+                x, y = ax + dx * walked, ay + dy * walked
+                if not any(v is not u and not v.hidden and not (v.state == "move" and v.orders and v.progress < STUCK_AFTER)
+                           and hypot(v.x - x, v.y - y) < v.radius + u.radius
+                           for v in self.units_near((x, y), u.radius + MAX_UNIT_RADIUS)):
+                    return False  # nobody settled on this step of the way: the walk still has somewhere to go
+                walked += u.radius  # a step no wider than the unit, so no room it would fit in is stepped over
+            walked -= leg
         return True
 
     def _walk_to(self, u: Unit, target: Point, dt: float, *, settle: bool = False) -> bool:
@@ -3311,10 +3348,23 @@ class World:
                 if dist(u.pos, centre) <= ARRIVE:
                     # At the centre already: wait there for the plan, rather than spend the tick's leftover
                     # travel towards the refused tile and walk back next tick.
-                    u.x, u.y = centre
+                    u.x, u.y = self._keep_clear(u, centre)
                     u.last_distance = math.inf
                     return False
                 u.path.insert(0, tile)
+            elif len(u.path) >= 2 and spent == 0.0:
+                bx, by = u.path[1]
+                if max(abs(bx - tx), abs(by - ty)) <= 1 and not (bx != tx and by != ty and (grid[ty * width + bx] or grid[by * width + tx])):
+                    # (a diagonal step past a blocked corner is off course by the rule above: skipping to it would be
+                    # undone by the next plan, and the unit would alternate between the two for good)
+                    far = u.exact if len(u.path) == 2 and u.exact is not None else tile_center(u.path[1])
+                    if self._line_clear(u.pos, far, navigation=navigation):
+                        # The waypoint after next is a step away in a clear line: this one is passed.  A crowd sharing
+                        # one path otherwise circles its first tile centre, each walking at the middle the others hold
+                        # and sidestepping round them, for as long as the order lasts (sixteen knights, open field).
+                        u.path.pop(0)
+                        waypoint = self._next_waypoint(u, precise=precise)
+                        assert waypoint is not None
         dx, dy = waypoint[0] - u.x, waypoint[1] - u.y
         d = hypot(dx, dy)
         speed = self._effective_speed(u)
@@ -3325,16 +3375,18 @@ class World:
             if navigation is not None and not self._line_clear(u.pos, waypoint, navigation=navigation):
                 u.path_goal = None
                 return False
-            u.x, u.y = waypoint
-            if u.path:
-                u.path.pop(0)
-            if u.exact is not None and dist(u.pos, u.exact) <= ARRIVE:
-                u.exact = None
-            u.last_distance = math.inf
-            if step - d > 1e-9 and self._next_waypoint(u, precise=precise) is not None:
-                # The tick's travel is not used up at a waypoint: the rest goes on towards the next one.
-                return self._follow(u, dt, settle=settle, navigation=navigation, precise=precise, spent=spent + d)
-            return False
+            if d < 1e-9 or self._keep_clear(u, waypoint) == waypoint:
+                u.x, u.y = waypoint
+                if u.path:
+                    u.path.pop(0)
+                if u.exact is not None and dist(u.pos, u.exact) <= ARRIVE:
+                    u.exact = None
+                u.last_distance = math.inf
+                if step - d > 1e-9 and self._next_waypoint(u, precise=precise) is not None:
+                    # The tick's travel is not used up at a waypoint: the rest goes on towards the next one.
+                    return self._follow(u, dt, settle=settle, navigation=navigation, precise=precise, spent=spent + d)
+                return False
+            step = min(step, d)  # somebody stands on the waypoint: walk up to them as far as their body allows
         self._turn_toward(u, waypoint, step / speed if speed else dt)
         nx, ny = u.x + dx / d * step, u.y + dy / d * step
         if ((grid[int(ny) * width + int(nx)] or (navigation is not None and not self._line_clear(u.pos, (nx, ny), navigation=navigation)))
@@ -3349,6 +3401,9 @@ class World:
                 # in from an open side, or there is none and the walk ends here.
                 self._plan(u, u.path_goal, u.exact, navigation=navigation)
             return False
+        nx, ny = self._keep_clear(u, (nx, ny))
+        if not self._line_clear(u.pos, (nx, ny), navigation=navigation):
+            nx, ny = u.x, u.y  # the way round the body in front would cross blocked ground: wait behind it
         u.x, u.y = nx, ny
         # Progress watchdog: closing on the goal resets it; a stretch without progress paths
         # again around the units in the way.
@@ -3418,19 +3473,23 @@ class World:
                 y, next_y, row = y + step_y, next_y + per_y, row + step_y * width
         return not grid[row + x]
 
-    def _steer(self, u: Unit, target: Point, dt: float) -> bool:
-        """Walk straight at *target* when it is near and the line is clear; True if that was possible."""
+    def _steer(self, u: Unit, target: Point, dt: float, *, dressing: bool = False, keep_path: bool = False) -> bool:
+        """Walk straight at *target* when it is near and the line is clear; True if that was possible.  With
+        *keep_path* the unit's route stays planned, for a walk that leaves it only while it heads the same way."""
         if dist(u.pos, target) > STEER_RANGE or not self._line_clear(u.pos, target):
             return False
         dx, dy = target[0] - u.x, target[1] - u.y
         d = hypot(dx, dy)
         if d >= 1e-6:
-            step = min(d, self._effective_speed(u) * dt)
+            step = min(d, self._effective_speed(u, dressing=dressing) * dt)
             self._turn_toward(u, target, dt)
-            u.x, u.y = u.x + dx / d * step, u.y + dy / d * step  # on the segment, so on a tile just checked
-        u.path = []
-        u.path_goal = None
-        u.exact = None
+            nx, ny = self._keep_clear(u, (u.x + dx / d * step, u.y + dy / d * step))
+            if self._line_clear(u.pos, (nx, ny)):
+                u.x, u.y = nx, ny
+        if not keep_path:
+            u.path = []
+            u.path_goal = None
+            u.exact = None
         u.state = "move"
         return True
 
@@ -3498,6 +3557,54 @@ class World:
         for u, px, py in moves:
             self._nudge(u, px, py)
 
+    def _keep_clear(self, u: Unit, point: Point) -> Point:
+        """*point*, or as near it as *u* may go without its centre coming nearer anybody else's than :data:`CORE`
+        of their two bodies: the part of a body nothing walks, is shoved or slides into.
+
+        Bodies are soft beyond the core (the crowd step pushes them apart over a few ticks), and hard inside
+        it.  Every step a unit takes and every shove it is given comes through here, one unit at a time, so
+        a pair clear of each other's core stays clear.  A step that would cut into somebody's core stops at
+        its edge and keeps its sideways part, so a unit slides round a body in its way rather than halting.
+        A pair already inside (spawned on one spot, a builder set down beside its site) may only draw apart.
+        Where the neighbours leave no such point, the unit stays where it is."""
+        ox, oy = u.x, u.y
+        x, y = point
+        ur = u.radius
+        # The neighbour scan is :meth:`units_near` inlined, as in :meth:`_separate`: this runs for every step and every
+        # shove, and nearly always finds nobody inside a core.  The buckets are the step's own, so the scan reaches as
+        # far as a body that might lean on *u* plus what a unit can have moved since they were filled.
+        reach = int(ur + MAX_UNIT_RADIUS) + 1
+        width, height, buckets = self.width, self.height, self._buckets
+        for _ in range(3):
+            clear = True
+            x0, x1 = max(0, int(x) - reach), min(width - 1, int(x) + reach)
+            y0, y1 = max(0, int(y) - reach), min(height - 1, int(y) + reach)
+            span = x1 - x0 + 1
+            for row_y in range(y0, y1 + 1):
+                row = row_y * width + x0
+                for index in range(row, row + span):
+                    cell = buckets[index]
+                    if not cell:
+                        continue
+                    for v in cell:
+                        dx, dy = x - v.x, y - v.y
+                        core = CORE * (ur + v.radius)
+                        edge2 = (core - CORE_TOLERANCE) * (core - CORE_TOLERANCE)
+                        if dx * dx + dy * dy >= edge2 or v is u or v.inside is not None or v.constructing is not None:
+                            continue  # a slide lands on the edge, and must not read as a hair inside it on the next look
+                        d = hypot(dx, dy)
+                        was = hypot(ox - v.x, oy - v.y)
+                        if d >= was - CORE_TOLERANCE:
+                            continue  # already inside and drawing apart, or no nearer: a pile unstacks
+                        if d < 1e-9:
+                            return ox, oy
+                        edge = core if was >= core else was
+                        x, y = v.x + dx / d * edge, v.y + dy / d * edge
+                        clear = False
+            if clear:
+                return x, y
+        return ox, oy
+
     @staticmethod
     def _at_ease(u: Unit) -> bool:
         """Neither fighting, working nor holding: standing, or walking somewhere without a target."""
@@ -3516,7 +3623,9 @@ class World:
 
     def _shove(self, u: Unit, dx: float, dy: float, own_tile_open: bool) -> bool:
         """Move *u* by (dx, dy), kept on the map, if nothing blocks the way; whether it moved."""
-        nx, ny = min(max(u.x + dx, 0.05), self.width - 0.05), min(max(u.y + dy, 0.05), self.height - 0.05)  # _clamp's
+        nx, ny = self._keep_clear(u, (min(max(u.x + dx, 0.05), self.width - 0.05), min(max(u.y + dy, 0.05), self.height - 0.05)))  # _clamp's
+        if (nx, ny) == (u.x, u.y):
+            return False  # the bodies round it leave the shove nowhere to go: its x or y part alone may
         if self._line_clear((u.x, u.y), (nx, ny)) if own_tile_open else self.passable(int(nx), int(ny)):
             u.x, u.y = nx, ny
             return True

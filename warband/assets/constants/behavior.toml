@@ -38,6 +38,7 @@ regen_calm = 6.0 # seconds since the last blow landed on a creature before its r
 
 [movement]
 max_push = 0.25 # tiles a crowd can shove a unit in one step; eight overlapping units once summed to a jump over a tree wall
+core = 0.7 # share of two bodies' radii their centres never come nearer than: the hard part of a body, where the rest is a soft push; the two biggest (catapults) must still pass each other in a one-tile corridor
 spacing = 0.2 # tiles of clearance beyond touching that units at ease keep between each other; a soft push
 spacing_weight = 0.15 # share of the missing clearance closed per step, gentler than the overlap push
 ease_space = 0.3 # clearance beyond its own diameter a standing unit wants; nearer than that and it feels crowded

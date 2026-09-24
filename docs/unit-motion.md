@@ -412,3 +412,63 @@ slot never takes the shortcut**, because there is nothing left to march to. It c
 (the staged 150-unit battle runs a shade faster with it, on fewer wasted replans).
 `tests/warband/test_off_course.py` holds the step-out itself, staged from that run's own five marchers,
 their offsets and the wall that holds them back; the twenty-second wedge stays the gate queue's job.
+
+## 9. A hard core, and a crowd no slower than its members (2026-09-24)
+
+Bodies were soft all the way in. `_separate` pushes overlapping units apart at a share of the overlap per
+step, capped at `MAX_PUSH`, so anything walking into a crowd simply walked into it: twelve knights through
+a gate stood with their centres a tenth of a body apart, and a mixed column down a one-tile corridor a
+fiftieth. From above that is the heap of shields and helmets a player sees at a choke.
+
+**The core.** Every step a unit walks (`_follow`, `_steer`) and every shove it is given (`_shove`) now goes
+through `World._keep_clear`, one unit at a time: no centre comes nearer another's than `CORE` (0.7,
+`behavior.toml`) of their two radii. A step that would cut into a core stops at its edge and keeps its
+sideways part, so the unit slides round the body in its way; a pair that is already inside (a pile spawned
+on one spot, a unit set down while it was off the map) may only draw apart. Beyond the core the body stays
+soft, and the crowd step still spaces units out to their full radius over a few ticks. 0.7 is as big as the
+core can be while the two biggest bodies still pass each other: two catapults head-on in a one-tile
+corridor need their centres 0.87 tiles apart across it, and a walker's centre can use the whole tile.
+Where a slide lands exactly on another core's edge, rounding must not read it as a hair inside on the next
+look (`CORE_TOLERANCE`): that once froze an archer in front of a gate with nobody in it.
+
+**Efficiency.** `tests/warband/test_crowd_flow.py` draws scenarios from a seed: a gate or corridor of one
+to three tiles, one to eight deep, or none at all; three to twelve units of one kind or a mix; move or
+attack-move; sometimes friends idling in the gate. Each is played as a group and once per member alone.
+The group must finish no later than its members would one after another (the sum of the solo times), and
+no later than the slowest member alone plus twice the time the group takes to file past a point, bodies
+touching. The core is watched every step. On `main` as it was, 59 of 60 draws broke the core, 7 left units
+stranded and most missed the second bound. The faults behind that, each with a case of its own:
+
+1. **Soft bodies** (above).
+2. **A vortex round a shared waypoint.** Sixteen knights on one path: four of them circled the first tile
+   centre for good, each heading at the middle the others held and sidestepping round them. `_follow` now
+   passes a waypoint whose successor is a step away in a clear line, judged by the same tile rule as the
+   off-course check (a diagonal past a blocked corner is not a step), or the next plan undoes the skip and
+   the unit alternates between the two.
+3. **Arriving through the rock.** `stands_at` looked along the straight line to the spot, so a unit held
+   back by the pile past a gate counted as arrived on the near side of the wall. Across blocked ground the
+   way in is now the unit's route, ending where the route ends when the spot is out of reach (a base walled
+   in by its own buildings, a target across the map).
+4. **A row dressing in a corridor.** A marcher ahead of its row walked at `FORMATION_HOLD` until the row
+   caught up; down a corridor the row can never form, so the front held the whole file at 60 %: 45 s where
+   peasants took 16. The hold now applies only on the line's straight walk to its place (`dressing`).
+5. **Giving up at a crowd.** A stalled unit plans again around units standing about; when they fill a gate
+   there is no such way, the search returned the nearest tile it reached, and walking that out ended the
+   order there. An around-units plan that falls short of the goal now presses on through them.
+6. **A shortcut into the wall.** A marching line's place ahead lies straight across a wall whose gate is
+   ten tiles aside; the shortcut walked each footman at the rock and its path walked it back, ten seconds
+   lost on a twenty-second march. The route is now planned first and kept while on the shortcut, which is
+   taken only within `ROUTE_CONE` (45°) of the way the route goes.
+
+Two of these came from the fixes themselves, and the matches caught them. Judging the waypoint skip by a clear
+line from the unit's exact spot, not by the tile rule, let a footman graze a rock corner that the next plan
+refused: fuzz seed 81, twenty seconds between the two. And with hard bodies nobody reaches the spot a
+knight already stands on, so a crowd sent at a target across a walled-in base kept pressing for good until
+`stands_at` measured the way in only as far as the route goes. `test_no_unit_is_wedged_in_a_played_match`
+and `test_no_two_bodies_come_inside_each_others_core_in_a_played_match` play those matches.
+
+Measured against `main` at f7f0939, compiled: the staged 150-unit battle of `tools/step_bench.py` runs at a
+mean 0.41 ms a step against 0.36; `_keep_clear` scans its buckets inline, as `_separate` does, because a
+list per call cost twice that. The nine arena matches of `tools/sim_bench.py` run at 0.072 ms a step against
+0.068, over matches that are no longer the same ones. `tools/sim_fingerprint.txt` and `tools/sim_bench.txt`
+moved with the rules change.
