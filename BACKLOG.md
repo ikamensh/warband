@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-068**; a new
+section; git history keeps the record. The last ID given is **WB-072**; a new
 item takes the next one and updates this line.
 
 | ID | Priority | Status | Task | Origin |
@@ -27,6 +27,10 @@ item takes the next one and updates this line.
 | WB-066 | Now | proposed | Magic II: the Mage Tower, one spell of three per level, cast anywhere, dearer beyond the vaults | Ilya 2026-09-24 |
 | WB-067 | Now | proposed | Magic III: the computer players research, choose and cast; the nine spells balanced | Ilya 2026-09-24 |
 | WB-068 | Now | proposed | A unique unit per race: Gryphon Rider, Goblin Sappers, Treant, Rune Golem | Ilya 2026-09-24 |
+| WB-069 | Now | proposed | A voice for every body: creatures and machines sound like what they are, deaths first; sound in the new-unit protocol | Ilya 2026-09-24 |
+| WB-070 | Now | proposed | Painted sheets for every unit, the flying machines first; painting in the new-unit protocol | Ilya 2026-09-24 |
+| WB-071 | Now | proposed | The seam looks as poor as it pays; its rich look goes to a new Mother Lode (over 50k gold) | Ilya 2026-09-24 |
+| WB-072 | Now | proposed | No last-standing reveal in a free-for-all: only the last two sides learn where the other hides | Ilya 2026-09-24 |
 
 ## WB-055 — A deeper tech tree
 
@@ -425,3 +429,101 @@ three refuses the fourth); the arena shows each race's balance within band
 and a brain that may buy its unique unit not weaker than one that may not,
 with telemetry on how often each is bought; each unit rendered per race and
 looked at; the codex and the card; fuzz; fingerprint refreshed.
+
+## The 2026-09-24 evening intake (WB-069 … WB-072)
+
+Four more requests. WB-069 and WB-070 turn two lessons of the day into a
+protocol: a new unit was added three times today (the flying machines, and
+WB-068's four unique units in flight), and each time its sounds were the race's
+and its art the render's, because nothing asked for more. The protocol is
+`docs/adding-a-unit.md`, a checklist, and tests that fail when a unit type
+skips a step, so the next unit cannot.
+
+## WB-069 — A voice for every body
+
+**Design.** A death is the body's, not the race's: a catapult splinters, a
+flying machine sputters and crashes, a golem grinds apart. A unit type names
+its sound family in its TOML row (`sound = "…"`, defaulting to its race's for
+living soldiers of a race); a family holds its death pieces (and, where it
+has them, its blow's impact material and a presence sound).
+
+| body | death | presence |
+|---|---|---|
+| catapult (every race's siege engine) | timbers splinter, a rope snaps, the frame crashes | a creak and a winch on its order |
+| flying machine | an engine or wings sputter, a whistle down, wood and metal crash | a whirr or wing-beat on its order |
+| wolf | a yelp, a body falls | a snarl when its camp rouses |
+| spider | a screech, a wet crunch | a hiss when its camp rouses |
+| troll | a deep bellow, a heavy fall | a roar when its camp rouses |
+| golem | stone grinds and breaks, rubble settles | a stony rumble when its camp rouses |
+
+WB-068's four unique units get theirs by the same protocol (a gryphon's
+screech, a sapper's blast as its death, a treant's splitting wood, a rune
+golem's stone and fading runes). The pieces are generated with Stable Audio 3
+through `sagaforge.foley` and `tools/pieces.py`, committed with their
+provenance, as the other pieces were.
+
+**The protocol.** `docs/adding-a-unit.md` lists what a unit type needs: its
+row, names and plurals for every race that fields it, the render, a painted
+sheet (WB-070), its sounds, its codex line, its brain handling, its lint.
+Tests enforce what can be enforced: every unit type resolves a death cue with
+at least two takes on disk; no creature or machine dies with a race's cry.
+
+**Acceptance.** Every unit type and creature has a death of its body; the
+presence sounds play; spectrograms and stats of each new cue looked at
+(`tools/music.py`-style render; Ilya has not heard them yet, say so); the
+protocol document and its tests; the audio tests; visual lint unaffected;
+fingerprint unchanged (sound is no rule).
+
+## WB-070 — Painted sheets for every unit
+
+**Design.** Every unit type wears a painted sheet (`tools/restyle.py` through
+`sagaforge.restyle`), recoloured per team, with its animation (a flyer's rotor
+turning or wings beating across its walk frames). A unit type without one is
+a test failure unless it stands in a small exemption table with the reason
+and the date, so procedural art is a visible, conscious debt rather than a
+default. First the four flying machines; WB-068's units follow by the
+protocol. The painters are Codex (`codex exec`), an OpenRouter image model,
+or a direct image model API: probe which works today and record it; if none
+does, stop and say so rather than exempting silently.
+
+**Acceptance.** The four flyers painted, animated, recoloured and in play,
+looked at on the map and on the card; visual lint (painted frame off its
+render, team recolour) clean; the exemption table and its test; the
+protocol document updated; fingerprint unchanged.
+
+## WB-071 — The seam looks as poor as it pays; the Mother Lode
+
+**Design.** The endless seam pays 20 gold a trip against a mine's 100, but it
+wears the richest picture on the map. It gets a poor look: thin veins in
+mostly bare rock, a few old props, so a glance says "slow, but forever". The
+rich bank of three faces goes to a new deposit that earns it, the **Mother
+Lode**: 5×5, twelve places at the face like the seam, a mine's 100 gold a
+trip, 100,000 gold and finite. It wears the rich bank while it holds more
+than 50,000 gold and a worked-out bank below, so how much is left shows.
+Where: on the maps big enough for a seam, the shared ground's prize is a seam
+or a Mother Lode, dealt by the map seed, so the middle of a big map is either
+a long siege for a trickle or a short war for a fortune; camps guard it as
+they guard the seam. Why: a map's centre that differs from map to map is the
+diversity the maps were asked for, and the lode is the fight worth having.
+
+**Acceptance.** The seam's poor look and the lode's two looks rendered and
+looked at (painted where WB-070's painter works); mapgen deals lodes fairly
+(the audit covers them) and the seed decides; the brains contest a lode
+(telemetry from the league: who takes it, when); race and difficulty balance
+in band; fingerprint and sim_bench refreshed.
+
+## WB-072 — No last-standing reveal in a free-for-all
+
+**Design.** A side left with no hall and no building that trains is exposed:
+its remaining buildings are revealed to every other seat, with public news.
+In a duel that ends a hide-and-seek; in a free-for-all it tells bystanders
+where a weakened side hides, which is information they did nothing to earn.
+The reveal (and its news) now happens only while exactly two sides remain in
+play: a duel, or a free-for-all down to its last two, so the only side told
+is the one left fighting it. The brains' hunt (07cb63d) searches for what is
+not revealed.
+
+**Acceptance.** Rules tests: a duel reveals; a three-side free-for-all does
+not, until two remain; a bystander's snapshot shows nothing of the exposed
+side; the news follows the reveal; the free-for-all league's undecided count
+does not rise (before/after); fingerprint refreshed.
