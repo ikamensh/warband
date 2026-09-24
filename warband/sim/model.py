@@ -1974,6 +1974,11 @@ class World:
         if order is None:
             self._idle(u, dt)
             return
+        # An order ends a step away from the crowd, however it was given: a camp's walk home and an idle unit's
+        # own fight are put on the unit directly, not through _issue, and the stale step used to resume once
+        # they were over -- a spider cleared of its walk home within HOME of its post walked back out to it,
+        # was sent home again, and did that for good (fuzz seed 81).
+        u.ease = None
         if isinstance(order, Move):
             self._do_move(u, order, dt)
         elif isinstance(order, AttackMove):

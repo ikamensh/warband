@@ -344,3 +344,21 @@ def test_the_den_is_a_picture_the_art_lint_passes(tmp_path) -> None:
         assert not findings, [str(finding) for finding in findings]
     finally:
         game.close()
+
+
+def test_a_guard_walked_home_does_not_resume_an_old_step_away_from_the_crowd() -> None:
+    """Fuzz seed 81: a spider that had begun a step away from a crowd (``Unit.ease``) before the camp sent it
+    home kept that step.  The camp puts its walk home on the guard directly, not through an order, so nothing
+    cleared the step; once the guard was within ``HOME`` of its post the camp dropped the walk, the old step
+    took it back out past ``HOME``, and the camp sent it home again, for the rest of the match."""
+    world = flat_world()
+    camp = a_camp(world, roster=(UnitType.SPIDER,))
+    run(world, 0.5)
+    [(guard, post)] = camps.posted(world, camp)
+    guard.x, guard.y = post[0] - 4.0, post[1]  # led off, and left alone
+    # The step it had begun: just past HOME, beside where the walk home ends, so nearer than the post was.
+    guard.ease = (post[0] - 1.0, post[1] + 0.75)
+    run(world, 0.5)
+    assert guard.orders and guard.ease is None  # walking home, the old step dropped
+    run(world, 12.0)
+    assert dist(guard.pos, post) <= camps.HOME and not guard.orders and guard.state == "idle", (guard.pos, post, guard.orders, guard.state)
