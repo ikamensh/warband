@@ -371,11 +371,16 @@ Glider, Dwarf Gyrocopter. It opens the air layer later units will use:
 - **Who can hit it**: shooters (archers, clerics' bolt, towers) and nothing
   else. Melee never targets air, and the AI and the smart order never send
   melee at it; a siege stone and its splash pass beneath it.
-- **What it does**: sees far (sight 9 before race bonuses), fast (4.2), frail
-  (hp 50, armour 1, unarmoured, so an archer lands ×1.5), and drops a light
-  bomb on what it hovers over (damage 5, cooldown 1.5 s, reach 1.0, ground
-  only). It is a scout that can pick at workers, which a tower or two
-  shooters drive off. 600 gold, 150 lumber, 22 s at the workshop.
+- **What it does**: it is the side's eyes. Unarmed, like Warcraft II's
+  machine: sees far (sight 9 before race bonuses, over trees and walls),
+  fast (4.6), hp 60, armour 2, unarmoured (an archer lands ×1.5); 400 gold,
+  100 lumber, 18 s at the workshop. Why unarmed: a bomb that melee cannot
+  answer would clear the melee-only camps (wolf, troll, golem) for nothing
+  and pick at workers before any side has a shooter, and the AI would need
+  anti-air before it needs anything else. Unarmed, it is the scout the rider
+  never was (it survives the walk and sees over what the rider could not),
+  and the spotter WB-066's spells need, since they are cast anywhere but aim
+  only as well as the side can see. Air combat comes with later flyers.
 - A machine: never bleeds, a cleric does not heal it.
 - **Drawn** above everything, bobbing, with a shadow on the ground under it;
   its walk frames spin the rotor or beat the wings; selection and the
