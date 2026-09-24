@@ -175,7 +175,11 @@ def begin_campaign(game: Game) -> MissionScene:
     return scene
 
 
+@pytest.mark.slow
 def test_the_first_mission_plays_to_a_result_that_records_progress_and_leads_on(game) -> None:
+    """Slow: the title (whose background is a live map view, 2.3 s cold), the campaign screen, a mission scene with
+    its own map view, its dialogue and its result, all built from cold: 4.4-6.3 s alone on the Mac, and on CI it made
+    the 3 s budget only when an earlier test in its worker had built the same art (it once took 3.01 s)."""
     scene = begin_campaign(game)
     past_the_banner(game)
     assert "1. Hollowmere" in texts(game) and "Build a farm" in texts(game) and "Getting started" not in texts(game)
