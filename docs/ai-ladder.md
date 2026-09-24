@@ -496,6 +496,63 @@ Scripted directly — a scout handed to Master's opponent at 100 s and
 driven round the elven hall at eight or ten tiles, still or at two laps a
 minute — it lived forty seconds every time: rangers see eight tiles and
 shoot five, and the first push left at 184 s whatever the wasp did.
+Since WB-064 there is no rider to try it with, and the flyer that replaced it
+carries no weapon, so neither brain counts one as a threat: the idle shooters
+within reach answer it (`answer_flyers`) and the army stays on its errand.
+
+### The flying machine takes the rider's place (WB-064)
+
+WB-064 deleted the scout rider, and its two jobs went two ways. The eyes went
+to the flying machine: a scouting posture's workshop makes one before anything
+else, and `_send_scout` circles it round the enemy base at the edge of its
+sight, out of a tower's reach, over whatever lies between. A posture with no
+workshop yet sends a peasant, as it did when it had no rider. The raids went to
+the knights (`brains.ai.RAIDERS`, the one list both brains draw raiders from).
+Measured on 60 seeds from 2000, both corners, 120 games a pairing:
+
+| | with the rider | with the flyer, knights raiding |
+|---|---|---|
+| `pro` against `pro-noraid` | 49.2% | 45.0% |
+| `pro` against `pro-noscout` | 45.0% | 50.0% |
+
+Scouting, which cost Master five points with a rider, is level with the
+flyer. The raids were level while they cost two cheap riders and cost five
+points once they take two knights out of the army; on 60 more seeds from 3000
+`pro` took 55.1% against `pro-raid` (118 games). So `ProProfile.raid` is off
+unless a posture asks for it: the `raiders` posture does, and of the bred
+profiles only `bred-orc-2` had raided, with the riders the orc plan bought, on
+the default. The bred army plans lost their scout shares to the knight
+(`bred.py`, by hand: the searches that made them are not run again for a unit
+that no longer exists). Medium's harass (`Profile.harass`, the first two
+knights at the enemy's peasants) is kept: level against its neighbours (29.7%
+against Hard and 93.2% against Easy with it, 28.8% and 92.4% without, 118
+games each) though 42.4% against its own twin without it, and it is the one
+early aggression Medium has.
+
+The difficulty ladder either side of the whole change, 60 seeds from 1000,
+every pairing from both corners, 1200 games each, Medium anchored at 1000:
+
+| setting | before | after |
+|---|---|---|
+| Grandmaster | 1549 (1487 .. 1617), 86.9% | 1521 (1459 .. 1590), 86.2% |
+| Master | 1373 (1326 .. 1433), 72.7% | 1376 (1321 .. 1433), 74.0% |
+| Hard | 1175 (1131 .. 1222), 48.5% | 1184 (1137 .. 1235), 49.4% |
+| Medium | 1000, 33.5% | 1000, 34.4% |
+| Easy | 692 (638 .. 738), 8.3% | 656 (593 .. 707), 6.0% |
+
+Every rating stays inside its interval, and the order and the gaps are
+unchanged, so `DIFFICULTY_ELO` stands. The largest single move is Grandmaster
+against Master, 75.0% to 69.2% (120 games), nearly all of it the elven
+Grandmaster (23 of 30 to 15 of 30), whose bred profiles never scouted, raided
+or bought a rider: what changed there is Master's side, whose riders became
+knights (4.2 knights a game to 5.6). The brains now train 0.1 to 0.2 flying
+machines a game on Hard and Master, where they had trained four or five
+riders. What did change is the ending: Master mirrors ran to the
+twenty-minute cap 36 times in 288 where they had 16 (Medium's 10 where it had
+3), each time with the loser down to one peasant nobody went looking for
+([balance.md](balance.md#the-flying-machine-replaces-the-scout-rider-wb-064-2026-09-24)).
+A sweep of the ground least recently seen, once no enemy building is known, is
+the brain's missing piece; the riders only ever found that peasant by chance.
 
 ### What the 2000 still needs
 
@@ -691,6 +748,8 @@ contradicted the reasoning that produced the change:
 | a standing share of the workforce on wood | **−40 to −180 Elo** — 46% at 30%, 31% at 40%, 25% with farms ahead of demand as well; the model's own policy is better |
 | two to four peasants held on the trees for the first three minutes (`opening_choppers`, the ai-arena branch's 2026-09-16 experiment, ported onto the Vanguard for WB-014) | **−130 to −500 Elo** — 32%, 5% and 12% for two, three and four against the plain Vanguard, 96 games each; dropped |
 | an army plan of knights, of archers, or of raiders | **−110 Elo** each (33%); the race plans are right |
+| two knights sent at the enemy's peasants once the rider that did it was gone (WB-064) | **−35 Elo** — `pro` 45.0% against `pro-noraid` over 120 games and 55.1% against `pro-raid` over 118; raids are off by default |
+| a flying machine as the eyes, where the rider had cost 45% | level (50.0% against `pro-noscout`, 120 games) |
 | pro-rush (three soldiers, ratio 0.6), pro-boom (twelve, 1.2, early expansion, towers), hall-first pushes, raiders | within noise (44–52%) |
 | hunting a lone enemy peasant in the base and striking a tower on our ground with peasants (`hunt_party`, `strike_seconds`) | level in ordinary play (49%, 50%, 49% over 96 games each); against a tower rush see [a tower on our ground](#a-tower-on-our-ground) |
 | holding a build order's price while its builder walks (`hold_builds`): the brain had spent it on soldiers, peasants and research during the walk, and 227 of 838 orders over twenty Master mirrors died on arrival, unpaid; none do now | **+60 to +100 Elo** — 65% for the Vanguard, 62% for the Warden, 59% for Hard against the same posture without it, 96 games each; Hard's and Master's displayed ratings re-measured |

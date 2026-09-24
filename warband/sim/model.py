@@ -392,6 +392,8 @@ class Unit:
         self.max_hp: int = self.info.hp
         self.is_worker: bool = self.type is UnitType.PEASANT
         self.radius: float = self.info.radius  # its body: a catapult fills far more ground than a peasant
+        #: Over the ground rather than on it (:attr:`UnitInfo.flying`): asked of every neighbour in the crowd's loops.
+        self.flying: bool = self.info.flying
 
     @property
     def pos(self) -> Point:
@@ -1189,7 +1191,7 @@ class World:
         if info.requires is not None and not any(b.player == player and b.type is info.requires and b.done
                                                  for b in self.buildings.values()):
             return None
-        standing = [(unit.x, unit.y, unit.radius) for unit in self.units.values() if not unit.hidden]
+        standing = [(unit.x, unit.y, unit.radius) for unit in self.units.values() if not unit.hidden and not unit.flying]
         mines = [building.rect for building in self.buildings.values() if building.info.mine is not None]
         return standing, mines
 
@@ -1254,7 +1256,7 @@ class World:
                     return "Something is in the way"
         if not ignore_units:
             for unit in self.units.values():
-                if unit.id == builder or unit.hidden:
+                if unit.id == builder or unit.hidden or unit.flying:  # a flyer overhead is in nobody's way
                     continue
                 if left - unit.radius < unit.x < left + size + unit.radius and top - unit.radius < unit.y < top + size + unit.radius:
                     return "A unit is in the way"
@@ -1429,11 +1431,16 @@ class World:
         units = self._own_units(unit_ids, queue=queue)
         if any(target.player == unit.player for unit in units):
             raise RuleError("Cannot attack your own")
+        strikers = {unit.id for unit in units if self.can_strike(unit, target)}
+        if units and not strikers:
+            if not any(unit.info.damage for unit in units):
+                raise RuleError(f"The {units[0].info.name} has no weapon")
+            raise RuleError(f"Only shooters and towers can hit {an(target.info.name)}")  # a flyer: melee and stones pass beneath it
         for unit in units:
-            if unit.info.damage == 0:
-                self._issue(unit, Move(self._target_point(target)), queue=queue)  # a healer follows the fight instead
-            else:
+            if unit.id in strikers:
                 self._issue(unit, Attack(target_id), queue=queue)
+            else:
+                self._issue(unit, Move(self._target_point(target)), queue=queue)  # it cannot strike this one: it follows the fight
 
     @recorded
     def stop(self, unit_ids: list[int]) -> None:
@@ -1696,6 +1703,9 @@ class World:
                 self.attack(others, target.id, queue=queue)
             return "salvage"
         if target is not None and target.player is not None and target.player != player:
+            if not any(u.info.damage for u in units):
+                self.move(unit_ids, point, queue=queue)  # the side's eyes: sent at an enemy, it goes and looks
+                return "move"
             self.attack(unit_ids, target.id, queue=queue)
             return "attack"
         if workers and isinstance(target, Building) and target.player == player and target.done and target.hp < target.max_hp and target.info.mine is None:
@@ -1817,7 +1827,7 @@ class World:
                 pending.append((tile, when))
                 continue
             if self.terrain[y][x] is not Terrain.GRASS or self._blocked[y * self.width + x] or any(
-                    u.tile == tile for u in self.units_near(tile_center(tile), 1.0)):  # a miner inside comes out where it went in
+                    u.tile == tile and not u.flying for u in self.units_near(tile_center(tile), 1.0)):  # a miner inside comes out where it went in
                 pending.append((tile, self.time + 5.0))  # try again shortly
                 continue
             self.terrain[y][x] = Terrain.TREES
@@ -1914,7 +1924,7 @@ class World:
         if b.cooldown > 0:
             return
         info = b.info
-        target = self._nearest_enemy(b.player, b.center, self.building_range(b) + b.size / 2, units_only=True)  # type: ignore[arg-type]
+        target = self._nearest_enemy(b.player, b.center, self.building_range(b) + b.size / 2, units_only=True, air=True)  # type: ignore[arg-type]
         if target is None:
             return
         self._launch_arrow(b, target, self.damage_of(b))
@@ -2055,10 +2065,12 @@ class World:
 
     def _auto_target(self, u: Unit) -> Entity | None:
         """The enemy a fighter that is left to itself takes on: a siege crew the best clear stone in reach or a
-        short roll forward, anyone else the first to fight in sight."""
+        short roll forward, anyone else the first to fight in sight it can strike.  The unarmed pick no fight at all."""
+        if not u.info.damage:
+            return None
         if u.info.siege:
             return self._siege_choice(u, SIEGE_STEP)
-        return self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range)
+        return self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range, air=u.info.strikes_air)
 
     def _ease(self, u: Unit, dt: float) -> None:
         """Standing at ease: a unit hemmed in by its neighbours takes a short step away from them now
@@ -2084,8 +2096,9 @@ class World:
         is boxed in, or the step would end nearer to someone else than where it stands."""
         ax = ay = 0.0
         space = self._ease_space(u)
+        flying = u.flying
         for v in self.units_near(u.pos, space):
-            if v is u or v.hidden:
+            if v is u or v.hidden or v.flying != flying:  # the walkers and the flyers keep their room apart
                 continue
             dx, dy = u.x - v.x, u.y - v.y
             d = hypot(dx, dy)
@@ -2100,7 +2113,7 @@ class World:
         angle = _atan2(ay, ax) + self.rng.uniform(-EASE_JITTER, EASE_JITTER)
         step = EASE_STEP + self.rng.uniform(-EASE_STEP_VARIANCE, EASE_STEP_VARIANCE)
         spot = self._clamp((u.x + math.cos(angle) * step, u.y + math.sin(angle) * step))
-        if not self.passable(int(spot[0]), int(spot[1])) or not self._line_clear(u.pos, spot):
+        if not flying and (not self.passable(int(spot[0]), int(spot[1])) or not self._line_clear(u.pos, spot)):
             return None
         return spot if self._room(u, spot) >= self._room(u, u.pos) + EASE_GAIN else None
 
@@ -2113,8 +2126,8 @@ class World:
     def _room(self, u: Unit, point: Point) -> float:
         """How far *point* is from the nearest unit other than *u*, as far as its ease space plus the
         gain a step must make matters: anything beyond is all the room a standing unit asks for."""
-        return min((dist(point, v.pos) for v in self.units_near(point, self._ease_space(u) + EASE_GAIN) if v is not u and not v.hidden),
-                   default=math.inf)
+        return min((dist(point, v.pos) for v in self.units_near(point, self._ease_space(u) + EASE_GAIN)
+                    if v is not u and not v.hidden and v.flying == u.flying), default=math.inf)
 
     def _danger_to(self, patient: Unit) -> float:
         """Hits per second the visible enemies in reach of *patient* could land on it.  Memoised for the
@@ -2151,14 +2164,14 @@ class World:
         *radius* reaches the patient's body, not its centre, so a catapult is noticed as far out as a peasant is
         (the bucket scan is padded by the largest body there is and the distance below is the exact test)."""
         patients = [unit for unit in self.units_near(healer.pos, radius + MAX_UNIT_RADIUS)
-                    if unit is not healer and unit.player == healer.player and not unit.hidden
+                    if unit is not healer and unit.player == healer.player and not unit.hidden and unit.info.living
                     and 0 < unit.hp < unit.max_hp and dist(healer.pos, unit.pos) - unit.radius <= radius
                     and (not local or self._gap(healer, unit) <= self.range_of(healer) + .05)]
         return max(patients, key=lambda unit: (self._healing_priority(healer, unit), -dist(healer.pos, unit.pos), -unit.id), default=None)
 
     def _do_heal(self, u: Unit, order: Heal, dt: float) -> None:
         patient = self.units.get(order.target)
-        if patient is None or patient.hp <= 0 or patient.hp >= patient.max_hp or patient.hidden:
+        if patient is None or patient.hp <= 0 or patient.hp >= patient.max_hp or patient.hidden or not patient.info.living:
             self._finish_order(u)
             if order.auto and u.home is not None and not u.orders and dist(u.pos, u.home) > 1.0:
                 u.orders.append(Move(u.home))
@@ -2225,7 +2238,8 @@ class World:
             # Only what it can strike from here, measured from its centre: a more dangerous enemy just out of reach
             # must not keep it from answering one in reach.
             target = (self._siege_choice(u, 0.0, standing=True) if u.info.siege
-                      else self._nearest_enemy(u.player, u.pos, self.range_of(u) + u.radius + 0.05, min_radius=u.info.min_range + u.radius))
+                      else self._nearest_enemy(u.player, u.pos, self.range_of(u) + u.radius + 0.05, min_radius=u.info.min_range + u.radius,
+                                               air=u.info.strikes_air))
             if target is None or not self._in_range(u, target):
                 return
             order.target = target.id
@@ -2242,7 +2256,7 @@ class World:
         if isinstance(target, Unit) and target.player == u.player:
             return (0 < target.hp < target.max_hp and not target.hidden
                     and (u.windup > 0.0 or self._gap(u, target) <= self.range_of(u) + 0.05))
-        if target.hp <= 0:
+        if target.hp <= 0 or not self.can_strike(u, target):
             return False
         if u.windup > 0.0:
             return True
@@ -2376,7 +2390,7 @@ class World:
     def _do_attack(self, u: Unit, order: Attack, dt: float) -> None:
         target = self.entity(order.target)
         if (target is None or target.hp <= 0 or (isinstance(target, Unit) and target.hidden)
-                or (isinstance(target, Building) and target.info.mine is not None)):
+                or (isinstance(target, Building) and target.info.mine is not None) or not self.can_strike(u, target)):
             self._finish_order(u)
             if order.auto and u.home is not None and not u.orders:
                 u.orders.append(Move(u.home))
@@ -2410,7 +2424,7 @@ class World:
             threat = self._threat(target)
             if threat > 0:
                 # A bystander or a building holds a unit's attention only until something more dangerous shows up.
-                better = self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range)
+                better = self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range, air=u.info.strikes_air)
                 if better is not None and self._threat(better) < threat:
                     target = better
                     self._retarget(u, order, better)
@@ -2518,7 +2532,7 @@ class World:
         if clearance >= 2.75:
             return False
         angle = _atan2(u.y - nearest.y, u.x - nearest.x)
-        allies = [ally for ally in self.units_near(u.pos, 2) if ally is not u and ally.player == u.player and not ally.hidden]
+        allies = [ally for ally in self.units_near(u.pos, 2) if ally is not u and ally.player == u.player and not ally.hidden and not ally.flying]
         known = self.worker_knowledge[u.player].blocked
         best, best_score = None, clearance + .1
         for offset in (0, math.pi / 4, -math.pi / 4, math.pi / 2, -math.pi / 2):
@@ -2582,7 +2596,7 @@ class World:
         x, y, w, h = target.rect
         width, height, blocked = self.width, self.height, self._blocked
         occupied = {(int(other.x), int(other.y)) for other in self.units_near(target.center, max(w, h) / 2 + 1.5)
-                    if other is not u and not other.hidden}
+                    if other is not u and not other.hidden and not other.flying}
         best: Point | None = None
         best_taken, best_d = True, math.inf
         for ty in range(max(0, y - 1), min(height, y + h + 1)):
@@ -2600,11 +2614,11 @@ class World:
         """Finish visible opponents already in reach before pursuing another target."""
         radius = self.range_of(u) + u.radius + MAX_UNIT_RADIUS + .05
         opponents = [enemy for enemy in self.units_near(u.pos, radius)
-                     if enemy.player != u.player and not enemy.hidden and enemy.hp > 0
+                     if enemy.player != u.player and not enemy.hidden and enemy.hp > 0 and self.can_strike(u, enemy)
                      and self.is_visible(u.player, enemy.tile) and self._in_range(u, enemy)]
         if opponents:
             return min(opponents, key=lambda enemy: (self._threat(enemy), enemy.hp, dist(u.pos, enemy.pos), enemy.id))
-        return self._nearest_enemy(u.player, u.pos, self.range_of(u) + u.radius + .05)
+        return self._nearest_enemy(u.player, u.pos, self.range_of(u) + u.radius + .05, air=u.info.strikes_air)
 
     def _do_harvest(self, u: Unit, order: Harvest, dt: float) -> None:
         if u.carrying is not None:
@@ -2824,7 +2838,7 @@ class World:
                     owners[tile] = target
                     costs[tile] = (sum(max(0.0, 1.0 - dist(v.pos, point)) * 2
                                        for v in self.units_near(point, 1.0)
-                                       if v is not u and not v.hidden and v.player == u.player)
+                                       if v is not u and not v.hidden and not v.flying and v.player == u.player)
                                    + claims.get(tile, 0.0))
         start, escape = u.tile, []
         u.replan_at = self.time + REPLAN_EVERY + (u.id % REPLAN_STAGGER) * SIM_DT
@@ -3001,6 +3015,7 @@ class World:
     def _plan(self, u: Unit, goal: Pos, exact: Point | None = None, *, around_units: bool = False,
               navigation: bytearray | None = None) -> None:
         """Path from the unit's tile to *goal*; the last step aims at *exact* when the goal tile is open."""
+        assert not u.flying, "a flyer is never routed: _approach and _steer fly it straight"
         start = u.tile
         grid = self._blocked if navigation is None else navigation
         def passable(x: int, y: int) -> bool:
@@ -3027,7 +3042,8 @@ class World:
             blocked = bytearray(grid)
             width = self.width
             for v in self.units.values():
-                if v is not u and not v.hidden and v.state in ("idle", "attack", "chop", "repair", "salvage") and (navigation is None or v.player == u.player or self.is_visible(u.player, v.tile)):
+                if (v is not u and not v.hidden and not v.flying and v.state in ("idle", "attack", "chop", "repair", "salvage")
+                        and (navigation is None or v.player == u.player or self.is_visible(u.player, v.tile))):
                     tx, ty = v.tile
                     if (tx, ty) != target and 0 <= tx < width and 0 <= ty < self.height:
                         blocked[ty * width + tx] = 1
@@ -3253,8 +3269,8 @@ class World:
         key = (player, target, pace)
         together = self._pace_groups.get(key)
         if together is None:
-            mates = [v for v in self.units.values()
-                     if v.player == player and not v.hidden and v.hp > 0 and isinstance(v.order, (Move, AttackMove))
+            mates = [v for v in self.units.values()  # the walkers: a flyer takes the straight way and would be ahead of them
+                     if v.player == player and not v.hidden and not v.flying and v.hp > 0 and isinstance(v.order, (Move, AttackMove))
                      and v.order.pace == pace and v.order.target == target]
             leader = min(mates, key=lambda v: (dist(v.pos, target), v.id)).pos if mates else target
             together = self._pace_groups[key] = all(dist(m.pos, leader) <= 6.0 for m in mates)
@@ -3284,7 +3300,7 @@ class World:
         after it again at another, twice a second, taking no further part in the match (fuzz
         seed 92: a footman a tile and a bit from a muster a knight was standing on).
         """
-        if self._line_clear(u.pos, point):
+        if u.flying or self._line_clear(u.pos, point):  # a flyer's way in is always the straight line
             way = [u.pos, point]
         elif u.path and u.path_goal == (int(point[0]), int(point[1])):
             # Across a wall the way in is the unit's own route round it, not the line through the rock: the
@@ -3296,6 +3312,7 @@ class World:
             return False  # blocked ground between it and the spot, and no route there: it is not there
         room = u.radius + SETTLE_WITHIN
         walked = room
+        flying = u.flying  # only its own layer's bodies hold its way: walkers the ground, flyers the air
         for (ax, ay), (bx, by) in zip(way, way[1:]):
             leg = hypot(bx - ax, by - ay)
             if leg < 1e-9:
@@ -3303,7 +3320,7 @@ class World:
             dx, dy = (bx - ax) / leg, (by - ay) / leg
             while walked < leg:
                 x, y = ax + dx * walked, ay + dy * walked
-                if not any(v is not u and not v.hidden and not (v.state == "move" and v.orders and v.progress < STUCK_AFTER)
+                if not any(v is not u and not v.hidden and v.flying == flying and not (v.state == "move" and v.orders and v.progress < STUCK_AFTER)
                            and hypot(v.x - x, v.y - y) < v.radius + u.radius
                            for v in self.units_near((x, y), u.radius + MAX_UNIT_RADIUS)):
                     return False  # nobody settled on this step of the way: the walk still has somewhere to go
@@ -3318,7 +3335,9 @@ class World:
         return self._approach(u, (int(target[0]), int(target[1])), target, dt, settle=settle)
 
     def _approach(self, u: Unit, goal: Pos, exact: Point, dt: float, *, settle: bool = False) -> bool:
-        """Plan (once) and walk towards *goal*; True when the path is exhausted."""
+        """Plan (once) and walk towards *goal*; True when the path is exhausted.  A flyer flies straight at *exact*."""
+        if u.flying:
+            return self._fly_to(u, exact, dt, settle=settle)
         if u.path_goal != goal:
             self._plan(u, goal, exact)
         return self._follow(u, dt, settle=settle)
@@ -3494,7 +3513,13 @@ class World:
 
     def _steer(self, u: Unit, target: Point, dt: float, *, dressing: bool = False, keep_path: bool = False) -> bool:
         """Walk straight at *target* when it is near and the line is clear; True if that was possible.  With
-        *keep_path* the unit's route stays planned, for a walk that leaves it only while it heads the same way."""
+        *keep_path* the unit's route stays planned, for a walk that leaves it only while it heads the same way.  A flyer
+        always can: nothing lies in its way, however far."""
+        if u.flying:
+            self._fly_step(u, target, self._effective_speed(u, dressing=dressing) * dt, dt)
+            if not keep_path:
+                u.path_goal = None
+            return True
         if dist(u.pos, target) > STEER_RANGE or not self._line_clear(u.pos, target):
             return False
         dx, dy = target[0] - u.x, target[1] - u.y
@@ -3512,6 +3537,39 @@ class World:
         u.state = "move"
         return True
 
+    def _fly_to(self, u: Unit, target: Point, dt: float, *, settle: bool = False) -> bool:
+        """A flyer's walk: straight at *target* over whatever lies below, kept on the map; True once there, or, with
+        *settle*, as near as the flyers already hovering there let it come (:meth:`stands_at`, asked when the same
+        progress watchdog a walk keeps says it is getting no nearer).  No route, no grid, no body on the ground."""
+        target = self._clamp(target)
+        tile = (int(target[0]), int(target[1]))
+        if u.path_goal != tile:  # a new flight: the watchdog starts again (an order clears the goal it had)
+            u.path_goal, u.last_distance, u.progress = tile, math.inf, 0.0
+        d = hypot(target[0] - u.x, target[1] - u.y)
+        if d <= ARRIVE:
+            u.state = "idle"
+            return True
+        self._fly_step(u, target, self._effective_speed(u) * dt, dt)
+        if d < u.last_distance - 0.02:
+            u.last_distance, u.progress = d, 0.0
+        else:
+            u.progress += dt
+            if settle and u.progress >= STUCK_AFTER and self.stands_at(u, target):
+                u.state = "idle"
+                return True
+        return False
+
+    def _fly_step(self, u: Unit, target: Point, travel: float, dt: float) -> None:
+        """Turn towards *target* and cover up to *travel* tiles of the straight way there, over anything."""
+        dx, dy = target[0] - u.x, target[1] - u.y
+        d = hypot(dx, dy)
+        u.state = "move"
+        if d < 1e-9:
+            return
+        self._turn_toward(u, target, dt)
+        step = travel if travel < d else d
+        u.x, u.y = self._clamp((u.x + dx / d * step, u.y + dy / d * step))
+
     def _separate(self) -> None:
         """Push overlapping units apart, never into blocked tiles."""
         # The neighbour scan is :meth:`units_near` inlined: it runs for every unit on every
@@ -3528,6 +3586,7 @@ class World:
             px = py = 0.0
             ux, uy = u.x, u.y
             moving = u.state == "move"
+            flying = u.flying  # walkers push walkers and flyers flyers: the two keep their room apart
             at_ease: bool | None = None  # asked only of a unit with a neighbour just out of touch
             hx, hy = (math.cos(u.facing), math.sin(u.facing)) if moving else (0.0, 0.0)
             x0, x1 = max(0, int(ux) - reach), min(width - 1, int(ux) + reach)
@@ -3541,7 +3600,7 @@ class World:
                         continue
                     for v in cell:
                         dx, dy = ux - v.x, uy - v.y
-                        if dx * dx + dy * dy > r2 or v is u or v.hidden:
+                        if dx * dx + dy * dy > r2 or v is u or v.hidden or v.flying != flying:
                             continue
                         d = hypot(dx, dy)
                         overlap = u.radius + v.radius - d
@@ -3585,7 +3644,10 @@ class World:
         a pair clear of each other's core stays clear.  A step that would cut into somebody's core stops at
         its edge and keeps its sideways part, so a unit slides round a body in its way rather than halting.
         A pair already inside (spawned on one spot, a builder set down beside its site) may only draw apart.
-        Where the neighbours leave no such point, the unit stays where it is."""
+        Where the neighbours leave no such point, the unit stays where it is.  A flyer has no body on the ground: it
+        is never held back and never holds anybody back."""
+        if u.flying:
+            return point
         ox, oy = u.x, u.y
         x, y = point
         ur = u.radius
@@ -3609,7 +3671,7 @@ class World:
                         dx, dy = x - v.x, y - v.y
                         core = CORE * (ur + v.radius)
                         edge2 = (core - CORE_TOLERANCE) * (core - CORE_TOLERANCE)
-                        if dx * dx + dy * dy >= edge2 or v is u or v.inside is not None or v.constructing is not None:
+                        if dx * dx + dy * dy >= edge2 or v is u or v.inside is not None or v.constructing is not None or v.flying:
                             continue  # a slide lands on the edge, and must not read as a hair inside it on the next look
                         d = hypot(dx, dy)
                         was = hypot(ox - v.x, oy - v.y)
@@ -3635,6 +3697,9 @@ class World:
         length = hypot(px, py)
         if length > MAX_PUSH:
             px, py = px / length * MAX_PUSH, py / length * MAX_PUSH
+        if u.flying:  # nothing below blocks a flyer's drift, and it has no core to keep
+            u.x, u.y = self._clamp((u.x + px, u.y + py))
+            return
         own_tile_open = self.passable(int(u.x), int(u.y))
         # The whole shove, else its x part alone, else its y part alone.
         if not self._shove(u, px, py, own_tile_open) and not self._shove(u, px, 0.0, own_tile_open):
@@ -3678,6 +3743,17 @@ class World:
         if isinstance(target, Unit):
             return rect_gap(target.pos, source.rect) - target.radius
         return dist(source.center, target.center) - source.size / 2 - target.size / 2
+
+    def can_strike(self, striker: Entity, target: Entity) -> bool:
+        """Whether *striker*'s blow can land on *target* at all, wherever the two stand: whatever is armed strikes
+        anything on the ground, and only a shot reaches a flyer (:attr:`UnitInfo.strikes_air`: a tower's arrow does,
+        a melee blow or a stone never does).  The one answer to that question, which the orders, a unit left to
+        itself, its answer to a blow and the brains all ask."""
+        if not striker.info.damage:
+            return False
+        if isinstance(target, Unit) and target.flying:
+            return isinstance(striker, Building) or striker.info.strikes_air
+        return True
 
     def _in_range(self, u: Unit, target: Entity) -> bool:
         """Whether *u* can strike *target* from where it stands: its reach measured edge to edge.
@@ -3750,16 +3826,18 @@ class World:
         u.path = []
         u.path_goal = None
 
-    def _nearest_enemy(self, player: int, point: Point, radius: float, *, units_only: bool = False,
+    def _nearest_enemy(self, player: int, point: Point, radius: float, *, air: bool, units_only: bool = False,
                        min_radius: float = 0.0) -> Entity | None:
-        """The visible enemy within *radius* (and beyond *min_radius*) to fight first: by :meth:`_threat`, then the nearest."""
+        """The visible enemy within *radius* (and beyond *min_radius*) to fight first: by :meth:`_threat`, then the nearest.
+        A flyer counts only with *air*: whoever asks on behalf of a striker passes whether its blow reaches one
+        (:attr:`UnitInfo.strikes_air`; a tower's arrow does)."""
         best: Entity | None = None
         # The best (threat, distance) so far, compared as the tuple would be; no threat is as high as 4.
         best_threat, best_d = 4, math.inf
         px, py = point
         visible, width, height = self.visible[player], self.width, self.height
         for unit in self.units_near(point, radius + MAX_UNIT_RADIUS):
-            if unit.player == player or unit.hidden or unit.hp <= 0:
+            if unit.player == player or unit.hidden or unit.hp <= 0 or (unit.flying and not air):
                 continue
             x, y = int(unit.x), int(unit.y)
             if not (0 <= x < width and 0 <= y < height and visible[y * width + x]):  # is_visible's test
@@ -3808,7 +3886,7 @@ class World:
         reach = self.splash_of(u)
         splash = damage * SPLASH_FRACTION
         for other in self.units_near(spot, reach + MAX_UNIT_RADIUS):
-            if other is target or other.player == u.player or other.hidden or other.hp <= 0:
+            if other is target or other.player == u.player or other.hidden or other.hp <= 0 or other.flying:
                 continue
             if dist(other.pos, spot) - other.radius > reach:
                 continue
@@ -3903,7 +3981,7 @@ class World:
         sx, sy = spot
         cost = 0.0
         for ally in self.units_near(spot, keep_clear + MAX_UNIT_RADIUS + _FASTEST * flight):
-            if ally.player != u.player or ally is u or ally.hidden or ally.hp <= 0:
+            if ally.player != u.player or ally is u or ally.hidden or ally.hp <= 0 or ally.flying:  # a stone passes beneath a flyer
                 continue
             gap = dist(spot, ally.pos) - ally.radius
             near = hypot(ally.x + ally.vx * flight - sx, ally.y + ally.vy * flight - sy) - ally.radius
@@ -3940,7 +4018,7 @@ class World:
         best: Entity | None = None
         best_worth = 0.0
         for enemy in self.units_near(u.pos, radius + MAX_UNIT_RADIUS):
-            if enemy.player == u.player or enemy.hidden or enemy.hp <= 0 or not self.is_visible(u.player, enemy.tile):
+            if enemy.player == u.player or enemy.hidden or enemy.hp <= 0 or enemy.flying or not self.is_visible(u.player, enemy.tile):
                 continue
             walk = dist(u.pos, enemy.pos) - reach
             if walk > step or (standing and not self._in_range(u, enemy)):
@@ -3981,7 +4059,7 @@ class World:
         splash = self.splash_of(u)
         worth = 0.0
         for enemy in self.units_near(spot, splash + MAX_UNIT_RADIUS):
-            if enemy.player == u.player or enemy.hidden or enemy.hp <= 0 or not self.is_visible(u.player, enemy.tile):
+            if enemy.player == u.player or enemy.hidden or enemy.hp <= 0 or enemy.flying or not self.is_visible(u.player, enemy.tile):
                 continue
             gap = dist(spot, enemy.pos) - enemy.radius
             if gap <= splash:
@@ -4007,7 +4085,7 @@ class World:
         self.events.append(Event("impact", p.aim, player=p.player, entity=p.source, text=p.kind, source_type=p.source_type))
         splash = int(p.damage * SPLASH_FRACTION)
         for unit in list(self.units_near(p.aim, p.splash + MAX_UNIT_RADIUS)):
-            if unit.hidden or unit.hp <= 0:
+            if unit.hidden or unit.hp <= 0 or unit.flying:  # it comes down on the ground, beneath a flyer
                 continue
             gap = dist(p.aim, unit.pos) - unit.radius
             if gap <= p.splash:
@@ -4050,7 +4128,7 @@ class World:
             self._plunder(target, player, source)
             self._hoard(target, player, source)
         striker = self.units.get(source)
-        if striker is not None and isinstance(target, Unit) and target.hp > 0 and self._threat(target) == 0:
+        if striker is not None and isinstance(target, Unit) and target.hp > 0 and self._threat(target) == 0 and self.can_strike(target, striker):
             current = target.order
             if current is None:
                 target.home = target.pos

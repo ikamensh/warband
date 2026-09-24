@@ -126,7 +126,7 @@ lumber = 300
 time = 50.0
 hotkey = "h"
 card = "Horses"
-summary = "+0.8 speed for scouts and knights"
+summary = "+0.8 speed for knights"
 race = "human"
 
 [blessing]
@@ -212,7 +212,7 @@ blades_bonus = 2 # added damage for melee units per tier (master tiers add maste
 master_weapon_bonus = 4
 armor_bonus = 1 # added armour for soldiers per tier
 arrows_bonus = 2 # added damage for archers and towers per tier (master tiers add master_weapon_bonus instead)
-horses_bonus = 0.8 # added speed for scouts and knights
+horses_bonus = 0.8 # added speed for knights
 siege_range_bonus = 1.0 # added range for siege engines
 siege_damage_bonus = 1.25 # damage multiplier for siege engines
 blessing_bonus = 1.5 # multiplier on a cleric's healing

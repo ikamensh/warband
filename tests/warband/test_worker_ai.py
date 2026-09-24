@@ -90,9 +90,9 @@ def test_new_assignments_account_for_workers_already_gathering():
 def test_visible_archer_danger_makes_a_worker_choose_a_safe_resource():
     """Workers avoid a valuable mine covered by visible enemy fire while still gathering nearby wood."""
     world, worker, _mine = economy()
-    scout = world.spawn_unit(0, UnitType.SCOUT, (12.5, 11.5))
+    eyes = world.spawn_unit(0, UnitType.FLYING_MACHINE, (12.5, 11.5))
     archer = world.spawn_unit(1, UnitType.ARCHER, (11.5, 4.5))
-    world.hold([scout.id, archer.id])
+    world.hold([eyes.id, archer.id])
     world.players[0].gold = 0
     world.players[0].lumber = 1000
     world.update_vision()
@@ -196,7 +196,7 @@ def test_automatic_harvesting_routes_around_visible_enemy_fire():
     world.place_building(1, BuildingType.TOWN_HALL, (27, 19))
     world.place_building(None, BuildingType.GOLD_MINE, (15, 10))
     worker = world.spawn_unit(0, UnitType.PEASANT, (5.5, 11.5))
-    observer = world.spawn_unit(0, UnitType.SCOUT, (10.5, 1.5))
+    observer = world.spawn_unit(0, UnitType.FLYING_MACHINE, (10.5, 1.5))
     enemy = world.spawn_unit(1, UnitType.ARCHER, (10.5, 7.5))
     world.hold([observer.id, enemy.id])
     world.players[0].gold, world.players[0].lumber = 0, 1000

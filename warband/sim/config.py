@@ -24,7 +24,7 @@ ECONOMY_TOML = Path("economy.toml")
 COMBAT_TOML = Path("combat.toml")
 BEHAVIOR_TOML = Path("behavior.toml")
 
-PLAYABLE = ("peasant", "footman", "archer", "scout", "knight", "catapult", "cleric")
+PLAYABLE = ("peasant", "footman", "archer", "knight", "catapult", "flying_machine", "cleric")
 WILDS = ("wolf", "spider", "troll", "golem")
 BUILDINGS = ("town_hall", "farm", "barracks", "tower", "lumber_mill", "blacksmith", "stables", "workshop", "church",
              "gold_mine", "gold_seam", "lair")
@@ -223,6 +223,7 @@ UNIT_SCHEMA = {
     "heal": (_int, 0), "splash": (_float, 0.0), "attack": (_enum, ATTACKS, "normal"),
     "armor_class": (_enum, ARMOR_CLASSES, "light"), "formation": (_bool, False), "mounted": (_bool, False),
     "windup": (_float,), "turn_deg": (_int, 360), "min_range": (_float, 0.0), "regen": (_float, 0.0),
+    "living": (_bool, True), "flying": (_bool, False),
 }
 UNIT_TWEAK_SCHEMA = {
     "name": (_str,), "summary": (_str,), "hp_mult": (_float, 1.0), "damage_mult": (_float, 1.0),

@@ -66,7 +66,7 @@ def test_a_wind_up_is_committed_and_a_target_that_gets_clear_is_missed() -> None
     world = flat_world()
     ours = world.spawn_unit(0, UnitType.FOOTMAN, (5.5, 5.5))
     ours.facing = 0.0
-    foe = world.spawn_unit(1, UnitType.SCOUT, (6.4, 5.5))
+    foe = world.spawn_unit(1, UnitType.ARCHER, (6.4, 5.5))
     world.hold([foe.id])
     world.attack([ours.id], foe.id)
     world.update_vision()
@@ -190,13 +190,13 @@ def test_an_arrow_flies_before_it_strikes_and_a_tower_shoots_the_same_way() -> N
     assert victim.hp < victim.max_hp
     tower = world.place_building(1, BuildingType.TOWER, (8, 6))
     world.reveal_all(1)
-    scout = world.spawn_unit(0, UnitType.SCOUT, (7.5, 4.5))
-    world.hold([scout.id])
+    rider = world.spawn_unit(0, UnitType.KNIGHT, (7.5, 4.5))
+    world.hold([rider.id])
     world.step()
     shot = next(p for p in world.projectiles.values() if p.source == tower.id)
-    assert shot.target == scout.id and scout.hp == scout.max_hp
+    assert shot.target == rider.id and rider.hp == rider.max_hp
     run(world, 1.0)
-    assert scout.hp < scout.max_hp
+    assert rider.hp < rider.max_hp
 
 
 def test_an_arrow_whose_mark_died_in_flight_lands_on_nothing() -> None:

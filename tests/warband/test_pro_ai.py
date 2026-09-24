@@ -307,7 +307,7 @@ def test_a_visible_field_army_keeps_the_full_ffa_margin_without_a_known_base():
     world = mapgen.generate(seed=11, width=144, height=108, players=6, human=None, wilds=False)
     brain = ProBrain(0, replace(BRED[Race.HUMAN][0], creep=False))
     _spawn(world, 0, UnitType.FOOTMAN, 2, 25)
-    world.spawn_unit(0, UnitType.SCOUT, (70.5, 54.5))
+    world.spawn_unit(0, UnitType.FLYING_MACHINE, (70.5, 54.5))
     for index in range(12):
         world.spawn_unit(1, UnitType.FOOTMAN, (72.5 + index * 0.5, 54.5))
     world.update_vision()
@@ -385,8 +385,8 @@ def test_the_brain_knows_nothing_of_an_enemy_base_it_has_never_seen():
 def test_raiders_hunt_only_peasants_they_can_see():
     world = mapgen.generate(seed=31, players=2, human=None)
     world.update_vision()
-    brain = ProBrain(0, PRO)
-    riders = _spawn(world, 0, UnitType.SCOUT, 2, 2)
+    brain = ProBrain(0, replace(PRO, name="raider", raid=True))
+    riders = _spawn(world, 0, UnitType.KNIGHT, 2, 2)
     brain._raid(world, riders)
     for rider in riders:
         for order in rider.orders:

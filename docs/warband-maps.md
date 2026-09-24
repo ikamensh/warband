@@ -37,15 +37,15 @@ between halls is about 43 tiles):
 
 | Fact | Value | Consequence for maps |
 |------|-------|----------------------|
-| Walk corner to corner, Medium | footman 18 s, knight 13 s, scout 10 s, catapult 27 s | Rush distance is short by nature; a layout lengthens it with detours, not size |
+| Walk corner to corner, Medium | footman 18 s, knight 13 s, catapult 27 s; a flying machine flies it straight in 9 s | Rush distance is short by nature; a layout lengthens it with detours, not size |
 | Walk corner to corner, Large (64 × 48) | footman 25 s, catapult 38 s | Large is where three paths and a long flank route fit |
 | Main mine | 50 000 gold in Forest and Bastion; 15 000 on Plains; 20 000 on Crossings and Klondike | The latter three layouts press players to leave the safe start during an ordinary match |
 | Expansion mine | 30 000 gold; five peasants empty it in 10 min | Thirds get fought over twice: taking them and holding them |
 | A tree | 5 s to fell, 100 lumber, blocks movement | Forest is a **soft wall**: three tiles thick costs one peasant 15 s. Elves with Regrowth get it back after 60 s |
-| Water and rock | block movement, permanent | The only hard walls; no boats, no flying, no high ground |
+| Water and rock | block walking, permanent | The only hard walls; no boats, no high ground; the flying machine (the side's eyes, unarmed) flies over them and every wall |
 | Guard tower | range 6 (elves 7), sight 8 | A three-tile gate is covered by one tower each side |
 | Catapult | range 7 (8 with Siege Engineering), splash | The answer to a towered gate; the reason a closed map still ends |
-| Sight | peasant 4, footman 5, archer 6, scout 8, elves +2 | Clearings and walls hide armies; scouting matters on closed maps |
+| Sight | peasant 4, footman 5, archer 6, flying machine 9, elves +2 | Clearings and walls hide armies; scouting matters on closed maps |
 | Base footprint | hall 3 × 3, mine 3 × 3 plus a free ring, clearing radius 7 | A base site needs about 120 open tiles; the audit already demands 90 |
 | AI | expands to a mine more than 14 tiles from its hall; raids mines that enemy workers stand at; attacks by walking its army at enemy buildings; bounded A* of 3 000 expansions | Naturals sit 16–20 tiles out so the AI builds a hall there; every route must be found inside the budget or units stall at a wall |
 | Sizes and seats | six sizes, 48 × 40 to 180 × 132; 2–16 players, one to a cell of a grid; the map's rim is trees | Features are sized in tiles per size, not scaled; see *Sixteen seats* |
@@ -156,7 +156,7 @@ the middle band, each within 10 tiles of the straight line between the two
 nearest halls.
 
 **Decisions.** When to leave the base to take the natural; whether to tower
-it; scouts and knights pay off because nothing slows them; a lumber mill by
+it; knights pay off because nothing slows them; a lumber mill by
 a grove is a target.
 
 **Races.** Humans (Horse Breeding) and Orcs (Plunder) are at home here;
@@ -200,7 +200,7 @@ middle clearing on the map's centre holding the thirds. Join every clearing
 to the middle by a winding path two tiles wide (a random walk biased towards
 the target, then widened), and add one longer path from the natural to the
 middle so each base has two ways out. Paths never run straighter than a
-detour factor of 1.4, so a scout cannot see down them. Ponds and rock only
+detour factor of 1.4, so nobody on foot sees down them. Ponds and rock only
 as decoration inside clearings.
 
 **Decisions.** Towers at the two path mouths hold a base against far more

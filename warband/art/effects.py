@@ -86,23 +86,27 @@ class Stain(Effect):
 @dataclass(frozen=True)
 class Outcome:
     """How a category of unit goes down: how far it turns (degrees), how much of its height is left lying,
-    and how far the landing bounces (degrees)."""
+    how far the landing bounces (degrees), and whether it *falls* from the air to the ground it died over."""
 
     turn: float
     height: float
     bounce: float
+    falls: bool = False
 
 
 OUTCOMES = {
     "topple": Outcome(88, .78, 7),    # infantry, archers, casters: over onto the ground
     "collapse": Outcome(36, .58, 4),  # a mount folds into a low heap; a plank on its nose is no horse
     "wreck": Outcome(9, .66, 2),      # a siege engine breaks where it stands
+    "crash": Outcome(28, .62, 5, falls=True),  # a flying machine drops out of the air and breaks on the ground
 }
 
 
 def death_outcome(unit_type: UnitType) -> str:
     if unit_type is UnitType.CATAPULT:
         return "wreck"
+    if unit_type is UnitType.FLYING_MACHINE:
+        return "crash"
     return "collapse" if unit_type in MOUNTED else "topple"
 
 
@@ -166,7 +170,8 @@ class UnitDeath(Effect):
                     self.on_land(self.feet, self.kind)
         else:
             rotation, sy, dark = turn, height, 1.0
-        blend = min(1.0, age / self.LURCH)
+        # A body falls onto the point it died over; a flyer's drop from the air takes the whole fall, gathering speed.
+        blend = min(1.0, (age / (self.LURCH + self.FALL)) ** 2) if self.outcome.falls else min(1.0, age / self.LURCH)
         feet = (self.stood[0] + (self.position[0] - self.stood[0]) * blend, self.stood[1] + (self.position[1] - self.stood[1]) * blend)
         self.feet = feet
         w, h = self.size[0] * (1 + (1 - sy) * .35), self.size[1] * sy  # what folds down spreads out a little

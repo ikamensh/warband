@@ -24,7 +24,6 @@ item takes the next one and updates this line.
 | WB-059 | Next | proposed | A route nobody can reach costs the whole pathfinder budget, and the budget grows with the map | Sixteen seats 2026-09-20 |
 | WB-060 | Later | proposed | Sixteen seats online: an engine release, a snapshot that is not one world per seat, and room capacity | Sixteen seats 2026-09-20 |
 | WB-062 | Now | proposed | Buffs and debuffs: orc Rage as a ten-second buff, Bleeding from every archer's shot | Ilya 2026-09-24 |
-| WB-064 | Now | proposed | Flying units: the Flying Machine at the workshop replaces the scout rider | Ilya 2026-09-24 |
 | WB-063 | Now | proposed | Magic I: Aether, a third resource drawn from ley rifts into chained vaults | Ilya 2026-09-24 |
 | WB-061 | Now | proposed | Global commands with levels: Fortify, Withdraw, Scout, Harass, Gold, Lumber | Ilya 2026-09-24 |
 | WB-066 | Now | proposed | Magic II: the Mage Tower, one spell of three per level, cast anywhere, dearer beyond the vaults | Ilya 2026-09-24 |
@@ -39,8 +38,8 @@ the six tech buildings are open, so the only real gate is the first barracks.
 The lumber mill opens nothing (it is a lumber drop and arrow research), the
 blacksmith only the workshop, and every recruit needs nothing but the building
 that trains it, so the knight, the toughest soldier and the best buy per gold
-until the balance league raised its price (docs/balance.md), comes with the
-scout off one stables.
+until the balance league raised its price (docs/balance.md), comes off one
+stables alone.
 
 ```
 now                                          proposed
@@ -55,7 +54,7 @@ Town Hall ┬ Barracks ┬ Guard Tower           Town Hall ┬ Barracks ┬ Blac
 | change | why | what it costs |
 |---|---|---|
 | Guard Tower needs the Lumber Mill, not the Barracks | the mill opens something; towers shoot the arrows the mill improves (Arrows I/II already raise towers); the barracks stops being the hub of four; the tower rush needs a mill, a hundred gold cheaper than a barracks | Warden's `towers_early` ("as soon as the barracks stands, before the mill") and the tower rush posture order a mill first |
-| Knight needs a Blacksmith as well as the Stables | armour comes from the smith; the strongest unit needs two buildings, the scout stays the early raider; the smith opens more than the workshop | a new unit prerequisite (`UnitInfo.requires`) in `can_train` and the settlement's unit plans; the knights posture's `early_tech` gains a smith |
+| Knight needs a Blacksmith as well as the Stables | armour comes from the smith; the strongest unit needs two buildings; the smith opens more than the workshop | a new unit prerequisite (`UnitInfo.requires`) in `can_train` and the settlement's unit plans; the knights posture's `early_tech` gains a smith |
 | to decide: Archer needs the Lumber Mill as well as the Barracks | Warcraft II's rule: the barracks alone gives footmen, the mill (built early anyway; the stronger brains want one from the start) adds archers and towers | delays every archer opening by the mill's 35 s; elves, whose rangers are their army, feel it most (they lead the race table) |
 
 **Done, in part: the hall upgrade.**  A Keep is researched at the Town Hall
@@ -174,23 +173,24 @@ one of them.
 The hunt of 2026-09-20 (main `6846e47`) fixed twenty-nine defects. These are confirmed and left, each
 needing a decision or a piece of art rather than a patch.
 
-- **Twelve pictures a player cannot tell the owner of.** `tools/visual_lint.py` reports what a picture
+- **Eleven pictures a player cannot tell the owner of.** `tools/visual_lint.py` reports what a picture
   wears of the team's colour: `human.farm/tower/lumber_mill/stables/workshop.founded`,
   `elf.lumber_mill.founded` and `dwarf.lumber_mill/stables/workshop.founded` wear none at all,
-  `human.blacksmith.founded` 8 px, `dwarf.blacksmith.founded` 68 px, and `unit.elf.scout` 33 px where
-  every other scout wears 167 or more. The smallest mark that reads is the elven Stag Pens' site at
-  218 px. Either the sheets gain a pennant (`tools/restyle.py`, an image model), or the view draws an
-  owner's mark for a site itself.
-- **Four painted strike frames hop.** `unit.orc.scout.{2,3}.strike` and `unit.elf.knight.{1,2}.strike`
+  `human.blacksmith.founded` 8 px and `dwarf.blacksmith.founded` 68 px. The smallest mark that reads is
+  the elven Stag Pens' site at 218 px. Either the sheets gain a pennant (`tools/restyle.py`, an image
+  model), or the view draws an owner's mark for a site itself.
+- **Two painted strike frames hop.** `unit.elf.knight.{1,2}.strike`
   stand 10-14 px above the render they repaint, so the rider jumps as it strikes. Repaint the frames, or
   place a painted frame by its own centroid against its render.
 - **Workers crowd a spot and stand still.** `tools/fuzz.py` reports a unit that stays within a tile for
   twenty seconds as a deadlock. Two are not: a third peasant sent to a tree edge two others are already
   chopping waits about 25 s beside it instead of taking another tree (fuzz seed 3), and twenty-odd
   peasants delivering to one hall jam at its door, each of them still for 20 s at a time (fuzz seed 106,
-  four players, twelve minutes in). The rules already say a mine saturates at eight peasants; nothing
-  says what a hall's door or a tree's edge holds. Either the worker policy spreads them, or the fuzz
-  check learns to tell a queue from a deadlock.
+  four players, twelve minutes in). Soldiers do it too: a knight at the back of a one-tile notch in the
+  trees waits 20.5 s for a dozen soldiers to file out past others still coming in (fuzz seed 81 since
+  WB-064, seven minutes in; it walks out as soon as they have). The rules already say a mine saturates
+  at eight peasants; nothing says what a hall's door or a tree's edge holds. Either the worker policy
+  spreads them, or the fuzz check learns to tell a queue from a deadlock.
 - **A catapult's minimum range is nowhere in the HUD.** `UnitInfo.min_range` is 2.0 and the codex and the
   selection panel show only the 7. A player learns it by watching a stone refuse to fly.
 
@@ -330,49 +330,6 @@ five numbers are the whole vocabulary and a spell is a row, not code.
    `tools/visual_lint.py` clean.
 5. Fingerprint and `sim_bench.txt` refreshed in the same commit; fuzz run;
    mypy over `fastsim.MODULES` clean and the compiled run matches.
-
-## WB-064 — Flying units: the Flying Machine
-
-**Design.** The scout rider is deleted (`UnitType.SCOUT` goes, not
-deprecated). The Stables trains knights only; the Workshop trains the
-**Flying Machine**: Human Flying Machine, Orc Goblin Zeppelin, Elf Leafwing
-Glider, Dwarf Gyrocopter. It opens the air layer later units will use:
-
-- **Flight** (`flying = true` on the unit type): straight over trees, water,
-  rock, buildings and units, kept inside the map; no pathfinding and no
-  ground body (the hard core does not apply to it); flyers keep elbow room
-  from each other only.
-- **Who can hit it**: shooters (archers, clerics' bolt, towers) and nothing
-  else. Melee never targets air, and the AI and the smart order never send
-  melee at it; a siege stone and its splash pass beneath it.
-- **What it does**: it is the side's eyes. Unarmed, like Warcraft II's
-  machine: sees far (sight 9 before race bonuses, over trees and walls),
-  fast (4.6), hp 60, armour 2, unarmoured (an archer lands ×1.5); 400 gold,
-  100 lumber, 18 s at the workshop. Why unarmed: a bomb that melee cannot
-  answer would clear the melee-only camps (wolf, troll, golem) for nothing
-  and pick at workers before any side has a shooter, and the AI would need
-  anti-air before it needs anything else. Unarmed, it is the scout the rider
-  never was (it survives the walk and sees over what the rider could not),
-  and the spotter WB-066's spells need, since they are cast anywhere but aim
-  only as well as the side can see. Air combat comes with later flyers.
-- A machine: never bleeds, a cleric does not heal it.
-- **Drawn** above everything, bobbing, with a shadow on the ground under it;
-  its walk frames spin the rotor or beat the wings; selection and the
-  pointer hit the drawn body; a dot on the minimap.
-- Horse Breeding becomes "+0.8 speed for knights".
-- **Brains**: everything that trained or used scouts (scouting, raids,
-  compositions, archetypes, the league, the bred table) moves to the flyer or
-  to another unit; a brain answers flyers with shooters and towers and
-  never orders melee at air. The campaign's raid of mission 3 loses its
-  scout.
-
-**Acceptance.** Rules tests: a flight across a lake and a forest without a
-path, the targeting matrix (melee, shooter, tower, stone, splash against air
-and ground), no bleeding, no healing; a flyer ordered with a mixed group
-moves with it; fuzz; the arena shows no race outside the band and the
-brains not weaker than before; each race's flyer rendered and looked at
-(procedural art where no painted sheet exists, recorded); visual lint;
-the campaign mission loads and plays; fingerprint refreshed.
 
 ## WB-063 — Magic I: Aether, rifts and vaults
 

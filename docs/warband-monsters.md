@@ -90,7 +90,7 @@ Each is chosen for a unit the balance data says is dead weight.
 | creature | hp | dmg | armour | range | wind-up + cooldown | speed | what it rewards |
 |---|---|---|---|---|---|---|---|
 | **Dire Wolf** | 40 | 6 | 0 light | melee | 0.2 + 0.9 | 4.0 | nothing: the cheap minute-two camp |
-| **Venom Spider** | 45 | 8 | 0 light | 5 | 0.4 + 1.6 | 2.2 | the **scout** — something you must close on is scout work, and a scout returns 610 gold per 1 000 spent today |
+| **Venom Spider** | 45 | 8 | 0 light | 5 | 0.4 + 1.6 | 2.2 | the **knight** — something you must close on is fast cavalry's work |
 | **Troll** | 220 | 14 | 0 unarmoured, regen 8/s | melee | 0.45 + 1.4 | 1.9 | the **archer** — piercing lands ×1.5 on the unarmoured |
 | **Stone Golem** | 170 | 18 | 2 heavy, splash 1.3 | melee | 0.7 + 2.5 | 1.3 | the **archer** again, by punishing a melee ball |
 

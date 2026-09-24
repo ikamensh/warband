@@ -62,11 +62,11 @@ def _defend_lines(brain):
     return [what for _, what in brain.log if "defend with" in what]
 
 
-def test_a_lone_scout_draws_only_a_couple_of_defenders_and_the_attack_goes_on() -> None:
-    world, brain, footmen, target, enemies = _siege_setup(UnitType.SCOUT, 1)
-    scout = enemies[0].pos
+def test_a_lone_rider_draws_only_a_couple_of_defenders_and_the_attack_goes_on() -> None:
+    world, brain, footmen, target, enemies = _siege_setup(UnitType.KNIGHT, 1)
+    rider = enemies[0].pos
     brain.think(world, random.Random(1))
-    defending = [u for u in footmen if Brain._aimed_at(world, u, scout)]
+    defending = [u for u in footmen if Brain._aimed_at(world, u, rider)]
     holding = [u for u in footmen
                if isinstance(u.order, AttackMove) and dist(u.order.target, target) < 1.0]
     assert len(defending) <= 3
@@ -205,7 +205,7 @@ def test_human_answers_a_visible_archer_mass_with_cavalry() -> None:
         world.spawn_unit(1, UnitType.ARCHER, (hall.center[0] + 2, hall.center[1] + i * 0.7))
     world.update_vision()
     brain = Brain(0, Difficulty.MEDIUM)
-    assert brain._choose_unit(world, stables, {t: 2 for t in UnitType}) in (UnitType.SCOUT, UnitType.KNIGHT)
+    assert brain._choose_unit(world, stables, {t: 2 for t in UnitType}) is UnitType.KNIGHT
 
 
 def test_dwarf_workshop_starts_siege_with_four_soldiers() -> None:
@@ -470,8 +470,8 @@ def test_the_shipped_brain_is_bound_by_the_same_fog_the_player_plays_under() -> 
     assert all(dist(m.center, enemy_hall.center) > 12.0 for m in known_mines(world, 0)), \
         "their gold has not been found"
 
-    # Genuine sight, not a revealed map: a scout of ours standing in their base.
-    world.spawn_unit(0, UnitType.SCOUT, (enemy_hall.center[0] + 1, enemy_hall.center[1]))
+    # Genuine sight, not a revealed map: a flying machine of ours over their base.
+    world.spawn_unit(0, UnitType.FLYING_MACHINE, (enemy_hall.center[0] + 1, enemy_hall.center[1]))
     world.update_vision()
     assert known_enemy_buildings(world, 0), "once looked at, it is known"
     assert brain._enemy_soldiers(world) == 1

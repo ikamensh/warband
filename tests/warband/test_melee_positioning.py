@@ -12,7 +12,7 @@ def stationary_worker(world, player, point):
     return worker
 
 
-@pytest.mark.parametrize("unit_type", [UnitType.PEASANT, UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT])
+@pytest.mark.parametrize("unit_type", [UnitType.PEASANT, UnitType.FOOTMAN, UnitType.KNIGHT])
 def test_melee_recovers_contact_when_an_ally_pushes_it_away_from_a_wall(unit_type):
     """A tiny friendly shove must not strand an attacker just outside weapon reach."""
     world = World(24, 20, [[Terrain.GRASS] * 24 for _ in range(20)], 2)
@@ -240,7 +240,7 @@ def test_melee_goes_round_a_single_tree_or_wall_between_it_and_a_foe_standing_st
 @pytest.mark.parametrize("verb", ["attack_move", "patrol"])
 def test_a_foe_picked_up_on_the_march_is_chased_no_further_than_the_leash(verb):
     """An attack picked up on its own gives up past the leash (Attack.auto), but one picked up on an attack-move or a
-    patrol set no home to measure from: a footman followed a fleeing scout across the map and through the fog."""
+    patrol set no home to measure from: a footman followed a fleeing rider across the map and through the fog."""
     world = World(80, 30, [[Terrain.GRASS] * 80 for _ in range(30)], 2)
     world.rng.seed(1)
     world.place_building(0, BuildingType.TOWN_HALL, (0, 0))
@@ -250,13 +250,13 @@ def test_a_foe_picked_up_on_the_march_is_chased_no_further_than_the_leash(verb):
         world.attack_move([footman.id], (12.5, 15.5))
     else:
         world.patrol([footman.id], (9.5, 15.5))
-    scout = world.spawn_unit(1, UnitType.SCOUT, (9.5, 15.5))
-    world.hold([scout.id])
+    rider = world.spawn_unit(1, UnitType.KNIGHT, (9.5, 15.5))
+    world.hold([rider.id])
     world.update_vision()
     for _ in range(10):
         world.step()
     assert isinstance(footman.order, Attack) and footman.order.auto
-    world.move([scout.id], (70.5, 3.5))  # it runs off, far out of sight
+    world.move([rider.id], (70.5, 3.5))  # it runs off, far out of sight
     furthest = 0.0
     for _ in range(600):
         world.step()

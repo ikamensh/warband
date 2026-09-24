@@ -27,11 +27,13 @@ def scenario():
     peasant = world.spawn_unit(0, UnitType.PEASANT, (5.5, 5.5))
     footman = world.spawn_unit(0, UnitType.FOOTMAN, (5.5, 4.5))
     raider = world.spawn_unit(1, UnitType.FOOTMAN, (30.5, 24.5))
+    flyer = world.spawn_unit(0, UnitType.FLYING_MACHINE, (7.5, 4.5))
+    their_flyer = world.spawn_unit(1, UnitType.FLYING_MACHINE, (28.5, 24.5))
     world.reveal_all(0)
     world.reveal_all(1)
     return world, {"hall": hall.id, "their_hall": their_hall.id, "mine": mine.id, "seam": seam.id, "site": site.id, "smith": smith.id,
                    "their_site": their_site.id,
-                   "peasant": peasant.id, "footman": footman.id, "raider": raider.id}
+                   "peasant": peasant.id, "footman": footman.id, "raider": raider.id, "flyer": flyer.id, "their_flyer": their_flyer.id}
 
 
 REFUSED = {
@@ -40,6 +42,10 @@ REFUSED = {
     "attack on a mine": lambda w, e: w.attack([e["footman"]], e["mine"]),
     "attack on a gold seam": lambda w, e: w.attack([e["footman"]], e["seam"]),
     "attack on nothing": lambda w, e: w.attack([e["footman"]], 9999),
+    # Melee and stones pass beneath a flyer, and a flying machine carries no weapon: nobody in either group can strike.
+    "attack on a flyer by melee": lambda w, e: w.attack([e["peasant"], e["footman"]], e["their_flyer"]),
+    "attack by a flying machine": lambda w, e: w.attack([e["flyer"]], e["raider"]),
+    "a context order sending melee at a flyer": lambda w, e: w.smart([e["footman"]], (28.5, 24.5), target_id=e["their_flyer"]),
     "harvest with a soldier among the peasants": lambda w, e: w.harvest([e["peasant"], e["footman"]], e["mine"]),
     "harvest where no trees stand": lambda w, e: w.harvest([e["peasant"]], (3, 20)),
     "peasants released with a soldier among them": lambda w, e: w.release_workers([e["peasant"], e["footman"]]),

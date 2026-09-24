@@ -36,13 +36,14 @@ from PIL import Image, ImageDraw, ImageFont
 
 from saga2d import Game, fonts
 from saga2d.testing import overlapping_texts, text_boxes
+from saga2d.rendering.layers import LAYER_BAND
 from saga2d.scene import UI_ORDER_BASE, UI_ORDER_STRIDE
 from saga2d.testing.cpu_budget import CpuBudget
 from saga2d.ui import Button, Component, Label
 from saga2d.ui.components import KEYCAP_GAP
 from sagaforge import restyle
 from warband.art import textures
-from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, BuildingType, MapTheme, Race, Resource, UnitType
+from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, UNITS, BuildingType, MapTheme, Race, Resource, UnitType
 
 SOLID = 160  # alpha from which a pixel counts as the figure itself, not its shadow or fringe
 EDGE = 96  # alpha from which a pixel at the canvas edge means the figure was cut off
@@ -172,12 +173,37 @@ def lint_image(key: str, image: Image.Image, *, painted: bool = False, cropped: 
     return findings
 
 
-def lint_subject(subject: str, frames: dict[tuple[int, str], tuple[str, Image.Image]], placement: textures.Placement) -> list[Finding]:
-    """One subject's frames against each other: *frames* maps ``(facing, frame)`` to ``(key, image)``."""
-    findings = []
-    figures = {fk: figure(image, placement) for fk, (key, image) in frames.items()}
-    if any(f is None for f in figures.values()):
+def lint_subject(subject: str, frames: dict[tuple[int, str], tuple[str, Image.Image]], placement: textures.Placement, *,
+                 flies: bool = False) -> list[Finding]:
+    """One subject's frames against each other: *frames* maps ``(facing, frame)`` to ``(key, image)``.  A subject that
+    *flies* is held only to frames that differ: it stands on nothing (the view hangs it over the shadow it draws), and
+    its rotor or wings sweep the outline its feet and its middle are measured by from frame to frame and facing to
+    facing."""
+    findings: list[Finding] = []
+    drawn = {fk: figure(image, placement) for fk, (key, image) in frames.items()}
+    figures = {fk: fig for fk, fig in drawn.items() if fig is not None}
+    if len(figures) < len(drawn):
         return findings  # reported as empty by lint_image
+    if not flies:
+        findings += _ground_contact(subject, frames, figures)
+    by_facing: dict[int, list[str]] = {}
+    for facing, frame in frames:
+        by_facing.setdefault(facing, []).append(frame)
+    for facing, names in by_facing.items():
+        seen: dict[bytes, str] = {}
+        for frame in names:
+            key, image = frames[(facing, frame)]
+            digest = image.tobytes()
+            if digest in seen and {frame, seen[digest]} <= set(textures.WALK_FRAMES) | set(textures.ATTACK_FRAMES) | set(textures.CHOP_FRAMES):
+                findings.append(Finding("identical", key, f"pixel-identical to frame {seen[digest]!r}", image))
+            seen.setdefault(digest, frame)
+    return findings
+
+
+def _ground_contact(subject: str, frames: dict[tuple[int, str], tuple[str, Image.Image]],
+                    figures: dict[tuple[int, str], Figure]) -> list[Finding]:
+    """A walker's feet on its anchor in every frame, and its figure where the other frames and facings put it."""
+    findings = []
     feet = [f.feet for f in figures.values()]
     if statistics.median(feet) < -FLOAT:
         findings.append(Finding("floating", subject, f"solid content ends {-statistics.median(feet):.1f} px above the anchor", frames[next(iter(frames))][1]))
@@ -200,14 +226,6 @@ def lint_subject(subject: str, frames: dict[tuple[int, str], tuple[str, Image.Im
             if abs(fig.centre - centre) > TURN_SLIDE:
                 key, image = frames[(facing, "stand")]
                 findings.append(Finding("turn-slide", key, f"standing figure {fig.centre - centre:+.1f} px sideways from the other facings", image))
-    for facing, items in by_facing.items():
-        seen: dict[bytes, str] = {}
-        for frame, _ in items:
-            key, image = frames[(facing, frame)]
-            digest = image.tobytes()
-            if digest in seen and {frame, seen[digest]} <= set(textures.WALK_FRAMES) | set(textures.ATTACK_FRAMES) | set(textures.CHOP_FRAMES):
-                findings.append(Finding("identical", key, f"pixel-identical to frame {seen[digest]!r}", image))
-            seen.setdefault(digest, frame)
     return findings
 
 
@@ -373,7 +391,10 @@ def unit_subjects(players: tuple[int, ...] = (0,)) -> Iterator[tuple[str, Race, 
 def lint_images(game: Game, store: ImageStore, *, budget: CpuBudget | None = None) -> list[Finding]:
     """Every check on every registered image (call :func:`register_everything` first)."""
     findings: list[Finding] = []
-    painted_keys = {key for key in game.assets._images if key.startswith(("unit.", "building."))}  # a portrait is a resample of one
+    drawn = {textures.unit_key(unit_type, player, facing, frame, None, race)  # the render's own frames: nothing was painted
+             for unit_type in textures.PROCEDURAL_UNITS for race in Race for player in (0, 1)
+             for facing in range(textures.FACINGS) for frame in textures.FRAMES}
+    painted_keys = {key for key in game.assets._images if key.startswith(("unit.", "building.")) and key not in drawn}  # a portrait is a resample of one
     for key in list(game.assets._images):
         if budget is not None:
             budget.checkpoint()
@@ -389,7 +410,8 @@ def lint_images(game: Game, store: ImageStore, *, budget: CpuBudget | None = Non
                  for facing in range(textures.FACINGS) for frame in frames
                  for key in [textures.unit_key(unit_type, player, facing, frame, carrying, race)]}
         if textures.restyled_frames(race, unit_type, carrying) is None:
-            findings += lint_subject(name, keyed, textures.placements[next(iter(keyed.values()))[0]])  # painted frames: lint_drift
+            findings += lint_subject(name, keyed, textures.placements[next(iter(keyed.values()))[0]],  # painted frames: lint_drift
+                                     flies=UNITS[unit_type].flying)
         base = textures.unit_key(unit_type, 0, 2, "stand", carrying, race)
         team = textures.unit_key(unit_type, 1, 2, "stand", carrying, race)
         if game.assets.has_image(team):
@@ -564,7 +586,8 @@ def lint_texts(game: Game) -> list[Finding]:
 
 def lint_sprites(game: Game, store: ImageStore) -> list[Finding]:
     """World sprites with a placement: drawn at their image's size, and in front only of what they
-    stand in front of (two overlapping sprites whose draw order contradicts their feet)."""
+    stand in front of (two overlapping sprites of one layer whose draw order contradicts their feet).  A sprite on a
+    higher layer is over what is below it on purpose: a flyer is drawn over the roofs and trees it passes above."""
     findings = []
     props = []
     keys = store.keys_by_handle()
@@ -584,6 +607,8 @@ def lint_sprites(game: Game, store: ImageStore) -> list[Finding]:
     for i, a in enumerate(props):
         for b in props[i + 1:]:
             if min(a[3], b[3]) - max(a[1], b[1]) <= 0 or min(a[4], b[4]) - max(a[2], b[2]) <= 0:
+                continue
+            if a[6] // LAYER_BAND != b[6] // LAYER_BAND:
                 continue
             behind, front = (a, b) if a[5] < b[5] else (b, a)
             if front[5] - behind[5] > 4 and behind[6] > front[6]:

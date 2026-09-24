@@ -12,7 +12,7 @@ come from the same startup snapshot.
 
 | Race    | Character                            | Passive                                             | Arts                                                        |
 |---------|--------------------------------------|-----------------------------------------------------|-------------------------------------------------------------|
-| Humans  | balanced, the baseline               | Drill: every unit trains 15 % faster                | Horse Breeding (+0.8 speed for cavalry), Blessing (clerics heal ×1.5) |
+| Humans  | balanced, the baseline               | Drill: every unit trains 15 % faster                | Horse Breeding (+0.8 speed for knights), Blessing (clerics heal ×1.5) |
 | Orcs    | tougher, harder-hitting, less armour | Frenzy: soldiers below half health deal +25 % damage | Bloodlust (frenzy +50 %), Plunder (razing loots a fifth of the building's gold) |
 | Elves   | lighter, faster, far-sighted         | Keen eyes: +2 sight, rangers shoot a tile farther   | Longbows (+1 range for rangers and towers), Regrowth (felled trees grow back after a minute) |
 | Dwarves | sturdier, slower, housed in stone    | Stonework: buildings +25 % hit points and +2 armour | Deep Mining (150 gold per trip), Blasting Powder (mortar splash ×1.5) |
@@ -24,9 +24,9 @@ come from the same startup snapshot.
 | worker    | Peasant     | Peon        | Gatherer     | Miner        |
 | line      | Footman     | Grunt       | Sentinel     | Ironguard    |
 | ranged    | Archer      | Axethrower  | Ranger       | Crossbowman  |
-| raider    | Scout       | Wolf Rider  | Outrider     | Ram Rider    |
 | shock     | Knight      | Ogre        | Stag Knight  | Bear Rider   |
 | siege     | Catapult    | Catapult    | Ballista     | Mortar       |
+| eyes      | Flying Machine | Goblin Zeppelin | Leafwing Glider | Gyrocopter |
 | healer    | Cleric      | Shaman      | Druid        | Runepriest   |
 
 | Building   | Humans      | Orcs        | Elves        | Dwarves      |

@@ -92,12 +92,12 @@ def test_a_worked_mine_is_lit_while_seen_and_out_of_sight_keeps_the_look_last_se
                 break
         assert miner.inside == mine.id
         assert look() == "intact", "a mine worked out of sight is lit on the player's map"
-        scout = world.spawn_unit(scene.human, UnitType.SCOUT, (22.5, 11.5))
+        eyes = world.spawn_unit(scene.human, UnitType.FLYING_MACHINE, (22.5, 11.5))
         for _ in range(3):
             game.tick(0.1)
         assert miner.inside == mine.id and look() == "active", "a worked mine in sight is not lit"
-        world.stop([scout.id])
-        world.move([scout.id], (3.5, 6.5))
+        world.stop([eyes.id])
+        world.move([eyes.id], (3.5, 6.5))
         last_seen = look()
         for _ in range(60):
             game.tick(0.1)

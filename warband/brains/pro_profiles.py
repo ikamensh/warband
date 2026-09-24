@@ -47,11 +47,13 @@ class ProProfile:
     retreat_wounded: bool = True       # pull a soldier out at this much health and let it heal…
     retreat_hp: float = 0.25
     rejoin_hp: float = 0.7             # …and send it back once it is this whole again
-    raid: bool = True                  # riders sent at the enemy's peasants
+    # Knights sent at the enemy's peasants.  Off unless a posture asks: the raiders were scout riders, cheap enough to
+    # spare, and two knights ridden off measured five points below keeping them in the army (WB-064, docs/ai-ladder.md).
+    raid: bool = False
     raiders: int = 2
     reinforce_group: int = 1           # soldiers that must gather before walking to a fight together
     ignore_raid_ratio: float = 0.4     # a raid smaller than this share of the army does not stop a push
-    scout: bool = True
+    scout: bool = True                 # keep one flying machine circling the enemy's base (the workshop makes it first)
     scout_from: float = 50.0           # send the first pair of eyes out at this many seconds
     stale_seconds: float = 25.0        # a sighting older than this is not worth attacking on
     symmetry_prior: float = 0.4        # an unlooked-at opponent is assumed to be this much of our own strength
@@ -72,7 +74,7 @@ class ProProfile:
     creep_retry: float = 120.0         # …and leave that camp alone for this long
     siege: bool = True
     clerics: bool = True
-    counter_from: float = 0.3         # an enemy more than this fraction shooters is answered with riders
+    counter_from: float = 0.3         # an enemy more than this fraction shooters is answered with knights
     counter_strength: float = 1.0     # …this hard
     siege_share: float = 0.0          # if set, the share of the army that is catapults…
     cleric_share: float = 0.0         # …and that is healers, overriding the race's plan
@@ -139,7 +141,7 @@ _TRIALS: Final = (
     replace(PRO, name="pro-timid", min_army=10, attack_ratio=1.6, symmetry_prior=1.0, guards=2,
             workers_per_mine=13, barracks_per_hall=4),   # the cautious posture it replaced
     replace(PRO, name="pro-noscout", scout=False),
-    replace(PRO, name="pro-noraid", raid=False),
+    replace(PRO, name="pro-raid", raid=True),
     replace(PRO, name="pro-noheal", retreat_wounded=False),
     replace(PRO, name="pro-noexpand", expand=False),
     replace(PRO, name="pro-lean", max_sites=3, barracks_per_hall=2),

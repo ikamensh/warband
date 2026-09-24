@@ -208,11 +208,11 @@ def test_anything_else_is_left_alone_and_the_hint_says_why(game) -> None:
 
 PLURALS = {
     "Archer": "Archers", "Axethrower": "Axethrowers", "Ballista": "Ballistae", "Bear Rider": "Bear Riders", "Catapult": "Catapults",
-    "Cleric": "Clerics", "Crossbowman": "Crossbowmen", "Dire Wolf": "Dire Wolves", "Druid": "Druids", "Footman": "Footmen",
-    "Gatherer": "Gatherers", "Grunt": "Grunts", "Ironguard": "Ironguards", "Knight": "Knights", "Miner": "Miners", "Mortar": "Mortars",
-    "Ogre": "Ogres", "Outrider": "Outriders", "Peasant": "Peasants", "Peon": "Peons", "Ram Rider": "Ram Riders", "Ranger": "Rangers",
-    "Runepriest": "Runepriests", "Scout": "Scouts", "Sentinel": "Sentinels", "Shaman": "Shamans", "Stag Knight": "Stag Knights",
-    "Stone Golem": "Stone Golems", "Troll": "Trolls", "Venom Spider": "Venom Spiders", "Wolf Rider": "Wolf Riders",
+    "Cleric": "Clerics", "Crossbowman": "Crossbowmen", "Dire Wolf": "Dire Wolves", "Druid": "Druids", "Flying Machine": "Flying Machines",
+    "Footman": "Footmen", "Gatherer": "Gatherers", "Goblin Zeppelin": "Goblin Zeppelins", "Grunt": "Grunts", "Gyrocopter": "Gyrocopters",
+    "Ironguard": "Ironguards", "Knight": "Knights", "Leafwing Glider": "Leafwing Gliders", "Miner": "Miners", "Mortar": "Mortars",
+    "Ogre": "Ogres", "Peasant": "Peasants", "Peon": "Peons", "Ranger": "Rangers", "Runepriest": "Runepriests", "Sentinel": "Sentinels",
+    "Shaman": "Shamans", "Stag Knight": "Stag Knights", "Stone Golem": "Stone Golems", "Troll": "Trolls", "Venom Spider": "Venom Spiders",
 }
 
 

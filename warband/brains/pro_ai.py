@@ -15,7 +15,7 @@ from typing import Final
 from warband.brains.pro_force import _tower_strength, _tower_strength_own, strength
 from warband.brains.pro_profiles import PRO, PRO_PROFILES, PRO_RUSH, PRO_VANGUARD, PRO_WARDEN, ProProfile
 
-from warband.brains.ai import CAMP_REACH, heading_to, known_camps, known_mines
+from warband.brains.ai import CAMP_REACH, RAIDERS, answer_flyers, heading_to, known_camps, known_mines
 from warband.sim.model import Attack, Build, Building, Move, Point, Repair, Salvage, Unit, World, dist, rect_gap, tile_center
 from warband.sim.rules import BuildingType, Layout, Race, UnitType
 
@@ -53,8 +53,8 @@ class ProBrain(_ProBrainEconomy):
             return []
         out = []
         for unit in self._enemies(world):
-            if unit.info.damage == 0 and unit.is_worker:
-                continue
+            if not unit.info.damage:
+                continue  # an unarmed flyer looking on is no raid: the shooters answer it (answer_flyers)
             if world.players[unit.player].neutral:
                 continue  # a camp is leashed to its lair: it takes no ground, so there is nothing to answer
             if any(dist(unit.pos, b.center) < 9.0 for b in own):
@@ -63,9 +63,10 @@ class ProBrain(_ProBrainEconomy):
 
     def _military(self, world: World) -> None:
         army = self._army(world)
-        self._send_scout(world, army)
-        busy = set(self.scouts) | set(self._raid(world, army))
+        self._send_scout(world)
+        busy = set(self._raid(world, army))
         army = [u for u in army if u.id not in busy]
+        answer_flyers(world, self.player, army, 9.0)
         # A couple of soldiers never leave. Riders picking off peasants cost more
         # than they are worth to chase with an army that is somewhere else, and a
         # base with nothing in it is what an early raid is looking for.
@@ -479,8 +480,10 @@ class ProBrain(_ProBrainEconomy):
             if dist(unit.pos, point) > 3.0 and not (isinstance(unit.order, Move) and dist(unit.order.target, point) < 4.0):
                 self._send_to_muster(world, point, unit)
 
-    def _send_scout(self, world: World, army: list[Unit]) -> None:
-        """Keep one pair of eyes on the enemy: a rider if we have one, a peasant if not.
+    def _send_scout(self, world: World) -> None:
+        """Keep one pair of eyes on the enemy: the flying machine if we have one (the workshop makes one first,
+        :meth:`_choose_unit`), a peasant if not.  It flies over whatever lies between and circles their base; only
+        their shooters and towers can reach it.
 
         Everything the brain decides about attacking rests on knowing what is
         over there, so a scout is cheap at almost any price — and one peasant
@@ -489,11 +492,11 @@ class ProBrain(_ProBrainEconomy):
         if not self.profile.scout or world.time < self.profile.scout_from:
             return
         self.scouts = [i for i in self.scouts if i in world.units]
-        if not self.scouts:
-            riders = [u for u in army if u.type is UnitType.SCOUT]
-            if riders:
-                self.scouts = [riders[0].id]
-            else:
+        if not self.scouts or not world.units[self.scouts[0]].flying:
+            flyers = [u for u in self._units(world) if u.flying]
+            if flyers:
+                self.scouts = [flyers[0].id]  # the machine takes over from a peasant marked for want of one
+            elif not self.scouts:
                 spare = [p for p in self._peasants(world)
                          if not p.hidden and p.carrying is None and not isinstance(p.order, (Build, Repair, Salvage))
                          and not self._answering(p)]
@@ -516,10 +519,12 @@ class ProBrain(_ProBrainEconomy):
             scout = world.units[scout_id]
             if scout.orders:
                 continue
-            # Circle the enemy base rather than standing in it, so the sighting stays fresh.
+            # Circle the enemy base rather than standing in it, so the sighting stays fresh; a flyer at the edge of its
+            # sight, out of the reach of a tower at the middle.
             centre = min(targets, key=lambda c: dist(c, scout.pos))
             angle = (world.time / 12.0) % (2 * math.pi)
-            ring = (centre[0] + 7.0 * math.cos(angle), centre[1] + 7.0 * math.sin(angle))
+            reach = scout.info.sight - 1.0 if scout.flying else 7.0
+            ring = (centre[0] + reach * math.cos(angle), centre[1] + reach * math.sin(angle))
             world.move([scout_id], self._standable(world, (min(max(ring[0], 1.0), world.width - 1.0),
                                                            min(max(ring[1], 1.0), world.height - 1.0))))
 
@@ -677,12 +682,12 @@ class ProBrain(_ProBrainEconomy):
         return True
 
     def _raid(self, world: World, army: list[Unit]) -> list[int]:
-        """Riders sent at the peasants. Economy damage costs the enemy the whole game,
-        not just the units lost, and the army never misses two scouts."""
+        """Knights sent at the peasants. Economy damage costs the enemy the whole game,
+        not just the units lost."""
         if not self.profile.raid:
             return []
         self.raiders = [i for i in self.raiders if i in world.units]
-        spare = [u for u in army if u.type is UnitType.SCOUT and u.id not in self.raiders]
+        spare = [u for u in army if u.type in RAIDERS and u.id not in self.raiders]
         while len(self.raiders) < self.profile.raiders and spare:
             self.raiders.append(spare.pop().id)
         prey = [u.pos for u in self._enemies(world) if u.is_worker]

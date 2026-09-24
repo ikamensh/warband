@@ -1418,7 +1418,8 @@ def _shield(x: float, y: float, z: float, team: Color, size: float = 1.0, race: 
 
 
 def _mount(frame: str, heavy: bool, team: Color, race: Race = Race.HUMAN) -> Mesh:
-    """The race's steed on the same four-legged rig: horse, wolf, deer or stag, ram or bear."""
+    """The race's steed on the same four-legged rig: a knight's horse, stag or bear (*heavy*), or the wolf, deer or ram
+    that stands saddled in the yard of a race's stables."""
     swing = {"walk1": 0.12, "walk2": 0.03, "walk3": -0.12, "walk4": -0.03, "strike": 0.1, "follow": 0.08}.get(frame, 0.0)
     if race is Race.HUMAN:
         coat = (78, 65, 65) if heavy else (174, 123, 68)
@@ -1525,14 +1526,15 @@ POSES: dict[str, Pose] = {
     "wind": Pose(-8, -22, -0.04), "strike": Pose(14, 12, 0.16), "follow": Pose(8, 30, 0.1), "recover": Pose(3, 6, 0.03),
 }
 HIP = 0.28  # the upper body pivots here; legs, feet and the shadow stay planted
-MOUNTED = (UnitType.KNIGHT, UnitType.SCOUT)
+MOUNTED = (UnitType.KNIGHT,)
 
 
 def _posed(mesh: Mesh, frame: str, unit_type: UnitType) -> Mesh:
     """Apply the frame's :class:`Pose`.  Riders and their mounts only lunge (a leaning horse
-    lifts its hooves); a catapult recoils instead of lunging."""
+    lifts its hooves); a catapult recoils instead of lunging; a flying machine keeps its frame (its
+    frames turn its rotor or beat its wings, :func:`_flyer`)."""
     pose = POSES.get(frame)
-    if pose is None:
+    if pose is None or unit_type is UnitType.FLYING_MACHINE:
         return mesh
     if unit_type is UnitType.CATAPULT:
         return _shift(mesh, (0.0, {"strike": -0.06, "follow": -0.03}.get(frame, 0.0), 0.0))
@@ -1550,7 +1552,7 @@ def _posed(mesh: Mesh, frame: str, unit_type: UnitType) -> Mesh:
 
 def _unit(unit_type: UnitType, player: int, frame: str, carrying: Resource | None, race: Race = Race.HUMAN) -> Mesh:
     mesh = _posed(_unit_mesh(unit_type, player, frame, carrying, race), frame, unit_type)
-    if unit_type is not UnitType.CATAPULT:
+    if unit_type not in (UnitType.CATAPULT, UnitType.FLYING_MACHINE):  # machines are built, not grown: no race's proportions
         mesh = _stretch(mesh, *LOOKS[race].stretch)
     return r3.scale(mesh, UNIT_SCALE)
 
@@ -1781,43 +1783,156 @@ def _shift(mesh: Mesh, offset: r3.Vec3) -> Mesh:
     return [r3.Face(tuple((x + ox, y + oy, z + oz) for x, y, z in face.points), face.color) for face in mesh]
 
 
-_SCOUT_PITCH = {"wind": -8, "strike": -84, "follow": -84}
-_SCOUT_SPEAR_HEAD = 0.18
+#: How far round its period a flying machine's rotor, propeller or wings are in each frame: the walk frames are one
+#: turn of a blade's period (or one wing beat), so they loop; the view plays them on the clock, hovering or not.
+_SPIN = {"walk1": 0.0, "walk2": 0.25, "walk3": 0.5, "walk4": 0.75}
+_WING_BEAT = {"walk1": 26.0, "walk2": 4.0, "walk3": -16.0, "walk4": 10.0}  # degrees a glider's wing is raised: a quick
+#: down-stroke and a slower lift, so no two frames of the beat are one picture
+LIVING_WOOD = (196, 186, 150)  # the elves' pale timber, as their ballista wears it
+LEAF = (86, 150, 96)
+CANVAS = (222, 208, 176)
+BALLOON = (170, 146, 112)  # stitched hide over a goblin's bag of gas
 
 
-def _scout_geometry(race: Race) -> tuple[float, r3.Vec3, r3.Vec3]:
-    """Rider height, spear grip and point shared by its mesh and combat trail."""
-    rider_z = 0.63 if race is not Race.ORC else 0.5
-    return rider_z, (0.27, 0.07, rider_z + 0.27), (0.27, 0.07, rider_z + 1.0 + _SCOUT_SPEAR_HEAD)
+def _roll(mesh: Mesh, angle: float, pivot: r3.Vec3) -> Mesh:
+    """Rotate *mesh* about the fore-and-aft axis through *pivot*, in the across/up plane: a propeller's turn."""
+    sine, cosine = math.sin(math.radians(angle)), math.cos(math.radians(angle))
+    px, _, pz = pivot
+    return [r3.Face(tuple((px + (x - px) * cosine - (z - pz) * sine, y, pz + (x - px) * sine + (z - pz) * cosine)
+                          for x, y, z in face.points), face.color) for face in mesh]
 
 
-def _scout(player: int, frame: str, race: Race) -> Mesh:
+def _rotor(hub: r3.Vec3, blades: int, length: float, width: float, angle: float, color: Color, tip: Color) -> Mesh:
+    """Blades turning about a vertical *hub*, *angle* degrees round: thin boards with a coloured tip."""
+    hx, hy, hz = hub
+    mesh = r3.cylinder((hx, hy, hz - 0.035), 0.055, 0.07, INK, sides=6)
+    for k in range(blades):
+        blade = r3.box((length * 0.42, 0.0, hz), (length * 0.84, width, 0.024), color)
+        blade += r3.box((length * 0.92, 0.0, hz), (length * 0.16, width, 0.026), tip)
+        mesh += _shift(r3.rotate_z(blade, angle + k * 360.0 / blades), (hx, hy, 0.0))
+    return mesh
+
+
+def _propeller(hub: r3.Vec3, blades: int, length: float, angle: float, color: Color) -> Mesh:
+    """Blades turning about the fore-and-aft axis at *hub*: a pusher or puller propeller."""
+    hx, hy, hz = hub
+    mesh = _unit_rod((hx, hy - 0.04, hz), (hx, hy + 0.04, hz), 0.04, INK)
+    for k in range(blades):
+        blade = r3.box((hx + length / 2, hy, hz), (length, 0.02, 0.06), color)
+        mesh += _roll(blade, angle + k * 360.0 / blades, hub)
+    return mesh
+
+
+def _ellipsoid(center: r3.Vec3, radii: r3.Vec3, bands: Sequence[Color], sides: int = 10, rings: int = 8) -> Mesh:
+    """A body of revolution about the fore-and-aft axis, its rings coloured in turn by *bands* from nose to tail:
+    a balloon with a stripe round it, which a sphere of one colour cannot be."""
+    cx, cy, cz = center
+    ax, ay, az = radii
+    profile = [(-math.cos(math.pi * i / rings), math.sin(math.pi * i / rings)) for i in range(rings + 1)]  # (along, around)
+    rings_at = [[(cx + ax * r * math.cos(2 * math.pi * k / sides), cy - ay * t, cz + az * r * math.sin(2 * math.pi * k / sides))
+                 for k in range(sides)] for t, r in profile]
+    mesh: Mesh = []
+    for i in range(rings):
+        color = bands[i % len(bands)]
+        a, b = rings_at[i], rings_at[i + 1]
+        for k in range(sides):
+            quad = [a[k], a[(k + 1) % sides], b[(k + 1) % sides], b[k]]
+            points = [p for j, p in enumerate(quad) if p not in quad[:j]]  # the ends close to a point
+            if len(points) < 3:
+                continue
+            middle = tuple(sum(p[n] for p in points) / len(points) for n in range(3))
+            nx = ny = nz = 0.0
+            for j, (x0, y0, z0) in enumerate(points):  # Newell's normal, to wind every face outwards
+                x1, y1, z1 = points[(j + 1) % len(points)]
+                nx += (y0 - y1) * (z0 + z1)
+                ny += (z0 - z1) * (x0 + x1)
+                nz += (x0 - x1) * (y0 + y1)
+            outward = (middle[0] - cx) * nx + (middle[1] - cy) * ny + (middle[2] - cz) * nz
+            mesh.append(r3.Face(tuple(points if outward > 0 else reversed(points)), color))
+    return mesh
+
+
+def _flyer(player: int, frame: str, race: Race) -> Mesh:
+    """A flying machine, nose along +y, its underside well off the ground (the view lifts the whole sprite into the
+    air and puts its shadow on the ground beneath it): the humans' rotor contraption, the goblins' zeppelin, the
+    elves' leaf-winged glider and the dwarves' steam gyrocopter.  Its walk frames turn the rotor or beat the wings."""
     team = team_color(player)
     look = LOOKS[race]
-    mesh = _mount(frame, False, team, race)
-    rider_z, grip, tip = _scout_geometry(race)
-    mesh += r3.cylinder((0, -0.1, rider_z), 0.15, 0.29, look.leather, sides=6)
-    mesh += _unit_panel([(-0.18, -0.16, rider_z + 0.29), (0.18, -0.16, rider_z + 0.29),
-                         (0.2, -0.57, rider_z - 0.09), (0, -0.48, rider_z - 0.04), (-0.2, -0.57, rider_z - 0.09)], team)
-    mesh += _unit_head((0, -0.085, rider_z + 0.43), 0.14, race=race)
+    spin = _SPIN.get(frame, 0.0)
     if race is Race.HUMAN:
-        mesh += r3.cone((0, -0.095, rider_z + 0.52), 0.2, 0.13, (73, 93, 64), sides=6)
-        mesh += _unit_rod((-0.1, -0.11, rider_z + 0.58), (-0.16, -0.23, rider_z + 0.8), 0.032, PLASTER)
-    elif race is Race.ORC:
-        mesh += r3.sphere((0, -0.09, rider_z + 0.52), 0.15, look.metal_dark, rings=3, sides=6)
-        mesh += r3.cone((0, -0.09, rider_z + 0.62), 0.04, 0.14, BONE, sides=4)
-    elif race is Race.ELF:
-        mesh += r3.cone((0, -0.1, rider_z + 0.5), 0.17, 0.25, look.cloth, sides=7)
-    else:
-        mesh += r3.sphere((0, -0.09, rider_z + 0.5), 0.16, look.metal, rings=3, sides=7)
-    for x in (-0.19, 0.19):
-        mesh += _unit_rod((x, -0.06, rider_z + 0.11), (x * 1.15, 0.06, rider_z - 0.2), 0.058, WOOD_DARK)
-        mesh += _unit_rod((x, -0.08, rider_z + 0.23), (x, 0.12, rider_z + 0.19), 0.045, look.skin)
-    spear = _unit_rod((0.27, 0.07, rider_z - 0.08), (0.27, 0.07, rider_z + 1.02), 0.024, WOOD)
-    spear += r3.cone((tip[0], tip[1], tip[2] - _SCOUT_SPEAR_HEAD), 0.06, _SCOUT_SPEAR_HEAD, look.metal, sides=4)
+        # A wooden boat of a hull hung under a two-bladed canvas rotor, a tail boom with a team fin behind.
+        mesh = r3.box((0, 0.0, 0.42), (0.42, 0.72, 0.2), WOOD)
+        mesh += r3.box((0, 0.44, 0.44), (0.28, 0.18, 0.15), WOOD_DARK)  # the prow
+        for x in (-0.2, 0.2):
+            mesh += r3.box((x, 0.0, 0.53), (0.05, 0.74, 0.03), team)  # the gunwales, painted: whose it is, from any side
+        for y in (-0.35, 0.35):
+            mesh += r3.box((0, y, 0.53), (0.44, 0.05, 0.03), team)
+        for x in (-0.213, 0.213):
+            mesh += _unit_panel([(x, -0.3, 0.49), (x, 0.3, 0.49), (x, 0.3, 0.36), (x, -0.3, 0.36)], team)
+            mesh += _unit_rod((x * 0.85, -0.3, 0.17), (x * 0.85, 0.36, 0.17), 0.025, IRON)  # a skid
+            for y in (-0.2, 0.22):
+                mesh += _unit_rod((x * 0.85, y, 0.17), (x * 0.8, y, 0.33), 0.018, IRON)
+        mesh += r3.cylinder((0, 0.08, 0.52), 0.12, 0.16, look.leather, sides=7)  # the pilot, in his seat
+        mesh += _unit_head((0, 0.1, 0.78), 0.12, race=race)
+        mesh += r3.sphere((0, 0.08, 0.84), 0.125, look.leather, rings=3, sides=7)  # a leather cap
+        mesh += r3.box((0, 0.2, 0.8), (0.2, 0.03, 0.05), INK)  # goggles
+        mesh += _unit_rod((0, -0.14, 0.5), (0, -0.14, 1.14), 0.035, WOOD_DARK)  # the mast
+        mesh += _unit_rod((0, -0.36, 0.45), (0, -0.86, 0.6), 0.04, WOOD)  # the tail boom
+        mesh += _unit_panel([(0, -0.7, 0.58), (0, -0.92, 0.6), (0, -0.94, 0.86), (0, -0.8, 0.8)], team)  # the fin
+        mesh += _rotor((0, -0.14, 1.16), 2, 0.72, 0.11, spin * 180.0, CANVAS, team)
+        return mesh
     if race is Race.ORC:
-        spear += r3.cone((0.27, 0.07, rider_z + 0.85), 0.05, -0.1, BONE, sides=4)
-    mesh += _unit_pitch(spear, _SCOUT_PITCH.get(frame, -8), grip)
+        # A patched bag of gas with a team stripe, a gondola slung under it, a goblin at the rail and a pusher prop.
+        mesh = _ellipsoid((0, -0.04, 1.02), (0.4, 0.66, 0.36), (BALLOON, BALLOON, darker(BALLOON, 0.85), team, team,
+                                                                 darker(BALLOON, 0.85), BALLOON, BALLOON))
+        for side in (-1, 1):
+            mesh += _unit_panel([(0, -0.52, 1.02), (side * 0.36, -0.82, 1.06), (side * 0.3, -0.62, 1.02)], team)  # fins
+        mesh += _unit_panel([(0, -0.5, 1.2), (0, -0.84, 1.34), (0, -0.64, 1.14)], darker(team, 0.75))
+        mesh += r3.box((0, 0.0, 0.4), (0.3, 0.42, 0.14), WOOD_DARK)  # the gondola
+        mesh += r3.box((0, 0.0, 0.48), (0.33, 0.45, 0.03), WOOD)  # its rail
+        for x in (-0.13, 0.13):
+            for y in (-0.17, 0.17):
+                mesh += _unit_rod((x, y, 0.49), (x * 1.5, y * 1.6, 0.73), 0.012, WOOD_DARK)  # the rigging
+        mesh += r3.sphere((0, 0.08, 0.6), 0.1, look.skin, rings=3, sides=7)  # the goblin
+        mesh += r3.box((0, 0.175, 0.62), (0.13, 0.03, 0.04), INK)  # goggles
+        for side in (-1, 1):
+            mesh += _unit_rod((side * 0.08, 0.07, 0.62), (side * 0.2, 0.03, 0.7), 0.025, look.skin, sides=4)  # big ears
+        mesh += _propeller((0, -0.27, 0.42), 3, 0.2, spin * 120.0, WOOD)
+        return mesh
+    if race is Race.ELF:
+        # A living-wood spar on two broad leaf wings that beat, a leafed tail, a rider hooded in the team's colour.
+        mesh = _unit_rod((0, -0.62, 0.6), (0, 0.48, 0.66), 0.055, LIVING_WOOD)
+        mesh += r3.cone((0, 0.47, 0.66), 0.07, 0.02, darker(LIVING_WOOD, 0.8), sides=6)
+        mesh += r3.sphere((0, 0.5, 0.66), 0.075, LEAF, rings=3, sides=6)  # a bud at the nose
+        beat = _WING_BEAT.get(frame, 8.0)
+        for side in (-1, 1):
+            leaf = _unit_panel([(side * 0.05, 0.18, 0.64), (side * 0.42, 0.24, 0.66), (side * 0.98, 0.0, 0.7),
+                                (side * 0.5, -0.26, 0.66), (side * 0.05, -0.2, 0.64)], LEAF)
+            leaf += _unit_panel([(side * 0.08, 0.02, 0.655), (side * 0.9, 0.0, 0.705), (side * 0.08, -0.05, 0.655)], team)  # the midrib
+            mesh += _roll(leaf, side * beat, (0.0, 0.0, 0.64))
+            mesh += _unit_panel([(0, -0.5, 0.62), (side * 0.3, -0.72, 0.78), (side * 0.12, -0.66, 0.62)], darker(LEAF, 0.8))  # tail leaves
+        mesh += r3.cylinder((0, 0.02, 0.62), 0.11, 0.14, look.cloth, sides=7)  # the rider, astride the spar
+        mesh += _unit_head((0, 0.06, 0.84), 0.11, race=race)
+        mesh += r3.cone((0, 0.02, 0.84), 0.13, 0.2, team, sides=7)  # a hood
+        return mesh
+    # A brass steam boiler on an iron frame, a four-bladed rotor over it, a puller prop in front, a dwarf at the levers.
+    mesh = r3.box((0, 0.06, 0.34), (0.34, 0.6, 0.08), look.metal_dark)  # the frame
+    for x in (-0.16, 0.16):
+        mesh += _unit_rod((x, -0.3, 0.16), (x, 0.38, 0.16), 0.028, IRON)  # a skid
+        for y in (-0.16, 0.24):
+            mesh += _unit_rod((x, y, 0.16), (x, y, 0.3), 0.02, IRON)
+    mesh += r3.cylinder((0, -0.18, 0.38), 0.16, 0.36, look.metal, sides=8)  # the boiler
+    for z in (0.46, 0.64):
+        mesh += r3.cylinder((0, -0.18, z), 0.165, 0.03, look.metal_dark, sides=8)  # its bands
+    mesh += _unit_rod((0.09, -0.26, 0.72), (0.11, -0.3, 0.98), 0.035, INK)  # the stack
+    mesh += _unit_panel([(0.166, -0.28, 0.5), (0.166, -0.08, 0.5), (0.166, -0.08, 0.66), (0.166, -0.28, 0.66)], team)  # a plate
+    mesh += _unit_panel([(-0.166, -0.28, 0.5), (-0.166, -0.08, 0.5), (-0.166, -0.08, 0.66), (-0.166, -0.28, 0.66)], team)
+    mesh += r3.cylinder((0, 0.14, 0.38), 0.11, 0.18, look.leather, sides=7)  # the pilot
+    mesh += _unit_head((0, 0.16, 0.66), 0.12, race=race)
+    mesh += r3.sphere((0, 0.14, 0.72), 0.125, look.metal, rings=3, sides=7)  # his helmet
+    mesh += _unit_rod((0, -0.18, 0.74), (0, -0.18, 1.12), 0.035, look.metal_dark)  # the mast
+    mesh += _rotor((0, -0.18, 1.14), 4, 0.62, 0.1, spin * 90.0, IRON, team)
+    mesh += _propeller((0, 0.4, 0.4), 3, 0.17, spin * 120.0, look.metal)
     return mesh
 
 
@@ -1955,8 +2070,8 @@ def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource 
         return _archer(player, frame, race)
     if unit_type is UnitType.KNIGHT:
         return _knight(player, frame, race)
-    if unit_type is UnitType.SCOUT:
-        return _scout(player, frame, race)
+    if unit_type is UnitType.FLYING_MACHINE:
+        return _flyer(player, frame, race)
     if unit_type is UnitType.CATAPULT:
         return _siege(player, frame, race)
     if unit_type is UnitType.CLERIC:
@@ -2002,8 +2117,6 @@ def _melee_sweep(unit_type: UnitType, facing: int, race: Race) -> tuple[tuple[tu
         edge = tuple(g + (e - o) for g, e, o in zip(grip, _SWORD_EDGE[race], _SWORD_ORIGIN))
     elif unit_type is UnitType.PEASANT:
         grip, edge = _WORKER_GRIP, _WORKER_AXE_EDGE[1]
-    elif unit_type is UnitType.SCOUT:
-        _, grip, edge = _scout_geometry(race)
     elif unit_type is UnitType.KNIGHT:
         _, grip, edge = _knight_geometry(race)
     else:
@@ -2024,8 +2137,6 @@ def _melee_sweep(unit_type: UnitType, facing: int, race: Race) -> tuple[tuple[tu
             mesh = _shift(mesh, tuple(between(a, b) for a, b in zip(_SWORD_SHIFT["wind"], _SWORD_SHIFT["strike"])))
         elif unit_type is UnitType.PEASANT:
             mesh = _unit_pitch(mesh, between(_worker_axe_angle("wind"), _worker_axe_angle("strike")), grip)
-        elif unit_type is UnitType.SCOUT:
-            mesh = _unit_pitch(mesh, between(_SCOUT_PITCH["wind"], _SCOUT_PITCH["strike"]), grip)
         else:
             mesh = _unit_pitch(mesh, between(_knight_pitch("wind", race), _knight_pitch("strike", race)), grip)
         if unit_type in MOUNTED:
@@ -2073,6 +2184,12 @@ def unit_key(unit_type: UnitType, player: int, facing: int, frame: str, carrying
 
 
 RESTYLED = Path(__file__).resolve().parents[1] / "assets" / "restyled"
+#: The units drawn by their low-poly render alone: no painted sheet was made for them (the flying machines of WB-064,
+#: whose rotors and wings turn frame by frame), so every race's picture of them is :func:`_unit`'s.
+PROCEDURAL_UNITS: frozenset[UnitType] = frozenset({UnitType.FLYING_MACHINE})
+#: A flyer's frames that are one picture: it strikes no blow, so its stand serves the attack frames too (:func:`_flyer`
+#: turns its rotor or beats its wings in the walk frames alone), rendered once rather than five times a facing.
+_STILL_POSES = ("stand",) + ATTACK_FRAMES
 #: ``WARBAND_ART=procedural`` plays with the low-poly renders even where painted frames exist.
 RESTYLED_ART = os.environ.get("WARBAND_ART", "restyled") != "procedural"
 
@@ -2159,7 +2276,12 @@ def unit_image(game: Game, unit_type: UnitType, player: int, facing: int, frame:
         restyled = restyled_frames(race, unit_type, carrying)
         if restyled is None:
             mesh = r3.rotate_z(_unit(unit_type, player, frame, carrying, race), facing * 45 - 90)
-            game.assets.image_from_pil(key, _prop(key, mesh, DROP_UNIT, game.backend.scale_factor))
+            image = _prop(key, mesh, DROP_UNIT, game.backend.scale_factor)
+            poses = _STILL_POSES if unit_type in PROCEDURAL_UNITS and frame in _STILL_POSES else (frame,)
+            for pose in poses:
+                same = unit_key(unit_type, player, facing, pose, carrying, race)
+                placements[same] = placements[key]
+                game.assets.image_from_pil(same, image)
         else:
             sheet, frames = restyled
             placements[key] = Placement(sheet.logical_size, sheet.drop, head=stride_heads(race, unit_type, carrying)[facing])
@@ -2206,16 +2328,21 @@ def portrait_image(game: Game, subject: UnitType | BuildingType, player: int | N
 
 def warm_units(game: Game, players: list[int], races: list[Race] | None = None):
     """A generator that renders every unit image the match may need, one per step, so the
-    scene can spread the cost over its first frames instead of hitching in the first battle."""
-    for index, player in enumerate(players):
-        race = races[index] if races is not None else Race.HUMAN
-        for unit_type in PLAYABLE_UNITS:  # a creature is nobody's: warband.art.monsters warms those
-            carries: tuple[Resource | None, ...] = (None, Resource.GOLD, Resource.LUMBER) if unit_type is UnitType.PEASANT else (None,)
-            for carrying in carries:
-                frames = FRAMES + CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else FRAMES
-                for facing in range(FACINGS):
-                    for frame in frames:
-                        yield unit_image(game, unit_type, player, facing, frame, carrying, race=race)
+    scene can spread the cost over its first frames instead of hitching in the first battle.  Every seat's painted
+    units come first and the rendered ones last: a render costs a recolour several times over, and the flying
+    machines they are come from the workshop, long after the first battle."""
+    for procedural in (False, True):
+        for index, player in enumerate(players):
+            race = races[index] if races is not None else Race.HUMAN
+            for unit_type in PLAYABLE_UNITS:  # a creature is nobody's: warband.art.monsters warms those
+                if (unit_type in PROCEDURAL_UNITS) != procedural:
+                    continue
+                carries: tuple[Resource | None, ...] = (None, Resource.GOLD, Resource.LUMBER) if unit_type is UnitType.PEASANT else (None,)
+                for carrying in carries:
+                    frames = FRAMES + CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else FRAMES
+                    for facing in range(FACINGS):
+                        for frame in frames:
+                            yield unit_image(game, unit_type, player, facing, frame, carrying, race=race)
 
 
 #: The looks a building can wear: as built, busy training or researching, under half its hit points, and while it

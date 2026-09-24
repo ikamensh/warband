@@ -16,7 +16,7 @@ from warband.sim.worker_knowledge import KnownMine
 
 from warband.brains.pro_core import _ProBrainCore
 
-_MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
+_MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.KNIGHT)
 STRICT_SLACK: Final = 0.1
 BUILD_MIN_DISTANCE: Final = 2
 BUILD_MAX_DISTANCE: Final = 12
@@ -150,7 +150,7 @@ class _ProBrainEconomy(_ProBrainCore):
         if not damaged or any(isinstance(p.order, Repair) for p in self._peasants(world)):
             return
         target = min(damaged, key=lambda b: b.hp / b.max_hp)
-        if world._nearest_enemy(self.player, target.center, 8.0) is not None:
+        if world._nearest_enemy(self.player, target.center, 8.0, air=False) is not None:  # a flyer overhead does not stop the hammer
             return
         spare = [p for p in self._peasants(world) if not p.hidden and p.carrying is None and not isinstance(p.order, Build)
                  and not self._answering(p)]
@@ -549,6 +549,10 @@ class _ProBrainEconomy(_ProBrainCore):
                 if len(hall.queue) < 2 and world.can_train(hall, UnitType.PEASANT) is None and self._affordable(world, world.unit_info(player, UnitType.PEASANT).cost):
                     world.train(hall.id, UnitType.PEASANT)
         counts = {t: sum(1 for u in army if u.type is t) for t in PLAYABLE_UNITS}
+        # The eyes are no share of the army: the one flying machine a scouting posture keeps is counted apart, those in
+        # training with it, or a workshop would start another while the first is still on the stocks.
+        counts[UnitType.FLYING_MACHINE] = (sum(1 for u in self._units(world) if u.type is UnitType.FLYING_MACHINE)
+                                           + sum(b.queue.count(UnitType.FLYING_MACHINE) for b in world.player_buildings(player)))
         targets = self._army_targets(world)
         wishes: list[tuple[float, UnitType, Building]] = []
         for building in world.player_buildings(player, done=True):
@@ -563,7 +567,7 @@ class _ProBrainEconomy(_ProBrainCore):
                 wishes.append((*wish, building))
         # The unit the army is shortest of has first claim on the bank. Buying
         # whatever was affordable at the moment instead had the stables turn out
-        # a scout every time the knight it wanted was a few hundred gold away:
+        # a scout rider every time the knight it wanted was a few hundred gold away:
         # fifteen scouts to eight knights, in a posture that asked for knights.
         gold, lumber = self._spendable(world)
         for _gap, choice, building in sorted(wishes, key=lambda w: -w[0]):
@@ -609,18 +613,18 @@ class _ProBrainEconomy(_ProBrainCore):
             excess = archers / total - self.profile.counter_from
             if excess > 0:
                 swing = min(0.3, excess * self.profile.counter_strength)
-                _shift(plan, {UnitType.FOOTMAN: -swing, UnitType.SCOUT: swing / 2,
-                              UnitType.KNIGHT: swing / 2})
+                _shift(plan, {UnitType.FOOTMAN: -swing, UnitType.KNIGHT: swing})
         if knights >= 3:
-            _shift(plan, {UnitType.SCOUT: -0.075, UnitType.KNIGHT: -0.075, UnitType.FOOTMAN: 0.075, UnitType.ARCHER: 0.075})
+            _shift(plan, {UnitType.KNIGHT: -0.15, UnitType.FOOTMAN: 0.075, UnitType.ARCHER: 0.075})
         return plan
 
     def _choose_unit(self, building: Building, counts: dict[UnitType, int],
                      targets: dict[UnitType, float]) -> tuple[float, UnitType] | None:
-        """What *building* should train next and how short of it the army is: ``(gap, unit)``, affordable or not."""
-        soldiers = sum(counts.values())
-        if building.type is BuildingType.STABLES and self.profile.scout and counts.get(UnitType.SCOUT, 0) < 1:
-            return math.inf, UnitType.SCOUT
+        """What *building* should train next and how short of it the army is: ``(gap, unit)``, affordable or not.
+        A scouting posture's workshop makes its one flying machine before anything else."""
+        if building.type is BuildingType.WORKSHOP and self.profile.scout and counts.get(UnitType.FLYING_MACHINE, 0) < 1:
+            return math.inf, UnitType.FLYING_MACHINE
+        soldiers = sum(n for t, n in counts.items() if t is not UnitType.FLYING_MACHINE)
         best: tuple[float, UnitType] | None = None
         for unit_type in targets:
             if unit_type not in building.info.trains:

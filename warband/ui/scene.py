@@ -29,7 +29,7 @@ from warband.sim.model import (Attack, AttackMove, Build, Building, Deposit, Ent
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
 from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, SIM_DT, UNITS, ArmorClass, AttackType, BuildingType, Cost,
-                               Difficulty, MapTheme, Race, Resource, Terrain, UnitType, Upgrade, an, listing)
+                               Difficulty, MapTheme, Race, Resource, Terrain, UnitInfo, UnitType, Upgrade, an, listing)
 from warband.sim.rules import Layout as MapLayout
 from warband.records.profile import MatchResult, Profile, RatingChange, Standing, plural, standing
 from warband.records.replay import Replay, ReplayStore
@@ -46,12 +46,16 @@ from warband.ui.tech import Need, Prerequisite, TechTree
 from warband.ui.version import running_build
 from warband.art.textures import TILE
 from warband.ui.tutorial import OBJECTIVES, Tutorial
-from warband.ui.view import SHOT_LOOKS, SHOT_SIZE, MapView, Overlay, Sighting, check_memory, rgba, to_tiles, to_world
+from warband.ui.view import FLIGHT, SHOT_LOOKS, SHOT_SIZE, MapView, Overlay, Sighting, check_memory, rgba, to_tiles, to_world
 
 DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True, "blood": True,
                                     "controls": "classic"}
-#: What bleeds when hit.  A catapult is timber and a golem is stone; the other three creatures are meat.
-FLESH = {u.value for u in UnitType} - {UnitType.CATAPULT.value, UnitType.GOLEM.value}
+#: What is built rather than born, and throws up wood chips where it is struck.
+MACHINES = {UnitType.CATAPULT.value, UnitType.FLYING_MACHINE.value}
+#: What bleeds when hit.  The machines are timber and a golem is stone; the other three creatures are meat.
+FLESH = {u.value for u in UnitType} - MACHINES - {UnitType.GOLEM.value}
+#: What is struck in the air: its hit is shown on the body drawn over the ground point it is at.
+FLYING = {u.value for u, info in UNITS.items() if info.flying}
 SAVE_VERSION = 2  # 2: the world records its layout
 SAVE_SLOTS = 3
 AUTOSAVE_EVERY = 120.0  # seconds of match time
@@ -123,11 +127,13 @@ def attack_hint(attack: AttackType) -> str:
     return attack.value + (f", {', '.join(better)}" if better else "")
 
 
-def defence_line(armor: ArmorClass, attack: AttackType) -> str:
+def defence_line(info: UnitInfo) -> str:
     """"heavy armour · normal blows": both sides of :data:`DAMAGE_FACTORS`' table for one unit.  The pair is the
     fact a player acts on — armour alone is half a table — so the selection panel says it under the stats and the
-    command card repeats it in the tooltip of whatever trains the unit."""
-    return f"{armour_name(armor)} · {attack.value} blows"
+    command card repeats it in the tooltip of whatever trains the unit.  An unarmed unit strikes no blow, and a
+    flyer says that only shots reach it: "unarmoured · unarmed · flies"."""
+    line = f"{armour_name(info.armor_class)} · " + (f"{info.attack.value} blows" if info.damage else "unarmed")
+    return line + (" · flies" if info.flying else "")
 
 
 def armour_hint(armor: ArmorClass) -> str:
@@ -845,8 +851,10 @@ class GameScene(Scene):
             return ([(keys, "order")] if keys else []) + [("Esc", "back")]
         units = self._own_units()
         if units:
-            hints = [("Right click", "move / harvest / attack / repair / salvage"), (self._slot_key("attack"), "attack-move"),
-                     (self._slot_key("patrol"), "patrol"), (self._slot_key("stop"), "stop")]
+            hints = [("Right click", "move / harvest / attack / repair / salvage")]
+            if any(u.info.damage for u in units):  # a flying machine alone attacks nothing: its card has no Attack
+                hints.append((self._slot_key("attack"), "attack-move"))
+            hints += [(self._slot_key("patrol"), "patrol"), (self._slot_key("stop"), "stop")]
             if any(u.is_worker for u in units):
                 hints.append((f"{self._slot_key('build')} / {self._slot_key('repair')} / {self._slot_key('salvage')}",
                               "build / repair / salvage"))
@@ -1046,7 +1054,8 @@ class GameScene(Scene):
             # and any soldiers along razing it.  Everything else a rival owns is an attack, the only context order
             # that strikes: smart on anything else moves, mends, mines or builds.
             salvage = isinstance(target, Building) and target.abandoned and target.done and any(u.is_worker for u in units)
-            attack = self._enemy(target) and not salvage
+            # Nothing armed among them (a flying machine alone): sent at an enemy, it goes there to look (World.smart).
+            attack = self._enemy(target) and not salvage and any(u.info.damage for u in units)
             if attack:
                 given = self.attempt("attack", ids, target.id, queue=queue)
             else:
@@ -1659,7 +1668,7 @@ class GameScene(Scene):
             for slot, (unit_type, info) in enumerate(race.units.items()):
                 commands.append(Command(info.name, info.hotkey, lambda ut=unit_type: self.order_production("train", ut), slot,
                                         tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)} · {info.summary} · "
-                                                f"{defence_line(info.armor_class, info.attack)} · Shift or right-click: "
+                                                f"{defence_line(info)} · Shift or right-click: "
                                                 f"endlessly at every {self.building_name(info.trained_at)}",
                                         cost=info.cost, target=unit_type, count=lambda ut=unit_type: self._ordered(ut),
                                         alt=lambda ut=unit_type: self.toggle_endless_everywhere(ut),
@@ -1708,6 +1717,8 @@ class GameScene(Scene):
             Command("Patrol", "p", lambda: self.start_pending("patrol"), UNIT_SLOTS["patrol"],
                     tooltip="Walk between here and a spot, fighting whatever turns up", style=armed("patrol")),
         ]
+        if not any(u.info.damage for u in units):  # a flying machine alone: nothing to attack with
+            commands = [command for command in commands if command.label != "Attack"]
         if any(u.is_worker for u in units):
             commands.append(Command("Build", "b", lambda: self.open_catalogue("build"), UNIT_SLOTS["build"],
                                     tooltip="Farms, barracks, halls, towers and the tech buildings, built by these peasants", style=ACTION_BUTTON))
@@ -1733,7 +1744,7 @@ class GameScene(Scene):
                 info = self.race.units[item]
                 commands.append(Command(info.name, info.hotkey, lambda ut=item: self.train(ut), slot,
                                         tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)} · {info.summary} · "
-                                                f"{defence_line(info.armor_class, info.attack)} · Shift or right-click: train endlessly",
+                                                f"{defence_line(info)} · Shift or right-click: train endlessly",
                                         cost=info.cost, blocked=lambda ut=item, b=building: world.can_train(b, ut), target=item,
                                         alt=lambda ut=item, b=building: self.toggle_endless(b, ut), endless=lambda ut=item, b=building: ut in b.auto))
             elif item is not None:  # None: every tier of the chain is researched, and its slot stays empty
@@ -2293,14 +2304,14 @@ class GameScene(Scene):
         if isinstance(target, Unit):
             self.view.hit_reaction(target, origin)
         wx, wy = to_world(e.pos)
-        struck = (wx, wy - TILE * 0.45)
+        struck = (wx, wy - TILE * (0.45 + (FLIGHT if e.target_type in FLYING else 0.0)))
         if SHOT_LOOKS.get(e.source_type) == "mote":  # light opens no wound and chips nothing: it flares where it lands, body or wall
             self.effects.add(Flare(struck, "mote", SHOT_SIZE["mote"][0]))
             self.effects.add(Spray(struck, self._away(e.pos, origin), "spark", (255, 232, 150), 5, rng=self.fx_rng, speed=(40, 130),
                                    size=(3, 6), spread=55.0, lifetime=(0.15, 0.3)))
-        elif e.target_type in FLESH or e.target_type == UnitType.CATAPULT.value:  # a unit, alive or just killed by this
+        elif e.target_type in FLESH or e.target_type in MACHINES:  # a unit, alive or just killed by this
             away = self._away(e.pos, origin)
-            if e.target_type == UnitType.CATAPULT.value:
+            if e.target_type in MACHINES:
                 self.effects.add(Spray(struck, away, "drop", (222, 184, 118), 10, rng=self.fx_rng, size=(3, 6)))  # pale wood chips off the dark frame
             elif self.settings["blood"]:
                 self.effects.add(Spray(struck, away, "drop", (172, 22, 26), min(9, 3 + e.amount // 2), rng=self.fx_rng,
@@ -2376,9 +2387,10 @@ class GameScene(Scene):
             old.hurry()
 
     def _dust(self, feet: tuple[float, float], outcome: str) -> None:
-        """The landing raises dust at the feet; a wreck raises more, and smoke."""
-        self.effects.add(Burst(feet, (200, 190, 170, 255), 14 if outcome == "wreck" else 6, rng=self.fx_rng, size=8, speed=(30, 90)))
-        if outcome == "wreck":
+        """The landing raises dust at the feet; a wreck, or a flyer come down, raises more, and smoke."""
+        wrecked = outcome in ("wreck", "crash")
+        self.effects.add(Burst(feet, (200, 190, 170, 255), 14 if wrecked else 6, rng=self.fx_rng, size=8, speed=(30, 90)))
+        if wrecked:
             self.effects.add(Burst((feet[0], feet[1] - 10), (150, 146, 140, 170), 5, rng=self.fx_rng, image="smoke", size=14, speed=(8, 30)))
 
     def _show_destroyed(self, e: Event) -> None:
@@ -2704,18 +2716,23 @@ class GameScene(Scene):
             # Each stat is the number the unit was listed with; what research or the shield wall adds stands beside
             # it in gold, the way an RTS marks an upgraded stat instead of quietly showing a bigger number.
             flanked = FORMATION_ARMOR * world.flanks(entity) if info.formation else 0
-            primary = (("health", f"+{info.heal:g}", world.heal_amount(entity) - info.heal,
-                        f"Healing per cast, one every {info.period:g} s; its own blow is {world.damage_of(entity)}")
-                       if info.heal
-                       else ("damage", f"{info.damage:g}", world.damage_of(entity) - info.damage,
-                             f"Damage per strike; {attack_hint(info.attack)}"))
-            stats = [primary,
-                     ("armor", f"{info.armor:g}", world.armor_of(entity) - info.armor,
+            armour = ("armor", f"{info.armor:g}", world.armor_of(entity) - info.armor,
                       f"{armour_hint(info.armor_class)} · armour is subtracted from every blow"
-                      + (f" · +{flanked} from the comrades at its elbows" if flanked else "")),
-                     ("range", "melee" if info.range < 1 else f"{info.range:g}", world.range_of(entity) - info.range,
-                      "Healing range in tiles" if info.heal else "Reaches the next tile over" if info.range < 1 else "Attack range in tiles"),
-                     ("speed", f"{info.speed:g}", world.speed_of(entity) - info.speed, "Speed in tiles per second")]
+                      + (f" · +{flanked} from the comrades at its elbows" if flanked else ""))
+            speed = ("speed", f"{info.speed:g}", world.speed_of(entity) - info.speed, "Speed in tiles per second")
+            if not info.damage:  # unarmed: what it is for is seeing, so its sight stands where a weapon's numbers would
+                stats = [("sight", f"{info.sight:g}", 0, "Sight in tiles" + (", over trees and walls" if info.flying else "")),
+                         armour, speed]
+            else:
+                primary = (("health", f"+{info.heal:g}", world.heal_amount(entity) - info.heal,
+                            f"Healing per cast, one every {info.period:g} s; its own blow is {world.damage_of(entity)}")
+                           if info.heal
+                           else ("damage", f"{info.damage:g}", world.damage_of(entity) - info.damage,
+                                 f"Damage per strike; {attack_hint(info.attack)}"))
+                stats = [primary, armour,
+                         ("range", "melee" if info.range < 1 else f"{info.range:g}", world.range_of(entity) - info.range,
+                          "Healing range in tiles" if info.heal else "Reaches the next tile over" if info.range < 1 else "Attack range in tiles"),
+                         speed]
             mx, my = self.mouse
             body = self.game.theme.get_text_style("body")
             for i, (icon, text, raised, hint) in enumerate(stats):
@@ -2729,7 +2746,7 @@ class GameScene(Scene):
                     self.tooltip = hint
             if world.frenzied(entity):
                 self.draw_text("Frenzy!", tx + 4 * 78, y + 60, style="body", color=BAD)
-            self._armour_notes.append(defence_line(info.armor_class, info.attack).capitalize())
+            self._armour_notes.append(defence_line(info).capitalize())
             lines.append(self._armour_notes[-1])  # under the numbers it qualifies
             order = entity.order
             if not own:

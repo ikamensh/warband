@@ -68,36 +68,44 @@ SUBJECTS: dict[tuple[Race, UnitType], str] = {
                                     "a blue kite shield with a pale cross, and one sword with a gold crossguard",
     (Race.HUMAN, UnitType.ARCHER): f"a human archer in a dark green hooded cloak over a blue tunic ({TEAM}), with a longbow and a quiver of arrows",
     (Race.HUMAN, UnitType.KNIGHT): f"a human knight in full plate on an armoured warhorse with blue caparison and trim ({TEAM}), carrying a lance and a shield",
-    (Race.HUMAN, UnitType.SCOUT): f"a human scout: a light rider in leather armour and a blue tunic ({TEAM}) on a fast unarmoured horse",
     (Race.HUMAN, UnitType.CATAPULT): f"a human catapult: a wooden siege engine on wheels with a throwing arm, a boulder and a blue team pennant ({TEAM}); "
                                      "the attack row swings the arm",
+    (Race.HUMAN, UnitType.FLYING_MACHINE): f"a human flying machine: a small wooden boat-shaped hull with blue canvas sides ({TEAM}), a pilot "
+                                           "in a leather cap and goggles, a mast carrying one large two-bladed canvas rotor, a tail boom with a "
+                                           "blue fin and iron landing skids; the walk rows turn the rotor",
     (Race.HUMAN, UnitType.CLERIC): f"a human cleric: a healer in a pale hooded robe with a blue sash ({TEAM}), holding a staff",
     (Race.ORC, UnitType.PEASANT): f"an orc peon: a green-skinned, broad worker in a blue loincloth and harness ({TEAM})",
     (Race.ORC, UnitType.FOOTMAN): f"an orc grunt: a hulking green axeman in dark iron with spiked pauldrons, a blue tabard ({TEAM}), a hide-bound round "
                                   "shield studded with bone spikes, and a heavy cleaver",
     (Race.ORC, UnitType.ARCHER): f"an orc axethrower: a green-skinned brute in dark red cloth and a blue sash ({TEAM}), hurling throwing axes from a belt",
     (Race.ORC, UnitType.KNIGHT): f"an orc ogre: a two-headed, unarmoured giant on foot with a blue loincloth ({TEAM}) swinging a huge spiked club",
-    (Race.ORC, UnitType.SCOUT): f"an orc wolf rider: a green raider in leather and a blue sash ({TEAM}) on a great grey wolf, with a spear",
     (Race.ORC, UnitType.CATAPULT): f"an orc catapult: a crude, skull-decorated siege engine of dark wood and bone on wheels, a blue pennant ({TEAM}), "
                                    "with a throwing arm and a boulder",
+    (Race.ORC, UnitType.FLYING_MACHINE): f"a goblin zeppelin: a patched hide gas bag with a broad blue band round its middle and blue tail "
+                                         f"fins ({TEAM}), a small wooden gondola slung under it on ropes, a green goblin in goggles at the "
+                                         "rail and a three-bladed pusher propeller; the walk rows turn the propeller",
     (Race.ORC, UnitType.CLERIC): f"an orc shaman: a hunched green mystic in dark robes and a blue sash ({TEAM}), with a totem staff and bone charms",
     (Race.ELF, UnitType.PEASANT): f"an elven gatherer: a slender fair-skinned worker in green leathers and a blue sash ({TEAM})",
     (Race.ELF, UnitType.FOOTMAN): f"an elven sentinel: a slender warrior in silvery scale, a winged leaf helm, a blue tabard ({TEAM}), a leaf-shaped buckler "
                                   "and a curved blade",
     (Race.ELF, UnitType.ARCHER): f"an elven ranger in a green hooded cloak over a blue tunic ({TEAM}), with a tall recurve bow and a quiver",
     (Race.ELF, UnitType.KNIGHT): f"an elven stag knight in silvery scale with a blue caparison ({TEAM}) riding an antlered stag, carrying a lance and a buckler",
-    (Race.ELF, UnitType.SCOUT): f"an elven outrider in green leathers and a blue sash ({TEAM}) riding a swift deer, with a spear",
     (Race.ELF, UnitType.CATAPULT): f"an elven ballista: a living-wood siege engine on wheels sprouting leaves at its tail, with a blue pennant ({TEAM}), "
                                    "that fires a great bolt; the attack row releases the bolt",
+    (Race.ELF, UnitType.FLYING_MACHINE): f"an elven leafwing glider: a pale living-wood spar with a green leaf bud at the nose, two broad "
+                                         f"green leaf wings with blue midribs ({TEAM}), small leaf tail vanes and an elf rider in a blue hood "
+                                         "astride the spar; the walk rows beat the wings",
     (Race.ELF, UnitType.CLERIC): f"an elven druid in a green hooded robe with a blue sash ({TEAM}), holding a gnarled staff",
     (Race.DWARF, UnitType.PEASANT): f"a dwarven miner: a squat, broad, red-bearded worker in a blue smock ({TEAM}) and a cap",
     (Race.DWARF, UnitType.FOOTMAN): f"a dwarven ironguard: a squat, broad axeman in heavy bronze-trimmed plate, a horned nasal helm, a blue tabard "
                                     f"({TEAM}), a bossed round shield and a double-bitted axe",
     (Race.DWARF, UnitType.ARCHER): f"a dwarven crossbowman in a mail coat and a blue tabard ({TEAM}), with a heavy crossbow and a bolt case",
     (Race.DWARF, UnitType.KNIGHT): f"a dwarven bear rider in bronze-trimmed plate with a blue caparison ({TEAM}) on an armoured war bear, carrying one short-handled war hammer and a shield",
-    (Race.DWARF, UnitType.SCOUT): f"a dwarven ram rider in leather and a blue sash ({TEAM}) on a shaggy mountain ram, with a spear",
     (Race.DWARF, UnitType.CATAPULT): f"a dwarven mortar: a squat iron mortar barrel on a wheeled carriage with a blue pennant ({TEAM}); the attack row fires "
                                      "with the barrel jolting back",
+    (Race.DWARF, UnitType.FLYING_MACHINE): f"a dwarven gyrocopter: a brass steam boiler with a smokestack and blue plates ({TEAM}) on an "
+                                           "iron frame with landing skids, a dwarf pilot in a helmet at the levers, a four-bladed iron rotor "
+                                           "with blue tips above and a small propeller in front; the walk rows turn the rotor",
     (Race.DWARF, UnitType.CLERIC): f"a dwarven runepriest in a grey hooded robe with a blue sash ({TEAM}), holding a rune-carved staff",
 }
 CARRY = {None: ", carrying a woodcutter's axe (a pick-axe for dwarves, a crude axe for orcs)",
@@ -113,7 +121,8 @@ FIXES: dict[tuple[UnitType, Resource | None], str] = {
                               "the pale cross on the shield is a flat painted emblem, never a hilt or a second weapon; the only gold is the sword's crossguard",
     (UnitType.ARCHER, None): "the weapon is held in both hands, aimed in the wind-up and loosed in the strike; the ammunition hangs on the back or belt",
     (UnitType.KNIGHT, None): "the rider sits in a saddle with stirrups and holds the reins; the weapon is gripped and couched under the arm in the strike, not floating beside the mount",
-    (UnitType.SCOUT, None): "the rider sits in a saddle and holds the reins; the spear is gripped",
+    (UnitType.FLYING_MACHINE, None): "the machine is in the air: nothing touches the ground and no shadow is painted under it (the game draws "
+                                     "the shadow); the rotor, propeller or wings are exactly where the reference has them",
     (UnitType.CATAPULT, None): "the projectile sits in or on its launcher, never on top of the arm like a mace head; the launcher is empty after the shot; "
                                "the wheels have spokes and the carriage has a windlass with rope",
     (UnitType.CLERIC, None): "the staff is gripped in one hand; the raised hand in the strike frames glows softly",
@@ -134,7 +143,7 @@ INVENTORY: dict[UnitType, str] = {
     UnitType.FOOTMAN: "one figure, exactly one sword (one hilt), exactly one shield",
     UnitType.ARCHER: "one figure, exactly one bow (or a throwing axe in hand for orcs, a crossbow for dwarves), no shield",
     UnitType.KNIGHT: "one rider on one mount (the orc ogre: one two-headed giant on foot), one weapon (human/elf lance, dwarf war hammer, orc club), at most one shield",
-    UnitType.SCOUT: "one rider on one mount, one spear, no shield",
+    UnitType.FLYING_MACHINE: "one flying machine with one pilot, no weapon, no shield, no ground shadow",
     UnitType.CATAPULT: "one siege engine, one throwing arm or barrel, wheels, at most one projectile",
     UnitType.CLERIC: "one figure, one staff, no shield, no sword",
 }
@@ -652,8 +661,8 @@ MONSTER_SUBJECTS: dict[monsters.Monster, str] = {
     monsters.Monster.GOLEM: "a stone golem: a lumbering man-shaped construct of stacked grey granite slabs set slightly out of true, a "
                             "slab of shoulders far wider than its hips, no neck, a blocky head with one dark recess where a face would be, "
                             "short column legs and heavy block fists, with pale quartz seams running through the crevices",
-    # Russet, not grey: the orc scout rides a great *grey* wolf, and a neutral creature has no team
-    # colour to tell it from that mount at 32 px, so the coat has to do the telling.
+    # Russet, not grey: when the orcs still had a wolf rider it rode a great *grey* wolf, and a neutral creature has no
+    # team colour to tell it from that mount at 32 px, so the coat did the telling; the painted wolves keep it.
     monsters.Monster.WOLF: "a great wild wolf: a lean, low, long-legged pack predator in shaggy russet-brown fur with a darker band of fur "
                            "along the spine, a pale cream throat, belly and muzzle, a thick ruff at the shoulders, upright ears, pale "
                            "yellow eyes, a long brush tail and a jaw of white teeth that opens",
@@ -1229,7 +1238,7 @@ def cmd_showcase(args: argparse.Namespace, subjects: list[Subject]) -> None:
         field = min(((x, y) for x in range(world.width - 12) for y in range(world.height - 8) if open_ground(x, y, 12, 8)),
                     key=lambda p: (p[0] - hx) ** 2 + (p[1] - hy) ** 2)  # the nearest meadow that fits two lines
         cx, cy = field[0] + 1.5, field[1] + 1.0
-        line = [UnitType.FOOTMAN, UnitType.KNIGHT, UnitType.ARCHER, UnitType.FOOTMAN, UnitType.CLERIC, UnitType.SCOUT, UnitType.CATAPULT]
+        line = [UnitType.FOOTMAN, UnitType.KNIGHT, UnitType.ARCHER, UnitType.FOOTMAN, UnitType.CLERIC, UnitType.FLYING_MACHINE, UnitType.CATAPULT]
         north = [world.spawn_unit(0, unit, (cx + i * 1.3, cy)) for i, unit in enumerate(line)]
         south = [world.spawn_unit(1, unit, (cx + i * 1.3, cy + 6)) for i, unit in enumerate(line)]
         world.reveal_all(0)

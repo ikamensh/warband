@@ -44,7 +44,7 @@ tutorial follow at once.
 The letter of the name, as Warcraft II had it. A unit card is M move, S stop,
 H hold, A attack, P patrol, B build, R repair, V salvage; the Build catalogue F farm,
 B barracks, H hall, T tower, M mill, K smith, S stables, W workshop, C church;
-recruits F footman, A archer, S scout, K knight, C catapult, H healer (the
+recruits F footman, A archer, K knight, C catapult, M flying machine, H healer (the
 cleric: L is Blessing at the church), P peasant; research K the Keep (at the
 hall), B blades, A armour, R arrows, E siege and a letter for each race's art;
 X cancels. The letters are

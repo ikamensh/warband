@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from warband.brains.pro_profiles import PRO, ProProfile
-from warband.brains.ai import known_enemy_buildings, known_mines
+from warband.brains.ai import fighters, known_enemy_buildings, known_mines
 from warband.sim import mapgen
 from warband.sim.model import Build, Building, Point, Repair, Salvage, Unit, World, dist, tile_center
 from warband.sim.rules import BuildingType, UnitType
@@ -22,7 +22,7 @@ class _ProBrainCore:
         self.target: Point | None = None      # where the current push is aimed
         self.commit_strength = 0.0            # what the army was worth when it set out
         self.regroup_until = 0.0              # no new push before this, so a beaten army rebuilds
-        self.scouts: list[int] = []
+        self.scouts: list[int] = []  # our eyes on the enemy: the flying machine, or a peasant marked for it (_send_scout)
         self.prospector: int | None = None  # the peasant out looking for the next mine
         self._prospect_leg = 0              # how many places it has been sent to look
         self.raiders: list[int] = []
@@ -70,7 +70,7 @@ class _ProBrainCore:
         return [u for u in self._units(world) if u.is_worker]
 
     def _army(self, world: World) -> list[Unit]:
-        return [u for u in self._units(world) if not u.is_worker]
+        return fighters(self._units(world))
 
     def _halls(self, world: World) -> list[Building]:
         return world.player_buildings(self.player, BuildingType.TOWN_HALL, done=True)

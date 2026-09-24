@@ -64,7 +64,7 @@ def test_anyone_may_raze_a_ruin_for_nothing_and_nobody_picks_one_up_in_passing()
 def test_brains_neither_target_nor_fear_ruins() -> None:
     world = field(3)
     farm, *_ = base(world, 1, (20, 10))
-    scout = world.spawn_unit(0, UnitType.SCOUT, (19.5, 12.5))
+    world.spawn_unit(0, UnitType.FLYING_MACHINE, (19.5, 12.5))  # eyes on the farm
     world.update_vision()
     world.step()
     assert farm.id in {r.id for r in known_enemy_buildings(world, 0)} or known_enemy_buildings(world, 0), "seen while owned"

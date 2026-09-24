@@ -63,7 +63,7 @@ def check_world(world: World) -> None:
         elif u.constructing is not None:
             site = world.buildings.get(u.constructing)
             assert site is not None and site.builder == u.id and not site.done, ("constructing a missing site", u)
-        else:
+        elif not u.flying:  # a flyer is over the trees, the water and the roofs, never on them
             assert world.passable(*u.tile), ("unit on a blocked tile", u, world.terrain_at(u.tile))
         assert world.players[u.player].alive, ("unit of a dead player", u)
     for p in world.players[:world.seats]:  # the wilds are alive whether or not a camp is still standing
@@ -106,7 +106,7 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
             # Every setting, which now means both kinds of brain: Hard and Master
             # are ProBrains, and they drive the model down paths the others never
             # take (several build orders in flight, wounded soldiers walking home,
-            # peasants sent scouting). The invariants have to hold there too.
+            # peasants or a flying machine sent scouting). The invariants have to hold there too.
             brains = [make_brain(p.id, rng.choice(list(Difficulty)), seed) for p in world.players[:world.seats]]
             check_world(world)
             stalled: dict[int, tuple[tuple[float, float], float]] = {}

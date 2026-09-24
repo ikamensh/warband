@@ -66,7 +66,7 @@ def test_a_building_raised_on_explored_ground_stays_unseen_until_somebody_looks(
     frames(game)
     assert view.building_sprite(farm.id) is None, "a farm the player never saw is drawn under the fog"
     assert view.entity_at(farm.center) is None, "a farm the player never saw can be picked with the mouse"
-    world.spawn_unit(scene.human, UnitType.SCOUT, (site[0] - 1.5, site[1] + 0.5))
+    world.spawn_unit(scene.human, UnitType.FLYING_MACHINE, (site[0] - 1.5, site[1] + 0.5))
     frames(game)
     assert view.building_sprite(farm.id) is not None
     assert view.entity_at(farm.center) is farm
@@ -84,7 +84,7 @@ def test_a_building_razed_out_of_sight_stands_on_the_map_until_somebody_looks(pl
     frames(game)
     assert view.building_sprite(shell.id) is not None, "the player cannot know it is gone"
     assert view.sighting(shell.id) is not None
-    world.spawn_unit(scene.human, UnitType.SCOUT, (site[0] - 1.5, site[1] + 0.5))
+    world.spawn_unit(scene.human, UnitType.FLYING_MACHINE, (site[0] - 1.5, site[1] + 0.5))
     frames(game)
     assert view.building_sprite(shell.id) is None and view.sighting(shell.id) is None, "now they look, and it is gone"
 
@@ -104,7 +104,7 @@ def test_the_minimap_shows_out_of_sight_ground_as_last_seen(play) -> None:
     farm = world.place_building(rival, BuildingType.FARM, site)
     frames(game)
     assert minimap_pixel(scene, site) == before, "the rival's new farm is on the minimap before anybody saw it"
-    world.spawn_unit(scene.human, UnitType.SCOUT, (site[0] - 1.5, site[1] + 0.5))
+    world.spawn_unit(scene.human, UnitType.FLYING_MACHINE, (site[0] - 1.5, site[1] + 0.5))
     frames(game)
     assert minimap_pixel(scene, site) == world.players[rival].color
     assert scene.view.sighting(farm.id) is not None
@@ -129,7 +129,7 @@ def test_a_tree_felled_out_of_sight_stands_until_somebody_looks_and_one_grown_ba
     frames(game)
     assert tree in view.tree_sprites and minimap_pixel(scene, tree) == wooded, "a tree felled out of sight vanished from the player's map"
     assert view.terrain_at(tree).value == "trees", "the status line names the ground as it is, not as the player knows it"
-    world.spawn_unit(scene.human, UnitType.SCOUT, tile_center(beside))
+    world.spawn_unit(scene.human, UnitType.FLYING_MACHINE, tile_center(beside))
     frames(game)
     assert tree not in view.tree_sprites and minimap_pixel(scene, tree) != wooded and view.terrain_at(tree).value == "grass"
 
@@ -176,7 +176,7 @@ def test_what_a_rival_is_making_stays_private_and_a_fogged_building_reads_as_las
     text = panel_text(game)
     assert f"{seen_hp}/{hall.max_hp}" in text, f"the panel shows a fogged hall's hit points as they are now: {text}"
     assert "%" not in text, f"the panel shows what the rival is training: {text}"
-    world.spawn_unit(scene.human, UnitType.SCOUT, (hall.x - 1.5, hall.y + 0.5))
+    world.spawn_unit(scene.human, UnitType.FLYING_MACHINE, (hall.x - 1.5, hall.y + 0.5))
     frames(game)
     text = panel_text(game)
     assert f"{hall.hp}/{hall.max_hp}" in text and "%" not in text, f"in plain sight the damage shows, the production still does not: {text}"
@@ -206,7 +206,7 @@ def test_a_tree_grown_back_out_of_sight_waits_to_be_seen(play) -> None:
     world.terrain[glade[1]][glade[0]] = Terrain.TREES  # the elven art at work where nobody watches
     frames(game)
     assert glade not in view.tree_sprites and view.terrain_at(glade) is Terrain.GRASS
-    world.spawn_unit(scene.human, UnitType.SCOUT, tile_center((glade[0] + 1, glade[1])))
+    world.spawn_unit(scene.human, UnitType.FLYING_MACHINE, tile_center((glade[0] + 1, glade[1])))
     frames(game)
     assert glade in view.tree_sprites and view.terrain_at(glade) is Terrain.TREES
 

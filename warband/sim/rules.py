@@ -15,9 +15,13 @@ the next wind-up may start.  Shots are projectiles: an arrow follows its
 mark and strikes when it arrives, a siege stone comes down on the ground it
 was fired at, on whoever stands there by then.
 
-Armour classes and attack types (WB-049, :data:`DAMAGE_FACTORS`): peasants, clerics and catapults are unarmoured,
-archers and scouts light, footmen and knights heavy, buildings fortified; archers pierce, catapults siege, the rest
+Armour classes and attack types (WB-049, :data:`DAMAGE_FACTORS`): peasants, clerics, catapults and flying machines are
+unarmoured, archers light, footmen and knights heavy, buildings fortified; archers pierce, catapults siege, the rest
 and towers strike normally.  Piercing lands ×1.5 on the unarmoured, siege ×1.5 on buildings, everything else ×1.
+
+A unit type that flies (:attr:`UnitInfo.flying`) is over the ground rather than on it: it flies straight over
+anything, takes no room there, and only a shot reaches it (:attr:`UnitInfo.strikes_air`: an arrow, a healer's bolt,
+a spider's spit, a tower's arrow), never a melee blow or a stone, which comes down on the ground.
 
 A building's armour is :data:`BUILDINGS`' once it stands; a frame still going up wears none.
 """
@@ -64,9 +68,9 @@ class UnitType(IdentityEnum):
     PEASANT = "peasant"
     FOOTMAN = "footman"
     ARCHER = "archer"
-    SCOUT = "scout"
     KNIGHT = "knight"
     CATAPULT = "catapult"
+    FLYING_MACHINE = "flying_machine"
     CLERIC = "cleric"
     # The neutral creatures: nobody trains them, no race names them, and they are never team-coloured.
     # Their values are :class:`warband.art.monsters.Monster`'s, so the art is reached with ``Monster(unit.type.value)``.
@@ -173,10 +177,21 @@ class UnitInfo:
     #: Out of combat, never during it: continuous regeneration would put a hard floor under the damage needed to
     #: kill the thing at all, and with blows rolling 75-125 % every camp at that floor would be a coin flip.
     regen: float = 0.0
+    living: bool = True  # False: a machine, which no healer mends
+    #: Over the ground rather than on it: it flies straight over trees, water, rock and buildings, takes no room on the
+    #: ground (the crowd and a body's core are the walkers' own; flyers keep their elbow room from each other), and only
+    #: a shot reaches it (:attr:`strikes_air`).
+    flying: bool = False
 
     @property
     def melee(self) -> bool:
         return self.range < 1 and self.damage > 0
+
+    @property
+    def strikes_air(self) -> bool:
+        """Its blow reaches a flyer: a shot that flies to its mark.  A melee blow never does, and neither does a stone,
+        which comes down on the ground it was fired at."""
+        return self.damage > 0 and self.range >= 1 and not self.siege
 
     @property
     def period(self) -> float:
@@ -213,7 +228,8 @@ def _unit(u: dict[str, Any]) -> UnitInfo:
         build_time=u["build_time"], trained_at=BuildingType(u["trained_at"]), hotkey=u["hotkey"], summary=u["summary"],
         radius=u["radius"], heal=u["heal"], splash=u["splash"], attack=AttackType(u["attack"]),
         armor_class=ArmorClass(u["armor_class"]), formation=u["formation"], mounted=u["mounted"], windup=u["windup"],
-        turn=math.radians(u["turn_deg"]), min_range=u["min_range"], regen=u["regen"],
+        turn=math.radians(u["turn_deg"]), min_range=u["min_range"], regen=u["regen"], living=u["living"],
+        flying=u["flying"],
     )
 
 
@@ -221,8 +237,8 @@ UNITS: Final[dict[UnitType, UnitInfo]] = {UnitType(u): _unit(info) for u, info i
 
 #: What a player can train, in card order: everything but the neutral creatures.  Every loop that means
 #: "the game's units" walks this rather than :class:`UnitType`, which now also holds the wilds.
-PLAYABLE_UNITS: Final[tuple[UnitType, ...]] = (UnitType.PEASANT, UnitType.FOOTMAN, UnitType.ARCHER, UnitType.SCOUT,
-                                               UnitType.KNIGHT, UnitType.CATAPULT, UnitType.CLERIC)
+PLAYABLE_UNITS: Final[tuple[UnitType, ...]] = (UnitType.PEASANT, UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT,
+                                               UnitType.CATAPULT, UnitType.FLYING_MACHINE, UnitType.CLERIC)
 
 
 # -- The wilds ---------------------------------------------------------------------
@@ -233,7 +249,7 @@ PLAYABLE_UNITS: Final[tuple[UnitType, ...]] = (UnitType.PEASANT, UnitType.FOOTMA
 # | creature | hp  | dmg | armour        | range | wind-up + cooldown | speed | what it rewards                       |
 # |----------|-----|-----|---------------|-------|--------------------|-------|---------------------------------------|
 # | wolf     |  40 |   6 | 0 light       | melee | 0.2 + 0.9          | 4.0   | nothing: the cheap minute-two camp    |
-# | spider   |  45 |   8 | 0 light       | 5     | 0.4 + 1.6          | 2.2   | the scout, which closes the five tiles|
+# | spider   |  45 |   8 | 0 light       | 5     | 0.4 + 1.6          | 2.2   | the knight, which closes the five tiles|
 # | troll    | 220 |  14 | 0 unarmoured  | melee | 0.45 + 1.4         | 1.9   | the archer: piercing lands x1.5 on it |
 # | golem    | 170 |  18 | 2 heavy, splash| melee | 0.7 + 2.5         | 1.3   | the archer again, by punishing clumps |
 #

@@ -7,7 +7,8 @@ from collections.abc import Iterable
 import pytest
 
 from warband.sim.model import Attack, Deposit, Heal, Move, RuleError, World, dist, tile_center
-from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, SIM_DT, UNITS, UPGRADES, BuildingType, Race, Resource, Terrain, UnitType, Upgrade
+from warband.sim.rules import (BUILDINGS, BUILT, HORSES_BONUS, PLAYABLE_UNITS, SIM_DT, UNITS, UPGRADES, BuildingType, Race, Resource, Terrain,
+                               UnitType, Upgrade)
 
 
 def flat_world(width: int = 30, height: int = 24, trees: Iterable[tuple[int, int]] = ()) -> World:
@@ -244,15 +245,18 @@ def test_catapults_splash_and_batter_buildings_from_afar() -> None:
     assert max(e.amount for e in hits if e.other == b.id) < max(e.amount for e in hits if e.other == a.id)  # a tile off: a share of the blow
 
 
-def test_scouts_are_fast_and_knights_faster_with_horses() -> None:
+def test_a_flying_machine_outpaces_and_outsees_a_knight_and_horses_are_for_knights() -> None:
     world = flat_world(60, 10)
-    scout = world.spawn_unit(0, UnitType.SCOUT, (2.5, 5.5))
+    flyer = world.spawn_unit(0, UnitType.FLYING_MACHINE, (2.5, 5.5))
     knight = world.spawn_unit(0, UnitType.KNIGHT, (2.5, 3.5))
-    world.move([scout.id], (58.5, 4.5))
+    world.move([flyer.id], (58.5, 4.5))
     world.move([knight.id], (58.5, 4.5))
     run(world, 5.0)
-    assert scout.x > knight.x + 3
-    assert UNITS[UnitType.SCOUT].sight > UNITS[UnitType.KNIGHT].sight
+    assert flyer.x > knight.x + 3
+    assert UNITS[UnitType.FLYING_MACHINE].sight > UNITS[UnitType.KNIGHT].sight
+    world.players[0].upgrades.add(Upgrade.HORSES)
+    assert world.speed_of(knight) == UNITS[UnitType.KNIGHT].speed + HORSES_BONUS
+    assert world.speed_of(flyer) == UNITS[UnitType.FLYING_MACHINE].speed, "Horse Breeding is for knights"
 
 
 # -- Lumber mills --------------------------------------------------------------------------

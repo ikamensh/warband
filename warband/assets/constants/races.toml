@@ -18,9 +18,9 @@ defaults = { build_time_mult = 0.85 }
 peasant = { name = "Peasant", summary = "Mines gold, chops lumber, builds, repairs" }
 footman = { name = "Footman", summary = "Slow shield-wall swordsman; tougher with a comrade at each side" }
 archer = { name = "Archer", summary = "Shoots from four tiles; fragile up close" }
-scout = { name = "Scout", summary = "Fast rider who sees far; raids workers" }
 knight = { name = "Knight", summary = "Fast, heavily armoured shock cavalry" }
 catapult = { name = "Catapult", summary = "Siege engine: splash, ×1.5 vs buildings" }
+flying_machine = { name = "Flying Machine", summary = "Rotor-borne eyes over any ground; unarmed, only shooters hit it" }
 cleric = { name = "Cleric", summary = "Heals wounded allies; smites weakly when none need healing" }
 
 [human.buildings]
@@ -30,8 +30,8 @@ barracks = { name = "Barracks", card = "Barracks", summary = "Trains footmen and
 tower = { name = "Guard Tower", card = "Tower", summary = "Shoots at enemies six tiles away" }
 lumber_mill = { name = "Lumber Mill", card = "Mill", summary = "Takes lumber; researches better arrows" }
 blacksmith = { name = "Blacksmith", card = "Smith", summary = "Researches sharper blades and plate armour" }
-stables = { name = "Stables", card = "Stables", summary = "Trains scouts and knights; breeds horses" }
-workshop = { name = "Workshop", card = "Workshop", summary = "Builds catapults; improves siege engines" }
+stables = { name = "Stables", card = "Stables", summary = "Trains knights; breeds horses" }
+workshop = { name = "Workshop", card = "Workshop", summary = "Builds catapults and flying machines; siege upgrades" }
 church = { name = "Church", card = "Church", summary = "Trains clerics; blesses their healing" }
 
 [human.upgrades]
@@ -49,9 +49,9 @@ defaults = { hp_mult = 1.15 }
 peasant = { name = "Peon", summary = "Digs gold, hacks lumber, builds and repairs" }
 footman = { name = "Grunt", summary = "Brutal axeman, fast and alone; hits harder as it bleeds", damage_mult = 1.1, armor_add = -2, speed_add = 0.4, formation = false }
 archer = { name = "Axethrower", summary = "Throws axes four tiles; a sturdy shooter" }
-scout = { name = "Wolf Rider", summary = "Fast wolf rider; hunts peons and throwers" }
 knight = { name = "Ogre", summary = "Two-headed brute; thin armour, all frenzy", hp_mult = 1.2, damage_mult = 1.1, armor_add = -1 }
 catapult = { name = "Catapult", summary = "Skulled siege engine: splash, ×1.5 vs walls" }
+flying_machine = { name = "Goblin Zeppelin", summary = "Patched balloon, goblin at the rail; sees all, fights nothing" }
 cleric = { name = "Shaman", summary = "Mends wounded allies; hexes weakly when none need mending" }
 
 [orc.buildings]
@@ -61,8 +61,8 @@ barracks = { name = "War Camp", card = "War Camp", summary = "Trains grunts and 
 tower = { name = "Watch Tower", card = "Tower", summary = "Hurls axes at enemies six tiles away" }
 lumber_mill = { name = "Sawmill", card = "Sawmill", summary = "Takes lumber; researches heavier axes" }
 blacksmith = { name = "Forge", card = "Forge", summary = "Researches blades, hide armour, Bloodlust" }
-stables = { name = "Kennels", card = "Kennels", summary = "Trains wolf riders and ogres; Plunder" }
-workshop = { name = "Siege Yard", card = "Yard", summary = "Builds catapults; improves siege engines" }
+stables = { name = "Kennels", card = "Kennels", summary = "Trains ogres; Plunder" }
+workshop = { name = "Siege Yard", card = "Yard", summary = "Builds catapults and zeppelins; siege upgrades" }
 church = { name = "Altar", card = "Altar", summary = "Trains shamans" }
 
 [orc.upgrades]
@@ -80,9 +80,9 @@ defaults = { hp_mult = 0.95, speed_add = 0.15, sight_add = 2 }
 peasant = { name = "Gatherer", summary = "Mines gold, fells trees, builds and repairs" }
 footman = { name = "Sentinel", summary = "Light swordsman in a line; quick on their feet" }
 archer = { name = "Ranger", summary = "Shoots from five tiles; fragile up close", range_add = 1.0 }
-scout = { name = "Outrider", summary = "Fleet deer rider who sees farthest of all" }
 knight = { name = "Stag Knight", summary = "Antlered shock cavalry, swift but light" }
 catapult = { name = "Ballista", summary = "Living-wood siege engine: splash, ×1.5" }
+flying_machine = { name = "Leafwing Glider", summary = "Living-wood frame on leaf wings; sees farthest, unarmed" }
 cleric = { name = "Druid", summary = "Tends wounded allies; stings weakly when none need tending" }
 
 [elf.buildings]
@@ -92,8 +92,8 @@ barracks = { name = "Warden Lodge", card = "Lodge", summary = "Trains sentinels 
 tower = { name = "Watch Tree", card = "Eyrie", summary = "Shoots at enemies six tiles away" }
 lumber_mill = { name = "Grove Mill", card = "Mill", summary = "Takes lumber; arrows, Longbows and Regrowth" }
 blacksmith = { name = "Silversmith", card = "Smith", summary = "Researches keener blades and silver mail" }
-stables = { name = "Stag Pens", card = "Pens", summary = "Trains outriders and stag knights" }
-workshop = { name = "Siege Bower", card = "Bower", summary = "Builds ballistae; improves siege engines" }
+stables = { name = "Stag Pens", card = "Pens", summary = "Trains stag knights" }
+workshop = { name = "Siege Bower", card = "Bower", summary = "Builds ballistae and gliders; siege upgrades" }
 church = { name = "Moonwell", card = "Moonwell", summary = "Trains druids" }
 
 [elf.upgrades]
@@ -111,9 +111,9 @@ defaults = { hp_mult = 1.1, speed_add = -0.15 }
 peasant = { name = "Miner", summary = "Mines gold, chops lumber, builds, repairs" }
 footman = { name = "Ironguard", summary = "Armoured axeman in a wall of round shields", armor_add = 1 }
 archer = { name = "Crossbowman", summary = "Shoots from four tiles; hardy for a shooter" }
-scout = { name = "Ram Rider", summary = "Fast ram rider; raids miners and crossbows" }
 knight = { name = "Bear Rider", summary = "Armoured shock cavalry on a war bear", armor_add = 1 }
 catapult = { name = "Mortar", summary = "Iron mortar: wide splash, ×1.5 vs buildings" }
+flying_machine = { name = "Gyrocopter", summary = "Steam rotor over any ground; eyes, not guns: only shooters hit it" }
 cleric = { name = "Runepriest", summary = "Heals wounded allies; strikes weakly when none need healing" }
 
 [dwarf.buildings]
@@ -124,8 +124,8 @@ barracks = { name = "Guard Hall", card = "Barracks", summary = "Trains ironguard
 tower = { name = "Bolt Tower", card = "Tower", summary = "Shoots at enemies six tiles away" }
 lumber_mill = { name = "Timber Works", card = "Timber", summary = "Takes lumber; researches better bolts" }
 blacksmith = { name = "Forge", card = "Forge", summary = "Researches axes, plate and Deep Mining" }
-stables = { name = "Beast Pens", card = "Pens", summary = "Trains ram riders and bear riders" }
-workshop = { name = "Engine Works", card = "Engines", summary = "Builds mortars; siege and Blasting Powder" }
+stables = { name = "Beast Pens", card = "Pens", summary = "Trains bear riders" }
+workshop = { name = "Engine Works", card = "Engines", summary = "Builds mortars and gyrocopters; siege, Blasting Powder" }
 church = { name = "Rune Shrine", card = "Shrine", summary = "Trains runepriests" }
 
 [dwarf.upgrades]

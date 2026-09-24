@@ -66,7 +66,7 @@ def _raid_1(run: Run) -> None:
 
 
 def _raid_3(run: Run) -> None:
-    _raid([U.FOOTMAN] * 5 + [U.ARCHER] * 2 + [U.SCOUT])(run)
+    _raid([U.FOOTMAN] * 5 + [U.ARCHER] * 2)(run)
     run.say(Line("Aldric", "That's their whole camp on the move. Break this band and Hollowmere stands."))
 
 

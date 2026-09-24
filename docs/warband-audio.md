@@ -14,7 +14,6 @@ Impacts play at 65% gain to leave room for a busy battle and alerts.
 | --- | --- |
 | Peasant | Axe |
 | Footman | Sword |
-| Scout | Spear |
 | Knight | Lance |
 | Archer, guard tower | Arrow |
 | Catapult | Siege stone |

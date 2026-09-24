@@ -133,12 +133,11 @@ class Capture:
         sheet.save(output / f"{monster.value}-frames{self.suffix}.png")
         print(f"  {output / f'{monster.value}-frames{self.suffix}.png'}", flush=True)
 
-    #: The units a neutral creature could be taken for.  The orc knight *is* an ogre, the orc
-    #: scout rides a wolf and the dwarf knight rides a war bear, so these three stand in the
-    #: parade beside the creatures: a player must tell a monster from a mounted enemy at a glance,
-    #: and a neutral creature has no team colour to help.
-    RIVALS = ((UnitType.KNIGHT, Race.ORC, "orc Ogre"), (UnitType.SCOUT, Race.ORC, "orc Wolf Rider"),
-              (UnitType.KNIGHT, Race.DWARF, "dwarf Bear Rider"), (UnitType.FOOTMAN, Race.HUMAN, "footman"))
+    #: The units a neutral creature could be taken for.  The orc knight *is* an ogre and the dwarf
+    #: knight rides a war bear, so these stand in the parade beside the creatures: a player must
+    #: tell a monster from a mounted enemy at a glance, and a neutral creature has no team colour to help.
+    RIVALS = ((UnitType.KNIGHT, Race.ORC, "orc Ogre"), (UnitType.KNIGHT, Race.DWARF, "dwarf Bear Rider"),
+              (UnitType.FOOTMAN, Race.HUMAN, "footman"))
 
     def parade(self, output: Path) -> None:
         """The creatures beside the units they could be confused with, at the zoom the game is

@@ -82,7 +82,7 @@ def test_worker_puts_cargo_away_for_combat_then_delivers_the_same_load(game, rac
     assert getattr(world.players[0], resource.value) == balance + payload
 
 
-@pytest.mark.parametrize("race, unit_type", diagonal(list(Race), [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT, UnitType.KNIGHT]))
+@pytest.mark.parametrize("race, unit_type", diagonal(list(Race), [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.KNIGHT]))
 def test_melee_trail_keeps_its_whole_arc_inside_the_image_in_every_facing(game, race, unit_type):
     """Rear-facing cuts rise farther than the original fixed square allowed.
     Every race's art is the slow tier's; the fast tier draws one race per case."""
@@ -124,7 +124,7 @@ def duel(game, *, damaging=True, race=Race.HUMAN, unit_type=UnitType.FOOTMAN):
     return scene, attacker, victim
 
 
-@pytest.mark.parametrize("race, unit_type", diagonal(list(Race), [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT, UnitType.KNIGHT]))
+@pytest.mark.parametrize("race, unit_type", diagonal(list(Race), [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.KNIGHT]))
 def test_actual_melee_contact_displaces_the_drawn_victim(game, race, unit_type):
     """Compare the same target motion with/without damage, after the entire frame.
 
@@ -157,7 +157,7 @@ def first_hit(game, victim):
     raise AssertionError("The duel did not produce a damaging hit")
 
 
-@pytest.mark.parametrize("race, unit_type", diagonal(list(Race), [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT, UnitType.KNIGHT]))
+@pytest.mark.parametrize("race, unit_type", diagonal(list(Race), [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.KNIGHT]))
 def test_melee_loads_back_then_drives_forward_without_moving_its_ground_point(game, race, unit_type):
     """Anticipation and follow-through must carry visible weight at gameplay size.
 
@@ -182,7 +182,7 @@ def test_melee_loads_back_then_drives_forward_without_moving_its_ground_point(ga
     assert all(abs(offset) < attacker.radius * TILE for offset in wind + contact)
 
 
-@pytest.mark.parametrize("race, unit_type", diagonal(list(Race), [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT, UnitType.KNIGHT]))
+@pytest.mark.parametrize("race, unit_type", diagonal(list(Race), [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.KNIGHT]))
 def test_pause_freezes_the_visible_hit_reaction(game, race, unit_type):
     """F3 must freeze the combat body as well as the authoritative clock.
     Every race's art is the slow tier's; the fast tier draws one race per case."""
@@ -203,7 +203,7 @@ def test_pause_freezes_the_visible_hit_reaction(game, race, unit_type):
         assert world_marks(game) == trails
 
 
-@pytest.mark.parametrize("race, unit_type", diagonal(list(Race), [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT, UnitType.KNIGHT]))
+@pytest.mark.parametrize("race, unit_type", diagonal(list(Race), [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.KNIGHT]))
 def test_cancelled_windup_does_not_leave_a_cut_or_impact(game, race, unit_type):
     """Moving away cancels the load-up; no predicted contact may leak into a frame.
     Every race's art is the slow tier's; the fast tier draws one race per case."""
@@ -223,7 +223,7 @@ def test_cancelled_windup_does_not_leave_a_cut_or_impact(game, race, unit_type):
         assert sprite.x == scene.view.unit_position(attacker)[0] * TILE
 
 
-@pytest.mark.parametrize("race, unit_type", diagonal(list(Race), [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT, UnitType.KNIGHT]))
+@pytest.mark.parametrize("race, unit_type", diagonal(list(Race), [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.KNIGHT]))
 def test_a_released_miss_draws_the_cut_but_does_not_shove_the_target(game, race, unit_type):
     """A target outside reach can escape a committed swing; a trail is not a hit.
     Every race's art is the slow tier's; the fast tier draws one race per case."""
@@ -245,7 +245,7 @@ def test_a_released_miss_draws_the_cut_but_does_not_shove_the_target(game, race,
     assert cut_seen, "The committed miss must still release its swing"
 
 
-@pytest.mark.parametrize("race, unit_type", diagonal(list(Race), [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT, UnitType.KNIGHT]))
+@pytest.mark.parametrize("race, unit_type", diagonal(list(Race), [UnitType.FOOTMAN, UnitType.PEASANT, UnitType.KNIGHT]))
 def test_recoil_follows_a_new_move_and_finishes_at_the_current_ground_point(game, race, unit_type):
     """A hit cannot pin a new move to its old position or snap back on expiry.
     Every race's art is the slow tier's; the fast tier draws one race per case."""
@@ -263,7 +263,7 @@ def test_recoil_follows_a_new_move_and_finishes_at_the_current_ground_point(game
     assert sprite.rotation == 0.0
 
 
-@pytest.mark.parametrize("unit_type", [UnitType.PEASANT, UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT])
+@pytest.mark.parametrize("unit_type", [UnitType.PEASANT, UnitType.FOOTMAN, UnitType.KNIGHT])
 def test_changing_target_during_windup_cannot_hit_the_cancelled_target(game, unit_type):
     """A new focus-fire order must redirect both the attack and its visible contact."""
     scene, attacker, abandoned = duel(game, unit_type=unit_type)

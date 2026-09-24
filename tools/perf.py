@@ -109,7 +109,7 @@ def four_player_world():
     from warband.sim.rules import UnitType
     w = mapgen.generate(seed=3, width=80, height=64, players=4)
     w.reveal_all(0)
-    types = [UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT, UnitType.SCOUT, UnitType.CATAPULT, UnitType.CLERIC]
+    types = [UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT, UnitType.FLYING_MACHINE, UnitType.CATAPULT, UnitType.CLERIC]
     corners = [(24, 18), (44, 18), (24, 34), (44, 34)]
     for player, (cx, cy) in enumerate(corners):
         for i in range(75):
@@ -134,7 +134,7 @@ def crowd_world(seats: int = 16, each: int = 40):
     width, height = mapgen.dimensions(size, seats)
     w = mapgen.generate(seed=3, width=width, height=height, players=seats, layout=Layout.PLAINS)
     w.reveal_all(0)
-    types = [UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT, UnitType.SCOUT, UnitType.CATAPULT, UnitType.CLERIC]
+    types = [UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT, UnitType.FLYING_MACHINE, UnitType.CATAPULT, UnitType.CLERIC]
     middle = (width / 2, height / 2)
     for player, hall in enumerate(sorted((b for b in w.buildings.values() if b.type is BuildingType.TOWN_HALL and b.player is not None),
                                          key=lambda b: b.player)):

@@ -128,8 +128,8 @@ build_time = 45.0
 sight = 4
 supply = 0
 hotkey = "s"
-summary = "Trains scouts and knights; breeds faster horses"
-trains = ["scout", "knight"]
+summary = "Trains knights; breeds faster horses"
+trains = ["knight"]
 researches = ["horses", "plunder"]
 requires = "barracks"
 
@@ -144,8 +144,8 @@ build_time = 45.0
 sight = 4
 supply = 0
 hotkey = "w"
-summary = "Builds catapults; improves siege engines"
-trains = ["catapult"]
+summary = "Builds catapults and flying machines; improves siege engines"
+trains = ["catapult", "flying_machine"]
 researches = ["siege", "blasting_powder"]
 requires = "blacksmith"
 

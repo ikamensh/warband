@@ -30,8 +30,8 @@ its knobs that each commit to one way of playing — `warband/league/archetypes.
 | `turtle` | five towers, three guards, out at twelve only when clearly ahead |
 | `footmen` | the line alone, with a smith up early for the blades |
 | `archers` | four in five archers |
-| `knights` | stables first, two in three knights |
-| `raiders` | half scouts, four raiders on the enemy's peasants |
+| `knights` | stables first, three in four knights |
+| `raiders` | half knights, four of them riding at the enemy's peasants |
 | `siege` | smith and workshop first, a third catapults, out at eight |
 | `clerics` | a church first, a quarter healers |
 | `noresearch` | Master that never buys an upgrade, to price the research path |
@@ -91,7 +91,7 @@ entries or files. An explicit value always wins, including `0`, `1.0` and
 `false`. Omitted racial modifiers mean multiply by one, add zero, and retain
 the base formation setting. Base units may omit costs, heal, splash,
 min_range and regen (zero), attack (`"normal"`), armor_class (`"light"`),
-formation/mounted (`false`), and turn_deg (`360`). Other fields must appear
+formation/mounted/flying (`false`), living (`true`) and turn_deg (`360`). Other fields must appear
 in the entry or its defaults. Misspelled keys, wrong types and missing
 required fields fail startup validation, including invalid defaults that every
 entry overrides.
@@ -178,7 +178,9 @@ so an archer needs ninety shots. The archer loses per gold to everything
 but peasants; its range buys free shots during the approach, which the
 table cannot see, but nothing buys back a ten-to-one exchange. The rules
 table says archers and catapults wear knights down; the arithmetic says
-they do not.
+they do not.  (The scout rider in these tables went in WB-064; the flying
+machine that took its place as the side's eyes carries no weapon, so it has
+no row.)
 
 ## The first league (2026-09-16)
 
@@ -380,7 +382,9 @@ Recommended, with the evidence above:
    ladder.
 6. **Scouts**: ten a game, trading 0.67, most of them Master's rule that
    keeps one scout alive for eyes. A price is not the fix; a cheaper way to
-   see (a longer-sighted tower, a scout that flees) is.
+   see (a longer-sighted tower, a scout that flees) is. WB-064 took the
+   second road: the rider is gone, and the eyes are a flying machine that
+   sees nine tiles over the trees and that only shooters can reach.
 7. **Clerics**: not the price. At 30% off, the clerics posture moved from
    25% to 33% (inside the noise) and the brains bought exactly as many. A
    healer's worth cannot be read off kills; it needs its own measure
@@ -779,6 +783,37 @@ the siege posture at 34.7% — are three leagues and a dozen changes old
 On this branch, before anything here, the catapult already destroyed 1,417 per
 1,000 and traded 2.65. Read the dated sections downwards; the price experiments
 above are the record of what was tried in September, not the state of the game.
+
+
+## The flying machine replaces the scout rider (WB-064, 2026-09-24)
+
+The stables trains knights only, and the workshop trains an unarmed flying
+machine: the eyes, not a soldier (sight 9 over trees and walls, 400 gold, 100
+lumber; only shooters and towers reach it). The army plans lost their scout
+shares, renormalised onto the rest; the raids went to knights and, measured
+at a cost, off by default for the pro brain ([the ladder
+doc](ai-ladder.md#the-flying-machine-takes-the-riders-place-wb-064)).
+`tools/race_report.py --seeds 24`, 288 matches a run, on the same seeds either
+side of the change:
+
+| race | Master before | Master after | Medium before | Medium after |
+|------|--------------:|-------------:|--------------:|-------------:|
+| human | 74–67 (52.5%) | 61–64 (48.8%) | 75–69 (52.1%) | 73–66 (52.5%) |
+| orc | 50–81 (38.2%) | 47–82 (36.4%) | 58–83 (41.1%) | 49–89 (35.5%) |
+| elf | 68–70 (49.3%) | 63–61 (50.8%) | 73–68 (51.8%) | 76–63 (54.7%) |
+| dwarf | 80–54 (59.7%) | 81–45 (64.3%) | 79–65 (54.9%) | 80–60 (57.1%) |
+| undecided | 16 | 36 | 3 | 10 |
+
+No race moved by more than its noise (about four and a half points on 140
+decided games), but the orcs lost ground on both brains, most on Medium,
+whose orcs had the heaviest cavalry plan and now open their harass with two
+knights where they sent two cheap riders. The orcs were already the weak
+race (WB-045); this widens the gap rather than making it. More matches run
+to the twenty-minute cap, and the undecided ones look alike: the loser is
+down to one peasant somewhere off its old base, and no brain goes looking
+for it. The riders circling the enemy's base and the raiders waiting for
+prey used to stumble on such a peasant; nothing does now, and neither brain
+sweeps the map once it knows no enemy building.
 
 
 ## What to change next

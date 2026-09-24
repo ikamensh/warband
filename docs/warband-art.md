@@ -39,9 +39,13 @@ churches have a cross-topped spire and buttressed nave.
 
 Unit equipment remains readable across eight facings: workers have straw hats
 and aprons; footmen have plate shoulders and kite shields; archers have hoods,
-quivers and longbows. Scouts ride light horses under cloaks, knights ride
-armored horses with lances and plumes, catapults have spoked wheels and a
-throwing spoon, and clerics wear white robes with a mitre and sun staff.
+quivers and longbows. Knights ride armored horses with lances and plumes,
+catapults have spoked wheels and a throwing spoon, and clerics wear white robes
+with a mitre and sun staff. The flying machines hang in the air over their
+shadows, their rotors turning or wings beating in every frame: the humans' rotor
+contraption on a wooden hull, the goblins' zeppelin, the elves' leaf-winged glider
+and the dwarves' steam gyrocopter. They are drawn by the low-poly render alone
+(`textures.PROCEDURAL_UNITS`): no painted sheet was made for them.
 
 Workers lean back for the wind-up and bend into the strike through four
 chopping poses. Their head, torso, arms and axe move together around the
@@ -83,8 +87,8 @@ The lint checks every registered image without a window: empty or clipped
 frames, a visible chroma fringe, a painted frame whose figure drifted from
 the low-poly render it repaints (the game places the painting where the
 render stood), a pose reaching below the unit canvas' padding, a team
-recolour that changes almost nothing (the elven scout and the elven and
-dwarven workshops carry too little team hue to tell whose they are). It
+recolour that changes almost nothing (the elven and dwarven workshops
+carry too little team hue to tell whose they are). It
 writes a PNG of each flagged frame with the anchor row marked.
 
 The native verifier uses the same registered images and MapView as gameplay.

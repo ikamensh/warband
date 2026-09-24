@@ -194,9 +194,9 @@ ARMOUR_NOTES = {
     UnitType.PEASANT: "Unarmoured · normal blows",
     UnitType.FOOTMAN: "Heavy armour · normal blows",
     UnitType.ARCHER: "Light armour · piercing blows",
-    UnitType.SCOUT: "Light armour · normal blows",
     UnitType.KNIGHT: "Heavy armour · normal blows",
     UnitType.CATAPULT: "Unarmoured · siege blows",
+    UnitType.FLYING_MACHINE: "Unarmoured · unarmed · flies",
     UnitType.CLERIC: "Unarmoured · normal blows",
 }
 

@@ -3,7 +3,7 @@
     uv run python tools/verify_deaths.py docs/evidence/deaths/before
     WARBAND_ART=procedural uv run python tools/verify_deaths.py docs/evidence/deaths/before-procedural
 
-One victim per category (infantry, archer, mounted, siege) takes a killing blow from the west and
+One victim per category (infantry, archer, mounted, siege, flyer) takes a killing blow from the west and
 then from the east; frames every three display frames from the blow for 0.9 s, then lying and fading,
 tiled into one PNG per victim. A mass-casualty scene at normal zoom is captured at several seconds.
 The display must be awake (``caffeinate -u``). No real player data is read or written.
@@ -23,11 +23,12 @@ from PIL import Image  # noqa: E402
 from saga2d import Game, fonts  # noqa: E402
 from warband.art import textures  # noqa: E402
 from warband.sim.model import World  # noqa: E402
-from warband.sim.rules import BuildingType, Terrain, UnitType  # noqa: E402
+from warband.sim.rules import UNITS, BuildingType, Terrain, UnitType  # noqa: E402
 from warband.ui.scene import GameScene  # noqa: E402
 from warband.ui.style import build_theme  # noqa: E402
 
-VICTIMS = {"infantry": UnitType.FOOTMAN, "archer": UnitType.ARCHER, "mounted": UnitType.KNIGHT, "siege": UnitType.CATAPULT}
+VICTIMS = {"infantry": UnitType.FOOTMAN, "archer": UnitType.ARCHER, "mounted": UnitType.KNIGHT, "siege": UnitType.CATAPULT,
+           "flyer": UnitType.FLYING_MACHINE}
 CELL = (200, 150)  # logical pixels around the victim in every tile of the montage
 
 
@@ -75,7 +76,7 @@ class Capture:
         victim = world.spawn_unit(1, kind, (20.5, 12.5))
         victim.hp = 1
         ax = 19.2 if side == "west" else 21.8
-        attacker = world.spawn_unit(0, UnitType.KNIGHT, (ax, 12.5))
+        attacker = world.spawn_unit(0, UnitType.ARCHER if UNITS[kind].flying else UnitType.KNIGHT, (ax, 12.5))  # only a shot reaches a flyer
         scene = self.scene(world, (20.5, 12.5))
         world.attack([attacker.id], victim.id)
         for _ in range(60 * 4):

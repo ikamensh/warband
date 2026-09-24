@@ -65,7 +65,7 @@ def battle_world(seed: int = 3, width: int = 64, height: int = 48) -> World:
                 w.terrain[y][x] = Terrain.GRASS
                 w._blocked[y * w.width + x] = 0
     w.reveal_all(0)
-    types = [UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT, UnitType.SCOUT, UnitType.CATAPULT, UnitType.CLERIC]
+    types = [UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT, UnitType.FLYING_MACHINE, UnitType.CATAPULT, UnitType.CLERIC]
     for i in range(75):
         w.spawn_unit(0, types[i % 6], standing(w, (hx + 4 + i % 15, hy + 4 + i // 15)))
         w.spawn_unit(1, types[(i + 1) % 6], standing(w, (hx + 22 + i % 15, hy + 4 + i // 15)))

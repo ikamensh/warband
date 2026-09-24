@@ -26,7 +26,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from warband.league.arena import MatchResult
-from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, BuildingType, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, UNITS, BuildingType, UnitType, Upgrade
 
 
 def equilibrium(payoff: list[list[float]], rounds: int = 20_000, step: float = 2.0) -> list[float]:
@@ -193,7 +193,7 @@ def postures(results: Iterable[MatchResult]) -> list[Posture]:
     return sorted(table.values(), key=lambda p: -p.score)
 
 
-_SOLDIERS = frozenset(t.value for t in PLAYABLE_UNITS if t is not UnitType.PEASANT)
+_SOLDIERS = frozenset(t.value for t in PLAYABLE_UNITS if t is not UnitType.PEASANT and UNITS[t].damage)  # a flying machine carries no weapon
 
 
 def fielded(results: Iterable[MatchResult]) -> dict[str, Counter[str]]:

@@ -62,14 +62,17 @@ def _intruder(world: World, point: Point, radius: float) -> Unit | None:
 
     A peasant counts: a camp that ignored workers would let a player tunnel a mining route straight
     through it, and keeping gatherers out of one is exactly what the automatic policy's threat grid
-    already does (:func:`warband.sim.worker_ai.safe_navigation`).
+    already does (:func:`warband.sim.worker_ai.safe_navigation`).  A flyer does not: a camp guards the
+    ground, most of its guards could not strike one, and a flyer that roused it would pin the camp in a
+    fight and keep it from mending while an army walked in, or be the one intruder the guards all went
+    after while the army hacked at them.
     """
     best: Unit | None = None
     best_d = radius
     neutral = world.neutral
     px, py = point
     for unit in world.units_near(point, radius):
-        if unit.player == neutral or unit.hidden or unit.hp <= 0:
+        if unit.player == neutral or unit.hidden or unit.hp <= 0 or unit.flying:
             continue
         d = hypot(unit.x - px, unit.y - py)
         if d < best_d:

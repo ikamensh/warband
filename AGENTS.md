@@ -150,6 +150,12 @@ keeps where code goes and the rules below.
   supply, the league's tallies and the authority's seats. A seam's `gold` is
   zero and always was: ask `has_gold` (of the `Building`, or of the
   `KnownMine` a player remembers) what is worth mining.
+- A unit type with `flying = true` is in the air (`docs/unit-motion.md` part
+  10): never routed (`_plan` refuses it), no body on the ground (flyers keep
+  their room from each other alone), and whether a blow can land is
+  `World.can_strike`, the one answer orders, the model and the brains ask. The
+  flying machines are drawn by the render, not painted
+  (`textures.PROCEDURAL_UNITS`).
 - A shot's look is its striker's (`view.SHOT_LOOKS`), so a new look is no rules
   change. Every way out of an undecided rated match goes through `LeaveScene`.
   A `World.scripted` world never declares a winner or surrenders: the mission

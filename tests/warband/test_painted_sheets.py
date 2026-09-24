@@ -10,21 +10,15 @@ from warband.sim.rules import PLAYABLE_UNITS, Race, Resource, UnitType
 
 def subjects():
     """Every painted subject, listed without loading a sheet: each race's units (the peasant also with each load)
-    and its buildings in each look."""
+    but those drawn by their render alone (:data:`~warband.art.textures.PROCEDURAL_UNITS`), and its buildings in each look."""
     for race in Race:
         for unit in PLAYABLE_UNITS:
+            if unit in textures.PROCEDURAL_UNITS:
+                continue
             for carrying in ((None,) if unit is not UnitType.PEASANT else (None, Resource.GOLD, Resource.LUMBER)):
                 yield race, unit, carrying
         for look in ("intact", "active", "damaged"):
             yield race, look, None
-
-
-def test_the_orc_wolf_rider_has_no_lines_floating_above_it() -> None:
-    """The frame the WB-004 scout review caught: thin guide lines along the top of the walk frames."""
-    sheet, frames = textures.restyled_frames(Race.ORC, UnitType.SCOUT, None)
-    for facing in range(textures.FACINGS):
-        for frame in ("stand", *textures.WALK_FRAMES, *textures.ATTACK_FRAMES):
-            assert restyle.strays(frames[textures.unit_key(UnitType.SCOUT, 0, facing, frame, None, Race.ORC)]) == [], (facing, frame)
 
 
 @pytest.mark.slow

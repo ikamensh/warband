@@ -93,6 +93,6 @@ def test_early_tech_names_how_many_and_a_strict_plan_stops_the_barracks():
                                               army_plan={UnitType.FOOTMAN: 0.2, UnitType.KNIGHT: 0.8}),
                   minutes=9, opponent="easy", seed=12, layout=Layout.BASTION)
     assert tally.started["stables"] >= 2
-    soldiers = tally.trained["footman"] + tally.trained["knight"] + tally.trained["scout"]
+    soldiers = tally.trained["footman"] + tally.trained["knight"]
     assert tally.trained["knight"] >= 4
     assert tally.trained["footman"] <= 0.35 * soldiers + 2, dict(tally.trained)

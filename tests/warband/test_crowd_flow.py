@@ -27,13 +27,18 @@ from warband.sim.rules import MAX_UNIT_RADIUS, SIM_DT, UNITS, Difficulty, Terrai
 
 WIDTH, HEIGHT = 48, 32
 WALL = 20  # the choke's near face
-KINDS = (UnitType.PEASANT, UnitType.FOOTMAN, UnitType.ARCHER, UnitType.SCOUT, UnitType.KNIGHT, UnitType.CATAPULT, UnitType.CLERIC)
+#: What a group is drawn from: every unit a player trains.  The flyer took the scout rider's place in the list, so each
+#: seed draws the group it always drew with a flying machine for the rider: the walkers must go through as fast with
+#: one in their midst, and nothing of it holds them up.
+KINDS = (UnitType.PEASANT, UnitType.FOOTMAN, UnitType.ARCHER, UnitType.FLYING_MACHINE, UnitType.KNIGHT, UnitType.CATAPULT,
+         UnitType.CLERIC)
 
 
 class Core:
     """Watches every pair of bodies on the field, every step: a pair outside its core never comes inside it, and a
     pair that came onto the field inside it (spawned on one spot, a trained unit set down, a peasant out of a mine,
-    a builder stepping out of its site: every set-down happens while the unit is off the map) only draws apart."""
+    a builder stepping out of its site: every set-down happens while the unit is off the map) only draws apart.
+    A flyer has no body on the ground, and none of the core: it is left out of every pair."""
 
     def __init__(self) -> None:
         self.inside: dict[tuple[int, int], float] = {}
@@ -41,7 +46,7 @@ class Core:
         self.pairs = 0
 
     def look(self, world: World) -> None:
-        bodies = sorted((u for u in world.units.values() if not u.hidden), key=lambda u: u.x)
+        bodies = sorted((u for u in world.units.values() if not u.hidden and not u.flying), key=lambda u: u.x)
         reach = 2 * CORE * MAX_UNIT_RADIUS
         inside: dict[tuple[int, int], float] = {}
         for i, a in enumerate(bodies):
@@ -140,7 +145,7 @@ class Scenario:
         queue = sum(2 * u.radius for u in units) / pace  # the group filing past a point, bodies touching
         assert group <= max(solos) + 2 * queue, (
             f"the group took {group:.1f} s: its slowest member alone takes {max(solos):.1f} s, and filing past twice over {2 * queue:.1f} s")
-        assert core.pairs > 0
+        assert core.pairs > 0 or sum(not u.flying for u in units) < 2  # the watcher leaves flyers out: a flight has no pairs
 
 
 @pytest.mark.parametrize("seed", range(24))

@@ -92,7 +92,8 @@ def test_a_mixed_crowd_sent_to_one_point_settles_without_standing_inside_each_ot
     watch = Watch()
     play(world, 90.0, watch)
     assert not any(u.orders for u in crowd), [(u.type.value, u.pos) for u in crowd if u.orders]
-    worst = min((math.dist(a.pos, b.pos) - a.radius - b.radius for a in crowd for b in crowd if a.id < b.id), default=0.0)
+    worst = min((math.dist(a.pos, b.pos) - a.radius - b.radius for a in crowd for b in crowd if a.id < b.id and a.flying == b.flying),
+                default=0.0)  # a flyer overhead takes no room on the ground; flyers keep theirs from each other
     assert worst > -0.05, f"bodies overlap by {-worst:.2f} tiles at rest"
 
 
@@ -102,7 +103,7 @@ def test_a_crowd_packed_on_one_spot_pushes_itself_apart():
     world = field()
     crowd = [world.spawn_unit(0, unit_type, (20.0, 12.0)) for unit_type in UnitType for _ in range(3)]
     play(world, 30.0, Watch())
-    worst = min(math.dist(a.pos, b.pos) - a.radius - b.radius for a in crowd for b in crowd if a.id < b.id)
+    worst = min(math.dist(a.pos, b.pos) - a.radius - b.radius for a in crowd for b in crowd if a.id < b.id and a.flying == b.flying)
     assert worst > -0.05, f"still stacked: bodies overlap by {-worst:.2f} tiles"
 
 

@@ -103,7 +103,7 @@ def test_buildings_offer_the_race_units_and_only_its_own_arts(game) -> None:
     game.tick(1 / 60)
     scene.select([kennels.id])
     labels = [c.label for c in scene.card]
-    assert labels == ["Wolf Rider", "Ogre", "Plunder", "Cancel"]  # Horse Breeding is a Human art
+    assert labels == ["Ogre", "Plunder", "Cancel"]  # Horse Breeding is a Human art
     press(game, "h")
     assert kennels.research is Upgrade.PLUNDER
     game.tick(1 / 60)

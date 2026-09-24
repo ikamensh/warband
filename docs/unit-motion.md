@@ -95,7 +95,7 @@ prompt naming the frames and their purpose so the model keeps the poses distinct
 5. **Turning.** Done in the model instead (part 4): a unit pivots at its turn rate, so
    the sprite passes through the neighbouring facings on its way round.
 6. **Gaits.** One walk for every speed. A run cycle (longer stride, forward lean 12°, arms
-   pumping) for scouts and charging knights, and a trudge for laden peasants.
+   pumping) for charging knights, and a trudge for laden peasants.
 7. **Idle life.** A breathing bob and an occasional look-around every few seconds keep
    a standing army from looking like a screenshot.
 8. **Death per facing.** The fall is still the one sprite turned about its feet, but since
@@ -119,8 +119,8 @@ The rules now spend time on a blow, so the motion above has something real to sh
 the balance follows from it (`rules.py` has the table; `docs/evidence/combat-timing/`
 the frames this was checked on).
 
-**Turning.** `UnitInfo.turn` is a rate in radians per second (infantry 360°/s, scouts
-450°/s, knights 270°/s, catapults 150°/s). `World._turn_toward` pivots a unit toward a
+**Turning.** `UnitInfo.turn` is a rate in radians per second (infantry 360°/s,
+knights 270°/s, catapults 150°/s). `World._turn_toward` pivots a unit toward a
 point at that rate, whether it is walking a path or squaring up to a target; a blow
 starts only once the unit faces its target. A footman struck from behind spends half a
 second turning before it answers; a catapult wheels round in over a second.
@@ -269,7 +269,6 @@ holds out. Averaged over facings and races:
 | cleric   | 0.431 | 0.85 | 0.38 | 0.88 |
 | footman  | 0.488 | 1.01 | 0.42 | 0.86 |
 | archer   | 0.492 | 0.94 | 0.42 | 0.85 |
-| scout    | 0.565 | 1.05 | 0.48 | 0.85 |
 | knight   | 0.652 | 1.20 | 0.56 | 0.86 |
 | catapult | 0.733 | 1.14 | 0.62 | 0.85 |
 
@@ -277,7 +276,8 @@ The chosen radius is a flat ~0.86 of the drawn body: close to the figure, a litt
 so bodies nearly touch rather than interpenetrate. The races are drawn at noticeably
 different sizes (an orc footman's body measures 0.62, an elf's 0.36), but one role is one
 body: a per-race radius would be a race balance change, and the rulebook reads better with
-seven numbers than twenty-eight.
+seven numbers than twenty-eight.  The flying machine's 0.45 is no body on the ground: it is what
+a click on the machine drawn in the air picks, and the room flyers keep from each other.
 
 **What the body is.** The radius is what the crowd keeps clear (`World._separate`), what a
 reach is measured to (`World._gap` is edge to edge, so `MELEE` and a weapon's `range` are
@@ -472,3 +472,30 @@ mean 0.41 ms a step against 0.36; `_keep_clear` scans its buckets inline, as `_s
 list per call cost twice that. The nine arena matches of `tools/sim_bench.py` run at 0.072 ms a step against
 0.068, over matches that are no longer the same ones. `tools/sim_fingerprint.txt` and `tools/sim_bench.txt`
 moved with the rules change.
+
+## 10. Flight (WB-064, 2026-09-24)
+
+A unit type with `flying = true` in `units.toml` is in the air; the flying machine is the first. Everything
+below reads that one flag (`UnitInfo.flying`, copied onto `Unit.flying` because the crowd's loops ask it of
+every neighbour), so the next flyer is a row and its art.
+
+- **It is never routed.** `_approach` and `_steer` hand a flyer to `_fly_to`/`_fly_step`: straight at the
+  point over trees, water, rock and buildings, clamped to the map, with the same progress watchdog a walk
+  keeps, so a settling flight ends where the flyers already hovering there leave room (`stands_at` counts
+  only the unit's own layer). `_plan` refuses a flyer: no nav grid, no A*.
+- **It has no body on the ground.** `_keep_clear` neither holds it back nor holds anybody back for it, and
+  `_separate`, the ease step and `stands_at` count walkers against walkers and flyers against flyers, so
+  flyers keep their elbow room from each other alone. Placement, regrowth, siege spots, work routes, the
+  around-units plan and a marching line's pace pass it by; `test_crowd_flow.py`'s core watcher leaves it
+  out, and its drawn groups put a flyer where the scout rider used to be, so the walkers are held to going
+  through as fast with one in their midst.
+- **Only a shot reaches it.** `World.can_strike` is the one answer: anything armed strikes the ground; a flyer
+  only by a striker with `UnitInfo.strikes_air` (damage, a range of a tile or more, not siege: archers, the
+  cleric's bolt, spiders) or a tower. Auto-acquire, the hold, retaliation, towers and the brains ask
+  `_nearest_enemy(air=...)`; an attack order that none of the group can carry out is a `RuleError` the HUD
+  shows, and a mixed group sends its shooters and walks the rest along. Stones and their splash come down
+  beneath it.
+- **It is drawn above everything.** The view lifts it `view.FLIGHT` over its ground point on the `EFFECTS`
+  layer, bobbing, its rotor or wings always turning, with a shadow and the selection ring on the ground
+  below; the pointer and a dragged box take the body drawn in the air (`MapView.body_point`). A shot climbs
+  to it, and a kill drops it out of the air ("crash").

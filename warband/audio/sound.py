@@ -42,8 +42,7 @@ IMPACTS = frozenset(f"{weapon}_{material}" for weapon in (*combat_sound.WEAPONS,
 #: row here ends the match on its first blow in view.  The model flies the cleric's weak blow as an arrow; it is
 #: seen (``view.SHOT_LOOKS``) and heard as a mote of light.
 _WEAPONS = {
-    UnitType.PEASANT.value: "axe", UnitType.FOOTMAN.value: "sword",
-    UnitType.SCOUT.value: "spear", UnitType.KNIGHT.value: "lance",
+    UnitType.PEASANT.value: "axe", UnitType.FOOTMAN.value: "sword", UnitType.KNIGHT.value: "lance",
     UnitType.ARCHER.value: "arrow", UnitType.CATAPULT.value: "stone",
     UnitType.CLERIC.value: MOTE, BuildingType.TOWER.value: "arrow",
     # The wilds, out of the same families: claws and fangs tear as an axe does, a golem's fists land as a
@@ -65,7 +64,7 @@ def impact_sound(event: Event, race: Race = Race.HUMAN) -> str:
         return "impact"  # an explicitly identified older multiplayer event schema
     if event.target_type in {building.value for building in wreckage.BUILDING_MATERIALS}:
         material = wreckage.material(BuildingType(event.target_type), event.target_complete)
-    elif UnitType(event.target_type) is UnitType.CATAPULT:
+    elif UnitType(event.target_type) in (UnitType.CATAPULT, UnitType.FLYING_MACHINE):  # the machines are timber
         material = "wood"
     else:
         material = "armor" if event.target_armor > 0 else "flesh"

@@ -63,20 +63,21 @@ def test_units_path_around_trees_and_never_stand_in_them() -> None:
 
 
 def test_a_unit_at_a_building_corner_still_reaches_a_target_around_it() -> None:
-    # Fuzz seed 203: the scout stood just below a lumber mill's corner with the peasant just left of
-    # it; the straight line looked clear when sampled, but every step entered the mill's tile.
+    # Fuzz seed 203: the scout rider stood just below a lumber mill's corner with the peasant just left of
+    # it; the straight line looked clear when sampled, but every step entered the mill's tile.  The rider is
+    # gone (WB-064); a knight, the rider that is left, stands where it stood.
     world = flat_world()
     world.place_building(0, BuildingType.LUMBER_MILL, (4, 4))  # tiles 4..6 x 4..6
     peasant = world.spawn_unit(0, UnitType.PEASANT, (3.239, 5.354))
-    scout = world.spawn_unit(1, UnitType.SCOUT, (4.105, 7.123))
-    world.attack([scout.id], peasant.id)
+    rider = world.spawn_unit(1, UnitType.KNIGHT, (4.105, 7.123))
+    world.attack([rider.id], peasant.id)
     for _ in range(int(10 / SIM_DT)):
         world.step()
-        assert world.passable(*scout.tile), scout.pos
+        assert world.passable(*rider.tile), rider.pos
         if peasant.hp < UNITS[UnitType.PEASANT].hp:
             break
     else:
-        raise AssertionError(f"the scout never reached the peasant, standing at {scout.pos}")
+        raise AssertionError(f"the rider never reached the peasant, standing at {rider.pos}")
 
 
 def test_a_walk_ends_when_a_crowd_keeps_the_unit_from_the_exact_spot() -> None:

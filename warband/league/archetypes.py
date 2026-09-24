@@ -21,8 +21,7 @@ from dataclasses import replace
 from warband.brains.pro_ai import PRO, ProProfile
 from warband.sim.rules import BuildingType, UnitType
 
-F, A, S, K, C, L = (UnitType.FOOTMAN, UnitType.ARCHER, UnitType.SCOUT, UnitType.KNIGHT, UnitType.CATAPULT,
-                    UnitType.CLERIC)
+F, A, K, C, L = UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT, UnitType.CATAPULT, UnitType.CLERIC
 
 ARCHETYPES: tuple[ProProfile, ...] = (
     PRO,
@@ -37,9 +36,9 @@ ARCHETYPES: tuple[ProProfile, ...] = (
     # Composition: one branch of the tree, held to strictly, with enough producers of it to field the plan.
     replace(PRO, name="footmen", army_plan={F: 1.0}, strict_plan=True, early_tech=(BuildingType.BLACKSMITH,)),
     replace(PRO, name="archers", army_plan={F: 0.2, A: 0.8}, strict_plan=True, counter_from=1.1),
-    replace(PRO, name="knights", army_plan={F: 0.25, S: 0.1, K: 0.65}, strict_plan=True, barracks_per_hall=1,
+    replace(PRO, name="knights", army_plan={F: 0.25, K: 0.75}, strict_plan=True, barracks_per_hall=1,
             early_tech=(BuildingType.STABLES,) * 3),
-    replace(PRO, name="raiders", army_plan={F: 0.3, A: 0.2, S: 0.5}, strict_plan=True, raiders=4, scout_from=30.0,
+    replace(PRO, name="raiders", army_plan={F: 0.3, A: 0.2, K: 0.5}, strict_plan=True, raid=True, raiders=4, scout_from=30.0,
             early_tech=(BuildingType.STABLES,) * 2),
     # Siege dies at six minutes if it walks out at eight: it holds behind towers until the stones are ready.
     replace(PRO, name="siege", army_plan={F: 0.4, A: 0.25, C: 0.35}, strict_plan=True, min_army=12, attack_ratio=1.2,

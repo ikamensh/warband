@@ -144,7 +144,7 @@ def test_hollowmere_raids_come_once_the_village_stands_and_the_third_wave_broken
     assert "raid_2" in run.fired and len(world.player_units(1)) == 6 and not run.won
     slay(world, 1)
     run_for(run, 96)
-    assert "raid_3" in run.fired and len(world.player_units(1)) == 8
+    assert "raid_3" in run.fired and len(world.player_units(1)) == 7
     slay(world, 1)
     run_for(run, 1)
     assert run.state["hold"] == "done" and run.won and run.lost is None

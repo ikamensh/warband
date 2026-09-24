@@ -4,7 +4,9 @@ Layers: ground chunks on ``BACKGROUND``; selection rings, rally lines and the
 ghosts of planned buildings on ``OBJECTS``; trees, rocks, mines, buildings and
 units on ``UNITS``, y-sorted by the line they stand on (a unit's feet, a building's front edge: the
 placement's *ground* tells the sprite how far its padded canvas continues
-below that line); shots in flight, their trails and particles on ``EFFECTS`` under the fog
+below that line); flyers, lifted :data:`FLIGHT` above their ground point with
+their shadows and rings on the ground beneath them, and shots in flight, their
+trails and particles on ``EFFECTS``, over everything that stands, under the fog
 sprite, which is one image with a pixel per tile stretched over the whole
 map (bilinear filtering makes the soft edges for free) and is redrawn with
 ``update_image`` whenever the model recomputes vision; health bars and the
@@ -175,6 +177,11 @@ SHOT_SIZE = {"arrow": (22, 6), "stone": (14, 14), "mote": (20, 20), "venom": (16
 STAFF_REACH = 0.4  # tiles before a healer that the head of its staff is held, where its mote is first seen
 RING_FLATTEN = 0.62  # a circle on the ground seen from the game's elevation is this much shorter than it is wide
 PICK_SLACK = 0.35  # tiles beyond a unit's body a click still picks it: the figure stands above the ground point it is clicked at
+FLIGHT = 1.15  # tiles above its ground point a flyer is drawn: over the trees and the roofs, its shadow on the ground below
+BOB = 2.5  # world pixels a hovering flyer rises and sinks about that height…
+BOB_RATE = 2.2  # …at this many radians a second
+SPIN_RATE = 14.0  # walk frames a second a flyer shows, moving or hovering: its rotor turns and its wings beat all the time
+SHADOW_COLOR = (0, 0, 0, 78)
 TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1, "venom": 0.14}  # seconds of flight a shot leaves hanging in the air behind it
 TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150), "venom": (198, 132, 226)}
 TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5), "venom": (2.6, 0.5)}  # at the shot and where the trail ends
@@ -194,7 +201,10 @@ ABANDONED_MINIMAP = (150, 150, 150)
 def unit_frame(u: Unit, travel: float, time: float) -> str:
     """Which of the unit's frames shows now.  Walking is driven by distance travelled, a blow by the
     model's own clocks: the wind-up while the model has the weapon drawn back, then the strike,
-    follow-through and recovery trailing the blow it just landed, read off the cooldown."""
+    follow-through and recovery trailing the blow it just landed, read off the cooldown.  A flyer's
+    rotor or wings never stop: its walk frames run on the clock, hovering or not."""
+    if u.flying:
+        return textures.WALK_FRAMES[int(time * SPIN_RATE + u.id) % len(textures.WALK_FRAMES)]
     if u.state == "move":
         return textures.WALK_FRAMES[int(travel / STRIDE) % len(textures.WALK_FRAMES)]
     if u.state == "attack":
@@ -219,13 +229,18 @@ def unit_frame(u: Unit, travel: float, time: float) -> str:
     return "stand"
 
 
+def flight_lift(u: Unit, time: float) -> float:
+    """How far above its ground point *u* is drawn, in world pixels: a flyer's height and its bob; nothing for a walker."""
+    return FLIGHT * TILE + BOB * math.sin(time * BOB_RATE + u.id * 1.7) if u.flying else 0.0
+
+
 def _melee_lunge(u: Unit, fraction: float) -> float:
     """Melee bodies load slowly, drive quickly, then settle to their ground point.
 
     These are pixels of presentation, never additional reach or model movement.
     The existing wind-up/cooldown clocks keep the weight shift tied to the blow.
     """
-    if u.type not in (UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT, UnitType.KNIGHT) or u.state != "attack":
+    if u.type not in (UnitType.FOOTMAN, UnitType.PEASANT, UnitType.KNIGHT) or u.state != "attack":
         return 0.0
     load, drive = (4.0, 6.0) if u.type is UnitType.KNIGHT else (3.0, 5.0)
     if u.windup > 0.0:
@@ -256,11 +271,13 @@ def projectile_point(p: Projectile, world: World, now: float) -> tuple[float, fl
     span = dist(p.start, mark)
     if p.kind == "stone":
         return x, y, 0.55 + 4 * (0.5 + 0.14 * span) * t * (1 - t)
+    target = world.units.get(p.target) if p.target is not None else None
+    end = 0.45 + (FLIGHT if target is not None and target.flying else 0.0)  # a shot at a flyer climbs to it
     if shot_look(p) in ("mote", "venom"):
         ahead = STAFF_REACH * (1 - t) / span if span > STAFF_REACH else 0.0  # the drawn start only: the blow is the model's
-        return x + (mark[0] - p.start[0]) * ahead, y + (mark[1] - p.start[1]) * ahead, 1.0 + (0.45 - 1.0) * t
+        return x + (mark[0] - p.start[0]) * ahead, y + (mark[1] - p.start[1]) * ahead, 1.0 + (end - 1.0) * t
     lift = 1.7 if p.source_type == BuildingType.TOWER.value else 0.55  # loosed from the battlements, or from the shoulder
-    return x, y, lift + (0.45 - lift) * t + 0.35 * math.sin(math.pi * t) * min(1.0, span / 4)
+    return x, y, lift + (end - lift) * t + 0.35 * math.sin(math.pi * t) * min(1.0, span / 4)
 
 
 @dataclass
@@ -409,11 +426,11 @@ class MapView:
                     size=(image.width / self.scale, image.height / self.scale), anchor=SpriteAnchor.TOP_LEFT,
                     layer=RenderLayer.UI_WORLD)))
 
-    def _prop(self, key: str, point: tuple[float, float], **kwargs) -> Sprite:
+    def _prop(self, key: str, point: tuple[float, float], *, layer: RenderLayer = RenderLayer.UNITS, **kwargs) -> Sprite:
         placement = textures.placements[key]
         wx, wy = to_world(point)
         return self.scene.add_sprite(Sprite(key, position=(wx, wy + placement.drop), size=placement.size, anchor=SpriteAnchor.BOTTOM_CENTER,
-                                            layer=RenderLayer.UNITS, y_sort=True, ground=placement.ground, **kwargs))
+                                            layer=layer, y_sort=True, ground=placement.ground, **kwargs))
 
     def _tree(self, pos: Pos) -> Sprite:
         x, y = pos
@@ -557,14 +574,24 @@ class MapView:
         direction = (dx / distance, dy / distance) if distance else (0.0, 0.0)
         self._recoil[unit.id] = _Recoil(self.time, direction)
 
+    def body_point(self, unit: Unit) -> tuple[float, float]:
+        """Where *unit* is drawn, in tiles: its presented ground point, or for a flyer the middle of the body drawn in the
+        air above it.  What a click and a dragged box pick a unit by: what the player sees, not the shadow."""
+        x, y = self.unit_position(unit)
+        if not unit.flying:
+            return x, y
+        key = self._unit_keys.get(unit.id)
+        head = textures.placements[key].head if key is not None else TILE
+        return x, y - (flight_lift(unit, self.time) + head / 2) / TILE
+
     def entity_at(self, point: tuple[float, float]) -> Entity | None:
-        """Pick what is actually shown, including the interpolated unit bodies."""
+        """Pick what is actually shown, including the interpolated unit bodies and the flyers' bodies in the air."""
         nearest, distance = None, math.inf
         for unit in self.world.units.values():
             sprite = self._units.get(unit.id)
             if unit.hidden or sprite is None or not sprite.visible:
                 continue
-            gap = math.dist(point, self.unit_position(unit)) - unit.radius
+            gap = math.dist(point, self.body_point(unit)) - unit.radius
             if gap <= PICK_SLACK and gap < distance:
                 nearest, distance = unit, gap
         if nearest is not None:
@@ -574,7 +601,7 @@ class MapView:
         return building if building is not None and building.id in self._sightings else None  # one never seen is not there to pick
 
     def units_in_rect(self, a: tuple[float, float], b: tuple[float, float], *, player: int) -> list[Unit]:
-        """Visible owned units whose presented ground points lie inside a box."""
+        """Visible owned units whose drawn bodies lie inside a box (:meth:`body_point`)."""
         left, right = sorted((a[0], b[0]))
         top, bottom = sorted((a[1], b[1]))
         result = []
@@ -582,7 +609,7 @@ class MapView:
             sprite = self._units.get(unit.id)
             if unit.hidden or sprite is None or not sprite.visible:
                 continue
-            x, y = self.unit_position(unit)
+            x, y = self.body_point(unit)
             if left <= x <= right and top <= y <= bottom:
                 result.append(unit)
         return result
@@ -745,7 +772,7 @@ class MapView:
             key = (monsters.monster_image(self.game, Monster(u.type.value), facing, frame, world.theme) if u.type in CREATURE_SET
                    else textures.unit_image(self.game, u.type, u.player, facing, frame, carrying, race=u.race))
             if sprite is None:
-                sprite = self._units[u.id] = self._prop(key, position)
+                sprite = self._units[u.id] = self._prop(key, position, layer=RenderLayer.EFFECTS if u.flying else RenderLayer.UNITS)
                 self._unit_keys[u.id] = key
             else:
                 if self._unit_keys[u.id] != key:
@@ -754,7 +781,7 @@ class MapView:
                     sprite.ground = textures.placements[key].ground
                     self._unit_keys[u.id] = key
             wx, wy = to_world(position)
-            wy += textures.placements[key].drop
+            wy += textures.placements[key].drop - flight_lift(u, self.time)
             lunge = _melee_lunge(u, self._fraction)
             if lunge:
                 wx += math.cos(u.facing) * lunge
@@ -1014,6 +1041,7 @@ class MapView:
         self._draw_wood_chips()
         self._draw_projectiles()
         self._draw_melee_trails()
+        self._draw_shadows()
         for eid in overlay.selected + ([overlay.hovered] if overlay.hovered is not None and overlay.hovered not in overlay.selected else []):
             entity = world.units.get(eid) or self._sightings.get(eid)  # a building where the player knows it to stand
             if entity is None:
@@ -1023,9 +1051,11 @@ class MapView:
                 if entity.hidden:
                     continue
                 wx, wy = to_world(self.unit_position(entity))
-                # The ring is the body: what the click picks and what the crowd keeps clear (rules.UnitInfo.radius).
+                # The ring is the body: what the click picks and what the crowd keeps clear (rules.UnitInfo.radius).  A
+                # flyer's is round its shadow, over the trees and roofs the shadow falls on, as the flyer is.
                 self._ring(wx, wy + 2, TILE * entity.radius, TILE * entity.radius * RING_FLATTEN,
-                           color if eid in overlay.selected else rgba(color[:3], 120))
+                           color if eid in overlay.selected else rgba(color[:3], 120),
+                           layer=RenderLayer.EFFECTS if entity.flying else RenderLayer.OBJECTS)
             else:
                 x, y, w, h = entity.rect
                 left, top = x * TILE, y * TILE
@@ -1063,6 +1093,18 @@ class MapView:
         w, h = placement.size
         self.scene.draw_image(key, cx - w / 2, cy + placement.drop - h, w, h, opacity=opacity, space="world", layer=layer)
 
+    def _draw_shadows(self) -> None:
+        """The shadow each flyer in view casts on the ground beneath it, a little smaller as it bobs up: on the trees
+        and roofs it passes over too, so it is drawn with the flyers rather than on the ground layer."""
+        for u in self.world.units.values():
+            sprite = self._units.get(u.id)
+            if not u.flying or sprite is None or not sprite.visible:
+                continue
+            wx, wy = to_world(self.unit_position(u))
+            rx = TILE * u.radius * (1.1 - 0.02 * (flight_lift(u, self.time) - FLIGHT * TILE))
+            self.scene.draw_polygon([(wx + rx * math.cos(2 * math.pi * i / 12), wy + 2 + rx * RING_FLATTEN * math.sin(2 * math.pi * i / 12))
+                                     for i in range(12)], SHADOW_COLOR, space="world", layer=RenderLayer.EFFECTS)
+
     def _draw_wood_chips(self) -> None:
         """A short burst at axe contact, driven by the same harvest clock as the pose."""
         for u in self.world.units.values():
@@ -1086,7 +1128,7 @@ class MapView:
     def _draw_melee_trails(self) -> None:
         """A brief afterimage of the released cut; damage still owns impact feedback."""
         for u in self.world.units.values():
-            if u.type not in (UnitType.FOOTMAN, UnitType.PEASANT, UnitType.SCOUT, UnitType.KNIGHT) or u.state != "attack" or u.windup > 0 or u.cooldown <= 0:
+            if u.type not in (UnitType.FOOTMAN, UnitType.PEASANT, UnitType.KNIGHT) or u.state != "attack" or u.windup > 0 or u.cooldown <= 0:
                 continue
             age = u.info.cooldown - u.cooldown + self._fraction * SIM_DT
             if not 0 <= age < 0.09:

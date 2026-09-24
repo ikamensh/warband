@@ -20,8 +20,8 @@ model, the same way every unit and building in the game is painted — see
 
 The first roster was a wolf, a bear and an ogre — and all three were already in the game.
 `warband/sim/races.py`: the **orc knight is an Ogre** ("Two-headed brute; thin armour, all
-frenzy"), the **orc scout is a Wolf Rider**, the **dwarf knight is a Bear Rider** on a war bear,
-and the elves and dwarves ride stags and rams besides.  A neutral creature is never
+frenzy"), the **orc scout was a Wolf Rider** (the scouts are gone since WB-064), the **dwarf
+knight is a Bear Rider** on a war bear, and the elves and dwarves rode stags and rams besides.  A neutral creature is never
 team-recoloured, so at 32 px the only thing separating "neutral bear" from "dwarf Bear Rider" is
 a rider and a team panel — a few pixels either way.  The roster was changed to three shapes
 nobody else owns, and `parade-1x.png` now stands each creature next to the unit it must not be

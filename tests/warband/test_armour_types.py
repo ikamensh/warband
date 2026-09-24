@@ -102,7 +102,7 @@ def test_the_table_covers_every_unit_of_every_race_and_most_pairings_are_even() 
             assert info.attack is UNITS[unit_type].attack and info.armor_class is UNITS[unit_type].armor_class
     assert UNITS[UnitType.ARCHER].attack is AttackType.PIERCING and UNITS[UnitType.CATAPULT].attack is AttackType.SIEGE
     assert {t for t in PLAYABLE_UNITS if UNITS[t].armor_class is ArmorClass.UNARMORED} == {
-        UnitType.PEASANT, UnitType.CLERIC, UnitType.CATAPULT}
+        UnitType.PEASANT, UnitType.CLERIC, UnitType.CATAPULT, UnitType.FLYING_MACHINE}
     uneven = {pair: factor for pair, factor in DAMAGE_FACTORS.items() if factor != 1.0}
     assert uneven == {(AttackType.PIERCING, ArmorClass.UNARMORED): 1.5, (AttackType.SIEGE, ArmorClass.FORTIFIED): 1.5}
     assert all(damage_factor(attack, armor) == DAMAGE_FACTORS.get((attack, armor), 1.0) for attack in AttackType for armor in ArmorClass)

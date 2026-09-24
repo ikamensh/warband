@@ -73,17 +73,18 @@ def test_the_whole_camp_answers_one_intruder() -> None:
     world = flat_world()
     camp = a_camp(world, roster=(UnitType.WOLF,) * 4)
     lair = world.buildings[camp.lair]
-    scout = world.spawn_unit(0, UnitType.SCOUT, (lair.center[0], lair.center[1] - CAMP_WATCH + 1.0))
+    rider = world.spawn_unit(0, UnitType.KNIGHT, (lair.center[0], lair.center[1] - CAMP_WATCH + 1.0))
     run(world, 0.5)
     fighting = [world.units[uid] for uid in camp.guards if uid in world.units]
-    assert fighting and all(isinstance(g.order, Attack) and g.order.target == scout.id for g in fighting)
+    assert fighting and all(isinstance(g.order, Attack) and g.order.target == rider.id for g in fighting)
 
 
 def test_a_guard_kited_past_the_camps_hold_walks_back_to_its_post() -> None:
     world = flat_world(width=60, height=40)
     camp = a_camp(world, at=(20, 18), roster=(UnitType.WOLF,))
     lair = world.buildings[camp.lair]
-    bait = world.spawn_unit(0, UnitType.SCOUT, (lair.center[0] + 4.0, lair.center[1]))
+    bait = world.spawn_unit(0, UnitType.PEASANT, (lair.center[0] + 4.0, lair.center[1]))
+    world.hold([bait.id])  # a worker on hold strikes nothing back: the guard lives to be called home
     run(world, 0.5)
     guard = world.units[camp.guards[0]]
     assert isinstance(guard.order, Attack)
@@ -269,7 +270,7 @@ def test_a_lone_guard_cannot_be_pulled_out_of_its_camp() -> None:
     world = flat_world(width=60, height=40)
     camp = a_camp(world, at=(20, 18), roster=(UnitType.WOLF,) * 4)
     lair = world.buildings[camp.lair]
-    bait = world.spawn_unit(0, UnitType.SCOUT, (lair.center[0], lair.center[1] - (CAMP_WATCH + 2.0)))
+    bait = world.spawn_unit(0, UnitType.KNIGHT, (lair.center[0], lair.center[1] - (CAMP_WATCH + 2.0)))
     world.hold([bait.id])
     run(world, 3.0)
     assert all(u.order is None or isinstance(u.order, Move) for u in camps.guards(world, camp))
@@ -305,8 +306,9 @@ def test_a_creatures_card_names_it_and_says_what_it_wears(tmp_path) -> None:
         game.push(scene)
         world = scene.world
         camp = camps.place(world, (5, 5), [UnitType.TROLL, UnitType.GOLEM, UnitType.SPIDER, UnitType.WOLF], 900)
-        # A scout of the player's stands in the camp: a creature in fog is dropped from the selection.
-        world.spawn_unit(0, UnitType.SCOUT, (6.5, 6.5))
+        # A flying machine of the player's hovers over the camp, which does not rouse for it: a creature in fog is
+        # dropped from the selection.
+        world.spawn_unit(0, UnitType.FLYING_MACHINE, (6.5, 6.5))
         world.update_vision()
         drawn = {UnitType.TROLL: "Unarmoured · normal blows", UnitType.GOLEM: "Heavy armour · normal blows",
                  UnitType.SPIDER: "Light armour · normal blows", UnitType.WOLF: "Light armour · normal blows"}

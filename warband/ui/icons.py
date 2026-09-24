@@ -24,6 +24,7 @@ Color = tuple[int, int, int, int]
 COLORS: dict[str, Color] = {
     "gold": (255, 214, 110, 255), "lumber": (206, 162, 105, 255), "supply": (232, 215, 161, 255), "health": (130, 225, 155, 255),
     "damage": (237, 205, 164, 255), "armor": (159, 192, 221, 255), "range": (210, 185, 228, 255), "speed": (221, 201, 155, 255),
+    "sight": (168, 222, 236, 255),
 }
 
 
@@ -58,6 +59,9 @@ def _parts(name: str, color: Color | None = None) -> list[tuple[list[tuple[float
                 ([(.10, .26), (.35, .26), (.33, .33), (.06, .33)], light),
                 ([(.06, .43), (.30, .43), (.28, .50), (.02, .50)], light),
                 ([(.34, .82), (.79, .94), (.9, .86), (.9, .97), (.31, .88)], dark)]
+    if name == "sight":  # an eye: an almond, its iris and pupil
+        return [([(.04, .5), (.2, .3), (.5, .2), (.8, .3), (.96, .5), (.8, .7), (.5, .8), (.2, .7)], color),
+                (disc(.5, .5, .2), dark), (disc(.5, .5, .08), (20, 24, 30, 255)), (disc(.44, .43, .05), light)]
     if name == "supply":
         return [(disc(.5, .24, .17), light), ([(.32, .46), (.68, .46), (.79, .94), (.21, .94)], color),
                 (disc(.14, .46, .1), dark), (disc(.86, .46, .1), dark)]

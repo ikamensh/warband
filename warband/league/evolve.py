@@ -80,8 +80,7 @@ class Gene:
         return self.clip(value + step)
 
 
-_PLAN_TYPES: tuple[UnitType, ...] = (UnitType.FOOTMAN, UnitType.ARCHER, UnitType.SCOUT, UnitType.KNIGHT,
-                                     UnitType.CATAPULT, UnitType.CLERIC)
+_PLAN_TYPES: tuple[UnitType, ...] = (UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT, UnitType.CATAPULT, UnitType.CLERIC)
 _TECH_TYPES: tuple[tuple[BuildingType, int], ...] = ((BuildingType.BARRACKS, 4), (BuildingType.BLACKSMITH, 1), (BuildingType.STABLES, 3),
                                                      (BuildingType.WORKSHOP, 2), (BuildingType.CHURCH, 2))
 #: What a slot of an opening may hold, by its code; 0 leaves the slot empty.

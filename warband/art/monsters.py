@@ -18,13 +18,11 @@ sheet that no longer holds every frame warns and is ignored, and
 ``WARBAND_ART=procedural`` keeps the renders.
 
 Each of them is a shape no unit in the game already owns, which is a harder bar
-than it sounds: ``warband/sim/races.py`` makes the orc knight an **Ogre**, the
-orc scout a **Wolf Rider** and the dwarf knight a **Bear Rider** on a war bear,
-and a neutral creature has no team colour to tell it from a mounted enemy at
-32 px.  The wolf is exactly that collision — it is the orc scout's mount without
-its rider — and it was parked for it until the painting settled the question:
-the orc rides a *grey* wolf, this one is painted russet, and at 32 px on the
-parade the two are not the same animal.
+than it sounds: ``warband/sim/races.py`` makes the orc knight an **Ogre** and the
+dwarf knight a **Bear Rider** on a war bear, and a neutral creature has no team
+colour to tell it from a mounted enemy at 32 px.  The wolf was exactly that
+collision while the orcs had a wolf rider (the scout, gone since WB-064), and was
+painted russet against the rider's grey: the coat stays.
 
 Each creature declares a :class:`Creature` rig, which says how the shared pose
 is carried:
@@ -91,7 +89,7 @@ class Monster(IdentityEnum):
 
 #: A cold, mossy blue-green hide with a pale belly and near-black limbs.  Nothing here may be
 #: mistaken for a team (Azure, Crimson, Viridian, Amber) — nor for the orcs' warm yellow-green
-#: (98, 142, 76), because the orc knight is already an ogre and the orc scout already rides a wolf.
+#: (98, 142, 76), because the orc knight is already an ogre.
 TROLL_HIDE = (76, 111, 109)
 TROLL_BELLY = (157, 179, 163)
 TROLL_LIMBS = (42, 65, 66)

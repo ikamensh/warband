@@ -59,23 +59,6 @@ radius = 0.42
 windup = 0.35
 attack = "piercing"
 
-[scout]
-name = "Scout"
-gold = 350
-hp = 35
-damage = 4
-cooldown = 0.8
-speed = 4.2
-sight = 8
-build_time = 10.0
-trained_at = "stables"
-hotkey = "s"
-summary = "Fast rider who sees far; raids peasants and archers"
-radius = 0.48
-windup = 0.25
-turn_deg = 450
-mounted = true
-
 [knight]
 name = "Knight"
 gold = 900
@@ -115,6 +98,25 @@ turn_deg = 150
 min_range = 2.0
 attack = "siege"
 armor_class = "unarmoured"
+
+[flying_machine]
+name = "Flying Machine"
+gold = 400
+lumber = 100
+hp = 60
+damage = 0 # unarmed: the side's eyes, never a bomb melee could not answer (BACKLOG WB-064)
+armor = 2
+speed = 4.6
+sight = 9
+build_time = 18.0
+trained_at = "workshop"
+hotkey = "m" # M for machine; F is the footman's in the catalogue
+summary = "Flies over anything and sees far; unarmed, and only shooters and towers can hit it"
+radius = 0.45 # its body among flyers, and what a click picks; it takes no room on the ground
+windup = 0.0
+armor_class = "unarmoured"
+living = false # a machine: no healer mends it
+flying = true # straight over trees, water, rock and buildings; out of melee's and a stone's reach
 
 [cleric]
 name = "Cleric"

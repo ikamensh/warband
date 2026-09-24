@@ -344,10 +344,10 @@ def test_a_client_sees_the_rivals_hall_when_it_looks_remembers_it_after_and_keep
     play(game, match)
     hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0]
     assert hall.id not in scene.world.buildings and scene.view.building_sprite(hall.id) is None
-    scout = world.spawn_unit(0, UnitType.SCOUT, tile_center((hall.x - 2, hall.y + 1)))
+    eyes = world.spawn_unit(0, UnitType.FLYING_MACHINE, tile_center((hall.x - 2, hall.y + 1)))
     play(game, match)
-    assert hall.id in scene.world.buildings and scene.view.building_sprite(hall.id) is not None, "the scout sees nothing"
-    scout.hp = 0
+    assert hall.id in scene.world.buildings and scene.view.building_sprite(hall.id) is not None, "the flyer sees nothing"
+    eyes.hp = 0
     play(game, match)
     assert hall.id not in scene.world.buildings, "the hall is still sent with nobody of seat 0 looking"
     assert scene.view.building_sprite(hall.id) is not None, "the client forgot the hall it saw"

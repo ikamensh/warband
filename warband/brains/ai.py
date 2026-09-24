@@ -82,21 +82,48 @@ def with_prerequisites(researched: set[Upgrade], upgrade: Upgrade) -> list[Upgra
     return wanted
 
 #: Target shares of the army by skeleton type: FOOTMAN line, ARCHER ranged,
-#: SCOUT raider, KNIGHT shock, CATAPULT siege, CLERIC healer.  Shares of types
-#: the difficulty profile does not use (cavalry without tech, siege without
-#: siege, healers without clerics) are dropped and the rest renormalised.
+#: KNIGHT shock, CATAPULT siege, CLERIC healer.  Shares of types the difficulty
+#: profile does not use (cavalry without tech, siege without siege, healers
+#: without clerics) are dropped and the rest renormalised.  The flying machine
+#: is no share of an army: it is unarmed, the eyes a brain may keep (``ProProfile.scout``).
+#: The scout rider's shares went with it (WB-064); the plans are renormalised
+#: where they are used, so the rest keep their proportions.
 ARMY_PLANS: Final[dict[Race, dict[UnitType, float]]] = {
-    Race.HUMAN: {UnitType.FOOTMAN: 0.35, UnitType.ARCHER: 0.30, UnitType.SCOUT: 0.05, UnitType.KNIGHT: 0.20,
+    Race.HUMAN: {UnitType.FOOTMAN: 0.35, UnitType.ARCHER: 0.30, UnitType.KNIGHT: 0.20,
                  UnitType.CATAPULT: 0.05, UnitType.CLERIC: 0.05},
-    Race.ORC: {UnitType.FOOTMAN: 0.45, UnitType.ARCHER: 0.15, UnitType.SCOUT: 0.05, UnitType.KNIGHT: 0.30,
+    Race.ORC: {UnitType.FOOTMAN: 0.45, UnitType.ARCHER: 0.15, UnitType.KNIGHT: 0.30,
                UnitType.CATAPULT: 0.05, UnitType.CLERIC: 0.00},
-    Race.ELF: {UnitType.FOOTMAN: 0.25, UnitType.ARCHER: 0.45, UnitType.SCOUT: 0.15, UnitType.KNIGHT: 0.10,
+    Race.ELF: {UnitType.FOOTMAN: 0.25, UnitType.ARCHER: 0.45, UnitType.KNIGHT: 0.10,
                UnitType.CATAPULT: 0.05, UnitType.CLERIC: 0.00},
-    Race.DWARF: {UnitType.FOOTMAN: 0.40, UnitType.ARCHER: 0.35, UnitType.SCOUT: 0.00, UnitType.KNIGHT: 0.05,
+    Race.DWARF: {UnitType.FOOTMAN: 0.40, UnitType.ARCHER: 0.35, UnitType.KNIGHT: 0.05,
                  UnitType.CATAPULT: 0.15, UnitType.CLERIC: 0.05},
 }
 
-_MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.SCOUT, UnitType.KNIGHT)
+_MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.KNIGHT)
+RAIDERS: Final = (UnitType.KNIGHT,)  # what rides at the enemy's peasants: the fast melee the stables train
+
+
+def fighters(units: list[Unit]) -> list[Unit]:
+    """The army among *units*: what is armed and not a worker.  A flying machine is unarmed: eyes, not a soldier."""
+    return [u for u in units if not u.is_worker and u.info.damage]
+
+
+def flyers_over(world: World, player: int, radius: float) -> list[Unit]:
+    """Enemy flyers *player* sees within *radius* of one of its buildings."""
+    own = world.player_buildings(player)
+    return [u for u in world.units.values()
+            if u.flying and u.player != player and u.hp > 0 and not world.players[u.player].neutral
+            and world.is_visible(player, u.tile) and any(dist(u.pos, b.center) < radius for b in own)]
+
+
+def answer_flyers(world: World, player: int, army: list[Unit], radius: float) -> None:
+    """Shoot down what flies over our ground: the idle shooters within reach walk at an enemy flyer seen within
+    *radius* of our buildings, ready to fire (an attack-move, so they come back rather than chase a faster flyer
+    across the map).  Melee is never sent: nothing it could do there."""
+    for flyer in flyers_over(world, player, radius):
+        shooters = [u.id for u in army if not u.orders and world.can_strike(u, flyer) and dist(u.pos, flyer.pos) <= 12.0]
+        if shooters:
+            world.attack_move(shooters[:3], flyer.pos)
 
 
 def known_enemy_buildings(world: World, player: int) -> list:
@@ -114,8 +141,6 @@ def known_enemy_buildings(world: World, player: int) -> list:
 
 
 CAMP_REACH: Final = 10.0  # tiles from a remembered lair its guards hold: what a brain keeps its halls and peasants out of
-
-
 #: Tiles a moving threat may drift from where a soldier is already attack-moving before the order is given again.  An order
 #: given anew every pass to a soldier wedged in a crowd restarts its walk, and with it the watchdog that would have walked
 #: it round the bodies in its way: fuzz seed 82 had a footman pressed into its own crowd for good.
@@ -277,7 +302,7 @@ class Profile:
     tech: bool  # mill, blacksmith, stables, upgrades
     siege: bool  # workshop and catapults
     clerics: bool  # church and clerics
-    harass: bool  # early scouts sent at the enemy's peasants
+    harass: bool  # the first two knights sent at the enemy's peasants
     reserve: int  # gold kept back before research
     repair: bool  # peasants mend damaged buildings once the fighting there is over
     first_attack: float = 0.0  # seconds of play before its first wave may go out
@@ -422,7 +447,7 @@ class Brain:
         return [u for u in self._units(world) if u.is_worker]
 
     def _army(self, world: World) -> list[Unit]:
-        return [u for u in self._units(world) if not u.is_worker]
+        return fighters(self._units(world))
 
     def _hall(self, world: World) -> Building | None:
         halls = world.player_buildings(self.player, BuildingType.TOWN_HALL, done=True)
@@ -455,7 +480,7 @@ class Brain:
         if not damaged:
             return
         b = min(damaged, key=lambda b: b.hp / b.max_hp)
-        if world._nearest_enemy(self.player, b.center, 8.0) is not None:
+        if world._nearest_enemy(self.player, b.center, 8.0, air=False) is not None:  # a flyer overhead does not stop the hammer
             return
         spare = [p for p in self._peasants(world) if not p.hidden and p.carrying is None and not isinstance(p.order, Build)]
         if not spare:
@@ -625,7 +650,6 @@ class Brain:
         ranged against knights."""
         plan = dict(ARMY_PLANS[world.players[self.player].race])
         if not self.profile.tech:
-            plan.pop(UnitType.SCOUT, None)
             plan.pop(UnitType.KNIGHT, None)
         if not self.profile.siege:
             plan.pop(UnitType.CATAPULT, None)
@@ -647,16 +671,13 @@ class Brain:
             if unit.type is UnitType.KNIGHT:
                 knights += 1
         if archers > 0 and archers >= 2 * melee:
-            _shift(plan, {UnitType.FOOTMAN: -0.15, UnitType.SCOUT: 0.075, UnitType.KNIGHT: 0.075})
+            _shift(plan, {UnitType.FOOTMAN: -0.15, UnitType.KNIGHT: 0.15})
         if knights >= 3:
-            _shift(plan, {UnitType.SCOUT: -0.075, UnitType.KNIGHT: -0.075, UnitType.FOOTMAN: 0.075, UnitType.ARCHER: 0.075})
+            _shift(plan, {UnitType.KNIGHT: -0.15, UnitType.FOOTMAN: 0.075, UnitType.ARCHER: 0.075})
         return plan
 
     def _choose_unit(self, world: World, building: Building, counts: dict[UnitType, int]) -> UnitType | None:
         soldiers = sum(counts.values())
-        if building.type is BuildingType.STABLES:
-            if self.profile.harass and counts.get(UnitType.SCOUT, 0) < 2:
-                return UnitType.SCOUT
         if building.type is BuildingType.WORKSHOP:
             threshold = 4 if world.players[self.player].race is Race.DWARF else 6
             if soldiers < threshold:
@@ -715,7 +736,7 @@ class Brain:
     def _enemy_soldiers(self, world: World) -> int:
         """Living enemy soldiers (units that are not workers) of alive players."""
         return sum(1 for u in world.units.values() if u.player != self.player and world.players[u.player].alive
-                   and not u.is_worker and u.hp > 0 and not u.hidden
+                   and not u.is_worker and u.info.damage and u.hp > 0 and not u.hidden
                    and world.is_visible(self.player, u.tile))
 
     # -- Military --------------------------------------------------------------------
@@ -773,6 +794,7 @@ class Brain:
 
     def _military(self, world: World, rng: random.Random) -> None:
         army = self._army(world)
+        answer_flyers(world, self.player, army, DEFEND_RADIUS)
         if self.profile.harass:
             self._raid(world)
             army = [u for u in army if u.id not in self.raiders]
@@ -845,11 +867,11 @@ class Brain:
             self.note(world, f"attack with {len(army)} towards {tuple(round(c) for c in target)}")
 
     def _raid(self, world: World) -> None:
-        """The first two scouts go for the enemy's peasants and keep at it."""
+        """The first two knights go for the enemy's peasants and keep at it."""
         self.raiders = [i for i in self.raiders if i in world.units]
-        scouts = [u for u in self._army(world) if u.type is UnitType.SCOUT and u.id not in self.raiders]
-        while len(self.raiders) < 2 and scouts:
-            self.raiders.append(scouts.pop().id)
+        riders = [u for u in self._army(world) if u.type in RAIDERS and u.id not in self.raiders]
+        while len(self.raiders) < 2 and riders:
+            self.raiders.append(riders.pop().id)
         idle = [i for i in self.raiders if not world.units[i].orders]
         if not idle:
             return
@@ -892,7 +914,7 @@ class Brain:
         for unit in world.units.values():
             if unit.player == self.player or unit.hidden or not world.is_visible(self.player, unit.tile):
                 continue
-            if world.players[unit.player].neutral:
+            if world.players[unit.player].neutral or not unit.info.damage:  # an unarmed flyer looking on is no raid
                 continue
             for b in own:
                 if dist(unit.pos, b.center) < DEFEND_RADIUS:

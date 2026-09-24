@@ -169,8 +169,9 @@ gather gold and lumber, raise a base, train an army and raze the rival's.
 Matches take ten to twenty minutes against an AI that plays a recognisable
 strategy, on procedural maps that change your opening.
 
-- Seven units with real roles: peasants, footmen, archers, scouts, knights,
-  catapults that batter walls with splash damage, and clerics who heal.
+- Seven units with real roles: peasants, footmen, archers, knights,
+  catapults that batter walls with splash damage, clerics who heal, and a
+  flying machine that sees over everything and fights nothing.
 - Nine buildings and a short tech chain: farms, barracks, lumber mill,
   blacksmith, stables, workshop, church and guard towers; nine upgrades;
   peasants repair what the enemy leaves standing.
