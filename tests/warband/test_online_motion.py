@@ -89,9 +89,12 @@ def steps(drawn: list[tuple[float, float]], start: int = 30, count: int = 59) ->
     return [math.dist(a, b) for a, b in zip(drawn[start:start + count], drawn[start + 1:start + count + 1])]
 
 
+STEADY = 30 + 59 + 1  # the frames a steady walk is judged on (steps' default window) and no more: each is a whole HUD drawn
+
+
 def test_a_unit_walks_on_screen_between_regular_snapshots(game) -> None:
     match = field()
-    scene, footman, drawn = walk(game, match, Seat(match), arrivals=set(range(0, 150, 6)))
+    scene, footman, drawn = walk(game, match, Seat(match), arrivals=set(range(0, 150, 6)), frames=STEADY)
     travel = steps(drawn)
     per_frame = match.world.speed_of(footman) * FRAME
     assert sum(1 for d in travel if d < 1e-6) <= 3, f"stationary intervals: {sum(1 for d in travel if d < 1e-6)}/59"
@@ -105,7 +108,7 @@ def test_a_unit_walks_on_through_uneven_snapshots(game) -> None:
         arrivals.add(frame)
         frame += rng.choice((4, 5, 6, 7, 8))  # a hundred milliseconds, give or take a third
     match = field()
-    scene, footman, drawn = walk(game, match, Seat(match), arrivals=arrivals)
+    scene, footman, drawn = walk(game, match, Seat(match), arrivals=arrivals, frames=STEADY)
     travel = steps(drawn)
     per_frame = match.world.speed_of(footman) * FRAME
     assert sum(1 for d in travel if d < 1e-6) <= 3, f"stationary intervals: {sum(1 for d in travel if d < 1e-6)}/59"
@@ -159,9 +162,13 @@ def test_an_order_given_while_the_seat_waits_is_refused_with_the_reason(game) ->
     assert any("reconnecting" in t["text"] for t in game.backend.texts)
 
 
+@pytest.mark.slow
 def test_over_a_real_socket_a_guest_walks_smoothly_hears_of_a_stall_and_is_placed_after_it(game) -> None:
     """Two real ends of a LAN match: the host steps at 20 Hz and publishes every other tick, then goes quiet for
-    over a second (a stall, a pause, a dropped link that comes back), then publishes again."""
+    over a second (a stall, a pause, a dropped link that comes back), then publishes again.
+
+    Slow: a real socket pair, polled until each snapshot converges, under a hundred and fifty drawn frames; on a
+    runner it took up to 3.3 s, over the fast tier's budget."""
     import time
 
     from saga2d import MatchClient, MatchHost
