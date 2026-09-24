@@ -164,7 +164,7 @@ keeps where code goes and the rules below.
   A `World.scripted` world never declares a winner or surrenders: the mission
   decides.
 - The tools that play many matches (`arena`, `tune`, `balance_report`,
-  `ai_report`, `race_report`, `sim_bench`, `step_bench`) run the simulation
+  `ai_report`, `race_report`, `sim_bench`, `step_bench`, `fuzz`) run the simulation
   compiled by mypyc (`league/fastsim.py`, built on first use under
   `build/fastsim/`; `WARBAND_INTERPRETED=1` opts out), about ten times faster;
   the game, the online authority and the tests run the source. Keep mypy clean
