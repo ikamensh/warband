@@ -312,5 +312,10 @@ decision of its own.
   useful final output in `~/saga/evidence/warband/<topic>/`, replacing older output
   for that topic. Pass output paths explicitly, regardless of older CLI defaults.
   Follow `~/saga/AGENTS.md` for retention and worktree cleanup.
+- `backlog_intake.txt` is Ilya's inbox of requests, edited and committed by
+  Ilya at any time. A change to it in a checkout is Ilya's, not another
+  session's work in progress, and it never holds up other work, a merge or a
+  push. Never revert, stash or rewrite that text; when a fast-forward or merge
+  needs the file clean, commit the edit as it stands.
 - Clear exceptions over silent fallbacks. Delete rather than deprecate.
   Commit each working increment.
