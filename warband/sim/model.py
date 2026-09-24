@@ -1842,11 +1842,15 @@ class World:
         others = [u.id for u in units if not u.is_worker]
         if workers and isinstance(target, Building) and target.abandoned and target.done and target.player != player:
             # A ruin is loot, not an enemy: the peasants pick it apart, and any soldiers along raze it as before.
-            # Neither order can be refused from here -- the room was taken above and a ruin of one's own is not one
-            # of these -- so the pair is as atomic as a single order.
+            # Neither order can be refused from here -- the room was taken above, a ruin of one's own is not one of
+            # these, and soldiers with no blow among them go along instead of razing -- so the pair is as atomic as a
+            # single order.
             self.salvage(workers, target.id, queue=queue)
             if others:
-                self.attack(others, target.id, queue=queue)
+                if any(self.can_strike(u, target) for u in units if not u.is_worker):
+                    self.attack(others, target.id, queue=queue)
+                else:
+                    self.move(others, point, queue=queue)  # a flying machine has no weapon: it goes and looks
             return "salvage"
         if target is not None and target.player is not None and target.player != player:
             if not any(u.info.damage for u in units):
