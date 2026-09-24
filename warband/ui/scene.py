@@ -33,6 +33,7 @@ from warband.sim.races import RACES, RaceInfo
 from warband.sim.rules import (AETHER_EVERY, AETHER_STORE, BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, SIM_DT, UNITS, ArmorClass, AttackType,
                                BuildingType, Cost, Difficulty, MapTheme, Race, Resource, Terrain, UnitInfo, UnitType, Upgrade, an, listing)
 from warband.sim.rules import Layout as MapLayout
+from warband.league import fastsim
 from warband.records.profile import MatchResult, Profile, RatingChange, Standing, plural, standing
 from warband.records.replay import ORDERS, Replay, ReplayStore
 from warband.records.scores import HighScores, score_breakdown
@@ -2365,11 +2366,13 @@ class GameScene(Scene):
 
     def telemetry_context(self) -> dict[str, Any]:
         """The match beside its frame times (saga2d's telemetry): which run (its replay), how big, how far on,
-        how crowded, how fast, how far out the camera, and how far the clock has fallen behind real time."""
+        how crowded, how fast, how far out the camera, how far the clock has fallen behind real time, and whether the
+        simulation ran compiled."""
         world = self.world
         return {"run": self.run_id, "map": f"{world.width}x{world.height}", "seats": world.seats, "tick": world.tick,
                 "units": len(world.units), "buildings": len(world.buildings), "speed": self.speed, "paused": self.paused,
-                "zoom": round(self.camera.zoom, 2), "behind_s": round(self._behind, 1)}
+                "zoom": round(self.camera.zoom, 2), "behind_s": round(self._behind, 1),
+                "sim": "compiled" if fastsim.compiled() else "source"}
 
     @property
     def mood(self) -> str:

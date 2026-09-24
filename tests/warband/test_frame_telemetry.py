@@ -11,7 +11,7 @@ from tests.warband.battlefield import SETTINGS, field
 from warband.ui.scene import GameScene
 
 
-def test_a_match_played_through_the_loop_records_its_map_run_and_phases(tmp_path) -> None:
+def test_a_match_played_through_the_loop_records_its_map_run_and_phases(tmp_path, request) -> None:
     game = Game("warband", backend="mock", save_dir=tmp_path / "saves")
     game.telemetry.enabled = True
     game.telemetry.window = 0.04
@@ -29,5 +29,6 @@ def test_a_match_played_through_the_loop_records_its_map_run_and_phases(tmp_path
     assert last["run"] == scene.run_id
     assert last["map"] == f"{world.width}x{world.height}" and last["seats"] == world.seats
     assert last["tick"] == world.tick > 0 and last["units"] == len(world.units)
+    assert last["sim"] == ("compiled" if request.config.getoption("--compiled") else "source")
     phases = {name for w in windows for name in w.get("phases", {})}
     assert {"ai", "sim", "view"} <= phases

@@ -25,6 +25,7 @@ from warband.sim.rules import BuildingType, Difficulty, UnitType
 server_url = server_fixture('warband.online.authority:ONLINE')
 
 
+@pytest.mark.source_only("brains plan on a stand-in for a World; online_ai runs as a program of its own, on the source")
 def test_the_online_ai_hunts_an_intruder_on_the_server_and_lets_it_go_there() -> None:
     """The copy sent a list of orders of its own, and the brain's attacks, holds, cancels and releases changed the
     copy alone: the Hard brain logged "hunt peasant 15 with 3" and nobody attacked the intruder on the server.  Had

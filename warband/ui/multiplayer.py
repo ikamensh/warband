@@ -22,6 +22,13 @@ STALL = 0.5
 QUIET = 1.0
 
 
+def take_state(old, new) -> None:
+    """Make *old* hold everything *new* holds, keeping *old* itself, which the view and the HUD hold.  Through
+    ``__getstate__``, which a compiled simulation's objects have and a ``__dict__`` they have not."""
+    for name, value in new.__getstate__().items():
+        setattr(old, name, value)
+
+
 def _room_memory(game):
     """What the player had seen of buildings out of sight in the online room they last played.  A room tells a seat
     only what it sees now (WB-011), so rejoining it from the title would otherwise forget the rival's base."""
@@ -113,9 +120,9 @@ class NetworkGameScene(GameScene):
         data = self.session.state
         fresh = World.from_dict(data['world'])
         for old, new in zip(self.world.players, fresh.players):
-            old.__dict__.update(new.__dict__)
+            take_state(old, new)
         fresh.players = self.world.players
-        self.world.__dict__.update(fresh.__dict__)
+        take_state(self.world, fresh)
         events = []
         for index, event in data['events']:
             if index > self._event_id:

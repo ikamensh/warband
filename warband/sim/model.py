@@ -18,7 +18,7 @@ import functools
 import math
 import random
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from types import FunctionType
 from typing import Any, Final, Iterable, Iterator, Literal
@@ -4561,9 +4561,11 @@ class World:
         for p, saved in zip(world.players, data["players"]):
             p.human = saved["human"]
             p.name = saved.get("name", p.name)
-            p.gold, p.lumber, p.alive, p.last_alert = saved["gold"], saved["lumber"], saved["alive"], saved["last_alert"]
+            p.gold, p.lumber, p.alive = saved["gold"], saved["lumber"], saved["alive"]
             p.aether, p.aether_charge = saved.get("aether", 0), saved.get("aether_charge", 0)  # a save from before the aether holds none
-            p.last_hit = saved.get("last_hit", p.last_alert)  # saves from before it: the alert stands in
+            if saved["last_alert"] is not None:  # a seat's snapshot of a rival hides its alarms: as if it never had one
+                p.last_alert = saved["last_alert"]
+                p.last_hit = saved.get("last_hit", p.last_alert)  # saves from before it: the alert stands in
             p.upgrades = {Upgrade(u) for u in saved["upgrades"]}
             p.assembly = tuple(saved["assembly"]) if saved.get("assembly") is not None else None
             p.surrendered = saved.get("surrendered", False)
@@ -4599,6 +4601,12 @@ class World:
         return world
 
 
+def field_values(record: Any) -> dict[str, Any]:
+    """A dataclass's fields by name, in order: what ``vars()`` gives of the source's, and of a compiled one too,
+    which has no ``__dict__``."""
+    return {each.name: getattr(record, each.name) for each in fields(record)}
+
+
 def _order_to_dict(order: Order) -> dict[str, Any]:
     # Keep player-order fields stable: online clients read them straight from the snapshot.
     # Automatic routing metadata lives beside the queue in each unit record.
@@ -4607,7 +4615,7 @@ def _order_to_dict(order: Order) -> dict[str, Any]:
     if isinstance(order, Deposit):
         return {"kind": "Deposit"}
     d: dict[str, Any] = {"kind": type(order).__name__}
-    for key, value in vars(order).items():
+    for key, value in field_values(order).items():
         if key == "plan_if_short" and not value:
             continue  # only a player's own placements carry it: a build as every brain gives it reads as before
         d[key] = value.value if hasattr(value, "value") else (list(value) if isinstance(value, tuple) else value)
@@ -4666,7 +4674,7 @@ def _unit_from_dict(d: dict[str, Any], race: Race) -> Unit:
 
 
 def _projectile_to_dict(p: Projectile) -> dict[str, Any]:
-    d = dict(vars(p))
+    d = field_values(p)
     d["start"], d["aim"], d["attack"] = list(p.start), list(p.aim), p.attack.value
     return d
 

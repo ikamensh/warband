@@ -26,7 +26,8 @@ REGRESSION = ["-m", "pytest", "-q", "--slow"]  # the full regression suite: both
 PACKAGES = ("numpy", "Pillow", "pyglet", "websockets", "pyinstaller", "pyinstaller-hooks-contrib")
 ONLINE_CHECKS = ("create_join", "authoritative_movement", "foreign_order_rejected", "private_seat_rejoin",
                  "global_production", "automatic_plan_builder", "cancel_plans", "assembly_point")
-NATIVE_CHECKS = ("native_multiplayer_input", "native_clipboard_join", "live_match_menu", "native_settlement_planning", "start_after_resize")
+NATIVE_CHECKS = ("native_multiplayer_input", "native_clipboard_join", "live_match_menu", "native_settlement_planning", "start_after_resize",
+                 "compiled_simulation")
 
 
 def read_json(path: Path) -> dict:
@@ -141,7 +142,7 @@ def validate(directory: Path, identity: dict, target: str) -> dict:
                 require(path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"), f"Invalid captured PNG: {image}")
                 evidence[f"verification/{image}"] = sha256(path)
         else:
-            require(result["frozen"] is True and result["bundled_fonts"] is True
+            require(result["frozen"] is True and result["bundled_fonts"] is True and result["compiled_simulation"] is True
                     and all(result["online"][key] is True for key in ONLINE_CHECKS), f"Incomplete socket checks: {name}")
             require(result["data_dir"].replace("\\", "/").rstrip("/").endswith("/.warband"),
                     f"The packaged game keeps its data somewhere other than the user's .warband folder: {name}")
@@ -244,12 +245,13 @@ def build(identity: dict, directory: Path, *, iscc: Path | None = None, mesa_dir
                                                "log_sha256": sha256(directory / "regression.log")})
     process.check_returncode()
     require(native_inputs(identity, iscc=iscc) == inputs, "Build inputs changed during regression checks")
-    from package import PACKAGE
+    from package import PACKAGE, compiled_simulation
     from saga2d.packaging import build as freeze
     from saga2d.packaging.verify import verify
 
     windows = inputs["target"] == "windows-x64"
-    freeze(PACKAGE, identity["version"], output=directory, installer=windows, iscc=iscc, require_clean=True)
+    with compiled_simulation():  # compiled by the regression suite's test_fastsim already: this runner's, for this platform
+        freeze(PACKAGE, identity["version"], output=directory, installer=windows, iscc=iscc, require_clean=True)
     report = verify(PACKAGE, directory, native=True, mesa_dir=mesa_dir)
     if not windows:
         verify_mac_app(directory, report)

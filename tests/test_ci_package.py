@@ -75,10 +75,11 @@ def candidate(tmp_path):
         "".join(f"{item['sha256']}  {item['file']}\n" for item in artifacts))
     receipt = {"passed": True, "source_commit": identity["source_commit"], "version": identity["version"],
                "executable_sha256": digest(executable)}
-    smoke = {**receipt, "frozen": True, "bundled_fonts": True, "data_dir": "/home/runner/.warband", "online": dict.fromkeys(ONLINE, True)}
+    smoke = {**receipt, "frozen": True, "bundled_fonts": True, "compiled_simulation": True, "data_dir": "/home/runner/.warband",
+             "online": dict.fromkeys(ONLINE, True)}
     native = {**receipt, "backend": "pyglet", "native_multiplayer_input": True,
               "native_clipboard_join": True, "live_match_menu": True,
-              "native_settlement_planning": True, "start_after_resize": True, "images": ["native.png"]}
+              "native_settlement_planning": True, "start_after_resize": True, "compiled_simulation": True, "images": ["native.png"]}
     (directory / "verification").mkdir()
     (directory / "verification/native.png").write_bytes(b"\x89PNG\r\n\x1a\nfixture")
     write_json(directory / "verification.json", {
@@ -107,7 +108,7 @@ def test_verified_package_is_bound_to_identity_and_archive_bytes(candidate):
 
 
 @pytest.mark.parametrize("problem", ["archive", "regression_log", "stale_receipt", "missing_app",
-                                     "failed_native", "changed_dependency", "dirty_source"])
+                                     "failed_native", "interpreted", "changed_dependency", "dirty_source"])
 def test_incomplete_stale_or_changed_evidence_is_rejected(candidate, problem):
     """None of the build, regression, archive or native gates can be bypassed by a green summary."""
     if problem == "archive":
@@ -115,13 +116,15 @@ def test_incomplete_stale_or_changed_evidence_is_rejected(candidate, problem):
         path.write_bytes(path.read_bytes() + b"changed after verification")
     elif problem == "regression_log":
         (candidate / "regression.log").write_text("Tests were not run\n")
-    elif problem in ("stale_receipt", "missing_app", "failed_native"):
+    elif problem in ("stale_receipt", "missing_app", "failed_native", "interpreted"):
         path = candidate / "verification.json"
         value = json.loads(path.read_text())
         if problem == "stale_receipt":
             value["installed"]["source_commit"] = "b" * 40
         elif problem == "missing_app":
             del value["app_native"]
+        elif problem == "interpreted":  # an app that shipped without its compiled simulation runs, ten times slower
+            value["installed"]["compiled_simulation"] = False
         else:
             value["native"]["native_settlement_planning"] = False
         write_json(path, value)

@@ -125,7 +125,7 @@ def test_the_rivals_purse_research_plans_and_alarms_stay_home_until_the_match_is
     rival.gold, rival.lumber = 4321, 1234
     rival.upgrades.add(Upgrade.BLADES_1)
     rival.stats["units_trained"] = 17
-    rival.last_alert = (40.5, 30.5)
+    rival.last_alert = 40.5
     rival.last_hit = 12.5
     rival.assembly = (41.5, 31.5)
     hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0]

@@ -16,3 +16,4 @@ docs/evidence/
 !warband/assets/restyled/*.png
 !warband/assets/icon.png
 !packaging/icon-schematic.png
+/warband/assets/fastsim/

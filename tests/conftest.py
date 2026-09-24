@@ -3,6 +3,11 @@
 ``uv run pytest -q`` runs the fast tier: every test not marked ``slow``. ``--slow`` adds the slow tier, and
 ``--slow -m slow`` runs it alone; a slow test's docstring (or its module's, for a module marked slow) says why it
 cannot be fast. ``--budget SECONDS`` fails a fast-tier test whose setup, call or teardown takes longer.
+
+The suite runs the simulation from source, the reference. ``--compiled`` runs it on the compiled simulation
+(``warband.league.fastsim``), as the game does: a value the game's own code hands the simulation that its annotations
+refuse is a ``TypeError`` only there. A test that inspects the source itself (counts calls by patching a function,
+reads a module's file) is marked ``source_only`` and is left out.
 """
 from collections import OrderedDict
 
@@ -15,6 +20,7 @@ def pytest_addoption(parser):
     parser.addoption("--slow", action="store_true", help="also run the slow tier: tests marked slow")
     parser.addoption("--budget", type=float, metavar="SECONDS",
                      help="fail a fast-tier test whose setup, call or teardown takes longer than SECONDS")
+    parser.addoption("--compiled", action="store_true", help="run on the compiled simulation, as the game does")
 
 
 def pytest_xdist_auto_num_workers(config):
@@ -27,6 +33,11 @@ def pytest_xdist_auto_num_workers(config):
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "slow: too slow for the fast tier, its docstring says why; runs with --slow")
+    config.addinivalue_line("markers", "source_only(why): inspects the simulation's source; --compiled leaves it out")
+    if config.getoption("--compiled"):  # before any test module imports the simulation; workers take this build
+        from warband.league import fastsim
+
+        fastsim.activate()
 
 
 def why_slow(item) -> str | None:
@@ -36,6 +47,10 @@ def why_slow(item) -> str | None:
 
 
 def pytest_collection_modifyitems(config, items):
+    if config.getoption("--compiled"):
+        for item in items:
+            if marker := item.get_closest_marker("source_only"):
+                item.add_marker(pytest.mark.skip(reason=f"source only: {marker.args[0]}"))
     slow = [item for item in items if item.get_closest_marker("slow")]
     for item in slow:
         if not why_slow(item):

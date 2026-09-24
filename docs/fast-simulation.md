@@ -5,7 +5,8 @@ reports) spend nearly all their time in `World.step` and the brains. They run
 the simulation compiled: `warband/league/fastsim.py` builds the simulation modules
 with mypyc, and a few of their loops have C twins in `warband/sim/_native.c`. A
 match costs about a tenth of what it did and plays out exactly as before, to
-the float bit. The game, the online authority and the tests run the source.
+the float bit. The game runs it too (below); the online authority and the
+tests run the source, and CI runs the tests on the compiled simulation as well.
 
 ## What it bought
 
@@ -84,6 +85,53 @@ Compiling the same source keeps every one of those properties.
 - A build is filed under a hash of its sources, so an edited source is never
   run as an old build. Worker processes take their parent's build and refuse
   one made from other sources.
+
+## The game
+
+Late in a large match the interpreted step cost the render thread about 7 ms
+of every frame (`~/saga/evidence/warband/large-map-frame-budget/`), so the
+game runs the simulation compiled too. `warband.__main__.main` calls
+`fastsim.activate_for_game()` before anything imports the simulation:
+
+- **A checkout** attaches the build of its sources, compiling it on the first
+  launch after they change: 45 s of processor time, 49 s at a load of 20 and
+  three minutes under a load of 78 from parallel sessions. Most pulls change
+  it (49 of 125 commits in five days touched a compiled module, `config.py`,
+  `_native.c` or a balance table). The wait is not moved to the background,
+  because a process cannot swap the simulation it has imported: the first
+  match after a pull, the one a player starts to see what changed, would run
+  from source. Compiling in parallel does not shorten it either: the modules
+  are one extension, one 19 MB C file, and setuptools compiles an extension's
+  files one after another (mypyc's `multi_file` with `-j 10` measured the
+  same).
+- **A machine that cannot compile** (plain `uv sync` without the `dev` extra
+  has no mypyc; a Mac without Xcode's command line tools has no compiler)
+  prints one line naming what is missing and runs the source. The build
+  probes the compiler on a one-line C file before mypyc spends its minute.
+  `WARBAND_INTERPRETED=1` runs the source and says so.
+- **A frozen app** carries the build it was frozen with: players have no
+  compiler. `tools/package.py` (and `tools/ci_package.py` on each native CI
+  runner, whose regression suite has just compiled it) copies the build into
+  `warband/assets/fastsim/` for the freeze and removes it after; it is
+  git-ignored. The package ships its assets folder whole, and PyInstaller
+  reclassifies the extension modules in it as binaries, so they land in
+  `Contents/Frameworks` and are signed. The app has no sources to hash, so it
+  checks the build's balance tables against its own instead. Both packaged
+  self-checks report `compiled_simulation`, and `ci_package.py validate`
+  refuses a package whose executables ran the source.
+- **Replays and saves** reproduce as before: compiled and source agree to the
+  bit on one OS, so a replay recorded by either plays on either there. Across
+  OSes they never did (above).
+
+Running the suite compiled (`pytest --compiled`) found three crashes that the
+tools never met, because only the game's own code hands the simulation such
+values: a save with a queued order (`vars()` of a compiled dataclass; now
+`model.field_values`), every online snapshot (a rival's hidden alarm arrives
+as `None` in a `float` field) and the online client's world refresh
+(`__dict__.update`; now through `__getstate__`, which both kinds of object
+have). A LAN host runs the authority inside the game, so its event
+serialisation had the same `vars()`. A test that inspects the source itself
+is marked `source_only` and is left out of the compiled run.
 
 ## What the compiler rewards
 

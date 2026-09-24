@@ -6,6 +6,11 @@ title and starts that map directly, so a seed reproduces a match in one step.
 ``--campaign`` opens the campaign screen; ``--mission ID`` starts that
 mission straight away, with the saved progress's choices, skipping the
 briefing (for looking at one mission; ``--mission list`` names them).
+
+The simulation runs compiled (:func:`warband.league.fastsim.activate_for_game`),
+about ten times faster: a checkout compiles it on the first launch after its
+sources change, a minute or so, and ``WARBAND_INTERPRETED=1`` runs the source.
+So nothing here imports the simulation before :func:`main` has chosen it.
 """
 
 from __future__ import annotations
@@ -14,20 +19,22 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from saga2d import add_match_arguments, match_from_arguments
-from saga2d import Game, fonts
-from warband.sim import mapgen
-from warband.audio import sound
-from warband.sim.rules import Difficulty, Layout, MapTheme, Race
-from warband.ui.scene import DEFAULT_SETTINGS, fair_map, new_game
-from warband.ui.style import build_theme
-from warband.ui.title import TitleScene
-from warband.ui.version import running_build
+from warband.league import fastsim
 
 ICON = Path(__file__).parent / "assets" / "icon.png"  # what the Dock, the taskbar and the built app draw Warband under
 
 
 def main() -> None:
+    fastsim.activate_for_game()  # before anything imports the simulation: whatever does from here on gets the compiled one
+    from saga2d import Game, add_match_arguments, fonts, match_from_arguments
+    from warband.audio import sound
+    from warband.sim import mapgen
+    from warband.sim.rules import Difficulty, Layout, MapTheme, Race
+    from warband.ui.scene import DEFAULT_SETTINGS, new_game
+    from warband.ui.style import build_theme
+    from warband.ui.title import TitleScene
+    from warband.ui.version import running_build
+
     parser = argparse.ArgumentParser(description="Warband — a small Warcraft 2-style real-time strategy game")
     parser.add_argument("--seed", type=int, default=None, help="start this map directly, skipping the title screen")
     parser.add_argument("--size", choices=list(mapgen.SIZES), default="Medium")
@@ -98,6 +105,10 @@ def main() -> None:
 def lobby_options(args: argparse.Namespace) -> dict[str, Any]:
     """The two-seat room a command line hosts or creates: on its ``--seed`` as given, or on a fresh seed that makes a
     fair map of its settings (WB-046)."""
+    from warband.sim import mapgen
+    from warband.sim.rules import Layout, MapTheme, Race
+    from warband.ui.scene import fair_map
+
     size = args.size if args.size in mapgen.sizes_for(2) else mapgen.sizes_for(2)[0]
     width, height = mapgen.dimensions(size, 2)
     layout = None if args.layout == "any" else Layout(args.layout)
@@ -109,6 +120,12 @@ def lobby_options(args: argparse.Namespace) -> dict[str, Any]:
 def selftest(png: str) -> None:
     """Prove a build works without a screen: fonts, art, sound files, and a match started from the title on a window the OS resized."""
     import os
+
+    from saga2d import Game, fonts
+    from warband.audio import sound
+    from warband.ui.scene import DEFAULT_SETTINGS
+    from warband.ui.style import build_theme
+    from warband.ui.title import TitleScene
 
     os.environ["SAGA2D_SILENT"] = "1"
     game = Game("Warband", resolution=(1280, 800), visible=False, theme=build_theme(), icon=ICON)

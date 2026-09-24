@@ -124,14 +124,22 @@ def data_dir_check() -> str:
         os.chdir(here)
 
 
+def compiled_simulation() -> bool:
+    """Attach the simulation as the game does, before anything imports it: the build this app was frozen with."""
+    from warband.league import fastsim
+    fastsim.activate_for_game()
+    return fastsim.compiled()
+
+
 def smoke(endpoint: str) -> dict:
+    compiled = compiled_simulation()
     from saga2d import fonts
     info = build_info()
     for filename in (*fonts.FILES.values(), "OFL.txt"):
         assert (fonts.FONT_DIR / filename).is_file(), filename
     return {"passed": True, "source_commit": info["source_commit"], "version": info["version"], "frozen": True,
             "executable": info["executable"], "executable_sha256": info["executable_sha256"],
-            "bundled_fonts": True, "data_dir": data_dir_check(), "online": online_smoke(endpoint)}
+            "bundled_fonts": True, "compiled_simulation": compiled, "data_dir": data_dir_check(), "online": online_smoke(endpoint)}
 
 
 def native_smoke(output: Path, endpoint: str) -> dict:
@@ -141,6 +149,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
     os.environ["SAGA2D_SILENT"] = "1"
     os.environ["SAGA2D_HEADLESS"] = "1"
     os.environ["SAGA2D_SERVER_URL"] = endpoint
+    compiled = compiled_simulation()
     from PIL import ImageStat
     from pyglet import gl
     from pyglet.window import key
@@ -276,7 +285,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
                     "executable": info["executable"], "executable_sha256": info["executable_sha256"],
                     "renderer": gl.gl_info.get_renderer(), "opengl_version": gl.gl_info.get_version_string(), "vendor": gl.gl_info.get_vendor(),
                     "backend": "pyglet", "native_multiplayer_input": True, "native_clipboard_join": True,
-                    "live_match_menu": True, "native_settlement_planning": True, "start_after_resize": True,
+                    "live_match_menu": True, "native_settlement_planning": True, "start_after_resize": True, "compiled_simulation": compiled,
                     "sound_catalogue": len(bank.names), "images": images}
         finally:
             game.backend.set_clipboard_text(clipboard)

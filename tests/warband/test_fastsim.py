@@ -9,6 +9,7 @@ they are what the twins are held to."""
 from __future__ import annotations
 
 import importlib.util
+import json
 import math
 import os
 import random
@@ -28,7 +29,8 @@ from warband.sim.model import World
 from warband.sim.rules import BUILDINGS, BuildingType, Difficulty, Terrain
 from warband.sim.worker_knowledge import WorkerKnowledge
 
-pytestmark = [pytest.mark.slow, pytest.mark.xdist_group("fastsim")]  # one worker, one compile
+pytestmark = [pytest.mark.slow, pytest.mark.xdist_group("fastsim"),  # one worker, one compile
+              pytest.mark.source_only("holds the compiled simulation, in processes of its own, to the source this one runs")]
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -57,6 +59,50 @@ def test_the_compiled_simulation_plays_the_source_fingerprint() -> None:
 
     printed = _run_compiled("from tools.sim_fingerprint import fingerprint\nprint(fingerprint())\n")
     assert printed.strip() == fingerprint()
+
+
+def _python(script: str, **env: str) -> subprocess.CompletedProcess[str]:
+    """*script* run in a fresh process of this checkout, with no build inherited or refused by the caller's settings."""
+    clean = {k: v for k, v in os.environ.items() if k not in (fastsim.OPT_OUT, fastsim.ENV)}
+    return subprocess.run([sys.executable, "-c", script], cwd=ROOT, env={**clean, **env}, capture_output=True, text=True,
+                          timeout=900)
+
+
+@pytest.mark.parametrize("opted_out", [False, True])
+def test_the_game_runs_the_compiled_simulation_unless_told_not_to(opted_out: bool) -> None:
+    """``main`` chooses before anything imports the simulation (``--mission list`` goes through it without a window)."""
+    fastsim.build()
+    done = _python("import sys\nfrom warband.__main__ import main\nsys.argv = ['warband', '--mission', 'list']\nmain()\n"
+                   "from warband.league import fastsim\nprint(fastsim.compiled())\n", **({fastsim.OPT_OUT: "1"} if opted_out else {}))
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.splitlines()[-1] == str(not opted_out)
+    assert ("running the simulation from source" in done.stderr) == opted_out
+
+
+def test_a_frozen_app_attaches_the_build_it_carries_and_no_other(tmp_path: Path) -> None:
+    """A frozen app has no sources to hash, so it checks the balance tables the build was made with against its own."""
+    build = fastsim.build()
+    shipped = shutil.copytree(build, tmp_path / "fastsim" / build.name)
+    script = ("import sys\nsys.frozen = True\nfrom pathlib import Path\nfrom warband.league import fastsim\n"
+              f"fastsim.SHIPPED = Path({str(shipped.parent)!r})\nfastsim.activate_for_game()\nprint(fastsim.compiled())\n")
+    done = _python(script)
+    assert done.returncode == 0 and done.stdout.split() == ["True"], done.stderr
+    constants = shipped / "constants.json"
+    tables = json.loads(constants.read_text(encoding="utf-8"))
+    tables["units.toml"] += "\n# another balance\n"
+    constants.write_text(json.dumps(tables), encoding="utf-8")
+    done = _python(script)
+    assert done.returncode != 0 and "other balance tables" in done.stderr
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="setuptools finds MSVC without CC")
+def test_a_machine_that_cannot_compile_runs_the_source_and_says_so(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.setattr(fastsim, "BUILDS", tmp_path)
+    monkeypatch.setenv("CC", str(tmp_path / "no-cc"))
+    assert fastsim.activate_for_game() is None
+    said = capsys.readouterr().err.splitlines()[-1]
+    assert said.startswith("warband: running the simulation from source") and "no C compiler" in said
+    assert not fastsim.compiled() and not any(tmp_path.iterdir())
 
 
 def test_a_build_of_other_sources_is_refused(tmp_path: Path) -> None:

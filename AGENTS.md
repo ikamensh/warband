@@ -14,6 +14,7 @@ uv sync --extra dev
 uv run warband --seed 3                          # play (python -m warband works too; --mission ID plays a campaign mission)
 uv run pytest -q                                 # the fast tier, about 20 s on four workers: after every change (-n0 runs in one process)
 uv run pytest -q --slow                          # both tiers, about 80 s: before pushing rules, AI, replays, art, audio or CI tools; CI runs both on every push
+uv run pytest -q --slow --compiled               # both tiers on the compiled simulation, as the game runs it (CI too)
 gh run list --limit 6                            # CI after every push: Tests, Native package checks and, on main, the publication
 uv run python -u tools/fuzz.py --games 2 --monkey 0 --seed 81   # AI matches with invariants + monkey input (needs -u)
 uv run python tools/sim_fingerprint.py --check tools/sim_fingerprint.txt   # the simulation is bit-for-bit unchanged
@@ -35,9 +36,10 @@ asset makers (`music`, `pieces`, `restyle`, `make_icon`) and `soak`.
 ## Layout
 
 `warband/` holds the entry point `__main__.py` (`python -m warband`, the frozen
-app, `--selftest`), `assets/` (the tunable numbers as TOML in
-`assets/constants/`: edit and restart, there is no generation step;
-`docs/balance.md`) and nine folders, lowest first.
+app, `--selftest`; it chooses the simulation before anything imports it),
+`assets/` (the tunable numbers as TOML in `assets/constants/`: edit and
+restart, there is no generation step; `docs/balance.md`) and nine folders,
+lowest first.
 `tests/warband/test_layers.py` holds each folder to what it may import: `sim`
 nothing but itself; `brains`, `records`, `art` and `audio` only `sim`; `league`
 and `online` `sim` and `brains`; `ui` and `story` anything. A folder's
@@ -164,13 +166,17 @@ keeps where code goes and the rules below.
   change. Every way out of an undecided rated match goes through `LeaveScene`.
   A `World.scripted` world never declares a winner or surrenders: the mission
   decides.
-- The tools that play many matches (`arena`, `tune`, `balance_report`,
-  `ai_report`, `race_report`, `sim_bench`, `step_bench`, `fuzz`) run the simulation
-  compiled by mypyc (`league/fastsim.py`, built on first use under
-  `build/fastsim/`; `WARBAND_INTERPRETED=1` opts out), about ten times faster;
-  the game, the online authority and the tests run the source. Keep mypy clean
-  over `fastsim.MODULES`: a value of the wrong type is a `TypeError` in a
-  compiled run where the interpreter carried on. Their module constants are
+- The game and the tools that play many matches (`arena`, `tune`,
+  `balance_report`, `ai_report`, `race_report`, `sim_bench`, `step_bench`,
+  `fuzz`) run the simulation compiled by mypyc (`league/fastsim.py`, built on
+  first use under `build/fastsim/`, shipped inside a frozen build;
+  `WARBAND_INTERPRETED=1` opts out), about ten times faster; the online
+  authority and the tests run the source, and CI runs the tests `--compiled`
+  too. Keep mypy clean over `fastsim.MODULES`: a value of the wrong type is a
+  `TypeError` in a compiled run where the interpreter carried on, and that
+  includes what the HUD, the online client and saves hand the simulation (a
+  `None` in a float field, `vars()` or `__dict__` of its objects, a stand-in
+  for a `World`). Their module constants are
   `Final` and never bound again (tables are patched in place). They call no
   bare `sum()`: floats add in `model.plain_sum`, integers in `model.int_sum`
   (`tests/warband/test_sums.py`). A C twin in

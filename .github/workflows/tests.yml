@@ -69,3 +69,7 @@ jobs:
         if: matrix.part == 'compiled simulation'
         run: uv run --locked pytest -q --slow tests/warband/test_fastsim.py --durations=10
         working-directory: warband
+      - name: Both tiers on the compiled simulation, as the game runs it
+        if: matrix.part == 'compiled simulation'
+        run: uv run --locked pytest -q --slow --compiled --durations=10
+        working-directory: warband

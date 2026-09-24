@@ -115,7 +115,7 @@ def test_replays_are_kept_per_match_and_a_damaged_file_is_reported(tmp_path):
 def test_only_the_decorated_order_methods_are_replayable():
     """ORDERS is the allowlist a replay file may call, so it must be exactly what `recorded` marked:
     it once also caught every staticmethod, because a staticmethod carries __wrapped__ of its own."""
-    declared = set(re.findall(r"@recorded\n    def ([a-z_]+)\(", Path(model.__file__).read_text()))
+    declared = set(re.findall(r"@recorded\n    def ([a-z_]+)\(", (Path(__file__).resolve().parents[2] / "warband/sim/model.py").read_text()))
     assert ORDERS == declared and declared
     assert not any(name.startswith("_") for name in ORDERS)
     with pytest.raises(ValueError):

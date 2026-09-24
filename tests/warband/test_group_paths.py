@@ -9,6 +9,8 @@ dropped across the corridor not stranding anyone.
 
 import random
 
+import pytest
+
 from warband.sim import path as pathing
 from warband.sim.model import LOCAL_EXPANSIONS, World, dist
 from warband.sim.rules import BuildingType, Terrain, UnitType
@@ -53,6 +55,7 @@ class Counter:
         return self._real(start, goal, blocked, width, height, max_expansions=max_expansions)
 
 
+@pytest.mark.source_only("counts searches by patching path.find_path_grid, which compiled callers call directly")
 def test_group_move_plans_one_corridor(monkeypatch) -> None:
     world = field(walls=gap_wall())
     counter = Counter()
@@ -75,6 +78,7 @@ def test_group_march_is_deterministic() -> None:
     assert run() == run()
 
 
+@pytest.mark.source_only("counts searches by patching path.find_path_grid, which compiled callers call directly")
 def test_split_group_still_arrives(monkeypatch) -> None:
     world = field(walls=frozenset((20, y) for y in range(32)))  # a wall with no gap: two regions
     counter = Counter()

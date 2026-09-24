@@ -76,6 +76,13 @@ git -C ../sagaforge pull && git pull
 uv run warband
 ```
 
+The simulation runs compiled, about ten times faster in a large match: with
+`uv sync --extra dev` (which brings mypyc) and a C compiler (Xcode's command
+line tools on a Mac), the first start after an update spends a minute or so
+compiling it. Without them the game says so on its first line and runs the
+simulation from source; `WARBAND_INTERPRETED=1` does that on purpose. The
+built apps carry it compiled.
+
 For an existing environment that used the editable engine, run
 `uv sync --locked --extra dev --reinstall-package saga2d` once before launching.
 A plain sync can retain an editable install of the same version. This also

@@ -4,7 +4,7 @@ import random
 
 from saga2d import CommandError
 from warband.sim import mapgen
-from warband.sim.model import Unit, World, RuleError
+from warband.sim.model import Unit, World, RuleError, field_values
 from warband.sim.worker_knowledge import WorkerKnowledge
 from saga2d.server.games import GameSpec, option_choice, option_int, option_keys, option_seed
 from warband.sim.rules import BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
@@ -68,7 +68,7 @@ class WarbandMatch:
         tick = self.world.tick
         for event in self.world.take_events():
             self.event_id += 1
-            self.events.append([self.event_id, vars(event)])
+            self.events.append([self.event_id, field_values(event)])
             self.event_ticks.append(tick)
             self.event_seen.append(self._witnesses(event))
         fresh = next((i for i, born in enumerate(self.event_ticks) if tick - born < EVENT_TICKS), len(self.events))
