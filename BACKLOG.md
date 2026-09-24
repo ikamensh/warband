@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-060**; a new
+section; git history keeps the record. The last ID given is **WB-067**; a new
 item takes the next one and updates this line.
 
 | ID | Priority | Status | Task | Origin |
@@ -23,6 +23,13 @@ item takes the next one and updates this line.
 | WB-058 | Later | proposed | Bug-hunt leftovers 2026-09-20: a site nobody owns by its colour, two strike frames that hop, crowded workers | Bug hunt 2026-09-20 |
 | WB-059 | Next | proposed | A route nobody can reach costs the whole pathfinder budget, and the budget grows with the map | Sixteen seats 2026-09-20 |
 | WB-060 | Later | proposed | Sixteen seats online: an engine release, a snapshot that is not one world per seat, and room capacity | Sixteen seats 2026-09-20 |
+| WB-062 | Now | proposed | Buffs and debuffs: orc Rage as a ten-second buff, Bleeding from every archer's shot | Ilya 2026-09-24 |
+| WB-065 | Now | proposed | Cancel mode: a key, then a click cancels plans, sites, training, research and endless training | Ilya 2026-09-24 |
+| WB-064 | Now | proposed | Flying units: the Flying Machine at the workshop replaces the scout rider | Ilya 2026-09-24 |
+| WB-063 | Now | proposed | Magic I: Aether, a third resource drawn from ley rifts into chained vaults | Ilya 2026-09-24 |
+| WB-061 | Now | proposed | Global commands with levels: Fortify, Withdraw, Scout, Harass, Gold, Lumber | Ilya 2026-09-24 |
+| WB-066 | Now | proposed | Magic II: the Mage Tower, one spell of three per level, cast anywhere, dearer beyond the vaults | Ilya 2026-09-24 |
+| WB-067 | Now | proposed | Magic III: the computer players research, choose and cast; the nine spells balanced | Ilya 2026-09-24 |
 
 ## WB-055 — A deeper tech tree
 
@@ -252,3 +259,267 @@ of quietly seating four of sixteen, `_create` refuses the options with a `Comman
 
 Acceptance: a sixteen-seat room hosted, joined by sixteen clients and played to a result, with the
 publish rate measured; or a decision that rooms stay at four and the cap is documented as final.
+
+## The 2026-09-24 intake (WB-061 … WB-067)
+
+Five requests from `backlog_intake.txt`, the magic one split in three. They
+are taken in the order of their dependencies, not their numbers: WB-062
+(buffs) and WB-065 (cancel mode) first and side by side, then WB-064
+(flyers, which need the buff system's "living" rule), WB-063 and WB-061,
+then WB-066 and WB-067, which need the buffs and the Aether economy. Each
+lands on main as one squashed commit with green CI; the design decisions
+below are the orchestrator's, and a measured number that disagrees with
+one of them wins over it.
+
+## WB-062 — Buffs and debuffs: Rage and Bleeding
+
+**Design.** A unit carries timed conditions, each a *kind*, its expiry and the
+player who laid it on. The kinds are rows of a new
+`warband/assets/constants/buffs.toml`, each naming what it does: a damage
+multiplier, a speed multiplier, armour added, hit points a second (a drain
+when negative, ignoring armour), how long it lasts, and whether only the
+living take it. The same table will carry the spells of WB-066, so these
+five numbers are the whole vocabulary and a spell is a row, not code.
+
+- Laying on a kind a unit already carries restarts its timer; a kind never
+  stacks with itself (one bleeding, however many archers shoot), different
+  kinds combine (multipliers multiply, armour adds).
+- **Machines are not alive**: a catapult, a golem and, from WB-064, a flying
+  machine never take a `living` condition. A unit-type flag (`living =
+  false`) says so; a cleric does not heal what is not alive either (today
+  it may; check).
+- **Rage** (orcs; replaces Frenzy's "while below half health"). An orc
+  soldier hurt below half health is enraged for ten seconds: +25 % damage,
+  +50 % with Bloodlust. The timer is renewed every step it stays below half
+  and runs its full ten seconds after a Shaman heals it above. Why: today a
+  Shaman's heal switches Frenzy off, so the orc healer works against the orc
+  passive; with the buff the orc player wants the line hurt *and* mended.
+  Passive text: "Rage: a soldier hurt below half health fights enraged for
+  ten seconds, +25 % damage, however well it is mended". Bloodlust: "Rage
+  doubles: +50 % damage".
+- **Bleeding** (the archer of every race: Archer, Axethrower, Ranger,
+  Crossbowman; not towers, not clerics). A shot that wounds a living unit
+  opens a wound: 1 hit point a second for five seconds, through armour, and
+  20 % slower while it bleeds. A death by bleeding is credited to the
+  shooter's side. A cleric's heal staunches it (the heal ends the
+  condition), which gives the healer a second job against a shooting army.
+  Why these numbers: the fixed 1/s that does not stack is worth most in
+  skirmishes, chases and kiting (a footman chasing archers loses a fifth of
+  its pace) and least in a massed fight, so it widens the archer's role
+  without multiplying the archer ball.
+- Buildings never carry conditions.
+- **Seen**: an enraged unit glows red, a bleeding one drips; the selection
+  card shows each condition as a small icon with its seconds left and a
+  tooltip. A rival's visible unit shows its conditions (the snapshot carries
+  them, like its health).
+
+**Acceptance.**
+1. `buffs.toml` drives Rage and Bleeding; conditions ride saves (load is
+   bit-exact) and a seat's snapshot of the units it sees.
+2. Tests: Rage outlasts a heal by ten seconds and renews while below half;
+   Bloodlust; Bleeding drains 5 over 5 s through armour, slows by 20 %,
+   restarts rather than stacks, skips catapults and golems, ends on a heal,
+   credits its kill; a condition never lands on a building.
+3. Race balance measured before and after with the balance league
+   (`docs/balance.md`); a race that moves more than about five points is
+   tuned (bleed, archer price) and measured again. Numbers recorded in
+   `docs/balance.md`.
+4. A frame with rage, bleeding and the card's icons rendered and looked at;
+   `tools/visual_lint.py` clean.
+5. Fingerprint and `sim_bench.txt` refreshed in the same commit; fuzz run;
+   mypy over `fastsim.MODULES` clean and the compiled run matches.
+
+## WB-065 — Cancel mode
+
+**Design.** A key, the same in every control scheme (and a HUD button beside
+the plans button), turns on cancel mode. The pointer becomes a red cross and
+what it is over is outlined red, with the hint bar saying what a click would
+cancel ("Barracks: 2 archers in training, endless footmen"). Then a click on:
+
+- a **plan** not yet started: cancels the plan;
+- a **site** of yours going up: cancels the building (the usual refund);
+- a finished building of yours that **trains or researches**: switches off
+  every endless recruit, empties its queue (refunded) and cancels its
+  research: one click, and the building makes nothing;
+- anything else (units, a rival's, an idle building, open ground): nothing,
+  and the hint says so.
+
+A box dragged in cancel mode does the same to everything of yours inside it
+(a row of plans at once). The mode stays on for the next click; Esc, a right
+click or the key again leaves it. The HUD issues only the orders that exist
+(`cancel_plan`, `cancel_building`, `cancel_train`, `set_auto_train` off,
+`cancel_research`) through `GameScene.attempt`: no new World order, so the
+online contract and the fingerprint do not move.
+
+**Acceptance.** Scene tests on the mock backend for each kind of target, the
+box, the three ways out and a refusal; a replay of a match that used it
+plays back; `docs/controls.md` and the help screen name the key in every
+scheme; a frame of the mode looked at; visual lint clean; fingerprint
+unchanged.
+
+## WB-064 — Flying units: the Flying Machine
+
+**Design.** The scout rider is deleted (`UnitType.SCOUT` goes, not
+deprecated). The Stables trains knights only; the Workshop trains the
+**Flying Machine**: Human Flying Machine, Orc Goblin Zeppelin, Elf Leafwing
+Glider, Dwarf Gyrocopter. It opens the air layer later units will use:
+
+- **Flight** (`flying = true` on the unit type): straight over trees, water,
+  rock, buildings and units, kept inside the map; no pathfinding and no
+  ground body (the hard core does not apply to it); flyers keep elbow room
+  from each other only.
+- **Who can hit it**: shooters (archers, clerics' bolt, towers) and nothing
+  else. Melee never targets air, and the AI and the smart order never send
+  melee at it; a siege stone and its splash pass beneath it.
+- **What it does**: sees far (sight 9 before race bonuses), fast (4.2), frail
+  (hp 50, armour 1, unarmoured, so an archer lands ×1.5), and drops a light
+  bomb on what it hovers over (damage 5, cooldown 1.5 s, reach 1.0, ground
+  only). It is a scout that can pick at workers, which a tower or two
+  shooters drive off. 600 gold, 150 lumber, 22 s at the workshop.
+- A machine: never bleeds, a cleric does not heal it.
+- **Drawn** above everything, bobbing, with a shadow on the ground under it;
+  its walk frames spin the rotor or beat the wings; selection and the
+  pointer hit the drawn body; a dot on the minimap.
+- Horse Breeding becomes "+0.8 speed for knights".
+- **Brains**: everything that trained or used scouts (scouting, raids,
+  compositions, archetypes, the league, the bred table) moves to the flyer or
+  to another unit; a brain answers flyers with shooters and towers and
+  never orders melee at air. The campaign's raid of mission 3 loses its
+  scout.
+
+**Acceptance.** Rules tests: a flight across a lake and a forest without a
+path, the targeting matrix (melee, shooter, tower, stone, splash against air
+and ground), no bleeding, no healing; a flyer ordered with a mixed group
+moves with it; fuzz; the arena shows no race outside the band and the
+brains not weaker than before; each race's flyer rendered and looked at
+(procedural art where no painted sheet exists, recorded); visual lint;
+the campaign mission loads and plays; fingerprint refreshed.
+
+## WB-063 — Magic I: Aether, rifts and vaults
+
+**Design.** A third resource, **Aether**, violet and restless. It rises from
+**ley rifts**, cracks in the ground where light streams up: one near every
+seat's base and contested ones in the shared ground, dealt by mapgen as
+fairly as the mines (the audit covers them). Nobody owns a rift.
+
+- The **Aether Vault** (race names: Arcane Vault, Spirit Cage, Moon
+  Reliquary, Rune Vault; 2×2, 400 gold 200 lumber, needs a Town Hall) is a
+  cube of glass or stone full of aether that pulls upward, held to the ground
+  by chains. Built on a rift, it draws: 1 aether every 2 s. Built anywhere
+  else it only stores and reaches. One vault per rift.
+- **Saturation**: a player's store is capped at 100 per finished vault. A
+  vault on a rift adds nothing past the cap, and a vault lost lowers the cap
+  and spills what no longer fits (a raid on vaults is a raid on the mana
+  pool).
+- **Reach**: 10 tiles round each finished vault. WB-066's spells cost triple
+  and cool down triple when cast beyond every vault's reach, so a forward
+  vault is a real decision.
+- The HUD shows aether beside gold and lumber as *stored / cap*; the vault's
+  card shows its draw and whether it stands on a rift; a translucent circle
+  shows reach while a vault is selected or a spell is aimed.
+- Seen: the rift streams motes upward; a drawing vault's cube glows and
+  strains at its chains; a full store stops the motes.
+- Brains that reach the mid game build a vault on their own rift (the
+  spending comes in WB-067), so the economy is exercised by the league.
+
+**Acceptance.** Mapgen places rifts fairly for every size, layout and seat
+count (the audit extended); rules tests for draw, cap, spill, one vault per
+rift, reach; saves and snapshots carry aether (a rival's store is private,
+like gold); fog remembers rifts like mines; the HUD, the vault and the rift
+rendered and looked at; visual lint; fingerprint refreshed.
+
+## WB-061 — Global commands with levels
+
+**Design.** Six commands for the whole side, on a row of HUD buttons and a
+key each: **Fortify**, **Withdraw**, **Scout**, **Harass**, **Gold**,
+**Lumber**. Pressing one again within 1.5 s raises it a level (pips on the
+button, up to three), and each press acts at once for its step, so level 3
+is three quick presses and nothing waits for a timer.
+
+| command | level 1 | level 2 | level 3 |
+|---|---|---|---|
+| Scout | one unit (a flyer, else the fastest soldier) | a quarter of the soldiers | half of them |
+| Harass | a raiding party of up to three fast soldiers | a quarter | half |
+| Withdraw | wounded soldiers (below half) home | soldiers outside the base, most exposed first, half | every soldier |
+| Fortify | one tower planned at the most exposed approach | three | six, and Withdraw 1 |
+| Gold / Lumber | the idle workers and a quarter of the others | half | all |
+
+- **Scout**: scouts spread over the least recently seen ground and the rival
+  bases the side knows of, keep moving, steer clear of known towers, and come
+  home hurt below half.
+- **Harass**: the party goes for the nearest rival's workers at a mine or a
+  wood line, strikes, and runs home the moment rival soldiers or a tower come
+  into sight; it ends at home.
+- **Withdraw**: to the nearest hall (not an attack-move); workers never.
+- **Fortify**: plans (unpaid until started, as the settlement does) between
+  the base and the nearest known rival, spread across approaches; refused
+  with the reason when no tower can be built yet.
+- **Gold / Lumber**: ordered harvests, which the worker policy leaves alone.
+- A unit given an order by its player leaves its command; a small tag shows
+  what a unit is doing for a command. The commands use only what the side
+  knows (fog and memory), never the world's truth.
+- The controller lives in `warband/brains/` (it decides like a brain for
+  the player) and gives orders through `GameScene.attempt`, so replays and
+  online play need nothing new.
+
+**Acceptance.** Tests per command and level against staged worlds; that the
+controller reads only the seat's knowledge (a unit behind fog is never
+targeted); fuzz with monkey input pressing commands; a replay that used them
+plays back; a frame of the row and pips looked at; docs/controls.md.
+
+## WB-066 — Magic II: the Mage Tower and the spells
+
+**Design.** The **Mage Tower** (race names; 900 gold 400 lumber, needs an
+Aether Vault) researches three **levels** of magic: I (600/200, 60 s), II
+(1000/400, 90 s, needs the Keep and I), III (1600/600, 120 s, needs II).
+Researching a level is choosing one of its three spells; the other two are
+closed for the match. Spells are cast by the side, not a caster: from a
+spell bar on the HUD, at any point of the map (a point in fog is allowed,
+blind), costing aether, each with its own cooldown; beyond every vault's
+reach the cost and the cooldown are tripled, and the aim cursor says which.
+The effects are WB-062 conditions (rows of `buffs.toml`) plus a few direct
+blows. Friendly spells touch only the caster's units, hostile ones every
+rival's and the wilds', flyers included unless named.
+
+| level | cost / cooldown | spell | effect |
+|---|---|---|---|
+| I | 30 / 30 s | Haste | own units within 3: +40 % speed, blows 25 % faster, 10 s |
+| I | | Mend | own units within 3: +5 hp a second for 6 s, bleeding staunched |
+| I | | Flame Strike | enemies within 1.5: 25 damage through armour, then 2 a second for 4 s; buildings too |
+| II | 60 / 60 s | Stoneskin | own units within 3: +4 armour, 15 s |
+| II | | Entangle | enemy ground units within 2.5 cannot move for 4 s (they still strike); flyers are out of reach |
+| II | | Wither | enemies within 3 deal 30 % less damage and move 20 % slower, 12 s |
+| III | 120 / 120 s | Meteor | lands 2 s after the cast (its shadow grows), 120 damage within 2 falling to 60 at the edge, ×1.5 on buildings, friend and foe alike |
+| III | | Summon | three Aether Elementals (hp 120, damage 12, melee) for 40 s at the point |
+| III | | Battle Fury | own units within 6: +40 % damage, +20 % speed, 12 s |
+
+The rule of the triads: each level offers one tempo spell, one that holds a
+fight, and one that hurts, so the choice follows the posture, not a best
+answer.
+
+**Acceptance.** One `@recorded` World order `cast(player, spell, point)`
+checked atomically (researched, aether, cooldown, a point on the map) with
+rows in the atomicity tests; the choice of a level closes the other two;
+cost and cooldown tripled beyond reach; each spell's effect tested; saves,
+snapshots (a rival's research and aether stay private; a cast others see is
+public news) and replays; the tower, the spell bar, the aim cursor and each
+spell's effect rendered and looked at, with sounds; visual lint;
+fingerprint refreshed.
+
+## WB-067 — Magic III: the AI casts, the spells balanced
+
+**Design.** Hard, Master and Grandmaster (the `ProBrain` family) build a
+vault on their rift in the mid game, a tower, and research a spell per level
+chosen by posture (a rush takes Haste, Flame Strike, Battle Fury; a warden
+Mend, Stoneskin, Meteor; the bred brains get the choice as genes). They cast:
+buffs over their own army when it engages (the point covering most of it),
+damage on clumps of rivals or workers at a mine, Entangle on a retreat or a
+chase, Meteor on a clump or a tower line, Summon where they are losing.
+Easy and Medium stay without magic.
+
+**Acceptance.** On the arena, a magic-using ProBrain beats the same brain
+without magic over enough seeds to mean it; each spell's pick is within a
+band of its two rivals when the brain is made to take it (no spell that is
+always right or never), tuned by numbers in `buffs.toml` and the spell table;
+race balance in band; `docs/balance.md` records the numbers; fuzz; the
+fingerprint and `sim_bench.txt` refreshed.
