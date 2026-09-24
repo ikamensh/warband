@@ -794,26 +794,32 @@ shares, renormalised onto the rest; the raids went to knights and, measured
 at a cost, off by default for the pro brain ([the ladder
 doc](ai-ladder.md#the-flying-machine-takes-the-riders-place-wb-064)).
 `tools/race_report.py --seeds 24`, 288 matches a run, on the same seeds either
-side of the change:
+side of the change, and then with the hunt that change needed (below):
 
-| race | Master before | Master after | Medium before | Medium after |
-|------|--------------:|-------------:|--------------:|-------------:|
-| human | 74–67 (52.5%) | 61–64 (48.8%) | 75–69 (52.1%) | 73–66 (52.5%) |
-| orc | 50–81 (38.2%) | 47–82 (36.4%) | 58–83 (41.1%) | 49–89 (35.5%) |
-| elf | 68–70 (49.3%) | 63–61 (50.8%) | 73–68 (51.8%) | 76–63 (54.7%) |
-| dwarf | 80–54 (59.7%) | 81–45 (64.3%) | 79–65 (54.9%) | 80–60 (57.1%) |
-| undecided | 16 | 36 | 3 | 10 |
+| race | Master before | Master after | Master, hunting | Medium before | Medium after | Medium, hunting |
+|------|--------------:|-------------:|----------------:|--------------:|-------------:|----------------:|
+| human | 74–67 (52.5%) | 61–64 (48.8%) | 72–70 (50.7%) | 75–69 (52.1%) | 73–66 (52.5%) | 75–69 (52.1%) |
+| orc | 50–81 (38.2%) | 47–82 (36.4%) | 51–91 (35.9%) | 58–83 (41.1%) | 49–89 (35.5%) | 53–91 (36.8%) |
+| elf | 68–70 (49.3%) | 63–61 (50.8%) | 66–74 (47.1%) | 73–68 (51.8%) | 76–63 (54.7%) | 78–66 (54.2%) |
+| dwarf | 80–54 (59.7%) | 81–45 (64.3%) | 94–48 (66.2%) | 79–65 (54.9%) | 80–60 (57.1%) | 82–62 (56.9%) |
+| undecided | 16 | 36 | 5 | 3 | 10 | 0 |
 
-No race moved by more than its noise (about four and a half points on 140
-decided games), but the orcs lost ground on both brains, most on Medium,
+The rider's going first made more matches run to the twenty-minute cap, and
+those looked alike: the loser down to one peasant somewhere off its old base,
+and no brain going to look for it. The riders circling the enemy's base and
+the raiders waiting for prey used to stumble on such a peasant. So a brain
+that has lost track of every rival now hunts (`brains.ai.Hunt`, [the ladder
+doc](ai-ladder.md#the-flying-machine-takes-the-riders-place-wb-064)), and the
+undecided matches fell below where they started: the five Master mirrors
+still at the cap are standoffs, both sides alive with dry mines and a handful
+of soldiers, not a lost peasant.
+
+Deciding those matches moves the table more than the rider did. The orcs,
+already the weak race (WB-045), lost ground on both brains, most on Medium,
 whose orcs had the heaviest cavalry plan and now open their harass with two
-knights where they sent two cheap riders. The orcs were already the weak
-race (WB-045); this widens the gap rather than making it. More matches run
-to the twenty-minute cap, and the undecided ones look alike: the loser is
-down to one peasant somewhere off its old base, and no brain goes looking
-for it. The riders circling the enemy's base and the raiders waiting for
-prey used to stumble on such a peasant; nothing does now, and neither brain
-sweeps the map once it knows no enemy building.
+knights where they sent two cheap riders; and the dwarves' Master lead grew to
+66%. Neither is tuned here: a race-balance pass waits for WB-062, whose buffs
+touch orc Rage.
 
 
 ## What to change next

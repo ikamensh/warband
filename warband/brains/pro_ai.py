@@ -15,7 +15,7 @@ from typing import Final
 from warband.brains.pro_force import _tower_strength, _tower_strength_own, strength
 from warband.brains.pro_profiles import PRO, PRO_PROFILES, PRO_RUSH, PRO_VANGUARD, PRO_WARDEN, ProProfile
 
-from warband.brains.ai import CAMP_REACH, RAIDERS, answer_flyers, heading_to, known_camps, known_mines
+from warband.brains.ai import CAMP_REACH, RAIDERS, answer_flyers, heading_to, known_camps, known_mines, lost_track
 from warband.sim.model import Attack, Build, Building, Move, Point, Repair, Salvage, Unit, World, dist, rect_gap, tile_center
 from warband.sim.rules import BuildingType, Layout, Race, UnitType
 
@@ -63,8 +63,10 @@ class ProBrain(_ProBrainEconomy):
 
     def _military(self, world: World) -> None:
         army = self._army(world)
-        self._send_scout(world)
         busy = set(self._raid(world, army))
+        busy |= self.hunt.step(world, self.player, [u for u in army if u.id not in busy],
+                               lost_track(world, self.player, self._unexplored_corner(world)))
+        self._send_scout(world)
         army = [u for u in army if u.id not in busy]
         answer_flyers(world, self.player, army, 9.0)
         # A couple of soldiers never leave. Riders picking off peasants cost more
@@ -517,7 +519,7 @@ class ProBrain(_ProBrainEconomy):
             targets = [self._unexplored_corner(world)]  # nothing found yet: go and look
         for scout_id in self.scouts:
             scout = world.units[scout_id]
-            if scout.orders:
+            if scout.orders or scout_id in self.hunt.party:  # a flyer on the hunt is the hunt's
                 continue
             # Circle the enemy base rather than standing in it, so the sighting stays fresh; a flyer at the edge of its
             # sight, out of the reach of a tower at the middle.

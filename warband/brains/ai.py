@@ -153,6 +153,114 @@ def heading_to(unit: Unit, point: Point) -> bool:
     return isinstance(order, AttackMove) and dist(order.target, point) <= REDIRECT
 
 
+#: A side that has lost track of every rival goes hunting (:class:`Hunt`): these are the hunt's numbers.
+HUNT_SQUARE: Final = 8  # tiles on a side of the squares whose last sighting a side keeps
+HUNT_LOOK: Final = 2.0  # seconds between two looks at which of the squares' middles the side sees
+HUNT_DUE: Final = 60.0  # a square unseen this long (or never seen) is due another look
+HUNT_PARTY: Final = 3  # soldiers that join the flyers in the search
+HUNT_FLYERS_ALONE: Final = 20.0  # seconds the flyers search alone before the soldiers join them
+
+
+def lost_track(world: World, player: int, guess: Point) -> bool:
+    """Whether *player* has lost every rival: no building of theirs remembered (``known_enemy_buildings``), none of
+    them in sight, and the place its expedition guessed they started from (*guess*) already looked at.  Only the side's
+    own fog and memory answer it.  At the start of a match nothing of the rival is known either, but the guess is
+    still to be looked at: the expedition to it is the search then."""
+    if known_enemy_buildings(world, player) or not world.is_explored(player, (int(guess[0]), int(guess[1]))):
+        return False
+    return not any(unit.player != player and not world.players[unit.player].neutral and not unit.hidden
+                   and world.is_visible(player, unit.tile) for unit in world.units.values())
+
+
+class Hunt:
+    """The search a side makes for rivals it has lost track of (:func:`lost_track`): the last peasant of a razed base,
+    or a hall raised where nobody has looked.  Without it a won match ran to the clock, the winner's army standing on
+    the ground its expedition had guessed and cleared, and nobody going anywhere else (Master mirrors ran to the cap 36
+    times in 288 once the scout riders that used to stumble on such a peasant were gone, WB-064).
+
+    The side keeps, for each square of :data:`HUNT_SQUARE` tiles, when it last saw its middle, from the first pass of
+    the match on: its own sight, nothing else.  While it has lost track, its flyers search, and after
+    :data:`HUNT_FLYERS_ALONE` seconds (at once, with no flyer) its :data:`HUNT_PARTY` fastest soldiers join them.  A
+    searcher with nothing to do takes the nearest square that is due (unseen for :data:`HUNT_DUE` seconds, or never
+    seen) and nobody else is bound for, or with none due the least recently seen; the square it was bound for counts as
+    seen once it stops, so ground it cannot reach is not asked for again and again.  Soldiers attack-move: what they
+    find they fight, and the army follows up, because what they see is what the brain's attack targets are made of."""
+
+    def __init__(self) -> None:
+        self.seen: list[float] = []  # per square, row after row: when the side last saw its middle (-inf: never)
+        self.columns = 0
+        self.next_look = 0.0
+        self.since = -1.0  # when the side lost track; negative while it has not
+        self.party: dict[int, int] = {}  # a searcher's id -> the square it was sent to (-1: not sent yet)
+
+    def middle(self, world: World, square: int) -> Point:
+        """The middle of *square*'s tiles inside the map."""
+        x = min((square % self.columns) * HUNT_SQUARE + HUNT_SQUARE // 2, world.width - 1)
+        y = min((square // self.columns) * HUNT_SQUARE + HUNT_SQUARE // 2, world.height - 1)
+        return (x + 0.5, y + 0.5)
+
+    def look(self, world: World, player: int) -> None:
+        """Note the squares whose middle *player* sees now; every :data:`HUNT_LOOK` seconds."""
+        if world.time < self.next_look:
+            return
+        self.next_look = world.time + HUNT_LOOK
+        if not self.seen:
+            self.columns = -(-world.width // HUNT_SQUARE)
+            self.seen = [-math.inf] * (self.columns * -(-world.height // HUNT_SQUARE))
+        visible, width = world.visible[player], world.width
+        for square in range(len(self.seen)):
+            x, y = self.middle(world, square)
+            if visible[int(y) * width + int(x)]:
+                self.seen[square] = world.time
+
+    def step(self, world: World, player: int, soldiers: list[Unit], lost: bool) -> set[int]:
+        """Look, and while *lost* keep the searchers searching; the ids of the searchers, which the brain's army leaves
+        to the hunt.  *soldiers* are those the brain could spare for it."""
+        self.look(world, player)
+        if not lost:
+            self.since = -1.0
+            self.party.clear()
+            return set()
+        if self.since < 0.0:
+            self.since = world.time
+        party = {uid: square for uid, square in self.party.items() if uid in world.units}
+        for unit in world.player_units(player):
+            if unit.flying and unit.id not in party:
+                party[unit.id] = -1
+        if not any(world.units[uid].flying for uid in party) or world.time - self.since >= HUNT_FLYERS_ALONE:
+            walking = sum(1 for uid in party if not world.units[uid].flying)
+            spare = sorted((u for u in soldiers if u.id not in party), key=lambda u: (-world.speed_of(u), u.id))
+            for unit in spare[:max(0, HUNT_PARTY - walking)]:
+                party[unit.id] = -1
+        taken = {square for square in party.values() if square >= 0}
+        for uid in sorted(party):
+            unit, square = world.units[uid], party[uid]
+            if square >= 0 and unit.orders:
+                continue
+            if square >= 0:
+                self.seen[square] = world.time  # as near as the ground lets it come: looked at
+                taken.discard(square)
+            square = self._next(world, unit.pos, taken)
+            party[uid] = square
+            taken.add(square)
+            point = self.middle(world, square)
+            if unit.info.damage:
+                world.attack_move([uid], point)
+            else:
+                world.move([uid], point)
+        self.party = party
+        return set(party)
+
+    def _next(self, world: World, origin: Point, taken: set[int]) -> int:
+        """The nearest square that is due and nobody is bound for; with none due, the least recently seen."""
+        now = world.time
+        free = [square for square in range(len(self.seen)) if square not in taken] or list(range(len(self.seen)))
+        due = [square for square in free if now - self.seen[square] >= HUNT_DUE]
+        if due:
+            return min(due, key=lambda square: (dist(origin, self.middle(world, square)), square))
+        return min(free, key=lambda square: (self.seen[square], dist(origin, self.middle(world, square)), square))
+
+
 def known_camps(world: World, player: int) -> list:
     """The creature lairs *player* has laid eyes on, as its own memory records them.
 
@@ -387,6 +495,7 @@ class Brain:
         self.waves_sent = 0
         self.attacking = False
         self.raiders: list[int] = []
+        self.hunt = Hunt()  # the search for rivals it has lost track of
         self.log: list[tuple[float, str]] = []  # (time, what) — the evidence of how it plays
         self._last_defend = 0  # threat size of the last logged "defend with" line
         self._wave_capped = False
@@ -798,6 +907,8 @@ class Brain:
         if self.profile.harass:
             self._raid(world)
             army = [u for u in army if u.id not in self.raiders]
+        hunting = self.hunt.step(world, self.player, army, lost_track(world, self.player, self._far_guess(world)))
+        army = [u for u in army if u.id not in hunting]
         threats = self._threats(world)
         if self.profile.creep and not threats and self._creep(world, army):
             return
@@ -897,10 +1008,13 @@ class Brain:
             return seen
         # Nothing of theirs found yet: walk at the far corner rather than stand
         # at home until the clock runs out. Starts sit in the corners.
+        return [self._far_guess(world)]
+
+    def _far_guess(self, world: World) -> Point:
+        """Where the rival started, guessed from the map's shape: the start furthest from our hall."""
         hall = self._hall(world)
         here = hall.center if hall is not None else (world.width / 2, world.height / 2)
-        corners = mapgen.start_guesses(world.width, world.height, world.seats)
-        return [max(corners, key=lambda c: dist(c, here))]
+        return max(mapgen.start_guesses(world.width, world.height, world.seats), key=lambda c: dist(c, here))
 
     def _threats(self, world: World) -> list[Unit]:
         """Visible enemies within DEFEND_RADIUS of one of our buildings.

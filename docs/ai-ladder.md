@@ -547,12 +547,28 @@ Grandmaster (23 of 30 to 15 of 30), whose bred profiles never scouted, raided
 or bought a rider: what changed there is Master's side, whose riders became
 knights (4.2 knights a game to 5.6). The brains now train 0.1 to 0.2 flying
 machines a game on Hard and Master, where they had trained four or five
-riders. What did change is the ending: Master mirrors ran to the
-twenty-minute cap 36 times in 288 where they had 16 (Medium's 10 where it had
-3), each time with the loser down to one peasant nobody went looking for
-([balance.md](balance.md#the-flying-machine-replaces-the-scout-rider-wb-064-2026-09-24)).
-A sweep of the ground least recently seen, once no enemy building is known, is
-the brain's missing piece; the riders only ever found that peasant by chance.
+riders.
+
+What did change is the ending. Master mirrors ran to the twenty-minute cap 36
+times in 288 where they had 16 (Medium's 10 where it had 3), each time with the
+loser down to one peasant nobody went looking for: the riders had only ever
+found it by chance. So a side that has lost track of every rival goes hunting
+(`brains.ai.Hunt`, both brain families). It has lost track when it remembers
+no building of theirs, sees none of them, and has already looked at the place
+its expedition guessed they started from (the far corner, or the nearest rival
+cell on a grid map): before that, the expedition is the search, so nothing
+changes in the opening. It keeps, per square of eight tiles, when it last saw
+the square's middle, from its own sight alone. Its flyers search first; twenty
+seconds on, or at once without a flyer, its three fastest soldiers join them.
+Each searcher takes the nearest square unseen for a minute and nobody else is
+bound for (with none due, the least recently seen), and the square it was
+bound for counts as seen once it stops, so ground it cannot reach is not asked
+for again. Soldiers attack-move: what they find they fight, and what they see
+becomes the army's target. With it the Master mirrors reach the cap 5 times in
+288 and Medium's none ([balance.md](balance.md#the-flying-machine-replaces-the-scout-rider-wb-064-2026-09-24));
+the five left are standoffs with both sides alive, not a lost peasant. The
+difficulty ladder above was measured again with the hunt and came out the
+same to the point: its matches are settled before a hunt starts.
 
 ### What the 2000 still needs
 

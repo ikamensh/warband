@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from warband.brains.pro_profiles import PRO, ProProfile
-from warband.brains.ai import fighters, known_enemy_buildings, known_mines
+from warband.brains.ai import Hunt, fighters, known_enemy_buildings, known_mines
 from warband.sim import mapgen
 from warband.sim.model import Build, Building, Point, Repair, Salvage, Unit, World, dist, tile_center
 from warband.sim.rules import BuildingType, UnitType
@@ -26,6 +26,7 @@ class _ProBrainCore:
         self.prospector: int | None = None  # the peasant out looking for the next mine
         self._prospect_leg = 0              # how many places it has been sent to look
         self.raiders: list[int] = []
+        self.hunt = Hunt()  # the search for rivals it has lost track of
         self.rushers: list[int] = []  # peasants walking to the enemy's mine to raise a tower there
         self.rush_drafted = 0
         self.rush_over = False
