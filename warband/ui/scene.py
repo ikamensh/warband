@@ -520,6 +520,7 @@ class GameScene(Scene):
         self.hover: tuple[float, float] = (0.0, 0.0)  # in tiles
         self.last_alert: tuple[float, float] | None = None
         self._acc = 0.0
+        self._behind = 0.0  # match seconds the clock let go of because frames came too slowly to step them all
         self._drag_start: tuple[int, int] | None = None
         self._drag_end: tuple[int, int] | None = None
         self._game_over = False
@@ -2311,7 +2312,8 @@ class GameScene(Scene):
         self.effects.update(dt)
         self.bodies = [b for b in self.bodies if not b.done]
         self.stains = [s for s in self.stains if not s.done]
-        self.view.sync(0.0 if self.paused else dt, fraction=self._motion_fraction())
+        with self.game.telemetry.phase("view"):
+            self.view.sync(0.0 if self.paused else dt, fraction=self._motion_fraction())
         self._update_card()
         self._update_resources()
         self.cancel_button.style = DANGER_BUTTON if self.cancelling else GHOST_BUTTON  # the same size: only its colour says so
@@ -2345,16 +2347,29 @@ class GameScene(Scene):
     def _advance(self, dt: float) -> None:
         if not self.paused and not self._game_over and self.world.winner is None and self.player.alive:  # a decided match stays frozen
             self._acc += min(dt, 0.25) * self.speed
+            self._behind += max(0.0, dt - 0.25) * self.speed
             steps = 0
+            telemetry = self.game.telemetry
             while self._acc >= SIM_DT and steps < MAX_STEPS_PER_FRAME:
-                for brain in self.brains:
-                    brain.think(self.world, self.rng)
+                with telemetry.phase("ai"):
+                    for brain in self.brains:
+                        brain.think(self.world, self.rng)
                 self.view.before_step()
-                self.world.step()
+                with telemetry.phase("sim"):
+                    self.world.step()
                 self._acc -= SIM_DT
                 steps += 1
             if steps == MAX_STEPS_PER_FRAME:
+                self._behind += self._acc
                 self._acc = 0.0
+
+    def telemetry_context(self) -> dict[str, Any]:
+        """The match beside its frame times (saga2d's telemetry): which run (its replay), how big, how far on,
+        how crowded, how fast, how far out the camera, and how far the clock has fallen behind real time."""
+        world = self.world
+        return {"run": self.run_id, "map": f"{world.width}x{world.height}", "seats": world.seats, "tick": world.tick,
+                "units": len(world.units), "buildings": len(world.buildings), "speed": self.speed, "paused": self.paused,
+                "zoom": round(self.camera.zoom, 2), "behind_s": round(self._behind, 1)}
 
     @property
     def mood(self) -> str:

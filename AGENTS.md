@@ -21,6 +21,7 @@ uv run python tools/sim_bench.py --check tools/sim_bench.txt   # processor time 
 uv run python tools/verify.py DIR                # a match through real pyglet events, frames saved to look at
 uv run python tools/visual_lint.py --evidence DIR   # visual defects in the art and on every screen, PNGs of what it flags
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms); never time under a profiler
+uv run python -m saga2d.telemetry ~/.warband     # frame rates of the matches actually played; each window names its run and tick
 uv run python tools/step_bench.py --repeat 3     # model step times without a window
 uv run python tools/arena.py ladder --agents hard,pro --seeds 40   # rate agents against each other, in parallel
 uv run --extra package python tools/package.py build --version 0.1.0   # standalone build; verify DIR / install too
