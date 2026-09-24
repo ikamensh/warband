@@ -74,6 +74,21 @@ def move_mouse(game: Game, x: float, y: float) -> None:
         backend.window.dispatch_event("on_mouse_motion", int(x * s + backend.offset_x), int((game.resolution[1] - y) * s + backend.offset_y), 0, 0)
 
 
+def drag_mouse(game: Game, start: tuple[float, float], end: tuple[float, float]) -> None:
+    """Press the left button at logical *start* and drag it, held, to *end*, on either backend."""
+    backend = game.backend
+    if hasattr(backend, "inject_drag"):
+        backend.inject_click(int(start[0]), int(start[1]))
+        backend.inject_drag(int(end[0]), int(end[1]), end[0] - start[0], end[1] - start[1])
+        return
+    from pyglet.window import mouse
+
+    s, height = backend.scale_factor, game.resolution[1]
+    (x0, y0), (x1, y1) = ((int(x * s + backend.offset_x), int((height - y) * s + backend.offset_y)) for x, y in (start, end))
+    backend.window.dispatch_event("on_mouse_press", x0, y0, mouse.LEFT, 0)
+    backend.window.dispatch_event("on_mouse_drag", x1, y1, x1 - x0, y1 - y0, mouse.LEFT, 0)
+
+
 def settlement() -> World:
     """A compact working settlement of every building: player 0 owns it, player 1 is a
     silent human so no AI acts (the fixture of tools/verify_art.py)."""
@@ -504,6 +519,40 @@ def endless_barracks(game: Game) -> None:
     scene.select([barracks.id])
     scene.camera.center_on(*(c * TILE for c in barracks.center))
     ticks(game, 30, 0.1)
+
+
+def cancel_town(game: Game) -> GameScene:
+    """The town with a barracks at work (a footman endlessly, two archers queued behind), a row of three farms planned
+    below the hall, and cancel mode on."""
+    scene = town(game)
+    world = scene.world
+    world.players[scene.human].gold = world.players[scene.human].lumber = 5000
+    barracks = own(scene, BuildingType.BARRACKS)
+    world.set_auto_train(barracks.id, UnitType.FOOTMAN, True)
+    for _ in range(2):
+        world.train(barracks.id, UnitType.ARCHER)
+    for x in (9, 12, 15):
+        world.plan_building(scene.human, BuildingType.FARM, (x, 11))
+    scene.toggle_cancel_mode()
+    return scene
+
+
+@screen
+def cancel_mode(game: Game) -> None:
+    """Cancel mode over the barracks at work: the pointer a red cross, the barracks outlined in red, the hint bar
+    saying what a click would cancel, the Cancel button red beside Plans."""
+    scene = cancel_town(game)
+    barracks = own(scene, BuildingType.BARRACKS)
+    move_mouse(game, *scene.camera.world_to_screen(barracks.center[0] * TILE, (barracks.center[1] + 0.4) * TILE))
+    ticks(game)
+
+
+@screen
+def cancel_box(game: Game) -> None:
+    """A box dragged in cancel mode over two of the three plans: drawn red, the two outlined, the hint counting them."""
+    scene = cancel_town(game)
+    drag_mouse(game, scene.camera.world_to_screen(8.4 * TILE, 10.4 * TILE), scene.camera.world_to_screen(14.6 * TILE, 13.6 * TILE))
+    ticks(game)
 
 
 for _controls in ("grid", "modal"):

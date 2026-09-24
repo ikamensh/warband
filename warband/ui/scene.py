@@ -7,7 +7,7 @@ import itertools
 import json
 import math
 import random
-from collections import deque
+from collections import Counter, deque
 from datetime import datetime, timezone
 from uuid import NAMESPACE_URL, uuid4, uuid5
 from dataclasses import dataclass, field
@@ -31,7 +31,7 @@ from warband.sim.races import RACES, RaceInfo
 from warband.sim.rules import (BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, SIM_DT, UNITS, ArmorClass, AttackType, BuildingType, Cost,
                                Difficulty, MapTheme, Race, Resource, Terrain, UnitType, Upgrade, an, listing)
 from warband.sim.rules import Layout as MapLayout
-from warband.records.profile import MatchResult, Profile, RatingChange, Standing, standing
+from warband.records.profile import MatchResult, Profile, RatingChange, Standing, plural, standing
 from warband.records.replay import Replay, ReplayStore
 from warband.records.scores import HighScores, score_breakdown
 from warband.audio.sound import IMPACTS, apply_volumes, impact_sound, play_music, play_sound
@@ -60,6 +60,9 @@ PENDING_ASKS = {"move": "Click where to move", "attack": "Click a target, or the
                 "patrol": "Click the far end of the patrol", "repair": "Click one of your damaged buildings",
                 "salvage": "Click a ruin, or a rival's building, to tear apart",
                 "assembly": "Click the map to set an assembly point for new soldiers"}
+CANCEL = "cancel"  # the pending mode of cancel mode (WB-065): a click or a box takes back what it covers
+CANCEL_INK = (255, 80, 70, 235)  # its pointer, its outlines and its box
+CANCEL_FILL = (255, 80, 70, 46)
 PLANS_PRICE = 126  # the price column on the Plans screen: the widest price and a little air
 SUPPLY_WARNING = 2  # units of room left in the farms: from here the supply pair warns before it blocks
 SHORT_FLASH = 1.5  # seconds a resource the purse was short of stays red in the top bar
@@ -158,6 +161,16 @@ def build_time(seconds: float) -> str:
 def feeds(supply: int) -> str:
     """" · feeds 4" for a building that raises the supply cap, nothing for one that does not."""
     return f" · feeds {supply}" if supply else ""
+
+
+#: The unit names whose plural is not the name and an s: a rule on "-man" made Shamen of the orcs' shamans.
+#: tests/warband/test_cancel_mode.py holds every race's names, and the creatures', to their plurals.
+IRREGULAR_PLURALS = {"Footman": "Footmen", "Crossbowman": "Crossbowmen", "Ballista": "Ballistae", "Dire Wolf": "Dire Wolves"}
+
+
+def plural_name(name: str) -> str:
+    """A unit's name for more than one: Footmen, Archers, Shamans."""
+    return IRREGULAR_PLURALS.get(name, name + "s")
 
 
 def _clock(seconds: float) -> str:
@@ -339,6 +352,26 @@ class QueueEntry:
     cancel: Callable[[], bool]  # right click; whether the rules allowed it
 
 
+@dataclass(frozen=True)
+class CancelTarget:
+    """What cancel mode takes back where it is pointed: a plan not yet started, a site going up, or a finished
+    building's work (its endless training, its queue and its research)."""
+
+    kind: str  # "plan" | "site" | "work"
+    rect: tuple[int, int, int, int]  # x, y, width, height in tiles: what is outlined, and what a box must hold the centre of
+    what: str  # what the hint bar says a click cancels
+    orders: tuple[tuple[str, tuple], ...]  # the World orders it takes, in the order they are given
+
+    @property
+    def centre(self) -> tuple[float, float]:
+        x, y, w, h = self.rect
+        return x + w / 2, y + h / 2
+
+    def covers(self, point: tuple[float, float]) -> bool:
+        x, y, w, h = self.rect
+        return x <= point[0] < x + w and y <= point[1] < y + h
+
+
 class _SelectionPanel(Component):
     """Route the immediate-drawn portraits and production queue through the UI tree."""
 
@@ -360,6 +393,9 @@ class GameScene(Scene):
     #: Pause while the window is in the background, and resume on return.
     #: A network match keeps playing elsewhere, so it opts out.
     auto_pause_on_background = True
+    #: How many orders cancel mode may give at once, and so in one click or box; the allowance comes back at half
+    #: of it a second.  None: as many as it takes.  A match played elsewhere sets it under its server's rate limit.
+    cancel_burst: int | None = None
     controls = {
         "escape": "cancel",
         "f1": "open_help",
@@ -407,9 +443,10 @@ class GameScene(Scene):
         self._autosave_at = AUTOSAVE_EVERY
         self.selection: list[int] = []
         self.groups: dict[str, list[int]] = {}
-        self.pending: str | None = None  # "move" | "attack" | "patrol" | "repair" | "salvage" | "assembly" | "place:<building type>"
+        self.pending: str | None = None  # "move" | "attack" | "patrol" | "repair" | "salvage" | "assembly" | "place:<building type>" | CANCEL
         self.catalogue: str | None = None  # "build" | "train" | "upgrade": the settlement's catalogue, over the selection's card
         self._repeat: Callable[[], None] | None = None  # the last recruit or placement once more: the Modal scheme's "."
+        self._cancel_allowance = (float(self.cancel_burst or 0), 0.0)  # orders cancel mode may still give, as of a scene clock
         self._site_rng = random.Random(f"sites:{seed}")  # where the planner puts what the player lets it place: not the brains' stream
         self.settlement_row: Row | None = None  # made with the HUD
         self.paused = False
@@ -647,7 +684,8 @@ class GameScene(Scene):
 
     def _fill_settlement_row(self) -> None:
         """The settlement's buttons, each with the key that reaches it whatever the card shows in this scheme: Ctrl with
-        a letter where the letters belong to the card (Classic, Modal), the plain key beside the grid in Grid."""
+        a letter where the letters belong to the card (Classic, Modal), the plain key beside the grid in Grid.  Cancel
+        mode's, beside Plans, stands red while the mode is on."""
         row, scheme = self.settlement_row, self.scheme
         assert row is not None
         row.clear()
@@ -657,8 +695,12 @@ class GameScene(Scene):
                 ("train", "Train", lambda: self.toggle_catalogue("train")),
                 ("upgrade", "Upgrade", lambda: self.toggle_catalogue("upgrade")),
                 ("plans", lambda: f"Plans ({self._plan_count()})", self.open_plans),
+                ("cancel", "Cancel", self.toggle_cancel_mode),
                 ("assembly", "Assembly", lambda: self.start_pending("assembly"))):
-            row.add(Button(text, hotkey=scheme.shortcut(action), on_click=click, style=GHOST_BUTTON))
+            button = Button(text, hotkey=scheme.shortcut(action), on_click=click, style=GHOST_BUTTON)
+            if action == "cancel":
+                self.cancel_button = button
+            row.add(button)
 
     def _build_objectives(self) -> Column:
         """The panel under the top-right corner: the tutorial strip here, a mission's objectives in the campaign."""
@@ -703,7 +745,7 @@ class GameScene(Scene):
         return {"build": key("b", UNIT_SLOTS["build"]), "farm": key(BUILDINGS[BuildingType.FARM].hotkey, BUILD_ORDER.index(BuildingType.FARM)),
                 "barracks": key(BUILDINGS[BuildingType.BARRACKS].hotkey, BUILD_ORDER.index(BuildingType.BARRACKS)),
                 "footman": key(UNITS[UnitType.FOOTMAN].hotkey, BUILDINGS[BuildingType.BARRACKS].trains.index(UnitType.FOOTMAN)),
-                "attack": key("a", UNIT_SLOTS["attack"])}
+                "attack": key("a", UNIT_SLOTS["attack"]), "cancel": self.scheme.shortcut("cancel")}
 
     def _idle_button(self) -> Button:
         self.idle_button = Button(lambda: f"Idle {self._idle_peasant_count()}", hotkey="Tab", on_click=self.next_idle_peasant, style=ACTION_BUTTON)
@@ -776,6 +818,12 @@ class GameScene(Scene):
     def hint(self) -> list[tuple[str, str]]:
         """The bar at the bottom: what the keys do in the mode the card is in, named as this scheme names them."""
         scheme = self.scheme
+        if self.cancelling:
+            box = self._cancel_box()
+            if box is not None:
+                return [("Release", self._cancel_summary(box, "cancel ") or "nothing of yours to cancel in the box")]
+            return [("Click", self.cancel_hint()), ("Drag", "a box of them"),
+                    (f"Esc / Right click / {scheme.shortcut('cancel')}", "leave")]
         placing = self.placing
         if placing is not None:
             hints = [("Click", "place"), (self._key_of(placing) + " again", "the planner picks the spot")]
@@ -871,7 +919,8 @@ class GameScene(Scene):
             alive = units or alive[-1:]  # buildings are selected alone: the last one named
         self.selection = alive
         self._portrait_page = 0
-        self.pending = None
+        if not self.cancelling:  # cancel mode is the settlement's, not the selection's: a group recalled leaves it on
+            self.pending = None
         self.catalogue = None
         self._refresh_card()
         if alive and not quiet:
@@ -1288,6 +1337,156 @@ class GameScene(Scene):
         else:
             self.open_menu()
 
+    # -- Cancel mode -----------------------------------------------------------------
+
+    @property
+    def cancelling(self) -> bool:
+        """Whether cancel mode is on (WB-065): a click, or a box, takes back what it covers."""
+        return self.pending == CANCEL
+
+    def toggle_cancel_mode(self) -> None:
+        """Ctrl+X in every scheme, or the Cancel button: cancel mode, in place of any order waiting for its click, or off
+        again.  It lasts past each click; Esc and a right click leave it too, and so does any other mode armed."""
+        self.pending = None if self.cancelling else CANCEL
+        self.say("Cancel mode: click or box what to take back · Esc leaves" if self.cancelling else "Cancel mode off")
+        self.sfx("button")
+        self._refresh_card()
+
+    def cancel_targets(self) -> list[CancelTarget]:
+        """Everything of the player's that cancel mode can take back: the plans not yet started, the sites going up and
+        the finished buildings at work.  A building's endless training goes off first, so an emptied queue is not
+        filled again; its queue is peeled from the back, the recruit in training last; then its research."""
+        world, human = self.world, self.human
+        targets = []
+        for plan in world.player_plans(human):
+            if plan.kind == "building" and plan.building is None:  # once dug, its site is the target
+                size = BUILDINGS[plan.type].size
+                targets.append(CancelTarget("plan", (plan.pos[0], plan.pos[1], size, size), f"the planned {self.building_name(plan.type)}",
+                                            (("cancel_plan", (human, plan.id)),)))
+        for building in world.player_buildings(human):
+            name = self.building_name(building.type)
+            if not building.done:
+                targets.append(CancelTarget("site", building.rect, f"the {name} going up (refunded)", (("cancel_building", (building.id,)),)))
+            elif building.auto or building.queue or building.research is not None:
+                orders = [("set_auto_train", (building.id, unit_type, False)) for unit_type in building.auto]
+                orders += [("cancel_train", (building.id,))] * len(building.queue)
+                orders += [("cancel_research", (building.id,))] if building.research is not None else []
+                targets.append(CancelTarget("work", building.rect, f"{name}: {self._work_line(building)}", tuple(orders)))
+        return targets
+
+    def cancel_target_at(self, point: tuple[float, float]) -> CancelTarget | None:
+        """What a click in cancel mode at *point* (tiles) takes back, if anything."""
+        return next((target for target in self.cancel_targets() if target.covers(point)), None)
+
+    def _cancel_targets_in(self, a: tuple[float, float], b: tuple[float, float]) -> list[CancelTarget]:
+        """The targets whose centre a box from *a* to *b* (tiles) holds."""
+        (left, right), (top, bottom) = sorted((a[0], b[0])), sorted((a[1], b[1]))
+        return [t for t in self.cancel_targets() if left <= t.centre[0] <= right and top <= t.centre[1] <= bottom]
+
+    def _cancel_box(self) -> list[CancelTarget] | None:
+        """What the box being dragged in cancel mode holds; None while no box is being dragged."""
+        start, end = self._drag_start, self._drag_end
+        if not self.cancelling or start is None or end is None or math.dist(start, end) < DRAG_THRESHOLD:
+            return None
+        return self._cancel_targets_in(to_tiles(*self.camera.screen_to_world(*start)), to_tiles(*self.camera.screen_to_world(*end)))
+
+    def _cancel_pointed(self) -> CancelTarget | None:
+        """What a click would take back where the pointer is, over the map."""
+        return self.cancel_target_at(self.hover) if self.ui.pointer_target(*self.mouse) is None else None
+
+    def cancel_hint(self) -> str:
+        """What a click in cancel mode would do where the pointer is, as the hint bar says it."""
+        if self.ui.pointer_target(*self.mouse) is not None:
+            return "cancel a plan, a site or a building at work"  # the pointer is over the HUD, whose buttons it clicks
+        target = self.cancel_target_at(self.hover)
+        return f"cancel {target.what}" if target is not None else f"nothing: {self._nothing_to_cancel(self.hover)}"
+
+    def _nothing_to_cancel(self, point: tuple[float, float]) -> str:
+        """Why a click in cancel mode at *point* takes nothing back."""
+        for kind, pos, queued in self.pending_sites():
+            size = BUILDINGS[kind].size
+            if queued and pos[0] <= point[0] < pos[0] + size and pos[1] <= point[1] < pos[1] + size:
+                return f"the next {self.building_name(kind)} is its peasant's order; select the peasant and stop it"
+        entity = self.view.entity_at(point)
+        if isinstance(entity, Unit):
+            return "units are not cancelled, only plans, sites and work"
+        if entity is not None and entity.player == self.human:
+            return f"the {self.building_name(entity.type)} makes nothing now"
+        return "nothing of yours here"
+
+    def _work_line(self, building: Building) -> str:
+        """What a finished *building* has in hand: "2 Archers in training, endless Footmen"."""
+        parts = []
+        if building.queue:
+            counts = Counter(building.queue)
+            parts.append(listing([an(self.unit_name(kind)) if n == 1 else f"{n} {plural_name(self.unit_name(kind))}"
+                                  for kind, n in counts.items()]) + " in training")
+        if building.research is not None:
+            parts.append(f"researching {self.race.upgrades[building.research].name}")
+        if building.auto:
+            parts.append("endless " + listing([plural_name(self.unit_name(kind)) for kind in building.auto]))
+        return ", ".join(parts)
+
+    def cancel_at(self, point: tuple[float, float]) -> None:
+        """A click in cancel mode: take back what is at *point* (tiles), or say why nothing is."""
+        target = self.cancel_target_at(point)
+        if target is None:
+            self.say(f"Nothing to cancel: {self._nothing_to_cancel(point)}")
+        else:
+            self._cancel([target])
+
+    def cancel_in_box(self, a: tuple[float, float], b: tuple[float, float]) -> None:
+        """A box dragged in cancel mode from *a* to *b* (tiles): take back everything of the player's it holds."""
+        targets = self._cancel_targets_in(a, b)
+        if targets:
+            self._cancel(targets)
+        else:
+            self.say("Nothing of yours to cancel in the box")
+
+    def _cancel(self, targets: list[CancelTarget]) -> None:
+        """Give *targets*' orders through :meth:`attempt`, whole targets while the allowance lasts.  The first refusal
+        stops everything after it, and its reason stays on the status line; what it interrupted is left as a prefix of
+        its orders (a building no longer endless, its queue shorter from the back, the recruit in training kept)."""
+        given: list[CancelTarget] = []
+        refused = False
+        for target in targets:
+            if len(target.orders) > self._allowance():
+                break
+            if not all(self._give(action, args) for action, args in target.orders):  # all() stops at the first refusal
+                refused = True
+                break
+            given.append(target)
+        if given:
+            self.sfx("button")
+            self._refresh_card()
+        if refused:
+            return
+        left = len(targets) - len(given)
+        self.say((f"Cancelled {self._cancel_summary(given)}" if given else "Nothing cancelled yet")
+                 + (f" · {left} more: cancel again in a moment" if left else ""))
+
+    def _give(self, action: str, args: tuple) -> bool:
+        if self.cancel_burst is not None:
+            self._cancel_allowance = (self._allowance() - 1, self.clock)
+        return self.attempt(action, *args)
+
+    def _allowance(self) -> float:
+        """How many orders cancel mode may give now: what is left of its burst and what has come back since."""
+        if self.cancel_burst is None:
+            return math.inf
+        left, since = self._cancel_allowance
+        return min(self.cancel_burst, left + (self.clock - since) * self.cancel_burst / 2)
+
+    def _cancel_summary(self, targets: list[CancelTarget], verb: str = "") -> str:
+        """*targets* in words: the one's own, or how many plans, sites and buildings' work; "" for none."""
+        if not targets:
+            return ""
+        if len(targets) == 1:
+            return verb + targets[0].what
+        counts = Counter(target.kind for target in targets)
+        names = {"plan": ("plan", "plans"), "site": ("site", "sites"), "work": ("building's work", "buildings' work")}
+        return verb + listing([plural(counts[kind], *names[kind]) for kind in names if counts[kind]])
+
     # -- Settlement plans ----------------------------------------------------------
 
     def _plan_count(self) -> int:
@@ -1316,6 +1515,8 @@ class GameScene(Scene):
             self.next_idle_soldier()
         elif action == "repeat":
             self.repeat_last()
+        elif action == "cancel":
+            self.toggle_cancel_mode()
         else:
             raise ValueError(f"No such action: {action}")
 
@@ -1812,10 +2013,10 @@ class GameScene(Scene):
             self.hover = point
             return True
         if event.type == "click" and event.button == "left":
-            if self.pending is not None:
+            if self.pending is not None and not self.cancelling:
                 self._execute_pending(point, keep=event.shift)
                 return True
-            self._drag_start = self._drag_end = (event.x, event.y)
+            self._drag_start = self._drag_end = (event.x, event.y)  # a selection, or in cancel mode what to cancel
             return True
         if event.type == "drag" and event.button == "left":
             if self._drag_start is not None:
@@ -1827,10 +2028,16 @@ class GameScene(Scene):
                 return True
             start, end = self._drag_start, self._drag_end or self._drag_start
             self._drag_start = self._drag_end = None
-            if math.dist(start, end) < DRAG_THRESHOLD:
+            box = to_tiles(*self.camera.screen_to_world(*start)), to_tiles(*self.camera.screen_to_world(*end))
+            click = math.dist(start, end) < DRAG_THRESHOLD
+            if self.cancelling and click:
+                self.cancel_at(point)
+            elif self.cancelling:
+                self.cancel_in_box(*box)
+            elif click:
                 self.click_select(point, event.shift, event.ctrl or event.meta)
             else:
-                self.box_select(to_tiles(*self.camera.screen_to_world(*start)), to_tiles(*self.camera.screen_to_world(*end)), event.shift)
+                self.box_select(*box, event.shift)
             return True
         if event.type == "click" and event.button == "right":
             if self.pending is not None:
@@ -1943,6 +2150,7 @@ class GameScene(Scene):
         self.view.sync(0.0 if self.paused else dt, fraction=self._motion_fraction())
         self._update_card()
         self._update_resources()
+        self.cancel_button.style = DANGER_BUTTON if self.cancelling else GHOST_BUTTON  # the same size: only its colour says so
         self.idle_button.visible = self._idle_peasant_count() > 0
         self.army_button.visible = bool(self._army())
         self._update_objectives()
@@ -2283,11 +2491,27 @@ class GameScene(Scene):
         self._draw_assembly()
         if self._drag_start is not None and self._drag_end is not None and math.dist(self._drag_start, self._drag_end) >= DRAG_THRESHOLD:
             (x0, y0), (x1, y1) = self._drag_start, self._drag_end
-            self.draw_rect(min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0), (120, 255, 140, 40), border_color=(120, 255, 140, 220), border_width=1)
+            fill, border = (CANCEL_FILL, CANCEL_INK) if self.cancelling else ((120, 255, 140, 40), (120, 255, 140, 220))
+            self.draw_rect(min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0), fill, border_color=border, border_width=1)
+        if self.cancelling:
+            self._draw_cancel_mode()
         w, h = self.game.resolution
         self.draw_rect(0, h - HINT_BAR, w, HINT_BAR, (8, 10, 14, 180))
         self._draw_selection_panel()
         self.effects.draw(self)
+
+    def _draw_cancel_mode(self) -> None:
+        """Cancel mode on the map: what a click, or the box being dragged, would take back outlined in red, and a red
+        cross on the pointer over the map (the engine draws the system's arrow; the cross is under its tip)."""
+        box = self._cancel_box()
+        for target in box if box is not None else [t for t in (self._cancel_pointed(),) if t is not None]:
+            x, y, w, h = target.rect
+            self.draw_rect(x * TILE, y * TILE, w * TILE, h * TILE, CANCEL_FILL, border_color=CANCEL_INK, border_width=3, space="world")
+        if self.ui.pointer_target(*self.mouse) is None:
+            mx, my = self.mouse
+            for ink, width in (((0, 0, 0, 180), 6.0), (CANCEL_INK, 3.0)):  # a dark rim keeps it seen on snow and on fire
+                self.draw_line(mx - 10, my - 10, mx + 10, my + 10, ink, width)
+                self.draw_line(mx - 10, my + 10, mx + 10, my - 10, ink, width)
 
     def _draw_assembly(self) -> None:
         """The flag where the settlement's recruits gather."""
@@ -2966,6 +3190,7 @@ def help_keys(scheme: Scheme) -> list[tuple[str, str]]:
         ("Shift", "keep going: queue orders, place more buildings;  with a recruit's key: train it endlessly (right-click too)"),
         ("A building's key again", "while it is being placed: the planner picks the spot by your hall (a hall: by a free gold mine)"),
         ("Ctrl + B / T / U / G / P", "Build / Train / Upgrade, the assembly point, every plan, from any card;  Ctrl+A: the army (Mac: Cmd)"),
+        ("Ctrl + X", "cancel mode: a click takes back a plan, a site or a building's training and research;  drag: a box of them"),
         ("Click / drag / right-click", "select;  box-select;  order what fits the target;  double-click or Ctrl-click: that type on screen"),
         ("1-9 / Ctrl / Shift", "recall / assign / add to a control group;  Tab: the next idle peasant;  Space: the last alert"),
         ("Arrows / edges / wheel", "scroll (middle-drag too);  wheel or + / −: zoom;  minimap: left-click looks, right-click sends"),

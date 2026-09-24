@@ -164,7 +164,9 @@ def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = No
                 assert isinstance(game.scene, GameScene), [type(s).__name__ for s in game.scenes]
                 for _step in range(steps):
                     roll = rng.random()
-                    if roll < 0.4:
+                    if roll < 0.03:  # cancel mode, which a random letter with a random Ctrl reaches too seldom to click in
+                        game.backend.inject_key("x", ctrl=True)
+                    elif roll < 0.4:
                         game.backend.inject_key(rng.choice(keys), shift=rng.random() < 0.15, ctrl=rng.random() < 0.15)
                     elif roll < 0.75:
                         x, y = rng.randrange(1280), rng.randrange(800)

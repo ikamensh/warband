@@ -31,6 +31,9 @@ def _room_memory(game):
 class NetworkGameScene(GameScene):
     #: The match plays on elsewhere; freezing snapshots locally would desync it.
     auto_pause_on_background = False
+    #: The room server drops a connection that sends more than 40 orders at once (20 a second after that): a box
+    #: over a row of plans in cancel mode gives 20 at most, and 10 a second, leaving the rest for everything else.
+    cancel_burst = 20
 
     def __init__(self, session, match=None, *, settings=None):
         self.session, self.match = session, match

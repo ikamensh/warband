@@ -4,7 +4,8 @@ The keyboard works in modes: the command card of what is selected, the Build, Tr
 catalogues, and a pending order that waits for its click.  Every scheme shares the modes, the mouse and
 the modifiers — Shift keeps going (it queues an order, places another building, trains endlessly), Esc
 goes back one level, Ctrl (Cmd) with B, T, U, G or P reaches the settlement from anywhere — and a scheme
-decides which plain keys do what, and how long a mode lasts:
+decides which plain keys do what, and how long a mode lasts.  Ctrl+X is cancel mode in every scheme: a click takes
+back a plan, a site or a building's work, a box everything of the player's inside it (WB-065).
 
 * **Classic** — the letter of the name, as Warcraft II had it: A attack, F footman, B build.  B, T, U and G
   open the catalogues and set the assembly point whenever the card leaves the letter free.
@@ -24,11 +25,13 @@ from typing import Final
 
 CARD_COLS: Final = 3
 GRID_KEYS: Final = ("q", "w", "e", "a", "s", "d", "z", "x", "c")  # the card's nine slots, row by row
-#: With Ctrl (Cmd on a Mac) in every scheme: the settlement from whatever the card shows.
-CHORDS: Final = {"b": "build", "t": "train", "u": "upgrade", "g": "assembly", "p": "plans"}
+#: With Ctrl (Cmd on a Mac) in every scheme: the settlement from whatever the card shows, and cancel mode.  A chord
+#: is resolved before any card, so no card's letter, now or later, can take one from a scheme.
+CHORDS: Final = {"b": "build", "t": "train", "u": "upgrade", "g": "assembly", "p": "plans", "x": "cancel"}
 ACTIONS: Final = {
     "build": "the Build catalogue", "train": "the Train catalogue", "upgrade": "the Upgrade catalogue",
     "assembly": "the assembly point for new soldiers", "plans": "every plan and its progress",
+    "cancel": "cancel mode: a click takes back a plan, a site or a building's work",
     "idle_soldier": "the next idle soldier", "repeat": "the last recruit or placement again",
 }
 

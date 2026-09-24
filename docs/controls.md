@@ -29,6 +29,7 @@ Every scheme shares the modes, the mouse and the modifiers:
 | Shift | keep going: queue an order after the others (one that never ends, a patrol, a hold or a harvest, gives way to it), place another building, and with a recruit's key train it endlessly |
 | Esc | back one level: the pending order, the catalogue, the selection, then the menu |
 | Ctrl (Cmd) + B / T / U / G / P | the Build, Train and Upgrade catalogues, the assembly point, every plan, from whatever card is up |
+| Ctrl (Cmd) + X | cancel mode: a click takes back a plan, a site or a building's work, a box all of them ([below](#cancel-mode)) |
 | a building's key again | while it is being placed: the planner picks the spot |
 | right-click a recruit's button | train it endlessly, or no longer (Warcraft III toggled autocast this way) |
 | 1-9, Ctrl/Shift+1-9, Tab, Ctrl+A, Space, F-keys | groups, the idle peasant, the army, the last alert, help, codex, pause, saves, bookmarks |
@@ -167,6 +168,62 @@ catalogue toggles it at every building that trains it, finished or going up.
 Cancel (X, or Grid's slot) cancels the last recruit and stops the building's
 endless training, which would only start the next one. A rival's standing
 orders are not in the seat's snapshot.
+
+## Cancel mode
+
+Asked for on 2026-09-24 (WB-065): one way to take back what was ordered, without
+selecting each thing and finding its Cancel. **Ctrl+X** (Cmd+X on a Mac), or the
+Cancel button beside Plans on the settlement row, turns it on; the button stands
+red while it is. A red cross sits under the pointer's tip over the map (the
+engine draws the system's arrow and offers no way to replace it), what a click
+would take back is outlined in red, and the hint bar says what that is: "cancel
+Barracks: a Footman and 2 Archers in training, endless Footmen". A click on
+
+- a **plan** not yet started cancels the plan (`cancel_plan`; it was never paid);
+- a **site** of the player's going up cancels the building, refunded in full
+  (`cancel_building`; a plan whose site is dug goes with it);
+- a finished building **at work** switches its endless training off
+  (`set_auto_train` off, each type), empties its queue from the back
+  (`cancel_train`, refunded) and cancels its research (`cancel_research`): one
+  click, and the building makes nothing;
+- anything else does nothing, and the hint says why: a unit, a rival's
+  building, an idle building, open ground, and a peasant's next site. That one
+  is the peasant's own queued order, not a plan, and no order takes back one
+  site without the peasant's others; select the peasant and Stop it.
+
+A box dragged in cancel mode is drawn red, outlines everything of the player's
+whose centre it holds, and on release does the same to all of it (a row of
+plans at once); it selects nothing. The mode stays on for the next click. Esc, a
+right click (which then orders nobody anywhere) or Ctrl+X again leaves it; so
+does arming any other mode (a unit's Move or Attack, placing a building, a
+catalogue opened), and entering it disarms whatever order waited for its click.
+Recalling a control group, Tab and Ctrl+A select as always and leave the mode on:
+it is the settlement's, not the selection's.
+
+**Why Ctrl+X.** The scene resolves a key as a control group, a Ctrl chord, the
+card's command, then the scheme's global keys, so a chord is the same in all
+three schemes by construction, and no card's letter, today's or a later race's,
+recruit's or spell's, can ever shadow it. A plain key would have had to be free
+on every card of every race in every scheme: of the letters only I, J, N, O
+and Y are, none of them says cancel, and Grid would lose its one to the next
+thing laid on the grid. X is what Classic and Modal already cancel with on a
+building's card (that plain X stays the card's), and it is the cross the pointer
+wears. Delete, the other obvious key, is missing on a Mac laptop (fn+⌫), and
+Backspace already centres the camera on the base.
+
+**What it gives.** Only orders that already exist, through `GameScene.attempt`,
+so replays, the online authority's contract and the simulation fingerprint do
+not move. A building's orders go in the order above: endless training off
+first, so an emptied queue is not filled again at once; the queue from the
+back, the recruit in training last; then the research. The first refusal stops
+the click or the box there and its reason stays on the status line, so what it
+interrupted is a prefix of that order: a building no longer endless, with its
+recruit in training still at it, never a building still endless with its queue
+gone. An online match (`NetworkGameScene.cancel_burst`) gives at most 20 of these
+orders at once and 10 a second after that, whole targets only, because the room
+server drops a connection past 40 at once; a box over more says how many are
+left for the next one. Offline there is no such limit.
+`tests/warband/test_cancel_mode.py` holds all of it.
 
 ## Placing buildings
 

@@ -51,7 +51,7 @@ OBJECTIVES: tuple[Objective, ...] = (
     Objective("Build a barracks the same way: {build} then {barracks}", lambda s: bool(_buildings(s, BuildingType.BARRACKS))),
     Objective("Train a footman: select the barracks, press {footman} (Shift+{footman}: endlessly)", lambda s: any(u.type is UnitType.FOOTMAN for u in _units(s)) or any(b.queue for b in _buildings(s, BuildingType.BARRACKS, done=True))),
     Objective("Gather the army (Ctrl+A), press {attack} and click towards the enemy", lambda s: any(isinstance(o, (AttackMove, Patrol)) for u in _units(s) for o in u.orders) or s.stats["buildings_razed"] > 0),
-    Objective("Raze every enemy building to win.  F2: codex, F1: controls", lambda s: False),
+    Objective("Raze every enemy building to win.  F2: codex, F1: controls, {cancel}: cancel mode", lambda s: False),
 )
 
 

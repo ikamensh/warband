@@ -24,7 +24,6 @@ item takes the next one and updates this line.
 | WB-059 | Next | proposed | A route nobody can reach costs the whole pathfinder budget, and the budget grows with the map | Sixteen seats 2026-09-20 |
 | WB-060 | Later | proposed | Sixteen seats online: an engine release, a snapshot that is not one world per seat, and room capacity | Sixteen seats 2026-09-20 |
 | WB-062 | Now | proposed | Buffs and debuffs: orc Rage as a ten-second buff, Bleeding from every archer's shot | Ilya 2026-09-24 |
-| WB-065 | Now | proposed | Cancel mode: a key, then a click cancels plans, sites, training, research and endless training | Ilya 2026-09-24 |
 | WB-064 | Now | proposed | Flying units: the Flying Machine at the workshop replaces the scout rider | Ilya 2026-09-24 |
 | WB-063 | Now | proposed | Magic I: Aether, a third resource drawn from ley rifts into chained vaults | Ilya 2026-09-24 |
 | WB-061 | Now | proposed | Global commands with levels: Fortify, Withdraw, Scout, Harass, Gold, Lumber | Ilya 2026-09-24 |
@@ -331,34 +330,6 @@ five numbers are the whole vocabulary and a spell is a row, not code.
    `tools/visual_lint.py` clean.
 5. Fingerprint and `sim_bench.txt` refreshed in the same commit; fuzz run;
    mypy over `fastsim.MODULES` clean and the compiled run matches.
-
-## WB-065 — Cancel mode
-
-**Design.** A key, the same in every control scheme (and a HUD button beside
-the plans button), turns on cancel mode. The pointer becomes a red cross and
-what it is over is outlined red, with the hint bar saying what a click would
-cancel ("Barracks: 2 archers in training, endless footmen"). Then a click on:
-
-- a **plan** not yet started: cancels the plan;
-- a **site** of yours going up: cancels the building (the usual refund);
-- a finished building of yours that **trains or researches**: switches off
-  every endless recruit, empties its queue (refunded) and cancels its
-  research: one click, and the building makes nothing;
-- anything else (units, a rival's, an idle building, open ground): nothing,
-  and the hint says so.
-
-A box dragged in cancel mode does the same to everything of yours inside it
-(a row of plans at once). The mode stays on for the next click; Esc, a right
-click or the key again leaves it. The HUD issues only the orders that exist
-(`cancel_plan`, `cancel_building`, `cancel_train`, `set_auto_train` off,
-`cancel_research`) through `GameScene.attempt`: no new World order, so the
-online contract and the fingerprint do not move.
-
-**Acceptance.** Scene tests on the mock backend for each kind of target, the
-box, the three ways out and a refusal; a replay of a match that used it
-plays back; `docs/controls.md` and the help screen name the key in every
-scheme; a frame of the mode looked at; visual lint clean; fingerprint
-unchanged.
 
 ## WB-064 — Flying units: the Flying Machine
 

@@ -174,12 +174,12 @@ def test_grid_keys_go_by_the_card_position(game) -> None:
     assert scene.catalogue == "upgrade"
     press(game, "r")
     assert scene.pending == "assembly"
-    assert settlement_caps(game, scene) == {"Build": "B", "Train": "T", "Upgrade": "G", "Plans (1)": "F", "Assembly": "R"}
+    assert settlement_caps(game, scene) == {"Build": "B", "Train": "T", "Upgrade": "G", "Plans (1)": "F", "Cancel": "Ctrl+X", "Assembly": "R"}
 
 
 def test_the_tutorial_and_the_help_name_the_keys_of_the_scheme(game) -> None:
     scene = match(game, "grid")
-    assert scene.tutorial_keys() == {"build": "D", "farm": "Q", "barracks": "W", "footman": "Q", "attack": "A"}
+    assert scene.tutorial_keys() == {"build": "D", "farm": "Q", "barracks": "W", "footman": "Q", "attack": "A", "cancel": "Ctrl+X"}
     game.push(HelpScene(scene.scheme))
     game.tick(1 / 60)
     shown = [t["text"] for t in game.backend.texts]
@@ -562,7 +562,8 @@ def test_ctrl_chords_reach_the_settlement_in_every_scheme(game, controls: str) -
         if action == "plans":
             assert type(game.scene).__name__ == "SettlementPlansScene"
         else:
-            expected = {"build": ("build", None), "train": ("train", None), "upgrade": ("upgrade", None), "assembly": (None, "assembly")}[action]
+            expected = {"build": ("build", None), "train": ("train", None), "upgrade": ("upgrade", None), "assembly": (None, "assembly"),
+                        "cancel": (None, "cancel")}[action]
             assert (scene.catalogue, scene.pending) == expected, (controls, letter)
         press(game, "escape")
 
