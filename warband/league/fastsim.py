@@ -113,7 +113,7 @@ except ImportError:
     sys.exit({NO_TOOLCHAIN})
 probe = Path(config["obj"], "probe.c")
 probe.parent.mkdir(parents=True)
-probe.write_text("int probe;\\n")
+probe.write_text("#include <Python.h>\\nPyMODINIT_FUNC PyInit_probe(void) {{ return NULL; }}\\n")  # MSVC links its PyInit_ too
 try:  # before mypyc spends its minute: setup() turns a missing C compiler into SystemExit("error: ...")
     setup(name="probe", packages=[], py_modules=[], ext_modules=[Extension("probe", [str(probe)])],
           script_args=["build_ext", "--build-lib", str(probe.parent), "--build-temp", str(probe.parent)])
