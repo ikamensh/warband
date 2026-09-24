@@ -41,7 +41,7 @@ one fielded per game.
 
 ## Tuning the numbers
 
-Edit the TOML, not the Python. The tunable numbers are eight commented
+Edit the TOML, not the Python. The tunable numbers are nine commented
 files in `warband/assets/constants/`:
 
 - `units.toml` — every soldier and worker: cost, hit
@@ -55,6 +55,10 @@ files in `warband/assets/constants/`:
   what mending and salvaging cost.
 - `combat.toml` — melee reach, projectile speeds, the armour rule,
   and how a siege crew weighs its own side against the enemy's.
+- `buffs.toml` — the timed conditions a unit carries (Rage, Bleeding, and
+  from WB-066 the spells): what each multiplies, adds and drains, how long
+  it lasts, whether a machine can take it, whether a heal ends it. A row is
+  the whole of a kind; the rule that lays it on names it (see below).
 - `behavior.toml` — formation marching, creature camps, crowd
   spacing, how far an idle unit chases.
 
@@ -63,7 +67,7 @@ bounds, the pathfinder's budgets and cadence, the seats, and the alert
 cooldown — planner internals and protocol, not balance. `behavior.toml`
 names the boundary at its top.
 
-Restart after editing. The simulation reads all eight files once at startup,
+Restart after editing. The simulation reads all nine files once at startup,
 validates them, and builds its typed rule tables. File edits cannot affect an
 already launched game, even if another table is imported later. No generator
 or duplicate Python catalogue needs updating.
@@ -82,7 +86,7 @@ same rule, so a racial bonus appears once:
 [orc.units]
 defaults = { hp_mult = 1.15 }
 peasant = { name = "Peon", summary = "Digs gold, hacks lumber, builds and repairs" }
-knight = { name = "Ogre", summary = "Two-headed brute; thin armour, all frenzy", hp_mult = 1.2, damage_mult = 1.1, armor_add = -1 }
+knight = { name = "Ogre", summary = "Two-headed brute; thin armour, all rage", hp_mult = 1.2, damage_mult = 1.1, armor_add = -1 }
 ```
 
 Every playable role and building still needs its own entry; the example
@@ -91,10 +95,23 @@ entries or files. An explicit value always wins, including `0`, `1.0` and
 `false`. Omitted racial modifiers mean multiply by one, add zero, and retain
 the base formation setting. Base units may omit costs, heal, splash,
 min_range and regen (zero), attack (`"normal"`), armor_class (`"light"`),
-formation/mounted/flying (`false`), living (`true`) and turn_deg (`360`). Other fields must appear
+formation/mounted/flying (`false`), turn_deg (`360`), living (`true`: a machine,
+the catapult, the flying machine and the golem, says `false` and takes no living
+condition nor a healer's cast) and inflicts (none: the archer's `"bleeding"` names
+the buffs.toml row its wounding shot lays on). Other fields must appear
 in the entry or its defaults. Misspelled keys, wrong types and missing
 required fields fail startup validation, including invalid defaults that every
 entry overrides.
+
+`buffs.toml` has a `[defaults]` table too, and any number of rows: `rage`,
+`bloodlust_rage` and `bleeding` are the ones the rules lay on by name, and a
+row nothing names yet is a kind waiting for its rule. A unit carries at most
+one of each kind; laying it on again restarts its timer, and different kinds
+combine (multipliers multiply, armour adds). A seat sees the conditions of a
+rival's units in its sight, so a kind that only research lays on would tell
+that research: until the match is decided, the authority sends
+`bloodlust_rage` to the other seats as `rage` (`authority.STRANGER_KINDS`), and
+a new kind like it gets a row there.
 
 To *try* a price before committing to it, skip the files: a `scale:` variant
 patches the numbers in every worker for one league — see below.
@@ -617,7 +634,7 @@ WB-036 (Master's third posture), on main, with evidence under
 * **The ogres (WB-045)**: an orc-only change had to hold on both brains, and
   they disagree. On Medium the orcs were already strong (55.2%) and the
   humans weak (39.2%), the reverse of Master, because Medium's longer fights
-  pay for hit points and Frenzy where Master's first clash pays for tempo. Of
+  pay for hit points and Frenzy (Rage since WB-062) where Master's first clash pays for tempo. Of
   the candidates rated against the other three races (144 matches each,
   `docs/evidence/wb045/`), every buff that lifted the orcs on Master lifted
   them further on Medium (training 7% faster: 52.9% and 59.9%; grunts
@@ -821,6 +838,65 @@ knights where they sent two cheap riders; and the dwarves' Master lead grew to
 66%. Neither is tuned here: a race-balance pass waits for WB-062, whose buffs
 touch orc Rage.
 
+
+## Rage and Bleeding (WB-062, 2026-09-24)
+
+WB-062 made the orcs' Frenzy a timed condition, Rage, and gave every race's
+archer a wound, Bleeding (`buffs.toml`): a hit point a second through armour
+for five seconds and a fifth slower, renewed by every arrow, never on heavy
+armour. Measured with `tools/race_report.py`, Master against Master and
+Medium against Medium, every pair of races both ways: on Master 47 seeds (564
+matches), on Medium two blocks of seeds (`--first-seed 1` and
+`--first-seed 49`, 1,140 matches), because one block of Medium swung by as
+much as six points between two samples of the same rules. Before is main at
+`190a9ae`; after is the same main with WB-062. Share of decided matches won:
+
+| | Master before | Master after | Medium before | Medium after |
+|---|---:|---:|---:|---:|
+| human | 47.0% | 46.6% | 45.2% | 47.5% |
+| orc | 37.4% | 36.3% | 45.3% | 42.7% |
+| elf | 52.1% | 51.8% | 54.6% | 52.4% |
+| dwarf | 63.5% | 65.4% | 54.9% | 57.4% |
+| undecided | 2 | 5 | 2 | 1 |
+
+No race moves more than 2.6 points on either difficulty (the orcs on Medium);
+the dwarves' lead on Master and the orcs' deficit are main's, before and after
+alike.
+
+Rage costs nothing: without healers it is Frenzy, and with them it outlasts a
+heal by ten seconds, which the race games barely see (Rage alone, no wound,
+moved no race more than 2.1 points on Medium). The wound is what moves races,
+and what it moved is the heavy melee's reach: the elves' Medium army is 45 %
+rangers that kite, and a slowed, bleeding footman or knight never closes on
+them. Before heavy armour turned the barb, on Medium:
+
+| the wound, before heavy armour was spared | human | orc | elf | dwarf |
+|---|---:|---:|---:|---:|
+| as designed, with a group's pace frozen by one wounded member (564, an older main) | −0.4 | −1.6 | +9.2 | −7.0 |
+| as designed, each member at its own pace (564, an older main) | −7.1 | −1.4 | +18.1 | −9.7 |
+| a point a second, a tenth slower (1,140, main `07cb63d`) | −2.4 | −3.6 | +11.0 | −5.1 |
+| a point a second, no slow | −4.8 | +1.6 | +5.0 | −2.0 |
+| half a point a second, a tenth slower | −3.9 | +1.4 | +4.5 | −2.1 |
+| half a point a second for three seconds, no slow | −3.6 | −0.7 | +2.3 | +1.9 |
+| a tenth slower, the archer at 550 gold (1,140, an older main) | +0.2 | −3.4 | +7.9 | −4.7 |
+
+Weakening the wound for everyone brought the races back into band, and a
+dearer archer did not, since every race pays it and the elves still field the
+most. Sparing heavy armour keeps the wound whole where it was meant to bite
+(the light, the unarmoured, the raider and the shooter) and takes it off the
+units that have to walk into the arrows (`spares = ["heavy"]` on the row,
+checked where any condition is laid on, so a spell can spare an armour too).
+
+The group-pace fix belongs to the conditions, not the balance: a group's pace
+is its slowest member's speed as listed (`World.listed_speed`), and each
+member walks it at its own condition's rate, so a slowed soldier falls behind
+while it is slowed rather than setting the whole army's pace for the rest of
+an order it was given while slowed.
+
+Two Master runs of the variants stopped on a crash that was main's, not the
+wound's, and is fixed on main (`190a9ae`): a recruit sent to its rally point
+went through `World.smart`, which ordered an attack on a rival flying machine
+hovering over the point, refused with a `RuleError` inside the step.
 
 ## What to change next
 

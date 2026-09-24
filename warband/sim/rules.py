@@ -35,6 +35,8 @@ from typing import Any, Final
 
 from warband.sim import config
 
+SIM_DT: Final = 0.05  # the simulation runs at 20 Hz regardless of the frame rate
+
 
 class IdentityEnum(Enum):
     """An enum whose members hash by identity.  The rule tables are keyed by these in the hottest
@@ -145,6 +147,46 @@ class AttackType(IdentityEnum):
 
 
 @dataclass(frozen=True)
+class BuffInfo:
+    """A kind of timed condition a unit carries: a row of ``buffs.toml``.
+
+    The whole of what it does is these numbers, so a new kind is a new row: *damage*, *speed* and *blow* multiply the
+    unit's damage, walking speed, and wind-up and cooldown; *armor* adds to its armour; *hp_per_second* mends it, or
+    drains it through armour when negative.  It lasts *ticks* steps from the last time it was laid on; *living* kinds
+    never land on a machine, *spares* names the armour classes a kind never lands on, and *heal_ends* kinds end when
+    a healer's cast lands.  What lays one on is the rule that
+    names it (:data:`RAGE`, :data:`BLEEDING` through :attr:`UnitInfo.inflicts`)."""
+
+    key: str  # its row's name, which saves and snapshots carry
+    name: str
+    summary: str
+    damage: float = 1.0
+    speed: float = 1.0
+    blow: float = 1.0
+    armor: int = 0
+    hp_per_second: float = 0.0
+    duration: float = 0.0  # seconds
+    ticks: int = 0  # the duration in simulation steps
+    living: bool = True
+    heal_ends: bool = False
+    spares: frozenset[ArmorClass] = frozenset()  # the armour classes it never lands on: heavy armour turns a barb
+
+
+def _buff(key: str, b: dict[str, Any]) -> BuffInfo:
+    return BuffInfo(key=key, name=b["name"], summary=b["summary"], damage=b["damage"], speed=b["speed"], blow=b["blow"],
+                    armor=b["armor"], hp_per_second=b["hp_per_second"], duration=b["duration"],
+                    ticks=round(b["duration"] / SIM_DT), living=b["living"], heal_ends=b["heal_ends"],
+                    spares=frozenset(ArmorClass(a) for a in b["spares"]))
+
+
+#: Every kind of condition, by its row's name.
+BUFFS: Final[dict[str, BuffInfo]] = {key: _buff(key, b) for key, b in config.current().buffs.items()}
+RAGE: Final = BUFFS["rage"]  # an orc soldier below half health: the orcs' passive
+BLOODLUST_RAGE: Final = BUFFS["bloodlust_rage"]  # the same once Bloodlust is researched, laid in its place
+BLEEDING: Final = BUFFS["bleeding"]  # what an archer's wounding shot lays on (units.toml's inflicts)
+
+
+@dataclass(frozen=True)
 class UnitInfo:
     name: str
     cost: Cost
@@ -178,11 +220,12 @@ class UnitInfo:
     #: Out of combat, never during it: continuous regeneration would put a hard floor under the damage needed to
     #: kill the thing at all, and with blows rolling 75-125 % every camp at that floor would be a coin flip.
     regen: float = 0.0
-    living: bool = True  # False: a machine, which no healer mends
+    living: bool = True  # False: a machine, which no living condition touches and no healer mends
     #: Over the ground rather than on it: it flies straight over trees, water, rock and buildings, takes no room on the
     #: ground (the crowd and a body's core are the walkers' own; flyers keep their elbow room from each other), and only
     #: a shot reaches it (:attr:`strikes_air`).
     flying: bool = False
+    inflicts: BuffInfo | None = None  # what its blow lays on a living unit it wounds: an archer's shot opens a wound
 
     @property
     def melee(self) -> bool:
@@ -230,7 +273,7 @@ def _unit(u: dict[str, Any]) -> UnitInfo:
         radius=u["radius"], heal=u["heal"], splash=u["splash"], attack=AttackType(u["attack"]),
         armor_class=ArmorClass(u["armor_class"]), formation=u["formation"], mounted=u["mounted"], windup=u["windup"],
         turn=math.radians(u["turn_deg"]), min_range=u["min_range"], regen=u["regen"], living=u["living"],
-        flying=u["flying"],
+        flying=u["flying"], inflicts=BUFFS[u["inflicts"]] if u["inflicts"] else None,
     )
 
 
@@ -389,8 +432,6 @@ HORSES_BONUS: Final = config.number('HORSES_BONUS')
 SIEGE_RANGE_BONUS: Final = config.number('SIEGE_RANGE_BONUS')
 SIEGE_DAMAGE_BONUS: Final = config.number('SIEGE_DAMAGE_BONUS')
 BLESSING_BONUS: Final = config.number('BLESSING_BONUS')
-FRENZY_BONUS: Final = config.number('FRENZY_BONUS')
-BLOODLUST_BONUS: Final = config.number('BLOODLUST_BONUS')
 PLUNDER_SHARE: Final = config.number('PLUNDER_SHARE')
 LONGBOWS_BONUS: Final = config.number('LONGBOWS_BONUS')
 REGROWTH_SECONDS: Final = config.number('REGROWTH_SECONDS')
@@ -512,7 +553,6 @@ CAMP_REGEN: Final = config.number('CAMP_REGEN')
 CAMP_RESPAWN: Final = config.number('CAMP_RESPAWN')
 CAMP_POST: Final = config.number('CAMP_POST')
 UNDER_ATTACK_COOLDOWN: Final = 20.0
-SIM_DT: Final = 0.05  # the simulation runs at 20 Hz regardless of the frame rate
 #: Steps a vault on a rift takes to draw one aether: AETHER_EVERY in whole steps, so the draw is counted in integers.
 AETHER_TICKS: Final[int] = round(AETHER_EVERY / SIM_DT)
 if AETHER_TICKS < 1 or abs(AETHER_TICKS * SIM_DT - AETHER_EVERY) > 1e-9:

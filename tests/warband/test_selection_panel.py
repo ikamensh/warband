@@ -187,6 +187,69 @@ def test_research_and_the_shield_wall_are_marked_beside_the_number_they_raise(tm
         game.close()
 
 
+def test_the_card_shows_each_condition_with_the_seconds_it_has_left(tmp_path) -> None:
+    """Rage and a bleeding wound (WB-062) stand beside the hit points as icons with their seconds left, a rival's
+    archer's wound as much as anything: hovering one says what it does, and the speed the wound takes is marked in red
+    beside the number it lowers.  Every kind of condition has its look."""
+    from warband.sim.rules import BLEEDING, BUFFS
+    from warband.ui.style import BAD
+    from warband.ui.view import CONDITION_LOOKS
+
+    assert set(CONDITION_LOOKS) == set(BUFFS)
+    game = Game("Warband conditions", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        world = field()
+        world.players[0].race = Race.ORC  # staged: an orc seat on the open field
+        scene = GameScene(world, 0, ranked=False, settings=dict(SETTINGS))
+        game.push(scene)
+        grunt = world.spawn_unit(0, UnitType.ARCHER, (8.5, 6.5))  # an axethrower: light armour, so it can bleed
+        world.hold([grunt.id])
+        grunt.hp = grunt.max_hp // 3  # staged: hurt below half
+        archer = world.spawn_unit(1, UnitType.ARCHER, (12.5, 6.5))
+        world.attack([archer.id], grunt.id)
+        while not grunt.conditions or len(grunt.conditions) < 2:
+            game.tick(0.1)
+        archer.hp = 0  # staged: the archer falls, so nothing strikes again
+        scene.select([grunt.id])
+        for _ in range(2):
+            game.tick(1 / 60)
+        texts = list(game.backend.texts)
+        assert {"10s", f"{BLEEDING.duration:g}s"} <= {str(t["text"]) for t in texts}
+        assert any(str(t["text"]).startswith("-") and tuple(t["color"]) == BAD for t in texts)  # the speed a wound takes
+        game.backend.inject_mouse_move(*symbol_at(game, COLORS["bleeding"]))
+        game.tick(1 / 60)
+        assert scene.tooltip.startswith("Bleeding")
+        game.backend.inject_mouse_move(*symbol_at(game, COLORS["rage"]))
+        game.tick(1 / 60)
+        assert scene.tooltip.startswith("Rage")
+    finally:
+        game.close()
+
+
+def test_a_heavy_units_card_shows_the_wound_its_armour_turns(tmp_path) -> None:
+    """Heavy armour is never bled (buffs.toml's ``spares``): its card shows the wound's icon struck out, and says so on
+    hover; a light unit's card shows nothing of the kind."""
+    from warband.ui.scene import SPARED_INK
+
+    game = Game("Warband armour", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        scene = GameScene(field(), 0, ranked=False, settings=dict(SETTINGS))
+        game.push(scene)
+        footman, archer = (scene.world.spawn_unit(0, kind, (8.5 + 3 * i, 6.5)) for i, kind in enumerate((UnitType.FOOTMAN, UnitType.ARCHER)))
+        scene.select([archer.id])
+        for _ in range(2):
+            game.tick(1 / 60)
+        assert not any(tuple(p["color"]) == SPARED_INK for p in game.backend.polygons)
+        scene.select([footman.id])
+        for _ in range(2):
+            game.tick(1 / 60)
+        game.backend.inject_mouse_move(*symbol_at(game, SPARED_INK))
+        game.tick(1 / 60)
+        assert scene.tooltip == "Heavy armour: never bleeding"
+    finally:
+        game.close()
+
+
 #: What the card says a unit wears and how it strikes: both sides of the damage table, in the words a player reads.
 #: A new kind of unit — a neutral creature guarding a camp among them — states its own row here: the card is where
 #: a player learns which of their units to send at it.

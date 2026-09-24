@@ -7,7 +7,7 @@ from warband.sim import mapgen
 from warband.sim.model import Unit, World, RuleError, field_values
 from warband.sim.worker_knowledge import WorkerKnowledge
 from saga2d.server.games import GameSpec, option_choice, option_int, option_keys, option_seed
-from warband.sim.rules import BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
+from warband.sim.rules import BLOODLUST_RAGE, RAGE, BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
 
 GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'salvage', 'stop', 'hold', 'release_workers'}
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building', 'set_auto_train'}
@@ -26,10 +26,22 @@ PUBLIC_EVENTS = frozenset({'victory', 'eliminated', 'surrendered', 'resigned', '
 #: What a seat learns of a unit it sees but does not own is where it stands and how it moves and strikes, not where it is
 #: going, nor how lately its owner had it in hand.
 STRANGER_UNIT = {'orders': [], 'worker_orders': [], 'home': None, 'constructing': None, 'auto_work': False, 'commanded': None}
+#: The conditions a stranger's unit is shown carrying under another kind's name until the match is decided: a kind of
+#: its own would tell its owner's research.  Rage under Bloodlust is Rage.
+STRANGER_KINDS = {BLOODLUST_RAGE.key: RAGE.key}
 #: Of a building it sees but does not own: footprint, hit points, construction and abandonment, not its work.  A site
 #: keeps its builder's id (the builder itself is inside, out of sight): a site with none is one from a save older than
 #: WB-048, and a load removes it.
 STRANGER_BUILDING = {'queue': [], 'train_progress': 0.0, 'rally': None, 'research': None, 'research_progress': 0.0, 'auto': []}
+
+
+def _stranger_unit(d, undecided):
+    """What a seat is told of the unit *d* it sees and does not own: :data:`STRANGER_UNIT`, and while the match is
+    *undecided* its conditions as :data:`STRANGER_KINDS` names them."""
+    stranger = {**d, **STRANGER_UNIT}
+    if undecided and d['conditions']:
+        stranger['conditions'] = [{**c, 'kind': STRANGER_KINDS.get(c['kind'], c['kind'])} for c in d['conditions']]
+    return stranger
 
 
 def _terrain_rows(world):
@@ -92,8 +104,9 @@ class WarbandMatch:
         All of its own.  Of everyone else's, what it sees now, without intentions: a unit's orders and home, a
         building's work.  The ground and the mines out of sight as it last saw them, ground it never saw as the
         map began, mines it never saw not at all.  Of the news, what it saw happen, its own affairs and what is
-        public.  The other seats' purse (gold, lumber and aether), research and scores once the match is decided, their plans and memory
-        never, and the server's random stream never: a fixed state stands in for it."""
+        public.  The other seats' purse (gold, lumber and aether), research (and the conditions that would tell it) and
+        scores once the match is decided, their plans and memory never, and the server's random stream never: a fixed
+        state stands in for it."""
         world = self.world
         data = world.to_dict()
         data['rng'] = NO_DICE
@@ -106,7 +119,7 @@ class WarbandMatch:
                     record.update(gold=0, lumber=0, aether=0, aether_charge=0, upgrades=[], stats=dict.fromkeys(record['stats'], 0),
                                   last_alert=None, last_hit=None, assembly=None)
         visible, knowledge = world.visible[player], world.worker_knowledge[player]
-        data['units'] = [d if unit.player == player else {**d, **STRANGER_UNIT}
+        data['units'] = [d if unit.player == player else _stranger_unit(d, world.winner is None)
                          for unit, d in zip(world.units.values(), data['units'])
                          if unit.player == player or (not unit.hidden and world.is_visible(player, unit.tile))]
         buildings = []

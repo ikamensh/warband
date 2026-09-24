@@ -244,7 +244,7 @@ def test_every_unit_pose_fits_the_unit_canvas() -> None:
                     assert reach + textures.PAD <= textures.DROP_UNIT, (race, unit_type, carrying, frame, reach)
 
 
-SCREENS = ("title", "new_game_elf", "new_game_master", "select_peasant", "pending_salvage", "select_town_hall", "select_army", "select_60_units", "select_60_archers", "town_at_work", "menu_build_hover", "menu_train_hover",
+SCREENS = ("title", "new_game_elf", "new_game_orc", "new_game_master", "select_peasant", "select_conditions", "pending_salvage", "select_town_hall", "select_army", "select_60_units", "select_60_archers", "town_at_work", "menu_build_hover", "menu_train_hover",
            "menu_build_at_start", "menu_train_at_start", "menu_upgrade_researched", "menu_upgrade_all_done", "plans", "plan_row", "cancel_mode", "cancel_box",
            "commands_pips", "commands_tags",
            "alerts", "battle_wood",

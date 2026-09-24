@@ -154,3 +154,32 @@ def test_the_blood_setting_turns_sprays_and_stains_off(play) -> None:
         game.tick(0.1)
         assert not sprays(scene)
     assert victim.id not in world.units and scene.bodies and not scene.stains
+
+
+def test_an_enraged_unit_glows_red_and_a_bleeding_one_drips(play) -> None:
+    """Conditions show on the map (WB-062): an enraged orc is flushed red with a red glow behind it, a unit an archer
+    wounded drips, and without blood the drops are a pale grey."""
+    from warband.sim.rules import BLEEDING, Race
+
+    game, scene = play
+    world = scene.world
+    world.players[0].race = Race.ORC  # staged: an orc seat on the open field
+    grunt = world.spawn_unit(0, UnitType.ARCHER, (18.5, 12.5))  # an axethrower: light armour, so it can bleed
+    world.hold([grunt.id])
+    grunt.hp = grunt.max_hp // 3  # staged: hurt below half, so enraged from the next step
+    archer = world.spawn_unit(1, UnitType.ARCHER, (22.5, 12.5))
+    world.attack([archer.id], grunt.id)
+    while grunt.condition(BLEEDING) is None:
+        game.tick(0.1)
+    world.move([archer.id], (38.5, 2.5))  # off it goes: nothing strikes again
+
+    def drawn(key: str) -> bool:
+        handle = game.assets.image(key)
+        return any(mark["image"] is handle for mark in game.backend.images)
+
+    game.tick(1 / 60)
+    assert drawn("glow.rage") and drawn("drip") and not drawn("drip.pale")
+    assert scene.view.unit_sprite(grunt.id).tint != (1.0, 1.0, 1.0)
+    scene.settings["blood"] = False
+    game.tick(1 / 60)
+    assert drawn("drip.pale") and not drawn("drip")

@@ -1,0 +1,59 @@
+# Timed conditions a unit carries: what each kind does while it lasts.
+# Read once at startup. Edit and restart to use new values; no generation step.
+# See docs/balance.md for defaults and validation.
+#
+# A row is the whole of what a kind does; what lays it on is the rule that names
+# it (Rage in the orcs' passive, Bleeding in an archer's shot through units.toml's
+# `inflicts`). Laying on a kind a unit already carries restarts its timer: a kind
+# never stacks with itself. Different kinds combine: multipliers multiply,
+# armour adds. Buildings never carry a condition.
+#
+#   damage         multiplier on the blows it strikes
+#   speed          multiplier on its walking speed
+#   blow           multiplier on its wind-up and cooldown (0.8: blows a quarter faster)
+#   armor          added to its armour
+#   hp_per_second  hit points a second, a drain when negative, through armour; a
+#                  death by drain is credited to whoever laid it on
+#   duration       seconds it lasts from the last time it was laid on
+#   living         only the living take it: never a machine (units.toml `living`)
+#   heal_ends      a healer's cast ends it
+#   spares         the armour classes it never lands on (unarmoured, light, heavy)
+
+[defaults]
+damage = 1.0
+speed = 1.0
+blow = 1.0
+armor = 0
+hp_per_second = 0.0
+living = true
+heal_ends = false
+
+# An orc soldier hurt below half health, renewed every step it stays there: so it
+# runs its full ten seconds after a Shaman mends it, and the orc player wants the
+# line hurt and mended both. The card names each kind by its name.
+[rage]
+name = "Rage"
+summary = "Enraged: +25 % damage"
+damage = 1.25
+duration = 10.0
+
+# Rage once Bloodlust is researched: laid in rage's place, never beside it.
+[bloodlust_rage]
+name = "Rage"
+summary = "Enraged, and Bloodlust doubles it: +50 % damage"
+damage = 1.5
+duration = 10.0
+
+# An archer's shot that wounds: a fixed drain that does not stack, worth most in
+# chases and skirmishes and least in a massed fight. Heavy armour turns the barb:
+# a footman, a knight, an ironguard or a bear rider never bleeds. Without that the
+# kiting rangers bled heavy melee that could then never close, and the elves won
+# the race games out of hand (docs/balance.md, WB-062).
+[bleeding]
+name = "Bleeding"
+summary = "Loses a hit point a second through armour and walks a fifth slower; a heal staunches it; heavy armour is not bled"
+speed = 0.8
+hp_per_second = -1.0
+duration = 5.0
+heal_ends = true
+spares = ["heavy"]

@@ -30,8 +30,9 @@ from warband.sim.model import (RIFT, Attack, AttackMove, Build, Building, Deposi
                                 RuleError, Unit, World)
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
-from warband.sim.rules import (AETHER_EVERY, AETHER_STORE, BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, SIM_DT, UNITS, ArmorClass, AttackType,
-                               BuildingType, Cost, Difficulty, MapTheme, Race, Resource, Terrain, UnitInfo, UnitType, Upgrade, an, listing)
+from warband.sim.rules import (AETHER_EVERY, AETHER_STORE, BUFFS, BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, SIM_DT, UNITS, ArmorClass, AttackType,
+                               BuffInfo, BuildingType, Cost, Difficulty, MapTheme, Race, Resource, Terrain, UnitInfo, UnitType, Upgrade, an,
+                               listing)
 from warband.sim.rules import Layout as MapLayout
 from warband.league import fastsim
 from warband.records.profile import MatchResult, Profile, RatingChange, Standing, plural, standing
@@ -49,7 +50,7 @@ from warband.ui.tech import Need, Prerequisite, TechTree
 from warband.ui.version import running_build
 from warband.art.textures import TILE
 from warband.ui.tutorial import OBJECTIVES, Tutorial
-from warband.ui.view import FLIGHT, SHOT_LOOKS, SHOT_SIZE, MapView, Overlay, Sighting, check_memory, rgba, to_tiles, to_world
+from warband.ui.view import CONDITION_LOOKS, FLIGHT, SHOT_LOOKS, SHOT_SIZE, MapView, Overlay, Sighting, check_memory, rgba, to_tiles, to_world
 
 DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True, "blood": True,
                                     "controls": "classic"}
@@ -119,6 +120,8 @@ MINIMAP_WIDTH = 200
 SELECTION_WIDTH = 470
 SELECTION_HEIGHT = 128
 CARD_TEXT = 88  # a selected entity's text starts here, right of its portrait
+CONDITION_ICON = 14  # a condition's icon on a unit's card, beside its hit points
+SPARED_INK = (150, 150, 150, 255)  # the icon of a condition the unit's armour turns, struck out
 CARD_RIGHT = SELECTION_WIDTH - 16 - CARD_TEXT - PANEL_STYLE.padding  # 354 px of room for a card's text, from its left edge
 PORTRAIT = 30  # a selected unit's portrait in the panel
 PORTRAIT_GAP = 3
@@ -137,13 +140,24 @@ def attack_hint(attack: AttackType) -> str:
     return attack.value + (f", {', '.join(better)}" if better else "")
 
 
-def defence_line(info: UnitInfo) -> str:
+def defence_line(info: UnitInfo, *, spared_too: bool = True) -> str:
     """"heavy armour · normal blows": both sides of :data:`DAMAGE_FACTORS`' table for one unit.  The pair is the
     fact a player acts on — armour alone is half a table — so the selection panel says it under the stats and the
-    command card repeats it in the tooltip of whatever trains the unit.  An unarmed unit strikes no blow, and a
-    flyer says that only shots reach it: "unarmoured · unarmed · flies"."""
+    command card repeats it in the tooltip of whatever trains the unit.  An unarmed unit strikes no blow, a flyer says
+    that only shots reach it ("unarmoured · unarmed · flies"), and heavy armour what it turns ("· no bleeding"), which
+    the selection card shows as a struck-out icon instead (*spared_too* false): its column has no room for the words."""
     line = f"{armour_name(info.armor_class)} · " + (f"{info.attack.value} blows" if info.damage else "unarmed")
-    return line + (" · flies" if info.flying else "")
+    return line + (" · flies" if info.flying else "") + ("".join(f" · no {name}" for name in spared(info)) if spared_too else "")
+
+
+def spared(info: UnitInfo) -> list[str]:
+    """The conditions *info*'s armour never takes, by name (``buffs.toml``'s ``spares``): heavy armour is not bled."""
+    return [kind.name.lower() for kind in spared_kinds(info)]
+
+
+def spared_kinds(info: UnitInfo) -> list[BuffInfo]:
+    """The kinds of condition *info*'s armour never takes."""
+    return [kind for kind in BUFFS.values() if info.armor_class in kind.spares]
 
 
 def armour_hint(armor: ArmorClass) -> str:
@@ -2673,7 +2687,7 @@ class GameScene(Scene):
         self.view.draw(Overlay(selected=list(self.selection), hovered=hovered, ghost=self.ghost(), plans=[(kind, pos) for kind, pos, _ in self.pending_sites()],
                                bars_for_all=self.all_bars or self.alt_held, rally_for=[b.id for b in [self._own_building()] if b is not None],
                                reach=self.reach_shown(), rifts_lit=self.placing is BuildingType.VAULT,
-                               tags={uid: (tag, TAG_INKS[tag]) for uid, tag in self.adjutant.tags.items()}))
+                               tags={uid: (tag, TAG_INKS[tag]) for uid, tag in self.adjutant.tags.items()}, blood=self.settings["blood"]))
         ambience.draw(self, self.world, self.human)
         self._draw_assembly()
         if self._drag_start is not None and self._drag_end is not None and math.dist(self._drag_start, self._drag_end) >= DRAG_THRESHOLD:
@@ -2925,14 +2939,14 @@ class GameScene(Scene):
                 sx = tx + i * 78
                 draw_icon(self, icon, sx, y + 45, 19)
                 self.draw_text(text, sx + 24, y + 60, style="body")
-                if raised > 0:
+                raised = round(raised, 2)  # a speed times a condition's fifth is no number to print in full
+                if raised:  # a condition can lower one as well: a bleeding unit walks slower
                     width, _height = self.game.backend.measure_text(text, body.font_size, body.font)
-                    self.draw_text(f"+{raised:g}", sx + 28 + width, y + 60, style="body", color=GOLD)
+                    self.draw_text(f"{raised:+g}", sx + 28 + width, y + 60, style="body", color=GOLD if raised > 0 else BAD)
                 if sx <= mx < sx + 74 and y + 42 <= my < y + 64:
                     self.tooltip = hint
-            if world.frenzied(entity):
-                self.draw_text("Frenzy!", tx + 4 * 78, y + 60, style="body", color=BAD)
-            self._armour_notes.append(defence_line(info).capitalize())
+            self._draw_conditions(entity, tx + CARD_RIGHT, y + 22)
+            self._armour_notes.append(defence_line(info, spared_too=False).capitalize())
             lines.append(self._armour_notes[-1])  # under the numbers it qualifies
             order = entity.order
             if not own:
@@ -2979,6 +2993,29 @@ class GameScene(Scene):
         for line in self._card_lines(lines, rows):
             self.draw_text(line, tx, ly, style="body")
             ly += 22
+
+    def _draw_conditions(self, unit: Unit, right: float, top: float) -> None:
+        """Each condition *unit* carries, as its icon and the seconds it has left, from *right* leftwards on the row of
+        its hit points; hovering one names it and says what it does.  A rival's unit in sight shows its own."""
+        sub = self.game.theme.get_text_style("sub")
+        mx, my = self.mouse
+        x = right
+        for kind in spared_kinds(unit.info):  # what its armour turns: the kind's icon, dimmed and struck out
+            start = x - CONDITION_ICON
+            draw_icon(self, CONDITION_LOOKS[kind.key], start, top, CONDITION_ICON, color=SPARED_INK)
+            self.draw_line(start - 1, top + CONDITION_ICON + 1, x + 1, top - 1, BAD, 2)
+            if start <= mx < x and top - 2 <= my < top + CONDITION_ICON + 2:
+                self.tooltip = f"{armour_name(unit.info.armor_class).capitalize()}: never {kind.name.lower()}"
+            x = start - 8
+        for condition in reversed(unit.conditions):
+            left = f"{math.ceil(self.world.seconds_left(condition))}s"
+            width = self.game.backend.measure_text(left, sub.font_size, sub.font)[0]
+            self.draw_text(left, x, top + 12, style="sub", anchor_x="right")
+            start = x - width - 2 - CONDITION_ICON
+            draw_icon(self, CONDITION_LOOKS[condition.kind.key], start, top, CONDITION_ICON)
+            if start <= mx < x and top - 2 <= my < top + CONDITION_ICON + 2:
+                self.tooltip = f"{condition.kind.name} · {condition.kind.summary} · {left} left"
+            x = start - 8
 
     def _vault_lines(self, vault: Building) -> list[str]:
         """A finished vault of the player's: what it draws and whether it stands on a rift, then what the store holds."""

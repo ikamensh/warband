@@ -4,6 +4,7 @@
 # Seconds, tiles, degrees/second. "melee" uses combat.toml's shared reach.
 # Entries override defaults; optional field defaults are listed in docs/balance.md.
 # Body radius affects pathing for every race and is never balance-jittered.
+# living (default true) and inflicts (a buffs.toml row an archer's wounding shot lays on) are no race's to change.
 
 [defaults]
 armor = 0
@@ -54,10 +55,11 @@ sight = 6
 build_time = 14.0
 trained_at = "barracks"
 hotkey = "a"
-summary = "Shoots from four tiles away; fragile up close"
+summary = "Shoots from four tiles away; its wounds bleed; fragile up close"
 radius = 0.42
 windup = 0.35
 attack = "piercing"
+inflicts = "bleeding" # a shot that wounds the living opens a wound (buffs.toml)
 
 [knight]
 name = "Knight"
@@ -98,6 +100,7 @@ turn_deg = 150
 min_range = 2.0
 attack = "siege"
 armor_class = "unarmoured"
+living = false # a machine: never takes a living condition, never healed
 
 [flying_machine]
 name = "Flying Machine"

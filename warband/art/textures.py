@@ -2659,3 +2659,6 @@ def register_static(game: Game) -> None:
     assets.image_from_pil("rift", rift_image(scale))
     assets.image_from_pil("drop", _glow(max(6, int(px * 0.3)), 0.42, (*WHITE, 255), 0.08))  # a droplet, a chip: a dot with an edge, tinted by its spray
     assets.image_from_pil("stain", _glow(int(px * 1.2), 0.36, (*WHITE, 255), 0.12))  # a soft blotch on the ground, tinted dark red; the blur stays inside the canvas
+    assets.image_from_pil("glow.rage", _glow(px * 2, 0.34, (255, 40, 16, 255), 0.1))  # the red about an enraged unit
+    assets.image_from_pil("drip", _glow(max(6, int(px * 0.3)), 0.42, (176, 12, 18, 255), 0.05))  # what a bleeding unit drips
+    assets.image_from_pil("drip.pale", _glow(max(6, int(px * 0.3)), 0.42, (84, 74, 70, 255), 0.05))  # the same with the blood setting off

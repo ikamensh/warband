@@ -11,7 +11,7 @@ import pytest
 from saga2d import CommandError, Game
 from warband.online.authority import WarbandMatch
 from warband.sim.model import dist, tile_center
-from warband.sim.rules import BuildingType, Terrain, UnitType, Upgrade
+from warband.sim.rules import BuildingType, Race, Terrain, UnitType, Upgrade
 
 
 def fogged_match() -> WarbandMatch:
@@ -143,6 +143,29 @@ def test_the_rivals_purse_research_plans_and_alarms_stay_home_until_the_match_is
     world.resign(1)
     decided = sent(match, 0)['world']['players'][1]
     assert decided['stats']['units_trained'] == 17, "once the match is decided, the scores are everybody's"
+
+
+def test_a_rivals_rage_does_not_tell_its_bloodlust_until_the_match_is_decided() -> None:
+    """A seat sees the conditions of a rival's unit in its sight (WB-062), and Rage under Bloodlust is a kind of its
+    own: a wounded orc named its owner's research.  To anyone else it is Rage until the match is decided."""
+    match = WarbandMatch(seed=3, races=[Race.HUMAN, Race.ORC])
+    for _ in range(40):
+        match.step()
+    world = match.world
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    grunt = world.spawn_unit(1, UnitType.FOOTMAN, tile_center((hall.x + hall.size + 2, hall.y + 1)))
+    world.hold([grunt.id])
+    grunt.hp = grunt.max_hp // 3  # staged: wounded, where seat 0 sees it
+    world.players[1].upgrades.add(Upgrade.BLOODLUST)
+    world.update_vision()
+    match.step()
+
+    def kinds(seat: int) -> list[str]:
+        return [c['kind'] for u in sent(match, seat)['world']['units'] if u['id'] == grunt.id for c in u['conditions']]
+
+    assert kinds(1) == ['bloodlust_rage'] and kinds(0) == ['rage']
+    world.resign(0)
+    assert kinds(0) == ['bloodlust_rage'], "once the match is decided, research is everybody's"
 
 
 def test_the_id_counter_says_nothing_beyond_what_was_sent() -> None:

@@ -33,6 +33,7 @@ def _write_toml(path, doc):
     ("neutrals.toml", (), "trained_at"),
     ("races.toml", ("orc", "units"), "hp_mult"),
     ("races.toml", ("dwarf", "buildings"), "hp_mult"),
+    ("buffs.toml", (), "duration"),
 ])
 def test_shared_defaults_and_explicit_exceptions_load_the_same_game(constants, filename, section, key):
     """Factoring repeated values into defaults preserves every normalized rule, including exceptions."""
@@ -225,6 +226,13 @@ def test_the_toml_balance_tables_match_the_simulation() -> None:
         agree(f"units.toml [{unit}].formation", live.formation, u["formation"])
         agree(f"units.toml [{unit}].mounted", live.mounted, u["mounted"])
         agree(f"units.toml [{unit}].turn", live.turn, math.radians(u["turn_deg"]))
+        agree(f"units.toml [{unit}].living", live.living, u["living"])
+        agree(f"units.toml [{unit}].inflicts", live.inflicts.key if live.inflicts is not None else "", u["inflicts"])
+    for kind, b in tables.buffs.items():
+        live = rules.BUFFS[kind]
+        for key in ("name", "summary", "damage", "speed", "blow", "armor", "hp_per_second", "duration", "living", "heal_ends", "spares"):
+            agree(f"buffs.toml [{kind}].{key}", getattr(live, key), b[key])
+        agree(f"buffs.toml [{kind}] in steps", live.ticks, round(b["duration"] / rules.SIM_DT))
 
     def rendered(summary: str, trip: int = 0) -> str:
         """A summary as the player reads it: a deposit's trip, a vault's store and reach put in from the tables."""
