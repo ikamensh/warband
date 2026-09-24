@@ -84,6 +84,7 @@ class Overlay:
     selected: list[int] = field(default_factory=list)
     hovered: int | None = None
     ghost: tuple[BuildingType, Pos, bool] | None = None  # building, top-left tile, placeable
+    blood: bool = True  # the player's setting: a bleeding unit drips red, or a pale grey without it
     plans: list[tuple[BuildingType, Pos]] = field(default_factory=list)  # sites ordered and not begun: building, top-left tile
     rally_for: list[int] = field(default_factory=list)
     bars_for_all: bool = False  # Alt held: every visible unit and building shows its health
@@ -194,6 +195,12 @@ TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1, "venom": 0.14}  # seconds of
 TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150), "venom": (198, 132, 226)}
 TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5), "venom": (2.6, 0.5)}  # at the shot and where the trail ends
 BAR_OUTLINE = (0, 0, 0, 190)  # the backing and outline of every health and progress bar
+#: How each kind of condition (a row of buffs.toml) shows: on the map (an enraged unit glows red, a bleeding one drips)
+#: and as the icon of the same name on its card.  A new kind is a row there and a line here.
+CONDITION_LOOKS = {"rage": "rage", "bloodlust_rage": "rage", "bleeding": "bleeding"}
+RAGE_TINT = (1.0, 0.52, 0.44)  # an enraged figure, at the top of its pulse
+DRIP_PERIOD = 0.9  # seconds between the drops falling from each side of a bleeding unit
+DRIP_SIDES = (-1.3, 1.2, -0.9, 1.5)  # where beside its body (in its radii) the drops of a bleeding unit fall
 TAG_FONT = 12  # screen pixels of a command's tag over a unit, at any zoom
 TAG_BACKING = (10, 12, 20, 180)
 #: A site ordered and not yet begun, the settlement's plan or a builder's next site, is the ghost of its building
@@ -828,7 +835,20 @@ class MapView:
                     wy += reaction.direction[1] * displacement
                     sprite.rotation = 6.0 * math.sin(2 * math.pi * t) * (1 - t)
             sprite.position = (wx, wy)
+            sprite.tint = self._tint(u)
             sprite.visible = True
+
+    def _looks(self, u: Unit) -> set[str]:
+        """How the conditions *u* carries show."""
+        return {CONDITION_LOOKS[c.kind.key] for c in u.conditions}
+
+    def _tint(self, u: Unit) -> tuple[float, float, float]:
+        """An enraged figure is flushed red, pulsing; any other is drawn as painted."""
+        if not u.conditions or "rage" not in self._looks(u):
+            return (1.0, 1.0, 1.0)
+        depth = 0.6 + 0.4 * (0.5 + 0.5 * math.sin(self.time * 6.0 + u.id))
+        r, g, b = RAGE_TINT
+        return (1.0 - (1.0 - r) * depth, 1.0 - (1.0 - g) * depth, 1.0 - (1.0 - b) * depth)
 
     def _sync_projectiles(self, dt: float) -> None:
         """A sprite per shot in the air, moved every frame (between model steps as well), and the
@@ -901,6 +921,8 @@ class MapView:
         sprite = self._units.pop(unit_id, None)
         self._unit_keys.pop(unit_id, None)
         self._recoil.pop(unit_id, None)
+        if sprite is not None:
+            sprite.tint = (1.0, 1.0, 1.0)  # its rage dies with it
         return sprite if sprite is not None and sprite.visible else None
 
     def building_sprite(self, building_id: int) -> Sprite | None:
@@ -1150,6 +1172,7 @@ class MapView:
         self._draw_projectiles()
         self._draw_melee_trails()
         self._draw_shadows()
+        self._draw_conditions(overlay.blood)
         for eid in overlay.selected + ([overlay.hovered] if overlay.hovered is not None and overlay.hovered not in overlay.selected else []):
             entity = world.units.get(eid) or self._sightings.get(eid)  # a building where the player knows it to stand
             if entity is None:
@@ -1212,6 +1235,43 @@ class MapView:
             rx = TILE * u.radius * (1.1 - 0.02 * (flight_lift(u, self.time) - FLIGHT * TILE))
             self.scene.draw_polygon([(wx + rx * math.cos(2 * math.pi * i / 12), wy + 2 + rx * RING_FLATTEN * math.sin(2 * math.pi * i / 12))
                                      for i in range(12)], SHADOW_COLOR, space="world", layer=RenderLayer.EFFECTS)
+
+    def _draw_conditions(self, blood: bool) -> None:
+        """A red glow about every enraged unit in sight, behind the figure, and drops falling from every bleeding one
+        into the pool at its feet."""
+        scene = self.scene
+        for uid, sprite in self._units.items():
+            unit = self.world.units.get(uid)
+            if unit is None or not unit.conditions or not sprite.visible:
+                continue
+            looks = self._looks(unit)
+            placement = textures.placements[self._unit_keys[uid]]
+            feet = sprite.y - placement.drop
+            body = TILE * unit.radius
+            if "rage" in looks:
+                pulse = 0.5 + 0.5 * math.sin(self.time * 6.0 + uid)
+                side = 2.2 * body + TILE * 1.4
+                scene.draw_image("glow.rage", sprite.x - side / 2, feet - placement.head * 0.45 - side / 2, side, side,
+                                 opacity=0.75 + 0.25 * pulse, space="world", layer=RenderLayer.OBJECTS)
+            if "bleeding" in looks:
+                image = "drip" if blood else "drip.pale"
+                pool = body * 3.6
+                scene.draw_image(image, sprite.x - pool / 2, feet - pool * 0.14, pool, pool * 0.32, opacity=0.9,
+                                 space="world", layer=RenderLayer.OBJECTS)
+                size = TILE * 0.11
+                top = feet - placement.head * 0.45
+                for i, side in enumerate(DRIP_SIDES):
+                    t = (self.time / DRIP_PERIOD + uid * 0.37 + i / len(DRIP_SIDES)) % 1.0
+                    x = sprite.x + side * body
+                    if t < 0.75:  # falling, faster and faster
+                        q = t / 0.75
+                        scene.draw_image(image, x - size / 2, top + (feet - top) * q * q - size * 1.6, size, size * 1.6,
+                                         space="world", layer=RenderLayer.EFFECTS)
+                    else:  # a splash where it landed
+                        q = (t - 0.75) / 0.25
+                        width = size * (1.5 + 1.5 * q)
+                        scene.draw_image(image, x - width / 2, feet - width * 0.2, width, width * 0.4, opacity=1.0 - q,
+                                         space="world", layer=RenderLayer.EFFECTS)
 
     def _draw_wood_chips(self) -> None:
         """A short burst at axe contact, driven by the same harvest clock as the pose."""

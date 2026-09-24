@@ -151,24 +151,7 @@ def test_humans_train_faster_than_the_other_races() -> None:
     assert [u.info.name for u in world.player_units(1)] == ["Peon"]
 
 
-# -- Orcs: frenzy, bloodlust and plunder ----------------------------------------------------
-
-
-def test_orcs_hit_harder_below_half_health_and_bloodlust_doubles_the_frenzy() -> None:
-    world = flat_world((Race.ORC, Race.HUMAN))
-    grunt = world.spawn_unit(0, UnitType.FOOTMAN, (2.5, 2.5))
-    peon = world.spawn_unit(0, UnitType.PEASANT, (3.5, 2.5))
-    footman = world.spawn_unit(1, UnitType.FOOTMAN, (4.5, 2.5))
-    calm = world.damage_of(grunt)
-    assert calm == UNITS[UnitType.FOOTMAN].damage + 1 and not world.frenzied(grunt)
-    grunt.hp = grunt.max_hp // 2 - 1
-    assert world.frenzied(grunt) and world.damage_of(grunt) == int(round(calm * 1.25))
-    peon.hp, footman.hp = 1, 1
-    assert not world.frenzied(peon) and not world.frenzied(footman)
-    world.players[0].upgrades.add(Upgrade.BLOODLUST)
-    assert world.damage_of(grunt) == int(round(calm * 1.5))
-    grunt.hp = grunt.max_hp
-    assert world.damage_of(grunt) == calm
+# -- Orcs: plunder (Rage and Bloodlust are conditions: test_conditions.py) ---------------------------------------
 
 
 def test_plunder_loots_gold_from_razed_buildings() -> None:

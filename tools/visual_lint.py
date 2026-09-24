@@ -39,7 +39,7 @@ from warband.story.dialog import DialogScene  # noqa: E402
 from warband.story.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
 from warband.story.missions import CAMPAIGN  # noqa: E402
 from warband.sim.model import World, tile_center  # noqa: E402
-from warband.sim.rules import BUILT, PLAYABLE_UNITS, BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
+from warband.sim.rules import BLEEDING, BUILT, PLAYABLE_UNITS, BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
 from warband.ui.controls import SCHEMES  # noqa: E402
 from warband.ui.scene import TOAST_TOP, CodexScene, GameScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game  # noqa: E402
 from warband.ui.score_scene import HighScoreScene  # noqa: E402
@@ -351,6 +351,30 @@ def select_damaged(game: Game) -> None:
     unit.hp = unit.max_hp // 3
     scene.select([hall.id, unit.id])
     ticks(game, 10)
+
+
+@screen
+def select_conditions(game: Game) -> None:
+    """Orcs enraged, an axethrower bleeding too, and a wounded human archer (WB-062): red glows, drips, and the card's
+    condition icons beside the hit points, the widest the hit-point row gets."""
+    scene = town(game, race=Race.ORC, zoom=2.0)
+    world = scene.world
+    thrower, ogre = spawn(scene, UnitType.ARCHER, (10, 12)), spawn(scene, UnitType.KNIGHT, (8, 13))  # an axethrower bleeds
+    wounded = spawn(scene, UnitType.ARCHER, (12, 13), player=1)  # light armour: heavy armour is never bled
+    for unit in (thrower, ogre, wounded):
+        unit.hp = unit.max_hp // 3  # hurt below half: the orcs are enraged from the next step
+        world.hold([unit.id])
+    archers = [spawn(scene, UnitType.ARCHER, (13, 10), player=1), spawn(scene, UnitType.ARCHER, (9, 10))]
+    world.attack([archers[0].id], thrower.id)
+    world.attack([archers[1].id], wounded.id)
+    for _ in range(40):
+        if thrower.condition(BLEEDING) is not None and wounded.condition(BLEEDING) is not None:
+            break
+        ticks(game, 6, 1 / 60)
+    world.move([a.id for a in archers], (30.5, 3.5))  # off out of sight: the wounds they opened stay open
+    scene.select([thrower.id])
+    scene.camera.center_on(10.5 * TILE, 12 * TILE)
+    ticks(game, 6)
 
 
 for _menu in ("build", "train", "upgrade"):
