@@ -43,6 +43,8 @@ class _ProBrainCore:
         self.creep_until = 0.0             # …and when it gives that camp up whatever it has left
         self.camp_seen: dict[int, float] = {}   # per lair: the most its guards were ever seen to be worth
         self.camp_retry: dict[int, float] = {}  # …and when a camp that beat the army off is worth trying again
+        self.errands: dict[int, Point] = {}  # soldiers sent at a raider or a camp: soldier -> where (_send_on_errand)
+        self.threatened = -math.inf  # when a threat to the base was last in sight (_recall waits for CALM after it)
 
     def note(self, world: World, what: str) -> None:
         self.log.append((world.time, what))

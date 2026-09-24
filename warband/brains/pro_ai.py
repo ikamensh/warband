@@ -16,12 +16,13 @@ from warband.brains.pro_force import _tower_strength, _tower_strength_own, stren
 from warband.brains.pro_profiles import PRO, PRO_PROFILES, PRO_RUSH, PRO_VANGUARD, PRO_WARDEN, ProProfile
 
 from warband.brains.ai import CAMP_REACH, RAIDERS, answer_flyers, heading_to, known_camps, known_mines, lost_track
-from warband.sim.model import Attack, Build, Building, Move, Point, Repair, Salvage, Unit, World, dist, int_sum, plain_sum, rect_gap, tile_center
+from warband.sim.model import Attack, AttackMove, Build, Building, Move, Point, Repair, Salvage, Unit, World, dist, int_sum, plain_sum, rect_gap, tile_center
 from warband.sim.rules import BuildingType, Layout, Race, UnitType
 
 from warband.brains.pro_economy import _ProBrainEconomy
 
 WALK_OVER: Final = 4.0
+CALM: Final = 5.0  # seconds without a threat in sight before soldiers still out on a defence are called back
 
 class ProBrain(_ProBrainEconomy):
     """One per AI player; ``think`` every simulation step."""
@@ -74,6 +75,8 @@ class ProBrain(_ProBrainEconomy):
         # base with nothing in it is what an early raid is looking for.
         guards, army = army[:self.profile.guards], army[self.profile.guards:]
         threats = self._threats(world)
+        if threats:
+            self.threatened = world.time
         if threats and not (self.attacking and strength(world, threats)
                             < self.profile.ignore_raid_ratio * strength(world, army)):
             if self._outmatched_at_home(world, guards + army, threats):
@@ -85,8 +88,9 @@ class ProBrain(_ProBrainEconomy):
             return
         if self._creep(world, guards + army):
             return
-        self._post(world, guards)
         hall = self._hall(world)
+        self._recall(world, guards, army, hall)
+        self._post(world, guards)
         mine = strength(world, army)
         if self.attacking:
             # Judge a push by how it is going, not by how big the enemy looks from
@@ -156,6 +160,41 @@ class ProBrain(_ProBrainEconomy):
         else:
             self._gather(world, army, hall)
 
+    def _send_on_errand(self, world: World, unit_ids: list[int], point: Point) -> None:
+        """Attack-move *unit_ids* at *point*, a raider's or a camp's, and remember who went where (:meth:`_recall`)."""
+        world.attack_move(unit_ids, point)
+        for unit_id in unit_ids:
+            order = world.units[unit_id].order
+            assert isinstance(order, AttackMove), order
+            self.errands[unit_id] = order.target
+
+    def _recall(self, world: World, guards: list[Unit], army: list[Unit], hall: Building | None) -> None:
+        """Call back the soldiers still walking at a raider that is gone, or at a camp that fell.
+
+        Once nothing is left there, the soldiers who got there go idle and are sent home (:meth:`_gather`,
+        :meth:`_post`), while the ones still on the way walked on to the empty spot through the ones coming
+        back.  Fuzz seed 81 had an army walk into itself for twenty seconds down a one-tile passage that way.
+        A soldier fighting on the way keeps its fight, and is called back when it takes the walk up again.  A defence
+        is over once no threat has been in sight for :data:`CALM`: a raider that steps out of sight or out of the
+        ring for a pass would otherwise turn the army home and straight back out, which in six ladder matches turned
+        soldiers round half again as often as the old brain did.
+        """
+        if hall is None or not self.errands or world.time < self.threatened + CALM:
+            return
+        posted = {u.id for u in guards}
+        kept: dict[int, Point] = {}
+        for unit in guards + army:
+            target = self.errands.get(unit.id)
+            if target is None:
+                continue
+            order = unit.order
+            if isinstance(order, AttackMove) and order.target == target:
+                point = self._home_point(world, hall) if unit.id in posted else self._front_point(world, hall)
+                world.move([unit.id], self._muster(world, point, unit))
+            elif any(isinstance(o, AttackMove) and o.target == target for o in unit.orders):
+                kept[unit.id] = target  # fighting on the way
+        self.errands = kept  # the rest got there, were sent elsewhere, fell or left the army
+
     def _camp_strength(self, world: World, record) -> float:
         """What a camp is reckoned to be worth: the most its guards were ever seen to be worth at once,
         and never less than :attr:`ProProfile.creep_prior` soldiers of ours.
@@ -206,7 +245,7 @@ class ProBrain(_ProBrainEconomy):
             spot = self._standable(world, lair.center)
             idle = [u.id for u in army if not u.orders]
             if idle:
-                world.attack_move(idle, spot)
+                self._send_on_errand(world, idle, spot)
             return True
         if world.time < max(profile.creep_from, self.regroup_until) or self._push_waits(world):
             return False
@@ -228,7 +267,7 @@ class ProBrain(_ProBrainEconomy):
         self.creep_strength = mine
         self.creep_until = world.time + profile.creep_patience
         self.note(world, f"clear the camp with {len(army)} ({mine:.0f} against {theirs:.0f})")
-        world.attack_move([u.id for u in army], self._standable(world, target.center))
+        self._send_on_errand(world, [u.id for u in army], self._standable(world, target.center))
         return True
 
     def _outmatched_at_target(self, world: World, army: list[Unit], mine: float) -> bool:
@@ -454,7 +493,7 @@ class ProBrain(_ProBrainEconomy):
         self.attacking = False
         stale = [u.id for u in army if not isinstance(u.order, Attack) and not heading_to(u, point)]
         if stale:
-            world.attack_move(stale, point)
+            self._send_on_errand(world, stale, point)
 
     def _outmatched_at_home(self, world: World, army: list[Unit], threats: list[Unit]) -> bool:
         """Whether the attack on the base is more than the soldiers at home can meet (``defend_ratio``)."""

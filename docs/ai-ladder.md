@@ -500,6 +500,37 @@ Since WB-064 there is no rider to try it with, and the flyer that replaced it
 carries no weapon, so neither brain counts one as a threat: the idle shooters
 within reach answer it (`answer_flyers`) and the army stays on its errand.
 
+### A defence that is over
+
+`_defend` sends every soldier not already fighting at the nearest threat, and again at the threat's new place as
+it moves. Once nothing threatened the base any more, `_gather` sent home only the soldiers without an order: the
+ones who had got there. The ones still on their way walked on to where the raider had last stood, through the ones
+coming back. Fuzz seed 81 (on `07cb63d`) caught it as a stall: a lone footman walking past a Grandmaster's base
+hacked at a barracks going up beside a one-tile passage and died there, and two catapults, footmen and a knight
+still marching after it met the returning army in the passage for twenty seconds. A camp that fell left the same
+thing behind: `_creep` let go of the lair and nobody told the soldiers still walking at it.
+
+The brain now remembers where `_defend` and `_creep` sent each soldier (`ProBrain.errands`). On a pass with no raider
+being answered and no camp being cleared, a soldier still walking an attack-move to its errand's point goes back to
+its muster, a guard to its post; one fighting on the way keeps its fight and is called back once it takes the walk
+up again. A defence is over only once no threat has been in sight for `CALM` (5 s). Called back on the first quiet
+pass, soldiers were turned round every time a raider stepped out of sight or across the nine-tile ring for a
+moment: over six matches of Grandmaster against Master, soldiers sent home and back out within five seconds rose
+from 642 to 1014; with 5 s of calm, 668. In the staged seed the last soldier the defence sent turns for home 4.8 s after the raider falls,
+where the old brain had it walking on for 14.
+
+Against the same brain without the recall, seeds from 1000, both corners of each (the old brain registered as
+`<setting>-old` by a scratch script that then runs `tools/arena.py`, interpreted, since a compiled ProBrain
+cannot be subclassed):
+
+| | games | score |
+|---|---|---|
+| Master | 120 | 48.3% |
+| Grandmaster | 120 | 48.3% |
+| Hard | 60 | 51.7% |
+
+Level, 49.0% over the 300: the recall is about the army not walking into itself, not about winning more.
+
 ### The flying machine takes the rider's place (WB-064)
 
 WB-064 deleted the scout rider, and its two jobs went two ways. The eyes went
@@ -742,6 +773,7 @@ contradicted the reasoning that produced the change:
 | pulling wounded soldiers out to heal | beat the baseline 68.8% |
 | counting build orders in flight | −18 points on its own, good once the site limit was raised to match |
 | peasants called to defend | −35 Elo, under either of the two rules tried |
+| calling back the soldiers still walking at a raider that is gone, or a camp that fell | level: 49.0% over 300 games against the same brain without it |
 | holding the opening lumber for the barracks | **−400 Elo** — it buys the barracks 64s earlier and starves the farms |
 | nothing but farms before the first barracks stands (`barracks_first`) | **+65 Elo** — 60% over 72 games; the barracks lands at two minutes instead of three |
 | …with the later push, or the kill memory, on top | 59% and 57%: the gains overlap rather than add |

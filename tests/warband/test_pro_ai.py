@@ -18,12 +18,12 @@ from dataclasses import replace
 
 import pytest
 
-from warband.sim import mapgen
-from warband.sim.model import dist
-from warband.brains.ai import known_mines
+from warband.sim import camps, mapgen
+from warband.sim.model import AttackMove, Move, World, dist
+from warband.brains.ai import known_mines, make_brain
 from warband.brains.bred import BRED
-from warband.brains.pro_ai import PRO, ProBrain, _tower_strength, strength
-from warband.sim.rules import SIM_DT, BuildingType, Race, UnitType
+from warband.brains.pro_ai import CALM, PRO, ProBrain, _tower_strength, strength
+from warband.sim.rules import SIM_DT, BuildingType, Difficulty, Layout, Race, Terrain, UnitType, Upgrade
 
 
 def _world_with_army(seed: int = 5):
@@ -615,3 +615,173 @@ def test_a_defence_is_not_ordered_again_to_soldiers_already_on_their_way_to_the_
     threat[0].x += 6.0  # it got well away: the soldiers go after it
     brain._defend(world, army, threat)
     assert all(u.order is not before for u, before in zip(army, orders))
+
+
+# -- A defence that is over --------------------------------------------------------
+
+# Fuzz seed 81 (six players, 180×132, Bastion) on main as it was at 07cb63d, at 394.0 s: the base of player 2, the
+# Grandmaster dwarves, as a lone footman of player 4 walking past comes into sight hacking at their barracks going up
+# at (121, 3).  The ground is the seed's from x = 100 and y = 0; the buildings stand where the seed had them (the ones
+# still going up stand finished here); every soldier and every peasant out of doors stands where the seed had it,
+# with the dwarves' purse and upgrades of the moment.  The raider carries the wounds it had.
+RAID_GROUND = (
+    "ttttttttttttttttttttttttttttggggggggggggtttttttttttt", "tttgggggttttgggttttttggggggtggggggggggggggtttttttttt", "ttttgggggtttgggttttttggggtttgggggggggggggggttttttttt",
+    "gggggggggggggggggttttggggtgtgggggggggggggggtttttttgg", "gggggggggggggggggttttgggggggggggggggggggggggttttttgg", "ggggggggggggggggggggggggtgggggggggggggggggggttttttgg",
+    "ggggggggggggggggggggggggggggggggggggggggggggttgggggg", "gggtggggggttttggggtttgtggggggggggggggggggggggggggggg", "gggtggggggttttggggtttttgtggggggggggggggggggggggggggg",
+    "gggtggggggttttggggtttttgtggggggggggggggggggggwwwrggg", "gggtttttttttttggggttttggtggggggggggggggggggttwwwrggg", "ggtttttttttrttwggttttgggttggggggggggggggggtttwwgrggg",
+    "ggttttttttttttwgggtttggggtggggggggggggggggttggggrrgg", "ggtttttgtttttggggttttgggggggggggggggggggggttgggggggg", "ggtttgggggtttggggtttttgggrgggwwgggggggggggtggggggggg",
+    "ggtwwwwwggtttggggtttttgggrgggggwwgggggggttgggggggggg", "ggtwwwwwwgttggggggttttgggrgggggggggggggtttgggggggggg", "ggtwwwwwggggggggggttttggggggggggggggggggtggggggggggg",
+    "gggwwwwggggrggtttttttttgggggggggggggggggtgggggggggtt", "gggwwwwtggrrrgtttttttttgggggggggggggggggggggggggggtt", "ggggwwggggrrggtttttttttggggggggggggggggggggggggggggt",
+    "ggggwwgggggrgggggttttttgggggggggggggggggtggggggggggg", "gggggggggggggggggtttttggggggggggggggggggttgggggggggg", "ggggggggggggggggggtttggggggggggggggggggtttgggggggggg",
+    "ggggggggggggggggggtttggrrggggggggggggggtttgggggggggg", "gggggggggggrggggggtttggggggggggggggggggtttgggggggggg", "gggggggggggrrrrrggtttggggggggggggggggggtttgggggggggg",
+    "gggggggggggrrrrrrgtttggggggggggggggggggtttggggggtggg",
+)
+RAID_BASE = [
+    (BuildingType.TOWN_HALL, (133, 7)),
+    (BuildingType.GOLD_MINE, (128, 3)),
+    (BuildingType.GOLD_MINE, (145, 16)),
+    (BuildingType.FARM, (133, 3)),
+    (BuildingType.FARM, (133, 12)),
+    (BuildingType.BARRACKS, (128, 8)),
+    (BuildingType.FARM, (137, 7)),
+    (BuildingType.BLACKSMITH, (136, 2)),
+    (BuildingType.STABLES, (136, 13)),
+    (BuildingType.FARM, (140, 9)),
+    (BuildingType.FARM, (140, 6)),
+    (BuildingType.TOWER, (126, 16)),
+    (BuildingType.WORKSHOP, (136, 19)),
+    (BuildingType.FARM, (137, 10)),
+    (BuildingType.LUMBER_MILL, (129, 19)),
+    (BuildingType.FARM, (133, 0)),
+    (BuildingType.TOWER, (133, 15)),
+    (BuildingType.CHURCH, (122, 12)),
+    (BuildingType.FARM, (140, 12)),
+    (BuildingType.FARM, (140, 3)),
+    (BuildingType.FARM, (125, 8)),
+    (BuildingType.BARRACKS, (121, 3)),  # going up
+    (BuildingType.BARRACKS, (125, 19)),  # going up
+    (BuildingType.FARM, (129, 16)),  # going up
+]
+RAID_ARMY = [
+    (UnitType.FOOTMAN, (134.4565225676375, 14.998521498151282), -0.12731135828078544),
+    (UnitType.FOOTMAN, (130.47925550508398, 11.002470471630149), -2.149055000387059),
+    (UnitType.FOOTMAN, (131.07239419067702, 14.999999999999998), 0.8625255247040824),
+    (UnitType.FOOTMAN, (133.42104822887887, 14.999999979293152), -1.726380458283048),
+    (UnitType.FOOTMAN, (133.1321823846172, 11.715467309601125), -0.2535524451102172),
+    (UnitType.KNIGHT, (126.99103982467864, 13.983855291065105), 3.012462267308269),
+    (UnitType.KNIGHT, (134.4692995468381, 11.693107358023639), -0.032836676969519196),
+    (UnitType.KNIGHT, (132.24748024556277, 14.999817717354793), 0.5963405316814763),
+    (UnitType.FOOTMAN, (128.4779012116579, 14.758407183214945), 1.6742893482849845),
+    (UnitType.KNIGHT, (132.9354026670071, 13.004053475327154), -0.30062700379034535),
+    (UnitType.FOOTMAN, (128.2909933221048, 12.171817613382961), -2.3375771584298306),
+    (UnitType.KNIGHT, (131.77094196126944, 11.372551065969006), -0.51683566251454),
+    (UnitType.KNIGHT, (128.38028196951498, 11.000000000099785), 3.041738994385179),
+    (UnitType.CATAPULT, (129.44416600936424, 13.99956052453885), -0.5165370243501908),
+    (UnitType.KNIGHT, (129.36513331735625, 12.634412771088074), -0.5170384370513998),
+    (UnitType.KNIGHT, (129.49991840032027, 11.00000002907614), 2.8557413912585456),
+    (UnitType.CLERIC, (128.46073876996584, 13.331345717209988), 1.627123874378892),
+    (UnitType.CATAPULT, (130.6550067516684, 12.18717589121747), -1.7499680374959754),
+    (UnitType.FOOTMAN, (131.73368302581534, 14.165804586999439), 2.716724081648916),
+    (UnitType.KNIGHT, (130.79303510296427, 13.892204762224774), 0.8837418096116441),
+    (UnitType.CLERIC, (131.1728099899045, 13.037333637087666), -0.41092094623619235),
+]
+RAID_PEASANTS = [
+    (123.5, 22.5),
+    (131.5, 6.5),
+    (138.4891977690289, 22.500000000000036),
+    (140.4001420666361, 19.36257459205308),
+    (132.6334843994493, 5.631325313030382),
+    (123.66250000000007, 18.5),
+    (146.23411118315954, 8.508763352947275),
+]
+RAIDER = ((117.40884730840087, 8.642787605428078), -1.4912013828817259, 64)  # player 4's, a dwarf footman, hacking at the barracks going up at (121, 3)
+
+
+def _seed_81_raid() -> tuple[World, list, object]:
+    letters = {terrain.value[0]: terrain for terrain in Terrain}
+    ground = [[Terrain.GRASS] * 152 for _ in range(len(RAID_GROUND))]
+    for y, row in enumerate(RAID_GROUND):
+        for dx, letter in enumerate(row):
+            ground[y][100 + dx] = letters[letter]
+    world = World(152, len(RAID_GROUND), ground, 5, human=None, layout=Layout.BASTION, scripted=True,
+                  races=(Race.ELF, Race.ORC, Race.DWARF, Race.HUMAN, Race.DWARF))  # scripted: the raider's death ends no match
+    placed = {pos: world.place_building(None if kind is BuildingType.GOLD_MINE else 2, kind, pos) for kind, pos in RAID_BASE}
+    army = []
+    for kind, pos, facing in RAID_ARMY:
+        soldier = world.spawn_unit(2, kind, pos)
+        soldier.facing = facing
+        army.append(soldier)
+    for pos in RAID_PEASANTS:
+        world.spawn_unit(2, UnitType.PEASANT, pos)
+    dwarves = world.players[2]
+    dwarves.gold, dwarves.lumber = 650, 1450
+    dwarves.upgrades.update({Upgrade.ARMOR_1, Upgrade.ARROWS_1, Upgrade.BLADES_1, Upgrade.BLASTING_POWDER,
+                             Upgrade.DEEP_MINING, Upgrade.MARKSMANSHIP})
+    pos, facing, hp = RAIDER
+    raider = world.spawn_unit(4, UnitType.FOOTMAN, pos)
+    raider.facing, raider.hp = facing, hp
+    world.attack([raider.id], placed[(121, 3)].id)
+    return world, army, raider
+
+
+def test_once_the_raider_is_down_nobody_walks_on_to_where_it_was():
+    """The brain sends its army at a raider near its buildings, again as the raider moves.  Once the raider was dead,
+    the soldiers who had got there stood idle and were sent home, and the rest walked on to the empty spot through
+    them: in the seed, down the one-tile passage below the barracks, where the army stood in its own way for twenty
+    seconds and fuzz reported a knight wedged in it.  Here the raider falls six seconds in, and every soldier the
+    defence sent has turned for home once the base has been calm for :data:`CALM` (a threat that drops out of sight for
+    a moment is no reason to turn a defence round); under the old brain the last of them was still walking out
+    fourteen seconds after the raider fell."""
+    world, army, raider = _seed_81_raid()
+    brain, rng = make_brain(2, Difficulty.GRANDMASTER, 81), random.Random(81)
+    brain.think(world, rng)
+    one_pass = brain.brain.profile.think_every  # the posture the seed's dwarves played (a RaceBrain picks it on its first pass)
+    down = None
+    defended = walking = 0.0
+    for _ in range(round(20.0 / SIM_DT)):
+        brain.think(world, rng)
+        world.step()
+        world.take_events()
+        sent = [u for u in army if u.id in world.units and isinstance(u.order, AttackMove)]
+        if down is None:
+            defended = max(defended, len(sent))
+            if raider.id not in world.units:
+                down = world.time
+        elif sent:
+            walking = world.time - down
+        elif world.time > down + CALM + 2.0:
+            break
+    assert defended > len(army) / 2 and down is not None, "the army goes out after the raider and kills it"
+    assert walking <= CALM + 2 * one_pass, f"soldiers walked on at the raider's last place {walking:.1f} s after it fell"
+
+
+def test_soldiers_still_walking_at_a_camp_that_fell_turn_for_home():
+    """The same for a camp: the army walks at the lair, and when the lair is down the ones still on their way turn
+    for home rather than walk on to where it stood and back.  The soldiers are fewer than a push needs, so after the
+    camp the brain gathers them rather than sending them anywhere else."""
+    world = World(48, 32, [[Terrain.GRASS] * 48 for _ in range(32)], 2, human=None, rng=random.Random(1))
+    world.place_building(0, BuildingType.TOWN_HALL, (4, 12))
+    world.place_building(1, BuildingType.TOWN_HALL, (43, 1))  # a rival it knows of, so it is not out hunting for one
+    army = [world.spawn_unit(0, UnitType.FOOTMAN, (9.5 + i, 14.5)) for i in range(4)]
+    camp = camps.place(world, (32, 16), [UnitType.WOLF], 100)
+    world.reveal_all(0)
+    brain = ProBrain(0, replace(PRO, creep_from=0.0, push_after=0.0, push_upgrades=0, creep_army=3, creep_ratio=0.0))
+    rng = random.Random(1)
+    lair = world.buildings[camp.lair]
+    spot = None
+    for _ in range(round(3.0 / SIM_DT)):
+        brain.think(world, rng)
+        world.step()
+        if spot is None and all(isinstance(u.order, AttackMove) for u in army):
+            spot = army[0].order.target
+    assert spot is not None and dist(spot, lair.center) < 3.0, "the four go for the camp"
+    assert all(u.x < 25.0 for u in army), "and are still on their way"
+    world.units[camp.guards[0]].hp = 0
+    lair.hp = 1
+    world._hit(lair, 40, player=0, source=army[0].id, source_type=UnitType.FOOTMAN.value)  # the lair falls, as test_camps tears one down
+    for _ in range(round(2 * brain.profile.think_every / SIM_DT) + 1):
+        brain.think(world, rng)
+        world.step()
+    assert camp.lair not in world.buildings
+    assert not any(isinstance(u.order, AttackMove) for u in army), [u.order for u in army]
+    assert all(isinstance(u.order, Move) and u.order.target[0] < 20.0 for u in army), [u.order for u in army]
