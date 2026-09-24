@@ -1,5 +1,8 @@
-* '+2 lumber' should be +2 "symbol for lumber" (salvage)
-* peasants mining gold often swirl and move inefficiently when they are many
-* neutral monsters - different lairs per monster type, animate lairs with image model
-* neutral monsters - different monsters (or just different skins) per landscape (winter vs desert different)
-* random map generator - make it more diverse, in terms of strategies that do well per template. If you lack AI strategies, then its part of the task. AI, e.g. grandmaster, is currently very passive in 16 player games for example.
+* add global commands, like prep for siege (build towers), withdraw (everyone retreat to base except workers), scout, mine gold/lumber, harass neighbours (attack and retreat if any threat is seen). The commands should have levels of activation, like pressing scounting once sends one scout, pressing it 3x sends 50% of all your units to scout.
+* introduce buff/debuff system to the game, make orc rage be a buff (for 10 sec even if unit gets healed), add a debuf bleeding to archer shots (lose 1 hp per sec for 5 sec, -20% speed)
+* add magic system. We should have a new global resource, something mysteriously looking, that would have sources on the map, and require a building on top of it, then it self-mines. It should be some energy streaming from the ground. Magic vaults are like cubes containing this essense trying to fly up, held by chains to the ground. It is not infinitely accumulating but rather saturating some max, determined by magic vaults you have; there should also be mage tower where player researches spells. Make spells be alternative - per level you pick one of 3 spells. Spells have cooldown, are cast globally, and cost 3x and 3x cooldown if outside of your magic vaults range. Make AI use magic.
+* introduce flying units. We can start by replacing scout rider (useless) with flying machine in workshop.
+* plan cancel - we should have a hotkey that activates cancelling mode, just clicking on anything on the map cancels things - buildings, auto-production and current production
+* add unique unit per race, something exotic and expensive, but sometimes useful
+
+c
