@@ -632,16 +632,16 @@ wheels = [
 
 [[package]]
 name = "saga2d"
-version = "0.3.13"
+version = "0.3.14"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pillow" },
     { name = "pyglet" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/62/1b/e61fc6cd2a0d7d92364e7d0a34f755b135fba5ebd80d298847aab82f38c8/saga2d-0.3.13.tar.gz", hash = "sha256:d9c831dab9cb24a84ef3da0caeccd41bab18b5d07bf5e5f03b8ef0b0646213f4", size = 680223 }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/3b/aeb3b8b19c8000e30fff7cdf4b10fa98f3f8af1d38e1dfe9c6a42365d1de/saga2d-0.3.14.tar.gz", hash = "sha256:655d4837918a2a769c6e0abb383a35be7b823eac573a9c679a5962e48dabedea", size = 680794 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/94/51/b5213804c50c2a5a922802113ff69784b84673d44ceb490659942460c735/saga2d-0.3.13-py3-none-any.whl", hash = "sha256:0c7d4089ab391a6542bc87ecbbf91249676f6c7a3125c53bf231648f6f01ec5d", size = 525443 },
+    { url = "https://files.pythonhosted.org/packages/d1/f0/085920d86c80fdf7bea4e83b8511bf1daf8300d1bf604d3e3c7a6e4a49df/saga2d-0.3.14-py3-none-any.whl", hash = "sha256:cf5ba375802a6374df1ea580228ab2f2d879c2c87b187f0dfeb49f670efd040f", size = 525522 },
 ]
 
 [[package]]
@@ -719,7 +719,7 @@ requires-dist = [
     { name = "pyinstaller-hooks-contrib", marker = "extra == 'package'", specifier = "==2026.7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.2" },
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.8" },
-    { name = "saga2d", specifier = "==0.3.13" },
+    { name = "saga2d", specifier = "==0.3.14" },
     { name = "sagaforge", editable = "../sagaforge" },
     { name = "setuptools", marker = "extra == 'dev'", specifier = ">=84" },
 ]
