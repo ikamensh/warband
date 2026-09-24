@@ -471,6 +471,28 @@ def shift_build(game: Game) -> None:
 
 
 @screen
+def plan_row(game: Game) -> None:
+    """Farms a tile apart, the row Shift-placing lays out: three of the settlement's plans, with a fight on the middle
+    one, and below them three sites a peasant, still on its way, builds next."""
+    scene = town(game)
+    world = scene.world
+    for x in (9, 12, 15):
+        world.plan_building(scene.human, BuildingType.FARM, (x, 11))
+    ours = [spawn(scene, UnitType.FOOTMAN, tile) for tile in ((12, 11), (13, 12))]
+    theirs = [spawn(scene, UnitType.FOOTMAN, tile, player=1) for tile in ((13, 11), (12, 12))]
+    world.attack([u.id for u in ours], theirs[0].id)
+    world.attack([u.id for u in theirs], ours[0].id)
+    peasant = spawn(scene, UnitType.PEASANT, (5, 14))
+    scene.select([peasant.id])
+    scene.open_catalogue("build")
+    scene.choose_building(BuildingType.FARM)
+    for x in (9, 12, 15):
+        scene.place(BuildingType.FARM, (x + 1, 15), keep=True)
+    scene.select([])
+    ticks(game)
+
+
+@screen
 def endless_barracks(game: Game) -> None:
     """A barracks training footmen and archers in turn, endlessly: the loop on both portraits and the line under the readout."""
     scene = town(game, zoom=1.5)

@@ -2235,16 +2235,17 @@ def building_key(building_type: BuildingType, player: int, race: Race = Race.HUM
 
 
 def building_image(game: Game, building_type: BuildingType, player: int, race: Race = Race.HUMAN, look: str = "intact", *,
-                   abandoned: bool = False) -> str:
+                   abandoned: bool = False, planned: bool = False) -> str:
     """Register (once) and return the key of one building image: the painted frame recoloured
     to the player's team when the race's buildings were restyled in that *look* (a look without
     a painted sheet shows the intact painting), the low-poly render otherwise.  An *abandoned*
-    building is the same picture drained of colour."""
+    building is the same picture drained of colour and darkened, a *planned* one drained of colour
+    and lightened: the ghost of a site ordered and not yet begun."""
     if look not in BUILDING_LOOKS:
         raise ValueError(f"unknown building look {look!r}")
     if look != "intact" and restyled_buildings(race, look) is None:
         look = "intact"
-    key = building_key(building_type, player, race, look) + (".abandoned" if abandoned else "")
+    key = building_key(building_type, player, race, look) + (".abandoned" if abandoned else "") + (".planned" if planned else "")
     if not game.assets.has_image(key):
         restyled = restyled_buildings(race, look)
         front = BUILDINGS[building_type].size / 2 * TILE
@@ -2255,13 +2256,17 @@ def building_image(game: Game, building_type: BuildingType, player: int, race: R
             painted = frames[building_key(building_type, 0, race, look)]
             placements[key] = Placement(sheet.logical_size, sheet.drop, front, head=figure_top(sheet, painted))
             image = _recoloured(painted, player)
-        game.assets.image_from_pil(key, _greyed(image) if abandoned else image)
+        game.assets.image_from_pil(key, _greyed(image, RUIN_GREY) if abandoned else _greyed(image, PLAN_GREY) if planned else image)
     return key
 
 
-def _greyed(image: Image.Image) -> Image.Image:
-    """*image* without its colour and a little darker: a ruin nobody keeps."""
-    grey = ImageEnhance.Brightness(image.convert("RGBA").convert("L")).enhance(0.82)
+RUIN_GREY = 0.82  # an abandoned building's brightness drained of colour: a ruin nobody keeps
+PLAN_GREY = 1.15  # a planned one's: a pale ghost of what will stand there
+
+
+def _greyed(image: Image.Image, brightness: float) -> Image.Image:
+    """*image* without its colour, its brightness scaled by *brightness*."""
+    grey = ImageEnhance.Brightness(image.convert("RGBA").convert("L")).enhance(brightness)
     return Image.merge("RGBA", (grey, grey, grey, image.convert("RGBA").getchannel("A")))
 
 

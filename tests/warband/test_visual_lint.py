@@ -58,6 +58,28 @@ def test_the_lint_sees_text_over_text_and_text_wider_than_its_box(tmp_path) -> N
     assert {"text-overlap", "overflow"} <= checks
 
 
+class Captioned(Scene):
+    """Two captions on the map, side by side and closer than they are wide."""
+
+    def draw(self) -> None:
+        for x in (300, 350):
+            self.draw_text("Planned Farm", x, 300, style="caption", anchor_x="center", space="world")
+
+
+def test_the_lint_sees_text_on_the_map_over_text(tmp_path) -> None:
+    """Text drawn on the map is compared too: three farms planned a tile apart once captioned themselves
+    "Planned FarmPlanned FarmPlanned Farm", one run of letters, and the lint looked only at the screen's text."""
+    game = Game("Lint", backend="mock", resolution=(640, 480), theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        visual_lint.use_real_text_metrics(game)
+        game.push(Captioned())
+        game.tick(1 / 60)
+        checks = [f.check for f in visual_lint.lint_frame(game)]
+    finally:
+        game.close()
+    assert checks == ["text-overlap"]
+
+
 class Priced(Scene):
     """A price in a box too narrow for its symbols and numbers."""
 
@@ -223,7 +245,7 @@ def test_every_unit_pose_fits_the_unit_canvas() -> None:
 
 
 SCREENS = ("title", "new_game_elf", "new_game_master", "select_peasant", "pending_salvage", "select_town_hall", "select_army", "select_60_units", "select_60_archers", "town_at_work", "menu_build_hover", "menu_train_hover",
-           "menu_build_at_start", "menu_train_at_start", "menu_upgrade_researched", "menu_upgrade_all_done", "plans", "alerts", "battle_wood",
+           "menu_build_at_start", "menu_train_at_start", "menu_upgrade_researched", "menu_upgrade_all_done", "plans", "plan_row", "alerts", "battle_wood",
            "help", "codex_0", "codex_2", "codex_3", "codex_4", "save_browser", "game_over_won", "high_scores",
            "campaign_fresh", "campaign_under_way", "mission_raid", "mission_choice", "mission_result")
 

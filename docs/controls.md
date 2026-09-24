@@ -184,9 +184,12 @@ and a site it cannot pay for when it gets there is left as a settlement plan
 what a player places gets built. A site whose prerequisite does not stand yet
 but is on its way is planned, to wait for it (the planner sites it as the first
 building of its size would be: ground depends on size alone); one whose
-prerequisite nobody is making is refused, since its plan would wait for ever. Sites ordered and not begun are drawn: a
-builder's next sites in gold, the settlement's plans in blue; the ghost refuses
-a site already taken, and a catalogue counts them.
+prerequisite nobody is making is refused, since its plan would wait for ever. Sites ordered and not begun, a
+builder's next sites and the settlement's plans alike, are drawn as ghosts of their
+buildings: the picture without its colour, seen through, on the ground under the
+units, so a fight there shows, and without a caption (a row a tile apart once ran
+its captions together); the ghost being placed refuses a site already taken, and a
+catalogue counts them.
 
 The planner's spot (`brains.ai.auto_site`) is the brains' own site search
 around the player's hall nearest the camera, clear of the sites already planned

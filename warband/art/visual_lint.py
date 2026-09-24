@@ -541,10 +541,12 @@ def lint_panel_texts(game: Game, scene: Any) -> list[Finding]:
 
 
 def lint_texts(game: Game) -> list[Finding]:
-    """Check screen text in the active scene; overlays may cover paused animations below."""
+    """Check the active scene's screen text, and text on the map against the map's; overlays may cover paused
+    animations below.  Nothing on Warband's map piles text up on purpose (its floating numbers are drawn on the
+    screen), so two texts over each other there are as unreadable as anywhere."""
     width, height = game.resolution
     findings = []
-    for a, b in overlapping_texts(game, top_scene_only=len(game.scenes) > 1):
+    for a, b in overlapping_texts(game, spaces=("screen", "world"), top_scene_only=len(game.scenes) > 1):
         # A text box spans ascender to descender; the letters fill about its middle three fifths.
         glyph_top = max(a.top + a.height * TEXT_SLACK, b.top + b.height * TEXT_SLACK)
         glyph_bottom = min(a.bottom - a.height * TEXT_SLACK, b.bottom - b.height * TEXT_SLACK)

@@ -1,8 +1,8 @@
 """MapView — everything drawn in world space, kept in step with the model.
 
-Layers: ground chunks on ``BACKGROUND``; selection rings and rally lines on
-``OBJECTS``; trees, rocks, mines, buildings and units on ``UNITS``, y-sorted
-by the line they stand on (a unit's feet, a building's front edge: the
+Layers: ground chunks on ``BACKGROUND``; selection rings, rally lines and the
+ghosts of planned buildings on ``OBJECTS``; trees, rocks, mines, buildings and
+units on ``UNITS``, y-sorted by the line they stand on (a unit's feet, a building's front edge: the
 placement's *ground* tells the sprite how far its padded canvas continues
 below that line); shots in flight, their trails and particles on ``EFFECTS`` under the fog
 sprite, which is one image with a pixel per tile stretched over the whole
@@ -82,6 +82,7 @@ class Overlay:
     selected: list[int] = field(default_factory=list)
     hovered: int | None = None
     ghost: tuple[BuildingType, Pos, bool] | None = None  # building, top-left tile, placeable
+    plans: list[tuple[BuildingType, Pos]] = field(default_factory=list)  # sites ordered and not begun: building, top-left tile
     rally_for: list[int] = field(default_factory=list)
     bars_for_all: bool = False  # Alt held: every visible unit and building shows its health
 
@@ -178,6 +179,10 @@ TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1, "venom": 0.14}  # seconds of
 TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150), "venom": (198, 132, 226)}
 TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5), "venom": (2.6, 0.5)}  # at the shot and where the trail ends
 BAR_OUTLINE = (0, 0, 0, 190)  # the backing and outline of every health and progress bar
+#: A site ordered and not yet begun, the settlement's plan or a builder's next site, is the ghost of its building
+#: (``textures.building_image(planned=True)``) at this opacity, on the ground under the units: a fight there is drawn
+#: over it, and whatever lies on that ground shows through it.  No caption: a row of them a tile apart ran together.
+PLAN_OPACITY = 0.45
 #: Nobody's building on the minimap and on the New game preview: a gold deposit, and the one thing on
 #: either picture that is not a seat.  The gold it used to be, (232, 196, 70), is three units of
 #: CIE76 from Amber, so an Amber player's halls were their own mines; this straw is twenty-seven
@@ -1037,6 +1042,10 @@ class MapView:
             self._ring(rx, ry, 8, 5, (255, 214, 110, 220))
             scene.draw_line(rx, ry, rx, ry - 14, (255, 214, 110, 220), 2, space="world", layer=RenderLayer.OBJECTS)
             scene.draw_polygon([(rx, ry - 14), (rx + 9, ry - 11), (rx, ry - 8)], (255, 214, 110, 220), space="world", layer=RenderLayer.OBJECTS)
+        race = world.players[self.player].race
+        for building_type, pos in overlay.plans:
+            self._draw_building(textures.building_image(self.game, building_type, self.player, race, planned=True), pos,
+                                BUILDINGS[building_type].size, PLAN_OPACITY, RenderLayer.OBJECTS)
         if overlay.ghost is not None:
             building_type, (gx, gy), ok = overlay.ghost
             size = BUILDINGS[building_type].size
@@ -1044,11 +1053,15 @@ class MapView:
             for ty in range(size):
                 for tx in range(size):
                     scene.draw_rect((gx + tx) * TILE + 1, (gy + ty) * TILE + 1, TILE - 2, TILE - 2, tint, space="world", layer=RenderLayer.UI_WORLD)
-            key = textures.building_image(self.game, building_type, self.player, world.players[self.player].race)
-            placement = textures.placements[key]
-            cx, cy = (gx + size / 2) * TILE, (gy + size / 2) * TILE
-            w, h = placement.size
-            scene.draw_image(key, cx - w / 2, cy + placement.drop - h, w, h, opacity=0.55 if ok else 0.3, space="world", layer=RenderLayer.UI_WORLD)
+            self._draw_building(textures.building_image(self.game, building_type, self.player, race), (gx, gy), size, 0.55 if ok else 0.3,
+                                RenderLayer.UI_WORLD)
+
+    def _draw_building(self, key: str, pos: Pos, size: int, opacity: float, layer: RenderLayer) -> None:
+        """The building picture *key* where a building of *size* tiles at *pos* would stand."""
+        placement = textures.placements[key]
+        cx, cy = (pos[0] + size / 2) * TILE, (pos[1] + size / 2) * TILE
+        w, h = placement.size
+        self.scene.draw_image(key, cx - w / 2, cy + placement.drop - h, w, h, opacity=opacity, space="world", layer=layer)
 
     def _draw_wood_chips(self) -> None:
         """A short burst at axe contact, driven by the same harvest clock as the pose."""

@@ -2277,10 +2277,10 @@ class GameScene(Scene):
         if self.ui.pointer_target(*self.mouse) is None and self.pending is None:
             entity = self.view.entity_at(self.hover)
             hovered = entity.id if entity is not None else None
-        self.view.draw(Overlay(selected=list(self.selection), hovered=hovered, ghost=self.ghost(), bars_for_all=self.all_bars or self.alt_held,
-                               rally_for=[b.id for b in [self._own_building()] if b is not None]))
+        self.view.draw(Overlay(selected=list(self.selection), hovered=hovered, ghost=self.ghost(), plans=[(kind, pos) for kind, pos, _ in self.pending_sites()],
+                               bars_for_all=self.all_bars or self.alt_held, rally_for=[b.id for b in [self._own_building()] if b is not None]))
         ambience.draw(self, self.world, self.human)
-        self._draw_settlement_markers()
+        self._draw_assembly()
         if self._drag_start is not None and self._drag_end is not None and math.dist(self._drag_start, self._drag_end) >= DRAG_THRESHOLD:
             (x0, y0), (x1, y1) = self._drag_start, self._drag_end
             self.draw_rect(min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0), (120, 255, 140, 40), border_color=(120, 255, 140, 220), border_width=1)
@@ -2289,15 +2289,8 @@ class GameScene(Scene):
         self._draw_selection_panel()
         self.effects.draw(self)
 
-    def _draw_settlement_markers(self) -> None:
-        """Sites ordered and not yet begun: a plan's in blue, a builder's next sites in gold."""
-        for kind, pos, queued in self.pending_sites():
-            x, y = to_world(pos)
-            size = BUILDINGS[kind].size * TILE
-            fill, border, text = ((255, 214, 110, 26), (255, 214, 110, 210), GOLD) if queued else ((110, 190, 255, 28), (150, 210, 255, 220), (180, 220, 255, 255))
-            self.draw_rect(x, y, size, size, fill, border_color=border, border_width=2, space="world")
-            self.draw_text(f"{'Next' if queued else 'Planned'} {self.building_name(kind)}", x + size / 2, y - 5, style="caption",
-                           color=text, anchor_x="center", space="world")
+    def _draw_assembly(self) -> None:
+        """The flag where the settlement's recruits gather."""
         if self.player.assembly is not None:
             x, y = to_world(self.player.assembly)
             self.draw_line(x, y, x, y - 32, GOLD, width=3, space="world")
