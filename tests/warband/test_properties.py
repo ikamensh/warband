@@ -15,7 +15,7 @@ from warband.sim import mapgen, path
 from warband.brains.ai import make_brain
 from warband.sim.model import RuleError, World
 from warband.records.replay import Playback, Replay, digest
-from warband.sim.rules import BuildingType, Difficulty, Layout, UnitType, Upgrade
+from warband.sim.rules import BuildingType, Difficulty, Layout, Terrain, UnitType, Upgrade
 from warband.ui.scene import FAIR_TRIES, fair_map
 
 FEW = settings(max_examples=12, deadline=None, suppress_health_check=[HealthCheck.too_slow])
@@ -89,6 +89,51 @@ def check_path(case) -> None:
 
 
 @FEW
+@st.composite
+def segments(draw):
+    """A segment on a small map whose ends fall anywhere on it, on a tile's edge or corner as readily as inside one."""
+    width, height = draw(st.integers(2, 10)), draw(st.integers(2, 10))
+
+    def coordinate(size: int) -> float:
+        return draw(st.one_of(st.integers(0, size - 1).map(float), st.integers(0, 4 * size - 1).map(lambda q: q / 4),
+                              st.floats(0, size, exclude_max=True, allow_nan=False)))
+    return width, height, (coordinate(width), coordinate(height)), (coordinate(width), coordinate(height))
+
+
+def boxed(width: int, height: int, a: tuple[float, float], b: tuple[float, float]) -> World:
+    """Open ground across the box the tiles of *a* and *b* span, rock everywhere else."""
+    (x0, x1), (y0, y1) = sorted((int(a[0]), int(b[0]))), sorted((int(a[1]), int(b[1])))
+    terrain = [[Terrain.GRASS if x0 <= x <= x1 and y0 <= y <= y1 else Terrain.ROCK for x in range(width)] for y in range(height)]
+    return World(width, height, terrain, 1)
+
+
+@FEW
+@given(segments())
+def test_a_straight_line_never_leaves_the_box_its_ends_span(case) -> None:
+    """A line from a point to a point crosses only tiles between theirs, so with those open it is clear however the rest
+    lies.  A crowd skipping ahead along its path asked of a line ending exactly on a tile's corner, and the grid walk
+    stepped across that corner at its very end, off the map (the race report's seed 27).  The walk itself is what is
+    under test, so this asks the model's private _line_clear."""
+    width, height, a, b = case
+    assert boxed(width, height, a, b)._line_clear(a, b)
+
+
+@MANY
+@pytest.mark.slow
+@given(segments())
+def test_a_straight_line_never_leaves_the_box_its_ends_span_on_many_segments(case) -> None:
+    """The same over many segments: a whole Hypothesis run is minutes of the fast tier's budget."""
+    width, height, a, b = case
+    assert boxed(width, height, a, b)._line_clear(a, b)
+
+
+def test_the_line_that_stepped_off_the_map() -> None:
+    """The exact line of the race report's seed 27 (orcs against humans on Master): it ends on the corner of the map's
+    last row, and the walk crossed that corner into the row beyond."""
+    world = World(48, 40, [[Terrain.GRASS] * 48 for _ in range(40)], 2)
+    assert world._line_clear((40.588868505613526, 38.11837011087797), (40.0, 39.0))
+
+
 @given(grids())
 def test_a_path_steps_legally_and_is_the_shortest_there_is(case) -> None:
     check_path(case)

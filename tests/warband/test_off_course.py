@@ -166,3 +166,18 @@ def test_a_marcher_that_has_walked_into_its_slot_does_not_march_back_out_of_it()
         strayed = max(strayed, dist(watched.pos, slot))
     assert strayed < 0.35, f"the shortcut marched it {strayed:.2f} tiles back out of the slot it had reached"
     assert not watched.orders and watched.state == "idle", (watched.pos, list(watched.orders), watched.state)
+
+
+def test_a_walk_ending_on_a_tile_corner_at_the_edge_of_the_map_stays_on_the_map() -> None:
+    """Seed 1023 of the difficulty ladder (Master against Hard, 48×40 klondike, tick 19803): a soldier at
+    (47.49, 38.02) walked to (47.0, 39.0), exactly on the corner of the map's last tiles.  The straight line
+    there crosses x = 47 at its very end; the grid walk that asks whether the line is clear took that
+    crossing as a corner, stepped into (46, 39) and then off the bottom of the map, and the match died of an
+    IndexError.  ``stands_at`` asks the same question of the same line, so it is asked here first."""
+    world = grass(48, 40)
+    soldier = world.spawn_unit(0, UnitType.FOOTMAN, (47.48966601380704, 38.016230835684375))
+    spot = (47.0, 39.0)
+    assert not world.stands_at(soldier, spot), "nobody stands in the way: the walk still has somewhere to go"
+    world.move([soldier.id], spot)
+    run(world, 3.0)
+    assert not soldier.orders and dist(soldier.pos, spot) < 0.15, (soldier.pos, list(soldier.orders))

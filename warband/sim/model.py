@@ -3456,15 +3456,17 @@ class World:
         next_x = ((x + (step_x > 0)) - a[0]) / dx if dx else math.inf
         next_y = ((y + (step_y > 0)) - a[1]) / dy if dy else math.inf
         per_x, per_y = (abs(1 / dx) if dx else math.inf), (abs(1 / dy) if dy else math.inf)
-        # The walk never leaves the box spanned by the two endpoints, so only the two
-        # tiles beside a corner need their own bounds test.
+        # The walk never leaves the box spanned by the two endpoints' tiles: once it stands in the end tile's
+        # column (or row), the only way on is along it.  A segment ending exactly on a tile's corner otherwise stepped
+        # across the corner at its very end, out of the box and off the map (a crowd skipping ahead along its path,
+        # race report seed 27).  So only the two tiles beside an inner corner need their own bounds test.
         row = y * width
         for _ in range(abs(end_x - x) + abs(end_y - y) + 1):
             if grid[row + x]:
                 return False
             if x == end_x and y == end_y:
                 return True
-            if abs(next_x - next_y) < 1e-9:
+            if abs(next_x - next_y) < 1e-9 and x != end_x and y != end_y:
                 beside_x, beside_y = x + step_x, y + step_y
                 if not 0 <= beside_x < width or grid[row + beside_x]:
                     return False
@@ -3472,7 +3474,7 @@ class World:
                     return False
                 x, y, row = beside_x, beside_y, beside_y * width
                 next_x, next_y = next_x + per_x, next_y + per_y
-            elif next_x < next_y:
+            elif y == end_y or (x != end_x and next_x < next_y):
                 x, next_x = x + step_x, next_x + per_x
             else:
                 y, next_y, row = y + step_y, next_y + per_y, row + step_y * width
