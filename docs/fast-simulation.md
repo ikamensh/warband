@@ -107,7 +107,8 @@ game runs the simulation compiled too. `warband.__main__.main` calls
 - **A machine that cannot compile** (plain `uv sync` without the `dev` extra
   has no mypyc; a Mac without Xcode's command line tools has no compiler)
   prints one line naming what is missing and runs the source. The build
-  probes the compiler on a one-line C file before mypyc spends its minute.
+  probes the compiler on an empty extension module before mypyc spends its
+  minute (a real `PyInit_` function: MSVC links one for every extension).
   `WARBAND_INTERPRETED=1` runs the source and says so.
 - **A frozen app** carries the build it was frozen with: players have no
   compiler. `tools/package.py` (and `tools/ci_package.py` on each native CI
