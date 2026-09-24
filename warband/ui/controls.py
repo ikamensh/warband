@@ -5,7 +5,8 @@ catalogues, and a pending order that waits for its click.  Every scheme shares t
 the modifiers — Shift keeps going (it queues an order, places another building, trains endlessly), Esc
 goes back one level, Ctrl (Cmd) with B, T, U, G or P reaches the settlement from anywhere — and a scheme
 decides which plain keys do what, and how long a mode lasts.  Ctrl+X is cancel mode in every scheme: a click takes
-back a plan, a site or a building's work, a box everything of the player's inside it (WB-065).
+back a plan, a site or a building's work, a box everything of the player's inside it (WB-065).  Ctrl with F, W, S, R, M
+and L gives the side's commands in every scheme: Fortify, Withdraw, Scout, Harass, Gold and Lumber (WB-061).
 
 * **Classic** — the letter of the name, as Warcraft II had it: A attack, F footman, B build.  B, T, U and G
   open the catalogues and set the assembly point whenever the card leaves the letter free.
@@ -29,14 +30,19 @@ GRID_KEYS: Final = ("q", "w", "e", "a", "s", "d", "z", "x", "c")  # the card's n
 #: WB-063): the column of keys beside the grid, top to bottom.  Those are Grid's global keys otherwise, and while a card
 #: holds them they are its; the assembly point and the plans stay on Ctrl+G and Ctrl+P.
 GRID_BELOW: Final = ("r", "f", "v")
-#: With Ctrl (Cmd on a Mac) in every scheme: the settlement from whatever the card shows, and cancel mode.  A chord
-#: is resolved before any card, so no card's letter, now or later, can take one from a scheme.
-CHORDS: Final = {"b": "build", "t": "train", "u": "upgrade", "g": "assembly", "p": "plans", "x": "cancel"}
+#: With Ctrl (Cmd on a Mac) in every scheme: the settlement from whatever the card shows, cancel mode, and the side's
+#: six commands (WB-061, ``warband.brains.adjutant``).  A chord is resolved before any card, so no card's letter, now or
+#: later, can take one from a scheme.  Cmd+H and Cmd+Q hide and quit the game on a Mac, so no chord uses H or Q.
+CHORDS: Final = {"b": "build", "t": "train", "u": "upgrade", "g": "assembly", "p": "plans", "x": "cancel",
+                 "f": "fortify", "w": "withdraw", "s": "scout", "r": "harass", "m": "gold", "l": "lumber"}
 ACTIONS: Final = {
     "build": "the Build catalogue", "train": "the Train catalogue", "upgrade": "the Upgrade catalogue",
     "assembly": "the assembly point for new soldiers", "plans": "every plan and its progress",
     "cancel": "cancel mode: a click takes back a plan, a site or a building's work",
     "idle_soldier": "the next idle soldier", "repeat": "the last recruit or placement again",
+    "fortify": "towers planned at the approaches: one, three, six", "withdraw": "soldiers home: the wounded, half, all",
+    "scout": "scouts out: one, a quarter, half", "harass": "raiders at the rival's workers: three, a quarter, half",
+    "gold": "the idle workers and a share of the lumber's to gold", "lumber": "the idle workers and a share of the gold's to lumber",
 }
 
 

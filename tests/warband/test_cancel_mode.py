@@ -376,13 +376,13 @@ def test_a_refusal_stops_the_rest_and_leaves_the_building_idle_rather_than_half_
 
 
 class Metered(GameScene):
-    cancel_burst = 4
+    order_burst = 4
 
 
 def test_cancel_mode_keeps_to_its_allowance_and_takes_the_rest_when_it_comes_back(game) -> None:
     """A network match sets an allowance under its server's rate limit, which drops a client that sends too many orders
     at once: a box over more plans than that cancels what it may and says what is left."""
-    assert NetworkGameScene.cancel_burst is not None and NetworkGameScene.cancel_burst <= 20
+    assert NetworkGameScene.order_burst is not None and NetworkGameScene.order_burst <= 20
     scene = base(game, scene_class=Metered)
     world = scene.world
     sites = [(x, y) for y in (16, 19) for x in (14, 17, 20)]

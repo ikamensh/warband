@@ -157,6 +157,9 @@ def test_the_tutorial_ticks_its_objectives_off_from_what_the_player_does(game) -
     scene = new_game(seed=3, settings=settings)
     game.push(scene)
     game.tick(1 / 60)
+    assert not scene.objectives.visible, "the opening banner crosses where the panel reaches: it waits for it to pass"
+    game.tick(2.0)
+    game.tick(1 / 60)
     assert scene.tutorial is not None and scene.objectives.visible and any(t.startswith("1. Select a peasant") for t in texts(game))
     world = scene.world
     ps = [u for u in world.player_units(scene.human) if u.is_worker]

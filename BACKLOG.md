@@ -24,7 +24,6 @@ item takes the next one and updates this line.
 | WB-059 | Next | proposed | A route nobody can reach costs the whole pathfinder budget, and the budget grows with the map | Sixteen seats 2026-09-20 |
 | WB-060 | Later | proposed | Sixteen seats online: an engine release, a snapshot that is not one world per seat, and room capacity | Sixteen seats 2026-09-20 |
 | WB-062 | Now | proposed | Buffs and debuffs: orc Rage as a ten-second buff, Bleeding from every archer's shot | Ilya 2026-09-24 |
-| WB-061 | Now | proposed | Global commands with levels: Fortify, Withdraw, Scout, Harass, Gold, Lumber | Ilya 2026-09-24 |
 | WB-066 | Now | proposed | Magic II: the Mage Tower, one spell of three per level, cast anywhere, dearer beyond the vaults | Ilya 2026-09-24 |
 | WB-067 | Now | proposed | Magic III: the computer players research, choose and cast; the nine spells balanced | Ilya 2026-09-24 |
 | WB-068 | Now | proposed | A unique unit per race: Gryphon Rider, Goblin Sappers, Treant, Rune Golem | Ilya 2026-09-24 |
@@ -329,45 +328,6 @@ five numbers are the whole vocabulary and a spell is a row, not code.
    `tools/visual_lint.py` clean.
 5. Fingerprint and `sim_bench.txt` refreshed in the same commit; fuzz run;
    mypy over `fastsim.MODULES` clean and the compiled run matches.
-
-## WB-061 — Global commands with levels
-
-**Design.** Six commands for the whole side, on a row of HUD buttons and a
-key each: **Fortify**, **Withdraw**, **Scout**, **Harass**, **Gold**,
-**Lumber**. Pressing one again within 1.5 s raises it a level (pips on the
-button, up to three), and each press acts at once for its step, so level 3
-is three quick presses and nothing waits for a timer.
-
-| command | level 1 | level 2 | level 3 |
-|---|---|---|---|
-| Scout | one unit (a flyer, else the fastest soldier) | a quarter of the soldiers | half of them |
-| Harass | a raiding party of up to three fast soldiers | a quarter | half |
-| Withdraw | wounded soldiers (below half) home | soldiers outside the base, most exposed first, half | every soldier |
-| Fortify | one tower planned at the most exposed approach | three | six, and Withdraw 1 |
-| Gold / Lumber | the idle workers and a quarter of the others | half | all |
-
-- **Scout**: scouts spread over the least recently seen ground and the rival
-  bases the side knows of, keep moving, steer clear of known towers, and come
-  home hurt below half.
-- **Harass**: the party goes for the nearest rival's workers at a mine or a
-  wood line, strikes, and runs home the moment rival soldiers or a tower come
-  into sight; it ends at home.
-- **Withdraw**: to the nearest hall (not an attack-move); workers never.
-- **Fortify**: plans (unpaid until started, as the settlement does) between
-  the base and the nearest known rival, spread across approaches; refused
-  with the reason when no tower can be built yet.
-- **Gold / Lumber**: ordered harvests, which the worker policy leaves alone.
-- A unit given an order by its player leaves its command; a small tag shows
-  what a unit is doing for a command. The commands use only what the side
-  knows (fog and memory), never the world's truth.
-- The controller lives in `warband/brains/` (it decides like a brain for
-  the player) and gives orders through `GameScene.attempt`, so replays and
-  online play need nothing new.
-
-**Acceptance.** Tests per command and level against staged worlds; that the
-controller reads only the seat's knowledge (a unit behind fog is never
-targeted); fuzz with monkey input pressing commands; a replay that used them
-plays back; a frame of the row and pips looked at; docs/controls.md.
 
 ## WB-066 — Magic II: the Mage Tower and the spells
 

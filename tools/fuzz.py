@@ -9,7 +9,8 @@ checking the world every simulated second: units stand on open ground,
 hit points and resources stay in range, buildings never overlap, the
 blocked grid matches the map, hidden units are inside something real.
 The monkey runs feed the game scene random keys, clicks, drags and scrolls
-on the mock backend, including through every overlay.
+on the mock backend, including through every overlay, and press the side's
+commands in runs of up to three.
 """
 
 from __future__ import annotations
@@ -145,7 +146,8 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
 
 def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = None) -> int:
     from saga2d import Game
-    from warband.ui.controls import SCHEMES
+    from warband.brains.adjutant import COMMANDS
+    from warband.ui.controls import CHORDS, SCHEMES
     from warband.ui.scene import DEFAULT_SETTINGS, GameScene, new_game
     from warband.ui.style import build_theme
     from warband.ui.title import TitleScene
@@ -153,6 +155,7 @@ def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = No
     # The scene's own keys, every letter a card or a scheme gives a meaning, and the Modal scheme's punctuation.
     keys = sorted({k for keys in GameScene.controls for k in ((keys,) if isinstance(keys, str) else keys)}
                   | set("abcdefghklmpqrstuvwxz123456789") | {"return", "escape", "period", "comma"})
+    commands = [letter for letter, action in CHORDS.items() if action in COMMANDS]
     failures = 0
     for seed in seeds:
         rng = random.Random(seed)
@@ -170,6 +173,11 @@ def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = No
                     roll = rng.random()
                     if roll < 0.03:  # cancel mode, which a random letter with a random Ctrl reaches too seldom to click in
                         game.backend.inject_key("x", ctrl=True)
+                    elif roll < 0.06:  # one of the side's commands, pressed up to three times in a row: its levels
+                        letter = rng.choice(commands)
+                        for _ in range(rng.choice((1, 2, 3))):
+                            game.backend.inject_key(letter, ctrl=True)
+                            game.tick(rng.choice((1 / 60, 0.3, 1.0)))
                     elif roll < 0.4:
                         game.backend.inject_key(rng.choice(keys), shift=rng.random() < 0.15, ctrl=rng.random() < 0.15)
                     elif roll < 0.75:
