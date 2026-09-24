@@ -17,7 +17,7 @@ arts = ["horses", "blessing"]
 defaults = { build_time_mult = 0.85 }
 peasant = { name = "Peasant", summary = "Mines gold, chops lumber, builds, repairs" }
 footman = { name = "Footman", summary = "Slow shield-wall swordsman; tougher with a comrade at each side" }
-archer = { name = "Archer", summary = "Shoots from four tiles; fragile up close" }
+archer = { name = "Archer", summary = "Shoots from four tiles; its wounds bleed; fragile up close" }
 knight = { name = "Knight", summary = "Fast, heavily armoured shock cavalry" }
 catapult = { name = "Catapult", summary = "Siege engine: splash, ×1.5 vs buildings" }
 flying_machine = { name = "Flying Machine", summary = "Rotor-borne eyes over any ground; unarmed, only shooters hit it" }
@@ -41,16 +41,16 @@ keep = { name = "Keep", card = "Keep" }
 [orc]
 name = "Orcs"
 adjective = "Orcish"
-tagline = "Tough, savage, and deadliest when bleeding"
-passive = "Frenzy: soldiers below half health deal +25 % damage"
+tagline = "Tough, savage, and deadliest when wounded"
+passive = "Rage: soldiers below half health rage for 10 s, +25 % damage, healed or not"
 arts = ["bloodlust", "plunder"]
 
 [orc.units]
 defaults = { hp_mult = 1.15 }
 peasant = { name = "Peon", summary = "Digs gold, hacks lumber, builds and repairs" }
-footman = { name = "Grunt", summary = "Brutal axeman, fast and alone; hits harder as it bleeds", damage_mult = 1.1, armor_add = -2, speed_add = 0.4, formation = false }
-archer = { name = "Axethrower", summary = "Throws axes four tiles; a sturdy shooter" }
-knight = { name = "Ogre", summary = "Two-headed brute; thin armour, all frenzy", hp_mult = 1.2, damage_mult = 1.1, armor_add = -1 }
+footman = { name = "Grunt", summary = "Brutal axeman, fast and alone; rages when wounded", damage_mult = 1.1, armor_add = -2, speed_add = 0.4, formation = false }
+archer = { name = "Axethrower", summary = "Throws axes four tiles; its wounds bleed; sturdy" }
+knight = { name = "Ogre", summary = "Two-headed brute; thin armour, all rage", hp_mult = 1.2, damage_mult = 1.1, armor_add = -1 }
 catapult = { name = "Catapult", summary = "Skulled siege engine: splash, ×1.5 vs walls" }
 flying_machine = { name = "Goblin Zeppelin", summary = "Patched balloon, goblin at the rail; sees all, fights nothing" }
 cleric = { name = "Shaman", summary = "Mends wounded allies; hexes weakly when none need mending" }
@@ -81,7 +81,7 @@ arts = ["longbows", "regrowth"]
 defaults = { hp_mult = 0.95, speed_add = 0.15, sight_add = 2 }
 peasant = { name = "Gatherer", summary = "Mines gold, fells trees, builds and repairs" }
 footman = { name = "Sentinel", summary = "Light swordsman in a line; quick on their feet" }
-archer = { name = "Ranger", summary = "Shoots from five tiles; fragile up close", range_add = 1.0 }
+archer = { name = "Ranger", summary = "Shoots from five tiles; its wounds bleed; fragile up close", range_add = 1.0 }
 knight = { name = "Stag Knight", summary = "Antlered shock cavalry, swift but light" }
 catapult = { name = "Ballista", summary = "Living-wood siege engine: splash, ×1.5" }
 flying_machine = { name = "Leafwing Glider", summary = "Living-wood frame on leaf wings; sees farthest, unarmed" }
@@ -113,7 +113,7 @@ arts = ["deep_mining", "blasting_powder"]
 defaults = { hp_mult = 1.1, speed_add = -0.15 }
 peasant = { name = "Miner", summary = "Mines gold, chops lumber, builds, repairs" }
 footman = { name = "Ironguard", summary = "Armoured axeman in a wall of round shields", armor_add = 1 }
-archer = { name = "Crossbowman", summary = "Shoots from four tiles; hardy for a shooter" }
+archer = { name = "Crossbowman", summary = "Shoots from four tiles; its wounds bleed; hardy" }
 knight = { name = "Bear Rider", summary = "Armoured shock cavalry on a war bear", armor_add = 1 }
 catapult = { name = "Mortar", summary = "Iron mortar: wide splash, ×1.5 vs buildings" }
 flying_machine = { name = "Gyrocopter", summary = "Steam rotor over any ground; eyes, not guns: only shooters hit it" }

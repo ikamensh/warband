@@ -24,7 +24,7 @@ Color = tuple[int, int, int, int]
 COLORS: dict[str, Color] = {
     "gold": (255, 214, 110, 255), "lumber": (206, 162, 105, 255), "supply": (232, 215, 161, 255), "health": (130, 225, 155, 255),
     "damage": (237, 205, 164, 255), "armor": (159, 192, 221, 255), "range": (210, 185, 228, 255), "speed": (221, 201, 155, 255),
-    "aether": (184, 120, 250, 255), "sight": (168, 222, 236, 255),
+    "aether": (184, 120, 250, 255), "sight": (168, 222, 236, 255), "rage": (242, 92, 44, 255), "bleeding": (214, 36, 40, 255),
 }
 
 
@@ -69,6 +69,13 @@ def _parts(name: str, color: Color | None = None) -> list[tuple[list[tuple[float
         return [([(.17, .20), (.71, .10), (.88, .33), (.31, .49)], color),
                 (disc(.25, .36, .14), light), ([(.17, .64), (.73, .48), (.91, .73), (.31, .94)], color),
                 (disc(.25, .79, .14), light), (disc(.25, .79, .065), dark), (disc(.25, .36, .065), dark)]
+    if name == "rage":  # a flame: a round body, three tongues, a hot core
+        return [(disc(.5, .7, .27), color), ([(.5, .02), (.75, .6), (.25, .6)], color),
+                ([(.2, .2), (.42, .58), (.23, .7)], color), ([(.82, .3), (.77, .7), (.58, .58)], color),
+                (disc(.5, .76, .13), (255, 214, 110, 255)), ([(.5, .38), (.62, .76), (.38, .76)], (255, 214, 110, 255))]
+    if name == "bleeding":  # a drop with a glint
+        return [([(.5, .03), (.73, .38), (.83, .6), (.79, .79), (.65, .93), (.5, .97), (.35, .93), (.21, .79), (.17, .6), (.27, .38)], color),
+                ([(.33, .6), (.4, .5), (.44, .66), (.38, .8)], light)]
     if name == "aether":  # a violet crystal with a spark beside it: light that rises, not a thing that is carried
         return [([(.44, .04), (.76, .40), (.44, .96), (.12, .40)], dark),
                 ([(.44, .04), (.54, .42), (.44, .96), (.12, .40)], color),

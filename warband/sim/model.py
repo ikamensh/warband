@@ -38,12 +38,12 @@ from warband.sim.rules import (
     AETHER_REACH, AETHER_STORE, AETHER_TICKS, Layout,
     REPAIR_CHUNK, REPAIR_RATE, repair_cost,
     SALVAGE_CHUNK, SALVAGE_HELD_RATE, SALVAGE_RATE, salvage_resource, salvage_yield,
-    ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLASTING_POWDER_BONUS, BLESSING_BONUS, BLOODLUST_BONUS, BUILDINGS, CHOP_TIME, DEEP_MINING_TRIP,
-    FRENZY_BONUS, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MASTER_WEAPON_BONUS, MINE_GOLD,
+    ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLASTING_POWDER_BONUS, BLESSING_BONUS, BLOODLUST_RAGE, BUFFS, BUILDINGS, CHOP_TIME,
+    DEEP_MINING_TRIP, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MASTER_WEAPON_BONUS, MINE_GOLD,
     MINE_TIME, PLAYERS,
     PLUNDER_SHARE, REGROWTH_SECONDS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION, STARTING_GOLD, STARTING_LUMBER,
     FORMATION_ARMOR, FORMATION_HOLD, FORMATION_LOOKAHEAD, FORMATION_MARCH, FORMATION_SLACK, FORMATION_SPACING, FORMATION_WIDTH, ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, FRIENDLY_WORTH, SIEGE_BUILDING_WORTH, SIEGE_STEP, SIEGE_WORTH, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
-    CREATURES, MAX_QUEUED_ORDERS, MAX_UNIT_RADIUS, NEUTRAL, REGEN_CALM, UNDER_ATTACK_COOLDOWN, UNITS, UPGRADES, VISION_EVERY, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
+    CREATURES, MAX_QUEUED_ORDERS, MAX_UNIT_RADIUS, NEUTRAL, RAGE, REGEN_CALM, UNDER_ATTACK_COOLDOWN, UNITS, UPGRADES, VISION_EVERY, BuffInfo, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
     Terrain, UnitInfo, UnitType, Upgrade, UpgradeInfo, ArmorClass, AttackType, an, damage_factor, listing,
 )
 
@@ -198,6 +198,7 @@ EASE_STEP_VARIANCE: Final = config.number('EASE_STEP_VARIANCE')
 EASE_JITTER: Final = config.number('EASE_JITTER')
 EASE_GAIN: Final = config.number('EASE_GAIN')
 AUTO_EVERY: Final = round(1 / SIM_DT)  # ticks between an idle building's looks at its endless recruits: the settlement's second
+STEPS_A_SECOND: Final = round(1 / SIM_DT)  # what a condition's hit points a second are counted in
 
 
 #: The neutral creatures, as a set to ask a unit's type of on every spawn and every load.
@@ -262,7 +263,7 @@ class RuleError(Exception):
 @dataclass
 class Move:
     target: Point
-    pace: float | None = None  # slowest speed_of in the group at issue time; None: walk at full speed
+    pace: float | None = None  # slowest listed_speed in the group at issue time; None: walk at full speed
     offset: Point | None = None  # a marching line's slot, from the group's shared target (WB-050); None: the target itself
 
 
@@ -376,6 +377,19 @@ class Player:
 
 
 @dataclass
+class Condition:
+    """A timed condition on a unit: its *kind* (a row of ``buffs.toml``), the last step it is worn (*until*), the
+    player who laid it on (a death by its drain is theirs), and how many steps it has been *worn*, which its hit points
+    a second are counted from, so a drain of one a second takes exactly one each twenty steps however often it is
+    laid on again."""
+
+    kind: BuffInfo
+    until: int  # a tick: the condition wears off at the end of that step
+    player: int
+    worn: int = 0
+
+
+@dataclass
 class Unit:
     id: int
     type: UnitType
@@ -413,6 +427,7 @@ class Unit:
     # The gatherer policy keeps its hands off a worker commanded recently, the longer the further from home it
     # stands (:func:`warband.sim.worker_ai.manual_hold`).
     commanded: float | None = None
+    conditions: list[Condition] = field(default_factory=list)  # in the order they were laid on; World._lay, _wear
 
     def __post_init__(self) -> None:
         # Type and race are fixed for life, so the stats they select are read once
@@ -423,6 +438,32 @@ class Unit:
         self.radius: float = self.info.radius  # its body: a catapult fills far more ground than a peasant
         #: Over the ground rather than on it (:attr:`UnitInfo.flying`): asked of every neighbour in the crowd's loops.
         self.flying: bool = self.info.flying
+        # Rage, the orcs' passive (World._update_unit): a soldier's, never a worker's, a healer's or a machine's.
+        self.enrages: bool = self.race is Race.ORC and self.info.soldier and not self.is_worker and self.info.living
+        self.recount()
+
+    def recount(self) -> None:
+        """Add up what its conditions do, whenever they change.  Damage, armour, speed and blows are asked of every
+        unit millions of times a match, so they read these sums, and a unit with no condition pays nothing more."""
+        damage = speed = blow = 1.0
+        armor = 0
+        for c in self.conditions:
+            kind = c.kind
+            damage *= kind.damage
+            speed *= kind.speed
+            blow *= kind.blow
+            armor += kind.armor
+        self.damage_mult: float = damage
+        self.speed_mult: float = speed
+        self.blow_mult: float = blow  # on its wind-up and cooldown
+        self.armor_add: int = armor
+
+    def condition(self, kind: BuffInfo) -> Condition | None:
+        """The condition of *kind* it carries, if any."""
+        for c in self.conditions:
+            if c.kind is kind:
+                return c
+        return None
 
     @property
     def pos(self) -> Point:
@@ -537,6 +578,7 @@ class Projectile:
     damage: int
     splash: float = 0.0
     attack: AttackType = AttackType.NORMAL
+    inflicts: BuffInfo | None = None  # the shooter's: laid on the living unit it wounds
 
     @property
     def lands_at(self) -> float:
@@ -1012,7 +1054,7 @@ class World:
         return RACES[self.race_of(player)].upgrades[upgrade]
 
     def damage_of(self, entity: Entity) -> int:
-        """Listed damage plus every upgrade its owner has researched, and an orc's frenzy."""
+        """Listed damage plus every upgrade its owner has researched, times what its conditions multiply it by."""
         info = entity.info
         damage = info.damage
         if damage == 0:
@@ -1025,13 +1067,9 @@ class World:
             damage += MASTER_WEAPON_BONUS * self._has(entity.player, Upgrade.ARROWS_3)
         if isinstance(entity, Unit) and entity.type is UnitType.CATAPULT and self._has(entity.player, Upgrade.SIEGE):
             damage = int(round(damage * SIEGE_DAMAGE_BONUS))
-        if isinstance(entity, Unit) and self.frenzied(entity):
-            damage = int(round(damage * (BLOODLUST_BONUS if self._has(entity.player, Upgrade.BLOODLUST) else FRENZY_BONUS)))
+        if isinstance(entity, Unit) and entity.damage_mult != 1.0:
+            damage = int(round(damage * entity.damage_mult))
         return damage
-
-    def frenzied(self, unit: Unit) -> bool:
-        """An orc soldier below half health fights in a frenzy."""
-        return unit.race is Race.ORC and not unit.is_worker and unit.info.soldier and unit.hp * 2 < unit.max_hp
 
     def flanks(self, unit: Unit) -> int:
         """How many of *unit*'s sides, left and right across its facing, a friend of the same formation guards: a
@@ -1064,6 +1102,8 @@ class World:
             armor += ARMOR_BONUS * (self._has(entity.player, Upgrade.ARMOR_1) + self._has(entity.player, Upgrade.ARMOR_2))
         if isinstance(entity, Unit) and entity.info.formation:
             armor += FORMATION_ARMOR * self.flanks(entity)
+        if isinstance(entity, Unit) and entity.armor_add:
+            armor += entity.armor_add
         return armor
 
     def range_of(self, unit: Unit) -> float:
@@ -1098,6 +1138,16 @@ class World:
         return info.trip * DEEP_MINING_TRIP // GOLD_PER_TRIP if self._has(player, Upgrade.DEEP_MINING) else info.trip
 
     def speed_of(self, unit: Unit) -> float:
+        """How fast *unit* walks now: :meth:`listed_speed` times what its conditions multiply it by."""
+        speed = self.listed_speed(unit)
+        if unit.speed_mult != 1.0:
+            speed *= unit.speed_mult
+        return speed
+
+    def listed_speed(self, unit: Unit) -> float:
+        """Its speed with its owner's research and no condition: what a group's pace is set from.  A condition is its
+        bearer's own and ends before the march does: a wounded soldier set the pace of every step of the order that
+        was given while it bled, so a whole army crawled for a scratch on one man."""
         info = unit.info
         speed = info.speed
         if info.mounted and self._has(unit.player, Upgrade.HORSES):
@@ -1529,7 +1579,7 @@ class World:
     def move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         target = self._clamp(target)
         units = self._own_units(unit_ids, queue=queue)
-        pace = min((self.speed_of(u) for u in units), default=None) if len(units) > 1 and not queue else None
+        pace = min((self.listed_speed(u) for u in units), default=None) if len(units) > 1 and not queue else None
         slots = {} if queue else self._line_slots(units, target)
         for unit in units:
             self._issue(unit, Move(target, pace=pace, offset=slots.get(unit.id)), queue=queue)
@@ -1538,7 +1588,7 @@ class World:
     def attack_move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         target = self._clamp(target)
         units = self._own_units(unit_ids, queue=queue)
-        pace = min((self.speed_of(u) for u in units), default=None) if len(units) > 1 and not queue else None
+        pace = min((self.listed_speed(u) for u in units), default=None) if len(units) > 1 and not queue else None
         slots = {} if queue else self._line_slots(units, target)
         for unit in units:
             self._issue(unit, AttackMove(target, pace=pace, offset=slots.get(unit.id)) if not unit.is_worker else Move(target, pace=pace),
@@ -2113,6 +2163,14 @@ class World:
     def _update_unit(self, u: Unit, dt: float) -> None:
         cooldown = u.cooldown - dt
         u.cooldown = cooldown if cooldown > 0.0 else 0.0
+        if u.enrages and u.hp * 2 < u.max_hp:
+            self._enrage(u)
+        # One felled earlier in the step bleeds no more (the blow has the kill, counted once) and acts out the step as
+        # any felled unit does.
+        if u.conditions and u.hp > 0:
+            self._wear(u)
+            if u.hp <= 0:
+                return  # bled to death: buried at the end of the step
         regen = u.info.regen
         if regen and u.hp < u.max_hp and self.time - u.struck >= REGEN_CALM:
             # Out of combat only.  Continuous regeneration would put a hard floor under the damage needed to
@@ -2125,6 +2183,79 @@ class World:
         x, y = u.x, u.y
         self._act(u, dt)
         u.vx, u.vy = (u.x - x) / dt, (u.y - y) / dt  # its own walking, before the crowd shoves it
+
+    # -- Conditions -----------------------------------------------------------------
+    #
+    # A unit carries timed conditions (:class:`Condition`), each a kind of ``buffs.toml``.  What a kind does is its row:
+    # the sums :meth:`Unit.recount` keeps are what damage_of, armor_of, speed_of and the blows read, and _wear counts
+    # its hit points a second.  What lays one on is the rule that names it: Rage in _update_unit, a wounding blow in
+    # _hit (UnitInfo.inflicts).  Buildings never carry one.
+
+    def seconds_left(self, condition: Condition) -> float:
+        """How long *condition* still lasts."""
+        return (condition.until - self.tick) * SIM_DT
+
+    def _lay(self, u: Unit, kind: BuffInfo, player: int) -> None:
+        """*player* lays *kind* on *u* for its whole duration.  A kind *u* already carries starts again, never twice
+        over, and is *player*'s from now on; a living kind never lands on a machine, nor any kind on the armour it
+        spares."""
+        if (kind.living and not u.info.living) or u.info.armor_class in kind.spares:
+            return
+        until = self.tick + kind.ticks
+        c = u.condition(kind)
+        if c is not None:
+            c.until, c.player = until, player
+            return
+        u.conditions.append(Condition(kind, until, player))
+        u.recount()
+
+    def _end(self, u: Unit, kind: BuffInfo) -> None:
+        """*u* no longer carries *kind*, if it did."""
+        c = u.condition(kind)
+        if c is not None:
+            u.conditions.remove(c)
+            u.recount()
+
+    def _staunch(self, u: Unit) -> None:
+        """A healer's cast has landed on *u*: it ends every condition a heal ends (a bleeding wound)."""
+        kept = [c for c in u.conditions if not c.kind.heal_ends]
+        if len(kept) != len(u.conditions):
+            u.conditions = kept
+            u.recount()
+
+    def _enrage(self, u: Unit) -> None:
+        """Rage, the orcs' passive: a soldier below half health is enraged, and again every step it stays there, so it
+        fights on enraged for the whole duration after a heal lifts it.  Bloodlust lays the stronger kind in its place."""
+        if self._has(u.player, Upgrade.BLOODLUST):
+            self._lay(u, BLOODLUST_RAGE, u.player)
+            self._end(u, RAGE)
+        else:
+            self._lay(u, RAGE, u.player)
+
+    def _wear(self, u: Unit) -> None:
+        """One step of *u*'s conditions: each mends or drains its hit points a second, and wears off after its last
+        step.  A drain goes through armour, and a death by it is credited to whoever laid it on."""
+        tick = self.tick
+        ended = False
+        for c in u.conditions:
+            rate = c.kind.hp_per_second
+            worn = c.worn
+            c.worn = worn + 1
+            if rate:
+                change = int(rate * (worn + 1) / STEPS_A_SECOND) - int(rate * worn / STEPS_A_SECOND)  # whole points, on time
+                if change > 0:
+                    u.hp = min(u.max_hp, u.hp + change)
+                elif change < 0:
+                    u.hp += change
+                    if u.hp <= 0:
+                        if c.player != u.player:
+                            self._tally_kill(u, c.player)
+                        return
+            if tick >= c.until:
+                ended = True
+        if ended:
+            u.conditions = [c for c in u.conditions if c.until > tick]
+            u.recount()
 
     def _act(self, u: Unit, dt: float) -> None:
         if u.inside is not None:
@@ -2358,15 +2489,17 @@ class World:
             if u.windup > 1e-9:
                 return
             u.windup = 0.0
-            u.cooldown = u.info.cooldown
+            u.cooldown = u.info.cooldown * u.blow_mult
             if self._gap(u, patient) > self.range_of(u) + WINDUP_SLACK:
                 return
             amount = min(self.heal_amount(u), patient.max_hp - patient.hp)
             patient.hp += amount
+            if patient.conditions:
+                self._staunch(patient)
             self.events.append(Event("heal", patient.pos, player=u.player, entity=u.id, other=patient.id, amount=amount))
             return
         if faced and u.cooldown <= 0.0:
-            u.windup = u.info.windup
+            u.windup = u.info.windup * u.blow_mult
 
     def _do_hold(self, u: Unit, order: Hold, dt: float) -> None:
         """Stand and fight what can be struck from here, never chasing.  A healer treats the wounded in its reach before
@@ -2644,14 +2777,14 @@ class World:
                 return
             if u.info.siege and self._aim_point(u, target, auto=auto) is None:
                 return  # no clear shot: the crew waits rather than drop a stone on its own side
-            u.windup = u.info.windup  # drawn back from now; the blow lands that many seconds on
+            u.windup = u.info.windup * u.blow_mult  # drawn back from now; the blow lands that many seconds on
             if u.windup <= 0.0:
                 self._release(u, target, auto=auto)
 
     def _release(self, u: Unit, target: Entity, *, auto: bool) -> None:
         """The blow at the end of a wind-up."""
         if target.hp <= 0 or (isinstance(target, Unit) and target.hidden) or self._gap(u, target) > self.range_of(u) + WINDUP_SLACK:
-            u.cooldown = u.info.cooldown  # swung at air
+            u.cooldown = u.info.cooldown * u.blow_mult  # swung at air
             return
         if u.info.siege:
             aim = self._aim_point(u, target, auto=auto)
@@ -2660,7 +2793,7 @@ class World:
             self._launch_stone(u, aim)
         else:
             self._strike(u, target)
-        u.cooldown = u.info.cooldown
+        u.cooldown = u.info.cooldown * u.blow_mult
 
     def _back_off(self, u: Unit, target: Entity, dt: float) -> bool:
         """Step straight away from a target inside the engine's minimum range; True if there was room."""
@@ -3366,7 +3499,13 @@ class World:
         order = u.order
         if not isinstance(order, (Move, AttackMove)):
             return base
-        speed = order.pace if order.pace is not None and order.pace < base and self._group_together(u.player, order.target, order.pace) else base
+        pace = order.pace
+        if pace is None:
+            speed = base
+        else:
+            # The group's pace at this unit's own condition: the bleeding fall behind, the hasted stay hasted.
+            cap = pace * u.speed_mult if u.speed_mult != 1.0 else pace
+            speed = cap if cap < base and self._group_together(u.player, order.target, pace) else base
         if dressing and order.offset is not None and self._ahead_of_line(u, order):
             speed *= FORMATION_HOLD
         return speed
@@ -4020,7 +4159,8 @@ class World:
         """One blow from *u* at *target*: a melee hit lands now, an arrow goes up and lands when it arrives."""
         damage = self.damage_of(u)
         if u.info.melee:
-            self._hit(target, damage, player=u.player, source=u.id, source_type=u.type.value, attack=u.info.attack)
+            self._hit(target, damage, player=u.player, source=u.id, source_type=u.type.value, attack=u.info.attack,
+                      inflicts=u.info.inflicts)
             if u.info.splash:
                 self._slam(u, target, damage)
         else:
@@ -4047,17 +4187,19 @@ class World:
         start = self._target_point(shooter)
         aim = self._target_point(target)
         attack = shooter.info.attack if isinstance(shooter, Unit) else AttackType.NORMAL  # a tower's arrow strikes a normal blow
-        return self._launch(shooter, "arrow", start, aim, target.id, damage, max(SIM_DT, dist(start, aim) / ARROW_SPEED), attack=attack)
+        inflicts = shooter.info.inflicts if isinstance(shooter, Unit) else None  # a tower's arrow opens no wound
+        return self._launch(shooter, "arrow", start, aim, target.id, damage, max(SIM_DT, dist(start, aim) / ARROW_SPEED), attack=attack,
+                            inflicts=inflicts)
 
     def _launch_stone(self, u: Unit, aim: Point) -> Projectile:
         return self._launch(u, "stone", u.pos, aim, None, self.damage_of(u), self._stone_flight(u.pos, aim),
                             splash=self.splash_of(u), attack=u.info.attack)
 
     def _launch(self, shooter: Entity, kind: str, start: Point, aim: Point, target: int | None, damage: int, flight: float, *,
-                splash: float = 0.0, attack: AttackType = AttackType.NORMAL) -> Projectile:
+                splash: float = 0.0, attack: AttackType = AttackType.NORMAL, inflicts: BuffInfo | None = None) -> Projectile:
         assert shooter.player is not None
         p = Projectile(self._new_id(), shooter.player, shooter.id, shooter.type.value, kind, start, aim, target, self.time, flight, damage,
-                       splash=splash, attack=attack)
+                       splash=splash, attack=attack, inflicts=inflicts)
         self.projectiles[p.id] = p
         return p
 
@@ -4228,7 +4370,8 @@ class World:
                 continue
             target = self.entity(p.target)
             if target is not None and target.hp > 0 and not (isinstance(target, Unit) and target.hidden):
-                self._hit(target, p.damage, player=p.player, source=p.source, source_type=p.source_type, attack=p.attack, ranged=True)
+                self._hit(target, p.damage, player=p.player, source=p.source, source_type=p.source_type, attack=p.attack, ranged=True,
+                          inflicts=p.inflicts)
 
     def _land_stone(self, p: Projectile) -> None:
         """A stone comes down: its full damage within DIRECT_HIT of the point and SPLASH_FRACTION of it out
@@ -4251,8 +4394,9 @@ class World:
                           attack=p.attack, ranged=True)
 
     def _hit(self, target: Entity, damage: int, *, player: int, source: int, source_type: str,
-             attack: AttackType = AttackType.NORMAL, ranged: bool = False) -> None:
-        """*damage* from *player*'s *source* (a unit or building, possibly gone by now) lands on *target*."""
+             attack: AttackType = AttackType.NORMAL, ranged: bool = False, inflicts: BuffInfo | None = None) -> None:
+        """*damage* from *player*'s *source* (a unit or building, possibly gone by now) lands on *target*, and lays
+        *inflicts* on a unit it wounds and leaves standing."""
         if target.hp <= 0:
             return  # already down this step (a siege splash after the killing blow)
         armor = self.armor_of(target)
@@ -4264,6 +4408,8 @@ class World:
         target.hp -= dealt
         if isinstance(target, Unit):
             target.struck = self.time  # a creature knits nothing back while something is still hitting it
+            if inflicts is not None and target.hp > 0:
+                self._lay(target, inflicts, player)
         own = target.player == player
         abandoned = isinstance(target, Building) and target.abandoned
         if target.hp <= 0 and target.player is not None and not own and not abandoned:
@@ -4643,6 +4789,7 @@ def _unit_to_dict(u: Unit) -> dict[str, Any]:
         "inside": u.inside, "constructing": u.constructing, "home": list(u.home) if u.home else None, "state": u.state,
         "ease": list(u.ease) if u.ease else None, "charge": u.charge, "auto_work": u.auto_work,
         "commanded": u.commanded, "struck": u.struck,
+        "conditions": [{"kind": c.kind.key, "until": c.until, "player": c.player, "worn": c.worn} for c in u.conditions],
     }
 
 
@@ -4653,6 +4800,8 @@ def _unit_from_dict(d: dict[str, Any], race: Race) -> Unit:
              ease=tuple(d["ease"]) if d.get("ease") else None, charge=d["charge"], auto_work=d.get("auto_work", True),
              commanded=d.get("commanded"), struck=d.get("struck", -1000.0))  # a save from before the hands-off window: every worker is the policy's
     u.orders = deque(_order_from_dict(o) for o in d["orders"])
+    u.conditions = [Condition(BUFFS[c["kind"]], c["until"], c["player"], c["worn"]) for c in d.get("conditions", [])]  # none before WB-062
+    u.recount()
     for state in d.get("worker_orders", []):
         order = u.orders[state["index"]]
         if not isinstance(order, (Harvest, Deposit)):
@@ -4668,6 +4817,7 @@ def _unit_from_dict(d: dict[str, Any], race: Race) -> Unit:
 def _projectile_to_dict(p: Projectile) -> dict[str, Any]:
     d = dict(vars(p))
     d["start"], d["aim"], d["attack"] = list(p.start), list(p.aim), p.attack.value
+    d["inflicts"] = p.inflicts.key if p.inflicts is not None else None
     return d
 
 
@@ -4679,6 +4829,8 @@ def _projectile_from_dict(d: dict[str, Any]) -> Projectile:
                        else AttackType.NORMAL)
     else:
         d["attack"] = AttackType(d["attack"])
+    inflicts = d.get("inflicts")  # absent from saves before WB-062
+    d["inflicts"] = BUFFS[inflicts] if inflicts is not None else None
     return Projectile(**d)
 
 

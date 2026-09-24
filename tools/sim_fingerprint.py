@@ -6,7 +6,7 @@
 The fingerprint walks AI-vs-AI matches on fixed seeds and digests the exact
 state every ten simulated seconds: unit positions as ``repr`` (so the float
 bits themselves have to match, which is what lockstep online play needs),
-hit points, orders, buildings, resources and upgrades.  Any optimisation of
+hit points, orders, conditions, buildings, resources and upgrades.  Any optimisation of
 the model, the pathfinder or the worker policy must leave this unchanged;
 a deliberate rules or AI change is expected to move it, and the recorded
 file is then refreshed in the same commit.
@@ -37,7 +37,8 @@ def digest_world(world: World, out: hashlib._Hash) -> None:
     for unit in sorted(world.units.values(), key=lambda u: u.id):
         order = type(unit.order).__name__ if unit.order is not None else "-"
         out.update(f"U{unit.id},{unit.player},{unit.type.value},{unit.x!r},{unit.y!r},{unit.hp!r},"
-                   f"{unit.carrying},{unit.inside},{len(unit.orders)},{order};".encode())
+                   f"{unit.carrying},{unit.inside},{len(unit.orders)},{order},"
+                   f"{[(c.kind.key, c.until, c.player, c.worn) for c in unit.conditions]};".encode())
     for b in sorted(world.buildings.values(), key=lambda b: b.id):
         out.update(f"B{b.id},{b.player},{b.type.value},{b.x},{b.y},{b.hp!r},{b.progress!r},"
                    f"{len(b.queue)},{b.research};".encode())

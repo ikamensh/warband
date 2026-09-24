@@ -146,7 +146,7 @@ lumber = 300
 time = 50.0
 hotkey = "l"
 card = "Bloodlust"
-summary = "Frenzy doubles: wounded orcs deal +50 % damage"
+summary = "Rage doubles: +50 % damage"
 race = "orc"
 
 [plunder]
@@ -216,8 +216,6 @@ horses_bonus = 0.8 # added speed for knights
 siege_range_bonus = 1.0 # added range for siege engines
 siege_damage_bonus = 1.25 # damage multiplier for siege engines
 blessing_bonus = 1.5 # multiplier on a cleric's healing
-frenzy_bonus = 1.25 # damage multiplier for an orc below half health…
-bloodlust_bonus = 1.5 # …and with Bloodlust
 plunder_share = 0.2 # of a razed building's gold cost (the card says "a fifth")
 longbows_bonus = 1.0 # added range for rangers and towers
 regrowth_seconds = 60.0 # after a minute, trees felled by elves grow back

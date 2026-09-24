@@ -2,7 +2,7 @@
 
 The typed simulation tables are built from this snapshot once. League workers
 may install their parent's snapshot before importing rules; ordinary launches
-read the eight bundled TOMLs. This is the simulation's only file-backed input.
+read the nine bundled TOMLs. This is the simulation's only file-backed input.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from typing import Final
 
 CONSTANTS: Final = Path(__file__).resolve().parents[1] / "assets" / "constants"
 FILES: Final = ("units.toml", "neutrals.toml", "buildings.toml", "upgrades.toml", "races.toml",
-               "economy.toml", "combat.toml", "behavior.toml")
+               "economy.toml", "combat.toml", "behavior.toml", "buffs.toml")
 UNITS_TOML = Path("units.toml")
 BUILDINGS_TOML = Path("buildings.toml")
 UPGRADES_TOML = Path("upgrades.toml")
@@ -23,6 +23,7 @@ NEUTRALS_TOML = Path("neutrals.toml")
 ECONOMY_TOML = Path("economy.toml")
 COMBAT_TOML = Path("combat.toml")
 BEHAVIOR_TOML = Path("behavior.toml")
+BUFFS_TOML = Path("buffs.toml")
 
 PLAYABLE = ("peasant", "footman", "archer", "knight", "catapult", "flying_machine", "cleric")
 WILDS = ("wolf", "spider", "troll", "golem")
@@ -38,6 +39,9 @@ RACES = ("human", "orc", "elf", "dwarf")
 ATTACKS = ("normal", "piercing", "siege")
 ARMOR_CLASSES = ("unarmoured", "light", "heavy", "fortified")
 RESOURCES = ("gold", "lumber")
+#: The condition kinds a rule lays on by name (buffs.toml): Rage, Rage under Bloodlust and Bleeding.  Any other row is
+#: a kind nothing lays on yet, free to add.
+NAMED_BUFFS = ("rage", "bloodlust_rage", "bleeding")
 
 
 class BalanceError(Exception):
@@ -169,7 +173,6 @@ EFFECTS_SCHEMA = {"blades_bonus": ("BLADES_BONUS", int), "master_weapon_bonus": 
                   "armor_bonus": ("ARMOR_BONUS", int), "arrows_bonus": ("ARROWS_BONUS", int),
                   "horses_bonus": ("HORSES_BONUS", float), "siege_range_bonus": ("SIEGE_RANGE_BONUS", float),
                   "siege_damage_bonus": ("SIEGE_DAMAGE_BONUS", float), "blessing_bonus": ("BLESSING_BONUS", float),
-                  "frenzy_bonus": ("FRENZY_BONUS", float), "bloodlust_bonus": ("BLOODLUST_BONUS", float),
                   "plunder_share": ("PLUNDER_SHARE", float), "longbows_bonus": ("LONGBOWS_BONUS", float),
                   "regrowth_seconds": ("REGROWTH_SECONDS", float), "deep_mining_trip": ("DEEP_MINING_TRIP", int),
                   "blasting_powder_bonus": ("BLASTING_POWDER_BONUS", float)}
@@ -205,6 +208,7 @@ class Tables:
     scalars: dict[str, int | float] = field(default_factory=dict)  # CONSTANT -> value, from every TOML
     damage_bonus: list[dict] = field(default_factory=list)  # {attack, armor, factor}, in listed order
     siege_worth: dict[str, float] = field(default_factory=dict)  # unit value -> worth
+    buffs: dict[str, dict] = field(default_factory=dict)  # condition kinds, in listed order
 
 
 def _reach(entry: dict, key: str, where: str) -> float | str:
@@ -224,12 +228,17 @@ UNIT_SCHEMA = {
     "heal": (_int, 0), "splash": (_float, 0.0), "attack": (_enum, ATTACKS, "normal"),
     "armor_class": (_enum, ARMOR_CLASSES, "light"), "formation": (_bool, False), "mounted": (_bool, False),
     "windup": (_float,), "turn_deg": (_int, 360), "min_range": (_float, 0.0), "regen": (_float, 0.0),
-    "living": (_bool, True), "flying": (_bool, False),
+    "living": (_bool, True), "flying": (_bool, False), "inflicts": (_str, ""),
 }
 UNIT_TWEAK_SCHEMA = {
     "name": (_str,), "summary": (_str,), "hp_mult": (_float, 1.0), "damage_mult": (_float, 1.0),
     "armor_add": (_int, 0), "range_add": (_float, 0.0), "speed_add": (_float, 0.0),
     "sight_add": (_int, 0), "build_time_mult": (_float, 1.0), "formation": (_bool, True),
+}
+BUFF_SCHEMA = {
+    "name": (_str,), "summary": (_str,), "damage": (_float,), "speed": (_float,), "blow": (_float,), "armor": (_int,),
+    "hp_per_second": (_float,), "duration": (_float,), "living": (_bool,), "heal_ends": (_bool,),
+    "spares": (_names, ARMOR_CLASSES),
 }
 BUILDING_TWEAK_SCHEMA = {
     "name": (_str,), "card": (_str,), "summary": (_str,), "hp_mult": (_float, 1.0), "armor_add": (_int, 0),
@@ -376,6 +385,22 @@ def _combat(doc: dict, tables: Tables) -> None:
         tables.scalars[const] = _float(friendly, key, _at(COMBAT_TOML, "friendly_fire"))
 
 
+def _buffs(doc: dict) -> dict[str, dict]:
+    """Every row of buffs.toml, the ones the rules name among them.  A multiplier or a duration that is not
+    positive would be a unit that never moves or a condition that is gone before it lands."""
+    where = BUFFS_TOML.name
+    names = tuple(name for name in doc if name != "defaults")
+    for name in NAMED_BUFFS:
+        if name not in names:
+            raise BalanceError(f"{where}: missing [{name}]")
+    rows = _rows(doc, names, BUFF_SCHEMA, where)
+    for name, row in rows.items():
+        for key in ("damage", "speed", "blow", "duration"):
+            if row[key] <= 0:
+                raise BalanceError(f"{where} [{name}].{key}: expected a positive number, got {row[key]!r}")
+    return rows
+
+
 def _race(doc: dict, race: str) -> dict:
     where = _at(RACES_TOML, race)
     entry = doc.get(race)
@@ -451,6 +476,11 @@ def _load(sources: dict[str, str]) -> Tables:
         _schema_section(behavior_doc, BEHAVIOR_TOML, section, schema, tables.scalars)
     _schema_section(upgrades_doc, UPGRADES_TOML, "effects", EFFECTS_SCHEMA, tables.scalars)
     _combat(combat_doc, tables)
+    tables.buffs = _buffs(_read(BUFFS_TOML, sources))
+    for path, rows in ((UNITS_TOML, tables.units), (NEUTRALS_TOML, tables.wilds)):
+        for unit, row in rows.items():
+            if row["inflicts"] and row["inflicts"] not in tables.buffs:
+                raise BalanceError(f"{path.name} [{unit}].inflicts: expected a row of {BUFFS_TOML.name}, got {row['inflicts']!r}")
     return tables
 
 

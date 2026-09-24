@@ -23,7 +23,6 @@ item takes the next one and updates this line.
 | WB-058 | Later | proposed | Bug-hunt leftovers 2026-09-20: a site nobody owns by its colour, two strike frames that hop, crowded workers | Bug hunt 2026-09-20 |
 | WB-059 | Next | proposed | A route nobody can reach costs the whole pathfinder budget, and the budget grows with the map | Sixteen seats 2026-09-20 |
 | WB-060 | Later | proposed | Sixteen seats online: an engine release, a snapshot that is not one world per seat, and room capacity | Sixteen seats 2026-09-20 |
-| WB-062 | Now | proposed | Buffs and debuffs: orc Rage as a ten-second buff, Bleeding from every archer's shot | Ilya 2026-09-24 |
 | WB-066 | Now | proposed | Magic II: the Mage Tower, one spell of three per level, cast anywhere, dearer beyond the vaults | Ilya 2026-09-24 |
 | WB-067 | Now | proposed | Magic III: the computer players research, choose and cast; the nine spells balanced | Ilya 2026-09-24 |
 | WB-068 | Now | proposed | A unique unit per race: Gryphon Rider, Goblin Sappers, Treant, Rune Golem | Ilya 2026-09-24 |
@@ -274,64 +273,6 @@ flyers, whose air layer its Gryphon Rider uses. Each
 lands on main as one squashed commit with green CI; the design decisions
 below are the orchestrator's, and a measured number that disagrees with
 one of them wins over it.
-
-## WB-062 — Buffs and debuffs: Rage and Bleeding
-
-**Design.** A unit carries timed conditions, each a *kind*, its expiry and the
-player who laid it on. The kinds are rows of a new
-`warband/assets/constants/buffs.toml`, each naming what it does: a damage
-multiplier, a speed multiplier, armour added, hit points a second (a drain
-when negative, ignoring armour), how long it lasts, and whether only the
-living take it. The same table will carry the spells of WB-066, so these
-five numbers are the whole vocabulary and a spell is a row, not code.
-
-- Laying on a kind a unit already carries restarts its timer; a kind never
-  stacks with itself (one bleeding, however many archers shoot), different
-  kinds combine (multipliers multiply, armour adds).
-- **Machines are not alive**: a catapult, a golem and, from WB-064, a flying
-  machine never take a `living` condition. A unit-type flag (`living =
-  false`) says so; a cleric does not heal what is not alive either (today
-  it may; check).
-- **Rage** (orcs; replaces Frenzy's "while below half health"). An orc
-  soldier hurt below half health is enraged for ten seconds: +25 % damage,
-  +50 % with Bloodlust. The timer is renewed every step it stays below half
-  and runs its full ten seconds after a Shaman heals it above. Why: today a
-  Shaman's heal switches Frenzy off, so the orc healer works against the orc
-  passive; with the buff the orc player wants the line hurt *and* mended.
-  Passive text: "Rage: a soldier hurt below half health fights enraged for
-  ten seconds, +25 % damage, however well it is mended". Bloodlust: "Rage
-  doubles: +50 % damage".
-- **Bleeding** (the archer of every race: Archer, Axethrower, Ranger,
-  Crossbowman; not towers, not clerics). A shot that wounds a living unit
-  opens a wound: 1 hit point a second for five seconds, through armour, and
-  20 % slower while it bleeds. A death by bleeding is credited to the
-  shooter's side. A cleric's heal staunches it (the heal ends the
-  condition), which gives the healer a second job against a shooting army.
-  Why these numbers: the fixed 1/s that does not stack is worth most in
-  skirmishes, chases and kiting (a footman chasing archers loses a fifth of
-  its pace) and least in a massed fight, so it widens the archer's role
-  without multiplying the archer ball.
-- Buildings never carry conditions.
-- **Seen**: an enraged unit glows red, a bleeding one drips; the selection
-  card shows each condition as a small icon with its seconds left and a
-  tooltip. A rival's visible unit shows its conditions (the snapshot carries
-  them, like its health).
-
-**Acceptance.**
-1. `buffs.toml` drives Rage and Bleeding; conditions ride saves (load is
-   bit-exact) and a seat's snapshot of the units it sees.
-2. Tests: Rage outlasts a heal by ten seconds and renews while below half;
-   Bloodlust; Bleeding drains 5 over 5 s through armour, slows by 20 %,
-   restarts rather than stacks, skips catapults and golems, ends on a heal,
-   credits its kill; a condition never lands on a building.
-3. Race balance measured before and after with the balance league
-   (`docs/balance.md`); a race that moves more than about five points is
-   tuned (bleed, archer price) and measured again. Numbers recorded in
-   `docs/balance.md`.
-4. A frame with rage, bleeding and the card's icons rendered and looked at;
-   `tools/visual_lint.py` clean.
-5. Fingerprint and `sim_bench.txt` refreshed in the same commit; fuzz run;
-   mypy over `fastsim.MODULES` clean and the compiled run matches.
 
 ## WB-066 — Magic II: the Mage Tower and the spells
 

@@ -54,6 +54,7 @@ def match(seed: int, races: tuple[Race, Race], difficulty: Difficulty, *, minute
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--seeds", type=int, default=2, help="seeds per pair; each seed is played from both sides")
+    parser.add_argument("--first-seed", type=int, default=1, help="the first of the seeds: another block of seeds is another sample")
     parser.add_argument("--difficulty", choices=[d.value for d in Difficulty], default="hard")
     parser.add_argument("--minutes", type=int, default=MINUTES)
     parser.add_argument("--cpu-percent", type=float, default=25, help="CPU allowance, percent of one core")
@@ -62,21 +63,39 @@ def main() -> None:
     difficulty = Difficulty(args.difficulty)
     wins: Counter[Race] = Counter()
     losses: Counter[Race] = Counter()
+    pairs: Counter[tuple[Race, Race]] = Counter()  # (winner, loser)
     undecided = 0
+    seeds = [seed for seed in range(args.first_seed, args.first_seed + args.seeds) if fair(seed)]
+    if len(seeds) < args.seeds:
+        print(f"  ({args.seeds - len(seeds)} of {args.seeds} seeds have no fair map and were left out)", flush=True)
     for first, second in itertools.combinations(Race, 2):
-        for seed in range(1, args.seeds + 1):
+        for seed in seeds:
             for races in ((first, second), (second, first)):
                 winner, played = match(seed, races, difficulty, minutes=args.minutes, budget=budget)
                 if winner is None:
                     undecided += 1
                 else:
+                    loser = races[0] if winner is races[1] else races[1]
                     wins[winner] += 1
-                    losses[races[0] if winner is races[1] else races[1]] += 1
+                    losses[loser] += 1
+                    pairs[winner, loser] += 1
                 print(f"  seed {seed}: {races[0].value} vs {races[1].value} → {winner.value if winner else 'undecided'} after {played:.1f} min", flush=True)
-    print(f"{args.difficulty} against {args.difficulty}, {args.seeds} seeds per pair, sides swapped:")
+    print(f"{args.difficulty} against {args.difficulty}, {len(seeds)} seeds per pair, sides swapped:")
     for race in Race:
-        print(f"  {race.value:6} won {wins[race]:2}  lost {losses[race]:2}")
+        decided = wins[race] + losses[race]
+        print(f"  {race.value:6} won {wins[race]:3}  lost {losses[race]:3}  {100 * wins[race] / max(1, decided):5.1f}%")
+    for first, second in itertools.combinations(Race, 2):
+        print(f"  {first.value} {pairs[first, second]}–{pairs[second, first]} {second.value}")
     print(f"  undecided within {args.minutes} min: {undecided}")
+
+
+def fair(seed: int) -> bool:
+    """Whether mapgen can make a fair two-player map from *seed*: a seed it cannot is left out, as the arena does."""
+    try:
+        mapgen.generate(seed=seed, players=2, human=None)
+    except mapgen.NoFairMap:
+        return False
+    return True
 
 
 if __name__ == "__main__":
