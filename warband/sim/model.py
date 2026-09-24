@@ -1828,6 +1828,11 @@ class World:
         player = units[0].player
         if target_id == "at_point":
             target = self.entity_at(point, visible_to=player)
+            if (target is not None and target.player is not None and target.player != player
+                    and any(u.info.damage for u in units) and not any(self.can_strike(u, target) for u in units)):
+                # A rival over the point that none of them can strike (a flyer above a melee recruit's rally point) is
+                # not what a point means to them: the ground under it is.  Named by id, it is still refused below.
+                target = None
         else:
             target = self.entity(target_id) if target_id is not None else None
         if target_id not in ("at_point", None) and target is None:
