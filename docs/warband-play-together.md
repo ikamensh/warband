@@ -116,7 +116,11 @@ and soldiers, or give a specific gathering order yourself.
    attack-move order fights enemies along the route. Right-clicking empty
    ground gives a movement order instead.
 
-Your aim is to eliminate **all enemy units and buildings**.
+Your aim is to eliminate **all enemy units and buildings**. A side left with
+no Town Hall and no building that trains has its last buildings revealed to
+its rival, with a notice to everyone. In a match of three or four this waits
+until only two sides remain, so nobody learns where a beaten side hides while
+someone else is still fighting.
 
 ## Plan your settlement
 

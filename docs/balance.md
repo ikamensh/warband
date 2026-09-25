@@ -898,6 +898,39 @@ wound's, and is fixed on main (`190a9ae`): a recruit sent to its rally point
 went through `World.smart`, which ordered an attack on a rival flying machine
 hovering over the point, refused with a `RuleError` inside the step.
 
+## The last-stand reveal waits for the last two (WB-072, 2026-09-24)
+
+A side left with no hall and no building that trains used to have its last
+buildings revealed to every other seat. In a free-for-all that told the
+bystanders where a beaten side hid. The reveal now happens only while exactly
+two sides remain (`World._exposures`), and only the one rival is told. The
+brains' hunt looks for whatever is no longer revealed. The reveal is also sight
+lent to the rival before its memory is refreshed. Before, a brain never
+remembered a revealed building, and a seat's snapshot left out any that lay
+beyond the box its own forces' sight spanned.
+
+`tools/arena.py ffa --agents easy,medium,hard,master`, every seat rotation,
+on the same seeds either side of the change:
+
+| league | matches | undecided | settled early | played out | median length | changed at all |
+|--------|--------:|----------:|--------------:|-----------:|--------------:|---------------:|
+| four players, `--seeds 48`, before | 192 | 3 | 172 | 17 | 11.8 min | |
+| four players, after | 192 | 4 | 169 | 19 | 11.8 min | 19 |
+| three players, `--seeds 24`, before | 288 | 1 | 265 | 22 | 10.0 min | |
+| three players, after | 288 | 0 | 266 | 22 | 10.0 min | 12 |
+
+That is 4 undecided in 480 before and 4 after. The ratings moved by at most
+two points (four players: Master 1056 to 1058, Easy 878 to 876). The four-player
+match that stopped deciding, seed 1036 (medium, hard, master, easy), shows how
+these swaps come about. In the old run Easy stood exposed for six seconds at
+minute 8.2 with all four alive, and the other three were shown its base. With
+nothing shown, the match drifted to a standoff between two full bases at the
+cap; nobody was hiding. The three-player match that now finishes (seed 1013)
+is the same kind of swap in the other direction. Neither `sim_fingerprint`
+(Hard–Medium duels, six minutes) nor `sim_bench` (eight settled duels and one
+four-player match) reaches an exposure, and both are unchanged.
+
+
 ## What to change next
 
 1. **Re-measure across the layouts**, now that a league can ask for them.

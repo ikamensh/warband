@@ -28,7 +28,6 @@ item takes the next one and updates this line.
 | WB-068 | Now | proposed | A unique unit per race: Gryphon Rider, Goblin Sappers, Treant, Rune Golem | Ilya 2026-09-24 |
 | WB-069 | Now | proposed | A voice for every body: creatures and machines sound like what they are, deaths first; sound in the new-unit protocol | Ilya 2026-09-24 |
 | WB-071 | Now | proposed | The seam looks as poor as it pays; its rich look goes to a new Mother Lode (over 50k gold) | Ilya 2026-09-24 |
-| WB-072 | Now | proposed | No last-standing reveal in a free-for-all: only the last two sides learn where the other hides | Ilya 2026-09-24 |
 | WB-073 | Now | proposed | Race balance: dwarves win ~64 % and orcs ~36 % of Master race games; bring every race within 45–55 % | Orchestrator 2026-09-25 |
 
 ## WB-055 — A deeper tech tree
@@ -435,22 +434,6 @@ looked at (painted where WB-070's painter works); mapgen deals lodes fairly
 (the audit covers them) and the seed decides; the brains contest a lode
 (telemetry from the league: who takes it, when); race and difficulty balance
 in band; fingerprint and sim_bench refreshed.
-
-## WB-072 — No last-standing reveal in a free-for-all
-
-**Design.** A side left with no hall and no building that trains is exposed:
-its remaining buildings are revealed to every other seat, with public news.
-In a duel that ends a hide-and-seek; in a free-for-all it tells bystanders
-where a weakened side hides, which is information they did nothing to earn.
-The reveal (and its news) now happens only while exactly two sides remain in
-play: a duel, or a free-for-all down to its last two, so the only side told
-is the one left fighting it. The brains' hunt (07cb63d) searches for what is
-not revealed.
-
-**Acceptance.** Rules tests: a duel reveals; a three-side free-for-all does
-not, until two remain; a bystander's snapshot shows nothing of the exposed
-side; the news follows the reveal; the free-for-all league's undecided count
-does not rise (before/after); fingerprint refreshed.
 
 ## WB-073 — Race balance
 

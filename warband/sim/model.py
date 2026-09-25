@@ -775,6 +775,9 @@ class World:
         self._worker_ai_footprints: dict[int, tuple[tuple[int, int], frozenset[tuple[int, int, int]]]] = {}
         self.settlement = Settlement(self)
         self._exposed: set[int] = set()  # players whose last holdings stand revealed
+        # A world rebuilt from a seat's snapshot holds only what that seat sees of its rivals, too little to judge who
+        # stands exposed (a farm seen alone is no side without a hall): it keeps the authority's answer, see exposures().
+        self._judged_exposures: list[tuple[int, int]] | None = None
         self._region_map: pathing.Regions | None = None  # walkable regions of the static grid, see _regions()
         self._route_cache: dict[tuple[Pos, int, int], tuple[list[Pos], Pos]] = {}  # march trunks, see _join_march()
         self._pace_groups: dict[tuple[int, Point, float], bool] = {}  # per step, see _group_together()
@@ -947,6 +950,11 @@ class World:
         moving: list[set[tuple[Pos, int]]] = [set() for _ in self.players]
         for unit in self.units.values():
             moving[unit.player].add((unit.tile, unit.info.sight))
+        exposures = self.exposures()
+        for exposed, told in exposures:
+            # The rival sees every tile of the exposed side's holdings and a tile round them, as if its own forces stood
+            # there: what it sees goes into its memory and its snapshot like anything else it sees.
+            moving[told].update((tile, 1) for b in self.buildings.values() if b.player == exposed for tile in b.tiles())
         for player in self.players[:self.seats]:  # the wilds have no fog: their grids are all ones and stay so
             visible = self.visible[player.id]
             discs = standing[player.id]
@@ -960,7 +968,11 @@ class World:
             self._paint(visible, moving[player.id] - discs)
             or_into(self.explored[player.id], visible)
             self.worker_knowledge[player.id].refresh(self, player.id, _disc_box(discs | moving[player.id]))
-        self._reveal_last_standings()
+        for exposed, _told in exposures:
+            if exposed not in self._exposed:  # the news once a match, the first time the side lies revealed
+                self._exposed.add(exposed)
+                holding = next(b for b in self.buildings.values() if b.player == exposed)
+                self.events.append(Event("exposed", holding.center, player=exposed, text=self.players[exposed].name))
         self._vision_epoch += 1
 
     def _is_exposed(self, player_id: int) -> bool:
@@ -974,26 +986,24 @@ class World:
                     return False
         return any(b.player == player_id for b in self.buildings.values())
 
-    def _exposed_players(self) -> set[int]:
-        return {p.id for p in self.players[:self.seats] if self._is_exposed(p.id)}
+    def exposures(self) -> list[tuple[int, int]]:
+        """``(exposed, told)``: each side whose last holdings stand revealed, and the rival they are revealed to.
 
-    def _reveal_last_standings(self) -> None:
-        for exposed_id in sorted(self._exposed_players()):
-            holdings = [b for b in self.buildings.values() if b.player == exposed_id]
-            if not holdings:
-                continue
-            for viewer in self.players[:self.seats]:
-                if viewer.id == exposed_id:
-                    continue
-                visible = self.visible[viewer.id]
-                for b in holdings:
-                    for tile in b.tiles():
-                        self._reveal(visible, tile, 1)
-                or_into(self.explored[viewer.id], visible)
-            if exposed_id not in self._exposed:
-                self._exposed.add(exposed_id)
-                self.events.append(Event("exposed", holdings[0].center, player=exposed_id,
-                                         text=self.players[exposed_id].name))
+        A side is exposed with no hall and no building that trains left (:meth:`_is_exposed`), and its holdings are
+        revealed only while exactly two sides remain in play, the wilds never among them: a duel, or a free-for-all
+        down to its last two.  Before that a bystander would learn where a weakened side hides for nothing it did
+        (WB-072).  The answer is the world's as it stands, asked again at every vision update, so a side that builds
+        a hall again, or a third side a mission puts back in play, ends the reveal; what the rival saw meanwhile it
+        remembers, as it remembers anything it once saw.  The news (:meth:`update_vision`) comes once a match.
+
+        A world rebuilt from a seat's snapshot answers what the authority judged for that seat and sent with it."""
+        if self._judged_exposures is not None:
+            return self._judged_exposures
+        in_play = [p.id for p in self.players[:self.seats] if p.alive]
+        if len(in_play) != 2:
+            return []
+        first, second = in_play
+        return [(exposed, told) for exposed, told in ((first, second), (second, first)) if self._is_exposed(exposed)]
 
     def _paint(self, visible: bytearray, discs: set[tuple[Pos, int]]) -> None:
         """:meth:`_reveal` every one of *discs*, each a ``(tile, radius)``."""
@@ -4741,7 +4751,9 @@ class World:
             if b.player is not None:  # left half built in a save from before WB-048, when a builder could walk off
                 world._refund(b.player, b.info.cost)
                 world._remove_building(b, reason="cancelled")
-        world._exposed = world._exposed_players()
+        if "exposures" in data:  # a seat's snapshot: see WarbandMatch.snapshot
+            world._judged_exposures = [(exposed, told) for exposed, told in data["exposures"]]
+        world._exposed = {exposed for exposed, _told in world.exposures()}  # told before the save
         world.update_vision()
         world.events.clear()
         return world

@@ -104,9 +104,10 @@ class WarbandMatch:
         All of its own.  Of everyone else's, what it sees now, without intentions: a unit's orders and home, a
         building's work.  The ground and the mines out of sight as it last saw them, ground it never saw as the
         map began, mines it never saw not at all.  Of the news, what it saw happen, its own affairs and what is
-        public.  The other seats' purse (gold, lumber and aether), research (and the conditions that would tell it) and
-        scores once the match is decided, their plans and memory never, and the server's random stream never: a fixed
-        state stands in for it."""
+        public.  Which rival lies exposed to it (:meth:`World.exposures`), which its world holds too little of its
+        rivals to judge.  The other seats' purse (gold, lumber and aether), research (and the conditions that would
+        tell it) and scores once the match is decided, their plans and memory never, and the server's random stream
+        never: a fixed state stands in for it."""
         world = self.world
         data = world.to_dict()
         data['rng'] = NO_DICE
@@ -138,6 +139,7 @@ class WarbandMatch:
         data['settlement'] = {'next_id': 1 + max((plan['id'] for plan in plans), default=0), 'plans': plans}
         data['terrain'] = self._terrain_as_known(player, data['terrain'])
         data['regrowth'] = [entry for entry in data['regrowth'] if world.is_visible(player, tuple(entry[0]))]
+        data['exposures'] = [[exposed, told] for exposed, told in world.exposures() if told == player]
         return {'seed': self.seed, 'world': data, 'events': self._recent_events(player)}
 
     def _terrain_as_known(self, player, rows):
