@@ -4,6 +4,7 @@
 # Seconds, tiles, degrees/second. "melee" uses combat.toml's shared reach.
 # Entries override defaults; optional field defaults are listed in docs/balance.md.
 # Body radius affects pathing for every race and is never balance-jittered.
+# `sound` names each creature's sound family (warband/audio/bodies.py): the wilds have no race to die in the voice of.
 
 [defaults]
 armor = 0
@@ -23,6 +24,7 @@ summary = "A pack hunter: fast, fragile and never alone"
 radius = 0.4
 windup = 0.2
 turn_deg = 450
+sound = "wolf"
 
 [spider]
 name = "Venom Spider"
@@ -34,6 +36,7 @@ speed = 2.2
 summary = "Spits venom from five tiles; helpless once something reaches it"
 radius = 0.45
 windup = 0.4
+sound = "spider"
 
 [troll]
 name = "Troll"
@@ -47,6 +50,7 @@ radius = 0.58
 windup = 0.45
 armor_class = "unarmoured"
 regen = 8.0 # hp/second, out of combat
+sound = "troll"
 
 [golem]
 name = "Stone Golem"
@@ -63,3 +67,4 @@ windup = 0.7
 turn_deg = 150
 armor_class = "heavy"
 living = false # stone: bleeds for nobody
+sound = "golem"

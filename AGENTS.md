@@ -79,9 +79,12 @@ of the package, `sim` and `online`.
   life around buildings and the card's portraits; `visual_lint.py` finds
   visual defects.
 - `audio/` — `sound.py`, `voices.py` and `music.py` synthesise with
-  `sagaforge.synth` (`music.Director` maps moods to tracks); impacts, deaths
-  and collapses (`combat_sound.py`, `deaths.py`, `wreckage.py`) play generated
-  pieces committed under `assets/` (`docs/warband-pieces.md`).
+  `sagaforge.synth` (`music.Director` maps moods to tracks); impacts, deaths,
+  presences and collapses (`combat_sound.py`, `deaths.py`, `presence.py`,
+  `wreckage.py`) play generated pieces committed under `assets/`
+  (`docs/warband-pieces.md`). `bodies.py` holds the sound families a unit
+  type's row names (`sound`): its death, its presence and what a blow on it
+  lands on (`docs/adding-a-unit.md`).
 - `ui/` — the saga2d scenes: `scene.py` (the match, HUD, command card),
   `view.py` (sprites, shots, fog, minimap), `title.py`, `multiplayer.py`,
   `controls.py` (three control schemes: `docs/controls.md`), `tech.py` (what a

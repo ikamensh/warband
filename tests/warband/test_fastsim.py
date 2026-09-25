@@ -105,6 +105,41 @@ def test_a_machine_that_cannot_compile_runs_the_source_and_says_so(tmp_path: Pat
     assert not fastsim.compiled() and not any(tmp_path.iterdir())
 
 
+#: A world with a shot in flight and a unit queued with every kind of order, saved and loaded back: the state the
+#: game's quick-save, the autosave and the online snapshots write.
+SAVED = """
+import hashlib, json, random
+from warband.sim.model import (Attack, AttackMove, Build, Deposit, Harvest, Heal, Hold, Move, Patrol, Repair, Salvage,
+                               World)
+from warband.sim.rules import BuildingType, Terrain, UnitType
+
+def saved():
+    world = World(24, 16, [[Terrain.GRASS] * 24 for _ in range(16)], 2, rng=random.Random(3))
+    hall = world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
+    world.place_building(1, BuildingType.TOWN_HALL, (20, 12))
+    archer = world.spawn_unit(0, UnitType.ARCHER, (8.5, 8.5))
+    footman = world.spawn_unit(1, UnitType.FOOTMAN, (12.5, 8.5))
+    world.attack([archer.id], footman.id)
+    while not world.projectiles:
+        world.step()
+    peasant = world.spawn_unit(0, UnitType.PEASANT, (5.5, 5.5))
+    peasant.orders.extend([Move((6.5, 6.5), pace=1.5, offset=(0.5, 0.0)), AttackMove((7.5, 7.5)), Attack(footman.id, auto=True),
+                           Harvest((3, 9)), Deposit(hall.id, auto=True), Build(BuildingType.FARM, (9, 2), plan_if_short=True),
+                           Hold(), Heal(archer.id), Patrol((1.5, 9.5), (6.5, 9.5), outbound=False), Repair(hall.id),
+                           Salvage(hall.id)])
+    data = World.from_dict(world.to_dict()).to_dict()
+    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+"""
+
+
+def test_a_world_the_compiled_simulation_saves_is_the_one_the_source_saves() -> None:
+    """Saving reads every order's and every shot's fields, and a class compiled by mypyc has no ``__dict__`` to read
+    them from: the fuzzer's monkey, which plays on the compiled simulation, pressed F5 (seed 91) and the save raised."""
+    namespace: dict = {}
+    exec(SAVED, namespace)
+    assert _run_compiled(SAVED + "print(saved())\n").strip() == namespace["saved"]()
+
+
 def test_a_build_of_other_sources_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ImportError, match="other sources"):
         fastsim.attach(tmp_path / "0123456789abcdef0123")

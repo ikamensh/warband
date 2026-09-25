@@ -82,7 +82,9 @@ attack — play in the race's voice (`warband/audio/voices.py`): drums and growl
 orcs, bells, harp and flute for elves, anvil and horn for dwarves; humans keep
 the plain cues.  Combat Foley follows the striker: orc grunts and axethrowers
 swing axes, the ogre and the bear rider hit with a blunt "hammer" weapon,
-dwarven ironguards use axes.  Each race marches to its own track
+dwarven ironguards use axes.  A race's people die in its voice; its catapult and
+flying machine die as the machines they are, whoever fields them
+(`warband/audio/bodies.py`, [adding a unit](adding-a-unit.md#its-sounds)).  Each race marches to its own track
 (`warband/audio/music.py`: `march`, `warpath`, `moonlight`, `anvil`); the title
 plays the night watch (`vigil`).
 

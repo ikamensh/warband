@@ -2,8 +2,12 @@
 
 Routine gold/resource deposits are silent. Completion, orders and under-attack
 alerts keep their useful cues. Nearby tree felling uses a quieter chop at 25%
-gain, at most once every 2.5 seconds. Deaths use a body fall and settling gear
-at 40% gain instead of a musical cue.
+gain, at most once every 2.5 seconds. A death is the body's: a race's people
+cry out and their gear lands, a catapult splinters, a flying machine sputters
+and crashes, each creature dies as itself (`warband/audio/bodies.py`); no
+musical cue. The machines answer their player's orders and the creatures are
+heard as their camp rouses, at half the sfx level
+([warband-pieces.md](warband-pieces.md)).
 
 Combat combines the weapon's movement and weight with the material it hits.
 There are three independently seeded takes for every weapon/material pair;
@@ -32,7 +36,8 @@ watch.  See [warband-races.md](warband-races.md).
 | --- | --- |
 | Unarmored units | Flesh and cloth |
 | Armored units, including soldiers with armor upgrades | Armor |
-| Catapult, including upgraded catapults | Wood |
+| Catapult and flying machine, including upgraded ones | Wood |
+| Stone golem | Stone |
 | Farm, barracks, lumber mill, stables, workshop | Wood |
 | Town hall, guard tower, blacksmith, church | Stone |
 | Any unfinished building | Wood construction frame |

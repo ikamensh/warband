@@ -1,4 +1,5 @@
-"""Unit deaths: a generated cry followed by the weapon, body and gear landing, per race and take."""
+"""Unit deaths: one cue per sound family and take, from generated pieces; a race's people cry out and their weapon, body
+and gear land, the machines and creatures die as their bodies do."""
 
 from pathlib import Path
 import random
@@ -10,6 +11,7 @@ from saga2d import Game
 
 from sagaforge.synth import SAMPLE_RATE
 from warband.audio import deaths, sound
+from warband.audio.bodies import FAMILIES, RACE_FAMILIES
 from warband.sim.model import World
 from warband.sim.rules import BuildingType, Race, Terrain, UnitType
 from warband.ui.scene import GameScene
@@ -19,22 +21,27 @@ from warband.audio.sound import SoundBank
 def low_band_peak_time(clip: np.ndarray) -> float:
     """When the energy below 70 Hz peaks: the body hitting the ground; no voice reaches down there."""
     window = int(0.05 * SAMPLE_RATE)
-    spectrum = np.fft.rfft(clip)
-    freqs = np.fft.rfftfreq(len(clip), 1 / SAMPLE_RATE)
-    low = np.fft.irfft(np.where(freqs < 70, spectrum, 0), len(clip))
+    n = 1 << (len(clip) - 1).bit_length()  # a power of two: a clip's own length can be a prime, and its transform slow
+    low = np.fft.irfft(np.where(np.fft.rfftfreq(n, 1 / SAMPLE_RATE) < 70, np.fft.rfft(clip, n), 0), n)[:len(clip)]
     envelope = np.convolve(low ** 2, np.ones(window) / window, mode="same")
     return int(np.argmax(envelope)) / SAMPLE_RATE
 
 
+def test_every_family_has_death_cues_at_the_level_with_clean_ends() -> None:
+    for family in FAMILIES:
+        for take in range(deaths.takes(family)):
+            clip = deaths.death(family, take)
+            seconds = len(clip) / SAMPLE_RATE
+            assert clip.ndim == 1 and 0.6 <= seconds <= 3.5, (family, take, seconds)
+            assert abs(np.abs(clip).max() - deaths.PEAK) < 0.01 and abs(clip[0]) < 0.01 and abs(clip[-1]) < 0.02, (family, take)
+
+
 def test_every_race_has_death_cues_whose_fall_lands_after_the_cry() -> None:
-    for race in Race:
+    for race in RACE_FAMILIES:
         assert deaths.takes(race) >= 3, race
         for take in range(deaths.takes(race)):
             clip = deaths.death(race, take)
-            seconds = len(clip) / SAMPLE_RATE
-            assert clip.ndim == 1 and 1.0 <= seconds <= 3.5, (race, take, seconds)
-            assert abs(np.abs(clip).max() - deaths.PEAK) < 0.01 and abs(clip[0]) < 0.01 and abs(clip[-1]) < 0.02, (race, take)
-            assert low_band_peak_time(clip) > 0.45 * seconds, (race, take)
+            assert low_band_peak_time(clip) > 0.45 * len(clip) / SAMPLE_RATE, (race, take)
 
 
 @pytest.fixture
@@ -48,9 +55,9 @@ def test_the_bank_plays_a_races_death_in_varying_takes_under_the_alert_volume(ba
     game, bank = bank
     bank.set_volume("sfx", 1.0)
     for _ in range(10):
-        bank.play(deaths.cue(Race.ORC))
+        bank.play(deaths.cue("orc"))
     played = game.backend.sounds_played[-10:]
-    handles = {game.backend.load_sound(str(bank.data_dir / "sounds" / f"orc_death_{take}.wav")): take for take in range(deaths.takes(Race.ORC))}
+    handles = {game.backend.load_sound(str(bank.data_dir / "sounds" / f"orc_death_{take}.wav")): take for take in range(deaths.takes("orc"))}
     takes = [handles[p["handle"]] for p in played]  # KeyError if anything but an orc death was played
     assert len(set(takes)) >= 2 and not any(a == b for a, b in zip(takes, takes[1:]))  # varied, never the same take twice in a row
     assert all(0.4 <= p["volume"] < 1.0 for p in played)

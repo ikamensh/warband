@@ -65,8 +65,43 @@ fail, with what they returned: procedural art is a debt, never a default.
 
 ## Its sounds
 
-(WB-069 fills this section: the body's sound family, its death, its presence,
-its blow's impact material, and the tests that hold every unit type to them.)
+A death is the body's, not the race's. The row names the unit's **sound
+family**, `sound = "…"` (`UnitInfo.sound`); a row without one dies in the
+voice of the race that fields it, which is right only for a race's people (a
+peasant, a footman, an archer, a knight, a cleric). A machine, a creature, a
+rider on a beast, a walking tree or a construct names a family of its own.
+The families are `FAMILIES` in `warband/audio/bodies.py`, data like the row:
+
+- **its death**: the stages in order (`Stage`: the kind of piece, its gain,
+  and where it starts from the stage before), so a catapult is timbers
+  splintering, a rope snapping, the frame crashing, and a wolf a yelp and a
+  body falling. The cue has a take for every piece of the first stage: give it
+  three, and every stage at least two.
+- **its presence**, where it has one: the kind of piece it answers with when
+  its player orders it (one answer a family however many were ordered, not
+  again within `ANSWER_GAP`), or makes as its camp rouses (once a kind of
+  guard a waking, as the player first sees one: `GameScene._hear_camps`). A
+  race's people have none; the race's order cue speaks for them.
+- **its material**, where its body decides what a blow lands on (a machine's
+  `wood`, a golem's `stone`); without one its armour decides, flesh or armour.
+  What it strikes *with* is `_WEAPONS` in `warband/audio/sound.py`.
+
+The pieces are generated with Stable Audio 3 through `sagaforge.foley`: write
+a prompt per take in `tools/pieces.py` (`BODY_DEATHS`, `PRESENCES`; a
+different sentence per take, since seeds alone give near-identical takes),
+then `tools/pieces.py refresh` (one generation job at a time: it is heavy),
+bump `SOUND_VERSION`, and look at the cues before anyone listens:
+`tools/pieces.py cues DIR --families NAME` writes each cue's WAV, a
+spectrogram and a stats row (`docs/warband-pieces.md`). A generation the tool
+rejects gets a new seed in `RESEEDED`; never a synthesised stand-in.
+
+`tests/warband/test_bodies.py` holds every unit type in `UnitType`, playable
+or creature, to a death of its own body with at least two takes on disk, for
+every race that could field it; a unit type outside `SOLDIERS` (the race's
+people) that resolves to a race's family fails, and so does a creature or a
+machine without a presence. `tests/warband/test_deaths.py` holds every family's
+cues to their level, length and clean ends, and the bodies to their physical
+contrasts. Sound is no rule: the fingerprint stays where it was.
 
 ## Its brains
 

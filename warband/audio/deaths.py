@@ -1,8 +1,9 @@
-"""Unit deaths: a cry, then the weapon, the body and the gear landing, one cue per race and take.
+"""Unit deaths: one cue per sound family and take, placed from the family's generated pieces.
 
-The pieces are generated recordings committed under ``assets/deaths`` (see :mod:`warband.audio.pieces` and
-``docs/warband-deaths.md``).  The bank's generator only places and scales them, so a cue is
-deterministic for a given set of pieces.
+A soldier cries out and his weapon, body and gear land; a catapult splinters and crashes; a wolf yelps and
+falls.  Each family's stages and gaps are :data:`warband.audio.bodies.FAMILIES`'; the pieces are generated
+recordings committed under ``assets/deaths`` (see :mod:`warband.audio.pieces` and ``docs/warband-pieces.md``).
+The bank's generator only places and scales them, so a cue is deterministic for a given set of pieces.
 """
 
 from __future__ import annotations
@@ -13,46 +14,34 @@ import numpy as np
 
 from sagaforge.synth import SAMPLE_RATE, level, mix
 from warband.audio import pieces
-from warband.sim.rules import Race
+from warband.audio.bodies import FAMILIES
 
 FOLDER = "deaths"
-#: When the weapon hits the ground, in seconds from the end of the cry (negative: before the voice cuts off).
-FALL_START = -0.15
-WEAPON_TO_BODY = 0.18
-BODY_TO_SETTLE = 0.25
-GAINS = {"cry": 0.72, "weapon": 0.62, "body": 0.85, "settle": 0.5}
 PEAK = 0.72
 
 
-def takes(race: Race) -> int:
-    """How many death cues *race* has: one per committed cry."""
-    return len(pieces.paths(FOLDER, race.value, "cry"))
+def takes(family: str) -> int:
+    """How many death cues *family* has: one per committed piece of its first stage."""
+    return len(pieces.paths(FOLDER, family, FAMILIES[family].death[0].kind))
 
 
-def _piece(race: Race, kind: str, take: int) -> np.ndarray:
-    return pieces.take(FOLDER, race.value, kind, take, GAINS[kind])
+def death(family: str, take: int) -> np.ndarray:
+    """The family's stages in order, each placed from the one before, the mix levelled to :data:`PEAK`."""
+    layers, start, end = [], 0.0, 0.0
+    for stage in FAMILIES[family].death:
+        clip = pieces.take(FOLDER, family, stage.kind, take + stage.rotate, stage.gain)
+        if layers:  # from the stage before: its start, or its end
+            start = max(start, (end if stage.after_end else start) + stage.gap)
+        end = start + len(clip) / SAMPLE_RATE
+        layers.append((start, clip))
+    return level(mix(*layers), PEAK)
 
 
-def death(race: Race, take: int) -> np.ndarray:
-    """Cry *take*, then the fall: the weapon drops as the voice cuts off, the body lands, the gear settles.
-
-    The body take is rotated one step against the others so no two cues share a whole fall."""
-    cry = _piece(race, "cry", take)
-    weapon_at = max(0.0, len(cry) / SAMPLE_RATE + FALL_START)
-    body_at = weapon_at + WEAPON_TO_BODY
-    return level(mix(
-        cry,
-        (weapon_at, _piece(race, "weapon", take)),
-        (body_at, _piece(race, "body", take + 1)),
-        (body_at + BODY_TO_SETTLE, _piece(race, "settle", take)),
-    ), PEAK)
-
-
-def cue(race: Race) -> str:
-    """The event name the scene plays when a unit of *race* dies; the bank picks the take."""
-    return f"{race.value}_death"
+def cue(family: str) -> str:
+    """The event name the scene plays when a body of *family* dies; the bank picks the take."""
+    return f"{family}_death"
 
 
 #: Cue name → how many takes the bank can choose from.
-CUES = {cue(race): takes(race) for race in Race}
-SOUNDS = {f"{cue(race)}_{take}": partial(death, race, take) for race in Race for take in range(takes(race))}
+CUES = {cue(family): takes(family) for family in FAMILIES}
+SOUNDS = {f"{cue(family)}_{take}": partial(death, family, take) for family in FAMILIES for take in range(takes(family))}

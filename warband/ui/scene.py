@@ -20,7 +20,7 @@ from saga2d import (
 from saga2d import SaveError
 from saga2d.effects import Banner, Burst, Effects, FloatingText, Pulse, Toast
 from warband.art import ambience
-from warband.audio import deaths, wreckage
+from warband.audio import bodies, deaths, presence, wreckage
 from warband.sim import mapgen
 from warband.brains.adjutant import COMMANDS, MAX_LEVEL, NAMES as COMMAND_NAMES, TAGS, Adjutant
 from warband.brains.ai import DIFFICULTY_ELO, auto_site, make_brain
@@ -54,10 +54,13 @@ from warband.ui.view import CONDITION_LOOKS, FLIGHT, SHOT_LOOKS, SHOT_SIZE, MapV
 
 DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True, "blood": True,
                                     "controls": "classic"}
-#: What is built rather than born, and throws up wood chips where it is struck.
-MACHINES = {UnitType.CATAPULT.value, UnitType.FLYING_MACHINE.value}
-#: What bleeds when hit.  The machines are timber and a golem is stone; the other three creatures are meat.
-FLESH = {u.value for u in UnitType} - MACHINES - {UnitType.GOLEM.value}
+#: What is built rather than born, and throws up wood chips where it is struck: a body of timber (``bodies.material``).
+MACHINES = {u.value for u in UnitType if bodies.material(u) == "wood"}
+#: What bleeds when hit: a body its armour decides, flesh under it.  The machines are timber and a golem is stone.
+FLESH = {u.value for u in UnitType if bodies.material(u) is None}
+#: Seconds before a family's answer to an order, or a camp's roar, is heard again: clicking an army about is not a choir.
+ANSWER_GAP = 1.5
+ROUSE_GAP = 3.0
 #: What is struck in the air: its hit is shown on the body drawn over the ground point it is at.
 FLYING = {u.value for u, info in UNITS.items() if info.flying}
 SAVE_VERSION = 2  # 2: the world records its layout
@@ -526,6 +529,7 @@ class GameScene(Scene):
         self.stains: list[Stain] = []  # under the bodies, oldest first
         self._blows: dict[int, tuple[float, float]] = {}  # unit id -> where its last visible blow came from (tiles)
         self.recent_sounds: deque[str] = deque(maxlen=48)
+        self._camp_seen: dict[int, set[UnitType]] = {}  # a woken camp's lair id -> the kinds of its guards seen since it woke
         self.status = ""
         self.status_timer = 0.0
         self.short_of: str | None = None  # the resource the last refusal was short of, red in the top bar while it lasts
@@ -1146,8 +1150,19 @@ class GameScene(Scene):
             return False
         parameter = UNIT_PARAMETERS.get(action)
         if parameter is not None:
-            self.adjutant.release(args[0] if parameter == "unit_ids" else [args[0]])
+            ids = args[0] if parameter == "unit_ids" else [args[0]]
+            self.adjutant.release(ids)
+            self._answer(ids)
         return True
+
+    def _answer(self, ids: list[int]) -> None:
+        """The ordered bodies with a presence of their own answer: once a family, however many of it were ordered (a box
+        of twenty catapults creaks once), and not again within :data:`ANSWER_GAP`.  The soldiers of a race have none:
+        the race's order cue speaks for them."""
+        units = [unit for i in ids if (unit := self.world.units.get(i)) is not None]
+        for cue in dict.fromkeys(presence.cue(bodies.family(unit.type, unit.race)) for unit in units):
+            if cue is not None:
+                self.sfx(cue, gap=ANSWER_GAP)
 
     def _attempt(self, action: str, args: tuple, kwargs: dict) -> bool:
         try:
@@ -2318,6 +2333,7 @@ class GameScene(Scene):
                     break
         self._advance(dt)
         self._handle_events(self.world.take_events())
+        self._hear_camps()
         if not self._game_over:
             for news in self.adjutant.think(self.world):
                 self.say(news)
@@ -2471,6 +2487,24 @@ class GameScene(Scene):
             elif e.kind == "spilled" and mine:
                 self.warn(f"A vault lost: {e.amount} aether spilled, and your store holds less")
 
+    def _hear_camps(self) -> None:
+        """A woken camp's creatures are heard as the player first sees them: each kind of guard once a waking, as it
+        comes into sight (heard if it is on screen then), so a camp woken from any side roars as its guards charge in,
+        and one nobody of the player's sees wakes in silence.  Settled, it may be heard again the next time it wakes."""
+        for camp in self.world.camps:
+            if not camp.roused:
+                self._camp_seen.pop(camp.lair, None)
+                continue
+            seen = self._camp_seen.setdefault(camp.lair, set())
+            for uid in camp.guards:
+                guard = self.world.units.get(uid)
+                if guard is None or guard.type in seen or not self._visible(guard.pos):
+                    continue
+                seen.add(guard.type)
+                cue = presence.cue(bodies.family(guard.type, guard.race))
+                if cue is not None and self._audible(guard.pos):
+                    self.sfx(cue, gap=ROUSE_GAP)
+
     def _visible(self, point: tuple[float, float]) -> bool:
         return self.world.is_visible(self.human, (int(point[0]), int(point[1])))
 
@@ -2561,7 +2595,7 @@ class GameScene(Scene):
         color = self.world.players[e.player].color if e.player is not None else (200, 200, 200)
         self.effects.add(Burst(to_world(e.pos), rgba(color), 10, rng=self.fx_rng, size=10))
         if self._audible(e.pos):
-            self.sfx(deaths.cue(self.world.players[e.player].race))
+            self.sfx(deaths.cue(bodies.family(UnitType(e.text), self.world.race_of(e.player))))
 
     def _stain(self, point: tuple[float, float]) -> None:
         """A dark pool under a body, on the ground under everything that walks; the oldest make room past the cap."""

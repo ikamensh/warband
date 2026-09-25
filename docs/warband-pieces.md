@@ -1,8 +1,8 @@
-# Generated sound pieces: combat impacts, unit deaths and building wreckage
+# Generated sound pieces: combat impacts, unit deaths, presences and building wreckage
 
-Three Warband sounds are not synthesised: a blow landing, a unit's death and a building
-coming down. All are cues mixed by the game from committed pieces (`warband/audio/pieces.py`
-reads them):
+Four Warband sounds are not synthesised: a blow landing, a unit's death, a machine's or a
+creature's presence and a building coming down. All are cues mixed by the game from committed
+pieces (`warband/audio/pieces.py` reads them):
 
 - `warband/audio/combat_sound.py`, from `warband/assets/impacts/`: every weapon (sword, axe,
   spear, lance, arrow, siege stone, hammer) on every material (flesh, armour, wood,
@@ -10,11 +10,23 @@ reads them):
   starts. The scene picks weapon and material from the strike (`sound.impact_sound`),
   the bank rotates takes and adds a little pitch variation.
 
-- `warband/audio/deaths.py`, from `warband/assets/deaths/`: a cry, then the weapon hitting the
-  ground, the body landing and the gear settling; one cue per race and take. The bank
-  plays `<race>_death` and picks a take, never the same one twice in a row; the scene
-  asks for the dying unit's own race, so an orc grunt dies in an orc's voice whoever
-  the player is.
+- `warband/audio/deaths.py`, from `warband/assets/deaths/`: one cue per **sound family** and
+  take (`warband/audio/bodies.py`, WB-069). A unit type names its family on its row (`sound`);
+  a race's people name none and die in their race's family: a cry, then the weapon hitting the
+  ground, the body landing and the gear settling. The bodies have their own: a catapult's
+  timbers splinter, a rope snaps and the frame crashes; a flying machine sputters, whistles
+  down and crashes as its body lands; a wolf yelps and falls, a spider screeches and crunches,
+  a troll bellows and falls heavily, a golem's stone grinds and breaks and the rubble settles.
+  The bank plays `<family>_death` and picks a take, never the same one twice in a row; the
+  scene asks for the dying unit's family, so an orc grunt dies in an orc's voice whoever the
+  player is, and an orc's catapult in splintering timber.
+- `warband/audio/presence.py`, from `warband/assets/presence/`: a machine answers its player's
+  order (a catapult creaks and winches, a flying machine whirrs), once a family however many
+  were ordered and not again within 1.5 s; a creature is heard as its camp rouses (a wolf's
+  snarl, a spider's hiss, a troll's roar, a golem's stony rumble), once a kind of guard each
+  time it wakes, as the player first sees a guard of that kind: a camp woken from its far side
+  roars as its guards charge into sight, one nobody of the player's sees wakes in silence.
+  Presences play at half the sfx level.
 - `warband/audio/wreckage.py`, from `warband/assets/wreckage/`: the structure cracks, the mass
   comes down, the debris settles; one cue per material (`wood`, `stone`) and take. The
   scene plays `<material>_collapse` for the building's material (`BUILDING_MATERIALS`
@@ -31,6 +43,12 @@ M4 MacBook Air. `assets/deaths/manifest.json` records, per file, the prompt, the
 the requested length and steps, the trimming applied, the length and a SHA-256, so any
 piece can be regenerated or challenged.
 
+- The bodies' `<family>_<stage>_<n>.wav` (WB-069): three takes of the first stage, so three
+  cues, and two of every other, each take its own sentence (`BODY_DEATHS` in the tool); a
+  voice (a yelp, a screech, a bellow, the flyer's whistle) is the `voice` shape, a hit (a
+  splinter, a snap, a sputter, a body falling, a crunch) the `impact` shape, and what keeps
+  coming down (a frame crashing, stone grinding, rubble) the `collapse` shape. The presences,
+  `<family>_<kind>_<n>.wav` under `assets/presence/`, three takes each (`PRESENCES`).
 - `<race>_cry_<n>.wav`: four takes, 2 s requested, each from its own prompt
   describing a dying warrior of that race. The same prompt with four seeds gave four
   near-identical takes; different wording per take is what makes them vary.
@@ -60,24 +78,28 @@ cries at 0.72 peak and stages at 0.8.
 collapse piece ends (negative: under its tail), with the debris take rotated against the
 others, and normalises to `PEAK`.
 
-`deaths.death(race, take)` places cry *take* at zero, the weapon `FALL_START` seconds
-from the end of the cry (negative: as the voice cuts off), the body `WEAPON_TO_BODY`
-later and the settle `BODY_TO_SETTLE` after that, with the gains in `GAINS`, and
-normalises the mix to `PEAK`. The body take is rotated against the others so no two cues
-share a whole fall. The constants are the pilot sound board's defaults, not yet tuned
-by ear; the board's sliders are the place to tune them, then copy the values here and
-bump `SOUND_VERSION` so the cache regenerates.
+`deaths.death(family, take)` places the family's stages (`bodies.FAMILIES`) in order: the
+first at zero, each later one its `gap` after the stage before starts, or after it ends
+(`after_end`; a negative gap starts it under that stage's tail), never before it, levelled to
+its `gain`, and normalises the mix to `PEAK`. A race's death puts the weapon 0.15 s before the
+cry ends, the body 0.18 s after the weapon and the settle 0.25 s after the body; a stage with
+`rotate` takes the take one step on, so no two cues share every piece. The race gaps are the
+pilot sound board's defaults, the bodies' first guesses read off their spectrograms; none has
+been tuned by ear. Change them there and bump `SOUND_VERSION` so the cache regenerates.
+`presence.presence(family, take)` is the piece itself, levelled.
 
 ## Remaking a piece
 
-`tools/pieces.py` owns the prompts, seeds and styles for both folders and drives
+`tools/pieces.py` owns the prompts, seeds and styles for every folder (the bodies' stage names are
+`bodies.FAMILIES`', which reads no file) and drives
 `sagaforge.foley` (`../sagaforge/docs/foley.md` covers the runtime install and the
 prompting lessons):
 
 ```bash
 export STABLE_AUDIO_MLX=~/stable-audio-3/optimized/mlx
-uv run python tools/pieces.py refresh           # generates what is missing or whose spec changed, all three folders
-uv run python tools/pieces.py sampler /tmp/pieces   # impacts.wav, deaths.wav and wreckage.wav, every piece back to back
+uv run python tools/pieces.py refresh           # generates what is missing or whose spec changed, all four folders
+uv run python tools/pieces.py sampler /tmp/pieces   # impacts.wav, deaths.wav, presence.wav and wreckage.wav, every piece back to back
+uv run python tools/pieces.py cues /tmp/cues     # the bodies' death and presence cues as mixed: WAV, spectrogram PNG, stats row
 ```
 
 Change a prompt or a seed in the tool and refresh: only that piece is regenerated, the

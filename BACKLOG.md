@@ -26,7 +26,6 @@ item takes the next one and updates this line.
 | WB-066 | Now | proposed | Magic II: the Mage Tower, one spell of three per level, cast anywhere, dearer beyond the vaults | Ilya 2026-09-24 |
 | WB-067 | Now | proposed | Magic III: the computer players research, choose and cast; the nine spells balanced | Ilya 2026-09-24 |
 | WB-068 | Now | proposed | A unique unit per race: Gryphon Rider, Goblin Sappers, Treant, Rune Golem | Ilya 2026-09-24 |
-| WB-069 | Now | proposed | A voice for every body: creatures and machines sound like what they are, deaths first; sound in the new-unit protocol | Ilya 2026-09-24 |
 | WB-071 | Now | proposed | The seam looks as poor as it pays; its rich look goes to a new Mother Lode (over 50k gold) | Ilya 2026-09-24 |
 | WB-073 | Now | proposed | Race balance: dwarves win ~64 % and orcs ~36 % of Master race games; bring every race within 45–55 % | Orchestrator 2026-09-25 |
 
@@ -378,41 +377,6 @@ WB-068's four unique units in flight), and each time its sounds were the race's
 and its art the render's, because nothing asked for more. The protocol is
 `docs/adding-a-unit.md`, a checklist, and tests that fail when a unit type
 skips a step, so the next unit cannot.
-
-## WB-069 — A voice for every body
-
-**Design.** A death is the body's, not the race's: a catapult splinters, a
-flying machine sputters and crashes, a golem grinds apart. A unit type names
-its sound family in its TOML row (`sound = "…"`, defaulting to its race's for
-living soldiers of a race); a family holds its death pieces (and, where it
-has them, its blow's impact material and a presence sound).
-
-| body | death | presence |
-|---|---|---|
-| catapult (every race's siege engine) | timbers splinter, a rope snaps, the frame crashes | a creak and a winch on its order |
-| flying machine | an engine or wings sputter, a whistle down, wood and metal crash | a whirr or wing-beat on its order |
-| wolf | a yelp, a body falls | a snarl when its camp rouses |
-| spider | a screech, a wet crunch | a hiss when its camp rouses |
-| troll | a deep bellow, a heavy fall | a roar when its camp rouses |
-| golem | stone grinds and breaks, rubble settles | a stony rumble when its camp rouses |
-
-WB-068's four unique units get theirs by the same protocol (a gryphon's
-screech, a sapper's blast as its death, a treant's splitting wood, a rune
-golem's stone and fading runes). The pieces are generated with Stable Audio 3
-through `sagaforge.foley` and `tools/pieces.py`, committed with their
-provenance, as the other pieces were.
-
-**The protocol.** `docs/adding-a-unit.md` lists what a unit type needs: its
-row, names and plurals for every race that fields it, the render, a painted
-sheet (WB-070), its sounds, its codex line, its brain handling, its lint.
-Tests enforce what can be enforced: every unit type resolves a death cue with
-at least two takes on disk; no creature or machine dies with a race's cry.
-
-**Acceptance.** Every unit type and creature has a death of its body; the
-presence sounds play; spectrograms and stats of each new cue looked at
-(`tools/music.py`-style render; Ilya has not heard them yet, say so); the
-protocol document and its tests; the audio tests; visual lint unaffected;
-fingerprint unchanged (sound is no rule).
 
 ## WB-071 — The seam looks as poor as it pays; the Mother Lode
 

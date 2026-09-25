@@ -97,8 +97,10 @@ the base formation setting. Base units may omit costs, heal, splash,
 min_range and regen (zero), attack (`"normal"`), armor_class (`"light"`),
 formation/mounted/flying (`false`), turn_deg (`360`), living (`true`: a machine,
 the catapult, the flying machine and the golem, says `false` and takes no living
-condition nor a healer's cast) and inflicts (none: the archer's `"bleeding"` names
-the buffs.toml row its wounding shot lays on). Other fields must appear
+condition nor a healer's cast), inflicts (none: the archer's `"bleeding"` names
+the buffs.toml row its wounding shot lays on) and sound (`""`: the fielding
+race's voice; a machine or creature names its family, `docs/adding-a-unit.md`).
+Other fields must appear
 in the entry or its defaults. Misspelled keys, wrong types and missing
 required fields fail startup validation, including invalid defaults that every
 entry overrides.

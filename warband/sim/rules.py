@@ -226,6 +226,9 @@ class UnitInfo:
     #: a shot reaches it (:attr:`strikes_air`).
     flying: bool = False
     inflicts: BuffInfo | None = None  # what its blow lays on a living unit it wounds: an archer's shot opens a wound
+    #: The sound family its body dies and answers in (:mod:`warband.audio.bodies`); empty for a soldier of a race, who
+    #: dies in the voice of the race that fields it.  Presentation only: no rule reads it.
+    sound: str = ""
 
     @property
     def melee(self) -> bool:
@@ -273,7 +276,7 @@ def _unit(u: dict[str, Any]) -> UnitInfo:
         radius=u["radius"], heal=u["heal"], splash=u["splash"], attack=AttackType(u["attack"]),
         armor_class=ArmorClass(u["armor_class"]), formation=u["formation"], mounted=u["mounted"], windup=u["windup"],
         turn=math.radians(u["turn_deg"]), min_range=u["min_range"], regen=u["regen"], living=u["living"],
-        flying=u["flying"], inflicts=BUFFS[u["inflicts"]] if u["inflicts"] else None,
+        flying=u["flying"], inflicts=BUFFS[u["inflicts"]] if u["inflicts"] else None, sound=u["sound"],
     )
 
 

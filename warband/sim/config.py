@@ -228,7 +228,7 @@ UNIT_SCHEMA = {
     "heal": (_int, 0), "splash": (_float, 0.0), "attack": (_enum, ATTACKS, "normal"),
     "armor_class": (_enum, ARMOR_CLASSES, "light"), "formation": (_bool, False), "mounted": (_bool, False),
     "windup": (_float,), "turn_deg": (_int, 360), "min_range": (_float, 0.0), "regen": (_float, 0.0),
-    "living": (_bool, True), "flying": (_bool, False), "inflicts": (_str, ""),
+    "living": (_bool, True), "flying": (_bool, False), "inflicts": (_str, ""), "sound": (_str, ""),
 }
 UNIT_TWEAK_SCHEMA = {
     "name": (_str,), "summary": (_str,), "hp_mult": (_float, 1.0), "damage_mult": (_float, 1.0),

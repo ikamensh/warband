@@ -9,7 +9,7 @@ import pytest
 from saga2d import Game
 from sagaforge import synth
 from sagaforge.synth import pan, tone
-from warband.audio import combat_sound, deaths, sound, wreckage
+from warband.audio import combat_sound, deaths, presence, sound, wreckage
 from warband.sim.rules import Race
 from warband.audio.sound import SoundBank
 
@@ -50,8 +50,8 @@ def test_every_scene_event_has_an_effect_that_is_normalised_and_click_free(gener
     for name in sound.SOUNDS:
         data, rate = read_wav(generated / "sounds" / f"{name}.wav")
         mono = data[:, 0]
-        from_pieces = name in combat_sound.SOUNDS or name in deaths.SOUNDS or name in wreckage.SOUNDS  # generated pieces; the rest is synth
-        longest = 5.0 if name in wreckage.SOUNDS else 3.5 if name in deaths.SOUNDS else 1.0
+        from_pieces = any(name in module.SOUNDS for module in (combat_sound, deaths, presence, wreckage))  # generated; the rest is synth
+        longest = 5.0 if name in wreckage.SOUNDS else 3.5 if name in deaths.SOUNDS else 2.5 if name in presence.SOUNDS else 1.0
         assert rate == synth.SAMPLE_RATE and 0.03 <= len(mono) / rate <= longest, name
         assert 0.15 <= np.abs(mono).max() <= 0.95, name
         assert abs(mono[0]) < 0.01 and abs(mono[-1]) < 0.01, name

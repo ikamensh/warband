@@ -27,7 +27,7 @@ import numpy as np
 
 from saga2d import Game
 from sagaforge.synth import BELL, BRASS, DARK, GLASS, level, mix, noise, thump, tone, write_wav
-from warband.audio import combat_sound, deaths, music, voices, wreckage
+from warband.audio import bodies, combat_sound, deaths, music, presence, voices, wreckage
 from warband.sim.model import Event
 from warband.audio.music import Director
 from warband.sim.rules import BuildingType, Race, UnitType
@@ -64,10 +64,8 @@ def impact_sound(event: Event, race: Race = Race.HUMAN) -> str:
         return "impact"  # an explicitly identified older multiplayer event schema
     if event.target_type in {building.value for building in wreckage.BUILDING_MATERIALS}:
         material = wreckage.material(BuildingType(event.target_type), event.target_complete)
-    elif UnitType(event.target_type) in (UnitType.CATAPULT, UnitType.FLYING_MACHINE):  # the machines are timber
-        material = "wood"
-    else:
-        material = "armor" if event.target_armor > 0 else "flesh"
+    else:  # a body that decides what it is made of (a machine's timber, a golem's stone), else its armour
+        material = bodies.material(UnitType(event.target_type)) or ("armor" if event.target_armor > 0 else "flesh")
     weapon = _RACE_WEAPONS.get(race, {}).get(event.source_type) or _WEAPONS[event.source_type]
     return f"{weapon}_{material}"
 
@@ -217,7 +215,7 @@ class SynthBank:
         self._audio.muted = value
 
 
-SOUND_VERSION = "12"
+SOUND_VERSION = "13"
 MUSIC = music.TRACKS
 
 #: ``play_sound(name)`` forwards here when set; ``None`` is silent.
@@ -349,6 +347,7 @@ SOUNDS: dict[str, Callable[[], np.ndarray]] = {
     **combat_sound.SOUNDS,
     **voices.SOUNDS,
     **deaths.SOUNDS,
+    **presence.SOUNDS,
     **wreckage.SOUNDS,
 }
 
@@ -373,9 +372,9 @@ class SoundBank(SynthBank):
         self._started = 0.0
 
     def play(self, name: str, *, pitch_variation: float = 0.0, volume: float = 1.0) -> None:
-        takes = combat_sound.VARIANTS if name in IMPACTS else deaths.CUES.get(name) or wreckage.CUES.get(name, 0)
+        takes = combat_sound.VARIANTS if name in IMPACTS else deaths.CUES.get(name) or presence.CUES.get(name) or wreckage.CUES.get(name, 0)
         if takes:
-            # Never the same take twice in a row: the blow, death or collapse that just sounded stays fresh.
+            # Never the same take twice in a row: the blow, death, answer or collapse that just sounded stays fresh.
             choices = [take for take in range(takes) if take != self._last_take.get(name)]
             take = self._rng.choice(choices)
             self._last_take[name] = take
@@ -383,6 +382,8 @@ class SoundBank(SynthBank):
                 pitch_variation, volume = pitch_variation or 0.045, volume * 0.65
             elif name in deaths.CUES:  # a voice keeps its pitch; deaths sit under the alerts
                 pitch_variation, volume = pitch_variation or 0.02, volume * 0.55
+            elif name in presence.CUES:  # a machine's answer or a camp's roar: beside the order cues, under the alerts
+                pitch_variation, volume = pitch_variation or 0.03, volume * 0.5
             else:  # a building coming down is the loudest thing on the field
                 pitch_variation, volume = pitch_variation or 0.03, volume * 0.75
             name = f"{name}_{take}"
