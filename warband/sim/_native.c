@@ -7,7 +7,7 @@
      stamp_discs, or_into, any_lit       model.py: World._reveal, or_into, World.any_visible
      stamp_threats, choose_tree          worker_ai.py: _stamp_units, _choose_tree
      any_lit, stale_tiles                worker_knowledge.py: WorkerKnowledge.sees, ._stale
-     site_search                         ai.py: first_site, with the draws site_search makes
+     site_search, splits_ground          ai.py: first_site, with the draws site_search makes; splits_ground
 
    warband/league/fastsim.py builds this module next to the mypyc-compiled modules, and each namesake hands
    its work over when the module is there, which is only in the compiled simulation.  Every function
@@ -919,24 +919,74 @@ static Py_ssize_t rects_gap(const Py_ssize_t *a, const Py_ssize_t *b) {
     return dx > dy ? dx : dy;
 }
 
+/* ai.splits_ground: whether a building of *size* at (left, top) cuts the open ground beside it in two, the tiles along
+   its sides no longer joining up edge to edge within *reach* tiles of it, bar a piece of at most *nook* tiles shut off
+   whole.  *seen* and *stack* hold a window's worth of tiles.  The answer does not depend on the order the pieces are
+   walked in, only on how many pieces beside the site go on past the window or are bigger than a nook. */
+static int splits_ground(const unsigned char *blocked, Py_ssize_t width, Py_ssize_t height, Py_ssize_t left, Py_ssize_t top,
+                         Py_ssize_t size, Py_ssize_t reach, Py_ssize_t nook, unsigned char *seen, Py_ssize_t *stack) {
+    Py_ssize_t right = left + size, bottom = top + size;
+    Py_ssize_t x0 = left - reach > 0 ? left - reach : 0, y0 = top - reach > 0 ? top - reach : 0;
+    Py_ssize_t x1 = right - 1 + reach < width - 1 ? right - 1 + reach : width - 1;
+    Py_ssize_t y1 = bottom - 1 + reach < height - 1 ? bottom - 1 + reach : height - 1;
+    Py_ssize_t w = x1 - x0 + 1, h = y1 - y0 + 1;
+    memset(seen, 0, (size_t)(w * h));
+    int ways = 0;
+    for (Py_ssize_t s = 0; s < 4 * size; s++) {  /* the sides: above, below, left, right */
+        Py_ssize_t k = s % size, sx, sy;
+        switch (s / size) {
+            case 0: sx = left + k; sy = top - 1; break;
+            case 1: sx = left + k; sy = bottom; break;
+            case 2: sx = left - 1; sy = top + k; break;
+            default: sx = right; sy = top + k; break;
+        }
+        if (sx < x0 || sx > x1 || sy < y0 || sy > y1 || blocked[sy * width + sx] || seen[(sy - y0) * w + (sx - x0)]) continue;
+        seen[(sy - y0) * w + (sx - x0)] = 1;
+        Py_ssize_t depth = 0, tiles = 1;
+        int open_edge = 0;
+        stack[depth++] = (sy - y0) * w + (sx - x0);
+        while (depth > 0) {
+            Py_ssize_t at = stack[--depth], x = x0 + at % w, y = y0 + at / w;
+            if ((x == x0 && x0 > 0) || (x == x1 && x1 < width - 1) || (y == y0 && y0 > 0) || (y == y1 && y1 < height - 1))
+                open_edge = 1;  /* it goes on past the window */
+            const Py_ssize_t next[4][2] = {{x + 1, y}, {x - 1, y}, {x, y + 1}, {x, y - 1}};
+            for (int n = 0; n < 4; n++) {
+                Py_ssize_t nx = next[n][0], ny = next[n][1];
+                if (nx < x0 || nx > x1 || ny < y0 || ny > y1) continue;
+                if (left <= nx && nx < right && top <= ny && ny < bottom) continue;
+                Py_ssize_t cell = (ny - y0) * w + (nx - x0);
+                if (blocked[ny * width + nx] || seen[cell]) continue;
+                seen[cell] = 1;
+                stack[depth++] = cell;
+                tiles++;
+            }
+        }
+        if (open_edge || tiles > nook) {
+            if (++ways > 1) return 1;
+        }
+    }
+    return 0;
+}
+
 /* ai.site_search from the ring, the corner, rng.random and ai.site_inputs: every spot of the ring scored by
    its distance plus two random draws of a tile, drawn in ring order whether or not any spot can do; then
    the first in sorted order that no taken site crowds, whose ground is open grass the player has explored,
    with no unit standing on it, far enough from every gold mine, a tile clear of every one of the player's
-   buildings, and off every ley rift unless it is a vault square on one (model.World._off_rift).  None when
-   there is none. */
+   buildings, off every ley rift unless it is a vault square on one (model.World._off_rift), and that does not
+   cut the ground beside it in two (splits_ground).  None when there is none. */
 static PyObject *site_search(PyObject *self, PyObject *args) {
     PyObject *ring_obj, *draw, *taken_obj, *rows, *grass, *blocked_obj, *explored_obj, *standing_obj, *mines_obj, *own_obj, *rifts_obj;
-    Py_ssize_t origin_x, origin_y, size, width, height, clearance, rift;
+    Py_ssize_t origin_x, origin_y, size, width, height, clearance, rift, reach, nook;
     int possible, vault;
-    if (!PyArg_ParseTuple(args, "OnnOpnOO!OOOOOOnnnOnp", &ring_obj, &origin_x, &origin_y, &draw, &possible, &size, &taken_obj,
+    if (!PyArg_ParseTuple(args, "OnnOpnOO!OOOOOOnnnOnpnn", &ring_obj, &origin_x, &origin_y, &draw, &possible, &size, &taken_obj,
                           &PyList_Type, &rows, &grass, &blocked_obj, &explored_obj, &standing_obj, &mines_obj, &own_obj,
-                          &width, &height, &clearance, &rifts_obj, &rift, &vault))
+                          &width, &height, &clearance, &rifts_obj, &rift, &vault, &reach, &nook))
         return NULL;
     if (PyList_GET_SIZE(rows) < height) { PyErr_SetString(PyExc_ValueError, "the terrain has too few rows"); return NULL; }
     PyObject *ring = NULL, *taken = NULL, *standing = NULL, *mines = NULL, *own = NULL, *rifts = NULL, *result = NULL;
     Candidate *order = NULL;
-    Py_ssize_t *taken_at = NULL, *mine_rects = NULL, *own_rects = NULL, *rift_at = NULL;
+    Py_ssize_t *taken_at = NULL, *mine_rects = NULL, *own_rects = NULL, *rift_at = NULL, *stack = NULL;
+    unsigned char *seen = NULL;
     double *units = NULL;
     Grid blocked, explored;
     int blocked_open = 0, explored_open = 0;
@@ -959,7 +1009,11 @@ static PyObject *site_search(PyObject *self, PyObject *args) {
     mine_rects = PyMem_Malloc((size_t)(4 * nmines + 1) * sizeof(Py_ssize_t));
     own_rects = PyMem_Malloc((size_t)(4 * nown + 1) * sizeof(Py_ssize_t));
     rift_at = PyMem_Malloc((size_t)(2 * nrifts + 1) * sizeof(Py_ssize_t));
-    if (order == NULL || taken_at == NULL || units == NULL || mine_rects == NULL || own_rects == NULL || rift_at == NULL) { PyErr_NoMemory(); goto out; }
+    Py_ssize_t window = (size + 2 * reach) * (size + 2 * reach);  /* splits_ground's tiles, at most */
+    seen = PyMem_Malloc((size_t)window);
+    stack = PyMem_Malloc((size_t)window * sizeof(Py_ssize_t));
+    if (order == NULL || taken_at == NULL || units == NULL || mine_rects == NULL || own_rects == NULL || rift_at == NULL
+        || seen == NULL || stack == NULL) { PyErr_NoMemory(); goto out; }
     for (Py_ssize_t i = 0; i < count; i++) {  /* distance + rng.random() * 2, in ring order */
         PyObject *item = PySequence_Fast_GET_ITEM(ring, i);
         Py_ssize_t offset[2];
@@ -1050,6 +1104,7 @@ static PyObject *site_search(PyObject *self, PyObject *args) {
             double ux = units[3 * u], uy = units[3 * u + 1], r = units[3 * u + 2];
             if (left - r < ux && ux < right + r && top - r < uy && uy < bottom + r) ok = 0;
         }
+        if (ok && splits_ground(blocked.cells, width, height, order[c].x, order[c].y, size, reach, nook, seen, stack)) ok = 0;
         if (ok) { result = Py_BuildValue("(nn)", order[c].x, order[c].y); goto out; }
     }
     Py_INCREF(Py_None);
@@ -1061,6 +1116,8 @@ out:
     PyMem_Free(mine_rects);
     PyMem_Free(own_rects);
     PyMem_Free(rift_at);
+    PyMem_Free(seen);
+    PyMem_Free(stack);
     if (explored_open) grid_close(&explored);
     if (blocked_open) grid_close(&blocked);
     Py_XDECREF(ring);

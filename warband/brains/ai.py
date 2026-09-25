@@ -68,6 +68,8 @@ DEFEND_RADIUS: Final = 9.0
 TOWER_STRIKERS: Final = 8  # peasants sent at an enemy tower frame going up on our ground (WB-044)
 BUILD_MIN_DISTANCE: Final = 2
 BUILD_MAX_DISTANCE: Final = 11
+SPLIT_REACH: Final = 4  # tiles round a site within which the ground beside it must still join up (splits_ground)
+NOOK: Final = 0  # open tiles a site may shut off whole: none, as a builder or a recruit is set down beside it
 #: A building of each size that needs no other: the ground a site needs depends on its size alone, so the planner sites
 #: a building whose prerequisite has not stood up yet as this one would be sited (:func:`auto_site`).
 UNLOCKED_OF_SIZE: Final[dict[int, BuildingType]] = {info.size: kind for kind, info in BUILDINGS.items()
@@ -348,6 +350,47 @@ def keeps_paths_open(world: World, player: int, pos: Pos, size: int) -> bool:
     return True
 
 
+def splits_ground(world: World, pos: Pos, size: int) -> bool:
+    """Whether a building of *size* at *pos* cuts the open ground beside it in two: the tiles along its sides no longer
+    reach each other round it within :data:`SPLIT_REACH` tiles, bar a nook of at most :data:`NOOK` tiles shut off whole.
+
+    A farm filling a gap between two woods is such a cut, and so is a blacksmith across the one way out of a base
+    between the trees: fuzz seeds 98 and 110 walled a computer player's base in that way, and every attack after it
+    piled the army into the corner of the base nearest the target.  Only the side tiles matter, as a path through the
+    site enters and leaves by them; and a walker steps diagonally only where both tiles beside the step are open, so
+    tiles joined by a walk are joined edge to edge.  A way round further off than the reach counts as a cut.  So does a
+    nook of three tiles between a barracks and the water: the recruits it set down there never came out (seed 106)."""
+    width, height, blocked = world.width, world.height, world._blocked
+    left, top, right, bottom = pos[0], pos[1], pos[0] + size, pos[1] + size
+    x0, y0 = max(0, left - SPLIT_REACH), max(0, top - SPLIT_REACH)
+    x1, y1 = min(width - 1, right - 1 + SPLIT_REACH), min(height - 1, bottom - 1 + SPLIT_REACH)
+    sides = [(x, top - 1) for x in range(left, right)] + [(x, bottom) for x in range(left, right)]
+    sides += [(left - 1, y) for y in range(top, bottom)] + [(right, y) for y in range(top, bottom)]
+    seen: set[Pos] = set()
+    ways = 0  # pieces of the ground beside the site that are more than a nook
+    for start in sides:
+        sx, sy = start
+        if not (x0 <= sx <= x1 and y0 <= sy <= y1) or blocked[sy * width + sx] or start in seen:
+            continue
+        seen.add(start)
+        piece, tiles, open_edge = [start], 1, False
+        while piece:
+            x, y = piece.pop()
+            if (x == x0 and x0 > 0) or (x == x1 and x1 < width - 1) or (y == y0 and y0 > 0) or (y == y1 and y1 < height - 1):
+                open_edge = True  # it goes on past the window
+            for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                if (x0 <= nx <= x1 and y0 <= ny <= y1 and not (left <= nx < right and top <= ny < bottom)
+                        and not blocked[ny * width + nx] and (nx, ny) not in seen):
+                    seen.add((nx, ny))
+                    piece.append((nx, ny))
+                    tiles += 1
+        if open_edge or tiles > NOOK:
+            ways += 1
+            if ways > 1:
+                return True
+    return False
+
+
 def crowds(pos: Pos, size: int, other: Pos, other_size: int) -> bool:
     """Whether two sites are within a tile of each other, counting the clearance."""
     return abs(pos[0] - other[0]) < size + other_size - 1 and abs(pos[1] - other[1]) < size + other_size - 1
@@ -373,25 +416,26 @@ def site_search(world: World, building_type: BuildingType, player: int, anchor: 
 def first_site(world: World, building_type: BuildingType, player: int, candidates: list[tuple[float, Pos]],
                taken: Sequence[tuple[Pos, int]] = ()) -> Pos | None:
     """The first of *candidates* (``(score, spot)`` pairs), in their sorted order, that no site in *taken* crowds,
-    where :meth:`World.placeable` lets *player* put *building_type* and that :func:`keeps_paths_open`."""
+    where :meth:`World.placeable` lets *player* put *building_type*, that :func:`keeps_paths_open` and that does not
+    cut the ground in two (:func:`splits_ground`)."""
     size = BUILDINGS[building_type].size
     candidates.sort()
     free = (pos for _score, pos in candidates if not any(crowds(pos, size, other, other_size) for other, other_size in taken))
     for pos in world.placeable(building_type, player, free):
-        if keeps_paths_open(world, player, pos, size):
+        if keeps_paths_open(world, player, pos, size) and not splits_ground(world, pos, size):
             return pos
     return None
 
 
 def site_inputs(world: World, building_type: BuildingType, player: int, taken: Sequence[tuple[Pos, int]]) -> tuple[Any, ...]:
     """What ``warband.sim._native.site_search`` needs beside the ring to search as :func:`first_site` does: first whether
-    any spot can do at all (the prerequisite stands), then the ground and what stands on it, and the ley rifts, which
-    only a vault may stand on, square."""
+    any spot can do at all (the prerequisite stands), then the ground and what stands on it, the ley rifts, which
+    only a vault may stand on, square, and the reach and nook of :func:`splits_ground`."""
     blockers = world.placement_blockers(building_type, player)
     standing, mines = blockers if blockers is not None else ([], [])
     return (blockers is not None, BUILDINGS[building_type].size, taken, world.terrain, Terrain.GRASS, world._blocked,
             world.explored[player], standing, mines, [b.rect for b in world.player_buildings(player)], world.width,
-            world.height, MINE_CLEARANCE, world.rifts, RIFT, building_type is BuildingType.VAULT)
+            world.height, MINE_CLEARANCE, world.rifts, RIFT, building_type is BuildingType.VAULT, SPLIT_REACH, NOOK)
 
 
 def site_ring(inner: int, outer: int) -> tuple[tuple[float, int, int], ...]:

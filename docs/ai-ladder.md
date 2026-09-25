@@ -505,6 +505,37 @@ Since WB-064 there is no rider to try it with, and the flyer that replaced it
 carries no weapon, so neither brain counts one as a threat: the idle shooters
 within reach answer it (`answer_flyers`) and the army stays on its errand.
 
+### A base the brain walls in
+
+Fuzz seeds 98 and 110 (on main at `230ca7c`) stalled a computer player's army for good in a corner of its own base.
+On a Forest map the brain had filled the one gap between two woods that joined its base to the rest of the map: a
+blacksmith across a gap three tiles wide in seed 110, where the ground its hall could reach fell from 3180 tiles to
+165, and a farm in a corridor two tiles wide in seed 98 (3892 to 187). The site search held a building a tile clear
+of the brain's own (`keeps_paths_open`) and knew nothing of the trees. From then on every attack aimed at ground
+the army could not reach: every soldier's route ended at the patch of the base nearest the target, the army piled
+in, and the attack branch sent each soldier the world let stop there (`stands_at`) straight back out as a
+reinforcement, for the rest of the match. Clerics after a patient outside the wall pressed into the pile the same way.
+
+`ai.splits_ground` now refuses a site that cuts the open ground beside it in two: the tiles along its sides must
+still reach each other edge to edge within `SPLIT_REACH` (4) tiles of it, and it may shut off no tile at all
+(`NOOK`, 0). An allowance of six tiles let a barracks shut three tiles in between itself and the water, and the
+recruits it set down there never came out (seed 106). Every brain places through it (`site_search`, and the C twin
+in `sim/_native.c`). At the seeds' moments the search that offered the gap in 33 of 33 tries (seed 98) and 27 of 31
+(seed 110) offers it in none; seed 98's cramped base then has no farm site for a while, and builds one later.
+
+Against the same brains with the old search (seeds from 1000, both corners; the old search registered as
+`<setting>-old` by a scratch script that then runs `tools/arena.py`, interpreted):
+
+| | games | score |
+|---|---|---|
+| Master | 120 | 51.7% |
+| Grandmaster | 120 | 53.8% |
+| Medium | 60 | 58.3% |
+| Hard | 60 | 55.0% |
+
+54.0% over the 360: the sites it refuses cost nothing. What made the stall, the attack branch sending soldiers again
+at ground they cannot reach, is left as it was: with no base walled in, the seeds no longer come to it.
+
 ### The flying machine takes the rider's place (WB-064)
 
 WB-064 deleted the scout rider, and its two jobs went two ways. The eyes went
@@ -747,6 +778,7 @@ contradicted the reasoning that produced the change:
 | pulling wounded soldiers out to heal | beat the baseline 68.8% |
 | counting build orders in flight | −18 points on its own, good once the site limit was raised to match |
 | peasants called to defend | −35 Elo, under either of the two rules tried |
+| never siting a building that cuts the ground beside it in two | 54.0% over 360 games against the same brains without it: no loss |
 | holding the opening lumber for the barracks | **−400 Elo** — it buys the barracks 64s earlier and starves the farms |
 | nothing but farms before the first barracks stands (`barracks_first`) | **+65 Elo** — 60% over 72 games; the barracks lands at two minutes instead of three |
 | …with the later push, or the kill memory, on top | 59% and 57%: the gains overlap rather than add |

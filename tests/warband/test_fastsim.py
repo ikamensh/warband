@@ -306,6 +306,33 @@ def test_the_c_site_search_finds_the_python_site() -> None:
     assert found > 20
 
 
+
+def test_the_c_site_search_refuses_the_sites_that_cut_the_ground_as_the_python_one_does(monkeypatch) -> None:
+    """Woods full of gaps a farm or a hall would fill, where :func:`ai.splits_ground` decides the site: the two searches
+    agree, and the rule decides a good share of the answers (the same search with it switched off picks elsewhere)."""
+    native = _native_searches()
+    rng = random.Random(98)
+    decided = 0
+    for _ in range(150):
+        width, height = rng.randint(14, 30), rng.randint(12, 24)
+        terrain = [[Terrain.TREES if rng.random() < 0.4 else Terrain.GRASS for _ in range(width)] for _ in range(height)]
+        world = World(width, height, terrain, 2)
+        world.reveal_all(0)
+        building_type = rng.choice((BuildingType.FARM, BuildingType.TOWN_HALL))
+        size = BUILDINGS[building_type].size
+        anchor = (rng.uniform(0, width), rng.uniform(0, height))
+        draws = random.Random(rng.random())
+        twin, blind = random.Random(), random.Random()
+        twin.setstate(draws.getstate())
+        blind.setstate(draws.getstate())
+        answer = native.site_search(ai.site_ring(2 + size, 10), int(anchor[0]) - size // 2, int(anchor[1]) - size // 2,
+                                    draws.random, *ai.site_inputs(world, building_type, 0, []))
+        assert answer == ai.site_search(world, building_type, 0, anchor, twin, 2, 10)
+        with monkeypatch.context() as patch:
+            patch.setattr(ai, "splits_ground", lambda *_: False)
+            decided += ai.site_search(world, building_type, 0, anchor, blind, 2, 10) != answer
+    assert decided > 20, decided
+
 def _hypot_cases(rng: random.Random, count: int) -> list[tuple[float, float]]:
     """Coordinate pairs as the simulation meets them (differences of positions on a map, tile offsets, a hair
     apart) and as it never does (vast and tiny magnitudes, zeros, infinities and NaNs)."""
