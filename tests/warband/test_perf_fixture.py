@@ -41,6 +41,14 @@ def test_the_reference_battle_places_every_soldier_on_open_ground():
 
     world = battle_world()
     assert all(world.passable(int(unit.x), int(unit.y)) for unit in world.units.values())
+
+
+@pytest.mark.slow
+def test_the_reference_battle_keeps_every_soldier_on_open_ground_as_it_fights():
+    """Five seconds of a 150-soldier battle, 1.6 s on the Mac and up to 3.1 s on a runner: the slow tier's."""
+    from tools.step_bench import battle_world
+
+    world = battle_world()
     for _ in range(100):
         world.step()
     assert all(world.passable(int(unit.x), int(unit.y)) for unit in world.units.values())
