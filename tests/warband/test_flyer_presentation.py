@@ -126,14 +126,18 @@ def test_a_right_click_on_an_enemy_flyer_is_refused_to_melee_and_taken_by_a_shoo
 
 @pytest.mark.parametrize("race", list(Race))
 def test_every_race_s_flyer_passes_the_art_lint(game, race: Race) -> None:
-    """Every facing and frame of the machine through the art lint as a flyer is held to it: nothing empty or cut off by
-    its canvas, no two frames of a wing beat or a turn of the rotor one picture, and enough of the team's colour on it
-    for a player to tell whose it is.  Its feet and its middle are not asked: nothing of it stands on its anchor, and
-    its rotor or wings sweep them (``visual_lint.lint_subject``)."""
+    """Every facing and frame of the painted machine through the art lint as a flyer is held to it: nothing empty or
+    cut off by its canvas, no fringe of the key or stray from the cut, no two frames of a wing beat or a turn of the
+    rotor one picture, and enough of the team's colour on it, recoloured, for a player to tell whose it is.  Its feet
+    and its middle are not asked: nothing of it stands on its anchor, and its rotor or wings sweep them
+    (``visual_lint.lint_subject``)."""
+    assert textures.restyled_frames(race, UnitType.FLYING_MACHINE, None) is not None, "the machine is painted (WB-070)"
     store = visual_lint.ImageStore(game)
     frames = {(facing, frame): (key, store.image(key)) for facing in range(textures.FACINGS) for frame in textures.FRAMES
               for key in [textures.unit_image(game, UnitType.FLYING_MACHINE, 0, facing, frame, None, race=race)]}
-    findings = [finding for key, image in frames.values() for finding in visual_lint.lint_image(key, image)]
+    pictures = [frames[(facing, frame)] for facing in range(textures.FACINGS)  # its still poses are its stand: linted once
+                for frame in textures.sheet_frames(UnitType.FLYING_MACHINE)]
+    findings = [finding for key, image in pictures for finding in visual_lint.lint_image(key, image, painted=True)]
     findings += visual_lint.lint_subject(race.value, frames, textures.placements[frames[(0, "stand")][0]], flies=True)
     theirs = textures.unit_image(game, UnitType.FLYING_MACHINE, 1, 2, "stand", None, race=race)
     findings += visual_lint.lint_recolour(theirs, store.image(frames[(2, "stand")][0]), store.image(theirs))

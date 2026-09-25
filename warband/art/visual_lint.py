@@ -186,6 +186,15 @@ def lint_subject(subject: str, frames: dict[tuple[int, str], tuple[str, Image.Im
         return findings  # reported as empty by lint_image
     if not flies:
         findings += _ground_contact(subject, frames, figures)
+    return findings + lint_motion(frames)
+
+
+def lint_motion(frames: dict[tuple[int, str], tuple[str, Image.Image]]) -> list[Finding]:
+    """Two frames of one facing's walk, blow or chop that are one picture: the motion they were drawn for is lost.  The
+    stand may be one of them (a flyer's rotor at rest is its first turn).  A painted sheet is held to it as the render
+    is: a painter that averages the rows, or a cut that copies one, leaves a rotor standing still."""
+    findings = []
+    moving = set(textures.WALK_FRAMES) | set(textures.ATTACK_FRAMES) | set(textures.CHOP_FRAMES)
     by_facing: dict[int, list[str]] = {}
     for facing, frame in frames:
         by_facing.setdefault(facing, []).append(frame)
@@ -194,7 +203,7 @@ def lint_subject(subject: str, frames: dict[tuple[int, str], tuple[str, Image.Im
         for frame in names:
             key, image = frames[(facing, frame)]
             digest = image.tobytes()
-            if digest in seen and {frame, seen[digest]} <= set(textures.WALK_FRAMES) | set(textures.ATTACK_FRAMES) | set(textures.CHOP_FRAMES):
+            if digest in seen and {frame, seen[digest]} <= moving:
                 findings.append(Finding("identical", key, f"pixel-identical to frame {seen[digest]!r}", image))
             seen.setdefault(digest, frame)
     return findings
@@ -391,9 +400,9 @@ def unit_subjects(players: tuple[int, ...] = (0,)) -> Iterator[tuple[str, Race, 
 def lint_images(game: Game, store: ImageStore, *, budget: CpuBudget | None = None) -> list[Finding]:
     """Every check on every registered image (call :func:`register_everything` first)."""
     findings: list[Finding] = []
-    drawn = {textures.unit_key(unit_type, player, facing, frame, None, race)  # the render's own frames: nothing was painted
-             for unit_type in textures.PROCEDURAL_UNITS for race in Race for player in (0, 1)
-             for facing in range(textures.FACINGS) for frame in textures.FRAMES}
+    drawn = {textures.unit_key(unit_type, player, facing, frame, carrying, race)  # the render's own frames: nothing was painted
+             for _name, race, unit_type, carrying, player in unit_subjects((0, 1)) if textures.restyled_frames(race, unit_type, carrying) is None
+             for facing in range(textures.FACINGS) for frame in textures.FRAMES + textures.CHOP_FRAMES}
     painted_keys = {key for key in game.assets._images if key.startswith(("unit.", "building.")) and key not in drawn}  # a portrait is a resample of one
     for key in list(game.assets._images):
         if budget is not None:
@@ -410,8 +419,10 @@ def lint_images(game: Game, store: ImageStore, *, budget: CpuBudget | None = Non
                  for facing in range(textures.FACINGS) for frame in frames
                  for key in [textures.unit_key(unit_type, player, facing, frame, carrying, race)]}
         if textures.restyled_frames(race, unit_type, carrying) is None:
-            findings += lint_subject(name, keyed, textures.placements[next(iter(keyed.values()))[0]],  # painted frames: lint_drift
+            findings += lint_subject(name, keyed, textures.placements[next(iter(keyed.values()))[0]],
                                      flies=UNITS[unit_type].flying)
+        else:  # a painted figure is placed by lint_drift, against the render it repaints
+            findings += lint_motion(keyed)
         base = textures.unit_key(unit_type, 0, 2, "stand", carrying, race)
         team = textures.unit_key(unit_type, 1, 2, "stand", carrying, race)
         if game.assets.has_image(team):

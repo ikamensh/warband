@@ -1,0 +1,385 @@
+{
+ "cell": [
+  180,
+  211
+ ],
+ "cols": 8,
+ "rows": 5,
+ "origin": [
+  90.0,
+  164.71165156940467
+ ],
+ "scale": 2.0,
+ "pad": [
+  0,
+  0
+ ],
+ "chroma": [
+  255,
+  0,
+  255
+ ],
+ "grid": false,
+ "cells": [
+  {
+   "key": "unit.orc.flying_machine.0.0.stand",
+   "col": 0,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.1.stand",
+   "col": 1,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.2.stand",
+   "col": 2,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.3.stand",
+   "col": 3,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.4.stand",
+   "col": 4,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.5.stand",
+   "col": 5,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.6.stand",
+   "col": 6,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.7.stand",
+   "col": 7,
+   "row": 0,
+   "tags": {
+    "frame": "stand",
+    "facing": 7
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.0.walk1",
+   "col": 0,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.1.walk1",
+   "col": 1,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.2.walk1",
+   "col": 2,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.3.walk1",
+   "col": 3,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.4.walk1",
+   "col": 4,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.5.walk1",
+   "col": 5,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.6.walk1",
+   "col": 6,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.7.walk1",
+   "col": 7,
+   "row": 1,
+   "tags": {
+    "frame": "walk1",
+    "facing": 7
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.0.walk2",
+   "col": 0,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.1.walk2",
+   "col": 1,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.2.walk2",
+   "col": 2,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.3.walk2",
+   "col": 3,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.4.walk2",
+   "col": 4,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.5.walk2",
+   "col": 5,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.6.walk2",
+   "col": 6,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.7.walk2",
+   "col": 7,
+   "row": 2,
+   "tags": {
+    "frame": "walk2",
+    "facing": 7
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.0.walk3",
+   "col": 0,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.1.walk3",
+   "col": 1,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.2.walk3",
+   "col": 2,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.3.walk3",
+   "col": 3,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.4.walk3",
+   "col": 4,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.5.walk3",
+   "col": 5,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.6.walk3",
+   "col": 6,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.7.walk3",
+   "col": 7,
+   "row": 3,
+   "tags": {
+    "frame": "walk3",
+    "facing": 7
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.0.walk4",
+   "col": 0,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 0
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.1.walk4",
+   "col": 1,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 1
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.2.walk4",
+   "col": 2,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 2
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.3.walk4",
+   "col": 3,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 3
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.4.walk4",
+   "col": 4,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 4
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.5.walk4",
+   "col": 5,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 5
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.6.walk4",
+   "col": 6,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 6
+   }
+  },
+  {
+   "key": "unit.orc.flying_machine.0.7.walk4",
+   "col": 7,
+   "row": 4,
+   "tags": {
+    "frame": "walk4",
+    "facing": 7
+   }
+  }
+ ]
+}

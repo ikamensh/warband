@@ -27,7 +27,6 @@ item takes the next one and updates this line.
 | WB-067 | Now | proposed | Magic III: the computer players research, choose and cast; the nine spells balanced | Ilya 2026-09-24 |
 | WB-068 | Now | proposed | A unique unit per race: Gryphon Rider, Goblin Sappers, Treant, Rune Golem | Ilya 2026-09-24 |
 | WB-069 | Now | proposed | A voice for every body: creatures and machines sound like what they are, deaths first; sound in the new-unit protocol | Ilya 2026-09-24 |
-| WB-070 | Now | proposed | Painted sheets for every unit, the flying machines first; painting in the new-unit protocol | Ilya 2026-09-24 |
 | WB-071 | Now | proposed | The seam looks as poor as it pays; its rich look goes to a new Mother Lode (over 50k gold) | Ilya 2026-09-24 |
 | WB-072 | Now | proposed | No last-standing reveal in a free-for-all: only the last two sides learn where the other hides | Ilya 2026-09-24 |
 | WB-073 | Now | proposed | Race balance: dwarves win ~64 % and orcs ~36 % of Master race games; bring every race within 45–55 % | Orchestrator 2026-09-25 |
@@ -415,23 +414,6 @@ presence sounds play; spectrograms and stats of each new cue looked at
 (`tools/music.py`-style render; Ilya has not heard them yet, say so); the
 protocol document and its tests; the audio tests; visual lint unaffected;
 fingerprint unchanged (sound is no rule).
-
-## WB-070 — Painted sheets for every unit
-
-**Design.** Every unit type wears a painted sheet (`tools/restyle.py` through
-`sagaforge.restyle`), recoloured per team, with its animation (a flyer's rotor
-turning or wings beating across its walk frames). A unit type without one is
-a test failure unless it stands in a small exemption table with the reason
-and the date, so procedural art is a visible, conscious debt rather than a
-default. First the four flying machines; WB-068's units follow by the
-protocol. The painters are Codex (`codex exec`), an OpenRouter image model,
-or a direct image model API: probe which works today and record it; if none
-does, stop and say so rather than exempting silently.
-
-**Acceptance.** The four flyers painted, animated, recoloured and in play,
-looked at on the map and on the card; visual lint (painted frame off its
-render, team recolour) clean; the exemption table and its test; the
-protocol document updated; fingerprint unchanged.
 
 ## WB-071 — The seam looks as poor as it pays; the Mother Lode
 

@@ -44,8 +44,9 @@ catapults have spoked wheels and a throwing spoon, and clerics wear white robes
 with a mitre and sun staff. The flying machines hang in the air over their
 shadows, their rotors turning or wings beating in every frame: the humans' rotor
 contraption on a wooden hull, the goblins' zeppelin, the elves' leaf-winged glider
-and the dwarves' steam gyrocopter. They are drawn by the low-poly render alone
-(`textures.PROCEDURAL_UNITS`): no painted sheet was made for them.
+and the dwarves' steam gyrocopter. A flyer strikes no blow, so its stand is its
+attack frames too, and its painted sheet holds the stand and the four walk frames
+alone (`textures.sheet_frames`); the view plays the walk frames on the clock.
 
 Workers lean back for the wind-up and bend into the strike through four
 chopping poses. Their head, torso, arms and axe move together around the

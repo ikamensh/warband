@@ -1923,12 +1923,12 @@ def _rotor(hub: r3.Vec3, blades: int, length: float, width: float, angle: float,
     return mesh
 
 
-def _propeller(hub: r3.Vec3, blades: int, length: float, angle: float, color: Color) -> Mesh:
+def _propeller(hub: r3.Vec3, blades: int, length: float, angle: float, color: Color, width: float = 0.06) -> Mesh:
     """Blades turning about the fore-and-aft axis at *hub*: a pusher or puller propeller."""
     hx, hy, hz = hub
     mesh = _unit_rod((hx, hy - 0.04, hz), (hx, hy + 0.04, hz), 0.04, INK)
     for k in range(blades):
-        blade = r3.box((hx + length / 2, hy, hz), (length, 0.02, 0.06), color)
+        blade = r3.box((hx + length / 2, hy, hz), (length, 0.02, width), color)
         mesh += _roll(blade, angle + k * 360.0 / blades, hub)
     return mesh
 
@@ -1992,7 +1992,8 @@ def _flyer(player: int, frame: str, race: Race) -> Mesh:
         mesh += _rotor((0, -0.14, 1.16), 2, 0.72, 0.11, spin * 180.0, CANVAS, team)
         return mesh
     if race is Race.ORC:
-        # A patched bag of gas with a team stripe, a gondola slung under it, a goblin at the rail and a pusher prop.
+        # A patched bag of gas with a team stripe, a gondola slung under it, a goblin at the rail and a great pusher
+        # propeller at the tail, as wide as the bag is tall, so that the camera sees it turn from every facing.
         mesh = _ellipsoid((0, -0.04, 1.02), (0.4, 0.66, 0.36), (BALLOON, BALLOON, darker(BALLOON, 0.85), team, team,
                                                                  darker(BALLOON, 0.85), BALLOON, BALLOON))
         for side in (-1, 1):
@@ -2007,7 +2008,8 @@ def _flyer(player: int, frame: str, race: Race) -> Mesh:
         mesh += r3.box((0, 0.175, 0.62), (0.13, 0.03, 0.04), INK)  # goggles
         for side in (-1, 1):
             mesh += _unit_rod((side * 0.08, 0.07, 0.62), (side * 0.2, 0.03, 0.7), 0.025, look.skin, sides=4)  # big ears
-        mesh += _propeller((0, -0.27, 0.42), 3, 0.2, spin * 120.0, WOOD)
+        mesh += _unit_rod((0, -0.66, 1.02), (0, -0.9, 1.02), 0.035, INK)  # the shaft out of the tail
+        mesh += _propeller((0, -0.9, 1.02), 3, 0.32, spin * 120.0, WOOD, width=0.1)
         return mesh
     if race is Race.ELF:
         # A living-wood spar on two broad leaf wings that beat, a leafed tail, a rider hooded in the team's colour.
@@ -2294,12 +2296,30 @@ def unit_key(unit_type: UnitType, player: int, facing: int, frame: str, carrying
 
 
 RESTYLED = Path(__file__).resolve().parents[1] / "assets" / "restyled"
-#: The units drawn by their low-poly render alone: no painted sheet was made for them (the flying machines of WB-064,
-#: whose rotors and wings turn frame by frame), so every race's picture of them is :func:`_unit`'s.
-PROCEDURAL_UNITS: frozenset[UnitType] = frozenset({UnitType.FLYING_MACHINE})
+#: The unit types, the creatures among them, that may be drawn by their low-poly render alone, each with why and since
+#: when (``YYYY-MM-DD``): procedural art is a debt carried on purpose, never a default.  A unit type a race fields, or
+#: a creature, with neither a painted sheet nor a row here fails ``tests/warband/test_painted_sheets.py``; so does a
+#: row for one that is painted.  ``docs/adding-a-unit.md`` ("Its art") is how a unit leaves it.
+UNPAINTED_UNITS: dict[UnitType, tuple[str, str]] = {}
 #: A flyer's frames that are one picture: it strikes no blow, so its stand serves the attack frames too (:func:`_flyer`
-#: turns its rotor or beats its wings in the walk frames alone), rendered once rather than five times a facing.
+#: turns its rotor or beats its wings in the walk frames alone), rendered or painted once rather than five times a facing.
 _STILL_POSES = ("stand",) + ATTACK_FRAMES
+
+
+def sheet_frames(unit_type: UnitType, carrying: Resource | None = None) -> tuple[str, ...]:
+    """The frames a unit's picture holds apart, the rows of its painted sheet: every frame, a peasant with nothing in
+    its hands also chopping, and a flying machine only its stand and the walk frames that turn its rotor (its stand
+    is its attack frames too: :data:`_STILL_POSES`)."""
+    if unit_type is UnitType.FLYING_MACHINE:
+        return ("stand",) + WALK_FRAMES
+    return FRAMES + CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else FRAMES
+
+
+def _one_picture(unit_type: UnitType, frame: str) -> tuple[str, ...]:
+    """The frames drawn with *frame*'s picture: a flyer's still poses all at once, any other frame alone."""
+    return _STILL_POSES if unit_type is UnitType.FLYING_MACHINE and frame in _STILL_POSES else (frame,)
+
+
 #: ``WARBAND_ART=procedural`` plays with the low-poly renders even where painted frames exist.
 RESTYLED_ART = os.environ.get("WARBAND_ART", "restyled") != "procedural"
 
@@ -2322,9 +2342,18 @@ def _painted(name: str, wanted: list[str]) -> tuple[restyle.Sheet, dict[str, Ima
 @lru_cache(maxsize=None)
 def restyled_frames(race: Race, unit_type: UnitType, carrying: Resource | None) -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
     """The hand-painted frames of one unit subject (every facing and frame), or None."""
-    name = f"{race.value}.{unit_type.value}" + (f".{carrying.value}" if carrying else "")
-    wanted = FRAMES + CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else FRAMES
-    return _painted(name, [unit_key(unit_type, 0, 0, frame, carrying, race) for frame in wanted])
+    return _painted(unit_sheet(race, unit_type, carrying), unit_sheet_keys(race, unit_type, carrying))
+
+
+def unit_sheet(race: Race, unit_type: UnitType, carrying: Resource | None = None) -> str:
+    """The name of one unit subject's painted sheet under :data:`RESTYLED`."""
+    return f"{race.value}.{unit_type.value}" + (f".{carrying.value}" if carrying else "")
+
+
+def unit_sheet_keys(race: Race, unit_type: UnitType, carrying: Resource | None = None) -> list[str]:
+    """The cells a unit subject's painted sheet must hold, every facing of each of :func:`sheet_frames`: one it lacks
+    makes the sheet stale."""
+    return [unit_key(unit_type, 0, facing, frame, carrying, race) for frame in sheet_frames(unit_type, carrying) for facing in range(FACINGS)]
 
 
 def figure_top(sheet: restyle.Sheet, frame: Image.Image) -> float:
@@ -2401,19 +2430,19 @@ def unit_image(game: Game, unit_type: UnitType, player: int, facing: int, frame:
     to the player's team when the subject was restyled, the low-poly render otherwise."""
     key = unit_key(unit_type, player, facing, frame, carrying, race)
     if not game.assets.has_image(key):
+        poses = _one_picture(unit_type, frame)
         restyled = restyled_frames(race, unit_type, carrying)
         if restyled is None:
             mesh = r3.rotate_z(_unit(unit_type, player, frame, carrying, race), facing * 45 - 90)
             image = _prop(key, mesh, DROP_UNIT, game.backend.scale_factor)
-            poses = _STILL_POSES if unit_type in PROCEDURAL_UNITS and frame in _STILL_POSES else (frame,)
-            for pose in poses:
-                same = unit_key(unit_type, player, facing, pose, carrying, race)
-                placements[same] = placements[key]
-                game.assets.image_from_pil(same, image)
         else:
             sheet, frames = restyled
             placements[key] = Placement(sheet.logical_size, sheet.drop, head=stride_heads(race, unit_type, carrying)[facing])
-            game.assets.image_from_pil(key, _recoloured(frames[unit_key(unit_type, 0, facing, frame, carrying, race)], player))
+            image = _recoloured(frames[unit_key(unit_type, 0, facing, poses[0], carrying, race)], player)
+        for pose in poses:
+            same = unit_key(unit_type, player, facing, pose, carrying, race)
+            placements[same] = placements[key]
+            game.assets.image_from_pil(same, image)
     return key
 
 
@@ -2461,19 +2490,17 @@ def portrait_image(game: Game, subject: UnitType | BuildingType, player: int | N
 def warm_units(game: Game, players: list[int], races: list[Race] | None = None):
     """A generator that renders every unit image the match may need, one per step, so the
     scene can spread the cost over its first frames instead of hitching in the first battle.  Every seat's painted
-    units come first and the rendered ones last: a render costs a recolour several times over, and the flying
-    machines they are come from the workshop, long after the first battle."""
+    units come first and the rendered ones last: a render costs a recolour several times over."""
     for procedural in (False, True):
         for index, player in enumerate(players):
             race = races[index] if races is not None else Race.HUMAN
             for unit_type in PLAYABLE_UNITS:  # a creature is nobody's: warband.art.monsters warms those
-                if (unit_type in PROCEDURAL_UNITS) != procedural:
-                    continue
                 carries: tuple[Resource | None, ...] = (None, Resource.GOLD, Resource.LUMBER) if unit_type is UnitType.PEASANT else (None,)
                 for carrying in carries:
-                    frames = FRAMES + CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else FRAMES
+                    if (restyled_frames(race, unit_type, carrying) is None) != procedural:
+                        continue
                     for facing in range(FACINGS):
-                        for frame in frames:
+                        for frame in sheet_frames(unit_type, carrying):
                             yield unit_image(game, unit_type, player, facing, frame, carrying, race=race)
 
 

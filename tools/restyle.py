@@ -81,9 +81,10 @@ SUBJECTS: dict[tuple[Race, UnitType], str] = {
     (Race.ORC, UnitType.KNIGHT): f"an orc ogre: a two-headed, unarmoured giant on foot with a blue loincloth ({TEAM}) swinging a huge spiked club",
     (Race.ORC, UnitType.CATAPULT): f"an orc catapult: a crude, skull-decorated siege engine of dark wood and bone on wheels, a blue pennant ({TEAM}), "
                                    "with a throwing arm and a boulder",
-    (Race.ORC, UnitType.FLYING_MACHINE): f"a goblin zeppelin: a patched hide gas bag with a broad blue band round its middle and blue tail "
-                                         f"fins ({TEAM}), a small wooden gondola slung under it on ropes, a green goblin in goggles at the "
-                                         "rail and a three-bladed pusher propeller; the walk rows turn the propeller",
+    (Race.ORC, UnitType.FLYING_MACHINE): f"a goblin zeppelin: a patched hide gas bag with a blue band round its middle, as wide as the "
+                                         f"reference's, and blue tail fins ({TEAM}), a small wooden gondola slung under it on ropes, a green "
+                                         "goblin in goggles at the rail, and a great three-bladed wooden pusher propeller on a shaft out of "
+                                         "the tail; the walk rows turn the propeller",
     (Race.ORC, UnitType.CLERIC): f"an orc shaman: a hunched green mystic in dark robes and a blue sash ({TEAM}), with a totem staff and bone charms",
     (Race.ELF, UnitType.PEASANT): f"an elven gatherer: a slender fair-skinned worker in green leathers and a blue sash ({TEAM})",
     (Race.ELF, UnitType.FOOTMAN): f"an elven sentinel: a slender warrior in silvery scale, a winged leaf helm, a blue tabard ({TEAM}), a leaf-shaped buckler "
@@ -122,7 +123,7 @@ FIXES: dict[tuple[UnitType, Resource | None], str] = {
     (UnitType.ARCHER, None): "the weapon is held in both hands, aimed in the wind-up and loosed in the strike; the ammunition hangs on the back or belt",
     (UnitType.KNIGHT, None): "the rider sits in a saddle with stirrups and holds the reins; the weapon is gripped and couched under the arm in the strike, not floating beside the mount",
     (UnitType.FLYING_MACHINE, None): "the machine is in the air: nothing touches the ground and no shadow is painted under it (the game draws "
-                                     "the shadow); the rotor, propeller or wings are exactly where the reference has them",
+                                     "the shadow); every blade and wing is exactly where the reference has it in that cell, at that angle",
     (UnitType.CATAPULT, None): "the projectile sits in or on its launcher, never on top of the arm like a mace head; the launcher is empty after the shot; "
                                "the wheels have spokes and the carriage has a windlass with rope",
     (UnitType.CLERIC, None): "the staff is gripped in one hand; the raised hand in the strike frames glows softly",
@@ -147,6 +148,38 @@ INVENTORY: dict[UnitType, str] = {
     UnitType.CATAPULT: "one siege engine, one throwing arm or barrel, wheels, at most one projectile",
     UnitType.CLERIC: "one figure, one staff, no shield, no sword",
 }
+#: A flying machine's rows are no walk and no blow: its stand, then its rotor turning (or its wings beating) through one
+#: period over the four walk frames (``textures._SPIN``, ``textures._WING_BEAT``), which the view plays on the clock.
+ROTOR_ROWS = {"stand": "hovering: the blades at rest where the reference has them",
+              "walk1": "in flight: the blades at the start of their turn, where the hovering row has them",
+              "walk2": "in flight: the blades a quarter of the way further round",
+              "walk3": "in flight: the blades half way further round",
+              "walk4": "in flight: the blades three quarters of the way further round"}
+WING_ROWS = {"stand": "gliding: the wings held a little above level",
+             "walk1": "the wing beat: both wings raised high at the top of the stroke",
+             "walk2": "the wing beat: both wings swept down to level",
+             "walk3": "the wing beat: both wings pressed down at the bottom of the stroke",
+             "walk4": "the wing beat: both wings rising again, a little above level"}
+FLYER_STYLE = ("Re-render every cell as a polished, appealing game sprite in a rich hand-painted fantasy style "
+               "(Warcraft 2 / Heroes of Might and Magic feel): readable silhouette, volumetric shading, wood grain, brass, iron "
+               "and canvas as the machine is built of them, light from the upper left. The machine flies: paint no shadow and no "
+               "ground under it. Sprites will be shown at about half this size, so keep shapes bold and edges crisp; a moving "
+               "blade or wing stays a crisp solid shape, never a motion blur.")
+FLYER_JUDGE = """You are checking a repainted sprite sheet of one flying machine against its stand-ins. The image shows, for each
+row, the low-poly stand-in frames above and the painted frames below, labelled "row N: name" and "col N".
+
+Work cell by cell, painted row only. Count the rotor blades, propeller blades or wings of the painted machine, and compare the cell
+with the stand-in directly above it. A cell is wrong if:
+- a count differs from the stand-in above, or the pilot is missing or doubled;
+- a blade or wing points clearly another way than the stand-in's above it (the rows turn the rotor or beat the wings on
+  purpose: a painted row that copies another row's blade angle loses the motion);
+- it faces a different direction than the stand-in, or is a different machine;
+- a shadow or patch of ground is painted under it, or it carries a weapon.
+Style, proportion and detail may differ freely; the painter is allowed to make the machine prettier.
+
+Reply with one JSON object and nothing else:
+{"cells": [{"row": 0, "col": 0, "blades": 2, "ok": true, "issue": ""}, ...]}
+List every cell of the rows shown. Keep issues short and concrete, like "rotor angle of row 1" or "shadow under it"."""
 PLAUSIBLE = ("The reference is a rough low-poly stand-in. Where its construction is physically implausible (a load floating instead of "
              "held, a prop attached instead of resting, a weapon beside a hand instead of in it), draw the plausible version in the same "
              "place, at the same size, without changing the pose or moving the feet.")
@@ -436,11 +469,23 @@ class Unit:
     carrying: Resource | None = None
     stage = 0  # painted from the stand-ins
     chunk = (2, 4)  # rows and columns per review image
-    judge = restyle.JUDGE_INSTRUCTIONS
 
     @property
     def name(self) -> str:
-        return f"{self.race.value}.{self.unit.value}" + (f".{self.carrying.value}" if self.carrying else "")
+        return textures.unit_sheet(self.race, self.unit, self.carrying)
+
+    @property
+    def flies(self) -> bool:
+        return self.unit is UnitType.FLYING_MACHINE
+
+    @property
+    def judge(self) -> str:
+        return FLYER_JUDGE if self.flies else restyle.JUDGE_INSTRUCTIONS
+
+    def frame_name(self, frame: str) -> str:
+        if self.flies:
+            return (WING_ROWS if self.race is Race.ELF else ROTOR_ROWS)[frame]
+        return FRAME_NAMES[frame]
 
     @property
     def description(self) -> str:
@@ -450,37 +495,41 @@ class Unit:
     def inventory(self) -> str:
         return INVENTORY[self.unit]
 
-    def frames(self) -> tuple[str, ...]:
-        return textures.FRAMES + textures.CHOP_FRAMES if self.unit is UnitType.PEASANT and self.carrying is None else textures.FRAMES
-
     def build_sheet(self) -> tuple[restyle.Sheet, dict[str, Image.Image]]:
         """The unit's frames laid out facings across, frames down, every frame's feet on the same point."""
         return figure_sheet(
-            self.frames(),
+            textures.sheet_frames(self.unit, self.carrying),
             lambda frame, facing: r3.rotate_z(textures._unit(self.unit, 0, frame, self.carrying, self.race), facing * 45 - 90),
             lambda frame, facing: textures.unit_key(self.unit, 0, facing, frame, self.carrying, self.race))
 
     def prompt(self, sheet: restyle.Sheet) -> str:
-        rows = ", ".join(FRAME_NAMES[f] for f in dict.fromkeys(c.tags["frame"] for c in sheet.cells))
+        rows = "; ".join(self.frame_name(f) for f in dict.fromkeys(c.tags["frame"] for c in sheet.cells))
+        if self.flies:
+            keep = ("Keep exactly: each machine's position, scale, facing direction and height above the cell's floor, and the angle of "
+                    "every rotor blade, propeller blade and wing; the blades and wings differ from row to row on purpose (the rotor turns, "
+                    "the wings beat), so each row must keep its own angles, and the hull, pilot and fittings stay the same in every row.")
+        else:
+            keep = ("Keep exactly: each figure's position, scale, pose, facing direction, lean, twist, limb and weapon placement, and feet position; "
+                    "the poses differ from row to row on purpose (a walk cycle and the phases of a blow), so each row must keep its own pose.")
         return (f"Edit target: the attached sprite sheet of one unit from a 2D real-time strategy game (Warcraft 2 style, 3/4 top-down camera). "
                 f"{geometry(sheet, 'figure centred')} Rows, top to bottom: {rows}. Columns, left to right: the unit facing {FACINGS}.\n\n"
-                f"The unit is {self.description}.\n\n{STYLE}\n\n"
+                f"The unit is {self.description}.\n\n{FLYER_STYLE if self.flies else STYLE}\n\n"
                 f"{PLAUSIBLE} In particular: {RACE_FIXES.get((self.race, self.unit), FIXES[(self.unit, self.carrying)])}.\n\n"
-                f"Keep exactly: each figure's position, scale, pose, facing direction, lean, twist, limb and weapon placement, and feet position; "
-                f"the poses differ from row to row on purpose (a walk cycle and the phases of a blow), so each row must keep its own pose. "
-                f"{background(sheet)}")
+                f"{keep} {background(sheet)}")
 
     def row_names(self, sheet: restyle.Sheet) -> list[str]:
         carry = f", carrying {self.carrying.value} (no weapon out)" if self.carrying else ""
-        return [FRAME_NAMES[f] + carry for f in dict.fromkeys(c.tags["frame"] for c in sheet.cells)]
+        return [self.frame_name(f) + carry for f in dict.fromkeys(c.tags["frame"] for c in sheet.cells)]
 
     def cell_name(self, cell: restyle.Cell) -> str:
-        return f"row {cell.row} ({FRAME_NAMES[cell.tags['frame']]}), column {cell.col}"
+        return f"row {cell.row} ({self.frame_name(cell.tags['frame'])}), column {cell.col}"
 
     def preview(self, sheet: restyle.Sheet, frames: dict[str, Image.Image], out: Path) -> Path:
-        """A GIF strip per facing: the walk, then the blow (and the chop), stand-ins above the painting."""
+        """A GIF strip per facing: the walk, then the blow (and the chop), stand-ins above the painting; a flyer's
+        rotor or wings through three periods."""
         chop = list(textures.CHOP_FRAMES) * 2 if self.unit is UnitType.PEASANT and self.carrying is None else []
-        return figure_preview(self.name, WALK_AND_BLOW + chop, sheet, self.build_sheet()[1], frames, out)
+        sequence = list(textures.WALK_FRAMES) * 3 if self.flies else WALK_AND_BLOW + chop
+        return figure_preview(self.name, sequence, sheet, self.build_sheet()[1], frames, out)
 
 
 @dataclass(frozen=True)

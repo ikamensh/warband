@@ -794,8 +794,12 @@ def restyled_monster(monster: Monster) -> tuple[restyle.Sheet, dict[str, Image.I
 
     Unlike a unit's sheet there is no player in it and no recolouring after it: a creature is
     nobody's, so the painted cell is what the game draws."""
-    return _painted(monster_sheet(monster),
-                    [monster_key(monster, facing, frame) for facing in range(FACINGS) for frame in FRAMES])
+    return _painted(monster_sheet(monster), monster_sheet_keys(monster))
+
+
+def monster_sheet_keys(monster: Monster) -> list[str]:
+    """The cells a creature's painted sheet must hold, every facing of every frame: one it lacks makes the sheet stale."""
+    return [monster_key(monster, facing, frame) for facing in range(FACINGS) for frame in FRAMES]
 
 
 @lru_cache(maxsize=None)

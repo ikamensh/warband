@@ -159,9 +159,11 @@ keeps where code goes and the rules below.
 - A unit type with `flying = true` is in the air (`docs/unit-motion.md` part
   10): never routed (`_plan` refuses it), no body on the ground (flyers keep
   their room from each other alone), and whether a blow can land is
-  `World.can_strike`, the one answer orders, the model and the brains ask. The
-  flying machines are drawn by the render, not painted
-  (`textures.PROCEDURAL_UNITS`).
+  `World.can_strike`, the one answer orders, the model and the brains ask.
+- Every unit type a race fields, and every creature, wears a painted sheet or
+  stands in `textures.UNPAINTED_UNITS` with the reason and the date
+  (`tests/warband/test_painted_sheets.py`); `docs/adding-a-unit.md` is what a
+  new unit type needs, its art among it.
 - A shot's look is its striker's (`view.SHOT_LOOKS`), so a new look is no rules
   change. Every way out of an undecided rated match goes through `LeaveScene`.
   A `World.scripted` world never declares a winner or surrenders: the mission
