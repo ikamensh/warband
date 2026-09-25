@@ -12,15 +12,16 @@ server and website live in `../saga-online`.
 ```bash
 uv sync --extra dev
 uv run warband --seed 3                          # play (python -m warband works too; --mission ID plays a campaign mission)
-uv run pytest -q                                 # the fast tier, about 20 s on four workers: after every change (-n0 runs in one process)
-uv run pytest -q --slow                          # both tiers, about 80 s: before pushing rules, AI, replays, art, audio or CI tools; CI runs both on every push
-uv run pytest -q --slow --compiled               # both tiers on the compiled simulation, as the game runs it (CI too)
-gh run list --limit 6                            # CI after every push: Tests, Native package checks and, on main, the publication
+uv run pytest -q tests/warband/test_x.py         # while working: the tests of what you changed, in one process
+uv run pytest -q                                 # the fast tier, about a minute on four workers: once before handing work on
+uv run pytest -q --slow tests/warband/test_x.py  # the slow tests of what you changed
+uv run pytest -q --slow [--compiled]             # both tiers, source or compiled: CI's on every push (20 min on a runner); locally only to chase a CI failure
+gh run list --limit 6                            # CI after a push: Tests, Native package checks and, on main, the publication
 uv run python -u tools/fuzz.py --games 2 --monkey 0 --seed 81   # AI matches with invariants + monkey input (needs -u)
 uv run python tools/sim_fingerprint.py --check tools/sim_fingerprint.txt   # the simulation is bit-for-bit unchanged
 uv run python tools/sim_bench.py --check tools/sim_bench.txt   # processor time of nine arena matches, and their results unchanged
 uv run python tools/verify.py DIR                # a match through real pyglet events, frames saved to look at
-uv run python tools/visual_lint.py --evidence DIR   # visual defects in the art and on every screen, PNGs of what it flags
+uv run python tools/visual_lint.py --evidence DIR   # visual defects in the art and on every screen, PNGs of what it flags (--screens NAME,... walks a few)
 uv run python tools/perf.py                      # frame times of a 150-unit battle on the real backend (p95 < 16 ms); never time under a profiler
 uv run python -m saga2d.telemetry ~/.warband     # frame rates of the matches actually played; each window names its run and tick
 uv run python tools/step_bench.py --repeat 3     # model step times without a window
@@ -118,13 +119,14 @@ keeps where code goes and the rules below.
 - Visual changes must be looked at: render a frame with
   `saga2d.testing.render_scene` or `tools/verify.py` and open the PNG (pyglet
   needs an awake display: `caffeinate -u`). Mock tests prove logic, not pixels.
-  After a HUD, overlay or art change run `tools/visual_lint.py`; the screens it
+  A finished HUD, overlay or art change gets one whole `tools/visual_lint.py`
+  walk (`--screens` for the screens you are working on); the screens it
   walks are kept clean by `tests/warband/test_visual_lint.py`, and a finding
   there is something to look at, not a number to tune away.
 - Check what the player can reach through the UI, not only what the rules
   allow (the build card once offered four of nine buildings while the model
   tests passed).
-- After changing rules, the AI or scene input, run `tools/fuzz.py`; a bug
+- A finished change to rules, the AI or scene input gets a `tools/fuzz.py` run; a bug
   found by fuzz gets a regression test built from the seed's exact tiles and
   unit positions (synthetic geometries kept passing on old code).
 - A change meant only for speed must leave `tools/sim_fingerprint.py --check`
@@ -202,7 +204,10 @@ keeps where code goes and the rules below.
 - Claims about an AI being stronger are settled by `tools/arena.py`, not by
   watching a match: the same two brains on the same twelve seeds swing between
   seven and eleven wins on the random stream alone, so nothing under a few
-  dozen games means anything. A camp is a feature only if every side can clear
+  dozen games means anything. Size a measurement before running it: a short
+  screen says whether a change deserves a confirming run, and the confirming
+  run is made once, on the finished code (leagues rerun after each edit were
+  the largest cost of the 2026-09-24 intake). A camp is a feature only if every side can clear
   one; `tools/creep_report.py` is the gate (a brain that feeds soldiers in a
   few at a time pours them into a sink: a camp mends its wounded and calls its
   dead back).
@@ -222,7 +227,13 @@ keeps where code goes and the rules below.
   ticks in tenths (`game.tick(0.1)`) unless the frames are what it checks.
   What never changes is built once per session (`tests/conftest.py`); nothing
   mutable is shared between tests.
-- A push is done when its CI is green (`make ci` at the stack root).
+- Verify locally what the change touches and leave whole tiers to CI: the
+  tests of what you changed while working; before handing on, the fast tier
+  once, the slow tests of what you changed and the local-only checks it calls
+  for (the two records, fuzz, a lint walk), each on the finished code, not
+  after every fix. Push once, when the work is ready, and don't wait on CI:
+  whoever lands the branch reads it. A push is done when its CI is green
+  (`make ci` at the stack root).
   `tests/warband/test_startup.py` starts the game on the windows players
   actually get (clipped under a taskbar, maximised, 4K, fullscreen toggled
   between matches) and the packaged native check starts a match after a
@@ -230,8 +241,8 @@ keeps where code goes and the rules below.
   the fix.
 - Retain verification output only in `~/saga/evidence/warband/<topic>/`, under
   the stack's retention rules (`../AGENTS.md`), and pass output paths to tools
-  explicitly. One expensive local job at a time; long CLIs default to
-  `--cpu-percent 25`.
+  explicitly. Heavy local jobs go through the stack's slot (`../AGENTS.md`);
+  long CLIs default to `--cpu-percent 25`.
 - `backlog_intake.txt` is Ilya's inbox of requests, edited and committed by
   Ilya at any time. A change to it in a checkout is Ilya's, not another
   session's work in progress, and it never holds up other work, a merge or a
