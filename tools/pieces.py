@@ -81,6 +81,8 @@ RESEEDED = {"elf_cry_2": 1122, "human_settle_1": 4311,
 
 CREATURE_STYLE = "fantasy creature, close, dry, no music, no reverb, no human voice, no speech"
 MACHINE_STYLE = "medieval, close, dry, no music, no reverb, no voice"
+BEAST_STYLE = "close, dry, no music, no reverb, no voice"
+RUNE_STYLE = "fantasy magic sound effect, close, no melody, no music, no voice"
 #: Per family and stage (the stage names are warband.audio.bodies.FAMILIES'): how the clip is cut, the seconds asked
 #: for, the style, and one prompt per take.  The first stage has three takes, so three cues, and so has a stage long
 #: enough to be most of the cue (a crash, a whistle): with two, cues 0 and 2 would sound alike; the rest have two.
@@ -138,6 +140,46 @@ BODY_DEATHS = {
         "rubble": ("collapse", 3.0, MACHINE_STYLE, ["heavy stone rubble tumbles down onto the ground with a deep thud and settles, dust",
                                                     "heavy rocks tumble onto a pile with a deep rumbling thud, then small stones settle"]),
     },
+    # Each race's own unit (WB-068).
+    "gryphon": {
+        "screech": ("voice", 2.0, CREATURE_STYLE, ["a giant eagle's piercing screech of pain, dying",
+                                                   "a huge bird of prey shrieks shrilly and falters, a harsh dying cry",
+                                                   "a great raptor's hoarse scream, cut short"]),
+        "wings": ("impact", 1.6, BEAST_STYLE, ["huge feathered wings flap wildly and falter, heavy feathers beating the air",
+                                               "big wings beat frantically a few times, a rush of feathers"]),
+        "fall": ("impact", 1.6, STAGE_STYLE, ["a huge winged beast and its armoured rider crash onto the ground, one heavy thud and a rattle of armour",
+                                              "a heavy body falls from the sky and slams into the earth, one deep thud"]),
+    },
+    "sapper": {
+        "fuse": ("impact", 1.6, STAGE_STYLE, ["a short lit fuse fizzes and hisses, crackling sparks",
+                                              "a burning fuse sputters with a sharp sizzle",
+                                              "a black powder fuse hisses and spits sparks"]),
+        "blast": ("collapse", 3.0, MACHINE_STYLE, ["a powder keg explodes with a huge deep boom and a blast of splintering wood",
+                                                   "a keg of gunpowder explodes with one deep thunderous boom that shakes the ground",
+                                                   "a big gunpowder explosion, a sharp crack and a deep booming blast"]),
+        "debris": ("collapse", 3.0, MACHINE_STYLE, ["dirt, stones and wooden splinters rain down and patter onto the ground after an explosion",
+                                                    "debris falls and scatters, pebbles and wooden shards clattering down"]),
+    },
+    "treant": {
+        "split": ("collapse", 3.0, MACHINE_STYLE, ["a huge old tree trunk creaks loudly and splits apart, wood cracking and splintering",
+                                                   "a giant living tree groans and its trunk cracks open with a deep splintering crack",
+                                                   "a massive oak creaks under strain and breaks with a loud crack of wood"]),
+        "fall": ("collapse", 3.0, MACHINE_STYLE, ["a huge tree trunk crashes down onto the ground with one deep heavy thud, branches snapping",
+                                                  "a great tree trunk slams into the earth with one deep booming thud"]),
+        # Kept to one settling (the impact cut): a collapse's two and a half seconds of rustle made the cue too long.
+        "leaves": ("impact", 1.6, MACHINE_STYLE, ["leaves and twigs rustle and settle after a tree falls, a soft rustling",
+                                                    "dry leaves shower down and settle with a gentle rustle"]),
+    },
+    # Carved and bound where the wild golem is rough rock: dressed blocks and brass, and the hum of its runes going out.
+    "rune_golem": {
+        "grind": ("collapse", 3.0, MACHINE_STYLE, ["heavy carved stone blocks crack apart and grind with a deep rumble, a brass band snapping with a clang",
+                                                   "a great statue of dressed stone breaks, massive blocks grinding and cracking with a deep heavy rumble",
+                                                   "a stone giant bound in metal bands shatters, heavy rock cracking and a metal clang, a low rumble"]),
+        "rubble": ("collapse", 3.0, MACHINE_STYLE, ["carved stone blocks thud down onto a pile one after another and settle",
+                                                    "heavy stone blocks tumble with deep thuds, then small chips settle"]),
+        "runes": ("voice", 3.0, RUNE_STYLE, ["a deep magical humming drone slowly fading into silence",
+                                             "a glowing crystal's resonant hum dies away, a fading magical ring"]),
+    },
 }
 #: Per family with a presence: its cut, seconds, style and three prompts (the kind is the family's ``presence``).
 PRESENCES = {
@@ -159,6 +201,19 @@ PRESENCES = {
     "golem": ("collapse", 3.0, MACHINE_STYLE, ["heavy stone grinding and rumbling as a rock giant stirs",
                                                "a deep stony rumble of boulders shifting",
                                                "large rocks scrape and grind together with a low rumble"]),
+    "gryphon": ("voice", 2.0, CREATURE_STYLE, ["a great eagle's fierce screech",
+                                               "a gryphon's shrill cry, a raptor's call",
+                                               "a large hawk's piercing scream, once"]),
+    # A fuse fizzing, and once a goblin's giggle: the cackle is a voice, so the style forbids no voice.
+    "sapper": ("voice", 1.6, "close, dry, no music, no reverb", ["a match is struck and a short fuse catches, a fizzing sputter",  # crackling sparks were a click, a steady hiss all above 9 kHz
+                                                                 "a small mischievous goblin giggles, a short high cackle",
+                                                                 "a short fuse sizzles and pops, sparks crackling"]),
+    "treant": ("impact", 2.0, MACHINE_STYLE, ["old wooden timbers creak slowly under strain, one long low creak",  # "creaks and groans as it bends" came back as a rustle
+                                              "a giant tree's branches creak and its leaves rustle",
+                                              "a deep wooden groan of a huge tree swaying"]),
+    "rune_golem": ("voice", 2.0, RUNE_STYLE, ["a deep magical hum pulses and swells briefly",
+                                              "a low resonant arcane drone swells and fades",
+                                              "a heavy stone thrum and a glowing magical hum"]),
 }
 BODIES = [name for name in FAMILIES if name not in RACE_FAMILIES]
 

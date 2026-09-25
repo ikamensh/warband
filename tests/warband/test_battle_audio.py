@@ -5,10 +5,11 @@ import random
 import pytest
 
 from saga2d import Game
-from warband.audio import sound
+from warband.audio import deaths, sound
 from warband.sim.model import Deposit, World
-from warband.sim.rules import BUILDINGS, UNITS, BuildingType, Resource, Terrain, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, SIM_DT, UNITS, BuildingType, Race, Resource, Terrain, UnitType, Upgrade
 from warband.ui.scene import GameScene
+from warband.ui.view import to_world
 
 
 def tick_until(game, condition, max_seconds: float = 4.0) -> None:
@@ -68,6 +69,7 @@ WEAPONS = {
     UnitType.FOOTMAN: "sword", UnitType.PEASANT: "axe", UnitType.KNIGHT: "lance",
     UnitType.ARCHER: "arrow", UnitType.CATAPULT: "stone", UnitType.CLERIC: "mote", BuildingType.TOWER: "arrow",
     UnitType.WOLF: "axe", UnitType.TROLL: "axe", UnitType.GOLEM: "hammer", UnitType.SPIDER: "arrow",
+    UnitType.GRYPHON: "hammer", UnitType.SAPPER: "stone", UnitType.TREANT: "hammer", UnitType.RUNE_GOLEM: "hammer",
 }
 
 
@@ -101,6 +103,43 @@ def test_killing_blow_keeps_the_targets_material(battle, target_type, material, 
         world.attack([attacker.id], target.id)
     tick_until(game, lambda: world.entity(target.id) is None)
     assert f"{weapon}_{material}" in scene.recent_sounds
+
+
+def test_a_lone_sapper_s_owner_sees_and_hears_its_blast_on_every_tick_of_the_fog(tmp_path, audio_files, monkeypatch):
+    """A sapper's eyes go up with its keg, and when the fog is looked at again the same step (every fourth) its spot is
+    dark by the time the scene reads the news.  Its owner still sees the blast, the camera shakes, and the boom and
+    the blow on the farm are heard: the sapper's death, which is its keg going up.  Started a tick later each time, one
+    of four blasts lands on that step."""
+    dark = []
+    for delay in range(4):
+        world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2, rng=random.Random(1), races=[Race.ORC, Race.HUMAN])
+        farm = world.place_building(1, BuildingType.FARM, (20, 10))
+        sapper = world.spawn_unit(0, UnitType.SAPPER, (14.5, 11.0))
+        world.place_building(0, BuildingType.TOWN_HALL, (1, 18))  # a side with a hall, out of sight of the farm
+        world.place_building(1, BuildingType.TOWN_HALL, (26, 18))
+        game = Game("Blast", backend="mock", save_dir=tmp_path / f"saves-{delay}")
+        try:
+            monkeypatch.setattr(sound, "sound_hook", sound.SoundBank(game, audio_files).play)
+            scene = GameScene(world, seed=1, settings={"tutorial": False})
+            scene.brains = []
+            game.push(scene)
+            scene.camera.center_on(*to_world(farm.center))
+            shakes = []
+            monkeypatch.setattr(scene.camera, "shake", lambda *args, **kwargs: shakes.append(args))
+            for _ in range(delay):
+                game.tick(SIM_DT)
+            world.attack([sapper.id], farm.id)
+            spot = sapper.pos
+            while sapper.id in world.units:
+                spot = sapper.pos
+                game.tick(SIM_DT)
+                assert world.time < 10.0, "the sapper never reached the farm"
+            dark.append(not world.is_visible(0, (int(spot[0]), int(spot[1]))))
+            assert deaths.cue("sapper") in scene.recent_sounds and shakes, f"started {delay} ticks late: the blast went unseen"
+            assert "stone_wood" in scene.recent_sounds, f"started {delay} ticks late: its blow on the farm went unheard"
+        finally:
+            game.close()
+    assert any(dark), "no blast landed where its owner no longer saw: the case this is for was never played"
 
 
 def test_mixed_battle_limits_voices_without_suppressing_alerts(battle):

@@ -109,6 +109,20 @@ SUBJECTS: dict[tuple[Race, UnitType], str] = {
                                            "iron frame with landing skids, a dwarf pilot in a helmet at the levers, a four-bladed iron rotor "
                                            "with blue tips above and a small propeller in front; the walk rows turn the rotor",
     (Race.DWARF, UnitType.CLERIC): f"a dwarven runepriest in a grey hooded robe with a blue sash ({TEAM}), holding a rune-carved staff",
+    # Each race's own unit (WB-068): a race fields its own alone.
+    (Race.HUMAN, UnitType.GRYPHON): f"a gryphon rider: a gryphon with a tawny lion's body and tail, a white eagle's head and breast, "
+                                    f"a golden hooked beak and broad brown feathered wings with a blue band ({TEAM}), flying; on its "
+                                    f"shoulders a knight in a blue surcoat ({TEAM}) and a steel helm holding the reins in one hand and a "
+                                    "short storm hammer with a steel head and a pale glowing rune in the other",
+    (Race.ORC, UnitType.SAPPER): f"a goblin sapper: a small green goblin with long pointed ears, goggles and a blue bandana and vest ({TEAM}), "
+                                 f"a big banded powder keg with a blue mark ({TEAM}) strapped high on its back, its lit fuse over the "
+                                 "shoulder",
+    (Race.ELF, UnitType.TREANT): f"a treant: a walking tree with a gnarled brown bark trunk on two root legs, branch arms with twig fingers, "
+                                 f"glowing pale yellow knot-hole eyes, a crown of spring-green leaves with blue blossoms ({TEAM}) and a blue "
+                                 f"vine wound round its middle ({TEAM})",
+    (Race.DWARF, UnitType.RUNE_GOLEM): f"a rune golem: a squat construct of dressed dark blue-grey slate blocks bound with brass bands, pale "
+                                       f"gold runes glowing on its chest, flanks and shoulders, a blue breastplate and blue tops to its "
+                                       f"shoulder blocks ({TEAM}), a slit of light for eyes and huge block fists",
 }
 CARRY = {None: ", carrying a woodcutter's axe (a pick-axe for dwarves, a crude axe for orcs)",
          Resource.GOLD: ", carrying a heavy sack of gold in both arms and nothing else (the axe is left behind)",
@@ -128,6 +142,16 @@ FIXES: dict[tuple[UnitType, Resource | None], str] = {
     (UnitType.CATAPULT, None): "the projectile sits in or on its launcher, never on top of the arm like a mace head; the launcher is empty after the shot; "
                                "the wheels have spokes and the carriage has a windlass with rope",
     (UnitType.CLERIC, None): "the staff is gripped in one hand; the raised hand in the strike frames glows softly",
+    (UnitType.GRYPHON, None): "the gryphon is in the air: nothing touches the ground and no shadow is painted under it (the game draws "
+                              "the shadow); its legs are tucked up; the rider sits astride its shoulders; exactly one hammer, in the rider's "
+                              "raised hand, drawn back in the wind-up and flung forward in the strike; every wing is exactly where the "
+                              "reference has it in that cell, at that angle",
+    (UnitType.SAPPER, None): "the keg is strapped on the goblin's back, never held out in front or floating; the fuse burns brightest in the "
+                             "wind-up row; the goblin carries no weapon",
+    (UnitType.TREANT, None): "the treant is one tree that walks: the arms are branches growing out of the trunk, raised overhead in the "
+                             "wind-up and brought down before it in the strike; the feet are roots; no face paint, no armour",
+    (UnitType.RUNE_GOLEM, None): "the golem is built of squared stone blocks, not rough boulders; the fists are raised in the wind-up and "
+                                 "slammed down before it in the strike; the runes are pale gold light cut into the stone, never blue",
 }
 RACE_FIXES: dict[tuple[Race, UnitType], str] = {
     (Race.ORC, UnitType.KNIGHT): "the ogre stands on its own two feet with no mount; both heads look towards the facing; the club is gripped in both hands",
@@ -148,6 +172,34 @@ INVENTORY: dict[UnitType, str] = {
     UnitType.FLYING_MACHINE: "one flying machine with one pilot, no weapon, no shield, no ground shadow",
     UnitType.CATAPULT: "one siege engine, one throwing arm or barrel, wheels, at most one projectile",
     UnitType.CLERIC: "one figure, one staff, no shield, no sword",
+    UnitType.GRYPHON: "one gryphon with two wings and one rider, exactly one hammer in the rider's hand, no shield, no ground shadow",
+    UnitType.SAPPER: "one goblin, one keg on its back, no weapon, no shield",
+    UnitType.TREANT: "one walking tree, two branch arms, two root legs, no weapon, no shield",
+    UnitType.RUNE_GOLEM: "one stone golem, two fists, no weapon, no shield",
+}
+#: The rows of a race's own unit whose blow is its own (the whole figure is not leaned, twisted or lunged:
+#: ``textures._SELF_POSED``), and the gryphon's walk, which is a wing beat.
+OWN_ROWS: dict[UnitType, dict[str, str]] = {
+    UnitType.GRYPHON: {"stand": "hovering: the wings a little above level, the hammer held upright",
+                       "walk1": "the wing beat: both wings raised high at the top of the stroke",
+                       "walk2": "the wing beat: both wings swept down to level",
+                       "walk3": "the wing beat: both wings pressed down at the bottom of the stroke",
+                       "walk4": "the wing beat: both wings rising again, a little above level",
+                       "wind": "the throw's wind-up: the hammer drawn far back over the rider's shoulder, the wings raised",
+                       "strike": "the throw: the rider's arm flung forward and down, the hammer before the gryphon's head",
+                       "follow": "follow-through: the hammer arm low and forward after the throw",
+                       "recover": "recovering: the hammer arm coming back up"},
+    UnitType.SAPPER: {"wind": "lighting the keg: the fuse flares bright over its shoulder",
+                      "strike": "the run: a long stride forward", "follow": "the run: the other stride",
+                      "recover": "the run: striding on"},
+    UnitType.TREANT: {"wind": "the swing's wind-up: both branch arms raised high overhead",
+                      "strike": "the swing: both arms brought crashing down before it",
+                      "follow": "follow-through: both arms low in front of it",
+                      "recover": "recovering: the arms coming back up to its sides"},
+    UnitType.RUNE_GOLEM: {"wind": "the slam's wind-up: both fists raised high overhead",
+                          "strike": "the slam: both fists brought down before it",
+                          "follow": "follow-through: both fists low on the ground before it",
+                          "recover": "recovering: the fists coming back up to its sides"},
 }
 #: A flying machine's rows are no walk and no blow: its stand, then its rotor turning (or its wings beating) through one
 #: period over the four walk frames (``textures._SPIN``, ``textures._WING_BEAT``), which the view plays on the clock.
@@ -166,6 +218,11 @@ FLYER_STYLE = ("Re-render every cell as a polished, appealing game sprite in a r
                "and canvas as the machine is built of them, light from the upper left. The machine flies: paint no shadow and no "
                "ground under it. Sprites will be shown at about half this size, so keep shapes bold and edges crisp; a moving "
                "blade or wing stays a crisp solid shape, never a motion blur.")
+GRYPHON_STYLE = ("Re-render every cell as a polished, appealing game sprite in a rich hand-painted fantasy style "
+                 "(Warcraft 2 / Heroes of Might and Magic feel): readable silhouette, volumetric shading, feathers, fur, metal "
+                 "highlights, light from the upper left. The gryphon flies: paint no shadow and no ground under it. Sprites will be "
+                 "shown at about half this size, so keep shapes bold and edges crisp; a beating wing stays a crisp solid shape, never "
+                 "a motion blur.")
 FLYER_JUDGE = """You are checking a repainted sprite sheet of one flying machine against its stand-ins. The image shows, for each
 row, the low-poly stand-in frames above and the painted frames below, labelled "row N: name" and "col N".
 
@@ -486,7 +543,11 @@ class Unit:
     def frame_name(self, frame: str) -> str:
         if self.flies:
             return (WING_ROWS if self.race is Race.ELF else ROTOR_ROWS)[frame]
-        return FRAME_NAMES[frame]
+        return OWN_ROWS.get(self.unit, {}).get(frame) or FRAME_NAMES[frame]
+
+    @property
+    def style(self) -> str:
+        return FLYER_STYLE if self.flies else GRYPHON_STYLE if self.unit is UnitType.GRYPHON else STYLE
 
     @property
     def description(self) -> str:
@@ -509,12 +570,16 @@ class Unit:
             keep = ("Keep exactly: each machine's position, scale, facing direction and height above the cell's floor, and the angle of "
                     "every rotor blade, propeller blade and wing; the blades and wings differ from row to row on purpose (the rotor turns, "
                     "the wings beat), so each row must keep its own angles, and the hull, pilot and fittings stay the same in every row.")
+        elif self.unit is UnitType.GRYPHON:
+            keep = ("Keep exactly: each figure's position, scale, facing direction and height above the cell's floor, the angle of both "
+                    "wings, and the rider's arm and hammer; the poses differ from row to row on purpose (a wing beat, then the phases "
+                    "of a throw), so each row must keep its own wings and arm.")
         else:
             keep = ("Keep exactly: each figure's position, scale, pose, facing direction, lean, twist, limb and weapon placement, and feet position; "
                     "the poses differ from row to row on purpose (a walk cycle and the phases of a blow), so each row must keep its own pose.")
         return (f"Edit target: the attached sprite sheet of one unit from a 2D real-time strategy game (Warcraft 2 style, 3/4 top-down camera). "
                 f"{geometry(sheet, 'figure centred')} Rows, top to bottom: {rows}. Columns, left to right: the unit facing {FACINGS}.\n\n"
-                f"The unit is {self.description}.\n\n{FLYER_STYLE if self.flies else STYLE}\n\n"
+                f"The unit is {self.description}.\n\n{self.style}\n\n"
                 f"{PLAUSIBLE} In particular: {RACE_FIXES.get((self.race, self.unit), FIXES[(self.unit, self.carrying)])}.\n\n"
                 f"{keep} {background(sheet)}")
 
@@ -1129,7 +1194,8 @@ def selected(args: argparse.Namespace) -> list[Subject]:
     everything = args.units is None and not args.buildings
     subjects: list[Subject] = []
     if args.units is not None or everything:
-        units = list(UnitType) if args.units in (None, "all") else [UnitType(u) for u in args.units.split(",")]
+        units = (list(filter(RACES[race].unit_allowed, RACES[race].units)) if args.units in (None, "all")
+                 else [UnitType(u) for u in args.units.split(",")])
         for unit in units:
             subjects.append(Unit(race, unit))
             if unit is UnitType.PEASANT:

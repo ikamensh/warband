@@ -25,10 +25,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from warband.sim import mapgen  # noqa: E402
 from warband.brains.ai import make_brain  # noqa: E402
 from warband.sim.model import World  # noqa: E402
-from warband.sim.rules import SIM_DT, Difficulty  # noqa: E402
+from warband.sim.rules import SIM_DT, Difficulty, Race  # noqa: E402
 
 SEEDS = (101, 102, 103, 104)
 MINUTES = 6
+#: Matches where a race's own unit takes the field (WB-068), Medium against Medium, orcs and elves: on seed 89 a sapper
+#: goes up by the sixth minute, on seed 24 a treant walks into the wood by then.  The standard set's matches are decided
+#: before a side has the Keep, so without them the compiled simulation was never held to the source on that code.
+#: Chosen by playing seeds (the AI's timelines are chaotic): when a rules or AI change moves the fingerprint, check they
+#: still do.
+OWN_UNITS_MATCHES = ((89, (Race.ORC, Race.ELF), 6), (24, (Race.ORC, Race.ELF), 6))
 SAMPLE_EVERY = 200  # steps, i.e. ten simulated seconds
 
 
@@ -54,6 +60,21 @@ def fingerprint(seeds=SEEDS, minutes: int = MINUTES) -> str:
         brains = [make_brain(0, Difficulty.HARD), make_brain(1, Difficulty.MEDIUM)]
         out.update(f"seed={seed};".encode())
         for step in range(int(minutes * 60 / SIM_DT)):
+            if world.winner is not None:
+                break
+            for b in brains:
+                b.think(world, rng)
+            world.step()
+            world.take_events()
+            if step % SAMPLE_EVERY == 0:
+                digest_world(world, out)
+        digest_world(world, out)
+    for seed, races, own_minutes in OWN_UNITS_MATCHES:
+        rng = random.Random(seed)
+        world = mapgen.generate(seed=seed, players=2, human=None, races=races)
+        brains = [make_brain(0, Difficulty.MEDIUM, seed), make_brain(1, Difficulty.MEDIUM, seed)]
+        out.update(f"own={seed};".encode())
+        for step in range(int(own_minutes * 60 / SIM_DT)):
             if world.winner is not None:
                 break
             for b in brains:

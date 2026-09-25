@@ -606,6 +606,43 @@ the five left are standoffs with both sides alive, not a lost peasant. The
 difficulty ladder above was measured again with the hunt and came out the
 same to the point: its matches are settled before a hunt starts.
 
+### Each race's own unit (WB-068)
+
+Both brain families (Medium's `Brain`, and `ProBrain` for Hard, Master and the bred postures) hand their race's own
+unit to `warband/brains/unique.py`: `wanted` says when it is the answer, by what the side knows, and a `Commander`,
+one per brain, steers the ones that stand, out of the army for as long as it has them on an errand.
+
+| unit | the answer when | what it is sent at |
+|---|---|---|
+| Gryphon Rider | the rival fields catapults or flyers with no more than 35 % shooters, or five soldiers or more with 15 % shooters or fewer | the nearest flyer, catapult or lone shooter in sight, never by a known tower or three shooters |
+| Goblin Sapper | two rival towers known, or a rival hall within 45 tiles | a tower or hall the push is at, or one within 15 tiles no soldier guards or stands on the way to; turns back when caught, and goes up among three rivals |
+| Treant | a forest route to the nearest rival building is 0.85 of the walk round or less (planned once a pair) | while the army pushes, the rival building by the most trees within 14 tiles of the push |
+| Rune Golem | five or more rival melee seen, three fifths of the soldiers | the thickest knot of three or more rival melee within its sight and two |
+
+What a side has seen is Master's memory (`remembered`, the most of each kind at once) and, for Medium, what it sees
+now. Every question is asked under the fog: rival units it sees, and rival buildings as its side last saw them
+(`KnownBuilding`: where, what kind, whether it shot), so one razed out of sight still stands to it, and a sapper or a
+treant sent at a building out of sight walks to where it remembers it and goes at it once it sees it. A brain on a
+seat's snapshot online decides from the same knowledge as in the arena. It buys the unit only with an army of eight to lead or 6000 idle gold, claims the bank for it behind the plan's
+soldiers (`pro_economy.UNIQUE_CLAIM`), researches the Keep first and keeps the hall free of peasants for it once it can
+pay, and raises the Keep and the building that trains it from idle gold alone: the price of doing so from an army's
+money is in [balance.md](balance.md#each-races-own-unit-wb-068-2026-09-25). `ProProfile.unique` (and
+`make_brain(own_units=False)`, which the arena's `*-nounique` agents and `race_report.py --without-own-units` use) is
+the same brain without it. Each decision has a test on a staged world (`tests/warband/test_own_units_brains.py`).
+
+A brain that may buy its own unit against its twin that may not, 200 seeds from 2000, both corners (`tools/arena.py
+ladder`, sizes and layouts cycled by seed):
+
+| | games | score of the one with its own unit |
+|---|---:|---:|
+| Master against `master-nounique` | 400 | 49.8% |
+| Medium against `medium-nounique` | 400 | 48.5% |
+| Grandmaster against `grandmaster-nounique` (100 seeds) | 200 | 52.0% |
+
+Level, every one inside its interval (±2.5 points a sigma at 400 games): Master rarely reaches its unit before a
+match is decided, and where Medium and the bred postures do, it neither wins them the match nor costs it. (Measured
+before the brain was held to the fog; the race report after it is in balance.md.)
+
 ### What the 2000 still needs
 
 Every probe of this brain's numbers lands within a hundred points of

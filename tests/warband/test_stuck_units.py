@@ -61,12 +61,14 @@ def field(width: int = 40, height: int = 24, walls: frozenset[tuple[int, int]] =
     return World(width, height, terrain, 2, rng=random.Random(5))
 
 
-def every_kind(world: World, at: tuple[float, float], each: int = 3) -> list:
-    """*each* of every unit type in a loose block: the whole spread of bodies in one crowd."""
+def every_kind(world: World, at: tuple[float, float], each: int = 2, rows: int = 8) -> list:
+    """*each* of every unit type in a loose block, a row of each kind and *rows* kinds a column: the whole spread of
+    bodies in one crowd (two of each since each race has a unit of its own: fifteen kinds, and three of each doubled
+    the fast tier's longest test)."""
     crowd = []
     for i, unit_type in enumerate(UnitType):
         for j in range(each):
-            crowd.append(world.spawn_unit(0, unit_type, (at[0] + 1.4 * j, at[1] + 1.4 * i)))
+            crowd.append(world.spawn_unit(0, unit_type, (at[0] + 1.4 * (j + (each + 0.5) * (i // rows)), at[1] + 1.4 * (i % rows))))
     return crowd
 
 
@@ -109,11 +111,13 @@ def test_a_crowd_packed_on_one_spot_pushes_itself_apart():
 
 @pytest.mark.slow
 def test_twice_the_crowd_through_the_same_gate_still_clears():
-    """Forty-two units, six of every kind, queueing through one open tile: minutes of simulation, the
-    slow tier.  The doubled queue is where a wedge shows up first -- a catapult in the gate with a
-    knight coming the other way -- and the watchdog above is what says it did."""
+    """Ninety units, six of every kind, queueing through one open tile: minutes of simulation, the slow tier.  The
+    long queue is where a wedge shows up first -- a catapult in the gate with a knight coming the other way -- and
+    the watchdog above is what says it did.  The kinds stand in one column: two columns six deep would put the
+    second in the wall."""
     world = field(walls=frozenset((20, y) for y in range(24) if y != GATE_Y))
-    crowd = every_kind(world, (6.0, 2.0), each=6)
+    crowd = every_kind(world, (6.0, 2.0), each=6, rows=len(UnitType))
+    assert all(u.x < 19 for u in crowd), "the crowd starts on this side of the wall"
     world.move([u.id for u in crowd], (30.5, 12.5))
     watch = Watch()
     play(world, 240.0, watch)

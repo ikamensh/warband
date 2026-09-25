@@ -37,7 +37,7 @@ from saga2d import Game
 from sagaforge import render3d as r3
 from sagaforge import restyle
 from sagaforge.render3d import Mesh
-from warband.sim.rules import BUILDINGS, BUILT, GOLD_PER_TRIP, PLAYABLE_UNITS, PLAYERS, BuildingType, MapTheme, Race, Resource, Terrain, UnitType
+from warband.sim.rules import BUILDINGS, BUILT, GOLD_PER_TRIP, PLAYABLE_UNITS, PLAYERS, UNITS, BuildingType, MapTheme, Race, Resource, Terrain, UnitType
 
 TILE = 32
 ELEVATION = 50.0
@@ -1716,10 +1716,10 @@ MOUNTED = (UnitType.KNIGHT,)
 
 def _posed(mesh: Mesh, frame: str, unit_type: UnitType) -> Mesh:
     """Apply the frame's :class:`Pose`.  Riders and their mounts only lunge (a leaning horse
-    lifts its hooves); a catapult recoils instead of lunging; a flying machine keeps its frame (its
-    frames turn its rotor or beat its wings, :func:`_flyer`)."""
+    lifts its hooves); a catapult recoils instead of lunging; the figures in :data:`_SELF_POSED` keep their frame (a
+    flying machine's frames turn its rotor or beat its wings, :func:`_flyer`; a race's own unit swings its own limbs)."""
     pose = POSES.get(frame)
-    if pose is None or unit_type is UnitType.FLYING_MACHINE:
+    if pose is None or unit_type in _SELF_POSED:  # a flyer's body stays level in the air; a race's own unit moves its own limbs
         return mesh
     if unit_type is UnitType.CATAPULT:
         return _shift(mesh, (0.0, {"strike": -0.06, "follow": -0.03}.get(frame, 0.0), 0.0))
@@ -1737,7 +1737,7 @@ def _posed(mesh: Mesh, frame: str, unit_type: UnitType) -> Mesh:
 
 def _unit(unit_type: UnitType, player: int, frame: str, carrying: Resource | None, race: Race = Race.HUMAN) -> Mesh:
     mesh = _posed(_unit_mesh(unit_type, player, frame, carrying, race), frame, unit_type)
-    if unit_type not in (UnitType.CATAPULT, UnitType.FLYING_MACHINE):  # machines are built, not grown: no race's proportions
+    if unit_type not in _OWN_PROPORTIONS:  # machines are built, not grown, and a race's own unit is modelled as it is
         mesh = _stretch(mesh, *LOOKS[race].stretch)
     return r3.scale(mesh, UNIT_SCALE)
 
@@ -2248,6 +2248,190 @@ def _healer(player: int, frame: str, race: Race) -> Mesh:
     return mesh + staff
 
 
+# -- Each race's own unit (WB-068) ------------------------------------------------------------------------------------
+#
+# The stand-ins the painter repaints (``tools/restyle.py``, ``docs/adding-a-unit.md``), and what is drawn without a sheet.
+# Each is one race's, so each is modelled at its own proportions and takes no race's stretch (:data:`_OWN_PROPORTIONS`).
+
+FEATHER = (236, 230, 214)  # a gryphon's white head and breast
+TAWNY = (196, 150, 84)  # its lion's hide
+PINION = (150, 110, 64)  # its wing feathers
+BEAK = (232, 184, 64)
+KEG = (122, 82, 46)  # a sapper's powder keg
+FUSE = (255, 196, 90)
+BARK = (104, 76, 50)  # a treant's trunk and limbs
+BARK_DARK = (70, 50, 34)
+BLOSSOM_EYE = (250, 236, 150)  # the light in a treant's knot-hole eyes
+TREANT_LEAF = (118, 170, 70)  # its crown: a spring green no map's woods are drawn in
+RUNESTONE = (104, 112, 128)  # a rune golem's dressed slate: bluer and darker than the wild golem's granite
+RUNESTONE_DARK = (70, 76, 90)
+RUNE_GLOW = (255, 238, 170)  # the runes cut into it, lit: a pale gold no team's recolour takes for its own
+_HAMMER_SWING = {"wind": 70.0, "strike": -70.0, "follow": -95.0, "recover": -30.0}  # degrees the rider's arm is pitched
+_LIMB_SWING = {"wind": 150.0, "strike": 35.0, "follow": 5.0, "recover": 40.0}  # a treant's or golem's arms: overhead, then down before it
+
+
+def _gryphon(player: int, frame: str, race: Race) -> Mesh:
+    """A gryphon with its rider, nose along +y and well off the ground (the view lifts it, as it does a flying machine):
+    a tawny lion's body, a white eagle's head and breast, wings that beat through the walk frames, and the rider in the
+    team's colour with a storm hammer raised back in the wind-up and thrown forward in the blow."""
+    team = team_color(player)
+    look = LOOKS[race]
+    beat = _WING_BEAT.get(frame, {"wind": 30.0, "strike": -12.0, "follow": -4.0, "recover": 8.0}.get(frame, 12.0))  # a throw's own beat
+    mesh = _ellipsoid((0, -0.06, 0.52), (0.19, 0.4, 0.18), (TAWNY, TAWNY, darker(TAWNY, 0.9), TAWNY, TAWNY, darker(TAWNY, 0.85)))
+    mesh += r3.sphere((0, 0.24, 0.6), 0.17, FEATHER, rings=4, sides=8)  # the breast
+    mesh += r3.sphere((0, 0.42, 0.78), 0.12, FEATHER, rings=4, sides=8)  # the head
+    mesh += r3.box((0, 0.55, 0.76), (0.07, 0.12, 0.06), BEAK)
+    mesh += r3.box((0, 0.61, 0.73), (0.05, 0.04, 0.05), darker(BEAK, 0.7))  # its hooked tip
+    for side in (-1, 1):
+        mesh += r3.box((side * 0.07, 0.49, 0.82), (0.03, 0.03, 0.03), INK)  # the eyes
+        mesh += _unit_panel([(side * 0.05, 0.36, 0.86), (side * 0.11, 0.3, 0.98), (side * 0.08, 0.4, 0.88)], FEATHER)  # ear tufts
+        for y, reach in ((0.26, 0.12), (-0.28, -0.04)):  # fore talons and hind paws, tucked up in flight
+            mesh += _unit_rod((side * 0.12, y, 0.44), (side * 0.13, y + reach, 0.28), 0.045, BEAK if y > 0 else TAWNY)
+        wing = _unit_panel([(side * 0.12, 0.2, 0.62), (side * 0.5, 0.26, 0.7), (side * 1.02, 0.02, 0.76),
+                            (side * 0.78, -0.18, 0.72), (side * 0.12, -0.2, 0.6)], PINION)
+        wing += _unit_panel([(side * 0.5, 0.2, 0.705), (side * 0.98, 0.0, 0.765), (side * 0.72, -0.12, 0.725)], team)  # a painted band
+        wing += _unit_panel([(side * 0.14, 0.12, 0.625), (side * 0.5, 0.18, 0.705), (side * 0.5, -0.1, 0.69), (side * 0.14, -0.12, 0.615)],
+                            darker(PINION, 0.82))
+        mesh += _roll(wing, side * beat, (0.0, 0.0, 0.62))
+    mesh += _unit_rod((0, -0.42, 0.54), (0, -0.74, 0.66), 0.035, TAWNY)  # the tail and its tuft
+    mesh += r3.sphere((0, -0.76, 0.67), 0.07, darker(TAWNY, 0.7), rings=3, sides=6)
+    # The rider, astride its shoulders: team surcoat, a helm, and the hammer arm.
+    mesh += r3.box((0, 0.04, 0.72), (0.34, 0.26, 0.05), look.leather)  # the saddle
+    mesh += r3.cylinder((0, 0.02, 0.72), 0.12, 0.26, team, sides=8)
+    mesh += _unit_head((0, 0.05, 1.08), 0.11, race=race)
+    mesh += _helm(1.12, race, team, radius=0.13)
+    shoulder = (0.14, 0.04, 0.94)
+    arm = _unit_rod(shoulder, (0.2, 0.2, 0.86), 0.045, team)
+    arm += _unit_rod((0.2, 0.2, 0.86), (0.2, 0.2, 1.3), 0.03, WOOD_DARK)  # the haft, held upright at rest
+    arm += r3.box((0.2, 0.2, 1.34), (0.16, 0.1, 0.12), look.metal)  # the head
+    arm += r3.box((0.2, 0.26, 1.34), (0.06, 0.02, 0.06), RUNE_GLOW)  # the storm in it
+    mesh += _unit_pitch(arm, _HAMMER_SWING.get(frame, 0.0), shoulder)
+    mesh += _unit_rod((-0.14, 0.04, 0.94), (-0.1, 0.24, 0.82), 0.045, team)  # the rein hand
+    return mesh
+
+
+def _sapper(player: int, frame: str, race: Race) -> Mesh:
+    """A goblin sapper: small, green, big-eared and goggled, a team-coloured vest and bandana, and a powder keg bigger
+    than its chest held before it, its fuse lit brighter as it winds up for the end."""
+    team = team_color(player)
+    look = LOOKS[race]
+    skin = look.skin
+    bob = _BOB.get(frame, 0.0)
+    mesh = _shadow(0.28) + _legs(frame, (78, 66, 52), spread=0.07)
+    mesh += r3.cylinder((0, 0, 0.24 + bob), 0.15, 0.3, team, sides=8)  # the vest
+    mesh += r3.cylinder((0, 0, 0.3 + bob), 0.155, 0.05, look.leather, sides=8)  # a belt
+    head = (0, 0.02, 0.68 + bob)
+    mesh += r3.sphere(head, 0.14, skin, rings=4, sides=8)
+    mesh += r3.box((0, 0.15, 0.66 + bob), (0.05, 0.06, 0.05), darker(skin, 0.8))  # a pointed nose
+    mesh += r3.box((0, 0.12, 0.72 + bob), (0.2, 0.04, 0.05), INK)  # goggles
+    for side in (-1, 1):
+        mesh += r3.box((side * 0.055, 0.14, 0.72 + bob), (0.05, 0.02, 0.04), (200, 230, 240))
+        mesh += _unit_panel([(side * 0.1, 0.0, 0.72 + bob), (side * 0.32, -0.06, 0.82 + bob), (side * 0.12, -0.02, 0.64 + bob)], skin)  # ears
+    mesh += r3.cylinder((0, 0.01, 0.76 + bob), 0.145, 0.04, team, sides=8)  # a bandana
+    mesh += r3.cone((0, -0.04, 0.8 + bob), 0.06, 0.12, team, sides=5)  # its knot
+    # The keg, strapped high on its back (a load held out before it swung the figure about as it turned), its bands
+    # iron, its owner's mark on it and its fuse over the goblin's shoulder, alight and brighter as it winds up.
+    kz = 0.62 + bob
+    keg = r3.cylinder((0, -0.2, kz - 0.18), 0.16, 0.36, KEG, sides=10)
+    for z in (kz - 0.12, kz + 0.1):
+        keg += r3.cylinder((0, -0.2, z), 0.166, 0.035, IRON, sides=10)
+    for side in (-1, 1):
+        keg += r3.box((side * 0.165, -0.2, kz), (0.02, 0.12, 0.1), team)  # its owner's mark, seen from either side
+    keg += r3.box((0, -0.36, kz), (0.12, 0.02, 0.1), team)
+    lit = frame == "wind"
+    keg += _unit_rod((0.02, -0.2, kz + 0.18), (0.1, -0.12, kz + 0.34), 0.018, INK)  # the fuse
+    keg += r3.sphere((0.1, -0.12, kz + 0.36), 0.065 if lit else 0.04, FUSE, rings=3, sides=6)
+    if lit:
+        keg += r3.sphere((0.1, -0.12, kz + 0.36), 0.09, (255, 240, 180), rings=3, sides=6)
+    mesh += keg
+    for side in (-1, 1):
+        mesh += _unit_rod((side * 0.15, 0.0, 0.52 + bob), (side * 0.13, -0.12, 0.64 + bob), 0.045, skin)  # hands on the straps
+    return r3.scale(mesh, 1.15)  # a goblin is small, but its keg must read at the game's zoom
+
+
+def _treant(player: int, frame: str, race: Race) -> Mesh:
+    """A walking tree: a gnarled trunk on two root legs, branch arms raised in the wind-up and brought crashing down in
+    the blow, a crown of leaves, knot-hole eyes, and a vine of the team's colour wound round its middle with blossoms of
+    it in the crown."""
+    team = team_color(player)
+    swing = _LEG_SWING.get(frame, 0.0)
+    lift = _LEG_LIFT.get(frame, (0.0, 0.0))
+    mesh = _shadow(0.46)
+    for x, step, up in ((-0.15, swing, lift[0]), (0.15, -swing, lift[1])):
+        mesh += _branch((x * 0.7, 0.0, 0.46), (x * 1.2, step * 1.2, 0.05 + up), 0.1, 0.07, BARK_DARK)
+        for toe in (-0.1, 0.0, 0.1):  # root toes
+            mesh += _unit_rod((x * 1.2, step * 1.2, 0.06 + up), (x * 1.2 + toe * 1.4, step * 1.2 + 0.16, 0.02 + up), 0.035, BARK_DARK, sides=4)
+    mesh += _branch((0, 0, 0.4), (0.02, 0.02, 1.34), 0.25, 0.18, BARK)
+    for z in (0.62, 0.9):  # bark ridges
+        mesh += r3.cylinder((0, 0, z), 0.235, 0.04, BARK_DARK, sides=7)
+    mesh += r3.cylinder((0, 0, 0.7), 0.245, 0.12, team, sides=8)  # the vine
+    for side in (-1, 1):
+        mesh += r3.box((side * 0.08, 0.2, 1.1), (0.07, 0.03, 0.05), BLOSSOM_EYE)  # knot-hole eyes, lit
+    mesh += r3.box((0, 0.21, 0.96), (0.14, 0.03, 0.03), BARK_DARK)  # a mouth like a split
+    # A crown of its own, a paler spring green than any forest it walks through, so it is seen among the trees.
+    leaf, light = TREANT_LEAF, darker(TREANT_LEAF, 1.18)
+    for (x, y, z), radius in (((0.0, -0.04, 1.5), 0.34), ((-0.22, 0.02, 1.38), 0.24), ((0.22, -0.02, 1.4), 0.24),
+                              ((0.0, 0.14, 1.36), 0.22), ((0.04, -0.16, 1.72), 0.2)):
+        mesh += r3.sphere((x, y, z), radius, leaf if z < 1.5 else light, rings=3, sides=7)
+    for x, y, z in ((-0.28, 0.16, 1.46), (0.26, 0.18, 1.5), (0.06, 0.3, 1.46), (-0.08, -0.1, 1.86), (0.2, -0.2, 1.62),
+                    (-0.24, -0.16, 1.6)):
+        mesh += r3.sphere((x, y, z), 0.09, team, rings=2, sides=5)  # blossoms of the team's colour
+    for side in (-1, 1):
+        shoulder = (side * 0.22, 0.0, 1.14)
+        arm = _branch(shoulder, (side * 0.4, 0.14, 0.72), 0.075, 0.05, BARK)
+        arm += _branch((side * 0.4, 0.14, 0.72), (side * 0.42, 0.3, 0.52), 0.05, 0.03, BARK_DARK)  # twig fingers
+        arm += r3.sphere((side * 0.4, 0.18, 0.74), 0.07, leaf, rings=2, sides=5)
+        mesh += _unit_pitch(arm, _LIMB_SWING.get(frame, 0.0), shoulder)
+    return mesh
+
+
+def _rune_golem(player: int, frame: str, race: Race) -> Mesh:
+    """A rune golem: dressed blocks of dark slate squared by dwarven masons, where the wild golem is rough granite, bound
+    with brass, runes cut into its chest and shoulders glowing, a plate of the team's colour on its breast, and a slit of
+    light for eyes.  Its fists come up in the wind-up and down on the ground in the slam."""
+    team = team_color(player)
+    look = LOOKS[race]
+    swing = _LEG_SWING.get(frame, 0.0) * 0.6
+    lift = _LEG_LIFT.get(frame, (0.0, 0.0))
+    mesh = _shadow(0.5)
+    for side, step, up in ((-1, swing, lift[0]), (1, -swing, lift[1])):  # a foot lifted as it passes: no two strides alike
+        mesh += r3.box((side * 0.22, step + 0.04, 0.1 + up * 0.5), (0.26, 0.34, 0.2), RUNESTONE_DARK)  # feet
+        mesh += r3.box((side * 0.22, step * 0.5, 0.36 + up * 0.5), (0.22, 0.24, 0.34), RUNESTONE)  # legs
+        mesh += r3.box((side * 0.22, step * 0.5, 0.36 + up * 0.5), (0.235, 0.03, 0.05), look.metal)  # a brass band
+    mesh += r3.box((0, 0, 0.62), (0.44, 0.36, 0.18), RUNESTONE_DARK)  # the waist
+    mesh += r3.box((0, 0.02, 0.98), (0.66, 0.56, 0.54), RUNESTONE)  # the chest, deep as a block of the mason's
+    mesh += r3.box((0, -0.28, 1.06), (0.46, 0.12, 0.34), RUNESTONE_DARK)  # a hunch of stone on its back
+    mesh += r3.box((0, 0.305, 1.0), (0.26, 0.02, 0.3), team)  # the breastplate
+    mesh += r3.box((0, 0.318, 1.0), (0.04, 0.012, 0.22), RUNE_GLOW)  # a rune down it
+    mesh += r3.box((0, 0.318, 1.07), (0.16, 0.012, 0.035), RUNE_GLOW)  # and across
+    for side in (-1, 1):
+        mesh += r3.box((side * 0.335, 0.02, 1.0), (0.012, 0.3, 0.035), RUNE_GLOW)  # runes down its flanks, seen from aside
+    for z in (0.78, 1.15):
+        mesh += r3.box((0, 0.02, z), (0.68, 0.58, 0.04), look.metal)  # brass binding round the chest
+    mesh += r3.box((0, 0.1, 1.4), (0.26, 0.28, 0.22), RUNESTONE)  # the head, sunk between the shoulders
+    mesh += r3.box((0, 0.245, 1.42), (0.18, 0.012, 0.04), RUNE_GLOW)  # its eye slit
+    mesh += r3.box((0, 0.1, 1.53), (0.28, 0.3, 0.04), look.metal)  # a brass crown band
+    for side in (-1, 1):
+        shoulder = (side * 0.42, 0.0, 1.14)
+        mesh += r3.box((side * 0.42, 0.0, 1.18), (0.26, 0.34, 0.24), RUNESTONE_DARK)  # a pauldron block
+        mesh += r3.box((side * 0.42, 0.172, 1.2), (0.03, 0.012, 0.14), RUNE_GLOW)  # a rune on it
+        mesh += r3.box((side * 0.42, 0.0, 1.31), (0.27, 0.35, 0.03), team)  # its owner's colour on top, seen from every side
+        arm = r3.box((side * 0.44, 0.06, 0.86), (0.18, 0.2, 0.42), RUNESTONE)
+        arm += r3.box((side * 0.46, 0.12, 0.56), (0.26, 0.28, 0.24), RUNESTONE_DARK)  # a fist
+        arm += r3.box((side * 0.46, 0.12, 0.7), (0.27, 0.29, 0.03), look.metal)
+        mesh += _unit_pitch(arm, _LIMB_SWING.get(frame, 0.0), shoulder)
+    return mesh
+
+
+#: Figures that move their own limbs through a blow, and are not leaned, twisted or lunged by :data:`POSES`: a flyer stays
+#: level in the air, and a race's own walker keeps its feet planted (the whole-figure lunge hopped them off the anchor).
+_SELF_POSED: frozenset[UnitType] = frozenset({UnitType.FLYING_MACHINE, UnitType.GRYPHON, UnitType.SAPPER, UnitType.TREANT,
+                                              UnitType.RUNE_GOLEM})
+#: Each race's own unit is modelled at its own proportions: the race's stretch is not put on top.
+_OWN_PROPORTIONS: frozenset[UnitType] = frozenset({UnitType.CATAPULT, UnitType.FLYING_MACHINE, UnitType.GRYPHON, UnitType.SAPPER,
+                                                    UnitType.TREANT, UnitType.RUNE_GOLEM})
+
+
 def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource | None, race: Race = Race.HUMAN) -> Mesh:
     if unit_type is UnitType.PEASANT:
         return _worker(player, frame, carrying, race)
@@ -2263,6 +2447,14 @@ def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource 
         return _siege(player, frame, race)
     if unit_type is UnitType.CLERIC:
         return _healer(player, frame, race)
+    if unit_type is UnitType.GRYPHON:
+        return _gryphon(player, frame, race)
+    if unit_type is UnitType.SAPPER:
+        return _sapper(player, frame, race)
+    if unit_type is UnitType.TREANT:
+        return _treant(player, frame, race)
+    if unit_type is UnitType.RUNE_GOLEM:
+        return _rune_golem(player, frame, race)
     raise ValueError(unit_type)
 
 
@@ -2376,8 +2568,9 @@ RESTYLED = Path(__file__).resolve().parents[1] / "assets" / "restyled"
 #: a creature, with neither a painted sheet nor a row here fails ``tests/warband/test_painted_sheets.py``; so does a
 #: row for one that is painted.  ``docs/adding-a-unit.md`` ("Its art") is how a unit leaves it.
 UNPAINTED_UNITS: dict[UnitType, tuple[str, str]] = {}
-#: A flyer's frames that are one picture: it strikes no blow, so its stand serves the attack frames too (:func:`_flyer`
-#: turns its rotor or beats its wings in the walk frames alone), rendered or painted once rather than five times a facing.
+#: An unarmed flyer's frames that are one picture: it strikes no blow, so its stand serves the attack frames too
+#: (:func:`_flyer` turns its rotor or beats its wings in the walk frames alone), rendered or painted once rather than
+#: five times a facing.
 _STILL_POSES = ("stand",) + ATTACK_FRAMES
 
 
@@ -2577,6 +2770,8 @@ def warm_units(game: Game, players: list[int], races: list[Race] | None = None):
         for index, player in enumerate(players):
             race = races[index] if races is not None else Race.HUMAN
             for unit_type in PLAYABLE_UNITS:  # a creature is nobody's: warband.art.monsters warms those
+                if UNITS[unit_type].race not in (None, race):
+                    continue  # another race's own unit never takes the field for this seat
                 carries: tuple[Resource | None, ...] = (None, Resource.GOLD, Resource.LUMBER) if unit_type is UnitType.PEASANT else (None,)
                 for carrying in carries:
                     if (restyled_frames(race, unit_type, carrying) is None) != procedural:
@@ -2680,6 +2875,24 @@ def _venom(size: int) -> Image.Image:
     return Image.alpha_composite(halo, core)
 
 
+def _fireball(size: int) -> Image.Image:
+    """A sapper's keg going up: a white-hot core in yellow and orange fire, all of it fading out inside the canvas."""
+    fire = _glow(size, 0.32, (255, 132, 40, 225), 0.07)
+    fire = Image.alpha_composite(fire, _glow(size, 0.21, (255, 206, 84, 240), 0.05))
+    return Image.alpha_composite(fire, _glow(size, 0.1, (255, 250, 228, 255), 0.03))
+
+
+def _storm(size: int) -> Image.Image:
+    """A gryphon rider's storm hammer in the air: an iron head in a crackle of blue-white light, a spark on each side."""
+    halo = _glow(size, 0.26, (110, 190, 255, 225), 0.08)
+    core = _glow(size, 0.12, (236, 248, 255, 255), 0.04)
+    image = Image.alpha_composite(halo, core)
+    draw = ImageDraw.Draw(image)
+    c, r = size / 2, size * 0.16
+    draw.rectangle((c - r, c - r * 0.7, c + r, c + r * 0.7), fill=(*IRON, 255), outline=(*INK, 255))
+    return image
+
+
 #: The crack of a ley rift, in the rift's own square (0-1 each way): a jagged line across it, wider in the middle.
 RIFT_CRACK = ((0.1, 0.34), (0.27, 0.4), (0.36, 0.28), (0.52, 0.47), (0.66, 0.5), (0.63, 0.66), (0.9, 0.72))
 RIFT_WIDTH = (0.03, 0.07, 0.1, 0.13, 0.1, 0.07, 0.03)
@@ -2765,6 +2978,9 @@ def register_static(game: Game) -> None:
     assets.image_from_pil("stone", _glow(int(px * 0.4), 0.36, (150, 140, 128, 255), 0.06))
     assets.image_from_pil("mote", _mote(int(px * 0.7)))
     assets.image_from_pil("venom", _venom(int(px * 0.6)))
+    assets.image_from_pil("storm", _storm(int(px * 0.7)))
+    assets.image_from_pil("fireball", _fireball(int(px * 2)))
+    assets.image_from_pil("puff", _glow(px, 0.26, (58, 54, 54, 200), 0.08))  # smoke whose soft edge stays inside the canvas
     assets.image_from_pil("rift", rift_image(scale))
     assets.image_from_pil("drop", _glow(max(6, int(px * 0.3)), 0.42, (*WHITE, 255), 0.08))  # a droplet, a chip: a dot with an edge, tinted by its spray
     assets.image_from_pil("stain", _glow(int(px * 1.2), 0.36, (*WHITE, 255), 0.12))  # a soft blotch on the ground, tinted dark red; the blur stays inside the canvas

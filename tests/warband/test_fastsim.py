@@ -16,6 +16,7 @@ import random
 import shutil
 import subprocess
 import sys
+import time
 from array import array
 from pathlib import Path
 
@@ -105,10 +106,10 @@ def test_a_machine_that_cannot_compile_runs_the_source_and_says_so(tmp_path: Pat
     assert not fastsim.compiled() and not any(tmp_path.iterdir())
 
 
-#: A world with a shot in flight and a unit queued with every kind of order, saved and loaded back: the state the
-#: game's quick-save, the autosave and the online snapshots write.
+#: A world with a shot in flight and a unit queued with every kind of order, saved as JSON and loaded back: the state
+#: the game's quick-save, the autosave and the online snapshots write.
 SAVED = """
-import hashlib, json, random
+import json, random
 from warband.sim.model import (Attack, AttackMove, Build, Deposit, Harvest, Heal, Hold, Move, Patrol, Repair, Salvage,
                                World)
 from warband.sim.rules import BuildingType, Terrain, UnitType
@@ -127,17 +128,51 @@ def saved():
                            Harvest((3, 9)), Deposit(hall.id, auto=True), Build(BuildingType.FARM, (9, 2), plan_if_short=True),
                            Hold(), Heal(archer.id), Patrol((1.5, 9.5), (6.5, 9.5), outbound=False), Repair(hall.id),
                            Salvage(hall.id)])
-    data = World.from_dict(world.to_dict()).to_dict()
-    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+    data = json.dumps(world.to_dict())
+    assert json.dumps(World.from_dict(json.loads(data)).to_dict()) == data, "the save loads back as another world"
+    return data
 """
 
 
 def test_a_world_the_compiled_simulation_saves_is_the_one_the_source_saves() -> None:
     """Saving reads every order's and every shot's fields, and a class compiled by mypyc has no ``__dict__`` to read
-    them from: the fuzzer's monkey, which plays on the compiled simulation, pressed F5 (seed 91) and the save raised."""
+    them from: the fuzzer's monkey, which plays on the compiled simulation, pressed F5 (seeds 83 and 91) and the save
+    raised.  The saves are compared as written, so the keys' order counts too."""
     namespace: dict = {}
     exec(SAVED, namespace)
     assert _run_compiled(SAVED + "print(saved())\n").strip() == namespace["saved"]()
+
+
+def test_a_new_build_prunes_what_no_process_has_started_on_for_days(tmp_path: Path, monkeypatch) -> None:
+    """Old builds, the staging of an interrupted one and what an earlier prune left half removed go; a recent build,
+    the one just made, the one this process runs and a frozen app's copy stay."""
+    builds, shipped = tmp_path / "build" / "fastsim", tmp_path / "assets" / "fastsim"
+    monkeypatch.setattr(fastsim, "BUILDS", builds)
+    monkeypatch.setattr(fastsim, "SHIPPED", shipped)
+    day = 24 * 3600
+
+    def made(folder: Path, name: str, days: float) -> Path:
+        (folder / name / "warband" / "sim").mkdir(parents=True)
+        (folder / name / "constants.json").write_text("{}", encoding="utf-8")
+        os.utime(folder / name, (time.time() - days * day,) * 2)
+        return folder / name
+
+    old, interrupted, half_pruned = made(builds, "a" * 20, 4), made(builds, "b" * 20 + "-x1y2z3", 5), made(builds, "c" * 20 + ".pruned", 9)
+    recent, running, new = made(builds, "d" * 20, 2.5), made(builds, "e" * 20, 30), made(builds, "f" * 20, 30)
+    frozen = made(shipped, "a" * 20, 30)
+    monkeypatch.setenv(fastsim.ENV, str(running))
+    fastsim.prune(keep=new)
+    assert sorted(p.name for p in builds.iterdir()) == sorted(p.name for p in (recent, running, new))
+    assert frozen.is_dir() and not any(p.exists() for p in (old, interrupted, half_pruned))
+
+
+def test_an_activation_marks_its_build_in_use() -> None:
+    """What prune() spares is what a process started on lately: attaching touches the build, a worker's too."""
+    build = fastsim.build()
+    os.utime(build, (0, 0))
+    done = _python(f"from warband.league import fastsim\nfastsim.attach({str(build)!r})\n")
+    assert done.returncode == 0, done.stderr
+    assert time.time() - build.stat().st_mtime < 600
 
 
 def test_a_build_of_other_sources_is_refused(tmp_path: Path) -> None:

@@ -4,7 +4,8 @@
 # See docs/balance.md for validation.
 #
 # Conventions: times are seconds, distances tiles. `trains` and `researches`
-# name what the building makes; `requires` names the building that must stand
+# name what the building makes (a race's own unit is listed at its building and
+# offered to that race alone); `requires` names the building that must stand
 # first (omit it when there is none); `deposits` names what can be delivered
 # there. The tower's `damage`, `range` and `cooldown` are its shot; every other
 # building leaves them at zero.
@@ -129,7 +130,7 @@ sight = 4
 supply = 0
 hotkey = "s"
 summary = "Trains knights; breeds faster horses"
-trains = ["knight"]
+trains = ["knight", "gryphon"]
 researches = ["horses", "plunder"]
 requires = "barracks"
 
@@ -145,7 +146,7 @@ sight = 4
 supply = 0
 hotkey = "w"
 summary = "Builds catapults and flying machines; improves siege engines"
-trains = ["catapult", "flying_machine"]
+trains = ["catapult", "flying_machine", "sapper"]
 researches = ["siege", "blasting_powder"]
 requires = "blacksmith"
 
@@ -161,7 +162,7 @@ sight = 5
 supply = 0
 hotkey = "c"
 summary = "Trains clerics; blesses their healing"
-trains = ["cleric"]
+trains = ["cleric", "treant", "rune_golem"]
 researches = ["blessing"]
 requires = "barracks"
 

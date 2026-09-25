@@ -150,7 +150,15 @@ def defence_line(info: UnitInfo, *, spared_too: bool = True) -> str:
     that only shots reach it ("unarmoured · unarmed · flies"), and heavy armour what it turns ("· no bleeding"), which
     the selection card shows as a struck-out icon instead (*spared_too* false): its column has no room for the words."""
     line = f"{armour_name(info.armor_class)} · " + (f"{info.attack.value} blows" if info.damage else "unarmed")
-    return line + (" · flies" if info.flying else "") + ("".join(f" · no {name}" for name in spared(info)) if spared_too else "")
+    return (line + (" · flies" if info.flying else "") + (" · through forest" if info.forest else "")
+            + ("".join(f" · no {name}" for name in spared(info)) if spared_too else ""))
+
+
+def bounds_line(info: UnitInfo, race: RaceInfo) -> str:
+    """" · after the Keep · at most 3 at once": what a race's own unit waits for and how many a side may keep, for the
+    tooltips of what trains it; nothing for a unit bound by neither."""
+    after = f" · after the {listing([race.upgrades[u].name for u in info.requires])}" if info.requires else ""
+    return after + (f" · at most {info.limit} at once" if info.limit else "")
 
 
 def spared(info: UnitInfo) -> list[str]:
@@ -671,7 +679,7 @@ class GameScene(Scene):
     def sfx(self, name: str, *, gap: float = 0.0) -> None:
         """Bound battle density across materials/takes; alerts bypass that budget.  Cues speak in the player's race's voice."""
         name = voiced(name, self.player.race)
-        combat = name in IMPACTS or name == "impact" or name in deaths.CUES
+        combat = name in IMPACTS or name == "impact" or (name in deaths.CUES and name not in deaths.LOUD)
         key = "siege_impact" if name in IMPACTS and name.startswith("stone_") else name  # the siege family, not a stone building falling
         if combat:
             gap = max(gap, 0.3 if key == "siege_impact" else 0.09)
@@ -1843,10 +1851,10 @@ class GameScene(Scene):
                                         count=lambda bt=building_type: self._ordered(bt), alt=lambda bt=building_type: self.choose_building(bt, keep=True),
                                         catalogue=True))
         elif kind == "train":
-            for slot, (unit_type, info) in enumerate(race.units.items()):
+            for slot, (unit_type, info) in enumerate((t, i) for t, i in race.units.items() if race.unit_allowed(t)):
                 commands.append(Command(info.name, info.hotkey, lambda ut=unit_type: self.order_production("train", ut), slot,
                                         tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)} · {info.summary} · "
-                                                f"{defence_line(info)} · Shift or right-click: "
+                                                f"{defence_line(info)}{bounds_line(info, race)} · Shift or right-click: "
                                                 f"endlessly at every {self.building_name(info.trained_at)}",
                                         cost=info.cost, target=unit_type, count=lambda ut=unit_type: self._ordered(ut),
                                         alt=lambda ut=unit_type: self.toggle_endless_everywhere(ut),
@@ -1916,13 +1924,13 @@ class GameScene(Scene):
             return [Command("Cancel", "x", self.cancel_construction, CARD_COLS - 1, tooltip="Tear the site down; the cost comes back",
                             style=DANGER_BUTTON)]
         commands = []
-        work: list[UnitType | Upgrade | None] = [*building.info.trains, *self._research_here(building)]
+        work: list[UnitType | Upgrade | None] = [*(u for u in building.info.trains if self.race.unit_allowed(u)), *self._research_here(building)]
         for slot, item in enumerate(work):
             if isinstance(item, UnitType):
                 info = self.race.units[item]
                 commands.append(Command(info.name, info.hotkey, lambda ut=item: self.train(ut), slot,
                                         tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)} · {info.summary} · "
-                                                f"{defence_line(info)} · Shift or right-click: train endlessly",
+                                                f"{defence_line(info)}{bounds_line(info, self.race)} · Shift or right-click: train endlessly",
                                         cost=info.cost, blocked=lambda ut=item, b=building: world.can_train(b, ut), target=item,
                                         alt=lambda ut=item, b=building: self.toggle_endless(b, ut), endless=lambda ut=item, b=building: ut in b.auto))
             elif item is not None:  # None: every tier of the chain is researched, and its slot stays empty
@@ -2422,16 +2430,21 @@ class GameScene(Scene):
         return striker is not None and striker.player == self.human
 
     def _handle_events(self, events: list[Event]) -> None:
+        blasts: set[int] = set()  # the player's own kegs gone up: what each strikes, it strikes the same step (_show_blast)
         for index, e in enumerate(events):
             mine = e.player == self.human
             if e.kind == "hit":
-                if self._mine(e):
+                if self._mine(e) or e.entity in blasts:
                     self._fights.append(self.clock)
-                self._show_hit(e)
+                self._show_hit(e, seen=e.entity in blasts or self._visible(e.pos))
             elif e.kind == "impact":
                 self._show_impact(e, struck=any(h.kind == "hit" and h.entity == e.entity for h in events[index + 1:]))
             elif e.kind == "death":
                 self._show_death(e)
+            elif e.kind == "blast":
+                if mine and e.entity is not None:
+                    blasts.add(e.entity)
+                self._show_blast(e, seen=mine or self._visible(e.pos))
             elif e.kind == "destroyed":
                 self._show_destroyed(e)
             elif e.kind == "trained" and mine:
@@ -2511,12 +2524,17 @@ class GameScene(Scene):
 
     def _audible(self, point: tuple[float, float]) -> bool:
         """Local action stays near the camera; strategic warnings bypass this check."""
+        return self._visible(point) and self._on_screen(point)
+
+    def _on_screen(self, point: tuple[float, float]) -> bool:
+        """Whether *point* is in the part of the map the screen shows, above the selection panel."""
         x, y = self.camera.world_to_screen(*to_world(point))
         width, height = self.game.resolution
-        return self._visible(point) and 0 <= x <= width and 0 <= y <= height - SELECTION_HEIGHT
+        return 0 <= x <= width and 0 <= y <= height - SELECTION_HEIGHT
 
-    def _show_hit(self, e: Event) -> None:
-        if not self._visible(e.pos):
+    def _show_hit(self, e: Event, *, seen: bool) -> None:
+        """A blow lands; shown when *seen*: the player sees where it lands, or the player's own keg struck it (:meth:`_show_blast`)."""
+        if not seen:
             return
         target = self.world.entity(e.other) if e.other is not None else None
         source = self.world.entity(e.entity) if e.entity is not None else None
@@ -2540,7 +2558,8 @@ class GameScene(Scene):
                                        size=(3, 5 + min(e.amount, 12) / 4)))  # a few drops for a light blow, a splash for a heavy one
             if e.target_armor > 0:
                 self.effects.add(Burst(struck, (255, 236, 190, 255), 3, rng=self.fx_rng, size=5, speed=(50, 140)))  # off the armour
-        self._sound_hit(e)  # a shot's blow is raised when the shot lands, so its sound is due now
+        if self._on_screen(e.pos):
+            self._sound_hit(e)  # a shot's blow is raised when the shot lands, so its sound is due now
 
     def _away(self, point: tuple[float, float], origin: tuple[float, float] | None) -> tuple[float, float]:
         """The unit direction from *origin* to *point* in world pixels; straight up when the blow's origin is unknown."""
@@ -2561,9 +2580,8 @@ class GameScene(Scene):
             self.sfx("impact")
 
     def _sound_hit(self, event: Event) -> None:
-        if self._audible(event.pos):
-            source = self.world.entity(event.entity) if event.entity is not None else None
-            self.sfx(impact_sound(event, source.race if source is not None else Race.HUMAN))  # a striker dead with its blow keeps the common Foley
+        source = self.world.entity(event.entity) if event.entity is not None else None
+        self.sfx(impact_sound(event, source.race if source is not None else Race.HUMAN))  # a striker dead with its blow keeps the common Foley
 
     def _show_heal(self, e: Event) -> None:
         """A cleric's cast lands: rings and rising sparks on the patient, a small ring on the cleric, the amount
@@ -2596,6 +2614,25 @@ class GameScene(Scene):
         color = self.world.players[e.player].color if e.player is not None else (200, 200, 200)
         self.effects.add(Burst(to_world(e.pos), rgba(color), 10, rng=self.fx_rng, size=10))
         if self._audible(e.pos):
+            self.sfx(deaths.cue(bodies.family(UnitType(e.text), self.world.race_of(e.player))))
+
+    def _show_blast(self, e: Event, *, seen: bool) -> None:
+        """A sapper's keg goes up (WB-068): a fireball the size of its reach, smoke over it, a ring of dust on the ground,
+        the camera shaken and its death heard, which is the fuse and the boom.  The sapper leaves no body: the view drops its sprite as it leaves the world.
+
+        Shown when *seen*: the player sees the spot, or it is the player's own keg.  A sapper's eyes go up with it, and
+        the fog's next look, which can come the same step, leaves a lone sapper's spot dark: its owner still sees the
+        blast, and the blows it strikes (:meth:`_handle_events`)."""
+        if not seen:
+            return
+        wx, wy = to_world(e.pos)
+        reach = UNITS[UnitType(e.text)].blast * TILE
+        self.effects.add(Flare((wx, wy - 12), "fireball", reach * 1.3, duration=0.4))
+        self.effects.add(Burst((wx, wy - 10), (255, 176, 70, 255), 26, rng=self.fx_rng, size=7, speed=(90, 90 + 3 * reach)))
+        self.effects.add(Burst((wx, wy - 22), (60, 56, 56, 255), 9, rng=self.fx_rng, image="puff", size=30, speed=(12, 48)))
+        self.effects.add(Burst((wx, wy), (170, 150, 120, 255), 12, rng=self.fx_rng, size=10, speed=(40, 110)))  # dust off the ground
+        self.camera.shake(6, 0.4)
+        if self._on_screen(e.pos):  # its death is its keg going up (bodies.FAMILIES), heard whoever fields it
             self.sfx(deaths.cue(bodies.family(UnitType(e.text), self.world.race_of(e.player))))
 
     def _stain(self, point: tuple[float, float]) -> None:
@@ -2867,8 +2904,9 @@ class GameScene(Scene):
         self.draw_text("Hover for details · click to go there · right-click to cancel", x + 16, y + 106, style="sub")
 
     def _endless_line(self, building: Building) -> str:
-        """What *building* trains endlessly, the next one first."""
-        names = [self.unit_name(unit_type) for unit_type in building.auto]
+        """What *building* trains endlessly, the next one first (``World.auto_train_next``)."""
+        first = self.world.auto_train_next(building)
+        names = [self.unit_name(unit_type) for unit_type in (first, *(t for t in building.auto if t is not first))]
         return "Endless: " + ", ".join(names) + (" in turn" if len(names) > 1 else "")
 
     def _portrait(self, entity: Unit | Sighting, x: float, y: float, size: float) -> None:
@@ -2967,7 +3005,9 @@ class GameScene(Scene):
                             f"Healing per cast, one every {info.period:g} s; its own blow is {world.damage_of(entity)}")
                            if info.heal
                            else ("damage", f"{info.damage:g}", world.damage_of(entity) - info.damage,
-                                 f"Damage per strike; {attack_hint(info.attack)}"))
+                                 f"The keg's one blast: this to every rival building within {info.blast:g} tiles "
+                                 f"({attack_hint(info.attack)}), {info.blast_units} to every unit on the ground there, yours too"
+                                 if info.blast else f"Damage per strike; {attack_hint(info.attack)}"))
                 stats = [primary, armour,
                          ("range", "melee" if info.range < 1 else f"{info.range:g}", world.range_of(entity) - info.range,
                           "Healing range in tiles" if info.heal else "Reaches the next tile over" if info.range < 1 else "Attack range in tiles"),
@@ -3008,10 +3048,12 @@ class GameScene(Scene):
                     lines.append("No builder · right-click it with a peasant")
             elif building is not None and (building.queue or building.research is not None):
                 self._draw_production(building, tx, y + 44)
-                if building.auto:
-                    self.draw_text(self._endless_line(building), tx, y + 96, style="body", color=GOLD)
+                if building.auto:  # one row under the queue, held to the column as the lines below are
+                    self.draw_text(self._card_lines([self._endless_line(building)], 1)[0], tx, y + 96, style="body", color=GOLD)
             elif building is not None and building.auto:
                 lines.append(self._endless_line(building))
+                first = world.auto_train_next(building)  # one waiting at its limit lets the next go first, and says why
+                lines += [waits for t in building.auto if t is not first and (waits := world.at_limit(self.human, t)) is not None]
                 reason = world.auto_train_blocker(building)  # the first named is the next, and waits for this
                 if reason is not None:
                     lines.append(reason)
@@ -3606,18 +3648,21 @@ class CodexScene(_Overlay):
         have = player.upgrades
         race = RACES[player.race]
         if self.page == 0:
-            rows: list[list[str | list[Pair]]] = [["Unit", "Cost", "HP", "Dmg", "Arm", "Rng", "Spd", "Time", "Trained at", "Role"]]
+            # Where each is trained is the tech tree's own picture (page 5), where it stands beside its building: the
+            # column it had cost the Role column the room eight units need at 1200×680 once each race had its own (WB-068).
+            rows: list[list[str | list[Pair]]] = [["Unit", "Cost", "HP", "Dmg", "Arm", "Rng", "Spd", "Time", "Role"]]
             for unit_type, info in race.units.items():
+                if not race.unit_allowed(unit_type):
+                    continue  # another race's own unit
                 rows.append([info.name, price_pairs(info.cost), str(info.hp), f"heal {info.heal}" if info.heal else str(info.damage),  # its blow is in its role
                              str(info.armor), "melee" if info.range < 1 else f"{info.range:g}", f"{info.speed:g}", f"{info.build_time:g}s",
-                             race.buildings[info.trained_at].name,
                              # The Role column has no room for the kind of blow on every row: spelling out "normal"
                              # wraps a line at 1200×680, where the page already stands 672 px of 680 tall (the orc
                              # and human tables first).  The blow is named where it is not the plain one; the card of
                              # a selected unit names both, always.
                              f"{info.summary} · {armour_name(info.armor_class)}"
                              + (f", {info.attack.value}" if info.attack is not AttackType.NORMAL else "")])
-            return (150, 130, 40, 66, 40, 55, 42, 50, 140, 371), rows  # "heal 15" is the widest Dmg, 1200 gold and 800 lumber the widest Cost
+            return (150, 130, 40, 66, 40, 55, 42, 50, 519), rows  # "heal 15" is the widest Dmg, 1200 gold and 800 lumber the widest Cost
         if self.page == 1:
             rows = [["Building", "Cost", "HP", "Arm", "Size", "Time", "Feeds", "Requires", "What it does"]]
             for building_type, info in race.buildings.items():

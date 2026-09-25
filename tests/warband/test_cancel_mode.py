@@ -213,6 +213,8 @@ PLURALS = {
     "Ironguard": "Ironguards", "Knight": "Knights", "Leafwing Glider": "Leafwing Gliders", "Miner": "Miners", "Mortar": "Mortars",
     "Ogre": "Ogres", "Peasant": "Peasants", "Peon": "Peons", "Ranger": "Rangers", "Runepriest": "Runepriests", "Sentinel": "Sentinels",
     "Shaman": "Shamans", "Stag Knight": "Stag Knights", "Stone Golem": "Stone Golems", "Troll": "Trolls", "Venom Spider": "Venom Spiders",
+    # Each race's own unit (WB-068): the orcs' is one goblin with one keg, "Goblin Sappers" only when there are more.
+    "Gryphon Rider": "Gryphon Riders", "Goblin Sapper": "Goblin Sappers", "Treant": "Treants", "Rune Golem": "Rune Golems",
 }
 
 

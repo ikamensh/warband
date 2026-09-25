@@ -17,12 +17,20 @@ pieces (`warband/audio/pieces.py` reads them):
   timbers splinter, a rope snaps and the frame crashes; a flying machine sputters, whistles
   down and crashes as its body lands; a wolf yelps and falls, a spider screeches and crunches,
   a troll bellows and falls heavily, a golem's stone grinds and breaks and the rubble settles.
+  Each race's own unit (WB-068) has one too: a gryphon screeches, its wings flail and it and
+  its rider hit the ground as the screech dies away; a goblin sapper's death is its keg going up,
+  a fuse's fizz and a powder blast a tenth of a second on with the debris raining down under its
+  tail (a spent sapper leaves no death event, so the scene plays it at the blast, for whoever
+  sees the spot or owns the keg; it is `loud`: heard at a collapse's level and never dropped
+  from a battle's crowd of blows); a treant splits, comes down as heavy timber and its leaves
+  settle; a rune golem breaks as the wild golem does and its runes go out last in a fading hum.
   The bank plays `<family>_death` and picks a take, never the same one twice in a row; the
   scene asks for the dying unit's family, so an orc grunt dies in an orc's voice whoever the
   player is, and an orc's catapult in splintering timber.
 - `warband/audio/presence.py`, from `warband/assets/presence/`: a machine answers its player's
-  order (a catapult creaks and winches, a flying machine whirrs), once a family however many
-  were ordered and not again within 1.5 s; a creature is heard as its camp rouses (a wolf's
+  order (a catapult creaks and winches, a flying machine whirrs; a gryphon cries, a sapper's
+  fuse fizzes or it giggles, a treant creaks, a rune golem's runes hum), once a family however
+  many were ordered and not again within 1.5 s; a creature is heard as its camp rouses (a wolf's
   snarl, a spider's hiss, a troll's roar, a golem's stony rumble), once a kind of guard each
   time it wakes, as the player first sees a guard of that kind: a camp woken from its far side
   roars as its guards charge into sight, one nobody of the player's sees wakes in silence.

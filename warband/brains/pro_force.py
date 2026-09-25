@@ -8,6 +8,8 @@ from warband.sim.model import Point, Unit, World, dist, plain_sum
 from warband.sim.rules import BuildingType
 
 def _dps(world: World, unit: Unit) -> float:
+    if unit.info.blast:
+        return 0.0  # one blow that is its end: no fight is worn down by it, whatever the number of it
     if unit.info.heal:
         # A cleric adds to a fight by undoing damage; count its healing as if it were damage (its own blow is a last resort).
         return world.heal_rate(unit) * 0.8

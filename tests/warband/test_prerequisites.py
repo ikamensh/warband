@@ -159,7 +159,7 @@ def test_the_codex_tech_tree_draws_what_needs_what_lit_by_what_the_player_has(ga
     tree = next(component for component in game.scene.ui.walk() if isinstance(component, TechTree))
     race = RACES[Race.ELF]
     shown = {picture.target: picture for picture in tree.pictures}
-    assert set(shown) == {*BUILT, *PLAYABLE_UNITS, *(u for u in Upgrade if race.upgrade_allowed(u))}
+    assert set(shown) == {*BUILT, *(u for u in PLAYABLE_UNITS if race.unit_allowed(u)), *(u for u in Upgrade if race.upgrade_allowed(u))}
     drawn = {image["image"]: image for image in game.backend.images}
     opacity = {target: drawn[game.assets.image(production_image(game, target, scene.human, Race.ELF))]["opacity"] for target in shown}
     assert opacity[BuildingType.TOWN_HALL] == 1 and opacity[UnitType.PEASANT] == 1
@@ -266,3 +266,28 @@ def test_the_card_shows_what_is_lacking_when_it_is_refreshed_from_a_timer(game) 
         game.tick(1 / 60)
         shown.add(tuple(caption_under(game, button_of(scene, UnitType.KNIGHT))))
     assert shown == {("Knight", "needs Stables")}
+
+
+def test_a_races_own_unit_names_the_keep_it_waits_for_and_is_planned_once_the_keep_is_coming(game) -> None:
+    """WB-068: the Gryphon Rider needs the Stables and the Keep; with the Stables standing the Keep is what it lacks,
+    by the race's own name for it, and while the hall is being raised it reads "after" it and waits as a plan."""
+    scene = match(game, Race.HUMAN)
+    world = scene.world
+    hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    world.place_building(scene.human, BuildingType.STABLES, open_site(scene, BuildingType.STABLES))
+    scene.player.gold = scene.player.lumber = 9000
+    press(game, "t")
+    game.tick(1 / 60)
+    gryphon = button_of(scene, UnitType.GRYPHON)
+    assert not gryphon.enabled and caption_under(game, gryphon) == ["Gryphon Rider", "needs Keep"]
+    press(game, "g")
+    assert not world.player_plans(scene.human), "refused: nothing is raising the hall"
+    press(game, "escape")
+    hall.queue.clear()
+    world.research(hall.id, Upgrade.KEEP)
+    press(game, "t")
+    game.tick(1 / 60)
+    assert caption_under(game, button_of(scene, UnitType.GRYPHON)) == ["Gryphon Rider", "after Keep"]
+    press(game, "g")
+    assert [plan.type for plan in world.player_plans(scene.human)] == [UnitType.GRYPHON]
+    assert UnitType.TREANT not in {command.target for command in scene.card}, "the Elves' own is not on the Humans' card"

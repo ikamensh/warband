@@ -18,6 +18,11 @@ from warband.brains.pro_core import _ProBrainCore
 
 _MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.KNIGHT)
 STRICT_SLACK: Final = 0.1
+#: How short of its plan the army counts itself of the race's own unit when it is the answer (``unique.wanted``): behind
+#: a type of the plan the army is well short of, so it is bought from what the soldiers leave.  Claimed ahead of them
+#: (a quarter) and with the Keep's price held for it, the orcs' sappers lost Master seven matches in 288 and won none:
+#: 2300 held in the opening is three soldiers the first clash does not have (docs/balance.md, WB-068).
+UNIQUE_CLAIM: Final = 0.1
 BUILD_MIN_DISTANCE: Final = 2
 BUILD_MAX_DISTANCE: Final = 12
 
@@ -229,6 +234,11 @@ class _ProBrainEconomy(_ProBrainCore):
             # where barracks-first alone took 59%): the wood is six tiles from
             # every start, and a second mill at the wood front no better.
             wishes.append((BuildingType.LUMBER_MILL, anchor))
+        # The race's own unit is the answer (WB-068): the building that trains it, or the one that building needs.
+        own = self.commander.building(world, player, self.remembered()) if self.profile.unique else None
+        if own is not None and count(own) < 1:
+            needs = BUILDINGS[own].requires
+            wishes.append((own if needs is None or have(needs) else needs, anchor))
         # A posture built around one branch of the tree — knights, siege, healers —
         # cannot wait for the bank to overflow before it is allowed that branch.
         for tech in set(profile.early_tech):
@@ -416,6 +426,7 @@ class _ProBrainEconomy(_ProBrainCore):
         saved = []
         if self.profile.opening_hold and self._opening_next is not None:
             saved.append(BUILDINGS[self._opening_next].cost)
+        saved.extend(UPGRADES[upgrade].cost for upgrade in self.unique_first)  # the Keep, once the bank can pay for it
         return saved
 
     def _payable(self, world: World, cost: Cost) -> bool:
@@ -542,12 +553,22 @@ class _ProBrainEconomy(_ProBrainCore):
         rebuilding = (len(army) < self.profile.soldiers_before_workers
                       and any(b.info.trains and b.type is not BuildingType.TOWN_HALL
                               for b in world.player_buildings(player, done=True)))
+        # The race's own unit is the answer and waits for the Keep (WB-068): once the bank can pay for it out of what is
+        # spendable, the Keep goes first -- its hall trains no more peasants and its price is held for the pass -- and not
+        # before: held while the army was still being paid for, it cost the orcs more matches than their sappers won.
+        self.unique_first = ()
+        first = self.commander.waits_for(world, player, self.remembered()) if self.profile.unique else ()
+        if first and all(self._affordable(world, UPGRADES[u].cost) for u in first):
+            self.unique_first = first
+        free = self.commander.kept_free(world, player, self.unique_first)
         if not rebuilding:
             target = self._worker_target(world)
             peasants = len(self._peasants(world))
             for hall in halls:
                 if peasants + int_sum(len(h.queue) for h in halls) >= target:
                     break
+                if hall.id in free:
+                    continue  # its own unit is the answer: the hall is to be raised to the Keep first
                 if len(hall.queue) < 2 and world.can_train(hall, UnitType.PEASANT) is None and self._affordable(world, world.unit_info(player, UnitType.PEASANT).cost):
                     world.train(hall.id, UnitType.PEASANT)
         counts = {t: int_sum(1 for u in army if u.type is t) for t in PLAYABLE_UNITS}
@@ -564,7 +585,8 @@ class _ProBrainEconomy(_ProBrainCore):
                 world.set_rally(building.id, self._front_point(world, halls[0]))
             if building.research is not None or len(building.queue) >= 2:
                 continue
-            wish = self._choose_unit(building, counts, targets)
+            own = self.commander.wish(world, player, building, self.remembered()) if self.profile.unique else None
+            wish = (UNIQUE_CLAIM, own) if own is not None else self._choose_unit(building, counts, targets)
             if wish is not None:
                 wishes.append((*wish, building))
         # The unit the army is shortest of has first claim on the bank. Buying
@@ -644,7 +666,7 @@ class _ProBrainEconomy(_ProBrainCore):
             return
         player = world.players[self.player]
         buildings = world.player_buildings(self.player, done=True)  # nothing changes until the one order below
-        for wanted in self._research_order():
+        for wanted in (*self.unique_first, *self._research_order()):
             if wanted in player.upgrades or not RACES[player.race].upgrade_allowed(wanted):
                 continue
             for upgrade in with_prerequisites(player.upgrades, wanted):

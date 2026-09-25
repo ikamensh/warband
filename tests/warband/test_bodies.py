@@ -40,15 +40,20 @@ def test_every_unit_type_dies_in_a_cue_of_its_own_body_with_two_takes_on_disk(un
             assert all(path.is_file() for path in pieces.paths(deaths.FOLDER, family, stage.kind)), (family, stage.kind)
 
 
+#: Every body that is not one of a race's people: the machines, the creatures, and each race's own unit (a rider on a
+#: gryphon, a goblin with a keg, a walking tree, a construct).
+BODIES = frozenset(UnitType) - SOLDIERS
+
+
 def test_no_creature_or_machine_is_one_of_a_races_people() -> None:
     assert not SOLDIERS & (WILD | MACHINES)
-    for kind in WILD | MACHINES:
+    for kind in BODIES:
         assert UNITS[kind].sound and UNITS[kind].sound not in RACE_FAMILIES, kind
-        assert presence.cue(UNITS[kind].sound) is not None, kind  # a machine answers its orders, a creature its camp's waking
+        assert presence.cue(UNITS[kind].sound) is not None, kind  # a body answers its orders, a creature its camp's waking
 
 
 def test_every_presence_has_takes_to_rotate() -> None:
-    assert set(presence.KINDS) == {UNITS[kind].sound for kind in WILD | MACHINES}
+    assert set(presence.KINDS) == {UNITS[kind].sound for kind in BODIES}
     assert all(presence.takes(family) >= 2 for family in presence.KINDS)
 
 
@@ -58,6 +63,8 @@ def test_a_blow_lands_on_what_the_body_is_made_of() -> None:
 
     assert struck(UnitType.GOLEM, 2) == "sword_stone" and struck(UnitType.CATAPULT, 0) == "sword_wood"
     assert struck(UnitType.FLYING_MACHINE, 2) == "sword_wood"
+    assert struck(UnitType.TREANT, 3) == "sword_wood" and struck(UnitType.RUNE_GOLEM, 4) == "sword_stone"
+    assert struck(UnitType.GRYPHON, 2) == "sword_armor" and struck(UnitType.SAPPER, 0) == "sword_flesh"  # their armour decides
     assert struck(UnitType.TROLL, 0) == "sword_flesh" and struck(UnitType.FOOTMAN, 3) == "sword_armor"
 
 
@@ -110,6 +117,30 @@ def test_the_bodies_sound_as_they_are_built() -> None:
         assert np.mean([centroid(clip) for clip in cues(heavy, presence)]) < spider / 4, heavy
     assert np.mean([centroid(clip) for clip in cues("troll")]) < np.mean([centroid(clip) for clip in cues("spider")]) / 2
     assert np.mean([bass(clip) for clip in cues("golem", presence)]) > np.mean([bass(clip) for clip in cues("spider", presence)]) + 0.2
+
+
+def flatness(clip: np.ndarray) -> float:
+    """How like noise the last third of *clip* is, from 0 (one pure tone) to 1 (white noise): a hum is near nothing."""
+    tail = clip[-len(clip) // 3:]
+    freqs, power = spectrum(tail * np.hanning(len(tail)))
+    band = power[(freqs > 80) & (freqs < 6000)] + 1e-20
+    return float(np.exp(np.mean(np.log(band))) / np.mean(band))
+
+
+def test_each_races_own_unit_sounds_as_it_is_built() -> None:
+    """The four own units' deaths keep their bodies through a regeneration (WB-068): the gryphon and its rider land
+    after the screech; the sapper's keg goes off at once with an explosion's weight; a treant comes down as heavy
+    timber; and the rune golem's runes hum as they go out, which sets it apart from the wild golem's rubble."""
+    def cues(family: str) -> list[np.ndarray]:
+        return [deaths.death(family, take) for take in range(deaths.takes(family))]
+
+    assert all(fall_at(clip) > 0.5 for clip in cues("gryphon"))
+    window = int(0.03 * SAMPLE_RATE)
+    for clip in cues("sapper"):
+        loudest = int(np.argmax(np.convolve(clip ** 2, np.ones(window) / window, mode="same"))) / SAMPLE_RATE
+        assert loudest < 0.4 and bass(clip) > 0.4, (loudest, bass(clip))
+    assert all(bass(clip) > 0.4 for clip in cues("treant"))
+    assert np.mean([flatness(clip) for clip in cues("rune_golem")]) < np.mean([flatness(clip) for clip in cues("golem")]) / 2
 
 
 # -- In the scene ------------------------------------------------------------------------------------
@@ -203,3 +234,35 @@ def test_a_camp_woken_where_the_player_sees_nothing_wakes_in_silence(match) -> N
     for _ in range(8):
         game.tick(0.25)
     assert camp.roused and not any(name.endswith("_presence") for name in scene.recent_sounds)
+
+
+@pytest.mark.parametrize("seen", [True, False])
+def test_a_spent_sapper_is_heard_in_its_own_death_by_a_bystander_who_sees_it_over_a_battle(tmp_path, seen: bool) -> None:
+    """A spent sapper leaves no death event: its blast is its death, the family's cue (a fuse and a boom).  The player
+    at the keyboard, a bystander to an orc sapper going up at a third side's farm, hears it over a battle's crowd of
+    blows, which fills the budget every other death shares, when a peasant of its own sees the spot, and hears nothing
+    of it when nobody of its own does."""
+    world = World(40, 24, [[Terrain.GRASS] * 40 for _ in range(24)], 3, rng=random.Random(1),
+                  races=[Race.HUMAN, Race.ORC, Race.ELF])
+    for player, at in enumerate(((1, 1), (34, 1), (34, 19))):
+        world.place_building(player, BuildingType.TOWN_HALL, at)
+    game = Game("Warband blast", backend="mock", save_dir=tmp_path / "saves")
+    try:
+        scene = GameScene(world, seed=1, settings={"tutorial": False})
+        scene.brains = []
+        game.push(scene)
+        farm = world.place_building(2, BuildingType.FARM, (18, 12))
+        if seen:
+            world.spawn_unit(0, UnitType.PEASANT, (20.5, 16.5))  # beside the side the keg comes from
+        sapper = world.spawn_unit(1, UnitType.SAPPER, (25.5, 13.0))
+        scene.camera.center_on(*to_world(farm.center))
+        world.attack([sapper.id], farm.id)
+        while sapper.id in world.units:
+            for name in sorted(sound.IMPACTS)[:8]:
+                scene.sfx(name)  # a battle on screen: the crowd's budget is full on every step
+            game.tick(0.05)
+            assert world.time < 10.0, "the sapper never reached the farm"
+        assert farm.hp < farm.max_hp  # it went up at the farm
+        assert (deaths.cue("sapper") in scene.recent_sounds) == seen
+    finally:
+        game.close()

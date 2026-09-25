@@ -25,7 +25,6 @@ item takes the next one and updates this line.
 | WB-060 | Later | proposed | Sixteen seats online: an engine release, a snapshot that is not one world per seat, and room capacity | Sixteen seats 2026-09-20 |
 | WB-066 | Now | proposed | Magic II: the Mage Tower, one spell of three per level, cast anywhere, dearer beyond the vaults | Ilya 2026-09-24 |
 | WB-067 | Now | proposed | Magic III: the computer players research, choose and cast; the nine spells balanced | Ilya 2026-09-24 |
-| WB-068 | Now | proposed | A unique unit per race: Gryphon Rider, Goblin Sappers, Treant, Rune Golem | Ilya 2026-09-24 |
 | WB-073 | Now | proposed | Race balance: dwarves win ~64 % and orcs ~36 % of Master race games; bring every race within 45–55 % | Orchestrator 2026-09-25 |
 
 ## WB-055 — A deeper tech tree
@@ -327,46 +326,6 @@ band of its two rivals when the brain is made to take it (no spell that is
 always right or never), tuned by numbers in `buffs.toml` and the spell table;
 race balance in band; `docs/balance.md` records the numbers; fuzz; the
 fingerprint and `sim_bench.txt` refreshed.
-
-## WB-068 — A unique unit per race
-
-**Design.** "Something exotic and expensive, but sometimes useful": each race
-gets one unit that is a *situational* answer, never the new best buy. Each
-has a signature mechanic no other unit has, costs about two knights, needs
-the Keep, and a side may keep at most **three alive at once** (a
-`limit = 3` on the unit type, refused with the reason at the card), so it
-stays a centrepiece and cannot be massed.
-
-| race | unit | trained at | what it is | when it is right | what answers it |
-|---|---|---|---|---|---|
-| Humans | **Gryphon Rider** | Stables | the first *armed* flyer: hurls a storm hammer at ground **and** air (range 2.5, damage 14, cooldown 1.6); hp 110, armour 2, speed 3.8, living (it bleeds) | hunting flyers, catapults and lone shooters; raids across water and forest | massed shooters, towers; archers' bleeding slows it |
-| Orcs | **Goblin Sappers** | Siege Yard | a runner with a powder keg (hp 40, speed 3.4): its "blow" is its end, 240 siege damage within 1.5 (×1.5 on buildings), 60 to every unit there, its own side's too | cracking a tower line or a hall in one strike | anything that catches it before it arrives; shooters |
-| Elves | **Treant** | Moonwell | a walking tree: walks *through* forest (its own navigation), hp 320, armour 3, damage 22 melee, ×2 on buildings; mends 4 hp a second while it stands among trees | a siege that comes out of the woods behind a base | open ground, catapults, being kited |
-| Dwarves | **Rune Golem** | Rune Shrine | the neutral golem's slam, carved and bound: hp 300, armour 4, damage 20, cooldown 2.4, splash 1.3 on enemies only; speed 1.4; a construct (not living: never bleeds, never healed) | breaking a clumped melee line | shooters and siege from range; attrition, since it cannot be mended |
-
-Prices: Gryphon Rider 1800 gold 400 lumber, Sappers 800/300 (one use),
-Treant 1500/500, Rune Golem 1600/500; build times 35–45 s. Each race's
-names and summaries in races.toml; the codex and the tech tree show them.
-
-- The brains train their race's unique unit only when it is right, by what
-  they know: gryphons against catapults, flyers or a shooter-light army;
-  sappers against a tower line or a hall within reach; treants when a
-  forest route reaches the rival; golems against a melee-heavy army. A
-  brain that never needs one never buys one.
-- Implementation seams: the armed flyer extends WB-064's air layer (a
-  flying unit with a weapon that can target air); sappers are a unit whose
-  blow ends it; the treant a unit type with a forest-walking navigation grid;
-  the golem reuses the creature's slam. Each should be a row plus the least
-  code, and the seam named, so the next unique unit is cheap.
-
-**Acceptance.** Rules tests per unit (the gryphon strikes air and ground and
-is struck only by shooters, towers and gryphons; a sapper's blast and its
-friendly fire; a treant crosses a forest a footman must walk round, and
-mends only among trees; the golem's slam spares its own side; the limit of
-three refuses the fourth); the arena shows each race's balance within band
-and a brain that may buy its unique unit not weaker than one that may not,
-with telemetry on how often each is bought; each unit rendered per race and
-looked at; the codex and the card; fuzz; fingerprint refreshed.
 
 ## WB-073 — Race balance
 

@@ -102,7 +102,7 @@ def producer_of(scene, target):
 
 @pytest.mark.parametrize("race, target", [pytest.param(race, target, id=f"{race.value}-{target.value}")
                                           for race in (Race.HUMAN, Race.DWARF) for target in (*PLAYABLE_UNITS, *Upgrade)
-                                          if not isinstance(target, Upgrade) or RACES[race].upgrade_allowed(target)])
+                                          if (RACES[race].upgrade_allowed(target) if isinstance(target, Upgrade) else RACES[race].unit_allowed(target))])
 def test_every_unit_and_upgrade_of_the_race_has_an_operable_production_icon(play, race, target) -> None:
     """The portrait names itself on hover, trains or researches on click, and then shows in the panel's readout.
     Each race's own units and arts only: another race's art is refused, as test_races checks."""
@@ -112,6 +112,8 @@ def test_every_unit_and_upgrade_of_the_race_has_an_operable_production_icon(play
     building = producer_of(scene, target)
     if isinstance(target, Upgrade):
         scene.player.upgrades.update(lower_tiers(target))  # the card of a chain shows its lowest tier still to research
+    else:
+        scene.player.upgrades.update(info.requires)  # a race's own unit waits for the Keep
     scene.player.gold = scene.player.lumber = 5000
     scene.select([building.id])
     for _ in range(3):

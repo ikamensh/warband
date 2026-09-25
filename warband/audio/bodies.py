@@ -40,11 +40,13 @@ class Family:
     """*death*: its stages in order; the cue has a take for every committed piece of the first.
     *material*: what a blow on it lands on (:data:`warband.audio.combat_sound.MATERIALS`); ``None`` is armour or
     flesh by the armour it wears.  *presence*: the kind of piece it answers with, when its player orders it or its
-    camp rouses; ``None`` for the soldiers of a race, whose orders the race's own cues answer."""
+    camp rouses; ``None`` for the soldiers of a race, whose orders the race's own cues answer.  *loud*: its death is an
+    explosion, heard at a building's collapse's level and never dropped from a battle's crowd of blows."""
 
     death: tuple[Stage, ...]
     material: str | None = None
     presence: str | None = None
+    loud: bool = False
 
 
 #: A soldier's death: the cry, the weapon dropping as the voice cuts off, the body landing, the gear settling.
@@ -69,6 +71,20 @@ FAMILIES: dict[str, Family] = {
     # Stone does not cry out: it grinds and breaks, and the rubble settles under the last of it.
     "golem": Family((Stage("grind", 0.85), Stage("rubble", 0.6, gap=-0.6, after_end=True, rotate=1)),
                     material="stone", presence="rumble"),
+    # Each race's own unit (WB-068).  A gryphon screeches and its wings flail, and it and its rider hit the ground as the screech dies away.
+    "gryphon": Family((Stage("screech", 0.72), Stage("wings", 0.5, gap=0.2), Stage("fall", 0.9, gap=0.3, after_end=True, rotate=1)),
+                      presence="cry"),
+    # A sapper's death is its keg going up (a spent sapper's blast plays it, GameScene._show_blast): the fuse fizzes,
+    # the powder goes off a tenth of a second on, and the debris rains down under the blast's tail.
+    "sapper": Family((Stage("fuse", 0.45), Stage("blast", 1.0, gap=0.1), Stage("debris", 0.55, gap=-0.8, after_end=True, rotate=1)),
+                     presence="fizz", loud=True),
+    # A walking tree splits, comes down like a felled trunk under the last of the splitting, and its leaves settle.
+    "treant": Family((Stage("split", 0.85), Stage("fall", 0.9, gap=-0.5, after_end=True), Stage("leaves", 0.45, gap=-0.2, after_end=True, rotate=1)),
+                     material="wood", presence="creak"),
+    # The dwarves' carved golem breaks as the wild one does, and the light of its runes goes out last, in a fading hum
+    # the wild golem never makes.
+    "rune_golem": Family((Stage("grind", 0.85), Stage("rubble", 0.6, gap=-0.9, after_end=True, rotate=1), Stage("runes", 0.55, gap=0.1)),
+                         material="stone", presence="hum"),
 }
 RACE_FAMILIES = frozenset(race.value for race in Race)
 

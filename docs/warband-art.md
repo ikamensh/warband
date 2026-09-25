@@ -47,6 +47,12 @@ contraption on a wooden hull, the goblins' zeppelin, the elves' leaf-winged glid
 and the dwarves' steam gyrocopter. A flyer strikes no blow, so its stand is its
 attack frames too, and its painted sheet holds the stand and the four walk frames
 alone (`textures.sheet_frames`); the view plays the walk frames on the clock.
+Each race's own unit (WB-068) moves its own limbs and is not leaned or lunged
+(`textures._SELF_POSED`): the Gryphon Rider beats its wings through the walk and
+throws its storm hammer in the blow, the Goblin Sapper runs with its keg on its
+back and its fuse flares in the wind-up, the Treant swings both branch arms down
+and the Rune Golem slams both fists. Their sheets hold every frame, painted from
+the renders as the others were (`OWN_ROWS` in `tools/restyle.py` names their rows).
 
 Workers lean back for the wind-up and bend into the strike through four
 chopping poses. Their head, torso, arms and axe move together around the

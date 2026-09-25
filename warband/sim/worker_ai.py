@@ -15,7 +15,7 @@ from typing import Final
 
 from warband.sim import path as pathing
 from warband.sim.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Salvage, Unit, World, hypot, int_sum, rect_gap, tile_center
-from warband.sim.worker_knowledge import WorkerKnowledge, _Building
+from warband.sim.worker_knowledge import WorkerKnowledge, KnownBuilding
 from warband.sim.rules import BUILDINGS, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_TIME, SIM_DT, UNITS, BuildingType, Resource, Terrain, UnitType
 
 try:
@@ -143,10 +143,10 @@ def _stamp_structures(world: World, player: int, footprints: frozenset[tuple[int
     return blocked
 
 
-_TOWER_GROUND: Final[dict[tuple[_Building, int, int], tuple[int, ...]]] = {}
+_TOWER_GROUND: Final[dict[tuple[KnownBuilding, int, int], tuple[int, ...]]] = {}
 
 
-def _tower_ground(tower: _Building, width: int, height: int) -> tuple[int, ...]:
+def _tower_ground(tower: KnownBuilding, width: int, height: int) -> tuple[int, ...]:
     """The flat indices of the tiles whose centre lies within a known tower's threat range of its footprint.
     A remembered tower never moves, so its ground is worked out once per record and map size."""
     key = (tower, width, height)
@@ -394,8 +394,10 @@ def _assignments(world: World, player: int, workers: list[Unit]) -> tuple[Counte
 
 
 def _reserves(world: World, player: int, workers: list[Unit]) -> dict[Resource, int]:
-    # Reserve a farm and two units that the player's existing producers offer.
-    production = [UNITS[unit].cost for building in world.player_buildings(player, done=True) for unit in building.info.trains]
+    # Reserve a farm and two units that the player's existing producers offer: the side's staples, never a race's own
+    # unit (WB-068), which is one side's alone, a few at a time, and would have the gatherers bank for two of it.
+    production = [UNITS[unit].cost for building in world.player_buildings(player, done=True) for unit in building.info.trains
+                  if UNITS[unit].race is None]
     farm = BUILDINGS[BuildingType.FARM].cost
     gold = max([farm.gold] + [2 * cost.gold for cost in production])
     lumber = max([farm.lumber] + [2 * cost.lumber for cost in production])

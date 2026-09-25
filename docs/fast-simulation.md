@@ -84,7 +84,9 @@ Compiling the same source keeps every one of those properties.
   runs: macOS, Linux and Windows in CI.
 - A build is filed under a hash of its sources, so an edited source is never
   run as an old build. Worker processes take their parent's build and refuse
-  one made from other sources.
+  one made from other sources. Every activation touches its build, and a new
+  build removes those nobody has started on for three days (`fastsim.prune`),
+  which keeps a checkout near a dozen builds rather than a new one per pull.
 
 ## The game
 

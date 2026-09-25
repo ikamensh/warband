@@ -1,7 +1,8 @@
 # Warband races
 
 Warband has four races.  They share one skeleton — the same seven unit roles
-trained in the same nine buildings with the same hotkeys and costs — so the
+trained in the same buildings with the same hotkeys and costs, and one unit of
+each race's own besides (below) — so the
 AI, the settlement planner, saves and the online protocol never care who is
 playing.  What differs: the names, a few numbers per role, two race arts
 (upgrades only that race researches), one passive mechanic the simulation
@@ -47,6 +48,34 @@ elf units have −5 % hit points, +0.15 speed and +2 sight, and the ranger one
 more tile of range; dwarf units have +10 % hit points and −0.15 speed, the
 ironguard and bear rider +1 armour.  The codex (F2) shows the player's race's
 tables and a fourth page comparing the races.
+
+## Each race's own unit (WB-068)
+
+Something exotic and expensive, and sometimes the answer: each race has one unit
+no other race trains, after the Keep, at most three alive and queued at once.
+
+| Race    | Unit          | Trained at  | What it does                                                             |
+|---------|---------------|-------------|--------------------------------------------------------------------------|
+| Humans  | Gryphon Rider | Stables     | the armed flyer: a storm hammer at ground and air; only shots reach it  |
+| Orcs    | Goblin Sapper | Siege Yard  | its blow is its end: a blast of 1.5 tiles, 240 siege on buildings (360 on a wall), 60 on every unit on the ground, its own side's too |
+| Elves   | Treant        | Moonwell    | walks through the forest, crushes buildings at ×2, mends 4 hp a second among trees out of the fight |
+| Dwarves | Rune Golem    | Rune Shrine | the wild golem's slam, bound: splash round its mark that spares its side; a construct, never mended |
+
+Each is a row of `units.toml` with the seams the next one reuses: `race` (who
+may train it: its building's `trains` lists it and the card, the catalogue, the
+codex and the tech tree offer it to that race alone, `RaceInfo.unit_allowed`),
+`requires` (the upgrades it waits for, `World.lacks_for`, refused at `train`
+and `set_auto_train` and waited for as a plan), `limit` (`World.at_limit`,
+refused at `train`, `order_unit` and `set_auto_train`; an endless order waits at
+it without holding up the building's other endless recruits and goes on when
+one falls), `blast` and `blast_units` (`World._blast`; its owner sees and hears
+the blast and what it struck wherever the fog stands, as the sapper's eyes go up
+with it), `forest` (`World.ground_of`) and
+`regen_in_trees`; the gryphon is `flying` with a shot, and the golem's slam is a
+melee blow with `splash`.  The race's defaults apply to its own unit as to any
+other: the treant sees two tiles farther, the rune golem walks at 1.25.  How the
+computer players buy and use them is `warband/brains/unique.py`, bound by the
+fog: it sends them at the buildings its side remembers, as it last saw them.
 
 ## Choosing a race
 

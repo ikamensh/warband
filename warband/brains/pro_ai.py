@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 import random
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import Final
 
 from warband.brains.pro_force import _tower_strength, _tower_strength_own, strength
@@ -66,6 +67,8 @@ class ProBrain(_ProBrainEconomy):
         busy = set(self._raid(world, army))
         busy |= self.hunt.step(world, self.player, [u for u in army if u.id not in busy],
                                lost_track(world, self.player, self._unexplored_corner(world)))
+        busy |= self.commander.step(world, self.player, [u for u in self._units(world) if u.id not in busy],
+                                    self.target if self.attacking else None)
         self._send_scout(world)
         army = [u for u in army if u.id not in busy]
         answer_flyers(world, self.player, army, 9.0)
@@ -498,7 +501,7 @@ class ProBrain(_ProBrainEconomy):
             return
         self.scouts = [i for i in self.scouts if i in world.units]
         if not self.scouts or not world.units[self.scouts[0]].flying:
-            flyers = [u for u in self._units(world) if u.flying]
+            flyers = [u for u in self._units(world) if u.flying and not u.info.damage]  # the eyes: an armed flyer hunts
             if flyers:
                 self.scouts = [flyers[0].id]  # the machine takes over from a peasant marked for want of one
             elif not self.scouts:
@@ -710,7 +713,7 @@ class ProBrain(_ProBrainEconomy):
         self._hunt_builders(world)
         if not self.profile.retreat_wounded:
             return
-        army = [u for u in world.player_units(self.player) if not u.is_worker and u.info.soldier]
+        army = [u for u in world.player_units(self.player) if not u.is_worker and u.info.soldier and not u.info.blast]
         if not army:
             return
         if not self._enemies(world):
@@ -726,8 +729,9 @@ class RaceBrain:
     seed and the player's seat, as Master draws its three."""
 
     def __init__(self, player: int, postures: Mapping[Race, Sequence[ProProfile]], seed: int = 0,
-                 by_layout: Mapping[tuple[Race, Layout], Sequence[ProProfile]] | None = None) -> None:
+                 by_layout: Mapping[tuple[Race, Layout], Sequence[ProProfile]] | None = None, *, own_units: bool = True) -> None:
         self.player = player
+        self.own_units = own_units  # False: the bred posture never buys its race's own unit (for the tools that price it)
         self.postures = postures
         self.by_layout = by_layout or {}  # a race's postures for one kind of map, where it was bred for it; the New game screen names the map
         self.seed = seed
@@ -741,5 +745,6 @@ class RaceBrain:
         if self.brain is None:
             race = world.players[self.player].race
             options = self.by_layout.get((race, world.layout)) or self.postures[race]
-            self.brain = ProBrain(self.player, options[(self.seed + self.player) % len(options)])
+            profile = options[(self.seed + self.player) % len(options)]
+            self.brain = ProBrain(self.player, profile if self.own_units else replace(profile, unique=False))
         self.brain.think(world, rng)

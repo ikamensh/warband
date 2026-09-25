@@ -261,6 +261,11 @@ ARMOUR_NOTES = {
     UnitType.CATAPULT: "Unarmoured · siege blows",
     UnitType.FLYING_MACHINE: "Unarmoured · unarmed · flies",
     UnitType.CLERIC: "Unarmoured · normal blows",
+    # Each race's own unit (WB-068), whose mechanic the card says as it says a flyer's.
+    UnitType.GRYPHON: "Light armour · normal blows · flies",
+    UnitType.SAPPER: "Unarmoured · siege blows",
+    UnitType.TREANT: "Unarmoured · crush blows · through forest",
+    UnitType.RUNE_GOLEM: "Heavy armour · normal blows",
 }
 
 

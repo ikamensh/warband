@@ -499,3 +499,27 @@ every neighbour), so the next flyer is a row and its art.
   layer, bobbing, its rotor or wings always turning, with a shadow and the selection ring on the ground
   below; the pointer and a dragged box take the body drawn in the air (`MapView.body_point`). A shot climbs
   to it, and a kill drops it out of the air ("crash").
+
+## 11. Through the forest (WB-068, 2026-09-24)
+
+A unit type with `forest = true` (the elves' treant) walks through trees: tree tiles are open ground to it, water,
+rock and buildings are not. It is a walker in every other way — it has a body, keeps the hard core, is routed by A* —
+only on a grid of its own. `World.ground_of(u)` is that answer, asked wherever a walk reads the static grid: `_plan`
+(and its regions, `_regions_of`, for the nearest reachable goal), `_follow`, `_steer`, the shove (`_nudge`/`_shove`)
+and `stands_at`. A walker gets the map's `_blocked`, so none of those changed for anybody else, and the fingerprint
+on a treant-free match did not move.
+
+- **Built only when asked.** `World.forest_ground()` copies `_blocked` with its tree tiles opened the first time a
+  forest walker asks, so a match without a treant never pays for it (a brain asking whether a forest route pays
+  builds it too).
+- **Kept in step by the buildings alone.** A building stands only on grass, so the forest grid differs from the
+  map's exactly on the tree tiles; felling a tree turns a tree tile into grass and a regrown tree turns it back, and
+  both are open to a treant either way. Only placing and removing a building (`_set_blocked`) changes it, and that
+  is where it is kept. `tools/fuzz.py` checks it against the terrain and the buildings every simulated second once
+  it exists, beside the map's own grid. A write to `_blocked` anywhere else (mapgen carves before any unit exists)
+  would need the same care.
+- **No shared trunks.** A group's march shares one corridor per target on the map's grid (`_join_march`); a treant
+  plans alone, so a treant in an army takes the wood where the rest take the road.
+- **Standing in the trees.** A treant among trees mends (`regen_in_trees`: its tile or a neighbour a tree),
+  out of combat only, as the troll does: regeneration during a fight puts a floor under the damage needed to kill
+  it at all (an archer takes 3.6 a second off it, under the 4 it would mend). `_regrow` does not grow a tree under it.

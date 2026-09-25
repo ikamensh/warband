@@ -103,7 +103,7 @@ def test_buildings_offer_the_race_units_and_only_its_own_arts(game) -> None:
     game.tick(1 / 60)
     scene.select([kennels.id])
     labels = [c.label for c in scene.card]
-    assert labels == ["Ogre", "Plunder", "Cancel"]  # Horse Breeding is a Human art
+    assert labels == ["Ogre", "Plunder", "Cancel"]  # Horse Breeding is a Human art, the Gryphon Rider a Human unit
     press(game, "h")
     assert kennels.research is Upgrade.PLUNDER
     game.tick(1 / 60)
@@ -115,12 +115,16 @@ def test_buildings_offer_the_race_units_and_only_its_own_arts(game) -> None:
     labels = [c.label for c in scene.card]
     assert "Bloodlust" in labels and "Plunder" in labels and "Horses" not in labels and "Blessing" not in labels
     scene.open_catalogue("train")
-    assert [c.label for c in scene.card][:3] == ["Peon", "Grunt", "Axethrower"]
+    trained = [c.label for c in scene.card]
+    assert trained[:3] == ["Peon", "Grunt", "Axethrower"] and "Goblin Sapper" in trained and "Gryphon Rider" not in trained
     scene.open_catalogue(None)
     press(game, "f2")
     assert isinstance(game.scene, CodexScene)
     shown = texts(game)
-    assert "Codex — the Orcs" in shown and "Grunt" in shown and "Great Hall" in shown and "Footman" not in shown
+    assert "Codex — the Orcs" in shown and "Grunt" in shown and "Goblin Sapper" in shown and "Footman" not in shown
+    assert "Treant" not in shown  # the Elves' own
+    press(game, "2")
+    assert "Great Hall" in texts(game)
     press(game, "4")
     shown = texts(game)
     assert "Codex — the four races" in shown and "Orcs ✓" in shown

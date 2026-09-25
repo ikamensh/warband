@@ -439,6 +439,8 @@ class Unit:
         self.radius: float = self.info.radius  # its body: a catapult fills far more ground than a peasant
         #: Over the ground rather than on it (:attr:`UnitInfo.flying`): asked of every neighbour in the crowd's loops.
         self.flying: bool = self.info.flying
+        #: Trees are open ground to it (:attr:`UnitInfo.forest`): it walks :meth:`World.ground_of`'s grid of its own.
+        self.forest: bool = self.info.forest
         # Rage, the orcs' passive (World._update_unit): a soldier's, never a worker's, a healer's or a machine's.
         self.enrages: bool = self.race is Race.ORC and self.info.soldier and not self.is_worker and self.info.living
         self.recount()
@@ -503,7 +505,7 @@ class Building:
     research_progress: float = 0.0
     abandoned: bool = False  # left behind by a resigned or surrendered player: nobody's, attackable, inert
     race: Race = Race.HUMAN  # its owner's; a gold mine is nobody's
-    auto: list[UnitType] = field(default_factory=list)  # trained endlessly, in turn: the next one first (set_auto_train)
+    auto: list[UnitType] = field(default_factory=list)  # trained endlessly, in turn, the first next unless at its limit (auto_train_next)
 
     def __post_init__(self) -> None:
         # Type, race and position are fixed once a building is placed, so its stats and
@@ -780,6 +782,10 @@ class World:
         # stands exposed (a farm seen alone is no side without a hall): it keeps the authority's answer, see exposures().
         self._judged_exposures: list[tuple[int, int]] | None = None
         self._region_map: pathing.Regions | None = None  # walkable regions of the static grid, see _regions()
+        #: The forest walkers' static grid (WB-068): the map's with its trees open, built the first time one of them asks
+        #: (:meth:`ground_of`), so a map without a treant never pays for it; and its regions, as ``_region_map``.
+        self._forest: bytearray | None = None
+        self._forest_regions: pathing.Regions | None = None
         self._route_cache: dict[tuple[Pos, int, int], tuple[list[Pos], Pos]] = {}  # march trunks, see _join_march()
         self._pace_groups: dict[tuple[int, Point, float], bool] = {}  # per step, see _group_together()
         self._line_lag: dict[tuple[int, Point], tuple[float, float, dict[int, float], float, float]] = {}  # per step, see _line()
@@ -911,6 +917,17 @@ class World:
         if not cell:
             self._occupied.append(index)
         cell.append(unit)
+
+    def _unbucket(self, unit: Unit) -> None:
+        """Take *unit* out of the step's index, from the tile it was filed under: where it stands, or one it has walked
+        out of since the index was filled (a unit covers a fraction of a tile a step)."""
+        tx, ty = int(unit.x), int(unit.y)
+        for y in range(max(0, ty - 1), min(self.height, ty + 2)):
+            for x in range(max(0, tx - 1), min(self.width, tx + 2)):
+                cell = self._buckets[y * self.width + x]
+                if unit in cell:
+                    cell.remove(unit)
+                    return
 
     # -- Vision ----------------------------------------------------------------
 
@@ -1070,10 +1087,10 @@ class World:
         damage = info.damage
         if damage == 0:
             return 0
-        if isinstance(entity, Unit) and entity.info.melee and not entity.is_worker:
+        if isinstance(entity, Unit) and entity.info.melee and not entity.is_worker and not entity.info.blast:  # powder is no blade
             damage += BLADES_BONUS * (self._has(entity.player, Upgrade.BLADES_1) + self._has(entity.player, Upgrade.BLADES_2))
             damage += MASTER_WEAPON_BONUS * self._has(entity.player, Upgrade.BLADES_3)
-        if (isinstance(entity, Building) or entity.info.ranged) and entity.type is not UnitType.CATAPULT:
+        if isinstance(entity, Building) or entity.type is UnitType.ARCHER:  # "archers and towers": a gryphon's hammer is no arrow
             damage += ARROWS_BONUS * (self._has(entity.player, Upgrade.ARROWS_1) + self._has(entity.player, Upgrade.ARROWS_2))
             damage += MASTER_WEAPON_BONUS * self._has(entity.player, Upgrade.ARROWS_3)
         if isinstance(entity, Unit) and entity.type is UnitType.CATAPULT and self._has(entity.player, Upgrade.SIEGE):
@@ -1133,7 +1150,7 @@ class World:
 
     def splash_of(self, unit: Unit) -> float:
         radius = unit.info.splash
-        if radius and self._has(unit.player, Upgrade.BLASTING_POWDER):
+        if radius and unit.info.siege and self._has(unit.player, Upgrade.BLASTING_POWDER):  # the mortar's powder, not a golem's slam
             radius *= BLASTING_POWDER_BONUS
         return radius
 
@@ -1295,6 +1312,10 @@ class World:
             return "Still under construction"
         if info.trained_at is not building.type:
             return f"The {info.name} is trained at the {self.building_info(building.player, info.trained_at).name}"
+        reason = self.foreign_unit(building.player, unit_type) or self.lacks_for(building.player, unit_type) \
+            or self.at_limit(building.player, unit_type)
+        if reason is not None:
+            return reason
         if len(building.queue) >= 5:
             return "Queue is full"
         if building.research is not None:
@@ -1305,6 +1326,36 @@ class World:
         used, cap = self.supply(building.player)
         if used + 1 > cap:
             return "Not enough farms"
+        return None
+
+    def foreign_unit(self, player: int, unit_type: UnitType) -> str | None:
+        """Why *player* never trains *unit_type*: another race's own unit (WB-068).  None when theirs to train."""
+        race = UNITS[unit_type].race
+        if race is None or race is self.race_of(player):
+            return None
+        return f"The {self.unit_info(player, unit_type).name} is {an(RACES[race].adjective)} unit"
+
+    def lacks_for(self, player: int, unit_type: UnitType) -> str | None:
+        """The upgrades *unit_type* waits for that *player* has not researched (:attr:`UnitInfo.requires`), or None."""
+        researched = self.players[player].upgrades
+        missing = [self.upgrade_info(player, needed).name for needed in UNITS[unit_type].requires if needed not in researched]
+        return f"Requires {listing(missing)}" if missing else None
+
+    def unit_count(self, player: int, unit_type: UnitType, *, planned: bool = False) -> int:
+        """How many *unit_type* *player* has alive and queued at its buildings; with *planned*, the settlement's
+        requests for it too: what :attr:`UnitInfo.limit` counts."""
+        count = int_sum(1 for u in self.units.values() if u.player == player and u.type is unit_type and u.hp > 0)
+        count += int_sum(b.queue.count(unit_type) for b in self.player_buildings(player))
+        if planned:
+            count += int_sum(1 for plan in self.settlement.player_plans(player) if plan.kind == "unit" and plan.type is unit_type)
+        return count
+
+    def at_limit(self, player: int, unit_type: UnitType, *, planned: bool = False) -> str | None:
+        """Why *player* may have no more *unit_type* now: as many as its :attr:`UnitInfo.limit` alive and queued (and,
+        with *planned*, requested of the settlement).  None when there is room, or no limit."""
+        info = self.unit_info(player, unit_type)
+        if info.limit and self.unit_count(player, unit_type, planned=planned) >= info.limit:
+            return f"{info.name}: at most {info.limit} at once"
         return None
 
     def can_research(self, building: Building, upgrade: Upgrade) -> str | None:
@@ -1804,6 +1855,12 @@ class World:
         if unit_type not in building.info.trains:
             info = self.unit_info(building.player, unit_type)
             raise RuleError(f"The {info.name} is trained at the {self.building_info(building.player, info.trained_at).name}")
+        reason = self.foreign_unit(building.player, unit_type) or (
+            (self.lacks_for(building.player, unit_type) or self.at_limit(building.player, unit_type)) if on else None)
+        if reason is not None:
+            # Once on, a unit with a limit waits at it silently, the building's other recruits going on meanwhile
+            # (auto_train_next), and comes again when one of its own falls.
+            raise RuleError(reason)
         if on and unit_type not in building.auto:
             building.auto.insert(0, unit_type)  # what was just asked for goes next
             if not building.queue and building.research is None:
@@ -1835,7 +1892,7 @@ class World:
                 cost = info.cost
             elif plan.kind == "unit":
                 assert isinstance(plan.type, UnitType)
-                if UNITS[plan.type].trained_at not in standing:
+                if UNITS[plan.type].trained_at not in standing or any(needed not in researched for needed in UNITS[plan.type].requires):
                     continue
                 cost = UNITS[plan.type].cost
             else:
@@ -1855,13 +1912,22 @@ class World:
                 gold, lumber = max(0, gold - cost.gold), lumber - cost.lumber
         return Cost(purse.gold - gold, purse.lumber - lumber)
 
+    def auto_train_next(self, building: Building) -> UnitType:
+        """The endless recruit *building* starts next: the first in turn (:attr:`Building.auto`) that its side has room
+        for under the type's limit (:meth:`at_limit`).  One at its limit keeps its place at the front, for when one of
+        its own falls, and holds up none of the others; when every one of them is at its limit, the first in turn."""
+        player = building.player
+        assert player is not None and building.auto
+        return next((unit_type for unit_type in building.auto if self.at_limit(player, unit_type) is None), building.auto[0])
+
     def auto_train_blocker(self, building: Building) -> str | None:
-        """Why *building* cannot start its next endless recruit now (None when it can): the reasons :meth:`can_train`
-        gives, gold and lumber the player's unpaid orders claim, or research planned here, which goes first."""
+        """Why *building* cannot start its next endless recruit (:meth:`auto_train_next`) now (None when it can): the
+        reasons :meth:`can_train` gives, gold and lumber the player's unpaid orders claim, or research planned here,
+        which goes first."""
         if not building.auto:
             return "Nothing to train endlessly"
         assert building.player is not None
-        unit_type = building.auto[0]
+        unit_type = self.auto_train_next(building)
         reason = self.can_train(building, unit_type)
         if reason is not None:
             return reason
@@ -1973,9 +2039,12 @@ class World:
         return building
 
     def _set_blocked(self, building: Building, flag: bool) -> None:
+        forest = self._forest  # a building is as solid to a forest walker as to anybody: its grid keeps step
         for x, y in building.tiles():
             if self.in_bounds((x, y)):
                 self._blocked[y * self.width + x] = 1 if flag else 0
+                if forest is not None:
+                    forest[y * self.width + x] = 1 if flag else 0
         self._note_grid_changed()
 
     def _note_grid_changed(self) -> None:
@@ -2097,11 +2166,13 @@ class World:
             self._tower_shoot(b, dt)
 
     def _auto_train(self, b: Building) -> None:
-        """Start the next of *b*'s endless recruits, when nothing stands in its way; the next type then waits its turn."""
+        """Start the next of *b*'s endless recruits (:meth:`auto_train_next`), when nothing stands in its way; it then
+        waits its turn behind the others."""
         if self.auto_train_blocker(b) is not None:
             return
         assert b.player is not None
-        unit_type = b.auto.pop(0)
+        unit_type = self.auto_train_next(b)
+        b.auto.remove(unit_type)
         b.auto.append(unit_type)
         self._pay(b.player, self.unit_info(b.player, unit_type).cost)
         b.queue.append(unit_type)
@@ -2185,7 +2256,8 @@ class World:
             if u.hp <= 0:
                 return  # bled to death: buried at the end of the step
         regen = u.info.regen
-        if regen and u.hp < u.max_hp and self.time - u.struck >= REGEN_CALM:
+        if (regen and u.hp < u.max_hp and self.time - u.struck >= REGEN_CALM
+                and (not u.info.regen_in_trees or self.among_trees(u.tile))):  # a treant mends among its trees alone
             # Out of combat only.  Continuous regeneration would put a hard floor under the damage needed to
             # kill the thing at all, and with blows rolling 75-125 % a camp sitting at that floor is a coin flip.
             u.charge += regen * dt
@@ -2360,11 +2432,14 @@ class World:
 
     def _auto_target(self, u: Unit) -> Entity | None:
         """The enemy a fighter that is left to itself takes on: a siege crew the best clear stone in reach or a
-        short roll forward, anyone else the first to fight in sight it can strike.  The unarmed pick no fight at all."""
+        short roll forward, a unit whose blow is its end (a sapper) the first rival building in sight and never a unit,
+        anyone else the first to fight in sight it can strike.  The unarmed pick no fight at all."""
         if not u.info.damage:
             return None
         if u.info.siege:
             return self._siege_choice(u, SIEGE_STEP)
+        if u.info.blast:
+            return self._nearest_enemy(u.player, u.pos, u.info.sight, air=False, buildings_only=True)
         return self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range, air=u.info.strikes_air)
 
     def _ease(self, u: Unit, dt: float) -> None:
@@ -2536,7 +2611,7 @@ class World:
             # must not keep it from answering one in reach.
             target = (self._siege_choice(u, 0.0, standing=True) if u.info.siege
                       else self._nearest_enemy(u.player, u.pos, self.range_of(u) + u.radius + 0.05, min_radius=u.info.min_range + u.radius,
-                                               air=u.info.strikes_air))
+                                               air=u.info.strikes_air, buildings_only=u.info.blast > 0))
             if target is None or not self._in_range(u, target):
                 return
             order.target = target.id
@@ -2717,7 +2792,7 @@ class World:
                 if better is not None and better is not target:
                     target = better
                     self._retarget(u, order, better)
-        elif order.auto and self.tick % 5 == 0:
+        elif order.auto and self.tick % 5 == 0 and not u.info.blast:  # a sapper keeps to the building it chose
             threat = self._threat(target)
             if threat > 0:
                 # A bystander or a building holds a unit's attention only until something more dangerous shows up.
@@ -2732,7 +2807,7 @@ class World:
                 self._retarget(u, order, mark)
         if order.auto and u.type is UnitType.ARCHER and u.cooldown > 0 and self._ranged_retreat(u, target, dt):
             return
-        if order.auto and u.cooldown <= 0 and self.range_of(u) < 1:
+        if order.auto and u.cooldown <= 0 and self.range_of(u) < 1 and not u.info.blast:
             # Finish a reachable wounded opponent when ready to strike, unless it matters less than the
             # target.  Keep the target during recovery, and preserve explicit focus fire.
             nearby = self._melee_opponent(u)
@@ -2795,7 +2870,10 @@ class World:
                 self._release(u, target, auto=auto)
 
     def _release(self, u: Unit, target: Entity, *, auto: bool) -> None:
-        """The blow at the end of a wind-up."""
+        """The blow at the end of a wind-up.  A blow that is its striker's end goes off wherever it stands (:meth:`_blast`)."""
+        if u.info.blast:
+            self._blast(u)
+            return
         if target.hp <= 0 or (isinstance(target, Unit) and target.hidden) or self._gap(u, target) > self.range_of(u) + WINDUP_SLACK:
             u.cooldown = u.info.cooldown * u.blow_mult  # swung at air
             return
@@ -2807,6 +2885,26 @@ class World:
         else:
             self._strike(u, target)
         u.cooldown = u.info.cooldown * u.blow_mult
+
+    def _blast(self, u: Unit) -> None:
+        """*u*'s blow is its end (:attr:`UnitInfo.blast`): the keg goes up where it stands.  Every rival building within
+        the blast takes its :meth:`damage_of`, a siege blow (x1.5 on a wall), and every unit on the ground within it
+        :attr:`UnitInfo.blast_units`, its own side's too; a flyer is above it.  Its side has spent it, not lost it: it
+        leaves the world at once, before the blows, so nothing it strikes answers it, no rival is credited with it and
+        its side does not count it among its dead.  What the blast brings down is credited to its side, as any blow's."""
+        radius, damage, attack = u.info.blast, self.damage_of(u), u.info.attack
+        player, spot, source_type = u.player, u.pos, u.type.value
+        self.events.append(Event("blast", spot, player=player, entity=u.id, text=source_type, source_type=source_type))
+        self._remove_unit(u, spent=True)
+        self._unbucket(u)  # gone from the step's own index too: its body is no longer in anybody's way
+        for other in list(self.units_near(spot, radius + MAX_UNIT_RADIUS)):
+            if other.hidden or other.hp <= 0 or other.flying or dist(other.pos, spot) - other.radius > radius:
+                continue
+            self._hit(other, u.info.blast_units, player=player, source=u.id, source_type=source_type, attack=attack)
+        for building in list(self.buildings.values()):
+            if building.player is None or building.player == player or building.hp <= 0 or rect_gap(spot, building.rect) > radius:
+                continue
+            self._hit(building, damage, player=player, source=u.id, source_type=source_type, attack=attack)
 
     def _back_off(self, u: Unit, target: Entity, dt: float) -> bool:
         """Step straight away from a target inside the engine's minimum range; True if there was room."""
@@ -3314,7 +3412,7 @@ class World:
         """Path from the unit's tile to *goal*; the last step aims at *exact* when the goal tile is open."""
         assert not u.flying, "a flyer is never routed: _approach and _steer fly it straight"
         start = u.tile
-        grid = self._blocked if navigation is None else navigation
+        grid = self.ground_of(u) if navigation is None else navigation
         def passable(x: int, y: int) -> bool:
             return 0 <= x < self.width and 0 <= y < self.height and not grid[y * self.width + x]
         escape: list[Pos] = []
@@ -3333,7 +3431,7 @@ class World:
                 target = nearest
         # A goal beyond water or a tree wall: aim at the nearest tile on this side of it, where a search
         # would end anyway after flooding everything it can reach.
-        target = self._regions().reachable_goal(start, target)
+        target = self._regions_of(u).reachable_goal(start, target)
         u.replan_at = self.time + REPLAN_EVERY + (u.id % REPLAN_STAGGER) * SIM_DT
         if around_units:
             blocked = bytearray(grid)
@@ -3351,7 +3449,8 @@ class World:
                 # the wrong side of the wall.  Press on through them instead; the crowd step makes room.
                 detour = pathing.find_path_grid(start, target, grid, width, self.height, max_expansions=self.path_budget)
             u.path = escape + detour
-        elif navigation is None and isinstance(u.order, (Move, AttackMove)) and self._join_march(u, start, goal, exact, target):
+        elif (navigation is None and not u.forest and isinstance(u.order, (Move, AttackMove))  # the trunks are the map's grid
+              and self._join_march(u, start, goal, exact, target)):
             return
         else:
             u.path = escape + pathing.find_path_grid(start, target, grid, self.width, self.height, max_expansions=self.path_budget)
@@ -3478,6 +3577,45 @@ class World:
             self._region_map = pathing.Regions(self._blocked, self.width, self.height)
         return self._region_map
 
+    def ground_of(self, u: Unit) -> bytearray:
+        """The static grid *u* walks: the map's, or for a forest walker (:attr:`UnitInfo.forest`) the map's with its
+        trees open, water, rock and buildings still shut.  That grid is built the first time a forest walker asks, so a
+        match without one never pays for it, and :meth:`_set_blocked` keeps it in step with the buildings from then on.
+        Felling a tree and regrowing one change the map's grid and never this one: a tree is open ground to it either
+        way, and a building never stands on one."""
+        return self.forest_ground() if u.forest else self._blocked
+
+    def forest_ground(self) -> bytearray:
+        """The forest walkers' static grid (:meth:`ground_of`), built on the first ask."""
+        grid = self._forest
+        if grid is None:
+            grid = self._forest = bytearray(self._blocked)
+            width, trees = self.width, Terrain.TREES
+            for y, row in enumerate(self.terrain):
+                for x in range(width):
+                    if row[x] is trees:
+                        grid[y * width + x] = 0
+        return grid
+
+    def _regions_of(self, u: Unit) -> pathing.Regions:
+        """The walkable regions of the grid *u* walks (:meth:`ground_of`)."""
+        if not u.forest:
+            return self._regions()
+        grid = self.ground_of(u)
+        if self._forest_regions is None or self._forest_regions.grid != grid:
+            self._forest_regions = pathing.Regions(grid, self.width, self.height)
+        return self._forest_regions
+
+    def among_trees(self, tile: Pos) -> bool:
+        """Whether *tile* is a tree tile or beside one, diagonals included: where a treant mends (:attr:`UnitInfo.regen_in_trees`)."""
+        x0, y0 = tile
+        for y in range(max(0, y0 - 1), min(self.height, y0 + 2)):
+            row = self.terrain[y]
+            for x in range(max(0, x0 - 1), min(self.width, x0 + 2)):
+                if row[x] is Terrain.TREES:
+                    return True
+        return False
+
     def _way_out(self, start: Pos, navigation: bytearray) -> list[Pos] | None:
         """Real-ground steps from *start*, which *navigation* forbids, to the nearest tile it allows; None when no
         such tile is near or real ground does not lead there."""
@@ -3603,7 +3741,7 @@ class World:
         after it again at another, twice a second, taking no further part in the match (fuzz
         seed 92: a footman a tile and a bit from a muster a knight was standing on).
         """
-        if u.flying or self._line_clear(u.pos, point):  # a flyer's way in is always the straight line
+        if u.flying or self._line_clear(u.pos, point, navigation=self.ground_of(u)):  # a flyer's way in is always the straight line
             way = [u.pos, point]
         elif u.path and u.path_goal == (int(point[0]), int(point[1])):
             # Across a wall the way in is the unit's own route round it, not the line through the rock: the
@@ -3672,7 +3810,8 @@ class World:
         tile = tx, ty = int(u.x), int(u.y)  # nothing below moves the unit until the very last step
         if navigation is not None and navigation[ty * width + tx]:
             navigation = None  # caught on forbidden ground: any real step out is better than standing still
-        grid = self._blocked if navigation is None else navigation
+        ground = self.ground_of(u)
+        grid = ground if navigation is None else navigation
         if u.path and u.path_goal is not None:
             ahead_x, ahead_y = u.path[0]
             if (grid[ahead_y * width + ahead_x] or max(abs(ahead_x - tx), abs(ahead_y - ty)) > 1
@@ -3697,7 +3836,7 @@ class World:
                     # (a diagonal step past a blocked corner is off course by the rule above: skipping to it would be
                     # undone by the next plan, and the unit would alternate between the two for good)
                     far = u.exact if len(u.path) == 2 and u.exact is not None else tile_center(u.path[1])
-                    if self._line_clear(u.pos, far, navigation=navigation):
+                    if self._line_clear(u.pos, far, navigation=grid):
                         # The waypoint after next is a step away in a clear line: this one is passed.  A crowd sharing
                         # one path otherwise circles its first tile centre, each walking at the middle the others hold
                         # and sidestepping round them, for as long as the order lasts (sixteen knights, open field).
@@ -3729,7 +3868,7 @@ class World:
         self._turn_toward(u, waypoint, step / speed if speed else dt)
         nx, ny = u.x + dx / d * step, u.y + dy / d * step
         if ((grid[int(ny) * width + int(nx)] or (navigation is not None and not self._line_clear(u.pos, (nx, ny), navigation=navigation)))
-                and 0 <= tx < width and 0 <= ty < self.height and not self._blocked[ty * width + tx]):
+                and 0 <= tx < width and 0 <= ty < self.height and not ground[ty * width + tx]):
             if u.path and u.path[0] != tile:
                 # Pushed off course so that the straight line to the next tile crosses a blocked
                 # one: go back to this tile's centre first, which is always possible.
@@ -3741,7 +3880,7 @@ class World:
                 self._plan(u, u.path_goal, u.exact, navigation=navigation)
             return False
         nx, ny = self._keep_clear(u, (nx, ny))
-        if not self._line_clear(u.pos, (nx, ny), navigation=navigation):
+        if not self._line_clear(u.pos, (nx, ny), navigation=grid):
             nx, ny = u.x, u.y  # the way round the body in front would cross blocked ground: wait behind it
         u.x, u.y = nx, ny
         # Progress watchdog: closing on the goal resets it; a stretch without progress paths
@@ -3823,7 +3962,8 @@ class World:
             if not keep_path:
                 u.path_goal = None
             return True
-        if dist(u.pos, target) > STEER_RANGE or not self._line_clear(u.pos, target):
+        ground = self.ground_of(u)
+        if dist(u.pos, target) > STEER_RANGE or not self._line_clear(u.pos, target, navigation=ground):
             return False
         dx, dy = target[0] - u.x, target[1] - u.y
         d = hypot(dx, dy)
@@ -3831,7 +3971,7 @@ class World:
             step = min(d, self._effective_speed(u, dressing=dressing) * dt)
             self._turn_toward(u, target, dt)
             nx, ny = self._keep_clear(u, (u.x + dx / d * step, u.y + dy / d * step))
-            if self._line_clear(u.pos, (nx, ny)):
+            if self._line_clear(u.pos, (nx, ny), navigation=ground):
                 u.x, u.y = nx, ny
         if not keep_path:
             u.path = []
@@ -4003,17 +4143,18 @@ class World:
         if u.flying:  # nothing below blocks a flyer's drift, and it has no core to keep
             u.x, u.y = self._clamp((u.x + px, u.y + py))
             return
-        own_tile_open = self.passable(int(u.x), int(u.y))
+        ground = self.ground_of(u)
+        own_tile_open = not ground[int(u.y) * self.width + int(u.x)]
         # The whole shove, else its x part alone, else its y part alone.
-        if not self._shove(u, px, py, own_tile_open) and not self._shove(u, px, 0.0, own_tile_open):
-            self._shove(u, 0.0, py, own_tile_open)
+        if not self._shove(u, px, py, own_tile_open, ground) and not self._shove(u, px, 0.0, own_tile_open, ground):
+            self._shove(u, 0.0, py, own_tile_open, ground)
 
-    def _shove(self, u: Unit, dx: float, dy: float, own_tile_open: bool) -> bool:
-        """Move *u* by (dx, dy), kept on the map, if nothing blocks the way; whether it moved."""
+    def _shove(self, u: Unit, dx: float, dy: float, own_tile_open: bool, ground: bytearray) -> bool:
+        """Move *u* by (dx, dy), kept on the map, if nothing on the grid it walks (*ground*) blocks the way; whether it moved."""
         nx, ny = self._keep_clear(u, (min(max(u.x + dx, 0.05), self.width - 0.05), min(max(u.y + dy, 0.05), self.height - 0.05)))  # _clamp's
         if (nx, ny) == (u.x, u.y):
             return False  # the bodies round it leave the shove nowhere to go: its x or y part alone may
-        if self._line_clear((u.x, u.y), (nx, ny)) if own_tile_open else self.passable(int(nx), int(ny)):
+        if self._line_clear((u.x, u.y), (nx, ny), navigation=ground) if own_tile_open else not ground[int(ny) * self.width + int(nx)]:
             u.x, u.y = nx, ny
             return True
         return False
@@ -4130,16 +4271,16 @@ class World:
         u.path_goal = None
 
     def _nearest_enemy(self, player: int, point: Point, radius: float, *, air: bool, units_only: bool = False,
-                       min_radius: float = 0.0) -> Entity | None:
+                       min_radius: float = 0.0, buildings_only: bool = False) -> Entity | None:
         """The visible enemy within *radius* (and beyond *min_radius*) to fight first: by :meth:`_threat`, then the nearest.
         A flyer counts only with *air*: whoever asks on behalf of a striker passes whether its blow reaches one
-        (:attr:`UnitInfo.strikes_air`; a tower's arrow does)."""
+        (:attr:`UnitInfo.strikes_air`; a tower's arrow does).  With *buildings_only*, no unit at all (a sapper's choice)."""
         best: Entity | None = None
         # The best (threat, distance) so far, compared as the tuple would be; no threat is as high as 4.
         best_threat, best_d = 4, math.inf
         px, py = point
         visible, width, height = self.visible[player], self.width, self.height
-        for unit in self.units_near(point, radius + MAX_UNIT_RADIUS):
+        for unit in [] if buildings_only else self.units_near(point, radius + MAX_UNIT_RADIUS):
             if unit.player == player or unit.hidden or unit.hp <= 0 or (unit.flying and not air):
                 continue
             x, y = int(unit.x), int(unit.y)
@@ -4438,7 +4579,8 @@ class World:
             self._plunder(target, player, source)
             self._hoard(target, player, source)
         striker = self.units.get(source)
-        if striker is not None and isinstance(target, Unit) and target.hp > 0 and self._threat(target) == 0 and self.can_strike(target, striker):
+        if (striker is not None and isinstance(target, Unit) and target.hp > 0 and self._threat(target) == 0 and not target.info.blast
+                and self.can_strike(target, striker)):  # a sapper struck keeps its keg for what it was sent at
             current = target.order
             if current is None:
                 target.home = target.pos
@@ -4493,11 +4635,13 @@ class World:
             if not building.done:
                 self.settlement.site_lost(building.id, cancelled=False)
 
-    def _remove_unit(self, unit: Unit) -> None:
+    def _remove_unit(self, unit: Unit, *, spent: bool = False) -> None:
+        """Take *unit* off the map: fallen, or (*spent*) gone with its own blow, which is no loss and no death."""
         self._leave_mine(unit)
         del self.units[unit.id]
-        self.players[unit.player].stats["units_lost"] += 1
-        self.events.append(Event("death", unit.pos, player=unit.player, entity=unit.id, text=unit.type.value))
+        if not spent:
+            self.players[unit.player].stats["units_lost"] += 1
+            self.events.append(Event("death", unit.pos, player=unit.player, entity=unit.id, text=unit.type.value))
         if unit.constructing is not None:
             b = self.buildings.get(unit.constructing)
             if b is not None and b.builder == unit.id and not b.done:
@@ -4566,7 +4710,8 @@ class World:
         if used >= cap:
             return None
         candidates = [(b, u) for b in buildings if b.done for u in b.info.trains
-                      if UNITS[u].cost.gold <= gold and UNITS[u].cost.lumber <= lumber]
+                      if UNITS[u].cost.gold <= gold and UNITS[u].cost.lumber <= lumber
+                      and self.foreign_unit(player, u) is None and self.lacks_for(player, u) is None and self.at_limit(player, u) is None]
         return min(candidates, key=lambda pair: (pair[1] is not UnitType.PEASANT,
                    UNITS[pair[1]].cost.gold + UNITS[pair[1]].cost.lumber, pair[0].id)) if candidates else None
 

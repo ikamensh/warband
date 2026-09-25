@@ -8,7 +8,7 @@ import pytest
 from saga2d import Button, CommandError, Game
 from warband.online.authority import WarbandMatch
 from warband.sim.model import Build, Harvest, tile_center
-from warband.sim.rules import BUILDINGS, BuildingType, Race, UnitType
+from warband.sim.rules import BUILDINGS, OWN_UNITS, UNITS, BuildingType, Race, UnitType, Upgrade
 from warband.ui.controls import CHORDS, GRID_BELOW, GRID_KEYS, SCHEMES
 from warband.brains.adjutant import COMMANDS
 from warband.ui.scene import BUILD_ORDER, DEFAULT_SETTINGS, GameScene, HelpScene, SettingsScene, new_game
@@ -290,6 +290,32 @@ def test_the_building_panel_says_what_is_endless_and_why_it_waits(game) -> None:
         game.tick(0.1)
     shown = [t["text"] for t in game.backend.texts]
     assert "Endless: Archer" in shown and "Not enough gold (500 needed)" in shown
+
+
+@pytest.mark.parametrize("race", [Race.HUMAN, Race.ELF])
+def test_the_building_panel_names_the_recruit_that_goes_on_while_its_own_unit_waits_at_its_limit(game, race: Race) -> None:
+    """The race's own unit first in turn at its building, three of it out: the panel names the staple beside it as the
+    next, says the own unit waits at its limit rather than leaving the player to guess, and why the staple waits."""
+    scene = match(game, race=race)
+    world = scene.world
+    own = OWN_UNITS[race]
+    kind = UNITS[own].trained_at
+    building = world.place_building(scene.human, kind, open_ground(scene, kind, hall_of(scene).center))
+    staple = next(t for t in building.info.trains if t is not own and UNITS[t].race is None)
+    scene.player.upgrades.add(Upgrade.KEEP)
+    scene.player.gold = 0  # nothing starts: the panel says why the next one waits
+    scene.select([building.id])
+    for unit_type in (staple, own):
+        press(game, next(c for c in scene.card if c.label == scene.unit_name(unit_type)).key, shift=True)
+    assert building.auto == [own, staple]
+    for i in range(3):
+        world.spawn_unit(scene.human, own, tile_center((building.x + i, building.y + building.size + 1)))
+    for _ in range(12):
+        game.tick(0.1)
+    shown = [t["text"] for t in game.backend.texts]
+    cost = world.unit_info(scene.human, staple).cost.gold
+    assert f"Endless: {scene.unit_name(staple)}, {scene.unit_name(own)} in turn" in shown, shown
+    assert f"{scene.unit_name(own)}: at most 3 at once" in shown and f"Not enough gold ({cost} needed)" in shown
 
 
 # -- Placing buildings -------------------------------------------------------------------------------------------------

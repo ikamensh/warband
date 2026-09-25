@@ -105,6 +105,7 @@ class ProProfile:
     wood_lead: bool = False           # hands follow the wood the next purchases are short of while the gold for them is banked
     wood_per_hand: int = 300          # …one more chopper for each this much lumber they are short
     wood_release: int = 1000          # …and back to the policy once nothing is short and this much lumber is banked
+    unique: bool = True               # buys its race's own unit when what it knows says so (WB-068, warband.brains.unique)
 
 
 PRO: Final = ProProfile("pro")
@@ -162,6 +163,9 @@ _TRIALS: Final = (
     replace(PRO_VANGUARD, name="pro-vanguard-unanswered", hunt_party=0, strike_seconds=0.0),
     replace(PRO_WARDEN, name="pro-warden-unanswered", hunt_party=0, strike_seconds=0.0),
     replace(PRO_HARD, name="pro-hard-unanswered", hunt_party=0, strike_seconds=0.0),
+    # Before WB-068 no race had a unit of its own: these never buy it, for the arena to price it against.
+    replace(PRO_VANGUARD, name="pro-vanguard-nounique", unique=False),
+    replace(PRO_WARDEN, name="pro-warden-nounique", unique=False),
 )
 #: The tower rush (WB-036), Master's third posture: the Vanguard, with a peasant that walks to the far side of
 #: the enemy's main mine as its first barracks goes up and raises a tower there once it stands. Rated after

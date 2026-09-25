@@ -44,4 +44,6 @@ def cue(family: str) -> str:
 
 #: Cue name → how many takes the bank can choose from.
 CUES = {cue(family): takes(family) for family in FAMILIES}
+#: The deaths that are explosions (``Family.loud``): heard as a building coming down is, whatever else is sounding.
+LOUD = frozenset(cue(family) for family, body in FAMILIES.items() if body.loud)
 SOUNDS = {f"{cue(family)}_{take}": partial(death, family, take) for family in FAMILIES for take in range(takes(family))}

@@ -32,6 +32,11 @@ attack = "siege"
 armor = "fortified"
 factor = 1.5
 
+[[damage_bonus]]
+attack = "crush" # a treant's limbs (WB-068)
+armor = "fortified"
+factor = 2.0
+
 # A siege crew on its own judgement weighs the trade instead of refusing every
 # stone that could touch its own side (docs/balance.md measured why): it
 # throws the landing point with the best enemy minus friendly_worth times

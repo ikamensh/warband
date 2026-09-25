@@ -581,8 +581,9 @@ def test_the_codex_lists_every_unit_building_and_upgrade(play) -> None:
     press(game, "f2")
     assert isinstance(game.scene, CodexScene)
     shown = texts(game)
-    for unit_type in PLAYABLE_UNITS:
-        assert UNITS[unit_type].name in shown
+    race = RACES[scene.player.race]
+    for unit_type in PLAYABLE_UNITS:  # the race's own: another race's own unit is on that race's page
+        assert (race.units[unit_type].name in shown) == race.unit_allowed(unit_type), unit_type
     assert f"heal {UNITS[UnitType.CLERIC].heal}" in shown  # what a healer's cast restores, not its own weak blow (WB-051 gave it one)
     press(game, "2")
     shown = texts(game)

@@ -99,6 +99,8 @@ def make_agent(name: str, player: int, seed: int = 0) -> Agent:
 # profiles, so these overlap with the pro-* names below; both spellings play.
 for _difficulty in Difficulty:
     register(_difficulty.value, lambda player, seed, d=_difficulty: make_brain(player, d, seed))
+    # The same, never buying its race's own unit (WB-068): what the unit is worth to the setting is the difference.
+    register(f"{_difficulty.value}-nounique", lambda player, seed, d=_difficulty: make_brain(player, d, seed, own_units=False))
 
 from warband.brains.pro_ai import PRO_PROFILES, ProBrain  # noqa: E402 - after register() exists
 

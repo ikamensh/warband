@@ -28,16 +28,20 @@ if __name__ in ("__main__", "__mp_main__"):  # run as a program or as one of its
 from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
 from warband.sim import mapgen  # noqa: E402
 from warband.brains.ai import make_brain  # noqa: E402
-from warband.sim.rules import SIM_DT, Difficulty, Race  # noqa: E402
+from warband.sim.rules import OWN_UNITS, SIM_DT, Difficulty, Race  # noqa: E402
+
+OWN = frozenset(unit.value for unit in OWN_UNITS.values())
 
 MINUTES = 20
 
 
-def match(seed: int, races: tuple[Race, Race], difficulty: Difficulty, *, minutes: int, budget: CpuBudget | None) -> tuple[Race | None, float]:
-    """``(winning race or None, minutes played)`` for one AI-versus-AI match."""
+def match(seed: int, races: tuple[Race, Race], difficulty: Difficulty, *, minutes: int, budget: CpuBudget | None,
+          bought: Counter[Race] | None = None, own_units: bool = True) -> tuple[Race | None, float]:
+    """``(winning race or None, minutes played)`` for one AI-versus-AI match; each race's own units trained are counted
+    into *bought*."""
     world = mapgen.generate(seed=seed, players=2, human=None, races=races)
     # Hard and Master are a ProBrain, not a Brain; the wilds are nobody's seat and have no brain at all.
-    brains = [make_brain(p.id, difficulty, seed) for p in world.players[:world.seats]]
+    brains = [make_brain(p.id, difficulty, seed, own_units=own_units) for p in world.players[:world.seats]]
     rng = random.Random(seed)
     for _ in range(int(minutes * 60 / SIM_DT)):
         if world.winner is not None:
@@ -47,7 +51,9 @@ def match(seed: int, races: tuple[Race, Race], difficulty: Difficulty, *, minute
         for brain in brains:
             brain.think(world, rng)
         world.step()
-        world.take_events()
+        for event in world.take_events():
+            if bought is not None and event.kind == "trained" and event.target_type in OWN:
+                bought[world.players[event.player].race] += 1
     return (world.players[world.winner].race if world.winner is not None else None), world.time / 60
 
 
@@ -58,6 +64,8 @@ def main() -> None:
     parser.add_argument("--difficulty", choices=[d.value for d in Difficulty], default="hard")
     parser.add_argument("--minutes", type=int, default=MINUTES)
     parser.add_argument("--cpu-percent", type=float, default=25, help="CPU allowance, percent of one core")
+    parser.add_argument("--without-own-units", dest="own_units", action="store_false",
+                        help="brains that never buy their race's own unit (WB-068): the same matches as before it existed")
     args = parser.parse_args()
     budget = CpuBudget(args.cpu_percent)
     difficulty = Difficulty(args.difficulty)
@@ -65,13 +73,15 @@ def main() -> None:
     losses: Counter[Race] = Counter()
     pairs: Counter[tuple[Race, Race]] = Counter()  # (winner, loser)
     undecided = 0
+    bought: Counter[Race] = Counter()  # each race's own unit (WB-068), trained
     seeds = [seed for seed in range(args.first_seed, args.first_seed + args.seeds) if fair(seed)]
     if len(seeds) < args.seeds:
         print(f"  ({args.seeds - len(seeds)} of {args.seeds} seeds have no fair map and were left out)", flush=True)
     for first, second in itertools.combinations(Race, 2):
         for seed in seeds:
             for races in ((first, second), (second, first)):
-                winner, played = match(seed, races, difficulty, minutes=args.minutes, budget=budget)
+                winner, played = match(seed, races, difficulty, minutes=args.minutes, budget=budget, bought=bought,
+                                       own_units=args.own_units)
                 if winner is None:
                     undecided += 1
                 else:
@@ -87,6 +97,8 @@ def main() -> None:
     for first, second in itertools.combinations(Race, 2):
         print(f"  {first.value} {pairs[first, second]}–{pairs[second, first]} {second.value}")
     print(f"  undecided within {args.minutes} min: {undecided}")
+    played = 3 * len(seeds) * 2  # each race plays three pairings, both sides, every seed
+    print("  own units trained: " + ", ".join(f"{race.value} {OWN_UNITS[race].value} {bought[race]} in {played} matches" for race in Race))
 
 
 def fair(seed: int) -> bool:

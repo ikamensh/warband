@@ -102,9 +102,10 @@ def test_the_table_covers_every_unit_of_every_race_and_most_pairings_are_even() 
             assert info.attack is UNITS[unit_type].attack and info.armor_class is UNITS[unit_type].armor_class
     assert UNITS[UnitType.ARCHER].attack is AttackType.PIERCING and UNITS[UnitType.CATAPULT].attack is AttackType.SIEGE
     assert {t for t in PLAYABLE_UNITS if UNITS[t].armor_class is ArmorClass.UNARMORED} == {
-        UnitType.PEASANT, UnitType.CLERIC, UnitType.CATAPULT, UnitType.FLYING_MACHINE}
+        UnitType.PEASANT, UnitType.CLERIC, UnitType.CATAPULT, UnitType.FLYING_MACHINE, UnitType.SAPPER, UnitType.TREANT}
     uneven = {pair: factor for pair, factor in DAMAGE_FACTORS.items() if factor != 1.0}
-    assert uneven == {(AttackType.PIERCING, ArmorClass.UNARMORED): 1.5, (AttackType.SIEGE, ArmorClass.FORTIFIED): 1.5}
+    assert uneven == {(AttackType.PIERCING, ArmorClass.UNARMORED): 1.5, (AttackType.SIEGE, ArmorClass.FORTIFIED): 1.5,
+                      (AttackType.CRUSH, ArmorClass.FORTIFIED): 2.0}  # a treant's limbs (WB-068)
     assert all(damage_factor(attack, armor) == DAMAGE_FACTORS.get((attack, armor), 1.0) for attack in AttackType for armor in ArmorClass)
 
 
@@ -147,6 +148,8 @@ def test_the_codex_names_every_unit_s_armour_class_and_its_blow_where_it_is_not_
     game, labels = codex(tmp_path, 0, race)
     try:
         for unit_type, info in RACES[race].units.items():
+            if not RACES[race].unit_allowed(unit_type):
+                continue  # another race's own unit is not on this race's page
             wanted = armour_name(info.armor_class) + (f", {info.attack.value}" if info.attack is not AttackType.NORMAL else "")
             assert any(text.endswith(wanted) for text in labels), (unit_type, wanted, labels)
     finally:
