@@ -16,6 +16,7 @@ import random
 import shutil
 import subprocess
 import sys
+import time
 from array import array
 from pathlib import Path
 
@@ -138,6 +139,38 @@ def test_a_world_the_compiled_simulation_saves_is_the_one_the_source_saves() -> 
     namespace: dict = {}
     exec(SAVED, namespace)
     assert _run_compiled(SAVED + "print(saved())\n").strip() == namespace["saved"]()
+
+
+def test_a_new_build_prunes_what_no_process_has_started_on_for_days(tmp_path: Path, monkeypatch) -> None:
+    """Old builds, the staging of an interrupted one and what an earlier prune left half removed go; a recent build,
+    the one just made, the one this process runs and a frozen app's copy stay."""
+    builds, shipped = tmp_path / "build" / "fastsim", tmp_path / "assets" / "fastsim"
+    monkeypatch.setattr(fastsim, "BUILDS", builds)
+    monkeypatch.setattr(fastsim, "SHIPPED", shipped)
+    day = 24 * 3600
+
+    def made(folder: Path, name: str, days: float) -> Path:
+        (folder / name / "warband" / "sim").mkdir(parents=True)
+        (folder / name / "constants.json").write_text("{}", encoding="utf-8")
+        os.utime(folder / name, (time.time() - days * day,) * 2)
+        return folder / name
+
+    old, interrupted, half_pruned = made(builds, "a" * 20, 4), made(builds, "b" * 20 + "-x1y2z3", 5), made(builds, "c" * 20 + ".pruned", 9)
+    recent, running, new = made(builds, "d" * 20, 2.5), made(builds, "e" * 20, 30), made(builds, "f" * 20, 30)
+    frozen = made(shipped, "a" * 20, 30)
+    monkeypatch.setenv(fastsim.ENV, str(running))
+    fastsim.prune(keep=new)
+    assert sorted(p.name for p in builds.iterdir()) == sorted(p.name for p in (recent, running, new))
+    assert frozen.is_dir() and not any(p.exists() for p in (old, interrupted, half_pruned))
+
+
+def test_an_activation_marks_its_build_in_use() -> None:
+    """What prune() spares is what a process started on lately: attaching touches the build, a worker's too."""
+    build = fastsim.build()
+    os.utime(build, (0, 0))
+    done = _python(f"from warband.league import fastsim\nfastsim.attach({str(build)!r})\n")
+    assert done.returncode == 0, done.stderr
+    assert time.time() - build.stat().st_mtime < 600
 
 
 def test_a_build_of_other_sources_is_refused(tmp_path: Path) -> None:

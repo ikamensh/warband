@@ -16,7 +16,8 @@ to the same answers on random inputs.  ``model.hypot`` is CPython's own
 through the ``math`` module; the source keeps calling ``math.hypot``.  A build
 is filed under a hash of the sources it was made from, so an edited source is
 never run as an old build: the next activation compiles it again, which takes
-a minute or less.
+a minute or less, and removes the builds no process has started on for three
+days (:func:`prune`).
 
 What the compiler asks in return is that the annotations are true.  A value
 of the wrong type reaching compiled code (a ``KnownMine`` where a ``Building``
@@ -49,6 +50,7 @@ import subprocess
 import sys
 import sysconfig
 import tempfile
+import time
 from pathlib import Path
 
 from warband.sim import config as balance_config
@@ -63,6 +65,9 @@ RECIPE = "4"  # each build carries its startup balance snapshot for spawned work
 ENV = "WARBAND_FASTSIM"  # the build a process activated, for the worker processes it starts
 OPT_OUT = "WARBAND_INTERPRETED"
 NO_TOOLCHAIN = 3  # the compiling process's exit status when this machine cannot compile at all
+#: How long a build nobody has attached stays under BUILDS: longer than a run of many hours, nights asleep included,
+#: for a run's workers attach when it starts (see :func:`prune`).  Some four builds a day make it a dozen, 85 MB.
+STALE_AFTER = 3 * 24 * 3600
 
 
 class NoToolchain(RuntimeError):
@@ -144,7 +149,30 @@ setup(name="warband-fastsim", packages=[], py_modules=[], ext_modules=modules,
         staging.rename(target)
     except OSError:  # another process finished the same build first; theirs is as good
         shutil.rmtree(staging)
+    prune(keep=target)
     return target
+
+
+def prune(keep: Path) -> None:
+    """Remove what no process has attached for :data:`STALE_AFTER` from :data:`BUILDS`: old builds and the staging
+    folders of interrupted ones, never *keep* or the build this process runs (``WARBAND_FASTSIM``).
+
+    Every activation touches its build, a spawned worker's too, so the age is the time since a process last started
+    on it.  A run's workers start with it, and a process that has loaded its modules no longer needs their files
+    (macOS, Linux; Windows refuses to move them while it holds them).  A build is renamed out of its key before it is
+    removed, so a removal that stops half way never leaves a folder that ``build()`` would take for a whole build."""
+    spared = {keep.name, Path(os.environ.get(ENV, keep)).name}
+    now = time.time()
+    for entry in BUILDS.iterdir():
+        if entry.name in spared:
+            continue
+        try:
+            if now - entry.stat().st_mtime < STALE_AFTER:
+                continue
+            doomed = entry if entry.name.endswith(".pruned") else entry.rename(entry.with_name(entry.name + ".pruned"))
+        except OSError:  # another process pruned it meanwhile, or a running one holds it (Windows)
+            continue
+        shutil.rmtree(doomed, ignore_errors=True)  # what a running process still holds stays for the next prune
 
 
 def attach(path: str | os.PathLike[str]) -> None:
@@ -162,6 +190,8 @@ def attach(path: str | os.PathLike[str]) -> None:
     elif root.name != _key(sources):
         raise ImportError(f"the compiled simulation {root.name} was built from other sources: the current ones "
                           f"make {_key(sources)}")
+    else:
+        os.utime(root)  # in use: prune() spares it for STALE_AFTER from now (a frozen app's own copy may be read-only)
     # The build holds no __init__.py, so each source package stays the package, with the build's directory first
     # on its path; the packages' own __init__.py import none of MODULES.
     packages = {name: importlib.import_module(f"warband.{name}") for name in dict.fromkeys(m.partition(".")[0] for m in MODULES)}
