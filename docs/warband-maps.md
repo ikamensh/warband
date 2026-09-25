@@ -848,7 +848,7 @@ with `CommandError`; both refusals are held to by
 placing a kind of deposit: one in every cell, the ground under and around it
 cleared, and its footprints added to what later site searches keep away from.
 Its footprint is whatever the rules give that kind, so a new kind is a site
-search of its own (`_natural_site`, `_third_site` and `_seam_site` are the
+search of its own (`_natural_site`, `_third_site` and `_prize_site` are the
 three there are, all scoring `_canonical_sites` and picking through `_pick`)
 plus one call to `_claim`, made after the existing claims so the order deposits
 are built in does not move. `MINE_GOLD`, `EXPANSION_GOLD`, `POOR_GOLD` and
@@ -938,9 +938,9 @@ free, and the argument for the hall.
 
 ### Where it goes
 
-`_seam_site` looks for shared ground: at least `_SEAM_AWAY` = 18 tiles from
+`_prize_site` looks for shared ground: at least `_PRIZE_AWAY` = 18 tiles from
 every hall (past the natural, out where a seat has to go and stay), as evenly
-shared between the two nearest halls as a third is, and with `_SEAM_ROOM` = 110
+shared between the two nearest halls as a third is, and with `_PRIZE_ROOM` = 110
 open tiles within eight for the hall and the towers whoever means to keep it
 will want.
 
@@ -955,8 +955,8 @@ promise is that the woods are thick. **Klondike has none either**: little gold
 at home and the rest in a walled pit is a deliberate shape of economy, and an
 endless trickle outside the pit unmakes it.
 
-**Only maps bigger than the shipped three.** `_seam_orbits` asks for
-`_SEAM_MAP` = 5200 tiles of map (a Large is 5120) and `_SEAM_CELL` = 1000 tiles
+**Only maps bigger than the shipped three.** `_wants_a_prize` asks for
+`_PRIZE_MAP` = 5200 tiles of map (a Large is 5120) and `_PRIZE_CELL` = 1000 tiles
 of a seat's own cell. So Small, Medium and Large never hold a seam at any seat
 count or layout, and Huge, Giant and Epic do wherever a cell has the middle
 ground for one — which leaves out Huge with sixteen seats (27 × 21 a seat) and
@@ -981,15 +981,17 @@ shared ground. `tools/map_report.py` prints a `seams` column.
 
 A seam is drawn as **three painted mine faces set into one bank of rock**: the
 middle one at its own size standing on the footprint's front line, and the two
-beside it at `SEAM_BACK` = 0.84 of their size and `SEAM_LIFT` = 0.75 tiles up
+beside it at `BANK_BACK` = 0.84 of their size and `BANK_LIFT` = 0.75 tiles up
 the picture, which is what standing further back looks like in this projection.
 They are pasted back to front so the nearest working overlaps the others, and
 the spread is computed from the middle face's own figure width so the three
 together come to five tiles. **Nothing is ever enlarged**: the painted frames
 were made for a three-tile mine and blown up to five they would be a smear.
-`textures.deposit_image` picks the bank or the single face by kind, and the
+`textures.deposit_image` picks the bank or the single face by size, and the
 whole thing wears the `active` look — lanterns lit in every mouth — while
 anybody is inside. `tools/verify_map.py` renders one with a crew at its face.
+Since WB-071 the seam's faces are its poor ones and the rich bank is the
+Mother Lode's (below).
 
 ## Strategy diversity pass (2026-09-23)
 
@@ -1129,3 +1131,99 @@ vault could be set on a rift by the rules as the map begins (grass, open, two
 tiles from every deposit). `tests/warband/test_maps.py` asserts the per-seat
 distances over its seeds, sizes and layouts, and `tests/warband/test_mapgen.py`
 the congruence, a vault placeable on each seat's rift, and the contested rifts.
+
+## The Mother Lode (2026-09-24, WB-071)
+
+The seam paid a fifth of a mine's trip and wore the richest picture on the map.
+It now looks as poor as it pays, and its rich bank of three faces went to a
+deposit that earns it: the **Mother Lode** (`BuildingType.MOTHER_LODE`,
+`buildings.toml [mother_lode]`). A seam's five tiles and twelve places at the
+face, a mine's hundred gold a trip, and it runs out: `LODE_GOLD` = 100 000
+(`economy.toml [setup].lode_gold`). Its face gives at most 240 gold a second
+(`MineInfo.rate`), against a mine's 160 and a seam's 48. A lode placed without
+a stock holds its hundred thousand; the map generator deals it that too.
+
+### The deal
+
+Where a map has room for the shared ground's prize — the seam's rules, unchanged:
+Plains, Crossings and Bastion, a map bigger than Large and a cell of at least
+1 000 tiles (`_wants_a_prize`) — the seed deals a seam or a lode, even odds
+(`mapgen.deal_prize`). The draw is the seed's, not an attempt's (every retry of
+a seed deals the same), from a stream of its own like the layout's and the
+races' (`random.Random(seed ^ _PRIZE_SALT)`), so the map's stream never learns
+of it. Neighbouring seeds seed unrelated streams, so a ladder's run of seeds
+deals as a run of fair coins would: a neighbour deals the same prize half the
+time (`tests/warband/test_mother_lode.py`, 2 000 seeds). Seeds 8 to 20 all deal
+a lode, and that is a fair coin's luck: one set of 2 000 tosses in five holds a
+run of thirteen or longer.
+
+Both prizes are five tiles on the site `_prize_site` finds, with the big camp
+beside it (`_guard(..., "lair")`), so **a seed draws the same ground either
+way**: terrain, every other deposit, every camp, every rift and the number of
+retries are the seed's whatever it deals (`tests/warband/test_mother_lode.py`,
+three sizes and layouts; the survey below). The audit needs nothing new: a
+prize is copied a cell at a time like every deposit, and its door is on the
+routes the production pathfinder is asked for. `mapgen.build(..., prize=...)`
+plays a seed with the prize named, which is how a lode is measured against a
+seam; `audit` reports `lodes` beside `seams`, and `tools/map_report.py` prints
+both.
+
+How many maps change, surveyed on main (`d5d501b`) and on this branch: every
+pairing New game offers, every layout, seeds 500 on (six seeds a pairing on the
+shipped sizes, ten on Huge, four on Giant, two on Epic), 660 maps each:
+
+| | maps | with a prize | now a Mother Lode | ground, camps, rifts, retries or fairness changed |
+|---|---:|---:|---:|---:|
+| Small, Medium, Large | 270 | 0 | 0 | 0 |
+| Huge | 230 | 109 | 21 (seeds 507 and 508) | 0 |
+| Giant | 120 | 50 | 0 (seeds 500 to 503 deal seams) | 0 |
+| Epic | 40 | 19 | 0 (seeds 500 and 501 deal seams) | 0 |
+
+A seed deals one prize to every pairing, so the survey's ten seeds are ten
+tosses, and two of them came up lodes; over 2 000 seeds the lode's share is
+51%. The 21 maps that changed changed in the kind of one deposit orbit and
+nothing else. No seed was unfair on either side, and a seed's fairness cannot depend on
+the deal, so a seed that made a fair map still makes the same one and
+`scene.fair_map` returns the seed it returned.
+
+### The picture
+
+A deposit looks as it pays and as it holds (`textures.deposit_wealth`): a face
+of rock is *rich*, *worked* or *poor* (`textures.WEALTHS`). The seam, whose trip
+is under a mine's, is poor: bare grey rock with thin gold veins, weathered
+timbers, an old pit prop leant on the rock and a fallen beam. The lode is rich
+— the bank of three crystal faces the seam wore — while it holds more than its
+`rich_above` (50 000, `buildings.toml`; no rule reads it), and worked at or
+below: its tallest crystals quarried away, a few shorter ones among the stumps
+and scars, a heap of spoil by each mouth. A mine is always rich. Every look has
+its `active` twin, lanterns lit and a loaded cart in the mouth, while a peasant
+is inside.
+
+The worked and poor faces are painted over the rich mine painting
+(`tools/restyle.py --workings`, Codex's image tool on 2026-09-24,
+`assets/restyled/workings.intact` and `.active`), so a lode crossing its line is
+the same bank with its gold gone; the procedural art (`WARBAND_ART=procedural`)
+draws them from `textures._mine(variant, wealth)`, on the rich mesh's own rocks
+and random draws. The fog remembers the look as it remembers the stock: the
+view draws a deposit from its `Sighting`'s gold, so a lode drained out of sight
+stays rich on the player's map until somebody looks
+(`tests/warband/test_painted_mine.py`). The selection card's picture is the
+bank's own, as rich as the map shows it (`textures.deposit_portrait`).
+
+### What the brains make of it
+
+A brain values a deposit by its pace and its stock, never its kind
+(`brains.ai.pace`: the face's gold a second over a mine's, 1.5 for a lode, 0.3
+for a seam). `hall_first` still puts gold that runs out before gold that never
+does, and then ranks the walk over the pace, so a lode half as far again as a
+mine ranks with it; `worth_a_hall` asks for the work `LOW_MINE_GOLD` is to a
+mine at the deposit's own pace (nine thousand in a lode); the pro brain hires
+for the pace of what it works. A camp is worth the walk in proportion to the
+stock it keeps (`ai.camp_worth`): twice the creeping reach for a lode's camp
+(`CAMP_WALK`), as long as the lode is nearer one of our halls than anything of
+a rival's we know of, the rule an expansion is chosen by, and the ordinary walk
+for every other camp. On the shipped sizes every deposit paces as a mine and no
+camp keeps more than an expansion's thirty thousand, so each of these numbers is
+exactly one there, and `tools/sim_fingerprint.py` and `tools/sim_bench.py`'s
+results are unmoved (a slow test holds the shipped maps to it). What the brains
+do with a lode is measured in [balance.md](balance.md#the-mother-lode-wb-071-2026-09-24).

@@ -932,6 +932,100 @@ is the same kind of swap in the other direction. Neither `sim_fingerprint`
 (Hard–Medium duels, six minutes) nor `sim_bench` (eight settled duels and one
 four-player match) reaches an exposure, and both are unchanged.
 
+## The Mother Lode (WB-071, 2026-09-24)
+
+The shared ground's prize is now a gold seam or a Mother Lode, dealt by the
+seed ([the maps note](warband-maps.md#the-mother-lode-2026-09-24-wb-071)), and
+the brains value a deposit by its pace and its stock. None of it reaches the
+three shipped sizes: no prize lies on them, every deposit there paces as a mine
+and no camp keeps more than an expansion's thirty thousand, so every value the
+brains now compute is exactly one there. `tools/sim_fingerprint.py --check` is
+unmoved, and `tools/sim_bench.py`'s nine arena matches give the recorded results
+to the bit once the two keys this change added to the record (the spec's
+`prize`, the tally's `mined`) are taken out; the digest moved for those keys
+alone. So `tools/race_report.py` and the difficulty ladder, which play only the
+shipped sizes, give the same tables before and after at any sample size:
+`race_report.py --seeds 3` on Master and on Medium (72 matches each) and
+`arena.py ladder --agents easy,medium,hard,master,grandmaster --seeds 3` (60
+matches) printed the same result for every match on `origin/main` (`a9b3d8a`)
+and on this branch. The full-size runs WB-062 asked for would print the same
+tables twice, so they were not played.
+
+What was measured instead is where the lode lives: `tools/prize_report.py`,
+every seed played twice on a Huge map, once with each prize on the same ground,
+every pairing from both corners, the layouts that hold a prize (Plains,
+Crossings, Bastion) cycled by seed, seeds from 7100. The seam's side is the
+game as it was on these maps, but for the brain hiring three tenths of a crew
+for a seam where it hired two (the pace). The league was played on `a9b3d8a`,
+before Rage and Bleeding (WB-062, above) landed: the lode's moves against the
+seam are what it measures, not the races' standing since.
+
+Races, every pair both ways, share of decided matches:
+
+| race | Master, seam | Master, lode | Medium, seam | Medium, lode |
+|---|---:|---:|---:|---:|
+| dwarf | 76–63 (54.7%) | 78–62 (55.7%) | 148–138 (51.7%) | 145–141 (50.7%) |
+| elf | 76–67 (53.1%) | 71–70 (50.4%) | 188–100 (65.3%) | 193–95 (67.0%) |
+| human | 70–69 (50.4%) | 67–71 (48.6%) | 116–170 (40.6%) | 123–164 (42.9%) |
+| orc | 57–80 (41.6%) | 63–76 (45.3%) | 121–165 (42.3%) | 113–174 (39.4%) |
+| undecided | 9 | 9 | 3 | 2 |
+| matches | 288 | 288 | 576 | 576 |
+
+Master is one block of 24 seeds (576 matches), Medium two (`--first-seed 7100`
+and `7124`, 1 152), as WB-062 measured them. No race moves by more than 3.7
+points between the prizes, and on Medium, where one block alone moved the elves
+by 5.5 and the second the humans by 7.5, the pooled moves are under three: the
+lode is in band. The elves' lead on Medium is the seam's too, so it is Huge's,
+not the lode's (the ladder's sizes put them at 54.2%).
+
+The difficulties, every pair both ways (twelve seeds, 240 matches a prize),
+rated with Medium anchored at 1000:
+
+| setting | seam | lode |
+|---|---|---|
+| Grandmaster | 1267 (1188 .. 1369), 79.2% | 1255 (1156 .. 1360), 77.1% |
+| Master | 1084 (1016 .. 1159), 55.2% | 1118 (1045 .. 1190), 60.4% |
+| Hard | 1121 (1035 .. 1215), 59.4% | 1112 (1029 .. 1199), 57.3% |
+| Medium | 1000, 44.8% | 1000, 44.8% |
+| Easy | 713 (633 .. 786), 11.5% | 711 (629 .. 788), 10.4% |
+
+Every rating stays inside the other's interval. Hard and Master are within
+noise of each other on Huge two-seat maps with either prize, where the ladder's
+sizes put Master well above Hard (`brains.DIFFICULTY_ELO`); that is Huge's, not
+the lode's, and why is not measured here.
+
+Who takes the prize and when, from the league's telemetry (`PlayerTally.mined`
+and its `hall.<kind>` and `mined.<kind>` times):
+
+| panel | prize | matches | a hall at it | first hall (median) | worked at all | gold out of it a match (mean) | share of all gold mined |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Master races | seam | 288 | 10 (3%) | 8.0 min | 115 (40%) | 342 | 0.5% |
+| Master races | lode | 288 | 13 (5%) | 8.3 min | 128 (44%) | 2 413 | 2.5% |
+| Medium races | seam | 576 | 89 (15%) | 7.0 min | 203 (35%) | 990 | 1.0% |
+| Medium races | lode | 576 | 142 (25%) | 7.6 min | 229 (40%) | 7 956 | 5.5% |
+| difficulties | seam | 240 | 14 (6%) | 9.2 min | 78 (32%) | 568 | 0.7% |
+| difficulties | lode | 240 | 26 (11%) | 9.0 min | 90 (38%) | 3 593 | 3.6% |
+| four seats (Easy, Medium, Hard, Master) | seam | 24 | 4 (17%) | 6.5 min | 17 (71%) | 2 586 | 1.1% |
+| four seats | lode | 24 | 14 (58%) | 8.4 min | 21 (88%) | 60 048 | 17.6% |
+
+The halls at a lode in the race panels were every race's (Medium: elf 68,
+dwarf 54, human 36, orc 36; Master: orc 5, human 4, dwarf 4); in the
+difficulty panel Medium's 20, Easy's 7 and Grandmaster's 1; on four seats
+Medium's 10, Easy's 6 and Master's 4.
+
+The lode is contested where the brains reach it. On a Huge map with two seats it
+lies 57 tiles from each hall, and a Master match there is settled by the first
+push at a median of eight minutes, before anybody has needed a third hall; Hard
+never expands at all (`PRO_HARD.expand`), so the ladder's halls at the lode are
+Medium's, Easy's and one Grandmaster's. Medium, which expands on its own clock,
+halls at the lode in a quarter of its race matches against a seventh at the seam,
+and on four seats, where the prize lies in every cell eighteen tiles out, the
+lode is worked in 88% of matches, a hall stands at it in 58%, and a median
+27 700 gold comes out of it: 17.6% of all the gold the match mined, against the
+seam's 1.1%. Whoever drew the most from a lode won 209 of the 229 Medium race
+matches it was worked in; that is as much the winner's freedom to walk out as
+the lode's gold, which is why the race and difficulty shares above, and not
+this, are the balance evidence.
 
 ## What to change next
 

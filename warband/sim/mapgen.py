@@ -34,8 +34,8 @@ from typing import Final
 from warband.sim import camps as camping
 from warband.sim import path as pathing
 from warband.sim.model import MINE_CLEARANCE, RIFT, Pos, World, int_sum, plain_sum, rects_gap, tile_center
-from warband.sim.rules import (BUILDINGS, EXPANSION_GOLD, MAX_PLAYERS, MINE_GOLD, BuildingType, Layout, MapTheme, Race, Terrain,
-                               UnitType)
+from warband.sim.rules import (BUILDINGS, EXPANSION_GOLD, LODE_GOLD, MAX_PLAYERS, MINE_GOLD, BuildingType, Layout, MapTheme, Race,
+                               Terrain, UnitType)
 
 SIZES: Final[dict[str, tuple[int, int]]] = {
     # Nominal tiles; :func:`dimensions` rounds a size up to whole cells of the seat count's grid.
@@ -75,14 +75,18 @@ PROMISES: Final[dict[Layout, str]] = {
 RETRIES: Final = 8
 KLONDIKE_START_GOLD: Final = 20_000
 POOR_GOLD: Final = 10_000  # the coward's gold: a far corner mine on Klondike
-#: A gold seam is the endless deposit (:class:`~warband.sim.rules.MineInfo`): five tiles across instead of
-#: three, twenty gold a trip instead of a hundred, and it never runs out.  It is worth what holding it is
-#: worth, so it goes on the maps whose matches are long and whose middle is far from home, and nowhere else:
-#: the three shipped sizes keep the economy their difficulty ratings and their balance league were measured on.
-_SEAM_MAP: Final = 5200  # tiles of map a seam wants more of; a Large (80x64) is 5120
-_SEAM_CELL: Final = 1000  # tiles of a seat's own cell: a smaller share has no middle to put a five-tile dig in
-_SEAM_AWAY: Final = 18  # tiles from every hall: past the natural, out where a seat has to go and stay
-_SEAM_ROOM: Final = 110  # open tiles within eight of a seam, against _SITE_ROOM within six of a natural
+#: The shared ground's prize is one of two five-tile deposits (:class:`~warband.sim.rules.MineInfo`), dealt by
+#: the map's seed: a gold seam, twenty gold a trip and it never runs out, or a Mother Lode, a mine's hundred a
+#: trip at the seam's twelve places and LODE_GOLD to give (WB-071).  So the middle of a big map is either a long
+#: siege for a trickle or a short war for a fortune.  Both are worth what holding them is worth, so a prize goes
+#: on the maps whose matches are long and whose middle is far from home, and nowhere else: the three shipped
+#: sizes keep the economy their difficulty ratings and their balance league were measured on.
+_PRIZES: Final = (BuildingType.GOLD_SEAM, BuildingType.MOTHER_LODE)
+_PRIZE_SALT: Final = 0x10DE  # the deal's own stream, seeded apart from the map's: which prize never moves a tile
+_PRIZE_MAP: Final = 5200  # tiles of map a prize wants more of; a Large (80x64) is 5120
+_PRIZE_CELL: Final = 1000  # tiles of a seat's own cell: a smaller share has no middle to put a five-tile dig in
+_PRIZE_AWAY: Final = 18  # tiles from every hall: past the natural, out where a seat has to go and stay
+_PRIZE_ROOM: Final = 110  # open tiles within eight of the prize, against _SITE_ROOM within six of a natural
 _MARGIN: Final = 7  # tiles from a cell's corner to a corner hall's top-left
 _CLEARING: Final = 7  # radius of open ground around the hall's middle tile
 _SITE_SPACING: Final = {True: 8, False: 7}  # Chebyshev tiles between mine sites, by whether the cell spans the map (mirrored cells are tighter)
@@ -90,7 +94,7 @@ _SITE_ROOM: Final = 60  # open tiles within six of a natural or third, so a hall
 _MIN_CELL: Final = (24, 20)  # the smallest share of a map that has ever made a fair base: Small with four seats
 _MAX_CELL: Final = 5000  # the largest share a seat can hold: beyond it the walk to the next base is the whole match
 _GLADE_ROOM: Final = 1300  # tiles of a Forest cell per extra clearing cut in it, beyond the two the layout always cuts
-#: A creature camp squats beside a *contested* deposit -- a third mine or a gold seam -- and never beside a
+#: A creature camp squats beside a *contested* deposit -- a third mine or the prize -- and never beside a
 #: seat's own mine or its natural.  That is the whole placement rule, and it is what the camps are for: the
 #: opening is untouched, the expansion every build order needs is free, and the ground a player has to leave
 #: home for is held by something.  A seat that wants the middle now has to take it from somebody at minute
@@ -103,7 +107,7 @@ _CAMP_FURTHEST: Final = 9.0
 _CAMP_SPACING: Final = 5  # Chebyshev tiles between a lair's corner and any other footprint's: two tiles of daylight
 _CAMP_ROOM: Final = 40  # open tiles within six of a lair, so an army has somewhere to fight
 #: What each kind of camp is made of and what its den is sitting on.  A third mine draws one of the two
-#: small camps; the endless seam, worth the most and standing furthest out, is always the big one.
+#: small camps; the prize, a seam or a lode, worth the most and standing furthest out, is always the big one.
 _ROSTERS: Final[dict[str, tuple[tuple[UnitType, ...], int]]] = {
     "den": ((UnitType.WOLF,) * 4, 500),
     "nest": ((UnitType.SPIDER, UnitType.SPIDER, UnitType.WOLF, UnitType.WOLF), 600),
@@ -237,17 +241,23 @@ def _layout_refusal(spec: _Spec, cols: int, rows: int, cw: int, ch: int) -> str 
 
 
 def generate(seed: int, width: int = 48, height: int = 40, players: int = 2, human: int | None = 0, theme: MapTheme = MapTheme.SUMMER,
-             races: Sequence[Race | None] | None = None, layout: Layout | None = None, wilds: bool = True) -> World:
+             races: Sequence[Race | None] | None = None, layout: Layout | None = None, wilds: bool = True,
+             prize: BuildingType | None = None) -> World:
     """*races* names each player's race; ``None`` entries are drawn from the seed, so a seed reproduces
     the whole match.  Without a list the *human* leads Humans and the computer players are drawn.
     *layout* ``None`` draws one from the seed.  *wilds* ``False`` leaves the contested deposits unguarded,
-    which is how a map is measured against one with camps on it."""
-    return build(seed, width, height, players, human, theme, races, layout, wilds)[0]
+    which is how a map is measured against one with camps on it.  *prize* ``None`` has the seed deal the
+    shared ground's prize (:func:`deal_prize`); naming one plays the same map with that prize on it, which is
+    how a lode is measured against a seam."""
+    return build(seed, width, height, players, human, theme, races, layout, wilds, prize)[0]
 
 
 def build(seed: int, width: int = 48, height: int = 40, players: int = 2, human: int | None = 0, theme: MapTheme = MapTheme.SUMMER,
-          races: Sequence[Race | None] | None = None, layout: Layout | None = None, wilds: bool = True) -> tuple[World, dict]:
+          races: Sequence[Race | None] | None = None, layout: Layout | None = None, wilds: bool = True,
+          prize: BuildingType | None = None) -> tuple[World, dict]:
     """:func:`generate` plus the audit report of the map it settled on (``attempt`` counts the retries)."""
+    if prize is not None and prize not in _PRIZES:
+        raise ValueError(f"the shared ground's prize is one of {', '.join(p.value for p in _PRIZES)}, not {prize.value}")
     if not 2 <= players <= MAX_PLAYERS:
         raise ValueError(f"2 to {MAX_PLAYERS} players, not {players}")
     if races is not None and len(races) != players:
@@ -262,11 +272,12 @@ def build(seed: int, width: int = 48, height: int = 40, players: int = 2, human:
         layout = random.Random(seed ^ 0x1A70).choice(choices or list(Layout))
     wanted: list[Race | None] = list(races) if races is not None else [Race.HUMAN if i == human else None for i in range(players)]
     chosen = draw_races(wanted, random.Random(seed ^ 0x5ACE))
+    dealt = deal_prize(seed) if prize is None else prize
     problems: list[str] = []
     without: tuple[World, dict] | None = None  # the best map so far that is fair but is missing something wished for
     for attempt in range(RETRIES):
         world, report = _attempt(random.Random(seed * 16 + attempt), seed, width, height, players, human, theme, chosen, layout, wilds,
-                                 random.Random((seed * 16 + attempt) ^ _RIFT_SALT))
+                                 random.Random((seed * 16 + attempt) ^ _RIFT_SALT), dealt)
         report["attempt"] = attempt
         if not report["problems"]:
             if not report["wishes"]:
@@ -275,8 +286,8 @@ def build(seed: int, width: int = 48, height: int = 40, players: int = 2, human:
                 without = (world, report)
         problems = report["problems"] or report["wishes"]
     # A fault makes a map unfair and there is nothing to do but raise; a wish is a feature the layout's
-    # own walls left no room for on this seed.  A gold seam is the one wish there is: eight seeds are
-    # given the chance to fit one in, and a map that has everything else is a map, not a refusal.
+    # own walls left no room for on this seed.  The prize (a seam or a lode) is the one wish there is: eight
+    # seeds are given the chance to fit one in, and a map that has everything else is a map, not a refusal.
     if without is not None:
         return without
     raise NoFairMap(f"No fair {layout.value} map at {width}x{height} for {players} players from seed {seed} in {RETRIES} tries: {problems}.")
@@ -552,27 +563,27 @@ class _Spec:
     natural_clearing: int = 0  # trees cut around the natural (Forest)
     third_clearing: int = 0
     thirds: bool = True  # contested mines in the middle (Klondike keeps its gold in the pit instead)
-    seam: bool = False  # an endless gold seam out in the shared ground, where the map is big enough for one
+    prize: bool = False  # a seam or a lode out in the shared ground, where the map is big enough for one
     contested: int | None = None  # how many tiles nearer one hall than the next a third may be; None: the symmetry's default
     start_gold: int = MINE_GOLD
 
 
-#: Three of the five layouts hold a seam, and each for its own reason.  Plains is open ground where
-#: expansions lie exposed, so a deposit nobody can exhaust is exactly the thing to fight over.
-#: Crossings already asks who holds the fords, and a seam on the far bank gives the answer a price.
-#: Bastion promises a boom in safety and then a fight for the middle, and the seam is what the middle
+#: Three of the five layouts hold a prize, and each for its own reason.  Plains is open ground where
+#: expansions lie exposed, so a deposit worth more than any other is exactly the thing to fight over.
+#: Crossings already asks who holds the fords, and a prize on the far bank gives the answer a price.
+#: Bastion promises a boom in safety and then a fight for the middle, and the prize is what the middle
 #: is finally worth.  Forest has none: its clearings and roads are cut by hand and a five-tile dig
 #: with its open ground around it would take a base's worth of woods out of a layout whose whole
 #: promise is that the woods are thick.  Klondike has none either: little gold at home and the rest
-#: in a walled pit is a deliberate shape of economy, and an endless trickle outside the pit unmakes it.
+#: in a walled pit is a deliberate shape of economy, and a fortune or a trickle outside the pit unmakes it.
 #: Plains and Crossings also have short home mines: their free naturals should be fought over
 #: during an ordinary match, before a player has already won from one safe deposit.
 _SPECS: Final[dict[Layout, _Spec]] = {
-    Layout.PLAINS: _Spec(Layout.PLAINS, seam=True, start_gold=15_000),
+    Layout.PLAINS: _Spec(Layout.PLAINS, prize=True, start_gold=15_000),
     Layout.FOREST: _Spec(Layout.FOREST, clearing=9, natural_range=(13, 18), natural_clearing=5, third_clearing=4),  # a full base needs the room; four seats get less, see _clearing
-    Layout.CROSSINGS: _Spec(Layout.CROSSINGS, contested=14, seam=True, start_gold=20_000),  # the river runs down the bisector; thirds sit on its banks
+    Layout.CROSSINGS: _Spec(Layout.CROSSINGS, contested=14, prize=True, start_gold=20_000),  # the river runs down the bisector; thirds sit on its banks
     Layout.KLONDIKE: _Spec(Layout.KLONDIKE, clearing=6, natural=False, thirds=False, start_gold=KLONDIKE_START_GOLD),
-    Layout.BASTION: _Spec(Layout.BASTION, natural_range=(12, 18), seam=True),
+    Layout.BASTION: _Spec(Layout.BASTION, natural_range=(12, 18), prize=True),
 }
 
 
@@ -612,12 +623,22 @@ def _third_orbits(spec: _Spec, cw: int, ch: int) -> int:
     return orbits
 
 
-def _wants_a_seam(spec: _Spec, width: int, height: int, cw: int, ch: int) -> bool:
-    """Whether this map gets an endless seam (one, copied to every seat, so one seat one seam): on a
-    layout that holds them, on a map bigger than the shipped three, where a seat's own cell has the
+def _wants_a_prize(spec: _Spec, width: int, height: int, cw: int, ch: int) -> bool:
+    """Whether this map gets a prize in the shared ground (one, copied to every seat, so one seat one prize):
+    on a layout that holds them, on a map bigger than the shipped three, where a seat's own cell has the
     middle ground to put it in.  A match on a map that size is a long one, which is what a deposit
     whose worth is how long you keep it is for."""
-    return spec.seam and width * height >= _SEAM_MAP and cw * ch >= _SEAM_CELL
+    return spec.prize and width * height >= _PRIZE_MAP and cw * ch >= _PRIZE_CELL
+
+
+def deal_prize(seed: int) -> BuildingType:
+    """Which prize *seed* deals the shared ground, where its map holds one: a seam or a Mother Lode, even odds.
+
+    Drawn from a stream of its own, as the layout and the races are, so the deal is the seed's and not an
+    attempt's (every retry of a seed deals the same), and the map's own stream never learns of it: the two
+    prizes are the same five tiles on the same site, so a seed draws the same ground either way.  Neighbouring
+    seeds seed unrelated streams, so a ladder's run of seeds deals as a run of fair coins would."""
+    return random.Random(seed ^ _PRIZE_SALT).choice(_PRIZES)
 
 
 def _pit_inner(width: int, height: int) -> int:
@@ -811,7 +832,7 @@ def _fits(cv: _Canvas, pos: Pos, rects: list[tuple[Pos, int]], size: int = 3, sp
 
     A deposit wider than the three tiles every mine had wants that much more room on each side, and
     *slack* is that much and no more: it is zero for two 3x3 sites, so every map that was drawn
-    before the seams existed is drawn exactly as it was."""
+    before the five-tile deposits existed is drawn exactly as it was."""
     if spacing is None:
         spacing = _SITE_SPACING[cv.wide]
     for image in cv.rect_images(pos, size):
@@ -857,7 +878,7 @@ def _claim(cv: _Canvas, pos: Pos, gold: int, rects: list[tuple[Pos, int]], mines
 
     Its footprint is whatever the rules give that kind, so a wider deposit needs nothing said here.
     This is the whole of placing a kind of deposit: a new one is a site search of its own
-    (``_natural_site``, ``_third_site`` and ``_seam_site`` are the three there are, all scoring
+    (``_natural_site``, ``_third_site`` and ``_prize_site`` are the three there are, all scoring
     :func:`_canonical_sites` and picking through :func:`_pick`) and a call here.  The order deposits
     are claimed in is the order they are built in, which the simulation's own order follows, so a new
     kind goes after the ones above it rather than among them.
@@ -899,19 +920,18 @@ def _third_site(cv: _Canvas, rng: random.Random, spec: _Spec, halls: list[Point]
     return _pick(cv, scored, rects, spec.third_clearing > 0)
 
 
-def _seam_site(cv: _Canvas, rng: random.Random, spec: _Spec, halls: list[Point], rects: list[tuple[Pos, int]]) -> Pos | None:
-    """Ground worth leaving home for: :data:`_SEAM_AWAY` tiles from every hall, as evenly shared
-    between two of them as a third is, and with :data:`_SEAM_ROOM` open tiles around it for the hall
+def _prize_site(cv: _Canvas, rng: random.Random, spec: _Spec, halls: list[Point], rects: list[tuple[Pos, int]], size: int) -> Pos | None:
+    """Ground worth leaving home for: :data:`_PRIZE_AWAY` tiles from every hall, as evenly shared
+    between two of them as a third is, and with :data:`_PRIZE_ROOM` open tiles around it for the hall
     and the towers whoever means to keep it will want."""
-    size = BUILDINGS[BuildingType.GOLD_SEAM].size
     scored = []
     for pos in _canonical_sites(cv, size):
         c = _mine_centre(pos, size)
         near = sorted(_dist(c, hall) for hall in halls)
-        if near[0] < _SEAM_AWAY or near[1] - near[0] > (spec.contested or (6 if cv.wide else 12)):
+        if near[0] < _PRIZE_AWAY or near[1] - near[0] > (spec.contested or (6 if cv.wide else 12)):
             continue
         scored.append((-(near[1] - near[0]) + rng.uniform(0, 6), pos))
-    return _pick(cv, scored, rects, spec.third_clearing > 0, size, _SEAM_ROOM)
+    return _pick(cv, scored, rects, spec.third_clearing > 0, size, _PRIZE_ROOM)
 
 
 def _camp_site(cv: _Canvas, rng: random.Random, anchor: Point, rects: list[tuple[Pos, int]]) -> Pos | None:
@@ -952,7 +972,7 @@ def _guard(cv: _Canvas, rng: random.Random, deposit: Pos, size: int, kind: str, 
 
 
 def _attempt(rng: random.Random, seed: int, width: int, height: int, players: int, human: int | None, theme: MapTheme,
-             races: list[Race], layout: Layout, wilds: bool, rift_rng: random.Random) -> tuple[World, dict]:
+             races: list[Race], layout: Layout, wilds: bool, rift_rng: random.Random, prize: BuildingType) -> tuple[World, dict]:
     spec = _SPECS[layout]
     cv = _Canvas(width, height, players)
     clearing = _clearing(spec, cv.cw, cv.ch, cv.wide)
@@ -1020,14 +1040,15 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
             else:
                 camp_kind = rng.choice(("den", "nest"))
             _guard(cv, rng, third, 3, camp_kind, rects, dens)
-    if _wants_a_seam(spec, width, height, cv.cw, cv.ch):
-        seam = _seam_site(cv, rng, spec, halls, rects)
-        if seam is None:
-            wishes.append("no room for a gold seam")
-        else:  # an endless deposit holds no stock: what it gives is a trip at a time, as long as it is held
-            _claim(cv, seam, 0, rects, mines, clearing=spec.third_clearing, kind=BuildingType.GOLD_SEAM)
-            if wilds:  # the richest prize and the furthest out: the big camp, every time
-                _guard(cv, rng, seam, BUILDINGS[BuildingType.GOLD_SEAM].size, "lair", rects, dens)
+    if _wants_a_prize(spec, width, height, cv.cw, cv.ch):
+        size = BUILDINGS[prize].size
+        site = _prize_site(cv, rng, spec, halls, rects, size)
+        if site is None:
+            wishes.append(f"no room for a {BUILDINGS[prize].name}")
+        else:  # an endless seam holds no stock: what it gives is a trip at a time, as long as it is held
+            _claim(cv, site, 0 if prize is BuildingType.GOLD_SEAM else LODE_GOLD, rects, mines, clearing=spec.third_clearing, kind=prize)
+            if wilds:  # the richest ground and the furthest out: the big camp, every time
+                _guard(cv, rng, site, size, "lair", rects, dens)
     mines += walls.mines
     cv.symmetrize()
     if layout is Layout.FOREST:
@@ -1269,6 +1290,7 @@ def audit(world: World) -> dict:
     report["rifts"] = len(world.rifts)
     report["expansions"] = len(world.mines()) - len(halls)
     report["seams"] = int_sum(1 for m in world.mines() if m.type is BuildingType.GOLD_SEAM)
+    report["lodes"] = int_sum(1 for m in world.mines() if m.type is BuildingType.MOTHER_LODE)
     report["camps"] = len(world.camps)
     total = world.width * world.height
     report["trees"] = int_sum(1 for row in world.terrain for t in row if t is Terrain.TREES) / total

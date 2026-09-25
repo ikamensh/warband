@@ -110,7 +110,7 @@ lesson the slam teaches — do not walk a melee ball into it — lands either wa
 
 ## Where they go
 
-`mapgen._camp_site` and `_guard`, beside `_natural_site`/`_third_site`/`_seam_site`.  A camp is placed
+`mapgen._camp_site` and `_guard`, beside `_natural_site`/`_third_site`/`_prize_site`.  A camp is placed
 the way a deposit is: one canonical site in the first seat's cell, one copy per cell, so every seat faces
 the same camp at the same remove from the same deposit and the audit's congruence still holds.  Its own
 spacing is tighter than a deposit's (`_CAMP_SPACING`, 5), because a den that had to keep a mine's

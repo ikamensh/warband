@@ -1,0 +1,97 @@
+{
+ "cell": [
+  227,
+  303
+ ],
+ "cols": 4,
+ "rows": 2,
+ "origin": [
+  113.5,
+  181.8906522784347
+ ],
+ "scale": 2.5,
+ "pad": [
+  0,
+  0
+ ],
+ "chroma": [
+  255,
+  0,
+  255
+ ],
+ "grid": false,
+ "cells": [
+  {
+   "key": "mine.0.worked.intact",
+   "col": 0,
+   "row": 0,
+   "tags": {
+    "variant": 0,
+    "wealth": "worked"
+   }
+  },
+  {
+   "key": "mine.5.worked.intact",
+   "col": 1,
+   "row": 0,
+   "tags": {
+    "variant": 5,
+    "wealth": "worked"
+   }
+  },
+  {
+   "key": "mine.10.worked.intact",
+   "col": 2,
+   "row": 0,
+   "tags": {
+    "variant": 10,
+    "wealth": "worked"
+   }
+  },
+  {
+   "key": "mine.15.worked.intact",
+   "col": 3,
+   "row": 0,
+   "tags": {
+    "variant": 15,
+    "wealth": "worked"
+   }
+  },
+  {
+   "key": "mine.0.poor.intact",
+   "col": 0,
+   "row": 1,
+   "tags": {
+    "variant": 0,
+    "wealth": "poor"
+   }
+  },
+  {
+   "key": "mine.5.poor.intact",
+   "col": 1,
+   "row": 1,
+   "tags": {
+    "variant": 5,
+    "wealth": "poor"
+   }
+  },
+  {
+   "key": "mine.10.poor.intact",
+   "col": 2,
+   "row": 1,
+   "tags": {
+    "variant": 10,
+    "wealth": "poor"
+   }
+  },
+  {
+   "key": "mine.15.poor.intact",
+   "col": 3,
+   "row": 1,
+   "tags": {
+    "variant": 15,
+    "wealth": "poor"
+   }
+  }
+ ]
+}

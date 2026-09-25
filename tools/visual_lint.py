@@ -39,7 +39,7 @@ from warband.story.dialog import DialogScene  # noqa: E402
 from warband.story.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
 from warband.story.missions import CAMPAIGN  # noqa: E402
 from warband.sim.model import World, tile_center  # noqa: E402
-from warband.sim.rules import BLEEDING, BUILT, PLAYABLE_UNITS, BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
+from warband.sim.rules import BLEEDING, BUILT, LODE_GOLD, PLAYABLE_UNITS, BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
 from warband.ui.controls import SCHEMES  # noqa: E402
 from warband.ui.scene import TOAST_TOP, CodexScene, GameScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game  # noqa: E402
 from warband.ui.score_scene import HighScoreScene  # noqa: E402
@@ -117,6 +117,7 @@ def settlement() -> World:
     world.place_building(0, BuildingType.VAULT, (3, 22))
     world.place_building(None, BuildingType.GOLD_MINE, (32, 17))
     world.place_building(None, BuildingType.GOLD_SEAM, (33, 25))  # five tiles of workings beside the three of a mine
+    world.place_building(None, BuildingType.MOTHER_LODE, (26, 25))  # the seam's other prize, rich (WB-071)
     world.place_building(1, BuildingType.TOWN_HALL, (43, 30))
     world.update_vision()
     world.reveal_all(0)
@@ -260,6 +261,21 @@ for _building in BUILT:
         ticks(game)
 
     SCREENS[f"select_{_building.value}"] = _select_building
+
+
+for _name, _deposit, _gold in (("gold_seam", BuildingType.GOLD_SEAM, 0), ("mother_lode", BuildingType.MOTHER_LODE, LODE_GOLD),
+                               ("worked_lode", BuildingType.MOTHER_LODE, LODE_GOLD // 3)):
+    def _select_deposit(game: Game, kind: BuildingType = _deposit, gold: int = _gold) -> None:
+        """A five-tile deposit selected: the bank as rich as it pays and holds, and the card's picture of the same."""
+        scene = town(game)
+        deposit = next(b for b in scene.world.buildings.values() if b.type is kind)
+        deposit.gold = gold
+        ticks(game)
+        scene.select([deposit.id])
+        scene.camera.center_on(*(c * TILE for c in deposit.center))
+        ticks(game)
+
+    SCREENS[f"select_{_name}"] = _select_deposit
 
 
 @screen

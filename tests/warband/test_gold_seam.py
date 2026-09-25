@@ -237,9 +237,10 @@ def test_a_brain_takes_a_mine_before_a_seam_and_the_seam_before_nothing() -> Non
 @pytest.mark.parametrize("size, seats, layout", [("Huge", 2, mapgen.Layout.PLAINS), ("Huge", 4, mapgen.Layout.BASTION),
                                                  ("Giant", 8, mapgen.Layout.CROSSINGS)])
 def test_a_big_map_deals_every_seat_a_seam_it_has_to_walk_to(size, seats, layout) -> None:
-    """A seam is a whole map to generate and audit, several times over: the slow tier."""
+    """A seam is a whole map to generate and audit, several times over: the slow tier.  The seed may deal a Mother Lode
+    instead (WB-071), so the seam is named."""
     width, height = mapgen.dimensions(size, seats)
-    world, report = mapgen.build(seed=4242, width=width, height=height, players=seats, layout=layout)
+    world, report = mapgen.build(seed=4242, width=width, height=height, players=seats, layout=layout, prize=BuildingType.GOLD_SEAM)
     seams = [m for m in world.mines() if m.type is BuildingType.GOLD_SEAM]
     assert len(seams) == seats == report["seams"], "one seam a seat, or none at all: the map is symmetric"
     halls = [b for b in world.buildings.values() if b.type is BuildingType.TOWN_HALL]
@@ -252,7 +253,8 @@ def test_a_big_map_deals_every_seat_a_seam_it_has_to_walk_to(size, seats, layout
 
 @pytest.mark.slow
 def test_the_shipped_sizes_have_no_seams_at_all() -> None:
-    """Small, Medium and Large are the maps the difficulty ratings and the balance league were measured on.
+    """Small, Medium and Large are the maps the difficulty ratings and the balance league were measured on: no seam
+    and no Mother Lode, the other prize (WB-071).
 
     Every layout on every seat count they offer, over several seeds: the slow tier."""
     for size in ("Small", "Medium", "Large"):
@@ -263,12 +265,13 @@ def test_the_shipped_sizes_have_no_seams_at_all() -> None:
                     continue
                 for seed in (11, 4177):
                     world = mapgen.generate(seed=seed, width=width, height=height, players=seats, layout=layout)
-                    assert not any(m.type is BuildingType.GOLD_SEAM for m in world.mines()), (size, seats, layout, seed)
+                    assert not any(m.type in (BuildingType.GOLD_SEAM, BuildingType.MOTHER_LODE) for m in world.mines()), \
+                        (size, seats, layout, seed)
 
 
 @pytest.mark.slow
 def test_forest_and_klondike_keep_the_economies_they_were_drawn_with() -> None:
-    """Neither layout holds a seam at any size: a whole map per size and layout, so the slow tier."""
+    """Neither layout holds a prize, a seam or a lode, at any size: a whole map per size and layout, so the slow tier."""
     for size in ("Huge", "Giant", "Epic"):
         for seats in mapgen.offered(size):
             width, height = mapgen.dimensions(size, seats)
@@ -276,4 +279,4 @@ def test_forest_and_klondike_keep_the_economies_they_were_drawn_with() -> None:
                 if mapgen.refusal(width, height, seats, layout) is not None:
                     continue
                 world = mapgen.generate(seed=99, width=width, height=height, players=seats, layout=layout)
-                assert not any(m.type is BuildingType.GOLD_SEAM for m in world.mines()), (size, seats, layout)
+                assert not any(m.type in (BuildingType.GOLD_SEAM, BuildingType.MOTHER_LODE) for m in world.mines()), (size, seats, layout)

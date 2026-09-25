@@ -26,7 +26,6 @@ item takes the next one and updates this line.
 | WB-066 | Now | proposed | Magic II: the Mage Tower, one spell of three per level, cast anywhere, dearer beyond the vaults | Ilya 2026-09-24 |
 | WB-067 | Now | proposed | Magic III: the computer players research, choose and cast; the nine spells balanced | Ilya 2026-09-24 |
 | WB-068 | Now | proposed | A unique unit per race: Gryphon Rider, Goblin Sappers, Treant, Rune Golem | Ilya 2026-09-24 |
-| WB-071 | Now | proposed | The seam looks as poor as it pays; its rich look goes to a new Mother Lode (over 50k gold) | Ilya 2026-09-24 |
 | WB-073 | Now | proposed | Race balance: dwarves win ~64 % and orcs ~36 % of Master race games; bring every race within 45–55 % | Orchestrator 2026-09-25 |
 
 ## WB-055 — A deeper tech tree
@@ -368,36 +367,6 @@ three refuses the fourth); the arena shows each race's balance within band
 and a brain that may buy its unique unit not weaker than one that may not,
 with telemetry on how often each is bought; each unit rendered per race and
 looked at; the codex and the card; fuzz; fingerprint refreshed.
-
-## The 2026-09-24 evening intake (WB-069 … WB-072)
-
-Four more requests. WB-069 and WB-070 turn two lessons of the day into a
-protocol: a new unit was added three times today (the flying machines, and
-WB-068's four unique units in flight), and each time its sounds were the race's
-and its art the render's, because nothing asked for more. The protocol is
-`docs/adding-a-unit.md`, a checklist, and tests that fail when a unit type
-skips a step, so the next unit cannot.
-
-## WB-071 — The seam looks as poor as it pays; the Mother Lode
-
-**Design.** The endless seam pays 20 gold a trip against a mine's 100, but it
-wears the richest picture on the map. It gets a poor look: thin veins in
-mostly bare rock, a few old props, so a glance says "slow, but forever". The
-rich bank of three faces goes to a new deposit that earns it, the **Mother
-Lode**: 5×5, twelve places at the face like the seam, a mine's 100 gold a
-trip, 100,000 gold and finite. It wears the rich bank while it holds more
-than 50,000 gold and a worked-out bank below, so how much is left shows.
-Where: on the maps big enough for a seam, the shared ground's prize is a seam
-or a Mother Lode, dealt by the map seed, so the middle of a big map is either
-a long siege for a trickle or a short war for a fortune; camps guard it as
-they guard the seam. Why: a map's centre that differs from map to map is the
-diversity the maps were asked for, and the lode is the fight worth having.
-
-**Acceptance.** The seam's poor look and the lode's two looks rendered and
-looked at (painted where WB-070's painter works); mapgen deals lodes fairly
-(the audit covers them) and the seed decides; the brains contest a lode
-(telemetry from the league: who takes it, when); race and difficulty balance
-in band; fingerprint and sim_bench refreshed.
 
 ## WB-073 — Race balance
 

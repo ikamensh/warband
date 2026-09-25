@@ -190,7 +190,7 @@ def test_selection_defaults_to_every_subject_of_the_race() -> None:
     parse.add_argument("--race", default="human"); parse.add_argument("--units", default=None)
     parse.add_argument("--buildings", action="store_true"); parse.add_argument("--looks", default="intact,active,damaged")
     parse.add_argument("--mines", action="store_true"); parse.add_argument("--monsters", action="store_true")
-    parse.add_argument("--lairs", action="store_true")
+    parse.add_argument("--lairs", action="store_true"); parse.add_argument("--workings", action="store_true")
     parse.add_argument("--creatures", default="all")
     names = [s.name for s in tool.selected(parse.parse_args(["--race", "elf"]))]
     assert names[:3] == ["elf.peasant", "elf.peasant.gold", "elf.peasant.lumber"] and names[-3:] == ["elf.buildings.intact", "elf.buildings.active", "elf.buildings.damaged"]
@@ -198,5 +198,23 @@ def test_selection_defaults_to_every_subject_of_the_race() -> None:
     assert [s.name for s in tool.selected(parse.parse_args(["--units", "knight"]))] == ["human.knight"]
     assert [s.name for s in tool.selected(parse.parse_args(["--mines"]))] == ["mine.intact", "mine.active"], "a mine has no damaged look"
     assert [s.name for s in tool.selected(parse.parse_args(["--lairs"]))] == ["lair.intact", "lair.damaged"], "a den has no active look"
+    workings = tool.selected(parse.parse_args(["--workings"]))
+    assert [s.name for s in workings] == ["workings.intact", "workings.active"] and [s.stage for s in workings] == [1, 2], \
+        "painted over the mine painting, then lit over their own"
     with pytest.raises(SystemExit):
         tool.selected(parse.parse_args(["--buildings", "--looks", "ruined"]))
+
+
+def test_the_workings_sheet_is_the_mine_painting_laid_out_a_row_to_a_wealth() -> None:
+    """WB-071's worked-out and poor faces are painted over the installed mine painting: the sheet the painter gets is
+    that painting in the mine's own cells, the worked row above the poor one, and the prompt names both."""
+    subject = tool.Workings()
+    sheet, images = subject.build_sheet()
+    mines, painted = tool.restyle.load_frames(tool.RESTYLED / "mine.intact")
+    assert (sheet.cell, sheet.origin, sheet.scale) == (mines.cell, mines.origin, mines.scale)
+    assert [c.key for c in sheet.cells if c.row == 0] == [textures.mine_key(v, "intact", "worked") for v in textures.PAINTED_MINES]
+    assert [c.key for c in sheet.cells if c.row == 1] == [textures.mine_key(v, "intact", "poor") for v in textures.PAINTED_MINES]
+    assert all(images[textures.mine_key(v, "intact", w)].tobytes() == painted[textures.mine_key(v)].tobytes()
+               for v in textures.PAINTED_MINES for w in ("worked", "poor"))
+    text = subject.prompt(sheet)
+    assert "row 0 is HALF WORKED OUT" in text and "row 1 is A POOR OLD SEAM" in text and "no blue" in text

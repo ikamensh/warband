@@ -1,11 +1,13 @@
-"""Inspect the native map rim, fog, seeded terrain regions and the endless gold seam.
+"""Inspect the native map rim, fog, seeded terrain regions and the shared ground's prize.
 
     uv run python tools/verify_map.py /tmp/warband-map
 
 Captures an ordinary fogged game at opposite corners, then fully revealed
-survey views using the same MapView assets, and last a big map's gold seam
-with a crew inside it: five tiles of workings against the three of a mine,
-close enough to see whether the picture stands on its ground. Surveys freeze
+survey views using the same MapView assets, and last a big map's prize with
+a crew inside it, three times on the same ground: the poor gold seam, the
+rich Mother Lode and the lode worked out below its line. Five tiles of
+workings against the three of a mine, close enough to see whether the
+picture stands on its ground. Surveys freeze
 simulation and reveal terrain for inspection only; they do not change
 gameplay visibility.
 """
@@ -23,7 +25,7 @@ from saga2d import Camera, Game, Scene, fonts  # noqa: E402
 from saga2d.testing.native_frames import tick  # noqa: E402
 from warband.sim import mapgen  # noqa: E402
 from warband.sim.model import dist, tile_center  # noqa: E402
-from warband.sim.rules import BuildingType, MapTheme, SIM_DT, UnitType  # noqa: E402
+from warband.sim.rules import BUILDINGS, LODE_GOLD, BuildingType, MapTheme, SIM_DT, UnitType  # noqa: E402
 from warband.ui.scene import GameScene  # noqa: E402
 from warband.ui.style import build_theme  # noqa: E402
 from warband.art.textures import TILE  # noqa: E402
@@ -55,22 +57,28 @@ class Survey(Scene):
                        font_size=12, color=(164, 177, 170, 255))
 
 
-class Seam(Scene):
-    """One endless gold seam with peasants at its face, beside the mine and hall it is not.
+class Prize(Scene):
+    """The shared ground's prize with peasants at its face, beside the mine and hall it is not: a gold seam, or a
+    Mother Lode holding *gold* (rich above its line, worked out below).
 
-    A seam only ever stands on a map bigger than the shipped three (:func:`mapgen._seam_orbits`), and
-    on that map it lies in the shared ground far from home, so this builds one, hires a crew beside it
-    rather than walking one out for a minute, and runs the world until they are inside; the crew is
-    what makes the workings wear their ``active`` look."""
+    A prize only ever stands on a map bigger than the shipped three (:func:`mapgen._wants_a_prize`), and on that map
+    it lies in the shared ground far from home, so this builds one on the same ground either way, hires a crew beside
+    it rather than walking one out for a minute, and runs the world until they are inside; the crew is what makes the
+    workings wear their ``active`` look."""
 
     background_color = (10, 12, 20, 255)
 
+    def __init__(self, prize: BuildingType, gold: int | None = None) -> None:
+        super().__init__()
+        self.prize, self.gold = prize, gold
+
     def on_enter(self) -> None:
         width, height = mapgen.dimensions("Huge", 2)
-        self.world = mapgen.generate(11, width=width, height=height, players=2, human=0)
+        self.world = mapgen.generate(11, width=width, height=height, players=2, human=0, prize=self.prize)
         hall = next(b for b in self.world.player_buildings(0, BuildingType.TOWN_HALL))
-        self.seam = min((b for b in self.world.mines() if b.type is BuildingType.GOLD_SEAM),
-                        key=lambda b: dist(b.center, hall.center))
+        self.seam = min((b for b in self.world.mines() if b.type is self.prize), key=lambda b: dist(b.center, hall.center))
+        if self.gold is not None:
+            self.seam.gold = self.gold
         x, y, size, _ = self.seam.rect
         ring = [(x + dx, y - 1) for dx in range(size)] + [(x + dx, y + size) for dx in range(size)]
         for tile in [t for t in ring if self.world.passable(*t)][:9]:  # a crew for a face that seats twelve
@@ -92,9 +100,11 @@ class Seam(Scene):
     def draw(self) -> None:
         self.view.draw(Overlay())
         inside = sum(1 for u in self.world.units.values() if u.inside == self.seam.id)
-        self.draw_text("WARBAND  /  GOLD SEAM  /  HUGE PLAINS  /  SEED 11", 24, 30,
+        name = BUILDINGS[self.prize].name.upper()
+        self.draw_text(f"WARBAND  /  {name}  /  HUGE PLAINS  /  SEED 11", 24, 30,
                        font=fonts.EXTRABOLD, font_size=18, color=(232, 214, 172, 255))
-        self.draw_text(f"Five tiles of workings, twenty gold a trip, never spent • {inside} peasants at the face", 24, 775,
+        held = "never spent" if self.seam.info.mine.endless else f"{self.seam.gold:,} gold left"
+        self.draw_text(f"Five tiles of workings, {self.seam.info.mine.trip} gold a trip, {held} • {inside} peasants at the face", 24, 775,
                        font_size=12, color=(164, 177, 170, 255))
 
 
@@ -123,15 +133,17 @@ def main(output: Path) -> None:
             for _ in range(4):
                 tick(game)
             game.backend.capture_frame().save(output / "summer-seed19-regions.png")
-            seam = Seam()
-            game.clear_and_push(seam)
-            for _ in range(600):  # until the face is busy: a peasant is only inside for a few seconds at a time
-                tick(game, 0.2)
-                if sum(1 for u in seam.world.units.values() if u.inside == seam.seam.id) >= 5:
-                    break
-            tick(game)
-            game.backend.capture_frame().save(output / "gold-seam.png")
-            assert any(u.inside == seam.seam.id for u in seam.world.units.values()), "nobody reached the seam's face"
+            for name, prize, gold in (("gold-seam", BuildingType.GOLD_SEAM, None), ("mother-lode", BuildingType.MOTHER_LODE, None),
+                                      ("worked-lode", BuildingType.MOTHER_LODE, LODE_GOLD // 3)):
+                seam = Prize(prize, gold)
+                game.clear_and_push(seam)
+                for _ in range(600):  # until the face is busy: a peasant is only inside for a few seconds at a time
+                    tick(game, 0.2)
+                    if sum(1 for u in seam.world.units.values() if u.inside == seam.seam.id) >= 5:
+                        break
+                tick(game)
+                game.backend.capture_frame().save(output / f"{name}.png")
+                assert any(u.inside == seam.seam.id for u in seam.world.units.values()), f"nobody reached the {name}'s face"
         finally:
             game.close()
     print(f"Native map verification passed: {output.resolve()}")

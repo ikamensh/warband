@@ -18,6 +18,7 @@ chop_time = 5.0 # seconds to fell a tree
 [setup]
 mine_gold = 50_000 # a base mine; expansion mines hold expansion_gold, and an endless seam no stock at all
 expansion_gold = 30_000
+lode_gold = 100_000 # a Mother Lode: the shared ground's prize where the map deals one instead of a seam
 starting_gold = 1000
 starting_lumber = 500
 

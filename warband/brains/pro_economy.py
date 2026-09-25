@@ -7,11 +7,11 @@ import random
 from collections.abc import Sequence
 from typing import Final
 
-from warband.brains.ai import (ARMY_PLANS, RESEARCH_ORDER, _shift, guarded, hall_first, site_search, with_prerequisites)
+from warband.brains.ai import (ARMY_PLANS, RESEARCH_ORDER, _shift, guarded, hall_first, pace, site_search, with_prerequisites)
 from warband.sim import mapgen
 from warband.sim.model import Build, Building, Harvest, Move, Point, Pos, Repair, Resource, Salvage, Unit, World, dist, int_sum, plain_sum, rect_gap
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, GOLD_PER_TRIP, PLAYABLE_UNITS, UPGRADES, BuildingType, Cost, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, PLAYABLE_UNITS, UPGRADES, BuildingType, Cost, UnitType, Upgrade
 from warband.sim.worker_knowledge import KnownMine
 
 from warband.brains.pro_core import _ProBrainCore
@@ -39,9 +39,10 @@ class _ProBrainEconomy(_ProBrainCore):
         same target reached over forty seconds a worker — because the economy
         that pays for the army is the thing being delayed.
         """
-        # A deposit is worth the hands its trip is worth: an endless seam pays a fifth of a mine, so it
-        # earns a fifth of the crew.  Hiring ten peasants for a seam would be paying a mine's wages for it.
-        mines = max(1.0, plain_sum(m.trip / GOLD_PER_TRIP for m in self._worked_mines(world)))
+        # A deposit is worth the hands its pace is worth (ai.pace: its face's gold a second over a mine's): a lode
+        # seats a crew and a half, an endless seam pays a fifth of a mine's trip at twelve places, so it earns
+        # three tenths of the crew.  Hiring ten peasants for a seam would be paying a mine's wages for it.
+        mines = max(1.0, plain_sum(pace(m) for m in self._worked_mines(world)))
         wanted = round(mines * self.profile.workers_per_mine / (1.0 - self.profile.lumber_share))
         return min(self.profile.max_workers, wanted)
 
@@ -300,10 +301,11 @@ class _ProBrainEconomy(_ProBrainCore):
         return player.gold >= self.profile.surplus_gold
 
     def _expansion_site(self, world: World) -> Point | None:
-        """An unclaimed deposit still giving gold, nearest to home; a seam only once no mine will do.
+        """An unclaimed deposit still giving gold, nearest to home for what it pays; a seam only once no mine will do.
 
-        A seam pays a fifth of a mine's trip and never runs out, so it is the expansion to take when the
-        mines are drunk or claimed, not the one to take first (:func:`~warband.brains.ai.hall_first`)."""
+        A lode pays half as fast again as a mine and is taken over one that is not two thirds of its walk; a seam
+        pays a fifth of a mine's trip and never runs out, so it is the expansion to take when the mines are drunk
+        or claimed, not the one to take first (:func:`~warband.brains.ai.hall_first`)."""
         halls = self._halls(world)
         if not halls:
             return None

@@ -23,11 +23,13 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 
-from warband.sim.model import Building, Event, Unit, World, unit_stats
+from warband.sim.model import Building, Event, Unit, World, dist, unit_stats
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Race, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, UNITS, UPGRADES, BuildingType, Race, Resource, UnitType, Upgrade
 
 SAMPLE_EVERY = 60.0  # seconds of simulation between rows of the timeline
+LOOK_INSIDE_EVERY = 10  # steps between looks at who is inside which deposit: a trip is MINE_TIME (5 s) at the face
+HALL_AT = 8.0  # tiles from a hall's middle to a deposit's that make it that deposit's hall (brains.ai.CLAIM_DISTANCE)
 
 
 @dataclass
@@ -64,6 +66,9 @@ class PlayerTally:
     lost_to_wilds: Counter[str] = field(default_factory=Counter)  # own units a neutral creature put down, by type
     camps_cleared: int = 0  # creature lairs this player tore down: a camp is cleared for good only when the lair falls
     hoard: int = 0  # gold taken out of the lairs it tore down
+    # Gold brought home, by the kind of deposit it came out of (WB-071: who works the lode, and how much).  When a seat
+    # first did it is in ``first`` as "mined.<kind>", and when its first hall stood beside one as "hall.<kind>".
+    mined: Counter[str] = field(default_factory=Counter)
     unattributed: int = 0  # blows whose striker was gone before the event was read (no dealt/kill credit)
     timeline: list[Sample] = field(default_factory=list)
 
@@ -108,10 +113,19 @@ class Telemetry:
         # the razer's kill, and nobody reads a column for a side that buys nothing and never wins.
         self.tallies: tuple[PlayerTally, ...] = tuple(PlayerTally(race=p.race.value) for p in world.players[:world.seats])
         self._last_hitter: dict[int, tuple[int, str]] = {}  # target id → (striker's player, striker's type)
+        self._inside: dict[int, str] = {}  # peasant id → the kind of deposit it was last seen working
+        self._steps = 0
         self._next_sample = 0.0
         self.observe(world, [])
 
     def observe(self, world: World, events: list[Event]) -> None:
+        if self._steps % LOOK_INSIDE_EVERY == 0:
+            for unit in world.units.values():
+                if unit.inside is not None:
+                    deposit = world.buildings.get(unit.inside)
+                    if deposit is not None:
+                        self._inside[unit.id] = deposit.type.value
+        self._steps += 1
         for event in events:
             handler = _HANDLERS.get(event.kind)
             if handler is not None:
@@ -153,6 +167,21 @@ class Telemetry:
         tally = self.tallies[event.player]
         tally.completed[event.target_type] += 1
         tally.first.setdefault(event.target_type, world.time)
+        if event.target_type == BuildingType.TOWN_HALL.value:
+            beside = [m for m in world.mines() if dist(m.center, event.pos) <= HALL_AT]
+            if beside:
+                tally.first.setdefault(f"hall.{min(beside, key=lambda m: dist(m.center, event.pos)).type.value}", world.time)
+
+    def _deposit(self, world: World, event: Event) -> None:
+        """A peasant brought its load home: gold is booked to the kind of deposit it was last seen working."""
+        tally = self._tally(event.player)
+        if tally is None or event.text != Resource.GOLD.value:
+            return
+        kind = self._inside.get(event.entity)
+        if kind is None:
+            return  # gold from a lair's hoard or a salvaged ruin comes home without a trip
+        tally.mined[kind] += event.amount
+        tally.first.setdefault(f"mined.{kind}", world.time)
 
     def _researched(self, world: World, event: Event) -> None:
         upgrade = Upgrade(event.target_type)  # never the event's text: each race names its own Keep
@@ -222,6 +251,7 @@ class Telemetry:
 
 
 _HANDLERS = {
+    "deposit": Telemetry._deposit,
     "hoard": Telemetry._hoard,
     "trained": Telemetry._trained,
     "construction": Telemetry._construction,

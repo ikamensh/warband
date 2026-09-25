@@ -39,7 +39,8 @@ from warband.sim.rules import (
     REPAIR_CHUNK, REPAIR_RATE, repair_cost,
     SALVAGE_CHUNK, SALVAGE_HELD_RATE, SALVAGE_RATE, salvage_resource, salvage_yield,
     ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLASTING_POWDER_BONUS, BLESSING_BONUS, BLOODLUST_RAGE, BUFFS, BUILDINGS, CHOP_TIME,
-    DEEP_MINING_TRIP, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, MASTER_WEAPON_BONUS, MINE_GOLD,
+    DEEP_MINING_TRIP, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, LODE_GOLD, MASTER_WEAPON_BONUS,
+    MINE_GOLD,
     MINE_TIME, PLAYERS,
     PLUNDER_SHARE, REGROWTH_SECONDS, SIEGE_DAMAGE_BONUS, SIEGE_RANGE_BONUS, SIM_DT, SPLASH_FRACTION, STARTING_GOLD, STARTING_LUMBER,
     FORMATION_ARMOR, FORMATION_HOLD, FORMATION_LOOKAHEAD, FORMATION_MARCH, FORMATION_SLACK, FORMATION_SPACING, FORMATION_WIDTH, ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, FRIENDLY_WORTH, SIEGE_BUILDING_WORTH, SIEGE_STEP, SIEGE_WORTH, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
@@ -865,7 +866,7 @@ class World:
                 and b.player is not None and b.player == player and not b.abandoned and (done is None or b.done == done)]
 
     def mines(self) -> list[Building]:
-        """Every gold deposit on the map, spent or not: the mines and the endless seams alike."""
+        """Every gold deposit on the map, spent or not: the mines, the lodes and the endless seams alike."""
         return [b for b in self.buildings.values() if b.info.mine is not None]
 
     def units_near(self, point: Point, radius: float) -> list[Unit]:
@@ -1953,7 +1954,9 @@ class World:
         if done:
             building.progress = info.build_time
         if info.mine is not None and not info.mine.endless:
-            building.gold = MINE_GOLD  # what a seam holds is nothing: it gives its trip and is still there
+            # What a seam holds is nothing: it gives its trip and is still there.  The map generator deals each
+            # deposit its own stock; placed without one, a mine holds a base mine's and a lode its hundred thousand.
+            building.gold = LODE_GOLD if building_type is BuildingType.MOTHER_LODE else MINE_GOLD
         if player is not None and info.trains:
             # It takes up what every building of its kind its owner has trains endlessly: a player who has a barracks
             # train archers for ever and builds another means the new one too (they once stood idle for a minute).

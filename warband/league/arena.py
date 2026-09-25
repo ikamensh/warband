@@ -305,6 +305,8 @@ class MatchSpec:
     layout: str | None = None  # None draws it from the seed
     wilds: bool = True  # creature camps on the contested deposits; False leaves them unguarded, which is
     # how a ladder with camps is compared against the same ladder without them (tools/creep_report.py)
+    prize: str | None = None  # the shared ground's prize on a map big enough for one; None has the seed deal it,
+    # a building value plays the same map with that prize, which is how a lode is measured against a seam
     # Size, land and layout are spelled out here and varied by the runner. The
     # layout used to be left to the seed, on the grounds that a few dozen seeds
     # meet all five — but a league of eight seeds drew plains five times and
@@ -426,7 +428,8 @@ def playable(spec: MatchSpec) -> bool:
     try:
         mapgen.generate(seed=spec.seed, width=spec.width, height=spec.height,
                         players=spec.players, human=None, theme=MapTheme(spec.theme),
-                        layout=Layout(spec.layout) if spec.layout is not None else None, wilds=spec.wilds)
+                        layout=Layout(spec.layout) if spec.layout is not None else None, wilds=spec.wilds,
+                        prize=BuildingType(spec.prize) if spec.prize is not None else None)
     except ValueError:
         return False
     return True
@@ -486,7 +489,8 @@ def play(spec: MatchSpec, *, settle: bool = True) -> MatchResult:
     races = tuple(Race(r) for r in spec.races) if spec.races is not None else None
     world = mapgen.generate(seed=spec.seed, width=spec.width, height=spec.height, players=spec.players,
                             human=None, theme=MapTheme(spec.theme), races=races,
-                            layout=Layout(spec.layout) if spec.layout is not None else None, wilds=spec.wilds)
+                            layout=Layout(spec.layout) if spec.layout is not None else None, wilds=spec.wilds,
+                            prize=BuildingType(spec.prize) if spec.prize is not None else None)
     agents = [make_agent(name, player, spec.seed) for player, name in enumerate(spec.agents)]
     # A stream per player: whose turn it is to draw must not depend on who else is playing.
     rngs = [random.Random(spec.seed * 1000003 + player) for player in range(spec.players)]
@@ -556,7 +560,7 @@ def register_profiles(profiles: Sequence[tuple[str, object]]) -> None:
 
 #: The order :func:`play_spec_tuple` expects, and the only thing that crosses
 #: a process boundary.
-SPEC_FIELDS = ("seed", "agents", "variant", "minutes", "width", "height", "races", "theme", "layout", "wilds")
+SPEC_FIELDS = ("seed", "agents", "variant", "minutes", "width", "height", "races", "theme", "layout", "wilds", "prize")
 
 
 def play_spec_tuple(packed: tuple) -> MatchResult:

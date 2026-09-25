@@ -111,3 +111,61 @@ def test_a_worked_mine_is_lit_while_seen_and_out_of_sight_keeps_the_look_last_se
         assert shown == {last_seen}, "out of sight the mine did not keep the look last seen"
     finally:
         game.close()
+
+
+def test_a_lode_looks_rich_until_it_is_worked_below_its_line_and_the_fog_keeps_what_was_seen(tmp_path) -> None:
+    """A Mother Lode wears the rich bank above its ``rich_above`` and the worked bank at or below it (WB-071); a lode
+    drained out of sight keeps the bank the player last saw, and shows the truth once they look again.  A seam is the
+    poor bank whatever happens to it.  The map view alone, in a bare scene: the HUD has nothing to do with it."""
+    from saga2d import Scene
+    from warband.sim.rules import BUILDINGS
+    from warband.ui.view import MapView
+
+    line = BUILDINGS[BuildingType.MOTHER_LODE].mine.rich_above
+    game = Game("Warband lode", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        world = World(40, 24, [[Terrain.GRASS] * 40 for _ in range(24)], 2)
+        world.place_building(0, BuildingType.TOWN_HALL, (2, 2))
+        lode = world.place_building(None, BuildingType.MOTHER_LODE, (26, 10))
+        seam = world.place_building(None, BuildingType.GOLD_SEAM, (26, 2))
+        world.reveal_all(0)  # seen once; now only the hall sees, and it sees neither
+        world.update_vision()
+        scene = Scene()
+        game.push(scene)
+        view = MapView(scene, world, 0)
+        view.sync()
+
+        def wealth(building) -> str:
+            return view.building_sprite(building.id).image.split(".")[1]
+
+        assert wealth(lode) == "rich" and wealth(seam) == "poor"
+        lode.gold = line  # drained out of sight, by a rival's crew
+        view.sync()
+        assert wealth(lode) == "rich", "the fog showed the player a lode they have not looked at since"
+        world.spawn_unit(0, UnitType.FLYING_MACHINE, (27.5, 8.5))
+        world.update_vision()
+        view.sync()
+        assert wealth(lode) == "worked" and wealth(seam) == "poor"
+        assert textures.deposit_wealth(BuildingType.MOTHER_LODE, line + 1) == "rich"
+    finally:
+        game.close()
+
+
+def test_the_worked_out_and_poor_faces_are_painted_over_the_rich_one_where_it_stands() -> None:
+    """The workings (WB-071) are the mine painting with its gold taken down: laid out as the mine sheet is, every face
+    standing on the line the rich one stands on and differing from it, in both looks."""
+    rich = textures.restyled_mines("intact")
+    assert rich is not None
+    sheet, frames = rich
+    for look in textures.MINE_LOOKS:
+        workings = textures.restyled_workings(look)
+        assert workings is not None, f"workings.{look} is not installed"
+        painted, faces = workings
+        assert (painted.cell, painted.origin, painted.scale, painted.drop) == (sheet.cell, sheet.origin, sheet.scale, sheet.drop)
+        for variant in textures.PAINTED_MINES:
+            base = frames[textures.mine_key(variant)]
+            for wealth in textures.WEALTHS[1:]:
+                face = faces[textures.mine_key(variant, look, wealth)]
+                assert face.size == base.size and face.tobytes() != base.tobytes()
+                assert abs(face.split()[3].getbbox()[3] - base.split()[3].getbbox()[3]) <= 4, \
+                    f"the {wealth} face of mine {variant} left the ground the rich one stands on"

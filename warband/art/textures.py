@@ -37,7 +37,7 @@ from saga2d import Game
 from sagaforge import render3d as r3
 from sagaforge import restyle
 from sagaforge.render3d import Mesh
-from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, PLAYERS, BuildingType, MapTheme, Race, Resource, Terrain, UnitType
+from warband.sim.rules import BUILDINGS, BUILT, GOLD_PER_TRIP, PLAYABLE_UNITS, PLAYERS, BuildingType, MapTheme, Race, Resource, Terrain, UnitType
 
 TILE = 32
 ELEVATION = 50.0
@@ -57,12 +57,17 @@ ROCK_VARIANTS = 20
 MINE_VARIANTS = 20
 PAINTED_MINES = (0, 5, 10, 15)  # the stand-in variants the painted mine sheets repaint; the map draws only these when they exist
 MINE_LOOKS = ("intact", "active")  # a mine is worked while a peasant is inside; it is never damaged
-#: A gold seam is drawn as three mine faces cut into one bank of rock: the middle one at its own size
-#: at the front and the two beside it smaller and further back, which is what "further away" looks like
-#: in this projection.  Nothing is ever enlarged -- a painted frame blown up to five tiles would be a
-#: smear -- so the seam's width comes from how far apart the three stand.
-SEAM_BACK = 0.84  # of its own size each flanking working is drawn
-SEAM_LIFT = 0.75  # tiles up the picture they stand, which is back across the ground
+#: How much gold a working shows (WB-071): *rich* its crystals, *worked* a few shorter ones among the stumps and scars a
+#: crew left and the spoil it threw out, *poor* bare rock with thin veins and a few old props.  A deposit looks as it
+#: pays and as it holds (:func:`deposit_wealth`): the seam, a fifth of a mine's trip, is poor; the Mother Lode rich
+#: above its ``rich_above`` and worked below; a mine always rich.
+WEALTHS = ("rich", "worked", "poor")
+#: A five-tile deposit (the seam, the lode) is drawn as three mine faces cut into one bank of rock: the middle
+#: one at its own size at the front and the two beside it smaller and further back, which is what "further away"
+#: looks like in this projection.  Nothing is ever enlarged -- a painted frame blown up to five tiles would be a
+#: smear -- so the bank's width comes from how far apart the three stand.
+BANK_BACK = 0.84  # of its own size each flanking working is drawn
+BANK_LIFT = 0.75  # tiles up the picture they stand, which is back across the ground
 
 Color = tuple[int, int, int]
 
@@ -431,30 +436,62 @@ def _rock(variant: int, theme: MapTheme = MapTheme.SUMMER) -> Mesh:
     return mesh
 
 
-def _mine(variant: int = 0) -> Mesh:
-    """Gold-bearing crystal outcrop with a readable timbered mine entrance."""
+VEIN = (206, 164, 70)  # gold showing thin in bare rock: duller than a crystal's, which catches the light
+OLD_WOOD = (112, 96, 78)  # timber left out in the weather: greyed from WOOD_DARK
+SPOIL = (124, 112, 98)  # the waste rock a crew throws out of a working
+
+
+def _mine(variant: int = 0, wealth: str = "rich") -> Mesh:
+    """Gold-bearing crystal outcrop with a readable timbered mine entrance.
+
+    *wealth* (:data:`WEALTHS`) is how much gold it shows, on the same rocks and the same entrance: its crystals; a
+    few shorter ones left among stumps and scars, and a heap of spoil; or thin veins, weathered beams and old props.
+    The random draws are the rich outcrop's whatever the wealth, so the three share their rocks and the rich one is
+    the mine it always was."""
+    if wealth not in WEALTHS:
+        raise ValueError(f"unknown wealth {wealth!r}")
     rng = random.Random(6173 + variant * 1049)
     mesh = _shadow(1.22)
+    rock = (112, 113, 124) if wealth != "poor" else (104, 102, 104)
     for i in range(9):
         angle = i * math.tau / 9
         x, y = math.cos(angle) * rng.uniform(0.45, 0.87), math.sin(angle) * rng.uniform(0.4, 0.75) - 0.22
-        mesh += r3.sphere((x, y, rng.uniform(0.12, 0.23)), rng.uniform(0.36, 0.55), (112, 113, 124), rings=3, sides=6)
+        mesh += r3.sphere((x, y, rng.uniform(0.12, 0.23)), rng.uniform(0.36, 0.55), rock, rings=3, sides=6)
     for i in range(8):
         x, y = rng.uniform(-0.95, 0.95), rng.uniform(-0.9, 0.0)
         height = rng.uniform(0.75, 1.65)
-        mesh += _crystal((x, y, 0.25), rng.uniform(0.16, 0.27), height, (x * 0.24, y * 0.18), (234, 176 + i * 5, 66), rng.random() * math.tau)
+        radius, turn = rng.uniform(0.16, 0.27), rng.random() * math.tau
+        if wealth == "rich":
+            mesh += _crystal((x, y, 0.25), radius, height, (x * 0.24, y * 0.18), (234, 176 + i * 5, 66), turn)
+        elif wealth == "worked":
+            if i % 3 == 0:  # a crystal the crew has not reached yet, shorter than the tallest were
+                mesh += _crystal((x, y, 0.25), radius * 0.9, min(height, 0.95), (x * 0.12, y * 0.09), (230, 172 + i * 5, 66), turn)
+            elif i % 3 == 1:  # a stump, broken off near the rock
+                mesh += _crystal((x, y, 0.25), radius * 0.8, 0.5, (x * 0.05, y * 0.04), (216, 166 + i * 5, 70), turn)
+            else:  # the scar where a crystal came out
+                mesh += r3.sphere((x * 0.8, y * 0.8 - 0.05, 0.62), radius * 0.8, (84, 82, 90), rings=2, sides=6)
+        elif i % 2 == 0:  # a thin vein in the face of the rock, lying nearly flat along it
+            mesh += _crystal((x * 0.8, y * 0.7, 0.5), 0.045, 0.34, (0.3 * math.cos(turn), 0.12), VEIN, turn)
     # Recessed opening, strong beams and a short cart track are visible from above.
+    beam, post = (OLD_WOOD, (96, 84, 70)) if wealth == "poor" else (WOOD, WOOD_DARK)
     mesh += r3.box((0, 0.53, 0.2), (0.84, 0.95, 0.4), INK)
     for x in (-0.49, 0.49):
-        mesh += r3.box((x, 0.65, 0.31), (0.15, 0.7, 0.62), WOOD_DARK)
-        mesh += r3.box((x, 0.97, 0.3), (0.18, 0.13, 0.6), WOOD)
-    mesh += r3.box((0, 0.85, 0.67), (1.16, 0.45, 0.17), WOOD)
+        mesh += r3.box((x, 0.65, 0.31), (0.15, 0.7, 0.62), post)
+        mesh += r3.box((x, 0.97, 0.3), (0.18, 0.13, 0.6), beam)
+    mesh += r3.box((0, 0.85, 0.67), (1.16, 0.45, 0.17), beam)
     for y in (1.06, 1.22, 1.38):
-        mesh += r3.box((0, y, 0.025), (0.68, 0.075, 0.05), WOOD_DARK)
+        mesh += r3.box((0, y, 0.025), (0.68, 0.075, 0.05), post)
     for x in (-0.22, 0.22):
-        mesh += r3.box((x, 1.18, 0.06), (0.035, 0.58, 0.035), IRON)
-    mesh += _crystal((-0.87, 0.8, 0.04), 0.15, 0.48, (-0.07, 0), GOLD, 0.4)
-    mesh += _crystal((0.84, 0.94, 0.04), 0.12, 0.35, (0.05, 0), GOLD, 0.1)
+        mesh += r3.box((x, 1.18, 0.06), (0.035, 0.58, 0.035), IRON if wealth != "poor" else (132, 112, 96))  # rusted
+    if wealth == "rich":
+        mesh += _crystal((-0.87, 0.8, 0.04), 0.15, 0.48, (-0.07, 0), GOLD, 0.4)
+        mesh += _crystal((0.84, 0.94, 0.04), 0.12, 0.35, (0.05, 0), GOLD, 0.1)
+    elif wealth == "worked":  # the spoil heap beside the mouth
+        for dx, dy, r in ((-0.86, 0.86, 0.2), (-0.7, 1.02, 0.15), (-0.98, 1.04, 0.13), (0.86, 0.96, 0.14)):
+            mesh += r3.sphere((dx, dy, 0.02), r, SPOIL, rings=2, sides=6)
+    else:  # old props: a pit prop leant on the rock, a fallen one in the grass
+        mesh += _timber((-0.86, 0.72, 0.0), (-0.66, 0.46, 0.66), 0.05, OLD_WOOD)
+        mesh += _timber((0.62, 1.02, 0.03), (1.02, 0.78, 0.03), 0.05, OLD_WOOD)
     return mesh
 
 
@@ -488,21 +525,28 @@ def _resource_image(kind: str, variant: int, theme: MapTheme, scale: float) -> I
     """Reuse immutable pre-renders across matches; gameplay never grows geometry."""
     if kind == "mine":
         return _prop(f"mine.{variant}", _mine(variant), 1.5 * TILE + PAD, scale, front=1.5 * TILE)
+    if kind.startswith("mine."):  # a working of another wealth: "mine.worked", "mine.poor"
+        wealth = kind.split(".")[1]
+        return _prop(f"mine.{variant}.{wealth}", _mine(variant, wealth), 1.5 * TILE + PAD, scale, front=1.5 * TILE)
     mesh = {"tree": _tree, "rock": _rock}[kind](variant, theme)
     image = _prop(f"{kind}.{theme.value}.{variant}", mesh, DROP_TREE, scale, min_width=40 if kind == "tree" else 0)
     return _tree_ground(image, variant, theme, scale) if kind == "tree" else image
 
 
-def _mine_face(game: Game, variant: int, look: str) -> tuple[Image.Image, Placement]:
-    """One gold mine's picture and placement: the painted frame where there is one, the low-poly render
-    otherwise.  What :func:`mine_image` registers, before it is registered, so a seam can be built of them."""
-    if restyled_mines() is None:
-        image = _resource_image("mine", variant, MapTheme.SUMMER, game.backend.scale_factor)
-        return image, placements[f"mine.{variant}"]  # recorded by _prop inside _resource_image
-    if restyled_mines(look) is None:
-        look = "intact"
-    sheet, frames = restyled_mines(look)
-    frame = frames[mine_key(PAINTED_MINES[variant], look)]
+def _mine_face(game: Game, variant: int, look: str, wealth: str = "rich") -> tuple[Image.Image, Placement]:
+    """One working's picture and placement: the painted frame where there is one, the low-poly render
+    otherwise.  What :func:`mine_image` registers, before it is registered, so a bank can be built of them.
+
+    A working of another *wealth* is painted over the rich painting (:func:`restyled_workings`); where the mines are
+    painted and it is not, it is the low-poly render of its own wealth, which never passes for a rich mine."""
+    painted = restyled_mines() if wealth == "rich" else restyled_workings()
+    if restyled_mines() is None or painted is None:
+        image = _resource_image("mine" if wealth == "rich" else f"mine.{wealth}", variant % MINE_VARIANTS, MapTheme.SUMMER,
+                                game.backend.scale_factor)
+        return image, placements[f"mine.{variant % MINE_VARIANTS}" + ("" if wealth == "rich" else f".{wealth}")]  # recorded by _prop
+    lit = restyled_mines(look) if wealth == "rich" else restyled_workings(look)
+    sheet, frames = lit if lit is not None else painted
+    frame = frames[mine_key(PAINTED_MINES[variant], look if lit is not None else "intact", wealth)]
     return frame, Placement(sheet.logical_size, sheet.drop, 1.5 * TILE, head=figure_top(sheet, frame))
 
 
@@ -521,17 +565,17 @@ def _bank_of_workings(faces: Sequence[tuple[Image.Image, Placement]], tiles: int
     each face knows its own pixels per logical unit from its placement.  A face is anchored at the
     middle of its own footprint, :attr:`Placement.front` above the line it stands on, so laying the
     three out is a matter of where their anchors go: the middle one far enough down the picture that
-    it stands on the seam's own front line, the others :data:`SEAM_LIFT` tiles up the picture (which
+    it stands on the bank's own front line, the others :data:`BANK_LIFT` tiles up the picture (which
     is back across the ground) and far enough aside that the three together are *tiles* wide.  They
     are pasted back to front, so the nearest working is the one that overlaps the others."""
     middle, *flanks = faces
     px = middle[0].width / middle[1].size[0]
     front = tiles * TILE / 2
     lead = front - middle[1].front  # the middle working stands at the front of the footprint, not at its centre
-    spread = max(0.0, (tiles * TILE - SEAM_BACK * _figure_width(*middle)) / 2)
+    spread = max(0.0, (tiles * TILE - BANK_BACK * _figure_width(*middle)) / 2)
     laid = [(middle[0], middle[1], 1.0, 0.0, lead)]
     for side, (image, placement) in zip((-1.0, 1.0), flanks):
-        laid.insert(0, (image, placement, SEAM_BACK, side * spread, lead - SEAM_LIFT * TILE))
+        laid.insert(0, (image, placement, BANK_BACK, side * spread, lead - BANK_LIFT * TILE))
     boxes = [(dx - scale * placement.size[0] / 2, dy - scale * (placement.size[1] - placement.drop),
               dx + scale * placement.size[0] / 2, dy + scale * placement.drop)
              for _image, placement, scale, dx, dy in laid]
@@ -548,27 +592,58 @@ def _bank_of_workings(faces: Sequence[tuple[Image.Image, Placement]], tiles: int
     return canvas, Placement(size, drop=bottom, front=front, head=-top - figure[1] / px)
 
 
-def seam_image(game: Game, variant: int, look: str = "intact") -> str:
-    """Register (once) and return the key of a gold seam's image: a bank of three mine faces, the
-    middle one *variant* and its neighbours the next two, in *look*.  Nobody owns it, so nothing
-    recolours it."""
+BANK = BUILDINGS[BuildingType.GOLD_SEAM].size  # the tiles a bank of three workings stands on: a seam's, a lode's
+
+
+def bank_image(game: Game, variant: int, look: str = "intact", wealth: str = "rich") -> str:
+    """Register (once) and return the key of a five-tile deposit's image: a bank of three workings of *wealth*, the
+    middle one *variant* and its neighbours the next two, in *look*.  Nobody owns it, so nothing recolours it."""
     if look not in MINE_LOOKS:
         raise ValueError(f"unknown mine look {look!r}")
-    key = f"seam.{variant}.{look}"
+    if wealth not in WEALTHS:
+        raise ValueError(f"unknown wealth {wealth!r}")
+    key = f"bank.{wealth}.{variant}.{look}"
     if not game.assets.has_image(key):
         kinds = mine_variants()
-        faces = [_mine_face(game, (variant + offset) % kinds, look) for offset in (0, 1, 2)]
-        image, placement = _bank_of_workings(faces, BUILDINGS[BuildingType.GOLD_SEAM].size)
+        faces = [_mine_face(game, (variant + offset) % kinds, look, wealth) for offset in (0, 1, 2)]
+        image, placement = _bank_of_workings(faces, BANK)
         placements[key] = placement
         game.assets.image_from_pil(key, image)
     return key
 
 
-def deposit_image(game: Game, building_type: BuildingType, variant: int, look: str = "intact") -> str:
-    """The key of a gold deposit's image: a seam is a bank of workings, a mine one face of rock."""
-    if building_type is BuildingType.GOLD_SEAM:
-        return seam_image(game, variant, look)
+def deposit_wealth(building_type: BuildingType, gold: int) -> str:
+    """How rich a deposit of *building_type* holding *gold* looks (:data:`WEALTHS`): as poor as it pays, and, where
+    its rules draw a line (``rich_above``), worked out once it holds no more than that.  *gold* is what the player
+    last saw in it, so a lode remembered under the fog looks as it did when they looked."""
+    deposit = BUILDINGS[building_type].mine
+    if deposit is None:
+        raise ValueError(f"a {building_type.value} is no gold deposit")
+    if deposit.trip < GOLD_PER_TRIP:
+        return "poor"
+    return "worked" if deposit.rich_above and gold <= deposit.rich_above else "rich"
+
+
+def deposit_image(game: Game, building_type: BuildingType, variant: int, look: str = "intact", gold: int = 0) -> str:
+    """The key of a gold deposit's image: a mine is one face of rock, a five-tile deposit a bank of three workings,
+    each as rich as :func:`deposit_wealth` says it looks holding *gold*."""
+    if BUILDINGS[building_type].size == BANK:
+        return bank_image(game, variant, look, deposit_wealth(building_type, gold))
     return mine_image(game, variant, look)
+
+
+def deposit_portrait(game: Game, building_type: BuildingType, gold: int = 0) -> str:
+    """A deposit's picture for the selection panel, cropped to its figure: its map picture at rest, as rich as it
+    looks holding *gold*."""
+    key = f"portrait.deposit.{building_type.value}.{deposit_wealth(building_type, gold)}"
+    if not game.assets.has_image(key):
+        if BUILDINGS[building_type].size == BANK:
+            wealth = deposit_wealth(building_type, gold)
+            picture = _bank_of_workings([_mine_face(game, offset % mine_variants(), "intact", wealth) for offset in (0, 1, 2)], BANK)[0]
+        else:
+            picture = _mine_face(game, 0, "intact")[0]
+        game.assets.image_from_pil(key, picture.crop(picture.split()[3].getbbox()))
+    return key
 
 
 def mine_image(game: Game, variant: int, look: str = "intact") -> str:
@@ -2403,15 +2478,22 @@ def painted_building(building_type: BuildingType, race: Race, look: str = "intac
     return None if frame is None else (sheet, frame)
 
 
-def mine_key(variant: int, look: str = "intact") -> str:
-    """The painted gold mine that repaints stand-in *variant*, in *look*."""
-    return f"mine.{variant}.{look}"
+def mine_key(variant: int, look: str = "intact", wealth: str = "rich") -> str:
+    """The painted working that repaints stand-in *variant* in *look*: a gold mine, or one of another *wealth*."""
+    return f"mine.{variant}.{look}" if wealth == "rich" else f"mine.{variant}.{wealth}.{look}"
 
 
 @lru_cache(maxsize=None)
 def restyled_mines(look: str = "intact") -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
     """The hand-painted gold mines in one look (the stand-in variants of :data:`PAINTED_MINES`), or None."""
     return _painted(f"mine.{look}", [mine_key(variant, look) for variant in PAINTED_MINES])
+
+
+@lru_cache(maxsize=None)
+def restyled_workings(look: str = "intact") -> tuple[restyle.Sheet, dict[str, Image.Image]] | None:
+    """The painted workings of the other wealths in one look, repainted over the painted mines (WB-071), or None:
+    the worked-out faces of a Mother Lode and the poor ones of a seam."""
+    return _painted(f"workings.{look}", [mine_key(variant, look, wealth) for wealth in WEALTHS[1:] for variant in PAINTED_MINES])
 
 
 def mine_variants() -> int:

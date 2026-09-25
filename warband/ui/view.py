@@ -725,7 +725,9 @@ class MapView:
             # One den per creature, never a race's and never a team's — wearing the match's landscape.
             key = monsters.lair_image(self.game, monsters.LairKind(sighting.lair_kind), sighting.look, self.world.theme)
         elif deposit is not None:
-            key = textures.deposit_image(self.game, sighting.type, textures.scatter(x, y, 8) % textures.mine_variants(), sighting.look)
+            # As rich as it looked when the player last saw it: a lode remembered under the fog keeps the gold it showed.
+            key = textures.deposit_image(self.game, sighting.type, textures.scatter(x, y, 8) % textures.mine_variants(), sighting.look,
+                                         sighting.gold)
         elif sighting.done or painted_site:
             key = textures.building_image(self.game, sighting.type, sighting.player, sighting.race, sighting.look, abandoned=sighting.abandoned)  # type: ignore[arg-type]
         elif rising:

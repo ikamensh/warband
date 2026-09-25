@@ -94,7 +94,8 @@ class BuildingType(IdentityEnum):
     CHURCH = "church"
     VAULT = "vault"  # the Aether Vault: draws aether while it stands square on a ley rift (WB-063)
     GOLD_MINE = "gold_mine"
-    GOLD_SEAM = "gold_seam"  # the endless one; :class:`MineInfo` is what tells the two deposits apart
+    GOLD_SEAM = "gold_seam"  # the endless one; :class:`MineInfo` is what tells the deposits apart
+    MOTHER_LODE = "mother_lode"  # the seam's size and places, a mine's trip, and a hundred thousand to give (WB-071)
     LAIR = "lair"  # a creature camp's den: nobody's, the guards' respawn anchor and the hoard they sit on
 
 
@@ -308,8 +309,9 @@ PLAYABLE_UNITS: Final[tuple[UnitType, ...]] = (UnitType.PEASANT, UnitType.FOOTMA
 WILD_UNITS: Final[dict[UnitType, UnitInfo]] = {UnitType(u): _unit(info) for u, info in config.current().wilds.items()}
 UNITS.update(WILD_UNITS)
 CREATURES: Final[tuple[UnitType, ...]] = tuple(WILD_UNITS)
-#: Buildings nobody names: the two gold deposits and the lair.  No race tweaks them and no race draws them.
-WILD_BUILDINGS: Final[frozenset[BuildingType]] = frozenset({BuildingType.GOLD_MINE, BuildingType.GOLD_SEAM, BuildingType.LAIR})
+#: Buildings nobody names: the three gold deposits and the lair.  No race tweaks them and no race draws them.
+WILD_BUILDINGS: Final[frozenset[BuildingType]] = frozenset({BuildingType.GOLD_MINE, BuildingType.GOLD_SEAM, BuildingType.MOTHER_LODE,
+                                                            BuildingType.LAIR})
 #: What a player builds, in card order: everything the wilds do not own.  Every loop that means "the game's
 #: buildings" -- a race's names, the painted sheets, a jittered rulebook, the art lint -- walks this.
 BUILT: Final[tuple[BuildingType, ...]] = tuple(bt for bt in BuildingType if bt not in WILD_BUILDINGS)
@@ -323,6 +325,8 @@ GOLD_PER_TRIP: Final[int] = config.current().buildings["gold_mine"]["mine_trip"]
 MINE_SLOTS: Final[int] = config.current().buildings["gold_mine"]["mine_slots"]
 SEAM_PER_TRIP: Final[int] = config.current().buildings["gold_seam"]["mine_trip"]
 SEAM_SLOTS: Final[int] = config.current().buildings["gold_seam"]["mine_slots"]
+LODE_PER_TRIP: Final[int] = config.current().buildings["mother_lode"]["mine_trip"]
+LODE_SLOTS: Final[int] = config.current().buildings["mother_lode"]["mine_slots"]
 MINE_TIME: Final = config.number('MINE_TIME')
 # The face serves its slots every MINE_TIME, so a deposit yields at most slots * trip / MINE_TIME. With the
 # walk to the hall on top, a mine next door is saturated by about ten peasants and a distant one by a few
@@ -359,11 +363,19 @@ class MineInfo:
     is its stock: it falls with every trip and the mine is gone when it reaches zero.  An endless
     seam holds no stock at all -- its ``gold`` is zero and stays zero -- and keeps giving, so what
     is worth working is asked as :attr:`~warband.sim.model.Building.has_gold`, never of the number.
+    *rich_above* is how it looks and nothing else: a deposit holding more wears its rich picture, one
+    holding that or less its worked-out one (the Mother Lode); zero, one picture whatever it holds.
     """
 
     trip: int
     slots: int
     endless: bool = False
+    rich_above: int = 0
+
+    @property
+    def rate(self) -> float:
+        """The most gold a second its face gives, every place taken: *slots* trips every :data:`MINE_TIME`."""
+        return self.slots * self.trip / MINE_TIME
 
 
 @dataclass(frozen=True)
@@ -389,7 +401,7 @@ class BuildingInfo:
 
 
 def _building(b: dict[str, Any]) -> BuildingInfo:
-    mine = MineInfo(b["mine_trip"], b["mine_slots"], b["mine_endless"]) if b["mine_trip"] or b["mine_slots"] else None
+    mine = MineInfo(b["mine_trip"], b["mine_slots"], b["mine_endless"], b["rich_above"]) if b["mine_trip"] or b["mine_slots"] else None
     return BuildingInfo(
         name=b["name"], cost=Cost(b["gold"], b["lumber"]), hp=b["hp"], armor=b["armor"], size=b["size"],
         build_time=b["build_time"], sight=b["sight"], supply=b["supply"], hotkey=b["hotkey"],
@@ -536,6 +548,7 @@ def salvage_resource(info: BuildingInfo, roll: float) -> Resource:
     return Resource.GOLD if roll * price < info.cost.gold else Resource.LUMBER
 MINE_GOLD: Final = config.integer('MINE_GOLD')
 EXPANSION_GOLD: Final = config.integer('EXPANSION_GOLD')
+LODE_GOLD: Final = config.integer('LODE_GOLD')
 STARTING_GOLD: Final = config.integer('STARTING_GOLD')
 STARTING_LUMBER: Final = config.integer('STARTING_LUMBER')
 #: The largest body any unit has: what a search that must not miss a unit whose body reaches into it pads by

@@ -19,7 +19,7 @@ from saga2d import (
 )
 from saga2d import SaveError
 from saga2d.effects import Banner, Burst, Effects, FloatingText, Pulse, Toast
-from warband.art import ambience
+from warband.art import ambience, textures
 from warband.audio import bodies, deaths, presence, wreckage
 from warband.sim import mapgen
 from warband.brains.adjutant import COMMANDS, MAX_LEVEL, NAMES as COMMAND_NAMES, TAGS, Adjutant
@@ -2474,8 +2474,9 @@ class GameScene(Scene):
                     self.effects.add(Toast(title, [text], accent=GOOD, hold=4.0, top=self.toast_top))
             elif e.kind == "exposed":
                 self.effects.add(Toast(f"{e.text}'s last holdings are revealed", [e.text], hold=4.0, top=self.toast_top))
-            elif e.kind == "exhausted":
-                self.effects.add(FloatingText("Mine exhausted", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), MUTED, rise=20, duration=1.5))
+            elif e.kind == "exhausted":  # a mine, or a Mother Lode's hundred thousand: the event names the deposit's kind
+                spent = "Mine exhausted" if e.text == BuildingType.GOLD_MINE.value else f"{BUILDINGS[BuildingType(e.text)].name} worked out"
+                self.effects.add(FloatingText(spent, (to_world(e.pos)[0], to_world(e.pos)[1] - TILE), MUTED, rise=20, duration=1.5))
             elif e.kind == "salvage" and mine and self._visible(e.pos):
                 color = GOLD if e.text == "gold" else LUMBER
                 self.effects.add(ResourceFloat(e.amount, "gold" if e.text == "gold" else "lumber",
@@ -2875,6 +2876,10 @@ class GameScene(Scene):
             from warband.art.monsters import LairKind, lair_portrait_image
 
             key = lair_portrait_image(self.game, LairKind(entity.lair_kind), self.world.theme)
+            self.draw_image(key, *fit(self.game, key, x, y, size))
+            return
+        if isinstance(entity, Sighting) and BUILDINGS[entity.type].mine is not None:
+            key = textures.deposit_portrait(self.game, entity.type, entity.gold)  # as rich as it looks on the map
             self.draw_image(key, *fit(self.game, key, x, y, size))
             return
         draw_production_icon(self, entity.type, entity.player, entity.race, x, y, size, theme=self.world.theme)

@@ -28,8 +28,8 @@ BUFFS_TOML = Path("buffs.toml")
 PLAYABLE = ("peasant", "footman", "archer", "knight", "catapult", "flying_machine", "cleric")
 WILDS = ("wolf", "spider", "troll", "golem")
 BUILDINGS = ("town_hall", "farm", "barracks", "tower", "lumber_mill", "blacksmith", "stables", "workshop", "church", "vault",
-             "gold_mine", "gold_seam", "lair")
-DEPOSITS = ("gold_mine", "gold_seam")
+             "gold_mine", "gold_seam", "mother_lode", "lair")
+DEPOSITS = ("gold_mine", "gold_seam", "mother_lode")
 #: What a player builds: everything the wilds do not own (rules.BUILT walks the same set).
 BUILT = tuple(b for b in BUILDINGS if b not in DEPOSITS and b != "lair")
 UPGRADES = ("keep", "blades_1", "blades_2", "blades_3", "armor_1", "armor_2", "arrows_1", "arrows_2", "arrows_3", "siege",
@@ -153,7 +153,7 @@ def _check_sections(doc: dict, path: Path, known: tuple[str, ...], what: str) ->
 
 BUILDING_KEYS = {"name", "gold", "lumber", "hp", "armor", "size", "build_time", "sight", "supply", "hotkey", "summary",
                  "trains", "researches", "requires", "deposits", "damage", "range", "cooldown", "mine_trip", "mine_slots",
-                 "mine_endless"}
+                 "mine_endless", "rich_above"}
 UPGRADE_KEYS = {"name", "gold", "lumber", "time", "hotkey", "card", "summary", "requires", "race"}
 UPGRADE_TWEAK_KEYS = {"name", "card"}
 
@@ -162,7 +162,7 @@ UPGRADE_TWEAK_KEYS = {"name", "card"}
 ECONOMY_SCHEMA = {
     "work": {"mine_time": ("MINE_TIME", float), "lumber_per_trip": ("LUMBER_PER_TRIP", int),
              "chop_time": ("CHOP_TIME", float)},
-    "setup": {"mine_gold": ("MINE_GOLD", int), "expansion_gold": ("EXPANSION_GOLD", int),
+    "setup": {"mine_gold": ("MINE_GOLD", int), "expansion_gold": ("EXPANSION_GOLD", int), "lode_gold": ("LODE_GOLD", int),
               "starting_gold": ("STARTING_GOLD", int), "starting_lumber": ("STARTING_LUMBER", int)},
     "repair": {"rate": ("REPAIR_RATE", float), "chunk": ("REPAIR_CHUNK", int), "cost_share": ("REPAIR_COST", float)},
     "salvage": {"rate": ("SALVAGE_RATE", float), "held_rate": ("SALVAGE_HELD_RATE", float),
@@ -273,7 +273,7 @@ def _rows(doc: dict, names: tuple[str, ...], schema: dict, where: str) -> dict[s
 def _building(entry: dict, where: str, section: str) -> dict:
     _no_extra(entry, BUILDING_KEYS, where)
     is_deposit = section in DEPOSITS
-    for key in ("mine_trip", "mine_slots", "mine_endless"):
+    for key in ("mine_trip", "mine_slots", "mine_endless", "rich_above"):
         if not is_deposit and key in entry:
             raise BalanceError(f"{where}: {key} belongs on the deposits ({', '.join(DEPOSITS)}) alone")
     requires = entry.get("requires")
@@ -301,6 +301,7 @@ def _building(entry: dict, where: str, section: str) -> dict:
         "mine_trip": _int(entry, "mine_trip", where, 0) if is_deposit else 0,
         "mine_slots": _int(entry, "mine_slots", where, 0) if is_deposit else 0,
         "mine_endless": _bool(entry, "mine_endless", where, False) if is_deposit else False,
+        "rich_above": _int(entry, "rich_above", where, 0) if is_deposit else 0,
     }
 
 

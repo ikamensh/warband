@@ -75,6 +75,14 @@ key background is thrown away. The stand-ins keep the team hue off
 roofs, glass and water because the painted frames are recoloured by hue per
 player.
 
+The gold mine's four painted variants have two poorer wealths (WB-071,
+`--workings`): *worked*, a Mother Lode at or below its `rich_above`, and
+*poor*, the gold seam. They are painted over the installed mine painting, not
+from stand-ins, so a lode that crosses its line is the same bank with its gold
+gone, and cut without rescaling (a mine with its tall crystals quarried away
+is shorter, which says nothing of its scale). Their `active` sheet is painted
+over their intact one, as a mine's is.
+
 ## Verification
 
 ```sh

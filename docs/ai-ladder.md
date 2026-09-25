@@ -70,6 +70,11 @@ generator rather than a map:
   drawn. A test pins that, so if it ever stops being true the ladder should
   start cycling it.
 
+The three sizes are the shipped ones, and the maps above them are not on the
+ladder: they hold the shared ground's prize, a seam or a Mother Lode, that the
+three never do. `tools/prize_report.py` plays those, each seed with either prize
+on the same ground ([balance.md](balance.md#the-mother-lode-wb-071-2026-09-24)).
+
 Map size turns out to matter to the ratings: Master measures 1561 on 48×40
 alone and 1489 across all three sizes, and Hard 1299 against 1222. The brain
 is a little tuned to the small map it was developed on, and the honest number

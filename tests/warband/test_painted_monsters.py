@@ -166,7 +166,7 @@ def test_the_creatures_are_their_own_subjects() -> None:
     parse.add_argument("--race", default="human"); parse.add_argument("--units", default=None)
     parse.add_argument("--buildings", action="store_true"); parse.add_argument("--looks", default="intact,active,damaged")
     parse.add_argument("--mines", action="store_true"); parse.add_argument("--monsters", action="store_true")
-    parse.add_argument("--lairs", action="store_true")
+    parse.add_argument("--lairs", action="store_true"); parse.add_argument("--workings", action="store_true")
     parse.add_argument("--creatures", default="all")
     assert [s.name for s in tool.selected(parse.parse_args(["--monsters"]))] == [f"monster.{m.value}" for m in Monster]
     assert [s.name for s in tool.selected(parse.parse_args(["--monsters", "--creatures", "golem"]))] == ["monster.golem"]

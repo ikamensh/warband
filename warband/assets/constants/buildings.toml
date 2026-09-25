@@ -218,6 +218,26 @@ mine_trip = 20
 mine_slots = 12
 mine_endless = true
 
+# The shared ground's other prize (WB-071): a seam's five tiles and twelve
+# places at the face, a mine's trip, and it runs out. Its stock is
+# economy.toml's lode_gold. rich_above is its look alone, no rule reads it:
+# the rich bank of three faces while it holds more, the worked-out bank at or
+# below, so how much is left shows from across the map.
+[mother_lode]
+name = "Mother Lode"
+hp = 0
+armor = 0
+size = 5
+build_time = 0.0
+sight = 0
+supply = 0
+hotkey = ""
+summary = "A rich lode: {trip} gold a trip until it is worked out"
+mine_trip = 100
+mine_slots = 12
+mine_endless = false
+rich_above = 50_000
+
 [lair]
 name = "Lair"
 hp = 900

@@ -15,7 +15,7 @@ from typing import Final
 from warband.brains.pro_force import _tower_strength, _tower_strength_own, strength
 from warband.brains.pro_profiles import PRO, PRO_PROFILES, PRO_RUSH, PRO_VANGUARD, PRO_WARDEN, ProProfile
 
-from warband.brains.ai import CAMP_REACH, RAIDERS, answer_flyers, heading_to, known_camps, known_mines, lost_track
+from warband.brains.ai import CAMP_REACH, RAIDERS, answer_flyers, camp_worth, heading_to, known_camps, known_mines, lost_track
 from warband.sim.model import Attack, Build, Building, Move, Point, Repair, Salvage, Unit, World, dist, int_sum, plain_sum, rect_gap, tile_center
 from warband.sim.rules import BuildingType, Layout, Race, UnitType
 
@@ -214,12 +214,15 @@ class ProBrain(_ProBrainEconomy):
         origin = hall.center if hall is not None else (army[0].pos if army else None)
         if origin is None:
             return False
+        # A camp is worth the walk in proportion to what it keeps from us (ai.camp_worth): the ordinary reach for a third's,
+        # three and a third times it for a Mother Lode's; and of those in reach, the nearest for what it keeps.
+        worth = {record.id: camp_worth(world, self.player, record) for record in known_camps(world, self.player)}
         here = [record for record in known_camps(world, self.player)
                 if record.id in world.buildings and world.time >= self.camp_retry.get(record.id, 0.0)
-                and dist(record.center, origin) <= profile.creep_reach]
+                and dist(record.center, origin) <= profile.creep_reach * worth[record.id]]
         if not here:
             return False
-        target = min(here, key=lambda record: dist(record.center, origin))
+        target = min(here, key=lambda record: dist(record.center, origin) / worth[record.id])
         mine = strength(world, army)
         theirs = self._camp_strength(world, target)
         if len(army) < profile.creep_army or mine < profile.creep_ratio * theirs:

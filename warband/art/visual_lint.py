@@ -365,7 +365,8 @@ def register_everything(game: Game, *, players: tuple[int, ...] = (0, 1), budget
     for variant in range(textures.mine_variants()):
         for look in textures.MINE_LOOKS:
             textures.mine_image(game, variant, look)
-            textures.seam_image(game, variant, look)
+            for wealth in textures.WEALTHS:
+                textures.bank_image(game, variant, look, wealth)
     for race in Race:
         for _ in textures.warm_units(game, [0], [race]):
             if budget is not None:
@@ -442,13 +443,14 @@ def lint_images(game: Game, store: ImageStore, *, budget: CpuBudget | None = Non
             key = textures.mine_key(variant, look)
             if game.assets.has_image(key):
                 findings += lint_building(key, store.image(key), textures.placements[key], BUILDINGS[BuildingType.GOLD_MINE].size)
-    for variant in range(textures.mine_variants()):  # the seam is built of mine faces, but it stands on five tiles of its own
+    for variant in range(textures.mine_variants()):  # a bank is built of mine faces, but it stands on five tiles of its own
         for look in textures.MINE_LOOKS:
-            key = f"seam.{variant}.{look}"
-            if game.assets.has_image(key):
-                findings += lint_building(key, store.image(key), textures.placements[key], BUILDINGS[BuildingType.GOLD_SEAM].size)
+            for wealth in textures.WEALTHS:
+                key = f"bank.{wealth}.{variant}.{look}"
+                if game.assets.has_image(key):
+                    findings += lint_building(key, store.image(key), textures.placements[key], textures.BANK)
     for key in list(game.assets._images):
-        if key.startswith(("tree.", "rock.", "mine.", "seam.")):
+        if key.startswith(("tree.", "rock.", "mine.", "bank.")):
             fig = figure(store.image(key), textures.placements[key])
             if fig is not None and fig.feet < -FLOAT:
                 findings.append(Finding("floating", key, f"solid content ends {-fig.feet:.1f} px above the anchor", store.image(key)))

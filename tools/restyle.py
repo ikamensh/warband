@@ -11,6 +11,7 @@
 
 A *subject* is one unit of one race (a carrying peasant is its own subject), the nine
 buildings of one race in one look, (``--mines``) four of the gold mine's stand-ins in a look,
+(``--workings``) the same four worked out and poor, painted over the mine painting,
 (``--monsters``) one of the neutral creatures in every facing and frame, or (``--lairs``) the
 four creature dens in one look.  A building's ``intact``
 look is painted from the low-poly stand-ins; ``active`` (producing) and ``damaged`` are painted
@@ -704,6 +705,101 @@ class Mines:
         return path
 
 
+#: What each wealth of working is asked to become (WB-071), from the rich painting it repaints.
+WORKINGS_BRIEF = {
+    "worked": ("HALF WORKED OUT: its tallest gold crystals quarried away, leaving pale fresh scars in the rock and broken golden "
+               "stumps, while three or four shorter gold crystals still stand in the rock, and a small heap of grey waste rock (spoil) "
+               "beside the entrance; clearly less gold than before, but plainly still a gold mine"),
+    "poor": ("A POOR OLD SEAM: bare grey rock with no crystals at all, only a few thin, dull gold veins streaking the rock faces, the "
+             "timbers weathered grey and cracked, one old pit prop leaning against the rock and one fallen beam in the grass"),
+}
+WORKINGS_JUDGE = """You are checking a repainted sprite sheet of gold mines against the painting it was made from. The image shows, for each
+row, the rich painted mines above and the same mines repainted below, labelled "row N: ..." and "col N". Row 0 must be {worked}. Row 1 must be
+{poor}.
+
+Work cell by cell, lower row only. A cell is wrong if:
+- it is not the same mine as above: the rocks, the timbered entrance and the cart track moved, changed shape or went missing;
+- its row's wealth does not show: row 0 still has its tall crystals or has no gold crystals left at all, or row 1 still has
+  gold crystals or golden chunks;
+- it contains people, animals, smoke, text, or any blue.
+
+Reply with one JSON object and nothing else:
+{{"cells": [{{"row": 0, "col": 0, "ok": true, "issue": ""}}, ...]}}
+List every cell of the rows shown. Keep issues short and concrete."""
+
+
+@dataclass(frozen=True)
+class Workings:
+    """The gold mine's other wealths (WB-071): the worked-out faces of a Mother Lode that holds no more than its
+    ``rich_above``, and the poor faces a gold seam is drawn with, for the same four variants as the mine.  The intact
+    look is painted over the installed intact mine painting, so a lode that crosses the line is the same bank with
+    its gold gone; the active look over the installed intact workings.  Nothing recolours a mine."""
+
+    look: str = "intact"
+    chunk = (2, 2)
+
+    @property
+    def stage(self) -> int:
+        return 1 if self.look == "intact" else 2
+
+    @property
+    def name(self) -> str:
+        return f"workings.{self.look}"
+
+    @property
+    def description(self) -> str:
+        return MINE_SUBJECT
+
+    @property
+    def inventory(self) -> str:
+        return "one gold mine per cell, on its own patch of ground"
+
+    @property
+    def judge(self) -> str:
+        if self.look == "intact":
+            return WORKINGS_JUDGE.format(**{k: v.split(":")[0].lower() for k, v in WORKINGS_BRIEF.items()})
+        return LOOK_JUDGE.format(look=self.look, brief=MINE_ACTIVE, forbidden="people or smoke")
+
+    def build_sheet(self) -> tuple[restyle.Sheet, dict[str, Image.Image]]:
+        wealths = textures.WEALTHS[1:]
+        keys = [(textures.mine_key(variant, self.look, wealth), {"variant": variant, "wealth": wealth})
+                for wealth in wealths for variant in textures.PAINTED_MINES]
+        source = Mines() if self.look == "intact" else Workings()
+        if not restyle.file(RESTYLED / source.name, "png").exists():
+            raise FileNotFoundError(f"{self.name} is painted from {source.name}: install {source.name} first")
+        base, painted = restyle.load_frames(RESTYLED / source.name)
+        sheet = restyle.Sheet.layout(keys, cols=len(textures.PAINTED_MINES), cell=base.cell, origin=base.origin, scale=base.scale)
+        if self.look == "intact":
+            return sheet, {key: painted[textures.mine_key(tags["variant"])] for key, tags in keys}
+        return sheet, {key: painted[textures.mine_key(tags["variant"], "intact", tags["wealth"])] for key, tags in keys}
+
+    def prompt(self, sheet: restyle.Sheet) -> str:
+        head = (f"Edit target: the attached sprite sheet of {len(sheet.cells)} gold mines from a 2D real-time strategy game (Warcraft 2 "
+                f"style, a 3/4 top-down camera on square ground tiles; each mine stands on its own patch of rocky ground that is part of "
+                f"the sprite). {geometry(sheet, 'mine')} Each cell now shows {MINE_SUBJECT}. The mines are already painted.")
+        if self.look == "intact":
+            return (f"{head}\n\nRepaint every mine in exactly the same place, style and shape: the same rocks, the same timbered entrance "
+                    f"and the same cart track, standing exactly where they are. Only the gold changes. Every mine in row 0 is "
+                    f"{WORKINGS_BRIEF['worked']}. Every mine in row 1 is {WORKINGS_BRIEF['poor']}. The change must read at a third of "
+                    f"this size. No people, no animals, no smoke, no text, no blue anywhere. {background(sheet)}")
+        return (f"{head}\n\nRepaint every mine in exactly the same place, style, colours and shape, keeping how much gold it shows, but "
+                f"{MINE_ACTIVE} Put no blue anywhere. {background(sheet)}")
+
+    def row_names(self, sheet: restyle.Sheet) -> list[str]:
+        return [", ".join(f"col {c.col} {textures.WEALTHS[1 + row]} gold mine" for c in sheet.cells if c.row == row) for row in range(sheet.rows)]
+
+    def cell_name(self, cell: restyle.Cell) -> str:
+        return f"row {cell.row}, column {cell.col} (a {textures.WEALTHS[1 + cell.row]} gold mine)"
+
+    def preview(self, sheet: restyle.Sheet, frames: dict[str, Image.Image], out: Path) -> Path:
+        """One PNG: the painting it was made from above the painting."""
+        _, original = self.build_sheet()
+        keys = [c.key for c in sheet.cells]
+        path = out / f"{self.name}.png"
+        stacked([restyle.strip(original, keys, scale=0.5), restyle.strip(frames, keys, scale=0.5)]).save(path)
+        return path
+
+
 # -- The neutral creatures ---------------------------------------------------------------
 
 #: A creature is nobody's, so unlike a unit it carries no team colour at all and nothing that
@@ -1002,7 +1098,7 @@ class Lairs:
         return path
 
 
-Subject = Unit | Buildings | Mines | Monsters | Lairs
+Subject = Unit | Buildings | Mines | Workings | Monsters | Lairs
 
 
 def stacked(strips: list[Image.Image]) -> Image.Image:
@@ -1024,6 +1120,8 @@ def selected(args: argparse.Namespace) -> list[Subject]:
         return [Lairs(look) for look in looks]
     if args.mines:
         return [Mines(look) for look in args.looks.split(",") if look in textures.MINE_LOOKS]
+    if args.workings:
+        return [Workings(look) for look in args.looks.split(",") if look in textures.MINE_LOOKS]
     if args.monsters:
         names = [m.value for m in monsters.Monster] if args.creatures == "all" else args.creatures.split(",")
         return [Monsters(monsters.Monster(name)) for name in names]
@@ -1102,9 +1200,10 @@ def cmd_cut(args: argparse.Namespace, subjects: list[Subject]) -> None:
             print(f"{name}: no {rendered.name} yet")
             continue
         sheet = restyle.Sheet.load(args.dir / name)
-        # A site stands on the same ground patch as its building but is far lower: its height says nothing of the scale.
+        # A site stands on the same ground patch as its building but is far lower, and a worked-out or poor mine is its
+        # painting with the tall crystals gone: neither height says anything of the scale.
         result = restyle.cut(sheet, Image.open(rendered), Image.open(args.dir / f"{name}.png"),
-                             rescale=not name.endswith(tuple(f".{look}" for look in textures.SITE_LOOKS)))
+                             rescale=not (name.endswith(tuple(f".{look}" for look in textures.SITE_LOOKS)) or isinstance(subject, Workings)))
         flagged = result.flagged
         print(f"{name}: scale {result.registration.scale:.2f} shift ({result.registration.dx:.0f}, {result.registration.dy:.0f}), "
               f"{len(flagged)} of {len(result.report)} cells flagged")
@@ -1332,6 +1431,8 @@ def main() -> None:
     parser.add_argument("--buildings", action="store_true", help="the race's building sheets (default with no --units: yes)")
     parser.add_argument("--looks", default=",".join(LOOKS), help=f"comma-separated building looks (default: {','.join(LOOKS)})")
     parser.add_argument("--mines", action="store_true", help="the gold mine's sheets instead (no race; looks intact and active)")
+    parser.add_argument("--workings", action="store_true",
+                        help="the mine's worked-out and poor sheets (a lode below its line, a seam), painted over the mine's")
     parser.add_argument("--monsters", action="store_true", help="the neutral creatures instead (no race, no team colour)")
     parser.add_argument("--lairs", action="store_true", help="the four creature dens instead (no race, no team colour)")
     parser.add_argument("--creatures", default="all", help="comma-separated creatures for --monsters (default: all of them)")

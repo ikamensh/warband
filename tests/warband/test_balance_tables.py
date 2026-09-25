@@ -239,9 +239,10 @@ def test_the_toml_balance_tables_match_the_simulation() -> None:
         return (summary.replace("{trip}", str(trip)).replace("{store}", str(tables.scalars["AETHER_STORE"]))
                 .replace("{reach}", f"{tables.scalars['AETHER_REACH']:g}"))
 
-    mine, seam = tables.buildings["gold_mine"], tables.buildings["gold_seam"]
+    mine, seam, lode = tables.buildings["gold_mine"], tables.buildings["gold_seam"], tables.buildings["mother_lode"]
     for key, want in (("GOLD_PER_TRIP", mine["mine_trip"]), ("MINE_SLOTS", mine["mine_slots"]),
-                      ("SEAM_PER_TRIP", seam["mine_trip"]), ("SEAM_SLOTS", seam["mine_slots"])):
+                      ("SEAM_PER_TRIP", seam["mine_trip"]), ("SEAM_SLOTS", seam["mine_slots"]),
+                      ("LODE_PER_TRIP", lode["mine_trip"]), ("LODE_SLOTS", lode["mine_slots"])):
         agree(f"buildings.toml deposit {key}", getattr(rules, key), want)
     for building, b in tables.buildings.items():
         live = rules.BUILDINGS[rules.BuildingType(building)]
@@ -258,10 +259,11 @@ def test_the_toml_balance_tables_match_the_simulation() -> None:
         agree(f"buildings.toml [{building}].researches", live.researches, b["researches"])
         agree(f"buildings.toml [{building}].requires", live.requires, b["requires"])
         agree(f"buildings.toml [{building}].deposits", live.deposits, b["deposits"])
-        if building in ("gold_mine", "gold_seam"):
+        if building in ("gold_mine", "gold_seam", "mother_lode"):
             agree(f"buildings.toml [{building}].trip", live.mine.trip, b["mine_trip"])
             agree(f"buildings.toml [{building}].slots", live.mine.slots, b["mine_slots"])
             agree(f"buildings.toml [{building}].endless", live.mine.endless, b["mine_endless"])
+            agree(f"buildings.toml [{building}].rich_above", live.mine.rich_above, b["rich_above"])
         else:
             agree(f"buildings.toml [{building}].mine", live.mine, None)
 

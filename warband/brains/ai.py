@@ -22,7 +22,8 @@ from warband.sim.model import (MINE_CLEARANCE, RIFT, Attack, AttackMove, Build, 
                            World, dist, int_sum, plain_sum, rect_gap, tile_center)
 from warband.sim import mapgen
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, PLAYABLE_UNITS, UPGRADES, BuildingType, Difficulty, Race, Resource, Terrain, UnitType, Upgrade
+from warband.sim.rules import (BUILDINGS, EXPANSION_GOLD, GOLD_PER_TRIP, MINE_SLOTS, PLAYABLE_UNITS, UPGRADES, BuildingType, Difficulty,
+                               Race, Resource, Terrain, UnitType, Upgrade)
 from warband.sim.worker_knowledge import KnownMine
 
 try:
@@ -34,19 +35,29 @@ EXPAND_DISTANCE: Final = 14.0  # a mine farther than this from the hall gets a h
 LOW_MINE_GOLD: Final = 6000  # a mine this low means the next hall is planned now, while gold still comes in
 
 
+def pace(mine: KnownMine) -> float:
+    """How fast a deposit pays against a gold mine: the gold its face gives with every place taken, *slots* trips of
+    *trip* every mining time, over a mine's.  A mine is 1, a Mother Lode 1.5 (a mine's trip at twelve places), a seam
+    0.3 (a fifth of the trip at twelve).  What a deposit is worth is its pace and its stock, never its kind."""
+    return mine.slots * mine.trip / (MINE_SLOTS * GOLD_PER_TRIP)
+
+
 def worth_a_hall(mine: KnownMine) -> bool:
-    """Whether a deposit is worth putting a hall beside: a mine with gold still coming out, or a seam.
+    """Whether a deposit is worth putting a hall beside: one whose stock never runs out, or one holding the work
+    :data:`LOW_MINE_GOLD` is to a mine at its own pace, so a lode seating twelve is low at nine thousand.
 
     A seam is always worth one -- it never runs dry -- but it pays a fifth of a mine's trip, so
-    :func:`hall_first` ranks a seam behind every mine a brain could take instead."""
-    return mine.endless or mine.gold >= LOW_MINE_GOLD
+    :func:`hall_first` ranks it behind every deposit a brain could take instead."""
+    return mine.endless or mine.gold >= LOW_MINE_GOLD * pace(mine)
 
 
 def hall_first(mine: KnownMine, away: float) -> tuple[bool, float]:
-    """How a brain orders the deposits it could put its next hall at: gold that runs out first, then
-    whichever is nearest.  Taking the seam ahead of a rich mine would trade a hundred gold a trip for
-    twenty; the seam does not run away while the mines are drunk."""
-    return (mine.endless, away)
+    """How a brain orders the deposits it could put its next hall at, by stock and then by pace: gold that runs out
+    before gold that never does -- taking the seam ahead of a rich mine would trade a hundred gold a trip for twenty,
+    and the seam does not run away while the mines are drunk -- and then the nearest for what it pays, the walk over
+    the :func:`pace`, so a lode half as far again as a mine ranks with it.  Between mines that is the nearest, as it
+    always was."""
+    return (mine.endless, away / pace(mine))
 CREEP_REACH: Final = 34.0  # tiles from home a camp has to be within before an army is walked to it
 CREEP_RETRY: Final = 120.0  # seconds a camp that beat the army off is left alone
 CREEP_PATIENCE: Final = 150.0  # seconds the army will stand at a den before giving it up, whatever it has left:
@@ -141,6 +152,9 @@ def known_enemy_buildings(world: World, player: int) -> list:
 
 
 CAMP_REACH: Final = 10.0  # tiles from a remembered lair its guards hold: what a brain keeps its halls and peasants out of
+#: The farthest a camp's worth takes an army, in ordinary creeping walks: a lode's hundred thousand is worth the walk to
+#: the middle of a Huge map (57 tiles from home with two seats), and nothing is worth an army four minutes from home.
+CAMP_WALK: Final = 2.0
 #: Tiles a moving threat may drift from where a soldier is already attack-moving before the order is given again.  An order
 #: given anew every pass to a soldier wedged in a crowd restarts its walk, and with it the watchdog that would have walked
 #: it round the bodies in its way: fuzz seed 82 had a footman pressed into its own crowd for good.
@@ -286,6 +300,28 @@ def known_camps(world: World, player: int) -> list:
     """
     return [record for record in world.worker_knowledge[player].buildings.values()
             if record.player is not None and world.players[record.player].neutral]
+
+
+def camp_worth(world: World, player: int, record: Any) -> float:
+    """How much farther than :data:`CREEP_REACH` (or a profile's ``creep_reach``) a brain walks to clear the camp
+    in *record*: the stock of the deposit it guards -- the known deposit nearest its lair, within its guards' reach --
+    over an expansion's, never less than one and never more than :data:`CAMP_WALK`.  A camp beside a third is worth
+    the walk it always was; one beside a Mother Lode keeps a hundred thousand from whoever clears it, and is worth
+    twice the walk, as long as the lode is ours to take: nearer one of our halls than anything of a rival's we know
+    of, the rule an expansion is chosen by.  A seam holds no stock, so its camp is worth the ordinary walk: what it
+    keeps is a trickle."""
+    guarded = [m for m in known_mines(world, player) if dist(m.center, record.center) < CAMP_REACH]
+    if not guarded:
+        return 1.0
+    deposit = min(guarded, key=lambda m: dist(m.center, record.center))
+    worth = deposit.gold / EXPANSION_GOLD
+    if worth <= 1.0:
+        return 1.0
+    halls = [b.center for b in world.player_buildings(player, BuildingType.TOWN_HALL)]
+    rivals = [r.center for r in known_enemy_buildings(world, player)]
+    if not halls or (rivals and min(dist(deposit.center, c) for c in rivals) < min(dist(deposit.center, c) for c in halls)):
+        return 1.0  # not ours to take yet: the ordinary walk
+    return min(worth, CAMP_WALK)
 
 
 def guarded(world: World, player: int, point: Point, reach: float = CAMP_REACH) -> bool:
@@ -901,8 +937,9 @@ class Brain:
             return False
         hall = self._hall(world)
         origin = hall.center if hall is not None else army[0].pos
-        target = min(here, key=lambda record: dist(record.center, origin))
-        if dist(target.center, origin) > CREEP_REACH:
+        worth = {record.id: camp_worth(world, self.player, record) for record in here}
+        target = min(here, key=lambda record: dist(record.center, origin) / worth[record.id])  # the nearest for what it keeps
+        if dist(target.center, origin) > CREEP_REACH * worth[target.id]:
             return False
         self.creeping = target.id
         self.creep_size = len(army)
