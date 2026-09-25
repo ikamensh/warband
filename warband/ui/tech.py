@@ -18,7 +18,7 @@ from saga2d import Anchor, Component, Label
 from warband.art.production import fit, production_image
 from warband.sim.model import Build, World
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, BUILT, UNITS, UPGRADES, BuildingType, Race, UnitType, Upgrade, listing
+from warband.sim.rules import BUILDINGS, BUILT, LEVEL_NAMES, SPELLS, UNITS, UPGRADES, BuildingType, Race, UnitType, Upgrade, listing
 
 Target = UnitType | BuildingType | Upgrade
 Prerequisite = BuildingType | Upgrade
@@ -38,6 +38,11 @@ def prerequisites(target: Target) -> tuple[Prerequisite, ...]:
         requires = BUILDINGS[target].requires
         return () if requires is None else (requires,)
     return (researched_at(target),) + UPGRADES[target].requires
+
+
+def choice_of(item: Target) -> str:
+    """The choice *item* is made in (a spell's level, WB-066), or "" for what is nobody's choice."""
+    return UPGRADES[item].choice if isinstance(item, Upgrade) else ""
 
 
 def unlocks(building: BuildingType) -> list[BuildingType]:
@@ -121,6 +126,7 @@ def tree() -> dict[BuildingType, tuple[int, float]]:
 #: How bright a picture in the tree is: the player has it (a recruit: can train it), it is on its way, or neither.
 BRIGHT, COMING, FAINT = 1.0, 0.62, 0.3
 OPEN, SHUT = (255, 214, 110, 210), (255, 255, 255, 56)  # a line from a prerequisite the player has, or not
+CLOSED = (240, 110, 90, 230)  # the stroke through a spell another of its level was chosen over (WB-066)
 
 
 def level(world: World, player: int, target: Target) -> float:
@@ -134,16 +140,19 @@ def level(world: World, player: int, target: Target) -> float:
 class _Picture(Component):
     """A portrait or an emblem in the tree, as bright as the player's hold on it, naming itself on hover."""
 
-    def __init__(self, target: Target, player: int, race: Race, size: int, opacity: float, tooltip: str, **kwargs: Any) -> None:
+    def __init__(self, target: Target, player: int, race: Race, size: int, opacity: float, tooltip: str, *, closed: bool = False,
+                 **kwargs: Any) -> None:
         super().__init__(width=size, height=size, tooltip=tooltip, **kwargs)
-        self.target, self.player, self.race, self.opacity = target, player, race, opacity
+        self.target, self.player, self.race, self.opacity, self.closed = target, player, race, opacity, closed
 
     def on_draw(self) -> None:
         if self._game is None:
             return
-        game, (x, y, w, _h) = self._game, self.bounds
+        game, (x, y, w, h) = self._game, self.bounds
         key = production_image(game, self.target, self.player, self.race)
         game.backend.draw_image(game.assets.image(key), *fit(game, key, x, y, w), opacity=self.opacity, order=self._order)
+        if self.closed:  # a spell its level's choice closed: struck through
+            game.backend.draw_line(x + 2, y + h - 2, x + w - 2, y + 2, CLOSED, 3, order=self._order)
 
 
 class TechTree(Component):
@@ -159,6 +168,7 @@ class TechTree(Component):
     PORTRAIT = 44
     ICON = 28
     NAME = 26  # the name's line, above the building's pictures
+    CHOICE_GAP = 10  # between one choice's pictures and the next's: the Mage Tower's three levels of spells
 
     def __init__(self, world: World, player: int, *, in_match: bool = True, **kwargs: Any) -> None:
         self.places = tree()
@@ -174,8 +184,8 @@ class TechTree(Component):
         self.lit = {kind: brightness(kind) for kind in self.places}
         self.pictures: list[_Picture] = []
 
-        def picture(target: Target, x: int, y: int, size: int, tooltip: str) -> None:
-            self.pictures.append(_Picture(target, player, race, size, brightness(target), tooltip,
+        def picture(target: Target, x: int, y: int, size: int, tooltip: str, closed: bool = False) -> None:
+            self.pictures.append(_Picture(target, player, race, size, FAINT if closed else brightness(target), tooltip, closed=closed,
                                           anchor=Anchor.TOP_LEFT, margin=(x, y)))
             self.add(self.pictures[-1])
 
@@ -187,16 +197,26 @@ class TechTree(Component):
             self.add(Label(building.name, text_style="hud", anchor=Anchor.TOP_LEFT, margin=(x + self.PORTRAIT + 8, y)))
             work: list[Target] = [*(u for u in building.trains if info.unit_allowed(u)),
                                   *(u for u in building.researches if info.upgrade_allowed(u))]
+            left = x + self.PORTRAIT + 8
             for index, item in enumerate(work):
+                if index and choice_of(item) != choice_of(work[index - 1]):
+                    left += self.CHOICE_GAP  # each choice stands apart: the three a spell's level is chosen from (WB-066)
+                closed = False
                 if isinstance(item, UnitType):
                     unit = info.units[item]
                     after = f" · after the {listing([info.upgrades[u].name for u in unit.requires])}" if unit.requires else ""
                     tooltip = f"{unit.name} — {unit.cost} · {unit.summary}{after}"
                 else:
                     upgrade = info.upgrades[item]
-                    after = f" · after {listing([info.upgrades[u].name for u in upgrade.requires])}" if upgrade.requires else ""
-                    tooltip = f"{upgrade.name} — {upgrade.cost} · {upgrade.summary}{after}"
-                picture(item, x + self.PORTRAIT + 8 + index * (self.ICON + 4), y + self.NAME, self.ICON, tooltip)
+                    needs = [info.upgrades[u].name for u in upgrade.requires] + ([f"a level {upgrade.after} spell"] if upgrade.after else [])
+                    after = f" · after {listing(needs)}" if needs else ""
+                    rung = f"level {LEVEL_NAMES[SPELLS[item].level - 1]} · " if item in SPELLS else ""
+                    instead = world.chosen_instead(player, item) if in_match and upgrade.choice else None
+                    closed = instead is not None and instead[1]
+                    why = f" · closed: {info.upgrades[instead[0]].name} was chosen" if closed and instead is not None else ""
+                    tooltip = f"{upgrade.name} — {rung}{upgrade.cost} · {upgrade.summary}{after}{why}"
+                picture(item, left, y + self.NAME, self.ICON, tooltip, closed)
+                left += self.ICON + 4
 
     def on_draw(self) -> None:
         """The lines, under the pictures: out of the prerequisite's column, down or up, and into the building with an arrow."""

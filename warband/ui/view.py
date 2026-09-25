@@ -181,28 +181,41 @@ STRIKE, FOLLOW, RECOVER = 0.1, 0.16, 0.16  # seconds after the blow: driven forw
 #: Whose shot is not the arrow the model flies it as.  The model tells a shot that follows its mark from a stone
 #: that comes down on the ground; what it looks like is the striker's, as what it lands as is (``sound.impact_sound``):
 #: a healer looses no arrow but a mote of light, from the head of its staff.
-SHOT_LOOKS = {UnitType.CLERIC.value: "mote", UnitType.SPIDER.value: "venom", UnitType.GRYPHON.value: "storm"}
-SHOT_SIZE = {"arrow": (22, 6), "stone": (14, 14), "mote": (20, 20), "venom": (16, 16), "storm": (20, 20)}
+SHOT_LOOKS = {UnitType.CLERIC.value: "mote", UnitType.SPIDER.value: "venom", UnitType.GRYPHON.value: "storm",
+              "meteor": "meteor"}  # a Meteor's is its spell's (WB-066)
+SHOT_SIZE = {"arrow": (22, 6), "stone": (14, 14), "mote": (20, 20), "venom": (16, 16), "storm": (20, 20), "meteor": (40, 80)}
+METEOR_HEIGHT = 9.0  # tiles above the ground a Meteor is first seen, falling ever faster onto its point (WB-066)
 #: Whose shots are loosed in the air: a flyer's leaves it at the height the view draws it.
 FLYING_STRIKERS = frozenset(u.value for u, info in UNITS.items() if info.flying)
 STAFF_REACH = 0.4  # tiles before a healer that the head of its staff is held, where its mote is first seen
 RING_FLATTEN = 0.62  # a circle on the ground seen from the game's elevation is this much shorter than it is wide
+METEOR_WARNING = (255, 110, 50, 200)  # a falling Meteor's ring: a warning's orange, whoever called it down
 PICK_SLACK = 0.35  # tiles beyond a unit's body a click still picks it: the figure stands above the ground point it is clicked at
 FLIGHT = 1.15  # tiles above its ground point a flyer is drawn: over the trees and the roofs, its shadow on the ground below
 BOB = 2.5  # world pixels a hovering flyer rises and sinks about that height…
 BOB_RATE = 2.2  # …at this many radians a second
 SPIN_RATE = 14.0  # walk frames a second a flyer shows, moving or hovering: its rotor turns and its wings beat all the time
 SHADOW_COLOR = (0, 0, 0, 78)
-TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1, "venom": 0.14, "storm": 0.16}  # seconds of flight a shot leaves hanging in the air behind it
+TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1, "venom": 0.14, "storm": 0.16, "meteor": 0.35}  # seconds of flight a shot leaves hanging in the air behind it
 TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150), "venom": (198, 132, 226),
-               "storm": (150, 210, 255)}
+               "storm": (150, 210, 255), "meteor": (255, 150, 60)}
 TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5), "venom": (2.6, 0.5),
-               "storm": (3.2, 0.6)}  # at the shot and where the trail ends
+               "storm": (3.2, 0.6), "meteor": (10.0, 2.0)}  # at the shot and where the trail ends
 BAR_OUTLINE = (0, 0, 0, 190)  # the backing and outline of every health and progress bar
 #: How each kind of condition (a row of buffs.toml) shows: on the map (an enraged unit glows red, a bleeding one drips)
 #: and as the icon of the same name on its card.  A new kind is a row there and a line here.
-CONDITION_LOOKS = {"rage": "rage", "bloodlust_rage": "rage", "bleeding": "bleeding"}
+CONDITION_LOOKS = {"rage": "rage", "bloodlust_rage": "rage", "bleeding": "bleeding",
+                   # What the spells lay (WB-066): haste streaks, a mend glow, a burn's flicker, stone grey, roots at the feet, a
+                   # withering mist and a fury's red.
+                   "haste": "haste", "mend": "mend", "burn": "burn", "stoneskin": "stoneskin", "entangled": "entangled",
+                   "withered": "withered", "battle_fury": "battle_fury"}
 RAGE_TINT = (1.0, 0.52, 0.44)  # an enraged figure, at the top of its pulse
+FURY_TINT = (1.0, 0.42, 0.36)  # a figure in a Battle Fury, redder than rage, at the top of its pulse (WB-066)
+STONE_TINT = (0.66, 0.64, 0.62)  # skin of stone: the painted colours greyed down
+WITHER_TINT = (0.78, 0.8, 0.6)  # withered: sallow and dull
+BURN_TINT = (1.0, 0.72, 0.46)  # a burning figure at the height of its flicker
+ROOT_INK = (122, 84, 44, 255)  # the roots that hold an entangled unit
+HASTE_INK = (190, 225, 255)  # the streaks a hasted unit leaves behind it
 DRIP_PERIOD = 0.9  # seconds between the drops falling from each side of a bleeding unit
 DRIP_SIDES = (-1.3, 1.2, -0.9, 1.5)  # where beside its body (in its radii) the drops of a bleeding unit fall
 TAG_FONT = 12  # screen pixels of a command's tag over a unit, at any zoom
@@ -297,6 +310,8 @@ def projectile_point(p: Projectile, world: World, now: float) -> tuple[float, fl
     span = dist(p.start, mark)
     if p.kind == "stone":
         return x, y, 0.55 + 4 * (0.5 + 0.14 * span) * t * (1 - t)
+    if p.kind == "spell":  # a Meteor: straight down onto its point, falling ever faster
+        return x, y, METEOR_HEIGHT * (1 - t * t)
     target = world.units.get(p.target) if p.target is not None else None
     end = 0.45 + (FLIGHT if target is not None and target.flying else 0.0)  # a shot at a flyer climbs to it
     if shot_look(p) in ("mote", "venom"):
@@ -848,16 +863,29 @@ class MapView:
             sprite.visible = True
 
     def _looks(self, u: Unit) -> set[str]:
-        """How the conditions *u* carries show."""
-        return {CONDITION_LOOKS[c.kind.key] for c in u.conditions}
+        """How the conditions *u* carries show, and whether it glows as a summoned unit does (WB-066)."""
+        looks = {CONDITION_LOOKS[c.kind.key] for c in u.conditions}
+        if u.expires:
+            looks.add("summoned")
+        return looks
 
     def _tint(self, u: Unit) -> tuple[float, float, float]:
-        """An enraged figure is flushed red, pulsing; any other is drawn as painted."""
-        if not u.conditions or "rage" not in self._looks(u):
+        """An enraged or furious figure is flushed red, pulsing; one of stone is grey, a withered one sallow, a burning one
+        flickers orange; several multiply.  Any other is drawn as painted."""
+        if not u.conditions:
             return (1.0, 1.0, 1.0)
-        depth = 0.6 + 0.4 * (0.5 + 0.5 * math.sin(self.time * 6.0 + u.id))
-        r, g, b = RAGE_TINT
-        return (1.0 - (1.0 - r) * depth, 1.0 - (1.0 - g) * depth, 1.0 - (1.0 - b) * depth)
+        looks = self._looks(u)
+        tint = [1.0, 1.0, 1.0]
+        for look, (r, g, b), depth in (
+                ("rage", RAGE_TINT, 0.6 + 0.4 * (0.5 + 0.5 * math.sin(self.time * 6.0 + u.id))),
+                ("battle_fury", FURY_TINT, 0.7 + 0.3 * (0.5 + 0.5 * math.sin(self.time * 8.0 + u.id))),
+                ("stoneskin", STONE_TINT, 1.0),
+                ("withered", WITHER_TINT, 1.0),
+                ("burn", BURN_TINT, 0.5 + 0.5 * abs(math.sin(self.time * 13.0 + u.id * 1.7)))):
+            if look in looks:
+                for i, c in enumerate((r, g, b)):
+                    tint[i] *= 1.0 - (1.0 - c) * depth
+        return (tint[0], tint[1], tint[2])
 
     def _sync_projectiles(self, dt: float) -> None:
         """A sprite per shot in the air, moved every frame (between model steps as well), and the
@@ -911,6 +939,9 @@ class MapView:
                 age = (self.time - t1) / hang
                 scene.draw_line(x0, y0, x1, y1, (*color, round(210 * (1 - age))), head + (tail - head) * age,
                                 space="world", layer=RenderLayer.EFFECTS)
+            if p.kind == "spell":
+                self._draw_meteor_shadow(p)
+                continue
             if p.kind != "stone":
                 continue
             gx, gy = shot.ground
@@ -921,6 +952,19 @@ class MapView:
                 ax, ay = to_world(p.aim)
                 ring = (*world.players[p.player].color, 130) if p.player == self.player else (255, 90, 70, 110)
                 self._ring(ax, ay, p.splash * TILE, p.splash * TILE * 0.62, ring, 1.5, layer=RenderLayer.EFFECTS)
+
+    def _draw_meteor_shadow(self, p: Projectile) -> None:
+        """A Meteor's shadow on the ground where it will land, growing and darkening as it falls, and the ring of what it
+        will strike in a warning's orange for everyone, since it falls on friend and foe (WB-066).  Both are circles on
+        the ground, as the rules measure its reach and as the aim showed it: a body's selection ring is flattened for
+        the look of the body, but the spell's ground is the square ground's."""
+        t = max(0.0, min(1.0, (self.world.time + self._since_tick - p.launched) / p.flight))
+        ax, ay = to_world(p.aim)
+        radius = p.splash * TILE
+        shade = radius * (0.25 + 0.75 * t)
+        self.scene.draw_polygon([(ax + shade * math.cos(i * math.tau / 24), ay + shade * math.sin(i * math.tau / 24))
+                                 for i in range(24)], (16, 8, 6, round(60 + 130 * t)), space="world", layer=RenderLayer.EFFECTS)
+        self._ring(ax, ay, radius, radius, METEOR_WARNING, 2.5, layer=RenderLayer.EFFECTS, sides=36)  # wider than a body's
 
     def unit_sprite(self, unit_id: int) -> Sprite | None:
         return self._units.get(unit_id)
@@ -1015,10 +1059,11 @@ class MapView:
 
     # -- Overlays --------------------------------------------------------------------------
 
-    def _ring(self, cx: float, cy: float, rx: float, ry: float, color: Color, width: float = 2.0, layer: RenderLayer = RenderLayer.OBJECTS) -> None:
-        points = [(cx + rx * math.cos(2 * math.pi * i / 14), cy + ry * math.sin(2 * math.pi * i / 14)) for i in range(14)]
-        for i in range(14):
-            (x1, y1), (x2, y2) = points[i], points[(i + 1) % 14]
+    def _ring(self, cx: float, cy: float, rx: float, ry: float, color: Color, width: float = 2.0, layer: RenderLayer = RenderLayer.OBJECTS,
+              sides: int = 14) -> None:
+        points = [(cx + rx * math.cos(2 * math.pi * i / sides), cy + ry * math.sin(2 * math.pi * i / sides)) for i in range(sides)]
+        for i in range(sides):
+            (x1, y1), (x2, y2) = points[i], points[(i + 1) % sides]
             self.scene.draw_line(x1, y1, x2, y2, color, width, space="world", layer=layer)
 
     def _entity_color(self, entity: Unit | Sighting) -> Color:
@@ -1251,7 +1296,7 @@ class MapView:
         scene = self.scene
         for uid, sprite in self._units.items():
             unit = self.world.units.get(uid)
-            if unit is None or not unit.conditions or not sprite.visible:
+            if unit is None or not (unit.conditions or unit.expires) or not sprite.visible:
                 continue
             looks = self._looks(unit)
             placement = textures.placements[self._unit_keys[uid]]
@@ -1262,6 +1307,7 @@ class MapView:
                 side = 2.2 * body + TILE * 1.4
                 scene.draw_image("glow.rage", sprite.x - side / 2, feet - placement.head * 0.45 - side / 2, side, side,
                                  opacity=0.75 + 0.25 * pulse, space="world", layer=RenderLayer.OBJECTS)
+            self._draw_spell_looks(unit, looks, sprite, placement, feet, body)
             if "bleeding" in looks:
                 image = "drip" if blood else "drip.pale"
                 pool = body * 3.6
@@ -1281,6 +1327,60 @@ class MapView:
                         width = size * (1.5 + 1.5 * q)
                         scene.draw_image(image, x - width / 2, feet - width * 0.2, width, width * 0.4, opacity=1.0 - q,
                                          space="world", layer=RenderLayer.EFFECTS)
+
+    def _draw_spell_looks(self, unit: Unit, looks: set[str], sprite: Sprite, placement, feet: float, body: float) -> None:
+        """The looks of the conditions the spells lay (WB-066), over and under the figure: a mend's green glow and the
+        sparks rising out of it, stone's grey sheen, a fury's red, a withering mist drifting up, flames licking a burning
+        unit, the roots coiled round an entangled one's feet, and the streaks a hasted one leaves behind it."""
+        scene, uid, t = self.scene, unit.id, self.time
+        middle = feet - placement.head * 0.45
+        side = 2.2 * body + TILE * 1.4
+        for look, image, opacity in (("mend", "glow.mend", 0.75 + 0.25 * math.sin(t * 4.0 + uid)),
+                                     ("stoneskin", "glow.stone", 0.85), ("battle_fury", "glow.fury", 0.7 + 0.3 * math.sin(t * 8.0 + uid)),
+                                     ("withered", "glow.wither", 0.8), ("summoned", "glow.aether", 0.45 + 0.2 * math.sin(t * 3.0 + uid))):
+            if look in looks:
+                scene.draw_image(image, sprite.x - side / 2, middle - side / 2, side, side, opacity=opacity, space="world",
+                                 layer=RenderLayer.OBJECTS)
+        if "mend" in looks:
+            for i in range(3):
+                q = (t * 0.8 + uid * 0.23 + i / 3) % 1.0
+                x = sprite.x + (i - 1) * body * 0.9
+                scene.draw_image("glow.mend", x - 6, feet - q * placement.head * 1.1 - 6, 12, 12, opacity=1.0 - q, space="world",
+                                 layer=RenderLayer.EFFECTS)
+        if "withered" in looks:
+            for i in range(3):
+                q = (t * 0.35 + uid * 0.31 + i / 3) % 1.0
+                size = TILE * (0.5 + 0.6 * q)
+                x = sprite.x + math.sin(t * 1.3 + i * 2.1 + uid) * body
+                scene.draw_image("glow.wither", x - size / 2, feet - q * placement.head - size / 2, size, size,
+                                 opacity=0.9 * (1.0 - q), space="world", layer=RenderLayer.EFFECTS)
+        if "burn" in looks:
+            for i in range(3):
+                flicker = abs(math.sin(t * 11.0 + i * 2.3 + uid))
+                w = TILE * (0.28 + 0.12 * flicker)
+                x = sprite.x + (i - 1) * body * 0.8
+                y = middle + (i % 2) * TILE * 0.2
+                scene.draw_image("flame", x - w / 2, y - w * 1.6, w, w * 2, opacity=0.6 + 0.4 * flicker, space="world",
+                                 layer=RenderLayer.EFFECTS)
+        if "entangled" in looks:
+            fx, fy = sprite.x, feet
+            for i in range(5):
+                a = i * math.tau / 5 + uid
+                bx, by = fx + math.cos(a) * body * 1.3, fy + math.sin(a) * body * 0.6
+                tip = (fx + math.cos(a) * body * 0.35, fy - TILE * (0.25 + 0.1 * (i % 2)))
+                mid = ((bx + tip[0]) / 2 + math.sin(a) * 4, (by + tip[1]) / 2 - 3)
+                for (x0, y0), (x1, y1), width in (((bx, by), mid, 4.0), (mid, tip, 2.5)):
+                    scene.draw_line(x0, y0, x1, y1, ROOT_INK, width, space="world", layer=RenderLayer.EFFECTS)
+        if "haste" in looks and unit.state == "move":
+            back_x, back_y = -math.cos(unit.facing), -math.sin(unit.facing)
+            for i in range(3):
+                q = (t * 3.0 + i / 3 + uid * 0.17) % 1.0
+                across = (i - 1) * body * 0.7
+                x0 = sprite.x + back_x * body + -back_y * across
+                y0 = middle + back_y * body + back_x * across
+                length = TILE * (0.5 + 0.5 * q)
+                scene.draw_line(x0, y0, x0 + back_x * length, y0 + back_y * length, (*HASTE_INK, round(220 * (1 - q))), 2.0,
+                                space="world", layer=RenderLayer.EFFECTS)
 
     def _draw_wood_chips(self) -> None:
         """A short burst at axe contact, driven by the same harvest clock as the pose."""

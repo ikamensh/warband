@@ -22,6 +22,7 @@ def scenario():
     mine = world.place_building(None, BuildingType.GOLD_MINE, (10, 10))
     seam = world.place_building(None, BuildingType.GOLD_SEAM, (24, 10))
     smith = world.place_building(0, BuildingType.BLACKSMITH, (14, 1))
+    mage = world.place_building(0, BuildingType.MAGE_TOWER, (28, 2))
     stables = world.place_building(0, BuildingType.STABLES, (1, 24))
     church = world.place_building(0, BuildingType.CHURCH, (14, 24))
     site = world.place_building(0, BuildingType.FARM, (6, 6), done=False)
@@ -32,11 +33,14 @@ def scenario():
     flyer = world.spawn_unit(0, UnitType.FLYING_MACHINE, (7.5, 4.5))
     their_flyer = world.spawn_unit(1, UnitType.FLYING_MACHINE, (28.5, 24.5))
     world.lay_rifts([(6, 20)])
+    world.players[0].upgrades |= {Upgrade.HASTE, Upgrade.MEND, Upgrade.SUMMON}  # staged: three spells to be refused (WB-066)
+    world.players[0].cooldowns[Upgrade.HASTE] = 400
+    world.players[0].aether = 100  # no vault stands: every cast is the dearer one
     world.reveal_all(0)
     world.reveal_all(1)
     return world, {"hall": hall.id, "their_hall": their_hall.id, "mine": mine.id, "seam": seam.id, "site": site.id, "smith": smith.id,
                    "stables": stables.id, "church": church.id,
-                   "their_site": their_site.id,
+                   "their_site": their_site.id, "mage": mage.id,
                    "peasant": peasant.id, "footman": footman.id, "raider": raider.id, "flyer": flyer.id, "their_flyer": their_flyer.id}
 
 
@@ -67,6 +71,11 @@ REFUSED = {
     "a neutral lair cannot be built": lambda w, e: w.build(e["peasant"], BuildingType.LAIR, (14, 20)),
     "a building by a soldier": lambda w, e: w.build(e["footman"], BuildingType.FARM, (14, 20)),
     "a knight from the hall": lambda w, e: w.train(e["hall"], UnitType.KNIGHT),
+    # Only its spell brings an elemental (WB-066): its row names the tower, and no building trains it.
+    "an elemental trained at the Mage Tower": lambda w, e: w.train(e["mage"], UnitType.AETHER_ELEMENTAL),
+    "an elemental planned": lambda w, e: w.order_unit(0, UnitType.AETHER_ELEMENTAL),
+    "an elemental endlessly at the Mage Tower": lambda w, e: w.set_auto_train(e["mage"], UnitType.AETHER_ELEMENTAL, True),
+    "a creature of the wilds planned": lambda w, e: w.order_unit(0, UnitType.WOLF),
     "research at the hall": lambda w, e: w.research(e["hall"], Upgrade.BLADES_1),
     "a queue slot that is not there": lambda w, e: w.cancel_train(e["hall"], 3),
     "a queue slot before the first": lambda w, e: w.cancel_train(e["hall"], -3),
@@ -88,6 +97,13 @@ REFUSED = {
     "a farm on a ley rift": lambda w, e: w.build(e["peasant"], BuildingType.FARM, (6, 20)),
     "a vault half on a ley rift": lambda w, e: w.plan_building(0, BuildingType.VAULT, (7, 21)),
     "a context order on a target that is gone": lambda w, e: w.smart([e["peasant"], e["footman"]], (3.0, 3.0), target_id=9999),
+    # The cast (WB-066): researched, off its cooldown, paid for at the price for that point, on the map, by a seat.
+    "a spell nobody researched": lambda w, e: w.cast(0, Upgrade.METEOR, (5.5, 5.5)),
+    "a cast of research that is no spell": lambda w, e: w.cast(0, Upgrade.BLADES_1, (5.5, 5.5)),
+    "a spell on its cooldown": lambda w, e: w.cast(0, Upgrade.HASTE, (5.5, 5.5)),
+    "a spell the store cannot pay for beyond every vault": lambda w, e: w.cast(0, Upgrade.SUMMON, (30.5, 5.5)),
+    "a cast off the map": lambda w, e: w.cast(0, Upgrade.MEND, (-1.0, 5.0)),
+    "a cast by the wilds": lambda w, e: w.cast(2, Upgrade.MEND, (5.5, 5.5)),
     # A race's own unit (WB-068): it waits for the Keep, and no other race trains it, by any way of asking.
     "a race's own unit before the keep": lambda w, e: w.train(e["stables"], UnitType.GRYPHON),
     "a race's own unit endlessly before the keep": lambda w, e: w.set_auto_train(e["stables"], UnitType.GRYPHON, True),

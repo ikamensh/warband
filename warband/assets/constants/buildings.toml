@@ -185,6 +185,25 @@ hotkey = "v"
 summary = "Draws a rift's aether; holds {store}, reaches {reach} tiles"
 requires = "town_hall"
 
+# The Mage Tower (WB-066): a tall tower crowned with aether. It researches three levels of magic, each a choice of one
+# spell of three (spells.toml holds the levels, their prices and the spells); the side casts them from its spell bar
+# with the aether its vaults hold, at any point of the map.
+
+[mage_tower]
+name = "Mage Tower"
+gold = 900
+lumber = 400
+hp = 700
+armor = 3
+size = 2
+build_time = 50.0
+sight = 5
+supply = 0
+hotkey = "a"
+summary = "Researches spells, cast with aether"
+researches = ["haste", "mend", "flame_strike", "stoneskin", "entangle", "wither", "meteor", "summon", "battle_fury"]
+requires = "vault"
+
 # Nobody's buildings: no race names them, tweaks them or draws them, and no
 # hotkey trains from them. The lair wears a building's fortified armour, so a
 # siege stone lands on it at x1.5; its hoard is its `gold`, paid out whole to
@@ -250,4 +269,4 @@ supply = 0
 hotkey = ""
 # A den wears a building's fortified armour, so a siege stone lands on it at
 # x1.5; its hoard is its gold, paid out whole to whoever brings it down.
-summary = "A creature den: its guards come back from it until it is torn down"
+summary = "A creature den: its guards return until it falls"

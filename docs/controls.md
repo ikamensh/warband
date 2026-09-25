@@ -33,6 +33,7 @@ Every scheme shares the modes, the mouse and the modifiers:
 | Ctrl (Cmd) + F / W / S / R / M / L | the side's commands: Fortify, Withdraw, Scout, Harass, Gold, Lumber; again within 1.5 s, the next level ([below](#the-sides-commands)) |
 | a building's key again | while it is being placed: the planner picks the spot |
 | right-click a recruit's button | train it endlessly, or no longer (Warcraft III toggled autocast this way) |
+| Alt (Option) + 1 / 2 / 3 | aim the side's spell of that level; the next click on the map casts it ([below](#spells)) |
 | 1-9, Ctrl/Shift+1-9, Tab, Ctrl+A, Space, F-keys | groups, the idle peasant, the army, the last alert, help, codex, pause, saves, bookmarks |
 
 A scheme decides which plain keys give the card's commands and the global
@@ -67,13 +68,15 @@ learned, and the same for every race. It assumes a QWERTY keyboard: pyglet
 reports keys by their letter, not their place.
 
 **The row below the grid.** Since the Aether Vault (WB-063) the Build catalogue
-holds ten buildings, one more than the grid has places. The card goes on in a
-fourth row, as it already did for Back, and that row takes the column of keys
-beside the grid, top to bottom: R, F, V. So the vault is R in the Build
-catalogue (and WB-066's Mage Tower will be F). While a card holds those keys
-they are the card's, as a card's command always comes before a global key;
-the assembly point and the plans stay one chord away on Ctrl+G and Ctrl+P, and
-nothing but the Build catalogue reaches that row. The alternatives were worse:
+holds more buildings than the grid has places: eleven since the Mage Tower
+(WB-066). The card goes on in a fourth row, as it already did for Back, and
+that row takes the column of keys beside the grid, top to bottom: R, F, V. So
+the vault is R in the Build catalogue and the Mage Tower F. While a card holds
+those keys they are the card's, as a card's command always comes before a
+global key; the assembly point and the plans stay one chord away on Ctrl+G and
+Ctrl+P. Only two cards reach that row: the Build catalogue, and the Mage
+Tower's, whose nine spells fill the grid a level a row (Q W E the first level,
+A S D the second, Z X C the third) and whose Cancel stands below them on V. The alternatives were worse:
 a second page of the catalogue would cost every building past the ninth a key
 and a turn of the page, and a key off the left hand (U, I, O…) would break the
 promise that the hand never moves.
@@ -315,6 +318,44 @@ simulation fingerprint do not move. Online the commands share cancel mode's
 allowance (`NetworkGameScene.order_burst`): 20 orders at once between them and 10 a
 second after, under the room server's 40; a scout or a raider the allowance leaves
 unsent goes when it comes back.
+
+## Spells
+
+Asked for on 2026-09-24 (WB-066): the side casts, not a unit, so its spells are
+not on any unit's card. Once a spell is researched a **spell bar** stands over
+the minimap, headed "Spells · Alt +": a button for each chosen spell, lowest
+level first, with its emblem (the cooldown sweeping round it and the seconds it
+has left), its name, its aether at the plain price (red while the store cannot
+pay it) and its key, the level's number. **Alt+1, Alt+2, Alt+3** (Option on a
+Mac), or a click on the button, arm the spell of that level: the status line
+says what the click will do, the button's rim takes the spell's colour, the map
+shows the spell's radius at the pointer — violet within a vault's reach, where
+the plain price holds, orange beyond every vault's reach, where a cast costs
+three times the aether and cools three times as long — with the price beside
+the pointer, and every vault's reach washed violet. The next left click on the
+map casts it there (a point in the fog too: the cast is blind), through
+`GameScene.attempt`, so a refusal (not enough aether, still cooling) stays on the
+status line and the spell stays armed. Esc or a right click takes it back, as
+it takes back any order waiting for its click; the same key again does too.
+
+**Why Alt with the level's number.** It had to be the same in all three schemes
+and free on every card, now and later. The Ctrl chords are the settlement's and
+the side's commands (and Cmd+H/Cmd+Q are the Mac's), the plain letters belong to
+the cards and Grid's to the grid, and of the letters free on every card (I, J,
+N, O, Y) none says "spell" and the next race's recruit could take any of them.
+The plain digits and their Ctrl and Shift chords are the control groups, but
+Alt with a digit is nothing yet in any scheme, and a digit is the level the
+spell was chosen at, so the key is the spell's place in the tree, not a letter
+of a name the player must learn per spell. Pyglet reports Alt, and Option on a
+Mac, as the same modifier and the key by its position, so Option+1 is Alt+1
+(macOS's typed character for it never reaches the game), and on Windows pyglet
+swallows the Alt-key menu so the chord neither beeps nor opens one. Holding Alt
+shows every health bar, which is what a player aiming a spell wants to see.
+
+**What it gives.** One new order, `World.cast`, recorded and refused whole
+(`tests/warband/test_order_atomicity.py`); the online authority takes it as a
+seat's own order. `tests/warband/test_spells_ui.py` holds the bar, the keys in
+every scheme, the aim, the refusals and the Mage Tower's card.
 
 ## Placing buildings
 

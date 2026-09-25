@@ -1,0 +1,177 @@
+# Warband's spells (WB-066): what a Mage Tower researches and what a side casts with its aether.
+#
+# Read once at startup. Edit and restart to use new values; no generation step.
+# See docs/warband-magic.md for the design and docs/balance.md for validation.
+#
+# The Mage Tower (buildings.toml) researches three levels of magic, and researching a level is choosing one of its
+# three spells: the other two are closed for the match. A [levels.*] row is a level's research (gold, lumber,
+# seconds, and what it waits for besides a spell of the level below) and the price of casting one of its spells:
+# `aether`, and `cooldown` seconds before that spell can be cast again (counted in whole simulation steps).
+# Beyond the reach of every finished vault (economy.toml [aether].reach) a cast costs `far` times the aether and
+# cools `far` times as long.
+#
+# A [spells.*] row is the whole of what a spell does; a spell is data, not code:
+#   level          the level it is chosen at: I, II or III
+#   name, card, hotkey, summary   as the tower's card shows its research; the hotkey is its letter there
+#   radius         tiles round the point it touches, measured to a unit's body or a building's wall
+#   touches        own: the caster's units | rivals: every other seat's and the wilds' | all: friend and foe
+#   flyers         false: it passes beneath the flyers (default true)
+#   lays           buffs.toml rows laid on every unit it touches (a kind the unit carries starts again)
+#   cleanses       buffs.toml rows it ends on every unit it touches
+#   damage         hit points every unit it touches loses at once; `edge` is what is left of it at the rim, falling
+#                  in a straight line from the point (default: the whole of it)
+#   pierces        its damage goes through armour (default false: armour is taken off it, at least one gets through)
+#   buildings      it lands on the buildings it touches too (rivals' for a rival spell, everyone's for `all`), with
+#                  its damage times `building_factor` and at once the whole drain of what it lays, for a building
+#                  carries no condition
+#   delay          seconds from the cast to its landing; its shadow grows on the ground meanwhile
+#   summons, count `count` units of that [summons.*] row come at the point, the caster's for their lifetime
+
+far = 3
+
+[levels.I]
+gold = 600
+lumber = 200
+time = 60.0
+aether = 30
+cooldown = 30.0
+
+[levels.II]
+gold = 1000
+lumber = 400
+time = 90.0
+requires = ["keep"]
+aether = 60
+cooldown = 60.0
+
+[levels.III]
+gold = 1600
+lumber = 600
+time = 120.0
+aether = 120
+cooldown = 120.0
+
+# -- The rule of the triads: each level offers a tempo spell, one that holds a fight, and one that hurts ----------
+
+[spells.haste]
+level = "I"
+name = "Haste"
+card = "Haste"
+hotkey = "h"
+summary = "Your units within 3 tiles: 40 % faster, blows a quarter quicker, 10 s"
+radius = 3.0
+touches = "own"
+lays = ["haste"]
+
+[spells.mend]
+level = "I"
+name = "Mend"
+card = "Mend"
+hotkey = "m"
+summary = "Your living units within 3 tiles: +5 hp a second, 6 s; stops bleeding"
+radius = 3.0
+touches = "own"
+lays = ["mend"]
+cleanses = ["bleeding"]
+
+[spells.flame_strike]
+level = "I"
+name = "Flame Strike"
+card = "Flame"
+hotkey = "f"
+summary = "Enemies within 1.5 tiles, walls too: 25 through armour, then 2/s for 4 s"
+radius = 1.5
+touches = "rivals"
+damage = 25
+pierces = true
+buildings = true
+lays = ["burn"]
+
+[spells.stoneskin]
+level = "II"
+name = "Stoneskin"
+card = "Stoneskin"
+hotkey = "s"
+summary = "Your units within 3 tiles: +4 armour for 15 s"
+radius = 3.0
+touches = "own"
+lays = ["stoneskin"]
+
+[spells.entangle]
+level = "II"
+name = "Entangle"
+card = "Entangle"
+hotkey = "e"
+summary = "Enemies on the ground within 2.5 tiles: rooted for 4 s, they still strike"
+radius = 2.5
+touches = "rivals"
+flyers = false
+lays = ["entangled"]
+
+[spells.wither]
+level = "II"
+name = "Wither"
+card = "Wither"
+hotkey = "w"
+summary = "Enemies within 3 tiles: 30 % less damage, 20 % slower, 12 s"
+radius = 3.0
+touches = "rivals"
+lays = ["withered"]
+
+[spells.meteor]
+level = "III"
+name = "Meteor"
+card = "Meteor"
+hotkey = "o"
+summary = "In 2 s, on friend and foe: 120 falling to 60 at 2 tiles, ×1.5 on buildings"
+radius = 2.0
+touches = "all"
+damage = 120
+edge = 60
+buildings = true
+building_factor = 1.5
+delay = 2.0
+
+[spells.summon]
+level = "III"
+name = "Summon"
+card = "Summon"
+hotkey = "n"
+summary = "Three Aether Elementals at the point, yours for 40 s"
+radius = 1.0
+touches = "own"
+summons = "aether_elemental"
+count = 3
+
+[spells.battle_fury]
+level = "III"
+name = "Battle Fury"
+card = "Fury"
+hotkey = "b"
+summary = "Your units within 6 tiles: 40 % more damage, 20 % faster, 12 s"
+radius = 6.0
+touches = "own"
+lays = ["battle_fury"]
+
+# -- What a spell brings: units nobody trains and no race names, gone after their lifetime --------------------------
+# The fields are units.toml's; `lifetime` is the seconds a summoned unit stays before it is gone. A summoned unit
+# takes no supply, and one whose time runs out is gone, not killed: nobody is credited and its side loses nothing.
+
+[summons.aether_elemental]
+name = "Aether Elemental"
+hp = 120
+damage = 12
+armor = 0
+range = "melee"
+cooldown = 1.0
+speed = 2.4
+sight = 5
+build_time = 0.0
+trained_at = "mage_tower"  # where its spell is researched; no building's `trains` holds it, so nothing trains one
+hotkey = ""
+summary = "Aether given a body: a heavy fist for 40 s, then it is gone"
+radius = 0.45
+windup = 0.3
+living = false
+lifetime = 40.0
+sound = "aether_elemental"  # its body's sound family (warband/audio/bodies.py): crystal that shatters, light that fades

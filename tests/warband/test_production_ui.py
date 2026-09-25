@@ -7,7 +7,7 @@ from saga2d.testing import text_boxes
 from saga2d.ui import Row
 from warband.art.production import ProductionButton, production_image
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, PLAYABLE_UNITS, UPGRADES, BuildingType, Race, UnitType, Upgrade
+from warband.sim.rules import CHOICES, BUILDINGS, PLAYABLE_UNITS, UPGRADES, BuildingType, Race, UnitType, Upgrade
 from warband.ui.scene import new_game
 from warband.ui.style import GOLD, build_theme
 
@@ -89,8 +89,11 @@ def play(tmp_path, race):
 
 
 def lower_tiers(upgrade: Upgrade) -> set[Upgrade]:
-    """Everything *upgrade* waits for, and what those wait for: the Keep and the tiers under it."""
-    return {lower for needed in UPGRADES[upgrade].requires for lower in ({needed} | lower_tiers(needed))}
+    """Everything *upgrade* waits for, and what those wait for: the Keep and the tiers under it, and for a spell the
+    first spell of the level below (any one of them opens it, WB-066)."""
+    info = UPGRADES[upgrade]
+    needed = [*info.requires, *CHOICES[info.after][:1]] if info.after else list(info.requires)
+    return {lower for first in needed for lower in ({first} | lower_tiers(first))}
 
 
 def producer_of(scene, target):

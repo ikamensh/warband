@@ -1,8 +1,8 @@
 """Every unit and every building wears a painted sheet (WB-070), and the committed sheets carry nothing the cut brought
 in from beyond the figure (WB-019).
 
-A unit type a race fields, or a neutral creature, is painted or stands in ``textures.UNPAINTED_UNITS`` with the reason
-and the date, and a building in ``textures.UNPAINTED``: procedural art is a debt carried on purpose.
+A unit type a race fields, a spell summons, or a neutral creature, is painted or stands in ``textures.UNPAINTED_UNITS``
+with the reason and the date, and a building in ``textures.UNPAINTED``: procedural art is a debt carried on purpose.
 ``docs/adding-a-unit.md`` ("Its art") is the procedure for a unit, ``docs/warband-art.md`` ("A new building") for a
 building."""
 
@@ -14,7 +14,7 @@ from sagaforge import restyle
 
 from warband.art import monsters, textures
 from warband.sim.races import RACES
-from warband.sim.rules import BUILT, CREATURES, BuildingType, Race, Resource, UnitType
+from warband.sim.rules import BUILT, CREATURES, SUMMONED, BuildingType, Race, Resource, UnitType
 
 
 def fielded():
@@ -35,10 +35,13 @@ def holds(name: str, keys: list[str]) -> bool:
 
 
 def owed():
-    """Every sheet the protocol asks for, as (unit type, sheet name, the cells it must hold): each fielded unit subject's
-    and each creature's."""
+    """Every sheet the protocol asks for, as (unit type, sheet name, the cells it must hold): each fielded unit subject's,
+    each summoned unit's in every caster's race (the art looks a unit's sheet up by its side's race) and each creature's."""
     for race, unit, carrying in fielded():
         yield unit, textures.unit_sheet(race, unit, carrying), textures.unit_sheet_keys(race, unit, carrying)
+    for race in Race:
+        for unit in SUMMONED:
+            yield unit, textures.unit_sheet(race, unit), textures.unit_sheet_keys(race, unit)
     for creature in CREATURES:
         monster = monsters.Monster(creature.value)
         yield creature, monsters.monster_sheet(monster), monsters.monster_sheet_keys(monster)
@@ -53,7 +56,7 @@ def unexempted() -> list[str]:
     return [name for unit, name in unpainted() if unit not in textures.UNPAINTED_UNITS]
 
 
-def test_every_fielded_unit_and_every_creature_is_painted_or_exempted() -> None:
+def test_every_fielded_summoned_or_wild_unit_is_painted_or_exempted() -> None:
     """A new unit type comes with its sheets, or with a row in the exemption table saying why not and since when."""
     assert unexempted() == [], \
         "paint these (docs/adding-a-unit.md, 'Its art') or exempt their unit type in textures.UNPAINTED_UNITS with the reason and the date"

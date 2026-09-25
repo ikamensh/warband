@@ -86,6 +86,8 @@ class UnitType(IdentityEnum):
     TROLL = "troll"
     SPIDER = "spider"
     GOLEM = "golem"
+    # What a spell brings (WB-066): nobody trains it and no race names it; it is its caster's until its lifetime runs out.
+    AETHER_ELEMENTAL = "aether_elemental"
 
 
 class BuildingType(IdentityEnum):
@@ -99,6 +101,7 @@ class BuildingType(IdentityEnum):
     WORKSHOP = "workshop"
     CHURCH = "church"
     VAULT = "vault"  # the Aether Vault: draws aether while it stands square on a ley rift (WB-063)
+    MAGE_TOWER = "mage_tower"  # researches the spells, one of three at each level (WB-066)
     GOLD_MINE = "gold_mine"
     GOLD_SEAM = "gold_seam"  # the endless one; :class:`MineInfo` is what tells the deposits apart
     MOTHER_LODE = "mother_lode"  # the seam's size and places, a mine's trip, and a hundred thousand to give (WB-071)
@@ -136,6 +139,16 @@ class Upgrade(IdentityEnum):
     REGROWTH = "regrowth"
     DEEP_MINING = "deep_mining"
     BLASTING_POWDER = "blasting_powder"
+    # The spells (WB-066), researched at the Mage Tower one of three a level: spells.toml says what each does.
+    HASTE = "haste"
+    MEND = "mend"
+    FLAME_STRIKE = "flame_strike"
+    STONESKIN = "stoneskin"
+    ENTANGLE = "entangle"
+    WITHER = "wither"
+    METEOR = "meteor"
+    SUMMON = "summon"
+    BATTLE_FURY = "battle_fury"
 
 
 class ArmorClass(IdentityEnum):
@@ -160,10 +173,11 @@ class BuffInfo:
 
     The whole of what it does is these numbers, so a new kind is a new row: *damage*, *speed* and *blow* multiply the
     unit's damage, walking speed, and wind-up and cooldown; *armor* adds to its armour; *hp_per_second* mends it, or
-    drains it through armour when negative.  It lasts *ticks* steps from the last time it was laid on; *living* kinds
+    drains it through armour when negative; a kind that *roots* holds it where it stands (it turns and strikes, and
+    walks nowhere and is shoved by nobody).  It lasts *ticks* steps from the last time it was laid on; *living* kinds
     never land on a machine, *spares* names the armour classes a kind never lands on, and *heal_ends* kinds end when
     a healer's cast lands.  What lays one on is the rule that
-    names it (:data:`RAGE`, :data:`BLEEDING` through :attr:`UnitInfo.inflicts`)."""
+    names it (:data:`RAGE`, :data:`BLEEDING` through :attr:`UnitInfo.inflicts`, a spell's :attr:`SpellInfo.lays`)."""
 
     key: str  # its row's name, which saves and snapshots carry
     name: str
@@ -178,13 +192,14 @@ class BuffInfo:
     living: bool = True
     heal_ends: bool = False
     spares: frozenset[ArmorClass] = frozenset()  # the armour classes it never lands on: heavy armour turns a barb
+    roots: bool = False  # it cannot walk while it lasts (Entangle, WB-066)
 
 
 def _buff(key: str, b: dict[str, Any]) -> BuffInfo:
     return BuffInfo(key=key, name=b["name"], summary=b["summary"], damage=b["damage"], speed=b["speed"], blow=b["blow"],
                     armor=b["armor"], hp_per_second=b["hp_per_second"], duration=b["duration"],
                     ticks=round(b["duration"] / SIM_DT), living=b["living"], heal_ends=b["heal_ends"],
-                    spares=frozenset(ArmorClass(a) for a in b["spares"]))
+                    spares=frozenset(ArmorClass(a) for a in b["spares"]), roots=b["roots"])
 
 
 #: Every kind of condition, by its row's name.
@@ -234,6 +249,9 @@ class UnitInfo:
     #: a shot reaches it (:attr:`strikes_air`).
     flying: bool = False
     inflicts: BuffInfo | None = None  # what its blow lays on a living unit it wounds: an archer's shot opens a wound
+    #: Seconds it stays before it is gone, neither killed nor lost (a summoned unit's, WB-066); 0: for good.  A unit with
+    #: a lifetime takes no supply.
+    lifetime: float = 0.0
     #: The one race that fields it: a race's own unit (WB-068), which its building offers that race alone.  None: every
     #: race's.  Every race's table still holds it, under the shared table's name, so asking about it never fails.
     race: Race | None = None
@@ -299,7 +317,7 @@ def _unit(u: dict[str, Any]) -> UnitInfo:
         radius=u["radius"], heal=u["heal"], splash=u["splash"], attack=AttackType(u["attack"]),
         armor_class=ArmorClass(u["armor_class"]), formation=u["formation"], mounted=u["mounted"], windup=u["windup"],
         turn=math.radians(u["turn_deg"]), min_range=u["min_range"], regen=u["regen"], living=u["living"],
-        flying=u["flying"], inflicts=BUFFS[u["inflicts"]] if u["inflicts"] else None, sound=u["sound"],
+        flying=u["flying"], inflicts=BUFFS[u["inflicts"]] if u["inflicts"] else None, lifetime=u["lifetime"], sound=u["sound"],
         race=None if u["race"] is None else Race(u["race"]),
         requires=tuple(Upgrade(r) for r in u["requires"]), limit=u["limit"], blast=u["blast"], blast_units=u["blast_units"],
         forest=u["forest"], regen_in_trees=u["regen_in_trees"],
@@ -337,6 +355,11 @@ OWN_UNITS: Final[dict[Race, UnitType]] = {info.race: unit_type for unit_type, in
 WILD_UNITS: Final[dict[UnitType, UnitInfo]] = {UnitType(u): _unit(info) for u, info in config.current().wilds.items()}
 UNITS.update(WILD_UNITS)
 CREATURES: Final[tuple[UnitType, ...]] = tuple(WILD_UNITS)
+#: What a spell brings (spells.toml [summons]): nobody trains it and no race names it, like a creature, and it is its
+#: caster's while it lasts (:attr:`UnitInfo.lifetime`).
+SUMMONED_UNITS: Final[dict[UnitType, UnitInfo]] = {UnitType(u): _unit(info) for u, info in config.current().summons.items()}
+UNITS.update(SUMMONED_UNITS)
+SUMMONED: Final[tuple[UnitType, ...]] = tuple(SUMMONED_UNITS)
 #: Buildings nobody names: the three gold deposits and the lair.  No race tweaks them and no race draws them.
 WILD_BUILDINGS: Final[frozenset[BuildingType]] = frozenset({BuildingType.GOLD_MINE, BuildingType.GOLD_SEAM, BuildingType.MOTHER_LODE,
                                                             BuildingType.LAIR})
@@ -455,6 +478,11 @@ class UpgradeInfo:
     summary: str
     requires: tuple[Upgrade, ...] = ()  # every upgrade this one waits for: its own lower tier, the Keep, or both
     race: Race | None = None  # a race art: nobody else can research it
+    #: Its choice (a spell's level, WB-066): researching one upgrade of a choice closes the others of it for the match,
+    #: and while one is being researched the others wait.  "" for research that is nobody's choice.
+    choice: str = ""
+    #: A choice one upgrade of which must be researched first (a spell of the level below); "" for none.
+    after: str = ""
 
 
 def _upgrade(u: dict[str, Any]) -> UpgradeInfo:
@@ -462,10 +490,87 @@ def _upgrade(u: dict[str, Any]) -> UpgradeInfo:
         name=u["name"], cost=Cost(u["gold"], u["lumber"]), time=u["time"], hotkey=u["hotkey"], card=u["card"],
         summary=u["summary"].replace("{trip}", str(config.integer("DEEP_MINING_TRIP"))),
         requires=tuple(Upgrade(r) for r in u["requires"]), race=None if u["race"] is None else Race(u["race"]),
+        choice=u["choice"], after=u["after"],
     )
 
 
 UPGRADES: Final[dict[Upgrade, UpgradeInfo]] = {Upgrade(u): _upgrade(info) for u, info in config.current().upgrades.items()}
+#: Each choice's upgrades, in the table's order: a spell's level and its three spells (WB-066).
+CHOICES: Final[dict[str, tuple[Upgrade, ...]]] = {
+    choice: tuple(u for u, info in UPGRADES.items() if info.choice == choice) for choice in dict.fromkeys(i.choice for i in UPGRADES.values()) if choice
+}
+
+
+# -- Spells ---------------------------------------------------------------------------
+#
+# Cast by the side, not by a caster (WB-066): from the spell bar, at any point of the map (in fog too, blind), for
+# aether, each spell on its own cooldown; beyond every finished vault's reach the aether and the cooldown are
+# SPELL_FAR times the plain ones.  What a spell does is its row of spells.toml: the conditions it lays (buffs.toml
+# rows), those it ends, a blow at once or after a delay, and what it summons.
+
+
+class Touch(IdentityEnum):
+    """Whose units a spell touches."""
+    OWN = "own"  # the caster's alone
+    RIVALS = "rivals"  # every other seat's, and the wilds'
+    ALL = "all"  # friend and foe alike
+
+
+@dataclass(frozen=True)
+class SpellInfo:
+    """A spell: a row of ``spells.toml``, priced by its level (see there for what each field does)."""
+
+    key: Upgrade  # the research it is, which the order names and saves carry
+    name: str
+    level: int  # 1, 2 or 3
+    summary: str
+    radius: float  # tiles round the point, to a body's edge or a building's wall
+    touches: Touch
+    aether: int  # at its plain price, within a vault's reach
+    cooldown: int  # steps at its plain price
+    flyers: bool = True  # False: it passes beneath the flyers
+    lays: tuple[BuffInfo, ...] = ()
+    cleanses: tuple[BuffInfo, ...] = ()
+    damage: int = 0  # at the point
+    edge: int = 0  # what is left of it at the rim
+    pierces: bool = False  # through armour
+    buildings: bool = False  # it lands on the buildings it touches too
+    building_factor: float = 1.0
+    delay: float = 0.0  # seconds from the cast to its landing
+    summons: UnitType | None = None
+    count: int = 0
+
+    @property
+    def friendly(self) -> bool:
+        """It touches the caster's own units alone: a buff, or what it brings."""
+        return self.touches is Touch.OWN
+
+
+#: How much dearer a cast is beyond the reach of every finished vault: its aether and its cooldown both.
+SPELL_FAR: Final = config.current().spell_far
+LEVEL_NAMES: Final = config.LEVELS  # "I", "II", "III": what the HUD and the tower's card call the levels
+
+
+def _steps(seconds: float, where: str) -> int:
+    ticks = round(seconds / SIM_DT)
+    if ticks < 1 or abs(ticks * SIM_DT - seconds) > 1e-9:
+        raise config.BalanceError(f"{where}: {seconds} s is not a whole number of {SIM_DT} s steps")
+    return ticks
+
+
+def _spell(key: str, s: dict[str, Any]) -> SpellInfo:
+    level = config.current().levels[s["level"]]
+    return SpellInfo(key=Upgrade(key), name=s["name"], level=config.LEVELS.index(s["level"]) + 1, summary=s["summary"],
+                     radius=s["radius"], touches=Touch(s["touches"]), aether=level["aether"],
+                     cooldown=_steps(level["cooldown"], f"spells.toml [levels.{s['level']}].cooldown"), flyers=s["flyers"],
+                     lays=tuple(BUFFS[k] for k in s["lays"]), cleanses=tuple(BUFFS[k] for k in s["cleanses"]),
+                     damage=s["damage"], edge=s["edge"], pierces=s["pierces"], buildings=s["buildings"],
+                     building_factor=s["building_factor"], delay=s["delay"],
+                     summons=UnitType(s["summons"]) if s["summons"] else None, count=s["count"])
+
+
+#: Every spell, by the research it is.
+SPELLS: Final[dict[Upgrade, SpellInfo]] = {Upgrade(key): _spell(key, s) for key, s in config.current().spells.items()}
 
 BLADES_BONUS: Final = config.integer('BLADES_BONUS')
 MASTER_WEAPON_BONUS: Final = config.integer('MASTER_WEAPON_BONUS')

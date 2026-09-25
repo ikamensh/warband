@@ -11,7 +11,7 @@ import math
 
 from saga2d import RenderLayer
 from warband.sim.model import RIFT
-from warband.sim.rules import BuildingType, MapTheme, UnitType
+from warband.sim.rules import BuildingType, MapTheme, Race, UnitType
 from warband.art import textures
 from warband.art.textures import PROJECTION, TILE
 
@@ -40,6 +40,9 @@ def landscape_halo(hue: tuple[int, int, int], theme: MapTheme | str) -> tuple[in
 
 #: How high over its footprint's middle a vault's cube hangs (model units), where its glow and the motes it draws meet.
 VAULT_CUBE = (0.0, 0.0, 1.01)
+#: Where each race's Mage Tower holds its aether (model units, :func:`warband.art.textures._mage_tower`): the crown that
+#: glows over it (WB-066).
+MAGE_CROWN = {Race.HUMAN: (0.0, 0.0, 2.95), Race.ORC: (0.0, 0.0, 2.55), Race.ELF: (0.0, 0.0, 3.05), Race.DWARF: (0.0, 0.0, 2.75)}
 
 
 def draw(scene, world, player: int) -> None:
@@ -84,6 +87,8 @@ def draw(scene, world, player: int) -> None:
             # and glints on its tips.  The anchors live with the meshes that placed them
             # (:data:`warband.art.monsters.LAIR_ANCHORS`), so the life and the den agree.
             _lair_alive(scene, world, building, x, y, phase, layer)
+        elif building.type is BuildingType.MAGE_TOWER and not building.abandoned:
+            _crown(scene, building, x, y, phase, layer)
         elif building.type is BuildingType.BLACKSMITH:
             # Three drifting puffs from the chimney and a flicker at the furnace mouth.
             chimney_x, chimney_y = PROJECTION.project((-.72, -.51, 2.39))
@@ -93,6 +98,20 @@ def draw(scene, world, player: int) -> None:
             flicker = .5 + .5 * math.sin(phase * 9)
             forge_x, forge_y = PROJECTION.project((-.29, .564, .49))
             scene.draw_circle(x + forge_x, y + forge_y, 6 + flicker * 2, (255, 169, 78, round(13 + flicker * 9)), **layer)
+
+
+def _crown(scene, building, x: float, y: float, phase: float, layer: dict) -> None:
+    """A Mage Tower's aether crown (WB-066): a slow violet glow about the crystal over its top, and three motes circling
+    it."""
+    cx, cy = PROJECTION.project(MAGE_CROWN[building.race])
+    pulse = .5 + .5 * math.sin(phase * 1.9)
+    scene.draw_circle(x + cx, y + cy, 26 + 5 * pulse, (*textures.AETHER, round(34 + 30 * pulse)), **layer)
+    scene.draw_circle(x + cx, y + cy, 11 + 3 * pulse, (*textures.AETHER_LIGHT, round(50 + 50 * pulse)), **layer)
+    for i in range(3):
+        angle = phase * 1.4 + i * math.tau / 3
+        mx, my = x + cx + math.cos(angle) * 20, y + cy + math.sin(angle) * 8
+        size = 2.2 + .6 * math.sin(phase * 2.3 + i)
+        scene.draw_polygon([(mx - size, my), (mx, my - size * 2.0), (mx + size, my), (mx, my + size * 1.4)], (*textures.AETHER_LIGHT, 200), **layer)
 
 
 def _lair_alive(scene, world, building, x: float, y: float, phase: float, layer: dict) -> None:

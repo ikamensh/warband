@@ -30,7 +30,7 @@ starting_lumber = 500
 # (WB-066 triples the cost and the cooldown beyond every vault's reach).
 
 [aether]
-store = 100 # aether each finished vault holds
+store = 150 # aether each finished vault holds: a level III spell's 120 within its reach, so one vault casts any spell there
 every = 2.0 # seconds a vault on a rift takes to draw one aether; a whole number of simulation steps
 reach = 10.0 # tiles round a finished vault's middle
 

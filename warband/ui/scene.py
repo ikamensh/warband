@@ -30,9 +30,9 @@ from warband.sim.model import (RIFT, Attack, AttackMove, Build, Building, Deposi
                                 RuleError, Unit, World)
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
-from warband.sim.rules import (AETHER_EVERY, AETHER_STORE, BUFFS, BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, SIM_DT, UNITS, ArmorClass, AttackType,
-                               BuffInfo, BuildingType, Cost, Difficulty, MapTheme, Race, Resource, Terrain, UnitInfo, UnitType, Upgrade, an,
-                               listing)
+from warband.sim.rules import (AETHER_EVERY, AETHER_STORE, BUFFS, BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, LEVEL_NAMES, SIM_DT, SPELL_FAR, SPELLS,
+                               SUMMONED, UNITS, ArmorClass, AttackType, BuffInfo, BuildingType, Cost, Difficulty, MapTheme, Race, Resource,
+                               Terrain, UnitInfo, UnitType, Upgrade, an, listing)
 from warband.sim.rules import Layout as MapLayout
 from warband.league import fastsim
 from warband.records.profile import MatchResult, Profile, RatingChange, Standing, plural, standing
@@ -41,6 +41,7 @@ from warband.records.scores import HighScores, score_breakdown
 from warband.audio.sound import IMPACTS, apply_volumes, impact_sound, play_music, play_sound
 from warband.audio.voices import voiced
 from warband.ui.controls import ACTIONS, CARD_COLS, CHORDS, GRID_KEYS, SCHEMES, Scheme, label as key_label
+from warband.ui.spellbar import INKS as SPELL_INKS, SpellButton, aim_ink, aim_words, far_needs, far_vaults
 from warband.ui.style import (
     ACTION_BUTTON, AETHER, ARMED_BUTTON, BAD, BODY, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, HURT, LUMBER, MUTED, OVERLAY_STYLE,
     PANEL_STYLE, RESULTS_STYLE,
@@ -77,11 +78,18 @@ CANCEL_FILL = (255, 80, 70, 46)
 PLANS_PRICE = 126  # the price column on the Plans screen: the widest price and a little air
 SUPPLY_WARNING = 2  # units of room left in the farms: from here the supply pair warns before it blocks
 SHORT_FLASH = 1.5  # seconds a resource the purse was short of stays red in the top bar
-SHORT_OF = {"gold": "Not enough gold", "lumber": "Not enough lumber"}  # how World.can_afford names each; tests/warband/test_prices.py holds it
+SHORT_OF = {"gold": "Not enough gold", "lumber": "Not enough lumber",  # how World.can_afford names each; tests/warband/test_prices.py holds it
+            "aether": "Not enough aether"}  # and World.can_cast (WB-066)
+AIM = "cast:"  # the pending mode of a spell being aimed (WB-066): the next click on the map casts it there
+#: Under a spell's research once its level's choice is made, or while another of its level is being researched.
+CHOICE_CAPTIONS = {"chosen": "Chosen", "closed": "Closed", "waiting": "Waiting"}
+SPELL_KEYS = frozenset(spell.value for spell in SPELLS)  # what a spell's blow names as its source: no weapon, no Foley
+SUMMONED_TYPES = frozenset(unit.value for unit in SUMMONED)  # what breaks into light when it is gone, leaving no body
 ALERT_STYLES: dict[tuple[int, int, int, int], Style] = {BAD: Style(text_color=BAD), GOLD: Style(text_color=GOLD)}
 TOAST_TOP = 280  # below the resource, settlement and objectives panels
 COMMANDS_TOP = 156  # the Commands row, just under the Settlement row (which ends at 148)
 HUD_TOP = 228  # just under the Commands row (which ends at 220): the status line starts here, and the map can scroll clear of it
+OBJECTIVES_GAP = 6  # between the objectives panel's heading and its body (GameScene.objectives_body)
 PIP = 3.0  # radius of a command's level pip
 TAG_INKS = {"scouting": (150, 205, 255, 255), "harassing": (255, 150, 120, 255), "withdrawing": GOLD}  # a command's tag over a unit
 #: The World orders that name units, by the parameter that does (``unit_ids`` or ``unit_id``): a unit the player gives
@@ -99,9 +107,11 @@ EDGE_SPEED = 900
 KEY_SPEED = 800
 DRAG_THRESHOLD = 5
 GROUP_KEYS = "123456789"
+SPELL_LEVEL_KEYS = "123"  # with Alt (Option on a Mac): the spell of that level, in every scheme (docs/controls.md)
 #: The Build catalogue's order, one per slot of the card: the opening buildings first, then the tech chain as it unlocks.
 BUILD_ORDER = (BuildingType.FARM, BuildingType.BARRACKS, BuildingType.TOWN_HALL, BuildingType.TOWER, BuildingType.LUMBER_MILL,
-               BuildingType.BLACKSMITH, BuildingType.STABLES, BuildingType.WORKSHOP, BuildingType.CHURCH, BuildingType.VAULT)
+               BuildingType.BLACKSMITH, BuildingType.STABLES, BuildingType.WORKSHOP, BuildingType.CHURCH, BuildingType.VAULT,
+               BuildingType.MAGE_TOWER)
 #: The unit card's slots: moving on the top row (Q W E in Grid), fighting and a peasant's work below.
 UNIT_SLOTS = {"move": 0, "stop": 1, "hold": 2, "attack": 3, "patrol": 4, "build": 5, "repair": 6, "salvage": 7}
 #: What the unit panel says a unit with each order is doing.
@@ -235,6 +245,9 @@ class Command:
     count: Callable[[], int] = field(default=lambda: 0)  # how many are already ordered: shown after the name
     alt: Callable[[], None] | None = None  # what Shift with its key or click does (a recruit: endless training, or no longer)
     endless: Callable[[], bool] | None = None  # a recruit: whether it is being trained endlessly (right-click toggles)
+    #: A spell's research at the Mage Tower (WB-066): "chosen" once researched, "closed" once another of its level was;
+    #: the button carries the mark and its caption says so where the price was.
+    mark: Callable[[], str] = field(default=lambda: "")
     catalogue: bool = False  # it plans its target for the settlement, which waits on what the target needs (warband.ui.tech)
     need: Need | None = None  # what the target still lacks, as of this frame: the card draws it
     hotkey: str = ""  # as its keycap shows it
@@ -254,6 +267,7 @@ class CardButton(ProductionButton):
         self.command, self.player, self.race = command, player, race
         self.add(_EndlessMark(self, anchor=Anchor.TOP_LEFT, margin=4))
         self.add(_NeedBadge(self, anchor=Anchor.BOTTOM_LEFT, margin=5))
+        self.add(_ChoiceMark(self, width=kwargs.get("width", 64), height=kwargs.get("height", 64), anchor=Anchor.CENTER))
 
     def handle_event(self, event: InputEvent) -> bool:
         """The alternative goes ahead of the enabled check: a recruit the purse cannot pay for yet can still be trained
@@ -284,6 +298,34 @@ class _EndlessMark(Component):
         backend.draw_rect(x - 2, y - 2, w + 4, h + 4, (22, 20, 24, 230), order=self._order)
         for points, ink in loop_parts():
             backend.draw_polygon([(x + u * w, y + v * h) for u, v in points], ink, order=self._order)
+
+
+class _ChoiceMark(Component):
+    """Over a spell's research at the Mage Tower (WB-066): a gold rim and tick once it is the level's choice, a dark veil
+    struck through in red once another of its level was chosen, the veil alone while another of its level is being
+    researched (a cancel opens it again)."""
+
+    def __init__(self, button: CardButton, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.button = button
+
+    def on_draw(self) -> None:
+        mark = self.button.command.mark()
+        if self._game is None or not mark:
+            return
+        backend, (x, y, w, h), order = self._game.backend, self.button.bounds, self._order
+        if mark == "chosen":
+            for inset in (1, 2):
+                for a, b, c, d in ((x + inset, y + inset, x + w - inset, y + inset), (x + inset, y + h - inset, x + w - inset, y + h - inset),
+                                   (x + inset, y + inset, x + inset, y + h - inset), (x + w - inset, y + inset, x + w - inset, y + h - inset)):
+                    backend.draw_line(a, b, c, d, GOLD, 1, order=order)
+            cx, cy = x + w - 14, y + 12
+            backend.draw_line(cx - 6, cy, cx - 2, cy + 5, GOLD, 3, order=order)
+            backend.draw_line(cx - 2, cy + 5, cx + 7, cy - 5, GOLD, 3, order=order)
+            return
+        backend.draw_rect(x + 1, y + 1, w - 2, h - 2, (10, 10, 14, 150), order=order)
+        if mark == "closed":  # for the match; one waiting on another of its level being researched is veiled alone
+            backend.draw_line(x + w * 0.2, y + h - 6, x + w * 0.8, y + 6, BAD, 3, order=order)
 
 
 class _NeedBadge(Component):
@@ -324,9 +366,11 @@ class _PriceLine(Component):
     @property
     def pairs(self) -> list[Pair]:
         """The price as it stands, each number weighed against the purse; nothing while the item names what it
-        lacks instead."""
+        lacks instead, or a spell says it was chosen or closed."""
         command = self.button.command
-        return [] if command.need is not None or command.cost is None else price_pairs(command.cost, self.scene.purse)
+        if command.need is not None or command.cost is None or command.mark():
+            return []
+        return price_pairs(command.cost, self.scene.purse)
 
     def _caption(self) -> tuple[int, str | None]:
         style = self._game.theme.get_text_style("caption")
@@ -339,6 +383,9 @@ class _PriceLine(Component):
         if self._game is None:
             return 0
         need = self.button.command.need
+        mark = self.button.command.mark()
+        if mark:
+            return math.ceil(self._game.backend.measure_text(CHOICE_CAPTIONS[mark], *self._caption())[0])
         if need is None:
             return math.ceil(price_width(self._game, self.pairs, self.SYMBOL, *self._caption()))
         return math.ceil(self._game.backend.measure_text(self.scene.card_name(need.target), *self._caption())[0]) + self.GLYPH + 4
@@ -352,6 +399,12 @@ class _PriceLine(Component):
         game, (x, y, w, h) = self._game, self.bounds
         font_size, font = self._caption()
         need = self.button.command.need
+        mark = self.button.command.mark()
+        if mark:
+            ink = GOLD if mark == "chosen" else BAD if mark == "closed" else MUTED
+            game.backend.draw_text(CHOICE_CAPTIONS[mark], x + w / 2, y + h / 2, font_size, ink, font=font,
+                                   anchor_x="center", anchor_y="center", order=self._order)
+            return
         if need is None:
             pairs = self.pairs
             width = price_width(game, pairs, self.SYMBOL, font_size, font)
@@ -567,6 +620,8 @@ class GameScene(Scene):
         self._last_click: tuple[float, int | None] = (-10.0, None)
         self.bookmarks: dict[int, tuple[float, float]] = {}
         self._warm = None  # renders the unit images over the first frames
+        self._spells_shown: tuple[Upgrade, ...] = ()  # the spell bar's, as last laid out
+        self._cooldown_spans: dict[Upgrade, tuple[int, int]] = {}  # a spell's cooldown as it started: (ready tick, steps)
 
     # -- Lifecycle -------------------------------------------------------------
 
@@ -729,7 +784,8 @@ class GameScene(Scene):
                 state = "the store is full: another vault holds more"
             else:
                 state = f"{drawing} of {len(vaults)} vault{'s' if len(vaults) != 1 else ''} drawing"
-            return (f"Aether — stored / what your vaults hold, {AETHER_STORE} each; a vault on a ley rift draws one every "
+            return (f"Aether — stored / what your vaults hold, {AETHER_STORE} each: it casts the spells "
+                    f"{an(self.building_name(BuildingType.MAGE_TOWER))} researches; a vault on a ley rift draws one every "
                     f"{AETHER_EVERY:g} s; {state}")
 
         # Resources as symbol + number; hovering a symbol names it in the tooltip panel.  The numbers carry the
@@ -765,6 +821,12 @@ class GameScene(Scene):
                                height=self._minimap_height(), on_click=self.minimap_click,
                                anchor=Anchor.BOTTOM_LEFT, margin=PANEL_MARGIN, style=PANEL_STYLE, blocks_pointer=True)
         self.ui.add(self.minimap)
+        # The side's spells (WB-066), over the minimap and as wide: shown once a spell is researched.
+        self._spell_bar_bottom = PANEL_MARGIN[1] + self._minimap_height() + 10
+        self.spell_bar = Column(spacing=6, anchor=Anchor.BOTTOM_LEFT, margin=(PANEL_MARGIN[0], self._spell_bar_bottom),
+                                style=PANEL_STYLE, blocks_pointer=True)
+        self.ui.add(self.spell_bar)
+        self._fill_spell_bar()
         # Centre the selection between the minimap and the widest command card.
         width = self.game.resolution[0]
         left = max(PANEL_MARGIN[0] + MINIMAP_WIDTH + 12,
@@ -783,7 +845,7 @@ class GameScene(Scene):
         self.ui.add(KeyHints(self.hint, anchor=Anchor.BOTTOM_CENTER, margin=5, blocks_pointer=True))
         self.ui.add(Label(lambda: self.status if self.status_timer > 0 else "", text_style="hud", anchor=Anchor.TOP_LEFT,
                           margin=(12, HUD_TOP), width=760, wrap=True, text_color=GOLD, blocks_pointer=True))
-        self.objectives = self._build_objectives()
+        self.objectives = self._build_objectives()  # kept clear of the card: _fold_objectives
         self.ui.add(self.objectives)
         self._refresh_card()
 
@@ -821,17 +883,148 @@ class GameScene(Scene):
             self.command_buttons[name] = CommandButton(self, name, hotkey=chord.removeprefix("Ctrl+"), style=GHOST_BUTTON)
             row.add(self.command_buttons[name])
 
+    def _fill_spell_bar(self) -> None:
+        """The spell bar: the side's chosen spells, lowest level first, under "Spells · Alt +" (each button's keycap is
+        its level's number), or nothing at all before the first is researched.
+
+        It rises from the minimap and never above :data:`HUD_TOP`, where the settlement's and the commands' rows end: a
+        column that would reach past it stands a level's spells on a row, as the Mage Tower's card does, and failing
+        that all of them on one.  A side holds a spell a level, and three fit in a column over any map's minimap in the
+        smallest window; more are a verification's world."""
+        bar = self.spell_bar
+        bar.clear()
+        spells = tuple(self.world.spells_of(self.human))
+        self._spells_shown = spells
+        self.spell_buttons: dict[Upgrade, SpellButton] = {spell: SpellButton(self, spell) for spell in spells}
+        bar.visible = bool(spells)
+        if not spells:
+            return
+        levels = [[spell for spell in spells if SPELLS[spell].level == level] for level in dict.fromkeys(SPELLS[s].level for s in spells)]
+        room = self.game.resolution[1] - self._spell_bar_bottom - HUD_TOP
+        for rows in ([[spell] for spell in spells], levels, [list(spells)]):
+            bar.clear()
+            bar.add(Row(Label("Spells", text_style="heading"), Label("Alt +", text_style="sub"), spacing=8))
+            for row in rows:
+                bar.add(Row(*(self.spell_buttons[spell] for spell in row), spacing=6))
+            if bar.get_preferred_size()[1] <= room:
+                return
+
+    @property
+    def aiming(self) -> Upgrade | None:
+        """The spell the next click on the map casts, if one is aimed (WB-066)."""
+        return Upgrade(self.pending[len(AIM):]) if self.pending is not None and self.pending.startswith(AIM) else None
+
+    def aim_spell(self, spell: Upgrade) -> None:
+        """Arm *spell*: the next click on the map casts it there (the spell bar's button, or Alt with its level's number);
+        the same spell again, Esc or a right click takes it back.  One on its cooldown says when it is ready instead."""
+        if self.aiming is spell:
+            self.cancel()
+            return
+        waits = self.world.cooldown_left(self.human, spell)
+        if waits:
+            self.warn(f"{SPELLS[spell].name} is ready in {math.ceil(waits * SIM_DT)} s")
+            return
+        self.pending = AIM + spell.value
+        info = SPELLS[spell]
+        self.say(f"{info.name}: click the map to cast it ({info.radius:g} tiles round the point) · Esc cancels")
+        self.sfx("button")
+        self._refresh_card()
+
+    def aim_level(self, level: int) -> None:
+        """Alt with *level*'s number: aim the spell chosen at that level, or say there is none yet."""
+        spell = next((s for s in self.world.spells_of(self.human) if SPELLS[s].level == level), None)
+        if spell is None:
+            tower = self.building_name(BuildingType.MAGE_TOWER)
+            self.warn(f"No level {LEVEL_NAMES[level - 1]} spell yet: research one at {an(tower)}")
+            return
+        self.aim_spell(spell)
+
+    def cast_at(self, point: tuple[float, float]) -> None:
+        """Cast the aimed spell at *point* through :meth:`attempt`: a refusal is the status line's, and the spell stays aimed."""
+        spell = self.aiming
+        assert spell is not None
+        if self.attempt("cast", self.human, spell, point):
+            self.pending = None
+
+    def cast_price_at(self, point: tuple[float, float]) -> tuple[int, bool]:
+        """What the aimed spell costs cast at *point*, and whether that is the dearer price beyond every vault's reach."""
+        spell = self.aiming
+        assert spell is not None
+        return self.world.cast_price(self.human, spell, point)[0], not self.world.in_reach(self.human, point)
+
+    def cooldown_share(self, spell: Upgrade) -> float:
+        """How much of *spell*'s cooldown is left, 1 just after the cast and 0 when it is ready: the spell bar's sweep.
+        The world keeps when it is ready; how long the cast's cooldown was (the plain or the dearer one) is seen here the
+        moment it starts."""
+        left = self.world.cooldown_left(self.human, spell)
+        if not left:
+            return 0.0
+        ready = self.player.cooldowns[spell]
+        span = self._cooldown_spans.get(spell)
+        if span is None or span[0] != ready:
+            plain = SPELLS[spell].cooldown  # longer than it can only be the dearer one, which is kept once seen
+            span = self._cooldown_spans[spell] = (ready, plain * SPELL_FAR if left > plain else plain)
+        return min(1.0, left / span[1])
+
+    def _draw_aim(self) -> None:
+        """A spell aimed over the map: its ring at the pointer, in the spell's ink where the plain price holds and in the
+        warning ink where it is dearer, and beside the pointer what a cast there costs."""
+        spell = self.aiming
+        mx, my = self.mouse
+        w, h = self.game.resolution
+        if spell is None or self.ui.pointer_target(mx, my) is not None or not (0 <= mx < w and 0 <= my < h):
+            return  # over the HUD, or the pointer out of the window: nothing is aimed at
+        info = SPELLS[spell]
+        aether, far = self.cast_price_at(self.hover)
+        ink = aim_ink(far)
+        cx, cy = to_world(self.hover)
+        radius = info.radius * TILE
+        sides = 48
+        # A circle, as the rules measure a spell's reach on the square ground (and as the vault's reach and the burst are
+        # drawn): a flattened one showed north and south of the point as out of reach where the spell lands.
+        points = [(cx + radius * math.cos(math.tau * i / sides), cy + radius * math.sin(math.tau * i / sides)) for i in range(sides)]
+        self.draw_polygon(points, (*ink, 44), space="world")
+        for colour, width in (((10, 10, 16, 150), 5.0), ((*ink, 240), 2.5)):  # a dark rim keeps it seen on snow and on grass
+            for i in range(sides):
+                (x1, y1), (x2, y2) = points[i], points[(i + 1) % sides]
+                self.draw_line(x1, y1, x2, y2, colour, width, space="world")
+        text = aim_words(info, aether, far, self.world.aether_cap(self.human))
+        sub = self.game.theme.get_text_style("sub")
+        width = self.game.backend.measure_text(text, sub.font_size, sub.font or self.game.theme.font)[0]
+        # Right of the pointer and under it (over it at the bottom), pushed left to stay in the window: hung off the
+        # pointer's other side, a long price ran over the spell bar.
+        left = min(mx + 14, w - 4 - width - 12)
+        top = my + 18 if my + 18 + 22 <= h - HINT_BAR else my - 18 - 22
+        self.draw_rect(left, top, width + 12, 22, (10, 12, 20, 210), radius=6)
+        self.draw_text(text, left + 6, top + 11, style="sub", color=BAD if self.player.aether < aether else (*ink, 255), anchor_y="center")
+
     def _build_objectives(self) -> Column:
-        """The panel under the top-right corner: the tutorial strip here, a mission's objectives in the campaign."""
-        panel = Column(spacing=4, anchor=Anchor.TOP_RIGHT, margin=(12, HUD_TOP), style=PANEL_STYLE, blocks_pointer=True)
+        """The panel under the top-right corner: the tutorial strip here, a mission's objectives in the campaign.  Its
+        heading, then :attr:`objectives_body`, which a tall card folds away (:meth:`_fold_objectives`)."""
+        panel = Column(spacing=OBJECTIVES_GAP, anchor=Anchor.TOP_RIGHT, margin=(12, HUD_TOP), style=PANEL_STYLE, blocks_pointer=True)
         panel.add(Row(Label("Getting started", text_style="heading", width=290),
                       Button("Hide", hotkey="F4", on_click=self.hide_tutorial, style=GHOST_BUTTON, width=90), spacing=8))
         self.objective_label = Label("", text_style="body", width=390, wrap=True)
         self.objective_done = Label("", text_style="sub", width=390)
-        panel.add(self.objective_label)
-        panel.add(self.objective_done)
+        self.objectives_body = Column(self.objective_label, self.objective_done, spacing=4)
+        panel.add(self.objectives_body)
         panel.visible = self.tutorial is not None
         return panel
+
+    def _fold_objectives(self) -> None:
+        """Show the objectives panel (:meth:`_objectives_shown`) clear of the card: the two share the right edge, and a
+        card of four rows (the Build catalogue since the Aether Vault, the Mage Tower's spells), or any card in a short
+        window, reached under the panel and hid the card's top row (the farm the tutorial asks for, level I's spells).
+        While the card reaches into the panel it folds to its heading; where even the heading is in the way it waits
+        out of sight; it opens again once the card is short enough."""
+        panel, body = self.objectives, self.objectives_body
+        height = panel.get_preferred_size()[1]
+        extra = OBJECTIVES_GAP + body.get_preferred_size()[1]
+        folded, unfolded = (height - extra, height) if body.visible else (height, height + extra)
+        room = (self.game.resolution[1] - PANEL_MARGIN[1] - self.card_panel.get_preferred_size()[1] - CARD_GAP - HUD_TOP
+                if self.card_panel.visible else math.inf)
+        body.visible = unfolded <= room
+        panel.visible = self._objectives_shown() and folded <= room
 
     def hide_tutorial(self) -> None:
         self.tutorial = None
@@ -843,11 +1036,13 @@ class GameScene(Scene):
         self.all_bars = not self.all_bars
         self.say("Health bars: everyone" if self.all_bars else "Health bars: the wounded and the selected")
 
+    def _objectives_shown(self) -> bool:
+        """Whether the objectives panel has something to show: the tutorial, once the opening banner has passed."""
+        return self.tutorial is not None and self.clock >= self._banner_until
+
     def _update_objectives(self) -> None:
         if self.tutorial is None:
-            self.objectives.visible = False
             return
-        self.objectives.visible = self.clock >= self._banner_until
         if self.tutorial.update(self):
             self.sfx("built")
             if self.tutorial.finished:
@@ -951,6 +1146,11 @@ class GameScene(Scene):
                 on_rift = self.rift_near(self.hover) is not None
                 hints.append(("On a ley rift", "it draws aether") if on_rift else ("Off the ley rifts", "it stores and reaches but draws nothing"))
             return hints + [("Esc", "stop placing") if scheme.sticky else ("Shift+click", "keep placing"), ("Right click", "back")]
+        spell = self.aiming
+        if spell is not None:
+            aether, far = self.cast_price_at(self.hover)
+            return [("Click", f"cast {SPELLS[spell].name}: {aether} aether" + (", far from your vaults" if far else "")),
+                    ("Esc / Right click", "cancel")]
         if self.pending is not None:
             return [("Click", "target"), ("Shift+click", "queue"), ("Right click", "cancel")]
         keys = " ".join(c.hotkey.upper() for c in self._card if c.hotkey)
@@ -1923,6 +2123,8 @@ class GameScene(Scene):
         if not building.done:
             return [Command("Cancel", "x", self.cancel_construction, CARD_COLS - 1, tooltip="Tear the site down; the cost comes back",
                             style=DANGER_BUTTON)]
+        if any(upgrade in SPELLS for upgrade in building.info.researches):
+            return self._spell_commands(building)
         commands = []
         work: list[UnitType | Upgrade | None] = [*(u for u in building.info.trains if self.race.unit_allowed(u)), *self._research_here(building)]
         for slot, item in enumerate(work):
@@ -1942,6 +2144,46 @@ class GameScene(Scene):
             commands.append(Command("Cancel", "x", self.cancel_work, CARD_COLS - 1 if len(work) < CARD_COLS else 2 * CARD_COLS - 1,
                                     tooltip="Cancel the last unit queued or the research, and endless training",
                                     blocked=lambda b=building: None if b.queue or b.research is not None or b.auto else "Nothing in progress"))
+        return commands
+
+    def _spell_commands(self, building: Building) -> list[Command]:
+        """The Mage Tower's card (WB-066): a row for each level of magic and its three spells, lowest first, each in its
+        place for good: the chosen one marked chosen, the other two closed with the reason; Cancel below the grid."""
+        world, player = self.world, self.human
+        commands = []
+        placed: dict[int, int] = {}
+        for spell, info in SPELLS.items():
+            if spell not in building.info.researches:
+                continue
+            column = placed.get(info.level, 0)
+            placed[info.level] = column + 1
+            upgrade = self.race.upgrades[spell]
+
+            def mark(spell: Upgrade = spell) -> str:
+                if spell in self.player.upgrades:
+                    return "chosen"
+                instead = world.chosen_instead(player, spell)
+                return "" if instead is None else "closed" if instead[1] else "waiting"
+
+            def blocked(spell: Upgrade = spell, b: Building = building) -> str | None:
+                if spell in self.player.upgrades:
+                    return f"Chosen: cast it from the spell bar, Alt+{SPELLS[spell].level}"
+                return world.can_research(b, spell)
+
+            level = LEVEL_NAMES[info.level - 1]
+            # A price one vault cannot hold is said before the choice is paid for: waiting never fills a store that small.
+            # One vault holds every plain price; the dearer one beyond every vault's reach can take more.
+            vaults = far_vaults(info.aether)
+            store = (f" ({info.aether * SPELL_FAR} beyond every vault's reach: a vault holds {AETHER_STORE}, so that takes {vaults})"
+                     if vaults > 1 else "")
+            commands.append(Command(upgrade.card, upgrade.hotkey, lambda up=spell: self.research(up), (info.level - 1) * CARD_COLS + column,
+                                    tooltip=f"{upgrade.name}, level {level} — {upgrade.cost}{build_time(upgrade.time)} · {info.summary} · "
+                                            f"casts for {info.aether} aether{store}, again after {info.cooldown * SIM_DT:g} s; the others "
+                                            f"of level {level} close once it is chosen",
+                                    cost=upgrade.cost, blocked=blocked, target=spell, mark=mark))
+        commands.append(Command("Cancel", "x", self.cancel_work, len(LEVEL_NAMES) * CARD_COLS + CARD_COLS - 1,
+                                tooltip="Cancel the research: the spell's level opens again",
+                                blocked=lambda b=building: None if b.research is not None else "Nothing in progress"))
         return commands
 
     def _research_here(self, building: Building) -> list[Upgrade | None]:
@@ -2024,7 +2266,7 @@ class GameScene(Scene):
         mx, my = self.mouse
         hovered = next((hint for row, hint in self._resource_rows if row.hit_test(mx, my)), None)
         self.tooltip = hovered() if hovered is not None else ""
-        pointed = next((button for button in self.command_buttons.values() if button.hit_test(mx, my)), None)
+        pointed = next((button for button in (*self.command_buttons.values(), *self.spell_buttons.values()) if button.hit_test(mx, my)), None)
         if pointed is not None:
             self.tooltip = pointed.hint
         for command, button in zip(self._card, self._card_buttons):
@@ -2256,7 +2498,11 @@ class GameScene(Scene):
 
     def press(self, key: str, *, shift: bool = False, chord: bool = False, alt: bool = False) -> bool:
         """A key: a control group, a Ctrl chord to the settlement, then the card's command, then the scheme's global
-        keys (in Classic and Modal those letters answer only while the card leaves them free)."""
+        keys (in Classic and Modal those letters answer only while the card leaves them free).  Alt with a spell's level
+        aims that spell (WB-066), in every scheme."""
+        if alt and key in SPELL_LEVEL_KEYS:
+            self.aim_level(int(key))
+            return True
         if key in GROUP_KEYS:
             self._group(key, assign=chord, add=shift)
             return True
@@ -2301,6 +2547,10 @@ class GameScene(Scene):
 
     def _execute_pending(self, point: tuple[float, float], *, keep: bool) -> None:
         mode = self.pending
+        if self.aiming is not None:
+            self.cast_at(point)
+            self._refresh_card()
+            return
         placing = self.placing
         if placing is not None:
             self.place(placing, point, keep=keep)
@@ -2355,10 +2605,13 @@ class GameScene(Scene):
             self.view.sync(0.0 if self.paused else dt, fraction=self._motion_fraction())
         self._update_card()
         self._update_resources()
+        if tuple(self.world.spells_of(self.human)) != self._spells_shown:
+            self._fill_spell_bar()
         self.cancel_button.style = DANGER_BUTTON if self.cancelling else GHOST_BUTTON  # the same size: only its colour says so
         self.idle_button.visible = self._idle_peasant_count() > 0
         self.army_button.visible = bool(self._army())
         self._update_objectives()
+        self._fold_objectives()
         if self.world.time >= self._autosave_at and not self._game_over:
             self._autosave_at += AUTOSAVE_EVERY
             self.game.save(self.AUTOSAVE_SLOT, scene=self)
@@ -2500,6 +2753,13 @@ class GameScene(Scene):
                                                color=GOLD, suffix="plundered", rise=26, duration=1.8))
             elif e.kind == "spilled" and mine:
                 self.warn(f"A vault lost: {e.amount} aether spilled, and your store holds less")
+            elif e.kind == "spell":
+                self._show_spell(e)
+            elif e.kind == "cast" and Upgrade(e.text) is Upgrade.METEOR and self._sees_spell(e):
+                if self._audible(e.pos) or mine:
+                    self.sfx("spell_meteor_fall")
+            elif e.kind == "expired":
+                self._shatter(e)
 
     def _hear_camps(self) -> None:
         """A woken camp's creatures are heard as the player first sees them: each kind of guard once a waking, as it
@@ -2545,6 +2805,9 @@ class GameScene(Scene):
             self.view.hit_reaction(target, origin)
         wx, wy = to_world(e.pos)
         struck = (wx, wy - TILE * (0.45 + (FLIGHT if e.target_type in FLYING else 0.0)))
+        if e.source_type in SPELL_KEYS:  # a spell's blow (WB-066): sparks of its ink; its sound is the spell's, as it lands
+            self.effects.add(Burst(struck, rgba(SPELL_INKS[e.source_type]), 6, rng=self.fx_rng, size=6, speed=(30, 110)))
+            return
         if SHOT_LOOKS.get(e.source_type) == "mote":  # light opens no wound and chips nothing: it flares where it lands, body or wall
             self.effects.add(Flare(struck, "mote", SHOT_SIZE["mote"][0]))
             self.effects.add(Spray(struck, self._away(e.pos, origin), "spark", (255, 232, 150), 5, rng=self.fx_rng, speed=(40, 130),
@@ -2596,8 +2859,52 @@ class GameScene(Scene):
         if self._audible(e.pos):
             self.sfx("heal", gap=0.2)
 
+    def _sees_spell(self, e: Event) -> bool:
+        """Whether the player sees any of the ground a spell cast or landing at *e* touches (WB-066)."""
+        info = SPELLS[Upgrade(e.text)]
+        px, py = e.pos
+        reach = info.radius + 0.5
+        return e.player == self.human or any(
+            self.world.is_visible(self.human, (x, y)) and (x + 0.5 - px) ** 2 + (y + 0.5 - py) ** 2 <= reach * reach
+            for y in range(int(py - reach), int(py + reach) + 1) for x in range(int(px - reach), int(px + reach) + 1))
+
+    def _show_spell(self, e: Event) -> None:
+        """A spell lands (WB-066): a burst of its ink over the ground it touches, rings to its edge, its sound; a Meteor
+        shakes the ground and throws up fire and dust."""
+        if not self._sees_spell(e):
+            return
+        spell = Upgrade(e.text)
+        info = SPELLS[spell]
+        ink = SPELL_INKS[spell.value]
+        wx, wy = to_world(e.pos)
+        self.effects.add(Pulse((wx, wy), rgba(ink, 210), radius=(6, info.radius * TILE), rings=2, duration=0.8))
+        self.effects.add(Flare((wx, wy - TILE * 0.3), f"glow.spell.{spell.value}", info.radius * TILE * 1.1, duration=0.5))
+        self.effects.add(Burst((wx, wy), rgba(ink), 10 + int(6 * info.radius), rng=self.fx_rng, size=10, speed=(30, 40 + 40 * info.radius)))
+        if spell is Upgrade.METEOR:
+            self.effects.add(Burst((wx, wy), (255, 150, 60, 255), 30, rng=self.fx_rng, size=16, speed=(60, 220)))
+            self.effects.add(Burst((wx, wy - 12), (70, 64, 60, 220), 16, rng=self.fx_rng, image="smoke", size=34, speed=(10, 70)))
+            self.camera.shake(7, 0.5)
+        if self._audible(e.pos) or e.player == self.human:
+            self.sfx(f"spell_{spell.value}", gap=0.2)
+
+    def _shatter(self, e: Event) -> None:
+        """A summoned unit is gone (WB-066), its time run out or struck down: it breaks into light, leaving no body."""
+        if not self._visible(e.pos):
+            return
+        sprite = self.view.release_unit_sprite(e.entity) if e.entity is not None else None
+        if sprite is not None:
+            sprite.remove()  # gone at once, where a body would fall and lie
+        wx, wy = to_world(e.pos)
+        self.effects.add(Burst((wx, wy - TILE * 0.5), rgba(SPELL_INKS["summon"]), 16, rng=self.fx_rng, size=9, speed=(30, 120)))
+        self.effects.add(Flare((wx, wy - TILE * 0.5), "glow.spell.summon", TILE * 1.4, duration=0.35))
+        if self._audible(e.pos):  # its body's death (warband.audio.bodies), whether it was struck down or its time ran out
+            self.sfx(deaths.cue(bodies.family(UnitType(e.text), self.world.race_of(e.player))), gap=0.15)
+
     def _show_death(self, e: Event) -> None:
         blow = self._blows.pop(e.entity, None)
+        if e.text in SUMMONED_TYPES:
+            self._shatter(e)
+            return
         if not self._visible(e.pos):
             return
         sprite = self.view.release_unit_sprite(e.entity) if e.entity is not None else None
@@ -2769,14 +3076,17 @@ class GameScene(Scene):
             self.draw_rect(min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0), fill, border_color=border, border_width=1)
         if self.cancelling:
             self._draw_cancel_mode()
+        self._draw_aim()
         w, h = self.game.resolution
         self.draw_rect(0, h - HINT_BAR, w, HINT_BAR, (8, 10, 14, 180))
         self._draw_selection_panel()
         self.effects.draw(self)
 
     def reach_shown(self) -> list[tuple[float, float]]:
-        """Whose reach the map washes violet: the vault selected, once it stands, or the site of one being placed.
-        (WB-066 adds every vault's while a spell is aimed.)"""
+        """Whose reach the map washes violet: every finished vault of the player's while a spell is aimed (a cast inside
+        costs the plain price, WB-066), the vault selected once it stands, or the site of one being placed."""
+        if self.aiming is not None:
+            return [vault.center for vault in self.world.vaults(self.human)]
         if self.placing is BuildingType.VAULT and self.ui.pointer_target(*self.mouse) is None:
             x, y = self._site_at(BuildingType.VAULT, self.hover)
             return [(x + RIFT / 2, y + RIFT / 2)]
@@ -2997,7 +3307,8 @@ class GameScene(Scene):
             armour = ("armor", f"{info.armor:g}", world.armor_of(entity) - info.armor,
                       f"{armour_hint(info.armor_class)} · armour is subtracted from every blow"
                       + (f" · +{flanked} from the comrades at its elbows" if flanked else ""))
-            speed = ("speed", f"{info.speed:g}", world.speed_of(entity) - info.speed, "Speed in tiles per second")
+            walks = 0.0 if entity.rooted else world.speed_of(entity)  # roots hold it in the walk, not in its speed
+            speed = ("speed", f"{info.speed:g}", walks - info.speed, "Speed in tiles per second")
             if not info.damage:  # unarmed: what it is for is seeing, so its sight stands where a weapon's numbers would
                 stats = [("sight", f"{info.sight:g}", 0, "Sight in tiles" + (", over trees and walls" if info.flying else "")),
                          armour, speed]
@@ -3025,7 +3336,9 @@ class GameScene(Scene):
                     self.draw_text(f"{raised:+g}", sx + 28 + width, y + 60, style="body", color=GOLD if raised > 0 else BAD)
                 if sx <= mx < sx + 74 and y + 42 <= my < y + 64:
                     self.tooltip = hint
-            self._draw_conditions(entity, tx + CARD_RIGHT, y + 22)
+            sub = self.game.theme.get_text_style("sub")
+            hit_points = tx + 188 + self.game.backend.measure_text(f"{entity.hp}/{entity.max_hp}", sub.font_size, sub.font)[0]
+            self._draw_conditions(entity, tx + CARD_RIGHT, y + 22, hit_points + 10)
             self._armour_notes.append(defence_line(info, spared_too=False).capitalize())
             lines.append(self._armour_notes[-1])  # under the numbers it qualifies
             order = entity.order
@@ -3076,28 +3389,56 @@ class GameScene(Scene):
             self.draw_text(line, tx, ly, style="body")
             ly += 22
 
-    def _draw_conditions(self, unit: Unit, right: float, top: float) -> None:
-        """Each condition *unit* carries, as its icon and the seconds it has left, from *right* leftwards on the row of
-        its hit points; hovering one names it and says what it does.  A rival's unit in sight shows its own."""
+    def _draw_conditions(self, unit: Unit, right: float, top: float, left: float) -> None:
+        """What *unit* carries, from *right* leftwards on the row of its hit points and never past *left*, where they end:
+        a summoned unit's seconds before it is gone first, as the aether it is made of; then what its armour turns, the
+        kind's icon dimmed and struck out; then each condition, its icon and the seconds it has left.  Hovering one names
+        it and says what it does.  What the row has no room for is counted ("+2"), and hovering the count names it: a
+        unit under four spells ran its icons into its hit points.  A rival's unit in sight shows its own."""
         sub = self.game.theme.get_text_style("sub")
         mx, my = self.mouse
-        x = right
-        for kind in spared_kinds(unit.info):  # what its armour turns: the kind's icon, dimmed and struck out
-            start = x - CONDITION_ICON
-            draw_icon(self, CONDITION_LOOKS[kind.key], start, top, CONDITION_ICON, color=SPARED_INK)
-            self.draw_line(start - 1, top + CONDITION_ICON + 1, x + 1, top - 1, BAD, 2)
-            if start <= mx < x and top - 2 <= my < top + CONDITION_ICON + 2:
-                self.tooltip = f"{armour_name(unit.info.armor_class).capitalize()}: never {kind.name.lower()}"
-            x = start - 8
+
+        def measure(text: str) -> float:
+            return self.game.backend.measure_text(text, sub.font_size, sub.font)[0]
+
+        # (icon, seconds, ink of the seconds, struck out, tooltip, what the count names it)
+        items: list[tuple[str, str, tuple[int, ...] | None, bool, str, str]] = []
+        if unit.expires:
+            gone = f"{math.ceil(self.world.lifetime_left(unit))}s"
+            items.append(("aether", gone, AETHER, False, f"Summoned: gone in {gone}, when the aether that makes it runs out",
+                          f"gone in {gone}"))
+        for kind in spared_kinds(unit.info):
+            never = f"{armour_name(unit.info.armor_class).capitalize()}: never {kind.name.lower()}"
+            items.append((CONDITION_LOOKS[kind.key], "", None, True, never, f"never {kind.name.lower()}"))
         for condition in reversed(unit.conditions):
-            left = f"{math.ceil(self.world.seconds_left(condition))}s"
-            width = self.game.backend.measure_text(left, sub.font_size, sub.font)[0]
-            self.draw_text(left, x, top + 12, style="sub", anchor_x="right")
-            start = x - width - 2 - CONDITION_ICON
-            draw_icon(self, CONDITION_LOOKS[condition.kind.key], start, top, CONDITION_ICON)
+            lasts = f"{math.ceil(self.world.seconds_left(condition))}s"
+            items.append((CONDITION_LOOKS[condition.kind.key], lasts, None, False,
+                          f"{condition.kind.name} · {condition.kind.summary} · {lasts} left", f"{condition.kind.name} {lasts}"))
+        widths = [CONDITION_ICON + (2 + measure(text) if text else 0) for _icon, text, *_rest in items]
+        shown, used = len(items), sum(widths) + 8 * max(0, len(items) - 1)
+        if used > right - left:  # as many as leave room for the count of the rest
+            shown, used = 0, 0.0
+            while used + widths[shown] + 8 + measure(f"+{len(items) - shown - 1}") <= right - left:
+                used += widths[shown] + 8
+                shown += 1
+        x = right
+        for (icon, text, ink, struck, hint, _name), width in zip(items[:shown], widths):
+            if text:
+                self.draw_text(text, x, top + 12, style="sub", anchor_x="right", color=ink)
+            start = x - width
+            if struck:
+                draw_icon(self, icon, start, top, CONDITION_ICON, color=SPARED_INK)
+                self.draw_line(start - 1, top + CONDITION_ICON + 1, x + 1, top - 1, BAD, 2)
+            else:
+                draw_icon(self, icon, start, top, CONDITION_ICON)
             if start <= mx < x and top - 2 <= my < top + CONDITION_ICON + 2:
-                self.tooltip = f"{condition.kind.name} · {condition.kind.summary} · {left} left"
+                self.tooltip = hint
             x = start - 8
+        if shown < len(items):
+            more = f"+{len(items) - shown}"
+            self.draw_text(more, x, top + 12, style="sub", anchor_x="right")
+            if x - measure(more) <= mx < x and top - 2 <= my < top + CONDITION_ICON + 2:
+                self.tooltip = " · ".join(name for *_rest, name in items[shown:])
 
     def _vault_lines(self, vault: Building) -> list[str]:
         """A finished vault of the player's: what it draws and whether it stands on a rift, then what the store holds."""
@@ -3502,8 +3843,8 @@ class SaveBrowserScene(_Overlay):
 
 
 HELP_INTRO = (
-    "Peasants gather and build on their own; plans for the settlement wait for money, prerequisites and a free worker and are paid",
-    "when work starts. A vault on a violet ley rift draws aether. Defeat the enemy by destroying its buildings and units.",
+    "Peasants gather and build on their own; plans wait for money, prerequisites and a free worker and are paid when work",
+    "starts. A vault on a violet ley rift draws aether for the spells a Mage Tower researches (Alt+1-3). Raze the enemy to win.",
 )
 
 
@@ -3537,7 +3878,7 @@ def help_keys(scheme: Scheme) -> list[tuple[str, str]]:
         ("Ctrl + X", "cancel mode: a click takes back a plan, a site or a building's training and research;  drag: a box of them"),
         (command_keys(scheme, " ").replace("+", " + ", 1), "Fortify, Withdraw, Scout, Harass, Gold, Lumber;  again within 1.5 s: its next level, up to three"),
         ("Click / drag / right-click", "select;  box-select;  order what fits the target;  double-click or Ctrl-click: that type on screen"),
-        ("1-9 / Ctrl / Shift", "recall / assign / add to a control group;  Tab: the next idle peasant;  Space: the last alert"),
+        ("1-9 / Ctrl / Shift / Alt", "recall / assign / add to a control group;  Alt+1-3: aim that level's spell;  Tab: idle peasant;  Space: alert"),
         ("Arrows / edges / wheel", "scroll (middle-drag too);  wheel or + / −: zoom;  minimap: left-click looks, right-click sends"),
         ("F1 F2 F3 F5 F9 F11", "help, codex (5: tech tree), pause, save, load (offline), health bars;  F6-F8 bookmarks (Ctrl sets)"),
         ("Esc", "back one level: the order, the catalogue, the selection, then the menu"),
@@ -3566,10 +3907,17 @@ class HelpScene(_Overlay):
         panel.add(KeyHints([("Esc", "close")]))
 
 
-CODEX_PAGES = ("Units", "Buildings", "Upgrades", "Races", "Tech tree")
+CODEX_PAGES = ("Units", "Buildings", "Upgrades", "Races", "Tech tree", "Spells")
 #: What a page's table cannot say row by row: the armour class every building shares, which the unit page carries
 #: per unit in its Role column.
 PAGE_LEGENDS = {1: "Every building is fortified: a catapult's stone lands ×1.5 on one, and a tower's arrow strikes a normal blow."}
+#: The spells' page (WB-066): what its table cannot say row by row.
+SPELL_LEGEND = ("Researched at the {tower}, built once {a_vault} stands, one spell of three at each level: the choice closes "
+                "the other two for the match. Level II waits for the {keep} and a level I spell, level III for a level II spell. "
+                "Cast from the spell bar "
+                "(Alt + 1, 2, 3) at any point of the map, in the fog too; beyond the reach of every vault a cast costs {far}× the "
+                "aether and cools {far}× as long. Each {vault} holds {store} aether, enough for any spell within its reach{needs}. "
+                "Ticked: yours; greyed: closed by your choice.")
 TREE_LEGEND = "A line runs from what a building needs into it; beside each, what it trains and researches. {}Hover a picture for what it is."
 TREE_LIGHTING = "Bright: yours · dimmer: on its way · faint: not yet. "  # only in a match: outside one there is nothing to stand short of
 
@@ -3582,12 +3930,12 @@ def codex_world(race: Race) -> World:
 
 class CodexScene(_Overlay):
     """The player's race: every unit, building and upgrade with its numbers, the four races side by side, and the tech
-    tree (what needs what, lit by what the player has); 1-5 or Tab switch pages.  Read from the title instead of from a
+    tree (what needs what, lit by what the player has), and the spells; 1-6 or Tab switch pages.  Read from the title instead of from a
     match (*in_match* false, :func:`codex_world`), nobody holds anything and the tree is lit as the plain reference."""
 
     pause_below = True
-    controls = {"1": "page_units", "2": "page_buildings", "3": "page_upgrades", "4": "page_races", "5": "page_tree", "tab": "next_page",
-                "f2": "close"}
+    controls = {"1": "page_units", "2": "page_buildings", "3": "page_upgrades", "4": "page_races", "5": "page_tree", "6": "page_spells",
+                "tab": "next_page", "f2": "close"}
 
     def __init__(self, world: World, player: int, page: int = 0, *, in_match: bool = True) -> None:
         self.world = world
@@ -3610,21 +3958,29 @@ class CodexScene(_Overlay):
             legend = TREE_LEGEND.format(TREE_LIGHTING if self.in_match else "")
             table = Column(tree, Label(legend, text_style="sub", width=tree.get_preferred_size()[0], wrap=True), spacing=12)
         else:
+            self._muted: set[int] = set()
             widths, rows = self._rows()
-            for cells in rows:
-                table.add(Row(*[self._cell(cell, width, first=i == 0, last=i == len(cells) - 1)
+            for index, cells in enumerate(rows):
+                table.add(Row(*[self._cell(cell, width, first=i == 0, last=i == len(cells) - 1, muted=index in self._muted)
                                 for i, (cell, width) in enumerate(zip(cells, widths))], spacing=8))
-            if self.page in PAGE_LEGENDS:
-                table.add(Label(PAGE_LEGENDS[self.page], text_style="sub", width=sum(widths) + 8 * (len(widths) - 1), wrap=True))
+            legend = PAGE_LEGENDS.get(self.page)
+            if self.page == 5:
+                legend = SPELL_LEGEND.format(tower=race.buildings[BuildingType.MAGE_TOWER].name, keep=race.upgrades[Upgrade.KEEP].name,
+                                             far=SPELL_FAR, vault=race.buildings[BuildingType.VAULT].name, store=AETHER_STORE,
+                                             a_vault=an(race.buildings[BuildingType.VAULT].name),
+                                             needs=far_needs())
+            if legend is not None:
+                table.add(Label(legend, text_style="sub", width=sum(widths) + 8 * (len(widths) - 1), wrap=True))
         panel.add(table)
-        panel.add(KeyHints([("1-5", "page"), ("Tab", "next"), ("Esc", "close")]))
+        panel.add(KeyHints([("1-6", "page"), ("Tab", "next"), ("Esc", "close")]))
 
-    def _cell(self, cell: str | list[Pair], width: int, *, first: bool, last: bool) -> Component:
+    def _cell(self, cell: str | list[Pair], width: int, *, first: bool, last: bool, muted: bool = False) -> Component:
         """One cell of a page's table: a price as its symbols and numbers, anything else as text — the name of the
-        row in gold, the last column wrapped."""
+        row in gold (grey in a row *muted*: a spell the player's choice closed), the last column wrapped."""
         if isinstance(cell, list):
             return Price(cell, size=14, text_style="body", width=width)
-        return Label(cell, text_style="hud" if first else "body", width=width, text_color=GOLD if first else None, wrap=last)
+        ink = MUTED if muted else GOLD if first else None
+        return Label(cell, text_style="hud" if first else "body", width=width, text_color=ink, wrap=last)
 
     def _race_table(self, own: str) -> Column:
         """The four races side by side: character, passive and arts, wrapped so every window fits."""
@@ -3678,13 +4034,24 @@ class CodexScene(_Overlay):
             # building: a column repeating it cost the room the third tiers and their prerequisites need.
             rows = [["Upgrade", "Cost", "Time", "Requires", "Effect"]]
             for upgrade, info in race.upgrades.items():
-                if not race.upgrade_allowed(upgrade):
+                if not race.upgrade_allowed(upgrade) or upgrade in SPELLS:  # the spells have a page of their own
                     continue
                 requires = (listing([race.upgrades[u].name for u in info.requires]) if info.requires
                             else f"{race.adjective} art" if info.race is not None else "—")
                 rows.append([info.name + (" ✓" if upgrade in have else ""), price_pairs(info.cost), f"{info.time:g}s",
                              requires, info.summary])
             return (200, 134, 50, 300, 440), rows  # "Broadhead Arrows and Stronghold" is the widest Requires
+        if self.page == 5:
+            # A spell of the player's is ticked, one its level's choice closed is greyed (SPELL_LEGEND says so).
+            rows = [["Spell", "Level", "Research", "Time", "Aether", "Cools", "Effect"]]
+            for spell, info in SPELLS.items():
+                upgrade = race.upgrades[spell]
+                instead = self.world.chosen_instead(self.player, spell) if self.in_match else None
+                if instead is not None and instead[1]:
+                    self._muted.add(len(rows))
+                rows.append([info.name + (" ✓" if spell in have else ""), LEVEL_NAMES[info.level - 1], price_pairs(upgrade.cost),
+                             f"{upgrade.time:g}s", [("aether", str(info.aether), AETHER)], f"{info.cooldown * SIM_DT:g}s", info.summary])
+            return (150, 46, 130, 46, 60, 54, 622), rows
         raise ValueError(f"no table for page {self.page}")
 
     def show(self, page: int) -> None:
@@ -3704,6 +4071,9 @@ class CodexScene(_Overlay):
 
     def page_tree(self) -> None:
         self.show(4)
+
+    def page_spells(self) -> None:
+        self.show(5)
 
     def next_page(self) -> None:
         self.show((self.page + 1) % len(CODEX_PAGES))

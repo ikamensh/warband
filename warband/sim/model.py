@@ -46,11 +46,14 @@ from warband.sim.rules import (
     FORMATION_ARMOR, FORMATION_HOLD, FORMATION_LOOKAHEAD, FORMATION_MARCH, FORMATION_SLACK, FORMATION_SPACING, FORMATION_WIDTH, ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, FRIENDLY_WORTH, SIEGE_BUILDING_WORTH, SIEGE_STEP, SIEGE_WORTH, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
     CREATURES, MAX_QUEUED_ORDERS, MAX_UNIT_RADIUS, NEUTRAL, RAGE, REGEN_CALM, UNDER_ATTACK_COOLDOWN, UNITS, UPGRADES, VISION_EVERY, BuffInfo, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
     Terrain, UnitInfo, UnitType, Upgrade, UpgradeInfo, ArmorClass, AttackType, an, damage_factor, listing,
+    CHOICES, LEVEL_NAMES, SPELL_FAR, SPELLS, SUMMONED, SpellInfo, Touch,
 )
 
-#: The fastest any unit of any race moves, with every upgrade: how far off a friend can be and still walk under a stone
+#: The fastest any unit of any race moves, with every upgrade and every condition that quickens it at once (a unit
+#: carries each kind once, so Haste and Battle Fury together): how far off a friend can be and still walk under a stone
 #: before it lands.
-_FASTEST: Final = max(info.speed for race in RACES.values() for info in race.units.values()) + HORSES_BONUS
+_FASTEST: Final = ((max(info.speed for race in RACES.values() for info in race.units.values()) + HORSES_BONUS)
+                   * math.prod(kind.speed for kind in BUFFS.values() if kind.speed > 1.0))
 Pos = tuple[int, int]
 Point = tuple[float, float]
 
@@ -202,19 +205,24 @@ AUTO_EVERY: Final = round(1 / SIM_DT)  # ticks between an idle building's looks 
 STEPS_A_SECOND: Final = round(1 / SIM_DT)  # what a condition's hit points a second are counted in
 
 
-#: The neutral creatures, as a set to ask a unit's type of on every spawn and every load.
-WILD: Final[frozenset[UnitType]] = frozenset(CREATURES)
+#: What no race names, as a set to ask a unit's type of on every spawn and every load: the neutral creatures, and what
+#: a spell brings (WB-066).
+RACELESS: Final[frozenset[UnitType]] = frozenset(CREATURES) | frozenset(SUMMONED)
+#: Tiles round a summoning's point its units stand at, in a ring (WB-066); the crowd spreads them from there.
+SUMMON_RING: Final = 0.6
+#: How far round a point blocked ground is searched for open ground a summoned unit may stand on.
+SUMMON_SEARCH: Final = 4
 
 
 def unit_stats(race: Race, unit_type: UnitType) -> UnitInfo:
     """The numbers a unit reports: its race's own, or the shared table's for a neutral creature.
 
     Every race fields the same seven roles and names them; the wilds are nobody's, so no race has an
-    entry for one and a creature reads :data:`~warband.sim.rules.UNITS` straight.  It is the shared
-    table rather than a table of its own, so a rulebook variant that patches ``UNITS`` in place is
-    still the rulebook the simulation runs.
+    entry for one and a creature reads :data:`~warband.sim.rules.UNITS` straight, as does what a spell
+    brings.  It is the shared table rather than a table of its own, so a rulebook variant that patches
+    ``UNITS`` in place is still the rulebook the simulation runs.
     """
-    return UNITS[unit_type] if unit_type in WILD else RACES[race].units[unit_type]
+    return UNITS[unit_type] if unit_type in RACELESS else RACES[race].units[unit_type]
 
 
 def recorded(method):
@@ -370,6 +378,8 @@ class Player:
     last_alert: float = -1000.0
     last_hit: float = -1000.0  # when a rival's blow last landed on anything of theirs; the alert above sounds at most once a cooldown
     upgrades: set[Upgrade] = field(default_factory=set)
+    #: The step from which each spell cast can be cast again (WB-066); a spell not here is ready.
+    cooldowns: dict[Upgrade, int] = field(default_factory=dict)
     assembly: Point | None = None
     race: Race = Race.HUMAN
     stats: dict[str, int] = field(default_factory=lambda: {
@@ -429,6 +439,7 @@ class Unit:
     # stands (:func:`warband.sim.worker_ai.manual_hold`).
     commanded: float | None = None
     conditions: list[Condition] = field(default_factory=list)  # in the order they were laid on; World._lay, _wear
+    expires: int = 0  # the step at whose end a unit with a lifetime (a summoned one) is gone; 0: never
 
     def __post_init__(self) -> None:
         # Type and race are fixed for life, so the stats they select are read once
@@ -450,16 +461,20 @@ class Unit:
         unit millions of times a match, so they read these sums, and a unit with no condition pays nothing more."""
         damage = speed = blow = 1.0
         armor = 0
+        rooted = False
         for c in self.conditions:
             kind = c.kind
             damage *= kind.damage
             speed *= kind.speed
             blow *= kind.blow
             armor += kind.armor
+            rooted = rooted or kind.roots
         self.damage_mult: float = damage
         self.speed_mult: float = speed
         self.blow_mult: float = blow  # on its wind-up and cooldown
         self.armor_add: int = armor
+        #: Held where it stands (Entangle): it turns and strikes, walks nowhere and is shoved by nobody (WB-066).
+        self.rooted: bool = rooted
 
     def condition(self, kind: BuffInfo) -> Condition | None:
         """The condition of *kind* it carries, if any."""
@@ -582,6 +597,8 @@ class Projectile:
     splash: float = 0.0
     attack: AttackType = AttackType.NORMAL
     inflicts: BuffInfo | None = None  # the shooter's: laid on the living unit it wounds
+    #: A spell on its way down (Meteor, WB-066): it lands on ``aim`` as its row says, its shadow growing meanwhile.
+    spell: Upgrade | None = None
 
     @property
     def lands_at(self) -> float:
@@ -1166,7 +1183,9 @@ class World:
         return info.trip * DEEP_MINING_TRIP // GOLD_PER_TRIP if self._has(player, Upgrade.DEEP_MINING) else info.trip
 
     def speed_of(self, unit: Unit) -> float:
-        """How fast *unit* walks now: :meth:`listed_speed` times what its conditions multiply it by."""
+        """How fast *unit* walks now: :meth:`listed_speed` times what its conditions multiply it by.  Roots (Entangle)
+        are no speed: they hold it in the movement itself (``_follow``, ``_steer``, ``_fly_to``, ``_nudge``), so what
+        weighs a walk still gets its pace."""
         speed = self.listed_speed(unit)
         if unit.speed_mult != 1.0:
             speed *= unit.speed_mult
@@ -1217,10 +1236,12 @@ class World:
         """``(used, cap)``: units alive plus units queued, against finished farms and halls.
 
         The wilds are fed by nobody and feed nobody: their creatures are placed with the map, not
-        trained, so they neither take supply nor have any."""
+        trained, so they neither take supply nor have any.  Nor does what a spell brings (it is gone soon, and a summoning
+        that took the farms' room would stop a side's training for its sake)."""
         if self.players[player].neutral:
             return (0, 0)
-        used = len(self.player_units(player)) + int_sum(len(b.queue) for b in self.player_buildings(player))
+        used = (int_sum(1 for u in self.units.values() if u.player == player and not u.expires)
+                + int_sum(len(b.queue) for b in self.player_buildings(player)))
         cap = int_sum(b.info.supply for b in self.player_buildings(player, done=True))
         return used, cap
 
@@ -1306,12 +1327,190 @@ class World:
             p.aether = cap
             self.events.append(Event("spilled", where, player=player, amount=spilled))
 
+    # -- Spells (WB-066) -------------------------------------------------------------------
+    #
+    # The side casts, not a unit: at any point of the map, in fog too, for aether and a cooldown of the spell's own,
+    # both SPELL_FAR times dearer beyond every finished vault's reach.  What a spell does is its row (rules.SpellInfo):
+    # conditions laid and ended, a blow at once or after a delay (a Meteor falls as a projectile, and saves, snapshots
+    # and replays carry it as they carry a stone), units summoned for their lifetime.
+
+    def cast_price(self, player: int, spell: Upgrade, point: Point) -> tuple[int, int]:
+        """What casting *spell* at *point* costs *player*: ``(aether, cooldown steps)``, both SPELL_FAR times the plain
+        price beyond the reach of every finished vault of theirs (:meth:`in_reach`)."""
+        info = SPELLS[spell]
+        if self.in_reach(player, point):
+            return info.aether, info.cooldown
+        return info.aether * SPELL_FAR, info.cooldown * SPELL_FAR
+
+    def cooldown_left(self, player: int, spell: Upgrade) -> int:
+        """Steps before *player* may cast *spell* again; 0 when it is ready."""
+        ready = self.players[player].cooldowns.get(spell, 0)
+        return ready - self.tick if ready > self.tick else 0
+
+    def spells_of(self, player: int) -> list[Upgrade]:
+        """The spells *player* has researched, lowest level first: their spell bar."""
+        known = self.players[player].upgrades
+        return [spell for spell in SPELLS if spell in known]
+
+    def can_cast(self, player: int, spell: Upgrade, point: Point) -> str | None:
+        """Why *player* cannot cast *spell* at *point* now, or None.  A point in the fog is a point: the cast is blind."""
+        if not 0 <= player < self.seats or not self.players[player].alive:
+            return "This side cannot cast"
+        info = SPELLS.get(spell)
+        if info is None:
+            return f"{self.upgrade_info(player, spell).name} is not a spell"
+        if spell not in self.players[player].upgrades:
+            return f"{info.name} is not researched"
+        x, y = point
+        if not (0.0 <= x < self.width and 0.0 <= y < self.height):  # NaN fails too
+            return "Choose a point on the map"
+        left = self.cooldown_left(player, spell)
+        if left:
+            return f"{info.name} is ready in {math.ceil(left * SIM_DT)} s"
+        aether, _cooldown = self.cast_price(player, spell, point)
+        if self.players[player].aether < aether:
+            return self._short_of_aether(player, info, aether, self.in_reach(player, point))
+        if info.summons is not None and self._summon_spots(point, info.count) is None:
+            return "No open ground there"
+        return None
+
+    def _short_of_aether(self, player: int, info: SpellInfo, aether: int, near: bool) -> str:
+        """Why *player*'s store cannot pay *aether* for *info*: too little in it yet, or more than their vaults can ever
+        hold (:meth:`aether_cap`), which no wait mends; then the refusal says what will: as many more vaults as the
+        price takes (each holds AETHER_STORE), or a cast within reach when the plain price fits."""
+        needed = f"Not enough aether ({aether} needed)" if near else \
+            f"Not enough aether ({aether} needed, {SPELL_FAR}x beyond your vaults' reach)"
+        cap = self.aether_cap(player)
+        if aether <= cap:
+            return needed
+        if not cap:
+            return f"{needed}: no vault of yours holds any, build {an(self.building_info(player, BuildingType.VAULT).name)}"
+        more = -(-aether // AETHER_STORE) - len(self.vaults(player))
+        build = "build another" if more == 1 else f"build {more} more"
+        if not near and info.aether <= cap:
+            return f"{needed}: they hold {cap}, cast it within their reach or {build}"
+        return f"{needed}: {'your vaults hold' if near else 'they hold'} {cap}, {build}"
+
+    @recorded
+    def cast(self, player: int, spell: Upgrade, point: Point) -> None:
+        """*player* casts *spell* at *point*: pays its aether, starts its cooldown and lands it, now or after its delay."""
+        reason = self.can_cast(player, spell, point)
+        if reason is not None:
+            raise RuleError(reason)
+        info = SPELLS[spell]
+        aether, cooldown = self.cast_price(player, spell, point)
+        p = self.players[player]
+        p.aether -= aether
+        p.cooldowns[spell] = self.tick + cooldown
+        point = (float(point[0]), float(point[1]))
+        self.events.append(Event("cast", point, player=player, text=spell.value))
+        if info.delay > 0.0:
+            shot = Projectile(self._new_id(), player, 0, spell.value, "spell", point, point, None, self.time, info.delay, info.damage,
+                              splash=info.radius, spell=spell)
+            self.projectiles[shot.id] = shot
+            return
+        self._land_spell(player, info, point)
+
+    def _summon_spots(self, point: Point, count: int) -> list[Point] | None:
+        """Where *count* summoned units stand round *point*: a ring about it, each spot on blocked ground moved to the
+        nearest open tile within SUMMON_SEARCH; None when there is no open ground there at all."""
+        spots: list[Point] = []
+        for i in range(count):
+            angle = math.pi / 2 + math.tau * i / count
+            spot = self._clamp((point[0] + SUMMON_RING * math.cos(angle), point[1] + SUMMON_RING * math.sin(angle)))
+            if not self.passable(int(spot[0]), int(spot[1])):
+                open_tile = self._open_tile_near((int(point[0]), int(point[1])))
+                if open_tile is None:
+                    return None
+                spot = tile_center(open_tile)
+            spots.append(spot)
+        return spots
+
+    def _open_tile_near(self, tile: Pos) -> Pos | None:
+        """The open tile nearest *tile*, ring by ring out to SUMMON_SEARCH (ties to the first found, row by row)."""
+        tx, ty = tile
+        for radius in range(SUMMON_SEARCH + 1):
+            best: Pos | None = None
+            best_d = 1 << 30  # an int, as the squared distances are: compiled, a float could not take one
+            for y in range(ty - radius, ty + radius + 1):
+                for x in range(tx - radius, tx + radius + 1):
+                    if max(abs(x - tx), abs(y - ty)) != radius or not self.passable(x, y):
+                        continue
+                    d = (x - tx) * (x - tx) + (y - ty) * (y - ty)
+                    if d < best_d:
+                        best, best_d = (x, y), d
+            if best is not None:
+                return best
+        return None
+
+    def _touched(self, player: int, info: SpellInfo, point: Point) -> list[Unit]:
+        """The units *info* cast by *player* at *point* touches: whose body lies within its radius, of the side its row
+        names, on the map (not inside a mine or a site), and in the air only if it reaches the flyers."""
+        touched = []
+        radius = info.radius
+        for u in self.units_near(point, radius + MAX_UNIT_RADIUS):
+            if u.hidden or u.hp <= 0 or (u.flying and not info.flyers):
+                continue
+            if info.touches is Touch.OWN and u.player != player or info.touches is Touch.RIVALS and u.player == player:
+                continue
+            if dist(point, u.pos) - u.radius <= radius:
+                touched.append(u)
+        return touched
+
+    def _spell_damage(self, info: SpellInfo, gap: float) -> float:
+        """What *info* deals *gap* tiles from its point: its damage there, falling in a straight line to its edge's."""
+        share = min(max(gap, 0.0), info.radius) / info.radius
+        return info.damage - (info.damage - info.edge) * share
+
+    def _land_spell(self, player: int, info: SpellInfo, point: Point) -> None:
+        """*info*, cast by *player*, takes effect at *point*: its blow, then the conditions it ends and lays, on every
+        unit it touches; the buildings it reaches take the blow and the whole of its drains at once; then what it
+        summons."""
+        self.events.append(Event("spell", point, player=player, text=info.key.value))
+        source = info.key.value
+        for u in self._touched(player, info, point):
+            if info.damage:
+                self._spell_blow(u, int(round(self._spell_damage(info, dist(point, u.pos) - u.radius))), info, player)
+                if u.hp <= 0:
+                    continue
+            for kind in info.cleanses:
+                self._end(u, kind)
+            for kind in info.lays:
+                self._lay(u, kind, player)
+        if info.buildings:
+            drain = plain_sum(-kind.hp_per_second * kind.duration for kind in info.lays if kind.hp_per_second < 0.0)
+            for b in list(self.buildings.values()):
+                if b.player is None or b.hp <= 0:
+                    continue  # a deposit is nobody's and never struck
+                if info.touches is Touch.OWN and b.player != player or info.touches is Touch.RIVALS and b.player == player:
+                    continue
+                gap = rect_gap(point, b.rect)
+                if gap <= info.radius:
+                    self._spell_blow(b, int(round(self._spell_damage(info, gap) * info.building_factor + drain)), info, player)
+        if info.summons is not None:
+            spots = self._summon_spots(point, info.count)
+            assert spots is not None, "checked when it was cast"  # a delayed summoning would have to ask again here
+            for spot in spots:
+                unit = self.spawn_unit(player, info.summons, spot)
+                self.events.append(Event("summoned", unit.pos, player=player, entity=unit.id, text=unit.type.value,
+                                         target_type=source))
+
+    def _spell_blow(self, target: Entity, damage: int, info: SpellInfo, player: int) -> None:
+        """A spell's blow of *damage* on *target*: through its armour if the spell pierces, else less its armour and at
+        least one; no roll, since a spell hits as its row says."""
+        if target.hp <= 0 or damage <= 0:
+            return
+        armor = self.armor_of(target)
+        self._deal(target, damage if info.pierces else max(1, damage - armor), armor, player=player, source=0,
+                   source_type=info.key.value, ranged=True, inflicts=None)
+
     def can_train(self, building: Building, unit_type: UnitType) -> str | None:
         info = self.unit_info(building.player, unit_type)
         if building.player is None or not building.done:
             return "Still under construction"
-        if info.trained_at is not building.type:
-            return f"The {info.name} is trained at the {self.building_info(building.player, info.trained_at).name}"
+        if unit_type not in building.info.trains:
+            return self.never_trained(building.player, unit_type) \
+                or f"The {info.name} is trained at the {self.building_info(building.player, info.trained_at).name}"
         reason = self.foreign_unit(building.player, unit_type) or self.lacks_for(building.player, unit_type) \
             or self.at_limit(building.player, unit_type)
         if reason is not None:
@@ -1327,6 +1526,40 @@ class World:
         if used + 1 > cap:
             return "Not enough farms"
         return None
+
+    def never_trained(self, player: int, unit_type: UnitType) -> str | None:
+        """Why no building trains *unit_type*: a creature of the wilds, or what a spell summons (WB-066).  None when its
+        building trains it (:attr:`BuildingInfo.trains`, the one list the card, endless training and this answer read)."""
+        if unit_type in BUILDINGS[UNITS[unit_type].trained_at].trains:
+            return None
+        return f"Nobody trains {an(self.unit_info(player, unit_type).name)}"
+
+    def chosen_instead(self, player: int, upgrade: Upgrade) -> tuple[Upgrade, bool] | None:
+        """The upgrade of *upgrade*'s choice (a spell's level, WB-066) that *player* chose instead, and whether it is
+        researched: then *upgrade* is closed for the match; while the other is only being researched, it waits (a
+        cancel opens it again).  None when nothing of its choice stands in its way."""
+        choice = UPGRADES[upgrade].choice
+        if not choice:
+            return None
+        known = self.players[player].upgrades
+        for other in CHOICES[choice]:
+            if other is not upgrade and other in known:
+                return other, True
+        for b in self.buildings.values():
+            researching = b.research
+            if (researching is not None and researching is not upgrade and b.player is not None and b.player == player
+                    and not b.abandoned and UPGRADES[researching].choice == choice):
+                return researching, False
+        return None
+
+    def choice_refusal(self, player: int, upgrade: Upgrade) -> str | None:
+        """Why *upgrade* cannot be chosen because another of its choice was (:meth:`chosen_instead`), or None."""
+        instead = self.chosen_instead(player, upgrade)
+        if instead is None:
+            return None
+        other, researched = instead
+        name = self.upgrade_info(player, other).name
+        return f"Closed: {name} was chosen" if researched else f"Closed while {name} is being researched"
 
     def foreign_unit(self, player: int, unit_type: UnitType) -> str | None:
         """Why *player* never trains *unit_type*: another race's own unit (WB-068).  None when theirs to train."""
@@ -1371,7 +1604,12 @@ class World:
             return "Already researched"
         if any(b.research is upgrade and b.player == building.player and not b.abandoned for b in self.buildings.values()):
             return "Already being researched"
+        closed = self.choice_refusal(building.player, upgrade)
+        if closed is not None:
+            return closed
         missing = [self.upgrade_info(building.player, needed).name for needed in info.requires if needed not in player.upgrades]
+        if info.after and not any(u in player.upgrades for u in CHOICES[info.after]):
+            missing.append(f"a level {info.after} spell")
         if missing:
             return f"Requires {listing(missing)}"
         if building.research is not None:
@@ -1854,7 +2092,8 @@ class World:
             raise RuleError("No such building")
         if unit_type not in building.info.trains:
             info = self.unit_info(building.player, unit_type)
-            raise RuleError(f"The {info.name} is trained at the {self.building_info(building.player, info.trained_at).name}")
+            raise RuleError(self.never_trained(building.player, unit_type)
+                            or f"The {info.name} is trained at the {self.building_info(building.player, info.trained_at).name}")
         reason = self.foreign_unit(building.player, unit_type) or (
             (self.lacks_for(building.player, unit_type) or self.at_limit(building.player, unit_type)) if on else None)
         if reason is not None:
@@ -2007,7 +2246,10 @@ class World:
 
     def spawn_unit(self, player: int, unit_type: UnitType, point: Point) -> Unit:
         race = self.race_of(player)
-        unit = Unit(self._new_id(), unit_type, player, point[0], point[1], unit_stats(race, unit_type).hp, race=race)
+        info = unit_stats(race, unit_type)
+        unit = Unit(self._new_id(), unit_type, player, point[0], point[1], info.hp, race=race)
+        if info.lifetime:
+            unit.expires = self.tick + max(1, round(info.lifetime / SIM_DT))  # gone at the end of that step
         self.units[unit.id] = unit
         self._bucket(unit)
         self.players[player].alive = True  # a side cleared by a mission comes back with its first unit
@@ -2279,6 +2521,10 @@ class World:
     def seconds_left(self, condition: Condition) -> float:
         """How long *condition* still lasts."""
         return (condition.until - self.tick) * SIM_DT
+
+    def lifetime_left(self, unit: Unit) -> float:
+        """How long *unit*, a summoned one (:attr:`UnitInfo.lifetime`), still stays; 0 for one that stays for good."""
+        return (unit.expires - self.tick) * SIM_DT if unit.expires else 0.0
 
     def _lay(self, u: Unit, kind: BuffInfo, player: int) -> None:
         """*player* lays *kind* on *u* for its whole duration.  A kind *u* already carries starts again, never twice
@@ -3682,9 +3928,12 @@ class World:
         key = (u.player, order.target)
         line = self._line_lag.get(key)
         if line is None:
+            # A comrade held by roots (Entangle) is out of the march while it lasts: no row waits on it.  Asked by one
+            # of them alone, the line is its own.
             mates = [v for v in self.units.values()
-                     if v is u or (v.player == u.player and not v.hidden and v.hp > 0 and isinstance(v.order, (Move, AttackMove))
-                                   and v.order.offset is not None and v.order.target == order.target)]
+                     if not v.rooted and (v is u or (v.player == u.player and not v.hidden and v.hp > 0
+                                                     and isinstance(v.order, (Move, AttackMove))
+                                                     and v.order.offset is not None and v.order.target == order.target))] or [u]
             cx, cy = _middle(mates)
             dx, dy = order.target[0] - cx, order.target[1] - cy
             d = hypot(dx, dy)
@@ -3805,6 +4054,11 @@ class World:
         if waypoint is None:
             u.state = "idle"
             return True
+        if u.rooted:
+            # Held where it stands (Entangle): it is going nowhere, and its progress watchdog neither counts the time
+            # nor plans a way round the units in its way, which are not what holds it; its route waits for it.
+            u.state = "idle"
+            return False
         u.state = "move"
         width = self.width
         tile = tx, ty = int(u.x), int(u.y)  # nothing below moves the unit until the very last step
@@ -3957,6 +4211,9 @@ class World:
         """Walk straight at *target* when it is near and the line is clear; True if that was possible.  With
         *keep_path* the unit's route stays planned, for a walk that leaves it only while it heads the same way.  A flyer
         always can: nothing lies in its way, however far."""
+        if u.rooted:
+            u.state = "idle"  # held where it stands: the walk waits, its route with it
+            return True
         if u.flying:
             self._fly_step(u, target, self._effective_speed(u, dressing=dressing) * dt, dt)
             if not keep_path:
@@ -3992,6 +4249,9 @@ class World:
         if d <= ARRIVE:
             u.state = "idle"
             return True
+        if u.rooted:
+            u.state = "idle"
+            return False
         self._fly_step(u, target, self._effective_speed(u) * dt, dt)
         if d < u.last_distance - 0.02:
             u.last_distance, u.progress = d, 0.0
@@ -4136,7 +4396,10 @@ class World:
         return u.windup <= 0.0 and u.state != "attack" and (order is None or type(order) in AT_EASE_ORDERS)
 
     def _nudge(self, u: Unit, px: float, py: float) -> None:
-        """Shove *u* by at most MAX_PUSH, never through a blocked tile or across a blocked corner."""
+        """Shove *u* by at most MAX_PUSH, never through a blocked tile or across a blocked corner; a rooted unit
+        (Entangle) stands its ground, and the crowd flows round it as round any unit it cannot move."""
+        if u.rooted:
+            return
         length = hypot(px, py)
         if length > MAX_PUSH:
             px, py = px / length * MAX_PUSH, py / length * MAX_PUSH
@@ -4519,6 +4782,9 @@ class World:
         now = self.time
         for p in [p for p in self.projectiles.values() if p.lands_at <= now]:
             del self.projectiles[p.id]
+            if p.spell is not None:
+                self._land_spell(p.player, SPELLS[p.spell], p.aim)
+                continue
             if p.target is None:
                 self._land_stone(p)
                 continue
@@ -4558,7 +4824,14 @@ class World:
         if factor != 1.0:
             damage = int(round(damage * factor))
         roll = damage * self.rng.uniform(1 - HIT_VARIANCE, 1 + HIT_VARIANCE)
-        dealt = max(1, int(round(roll)) - armor)
+        self._deal(target, max(1, int(round(roll)) - armor), armor, player=player, source=source, source_type=source_type,
+                   ranged=ranged, inflicts=inflicts)
+
+    def _deal(self, target: Entity, dealt: int, armor: int, *, player: int, source: int, source_type: str, ranged: bool,
+              inflicts: BuffInfo | None) -> None:
+        """*dealt* hit points, through the *armor* already taken off them, come off *target*: the kill it may be, the
+        hit's event, the alarm, and the answer a unit gives whoever struck it (a spell's blow, :meth:`_spell_blow`, has
+        no striker to answer)."""
         target.hp -= dealt
         if isinstance(target, Unit):
             target.struck = self.time  # a creature knits nothing back while something is still hitting it
@@ -4628,12 +4901,22 @@ class World:
         self.events.append(Event("hoard", building.center, player=player, entity=source, other=building.id, amount=loot))
 
     def _bury_the_dead(self) -> None:
-        for unit in [u for u in self.units.values() if u.hp <= 0]:
+        tick = self.tick
+        for unit in [u for u in self.units.values() if u.hp <= 0 or 0 < u.expires <= tick]:
+            if unit.hp > 0:
+                self._expire(unit)
+                continue
             self._remove_unit(unit)
         for building in [b for b in self.buildings.values() if b.hp <= 0 and b.info.mine is None]:
             self._remove_building(building, reason="destroyed")
             if not building.done:
                 self.settlement.site_lost(building.id, cancelled=False)
+
+    def _expire(self, unit: Unit) -> None:
+        """*unit*'s lifetime is over (a summoned one): it is gone, and nobody killed it or lost it."""
+        self._leave_mine(unit)
+        del self.units[unit.id]
+        self.events.append(Event("expired", unit.pos, player=unit.player, entity=unit.id, text=unit.type.value))
 
     def _remove_unit(self, unit: Unit, *, spent: bool = False) -> None:
         """Take *unit* off the map: fallen, or (*spent*) gone with its own blow, which is no loss and no death."""
@@ -4832,6 +5115,7 @@ class World:
                          "neutral": p.neutral,
                          "surrendered": p.surrendered, "stats": dict(p.stats), "last_alert": p.last_alert, "last_hit": p.last_hit,
                          "upgrades": sorted(u.value for u in p.upgrades),
+                         "cooldowns": {spell.value: ready for spell, ready in sorted(p.cooldowns.items(), key=lambda c: c[0].value)},
                          "assembly": list(p.assembly) if p.assembly is not None else None} for p in self.players],
             "regrowth": [[list(tile), when] for tile, when in self.regrowth],
             "camps": [{"lair": c.lair, "kinds": list(c.kinds), "posts": [list(p) for p in c.posts], "guards": list(c.guards),
@@ -4871,6 +5155,7 @@ class World:
                 p.last_alert = saved["last_alert"]
                 p.last_hit = saved.get("last_hit", p.last_alert)  # saves from before it: the alert stands in
             p.upgrades = {Upgrade(u) for u in saved["upgrades"]}
+            p.cooldowns = {Upgrade(spell): ready for spell, ready in saved.get("cooldowns", {}).items()}  # none before WB-066
             p.assembly = tuple(saved["assembly"]) if saved.get("assembly") is not None else None
             p.surrendered = saved.get("surrendered", False)
             p.stats.update(saved.get("stats", {}))
@@ -4958,6 +5243,7 @@ def _unit_to_dict(u: Unit) -> dict[str, Any]:
         "ease": list(u.ease) if u.ease else None, "charge": u.charge, "auto_work": u.auto_work,
         "commanded": u.commanded, "struck": u.struck,
         "conditions": [{"kind": c.kind.key, "until": c.until, "player": c.player, "worn": c.worn} for c in u.conditions],
+        "expires": u.expires,
     }
 
 
@@ -4966,7 +5252,8 @@ def _unit_from_dict(d: dict[str, Any], race: Race) -> Unit:
              windup=d.get("windup", 0.0), vx=d.get("vx", 0.0), vy=d.get("vy", 0.0), carrying=Resource(d["carrying"]) if d["carrying"] else None, carry=d["carry"], timer=d["timer"],
              inside=d["inside"], constructing=d["constructing"], home=tuple(d["home"]) if d["home"] else None, state=d["state"],
              ease=tuple(d["ease"]) if d.get("ease") else None, charge=d["charge"], auto_work=d.get("auto_work", True),
-             commanded=d.get("commanded"), struck=d.get("struck", -1000.0))  # a save from before the hands-off window: every worker is the policy's
+             commanded=d.get("commanded"), struck=d.get("struck", -1000.0),  # a save from before the hands-off window: every worker is the policy's
+             expires=d.get("expires", 0))  # nothing was summoned before WB-066
     u.orders = deque(_order_from_dict(o) for o in d["orders"])
     u.conditions = [Condition(BUFFS[c["kind"]], c["until"], c["player"], c["worn"]) for c in d.get("conditions", [])]  # none before WB-062
     u.recount()
@@ -4986,6 +5273,7 @@ def _projectile_to_dict(p: Projectile) -> dict[str, Any]:
     d = field_values(p)
     d["start"], d["aim"], d["attack"] = list(p.start), list(p.aim), p.attack.value
     d["inflicts"] = p.inflicts.key if p.inflicts is not None else None
+    d["spell"] = p.spell.value if p.spell is not None else None
     return d
 
 
@@ -4999,6 +5287,8 @@ def _projectile_from_dict(d: dict[str, Any]) -> Projectile:
         d["attack"] = AttackType(d["attack"])
     inflicts = d.get("inflicts")  # absent from saves before WB-062
     d["inflicts"] = BUFFS[inflicts] if inflicts is not None else None
+    spell = d.get("spell")  # absent from saves before WB-066
+    d["spell"] = Upgrade(spell) if spell is not None else None
     return Projectile(**d)
 
 

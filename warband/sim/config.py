@@ -2,7 +2,7 @@
 
 The typed simulation tables are built from this snapshot once. League workers
 may install their parent's snapshot before importing rules; ordinary launches
-read the nine bundled TOMLs. This is the simulation's only file-backed input.
+read the ten bundled TOMLs. This is the simulation's only file-backed input.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from typing import Final
 
 CONSTANTS: Final = Path(__file__).resolve().parents[1] / "assets" / "constants"
 FILES: Final = ("units.toml", "neutrals.toml", "buildings.toml", "upgrades.toml", "races.toml",
-               "economy.toml", "combat.toml", "behavior.toml", "buffs.toml")
+               "economy.toml", "combat.toml", "behavior.toml", "buffs.toml", "spells.toml")
 UNITS_TOML = Path("units.toml")
 BUILDINGS_TOML = Path("buildings.toml")
 UPGRADES_TOML = Path("upgrades.toml")
@@ -24,18 +24,28 @@ ECONOMY_TOML = Path("economy.toml")
 COMBAT_TOML = Path("combat.toml")
 BEHAVIOR_TOML = Path("behavior.toml")
 BUFFS_TOML = Path("buffs.toml")
+SPELLS_TOML = Path("spells.toml")
 
 PLAYABLE = ("peasant", "footman", "archer", "knight", "catapult", "flying_machine", "cleric",
             "gryphon", "sapper", "treant", "rune_golem")  # the last four: each race's own unit (units.toml's ``race``)
 WILDS = ("wolf", "spider", "troll", "golem")
 BUILDINGS = ("town_hall", "farm", "barracks", "tower", "lumber_mill", "blacksmith", "stables", "workshop", "church", "vault",
-             "gold_mine", "gold_seam", "mother_lode", "lair")
+             "mage_tower", "gold_mine", "gold_seam", "mother_lode", "lair")
 DEPOSITS = ("gold_mine", "gold_seam", "mother_lode")
 #: What a player builds: everything the wilds do not own (rules.BUILT walks the same set).
 BUILT = tuple(b for b in BUILDINGS if b not in DEPOSITS and b != "lair")
-UPGRADES = ("keep", "blades_1", "blades_2", "blades_3", "armor_1", "armor_2", "arrows_1", "arrows_2", "arrows_3", "siege",
-            "marksmanship", "horses", "blessing", "bloodlust", "plunder", "longbows", "regrowth", "deep_mining",
-            "blasting_powder")
+#: The research upgrades.toml holds: the shared ladder and the race arts.
+LADDER = ("keep", "blades_1", "blades_2", "blades_3", "armor_1", "armor_2", "arrows_1", "arrows_2", "arrows_3", "siege",
+          "marksmanship", "horses", "blessing", "bloodlust", "plunder", "longbows", "regrowth", "deep_mining",
+          "blasting_powder")
+#: The spells (WB-066), researched at the Mage Tower: spells.toml holds them, and what researching one costs is its level's.
+SPELLS = ("haste", "mend", "flame_strike", "stoneskin", "entangle", "wither", "meteor", "summon", "battle_fury")
+UPGRADES = LADDER + SPELLS
+#: The levels of magic, lowest first: a spell of each is researched after one of the level below.
+LEVELS = ("I", "II", "III")
+#: What a spell brings: units nobody trains and no race names (spells.toml [summons]).
+SUMMONS = ("aether_elemental",)
+TOUCHES = ("own", "rivals", "all")
 RACES = ("human", "orc", "elf", "dwarf")
 ATTACKS = ("normal", "piercing", "siege", "crush")
 ARMOR_CLASSES = ("unarmoured", "light", "heavy", "fortified")
@@ -138,6 +148,14 @@ def _names(entry: dict, key: str, where: str, choices: tuple[str, ...]) -> list[
     return list(value)
 
 
+def _strings(entry: dict, key: str, where: str) -> list[str]:
+    """A list of names checked later against another table (a spell's buffs.toml rows)."""
+    value = entry.get(key, [])
+    if not isinstance(value, list) or any(not isinstance(v, str) for v in value):
+        raise BalanceError(f"{where}.{key}: expected a list of names, got {value!r}")
+    return list(value)
+
+
 def _no_extra(entry: dict, known: set[str], where: str) -> None:
     for key in entry:
         if key not in known:
@@ -163,6 +181,7 @@ BUILDING_KEYS = {"name", "gold", "lumber", "hp", "armor", "size", "build_time", 
                  "trains", "researches", "requires", "deposits", "damage", "range", "cooldown", "mine_trip", "mine_slots",
                  "mine_endless", "rich_above"}
 UPGRADE_KEYS = {"name", "gold", "lumber", "time", "hotkey", "card", "summary", "requires", "race"}
+LEVEL_KEYS = {"gold", "lumber", "time", "requires", "aether", "cooldown"}
 UPGRADE_TWEAK_KEYS = {"name", "card"}
 
 #: Scalar schemas: section -> {toml key: (CONSTANT, int|float)}.  Sections are
@@ -217,6 +236,10 @@ class Tables:
     damage_bonus: list[dict] = field(default_factory=list)  # {attack, armor, factor}, in listed order
     siege_worth: dict[str, float] = field(default_factory=dict)  # unit value -> worth
     buffs: dict[str, dict] = field(default_factory=dict)  # condition kinds, in listed order
+    levels: dict[str, dict] = field(default_factory=dict)  # the levels of magic, lowest first
+    spells: dict[str, dict] = field(default_factory=dict)  # spell -> its row, in listed order
+    summons: dict[str, dict] = field(default_factory=dict)  # what a spell brings, as unit rows
+    spell_far: int = 1  # the price beyond every vault's reach, as a multiple of the plain one
 
 
 def _reach(entry: dict, key: str, where: str) -> float | str:
@@ -237,6 +260,7 @@ UNIT_SCHEMA = {
     "armor_class": (_enum, ARMOR_CLASSES, "light"), "formation": (_bool, False), "mounted": (_bool, False),
     "windup": (_float,), "turn_deg": (_int, 360), "min_range": (_float, 0.0), "regen": (_float, 0.0),
     "living": (_bool, True), "flying": (_bool, False), "inflicts": (_str, ""), "sound": (_str, ""),
+    "lifetime": (_float, 0.0),  # seconds a unit stays before it is gone; 0: for good (a summoned unit's, spells.toml)
     # A race's own unit (WB-068): the one race that fields it, the upgrades it waits for, how many a side may keep.
     "race": (_race_name,), "requires": (_names, UPGRADES), "limit": (_int, 0),
     "blast": (_float, 0.0), "blast_units": (_int, 0), "forest": (_bool, False), "regen_in_trees": (_bool, False),
@@ -249,7 +273,7 @@ UNIT_TWEAK_SCHEMA = {
 BUFF_SCHEMA = {
     "name": (_str,), "summary": (_str,), "damage": (_float,), "speed": (_float,), "blow": (_float,), "armor": (_int,),
     "hp_per_second": (_float,), "duration": (_float,), "living": (_bool,), "heal_ends": (_bool,),
-    "spares": (_names, ARMOR_CLASSES),
+    "spares": (_names, ARMOR_CLASSES), "roots": (_bool,),
 }
 BUILDING_TWEAK_SCHEMA = {
     "name": (_str,), "card": (_str,), "summary": (_str,), "hp_mult": (_float, 1.0), "armor_add": (_int, 0),
@@ -334,6 +358,8 @@ def _upgrade(entry: dict, where: str) -> dict:
         "summary": _str(entry, "summary", where),
         "requires": list(requires),
         "race": race,
+        "choice": "",
+        "after": "",
     }
 
 
@@ -413,6 +439,85 @@ def _buffs(doc: dict) -> dict[str, dict]:
     return rows
 
 
+SPELL_SCHEMA = {
+    "level": (_enum, LEVELS), "name": (_str,), "card": (_str,), "hotkey": (_str,), "summary": (_str,), "radius": (_float,),
+    "touches": (_enum, TOUCHES), "flyers": (_bool, True), "lays": (_strings,), "cleanses": (_strings,),
+    "damage": (_int, 0), "edge": (_int, -1), "pierces": (_bool, False), "buildings": (_bool, False),
+    "building_factor": (_float, 1.0), "delay": (_float, 0.0), "summons": (_str, ""), "count": (_int, 0),
+}
+
+
+def _spells(doc: dict, tables: Tables) -> None:
+    """spells.toml: the levels of magic, the spells chosen at each and what they bring (WB-066).  Every spell is also a
+    row of the research table, priced by its level: researching one closes the others of its level for the match, and
+    a spell above the first level waits for one of the level below (:attr:`~warband.sim.rules.UpgradeInfo.choice`)."""
+    where = SPELLS_TOML.name
+    _no_extra(doc, {"far", "levels", "spells", "summons"}, where)
+    tables.spell_far = _int(doc, "far", where)
+    if tables.spell_far < 1:
+        raise BalanceError(f"{where}.far: expected at least 1, got {tables.spell_far}")
+    levels = doc.get("levels")
+    if not isinstance(levels, dict):
+        raise BalanceError(f"{where}: missing [levels]")
+    _no_extra(levels, set(LEVELS), f"{where} [levels]")
+    for level in LEVELS:
+        at = f"{where} [levels.{level}]"
+        entry = levels.get(level)
+        if not isinstance(entry, dict):
+            raise BalanceError(f"{where}: missing [levels.{level}]")
+        _no_extra(entry, LEVEL_KEYS, at)
+        row = {"gold": _int(entry, "gold", at), "lumber": _int(entry, "lumber", at, 0), "time": _float(entry, "time", at),
+               "requires": _names(entry, "requires", at, LADDER), "aether": _int(entry, "aether", at),
+               "cooldown": _float(entry, "cooldown", at)}
+        for key in ("time", "cooldown"):
+            if row[key] <= 0:
+                raise BalanceError(f"{at}.{key}: expected a positive number, got {row[key]!r}")
+        if row["aether"] < 0:
+            raise BalanceError(f"{at}.aether: expected no less than 0, got {row['aether']}")
+        tables.levels[level] = row
+    summons = doc.get("summons", {})
+    if not isinstance(summons, dict):
+        raise BalanceError(f"{where} [summons]: expected a table, got {summons!r}")
+    tables.summons = _rows(summons, SUMMONS, UNIT_SCHEMA, f"{where} [summons]")
+    for unit, row in tables.summons.items():
+        if row["lifetime"] <= 0:
+            raise BalanceError(f"{where} [summons.{unit}].lifetime: a summoned unit is gone after a while, got {row['lifetime']!r}")
+    spells = doc.get("spells")
+    if not isinstance(spells, dict):
+        raise BalanceError(f"{where}: missing [spells]")
+    _no_extra(spells, set(SPELLS), f"{where} [spells]")
+    for spell in SPELLS:
+        at = f"{where} [spells.{spell}]"
+        if spell not in spells:
+            raise BalanceError(f"{where}: missing [spells.{spell}]")
+        row = _fields(spells[spell], SPELL_SCHEMA, at)
+        for key in ("lays", "cleanses"):
+            for kind in row[key]:
+                if kind not in tables.buffs:
+                    raise BalanceError(f"{at}.{key}: expected rows of {BUFFS_TOML.name}, got {kind!r}")
+        if row["radius"] <= 0:
+            raise BalanceError(f"{at}.radius: expected a positive number, got {row['radius']!r}")
+        if row["edge"] < 0:
+            row["edge"] = row["damage"]
+        if row["damage"] < 0 or row["edge"] > row["damage"]:
+            raise BalanceError(f"{at}: damage {row['damage']} and edge {row['edge']}: the rim takes no more than the point")
+        if row["building_factor"] <= 0 or row["delay"] < 0:
+            raise BalanceError(f"{at}: building_factor must be positive and delay no less than 0")
+        if bool(row["summons"]) != (row["count"] > 0) or (row["summons"] and row["summons"] not in SUMMONS):
+            raise BalanceError(f"{at}: summons names a [summons] row and count how many, both or neither")
+        tables.spells[spell] = row
+    for spell, row in tables.spells.items():
+        level = row["level"]
+        price = tables.levels[level]
+        below = LEVELS[LEVELS.index(level) - 1] if level != LEVELS[0] else ""
+        tables.upgrades[spell] = {"name": row["name"], "gold": price["gold"], "lumber": price["lumber"], "time": price["time"],
+                                  "hotkey": row["hotkey"], "card": row["card"], "summary": row["summary"],
+                                  "requires": list(price["requires"]), "race": None, "choice": level, "after": below}
+    for level in LEVELS:
+        if not any(row["level"] == level for row in tables.spells.values()):
+            raise BalanceError(f"{where} [levels.{level}]: no spell is chosen at it")
+
+
 def _race(doc: dict, race: str, units_table: dict[str, dict]) -> dict:
     where = _at(RACES_TOML, race)
     entry = doc.get(race)
@@ -454,7 +559,7 @@ def _load(sources: dict[str, str]) -> Tables:
     upgrades_doc = _read(UPGRADES_TOML, sources)
     races_doc = _read(RACES_TOML, sources)
     _check_sections(buildings_doc, BUILDINGS_TOML, BUILDINGS, "building")
-    _check_sections(upgrades_doc, UPGRADES_TOML, UPGRADES + ("effects",), "upgrade")
+    _check_sections(upgrades_doc, UPGRADES_TOML, LADDER + ("effects",), "upgrade")
     for race in RACES:
         if race not in races_doc or not isinstance(races_doc[race], dict):
             raise BalanceError(f"{RACES_TOML.name}: missing [{race}]")
@@ -464,14 +569,14 @@ def _load(sources: dict[str, str]) -> Tables:
     for building in BUILDINGS:
         if building not in buildings_doc:
             raise BalanceError(f"{BUILDINGS_TOML.name}: missing [{building}]")
-    for upgrade in UPGRADES:
+    for upgrade in LADDER:
         if upgrade not in upgrades_doc:
             raise BalanceError(f"{UPGRADES_TOML.name}: missing [{upgrade}]")
     tables = Tables()
     tables.units = _rows(units_doc, PLAYABLE, UNIT_SCHEMA, UNITS_TOML.name)
     tables.wilds = _rows(neutrals_doc, WILDS, UNIT_SCHEMA, NEUTRALS_TOML.name)
     tables.buildings = {b: _building(buildings_doc[b], _at(BUILDINGS_TOML, b), b) for b in BUILDINGS}
-    tables.upgrades = {u: _upgrade(upgrades_doc[u], _at(UPGRADES_TOML, u)) for u in UPGRADES}
+    tables.upgrades = {u: _upgrade(upgrades_doc[u], _at(UPGRADES_TOML, u)) for u in LADDER}
     for unit, info in tables.units.items():
         if unit not in tables.buildings[info["trained_at"]]["trains"]:
             raise BalanceError(f"{UNITS_TOML.name} [{unit}].trained_at: the {info['trained_at']} does not list it in its trains")
@@ -494,6 +599,7 @@ def _load(sources: dict[str, str]) -> Tables:
     _schema_section(upgrades_doc, UPGRADES_TOML, "effects", EFFECTS_SCHEMA, tables.scalars)
     _combat(combat_doc, tables)
     tables.buffs = _buffs(_read(BUFFS_TOML, sources))
+    _spells(_read(SPELLS_TOML, sources), tables)
     for path, rows in ((UNITS_TOML, tables.units), (NEUTRALS_TOML, tables.wilds)):
         for unit, row in rows.items():
             if row["inflicts"] and row["inflicts"] not in tables.buffs:

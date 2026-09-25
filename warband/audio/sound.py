@@ -27,7 +27,7 @@ import numpy as np
 
 from saga2d import Game
 from sagaforge.synth import BELL, BRASS, DARK, GLASS, level, mix, noise, thump, tone, write_wav
-from warband.audio import bodies, combat_sound, deaths, music, presence, voices, wreckage
+from warband.audio import bodies, combat_sound, deaths, music, presence, spells, voices, wreckage
 from warband.sim.model import Event
 from warband.audio.music import Director
 from warband.sim.rules import BuildingType, Race, UnitType
@@ -53,6 +53,7 @@ _WEAPONS = {
     # war hammer, and a spider's spit arrives as a shot.
     UnitType.WOLF.value: "axe", UnitType.TROLL.value: "axe",
     UnitType.GOLEM.value: "hammer", UnitType.SPIDER.value: "arrow",
+    UnitType.AETHER_ELEMENTAL.value: "hammer",  # a summoned fist of aether (WB-066) lands as heavily as a golem's
 }
 #: Where a race arms a role differently: orc grunts and axethrowers swing axes and the ogre a club,
 #: dwarven ironguards carry axes and bear riders war hammers.  Every other role keeps the common Foley.
@@ -219,7 +220,7 @@ class SynthBank:
         self._audio.muted = value
 
 
-SOUND_VERSION = "15"
+SOUND_VERSION = "16"  # 16: the spells and the Aether Elemental (WB-066)
 MUSIC = music.TRACKS
 
 #: ``play_sound(name)`` forwards here when set; ``None`` is silent.
@@ -353,6 +354,7 @@ SOUNDS: dict[str, Callable[[], np.ndarray]] = {
     **deaths.SOUNDS,
     **presence.SOUNDS,
     **wreckage.SOUNDS,
+    **spells.SOUNDS,
 }
 
 # -- Bank --------------------------------------------------------------------

@@ -43,7 +43,7 @@ from saga2d.ui import Button, Component, Label
 from saga2d.ui.components import KEYCAP_GAP
 from sagaforge import restyle
 from warband.art import textures
-from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, UNITS, BuildingType, MapTheme, Race, Resource, UnitType
+from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, SUMMONED, UNITS, BuildingType, MapTheme, Race, Resource, UnitType
 
 SOLID = 160  # alpha from which a pixel counts as the figure itself, not its shadow or fringe
 EDGE = 96  # alpha from which a pixel at the canvas edge means the figure was cut off
@@ -406,7 +406,12 @@ def lint_images(game: Game, store: ImageStore, *, budget: CpuBudget | None = Non
     drawn = {textures.unit_key(unit_type, player, facing, frame, carrying, race)  # the render's own frames: nothing was painted
              for _name, race, unit_type, carrying, player in unit_subjects((0, 1)) if textures.restyled_frames(race, unit_type, carrying) is None
              for facing in range(textures.FACINGS) for frame in textures.FRAMES + textures.CHOP_FRAMES}
-    painted_keys = {key for key in game.assets._images if key.startswith(("unit.", "building.")) and key not in drawn}  # a portrait is a resample of one
+    drawn |= {textures.unit_key(unit_type, player, facing, frame, None, race)  # a summoned unit is the render's for every race
+              for unit_type in SUMMONED for race in Race for player in (0, 1) if textures.restyled_frames(race, unit_type, None) is None
+              for facing in range(textures.FACINGS) for frame in textures.FRAMES}
+    rendered = tuple(f"building.{race.value}.{kind.value}." for race in Race for kind in textures.UNPAINTED)  # drawn low-poly too
+    painted_keys = {key for key in game.assets._images if key.startswith(("unit.", "building.")) and key not in drawn
+                    and not key.startswith(rendered)}  # a portrait is a resample of one
     for key in list(game.assets._images):
         if budget is not None:
             budget.checkpoint()

@@ -81,6 +81,7 @@ RESEEDED = {"elf_cry_2": 1122, "human_settle_1": 4311,
 
 CREATURE_STYLE = "fantasy creature, close, dry, no music, no reverb, no human voice, no speech"
 MACHINE_STYLE = "medieval, close, dry, no music, no reverb, no voice"
+MAGIC_STYLE = "fantasy sound effect, close, dry, no music, no melody, no reverb, no voice"
 BEAST_STYLE = "close, dry, no music, no reverb, no voice"
 RUNE_STYLE = "fantasy magic sound effect, close, no melody, no music, no voice"
 #: Per family and stage (the stage names are warband.audio.bodies.FAMILIES', its death's and its spent end's): how the
@@ -192,6 +193,16 @@ BODY_DEATHS = {
         "runes": ("voice", 3.0, RUNE_STYLE, ["a deep magical humming drone slowly fading into silence",
                                              "a glowing crystal's resonant hum dies away, a fading magical ring"]),
     },
+    "aether_elemental": {
+        # A glass smash is nearly all treble, which a step of the cue can swing past its peak: the first wording ("shards
+        # tinkling down") did; the body's weight hitting the ground puts the peak below the shards.
+        "shatter": ("impact", 1.6, STAGE_STYLE, ["a heavy crystal statue falls and shatters, a deep thud and a crack of breaking glass",
+                                                 "a heavy block of crystal bursts apart with a sharp crash of breaking glass",
+                                                 "a big crystal body cracks and breaks into pieces, a bright glass smash"]),
+        # "Sparkle" and "fizzle" came back as a hiss at the top of the band that clicked; a whoosh and a hum do not.
+        "fade": ("collapse", 2.0, MAGIC_STYLE, ["a soft deep whoosh of magical energy dissipating, a low hum fading away to silence",
+                                                "a warm low drone of magic light dying out, a gentle rushing sigh, then silence"]),
+    },
 }
 #: Per family with a presence: its cut, seconds, style and three prompts (the kind is the family's ``presence``).
 PRESENCES = {
@@ -226,13 +237,25 @@ PRESENCES = {
     "rune_golem": ("voice", 2.0, RUNE_STYLE, ["a deep magical hum pulses and swells briefly",
                                               "a low resonant arcane drone swells and fades",
                                               "a heavy stone thrum and a glowing magical hum"]),
+    "aether_elemental": ("collapse", 2.0, MAGIC_STYLE, ["a low resonant hum of magical energy swelling and fading, a crystal ringing",
+                                                        "a deep thrumming pulse of arcane power with a faint electric crackle",
+                                                        "a humming glowing crystal vibrates, a warm droning buzz, brief"]),
 }
 BODIES = [name for name in FAMILIES if name not in RACE_FAMILIES]
+#: A body's seeds come from its place in BODIES (its slot), so a family is added last.  A family generated before
+#: another landed ahead of it keeps the slot it was generated in: the Aether Elemental's pieces (WB-066) were made as
+#: the seventh body, before WB-068's four went in ahead of it on main (seeds 26000... and 30600...).
+SEED_SLOTS = {"aether_elemental": 6}
+
+
+def slot(family: str) -> int:
+    return SEED_SLOTS.get(family, BODIES.index(family))
 
 
 def body_pieces() -> list[Piece]:
     wanted = []
-    for f, family in enumerate(BODIES):
+    for family in BODIES:
+        f = slot(family)
         prompts, body = BODY_DEATHS[family], FAMILIES[family]
         if set(prompts) != {stage.kind for stage in body.death + body.spent}:
             raise ValueError(f"{family}: prompts for {list(prompts)}, but its ends place {[stage.kind for stage in body.death + body.spent]}")
@@ -246,7 +269,8 @@ def body_pieces() -> list[Piece]:
 
 def presence_pieces() -> list[Piece]:
     wanted = []
-    for f, family in enumerate(BODIES):
+    for family in BODIES:
+        f = slot(family)
         kind = FAMILIES[family].presence
         if kind is None:
             continue

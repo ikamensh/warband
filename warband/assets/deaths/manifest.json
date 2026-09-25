@@ -1358,6 +1358,66 @@
    "spec": "d3e831ca48399bd7",
    "length": 1.948,
    "sha256": "3339643d65522ee891c12eabb0fbcacad55c7bbd8ea406169c9f191b9cee8978"
+  },
+  "aether_elemental_shatter_0": {
+   "name": "aether_elemental_shatter_0",
+   "prompt": "a heavy crystal statue falls and shatters, a deep thud and a crack of breaking glass, one short sound then silence, close, dry, no music, no reverb, no voice",
+   "seconds": 1.6,
+   "seed": 26000,
+   "steps": 8,
+   "shape": "impact",
+   "peak": 0.8,
+   "spec": "f653c098ab84ac3d",
+   "length": 0.708,
+   "sha256": "c5e72ce904793590ebfb23c59d5f6933149d9617f84b21e656a3334f2f644665"
+  },
+  "aether_elemental_shatter_1": {
+   "name": "aether_elemental_shatter_1",
+   "prompt": "a heavy block of crystal bursts apart with a sharp crash of breaking glass, one short sound then silence, close, dry, no music, no reverb, no voice",
+   "seconds": 1.6,
+   "seed": 26001,
+   "steps": 8,
+   "shape": "impact",
+   "peak": 0.8,
+   "spec": "8b12c919032dbd70",
+   "length": 0.37,
+   "sha256": "ca4951b35ecc3a93ec725a41f3217a0944a3f682bcca19cd42b599f7501f1706"
+  },
+  "aether_elemental_shatter_2": {
+   "name": "aether_elemental_shatter_2",
+   "prompt": "a big crystal body cracks and breaks into pieces, a bright glass smash, one short sound then silence, close, dry, no music, no reverb, no voice",
+   "seconds": 1.6,
+   "seed": 26002,
+   "steps": 8,
+   "shape": "impact",
+   "peak": 0.8,
+   "spec": "3f0fa79259eec51c",
+   "length": 0.454,
+   "sha256": "b10b1b1cfdcdaff12356027a0b01416fb1669a6fe32fc6c795058d26f35c95d5"
+  },
+  "aether_elemental_fade_0": {
+   "name": "aether_elemental_fade_0",
+   "prompt": "a soft deep whoosh of magical energy dissipating, a low hum fading away to silence, fantasy sound effect, close, dry, no music, no melody, no reverb, no voice",
+   "seconds": 2.0,
+   "seed": 26100,
+   "steps": 8,
+   "shape": "collapse",
+   "peak": 0.8,
+   "spec": "17cfc56e48207959",
+   "length": 1.354,
+   "sha256": "68af98f70c429f7788c3a9a2c16fb45fd6db6b16fdff4211c2271489ad67fbde"
+  },
+  "aether_elemental_fade_1": {
+   "name": "aether_elemental_fade_1",
+   "prompt": "a warm low drone of magic light dying out, a gentle rushing sigh, then silence, fantasy sound effect, close, dry, no music, no melody, no reverb, no voice",
+   "seconds": 2.0,
+   "seed": 26101,
+   "steps": 8,
+   "shape": "collapse",
+   "peak": 0.8,
+   "spec": "2955cbdc482083fb",
+   "length": 1.147,
+   "sha256": "111f092cbb9b668b312cda425adb54a73327d08a42248ec70962ba892b24c3a9"
   }
  }
 }

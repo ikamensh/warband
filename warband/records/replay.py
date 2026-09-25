@@ -29,7 +29,7 @@ RELOAD = "reload"
 #: The names :func:`warband.sim.model.recorded` marks: the only calls a replay may make on the world.
 ORDERS = frozenset(name for name, attr in vars(World).items() if getattr(attr, "is_order", False))
 _POINT_FIELDS = ("target", "point", "pos")
-_ENUM_FIELDS = {"building_type": BuildingType, "unit_type": UnitType, "upgrade": Upgrade}
+_ENUM_FIELDS = {"building_type": BuildingType, "unit_type": UnitType, "upgrade": Upgrade, "spell": Upgrade}
 
 
 def digest(world: World) -> str:

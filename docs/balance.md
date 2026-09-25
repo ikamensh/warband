@@ -41,7 +41,7 @@ one fielded per game.
 
 ## Tuning the numbers
 
-Edit the TOML, not the Python. The tunable numbers are nine commented
+Edit the TOML, not the Python. The tunable numbers are ten commented
 files in `warband/assets/constants/`:
 
 - `units.toml` — every soldier and worker: cost, hit
@@ -59,6 +59,10 @@ files in `warband/assets/constants/`:
   from WB-066 the spells): what each multiplies, adds and drains, how long
   it lasts, whether a machine can take it, whether a heal ends it. A row is
   the whole of a kind; the rule that lays it on names it (see below).
+- `spells.toml` — the three levels of magic the Mage Tower researches (their
+  price and time, and the aether and cooldown of their spells), the nine spells
+  (what each lays, ends, strikes and brings) and what a spell summons (WB-066,
+  [below](#spellstoml)).
 - `behavior.toml` — formation marching, creature camps, crowd
   spacing, how far an idle unit chases.
 
@@ -67,7 +71,7 @@ bounds, the pathfinder's budgets and cadence, the seats, and the alert
 cooldown — planner internals and protocol, not balance. `behavior.toml`
 names the boundary at its top.
 
-Restart after editing. The simulation reads all nine files once at startup,
+Restart after editing. The simulation reads all ten files once at startup,
 validates them, and builds its typed rule tables. File edits cannot affect an
 already launched game, even if another table is imported later. No generator
 or duplicate Python catalogue needs updating.
@@ -117,6 +121,24 @@ rival's units in its sight, so a kind that only research lays on would tell
 that research: until the match is decided, the authority sends
 `bloodlust_rage` to the other seats as `rage` (`authority.STRANGER_KINDS`), and
 a new kind like it gets a row there.
+
+### spells.toml
+
+WB-066's magic (`docs/warband-magic.md`). `far` is how many times the plain
+aether and cooldown a cast costs beyond every finished vault's reach (at least
+1). `[levels.I]`, `[levels.II]` and `[levels.III]` are required whole: `gold`,
+`lumber` and `time` are what researching a spell of that level costs (every
+spell of a level is priced alike, and one row says so), `requires` names what
+it waits for from `upgrades.toml` besides a spell of the level below (the Keep
+at level II), `aether` and `cooldown` are the price of casting it, and the
+cooldown must be a whole number of simulation steps. Every level must have a
+spell. `[spells.*]` must hold all nine spells, each with `level`, `name`,
+`card`, `hotkey`, `summary`, `radius` (positive) and `touches` (`own`, `rivals`
+or `all`); `lays` and `cleanses` must name rows of `buffs.toml`; `edge` may not
+exceed `damage`; `summons` and `count` come together and name a
+`[summons.*]` row. A `[summons.*]` row is a `units.toml` row (the same fields
+and validation) with a positive `lifetime`. `buffs.toml`'s `roots = true` is a
+kind that holds its bearer where it stands (Entangle's).
 
 To *try* a price before committing to it, skip the files: a `scale:` variant
 patches the numbers in every worker for one league — see below.

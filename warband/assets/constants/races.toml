@@ -36,6 +36,7 @@ stables = { name = "Stables", card = "Stables", summary = "Trains knights and gr
 workshop = { name = "Workshop", card = "Workshop", summary = "Builds catapults and flying machines; siege upgrades" }
 church = { name = "Church", card = "Church", summary = "Trains clerics; blesses their healing" }
 vault = { name = "Arcane Vault", card = "Vault", summary = "Draws a rift's aether; holds {store}, reaches {reach} tiles" }
+mage_tower = { name = "Mage Tower", card = "Arcanum", summary = "Researches spells, cast with aether" }
 
 [human.upgrades]
 keep = { name = "Keep", card = "Keep" }
@@ -69,6 +70,7 @@ stables = { name = "Kennels", card = "Kennels", summary = "Trains ogres; Plunder
 workshop = { name = "Siege Yard", card = "Yard", summary = "Builds catapults, zeppelins and sappers; siege upgrades" }
 church = { name = "Altar", card = "Altar", summary = "Trains shamans" }
 vault = { name = "Spirit Cage", card = "Cage", summary = "Cages a rift's aether; holds {store}, reaches {reach} tiles" }
+mage_tower = { name = "Spirit Lodge", card = "Spirits", summary = "Calls up spells, cast with aether" }
 
 [orc.upgrades]
 keep = { name = "Stronghold", card = "Stronghold" }
@@ -102,6 +104,7 @@ stables = { name = "Stag Pens", card = "Pens", summary = "Trains stag knights" }
 workshop = { name = "Siege Bower", card = "Bower", summary = "Builds ballistae and gliders; siege upgrades" }
 church = { name = "Moonwell", card = "Moonwell", summary = "Trains druids and treants" }
 vault = { name = "Moon Reliquary", card = "Relic", summary = "Gathers a rift's aether; holds {store}, reaches {reach} tiles" }
+mage_tower = { name = "Starwell Spire", card = "Starwell", summary = "Draws down spells, cast with aether" }
 
 [elf.upgrades]
 keep = { name = "Moonspire", card = "Moonspire" }
@@ -136,6 +139,7 @@ stables = { name = "Beast Pens", card = "Pens", summary = "Trains bear riders" }
 workshop = { name = "Engine Works", card = "Engines", summary = "Builds mortars and gyrocopters; siege, Blasting Powder" }
 church = { name = "Rune Shrine", card = "Shrine", summary = "Trains runepriests and rune golems" }
 vault = { name = "Rune Vault", card = "Vault", summary = "Binds a rift's aether; holds {store}, reaches {reach} tiles" }
+mage_tower = { name = "Rune Tower", card = "Runes", summary = "Carves spells, cast with aether" }
 
 [dwarf.upgrades]
 keep = { name = "Stonehold", card = "Stonehold" }

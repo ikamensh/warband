@@ -1199,6 +1199,8 @@ def _building_body(building_type: BuildingType, player: int, race: Race, m: Mate
         return mesh
     if building_type is BuildingType.VAULT:
         return _vault(race, m, team)
+    if building_type is BuildingType.MAGE_TOWER:
+        return _mage_tower(race, m, team)
     raise ValueError(building_type)
 
 
@@ -1206,6 +1208,12 @@ def _building_body(building_type: BuildingType, player: int, race: Race, m: Mate
 AETHER = (170, 104, 240)
 AETHER_LIGHT = (224, 196, 255)
 AETHER_DEEP = (104, 52, 170)
+#: Each spell's ink (WB-066): the glow and burst where it lands, its ring while it is aimed, its button's rim while armed.
+SPELL_INKS: dict[str, tuple[int, int, int]] = {
+    "haste": (150, 205, 255), "mend": (110, 240, 130), "flame_strike": (255, 140, 40), "stoneskin": (206, 200, 190),
+    "entangle": (176, 132, 64), "wither": (176, 196, 84), "meteor": (255, 120, 40), "summon": (184, 120, 250),
+    "battle_fury": (240, 56, 44),
+}
 
 
 def _chain(start: r3.Vec3, end: r3.Vec3, color: Color, links: int = 5, radius: float = 0.03) -> Mesh:
@@ -1310,6 +1318,91 @@ def _vault(race: Race, m: Materials, team: Color) -> Mesh:
     return mesh + case
 
 
+
+
+def _crystal_crown(z: float, size: float) -> Mesh:
+    """A crystal of aether hanging over a tower: two pyramids base to base, the upper one lit, a core of light inside."""
+    mesh = r3.pyramid((0, 0, z), (size, size), size * 1.3, AETHER)
+    mesh += r3.pyramid((0, 0, z), (size, size), -size * 0.95, AETHER_DEEP)
+    mesh += r3.pyramid((0, 0, z + 0.02), (size * 0.5, size * 0.5), size * 0.9, AETHER_LIGHT)
+    return r3.rotate_z(mesh, 45)
+
+
+def _mage_tower(race: Race, m: Materials, team: Color) -> Mesh:
+    """The Mage Tower (WB-066), 2x2: a tall tower crowned with aether, a crystal floating over its top held by prongs.
+    Each race raises it its own way: a round stone tower gold-banded under its crown (Mage Tower), a lashed log tower
+    with bone horns cradling a ball of aether (Spirit Lodge), a white spire in a ring of leaves (Starwell Spire), a
+    square stone tower banded in copper, the light showing in its cut runes (Rune Tower).  Its plinth is banded in the
+    team's colour and a pennant flies from its top (the orcs hang a banner on their logs)."""
+    mesh = _yard(2, (140, 128, 156))
+    if race is Race.ORC:
+        for i in range(10):  # lashed logs, a ring of them leaning in a little
+            a = i * math.tau / 10
+            mesh += _timber((0.52 * math.cos(a), 0.52 * math.sin(a), 0.0), (0.4 * math.cos(a), 0.4 * math.sin(a), 2.0), 0.1,
+                            m.wood if i % 2 else m.wood_dark, sides=5)
+        for z in (0.5, 1.2, 1.8):
+            mesh += r3.cylinder((0, 0, z), 0.5 - z * 0.05, 0.07, (150, 118, 84), sides=10)  # hide lashings
+        mesh += r3.cylinder((0, 0, 2.0), 0.46, 0.1, m.wood_dark, sides=10)
+        for a in (math.pi / 4, 3 * math.pi / 4, 5 * math.pi / 4, 7 * math.pi / 4):  # bone horns curling up round the aether
+            base = (0.36 * math.cos(a), 0.36 * math.sin(a), 2.08)
+            mesh += _timber(base, (0.3 * math.cos(a), 0.3 * math.sin(a), 2.55), 0.06, BONE, sides=4)
+            mesh += r3.cone((0.3 * math.cos(a), 0.3 * math.sin(a), 2.55), 0.06, 0.25, BONE, sides=4)
+        mesh += r3.sphere((0, 0, 2.55), 0.26, AETHER, rings=5, sides=10)
+        mesh += r3.sphere((-0.05, 0.05, 2.63), 0.12, AETHER_LIGHT, rings=3, sides=7)
+        mesh += _banner(0, 0.53, 1.0, 0.34, 0.5, team)
+        mesh += _pennant(0.45, 0.2, 2.1, 0.5, team)
+        return mesh
+    if race is Race.ELF:
+        # A slender white spire rising out of a ring of living wood, the star crystal above its tip.
+        mesh += r3.cylinder((0, 0, 0.0), 0.62, 0.22, m.stone_dark, sides=10)
+        mesh += r3.cylinder((0, 0, 0.22), 0.42, 1.6, m.plaster, sides=10)
+        mesh += r3.cone((0, 0, 1.82), 0.42, 0.9, m.stone, sides=10)
+        for i in range(6):
+            a = i * math.tau / 6 + 0.3
+            mesh += r3.sphere((0.5 * math.cos(a), 0.5 * math.sin(a), 0.42), 0.2, LEAF, rings=3, sides=6)
+        for z in (0.8, 1.35):
+            mesh += r3.cylinder((0, 0, z), 0.43, 0.05, (228, 232, 244), sides=10)
+        mesh += _arch(0, 0.41, 0.22, 0.18, 0.42, m.wood_dark)
+        mesh += r3.cylinder((0, 0, 0.15), 0.63, 0.08, team, sides=10)  # whose it is: the plinth banded in its colour
+        mesh += _pennant(0.3, -0.2, 1.75, 0.5, team)
+        mesh += _crystal_crown(2.92, 0.36)
+        return mesh
+    if race is Race.DWARF:
+        # Square rune-cut stone, banded in copper, a flat top with four copper prongs holding the crystal.
+        mesh += r3.box((0, 0, 0.14), (1.28, 1.28, 0.28), m.stone_dark)
+        mesh += r3.box((0, 0, 1.12), (1.0, 1.0, 1.7), m.stone)
+        for z in (0.5, 1.2, 1.94):
+            mesh += r3.box((0, 0, z), (1.05, 1.05, 0.08), COPPER)
+        for x in (-0.24, 0.0, 0.24):
+            mesh += r3.facing(_facing_quad((x, 0.505, 1.56), 0.04, 0.18 if x else 0.26), AETHER_LIGHT, VIEW)
+        for y in (-0.24, 0.24):
+            mesh += r3.facing([(0.505, y - 0.04, 0.72), (0.505, y + 0.04, 0.72), (0.505, y + 0.04, 1.02), (0.505, y - 0.04, 1.02)], AETHER, VIEW)
+        mesh += r3.box((0, 0, 2.02), (1.12, 1.12, 0.12), m.stone_dark)
+        for x in (-0.4, 0.4):
+            for y in (-0.4, 0.4):
+                mesh += _timber((x, y, 2.08), (x * 0.45, y * 0.45, 2.55), 0.04, COPPER, sides=4)
+        mesh += r3.box((0, 0, 0.22), (1.31, 1.31, 0.08), team)  # whose it is: the plinth banded in its colour
+        mesh += _pennant(-0.44, 0.44, 2.08, 0.45, team)
+        mesh += _crystal_crown(2.62, 0.36)
+        return mesh
+    # A round stone tower, gold-banded, windows up its face, a gold parapet and four prongs holding the crystal.
+    mesh += r3.cylinder((0, 0, 0.0), 0.7, 0.24, m.stone_dark, sides=10)
+    mesh += r3.cylinder((0, 0, 0.24), 0.52, 1.9, m.stone, sides=10)
+    for z in (0.9, 1.55):
+        mesh += r3.cylinder((0, 0, z), 0.535, 0.06, GOLD, sides=10)
+    mesh += r3.cylinder((0, 0, 2.14), 0.62, 0.16, m.stone_dark, sides=10)
+    for i in range(10):
+        a = i * math.tau / 10
+        mesh += r3.box((0.58 * math.cos(a), 0.58 * math.sin(a), 2.36), (0.14, 0.14, 0.14), m.stone)
+    for x in (-0.22, 0.22):
+        mesh += _arch(x, 0.49, 1.2, 0.09, 0.3, AETHER_DEEP)
+    mesh += _arch(0, 0.5, 0.24, 0.22, 0.5, m.wood_dark)
+    mesh += r3.cylinder((0, 0, 0.16), 0.71, 0.08, team, sides=10)  # whose it is: the plinth banded in its colour (a banner on the
+    mesh += _pennant(0.42, -0.3, 2.44, 0.5, team)  # tall round wall sorts behind it), a pennant on the parapet
+    for a in (math.pi / 4, 3 * math.pi / 4, 5 * math.pi / 4, 7 * math.pi / 4):
+        mesh += _timber((0.4 * math.cos(a), 0.4 * math.sin(a), 2.3), (0.18 * math.cos(a), 0.18 * math.sin(a), 2.72), 0.035, GOLD, sides=4)
+    mesh += _crystal_crown(2.82, 0.38)
+    return mesh
 
 
 def _dressing(building_type: BuildingType, race: Race, team: Color) -> Mesh:
@@ -1719,7 +1812,7 @@ def _posed(mesh: Mesh, frame: str, unit_type: UnitType) -> Mesh:
     lifts its hooves); a catapult recoils instead of lunging; the figures in :data:`_SELF_POSED` keep their frame (a
     flying machine's frames turn its rotor or beat its wings, :func:`_flyer`; a race's own unit swings its own limbs)."""
     pose = POSES.get(frame)
-    if pose is None or unit_type in _SELF_POSED:  # a flyer's body stays level in the air; a race's own unit moves its own limbs
+    if pose is None or unit_type in _SELF_POSED:  # a flyer's body stays level in the air; a race's own unit and an elemental move their own limbs
         return mesh
     if unit_type is UnitType.CATAPULT:
         return _shift(mesh, (0.0, {"strike": -0.06, "follow": -0.03}.get(frame, 0.0), 0.0))
@@ -1737,7 +1830,7 @@ def _posed(mesh: Mesh, frame: str, unit_type: UnitType) -> Mesh:
 
 def _unit(unit_type: UnitType, player: int, frame: str, carrying: Resource | None, race: Race = Race.HUMAN) -> Mesh:
     mesh = _posed(_unit_mesh(unit_type, player, frame, carrying, race), frame, unit_type)
-    if unit_type not in _OWN_PROPORTIONS:  # machines are built, not grown, and a race's own unit is modelled as it is
+    if unit_type not in _OWN_PROPORTIONS:  # built or summoned, not grown, and a race's own unit is modelled as it is
         mesh = _stretch(mesh, *LOOKS[race].stretch)
     return r3.scale(mesh, UNIT_SCALE)
 
@@ -2424,12 +2517,14 @@ def _rune_golem(player: int, frame: str, race: Race) -> Mesh:
 
 
 #: Figures that move their own limbs through a blow, and are not leaned, twisted or lunged by :data:`POSES`: a flyer stays
-#: level in the air, and a race's own walker keeps its feet planted (the whole-figure lunge hopped them off the anchor).
+#: level in the air, a race's own walker keeps its feet planted (the whole-figure lunge hopped them off the anchor), and
+#: a summoned elemental hovers and swings its own fists (:func:`_elemental`).
 _SELF_POSED: frozenset[UnitType] = frozenset({UnitType.FLYING_MACHINE, UnitType.GRYPHON, UnitType.SAPPER, UnitType.TREANT,
-                                              UnitType.RUNE_GOLEM})
-#: Each race's own unit is modelled at its own proportions: the race's stretch is not put on top.
+                                              UnitType.RUNE_GOLEM, UnitType.AETHER_ELEMENTAL})
+#: Each race's own unit is modelled at its own proportions, and so are what is built (the machines) or summoned (the
+#: elemental), no race's: the race's stretch is not put on top.
 _OWN_PROPORTIONS: frozenset[UnitType] = frozenset({UnitType.CATAPULT, UnitType.FLYING_MACHINE, UnitType.GRYPHON, UnitType.SAPPER,
-                                                    UnitType.TREANT, UnitType.RUNE_GOLEM})
+                                                    UnitType.TREANT, UnitType.RUNE_GOLEM, UnitType.AETHER_ELEMENTAL})
 
 
 def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource | None, race: Race = Race.HUMAN) -> Mesh:
@@ -2447,6 +2542,8 @@ def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource 
         return _siege(player, frame, race)
     if unit_type is UnitType.CLERIC:
         return _healer(player, frame, race)
+    if unit_type is UnitType.AETHER_ELEMENTAL:
+        return _elemental(player, frame)
     if unit_type is UnitType.GRYPHON:
         return _gryphon(player, frame, race)
     if unit_type is UnitType.SAPPER:
@@ -2456,6 +2553,39 @@ def _unit_mesh(unit_type: UnitType, player: int, frame: str, carrying: Resource 
     if unit_type is UnitType.RUNE_GOLEM:
         return _rune_golem(player, frame, race)
     raise ValueError(unit_type)
+
+
+#: An Aether Elemental's hover over the ground, frame by frame (model units): it bobs as it goes, sinks into a blow.
+_HOVER = {"walk1": 0.04, "walk2": 0.07, "walk3": 0.04, "walk4": 0.01, "wind": 0.08, "strike": 0.0, "follow": 0.02, "recover": 0.05}
+#: Where its striking fist is, from its resting place (model units, +y ahead): drawn back, driven in, coming home.
+_FIST = {"wind": (0.04, -0.16, 0.12), "strike": (-0.06, 0.34, -0.04), "follow": (-0.04, 0.26, -0.02), "recover": (0.0, 0.1, 0.0),
+         "walk1": (0.0, 0.05, 0.0), "walk3": (0.0, -0.05, 0.0)}
+
+
+def _elemental(player: int, frame: str) -> Mesh:
+    """An Aether Elemental (WB-066): aether given a body by a spell, the same for every race.  A diamond of violet crystal
+    for a torso, hovering over its shadow; a lit crystal for a head with two points of light for eyes; two heavy fists
+    at its sides, the right one driven forward in a blow.  Whose it is shows as boldly as on any painted unit, since
+    both sides can summon them into one melee: the fists and the shoulders' shards are its caster's colour, and a thin
+    band of it girds the crystal where it is widest."""
+    team = team_color(player)
+    lift = 0.2 + _HOVER.get(frame, 0.05)
+    mesh = _shadow(0.3)
+    torso = r3.pyramid((0, 0, lift + 0.4), (0.44, 0.34), 0.46, AETHER) + r3.pyramid((0, 0, lift + 0.4), (0.44, 0.34), -0.4, AETHER_DEEP)
+    torso += r3.pyramid((0, 0.02, lift + 0.42), (0.2, 0.16), 0.3, AETHER_LIGHT)  # the light at its heart
+    mesh += torso
+    mesh += r3.box((0, 0, lift + 0.4), (0.46, 0.36, 0.06), team)  # the caster's colour, where the crystal is widest
+    head = lift + 0.92
+    mesh += r3.rotate_z(r3.pyramid((0, 0, head), (0.2, 0.2), 0.18, AETHER_LIGHT) + r3.pyramid((0, 0, head), (0.2, 0.2), -0.14, AETHER), 45)
+    for x in (-0.045, 0.045):
+        mesh += r3.box((x, 0.1, head + 0.02), (0.03, 0.02, 0.03), (255, 255, 255))
+    for side in (-1, 1):
+        shift = _FIST.get(frame, (0.0, 0.0, 0.0)) if side > 0 else (0.0, -_FIST.get(frame, (0.0, 0.0, 0.0))[1] * 0.3, 0.0)
+        fx, fy, fz = side * 0.36 + shift[0] * side, 0.06 + shift[1], lift + 0.36 + shift[2]
+        mesh += r3.cone((side * 0.2, 0.0, lift + 0.56), 0.08, -0.24, team, sides=4)  # a shard of a shoulder
+        mesh += r3.sphere((fx, fy, fz), 0.13, team, rings=3, sides=6)
+        mesh += r3.sphere((fx - side * 0.03, fy + 0.04, fz + 0.04), 0.06, AETHER_LIGHT, rings=2, sides=5)  # the aether in it
+    return mesh
 
 
 def facing_index(angle: float) -> int:
@@ -2567,7 +2697,10 @@ RESTYLED = Path(__file__).resolve().parents[1] / "assets" / "restyled"
 #: when (``YYYY-MM-DD``): procedural art is a debt carried on purpose, never a default.  A unit type a race fields, or
 #: a creature, with neither a painted sheet nor a row here fails ``tests/warband/test_painted_sheets.py``; so does a
 #: row for one that is painted.  ``docs/adding-a-unit.md`` ("Its art") is how a unit leaves it.
-UNPAINTED_UNITS: dict[UnitType, tuple[str, str]] = {}
+UNPAINTED_UNITS: dict[UnitType, tuple[str, str]] = {
+    UnitType.AETHER_ELEMENTAL: ("summoned by a spell, raceless and the same for every caster: tools/restyle.py paints a race's "
+                                "soldiers and the creatures, and has no subject for a unit no race fields (WB-066)", "2026-09-25"),
+}
 #: An unarmed flyer's frames that are one picture: it strikes no blow, so its stand serves the attack frames too
 #: (:func:`_flyer` turns its rotor or beats its wings in the walk frames alone), rendered or painted once rather than
 #: five times a facing.
@@ -2651,7 +2784,9 @@ def stride_heads(race: Race, unit_type: UnitType, carrying: Resource | None) -> 
 #: each look (a new one with ``tools/restyle.py --buildings --add``) or stands here, drawn low-poly beside its painted
 #: neighbours; a sheet is stale only when it lacks a building not listed.  ``tests/warband/test_painted_sheets.py``
 #: fails for a building with neither, and for a row whose building is painted.
-UNPAINTED: dict[BuildingType, tuple[str, str]] = {}
+UNPAINTED: dict[BuildingType, tuple[str, str]] = {
+    BuildingType.MAGE_TOWER: ("painted after WB-066 lands, by the Spell UI and vault graphics session", "2026-09-25"),
+}
 
 
 @lru_cache(maxsize=None)
@@ -2868,6 +3003,31 @@ def _mote(size: int) -> Image.Image:
     return Image.alpha_composite(halo, core)
 
 
+def _flame(size: int) -> Image.Image:
+    """A lick of flame (a burning unit's, WB-066): orange about a yellow core, pointed at the top, soft at its edge."""
+    img = Image.new("RGBA", (size, size * 2), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    w, h = size, size * 2
+    draw.polygon([(w * .5, h * .02), (w * .86, h * .62), (w * .7, h * .92), (w * .3, h * .92), (w * .14, h * .62)], fill=(255, 128, 36, 230))
+    draw.polygon([(w * .5, h * .34), (w * .7, h * .72), (w * .5, h * .9), (w * .3, h * .72)], fill=(255, 226, 120, 255))
+    return img.filter(ImageFilter.GaussianBlur(size * 0.06))
+
+
+def _meteor(size: int) -> Image.Image:
+    """A Meteor as it falls (WB-066): a dark rock in a blaze, its fire streaming up behind it."""
+    img = Image.new("RGBA", (size, size * 2), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    w, h = size, size * 2
+    draw.polygon([(w * .18, h * .02), (w * .82, h * .02), (w * .78, h * .6), (w * .22, h * .6)], fill=(255, 120, 40, 150))
+    draw.polygon([(w * .32, h * .08), (w * .68, h * .08), (w * .66, h * .62), (w * .34, h * .62)], fill=(255, 214, 110, 200))
+    fire = img.filter(ImageFilter.GaussianBlur(size * 0.08))
+    draw = ImageDraw.Draw(fire)
+    draw.ellipse([w * .2, h * .52, w * .8, h * .82], fill=(255, 150, 60, 255))
+    draw.ellipse([w * .27, h * .56, w * .73, h * .8], fill=(96, 84, 76, 255))
+    draw.ellipse([w * .34, h * .59, w * .5, h * .67], fill=(150, 138, 126, 255))
+    return fire
+
+
 def _venom(size: int) -> Image.Image:
     """A spider's spit in the air: a violet droplet with a pale core.  Violet is the one strong hue no
     player wears (Azure, Crimson, Viridian, Amber), which is why the creatures' venom is that colour."""
@@ -2988,3 +3148,14 @@ def register_static(game: Game) -> None:
     assets.image_from_pil("glow.rage", _glow(px * 2, 0.34, (255, 40, 16, 255), 0.1))  # the red about an enraged unit
     assets.image_from_pil("drip", _glow(max(6, int(px * 0.3)), 0.42, (176, 12, 18, 255), 0.05))  # what a bleeding unit drips
     assets.image_from_pil("drip.pale", _glow(max(6, int(px * 0.3)), 0.42, (84, 74, 70, 255), 0.05))  # the same with the blood setting off
+    # The spells' (WB-066): the glow behind a mended, a stoneskinned or a furious unit, a withering mist, a burn's
+    # flames, and the burst where a spell lands, tinted by its spell.
+    assets.image_from_pil("glow.mend", _glow(px * 2, 0.32, (90, 240, 120, 255), 0.12))
+    assets.image_from_pil("glow.stone", _glow(px * 2, 0.3, (170, 164, 156, 255), 0.1))
+    assets.image_from_pil("glow.fury", _glow(px * 2, 0.36, (255, 30, 24, 255), 0.1))
+    assets.image_from_pil("glow.wither", _glow(px * 2, 0.34, (120, 130, 60, 255), 0.2))
+    assets.image_from_pil("flame", _flame(max(8, int(px * 0.5))))
+    for spell, ink in SPELL_INKS.items():  # where a spell lands, a glow of its own ink
+        assets.image_from_pil(f"glow.spell.{spell}", _glow(px * 4, 0.32, (*ink, 255), 0.16))
+    assets.image_from_pil("glow.aether", _glow(px * 2, 0.3, (*AETHER, 255), 0.14))  # about a summoned unit: aether given a body
+    assets.image_from_pil("meteor", _meteor(int(px * 1.2)))

@@ -84,12 +84,12 @@ def test_a_vault_lost_spills_what_no_longer_fits_at_once() -> None:
     world = rift_world()
     kept = world.place_building(0, BuildingType.VAULT, RIFTS[0])
     lost = world.place_building(0, BuildingType.VAULT, RIFTS[1])
-    world.players[0].aether = 150  # staged: a full two-vault store, as drawing it would take five minutes
+    world.players[0].aether = world.aether_cap(0)  # staged: a full two-vault store, as drawing it would take five minutes
     lost.hp = 0
     world.step()
     assert world.players[0].aether == AETHER_STORE
     spilled = [e for e in world.take_events() if e.kind == "spilled"]
-    assert [(e.player, e.amount) for e in spilled] == [(0, 50)]
+    assert [(e.player, e.amount) for e in spilled] == [(0, AETHER_STORE)]
     kept.hp = 0
     world.step()
     assert world.players[0].aether == 0 and world.aether_cap(0) == 0

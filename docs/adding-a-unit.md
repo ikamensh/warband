@@ -17,8 +17,8 @@ card and the tech tree read the row.
 
 ## Its art
 
-Every unit type a race fields, and every creature, wears a painted sheet per
-race (a creature one sheet), recoloured per team; the low-poly render is its
+Every unit type a race fields or a spell summons, and every creature, wears a
+painted sheet per race (a creature one sheet), recoloured per team; the low-poly render is its
 stand-in. `tests/warband/test_painted_sheets.py` fails for one with neither a
 sheet nor a row in `textures.UNPAINTED_UNITS`, `{unit type: (reason, date)}`,
 and for a row whose unit is painted. A row is written only when the painters
@@ -119,8 +119,12 @@ rejects gets a new seed in `RESEEDED` or a new sentence; never a synthesised
 stand-in. What the four own units of WB-068 taught:
 
 - Add a family at the end of `FAMILIES`: the tool's seeds count from a
-  family's place among the bodies, so one put before the others reseeds
-  every family after it and regenerates their pieces.
+  family's place among the bodies (its slot), so one put before the others
+  reseeds every family after it and regenerates their pieces. A family whose
+  pieces were generated on a branch while another landed ahead of it on main
+  keeps the slot it was generated in, in `SEED_SLOTS` (the Aether Elemental's,
+  slot 6); `test_a_refresh_remakes_no_committed_piece` fails when a committed
+  piece's prompt or seed is no longer what the tool would ask for.
 - A death cue lasts 0.6 to 3.5 s (`test_deaths.py`), and a `collapse`-shaped
   stage keeps up to 2.5 s, so two of them end to end are too long: start the
   later one under the other's tail (a negative `gap` with `after_end`), or cut

@@ -18,6 +18,7 @@
 #   living         only the living take it: never a machine (units.toml `living`)
 #   heal_ends      a healer's cast ends it
 #   spares         the armour classes it never lands on (unarmoured, light, heavy)
+#   roots          it cannot walk while it lasts: it still turns and strikes, and nobody shoves it
 
 [defaults]
 damage = 1.0
@@ -27,6 +28,7 @@ armor = 0
 hp_per_second = 0.0
 living = true
 heal_ends = false
+roots = false
 
 # An orc soldier hurt below half health, renewed every step it stays there: so it
 # runs its full ten seconds after a Shaman mends it, and the orc player wants the
@@ -57,3 +59,58 @@ hp_per_second = -1.0
 duration = 5.0
 heal_ends = true
 spares = ["heavy"]
+
+# -- What the spells lay on (spells.toml `lays`, WB-066) -----------------------------------------------------------
+# Magic quickens, stiffens and saps wheels and timber as readily as flesh; only what mends life spares a machine, as a
+# healer's cast does.
+
+[haste]
+name = "Haste"
+summary = "Hasted: 40 % faster, blows a quarter quicker"
+speed = 1.4
+blow = 0.8
+duration = 10.0
+living = false
+
+[mend]
+name = "Mend"
+summary = "Mending: 5 hit points a second"
+hp_per_second = 5.0
+duration = 6.0
+
+[burn]
+name = "Burning"
+summary = "Burning: loses 2 hit points a second through armour"
+hp_per_second = -2.0
+duration = 4.0
+living = false
+
+[stoneskin]
+name = "Stoneskin"
+summary = "Skin of stone: +4 armour"
+armor = 4
+duration = 15.0
+living = false
+
+[entangled]
+name = "Entangled"
+summary = "Held by roots: cannot move, still strikes"
+roots = true
+duration = 4.0
+living = false
+
+[withered]
+name = "Withered"
+summary = "Withered: 30 % less damage, 20 % slower"
+damage = 0.7
+speed = 0.8
+duration = 12.0
+living = false
+
+[battle_fury]
+name = "Battle Fury"
+summary = "In a battle fury: 40 % more damage, 20 % faster"
+damage = 1.4
+speed = 1.2
+duration = 12.0
+living = false

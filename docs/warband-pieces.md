@@ -16,7 +16,8 @@ pieces (`warband/audio/pieces.py` reads them):
   ground, the body landing and the gear settling. The bodies have their own: a catapult's
   timbers splinter, a rope snaps and the frame crashes; a flying machine sputters, whistles
   down and crashes as its body lands; a wolf yelps and falls, a spider screeches and crunches,
-  a troll bellows and falls heavily, a golem's stone grinds and breaks and the rubble settles.
+  a troll bellows and falls heavily, a golem's stone grinds and breaks and the rubble settles,
+  an Aether Elemental's crystal shatters and its light fades (WB-066; the same when its time runs out).
   Each race's own unit (WB-068) has one too: a gryphon screeches, its wings flail and it and
   its rider hit the ground as the screech dies away; a goblin sapper has two ends: spent, its keg
   goes up, a fuse's fizz and a powder blast a tenth of a second on with the debris raining down
@@ -31,8 +32,8 @@ pieces (`warband/audio/pieces.py` reads them):
   player is, and an orc's catapult in splintering timber.
 - `warband/audio/presence.py`, from `warband/assets/presence/`: a machine answers its player's
   order (a catapult creaks and winches, a flying machine whirrs; a gryphon cries, a sapper's
-  fuse fizzes or it giggles, a treant creaks, a rune golem's runes hum), once a family however
-  many were ordered and not again within 1.5 s; a creature is heard as its camp rouses (a wolf's
+  fuse fizzes or it giggles, a treant creaks, a rune golem's runes hum, an elemental hums), once
+  a family however many were ordered and not again within 1.5 s; a creature is heard as its camp rouses (a wolf's
   snarl, a spider's hiss, a troll's roar, a golem's stony rumble), once a kind of guard each
   time it wakes, as the player first sees a guard of that kind: a camp woken from its far side
   roars as its guards charge into sight, one nobody of the player's sees wakes in silence.

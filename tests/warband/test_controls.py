@@ -123,7 +123,7 @@ def contexts(scene: GameScene):
 def test_every_card_gives_each_command_a_key_of_its_own(game, controls: str, race: Race) -> None:
     """In each scheme and for each race: every command of every card has a key, no two share one, and in Grid none
     on the grid is a key the scheme keeps for its global actions (they sit beside the grid); the row below the grid,
-    which only the Build catalogue reaches, takes the keys beside it in order."""
+    which only the Build catalogue and the Mage Tower's card reach, takes the keys beside it in order."""
     scene = match(game, controls, race)
     scheme = SCHEMES[controls]
     for name, bring_up in contexts(scene):
@@ -138,14 +138,15 @@ def test_every_card_gives_each_command_a_key_of_its_own(game, controls: str, rac
             on_grid = {c.hotkey.lower() for c in scene.card if c.hotkey and c.slot < len(GRID_KEYS)}
             below = [(c.slot, c.hotkey.lower()) for c in scene.card if c.hotkey and c.slot >= len(GRID_KEYS)]
             assert on_grid <= set(GRID_KEYS) and not on_grid & set(scheme.keys.values()), (name, keys)
-            assert all(key == GRID_BELOW[slot - len(GRID_KEYS)] for slot, key in below) and (not below or name == "build"), (name, below)
+            # The Build catalogue's eleventh building and the Mage Tower's Cancel, under its three levels of spells (WB-066).
+            assert all(key == GRID_BELOW[slot - len(GRID_KEYS)] for slot, key in below) and (not below or name in ("build", "mage_tower")), (name, below)
 
 
 @pytest.mark.parametrize("controls", list(SCHEMES))
 def test_a_card_command_answers_to_its_key(game, controls: str) -> None:
     """The key a button shows is the key it answers to: each of the Build catalogue's buildings starts its placement."""
     scene = match(game, controls)
-    stand(scene, BuildingType.BARRACKS, BuildingType.BLACKSMITH)  # every building open
+    stand(scene, BuildingType.BARRACKS, BuildingType.BLACKSMITH, BuildingType.VAULT)  # every building open
     scene.open_catalogue("build")
     for command in list(scene.card):
         press(game, command.key)
@@ -168,8 +169,9 @@ def test_grid_keys_go_by_the_card_position(game) -> None:
     assert scene.pending == "attack"
     press(game, "escape")
     press(game, "d")
-    # Ten buildings: the grid's nine, and the vault on the row below it, which takes R, the key beside the grid.
-    assert scene.catalogue == "build" and [c.hotkey for c in scene.card] == [k.upper() for k in GRID_KEYS + GRID_BELOW[:1]]
+    # Eleven buildings: the grid's nine, then the vault and the Mage Tower on the row below it, which take R and F, the keys
+    # beside the grid.
+    assert scene.catalogue == "build" and [c.hotkey for c in scene.card] == [k.upper() for k in GRID_KEYS + GRID_BELOW[:2]]
     press(game, "q")
     assert scene.placing is BuildingType.FARM
     press(game, "t")  # beside the grid: the Train catalogue, whatever the card shows

@@ -90,6 +90,9 @@ FAMILIES: dict[str, Family] = {
     # the wild golem never makes.
     "rune_golem": Family((Stage("grind", 0.85), Stage("rubble", 0.6, gap=-0.9, after_end=True, rotate=1), Stage("runes", 0.55, gap=0.1)),
                          material="stone", presence="hum"),
+    # Aether given a body (WB-066's summoned elemental): struck down or its time run out, its crystal shatters and the
+    # light it was fades out under the falling shards.  A blow on it lands on something as hard as stone.
+    "aether_elemental": Family((Stage("shatter", 0.8), Stage("fade", 0.55, gap=0.12, rotate=1)), material="stone", presence="hum"),
 }
 RACE_FAMILIES = frozenset(race.value for race in Race)
 

@@ -362,6 +362,42 @@
    "spec": "f172b50905baae5b",
    "length": 1.152,
    "sha256": "08f90064be12ff214087cdb816ed97b89b96cc8f23e1cb539fd10828c2b4ae81"
+  },
+  "aether_elemental_hum_0": {
+   "name": "aether_elemental_hum_0",
+   "prompt": "a low resonant hum of magical energy swelling and fading, a crystal ringing, fantasy sound effect, close, dry, no music, no melody, no reverb, no voice",
+   "seconds": 2.0,
+   "seed": 30600,
+   "steps": 8,
+   "shape": "collapse",
+   "peak": 0.8,
+   "spec": "0cf29ae10ecdcb28",
+   "length": 1.3,
+   "sha256": "af4dc1dd1020b99051c7563b8c7068deec65e6fa9d71813d0606a06ba77e6432"
+  },
+  "aether_elemental_hum_1": {
+   "name": "aether_elemental_hum_1",
+   "prompt": "a deep thrumming pulse of arcane power with a faint electric crackle, fantasy sound effect, close, dry, no music, no melody, no reverb, no voice",
+   "seconds": 2.0,
+   "seed": 30601,
+   "steps": 8,
+   "shape": "collapse",
+   "peak": 0.8,
+   "spec": "86b4959968b30cb5",
+   "length": 1.432,
+   "sha256": "9127f06309335f0d1b313c87a4c42d962f44c48e1cb010df528122cf8a3da3db"
+  },
+  "aether_elemental_hum_2": {
+   "name": "aether_elemental_hum_2",
+   "prompt": "a humming glowing crystal vibrates, a warm droning buzz, brief, fantasy sound effect, close, dry, no music, no melody, no reverb, no voice",
+   "seconds": 2.0,
+   "seed": 30602,
+   "steps": 8,
+   "shape": "collapse",
+   "peak": 0.8,
+   "spec": "4e9a1c46f3b87af5",
+   "length": 0.833,
+   "sha256": "d7a6f99b015e9301cb5cd44f06d2c4240808f17650f9024ef30bd586e97976e7"
   }
  }
 }

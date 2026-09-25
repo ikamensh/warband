@@ -6,7 +6,8 @@ the modifiers — Shift keeps going (it queues an order, places another building
 goes back one level, Ctrl (Cmd) with B, T, U, G or P reaches the settlement from anywhere — and a scheme
 decides which plain keys do what, and how long a mode lasts.  Ctrl+X is cancel mode in every scheme: a click takes
 back a plan, a site or a building's work, a box everything of the player's inside it (WB-065).  Ctrl with F, W, S, R, M
-and L gives the side's commands in every scheme: Fortify, Withdraw, Scout, Harass, Gold and Lumber (WB-061).
+and L gives the side's commands in every scheme: Fortify, Withdraw, Scout, Harass, Gold and Lumber (WB-061).  Alt (Option)
+with 1, 2 or 3 aims the side's spell of that level in every scheme (WB-066, ``warband.ui.spellbar``).
 
 * **Classic** — the letter of the name, as Warcraft II had it: A attack, F footman, B build.  B, T, U and G
   open the catalogues and set the assembly point whenever the card leaves the letter free.

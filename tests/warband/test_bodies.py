@@ -6,7 +6,10 @@ fails here until its body has a death of its own with two takes on disk, unless 
 decision :data:`SOLDIERS` records.  They walk the rules' own tables, so the day a unit type is added they try it.
 """
 
+import importlib.util
+import json
 import math
+from pathlib import Path
 import random
 
 import numpy as np
@@ -17,15 +20,16 @@ from sagaforge.synth import SAMPLE_RATE
 from warband.audio import bodies, deaths, pieces, presence, sound
 from warband.audio.bodies import FAMILIES, RACE_FAMILIES
 from warband.sim import camps
-from warband.sim.model import WILD, Event, World
-from warband.sim.rules import CAMP_WATCH, UNITS, BuildingType, Race, Terrain, UnitType
+from warband.sim.model import Event, World
+from warband.sim.rules import CAMP_WATCH, CREATURES, UNITS, BuildingType, Race, Terrain, UnitType
 from warband.ui.scene import ANSWER_GAP, ROUSE_GAP, GameScene
 from warband.ui.view import to_world
 
 #: The people of a race, who die in the voice of the race that fields them.  Adding a unit type here is the decision
 #: the protocol asks for: a rider on a beast, a walking tree, a construct or a machine is not one of them.
 SOLDIERS = frozenset({UnitType.PEASANT, UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT, UnitType.CLERIC})
-#: What is built rather than born: nothing mends it, or it is a siege engine.
+WILD = frozenset(CREATURES)
+#: What is built rather than born: nothing mends it, or it is a siege engine (an Aether Elemental is aether given a body).
 MACHINES = frozenset(kind for kind, info in UNITS.items() if not info.living or info.siege)
 
 
@@ -61,6 +65,22 @@ def test_no_creature_or_machine_is_one_of_a_races_people() -> None:
 def test_every_presence_has_takes_to_rotate() -> None:
     assert set(presence.KINDS) == {UNITS[kind].sound for kind in BODIES}
     assert all(presence.takes(family) >= 2 for family in presence.KINDS)
+
+
+def test_a_refresh_remakes_no_committed_piece() -> None:
+    """What ``tools/pieces.py`` asks for is what is on disk: every committed piece's spec (its prompt, seed and cut) is
+    the tool's, so ``refresh`` generates nothing and no piece is silently remade from another seed.  A body's seeds come
+    from its slot, its place among the families unless ``SEED_SLOTS`` keeps the one it was generated in (the Aether
+    Elemental's, made before WB-068's four families went in ahead of it)."""
+    spec = importlib.util.spec_from_file_location("pieces_tool", Path(__file__).resolve().parents[2] / "tools" / "pieces.py")
+    assert spec is not None and spec.loader is not None
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    for folder, wanted in tool.FOLDERS.items():
+        manifest = json.loads((pieces.ROOT / folder / "manifest.json").read_text())
+        recorded = {name: entry["spec"] for name, entry in manifest["pieces"].items()}
+        asked = {piece.name: piece.spec(manifest["generator"]) for piece in wanted()}
+        assert recorded == asked, (folder, sorted(name for name in recorded.keys() | asked.keys() if recorded.get(name) != asked.get(name)))
 
 
 def test_a_blow_lands_on_what_the_body_is_made_of() -> None:

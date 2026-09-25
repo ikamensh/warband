@@ -70,6 +70,7 @@ WEAPONS = {
     UnitType.ARCHER: "arrow", UnitType.CATAPULT: "stone", UnitType.CLERIC: "mote", BuildingType.TOWER: "arrow",
     UnitType.WOLF: "axe", UnitType.TROLL: "axe", UnitType.GOLEM: "hammer", UnitType.SPIDER: "arrow",
     UnitType.GRYPHON: "hammer", UnitType.SAPPER: "stone", UnitType.TREANT: "hammer", UnitType.RUNE_GOLEM: "hammer",
+    UnitType.AETHER_ELEMENTAL: "hammer",
 }
 
 

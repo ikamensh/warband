@@ -217,3 +217,36 @@ def test_long_tutorial_objective_fits_its_panel(tmp_path) -> None:
         assert_no_text_overlap(game, top_scene_only=True)
     finally:
         game.close()
+
+
+@pytest.mark.parametrize("size", [pytest.param(size, id=f"{size[0]}x{size[1]}", marks=() if size in ((1280, 800), SHORTEST) else pytest.mark.slow)
+                                  for size in SIZES])
+def test_a_tall_card_keeps_the_objectives_panel_off_its_top_row(size: tuple[int, int], tmp_path) -> None:
+    """The objectives panel and the card share the right edge.  The Build catalogue has four rows since the Aether Vault,
+    and the Mage Tower's spells as many, and under the tutorial's panel their top row was hidden (the farm the tutorial
+    asks for, level I's spells): a card reaching into the panel folds it to its heading, or where even that is in the
+    way it waits out of sight, and it opens again once the card is gone.  At 1280x800 it folds, at 1280x720 it waits."""
+    game = Game("Warband layout", backend="mock", resolution=size, theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        scene = new_game(seed=5, settings=dict(DEFAULT_SETTINGS, tutorial=True))
+        game.push(scene)
+        for _ in range(30):  # past the opening banner, which the panel waits for
+            game.tick(0.1)
+        assert scene.objectives.visible and scene.objectives_body.visible
+        world = scene.world
+        hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+        tower = world.place_building(scene.human, BuildingType.MAGE_TOWER, (hall.x + 6, hall.y + 6))
+        worker = next(u for u in world.player_units(scene.human) if u.is_worker)
+        for show, folds in ((lambda: (scene.select([worker.id]), scene.open_catalogue("build")), True), (lambda: scene.select([tower.id]), False)):
+            show()
+            settle(game)
+            _x, card_top, _w, _h = scene.card_panel.bounds
+            _x, top, _w, height = scene.objectives.bounds
+            assert not scene.objectives.visible or top + height <= card_top, (top + height, card_top)
+            if size == (1280, 800) and folds:
+                assert scene.objectives.visible and not scene.objectives_body.visible, "folded to its heading"
+        scene.select([])
+        settle(game)
+        assert scene.objectives.visible and scene.objectives_body.visible
+    finally:
+        game.close()

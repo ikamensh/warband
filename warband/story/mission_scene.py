@@ -21,7 +21,7 @@ from warband.story.campaign import Campaign, Mission, Progress, ProgressStore, R
 from warband.story.dialog import DialogScene
 from warband.sim.model import World
 from warband.sim.rules import BuildingType, Difficulty
-from warband.ui.scene import HUD_TOP, GameScene, PauseScene, _clock, _Overlay, check_save
+from warband.ui.scene import HUD_TOP, OBJECTIVES_GAP, GameScene, PauseScene, _clock, _Overlay, check_save
 from warband.ui.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MUTED, PANEL_STYLE, RESULTS_STYLE, TEXT
 from warband.ui.view import rgba, to_world
 
@@ -149,14 +149,16 @@ class MissionScene(GameScene):
     # -- Objectives panel ---------------------------------------------------------------
 
     def _build_objectives(self) -> Column:
-        panel = Column(spacing=6, anchor=Anchor.TOP_RIGHT, margin=(12, HUD_TOP), style=PANEL_STYLE, blocks_pointer=True)
+        panel = Column(spacing=OBJECTIVES_GAP, anchor=Anchor.TOP_RIGHT, margin=(12, HUD_TOP), style=PANEL_STYLE, blocks_pointer=True)
         panel.add(Label(f"{self.campaign.index(self.mission)}. {self.mission.title}", text_style="heading", width=390))
+        self.objectives_body = Column(spacing=6)
         self._rows = {}
         for objective in self.mission.objectives:
             mark, label = _Mark(), Label(objective.text, text_style="body", width=390 - MARK - 8, wrap=True)
             row = Row(mark, label, spacing=8)
             self._rows[objective.id] = (row, mark, label)
-            panel.add(row)
+            self.objectives_body.add(row)
+        panel.add(self.objectives_body)
         self._panel_state = {}
         return panel
 
@@ -175,9 +177,11 @@ class MissionScene(GameScene):
 
     # -- The script ----------------------------------------------------------------------
 
+    def _objectives_shown(self) -> bool:
+        return self.clock >= self._banner_until
+
     def update(self, dt: float) -> None:
         super().update(dt)
-        self.objectives.visible = self.clock >= self._banner_until
         if not self._game_over:
             self._script()
 

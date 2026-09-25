@@ -86,11 +86,13 @@ class Settlement:
                 self._upgrade(plan)
 
     def order_unit(self, player: int, unit_type: UnitType) -> int:
-        """Request a recruit.  One its race never trains, or one past its limit counting the requests already waiting,
-        is refused now; one waiting for its building or its upgrades waits as a plan, as a building waits for its."""
+        """Request a recruit.  One no building trains (a creature, a summoned unit), one its race never trains, or one
+        past its limit counting the requests already waiting, is refused now; one waiting for its building or its
+        upgrades waits as a plan, as a building waits for its."""
         from warband.sim.model import RuleError
 
-        reason = self.world.foreign_unit(player, unit_type) or self.world.at_limit(player, unit_type, planned=True)
+        reason = (self.world.never_trained(player, unit_type) or self.world.foreign_unit(player, unit_type)
+                  or self.world.at_limit(player, unit_type, planned=True))
         if reason is not None:
             raise RuleError(reason)
         return self._add(player, "unit", unit_type)
@@ -156,11 +158,16 @@ class Settlement:
             raise RuleError("Already being researched")
         if any(plan.type is upgrade for plan in self.player_plans(player)):
             raise RuleError("Already planned")
+        closed = self.world.choice_refusal(player, upgrade)
+        if closed is not None:
+            raise RuleError(closed)  # a spell whose level was chosen otherwise (WB-066): its plan would wait for ever
         return self._add(player, "upgrade", upgrade)
 
     def _upgrade(self, plan: Plan) -> None:
         world = self.world
-        if plan.type in world.players[plan.player].upgrades or any(b.research is plan.type for b in world.player_buildings(plan.player)):
+        instead = world.chosen_instead(plan.player, plan.type)
+        if (plan.type in world.players[plan.player].upgrades or any(b.research is plan.type for b in world.player_buildings(plan.player))
+                or (instead is not None and instead[1])):  # researched, or closed for good by another of its choice
             self.plans.remove(plan)
             return
         producers = [b for b in world.player_buildings(plan.player, done=True) if plan.type in b.info.researches]

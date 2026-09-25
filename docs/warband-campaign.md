@@ -148,7 +148,9 @@ the campaign screen).
   process reads back; the epilogue speaks the three choices. A mission opens on
   its title banner alone, then the objectives panel comes in (at 680 tall the
   banner crosses where the panel reaches), and a notice hangs under the panel
-  however tall it grows.
+  however tall it grows. The panel folds to its title while the command card
+  reaches up into it (the Build catalogue has four rows), and waits out of sight
+  where even the title is in the card's way (`GameScene._fold_objectives`).
 
 ## Not yet
 

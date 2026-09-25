@@ -73,8 +73,8 @@ of the package, `sim` and `online`.
   (`tools/restyle.py`) replace frames, recoloured per team
   (`docs/warband-art.md`). `WARBAND_ART=procedural` keeps the renders; a sheet
   that no longer matches `FRAMES` or the building types warns and is ignored,
-  but for the buildings exempted from painting (`textures.UNPAINTED`), which
-  are drawn low-poly beside them.
+  but for the buildings exempted from painting (`textures.UNPAINTED`, the Mage
+  Tower until its sheet is painted), which are drawn low-poly beside them.
   `effects.py`, `ambience.py` and `production.py` hold transient effects, the
   life around buildings and the card's portraits; `visual_lint.py` finds
   visual defects.
@@ -87,7 +87,8 @@ of the package, `sim` and `online`.
   lands on (`docs/adding-a-unit.md`).
 - `ui/` — the saga2d scenes: `scene.py` (the match, HUD, command card),
   `view.py` (sprites, shots, fog, minimap), `title.py`, `multiplayer.py`,
-  `controls.py` (three control schemes: `docs/controls.md`), `tech.py` (what a
+  `controls.py` (three control schemes: `docs/controls.md`), `spellbar.py` (the
+  side's spells and the aim: `docs/warband-magic.md`), `tech.py` (what a
   catalogue item still lacks; the codex's tech tree), `version.py` (which build
   is running), `style.py` and `icons.py` (the HUD's look) and the profile,
   score, replay and tutorial screens.
@@ -170,10 +171,10 @@ keeps where code goes and the rules below.
   `World.ground_of`, so a write to `_blocked` outside `_set_blocked` must keep
   `World._forest` in step (`docs/unit-motion.md` part 11). A blow that is its
   striker's end (`blast`) removes it spent: no death event and no loss.
-- Every unit type a race fields, and every creature, wears a painted sheet or
-  stands in `textures.UNPAINTED_UNITS` with the reason and the date, and every
-  building is painted in each race's sheet of each look or stands in
-  `textures.UNPAINTED` (`tests/warband/test_painted_sheets.py`);
+- Every unit type a race fields, a spell summons, and every creature, wears a
+  painted sheet or stands in `textures.UNPAINTED_UNITS` with the reason and the
+  date, and every building is painted in each race's sheet of each look or
+  stands in `textures.UNPAINTED` (`tests/warband/test_painted_sheets.py`);
   `docs/adding-a-unit.md` is what a new unit type needs, its art among it, and
   `docs/warband-art.md` ("A new building") how a building is painted in.
 - A shot's look is its striker's (`view.SHOT_LOOKS`), so a new look is no rules

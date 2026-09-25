@@ -37,7 +37,7 @@ watch.  See [warband-races.md](warband-races.md).
 | Unarmored units | Flesh and cloth |
 | Armored units, including soldiers with armor upgrades | Armor |
 | Catapult and flying machine, including upgraded ones | Wood |
-| Stone golem | Stone |
+| Stone golem, Aether Elemental | Stone |
 | Farm, barracks, lumber mill, stables, workshop | Wood |
 | Town hall, guard tower, blacksmith, church | Stone |
 | Any unfinished building | Wood construction frame |

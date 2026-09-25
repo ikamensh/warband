@@ -209,7 +209,7 @@ def test_the_lint_sees_a_sprite_drawn_over_the_one_it_stands_behind(tmp_path) ->
         game.close()
 
 
-@pytest.mark.parametrize("page", [0, 1, 2], ids=["units", "buildings", "upgrades"])
+@pytest.mark.parametrize("page", [0, 1, 2, 5], ids=["units", "buildings", "upgrades", "spells"])
 @pytest.mark.parametrize("race", list(Race), ids=lambda r: r.value)
 def test_every_race_s_codex_tables_fit_the_smallest_window(page: int, race: Race, tmp_path) -> None:
     """The codex's tables are the tallest thing the game draws and each race writes its own: the unit page stands
@@ -245,17 +245,18 @@ def test_every_unit_pose_fits_the_unit_canvas() -> None:
 
 
 SCREENS = ("title", "new_game_elf", "new_game_orc", "new_game_master", "select_peasant", "select_conditions", "pending_salvage", "select_town_hall", "select_army", "select_60_units", "select_60_archers", "town_at_work", "menu_build_hover", "menu_train_hover",
+           "select_mage_tower_chosen", "spell_aim", "spell_bar_nine", "select_summoned",
            "menu_build_at_start", "menu_train_at_start", "menu_upgrade_researched", "menu_upgrade_all_done", "plans", "plan_row", "cancel_mode", "cancel_box",
            "commands_pips", "commands_tags",
            "alerts", "battle_wood",
-           "help", "codex_0", "codex_2", "codex_3", "codex_4", "save_browser", "game_over_won", "high_scores",
+           "help", "codex_0", "codex_2", "codex_3", "codex_4", "codex_5", "save_browser", "game_over_won", "high_scores",
            "campaign_fresh", "campaign_under_way", "mission_raid", "mission_choice", "mission_result")
 
 
 #: Screens whose every label must hold its text: the overlays' tables, and the catalogues' captions of what an item needs.
-OVERFLOW_CHECKED = ("help", "codex_0", "codex_2", "codex_3", "codex_4", "save_browser", "menu_build_at_start", "menu_train_at_start")
+OVERFLOW_CHECKED = ("help", "codex_0", "codex_2", "codex_3", "codex_4", "codex_5", "save_browser", "menu_build_at_start", "menu_train_at_start")
 SMALLEST = min(screens.RESOLUTIONS)
-FAST_SCREENS = {"title", "select_army", "town_at_work", "battle_wood", "menu_build_hover", "help", "mission_raid"}
+FAST_SCREENS = {"title", "select_army", "town_at_work", "battle_wood", "menu_build_hover", "help", "mission_raid", "spell_aim"}
 
 
 @pytest.mark.parametrize("name, resolution", [pytest.param(name, r, id=f"{name}-{r[0]}x{r[1]}",

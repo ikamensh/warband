@@ -16,7 +16,7 @@ from typing import TypeAlias
 from PIL import Image, ImageDraw
 
 from saga2d.ui import Anchor, Button, Component, KeyHints
-from warband.sim.rules import CREATURES, BuildingType, MapTheme, Race, UnitType, Upgrade
+from warband.sim.rules import CREATURES, SPELLS, BuildingType, MapTheme, Race, UnitType, Upgrade
 from warband.art.monsters import Monster, lair_portrait_image, monster_portrait_image
 from warband.art.textures import portrait_image
 
@@ -34,6 +34,17 @@ _GREEN = (98, 170, 92, 255)
 _LEAF = (146, 208, 120, 255)
 _RED = (198, 52, 48, 255)
 _BONE = (232, 224, 200, 255)
+# The spells' (WB-066): aether's violet, fire, stone and the sick green of withering.
+_AETHER = (170, 104, 240, 255)
+_AETHER_LIGHT = (224, 196, 255, 255)
+_AETHER_DEEP = (104, 52, 170, 255)
+_FLAME = (242, 128, 44, 255)
+_EMBER = (255, 214, 110, 255)
+_ROCK = (132, 124, 116, 255)
+_ROCK_LIGHT = (176, 168, 158, 255)
+_ROOT = (118, 80, 46, 255)
+_SICK = (150, 158, 96, 255)
+_MIST = (120, 96, 140, 255)
 
 
 def _research_emblem(upgrade: Upgrade, scale: float) -> Image.Image:
@@ -183,8 +194,72 @@ def _research_emblem(upgrade: Upgrade, scale: float) -> Image.Image:
             a = math.radians(angle)
             line([(.72 + .05 * math.cos(a), .16 + .05 * math.sin(a)), (.72 + .12 * math.cos(a), .16 + .12 * math.sin(a))], _GOLD, .02)
         ellipse((.67, .11, .77, .21), _LIGHT)
+    elif upgrade is Upgrade.HASTE:
+        # A bolt of an arrow flying right, three streaks of speed behind it.
+        for y, x0 in ((.34, .16), (.5, .10), (.66, .16)):
+            line([(x0, y), (x0 + .26, y)], _AETHER, .04)
+        polygon([(.40, .30), (.62, .30), (.86, .50), (.62, .70), (.40, .70), (.60, .50)], _AETHER_LIGHT)
+        polygon([(.50, .38), (.62, .38), (.74, .50), (.62, .62), (.50, .62), (.60, .50)], _AETHER)
+    elif upgrade is Upgrade.MEND:
+        # A green cross in a ring of light, sparks rising.
+        arc(.5, .52, .30, 0, 360, _LEAF, .03, steps=24)
+        polygon([(.43, .26), (.57, .26), (.57, .45), (.76, .45), (.76, .59), (.57, .59), (.57, .78), (.43, .78), (.43, .59),
+                 (.24, .59), (.24, .45), (.43, .45)], _GREEN)
+        polygon([(.46, .30), (.54, .30), (.54, .48), (.46, .48)], _LEAF)
+        for cx, cy in ((.24, .24), (.78, .28), (.72, .80)):
+            ellipse((cx - .035, cy - .035, cx + .035, cy + .035), _LIGHT)
+    elif upgrade is Upgrade.FLAME_STRIKE:
+        # A tongue of fire, red about orange about yellow.
+        polygon([(.5, .12), (.66, .36), (.78, .30), (.76, .58), (.68, .80), (.5, .88), (.32, .80), (.24, .58), (.28, .40),
+                 (.38, .48), (.40, .30)], _RED)
+        polygon([(.52, .28), (.64, .50), (.66, .66), (.58, .80), (.5, .84), (.40, .78), (.34, .62), (.42, .52), (.46, .40)], _FLAME)
+        polygon([(.52, .50), (.58, .64), (.56, .76), (.5, .80), (.44, .76), (.44, .64)], _EMBER)
+    elif upgrade is Upgrade.STONESKIN:
+        # A shield of fitted stones.
+        polygon([(.23, .20), (.77, .20), (.75, .57), (.65, .75), (.5, .85), (.35, .75), (.25, .57)], _ROCK)
+        for points in ([(.27, .24), (.49, .24), (.47, .44), (.28, .46)], [(.53, .24), (.73, .24), (.72, .42), (.52, .44)],
+                       [(.30, .50), (.49, .48), (.48, .70), (.38, .72)], [(.53, .48), (.70, .46), (.64, .68), (.52, .74)]):
+            polygon(points, _ROCK_LIGHT)
+    elif upgrade is Upgrade.ENTANGLE:
+        # Roots coiling up out of the ground round an ankle's worth of nothing, leaves on their tips.
+        line([(.14, .82), (.86, .82)], _ROOT, .04)
+        for x0, bend in ((.26, .14), (.5, -.12), (.72, .12)):
+            arc(x0 + bend, .56, .2, 120 if bend > 0 else -60, 300 if bend > 0 else 120, _ROOT, .045)
+        for cx, cy, sx in ((.30, .30, -1), (.52, .24, 1), (.74, .32, 1)):
+            polygon([(cx, cy), (cx + sx * .12, cy - .07), (cx + sx * .16, cy + .02), (cx + sx * .04, cy + .06)], _LEAF)
+    elif upgrade is Upgrade.WITHER:
+        # A leaf dried and curled, a sick mist rising off it.
+        polygon([(.26, .78), (.34, .52), (.52, .34), (.74, .28), (.70, .48), (.56, .66), (.36, .76)], _SICK)
+        line([(.26, .80), (.66, .36)], (96, 90, 60, 255), .025)
+        for cx, cy, r in ((.30, .30, .12), (.56, .20, .09), (.78, .46, .08)):
+            arc(cx, cy, r, 200, 520, _MIST, .03)
+    elif upgrade is Upgrade.METEOR:
+        # A rock falling, its fiery tail behind it to the top right.
+        polygon([(.86, .14), (.72, .12), (.34, .48), (.52, .66)], _FLAME)
+        polygon([(.80, .20), (.70, .20), (.42, .50), (.50, .58)], _EMBER)
+        ellipse((.18, .46, .52, .80), _ROCK, _FLAME, .03)
+        ellipse((.24, .52, .36, .64), _ROCK_LIGHT)
+    elif upgrade is Upgrade.SUMMON:
+        # A crystal of aether rising out of a summoning ring.
+        ellipse((.18, .66, .82, .86), None, _AETHER, .035)
+        polygon([(.5, .14), (.68, .40), (.5, .72), (.32, .40)], _AETHER)
+        polygon([(.5, .14), (.68, .40), (.5, .44)], _AETHER_LIGHT)
+        polygon([(.32, .40), (.5, .44), (.5, .72)], _AETHER_DEEP)
+        for x in (.22, .78):
+            ellipse((x - .06, .40, x + .06, .52), _AETHER_DEEP)
+    elif upgrade is Upgrade.BATTLE_FURY:
+        # Two crossed swords over a burst of red.
+        for angle in range(0, 360, 30):
+            a = math.radians(angle)
+            line([(.5 + .18 * math.cos(a), .5 + .18 * math.sin(a)), (.5 + .36 * math.cos(a), .5 + .36 * math.sin(a))], _RED, .03)
+        for flip in (1, -1):
+            tip, grip = (.5 + flip * .30, .18), (.5 - flip * .22, .76)
+            line([tip, grip], _STEEL, .055)
+            line([(.5 - flip * .30, .62), (.5 - flip * .10, .70)], _GOLD, .04)
     else:
         raise ValueError(f"No production emblem for {upgrade!r}")
+    if upgrade in SPELLS:
+        tier = SPELLS[upgrade].level  # a spell's badge is its level: I, II or III
 
     if tier:
         # A Roman numeral badge makes every research tier legible at 32px.

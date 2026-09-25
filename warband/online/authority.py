@@ -7,12 +7,12 @@ from warband.sim import mapgen
 from warband.sim.model import Unit, World, RuleError, field_values
 from warband.sim.worker_knowledge import WorkerKnowledge
 from saga2d.server.games import GameSpec, option_choice, option_int, option_keys, option_seed
-from warband.sim.rules import BLOODLUST_RAGE, RAGE, BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
+from warband.sim.rules import BLOODLUST_RAGE, RAGE, SPELLS, BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
 
 GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'salvage', 'stop', 'hold', 'release_workers'}
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building', 'set_auto_train'}
 SETTLEMENT_ORDERS = {'plan_building', 'order_unit', 'order_upgrade', 'set_assembly', 'cancel_plan'}
-SEAT_ORDERS = SETTLEMENT_ORDERS | {'resign'}  # orders about the seat's own player, named in the order
+SEAT_ORDERS = SETTLEMENT_ORDERS | {'resign', 'cast'}  # orders about the seat's own player, named in the order
 ORDERS = GROUP_ORDERS | BUILDING_ORDERS | SEAT_ORDERS | {'build'}
 #: Ticks an event rides the snapshots (five seconds): long enough for a client that hiccups, not for ever.
 EVENT_TICKS = 100
@@ -23,6 +23,10 @@ NO_DICE = random.Random(0).getstate()
 PRIVATE_EVENTS = frozenset({'trained', 'researched', 'refused', 'deferred', 'deposit', 'salvage', 'under_attack', 'plunder', 'spilled'})
 #: The match's public news, told to every seat wherever it happened.
 PUBLIC_EVENTS = frozenset({'victory', 'eliminated', 'surrendered', 'resigned', 'exposed'})
+#: A spell cast and landing (WB-066): news for its caster and for every seat that sees the ground it touches, which
+#: tells them the spell and the point.  Neither private (a cast in sight is no secret) nor public: a blind cast into
+#: the fog, or one far from a rival, is not that rival's to hear of.
+SPELL_EVENTS = frozenset({'cast', 'spell'})
 #: What a seat learns of a unit it sees but does not own is where it stands and how it moves and strikes, not where it is
 #: going, nor how lately its owner had it in hand.
 STRANGER_UNIT = {'orders': [], 'worker_orders': [], 'home': None, 'constructing': None, 'auto_work': False, 'commanded': None}
@@ -99,8 +103,21 @@ class WarbandMatch:
             return list(seats)
         if event.kind in PRIVATE_EVENTS:
             return [event.player]
+        if event.kind in SPELL_EVENTS:
+            return [seat for seat in seats if seat == event.player or self._sees_spell(seat, event)]
         tile = (int(event.pos[0]), int(event.pos[1]))
         return [seat for seat in seats if seat == event.player or seat == striker or self.world.is_visible(seat, tile)]
+
+    def _sees_spell(self, seat, event):
+        """Whether *seat* sees a spell cast or landing: any tile of the ground it touches, so a seat that sees the edge
+        of a Wither on its own soldiers hears of it though the point is in its fog."""
+        world, info = self.world, SPELLS[Upgrade(event.text)]
+        (px, py), reach = event.pos, info.radius + 0.5
+        x0, y0 = max(0, int(px - reach)), max(0, int(py - reach))
+        x1, y1 = min(world.width - 1, int(px + reach)), min(world.height - 1, int(py + reach))
+        return world.any_visible(seat, (x0, y0, x1 - x0 + 1, y1 - y0 + 1)) and any(
+            world.is_visible(seat, (x, y)) and (x + 0.5 - px) ** 2 + (y + 0.5 - py) ** 2 <= reach * reach
+            for y in range(y0, y1 + 1) for x in range(x0, x1 + 1))
 
     def snapshot(self, player):
         """The match as seat *player* may know it (``to_dict`` builds it afresh, the receiver may keep it).
@@ -121,8 +138,8 @@ class WarbandMatch:
             if seat != player:
                 data['explored'][seat], data['worker_knowledge'][seat] = unexplored, unknown
                 if world.winner is None:
-                    record.update(gold=0, lumber=0, aether=0, aether_charge=0, upgrades=[], stats=dict.fromkeys(record['stats'], 0),
-                                  last_alert=None, last_hit=None, assembly=None)
+                    record.update(gold=0, lumber=0, aether=0, aether_charge=0, upgrades=[], cooldowns={},
+                                  stats=dict.fromkeys(record['stats'], 0), last_alert=None, last_hit=None, assembly=None)
         visible, knowledge = world.visible[player], world.worker_knowledge[player]
         data['units'] = [d if unit.player == player else _stranger_unit(d, world.winner is None)
                          for unit, d in zip(world.units.values(), data['units'])
@@ -203,7 +220,8 @@ class WarbandMatch:
                 raise CommandError('You can only order your own units and buildings.')
         if action in SEAT_ORDERS:
             if type(values['player']) is not int or values['player'] != player:
-                raise CommandError('You can only order your own settlement.' if action != 'resign' else 'You can only resign yourself.')
+                raise CommandError({'resign': 'You can only resign yourself.', 'cast': 'You can only cast your own spells.'}
+                                   .get(action, 'You can only order your own settlement.'))
         elif action in GROUP_ORDERS:
             ids = values['unit_ids']
             if not isinstance(ids, list) or not 1 <= len(ids) <= 256:
@@ -244,7 +262,7 @@ class WarbandMatch:
             raise CommandError('No such target')
         if action == 'cancel_train' and type(values.get('index', -1)) is not int:
             raise CommandError('Choose an item in the training queue.')
-        for field, enum in [('building_type', BuildingType), ('unit_type', UnitType), ('upgrade', Upgrade)]:
+        for field, enum in [('building_type', BuildingType), ('unit_type', UnitType), ('upgrade', Upgrade), ('spell', Upgrade)]:
             if field in values:
                 try:
                     values[field] = enum(values[field])

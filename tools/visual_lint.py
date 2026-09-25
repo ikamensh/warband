@@ -39,9 +39,9 @@ from warband.story.dialog import DialogScene  # noqa: E402
 from warband.story.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
 from warband.story.missions import CAMPAIGN  # noqa: E402
 from warband.sim.model import World, tile_center  # noqa: E402
-from warband.sim.rules import BLEEDING, BUILT, LODE_GOLD, PLAYABLE_UNITS, UNITS, BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
+from warband.sim.rules import BLEEDING, BUILT, CHOICES, LODE_GOLD, PLAYABLE_UNITS, UNITS, UPGRADES, BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
 from warband.ui.controls import SCHEMES  # noqa: E402
-from warband.ui.scene import TOAST_TOP, CodexScene, GameScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game  # noqa: E402
+from warband.ui.scene import CODEX_PAGES, TOAST_TOP, CodexScene, GameScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game  # noqa: E402
 from warband.ui.score_scene import HighScoreScene  # noqa: E402
 from warband.ui.style import build_theme  # noqa: E402
 from warband.art.textures import TILE  # noqa: E402
@@ -115,6 +115,7 @@ def settlement() -> World:
         world.place_building(0, kind, pos)
     world.lay_rifts([(3, 22), (10, 24)])  # one drawn from by the vault, one open
     world.place_building(0, BuildingType.VAULT, (3, 22))
+    world.place_building(0, BuildingType.MAGE_TOWER, (16, 24))  # WB-066
     world.place_building(None, BuildingType.GOLD_MINE, (32, 17))
     world.place_building(None, BuildingType.GOLD_SEAM, (33, 25))  # five tiles of workings beside the three of a mine
     world.place_building(None, BuildingType.MOTHER_LODE, (26, 25))  # the seam's other prize, rich (WB-071)
@@ -332,6 +333,63 @@ def pending_salvage(game: Game) -> None:
 
 
 @screen
+def select_mage_tower_chosen(game: Game) -> None:
+    """The Mage Tower's card (WB-066): level I chosen (its two others struck through, captioned Closed), level II being
+    researched, level III open; Cancel below the grid; the spell bar over the minimap."""
+    scene = town(game)
+    tower = own(scene, BuildingType.MAGE_TOWER)
+    scene.world.players[0].upgrades |= {Upgrade.KEEP, Upgrade.FLAME_STRIKE}
+    scene.world.research(tower.id, Upgrade.ENTANGLE)
+    scene.select([tower.id])
+    scene.camera.center_on(*(c * TILE for c in tower.center))
+    ticks(game)
+
+
+@screen
+def spell_aim(game: Game) -> None:
+    """A spell aimed (WB-066): three on the bar, one cooling with its sweep, Alt+2's Wither armed with its ring at the
+    pointer beyond the vault's reach, the price beside the pointer in the warning's ink, the vault's reach washed violet."""
+    scene = town(game, zoom=0.9)
+    world = scene.world
+    world.players[0].upgrades |= {Upgrade.KEEP, Upgrade.HASTE, Upgrade.WITHER, Upgrade.METEOR}
+    world.players[0].aether = 100
+    world.cast(0, Upgrade.HASTE, (5.5, 24.0))
+    ticks(game, 6)
+    scene.press("2", alt=True)
+    move_mouse(game, 700, 420)
+    ticks(game)
+
+
+@screen
+def spell_bar_nine(game: Game) -> None:
+    """All nine spells on the bar, a verification's world (a side holds one a level): too tall for a column over the
+    minimap, they stand a level a row and keep below the settlement's and the commands' rows."""
+    scene = town(game)
+    scene.world.players[0].upgrades |= {spell for spells in CHOICES.values() for spell in spells}
+    scene.world.players[0].aether = 100
+    ticks(game)
+
+
+@screen
+def select_summoned(game: Game) -> None:
+    """Three Aether Elementals of the player's beside a rival's three (WB-066), each told by its fists' colour; one of the
+    player's selected under Haste and Stoneskin, a spell of each level: the seconds before it is gone ahead of its
+    conditions, more than its hit-point row has room for, so the rest are counted."""
+    scene = town(game, zoom=2.0)
+    world = scene.world
+    for player, spot in ((scene.human, (10.5, 12.5)), (1, (13.5, 12.5))):
+        world.players[player].upgrades |= {Upgrade.KEEP, Upgrade.HASTE, Upgrade.STONESKIN, Upgrade.SUMMON}
+        world.players[player].aether = 1000  # staged: a full store of a side with the vaults for it
+        world.cast(player, Upgrade.SUMMON, spot)
+    world.cast(scene.human, Upgrade.HASTE, (10.5, 12.5))
+    world.cast(scene.human, Upgrade.STONESKIN, (10.5, 12.5))
+    mine = next(u for u in world.units.values() if u.type is UnitType.AETHER_ELEMENTAL and u.player == scene.human)
+    scene.select([mine.id])
+    scene.camera.center_on(12 * TILE, 12.5 * TILE)
+    ticks(game, 40, 1 / 60)  # the landings' bursts gone by
+
+
+@screen
 def select_site(game: Game) -> None:
     scene = town(game)
     world = scene.world
@@ -432,7 +490,8 @@ def menu_upgrade_researched(game: Game) -> None:
 def menu_upgrade_all_done(game: Game) -> None:
     """Nothing left to research: the card holds no orders at all, only the way back, and the readout says why."""
     scene = town(game)
-    scene.player.upgrades.update(u for u in Upgrade if scene.race.upgrade_allowed(u))
+    scene.player.upgrades.update(u for u in Upgrade if scene.race.upgrade_allowed(u) and not UPGRADES[u].choice)
+    scene.player.upgrades.update(CHOICES[level][0] for level in CHOICES)  # a spell of each level: all that can be researched
     scene.toggle_catalogue("upgrade")
     ticks(game)
 
@@ -730,7 +789,7 @@ for _controls in SCHEMES:
     SCREENS["help" if _controls == "classic" else f"help_{_controls}"] = _help
 
 
-for _page in range(5):
+for _page in range(len(CODEX_PAGES)):
     def _codex(game: Game, page: int = _page) -> None:
         scene = town(game, race=Race.DWARF)
         game.push(CodexScene(scene.world, scene.human, page))

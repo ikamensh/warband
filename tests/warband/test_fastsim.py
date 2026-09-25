@@ -382,3 +382,34 @@ def test_the_compiled_hypot_is_math_hypot() -> None:
                             "       if model.hypot(a, b).hex() != math.hypot(a, b).hex() and not math.isnan(math.hypot(a, b))]\n"
                             "print(len(bad), bad[:5])\n")
     assert printed.startswith("0 "), printed
+
+
+def test_a_compiled_world_saves_its_orders_shots_and_spells_as_the_source_does() -> None:
+    """Compiled, a dataclass is a native class without ``__dict__``, so a save reads its fields (``model.field_values``):
+    the fuzz monkey's quick save with a Meteor falling found it (WB-066).  The compiled world's save of a march, an arrow
+    and a falling Meteor is the source's, key for key."""
+    script = (
+        "import json\n"
+        "from warband.sim.model import World\n"
+        "from warband.sim.rules import Terrain, UnitType, Upgrade\n"
+        "def staged():\n"
+        "    w = World(20, 20, [[Terrain.GRASS] * 20 for _ in range(20)], 2)\n"
+        "    walker = w.spawn_unit(0, UnitType.FOOTMAN, (5.5, 5.5))\n"
+        "    w.move([walker.id], (10.5, 10.5))\n"
+        "    archer = w.spawn_unit(0, UnitType.ARCHER, (12.5, 5.5))\n"
+        "    target = w.spawn_unit(1, UnitType.PEASANT, (15.5, 5.5))\n"
+        "    w.attack([archer.id], target.id)\n"
+        "    w.players[0].upgrades.add(Upgrade.METEOR)\n"
+        "    w.players[0].aether = 1000\n"
+        "    w.cast(0, Upgrade.METEOR, (12.5, 12.5))\n"
+        "    for _ in range(30):\n"
+        "        w.step()\n"
+        "    return w\n"
+        "print(json.dumps(staged().to_dict(), sort_keys=True))\n")
+    compiled = _run_compiled(script)
+    exec_globals: dict = {}
+    exec(script.replace("print(json.dumps(staged().to_dict(), sort_keys=True))\n", ""), exec_globals)
+    import json
+    source = exec_globals["staged"]().to_dict()
+    assert json.loads(compiled) == json.loads(json.dumps(source, sort_keys=True))
+    assert source["projectiles"], "a shot and a Meteor are in the air"

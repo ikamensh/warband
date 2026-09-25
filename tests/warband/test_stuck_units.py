@@ -64,9 +64,10 @@ def field(width: int = 40, height: int = 24, walls: frozenset[tuple[int, int]] =
 def every_kind(world: World, at: tuple[float, float], each: int = 2, rows: int = 8) -> list:
     """*each* of every unit type in a loose block, a row of each kind and *rows* kinds a column: the whole spread of
     bodies in one crowd (two of each since each race has a unit of its own: fifteen kinds, and three of each doubled
-    the fast tier's longest test)."""
+    the fast tier's longest test).  Whatever a spell summons is gone within the minute (WB-066) and is left out: the
+    crowd is what stays to settle."""
     crowd = []
-    for i, unit_type in enumerate(UnitType):
+    for i, unit_type in enumerate(t for t in UnitType if not UNITS[t].lifetime):
         for j in range(each):
             crowd.append(world.spawn_unit(0, unit_type, (at[0] + 1.4 * (j + (each + 0.5) * (i // rows)), at[1] + 1.4 * (i % rows))))
     return crowd
@@ -103,7 +104,7 @@ def test_a_crowd_packed_on_one_spot_pushes_itself_apart():
     """Twenty-one units spawned on the same point -- what a rally point and a loaded save can produce --
     unstack instead of staying one body."""
     world = field()
-    crowd = [world.spawn_unit(0, unit_type, (20.0, 12.0)) for unit_type in UnitType for _ in range(3)]
+    crowd = [world.spawn_unit(0, unit_type, (20.0, 12.0)) for unit_type in UnitType if not UNITS[unit_type].lifetime for _ in range(3)]
     play(world, 30.0, Watch())
     worst = min(math.dist(a.pos, b.pos) - a.radius - b.radius for a in crowd for b in crowd if a.id < b.id and a.flying == b.flying)
     assert worst > -0.05, f"still stacked: bodies overlap by {-worst:.2f} tiles"

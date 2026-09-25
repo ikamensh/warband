@@ -9,8 +9,11 @@ checking the world every simulated second: units stand on open ground,
 hit points and resources stay in range, buildings never overlap, the
 blocked grid matches the map, hidden units are inside something real.
 The monkey runs feed the game scene random keys, clicks, drags and scrolls
-on the mock backend, including through every overlay, and press the side's
-commands in runs of up to three.
+on the mock backend, including through every overlay, press the side's
+commands in runs of up to three, and aim and cast a spell of each level (WB-066).
+In the AI games every seat is given a spell of each level and casts one now and
+then at a rival's unit, one of its own or anywhere: the brains do not cast yet
+(WB-067), and must never break when a rival does.
 
 Both run the compiled simulation (``warband.league.fastsim``, bit-identical to
 the source the game runs; ``WARBAND_INTERPRETED=1`` runs the source), and the
@@ -40,8 +43,8 @@ if __name__ == "__main__":  # run as a program, not imported as a library
 from warband.sim import mapgen  # noqa: E402
 from warband.brains.ai import make_brain  # noqa: E402
 from warband.brains.pro_ai import PRO, ProBrain, RaceBrain  # noqa: E402
-from warband.sim.model import BLOCKING, World  # noqa: E402
-from warband.sim.rules import AETHER_TICKS, BUILDINGS, SIM_DT, BuildingType, Difficulty, Terrain  # noqa: E402
+from warband.sim.model import BLOCKING, RuleError, World  # noqa: E402
+from warband.sim.rules import AETHER_TICKS, BUILDINGS, CHOICES, LEVEL_NAMES, SIM_DT, BuildingType, Difficulty, Terrain, Upgrade  # noqa: E402
 from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
 
 GAME_MINUTES = 15
@@ -103,6 +106,38 @@ def check_world(world: World) -> None:
 
 
 STALL_SECONDS = 20.0
+CAST_EVERY = 100  # steps between the casts the AI games stage: one every five seconds, by a seat drawn at random
+
+
+def chosen_spells(rng: random.Random) -> set[Upgrade]:
+    """A spell of each level, drawn: what a side that researched all three might hold."""
+    return {rng.choice(CHOICES[level]) for level in LEVEL_NAMES}
+
+
+def stage_cast(world: World, rng: random.Random) -> None:
+    """A seat drawn at random casts one of its spells, paid for exactly: at a rival's unit, at one of its own, or anywhere.
+    The store is given what the cast costs and holds nothing after it, so the checks on the store hold."""
+    seats = [p for p in world.players[:world.seats] if p.alive]
+    if not seats:
+        return
+    caster = rng.choice(seats)
+    spell = rng.choice(world.spells_of(caster.id))
+    rivals = [u for u in world.units.values() if u.player != caster.id and not u.hidden]
+    own = [u for u in world.units.values() if u.player == caster.id and not u.hidden]
+    roll = rng.random()
+    if roll < 0.6 and rivals:
+        point = rng.choice(rivals).pos
+    elif roll < 0.8 and own:
+        point = rng.choice(own).pos
+    else:
+        point = (rng.uniform(0, world.width - 0.01), rng.uniform(0, world.height - 0.01))
+    caster.cooldowns.clear()
+    caster.aether = world.cast_price(caster.id, spell, point)[0]
+    try:
+        world.cast(caster.id, spell, point)
+    except RuleError:
+        pass  # no open ground there for a summoning: refused, as a player's would be
+    caster.aether = 0
 
 
 def check_progress(world: World, stalled: dict[int, tuple[tuple[float, float], float]]) -> None:
@@ -136,6 +171,8 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
             # take (several build orders in flight, wounded soldiers walking home,
             # peasants or a flying machine sent scouting). The invariants have to hold there too.
             brains = [make_brain(p.id, rng.choice(list(Difficulty)), seed) for p in world.players[:world.seats]]
+            for player in world.players[:world.seats]:
+                player.upgrades |= chosen_spells(rng)
             check_world(world)
             stalled: dict[int, tuple[tuple[float, float], float]] = {}
             for tick in range(int(GAME_MINUTES * 60 / SIM_DT)):
@@ -145,6 +182,8 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
                     break
                 for brain in brains:
                     brain.think(world, rng)
+                if tick % CAST_EVERY == CAST_EVERY - 1:
+                    stage_cast(world, rng)
                 world.step()
                 world.take_events()
                 if tick % 20 == 0:
@@ -194,9 +233,24 @@ def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = No
                 assert isinstance(game.scene, GameScene), [type(s).__name__ for s in game.scenes]
                 for _step in range(steps):
                     roll = rng.random()
-                    if roll < 0.03:  # cancel mode, which a random letter with a random Ctrl reaches too seldom to click in
+                    playing = next((s for s in game.scenes if isinstance(s, GameScene)), None)
+                    if playing is not None and not playing.world.spells_of(playing.human):  # a new match, or a loaded one
+                        playing.world.players[playing.human].upgrades |= chosen_spells(rng)
+                    if roll < 0.05 and playing is not None:  # a spell aimed with Alt and its level, then (mostly) a click to cast it
+                        human = playing.world.players[playing.human]
+                        human.aether = 1000
+                        game.backend.inject_key(rng.choice("123"), alt=True)
+                        game.tick(1 / 60)
+                        if rng.random() < 0.8:
+                            x, y = rng.randrange(1280), rng.randrange(800)
+                            game.backend.inject_mouse_move(x, y)
+                            game.backend.inject_click(x, y, "left")
+                            game.backend.inject_release(x, y, "left")
+                            game.tick(1 / 60)
+                        human.aether = min(human.aether, playing.world.aether_cap(playing.human))
+                    elif roll < 0.08:  # cancel mode, which a random letter with a random Ctrl reaches too seldom to click in
                         game.backend.inject_key("x", ctrl=True)
-                    elif roll < 0.06:  # one of the side's commands, pressed up to three times in a row: its levels
+                    elif roll < 0.11:  # one of the side's commands, pressed up to three times in a row: its levels
                         letter = rng.choice(commands)
                         for _ in range(rng.choice((1, 2, 3))):
                             game.backend.inject_key(letter, ctrl=True)

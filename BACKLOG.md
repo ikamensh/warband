@@ -23,7 +23,6 @@ item takes the next one and updates this line.
 | WB-058 | Later | proposed | Bug-hunt leftovers 2026-09-20: a site nobody owns by its colour, two strike frames that hop, crowded workers | Bug hunt 2026-09-20 |
 | WB-059 | Next | proposed | A route nobody can reach costs the whole pathfinder budget, and the budget grows with the map | Sixteen seats 2026-09-20 |
 | WB-060 | Later | proposed | Sixteen seats online: an engine release, a snapshot that is not one world per seat, and room capacity | Sixteen seats 2026-09-20 |
-| WB-066 | Now | proposed | Magic II: the Mage Tower, one spell of three per level, cast anywhere, dearer beyond the vaults | Ilya 2026-09-24 |
 | WB-067 | Now | proposed | Magic III: the computer players research, choose and cast; the nine spells balanced | Ilya 2026-09-24 |
 | WB-073 | Now | proposed | Race balance: dwarves win ~64 % and orcs ~36 % of Master race games; bring every race within 45–55 % | Orchestrator 2026-09-25 |
 
@@ -270,45 +269,6 @@ lands on main as one squashed commit with green CI; the design decisions
 below are the orchestrator's, and a measured number that disagrees with
 one of them wins over it.
 
-## WB-066 — Magic II: the Mage Tower and the spells
-
-**Design.** The **Mage Tower** (race names; 900 gold 400 lumber, needs an
-Aether Vault) researches three **levels** of magic: I (600/200, 60 s), II
-(1000/400, 90 s, needs the Keep and I), III (1600/600, 120 s, needs II).
-Researching a level is choosing one of its three spells; the other two are
-closed for the match. Spells are cast by the side, not a caster: from a
-spell bar on the HUD, at any point of the map (a point in fog is allowed,
-blind), costing aether, each with its own cooldown; beyond every vault's
-reach the cost and the cooldown are tripled, and the aim cursor says which.
-The effects are WB-062 conditions (rows of `buffs.toml`) plus a few direct
-blows. Friendly spells touch only the caster's units, hostile ones every
-rival's and the wilds', flyers included unless named.
-
-| level | cost / cooldown | spell | effect |
-|---|---|---|---|
-| I | 30 / 30 s | Haste | own units within 3: +40 % speed, blows 25 % faster, 10 s |
-| I | | Mend | own units within 3: +5 hp a second for 6 s, bleeding staunched |
-| I | | Flame Strike | enemies within 1.5: 25 damage through armour, then 2 a second for 4 s; buildings too |
-| II | 60 / 60 s | Stoneskin | own units within 3: +4 armour, 15 s |
-| II | | Entangle | enemy ground units within 2.5 cannot move for 4 s (they still strike); flyers are out of reach |
-| II | | Wither | enemies within 3 deal 30 % less damage and move 20 % slower, 12 s |
-| III | 120 / 120 s | Meteor | lands 2 s after the cast (its shadow grows), 120 damage within 2 falling to 60 at the edge, ×1.5 on buildings, friend and foe alike |
-| III | | Summon | three Aether Elementals (hp 120, damage 12, melee) for 40 s at the point |
-| III | | Battle Fury | own units within 6: +40 % damage, +20 % speed, 12 s |
-
-The rule of the triads: each level offers one tempo spell, one that holds a
-fight, and one that hurts, so the choice follows the posture, not a best
-answer.
-
-**Acceptance.** One `@recorded` World order `cast(player, spell, point)`
-checked atomically (researched, aether, cooldown, a point on the map) with
-rows in the atomicity tests; the choice of a level closes the other two;
-cost and cooldown tripled beyond reach; each spell's effect tested; saves,
-snapshots (a rival's research and aether stay private; a cast others see is
-public news) and replays; the tower, the spell bar, the aim cursor and each
-spell's effect rendered and looked at, with sounds; visual lint;
-fingerprint refreshed.
-
 ## WB-067 — Magic III: the AI casts, the spells balanced
 
 **Design.** Hard, Master and Grandmaster (the `ProBrain` family) build a
@@ -319,6 +279,14 @@ buffs over their own army when it engages (the point covering most of it),
 damage on clumps of rivals or workers at a mine, Entangle on a retreat or a
 chase, Meteor on a clump or a tower line, Summon where they are losing.
 Easy and Medium stay without magic.
+
+**A number to settle (from WB-066's review).** A vault holds 150 aether
+(raised from WB-063's 100 so a level III spell's 120 fits one), so one vault
+casts any spell within its reach; the dearer price beyond reach needs two
+vaults at level II (180) and three at level III (360) (an off-rift vault
+stores). The build keeps the design's prices and says so wherever a far price
+shows. The brains' vault plan has to know it, and the arena decides whether
+the far casts' gate stays or the store or the prices move.
 
 **Acceptance.** On the arena, a magic-using ProBrain beats the same brain
 without magic over enough seeds to mean it; each spell's pick is within a
