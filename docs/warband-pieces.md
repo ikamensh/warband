@@ -18,11 +18,13 @@ pieces (`warband/audio/pieces.py` reads them):
   down and crashes as its body lands; a wolf yelps and falls, a spider screeches and crunches,
   a troll bellows and falls heavily, a golem's stone grinds and breaks and the rubble settles.
   Each race's own unit (WB-068) has one too: a gryphon screeches, its wings flail and it and
-  its rider hit the ground as the screech dies away; a goblin sapper's death is its keg going up,
-  a fuse's fizz and a powder blast a tenth of a second on with the debris raining down under its
-  tail (a spent sapper leaves no death event, so the scene plays it at the blast, for whoever
-  sees the spot or owns the keg; it is `loud`: heard at a collapse's level and never dropped
-  from a battle's crowd of blows); a treant splits, comes down as heavy timber and its leaves
+  its rider hit the ground as the screech dies away; a goblin sapper has two ends: spent, its keg
+  goes up, a fuse's fizz and a powder blast a tenth of a second on with the debris raining down
+  under its tail (`sapper_spent`: a spent sapper leaves no death event, so the scene plays it at
+  the blast, for whoever sees the spot or owns the keg; an explosion, heard at a collapse's level
+  and never dropped from a battle's crowd of blows), and shot down on its way, which makes no
+  blast in the rules, it dies without one (`sapper_death`): a goblin's high cry, it and its keg
+  hitting the dirt, and the fuse sputtering out; a treant splits, comes down as heavy timber and its leaves
   settle; a rune golem breaks as the wild golem does and its runes go out last in a fading hum.
   The bank plays `<family>_death` and picks a take, never the same one twice in a row; the
   scene asks for the dying unit's family, so an orc grunt dies in an orc's voice whoever the

@@ -93,6 +93,12 @@ The families are `FAMILIES` in `warband/audio/bodies.py`, data like the row:
   splintering, a rope snapping, the frame crashing, and a wolf a yelp and a
   body falling. The cue has a take for every piece of the first stage: give it
   three, and every stage at least two.
+- **its spent end**, where its own blow can end it (`Family.spent`, a row
+  with `blast`): the stages heard where it leaves the world instead of dying.
+  Such a unit has two ends, and each sounds as the rules have it: a sapper
+  that goes up is a fuse and a boom, one shot down on its way made no blast,
+  so its `death` is a goblin's cry and fall and the fuse going out, and never
+  the boom (`test_a_unit_whose_blow_is_its_end_has_that_end_as_well_as_a_death`).
 - **its presence**, where it has one: the kind of piece it answers with when
   its player orders it (one answer a family however many were ordered, not
   again within `ANSWER_GAP`), or makes as its camp rouses (once a kind of
@@ -126,10 +132,12 @@ stand-in. What the four own units of WB-068 taught:
   than its peak between two samples (crackling sparks did) while foley rejects
   one that is mostly above 9 kHz (a steady fuse hiss did).
 - A unit whose end is not a death event (a spent sapper, `blast`) is heard
-  where it leaves the world: the scene plays its family's death there
-  (`GameScene._show_blast`), for whoever sees the spot or owns the unit. An
-  explosion is `loud` (`Family.loud`): a collapse's level, never dropped from
-  a battle's crowd of blows.
+  where it leaves the world: the scene plays its family's spent end there
+  (`GameScene._show_blast`, the cue `<family>_spent`), for whoever sees the
+  spot or owns the unit. A spent end is an explosion (`deaths.LOUD`): a
+  collapse's level, never dropped from a battle's crowd of blows. Killed, the
+  same unit dies its `death` as any body does. Add its stages' prompts after
+  the family's others in `BODY_DEATHS`, where they reseed none of them.
 
 `tests/warband/test_bodies.py` holds every unit type in `UnitType`, playable
 or creature, to a death of its own body with at least two takes on disk, for

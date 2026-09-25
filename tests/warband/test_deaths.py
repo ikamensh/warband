@@ -11,7 +11,7 @@ from saga2d import Game
 
 from sagaforge.synth import SAMPLE_RATE
 from warband.audio import deaths, sound
-from warband.audio.bodies import FAMILIES, RACE_FAMILIES
+from warband.audio.bodies import RACE_FAMILIES
 from warband.sim.model import World
 from warband.sim.rules import BuildingType, Race, Terrain, UnitType
 from warband.ui.scene import GameScene
@@ -28,12 +28,12 @@ def low_band_peak_time(clip: np.ndarray) -> float:
 
 
 def test_every_family_has_death_cues_at_the_level_with_clean_ends() -> None:
-    for family in FAMILIES:
-        for take in range(deaths.takes(family)):
-            clip = deaths.death(family, take)
+    for family, spent in deaths.ENDS:  # its death, and its spent end where it has one (a sapper's keg)
+        for take in range(deaths.takes(family, spent=spent)):
+            clip = deaths.death(family, take, spent=spent)
             seconds = len(clip) / SAMPLE_RATE
-            assert clip.ndim == 1 and 0.6 <= seconds <= 3.5, (family, take, seconds)
-            assert abs(np.abs(clip).max() - deaths.PEAK) < 0.01 and abs(clip[0]) < 0.01 and abs(clip[-1]) < 0.02, (family, take)
+            assert clip.ndim == 1 and 0.6 <= seconds <= 3.5, (family, spent, take, seconds)
+            assert abs(np.abs(clip).max() - deaths.PEAK) < 0.01 and abs(clip[0]) < 0.01 and abs(clip[-1]) < 0.02, (family, spent, take)
 
 
 def test_every_race_has_death_cues_whose_fall_lands_after_the_cry() -> None:

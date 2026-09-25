@@ -108,8 +108,8 @@ def test_killing_blow_keeps_the_targets_material(battle, target_type, material, 
 def test_a_lone_sapper_s_owner_sees_and_hears_its_blast_on_every_tick_of_the_fog(tmp_path, audio_files, monkeypatch):
     """A sapper's eyes go up with its keg, and when the fog is looked at again the same step (every fourth) its spot is
     dark by the time the scene reads the news.  Its owner still sees the blast, the camera shakes, and the boom and
-    the blow on the farm are heard: the sapper's death, which is its keg going up.  Started a tick later each time, one
-    of four blasts lands on that step."""
+    the blow on the farm are heard: the sapper's spent end, its keg going up, and not the death it dies when it is shot
+    down first.  Started a tick later each time, one of four blasts lands on that step."""
     dark = []
     for delay in range(4):
         world = World(32, 24, [[Terrain.GRASS] * 32 for _ in range(24)], 2, rng=random.Random(1), races=[Race.ORC, Race.HUMAN])
@@ -135,7 +135,8 @@ def test_a_lone_sapper_s_owner_sees_and_hears_its_blast_on_every_tick_of_the_fog
                 game.tick(SIM_DT)
                 assert world.time < 10.0, "the sapper never reached the farm"
             dark.append(not world.is_visible(0, (int(spot[0]), int(spot[1]))))
-            assert deaths.cue("sapper") in scene.recent_sounds and shakes, f"started {delay} ticks late: the blast went unseen"
+            assert deaths.cue("sapper") not in scene.recent_sounds, f"started {delay} ticks late: a spent sapper died as one shot down"
+            assert deaths.cue("sapper", spent=True) in scene.recent_sounds and shakes, f"started {delay} ticks late: the blast went unseen"
             assert "stone_wood" in scene.recent_sounds, f"started {delay} ticks late: its blow on the farm went unheard"
         finally:
             game.close()

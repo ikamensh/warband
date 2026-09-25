@@ -37,16 +37,18 @@ class Stage:
 
 @dataclass(frozen=True)
 class Family:
-    """*death*: its stages in order; the cue has a take for every committed piece of the first.
+    """*death*: its stages in order, heard when it is killed; the cue has a take for every committed piece of the first.
     *material*: what a blow on it lands on (:data:`warband.audio.combat_sound.MATERIALS`); ``None`` is armour or
     flesh by the armour it wears.  *presence*: the kind of piece it answers with, when its player orders it or its
-    camp rouses; ``None`` for the soldiers of a race, whose orders the race's own cues answer.  *loud*: its death is an
-    explosion, heard at a building's collapse's level and never dropped from a battle's crowd of blows."""
+    camp rouses; ``None`` for the soldiers of a race, whose orders the race's own cues answer.  *spent*: its other
+    end, the stages heard when its own blow ends it (the rules' ``blast``: a keg going up), placed as a death's are;
+    an explosion, heard at a building's collapse's level and never dropped from a battle's crowd of blows.  Empty
+    for a body that only dies.  One killed before its blow is spent dies its *death*: it made no blast."""
 
     death: tuple[Stage, ...]
     material: str | None = None
     presence: str | None = None
-    loud: bool = False
+    spent: tuple[Stage, ...] = ()
 
 
 #: A soldier's death: the cry, the weapon dropping as the voice cuts off, the body landing, the gear settling.
@@ -74,10 +76,13 @@ FAMILIES: dict[str, Family] = {
     # Each race's own unit (WB-068).  A gryphon screeches and its wings flail, and it and its rider hit the ground as the screech dies away.
     "gryphon": Family((Stage("screech", 0.72), Stage("wings", 0.5, gap=0.2), Stage("fall", 0.9, gap=0.3, after_end=True, rotate=1)),
                       presence="cry"),
-    # A sapper's death is its keg going up (a spent sapper's blast plays it, GameScene._show_blast): the fuse fizzes,
-    # the powder goes off a tenth of a second on, and the debris rains down under the blast's tail.
-    "sapper": Family((Stage("fuse", 0.45), Stage("blast", 1.0, gap=0.1), Stage("debris", 0.55, gap=-0.8, after_end=True, rotate=1)),
-                     presence="fizz", loud=True),
+    # A sapper has two ends.  Shot down on its way it makes no blast in the rules, and none is heard: a goblin cries, it
+    # and its keg hit the ground under the cry's tail, and the fuse sputters out.  Spent, its keg goes up (a spent
+    # sapper's blast plays it, GameScene._show_blast): the fuse fizzes, the powder goes off a tenth of a second on,
+    # and the debris rains down under the blast's tail.
+    "sapper": Family((Stage("cry", 0.72), Stage("fall", 0.85, gap=-0.15, after_end=True), Stage("fizzle", 0.45, gap=0.2, rotate=1)),
+                     presence="fizz",
+                     spent=(Stage("fuse", 0.45), Stage("blast", 1.0, gap=0.1), Stage("debris", 0.55, gap=-0.8, after_end=True, rotate=1))),
     # A walking tree splits, comes down like a felled trunk under the last of the splitting, and its leaves settle.
     "treant": Family((Stage("split", 0.85), Stage("fall", 0.9, gap=-0.5, after_end=True), Stage("leaves", 0.45, gap=-0.2, after_end=True, rotate=1)),
                      material="wood", presence="creak"),
