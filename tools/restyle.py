@@ -64,6 +64,10 @@ FRAME_NAMES = {"stand": "standing at guard", "walk1": "walking, left foot forwar
                "chop4": "chopping, recovery"}
 
 TEAM = "blue is the team colour and must stay this blue"
+#: Aether's violet lies between the key (magenta, cut out within about 29 degrees of hue) and the team blue (recoloured
+#: within about 32): a painter's violet drifting either way is lost to the key or turns red for the second player.
+AETHER_HUE = ("The aether's light is a cool blue-violet like #A868F0 and its shadows a deep violet like #6834AA: never pink, magenta "
+              "or red-purple (the background key would cut it out) and never blue (the faction colour)")
 SUBJECTS: dict[tuple[Race, UnitType], str] = {
     (Race.HUMAN, UnitType.PEASANT): f"a human peasant worker in a blue tunic ({TEAM}) and a cloth cap",
     (Race.HUMAN, UnitType.FOOTMAN): f"a human footman: a stocky soldier in a steel helmet with a blue plume and mail, blue tunic ({TEAM}), "
@@ -125,6 +129,13 @@ SUBJECTS: dict[tuple[Race, UnitType], str] = {
                                        f"gold runes glowing on its chest, flanks and shoulders, a blue breastplate and blue tops to its "
                                        f"shoulder blocks ({TEAM}), a slit of light for eyes and huge block fists",
 }
+for _race in Race:  # summoned by a spell, the same for every caster (textures.unit_sheet files it under no race)
+    SUBJECTS[(_race, UnitType.AETHER_ELEMENTAL)] = (
+        f"an aether elemental: living violet crystal floating a little above the ground over its shadow, no legs; its body a "
+        f"faceted, translucent crystal diamond glowing from a bright heart of light, crisp highlights on its facets and a few "
+        f"motes of light round it, its head a smaller lit crystal with two white points of light "
+        f"for eyes; two heavy round fists float at its sides and a shard juts from each shoulder, the fists, the shards and a "
+        f"thin band round the body where it is widest in blue ({TEAM}). {AETHER_HUE}")
 CARRY = {None: ", carrying a woodcutter's axe (a pick-axe for dwarves, a crude axe for orcs)",
          Resource.GOLD: ", carrying a heavy sack of gold in both arms and nothing else (the axe is left behind)",
          Resource.LUMBER: ", carrying a bundle of lumber on the shoulder with both hands and nothing else (the axe is left behind)"}
@@ -153,6 +164,9 @@ FIXES: dict[tuple[UnitType, Resource | None], str] = {
                              "wind-up and brought down before it in the strike; the feet are roots; no face paint, no armour",
     (UnitType.RUNE_GOLEM, None): "the golem is built of squared stone blocks, not rough boulders; the fists are raised in the wind-up and "
                                  "slammed down before it in the strike; the runes are pale gold light cut into the stone, never blue",
+    (UnitType.AETHER_ELEMENTAL, None): "the elemental floats: a gap of air between its lowest point and its shadow on the ground, no legs "
+                                       "or feet; the fists float free of the body, joined by no arms; the right fist is drawn back in "
+                                       "the wind-up and driven forward in the strike",
 }
 RACE_FIXES: dict[tuple[Race, UnitType], str] = {
     (Race.ORC, UnitType.KNIGHT): "the ogre stands on its own two feet with no mount; both heads look towards the facing; the club is gripped in both hands",
@@ -177,6 +191,7 @@ INVENTORY: dict[UnitType, str] = {
     UnitType.SAPPER: "one goblin, one keg on its back, no weapon, no shield",
     UnitType.TREANT: "one walking tree, two branch arms, two root legs, no weapon, no shield",
     UnitType.RUNE_GOLEM: "one stone golem, two fists, no weapon, no shield",
+    UnitType.AETHER_ELEMENTAL: "one floating violet crystal figure, two floating blue fists, no legs, no weapon, no shield",
 }
 #: The rows of a race's own unit whose blow is its own (the whole figure is not leaned, twisted or lunged:
 #: ``textures._SELF_POSED``), and the gryphon's walk, which is a wing beat.
@@ -201,6 +216,14 @@ OWN_ROWS: dict[UnitType, dict[str, str]] = {
                           "strike": "the slam: both fists brought down before it",
                           "follow": "follow-through: both fists low on the ground before it",
                           "recover": "recovering: the fists coming back up to its sides"},
+    UnitType.AETHER_ELEMENTAL: {"walk1": "gliding: bobbing up a little, the right fist a little forward",
+                                "walk2": "gliding: at the top of its bob",
+                                "walk3": "gliding: sinking a little, the right fist a little back",
+                                "walk4": "gliding: at the bottom of its bob",
+                                "wind": "the punch's wind-up: the right fist drawn back and up, the body risen",
+                                "strike": "the punch: the right fist driven far forward, the body sunk low",
+                                "follow": "follow-through: the right fist still forward",
+                                "recover": "recovering: the right fist coming back to its side"},
 }
 #: A flying machine's rows are no walk and no blow: its stand, then its rotor turning (or its wings beating) through one
 #: period over the four walk frames (``textures._SPIN``, ``textures._WING_BEAT``), which the view plays on the clock.
@@ -264,10 +287,9 @@ _CHURCH = ("a cross-shaped nave under green-teal shingle roofs, an octagonal bel
            "{window} arched window over the door, two blue banners, steps")
 _VAULT = ("on a low stone plinth over a crack of violet light, held a hand's breadth off the plinth by four taut chains to stakes at "
           "its corners, straining upward:")
-#: Aether's violet lies between the key (magenta, cut out within about 29 degrees of hue) and the team blue (recoloured
-#: within about 32): a painter's violet drifting either way is lost to the key or turns red for the second player.
-AETHER_HUE = ("The aether's light is a cool blue-violet like #A868F0 and its shadows a deep violet like #6834AA: never pink, magenta "
-              "or red-purple (the background key would cut it out) and never blue (the faction colour).")
+_TOWER = "a tall tower crowned with aether, a faceted violet crystal floating over its top:"
+#: Buildings that show aether, whose prompts name its hue.
+AETHER_LIT = (BuildingType.VAULT, BuildingType.MAGE_TOWER)
 #: What each building is, per race (the prompt prefixes the race's name for it).
 BUILDING_SUBJECTS: dict[tuple[Race, BuildingType], str] = {
     (Race.HUMAN, BuildingType.TOWN_HALL): f"a square stone keep under a dark blue pyramid roof with a small blue-roofed turret and a pennant on top; {_GATE}",
@@ -295,6 +317,18 @@ BUILDING_SUBJECTS: dict[tuple[Race, BuildingType], str] = {
     (Race.ORC, BuildingType.VAULT): f"{_VAULT} a cage of bone bars lashed with hide round a glowing violet orb, a bone spike on top and a blue pennant",
     (Race.ELF, BuildingType.VAULT): f"{_VAULT} a reliquary of violet crystal framed in silver, turned on its corner like a diamond, a blue pennant",
     (Race.DWARF, BuildingType.VAULT): f"{_VAULT} a block of granite banded in copper, violet light shining out of the runes cut into it, a blue pennant",
+    (Race.HUMAN, BuildingType.MAGE_TOWER): (f"{_TOWER} a tall round stone tower banded twice in gold, violet-lit arched windows up its "
+                                            "face and an arched wooden door, a battlemented parapet on top where four gold prongs hold "
+                                            "the crystal; its round plinth is banded in blue and a blue pennant flies from the parapet"),
+    (Race.ORC, BuildingType.MAGE_TOWER): (f"{_TOWER} a tower of rough logs lashed together with hide bands, leaning in a little, a blue "
+                                          "banner hung on its front; four curved bone horns on its top cradle a glowing violet ball of "
+                                          "aether, and a blue pennant flies beside them"),
+    (Race.ELF, BuildingType.MAGE_TOWER): (f"{_TOWER} a slender white spire with a pointed pale stone cap, two silver bands and an arched "
+                                          "wooden door, rising out of a ring of small leafy bushes on a dark stone plinth banded in blue; "
+                                          "a violet crystal floats just above its tip, and a blue pennant flies from its side"),
+    (Race.DWARF, BuildingType.MAGE_TOWER): (f"{_TOWER} a square granite tower banded three times in copper, violet light shining out of "
+                                            "the runes cut into its faces, its flat top carrying four copper prongs that hold the crystal; "
+                                            "its plinth is banded in blue and a blue pennant flies from a corner of the top"),
 }
 for _race in Race:  # the same in every race but its materials
     BUILDING_SUBJECTS[(_race, BuildingType.BARRACKS)] = ("a long hall under a grey gable roof with an arched door between two blue banners; a palisade "
@@ -317,6 +351,7 @@ BUILDING_FIXES: dict[BuildingType, str] = {
     BuildingType.WORKSHOP: "the crane's jib rests on its post and brace, and the siege chassis stands on its wheels",
     BuildingType.CHURCH: "the bell tower is joined to the nave and the ornament on the spire stands upright",
     BuildingType.VAULT: "the cube floats just above its plinth and each chain runs taut from a lower corner of the cube to a stake",
+    BuildingType.MAGE_TOWER: "the crystal floats just above the tower's top, held between the prongs or horns, and the tower stands on its plinth",
 }
 #: How each building shows that it is at work (the *active* look).
 ACTIVE: dict[BuildingType, str] = {
@@ -330,6 +365,7 @@ ACTIVE: dict[BuildingType, str] = {
     BuildingType.WORKSHOP: "the crane hoists a beam, lanterns burn and tools lie out on the bench",
     BuildingType.CHURCH: "the window and door glow with warm light from inside and the bell swings in its tower",
     BuildingType.VAULT: "the cube blazes violet and motes of light stream up into it out of the crack",
+    BuildingType.MAGE_TOWER: "the crystal blazes violet with sparks of light circling it, and the windows and door glow violet from inside",
 }
 #: How each building shows battle damage (the *damaged* look; the game adds smoke and flames).
 DAMAGED: dict[BuildingType, str] = {
@@ -343,6 +379,7 @@ DAMAGED: dict[BuildingType, str] = {
     BuildingType.WORKSHOP: "the crane is broken, the siege chassis has lost a wheel and the bench is overturned",
     BuildingType.CHURCH: "the spire is cracked and leaning, the roof is holed and the window is broken",
     BuildingType.VAULT: "the cube is cracked and leaking violet light, one chain is broken and a stake is torn out",
+    BuildingType.MAGE_TOWER: "the crystal is cracked and dim, the top is broken on one side and the tower's wall is cracked",
 }
 #: How each building looks half built (the *raised* look, shown from half its construction on).
 RAISED: dict[BuildingType, str] = {
@@ -356,6 +393,7 @@ RAISED: dict[BuildingType, str] = {
     BuildingType.WORKSHOP: "the shed is a timber frame without a roof and the crane is not yet raised",
     BuildingType.CHURCH: "the nave walls stand half high in scaffolding and the bell tower is a stump without its spire",
     BuildingType.VAULT: "the plinth is laid and the stakes are driven, the chains lie slack and the cube is not yet raised",
+    BuildingType.MAGE_TOWER: "the tower stands only half its height inside a scaffold of poles and ladders, with no top and no crystal",
 }
 #: How each building looks just begun (the *founded* look, shown for the first half of its construction).
 FOUNDED: dict[BuildingType, str] = {bt: "only its foundation: the footprint of its walls laid in a low course of stone or timber sills, "
@@ -466,28 +504,36 @@ def pad_to_aspect(image: Image.Image, ratio: str) -> tuple[Image.Image, tuple[in
     rw, rh = (int(part) for part in ratio.split(":"))
     w, h = image.size
     cw, ch = (w, math.ceil(w * rh / rw)) if w * rh >= h * rw else (math.ceil(h * rw / rh), h)
-    canvas = Image.new("RGB", (cw, ch), restyle.MAGENTA)
+    canvas = Image.new("RGB", (cw, ch), image.convert("RGB").getpixel((0, 0)))  # the sheet's margin: its key
     left, top = (cw - w) // 2, (ch - h) // 2
     canvas.paste(image.convert("RGB"), (left, top))
     return canvas, (left, top, left + w, top + h)
 
 
+#: The key a sheet is painted on: magenta, which nothing in the game wears, but for a figure whose body is aether
+#: (:data:`AETHER_BODIED`), whose violet a painter drifts towards magenta: the key would thin it (the elemental's first
+#: painting came back grey-lilac).  Green is far from the violet and from the team blue.
+GREEN_KEY = (0, 255, 0)
+KEY_NAMES = {restyle.MAGENTA: "magenta #FF00FF", GREEN_KEY: "green #00FF00"}
+AETHER_BODIED = (UnitType.AETHER_ELEMENTAL,)
+
+
 def geometry(sheet: restyle.Sheet, what: str) -> str:
     w, h = sheet.size
     grid = f"a single row of {sheet.cols}" if sheet.rows == 1 else f"a grid of {sheet.rows} rows x {sheet.cols} columns of"
-    return (f"It is {w}x{h} px: {grid} {sheet.cell[0]}x{sheet.cell[1]} px cells, surrounded by an empty margin, on a flat magenta #FF00FF "
+    return (f"It is {w}x{h} px: {grid} {sheet.cell[0]}x{sheet.cell[1]} px cells, surrounded by an empty margin, on a flat {KEY_NAMES[sheet.chroma]} "
             f"background. Thin dark grey lines mark the cell borders; keep the lines and the margin exactly where they are, and keep each "
             f"{what} in its own cell exactly where it is now.")
 
 
 def background(sheet: restyle.Sheet) -> str:
     w, h = sheet.size
-    return (f"Every cell keeps the flat #FF00FF background with nothing else on it: no gradients, glows, outlines, text, borders "
+    return (f"Every cell keeps the flat {KEY_NAMES[sheet.chroma].split()[-1]} background with nothing else on it: no gradients, glows, outlines, text, borders "
             f"or extra objects. Output the same {w}x{h} layout.")
 
 
-def figure_sheet(frames: tuple[str, ...], mesh: Callable[[str, int], r3.Mesh],
-                 key: Callable[[str, int], str]) -> tuple[restyle.Sheet, dict[str, Image.Image]]:
+def figure_sheet(frames: tuple[str, ...], mesh: Callable[[str, int], r3.Mesh], key: Callable[[str, int], str],
+                 chroma: tuple[int, int, int] = restyle.MAGENTA) -> tuple[restyle.Sheet, dict[str, Image.Image]]:
     """One figure's frames laid out facings across and frames down, every frame's feet on the same
     point of its cell: the cell is the widest and tallest any frame needs, so one `Placement` places
     them all.  *mesh* builds one (frame, facing) already turned to the camera and *key* names it;
@@ -500,7 +546,7 @@ def figure_sheet(frames: tuple[str, ...], mesh: Callable[[str, int], r3.Mesh],
     origin = (cell[0] / 2, MARGIN + top * SCALE)
     keys = [(key(frame, facing), {"frame": frame, "facing": facing})
             for frame in frames for facing in range(textures.FACINGS)]
-    sheet = restyle.Sheet.layout(keys, cols=textures.FACINGS, cell=cell, origin=origin, scale=SCALE)
+    sheet = restyle.Sheet.layout(keys, cols=textures.FACINGS, cell=cell, origin=origin, scale=SCALE, chroma=chroma)
     images = {k: r3.render(meshes[(tags["frame"], tags["facing"])], textures.PROJECTION, scale=SCALE,
                            canvas=(cell[0] / SCALE, cell[1] / SCALE), origin=(origin[0] / SCALE, origin[1] / SCALE))
               for k, tags in keys}
@@ -562,12 +608,16 @@ class Unit:
     def inventory(self) -> str:
         return INVENTORY[self.unit]
 
+    @property
+    def chroma(self) -> tuple[int, int, int]:
+        return GREEN_KEY if self.unit in AETHER_BODIED else restyle.MAGENTA
+
     def build_sheet(self) -> tuple[restyle.Sheet, dict[str, Image.Image]]:
         """The unit's frames laid out facings across, frames down, every frame's feet on the same point."""
         return figure_sheet(
             textures.sheet_frames(self.unit, self.carrying),
             lambda frame, facing: r3.rotate_z(textures._unit(self.unit, 0, frame, self.carrying, self.race), facing * 45 - 90),
-            lambda frame, facing: textures.unit_key(self.unit, 0, facing, frame, self.carrying, self.race))
+            lambda frame, facing: textures.unit_key(self.unit, 0, facing, frame, self.carrying, self.race), self.chroma)
 
     def prompt(self, sheet: restyle.Sheet) -> str:
         rows = "; ".join(self.frame_name(f) for f in dict.fromkeys(c.tags["frame"] for c in sheet.cells))
@@ -685,7 +735,7 @@ class Buildings:
         head = (f"Edit target: the attached sprite sheet of {'one building' if len(types) == 1 else f'{len(types)} buildings'} of one faction from a 2D "
                 f"real-time strategy game (Warcraft 2 style, a 3/4 top-down camera on square ground tiles; each building stands on its own "
                 f"square patch of ground that is part of the sprite). {geometry(sheet, 'building')} The cells, row by row and left to right: ")
-        hue = f" {AETHER_HUE}" if BuildingType.VAULT in types else ""
+        hue = f" {AETHER_HUE}." if any(bt in AETHER_LIT for bt in types) else ""
         if self.look == "intact":
             cells = "; ".join(f"{i + 1}, the {name}: {BUILDING_SUBJECTS[(self.race, bt)]}" for i, (bt, name) in enumerate(zip(types, names)))
             fixes = "; ".join(f"the {name}: {BUILDING_FIXES[bt]}" for bt, name in zip(types, names))

@@ -146,7 +146,7 @@ def test_building_look_follows_health_and_work() -> None:
 def test_the_tool_lays_the_painted_buildings_out_three_to_a_row_with_a_shared_anchor() -> None:
     subject = tool.Buildings(Race.DWARF)
     sheet, images = subject.build_sheet()
-    assert sheet.cols == 3 and sheet.rows == 4 and len(sheet.cells) == 10
+    assert sheet.cols == 3 and sheet.rows == 4 and len(sheet.cells) == len(BUILT) == 11
     assert [c.tags["building"] for c in sheet.cells] == [bt.value for bt in BUILT]
     for cell in sheet.cells:
         alpha = np.asarray(images[cell.key])[..., 3]
@@ -244,7 +244,8 @@ def test_an_added_building_is_painted_alone_on_the_sheets_cells_and_cut_in_besid
 
     tool.install(subject, restyle.Cut(images, restyle.Registration(1.0, 0.0, 0.0), ()), sheet)
     whole, frames = restyle.load_frames(tmp_path / "dwarf.buildings.intact")
-    assert [c.tags["building"] for c in whole.cells] == [bt.value for bt in BUILT] and whole.cols == base.cols
+    appended = [bt.value for bt in BUILT if bt is not BuildingType.VAULT] + ["vault"]  # after the others
+    assert [c.tags["building"] for c in whole.cells] == appended and whole.cols == base.cols
     assert all(frames[key].tobytes() == frame.tobytes() for key, frame in before.items()), "the others stay as they were"
     assert same_picture(frames["building.dwarf.vault.intact.0"], images["building.dwarf.vault.intact.0"])
 
@@ -257,7 +258,7 @@ def test_an_added_building_is_painted_alone_on_the_sheets_cells_and_cut_in_besid
     tool.install(look, restyle.Cut(images, restyle.Registration(1.0, 0.0, 0.0), ()), sheet)
     again = tool.Buildings(Race.DWARF, "raised", (BuildingType.VAULT,))  # painting it again replaces its cell
     tool.install(again, restyle.Cut(images, restyle.Registration(1.0, 0.0, 0.0), ()), sheet)
-    assert [c.tags["building"] for c in restyle.Sheet.load(tmp_path / "dwarf.buildings.raised").cells] == [bt.value for bt in BUILT]
+    assert [c.tags["building"] for c in restyle.Sheet.load(tmp_path / "dwarf.buildings.raised").cells] == appended
 
 
 def test_a_site_is_cut_at_its_painted_scale_added_or_not() -> None:

@@ -100,6 +100,14 @@
    "tags": {
     "building": "vault"
    }
+  },
+  {
+   "key": "building.orc.mage_tower.intact.0",
+   "col": 1,
+   "row": 3,
+   "tags": {
+    "building": "mage_tower"
+   }
   }
  ]
 }

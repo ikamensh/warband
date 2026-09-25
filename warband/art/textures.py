@@ -37,7 +37,7 @@ from saga2d import Game
 from sagaforge import render3d as r3
 from sagaforge import restyle
 from sagaforge.render3d import Mesh
-from warband.sim.rules import BUILDINGS, BUILT, GOLD_PER_TRIP, PLAYABLE_UNITS, PLAYERS, UNITS, BuildingType, MapTheme, Race, Resource, Terrain, UnitType
+from warband.sim.rules import BUILDINGS, BUILT, GOLD_PER_TRIP, PLAYABLE_UNITS, PLAYERS, SUMMONED, UNITS, BuildingType, MapTheme, Race, Resource, Terrain, UnitType
 
 TILE = 32
 ELEVATION = 50.0
@@ -2689,7 +2689,13 @@ def melee_trail_image(game: Game, unit_type: UnitType, facing: int, race: Race =
 
 def unit_key(unit_type: UnitType, player: int, facing: int, frame: str, carrying: Resource | None = None, race: Race = Race.HUMAN) -> str:
     carry = f".{carrying.value}" if carrying is not None else ""
-    return f"unit.{race.value}.{unit_type.value}{carry}.{player}.{facing}.{frame}"
+    return f"unit.{_whose(unit_type, race)}{unit_type.value}{carry}.{player}.{facing}.{frame}"
+
+
+def _whose(unit_type: UnitType, race: Race) -> str:
+    """The race a unit's images and painted sheet are filed under, as a prefix: none for a summoned unit, which is no
+    race's and looks the same for every caster, so one painting serves them all."""
+    return "" if unit_type in SUMMONED else f"{race.value}."
 
 
 RESTYLED = Path(__file__).resolve().parents[1] / "assets" / "restyled"
@@ -2697,10 +2703,7 @@ RESTYLED = Path(__file__).resolve().parents[1] / "assets" / "restyled"
 #: when (``YYYY-MM-DD``): procedural art is a debt carried on purpose, never a default.  A unit type a race fields, or
 #: a creature, with neither a painted sheet nor a row here fails ``tests/warband/test_painted_sheets.py``; so does a
 #: row for one that is painted.  ``docs/adding-a-unit.md`` ("Its art") is how a unit leaves it.
-UNPAINTED_UNITS: dict[UnitType, tuple[str, str]] = {
-    UnitType.AETHER_ELEMENTAL: ("summoned by a spell, raceless and the same for every caster: tools/restyle.py paints a race's "
-                                "soldiers and the creatures, and has no subject for a unit no race fields (WB-066)", "2026-09-25"),
-}
+UNPAINTED_UNITS: dict[UnitType, tuple[str, str]] = {}
 #: An unarmed flyer's frames that are one picture: it strikes no blow, so its stand serves the attack frames too
 #: (:func:`_flyer` turns its rotor or beats its wings in the walk frames alone), rendered or painted once rather than
 #: five times a facing.
@@ -2747,8 +2750,8 @@ def restyled_frames(race: Race, unit_type: UnitType, carrying: Resource | None) 
 
 
 def unit_sheet(race: Race, unit_type: UnitType, carrying: Resource | None = None) -> str:
-    """The name of one unit subject's painted sheet under :data:`RESTYLED`."""
-    return f"{race.value}.{unit_type.value}" + (f".{carrying.value}" if carrying else "")
+    """The name of one unit subject's painted sheet under :data:`RESTYLED` (a summoned unit's names no race)."""
+    return f"{_whose(unit_type, race)}{unit_type.value}" + (f".{carrying.value}" if carrying else "")
 
 
 def unit_sheet_keys(race: Race, unit_type: UnitType, carrying: Resource | None = None) -> list[str]:
@@ -2784,9 +2787,7 @@ def stride_heads(race: Race, unit_type: UnitType, carrying: Resource | None) -> 
 #: each look (a new one with ``tools/restyle.py --buildings --add``) or stands here, drawn low-poly beside its painted
 #: neighbours; a sheet is stale only when it lacks a building not listed.  ``tests/warband/test_painted_sheets.py``
 #: fails for a building with neither, and for a row whose building is painted.
-UNPAINTED: dict[BuildingType, tuple[str, str]] = {
-    BuildingType.MAGE_TOWER: ("painted after WB-066 lands, by the Spell UI and vault graphics session", "2026-09-25"),
-}
+UNPAINTED: dict[BuildingType, tuple[str, str]] = {}
 
 
 @lru_cache(maxsize=None)

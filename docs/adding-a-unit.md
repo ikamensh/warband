@@ -48,7 +48,9 @@ fail, with what they returned: procedural art is a debt, never a default.
 3. **Paint.** `uv run python tools/restyle.py --race R --units U dump DIR`,
    read `DIR/R.U.prompt.txt`, then `render DIR`, one race after another (one
    painting job at a time; a 72-cell sheet took five to ten minutes on
-   2026-09-25). The painter that worked on 2026-09-24 is Codex's
+   2026-09-25). A summoned unit (`rules.SUMMONED`) is no race's: its one
+   sheet, named `U`, serves every caster, any `--race` paints it, and its
+   `SUBJECTS` line is the same for every race. The painter that worked on 2026-09-24 is Codex's
    image tool through the ChatGPT app's own CLI:
    `PATH=/Applications/ChatGPT.app/Contents/Resources:$PATH` in front of the
    command (the Homebrew `codex` 0.153 is refused the model its configuration

@@ -94,9 +94,11 @@ sheet it joins, and the cut appends it there; the other cells are left as they
 are. `tests/warband/test_painted_sheets.py` fails for a building that some
 race's sheet in some look lacks and that `textures.UNPAINTED` does not exempt
 with a reason and a date. The Aether Vault (WB-063) was the first painted in
-this way. Aether's violet sits between the key's magenta and the team blue,
-and a painter's violet that drifts either way is cut out by the key or turns
-red for the second player, so the vault's prompts name its hue (`AETHER_HUE`).
+this way, the Mage Tower (WB-066) the second. Aether's violet sits between the
+key's magenta and the team blue, and a painter's violet that drifts either way
+is cut out by the key or turns red for the second player, so the prompts of
+whatever shows aether name its hue (`AETHER_HUE`, `AETHER_LIT`; the Aether
+Elemental's too).
 
 The gold mine's four painted variants have two poorer wealths (WB-071,
 `--workings`): *worked*, a Mother Lode at or below its `rich_above`, and

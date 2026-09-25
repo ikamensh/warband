@@ -79,6 +79,15 @@ def test_a_unit_without_a_sheet_fails_the_protocol_until_it_is_exempted(tmp_path
     assert "human.cleric" not in unexempted() and "human.footman" in unexempted()
 
 
+def test_a_summoned_unit_is_painted_once_for_every_caster() -> None:
+    """A summoned unit is no race's and looks the same whoever casts it: its sheet and its images name no race, so one
+    painting serves every caster (and its image registers once per player, not once per race and player)."""
+    for unit in SUMMONED:
+        assert {textures.unit_sheet(race, unit) for race in Race} == {unit.value}
+        assert {textures.unit_key(unit, 1, 2, "stand", None, race) for race in Race} == {f"unit.{unit.value}.1.2.stand"}
+    assert textures.unit_sheet(Race.ORC, UnitType.FOOTMAN) == "orc.footman", "a race's own soldiers keep their race's sheets"
+
+
 def unpainted_buildings() -> list[tuple[BuildingType, str]]:
     """Each building a race's sheet in some look lacks, exempt or not, with that sheet's name."""
     return [(bt, f"{race.value}.buildings.{look}") for race in Race for look in textures.BUILDING_LOOKS for bt in BUILT

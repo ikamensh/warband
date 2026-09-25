@@ -191,6 +191,16 @@ def test_the_committed_sheet_is_free_of_edge_strays(monster: Monster) -> None:
     assert {key: count for key, count in field.items() if count} == {}, "the key's faint field far from the figure"
 
 
+def test_a_figure_whose_body_is_aether_is_painted_on_a_green_key() -> None:
+    """Aether's violet drifts towards the magenta key in a painter's hands, and the key thins it: the elemental is painted
+    on green, and its prompt says so. Everything else keeps the magenta nothing in the game wears."""
+    assert tool.Unit(Race.HUMAN, UnitType.AETHER_ELEMENTAL).chroma == tool.GREEN_KEY
+    assert tool.Unit(Race.ORC, UnitType.FOOTMAN).chroma == tool.restyle.MAGENTA
+    green = tool.restyle.Sheet.layout([("a", {})], cols=1, cell=(40, 60), origin=(20, 50), scale=2.0, chroma=tool.GREEN_KEY)
+    assert "flat green #00FF00" in tool.geometry(green, "figure") and "flat #00FF00" in tool.background(green)
+    assert "#FF00FF" not in tool.geometry(green, "figure") + tool.background(green)
+
+
 @pytest.mark.slow
 def test_a_unit_and_a_creature_are_laid_out_by_the_same_helper() -> None:
     """``figure_sheet`` builds both, so a unit's sheet is pinned here beside the creatures'.
