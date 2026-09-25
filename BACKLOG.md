@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-072**; a new
+section; git history keeps the record. The last ID given is **WB-073**; a new
 item takes the next one and updates this line.
 
 | ID | Priority | Status | Task | Origin |
@@ -30,6 +30,7 @@ item takes the next one and updates this line.
 | WB-070 | Now | proposed | Painted sheets for every unit, the flying machines first; painting in the new-unit protocol | Ilya 2026-09-24 |
 | WB-071 | Now | proposed | The seam looks as poor as it pays; its rich look goes to a new Mother Lode (over 50k gold) | Ilya 2026-09-24 |
 | WB-072 | Now | proposed | No last-standing reveal in a free-for-all: only the last two sides learn where the other hides | Ilya 2026-09-24 |
+| WB-073 | Now | proposed | Race balance: dwarves win ~64 % and orcs ~36 % of Master race games; bring every race within 45–55 % | Orchestrator 2026-09-25 |
 
 ## WB-055 — A deeper tech tree
 
@@ -468,3 +469,32 @@ not revealed.
 not, until two remain; a bystander's snapshot shows nothing of the exposed
 side; the news follows the reveal; the free-for-all league's undecided count
 does not rise (before/after); fingerprint refreshed.
+
+## WB-073 — Race balance
+
+**Why.** Through every item of the 2026-09-24 intake the race games told the
+same story (`tools/race_report.py`, 288–564 matches a run): dwarves win about
+64 % of Master's race games and 55–64 % of Medium's, orcs 34–37 % and 36–45 %,
+humans and elves near half. None of the intake's changes caused it and none
+closed it (WB-062 moved no race more than 2.6 points, WB-068 about 2). A race
+the player picks and then loses to three times in five is the biggest balance
+fault the game has.
+
+**Design.** Every race within 45–55 % of its decided Master and Medium race
+games, on the shipped sizes and layouts, with the difficulty ladder no weaker.
+The levers, in order: the race's own numbers in `races.toml` (its multipliers,
+its passive, its arts' magnitudes in `upgrades.toml`), then its unique unit
+(WB-068), never a shared unit (that moves every race). Diagnose before tuning:
+which matchups and which phase decide the dwarves' wins (Stonework's +25 %
+building hit points and +2 armour against a rush or a siege? Deep Mining's
+150-gold trip?) and the orcs' losses (the Grunt's −2 armour and no shield wall,
+the Ogre's thin armour, Rage now that it outlasts a heal), with
+`tools/battle_bench.py` for a unit question and the race games for the whole.
+Each change is measured before it is kept; the texts that promise the numbers
+move with them.
+
+**Acceptance.** The before and after tables (Master and Medium, sample sizes
+that mean something: two seed blocks on Medium, as WB-062 found), each change
+and its measured effect in `docs/balance.md`, the ladder before and after,
+fingerprint and sim_bench refreshed. Runs after WB-067, whose magic will move
+the races again.
