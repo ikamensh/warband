@@ -9,8 +9,9 @@
                                                             # --fix re-renders a sheet with the complaints in its prompt,
                                                             # --patch only the rows with questioned cells
 
-A *subject* is one unit of one race (a carrying peasant is its own subject), the nine
-buildings of one race in one look, (``--mines``) four of the gold mine's stand-ins in a look,
+A *subject* is one unit of one race (a carrying peasant is its own subject), the
+buildings of one race in one look (``--add`` paints only the buildings it names and cuts them
+into the installed sheets beside the others), (``--mines``) four of the gold mine's stand-ins in a look,
 (``--workings``) the same four worked out and poor, painted over the mine painting,
 (``--monsters``) one of the neutral creatures in every facing and frame, or (``--lairs``) the
 four creature dens in one look.  A building's ``intact``
@@ -244,10 +245,10 @@ PLAUSIBLE = ("The reference is a rough low-poly stand-in. Where its construction
 
 # -- Buildings --------------------------------------------------------------------------
 
-#: The buildings a sheet is painted with: every one but those the committed sheets were made without
-#: (textures.UNPAINTED, the Aether Vault).  Take one out of UNPAINTED to have the next repaint include it.
+#: The buildings a sheet is painted with: every one but those exempted from painting (textures.UNPAINTED).  A building
+#: new to the game is painted into the installed sheets beside the others (``--add``), not by repainting them all.
 BUILDING_TYPES = [bt for bt in BUILT if bt not in textures.UNPAINTED]
-LOOKS = textures.BUILDING_LOOKS  # intact, active, damaged
+LOOKS = textures.BUILDING_LOOKS  # intact, active, damaged, and the two a site wears
 ARCHITECTURE: dict[Race, str] = {
     Race.HUMAN: "human: a medieval kingdom that builds in grey stone, oak timber and white plaster under thatch and grey slate",
     Race.ORC: "orcish: crude dark timber and rough stone, hides stretched over frames, red-brown hide roofs, bone spikes at the corners "
@@ -263,6 +264,10 @@ _CHURCH = ("a cross-shaped nave under green-teal shingle roofs, an octagonal bel
            "{window} arched window over the door, two blue banners, steps")
 _VAULT = ("on a low stone plinth over a crack of violet light, held a hand's breadth off the plinth by four taut chains to stakes at "
           "its corners, straining upward:")
+#: Aether's violet lies between the key (magenta, cut out within about 29 degrees of hue) and the team blue (recoloured
+#: within about 32): a painter's violet drifting either way is lost to the key or turns red for the second player.
+AETHER_HUE = ("The aether's light is a cool blue-violet like #A868F0 and its shadows a deep violet like #6834AA: never pink, magenta "
+              "or red-purple (the background key would cut it out) and never blue (the faction colour).")
 #: What each building is, per race (the prompt prefixes the race's name for it).
 BUILDING_SUBJECTS: dict[tuple[Race, BuildingType], str] = {
     (Race.HUMAN, BuildingType.TOWN_HALL): f"a square stone keep under a dark blue pyramid roof with a small blue-roofed turret and a pennant on top; {_GATE}",
@@ -355,7 +360,7 @@ RAISED: dict[BuildingType, str] = {
 #: How each building looks just begun (the *founded* look, shown for the first half of its construction).
 FOUNDED: dict[BuildingType, str] = {bt: "only its foundation: the footprint of its walls laid in a low course of stone or timber sills, "
                                         "no higher than a knee, with heaps of its materials beside it"
-                                    for bt in BUILDING_TYPES}
+                                    for bt in BUILT}
 TEAM_BUILDINGS = ("Blue is the faction colour: it appears exactly where the stand-in has it (banners, pennants, flags, a saddle blanket, "
                   "the hall's roof) and must stay this blue; put no blue anywhere else: roofs are grey, brown, green or red, windows amber, "
                   "water dark green.")
@@ -600,11 +605,13 @@ class Unit:
 
 @dataclass(frozen=True)
 class Buildings:
-    """The nine buildings of one race in one look.  The intact look is painted from the low-poly
-    stand-ins; the other looks are painted from the installed intact painting."""
+    """The buildings of one race in one look.  The intact look is painted from the low-poly
+    stand-ins; the other looks are painted from the installed intact painting.  With *add*, only
+    those buildings are painted, on the installed sheet's cells, and cut into it beside its others."""
 
     race: Race
     look: str = "intact"
+    add: tuple[BuildingType, ...] = ()
     chunk = (1, 3)
 
     @property
@@ -612,8 +619,17 @@ class Buildings:
         return 0 if self.look == "intact" else 1
 
     @property
-    def name(self) -> str:
+    def sheet(self) -> str:
+        """The installed sheet's name."""
         return f"{self.race.value}.buildings.{self.look}"
+
+    @property
+    def name(self) -> str:
+        return self.sheet + "".join(f".{bt.value}" for bt in self.add)
+
+    @property
+    def types(self) -> list[BuildingType]:
+        return list(self.add) or BUILDING_TYPES
 
     @property
     def description(self) -> str:
@@ -633,36 +649,47 @@ class Buildings:
         return RACES[self.race].buildings[BuildingType(cell.tags["building"])].name
 
     def build_sheet(self) -> tuple[restyle.Sheet, dict[str, Image.Image]]:
-        keys = [(textures.building_key(bt, 0, self.race, self.look), {"building": bt.value}) for bt in BUILDING_TYPES]
+        types = self.types
+        keys = [(textures.building_key(bt, 0, self.race, self.look), {"building": bt.value}) for bt in types]
+        cols = len(types) if self.add else 3
         if self.look != "intact":
             intact = Buildings(self.race)
             if not restyle.file(RESTYLED / intact.name, "png").exists():
                 raise FileNotFoundError(f"{self.name} is painted from the intact painting: install {intact.name} first")
             base, painted = restyle.load_frames(RESTYLED / intact.name)
-            sheet = restyle.Sheet.layout(keys, cols=base.cols, cell=base.cell, origin=base.origin, scale=base.scale)
-            return sheet, {key: painted[textures.building_key(bt, 0, self.race)] for (key, _), bt in zip(keys, BUILDING_TYPES)}
-        meshes = {bt: textures._building(bt, 0, self.race) for bt in BUILDING_TYPES}
+            sheet = restyle.Sheet.layout(keys, cols=cols, cell=base.cell, origin=base.origin, scale=base.scale)
+            return sheet, {key: painted[textures.building_key(bt, 0, self.race)] for (key, _), bt in zip(keys, types)}
+        meshes = {bt: textures._building(bt, 0, self.race) for bt in types}
         bounds = [r3.bounds(m, textures.PROJECTION) for m in meshes.values()]
         half_w = max(max(-b[0], b[2]) for b in bounds)
         top, below = max(-b[1] for b in bounds), max(b[3] for b in bounds)
-        cell = (int(2 * half_w * BUILDING_SCALE) + 2 * MARGIN, int((top + below) * BUILDING_SCALE) + 2 * MARGIN)
-        origin = (cell[0] / 2, MARGIN + top * BUILDING_SCALE)
-        sheet = restyle.Sheet.layout(keys, cols=3, cell=cell, origin=origin, scale=BUILDING_SCALE)
-        images = {key: r3.render(meshes[bt], textures.PROJECTION, scale=BUILDING_SCALE, canvas=(cell[0] / BUILDING_SCALE, cell[1] / BUILDING_SCALE),
-                                 origin=(origin[0] / BUILDING_SCALE, origin[1] / BUILDING_SCALE))
-                  for (key, _), bt in zip(keys, BUILDING_TYPES)}
+        if self.add:  # on the cells of the sheet it joins, which must hold it
+            base = restyle.Sheet.load(RESTYLED / self.sheet)
+            cell, origin, scale = base.cell, base.origin, base.scale
+            room = (min(origin[0], cell[0] - origin[0]) / scale, origin[1] / scale, (cell[1] - origin[1]) / scale)
+            if half_w > room[0] or top > room[1] or below > room[2]:
+                raise ValueError(f"{self.name}: the stand-in outgrows {self.sheet}'s cells; repaint the sheet whole")
+        else:
+            scale = BUILDING_SCALE
+            cell = (int(2 * half_w * scale) + 2 * MARGIN, int((top + below) * scale) + 2 * MARGIN)
+            origin = (cell[0] / 2, MARGIN + top * scale)
+        sheet = restyle.Sheet.layout(keys, cols=cols, cell=cell, origin=origin, scale=scale)
+        images = {key: r3.render(meshes[bt], textures.PROJECTION, scale=scale, canvas=(cell[0] / scale, cell[1] / scale),
+                                 origin=(origin[0] / scale, origin[1] / scale))
+                  for (key, _), bt in zip(keys, types)}
         return sheet, images
 
     def prompt(self, sheet: restyle.Sheet) -> str:
         types = [BuildingType(c.tags["building"]) for c in sheet.cells]
         names = [RACES[self.race].buildings[bt].name for bt in types]
-        head = (f"Edit target: the attached sprite sheet of {'the nine' if len(types) == 9 else len(types)} buildings of one faction from a 2D "
+        head = (f"Edit target: the attached sprite sheet of {'one building' if len(types) == 1 else f'{len(types)} buildings'} of one faction from a 2D "
                 f"real-time strategy game (Warcraft 2 style, a 3/4 top-down camera on square ground tiles; each building stands on its own "
                 f"square patch of ground that is part of the sprite). {geometry(sheet, 'building')} The cells, row by row and left to right: ")
+        hue = f" {AETHER_HUE}" if BuildingType.VAULT in types else ""
         if self.look == "intact":
             cells = "; ".join(f"{i + 1}, the {name}: {BUILDING_SUBJECTS[(self.race, bt)]}" for i, (bt, name) in enumerate(zip(types, names)))
             fixes = "; ".join(f"the {name}: {BUILDING_FIXES[bt]}" for bt, name in zip(types, names))
-            return (f"{head}{cells}.\n\nThe faction is {ARCHITECTURE[self.race]}. {TEAM_BUILDINGS}\n\n{BUILDING_STYLE}\n\n"
+            return (f"{head}{cells}.\n\nThe faction is {ARCHITECTURE[self.race]}. {TEAM_BUILDINGS}{hue}\n\n{BUILDING_STYLE}\n\n"
                     f"{PLAUSIBLE_BUILDINGS} In particular: {fixes}.\n\n"
                     f"Keep exactly: each building's position, footprint and ground patch, overall height and silhouette, and where its doors, "
                     f"towers, roofs, banners and yard equipment are. No people; animals only where the stand-in shows them; no smoke, fire or "
@@ -671,7 +698,7 @@ class Buildings:
         details = "; ".join(f"the {name}: {LOOK_DETAILS[self.look][bt]}" for bt, name in zip(types, names))
         return (f"{head}{cells}. The buildings are already painted.\n\n"
                 f"Repaint every building in exactly the same place, style, colours and shape, but {LOOK_BRIEF[self.look]} In particular: "
-                f"{details}.\n\nBlue is the faction colour and stays exactly where it is; put no blue anywhere else. {background(sheet)}")
+                f"{details}.\n\nBlue is the faction colour and stays exactly where it is; put no blue anywhere else.{hue} {background(sheet)}")
 
     def row_names(self, sheet: restyle.Sheet) -> list[str]:
         return [", ".join(f"col {c.col} {self.building_name(c)}" for c in sheet.cells if c.row == row) for row in range(sheet.rows)]
@@ -683,8 +710,8 @@ class Buildings:
         """One PNG: the originals (stand-ins, or the intact painting for a look), the painting, and the
         painting recoloured to the second player, so a leaked team colour shows."""
         _, original = self.build_sheet()
-        keys = [c.key for c in sheet.cells]
-        recoloured = {k: restyle.recolor(v, textures.team_color(0), textures.team_color(1)) for k, v in frames.items()}
+        keys = [c.key for c in sheet.cells if c.key in original]  # an added building's alone
+        recoloured = {k: restyle.recolor(frames[k], textures.team_color(0), textures.team_color(1)) for k in keys}
         path = out / f"{self.name}.png"
         stacked([restyle.strip(original, keys, scale=0.5), restyle.strip(frames, keys, scale=0.5), restyle.strip(recoloured, keys, scale=0.5)]).save(path)
         return path
@@ -1205,8 +1232,32 @@ def selected(args: argparse.Namespace) -> list[Subject]:
         unknown = [look for look in looks if look not in LOOKS]
         if unknown:
             raise SystemExit(f"unknown look {unknown[0]!r}; the looks are {', '.join(LOOKS)}")
-        subjects += [Buildings(race, look) for look in looks]
+        add = tuple(BuildingType(bt) for bt in args.add.split(",")) if args.add else ()
+        subjects += [Buildings(race, look, add) for look in looks]
     return subjects
+
+
+def installed(subject: Subject) -> Path:
+    """Where *subject*'s painting is installed: an added building's is in the sheet it joined."""
+    return RESTYLED / (subject.sheet if isinstance(subject, Buildings) else subject.name)
+
+
+def install(subject: Subject, result: restyle.Cut, sheet: restyle.Sheet) -> None:
+    """Install a cut painting: an added building's cells go into the installed sheet, after its others."""
+    if not (isinstance(subject, Buildings) and subject.add):
+        restyle.save_frames(result, sheet, installed(subject))
+        return
+    base, frames = restyle.load_frames(installed(subject))
+    keys = [(c.key, c.tags) for c in base.cells if c.key not in result.frames] + [(c.key, c.tags) for c in sheet.cells]
+    whole = restyle.Sheet.layout(keys, cols=base.cols, cell=base.cell, origin=base.origin, scale=base.scale, chroma=base.chroma)
+    restyle.save_frames(restyle.Cut(frames | result.frames, result.registration, result.report), whole, installed(subject))
+
+
+def rescales(subject: Subject) -> bool:
+    """Whether the cut scales *subject*'s painting to its stand-in's height.  Not a site's: it stands on the same ground
+    patch as its building but is far lower; nor a worked-out or poor mine's, its painting with the tall crystals gone.
+    Neither height says anything of the scale."""
+    return not ((isinstance(subject, Buildings) and subject.look in textures.SITE_LOOKS) or isinstance(subject, Workings))
 
 
 def cmd_dump(args: argparse.Namespace, subjects: list[Subject]) -> None:
@@ -1266,10 +1317,7 @@ def cmd_cut(args: argparse.Namespace, subjects: list[Subject]) -> None:
             print(f"{name}: no {rendered.name} yet")
             continue
         sheet = restyle.Sheet.load(args.dir / name)
-        # A site stands on the same ground patch as its building but is far lower, and a worked-out or poor mine is its
-        # painting with the tall crystals gone: neither height says anything of the scale.
-        result = restyle.cut(sheet, Image.open(rendered), Image.open(args.dir / f"{name}.png"),
-                             rescale=not (name.endswith(tuple(f".{look}" for look in textures.SITE_LOOKS)) or isinstance(subject, Workings)))
+        result = restyle.cut(sheet, Image.open(rendered), Image.open(args.dir / f"{name}.png"), rescale=rescales(subject))
         flagged = result.flagged
         print(f"{name}: scale {result.registration.scale:.2f} shift ({result.registration.dx:.0f}, {result.registration.dy:.0f}), "
               f"{len(flagged)} of {len(result.report)} cells flagged")
@@ -1278,16 +1326,16 @@ def cmd_cut(args: argparse.Namespace, subjects: list[Subject]) -> None:
         if len(flagged) > args.tolerate:
             print(f"   rejected (more than {args.tolerate} flagged); re-render or raise --tolerate")
             continue
-        restyle.save_frames(settled(result), sheet, RESTYLED / name)
-        print(f"   installed {RESTYLED / name}.png")
+        install(subject, settled(result), sheet)
+        print(f"   installed {installed(subject)}.png")
 
 
 def cmd_preview(args: argparse.Namespace, subjects: list[Subject]) -> None:
     args.out.mkdir(parents=True, exist_ok=True)
     for subject in subjects:
-        if not restyle.file(RESTYLED / subject.name, "png").exists():
+        if not restyle.file(installed(subject), "png").exists():
             continue
-        sheet, frames = restyle.load_frames(RESTYLED / subject.name)
+        sheet, frames = restyle.load_frames(installed(subject))
         print(f"{subject.name}: {subject.preview(sheet, frames, args.out)}")
 
 
@@ -1300,11 +1348,16 @@ def check_one(args: argparse.Namespace, subject: Subject, sheets: Path) -> list[
     """Judge the sheet of one subject in *sheets* against its originals; writes DIR/name/check.json
     and returns the verdicts (empty when there is no sheet)."""
     name = subject.name
-    if not restyle.file(sheets / name, "png").exists():
+    stem = sheets / installed(subject).name
+    if not restyle.file(stem, "png").exists():
         print(f"{name}: no sheet in {sheets}")
         return []
-    sheet, painted = restyle.load_frames(sheets / name)
-    _, originals = subject.build_sheet()
+    sheet, painted = restyle.load_frames(stem)
+    if isinstance(subject, Buildings) and subject.add:  # its cells alone, laid out as they were painted
+        sheet, originals = subject.build_sheet()
+        painted = {key: painted[key] for key in originals}
+    else:
+        _, originals = subject.build_sheet()
     names = subject.row_names(sheet)
     (args.dir / name).mkdir(parents=True, exist_ok=True)
     chunk_rows, chunk_cols = subject.chunk
@@ -1336,6 +1389,8 @@ def cmd_check(args: argparse.Namespace, subjects: list[Subject]) -> None:
     """Judge every selected sheet.  With --fix, re-render a questioned sheet with the complaints
     in its prompt and install the candidate only when the judge questions fewer of its cells;
     the best of the rounds ends up installed.  With --patch, re-render only the questioned rows."""
+    if (args.fix or args.patch) and any(isinstance(s, Buildings) and s.add for s in subjects):
+        raise SystemExit("--fix and --patch repaint an installed sheet; for an added building, render and cut it again")
     for subject in subjects:
         name = subject.name
         verdicts = check_one(args, subject, args.sheets or RESTYLED)
@@ -1496,6 +1551,8 @@ def main() -> None:
     parser.add_argument("--units", default=None, help="comma-separated unit types, or 'all' (default with no --buildings: all)")
     parser.add_argument("--buildings", action="store_true", help="the race's building sheets (default with no --units: yes)")
     parser.add_argument("--looks", default=",".join(LOOKS), help=f"comma-separated building looks (default: {','.join(LOOKS)})")
+    parser.add_argument("--add", default=None, help="comma-separated building types to paint alone and add to the installed "
+                                                    "building sheets, whose other paintings stay (with --buildings)")
     parser.add_argument("--mines", action="store_true", help="the gold mine's sheets instead (no race; looks intact and active)")
     parser.add_argument("--workings", action="store_true",
                         help="the mine's worked-out and poor sheets (a lode below its line, a seam), painted over the mine's")

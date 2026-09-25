@@ -2646,11 +2646,12 @@ def stride_heads(race: Race, unit_type: UnitType, carrying: Resource | None) -> 
                  for facing in range(FACINGS))
 
 
-#: Buildings the committed painted sheets were made without: the Aether Vault (WB-063) came after them and the
-#: image model that paints is not always to hand.  One of these is drawn low-poly beside its painted neighbours,
-#: and a sheet is stale only when it lacks one of the others.  ``tools/restyle.py`` paints every building in
-#: :data:`~warband.sim.rules.BUILT`; once a sheet holds one of these, that painting is used.
-UNPAINTED: frozenset[BuildingType] = frozenset({BuildingType.VAULT})
+#: Buildings exempted from painting, ``{building type: (why, since when)}``, the buildings' twin of
+#: :data:`UNPAINTED_UNITS`: every building in :data:`~warband.sim.rules.BUILT` is painted in each race's sheet of
+#: each look (a new one with ``tools/restyle.py --buildings --add``) or stands here, drawn low-poly beside its painted
+#: neighbours; a sheet is stale only when it lacks a building not listed.  ``tests/warband/test_painted_sheets.py``
+#: fails for a building with neither, and for a row whose building is painted.
+UNPAINTED: dict[BuildingType, tuple[str, str]] = {}
 
 
 @lru_cache(maxsize=None)

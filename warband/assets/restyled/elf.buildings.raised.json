@@ -4,7 +4,7 @@
   381
  ],
  "cols": 3,
- "rows": 3,
+ "rows": 4,
  "origin": [
   127.5,
   263.5208846609464
@@ -91,6 +91,14 @@
    "row": 2,
    "tags": {
     "building": "church"
+   }
+  },
+  {
+   "key": "building.elf.vault.raised.0",
+   "col": 0,
+   "row": 3,
+   "tags": {
+    "building": "vault"
    }
   }
  ]

@@ -4,7 +4,7 @@
   376
  ],
  "cols": 3,
- "rows": 3,
+ "rows": 4,
  "origin": [
   127.5,
   257.8651324672157
@@ -91,6 +91,14 @@
    "row": 2,
    "tags": {
     "building": "church"
+   }
+  },
+  {
+   "key": "building.dwarf.vault.intact.0",
+   "col": 0,
+   "row": 3,
+   "tags": {
+    "building": "vault"
    }
   }
  ]

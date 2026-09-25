@@ -96,7 +96,7 @@ def test_a_race_without_painted_buildings_renders_the_low_poly_building(game, pa
 
 
 def test_a_stale_sheet_warns_and_is_ignored(game, painted) -> None:
-    paint(painted, Race.HUMAN, "intact", BUILT[:-1])  # no church
+    paint(painted, Race.HUMAN, "intact", [bt for bt in BUILT if bt is not BuildingType.CHURCH])
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         assert textures.restyled_buildings(Race.HUMAN) is None
@@ -104,11 +104,13 @@ def test_a_stale_sheet_warns_and_is_ignored(game, painted) -> None:
     assert textures.placements[textures.building_image(game, BuildingType.FARM, 0, Race.HUMAN)].drop == 34
 
 
-def test_a_building_the_sheets_were_made_without_is_drawn_low_poly_beside_the_painted_ones(game, painted) -> None:
-    """The Aether Vault came after the painted sheets: they stay in use for the nine they hold, and the vault is the
-    low-poly render in every look (WB-063)."""
-    paint(painted, Race.HUMAN, "intact")
-    paint(painted, Race.HUMAN, "active")
+def test_an_exempted_building_is_drawn_low_poly_beside_the_painted_ones(game, painted, monkeypatch) -> None:
+    """A building exempted from painting is missing from the sheets without making them stale: they stay in use for
+    the others, and it is the low-poly render in every look (the Aether Vault until it was painted in)."""
+    monkeypatch.setitem(textures.UNPAINTED, BuildingType.VAULT, ("a test's", "2026-09-25"))
+    without = [bt for bt in BUILT if bt is not BuildingType.VAULT]
+    paint(painted, Race.HUMAN, "intact", without)
+    paint(painted, Race.HUMAN, "active", without)
     sheet = textures.restyled_buildings(Race.HUMAN)
     assert sheet is not None
     assert textures.placements[textures.building_image(game, BuildingType.FARM, 0, Race.HUMAN)].drop == sheet[0].drop  # painted
@@ -141,10 +143,10 @@ def test_building_look_follows_health_and_work() -> None:
     assert building_look(site) == "raised"
 
 
-def test_the_tool_lays_the_nine_painted_buildings_out_on_one_sheet_with_a_shared_anchor() -> None:
+def test_the_tool_lays_the_painted_buildings_out_three_to_a_row_with_a_shared_anchor() -> None:
     subject = tool.Buildings(Race.DWARF)
     sheet, images = subject.build_sheet()
-    assert sheet.cols == 3 and sheet.rows == 3 and len(sheet.cells) == 9
+    assert sheet.cols == 3 and sheet.rows == 4 and len(sheet.cells) == 10
     assert [c.tags["building"] for c in sheet.cells] == [bt.value for bt in BUILT]
     for cell in sheet.cells:
         alpha = np.asarray(images[cell.key])[..., 3]
@@ -155,7 +157,7 @@ def test_the_tool_lays_the_nine_painted_buildings_out_on_one_sheet_with_a_shared
     assert np.flatnonzero(hall.any(axis=1)).max() == pytest.approx(sheet.origin[1] + 1.4 * textures.TILE * sheet.scale, abs=4)
     assert np.flatnonzero(farm.any(axis=1)).max() == pytest.approx(sheet.origin[1] + 0.9 * textures.TILE * sheet.scale, abs=4)
     text = subject.prompt(sheet)
-    assert "3 rows x 3 columns" in text and "the Deep Hold:" in text and "the Brewhouse:" in text and "the Rune Shrine:" in text
+    assert "4 rows x 3 columns" in text and "the Deep Hold:" in text and "the Brewhouse:" in text and "the Rune Shrine:" in text
     assert subject.row_names(sheet)[1] == "col 0 Bolt Tower, col 1 Timber Works, col 2 Forge"
 
 
@@ -191,10 +193,13 @@ def test_selection_defaults_to_every_subject_of_the_race() -> None:
     parse.add_argument("--buildings", action="store_true"); parse.add_argument("--looks", default="intact,active,damaged")
     parse.add_argument("--mines", action="store_true"); parse.add_argument("--monsters", action="store_true")
     parse.add_argument("--lairs", action="store_true"); parse.add_argument("--workings", action="store_true")
-    parse.add_argument("--creatures", default="all")
+    parse.add_argument("--creatures", default="all"); parse.add_argument("--add", default=None)
     names = [s.name for s in tool.selected(parse.parse_args(["--race", "elf"]))]
     assert names[:3] == ["elf.peasant", "elf.peasant.gold", "elf.peasant.lumber"] and names[-3:] == ["elf.buildings.intact", "elf.buildings.active", "elf.buildings.damaged"]
     assert [s.name for s in tool.selected(parse.parse_args(["--buildings", "--looks", "damaged"]))] == ["human.buildings.damaged"]
+    added = tool.selected(parse.parse_args(["--buildings", "--looks", "intact,raised", "--add", "vault"]))
+    assert [(s.name, s.sheet, s.stage) for s in added] == [("human.buildings.intact.vault", "human.buildings.intact", 0),
+                                                           ("human.buildings.raised.vault", "human.buildings.raised", 1)]
     assert [s.name for s in tool.selected(parse.parse_args(["--units", "knight"]))] == ["human.knight"]
     assert [s.name for s in tool.selected(parse.parse_args(["--mines"]))] == ["mine.intact", "mine.active"], "a mine has no damaged look"
     assert [s.name for s in tool.selected(parse.parse_args(["--lairs"]))] == ["lair.intact", "lair.damaged"], "a den has no active look"
@@ -203,6 +208,71 @@ def test_selection_defaults_to_every_subject_of_the_race() -> None:
         "painted over the mine painting, then lit over their own"
     with pytest.raises(SystemExit):
         tool.selected(parse.parse_args(["--buildings", "--looks", "ruined"]))
+
+
+def installed_without_the_vault(folder: Path, race: Race, look: str) -> dict[str, Image.Image]:
+    """*race*'s committed painting in *look* copied into *folder* as it was before the vault was painted in."""
+    sheet, frames = restyle.load_frames(textures.RESTYLED / f"{race.value}.buildings.{look}")
+    keys = [(c.key, c.tags) for c in sheet.cells if c.tags["building"] != "vault"]
+    before = restyle.Sheet.layout(keys, cols=sheet.cols, cell=sheet.cell, origin=sheet.origin, scale=sheet.scale)
+    frames = {key: frames[key] for key, _ in keys}
+    restyle.save_frames(restyle.Cut(frames, restyle.Registration(1.0, 0.0, 0.0), ()), before, folder / f"{race.value}.buildings.{look}")
+    return restyle.load_frames(folder / f"{race.value}.buildings.{look}")[1]
+
+
+def same_picture(a: Image.Image, b: Image.Image) -> bool:
+    """The same pixels where either is seen (a sheet written to disk keeps no colour under a clear pixel)."""
+    a, b = np.asarray(a), np.asarray(b)
+    seen = (a[..., 3] > 0) | (b[..., 3] > 0)
+    return bool(np.array_equal(a[seen], b[seen]))
+
+
+def test_an_added_building_is_painted_alone_on_the_sheets_cells_and_cut_in_beside_the_others(tmp_path, monkeypatch) -> None:
+    """``--add``: a building new to the game is painted into the installed sheets, whose other paintings stay as they
+    are. Its stand-in is rendered on the cells of the sheet it joins, alone; the cut appends it to that sheet; its other
+    looks are painted from its intact painting, as every building's are."""
+    monkeypatch.setattr(tool, "RESTYLED", tmp_path)
+    before = installed_without_the_vault(tmp_path, Race.DWARF, "intact")
+    subject = tool.Buildings(Race.DWARF, "intact", (BuildingType.VAULT,))
+    sheet, images = subject.build_sheet()
+    base = restyle.Sheet.load(tmp_path / "dwarf.buildings.intact")
+    assert (sheet.cell, sheet.origin, sheet.scale, len(sheet.cells)) == (base.cell, base.origin, base.scale, 1)
+    alpha = np.asarray(images["building.dwarf.vault.intact.0"])[..., 3]
+    assert alpha.max() > 0 and alpha[0].max() == 0 and alpha[-1].max() == 0 and alpha[:, 0].max() == 0 and alpha[:, -1].max() == 0
+    text = subject.prompt(sheet)
+    assert "one building of one faction" in text and "the Rune Vault:" in text and "#A868F0" in text
+
+    tool.install(subject, restyle.Cut(images, restyle.Registration(1.0, 0.0, 0.0), ()), sheet)
+    whole, frames = restyle.load_frames(tmp_path / "dwarf.buildings.intact")
+    assert [c.tags["building"] for c in whole.cells] == [bt.value for bt in BUILT] and whole.cols == base.cols
+    assert all(frames[key].tobytes() == frame.tobytes() for key, frame in before.items()), "the others stay as they were"
+    assert same_picture(frames["building.dwarf.vault.intact.0"], images["building.dwarf.vault.intact.0"])
+
+    installed_without_the_vault(tmp_path, Race.DWARF, "raised")
+    look = tool.Buildings(Race.DWARF, "raised", (BuildingType.VAULT,))
+    sheet, images = look.build_sheet()
+    assert list(images) == ["building.dwarf.vault.raised.0"]
+    assert same_picture(images["building.dwarf.vault.raised.0"], frames["building.dwarf.vault.intact.0"])
+    assert "the chains lie slack" in look.prompt(sheet)
+    tool.install(look, restyle.Cut(images, restyle.Registration(1.0, 0.0, 0.0), ()), sheet)
+    again = tool.Buildings(Race.DWARF, "raised", (BuildingType.VAULT,))  # painting it again replaces its cell
+    tool.install(again, restyle.Cut(images, restyle.Registration(1.0, 0.0, 0.0), ()), sheet)
+    assert [c.tags["building"] for c in restyle.Sheet.load(tmp_path / "dwarf.buildings.raised").cells] == [bt.value for bt in BUILT]
+
+
+def test_a_site_is_cut_at_its_painted_scale_added_or_not() -> None:
+    """A site's height says nothing of its scale: the cut keeps the painter's, for a building added to the sheets too."""
+    for add in ((), (BuildingType.VAULT,)):
+        assert not tool.rescales(tool.Buildings(Race.ELF, "founded", add)) and not tool.rescales(tool.Buildings(Race.ELF, "raised", add))
+        assert tool.rescales(tool.Buildings(Race.ELF, "damaged", add))
+    assert not tool.rescales(tool.Workings()) and tool.rescales(tool.Mines())
+
+
+def test_an_added_building_that_outgrows_the_sheets_cells_asks_for_a_whole_repaint(painted, monkeypatch) -> None:
+    monkeypatch.setattr(tool, "RESTYLED", painted)
+    paint(painted, Race.ORC, "intact", [bt for bt in BUILT if bt is not BuildingType.VAULT])  # cells far too small
+    with pytest.raises(ValueError, match="outgrows"):
+        tool.Buildings(Race.ORC, "intact", (BuildingType.VAULT,)).build_sheet()
 
 
 def test_the_workings_sheet_is_the_mine_painting_laid_out_a_row_to_a_wealth() -> None:

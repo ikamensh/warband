@@ -81,6 +81,23 @@ key background is thrown away. The stand-ins keep the team hue off
 roofs, glass and water because the painted frames are recoloured by hue per
 player.
 
+### A new building
+
+A building new to the game is painted into the installed sheets rather than by
+repainting them, which would change the nine buildings players know:
+`tools/restyle.py --race R --buildings --looks intact --add B dump DIR`, then
+`render DIR` and `cut DIR` as for a unit (the painter is the one
+`docs/adding-a-unit.md` names), one race after another, and then the other four
+looks (`--looks active,damaged,founded,raised`), which are painted from the
+intact painting just installed. The stand-in is rendered on the cells of the
+sheet it joins, and the cut appends it there; the other cells are left as they
+are. `tests/warband/test_painted_sheets.py` fails for a building that some
+race's sheet in some look lacks and that `textures.UNPAINTED` does not exempt
+with a reason and a date. The Aether Vault (WB-063) was the first painted in
+this way. Aether's violet sits between the key's magenta and the team blue,
+and a painter's violet that drifts either way is cut out by the key or turns
+red for the second player, so the vault's prompts name its hue (`AETHER_HUE`).
+
 The gold mine's four painted variants have two poorer wealths (WB-071,
 `--workings`): *worked*, a Mother Lode at or below its `rich_above`, and
 *poor*, the gold seam. They are painted over the installed mine painting, not

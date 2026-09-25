@@ -1,8 +1,10 @@
-"""Every unit wears a painted sheet (WB-070), and the committed sheets carry nothing the cut brought in from beyond the
-figure (WB-019).
+"""Every unit and every building wears a painted sheet (WB-070), and the committed sheets carry nothing the cut brought
+in from beyond the figure (WB-019).
 
 A unit type a race fields, or a neutral creature, is painted or stands in ``textures.UNPAINTED_UNITS`` with the reason
-and the date: procedural art is a debt carried on purpose.  ``docs/adding-a-unit.md`` ("Its art") is the procedure."""
+and the date, and a building in ``textures.UNPAINTED``: procedural art is a debt carried on purpose.
+``docs/adding-a-unit.md`` ("Its art") is the procedure for a unit, ``docs/warband-art.md`` ("A new building") for a
+building."""
 
 import datetime
 
@@ -12,7 +14,7 @@ from sagaforge import restyle
 
 from warband.art import monsters, textures
 from warband.sim.races import RACES
-from warband.sim.rules import CREATURES, Race, Resource, UnitType
+from warband.sim.rules import BUILT, CREATURES, BuildingType, Race, Resource, UnitType
 
 
 def fielded():
@@ -72,6 +74,26 @@ def test_a_unit_without_a_sheet_fails_the_protocol_until_it_is_exempted(tmp_path
     assert {"human.cleric", "dwarf.peasant.lumber", "monster.golem"} <= set(unexempted())
     monkeypatch.setitem(textures.UNPAINTED_UNITS, UnitType.CLERIC, ("a test's", "2026-09-24"))
     assert "human.cleric" not in unexempted() and "human.footman" in unexempted()
+
+
+def unpainted_buildings() -> list[tuple[BuildingType, str]]:
+    """Each building a race's sheet in some look lacks, exempt or not, with that sheet's name."""
+    return [(bt, f"{race.value}.buildings.{look}") for race in Race for look in textures.BUILDING_LOOKS for bt in BUILT
+            if not holds(f"{race.value}.buildings.{look}", [textures.building_key(bt, 0, race, look)])]
+
+
+def test_every_building_is_painted_in_every_look_or_exempted() -> None:
+    """A new building comes with its cell in every race's sheet of every look, or with a row saying why not and since when."""
+    assert [f"{bt.value} in {name}" for bt, name in unpainted_buildings() if bt not in textures.UNPAINTED] == [], \
+        "paint these (tools/restyle.py --buildings --add) or exempt them in textures.UNPAINTED with the reason and the date"
+
+
+def test_every_building_exemption_is_needed_and_says_why_and_since_when() -> None:
+    missing = {bt for bt, _name in unpainted_buildings()}
+    for bt, (reason, since) in textures.UNPAINTED.items():
+        assert bt in missing, f"{bt.value} is painted: delete its exemption"
+        assert reason.strip(), bt
+        datetime.date.fromisoformat(since)
 
 
 def subjects():

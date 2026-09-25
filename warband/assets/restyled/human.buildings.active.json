@@ -4,7 +4,7 @@
   367
  ],
  "cols": 3,
- "rows": 3,
+ "rows": 4,
  "origin": [
   127.5,
   249.26552185297103
@@ -91,6 +91,14 @@
    "row": 2,
    "tags": {
     "building": "church"
+   }
+  },
+  {
+   "key": "building.human.vault.active.0",
+   "col": 0,
+   "row": 3,
+   "tags": {
+    "building": "vault"
    }
   }
  ]
