@@ -5,4 +5,7 @@
 * plan cancel - we should have a hotkey that activates cancelling mode, just clicking on anything on the map cancels things - buildings, auto-production and current production
 * add unique unit per race, something exotic and expensive, but sometimes useful
 
-c
+* neutrals and mech units need distinct sounds, esp death. Make sounds a part of standard adding unit protocol
+* flying machine lacks an image model animation, make animating new units a part of standard protocol for creating new units
+* the endless mine should be visibly poor in content to reflect the low mining rate from it. Update its animation. You can use old animation for mega-mine, a mine with >50k gold.
+* revealing buildings - should be skipped in FFA to not give info to unrelated players
