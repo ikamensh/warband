@@ -61,7 +61,8 @@ SHIPPED = PACKAGE / "assets" / "fastsim"  # a frozen app's one build, which tool
 MODULES = ("sim.rules", "sim.races", "sim.path", "sim.worker_knowledge", "sim.model", "sim.camps", "sim.mapgen", "sim.worker_ai",
            "brains.unique", "brains.ai", "brains.pro_profiles", "brains.pro_force", "brains.pro_core", "brains.pro_economy", "brains.pro_ai")
 NATIVE = "sim/_native.c"  # the loops written twice, in C, built alongside; see its opening comment
-RECIPE = "4"  # each build carries its startup balance snapshot for spawned workers
+#: mypy's options for the compile: no configuration file is read, the repository's or the user's, for no key hashes one
+MYPY = ("--config-file=", "--follow-imports=silent")
 ENV = "WARBAND_FASTSIM"  # the build a process activated, for the worker processes it starts
 OPT_OUT = "WARBAND_INTERPRETED"
 NO_TOOLCHAIN = 3  # the compiling process's exit status when this machine cannot compile at all
@@ -80,11 +81,16 @@ def source(module: str) -> str:
 
 
 def source_key() -> str:
-    """Code and interpreter identity, independent of mutable authoring files."""
+    """The identity of everything the compile reads but the balance tables and the toolchain: every source of the
+    packages :data:`MODULES` are in (all they import, for ``tests/warband/test_layers.py`` keeps ``sim`` and ``brains``
+    to themselves), the package's ``__init__.py``, this recipe and the interpreter."""
+    folders = dict.fromkeys(module.partition(".")[0] for module in MODULES)
+    files = sorted(path for folder in folders for path in (PACKAGE / folder).rglob("*")
+                   if path.suffix in (".py", ".pyi", ".c"))
     digest = hashlib.sha256()
-    for name in (*(source(module) for module in MODULES), "sim/config.py", NATIVE):
-        digest.update(name.encode() + b"\0" + (PACKAGE / name).read_bytes() + b"\0")
-    digest.update(f"{RECIPE}|{sys.implementation.cache_tag}|{sysconfig.get_platform()}".encode())
+    for path in (PACKAGE / "__init__.py", PACKAGE / "league/fastsim.py", *files):
+        digest.update(path.relative_to(PACKAGE).as_posix().encode() + b"\0" + path.read_bytes() + b"\0")
+    digest.update(f"{sys.implementation.cache_tag}|{sysconfig.get_platform()}".encode())
     return digest.hexdigest()[:20]
 
 
@@ -104,7 +110,7 @@ def build() -> Path:
         return target
     BUILDS.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f"{target.name}-", dir=BUILDS))
-    config = {"paths": [f"warband/{source(name)}" for name in MODULES], "native": f"warband/{NATIVE}",
+    config = {"paths": [f"warband/{source(name)}" for name in MODULES], "native": f"warband/{NATIVE}", "mypy": MYPY,
               "cache": str(staging / "mypy"), "c": str(staging / "c"), "out": str(staging), "obj": str(staging / "obj")}
     script = f"""
 import json, sys
@@ -125,7 +131,7 @@ try:  # before mypyc spends its minute: setup() turns a missing C compiler into 
 except SystemExit as failed:
     print("no C compiler (" + " ".join(str(failed).split()) + ")", file=sys.stderr)
     sys.exit({NO_TOOLCHAIN})
-modules = mypycify(["--cache-dir=" + config["cache"], "--follow-imports=silent", *config["paths"]], target_dir=config["c"])
+modules = mypycify([*config["mypy"], "--cache-dir=" + config["cache"], *config["paths"]], target_dir=config["c"])
 modules.append(Extension("warband.sim._native", [config["native"]]))
 if sys.platform != "win32":
     for module in modules:  # no fused multiply-add: every float operation rounds on its own, as Python's do

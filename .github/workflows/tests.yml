@@ -19,8 +19,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # mypyc compiles the simulation before its tests, minutes on a fresh runner: they get a runner of their own
-        part: [tiers, compiled simulation]
+        include:
+          # every unmarked test, on four workers; one over the budget fails: four workers on a runner run a test about four times slower than a Mac
+          - part: fast tier
+            pytest: --budget 3 --durations=10
+          # the slow tier, over three runners of four workers each; tests/shard_weights.json balances them
+          - part: slow tier 1/3
+            pytest: --slow -m slow --ignore tests/warband/test_fastsim.py --shard 1/3 --durations=0
+          - part: slow tier 2/3
+            pytest: --slow -m slow --ignore tests/warband/test_fastsim.py --shard 2/3 --durations=0
+          - part: slow tier 3/3
+            pytest: --slow -m slow --ignore tests/warband/test_fastsim.py --shard 3/3 --durations=0
+          # the compiled simulation held to the source; mypyc compiles it first, four to eight minutes on a runner unless cached
+          - part: compiled simulation
+            compile: true
+            pytest: --slow tests/warband/test_fastsim.py --durations=10
+          # both tiers on the compiled simulation, as the game runs it
+          - part: compiled tiers 1/3
+            compile: true
+            pytest: --slow --compiled --shard 1/3 --durations=0
+          - part: compiled tiers 2/3
+            compile: true
+            pytest: --slow --compiled --shard 2/3 --durations=0
+          - part: compiled tiers 3/3
+            compile: true
+            pytest: --slow --compiled --shard 3/3 --durations=0
     runs-on: ubuntu-latest
     env:
       UV_PYTHON_PREFERENCE: only-managed
@@ -47,6 +70,10 @@ jobs:
           ref: ${{ steps.inputs.outputs.sagaforge_commit }}
           persist-credentials: false
           path: sagaforge
+      - name: Name the runner image, whose C compiler builds the simulation
+        id: image
+        if: matrix.compile
+        run: echo "image=${ImageOS:?}-${ImageVersion:?}" >> "$GITHUB_OUTPUT"
       - name: Install uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
@@ -56,20 +83,60 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev --python "${{ steps.inputs.outputs.python }}"
         working-directory: warband
-      - name: Fast tier
-        if: matrix.part == 'tiers'
-        # every unmarked test, on four workers; one over the budget fails: four workers on a runner run a test about four times slower than a Mac
-        run: uv run --locked pytest -q --budget 3 --durations=10
+      - name: Name the build these sources make
+        id: key
+        if: matrix.compile
         working-directory: warband
-      - name: Slow tier
-        if: matrix.part == 'tiers'
-        run: uv run --locked pytest -q --slow -m slow --ignore tests/warband/test_fastsim.py --durations=10
+        run: |
+          key=$(uv run --locked python -c 'from warband.league import fastsim; print(fastsim.key())')
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+      - name: Restore the compiled simulation
+        id: build
+        if: matrix.compile
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: warband/build/fastsim
+          # the build's own key (every source the compile reads, its recipe, the balance tables, the interpreter) and the
+          # toolchain it leaves out: the locked mypy and setuptools, the pinned Python and uv, the image's C compiler; the
+          # compile step sets no environment (CC, CFLAGS) that would belong here too; an exact key only, never a near one
+          key: fastsim-${{ steps.image.outputs.image }}-${{ steps.inputs.outputs.python }}-${{ steps.inputs.outputs.uv }}-${{ hashFiles('warband/uv.lock') }}-${{ steps.key.outputs.key }}
+      - name: Compile the simulation
+        if: matrix.compile
+        run: uv run --locked python -m warband.league.fastsim
         working-directory: warband
-      - name: Compiled simulation
-        if: matrix.part == 'compiled simulation'
-        run: uv run --locked pytest -q --slow tests/warband/test_fastsim.py --durations=10
+      - name: Keep the compiled simulation for the next run of the same sources
+        if: matrix.compile && steps.build.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: warband/build/fastsim
+          key: ${{ steps.build.outputs.cache-primary-key }}
+      - name: pytest ${{ matrix.pytest }}
+        run: uv run --locked pytest -q ${{ matrix.pytest }}
         working-directory: warband
-      - name: Both tiers on the compiled simulation, as the game runs it
-        if: matrix.part == 'compiled simulation'
-        run: uv run --locked pytest -q --slow --compiled --durations=10
-        working-directory: warband
+      - name: Keep what this shard ran, for the check that every test ran once
+        if: ${{ !cancelled() && contains(matrix.pytest, '--shard') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: shard-${{ strategy.job-index }}
+          path: warband/.pytest_cache/v/shard/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  shards:
+    # the shards of each split between them ran every test it selected exactly once, on runners that selected alike
+    name: every test in one shard
+    needs: test
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/shard_check.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: shard-*
+          path: shards
+      - run: python3 tools/shard_check.py shards

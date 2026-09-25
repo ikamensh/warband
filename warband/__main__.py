@@ -11,12 +11,14 @@ The simulation runs compiled (:func:`warband.league.fastsim.activate_for_game`),
 about ten times faster: a checkout compiles it on the first launch after its
 sources change, a minute or so, and ``WARBAND_INTERPRETED=1`` runs the source.
 So nothing here imports the simulation before :func:`main` has chosen it.
+``--help`` and ``--version`` print a line and exit, so they never wait for that compile.
 """
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 from typing import Any
 
 from warband.league import fastsim
@@ -25,7 +27,8 @@ ICON = Path(__file__).parent / "assets" / "icon.png"  # what the Dock, the taskb
 
 
 def main() -> None:
-    fastsim.activate_for_game()  # before anything imports the simulation: whatever does from here on gets the compiled one
+    if not answered_by_the_parser(sys.argv[1:]):
+        fastsim.activate_for_game()  # before anything imports the simulation: whatever does from here on gets the compiled one
     from saga2d import Game, add_match_arguments, fonts, match_from_arguments
     from warband.audio import sound
     from warband.sim import mapgen
@@ -100,6 +103,22 @@ def main() -> None:
     else:
         game.run(TitleScene(size=args.size, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme), race=Race(args.race),
                             layout=layout, settings=settings))
+
+
+def answered_by_the_parser(argv: list[str]) -> bool:
+    """Whether *argv* asks for ``--help`` or ``--version``, which the parser answers and exits on (or refuses with the
+    usage line): nothing then runs the simulation, which only builds the parser from the source.
+
+    A checkout compiles the simulation on its first launch after its sources change, a minute on a Mac and eight on a
+    busy CI runner, which ``--version`` once waited for.  A prefix the parser would expand (``--vers``) counts too."""
+    asks = argparse.ArgumentParser(add_help=False, exit_on_error=False)
+    asks.add_argument("-h", "--help", action="store_true")
+    asks.add_argument("--version", action="store_true")
+    try:
+        known = asks.parse_known_args(argv)[0]
+    except argparse.ArgumentError:  # --help=x: the parser refuses it with the whole usage line
+        return True
+    return known.help or known.version
 
 
 def lobby_options(args: argparse.Namespace) -> dict[str, Any]:

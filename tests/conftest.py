@@ -8,10 +8,21 @@ The suite runs the simulation from source, the reference. ``--compiled`` runs it
 (``warband.league.fastsim``), as the game does: a value the game's own code hands the simulation that its annotations
 refuse is a ``TypeError`` only there. A test that inspects the source itself (counts calls by patching a function,
 reads a module's file) is marked ``source_only`` and is left out.
+
+``--shard I/N`` runs the I-th of N parts of whatever else selects, so CI spreads a tier over N runners: :func:`deal`
+gives each test to exactly one part, heaviest first to the lightest part, by the seconds ``shard_weights.json`` records
+for it on a runner (a test it does not name weighs its ``other``), and a part runs its heavy tests first. A stale table
+only unbalances the parts; ``tools/shard_weights.py`` reweighs it from a CI run. Each part records what it kept of the
+selection in the pytest cache (``.pytest_cache/v/shard/``), where CI's last job, ``tools/shard_check.py``, reads them.
 """
+import json
 from collections import OrderedDict
+from collections.abc import Iterable, Mapping
+from pathlib import Path
 
 import pytest
+
+WEIGHTS = Path(__file__).with_name("shard_weights.json")
 
 pytest_plugins = ["saga2d.testing.fixtures"]
 
@@ -21,6 +32,32 @@ def pytest_addoption(parser):
     parser.addoption("--budget", type=float, metavar="SECONDS",
                      help="fail a fast-tier test whose setup, call or teardown takes longer than SECONDS")
     parser.addoption("--compiled", action="store_true", help="run on the compiled simulation, as the game does")
+    parser.addoption("--shard", type=shard, metavar="I/N", help="run the I-th of N parts of the selected tests (CI's runners)")
+
+
+def shard(text: str) -> tuple[int, int]:
+    index, count = (int(part) for part in text.split("/"))
+    if not 1 <= index <= count:
+        raise ValueError(text)
+    return index, count
+
+
+def deal(nodeids: Iterable[str], count: int, seconds: Mapping[str, float], other: float) -> list[list[str]]:
+    """*nodeids* in *count* parts of about equal *seconds*, every one in exactly one: the heaviest first, each to the
+    lightest part so far.  A function of the set of ids alone, so every process that collected them deals them alike."""
+    parts: list[list[str]] = [[] for _ in range(count)]
+    loads = [0.0] * count
+    for nodeid in sorted(set(nodeids), key=lambda nodeid: (-seconds.get(nodeid, other), nodeid)):
+        lightest = loads.index(min(loads))
+        parts[lightest].append(nodeid)
+        loads[lightest] += seconds.get(nodeid, other)
+    return parts
+
+
+def weights(compiled: bool) -> tuple[dict[str, float], float]:
+    """The recorded runner seconds of the heavy tests, source or compiled, and what any other test weighs."""
+    table = json.loads(WEIGHTS.read_text())["compiled" if compiled else "source"]
+    return table["tests"], table["other"]
 
 
 def pytest_xdist_auto_num_workers(config):
@@ -46,7 +83,9 @@ def why_slow(item) -> str | None:
     return node.obj.__doc__
 
 
+@pytest.hookimpl(trylast=True)  # after -m and -k have deselected: a shard is a part of what is left
 def pytest_collection_modifyitems(config, items):
+    config.collected = [item.nodeid for item in items]  # the slow tier too, even when left out: test_ci_shards.py deals it
     if config.getoption("--compiled"):
         for item in items:
             if marker := item.get_closest_marker("source_only"):
@@ -61,17 +100,47 @@ def pytest_collection_modifyitems(config, items):
         config.slow_deselected = len(slow)
         if hasattr(config, "workeroutput"):  # an xdist worker: the controller adds nothing up by itself
             config.workeroutput["slow_deselected"] = len(slow)
+    if part := config.getoption("--shard"):
+        index, count = part
+        seconds, other = weights(config.getoption("--compiled"))
+        mine = set(deal((item.nodeid for item in items), count, seconds, other)[index - 1])
+        config.hook.pytest_deselected(items=[item for item in items if item.nodeid not in mine])
+        config.shard_record = {"part": index, "of": count, "selected": sorted(item.nodeid for item in items), "kept": sorted(mine)}
+        # the heavy tests first, so that none starts late on a worker and holds up the end; the rest keep their order
+        items[:] = sorted((item for item in items if item.nodeid in mine), key=lambda item: -seconds.get(item.nodeid, other))
+        if hasattr(config, "workeroutput"):
+            config.workeroutput["shard_record"] = config.shard_record
 
 
 @pytest.hookimpl(optionalhook=True)
 def pytest_testnodedown(node, error):
     node.config.slow_deselected = max(getattr(node.config, "slow_deselected", 0), node.workeroutput.get("slow_deselected", 0))
+    if "shard_record" in node.workeroutput:
+        node.config.shard_record = node.workeroutput["shard_record"]
+
+
+def pytest_sessionfinish(session):
+    """A shard's record of what it kept, for ``tools/shard_check.py``, written once, by the process workers report to;
+    its split is the command line but the ``--shard``, which the split's other parts share."""
+    config = session.config
+    if (record := getattr(config, "shard_record", None)) and not hasattr(config, "workeroutput"):
+        args, split = list(config.invocation_params.args), []
+        while args:
+            arg = args.pop(0)
+            if arg == "--shard":
+                args.pop(0)
+            elif not arg.startswith("--shard="):
+                split.append(arg)
+        config.cache.set(f"shard/{record['part']}-of-{record['of']}", {"split": split, **record})
 
 
 def pytest_terminal_summary(terminalreporter, config):
-    """The fast tier says what it left out, with or without workers."""
+    """The fast tier says what it left out, and a shard what share it ran, with or without workers."""
     if getattr(config, "slow_deselected", 0):
         terminalreporter.write_sep("-", f"{config.slow_deselected} slow tests deselected: --slow runs them too")
+    if record := getattr(config, "shard_record", None):
+        terminalreporter.write_sep("-", f"shard {record['part']}/{record['of']}: {len(record['kept'])} of the "
+                                        f"{len(record['selected'])} selected tests, the other shards run the rest")
 
 
 @pytest.hookimpl(wrapper=True)

@@ -15,7 +15,8 @@ uv run warband --seed 3                          # play (python -m warband works
 uv run pytest -q tests/warband/test_x.py         # while working: the tests of what you changed, in one process
 uv run pytest -q                                 # the fast tier, about a minute on four workers: once before handing work on
 uv run pytest -q --slow tests/warband/test_x.py  # the slow tests of what you changed
-uv run pytest -q --slow [--compiled]             # both tiers, source or compiled: CI's on every push (20 min on a runner); locally only to chase a CI failure
+uv run pytest -q --slow [--compiled]             # both tiers, source or compiled: CI's on every push, in shards over runners (8 min; 13 when the simulation must compile); locally only to chase a CI failure
+uv run pytest -q --slow -m slow --ignore tests/warband/test_fastsim.py --shard 2/3   # one CI shard: its row's pytest: arguments in .github/workflows/tests.yml, exactly, for the parts are dealt from what they select (tests/conftest.py, by tests/shard_weights.json; tools/shard_weights.py reweighs it)
 gh run list --limit 6                            # CI after a push: Tests, Native package checks and, on main, the publication
 uv run python -u tools/fuzz.py --games 2 --monkey 0 --seed 81   # AI matches with invariants + monkey input (needs -u)
 uv run python tools/sim_fingerprint.py --check tools/sim_fingerprint.txt   # the simulation is bit-for-bit unchanged

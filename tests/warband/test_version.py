@@ -11,6 +11,8 @@ import sys
 import pytest
 
 from saga2d import Game, Label
+from warband.__main__ import answered_by_the_parser, main
+from warband.league import fastsim
 from warband.ui.scene import DEFAULT_SETTINGS, PauseScene, new_game
 from warband.ui.style import build_theme
 from warband.ui.title import TitleScene
@@ -75,6 +77,28 @@ def test_the_pause_panel_shows_the_build_without_leaving_the_match(tmp_path) -> 
         assert f"Warband {running_build()}" in labels(game)
     finally:
         game._teardown()
+
+
+@pytest.mark.parametrize("asks", ["--version", "--vers", "--help", "-h"])
+def test_the_command_line_answers_help_and_version_without_the_compiled_simulation(asks: str, monkeypatch, capsys) -> None:
+    """A checkout compiles the simulation on its first launch after its sources change: a line printed and an exit
+    must not wait for that (``--version`` once waited eight minutes on a CI runner)."""
+    monkeypatch.setattr(fastsim, "activate_for_game", lambda: pytest.fail("chose the simulation to print a line"))
+    monkeypatch.setattr(sys, "argv", ["warband", asks])
+    with pytest.raises(SystemExit) as exited:
+        main()
+    printed = capsys.readouterr().out
+    assert exited.value.code == 0
+    assert printed.startswith("usage: warband" if asks in ("-h", "--help") else f"Warband {running_build()}\n")
+
+
+@pytest.mark.parametrize("argv, answered", [(["--seed", "3"], False), (["--mission", "list"], False), ([], False),
+                                            (["--seed=--version"], False), (["--size", "Small", "--version"], True),
+                                            (["--mission", "--help"], True), (["--help=x"], True)])
+def test_only_a_line_the_parser_prints_skips_the_simulation(argv: list[str], answered: bool) -> None:
+    """Whatever goes on to play chooses the simulation first; a command line naming help or version always ends in
+    the parser, answered or refused (``--mission --help`` lacks the mission)."""
+    assert answered_by_the_parser(argv) is answered
 
 
 @pytest.mark.slow
