@@ -2618,7 +2618,8 @@ class GameScene(Scene):
 
     def _show_blast(self, e: Event, *, seen: bool) -> None:
         """A sapper's keg goes up (WB-068): a fireball the size of its reach, smoke over it, a ring of dust on the ground,
-        the camera shaken and its death heard, which is the fuse and the boom.  The sapper leaves no body: the view drops its sprite as it leaves the world.
+        the camera shaken and its spent end heard, the fuse and the boom (a sapper killed on its way dies without one:
+        :meth:`_show_death`).  The sapper leaves no body: the view drops its sprite as it leaves the world.
 
         Shown when *seen*: the player sees the spot, or it is the player's own keg.  A sapper's eyes go up with it, and
         the fog's next look, which can come the same step, leaves a lone sapper's spot dark: its owner still sees the
@@ -2632,8 +2633,8 @@ class GameScene(Scene):
         self.effects.add(Burst((wx, wy - 22), (60, 56, 56, 255), 9, rng=self.fx_rng, image="puff", size=30, speed=(12, 48)))
         self.effects.add(Burst((wx, wy), (170, 150, 120, 255), 12, rng=self.fx_rng, size=10, speed=(40, 110)))  # dust off the ground
         self.camera.shake(6, 0.4)
-        if self._on_screen(e.pos):  # its death is its keg going up (bodies.FAMILIES), heard whoever fields it
-            self.sfx(deaths.cue(bodies.family(UnitType(e.text), self.world.race_of(e.player))))
+        if self._on_screen(e.pos):  # its keg going up (bodies.FAMILIES), heard whoever fields it
+            self.sfx(deaths.cue(bodies.family(UnitType(e.text), self.world.race_of(e.player)), spent=True))
 
     def _stain(self, point: tuple[float, float]) -> None:
         """A dark pool under a body, on the ground under everything that walks; the oldest make room past the cap."""

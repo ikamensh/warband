@@ -35,9 +35,15 @@ def test_every_unit_type_dies_in_a_cue_of_its_own_body_with_two_takes_on_disk(un
         family = bodies.family(unit_type, race)
         assert (family in RACE_FAMILIES) == (unit_type in SOLDIERS), (
             f"{unit_type.value} dies as {family!r}: name its body's family in its row (sound = ...), or add it to SOLDIERS")
-        assert deaths.takes(family) >= 2, family
-        for stage in FAMILIES[family].death:
+        assert deaths.takes(family) >= 2 and (not FAMILIES[family].spent or deaths.takes(family, spent=True) >= 2), family
+        for stage in FAMILIES[family].death + FAMILIES[family].spent:
             assert all(path.is_file() for path in pieces.paths(deaths.FOLDER, family, stage.kind)), (family, stage.kind)
+
+
+def test_a_unit_whose_blow_is_its_end_has_that_end_as_well_as_a_death() -> None:
+    """A sapper has two ends: its keg goes up (spent, the rules' ``blast``), or it is killed first and made no blast.
+    Its family holds both, and nothing else has a spent end to play."""
+    assert {UNITS[kind].sound for kind in UnitType if UNITS[kind].blast} == {name for name, body in FAMILIES.items() if body.spent}
 
 
 #: Every body that is not one of a race's people: the machines, the creatures, and each race's own unit (a rider on a
@@ -129,16 +135,27 @@ def flatness(clip: np.ndarray) -> float:
 
 def test_each_races_own_unit_sounds_as_it_is_built() -> None:
     """The four own units' deaths keep their bodies through a regeneration (WB-068): the gryphon and its rider land
-    after the screech; the sapper's keg goes off at once with an explosion's weight; a treant comes down as heavy
-    timber; and the rune golem's runes hum as they go out, which sets it apart from the wild golem's rubble."""
-    def cues(family: str) -> list[np.ndarray]:
-        return [deaths.death(family, take) for take in range(deaths.takes(family))]
+    after the screech; the sapper's keg goes off at once with an explosion's weight, and a sapper shot down on its way
+    has none of it, crying out in a goblin's voice, far above an orc's; a treant comes down as heavy timber; and the
+    rune golem's runes hum as they go out, which sets it apart from the wild golem's rubble."""
+    def cues(family: str, *, spent: bool = False) -> list[np.ndarray]:
+        return [deaths.death(family, take, spent=spent) for take in range(deaths.takes(family, spent=spent))]
 
     assert all(fall_at(clip) > 0.5 for clip in cues("gryphon"))
     window = int(0.03 * SAMPLE_RATE)
-    for clip in cues("sapper"):
+    for clip in cues("sapper", spent=True):
         loudest = int(np.argmax(np.convolve(clip ** 2, np.ones(window) / window, mode="same"))) / SAMPLE_RATE
         assert loudest < 0.4 and bass(clip) > 0.4, (loudest, bass(clip))
+    assert all(bass(clip) < 0.1 for clip in cues("sapper"))
+
+    def low(race: str) -> float:
+        """The share of a race's cries' power below 600 Hz, where an orc's chest voice sits and a goblin's squeal does not."""
+        def share(clip: np.ndarray) -> float:
+            freqs, power = spectrum(clip)
+            return float(power[freqs < 600].sum() / power.sum())
+        return float(np.mean([share(pieces.read(path)) for path in pieces.paths(deaths.FOLDER, race, "cry")]))
+
+    assert low("sapper") < low("orc") / 4
     assert all(bass(clip) > 0.4 for clip in cues("treant"))
     assert np.mean([flatness(clip) for clip in cues("rune_golem")]) < np.mean([flatness(clip) for clip in cues("golem")]) / 2
 
@@ -236,12 +253,29 @@ def test_a_camp_woken_where_the_player_sees_nothing_wakes_in_silence(match) -> N
     assert camp.roused and not any(name.endswith("_presence") for name in scene.recent_sounds)
 
 
+def test_a_sapper_shot_down_on_its_way_dies_without_a_boom(match) -> None:
+    """An archer shoots an orc sapper before it reaches anything: the rules make no blast, and none is heard.  It dies
+    its family's death, a goblin's cry and fall and the fuse going out, and nothing the player hears is an explosion."""
+    game, scene, world = match
+    sapper = world.spawn_unit(1, UnitType.SAPPER, (13.5, 10.5))
+    archer = world.spawn_unit(0, UnitType.ARCHER, (10.5, 10.5))
+    sapper.hp = 1
+    world.hold([sapper.id])  # it stands where it is shot
+    scene.camera.center_on(*to_world(sapper.pos))
+    world.attack([archer.id], sapper.id)
+    while sapper.id in world.units:
+        game.tick(0.1)
+        assert world.time < 5.0, "the archer never shot the sapper down"
+    heard = set(scene.recent_sounds)
+    assert deaths.cue("sapper") in heard and not heard & deaths.LOUD, heard
+
+
 @pytest.mark.parametrize("seen", [True, False])
-def test_a_spent_sapper_is_heard_in_its_own_death_by_a_bystander_who_sees_it_over_a_battle(tmp_path, seen: bool) -> None:
-    """A spent sapper leaves no death event: its blast is its death, the family's cue (a fuse and a boom).  The player
-    at the keyboard, a bystander to an orc sapper going up at a third side's farm, hears it over a battle's crowd of
-    blows, which fills the budget every other death shares, when a peasant of its own sees the spot, and hears nothing
-    of it when nobody of its own does."""
+def test_a_spent_sapper_is_heard_going_up_by_a_bystander_who_sees_it_over_a_battle(tmp_path, seen: bool) -> None:
+    """A spent sapper leaves no death event: its blast is its end, the family's spent cue (a fuse and a boom).  The
+    player at the keyboard, a bystander to an orc sapper going up at a third side's farm, hears it over a battle's
+    crowd of blows, which fills the budget every other death shares, when a peasant of its own sees the spot, and hears
+    nothing of it when nobody of its own does."""
     world = World(40, 24, [[Terrain.GRASS] * 40 for _ in range(24)], 3, rng=random.Random(1),
                   races=[Race.HUMAN, Race.ORC, Race.ELF])
     for player, at in enumerate(((1, 1), (34, 1), (34, 19))):
@@ -263,6 +297,6 @@ def test_a_spent_sapper_is_heard_in_its_own_death_by_a_bystander_who_sees_it_ove
             game.tick(0.05)
             assert world.time < 10.0, "the sapper never reached the farm"
         assert farm.hp < farm.max_hp  # it went up at the farm
-        assert (deaths.cue("sapper") in scene.recent_sounds) == seen
+        assert (deaths.cue("sapper", spent=True) in scene.recent_sounds) == seen
     finally:
         game.close()

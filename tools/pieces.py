@@ -83,9 +83,11 @@ CREATURE_STYLE = "fantasy creature, close, dry, no music, no reverb, no human vo
 MACHINE_STYLE = "medieval, close, dry, no music, no reverb, no voice"
 BEAST_STYLE = "close, dry, no music, no reverb, no voice"
 RUNE_STYLE = "fantasy magic sound effect, close, no melody, no music, no voice"
-#: Per family and stage (the stage names are warband.audio.bodies.FAMILIES'): how the clip is cut, the seconds asked
-#: for, the style, and one prompt per take.  The first stage has three takes, so three cues, and so has a stage long
-#: enough to be most of the cue (a crash, a whistle): with two, cues 0 and 2 would sound alike; the rest have two.
+#: Per family and stage (the stage names are warband.audio.bodies.FAMILIES', its death's and its spent end's): how the
+#: clip is cut, the seconds asked for, the style, and one prompt per take.  The first stage has three takes, so three
+#: cues, and so has a stage long enough to be most of the cue (a crash, a whistle): with two, cues 0 and 2 would sound
+#: alike; the rest have two.  A family's stages are seeded in the order they stand here, so a stage added later goes
+#: at the end, where it reseeds none of the others.
 BODY_DEATHS = {
     "catapult": {
         "splinter": ("impact", 1.6, STAGE_STYLE, ["a heavy wooden siege engine's beam cracks and splinters, one loud splintering crack",
@@ -150,7 +152,7 @@ BODY_DEATHS = {
         "fall": ("impact", 1.6, STAGE_STYLE, ["a huge winged beast and its armoured rider crash onto the ground, one heavy thud and a rattle of armour",
                                               "a heavy body falls from the sky and slams into the earth, one deep thud"]),
     },
-    "sapper": {
+    "sapper": {  # its spent end, the keg going up, then its death when it is shot down on its way
         "fuse": ("impact", 1.6, STAGE_STYLE, ["a short lit fuse fizzes and hisses, crackling sparks",
                                               "a burning fuse sputters with a sharp sizzle",
                                               "a black powder fuse hisses and spits sparks"]),
@@ -159,6 +161,16 @@ BODY_DEATHS = {
                                                    "a big gunpowder explosion, a sharp crack and a deep booming blast"]),
         "debris": ("collapse", 3.0, MACHINE_STYLE, ["dirt, stones and wooden splinters rain down and patter onto the ground after an explosion",
                                                     "debris falls and scatters, pebbles and wooden shards clattering down"]),
+        # A goblin, not an orc: small, with the high voice its giggle has (the orc cries are a deep-voiced brute's).
+        "cry": ("voice", 2.0, CRY_STYLE, ["a small goblin's shrill squeal of pain, cut short",
+                                          "a little goblin shrieks in pain and falls silent, a high raspy cry",
+                                          "a small creature's high screechy yelp of agony, then a gasp"]),
+        # A small body, and the keg it carried knocking down beside it.
+        "fall": ("impact", 1.6, STAGE_STYLE, ["a small body and a wooden keg drop onto packed dirt, a soft thud and a hollow wooden knock",
+                                              "a little body slumps onto dirt as a small barrel thumps down beside it"]),
+        # The fuse goes out: no boom follows.
+        "fizzle": ("impact", 1.6, STAGE_STYLE, ["a burning fuse sputters weakly and goes out, a last short hiss dying away",
+                                                "a lit fuse fizzles out in the dirt, a feeble sputter and a soft pop"]),
     },
     "treant": {
         "split": ("collapse", 3.0, MACHINE_STYLE, ["a huge old tree trunk creaks loudly and splits apart, wood cracking and splintering",
@@ -221,9 +233,9 @@ BODIES = [name for name in FAMILIES if name not in RACE_FAMILIES]
 def body_pieces() -> list[Piece]:
     wanted = []
     for f, family in enumerate(BODIES):
-        prompts = BODY_DEATHS[family]
-        if list(prompts) != [stage.kind for stage in FAMILIES[family].death]:
-            raise ValueError(f"{family}: prompts for {list(prompts)}, but its death places {[stage.kind for stage in FAMILIES[family].death]}")
+        prompts, body = BODY_DEATHS[family], FAMILIES[family]
+        if set(prompts) != {stage.kind for stage in body.death + body.spent}:
+            raise ValueError(f"{family}: prompts for {list(prompts)}, but its ends place {[stage.kind for stage in body.death + body.spent]}")
         for s, (stage, (shape, seconds, style, takes)) in enumerate(prompts.items()):
             for i, prompt in enumerate(takes):
                 name = f"{family}_{stage}_{i}"
@@ -322,8 +334,8 @@ FOLDERS = {IMPACTS: impact_pieces, DEATHS: death_pieces, PRESENCE: presence_piec
 
 
 def cues(out: Path, families: list[str]) -> None:
-    """Each family's death and presence cues as the bank mixes them: a WAV and a stats row per cue, ``sheet.png`` with
-    every cue's spectrogram (a family a row), and ``cues.wav`` with every cue back to back and its label list."""
+    """Each family's death, spent-end and presence cues as the bank mixes them: a WAV and a stats row per cue,
+    ``sheet.png`` with every cue's spectrogram (a row each), and ``cues.wav`` with every cue back to back and its label list."""
     from PIL import Image, ImageDraw
     from music import spectrogram, stats  # the music tool's picture: log frequency over time, the loudness above it
     from warband.audio import deaths, presence
@@ -332,11 +344,11 @@ def cues(out: Path, families: list[str]) -> None:
     print(f"{'cue':26s} {'length':>6s} {'rms dB':>7s} {'peak':>5s} {'crest':>6s} {'centr':>6s} {'<120':>5s} {'>6k':>5s}")
     rows = []
     for family in families:
-        made = [(f"{family}_death_{take}", deaths.death(family, take)) for take in range(deaths.takes(family))]
-        if presence.cue(family) is not None:
-            made += [(f"{family}_presence_{take}", presence.presence(family, take)) for take in range(presence.takes(family))]
-        rows += [made[:deaths.takes(family)], made[deaths.takes(family):]]
-        for name, clip in made:
+        ends = [[(f"{deaths.cue(family, spent=spent)}_{take}", deaths.death(family, take, spent=spent))
+                 for take in range(deaths.takes(family, spent=spent))] for spent in (False, True) if (family, spent) in deaths.ENDS]
+        alive = [(f"{family}_presence_{take}", presence.presence(family, take)) for take in range(presence.takes(family))] if presence.cue(family) else []
+        rows += [*ends, alive]
+        for name, clip in [cue for row in (*ends, alive) for cue in row]:
             write_wav(out / f"{name}.wav", clip)
             s = stats(clip[:, None])
             print(f"{name:26s} {len(clip) / SAMPLE_RATE:6.2f} {s['rms_db']:7.1f} {s['peak']:5.2f} {s['crest_db']:6.1f} {s['centroid_hz']:6.0f} "
