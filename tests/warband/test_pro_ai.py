@@ -450,7 +450,7 @@ def test_choppers_go_back_to_the_gold_once_the_wood_is_plentiful():
 
 
 def test_a_producer_saves_for_the_unit_the_plan_wants():
-    """With a stables idle, six hundred gold and a plan of knights, the barracks does not buy a footman it could afford.
+    """With a stables idle, a footman's price in gold and a plan of knights, the barracks does not buy the footman it could afford.
 
     Buying whatever was affordable at the moment of choice made the knights posture
     field fifteen scouts for eight knights."""
@@ -469,15 +469,18 @@ def test_a_producer_saves_for_the_unit_the_plan_wants():
     player = world.players[0]
     rng = random.Random(1)
 
+    footman, knight = world.unit_info(0, UnitType.FOOTMAN).cost, world.unit_info(0, UnitType.KNIGHT).cost
+    assert footman.gold < knight.gold, "the claim needs a footman the purse affords and a knight it does not"
+
     def pass_with(gold: int) -> list[UnitType]:
-        player.gold, player.lumber = gold, 500
+        player.gold, player.lumber = gold, knight.lumber + 300
         for _ in range(int(PRO.think_every / SIM_DT) + 1):  # a macro pass comes once per think_every of sim time
             world.step()
         brain.think(world, rng)
         return [u for b in world.player_buildings(0) for u in b.queue]
 
-    assert pass_with(600) == [], "six hundred gold is saved for the knight the plan is short of"
-    assert pass_with(900) == [UnitType.KNIGHT]
+    assert pass_with(footman.gold) == [], "a footman's price is saved for the knight the plan is short of"
+    assert pass_with(knight.gold) == [UnitType.KNIGHT]
 
 
 # -- Expansion under scarcity ------------------------------------------------------

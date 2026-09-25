@@ -1047,3 +1047,13 @@ this, are the balance evidence.
 4. **The armour rule.** Raising the archer to six damage is a workaround for
    a floor of one point against four armour. A rule that scales would make
    the archer the counter the table promises without the patch.
+
+## Knights and catapults dearer, catapults slower and longer (2026-09-25)
+
+Set by hand by Ilya: the knight from 900 gold and 100 lumber to 1,400 and 200;
+the catapult from 300 lumber to 400, its range from 7 to 8 tiles, its reload
+from 4 to 5 seconds and its pace from 1.6 to 1.4. The knight was the best buy
+per gold in the race games and the brains' plans lean on it (the bred table's
+knight shares grew when the scout's were folded in, WB-064); the catapult now
+outranges a tower by two tiles but fires and moves slower. Not measured yet:
+WB-073's race and difficulty tables are taken on this rulebook.

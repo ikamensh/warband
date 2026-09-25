@@ -64,8 +64,8 @@ inflicts = "bleeding" # a shot that wounds the living opens a wound (buffs.toml)
 
 [knight]
 name = "Knight"
-gold = 900
-lumber = 100
+gold = 1400
+lumber = 200
 hp = 90
 damage = 10
 armor = 4
@@ -83,12 +83,12 @@ mounted = true
 [catapult]
 name = "Catapult"
 gold = 900
-lumber = 300
+lumber = 400
 hp = 60
 damage = 30
-range = 7.0
-cooldown = 4.0
-speed = 1.6
+range = 8.0
+cooldown = 5.0
+speed = 1.4
 sight = 6
 build_time = 30.0
 trained_at = "workshop"
