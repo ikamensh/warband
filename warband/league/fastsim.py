@@ -59,7 +59,7 @@ PACKAGE = Path(__file__).resolve().parents[1]  # warband/, whose subpackages hol
 BUILDS = PACKAGE.parent / "build" / "fastsim"
 SHIPPED = PACKAGE / "assets" / "fastsim"  # a frozen app's one build, which tools/package.py puts there to be frozen with it
 MODULES = ("sim.rules", "sim.races", "sim.path", "sim.worker_knowledge", "sim.model", "sim.camps", "sim.mapgen", "sim.worker_ai",
-           "brains.ai", "brains.pro_profiles", "brains.pro_force", "brains.pro_core", "brains.pro_economy", "brains.pro_ai")
+           "brains.unique", "brains.ai", "brains.pro_profiles", "brains.pro_force", "brains.pro_core", "brains.pro_economy", "brains.pro_ai")
 NATIVE = "sim/_native.c"  # the loops written twice, in C, built alongside; see its opening comment
 RECIPE = "4"  # each build carries its startup balance snapshot for spawned workers
 ENV = "WARBAND_FASTSIM"  # the build a process activated, for the worker processes it starts

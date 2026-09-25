@@ -3,9 +3,11 @@
 Names and modifiers come from the process's startup snapshot of
 ``warband/assets/constants/races.toml``. Edits apply on the next launch.
 
-Every race fields the same seven roles from the same nine buildings with the
+Every race fields the same seven roles from the same buildings with the
 same hotkeys and costs, so the AI, the settlement planner, the saves and the
-network protocol never care who is playing.  A race changes the names, a few
+network protocol never care who is playing, and one unit of its own besides
+(WB-068: :data:`~warband.sim.rules.OWN_UNITS`), which its building offers that
+race alone (:meth:`RaceInfo.unit_allowed`).  A race changes the names, a few
 numbers per role (built into the :class:`UnitInfo` / :class:`BuildingInfo` a
 unit or building reports), what it calls the Keep its hall is raised to, which
 two race arts it may research, and one passive mechanic the simulation applies:
@@ -25,8 +27,8 @@ from typing import Final
 
 from warband.sim import config
 
-from warband.sim.rules import (BUILDINGS, UNITS, UPGRADES, WILD_BUILDINGS, BuildingInfo, BuildingType, Race, UnitInfo, UnitType,
-                               Upgrade, UpgradeInfo, fill)
+from warband.sim.rules import (BUILDINGS, PLAYABLE_UNITS, UNITS, UPGRADES, WILD_BUILDINGS, BuildingInfo, BuildingType, Race, UnitInfo,
+                               UnitType, Upgrade, UpgradeInfo, fill)
 
 
 @dataclass(frozen=True)
@@ -72,23 +74,35 @@ class RaceInfo:
     buildings: dict[BuildingType, BuildingInfo]
     upgrades: dict[Upgrade, UpgradeInfo]
     cards: dict[BuildingType, str]
+    race: Race
 
     def upgrade_allowed(self, upgrade: Upgrade) -> bool:
         race = UPGRADES[upgrade].race
         return race is None or upgrade in self.arts
 
+    def unit_allowed(self, unit_type: UnitType) -> bool:
+        """Whether this race fields *unit_type*: a shared role, or its own unit (WB-068), never another race's."""
+        race = UNITS[unit_type].race
+        return race is None or race is self.race
+
 
 def _units(tweaks: dict[UnitType, UnitTweak]) -> dict[UnitType, UnitInfo]:
-    """The seven roles a race fields, as that race names and tweaks them.
+    """Every playable unit as a race names and tweaks it: the roles it fields and its own unit.  Another race's own
+    unit is there too, as the shared table has it, so that asking about it (a building's ``trains``, a card being laid
+    out) never fails; :meth:`RaceInfo.unit_allowed` says the race never trains it.
 
     The neutral creatures are not among them: no race names one, so none has an entry for one, and a
     creature's numbers come out of the shared table instead (:func:`warband.sim.model.unit_stats`).
     """
     out: dict[UnitType, UnitInfo] = {}
-    for unit_type, t in tweaks.items():
+    for unit_type in PLAYABLE_UNITS:
         base = UNITS[unit_type]
+        t = tweaks.get(unit_type)
+        if t is None:
+            out[unit_type] = base  # another race's own unit: never this race's to train
+            continue
         out[unit_type] = replace(
-            base, name=t.name, summary=t.summary, hp=int(round(base.hp * t.hp)), damage=int(round(base.damage * t.damage)),
+            base, name=t.name, summary=fill(t.summary, blast_units=base.blast_units), hp=int(round(base.hp * t.hp)), damage=int(round(base.damage * t.damage)),
             armor=base.armor + t.armor, range=base.range + (t.range if base.ranged else 0.0), speed=round(base.speed + t.speed, 2),
             sight=base.sight + t.sight, build_time=round(base.build_time * t.build_time, 2), formation=base.formation and t.formation,
         )
@@ -126,7 +140,7 @@ def _race(race: Race) -> RaceInfo:
                  for b, t in r["buildings"].items()}
     upgrades = {Upgrade(u): UpgradeTweak(t["name"], t["card"]) for u, t in r["upgrades"].items()}
     return RaceInfo(r["name"], r["adjective"], r["tagline"], r["passive"], tuple(Upgrade(a) for a in r["arts"]),
-                    _units(units), _buildings(buildings), _upgrades(upgrades), {bt: t.card for bt, t in buildings.items()})
+                    _units(units), _buildings(buildings), _upgrades(upgrades), {bt: t.card for bt, t in buildings.items()}, race)
 
 
 RACES: Final[dict[Race, RaceInfo]] = {race: _race(race) for race in Race}

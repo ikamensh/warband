@@ -29,11 +29,11 @@ def researched_at(upgrade: Upgrade) -> BuildingType:
 
 
 def prerequisites(target: Target) -> tuple[Prerequisite, ...]:
-    """What *target* needs directly, in the order a player meets it: a unit its building, a building the one it
-    requires, an upgrade the building that researches it and then every upgrade it waits for (its lower tier, the
-    Keep, or both).  Every race shares these."""
+    """What *target* needs directly, in the order a player meets it: a unit its building and the upgrades it waits for
+    (a race's own unit, the Keep), a building the one it requires, an upgrade the building that researches it and then
+    every upgrade it waits for (its lower tier, the Keep, or both).  Every race shares these."""
     if isinstance(target, UnitType):
-        return (UNITS[target].trained_at,)
+        return (UNITS[target].trained_at,) + UNITS[target].requires
     if isinstance(target, BuildingType):
         requires = BUILDINGS[target].requires
         return () if requires is None else (requires,)
@@ -124,9 +124,10 @@ OPEN, SHUT = (255, 214, 110, 210), (255, 255, 255, 56)  # a line from a prerequi
 
 
 def level(world: World, player: int, target: Target) -> float:
-    """How bright *target* stands in the player's tree: a recruit as its building, the rest by what the player holds."""
+    """How bright *target* stands in the player's tree: a recruit as its building and the upgrades it waits for, the
+    faintest of them, the rest by what the player holds."""
     if isinstance(target, UnitType):
-        return level(world, player, UNITS[target].trained_at)
+        return min(level(world, player, needed) for needed in prerequisites(target))
     return BRIGHT if has(world, player, target) else COMING if coming(world, player, target) else FAINT
 
 
@@ -184,10 +185,13 @@ class TechTree(Component):
             needs = f" · needs the {info.buildings[building.requires].name}" if building.requires is not None else ""
             picture(kind, x, y, self.PORTRAIT, f"{building.name} — {building.cost} · {building.summary}{needs}")
             self.add(Label(building.name, text_style="hud", anchor=Anchor.TOP_LEFT, margin=(x + self.PORTRAIT + 8, y)))
-            work: list[Target] = [*building.trains, *(u for u in building.researches if info.upgrade_allowed(u))]
+            work: list[Target] = [*(u for u in building.trains if info.unit_allowed(u)),
+                                  *(u for u in building.researches if info.upgrade_allowed(u))]
             for index, item in enumerate(work):
                 if isinstance(item, UnitType):
-                    tooltip = f"{info.units[item].name} — {info.units[item].cost} · {info.units[item].summary}"
+                    unit = info.units[item]
+                    after = f" · after the {listing([info.upgrades[u].name for u in unit.requires])}" if unit.requires else ""
+                    tooltip = f"{unit.name} — {unit.cost} · {unit.summary}{after}"
                 else:
                     upgrade = info.upgrades[item]
                     after = f" · after {listing([info.upgrades[u].name for u in upgrade.requires])}" if upgrade.requires else ""

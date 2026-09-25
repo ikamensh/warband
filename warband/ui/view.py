@@ -28,7 +28,7 @@ from warband.art import monsters, textures
 from warband.art.monsters import Monster
 from warband.sim.model import RIFT, Building, Entity, Pos, Projectile, Unit, World, dist
 from warband.sim.races import RACES
-from warband.sim.rules import AETHER_REACH, BUILDINGS, CREATURES, SIM_DT, VISION_EVERY, BuildingType, Race, Terrain, UnitType, UPGRADES
+from warband.sim.rules import AETHER_REACH, BUILDINGS, CREATURES, SIM_DT, UNITS, VISION_EVERY, BuildingType, Race, Terrain, UnitType, UPGRADES
 from warband.art.textures import CHUNK, CHUNK_PX, TILE
 
 CREATURE_SET = frozenset(CREATURES)  # the neutral creatures, asked of a unit's type on every frame
@@ -181,8 +181,10 @@ STRIKE, FOLLOW, RECOVER = 0.1, 0.16, 0.16  # seconds after the blow: driven forw
 #: Whose shot is not the arrow the model flies it as.  The model tells a shot that follows its mark from a stone
 #: that comes down on the ground; what it looks like is the striker's, as what it lands as is (``sound.impact_sound``):
 #: a healer looses no arrow but a mote of light, from the head of its staff.
-SHOT_LOOKS = {UnitType.CLERIC.value: "mote", UnitType.SPIDER.value: "venom"}
-SHOT_SIZE = {"arrow": (22, 6), "stone": (14, 14), "mote": (20, 20), "venom": (16, 16)}
+SHOT_LOOKS = {UnitType.CLERIC.value: "mote", UnitType.SPIDER.value: "venom", UnitType.GRYPHON.value: "storm"}
+SHOT_SIZE = {"arrow": (22, 6), "stone": (14, 14), "mote": (20, 20), "venom": (16, 16), "storm": (20, 20)}
+#: Whose shots are loosed in the air: a flyer's leaves it at the height the view draws it.
+FLYING_STRIKERS = frozenset(u.value for u, info in UNITS.items() if info.flying)
 STAFF_REACH = 0.4  # tiles before a healer that the head of its staff is held, where its mote is first seen
 RING_FLATTEN = 0.62  # a circle on the ground seen from the game's elevation is this much shorter than it is wide
 PICK_SLACK = 0.35  # tiles beyond a unit's body a click still picks it: the figure stands above the ground point it is clicked at
@@ -191,9 +193,11 @@ BOB = 2.5  # world pixels a hovering flyer rises and sinks about that height…
 BOB_RATE = 2.2  # …at this many radians a second
 SPIN_RATE = 14.0  # walk frames a second a flyer shows, moving or hovering: its rotor turns and its wings beat all the time
 SHADOW_COLOR = (0, 0, 0, 78)
-TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1, "venom": 0.14}  # seconds of flight a shot leaves hanging in the air behind it
-TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150), "venom": (198, 132, 226)}
-TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5), "venom": (2.6, 0.5)}  # at the shot and where the trail ends
+TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1, "venom": 0.14, "storm": 0.16}  # seconds of flight a shot leaves hanging in the air behind it
+TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150), "venom": (198, 132, 226),
+               "storm": (150, 210, 255)}
+TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5), "venom": (2.6, 0.5),
+               "storm": (3.2, 0.6)}  # at the shot and where the trail ends
 BAR_OUTLINE = (0, 0, 0, 190)  # the backing and outline of every health and progress bar
 #: How each kind of condition (a row of buffs.toml) shows: on the map (an enraged unit glows red, a bleeding one drips)
 #: and as the icon of the same name on its card.  A new kind is a row there and a line here.
@@ -222,9 +226,11 @@ def unit_frame(u: Unit, travel: float, time: float) -> str:
     """Which of the unit's frames shows now.  Walking is driven by distance travelled, a blow by the
     model's own clocks: the wind-up while the model has the weapon drawn back, then the strike,
     follow-through and recovery trailing the blow it just landed, read off the cooldown.  A flyer's
-    rotor or wings never stop: its walk frames run on the clock, hovering or not."""
-    if u.flying:
-        return textures.WALK_FRAMES[int(time * SPIN_RATE + u.id) % len(textures.WALK_FRAMES)]
+    rotor or wings never stop: its walk frames run on the clock, hovering or not, but for the blow an armed flyer is
+    striking (a gryphon's wings beat on between its throws)."""
+    beating = textures.WALK_FRAMES[int(time * SPIN_RATE + u.id) % len(textures.WALK_FRAMES)]
+    if u.flying and u.state != "attack":
+        return beating
     if u.state == "move":
         return textures.WALK_FRAMES[int(travel / STRIDE) % len(textures.WALK_FRAMES)]
     if u.state == "attack":
@@ -238,7 +244,7 @@ def unit_frame(u: Unit, travel: float, time: float) -> str:
                 return "follow"
             if since < STRIKE + FOLLOW + RECOVER:
                 return "recover"
-        return "stand"
+        return beating if u.flying else "stand"
     if u.state == "chop":
         if u.carrying is not None:
             return "stand"
@@ -296,7 +302,8 @@ def projectile_point(p: Projectile, world: World, now: float) -> tuple[float, fl
     if shot_look(p) in ("mote", "venom"):
         ahead = STAFF_REACH * (1 - t) / span if span > STAFF_REACH else 0.0  # the drawn start only: the blow is the model's
         return x + (mark[0] - p.start[0]) * ahead, y + (mark[1] - p.start[1]) * ahead, 1.0 + (end - 1.0) * t
-    lift = 1.7 if p.source_type == BuildingType.TOWER.value else 0.55  # loosed from the battlements, or from the shoulder
+    # Loosed from the battlements, from a rider's hand in the air, or from the shoulder.
+    lift = 1.7 if p.source_type == BuildingType.TOWER.value else FLIGHT + 0.6 if p.source_type in FLYING_STRIKERS else 0.55
     return x, y, lift + (end - lift) * t + 0.35 * math.sin(math.pi * t) * min(1.0, span / 4)
 
 

@@ -41,7 +41,7 @@ from warband.sim import mapgen  # noqa: E402
 from warband.brains.ai import make_brain  # noqa: E402
 from warband.brains.pro_ai import PRO, ProBrain, RaceBrain  # noqa: E402
 from warband.sim.model import BLOCKING, World  # noqa: E402
-from warband.sim.rules import AETHER_TICKS, BUILDINGS, SIM_DT, BuildingType, Difficulty  # noqa: E402
+from warband.sim.rules import AETHER_TICKS, BUILDINGS, SIM_DT, BuildingType, Difficulty, Terrain  # noqa: E402
 from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
 
 GAME_MINUTES = 15
@@ -72,6 +72,14 @@ def check_world(world: World) -> None:
     if blocked != expected:
         i = next(i for i, (have, want) in enumerate(zip(blocked, expected)) if have != want)
         raise AssertionError(("blocked grid mismatch", (i % world.width, i // world.width)))
+    forest = world._forest  # the forest walkers' grid, once a treant has asked for it: trees open, the rest as the map's
+    if forest is not None:
+        trees = bytes(t is Terrain.TREES for row in world.terrain for t in row)
+        want = bytes(e & (1 - t) for e, t in zip(expected, trees))
+        have = forest.translate(TRUTH)
+        if have != want:
+            i = next(i for i, (a, b) in enumerate(zip(have, want)) if a != b)
+            raise AssertionError(("forest grid mismatch", (i % world.width, i // world.width)))
     for u in world.units.values():
         assert 0 < u.hp <= u.max_hp, ("unit hp", u)
         assert 0 <= u.x <= world.width and 0 <= u.y <= world.height, ("unit off map", u)
@@ -81,8 +89,9 @@ def check_world(world: World) -> None:
         elif u.constructing is not None:
             site = world.buildings.get(u.constructing)
             assert site is not None and site.builder == u.id and not site.done, ("constructing a missing site", u)
-        elif not u.flying:  # a flyer is over the trees, the water and the roofs, never on them
-            assert world.passable(*u.tile), ("unit on a blocked tile", u, world.terrain_at(u.tile))
+        elif not u.flying:  # a flyer is over the trees, the water and the roofs, never on them; a treant walks the trees
+            x, y = u.tile
+            assert not world.ground_of(u)[y * world.width + x], ("unit on a blocked tile", u, world.terrain_at(u.tile))
         assert world.players[u.player].alive, ("unit of a dead player", u)
     for p in world.players[:world.seats]:  # the wilds are alive whether or not a camp is still standing
         assert p.gold >= 0 and p.lumber >= 0, ("negative resources", p)

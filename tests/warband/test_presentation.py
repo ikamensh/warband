@@ -59,6 +59,22 @@ def test_a_selected_unit_shows_its_numbers_beside_symbols_with_hints(play) -> No
     assert scene.tooltip == "Attack range in tiles"
 
 
+def test_a_selected_sapper_says_what_its_blast_does_to_buildings_and_to_units(play) -> None:
+    """Its one number is what a building takes; its hint says the reach and what every unit there takes, the player's
+    own too."""
+    game, scene = play
+    world = scene.world
+    hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    sapper = world.spawn_unit(scene.human, UnitType.SAPPER, tile_center((hall.x + 4, hall.y + 4)))
+    scene.select([sapper.id])
+    game.tick(1 / 60)
+    px, py, pw, ph = scene.selection_panel.bounds
+    hover(game, scene, px + 16 + 88 + 10, py + 14 + 52)
+    info = world.unit_info(scene.human, UnitType.SAPPER)
+    assert scene.tooltip.startswith("The keg's one blast") and f"within {info.blast:g} tiles" in scene.tooltip
+    assert f"{info.blast_units} to every unit on the ground there, yours too" in scene.tooltip
+
+
 def test_a_visible_mine_glitters_and_a_forge_smokes(play) -> None:
     game, scene = play
     world = scene.world

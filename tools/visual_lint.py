@@ -39,7 +39,7 @@ from warband.story.dialog import DialogScene  # noqa: E402
 from warband.story.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
 from warband.story.missions import CAMPAIGN  # noqa: E402
 from warband.sim.model import World, tile_center  # noqa: E402
-from warband.sim.rules import BLEEDING, BUILT, LODE_GOLD, PLAYABLE_UNITS, BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
+from warband.sim.rules import BLEEDING, BUILT, LODE_GOLD, PLAYABLE_UNITS, UNITS, BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
 from warband.ui.controls import SCHEMES  # noqa: E402
 from warband.ui.scene import TOAST_TOP, CodexScene, GameScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game  # noqa: E402
 from warband.ui.score_scene import HighScoreScene  # noqa: E402
@@ -221,7 +221,7 @@ def match_tutorial(game: Game) -> None:
 
 for _unit in PLAYABLE_UNITS:
     def _select_unit(game: Game, unit_type: UnitType = _unit) -> None:
-        scene = town(game, zoom=2.0)
+        scene = town(game, race=UNITS[unit_type].race or Race.HUMAN, zoom=2.0)  # a race's own unit in its race's colours
         unit = spawn(scene, unit_type, (10, 12))
         scene.select([unit.id])
         scene.camera.center_on(10 * TILE, 12 * TILE)

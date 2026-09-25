@@ -98,8 +98,11 @@ min_range and regen (zero), attack (`"normal"`), armor_class (`"light"`),
 formation/mounted/flying (`false`), turn_deg (`360`), living (`true`: a machine,
 the catapult, the flying machine and the golem, says `false` and takes no living
 condition nor a healer's cast), inflicts (none: the archer's `"bleeding"` names
-the buffs.toml row its wounding shot lays on) and sound (`""`: the fielding
-race's voice; a machine or creature names its family, `docs/adding-a-unit.md`).
+the buffs.toml row its wounding shot lays on), sound (`""`: the fielding
+race's voice; a machine or creature names its family, `docs/adding-a-unit.md`),
+and the fields of a race's own unit (WB-068): race (none: every race's),
+requires (none), limit, blast and blast_units (zero), forest and
+regen_in_trees (`false`). A race names only the units it fields in races.toml.
 Other fields must appear
 in the entry or its defaults. Misspelled keys, wrong types and missing
 required fields fail startup validation, including invalid defaults that every
@@ -1026,6 +1029,66 @@ seam's 1.1%. Whoever drew the most from a lode won 209 of the 229 Medium race
 matches it was worked in; that is as much the winner's freedom to walk out as
 the lode's gold, which is why the race and difficulty shares above, and not
 this, are the balance evidence.
+
+## Each race's own unit (WB-068, 2026-09-25)
+
+Each race has one unit of its own (the table is [warband-races.md](warband-races.md#each-races-own-unit-wb-068)),
+after the Keep and three at once: the Humans' Gryphon Rider, the Orcs' Goblin Sapper, the Elves' Treant and the
+Dwarves' Rune Golem. The design wants them situational, never the next best buy.
+
+**In a set piece** (`tools/battle_bench.py`, 60 fights a row, both sides swapped, each army against one of about
+its price; the right side human, before WB-062):
+
+| left army | right army | left wins | the same race's plain army instead |
+|---|---|---:|---:|
+| dwarf footman:6, rune_golem:1 | footman:9, archer:1 | 65.0% | 80.0% (footman:9, archer:1) |
+| dwarf footman:6, rune_golem:1 | footman:6, archer:4 | 66.7% | |
+| elf footman:6, treant:1 | footman:9, archer:1 | 16.7% | 21.7% (footman:9, archer:1) |
+| elf footman:6, treant:1 | footman:6, archer:4 | 23.3% | |
+| human footman:6, gryphon:1 | footman:6, archer:4 | 10.0% | 50% (the mirror) |
+| human footman:6, gryphon:1 | footman:10 | 0.0%, 60 draws | |
+
+On open grass none is worth its price in a line: the golem costs the dwarves some of their edge (the situational
+dwarven unit the balance wanted), the treant is level with the elves' own army, and the gryphon loses to archers and
+cannot lose to footmen, who cannot reach it (every fight a draw at the time limit). What each is for is not a line:
+a tower or a hall (the sapper, and the treant's ×2), a flank through the wood (the treant), a knot of melee (the
+golem), a catapult, a flyer or a lone shooter (the gryphon).
+
+**In the brains** (`warband/brains/unique.py`, [the ladder doc](ai-ladder.md#each-races-own-unit-wb-068)) the first
+design cost the orcs. Bought whenever what the side knew said it was the answer with an army of eight (or 3000 gold)
+behind it, claimed ahead of the plan's soldiers (0.25 of the army) and with the Keep's price held from the moment it
+was wanted, it moved Master, 24 seeds a pair, 288 matches, the same seeds with and without: orc 39.6% to 35.0%,
+dwarf 64.6% to 67.1%, human 46.2% to 49.0%. Ten matches changed, seven of them orc losses: a Master orc passes 3000
+gold in its opening, held 2300 of it for the Keep, and fielded three soldiers where it had fielded six (58 sappers
+were trained in 144 orc matches, most of them too late). Without the hold the change was one match in 288. Medium's
+sappers ran at a hall across the map and were caught on the way (91 trained, a handful of blasts), and cost the orcs
+1.4 points to the humans. So a brain now buys the unit from what the plan's soldiers leave (0.1 of the army), holds
+the Keep's price only once it can pay it, sends a sapper only with a push or at a mark within 15 tiles that no
+soldier guards (and at a knot of three rivals on top of it), and invests in the Keep and the building that trains it
+only from idle gold (6000 in the bank: Medium's hoard, which Master's opening never reaches).
+
+Shipped, with WB-062 merged (main at 3fc712c), the same 24 seeds a pair, 288 matches a run, Master against Master
+and Medium against Medium, with and without (`tools/race_report.py --without-own-units`):
+
+| | Master without | Master with | Medium without | Medium with |
+|---|---:|---:|---:|---:|
+| human | 72–69 (51.1%) | 72–69 (51.1%) | 71–73 (49.3%) | 71–73 (49.3%) |
+| orc | 50–93 (35.0%) | 49–94 (34.3%) | 52–92 (36.1%) | 50–94 (34.7%) |
+| elf | 71–69 (50.7%) | 71–69 (50.7%) | 74–70 (51.4%) | 75–69 (52.1%) |
+| dwarf | 90–52 (63.4%) | 91–51 (64.1%) | 91–53 (63.2%) | 92–52 (63.9%) |
+| undecided | 5 | 5 | 0 | 0 |
+
+Trained in 144 matches a race: on Master 2 gryphon riders, 6 sappers, 6 treants and no rune golem; on Medium 3, 40,
+43 and 1. The "with" columns are the brain held to the fog (it sends its units at the buildings its side remembers,
+as it last saw them, and counts only the rivals it sees): Master's record is the one it had before, and Medium's orcs
+won 50 where they had won 54, with 20 blasts from their 40 sappers where they had 19 from 41, so the sappers do what
+they did, and the four matches are the random stream's. Master decides its matches by the ninth minute, and a side that reaches the Keep, the building and the
+unit's price with its army still standing is rare; Medium, which banks thousands for minutes, buys the sapper and the
+treant, whose answers are ground and buildings it remembers, and seldom the gryphon and the golem, whose answers are
+an army it sees at once (it keeps no memory of what it saw). The own units neither widen the race gap nor close it:
+the largest move is 1.4 points, two matches in 144, which the orcs lose on Medium (the elves gain 0.7), and on
+Master the orcs lose 0.7, one match. Closing the orcs'
+gap is not a unit they rarely field; it waits for a race pass of its own.
 
 ## What to change next
 

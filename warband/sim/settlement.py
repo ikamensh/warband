@@ -86,6 +86,13 @@ class Settlement:
                 self._upgrade(plan)
 
     def order_unit(self, player: int, unit_type: UnitType) -> int:
+        """Request a recruit.  One its race never trains, or one past its limit counting the requests already waiting,
+        is refused now; one waiting for its building or its upgrades waits as a plan, as a building waits for its."""
+        from warband.sim.model import RuleError
+
+        reason = self.world.foreign_unit(player, unit_type) or self.world.at_limit(player, unit_type, planned=True)
+        if reason is not None:
+            raise RuleError(reason)
         return self._add(player, "unit", unit_type)
 
     def cancel_plan(self, player: int, plan_id: int) -> None:

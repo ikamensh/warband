@@ -25,7 +25,8 @@ COMBAT_TOML = Path("combat.toml")
 BEHAVIOR_TOML = Path("behavior.toml")
 BUFFS_TOML = Path("buffs.toml")
 
-PLAYABLE = ("peasant", "footman", "archer", "knight", "catapult", "flying_machine", "cleric")
+PLAYABLE = ("peasant", "footman", "archer", "knight", "catapult", "flying_machine", "cleric",
+            "gryphon", "sapper", "treant", "rune_golem")  # the last four: each race's own unit (units.toml's ``race``)
 WILDS = ("wolf", "spider", "troll", "golem")
 BUILDINGS = ("town_hall", "farm", "barracks", "tower", "lumber_mill", "blacksmith", "stables", "workshop", "church", "vault",
              "gold_mine", "gold_seam", "mother_lode", "lair")
@@ -36,7 +37,7 @@ UPGRADES = ("keep", "blades_1", "blades_2", "blades_3", "armor_1", "armor_2", "a
             "marksmanship", "horses", "blessing", "bloodlust", "plunder", "longbows", "regrowth", "deep_mining",
             "blasting_powder")
 RACES = ("human", "orc", "elf", "dwarf")
-ATTACKS = ("normal", "piercing", "siege")
+ATTACKS = ("normal", "piercing", "siege", "crush")
 ARMOR_CLASSES = ("unarmoured", "light", "heavy", "fortified")
 RESOURCES = ("gold", "lumber")
 #: The condition kinds a rule lays on by name (buffs.toml): Rage, Rage under Bloodlust and Bleeding.  Any other row is
@@ -116,6 +117,13 @@ def _enum(entry: dict, key: str, where: str, choices: tuple[str, ...], default: 
     if value not in choices:
         raise BalanceError(f"{where}.{key}: expected one of {', '.join(choices)}, got {value!r}")
     return value
+
+
+def _race_name(entry: dict, key: str, where: str) -> str | None:
+    """A race's name, or None when the entry names none."""
+    if key not in entry:
+        return None
+    return _enum(entry, key, where, RACES)
 
 
 def _names(entry: dict, key: str, where: str, choices: tuple[str, ...]) -> list[str]:
@@ -229,6 +237,9 @@ UNIT_SCHEMA = {
     "armor_class": (_enum, ARMOR_CLASSES, "light"), "formation": (_bool, False), "mounted": (_bool, False),
     "windup": (_float,), "turn_deg": (_int, 360), "min_range": (_float, 0.0), "regen": (_float, 0.0),
     "living": (_bool, True), "flying": (_bool, False), "inflicts": (_str, ""), "sound": (_str, ""),
+    # A race's own unit (WB-068): the one race that fields it, the upgrades it waits for, how many a side may keep.
+    "race": (_race_name,), "requires": (_names, UPGRADES), "limit": (_int, 0),
+    "blast": (_float, 0.0), "blast_units": (_int, 0), "forest": (_bool, False), "regen_in_trees": (_bool, False),
 }
 UNIT_TWEAK_SCHEMA = {
     "name": (_str,), "summary": (_str,), "hp_mult": (_float, 1.0), "damage_mult": (_float, 1.0),
@@ -402,13 +413,15 @@ def _buffs(doc: dict) -> dict[str, dict]:
     return rows
 
 
-def _race(doc: dict, race: str) -> dict:
+def _race(doc: dict, race: str, units_table: dict[str, dict]) -> dict:
     where = _at(RACES_TOML, race)
     entry = doc.get(race)
     if not isinstance(entry, dict):
         raise BalanceError(f"{RACES_TOML.name}: missing [{race}]")
     _no_extra(entry, {"name", "adjective", "tagline", "passive", "arts", "units", "buildings", "upgrades"}, where)
-    units = _rows(entry.get("units", {}), PLAYABLE, UNIT_TWEAK_SCHEMA, f"{where}.units")
+    # Every role the race fields: the shared ones and its own; another race's own unit is not the race's to name.
+    fielded = tuple(unit for unit in PLAYABLE if units_table[unit]["race"] in (None, race))
+    units = _rows(entry.get("units", {}), fielded, UNIT_TWEAK_SCHEMA, f"{where}.units")
     buildings = _rows(entry.get("buildings", {}), BUILT, BUILDING_TWEAK_SCHEMA, f"{where}.buildings")
     upgrades = entry.get("upgrades", {})
     if not isinstance(upgrades, dict):
@@ -459,7 +472,10 @@ def _load(sources: dict[str, str]) -> Tables:
     tables.wilds = _rows(neutrals_doc, WILDS, UNIT_SCHEMA, NEUTRALS_TOML.name)
     tables.buildings = {b: _building(buildings_doc[b], _at(BUILDINGS_TOML, b), b) for b in BUILDINGS}
     tables.upgrades = {u: _upgrade(upgrades_doc[u], _at(UPGRADES_TOML, u)) for u in UPGRADES}
-    tables.races = {r: _race(races_doc, r) for r in RACES}
+    for unit, info in tables.units.items():
+        if unit not in tables.buildings[info["trained_at"]]["trains"]:
+            raise BalanceError(f"{UNITS_TOML.name} [{unit}].trained_at: the {info['trained_at']} does not list it in its trains")
+    tables.races = {r: _race(races_doc, r, tables.units) for r in RACES}
     economy_doc = _read(ECONOMY_TOML, sources)
     combat_doc = _read(COMBAT_TOML, sources)
     behavior_doc = _read(BEHAVIOR_TOML, sources)

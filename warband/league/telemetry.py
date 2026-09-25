@@ -113,6 +113,9 @@ class Telemetry:
         # the razer's kill, and nobody reads a column for a side that buys nothing and never wins.
         self.tallies: tuple[PlayerTally, ...] = tuple(PlayerTally(race=p.race.value) for p in world.players[:world.seats])
         self._last_hitter: dict[int, tuple[int, str]] = {}  # target id → (striker's player, striker's type)
+        # Whose each recruit was: a striker gone before its blow is read -- a sapper spent in its own blast -- is still
+        # credited with what the blow did.
+        self._recruits: dict[int, tuple[int, str]] = {}
         self._inside: dict[int, str] = {}  # peasant id → the kind of deposit it was last seen working
         self._steps = 0
         self._next_sample = 0.0
@@ -153,6 +156,8 @@ class Telemetry:
     def _trained(self, world: World, event: Event) -> None:
         tally = self.tallies[event.player]
         key = event.target_type
+        if event.entity is not None:
+            self._recruits[event.entity] = (event.player, key)
         tally.trained[key] += 1
         tally.spent[key] += _price(world.players[event.player].race, key)
         tally.first.setdefault(key, world.time)
@@ -201,19 +206,22 @@ class Telemetry:
         if victim is not None:
             victim.taken[event.target_type] += event.amount
         striker = world.entity(event.entity)
-        if striker is None:
+        if striker is not None:
+            owner, striker_type = striker.player, striker.type.value
+        elif event.entity in self._recruits:
+            owner, striker_type = self._recruits[event.entity]
+        else:
             if victim is not None:
                 victim.unattributed += 1
             return
-        striker_type = striker.type.value
-        if striker.player == event.player:
+        if owner == event.player:
             if victim is not None:
                 victim.friendly[event.target_type] += event.amount
             return
-        dealer = self._tally(striker.player)
+        dealer = self._tally(owner)
         if dealer is not None:
             dealer.dealt[striker_type] += event.amount
-        self._last_hitter[event.other] = (striker.player, striker_type)
+        self._last_hitter[event.other] = (owner, striker_type)
 
     def _death(self, world: World, event: Event) -> None:
         victim = self._tally(event.player)

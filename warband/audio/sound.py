@@ -45,6 +45,10 @@ _WEAPONS = {
     UnitType.PEASANT.value: "axe", UnitType.FOOTMAN.value: "sword", UnitType.KNIGHT.value: "lance",
     UnitType.ARCHER.value: "arrow", UnitType.CATAPULT.value: "stone",
     UnitType.CLERIC.value: MOTE, BuildingType.TOWER.value: "arrow",
+    # Each race's own unit: the gryphon rider's storm hammer, the sapper's keg landing as a stone does, the treant's
+    # limbs and the rune golem's fists as war hammers.
+    UnitType.GRYPHON.value: "hammer", UnitType.SAPPER.value: "stone", UnitType.TREANT.value: "hammer",
+    UnitType.RUNE_GOLEM.value: "hammer",
     # The wilds, out of the same families: claws and fangs tear as an axe does, a golem's fists land as a
     # war hammer, and a spider's spit arrives as a shot.
     UnitType.WOLF.value: "axe", UnitType.TROLL.value: "axe",
@@ -215,7 +219,7 @@ class SynthBank:
         self._audio.muted = value
 
 
-SOUND_VERSION = "13"
+SOUND_VERSION = "14"
 MUSIC = music.TRACKS
 
 #: ``play_sound(name)`` forwards here when set; ``None`` is silent.
@@ -380,8 +384,8 @@ class SoundBank(SynthBank):
             self._last_take[name] = take
             if name in IMPACTS:
                 pitch_variation, volume = pitch_variation or 0.045, volume * 0.65
-            elif name in deaths.CUES:  # a voice keeps its pitch; deaths sit under the alerts
-                pitch_variation, volume = pitch_variation or 0.02, volume * 0.55
+            elif name in deaths.CUES:  # a voice keeps its pitch; deaths sit under the alerts, an explosion as a collapse
+                pitch_variation, volume = pitch_variation or 0.02, volume * (0.75 if name in deaths.LOUD else 0.55)
             elif name in presence.CUES:  # a machine's answer or a camp's roar: beside the order cues, under the alerts
                 pitch_variation, volume = pitch_variation or 0.03, volume * 0.5
             else:  # a building coming down is the loudest thing on the field

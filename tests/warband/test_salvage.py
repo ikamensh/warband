@@ -306,7 +306,7 @@ def test_a_small_crew_keeps_every_hand_on_the_resources() -> None:
 
 def test_a_ruin_in_the_fog_is_still_remembered_as_one() -> None:
     """The policy chooses from what the player remembers, as it chooses a mine: a ruin seen once and since lost to
-    the fog is still a ruin, and _Building.ruin is what carries that."""
+    the fog is still a ruin, and KnownBuilding.ruin is what carries that."""
     world = field(3)
     farm = ruined(world, at=(12, 8))  # out of the hall's own sight, and nobody else's
     peasants = crew(world, 6, at=(25.5, 25.5))  # far away: the ruin is only ever seen by the one reveal below

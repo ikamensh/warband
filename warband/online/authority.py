@@ -78,25 +78,29 @@ class WarbandMatch:
         """Number the world's new events and drop the old ones: a snapshot carries the recent ones only, for a client
         cannot say which it has seen, and a burst never more than 128 of them."""
         tick = self.world.tick
+        blasts = {}  # a keg gone up this step -> its side: the blows it strikes follow it the same step
         for event in self.world.take_events():
             self.event_id += 1
             self.events.append([self.event_id, field_values(event)])
             self.event_ticks.append(tick)
-            self.event_seen.append(self._witnesses(event))
+            if event.kind == 'blast':
+                blasts[event.entity] = event.player
+            self.event_seen.append(self._witnesses(event, blasts.get(event.entity) if event.kind == 'hit' else None))
         fresh = next((i for i, born in enumerate(self.event_ticks) if tick - born < EVENT_TICKS), len(self.events))
         keep = max(fresh, len(self.events) - 128)
         self.events, self.event_ticks, self.event_seen = self.events[keep:], self.event_ticks[keep:], self.event_seen[keep:]
 
-    def _witnesses(self, event):
+    def _witnesses(self, event, striker=None):
         """The seats that may hear of *event*: all of them for public news, its owner alone for its private
-        affairs, otherwise its owner and every seat that sees where it happens."""
+        affairs, otherwise its owner, every seat that sees where it happens and the *striker*'s side of a blow
+        struck by a keg: a sapper's eyes go up with it, and its side hears what its blast did wherever that was."""
         seats = range(self.world.seats)
         if event.kind in PUBLIC_EVENTS:
             return list(seats)
         if event.kind in PRIVATE_EVENTS:
             return [event.player]
         tile = (int(event.pos[0]), int(event.pos[1]))
-        return [seat for seat in seats if seat == event.player or self.world.is_visible(seat, tile)]
+        return [seat for seat in seats if seat == event.player or seat == striker or self.world.is_visible(seat, tile)]
 
     def snapshot(self, player):
         """The match as seat *player* may know it (``to_dict`` builds it afresh, the receiver may keep it).

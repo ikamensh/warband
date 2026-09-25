@@ -25,6 +25,7 @@ from warband.sim.races import RACES
 from warband.sim.rules import (BUILDINGS, EXPANSION_GOLD, GOLD_PER_TRIP, MINE_SLOTS, PLAYABLE_UNITS, UPGRADES, BuildingType, Difficulty,
                                Race, Resource, Terrain, UnitType, Upgrade)
 from warband.sim.worker_knowledge import KnownMine
+from warband.brains.unique import Commander
 
 try:
     from warband.sim import _native  # the site search in C, built only with the compiled simulation (warband/league/fastsim.py)
@@ -115,8 +116,9 @@ RAIDERS: Final = (UnitType.KNIGHT,)  # what rides at the enemy's peasants: the f
 
 
 def fighters(units: list[Unit]) -> list[Unit]:
-    """The army among *units*: what is armed and not a worker.  A flying machine is unarmed: eyes, not a soldier."""
-    return [u for u in units if not u.is_worker and u.info.damage]
+    """The army among *units*: what is armed and not a worker.  A flying machine is unarmed: eyes, not a soldier; a
+    sapper's blow is its end, and it is never the army's (``unique.Commander`` runs it)."""
+    return [u for u in units if not u.is_worker and u.info.damage and not u.info.blast]
 
 
 def flyers_over(world: World, player: int, radius: float) -> list[Unit]:
@@ -469,6 +471,7 @@ class Profile:
     repair: bool  # peasants mend damaged buildings once the fighting there is over
     first_attack: float = 0.0  # seconds of play before its first wave may go out
     creep: bool = False  # sends its army to clear a creature camp when it is plainly big enough
+    unique: bool = True  # buys its race's own unit when what it sees says so (WB-068, warband.brains.unique)
 
 
 PROFILES: Final[dict[Difficulty, Profile]] = {
@@ -487,8 +490,9 @@ PROFILES: Final[dict[Difficulty, Profile]] = {
 }
 
 
-def make_brain(player: int, difficulty: Difficulty, seed: int = 0):
-    """The opponent a difficulty setting means.
+def make_brain(player: int, difficulty: Difficulty, seed: int = 0, *, own_units: bool = True):
+    """The opponent a difficulty setting means; without *own_units*, one that never buys its race's own unit (WB-068),
+    for the tools that price it.
 
     Easy and Medium are this module's :class:`Brain`; Hard and Master are
     :class:`warband.brains.pro_ai.ProBrain`, which is a different and much stronger
@@ -499,16 +503,22 @@ def make_brain(player: int, difficulty: Difficulty, seed: int = 0):
     Master players in one game differ.
     Imported late because ``pro_ai`` imports this module.
     """
+    from dataclasses import replace
+
     from warband.brains.pro_ai import PRO_PROFILES, ProBrain, RaceBrain
 
     if difficulty in PROFILES:
-        return Brain(player, difficulty)
+        brain = Brain(player, difficulty)
+        if not own_units:
+            brain.profile = replace(brain.profile, unique=False)
+        return brain
     if difficulty is Difficulty.GRANDMASTER:
         from warband.brains.bred import BRED, BRED_FOR_LAYOUT  # tables of profiles, imported late as pro_ai is
 
-        return RaceBrain(player, BRED, seed, BRED_FOR_LAYOUT)
+        return RaceBrain(player, BRED, seed, BRED_FOR_LAYOUT, own_units=own_units)
     postures = PRO_FOR[difficulty]
-    return ProBrain(player, PRO_PROFILES[postures[(seed + player) % len(postures)]])
+    profile = PRO_PROFILES[postures[(seed + player) % len(postures)]]
+    return ProBrain(player, profile if own_units else replace(profile, unique=False))
 
 
 #: Which ProBrain profiles stand behind each of the upper difficulties.
@@ -560,6 +570,7 @@ class Brain:
         self.creep_size = 0  # how many soldiers set out to clear it
         self.creep_until = 0.0  # when it gives that camp up whatever it has left
         self.camp_retry: dict[int, float] = {}  # lair id -> when that camp is worth trying again
+        self.commander = Commander()  # the race's own unit: when to buy it and what it is for
 
     def note(self, world: World, what: str) -> None:
         self.log.append((world.time, what))
@@ -732,6 +743,8 @@ class Brain:
                 self.saving = world.can_afford(player, BUILDINGS[wanted].cost) is not None  # the army waits for the hall
             elif profile.tech and not have(BuildingType.LUMBER_MILL):
                 wanted = BuildingType.LUMBER_MILL
+            elif (own := self._own_building(world)) is not None:
+                wanted = own  # its race's own unit is the answer (WB-068): what trains it, or what that needs
             elif profile.tech and not have(BuildingType.BLACKSMITH) and gold > 900:
                 wanted = BuildingType.BLACKSMITH
             elif profile.tech and not have(BuildingType.STABLES) and gold > 1200:
@@ -749,6 +762,15 @@ class Brain:
         if world.can_afford(player, BUILDINGS[wanted].cost) is not None:
             return None
         return wanted, anchor
+
+    def _own_building(self, world: World) -> BuildingType | None:
+        """The building the race's own unit is trained at, or the one that building needs, when the unit is the answer
+        and none stands or goes up."""
+        own = self.commander.building(world, self.player, self._seen_now(world)) if self.profile.unique else None
+        if own is None:
+            return None
+        needs = BUILDINGS[own].requires
+        return own if needs is None or world.player_buildings(self.player, needs, done=True) else needs
 
     def _mine_to_claim(self, world: World, hall: Building, worked: KnownMine | None) -> KnownMine | None:
         """The nearest unclaimed mine when the one the hall works is far, running low or gone, up to
@@ -785,9 +807,14 @@ class Brain:
             self.note(world, f"workforce target {target}")
             self._last_workforce_target = target
         peasants = len(self._peasants(world))
+        waits = self.commander.waits_for(world, player, self._seen_now(world)) if self.profile.unique else ()
+        free = self.commander.kept_free(world, player, waits) if waits and all(
+            world.can_afford(player, UPGRADES[u].cost) is None for u in waits) else set()
         for hall in halls:
             if peasants >= target:
                 break
+            if hall.id in free:
+                continue  # its own unit is the answer: the hall is to be raised to the Keep first
             if not hall.queue and world.can_train(hall, UnitType.PEASANT) is None:
                 world.train(hall.id, UnitType.PEASANT)
         first = halls[0] if halls else None
@@ -800,7 +827,8 @@ class Brain:
                 world.set_rally(building.id, self._muster_point(world, first))
             if building.queue or building.research is not None:
                 continue
-            choice = self._choose_unit(world, building, counts)
+            choice = self.commander.wish(world, player, building, self._seen_now(world)) if self.profile.unique else None
+            choice = choice or self._choose_unit(world, building, counts)
             if choice is not None and world.can_train(building, choice) is None:
                 world.train(building.id, choice)
                 counts[choice] = counts.get(choice, 0) + 1
@@ -857,6 +885,15 @@ class Brain:
                     best, best_gap = unit_type, targets[unit_type] - share
         return best
 
+    def _seen_now(self, world: World) -> dict[UnitType, float]:
+        """How many of each kind the rivals have in sight now: all Medium knows of what they field."""
+        seen: dict[UnitType, float] = {}
+        for unit in world.units.values():
+            if (unit.player != self.player and unit.player < world.seats and not unit.is_worker and not unit.hidden and unit.hp > 0
+                    and world.is_visible(self.player, unit.tile)):
+                seen[unit.type] = seen.get(unit.type, 0.0) + 1.0
+        return seen
+
     def _research(self, world: World) -> None:
         if not self.profile.tech:
             return
@@ -864,7 +901,8 @@ class Brain:
         if player.gold < self.profile.reserve or self.saving:
             return
         buildings = world.player_buildings(self.player, done=True)  # nothing changes until the one order below
-        for wanted in RESEARCH_ORDER:
+        first = self.commander.waits_for(world, self.player, self._seen_now(world)) if self.profile.unique else ()
+        for wanted in (*first, *RESEARCH_ORDER):
             if wanted in player.upgrades or not RACES[player.race].upgrade_allowed(wanted):
                 continue
             for upgrade in with_prerequisites(player.upgrades, wanted):
@@ -963,6 +1001,8 @@ class Brain:
             self._raid(world)
             army = [u for u in army if u.id not in self.raiders]
         hunting = self.hunt.step(world, self.player, army, lost_track(world, self.player, self._far_guess(world)))
+        hunting |= self.commander.step(world, self.player, [u for u in self._units(world) if u.id not in hunting],
+                                       self._push(world, army) if self.attacking else None)
         army = [u for u in army if u.id not in hunting]
         threats = self._threats(world)
         if self.profile.creep and not threats and self._creep(world, army):
@@ -1031,6 +1071,15 @@ class Brain:
             target = min(targets, key=lambda t: dist(t, origin))
             world.attack_move([u.id for u in army], target)
             self.note(world, f"attack with {len(army)} towards {tuple(round(c) for c in target)}")
+
+    def _push(self, world: World, army: list[Unit]) -> Point | None:
+        """Where an attack goes: the enemy target nearest the hall, as a wave is sent at."""
+        targets = self._enemy_targets(world)
+        hall = self._hall(world)
+        if not targets or (hall is None and not army):
+            return None
+        home = hall.center if hall is not None else army[0].pos
+        return min(targets, key=lambda t: dist(t, home))
 
     def _raid(self, world: World) -> None:
         """The first two knights go for the enemy's peasants and keep at it."""

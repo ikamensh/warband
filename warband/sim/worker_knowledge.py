@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Final, TYPE_CHECKING
 
-from warband.sim.rules import GOLD_PER_TRIP, MINE_SLOTS, Terrain
+from warband.sim.rules import GOLD_PER_TRIP, MINE_SLOTS, BuildingType, Terrain
 
 try:
     from warband.sim import _native  # the footprint test in C, built only with the compiled simulation (warband/league/fastsim.py)
@@ -59,7 +59,11 @@ class KnownMine:
 
 
 @dataclass(frozen=True)
-class _Building:
+class KnownBuilding:
+    """A structure as the player last saw it: where it stands, whose it is, what it is, whether it shot and whether it
+    had fallen to a ruin.  What a computer player sends its forces at under fog (``warband.brains.unique``): one razed
+    out of sight stands here until the player looks again.  *type* is None in a save from before it was remembered."""
+
     id: int
     x: int
     y: int
@@ -67,6 +71,7 @@ class _Building:
     player: int | None
     threat_range: float = 0.0
     ruin: bool = False  # a finished building nobody owns any more: what a peasant may be sent to salvage
+    type: BuildingType | None = None
 
     @property
     def center(self) -> tuple[float, float]:
@@ -83,8 +88,8 @@ class WorkerKnowledge:
         self.terrain: list[Terrain | None] = [None] * (width * height)
         self.blocked = bytearray([1]) * (width * height)
         self.mines: dict[int, KnownMine] = {}
-        self.buildings: dict[int, _Building] = {}  # last-observed footprint of every structure ever seen
-        self.threats: tuple[_Building, ...] = ()  # the armed ones among them; callers filter out their own
+        self.buildings: dict[int, KnownBuilding] = {}  # last-observed footprint of every structure ever seen
+        self.threats: tuple[KnownBuilding, ...] = ()  # the armed ones among them; callers filter out their own
         self._terrain_blocked = bytearray([1]) * (width * height)  # the grid without any footprint stamped on it
         self._spans: dict[tuple[int, int, int], tuple[tuple[int, int], ...]] = {}
         self._trees: set[int] = set()
@@ -187,8 +192,8 @@ class WorkerKnowledge:
             # Nothing but a structure's threat and its fall to a ruin can change under a fixed id: it is built once
             # and never moves.
             if known is None or known.threat_range != threat_range or known.ruin != ruin:
-                self.buildings[building.id] = _Building(building.id, building.x, building.y, building.size,
-                                                        building.player, threat_range, ruin)
+                self.buildings[building.id] = KnownBuilding(building.id, building.x, building.y, building.size,
+                                                            building.player, threat_range, ruin, building.type)
                 changed = True
             deposit = info.mine
             if deposit is not None:
@@ -232,7 +237,8 @@ class WorkerKnowledge:
     def to_dict(self) -> dict:
         return {"width": self.width, "height": self.height,
                 "terrain": [terrain.value if terrain is not None else None for terrain in self.terrain],
-                "buildings": [asdict(building) for building in self.buildings.values()],
+                "buildings": [{**asdict(building), "type": None if building.type is None else building.type.value}
+                              for building in self.buildings.values()],
                 "mines": [asdict(mine) for mine in self.mines.values()]}
 
     @classmethod
@@ -241,7 +247,10 @@ class WorkerKnowledge:
         knowledge.terrain = [Terrain(value) if value is not None else None for value in data["terrain"]]
         if len(knowledge.terrain) != knowledge.width * knowledge.height:
             raise ValueError("Remembered terrain must match its map dimensions")
-        knowledge.buildings = {item["id"]: _Building(**item) for item in data["buildings"]}
+        knowledge.buildings = {}
+        for item in data["buildings"]:
+            kind = item.get("type")  # None in a save from before the kind was remembered
+            knowledge.buildings[item["id"]] = KnownBuilding(**{**item, "type": None if kind is None else BuildingType(kind)})
         knowledge.mines = {item["id"]: KnownMine(**item) for item in data["mines"]}
         knowledge._rebuild_grid()
         return knowledge

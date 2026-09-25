@@ -380,7 +380,7 @@ class Adjutant:
         prey = self._prey(world)
         if not prey:
             return Report("No rival workers known: scout first", refused=True)
-        fighters = [u for u in self._soldiers(world) if u.info.damage]
+        fighters = [u for u in self._soldiers(world) if u.info.damage and not u.info.blast]  # a sapper's blow is its end: no raider
         raiders = self.members("harass")
         free = sorted(self._free(fighters), key=lambda u: (-world.speed_of(u), u.id))
         if not raiders and not free:

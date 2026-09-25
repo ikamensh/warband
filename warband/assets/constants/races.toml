@@ -3,6 +3,7 @@
 # See docs/balance.md for defaults and validation.
 # Each units/buildings table has optional defaults; individual values override them.
 # Omitted modifiers: *_mult = 1, *_add = 0, formation = true (keep the base setting).
+# A race names its own unit (units.toml `race`) and no other race's; its defaults apply to it too.
 # range_add affects ranged units only; formation = false opts out of shield walls.
 # Passive mechanics live in sim/model.py; art lives in art/textures.py.
 
@@ -22,6 +23,7 @@ knight = { name = "Knight", summary = "Fast, heavily armoured shock cavalry" }
 catapult = { name = "Catapult", summary = "Siege engine: splash, ×1.5 vs buildings" }
 flying_machine = { name = "Flying Machine", summary = "Rotor-borne eyes over any ground; unarmed, only shooters hit it" }
 cleric = { name = "Cleric", summary = "Heals wounded allies; smites weakly when none need healing" }
+gryphon = { name = "Gryphon Rider", summary = "Armed flyer: storm hammer at ground and air; only shooters reach it" }
 
 [human.buildings]
 town_hall = { name = "Town Hall", card = "Hall", summary = "Trains peasants; takes gold and lumber" }
@@ -30,7 +32,7 @@ barracks = { name = "Barracks", card = "Barracks", summary = "Trains footmen and
 tower = { name = "Guard Tower", card = "Tower", summary = "Shoots at enemies six tiles away" }
 lumber_mill = { name = "Lumber Mill", card = "Mill", summary = "Takes lumber; researches better arrows" }
 blacksmith = { name = "Blacksmith", card = "Smith", summary = "Researches sharper blades and plate armour" }
-stables = { name = "Stables", card = "Stables", summary = "Trains knights; breeds horses" }
+stables = { name = "Stables", card = "Stables", summary = "Trains knights and gryphon riders; breeds horses" }
 workshop = { name = "Workshop", card = "Workshop", summary = "Builds catapults and flying machines; siege upgrades" }
 church = { name = "Church", card = "Church", summary = "Trains clerics; blesses their healing" }
 vault = { name = "Arcane Vault", card = "Vault", summary = "Draws a rift's aether; holds {store}, reaches {reach} tiles" }
@@ -54,6 +56,7 @@ knight = { name = "Ogre", summary = "Two-headed brute; thin armour, all rage", h
 catapult = { name = "Catapult", summary = "Skulled siege engine: splash, ×1.5 vs walls" }
 flying_machine = { name = "Goblin Zeppelin", summary = "Patched balloon, goblin at the rail; sees all, fights nothing" }
 cleric = { name = "Shaman", summary = "Mends wounded allies; hexes weakly when none need mending" }
+sapper = { name = "Goblin Sapper", summary = "Powder keg on legs: blows up towers and halls, and itself; {blast_units} to all beside it, yours too" }
 
 [orc.buildings]
 town_hall = { name = "Great Hall", card = "Hall", summary = "Trains peons; takes gold and lumber" }
@@ -63,7 +66,7 @@ tower = { name = "Watch Tower", card = "Tower", summary = "Hurls axes at enemies
 lumber_mill = { name = "Sawmill", card = "Sawmill", summary = "Takes lumber; researches heavier axes" }
 blacksmith = { name = "Forge", card = "Forge", summary = "Researches blades, hide armour, Bloodlust" }
 stables = { name = "Kennels", card = "Kennels", summary = "Trains ogres; Plunder" }
-workshop = { name = "Siege Yard", card = "Yard", summary = "Builds catapults and zeppelins; siege upgrades" }
+workshop = { name = "Siege Yard", card = "Yard", summary = "Builds catapults, zeppelins and sappers; siege upgrades" }
 church = { name = "Altar", card = "Altar", summary = "Trains shamans" }
 vault = { name = "Spirit Cage", card = "Cage", summary = "Cages a rift's aether; holds {store}, reaches {reach} tiles" }
 
@@ -86,6 +89,7 @@ knight = { name = "Stag Knight", summary = "Antlered shock cavalry, swift but li
 catapult = { name = "Ballista", summary = "Living-wood siege engine: splash, ×1.5" }
 flying_machine = { name = "Leafwing Glider", summary = "Living-wood frame on leaf wings; sees farthest, unarmed" }
 cleric = { name = "Druid", summary = "Tends wounded allies; stings weakly when none need tending" }
+treant = { name = "Treant", summary = "Walking tree: through the forest, x2 on walls, mends among trees" }
 
 [elf.buildings]
 town_hall = { name = "Moon Hall", card = "Hall", summary = "Trains gatherers; takes gold and lumber" }
@@ -96,7 +100,7 @@ lumber_mill = { name = "Grove Mill", card = "Mill", summary = "Takes lumber; arr
 blacksmith = { name = "Silversmith", card = "Smith", summary = "Researches keener blades and silver mail" }
 stables = { name = "Stag Pens", card = "Pens", summary = "Trains stag knights" }
 workshop = { name = "Siege Bower", card = "Bower", summary = "Builds ballistae and gliders; siege upgrades" }
-church = { name = "Moonwell", card = "Moonwell", summary = "Trains druids" }
+church = { name = "Moonwell", card = "Moonwell", summary = "Trains druids and treants" }
 vault = { name = "Moon Reliquary", card = "Relic", summary = "Gathers a rift's aether; holds {store}, reaches {reach} tiles" }
 
 [elf.upgrades]
@@ -118,6 +122,7 @@ knight = { name = "Bear Rider", summary = "Armoured shock cavalry on a war bear"
 catapult = { name = "Mortar", summary = "Iron mortar: wide splash, ×1.5 vs buildings" }
 flying_machine = { name = "Gyrocopter", summary = "Steam rotor over any ground; eyes, not guns: only shooters hit it" }
 cleric = { name = "Runepriest", summary = "Heals wounded allies; strikes weakly when none need healing" }
+rune_golem = { name = "Rune Golem", summary = "Runed stone: slams every foe round its mark; never mended" }
 
 [dwarf.buildings]
 defaults = { hp_mult = 1.25, armor_add = 2 }
@@ -129,7 +134,7 @@ lumber_mill = { name = "Timber Works", card = "Timber", summary = "Takes lumber;
 blacksmith = { name = "Forge", card = "Forge", summary = "Researches axes, plate and Deep Mining" }
 stables = { name = "Beast Pens", card = "Pens", summary = "Trains bear riders" }
 workshop = { name = "Engine Works", card = "Engines", summary = "Builds mortars and gyrocopters; siege, Blasting Powder" }
-church = { name = "Rune Shrine", card = "Shrine", summary = "Trains runepriests" }
+church = { name = "Rune Shrine", card = "Shrine", summary = "Trains runepriests and rune golems" }
 vault = { name = "Rune Vault", card = "Vault", summary = "Binds a rift's aether; holds {store}, reaches {reach} tiles" }
 
 [dwarf.upgrades]

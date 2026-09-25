@@ -159,7 +159,11 @@ given.
 A building trains one or several unit types endlessly (`World.set_auto_train`,
 a recorded order, so replays and the online authority see it); several take
 turns, strictly, the next one first in `Building.auto`, and the one switched on
-last goes next. A new building takes up what every building of its kind its
+last goes next; but a type the player has as many of as its limit allows (a
+race's own unit, three at once) keeps its place at the front and holds up none
+of the others, which go on in turn until one of the three falls
+(`World.auto_train_next`: a Stables stood idle behind three gryphon riders). A
+new building takes up what every building of its kind its
 owner has trains endlessly (a player's second and third barracks once stood
 idle beside the first one's endless archers). It starts a recruit only when it
 stands idle: at once when switched on (a player who saw nothing happen clicked
@@ -174,8 +178,8 @@ holds its gold too, and endless training cannot starve it (a Barracks waiting
 for lumber once stopped a player's endless peasants with a thousand gold in
 the purse). Research planned at the building goes before its next recruit.
 `World.auto_train_blocker` says why the next one waits; the building's
-panel shows the rotation and that reason, and a loop marks each endless recruit
-on the card. Shift with the recruit's key (or Shift+click, or a right-click on
+panel shows the rotation, the next first, a type waiting at its limit and that
+reason, and a loop marks each endless recruit on the card. Shift with the recruit's key (or Shift+click, or a right-click on
 its button) toggles it at the selected building; the same from the Train
 catalogue toggles it at every building that trains it, finished or going up.
 Cancel (X, or Grid's slot) cancels the last recruit and stops the building's

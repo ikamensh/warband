@@ -15,9 +15,10 @@ the next wind-up may start.  Shots are projectiles: an arrow follows its
 mark and strikes when it arrives, a siege stone comes down on the ground it
 was fired at, on whoever stands there by then.
 
-Armour classes and attack types (WB-049, :data:`DAMAGE_FACTORS`): peasants, clerics, catapults and flying machines are
-unarmoured, archers light, footmen and knights heavy, buildings fortified; archers pierce, catapults siege, the rest
-and towers strike normally.  Piercing lands ×1.5 on the unarmoured, siege ×1.5 on buildings, everything else ×1.
+Armour classes and attack types (WB-049, :data:`DAMAGE_FACTORS`): peasants, clerics, catapults, flying machines, sappers
+and treants are unarmoured, archers and gryphon riders light, footmen, knights and rune golems heavy, buildings
+fortified; archers pierce, catapults and a sapper's keg siege, a treant crushes, the rest and towers strike normally.
+Piercing lands ×1.5 on the unarmoured, siege ×1.5 and a crush ×2 on buildings, everything else ×1.
 
 A unit type that flies (:attr:`UnitInfo.flying`) is over the ground rather than on it: it flies straight over
 anything, takes no room there, and only a shot reaches it (:attr:`UnitInfo.strikes_air`: an arrow, a healer's bolt,
@@ -74,6 +75,11 @@ class UnitType(IdentityEnum):
     CATAPULT = "catapult"
     FLYING_MACHINE = "flying_machine"
     CLERIC = "cleric"
+    # Each race's own unit (WB-068): trained by that race alone, after the Keep, never more than a few at once.
+    GRYPHON = "gryphon"  # the Humans' armed flyer
+    SAPPER = "sapper"  # the Orcs' powder keg: its blow is its end
+    TREANT = "treant"  # the Elves' walking tree: walks through the forest
+    RUNE_GOLEM = "rune_golem"  # the Dwarves' carved golem: the neutral golem's slam, bound
     # The neutral creatures: nobody trains them, no race names them, and they are never team-coloured.
     # Their values are :class:`warband.art.monsters.Monster`'s, so the art is reached with ``Monster(unit.type.value)``.
     WOLF = "wolf"
@@ -145,6 +151,7 @@ class AttackType(IdentityEnum):
     NORMAL = "normal"
     PIERCING = "piercing"  # arrows, thrown axes, bolts
     SIEGE = "siege"  # stones
+    CRUSH = "crush"  # a treant's limbs, which tear walls down: x2 on buildings
 
 
 @dataclass(frozen=True)
@@ -227,6 +234,21 @@ class UnitInfo:
     #: a shot reaches it (:attr:`strikes_air`).
     flying: bool = False
     inflicts: BuffInfo | None = None  # what its blow lays on a living unit it wounds: an archer's shot opens a wound
+    #: The one race that fields it: a race's own unit (WB-068), which its building offers that race alone.  None: every
+    #: race's.  Every race's table still holds it, under the shared table's name, so asking about it never fails.
+    race: Race | None = None
+    #: The upgrades that must be researched before it can be trained (the Keep, for a race's own unit).
+    requires: tuple[Upgrade, ...] = ()
+    #: The most a side may have at once, those alive and those queued at its buildings counted together; 0: no limit.
+    limit: int = 0
+    #: Tiles round it that its blow reaches, and the blow is its end (a sapper's keg): every rival building in reach
+    #: takes its :attr:`damage`, every unit on the ground :attr:`blast_units`, its own side's too.  0: an ordinary blow.
+    blast: float = 0.0
+    blast_units: int = 0
+    #: At home in the forest: trees are open ground to it, and it walks through them on a grid of its own.
+    forest: bool = False
+    #: Its :attr:`regen` works only while it stands among trees: on a tree tile or beside one.
+    regen_in_trees: bool = False
     #: The sound family its body dies and answers in (:mod:`warband.audio.bodies`); empty for a soldier of a race, who
     #: dies in the voice of the race that fields it.  Presentation only: no rule reads it.
     sound: str = ""
@@ -278,6 +300,9 @@ def _unit(u: dict[str, Any]) -> UnitInfo:
         armor_class=ArmorClass(u["armor_class"]), formation=u["formation"], mounted=u["mounted"], windup=u["windup"],
         turn=math.radians(u["turn_deg"]), min_range=u["min_range"], regen=u["regen"], living=u["living"],
         flying=u["flying"], inflicts=BUFFS[u["inflicts"]] if u["inflicts"] else None, sound=u["sound"],
+        race=None if u["race"] is None else Race(u["race"]),
+        requires=tuple(Upgrade(r) for r in u["requires"]), limit=u["limit"], blast=u["blast"], blast_units=u["blast_units"],
+        forest=u["forest"], regen_in_trees=u["regen_in_trees"],
     )
 
 
@@ -286,7 +311,10 @@ UNITS: Final[dict[UnitType, UnitInfo]] = {UnitType(u): _unit(info) for u, info i
 #: What a player can train, in card order: everything but the neutral creatures.  Every loop that means
 #: "the game's units" walks this rather than :class:`UnitType`, which now also holds the wilds.
 PLAYABLE_UNITS: Final[tuple[UnitType, ...]] = (UnitType.PEASANT, UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT,
-                                               UnitType.CATAPULT, UnitType.FLYING_MACHINE, UnitType.CLERIC)
+                                               UnitType.CATAPULT, UnitType.FLYING_MACHINE, UnitType.CLERIC,
+                                               UnitType.GRYPHON, UnitType.SAPPER, UnitType.TREANT, UnitType.RUNE_GOLEM)
+#: Each race's own unit (WB-068), the one of :data:`PLAYABLE_UNITS` whose ``race`` it is.
+OWN_UNITS: Final[dict[Race, UnitType]] = {info.race: unit_type for unit_type, info in UNITS.items() if info.race is not None}
 
 
 # -- The wilds ---------------------------------------------------------------------
@@ -346,11 +374,11 @@ AETHER_EVERY: Final = config.number('AETHER_EVERY')
 AETHER_REACH: Final = config.number('AETHER_REACH')
 
 
-def fill(summary: str, trip: int = 0) -> str:
+def fill(summary: str, trip: int = 0, blast_units: int = 0) -> str:
     """A summary from the tables with its numbers put in: a deposit's ``{trip}``, a vault's ``{store}`` and
-    ``{reach}``, so the text a player reads always says the number the rules use."""
+    ``{reach}``, a sapper's ``{blast_units}``, so the text a player reads always says the number the rules use."""
     return (summary.replace("{trip}", str(trip)).replace("{store}", str(AETHER_STORE))
-            .replace("{reach}", f"{AETHER_REACH:g}"))
+            .replace("{reach}", f"{AETHER_REACH:g}").replace("{blast_units}", str(blast_units)))
 
 
 @dataclass(frozen=True)

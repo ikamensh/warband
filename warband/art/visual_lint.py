@@ -381,7 +381,7 @@ def register_everything(game: Game, *, players: tuple[int, ...] = (0, 1), budget
                     if budget is not None:
                         budget.checkpoint()
         for subject in (*PLAYABLE_UNITS, *BuildingType):
-            if subject is BuildingType.LAIR:
+            if subject is BuildingType.LAIR or (isinstance(subject, UnitType) and UNITS[subject].race not in (None, race)):
                 continue  # a den is nobody's and no race's: warband.art.monsters draws it, and its own test lints it
             textures.portrait_image(game, subject, 0, race)
     for upgrade in Upgrade:
@@ -391,6 +391,8 @@ def register_everything(game: Game, *, players: tuple[int, ...] = (0, 1), budget
 def unit_subjects(players: tuple[int, ...] = (0,)) -> Iterator[tuple[str, Race, UnitType, Resource | None, int]]:
     for race in Race:
         for unit_type in PLAYABLE_UNITS:  # a creature is nobody's: tests/warband/test_monsters.py lints those
+            if UNITS[unit_type].race not in (None, race):
+                continue  # another race's own unit never takes the field in this race's colours
             carries: tuple[Resource | None, ...] = (None, Resource.GOLD, Resource.LUMBER) if unit_type is UnitType.PEASANT else (None,)
             for carrying in carries:
                 for player in players:

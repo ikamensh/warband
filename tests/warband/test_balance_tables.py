@@ -303,7 +303,8 @@ def test_the_toml_balance_tables_match_the_simulation() -> None:
             base = rules.UNITS[rules.UnitType(unit)]
             info = live.units[rules.UnitType(unit)]
             agree(f"races.toml [{race}.units.{unit}].name", info.name, t["name"])
-            agree(f"races.toml [{race}.units.{unit}].summary", info.summary, t["summary"])
+            agree(f"races.toml [{race}.units.{unit}].summary", info.summary,
+                  t["summary"].replace("{blast_units}", str(tables.units[unit]["blast_units"])))  # a sapper's keg, put in
             agree(f"races.toml [{race}.units.{unit}].hp", info.hp, int(round(base.hp * t["hp_mult"])))
             agree(f"races.toml [{race}.units.{unit}].damage", info.damage, int(round(base.damage * t["damage_mult"])))
             agree(f"races.toml [{race}.units.{unit}].armor", info.armor, base.armor + t["armor_add"])

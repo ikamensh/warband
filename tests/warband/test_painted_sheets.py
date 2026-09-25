@@ -16,9 +16,10 @@ from warband.sim.rules import CREATURES, Race, Resource, UnitType
 
 
 def fielded():
-    """Every unit subject a race fields: each unit type its roster names, a peasant also with each load."""
+    """Every unit subject a race fields: each unit type its roster names, a peasant also with each load; its table
+    holds the other races' own units too (WB-068), which it never fields."""
     for race in Race:
-        for unit in RACES[race].units:
+        for unit in filter(RACES[race].unit_allowed, RACES[race].units):
             for carrying in ((None,) if unit is not UnitType.PEASANT else (None, Resource.GOLD, Resource.LUMBER)):
                 yield race, unit, carrying
 

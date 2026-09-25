@@ -117,7 +117,7 @@ the way it picks up a harvest, and on the same terms:
 - **one hand and no more** per player (`_salvagers`), so the mine and the trees
   keep their crews; the hand goes back into the pool the moment the ruin is gone;
 - only when the crew can spare somebody: at least `SALVAGE_CREW` (6) workers;
-- only a ruin the player **remembers** (`_Building.ruin` in the worker
+- only a ruin the player **remembers** (`KnownBuilding.ruin` in the worker
   knowledge, set when one is seen), whose working edge is safe ground within
   `SALVAGE_REACH` (24 tiles) of a depot, by the same distance field that places
   gatherers. A record of a ruin somebody razed since costs one wasted walk and

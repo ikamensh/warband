@@ -99,6 +99,7 @@ OUTCOMES = {
     "collapse": Outcome(36, .58, 4),  # a mount folds into a low heap; a plank on its nose is no horse
     "wreck": Outcome(9, .66, 2),      # a siege engine breaks where it stands
     "crash": Outcome(28, .62, 5, falls=True),  # a flying machine drops out of the air and breaks on the ground
+    "plummet": Outcome(70, .6, 6, falls=True),  # a gryphon and its rider fall out of the air and lie in a heap
 }
 
 
@@ -107,6 +108,10 @@ def death_outcome(unit_type: UnitType) -> str:
         return "wreck"
     if unit_type is UnitType.FLYING_MACHINE:
         return "crash"
+    if unit_type is UnitType.GRYPHON:
+        return "plummet"
+    if unit_type in (UnitType.TREANT, UnitType.RUNE_GOLEM):  # a felled tree and a broken statue lie as a mount's heap does
+        return "collapse"
     return "collapse" if unit_type in MOUNTED else "topple"
 
 
