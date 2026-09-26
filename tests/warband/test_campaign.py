@@ -88,10 +88,19 @@ def test_a_progress_file_from_a_newer_warband_is_refused_with_a_reason(tmp_path)
         store.load()
 
 
+@pytest.mark.parametrize("level", ["master", "grandmaster"])
+def test_a_progress_file_with_a_shift_only_difficulty_is_refused(level) -> None:
+    """Master is only ever a shift, never the campaign's own setting: a hand-edited file naming one must not reach
+    shifted() as a KeyError."""
+    with pytest.raises(ValueError, match="difficulty must be easy, medium or hard"):
+        Progress.from_dict({"format": FORMAT, "campaign": CAMPAIGN.id, "difficulty": level, "completed": [], "flags": {}})
+
+
 UNREADABLE = {
     "newer": {"format": FORMAT + 1, "campaign": CAMPAIGN.id, "difficulty": "hard", "completed": ["hollowmere", "greywater", "silent_hold", "karst_hold"],
               "flags": {"truce": True, "powder": True}},
     "damaged": {"format": FORMAT, "campaign": CAMPAIGN.id, "completed": "hollowmere"},
+    "hand-edited to Master": {"format": FORMAT, "campaign": CAMPAIGN.id, "difficulty": "master", "completed": ["hollowmere"], "flags": {}},
 }
 
 

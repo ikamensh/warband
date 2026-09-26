@@ -460,7 +460,10 @@ class Progress:
             raise ValueError("completed missions must be a list of ids")
         if not isinstance(flags, dict):
             raise ValueError("flags must be an object")
-        return cls(data["campaign"], Difficulty(data.get("difficulty", Difficulty.MEDIUM.value)), list(completed), dict(flags),
+        difficulty = Difficulty(data.get("difficulty", Difficulty.MEDIUM.value))
+        if difficulty not in _SHIFT:
+            raise ValueError("the campaign's difficulty must be easy, medium or hard")
+        return cls(data["campaign"], difficulty, list(completed), dict(flags),
                    {k: v for k, v in data.items() if k not in _KNOWN})
 
 
