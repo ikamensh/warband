@@ -37,12 +37,13 @@ MINUTES = 20
 
 
 def match(seed: int, races: tuple[Race, Race], difficulty: Difficulty, *, minutes: int,
-          bought: Counter[Race] | None = None, own_units: bool = True) -> tuple[Race | None, float]:
+          bought: Counter[Race] | None = None, own_units: bool = True, magic: bool = True,
+          cast: Counter[Race] | None = None) -> tuple[Race | None, float]:
     """``(winning race or None, minutes played)`` for one AI-versus-AI match; each race's own units trained are counted
-    into *bought*."""
+    into *bought*, and its spells cast into *cast*."""
     world = mapgen.generate(seed=seed, players=2, human=None, races=races)
     # Hard and Master are a ProBrain, not a Brain; the wilds are nobody's seat and have no brain at all.
-    brains = [make_brain(p.id, difficulty, seed, own_units=own_units) for p in world.players[:world.seats]]
+    brains = [make_brain(p.id, difficulty, seed, own_units=own_units, magic=magic) for p in world.players[:world.seats]]
     rng = random.Random(seed)
     for _ in range(int(minutes * 60 / SIM_DT)):
         if world.winner is not None:
@@ -53,15 +54,20 @@ def match(seed: int, races: tuple[Race, Race], difficulty: Difficulty, *, minute
         for event in world.take_events():
             if bought is not None and event.kind == "trained" and event.target_type in OWN:
                 bought[world.players[event.player].race] += 1
+            if cast is not None and event.kind == "cast":
+                cast[world.players[event.player].race] += 1
     return (world.players[world.winner].race if world.winner is not None else None), world.time / 60
 
 
-def play(task: tuple[int, tuple[Race, Race], Difficulty, int, bool]) -> tuple[int, tuple[Race, Race], Race | None, float, Counter[Race]]:
-    """One match of the table in a worker process: its seed and races, the winner, the minutes and the own units bought."""
-    seed, races, difficulty, minutes, own_units = task
+def play(task: tuple[int, tuple[Race, Race], Difficulty, int, bool, bool]
+         ) -> tuple[int, tuple[Race, Race], Race | None, float, Counter[Race], Counter[Race]]:
+    """One match of the table in a worker process: its seed and races, the winner, the minutes, the own units bought
+    and the spells cast."""
+    seed, races, difficulty, minutes, own_units, magic = task
     bought: Counter[Race] = Counter()
-    winner, played = match(seed, races, difficulty, minutes=minutes, bought=bought, own_units=own_units)
-    return seed, races, winner, played, bought
+    cast: Counter[Race] = Counter()
+    winner, played = match(seed, races, difficulty, minutes=minutes, bought=bought, own_units=own_units, magic=magic, cast=cast)
+    return seed, races, winner, played, bought, cast
 
 
 def main() -> None:
@@ -74,6 +80,8 @@ def main() -> None:
                         help="matches played at once; half the machine by default, as the stack's slot runs two heavy jobs")
     parser.add_argument("--without-own-units", dest="own_units", action="store_false",
                         help="brains that never buy their race's own unit (WB-068): the same matches as before it existed")
+    parser.add_argument("--without-magic", dest="magic", action="store_false",
+                        help="brains that never build a vault (WB-067): Hard, Master and Grandmaster as before they cast")
     args = parser.parse_args()
     difficulty = Difficulty(args.difficulty)
     wins: Counter[Race] = Counter()
@@ -81,14 +89,16 @@ def main() -> None:
     pairs: Counter[tuple[Race, Race]] = Counter()  # (winner, loser)
     undecided = 0
     bought: Counter[Race] = Counter()  # each race's own unit (WB-068), trained
+    cast: Counter[Race] = Counter()  # each race's spells (WB-067), cast
     seeds = [seed for seed in range(args.first_seed, args.first_seed + args.seeds) if fair(seed)]
     if len(seeds) < args.seeds:
         print(f"  ({args.seeds - len(seeds)} of {args.seeds} seeds have no fair map and were left out)", flush=True)
-    tasks = [(seed, races, difficulty, args.minutes, args.own_units)
+    tasks = [(seed, races, difficulty, args.minutes, args.own_units, args.magic)
              for first, second in itertools.combinations(Race, 2) for seed in seeds for races in ((first, second), (second, first))]
     with mp.get_context("spawn").Pool(args.workers) as pool:
-        for seed, races, winner, played, own in pool.imap_unordered(play, tasks, chunksize=1):
+        for seed, races, winner, played, own, spells in pool.imap_unordered(play, tasks, chunksize=1):
             bought.update(own)
+            cast.update(spells)
             if winner is None:
                 undecided += 1
             else:
@@ -106,6 +116,7 @@ def main() -> None:
     print(f"  undecided within {args.minutes} min: {undecided}")
     played = 3 * len(seeds) * 2  # each race plays three pairings, both sides, every seed
     print("  own units trained: " + ", ".join(f"{race.value} {OWN_UNITS[race].value} {bought[race]} in {played} matches" for race in Race))
+    print("  spells cast: " + ", ".join(f"{race.value} {cast[race]} in {played} matches" for race in Race))
 
 
 def fair(seed: int) -> bool:

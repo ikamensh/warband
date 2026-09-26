@@ -1,8 +1,8 @@
 """The Mage Tower and the spells (WB-066): research by choice, the cast order, each spell's effect, and the records.
 
 Three levels of magic are researched at the tower, each a choice of one spell of three that closes the other two for the
-match.  A side casts from its store of aether at any point of the map, a spell on its own cooldown, both three times
-dearer beyond every vault's reach.  A spell is a row of spells.toml: the conditions it lays, those it ends, its blow at
+match.  A side casts from its store of aether at any point of the map, a spell on its own cooldown, both twice as dear
+beyond every vault's reach.  A spell is a row of spells.toml: the conditions it lays, those it ends, its blow at
 once or after a delay, and what it summons.  Saves, replays and the online snapshots carry all of it, and a rival's
 research, aether and cooldowns stay that rival's.
 """
@@ -82,15 +82,17 @@ def test_a_level_is_a_choice_of_one_spell_that_closes_the_other_two() -> None:
 
 
 def test_the_levels_are_priced_as_the_table_says() -> None:
-    """600/200 in 60 s, 1000/400 in 90 s behind the Keep, 1600/600 in 120 s; 30, 60 and 120 aether cooling as many seconds."""
+    """300/100 in 25 s, 1000/400 in 90 s behind the Keep, 1600/600 in 120 s; 30, 60 and 120 aether cooling 20, 40 and 90
+    seconds (WB-067)."""
     world = field()
-    for spells, (gold, lumber, time, aether) in (((Upgrade.HASTE, Upgrade.MEND, Upgrade.FLAME_STRIKE), (600, 200, 60.0, 30)),
-                                                 ((Upgrade.STONESKIN, Upgrade.ENTANGLE, Upgrade.WITHER), (1000, 400, 90.0, 60)),
-                                                 ((Upgrade.METEOR, Upgrade.SUMMON, Upgrade.BATTLE_FURY), (1600, 600, 120.0, 120))):
+    for spells, (gold, lumber, time, aether, cooldown) in (
+            ((Upgrade.HASTE, Upgrade.MEND, Upgrade.FLAME_STRIKE), (300, 100, 25.0, 30, 20.0)),
+            ((Upgrade.STONESKIN, Upgrade.ENTANGLE, Upgrade.WITHER), (1000, 400, 90.0, 60, 40.0)),
+            ((Upgrade.METEOR, Upgrade.SUMMON, Upgrade.BATTLE_FURY), (1600, 600, 120.0, 120, 90.0))):
         for spell in spells:
             info = world.upgrade_info(0, spell)
             assert (info.cost.gold, info.cost.lumber, info.time) == (gold, lumber, time), spell
-            assert (SPELLS[spell].aether, SPELLS[spell].cooldown * SIM_DT) == (aether, aether), spell
+            assert (SPELLS[spell].aether, SPELLS[spell].cooldown * SIM_DT) == (aether, cooldown), spell
     assert Upgrade.KEEP in world.upgrade_info(0, Upgrade.WITHER).requires
 
 
@@ -101,25 +103,25 @@ def test_a_cast_pays_its_aether_and_starts_its_cooldown_in_whole_steps() -> None
     world = knowing(field(), Upgrade.HASTE)
     world.cast(0, Upgrade.HASTE, HERE)
     assert world.players[0].aether == 70
-    assert world.cooldown_left(0, Upgrade.HASTE) == SPELLS[Upgrade.HASTE].cooldown == 600
-    with pytest.raises(RuleError, match="ready in 30 s"):
+    assert world.cooldown_left(0, Upgrade.HASTE) == SPELLS[Upgrade.HASTE].cooldown == 400
+    with pytest.raises(RuleError, match="ready in 20 s"):
         world.cast(0, Upgrade.HASTE, HERE)
-    step(world, 30.0)
+    step(world, 20.0)
     assert world.cooldown_left(0, Upgrade.HASTE) == 0
     world.cast(0, Upgrade.HASTE, HERE)
 
 
-def test_beyond_every_vaults_reach_a_cast_costs_and_cools_three_times_as_much() -> None:
+def test_beyond_every_vaults_reach_a_cast_costs_and_cools_twice_as_much() -> None:
     world = knowing(field(), Upgrade.HASTE)
     vault = world.vaults(0)[0]
     edge = (vault.center[0] + AETHER_REACH, vault.center[1])
-    assert world.cast_price(0, Upgrade.HASTE, edge) == (30, 600)  # the edge is in reach
-    assert world.cast_price(0, Upgrade.HASTE, (edge[0] + 0.01, edge[1])) == (30 * SPELL_FAR, 600 * SPELL_FAR) == (90, 1800)
+    assert world.cast_price(0, Upgrade.HASTE, edge) == (30, 400)  # the edge is in reach
+    assert world.cast_price(0, Upgrade.HASTE, (edge[0] + 0.01, edge[1])) == (30 * SPELL_FAR, 400 * SPELL_FAR) == (60, 800)
     world.cast(0, Upgrade.HASTE, FAR)
-    assert world.players[0].aether == 10 and world.cooldown_left(0, Upgrade.HASTE) == 1800
-    world.players[0].aether = 89
+    assert world.players[0].aether == 40 and world.cooldown_left(0, Upgrade.HASTE) == 800
+    world.players[0].aether = 59
     world.players[0].cooldowns.clear()
-    with pytest.raises(RuleError, match=r"Not enough aether \(90 needed, 3x beyond your vaults' reach\)"):
+    with pytest.raises(RuleError, match=r"Not enough aether \(60 needed, 2x beyond your vaults' reach\)"):
         world.cast(0, Upgrade.HASTE, FAR)
 
 
@@ -130,7 +132,7 @@ def test_a_cast_into_the_fog_lands_blind() -> None:
     world.visible[0][:] = bytes(len(world.visible[0]))
     assert not world.is_visible(0, foe.tile)
     world.cast(0, Upgrade.FLAME_STRIKE, foe.pos)
-    assert foe.hp == foe.max_hp - 25
+    assert foe.hp == foe.max_hp - 30
 
 
 # -- The spells, one by one -------------------------------------------------------------------------------------------
@@ -139,17 +141,17 @@ def test_a_cast_into_the_fog_lands_blind() -> None:
 def test_haste_quickens_the_casters_own_units_near_the_point_and_nobody_else() -> None:
     world = knowing(field(), Upgrade.HASTE)
     near = held(world, 0, UnitType.FOOTMAN, (11.5, 10.5))
-    far = held(world, 0, UnitType.FOOTMAN, (15.5, 10.5))
+    far = held(world, 0, UnitType.FOOTMAN, (16.5, 10.5))
     foe = held(world, 1, UnitType.FOOTMAN, (10.5, 11.5))
     base = world.speed_of(near)
     world.cast(0, Upgrade.HASTE, HERE)
-    assert world.speed_of(near) == pytest.approx(base * 1.4) and near.blow_mult == pytest.approx(0.8)
+    assert world.speed_of(near) == pytest.approx(base * 1.4) and near.blow_mult == pytest.approx(0.45)
     assert not far.conditions and not foe.conditions
-    step(world, 10.05)
+    step(world, 14.05)
     assert not near.conditions
 
 
-def test_mend_heals_five_a_second_for_six_seconds_and_staunches_a_bleeding_wound() -> None:
+def test_mend_heals_fifteen_a_second_for_ten_seconds_and_staunches_a_bleeding_wound() -> None:
     world = knowing(field(), Upgrade.MEND)
     hurt = held(world, 0, UnitType.ARCHER, HERE)
     hurt.hp = 5
@@ -159,8 +161,10 @@ def test_mend_heals_five_a_second_for_six_seconds_and_staunches_a_bleeding_wound
     world.cast(0, Upgrade.MEND, HERE)
     assert hurt.condition(BLEEDING) is None and hurt.condition(BUFFS["mend"]) is not None
     assert not engine.conditions  # a machine is not mended
-    step(world, 6.0)
+    step(world, 2.0)
     assert hurt.hp == 35 and engine.hp == 50
+    step(world, 8.05)
+    assert hurt.hp == hurt.max_hp and hurt.condition(BUFFS["mend"]) is None
 
 
 def test_flame_strike_burns_through_armour_and_lands_on_buildings_at_once() -> None:
@@ -169,24 +173,24 @@ def test_flame_strike_burns_through_armour_and_lands_on_buildings_at_once() -> N
     friend = held(world, 0, UnitType.FOOTMAN, (21.2, 10.5))
     farm = world.place_building(1, BuildingType.FARM, (21, 11))
     world.cast(0, Upgrade.FLAME_STRIKE, (20.5, 10.5))
-    assert foe.hp == foe.max_hp - 25  # through its three armour, and no roll
-    assert farm.hp == farm.max_hp - 25 - 8  # the burn's whole drain at once: a building carries no condition
+    assert foe.hp == foe.max_hp - 30  # through its three armour, and no roll
+    assert farm.hp == farm.max_hp - 30 - 8  # the burn's whole drain at once: a building carries no condition
     assert friend.hp == friend.max_hp and not friend.conditions
     step(world, 4.0)
-    assert foe.hp == foe.max_hp - 33 and not foe.conditions
+    assert foe.hp == foe.max_hp - 38 and not foe.conditions
 
 
-def test_stoneskin_adds_four_armour_for_fifteen_seconds() -> None:
+def test_stoneskin_adds_five_armour_for_fifteen_seconds() -> None:
     world = knowing(field(), Upgrade.STONESKIN)
     footman = held(world, 0, UnitType.FOOTMAN, HERE)
     before = world.armor_of(footman)
     world.cast(0, Upgrade.STONESKIN, HERE)
-    assert world.armor_of(footman) == before + 4
+    assert world.armor_of(footman) == before + 5
     step(world, 15.05)
     assert world.armor_of(footman) == before
 
 
-def test_entangle_holds_ground_units_where_they_stand_but_they_still_strike() -> None:
+def test_entangle_holds_ground_units_where_they_stand_and_thorns_them_but_they_still_strike() -> None:
     world = knowing(field(), Upgrade.ENTANGLE)
     walker = world.spawn_unit(1, UnitType.KNIGHT, (20.5, 10.5))
     world.move([walker.id], (30.5, 10.5))
@@ -203,9 +207,12 @@ def test_entangle_holds_ground_units_where_they_stand_but_they_still_strike() ->
     assert walker.pos == where, "rooted: neither its order nor the crowd moved it"
     assert walker.progress == 0.0 and isinstance(walker.order, Move)  # its watchdog waited, and its order stands
     assert target.hp < hp, "it still strikes what is in its reach"
+    assert walker.hp < walker.max_hp and flyer.hp == flyer.max_hp, "the thorns bleed what the roots hold, through armour"
     assert flyer.x > 23.0 and shoved.pos != (walker.x + 0.2, walker.y)
+    step(world, 2.7)
+    assert not walker.rooted and walker.hp == walker.max_hp - 26
     step(world, 1.0)
-    assert not walker.rooted and walker.x > where[0] + 0.5
+    assert walker.x > where[0] + 0.5
 
 
 def test_roots_hold_a_flyer_too_when_a_kind_that_roots_is_laid_on_one() -> None:
@@ -217,7 +224,7 @@ def test_roots_hold_a_flyer_too_when_a_kind_that_roots_is_laid_on_one() -> None:
     world._lay(flyer, BUFFS["entangled"], 0)  # staging: the kind on its own, which no spell of the table lays on a flyer
     step(world, 3.9)
     assert flyer.pos == (20.5, 10.5) and isinstance(flyer.order, Move)
-    step(world, 1.0)
+    step(world, 2.7)
     assert not flyer.rooted and flyer.x > 21.0
 
 
@@ -230,7 +237,7 @@ def test_an_entangled_healer_heals_whom_it_reaches_and_waits_for_the_rest() -> N
     near = held(world, 1, UnitType.FOOTMAN, (22.5, 10.5))
     beyond = held(world, 1, UnitType.FOOTMAN, (20.5, 15.5))
     near.hp = beyond.hp = 10
-    world.cast(0, Upgrade.ENTANGLE, cleric.pos)
+    world.cast(0, Upgrade.ENTANGLE, (18.5, 10.5))  # the cleric at its middle, the comrade just outside its thorns
     assert cleric.rooted and not beyond.rooted
     step(world, 3.9)
     assert cleric.pos == (20.5, 10.5) and near.hp > 10
@@ -282,7 +289,7 @@ def test_wither_saps_enemies_damage_and_speed_machines_too() -> None:
     friend = held(world, 0, UnitType.FOOTMAN, (19.5, 10.5))
     damage, speed = world.damage_of(foe), world.speed_of(foe)
     world.cast(0, Upgrade.WITHER, (20.5, 10.5))
-    assert world.damage_of(foe) == int(round(damage * 0.7)) and world.speed_of(foe) == pytest.approx(speed * 0.8)
+    assert world.damage_of(foe) == int(round(damage * 0.4)) and world.speed_of(foe) == pytest.approx(speed * 0.8)
     assert engine.condition(BUFFS["withered"]) is not None and not friend.conditions
 
 
@@ -291,7 +298,7 @@ def test_a_meteor_lands_two_seconds_after_the_cast_on_friend_foe_and_buildings_a
     world.players[0].aether = 200
     point = (20.5, 10.5)
     heart = held(world, 1, UnitType.KNIGHT, point)
-    edge = held(world, 0, UnitType.KNIGHT, (point[0] + 2.0 + UNITS[UnitType.KNIGHT].radius - 0.01, point[1]))
+    edge = held(world, 0, UnitType.KNIGHT, (point[0] + 3.0 + UNITS[UnitType.KNIGHT].radius - 0.01, point[1]))
     flyer = held(world, 1, UnitType.FLYING_MACHINE, (point[0], point[1] + 1.0))
     wall = world.place_building(1, BuildingType.TOWN_HALL, (21, 8))
     world.cast(0, Upgrade.METEOR, point)
@@ -301,29 +308,29 @@ def test_a_meteor_lands_two_seconds_after_the_cast_on_friend_foe_and_buildings_a
     assert heart.hp == heart.max_hp, "it has not landed yet"
     step(world, 0.1)
     armor = world.armor_of(heart)
-    assert heart.hp == heart.max_hp - (120 - armor)
-    assert edge.hp == edge.max_hp - (60 - world.armor_of(edge))  # the rim, and the caster's own knight
+    assert heart.hp == heart.max_hp - (150 - armor)
+    assert edge.hp == edge.max_hp - (75 - world.armor_of(edge))  # the rim, and the caster's own knight
     assert flyer.hp < flyer.max_hp  # it falls through the air
     gap = max(0.0, 21 - point[0])
-    assert wall.hp == wall.max_hp - (int(round((120 - 60 * gap / 2.0) * 1.5)) - world.armor_of(wall))
+    assert wall.hp == wall.max_hp - (int(round((150 - 75 * gap / 3.0) * 1.5)) - world.armor_of(wall))
     assert not world.projectiles
 
 
-def test_summon_brings_three_elementals_of_the_casters_that_are_gone_after_forty_seconds() -> None:
+def test_summon_brings_two_elementals_of_the_casters_that_are_gone_after_twenty_five_seconds() -> None:
     world = knowing(field(), Upgrade.SUMMON)
     world.players[0].aether = 200
     used = world.supply(0)[0]
     world.cast(0, Upgrade.SUMMON, (20.5, 10.5))
     elementals = [u for u in world.units.values() if u.type is UnitType.AETHER_ELEMENTAL]
-    assert len(elementals) == 3 and all(u.player == 0 and u.hp == 120 and not u.info.living for u in elementals)
+    assert len(elementals) == 2 and all(u.player == 0 and u.hp == 85 and not u.info.living for u in elementals)
     assert world.damage_of(elementals[0]) == 12 and elementals[0].info.melee
     assert world.supply(0)[0] == used, "what a spell brings takes no room in the farms"
     lost = world.players[0].stats["units_lost"]
     world.take_events()
-    step(world, 40.0)
+    step(world, 25.0)
     assert not any(u.type is UnitType.AETHER_ELEMENTAL for u in world.units.values())
     assert world.players[0].stats["units_lost"] == lost, "gone, not lost"
-    assert sum(e.kind == "expired" for e in world.take_events()) == 3
+    assert sum(e.kind == "expired" for e in world.take_events()) == 2
 
 
 def test_a_summoning_over_water_stands_its_elementals_on_the_nearest_ground_or_is_refused() -> None:
@@ -355,25 +362,25 @@ def test_one_vault_holds_any_spell_within_its_reach() -> None:
 
 
 def test_a_far_cast_dearer_than_the_vaults_hold_says_what_will_pay_for_it() -> None:
-    """Beyond every vault's reach a level II spell costs 180 and a level III 360, more than one vault holds, so no wait
-    pays for them: the refusal says what the vaults hold and what will (a cast within their reach, or as many more
-    vaults as the price takes).  A second vault, even off the rifts, holds a far level II once the store fills."""
+    """Beyond every vault's reach a level II spell costs 120, which one vault holds, and a level III 240, more than one
+    holds, so no wait pays for it: the refusal says what the vaults hold and what will (a cast within their reach, or
+    another vault).  A second vault, even off the rifts, holds a far level III once the store fills."""
     world = knowing(field(), Upgrade.METEOR, Upgrade.WITHER)
     world.players[0].aether = world.aether_cap(0)  # the field's one vault, its store full
     level_2, level_3 = SPELLS[Upgrade.WITHER].aether * SPELL_FAR, SPELLS[Upgrade.METEOR].aether * SPELL_FAR
-    assert AETHER_STORE < level_2 <= 2 * AETHER_STORE < level_3 <= 3 * AETHER_STORE  # two vaults and three: one more and two more
+    assert level_2 <= AETHER_STORE < level_3 <= 2 * AETHER_STORE  # one vault and two
+    world.cast(0, Upgrade.WITHER, FAR)
+    assert world.players[0].aether == AETHER_STORE - level_2
+    world.players[0].aether = world.aether_cap(0)
     before = world.to_dict()
-    with pytest.raises(RuleError, match=rf"^Not enough aether \({level_2} needed, 3x beyond your vaults' reach\): they hold {AETHER_STORE}, "
+    with pytest.raises(RuleError, match=rf"^Not enough aether \({level_3} needed, {SPELL_FAR}x beyond your vaults' reach\): they hold {AETHER_STORE}, "
                                         r"cast it within their reach or build another$"):
-        world.cast(0, Upgrade.WITHER, FAR)
-    with pytest.raises(RuleError, match=rf"^Not enough aether \({level_3} needed, 3x beyond your vaults' reach\): they hold {AETHER_STORE}, "
-                                        r"cast it within their reach or build 2 more$"):
         world.cast(0, Upgrade.METEOR, FAR)
     assert world.to_dict() == before
     world.place_building(0, BuildingType.VAULT, (4, 18))  # off the rift: it stores, and draws nothing
     world.players[0].aether = world.aether_cap(0)  # full again, at the cap two vaults hold
-    world.cast(0, Upgrade.WITHER, FAR)
-    assert world.players[0].aether == 2 * AETHER_STORE - level_2
+    world.cast(0, Upgrade.METEOR, FAR)
+    assert world.players[0].aether == 2 * AETHER_STORE - level_3
 
 
 def test_battle_fury_drives_the_casters_units_within_six_tiles() -> None:
@@ -382,16 +389,18 @@ def test_battle_fury_drives_the_casters_units_within_six_tiles() -> None:
     near = held(world, 0, UnitType.FOOTMAN, (15.5, 10.5))
     base_damage, base_speed = world.damage_of(near), world.speed_of(near)
     world.cast(0, Upgrade.BATTLE_FURY, HERE)
-    assert world.damage_of(near) == int(round(base_damage * 1.4)) and world.speed_of(near) == pytest.approx(base_speed * 1.2)
+    assert world.damage_of(near) == int(round(base_damage * 1.55)) and world.speed_of(near) == pytest.approx(base_speed * 1.2)
 
 
-def test_a_killing_spell_is_the_casters_kill() -> None:
+def test_a_killing_spell_is_the_casters_kill_and_its_dead_are_off_the_map_at_once() -> None:
+    """A cast comes between steps, and what reads the world before the next one reads the living: a footman struck dead
+    by a Flame Strike once stood in its army at minus hit points until the step (WB-067)."""
     world = knowing(field(), Upgrade.FLAME_STRIKE)
     foe = held(world, 1, UnitType.PEASANT, (20.5, 10.5))
     foe.hp = 10
     world.cast(0, Upgrade.FLAME_STRIKE, foe.pos)
-    world.step()
     assert foe.id not in world.units and world.players[0].stats["units_killed"] == 1
+    assert world.players[1].stats["units_lost"] == 1 and any(e.kind == "death" for e in world.take_events())
 
 
 # -- Records ------------------------------------------------------------------------------------------------------------
@@ -472,7 +481,7 @@ def test_a_seat_casts_its_own_spells_and_nobody_elses() -> None:
     match = online()
     hall = match.world.player_buildings(0, BuildingType.TOWN_HALL)[0]
     match.apply(0, {"action": "cast", "args": [0, "wither", list(hall.center)]})
-    assert match.world.players[0].aether == 1000 - 3 * 60  # no vault stands: everywhere is beyond reach
+    assert match.world.players[0].aether == 1000 - SPELL_FAR * 60  # no vault stands: everywhere is beyond reach
     with pytest.raises(CommandError, match="your own spells"):
         match.apply(1, {"action": "cast", "args": [0, "flame_strike", list(hall.center)]})
     with pytest.raises(CommandError, match="not a spell"):
@@ -486,7 +495,7 @@ def test_a_rivals_research_aether_and_cooldowns_stay_private() -> None:
     hall = match.world.player_buildings(0, BuildingType.TOWN_HALL)[0]
     match.apply(0, {"action": "cast", "args": [0, "wither", list(hall.center)]})
     mine, theirs = match.snapshot(0)["world"]["players"][0], match.snapshot(1)["world"]["players"][0]
-    assert mine["cooldowns"] == {"wither": match.world.players[0].cooldowns[Upgrade.WITHER]} and mine["aether"] == 1000 - 3 * 60
+    assert mine["cooldowns"] == {"wither": match.world.players[0].cooldowns[Upgrade.WITHER]} and mine["aether"] == 1000 - SPELL_FAR * 60
     assert theirs["cooldowns"] == {} and theirs["aether"] == 0 and theirs["upgrades"] == []
 
 
@@ -525,6 +534,8 @@ def test_every_spell_says_its_numbers() -> None:
         assert f"{info.radius:g} tiles" in info.summary or info.summons is not None, spell
         for kind in info.lays:
             assert f"{kind.duration:g} s" in info.summary, (spell, kind.key)
-    assert "40 %" in SPELLS[Upgrade.HASTE].summary and "25 through armour" in SPELLS[Upgrade.FLAME_STRIKE].summary
-    assert "+4 armour" in SPELLS[Upgrade.STONESKIN].summary and "Three" in SPELLS[Upgrade.SUMMON].summary
+    assert "40 %" in SPELLS[Upgrade.HASTE].summary and "30 through armour" in SPELLS[Upgrade.FLAME_STRIKE].summary
+    assert "+5 armour" in SPELLS[Upgrade.STONESKIN].summary and "Two" in SPELLS[Upgrade.SUMMON].summary
+    assert "60 % less damage" in SPELLS[Upgrade.WITHER].summary and "55 % more damage" in SPELLS[Upgrade.BATTLE_FURY].summary
+    assert "+15 hp a second" in SPELLS[Upgrade.MEND].summary and "thorns 4/s" in SPELLS[Upgrade.ENTANGLE].summary
     assert f"{UNITS[UnitType.AETHER_ELEMENTAL].lifetime:g} s" in SPELLS[Upgrade.SUMMON].summary

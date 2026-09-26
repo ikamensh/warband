@@ -27,11 +27,11 @@ starting_lumber = 500
 # straight into its owner's store, `every` seconds an aether. The store holds
 # `store` for each finished vault, so a lost vault spills what no longer fits.
 # `reach` is how far round a finished vault a spell is cast at its plain price
-# (WB-066 triples the cost and the cooldown beyond every vault's reach).
+# (beyond every vault's reach a cast costs `far` times the aether and the cooldown, spells.toml).
 
 [aether]
 store = 150 # aether each finished vault holds: a level III spell's 120 within its reach, so one vault casts any spell there
-every = 2.0 # seconds a vault on a rift takes to draw one aether; a whole number of simulation steps
+every = 1.0 # seconds a vault on a rift takes to draw one aether; a whole number of simulation steps
 reach = 10.0 # tiles round a finished vault's middle
 
 # Mending is repair run at REPAIR_COST of a building's price, pro rata over

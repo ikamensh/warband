@@ -1233,3 +1233,164 @@ toward Medium, and Grandmaster's and Master's intervals overlap, where New game 
 **Left.** Master's orcs against elves (40 %) and Medium's orcs against dwarves (61 %) are the widest pairs held out.
 The Medium brains were not measured on the larger maps; Master's elves were 58.1 there with Longbows +1. WB-067's
 brains will cast spells, which moves the races again: these tables are re-measured on the main that has it.
+
+## Magic III: the AI casts, the spells balanced (WB-067, 2026-09-26)
+
+Hard, Master and the bred brains build a vault, a Mage Tower and a spell a level
+and cast them (`warband/brains/magic.py`, [the magic note](warband-magic.md#the-brains-cast-wb-067)).
+As WB-066 priced it, magic in a Master's hands lost: Master against the same
+Master without magic scored **41.4 %** over 500 matches (seeds 40000–40249, both
+corners, `tools/arena.py ladder --agents master,master-nomagic`).
+
+**Why, first.** Three measurements, before any number moved.
+
+*Strength* (`tools/battle_bench.py`, 120 fights a row, both sides swapped). The
+bench army is what the brains field when their first spell becomes castable
+(the magic side 1.7 footmen, 1.7 archers, 1.7 knights, the plain side 2.6, 3.2,
+1.9 over 31 matches): footman:2,archer:3,knight:1 a side. One scripted cast at
+contact won an even fight 81–100 % (Haste 95.0, Mend 94.2, Flame Strike 99.2,
+Stoneskin 99.2, Entangle 80.8, Wither 100, Meteor 97.5, Summon 99.2, Battle Fury
+100). That table cannot tell the spells apart: a mirror this even is a coin that
+any edge tips, and one more footman alone wins it 93.3 % (one more archer 87.5,
+one more knight 97.5, the mirror footman:3,archer:3,knight:2). The measure that
+can is a deficit the cast must make up. One footman short, the caster won with
+Haste 0 %, Mend 9.2, Flame Strike 92.5; Stoneskin 99.2, Entangle 0, Wither 37.5;
+Meteor 92.5, Summon 96.7, Battle Fury 81.7. Haste and Mend, two postures' level I
+spell, were worth less than a footman a cast; Entangle nothing in a fight.
+
+*Use and timing* (80 Master matches, 40 seeds from 30000, the magic brain
+against the plain one, every cast and fight logged):
+
+| what | median (quartiles) |
+|---|---|
+| the first big fight (2,000 of armies lost within 20 s) | 204 s (195–228) |
+| the match decided (the loser's army under half the winner's from then on) | 324 s (243–421) |
+| the vault ordered, the tower ordered | 249 s, 317 s |
+| the first spell castable | 432 s (419–486), in 31 of 80 matches |
+| castable before the match was decided | 14 of 80 |
+| casts | 0.49 a match, 25 of 39 after the match was decided |
+| aether left unspent at the end | 68 of 150 drawn |
+
+Magic came two minutes after the decisive clash, and its price was paid before
+it. Built early and free it cost more still: with every price at zero and the
+vault from 150 s, the magic brain scored 45.8 % casting and **38.8 %** never
+casting (120 matches each): a vault and a tower going up while the first push
+comes cost a fight's worth of army by 250 s (40 seeds, seat by seat against the
+same seed without magic: 444 less army at 250 s, the rival 608 more), however
+little they cost. From 180 s, after the first push, the same free magic scored
+53.8 %.
+
+**The fixes, in the order they paid.**
+
+| step (250 matches each, seeds 50000–50124) | magic's score | against the row it builds on, seat by seat (standard error) | rush / vanguard / warden |
+|---|---:|---:|---|
+| no magic on either side (the postures' own shares) | 50.0 % | | 28.9 / 57.1 / 63.9 |
+| the vault from 180 s (the rush's from 360 s); vault 300/100 25 s, tower 600/200 35 s, level I 400/100 30 s; aether a second; far 2× | 47.6 % | not measured | 26.5 / 58.3 / 57.8 |
+| and the spells even within a level at one footman short (Haste, Mend, Wither, Meteor and Battle Fury up, Flame Strike down, Entangle given thorns, Summon two for 25 s) | 50.8 % | +3.2 (1.7) | 33.7 / 58.3 / 60.2 |
+| and cheaper, quicker, cooling faster: vault 250/100 20 s, tower 500/200 30 s, level I 300/100 25 s, cooldowns 20/40/90 s | 50.4 % | −0.4 (2.6) | 33.7 / 57.1 / 60.2 |
+| the same with every price at zero (what the casting itself is worth) | 56.0 % | +5.6 (2.5) | 38.6 / 59.5 / 69.9 |
+| the priced row two above, and level I worth a knight a cast, not a footman (Haste 5 tiles, blows ×0.45, 14 s; Mend 5 tiles, 15 a second; Flame Strike 2 tiles, 30) | 56.0 % | +5.6 (1.9) | 33.7 / 72.6 / 61.4 |
+
+The final numbers carry levels II and III on as far, one knight short, so that
+each level is worth more than the one below (Stoneskin +5 armour, Entangle's
+thorns 4 a second for 6.5 s, Wither 14 s, Meteor 3 tiles, the elementals 85 hit
+points); a Master game rarely reaches them.
+
+Casting quality came first where it was wrong: a Mend of more than a footman's
+life weighed a half-dead footman at a fifth and was never cast (a unit now
+counts in full at half its life), and an army ran to defend a vault mid-map
+from every rival passing it (a vault is no home to defend).
+
+What each lever moved, seat by seat on the same seeds: the vault's timing moved
+free magic 7.9 points (45.8 % from 150 s, 53.8 % from 180 s, 120 matches on
+seeds 30000+, standard error 4.0); per-cast strength moved priced magic 3.2
+points (the spells evened within each level, standard error 1.7, barely more
+than noise) and 5.6 (level I worth a knight, 1.9); the second price cut moved
+nothing (−0.4, 2.6), though every price at zero is worth 5.6 (2.5). The first
+step, the vault from 180 s together with the first price cut, was never played
+against WB-066's numbers on the screening seeds: its 41.4 % "before" is the
+confirming run's, on seeds 40000+, so how the climb to 47.6 % splits between
+timing, price and the other seeds is not known. The rush, whose game is over
+before a spell could come, keeps a vault from 360 s.
+
+**The bench on the final numbers** (120 fights a row, both sides swapped,
+footman:2,archer:3,knight:1 human mirror; the scripted caster casts once, at the
+spell's natural moment: a buff, a blow, a hold or a summoning at contact, a
+delayed blow on the approach, Mend on a quarter of the army's life lost, and
+pays whatever it costs; `--moment brain` hands the one cast to a Master's caster,
+its judges, bar and moment, each side with a vault by the middle of the field
+and the caster's store 140 of 150 or full, the share of fights it cast in after
+each score):
+
+| spell | even (target) | a Master's caster, store 140 of 150 | the same, store full | one footman short | one knight short |
+|---|---:|---:|---:|---:|---:|
+| no spell | 46.7 % | 42.5 % | 42.5 % | 0.0 % | 0.0 % |
+| Haste | 98.3 % (≥ 62) | 100.0 % (100) | 100.0 % (100) | 97.5 % | 59.2 % |
+| Mend | 100.0 % (≥ 62) | 71.7 % (55) | 95.0 % (98) | 95.8 % | 62.5 % |
+| Flame Strike | 99.2 % (≥ 62) | 99.2 % (100) | 100.0 % (100) | 97.5 % | 61.7 % |
+| Stoneskin | 98.3 % (≥ 67) | 100.0 % (100) | 100.0 % (100) | 97.5 % | 74.2 % |
+| Entangle | 100.0 % (≥ 67) | 75.8 % (64) | 92.5 % (92) | 98.3 % | 76.7 % |
+| Wither | 98.3 % (≥ 67) | 100.0 % (100) | 100.0 % (100) | 99.2 % | 80.8 % |
+| Meteor | 98.3 % (≥ 72) | 97.5 % (94) | 99.2 % (100) | 98.3 % | 83.3 % |
+| Summon | 95.0 % (≥ 72) | 42.5 % (never) | 100.0 % (100) | 99.2 % | 90.0 % |
+| Battle Fury | 99.2 % (≥ 72) | 100.0 % (100) | 100.0 % (100) | 96.7 % | 81.7 % |
+
+Every spell clears its level's target, and a level's three are within 1.7, 1.7
+and 4.2 points of each other even; one knight short, where the table can tell
+them apart, within 3.3, 6.6 and 8.3, and the levels rise (about 61, 77 and 85).
+
+The Master's columns are what the brain makes of one cast, not what the spell is
+worth. Each side has a vault because one alone tipped the fight: a vault in
+sight draws blows and gives sight, and the caster's alone won the mirror 75.0 %
+without casting (120 fights). Short of a full store the brain never summons: its
+judge counts at most `SUMMONED_WORTH` (2) a body the spell brings, 4 for two
+elementals, under the level III bar of 6, and only a full store's halved bar (3)
+lets it through. Mend waits for wounds and Entangle for a rout or a chase, so
+the bar holds them back in about half and a third of the fights short of full.
+
+**The arena on the final numbers** (`tools/arena.py ladder --agents master,master-nomagic --seeds 250
+--first-seed 40000`, the seeds of the 41.4 % before):
+
+| Master against Master without magic, 500 matches | before | after |
+|---|---:|---:|
+| magic's score | 41.4 % | **54.8 %** (Elo 1017, 90 % 1004–1030, against 983, 970–996) |
+| when it drew the rush / the vanguard / the warden | 25.1 / 50.6 / 48.5 % | 35.3 / 68.7 / 60.5 % |
+| a vault / a tower / a spell by the end | 0.94 / 0.65 / 0.46 | 0.88 / 0.81 / 0.76 |
+| the first spell (median) | 432 s | 296 s |
+| casts a match | 0.54 | 2.05 (Flame Strike 1.16, Mend 0.49, Haste 0.32, Stoneskin 0.05) |
+
+Played again after a lower spell stopped keeping back the whole level III price
+while that spell cooled (`Magus.reserve`), 3 of the 500 matches went otherwise
+and none changed its result: a Master researches a level III spell in almost no
+match.
+
+Inside the 53–60 % the design asked for: worth building, not yet mandatory. A
+posture's score mixes its matchups (the rush loses to both others with or
+without magic, 28.9 % on the plain mirror above), so only the whole row is
+magic's worth. The warden, on 60.5 % here against 63.9 % on the other seeds'
+plain mirror, gains least: its Mend is cast half as often as the vanguard's Flame
+Strike. Races and the difficulty ladder are measured with WB-073.
+
+**The Keep is not raised for a spell.** A level II spell waits for the Keep,
+which a brain researches where its research order puts it. Researched instead
+for the level II spell, ahead of that order (`magic.next_spell` naming the spell
+and the Keep before it), it changed none of the 500 matches above: the same
+54.8 %, the Keep in the same 107 matches at the same time (median 267 s). By the
+time a level I spell is known the order has reached the Keep anyway, so the
+brain keeps the simpler rule. Levels II and III stay rare at Master either way
+(0.07 level II casts a match), and their balance rests on the bench.
+
+### Magic and the race numbers together (2026-09-26)
+
+On main with both WB-073's race numbers and WB-067's magic, fresh seeds 181-222
+(`race_report.py --seeds 42 --first-seed 181`, about 500 matches each), human /
+orc / elf / dwarf share of decided games:
+
+- Master, which casts (about 3.1 spells a side a match): 51.6 / 47.6 / 47.4 / 53.4.
+- Medium, which never casts: 46.0 / 51.6 / 45.2 / 57.1. Medium is WB-073's rules
+  on another block; its dwarves pooled over the two held-out Medium blocks (seeds
+  139-222) are about 52, the 46.4 and 57.1 of single blocks being their noise.
+
+Summon's worth to the brain went from 2 to 3 a body (`magic.SUMMONED_WORTH`) in
+the landing, so the two elementals a Summon brings meet the level III bar and
+the brain casts it without waiting for a full store.

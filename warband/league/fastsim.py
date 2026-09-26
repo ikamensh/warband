@@ -59,7 +59,7 @@ PACKAGE = Path(__file__).resolve().parents[1]  # warband/, whose subpackages hol
 BUILDS = PACKAGE.parent / "build" / "fastsim"
 SHIPPED = PACKAGE / "assets" / "fastsim"  # a frozen app's one build, which tools/package.py puts there to be frozen with it
 MODULES = ("sim.rules", "sim.races", "sim.path", "sim.worker_knowledge", "sim.model", "sim.camps", "sim.mapgen", "sim.worker_ai",
-           "brains.unique", "brains.ai", "brains.pro_profiles", "brains.pro_force", "brains.pro_core", "brains.pro_economy", "brains.pro_ai")
+           "brains.unique", "brains.ai", "brains.pro_profiles", "brains.pro_force", "brains.magic", "brains.pro_core", "brains.pro_economy", "brains.pro_ai")
 NATIVE = "sim/_native.c"  # the loops written twice, in C, built alongside; see its opening comment
 #: mypy's options for the compile: no configuration file is read, the repository's or the user's, for no key hashes one
 MYPY = ("--config-file=", "--follow-imports=silent")

@@ -1393,7 +1393,11 @@ class World:
 
     @recorded
     def cast(self, player: int, spell: Upgrade, point: Point) -> None:
-        """*player* casts *spell* at *point*: pays its aether, starts its cooldown and lands it, now or after its delay."""
+        """*player* casts *spell* at *point*: pays its aether, starts its cooldown and lands it, now or after its delay.
+        What a blow landed now fells is off the map at once, as a step's fallen are at its end: a cast comes between
+        steps, and what a brain or the HUD reads before the next one is the living (WB-067: a footman struck dead by a
+        Flame Strike stood in its army at minus hit points, and the rival brain's reckoning of that army's strength
+        took the square root of less than nothing)."""
         reason = self.can_cast(player, spell, point)
         if reason is not None:
             raise RuleError(reason)
@@ -1410,6 +1414,7 @@ class World:
             self.projectiles[shot.id] = shot
             return
         self._land_spell(player, info, point)
+        self._bury_the_dead()
 
     def _summon_spots(self, point: Point, count: int) -> list[Point] | None:
         """Where *count* summoned units stand round *point*: a ring about it, each spot on blocked ground moved to the
@@ -4677,21 +4682,27 @@ class World:
         return best, best_trade
 
     def _friendly_cost(self, u: Unit, spot: Point) -> float:
-        """What a stone from *u* coming down on *spot* would cost its own side: each friend under it counts its
-        :data:`SIEGE_WORTH`, in full within :data:`DIRECT_HIT` and :data:`SPLASH_FRACTION` of it out to the splash,
-        and :data:`FRIENDLY_MARGIN` further out again on both, because where a friend will stand when the stone
-        lands is a guess.  A friend counts where it comes nearest: where it stands, where its velocity carries it
-        before the stone lands, where the move it is under orders to make carries it, or at arm's length of the
-        enemy it is walking up to fight (a soldier after an archer that steps back between its shots).  Zero is a
-        landing point clear of our own side."""
-        splash = self.splash_of(u)
+        """What a stone from *u* coming down on *spot* would cost its own side (:meth:`friendly_cost`)."""
+        return self.friendly_cost(u.player, spot, self.splash_of(u), self._stone_flight(u.pos, spot), u)
+
+    def friendly_cost(self, player: int, spot: Point, splash: float, flight: float, thrower: Unit | None = None, *,
+                      full: float = DIRECT_HIT, air: bool = False) -> float:
+        """What a blow of *splash* tiles coming down on *spot* in *flight* seconds would cost *player*'s own side: a
+        siege crew's stone (*thrower* the crew, never under its own stone), or a Meteor a brain calls down (WB-067,
+        ``brains.magic``), weighed alike.  Each friend under it counts its :data:`SIEGE_WORTH`, in full within
+        *full* (a stone's :data:`DIRECT_HIT`) and :data:`SPLASH_FRACTION` of it out to the splash, and
+        :data:`FRIENDLY_MARGIN` further out again on both, because where a friend will stand when the blow lands is a
+        guess.  A friend counts where it
+        comes nearest: where it stands, where its velocity carries it before the blow lands, where the move it is under
+        orders to make carries it, or at arm's length of the enemy it is walking up to fight (a soldier after an archer
+        that steps back between its shots).  A stone passes beneath the flyers; a blow that reaches the *air* counts
+        them too.  Zero is a landing point clear of our own side."""
         keep_clear = splash + FRIENDLY_MARGIN
-        full = DIRECT_HIT + FRIENDLY_MARGIN
-        flight = self._stone_flight(u.pos, spot)
+        full += FRIENDLY_MARGIN
         sx, sy = spot
         cost = 0.0
         for ally in self.units_near(spot, keep_clear + MAX_UNIT_RADIUS + _FASTEST * flight):
-            if ally.player != u.player or ally is u or ally.hidden or ally.hp <= 0 or ally.flying:  # a stone passes beneath a flyer
+            if ally.player != player or ally is thrower or ally.hidden or ally.hp <= 0 or (ally.flying and not air):
                 continue
             gap = dist(spot, ally.pos) - ally.radius
             near = hypot(ally.x + ally.vx * flight - sx, ally.y + ally.vy * flight - sy) - ally.radius

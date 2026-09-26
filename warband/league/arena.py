@@ -43,7 +43,7 @@ from warband.sim import mapgen
 from warband.brains.ai import make_brain
 from warband.sim.model import World
 from warband.sim.races import RACES
-from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, Layout, MapTheme, Race, UnitType, Upgrade
+from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, SIM_DT, SPELLS, UNITS, UPGRADES, BuildingType, Difficulty, Layout, MapTheme, Race, UnitType, Upgrade
 from warband.league.telemetry import PlayerTally, Telemetry
 
 ELO_SCALE = 400.0 / math.log(10.0)  # Elo points per unit of Bradley-Terry log-strength
@@ -101,6 +101,12 @@ for _difficulty in Difficulty:
     register(_difficulty.value, lambda player, seed, d=_difficulty: make_brain(player, d, seed))
     # The same, never buying its race's own unit (WB-068): what the unit is worth to the setting is the difference.
     register(f"{_difficulty.value}-nounique", lambda player, seed, d=_difficulty: make_brain(player, d, seed, own_units=False))
+for _difficulty in (Difficulty.HARD, Difficulty.MASTER, Difficulty.GRANDMASTER):  # the settings that cast (WB-067)
+    # The same without magic, and made to take each spell at its level: what magic and each pick are worth.
+    register(f"{_difficulty.value}-nomagic", lambda player, seed, d=_difficulty: make_brain(player, d, seed, magic=False))
+    for _spell in SPELLS:
+        register(f"{_difficulty.value}-{_spell.value.replace('_', '')}",
+                 lambda player, seed, d=_difficulty, s=_spell: make_brain(player, d, seed, spell=s))
 
 from warband.brains.pro_ai import PRO_PROFILES, ProBrain  # noqa: E402 - after register() exists
 

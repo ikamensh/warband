@@ -23,7 +23,6 @@ item takes the next one and updates this line.
 | WB-058 | Later | proposed | Bug-hunt leftovers 2026-09-20: a site nobody owns by its colour, two strike frames that hop, crowded workers | Bug hunt 2026-09-20 |
 | WB-059 | Next | proposed | A route nobody can reach costs the whole pathfinder budget, and the budget grows with the map | Sixteen seats 2026-09-20 |
 | WB-060 | Later | proposed | Sixteen seats online: an engine release, a snapshot that is not one world per seat, and room capacity | Sixteen seats 2026-09-20 |
-| WB-067 | Now | proposed | Magic III: the computer players research, choose and cast; the nine spells balanced | Ilya 2026-09-24 |
 | WB-074 | Next | proposed | The difficulty ratings New game shows: the ladder has compressed since WB-064, Grandmaster and Master overlap | WB-073 review 2026-09-26 |
 
 ## WB-055 — A deeper tech tree
@@ -251,45 +250,6 @@ of quietly seating four of sixteen, `_create` refuses the options with a `Comman
 
 Acceptance: a sixteen-seat room hosted, joined by sixteen clients and played to a result, with the
 publish rate measured; or a decision that rooms stay at four and the cap is documented as final.
-
-## The 2026-09-24 intake (WB-061 … WB-067)
-
-Five requests from `backlog_intake.txt`, the magic one split in three. They
-are taken in the order of their dependencies, not their numbers: WB-062
-(buffs) and WB-065 (cancel mode) first and side by side, then WB-064
-(flyers, which need the buff system's "living" rule), WB-063 and WB-061,
-then WB-066 and WB-067, which need the buffs and the Aether economy. WB-068
-(a unique unit per race, added to the intake later that day) follows the
-flyers, whose air layer its Gryphon Rider uses. Each
-lands on main as one squashed commit with green CI; the design decisions
-below are the orchestrator's, and a measured number that disagrees with
-one of them wins over it.
-
-## WB-067 — Magic III: the AI casts, the spells balanced
-
-**Design.** Hard, Master and Grandmaster (the `ProBrain` family) build a
-vault on their rift in the mid game, a tower, and research a spell per level
-chosen by posture (a rush takes Haste, Flame Strike, Battle Fury; a warden
-Mend, Stoneskin, Meteor; the bred brains get the choice as genes). They cast:
-buffs over their own army when it engages (the point covering most of it),
-damage on clumps of rivals or workers at a mine, Entangle on a retreat or a
-chase, Meteor on a clump or a tower line, Summon where they are losing.
-Easy and Medium stay without magic.
-
-**A number to settle (from WB-066's review).** A vault holds 150 aether
-(raised from WB-063's 100 so a level III spell's 120 fits one), so one vault
-casts any spell within its reach; the dearer price beyond reach needs two
-vaults at level II (180) and three at level III (360) (an off-rift vault
-stores). The build keeps the design's prices and says so wherever a far price
-shows. The brains' vault plan has to know it, and the arena decides whether
-the far casts' gate stays or the store or the prices move.
-
-**Acceptance.** On the arena, a magic-using ProBrain beats the same brain
-without magic over enough seeds to mean it; each spell's pick is within a
-band of its two rivals when the brain is made to take it (no spell that is
-always right or never), tuned by numbers in `buffs.toml` and the spell table;
-race balance in band; `docs/balance.md` records the numbers; fuzz; the
-fingerprint and `sim_bench.txt` refreshed.
 
 ## WB-074 — The difficulty ratings New game shows
 

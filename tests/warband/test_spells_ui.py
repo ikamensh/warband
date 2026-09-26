@@ -181,7 +181,7 @@ def test_the_aim_shows_the_vaults_reach_and_the_price_at_the_pointer(play) -> No
     far = (vault.center[0] + 15.0, vault.center[1])
     point_at(game, scene, far)
     assert scene.cast_price_at(scene.hover) == (30 * SPELL_FAR, True)
-    assert f"Haste · 90 aether · {SPELL_FAR}× beyond your vaults' reach" in " ".join(t["text"] for t in game.backend.texts)
+    assert f"Haste · {30 * SPELL_FAR} aether · {SPELL_FAR}× beyond your vaults' reach" in " ".join(t["text"] for t in game.backend.texts)
 
 
 def test_the_aim_is_the_circle_on_the_ground_the_spell_reaches(play) -> None:
@@ -214,8 +214,8 @@ def test_a_falling_meteor_rings_the_circle_it_will_strike(play) -> None:
 
 def test_a_price_the_vaults_can_never_hold_says_so_on_the_bar_at_the_aim_and_in_the_refusal(play) -> None:
     """With no vault the store holds nothing, and the bar says so beside the price ("max 0").  One vault holds any plain
-    price, so the bar then says nothing more; beyond its reach a Meteor costs three times its 120, more than one vault
-    holds, which no wait pays: the aim says what the vaults hold, the refusal what will, and within reach it casts."""
+    price, so the bar then says nothing more; beyond its reach a Meteor costs twice its 120, more than one vault holds,
+    which no wait pays: the aim says what the vaults hold, the refusal what will, and within reach it casts."""
     game, scene = play
     world = scene.world
     learn(scene, Upgrade.METEOR, aether=0)
@@ -229,12 +229,12 @@ def test_a_price_the_vaults_can_never_hold_says_so_on_the_bar_at_the_aim_and_in_
     press(game, "3", alt=True)
     far = (vault.center[0] + 15.0, vault.center[1])
     price = SPELLS[Upgrade.METEOR].aether * SPELL_FAR
-    assert 2 * AETHER_STORE < price <= 3 * AETHER_STORE  # three vaults hold it: two more than the one standing
+    assert AETHER_STORE < price <= 2 * AETHER_STORE  # two vaults hold it: one more than the one standing
     point_at(game, scene, far)
     assert f"Meteor · {price} aether · {SPELL_FAR}× beyond your vaults' reach · they hold {AETHER_STORE}" in [t["text"] for t in game.backend.texts]
     click_map(game, scene, far)
     assert scene.status == (f"Not enough aether ({price} needed, {SPELL_FAR}x beyond your vaults' reach): they hold {AETHER_STORE}, "
-                            "cast it within their reach or build 2 more")
+                            "cast it within their reach or build another")
     assert scene.aiming is Upgrade.METEOR and world.players[scene.human].aether == AETHER_STORE
     click_map(game, scene, (vault.center[0] + 3.0, vault.center[1]))
     assert world.players[scene.human].aether == AETHER_STORE - SPELLS[Upgrade.METEOR].aether
@@ -293,8 +293,8 @@ def test_a_spell_on_its_cooldown_sweeps_its_button_and_will_not_aim(play) -> Non
     for _ in range(int(15 / SIM_DT)):
         scene.world.step()
     game.tick(1 / 60)
-    # No vault stands: the cast was the dearer one, 90 s of cooldown, and the sweep goes by those.
-    assert scene.cooldown_share(Upgrade.HASTE) == pytest.approx(1 - 15 / 90, abs=0.01)
+    # No vault stands: the cast was the dearer one, 40 s of cooldown, and the sweep goes by those.
+    assert scene.cooldown_share(Upgrade.HASTE) == pytest.approx(1 - 15 / 40, abs=0.01)
     press(game, "1", alt=True)
     assert scene.aiming is None and scene.status.startswith("Haste is ready in")
 

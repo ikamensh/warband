@@ -53,6 +53,7 @@ class PlayerTally:
     started: Counter[str] = field(default_factory=Counter)   # buildings a peasant began (and paid for)
     completed: Counter[str] = field(default_factory=Counter)
     researched: Counter[str] = field(default_factory=Counter)
+    cast: Counter[str] = field(default_factory=Counter)      # spells cast, by spell (WB-067)
     spent: Counter[str] = field(default_factory=Counter)     # gold and lumber together, per thing bought
     first: dict[str, float] = field(default_factory=dict)    # sim seconds when each thing was first finished
     lost: Counter[str] = field(default_factory=Counter)      # own units that died, by type
@@ -195,6 +196,12 @@ class Telemetry:
         tally.spent[upgrade.value] += UPGRADES[upgrade].cost.gold + UPGRADES[upgrade].cost.lumber
         tally.first.setdefault(upgrade.value, world.time)
 
+    def _cast(self, world: World, event: Event) -> None:
+        tally = self._tally(event.player)
+        if tally is not None:
+            tally.cast[event.text] += 1
+            tally.first.setdefault(f"cast.{event.text}", world.time)
+
     # -- Blows --------------------------------------------------------------------
 
     def _tally(self, player: int | None) -> PlayerTally | None:
@@ -265,6 +272,7 @@ _HANDLERS = {
     "construction": Telemetry._construction,
     "built": Telemetry._built,
     "researched": Telemetry._researched,
+    "cast": Telemetry._cast,
     "hit": Telemetry._hit,
     "death": Telemetry._death,
     "destroyed": Telemetry._destroyed,

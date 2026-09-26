@@ -490,9 +490,11 @@ PROFILES: Final[dict[Difficulty, Profile]] = {
 }
 
 
-def make_brain(player: int, difficulty: Difficulty, seed: int = 0, *, own_units: bool = True):
+def make_brain(player: int, difficulty: Difficulty, seed: int = 0, *, own_units: bool = True, magic: bool = True,
+               spell: Upgrade | None = None):
     """The opponent a difficulty setting means; without *own_units*, one that never buys its race's own unit (WB-068),
-    for the tools that price it.
+    without *magic* one that never builds a vault (WB-067), and with *spell* one made to take that spell at its level,
+    for the tools that price them (``pro_ai.played``; Easy and Medium never touch magic either way).
 
     Easy and Medium are this module's :class:`Brain`; Hard and Master are
     :class:`warband.brains.pro_ai.ProBrain`, which is a different and much stronger
@@ -505,7 +507,7 @@ def make_brain(player: int, difficulty: Difficulty, seed: int = 0, *, own_units:
     """
     from dataclasses import replace
 
-    from warband.brains.pro_ai import PRO_PROFILES, ProBrain, RaceBrain
+    from warband.brains.pro_ai import PRO_PROFILES, ProBrain, RaceBrain, played
 
     if difficulty in PROFILES:
         brain = Brain(player, difficulty)
@@ -515,10 +517,10 @@ def make_brain(player: int, difficulty: Difficulty, seed: int = 0, *, own_units:
     if difficulty is Difficulty.GRANDMASTER:
         from warband.brains.bred import BRED, BRED_FOR_LAYOUT  # tables of profiles, imported late as pro_ai is
 
-        return RaceBrain(player, BRED, seed, BRED_FOR_LAYOUT, own_units=own_units)
+        return RaceBrain(player, BRED, seed, BRED_FOR_LAYOUT, own_units=own_units, magic=magic, spell=spell)
     postures = PRO_FOR[difficulty]
     profile = PRO_PROFILES[postures[(seed + player) % len(postures)]]
-    return ProBrain(player, profile if own_units else replace(profile, unique=False))
+    return ProBrain(player, played(profile, own_units=own_units, magic=magic, spell=spell))
 
 
 #: Which ProBrain profiles stand behind each of the upper difficulties.

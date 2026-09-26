@@ -42,7 +42,7 @@ from pathlib import Path
 from warband.brains.pro_ai import PRO, PRO_PROFILES, ProBrain, ProProfile
 from warband.league import arena
 from warband.league.arena import MatchResult, MatchSpec
-from warband.sim.rules import BuildingType, Race, UnitType, Upgrade
+from warband.sim.rules import CHOICES, LEVEL_NAMES, BuildingType, Race, UnitType, Upgrade
 
 Genes = dict[str, float]  # one value per gene: numbers as they are, booleans as 0 or 1
 
@@ -179,6 +179,15 @@ GENES: tuple[Gene, ...] = (
     _g("res.on", "tech", 0, 1, "bool"),
     *(_g(f"res.{chain}", "tech", 0.0, 1.0) for chain in (*_CHAINS, "arts", "marks")),
     *(_g(f"tech.{t.value}", "tech", 0, most, "int") for t, most in _TECH_TYPES),
+    # Magic (WB-067): whether and when the vault goes up, the spell of each level (0: the posture's, else the level's
+    # first, second or third in rules.CHOICES), and how much a cast must be worth.
+    _g("magic", "magic", 0, 1, "bool"),
+    _g("vault_from", "magic", 60, 600),
+    _g("second_vault", "magic", 0, 1, "bool"),
+    _g("magic_hold", "magic", 0, 1, "bool"),
+    *(_g(f"spell.{level}", "magic", 0, len(CHOICES[name]), "choice") for level, name in enumerate(LEVEL_NAMES, 1)),
+    _g("cast_worth", "magic", 1.0, 6.0),
+    _g("far_worth", "magic", 1.0, 4.0),
     _g("retreat_wounded", "micro", 0, 1, "bool"),
     _g("retreat_hp", "micro", 0.1, 0.5),
     _g("rejoin_hp", "micro", 0.5, 0.95),
@@ -217,6 +226,10 @@ def genes_of(profile: ProProfile) -> Genes:
             value = float(profile.defend_ratio > 0.0)
         elif gene.name == "defend_ratio":
             value = profile.defend_ratio or 1.5
+        elif gene.name.startswith("spell."):
+            level = int(gene.name[6:])
+            spell = getattr(profile, f"spell_{level}")
+            value = 0.0 if spell is None else float(CHOICES[LEVEL_NAMES[level - 1]].index(spell) + 1)
         elif gene.name == "res.on":
             value = float(profile.research_order is not None)
         elif gene.name.startswith("res."):
@@ -258,6 +271,9 @@ def profile_of(genes: Mapping[str, float], name: str, base: ProProfile = PRO) ->
         changes["abort_ratio"] = 0.0
     if not genes["prospect.on"]:
         changes["prospect_floor"] = 0
+    for level, choice in enumerate(LEVEL_NAMES, 1):
+        code = int(genes[f"spell.{level}"])
+        changes[f"spell_{level}"] = CHOICES[choice][code - 1] if code else None
     return replace(base, name=name, **changes)  # type: ignore[arg-type]
 
 

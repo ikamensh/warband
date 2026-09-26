@@ -27,14 +27,14 @@
 #   delay          seconds from the cast to its landing; its shadow grows on the ground meanwhile
 #   summons, count `count` units of that [summons.*] row come at the point, the caster's for their lifetime
 
-far = 3
+far = 2
 
 [levels.I]
-gold = 600
-lumber = 200
-time = 60.0
+gold = 300
+lumber = 100
+time = 25.0
 aether = 30
-cooldown = 30.0
+cooldown = 20.0
 
 [levels.II]
 gold = 1000
@@ -42,14 +42,14 @@ lumber = 400
 time = 90.0
 requires = ["keep"]
 aether = 60
-cooldown = 60.0
+cooldown = 40.0
 
 [levels.III]
 gold = 1600
 lumber = 600
 time = 120.0
 aether = 120
-cooldown = 120.0
+cooldown = 90.0
 
 # -- The rule of the triads: each level offers a tempo spell, one that holds a fight, and one that hurts ----------
 
@@ -58,8 +58,8 @@ level = "I"
 name = "Haste"
 card = "Haste"
 hotkey = "h"
-summary = "Your units within 3 tiles: 40 % faster, blows a quarter quicker, 10 s"
-radius = 3.0
+summary = "Your units within 5 tiles: 40 % faster, blows in under half the time, 14 s"
+radius = 5.0
 touches = "own"
 lays = ["haste"]
 
@@ -68,8 +68,8 @@ level = "I"
 name = "Mend"
 card = "Mend"
 hotkey = "m"
-summary = "Your living units within 3 tiles: +5 hp a second, 6 s; stops bleeding"
-radius = 3.0
+summary = "Your living units within 5 tiles: +15 hp a second, 10 s; stops bleeding"
+radius = 5.0
 touches = "own"
 lays = ["mend"]
 cleanses = ["bleeding"]
@@ -79,10 +79,10 @@ level = "I"
 name = "Flame Strike"
 card = "Flame"
 hotkey = "f"
-summary = "Enemies within 1.5 tiles, walls too: 25 through armour, then 2/s for 4 s"
-radius = 1.5
+summary = "Enemies within 2 tiles, walls too: 30 through armour, then 2/s for 4 s"
+radius = 2.0
 touches = "rivals"
-damage = 25
+damage = 30
 pierces = true
 buildings = true
 lays = ["burn"]
@@ -92,7 +92,7 @@ level = "II"
 name = "Stoneskin"
 card = "Stoneskin"
 hotkey = "s"
-summary = "Your units within 3 tiles: +4 armour for 15 s"
+summary = "Your units within 3 tiles: +5 armour for 15 s"
 radius = 3.0
 touches = "own"
 lays = ["stoneskin"]
@@ -102,8 +102,8 @@ level = "II"
 name = "Entangle"
 card = "Entangle"
 hotkey = "e"
-summary = "Enemies on the ground within 2.5 tiles: rooted for 4 s, they still strike"
-radius = 2.5
+summary = "Enemies on the ground within 3.5 tiles: rooted 6.5 s, thorns 4/s; they still strike"
+radius = 3.5
 touches = "rivals"
 flyers = false
 lays = ["entangled"]
@@ -113,8 +113,8 @@ level = "II"
 name = "Wither"
 card = "Wither"
 hotkey = "w"
-summary = "Enemies within 3 tiles: 30 % less damage, 20 % slower, 12 s"
-radius = 3.0
+summary = "Enemies within 4 tiles: 60 % less damage, 20 % slower, 14 s"
+radius = 4.0
 touches = "rivals"
 lays = ["withered"]
 
@@ -123,11 +123,11 @@ level = "III"
 name = "Meteor"
 card = "Meteor"
 hotkey = "o"
-summary = "In 2 s, on friend and foe: 120 falling to 60 at 2 tiles, ×1.5 on buildings"
-radius = 2.0
+summary = "In 2 s, on friend and foe: 150 falling to 75 at 3 tiles, ×1.5 on buildings"
+radius = 3.0
 touches = "all"
-damage = 120
-edge = 60
+damage = 150
+edge = 75
 buildings = true
 building_factor = 1.5
 delay = 2.0
@@ -137,18 +137,18 @@ level = "III"
 name = "Summon"
 card = "Summon"
 hotkey = "n"
-summary = "Three Aether Elementals at the point, yours for 40 s"
+summary = "Two Aether Elementals at the point, yours for 25 s"
 radius = 1.0
 touches = "own"
 summons = "aether_elemental"
-count = 3
+count = 2
 
 [spells.battle_fury]
 level = "III"
 name = "Battle Fury"
 card = "Fury"
 hotkey = "b"
-summary = "Your units within 6 tiles: 40 % more damage, 20 % faster, 12 s"
+summary = "Your units within 6 tiles: 55 % more damage, 20 % faster, 12 s"
 radius = 6.0
 touches = "own"
 lays = ["battle_fury"]
@@ -159,7 +159,7 @@ lays = ["battle_fury"]
 
 [summons.aether_elemental]
 name = "Aether Elemental"
-hp = 120
+hp = 85
 damage = 12
 armor = 0
 range = "melee"
@@ -169,9 +169,9 @@ sight = 5
 build_time = 0.0
 trained_at = "mage_tower"  # where its spell is researched; no building's `trains` holds it, so nothing trains one
 hotkey = ""
-summary = "Aether given a body: a heavy fist for 40 s, then it is gone"
+summary = "Aether given a body: a heavy fist for 25 s, then it is gone"
 radius = 0.45
 windup = 0.3
 living = false
-lifetime = 40.0
+lifetime = 25.0
 sound = "aether_elemental"  # its body's sound family (warband/audio/bodies.py): crystal that shatters, light that fades

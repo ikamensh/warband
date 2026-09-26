@@ -18,7 +18,7 @@ from warband.brains.pro_profiles import PRO, PRO_PROFILES, PRO_RUSH, PRO_VANGUAR
 
 from warband.brains.ai import CAMP_REACH, RAIDERS, answer_flyers, camp_worth, heading_to, known_camps, known_mines, lost_track
 from warband.sim.model import Attack, Build, Building, Move, Point, Repair, Salvage, Unit, World, dist, int_sum, plain_sum, rect_gap, tile_center
-from warband.sim.rules import BuildingType, Layout, Race, UnitType
+from warband.sim.rules import SPELLS, BuildingType, Layout, Race, UnitType, Upgrade
 
 from warband.brains.pro_economy import _ProBrainEconomy
 
@@ -49,7 +49,9 @@ class ProBrain(_ProBrainEconomy):
         self._military(world)
 
     def _threats(self, world: World) -> list[Unit]:
-        own = world.player_buildings(self.player)
+        # A vault is out on a rift, the second one mid-map where the armies meet: a rival passing it is no raid on the
+        # base, and the army that ran to it fought where the rival chose (WB-067).
+        own = [b for b in world.player_buildings(self.player) if b.type is not BuildingType.VAULT]
         if not own:
             return []
         out = []
@@ -711,6 +713,9 @@ class ProBrain(_ProBrainEconomy):
     def _combat(self, world: World) -> None:
         """Take the nearly dead out of the fight. The fighting itself is the model's."""
         self._hunt_builders(world)
+        if self.profile.magic:
+            for spell, point in self.magus.cast(world, self.player):
+                self.note(world, f"cast {spell.value} at ({point[0]:.1f}, {point[1]:.1f})")
         if not self.profile.retreat_wounded:
             return
         army = [u for u in world.player_units(self.player) if not u.is_worker and u.info.soldier and not u.info.blast]
@@ -723,15 +728,30 @@ class ProBrain(_ProBrainEconomy):
             self._withdraw_if_hurt(world, unit)
 
 
+def played(profile: ProProfile, *, own_units: bool = True, magic: bool = True, spell: Upgrade | None = None) -> ProProfile:
+    """*profile* as the tools that price a part of it play it: without its race's own unit (*own_units* False, WB-068),
+    without magic (*magic* False, WB-067), or made to take *spell* at that spell's level."""
+    if not own_units:
+        profile = replace(profile, unique=False)
+    if not magic:
+        profile = replace(profile, magic=False)
+    if spell is not None:
+        level = SPELLS[spell].level
+        profile = replace(profile, **{f"spell_{level}": spell})  # type: ignore[arg-type]
+    return profile
+
+
 class RaceBrain:
     """A player whose posture is its race's own: bred brains are bred per race, so which one plays is settled at the
     first pass, once the world says whom this player leads.  A race with several postures draws one from the map's
-    seed and the player's seat, as Master draws its three."""
+    seed and the player's seat, as Master draws its three.  *own_units*, *magic* and *spell* change every posture as
+    :func:`played` says, for the tools that price a part of them."""
 
     def __init__(self, player: int, postures: Mapping[Race, Sequence[ProProfile]], seed: int = 0,
-                 by_layout: Mapping[tuple[Race, Layout], Sequence[ProProfile]] | None = None, *, own_units: bool = True) -> None:
+                 by_layout: Mapping[tuple[Race, Layout], Sequence[ProProfile]] | None = None, *, own_units: bool = True,
+                 magic: bool = True, spell: Upgrade | None = None) -> None:
         self.player = player
-        self.own_units = own_units  # False: the bred posture never buys its race's own unit (for the tools that price it)
+        self.own_units, self.magic, self.spell = own_units, magic, spell
         self.postures = postures
         self.by_layout = by_layout or {}  # a race's postures for one kind of map, where it was bred for it; the New game screen names the map
         self.seed = seed
@@ -746,5 +766,5 @@ class RaceBrain:
             race = world.players[self.player].race
             options = self.by_layout.get((race, world.layout)) or self.postures[race]
             profile = options[(self.seed + self.player) % len(options)]
-            self.brain = ProBrain(self.player, profile if self.own_units else replace(profile, unique=False))
+            self.brain = ProBrain(self.player, played(profile, own_units=self.own_units, magic=self.magic, spell=self.spell))
         self.brain.think(world, rng)

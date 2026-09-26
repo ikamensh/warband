@@ -7,15 +7,15 @@
                   being researched (its others closed while it is), level III open; the spell bar over the minimap.
 ``aim.png``       Wither aimed (Alt+2) within a vault's reach: its ring at the pointer, the reach washed violet, the price
                   at the plain rate; Haste on its cooldown, its sweep and seconds on its button.
-``aim-far.png``   the same aimed beyond every vault's reach: the ring and the price in the warning ink, three times dearer,
+``aim-far.png``   the same aimed beyond every vault's reach: the ring and the price in the warning ink, twice as dear,
                   and more than the one vault holds.
-``aim-store.png`` the Meteor aimed beyond every vault's reach and clicked: 360 aether is more than the one vault holds,
+``aim-store.png`` the Meteor aimed beyond every vault's reach and clicked: 240 aether is more than the one vault holds,
                   and the aim and the refusal on the status line say so (within reach its 120 fits one vault's store).
 ``looks.png``     a unit under each condition the spells lay: haste (walking), mend, burn, stoneskin, entangled,
                   withered and battle fury, with the card of the entangled one.
 ``land.png``      Flame Strike and Wither landing on a rival's line: their bursts and rings.
 ``meteor.png``    a Meteor falling onto a rival's hall, its shadow grown on the ground and its ring.
-``summon.png``    three Aether Elementals just summoned beside a rival's footmen and a rival's three, one of the player's
+``summon.png``    two Aether Elementals just summoned beside a rival's footmen and a rival's two, one of the player's
                   selected: its card counts the seconds before it is gone.
 ``bursts.png``    all nine spells landing at once, a level a row (the Meteor cast two seconds earlier): each spell's
                   burst and rings in its own ink.
@@ -35,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from saga2d import Game, fonts  # noqa: E402
 from warband.sim.model import World, tile_center  # noqa: E402
-from warband.sim.rules import AETHER_STORE, BUFFS, BuildingType, Race, Terrain, UnitType, Upgrade  # noqa: E402
+from warband.sim.rules import AETHER_STORE, BUFFS, SPELL_FAR, SPELLS, BuildingType, Race, Terrain, UnitType, Upgrade  # noqa: E402
 from warband.ui.scene import CodexScene, GameScene  # noqa: E402
 from warband.ui.style import build_theme  # noqa: E402
 
@@ -151,8 +151,8 @@ def main(out: Path) -> None:
     press(key._3, key.MOD_ALT)
     assert scene.aiming is Upgrade.METEOR, scene.pending
     click((24.0, 24.0))
-    assert scene.status == (f"Not enough aether (360 needed, 3x beyond your vaults' reach): they hold {AETHER_STORE}, cast it "
-                            "within their reach or build 2 more"), scene.status
+    assert scene.status == (f"Not enough aether ({SPELLS[Upgrade.METEOR].aether * SPELL_FAR} needed, {SPELL_FAR}x beyond your vaults' "
+                            f"reach): they hold {AETHER_STORE}, cast it within their reach or build another"), scene.status
     point_at((24.0, 24.0))
     shot("aim-store")
     press(key.ESCAPE)
@@ -199,7 +199,6 @@ def main(out: Path) -> None:
     press(key.ESCAPE)
 
     # All nine landing together, the Meteor called down two seconds before the rest.
-    from warband.sim.rules import SPELLS  # noqa: E402
     world.players[0].upgrades |= set(SPELLS)
     world.players[0].aether = 5000
     spots = {spell: (28.0 + 8.0 * (i % 3), 14.0 + 7.0 * (i // 3)) for i, spell in enumerate(SPELLS)}  # right of the spell bar

@@ -331,7 +331,7 @@ Mac), or a click on the button, arm the spell of that level: the status line
 says what the click will do, the button's rim takes the spell's colour, the map
 shows the spell's radius at the pointer — violet within a vault's reach, where
 the plain price holds, orange beyond every vault's reach, where a cast costs
-three times the aether and cools three times as long — with the price beside
+twice the aether and cools twice as long — with the price beside
 the pointer, and every vault's reach washed violet. The next left click on the
 map casts it there (a point in the fog too: the cast is blind), through
 `GameScene.attempt`, so a refusal (not enough aether, still cooling) stays on the

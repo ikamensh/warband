@@ -32,6 +32,7 @@ if __name__ in ("__main__", "__mp_main__"):  # run as a program or as one of its
 from warband.league import arena  # noqa: E402
 from warband.league.arena import MatchSpec  # noqa: E402
 from warband.brains.pro_ai import PRO, PRO_PROFILES, ProProfile  # noqa: E402
+from warband.sim.rules import CHOICES, LEVEL_NAMES  # noqa: E402
 
 #: knob → (low, high). Only knobs worth a search; booleans are settled by ablation.
 KNOBS: dict[str, tuple[float, float]] = {
@@ -53,19 +54,28 @@ KNOBS: dict[str, tuple[float, float]] = {
     "think_every": (0.2, 1.0),
     "stale_seconds": (10, 60),
     "symmetry_prior": (0.5, 1.6),
+    "vault_from": (60, 600),     # magic (WB-067): when the vault goes up…
+    "cast_worth": (1.0, 6.0),    # …and what a cast must be worth, within reach…
+    "far_worth": (1.0, 4.0),     # …and beyond it
 }
+#: knob → the values it takes, none nearer another than the rest: a candidate draws one of the others.  A spell a level
+#: (None: the posture's, ``brains.magic.posture_spells``).
+CHOICE_KNOBS: dict[str, tuple[object, ...]] = {f"spell_{level}": (None, *CHOICES[name]) for level, name in enumerate(LEVEL_NAMES, 1)}
 _INTEGER = {f.name for f in fields(ProProfile) if f.type == "int"}
 
 
 def jitter(profile: ProProfile, rng: random.Random, knobs: int) -> ProProfile:
-    changes = {}
-    for name in rng.sample(sorted(KNOBS), knobs):
+    changes: dict[str, object] = {}
+    for name in rng.sample(sorted(KNOBS) + sorted(CHOICE_KNOBS), knobs):
+        if name in CHOICE_KNOBS:
+            changes[name] = rng.choice([v for v in CHOICE_KNOBS[name] if v != getattr(profile, name)])
+            continue
         low, high = KNOBS[name]
         current = getattr(profile, name)
         step = (high - low) * 0.25
         value = min(high, max(low, current + rng.uniform(-step, step)))
         changes[name] = int(round(value)) if name in _INTEGER else round(value, 3)
-    return replace(profile, **changes)
+    return replace(profile, **changes)  # type: ignore[arg-type]
 
 
 def score(candidate: ProProfile, against: list[str], seeds: range, workers: int, minutes: float) -> float:

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import math
 import random
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Final
 
-from warband.brains.ai import (ARMY_PLANS, RESEARCH_ORDER, _shift, guarded, hall_first, pace, site_search, with_prerequisites)
+from warband.brains import magic
+from warband.brains.ai import (ARMY_PLANS, RESEARCH_ORDER, _shift, crowds, guarded, hall_first, pace, site_search, with_prerequisites)
 from warband.sim import mapgen
 from warband.sim.model import Build, Building, Harvest, Move, Point, Pos, Repair, Resource, Salvage, Unit, World, dist, int_sum, plain_sum, rect_gap
 from warband.sim.races import RACES
@@ -239,6 +240,9 @@ class _ProBrainEconomy(_ProBrainCore):
         if own is not None and count(own) < 1:
             needs = BUILDINGS[own].requires
             wishes.append((own if needs is None or have(needs) else needs, anchor))
+        # Magic (WB-067): a vault on our own rift in the mid game, then the tower, then a second vault where it pays.
+        if profile.magic and world.time >= profile.vault_from and have(BuildingType.BARRACKS):
+            wishes.extend(self._magic_wishes(world, have, count, anchor))
         # A posture built around one branch of the tree — knights, siege, healers —
         # cannot wait for the bank to overflow before it is allowed that branch.
         for tech in set(profile.early_tech):
@@ -281,6 +285,28 @@ class _ProBrainEconomy(_ProBrainCore):
         if count(BuildingType.TOWER) < profile.tower_count and len(self._army(world)) >= 4:
             wishes.append((BuildingType.TOWER, self._front_point(world, hall)))
         return wishes
+
+    def _magic_wishes(self, world: World, have: Callable[[BuildingType], int], count: Callable[[BuildingType], int],
+                      anchor: Point) -> list[tuple[BuildingType, Point]]:
+        """The vault on our own rift; once it stands the Mage Tower; once that stands a second vault where it pays
+        (:func:`magic.second_rift`): one at a time.  A vault's wish names its rift's middle, which :meth:`_site` takes it
+        square on."""
+        player = self.player
+        own = magic.own_rift(world, player)
+        if own is None:
+            return []  # a map without rifts (a mission's): nothing draws
+        wish: tuple[BuildingType, Point] | None = None
+        if not magic.taken(world, player, own):
+            wish = (BuildingType.VAULT, magic.rift_centre(own))
+        elif not have(BuildingType.VAULT):
+            return []
+        elif count(BuildingType.MAGE_TOWER) < 1:
+            wish = (BuildingType.MAGE_TOWER, anchor)
+        elif self.profile.second_vault and have(BuildingType.MAGE_TOWER) and count(BuildingType.VAULT) < 2:
+            second = magic.second_rift(world, player)
+            if second is not None:
+                wish = (BuildingType.VAULT, magic.rift_centre(second))
+        return [] if wish is None else [wish]
 
     def _mines_failing(self, world: World) -> bool:
         """Whether the mines being worked can no longer grow this economy: spent, or every place at the face taken."""
@@ -367,9 +393,13 @@ class _ProBrainEconomy(_ProBrainCore):
         wishes = self._wish_list(world)
         if self.profile.wood_lead:
             self.lumber_short = self._shortfall(world, wishes)
-        sites = [b for b in world.player_buildings(self.player) if not b.done]
-        free = self.profile.max_sites - len(sites) - len(self._ordered(world))
-        if free <= 0:
+        # The vaults and the tower go up beside the plan rather than in its place (WB-067): each of them in flight held
+        # two of max_sites (the frame and its builder's order) for the minute and a half the two take, and the tower or
+        # the lumber mill the plan had next waited behind them with the bank full.  One is in flight at a time
+        # (:meth:`_magic_wishes`), so they cost a builder and never a site.
+        sites = [b for b in world.player_buildings(self.player) if not b.done and b.type not in magic.BUILDINGS]
+        free = self.profile.max_sites - len(sites) - int_sum(1 for o in self._ordered(world) if o.type not in magic.BUILDINGS)
+        if free <= 0 and not any(wanted in magic.BUILDINGS for wanted, _anchor in wishes):
             return
         builders = [p for p in self._peasants(world)
                     if not p.hidden and not isinstance(p.order, (Build, Repair, Salvage)) and not self._answering(p)]
@@ -379,13 +409,16 @@ class _ProBrainEconomy(_ProBrainCore):
         # about it, so two buildings would otherwise be sent to the same tile.
         taken = [(o.pos, BUILDINGS[o.type].size) for o in self._ordered(world)]
         for wanted, anchor in wishes:
-            if free <= 0 or not builders:
+            if not builders:
                 break
+            if free <= 0 and wanted not in magic.BUILDINGS:
+                continue
             cost = BUILDINGS[wanted].cost
             if world.can_afford(self.player, cost) is not None or not self._payable(world, cost):
                 continue
-            if self._spendable(world)[1] - cost.lumber < self.profile.lumber_floor and wanted is not self._opening_next:
-                continue
+            held = wanted is self._opening_next or any(cost is saved for saved in self._saving_for(world))
+            if self._spendable(world)[1] - cost.lumber < self.profile.lumber_floor and not held:
+                continue  # a price held for it is out of the spendable already
             site = self._site(world, wanted, anchor, rng, taken)
             if site is None:
                 continue
@@ -393,11 +426,16 @@ class _ProBrainEconomy(_ProBrainCore):
             world.build(builder.id, wanted, site)
             taken.append((site, BUILDINGS[wanted].size))
             builders.remove(builder)
-            free -= 1
+            if wanted not in magic.BUILDINGS:
+                free -= 1
             self.note(world, f"build {wanted.value} at {site}")
 
     def _site(self, world: World, building_type: BuildingType, anchor: Point, rng: random.Random,
               taken: Sequence[tuple[Pos, int]] = ()) -> Pos | None:
+        if building_type is BuildingType.VAULT:  # square on the rift its wish names, or not at all
+            size = BUILDINGS[building_type].size
+            return magic.rift_site(world, self.player, anchor,
+                                   lambda pos: any(crowds(pos, size, other, other_size) for other, other_size in taken))
         return site_search(world, building_type, self.player, anchor, rng, BUILD_MIN_DISTANCE, BUILD_MAX_DISTANCE, taken)
 
     def _held(self, world: World) -> tuple[int, int]:
@@ -427,7 +465,31 @@ class _ProBrainEconomy(_ProBrainCore):
         if self.profile.opening_hold and self._opening_next is not None:
             saved.append(BUILDINGS[self._opening_next].cost)
         saved.extend(UPGRADES[upgrade].cost for upgrade in self.unique_first)  # the Keep, once the bank can pay for it
+        if self.profile.magic and self.profile.magic_hold:
+            magic_next = self._magic_next(world)
+            if magic_next is not None:
+                saved.append(magic_next)
         return saved
+
+    def _magic_next(self, world: World) -> Cost | None:
+        """What magic buys next once the vault stands (``ProProfile.magic_hold``): the Mage Tower until one is standing,
+        going up or ordered, then the next spell while the tower is idle and nothing else of its research is missing."""
+        player = self.player
+        if not world.player_buildings(player, BuildingType.VAULT, done=True):
+            return None
+        if not world.player_buildings(player, BuildingType.MAGE_TOWER):
+            if any(order.type is BuildingType.MAGE_TOWER for order in self._ordered(world)):
+                return None
+            return BUILDINGS[BuildingType.MAGE_TOWER].cost
+        spell = magic.next_spell(world, player, self.profile)
+        towers = world.player_buildings(player, BuildingType.MAGE_TOWER, done=True)
+        if spell is None or not towers or towers[0].research is not None:
+            return None
+        info = UPGRADES[spell]
+        known = world.players[player].upgrades
+        if any(needed not in known for needed in info.requires):
+            return None  # waits for the Keep, which is no spell's to hold for
+        return info.cost
 
     def _payable(self, world: World, cost: Cost) -> bool:
         """Whether *cost* can be paid now: one of the prices being saved for out of the whole bank but for the other
@@ -666,7 +728,8 @@ class _ProBrainEconomy(_ProBrainCore):
             return
         player = world.players[self.player]
         buildings = world.player_buildings(self.player, done=True)  # nothing changes until the one order below
-        for wanted in (*self.unique_first, *self._research_order()):
+        spell = magic.next_spell(world, self.player, self.profile) if self.profile.magic else None
+        for wanted in (*self.unique_first, *((spell,) if spell is not None else ()), *self._research_order()):
             if wanted in player.upgrades or not RACES[player.race].upgrade_allowed(wanted):
                 continue
             for upgrade in with_prerequisites(player.upgrades, wanted):

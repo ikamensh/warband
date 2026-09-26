@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from warband.brains.pro_profiles import PRO, ProProfile
 from warband.brains.ai import Hunt, fighters, known_enemy_buildings, known_mines
+from warband.brains.magic import Magus
 from warband.brains.unique import Commander
 from warband.sim import mapgen
 from warband.sim.model import Build, Building, Point, Repair, Salvage, Unit, World, dist, tile_center
@@ -46,6 +47,7 @@ class _ProBrainCore:
         self.camp_retry: dict[int, float] = {}  # …and when a camp that beat the army off is worth trying again
         self.commander = Commander()  # the race's own unit: when to buy it and what it is for (WB-068)
         self.unique_first: tuple[Upgrade, ...] = ()  # …and what it waits for that is researched ahead of all else
+        self.magus = Magus(profile)  # its vaults, its spells and its casts (WB-067)
 
     def note(self, world: World, what: str) -> None:
         self.log.append((world.time, what))

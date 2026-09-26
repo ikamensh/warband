@@ -106,6 +106,16 @@ class ProProfile:
     wood_per_hand: int = 300          # …one more chopper for each this much lumber they are short
     wood_release: int = 1000          # …and back to the policy once nothing is short and this much lumber is banked
     unique: bool = True               # buys its race's own unit when what it knows says so (WB-068, warband.brains.unique)
+    # Magic (WB-067, warband.brains.magic): a vault on its own rift in the mid game, a Mage Tower, a spell a level.
+    magic: bool = True
+    vault_from: float = 180.0         # the vault goes up from this many seconds of play, once a barracks stands
+    second_vault: bool = True         # …and a second one where it pays, once the tower stands (magic.second_rift)
+    magic_hold: bool = False          # once the vault stands, the tower and then the next spell have first claim on the bank
+    spell_1: Upgrade | None = None    # the level I spell it researches; None: its posture's (magic.posture_spells)
+    spell_2: Upgrade | None = None    # …level II
+    spell_3: Upgrade | None = None    # …level III
+    cast_worth: float = 3.0           # the least a level I cast within reach is worth, in bodies as a siege crew weighs them
+    far_worth: float = 2.0            # …beyond every vault's reach, this many times as much
 
 
 PRO: Final = ProProfile("pro")
@@ -170,6 +180,8 @@ _TRIALS: Final = (
 #: The tower rush (WB-036), Master's third posture: the Vanguard, with a peasant that walks to the far side of
 #: the enemy's main mine as its first barracks goes up and raises a tower there once it stands. Rated after
 #: WB-037's answers: 56% against the Vanguard and level with the Warden; Hard's version lost 42% to plain Hard.
-PRO_RUSH: Final = replace(PRO_VANGUARD, name="pro-rush", rush_towers=1)
+#: Its magic comes after the game its towers were for: a vault at three minutes took the rush's builders and bank while its
+#: towers still stood (WB-067, docs/balance.md).
+PRO_RUSH: Final = replace(PRO_VANGUARD, name="pro-rush", rush_towers=1, vault_from=360.0)
 PRO_PROFILES: Final[dict[str, ProProfile]] = {"pro": PRO, PRO_VANGUARD.name: PRO_VANGUARD, PRO_WARDEN.name: PRO_WARDEN,
                                        PRO_RUSH.name: PRO_RUSH, **{p.name: p for p in _TRIALS}}

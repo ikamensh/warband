@@ -173,12 +173,12 @@ requires = "barracks"
 
 [vault]
 name = "Aether Vault"
-gold = 400
-lumber = 200
+gold = 250
+lumber = 100
 hp = 500
 armor = 3
 size = 2
-build_time = 35.0
+build_time = 20.0
 sight = 4
 supply = 0
 hotkey = "v"
@@ -191,12 +191,12 @@ requires = "town_hall"
 
 [mage_tower]
 name = "Mage Tower"
-gold = 900
-lumber = 400
+gold = 500
+lumber = 200
 hp = 700
 armor = 3
 size = 2
-build_time = 50.0
+build_time = 30.0
 sight = 5
 supply = 0
 hotkey = "a"

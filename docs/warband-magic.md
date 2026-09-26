@@ -12,13 +12,13 @@ cell has room, out in the shared ground (`docs/warband-maps.md`, *Ley rifts*).
 `World.rifts` holds their top-left tiles, fixed for the match.
 
 The **Aether Vault** (Arcane Vault, Spirit Cage, Moon Reliquary, Rune Vault:
-2 × 2, 400 gold 200 lumber, needs a hall) is the one building a rift takes: any
+2 × 2, 250 gold 100 lumber, 20 s, needs a hall) is the one building a rift takes: any
 other footprint on a rift, or a vault half on one, is refused, so a rift holds
 one vault and nobody can deny one with a farm.
 
 | rule | where |
 |---|---|
-| a finished vault standing square on a rift draws one aether every `[aether].every` seconds (2) into its owner's store | `World._draw_aether`, `Player.aether`, `Player.aether_charge` |
+| a finished vault standing square on a rift draws one aether every `[aether].every` seconds (1) into its owner's store | `World._draw_aether`, `Player.aether`, `Player.aether_charge` |
 | the store holds `[aether].store` (150) for every finished vault; drawing stops at the cap and saves nothing up | `World.aether_cap` |
 | a vault lost (razed, abandoned) lowers the cap at once and spills what no longer fits; its owner hears `spilled` | `World._spill` |
 | a vault anywhere else stores and reaches, and draws nothing | `World.taps` |
@@ -41,32 +41,35 @@ for an aimed spell. Placing a vault lights the free rifts the player knows,
 snaps onto the one under the pointer and says when a site off them would not
 draw. `tools/verify_aether.py` renders all of it.
 
-**Not yet.** The brains build no vault: with nothing to spend aether on, one
-would only cost them. WB-067 has them build one on their own rift.
+The brains build theirs on their own rift from three minutes of play (WB-067,
+below).
 
 ## The Mage Tower and the spells (WB-066)
 
 The **Mage Tower** (Mage Tower, Spirit Lodge, Starwell Spire, Rune Tower; cards
-Arcanum, Spirits, Starwell, Runes: 2 × 2, 900 gold 400 lumber, 700 hit points,
-needs a vault) researches three **levels** of magic, and researching a level is
+Arcanum, Spirits, Starwell, Runes: 2 × 2, 500 gold 200 lumber, 30 s, 700 hit
+points, needs a vault) researches three **levels** of magic, and researching a level is
 choosing one of its three spells: the other two are **closed** for the match
 (while one is being researched they wait, and a cancel opens them again). Level
-I costs 600/200 and 60 s, level II 1000/400 and 90 s and waits for the Keep and a
+I costs 300/100 and 25 s, level II 1000/400 and 90 s and waits for the Keep and a
 level I spell, level III 1600/600 and 120 s and waits for a level II spell. Each
 level offers a spell that sets the tempo, one that holds a fight and one that
 hurts, so the choice follows the posture:
 
 | level | aether / cooldown | spell | what its row of `spells.toml` does |
 |---|---|---|---|
-| I | 30 / 30 s | Haste | own units within 3: `haste` (speed ×1.4, blows ×0.8, 10 s) |
-| I | | Mend | own units within 3: `mend` (+5 hp a second, 6 s), and ends `bleeding` |
-| I | | Flame Strike | rivals within 1.5: 25 through armour, then `burn` (−2 a second, 4 s); a building takes the 25 and the burn's 8 at once |
-| II | 60 / 60 s | Stoneskin | own units within 3: `stoneskin` (+4 armour, 15 s) |
-| II | | Entangle | rivals on the ground within 2.5: `entangled` (rooted, 4 s); flyers are out of reach |
-| II | | Wither | rivals within 3: `withered` (damage ×0.7, speed ×0.8, 12 s) |
-| III | 120 / 120 s | Meteor | falls 2 s after the cast: 120 at the point to 60 at 2 tiles, ×1.5 on buildings, on everyone |
-| III | | Summon | three Aether Elementals, the caster's for 40 s |
-| III | | Battle Fury | own units within 6: `battle_fury` (damage ×1.4, speed ×1.2, 12 s) |
+| I | 30 / 20 s | Haste | own units within 5: `haste` (speed ×1.4, blows ×0.45, 14 s) |
+| I | | Mend | living own units within 5: `mend` (+15 hp a second, 10 s), and ends `bleeding` |
+| I | | Flame Strike | rivals within 2: 30 through armour, then `burn` (−2 a second, 4 s); a building takes the 30 and the burn's 8 at once |
+| II | 60 / 40 s | Stoneskin | own units within 3: `stoneskin` (+5 armour, 15 s) |
+| II | | Entangle | rivals on the ground within 3.5: `entangled` (rooted, −4 a second through armour, 6.5 s); flyers are out of reach |
+| II | | Wither | rivals within 4: `withered` (damage ×0.4, speed ×0.8, 14 s) |
+| III | 120 / 90 s | Meteor | falls 2 s after the cast: 150 at the point to 75 at 3 tiles, ×1.5 on buildings, on everyone |
+| III | | Summon | two Aether Elementals (85 hit points), the caster's for 25 s |
+| III | | Battle Fury | own units within 6: `battle_fury` (damage ×1.55, speed ×1.2, 12 s) |
+
+WB-067 set these numbers by a bench and the arena ([balance.md](balance.md#magic-iii-the-ai-casts-the-spells-balanced-wb-067-2026-09-26)):
+a level's three spells make up about the same deficit, a knight's price for level I.
 
 **The cast.** `World.cast(player, spell, point)` is the one order, `@recorded`
 and checked whole before it changes anything (`World.can_cast`): the side is a
@@ -74,12 +77,12 @@ seat still in the match, the spell is one it researched, the point is on the
 map (in the fog too: the cast is blind), the spell is off its cooldown, the store
 holds its price at that point, and a summoning has open ground there. Within the
 reach of a finished vault of the caster's (`World.in_reach`) a cast costs its
-level's aether and cooldown; beyond every vault's reach both are `far` (3) times
+level's aether and cooldown; beyond every vault's reach both are `far` (2) times
 as much (`World.cast_price`). A vault holds 150, sized to the dearest plain
 price, so one vault casts any spell within its reach, level III's 120 too. A price
 above what the vaults hold (`World.aether_cap`) is one no wait pays, and beyond
-reach that is the dearer price: a level II spell's 180 takes two vaults, a level
-III's 360 three. The refusal then says what the vaults hold and what will pay (a
+reach that is the dearer price: a level II spell's 120 fits one vault, a level
+III's 240 takes two. The refusal then says what the vaults hold and what will pay (a
 cast within reach when the plain price fits, or as many more vaults as the price
 takes), and the aim, the tower's card and the codex say it too. A cooldown is kept as the step the spell is ready
 again (`Player.cooldowns`), so it counts in whole steps. A spell is a side's, not
@@ -102,9 +105,8 @@ and a sound (`audio/spells.py`).
 level: its research row carries `choice` (its level) and `after` (the level below,
 one spell of which must be researched first). `World.chosen_instead` answers which
 spell of a choice was taken instead, and whether for good; `World.can_research`,
-the settlement's plans and the HUD all ask it. The upgrades the brains research are
-named in their research orders, so they never research a spell (WB-067 teaches
-them).
+the settlement's plans and the HUD all ask it. A brain researches its spells through
+`brains.magic` (WB-067), never through its research order.
 
 **Root.** A kind with `roots = true` (Entangle's) holds its bearer where it stands.
 It is a rule of the movement alone: a walk waits in `_follow` and `_steer`, and a
@@ -117,7 +119,7 @@ It still turns and strikes (or heals) what is in its reach, and its order stands
 when the roots let go.
 
 **Lifetime.** A unit type with a `lifetime` (`UnitInfo.lifetime`, the Aether
-Elemental's 40 s) is gone at the end of the step its time runs out
+Elemental's 25 s) is gone at the end of the step its time runs out
 (`Unit.expires`): an `expired` event, no kill for anybody and no loss for its
 side, and it takes no supply. It is a unit like any other while it lasts: it
 fights on its own, can be ordered, is struck and killed; its card counts the
@@ -196,7 +198,7 @@ level a line.
 
 **Where the build departs from the design.** The design gave the tower its price
 and the elementals their hit points and blow; the rest are this build's: the tower
-2 × 2, 700 hit points, 50 s to build, sight 5 (its card names are Arcanum, Spirits,
+2 × 2, 700 hit points, sight 5 (its card names are Arcanum, Spirits,
 Starwell and Runes: a card holds eight letters); an elemental no armour of the light class,
 walking 2.4, a blow a second, sight 5. A summoned unit takes no supply (a summoning
 that filled the farms would stop a side's training), and one whose time runs out is
@@ -212,12 +214,35 @@ Elemental is not painted (`textures.UNPAINTED_UNITS`: `tools/restyle.py` has no
 subject for a unit no race fields); its sounds are generated pieces of a body
 family of its own, as every body's are since WB-069. The spell bar never rises above
 the command row: a column too tall for the room over the minimap stands a level's
-spells on a row, which only a world with more than a spell a level needs. The
-design's prices are kept, and a vault holds 150 (100 in WB-063): with 100, level
-III's 120 could never be cast from one vault. Now one vault casts any spell within
-its reach; beyond it a level II cast takes two vaults and a level III three, and
-every place that shows a far price says so, since no wait fills a store that small
-(WB-067 measures whether those numbers should stay).
+spells on a row, which only a world with more than a spell a level needs. A
+vault holds 150 (100 in WB-063): with 100, level III's 120 could never be cast
+from one vault. One vault casts any spell within its reach and a level II beyond
+it; a far level III takes two vaults, and every place that shows a far price says
+so, since no wait fills a store that small. WB-067 moved the design's prices, times
+and effects (the table above and the vault's and tower's rows) where the arena and
+the bench put them.
 
-**Not yet.** The brains neither research nor cast (WB-067); the numbers are the
-design's, unmeasured.
+## The brains cast (WB-067)
+
+Hard, Master and the bred postures (`pro_ai.ProBrain`) take magic; Easy and
+Medium never do. `warband/brains/magic.py` holds all of it and reads only what the
+side knows (its own units, store and cooldowns; rivals it sees now; buildings it
+remembers), so a seat's online snapshot decides as the whole world does.
+
+| what | where | knob (`ProProfile`) |
+|---|---|---|
+| a vault square on the side's own rift once a barracks stands, then the Mage Tower by the hall, then a second vault on a contested rift nearer our hall than theirs; one at a time, taking a builder and never a site of the build order | `pro_economy._magic_wishes`, `magic.own_rift`, `magic.second_rift`, `_construction` | `magic`, `vault_from` (180 s; the rush 360 s), `second_vault`, `magic_hold` |
+| a spell a level, the posture's (rush: Haste, Entangle, Battle Fury; vanguard: Flame Strike, Entangle, Battle Fury; warden: Mend, Stoneskin, Meteor; the rest Flame Strike, Wither, Summon) or the profile's; level II waits for the Keep the research order brings | `magic.spells`, `magic.next_spell`, `_research` | `spell_1`..`spell_3` |
+| each combat pass, every spell off its cooldown judged where it would do most, worth counted in bodies as a siege crew weighs them, cast when worth its bar | `magic.Magus.cast`, `magic.JUDGES` | `cast_worth` (3 bodies at level I, times the root of the level's price), `far_worth` (2 × beyond reach) |
+| a lower spell leaves what the level III spell will want once its research or cooldown is over and the vaults cannot draw by then, never so much that a full store could not pay for it | `magic.Magus.reserve` | |
+| a buff over our army once its fight is joined (Mend: each unit by its wounds, in full at half its life); a blow on the clump it takes most life from, a Meteor led where they walk and less what it would cost our own under it (the siege crew's `World.friendly_cost`); Entangle on rivals on the run or on a chase; Wither on the soldiers of a joined fight; Summon into a joined fight within a vault's reach | `magic._buff`, `_blow`, `_entangle`, `_wither`, `_summon` | |
+| a vault is no home to defend: a rival passing one is no raid on the base | `ProBrain._threats` | |
+
+Every cast asks `World.can_cast` first and a refusal is skipped, so a refusal the
+seat could not foresee online never breaks the brain. `tune.py` and `evolve.py`
+search the knobs (`vault_from`, `cast_worth`, `far_worth`, the spell of each level);
+`bred.py` is theirs. `tools/battle_bench.py --cast` measures one cast in a set piece,
+`--moment brain` in a Master caster's hands (one cast, a vault's reach over the fight, a store short of
+full unless `--store` says otherwise); the arena's `master-nomagic` (and
+`hard-`, `grandmaster-`) is the same brain without magic, and `master-<spell>` one made
+to take that spell.

@@ -371,7 +371,7 @@ def spell_bar_nine(game: Game) -> None:
 
 @screen
 def select_summoned(game: Game) -> None:
-    """Three Aether Elementals of the player's beside a rival's three (WB-066), each told by its fists' colour; one of the
+    """Two Aether Elementals of the player's beside a rival's two (WB-066), each told by its fists' colour; one of the
     player's selected under Haste and Stoneskin, a spell of each level: the seconds before it is gone ahead of its
     conditions, more than its hit-point row has room for, so the rest are counted."""
     scene = town(game, zoom=2.0)
