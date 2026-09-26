@@ -133,6 +133,27 @@ def test_a_replay_from_another_format_or_with_a_bad_log_is_refused():
         Replay.from_dict({**data, "orders": list(reversed(data["orders"]))})
 
 
+def test_an_order_after_the_recordings_end_is_refused():
+    world, replay = played_match(5.0)
+    assert replay.orders
+    replay.finish(world, "victory")
+    data = replay.to_dict()
+    data["orders"][-1][0] = data["end"]["tick"] + 1
+    with pytest.raises(ValueError, match="after the recording's end"):
+        Replay.from_dict(data)
+
+
+def test_a_saved_replay_with_an_order_after_its_end_is_reported(tmp_path):
+    world, replay = played_match(5.0)
+    assert replay.orders
+    replay.finish(world, "victory")
+    replay.orders[-1][0] = replay.end["tick"] + 1
+    store = ReplayStore(tmp_path)
+    store.save("match-late", replay, {"outcome": "victory"})
+    with pytest.raises(SaveError):
+        store.load("match-late")
+
+
 def test_a_match_in_which_choppers_are_released_replays_faithfully():
     """Master pulls hands off the trees through ``release_workers`` once the wood is piled up; that order is
     logged and replayed like any other. The sixty-second matches above never bank enough lumber to give it."""

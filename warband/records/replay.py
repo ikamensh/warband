@@ -127,6 +127,8 @@ class Replay:
         if end is not None and (not isinstance(end, dict) or type(end.get("tick")) is not int or not isinstance(end.get("digest"), str)
                                 or not isinstance(end.get("outcome"), str)):
             raise ValueError("the end of a replay names its tick, digest and outcome")
+        if end is not None and any(o[0] > end["tick"] for o in orders):
+            raise ValueError("an order comes after the recording's end")
         if type(data["seed"]) is not int or type(data["human"]) is not int:
             raise ValueError("seed and human must be integers")
         return cls(data["start"], data["seed"], Difficulty(data["difficulty"]), data["human"], orders, end)
