@@ -88,7 +88,7 @@ same rule, so a racial bonus appears once:
 
 ```toml
 [orc.units]
-defaults = { hp_mult = 1.15 }
+defaults = { hp_mult = 1.1 }
 peasant = { name = "Peon", summary = "Digs gold, hacks lumber, builds and repairs" }
 knight = { name = "Ogre", summary = "Two-headed brute; thin armour, all rage", hp_mult = 1.2, damage_mult = 1.1, armor_add = -1 }
 ```
@@ -1142,3 +1142,94 @@ per gold in the race games and the brains' plans lean on it (the bred table's
 knight shares grew when the scout's were folded in, WB-064); the catapult now
 outranges a tower by two tiles but fires and moves slower. Not measured yet:
 WB-073's race and difficulty tables are taken on this rulebook.
+
+## Race balance (WB-073, 2026-09-26)
+
+On the rules with Ilya's dearer knight and slower catapult (main 5b7035c), the race games were the widest they had
+been: on Master dwarves won 66.7 % of their decided games and elves 59.9 %, humans 39.9 % and orcs 33.3 %; on
+Medium dwarves 60.1 % and orcs 35.1 %. Seven numbers changed, each a race's own (two of them Plunder's); no shared
+row, no brain table, not Ilya's knight or catapult:
+
+| | was | now | why |
+|---|---|---|---|
+| Bear Rider armour | +1 (5) | +0 (4, a knight's) | Master trains seven a game; armour 5 left an arrow 1 damage |
+| dwarf units' hit points | ×1.1 | ×1.05 | won the minute-3 first clash, which decides three games in four; half a step keeps them sturdy |
+| Grunt armour | −2 (1) | −1 (2) | every arrow and tower shot hit it two to five times as hard as a footman in a line |
+| Horse Breeding | 900 gold | 1,400 gold | the stables researching it cannot train: Master bought it at 4.4 min in 90 % of games, instead of knights |
+| orc units' hit points | ×1.15 | ×1.1 (the Ogre's own ×1.2 stays) | the grunt's armour lifted Medium orcs far more than Master's |
+| Plunder | 600 gold, a fifth of a razed building's gold | 1,400 gold, half | the same stables fault as Horses: Master bought it at 4.7 min in 90 % of games for a median 0 gold back; at a knight's price a fifth would pay back only after razing 7,000 gold of buildings, a whole base, and half pays back after 2,800, a hall and three farms |
+
+Horses and Plunder now cost a knight's gold, so the brains train the knight first and buy the art from a spare bank:
+Master humans research Horses in 11 % of games at 7.1 min, and train 7.5 knights a game instead of 5.3 (army at
+4:00 4,575 instead of 4,000); orcs research Plunder in 5 % of games and train 8.2 ogres instead of 6.7. Medium
+banks thousands and buys both late either way. If the knight's price moves, these two move with it. No brain reads
+Plunder's share: at half it changed the winner of none of Medium's 188 orc-human and orc-dwarf matches on seeds
+1–48, though the orcs bought it in 39 % of them (at 7.5 min).
+
+**The tables** (`tools/race_report.py`'s matches: every pair both ways a seed, 20-minute cap, share of decided
+games; the Small 48×40 map unless named). Every number was chosen on seeds 1–48, the screening block, and the first
+version's Longbows cut on seeds 49–90, so the rules are judged on seeds 139–180, which chose nothing:
+
+| Master | human | orc | elf | dwarf | matches |
+|---|---:|---:|---:|---:|---:|
+| before, seeds 1–48 | 39.9 | 33.3 | 59.9 | 66.7 | 564 |
+| before, Medium and Large maps, seeds 1–24 each (41577bc) | 36.9 | 37.6 | 56.3 | 69.4 | 576 |
+| **after, held-out seeds 139–180** | **50.6** | **45.8** | **51.0** | **52.6** | 504 |
+| after but Plunder's share, on the blocks the numbers were chosen on: seeds 1–90, and 1–24 on the Medium and Large maps | 48.8 | 48.3 | 55.5 | 47.5 | 1,644 |
+
+| Medium | human | orc | elf | dwarf | matches |
+|---|---:|---:|---:|---:|---:|
+| before, seeds 1–24 / 25–48 | 50.0 / 53.6 | 34.7 / 35.5 | 50.0 / 56.2 | 65.3 / 54.7 | 564 |
+| before, seeds 1–48 | 51.8 | 35.1 | 53.0 | 60.1 | 564 |
+| **after, held-out seeds 139–180** | **46.8** | **53.2** | **53.6** | **46.4** | 504 |
+| after but Plunder's share, on the blocks the numbers were chosen on: seeds 1–90 | 49.6 | 50.9 | 51.5 | 47.9 | 1,068 |
+
+Pairs after, held out (row race's share): Master human–orc 47, human–elf 54, human–dwarf 51, orc–elf 40,
+orc–dwarf 44, elf–dwarf 48 (before, seeds 1–48: 55, 35, 30, 31, 24, 46); Medium 48, 46, 46, 46, 61, 54 (before 63,
+51, 42, 30, 38, 40). Reproduce the held-out rows with `race_report.py --seeds 42 --first-seed 139 --difficulty
+master` (and `medium`); in a table of about 500 matches a race's standard error is 3 points, a pair's 5.
+
+**The first version cut Longbows to +0.5 range, and it was fitted to noise.** It was kept to bring Master's elves
+under 55 (55.5 without it, over every size) and cost Medium's elves twice what it cost Master's (−5.2 against
+−2.7): on Medium, block by block, elves went 48.6 (seeds 1–48), 43.7 (49–90) and 37.5 (91–138, a reviewer's block
+that chose nothing), and dwarves 50.7, 50.0 and 59.4, the elves winning 32 % against dwarves on the last. With
+Longbows back at +1 (and at 1,400 gold, which Medium pays in every game at 4.2 min either way), seeds 1–48 gave
+Medium's elves 48.6 → 52.8 (35 matches gained, 23 lost). Raising Longbows' price to 1,400, meant to trim Master's
+elves alone, does not: Master then buys it in 28 % of games at 4.6 min instead of 79 % at 5.1 min, and on the same
+282 elf matches of seeds 1–48 the elves gained 11 and lost 11 against the old price. Longbows keeps +1 at 700 gold.
+
+**Each change's share**, from screens on seeds 1–48 that replayed only the pairs a change touches: a match between
+two races depends on their rules alone, and the untouched pairs replayed identically. A race's change alone shows
+against the unchanged elves:
+
+- Steps one to four together, against before: Master humans 39.9 → 48.7, orcs 33.3 → 44.6, elves 59.9 → 56.3,
+  dwarves 66.7 → 50.4 (dwarves lost 61 matches and gained 14); Medium 51.8 → 45.7, 35.1 → 54.3, 53.0 → 52.1,
+  60.1 → 47.9. Horses at 1,400, humans against elves: Master 34.8 → 44.0, Medium 51.1 → 47.9. Grunt −1, orcs
+  against elves: Master 30.8 → 39.8, Medium 29.8 → 44.7. The two dwarf numbers, dwarves against elves: Master
+  54.3 → 47.3, Medium 60.2 → 51.1.
+- Orc hit points ×1.1 and Plunder at 1,400, on top: Master orcs 44.6 → 48.4 (41 gained, 29 lost), Medium
+  54.3 → 46.8 (27 gained, 48 lost), as meant: up where they were low, down where the grunt had overshot.
+- Tried and dropped: the Stag Knight at ×0.9 hit points (the elf default is ×0.95) moved nothing (elves gained 7 and
+  lost 5 on Master, gained 5 and lost 6 on Medium); Longbows at +0.5 and Longbows at 1,400 gold, above. Not needed:
+  Drill at 20 %, Ogre hit points ×1.3.
+
+**The difficulty ladder** (`tools/arena.py ladder --agents easy,medium,hard,master,grandmaster`, 60 seeds from 1000,
+1,200 games, both corners, Medium anchored at 1000): WB-073 weakened no setting.
+
+| setting | before (5b7035c) | after, Longbows +1 |
+|---|---|---|
+| Grandmaster | 1320 (1271 .. 1361) | 1372 |
+| Master | 1286 (1237 .. 1336) | 1299 |
+| Hard | 1106 (1068 .. 1138) | 1115 |
+| Easy | 728 (680 .. 774) | 709 |
+
+The after column was played before Plunder's share rose, which no brain reads; the first version (Longbows +0.5)
+read 1411, 1310, 1185 and 725 on the first 500 of those games. The ladder had compressed before WB-073, though:
+against WB-064's, taken with the same protocol ([ai-ladder.md](ai-ladder.md#the-flying-machine-takes-the-riders-place-wb-064):
+Grandmaster 1521, Master 1376, Hard 1184, Easy 656), every setting on 5b7035c is outside its WB-064 interval, all
+toward Medium, and Grandmaster's and Master's intervals overlap, where New game shows them 344 points apart
+(`DIFFICULTY_ELO`, 1917 and 1573). WB-074 measures those again on the main that has WB-067.
+
+**Left.** Master's orcs against elves (40 %) and Medium's orcs against dwarves (61 %) are the widest pairs held out.
+The Medium brains were not measured on the larger maps; Master's elves were 58.1 there with Longbows +1. WB-067's
+brains will cast spells, which moves the races again: these tables are re-measured on the main that has it.

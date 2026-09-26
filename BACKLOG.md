@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-073**; a new
+section; git history keeps the record. The last ID given is **WB-074**; a new
 item takes the next one and updates this line.
 
 | ID | Priority | Status | Task | Origin |
@@ -24,7 +24,7 @@ item takes the next one and updates this line.
 | WB-059 | Next | proposed | A route nobody can reach costs the whole pathfinder budget, and the budget grows with the map | Sixteen seats 2026-09-20 |
 | WB-060 | Later | proposed | Sixteen seats online: an engine release, a snapshot that is not one world per seat, and room capacity | Sixteen seats 2026-09-20 |
 | WB-067 | Now | proposed | Magic III: the computer players research, choose and cast; the nine spells balanced | Ilya 2026-09-24 |
-| WB-073 | Now | proposed | Race balance: dwarves win ~64 % and orcs ~36 % of Master race games; bring every race within 45–55 % | Orchestrator 2026-09-25 |
+| WB-074 | Next | proposed | The difficulty ratings New game shows: the ladder has compressed since WB-064, Grandmaster and Master overlap | WB-073 review 2026-09-26 |
 
 ## WB-055 — A deeper tech tree
 
@@ -291,31 +291,30 @@ always right or never), tuned by numbers in `buffs.toml` and the spell table;
 race balance in band; `docs/balance.md` records the numbers; fuzz; the
 fingerprint and `sim_bench.txt` refreshed.
 
-## WB-073 — Race balance
+## WB-074 — The difficulty ratings New game shows
 
-**Why.** Through every item of the 2026-09-24 intake the race games told the
-same story (`tools/race_report.py`, 288–564 matches a run): dwarves win about
-64 % of Master's race games and 55–64 % of Medium's, orcs 34–37 % and 36–45 %,
-humans and elves near half. None of the intake's changes caused it and none
-closed it (WB-062 moved no race more than 2.6 points, WB-068 about 2). A race
-the player picks and then loses to three times in five is the biggest balance
-fault the game has.
+**Why.** `DIFFICULTY_ELO` (`warband/brains/ai.py`: Easy 559, Medium 1000,
+Hard 1378, Master 1573, Grandmaster 1917) is what New game tells a player,
+and the ladder no longer says it. WB-064's ladder (`docs/ai-ladder.md`, 60
+seeds from 1000, 1,200 games, both corners, Medium anchored at 1000) read
+Grandmaster 1521 (1459 .. 1590), Master 1376 (1321 .. 1433), Hard 1184
+(1137 .. 1235), Easy 656 (593 .. 707). The same protocol on main 5b7035c,
+before WB-073 (Ilya's dearer knight, WB-066's Mage Tower), read 1320
+(1271 .. 1361), 1286 (1237 .. 1336), 1106 (1068 .. 1138) and 728 (680 .. 774):
+every setting outside its WB-064 interval, all of them toward Medium, and
+Grandmaster's and Master's intervals overlap, where New game shows them 344
+points apart. WB-073 weakened no setting, so the compression is older than
+its race numbers.
 
-**Design.** Every race within 45–55 % of its decided Master and Medium race
-games, on the shipped sizes and layouts, with the difficulty ladder no weaker.
-The levers, in order: the race's own numbers in `races.toml` (its multipliers,
-its passive, its arts' magnitudes in `upgrades.toml`), then its unique unit
-(WB-068), never a shared unit (that moves every race). Diagnose before tuning:
-which matchups and which phase decide the dwarves' wins (Stonework's +25 %
-building hit points and +2 armour against a rush or a siege? Deep Mining's
-150-gold trip?) and the orcs' losses (the Grunt's −2 armour and no shield wall,
-the Ogre's thin armour, Rage now that it outlasts a heal), with
-`tools/battle_bench.py` for a unit question and the race games for the whole.
-Each change is measured before it is kept; the texts that promise the numbers
-move with them.
+**Design.** Once WB-067 has landed (brains that cast move every setting), run
+on main the protocol `DIFFICULTY_ELO` was measured with (`docs/ai-ladder.md`,
+"The difficulty settings": 60 seeds never bred or measured on, both corners,
+every map size, all five layouts in turn, under fog, 1,200 games) and write
+what it measures into `DIFFICULTY_ELO` and that table. If Grandmaster and
+Master still overlap, say which pairings closed the gap before deciding
+whether Grandmaster needs a new search (`tools/evolve.py`) or New game one
+setting fewer.
 
-**Acceptance.** The before and after tables (Master and Medium, sample sizes
-that mean something: two seed blocks on Medium, as WB-062 found), each change
-and its measured effect in `docs/balance.md`, the ladder before and after,
-fingerprint and sim_bench refreshed. Runs after WB-067, whose magic will move
-the races again.
+**Acceptance.** The table before and after in `docs/ai-ladder.md`,
+`DIFFICULTY_ELO` equal to the measured ratings, and each setting's line on
+New game still true.

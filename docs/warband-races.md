@@ -14,7 +14,7 @@ come from the same startup snapshot.
 | Race    | Character                            | Passive                                             | Arts                                                        |
 |---------|--------------------------------------|-----------------------------------------------------|-------------------------------------------------------------|
 | Humans  | balanced, the baseline               | Drill: every unit trains 15 % faster                | Horse Breeding (+0.8 speed for knights), Blessing (clerics heal ×1.5) |
-| Orcs    | tougher, harder-hitting, less armour | Rage: a soldier hurt below half health is enraged for ten seconds, +25 % damage, however well it is mended | Bloodlust (rage +50 %), Plunder (razing loots a fifth of the building's gold) |
+| Orcs    | tougher, harder-hitting, less armour | Rage: a soldier hurt below half health is enraged for ten seconds, +25 % damage, however well it is mended | Bloodlust (rage +50 %), Plunder (razing loots half the building's gold) |
 | Elves   | lighter, faster, far-sighted         | Keen eyes: +2 sight, rangers shoot a tile farther   | Longbows (+1 range for rangers and towers), Regrowth (felled trees grow back after a minute) |
 | Dwarves | sturdier, slower, housed in stone    | Stonework: buildings +25 % hit points and +2 armour | Deep Mining (150 gold per trip), Blasting Powder (mortar splash ×1.5) |
 
@@ -42,11 +42,11 @@ come from the same startup snapshot.
 | workshop   | Workshop    | Siege Yard  | Siege Bower  | Engine Works |
 | church     | Church      | Altar       | Moonwell     | Rune Shrine  |
 
-The numbers: orc units have +15 % hit points (the ogre +20 %), and the grunt and
-ogre +10 % damage and −1 / −2 armour;
+The numbers: orc units have +10 % hit points (the ogre +20 %), and the grunt and
+ogre +10 % damage and −1 armour;
 elf units have −5 % hit points, +0.15 speed and +2 sight, and the ranger one
-more tile of range; dwarf units have +10 % hit points and −0.15 speed, the
-ironguard and bear rider +1 armour.  The codex (F2) shows the player's race's
+more tile of range; dwarf units have +5 % hit points and −0.15 speed, the
+ironguard +1 armour.  The codex (F2) shows the player's race's
 tables and a fourth page comparing the races.
 
 ## Each race's own unit (WB-068)

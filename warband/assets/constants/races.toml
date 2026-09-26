@@ -49,9 +49,9 @@ passive = "Rage: soldiers below half health rage for 10 s, +25 % damage, healed 
 arts = ["bloodlust", "plunder"]
 
 [orc.units]
-defaults = { hp_mult = 1.15 }
+defaults = { hp_mult = 1.1 }
 peasant = { name = "Peon", summary = "Digs gold, hacks lumber, builds and repairs" }
-footman = { name = "Grunt", summary = "Brutal axeman, fast and alone; rages when wounded", damage_mult = 1.1, armor_add = -2, speed_add = 0.4, formation = false }
+footman = { name = "Grunt", summary = "Brutal axeman, fast and alone; rages when wounded", damage_mult = 1.1, armor_add = -1, speed_add = 0.4, formation = false }
 archer = { name = "Axethrower", summary = "Throws axes four tiles; its wounds bleed; sturdy" }
 knight = { name = "Ogre", summary = "Two-headed brute; thin armour, all rage", hp_mult = 1.2, damage_mult = 1.1, armor_add = -1 }
 catapult = { name = "Catapult", summary = "Skulled siege engine: splash, ×1.5 vs walls" }
@@ -117,11 +117,11 @@ passive = "Stonework: buildings have +25 % hit points and +2 armour"
 arts = ["deep_mining", "blasting_powder"]
 
 [dwarf.units]
-defaults = { hp_mult = 1.1, speed_add = -0.15 }
+defaults = { hp_mult = 1.05, speed_add = -0.15 }
 peasant = { name = "Miner", summary = "Mines gold, chops lumber, builds, repairs" }
 footman = { name = "Ironguard", summary = "Armoured axeman in a wall of round shields", armor_add = 1 }
 archer = { name = "Crossbowman", summary = "Shoots from four tiles; its wounds bleed; hardy" }
-knight = { name = "Bear Rider", summary = "Armoured shock cavalry on a war bear", armor_add = 1 }
+knight = { name = "Bear Rider", summary = "Armoured shock cavalry on a war bear" }
 catapult = { name = "Mortar", summary = "Iron mortar: wide splash, ×1.5 vs buildings" }
 flying_machine = { name = "Gyrocopter", summary = "Steam rotor over any ground; eyes, not guns: only shooters hit it" }
 cleric = { name = "Runepriest", summary = "Heals wounded allies; strikes weakly when none need healing" }

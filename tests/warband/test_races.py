@@ -13,7 +13,7 @@ from warband.sim.model import RuleError, World, dist
 from warband.sim.races import RACES
 from warband.sim.rules import (
     Layout,
-    BUILDINGS, DEEP_MINING_TRIP, GOLD_PER_TRIP, PLAYABLE_UNITS, REGROWTH_SECONDS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, Race,
+    BUILDINGS, DEEP_MINING_TRIP, GOLD_PER_TRIP, LONGBOWS_BONUS, PLAYABLE_UNITS, REGROWTH_SECONDS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, Race,
     Resource, Terrain,
     UnitType, Upgrade,
 )
@@ -168,7 +168,7 @@ def test_plunder_loots_gold_from_razed_buildings() -> None:
     barracks.hp = 5
     world.attack([ogre.id], barracks.id)
     run_until(world, lambda: barracks.id not in world.buildings, 15)
-    loot = int(BUILDINGS[BuildingType.BARRACKS].cost.gold * 0.2)
+    loot = BUILDINGS[BuildingType.BARRACKS].cost.gold // 2  # the card: "loots half its gold"
     assert world.players[0].gold == gold + loot
     assert any(e.kind == "plunder" and e.amount == loot and e.player == 0 for e in world.events)
 
@@ -184,11 +184,19 @@ def test_elves_see_farther_rangers_shoot_farther_and_longbows_reach_towers_too()
     tower = world.place_building(1, BuildingType.TOWER, (14, 10))
     assert ranger.info.sight == archer.info.sight + 2
     assert world.range_of(ranger) == world.range_of(archer) + 1 and world.building_range(eyrie) == world.building_range(tower)
-    world.players[0].upgrades.add(Upgrade.LONGBOWS)
-    assert world.range_of(ranger) == world.range_of(archer) + 2 and world.building_range(eyrie) == world.building_range(tower) + 1
-    assert world.range_of(world.spawn_unit(0, UnitType.CATAPULT, (2.5, 8.5))) == UNITS[UnitType.CATAPULT].range  # bows, not ballistae
-    victim = world.spawn_unit(1, UnitType.PEASANT, (11.5, 18.0))  # 6.5 tiles below the eyrie's wall, beyond a plain tower
+    # Below the eyrie, half the bonus past a plain tower's reach: a tower shoots a body whose edge is within its range
+    # and half its size of its centre.
+    peasant = RACES[Race.HUMAN].units[UnitType.PEASANT]
+    reach = world.building_range(tower) + eyrie.size / 2 + peasant.radius
+    victim = world.spawn_unit(1, UnitType.PEASANT, (eyrie.center[0], eyrie.center[1] + reach + LONGBOWS_BONUS / 2))
     world.hold([victim.id])
+    run(world, 3.0)
+    assert victim.hp == victim.max_hp  # beyond a plain tower
+    world.players[0].upgrades.add(Upgrade.LONGBOWS)
+    assert LONGBOWS_BONUS > 0
+    assert world.range_of(ranger) == world.range_of(archer) + 1 + LONGBOWS_BONUS
+    assert world.building_range(eyrie) == world.building_range(tower) + LONGBOWS_BONUS
+    assert world.range_of(world.spawn_unit(0, UnitType.CATAPULT, (2.5, 8.5))) == UNITS[UnitType.CATAPULT].range  # bows, not ballistae
     run(world, 3.0)
     assert victim.hp < victim.max_hp
 

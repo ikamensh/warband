@@ -121,7 +121,7 @@ summary = "Shooters pick the mark in reach they fell soonest and waste no arrow 
 
 [horses]
 name = "Horse Breeding"
-gold = 900
+gold = 1400
 lumber = 300
 time = 50.0
 hotkey = "h"
@@ -151,12 +151,12 @@ race = "orc"
 
 [plunder]
 name = "Plunder"
-gold = 600
+gold = 1400
 lumber = 200
 time = 45.0
 hotkey = "h"
 card = "Plunder"
-summary = "Razing a building loots a fifth of its gold"
+summary = "Razing a building loots half its gold"
 race = "orc"
 
 [longbows]
@@ -216,7 +216,7 @@ horses_bonus = 0.8 # added speed for knights
 siege_range_bonus = 1.0 # added range for siege engines
 siege_damage_bonus = 1.25 # damage multiplier for siege engines
 blessing_bonus = 1.5 # multiplier on a cleric's healing
-plunder_share = 0.2 # of a razed building's gold cost (the card says "a fifth")
+plunder_share = 0.5 # of a razed building's gold cost (the card says "half")
 longbows_bonus = 1.0 # added range for rangers and towers
 regrowth_seconds = 60.0 # after a minute, trees felled by elves grow back
 deep_mining_trip = 150 # gold per trip with Deep Mining

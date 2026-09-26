@@ -21,10 +21,17 @@ def field(rocks: set[tuple[int, int]] = frozenset(), races: tuple[Race, Race] = 
 
 
 def test_footmen_are_slow_and_armoured_and_the_grunt_is_the_fast_brawler() -> None:
-    numbers = {race: (RACES[race].units[UnitType.FOOTMAN].speed, RACES[race].units[UnitType.FOOTMAN].armor,
-                      RACES[race].units[UnitType.FOOTMAN].formation) for race in Race}
-    assert numbers == {Race.HUMAN: (2.0, 3, True), Race.ELF: (2.15, 3, True), Race.DWARF: (1.85, 4, True), Race.ORC: (2.4, 1, False)}
-    assert RACES[Race.HUMAN].units[UnitType.PEASANT].speed == 2.4  # a fleeing peasant outruns the line
+    """Read from the rules, which race balance tunes (WB-073 gave the grunt one armour back): what each race's
+    footman is beside the others and beside its own archer and peasant."""
+    line = {race: RACES[race].units[UnitType.FOOTMAN] for race in Race}
+    grunt = line.pop(Race.ORC)
+    assert not grunt.formation and all(footman.formation for footman in line.values())
+    for race, footman in line.items():
+        assert footman.speed < RACES[race].units[UnitType.PEASANT].speed  # a fleeing peasant outruns the line
+        assert footman.armor > RACES[race].units[UnitType.ARCHER].armor
+        assert footman.speed < grunt.speed and footman.armor > grunt.armor
+    assert line[Race.DWARF].speed < line[Race.HUMAN].speed < line[Race.ELF].speed
+    assert line[Race.DWARF].armor > line[Race.HUMAN].armor == line[Race.ELF].armor
 
 
 def test_a_footman_wears_one_more_armour_for_a_comrade_at_each_side() -> None:
