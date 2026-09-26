@@ -122,10 +122,8 @@ is fixed as of 2026-09-20.
   chop progress and repair charge carry over to the next tree or building.
 - **Scene**: Settings → Tutorial switched on in a match does nothing; a rival's building in sight shows its
   painted "active" look while it trains, which online (whose snapshots hide its queue) it does not.
-- **Campaign and replays**: `shifted()` has no Master row, a KeyError for a hand-edited progress;
-  the campaign screen has no Restore backup as the profile's has; `Playback.run()` never ends for a
-  replay file with order rows after its end tick; the replay digest leaves out terrain, projectiles,
-  plans and the random stream.
+- **Campaign and replays**: the campaign screen has no Restore backup as the profile's has; the replay
+  digest leaves out terrain, projectiles, plans and the random stream.
 - **Engine (Saga2D)**: a key held when an overlay comes up is released over the overlay, and the camera
   keeps its held direction; Warband clears it on reveal, the engine could for every game.
 
@@ -187,8 +185,6 @@ needing a decision or a piece of art rather than a patch.
   WB-064, seven minutes in; it walks out as soon as they have). The rules already say a mine saturates
   at eight peasants; nothing says what a hall's door or a tree's edge holds. Either the worker policy
   spreads them, or the fuzz check learns to tell a queue from a deadlock.
-- **A catapult's minimum range is nowhere in the HUD.** `UnitInfo.min_range` is 2.0 and the codex and the
-  selection panel show only the 7. A player learns it by watching a stone refuse to fly.
 
 ## WB-013 — Fresh-player and cross-platform acceptance
 
