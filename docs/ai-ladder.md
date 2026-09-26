@@ -171,10 +171,30 @@ odds. `--proximity 0` gives the old flat fit.
 
 ## The difficulty settings
 
-What the New game screen offers, and what each one is worth: 60 seeds it had never been bred or measured on, both
-corners, every map size, all five layouts in turn, under fog, 1200 games, Medium anchored at 1000, measured on
-2026-09-20 with Grandmaster's final table and the gatherers' second look in the rules
-([bred brains](#bred-brains-the-search-above-master)):
+What the New game screen offers, and what each one is worth (`DIFFICULTY_ELO`): `tools/arena.py ladder --agents
+easy,medium,hard,master,grandmaster --seeds 60 --first-seed 1000 --anchor medium --anchor-elo 1000`, both corners,
+every map size, all five layouts in turn, under fog, 1200 games (1184 decided), measured on 2026-09-26 on main
+`a5098e8`: the brains cast (WB-067), the races as WB-073 left them, Ilya's dearer knight, flyers, buffs and each
+race's own unit. Four minutes on the Mac.
+
+| setting | Elo | 90% interval | plays |
+|---------|-----|--------------|-------|
+| Easy | 699 | 647 .. 744 | `ai.Brain`, the Easy profile |
+| Medium | 1000 | — | `ai.Brain` |
+| Hard | 1122 | 1083 .. 1163 | `pro_ai.ProBrain`, `pro-hard` |
+| Master | 1307 | 1271 .. 1354 | `pro_ai.ProBrain`, `pro-vanguard`, `pro-warden` or `pro-rush`, drawn with the map |
+| Grandmaster | 1381 | 1327 .. 1436 | `pro_ai.RaceBrain`, the bred postures of `brains/bred.py` |
+
+Head to head, the row's score: Grandmaster takes 64.2 % from Master, 83.3 % from Hard, 75.0 % from Medium and 93.3 %
+from Easy; Master takes 75.8 % from Hard, 94.2 % from Medium and 96.7 % from Easy; Hard 70.8 % from Medium.
+Every setting had drifted toward Medium since the table below (the screen showed 559, 1378, 1573 and 1917), and
+Grandmaster most: it still beats Master and Hard, but Medium's early attacks (its first at a median 169 s, against
+Grandmaster's 312 s) take a quarter of their games from it, where they take 6 % from Master. Its postures were
+bred on 2026-09-20 rules and judged against Master's postures only; WB-075 breeds them again.
+
+The measurement before it, on 60 seeds it had never been bred or measured on, both corners, every map size, all
+five layouts in turn, under fog, 1200 games, Medium anchored at 1000, measured on 2026-09-20 with Grandmaster's
+final table and the gatherers' second look in the rules ([bred brains](#bred-brains-the-search-above-master)):
 
 | setting | Elo | 90% interval | plays |
 |---------|-----|--------------|-------|

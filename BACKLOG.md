@@ -11,7 +11,7 @@ implementing and its evidence after, and split larger discoveries into new
 IDs. `proposed` items still need scope selection. Within each priority, the
 order is the suggested sequence, not a requirement to finish every earlier
 item first. Once an item is done and merged into main, delete its row and
-section; git history keeps the record. The last ID given is **WB-074**; a new
+section; git history keeps the record. The last ID given is **WB-075**; a new
 item takes the next one and updates this line.
 
 | ID | Priority | Status | Task | Origin |
@@ -23,7 +23,7 @@ item takes the next one and updates this line.
 | WB-058 | Later | proposed | Bug-hunt leftovers 2026-09-20: a site nobody owns by its colour, two strike frames that hop, crowded workers | Bug hunt 2026-09-20 |
 | WB-059 | Next | proposed | A route nobody can reach costs the whole pathfinder budget, and the budget grows with the map | Sixteen seats 2026-09-20 |
 | WB-060 | Later | proposed | Sixteen seats online: an engine release, a snapshot that is not one world per seat, and room capacity | Sixteen seats 2026-09-20 |
-| WB-074 | Next | proposed | The difficulty ratings New game shows: the ladder has compressed since WB-064, Grandmaster and Master overlap | WB-073 review 2026-09-26 |
+| WB-075 | Next | proposed | Grandmaster loses a quarter of its games to Medium's early attacks: breed its postures again on today's rules | WB-074 2026-09-26 |
 
 ## WB-055 — A deeper tech tree
 
@@ -251,30 +251,17 @@ of quietly seating four of sixteen, `_create` refuses the options with a `Comman
 Acceptance: a sixteen-seat room hosted, joined by sixteen clients and played to a result, with the
 publish rate measured; or a decision that rooms stay at four and the cap is documented as final.
 
-## WB-074 — The difficulty ratings New game shows
+## WB-075 — Grandmaster bred again, on today's rules
 
-**Why.** `DIFFICULTY_ELO` (`warband/brains/ai.py`: Easy 559, Medium 1000,
-Hard 1378, Master 1573, Grandmaster 1917) is what New game tells a player,
-and the ladder no longer says it. WB-064's ladder (`docs/ai-ladder.md`, 60
-seeds from 1000, 1,200 games, both corners, Medium anchored at 1000) read
-Grandmaster 1521 (1459 .. 1590), Master 1376 (1321 .. 1433), Hard 1184
-(1137 .. 1235), Easy 656 (593 .. 707). The same protocol on main 5b7035c,
-before WB-073 (Ilya's dearer knight, WB-066's Mage Tower), read 1320
-(1271 .. 1361), 1286 (1237 .. 1336), 1106 (1068 .. 1138) and 728 (680 .. 774):
-every setting outside its WB-064 interval, all of them toward Medium, and
-Grandmaster's and Master's intervals overlap, where New game shows them 344
-points apart. WB-073 weakened no setting, so the compression is older than
-its race numbers.
+**Why.** WB-074 re-measured the settings on main `a5098e8` (`docs/ai-ladder.md`, "The difficulty settings"):
+Grandmaster 1381 (1327 .. 1436) against Master 1307 (1271 .. 1354). It still takes 64 % from Master and 83 % from
+Hard, but only 75 % from Medium, which Master beats 94 %: Medium's first attack comes at a median 169 s and
+Grandmaster's at 312 s. Its postures (`brains/bred.py`) were bred on the rules of 2026-09-20 and judged against
+Master's postures alone; flyers, buffs, magic, the dearer knight and WB-073's race numbers came after. A setting
+called Grandmaster that a Medium-like opening beats one game in four is not the top of the ladder.
 
-**Design.** Once WB-067 has landed (brains that cast move every setting), run
-on main the protocol `DIFFICULTY_ELO` was measured with (`docs/ai-ladder.md`,
-"The difficulty settings": 60 seeds never bred or measured on, both corners,
-every map size, all five layouts in turn, under fog, 1,200 games) and write
-what it measures into `DIFFICULTY_ELO` and that table. If Grandmaster and
-Master still overlap, say which pairings closed the gap before deciding
-whether Grandmaster needs a new search (`tools/evolve.py`) or New game one
-setting fewer.
-
-**Acceptance.** The table before and after in `docs/ai-ladder.md`,
-`DIFFICULTY_ELO` equal to the measured ratings, and each setting's line on
-New game still true.
+**Design.** Breed each race's postures again with `tools/evolve.py` on today's main, judged against a panel of
+Master's postures *and* Medium (its early waves), with the magic genes (`vault_from`, `spell_1..3`, `cast_worth`)
+in the genome now that WB-067 put them in `ProProfile`. Keep the compute lean (fast league tools, the slot, a
+screen before a confirming run). Acceptance: Grandmaster beats Medium at least as often as Master does and Master
+by 70 % or more on fresh seeds, the ladder re-measured and `DIFFICULTY_ELO` written from it.
