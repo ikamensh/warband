@@ -30,7 +30,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from saga2d import Game, fonts  # noqa: E402
 from saga2d.effects import Toast  # noqa: E402
-from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
 from saga2d.testing.native_frames import tick as native_tick  # noqa: E402
 from warband.art import visual_lint as lint  # noqa: E402
 from warband.story.campaign import Progress, ProgressStore  # noqa: E402
@@ -910,22 +909,20 @@ def main() -> None:
     parser.add_argument("--no-screens", action="store_true", help="skip the screens")
     parser.add_argument("--evidence", type=Path, help="write PNGs of flagged sprites and of every screen here")
     parser.add_argument("--list", action="store_true", help="print the screen names and exit")
-    parser.add_argument("--cpu-percent", type=float, default=25, help="cooperative CPU budget (default: 25%% of one core)")
     args = parser.parse_args()
     if args.list:
         print("\n".join(SCREENS))
         return
     if args.evidence is not None:
         args.evidence.mkdir(parents=True, exist_ok=True)
-    budget = CpuBudget(args.cpu_percent)
     total: collections.Counter[str] = collections.Counter()
     if not args.no_images:
         with tempfile.TemporaryDirectory(prefix="warband-lint-art-") as scratch:
             game = Game("Warband lint", backend="mock", resolution=RESOLUTIONS[0], theme=build_theme(), save_dir=Path(scratch) / "saves")
             try:
                 store = lint.ImageStore(game)
-                lint.register_everything(game, budget=budget)
-                findings = lint.lint_images(game, store, budget=budget)
+                lint.register_everything(game)
+                findings = lint.lint_images(game, store)
                 image_count = len(store.by_handle)
             finally:
                 game.close()
@@ -945,7 +942,6 @@ def main() -> None:
                 for finding in findings:
                     print(f"  {finding}")
                 total.update(f.check for f in findings)
-                budget.checkpoint()
     print("totals:", ", ".join(f"{check} {count}" for check, count in sorted(total.items())) or "nothing found")
 
 

@@ -1,18 +1,20 @@
 """Race balance evidence: every pair of races head to head under the same AI, sides swapped per seed.
 
     uv run python tools/race_report.py                    # 6 pairs × 2 seeds on Medium, Hard against Hard
-    uv run python tools/race_report.py --seeds 4 --difficulty normal --cpu-percent 100
+    uv run python tools/race_report.py --seeds 42 --difficulty master   # about 500 matches, a minute on the Mac
 
 A race that wins far more than it loses across the pairs is out of line; a
 mixed table with most matches decided is the aim.  The AI plays every race
 the same way (it researches its own arts in order), so the report measures
-the rules, not any race-specific strategy.
+the rules, not any race-specific strategy.  Matches are independent and fully
+determined by their seed, so they run in a process pool of ``--workers``.
 """
 
 from __future__ import annotations
 
 import argparse
 import itertools
+import multiprocessing as mp
 import random
 import sys
 from collections import Counter
@@ -25,7 +27,6 @@ from warband.league import fastsim  # noqa: E402
 if __name__ in ("__main__", "__mp_main__"):  # run as a program or as one of its worker processes, not as a library
     fastsim.activate()  # the compiled simulation, unless WARBAND_INTERPRETED is set
 
-from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
 from warband.sim import mapgen  # noqa: E402
 from warband.brains.ai import make_brain  # noqa: E402
 from warband.sim.rules import OWN_UNITS, SIM_DT, Difficulty, Race  # noqa: E402
@@ -35,7 +36,7 @@ OWN = frozenset(unit.value for unit in OWN_UNITS.values())
 MINUTES = 20
 
 
-def match(seed: int, races: tuple[Race, Race], difficulty: Difficulty, *, minutes: int, budget: CpuBudget | None,
+def match(seed: int, races: tuple[Race, Race], difficulty: Difficulty, *, minutes: int,
           bought: Counter[Race] | None = None, own_units: bool = True) -> tuple[Race | None, float]:
     """``(winning race or None, minutes played)`` for one AI-versus-AI match; each race's own units trained are counted
     into *bought*."""
@@ -46,8 +47,6 @@ def match(seed: int, races: tuple[Race, Race], difficulty: Difficulty, *, minute
     for _ in range(int(minutes * 60 / SIM_DT)):
         if world.winner is not None:
             break
-        if budget is not None:
-            budget.checkpoint()
         for brain in brains:
             brain.think(world, rng)
         world.step()
@@ -57,17 +56,25 @@ def match(seed: int, races: tuple[Race, Race], difficulty: Difficulty, *, minute
     return (world.players[world.winner].race if world.winner is not None else None), world.time / 60
 
 
+def play(task: tuple[int, tuple[Race, Race], Difficulty, int, bool]) -> tuple[int, tuple[Race, Race], Race | None, float, Counter[Race]]:
+    """One match of the table in a worker process: its seed and races, the winner, the minutes and the own units bought."""
+    seed, races, difficulty, minutes, own_units = task
+    bought: Counter[Race] = Counter()
+    winner, played = match(seed, races, difficulty, minutes=minutes, bought=bought, own_units=own_units)
+    return seed, races, winner, played, bought
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--seeds", type=int, default=2, help="seeds per pair; each seed is played from both sides")
     parser.add_argument("--first-seed", type=int, default=1, help="the first of the seeds: another block of seeds is another sample")
     parser.add_argument("--difficulty", choices=[d.value for d in Difficulty], default="hard")
     parser.add_argument("--minutes", type=int, default=MINUTES)
-    parser.add_argument("--cpu-percent", type=float, default=25, help="CPU allowance, percent of one core")
+    parser.add_argument("--workers", type=int, default=max(1, mp.cpu_count() // 2),
+                        help="matches played at once; half the machine by default, as the stack's slot runs two heavy jobs")
     parser.add_argument("--without-own-units", dest="own_units", action="store_false",
                         help="brains that never buy their race's own unit (WB-068): the same matches as before it existed")
     args = parser.parse_args()
-    budget = CpuBudget(args.cpu_percent)
     difficulty = Difficulty(args.difficulty)
     wins: Counter[Race] = Counter()
     losses: Counter[Race] = Counter()
@@ -77,19 +84,19 @@ def main() -> None:
     seeds = [seed for seed in range(args.first_seed, args.first_seed + args.seeds) if fair(seed)]
     if len(seeds) < args.seeds:
         print(f"  ({args.seeds - len(seeds)} of {args.seeds} seeds have no fair map and were left out)", flush=True)
-    for first, second in itertools.combinations(Race, 2):
-        for seed in seeds:
-            for races in ((first, second), (second, first)):
-                winner, played = match(seed, races, difficulty, minutes=args.minutes, budget=budget, bought=bought,
-                                       own_units=args.own_units)
-                if winner is None:
-                    undecided += 1
-                else:
-                    loser = races[0] if winner is races[1] else races[1]
-                    wins[winner] += 1
-                    losses[loser] += 1
-                    pairs[winner, loser] += 1
-                print(f"  seed {seed}: {races[0].value} vs {races[1].value} → {winner.value if winner else 'undecided'} after {played:.1f} min", flush=True)
+    tasks = [(seed, races, difficulty, args.minutes, args.own_units)
+             for first, second in itertools.combinations(Race, 2) for seed in seeds for races in ((first, second), (second, first))]
+    with mp.get_context("spawn").Pool(args.workers) as pool:
+        for seed, races, winner, played, own in pool.imap_unordered(play, tasks, chunksize=1):
+            bought.update(own)
+            if winner is None:
+                undecided += 1
+            else:
+                loser = races[0] if winner is races[1] else races[1]
+                wins[winner] += 1
+                losses[loser] += 1
+                pairs[winner, loser] += 1
+            print(f"  seed {seed}: {races[0].value} vs {races[1].value} → {winner.value if winner else 'undecided'} after {played:.1f} min", flush=True)
     print(f"{args.difficulty} against {args.difficulty}, {len(seeds)} seeds per pair, sides swapped:")
     for race in Race:
         decided = wins[race] + losses[race]

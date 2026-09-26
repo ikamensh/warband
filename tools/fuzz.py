@@ -17,9 +17,7 @@ then at a rival's unit, one of its own or anywhere: the brains do not cast yet
 
 Both run the compiled simulation (``warband.league.fastsim``, bit-identical to
 the source the game runs; ``WARBAND_INTERPRETED=1`` runs the source), and the
-whole-map checks are bitwise, so a check costs little beside a step.  At the
-default ``--cpu-percent 25`` a run takes four times its processor time; give it
-more when nothing else is running.
+whole-map checks are bitwise, so a check costs little beside a step.
 """
 
 from __future__ import annotations
@@ -45,7 +43,6 @@ from warband.brains.ai import make_brain  # noqa: E402
 from warband.brains.pro_ai import PRO, ProBrain, RaceBrain  # noqa: E402
 from warband.sim.model import BLOCKING, RuleError, World  # noqa: E402
 from warband.sim.rules import AETHER_TICKS, BUILDINGS, CHOICES, LEVEL_NAMES, SIM_DT, BuildingType, Difficulty, Terrain, Upgrade  # noqa: E402
-from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
 
 GAME_MINUTES = 15
 TRUTH = bytes([0] + [1] * 255)  # a bytes.translate table: any nonzero byte to 1
@@ -157,7 +154,7 @@ def check_progress(world: World, stalled: dict[int, tuple[tuple[float, float], f
                                  f"{origin} at {u.pos} with {u.orders[0]} path {u.path[:3]}")
 
 
-def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
+def ai_games(seeds: range) -> int:
     failures = 0
     outcomes: Counter[str] = Counter()
     for seed in seeds:
@@ -176,8 +173,6 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
             check_world(world)
             stalled: dict[int, tuple[tuple[float, float], float]] = {}
             for tick in range(int(GAME_MINUTES * 60 / SIM_DT)):
-                if budget:
-                    budget.checkpoint()
                 if world.winner is not None:
                     break
                 for brain in brains:
@@ -206,7 +201,7 @@ def ai_games(seeds: range, *, budget: CpuBudget | None = None) -> int:
     return failures
 
 
-def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = None) -> int:
+def monkey_runs(seeds: range, steps: int = 500) -> int:
     from saga2d import Game
     from warband.brains.adjutant import COMMANDS
     from warband.ui.controls import CHORDS, SCHEMES
@@ -274,8 +269,6 @@ def monkey_runs(seeds: range, steps: int = 500, *, budget: CpuBudget | None = No
                         game.backend.set_fullscreen(not game.fullscreen)
                     for _ in range(rng.choice((1, 1, 2, 12))):
                         game.tick(1 / 60)
-                        if budget:
-                            budget.checkpoint()
                     if game.scene is None:
                         break
                 assert len(game.scenes) <= 3, ("scene stack grew", [type(s).__name__ for s in game.scenes])
@@ -298,16 +291,10 @@ def main() -> None:
     parser.add_argument("--monkey", type=int, default=12)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--steps", type=int, default=500, help="random inputs per monkey run")
-    parser.add_argument("--cpu-percent", type=float, default=25, help="CPU allowance, percent of one core")
     args = parser.parse_args()
-    try:
-        budget = CpuBudget(args.cpu_percent)
-    except ValueError as error:
-        parser.error(str(error))
-    failures = ai_games(range(args.seed, args.seed + args.games), budget=budget)
+    failures = ai_games(range(args.seed, args.seed + args.games))
     if args.monkey:
-        failures += monkey_runs(range(args.seed, args.seed + args.monkey), steps=args.steps, budget=budget)
-    budget.checkpoint()
+        failures += monkey_runs(range(args.seed, args.seed + args.monkey), steps=args.steps)
     sys.exit(1 if failures else 0)
 
 

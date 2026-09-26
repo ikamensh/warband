@@ -38,7 +38,6 @@ from saga2d import Game, fonts
 from saga2d.testing import overlapping_texts, text_boxes
 from saga2d.rendering.layers import LAYER_BAND
 from saga2d.scene import UI_ORDER_BASE, UI_ORDER_STRIDE
-from saga2d.testing.cpu_budget import CpuBudget
 from saga2d.ui import Button, Component, Label
 from saga2d.ui.components import KEYCAP_GAP
 from sagaforge import restyle
@@ -308,7 +307,7 @@ def side_by_side(painted: Image.Image, placement: textures.Placement, render: Im
     return canvas
 
 
-def lint_drift(game: Game, store: ImageStore, *, budget: CpuBudget | None = None) -> list[Finding]:
+def lint_drift(game: Game, store: ImageStore) -> list[Finding]:
     """Painted unit frames against the low-poly renders they repaint: the game places the
     painting where the render stood, so a figure that moved in the painting stands beside its
     ring, health bar and the point it is ordered to."""
@@ -321,8 +320,6 @@ def lint_drift(game: Game, store: ImageStore, *, budget: CpuBudget | None = None
         frames = [f for f in DRIFT_FRAMES if f in textures.FRAMES or (unit_type is UnitType.PEASANT and carrying is None)]
         for facing in range(textures.FACINGS):
             for frame in frames:
-                if budget is not None:
-                    budget.checkpoint()
                 key = textures.unit_key(unit_type, player, facing, frame, carrying, race)
                 painted, placement = store.image(key), textures.placements[key]
                 mesh = r3.rotate_z(textures._unit(unit_type, player, frame, carrying, race), facing * 45 - 90)
@@ -353,7 +350,7 @@ def lint_drift(game: Game, store: ImageStore, *, budget: CpuBudget | None = None
     return findings
 
 
-def register_everything(game: Game, *, players: tuple[int, ...] = (0, 1), budget: CpuBudget | None = None) -> None:
+def register_everything(game: Game, *, players: tuple[int, ...] = (0, 1)) -> None:
     """Register every image a match can show: units of every race in every frame and facing,
     buildings in every look, trees and rocks of every theme, mines, portraits and emblems."""
     from warband.art.production import production_image
@@ -369,8 +366,7 @@ def register_everything(game: Game, *, players: tuple[int, ...] = (0, 1), budget
                 textures.bank_image(game, variant, look, wealth)
     for race in Race:
         for _ in textures.warm_units(game, [0], [race]):
-            if budget is not None:
-                budget.checkpoint()
+            pass  # each step warms one unit's frames
         for _name, _race, unit_type, carrying, player in unit_subjects(players[1:]):
             if _race is race:
                 textures.unit_image(game, unit_type, player, 2, "stand", carrying, race=race)  # one frame per team, for the recolour check
@@ -378,8 +374,6 @@ def register_everything(game: Game, *, players: tuple[int, ...] = (0, 1), budget
             for building_type in BUILT:
                 for look in textures.BUILDING_LOOKS:
                     textures.building_image(game, building_type, player, race, look)
-                    if budget is not None:
-                        budget.checkpoint()
         for subject in (*PLAYABLE_UNITS, *BuildingType):
             if subject is BuildingType.LAIR or (isinstance(subject, UnitType) and UNITS[subject].race not in (None, race)):
                 continue  # a den is nobody's and no race's: warband.art.monsters draws it, and its own test lints it
@@ -400,7 +394,7 @@ def unit_subjects(players: tuple[int, ...] = (0,)) -> Iterator[tuple[str, Race, 
                     yield name, race, unit_type, carrying, player
 
 
-def lint_images(game: Game, store: ImageStore, *, budget: CpuBudget | None = None) -> list[Finding]:
+def lint_images(game: Game, store: ImageStore) -> list[Finding]:
     """Every check on every registered image (call :func:`register_everything` first)."""
     findings: list[Finding] = []
     drawn = {textures.unit_key(unit_type, player, facing, frame, carrying, race)  # the render's own frames: nothing was painted
@@ -413,15 +407,11 @@ def lint_images(game: Game, store: ImageStore, *, budget: CpuBudget | None = Non
     painted_keys = {key for key in game.assets._images if key.startswith(("unit.", "building.")) and key not in drawn
                     and not key.startswith(rendered)}  # a portrait is a resample of one
     for key in list(game.assets._images):
-        if budget is not None:
-            budget.checkpoint()
         if key not in textures.placements and not key.startswith(("portrait.", "production.")):
             continue  # the ground, fog, minimap and the soft effect images are not figures
         findings += lint_image(key, store.image(key), painted=key in painted_keys and textures.RESTYLED_ART,
                                cropped=key.startswith("portrait."))
     for name, race, unit_type, carrying, player in unit_subjects():
-        if budget is not None:
-            budget.checkpoint()
         frames = textures.FRAMES + textures.CHOP_FRAMES if unit_type is UnitType.PEASANT and carrying is None else textures.FRAMES
         keyed = {(facing, frame): (key, store.image(key))
                  for facing in range(textures.FACINGS) for frame in frames
@@ -461,7 +451,7 @@ def lint_images(game: Game, store: ImageStore, *, budget: CpuBudget | None = Non
             fig = figure(store.image(key), textures.placements[key])
             if fig is not None and fig.feet < -FLOAT:
                 findings.append(Finding("floating", key, f"solid content ends {-fig.feet:.1f} px above the anchor", store.image(key)))
-    return findings + lint_drift(game, store, budget=budget)
+    return findings + lint_drift(game, store)
 
 
 # -- Frames -----------------------------------------------------------------------------

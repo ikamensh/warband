@@ -10,7 +10,8 @@
     uv run python tools/arena.py rate --from runs/*.jsonl --anchor pro --anchor-elo 1450      # one table over saved runs
 
 Matches are independent and fully determined by their seed, so they are
-handed to a process pool; ``--workers`` defaults to most of the machine.
+handed to a process pool; ``--workers`` defaults to half the machine, as the
+stack's slot runs two heavy jobs at once.
 Every pairing is played from every corner of the map, so a seed that
 favours a starting position cannot favour an agent.
 """
@@ -215,7 +216,7 @@ def main() -> None:
                         help="1v1: comma separated panel; every agent meets only these (default: every pair)")
     parser.add_argument("--no-wilds", dest="wilds", action="store_false",
                         help="leave the contested deposits unguarded, to rate the same ladder without creature camps")
-    parser.add_argument("--workers", type=int, default=max(1, mp.cpu_count() - 2))
+    parser.add_argument("--workers", type=int, default=max(1, mp.cpu_count() // 2))
     args = parser.parse_args()
 
     if args.mode == "rate":

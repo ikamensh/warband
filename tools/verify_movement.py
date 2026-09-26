@@ -27,7 +27,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from PIL import Image  # noqa: E402
 from saga2d import Game, MatchClient, MatchHost, fonts  # noqa: E402
-from saga2d.testing.cpu_budget import CpuBudget  # noqa: E402
 from warband.art import textures  # noqa: E402
 from warband.online.authority import WarbandMatch  # noqa: E402
 from warband.sim.model import World  # noqa: E402
@@ -103,14 +102,12 @@ def main():
     parser.add_argument("--zoom", type=float, default=1.0)
     parser.add_argument("--seconds", type=float, default=4.0)
     parser.add_argument("--fps", type=int, default=60)
-    parser.add_argument("--cpu-percent", type=float, default=25)
     parser.add_argument("--jitter", type=int, metavar="SEED",
                         help="online: publish at seeded uneven gaps of 4 to 8 frames at 60 FPS instead of every other tick")
     args = parser.parse_args()
     if args.seconds < 2 or args.fps < 20 or (args.scenario == "online" and args.fps % 20):
         parser.error("Use at least two seconds and 20 FPS; online FPS must be divisible by 20")
     args.output.mkdir(parents=True, exist_ok=True)
-    budget = CpuBudget(args.cpu_percent)
     world, units = field(args.scenario)
     trace, captures = [], []
     native = args.backend == "pyglet"
@@ -145,7 +142,6 @@ def main():
                 for facing in facings:
                     for pose in ("stand", *textures.WALK_FRAMES):
                         textures.unit_image(game, unit.type, unit.player, facing, pose, race=unit.race)
-                        budget.checkpoint()
             scene.view.set_reveal(True)
             scene.camera.zoom = args.zoom
             center = (15, 10.5) if args.scenario == "turns" else (17, 13.5)
@@ -154,7 +150,6 @@ def main():
             scene.paused = True
             for _ in range(8):  # Retire the intro banner without advancing the field.
                 game.tick(1.0)
-                budget.checkpoint()
             scene.paused = False
             if native:
                 encoder = subprocess.Popen([
@@ -198,7 +193,6 @@ def main():
                             crop = (round(sx - width / 2) - 12, round(sy) - height - 12,
                                     round(sx + width / 2) + 40, round(sy) + 12)
                         captures.append(capture.crop(crop))
-                budget.checkpoint()
                 if native:
                     time.sleep(max(0.0, 1 / 30 - (time.perf_counter() - started)))
         finally:

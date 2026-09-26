@@ -242,8 +242,11 @@ keeps where code goes and the rules below.
   the fix.
 - Retain verification output only in `~/saga/evidence/warband/<topic>/`, under
   the stack's retention rules (`../AGENTS.md`), and pass output paths to tools
-  explicitly. Heavy local jobs go through the stack's slot (`../AGENTS.md`);
-  long CLIs default to `--cpu-percent 25`.
+  explicitly. Heavy local jobs go through the stack's slot (`../AGENTS.md`)
+  and run at full speed there: the league tools use half the cores. A
+  compiled Master match takes about half a second of one core, so a
+  500-match table (about ±5 points a race, enough for approximate balance)
+  takes about a minute.
 - `backlog_intake.txt` is Ilya's inbox of requests, edited and committed by
   Ilya at any time. A change to it in a checkout is Ilya's, not another
   session's work in progress, and it never holds up other work, a merge or a
