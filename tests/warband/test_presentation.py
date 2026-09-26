@@ -5,7 +5,7 @@ import pytest
 from saga2d import Game
 from warband.ui.icons import Icon
 from warband.sim.model import tile_center
-from warband.sim.rules import BuildingType, UnitType
+from warband.sim.rules import UNITS, BuildingType, UnitType
 from warband.ui.scene import new_game
 from warband.ui.style import build_theme
 
@@ -57,6 +57,28 @@ def test_a_selected_unit_shows_its_numbers_beside_symbols_with_hints(play) -> No
     assert scene.tooltip == "Damage per strike; piercing, ×1.5 against unarmoured"  # WB-049: what the table does to its blow
     hover(game, scene, x + 88 + 78 * 2 + 10, y + 52)
     assert scene.tooltip == "Attack range in tiles"
+
+
+def test_a_selected_catapult_shows_its_minimum_and_maximum_range(play) -> None:
+    """A unit that cannot strike up close reads "min–max" on its card; one with no minimum reads the maximum as
+    before."""
+    game, scene = play
+    world = scene.world
+    hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
+    catapult = world.spawn_unit(scene.human, UnitType.CATAPULT, tile_center((hall.x + 4, hall.y + 4)))
+    scene.select([catapult.id])
+    game.tick(1 / 60)
+    catapult_info = UNITS[UnitType.CATAPULT]  # read from the rules: the card shows them, it does not invent them
+    assert catapult_info.min_range > 0
+    assert f"{catapult_info.min_range:g}–{catapult_info.range:g}" in [t["text"] for t in game.backend.texts]
+    archer_info = UNITS[UnitType.ARCHER]
+    assert archer_info.min_range == 0
+    archer = world.spawn_unit(scene.human, UnitType.ARCHER, tile_center((hall.x + 6, hall.y + 4)))
+    scene.select([archer.id])
+    game.tick(1 / 60)  # the mock backend draws each frame afresh, so the card now shows the archer alone
+    texts = [t["text"] for t in game.backend.texts]
+    assert f"{archer_info.range:g}" in texts
+    assert f"{archer_info.min_range:g}–{archer_info.range:g}" not in texts
 
 
 def test_a_selected_sapper_says_what_its_blast_does_to_buildings_and_to_units(play) -> None:

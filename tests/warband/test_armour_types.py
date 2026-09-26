@@ -156,6 +156,21 @@ def test_the_codex_names_every_unit_s_armour_class_and_its_blow_where_it_is_not_
         game.close()
 
 
+def test_the_codex_unit_page_shows_a_minimum_range_beside_the_maximum(tmp_path) -> None:
+    """A unit that cannot strike up close reads "min–max" in the Rng column; one with no minimum reads the maximum
+    as before.  The Rng cell stands four labels past the unit's name: name, HP, damage, armour, then range."""
+    game, labels = codex(tmp_path, 0)
+    try:
+        catapult = UNITS[UnitType.CATAPULT]  # read from the rules: the page shows them, it does not invent them
+        assert catapult.min_range > 0
+        assert labels[labels.index(catapult.name) + 4] == f"{catapult.min_range:g}–{catapult.range:g}"
+        archer = UNITS[UnitType.ARCHER]
+        assert archer.min_range == 0
+        assert labels[labels.index(archer.name) + 4] == f"{archer.range:g}"
+    finally:
+        game.close()
+
+
 def test_the_codex_says_once_that_every_building_is_fortified(tmp_path) -> None:
     """The building page has no room for a class column and no need of one: every building wears the same armour,
     so the page says it in a line under the table."""

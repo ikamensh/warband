@@ -188,6 +188,16 @@ def armour_hint(armor: ArmorClass) -> str:
     return armour_name(armor).capitalize() + (f" · {', '.join(worse)}" if worse else "")
 
 
+def range_text(info: UnitInfo) -> str:
+    """A unit's attack range as the player reads it: "melee" up close, "2–8" where a minimum reach keeps its
+    stones from falling at its own wheels, otherwise the maximum alone."""
+    if info.range < 1:
+        return "melee"
+    if info.min_range > 0:
+        return f"{info.min_range:g}–{info.range:g}"
+    return f"{info.range:g}"
+
+
 def armour_class_of(entity: Unit | Sighting) -> ArmorClass:
     """What a selected entity wears.  Buildings are fortified to a one; a unit that belongs to no player wears its
     own kind's armour like any other."""
@@ -3321,7 +3331,7 @@ class GameScene(Scene):
                                  f"({attack_hint(info.attack)}), {info.blast_units} to every unit on the ground there, yours too"
                                  if info.blast else f"Damage per strike; {attack_hint(info.attack)}"))
                 stats = [primary, armour,
-                         ("range", "melee" if info.range < 1 else f"{info.range:g}", world.range_of(entity) - info.range,
+                         ("range", range_text(info), world.range_of(entity) - info.range,
                           "Healing range in tiles" if info.heal else "Reaches the next tile over" if info.range < 1 else "Attack range in tiles"),
                          speed]
             mx, my = self.mouse
@@ -4012,7 +4022,7 @@ class CodexScene(_Overlay):
                 if not race.unit_allowed(unit_type):
                     continue  # another race's own unit
                 rows.append([info.name, price_pairs(info.cost), str(info.hp), f"heal {info.heal}" if info.heal else str(info.damage),  # its blow is in its role
-                             str(info.armor), "melee" if info.range < 1 else f"{info.range:g}", f"{info.speed:g}", f"{info.build_time:g}s",
+                             str(info.armor), range_text(info), f"{info.speed:g}", f"{info.build_time:g}s",
                              # The Role column has no room for the kind of blow on every row: spelling out "normal"
                              # wraps a line at 1200×680, where the page already stands 672 px of 680 tall (the orc
                              # and human tables first).  The blow is named where it is not the plain one; the card of
