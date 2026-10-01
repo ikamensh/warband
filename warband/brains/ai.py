@@ -938,7 +938,8 @@ class Brain:
 
     def _enemy_soldiers(self, world: World) -> int:
         """Living enemy soldiers (units that are not workers) of alive players."""
-        return int_sum(1 for u in world.units.values() if u.player != self.player and world.players[u.player].alive
+        return int_sum(1 for u in world.units.values() if u.player != self.player and not world.players[u.player].neutral
+                       and world.players[u.player].alive
                        and not u.is_worker and u.info.damage and u.hp > 0 and not u.hidden
                        and world.is_visible(self.player, u.tile))
 
@@ -1093,7 +1094,8 @@ class Brain:
         if not idle:
             return
         seen = [u for u in world.units.values()
-                if u.player != self.player and u.is_worker and not u.hidden and world.is_visible(self.player, u.tile)]
+                if u.player != self.player and not world.players[u.player].neutral and u.is_worker and not u.hidden
+                and world.is_visible(self.player, u.tile)]
         mines = [m.center for m in known_mines(world, self.player)
                  if any(dist(u.pos, m.center) < 8 for u in seen)]
         prey = mines or [u.pos for u in seen]
@@ -1108,7 +1110,7 @@ class Brain:
         if buildings:
             return buildings
         seen = [u.pos for u in world.units.values()
-                if u.player != self.player and world.players[u.player].alive
+                if u.player != self.player and not world.players[u.player].neutral and world.players[u.player].alive
                 and not u.hidden and world.is_visible(self.player, u.tile)]
         if seen:
             return seen

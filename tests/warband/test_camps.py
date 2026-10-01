@@ -65,6 +65,29 @@ def test_a_creature_that_falls_is_nobodys_loss_and_the_wilds_stay_in_the_game() 
     assert world.players[world.neutral].alive and world.winner is None
 
 
+def test_the_brains_hunt_rivals_not_creatures() -> None:
+    """Endgame with one rival peasant left and a camp in sight: winning needs the peasant, not the den."""
+    from warband.brains.ai import Brain
+    from warband.brains.pro_ai import PRO, ProBrain
+    from warband.sim.rules import Difficulty
+
+    world = flat_world()
+    world.place_building(0, BuildingType.TOWN_HALL, (4, 4))
+    rival = world.spawn_unit(1, UnitType.PEASANT, (30.5, 20.5))
+    camp = a_camp(world, at=(10, 10), roster=(UnitType.TROLL, UnitType.WOLF))
+    world.spawn_unit(0, UnitType.FLYING_MACHINE, (30.5, 21.5))
+    world.spawn_unit(0, UnitType.FOOTMAN, (10.5, 12.5))
+    world.update_vision()
+    assert world.is_visible(0, rival.tile)
+    assert all(world.is_visible(0, world.units[uid].tile) for uid in camp.guards)
+    brain = Brain(0, Difficulty.MEDIUM)
+    assert brain._enemy_targets(world) == [rival.pos]
+    assert brain._enemy_soldiers(world) == 0, "the troll and the wolf are no enemy soldiers"
+    pro = ProBrain(0, PRO)
+    assert [u.id for u in pro._enemies(world)] == [rival.id]
+    assert pro._attack_targets(world) == [rival.pos]
+
+
 # -- Rousing, leashing, resetting -------------------------------------------------------
 
 

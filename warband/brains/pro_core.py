@@ -117,7 +117,8 @@ class _ProBrainCore:
         """Visible enemy units of players still in the game."""
         return [u for u in world.units.values()
                 if u.player != self.player and u.hp > 0 and not u.hidden
-                and world.players[u.player].alive and world.is_visible(self.player, u.tile)]
+                and not world.players[u.player].neutral and world.players[u.player].alive
+                and world.is_visible(self.player, u.tile)]
 
     def _observe(self, world: World) -> None:
         """Remember the most of each kind the enemy was ever seen with, fading as the sighting ages.
