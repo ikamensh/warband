@@ -253,9 +253,15 @@ def test_a_four_player_game_scores_out_of_its_three_pairings():
 def test_a_seed_with_no_fair_map_is_reported_rather_than_raised():
     """mapgen refuses layouts it cannot make fair; a ladder has to survive that."""
     from warband.league.arena import playable
+    from warband.sim import mapgen
+    from warband.sim.rules import Layout
+
     assert playable(MatchSpec(seed=1000, agents=("hard", "hard")))
-    # Whatever the answer for a given seed, asking must not raise.
-    assert playable(MatchSpec(seed=6005, agents=("hard", "hard"))) in (True, False)
+    refused = MatchSpec(seed=28, agents=("hard", "hard"), width=48, height=40, layout=Layout.FOREST.value)
+    with pytest.raises(mapgen.NoFairMap):
+        mapgen.generate(seed=refused.seed, width=refused.width, height=refused.height,
+                        players=refused.players, human=None, layout=Layout.FOREST)
+    assert not playable(refused)
 
 
 def test_a_ladder_is_played_across_the_map_generator_not_one_map():

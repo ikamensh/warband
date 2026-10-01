@@ -140,29 +140,36 @@ def test_a_match_asks_for_battle_music_while_its_forces_fight_and_peace_when_the
 
 
 def test_a_bank_composes_music_in_the_background_and_plays_a_wanted_track_once_ready(game, tmp_path) -> None:
+    """Ready music plays during composition, and prioritizing changes the remaining composition order."""
     gate = threading.Event()
+    composing = threading.Event()
+    composed = []
+
+    def render(name, pitch):
+        composed.append(name)
+        return pan(tone(pitch, 0.3), 0.0)
 
     def slow_loop() -> np.ndarray:
+        composing.set()
         gate.wait(5)
-        return pan(tone("A3", 0.3), 0.0)
+        return render("slow", "A3")
 
     sounds = {"ping": lambda: tone("A5", 0.05)}
-    tracks = {"quick": lambda: pan(tone("E3", 0.3), 0.0), "slow": slow_loop,
-              "second": lambda: pan(tone("C3", 0.3), 0.0), "third": lambda: pan(tone("G3", 0.3), 0.0)}
+    tracks = {"quick": lambda: render("quick", "E3"), "slow": slow_loop,
+              "second": lambda: render("second", "C3"), "third": lambda: render("third", "G3")}
     bank = sound.SynthBank(game, tmp_path, version="1", sounds=sounds, music=tracks, compose=("quick", "slow", "second", "third"))
-    deadline = threading.Event()
-    while "quick" not in bank.ready and not deadline.wait(0.01):
-        pass
-    assert "quick" in bank.ready and "slow" not in bank.ready
-    assert not (tmp_path / "music" / "slow.wav").exists()
-    bank.start_music("quick")  # ready, so it starts without waiting behind the composer, which is inside "slow"
-    assert bank.music_playing == "quick"
-    bank.prioritize(("third",))  # the queue behind the track in progress is reordered
-    gate.set()
-    bank.wait()
+    try:
+        assert composing.wait(2), "background composition never reached the slow track"
+        assert "quick" in bank.ready and "slow" not in bank.ready
+        assert not (tmp_path / "music" / "slow.wav").exists()
+        bank.start_music("quick")  # ready, so it starts without waiting behind the composer, which is inside "slow"
+        assert bank.music_playing == "quick"
+        bank.prioritize(("third",))  # the queue behind the track in progress is reordered
+    finally:
+        gate.set()
+        bank.wait(timeout=2)
     assert bank.ready == set(tracks) and (tmp_path / "music" / "slow.wav").exists()
-    stamp = lambda name: (tmp_path / "music" / f"{name}.wav").stat().st_mtime_ns  # noqa: E731
-    assert stamp("slow") < stamp("third") < stamp("second")
+    assert composed == ["quick", "slow", "third", "second"]
     bank.start_music("slow", fade=1.0)
     assert bank.music_playing == "slow" and len(game.backend.music_players) == 2
     game.tick(1.5)

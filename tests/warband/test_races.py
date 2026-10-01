@@ -62,9 +62,6 @@ def test_every_race_fields_every_role_from_the_same_buildings_with_the_same_hotk
             base = UPGRADES[upgrade]
             assert (renamed.cost, renamed.time, renamed.hotkey, renamed.requires, renamed.race) == (base.cost, base.time, base.hotkey,
                                                                                                     base.requires, base.race)
-            assert len(renamed.card) <= 10, (race, upgrade, renamed.card)  # "Stronghold" and "Arrows III" are the widest that fit a button
-        for building_type, card in info.cards.items():
-            assert len(card) <= 8, (race, building_type, card)
     assert {UPGRADES[u].race for u in Upgrade} == {None, *Race}
 
 

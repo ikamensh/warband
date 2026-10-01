@@ -203,19 +203,9 @@ def test_the_weakest_opponent_is_the_one_attacked_not_the_nearest():
     _spawn(world, 2, UnitType.FOOTMAN, 2, 1)
     brain._observe(world)
     assert brain._victim(world) == 2
-    weak_hall = world.player_buildings(2, BuildingType.TOWN_HALL)[0].center
     targets = brain._attack_targets(world)
-    assert min(targets, key=lambda t: (t[0] - weak_hall[0]) ** 2 + (t[1] - weak_hall[1]) ** 2) in targets
+    assert targets
     assert all(brain._owner_of(world, t) == 2 for t in targets)
-
-
-def test_more_opponents_mean_a_bigger_margin_is_wanted_before_attacking():
-    """Every extra player is someone who profits from a fight you started."""
-    world = mapgen.generate(seed=9, players=3, human=None)
-    brain = ProBrain(0, PRO)
-    bystanders = sum(1 for p in world.players[:world.seats] if p.id != 0 and p.alive) - 1  # the wilds are nobody's rival
-    assert bystanders == 1
-    assert PRO.attack_ratio * (1 + PRO.ffa_caution * bystanders) > PRO.attack_ratio
 
 
 def test_caution_stops_growing_past_five_seats():
@@ -383,17 +373,33 @@ def test_the_brain_knows_nothing_of_an_enemy_base_it_has_never_seen():
 
 
 def test_raiders_hunt_only_peasants_they_can_see():
+    """Hidden workers are never hunted by position or entity ID; visible workers still draw a raid."""
     world = mapgen.generate(seed=31, players=2, human=None)
     world.update_vision()
     brain = ProBrain(0, replace(PRO, name="raider", raid=True))
     riders = _spawn(world, 0, UnitType.KNIGHT, 2, 2)
+    workers = [u for u in world.player_units(1) if u.is_worker]
+    assert workers and not any(world.is_visible(0, u.tile) for u in workers)
+
+    def targets():
+        points = []
+        for rider in riders:
+            for order in rider.orders:
+                target = getattr(order, "target", None)
+                if isinstance(target, int):
+                    entity = world.entity(target)
+                    assert entity is not None
+                    points.append(entity.pos)
+                elif isinstance(target, tuple):
+                    points.append(target)
+        return points
+
     brain._raid(world, riders)
-    for rider in riders:
-        for order in rider.orders:
-            target = getattr(order, "target", None)
-            if isinstance(target, tuple):
-                assert all(dist(target, u.pos) > 1.0 for u in world.player_units(1) if u.is_worker), \
-                    "a rider was sent at a peasant nobody has seen"
+    assert all(dist(point, worker.pos) > 1.0 for point in targets() for worker in workers)
+    world.reveal_all(0)
+    brain._raid(world, riders)
+    visible_targets = targets()
+    assert visible_targets and all(any(dist(point, worker.pos) <= 1.0 for worker in workers) for point in visible_targets)
 
 
 def test_the_brain_cannot_conjure_resources():

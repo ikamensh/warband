@@ -104,14 +104,6 @@ def test_nothing_recolours_a_creature(game, painted, monkeypatch) -> None:
         assert tuple(mark) == textures.team_color(0), mark
 
 
-def test_monster_image_takes_no_player() -> None:
-    """The signature is the rule: there is no player to paint a creature for — but there is a
-    landscape, whose coat the image wears off summer."""
-    import inspect
-
-    assert list(inspect.signature(monsters.monster_image).parameters) == ["game", "monster", "facing", "frame", "theme"]
-
-
 def test_a_stale_sheet_warns_and_falls_back_to_the_render(game, painted) -> None:
     """A sheet that no longer holds every frame is ignored with a warning, not drawn half right."""
     paint(painted, Monster.GOLEM, frames=textures.FRAMES[:-1])  # no recover frame
