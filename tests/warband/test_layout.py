@@ -146,10 +146,15 @@ def mission_scene(game: Game, mission_id: str):
 
 
 @pytest.mark.parametrize("size", sizes())
-@pytest.mark.parametrize("screen", list(SCREENS), ids=list(SCREENS))
+@pytest.mark.parametrize("screen", [pytest.param(screen, id=screen,
+                                                marks=pytest.mark.slow if screen == "mission complete" else ())
+                                    for screen in SCREENS])
 def test_no_text_is_drawn_over_other_text(screen: str, size: tuple[int, int], tmp_path) -> None:
     """Every screen at the shortest window in the fast tier; the other four sizes build the same scenes again,
-    so they are the slow tier's."""
+    so they are the slow tier's. The mission-complete screen also runs in the
+    slow tier: constructing its full Court of Thorns mission and ticking past
+    the title banner takes over a second locally even at the shortest window.
+    """
     game = Game("Warband layout", backend="mock", resolution=size, theme=build_theme(), save_dir=tmp_path / "saves")
     try:
         SCREENS[screen](game)

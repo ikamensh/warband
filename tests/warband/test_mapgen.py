@@ -79,9 +79,14 @@ def _assert_congruent(world: World, players: int) -> None:
             assert images(world, h.pos, 3) <= hall_spots
 
 
-@pytest.mark.parametrize("players", mapgen.SEAT_COUNTS)
+@pytest.mark.parametrize("players", [pytest.param(players, marks=pytest.mark.slow if players >= 8 else ())
+                                     for players in mapgen.SEAT_COUNTS])
 def test_every_seat_holds_a_congruent_copy_of_the_first(players: int) -> None:
-    """The fairness the audit rests on: each cell is the canonical one, tile for tile, whatever the grid."""
+    """The fairness the audit rests on: each cell is the canonical one, tile for tile, whatever the grid.
+
+    Eight or more seats require whole large boards taking over half a second
+    locally to generate and compare; those exact seat grids run in the slow tier.
+    """
     width, height = mapgen.dimensions(mapgen.sizes_for(players)[0], players)
     world = mapgen.generate(seed=5, width=width, height=height, players=players)
     assert world.seats == players

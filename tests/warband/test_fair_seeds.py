@@ -56,7 +56,9 @@ def open_new_game(game, title: TitleScene) -> NewGameScene:
     return game.scene
 
 
+@pytest.mark.slow
 def test_new_game_goes_on_to_the_next_fair_seed_on_a_resize_or_a_reroll(tmp_path, monkeypatch) -> None:
+    """A full preview UI with unfair-seed retries and map regeneration on resize/reroll needs the slow tier."""
     monkeypatch.setattr(mapgen, "fresh_seed", lambda: UNFAIR)
     unfair(races=[Race.HUMAN, None])
     game = mock_game(tmp_path)

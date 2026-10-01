@@ -595,7 +595,9 @@ def test_greywater_retaken_is_won_when_the_lodges_burn_and_lost_with_the_hall() 
     assert again.lost == "Your town hall must stand" and not again.won
 
 
+@pytest.mark.slow
 def test_the_court_falls_once_the_orcs_are_driven_off_and_the_epilogue_reads_the_three_choices(game) -> None:
+    """A complete Large mission, victory/debrief dialogs and persisted epilogue choices need the slow tier."""
     before = [m.id for m in CAMPAIGN.missions[:5]]
     ProgressStore(game.data_dir).save(Progress(CAMPAIGN.id, Difficulty.MEDIUM, completed=before, flags={"truce": False, "powder": True}))
     scene = start(game, "court_of_thorns", flags={"truce": False, "powder": True})

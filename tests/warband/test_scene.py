@@ -595,8 +595,9 @@ def test_the_codex_lists_every_unit_building_and_upgrade(play) -> None:
     assert game.scene is scene
 
 
+@pytest.mark.slow
 def test_the_title_offers_every_difficulty_and_saves_keep_it(game) -> None:
-    """Each setting is reachable by its key, and the one chosen survives a save."""
+    """Every difficulty key followed by a complete match start/save/title/continue journey needs the slow tier."""
     from warband.brains.ai import DIFFICULTY_ELO, PROFILES
     from warband.brains.pro_ai import ProBrain
     from warband.sim.rules import Difficulty

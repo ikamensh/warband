@@ -1,6 +1,7 @@
 """The new-game screen shows a map preview with the opponents' races."""
 
 import time
+from itertools import count
 
 import pytest
 
@@ -10,6 +11,13 @@ from warband.sim.races import RACES
 from warband.sim.rules import Layout
 from warband.ui.style import build_theme
 from warband.ui.title import PREVIEW_BOX, PREVIEW_KEY, NewGameScene, TitleScene, preview_image
+
+
+@pytest.fixture(autouse=True)
+def fresh_preview_seeds(monkeypatch):
+    """UI assertions use reproducible maps; reroll still requests a distinct fresh seed."""
+    seeds = count(3)
+    monkeypatch.setattr(mapgen, "fresh_seed", lambda: next(seeds))
 
 
 def open_new_game(tmp_path, resolution=(1280, 800)):
@@ -30,7 +38,9 @@ def texts(game):
     return [t["text"] for t in game.backend.texts]
 
 
+@pytest.mark.slow
 def test_preview_is_drawn_with_opponents(tmp_path) -> None:
+    """A complete title/preview render loads the UI and generates a map; over half a second locally."""
     game = open_new_game(tmp_path)
     try:
         scene = game.scene
@@ -58,8 +68,14 @@ def test_reroll_changes_seed_and_image(tmp_path) -> None:
         game.close()
 
 
-@pytest.mark.parametrize("key, size, pixels", [("s", "Small", (288, 240)), ("m", "Medium", (320, 240)), ("l", "Large", (240, 192))])
+@pytest.mark.parametrize("key, size, pixels", [("s", "Small", (288, 240)), ("m", "Medium", (320, 240)),
+                                             pytest.param("l", "Large", (240, 192), marks=pytest.mark.slow)])
 def test_the_preview_fits_its_box_at_whole_pixels_per_tile(tmp_path, key: str, size: str, pixels: tuple[int, int]) -> None:
+    """The size selector displays the whole generated map at integral tile pixels.
+
+    Opening New game and regenerating a Large preview can take over half a
+    second locally, so the Large case of this size matrix runs in the slow tier.
+    """
     game = open_new_game(tmp_path)
     try:
         press(game, key)
@@ -80,6 +96,14 @@ def test_the_map_row_picks_a_layout_and_the_caption_says_what_any_drew(tmp_path)
         press(game, "f")
         assert scene.layout is Layout.FOREST and scene.preview_world.layout is Layout.FOREST
         assert mapgen.PROMISES[Layout.FOREST] in texts(game)
+    finally:
+        game.close()
+
+
+def test_the_map_row_can_return_from_klondike_to_any(tmp_path) -> None:
+    game = open_new_game(tmp_path)
+    try:
+        scene = game.scene
         press(game, "k")
         assert scene.preview_world.layout is Layout.KLONDIKE
         press(game, "y")

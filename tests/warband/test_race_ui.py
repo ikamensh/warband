@@ -36,7 +36,9 @@ def click_tile(game: Game, scene: GameScene, point) -> None:
     game.tick(1 / 60)
 
 
+@pytest.mark.slow
 def test_the_title_offers_every_race_with_a_hotkey_and_the_match_uses_it(game) -> None:
+    """A full title/match/save/continue journey loads a map twice and renders its race HUD/cards; over a second locally."""
     game.push(TitleScene())
     game.tick(1 / 60)
     press(game, "n")
