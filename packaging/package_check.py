@@ -256,7 +256,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
             click(UnitType.FOOTMAN)  # the line unit under whatever name this seat's race gives it: after the barracks, it waits for it
             wait(lambda: any(plan.kind == "unit" for plan in live.world.player_plans(live.human)))
             camera_before = (*live.camera.offset, live.camera.zoom)
-            click(f"Plans ({live._plan_count()})")
+            click("Plans")
             assert isinstance(game.scene, SettlementPlansScene)
             capture("-settlement-plans")
             assert (*live.camera.offset, live.camera.zoom) == camera_before

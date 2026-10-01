@@ -93,7 +93,7 @@ def _rouse(world: World, camp: Camp, standing: list[tuple[Unit, Point]], middle:
     candidates = [unit for unit in world.units_near(middle, CAMP_HOLD + CHASE_SLACK)
                   if unit.player != world.neutral and not unit.hidden and unit.hp > 0
                   and (not unit.flying or unit.info.damage)]
-    for guard, _post in standing:
+    for guard, post in standing:  # mypyc captures this loop: _post becomes Windows SAL's __post macro
         if guard.windup > 0.0:
             continue  # an attack once committed has a fixed tell and outcome
         target = near
