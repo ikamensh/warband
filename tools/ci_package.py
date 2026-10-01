@@ -9,6 +9,7 @@ import argparse
 import hashlib
 from importlib import metadata, util
 import json
+import os
 from pathlib import Path
 import platform
 import re
@@ -43,6 +44,19 @@ def write_json(path: Path, value: dict) -> None:
 def sha256(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def run_logged(command: list[str], path: Path) -> subprocess.CompletedProcess:
+    """Show a subprocess's progress as it happens and retain the same output for its receipt."""
+    with path.open("w", encoding="utf-8") as log:
+        with subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                              env={**os.environ, "PYTHONIOENCODING": "utf-8"}) as process:
+            for line in process.stdout:
+                log.write(line)
+                log.flush()
+                print(line, end="", flush=True)
+            return subprocess.CompletedProcess(command, process.wait())
 
 
 def require(condition: bool, message: str) -> None:
@@ -237,9 +251,8 @@ def build(identity: dict, directory: Path, *, iscc: Path | None = None, mesa_dir
     require(not any(directory.iterdir()), "Use an empty output directory; preserve or explicitly remove earlier evidence")
     write_json(directory / "build-inputs.json", inputs)
     command = REGRESSION
-    print("Running the full regression suite; output is in regression.log", flush=True)
-    with (directory / "regression.log").open("w", encoding="utf-8") as log:
-        process = subprocess.run([sys.executable, *command], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
+    print("Running the full regression suite; live output is also retained in regression.log", flush=True)
+    process = run_logged([sys.executable, "-u", *command], directory / "regression.log")
     write_json(directory / "regression.json", {"identity": identity, "command": command,
                                                "exit_code": process.returncode,
                                                "log_sha256": sha256(directory / "regression.log")})

@@ -95,6 +95,33 @@ def validate(directory, target="darwin-arm64"):
                            "--target", target], capture_output=True, text=True)
 
 
+@pytest.mark.parametrize("exit_code", [0, 7])
+def test_regression_output_is_live_and_retained_with_its_exit_code(tmp_path, exit_code):
+    """A native run exposes progress before completion while keeping its full diagnostic log."""
+    release = tmp_path / "release"
+    log = tmp_path / "regression.log"
+    child = ("import pathlib, sys, time; print('test progress', flush=True); "
+             f"release = pathlib.Path({str(release)!r}); "
+             "deadline = time.monotonic() + 5\n"
+             "while not release.exists() and time.monotonic() < deadline: time.sleep(0.01)\n"
+             "print('test diagnostic', file=sys.stderr, flush=True)\n"
+             f"sys.exit({exit_code})")
+    runner = (f"import sys; sys.path.insert(0, {str(CLI.parent)!r}); "
+              "from pathlib import Path; from ci_package import run_logged; "
+              f"result = run_logged([sys.executable, '-c', {child!r}], Path({str(log)!r})); "
+              "sys.exit(result.returncode)")
+    with subprocess.Popen([sys.executable, "-c", runner], stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, text=True) as process:
+        assert process.stdout.readline() == "test progress\n"
+        assert not release.exists()
+        assert log.read_text() == "test progress\n"
+        release.touch()
+        remainder, errors = process.communicate(timeout=10)
+    assert process.returncode == exit_code, errors
+    assert remainder == "test diagnostic\n"
+    assert log.read_text() == "test progress\ntest diagnostic\n"
+
+
 def test_verified_package_is_bound_to_identity_and_archive_bytes(candidate):
     """The consumer accepts complete evidence and returns exact downloadable file digests."""
     result = validate(candidate)
