@@ -54,7 +54,7 @@ def test_the_build_key_moves_with_every_file_the_compile_reads(tmp_path: Path, m
     monkeypatch.setattr(fastsim, "PACKAGE", copy)
     before = fastsim.key()
     read = sorted(path.relative_to(PACKAGE) for path in read_by_the_compile())
-    assert {"sim/settlement.py", "brains/bred.py", "sim/_native.pyi", "sim/_native.c"} <= {str(path) for path in read}
+    assert {"sim/settlement.py", "brains/bred.py", "sim/_native.pyi", "sim/_native.c"} <= {path.as_posix() for path in read}
     for name in read:
         original = (copy / name).read_bytes()
         (copy / name).write_bytes(original + b"\n")
