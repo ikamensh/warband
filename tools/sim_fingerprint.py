@@ -25,17 +25,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from warband.sim import mapgen  # noqa: E402
 from warband.brains.ai import make_brain  # noqa: E402
 from warband.sim.model import Event, World  # noqa: E402
-from warband.sim.rules import SIM_DT, Difficulty, Race, Terrain, UnitType  # noqa: E402
+from warband.sim.rules import SIM_DT, BuildingType, Difficulty, Race, Terrain, UnitType  # noqa: E402
 
 SEEDS = (101, 102, 103, 104)
 MINUTES = 6
-#: Matches where a race's own unit goes to work (WB-068), Medium against Medium, orcs and elves, each before its cut
-#: in minutes, on the original magic-enabled maps (the standard set covers magic off): on seed 89 a sapper goes up,
-#: on seed 2 a treant walks into the wood. The standard set's matches are
-#: decided before a side has the Keep, so without them the compiled simulation was never held to the source on that
-#: code.  Chosen by playing seeds (the AI's timelines are chaotic), and a rules or AI change moves them: ``--check``
-#: and ``--write`` refuse a fingerprint in which one no longer goes to work, so whoever refreshes the record picks again.
-OWN_UNITS_MATCHES = ((89, (Race.ORC, Race.ELF), 6, UnitType.SAPPER), (2, (Race.ORC, Race.ELF), 6, UnitType.TREANT))
+#: Fixed public-order scenarios reach blast and forest traversal without relying on chaotic AI tech timing.
+#: The standard whole matches exercise both brains and the camps; these cover race-specific simulation paths.
+OWN_UNITS = (UnitType.SAPPER, UnitType.TREANT)
+OWN_SECONDS = 60
 SAMPLE_EVERY = 200  # steps, i.e. ten simulated seconds
 
 
@@ -45,12 +42,16 @@ def digest_world(world: World, out: hashlib._Hash) -> None:
         order = type(unit.order).__name__ if unit.order is not None else "-"
         out.update(f"U{unit.id},{unit.player},{unit.type.value},{unit.x!r},{unit.y!r},{unit.hp!r},"
                    f"{unit.carrying},{unit.inside},{len(unit.orders)},{order},"
+                   f"{unit.windup!r},{unit.slam_point!r},"
                    f"{[(c.kind.key, c.until, c.player, c.worn) for c in unit.conditions]};".encode())
     for b in sorted(world.buildings.values(), key=lambda b: b.id):
         out.update(f"B{b.id},{b.player},{b.type.value},{b.x},{b.y},{b.hp!r},{b.progress!r},"
                    f"{len(b.queue)},{b.research};".encode())
     for p in world.players:
         out.update(f"P{p.id},{p.gold},{p.lumber},{p.aether},{p.alive},{sorted(u.value for u in p.upgrades)};".encode())
+    for camp in sorted(world.camps, key=lambda c: c.lair):
+        credit = [(entity, sorted(shares.items())) for entity, shares in sorted(camp.credit.items())]
+        out.update(f"C{camp.lair},{camp.roused},{camp.cleared},{camp.quiet_since!r},{camp.struck!r},{credit!r};".encode())
 
 
 def at_work(world: World, events: list[Event], own: UnitType) -> bool:
@@ -60,8 +61,25 @@ def at_work(world: World, events: list[Event], own: UnitType) -> bool:
     return any(unit.type is own and world.terrain_at((int(unit.x), int(unit.y))) is Terrain.TREES for unit in world.units.values())
 
 
-def fingerprint(seeds=SEEDS, minutes: int = MINUTES, worked: dict[int, float] | None = None) -> str:
-    """The hash; with *worked*, also when each own-unit match's unit first went to work, by seed."""
+def own_unit_world(own: UnitType) -> World:
+    """A race-specific unit attacks a farm across a real tree belt: sappers walk round, treants cross it."""
+    terrain = [[Terrain.GRASS] * 36 for _ in range(24)]
+    for y in range(1, 23):
+        for x in range(14, 18):
+            terrain[y][x] = Terrain.TREES
+    race = Race.ORC if own is UnitType.SAPPER else Race.ELF
+    world = World(36, 24, terrain, 2, human=None, races=[race, Race.HUMAN], rng=random.Random(17))
+    world.place_building(0, BuildingType.TOWN_HALL, (2, 2))
+    world.place_building(1, BuildingType.TOWN_HALL, (30, 18))
+    target = world.place_building(1, BuildingType.FARM, (22, 9))
+    striker = world.spawn_unit(0, own, (12.5, 10.5))
+    world.reveal_all(0)
+    world.attack([striker.id], target.id)
+    return world
+
+
+def fingerprint(seeds=SEEDS, minutes: int = MINUTES, worked: dict[UnitType, float] | None = None) -> str:
+    """The hash; with *worked*, also when each own-unit match's unit first went to work, by unit type."""
     out = hashlib.sha256()
     for seed in seeds:
         rng = random.Random(seed)
@@ -78,22 +96,15 @@ def fingerprint(seeds=SEEDS, minutes: int = MINUTES, worked: dict[int, float] | 
             if step % SAMPLE_EVERY == 0:
                 digest_world(world, out)
         digest_world(world, out)
-    for seed, races, own_minutes, own in OWN_UNITS_MATCHES:
-        rng = random.Random(seed)
-        world = mapgen.generate(seed=seed, players=2, human=None, races=races, magic=True)
-        brains = [make_brain(0, Difficulty.MEDIUM, seed), make_brain(1, Difficulty.MEDIUM, seed)]
-        out.update(f"own={seed};".encode())
-        for step in range(int(own_minutes * 60 / SIM_DT)):
-            if world.winner is not None:
-                break
-            for b in brains:
-                b.think(world, rng)
+    for own in OWN_UNITS:
+        world = own_unit_world(own)
+        out.update(f"own={own.value};".encode())
+        for step in range(int(OWN_SECONDS / SIM_DT)):
             world.step()
             events = world.take_events()
-            if worked is not None and seed not in worked and at_work(world, events, own):
-                worked[seed] = world.time
-            if step % SAMPLE_EVERY == 0:
-                digest_world(world, out)
+            if worked is not None and own not in worked and at_work(world, events, own):
+                worked[own] = world.time
+            digest_world(world, out)  # every tick of the distinct behavior, not a chance ten-second sample
         digest_world(world, out)
     return out.hexdigest()
 
@@ -103,15 +114,14 @@ def main() -> None:
     parser.add_argument("--check", type=Path, help="a file holding a recorded fingerprint")
     parser.add_argument("--write", type=Path, help="record the fingerprint into this file")
     args = parser.parse_args()
-    worked: dict[int, float] = {}
+    worked: dict[UnitType, float] = {}
     got = fingerprint(worked=worked)
     print(got)
-    for seed, _races, own_minutes, own in OWN_UNITS_MATCHES:
-        print(f"own={seed}: {own.value} at work from {worked[seed]:.1f} s" if seed in worked else
-              f"own={seed}: no {own.value} at work within {own_minutes} min")
-    if (args.check or args.write) and len(worked) < len(OWN_UNITS_MATCHES):
-        print("an own-unit match no longer holds its unit's code: pick another seed or cut (OWN_UNITS_MATCHES)", file=sys.stderr)
-        raise SystemExit(1)
+    for own in OWN_UNITS:
+        print(f"{own.value}: at work from {worked[own]:.1f} s" if own in worked else
+              f"{own.value}: not exercised within {OWN_SECONDS} s")
+    if (args.check or args.write) and len(worked) < len(OWN_UNITS):
+        raise RuntimeError("an own-unit scenario no longer exercises its distinct behavior")
     if args.write:
         args.write.write_text(got + "\n")
     if args.check:

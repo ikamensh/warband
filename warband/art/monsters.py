@@ -85,6 +85,7 @@ class Monster(IdentityEnum):
     TROLL = "troll"
     SPIDER = "spider"
     GOLEM = "golem"
+    ANCIENT_GUARDIAN = "ancient_guardian"
 
 
 #: A cold, mossy blue-green hide with a pale belly and near-black limbs.  Nothing here may be
@@ -591,6 +592,27 @@ def _golem(frame: str) -> Mesh:
     return mesh + body
 
 
+# The ancient wears a broken obsidian crown and a luminous core, rather than the ordinary
+# golem's bare granite skull. The same limbs carry the slam, but the silhouette announces a boss.
+def _ancient_guardian(frame: str) -> Mesh:
+    ink = (42, 37, 49)
+    fissure = (224, 178, 239)
+    stone = _golem(frame)
+    replacements = {GOLEM_STONE: (77, 65, 88), GOLEM_DARK: ink, GOLEM_SEAM: fissure,
+                    darker(GOLEM_STONE, 0.86): (66, 55, 77)}
+    mesh = [r3.Face(face.points, replacements.get(face.color, face.color)) for face in stone]
+    crown: Mesh = []
+    for side in (-1, 1):
+        crown += r3.cone((side * 0.13, 0, 1.77), 0.09, 0.43, ink, sides=4)
+        crown += r3.cone((side * 0.30, -0.035, 1.48), 0.105, 0.38, ink, sides=4)
+        crown += r3.box((side * 0.30, 0.17, 1.39), (0.055, 0.035, 0.18), fissure)
+    crown += r3.box((0, 0.165, 1.11), (0.16, 0.045, 0.24), fissure)
+    crown += r3.pyramid((0, 0.165, 1.25), (0.16, 0.08), 0.11, fissure)
+    bend = _GOLEM_SLAM[frame][0] if frame in _GOLEM_SLAM else 0
+    rock = _GOLEM_LUMBER.get(frame, _GOLEM_LUMBER["stand"])[0]
+    return r3.scale(mesh + _shift(_unit_pitch(crown, -bend, (0, 0, GOLEM_HIP)), (rock, 0, 0)), 0.93)
+
+
 # -- The spitter -----------------------------------------------------------------------
 
 #: Legs in left/right pairs from the front, so 1-4-5-8 and 2-3-6-7 are the alternating tetrapods
@@ -676,7 +698,7 @@ class Creature:
 #: that gives its monsters a ``UnitType`` reads this instead of :func:`effects.death_outcome`,
 #: which knows only the game's own mounted units.
 DEATH_OUTCOME: dict[Monster, str] = {
-    Monster.WOLF: "collapse", Monster.SPIDER: "collapse", Monster.TROLL: "topple", Monster.GOLEM: "wreck",
+    Monster.WOLF: "collapse", Monster.SPIDER: "collapse", Monster.TROLL: "topple", Monster.GOLEM: "wreck", Monster.ANCIENT_GUARDIAN: "wreck",
 }
 
 CREATURES: dict[Monster, Creature] = {
@@ -684,6 +706,7 @@ CREATURES: dict[Monster, Creature] = {
     Monster.TROLL: Creature(_troll, TROLL_HIP),
     Monster.SPIDER: Creature(_spider, None, bob=0.0),
     Monster.GOLEM: Creature(_golem, GOLEM_HIP, carry=GOLEM_CARRY),
+    Monster.ANCIENT_GUARDIAN: Creature(_ancient_guardian, GOLEM_HIP, carry=GOLEM_CARRY),
 }
 
 
@@ -706,6 +729,8 @@ SNOW = (232, 238, 246)
 SAND = (214, 184, 136)
 
 COATS: dict[tuple[Monster, MapTheme], Coat] = {
+    (Monster.ANCIENT_GUARDIAN, MapTheme.WINTER): ((0.94, 0.98, 1.12), SNOW, 0.25),
+    (Monster.ANCIENT_GUARDIAN, MapTheme.WASTELAND): ((1.13, 1.00, 0.88), SAND, 0.22),
     (Monster.WOLF, MapTheme.WINTER): ((0.92, 0.97, 1.10), (236, 241, 249), 0.50),  # a snow wolf: pale grey-white
     (Monster.WOLF, MapTheme.WASTELAND): ((1.10, 1.01, 0.85), (218, 188, 140), 0.48),  # a dune wolf: sandy blonde
     (Monster.SPIDER, MapTheme.WINTER): ((0.92, 0.97, 1.09), (214, 226, 238), 0.38),  # frost-pale chitin
@@ -936,6 +961,8 @@ def lair_kind_for_roster(kinds: list[UnitType | str]) -> LairKind:
     because a roster holds only what :class:`~warband.sim.rules.UnitType` names.
     """
     known = [UnitType(kind) for kind in kinds]
+    if UnitType.ANCIENT_GUARDIAN in known:
+        return LairKind.GOLEM
     for unit_type in LAIR_PRECEDENCE:
         if unit_type in known:
             return LairKind(unit_type.value)

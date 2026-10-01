@@ -71,6 +71,7 @@ WEAPONS = {
     UnitType.WOLF: "axe", UnitType.TROLL: "axe", UnitType.GOLEM: "hammer", UnitType.SPIDER: "arrow",
     UnitType.GRYPHON: "hammer", UnitType.SAPPER: "stone", UnitType.TREANT: "hammer", UnitType.RUNE_GOLEM: "hammer",
     UnitType.AETHER_ELEMENTAL: "hammer",
+    UnitType.ANCIENT_GUARDIAN: "hammer",
 }
 
 

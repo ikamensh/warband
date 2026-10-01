@@ -14,7 +14,7 @@ from typing import Final
 
 CONSTANTS: Final = Path(__file__).resolve().parents[1] / "assets" / "constants"
 FILES: Final = ("units.toml", "neutrals.toml", "buildings.toml", "upgrades.toml", "races.toml",
-               "economy.toml", "combat.toml", "behavior.toml", "buffs.toml", "spells.toml")
+               "economy.toml", "combat.toml", "behavior.toml", "buffs.toml", "spells.toml", "encounters.toml")
 UNITS_TOML = Path("units.toml")
 BUILDINGS_TOML = Path("buildings.toml")
 UPGRADES_TOML = Path("upgrades.toml")
@@ -28,7 +28,8 @@ SPELLS_TOML = Path("spells.toml")
 
 PLAYABLE = ("peasant", "footman", "archer", "knight", "catapult", "flying_machine", "cleric",
             "gryphon", "sapper", "treant", "rune_golem")  # the last four: each race's own unit (units.toml's ``race``)
-WILDS = ("wolf", "spider", "troll", "golem")
+WILDS = ("wolf", "spider", "troll", "golem", "ancient_guardian")
+ENCOUNTERS = ("wolf_den", "spider_nest", "troll_mound", "stone_cairn", "ancient_sanctum")
 BUILDINGS = ("town_hall", "farm", "barracks", "tower", "lumber_mill", "blacksmith", "stables", "workshop", "church", "vault",
              "mage_tower", "gold_mine", "gold_seam", "mother_lode", "lair")
 DEPOSITS = ("gold_mine", "gold_seam", "mother_lode")
@@ -215,7 +216,7 @@ BEHAVIOR_SCHEMA = {
                   "slack": ("FORMATION_SLACK", float), "hold": ("FORMATION_HOLD", float),
                   "lookahead": ("FORMATION_LOOKAHEAD", float)},
     "camps": {"watch": ("CAMP_WATCH", float), "hold": ("CAMP_HOLD", float), "calm": ("CAMP_CALM", float),
-              "regen": ("CAMP_REGEN", float), "respawn": ("CAMP_RESPAWN", float), "post": ("CAMP_POST", float),
+              "regen": ("CAMP_REGEN", float), "post": ("CAMP_POST", float),
               "regen_calm": ("REGEN_CALM", float)},
     "movement": {"max_push": ("MAX_PUSH", float), "core": ("CORE", float), "spacing": ("SPACING", float),
                  "spacing_weight": ("SPACING_WEIGHT", float), "ease_space": ("EASE_SPACE", float),
@@ -229,6 +230,7 @@ BEHAVIOR_SCHEMA = {
 class Tables:
     units: dict[str, dict] = field(default_factory=dict)  # playable roles, in card order
     wilds: dict[str, dict] = field(default_factory=dict)  # neutral creatures
+    encounters: dict[str, dict] = field(default_factory=dict)  # camp roster, rewards and player-facing contract
     buildings: dict[str, dict] = field(default_factory=dict)
     upgrades: dict[str, dict] = field(default_factory=dict)
     races: dict[str, dict] = field(default_factory=dict)
@@ -256,7 +258,7 @@ UNIT_SCHEMA = {
     "hp": (_int,), "damage": (_int,), "armor": (_int,), "range": (_reach,),
     "cooldown": (_float,), "speed": (_float,), "sight": (_int,), "build_time": (_float,),
     "trained_at": (_enum, BUILDINGS), "hotkey": (_str,), "summary": (_str,), "radius": (_float,),
-    "heal": (_int, 0), "splash": (_float, 0.0), "attack": (_enum, ATTACKS, "normal"),
+    "heal": (_int, 0), "splash": (_float, 0.0), "air_range": (_float, 0.0), "attack": (_enum, ATTACKS, "normal"),
     "armor_class": (_enum, ARMOR_CLASSES, "light"), "formation": (_bool, False), "mounted": (_bool, False),
     "windup": (_float,), "turn_deg": (_int, 360), "min_range": (_float, 0.0), "regen": (_float, 0.0),
     "living": (_bool, True), "flying": (_bool, False), "inflicts": (_str, ""), "sound": (_str, ""),
@@ -264,6 +266,10 @@ UNIT_SCHEMA = {
     # A race's own unit (WB-068): the one race that fields it, the upgrades it waits for, how many a side may keep.
     "race": (_race_name,), "requires": (_names, UPGRADES), "limit": (_int, 0),
     "blast": (_float, 0.0), "blast_units": (_int, 0), "forest": (_bool, False), "regen_in_trees": (_bool, False),
+}
+ENCOUNTER_SCHEMA = {
+    "name": (_str,), "tier": (_enum, ("Raid", "Stronghold", "Ancient")), "roster": (_names, WILDS),
+    "gold": (_int,), "lumber": (_int,), "lair_hp": (_int,), "hint": (_str,),
 }
 UNIT_TWEAK_SCHEMA = {
     "name": (_str,), "summary": (_str,), "hp_mult": (_float, 1.0), "damage_mult": (_float, 1.0),
@@ -575,6 +581,10 @@ def _load(sources: dict[str, str]) -> Tables:
     tables = Tables()
     tables.units = _rows(units_doc, PLAYABLE, UNIT_SCHEMA, UNITS_TOML.name)
     tables.wilds = _rows(neutrals_doc, WILDS, UNIT_SCHEMA, NEUTRALS_TOML.name)
+    tables.encounters = _rows(_read(Path("encounters.toml"), sources), ENCOUNTERS, ENCOUNTER_SCHEMA, "encounters.toml")
+    for name, encounter in tables.encounters.items():
+        if not encounter["roster"] or encounter["lair_hp"] <= 0 or encounter["gold"] <= 0 or encounter["lumber"] < 0:
+            raise BalanceError(f"encounters.toml [{name}]: needs guards, positive lair_hp/gold and nonnegative lumber")
     tables.buildings = {b: _building(buildings_doc[b], _at(BUILDINGS_TOML, b), b) for b in BUILDINGS}
     tables.upgrades = {u: _upgrade(upgrades_doc[u], _at(UPGRADES_TOML, u)) for u in LADDER}
     for unit, info in tables.units.items():

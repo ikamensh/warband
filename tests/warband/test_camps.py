@@ -14,7 +14,7 @@ import pytest
 from warband.brains.ai import guarded, known_camps, known_enemy_buildings
 from warband.sim import camps, mapgen
 from warband.sim.model import Attack, Move, World, dist, tile_center
-from warband.sim.rules import (CAMP_CALM, CAMP_HOLD, CAMP_RESPAWN, CAMP_WATCH, REGEN_CALM, SIM_DT, BuildingType, Terrain,
+from warband.sim.rules import (CAMP_CALM, CAMP_HOLD, CAMP_WATCH, REGEN_CALM, SIM_DT, BuildingType, Terrain,
                                UnitType)
 
 
@@ -119,16 +119,16 @@ def test_a_guard_kited_past_the_camps_hold_walks_back_to_its_post() -> None:
     assert dist(guard.pos, post) <= camps.HOME
 
 
-def test_a_settled_camp_mends_its_wounded_and_calls_its_dead_back_out_of_the_lair() -> None:
+def test_a_settled_camp_mends_survivors_without_replacing_fallen_guards() -> None:
     world = flat_world()
     camp = a_camp(world, roster=(UnitType.WOLF, UnitType.WOLF))
     hurt = world.units[camp.guards[0]]
     hurt.hp = 5
     fallen = camp.guards[1]
     world.units[fallen].hp = 0
-    run(world, CAMP_CALM + CAMP_RESPAWN + 4.0)
+    run(world, CAMP_CALM + 30.0)
     assert hurt.hp == hurt.max_hp
-    assert camp.guards[1] != fallen and camp.guards[1] in world.units
+    assert camp.guards[1] == fallen and fallen not in world.units
 
 
 def test_a_camp_in_a_fight_neither_mends_nor_refills() -> None:
@@ -140,11 +140,11 @@ def test_a_camp_in_a_fight_neither_mends_nor_refills() -> None:
     hurt.hp, hurt.max_hp = 5, hurt.max_hp
     fallen = camp.guards[1]
     world.units[fallen].hp = 0
-    run(world, CAMP_CALM + CAMP_RESPAWN + 2.0)
+    run(world, CAMP_CALM + 30.0)
     assert camp.guards[1] == fallen, "a camp with an enemy in it must not send anything back out"
 
 
-def test_tearing_the_lair_down_ends_the_camp_for_good_and_pays_out_the_hoard() -> None:
+def test_lair_sniping_waits_for_the_guards_before_paying_out_the_hoard() -> None:
     world = flat_world()
     camp = a_camp(world, roster=(UnitType.WOLF,), hoard=700)
     before = world.players[0].gold
@@ -154,21 +154,27 @@ def test_tearing_the_lair_down_ends_the_camp_for_good_and_pays_out_the_hoard() -
                source_type=UnitType.KNIGHT.value)
     run(world, 0.1)
     assert camp.lair not in world.buildings
-    assert world.players[0].gold == before + 700
+    assert world.players[0].gold == before
     world.units[camp.guards[0]].hp = 0
-    run(world, CAMP_CALM + CAMP_RESPAWN + 4.0)
-    assert camp.guards[0] not in world.units, "a camp whose den is gone must never come back"
+    run(world, CAMP_CALM + 30.0)
+    assert camp.guards[0] not in world.units, "defeated guards never come back"
+    assert world.players[0].gold == before + 700
 
 
 def test_the_hoard_is_paid_once() -> None:
+    """A completed encounter pays once even while the world keeps advancing."""
     world = flat_world()
     camp = a_camp(world, roster=(UnitType.WOLF,), hoard=700)
     lair = world.buildings[camp.lair]
     lair.hp = 1
+    world.units[camp.guards[0]].hp = 0  # staged guard defeat; this test isolates completion accounting
     striker = world.spawn_unit(0, UnitType.KNIGHT, (4.0, 4.0)).id
+    # A staged lethal hit avoids coupling payout accounting to combat timing.
     world._hit(lair, 40, player=0, source=striker, source_type=UnitType.KNIGHT.value)
+    run(world, 0.5)
     before = world.players[0].gold
-    world._hit(lair, 40, player=0, source=striker, source_type=UnitType.KNIGHT.value)
+    assert world.players[0].stats["bounty_gold"] == 700
+    run(world, 10)
     assert world.players[0].gold == before
 
 
@@ -216,7 +222,7 @@ def test_a_golems_slam_catches_the_crowd_around_its_mark_but_never_its_own() -> 
 
 def test_every_seat_gets_the_same_camps_on_a_generated_map() -> None:
     world = mapgen.generate(9, 64, 48, 2)
-    assert world.camps, "a Medium plains map guards its contested deposits"
+    assert world.camps, "a Medium map offers optional expeditions"
     counts: dict[tuple[str, ...], int] = {}
     for camp in world.camps:
         roster = tuple(sorted(camp.kinds))
@@ -224,7 +230,8 @@ def test_every_seat_gets_the_same_camps_on_a_generated_map() -> None:
     assert counts and all(n == world.seats for n in counts.values()), counts
     for camp in world.camps:
         lair = world.buildings[camp.lair]
-        assert min(dist(lair.center, mine.center) for mine in world.mines()) <= 12.0
+        assert min(dist(lair.center, hall.center) for hall in world.buildings.values()
+                   if hall.type is BuildingType.TOWN_HALL) >= 14.0
 
 
 def test_a_camp_never_stands_where_it_would_wall_a_deposit_off() -> None:

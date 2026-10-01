@@ -20,7 +20,7 @@ EVENT_TICKS = 100
 NO_DICE = random.Random(0).getstate()
 #: News for its owner alone: what it trains and researches, what it is refused or left to plans, its deposits, what it
 #: salvages, its alarms, its plunder and the aether a lost vault spilled.
-PRIVATE_EVENTS = frozenset({'trained', 'researched', 'refused', 'deferred', 'deposit', 'salvage', 'under_attack', 'plunder', 'spilled'})
+PRIVATE_EVENTS = frozenset({'trained', 'researched', 'refused', 'deferred', 'deposit', 'salvage', 'under_attack', 'plunder', 'spilled', 'hoard'})
 #: The match's public news, told to every seat wherever it happened.
 PUBLIC_EVENTS = frozenset({'victory', 'eliminated', 'surrendered', 'resigned', 'exposed'})
 #: A spell cast and landing (WB-066): news for its caster and for every seat that sees the ground it touches, which
@@ -153,6 +153,24 @@ class WarbandMatch:
             elif building.id in knowledge.mines:
                 buildings.append({**d, 'gold': knowledge.mines[building.id].gold})
         data['buildings'] = buildings
+        # Encounter identities/rewards are public once the lair is observed. Its current guards,
+        # home posts, recovery timer and damage ledger are server state, not scouting information.
+        seen_units = {unit['id']: unit for unit in data['units']}
+        seen_buildings = {building['id'] for building in buildings}
+        known_camps = []
+        for camp in data['camps']:
+            if camp['lair'] not in seen_buildings and camp['lair'] not in knowledge.encounters:
+                continue
+            guards = [uid for uid in camp['guards'] if uid in seen_units]
+            remembered_origin = knowledge.encounters.get(camp['lair'])
+            origin = remembered_origin if remembered_origin is not None else world.buildings[camp['lair']].center
+            known_camps.append({**camp, 'guards': guards,
+                                'origin': list(origin),
+                                'posts': [[seen_units[uid]['x'], seen_units[uid]['y']] for uid in guards],
+                                'roused': any(seen_units[uid]['state'] == 'attack' for uid in guards),
+                                'quiet_since': -1.0, 'struck': -1000.0, 'credit': {},
+                                'cleared': camp['lair'] in knowledge.cleared_encounters})
+        data['camps'] = known_camps
         data['projectiles'] = [d for shot, d in zip(world.projectiles.values(), data['projectiles'])
                                if shot.player == player or world.is_visible(player, _tile(world.shot_ground(shot, world.time)))]
         data['next_id'] = 1 + max((d['id'] for key in ('units', 'buildings', 'projectiles') for d in data[key]), default=0)

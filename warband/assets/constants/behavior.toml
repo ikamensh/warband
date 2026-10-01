@@ -24,11 +24,10 @@ lookahead = 3.0 # tiles ahead of a marching line's middle each member aims for i
 # for nothing.
 
 [camps]
-watch = 7.0 # tiles from the lair within which an intruder rouses the camp…
+watch = 5.0 # observable before a peasant with four-tile sight crosses the lair's watch…
 hold = 11.0 # …and beyond which the camp counts it gone and settles back
-calm = 8.0 # seconds with nobody in hold before a camp starts putting itself back together
+calm = 8.0 # seconds with nobody in hold before surviving guards start mending
 regen = 10.0 # hit points a settled guard standing at its post knits back per second
-respawn = 25.0 # seconds a settled camp takes to bring one fallen guard back out of the lair
 post = 2.6 # tiles from the lair's middle a guard is posted
 regen_calm = 6.0 # seconds since the last blow landed on a creature before its regeneration starts
 

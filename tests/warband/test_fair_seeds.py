@@ -15,7 +15,7 @@ from warband.ui.scene import GameOverScene, GameScene, fair_map, new_game
 from warband.ui.style import build_theme
 from warband.ui.title import NewGameScene, TitleScene
 
-UNFAIR = 28  # Small, two seats: every try at the forest this seed draws leaves its roads too straight
+UNFAIR = 67  # Small, two seats: every try at the forest this seed draws leaves its roads too straight
 
 
 def unfair(**settings) -> int:

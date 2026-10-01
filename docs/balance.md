@@ -46,7 +46,8 @@ files in `warband/assets/constants/`:
 
 - `units.toml` — every soldier and worker: cost, hit
   points, damage, armour, range, timings, sight, body.
-- `neutrals.toml` — the four wild creatures, tuned the same way.
+- `neutrals.toml` — the five wild creatures, tuned the same way.
+- `encounters.toml` — named camp rosters, tiers, bounties, lair health and tactical hints.
 - `buildings.toml` — every building: cost, hit points, work, the
   tower's shot, and the two deposits (gold per trip, places at the face).
 - `upgrades.toml` — every research: price, time, and what it does.
@@ -98,7 +99,7 @@ above omits the other roles for brevity. There is no inheritance between
 entries or files. An explicit value always wins, including `0`, `1.0` and
 `false`. Omitted racial modifiers mean multiply by one, add zero, and retain
 the base formation setting. Base units may omit costs, heal, splash,
-min_range and regen (zero), attack (`"normal"`), armor_class (`"light"`),
+air_range, min_range and regen (zero), attack (`"normal"`), armor_class (`"light"`),
 formation/mounted/flying (`false`), turn_deg (`360`), living (`true`: a machine,
 the catapult, the flying machine and the golem, says `false` and takes no living
 condition nor a healer's cast), inflicts (none: the archer's `"bleeding"` names

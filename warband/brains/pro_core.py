@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from warband.brains.pro_profiles import PRO, ProProfile
-from warband.brains.ai import Hunt, fighters, known_enemy_buildings, known_mines
+from warband.brains.ai import Hunt, camp_safe_point, fighters, known_enemy_buildings, known_mines
 from warband.brains.magic import Magus
 from warband.brains.unique import Commander
 from warband.sim import mapgen
@@ -42,9 +42,11 @@ class _ProBrainCore:
         self._seen_at: dict[int, float] = {}               # …and when that opponent was last looked at
         self.creeping: int | None = None   # the lair the army is clearing
         self.creep_strength = 0.0          # what the army was worth when it set out to clear it
+        self.creep_party: set[int] = set()  # the committed expedition; fresh recruits do not hide its losses
         self.creep_until = 0.0             # …and when it gives that camp up whatever it has left
         self.camp_seen: dict[int, float] = {}   # per lair: the most its guards were ever seen to be worth
         self.camp_retry: dict[int, float] = {}  # …and when a camp that beat the army off is worth trying again
+        self.camp_failed: dict[int, float] = {}  # the force whose assault failed: a retry must improve on it
         self.commander = Commander()  # the race's own unit: when to buy it and what it is for (WB-068)
         self.unique_first: tuple[Upgrade, ...] = ()  # …and what it waits for that is researched ahead of all else
         self.magus = Magus(profile)  # its vaults, its spells and its casts (WB-067)
@@ -168,8 +170,7 @@ class _ProBrainCore:
         away = dist((hx, hy), towards) or 1.0
         return self._standable(world, (hx + (towards[0] - hx) / away * 6, hy + (towards[1] - hy) / away * 6))
 
-    @staticmethod
-    def _standable(world: World, point: Point) -> Point:
+    def _standable(self, world: World, point: Point, *, expedition: bool = False) -> Point:
         """The nearest ground a unit can be told to walk to.
 
         Six tiles towards the enemy is a fine place for an army to wait until a
@@ -177,6 +178,8 @@ class _ProBrainCore:
         can never finish: it paths as close as it can and stops, for good. Fuzz
         catches that as a stalled unit.
         """
+        if not expedition:
+            point = camp_safe_point(world, self.player, point)
         x, y = int(point[0]), int(point[1])
         if world.in_bounds((x, y)) and world.passable(x, y):
             return point

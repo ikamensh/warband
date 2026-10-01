@@ -313,6 +313,7 @@ def test_a_shot_does_more_than_a_scratch_against_the_heaviest_armour() -> None:
     The balance league measured archers taking nothing at all against a
     knights army; this pins the margin that fixed it.
     """
-    heaviest = max(info.armor for info in UNITS.values())
+    # This promises a counter to trained plate, not to an optional late-game boss.
+    heaviest = max(UNITS[kind].armor for kind in PLAYABLE_UNITS)
     for shooter in (UnitType.ARCHER, UnitType.CATAPULT):
         assert UNITS[shooter].damage - heaviest >= 2, f"{shooter.value} barely scratches the heaviest armour"

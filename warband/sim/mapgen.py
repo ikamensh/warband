@@ -35,7 +35,7 @@ from warband.sim import camps as camping
 from warband.sim import path as pathing
 from warband.sim.model import MINE_CLEARANCE, RIFT, Pos, World, int_sum, plain_sum, rects_gap, tile_center
 from warband.sim.rules import (BUILDINGS, EXPANSION_GOLD, LODE_GOLD, MAX_PLAYERS, MINE_GOLD, BuildingType, Layout, MapTheme, Race,
-                               Terrain, UnitType)
+                               CAMP_WATCH, Terrain, UnitType)
 
 SIZES: Final[dict[str, tuple[int, int]]] = {
     # Nominal tiles; :func:`dimensions` rounds a size up to whole cells of the seat count's grid.
@@ -94,25 +94,14 @@ _SITE_ROOM: Final = 60  # open tiles within six of a natural or third, so a hall
 _MIN_CELL: Final = (24, 20)  # the smallest share of a map that has ever made a fair base: Small with four seats
 _MAX_CELL: Final = 5000  # the largest share a seat can hold: beyond it the walk to the next base is the whole match
 _GLADE_ROOM: Final = 1300  # tiles of a Forest cell per extra clearing cut in it, beyond the two the layout always cuts
-#: A creature camp squats beside a *contested* deposit -- a third mine or the prize -- and never beside a
-#: seat's own mine or its natural.  That is the whole placement rule, and it is what the camps are for: the
-#: opening is untouched, the expansion every build order needs is free, and the ground a player has to leave
-#: home for is held by something.  A seat that wants the middle now has to take it from somebody at minute
-#: four, which is a job for an army that is otherwise pure cost until the timing push (docs/balance.md).
-# Tiles between the deposit's middle and its lair's: near enough to guard it, not on top of it.  Two numbers
-# rather than a pair, because a Final tuple is a value the compiled simulation does not always set
-# (mypyc inlines a Final scalar and leaves a Final tuple's slot empty; docs/fast-simulation.md).
-_CAMP_NEAREST: Final = 4.5
-_CAMP_FURTHEST: Final = 9.0
-_CAMP_SPACING: Final = 5  # Chebyshev tiles between a lair's corner and any other footprint's: two tiles of daylight
-_CAMP_ROOM: Final = 40  # open tiles within six of a lair, so an army has somewhere to fight
-#: What each kind of camp is made of and what its den is sitting on.  A third mine draws one of the two
-#: small camps; the prize, a seam or a lode, worth the most and standing furthest out, is always the big one.
-_ROSTERS: Final[dict[str, tuple[tuple[UnitType, ...], int]]] = {
-    "den": ((UnitType.WOLF,) * 4, 500),
-    "nest": ((UnitType.SPIDER, UnitType.SPIDER, UnitType.WOLF, UnitType.WOLF), 600),
-    "lair": ((UnitType.TROLL, UnitType.GOLEM, UnitType.SPIDER, UnitType.SPIDER), 1500),
-}
+#: Encounters are side expeditions, one symmetric opportunity per seat and tier at most.
+#: Their stream is separate from the terrain/deposit deal, so wilds=False is the same map.
+_CAMP_SALT: Final = 0xCA47
+_CAMP_SPACING: Final = 9
+_CAMP_SEPARATION: Final = max(16, 2 * CAMP_WATCH + 2)  # room for independent fights, beyond the scoutable watch
+_CAMP_ROOM: Final = 48
+_CAMP_HOME: Final = 14.0
+_CAMP_SAFE_MINE: Final = 10.5
 
 #: Ley rifts (WB-063).  Every seat gets one near its hall, in its own cell, and a cell with room for a middle gets a
 #: contested one out in the shared ground: each a canonical site copied a cell at a time, like a mine.  They are laid
@@ -245,7 +234,7 @@ def generate(seed: int, width: int = 48, height: int = 40, players: int = 2, hum
              prize: BuildingType | None = None, *, magic: bool = False) -> World:
     """*races* names each player's race; ``None`` entries are drawn from the seed, so a seed reproduces
     the whole match.  Without a list the *human* leads Humans and the computer players are drawn.
-    *layout* ``None`` draws one from the seed.  *wilds* ``False`` leaves the contested deposits unguarded,
+    *layout* ``None`` draws one from the seed.  *wilds* ``False`` removes optional encounters while preserving terrain and deposits,
     which is how a map is measured against one with camps on it.  *prize* ``None`` has the seed deal the
     shared ground's prize (:func:`deal_prize`); naming one plays the same map with that prize on it, which is
     how a lode is measured against a seam. *magic* opts in to ley rifts and magical technology;
@@ -935,38 +924,180 @@ def _prize_site(cv: _Canvas, rng: random.Random, spec: _Spec, halls: list[Point]
     return _pick(cv, scored, rects, spec.third_clearing > 0, size, _PRIZE_ROOM)
 
 
-def _camp_site(cv: _Canvas, rng: random.Random, anchor: Point, rects: list[tuple[Pos, int]]) -> Pos | None:
-    """A lair site guarding the deposit whose middle is *anchor*, within reach of it, on
-    ground with room to fight over, and clear of every footprint already claimed.
+def _encounter_sites(world: World, cv: _Canvas, halls: list[Point], safe_mines: list[Pos],
+                     rects: list[tuple[Pos, int]], protected_routes: set[Pos], camp_sites: list[Point],
+                     rng: random.Random) -> list[Pos]:
+    """Open, reachable side sites, with the opening and its connecting roads outside aggro.
 
-    A camp is placed the way a mine is -- one canonical site, one copy to a cell -- so every seat faces the
-    same camp at the same remove from the same deposit and the audit's congruence still holds.  Its own
-    spacing is tighter than a deposit's (:data:`_CAMP_SPACING`), because a den that had to keep a mine's
-    distance from the dig it guards would not be guarding it.
+    Reserving the actual route certificates before any camp is placed is stronger than distance
+    from the map's middle: a forest road or a Klondike gate can be off-centre and still mandatory.
+    The whole orbit of those roads is reserved, keeping the opportunities congruent even for
+    three seats, where a fourth cell has no hall.
     """
-    scored = []
+    doors, _mine_doors = _doors(world)
+    region = reachable(world, doors[0])
+    safe_centres = [_mine_centre(pos) for pos in safe_mines]
+    scored: list[tuple[float, Pos]] = []
     for pos in _canonical_sites(cv):
-        away = _dist(_mine_centre(pos), anchor)
-        if not _CAMP_NEAREST <= away <= _CAMP_FURTHEST:
+        middle = _mine_centre(pos)
+        if min(_dist(middle, hall) for hall in halls) < _CAMP_HOME:
             continue
-        scored.append((-away + rng.uniform(0.0, 2.0), pos))  # as close to the deposit as the ground allows
-    return _pick(cv, scored, rects, True, 3, _CAMP_ROOM, _CAMP_SPACING)
+        if any(_dist(middle, mine) < _CAMP_SAFE_MINE for mine in safe_centres):
+            continue
+        if any(_dist(middle, camp) < _CAMP_SEPARATION for camp in camp_sites):
+            continue
+        # Every guard's watch stays off the certified opening and inter-base routes.
+        if (pos[0] + 1, pos[1] + 1) in protected_routes:
+            continue
+        if not _fits(cv, pos, rects, spacing=_CAMP_SPACING) or _room(cv, pos, True) < _CAMP_ROOM:
+            continue
+        images = cv.rect_images(pos, 3)
+        if any(_dist(_mine_centre(a), _mine_centre(b)) < _CAMP_SEPARATION
+               for i, a in enumerate(images) for b in images[i + 1:]):
+            continue
+        if not any(tile in region for tile in cv.within(middle, 10)):
+            continue
+        if any(rects_gap((*image, 3, 3), (*rift, RIFT, RIFT)) < 3 for image in images for rift in world.rifts):
+            continue
+        # Prefer nearby side expeditions; seed jitter chooses between equivalent flanks.
+        scored.append((-_dist(middle, halls[0]) + rng.uniform(0.0, 9.0), pos))
+    return [pos for _score, pos in sorted(scored, reverse=True)]
 
 
-def _guard(cv: _Canvas, rng: random.Random, deposit: Pos, size: int, kind: str, rects: list[tuple[Pos, int]],
-           dens: list[tuple[Pos, str]]) -> None:
-    """Put a camp of *kind* beside the deposit at *deposit*, if there is room for one.
+def _prepare_shared_ancient(world: World, cv: _Canvas, safe_mines: list[Pos]) -> Pos | None:
+    """One contested Ancient for three/four seats, with certified routes around its watch.
 
-    A camp is a wish, never a fault: an unguarded deposit is a poorer map, not an unfair one, and a
-    layout whose walls leave no room beside a dig would otherwise refuse the whole seed.
+    A shared centre avoids filling a crowded four-seat map with four 6,000-gold bosses. The
+    odd three-tile lair has at most a tile and a half of approach-distance bias on an even map.
+    Klondike's central pit is its required economy, so its encounters remain side expeditions.
     """
-    spot = _camp_site(cv, rng, _mine_centre(deposit, size), rects)
-    if spot is None:
-        return
-    rects += [(image, 3) for image in cv.rect_images(spot, 3)]
-    cv.paint(_block(spot), Terrain.GRASS)
-    cv.paint(cv.within(_mine_centre(spot), 4), Terrain.GRASS, over=(Terrain.TREES,))
-    dens.append((spot, kind))
+    if world.seats not in (3, 4) or world.width * world.height < 5000 or world.layout is Layout.KLONDIKE:
+        return None
+    pos = (world.width // 2 - 1, world.height // 2 - 1)
+    centre = _mine_centre(pos)
+    rect = (*pos, 3, 3)
+    halls = [b for b in world.buildings.values() if b.type is BuildingType.TOWN_HALL]
+    if any(_dist(centre, b.center) < _CAMP_HOME for b in halls):
+        return None
+    if any(_dist(centre, _mine_centre(mine)) < _CAMP_SAFE_MINE for mine in safe_mines):
+        return None
+    if any(rects_gap(rect, b.rect) < 1 for b in world.buildings.values()):
+        return None
+    if any(rects_gap(rect, (*rift, RIFT, RIFT)) < 3 for rift in world.rifts):
+        return None
+    if any(world.terrain_at(tile) in (Terrain.WATER, Terrain.ROCK) or tile in cv.protected for tile in _block(pos, gap=0)):
+        return None
+    hard = {(x, y) for y in range(world.height) for x in range(world.width)
+            if world.terrain[y][x] in (Terrain.WATER, Terrain.ROCK)}
+    doors, _mine_doors = _doors(world)
+    approach = _cheapest_route(world, doors[0], (pos[0] + 1, pos[1] + 3),
+                              cv.protected | hard | set(_block(pos, gap=0)))
+    if approach is None or not _prepare_bypasses(world, cv, safe_mines, [centre]):
+        return None
+    _carve(world, cv, approach, trees_only=True)
+    _clear_arena(world, cv, centre)
+    return pos
+
+
+def _prepare_bypasses(world: World, cv: _Canvas, safe_mines: list[Pos], centres: list[Point]) -> bool:
+    """Certify an opening network outside every encounter's watch; carve tree-only detours."""
+    watch = cv.orbit(tile for centre in centres for tile in cv.within(centre, CAMP_WATCH + 1))
+    hard = {(x, y) for y in range(world.height) for x in range(world.width)
+            if world.terrain[y][x] in (Terrain.WATER, Terrain.ROCK)}
+    shut = cv.protected | watch | hard
+    doors, _mine_doors = _doors(world)
+    goals = doors[1:] + [world.free_tile_near((*mine, 3, 3)) for mine in safe_mines]
+    routes: list[list[Pos]] = []
+    for goal in goals:
+        if goal is None:
+            return False
+        route = _cheapest_route(world, doors[0], goal, shut)
+        if route is None:
+            return False
+        routes.append(route)
+    for route in routes:
+        _carve(world, cv, route, trees_only=True)
+    return True
+
+
+def _clear_arena(world: World, cv: _Canvas, centre: Point) -> None:
+    """Clear only trees, preserving protected walls and both walkers' static grids."""
+    for tx, ty in cv.orbit(cv.within(centre, 4)):
+        if (tx, ty) not in cv.protected and world.terrain[ty][tx] is Terrain.TREES:
+            world.terrain[ty][tx] = Terrain.GRASS
+            world._blocked[ty * world.width + tx] = 0
+            if world._forest is not None:
+                world._forest[ty * world.width + tx] = 0
+
+
+def _lay_encounters(world: World, cv: _Canvas, seed: int, main: Pos, natural: Pos | None, wilds: bool) -> None:
+    """At most one Raid, Stronghold and Ancient orbit, where the finished map has safe side room.
+
+    Small maps offer Raids; Medium adds Strongholds; Large adds an optional Ancient. Crowded
+    boards may omit an expedition instead of forcing a PvE toll. Side clearings are prepared
+    with or without occupants, so a camps-off comparison preserves the strategic map.
+    """
+    rng = random.Random(seed ^ _CAMP_SALT)
+    halls = [b.center for b in world.buildings.values() if b.type is BuildingType.TOWN_HALL]
+    safe_mines = list(cv.rect_images(main, 3))
+    if natural is not None:
+        safe_mines += list(cv.rect_images(natural, 3))
+    doors, _mine_doors = _doors(world)
+    goals = doors[1:] + [world.free_tile_near((*pos, 3, 3)) for pos in safe_mines]
+    roads: set[Pos] = set()
+    for goal in goals:
+        if goal is not None:
+            route = _route(world, doors[0], goal)
+            if route is not None:
+                roads.update(route)
+    protected_routes = {tile for road in cv.orbit(roads) for tile in cv.within(tile_center(road), CAMP_WATCH + 0.8)}
+    shared = _prepare_shared_ancient(world, cv, safe_mines)
+    rects = [(b.pos, b.info.size) for b in world.buildings.values()]
+    families: list[tuple[str, ...]] = [("wolf_den", "spider_nest")]
+    if world.width * world.height >= 3000:
+        families.append(("troll_mound", "stone_cairn"))
+    if world.width * world.height >= 5000 and shared is None:
+        families.append(("ancient_sanctum",))
+    camp_sites: list[Point] = [] if shared is None else [_mine_centre(shared)]
+    planned: list[tuple[Pos, str]] = [] if shared is None else [(shared, "ancient_sanctum")]
+    if shared is not None:
+        rects.append((shared, 3))
+    # A cramped map keeps its approachable raid before offering harder expeditions.
+    for index, family in enumerate(families):
+        key = rng.choice(family)
+        sites = _encounter_sites(world, cv, halls, safe_mines, rects, protected_routes, camp_sites, rng)
+        if not sites:
+            continue
+        pos = sites[0]
+        if index + 1 < len(families):
+            # Keep another arena available rather than choosing the centre of a cramped flank.
+            for candidate in sites:
+                copies = cv.rect_images(candidate, 3)
+                occupied = rects + [(image, 3) for image in copies]
+                if any(_fits(cv, other, occupied, spacing=_CAMP_SPACING)
+                       and all(_dist(_mine_centre(image), _mine_centre(rival)) >= _CAMP_SEPARATION
+                               for image in copies for rival in cv.rect_images(other, 3)) for other in sites):
+                    pos = candidate
+                    break
+        images = cv.rect_images(pos, 3)
+        centre = _mine_centre(pos)
+        region = reachable(world, doors[0])
+        approach = min(region, key=lambda tile: (_dist(tile_center(tile), centre), tile))
+        hard = {(x, y) for y in range(world.height) for x in range(world.width)
+                if world.terrain[y][x] in (Terrain.WATER, Terrain.ROCK)}
+        route = _cheapest_route(world, approach, (int(centre[0]), int(centre[1])), cv.protected | hard)
+        if route is None:
+            continue
+        _carve(world, cv, route, trees_only=True)
+        _clear_arena(world, cv, centre)
+        planned += [(image, key) for image in images[:world.seats]]
+        rects += [(image, 3) for image in images]
+        camp_sites += [_mine_centre(image) for image in images]
+    if shared is not None and not _prepare_bypasses(world, cv, safe_mines, [_mine_centre(pos) for pos, _key in planned]):
+        planned = [(pos, key) for pos, key in planned if pos != shared]
+    if wilds:
+        for image, key in planned:
+            camping.place_encounter(world, image, key)
 
 
 # -- Assembly ----------------------------------------------------------------------
@@ -1019,10 +1150,6 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
         else:  # the empty cell's stays, neutral
             _claim(cv, natural, EXPANSION_GOLD, rects, mines, clearing=spec.natural_clearing)
     thirds: list[Pos] = []
-    # Every camp on the map, in the order they are raised: one canonical den to a contested deposit, copied
-    # to every cell as the deposit itself is.  A seat's own mine and its natural are never guarded -- the
-    # opening is untouched and the first expansion is free; what a seat has to leave home for is held.
-    dens: list[tuple[Pos, str]] = []
     for _ in range(_third_orbits(spec, cv.cw, cv.ch)):
         third = _third_site(cv, rng, spec, halls, rects, walls.prefer_third)
         if third is None:
@@ -1030,17 +1157,6 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
             break
         thirds.append(third)
         _claim(cv, third, EXPANSION_GOLD, rects, mines, clearing=spec.third_clearing)
-        if wilds:
-            # Plains dens fall to a raid; elsewhere the small camps mix, so
-            # creeping stays a skirmish everywhere a timing push can afford.
-            # (Forest lairs were tried: trickle 7 units per lair, a sink the
-            # gate in docs/balance.md refuses.) Single-element choices still
-            # draw once, so other layouts' streams come out as before.
-            if layout is Layout.PLAINS:
-                camp_kind = rng.choice(("den",))
-            else:
-                camp_kind = rng.choice(("den", "nest"))
-            _guard(cv, rng, third, 3, camp_kind, rects, dens)
     if _wants_a_prize(spec, width, height, cv.cw, cv.ch):
         size = BUILDINGS[prize].size
         site = _prize_site(cv, rng, spec, halls, rects, size)
@@ -1048,8 +1164,6 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
             wishes.append(f"no room for a {BUILDINGS[prize].name}")
         else:  # an endless seam holds no stock: what it gives is a trip at a time, as long as it is held
             _claim(cv, site, 0 if prize is BuildingType.GOLD_SEAM else LODE_GOLD, rects, mines, clearing=spec.third_clearing, kind=prize)
-            if wilds:  # the richest ground and the furthest out: the big camp, every time
-                _guard(cv, rng, site, size, "lair", rects, dens)
     mines += walls.mines
     cv.symmetrize()
     if layout is Layout.FOREST:
@@ -1062,16 +1176,13 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
         world.place_building(seat, BuildingType.TOWN_HALL, pos)
     for pos, kind, gold in mines:
         world.place_building(None, kind, pos).gold = gold
-    for den, camp_kind in dens:
-        roster, hoard = _ROSTERS[camp_kind]
-        for image in cv.rect_images(den, 3):
-            camping.place(world, image, list(roster), hoard)
     for seat in range(players):
         for i in range(3):
             world.spawn_unit(seat, UnitType.PEASANT, tile_center(cv.images((hall[0] + i, hall[1] + 3))[seat]))
     _connect(world, cv)
     if magic and not _lay_rifts(world, cv, walls, hall, main, rift_rng):
         problems.append("no room for a ley rift")
+    _lay_encounters(world, cv, seed, main, natural, wilds)
     world.update_vision()
     report = _audit(world, cv, spec, walls, natural)
     if layout is Layout.BASTION:
@@ -1256,16 +1367,19 @@ def _cheapest_route(world: World, start: Pos, goal: Pos, protected: set[Pos]) ->
     return None
 
 
-def _carve(world: World, cv: _Canvas, route: list[Pos]) -> None:
+def _carve(world: World, cv: _Canvas, route: list[Pos], *, trees_only: bool = False) -> None:
     for x, y in route:
         for brush in ((x, y), (x + 1, y), (x, y + 1)):
             for nx, ny in cv.images(brush):
                 # A tile whose copies include one on the rim is carved everywhere but there: the rim
                 # is a frame outside play, and leaving it would wall two cells off from each other.
                 if cv.inside(nx, ny) and (nx, ny) not in cv.protected and world.building_at((nx, ny)) is None \
-                        and world.terrain_at((nx, ny)) is not Terrain.GRASS:
+                        and world.terrain_at((nx, ny)) is not Terrain.GRASS \
+                        and (not trees_only or world.terrain_at((nx, ny)) is Terrain.TREES):
                     world.terrain[ny][nx] = Terrain.GRASS
                     world._blocked[ny * world.width + nx] = 0
+                    if world._forest is not None:
+                        world._forest[ny * world.width + nx] = 0
 
 
 # -- Audit -------------------------------------------------------------------------
@@ -1319,11 +1433,19 @@ def _rift_problems(world: World, cv: _Canvas) -> list[str]:
     return problems
 
 
-def _route(world: World, start: Pos, goal: Pos) -> list[Pos] | None:
+def _route(world: World, start: Pos, goal: Pos, *, ignore_camps: bool = False) -> list[Pos] | None:
     """The production pathfinder's route, or None when its budget runs out first."""
     if start == goal:
         return []
-    route = pathing.find_path_grid(start, goal, world._blocked, world.width, world.height, max_expansions=world.path_budget)
+    grid = world._blocked
+    if ignore_camps and world.camps:
+        grid = bytearray(grid)
+        for camp in world.camps:
+            lair = world.buildings.get(camp.lair)
+            if lair is not None:
+                for x, y in lair.tiles():
+                    grid[y * world.width + x] = 0
+    route = pathing.find_path_grid(start, goal, grid, world.width, world.height, max_expansions=world.path_budget)
     return route if route and route[-1] == goal else None
 
 
@@ -1347,7 +1469,9 @@ def _audit(world: World, cv: _Canvas, spec: _Spec, walls: _Walls, natural: Pos |
     if world.magic:
         problems += _rift_problems(world, cv)
     report["detour"] = None
-    route = routes.get(doors[1])
+    # Layout detours describe permanent terrain, so optional lair footprints cannot change a seed
+    # from accepted to retried when wilds is toggled. Actual routes above still check the budget.
+    route = _route(world, doors[0], doors[1], ignore_camps=True)
     if route is not None:
         walk = plain_sum(pathing.octile(a, b) for a, b in zip([doors[0]] + route, route))
         report["detour"] = walk / _dist(doors[0], doors[1])

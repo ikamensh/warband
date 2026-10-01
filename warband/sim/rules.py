@@ -86,6 +86,7 @@ class UnitType(IdentityEnum):
     TROLL = "troll"
     SPIDER = "spider"
     GOLEM = "golem"
+    ANCIENT_GUARDIAN = "ancient_guardian"
     # What a spell brings (WB-066): nobody trains it and no race names it; it is its caster's until its lifetime runs out.
     AETHER_ELEMENTAL = "aether_elemental"
 
@@ -105,7 +106,7 @@ class BuildingType(IdentityEnum):
     GOLD_MINE = "gold_mine"
     GOLD_SEAM = "gold_seam"  # the endless one; :class:`MineInfo` is what tells the deposits apart
     MOTHER_LODE = "mother_lode"  # the seam's size and places, a mine's trip, and a hundred thousand to give (WB-071)
-    LAIR = "lair"  # a creature camp's den: nobody's, the guards' respawn anchor and the hoard they sit on
+    LAIR = "lair"  # a creature camp's den: the guards' anchor and the hoard they sit on
 
 
 class Race(IdentityEnum):
@@ -232,6 +233,7 @@ class UnitInfo:
     radius: float
     heal: int = 0  # hit points one cast restores, a wind-up and a cooldown apart; a healer's own blow is weak and its last resort
     splash: float = 0.0  # radius around where a stone lands that also takes damage; a siege engine
+    air_range: float = 0.0  # optional separate tracking shot against flyers, while ground attacks retain their range
     attack: AttackType = AttackType.NORMAL
     armor_class: ArmorClass = ArmorClass.LIGHT
     formation: bool = False  # marches in a line and wears FORMATION_ARMOR more for each such neighbour beside it
@@ -279,7 +281,7 @@ class UnitInfo:
     def strikes_air(self) -> bool:
         """Its blow reaches a flyer: a shot that flies to its mark.  A melee blow never does, and neither does a stone,
         which comes down on the ground it was fired at."""
-        return self.damage > 0 and self.range >= 1 and not self.siege
+        return self.damage > 0 and (self.air_range > 0.0 or self.range >= 1 and not self.siege)
 
     @property
     def period(self) -> float:
@@ -314,7 +316,7 @@ def _unit(u: dict[str, Any]) -> UnitInfo:
         name=u["name"], cost=Cost(u["gold"], u["lumber"]), hp=u["hp"], damage=u["damage"], armor=u["armor"],
         range=MELEE if u["range"] == "melee" else u["range"], cooldown=u["cooldown"], speed=u["speed"], sight=u["sight"],
         build_time=u["build_time"], trained_at=BuildingType(u["trained_at"]), hotkey=u["hotkey"], summary=u["summary"],
-        radius=u["radius"], heal=u["heal"], splash=u["splash"], attack=AttackType(u["attack"]),
+        radius=u["radius"], heal=u["heal"], splash=u["splash"], air_range=u["air_range"], attack=AttackType(u["attack"]),
         armor_class=ArmorClass(u["armor_class"]), formation=u["formation"], mounted=u["mounted"], windup=u["windup"],
         turn=math.radians(u["turn_deg"]), min_range=u["min_range"], regen=u["regen"], living=u["living"],
         flying=u["flying"], inflicts=BUFFS[u["inflicts"]] if u["inflicts"] else None, lifetime=u["lifetime"], sound=u["sound"],
@@ -337,20 +339,25 @@ OWN_UNITS: Final[dict[Race, UnitType]] = {info.race: unit_type for unit_type, in
 
 # -- The wilds ---------------------------------------------------------------------
 #
-# Neutral creatures guard the contested deposits.  Each is chosen for a unit the balance data says is
-# dead weight, and each is a shape the roster does not already own (docs/warband-monsters.md):
-#
-# | creature | hp  | dmg | armour        | range | wind-up + cooldown | speed | what it rewards                       |
-# |----------|-----|-----|---------------|-------|--------------------|-------|---------------------------------------|
-# | wolf     |  40 |   6 | 0 light       | melee | 0.2 + 0.9          | 4.0   | nothing: the cheap minute-two camp    |
-# | spider   |  45 |   8 | 0 light       | 5     | 0.4 + 1.6          | 2.2   | the knight, which closes the five tiles|
-# | troll    | 220 |  14 | 0 unarmoured  | melee | 0.45 + 1.4         | 1.9   | the archer: piercing lands x1.5 on it |
-# | golem    | 170 |  18 | 2 heavy, splash| melee | 0.7 + 2.5         | 1.3   | the archer again, by punishing clumps |
-#
-# The troll is deliberately *unarmoured* rather than a high-armour sponge: armour is flat subtraction
-# with a floor of one, so plating it would make an archer's arrow land for 1 and turn every camp into a
-# knights-only check.  High hit points and no armour cost time and exposure instead, and leave the
-# archer the efficient answer.  Its regeneration is out-of-combat only (:attr:`UnitInfo.regen`).
+# Camps are optional army objectives. Their roster, payout, difficulty and counterplay are one validated
+# encounter table; stats and behaviors make the tiers distinct (docs/warband-monsters.md).
+
+@dataclass(frozen=True)
+class CampInfo:
+    name: str
+    tier: str
+    roster: tuple[UnitType, ...]
+    gold: int
+    lumber: int
+    lair_hp: int
+    hint: str
+
+
+CAMP_ENCOUNTERS: Final[dict[str, CampInfo]] = {
+    key: CampInfo(info["name"], info["tier"], tuple(UnitType(kind) for kind in info["roster"]),
+                  info["gold"], info["lumber"], info["lair_hp"], info["hint"])
+    for key, info in config.current().encounters.items()
+}
 
 WILD_UNITS: Final[dict[UnitType, UnitInfo]] = {UnitType(u): _unit(info) for u, info in config.current().wilds.items()}
 UNITS.update(WILD_UNITS)
@@ -699,7 +706,6 @@ CAMP_WATCH: Final = config.number('CAMP_WATCH')
 CAMP_HOLD: Final = config.number('CAMP_HOLD')
 CAMP_CALM: Final = config.number('CAMP_CALM')
 CAMP_REGEN: Final = config.number('CAMP_REGEN')
-CAMP_RESPAWN: Final = config.number('CAMP_RESPAWN')
 CAMP_POST: Final = config.number('CAMP_POST')
 UNDER_ATTACK_COOLDOWN: Final = 20.0
 #: Steps a vault on a rift takes to draw one aether: AETHER_EVERY in whole steps, so the draw is counted in integers.

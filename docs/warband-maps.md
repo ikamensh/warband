@@ -7,6 +7,36 @@ Design note, 2026-09-15, implemented the same day in `warband/sim/mapgen.py`
 tests are `tests/warband/test_mapgen.py` and `tests/warband/test_maps.py`,
 the numbers over many seeds come from `tools/map_report.py`.
 
+## Optional encounters (2026-10-01)
+
+Neutral encounters are side expeditions rather than gates on every expansion. Small maps try
+one **Raid** per seat; Medium adds one **Stronghold**; Large and larger maps also try one
+**Ancient**. Three- and four-seat Large maps try one **shared central Ancient** instead of
+one per cell, making its defeat a contested multiplayer achievement. Those are maximum counts:
+a cramped cell omits an arena instead of putting a boss on its only road. Wolf Dens and Spider Nests alternate within Raid; Troll Mounds and Stone
+Cairns alternate within Stronghold. The Ancient Sanctum is the final tier. Klondike uses the
+same optional side-site search, so its creatures no longer depend on having third mines.
+
+Every arena and short approach is drawn from a separate seeded stream **after** deposits,
+roads and ley rifts. Its symmetric clearings are prepared with `wilds=True` or `False`; only the
+occupants differ. Comparing camps-on and camps-off therefore compares the same terrain,
+mines and rifts. Three-seat maps prepare all four cells symmetrically but place encounters only
+in the three occupied cells.
+
+The search reserves the actual routes between halls and to their main mines and naturals,
+including every mirrored image. An arena's watch stays off those routes, its centre stays at
+least fourteen tiles from a hall and ten and a half from the safe mines, and separate arenas
+keep at least 16 tiles between them, or two watch radii plus two tiles if larger. A player can
+follow the safe opening and reach another player without awakening an encounter. A shared Ancient may displace the
+shortest central road; the generator certifies tree-only bypasses outside every encounter watch
+first. Its centre remains nearly equidistant from the seats. Klondike keeps its required central
+pit free of an Ancient. A camp can still be reached by a short side approach. Arena clearings remove trees only; protected gates, rock walls and rivers
+keep their layout's job.
+
+`tests/warband/test_encounter_maps.py` checks reachable optional encounters, safe routes,
+per-seat roster symmetry, the ordinary Large Forest Ancient, and unchanged strategic geometry
+when wilds are disabled. The ordinary whole-map fairness matrix remains the generation gate.
+
 ## The proposal in short
 
 Replace "one kind of map with three palettes" by **five named layouts** the

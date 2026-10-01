@@ -23,7 +23,9 @@ TURN_SLIDE_BUDGET = 12.0
 #: is turned 5 degrees and the shoulder slabs 7, on purpose, and the painting only makes that lean
 #: solid.  Moving the golem back over its anchor is a change to the mesh, which means repainting it;
 #: it is filed rather than smuggled in here, and the number is what it measures today.
-TURN_SLIDE_BUDGETS = {Monster.GOLEM: 18.0}
+# The guardian uses the same off-axis planted stone limbs, reviewed against its stand-in.
+# Its crown and chest core change its identity, while its feet retain the golem rig's stance.
+TURN_SLIDE_BUDGETS = {Monster.GOLEM: 18.0, Monster.ANCIENT_GUARDIAN: 18.0}
 
 
 def mock_game(tmp_path) -> Game:

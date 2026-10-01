@@ -38,9 +38,9 @@ from warband.story.dialog import DialogScene  # noqa: E402
 from warband.story.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
 from warband.story.missions import CAMPAIGN  # noqa: E402
 from warband.sim.model import World, tile_center  # noqa: E402
-from warband.sim.rules import BLEEDING, BUILT, CHOICES, LODE_GOLD, PLAYABLE_UNITS, UNITS, UPGRADES, BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
+from warband.sim.rules import BLEEDING, BUILT, CHOICES, LODE_GOLD, PLAYABLE_UNITS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
 from warband.ui.controls import SCHEMES  # noqa: E402
-from warband.ui.scene import CODEX_PAGES, TOAST_TOP, CodexScene, GameScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game  # noqa: E402
+from warband.ui.scene import CARD_TEXT, CODEX_PAGES, TOAST_TOP, CodexScene, GameScene, HelpScene, PauseScene, SaveBrowserScene, SettingsScene, new_game  # noqa: E402
 from warband.ui.score_scene import HighScoreScene  # noqa: E402
 from warband.ui.style import build_theme  # noqa: E402
 from warband.art.textures import TILE  # noqa: E402
@@ -156,7 +156,114 @@ def spawn(scene: GameScene, unit_type: UnitType, tile: tuple[int, int], player: 
     return unit
 
 
+def neutral_encounter(game: Game, kind: str = "ancient_sanctum") -> tuple[GameScene, object]:
+    """A fully scouted optional encounter, paused so each teaching surface is stable."""
+    from warband.sim import camps
+    world = World(40, 30, [[Terrain.GRASS] * 40 for _ in range(30)], 2)
+    for player in world.players[:world.seats]:
+        player.human = True
+    world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
+    world.place_building(1, BuildingType.TOWN_HALL, (35, 25))
+    camp = camps.place_encounter(world, (18, 12), kind)
+    world.reveal_all(0)
+    scene = GameScene(world, 9, settings=dict(QUIET))
+    game.push(scene)
+    scene.paused = True
+    ticks(game, 20, 0.2)
+    scene.camera.center_on(19.5 * TILE, 13.5 * TILE)
+    scene.select([camp.lair], quiet=True)
+    ticks(game)
+    return scene, camp
+
+
 # -- Screens ----------------------------------------------------------------------------
+
+
+@screen
+def neutral_raid(game: Game) -> None:
+    neutral_encounter(game, "wolf_den")
+
+
+@screen
+def neutral_stronghold(game: Game) -> None:
+    neutral_encounter(game, "stone_cairn")
+
+
+@screen
+def neutral_ancient(game: Game) -> None:
+    neutral_encounter(game)
+
+
+@screen
+def neutral_slam(game: Game) -> None:
+    scene, camp = neutral_encounter(game)
+    guardian = next(scene.world.units[uid] for uid in camp.guards if scene.world.units[uid].type is UnitType.ANCIENT_GUARDIAN)
+    guardian.slam_point = (guardian.x + 1, guardian.y)
+    guardian.windup = guardian.info.windup * 0.6
+    guardian.state = "attack"
+    ticks(game)
+
+
+@screen
+def neutral_reward(game: Game) -> None:
+    from tools.verify_camp import defeat_camp, settle_guard_effects
+    scene, camp = neutral_encounter(game)
+    for x in range(5, 17, 2):
+        scene.world.place_building(0, BuildingType.FARM, (x, 1))  # housing for the staged late-game expedition
+    scene.select([], quiet=True)
+    defeat_camp(scene.world, camp, lambda: settle_guard_effects(game))
+    scene.world.reveal_all(0)
+    ticks(game, 24)
+
+
+@screen
+def neutral_air_defense(game: Game) -> None:
+    """A real guardian shot against a gryphon; its shard must be visible in the air."""
+    scene, camp = neutral_encounter(game)
+    world = scene.world
+    guardian = next(world.units[uid] for uid in camp.guards if world.units[uid].type is UnitType.ANCIENT_GUARDIAN)
+    flyer = world.spawn_unit(0, UnitType.GRYPHON, (guardian.x + 4, guardian.y))
+    world.attack([flyer.id], guardian.id)
+    for _ in range(160):
+        world.step()
+        shots = [p for p in world.projectiles.values() if p.source == guardian.id]
+        if shots:
+            for _ in range(max(1, int(shots[0].flight * 0.55 / SIM_DT))):
+                world.step()
+            break
+    else:
+        raise RuntimeError("guardian never threw a shard at the gryphon")
+    ticks(game)
+
+
+@screen
+def neutral_guardian_reach(game: Game) -> None:
+    scene, camp = neutral_encounter(game)
+    guardian = next(scene.world.units[uid] for uid in camp.guards if scene.world.units[uid].type is UnitType.ANCIENT_GUARDIAN)
+    scene.select([guardian.id], quiet=True)
+    ticks(game)
+    x, y, _, _ = scene.selection_panel.bounds
+    move_mouse(game, x + 16 + CARD_TEXT + 2 * 78 + 20, y + 14 + 54)
+    ticks(game, 12)
+
+
+@screen
+def neutral_results(game: Game) -> None:
+    """Sixteen seats with a wilds achievement: the tallest result must still fit the small window."""
+    world = World(40, 30, [[Terrain.GRASS] * 40 for _ in range(30)], 16)
+    scene = GameScene(world, 9, ranked=False, settings=dict(QUIET))
+    game.push(scene)
+    scene.paused = True
+    scene.player.stats.update(camps_cleared=3, bounty_gold=10700, bounty_lumber=1550)
+    world.winner = 0
+    ticks(game)
+
+
+@screen
+def codex_wilds(game: Game) -> None:
+    from warband.ui.scene import codex_world
+    game.push(CodexScene(codex_world(Race.HUMAN), 0, 6, in_match=False))
+    ticks(game)
 
 
 @screen

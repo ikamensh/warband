@@ -28,7 +28,7 @@ from warband.art import monsters, textures
 from warband.art.monsters import Monster
 from warband.sim.model import RIFT, Building, Entity, Pos, Projectile, Unit, World, dist
 from warband.sim.races import RACES
-from warband.sim.rules import AETHER_REACH, BUILDINGS, CREATURES, SIM_DT, UNITS, VISION_EVERY, BuildingType, Race, Terrain, UnitType, UPGRADES
+from warband.sim.rules import AETHER_REACH, BUILDINGS, CAMP_ENCOUNTERS, CREATURES, SIM_DT, UNITS, VISION_EVERY, BuildingType, Race, Terrain, UnitType, UPGRADES
 from warband.art.textures import CHUNK, CHUNK_PX, TILE
 
 CREATURE_SET = frozenset(CREATURES)  # the neutral creatures, asked of a unit's type on every frame
@@ -112,6 +112,11 @@ class Sighting:
     look: str  # the painted look it wore, see :func:`building_look`
     lair_kind: str = "wolf"  # whose den it is, for a lair: a :class:`~warband.art.monsters.LairKind` value
 
+    camp_encounter: str = ""
+    camp_gold: int = 0
+    camp_lumber: int = 0
+    camp_roster: tuple[str, ...] = ()
+
     @classmethod
     def of(cls, b: Building, worked: Collection[int] = ()) -> Sighting:
         sighting = cls(b.id, b.type, b.player, b.race, b.rect, 0, 0, 0.0, 0, False, "intact")
@@ -135,15 +140,19 @@ class Sighting:
     def to_dict(self) -> dict:
         return {"id": self.id, "type": self.type.value, "player": self.player, "race": self.race.value, "rect": list(self.rect), "hp": self.hp,
                 "max_hp": self.max_hp, "built": self.built, "gold": self.gold, "abandoned": self.abandoned, "look": self.look,
-                "lair_kind": self.lair_kind}
+                "lair_kind": self.lair_kind, "camp_encounter": self.camp_encounter, "camp_gold": self.camp_gold,
+                "camp_lumber": self.camp_lumber, "camp_roster": list(self.camp_roster)}
 
     @classmethod
     def from_dict(cls, d: dict) -> Sighting:
         if d["look"] not in textures.BUILDING_LOOKS:
             raise ValueError(f"unknown building look {d['look']!r}")
         kind = monsters.LairKind(d.get("lair_kind", "wolf"))  # saves from before the dens diverged remember none
+        if d.get("camp_encounter") and d["camp_encounter"] not in CAMP_ENCOUNTERS:
+            raise ValueError(f"unknown camp encounter {d['camp_encounter']!r}")
         return cls(d["id"], BuildingType(d["type"]), d["player"], Race(d["race"]), tuple(d["rect"]), d["hp"], d["max_hp"], d["built"], d["gold"],
-                   d["abandoned"], d["look"], kind.value)
+                   d["abandoned"], d["look"], kind.value, d.get("camp_encounter", ""), d.get("camp_gold", 0),
+                   d.get("camp_lumber", 0), tuple(d.get("camp_roster", [])))
 
 
 def check_memory(memory: dict, world: World) -> None:
@@ -182,8 +191,9 @@ STRIKE, FOLLOW, RECOVER = 0.1, 0.16, 0.16  # seconds after the blow: driven forw
 #: that comes down on the ground; what it looks like is the striker's, as what it lands as is (``sound.impact_sound``):
 #: a healer looses no arrow but a mote of light, from the head of its staff.
 SHOT_LOOKS = {UnitType.CLERIC.value: "mote", UnitType.SPIDER.value: "venom", UnitType.GRYPHON.value: "storm",
+              UnitType.ANCIENT_GUARDIAN.value: "shard",
               "meteor": "meteor"}  # a Meteor's is its spell's (WB-066)
-SHOT_SIZE = {"arrow": (22, 6), "stone": (14, 14), "mote": (20, 20), "venom": (16, 16), "storm": (20, 20), "meteor": (40, 80)}
+SHOT_SIZE = {"arrow": (22, 6), "stone": (14, 14), "mote": (20, 20), "shard": (20, 20), "venom": (16, 16), "storm": (20, 20), "meteor": (40, 80)}
 METEOR_HEIGHT = 9.0  # tiles above the ground a Meteor is first seen, falling ever faster onto its point (WB-066)
 #: Whose shots are loosed in the air: a flyer's leaves it at the height the view draws it.
 FLYING_STRIKERS = frozenset(u.value for u, info in UNITS.items() if info.flying)
@@ -196,11 +206,11 @@ BOB = 2.5  # world pixels a hovering flyer rises and sinks about that height…
 BOB_RATE = 2.2  # …at this many radians a second
 SPIN_RATE = 14.0  # walk frames a second a flyer shows, moving or hovering: its rotor turns and its wings beat all the time
 SHADOW_COLOR = (0, 0, 0, 78)
-TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1, "venom": 0.14, "storm": 0.16, "meteor": 0.35}  # seconds of flight a shot leaves hanging in the air behind it
+TRAIL = {"arrow": 0.12, "stone": 0.45, "mote": 0.1, "shard": 0.18, "venom": 0.14, "storm": 0.16, "meteor": 0.35}  # seconds of flight a shot leaves hanging in the air behind it
 TRAIL_COLOR = {"arrow": (250, 246, 226), "stone": (228, 216, 194), "mote": (255, 232, 150), "venom": (198, 132, 226),
-               "storm": (150, 210, 255), "meteor": (255, 150, 60)}
+               "shard": (219, 180, 241), "storm": (150, 210, 255), "meteor": (255, 150, 60)}
 TRAIL_WIDTH = {"arrow": (1.5, 1.5), "stone": (3.0, 1.0), "mote": (3.0, 0.5), "venom": (2.6, 0.5),
-               "storm": (3.2, 0.6), "meteor": (10.0, 2.0)}  # at the shot and where the trail ends
+               "shard": (3.0, 0.5), "storm": (3.2, 0.6), "meteor": (10.0, 2.0)}  # at the shot and where the trail ends
 BAR_OUTLINE = (0, 0, 0, 190)  # the backing and outline of every health and progress bar
 #: How each kind of condition (a row of buffs.toml) shows: on the map (an enraged unit glows red, a bleeding one drips)
 #: and as the icon of the same name on its card.  A new kind is a row there and a line here.
@@ -718,9 +728,12 @@ class MapView:
             if sighting.type is BuildingType.LAIR:
                 # Whose den it is never changes: the roster it was raised with names it, so looking at it
                 # again cannot rename it, and a den remembered out of sight keeps the kind it was seen with.
-                camp = next((c for c in world.camps if c.lair == b.id), None)
+                camp = world.camp_for(b.id)
                 if camp is not None:
                     sighting.lair_kind = monsters.lair_kind_for_camp(camp).value
+                    sighting.camp_encounter = camp.encounter
+                    sighting.camp_gold, sighting.camp_lumber = camp.gold, camp.lumber
+                    sighting.camp_roster = tuple(camp.kinds)
             self._sync_smoke(b, self._show(sighting))
         for bid, sighting in list(self._sightings.items()):
             if bid not in world.buildings and (self.reveal or sighting.player == self.player or world.any_visible(self.player, sighting.rect)):
@@ -1224,6 +1237,7 @@ class MapView:
             self._draw_rifts_lit()
         self._draw_wood_chips()
         self._draw_projectiles()
+        self._draw_slam_warnings()
         self._draw_melee_trails()
         self._draw_shadows()
         self._draw_conditions(overlay.blood)
@@ -1401,6 +1415,19 @@ class MapView:
                 y = wy - (10 + i % 3 * 4) * t + 20 * t * t
                 self.scene.draw_line(x, y, x + 2 + i % 2, y - 1.5, (238, 202, 139, round(235 * (1 - t))), 1.5,
                                      space="world", layer=RenderLayer.EFFECTS)
+
+    def _draw_slam_warnings(self) -> None:
+        """A committed stone slam marks its fixed ground target, only while its striker is visible."""
+        for unit in self.world.units.values():
+            if unit.slam_point is None or unit.windup <= 0 or unit.hidden or not self.world.is_visible(self.player, unit.tile):
+                continue
+            x, y = to_world(unit.slam_point)
+            radius = unit.info.splash * TILE
+            progress = 1 - min(1.0, unit.windup / max(unit.info.windup, SIM_DT))
+            ink = (239, 176, 247) if unit.type is UnitType.ANCIENT_GUARDIAN else (240, 175, 94)
+            self.scene.draw_circle(x, y, radius, (*ink, round(22 + 38 * progress)), space="world", layer=RenderLayer.OBJECTS)
+            self._ring(x, y, radius, radius, (*ink, round(150 + 95 * progress)), 2 + 2 * progress, layer=RenderLayer.EFFECTS, sides=36)
+            self._ring(x, y, radius * progress, radius * progress, (*ink, 180), 1.5, layer=RenderLayer.EFFECTS)
 
     def _draw_melee_trails(self) -> None:
         """A brief afterimage of the released cut; damage still owns impact feedback."""

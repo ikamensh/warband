@@ -1,0 +1,46 @@
+# Optional army objectives. Rewards are distributed by contribution after lair AND guards fall.
+# Fallen guards stay dead. The payout buys a meaningful timing window, without permanent stat buffs.
+[wolf_den]
+name = "Wolf Pack"
+tier = "Raid"
+roster = ["wolf", "wolf", "wolf", "wolf"]
+gold = 1200
+lumber = 150
+lair_hp = 300
+hint = "Shield your ranged troops: the pack hunts exposed archers."
+
+[spider_nest]
+name = "Venom Brood"
+tier = "Raid"
+roster = ["spider", "spider", "spider", "wolf", "wolf"]
+gold = 1500
+lumber = 200
+lair_hp = 350
+hint = "Close on the spiders with cavalry; they retreat from slow infantry."
+
+[troll_mound]
+name = "Troll Stronghold"
+tier = "Stronghold"
+roster = ["troll", "wolf", "wolf", "spider"]
+gold = 2800
+lumber = 400
+lair_hp = 550
+hint = "Focus arrows on the unarmoured troll; its wounds mend after disengaging."
+
+[stone_cairn]
+name = "Stone Sentinels"
+tier = "Stronghold"
+roster = ["golem", "spider", "spider"]
+gold = 3200
+lumber = 450
+lair_hp = 600
+hint = "Spread out and leave marked ground before the golem slams."
+
+[ancient_sanctum]
+name = "The Ancient Guardian"
+tier = "Ancient"
+roster = ["ancient_guardian", "golem", "golem"]
+gold = 6000
+lumber = 900
+lair_hp = 900
+hint = "Bring a prepared mixed army. Dodge the guardian's broad slam and punish its recovery. It also throws tracking shards at armed flyers within 6 tiles."

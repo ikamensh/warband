@@ -13,14 +13,15 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Final
 
-from warband.brains.pro_force import _tower_strength, _tower_strength_own, strength
+from warband.brains.pro_force import _tower_strength, _tower_strength_own, camp_strength, strength
 from warband.brains.pro_profiles import PRO, PRO_PROFILES, PRO_RUSH, PRO_VANGUARD, PRO_WARDEN, ProProfile
 
-from warband.brains.ai import CAMP_REACH, RAIDERS, answer_flyers, camp_worth, heading_to, known_camps, known_mines, lost_track
+from warband.brains.ai import RAIDERS, answer_flyers, camp_worth, dodge_camp_slams, heading_to, known_camps, known_mines, lost_track
 from warband.sim.model import Attack, Build, Building, Move, Point, Repair, Salvage, Unit, World, dist, int_sum, plain_sum, rect_gap, tile_center
 from warband.sim.rules import SPELLS, BuildingType, Layout, Race, UnitType, Upgrade
 
 from warband.brains.pro_economy import _ProBrainEconomy
+from warband.sim import camps
 
 WALK_OVER: Final = 4.0
 
@@ -161,45 +162,43 @@ class ProBrain(_ProBrainEconomy):
         else:
             self._gather(world, army, hall)
 
-    def _camp_strength(self, world: World, record) -> float:
-        """What a camp is reckoned to be worth: the most its guards were ever seen to be worth at once,
-        and never less than :attr:`ProProfile.creep_prior` soldiers of ours.
-
-        A camp never grows, so the high-water mark is the whole truth once it has been looked at.  Until
-        then the floor is what keeps two soldiers from strolling into a troll: a brain that priced an
-        unseen camp at nothing would feed the army in a few at a time, and a camp that mends its wounded
-        and calls its dead back out of the den takes that for ever.
-        """
-        here = [u for u in world.units.values()
-                if world.players[u.player].neutral and u.hp > 0 and not u.hidden
-                and dist(u.pos, record.center) <= CAMP_REACH and world.is_visible(self.player, u.tile)]
-        best = max(self.camp_seen.get(record.id, 0.0), strength(world, here))
-        self.camp_seen[record.id] = best
+    def _camp_strength(self, world: World, record, army: list[Unit]) -> float:
+        """The public roster/observed guard power, priced against the army's present composition."""
+        base = camp_strength(world, self.player, record.center, [], record.id, self.camp_seen.get(record.id, 0.0))
+        self.camp_seen[record.id] = base
+        best = camp_strength(world, self.player, record.center, army, record.id, base)
+        camp = world.camp_for(record.id)
+        if camp is not None and camp.encounter:
+            return best
         return max(best, self.profile.creep_prior * self._typical_soldier(world))
 
     def _creep(self, world: World, army: list[Unit]) -> bool:
         """Clear a creature camp.  True when the army has been given that job and nothing else.
 
-        The whole army goes at once and stays until the lair is down, because the lair is both the
-        payout and the thing that puts the camp back together.  A push worn past ``creep_abort`` of what
-        it set out with gives up and leaves that camp alone for ``creep_retry`` seconds: trickling
-        soldiers into a camp that heals and respawns is a sink with no bottom to it.
+        The whole army commits until lair and guards are down. A push worn
+        past ``creep_abort`` withdraws; a failed camp waits for a stronger army
+        as well as ``creep_retry`` seconds, avoiding repeated costly assaults.
         """
         profile = self.profile
         if not profile.creep or self.attacking:
             return False
-        lair = world.buildings.get(self.creeping) if self.creeping is not None else None
-        if self.creeping is not None and lair is None:
+        camp = world.camp_for(self.creeping) if self.creeping is not None else None
+        if self.creeping is not None and (camp is None or camp.cleared):
             self.note(world, "camp cleared")
             self.creeping = None
-        if lair is not None:
-            mine = strength(world, army)
+            self.creep_party.clear()
+            camp = None
+        if camp is not None:
+            party = [u for u in army if u.id in self.creep_party]
+            mine = strength(world, party)
             # The patience is not a nicety: a den the army cannot reach or cannot break would otherwise hold
             # the whole army at it for the rest of the match, and reinforcements keep the strength test from
             # ever tripping.  Fuzz reports that as an army of stalled units.
-            if len(army) < 3 or mine < profile.creep_abort * self.creep_strength or world.time >= self.creep_until:
-                self.camp_retry[lair.id] = world.time + profile.creep_retry
+            if len(party) < 3 or mine < profile.creep_abort * self.creep_strength or world.time >= self.creep_until:
+                self.camp_retry[camp.lair] = world.time + profile.creep_retry
+                self.camp_failed[camp.lair] = self.creep_strength
                 self.creeping = None
+                self.creep_party.clear()
                 self.regroup_until = world.time + profile.regroup_seconds
                 self.note(world, f"break off the camp at {mine:.0f} of {self.creep_strength:.0f}")
                 hall = self._hall(world)
@@ -208,35 +207,37 @@ class ProBrain(_ProBrainEconomy):
                     for unit in army:
                         world.move([unit.id], self._muster(world, home, unit))
                 return True
-            spot = self._standable(world, lair.center)
-            idle = [u.id for u in army if not u.orders]
+            spot = self._standable(world, camps.centre(world, camp), expedition=True)
+            idle = [u.id for u in party if not u.orders]
             if idle:
                 world.attack_move(idle, spot)
             return True
-        if world.time < max(profile.creep_from, self.regroup_until) or self._push_waits(world):
+        if world.time < max(profile.creep_from, self.regroup_until):
             return False
         hall = self._hall(world)
         origin = hall.center if hall is not None else (army[0].pos if army else None)
         if origin is None:
             return False
-        # A camp is worth the walk in proportion to what it keeps from us (ai.camp_worth): the ordinary reach for a third's,
-        # three and a third times it for a Mother Lode's; and of those in reach, the nearest for what it keeps.
+        # Price reward and travel only after filtering for a feasible assault.
         worth = {record.id: camp_worth(world, self.player, record) for record in known_camps(world, self.player)}
+        mine = strength(world, army)
+        if len(army) < profile.creep_army:
+            return False
         here = [record for record in known_camps(world, self.player)
                 if record.id in world.buildings and world.time >= self.camp_retry.get(record.id, 0.0)
-                and dist(record.center, origin) <= profile.creep_reach * worth[record.id]]
+                and mine >= 1.2 * self.camp_failed.get(record.id, 0.0)
+                and dist(record.center, origin) <= profile.creep_reach * worth[record.id]
+                and mine >= profile.creep_ratio * self._camp_strength(world, record, army)]
         if not here:
             return False
         target = min(here, key=lambda record: dist(record.center, origin) / worth[record.id])
-        mine = strength(world, army)
-        theirs = self._camp_strength(world, target)
-        if len(army) < profile.creep_army or mine < profile.creep_ratio * theirs:
-            return False
+        theirs = self._camp_strength(world, target, army)
         self.creeping = target.id
         self.creep_strength = mine
+        self.creep_party = {u.id for u in army}
         self.creep_until = world.time + profile.creep_patience
         self.note(world, f"clear the camp with {len(army)} ({mine:.0f} against {theirs:.0f})")
-        world.attack_move([u.id for u in army], self._standable(world, target.center))
+        world.attack_move([u.id for u in army], self._standable(world, target.center, expedition=True))
         return True
 
     def _outmatched_at_target(self, world: World, army: list[Unit], mine: float) -> bool:
@@ -713,6 +714,8 @@ class ProBrain(_ProBrainEconomy):
     def _combat(self, world: World) -> None:
         """Take the nearly dead out of the fight. The fighting itself is the model's."""
         self._hunt_builders(world)
+        if self.creeping is not None:
+            dodge_camp_slams(world, self.player, self._army(world))
         if self.profile.magic:
             for spell, point in self.magus.cast(world, self.player):
                 self.note(world, f"cast {spell.value} at ({point[0]:.1f}, {point[1]:.1f})")

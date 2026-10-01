@@ -950,6 +950,9 @@ NEUTRAL = ("This creature belongs to no faction and nobody owns, rides or comman
            "anywhere on it, and no banner, pennant, flag, sash, tabard, painted emblem, saddle, harness, reins, "
            "bridle, barding, armour, weapon or rider. It is a wild thing on an empty field.")
 MONSTER_SUBJECTS: dict[monsters.Monster, str] = {
+    monsters.Monster.ANCIENT_GUARDIAN: "an ancient obsidian guardian: a broad stone construct with a broken four-spired crown, "
+        "purple-black volcanic slabs, pale violet luminous fissures and one bright diamond core in its chest, "
+        "two massive bare fists, no weapon, no insignia, no team colours",
     monsters.Monster.TROLL: "a wild troll: a huge hunched brute half again a knight's height, with cold mossy blue-green hide, a pale "
                             "grey-green belly, near-black limbs, long heavy bare arms that hang past its knees and end in bone claws, a "
                             "small head thrust forward on a horizontal neck with a wide fanged mouth and sunken eyes, and a ridge of pale "
@@ -968,6 +971,8 @@ MONSTER_SUBJECTS: dict[monsters.Monster, str] = {
 }
 #: Known shortcomings of the low-poly stand-ins that the painter is asked to correct in place.
 MONSTER_FIXES: dict[monsters.Monster, str] = {
+    monsters.Monster.ANCIENT_GUARDIAN: "keep its crown spikes, luminous chest core, planted feet and two attached fists; "
+        "preserve the raised-fist windup and ground-contact slam exactly",
     monsters.Monster.TROLL: "the arms hang from the shoulder slabs and the clawed fists are at their ends, never floating beside the body; "
                             "the bone spines grow out of the spine itself, largest over the shoulders; the head is carried forward at chest "
                             "height on a neck that leaves the chest, not perched on top of the shoulders",
@@ -987,6 +992,7 @@ MONSTER_FIXES: dict[monsters.Monster, str] = {
 }
 #: What every painted cell must contain, for the judge to count.
 MONSTER_INVENTORY: dict[monsters.Monster, str] = {
+    monsters.Monster.ANCIENT_GUARDIAN: "one stone creature, two legs, two arms with fists, one crowned head, one glowing chest core, no weapon, no rider",
     monsters.Monster.TROLL: "one creature standing on two legs, two arms, one head, no weapon, no armour, no rider",
     monsters.Monster.SPIDER: "one creature, exactly eight legs, one abdomen, one head with fangs, no weapon, no rider",
     monsters.Monster.GOLEM: "one creature standing on two legs, two arms, one head, no weapon, no armour, no rider",
@@ -1014,6 +1020,7 @@ MONSTER_ATTACK: dict[monsters.Monster, dict[str, str]] = {
                             "follow": "follow-through: the jaws closing on the bite, the front legs reaching ahead",
                             "recover": "recovering: dropping back onto all four paws at guard"},
 }
+MONSTER_ATTACK[monsters.Monster.ANCIENT_GUARDIAN] = MONSTER_ATTACK[monsters.Monster.GOLEM]
 MONSTER_STYLE = ("Re-render every cell as a polished, appealing game sprite in a rich hand-painted fantasy style "
                  "(Warcraft 2 / Heroes of Might and Magic feel): readable silhouette, volumetric shading, the texture of "
                  "hide, fur, chitin or stone as the creature calls for, light from the upper left, a small soft dark contact "

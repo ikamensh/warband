@@ -257,7 +257,8 @@ def test_a_seed_with_no_fair_map_is_reported_rather_than_raised():
     from warband.sim.rules import Layout
 
     assert playable(MatchSpec(seed=1000, agents=("hard", "hard")))
-    refused = MatchSpec(seed=28, agents=("hard", "hard"), width=48, height=40, layout=Layout.FOREST.value)
+    # Every attempt at this seed's Small Forest still fails the winding-road audit.
+    refused = MatchSpec(seed=67, agents=("hard", "hard"), width=48, height=40, layout=Layout.FOREST.value)
     with pytest.raises(mapgen.NoFairMap):
         mapgen.generate(seed=refused.seed, width=refused.width, height=refused.height,
                         players=refused.players, human=None, layout=Layout.FOREST)

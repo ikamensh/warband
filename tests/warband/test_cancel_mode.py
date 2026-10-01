@@ -207,6 +207,7 @@ def test_anything_else_is_left_alone_and_the_hint_says_why(game) -> None:
 
 
 PLURALS = {
+    "Ancient Guardian": "Ancient Guardians",
     "Aether Elemental": "Aether Elementals", "Archer": "Archers", "Axethrower": "Axethrowers", "Ballista": "Ballistae", "Bear Rider": "Bear Riders", "Catapult": "Catapults",
     "Cleric": "Clerics", "Crossbowman": "Crossbowmen", "Dire Wolf": "Dire Wolves", "Druid": "Druids", "Flying Machine": "Flying Machines",
     "Footman": "Footmen", "Gatherer": "Gatherers", "Goblin Zeppelin": "Goblin Zeppelins", "Grunt": "Grunts", "Gyrocopter": "Gyrocopters",

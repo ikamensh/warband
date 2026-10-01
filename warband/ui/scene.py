@@ -30,7 +30,7 @@ from warband.sim.model import (RIFT, Attack, AttackMove, Build, Building, Deposi
                                 RuleError, Unit, World)
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
-from warband.sim.rules import (AETHER_EVERY, AETHER_STORE, BUFFS, BUILDINGS, DAMAGE_FACTORS, FORMATION_ARMOR, LEVEL_NAMES, SIM_DT, SPELL_FAR, SPELLS,
+from warband.sim.rules import (AETHER_EVERY, AETHER_STORE, BUFFS, BUILDINGS, CAMP_ENCOUNTERS, DAMAGE_FACTORS, FORMATION_ARMOR, LEVEL_NAMES, SIM_DT, SPELL_FAR, SPELLS,
                                SUMMONED, UNITS, ArmorClass, AttackType, BuffInfo, BuildingType, Cost, Difficulty, MapTheme, Race, Resource,
                                Terrain, UnitInfo, UnitType, Upgrade, an, listing)
 from warband.sim.rules import Layout as MapLayout
@@ -65,6 +65,10 @@ ANSWER_GAP = 1.5
 ROUSE_GAP = 3.0
 #: What is struck in the air: its hit is shown on the body drawn over the ground point it is at.
 FLYING = {u.value for u, info in UNITS.items() if info.flying}
+# Compact counterplay fits a lair card's one tactical line; the codex and hover carry its full rule-table hint.
+CAMP_TIPS = {"wolf_den": "Shield archers from wolves", "spider_nest": "Cavalry catches the spiders",
+             "troll_mound": "Focus arrows on the troll", "stone_cairn": "Spread out; dodge slam marks",
+             "ancient_sanctum": "Dodge slams · guards the air"}
 SAVE_VERSION = 2  # 2: the world records its layout
 SAVE_SLOTS = 3
 AUTOSAVE_EVERY = 120.0  # seconds of match time
@@ -614,6 +618,7 @@ class GameScene(Scene):
         self.stains: list[Stain] = []  # under the bodies, oldest first
         self._blows: dict[int, tuple[float, float]] = {}  # unit id -> where its last visible blow came from (tiles)
         self.recent_sounds: deque[str] = deque(maxlen=48)
+        self._slam_heard: set[int] = set()
         self._camp_seen: dict[int, set[UnitType]] = {}  # a woken camp's lair id -> the kinds of its guards seen since it woke
         self.status = ""
         self.status_timer = 0.0
@@ -2784,6 +2789,7 @@ class GameScene(Scene):
         self._advance(dt)
         self._handle_events(self.world.take_events())
         self._hear_camps()
+        self._hear_slams()
         if not self._game_over:
             for news in self.adjutant.think(self.world):
                 self.say(news)
@@ -2884,6 +2890,15 @@ class GameScene(Scene):
                 self._show_hit(e, seen=e.entity in blasts or self._visible(e.pos))
             elif e.kind == "impact":
                 self._show_impact(e, struck=any(h.kind == "hit" and h.entity == e.entity for h in events[index + 1:]))
+            elif e.kind == "slam" and self._visible(e.pos):
+                radius = e.amount / 100 * TILE
+                self.effects.add(Pulse(to_world(e.pos), (221, 195, 240, 220), radius=(8, radius), rings=2, duration=0.6))
+                self.effects.add(Burst(to_world(e.pos), (170, 152, 182, 220), 20, rng=self.fx_rng,
+                                       image="smoke", size=24, speed=(25, 110)))
+                if self._audible(e.pos):
+                    self.sfx("stone_stone_0", gap=0.2)
+                    if e.text == UnitType.ANCIENT_GUARDIAN.value:
+                        self.camera.shake(4, 0.25)
             elif e.kind == "death":
                 self._show_death(e)
             elif e.kind == "blast":
@@ -2943,6 +2958,24 @@ class GameScene(Scene):
             elif e.kind == "plunder" and mine:
                 self.effects.add(ResourceFloat(e.amount, "gold", (to_world(e.pos)[0], to_world(e.pos)[1] - TILE),
                                                color=GOLD, suffix="plundered", rise=26, duration=1.8))
+            elif e.kind == "hoard" and mine:
+                wx, wy = to_world(e.pos)
+                for i, (amount, resource, color) in enumerate(((e.amount, "gold", GOLD), (e.amount2, "lumber", LUMBER))):
+                    if amount:
+                        self.effects.add(ResourceFloat(amount, resource, (wx, wy - TILE - i * 24), color=color,
+                                                       suffix="bounty", rise=26, duration=2.4))
+                self.say(f"Camp bounty: {e.amount:,} gold · {e.amount2:,} lumber")
+            elif e.kind == "camp_cleared" and (mine or self._visible(e.pos)):
+                info = CAMP_ENCOUNTERS[e.text] if e.text else None  # custom rosters in older saves have no catalogue key
+                name = info.name if info is not None else "Creature camp"
+                if mine:
+                    self.effects.add(Toast(f"{name} cleared!", ["The guards and lair are defeated · bounty secured"],
+                                           accent=GOLD, hold=4.0, top=self.toast_top))
+                    self.sfx("victory" if info is not None and info.tier == "Ancient" else "built")
+                elif self._audible(e.pos):
+                    self.effects.add(FloatingText(f"{name} cleared", to_world(e.pos), GOLD, duration=2.4))
+                if self._visible(e.pos):
+                    self.effects.add(Pulse(to_world(e.pos), rgba(GOLD[:3], 220), radius=(12, 110), rings=3, duration=1.2))
             elif e.kind == "spilled" and mine:
                 self.warn(f"A vault lost: {e.amount} aether spilled, and your store holds less")
             elif e.kind == "spell":
@@ -2970,6 +3003,18 @@ class GameScene(Scene):
                 cue = presence.cue(bodies.family(guard.type, guard.race))
                 if cue is not None and self._audible(guard.pos):
                     self.sfx(cue, gap=ROUSE_GAP)
+
+    def _hear_slams(self) -> None:
+        """One stony rumble per visible windup: the danger can be heard as well as seen."""
+        winding = {u.id for u in self.world.units.values() if u.slam_point is not None and u.windup > 0}
+        self._slam_heard.intersection_update(winding)
+        for uid in winding - self._slam_heard:
+            unit = self.world.units[uid]
+            if self._audible(unit.pos):
+                cue = presence.cue("golem")
+                if cue is not None:
+                    self.sfx(cue, gap=0.3)
+                self._slam_heard.add(uid)
 
     def _visible(self, point: tuple[float, float]) -> bool:
         return self.world.is_visible(self.human, (int(point[0]), int(point[1])))
@@ -3469,7 +3514,7 @@ class GameScene(Scene):
         if isinstance(entity, Sighting) and entity.type is BuildingType.LAIR:
             from warband.art.monsters import LAIR_NAMES, LairKind
 
-            name = LAIR_NAMES[LairKind(entity.lair_kind)]
+            name = CAMP_ENCOUNTERS[entity.camp_encounter].name if entity.camp_encounter else LAIR_NAMES[LairKind(entity.lair_kind)]
         else:
             name = entity.info.name if isinstance(entity, Unit) else RACES[entity.race].buildings[entity.type].name
         self.draw_text(f"{name}", tx, y + 16, style="heading")
@@ -3477,6 +3522,15 @@ class GameScene(Scene):
         heading = self.game.theme.get_text_style("heading")  # the name's style: the owner follows wherever the theme ends it
         self.draw_text(owner, tx + 6 + self.game.backend.measure_text(name, heading.font_size, heading.font)[0], y + 16, style="sub", color=color)
         lines: list[str] = []
+        if isinstance(entity, Sighting) and entity.type is BuildingType.LAIR:
+            info = CAMP_ENCOUNTERS.get(entity.camp_encounter)
+            if info is not None:
+                lines += [f"{info.tier} · {len(entity.camp_roster)} guards total · clear all",
+                          f"Bounty: {entity.camp_gold:,} gold · {entity.camp_lumber:,} lumber",
+                          CAMP_TIPS[entity.camp_encounter]]
+                mx, my = self.mouse
+                if x <= mx <= x + SELECTION_WIDTH and y <= my <= y + 128:
+                    self.tooltip = info.hint + " Defeat all guards and the lair; bounty is shared by damage contributed."
         deposit = BUILDINGS[entity.type].mine if isinstance(entity, Sighting) else None
         if deposit is not None:
             # A mine is worth as much as it still holds, so it says so in five grouped digits; a seam holds
@@ -3516,7 +3570,8 @@ class GameScene(Scene):
                                  if info.blast else f"Damage per strike; {attack_hint(info.attack)}"))
                 stats = [primary, armour,
                          ("range", range_text(info), world.range_of(entity) - info.range,
-                          "Healing range in tiles" if info.heal else "Reaches the next tile over" if info.range < 1 else "Attack range in tiles"),
+                          ("Healing range in tiles" if info.heal else "Reaches the next tile over" if info.range < 1 else "Attack range in tiles")
+                          + (f" · Air reach: {info.air_range:g} tiles" if info.air_range else "")),
                          speed]
             mx, my = self.mouse
             body = self.game.theme.get_text_style("body")
@@ -4038,7 +4093,7 @@ class SaveBrowserScene(_Overlay):
 
 HELP_INTRO = (
     "Peasants gather and build on their own; plans wait for money, prerequisites and a free worker and are paid when work",
-    "starts. Raze the enemy to win.",
+    "starts. Raze the enemy to win. Wilds guard optional riches: scout a lair for its tier and bounty; defeat every guard and the lair to claim it.",
 )
 
 
@@ -4118,7 +4173,7 @@ class HelpScene(_Overlay):
         panel.add(KeyHints([("Esc", "close")]))
 
 
-CODEX_PAGES = ("Units", "Buildings", "Upgrades", "Races", "Tech tree", "Spells")
+CODEX_PAGES = ("Units", "Buildings", "Upgrades", "Races", "Tech tree", "Spells", "Wilds")
 #: What a page's table cannot say row by row: the armour class every building shares, which the unit page carries
 #: per unit in its Role column.
 PAGE_LEGENDS = {1: "Every building is fortified: a catapult's stone lands ×1.5 on one, and a tower's arrow strikes a normal blow."}
@@ -4141,11 +4196,11 @@ def codex_world(race: Race, *, magic: bool = False) -> World:
 
 class CodexScene(_Overlay):
     """The player's race: every unit, building and upgrade with its numbers, the four races side by side, and the tech
-    tree (what needs what, lit by what the player has), and the spells; 1-6 or Tab switch pages.  Read from the title instead of from a
+    tree (what needs what, lit by what the player has), the spells and wilds; 1-7 or Tab switch pages.  Read from the title instead of from a
     match (*in_match* false, :func:`codex_world`), nobody holds anything and the tree is lit as the plain reference."""
 
     pause_below = True
-    controls = {"1": "page_units", "2": "page_buildings", "3": "page_upgrades", "4": "page_races", "5": "page_tree", "6": "page_spells",
+    controls = {"1": "page_units", "2": "page_buildings", "3": "page_upgrades", "4": "page_races", "5": "page_tree", "6": "page_spells", "7": "page_wilds",
                 "tab": "next_page", "f2": "close"}
 
     def __init__(self, world: World, player: int, page: int = 0, *, in_match: bool = True) -> None:
@@ -4156,14 +4211,19 @@ class CodexScene(_Overlay):
 
     def on_enter(self) -> None:
         race = RACES[self.world.players[self.player].race]
-        panel = self.panel("Codex — the four races" if self.page == 3 else f"Codex — the {race.name}")
+        title = "Codex — the wilds" if self.page == 6 else "Codex — the four races" if self.page == 3 else f"Codex — the {race.name}"
+        panel = self.panel(title)
         tabs = Row(spacing=8)
-        for i, name in enumerate(CODEX_PAGES if self.world.magic else CODEX_PAGES[:-1]):
-            tabs.add(Button(name, hotkey=str(i + 1), on_click=lambda i=i: self.show(i), style=ACTION_BUTTON if i == self.page else GHOST_BUTTON, width=150))
+        pages = [i for i in range(len(CODEX_PAGES)) if self.world.magic or i != 5]
+        for i in pages:
+            tabs.add(Button(CODEX_PAGES[i], hotkey=str(i + 1), on_click=lambda i=i: self.show(i),
+                            style=ACTION_BUTTON if i == self.page else GHOST_BUTTON, width=140))
         panel.add(tabs)
         table = Column(spacing=3)
         if self.page == 3:
             table = self._race_table(race.name)
+        elif self.page == 6:
+            table = self._wilds_table()
         elif self.page == 4:
             tree = TechTree(self.world, self.player, in_match=self.in_match)
             legend = TREE_LEGEND.format(TREE_LIGHTING if self.in_match else "")
@@ -4183,7 +4243,24 @@ class CodexScene(_Overlay):
             if legend is not None:
                 table.add(Label(legend, text_style="sub", width=sum(widths) + 8 * (len(widths) - 1), wrap=True))
         panel.add(table)
-        panel.add(KeyHints([("1-6" if self.world.magic else "1-5", "page"), ("Tab", "next"), ("Esc", "close")]))
+        panel.add(KeyHints([("1-7" if self.world.magic else "1-5, 7", "page"), ("Tab", "next"), ("Esc", "close")]))
+
+    def _wilds_table(self) -> Column:
+        """The optional encounters, their real rewards, and the decisions each asks an army to make."""
+        table = Column(spacing=8)
+        widths = (246, 96, 144, 476)
+        for info in CAMP_ENCOUNTERS.values():
+            names = Counter(UNITS[kind].name for kind in info.roster)
+            roster = " · ".join(f"{count} {name if count == 1 else plural_name(name)}" for name, count in names.items())
+            table.add(Row(Label(info.name, text_style="hud", text_color=GOLD, width=widths[0], wrap=True),
+                          Label(info.tier, text_style="sub", width=widths[1]),
+                          Price([("gold", f"{info.gold:,}", GOLD), ("lumber", f"{info.lumber:,}", LUMBER)],
+                                size=12, text_style="sub", width=widths[2]),
+                          Column(Label(roster, text_style="sub", width=widths[3]),
+                                 Label(info.hint, text_style="sub", width=widths[3], wrap=True), spacing=2, margin=0), spacing=16))
+        table.add(Label("Defeat all guards and lair; bounty is shared by damage dealt. Survivors retreat and heal; dead guards stay dead.",
+                        text_style="sub", width=1010, wrap=True))
+        return table
 
     def _cell(self, cell: str | list[Pair], width: int, *, first: bool, last: bool, muted: bool = False) -> Component:
         """One cell of a page's table: a price as its symbols and numbers, anything else as text — the name of the
@@ -4288,8 +4365,12 @@ class CodexScene(_Overlay):
     def page_spells(self) -> None:
         self.show(5)
 
+    def page_wilds(self) -> None:
+        self.show(6)
+
     def next_page(self) -> None:
-        self.show((self.page + 1) % (len(CODEX_PAGES) if self.world.magic else len(CODEX_PAGES) - 1))
+        pages = [i for i in range(len(CODEX_PAGES)) if self.world.magic or i != 5]
+        self.show(pages[(pages.index(self.page) + 1) % len(pages)])
 
     def close(self) -> None:
         self.game.pop()
@@ -4319,15 +4400,20 @@ class GameOverScene(_Overlay):
         panel.style = RESULTS_STYLE
         panel.add(Label(f"{scene.race.name} · {scene.difficulty.value.title()} AI · {world.width}×{world.height} · {world.seats} players · "
                         f"{world.theme.value.title()} · Seed {scene.seed}", text_style="body"))
-        score = Column(spacing=10, width=420)
+        score = Column(spacing=6, width=420)
         score.add(Label(f"{sum(points.values()):,} points", text_style="banner"))
         for name, value in points.items():
             score.add(Row(Label(name, text_style="body", width=300), Label(f"{value:,}", text_style="heading", width=100), spacing=12))
         score.add(Label("Combat: 1 point per 10 resources destroyed.\nSurvivors: 1 per 20; research: 1 per 10.\nSwift victory: 2 per second before 20:00.",
                         text_style="sub", width=420, wrap=True))
+        if scene.stats["camps_cleared"] or scene.stats["bounty_gold"] or scene.stats["bounty_lumber"]:
+            cleared = scene.stats["camps_cleared"]
+            score.add(Label(f"{cleared} {'camp' if cleared == 1 else 'camps'} cleared", text_style="body", text_color=GOLD))
+            score.add(Label(f"Bounty: {scene.stats['bounty_gold']:,} gold · {scene.stats['bounty_lumber']:,} lumber",
+                            text_style="body", width=420, wrap=True))
         columns = -(-world.seats // WARBANDS_PER_COLUMN)
         width = 420 if columns < 2 else columns * WARBAND_COLUMN + (columns - 1) * 16
-        summary = Column(spacing=12, width=width)
+        summary = Column(spacing=8, width=width)
         summary.add(Label(f"Battle record · {_clock(world.time)}", text_style="heading"))
         stats = scene.stats
         summary.add(Label(f"{stats['units_killed']} enemy units defeated · {stats['units_lost']} units lost", text_style="body"))
@@ -4361,7 +4447,7 @@ class GameOverScene(_Overlay):
             column = Column(spacing=6, margin=0, width=420 if wide else WARBAND_COLUMN)
             for player in world.players[first:first + WARBANDS_PER_COLUMN]:
                 status = ("Victorious" if world.winner == player.id else "Surrendered" if player.surrendered
-                          else "Still fighting" if player.alive else "Eliminated")
+                          else "Standing" if player.alive else "Eliminated")
                 colour = GOOD if player.id == world.winner else MUTED
                 if wide:
                     column.add(Row(Label(f"{player.name} · {RACES[player.race].name}", text_style="body", width=200),

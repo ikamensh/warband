@@ -53,6 +53,7 @@ _WEAPONS = {
     # war hammer, and a spider's spit arrives as a shot.
     UnitType.WOLF.value: "axe", UnitType.TROLL.value: "axe",
     UnitType.GOLEM.value: "hammer", UnitType.SPIDER.value: "arrow",
+    UnitType.ANCIENT_GUARDIAN.value: "hammer",
     UnitType.AETHER_ELEMENTAL.value: "hammer",  # a summoned fist of aether (WB-066) lands as heavily as a golem's
 }
 #: Where a race arms a role differently: orc grunts and axethrowers swing axes and the ogre a club,

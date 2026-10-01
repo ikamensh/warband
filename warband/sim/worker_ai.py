@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import math
 from typing import Final
 
+from warband.sim import camps
 from warband.sim import path as pathing
 from warband.sim.model import TOUCH, Build, Deposit, Harvest, Point, Pos, Salvage, Unit, World, hypot, int_sum, rect_gap, tile_center
 from warband.sim.worker_knowledge import WorkerKnowledge, KnownBuilding
@@ -83,6 +84,7 @@ def _navigation(world: World, player: int) -> bytearray:
     knowledge = world.worker_knowledge[player]
     width, height = world.width, world.height
     visible = world.visible[player]
+    known_guards = camps.known_guards(world, player)
     units: list[tuple[float, float, float]] = []
     for unit in world.units.values():
         if unit.player == player:
@@ -94,7 +96,11 @@ def _navigation(world: World, player: int) -> bytearray:
             continue
         info = unit.info
         if info.damage:
-            units.append((unit.x, unit.y, max(2.5, info.range + 1.5)))
+            # An observed creature signals a defended area even before its lair is scouted.
+            # Use only its visible position, never the hidden camp's true anchor.
+            radius = (camps.CAMP_WATCH + camps.CAMP_POST + 1.0
+                      if unit.player == world.neutral and unit.id not in known_guards else max(2.5, info.range + 1.5))
+            units.append((unit.x, unit.y, radius))
     # Only a footprint the remembered grid does not already block still needs stamping, which is usually none.
     # Which footprints those are changes only with what the player sees (the knowledge is refreshed with it)
     # and with what stands on the map, so the answer is kept until one of the two moves on.
@@ -140,7 +146,7 @@ def _stamp_structures(world: World, player: int, footprints: frozenset[tuple[int
         if building.player != player:
             for index in _tower_ground(building, width, height):
                 blocked[index] = 1
-    return blocked
+    return camps.navigation(world, player, blocked, set(), 1.0)
 
 
 _TOWER_GROUND: Final[dict[tuple[KnownBuilding, int, int], tuple[int, ...]]] = {}

@@ -1,14 +1,19 @@
 """Render a creature camp through the real backend and save the frames to look at.
 
-    uv run python tools/verify_camp.py docs/evidence/camps
+    uv run python tools/verify_camp.py /tmp/warband-camp-preview
 
-Five pictures, each of something the design has to get right on screen rather than in a table:
+A native walkthrough at the smallest supported window, including encounter cards, a staged
+guardian warning/impact, the bounty celebration from a real completed assault, and the Wilds
+codex. Only the warning/impact are staged; the expedition defeats guards and lair through
+ordinary attack orders, and its actual completion events supply the reward capture.
+
+The pictures cover what the design has to get right on screen rather than in a table:
 
 ``camp.png``       a camp as a player first meets it: the den, its guards standing at their posts,
                    and the deposit it guards, at the real game zoom.
 ``approach.png``   the same camp with an army walking up to it, so the sizes can be compared.
 ``fight.png``      the camp roused: every guard at the intruder at once.
-``kind-<kind>.png`` each of the four dens with its guards: wolf den, spider nest, troll mound, stone cairn.
+``kind-<kind>.png`` each of the five encounters with its guards, from Wolf Pack to Ancient Guardian.
 ``card-<kind>.png`` the selection card for each creature, which now carries the armour class line --
                    the teaching surface for the whole design (a troll reads *No armour*, which is
                    why the archer is its answer).
@@ -23,18 +28,52 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from saga2d import Game, fonts  # noqa: E402
 from warband.sim import camps, mapgen  # noqa: E402
-from warband.sim.model import tile_center  # noqa: E402
-from warband.sim.rules import BuildingType, MapTheme, Terrain, UnitType  # noqa: E402
-from warband.ui.scene import GameScene  # noqa: E402
+from warband.sim.model import Camp, Event, World, tile_center  # noqa: E402
+from warband.sim.rules import CAMP_ENCOUNTERS, SIM_DT, BuildingType, MapTheme, Terrain, UnitType  # noqa: E402
+from warband.ui.scene import CodexScene, GameScene  # noqa: E402
 from warband.ui.style import build_theme  # noqa: E402
 
 SEED = 9
 SIZE = (64, 48)
+
+
+def defeat_camp(world: World, camp: Camp, after_guard: Callable[[], None] | None = None) -> None:
+    """A deterministic late-game expedition: actual combat and completion, with no synthetic reward event."""
+    x, y = camps.centre(world, camp)
+    army = [world.spawn_unit(0, UnitType.GRYPHON, (x - 8 + i % 6, y - 4 + i // 6)).id for i in range(24)]
+    for target in [*camp.guards, camp.lair]:
+        if world.entity(target) is None:
+            continue
+        living = [uid for uid in army if uid in world.units]
+        if not living:
+            raise RuntimeError("the verification expedition was defeated")
+        world.attack(living, target)
+        for _ in range(round(120 / SIM_DT)):
+            world.step()
+            if world.entity(target) is None:
+                break
+        else:
+            raise RuntimeError("the verification expedition failed to defeat its target")
+        if target in camp.guards and after_guard is not None:
+            after_guard()  # let earlier death effects settle before the final completion is captured
+    for _ in range(camps.EVERY):
+        if camp.cleared:
+            break
+        world.step()
+    if not camp.cleared:
+        raise RuntimeError("the defeated encounter did not complete")
+
+
+def settle_guard_effects(game: Game) -> None:
+    """Fast-forward eight presentation seconds: earlier bodies have faded before the final payout."""
+    for _ in range(2):
+        game.tick(4.0)
 
 
 def free_spot(world, near_x: int, near_y: int) -> tuple[int, int]:
@@ -58,13 +97,13 @@ def free_spot(world, near_x: int, near_y: int) -> tuple[int, int]:
     return best
 
 
-def main(out: Path, theme: MapTheme = MapTheme.SUMMER) -> int:
+def main(out: Path, theme: MapTheme = MapTheme.SUMMER, resolution: tuple[int, int] = (1200, 680)) -> int:
     out.mkdir(parents=True, exist_ok=True)
     world = mapgen.generate(SEED, *SIZE, players=2, human=0, theme=theme)
     if not world.camps:
         print(f"seed {SEED} drew no camps; nothing to look at")
         return 1
-    game = Game("Warband camps", resolution=(1280, 800), backend="pyglet", visible=False, theme=build_theme())
+    game = Game("Warband camps", resolution=resolution, backend="pyglet", visible=False, theme=build_theme())
     fonts.load(game)
     scene = GameScene(world, seed=SEED, settings={"tutorial": False, "music": 0.0, "sfx": 0.0})
     game.push(scene)
@@ -109,16 +148,11 @@ def main(out: Path, theme: MapTheme = MapTheme.SUMMER) -> int:
     shot("fight")
 
     # One camp per den: the rosters are chosen so each names a different one (toughest guard wins).
-    staged = [
-        ("wolf", [UnitType.WOLF] * 4, 500),
-        ("spider", [UnitType.SPIDER, UnitType.SPIDER, UnitType.WOLF, UnitType.WOLF], 600),
-        ("troll", [UnitType.TROLL, UnitType.GOLEM, UnitType.SPIDER, UnitType.SPIDER], 1500),
-        ("golem", [UnitType.GOLEM, UnitType.GOLEM, UnitType.SPIDER], 900),
-    ]
+    staged = list(CAMP_ENCOUNTERS)
     dens = []
-    for kind, roster, hoard in staged:
+    for kind in staged:
         spot = free_spot(world, lair.x, lair.y + 12)
-        den = camps.place(world, spot, roster, hoard)
+        den = camps.place_encounter(world, spot, kind)
         dens.append((kind, den))
         hall = world.buildings[den.lair]
         scene.camera.center_on(hall.center[0] * 32, hall.center[1] * 32)
@@ -126,8 +160,32 @@ def main(out: Path, theme: MapTheme = MapTheme.SUMMER) -> int:
         shot(f"kind-{kind}")
 
     for kind, den in dens:
+        hall = world.buildings[den.lair]
+        scene.camera.center_on(hall.center[0] * 32, hall.center[1] * 32)
         scene.select([den.lair], quiet=True)
         shot(f"card-lair-{kind}")
+    ancient = next(den for kind, den in dens if kind == "ancient_sanctum")
+    guardian = next(world.units[uid] for uid in ancient.guards if world.units[uid].type is UnitType.ANCIENT_GUARDIAN)
+    scene.paused = True
+    guardian.state = "attack"
+    guardian.windup = guardian.info.windup * 0.6
+    guardian.slam_point = (guardian.x + 2, guardian.y)
+    world.spawn_unit(0, UnitType.FOOTMAN, guardian.slam_point)
+    scene.camera.center_on(guardian.x * 32, guardian.y * 32)
+    shot("guardian-warning")
+    point = guardian.slam_point
+    guardian.windup = 0
+    guardian.slam_point = None
+    world.events.append(Event("slam", point, player=world.neutral, entity=guardian.id,
+                              text=guardian.type.value, amount=round(guardian.info.splash * 100)))
+    frames(5)
+    shot("guardian-slam")
+    scene.select([], quiet=True)
+    defeat_camp(world, ancient, lambda: settle_guard_effects(game))
+    world.reveal_all(0)
+    scene.camera.center_on(*(n * 32 for n in camps.centre(world, ancient)))
+    frames(24)
+    shot("camp-reward")
 
     staged_guards = [guard for _kind, den in dens for guard in camps.guards(world, den)]
     for kind in sorted({guard.type for guard in camps.guards(world, camp) + staged_guards}
@@ -139,6 +197,8 @@ def main(out: Path, theme: MapTheme = MapTheme.SUMMER) -> int:
             shot(f"card-{kind.value}")
     scene.select([lair.id], quiet=True)
     shot("card-lair")
+    game.push(CodexScene(world, 0, 6))
+    shot("codex-wilds")
     game.close()
     return 0
 
@@ -148,5 +208,6 @@ if __name__ == "__main__":
     parser.add_argument("out", type=Path)
     parser.add_argument("--theme", choices=[t.value for t in MapTheme], default=MapTheme.SUMMER.value,
                         help="the landscape the camp stands on: winter and waste wear their own coats")
+    parser.add_argument("--resolution", default="1200x680", help="logical window size; default is the smallest supported window")
     args = parser.parse_args()
-    raise SystemExit(main(args.out, MapTheme(args.theme)))
+    raise SystemExit(main(args.out, MapTheme(args.theme), tuple(int(n) for n in args.resolution.split("x"))))

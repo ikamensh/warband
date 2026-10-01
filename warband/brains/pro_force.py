@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 
 from warband.sim.model import Point, Unit, World, dist, plain_sum
-from warband.sim.rules import BuildingType
+from warband.sim.rules import CAMP_ENCOUNTERS, UNITS, BuildingType
 
 def _dps(world: World, unit: Unit) -> float:
     if unit.info.blast:
@@ -33,6 +33,33 @@ def strength(world: World, units: list[Unit]) -> float:
     damage = plain_sum(_dps(world, u) for u in units)
     body = plain_sum(_effective_hp(world, u) for u in units)
     return math.sqrt(damage * body)
+
+
+def camp_strength(world: World, player: int, point: Point, army: list[Unit], lair_id: int,
+                  seen: float = 0.0) -> float:
+    """Price a scouted roster and visible guards, with extra slam risk for a melee-heavy army.
+
+    Both brains ask this before choosing a destination. Hidden casualties and
+    health never change the answer: only public roster stats and the player's
+    sight do. *seen* is the remembered guard power, before composition risk.
+    """
+    guards = [u for u in world.units_near(point, 10.0)
+              if u.player == world.neutral and u.hp > 0 and world.is_visible(player, u.tile)]
+    value = max(seen, strength(world, guards))
+    splash = any(u.info.splash for u in guards)
+    # A remembered camp's identity/roster is public. Hidden health, casualties
+    # and positions are deliberately never read for its conservative prior.
+    camp = world.camp_for(lair_id)
+    info = CAMP_ENCOUNTERS.get(camp.encounter) if camp is not None else None
+    if info is not None:
+        damage = plain_sum(UNITS[kind].damage / UNITS[kind].period for kind in info.roster)
+        body = plain_sum(UNITS[kind].hp * (1.0 + UNITS[kind].armor / 6.0) for kind in info.roster)
+        value = max(value, math.sqrt(damage * body))
+        splash = splash or any(UNITS[kind].splash for kind in info.roster)
+    if army and splash:
+        melee = plain_sum(1.0 for u in army if u.info.range <= 1.5)
+        value *= 1.0 + 0.6 * melee / len(army)
+    return value
 
 
 def _tower_strength(world: World, player: int, point: Point, radius: float = 9.0) -> float:

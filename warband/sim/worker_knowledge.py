@@ -89,6 +89,8 @@ class WorkerKnowledge:
         self.blocked = bytearray([1]) * (width * height)
         self.mines: dict[int, KnownMine] = {}
         self.buildings: dict[int, KnownBuilding] = {}  # last-observed footprint of every structure ever seen
+        self.encounters: dict[int, tuple[float, float]] = {}  # discovered encounter anchors survive a fallen lair
+        self.cleared_encounters: set[int] = set()  # only completion news this seat witnessed
         self.threats: tuple[KnownBuilding, ...] = ()  # the armed ones among them; callers filter out their own
         self._terrain_blocked = bytearray([1]) * (width * height)  # the grid without any footprint stamped on it
         self._spans: dict[tuple[int, int, int], tuple[tuple[int, int], ...]] = {}
@@ -185,6 +187,9 @@ class WorkerKnowledge:
                 self.mines.pop(bid, None)
                 changed = True
         for building in observed.values():
+            if building.type is BuildingType.LAIR and building.id not in self.encounters:
+                self.encounters[building.id] = building.center
+                changed = True
             info = building.info
             threat_range = info.range + 1.5 if building.done and info.damage and not building.abandoned else 0.0  # a ruin shoots nothing
             ruin = building.abandoned and building.done
@@ -203,6 +208,13 @@ class WorkerKnowledge:
                                                         deposit.trip, deposit.slots, deposit.endless)
             else:
                 self.mines.pop(building.id, None)
+        for camp in world.camps:
+            point = self.encounters.get(camp.lair)
+            if (point is not None and camp.lair not in self.cleared_encounters
+                    and world.is_visible(player, (int(point[0]), int(point[1]))) and camp.cleared):
+                # A later scout can inspect the completed site even after its completion news expired.
+                self.cleared_encounters.add(camp.lair)
+                changed = True
         if changed:  # the grid still stands as it was unless remembered terrain or a footprint changed
             self._stamp_buildings()
 
@@ -239,6 +251,8 @@ class WorkerKnowledge:
                 "terrain": [terrain.value if terrain is not None else None for terrain in self.terrain],
                 "buildings": [{**asdict(building), "type": None if building.type is None else building.type.value}
                               for building in self.buildings.values()],
+                "encounters": [[lair, list(point)] for lair, point in self.encounters.items()],
+                "cleared_encounters": sorted(self.cleared_encounters),
                 "mines": [asdict(mine) for mine in self.mines.values()]}
 
     @classmethod
@@ -251,6 +265,12 @@ class WorkerKnowledge:
         for item in data["buildings"]:
             kind = item.get("type")  # None in a save from before the kind was remembered
             knowledge.buildings[item["id"]] = KnownBuilding(**{**item, "type": None if kind is None else BuildingType(kind)})
+        knowledge.encounters = {int(lair): (float(point[0]), float(point[1]))
+                                for lair, point in data.get("encounters", [])}
+        for building in knowledge.buildings.values():
+            if building.type is BuildingType.LAIR:
+                knowledge.encounters.setdefault(building.id, building.center)
+        knowledge.cleared_encounters = set(data.get("cleared_encounters", []))
         knowledge.mines = {item["id"]: KnownMine(**item) for item in data["mines"]}
         knowledge._rebuild_grid()
         return knowledge

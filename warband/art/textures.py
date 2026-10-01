@@ -3004,6 +3004,17 @@ def _mote(size: int) -> Image.Image:
     return Image.alpha_composite(halo, core)
 
 
+def _shard(size: int) -> Image.Image:
+    """An ancient guardian's thrown obsidian: angular stone with the violet seams of its body."""
+    img = _glow(size, 0.24, (208, 155, 231, 180), 0.08)
+    draw = ImageDraw.Draw(img)
+    draw.polygon([(size * .5, size * .12), (size * .8, size * .5), (size * .5, size * .88), (size * .2, size * .5)],
+                 fill=(57, 45, 72, 255), outline=(219, 180, 241, 255))
+    draw.line([(size * .5, size * .2), (size * .43, size * .47), (size * .6, size * .6), (size * .5, size * .8)],
+              fill=(241, 218, 255, 255), width=max(1, round(size * .08)))
+    return img
+
+
 def _flame(size: int) -> Image.Image:
     """A lick of flame (a burning unit's, WB-066): orange about a yellow core, pointed at the top, soft at its edge."""
     img = Image.new("RGBA", (size, size * 2), (0, 0, 0, 0))
@@ -3139,6 +3150,7 @@ def register_static(game: Game) -> None:
     assets.image_from_pil("arrow", _arrow(scale))
     assets.image_from_pil("stone", _glow(int(px * 0.4), 0.36, (150, 140, 128, 255), 0.06))
     assets.image_from_pil("mote", _mote(int(px * 0.7)))
+    assets.image_from_pil("shard", _shard(int(px * 0.7)))
     assets.image_from_pil("venom", _venom(int(px * 0.6)))
     assets.image_from_pil("storm", _storm(int(px * 0.7)))
     assets.image_from_pil("fireball", _fireball(int(px * 2)))

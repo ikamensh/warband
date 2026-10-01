@@ -14,7 +14,7 @@ from warband.art import monsters, textures, visual_lint
 from warband.art.monsters import LAIR_ANCHORS, LAIR_LOOKS, LAIR_NAMES, LairKind
 from warband.sim import camps, mapgen
 from warband.sim.model import World
-from warband.sim.rules import BUILDINGS, BuildingType, Terrain, UnitType
+from warband.sim.rules import BUILDINGS, CAMP_ENCOUNTERS, BuildingType, Terrain, UnitType
 from warband.ui.style import build_theme
 from warband.ui.view import Sighting, building_look
 
@@ -45,12 +45,32 @@ def test_the_toughest_guard_names_a_mixed_den() -> None:
 
 
 def test_a_generated_maps_camps_take_the_dens_they_were_raised_for() -> None:
-    """The third-mine camps read wolf or spider; the seam camp, where there is one, reads troll."""
+    """Ordinary maps show the den appropriate to each configured Raid or Stronghold."""
     world = mapgen.generate(9, 64, 48, 2)
     assert world.camps
-    kinds = {monsters.lair_kind_for_camp(camp) for camp in world.camps}
-    assert kinds <= {LairKind.WOLF, LairKind.SPIDER, LairKind.TROLL}, kinds
-    assert LairKind.WOLF in kinds or LairKind.SPIDER in kinds
+    expected = {"wolf_den": LairKind.WOLF, "spider_nest": LairKind.SPIDER,
+                "troll_mound": LairKind.TROLL, "stone_cairn": LairKind.GOLEM}
+    assert any(CAMP_ENCOUNTERS[camp.encounter].tier == "Raid" for camp in world.camps)
+    for camp in world.camps:
+        assert monsters.lair_kind_for_camp(camp) is expected[camp.encounter]
+
+
+@pytest.mark.parametrize("encounter,kind", [("wolf_den", LairKind.WOLF), ("spider_nest", LairKind.SPIDER),
+                                         ("troll_mound", LairKind.TROLL), ("stone_cairn", LairKind.GOLEM),
+                                         ("ancient_sanctum", LairKind.GOLEM)])
+def test_every_encounter_has_supported_den_art_and_portrait(encounter: str, kind: LairKind, tmp_path) -> None:
+    """All three tiers resolve through playable camp placement to intact/damaged art and a card portrait."""
+    world = flat_world()
+    camp = camps.place_encounter(world, (20, 16), encounter)
+    assert monsters.lair_kind_for_camp(camp) is kind
+    game = mock_game(tmp_path)
+    try:
+        for look in LAIR_LOOKS:
+            key = monsters.lair_image(game, monsters.lair_kind_for_camp(camp), look)
+            assert game.assets.has_image(key)
+        assert game.assets.has_image(monsters.lair_portrait_image(game, kind))
+    finally:
+        game.close()
 
 
 def test_a_den_with_no_known_guards_reads_as_the_common_wolf_den() -> None:

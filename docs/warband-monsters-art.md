@@ -136,6 +136,16 @@ and anchors.
 
 ## What was painted and how
 
+The Ancient Guardian joins these sheets as a distinct stone creature: an obsidian body, a
+four-spired crown, violet fissures and a bright chest core. Rear facings show plated backs
+without the core. It shares the golem's planted-foot rig and stone sound family, with its
+larger marked slam drawn separately at the committed ground point. The 72-cell sheet was
+painted from its own stand-in, corrected for rear-facing anatomy, then fitted and cut with
+`tools/restyle.py --monsters --creatures ancient_guardian`. Its winter and waste coats tint
+the same sheet, preserving its silhouette and animation anchors.
+Against armed flyers it throws an angular obsidian shard with violet seams and a matching
+trail. The shot uses the model's tracking projectile and climbs to the flyer's drawn height.
+
 Every unit and building in the game is a painted sheet; the creatures were the last art still
 drawn from its stand-ins, and beside a painted footman they looked unfinished.  They are painted
 the same way, and `tools/restyle.py --monsters` is the mode that does it — modelled on `--mines`,
