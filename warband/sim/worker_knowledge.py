@@ -91,13 +91,14 @@ class WorkerKnowledge:
         self.buildings: dict[int, KnownBuilding] = {}  # last-observed footprint of every structure ever seen
         self.encounters: dict[int, tuple[float, float]] = {}  # discovered encounter anchors survive a fallen lair
         self.cleared_encounters: set[int] = set()  # only completion news this seat witnessed
+        self.guard_warnings: dict[int, tuple[float, float]] = {}  # last visible armed neutral positions before their lair is known
         self.threats: tuple[KnownBuilding, ...] = ()  # the armed ones among them; callers filter out their own
         self._terrain_blocked = bytearray([1]) * (width * height)  # the grid without any footprint stamped on it
         self._spans: dict[tuple[int, int, int], tuple[tuple[int, int], ...]] = {}
         self._trees: set[int] = set()
         self._tree_order: tuple[int, ...] | None = None
         self._lit_box: tuple[int, int, int, int] | None = None  # what refresh() was told the fog covers
-        self.version = 0  # counts the times blocked and threats were stamped anew, the only times they change
+        self.version = 0  # invalidates routes when remembered terrain, footprints or neutral warnings change
 
     @property
     def trees(self) -> tuple[int, ...]:
@@ -215,8 +216,31 @@ class WorkerKnowledge:
                 # A later scout can inspect the completed site even after its completion news expired.
                 self.cleared_encounters.add(camp.lair)
                 changed = True
+        guards = {guard.id: guard for guard in world.units.values()
+                  if guard.player == world.neutral and guard.hp > 0 and guard.info.damage
+                  and not guard.hidden and world.is_visible(player, guard.tile)}
+        warnings_changed = False
+        for uid, point in list(self.guard_warnings.items()):
+            if uid not in guards and world.is_visible(player, (int(point[0]), int(point[1]))):
+                # Looking at the last sighting and finding it empty retires the
+                # warning. Hidden movement and deaths cannot update this fact.
+                del self.guard_warnings[uid]
+                warnings_changed = True
+        for uid, guard in guards.items():
+            observed_camp = world.camp_for(uid)
+            if observed_camp is not None and observed_camp.lair in self.encounters:
+                # Only an observed guard may be associated with an already
+                # discovered lair; its precise watch replaces the broad warning.
+                if uid in self.guard_warnings:
+                    del self.guard_warnings[uid]
+                    warnings_changed = True
+            elif self.guard_warnings.get(uid) != guard.pos:
+                self.guard_warnings[uid] = guard.pos
+                warnings_changed = True
         if changed:  # the grid still stands as it was unless remembered terrain or a footprint changed
             self._stamp_buildings()
+        elif warnings_changed:
+            self.version += 1
 
     def _stale(self, rows: list[list[Terrain]], visible: bytearray) -> list[int]:
         """The flat indices, in map order, of the lit tiles whose remembered terrain is not what is there now."""
@@ -253,6 +277,7 @@ class WorkerKnowledge:
                               for building in self.buildings.values()],
                 "encounters": [[lair, list(point)] for lair, point in self.encounters.items()],
                 "cleared_encounters": sorted(self.cleared_encounters),
+                "guard_warnings": [[uid, list(point)] for uid, point in self.guard_warnings.items()],
                 "mines": [asdict(mine) for mine in self.mines.values()]}
 
     @classmethod
@@ -271,6 +296,8 @@ class WorkerKnowledge:
             if building.type is BuildingType.LAIR:
                 knowledge.encounters.setdefault(building.id, building.center)
         knowledge.cleared_encounters = set(data.get("cleared_encounters", []))
+        knowledge.guard_warnings = {int(uid): (float(point[0]), float(point[1]))
+                                    for uid, point in data.get("guard_warnings", [])}
         knowledge.mines = {item["id"]: KnownMine(**item) for item in data["mines"]}
         knowledge._rebuild_grid()
         return knowledge

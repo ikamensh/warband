@@ -71,7 +71,10 @@ An unrelated attack-move does not automatically select a settled camp merely bec
 are visible. Explicit attacks and attack-moves aimed inside the camp remain expeditions; active
 creatures are still answered. Gatherers avoid the remembered lair’s whole watch, as well as visible
 mobile threats. Ordinary army routes and automatic combat movement also avoid remembered camp
-watches; deliberately ordering a destination inside the watch remains possible. Scouted camp cards
+watches; deliberately ordering a destination inside the watch remains possible. An armed creature seen
+before its lair leaves a warning at its last observed position, so losing sight of it cannot reverse
+a detour. Seeing that location empty removes the warning; observing its lair replaces a visible
+guard’s broad warning with the precise camp watch. These are saved, private scouting facts. Scouted camp cards
 remember identity, original guard count, bounty and tactical hint;
 they do not read unseen current guard health. Online seat snapshots omit unscouted camps, hidden
 guard IDs, recovery timers and contribution ledgers. Exact earned income is private to its recipient.
@@ -88,6 +91,9 @@ Both brains select feasible camps before considering distance, keep the expediti
 assess retreat against its committed cohort rather than fresh recruits elsewhere. After a failed
 assault they wait for a stronger force; a retry timer alone is not permission to feed the same army.
 They keep fighting surviving guards after the lair falls and can move out of marked stone slams.
+Pro uses its posture's existing rejoin-health requirement to select an expedition; wounded soldiers
+remain at home. A genuine base-defense interruption cancels the whole expedition and retains its
+original force for the retry requirement, rather than leaving half the party fighting creatures.
 
 `tools/creep_report.py --encounters` measures all four races against each encounter with attainable,
 magic-free prepared compositions. It records replacement costs, net resource return, casualties and

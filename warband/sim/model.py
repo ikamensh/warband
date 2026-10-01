@@ -815,7 +815,7 @@ class World:
         self._forest_regions: pathing.Regions | None = None
         self._route_cache: dict[tuple[Pos, int, int], tuple[list[Pos], Pos]] = {}  # march trunks, see _join_march()
         self._camp_routes: dict[tuple[int, bool, tuple[int, ...], float], tuple[int, tuple[tuple[float, float, float], ...], bytearray]] = {}
-        self._camp_views: dict[int, tuple[int, int, int, list[tuple[int, Point]], list[Unit]]] = {}
+        self._camp_views: dict[int, tuple[int, list[tuple[int, Point]]]] = {}
         self._camp_path_grids: dict[int, bytearray] = {}  # navigation under which each ordinary walk was planned
         self._camp_route_regions: dict[tuple[int, bool, tuple[int, ...], float], tuple[bytearray, pathing.Regions]] = {}
         self._camp_plain_routes: dict[tuple[int, bool, tuple[int, ...], float], tuple[int, bytearray, pathing.Regions]] = {}
@@ -2331,12 +2331,19 @@ class World:
         self._camp_route_regions.clear()
         self._camp_plain_routes.clear()
 
-    def free_tile_near(self, rect: tuple[int, int, int, int], *, prefer: Point | None = None) -> Pos | None:
-        """A passable tile adjacent to *rect*, nearest *prefer* (default: the rect's front)."""
+    def free_tile_near(self, rect: tuple[int, int, int, int], *, prefer: Point | None = None,
+                       navigation: bytearray | None = None) -> Pos | None:
+        """A physical adjacent tile nearest *prefer* (default: the front), optionally allowed by *navigation*.
+
+        With navigation, None means no permitted adjacent exit; it never relocates a unit beyond the ring.
+        """
         x, y, w, h = rect
         ring = [(x + dx, y + dy) for dx in range(-1, w + 1) for dy in range(-1, h + 1) if dx in (-1, w) or dy in (-1, h)]
-        candidates = [p for p in ring if self.passable(*p)]
+        candidates = [p for p in ring if self.passable(*p)
+                      and (navigation is None or not navigation[p[1] * self.width + p[0]])]
         if not candidates:
+            if navigation is not None:
+                return None
             return pathing.nearest_passable((x + w // 2, y + h), self.passable)
         anchor = prefer if prefer is not None else (x + w / 2, y + h + 0.5)
         return min(candidates, key=lambda p: dist(tile_center(p), anchor))
@@ -2462,18 +2469,32 @@ class World:
         if builder.orders and isinstance(builder.orders[0], Build):
             builder.orders.popleft()
             self._stood_down(builder)
-        spot = self.free_tile_near(b.rect)
+        assert b.player is not None
+        spot = self._building_exit(b, builder.radius)
         if spot is not None:
             builder.x, builder.y = tile_center(spot)
         b.builder = None
-        assert b.player is not None
         self.events.append(Event("built", b.center, player=b.player, entity=b.id, text=f"{b.info.name} complete",
                                  target_type=b.type.value))
+
+    def _building_exit(self, b: Building, radius: float, *, prefer: Point | None = None) -> Pos | None:
+        """Leave beside a building outside remembered watches, unless its destination chooses a camp."""
+        assert b.player is not None
+        excluded = {lair for lair, point in self.worker_knowledge[b.player].encounters.items()
+                    if prefer is not None and dist(prefer, point) <= camps.CAMP_WATCH}
+        navigation = camps.navigation(self, b.player, self._blocked, excluded, radius + .5)
+        spot = self.free_tile_near(b.rect, prefer=prefer, navigation=navigation)
+        if spot is None:
+            # A player may build where every adjacent exit lies in a known watch.
+            # Keep the physical exit when there is no safe neighbor, without adding distant relocation or shelter.
+            spot = self.free_tile_near(b.rect, prefer=prefer)
+        return spot
 
     def _deliver_unit(self, b: Building, unit_type: UnitType) -> None:
         assert b.player is not None
         assembly = self.players[b.player].assembly if unit_type is not UnitType.PEASANT else None
-        spot = self.free_tile_near(b.rect, prefer=b.rally if b.rally is not None else assembly)
+        spot = self._building_exit(b, self.unit_info(b.player, unit_type).radius,
+                                   prefer=b.rally if b.rally is not None else assembly)
         if spot is None:
             spot = (b.x, b.y + b.size)
         unit = self.spawn_unit(b.player, unit_type, tile_center(spot))
@@ -2501,7 +2522,7 @@ class World:
         unit.constructing = None
         if b is not None and b.builder == unit.id:
             b.builder = None
-            spot = self.free_tile_near(b.rect)
+            spot = self._building_exit(b, unit.radius)
             if spot is not None:
                 unit.x, unit.y = tile_center(spot)
 
@@ -2760,6 +2781,37 @@ class World:
                 continue
             return order
         return None
+
+    def _chosen_camp(self, u: Unit, lair: int, point: Point) -> bool:
+        """Deliberate encounter movement, or freedom to leave a watch the unit already entered."""
+        if dist(u.pos, point) < camps.CAMP_WATCH:
+            return True
+        intent = self._active_order(u)
+        if isinstance(intent, (Move, AttackMove)):
+            return dist(intent.target, point) <= camps.CAMP_WATCH
+        if isinstance(intent, Attack):
+            chosen = self.camp_for(intent.target)
+            return chosen is not None and chosen.lair == lair
+        return False
+
+    def _camp_step_allowed(self, u: Unit, end: Point) -> bool:
+        """A real displacement must not enter a remembered watch without the unit's active intent."""
+        if u.player == self.neutral or u.flying or end == u.pos:
+            return True
+        knowledge = self.worker_knowledge[u.player]
+        sx, sy = end[0] - u.x, end[1] - u.y
+        length2 = sx * sx + sy * sy
+        for lair, point in knowledge.encounters.items():
+            if lair in knowledge.cleared_encounters:
+                continue
+            # Tile-level routing can reopen the unit's current tile for escape.
+            # Its accepted segment must still stay outside the actual watch circle.
+            rx, ry = u.x - point[0], u.y - point[1]
+            along = min(1.0, max(0.0, -(rx * sx + ry * sy) / length2))
+            rx, ry = rx + along * sx, ry + along * sy
+            if rx * rx + ry * ry < camps.CAMP_WATCH * camps.CAMP_WATCH and not self._chosen_camp(u, lair, point):
+                return False
+        return True
 
     def _ease(self, u: Unit, dt: float) -> None:
         """Standing at ease: a unit hemmed in by its neighbours takes a short step away from them now
@@ -3549,7 +3601,7 @@ class World:
             return False
         goal = u.path_goal
         if goal is None or navigation[goal[1] * width + goal[0]] or self._next_waypoint(u, precise=True) is None:
-            escape = self._way_out(u.tile, navigation)
+            escape = self._way_out(u, navigation)
             if escape is None:
                 return False  # no way out: nothing to do but wait for the danger to pass
             u.path, u.path_goal, u.exact = escape, escape[-1], tile_center(escape[-1])
@@ -3601,7 +3653,7 @@ class World:
         u.progress, u.last_distance = 0.0, math.inf
         u.path, u.path_goal, u.exact = [], None, None
         if navigation[start[1] * self.width + start[0]]:
-            found = self._way_out(start, navigation)
+            found = self._way_out(u, navigation)
             if found is None:
                 return None  # forbidden ground with no way out: wait for the danger to pass
             escape, start = found, found[-1]
@@ -3787,7 +3839,7 @@ class World:
             nearest = pathing.nearest_passable(start, passable)
             if nearest is not None:
                 if navigation is not None:
-                    escape = self._escape(start, nearest) or []
+                    escape = self._escape(u, nearest) or []
                 start = nearest
         target = goal
         if not passable(*goal):
@@ -3959,42 +4011,27 @@ class World:
             return ground
         knowledge = self.worker_knowledge[u.player]
         view = self._camp_views.get(u.player)
-        if (view is None or view[0] != self.tick or view[1] != self._vision_epoch
-                or view[2] != knowledge.version):
+        if view is None or view[0] != knowledge.version:
             lairs = [(lair, point) for lair, point in knowledge.encounters.items()
                      if lair not in knowledge.cleared_encounters]
-            known = camps.known_guards(self, u.player)
-            guards = [guard for guard in self.units.values()
-                      if guard.player == self.neutral and guard.id not in known and not guard.hidden
-                      and guard.hp > 0 and guard.info.damage and self.is_visible(u.player, guard.tile)]
-            view = (self.tick, self._vision_epoch, knowledge.version, lairs, guards)
+            view = (knowledge.version, lairs)
             self._camp_views[u.player] = view
-        lairs = view[3]
+        lairs = view[1]
         intent = self._active_order(u)
         warnings: list[tuple[float, float, float]] = []
-        for guard in view[4]:
-            if guard.hidden or guard.hp <= 0:
-                continue
+        for guard_id, point in knowledge.guard_warnings.items():
             radius = camps.CAMP_WATCH + camps.CAMP_POST + 1.0
-            deliberate = ((isinstance(u.order, Attack) and u.order.target == guard.id)
-                          or (isinstance(intent, (Move, AttackMove)) and dist(intent.target, guard.pos) <= camps.CAMP_WATCH))
+            deliberate = ((isinstance(u.order, Attack) and u.order.target == guard_id)
+                          or (isinstance(intent, (Move, AttackMove)) and dist(intent.target, point) <= camps.CAMP_WATCH))
             if not deliberate:
-                warnings.append((guard.x, guard.y, radius))
+                warnings.append((point[0], point[1], radius))
         if not lairs and not warnings:
             return ground
         excluded: set[int] = set()
         margin = u.radius + .5
         for lair, point in lairs:
-            if dist(u.pos, point) <= camps.CAMP_WATCH:
-                # A unit already caught inside avoided ground must be free to
-                # leave, including an ordered dodge of a committed slam.
+            if self._chosen_camp(u, lair, point):
                 excluded.add(lair)
-            if isinstance(intent, (Move, AttackMove)) and dist(intent.target, point) <= camps.CAMP_WATCH:
-                excluded.add(lair)
-            elif isinstance(intent, Attack):
-                chosen = self.camp_for(intent.target)
-                if chosen is not None and chosen.lair == lair:
-                    excluded.add(lair)
         key = (u.player, u.forest, tuple(sorted(excluded)), margin)
         observed = tuple(warnings)
         cached = self._camp_routes.get(key)
@@ -4003,7 +4040,7 @@ class World:
             self._camp_routes[key] = (knowledge.version, observed, grid)
         else:
             grid = cached[2]
-        if warnings:
+        if warnings or lairs:
             march = intent if isinstance(intent, (Move, AttackMove)) else None
             if march is not None:
                 found = self._camp_route_regions.get(key)
@@ -4013,20 +4050,32 @@ class World:
                 region = found[1]
                 plain = self._camp_plain_routes.get(key)
                 if plain is None or plain[0] != knowledge.version:
-                    hard_grid = camps.navigation(self, u.player, ground, excluded, margin)
+                    hard_grid = camps.navigation(self, u.player, ground, excluded, 0.0, tile_edges=False)
                     plain = (knowledge.version, hard_grid, pathing.Regions(hard_grid, self.width, self.height))
                     self._camp_plain_routes[key] = plain
                 goal = (int(march.target[0]), int(march.target[1]))
                 # Compare the same physically reachable destination edge. A
                 # building or an island already makes its exact tile unreachable
                 # without warnings, and must not itself trigger the fallback.
-                goal = plain[2].reachable_goal(u.tile, goal)
-                if (plain[2].label(u.tile) != 0 and plain[2].label(u.tile) == plain[2].label(goal)
-                        and (region.label(u.tile) != region.label(goal) or region.label(u.tile) == 0)):
-                    # A guard's public position is an uncertain warning, not a
-                    # newly discovered terrain wall. When these broad circles
-                    # cut off the march, retain only precise remembered watches;
-                    # approaching a lair reveals that precise boundary in time.
+                hard_start = u.tile
+                if plain[2].label(hard_start) == 0:
+                    nearest = pathing.nearest_passable(hard_start, lambda x, y: 0 <= x < self.width and 0 <= y < self.height
+                                                       and not plain[1][y * self.width + x], prefer=goal)
+                    if nearest is None:
+                        return grid
+                    hard_start = nearest
+                goal = plain[2].reachable_goal(hard_start, goal)
+                padded_start = u.tile
+                if region.label(padded_start) == 0:
+                    nearest = pathing.nearest_passable(padded_start, lambda x, y: 0 <= x < self.width and 0 <= y < self.height
+                                                       and not grid[y * self.width + x], prefer=goal)
+                    if nearest is not None:
+                        padded_start = nearest
+                if (plain[2].label(hard_start) == plain[2].label(goal)
+                        and (region.label(padded_start) != region.label(goal) or region.label(padded_start) == 0)):
+                    # Padding and partial guard warnings are preferences. When
+                    # they disconnect a reachable march, retain actual remembered
+                    # watches; accepted movement also checks their exact circles.
                     return plain[1]
         return grid
 
@@ -4061,22 +4110,49 @@ class World:
                     return True
         return False
 
-    def _way_out(self, start: Pos, navigation: bytearray) -> list[Pos] | None:
-        """Real-ground steps from *start*, which *navigation* forbids, to the nearest tile it allows; None when no
-        such tile is near or real ground does not lead there."""
+    def _escape_ground(self, u: Unit) -> bytearray:
+        """Relax mobile danger for escape while retaining other remembered camp watches.
+
+        A worker fleeing a rival must not cross a separate camp. The watch it
+        has already entered is exempt so leaving remains possible. Padding is
+        relaxed, and its current physical tile is open, allowing a unit just
+        outside the actual watch to step outward without opening that camp.
+        """
+        ground = self.ground_of(u)
+        if u.player == self.neutral or u.flying:
+            return ground
+        knowledge = self.worker_knowledge[u.player]
+        excluded = {lair for lair, point in knowledge.encounters.items()
+                    if lair not in knowledge.cleared_encounters and dist(u.pos, point) < camps.CAMP_WATCH}
+        key = (u.player, u.forest, tuple(sorted(excluded)), 0.0)
+        cached = self._camp_routes.get(key)
+        if cached is None or cached[0] != knowledge.version:
+            grid = camps.navigation(self, u.player, ground, excluded, 0.0, tile_edges=False)
+            self._camp_routes[key] = (knowledge.version, (), grid)
+        else:
+            grid = cached[2]
+        index = u.tile[1] * self.width + u.tile[0]
+        if grid[index] and not ground[index]:
+            grid = bytearray(grid)
+            grid[index] = 0
+        return grid
+
+    def _way_out(self, u: Unit, navigation: bytearray) -> list[Pos] | None:
+        """Escape to the nearest safety-map tile without entering another remembered camp."""
         width, height = self.width, self.height
 
         def allowed(x: int, y: int) -> bool:
             return 0 <= x < width and 0 <= y < height and not navigation[y * width + x]
-        nearest = pathing.nearest_passable(start, allowed)
-        return self._escape(start, nearest) if nearest is not None else None
+        nearest = pathing.nearest_passable(u.tile, allowed)
+        return self._escape(u, nearest) if nearest is not None else None
 
-    def _escape(self, start: Pos, nearest: Pos) -> list[Pos] | None:
-        """Real-ground steps from *start*, which the safe map forbids (an enemy came close), to *nearest*, which it
-        allows; None when real ground does not lead there (a wall between, or too far for the local budget)."""
-        if not self.passable(*start):
+    def _escape(self, u: Unit, nearest: Pos) -> list[Pos] | None:
+        """Escape mobile danger to *nearest* over this unit's ground and the remaining hard watches."""
+        start = u.tile
+        if self.ground_of(u)[start[1] * self.width + start[0]]:
             return None
-        route = pathing.find_path_grid(start, nearest, self._blocked, self.width, self.height, max_expansions=LOCAL_EXPANSIONS)
+        route = pathing.find_path_grid(start, nearest, self._escape_ground(u), self.width, self.height,
+                                      max_expansions=LOCAL_EXPANSIONS)
         return route if route and route[-1] == nearest else None
 
     def _effective_speed(self, u: Unit, *, dressing: bool = False) -> float:
@@ -4263,6 +4339,17 @@ class World:
         if waypoint is None:
             u.state = "idle"
             return True
+        if not self._camp_step_allowed(u, waypoint) and u.path_goal is not None:
+            # A crowd may leave a waypoint at this tile's centre. The escape
+            # grid opens the physical tile, but its centre can lie inside a watch.
+            # Replan from the actual position to an outward neighbor instead.
+            self._plan(u, u.path_goal, u.exact, navigation=navigation)
+            waypoint = self._next_waypoint(u, precise=precise)
+            if waypoint is None:
+                u.state = "idle"
+                return True
+            if not self._camp_step_allowed(u, waypoint):
+                return False
         if u.rooted:
             # Held where it stands (Entangle): it is going nowhere, and its progress watchdog neither counts the time
             # nor plans a way round the units in its way, which are not what holds it; its route waits for it.
@@ -4272,7 +4359,7 @@ class World:
         width = self.width
         tile = tx, ty = int(u.x), int(u.y)  # nothing below moves the unit until the very last step
         if navigation is not None and navigation[ty * width + tx]:
-            navigation = None  # caught on forbidden ground: any real step out is better than standing still
+            navigation = self._escape_ground(u)  # flee mobile danger while retaining other camp watches
         ground = self.ground_of(u)
         grid = ground if navigation is None else navigation
         if u.path and u.path_goal is not None:
@@ -4289,7 +4376,9 @@ class World:
                 if dist(u.pos, centre) <= ARRIVE:
                     # At the centre already: wait there for the plan, rather than spend the tick's leftover
                     # travel towards the refused tile and walk back next tick.
-                    u.x, u.y = self._keep_clear(u, centre)
+                    point = self._keep_clear(u, centre)
+                    if self._camp_step_allowed(u, point):
+                        u.x, u.y = point
                     u.last_distance = math.inf
                     return False
                 u.path.insert(0, tile)
@@ -4316,7 +4405,7 @@ class World:
             if navigation is not None and not self._line_clear(u.pos, waypoint, navigation=navigation):
                 u.path_goal = None
                 return False
-            if d < 1e-9 or self._keep_clear(u, waypoint) == waypoint:
+            if (d < 1e-9 or self._keep_clear(u, waypoint) == waypoint) and self._camp_step_allowed(u, waypoint):
                 u.x, u.y = waypoint
                 if u.path:
                     u.path.pop(0)
@@ -4343,7 +4432,7 @@ class World:
                 self._plan(u, u.path_goal, u.exact, navigation=navigation)
             return False
         nx, ny = self._keep_clear(u, (nx, ny))
-        if not self._line_clear(u.pos, (nx, ny), navigation=grid):
+        if not self._line_clear(u.pos, (nx, ny), navigation=grid) or not self._camp_step_allowed(u, (nx, ny)):
             nx, ny = u.x, u.y  # the way round the body in front would cross blocked ground: wait behind it
         u.x, u.y = nx, ny
         # Progress watchdog: closing on the goal resets it; a stretch without progress paths
@@ -4437,7 +4526,7 @@ class World:
             step = min(d, self._effective_speed(u, dressing=dressing) * dt)
             self._turn_toward(u, target, dt)
             nx, ny = self._keep_clear(u, (u.x + dx / d * step, u.y + dy / d * step))
-            if self._line_clear(u.pos, (nx, ny), navigation=ground):
+            if self._line_clear(u.pos, (nx, ny), navigation=ground) and self._camp_step_allowed(u, (nx, ny)):
                 u.x, u.y = nx, ny
         if not keep_path:
             u.path = []
@@ -4626,6 +4715,8 @@ class World:
         nx, ny = self._keep_clear(u, (min(max(u.x + dx, 0.05), self.width - 0.05), min(max(u.y + dy, 0.05), self.height - 0.05)))  # _clamp's
         if (nx, ny) == (u.x, u.y):
             return False  # the bodies round it leave the shove nowhere to go: its x or y part alone may
+        if not self._camp_step_allowed(u, (nx, ny)):
+            return False
         if self._line_clear((u.x, u.y), (nx, ny), navigation=ground) if own_tile_open else not ground[int(ny) * self.width + int(nx)]:
             u.x, u.y = nx, ny
             return True

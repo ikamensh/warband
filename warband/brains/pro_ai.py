@@ -16,7 +16,7 @@ from typing import Final
 from warband.brains.pro_force import _tower_strength, _tower_strength_own, camp_strength, strength
 from warband.brains.pro_profiles import PRO, PRO_PROFILES, PRO_RUSH, PRO_VANGUARD, PRO_WARDEN, ProProfile
 
-from warband.brains.ai import RAIDERS, answer_flyers, camp_worth, dodge_camp_slams, heading_to, known_camps, known_mines, lost_track
+from warband.brains.ai import RAIDERS, answer_flyers, camp_worth, can_reach_point, dodge_camp_slams, heading_to, known_camps, known_mines, lost_track, redirect_searchers
 from warband.sim.model import Attack, Build, Building, Move, Point, Repair, Salvage, Unit, World, dist, int_sum, plain_sum, rect_gap, tile_center
 from warband.sim.rules import SPELLS, BuildingType, Layout, Race, UnitType, Upgrade
 
@@ -31,6 +31,10 @@ class ProBrain(_ProBrainEconomy):
     def think(self, world: World, rng: random.Random) -> None:
         if not world.players[self.player].alive or world.winner is not None:
             return
+        searches = self.scouts + list(self.hunt.party)
+        if self.prospector is not None:
+            searches.append(self.prospector)
+        redirect_searchers(world, self.player, searches)
         if world.time >= self.next_combat:
             self.next_combat = world.time + self.profile.combat_every
             self._combat(world)
@@ -82,6 +86,20 @@ class ProBrain(_ProBrainEconomy):
         threats = self._threats(world)
         if threats and not (self.attacking and strength(world, threats)
                             < self.profile.ignore_raid_ratio * strength(world, army)):
+            if self.creeping is not None:
+                # Defense takes the whole expedition. An engaged guard attack
+                # must not mask its old camp march while the rest goes home.
+                self.camp_retry[self.creeping] = world.time + self.profile.creep_retry
+                self.camp_failed[self.creeping] = self.creep_strength
+                party = [u for u in self._army(world) if u.id in self.creep_party]
+                available = {u.id for u in guards + army}
+                army.extend(u for u in party if u.id not in available)
+                if party:
+                    world.stop([u.id for u in party])
+                self.creeping = None
+                self.creep_party.clear()
+                self.regroup_until = world.time + self.profile.regroup_seconds
+                self.note(world, "break off the camp to defend")
             if self._outmatched_at_home(world, guards + army, threats):
                 self._fall_back(world, guards + army, threats)
             else:
@@ -118,7 +136,7 @@ class ProBrain(_ProBrainEconomy):
             # trickling. A soldier crossing the map alone arrives alone and dies
             # alone, so the ones still at home wait until there are enough to travel
             # together; the ones already at the front simply rejoin the fight.
-            idle = [u for u in army if not u.orders]
+            idle = [u for u in army if not u.orders and can_reach_point(world, u, self.target)]
             arrived = [u.id for u in idle if dist(u.pos, self.target) <= 12.0]
             if arrived:
                 world.attack_move(arrived, self.target)
@@ -220,24 +238,31 @@ class ProBrain(_ProBrainEconomy):
             return False
         # Price reward and travel only after filtering for a feasible assault.
         worth = {record.id: camp_worth(world, self.player, record) for record in known_camps(world, self.player)}
-        mine = strength(world, army)
-        if len(army) < profile.creep_army:
+        ready = [u for u in army if u.hp >= profile.rejoin_hp * u.max_hp]
+        mine = strength(world, ready)
+        if len(ready) < profile.creep_army:
             return False
         here = [record for record in known_camps(world, self.player)
                 if record.id in world.buildings and world.time >= self.camp_retry.get(record.id, 0.0)
                 and mine >= 1.2 * self.camp_failed.get(record.id, 0.0)
                 and dist(record.center, origin) <= profile.creep_reach * worth[record.id]
-                and mine >= profile.creep_ratio * self._camp_strength(world, record, army)]
+                and mine >= profile.creep_ratio * self._camp_strength(world, record, ready)]
         if not here:
             return False
         target = min(here, key=lambda record: dist(record.center, origin) / worth[record.id])
-        theirs = self._camp_strength(world, target, army)
+        theirs = self._camp_strength(world, target, ready)
         self.creeping = target.id
         self.creep_strength = mine
-        self.creep_party = {u.id for u in army}
+        self.creep_party = {u.id for u in ready}
         self.creep_until = world.time + profile.creep_patience
-        self.note(world, f"clear the camp with {len(army)} ({mine:.0f} against {theirs:.0f})")
-        world.attack_move([u.id for u in army], self._standable(world, target.center, expedition=True))
+        self.note(world, f"clear the camp with {len(ready)} ({mine:.0f} against {theirs:.0f})")
+        world.attack_move([u.id for u in ready], self._standable(world, target.center, expedition=True))
+        if hall is not None:
+            home = self._home_point(world, hall)
+            for unit in army:
+                if unit.id not in self.creep_party:
+                    self._hurt.add(unit.id)
+                    world.move([unit.id], self._muster(world, home, unit))
         return True
 
     def _outmatched_at_target(self, world: World, army: list[Unit], mine: float) -> bool:
@@ -349,7 +374,7 @@ class ProBrain(_ProBrainEconomy):
         same one the world ends the walk on: a brain with a tolerance of its own sent a footman after a post a
         knight was standing on every half second, and the world gave it up again every half second (seed 92)."""
         post = self._muster(world, point, unit)
-        if not world.stands_at(unit, post):
+        if not world.stands_at(unit, post) and can_reach_point(world, unit, post):
             world.move([unit.id], post)
 
     def _defenders_near(self, world: World, point: Point, radius: float = 12.0) -> float:
@@ -461,7 +486,8 @@ class ProBrain(_ProBrainEconomy):
         point = min(threats, key=lambda u: min(dist(u.pos, b.center)
                                                for b in world.player_buildings(self.player))).pos
         self.attacking = False
-        stale = [u.id for u in army if not isinstance(u.order, Attack) and not heading_to(u, point)]
+        stale = [u.id for u in army if not isinstance(u.order, Attack) and not heading_to(u, point)
+                 and can_reach_point(world, u, point)]
         if stale:
             world.attack_move(stale, point)
 

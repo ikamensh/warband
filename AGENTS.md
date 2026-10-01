@@ -209,9 +209,10 @@ keeps where code goes and the rules below.
   screen says whether a change deserves a confirming run, and the confirming
   run is made once, on the finished code (leagues rerun after each edit were
   the largest cost of the 2026-09-24 intake). A camp is a feature only if every side can clear
-  one; `tools/creep_report.py` is the gate (a brain that feeds soldiers in a
-  few at a time pours them into a sink: a camp mends its wounded and calls its
-  dead back).
+  one; `tools/creep_report.py --encounters --gate` proves prepared-army access
+  for every race, while whole-match reports catch incidental losses and costly
+  expeditions. A camp mends surviving guards after disengagement; fallen guards
+  stay dead, so a failed expedition can retain progress.
 - Tests use the mock backend (`game`/`backend` fixtures from
   `saga2d.testing.fixtures`), public behaviour only; fixtures use
   `save_dir=tmp_path / "saves"` because `data_dir` is its parent. What a test

@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-from warband.sim.model import (MINE_CLEARANCE, RIFT, Attack, AttackMove, Build, Building, Deposit, Harvest, Move, Point, Pos, Repair, Salvage, Unit,
+from warband.sim.model import (MINE_CLEARANCE, RIFT, Attack, AttackMove, Build, Building, Deposit, Harvest, Heal, Move, Point, Pos, Repair, Salvage, Unit,
                            World, dist, int_sum, plain_sum, rect_gap, tile_center)
 from warband.sim import camps, mapgen
 from warband.sim.path import nearest_passable
@@ -179,6 +179,55 @@ def camp_safe_point(world: World, player: int, point: Point) -> Point:
     if tile is None:
         raise RuntimeError("no rally ground outside remembered camp watches")
     return tile_center(tile)
+
+
+def can_reach_point(world: World, unit: Unit, point: Point) -> bool:
+    """Whether a physical walk can reach this destination or a building's nearest free edge.
+
+    Brains must not repeatedly restart a completed nearest-edge approach from
+    an isolated pocket. Reuse the model's cached terrain regions; flying and
+    forest walking retain their own movement rules.
+    """
+    if unit.flying:
+        return True
+    ground = world.ground_of(unit)
+
+    def open_tile(x: int, y: int) -> bool:
+        return world.in_bounds((x, y)) and not ground[y * world.width + x]
+
+    goal = nearest_passable((int(point[0]), int(point[1])), open_tile,
+                            max_radius=max(world.width, world.height), prefer=unit.tile)
+    regions = world._regions_of(unit)
+    return goal is not None and regions.label(unit.tile) == regions.label(goal)
+
+
+def redirect_searchers(world: World, player: int, searchers: Sequence[int]) -> None:
+    """Reconsider ordinary search destinations as soon as a new encounter is discovered.
+
+    A scouting ring chosen in fog may turn out to lie inside a camp. Waiting
+    for the next strategic decision can cost the single remaining reaction
+    tick before intrusion, so brains call this for their tracked searchers
+    each step. An automatic guard attack cannot hide the interrupted march.
+    Explicit commands, active rival combat and flying searches keep their behavior.
+    """
+    for uid in searchers:
+        unit = world.units.get(uid)
+        if unit is None or unit.flying:
+            continue
+        front = unit.order
+        if isinstance(front, Attack) and front.auto:
+            enemy = world.entity(front.target)
+            if enemy is not None and enemy.player is not None and not world.players[enemy.player].neutral:
+                continue  # finish the live rival fight before reconsidering its march
+        order = next((o for o in unit.orders if not (isinstance(o, (Attack, Heal)) and o.auto)), None)
+        if not isinstance(order, (Move, AttackMove)):
+            continue
+        point = camp_safe_point(world, player, order.target)
+        if point != order.target:
+            if isinstance(order, AttackMove):
+                world.attack_move([uid], point)
+            else:
+                world.move([uid], point)
 
 
 def heading_to(unit: Unit, point: Point) -> bool:
@@ -642,6 +691,8 @@ class Brain:
 
     def think(self, world: World, rng: random.Random) -> None:
         """Act if a think is due; call this every simulation step."""
+        if world.winner is None and world.players[self.player].alive:
+            redirect_searchers(world, self.player, list(self.hunt.party))
         if self.creeping is not None and world.winner is None and world.players[self.player].alive:
             dodge_camp_slams(world, self.player, self._army(world))
         if world.time < self.next_think or not world.players[self.player].alive or world.winner is not None:
@@ -1017,6 +1068,8 @@ class Brain:
         past half its original size withdraws; a retry needs more force than
         the failed assault, rather than feeding replacements into the camp.
         """
+        if self.attacking:
+            return False  # an ongoing rival push is a scattered fighting force, not a fresh expedition
         lair = world.buildings.get(self.creeping) if self.creeping is not None else None
         camp = world.camp_for(self.creeping) if self.creeping is not None else None
         if self.creeping is not None and (camp is None or camp.cleared):

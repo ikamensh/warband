@@ -289,12 +289,13 @@ def known_guards(world: World, player: int) -> set[int]:
 
 
 def navigation(world: World, player: int, base: bytearray, excluded_ids: set[int], margin: float,
-               warnings: tuple[tuple[float, float, float], ...] = ()) -> bytearray:
+               warnings: tuple[tuple[float, float, float], ...] = (), *, tile_edges: bool = True) -> bytearray:
     """Remembered camp watches are avoided ground, except an explicitly chosen encounter.
 
     This changes routing, never physical terrain. A discovered encounter stays
     a remembered danger after its lair falls, until this seat hears completion news.
-    The tile's nearest edge is stamped, so crossing its corner cannot intrude.
+    By default the tile's nearest edge is stamped. Centre-only stamping permits
+    precise escape/fallback routing; its accepted movement must check the actual circle.
     """
     knowledge = world.worker_knowledge[player]
     lairs = [point for lair, point in knowledge.encounters.items()
@@ -304,11 +305,13 @@ def navigation(world: World, player: int, base: bytearray, excluded_ids: set[int
     grid = bytearray(base)
     circles = [(point[0], point[1], CAMP_WATCH + margin) for point in lairs]
     circles.extend(warnings)
+    edge = .5 if tile_edges else 0.0
     for cx, cy, radius in circles:
         for y in range(max(0, int(cy - radius - 1)), min(world.height, int(cy + radius + 1))):
             for x in range(max(0, int(cx - radius - 1)), min(world.width, int(cx + radius + 1))):
-                dx = max(0.0, abs(x + .5 - cx) - .5)
-                dy = max(0.0, abs(y + .5 - cy) - .5)
-                if dx * dx + dy * dy < radius * radius:
+                dx = max(0.0, abs(x + .5 - cx) - edge)
+                dy = max(0.0, abs(y + .5 - cy) - edge)
+                distance2 = dx * dx + dy * dy
+                if distance2 < radius * radius or (not tile_edges and distance2 == radius * radius):
                     grid[y * world.width + x] = 1
     return grid
