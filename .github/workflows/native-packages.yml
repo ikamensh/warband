@@ -48,6 +48,7 @@ jobs:
           retention-days: 30
 
   native:
+    name: native (${{ matrix.runner }}, ${{ matrix.target }})
     needs: inputs
     permissions:
       contents: read
