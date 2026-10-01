@@ -16,6 +16,8 @@ one per cell, making its defeat a contested multiplayer achievement. Those are m
 a cramped cell omits an arena instead of putting a boss on its only road. Wolf Dens and Spider Nests alternate within Raid; Troll Mounds and Stone
 Cairns alternate within Stronghold. The Ancient Sanctum is the final tier. Klondike uses the
 same optional side-site search, so its creatures no longer depend on having third mines.
+Mother Lodes and Gold Seams also keep their resource placement independently of encounters;
+neither prize guarantees a creature gate beside it.
 
 Every arena and short approach is drawn from a separate seeded stream **after** deposits,
 roads and ley rifts. Its symmetric clearings are prepared with `wilds=True` or `False`; only the

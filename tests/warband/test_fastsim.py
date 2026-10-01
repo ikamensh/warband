@@ -393,7 +393,7 @@ def test_a_compiled_world_saves_its_orders_shots_and_spells_as_the_source_does()
         "from warband.sim.model import World\n"
         "from warband.sim.rules import Terrain, UnitType, Upgrade\n"
         "def staged():\n"
-        "    w = World(20, 20, [[Terrain.GRASS] * 20 for _ in range(20)], 2)\n"
+        "    w = World(20, 20, [[Terrain.GRASS] * 20 for _ in range(20)], 2, magic=True)\n"
         "    walker = w.spawn_unit(0, UnitType.FOOTMAN, (5.5, 5.5))\n"
         "    w.move([walker.id], (10.5, 10.5))\n"
         "    archer = w.spawn_unit(0, UnitType.ARCHER, (12.5, 5.5))\n"

@@ -189,9 +189,14 @@ def test_bastion_walls_every_base_behind_one_gate() -> None:
         assert not any(door(world, m) in inside for m in world.mines() if m.gold == EXPANSION_GOLD)  # the natural is outside
 
 
+@pytest.mark.slow
 def test_bastion_gate_cannot_be_sealed_by_buildings() -> None:
     """Fuzz seed 82, Huge: a farm at (8, 16) left one lane, then a barracks at
-    (7, 19) sealed it; soldiers gathered at (26, 3) with no route out."""
+    (7, 19) sealed it; soldiers gathered at (26, 3) with no route out.
+
+    Generating this exact Huge board takes over a second on the Mac; retaining
+    the captured gate geometry puts this regression in the slow tier.
+    """
     world, report = mapgen.build(seed=82, width=108, height=84, players=2, human=None)
     assert world.layout is Layout.BASTION
     assert (8, 16) in map(tuple, report["gates"])
@@ -210,10 +215,15 @@ def test_bastion_gate_cannot_be_sealed_by_buildings() -> None:
     assert restored._placement_reason(BuildingType.BARRACKS, (7, 19), 0, ignore_units=True) == "Keep the gate open"
 
 
+@pytest.mark.slow
 def test_bastion_gate_cannot_be_sealed_from_just_outside_it() -> None:
     """Fuzz seed 82, Huge (WB-063's run): with a farm on the gate's corner, a tower on the two tiles just outside it
     sealed an elven base in, the forest on the gate's other side doing the rest; its army stood at the ring for good.
-    The tower did not touch a gate tile, so nothing asked."""
+    The tower did not touch a gate tile, so nothing asked.
+
+    Generating this exact Huge board takes over a second on the Mac; retaining
+    the captured gate geometry puts this regression in the slow tier.
+    """
     world, report = mapgen.build(seed=82, width=108, height=84, players=2, human=None)
     assert world.layout is Layout.BASTION and (9, 19) in map(tuple, report["gates"])
     assert all(world.terrain_at(tile) is Terrain.TREES for tile in ((7, 20), (8, 20)))

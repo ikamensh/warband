@@ -103,7 +103,9 @@ def test_new_game_after_a_match_plays_the_next_fair_seed(tmp_path) -> None:
         game.close()
 
 
+@pytest.mark.slow
 def test_rooms_from_the_multiplayer_menu_are_made_on_fair_seeds(tmp_path, monkeypatch) -> None:
+    """A full title/menu plus unfair-seed retries and both LAN/online world creation needs the slow tier."""
     monkeypatch.setattr(mapgen, "fresh_seed", lambda: UNFAIR)
     unfair(races=[Race.HUMAN, None])
     game = mock_game(tmp_path)

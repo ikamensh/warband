@@ -578,7 +578,8 @@ def test_online_the_commands_keep_under_the_room_servers_rate_and_work_from_the_
     world.reveal_all(0)
     world.update_vision()
     room = Room(match)
-    scene = NetworkGameScene(room, settings=dict(DEFAULT_SETTINGS, tutorial=False, sfx=0.0, music=0.0))
+    # Classic's repeated chords increase strength; Modes chooses strength explicitly.
+    scene = NetworkGameScene(room, settings=dict(DEFAULT_SETTINGS, controls="classic", tutorial=False, sfx=0.0, music=0.0))
     game.push(scene)
     game.tick(1 / 60)
     for command in ("scout", "harass", "fortify", "gold", "lumber", "withdraw"):  # Withdraw's first level: nobody wounded

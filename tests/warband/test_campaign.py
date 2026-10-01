@@ -284,11 +284,17 @@ def test_refusing_the_truce_means_the_camp_must_burn(game) -> None:
     assert run.won
 
 
-def test_the_truce_and_the_powder_shape_the_later_missions() -> None:
+def test_the_truce_changes_retaken_difficulty_and_starting_gold() -> None:
+    """Compare the two Retaken starts without also constructing the later Court mission."""
     peace = build_world(mission("retaken"), flags={"truce": True})
     war = build_world(mission("retaken"), flags={})
     assert peace.ai[1] is Difficulty.EASY and war.ai[1] is Difficulty.MEDIUM
     assert peace.world.players[0].gold == war.world.players[0].gold + 1000
+
+
+@pytest.mark.slow
+def test_the_truce_and_the_powder_change_the_court_army_and_victory() -> None:
+    """Two complete Large, three-seat Forest mission maps: their comparative army/victory checks need the slow tier."""
     court = build_world(mission("court_of_thorns"), flags={"truce": True, "powder": True})
     assert not court.world.players[2].alive and not court.world.player_units(2)
     assert court.state["orcs"] == "hidden" and court.units(0, UnitType.CATAPULT) and court.buildings(0, BuildingType.WORKSHOP)

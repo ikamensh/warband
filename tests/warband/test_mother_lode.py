@@ -138,13 +138,14 @@ def test_a_lode_and_a_seam_are_dealt_on_the_same_ground(size, seats, layout) -> 
                        b.gold if b.size == 3 else 0) for b in world.buildings.values())
 
     assert ground(lode_world) == ground(seam_world)
-    assert [c.lair for c in lode_world.camps] == [c.lair for c in seam_world.camps]
+    # The prize changes the deposit, while optional encounters keep their identity, placement and rewards.
+    def encounters(world: World) -> list[tuple]:
+        return [(c.encounter, c.origin, c.kinds, c.posts, c.gold, c.lumber) for c in world.camps]
+
+    assert encounters(lode_world) == encounters(seam_world)
     lodes = [m for m in lode_world.mines() if m.type is BuildingType.MOTHER_LODE]
     assert len(lodes) == seats == lode_report["lodes"] and lode_report["seams"] == 0 and seam_report["seams"] == seats
     assert all(lode.gold == LODE_GOLD for lode in lodes), "every seat's lode holds the same fortune"
-    for lode in lodes:  # camps guard a lode as they guard a seam: the big one, beside it
-        lairs = [lode_world.buildings[c.lair] for c in lode_world.camps]
-        assert min(max(abs(lair.center[0] - lode.center[0]), abs(lair.center[1] - lode.center[1])) for lair in lairs) <= 9.5
 
 
 @pytest.mark.slow
