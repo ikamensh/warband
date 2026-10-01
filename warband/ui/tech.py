@@ -94,7 +94,7 @@ def need(world: World, player: int, target: Target) -> Need | None:
     return Need(lacking[0], True) if stalled is None else Need(stalled, False)
 
 
-def tree() -> dict[BuildingType, tuple[int, float]]:
+def tree(world: World | None = None) -> dict[BuildingType, tuple[int, float]]:
     """Each building's place in the tech tree, ``(column, row)``: the column is how many prerequisites deep it stands;
     a building that opens none takes a row of its own, one that opens several sits across the middle of theirs.  The
     roots, which need nothing, go top down, those that open something first; a root that opens nothing (the farm)
@@ -102,9 +102,12 @@ def tree() -> dict[BuildingType, tuple[int, float]]:
     places: dict[BuildingType, tuple[int, float]] = {}
     rows = 0
 
+    def children(kind: BuildingType) -> list[BuildingType]:
+        return [child for child in unlocks(kind) if world is None or world.building_enabled(child)]
+
     def place(kind: BuildingType, column: int) -> float:
         nonlocal rows
-        below = [place(child, column + 1) for child in unlocks(kind)]
+        below = [place(child, column + 1) for child in children(kind)]
         if below:
             row = (below[0] + below[-1]) / 2
         else:
@@ -113,8 +116,8 @@ def tree() -> dict[BuildingType, tuple[int, float]]:
         return row
 
     roots = [kind for kind in BUILT if BUILDINGS[kind].requires is None]  # nobody builds a deposit or a lair
-    for root in sorted(roots, key=lambda kind: not unlocks(kind)):
-        if unlocks(root):
+    for root in sorted(roots, key=lambda kind: not children(kind)):
+        if children(root):
             place(root, 0)
             continue
         taken = [row for column, row in places.values() if column == 0]
@@ -171,7 +174,7 @@ class TechTree(Component):
     CHOICE_GAP = 10  # between one choice's pictures and the next's: the Mage Tower's three levels of spells
 
     def __init__(self, world: World, player: int, *, in_match: bool = True, **kwargs: Any) -> None:
-        self.places = tree()
+        self.places = tree(world)
         columns = 1 + max(column for column, _row in self.places.values())
         rows = 1 + max(row for _column, row in self.places.values())
         super().__init__(width=(columns - 1) * self.COLUMN + self.NODE, height=round((rows - 1) * self.ROW) + self.NAME + self.ICON, **kwargs)

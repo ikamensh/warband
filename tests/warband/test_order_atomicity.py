@@ -16,7 +16,7 @@ def scenario():
     terrain = [[Terrain.GRASS] * 40 for _ in range(30)]
     for y in range(12, 16):
         terrain[y][20] = Terrain.TREES
-    world = World(40, 30, terrain, 2)
+    world = World(40, 30, terrain, 2, magic=True)
     hall = world.place_building(0, BuildingType.TOWN_HALL, (1, 1))
     their_hall = world.place_building(1, BuildingType.TOWN_HALL, (34, 25))
     mine = world.place_building(None, BuildingType.GOLD_MINE, (10, 10))
@@ -111,6 +111,29 @@ REFUSED = {
     "another race's own unit requested": lambda w, e: w.order_unit(0, UnitType.SAPPER),
     "another race's own unit endlessly": lambda w, e: w.set_auto_train(e["church"], UnitType.RUNE_GOLEM, True),
 }
+
+#: Magic disabled at setup is refused by every route before any state changes.
+DISABLED_MAGIC = {
+    "build vault": lambda w, e: w.build(e["peasant"], BuildingType.VAULT, (6, 20)),
+    "build tower": lambda w, e: w.build(e["peasant"], BuildingType.MAGE_TOWER, (6, 20)),
+    "plan vault": lambda w, e: w.plan_building(0, BuildingType.VAULT, (6, 20)),
+    "plan tower": lambda w, e: w.plan_building(0, BuildingType.MAGE_TOWER, (6, 20)),
+    "research spell": lambda w, e: w.research(e["mage"], Upgrade.MEND),
+    "request spell": lambda w, e: w.order_upgrade(0, Upgrade.MEND),
+    "cast spell": lambda w, e: w.cast(0, Upgrade.HASTE, (5.5, 5.5)),
+}
+
+
+@pytest.mark.parametrize("name", DISABLED_MAGIC)
+def test_disabled_magic_orders_leave_the_world_as_it_was(name) -> None:
+    """Hidden technology cannot be reached through an order or a settlement request."""
+    world, entities = scenario()
+    world.magic = False  # staged match rules; the sandbox already holds a tower and learned spells
+    before = world.to_dict()
+    with pytest.raises(RuleError, match="Magic is disabled"):
+        DISABLED_MAGIC[name](world, entities)
+    assert world.to_dict() == before
+
 
 #: With as many of a unit as its limit alive and queued, one more is refused however it is asked for.
 AT_LIMIT = {

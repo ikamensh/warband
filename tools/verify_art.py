@@ -145,7 +145,7 @@ def settlement() -> tuple[GameScene, list[Unit], list[tuple[int, int]]]:
     targets = [(29, 10), (32, 12), (35, 10)]
     for x, y in targets:
         terrain[y][x] = Terrain.TREES
-    world = World(width, height, terrain, 2, rng=rng)
+    world = World(width, height, terrain, 2, rng=rng, magic=True)
     # Both sides retain a base, but this fixture has no autonomous opponent.
     world.players[1].human = True
     buildings = {

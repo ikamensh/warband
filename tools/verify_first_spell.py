@@ -54,7 +54,7 @@ def walk(game: Game, out: Path, key, mouse) -> None:
     fonts.load(game)
     settings = game.settings(DEFAULT_SETTINGS)
     settings["music"] = settings["sfx"] = 0
-    game.push(TitleScene(settings=settings))
+    game.push(TitleScene(settings=settings, magic=True))
 
     def frames(n: int) -> None:
         for _ in range(n):

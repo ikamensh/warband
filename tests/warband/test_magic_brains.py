@@ -28,7 +28,7 @@ VAULT_REACH = (11.0, 5.0)  # the middle of a vault on OWN_RIFT: ten tiles round 
 def field(*, rifts=(OWN_RIFT, MIDDLE, THEIRS)) -> World:
     """Open grass, 60 by 40: seat 0's hall in the north-west, seat 1's in the south-east, three ley rifts."""
     world = World(60, 40, [[Terrain.GRASS] * 60 for _ in range(40)], 2, rng=random.Random(3), races=[Race.HUMAN, Race.ORC],
-                  human=None)
+                  human=None, magic=True)
     world.lay_rifts(rifts)
     world.place_building(0, BuildingType.TOWN_HALL, (3, 3))
     world.place_building(1, BuildingType.TOWN_HALL, (54, 34))
@@ -407,7 +407,7 @@ def test_a_lower_spell_leaves_only_what_the_vaults_cannot_draw_before_the_level_
 
 @pytest.mark.source_only("the brain plans on online_ai's stand-in for a World, which online_ai runs on the source")
 def test_online_a_brain_casts_from_its_snapshot_its_store_stays_its_own_and_a_refusal_breaks_nothing() -> None:
-    match = WarbandMatch(seed=3)
+    match = WarbandMatch(seed=3, magic=True)
     world = match.world
     hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0]
     world.players[1].upgrades |= {Upgrade.FLAME_STRIKE}

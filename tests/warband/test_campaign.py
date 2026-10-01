@@ -301,11 +301,10 @@ def test_the_truce_and_the_powder_shape_the_later_missions() -> None:
     assert court.won  # with the truce the orcs are no part of the win
 
 
-def test_a_mission_building_takes_the_ground_of_a_rift_it_stands_on() -> None:
-    """The Court of Thorns raises a tower where its map lays a ley rift (WB-063): the rift goes, the tower stays, and no
-    building stands on a rift that is left."""
+def test_mission_maps_have_no_magic_sources_by_default() -> None:
+    """Campaign maps also use the ordinary match rules, without magical sources."""
     court = build_world(mission("court_of_thorns"), flags={}).world
-    assert court.rifts and not any(court.rift_at(tile) is not None for b in court.buildings.values() for tile in b.tiles())
+    assert not court.magic and not court.rifts
 
 
 def test_a_replayed_mission_asks_its_own_question_again() -> None:

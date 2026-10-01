@@ -24,7 +24,7 @@ FAR = (34.5, 10.5)  # beyond it (the rest of the tests cast within it, round x =
 
 def field() -> World:
     """Open grass, 40 by 24: seat 0's hall, vault (on a rift), finished Mage Tower and 100 aether, seat 1's hall."""
-    world = World(40, 24, [[Terrain.GRASS] * 40 for _ in range(24)], 2, rng=random.Random(4))
+    world = World(40, 24, [[Terrain.GRASS] * 40 for _ in range(24)], 2, rng=random.Random(4), magic=True)
     world.place_building(0, BuildingType.TOWN_HALL, (0, 0))
     world.lay_rifts([(16, 4)])
     world.place_building(0, BuildingType.VAULT, (16, 4))  # its reach, ten tiles round (17, 5), holds the middle of the field
@@ -452,7 +452,7 @@ def test_a_match_with_casts_replays_faithfully() -> None:
 
 
 def online() -> WarbandMatch:
-    match = WarbandMatch(seed=3)
+    match = WarbandMatch(seed=3, magic=True)
     world = match.world
     world.players[0].upgrades |= {Upgrade.KEEP, Upgrade.FLAME_STRIKE, Upgrade.WITHER, Upgrade.METEOR}
     world.players[0].aether = 1000  # no vault stands: every cast is the dearer one

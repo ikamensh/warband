@@ -89,7 +89,7 @@ def fight(seed: int, armies: tuple[list[UnitType], list[UnitType]], races: tuple
     rng = random.Random(seed)
     sides = (1, 0) if swap else (0, 1)  # which player fields the left army: the first to act each step must not be one army's luck
     seated = sorted(zip(sides, races))
-    world = World(WIDTH, HEIGHT, [[Terrain.GRASS] * WIDTH for _ in range(HEIGHT)], 2, human=None,
+    world = World(WIDTH, HEIGHT, [[Terrain.GRASS] * WIDTH for _ in range(HEIGHT)], 2, human=None, magic=True,
                   rng=random.Random(seed + 1), races=[race for _player, race in seated])
     price = [0.0, 0.0]
     for index, player in enumerate(sides):

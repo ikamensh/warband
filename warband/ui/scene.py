@@ -807,6 +807,8 @@ class GameScene(Scene):
                 ("lumber", lambda: str(self.player.lumber), LUMBER, lumber_hint),
                 ("aether", aether_text, AETHER, aether_hint),
                 ("supply", supply_text, None, supply_hint)):
+            if name == "aether" and not self.world.magic:
+                continue
             icon, label = Icon(name, size=22), Label(reading, text_style="hud", text_color=ink)
             self._resources[name] = (icon, label, label.style)
             self._resource_rows.append((Row(icon, label, spacing=6), hint))
@@ -1888,6 +1890,8 @@ class GameScene(Scene):
 
     def open_catalogue(self, kind: str | None) -> None:
         """Show the Build, Train or Upgrade catalogue on the card; None: the selection's card again."""
+        if kind == "spells" and not self.world.magic:
+            return
         self.catalogue = kind
         self.pending = None
         self._refresh_card()
@@ -2049,9 +2053,9 @@ class GameScene(Scene):
         """The Build, Train or Upgrade catalogue: everything the settlement can plan, each in its slot."""
         race, commands = self.race, []
         if kind == "build":
-            for slot, building_type in enumerate(BUILD_ORDER):
+            for slot, building_type in enumerate(kind for kind in BUILD_ORDER if self.world.building_enabled(kind)):
                 info = race.buildings[building_type]
-                opened = [self.building_name(kind) for kind in tech.unlocks(building_type)]
+                opened = [self.building_name(kind) for kind in tech.unlocks(building_type) if self.world.building_enabled(kind)]
                 unlocks = f" · unlocks the {listing(opened)}" if opened else ""
                 commands.append(Command(race.cards[building_type], info.hotkey, lambda bt=building_type: self.choose_building(bt), slot,
                                         tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)}{feeds(info.supply)} · {info.summary}"
@@ -2407,7 +2411,7 @@ class GameScene(Scene):
         return PauseScene(self)
 
     def open_help(self) -> None:
-        self.game.push(HelpScene(self.scheme))
+        self.game.push(HelpScene(self.scheme, magic=self.world.magic))
 
     def open_codex(self) -> None:
         self.game.push(CodexScene(self.world, self.human))
@@ -2511,7 +2515,8 @@ class GameScene(Scene):
         keys (in Classic and Modal those letters answer only while the card leaves them free).  Alt with a spell's level
         aims that spell (WB-066), in every scheme."""
         if alt and key in SPELL_LEVEL_KEYS:
-            self.aim_level(int(key))
+            if self.world.magic:
+                self.aim_level(int(key))
             return True
         if key in GROUP_KEYS:
             self._group(key, assign=chord, add=shift)
@@ -3854,7 +3859,7 @@ class SaveBrowserScene(_Overlay):
 
 HELP_INTRO = (
     "Peasants gather and build on their own; plans wait for money, prerequisites and a free worker and are paid when work",
-    "starts. A vault on a violet ley rift draws aether for the spells a Mage Tower researches (Alt+1-3). Raze the enemy to win.",
+    "starts. Raze the enemy to win.",
 )
 
 
@@ -3864,7 +3869,7 @@ def command_keys(scheme: Scheme, sep: str = "/") -> str:
     return "Ctrl+" + sep.join(shortcut.removeprefix("Ctrl+") for shortcut in shortcuts)
 
 
-def help_keys(scheme: Scheme) -> list[tuple[str, str]]:
+def help_keys(scheme: Scheme, *, magic: bool = False) -> list[tuple[str, str]]:
     """The How to play table for *scheme*: its own keys first, then what every scheme shares."""
     idle = key_label(scheme.keys["idle_soldier"])
     if scheme.positional:
@@ -3888,7 +3893,8 @@ def help_keys(scheme: Scheme) -> list[tuple[str, str]]:
         ("Ctrl + X", "cancel mode: a click takes back a plan, a site or a building's training and research;  drag: a box of them"),
         (command_keys(scheme, " ").replace("+", " + ", 1), "Fortify, Withdraw, Scout, Harass, Gold, Lumber;  again within 1.5 s: its next level, up to three"),
         ("Click / drag / right-click", "select;  box-select;  order what fits the target;  double-click or Ctrl-click: that type on screen"),
-        ("1-9 / Ctrl / Shift / Alt", "recall / assign / add to a control group;  Alt+1-3: aim that level's spell;  Tab: idle peasant;  Space: alert"),
+        ("1-9 / Ctrl / Shift" + (" / Alt" if magic else ""),
+         "recall / assign / add to a control group;  " + ("Alt+1-3: aim that level's spell;  " if magic else "") + "Tab: idle peasant;  Space: alert"),
         ("Arrows / edges / wheel", "scroll (middle-drag too);  wheel or + / −: zoom;  minimap: left-click looks, right-click sends"),
         ("F1 F2 F3 F5 F9 F11", "help, codex (5: tech tree), pause, save, load (offline), health bars;  F6-F8 bookmarks (Ctrl sets)"),
         ("Esc", "back one level: the order, the catalogue, the selection, then the menu"),
@@ -3903,14 +3909,18 @@ class HelpScene(_Overlay):
 
     pause_below = True
 
-    def __init__(self, scheme: Scheme) -> None:
+    def __init__(self, scheme: Scheme, *, magic: bool = False) -> None:
         self.scheme = scheme
+        self.magic = magic
 
     def on_enter(self) -> None:
         panel = self.panel(f"How to play · {self.scheme.name} controls")
-        panel.add(Label(" ".join(HELP_INTRO), text_style="body", width=HELP_KEY_WIDTH + 14 + HELP_TEXT_WIDTH, wrap=True))
+        intro = " ".join(HELP_INTRO)
+        if self.magic:
+            intro += " A vault on a violet ley rift draws aether for the spells a Mage Tower researches (Alt+1-3)."
+        panel.add(Label(intro, text_style="body", width=HELP_KEY_WIDTH + 14 + HELP_TEXT_WIDTH, wrap=True))
         table = Column(spacing=4)
-        for keys, what in help_keys(self.scheme):
+        for keys, what in help_keys(self.scheme, magic=self.magic):
             table.add(Row(Label(keys, text_style="hud", width=HELP_KEY_WIDTH, align="right", text_color=GOLD),
                           Label(what, text_style="body", width=HELP_TEXT_WIDTH, wrap=True), spacing=14))
         panel.add(table)
@@ -3932,10 +3942,10 @@ TREE_LEGEND = "A line runs from what a building needs into it; beside each, what
 TREE_LIGHTING = "Bright: yours · dimmer: on its way · faint: not yet. "  # only in a match: outside one there is nothing to stand short of
 
 
-def codex_world(race: Race) -> World:
+def codex_world(race: Race, *, magic: bool = False) -> World:
     """A world of one tile and one player for the codex read outside a match, from the title screen: all it carries is
     the race whose tables the pages show.  Nobody holds anything in it, so the codex is read with *in_match* false."""
-    return World(1, 1, [[Terrain.GRASS]], 1, races=[race])
+    return World(1, 1, [[Terrain.GRASS]], 1, races=[race], magic=magic)
 
 
 class CodexScene(_Overlay):
@@ -3957,7 +3967,7 @@ class CodexScene(_Overlay):
         race = RACES[self.world.players[self.player].race]
         panel = self.panel("Codex — the four races" if self.page == 3 else f"Codex — the {race.name}")
         tabs = Row(spacing=8)
-        for i, name in enumerate(CODEX_PAGES):
+        for i, name in enumerate(CODEX_PAGES if self.world.magic else CODEX_PAGES[:-1]):
             tabs.add(Button(name, hotkey=str(i + 1), on_click=lambda i=i: self.show(i), style=ACTION_BUTTON if i == self.page else GHOST_BUTTON, width=150))
         panel.add(tabs)
         table = Column(spacing=3)
@@ -3982,7 +3992,7 @@ class CodexScene(_Overlay):
             if legend is not None:
                 table.add(Label(legend, text_style="sub", width=sum(widths) + 8 * (len(widths) - 1), wrap=True))
         panel.add(table)
-        panel.add(KeyHints([("1-6", "page"), ("Tab", "next"), ("Esc", "close")]))
+        panel.add(KeyHints([("1-6" if self.world.magic else "1-5", "page"), ("Tab", "next"), ("Esc", "close")]))
 
     def _cell(self, cell: str | list[Pair], width: int, *, first: bool, last: bool, muted: bool = False) -> Component:
         """One cell of a page's table: a price as its symbols and numbers, anything else as text — the name of the
@@ -4033,7 +4043,7 @@ class CodexScene(_Overlay):
         if self.page == 1:
             rows = [["Building", "Cost", "HP", "Arm", "Size", "Time", "Feeds", "Requires", "What it does"]]
             for building_type, info in race.buildings.items():
-                if info.mine is not None:
+                if info.mine is not None or not self.world.building_enabled(building_type):
                     continue
                 rows.append([info.name, price_pairs(info.cost), str(info.hp), str(info.armor), f"{info.size}×{info.size}", f"{info.build_time:g}s",
                              [("supply", f"+{info.supply}", BODY)] if info.supply else "—",
@@ -4065,6 +4075,8 @@ class CodexScene(_Overlay):
         raise ValueError(f"no table for page {self.page}")
 
     def show(self, page: int) -> None:
+        if page == 5 and not self.world.magic:
+            return
         self.game.replace(CodexScene(self.world, self.player, page, in_match=self.in_match))
 
     def page_units(self) -> None:
@@ -4086,7 +4098,7 @@ class CodexScene(_Overlay):
         self.show(5)
 
     def next_page(self) -> None:
-        self.show((self.page + 1) % len(CODEX_PAGES))
+        self.show((self.page + 1) % (len(CODEX_PAGES) if self.world.magic else len(CODEX_PAGES) - 1))
 
     def close(self) -> None:
         self.game.pop()
@@ -4208,9 +4220,9 @@ class GameOverScene(_Overlay):
 
 def new_game(seed: int, width: int = 48, height: int = 40, players: int = 2, *, difficulty: Difficulty = Difficulty.MEDIUM,
              theme: MapTheme = MapTheme.SUMMER, settings: dict[str, Any] | None = None, races: list[Race | None] | None = None,
-             layout: MapLayout | None = None) -> GameScene:
+             layout: MapLayout | None = None, magic: bool = False) -> GameScene:
     """*layout* ``None`` draws one from the seed."""
-    return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players, theme=theme, races=races, layout=layout), seed,
+    return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players, theme=theme, races=races, layout=layout, magic=magic), seed,
                      difficulty=difficulty, settings=settings)
 
 
@@ -4218,13 +4230,13 @@ FAIR_TRIES = 20
 
 
 def fair_map(seed: int, width: int, height: int, players: int, *, theme: MapTheme = MapTheme.SUMMER,
-             races: list[Race | None] | None = None, layout: MapLayout | None = None) -> tuple[int, World]:
+             races: list[Race | None] | None = None, layout: MapLayout | None = None, magic: bool = False) -> tuple[int, World]:
     """The first seed from *seed* on that makes a fair map of these settings, and its map: for a seed the game
     chooses. A few seeds in a thousand make none at some settings (WB-046); a seed the player gives goes to
     :func:`mapgen.generate` as given, and fails there."""
     for candidate in range(seed, seed + FAIR_TRIES):
         try:
-            return candidate, mapgen.generate(candidate, width, height, players, theme=theme, races=races, layout=layout)
+            return candidate, mapgen.generate(candidate, width, height, players, theme=theme, races=races, layout=layout, magic=magic)
         except mapgen.NoFairMap:
             continue
     raise mapgen.NoFairMap(f"No fair map at {width}x{height} for {players} players from any seed of {seed} to {seed + FAIR_TRIES - 1}.")
@@ -4234,7 +4246,7 @@ def next_game(scene: GameScene) -> GameScene:
     """A new match with *scene*'s settings and races on the next seed that makes a fair map."""
     world = scene.world
     seed, fresh = fair_map(scene.seed + 1, world.width, world.height, world.seats, theme=world.theme,
-                           races=[p.race for p in world.players[:world.seats]], layout=world.layout)
+                           races=[p.race for p in world.players[:world.seats]], layout=world.layout, magic=world.magic)
     return GameScene(fresh, seed, difficulty=scene.difficulty, settings=scene.settings)
 
 

@@ -284,7 +284,7 @@ def test_no_building_stands_on_trees_water_or_rock(layout: Layout) -> None:
 def test_every_seat_has_a_ley_rift_by_its_hall_a_vault_can_stand_on(players: int, layout: Layout) -> None:
     """Inside its own cell, a few tiles off the hall: explored from the start, open to walk to, and ground the
     seat may set a vault on as the match begins.  The rift is the seat's own: nearer its hall than any other."""
-    world = mapgen.generate(seed=7, width=64, height=48, players=players, layout=layout)
+    world = mapgen.generate(seed=7, width=64, height=48, players=players, layout=layout, magic=True)
     for hall in halls(world):
         own = [r for r in world.rifts if max(abs(r[0] + RIFT / 2 - hall.center[0]), abs(r[1] + RIFT / 2 - hall.center[1])) <= 8]
         assert own, (layout, players, hall.player)
@@ -299,9 +299,9 @@ def test_every_seat_has_a_ley_rift_by_its_hall_a_vault_can_stand_on(players: int
 def test_a_cell_with_room_for_a_middle_gets_a_contested_rift_too() -> None:
     """Medium with two seats: each seat's own and one out in the shared ground, a third mine's distance from
     every hall.  Small with four seats has no middle to put one in."""
-    world = mapgen.generate(seed=5, width=64, height=48, players=2, layout=Layout.PLAINS)
+    world = mapgen.generate(seed=5, width=64, height=48, players=2, layout=Layout.PLAINS, magic=True)
     assert len(world.rifts) == 4
     far = [r for r in world.rifts if min(_dist((r[0] + 1, r[1] + 1), h.center) for h in halls(world)) >= 12]
     assert len(far) == 2
-    small = mapgen.generate(seed=5, width=48, height=40, players=4, layout=Layout.PLAINS)
+    small = mapgen.generate(seed=5, width=48, height=40, players=4, layout=Layout.PLAINS, magic=True)
     assert len(small.rifts) == 4

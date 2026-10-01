@@ -2,12 +2,35 @@
 import math
 import time
 
-from saga2d import Button, CommandError, Label, Settings
+from saga2d import Button, CommandError, Label, MatchMenu, Row, Settings
 from warband.sim.model import Event, RuleError, World
 from warband.sim.rules import SIM_DT
 from warband.ui.scene import GameScene, HelpScene, SettingsScene, _Overlay, _clock
 from warband.ui.style import ACTION_BUTTON, GHOST_BUTTON
 from warband.ui.view import check_memory
+
+
+class MatchSetupMenu(MatchMenu):
+    """Room creation includes the same opt-in magic choice as an offline match."""
+
+    def __init__(self, title, game_id, create_match, create_scene, *, create_options, magic_choice, toggle_magic):
+        self.magic_choice = magic_choice
+        self.toggle_magic = toggle_magic
+        super().__init__(title, game_id, create_match, create_scene, create_options=create_options)
+
+    def _build_form(self):
+        # MatchMenu rebuilds its form for Online/LAN and update notices through this hook.
+        super()._build_form()
+        self.magic_button = Button(lambda: "Magic: On" if self.magic_choice() else "Magic: Off",
+                                   on_click=self.toggle_magic, style=GHOST_BUTTON, width=180,
+                                   tooltip="Choose magic for rooms you create. Joining uses the host's choice.")
+        modes = next(component for component in self.ui.walk() if isinstance(component, Row))
+        modes.clear()
+        modes.add(Button("Online" + (" · selected" if self.mode == "online" else ""),
+                         on_click=lambda: self.set_mode("online"), width=180))
+        modes.add(Button("LAN" + (" · selected" if self.mode == "lan" else ""),
+                         on_click=lambda: self.set_mode("lan"), width=180))
+        modes.add(self.magic_button)
 
 
 HIT_AUDIO_FIELDS = frozenset({'source_type', 'target_type', 'target_armor', 'target_complete'})
@@ -218,7 +241,7 @@ class NetworkMenuScene(_Overlay):
         self.game.push(SettingsScene(self.game_scene))
 
     def help(self):
-        self.game.push(HelpScene(self.game_scene.scheme))
+        self.game.push(HelpScene(self.game_scene.scheme, magic=self.game_scene.world.magic))
 
     def leave_match(self):
         from warband.ui.title import TitleScene

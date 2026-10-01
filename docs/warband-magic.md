@@ -3,6 +3,20 @@
 Aether and the spells it pays for, built in three steps: WB-063 (the resource),
 WB-066 (the Mage Tower and the spells), WB-067 (the brains cast).
 
+## Match option
+
+Magic is **off by default**. Before starting, toggle **Magic: Off / On** in
+New game (I) or multiplayer room setup. The host chooses for every seat; a
+joining player uses the room's rules. `warband --magic` opts in from the command
+line. Disabled matches have no ley rifts, vaults, Mage Towers, aether counter,
+spell controls or magic entries in help and the codex; the rules also refuse
+building, planning, researching and casting magic. The AI skips magic spending.
+
+The choice is `World.magic`, supplied by `mapgen.generate(..., magic=True)`
+and the online room's boolean `magic` option. It travels with saves, replays,
+seat snapshots and server checkpoints, and Play again keeps it. Existing saves
+without the flag retain their original magic-enabled rules.
+
 ## Aether (WB-063)
 
 Aether is the third resource and nobody carries it: no worker fetches it and

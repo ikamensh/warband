@@ -19,7 +19,7 @@ def game(tmp_path):
 
 def match(game: Game, race: Race = Race.HUMAN) -> GameScene:
     """Seed 3 at its start: the player has a town hall and three peasants, nothing else."""
-    scene = new_game(seed=3, settings=dict(DEFAULT_SETTINGS, tutorial=False, sfx=0.0, music=0.0), races=[race, None])
+    scene = new_game(seed=3, magic=True, settings=dict(DEFAULT_SETTINGS, tutorial=False, sfx=0.0, music=0.0), races=[race, None])
     game.push(scene)
     game.tick(1 / 60)
     return scene
@@ -228,7 +228,7 @@ def test_the_hall_card_offers_the_keep_and_the_smith_the_master_weapon(game) -> 
 def test_repeating_a_placement_is_refused_once_its_prerequisite_is_no_longer_coming(game) -> None:
     """The Modal scheme's "." places the last building again where the planner puts it: a tower after a barracks plan
     that was cancelled since would wait for nothing, so it is refused like the tower's own key."""
-    scene = new_game(seed=3, settings=dict(DEFAULT_SETTINGS, controls="modal", tutorial=False, sfx=0.0, music=0.0), races=[Race.HUMAN, None])
+    scene = new_game(seed=3, magic=True, settings=dict(DEFAULT_SETTINGS, controls="modal", tutorial=False, sfx=0.0, music=0.0), races=[Race.HUMAN, None])
     game.push(scene)
     game.tick(1 / 60)
     barracks = scene.world.plan_building(scene.human, BuildingType.BARRACKS, open_site(scene, BuildingType.BARRACKS))

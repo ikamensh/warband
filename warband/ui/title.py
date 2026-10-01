@@ -65,7 +65,7 @@ class TitleScene(Scene):
     controls = {("n", "return"): "new_game", "c": "continue_game", "l": "load_game", "p": "profile_screen", "b": "high_scores", "h": "how_to_play", "q": "quit"}
 
     def __init__(self, *, size: str = "Medium", players: int = 2, difficulty: Difficulty = Difficulty.MEDIUM, theme: MapTheme = MapTheme.SUMMER,
-                 race: Race = Race.HUMAN, layout: Layout | None = None, settings: dict[str, Any] | None = None) -> None:
+                 race: Race = Race.HUMAN, layout: Layout | None = None, settings: dict[str, Any] | None = None, magic: bool = False) -> None:
         """*layout* ``None`` is Any: each seed draws its own."""
         self.size = size
         self.players = players
@@ -73,6 +73,7 @@ class TitleScene(Scene):
         self.theme = theme
         self.race = race
         self.layout = layout
+        self.magic = magic
         self.settings = settings
         self.time = 0.0
         self._stop = 0
@@ -201,9 +202,8 @@ class TitleScene(Scene):
         return None
 
     def multiplayer(self) -> None:
-        from saga2d import MatchMenu
         from warband.online.authority import WarbandMatch
-        from warband.ui.multiplayer import NetworkGameScene
+        from warband.ui.multiplayer import MatchSetupMenu, NetworkGameScene
         refused = self.room_refusal()
         if refused is not None:
             self.notice = refused
@@ -215,14 +215,19 @@ class TitleScene(Scene):
         lan = self.map_size(2)
         room = self.map_size(seats)
         self.notice = ""
-        self.game.push(MatchMenu("Warband multiplayer", "warband-v2",
+        self.game.push(MatchSetupMenu("Warband multiplayer", "warband-v2",
                                 lambda: WarbandMatch(self.fair_seed(2), *lan, self.theme, races=(self.race, None),
-                                                     layout=None if self.room_layout(2) == 'any' else Layout(self.room_layout(2))),
+                                                     layout=None if self.room_layout(2) == 'any' else Layout(self.room_layout(2)), magic=self.magic),
                                 lambda session, match: NetworkGameScene(session, match, settings=self.settings),
                                 create_options=lambda: {'seed': self.fair_seed(seats), 'width': room[0], 'height': room[1],
                                                         'theme': self.theme.value, 'players': seats,
                                                         'races': [self.race.value] + [None] * (seats - 1),
-                                                        'layout': self.room_layout(seats)}))
+                                                        'layout': self.room_layout(seats), 'magic': self.magic},
+                                magic_choice=lambda: self.magic, toggle_magic=self.toggle_magic))
+
+    def toggle_magic(self) -> None:
+        self.magic = not self.magic
+        self.sfx("button")
 
     def map_size(self, players: int) -> tuple[int, int]:
         """The map New game's size makes for *players* seats, moved to a size that seats them if it does not."""
@@ -239,7 +244,7 @@ class TitleScene(Scene):
         width, height = self.map_size(players)
         chosen = self.room_layout(players)
         return fair_map(mapgen.fresh_seed(), width, height, players, theme=self.theme, races=[self.race] + [None] * (players - 1),
-                        layout=None if chosen == 'any' else Layout(chosen))[0]
+                        layout=None if chosen == 'any' else Layout(chosen), magic=self.magic)[0]
 
     def new_game(self) -> None:
         self.sfx("button")
@@ -277,12 +282,12 @@ class TitleScene(Scene):
 
     def how_to_play(self) -> None:
         self.sfx("button")
-        self.game.push(HelpScene(SCHEMES[self.settings["controls"] if self.settings is not None else DEFAULT]))
+        self.game.push(HelpScene(SCHEMES[self.settings["controls"] if self.settings is not None else DEFAULT], magic=self.magic))
 
     def codex(self) -> None:
         """Every unit, building and upgrade before a match is started, for the race chosen under New game."""
         self.sfx("button")
-        self.game.push(CodexScene(codex_world(self.race), 0, in_match=False))
+        self.game.push(CodexScene(codex_world(self.race, magic=self.magic), 0, in_match=False))
 
     def profile_screen(self) -> None:
         from warband.ui.profile_scene import ProfileScene
@@ -311,7 +316,7 @@ class NewGameScene(Scene):
                 "2": "players_2", "3": "players_3", "4": "players_4", "minus": "fewer_seats", "equal": "more_seats",
                 "e": "easy", "n": "medium", "h": "hard", "t": "master", "x": "grandmaster", "g": "summer", "w": "winter", "d": "wasteland", "r": "reroll", ("return", "space"): "start",
                 "u": "humans", "o": "orcs", "v": "elves", "a": "dwarves",
-                "p": "plains", "f": "forest", "c": "crossings", "k": "klondike", "b": "bastion", "y": "any_layout"}
+                "i": "toggle_magic", "p": "plains", "f": "forest", "c": "crossings", "k": "klondike", "b": "bastion", "y": "any_layout"}
 
     def __init__(self, title: TitleScene) -> None:
         self.title = title
@@ -321,6 +326,7 @@ class NewGameScene(Scene):
         self.theme = title.theme
         self.race = title.race
         self.layout = title.layout
+        self.magic = title.magic
         self.seed = mapgen.fresh_seed()
         self._preview_world: World | None = None
         self._preview_pil: PilImage.Image | None = None
@@ -383,7 +389,7 @@ class NewGameScene(Scene):
             return
         width, height = self.dimensions
         # The screen chose the seed, so a seed that makes no fair map of these settings gives way to the next (WB-046).
-        self.seed, world = fair_map(self.seed, width, height, self.players, theme=self.theme, races=self._preview_races(), layout=self.layout)
+        self.seed, world = fair_map(self.seed, width, height, self.players, theme=self.theme, races=self._preview_races(), layout=self.layout, magic=self.magic)
         self._preview_world = world
         image = preview_image(world)
         self._preview_pil = image
@@ -453,7 +459,9 @@ class NewGameScene(Scene):
             race_row.add(button)
         options.add(race_row)
         options.add(Row(Label(lambda: f"Seed {self.seed}", text_style="body", width=90 + 8 + OPTION_WIDTH),
-                        Button("Reroll", hotkey="R", on_click=self.reroll, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
+                        Button("Reroll", hotkey="R", on_click=self.reroll, style=GHOST_BUTTON, width=OPTION_WIDTH),
+                        Button(lambda: "Magic: On" if self.magic else "Magic: Off", hotkey="I", on_click=self.toggle_magic,
+                               style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
         side = Column(Image(PREVIEW_KEY, width=PREVIEW_BOX[0], height=PREVIEW_BOX[1]),
                       Label(lambda: self._opponents_text(), text_style="sub", width=PREVIEW_BOX[0], wrap=True),
                       Label(lambda: self._settings_note(), text_style="sub", width=PREVIEW_BOX[0], wrap=True),
@@ -644,6 +652,13 @@ class NewGameScene(Scene):
     def players_4(self) -> None:
         self.set_players(4)
 
+    def toggle_magic(self) -> None:
+        """Magic is chosen before the match; the preview and multiplayer rooms use the same choice."""
+        self.magic = not self.magic
+        self.title.magic = self.magic
+        self.title.sfx("button")
+        self._refresh_preview()
+
     def reroll(self) -> None:
         self.seed = mapgen.fresh_seed()
         self.title.sfx("button")
@@ -653,4 +668,4 @@ class NewGameScene(Scene):
         self.title.sfx("button")
         width, height = self.dimensions
         self.game.clear_and_push(new_game(self.seed, width=width, height=height, players=self.players, difficulty=self.difficulty, theme=self.theme,
-                                          settings=self.title.settings, races=[self.race] + [None] * (self.players - 1), layout=self.layout))
+                                          settings=self.title.settings, races=[self.race] + [None] * (self.players - 1), layout=self.layout, magic=self.magic))

@@ -19,7 +19,7 @@ from warband.ui.view import METEOR_WARNING, to_world
 @pytest.fixture
 def play(tmp_path):
     game = Game("Warband spells", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
-    scene = new_game(seed=3, settings={"music": 0, "sfx": 0, "tutorial": False})
+    scene = new_game(seed=3, magic=True, settings={"music": 0, "sfx": 0, "tutorial": False, "controls": "classic"})
     game.push(scene)
     game.tick(1 / 60)
     yield game, scene
@@ -105,7 +105,7 @@ def test_the_spell_bar_never_covers_the_settlement_or_the_command_row(tmp_path, 
     verification's world, stand a level a row rather than rise over the rows above."""
     game = Game("Warband spells", backend="mock", resolution=resolution, theme=build_theme(), save_dir=tmp_path / "saves")
     try:
-        scene = new_game(seed=3, settings={"music": 0, "sfx": 0, "tutorial": False})
+        scene = new_game(seed=3, magic=True, settings={"music": 0, "sfx": 0, "tutorial": False, "controls": "classic"})
         game.push(scene)
         for spells, laid in (((Upgrade.HASTE, Upgrade.WITHER, Upgrade.METEOR), [[1], [2], [3]]), (tuple(SPELLS), [[1] * 3, [2] * 3, [3] * 3])):
             scene.world.players[scene.human].upgrades.update(spells)

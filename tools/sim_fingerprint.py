@@ -30,7 +30,8 @@ from warband.sim.rules import SIM_DT, Difficulty, Race, Terrain, UnitType  # noq
 SEEDS = (101, 102, 103, 104)
 MINUTES = 6
 #: Matches where a race's own unit goes to work (WB-068), Medium against Medium, orcs and elves, each before its cut
-#: in minutes: on seed 89 a sapper goes up, on seed 2 a treant walks into the wood.  The standard set's matches are
+#: in minutes, on the original magic-enabled maps (the standard set covers magic off): on seed 89 a sapper goes up,
+#: on seed 2 a treant walks into the wood. The standard set's matches are
 #: decided before a side has the Keep, so without them the compiled simulation was never held to the source on that
 #: code.  Chosen by playing seeds (the AI's timelines are chaotic), and a rules or AI change moves them: ``--check``
 #: and ``--write`` refuse a fingerprint in which one no longer goes to work, so whoever refreshes the record picks again.
@@ -79,7 +80,7 @@ def fingerprint(seeds=SEEDS, minutes: int = MINUTES, worked: dict[int, float] | 
         digest_world(world, out)
     for seed, races, own_minutes, own in OWN_UNITS_MATCHES:
         rng = random.Random(seed)
-        world = mapgen.generate(seed=seed, players=2, human=None, races=races)
+        world = mapgen.generate(seed=seed, players=2, human=None, races=races, magic=True)
         brains = [make_brain(0, Difficulty.MEDIUM, seed), make_brain(1, Difficulty.MEDIUM, seed)]
         out.update(f"own={seed};".encode())
         for step in range(int(own_minutes * 60 / SIM_DT)):

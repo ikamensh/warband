@@ -11,9 +11,9 @@ blocked grid matches the map, hidden units are inside something real.
 The monkey runs feed the game scene random keys, clicks, drags and scrolls
 on the mock backend, including through every overlay, press the side's
 commands in runs of up to three, and aim and cast a spell of each level (WB-066).
-In the AI games every seat is given a spell of each level and casts one now and
-then at a rival's unit, one of its own or anywhere: the brains do not cast yet
-(WB-067), and must never break when a rival does.
+AI games alternate magic off and on. In enabled matches every seat is given a
+spell of each level and casts one now and then at a rival's unit, one of its own
+or anywhere; the invariants must hold with and without spells.
 
 Both run the compiled simulation (``warband.league.fastsim``, bit-identical to
 the source the game runs; ``WARBAND_INTERPRETED=1`` runs the source), and the
@@ -114,6 +114,8 @@ def chosen_spells(rng: random.Random) -> set[Upgrade]:
 def stage_cast(world: World, rng: random.Random) -> None:
     """A seat drawn at random casts one of its spells, paid for exactly: at a rival's unit, at one of its own, or anywhere.
     The store is given what the cast costs and holds nothing after it, so the checks on the store hold."""
+    if not world.magic:
+        return
     seats = [p for p in world.players[:world.seats] if p.alive]
     if not seats:
         return
@@ -162,14 +164,15 @@ def ai_games(seeds: range) -> int:
         players = rng.choice((2, 2, 3, 4, 6, 8, 16))
         width, height = mapgen.dimensions(rng.choice(mapgen.sizes_for(players)), players)
         try:
-            world = mapgen.generate(seed=seed, width=width, height=height, players=players, human=None)
+            world = mapgen.generate(seed=seed, width=width, height=height, players=players, human=None, magic=seed % 2 == 0)
             # Every setting, which now means both kinds of brain: Hard and Master
             # are ProBrains, and they drive the model down paths the others never
             # take (several build orders in flight, wounded soldiers walking home,
             # peasants or a flying machine sent scouting). The invariants have to hold there too.
             brains = [make_brain(p.id, rng.choice(list(Difficulty)), seed) for p in world.players[:world.seats]]
-            for player in world.players[:world.seats]:
-                player.upgrades |= chosen_spells(rng)
+            if world.magic:
+                for player in world.players[:world.seats]:
+                    player.upgrades |= chosen_spells(rng)
             check_world(world)
             stalled: dict[int, tuple[tuple[float, float], float]] = {}
             for tick in range(int(GAME_MINUTES * 60 / SIM_DT)):

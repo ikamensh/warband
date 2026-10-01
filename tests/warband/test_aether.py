@@ -23,7 +23,7 @@ RIFTS = ((10, 4), (18, 4), (10, 14))
 
 def rift_world() -> World:
     """Open grass, a hall each, three ley rifts on seat 0's side, and every tile explored by both seats."""
-    world = World(30, 22, [[Terrain.GRASS] * 30 for _ in range(22)], 2)
+    world = World(30, 22, [[Terrain.GRASS] * 30 for _ in range(22)], 2, magic=True)
     world.place_building(0, BuildingType.TOWN_HALL, (2, 8))
     world.place_building(1, BuildingType.TOWN_HALL, (25, 17))
     world.lay_rifts(RIFTS)
@@ -169,7 +169,7 @@ def test_rifts_do_not_overlap() -> None:
 def test_a_rivals_aether_is_private_and_the_rifts_are_public_ground() -> None:
     """Like gold: a seat's own store and charge travel to it, a rival's never, until the match is decided.  The rifts
     are the map's, as the ground it began with is, so every seat is sent them all."""
-    match = WarbandMatch(seed=3)
+    match = WarbandMatch(seed=3, magic=True)
     world = match.world
     assert world.rifts, "every generated map has its ley rifts"
     world.players[0].aether, world.players[0].aether_charge = 42, 7
@@ -181,7 +181,7 @@ def test_a_rivals_aether_is_private_and_the_rifts_are_public_ground() -> None:
 
 
 def test_a_spill_is_news_for_its_owner_alone() -> None:
-    match = WarbandMatch(seed=3)
+    match = WarbandMatch(seed=3, magic=True)
     world = match.world
     hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
     vault = world.place_building(0, BuildingType.VAULT, (hall.x, hall.y + 5))

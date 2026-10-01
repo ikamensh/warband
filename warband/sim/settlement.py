@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from warband.sim import path as pathing
-from warband.sim.rules import BUILDINGS, MAX_PLANS, SIM_DT, UNITS, UPGRADES, BuildingType, UnitType, Upgrade, an
+from warband.sim.rules import BUILDINGS, MAX_PLANS, SIM_DT, SPELLS, UNITS, UPGRADES, BuildingType, UnitType, Upgrade, an
 
 if TYPE_CHECKING:
     from warband.sim.model import Building, Unit, World
@@ -38,6 +38,8 @@ class Settlement:
         return [plan for plan in self.plans if plan.player == player]
 
     def can_plan_building(self, building_type: BuildingType, pos: tuple[int, int], player: int) -> str | None:
+        if not self.world.building_enabled(building_type):
+            return "Magic is disabled for this match"
         info = BUILDINGS[building_type]
         if info.mine is not None:
             return "Gold mines cannot be built"
@@ -150,6 +152,8 @@ class Settlement:
         from warband.sim.model import RuleError
         from warband.sim.races import RACES
 
+        if not self.world.magic and upgrade in SPELLS:
+            raise RuleError("Magic is disabled for this match")
         if not RACES[self.world.players[player].race].upgrade_allowed(upgrade):
             raise RuleError(f"{self.world.upgrade_info(player, upgrade).name} is {an(RACES[UPGRADES[upgrade].race].adjective)} art")
         if upgrade in self.world.players[player].upgrades:

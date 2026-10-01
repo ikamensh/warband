@@ -187,7 +187,7 @@ def test_build_menu_places_a_farm_where_the_mouse_is(play) -> None:
     scene.select([peasant.id])
     press(game, "b")
     assert scene.catalogue == "build" and [c.label for c in scene.card] == [
-        "Farm", "Barracks", "Hall", "Tower", "Mill", "Smith", "Stables", "Workshop", "Church", "Vault", "Arcanum",
+        "Farm", "Barracks", "Hall", "Tower", "Mill", "Smith", "Stables", "Workshop", "Church",
     ]
     press(game, "f")
     assert scene.placing is BuildingType.FARM and scene.catalogue == "build"
@@ -209,7 +209,7 @@ def test_every_building_is_on_the_build_menu_with_its_hotkey_and_a_locked_one_wa
     scene.select([peasants_of(scene)[0].id])
     press(game, "b")
     hotkeys = {c.label: c.hotkey for c in scene.card}
-    assert hotkeys == {RACES[Race.HUMAN].cards[bt]: BUILDINGS[bt].hotkey.upper() for bt in BUILT}
+    assert hotkeys == {RACES[Race.HUMAN].cards[bt]: BUILDINGS[bt].hotkey.upper() for bt in BUILT if scene.world.building_enabled(bt)}
     press(game, "k")  # a blacksmith needs a barracks, and none is coming
     assert scene.placing is None and scene.status == "Requires a Barracks"
     site = (hall_of(scene).x + 3, hall_of(scene).y + 5)  # the blacksmith's, clear of the ley rift south-east of the hall

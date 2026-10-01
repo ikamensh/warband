@@ -103,7 +103,7 @@ def settlement() -> World:
     for y in range(11, 16):
         for x in range(0, 4):
             terrain[y][x] = Terrain.WATER
-    world = World(width, height, terrain, 2, rng=rng)
+    world = World(width, height, terrain, 2, rng=rng, magic=True)
     world.players[1].human = True
     buildings = {
         BuildingType.FARM: (3, 7), BuildingType.TOWN_HALL: (7, 6), BuildingType.BARRACKS: (13, 6),
@@ -206,9 +206,37 @@ def new_game_master(game: Game) -> None:
 
 
 @screen
+def new_game_magic(game: Game) -> None:
+    """The opt-in magic choice in the same setup panel at each supported window size."""
+    game.push(TitleScene())
+    ticks(game)
+    game.scene.new_game()
+    game.scene.toggle_magic()
+    ticks(game)
+
+
+@screen
+def multiplayer_magic(game: Game) -> None:
+    """Room creators choose magic directly, including after switching to LAN mode."""
+    game.push(TitleScene())
+    ticks(game)
+    game.scene.multiplayer()
+    ticks(game)
+
+
+@screen
 def match_start(game: Game) -> None:
     match(game)
     ticks(game, 30)  # the banner has slid in and holds
+
+
+@screen
+def match_build_without_magic(game: Game) -> None:
+    """The default build catalogue and HUD omit the magic economy."""
+    scene = new_game(3, settings=QUIET)
+    game.push(scene)
+    scene.open_catalogue("build")
+    ticks(game)
 
 
 @screen

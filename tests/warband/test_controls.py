@@ -16,7 +16,7 @@ from warband.ui.style import build_theme
 
 
 def match(game: Game, controls: str = "classic", race: Race = Race.HUMAN) -> GameScene:
-    scene = new_game(seed=3, settings=dict(DEFAULT_SETTINGS, controls=controls, tutorial=False, sfx=0.0, music=0.0),
+    scene = new_game(seed=3, magic=True, settings=dict(DEFAULT_SETTINGS, controls=controls, tutorial=False, sfx=0.0, music=0.0),
                      races=[race, None])
     scene.world.reveal_all(scene.human)
     game.push(scene)

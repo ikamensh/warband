@@ -242,19 +242,20 @@ def _layout_refusal(spec: _Spec, cols: int, rows: int, cw: int, ch: int) -> str 
 
 def generate(seed: int, width: int = 48, height: int = 40, players: int = 2, human: int | None = 0, theme: MapTheme = MapTheme.SUMMER,
              races: Sequence[Race | None] | None = None, layout: Layout | None = None, wilds: bool = True,
-             prize: BuildingType | None = None) -> World:
+             prize: BuildingType | None = None, *, magic: bool = False) -> World:
     """*races* names each player's race; ``None`` entries are drawn from the seed, so a seed reproduces
     the whole match.  Without a list the *human* leads Humans and the computer players are drawn.
     *layout* ``None`` draws one from the seed.  *wilds* ``False`` leaves the contested deposits unguarded,
     which is how a map is measured against one with camps on it.  *prize* ``None`` has the seed deal the
     shared ground's prize (:func:`deal_prize`); naming one plays the same map with that prize on it, which is
-    how a lode is measured against a seam."""
-    return build(seed, width, height, players, human, theme, races, layout, wilds, prize)[0]
+    how a lode is measured against a seam. *magic* opts in to ley rifts and magical technology;
+    ordinary matches have neither."""
+    return build(seed, width, height, players, human, theme, races, layout, wilds, prize, magic=magic)[0]
 
 
 def build(seed: int, width: int = 48, height: int = 40, players: int = 2, human: int | None = 0, theme: MapTheme = MapTheme.SUMMER,
           races: Sequence[Race | None] | None = None, layout: Layout | None = None, wilds: bool = True,
-          prize: BuildingType | None = None) -> tuple[World, dict]:
+          prize: BuildingType | None = None, *, magic: bool = False) -> tuple[World, dict]:
     """:func:`generate` plus the audit report of the map it settled on (``attempt`` counts the retries)."""
     if prize is not None and prize not in _PRIZES:
         raise ValueError(f"the shared ground's prize is one of {', '.join(p.value for p in _PRIZES)}, not {prize.value}")
@@ -277,7 +278,7 @@ def build(seed: int, width: int = 48, height: int = 40, players: int = 2, human:
     without: tuple[World, dict] | None = None  # the best map so far that is fair but is missing something wished for
     for attempt in range(RETRIES):
         world, report = _attempt(random.Random(seed * 16 + attempt), seed, width, height, players, human, theme, chosen, layout, wilds,
-                                 random.Random((seed * 16 + attempt) ^ _RIFT_SALT), dealt)
+                                 random.Random((seed * 16 + attempt) ^ _RIFT_SALT), dealt, magic)
         report["attempt"] = attempt
         if not report["problems"]:
             if not report["wishes"]:
@@ -972,7 +973,7 @@ def _guard(cv: _Canvas, rng: random.Random, deposit: Pos, size: int, kind: str, 
 
 
 def _attempt(rng: random.Random, seed: int, width: int, height: int, players: int, human: int | None, theme: MapTheme,
-             races: list[Race], layout: Layout, wilds: bool, rift_rng: random.Random, prize: BuildingType) -> tuple[World, dict]:
+             races: list[Race], layout: Layout, wilds: bool, rift_rng: random.Random, prize: BuildingType, magic: bool) -> tuple[World, dict]:
     spec = _SPECS[layout]
     cv = _Canvas(width, height, players)
     clearing = _clearing(spec, cv.cw, cv.ch, cv.wide)
@@ -1056,7 +1057,7 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
         cv.symmetrize()
 
     cv.frame()
-    world = World(width, height, cv.grid, players, human=human, rng=random.Random(seed), theme=theme, races=races, layout=layout)
+    world = World(width, height, cv.grid, players, human=human, rng=random.Random(seed), theme=theme, races=races, layout=layout, magic=magic)
     for seat, pos in enumerate(cv.rect_images(hall, 3)[:players]):
         world.place_building(seat, BuildingType.TOWN_HALL, pos)
     for pos, kind, gold in mines:
@@ -1069,7 +1070,7 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
         for i in range(3):
             world.spawn_unit(seat, UnitType.PEASANT, tile_center(cv.images((hall[0] + i, hall[1] + 3))[seat]))
     _connect(world, cv)
-    if not _lay_rifts(world, cv, walls, hall, main, rift_rng):
+    if magic and not _lay_rifts(world, cv, walls, hall, main, rift_rng):
         problems.append("no room for a ley rift")
     world.update_vision()
     report = _audit(world, cv, spec, walls, natural)
@@ -1343,7 +1344,8 @@ def _audit(world: World, cv: _Canvas, spec: _Spec, walls: _Walls, natural: Pos |
     routes = {goal: _route(world, doors[0], goal) for goal in doors[1:] + mine_doors + list(world.rifts)}
     if any(route is None for route in routes.values()):
         problems.append("a route exceeds the pathfinder's budget")
-    problems += _rift_problems(world, cv)
+    if world.magic:
+        problems += _rift_problems(world, cv)
     report["detour"] = None
     route = routes.get(doors[1])
     if route is not None:

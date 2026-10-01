@@ -47,6 +47,7 @@ def main() -> None:
     parser.add_argument("--theme", choices=[t.value for t in MapTheme], default="summer")
     parser.add_argument("--race", choices=[r.value for r in Race], default="human", help="your race; the computer players' are drawn from the seed")
     parser.add_argument("--layout", choices=[each.value for each in Layout] + ["any"], default="any", help="the map's shape; any draws one from the seed")
+    parser.add_argument("--magic", action="store_true", help="enable ley rifts, magical buildings and spells (off by default)")
     parser.add_argument("--fullscreen", action="store_true")
     parser.add_argument("--version", action="version", version="Warband " + running_build(), help="name this build and exit")
     parser.add_argument("--campaign", action="store_true", help="open the campaign screen")
@@ -99,10 +100,10 @@ def main() -> None:
     if args.seed is not None:
         width, height = mapgen.dimensions(args.size, args.players)
         game.run(new_game(args.seed, width=width, height=height, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme),
-                          settings=settings, races=[Race(args.race)] + [None] * (args.players - 1), layout=layout))
+                          settings=settings, races=[Race(args.race)] + [None] * (args.players - 1), layout=layout, magic=args.magic))
     else:
         game.run(TitleScene(size=args.size, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme), race=Race(args.race),
-                            layout=layout, settings=settings))
+                            layout=layout, settings=settings, magic=args.magic))
 
 
 def answered_by_the_parser(argv: list[str]) -> bool:
@@ -132,8 +133,8 @@ def lobby_options(args: argparse.Namespace) -> dict[str, Any]:
     width, height = mapgen.dimensions(size, 2)
     layout = None if args.layout == "any" else Layout(args.layout)
     seed = args.seed if args.seed is not None else fair_map(mapgen.fresh_seed(), width, height, 2, theme=MapTheme(args.theme),
-                                                            races=[Race(args.race), None], layout=layout)[0]
-    return {'seed': seed, 'width': width, 'height': height, 'theme': args.theme, 'races': [args.race, None], 'layout': args.layout}
+                                                            races=[Race(args.race), None], layout=layout, magic=args.magic)[0]
+    return {'seed': seed, 'width': width, 'height': height, 'theme': args.theme, 'races': [args.race, None], 'layout': args.layout, 'magic': args.magic}
 
 
 def selftest(png: str) -> None:

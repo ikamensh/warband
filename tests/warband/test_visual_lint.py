@@ -219,7 +219,7 @@ def test_every_race_s_codex_tables_fit_the_smallest_window(page: int, race: Race
     game = Game("Lint", backend="mock", resolution=SMALLEST, theme=build_theme(), save_dir=tmp_path / "saves")
     try:
         visual_lint.use_real_text_metrics(game)
-        game.push(CodexScene(codex_world(race), 0, page, in_match=False))
+        game.push(CodexScene(codex_world(race, magic=page == 5), 0, page, in_match=False))
         game.tick(1 / 60)
         findings = [f for f in visual_lint.lint_layout(game, game.scene) if f.check in VISIBLE]
         assert not findings, "\n".join(str(f) for f in findings)

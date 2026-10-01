@@ -122,6 +122,6 @@ def test_rooms_from_the_multiplayer_menu_are_made_on_fair_seeds(tmp_path, monkey
 def test_the_command_lines_room_is_on_a_fair_seed_unless_it_gives_one(monkeypatch) -> None:
     monkeypatch.setattr(mapgen, "fresh_seed", lambda: UNFAIR)
     unfair(races=[Race.HUMAN, None])
-    args = argparse.Namespace(seed=None, size="Small", theme="summer", race="human", layout="any")
+    args = argparse.Namespace(seed=None, size="Small", theme="summer", race="human", layout="any", magic=False)
     assert lobby_options(args)["seed"] == UNFAIR + 1
     assert lobby_options(argparse.Namespace(**{**vars(args), "seed": UNFAIR}))["seed"] == UNFAIR

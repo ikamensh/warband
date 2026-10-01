@@ -241,7 +241,7 @@ class _ProBrainEconomy(_ProBrainCore):
             needs = BUILDINGS[own].requires
             wishes.append((own if needs is None or have(needs) else needs, anchor))
         # Magic (WB-067): a vault on our own rift in the mid game, then the tower, then a second vault where it pays.
-        if profile.magic and world.time >= profile.vault_from and have(BuildingType.BARRACKS):
+        if world.magic and profile.magic and world.time >= profile.vault_from and have(BuildingType.BARRACKS):
             wishes.extend(self._magic_wishes(world, have, count, anchor))
         # A posture built around one branch of the tree — knights, siege, healers —
         # cannot wait for the bank to overflow before it is allowed that branch.
@@ -465,7 +465,7 @@ class _ProBrainEconomy(_ProBrainCore):
         if self.profile.opening_hold and self._opening_next is not None:
             saved.append(BUILDINGS[self._opening_next].cost)
         saved.extend(UPGRADES[upgrade].cost for upgrade in self.unique_first)  # the Keep, once the bank can pay for it
-        if self.profile.magic and self.profile.magic_hold:
+        if world.magic and self.profile.magic and self.profile.magic_hold:
             magic_next = self._magic_next(world)
             if magic_next is not None:
                 saved.append(magic_next)
@@ -728,7 +728,7 @@ class _ProBrainEconomy(_ProBrainCore):
             return
         player = world.players[self.player]
         buildings = world.player_buildings(self.player, done=True)  # nothing changes until the one order below
-        spell = magic.next_spell(world, self.player, self.profile) if self.profile.magic else None
+        spell = magic.next_spell(world, self.player, self.profile) if world.magic and self.profile.magic else None
         for wanted in (*self.unique_first, *((spell,) if spell is not None else ()), *self._research_order()):
             if wanted in player.upgrades or not RACES[player.race].upgrade_allowed(wanted):
                 continue

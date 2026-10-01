@@ -65,11 +65,11 @@ ONLINE_SIZE = (80, 64)
 
 
 class WarbandMatch:
-    def __init__(self, seed=3, width=48, height=40, theme=MapTheme.SUMMER, races=None, layout=None, players=2):
+    def __init__(self, seed=3, width=48, height=40, theme=MapTheme.SUMMER, races=None, layout=None, players=2, magic=False):
         """*players* humans, two to :data:`ONLINE_SEATS`; *races* names each seat's race, a ``None`` seat drawn from
         the seed, and so is a ``None`` *layout*."""
         self.seed = seed
-        self.world = mapgen.generate(seed, width, height, players=players, theme=theme, races=races, layout=layout)
+        self.world = mapgen.generate(seed, width, height, players=players, theme=theme, races=races, layout=layout, magic=magic)
         for player in self.world.players[:self.world.seats]:  # never the wilds: no client sits in that seat
             player.human = True
         self.events = []  # [number, fields] of the recent ones, oldest first
@@ -280,7 +280,10 @@ class WarbandMatch:
 
 def _create(options):
     """Validate resource-bounded creation options before generating any map."""
-    option_keys(options, {'seed', 'width', 'height', 'theme', 'races', 'layout', 'players'})
+    option_keys(options, {'seed', 'width', 'height', 'theme', 'races', 'layout', 'players', 'magic'})
+    magic = options.get('magic', False)
+    if not isinstance(magic, bool):
+        raise CommandError('magic must be a boolean.')
     players = option_int(options, 'players', 2, 2, ONLINE_SEATS)
     races = options.get('races', [None] * players)
     if (not isinstance(races, list) or len(races) != players
@@ -293,7 +296,7 @@ def _create(options):
                             height=option_int(options, 'height', 40, 40, ONLINE_SIZE[1]),
                             theme=MapTheme(option_choice(options, 'theme', 'summer', {t.value for t in MapTheme})),
                             races=[Race(race) if race is not None else None for race in races],
-                            layout=None if layout == 'any' else Layout(layout), players=players)
+                            layout=None if layout == 'any' else Layout(layout), players=players, magic=magic)
     except mapgen.NoFairMap as exc:
         raise CommandError(f'{exc} Choose a larger map or another layout.') from exc
 

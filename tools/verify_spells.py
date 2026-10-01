@@ -55,7 +55,7 @@ def staged() -> World:
         for x in range(4, 44):
             if (x * 7 + y * 3) % 5:
                 terrain[y][x] = Terrain.TREES
-    world = World(width, height, terrain, 4, races=list(RACES))
+    world = World(width, height, terrain, 4, races=list(RACES), magic=True)
     for player in world.players[1:world.seats]:
         player.human = True  # silent: GameScene gives brains only to the seats that are not human
     world.place_building(0, BuildingType.TOWN_HALL, (2, 8))

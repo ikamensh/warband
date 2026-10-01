@@ -724,7 +724,7 @@ class World:
     def __init__(self, width: int, height: int, terrain: list[list[Terrain]], player_count: int, *,
                  human: int | None = 0, rng: random.Random | None = None, theme: MapTheme = MapTheme.SUMMER,
                  races: list[Race] | tuple[Race, ...] | None = None, layout: Layout = Layout.PLAINS,
-                 scripted: bool = False) -> None:
+                 scripted: bool = False, magic: bool = False) -> None:
         if len(terrain) != height or any(len(row) != width for row in terrain):
             raise ValueError("terrain must be height rows of width tiles")
         if races is not None and len(races) != player_count:
@@ -734,6 +734,7 @@ class World:
         self.terrain = terrain
         self.theme = theme
         self.layout = layout
+        self.magic = magic  # match option: ley rifts, vaults, towers and spells are opt-in
         self.gates: frozenset[Pos] = frozenset()  # Bastion's passable ring openings; a new building must leave a route through each
         #: The ley rifts (WB-063): the top-left tiles of squares the vault's size, laid by the map generator and
         #: fixed for the match.  Ground, not buildings: nobody owns one, units walk over it, and a vault set
@@ -1350,10 +1351,12 @@ class World:
     def spells_of(self, player: int) -> list[Upgrade]:
         """The spells *player* has researched, lowest level first: their spell bar."""
         known = self.players[player].upgrades
-        return [spell for spell in SPELLS if spell in known]
+        return [spell for spell in SPELLS if self.magic and spell in known]
 
     def can_cast(self, player: int, spell: Upgrade, point: Point) -> str | None:
         """Why *player* cannot cast *spell* at *point* now, or None.  A point in the fog is a point: the cast is blind."""
+        if not self.magic:
+            return "Magic is disabled for this match"
         if not 0 <= player < self.seats or not self.players[player].alive:
             return "This side cannot cast"
         info = SPELLS.get(spell)
@@ -1597,6 +1600,8 @@ class World:
         return None
 
     def can_research(self, building: Building, upgrade: Upgrade) -> str | None:
+        if not self.magic and upgrade in SPELLS:
+            return "Magic is disabled for this match"
         if building.player is None or not building.done:
             return "Still under construction"
         info = self.upgrade_info(building.player, upgrade)
@@ -1646,7 +1651,13 @@ class World:
         building.research = None
         building.research_progress = 0.0
 
+    def building_enabled(self, building_type: BuildingType) -> bool:
+        """Whether the match offers this building, independent of prerequisites or resources."""
+        return self.magic or building_type not in (BuildingType.VAULT, BuildingType.MAGE_TOWER)
+
     def can_place(self, building_type: BuildingType, pos: Pos, player: int, *, builder: int | None = None) -> str | None:
+        if not self.building_enabled(building_type):
+            return "Magic is disabled for this match"
         info = BUILDINGS[building_type]
         if info.requires is not None and not any(b.player == player and b.type is info.requires and b.done
                                                  for b in self.buildings.values()):
@@ -1659,6 +1670,8 @@ class World:
         ``(x, y, radius)`` and the gold mines' rectangles; None when *building_type*'s prerequisite is missing,
         so that no spot will do."""
         info = BUILDINGS[building_type]
+        if not self.building_enabled(building_type):
+            return None
         if info.requires is not None and not any(b.player == player and b.type is info.requires and b.done
                                                  for b in self.buildings.values()):
             return None
@@ -5116,7 +5129,7 @@ class World:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "width": self.width, "height": self.height, "theme": self.theme.value, "layout": self.layout.value,
+            "width": self.width, "height": self.height, "theme": self.theme.value, "layout": self.layout.value, "magic": self.magic,
             "gates": [list(tile) for tile in sorted(self.gates)],
             "rifts": [list(rift) for rift in self.rifts],
             "gate_links": [[list(hall), list(natural)] for hall, natural in self.gate_links],
@@ -5149,7 +5162,7 @@ class World:
         seats = [p for p in data["players"] if not p.get("neutral")]
         world = cls(data["width"], data["height"], terrain, len(seats), human=human, theme=MapTheme(data["theme"]),
                     races=[Race(p.get("race", Race.HUMAN.value)) for p in seats], layout=Layout(data["layout"]),
-                    scripted=data.get("scripted", False))
+                    scripted=data.get("scripted", False), magic=data.get("magic", True))  # older saves were played with magic enabled
         world.gates = frozenset((x, y) for x, y in data.get("gates", []))
         world.lay_rifts((x, y) for x, y in data.get("rifts", []))  # a save from before the ley rifts has none
         world.gate_links = tuple(((hall[0], hall[1]), (natural[0], natural[1])) for hall, natural in data.get("gate_links", []))
