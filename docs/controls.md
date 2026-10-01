@@ -8,7 +8,72 @@ between in the menu. This note is the design; `warband/ui/controls.py` holds
 the schemes, `warband/ui/scene.py` the card and the input, and
 `tests/warband/test_controls.py` pins them down.
 
-## One system, three keyboards
+## Modes — the default
+
+The Modes layout replaces the old implicit Train home mode with ordinary unit
+control. It is selected by default for new settings; existing preferences stay
+selectable in Settings → Controls alongside Classic and Grid.
+
+| reserved key | mode | scope |
+|---|---|---|
+| B | Build | selected workers, or the settlement planner without workers selected |
+| T | Train | settlement recruitment |
+| U | Upgrade | settlement research |
+| O | Orders | the whole side: Army, Economy and Defence |
+| V | Spells | the whole side, only in a match with magic enabled |
+
+Mode keys always navigate, including while a placement or target is armed.
+Press another to switch directly. Press the active key again to leave completely,
+clearing uncommitted targeting while keeping the selection. Esc backs out one
+level: target → catalogue → ordinary control → deselect → menu. Right-click
+cancels targeting and keeps the parent mode. Clicking a mode button does the same
+thing as its key. Selection changes keep the active mode; Build's scope heading
+updates when workers are selected or deselected.
+
+The active button is highlighted. A permanent HUD badge names the mode and its
+scope, repeats its exit key, and the options card carries the same heading.
+Building placement stays ready after each click, without Shift. Repeating a
+building's option key lets the planner pick a site. Shift retains queued orders
+and endless training; it is never an order-strength modifier.
+
+Options use **Q W E / A S D / Z X C**. PageUp/PageDown (or the visible page buttons)
+browse overflow, and cancel a pending target. Each option has a permanent absolute
+slot: page = slot // 9 and key = slot % 9. Missing, foreign, locked or completed
+options never compress the remaining slots. The slot ledger in
+`warband/ui/controls.py` covers buildings, recruits, local production/research,
+spell research and side-wide orders. Add a new slot or append a new local chain;
+never insert into or reorder existing chains. A recruit type needs a declared
+role slot; each race's own recruit shares the reserved racial slot. Adding an
+upgrade tier to a chain retains that chain's slot. New content has to pass the
+reachability tests, including pages beyond the first.
+
+Orders use stable groups: Scout, Raid and Withdraw on Q/W/E; Gather Gold and
+Gather Lumber on A/S; Fortify on Z. Choosing an order opens three explicitly
+named strengths, on 1/2/3. Those digits choose a strength only while that submenu
+is open; otherwise they remain control groups. Esc returns to the Orders list,
+and O leaves completely. A successful order returns to the list and leaves
+Orders open. Direct Ctrl chords execute the first strength every time, without
+timed escalation. A chosen Scout or Raid strength brings the assigned party up
+to that size; Fortify plans 1/3/6 new towers and never also withdraws soldiers.
+Gold/Lumber move the idle workers plus the stated share of the other resource's
+workers. Manual orders take control of assigned units.
+
+Spells retain their level positions (Q for I, A for II, Z for III) even when only
+one level is researched. Casting returns to the Spells options; V leaves. Alt+1/2/3
+and clicks on the spell bar also enter Spells before arming its target.
+
+G sets the assembly point; F opens Plans; Ctrl+X opens cancel-work mode. A mode
+key can leave cancel-work mode for its catalogue. Ctrl+X again leaves it. Committed
+orders and placed sites are never undone by navigation.
+
+## Classic and Grid
+
+These layouts remain available for comparison. Their existing card bindings and
+Ctrl chords remain; the following reference describes those layouts. Modes uses
+the reserved keys, paging and explicit strengths above instead of Grid's overflow
+keys or the timed escalation below.
+
+## Shared mouse and modifiers
 
 The keyboard works in **modes**, and the command card always shows the mode's
 commands with their keys on them:
@@ -22,7 +87,7 @@ commands with their keys on them:
 - a **pending order**: a target to click (move, attack, patrol, repair,
   salvage, the assembly point) or a building's site under the pointer.
 
-Every scheme shares the modes, the mouse and the modifiers:
+Every scheme shares the mouse and modifiers; mode persistence and command strengths follow the layout above:
 
 | | every scheme |
 |---|---|
@@ -30,7 +95,7 @@ Every scheme shares the modes, the mouse and the modifiers:
 | Esc | back one level: the pending order, the catalogue, the selection, then the menu |
 | Ctrl (Cmd) + B / T / U / G / P | the Build, Train and Upgrade catalogues, the assembly point, every plan, from whatever card is up |
 | Ctrl (Cmd) + X | cancel mode: a click takes back a plan, a site or a building's work, a box all of them ([below](#cancel-mode)) |
-| Ctrl (Cmd) + F / W / S / R / M / L | the side's commands: Fortify, Withdraw, Scout, Harass, Gold, Lumber; again within 1.5 s, the next level ([below](#the-sides-commands)) |
+| Ctrl (Cmd) + F / W / S / R / M / L | the side's commands: Fortify, Withdraw, Scout, Harass, Gold, Lumber; Modes: first strength each time; Classic/Grid: again within 1.5 s, the next level ([below](#the-sides-commands)) |
 | a building's key again | while it is being placed: the planner picks the spot |
 | right-click a recruit's button | train it endlessly, or no longer (Warcraft III toggled autocast this way) |
 | Alt (Option) + 1 / 2 / 3 | aim the side's spell of that level; the next click on the map casts it ([below](#spells)) |
@@ -62,7 +127,7 @@ Z X C, whatever it shows: the left hand never moves. A unit card is Q move,
 W stop, E hold, A attack-move, S patrol, D build, Z repair, X salvage (Attack
 stays on A, as in every scheme); the Build catalogue's first nine buildings fill the grid; a
 building's recruits and research fill it from Q, Cancel ending the row. The
-global actions sit beside the grid where no card reaches: B build, T train,
+global actions sit beside the first nine slots: B build, T train,
 G upgrade, R assembly point, F plans, V the next idle soldier. The fastest once
 learned, and the same for every race. It assumes a QWERTY keyboard: pyglet
 reports keys by their letter, not their place.
@@ -81,15 +146,6 @@ a second page of the catalogue would cost every building past the ninth a key
 and a turn of the page, and a key off the left hand (U, I, O…) would break the
 promise that the hand never moves.
 
-### Modal
-
-Vim's way: the letters again, in modes that last. With nothing selected the
-Train catalogue is open (the home mode), so a letter orders that recruit and
-Shift+letter trains it endlessly; B builds, U upgrades, G sets the assembly
-point. A building placed leaves the next one ready to place until Esc, so a
-row of farms is B, F, then a click per farm. `.` repeats the last recruit or
-placement (a placement is repeated where the planner picks), `,` finds the next
-idle soldier. The fewest keys for running the economy.
 
 ## The card
 

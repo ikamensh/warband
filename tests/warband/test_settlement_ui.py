@@ -16,7 +16,7 @@ from warband.art.textures import TILE
 def settlement(tmp_path, request):
     game = Game("settlement", backend="mock", resolution=request.param,
                 theme=build_theme(), save_dir=tmp_path / "saves")
-    scene = new_game(seed=3)
+    scene = new_game(seed=3, magic=True, settings={"controls": "classic"})
     scene.paused = True
     scene.world.reveal_all(scene.human)
     game.push(scene)

@@ -40,7 +40,8 @@ from warband.records.replay import ORDERS, Replay, ReplayStore
 from warband.records.scores import HighScores, score_breakdown
 from warband.audio.sound import IMPACTS, apply_volumes, impact_sound, play_music, play_sound
 from warband.audio.voices import voiced
-from warband.ui.controls import ACTIONS, CARD_COLS, CHORDS, GRID_KEYS, SCHEMES, Scheme, label as key_label
+from warband.ui.controls import (ACTIONS, BUILD_SLOTS, CARD_COLS, CHORDS, GRID_KEYS, LOCAL_WORK, MODE_KEYS, ORDER_CHOICES,
+                                 ORDER_LABELS, ORDER_SLOTS, SCHEMES, SPELL_SLOTS, TRAIN_SLOTS, UPGRADE_CHAINS, Scheme, label as key_label)
 from warband.ui.spellbar import INKS as SPELL_INKS, SpellButton, aim_ink, aim_words, far_needs, far_vaults
 from warband.ui.style import (
     ACTION_BUTTON, AETHER, ARMED_BUTTON, BAD, BODY, CARD_BUTTON, DANGER_BUTTON, GHOST_BUTTON, GOLD, GOOD, HURT, LUMBER, MUTED, OVERLAY_STYLE,
@@ -54,7 +55,7 @@ from warband.ui.tutorial import OBJECTIVES, Tutorial
 from warband.ui.view import CONDITION_LOOKS, FLIGHT, SHOT_LOOKS, SHOT_SIZE, MapView, Overlay, Sighting, check_memory, rgba, to_tiles, to_world
 
 DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True, "blood": True,
-                                    "controls": "classic"}
+                                    "controls": "modal"}
 #: What is built rather than born, and throws up wood chips where it is struck: a body of timber (``bodies.material``).
 MACHINES = {u.value for u in UnitType if bodies.material(u) == "wood"}
 #: What bleeds when hit: a body its armour decides, flesh under it.  The machines are timber and a golem is stone.
@@ -109,6 +110,7 @@ DRAG_THRESHOLD = 5
 GROUP_KEYS = "123456789"
 SPELL_LEVEL_KEYS = "123"  # with Alt (Option on a Mac): the spell of that level, in every scheme (docs/controls.md)
 #: The Build catalogue's order, one per slot of the card: the opening buildings first, then the tech chain as it unlocks.
+# Append new content; never insert or reorder an existing slot.
 BUILD_ORDER = (BuildingType.FARM, BuildingType.BARRACKS, BuildingType.TOWN_HALL, BuildingType.TOWER, BuildingType.LUMBER_MILL,
                BuildingType.BLACKSMITH, BuildingType.STABLES, BuildingType.WORKSHOP, BuildingType.CHURCH, BuildingType.VAULT,
                BuildingType.MAGE_TOWER)
@@ -121,7 +123,7 @@ DOING = {Move: "Moving", AttackMove: "Attack-moving", Attack: "Attacking", Harve
 #: The Upgrade catalogue's slots, one per chain of tiers (it shows the next tier to order, as a building's own card
 #: does, and nothing at all once every tier of the chain is researched): the Keep that gates the rest, blades and
 #: armour on the top row, arrows, the engines and the shooters' drill on the second; None stands for the race's two
-#: arts, on the third.  Eight chains fill a nine-key grid; a ninth would not.
+#: arts, on the third. Modes uses the explicit UPGRADE_CHAINS ledger instead.
 UPGRADE_SLOTS = ((Upgrade.KEEP,), (Upgrade.BLADES_1, Upgrade.BLADES_2, Upgrade.BLADES_3), (Upgrade.ARMOR_1, Upgrade.ARMOR_2),
                  (Upgrade.ARROWS_1, Upgrade.ARROWS_2, Upgrade.ARROWS_3), (Upgrade.SIEGE,), (Upgrade.MARKSMANSHIP,), None, None)
 CARD_WIDTH = 116
@@ -288,6 +290,16 @@ class CardButton(ProductionButton):
             command.alt()
             return True
         return super().handle_event(event)
+
+
+class ModeOptionButton(Button):
+    """A positional option: its key in the corner, its name below, so long names never collide with keycaps."""
+
+    def __init__(self, command: Command, **kwargs: Any) -> None:
+        super().__init__("", on_click=command.action, style=command.style, **kwargs)
+        self.add(KeyHints([(command.hotkey, "")], gap=0, spacing=0, anchor=Anchor.TOP_RIGHT, margin=4))
+        self.add(Label(command.label, text_style="caption", text_color=BODY, width=CARD_WIDTH - 12,
+                       align="center", wrap=True, anchor=Anchor.BOTTOM_CENTER, margin=6))
 
 
 class _EndlessMark(Component):
@@ -580,8 +592,10 @@ class GameScene(Scene):
         self.selection: list[int] = []
         self.groups: dict[str, list[int]] = {}
         self.pending: str | None = None  # "move" | "attack" | "patrol" | "repair" | "salvage" | "assembly" | "place:<building type>" | CANCEL
-        self.catalogue: str | None = None  # "build" | "train" | "upgrade": the settlement's catalogue, over the selection's card
-        self._repeat: Callable[[], None] | None = None  # the last recruit or placement once more: the Modal scheme's "."
+        self.card_page = 0
+        self.order_choice: str | None = None
+        self.catalogue: str | None = None  # "build" | "train" | "upgrade" | "orders" | "spells": an explicit mode over the selection card
+        self._repeat: Callable[[], None] | None = None  # the last recruit or placement once more: the Modes scheme's "."
         self._allowance_left = (float(self.order_burst or 0), 0.0)  # orders cancel mode and the adjutant may still give, as of a scene clock
         #: The side's commands (Fortify, Withdraw, Scout, Harass, Gold, Lumber): decided for the player's seat from what it
         #: knows, given through attempt within the allowance.
@@ -704,6 +718,9 @@ class GameScene(Scene):
         self.game.set_fullscreen(bool(self.settings["fullscreen"]))
         if self.tutorial is not None and not self.settings["tutorial"]:
             self.tutorial = None
+        if not self.scheme.modes and self.catalogue in ("orders", "spells"):
+            self.catalogue = None
+            self.order_choice = None
         if self.settlement_row is not None:  # the controls may have changed: every keycap follows
             self._fill_settlement_row()
             self._fill_command_row()
@@ -868,6 +885,19 @@ class GameScene(Scene):
         row, scheme = self.settlement_row, self.scheme
         assert row is not None
         row.clear()
+        self.mode_buttons: dict[str, Button] = {}
+        if scheme.modes:
+            row.add(Label("Modes", text_style="heading"))
+            for key, action in MODE_KEYS.items():
+                if action == "spells" and not self.world.magic:
+                    continue
+                button = Button(action.title(), hotkey=key.upper(), on_click=lambda a=action: self.toggle_catalogue(a), style=GHOST_BUTTON)
+                self.mode_buttons[action] = button
+                row.add(button)
+            row.add(Button("Plans", hotkey="F", on_click=self.open_plans, style=GHOST_BUTTON))
+            self.cancel_button = Button("Cancel work", hotkey="Ctrl+X", on_click=self.toggle_cancel_mode, style=GHOST_BUTTON)
+            row.add(self.cancel_button)
+            return
         row.add(Label("Settlement", text_style="heading"))  # sized to its text: a fixed 124 was narrower than the font draws it
         for action, text, click in (
                 ("build", "Build", lambda: self.toggle_catalogue("build")),
@@ -887,6 +917,11 @@ class GameScene(Scene):
         in a 1200×680 window the Build catalogue's four rows (WB-063) reach up beside it: this row ends short of them."""
         row = self.command_row
         row.clear()
+        if self.scheme.modes:
+            self.command_buttons = {}
+            row.add(Label(lambda: self.mode_title, text_style="heading", text_color=GOLD))
+            row.add(Label(lambda: self.mode_exit_hint, text_style="sub"))
+            return
         row.add(Label("Ctrl +", text_style="heading"))
         self.command_buttons = {}
         for name in COMMANDS:
@@ -936,6 +971,10 @@ class GameScene(Scene):
         if waits:
             self.warn(f"{SPELLS[spell].name} is ready in {math.ceil(waits * SIM_DT)} s")
             return
+        if self.scheme.modes:
+            self.catalogue = "spells"
+            self.order_choice = None
+            self.card_page = 0
         self.pending = AIM + spell.value
         info = SPELLS[spell]
         self.say(f"{info.name}: click the map to cast it ({info.radius:g} tiles round the point) · Esc cancels")
@@ -1062,7 +1101,19 @@ class GameScene(Scene):
                 if hasattr(self.settings, "save"):
                     self.settings.save()
         current = self.tutorial.current
-        self.objective_label.text = f"{self.tutorial.step + 1}. {current.text.format(**self.tutorial_keys())}" if current is not None else ""
+        keys = self.tutorial_keys()
+        for name, kind in (("build_farm", BuildingType.FARM), ("build_barracks", BuildingType.BARRACKS)):
+            option = keys["farm" if kind is BuildingType.FARM else "barracks"]
+            prefix = "" if self.catalogue == "build" else self.scheme.shortcut("build") + " then "
+            if self.scheme.modes and self.catalogue == "build" and self.card_page:
+                prefix = "PageUp then "
+            keys[name] = prefix + option
+        if self.catalogue is not None:
+            exit_key = self.scheme.shortcut(self.catalogue) if self.scheme.modes else "Esc twice" if self.pending else "Esc"
+            keys["home"] = f"{exit_key} to leave {self.catalogue.title()}, then "
+        else:
+            keys["home"] = "Esc to cancel the target, then " if self.pending else ""
+        self.objective_label.text = f"{self.tutorial.step + 1}. {current.text.format(**keys)}" if current is not None else ""
         self.objective_done.text = f"{self.tutorial.step} of {len(OBJECTIVES) - 1} done" if self.tutorial.step else "F4 hides this; the settings switch it off"
 
     def tutorial_keys(self) -> dict[str, str]:
@@ -1145,6 +1196,21 @@ class GameScene(Scene):
     def hint(self) -> list[tuple[str, str]]:
         """The bar at the bottom: what the keys do in the mode the card is in, named as this scheme names them."""
         scheme = self.scheme
+        if scheme.modes and not self.cancelling:
+            exit_hint = [(scheme.shortcut(self.catalogue), "leave mode")] if self.catalogue else []
+            if self.placing is not None:
+                return [("Click", "place; stays ready"), (self._key_of(self.placing), "planner picks spot"),
+                        ("Right click / Esc", "choose another")] + exit_hint
+            if self.pending is not None:
+                return [("Click", "cast" if self.aiming is not None else "target"), ("Right click / Esc", "cancel target")] + exit_hint
+            if self.order_choice is not None:
+                return [("1 / 2 / 3", "choose strength"), ("Esc", "order list")] + exit_hint
+            if self.catalogue is not None:
+                return [("QWE / ASD / ZXC", "choose"), ("PageUp / PageDown", "page")] + exit_hint + [("Esc", "back")]
+            building = self._own_building()
+            mouse = "rally point" if building is not None and building.done and building.info.trains else "order selection"
+            return [("B / T / U / O" + (" / V" if self.world.magic else ""), "modes"), ("Right click", mouse), ("Tab", "idle worker"),
+                    ("Esc", "deselect" if self.selection else "menu"), ("F1", "help")]
         if self.cancelling:
             box = self._cancel_box()
             if box is not None:
@@ -1171,11 +1237,7 @@ class GameScene(Scene):
             return [(keys, "choose a building"), ("Shift+click", "keep placing"), ("Esc", "back")]
         if catalogue == "train":
             hints = [(keys, "order one"), ("Shift+key", "train endlessly")]
-            if catalogue == self.catalogue:
-                return hints + [("Esc", "back")]
-            return hints + [(f"{key_label(scheme.keys['build'])} / {key_label(scheme.keys['upgrade'])}", "build / upgrade"),
-                            (key_label(scheme.keys["repeat"]), "repeat"), (command_keys(scheme), "commands"), ("Tab", "idle peasant"),
-                            ("Esc", "deselect" if self.selection else "menu")]  # a mine or a rival selected goes first
+            return hints + [("Esc", "back")]
         if catalogue == "upgrade":
             return ([(keys, "order")] if keys else []) + [("Esc", "back")]
         units = self._own_units()
@@ -1217,13 +1279,41 @@ class GameScene(Scene):
 
     @property
     def shown_catalogue(self) -> str | None:
-        """The catalogue on the card: the one opened, or the scheme's home catalogue (the Modal scheme's Train) while
-        nothing that has a card of its own is selected."""
+        """The explicitly opened catalogue; ordinary unit control is always home."""
+        return self.catalogue
+
+    @property
+    def mode_title(self) -> str:
+        """The active mode and its scope, for both the permanent HUD badge and card heading."""
+        if self.cancelling:
+            return "CANCEL WORK · Whole settlement"
+        if self.catalogue == "build":
+            return "BUILD · " + ("Selected workers" if self._builders() else "Settlement planner")
+        if self.catalogue in ("train", "upgrade"):
+            return self.catalogue.upper() + " · Settlement"
+        if self.catalogue in ("orders", "spells"):
+            return ("ORDERS · " + ORDER_LABELS[self.order_choice]) if self.order_choice is not None else self.catalogue.upper() + " · Whole side"
+        return "UNIT CONTROL"
+
+    @property
+    def mode_exit_hint(self) -> str:
+        """The reliable way home, visible even while a target is armed."""
+        if self.cancelling:
+            return "Ctrl+X leaves · Esc goes back"
         if self.catalogue is not None:
-            return self.catalogue
-        if self.scheme.home is not None and not self._own_units() and self._own_building() is None:
-            return self.scheme.home
-        return None
+            return f"{self.scheme.shortcut(self.catalogue)} leaves · Esc goes back"
+        return " · ".join(f"{key.upper()} {mode.title()}" for key, mode in MODE_KEYS.items() if mode != "spells" or self.world.magic)
+
+    @property
+    def card_pages(self) -> int:
+        """Pages of absolute slots; empty slots never collapse when an option is unavailable."""
+        return max(1, max((c.slot // len(GRID_KEYS) + 1 for c in self._commands()), default=1))
+
+    def change_card_page(self, delta: int) -> None:
+        """Browse options without changing any option's permanent page and key."""
+        self.card_page = (self.card_page + delta) % self.card_pages
+        self.pending = None
+        self._refresh_card()
 
     # -- Selection -----------------------------------------------------------------
 
@@ -1257,9 +1347,10 @@ class GameScene(Scene):
             alive = units or alive[-1:]  # buildings are selected alone: the last one named
         self.selection = alive
         self._portrait_page = 0
-        if not self.cancelling:  # cancel mode is the settlement's, not the selection's: a group recalled leaves it on
+        if not self.cancelling and not (self.scheme.modes and self.catalogue is not None):  # cancel mode is the settlement's, not the selection's: a group recalled leaves it on
             self.pending = None
-        self.catalogue = None
+        if not self.scheme.modes:
+            self.catalogue = None
         self._refresh_card()
         if alive and not quiet:
             self.sfx("select", gap=SELECT_GAP)
@@ -1488,6 +1579,8 @@ class GameScene(Scene):
         self.pending = mode
         if mode == "assembly":
             self.catalogue = None
+            self.order_choice = None
+            self.card_page = 0
         self.say(PENDING_ASKS[mode])
         self._refresh_card()
 
@@ -1506,7 +1599,7 @@ class GameScene(Scene):
 
     def place(self, building_type: BuildingType, point: tuple[float, float], *, keep: bool = False) -> None:
         """A click while placing: *building_type* centred on *point*; *keep* (Shift) leaves the next one ready to place,
-        as the Modal scheme always does."""
+        as the Modes scheme always does."""
         if self._place_at(building_type, self._site_at(building_type, point)) and not (keep or self.scheme.sticky):
             self._end_placement()
 
@@ -1721,6 +1814,9 @@ class GameScene(Scene):
         if self.pending is not None:
             self.pending = None
             self._refresh_card()
+        elif self.order_choice is not None:
+            self.order_choice = None
+            self._refresh_card()
         elif self.catalogue is not None:
             self.open_catalogue(None)
         elif self.selection:
@@ -1738,6 +1834,7 @@ class GameScene(Scene):
     def toggle_cancel_mode(self) -> None:
         """Ctrl+X in every scheme, or the Cancel button: cancel mode, in place of any order waiting for its click, or off
         again.  It lasts past each click; Esc and a right click leave it too, and so does any other mode armed."""
+        self.order_choice = None
         self.pending = None if self.cancelling else CANCEL
         self.say("Cancel mode: click or box what to take back · Esc leaves" if self.cancelling else "Cancel mode off")
         self.sfx("button")
@@ -1894,6 +1991,8 @@ class GameScene(Scene):
             return
         self.catalogue = kind
         self.pending = None
+        self.card_page = 0
+        self.order_choice = None
         self._refresh_card()
 
     def toggle_catalogue(self, kind: str) -> None:
@@ -1919,15 +2018,24 @@ class GameScene(Scene):
         else:
             raise ValueError(f"No such action: {action}")
 
-    def command(self, name: str) -> None:
-        """One of the side's commands (WB-061), from its Ctrl chord or its button: pressed again within 1.5 s, its next
-        level.  The status line says what it did, or why it could not; a press whose orders the rules refused leaves
-        the refusal there."""
-        report = self.adjutant.press(self.world, name, self.clock)
+    def command(self, name: str, *, strength: int | None = None) -> None:
+        """A whole-side command: an explicit strength in Modes, a timed next level in Classic/Grid.
+        The status line says what it did, or why it could not; a refused order leaves its reason there."""
+        if self.scheme.modes and strength is None:
+            strength = 1
+        report = self.adjutant.press(self.world, name, self.clock, strength=strength)
+        if self.scheme.modes and not report.refused:
+            self.order_choice = None
+            self._refresh_card()
         if report.said:
             (self.warn if report.refused else self.say)(report.said)
         if not report.refused:
             self.sfx("command")
+
+    def choose_order(self, name: str) -> None:
+        """Show this side-wide order's named strengths before issuing anything."""
+        self.order_choice = name
+        self._refresh_card()
 
     def open_plans(self) -> None:
         self.game.push(SettlementPlansScene(self))
@@ -2052,8 +2160,29 @@ class GameScene(Scene):
     def _catalogue_commands(self, kind: str) -> list[Command]:
         """The Build, Train or Upgrade catalogue: everything the settlement can plan, each in its slot."""
         race, commands = self.race, []
-        if kind == "build":
+        if kind == "orders":
+            if self.order_choice is not None:
+                name = self.order_choice
+                for slot, choice in enumerate(ORDER_CHOICES[name]):
+                    tooltip = choice + (" of the other resource's workers, plus idle workers" if name in ("gold", "lumber") else "")
+                    commands.append(Command(choice, str(slot + 1), lambda n=name, level=slot + 1: self.command(n, strength=level), slot,
+                                            tooltip=tooltip + " · executes immediately"))
+            else:
+                for name, slot in ORDER_SLOTS.items():
+                    working = len(self.adjutant.members(name)) if name in TAGS else 0
+                    detail = f" · {working} assigned" if working else ""
+                    commands.append(Command(ORDER_LABELS[name], "", lambda n=name: self.choose_order(n), slot,
+                                            tooltip=ACTIONS[name] + detail + " · choose a strength"))
+        elif kind == "spells":
+            for level in range(1, 4):
+                spell = next((s for s in self.world.spells_of(self.human) if SPELLS[s].level == level), None)
+                commands.append(Command(SPELLS[spell].name if spell is not None else f"Level {LEVEL_NAMES[level - 1]}", "",
+                                        lambda l=level: self.aim_level(l), (level - 1) * CARD_COLS,
+                                        target=spell, blocked=(lambda: None) if spell is not None else (lambda: "Research a spell at the Mage Tower first"),
+                                        tooltip=SPELLS[spell].summary if spell is not None else "Research a spell at the Mage Tower first"))
+        elif kind == "build":
             for slot, building_type in enumerate(kind for kind in BUILD_ORDER if self.world.building_enabled(kind)):
+                slot = BUILD_SLOTS[building_type] if self.scheme.modes else slot
                 info = race.buildings[building_type]
                 opened = [self.building_name(kind) for kind in tech.unlocks(building_type) if self.world.building_enabled(kind)]
                 unlocks = f" · unlocks the {listing(opened)}" if opened else ""
@@ -2066,6 +2195,7 @@ class GameScene(Scene):
                                         catalogue=True))
         elif kind == "train":
             for slot, (unit_type, info) in enumerate((t, i) for t, i in race.units.items() if race.unit_allowed(t)):
+                slot = TRAIN_SLOTS[unit_type] if self.scheme.modes else slot
                 commands.append(Command(info.name, info.hotkey, lambda ut=unit_type: self.order_production("train", ut), slot,
                                         tooltip=f"{info.name} — {info.cost}{build_time(info.build_time)} · {info.summary} · "
                                                 f"{defence_line(info)}{bounds_line(info, race)} · Shift or right-click: "
@@ -2073,10 +2203,13 @@ class GameScene(Scene):
                                         cost=info.cost, target=unit_type, count=lambda ut=unit_type: self._ordered(ut),
                                         alt=lambda ut=unit_type: self.toggle_endless_everywhere(ut),
                                         endless=lambda ut=unit_type: any(ut in b.auto for b in self._producers(ut)), catalogue=True))
-        else:
+        elif kind == "upgrade":
             arts = iter(race.arts)
-            for slot, listed in enumerate(UPGRADE_SLOTS):
-                chain = listed if listed is not None else (next(arts),)
+            slots = UPGRADE_CHAINS if self.scheme.modes else UPGRADE_SLOTS
+            for slot, listed in enumerate(slots):
+                chain = tuple(up for up in listed if race.upgrade_allowed(up)) if listed is not None else (next(arts),)
+                if not chain:
+                    continue
                 # The lowest tier still to order, or the top one while that one is being researched ("Already ordered").
                 # A chain whose every tier is done leaves the card, as it leaves the building's own: its slot stays empty.
                 upgrade = next((u for u in chain if self._upgrade_planned(u) is None), chain[-1])
@@ -2087,6 +2220,8 @@ class GameScene(Scene):
                                         tooltip=f"{info.name} — {info.cost}{build_time(info.time)} · {info.summary}",
                                         cost=info.cost, blocked=lambda up=upgrade: self._upgrade_planned(up),
                                         target=upgrade, catalogue=True))
+        else:
+            raise ValueError(f"No such catalogue: {kind}")
         return commands
 
     # -- Command card ----------------------------------------------------------------
@@ -2140,8 +2275,21 @@ class GameScene(Scene):
         if any(upgrade in SPELLS for upgrade in building.info.researches):
             return self._spell_commands(building)
         commands = []
-        work: list[UnitType | Upgrade | None] = [*(u for u in building.info.trains if self.race.unit_allowed(u)), *self._research_here(building)]
+        training: list[UnitType | None] = [(u if self.race.unit_allowed(u) else None) for u in building.info.trains]
+        if not self.scheme.modes:
+            training = [u for u in training if u is not None]
+        work: list[UnitType | Upgrade | None] = [*training, *self._research_here(building)]
+        if self.scheme.modes and (building.info.trains or building.info.researches):
+            work = []
+            for entry in LOCAL_WORK[building.type]:
+                if isinstance(entry, UnitType):
+                    work.append(entry if self.race.unit_allowed(entry) else None)
+                else:
+                    allowed = [up for up in entry if self.race.upgrade_allowed(up)]
+                    work.append(next((up for up in allowed if up not in self.player.upgrades), None))
         for slot, item in enumerate(work):
+            if self.scheme.modes and slot >= 8:
+                slot += 1  # slot 8 is permanently Cancel; appended work goes onto the next page
             if isinstance(item, UnitType):
                 info = self.race.units[item]
                 commands.append(Command(info.name, info.hotkey, lambda ut=item: self.train(ut), slot,
@@ -2155,7 +2303,7 @@ class GameScene(Scene):
                                         tooltip=f"{upgrade.name} — {upgrade.cost}{build_time(upgrade.time)} · {upgrade.summary}",
                                         cost=upgrade.cost, blocked=lambda up=item, b=building: world.can_research(b, up), target=item))
         if work:
-            commands.append(Command("Cancel", "x", self.cancel_work, CARD_COLS - 1 if len(work) < CARD_COLS else 2 * CARD_COLS - 1,
+            commands.append(Command("Cancel", "x", self.cancel_work, 8 if self.scheme.modes else CARD_COLS - 1 if len(work) < CARD_COLS else 2 * CARD_COLS - 1,
                                     tooltip="Cancel the last unit queued or the research, and endless training",
                                     blocked=lambda b=building: None if b.queue or b.research is not None or b.auto else "Nothing in progress"))
         return commands
@@ -2190,7 +2338,7 @@ class GameScene(Scene):
             vaults = far_vaults(info.aether)
             store = (f" ({info.aether * SPELL_FAR} beyond every vault's reach: a vault holds {AETHER_STORE}, so that takes {vaults})"
                      if vaults > 1 else "")
-            commands.append(Command(upgrade.card, upgrade.hotkey, lambda up=spell: self.research(up), (info.level - 1) * CARD_COLS + column,
+            commands.append(Command(upgrade.card, upgrade.hotkey, lambda up=spell: self.research(up), SPELL_SLOTS[spell] if self.scheme.modes else (info.level - 1) * CARD_COLS + column,
                                     tooltip=f"{upgrade.name}, level {level} — {upgrade.cost}{build_time(upgrade.time)} · {info.summary} · "
                                             f"casts for {info.aether} aether{store}, again after {info.cooldown * SIM_DT:g} s; the others "
                                             f"of level {level} close once it is chosen",
@@ -2211,19 +2359,25 @@ class GameScene(Scene):
     def _catalogue_title(self) -> str | None:
         """The settlement's catalogue on the card, as the production overview's heading names it (a peasant's Build shows
         the peasants instead: they build what is placed)."""
-        return f"{self.shown_catalogue.title()} plans" if self.shown_catalogue is not None else None
+        return self.mode_title if self.scheme.modes and self.catalogue is not None else f"{self.shown_catalogue.title()} plans" if self.shown_catalogue is not None else None
 
     def _refresh_card(self) -> None:
         """Lay the card out afresh when what it holds changed: each command in its slot, three to a row, with the keys
         of the scheme on them; empty slots before the last keep the others in place."""
         commands = sorted(self._commands(), key=lambda c: c.slot)
         scheme = self.scheme
+        if scheme.modes:
+            pages = self.card_pages
+            self.card_page = min(self.card_page, pages - 1)
+            commands = [c for c in commands if c.slot // len(GRID_KEYS) == self.card_page]
+            for button_mode, button in self.mode_buttons.items():
+                button.style = ACTION_BUTTON if button_mode == self.catalogue else GHOST_BUTTON
         for command in commands:
-            key = scheme.card_key(command.letter, command.slot)
+            key = command.letter if scheme.modes and self.order_choice is not None else scheme.card_key(command.letter, command.slot)
             command.hotkey = key_label(key) if key else ""
             self._lacks(command)  # drawn before the next update when an online snapshot refreshes the card from its timer
-        back = self.catalogue is not None  # a catalogue opened over the card, not the Modal scheme's home
-        signature = (back, scheme.positional, tuple((c.label, c.hotkey, c.cost, c.target, c.slot, c.style) for c in commands))
+        back = self.catalogue is not None  # a catalogue opened over the selection card
+        signature = (back, scheme.positional, self.mode_title if scheme.modes else "", self.card_page, tuple((c.label, c.hotkey, c.cost, c.target, c.slot, c.style) for c in commands))
         if signature == self._card_signature:
             self._card = commands
             for command, button in zip(commands, self._card_buttons):
@@ -2238,15 +2392,23 @@ class GameScene(Scene):
         self.card_panel.visible = bool(commands) or back  # an emptied catalogue (every upgrade researched) still leads back
         if not self.card_panel.visible:
             return
+        if scheme.modes:
+            self.card_panel.add(Label(self.mode_title, text_style="heading", text_color=GOLD, width=CARD_PANEL_WIDTH - 24, wrap=True))
+            if self.card_pages > 1:
+                self.card_panel.add(Row(Button("Previous", hotkey="PageUp", on_click=lambda: self.change_card_page(-1), style=GHOST_BUTTON),
+                                        Label(f"{self.card_page + 1} / {self.card_pages}", text_style="sub"),
+                                        Button("Next", hotkey="PageDown", on_click=lambda: self.change_card_page(1), style=GHOST_BUTTON), spacing=8))
         portraits = any(c.target is not None for c in commands)
-        by_slot = {c.slot: c for c in commands}
+        by_slot = {(c.slot % len(GRID_KEYS) if scheme.modes else c.slot): c for c in commands}
         grid = len(GRID_KEYS)
         # Back stands in the bottom-right corner of the grid, or below it when a command holds that slot; on an empty
         # card it takes the corner of a single row, which is the same corner of the screen the panel is anchored to.
         corner = grid - 1 if by_slot else CARD_COLS - 1
-        back_slot = (corner if corner not in by_slot else grid + CARD_COLS - 1) if back else None
-        last = max([c.slot for c in commands] + [back_slot if back_slot is not None else 0])
+        back_slot = None if scheme.modes else (corner if corner not in by_slot else grid + CARD_COLS - 1) if back else None
+        last = max(list(by_slot) + [back_slot if back_slot is not None else 0])
         for first in range(0, last + 1, CARD_COLS):
+            if scheme.modes and self.catalogue == "orders" and self.order_choice is None:
+                self.card_panel.add(Label({0: "Army", 3: "Economy", 6: "Defence"}[first], text_style="sub"))
             row = Row(spacing=CARD_GAP)
             for slot in range(first, first + CARD_COLS):
                 command = by_slot.get(slot)
@@ -2267,6 +2429,8 @@ class GameScene(Scene):
                         return f"{c.label} ×{ordered}" if ordered else c.label
 
                     captions.append(Label(caption, text_style="caption", width=CARD_WIDTH, align="center"))
+                elif scheme.modes:
+                    button = ModeOptionButton(command, width=CARD_WIDTH, height=CARD_ICON)
                 else:
                     button = Button(command.label, hotkey=command.hotkey or None, on_click=command.action,
                                     style=command.style, width=CARD_WIDTH, height=CARD_ICON if portraits else CARD_PLAIN)
@@ -2275,6 +2439,11 @@ class GameScene(Scene):
                 self._card_buttons.append(button)
                 row.add(Column(button, *captions, spacing=3) if captions else button)
             self.card_panel.add(row)
+        if scheme.modes and self.order_choice is not None:
+            self.card_panel.add(Button("Back to Orders", hotkey="Esc", on_click=self.cancel, style=GHOST_BUTTON))
+        if scheme.modes and back:
+            self.card_panel.add(Button("Leave " + self.catalogue.title(), hotkey=self.scheme.shortcut(self.catalogue),
+                                       on_click=lambda: self.open_catalogue(None), style=GHOST_BUTTON))
 
     def _update_card(self) -> None:
         mx, my = self.mouse
@@ -2512,12 +2681,20 @@ class GameScene(Scene):
 
     def press(self, key: str, *, shift: bool = False, chord: bool = False, alt: bool = False) -> bool:
         """A key: a control group, a Ctrl chord to the settlement, then the card's command, then the scheme's global
-        keys (in Classic and Modal those letters answer only while the card leaves them free).  Alt with a spell's level
+        keys (Classic letters answer only while the card leaves them free).  Alt with a spell's level
         aims that spell (WB-066), in every scheme."""
+        if self.scheme.modes and not (chord or alt) and key in MODE_KEYS:
+            self.toggle_catalogue(MODE_KEYS[key])
+            return True
+        if self.scheme.modes and not (chord or alt) and key in ("pageup", "pagedown"):
+            self.change_card_page(-1 if key == "pageup" else 1)
+            return True
         if alt and key in SPELL_LEVEL_KEYS:
             if self.world.magic:
                 self.aim_level(int(key))
             return True
+        if self.scheme.modes and self.order_choice is not None and key in "123" and not (chord or alt):
+            return self._press_card_key(key)
         if key in GROUP_KEYS:
             self._group(key, assign=chord, add=shift)
             return True
@@ -3194,7 +3371,9 @@ class GameScene(Scene):
         if not entries:
             if title is not None:
                 self.draw_text(title, x + 16, y + 30, style="heading")
-                notes = ("Nothing planned", "Plans wait for money and prerequisites") if self._card else ("Every upgrade is researched",)
+                notes = (("Choose an order, then its strength", "Manual orders take control of assigned units") if self.catalogue == "orders"
+                         else ("Choose a spell, then click its target", "Research spells at the Mage Tower") if self.catalogue == "spells"
+                         else ("Nothing planned", "Plans wait for money and prerequisites") if self._card else ("Every upgrade is researched",))
                 for i, note in enumerate(notes):  # two rows: one line of both is 458 px, wider than the panel
                     self.draw_text(note, x + 16, y + 58 + i * 20, style="sub")
                 return
@@ -3872,20 +4051,32 @@ def command_keys(scheme: Scheme, sep: str = "/") -> str:
 def help_keys(scheme: Scheme, *, magic: bool = False) -> list[tuple[str, str]]:
     """The How to play table for *scheme*: its own keys first, then what every scheme shares."""
     idle = key_label(scheme.keys["idle_soldier"])
+    if scheme.modes:
+        return [
+            ("B T U O" + (" V" if magic else ""), "Build, Train, Upgrade, Orders" + (", Spells" if magic else "") + "; press another key to switch modes"),
+            ("Active mode key", "leave the mode completely, clearing its target and preserving selection"),
+            ("Q W E / A S D / Z X C", "choose the displayed option; empty slots stay empty; new content gets new slots"),
+            ("PageUp / PageDown", "previous / next page of options; a page never borrows a mode key"),
+            ("Orders, then 1 / 2 / 3", "choose the order's named strength; repeated shortcuts always give the first strength"),
+            ("Click while building", "place and stay ready; its option key again lets the planner pick a site"),
+            ("Shift", "queue a unit order; with a recruit: toggle endless training (right-click too)"),
+            ("G / F / Ctrl+X", "assembly point / Plans / cancel work by clicking or dragging a box"),
+            ("1-9 / Ctrl / Shift" + (" / Alt" if magic else ""),
+             "recall / assign / add to a group; " + ("Alt+1-3: aim a spell; " if magic else "") + "Tab: idle worker; comma: idle soldier; Space: alert"),
+            ("Click / drag / right-click", "select / box-select / contextual order; selecting keeps the active mode"),
+            ("Arrows / edges / wheel", "scroll; middle-drag scrolls too; wheel or + / − zooms"),
+            ("F1 F2 F3 F5 F9 F11", "help, codex, pause, save, load (offline), health bars; F6-F8 camera bookmarks (Ctrl sets)"),
+            ("Esc / Right-click", "cancel the target first; Esc then returns home, deselects, and opens the menu"),
+        ]
     if scheme.positional:
         own = [("Q W E / A S D / Z X C", "the card's buttons by their place, whatever it shows; a fourth row, R F V"),
                ("Units", "Q move, W stop, E hold, A attack-move, S patrol;  peasants: D build, Z repair, X salvage"),
                ("A building", "its recruits, then its research, from Q on;  Cancel ends the row (E, or D below a full one)"),
-               ("B / T / G / R / F / V", "Build / Train / Upgrade, the assembly point, every plan, the next idle soldier: beside the grid")]
+               ("B / T / G / R / F / V", "Build / Train / Upgrade; Ctrl+G assembly, Ctrl+P plans; V idle soldier when the card leaves it free")]
     else:
         own = [("A M P S H / B R V", "attack-move, move, patrol, stop, hold;  a peasant's build, repair and salvage"),
                ("A building's letters", "train or research there, as its card shows;  X cancels the last and stops endless training")]
-        if scheme.home is not None:
-            own += [("Nothing selected", "the Train catalogue is open: a letter orders a recruit;  B build, U upgrade, G assembly point"),
-                    ("Modes last", f"placing leaves the next building ready until Esc;  {key_label(scheme.keys['repeat'])} repeats the last "
-                                   f"recruit or placement;  {idle} idle soldier")]
-        else:
-            own += [("B / T / U / G / " + idle, "Build / Train / Upgrade, the assembly point, the next idle soldier, where the card leaves the key free")]
+        own += [("B / T / U / G / " + idle, "Build / Train / Upgrade, the assembly point, the next idle soldier, where the card leaves the key free")]
     return own + [
         ("Shift", "keep going: queue orders, place more buildings;  with a recruit's key: train it endlessly (right-click too)"),
         ("A building's key again", "while it is being placed: the planner picks the spot by your hall (a hall: by a free gold mine)"),

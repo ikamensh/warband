@@ -228,7 +228,7 @@ def test_a_tall_card_keeps_the_objectives_panel_off_its_top_row(size: tuple[int,
     way it waits out of sight, and it opens again once the card is gone.  At 1280x800 it folds, at 1280x720 it waits."""
     game = Game("Warband layout", backend="mock", resolution=size, theme=build_theme(), save_dir=tmp_path / "saves")
     try:
-        scene = new_game(seed=5, magic=True, settings=dict(DEFAULT_SETTINGS, tutorial=True))
+        scene = new_game(seed=5, magic=True, settings=dict(DEFAULT_SETTINGS, controls="classic", tutorial=True))
         game.push(scene)
         for _ in range(30):  # past the opening banner, which the panel waits for
             game.tick(0.1)

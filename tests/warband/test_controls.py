@@ -134,7 +134,7 @@ def test_every_card_gives_each_command_a_key_of_its_own(game, controls: str, rac
         assert all(k or (name == "upgrade" and not scheme.positional) for k in keys), (controls, race, name, keys)
         taken = [k.lower() for k in keys if k]
         assert len(taken) == len(set(taken)), (controls, race, name, keys)
-        if scheme.positional:
+        if scheme.positional and not scheme.modes:
             on_grid = {c.hotkey.lower() for c in scene.card if c.hotkey and c.slot < len(GRID_KEYS)}
             below = [(c.slot, c.hotkey.lower()) for c in scene.card if c.hotkey and c.slot >= len(GRID_KEYS)]
             assert on_grid <= set(GRID_KEYS) and not on_grid & set(scheme.keys.values()), (name, keys)
@@ -182,7 +182,7 @@ def test_grid_keys_go_by_the_card_position(game) -> None:
     assert scene.catalogue == "upgrade"
     press(game, "r")
     assert scene.pending == "assembly"
-    assert settlement_caps(game, scene) == {"Build": "B", "Train": "T", "Upgrade": "G", "Plans (1)": "F", "Cancel": "Ctrl+X", "Assembly": "R"}
+    assert settlement_caps(game, scene) == {"Build": "B", "Train": "T", "Upgrade": "G", "Plans (1)": "Ctrl+P", "Cancel": "Ctrl+X", "Assembly": "Ctrl+G"}
 
 
 def test_the_tutorial_and_the_help_name_the_keys_of_the_scheme(game) -> None:
@@ -195,39 +195,6 @@ def test_the_tutorial_and_the_help_name_the_keys_of_the_scheme(game) -> None:
 
 
 # -- Modal ---------------------------------------------------------------------------------------------------------
-
-
-def test_modal_nothing_selected_is_the_train_catalogue_and_dot_repeats(game) -> None:
-    scene = match(game, "modal")
-    stand(scene, BuildingType.BARRACKS)
-    scene.select([])
-    assert scene.shown_catalogue == "train" and scene.card[1].label == "Footman"
-    press(game, "f")
-    press(game, "period")
-    assert [p.type for p in scene.world.player_plans(scene.human)] == [UnitType.FOOTMAN, UnitType.FOOTMAN]
-    press(game, "escape")  # home has nowhere to go back to: the menu
-    assert type(game.scene).__name__ == "PauseScene"
-    press(game, "escape")
-    press(game, "b")
-    assert scene.catalogue == "build" and scene.card[0].label == "Farm"
-    press(game, "escape")
-    assert scene.catalogue is None and scene.shown_catalogue == "train"
-
-
-def test_modal_placing_lasts_until_esc(game) -> None:
-    scene = match(game, "modal")
-    scene.select([])
-    hall = hall_of(scene)
-    press(game, "b")
-    press(game, "f")
-    first = open_ground(scene, BuildingType.FARM, hall.center)
-    click(game, scene, centre(BuildingType.FARM, first))
-    second = open_ground(scene, BuildingType.FARM, hall.center, skip=(first,))
-    click(game, scene, centre(BuildingType.FARM, second))
-    assert scene.placing is BuildingType.FARM  # no Shift, and the next farm is still ready
-    assert sorted(p.pos for p in scene.world.player_plans(scene.human)) == sorted([first, second])
-    press(game, "escape")
-    assert scene.pending is None and scene.catalogue == "build"
 
 
 # -- Endless training ------------------------------------------------------------------------------------------------
@@ -583,8 +550,8 @@ def test_the_settings_switch_the_scheme_and_every_keycap_follows(game) -> None:
     game.scene.ui.focus(next(row for row, key in game.scene.row_keys.items() if key == "controls"))
     press(game, "right")
     press(game, "escape")
-    assert scene.scheme.name == "Modal" and [c.hotkey for c in scene.card][:3] == ["M", "S", "H"]
-    assert settlement_caps(game, scene)["Train"] == "Ctrl+T"
+    assert scene.scheme.name == "Modes" and [c.hotkey for c in scene.card][:3] == ["Q", "W", "E"]
+    assert settlement_caps(game, scene)["Train"] == "T"
 
 
 @pytest.mark.parametrize("controls", list(SCHEMES))

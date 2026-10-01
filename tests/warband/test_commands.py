@@ -397,7 +397,7 @@ def press(game: Game, command: str) -> None:
     game.tick(1 / 60)
 
 
-@pytest.mark.parametrize("controls", list(SCHEMES))
+@pytest.mark.parametrize("controls", [key for key, scheme in SCHEMES.items() if not scheme.modes])
 def test_every_scheme_takes_the_same_chords_and_shows_them(game, controls: str) -> None:
     """On the Commands row (its heading says Ctrl, each keycap the letter), in the hint bar and in the help, the same
     Ctrl chords in every scheme; the flyer goes scouting and wears its tag, and the button's tooltip counts it."""

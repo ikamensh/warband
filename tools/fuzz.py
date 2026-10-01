@@ -212,9 +212,9 @@ def monkey_runs(seeds: range, steps: int = 500) -> int:
     from warband.ui.style import build_theme
     from warband.ui.title import TitleScene
 
-    # The scene's own keys, every letter a card or a scheme gives a meaning, and the Modal scheme's punctuation.
+    # The scene's own keys, every letter a card or a scheme gives a meaning, and the Modes scheme's punctuation and page navigation.
     keys = sorted({k for keys in GameScene.controls for k in ((keys,) if isinstance(keys, str) else keys)}
-                  | set("abcdefghklmpqrstuvwxz123456789") | {"return", "escape", "period", "comma"})
+                  | set("abcdefghklmopqrstuvwxz123456789") | {"return", "escape", "period", "comma", "pageup", "pagedown"})
     commands = [letter for letter, action in CHORDS.items() if action in COMMANDS]
     failures = 0
     for seed in seeds:

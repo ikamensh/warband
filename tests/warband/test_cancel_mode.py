@@ -319,7 +319,7 @@ def test_every_scheme_names_and_takes_the_same_key(game, controls: str) -> None:
     game.tick(1 / 60)
     x, y, w, h = scene.cancel_button.bounds
     caps = {t["text"] for t in game.backend.texts if x <= t["x"] < x + w and y <= t["y"] < y + h}
-    assert caps == {"Cancel", "Ctrl+X"} and scene.tutorial_keys()["cancel"] == "Ctrl+X"
+    assert caps == {"Cancel work" if SCHEMES[controls].modes else "Cancel", "Ctrl+X"} and scene.tutorial_keys()["cancel"] == "Ctrl+X"
     cancel_mode(game, scene)
     assert scene.hint()[-1] == ("Esc / Right click / Ctrl+X", "leave") and barracks.auto == [UnitType.FOOTMAN]
     press(game, "escape")
@@ -328,7 +328,7 @@ def test_every_scheme_names_and_takes_the_same_key(game, controls: str) -> None:
         assert barracks.auto == [] and not scene.cancelling
     game.push(HelpScene(scene.scheme))
     game.tick(1 / 60)
-    assert "Ctrl + X" in [t["text"] for t in game.backend.texts]
+    assert any("Ctrl+X" in t["text"].replace(" ", "") for t in game.backend.texts)
 
 
 def test_the_settlement_row_keeps_cancel_beside_plans(game) -> None:

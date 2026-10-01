@@ -694,6 +694,27 @@ for _controls in ("grid", "modal"):
     SCREENS[f"controls_{_controls}"] = _scheme_screen
 
 
+# Every state of the new mode navigation, including the overflow page and targeting.
+for _mode in ("home", "build", "build_more", "train", "upgrade", "orders", "withdraw", "spells", "place", "target"):
+    def _mode_screen(game: Game, mode: str = _mode) -> None:
+        """Persistent modes remain readable in both supported HUD sizes."""
+        scene = town(game, controls="modal")
+        if mode != "home":
+            scene.open_catalogue("build" if mode in ("build_more", "place") else "orders" if mode == "withdraw" else "spells" if mode == "target" else mode)
+        if mode == "build_more":
+            scene.change_card_page(1)
+        elif mode == "place":
+            scene.choose_building(BuildingType.FARM)
+        elif mode == "withdraw":
+            scene.choose_order("withdraw")
+        elif mode == "target":
+            scene.player.upgrades.add(Upgrade.HASTE)
+            scene.aim_level(1)
+            move_mouse(game, 650, 350)
+        ticks(game)
+    SCREENS[f"modes_{_mode}"] = _mode_screen
+
+
 @screen
 def alerts(game: Game) -> None:
     scene = town(game)

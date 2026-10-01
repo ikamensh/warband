@@ -220,13 +220,22 @@ class Adjutant:
 
     # -- A press ----------------------------------------------------------------------------------------------------
 
-    def press(self, world: World, command: str, now: float) -> Report:
+    def press(self, world: World, command: str, now: float, *, strength: int | None = None) -> Report:
         """*command*'s key or button at the scene's clock *now*: its next level if pressed within :data:`LEVEL_WINDOW`
         of the last press, else its first, carried out at once.  A press counts even when its level finds nothing to do:
-        with nobody wounded, Withdraw pressed twice is still half the soldiers outside."""
+        with nobody wounded, Withdraw pressed twice is still half the soldiers outside.
+
+        *strength* is an explicit choice in Modes: timing never changes it, Fortify plans that many new towers,
+        and no implicit follow-up withdraws soldiers. Existing parties are brought up to the chosen size.
+        """
         level, at = self.presses.get(command, (0, -math.inf))
-        level = min(MAX_LEVEL, level + 1) if now - at <= LEVEL_WINDOW else 1
-        if level == 1:  # a fresh start for what counts only within one run of presses
+        if strength is not None and not 1 <= strength <= MAX_LEVEL:
+            raise ValueError(f"Command strength must be 1–{MAX_LEVEL}")
+        if strength is None:
+            level = min(MAX_LEVEL, level + 1) if now - at <= LEVEL_WINDOW else 1
+        else:
+            level = strength
+        if strength is not None or level == 1:  # a fresh start for what counts only within one run of presses
             if command == "fortify":
                 self.planned = 0
             elif command in ("gold", "lumber"):
@@ -235,7 +244,7 @@ class Adjutant:
         self._prune(world)
         step = LEVELS[command][level - 1]
         report = self._acts[command](world, step)
-        if step.then is not None and not report.refused:
+        if strength is None and step.then is not None and not report.refused:
             other, other_level = step.then
             also = self._acts[other](world, LEVELS[other][other_level - 1])
             if not also.refused:

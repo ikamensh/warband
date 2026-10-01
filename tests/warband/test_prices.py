@@ -26,7 +26,7 @@ def game(tmp_path):
 
 def match(game: Game) -> GameScene:
     """Seed 3 at its start: a town hall, three peasants and the purse the map gives."""
-    scene = new_game(seed=3, settings=dict(DEFAULT_SETTINGS, tutorial=False, sfx=0.0, music=0.0), races=[None, None])
+    scene = new_game(seed=3, settings=dict(DEFAULT_SETTINGS, controls="classic", tutorial=False, sfx=0.0, music=0.0), races=[None, None])
     game.push(scene)
     game.tick(1 / 60)
     return scene
@@ -215,7 +215,7 @@ def test_salvage_floats_a_symbol_not_a_word(game) -> None:
     assert ruin.abandoned
     peasant = world.spawn_unit(0, UnitType.PEASANT, (7.5, 4.5))
     world.reveal_all(0)
-    scene = GameScene(world, 0, ranked=False, settings=dict(DEFAULT_SETTINGS, tutorial=False, sfx=0.0, music=0.0))
+    scene = GameScene(world, 0, ranked=False, settings=dict(DEFAULT_SETTINGS, controls="classic", tutorial=False, sfx=0.0, music=0.0))
     game.push(scene)
     game.tick(1 / 60)
     world.salvage([peasant.id], ruin.id)
@@ -245,7 +245,7 @@ def test_plunder_floats_a_symbol_not_a_word(game) -> None:
     ogre = world.spawn_unit(0, UnitType.KNIGHT, (3.5, 8.5))
     farm = world.place_building(1, BuildingType.FARM, (6, 8))
     farm.hp = 5  # staged: one blow away, so the test watches the loot and not the siege
-    scene = GameScene(world, 0, ranked=False, settings=dict(DEFAULT_SETTINGS, tutorial=False, sfx=0.0, music=0.0))
+    scene = GameScene(world, 0, ranked=False, settings=dict(DEFAULT_SETTINGS, controls="classic", tutorial=False, sfx=0.0, music=0.0))
     game.push(scene)
     game.tick(1 / 60)
     world.attack([ogre.id], farm.id)

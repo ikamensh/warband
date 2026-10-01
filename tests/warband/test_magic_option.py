@@ -89,18 +89,21 @@ def test_magic_ui_follows_the_match_option(tmp_path, enabled):
 
     game = Game("Magic UI", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     try:
-        scene = new_game(seed=3, magic=enabled, settings=dict(DEFAULT_SETTINGS, controls="classic", tutorial=False, music=0, sfx=0))
+        scene = new_game(seed=3, magic=enabled, settings=dict(DEFAULT_SETTINGS, controls="modal", tutorial=False, music=0, sfx=0))
         game.push(scene)
         game.tick(0.1)
         assert any(isinstance(c, Icon) and c.name == "aether" for c in scene.ui.walk()) is enabled
         scene.open_catalogue("build")
-        offered = {command.target for command in scene.card}
+        offered = set()
+        for _ in range(scene.card_pages):
+            offered.update(command.target for command in scene.card)
+            scene.change_card_page(1)
         assert (BuildingType.VAULT in offered) is enabled
         assert (BuildingType.MAGE_TOWER in offered) is enabled
         scene.open_catalogue(None)
-        game.backend.inject_key("1", alt=True)
+        game.backend.inject_key("v")
         game.tick(0.1)
-        assert scene.pending is None
+        assert (scene.catalogue == "spells") is enabled
         scene.open_help()
         game.tick(0.1)
         text = " ".join(t["text"] for t in game.backend.texts).lower()

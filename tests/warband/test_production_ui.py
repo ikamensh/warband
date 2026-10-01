@@ -78,7 +78,7 @@ def race(request):
 @pytest.fixture
 def play(tmp_path, race):
     game = Game("Production UI", backend="mock", resolution=(1280, 720), theme=build_theme(), save_dir=tmp_path / "saves")
-    scene = new_game(seed=3, magic=True, races=[race, None])
+    scene = new_game(seed=3, magic=True, races=[race, None], settings={"controls": "classic"})
     game.push(scene)
     scene.paused = True
     scene.effects.clear()

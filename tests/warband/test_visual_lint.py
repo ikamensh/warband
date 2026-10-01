@@ -248,6 +248,7 @@ SCREENS = ("title", "new_game_elf", "new_game_orc", "new_game_master", "select_p
            "select_mage_tower_chosen", "spell_aim", "spell_bar_nine", "select_summoned",
            "menu_build_at_start", "menu_train_at_start", "menu_upgrade_researched", "menu_upgrade_all_done", "plans", "plan_row", "cancel_mode", "cancel_box",
            "commands_pips", "commands_tags",
+           "modes_home", "modes_build", "modes_build_more", "modes_train", "modes_upgrade", "modes_orders", "modes_withdraw", "modes_spells", "modes_place", "modes_target",
            "alerts", "battle_wood",
            "help", "codex_0", "codex_2", "codex_3", "codex_4", "codex_5", "save_browser", "game_over_won", "high_scores",
            "campaign_fresh", "campaign_under_way", "mission_raid", "mission_choice", "mission_result")
@@ -256,7 +257,7 @@ SCREENS = ("title", "new_game_elf", "new_game_orc", "new_game_master", "select_p
 #: Screens whose every label must hold its text: the overlays' tables, and the catalogues' captions of what an item needs.
 OVERFLOW_CHECKED = ("help", "codex_0", "codex_2", "codex_3", "codex_4", "codex_5", "save_browser", "menu_build_at_start", "menu_train_at_start")
 SMALLEST = min(screens.RESOLUTIONS)
-FAST_SCREENS = {"title", "select_army", "town_at_work", "battle_wood", "menu_build_hover", "help", "mission_raid", "spell_aim"}
+FAST_SCREENS = {"title", "select_army", "town_at_work", "battle_wood", "menu_build_hover", "help", "mission_raid", "spell_aim", "modes_build", "modes_withdraw"}
 
 
 @pytest.mark.parametrize("name, resolution", [pytest.param(name, r, id=f"{name}-{r[0]}x{r[1]}",

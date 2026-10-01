@@ -14,7 +14,7 @@ from warband.ui.style import build_theme
 @pytest.fixture
 def play(tmp_path):
     game = Game("Warband aether", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
-    scene = new_game(seed=3, magic=True, settings={"music": 0, "sfx": 0, "tutorial": False})
+    scene = new_game(seed=3, magic=True, settings={"music": 0, "sfx": 0, "tutorial": False, "controls": "classic"})
     game.push(scene)
     game.tick(1 / 60)
     yield game, scene

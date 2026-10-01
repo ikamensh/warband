@@ -23,7 +23,7 @@ def game(tmp_path):
 
 @pytest.fixture
 def play(game):
-    scene = new_game(seed=3)
+    scene = new_game(seed=3, magic=True, settings={"controls": "classic"})
     game.push(scene)
     game.tick(1 / 60)
     return game, scene
@@ -187,7 +187,7 @@ def test_build_menu_places_a_farm_where_the_mouse_is(play) -> None:
     scene.select([peasant.id])
     press(game, "b")
     assert scene.catalogue == "build" and [c.label for c in scene.card] == [
-        "Farm", "Barracks", "Hall", "Tower", "Mill", "Smith", "Stables", "Workshop", "Church",
+        "Farm", "Barracks", "Hall", "Tower", "Mill", "Smith", "Stables", "Workshop", "Church", "Vault", "Arcanum",
     ]
     press(game, "f")
     assert scene.placing is BuildingType.FARM and scene.catalogue == "build"

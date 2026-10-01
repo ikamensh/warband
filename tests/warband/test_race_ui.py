@@ -57,7 +57,7 @@ def test_the_title_offers_every_race_with_a_hotkey_and_the_match_uses_it(game) -
     assert "Peon" in texts(game)
     press(game, "b")
     labels = {c.label: c.hotkey for c in scene.card}
-    assert labels["Hall"] == "H" and labels["War Camp"] == "B" and labels["Kennels"] == "S" and "Barracks" not in labels
+    assert labels["Hall"] == "E" and labels["War Camp"] == "W" and labels["Kennels"] == "Z" and "Barracks" not in labels
     press(game, "f5")
     game.clear_and_push(TitleScene())
     game.tick(1 / 60)
@@ -91,7 +91,7 @@ def test_the_title_opens_the_codex_for_the_race_chosen_under_new_game(game) -> N
 
 
 def test_buildings_offer_the_race_units_and_only_its_own_arts(game) -> None:
-    scene = new_game(seed=3, races=[Race.ORC, None])
+    scene = new_game(seed=3, races=[Race.ORC, None], settings={"controls": "classic"})
     game.push(scene)
     game.tick(1 / 60)
     world = scene.world
