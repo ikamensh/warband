@@ -262,12 +262,12 @@ def test_a_right_click_on_your_own_site_sends_the_peasants_to_help_raise_it(play
     site = next(spot for spot in ((hall.x + dx, hall.y + dy) for dy in range(4, 8) for dx in range(-4, 8))
                 if world.can_place(BuildingType.FARM, spot, scene.human, builder=builder.id) is None)
     world.build(builder.id, BuildingType.FARM, site)
-    tick(game, 3.0)
+    tick(game, 3.0, 0.1)
     farm = world.buildings[builder.constructing]
     scene.select([helper.id])
     click(game, scene, farm.center, "right")
     assert isinstance(helper.order, Repair) and helper.order.target == farm.id
-    tick(game, 3.0)
+    tick(game, 3.0, 0.1)
     assert helper.state == "repair" and not farm.done
 
 
