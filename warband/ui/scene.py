@@ -74,7 +74,7 @@ SAVE_SLOTS = 3
 AUTOSAVE_EVERY = 120.0  # seconds of match time
 SELECT_GAP = 30.0  # seconds: selecting is constant, and its cue answers only the first selection in a while (WB-039)
 PENDING_ASKS = {"move": "Click where to move", "attack": "Click a target, or the ground to attack-move there",
-                "patrol": "Click the far end of the patrol", "repair": "Click one of your damaged buildings",
+                "patrol": "Click the far end of the patrol", "repair": "Click one of your damaged buildings or sites",
                 "salvage": "Click a ruin, or a rival's building, to tear apart",
                 "assembly": "Click the map to set an assembly point for new soldiers"}
 CANCEL = "cancel"  # the pending mode of cancel mode (WB-065): a click or a box takes back what it covers
@@ -1527,7 +1527,7 @@ class GameScene(Scene):
         workers = [u.id for u in self._own_units() if u.is_worker]
         target = self.view.entity_at(point)
         if not workers or not isinstance(target, Building):
-            self.warn("Click one of your damaged buildings")
+            self.warn("Click one of your damaged buildings or sites")
         elif self.attempt("repair", workers, target.id, queue=queue):
             self._marker(point, (120, 255, 140, 220))
             self.sfx("command")
@@ -2263,7 +2263,7 @@ class GameScene(Scene):
             commands.append(Command("Build", "b", lambda: self.open_catalogue("build"), UNIT_SLOTS["build"],
                                     tooltip="Farms, barracks, halls, towers and the tech buildings, built by these peasants", style=ACTION_BUTTON))
             commands.append(Command("Repair", "r", lambda: self.start_pending("repair"), UNIT_SLOTS["repair"],
-                                    tooltip="Mend one of your damaged buildings; a full repair costs half its price", style=armed("repair")))
+                                    tooltip="Mend one of your damaged buildings (a full repair costs half its price), or help raise a site", style=armed("repair")))
             commands.append(Command("Salvage", "v", lambda: self.start_pending("salvage"), UNIT_SLOTS["salvage"],
                                     tooltip="Tear a ruin, or a rival's building, apart for a quarter of what it is made of; "
                                             "one someone still holds comes apart slowly and raises their alarm",

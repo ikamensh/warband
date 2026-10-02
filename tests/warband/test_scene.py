@@ -253,6 +253,24 @@ def test_r_then_a_click_on_a_damaged_building_sends_the_peasants_to_repair_it(pl
     assert ("B / R / V", "build / repair / salvage") in scene.hint()
 
 
+def test_a_right_click_on_your_own_site_sends_the_peasants_to_help_raise_it(play) -> None:
+    """The context order on a site under construction is repair, which there means helping its builder."""
+    game, scene = play
+    world = scene.world
+    hall = hall_of(scene)
+    builder, helper = peasants_of(scene)[:2]
+    site = next(spot for spot in ((hall.x + dx, hall.y + dy) for dy in range(4, 8) for dx in range(-4, 8))
+                if world.can_place(BuildingType.FARM, spot, scene.human, builder=builder.id) is None)
+    world.build(builder.id, BuildingType.FARM, site)
+    tick(game, 3.0)
+    farm = world.buildings[builder.constructing]
+    scene.select([helper.id])
+    click(game, scene, farm.center, "right")
+    assert isinstance(helper.order, Repair) and helper.order.target == farm.id
+    tick(game, 3.0)
+    assert helper.state == "repair" and not farm.done
+
+
 def test_v_then_a_click_on_a_ruin_sends_the_peasants_to_salvage_it(play) -> None:
     """What the rules allow the player must be able to reach: the card's own button, armed, and a refusal that
     reaches the status line instead of throwing in the frame."""

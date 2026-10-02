@@ -10,7 +10,7 @@ import math
 
 from warband.sim.model import Attack, AttackMove, Deposit, Harvest, Move, Repair, RuleError, World, dist, tile_center
 from warband.sim.rules import (
-    BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_GOLD, MINE_SLOTS, MINE_TIME, REPAIR_COST, SIM_DT, UNITS, BuildingType, Cost, Resource,
+    BUILD_HELP, BUILDINGS, CHOP_TIME, GOLD_PER_TRIP, LUMBER_PER_TRIP, MINE_GOLD, MINE_SLOTS, MINE_TIME, REPAIR_COST, SIM_DT, UNITS, BuildingType, Cost, Resource,
     Terrain, UnitType, repair_cost,
 )
 
@@ -447,6 +447,27 @@ def test_a_shell_under_construction_gains_hit_points_at_the_build_rate_and_keeps
     assert wounded < farm.hp <= wounded + info.hp / info.build_time + 1  # a second of building, no more
     run_until(world, lambda: farm.done, info.build_time)
     assert farm.hp == info.hp - dealt
+
+
+def test_peasants_repairing_a_site_help_raise_it_at_no_charge() -> None:
+    """Repair on one of your own sites is help: each helper adds BUILD_HELP of its builder's rate, and the site,
+    paid for when it was placed, costs nothing more.  Done, the builder steps out and the helpers put their hammers down."""
+    world, _hall = base_world()
+    world.reveal_all(0)
+    builder = world.spawn_unit(0, UnitType.PEASANT, (8.5, 8.5))
+    world.build(builder.id, BuildingType.FARM, (10, 10))
+    run_until(world, lambda: builder.constructing is not None, 5.0)
+    farm = world.buildings[builder.constructing]
+    purse = world.players[0].gold, world.players[0].lumber
+    helpers = [world.spawn_unit(0, UnitType.PEASANT, point) for point in ((9.5, 10.5), (9.5, 11.5))]
+    assert world.smart([h.id for h in helpers], farm.center) == "repair"
+    run_until(world, lambda: all(h.state == "repair" for h in helpers), 5.0)
+    started, left = world.time, BUILDINGS[BuildingType.FARM].build_time - farm.progress
+    run_until(world, lambda: farm.done, left)
+    assert world.time - started == pytest.approx(left / (1 + len(helpers) * BUILD_HELP), abs=2 * SIM_DT)
+    assert farm.hp == farm.max_hp and (world.players[0].gold, world.players[0].lumber) == purse
+    run(world, SIM_DT)
+    assert not builder.hidden and not any(isinstance(h.order, Repair) for h in helpers)
 
 
 def test_peasants_repair_damaged_buildings_for_a_share_of_the_price() -> None:

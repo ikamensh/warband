@@ -53,7 +53,7 @@ files in `warband/assets/constants/`:
 - `upgrades.toml` — every research: price, time, and what it does.
 - `races.toml` — what each race renames and retunes on top.
 - `economy.toml` — harvest timings, mine stocks, starting resources,
-  what mending and salvaging cost.
+  what mending and salvaging cost, how much a helper speeds a site.
 - `combat.toml` — melee reach, projectile speeds, the armour rule,
   and how a siege crew weighs its own side against the enemy's.
 - `buffs.toml` — the timed conditions a unit carries (Rage, Bleeding, and
