@@ -2,7 +2,7 @@
 
 import pytest
 
-from saga2d import CommandError, Game
+from saga2d import Button, CommandError, Game
 from warband.online.authority import ONLINE, WarbandMatch
 from warband.sim.model import tile_center
 from warband.sim.races import RACES
@@ -10,7 +10,7 @@ from warband.sim.rules import BUILDINGS, BuildingType, Race, Terrain, UnitType, 
 from warband.ui.scene import CodexScene, GameScene, new_game
 from warband.ui.tech import BRIGHT, TechTree
 from warband.ui.style import build_theme
-from warband.ui.title import RACE_KEYS, TitleScene
+from warband.ui.title import TitleScene
 
 
 @pytest.fixture
@@ -22,6 +22,13 @@ def game(tmp_path):
 
 def press(game: Game, key: str) -> None:
     game.backend.inject_key(key)
+    game.tick(1 / 60)
+
+def click(game, label):
+    """Click the button of the top scene that reads *label*."""
+    button = next(b for b in game.scene.ui.walk() if isinstance(b, Button) and b.text == label)
+    x, y, width, height = button.bounds
+    game.backend.inject_click(x + width / 2, y + height / 2)
     game.tick(1 / 60)
 
 
@@ -37,7 +44,7 @@ def click_tile(game: Game, scene: GameScene, point) -> None:
 
 
 @pytest.mark.slow
-def test_the_title_offers_every_race_with_a_hotkey_and_the_match_uses_it(game) -> None:
+def test_new_game_offers_every_race_and_the_match_uses_it(game) -> None:
     """A full title/match/save/continue journey loads a map twice and renders its race HUD/cards; over a second locally."""
     game.push(TitleScene())
     game.tick(1 / 60)
@@ -46,7 +53,7 @@ def test_the_title_offers_every_race_with_a_hotkey_and_the_match_uses_it(game) -
     for race in Race:
         assert RACES[race].name in shown
     assert any(RACES[Race.HUMAN].passive in t for t in shown)
-    press(game, RACE_KEYS[Race.ORC].lower())
+    click(game, RACES[Race.ORC].name)
     assert game.scene.race is Race.ORC and any(RACES[Race.ORC].passive in t for t in texts(game))
     press(game, "return")
     scene = game.scene
@@ -85,7 +92,7 @@ def test_the_title_opens_the_codex_for_the_race_chosen_under_new_game(game) -> N
     press(game, "escape")
     assert isinstance(game.scene, TitleScene)
     press(game, "n")
-    press(game, RACE_KEYS[Race.ORC].lower())
+    click(game, RACES[Race.ORC].name)
     press(game, "escape")
     press(game, "f2")
     shown = texts(game)

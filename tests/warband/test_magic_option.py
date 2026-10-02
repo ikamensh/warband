@@ -2,7 +2,7 @@
 
 import pytest
 
-from saga2d import Game
+from saga2d import Button, Game
 from saga2d.testing.online import server_fixture
 from warband.sim.model import World
 from warband.sim.rules import BuildingType
@@ -11,6 +11,14 @@ from warband.ui.style import build_theme
 from warband.ui.title import TitleScene
 
 magic_server = server_fixture("warband.online.authority:ONLINE")
+
+
+def click(game, label):
+    """Click the button of the top scene that reads *label*."""
+    button = next(b for b in game.scene.ui.walk() if isinstance(b, Button) and b.text == label)
+    x, y, width, height = button.bounds
+    game.backend.inject_click(x + width / 2, y + height / 2)
+    game.tick(0.1)
 
 
 def test_new_matches_have_no_magic_sources_by_default():
@@ -28,12 +36,12 @@ def test_player_can_choose_magic_before_starting(tmp_path, enabled):
     try:
         game.push(TitleScene(settings=dict(DEFAULT_SETTINGS, tutorial=False, music=0, sfx=0)))
         game.scene.new_game()
+        game.tick(0.1)  # lays the panel out, so its buttons can be clicked
         setup = game.scene
         assert not setup.preview_world.magic
         assert not setup.preview_world.rifts
         for _ in range(1 if enabled else 2):
-            game.backend.inject_key("i")
-            game.tick(0.1)
+            click(game, "Magic: On" if setup.magic else "Magic: Off")
         assert setup.preview_world.magic is enabled
         assert bool(setup.preview_world.rifts) is enabled
         game.backend.inject_key("return")

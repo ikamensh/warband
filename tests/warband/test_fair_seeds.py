@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from saga2d import Game, MatchMenu
+from saga2d import Button, Game, MatchMenu
 from warband.sim import mapgen
 from warband.__main__ import lobby_options
 from warband.sim.rules import Layout, Race
@@ -35,6 +35,13 @@ def mock_game(tmp_path) -> Game:
 
 def press(game, key) -> None:
     game.backend.inject_key(key)
+    game.tick(1 / 60)
+
+def click(game, label):
+    """Click the button of the top scene that reads *label*."""
+    button = next(b for b in game.scene.ui.walk() if isinstance(b, Button) and b.text == label)
+    x, y, width, height = button.bounds
+    game.backend.inject_click(x + width / 2, y + height / 2)
     game.tick(1 / 60)
 
 
@@ -65,10 +72,10 @@ def test_new_game_goes_on_to_the_next_fair_seed_on_a_resize_or_a_reroll(tmp_path
     try:
         scene = open_new_game(game, TitleScene())  # Medium, two seats, Humans, any layout: the seed is fair there
         assert scene.seed == UNFAIR
-        press(game, "s")  # Small, where it is not
+        click(game, "Small")  # where it is not
         assert scene.seed == UNFAIR + 1 and f"Seed {UNFAIR + 1}" in [t["text"] for t in game.backend.texts]
         assert same(scene.preview_world, mapgen.generate(UNFAIR + 1, 48, 40, 2, races=[Race.HUMAN, None]))
-        press(game, "r")  # a reroll onto it
+        click(game, "Reroll")  # onto it
         assert scene.seed == UNFAIR + 1
     finally:
         game.close()

@@ -1,7 +1,8 @@
 """Title screen and the match setup overlay.
 
 The title drifts over a fully revealed map so the game shows what it is
-before a button is pressed.  Every option has a hotkey.
+before a button is pressed.  Every title command has a hotkey; the match
+settings are clicked.
 """
 
 from __future__ import annotations
@@ -31,16 +32,10 @@ OPTION_WIDTH = 180
 SIZE_WIDTH = 86  # six sizes on one row, as wide as three options: a second row of them stood the panel off a 680-pixel screen
 COUNT_WIDTH = 72  # seven seat counts share the width three options take
 RACE_WIDTH = 125
-#: Only the three sizes that shipped have a letter of their own; the rest are reached with the
-#: stepper keys, because the screen's free letters ran out before the sizes did.
-SIZE_KEYS = {"Small": "S", "Medium": "M", "Large": "L"}
-RACE_KEYS = {Race.HUMAN: "U", Race.ORC: "O", Race.ELF: "V", Race.DWARF: "A"}
-#: Not the first letter: Medium and Master share one, and M is already the map size.
-DIFFICULTY_KEYS = {Difficulty.EASY: "E", Difficulty.MEDIUM: "N", Difficulty.HARD: "H", Difficulty.MASTER: "T", Difficulty.GRANDMASTER: "X"}
 NOTE_WIDTH = 90 + 8 + 3 * OPTION_WIDTH + 2 * 8  # a note under a row of options spans the row and wraps beside the preview
 PREVIEW_KEY = "newgame.preview"
 PREVIEW_BOX = (320, 240)  # the preview fits this many pixels: whole pixels per tile, as many as fit
-LAYOUT_KEYS: dict[Layout | None, str] = {Layout.PLAINS: "P", Layout.FOREST: "F", Layout.CROSSINGS: "C", Layout.KLONDIKE: "K", Layout.BASTION: "B", None: "Y"}
+LAYOUTS: list[Layout | None] = [*Layout, None]  # None is Any
 
 
 def preview_image(world: World) -> PilImage.Image:
@@ -307,16 +302,13 @@ class TitleScene(Scene):
 
 class NewGameScene(Scene):
     """Map size, number of players, the land and its layout, your race, the seed, then Start.
-    The computer players' races are drawn from the seed, and so is the layout under Any."""
+    The computer players' races are drawn from the seed, and so is the layout under Any.
+    The settings are clicked: a letter for each of them only crowded the buttons with keycaps."""
 
     transparent = True
     pause_below = False
     pop_on_cancel = True
-    controls = {"s": "size_small", "m": "size_medium", "l": "size_large", "bracketleft": "smaller", "bracketright": "bigger",
-                "2": "players_2", "3": "players_3", "4": "players_4", "minus": "fewer_seats", "equal": "more_seats",
-                "e": "easy", "n": "medium", "h": "hard", "t": "master", "x": "grandmaster", "g": "summer", "w": "winter", "d": "wasteland", "r": "reroll", ("return", "space"): "start",
-                "u": "humans", "o": "orcs", "v": "elves", "a": "dwarves",
-                "i": "toggle_magic", "p": "plains", "f": "forest", "c": "crossings", "k": "klondike", "b": "bastion", "y": "any_layout"}
+    controls = {("return", "space"): "start"}
 
     def __init__(self, title: TitleScene) -> None:
         self.title = title
@@ -367,8 +359,7 @@ class NewGameScene(Scene):
         """What the seat count means, and what the screen moved to keep it playable."""
         width, height = self.dimensions
         note = f"{self.size} is {width}×{height} tiles here: you and {plural(self.players - 1, 'computer player')}"
-        keys = f"{', '.join(SIZE_KEYS.values())} and [ ] choose the size; 2, 3, 4 and − + the players."
-        return f"{note}. {self._moved}. {keys}" if self._moved else f"{note}. {keys}"
+        return f"{note}. {self._moved}." if self._moved else f"{note}."
 
     def _difficulty_text(self) -> str:
         """The rating beside the chosen setting, and what it plays like."""
@@ -377,7 +368,7 @@ class NewGameScene(Scene):
     def _opponents_text(self) -> str:
         if self._preview_world is None:
             return "Opponents: …"
-        races = [RACES[p.race].name for p in self._preview_world.players[1:]]
+        races = [RACES[p.race].name for p in self._preview_world.players[1:self._preview_world.seats]]  # not the wilds past the seats
         tally = {name: races.count(name) for name in dict.fromkeys(races)}
         # A sixteen-seat list of races would run off the panel, so beyond a handful they are counted.
         shown = races if len(races) <= 4 else [f"{n}× {name}" for name, n in tally.items()]
@@ -410,15 +401,13 @@ class NewGameScene(Scene):
         for name in mapgen.SIZES:
             # The tiles a size makes are the seats' business too, so they are named in the note beside
             # the preview rather than on the button, which keeps the six of them to one row.
-            # No keycap on the button: six of them across the width three options take leaves no room for
-            # one, and the note beside the preview names the keys instead.
             button = Button(name, on_click=lambda n=name: self.set_size(n), style=GHOST_BUTTON, width=SIZE_WIDTH)
             self._size_buttons[name] = button
             size_row.add(button)
         options.add(size_row)
         player_row = Row(Label("Players", text_style="body", width=90), spacing=8)
         for count in mapgen.SEAT_COUNTS:
-            button = Button(str(count), hotkey=str(count) if count <= 4 else None, on_click=lambda c=count: self.set_players(c),
+            button = Button(str(count), on_click=lambda c=count: self.set_players(c),
                             style=GHOST_BUTTON, width=COUNT_WIDTH)
             self._player_buttons[count] = button
             player_row.add(button)
@@ -430,37 +419,36 @@ class NewGameScene(Scene):
             shown = settings[first:first + 3]
             width = (3 * OPTION_WIDTH + 2 * 8 - (len(shown) - 1) * 8) // len(shown)  # a shorter row fills the same width, so the column lines up
             for difficulty in shown:
-                button = Button(f"{difficulty.value.title()} {DIFFICULTY_ELO[difficulty]}", hotkey=DIFFICULTY_KEYS[difficulty],
+                button = Button(f"{difficulty.value.title()} {DIFFICULTY_ELO[difficulty]}",
                                 on_click=lambda d=difficulty: self.set_difficulty(d), style=GHOST_BUTTON, width=width)
                 self._difficulty_buttons[difficulty] = button
                 row.add(button)
             options.add(row)
         options.add(Label(lambda: self._difficulty_text(), text_style="sub", width=NOTE_WIDTH, wrap=True))
         theme_row = Row(Label("Land", text_style="body", width=90), spacing=8)
-        for theme, key in ((MapTheme.SUMMER, "G"), (MapTheme.WINTER, "W"), (MapTheme.WASTELAND, "D")):
-            button = Button(theme.value.title(), hotkey=key, on_click=lambda t=theme: self.set_theme(t), style=GHOST_BUTTON, width=OPTION_WIDTH)
+        for theme in MapTheme:
+            button = Button(theme.value.title(), on_click=lambda t=theme: self.set_theme(t), style=GHOST_BUTTON, width=OPTION_WIDTH)
             self._theme_buttons[theme] = button
             theme_row.add(button)
         options.add(theme_row)
-        layouts = list(LAYOUT_KEYS.items())
         for first in (0, 3):
             row = Row(Label("Map" if first == 0 else "", text_style="body", width=90), spacing=8)
-            for layout, key in layouts[first:first + 3]:
-                button = Button("Any" if layout is None else layout.value.title(), hotkey=key, on_click=lambda chosen=layout: self.set_layout(chosen),
+            for layout in LAYOUTS[first:first + 3]:
+                button = Button("Any" if layout is None else layout.value.title(), on_click=lambda chosen=layout: self.set_layout(chosen),
                                 style=GHOST_BUTTON, width=OPTION_WIDTH)
                 self._layout_buttons[layout] = button
                 row.add(button)
             options.add(row)
         options.add(Label(lambda: self._layout_text(), text_style="sub", width=NOTE_WIDTH, wrap=True))
         race_row = Row(Label("Race", text_style="body", width=90), spacing=8)
-        for race, key in RACE_KEYS.items():
-            button = Button(RACES[race].name, hotkey=key, on_click=lambda r=race: self.set_race(r), style=GHOST_BUTTON, width=RACE_WIDTH)
+        for race in Race:
+            button = Button(RACES[race].name, on_click=lambda r=race: self.set_race(r), style=GHOST_BUTTON, width=RACE_WIDTH)
             self._race_buttons[race] = button
             race_row.add(button)
         options.add(race_row)
         options.add(Row(Label(lambda: f"Seed {self.seed}", text_style="body", width=90 + 8 + OPTION_WIDTH),
-                        Button("Reroll", hotkey="R", on_click=self.reroll, style=GHOST_BUTTON, width=OPTION_WIDTH),
-                        Button(lambda: "Magic: On" if self.magic else "Magic: Off", hotkey="I", on_click=self.toggle_magic,
+                        Button("Reroll", on_click=self.reroll, style=GHOST_BUTTON, width=OPTION_WIDTH),
+                        Button(lambda: "Magic: On" if self.magic else "Magic: Off", on_click=self.toggle_magic,
                                style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
         side = Column(Image(PREVIEW_KEY, width=PREVIEW_BOX[0], height=PREVIEW_BOX[1]),
                       Label(lambda: self._opponents_text(), text_style="sub", width=PREVIEW_BOX[0], wrap=True),
@@ -533,26 +521,6 @@ class NewGameScene(Scene):
         self._restyle()
         self._refresh_preview()
 
-    def _step_size(self, by: int) -> None:
-        names = list(mapgen.SIZES)
-        self.set_size(names[max(0, min(len(names) - 1, names.index(self.size) + by))])
-
-    def _step_players(self, by: int) -> None:
-        counts = mapgen.SEAT_COUNTS
-        self.set_players(counts[max(0, min(len(counts) - 1, counts.index(self.players) + by))])
-
-    def smaller(self) -> None:
-        self._step_size(-1)
-
-    def bigger(self) -> None:
-        self._step_size(1)
-
-    def fewer_seats(self) -> None:
-        self._step_players(-1)
-
-    def more_seats(self) -> None:
-        self._step_players(1)
-
     def set_difficulty(self, difficulty: Difficulty) -> None:
         self.difficulty = difficulty
         self.title.sfx("button")
@@ -579,78 +547,6 @@ class NewGameScene(Scene):
         self.title.sfx("button")
         self._restyle()
         self._refresh_preview()
-
-    def plains(self) -> None:
-        self.set_layout(Layout.PLAINS)
-
-    def forest(self) -> None:
-        self.set_layout(Layout.FOREST)
-
-    def crossings(self) -> None:
-        self.set_layout(Layout.CROSSINGS)
-
-    def klondike(self) -> None:
-        self.set_layout(Layout.KLONDIKE)
-
-    def bastion(self) -> None:
-        self.set_layout(Layout.BASTION)
-
-    def any_layout(self) -> None:
-        self.set_layout(None)
-
-    def humans(self) -> None:
-        self.set_race(Race.HUMAN)
-
-    def orcs(self) -> None:
-        self.set_race(Race.ORC)
-
-    def elves(self) -> None:
-        self.set_race(Race.ELF)
-
-    def dwarves(self) -> None:
-        self.set_race(Race.DWARF)
-
-    def summer(self) -> None:
-        self.set_theme(MapTheme.SUMMER)
-
-    def winter(self) -> None:
-        self.set_theme(MapTheme.WINTER)
-
-    def wasteland(self) -> None:
-        self.set_theme(MapTheme.WASTELAND)
-
-    def easy(self) -> None:
-        self.set_difficulty(Difficulty.EASY)
-
-    def medium(self) -> None:
-        self.set_difficulty(Difficulty.MEDIUM)
-
-    def hard(self) -> None:
-        self.set_difficulty(Difficulty.HARD)
-
-    def master(self) -> None:
-        self.set_difficulty(Difficulty.MASTER)
-
-    def grandmaster(self) -> None:
-        self.set_difficulty(Difficulty.GRANDMASTER)
-
-    def size_small(self) -> None:
-        self.set_size("Small")
-
-    def size_medium(self) -> None:
-        self.set_size("Medium")
-
-    def size_large(self) -> None:
-        self.set_size("Large")
-
-    def players_2(self) -> None:
-        self.set_players(2)
-
-    def players_3(self) -> None:
-        self.set_players(3)
-
-    def players_4(self) -> None:
-        self.set_players(4)
 
     def toggle_magic(self) -> None:
         """Magic is chosen before the match; the preview and multiplayer rooms use the same choice."""

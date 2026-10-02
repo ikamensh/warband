@@ -5,7 +5,7 @@ from itertools import count
 
 import pytest
 
-from saga2d import Game
+from saga2d import Button, Game
 from warband.sim import mapgen
 from warband.sim.races import RACES
 from warband.sim.rules import Layout
@@ -31,6 +31,13 @@ def open_new_game(tmp_path, resolution=(1280, 800)):
 
 def press(game, key):
     game.backend.inject_key(key)
+    game.tick(1 / 60)
+
+def click(game, label):
+    """Click the button of the top scene that reads *label*."""
+    button = next(b for b in game.scene.ui.walk() if isinstance(b, Button) and b.text == label)
+    x, y, width, height = button.bounds
+    game.backend.inject_click(x + width / 2, y + height / 2)
     game.tick(1 / 60)
 
 
@@ -61,16 +68,16 @@ def test_reroll_changes_seed_and_image(tmp_path) -> None:
         scene = game.scene
         old_seed = scene.seed
         old_bytes = scene.preview_picture.tobytes()
-        press(game, "r")
+        click(game, "Reroll")
         assert scene.seed != old_seed
         assert scene.preview_picture.tobytes() != old_bytes
     finally:
         game.close()
 
 
-@pytest.mark.parametrize("key, size, pixels", [("s", "Small", (288, 240)), ("m", "Medium", (320, 240)),
-                                             pytest.param("l", "Large", (240, 192), marks=pytest.mark.slow)])
-def test_the_preview_fits_its_box_at_whole_pixels_per_tile(tmp_path, key: str, size: str, pixels: tuple[int, int]) -> None:
+@pytest.mark.parametrize("size, pixels", [("Small", (288, 240)), ("Medium", (320, 240)),
+                                         pytest.param("Large", (240, 192), marks=pytest.mark.slow)])
+def test_the_preview_fits_its_box_at_whole_pixels_per_tile(tmp_path, size: str, pixels: tuple[int, int]) -> None:
     """The size selector displays the whole generated map at integral tile pixels.
 
     Opening New game and regenerating a Large preview can take over half a
@@ -78,7 +85,7 @@ def test_the_preview_fits_its_box_at_whole_pixels_per_tile(tmp_path, key: str, s
     """
     game = open_new_game(tmp_path)
     try:
-        press(game, key)
+        click(game, size)
         scene = game.scene
         assert scene.size == size
         assert scene.preview_picture.size == pixels
@@ -93,7 +100,7 @@ def test_the_map_row_picks_a_layout_and_the_caption_says_what_any_drew(tmp_path)
         scene = game.scene
         assert scene.layout is None
         assert any(t.startswith("Any drew ") for t in texts(game))
-        press(game, "f")
+        click(game, "Forest")
         assert scene.layout is Layout.FOREST and scene.preview_world.layout is Layout.FOREST
         assert mapgen.PROMISES[Layout.FOREST] in texts(game)
     finally:
@@ -104,9 +111,9 @@ def test_the_map_row_can_return_from_klondike_to_any(tmp_path) -> None:
     game = open_new_game(tmp_path)
     try:
         scene = game.scene
-        press(game, "k")
+        click(game, "Klondike")
         assert scene.preview_world.layout is Layout.KLONDIKE
-        press(game, "y")
+        click(game, "Any")
         assert scene.layout is None
     finally:
         game.close()
@@ -121,8 +128,9 @@ def test_opponent_line_matches_mapgen(tmp_path) -> None:
             scene.seed, width, height, scene.players,
             theme=scene.theme, races=[scene.race] + [None] * (scene.players - 1), layout=scene.layout,
         )
-        expected = "Opponents: " + ", ".join(RACES[p.race].name for p in expected_world.players[1:])
-        assert expected in texts(game)
+        rivals = [RACES[p.race].name for p in expected_world.players[1:expected_world.seats]]
+        assert len(rivals) == scene.players - 1  # the wilds own the creatures, and are nobody's opponent
+        assert "Opponents: " + ", ".join(rivals) in texts(game)
     finally:
         game.close()
 
