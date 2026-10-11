@@ -408,6 +408,41 @@ def test_damaged_identity_record_surfaces_and_still_opens(tmp_path):
         game.close()
 
 
+def test_malformed_nested_identity_values_raise_and_surface_without_writing(tmp_path):
+    """Present-but-malformed token/profile raise through the helpers and the setup form.
+
+    Missing keys stay honest defaults; malformed nested values raise ``SettingsError``
+    without echoing the value, the file stays byte-identical, and Create reports the
+    domain error instead of opening a lobby on an invented token."""
+    import json
+
+    from saga2d.settings import SettingsError
+
+    from warband.ui.multiplayer import _default_endpoint
+
+    game = title_game(tmp_path)
+    try:
+        endpoint = _default_endpoint()
+        path = tmp_path / "online-identity.json"
+        path.write_text(json.dumps({"tokens": {endpoint: 12345},
+                                    "profiles": {endpoint: ["not", "a", "profile"]}}), encoding="utf-8")
+        before = path.read_bytes()
+        with pytest.raises(SettingsError):
+            online_identity(game)
+        with pytest.raises(SettingsError):
+            stored_online_profile(game)
+        assert path.read_bytes() == before, "nothing rewrites the malformed record"
+        press(game, "m")
+        assert isinstance(game.scene, MatchSetupMenu)
+        assert "Online identity unreadable" in texts(game)
+        click(game, "Create room")
+        assert isinstance(game.scene, MatchSetupMenu), "no lobby opens on a malformed record"
+        assert game.scene.message != ""
+        assert path.read_bytes() == before
+    finally:
+        game.close()
+
+
 def test_damaged_profile_refuses_transport_with_a_message_not_a_crash(tmp_path):
     """Create with an unreadable profile reports the domain error and stays put."""
     from warband.records.profile import Profile

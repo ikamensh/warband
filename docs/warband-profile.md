@@ -1,7 +1,8 @@
 # Warband player profile, rating and replays
 
-The title screen carries the player's card: name, rating, record and the
-last few results, with **P** opening the profile. Every offline match against
+The title screen carries the player's online card: name and online rating. The
+detailed skirmish card — name, rating, record and the last few results, with
+**P** opening the profile — lives in the Library. Every offline match against
 the computer is rated when it ends — or when the player leaves it — and its
 replay is kept. Casual online matches are neither rated nor recorded; rated
 online rooms are rated instead by the server (see below), never in this local profile.

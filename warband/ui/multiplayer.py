@@ -68,8 +68,15 @@ def online_identity(game, endpoint: str | None = None) -> dict:
     tokens it never minted — and the local profile's display name."""
     store = _identity_store(game)
     key = endpoint or _default_endpoint()
-    token = dict(store["tokens"]).get(key, "")
-    return {"player_token": token if isinstance(token, str) else "", "player_name": display_name(game)}
+    tokens = dict(store["tokens"])
+    if key not in tokens:
+        token = ""
+    elif not isinstance(tokens[key], str):
+        raise SettingsError("Online identity record has a malformed token for this server; "
+                            "the file is kept unchanged.")
+    else:
+        token = tokens[key]
+    return {"player_token": token, "player_name": display_name(game)}
 
 
 def stored_online_profile(game, endpoint: str | None = None) -> dict | None:
@@ -78,8 +85,14 @@ def stored_online_profile(game, endpoint: str | None = None) -> dict | None:
     Never the offline skirmish rating: until the server names this player, the card says so."""
     store = _identity_store(game)
     key = endpoint or _default_endpoint()
-    profile = store["profiles"].get(key)
-    return profile if isinstance(profile, dict) else None
+    profiles = dict(store["profiles"])
+    if key not in profiles:
+        return None
+    profile = profiles[key]
+    if not isinstance(profile, dict):
+        raise SettingsError("Online identity record has a malformed profile for this server; "
+                            "the file is kept unchanged.")
+    return profile
 
 
 def _is_online(session) -> bool:

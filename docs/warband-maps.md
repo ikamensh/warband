@@ -868,10 +868,10 @@ Sixteen seats are therefore a **one-machine** feature: you and fifteen computer
 players. Playing against other people is sized by the engine at both ends — a
 LAN host takes exactly one guest (`saga2d.network.MatchHost`: "Host one guest.
 Seat 0 belongs to the host, seat 1 to the guest") and an online room holds four
-— and neither number is Warband's to raise. Where New game's settings are past
-what a room holds, the title refuses with the reason instead of quietly seating
-four (`TitleScene.room_refusal`), and the authority refuses the same options
-with `CommandError`; both refusals are held to by
+— and neither number is Warband's to raise. Multiplayer keeps dedicated room
+settings independent of the skirmish: 2–4 seats on maps up to Large, whatever
+the offline size or seat count (`MatchSetupMenu`), and the authority refuses
+anything past that with `CommandError`, held to by
 `tests/warband/test_many_seats.py`.
 
 ### The seam for another kind of mine
