@@ -8,6 +8,16 @@ Or join a human-created room::
 
     python -m warband.online.online_ai --server wss://games.tachyon-ai.eu/play --room CODE
 
+``--reconnect-after`` seconds after the match first goes ready, the bot
+deliberately drops its connection once, sleeps ``--disconnect-for`` seconds,
+then rejoins its reserved seat with the in-memory room code and resume token
+(a public ``OnlineClient`` construction, never worker manipulation). It emits
+``disconnected`` before the drop and ``rejoined`` after, with the assigned
+player, the tick before and after, and its own entity ids as continuity
+evidence. ``--require-completion`` turns a duration end with no declared
+winner into a failure. The final ``finished`` event carries the winner the
+server declared.
+
 Output is JSON Lines. ``order_submitted`` means queued for the server;
 ``authoritative_state`` reports what the server actually accepted and simulated.
 The protocol has no per-command acknowledgement. Private seat tokens are never
@@ -108,16 +118,35 @@ def _print_event(event):
     print(json.dumps(event, separators=(",", ":"), allow_nan=False), flush=True)
 
 
+def _own_ids(client):
+    """The bot seat's own unit and building ids in its latest authoritative state (public, own fields only)."""
+    if client.state is None:
+        return [], []
+    world = client.state["world"]
+    units = sorted(unit["id"] for unit in world["units"] if unit["player"] == client.player)
+    buildings = sorted(building["id"] for building in world["buildings"] if building["player"] == client.player)
+    return units, buildings
+
+
 def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=None,
             duration=None, wait_timeout=900.0, report_every=5.0,
+            reconnect_after=None, disconnect_for=2.0, require_completion=False,
             emit: Callable[[dict], None] = _print_event) -> dict:
     """Play the assigned online seat until victory or the wall-clock duration ends.
 
     With no room, create one using ``options``. ``duration`` includes lobby time;
     ``wait_timeout`` bounds each wait for a partner. Network/protocol failures
     raise; normal server order rejections are reported and discard pending plans.
+    ``reconnect_after`` seconds after the match first goes ready, the bot drops
+    its connection once and rejoins its reserved seat after ``disconnect_for``
+    seconds; the rejoin is a public ``OnlineClient`` construction from the
+    in-memory room code and resume token, with pending plans discarded. The
+    brain itself is kept: it plans afresh on every authoritative snapshot, so
+    the post-rejoin snapshot simply drives its next pass. ``require_completion``
+    turns a duration end with no server-declared winner into a failure.
     """
-    for name, value in (("duration", duration), ("wait_timeout", wait_timeout), ("report_every", report_every)):
+    for name, value in (("duration", duration), ("wait_timeout", wait_timeout), ("report_every", report_every),
+                        ("reconnect_after", reconnect_after), ("disconnect_for", disconnect_for)):
         if value is not None and (not math.isfinite(value) or value <= 0):
             raise ValueError(f"{name} must be positive and finite.")
     started = waiting_since = time.monotonic()
@@ -125,11 +154,17 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
     client = OnlineClient("warband-v2", endpoint=endpoint, room=room, options=options)
     brain = rng = None
     announced = ever_ready = last_ready = False
+    first_ready_at = reconnected = awaiting_rejoin = False
+    reconnected_player = -1
+    before_tick = 0
+    before_units: list = []
+    before_buildings: list = []
     revision = -1
     pending = deque()
     next_order = next_report = 0.0
     submitted = states = 0
     last_tick = 0
+    winner = None
     try:
         while True:
             client.poll()
@@ -148,6 +183,8 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
                 emit({"event": "match_ready" if client.ready else "match_paused", "revision": client.revision})
                 if client.ready:
                     ever_ready = True
+                    if not first_ready_at:
+                        first_ready_at = now
                 else:
                     waiting_since = now
                     pending.clear()
@@ -157,17 +194,51 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
                 states += 1
                 world = client.state["world"]
                 last_tick = world["tick"]
+                if awaiting_rejoin:
+                    awaiting_rejoin = False
+                    after_units, after_buildings = _own_ids(client)
+                    if client.player != reconnected_player:
+                        raise ConnectionError(
+                            f"Rejoined as player {client.player} instead of the reserved seat {reconnected_player}.")
+                    emit({"event": "rejoined", "player": client.player, "revision": client.revision,
+                          "before_tick": before_tick, "tick": last_tick,
+                          "before_units": before_units, "units": after_units,
+                          "before_buildings": before_buildings, "buildings": after_buildings})
                 if now >= next_report:
                     emit(_state_evidence(client))
                     next_report = now + report_every
                 if world["winner"] is not None:
+                    winner = world["winner"]
                     reason = "winner"
                     break
             if now >= deadline:
                 if not ever_ready:
                     raise TimeoutError("Bot duration expired before both players connected.")
+                if require_completion:
+                    raise TimeoutError("Bot duration expired before the server declared a winner.")
                 reason = "duration"
                 break
+            if (reconnect_after is not None and not reconnected and ever_ready and client.ready
+                    and client.state is not None and now - first_ready_at >= reconnect_after):
+                if not client.resume_token:
+                    raise ConnectionError("Cannot rejoin the reserved seat without a resume token.")
+                reconnected_player = client.player
+                before_tick = last_tick
+                before_units, before_buildings = _own_ids(client)
+                emit({"event": "disconnected", "player": client.player, "revision": client.revision,
+                      "tick": last_tick, "units": before_units, "buildings": before_buildings})
+                resume_room, resume_token = client.room, client.resume_token
+                pending.clear()
+                client.close()
+                time.sleep(disconnect_for)
+                # The seat stays reserved on the server; rejoin it as any player client would.
+                # (Ordinary construction only: rated/identity arguments arrive with the new engine.)
+                client = OnlineClient("warband-v2", endpoint=endpoint, room=resume_room, resume_token=resume_token)
+                pending.clear()
+                reconnected = True
+                awaiting_rejoin = True
+                revision = -1
+                continue
             if not client.ready:
                 if now - waiting_since >= wait_timeout:
                     raise TimeoutError("Timed out waiting for the other player to connect.")
@@ -189,8 +260,9 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
             time.sleep(min(POLL_INTERVAL, max(0.0, deadline - time.monotonic())))
         emit(_state_evidence(client))
         result = {"event": "finished", "reason": reason, "room": client.room, "player": client.player,
-                  "elapsed": round(time.monotonic() - started, 3), "tick": last_tick,
-                  "states_received": states, "orders_submitted": submitted}
+                  "elapsed": round(time.monotonic() - started, 3), "tick": last_tick, "winner": winner,
+                  "states_received": states, "orders_submitted": submitted,
+                  "reconnected": bool(reconnected)}
         emit(result)
         return result
     finally:
@@ -207,6 +279,12 @@ def main(argv=None) -> int:
     parser.add_argument("--duration", type=float, help="maximum wall-clock seconds including the lobby; default runs until victory")
     parser.add_argument("--wait-timeout", type=float, default=900, help="maximum seconds waiting for a partner (default: 900)")
     parser.add_argument("--report-every", type=float, default=5, help="seconds between authoritative evidence rows (default: 5)")
+    parser.add_argument("--reconnect-after", type=float, default=None,
+                        help="deliberately disconnect once this many seconds after first ready, then rejoin the reserved seat")
+    parser.add_argument("--disconnect-for", type=float, default=2.0,
+                        help="seconds to stay disconnected before rejoining (default: 2)")
+    parser.add_argument("--require-completion", action="store_true",
+                        help="fail a duration end unless the server actually declared a winner")
     parser.add_argument("--seed", type=int, default=3, help="map seed for --create")
     parser.add_argument("--width", type=int, default=48, help="map width for --create (48–80)")
     parser.add_argument("--height", type=int, default=40, help="map height for --create (40–64)")
@@ -215,7 +293,9 @@ def main(argv=None) -> int:
     try:
         run_bot(endpoint=args.server, room=args.room, difficulty=Difficulty(args.difficulty),
                 options={"seed": args.seed, "width": args.width, "height": args.height, "theme": args.theme},
-                duration=args.duration, wait_timeout=args.wait_timeout, report_every=args.report_every)
+                duration=args.duration, wait_timeout=args.wait_timeout, report_every=args.report_every,
+                reconnect_after=args.reconnect_after, disconnect_for=args.disconnect_for,
+                require_completion=args.require_completion)
     except (CommandError, ConnectionError, TimeoutError, ValueError) as exc:
         _print_event({"event": "error", "error": str(exc)})
         return 1

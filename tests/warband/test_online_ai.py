@@ -2,6 +2,8 @@
 
 The brain plans on ``online_ai._PlanningWorld``, a copy of its seat's snapshot that turns each order into a command
 for the server; ``run_bot`` drives it only against a live room, so the fast tests below hold the copy itself.
+The bot can also drop its connection once and rejoin its reserved seat, and can demand a server-declared
+winner before a duration end counts as success; those need a live room, so they live in the slow tier.
 """
 
 import json
@@ -10,14 +12,15 @@ from pathlib import Path
 import random
 import subprocess
 import sys
+import threading
 
 import pytest
 from websockets.sync.client import connect
 
-from saga2d.testing.online import first_stdout_line, handshake, receive, server_fixture
+from saga2d.testing.online import command, first_stdout_line, handshake, receive, server_fixture
 from warband.brains.ai import make_brain
-from warband.online.authority import WarbandMatch
-from warband.online.online_ai import _PlanningWorld
+from warband.online.authority import ORDERS, WarbandMatch
+from warband.online.online_ai import _PlanningWorld, run_bot
 from warband.records import replay
 from warband.sim.model import tile_center
 from warband.sim.rules import BuildingType, Difficulty, UnitType
@@ -136,6 +139,147 @@ def test_headless_creator_announces_a_room_before_a_human_joins(server_url):
         if process.poll() is None:
             process.terminate()
         process.communicate(timeout=5)
+
+
+@pytest.mark.parametrize("flag,value", [
+    ("reconnect_after", 0), ("reconnect_after", -1.0),
+    ("reconnect_after", float("inf")), ("reconnect_after", float("nan")),
+    ("disconnect_for", 0), ("disconnect_for", -2.0),
+    ("disconnect_for", float("inf")), ("disconnect_for", float("nan")),
+])
+def test_reconnect_timings_must_be_positive_and_finite(flag, value):
+    """A non-positive or unbounded reconnect timing is refused before any connection (fast: no server)."""
+    with pytest.raises(ValueError, match="must be positive and finite"):
+        run_bot(endpoint="ws://127.0.0.1:1/", room="never", emit=lambda event: None, **{flag: value})
+
+
+@pytest.mark.slow
+def test_bot_disconnects_once_and_rejoins_its_reserved_seat(server_url):
+    """A deliberate drop keeps the reserved seat: the same player, advancing ticks, orders resume.
+
+    A real bot subprocess drops and rejoins against a real server while a human holds the other
+    seat: the slow tier."""
+
+    def drain(human, stop):
+        try:
+            while not stop.is_set():
+                human.recv(timeout=2)
+        except Exception:
+            pass
+
+    with connect(server_url, proxy=None) as human:
+        welcome = handshake(human, game="warband-v2", options={"seed": 3, "width": 48, "height": 40})
+        stop = threading.Event()
+        reader = threading.Thread(target=drain, args=(human, stop), daemon=True)
+        reader.start()
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "warband.online.online_ai", "--server", server_url,
+                 "--room", welcome["room"], "--difficulty", "hard", "--duration", "10",
+                 "--report-every", "0.25", "--reconnect-after", "1", "--disconnect-for", "1"],
+                cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=30,
+                env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
+            )
+        finally:
+            stop.set()
+            reader.join(timeout=5)
+        assert result.returncode == 0, result.stderr + result.stdout
+        evidence = [json.loads(line) for line in result.stdout.splitlines()]
+        assert evidence[0]["event"] == "joined" and evidence[0]["player"] == 1
+        dropped = [row for row in evidence if row["event"] == "disconnected"]
+        rejoined = [row for row in evidence if row["event"] == "rejoined"]
+        assert len(dropped) == len(rejoined) == 1, "the bot disconnected and rejoined exactly once"
+        assert dropped[0]["player"] == rejoined[0]["player"] == 1, "the rejoin kept the reserved seat"
+        assert rejoined[0]["before_tick"] == dropped[0]["tick"]
+        assert rejoined[0]["tick"] >= dropped[0]["tick"]
+        assert "resume_token" not in result.stdout and welcome["resume_token"] not in result.stdout
+        states = [row for row in evidence if row["event"] == "authoritative_state"]
+        assert states[-1]["tick"] > dropped[0]["tick"], "authoritative state advanced after the rejoin"
+        rejoin_at = evidence.index(rejoined[0])
+        assert any(row["event"] == "order_submitted" for row in evidence[rejoin_at + 1:]), \
+            "the bot kept giving brain orders after rejoining"
+        assert evidence[-1]["event"] == "finished" and evidence[-1]["reason"] == "duration"
+        assert evidence[-1]["reconnected"] is True
+
+
+@pytest.mark.slow
+def test_require_completion_fails_a_duration_end_with_no_winner(server_url):
+    """A bounded run with --require-completion exits nonzero while the match is still undecided.
+
+    A real bot subprocess plays out a short duration against a real server: the slow tier."""
+    with connect(server_url, proxy=None) as human:
+        welcome = handshake(human, game="warband-v2", options={"seed": 3, "width": 48, "height": 40})
+        result = subprocess.run(
+            [sys.executable, "-m", "warband.online.online_ai", "--server", server_url,
+             "--room", welcome["room"], "--difficulty", "hard", "--duration", "2",
+             "--report-every", "0.25", "--require-completion"],
+            cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=15,
+            env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
+        )
+        assert result.returncode == 1, result.stderr + result.stdout
+        evidence = [json.loads(line) for line in result.stdout.splitlines()]
+        assert evidence[-1]["event"] == "error" and "winner" in evidence[-1]["error"]
+        assert "resume_token" not in result.stdout and welcome["resume_token"] not in result.stdout
+
+
+@pytest.mark.slow
+def test_declared_winner_is_a_success_carrying_the_server_result(server_url):
+    """When the opponent surrenders over the wire, a --require-completion bot succeeds with the winner.
+
+    A real bot subprocess plays a real server match ended by a real wire surrender, with a reconnect
+    scheduled far past the finish so none happens: the slow tier."""
+    assert "resign" in ORDERS, "the surrender below must stay a valid authority order"
+    with connect(server_url, proxy=None) as human:
+        welcome = handshake(human, game="warband-v2", options={"seed": 3, "width": 48, "height": 40})
+        process = subprocess.Popen(
+            [sys.executable, "-m", "warband.online.online_ai", "--server", server_url,
+             "--room", welcome["room"], "--difficulty", "hard",
+             "--duration", "30", "--report-every", "0.25",
+             "--require-completion", "--reconnect-after", "60"],
+            cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
+        )
+        try:
+            assert json.loads(first_stdout_line(process, timeout=10))["event"] == "joined"
+            for _ in range(20):
+                if json.loads(first_stdout_line(process, timeout=10))["event"] == "match_ready":
+                    break
+            else:
+                pytest.fail("the match never went ready")
+            command(human, {"action": "resign", "args": [0], "kwargs": {}})
+            assert process.wait(timeout=20) == 0, process.stderr.read()
+            out = process.stdout.read()
+        finally:
+            if process.poll() is None:
+                process.terminate()
+            process.communicate(timeout=5)
+        evidence = [json.loads(line) for line in out.splitlines()]
+        assert evidence[-1]["event"] == "finished" and evidence[-1]["reason"] == "winner"
+        assert evidence[-1]["winner"] == 1 and evidence[-1]["player"] == 1
+        states = [row for row in evidence if row["event"] == "authoritative_state"]
+        assert states and states[-1]["winner"] == 1, "the final evidence carries the server-declared winner"
+        assert not any(row["event"] in ("disconnected", "rejoined") for row in evidence), \
+            "no reconnect happens once the game is finished"
+        assert "resume_token" not in out and welcome["resume_token"] not in out
+
+
+@pytest.mark.slow
+def test_no_reconnect_without_a_match(server_url):
+    """A lobby that never fills ends on duration with no disconnect or rejoin evidence.
+
+    A real creator subprocess waits alone against a real server: the slow tier."""
+    result = subprocess.run(
+        [sys.executable, "-m", "warband.online.online_ai", "--server", server_url, "--create",
+         "--width", "48", "--height", "40", "--duration", "1.5", "--reconnect-after", "0.5"],
+        cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=10,
+        env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
+    )
+    assert result.returncode == 1, result.stderr + result.stdout
+    evidence = [json.loads(line) for line in result.stdout.splitlines()]
+    assert evidence[-1]["event"] == "error" and "both players" in evidence[-1]["error"]
+    assert not any(row["event"] in ("disconnected", "rejoined") for row in evidence), \
+        "no reconnect is attempted before the match goes ready"
+    assert "resume_token" not in result.stdout
 
 
 @pytest.mark.parametrize("arguments, error", [
