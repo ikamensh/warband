@@ -132,60 +132,53 @@ IDENTITY_VERSION = 1
 
 def _identity_engine():
     """Whether the installed OnlineClient speaks identity and rated rooms."""
-    try:
-        parameters = inspect.signature(OnlineClient.__init__).parameters
-    except (TypeError, ValueError):
-        return False
-    return "player_token" in parameters
+    return "player_token" in inspect.signature(OnlineClient.__init__).parameters
 
 
-def _load_identity(path, endpoint):
-    """The player token kept for *endpoint*, or ``""`` when none was kept.
+def _read_identity_store(path):
+    """The validated identity store: a missing file means a new store, anything else must match the schema.
 
-    The file holds ``{"version": 1, "endpoints": {endpoint: {"player_token": token}}}``
-    and nothing else; a missing file means no identity yet, while an unreadable or
-    misshapen one fails clearly so a broken credential store never silently degrades
-    into a fresh account.
+    An existing file requires version exactly int 1, an endpoints object, and every entry an
+    object with a string player token; anything else fails with the path, and a failed read
+    never writes, so a bad file is refused rather than overwritten or silently downgraded.
     """
-    if path is None:
-        return ""
     try:
         with open(os.path.expanduser(path), encoding="utf-8") as handle:
             data = json.load(handle)
     except FileNotFoundError:
-        return ""
+        return {"version": IDENTITY_VERSION, "endpoints": {}}
     except (OSError, ValueError) as exc:
         raise ValueError(f"Cannot read identity file {path}: {exc}") from exc
     if not isinstance(data, dict):
         raise ValueError(f"Identity file {path} holds no per-endpoint token store.")
-    endpoints = data.get("endpoints", {})
+    if type(data.get("version")) is not int or data["version"] != IDENTITY_VERSION:
+        raise ValueError(f"Identity file {path} has unknown version {data.get('version')!r}.")
+    endpoints = data.get("endpoints")
     if not isinstance(endpoints, dict):
         raise ValueError(f"Identity file {path} holds no per-endpoint token store.")
-    entry = endpoints.get(endpoint, {})
-    if not isinstance(entry, dict) or not isinstance(entry.get("player_token", ""), str):
-        raise ValueError(f"Identity file {path} holds no text token for {endpoint}.")
-    return entry.get("player_token", "")
+    for endpoint, entry in endpoints.items():
+        if not isinstance(entry, dict) or not isinstance(entry.get("player_token"), str):
+            raise ValueError(f"Identity file {path} holds no text token for {endpoint}.")
+    return data
+
+
+def _load_identity(path, endpoint):
+    """The player token kept for *endpoint*, or ``""`` when a valid store keeps none yet."""
+    if path is None:
+        return ""
+    return _read_identity_store(path)["endpoints"].get(endpoint, {}).get("player_token", "")
 
 
 def _store_identity(path, endpoint, token):
     """Persist *token* for *endpoint* atomically with mode 0600; never prints it.
 
-    Other endpoints already in the file are kept; a misshapen file fails instead of
-    being overwritten, so one bad write cannot destroy the surviving identities.
+    Reads share the strict validation, so an invalid store fails before anything is written
+    and a failed write leaves every byte; other endpoints in a valid store are preserved.
     """
+    data = _read_identity_store(path)
     target = Path(os.path.expanduser(path))
     target.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with open(target, encoding="utf-8") as handle:
-            data = json.load(handle)
-    except FileNotFoundError:
-        data = {}
-    except (OSError, ValueError) as exc:
-        raise ValueError(f"Cannot read identity file {path}: {exc}") from exc
-    if not isinstance(data, dict) or not isinstance(data.get("endpoints", {}), dict):
-        raise ValueError(f"Identity file {path} holds no per-endpoint token store.")
-    data.setdefault("version", IDENTITY_VERSION)
-    data.setdefault("endpoints", {})[endpoint] = {"player_token": token}
+    data["endpoints"][endpoint] = {"player_token": token}
     fd, tmp = tempfile.mkstemp(dir=str(target.parent), prefix=target.name + ".", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -195,10 +188,7 @@ def _store_identity(path, endpoint, token):
         os.chmod(tmp, 0o600)
         os.replace(tmp, target)
     except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
+        Path(tmp).unlink(missing_ok=True)
         raise
 
 

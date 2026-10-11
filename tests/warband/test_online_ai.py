@@ -246,40 +246,37 @@ def test_missing_identity_file_means_no_identity_yet(tmp_path):
     assert _load_identity(str(tmp_path / "absent.json"), "ws://one:1") == ""
 
 
-@pytest.mark.parametrize("content", ["not json", "[1, 2]", '{"endpoints": 7}', '{"endpoints": {"ws://one:1": 7}}'])
+@pytest.mark.parametrize("content", [
+    "not json", "[1, 2]",
+    '{"version": 2, "endpoints": {}}', '{"version": "1", "endpoints": {}}', '{"version": true, "endpoints": {}}',
+    '{"version": 1}', '{"endpoints": {}}', '{"endpoints": 7}',
+    '{"version": 1, "endpoints": {"ws://one:1": 7}}',
+    '{"version": 1, "endpoints": {"ws://one:1": {}}}',
+    '{"version": 1, "endpoints": {"ws://one:1": {"player_token": null}}}',
+])
 def test_misshapen_identity_file_fails_clearly(tmp_path, content):
-    """A broken credential store names its path instead of degrading silently (fast: no server)."""
+    """A store outside the strict schema names its path on read and write alike (fast: no server)."""
     path = tmp_path / "identity.json"
-    path.write_text(content)
+    path.write_bytes(content.encode())
     with pytest.raises(ValueError, match="identity"):
         _load_identity(str(path), "ws://one:1")
-
-
-@pytest.mark.parametrize("content", ["not json", "[1, 2]", '{"endpoints": 7}'])
-def test_unmergeable_identity_file_refuses_storage(tmp_path, content):
-    """A store that cannot be merged is never overwritten (fast: no server)."""
-    path = tmp_path / "identity.json"
-    path.write_text(content)
     with pytest.raises(ValueError, match="identity"):
         _store_identity(str(path), "ws://one:1", "token-new")
+    assert path.read_bytes() == content.encode(), "a refused store is never overwritten"
 
 
-def test_identity_store_heals_one_bad_entry_and_keeps_the_rest(tmp_path):
-    """Storing replaces only its own endpoint entry, preserving the rest (fast: no server)."""
+def test_bad_entry_blocks_every_endpoint_and_preserves_the_file(tmp_path):
+    """One malformed entry refuses the whole store; the failed write leaves every byte (fast: no server)."""
+    content = b'{"version": 1, "endpoints": {"ws://one:1": 7, "ws://two:2": {"player_token": "token-two"}}}'
     path = tmp_path / "identity.json"
-    path.write_text('{"version": 1, "endpoints": {"ws://one:1": 7, "ws://two:2": {"player_token": "token-two"}}}')
-    _store_identity(str(path), "ws://one:1", "token-new")
-    assert _load_identity(str(path), "ws://one:1") == "token-new"
-    assert _load_identity(str(path), "ws://two:2") == "token-two"
-
-
-def test_version_only_identity_file_is_an_empty_store(tmp_path):
-    """A version-only file loads empty and accepts its first identity (fast: no server)."""
-    path = tmp_path / "identity.json"
-    path.write_text('{"version": 1}')
-    assert _load_identity(str(path), "ws://one:1") == ""
-    _store_identity(str(path), "ws://one:1", "token-one")
-    assert _load_identity(str(path), "ws://one:1") == "token-one"
+    path.write_bytes(content)
+    with pytest.raises(ValueError, match="identity"):
+        _load_identity(str(path), "ws://one:1")
+    with pytest.raises(ValueError, match="identity"):
+        _load_identity(str(path), "ws://two:2")
+    with pytest.raises(ValueError, match="identity"):
+        _store_identity(str(path), "ws://one:1", "token-new")
+    assert path.read_bytes() == content
 
 
 @_NEEDS_LEGACY_ENGINE
