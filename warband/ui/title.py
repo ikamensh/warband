@@ -169,7 +169,11 @@ class TitleScene(Scene):
         rating = profile.rating
         counts = profile.counts()
         card.add(Label(profile.name, text_style="title"))
-        card.add(Label(f"Skirmish rating {rating}" + (" · provisional" if rating.provisional else ""), text_style="heading", text_color=GOLD))
+        # Explicit inner width, and provisional as its own caption: the heading never spills past the card.
+        card.add(Label(f"Skirmish rating {rating}", text_style="heading", text_color=GOLD,
+                       width=CARD_WIDTH - 24, wrap=True))
+        if rating.provisional:
+            card.add(Label("provisional", text_style="caption"))
         history = profile.history()
         if not history:
             card.add(Label("No rated matches yet. Beat the computer to earn a rating; leaving a match early counts against it.",
@@ -184,7 +188,6 @@ class TitleScene(Scene):
                              Label(f"{OUTCOME_NAMES[result.outcome]} · {result.difficulty.title()} · {result.opponents + 1} players · {result.played_at[:10]}",
                                    text_style="sub", width=CARD_WIDTH - 90),
                              spacing=6))
-        card.add(Button("Profile & replays", hotkey="P", on_click=self.profile_screen, style=MENU_BUTTON, width=CARD_WIDTH - 24))
         return card
 
     def update(self, dt: float) -> None:
@@ -301,7 +304,9 @@ class LibraryScene(Scene):
     def on_enter(self) -> None:
         newest = self.title._newest_save()
         menu = Column(spacing=8, margin=0)
-        cont = Button("Continue", hotkey="C", on_click=self.continue_game, style=ACTION_BUTTON, width=280)
+        # Blue only when there is a save to continue; otherwise a quiet ghost, never a bright dead end.
+        cont = Button("Continue", hotkey="C", on_click=self.continue_game,
+                      style=ACTION_BUTTON if newest is not None else GHOST_BUTTON, width=280)
         cont.enabled = newest is not None
         menu.add(cont)
         menu.add(Button("Load game", hotkey="L", on_click=self.load_game, style=MENU_BUTTON, width=280))

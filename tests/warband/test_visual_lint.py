@@ -257,7 +257,7 @@ SCREENS = ("title", "library", "multiplayer_setup", "multiplayer_lan", "warband_
 
 
 #: Screens whose every label must hold its text: the overlays' tables, and the catalogues' captions of what an item needs.
-OVERFLOW_CHECKED = ("help", "codex_0", "codex_2", "codex_3", "codex_4", "codex_5", "codex_wilds", "save_browser", "menu_build_at_start", "menu_train_at_start")
+OVERFLOW_CHECKED = ("library", "help", "codex_0", "codex_2", "codex_3", "codex_4", "codex_5", "codex_wilds", "save_browser", "menu_build_at_start", "menu_train_at_start")
 SMALLEST = min(screens.RESOLUTIONS)
 FAST_SCREENS = {"title", "library", "multiplayer_setup", "select_army", "town_at_work", "battle_wood", "menu_build_hover", "help", "mission_raid", "spell_aim", "modes_build", "modes_withdraw",
                 "neutral_ancient", "codex_wilds"}

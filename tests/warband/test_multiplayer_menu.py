@@ -408,6 +408,26 @@ def test_damaged_identity_record_surfaces_and_still_opens(tmp_path):
         game.close()
 
 
+def test_damaged_profile_refuses_transport_with_a_message_not_a_crash(tmp_path):
+    """Create with an unreadable profile reports the domain error and stays put."""
+    from warband.records.profile import Profile
+
+    game = title_game(tmp_path)
+    try:
+        Profile.load(game.data_dir).save()
+        profile_file = tmp_path / "profile" / "save_1.json"
+        assert profile_file.is_file()
+        profile_file.write_text("{broken", encoding="utf-8")
+        press(game, "m")
+        assert isinstance(game.scene, MatchSetupMenu)
+        assert "Profile unreadable" in texts(game)
+        click(game, "Create room")
+        assert isinstance(game.scene, MatchSetupMenu), "no lobby opens on a damaged profile"
+        assert game.scene.message != ""
+    finally:
+        game.close()
+
+
 def fake_session(**kwargs):
     """An online waiting session: counts, room and lifecycle hooks, no network."""
     own = {"player_id": "p1", "name": "Al", "rating": 1500.0, "games": 4, "wins": 3, "losses": 1}

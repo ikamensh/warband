@@ -328,6 +328,11 @@ class MatchSetupMenu(MatchMenu):
 
     # -- Transport: the base lifecycle, through the game-owned lobby ------------------
 
+    # A damaged profile or identity record is already reported on the form; if either
+    # helper still fails here, its domain error lands in the message, never a crash —
+    # and no invented name or token is substituted.
+    _TRANSPORT_ERRORS = (OSError, ValueError, SaveError, SettingsError)
+
     def host(self):
         try:
             if self.mode == "online":
@@ -340,7 +345,7 @@ class MatchSetupMenu(MatchMenu):
                 session = MatchHost(self.game_id, match.apply, match.snapshot,
                                     address=("0.0.0.0", port), token=self.fields[2] or None)
                 self.fields[2] = session.token
-        except (OSError, ValueError) as exc:
+        except self._TRANSPORT_ERRORS as exc:
             self.message = str(exc)
             return
         self.game.push(WarbandLobby(session, lambda connection: self.create_scene(connection, match), title=self.title))
@@ -357,7 +362,7 @@ class MatchSetupMenu(MatchMenu):
                 if not self.fields[0] or not self.fields[2]:
                     raise ValueError("Enter the host address and room code first.")
                 session = MatchClient(self.game_id, (self.fields[0], port), token=self.fields[2])
-        except (OSError, ValueError) as exc:
+        except self._TRANSPORT_ERRORS as exc:
             self.message = str(exc)
             return
         self.game.push(WarbandLobby(session, lambda connection: self.create_scene(connection, None), title=self.title))
@@ -368,7 +373,7 @@ class MatchSetupMenu(MatchMenu):
         try:
             session = OnlineClient(self.game_id, endpoint=record["endpoint"], room=record["room"],
                                    resume_token=record["resume_token"], **self._online_kwargs(for_rejoin=True))
-        except (OSError, ValueError) as exc:
+        except self._TRANSPORT_ERRORS as exc:
             self.message = str(exc)
             return
         self.game.push(WarbandLobby(session, lambda connection: self.create_scene(connection, None), title=self.title))
