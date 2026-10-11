@@ -51,7 +51,7 @@ from warband.records.replay import ReplayStore
 from warband.ui.scene import DEFAULT_SETTINGS
 from warband.records.scores import HighScores
 from warband.ui.style import build_theme
-from warband.ui.title import TitleScene
+from warband.ui.title import LibraryScene, TitleScene
 data, run_id = Path(sys.argv[1]), sys.argv[2]
 game = Game("Warband", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=data / "saves")
 settings = game.settings(DEFAULT_SETTINGS)
@@ -59,11 +59,14 @@ profile = Profile.load(data)
 replay = ReplayStore(data).load(run_id)
 game.push(TitleScene(settings=settings))
 game.tick(1 / 60)
+game.backend.inject_key("y")
+game.tick(1 / 60)
+assert isinstance(game.scene, LibraryScene), type(game.scene).__name__
 texts = [t["text"] for t in game.backend.texts]
 print(json.dumps({"music": settings["music"], "results": [r.run_id for r in profile.results], "name": profile.name,
                   "scores": len(HighScores(data).load()), "replay_orders": len(replay.orders), "ended": replay.end is not None,
                   "quick": game.save_manager.load("quick") is not None,
-                  "card": any(profile.name in t for t in texts) and any("Rating" in t for t in texts)}))
+                  "card": any(profile.name in t for t in texts) and any("Skirmish rating" in t for t in texts)}))
 game.close()
 '''
 
