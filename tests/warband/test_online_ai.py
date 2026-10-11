@@ -45,7 +45,8 @@ class _DrainedProcess:
     def __init__(self, argv):
         self.process = subprocess.Popen(
             argv, cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
+            text=True, encoding="utf-8",
+            env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
         )
         self._lock = threading.Condition()
         self._seen = 0
@@ -72,7 +73,10 @@ class _DrainedProcess:
         except Exception as exc:  # a dead reader fails the test; it never vanishes into a daemon warning
             error = exc
         finally:
-            stream.close()
+            try:
+                stream.close()
+            except Exception as exc:  # a failed close still publishes the read failure, if any
+                error = error or exc
             with self._lock:
                 if name == "stdout":
                     self.stdout_error = self.stdout_error or error
@@ -92,17 +96,18 @@ class _DrainedProcess:
         """The oldest unread stdout line, waiting up to timeout seconds for it."""
         deadline = time.monotonic() + timeout
         with self._lock:
-            while self._seen >= len(self.stdout_lines):
+            while True:
                 self._raise_pump_errors()
+                if self._seen < len(self.stdout_lines):
+                    line = self.stdout_lines[self._seen]
+                    self._seen += 1
+                    return line
                 if self._drained():
                     raise AssertionError("the bot ended without producing the expected stdout line")
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise AssertionError("the bot produced no further stdout line")
                 self._lock.wait(timeout=remaining)
-            line = self.stdout_lines[self._seen]
-            self._seen += 1
-            return line
 
     def wait(self, timeout):
         """wait() cannot deadlock on output: both pipes drain on their threads throughout."""
@@ -178,24 +183,24 @@ def test_wait_before_drain_stalls_a_chatty_child():
 
 
 @pytest.mark.slow
-def test_dead_reader_surfaces_instead_of_partial_output():
-    """A failed pipe reader raises instead of returning a truncated transcript.
+def test_undecodable_bytes_surface_instead_of_partial_output():
+    """Undecodable pipe bytes raise on every read route instead of truncating the transcript.
 
-    Yanking the owned stdout handle out from under its pump makes the next read fail
-    with the real OS error on every route, never with a silently short transcript.
-    A real child process and a real failed read, no server: the slow tier.
+    A small child writes bytes no UTF-8 decoder accepts, then exits cleanly; the harness
+    decodes its pipes explicitly as UTF-8, so every read route raises UnicodeDecodeError
+    while cleanup still finishes. The child emits no valid line first, so no already-
+    buffered line can mask the failure. A real child process and a real failed read,
+    no server: the slow tier.
     """
-    script = ("import sys, time;"
-              "print('ready', flush=True);"
-              "sys.stdout.write('o' * 5_000_000); sys.stdout.flush();"
-              "time.sleep(30)")
+    script = ("import os, sys;"
+              "os.write(sys.stdout.fileno(), b'\\xff\\xfe not utf-8 \\x80');"
+              "sys.stdout.flush()")
     drained = _DrainedProcess([sys.executable, "-c", script])
     try:
-        assert drained.next_stdout_line(10) == "ready\n"
-        drained.process.stdout.close()
-        with pytest.raises(ValueError, match="[Cc]losed"):
+        assert drained.wait(10) == 0
+        with pytest.raises(UnicodeDecodeError):
             drained.next_stdout_line(10)
-        with pytest.raises(ValueError, match="[Cc]losed"):
+        with pytest.raises(UnicodeDecodeError):
             drained.stdout_text()
     finally:
         drained.stop()
