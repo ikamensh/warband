@@ -47,17 +47,20 @@ def status_url(endpoint: str) -> str:
     held to the engine's policy: ``wss``, or plain ``ws`` only on this
     machine, no user info, no fragment, a real port.
     """
-    parts = parse.urlsplit(endpoint)
+    try:
+        parts = parse.urlsplit(endpoint)
+    except ValueError:
+        raise ServerInfoError("Use a wss:// server address.") from None
     if parts.scheme not in ("ws", "wss") or not parts.hostname:
-        raise ServerInfoError(f"Use a wss:// server address, not {endpoint!r}.")
+        raise ServerInfoError("Use a wss:// server address.")
     if parts.username or parts.password or parts.fragment:
-        raise ServerInfoError(f"Use a plain wss:// server address, not {endpoint!r}.")
+        raise ServerInfoError("Use a server URL without credentials or fragments.")
     if parts.scheme == "ws" and parts.hostname not in LOCAL_HOSTS:
         raise ServerInfoError("Online connections require TLS (wss://); plain ws is only for a local server.")
     try:
         port = parts.port
     except ValueError:
-        raise ServerInfoError(f"Use a server port between 1 and 65535, not {endpoint!r}.") from None
+        raise ServerInfoError("Use a server port between 1 and 65535.") from None
     if port == 0:
         raise ServerInfoError("The server port must be between 1 and 65535.")
     host = parts.hostname
@@ -79,8 +82,8 @@ def validate_status(payload: Any, url: str = "server") -> dict[str, Any]:
     positive finite numbers kept as sent, the games a list of names, the
     ratings a table of per-game ``enabled`` flags with the known optional
     ``seats`` and ``starting_rating`` preserved, and the known optional
-    ``rated_grace`` preserved too.  Unknown newer fields pass through
-    ignored, so a newer server stays readable.
+    ``rated_grace`` preserved too.  Unknown newer fields are ignored,
+    so a newer server stays readable.
     """
     if not isinstance(payload, dict):
         raise ServerInfoError(f"The server status at {url} is not a JSON object.")

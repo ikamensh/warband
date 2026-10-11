@@ -45,12 +45,20 @@ def test_a_status_mapping_keeps_the_origin_and_drops_the_path() -> None:
 
 @pytest.mark.parametrize("endpoint", ["http://example.com/play", "https://example.com/play",
                                       "wss://example.com:0/play", "ws://example.com/play",
-                                      "wss://user@example.com/play", "wss://example.com/play#frag",
+                                      "wss://user@example.com/play", "wss://user:secret@example.com/play",
+                                      "wss://example.com/play#frag", "wss://[::1/play", "wss://[::1]extra/play",
                                       "not-a-url", ""])
 def test_endpoints_outside_the_engine_policy_are_refused(endpoint: str) -> None:
     """The same policy the game client enforces: wss, or plain ws only at home (saga2d.online)."""
     with pytest.raises(ServerInfoError):
         status_url(endpoint)
+
+
+def test_a_refused_endpoint_never_echoes_credentials() -> None:
+    """A refusal lands in logs and terminals; a password in the address must not land with it."""
+    with pytest.raises(ServerInfoError) as refused:
+        status_url("wss://user:secret@example.com/play")
+    assert "secret" not in str(refused.value)
 
 
 def test_a_valid_payload_validates_with_its_optional_fields() -> None:
@@ -150,23 +158,28 @@ def test_only_info_flags_route_to_the_info_parser() -> None:
     assert server_info_requested(["--server-infoo"])
     assert server_info_requested(["--server-inf"])
     assert server_info_requested(["--server-i"])
+    assert server_info_requested(["--jso"])
+    assert server_info_requested(["--time", "3"])
     assert not server_info_requested(["--server", "wss://example.com/play", "--online-host"])
     assert not server_info_requested(["--serv"])
+    assert not server_info_requested(["--j"])
+    assert not server_info_requested(["--t"])
     assert not server_info_requested(["--seed", "3"])
     assert not server_info_requested([])
 
 
-def test_a_server_info_prefix_answers_without_the_simulation(monkeypatch) -> None:
+def test_a_server_info_prefix_answers_without_the_simulation(monkeypatch, capsys) -> None:
     """The game parser expands --server-inf to --server-info, so the early dispatch must too:
-    a refused connection on the discard port still proves the answer path never chose the simulation."""
+    answering help here is fast, socket-free, and never chooses the simulation."""
     from warband.league import fastsim
 
     monkeypatch.setattr(fastsim, "activate_for_game",
                         lambda: pytest.fail("chose the simulation to answer a prefix"))
-    monkeypatch.setattr(sys, "argv", ["warband", "--server-inf", "--server", "ws://127.0.0.1:9/play"])
+    monkeypatch.setattr(sys, "argv", ["warband", "--server-inf", "--help"])
     with pytest.raises(SystemExit) as exited:
         main()
-    assert exited.value.code != 0
+    assert exited.value.code == 0
+    assert "--server-info" in capsys.readouterr().out
 
 
 def test_help_names_server_info(monkeypatch, capsys) -> None:

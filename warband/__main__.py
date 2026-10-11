@@ -64,13 +64,6 @@ def main() -> None:
     parser.add_argument("--timeout", metavar="SECONDS", type=float, default=None, help="seconds to wait for --server-info")
     add_match_arguments(parser)
     args = parser.parse_args()
-    if args.server_info:  # only via an abbreviation: the flag itself is answered before anything compiles
-        from warband.online import server_info
-
-        server_info.run(sys.argv[1:])
-        return
-    if args.json or args.timeout is not None:
-        parser.error("--json and --timeout need --server-info")
     if args.mission == "list":
         from warband.story.missions import CAMPAIGN
 
@@ -122,20 +115,29 @@ def main() -> None:
                             layout=layout, settings=settings, magic=args.magic))
 
 
+#: Flags answered by the info parser, without the simulation or a window.
+INFO_FLAGS = ("--server-info", "--json", "--timeout")
+#: Game options an info abbreviation must not steal (--serv and --j stay ambiguous, as in the game parser).
+INFO_RIVALS = ("--server", "--join", "--theme")
+
+
 def server_info_requested(argv: list[str]) -> bool:
     """Whether *argv* carries a server-info flag, answered without the simulation or a window.
 
     ``--server-info`` (and its malformed extensions, refused clearly), ``--json``
     and ``--timeout`` all route to the info parser before anything compiles: alone
-    the latter two are mistakes to refuse, not a match to play.  ``--server`` on
-    its own stays a match's endpoint override and plays as before.  A unique
+    the latter two are mistakes to refuse, not a match to play.  A unique
     prefix the game parser would expand (``--server-inf``, like ``--vers`` for
-    ``--version``) routes the same way; anything ``--server`` itself could
+    ``--version``) routes the same way; anything a game option could also
     claim stays on the game's path."""
     for token in argv:
         word = token.split("=", 1)[0]
-        if (word.startswith("--server-info") or word in ("--json", "--timeout")
-                or ("--server-info".startswith(word) and not "--server".startswith(word))):
+        if not word.startswith("--"):
+            continue
+        if any(word == flag or word.startswith(flag) for flag in INFO_FLAGS):
+            return True
+        if (sum(flag.startswith(word) for flag in INFO_FLAGS) == 1
+                and not any(rival.startswith(word) for rival in INFO_RIVALS)):
             return True
     return False
 
