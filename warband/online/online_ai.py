@@ -273,8 +273,10 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Play an online Warband seat with a headless AI; emit JSON Lines.")
     parser.add_argument("--server", default=server_endpoint(), help="public wss:// endpoint (loopback ws:// accepted)")
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--room", help="join this human-created room as the second seat")
+    mode.add_argument("--room", help="join this human-created room in the next available seat")
     mode.add_argument("--create", action="store_true", help="create a room, play seat zero and immediately print its code")
+    parser.add_argument("--seats", type=int, choices=(2, 3, 4), default=2,
+                        help="seats in a created room, so a joining bot takes whatever seat is free (default: 2)")
     parser.add_argument("--difficulty", choices=[item.value for item in Difficulty], default="medium")
     parser.add_argument("--duration", type=float, help="maximum wall-clock seconds including the lobby; default runs until victory")
     parser.add_argument("--wait-timeout", type=float, default=900, help="maximum seconds waiting for a partner (default: 900)")
@@ -290,9 +292,12 @@ def main(argv=None) -> int:
     parser.add_argument("--height", type=int, default=40, help="map height for --create (40–64)")
     parser.add_argument("--theme", choices=[item.value for item in MapTheme], default="summer", help="map theme for --create")
     args = parser.parse_args(argv)
+    if args.room and args.seats != 2:
+        parser.error("--seats sets the size of a created room and is ignored when joining one")
     try:
         run_bot(endpoint=args.server, room=args.room, difficulty=Difficulty(args.difficulty),
-                options={"seed": args.seed, "width": args.width, "height": args.height, "theme": args.theme},
+                options={"seed": args.seed, "width": args.width, "height": args.height, "theme": args.theme,
+                         "players": args.seats},
                 duration=args.duration, wait_timeout=args.wait_timeout, report_every=args.report_every,
                 reconnect_after=args.reconnect_after, disconnect_for=args.disconnect_for,
                 require_completion=args.require_completion)

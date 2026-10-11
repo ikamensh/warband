@@ -20,7 +20,7 @@ from websockets.sync.client import connect
 from saga2d.testing.online import command, first_stdout_line, handshake, receive, server_fixture
 from warband.brains.ai import make_brain
 from warband.online.authority import ORDERS, WarbandMatch
-from warband.online.online_ai import _PlanningWorld, run_bot
+from warband.online.online_ai import _PlanningWorld, main, run_bot
 from warband.records import replay
 from warband.sim.model import tile_center
 from warband.sim.rules import BuildingType, Difficulty, UnitType
@@ -209,6 +209,85 @@ def test_bot_disconnects_once_and_rejoins_its_reserved_seat(server_url):
             "the bot kept giving brain orders after rejoining"
         assert evidence[-1]["event"] == "finished" and evidence[-1]["reason"] == "duration"
         assert evidence[-1]["reconnected"] is True
+
+
+def _handshake_seats(socket, kind, seats, *, game, **fields):
+    """Shake hands declaring room-size support: the shared helper speaks for 2-seat clients only."""
+    socket.send(json.dumps({"type": kind, "protocol": 1, "game": game, "seats": seats, **fields}))
+    return receive(socket, "welcome")
+
+
+def test_seats_with_room_is_a_usage_error(capsys):
+    """--seats sizes a created room, so joining one with it fails before connecting (fast: no server)."""
+    with pytest.raises(SystemExit) as exc:
+        main(["--room", "code", "--seats", "4"])
+    assert exc.value.code == 2
+    assert "--seats sets the size of a created room" in capsys.readouterr().err
+
+
+@pytest.mark.slow
+def test_bot_takes_the_last_seat_of_a_four_seat_room(server_url):
+    """A bot joining three wire peers becomes seat three and develops it.
+
+    Three wire peers hold seats zero to two while a real bot subprocess plays seat three
+    for seconds: the slow tier."""
+    with connect(server_url, proxy=None) as first, connect(server_url, proxy=None) as second, \
+            connect(server_url, proxy=None) as third:
+        welcome = _handshake_seats(first, "create", 4, game="warband-v2",
+                                     options={"seed": 3, "width": 64, "height": 48, "players": 4})
+        second_welcome = _handshake_seats(second, "join", 4, game="warband-v2", room=welcome["room"])
+        third_welcome = _handshake_seats(third, "join", 4, game="warband-v2", room=welcome["room"])
+        assert (welcome["player"], second_welcome["player"], third_welcome["player"]) == (0, 1, 2)
+        result = subprocess.run(
+            [sys.executable, "-m", "warband.online.online_ai", "--server", server_url,
+             "--room", welcome["room"], "--difficulty", "hard", "--duration", "4",
+             "--report-every", "0.25"],
+            cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=20,
+            env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
+        )
+        assert result.returncode == 0, result.stderr + result.stdout
+        evidence = [json.loads(line) for line in result.stdout.splitlines()]
+        assert evidence[0]["event"] == "joined" and evidence[0]["player"] == 3
+        tokens = (welcome["resume_token"], second_welcome["resume_token"], third_welcome["resume_token"])
+        assert "resume_token" not in result.stdout and all(token not in result.stdout for token in tokens)
+        assert any(row["event"] == "order_submitted" for row in evidence)
+        observed = [row for row in evidence if row["event"] == "authoritative_state"]
+        assert observed[-1]["tick"] > observed[0]["tick"]
+        assert all(row["player"] == 3 for row in observed)
+        assert any(row["order_counts"].get("Harvest", 0) for row in observed)
+        assert any(row["training_queue"] > 0 for row in observed)
+        assert evidence[-1]["event"] == "finished" and evidence[-1]["reason"] == "duration"
+
+
+@pytest.mark.slow
+def test_creator_seats_option_sizes_the_room(server_url):
+    """A --create --seats 3 room fills with two wire joiners and goes ready.
+
+    A real creator subprocess plus two wire peers against a real server: the slow tier."""
+    process = subprocess.Popen(
+        [sys.executable, "-m", "warband.online.online_ai", "--server", server_url, "--create",
+         "--seats", "3", "--difficulty", "hard", "--width", "64", "--height", "48",
+         "--duration", "4", "--report-every", "0.25"],
+        cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
+    )
+    try:
+        announced = json.loads(first_stdout_line(process, timeout=10))
+        assert announced["event"] == "created" and announced["player"] == 0
+        with connect(server_url, proxy=None) as first, connect(server_url, proxy=None) as second:
+            assert _handshake_seats(first, "join", 4, game="warband-v2", room=announced["room"])["player"] == 1
+            assert _handshake_seats(second, "join", 4, game="warband-v2", room=announced["room"])["player"] == 2
+            ready = receive(first, predicate=lambda message: message["ready"])
+            assert ready["state"]["world"]["tick"] >= 0
+            assert process.wait(timeout=10) == 0, process.stderr.read()
+        evidence = [json.loads(line) for line in process.stdout.read().splitlines()]
+        assert evidence[-1]["event"] == "finished" and evidence[-1]["player"] == 0
+        assert any(row["event"] == "match_ready" for row in evidence)
+        assert "resume_token" not in json.dumps(evidence)
+    finally:
+        if process.poll() is None:
+            process.terminate()
+        process.communicate(timeout=5)
 
 
 @pytest.mark.slow
