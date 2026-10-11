@@ -367,15 +367,16 @@ def _waiting_session(**kwargs):
     session = SimpleNamespace(online=True, incompatible=False, game_id="warband-v2",
                               endpoint="wss://lint.invalid/play", room="AB12", seats=4, present=2,
                               retention=900, state={"seed": 3}, error="", closed=False, ready=False,
-                              revision=0, resume_token="", player_token="", player_id="",
-                              rating=None, result=None, rated=True, rated_grace=60, match_id="",
+                              revision=0, resume_token="", player_token="tok", player_id="p1",
+                              rating={"player_id": "p1", "name": "Al", "rating": 1500.0,
+                                      "games": 4, "wins": 3, "losses": 1},
+                              result=None, rated=True, rated_grace=60, match_id="",
                               players=[{"seat": 0, "player_id": "p1", "name": "Al",
-                                        "rating": 1500, "games": 4, "connected": True},
+                                        "rating": 1500.0, "games": 4, "connected": True},
                                        None,
-                                       {"seat": 2, "player_id": "", "name": "",
-                                        "rating": None, "games": 0, "connected": False},
+                                       None,
                                        {"seat": 3, "player_id": "p4", "name": "Bo",
-                                        "rating": 1480, "games": 9, "connected": False}])
+                                        "rating": 1480.0, "games": 9, "connected": True}])
     session.poll = lambda: None
     session.close = lambda: setattr(session, "closed", True)
     for key, value in kwargs.items():

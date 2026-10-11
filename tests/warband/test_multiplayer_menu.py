@@ -410,12 +410,14 @@ def test_damaged_identity_record_surfaces_and_still_opens(tmp_path):
 
 def fake_session(**kwargs):
     """An online waiting session: counts, room and lifecycle hooks, no network."""
+    own = {"player_id": "p1", "name": "Al", "rating": 1500.0, "games": 4, "wins": 3, "losses": 1}
     session = SimpleNamespace(online=True, incompatible=False, game_id="warband-v2",
-                              endpoint="wss://test.example/play", room="AB12", seats=3, present=1,
+                              endpoint="wss://test.example/play", room="AB12", seats=4, present=2,
                               retention=900, state={"seed": 3}, error="", closed=False, ready=False,
-                              revision=0, resume_token="saved-seat", player_token="", player_id="",
-                              rating=None, result=None, rated=False, rated_grace=None, match_id="",
+                              revision=0, resume_token="saved-seat", player_token="tok", player_id="p1",
+                              rating=dict(own), result=None, rated=True, rated_grace=60, match_id="",
                               players=None)
+    session.own_profile = own
     session.poll = lambda: None
     session.close = lambda: setattr(session, "closed", True)
     for key, value in kwargs.items():
@@ -437,16 +439,19 @@ def test_lobby_lists_seats_and_cancel_returns_and_closes(tmp_path):
     game = open_setup(tmp_path)
     try:
         session = fake_session(players=[
-            {"seat": 0, "player_id": "p1", "name": "Al", "rating": 1500, "games": 4, "connected": True},
+            {"seat": 0, "player_id": "p1", "name": "Al", "rating": 1500.0, "games": 4, "connected": True},
             None,
-            {"seat": 2, "player_id": "", "name": "", "rating": None, "games": 0, "connected": False}])
+            None,
+            {"seat": 3, "player_id": "p4", "name": "Bo", "rating": 1480.0, "games": 9, "connected": True}])
         game.push(WarbandLobby(session, lambda connection: None, title="Warband multiplayer"))
         game.tick(0.1)
         body = texts(game)
-        assert "Room code: AB12" in body
+        assert "Room code" in body and "AB12" in body
+        assert "Share this invite. The match starts when all 4 players connect." in body
         assert "Seat 1: Al · 1500 · connected" in body
         assert "Seat 2: open — waiting for a player" in body
-        assert "Seat 3: Guest · waiting" in body
+        assert "Seat 4: Bo · 1480 · connected" in body
+        assert "Online rating 1500 over 4 games." in body
         click(game, "Copy room code")
         assert game.backend.get_clipboard_text() == "AB12"
         invite = game.scene.invite_link()
@@ -465,7 +470,7 @@ def test_lobby_falls_back_to_honest_counts_without_a_roster(tmp_path):
         game.push(WarbandLobby(fake_session(), lambda connection: None))
         game.tick(0.1)
         body = texts(game)
-        assert "1 of 3 seats connected" in body
+        assert "2 of 4 seats connected" in body
         assert "Seat 1" not in body
     finally:
         game.close()

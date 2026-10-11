@@ -495,8 +495,8 @@ class MatchSetupMenu(MatchMenu):
         if (self.last_room["game_id"] == self.game_id and self.last_room["room"] and self.last_room["resume_token"]):
             card.add(Button(f"Rejoin last room · {self.last_room['room']}", on_click=self.rejoin,
                             style=MENU_BUTTON, width=356))
-        card.add(Label("Paste a code or an invite link — Enter joins. Only the code travels; "
-                       "your private seat stays on this computer.", text_style="caption", width=356, wrap=True))
+        card.add(Label("Paste a room code or an invite link, then Enter joins.",
+                       text_style="caption", width=356, wrap=True))
         if self.update_check.status == "update":
             latest = self.update_check.latest
             card.add(Button("Open download page", on_click=self.open_download, style=GHOST_BUTTON, width=356))
@@ -547,33 +547,44 @@ class WarbandLobby(MatchLobby):
     def _build(self):
         self.ui.clear()
         items: list = [Label(self.title, text_style="title"),
-                       Label(lambda: self._status(), text_style="heading"),
-                       Label(lambda: self._share_text(), width=560, wrap=True, text_style="body"),
-                       Label(lambda: self._roster_text(), width=560, wrap=True, text_style="body"),
-                       Label(lambda: self._rating_line(), width=560, wrap=True, text_style="sub"),
-                       Label(lambda: self.session.error, width=560, wrap=True, text_style="sub")]
+                       Label(lambda: self._status(), text_style="heading")]
+        items.extend(self._share_block())
+        items.extend([Label(lambda: self._roster_text(), width=560, wrap=True, text_style="body"),
+                      Label(lambda: self._rating_line(), width=560, wrap=True, text_style="sub"),
+                      Label(lambda: self.session.error, width=560, wrap=True, text_style="sub")])
         if _is_online(self.session):
             if self.session.incompatible:
                 items.append(Button("Open download page", on_click=self.open_download, width=280))
             else:
-                self.copy_button = Button("Copy room code", on_click=self.copy_room, width=260, enabled=False)
-                self.invite_button = Button("Copy invite link", on_click=self.copy_invite, width=260, enabled=False)
-                items.append(Row(self.copy_button, self.invite_button, spacing=16))
-        items.append(Button("Cancel", shortcut="Esc", on_click=self.leave, style=ACTION_BUTTON, width=240))
+                # Sharing the invite is the waiting room's action: blue primary; the code
+                # button and Cancel are quiet.  Attribute names stay the base's: its update
+                # enables both buttons once the room is confirmed.
+                self.invite_button = Button("Copy invite link", on_click=self.copy_invite,
+                                            style=ACTION_BUTTON, width=260, enabled=False)
+                self.copy_button = Button("Copy room code", on_click=self.copy_room,
+                                          style=GHOST_BUTTON, width=260, enabled=False)
+                items.append(Row(self.invite_button, self.copy_button, spacing=16))
+        items.append(Button("Cancel", shortcut="Esc", on_click=self.leave, style=GHOST_BUTTON, width=240))
         self.ui.add(Column(*items, width=640, spacing=14, anchor=Anchor.CENTER, style=OVERLAY_STYLE))
 
-    def _share_text(self) -> str:
-        """The room code and how it travels: the code or the public link, never the private seat."""
-        if not _is_online(self.session):
-            return self._instructions()
-        if self.session.incompatible:
-            return self._instructions()
+    def _share_block(self) -> list:
+        """The room code as a gold banner with one short share line beneath it."""
+        from warband.ui.style import GOLD
+
+        if not _is_online(self.session) or self.session.incompatible:
+            return [Label(lambda: self._instructions(), width=560, wrap=True, text_style="body")]
+        block: list = [Label("Room code", text_style="sub"),
+                       Label(lambda: self.session.room, text_style="title", text_color=GOLD)]
         if self.session.state is not None:
-            return (f"Room code: {self.session.room}\n"
-                    "Send friends the invite link, or the code to paste in Multiplayer before Join room.")
-        if self.session.room:
-            return f"Joining online room {self.session.room}…"
-        return "Creating your online room. You will receive a code to share."
+            seats = self.session.seats
+            who = "both" if seats == 2 else f"all {seats}"
+            block.append(Label(f"Share this invite. The match starts when {who} players connect.",
+                               width=560, wrap=True, text_style="body"))
+        elif self.session.room:
+            block.append(Label(f"Joining online room {self.session.room}…", text_style="body"))
+        else:
+            block.append(Label("Creating your online room…", text_style="body"))
+        return block
 
     def _roster_text(self) -> str:
         """Who is here: per-seat lines where the session lists its players in seat order —
