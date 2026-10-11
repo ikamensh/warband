@@ -178,17 +178,16 @@ def test_casual_match_names_winner_but_rates_nothing():
 
 @pytest.mark.slow
 def test_grace_reconnect_before_deadline_preserves_match_without_result():
-    """An abruptly dropped loser who returns inside grace finds no invented result and the match
-    plays on to a real one.  Uses the default sixty-second grace with a short reliable wait, on
-    live sockets: the slow tier."""
-    with running_server(SPEC) as (url, _process):
+    """An abruptly dropped loser who returns inside a short configured grace finds no invented
+    result and the match plays on to a real one.  Live sockets with clock waits: the slow tier."""
+    with running_server(SPEC, arguments=('--rated-grace', '8')) as (url, _process):
         with connect(url, proxy=None) as host:
             welcome = handshake(host, game=GAME, options=duel_options(), rated=True)
             with connect(url, proxy=None) as guest:
                 guest_welcome = handshake(guest, 'join', game=GAME, room=welcome['room'])
                 receive(host, predicate=lambda message: message['ready'])
                 guest_token = guest_welcome['resume_token']
-            # The socket is gone without a goodbye; the host watches several seconds of states.
+            # The socket is gone without a goodbye; the host watches states well inside grace.
             watched = states_for(host, 3)
             assert watched, "the server kept the room's clock running for the connected seat"
             assert all(state['result'] is None for state in watched)
@@ -201,10 +200,30 @@ def test_grace_reconnect_before_deadline_preserves_match_without_result():
 
 
 @pytest.mark.slow
+def test_grace_expiry_forfeits_absent_loser():
+    """A loser who stays gone past a short configured grace forfeits through the authority's own
+    resign order: the winner is named and rated with nobody issuing orders.  A dropped socket
+    plus a clock wait past grace: the slow tier."""
+    with running_server(SPEC, arguments=('--rated-grace', '2')) as (url, _process):
+        with connect(url, proxy=None) as host:
+            welcome = handshake(host, game=GAME, options=duel_options(), rated=True)
+            with connect(url, proxy=None) as guest:
+                handshake(guest, 'join', game=GAME, room=welcome['room'])
+                receive(host, predicate=lambda message: message['ready'])
+            result = settled_state(host)['result']
+            assert result['match_id'] == welcome['match_id'] and result['winner'] == 0
+            ratings = {entry['player_id']: entry for entry in result['ratings']}
+            assert ratings[welcome['player_id']]['after'] == 1516.0
+            assert all((entry['games'], entry['losses']) == (1, 1)
+                       for entry in result['ratings'] if entry['player_id'] != welcome['player_id'])
+
+
+@pytest.mark.slow
 def test_both_offline_pauses_without_false_rating():
-    """With nobody connected the rated clock stays paused: no forfeit, no result, and the match
-    resumes to a real decision.  Two drops and two resumes with clock waits: the slow tier."""
-    with running_server(SPEC) as (url, _process):
+    """With nobody connected the rated clock stays paused past even a short grace: no forfeit, no
+    result, and the match resumes to a real decision.  Two drops, a wait past grace, two resumes:
+    the slow tier."""
+    with running_server(SPEC, arguments=('--rated-grace', '2')) as (url, _process):
         with connect(url, proxy=None) as host:
             welcome = handshake(host, game=GAME, options=duel_options(), rated=True)
             with connect(url, proxy=None) as guest:
@@ -212,6 +231,7 @@ def test_both_offline_pauses_without_false_rating():
                 receive(host, predicate=lambda message: message['ready'])
                 host_token, guest_token = welcome['resume_token'], guest_welcome['resume_token']
                 room = welcome['room']
+        time.sleep(4)
         with connect(url, proxy=None) as host, connect(url, proxy=None) as guest:
             handshake(host, 'resume', game=GAME, room=room, resume_token=host_token)
             handshake(guest, 'resume', game=GAME, room=room, resume_token=guest_token)
