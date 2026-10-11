@@ -134,13 +134,21 @@ def test_magic_ui_follows_the_match_option(tmp_path, enabled):
         game.close()
 
 
-def test_multiplayer_host_can_switch_magic_in_room_setup(tmp_path):
+def test_multiplayer_host_can_switch_magic_in_room_setup(tmp_path, monkeypatch):
     """The visible toggle controls both hosted LAN matches and online creation options."""
+    from itertools import count
+
+    from warband.sim import mapgen
+
+    seeds = count(3)
+    monkeypatch.setattr(mapgen, "fresh_seed", lambda: next(seeds))
     game = Game("Magic room setup", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     try:
         game.push(TitleScene(settings=dict(DEFAULT_SETTINGS, music=0, sfx=0)))
         game.scene.multiplayer()
         menu = game.scene
+        game.tick(0.1)
+        menu.set_size("Small")
         game.tick(0.1)
         assert not menu.create_options()["magic"]
         x, y, w, h = menu.magic_button.bounds

@@ -145,23 +145,26 @@ def scene_on(game: Game, theme: MapTheme) -> GameScene:
     return scene
 
 
-def test_the_view_draws_the_worlds_own_coats(tmp_path) -> None:
-    """Through the real sprite path: on winter every guard and den key wears the winter coat,
-    on summer none does."""
-    for theme, suffix in ((MapTheme.SUMMER, None), (MapTheme.WINTER, ".winter"), (MapTheme.WASTELAND, ".wasteland")):
-        game = Game(f"Warband coats {theme.value}", backend="mock", resolution=(1280, 800), theme=build_theme(),
-                    save_dir=tmp_path / "saves")
-        try:
-            scene = scene_on(game, theme)
-            world = scene.world
-            # The view offers no public getter for the key a sprite was drawn with; the keys are the assertion.
-            guard_keys = {scene.view._unit_keys[u.id] for camp in world.camps for u in camps.guards(world, camp)}
-            assert guard_keys, theme
-            lair_keys = {scene.view._building_keys[camp.lair] for camp in world.camps}
-            for key in guard_keys | lair_keys:
-                assert (suffix is None and ".winter" not in key and ".wasteland" not in key) or (suffix is not None and key.endswith(suffix)), (theme, key)
-        finally:
-            game.close()
+@pytest.mark.parametrize(
+    ("theme", "suffix"),
+    [(MapTheme.SUMMER, None), (MapTheme.WINTER, ".winter"), (MapTheme.WASTELAND, ".wasteland")],
+    ids=["summer", "winter", "wasteland"],
+)
+def test_the_view_draws_the_worlds_own_coats(tmp_path, theme: MapTheme, suffix: str | None) -> None:
+    """Through the real sprite path: every guard and den key wears the world's own coat."""
+    game = Game(f"Warband coats {theme.value}", backend="mock", resolution=(1280, 800), theme=build_theme(),
+                save_dir=tmp_path / "saves")
+    try:
+        scene = scene_on(game, theme)
+        world = scene.world
+        # The view offers no public getter for the key a sprite was drawn with; the keys are the assertion.
+        guard_keys = {scene.view._unit_keys[u.id] for camp in world.camps for u in camps.guards(world, camp)}
+        assert guard_keys, theme
+        lair_keys = {scene.view._building_keys[camp.lair] for camp in world.camps}
+        for key in guard_keys | lair_keys:
+            assert (suffix is None and ".winter" not in key and ".wasteland" not in key) or (suffix is not None and key.endswith(suffix)), (theme, key)
+    finally:
+        game.close()
 
 
 def test_the_minimap_keeps_one_neutral_mark_on_every_landscape(tmp_path) -> None:
