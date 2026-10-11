@@ -34,6 +34,8 @@ MENU_BUTTON = Style(font=fonts.SEMIBOLD, background_color=(34, 30, 36, 235), hov
                     border_color=(255, 255, 255, 50), border_width=1, padding=8, radius=10)
 ARMED_BUTTON = Style(font=fonts.SEMIBOLD, font_size=14, background_color=(255, 214, 110, 52), hover_color=(255, 214, 110, 92),
                      press_color=(255, 214, 110, 150), border_color=GOLD, border_width=2, padding=6, radius=7)  # a mode waiting for its click
+PICKED_BUTTON = Style(font=fonts.SEMIBOLD, background_color=(255, 214, 110, 40), hover_color=(255, 214, 110, 80), press_color=(255, 214, 110, 140),
+                      border_color=(255, 214, 110, 130), border_width=1, padding=7, radius=7)  # a chosen setting among options: gold, never the CTA blue
 CARD_BUTTON = Style(font=fonts.SEMIBOLD, font_size=14, background_color=(255, 255, 255, 22), hover_color=(255, 255, 255, 52), press_color=(255, 255, 255, 90),
                     border_color=(255, 255, 255, 44), border_width=1, padding=6, radius=7)
 

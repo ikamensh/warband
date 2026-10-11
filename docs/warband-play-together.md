@@ -59,16 +59,20 @@ Use your usual chat or call to share the code. Either of you can create the
 room; these steps use the Mac player as the creator.
 
 1. **Both players:** click **Multiplayer** on the title screen. Leave
-   **Online · selected** as it is.
-2. **Mac player:** click **Create room**. Wait for **Waiting for your partner**
-   and **Room code: …**. Click **Copy invite link**, paste it into your chat with
-   your friend, and send it. The link opens a page with the code, the joining
-   steps and the download. **Copy room code** copies just the code instead.
-   Leave the game open on this screen.
+   **Online · selected** as it is, and pick **Your faction** — every guest
+   chooses their own before joining.
+2. **Mac player:** choose the room on the **Create a room** card (rated or
+   casual, seats, size, map, land and magic), then click **Create room**. Wait
+   for **Waiting for your partner** and **Room code: …**. Click
+   **Copy invite link**, paste it into your chat with your friend, and send
+   it. The link opens a page with the code, the joining steps and the
+   download. **Copy room code** copies just the code instead. Leave the game
+   open on this screen.
 3. **Windows player:** copy the room code from the chat or the invite page,
-   click **Paste code** in Warband, then click **Join room**. You can also
-   enter the code by hand; letter case does not matter. The keyboard paste
-   shortcut is **Ctrl+V** on Windows or **Cmd+V** on a Mac.
+   click **Paste invite** in Warband, then click **Join room**. You can paste
+   the whole invite link or just the code, and you can also enter the code by
+   hand; letter case does not matter. The keyboard paste shortcut is **Ctrl+V**
+   on Windows or **Cmd+V** on a Mac.
 4. **Both players:** the match opens automatically when the second player
    connects. There is no separate Ready or Start button, so be ready to play
    before joining.
@@ -80,10 +84,11 @@ no extra AI player in this room. Each new room generates a fresh map with
 meadows, groves, ponds and rocky regions. The stone rim marks the edge of the
 playable map; dark fog hides places you have not explored.
 
-**Three or four players.** The number of players chosen on the **New game**
-screen is the size of the room you create. With three or four, send the code
-to each friend; the match starts when everyone is in (**Waiting for players ·
-2 of 4**). Anyone can resign from **F10 → Resign**, which asks first: their
+**Three or four players.** The **Seats** chosen on the **Create a room** card
+is the size of the room you create; the skirmish's settings never affect it.
+With three or four, send the code to each friend; the match starts when
+everyone is in (**Waiting for players · 2 of 4**). Anyone can resign from
+**F10 → Resign**, which asks first: their
 buildings stay, grey and abandoned, and the others fight on until one is left.
 A player who is out may **Watch** or leave without pausing the rest. A copy of
 Warband from before rooms of more than two is told to update.
@@ -229,7 +234,7 @@ new room and share its new code.
 
 | What you see | What to do |
 | --- | --- |
-| **Enter a room code first.** | Copy the code your friend sent, click Paste code, then Join room. |
+| **Enter a room code first.** | Copy the code your friend sent, click Paste invite, then Join room. |
 | **Room not found for this game. Check the room code.** | Check every character and ask your friend to confirm their current code. If the room expired, create a new one. |
 | **Both seats are claimed. Reconnect using your saved seat.** | Choose Rejoin last room on the computer that previously joined. If neither of you can recover the seat, create a new room. |
 | **Every seat is claimed. Reconnect using your saved seat.** | The same for a room of three or four: everyone who joined already holds a seat. |

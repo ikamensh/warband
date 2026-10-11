@@ -244,7 +244,8 @@ def test_every_unit_pose_fits_the_unit_canvas() -> None:
                     assert reach + textures.PAD <= textures.DROP_UNIT, (race, unit_type, carrying, frame, reach)
 
 
-SCREENS = ("title", "new_game_elf", "new_game_orc", "new_game_master", "select_peasant", "select_conditions", "pending_salvage", "select_town_hall", "select_army", "select_60_units", "select_60_archers", "town_at_work", "menu_build_hover", "menu_train_hover",
+SCREENS = ("title", "library", "multiplayer_setup", "multiplayer_lan", "warband_lobby", "warband_lobby_error",
+           "new_game_elf", "new_game_orc", "new_game_master", "select_peasant", "select_conditions", "pending_salvage", "select_town_hall", "select_army", "select_60_units", "select_60_archers", "town_at_work", "menu_build_hover", "menu_train_hover",
            "select_mage_tower_chosen", "spell_aim", "spell_bar_nine", "select_summoned",
            "menu_build_at_start", "menu_train_at_start", "menu_upgrade_researched", "menu_upgrade_all_done", "plans", "plan_row", "cancel_mode", "cancel_box",
            "commands_pips", "commands_tags",
@@ -258,7 +259,7 @@ SCREENS = ("title", "new_game_elf", "new_game_orc", "new_game_master", "select_p
 #: Screens whose every label must hold its text: the overlays' tables, and the catalogues' captions of what an item needs.
 OVERFLOW_CHECKED = ("help", "codex_0", "codex_2", "codex_3", "codex_4", "codex_5", "codex_wilds", "save_browser", "menu_build_at_start", "menu_train_at_start")
 SMALLEST = min(screens.RESOLUTIONS)
-FAST_SCREENS = {"title", "select_army", "town_at_work", "battle_wood", "menu_build_hover", "help", "mission_raid", "spell_aim", "modes_build", "modes_withdraw",
+FAST_SCREENS = {"title", "library", "multiplayer_setup", "select_army", "town_at_work", "battle_wood", "menu_build_hover", "help", "mission_raid", "spell_aim", "modes_build", "modes_withdraw",
                 "neutral_ancient", "codex_wilds"}
 
 

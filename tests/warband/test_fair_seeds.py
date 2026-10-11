@@ -116,16 +116,30 @@ def test_new_game_after_a_match_plays_the_next_fair_seed(tmp_path) -> None:
 def test_rooms_from_the_multiplayer_menu_are_made_on_fair_seeds(tmp_path, monkeypatch) -> None:
     """A full title/menu plus unfair-seed retries and both LAN/online world creation needs the slow tier."""
     monkeypatch.setattr(mapgen, "fresh_seed", lambda: UNFAIR)
-    unfair(races=[Race.HUMAN, None])
     game = mock_game(tmp_path)
     try:
-        game.push(TitleScene(size="Small"))
+        game.push(TitleScene())
         game.tick(1 / 60)
         press(game, "m")
         menu = game.scene
         assert isinstance(menu, MatchMenu)
-        assert menu.create_match().seed == UNFAIR + 1, "a LAN host"
-        assert menu.create_options()["seed"] == UNFAIR + 1, "an online room"
+        options = menu.create_options()
+        width, height = menu.room_dimensions()
+        expected, _world = fair_map(UNFAIR, width, height, menu.seats, theme=menu.theme,
+                                    races=[menu.faction] + [None] * (menu.seats - 1), layout=menu.layout, magic=menu.magic)
+        assert options["seed"] == expected, "an online room retries to the next fair seed"
+        assert same(mapgen.generate(options["seed"], width, height, menu.seats, theme=menu.theme,
+                                    races=[Race(r) if r is not None else None for r in options["races"]],
+                                    layout=None if options["layout"] == "any" else Layout(options["layout"]),
+                                    magic=options["magic"]),
+                    mapgen.generate(expected, width, height, menu.seats, theme=menu.theme,
+                                    races=[menu.faction] + [None] * (menu.seats - 1), layout=menu.layout, magic=menu.magic))
+        lan_width, lan_height = menu.room_dimensions(2)
+        lan_layouts = mapgen.layouts_for(lan_width, lan_height, 2)
+        lan_layout = menu.layout if menu.layout in lan_layouts else None
+        assert menu.create_match().seed == fair_map(UNFAIR, lan_width, lan_height, 2, theme=menu.theme,
+                                                    races=[menu.faction, None],
+                                                    layout=lan_layout, magic=menu.magic)[0], "a LAN host"
     finally:
         game.close()
 

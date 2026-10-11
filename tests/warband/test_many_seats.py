@@ -129,23 +129,29 @@ def test_the_online_table_keeps_the_options_the_live_server_speaks() -> None:
         _create({"seed": 3, name: good, "players": 2 if name != "players" else good})
 
 
-def test_the_title_refuses_a_room_it_cannot_make_and_says_why(tmp_path) -> None:
-    """Multiplayer with sixteen seats chosen says what a room holds instead of quietly seating four."""
+def test_multiplayer_opens_with_its_own_options_whatever_the_skirmish_chose(tmp_path) -> None:
+    """Sixteen skirmish seats on an oversize map never prevent opening multiplayer: the room
+    setup keeps independent options, while the authority still refuses oversize rooms."""
+    from saga2d import CommandError
+
+    from warband.online.authority import ONLINE_SEATS, ONLINE_SIZE, _create
+    from warband.ui.multiplayer import MatchSetupMenu
+
     game = Game("Warband rooms", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     try:
-        from warband.online.authority import ONLINE_SEATS
-
         title = TitleScene(players=16, size=mapgen.sizes_for(16)[0])
         game.push(title)
         game.tick(0.1)
-        scene = game.scene
         title.multiplayer()
         game.tick(0.1)
-        assert game.scene is scene, "no room menu opened"
-        assert str(ONLINE_SEATS) in title.notice and "16" in title.notice
-        title.players, title.size = ONLINE_SEATS, "Giant"  # a map a room cannot hold either
-        assert title.room_refusal() is not None and "Large" in title.room_refusal()
-        title.size = "Large"
-        assert title.room_refusal() is None
+        menu = game.scene
+        assert isinstance(menu, MatchSetupMenu)
+        options = menu.create_options()
+        assert options["players"] == 2
+        assert _create(options).world.seats == 2
+        with pytest.raises(CommandError, match=f"players must be an integer from 2 to {ONLINE_SEATS}"):
+            _create({"seed": 3, "players": 16})
+        with pytest.raises(CommandError, match="width must be an integer"):
+            _create({"seed": 3, "players": 2, "width": ONLINE_SIZE[0] + 64, "height": ONLINE_SIZE[1]})
     finally:
         game.close()

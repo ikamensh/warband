@@ -52,12 +52,15 @@ def preview_image(world: World) -> PilImage.Image:
     return PilImage.fromarray(pixels, "RGB")
 DRIFT_SECONDS = 24.0
 CARD_WIDTH = 400
-RECENT = 4  # results shown on the title card
+ONLINE_CARD_WIDTH = 360
+RECENT = 4  # results shown on the library card
 
 
 class TitleScene(Scene):
     background_color = (8, 10, 14, 255)
-    controls = {("n", "return"): "new_game", "c": "continue_game", "l": "load_game", "p": "profile_screen", "b": "high_scores", "h": "how_to_play", "q": "quit"}
+    controls = {"n": "new_game", ("m", "return"): "multiplayer", "a": "campaign", "y": "library",
+                "c": "continue_game", "l": "load_game", "p": "profile_screen", "b": "high_scores",
+                "h": "how_to_play", "q": "quit"}
 
     def __init__(self, *, size: str = "Medium", players: int = 2, difficulty: Difficulty = Difficulty.MEDIUM, theme: MapTheme = MapTheme.SUMMER,
                  race: Race = Race.HUMAN, layout: Layout | None = None, settings: dict[str, Any] | None = None, magic: bool = False) -> None:
@@ -104,30 +107,58 @@ class TitleScene(Scene):
         return max(entries, key=lambda e: e["timestamp"])["slot"] if entries else None
 
     def _build_menu(self) -> None:
-        """The menu on the left, the player's card on the right, under the title."""
+        """The principal actions on the left, the online card on the right, under the title.
+
+        Multiplayer is the large principal action; the skirmish, the campaign and
+        everything saved live one step away.  The offline record moved to the
+        Library with the saves: the first screen stays focused."""
         newest = self._newest_save()
         menu = Column(spacing=10, margin=0)
-        menu.add(Button("New game", hotkey="N", on_click=self.new_game, style=ACTION_BUTTON, width=300))
-        menu.add(Button("Campaign", shortcut="A", on_click=self.campaign, style=MENU_BUTTON, width=300))
-        cont = Button("Continue", hotkey="C", on_click=self.continue_game, style=MENU_BUTTON, width=300)
-        cont.enabled = newest is not None
-        menu.add(cont)
-        menu.add(Button("Multiplayer", shortcut="M", on_click=self.multiplayer, style=MENU_BUTTON, width=300))
-        menu.add(Button("Load game", hotkey="L", on_click=self.load_game, style=MENU_BUTTON, width=300))
-        menu.add(Button("High scores", hotkey="B", on_click=self.high_scores, style=MENU_BUTTON, width=300))
-        # The two screens that explain the game share a row: a ninth full-width button pushed the title off a 680 px window.
-        menu.add(Row(Button("How to play", hotkey="H", on_click=self.how_to_play, style=MENU_BUTTON, width=180),
-                     Button("Codex", shortcut="F2", on_click=self.codex, style=MENU_BUTTON, width=112), spacing=8))
-        menu.add(Button("Quit", hotkey="Q", on_click=self.quit, style=MENU_BUTTON, width=300))
+        menu.add(Button("Multiplayer", shortcut=("M", "Enter"), on_click=self.multiplayer, style=ACTION_BUTTON, width=320))
+        # The skirmish and the campaign share a row: two smaller secondaries under the principal.
+        menu.add(Row(Button("Skirmish", hotkey="N", on_click=self.new_game, style=MENU_BUTTON, width=156),
+                     Button("Campaign", shortcut="A", on_click=self.campaign, style=MENU_BUTTON, width=156), spacing=8))
+        menu.add(Button("Library & help", shortcut="Y", on_click=self.library, style=GHOST_BUTTON, width=320))
+        menu.add(Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=320))
         where = f"slot {newest}" if isinstance(newest, int) else "the campaign mission" if newest == "campaign" else f"the {newest}" if newest else None
-        menu.add(Label(f"Continue resumes {where}" if where else "No saved game yet — the match autosaves every two minutes", text_style="caption"))
-        self._block = Column(Label("", height=150), Row(menu, self._card(), spacing=36), spacing=0, anchor=Anchor.CENTER, margin=0)
+        menu.add(Label(f"Continue resumes {where} — in the Library (C)" if where else "No saved game yet — the match autosaves every two minutes",
+                       text_style="caption"))
+        self._block = Column(Label("", height=150), Row(menu, self._online_card(), spacing=36), spacing=0, anchor=Anchor.CENTER, margin=0)
         self.ui.add(self._block)
         self.ui.add(Label("Every command has a hotkey — the keycaps show them · F1 in game for help", text_style="caption", anchor=Anchor.BOTTOM_CENTER, margin=12))
         self.ui.add(Label(running_build(), text_style="caption", anchor=Anchor.BOTTOM_RIGHT, margin=12))
 
+    def _online_card(self) -> Column:
+        """Who plays online: the display name and the honest online-rating line.
+
+        The offline skirmish rating is never shown as an online one; the full
+        offline record lives in the Library.  Until the rankings update lands,
+        no computer here invents a rating."""
+        from saga2d.settings import SettingsError
+        from warband.ui.multiplayer import format_rating, stored_online_profile
+        card = Column(spacing=8, margin=0, width=ONLINE_CARD_WIDTH, style=PANEL_STYLE)
+        if self.profile is None and self.profile_error:
+            card.add(Label("Profile unavailable", text_style="heading"))
+            card.add(Label(self.profile_error, text_style="sub", width=ONLINE_CARD_WIDTH - 24, wrap=True))
+            return card
+        card.add(Label(self.profile.name if self.profile is not None else "Commander", text_style="title"))
+        try:
+            stored = stored_online_profile(self.game)
+        except (SettingsError, OSError) as exc:
+            card.add(Label(f"Online identity unreadable: {exc}",
+                           text_style="sub", width=ONLINE_CARD_WIDTH - 24, wrap=True))
+            return card
+        if stored is None:
+            card.add(Label("No online matches yet — connect to a room to establish your online rating.",
+                           text_style="sub", width=ONLINE_CARD_WIDTH - 24, wrap=True))
+        else:
+            card.add(Label(f"Online rating {format_rating(stored['rating'])} · {stored['games']} games", text_style="heading", text_color=GOLD))
+        card.add(Label("Skirmish record and saves live in the Library.", text_style="caption"))
+        return card
+
     def _card(self) -> Column:
-        """Who is playing and how they stand: name, rating, record and the last few results."""
+        """Who is playing and how they stand against the computer: name, skirmish rating,
+        record and the last few results.  The rating is named for what it is, never online."""
         card = Column(spacing=8, margin=0, width=CARD_WIDTH, style=PANEL_STYLE)
         if self.profile is None:
             card.add(Label("Profile unavailable", text_style="heading", text_color=BAD))
@@ -138,7 +169,7 @@ class TitleScene(Scene):
         rating = profile.rating
         counts = profile.counts()
         card.add(Label(profile.name, text_style="title"))
-        card.add(Label(f"Rating {rating}" + (" · provisional" if rating.provisional else ""), text_style="heading", text_color=GOLD))
+        card.add(Label(f"Skirmish rating {rating}" + (" · provisional" if rating.provisional else ""), text_style="heading", text_color=GOLD))
         history = profile.history()
         if not history:
             card.add(Label("No rated matches yet. Beat the computer to earn a rating; leaving a match early counts against it.",
@@ -177,69 +208,21 @@ class TitleScene(Scene):
         if self.settings is None or self.settings["sfx"] > 0:
             play_sound(name)
 
-    def room_refusal(self) -> str | None:
-        """Why a room cannot be made of New game's settings, or ``None``.
-
-        Playing against other people is the game engine's to size, not Warband's: a LAN host takes
-        one guest (``saga2d.network.MatchHost``) and an online room holds what every client declares
-        it can join (``saga2d.online.SEATS``, four in the release Warband pins, which the room server
-        enforces).  Sixteen seats are a match against the computer on one machine.  Saying so is
-        better than quietly seating four of them.  See docs/warband-maps.md, "Sixteen seats online"."""
-        from warband.online.authority import ONLINE_SEATS, ONLINE_SIZE
-        width, height = mapgen.dimensions(self.size, self.players)
-        if self.players > ONLINE_SEATS:
-            return (f"An online room seats {ONLINE_SEATS} and a LAN host 2, not {self.players}: how many can play "
-                    f"together is the game engine's limit, not Warband's. Play {self.players} against the computer, "
-                    f"or set Players to {ONLINE_SEATS} or fewer for multiplayer.")
-        if (width, height) > ONLINE_SIZE:
-            return (f"A room plays maps up to {ONLINE_SIZE[0]}×{ONLINE_SIZE[1]}, not {width}×{height}. "
-                    f"Choose Large or smaller for multiplayer.")
-        return None
-
     def multiplayer(self) -> None:
-        from warband.online.authority import WarbandMatch
-        from warband.ui.multiplayer import MatchSetupMenu, NetworkGameScene
-        refused = self.room_refusal()
-        if refused is not None:
-            self.notice = refused
-            self.sfx("error")
-            return
-        # The room's creator leads the race chosen under New game; the others' are drawn from the seed.  An online
-        # room has New game's player count; a LAN host has two seats.
-        seats = self.players
-        lan = self.map_size(2)
-        room = self.map_size(seats)
+        """Multiplayer keeps its own room settings: whatever the skirmish chose, even sixteen
+        seats or an oversize map, never prevents opening it."""
+        from warband.ui.multiplayer import MatchSetupMenu
         self.notice = ""
-        self.game.push(MatchSetupMenu("Warband multiplayer", "warband-v2",
-                                lambda: WarbandMatch(self.fair_seed(2), *lan, self.theme, races=(self.race, None),
-                                                     layout=None if self.room_layout(2) == 'any' else Layout(self.room_layout(2)), magic=self.magic),
-                                lambda session, match: NetworkGameScene(session, match, settings=self.settings),
-                                create_options=lambda: {'seed': self.fair_seed(seats), 'width': room[0], 'height': room[1],
-                                                        'theme': self.theme.value, 'players': seats,
-                                                        'races': [self.race.value] + [None] * (seats - 1),
-                                                        'layout': self.room_layout(seats), 'magic': self.magic},
-                                magic_choice=lambda: self.magic, toggle_magic=self.toggle_magic))
+        self.sfx("button")
+        self.game.push(MatchSetupMenu(settings=self.settings))
+
+    def library(self) -> None:
+        self.sfx("button")
+        self.game.push(LibraryScene(self))
 
     def toggle_magic(self) -> None:
         self.magic = not self.magic
         self.sfx("button")
-
-    def map_size(self, players: int) -> tuple[int, int]:
-        """The map New game's size makes for *players* seats, moved to a size that seats them if it does not."""
-        size = self.size if self.size in mapgen.sizes_for(players) else mapgen.sizes_for(players)[0]
-        return mapgen.dimensions(size, players)
-
-    def room_layout(self, players: int) -> str:
-        """The layout a room of *players* asks for: ``any`` where the chosen one does not fit their grid."""
-        width, height = self.map_size(players)
-        return self.layout.value if self.layout in mapgen.layouts_for(width, height, players) else 'any'
-
-    def fair_seed(self, players: int) -> int:
-        """A fresh seed that makes a fair map of New game's settings for *players* seats, the room's creator first."""
-        width, height = self.map_size(players)
-        chosen = self.room_layout(players)
-        return fair_map(mapgen.fresh_seed(), width, height, players, theme=self.theme, races=[self.race] + [None] * (players - 1),
-                        layout=None if chosen == 'any' else Layout(chosen), magic=self.magic)[0]
 
     def new_game(self) -> None:
         self.sfx("button")
@@ -298,6 +281,69 @@ class TitleScene(Scene):
 
     def quit(self) -> None:
         self.game.quit()
+
+
+class LibraryScene(Scene):
+    """Saves, the offline record, scores and help: one compact surface off the title.
+
+    Every shortcut the title answers still answers here, and Back returns to it.
+    Fits a 1024×680 window beside the profile card."""
+
+    transparent = True
+    pause_below = False
+    pop_on_cancel = True
+    controls = {"c": "continue_game", "l": "load_game", "p": "profile_screen", "b": "high_scores",
+                ("f1", "h"): "how_to_play", "f2": "codex"}
+
+    def __init__(self, title: TitleScene) -> None:
+        self.title = title
+
+    def on_enter(self) -> None:
+        newest = self.title._newest_save()
+        menu = Column(spacing=8, margin=0)
+        cont = Button("Continue", hotkey="C", on_click=self.continue_game, style=ACTION_BUTTON, width=280)
+        cont.enabled = newest is not None
+        menu.add(cont)
+        menu.add(Button("Load game", hotkey="L", on_click=self.load_game, style=MENU_BUTTON, width=280))
+        menu.add(Button("Profile & replays", hotkey="P", on_click=self.profile_screen, style=MENU_BUTTON, width=280))
+        menu.add(Button("High scores", hotkey="B", on_click=self.high_scores, style=MENU_BUTTON, width=280))
+        menu.add(Row(Button("How to play", hotkey="H", on_click=self.how_to_play, style=MENU_BUTTON, width=164),
+                     Button("Codex", hotkey="F2", on_click=self.codex, style=MENU_BUTTON, width=108), spacing=8))
+        menu.add(Button("Back", hotkey="Esc", on_click=self.back, style=GHOST_BUTTON, width=280))
+        panel = Column(Label("Library", text_style="title"),
+                       Row(menu, self.title._card(), spacing=24),
+                       spacing=8, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
+        self.ui.add(panel)
+
+    def draw(self) -> None:
+        w, h = self.game.resolution
+        self.draw_rect(0, 0, w, h, (4, 6, 12, 140))
+
+    def back(self) -> None:
+        self.game.pop()
+
+    def continue_game(self) -> None:
+        self.title.continue_game()
+
+    def load_game(self) -> None:
+        self.game.pop()
+        self.title.load_game()
+
+    def profile_screen(self) -> None:
+        self.game.pop()
+        self.title.profile_screen()
+
+    def high_scores(self) -> None:
+        self.game.pop()
+        self.title.high_scores()
+
+    def how_to_play(self) -> None:
+        self.game.pop()
+        self.title.how_to_play()
+
+    def codex(self) -> None:
+        self.game.pop()
+        self.title.codex()
 
 
 class NewGameScene(Scene):
@@ -534,7 +580,7 @@ class NewGameScene(Scene):
 
     def set_race(self, race: Race) -> None:
         self.race = race
-        self.title.race = race  # multiplayer rooms lead the race chosen here
+        self.title.race = race  # the codex and the next match start from the race chosen here
         self.title.sfx("button")
         self._restyle()
         self._refresh_preview()
@@ -543,13 +589,13 @@ class NewGameScene(Scene):
         if layout is not None and layout not in mapgen.layouts_for(*self.dimensions, self.players):
             return  # the button is greyed out; a key press must not reach past it either
         self.layout = layout
-        self.title.layout = layout  # multiplayer rooms use the layout chosen here
+        self.title.layout = layout  # the next match starts from the layout chosen here
         self.title.sfx("button")
         self._restyle()
         self._refresh_preview()
 
     def toggle_magic(self) -> None:
-        """Magic is chosen before the match; the preview and multiplayer rooms use the same choice."""
+        """Magic is chosen before the match; the preview uses the same choice."""
         self.magic = not self.magic
         self.title.magic = self.magic
         self.title.sfx("button")

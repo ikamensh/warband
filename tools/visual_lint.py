@@ -332,6 +332,86 @@ def multiplayer_magic(game: Game) -> None:
 
 
 @screen
+def library(game: Game) -> None:
+    """The title's secondary surface: saves, the offline record, scores and help beside Back."""
+    game.push(TitleScene())
+    ticks(game)
+    game.scene.library()
+    ticks(game)
+
+
+@screen
+def multiplayer_setup(game: Game) -> None:
+    """The game-owned room setup: faction, the create card and the join card."""
+    game.push(TitleScene())
+    ticks(game)
+    game.scene.multiplayer()
+    ticks(game)
+
+
+@screen
+def multiplayer_lan(game: Game) -> None:
+    """The advanced LAN panel: address, port, code and the two-seat host."""
+    game.push(TitleScene())
+    ticks(game)
+    game.scene.multiplayer()
+    ticks(game)
+    game.scene.set_mode("lan")
+    ticks(game)
+
+
+def _waiting_session(**kwargs):
+    """A waiting online session with a rated roster, without any network."""
+    from types import SimpleNamespace
+
+    session = SimpleNamespace(online=True, incompatible=False, game_id="warband-v2",
+                              endpoint="wss://lint.invalid/play", room="AB12", seats=4, present=2,
+                              retention=900, state={"seed": 3}, error="", closed=False, ready=False,
+                              revision=0, resume_token="", player_token="", player_id="",
+                              rating=None, result=None, rated=True, rated_grace=60, match_id="",
+                              players=[{"seat": 0, "player_id": "p1", "name": "Al",
+                                        "rating": 1500, "games": 4, "connected": True},
+                                       None,
+                                       {"seat": 2, "player_id": "", "name": "",
+                                        "rating": None, "games": 0, "connected": False},
+                                       {"seat": 3, "player_id": "p4", "name": "Bo",
+                                        "rating": 1480, "games": 9, "connected": False}])
+    session.poll = lambda: None
+    session.close = lambda: setattr(session, "closed", True)
+    for key, value in kwargs.items():
+        setattr(session, key, value)
+    return session
+
+
+@screen
+def warband_lobby(game: Game) -> None:
+    """The waiting room with a roster: code, share buttons, seats and the honest count."""
+    from warband.ui.multiplayer import WarbandLobby
+
+    game.push(TitleScene())
+    ticks(game)
+    game.scene.multiplayer()
+    ticks(game)
+    game.push(WarbandLobby(_waiting_session(), lambda connection: None))
+    ticks(game)
+
+
+@screen
+def warband_lobby_error(game: Game) -> None:
+    """A cancelled room says it plainly, with the way back to setup."""
+    from warband.ui.multiplayer import WarbandLobby
+
+    game.push(TitleScene())
+    ticks(game)
+    game.scene.multiplayer()
+    ticks(game)
+    game.push(WarbandLobby(_waiting_session(closed=True, state=None,
+                                            error="Room not found. Check the room code."),
+                           lambda connection: None))
+    ticks(game)
+
+
+@screen
 def match_start(game: Game) -> None:
     match(game)
     ticks(game, 30)  # the banner has slid in and holds

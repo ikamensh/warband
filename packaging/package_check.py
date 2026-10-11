@@ -235,7 +235,7 @@ def native_smoke(output: Path, endpoint: str) -> dict:
             click("Cancel")
             creator = OnlineClient("warband-v2", endpoint=endpoint, room=room, resume_token=token)
             wait(lambda: creator.state is not None)
-            click("Paste code")
+            click("Paste invite")
             assert game.scene.fields[2] == room.upper()
             # Exercise the native platform shortcut as well as the visible button.
             press(key.V, key.MOD_COMMAND if sys.platform == "darwin" else key.MOD_CTRL)
