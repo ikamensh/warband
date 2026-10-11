@@ -3,10 +3,10 @@
 Regression: the multiplayer CLI refactor dropped the ``--campaign``/``--mission``
 branch, so those flags fell through to the title screen.  Both tests route real
 parsed flags through the launch helper and read the scene handed to the public
-``Game.run`` seam on a mock backend: no window, no server, no sound device beyond
-what the game itself installs.  (The helper is module-private because ``main()``
-parses ``sys.argv`` and compiles the simulation; it is the only seam that reaches
-launch routing.)
+``Game.run`` seam on a mock backend: no window, no server, and no sound (the
+helper stubs ``sound.install``; these tests assert campaign/mission routing
+only).  (The helper is module-private because ``main()`` parses ``sys.argv``
+and compiles the simulation; it is the only seam that reaches launch routing.)
 """
 
 from saga2d import Game
@@ -20,6 +20,7 @@ from warband.story.missions import CAMPAIGN
 def launch(tmp_path, monkeypatch, argv):
     """The scenes real CLI routing hands to ``Game.run`` for *argv*."""
     ran, made = [], []
+    monkeypatch.setattr("warband.audio.sound.install", lambda game: None)
     real_game = Game
 
     def factory(*args, **kwargs):
