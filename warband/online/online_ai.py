@@ -34,7 +34,6 @@ from __future__ import annotations
 import argparse
 from collections import Counter, deque
 from enum import Enum
-import inspect
 import json
 import math
 import os
@@ -130,11 +129,6 @@ def _print_event(event):
 IDENTITY_VERSION = 1
 
 
-def _identity_engine():
-    """Whether the installed OnlineClient speaks identity and rated rooms."""
-    return "player_token" in inspect.signature(OnlineClient.__init__).parameters
-
-
 def _read_identity_store(path):
     """The validated identity store: a missing file means a new store, anything else must match the schema.
 
@@ -152,7 +146,7 @@ def _read_identity_store(path):
     if not isinstance(data, dict):
         raise ValueError(f"Identity file {path} holds no per-endpoint token store.")
     if type(data.get("version")) is not int or data["version"] != IDENTITY_VERSION:
-        raise ValueError(f"Identity file {path} has unknown version {data.get('version')!r}.")
+        raise ValueError(f"Identity file {path} has an unsupported schema version (want version 1).")
     endpoints = data.get("endpoints")
     if not isinstance(endpoints, dict):
         raise ValueError(f"Identity file {path} holds no per-endpoint token store.")
@@ -238,9 +232,6 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
     if race is not None and race not in {item.value for item in Race}:
         raise ValueError(f"race must be one of {[item.value for item in Race]}.")
     wants_identity = bool(rated or player_name is not None or identity_file is not None or race is not None)
-    if wants_identity and not _identity_engine():
-        raise CommandError("Ranked rooms, player names, identity files and race choices need an online "
-                           "engine with identity support; the installed engine has none.")
     started = waiting_since = time.monotonic()
     deadline = math.inf if duration is None else started + duration
     endpoint_key = endpoint or server_endpoint()
@@ -292,7 +283,7 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
                 pending.clear()
             if client.resume_token and not announced:
                 if identity_file:
-                    minted = getattr(client, "player_token", "")
+                    minted = client.player_token
                     if minted and minted != stored_token:
                         _store_identity(identity_file, endpoint_key, minted)
                         stored_token = minted
@@ -351,7 +342,7 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
                       "tick": last_tick, "units": before_units, "buildings": before_buildings})
                 resume_room, resume_token = client.room, client.resume_token
                 resume_identity = dict(identity_kwargs)
-                live_token = getattr(client, "player_token", "")
+                live_token = client.player_token
                 if live_token or stored_token:
                     resume_identity["player_token"] = live_token or stored_token
                 pending.clear()
@@ -401,14 +392,14 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
                   "elapsed": round(time.monotonic() - started, 3), "tick": last_tick, "winner": winner,
                   "states_received": states, "orders_submitted": submitted,
                   "reconnected": bool(reconnected)}
-        if getattr(client, "rated", False):
+        if client.rated:
             # A rated room's receipt comes from the server alone; the seat's public
             # player id and rating profile ride with it, and no token ever does.
-            result["player_id"] = getattr(client, "player_id", "")
-            if getattr(client, "rating", None) is not None:
+            result["player_id"] = client.player_id
+            if client.rating is not None:
                 result["profile"] = client.rating
-            result["match_id"] = getattr(client, "match_id", "")
-            result["result"] = getattr(client, "result", None)
+            result["match_id"] = client.match_id
+            result["result"] = client.result
         emit(result)
         return result
     finally:

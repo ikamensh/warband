@@ -21,15 +21,10 @@ from urllib.parse import urlparse
 import pytest
 from websockets.sync.client import connect
 
-from saga2d import CommandError
-
 from saga2d.testing.online import command, first_stdout_line, handshake, receive, server_fixture
 from warband.brains.ai import make_brain
 from warband.online.authority import ORDERS, WarbandMatch
-from warband.online.online_ai import _identity_engine, _load_identity, _PlanningWorld, _store_identity, main, run_bot
-
-_NEEDS_LEGACY_ENGINE = pytest.mark.skipif(
-    _identity_engine(), reason="an identity-capable engine constructs these instead of refusing")
+from warband.online.online_ai import _load_identity, _PlanningWorld, _store_identity, main, run_bot
 from warband.records import replay
 from warband.sim.model import tile_center
 from warband.sim.rules import BuildingType, Difficulty, UnitType
@@ -279,21 +274,6 @@ def test_bad_entry_blocks_every_endpoint_and_preserves_the_file(tmp_path):
     assert path.read_bytes() == content
 
 
-@_NEEDS_LEGACY_ENGINE
-@pytest.mark.parametrize("kwargs", [
-    {"rated": True}, {"player_name": "Commander"}, {"identity_file": "ident.json"}, {"race": "orc"},
-])
-def test_identity_flags_demand_an_identity_capable_engine(kwargs):
-    """Ranked rooms, names, identity files and race choices fail clearly on an engine without them.
-
-    The installed engine predates identity support, so the demand fails before connecting
-    (fast: no server); on an identity-capable engine these flags construct the new client.
-    """
-    with pytest.raises(CommandError, match="identity"):
-        run_bot(endpoint="ws://127.0.0.1:1/", room="never", duration=0.5,
-                emit=lambda event: None, **kwargs)
-
-
 @pytest.mark.parametrize("kwargs, error", [
     ({"rated": "yes"}, "rated must be true or false"),
     ({"player_name": "  "}, "player_name must be non-empty text"),
@@ -537,10 +517,6 @@ def test_deliberate_disconnect_is_bounded_by_duration(server_url):
         assert "resume_token" not in result.stdout and welcome["resume_token"] not in result.stdout
 
 
-_NEEDS_IDENTITY_ENGINE = pytest.mark.skipif(
-    not _identity_engine(), reason="rated rooms need an identity-capable engine and server")
-
-
 def _create_and_concede(server_url, bot_args):
     """Launch a creator bot, join over the wire, wait for ready, resign, return evidence.
 
@@ -573,7 +549,6 @@ def _create_and_concede(server_url, bot_args):
     return [json.loads(line) for line in out.splitlines()], out, ready_state
 
 
-@_NEEDS_IDENTITY_ENGINE
 @pytest.mark.slow
 def test_rated_create_settles_receipt_and_reuses_identity(server_url, tmp_path):
     """A rated bot mints a private identity, takes the server's receipt, and returns as itself.
@@ -620,7 +595,6 @@ def test_rated_create_settles_receipt_and_reuses_identity(server_url, tmp_path):
     assert token not in casual_out and "player_token" not in casual_out
 
 
-@_NEEDS_IDENTITY_ENGINE
 @pytest.mark.slow
 def test_join_rated_room_with_own_race(server_url, tmp_path):
     """Joining a rated room without --rated still rates the seat, with its own race.
@@ -663,7 +637,6 @@ def test_join_rated_room_with_own_race(server_url, tmp_path):
         assert secret not in out, "no credential ever reaches the JSON lines"
 
 
-@_NEEDS_IDENTITY_ENGINE
 @pytest.mark.slow
 def test_rated_rejoin_keeps_identity_and_seat(server_url, tmp_path):
     """A deliberate rejoin in a rated room carries the same identity and seat.
