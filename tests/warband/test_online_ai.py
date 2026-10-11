@@ -157,32 +157,41 @@ def test_reconnect_timings_must_be_positive_and_finite(flag, value):
 def test_bot_disconnects_once_and_rejoins_its_reserved_seat(server_url):
     """A deliberate drop keeps the reserved seat: the same player, advancing ticks, orders resume.
 
-    A real bot subprocess drops and rejoins against a real server while a human holds the other
-    seat: the slow tier."""
+    The run spans a full peasant training cycle (about eleven seconds of world time: the bot
+    retrains near world t=17, well after rejoining near t=2), so a macro decision is genuinely
+    required post-rejoin and the orders assertion cannot pass on a quiet bot. A real bot
+    subprocess drops and rejoins against a real server while a human holds the other seat:
+    the slow tier."""
 
-    def drain(human, stop):
+    def drain(human, stop, errors):
         try:
             while not stop.is_set():
-                human.recv(timeout=2)
-        except Exception:
-            pass
+                try:
+                    human.recv(timeout=2)
+                except TimeoutError:
+                    continue
+        except Exception as exc:  # anything else is a real failure, reported below, never swallowed
+            errors.append(exc)
 
     with connect(server_url, proxy=None) as human:
         welcome = handshake(human, game="warband-v2", options={"seed": 3, "width": 48, "height": 40})
         stop = threading.Event()
-        reader = threading.Thread(target=drain, args=(human, stop), daemon=True)
+        errors = []
+        reader = threading.Thread(target=drain, args=(human, stop, errors), daemon=True)
         reader.start()
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "warband.online.online_ai", "--server", server_url,
-                 "--room", welcome["room"], "--difficulty", "hard", "--duration", "10",
+                 "--room", welcome["room"], "--difficulty", "hard", "--duration", "30",
                  "--report-every", "0.25", "--reconnect-after", "1", "--disconnect-for", "1"],
-                cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=30,
+                cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=60,
                 env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
             )
         finally:
             stop.set()
             reader.join(timeout=5)
+        if errors:
+            raise errors[0]
         assert result.returncode == 0, result.stderr + result.stdout
         evidence = [json.loads(line) for line in result.stdout.splitlines()]
         assert evidence[0]["event"] == "joined" and evidence[0]["player"] == 1
