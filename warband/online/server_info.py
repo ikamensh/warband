@@ -16,8 +16,6 @@ from typing import Any
 from urllib import error as urlerror
 from urllib import parse, request
 
-#: What the server's ``GET /status`` answers with (:func:`validate_status` refuses anything else).
-PROTOCOL = 1
 #: Seconds :func:`server_info` waits per connection/read step unless asked otherwise.
 DEFAULT_TIMEOUT = 10.0
 #: The largest status answer read; anything bigger is refused, not truncated.
@@ -69,8 +67,8 @@ def status_url(endpoint: str) -> str:
                              f"{host}:{port}" if port else host, "/status", "", ""))
 
 
-def _is_duration(value: Any) -> bool:
-    """Whether *value* is a positive finite number of seconds (an int or a float, never a boolean)."""
+def _is_number(value: Any) -> bool:
+    """Whether *value* is a positive finite number (an int or a float, never a boolean)."""
     return type(value) in (int, float) and math.isfinite(value) and value > 0
 
 
@@ -90,7 +88,7 @@ def validate_status(payload: Any, url: str = "server") -> dict[str, Any]:
         if type(payload.get(key)) is not int or payload[key] < 0:
             raise ServerInfoError(f"The server status at {url} has no integer {key!r}.")
     for key in DURATIONS:
-        if not _is_duration(payload.get(key)):
+        if not _is_number(payload.get(key)):
             raise ServerInfoError(f"The server status at {url} has no positive {key!r} duration.")
     if not isinstance(payload.get("games"), list) or not all(isinstance(name, str) for name in payload["games"]):
         raise ServerInfoError(f"The server status at {url} has no games list.")
@@ -108,8 +106,8 @@ def validate_status(payload: Any, url: str = "server") -> dict[str, Any]:
                 raise ServerInfoError(f"The server status at {url} has no seat list for {game!r}.")
             kept["seats"] = list(flags["seats"])
         if "starting_rating" in flags:
-            if type(flags["starting_rating"]) is not int:
-                raise ServerInfoError(f"The server status at {url} has no starting rating for {game!r}.")
+            if not _is_number(flags["starting_rating"]):
+                raise ServerInfoError(f"The server status at {url} has no positive starting rating for {game!r}.")
             kept["starting_rating"] = flags["starting_rating"]
         kept_ratings[game] = kept
     kept = {"protocol": payload["protocol"], "games": list(payload["games"]),
@@ -118,7 +116,7 @@ def validate_status(payload: Any, url: str = "server") -> dict[str, Any]:
             "room_retention": payload["room_retention"], "campaign_retention": payload["campaign_retention"],
             "ratings": kept_ratings}
     if "rated_grace" in payload:
-        if not _is_duration(payload["rated_grace"]):
+        if not _is_number(payload["rated_grace"]):
             raise ServerInfoError(f"The server status at {url} has no positive 'rated_grace' duration.")
         kept["rated_grace"] = payload["rated_grace"]
     return kept

@@ -23,8 +23,6 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from warband.league import fastsim
-
 ICON = Path(__file__).parent / "assets" / "icon.png"  # what the Dock, the taskbar and the built app draw Warband under
 
 
@@ -34,6 +32,7 @@ def main() -> None:
 
         server_info.run(sys.argv[1:])
         return
+    from warband.league import fastsim  # after the headless branch: choosing the simulation imports it
     if not answered_by_the_parser(sys.argv[1:]):
         fastsim.activate_for_game()  # before anything imports the simulation: whatever does from here on gets the compiled one
     from saga2d import Game, add_match_arguments, fonts, match_from_arguments
@@ -129,10 +128,14 @@ def server_info_requested(argv: list[str]) -> bool:
     ``--server-info`` (and its malformed extensions, refused clearly), ``--json``
     and ``--timeout`` all route to the info parser before anything compiles: alone
     the latter two are mistakes to refuse, not a match to play.  ``--server`` on
-    its own stays a match's endpoint override and plays as before."""
+    its own stays a match's endpoint override and plays as before.  A unique
+    prefix the game parser would expand (``--server-inf``, like ``--vers`` for
+    ``--version``) routes the same way; anything ``--server`` itself could
+    claim stays on the game's path."""
     for token in argv:
         word = token.split("=", 1)[0]
-        if word.startswith("--server-info") or word in ("--json", "--timeout"):
+        if (word.startswith("--server-info") or word in ("--json", "--timeout")
+                or ("--server-info".startswith(word) and not "--server".startswith(word))):
             return True
     return False
 

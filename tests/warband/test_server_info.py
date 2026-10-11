@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 CONTRACT = {"protocol": 1, "games": ["warband-v2"], "rooms": 2, "ready_rooms": 1, "players": 3,
             "max_rooms": 32, "max_connections": 96, "room_retention": 900, "campaign_retention": 604800,
-            "rated_grace": 300, "ratings": {"warband-v2": {"enabled": True, "seats": [2], "starting_rating": 1500}}}
+            "rated_grace": 300, "ratings": {"warband-v2": {"enabled": True, "seats": [2], "starting_rating": 1500.0}}}
 
 
 def test_a_play_endpoint_maps_to_its_status_page() -> None:
@@ -58,7 +58,7 @@ def test_a_valid_payload_validates_with_its_optional_fields() -> None:
     assert (info["players"], info["rooms"], info["ready_rooms"]) == (3, 2, 1)
     assert info["games"] == ["warband-v2"]
     assert info["rated_grace"] == 300
-    assert info["ratings"] == {"warband-v2": {"enabled": True, "seats": [2], "starting_rating": 1500}}
+    assert info["ratings"] == {"warband-v2": {"enabled": True, "seats": [2], "starting_rating": 1500.0}}
 
 
 def test_optional_fields_may_be_absent() -> None:
@@ -78,6 +78,16 @@ def test_fractional_retentions_validate_and_survive() -> None:
     """The server speaks floats too: a fractional retention is kept, never truncated to a silent zero."""
     info = validate_status({**CONTRACT, "room_retention": 1.5}, "http://127.0.0.1:1/status")
     assert info["room_retention"] == 1.5
+
+
+def test_a_float_starting_rating_validates_and_survives() -> None:
+    """The engine reports its starting rating as a float: kept as sent, while booleans stay refused."""
+    info = validate_status(CONTRACT, "http://127.0.0.1:1/status")
+    assert type(info["ratings"]["warband-v2"]["starting_rating"]) is float
+    assert info["ratings"]["warband-v2"]["starting_rating"] == 1500.0
+    bad = {"warband-v2": {"enabled": True, "starting_rating": True}}
+    with pytest.raises(ServerInfoError):
+        validate_status({**CONTRACT, "ratings": bad}, "http://127.0.0.1:1/status")
 
 
 @pytest.mark.parametrize("key", ["protocol", "rooms", "ready_rooms", "players",
@@ -138,9 +148,25 @@ def test_only_info_flags_route_to_the_info_parser() -> None:
     assert server_info_requested(["--json"])
     assert server_info_requested(["--timeout", "3"])
     assert server_info_requested(["--server-infoo"])
+    assert server_info_requested(["--server-inf"])
+    assert server_info_requested(["--server-i"])
     assert not server_info_requested(["--server", "wss://example.com/play", "--online-host"])
+    assert not server_info_requested(["--serv"])
     assert not server_info_requested(["--seed", "3"])
     assert not server_info_requested([])
+
+
+def test_a_server_info_prefix_answers_without_the_simulation(monkeypatch) -> None:
+    """The game parser expands --server-inf to --server-info, so the early dispatch must too:
+    a refused connection on the discard port still proves the answer path never chose the simulation."""
+    from warband.league import fastsim
+
+    monkeypatch.setattr(fastsim, "activate_for_game",
+                        lambda: pytest.fail("chose the simulation to answer a prefix"))
+    monkeypatch.setattr(sys, "argv", ["warband", "--server-inf", "--server", "ws://127.0.0.1:9/play"])
+    with pytest.raises(SystemExit) as exited:
+        main()
+    assert exited.value.code != 0
 
 
 def test_help_names_server_info(monkeypatch, capsys) -> None:
@@ -245,26 +271,26 @@ def test_the_command_line_reports_a_live_server_as_json(status_server) -> None:
     assert (payload["players"], payload["rooms"], payload["ready_rooms"]) == (3, 2, 1)
     assert payload["games"] == ["warband-v2"]
     assert payload["rated_grace"] == 300
-    assert payload["ratings"]["warband-v2"]["starting_rating"] == 1500
+    assert payload["ratings"]["warband-v2"]["starting_rating"] == 1500.0
 
 
 @pytest.mark.slow
 def test_the_command_line_needs_no_simulation_or_art(status_server) -> None:
-    """A guarded interpreter proves the headless path: simulation, UI, art and audio imports fail it,
-    and choosing the compiled simulation fails it too."""
-    guard = ("import sys, runpy; "
-             "forbid = ('warband.sim', 'warband.ui', 'warband.art', 'warband.audio', 'warband.story', "
-             "'warband.brains', 'warband.records', 'warband.online.authority', 'warband.online.online_ai'); "
-             "import importlib.abc; "
-             "class Guard(importlib.abc.MetaPathFinder):\n"
-             "    def find_spec(self, name, path=None, target=None):\n"
-             "        if name in forbid or name.startswith(tuple(f + '.' for f in forbid)):\n"
-             "            raise ImportError('headless violation: ' + name)\n"
-             "sys.meta_path.insert(0, Guard()); "
-             "from warband.league import fastsim; "
-             "fastsim.activate_for_game = lambda: (_ for _ in ()).throw(AssertionError('compiled simulation chosen')); "
-             "sys.argv = ['warband', '--server-info', '--server', %r]; "
-             "runpy.run_module('warband', run_name='__main__')" % _endpoint(status_server))
+    """A guarded interpreter proves the headless path: simulation, UI, art, audio and even the
+    simulation compiler's own module fail the run on import."""
+    guard = "\n".join(["import sys, runpy",
+                         "forbid = ('warband.sim', 'warband.ui', 'warband.art', 'warband.audio', 'warband.story', "
+                         "'warband.brains', 'warband.records', 'warband.league', "
+                         "'warband.online.authority', 'warband.online.online_ai')",
+                         "import importlib.abc",
+                         "class Guard(importlib.abc.MetaPathFinder):",
+                         "    def find_spec(self, name, path=None, target=None):",
+                         "        if name in forbid or name.startswith(tuple(f + '.' for f in forbid)):",
+                         "            raise ImportError('headless violation: ' + name)",
+                         "sys.meta_path.insert(0, Guard())",
+                         "sys.argv = ['warband', '--server-info', '--server', %r]"
+                         % _endpoint(status_server),
+                         "runpy.run_module('warband', run_name='__main__')"])
     done = subprocess.run([sys.executable, "-c", guard], capture_output=True, text=True,
                           cwd=ROOT, env=_cli_env(), timeout=120)
     assert done.returncode == 0, done.stderr
