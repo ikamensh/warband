@@ -246,6 +246,24 @@ how long it keeps rooms. Anything else exits nonzero with the reason on
 standard error: an unreachable server, a refusal, or an answer that is not
 the server's status.
 
+## Host or join from the command line
+
+The flags mirror the Multiplayer screen, with the same waiting room, durable
+account and rated rooms. Your `--race` chooses only your own seat, on create
+and join; rejoining keeps the seat it saved.
+
+```bash
+warband --online-host --players 2 --race orc     # a casual room, like the old default
+warband --online-host --players 4 --rated        # a rated four-seat room
+warband --online-join CODE --race elf            # join with your own faction; the host's rated choice stands
+warband --online-resume                          # rejoin the saved seat after a dropped connection
+```
+
+`--players` seats 2 to 4; a size or layout that cannot hold the seats is
+refused instead of hosting another map. `--rated` needs `--online-host`.
+LAN stays two seats: `--host` and `--join ADDRESS --room CODE` wait in the
+same Warband room as the screen.
+
 ## If something goes wrong
 
 | What you see | What to do |
