@@ -16,7 +16,7 @@ from typing import Final
 from warband.brains.pro_force import _tower_strength, _tower_strength_own, camp_strength, strength
 from warband.brains.pro_profiles import PRO, PRO_PROFILES, PRO_RUSH, PRO_VANGUARD, PRO_WARDEN, ProProfile
 
-from warband.brains.ai import RAIDERS, answer_flyers, camp_standing, camp_worth, can_reach_point, dodge_camp_slams, heading_to, known_camps, known_mines, lost_track, redirect_searchers
+from warband.brains.ai import RAIDERS, answer_flyers, camp_standing, camp_worth, can_reach_point, dodge_camp_slams, heading_to, known_camps, known_mines, lost_track, push_is_blind, redirect_searchers
 from warband.sim.model import Attack, Build, Building, Move, Point, Repair, Salvage, Unit, World, dist, int_sum, plain_sum, rect_gap, tile_center
 from warband.sim.rules import SPELLS, BuildingType, Layout, Race, UnitType, Upgrade
 
@@ -198,7 +198,7 @@ class ProBrain(_ProBrainEconomy):
         as well as ``creep_retry`` seconds, avoiding repeated costly assaults.
         """
         profile = self.profile
-        if not profile.creep or (self.attacking and (self._known_enemy_buildings(world) or self._enemies(world))):
+        if not profile.creep or (self.attacking and not push_is_blind(world, self.player)):
             return False  # a push at something real keeps its army; a blind one yields to clearing a known camp
         camp = world.camp_for(self.creeping) if self.creeping is not None else None
         if self.creeping is not None and (camp is None or camp.cleared):

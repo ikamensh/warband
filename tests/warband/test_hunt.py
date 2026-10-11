@@ -9,13 +9,13 @@ import random
 
 import pytest
 
-from warband.brains.ai import HUNT_FLYERS_ALONE, make_brain
+from warband.brains.ai import CAMP_REACH, HUNT_FLYERS_ALONE, make_brain
 from warband.brains.pro_ai import PRO, ProBrain
 from warband.online.authority import WarbandMatch
 from warband.online.online_ai import _PlanningWorld
-from warband.sim import mapgen
-from warband.sim.model import Move, World
-from warband.sim.rules import SIM_DT, BuildingType, Difficulty, Race, Terrain, UnitType
+from warband.sim import camps, mapgen
+from warband.sim.model import AttackMove, Move, World, dist
+from warband.sim.rules import SIM_DT, BuildingType, Difficulty, Race, Resource, Terrain, UnitType
 
 WIDTH, HEIGHT = 64, 48
 
@@ -90,6 +90,7 @@ def test_the_flyer_sweeps_first_and_the_fastest_soldiers_join_it() -> None:
 
 
 @pytest.mark.slow
+@pytest.mark.source_only("the bot plans on its seat's snapshot through online_ai._PlanningWorld, a stand-in for a World")
 def test_a_lost_prepared_army_clears_the_camp_hiding_the_last_peasant() -> None:
     """Seed 3's wolf den (lair 20) at (25.5, 32.5) watches the pocket where seat 1's last peasant stands at
     (20.5, 39.5): every camp-safe hunt vantage is out of knight sight, so a won online match ran its 1800 s clock
@@ -103,7 +104,11 @@ def test_a_lost_prepared_army_clears_the_camp_hiding_the_last_peasant() -> None:
     for building in [b for b in world.buildings.values() if b.player == 1]:
         building.hp = 0
     # The last peasant first: seat 1 must hold its captured tile before anything steps, or the razing ends the match.
-    world.spawn_unit(1, UnitType.PEASANT, (20.5, 39.5))  # the captured last-unit tile, never seen by seat 0
+    worker = world.spawn_unit(1, UnitType.PEASANT, (20.5, 39.5))  # the captured last-unit tile, never seen by seat 0
+    # The captured load-bearing state (worker 404): 100 lumber aboard and Harvest (19, 38) queued through the
+    # public order; the simulation prepends the Deposit trip for a laden peasant, and home stays None.
+    worker.carrying, worker.carry = Resource.LUMBER, 100
+    world.harvest([worker.id], (19, 38))
     for _ in range(20):
         match.step()
     world.reveal_all(0)  # seat 0's late-game memory: the whole map honestly learned, both dens known
@@ -125,6 +130,34 @@ def test_a_lost_prepared_army_clears_the_camp_hiding_the_last_peasant() -> None:
                 match.apply(0, command)
         match.step()
     assert world.winner == 0, "the prepared army never cleared the den hiding the last peasant"
+
+
+def test_three_searchers_keep_out_of_the_remembered_watch() -> None:
+    """The remembered camp is a candidate for the prepared army now, but the hunt's small party must still keep
+    out of its watch: every search destination stays outside what the guards hold, through the public orders."""
+    world = World(48, 40, [[Terrain.GRASS] * 48 for _ in range(40)], 2,
+                  races=[Race.DWARF, Race.ORC], rng=random.Random(5))
+    world.scripted = True
+    world.place_building(0, BuildingType.TOWN_HALL, (4, 4))
+    world.place_building(1, BuildingType.TOWN_HALL, (40, 32)).hp = 0
+    camp = camps.place_encounter(world, (30, 25), "wolf_den")
+    soldiers = [world.spawn_unit(0, UnitType.KNIGHT, (8.5 + i, 10.5)) for i in range(3)]
+    world.spawn_unit(1, UnitType.PEASANT, (45.5, 3.5))
+    for _ in range(5):
+        world.step()  # the razed hall falls before seat 0 learns the map, so nothing of the rival is remembered
+    world.reveal_all(0)
+    world.buildings[camp.lair].hp = 0  # remembered and uncleared, as the online copy sees it
+    for _ in range(5):
+        world.step()
+    world.update_vision()
+    world.time = 200.0
+    ProBrain(0, PRO).think(world, random.Random(5))
+    anchor = camps.centre(world, camp)
+    destinations = [unit.orders[0].target for unit in soldiers
+                    if unit.orders and isinstance(unit.orders[0], (Move, AttackMove))]
+    assert destinations, "the lost side sent no searchers out"
+    assert all(dist(target, anchor) > CAMP_REACH for target in destinations), \
+        "a searcher was sent inside the remembered camp's watch"
 
 
 def test_nobody_hunts_while_the_expedition_still_has_its_guess_to_look_at() -> None:

@@ -522,3 +522,81 @@ def test_a_medium_army_already_pushing_a_rival_does_not_divert_to_a_camp():
     assert not any("clear the camp" in text for _, text in brain.log)
     assert all(isinstance(unit.order, AttackMove) and unit.order.target == rival for unit in army)
     assert not camp.roused
+
+
+def stranded_endgame(knights: int, *, lair_down: bool, time: float, revealed: bool = True):
+    """A lost endgame on open ground: seat 1 is razed but for one hidden peasant, seat 0 has learned the whole
+    map including the wolf den at (30, 25).  With *lair_down* the lair entity is gone while its encounter stands
+    uncleared, as an online planning copy sees every remembered camp it cannot see now.  Unrevealed, nothing is
+    known yet, so the first think marches at the guessed corner."""
+    world = World(48, 40, [[Terrain.GRASS] * 48 for _ in range(40)], 2,
+                  races=[Race.DWARF, Race.ORC], rng=random.Random(5))
+    world.scripted = True
+    world.place_building(0, BuildingType.TOWN_HALL, (4, 4))
+    world.place_building(1, BuildingType.TOWN_HALL, (40, 32)).hp = 0
+    camp = camps.place_encounter(world, (30, 25), "wolf_den")
+    army = [world.spawn_unit(0, UnitType.KNIGHT, (8.5 + i % 4, 10.5 + i // 4)) for i in range(knights)]
+    world.spawn_unit(1, UnitType.PEASANT, (45.5, 3.5))
+    for _ in range(5):
+        world.step()  # the razed hall falls before seat 0 learns the map, so nothing of the rival is remembered
+    if revealed:
+        world.reveal_all(0)
+    if lair_down:
+        world.buildings[camp.lair].hp = 0
+    for _ in range(5):
+        world.step()
+    world.update_vision()
+    world.time = time
+    return world, camp, army
+
+
+def learn_the_map(world):
+    """Seat 0 honestly learns the whole map after marching out blind: reveal, then recompute sight so the distant
+    peasant and camp guards stay hidden."""
+    world.reveal_all(0)
+    world.update_vision()
+
+
+def creep_bound_for(army, centre):
+    """The soldiers whose public orders march at the camp: the prepared expedition, not passing searchers, whose
+    camp-safe destinations stay outside the watch."""
+    return [unit for unit in army if unit.orders and isinstance(unit.orders[0], AttackMove)
+            and dist(unit.orders[0].target, centre) <= 6.0]
+
+
+def test_a_prepared_army_clears_a_remembered_camp_it_cannot_see():
+    """An online planning copy omits the unseen lair entity, though the encounter is remembered and uncleared:
+    the prepared force must still march at it, through the public orders it is given."""
+    world, camp, army = stranded_endgame(10, lair_down=True, time=200.0)
+    assert camp.lair not in world.buildings
+    ProBrain(0, PRO).think(world, random.Random(5))
+    centre = camps.centre(world, camp)
+    assert len(creep_bound_for(army, centre)) >= 6, "no prepared force was given the remembered camp"
+
+
+def test_a_blind_pro_push_yields_to_a_remembered_camp():
+    """The army first marches at its guessed corner with nothing known; once the den is learned, the blind push
+    yields and the prepared force is ordered at the camp instead."""
+    world, camp, army = stranded_endgame(10, lair_down=False, time=200.0, revealed=False)
+    brain = ProBrain(0, PRO)
+    brain.think(world, random.Random(5))
+    assert brain.attacking and brain.creeping is None
+    learn_the_map(world)
+    world.time += 1
+    brain.think(world, random.Random(5))
+    centre = camps.centre(world, camp)
+    assert len(creep_bound_for(army, centre)) >= 6, "the blind push never yielded to the remembered camp"
+
+
+def test_a_blind_medium_push_yields_to_a_remembered_camp():
+    """The classic brain stalls the same way: Medium creeps by design, so its wave at a guessed corner must yield
+    to clearing the remembered den just as the stronger brain's does."""
+    world, camp, army = stranded_endgame(16, lair_down=False, time=500.0, revealed=False)
+    brain = Brain(0, Difficulty.MEDIUM)
+    brain.think(world, random.Random(5))
+    assert brain.attacking and brain.creeping is None
+    learn_the_map(world)
+    world.time += 1
+    brain.think(world, random.Random(5))
+    centre = camps.centre(world, camp)
+    assert len(creep_bound_for(army, centre)) >= 6, "the blind push never yielded to the remembered camp"

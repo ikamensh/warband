@@ -292,6 +292,20 @@ def lost_track(world: World, player: int, guess: Point) -> bool:
                    and world.is_visible(player, unit.tile) for unit in world.units.values())
 
 
+def push_is_blind(world: World, player: int) -> bool:
+    """Whether a push has nothing real to walk at: no remembered enemy building and no visible foe.
+
+    A blind expedition marches at a guessed corner; clearing a remembered camp the side knows about finishes
+    the search the guess cannot, so the prepared army yields to it.  A push at something seen or remembered
+    keeps its army.  Only the side's own fog and memory answer it, as in :func:`lost_track` without its guess.
+    """
+    if known_enemy_buildings(world, player):
+        return False
+    return not any(unit.player != player and not world.players[unit.player].neutral and not unit.hidden
+                   and unit.hp > 0 and world.players[unit.player].alive
+                   and world.is_visible(player, unit.tile) for unit in world.units.values())
+
+
 class Squares:
     """When a side last saw each square of :data:`HUNT_SQUARE` tiles, and which square a searcher goes to next: the
     memory the hunt (:class:`Hunt`) and the player's scouts (``warband.brains.adjutant``) search by.  A square counts as
@@ -1085,8 +1099,8 @@ class Brain:
         past half its original size withdraws; a retry needs more force than
         the failed assault, rather than feeding replacements into the camp.
         """
-        if self.attacking:
-            return False  # an ongoing rival push is a scattered fighting force, not a fresh expedition
+        if self.attacking and not push_is_blind(world, self.player):
+            return False  # a push at something real keeps its army; a blind one yields to clearing a known camp
         lair = world.buildings.get(self.creeping) if self.creeping is not None else None
         camp = world.camp_for(self.creeping) if self.creeping is not None else None
         if self.creeping is not None and (camp is None or camp.cleared):
