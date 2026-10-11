@@ -18,6 +18,7 @@ GameSpec callbacks, no process, no sockets.
 """
 import json
 import time
+from contextlib import ExitStack
 
 import pytest
 from websockets.sync.client import connect
@@ -104,27 +105,21 @@ def test_rated_ffa_points_conserved_and_dead_seats_may_leave(seats):
     capability the room needs, or the server refuses the larger room.  Up to four sockets on a
     64x48 map through the server clock: slow tier."""
     with running_server(SPEC) as (url, _process):
-        with connect(url, proxy=None) as first:
+        with ExitStack() as stack:
+            first = stack.enter_context(connect(url, proxy=None))
             welcome = handshake(first, game=GAME, seats=4, options=ffa_options(seats), rated=True)
-            rest = [connect(url, proxy=None) for _ in range(seats - 1)]
-            try:
-                for seat, socket in enumerate(rest, start=1):
-                    handshake(socket, 'join', game=GAME, seats=4, room=welcome['room'])
-                receive(first, predicate=lambda message: message['ready'])
-                for seat, socket in enumerate(rest, start=1):
-                    if seat < seats - 1:
-                        with socket:
-                            command(socket, {'action': 'resign', 'args': [seat]})
-                            receive(first, predicate=lambda message:
-                                    not world_of(message, 0)['players'][seat]['alive'])
-                        # The dead seat left; the survivors play on.
-                    else:
-                        command(socket, {'action': 'resign', 'args': [seat]})
-                result = settled_state(first)['result']
-                assert settled_state(rest[-1])['result'] == result
-            finally:
-                for socket in rest:
-                    socket.close()
+            rest = [stack.enter_context(connect(url, proxy=None)) for _ in range(seats - 1)]
+            for seat, socket in enumerate(rest, start=1):
+                handshake(socket, 'join', game=GAME, seats=4, room=welcome['room'])
+            receive(first, predicate=lambda message: message['ready'])
+            for seat, socket in enumerate(rest, start=1):
+                command(socket, {'action': 'resign', 'args': [seat]})
+                receive(first, predicate=lambda message:
+                        not world_of(message, 0)['players'][seat]['alive'])
+                if seat < seats - 1:
+                    socket.close()  # the dead seat left; the survivors play on.
+            result = settled_state(first)['result']
+            assert settled_state(rest[-1])['result'] == result
             assert result['winner'] == 0
             deltas = [entry['delta'] for entry in result['ratings']]
             assert sum(deltas) == pytest.approx(0.0)
@@ -190,7 +185,7 @@ def test_grace_reconnect_before_deadline_preserves_match_without_result():
                 guest_token = guest_welcome['resume_token']
             # The socket is gone without a goodbye; the host watches states well inside grace.
             watched = states_for(host, 3)
-            assert watched, "the server kept the room's clock running for the connected seat"
+            assert watched, "the host received the paused snapshot while its rival was gone"
             assert all(state['result'] is None for state in watched)
             with connect(url, proxy=None) as back:
                 handshake(back, 'resume', game=GAME, room=welcome['room'], resume_token=guest_token)

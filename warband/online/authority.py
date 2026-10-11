@@ -353,7 +353,7 @@ def _result(match):
 
 
 def _rated(match):
-    """Whether a fresh match is eligible for ratings: a full 2..4-seat duel, never a scripted mission."""
+    """Whether a fresh match is eligible for ratings: a 2..4-seat multiplayer match, never a scripted mission."""
     return 2 <= match.world.seats <= ONLINE_SEATS and not match.world.scripted
 
 

@@ -111,8 +111,10 @@ replay folders unwritable at match end to see the game say so and go on.
 
 A rated room (`rated` on create, two to four seats) is rated by the server,
 not by this profile: every account starts at **1500**, and the authoritative
-result moves the winner up against each loser by plain Elo with K=32 (losers
-tie each other, so the exchanged points sum to zero) exactly once per match.
+result settles each winner-versus-loser pair by plain Elo with K=32 divided
+by the number of pairs (N-1), losers tying each other, exactly once per
+match.  The winner's total gain is the average of those pairwise wins and the
+exchanged points sum to zero.
 The receipt names the match, the winning seat and every account's
 before/after record; a seat that vanishes past the reconnect grace forfeits
 through its own resignation. Casual rooms rate nothing. A joining seat may
