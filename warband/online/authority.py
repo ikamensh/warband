@@ -347,5 +347,61 @@ def _needed(match, player):
     return match.world.winner is None and match.world.players[player].alive
 
 
+def _result(match):
+    """The authoritative winner's seat, or None while the match is still played."""
+    return match.world.winner
+
+
+def _rated(match):
+    """Whether a fresh match is eligible for ratings: a full 2..4-seat duel, never a scripted mission."""
+    return 2 <= match.world.seats <= ONLINE_SEATS and not match.world.scripted
+
+
+def _forfeit(match, player):
+    """Record an absent rated seat's abandonment through the validated resign order: the recorded
+    :meth:`World.resign` removes everything the seat owns and announces it, never a custom mutation."""
+    match.apply(player, {'action': 'resign', 'args': [player]})
+
+
+def _configure_player(match, player, options):
+    """Apply a joining seat's private race choice before the seat is claimed: ``{}`` (or an explicit null
+    race, which the UI omits as Any) keeps the race the seed drew, ``{'race': a canonical race}`` takes it
+    for the joining seat alone.  Anything else — a non-object, an unknown seat or key, an unknown race,
+    or a choice once the simulation has begun — is refused before anything changes, so the seat stays free
+    and the room stays joinable.  The engine calls this before tokens and seats mutate, for seat 0 on create
+    and the joining seat's own on join, never on resume."""
+    world = match.world
+    if not isinstance(options, dict):
+        raise CommandError('Player options must be an object.')
+    if type(player) is not int or player not in range(world.seats):
+        raise CommandError('No such seat in this match.')
+    if set(options) - {'race'}:
+        raise CommandError('Unknown player option.')
+    if world.tick != 0:
+        raise CommandError('The match has already begun; races are fixed.')
+    race = options.get('race')
+    if race is None:
+        return  # no choice: the seat keeps the race the seed drew for it
+    try:
+        wanted = Race(race)
+    except (ValueError, TypeError) as exc:
+        raise CommandError('Unknown race.') from exc
+    if world.players[player].race == wanted:
+        return  # already theirs: nothing to rebuild
+    races = [world.players[seat].race for seat in range(world.seats)]
+    races[player] = wanted
+    # The draw streams are seeded apart (layout ^0x1A70, races ^0x5ACE, ground per attempt), so rebuilding
+    # with the same seed, the actual layout and every seat's race replays the same ground: the other seats
+    # keep their races and the seeded terrain is preserved.  Build first, swap only after success.
+    try:
+        fresh = WarbandMatch(match.seed, width=world.width, height=world.height, players=world.seats,
+                             theme=world.theme, races=races, layout=world.layout, magic=world.magic)
+    except mapgen.NoFairMap as exc:
+        raise CommandError(f'{exc} Choose another race.') from exc
+    match.world, match.begun = fresh.world, fresh.begun
+
+
 ONLINE = {'warband-v2': GameSpec(_create, _checkpoint, _restore, realtime=True,
-                                 seats=lambda match: match.world.seats, needed=_needed)}
+                                 seats=lambda match: match.world.seats, needed=_needed,
+                                 result=_result, rated=_rated, forfeit=_forfeit,
+                                 configure_player=_configure_player)}

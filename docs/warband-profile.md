@@ -3,9 +3,10 @@
 The title screen carries the player's card: name, rating, record and the
 last few results, with **P** opening the profile. Every offline match against
 the computer is rated when it ends — or when the player leaves it — and its
-replay is kept. Online matches are neither rated nor recorded.
+replay is kept. Casual online matches are neither rated nor recorded; rated
+online rooms are rated instead by the server (see below), never in this local profile.
 
-## The rating
+## The rating (solo)
 
 The rating is on the Elo scale the difficulty settings are measured on
 ([docs/ai-ladder.md](ai-ladder.md)): Easy 740, Medium 1000, Hard 1250, Master 1510 at the time of writing (`warband.brains.ai.DIFFICULTY_ELO`). It is an
@@ -106,6 +107,19 @@ past a leftover staged file and loads twice without duplicating; damages the
 profile and restores it through the profile screen; and makes the profile and
 replay folders unwritable at match end to see the game say so and go on.
 
+## The rating (online)
+
+A rated room (`rated` on create, two to four seats) is rated by the server,
+not by this profile: every account starts at **1500**, and the authoritative
+result moves the winner up against each loser by plain Elo with K=32 (losers
+tie each other, so the exchanged points sum to zero) exactly once per match.
+The receipt names the match, the winning seat and every account's
+before/after record; a seat that vanishes past the reconnect grace forfeits
+through its own resignation. Casual rooms rate nothing. A joining seat may
+choose its own race (`{}` keeps the race the seed drew, `{'race': ...}` takes
+a canonical one) before the match begins; the choice never touches another
+seat's race or the ground, and resumes never re-choose.
+
 ## Verification
 
 `uv run pytest tests/warband/test_profile.py tests/warband/test_replay.py
@@ -114,3 +128,5 @@ tests/warband/test_profile_scene.py -q` covers the rating maths, the standing
 rule, faithful playback across seeds and a mid-match reload, the confirmations,
 the results screen, the profile screen and renaming. `tools/verify_profile.py
 DIR` renders the screens through the real backend for inspection.
+`tests/warband/test_online_ratings.py` covers rated rooms and race joining
+through the production server.

@@ -2,7 +2,7 @@
 
 Every finished offline match shows its score, battle record and each warband's
 race and outcome, and what it did to the player's rating
-([warband-profile.md](warband-profile.md)); online matches are not ranked. Press **B** on the results or title screen for high scores. **D**, **M**
+([warband-profile.md](warband-profile.md)); casual online matches are not ranked, while rated rooms are ranked by the server and never touch these local boards. Press **B** on the results or title screen for high scores. **D**, **M**
 and **P** cycle difficulty, map size and player count; **Esc** returns.
 
 ## Scoring
