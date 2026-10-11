@@ -587,3 +587,37 @@ def test_defeat_names_the_server_name_where_the_roster_knows_it(tmp_path):
         assert f"Defeat — {world_name} prevails" in texts(game)
     finally:
         game.close()
+
+
+def test_eliminated_overlay_refreshes_when_the_match_decides(tmp_path):
+    """An overlay opened on elimination watches on: when the winner and the receipt arrive
+    under the same overlay, its title, delta and actions update instead of going stale."""
+    from warband.ui.scene import DEFAULT_SETTINGS, new_game
+
+    session = SimpleNamespace(online=True, rated=True, rated_grace=60, result=None, player_id="p1",
+                              players=[{"seat": 0, "player_id": "p1", "name": "Al",
+                                        "rating": 1500.0, "games": 4, "connected": True},
+                                       {"seat": 1, "player_id": "p2", "name": "Bo",
+                                        "rating": 1480.0, "games": 9, "connected": True}])
+    game = Game("Warband elimination", backend="mock", resolution=(1280, 800), theme=build_theme(),
+                save_dir=tmp_path / "saves")
+    try:
+        scene = new_game(3, settings=dict(DEFAULT_SETTINGS, tutorial=False, music=0, sfx=0))
+        scene.session = session
+        game.push(scene)
+        game.tick(0.1)
+        game.push(NetworkResultScene(scene, False))
+        game.tick(0.1)
+        assert "You are out — the others fight on" in texts(game)
+        assert "Watch" in buttons(game)
+        scene.world.winner = 1
+        session.result = {"match_id": "m1", "winner": 1,
+                          "ratings": [{"player_id": "p1", "name": "Al", "before": 1500.0, "after": 1489.5,
+                                       "delta": -10.5, "games": 5, "wins": 3, "losses": 2}]}
+        game.tick(0.1)
+        body = texts(game)
+        assert "Defeat — Bo prevails" in body
+        assert "Rated: 1500 → 1489.5 (-10.5) over 5 games." in body
+        assert "Watch" not in buttons(game)
+    finally:
+        game.close()

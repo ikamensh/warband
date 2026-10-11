@@ -17,11 +17,10 @@ from warband.ui.view import check_memory
 
 GAME_ID = "warband-v2"
 ROOM_SEATS = (2, 3, 4)
-INVITE_PATH = "/join/warband-v2/"
 IDENTITY_FILE = "online-identity.json"
 
 
-IDENTITY_DEFAULTS = {"tokens": {}, "player_ids": {}, "profiles": {}, "results": {}}
+IDENTITY_DEFAULTS = {"tokens": {}, "profiles": {}}
 
 
 def _default_endpoint() -> str:
@@ -31,7 +30,7 @@ def _default_endpoint() -> str:
 
 
 def _identity_store(game) -> Settings:
-    """This computer's private online record: per-endpoint tokens, ids and the cached own profile.
+    """This computer's private online record: per-endpoint server tokens and the cached own profile.
 
     A damaged record is preserved as a recovery file and started fresh; callers surface
     :func:`identity_notice` once so the player hears about it.  The private seat never
@@ -116,14 +115,12 @@ def format_rating(value, *, signed: bool = False) -> str:
     ``1500`` and ``1500.0`` read ``1500``; ``+16.0`` reads ``+16``; ``+10.666`` reads
     ``+10.7``.  Engine deltas are floats, including fractional free-for-all shares, so
     every rating shown passes through here rather than an integer format."""
-    if isinstance(value, bool):
-        return str(value)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"a rating is a number, not {type(value).__name__}")
     if isinstance(value, float) and value != int(value):
         text = f"{value:.1f}"
-    elif isinstance(value, (int, float)):
-        text = str(int(value))
     else:
-        text = str(value)
+        text = str(int(value))
     if signed and not text.startswith(("+", "-")):
         text = "+" + text
     return text
@@ -143,31 +140,29 @@ def rated_grace_clause(session) -> str:
 
 
 def refresh_online_identity(game, session) -> None:
-    """Save the latest own server token, id, profile and result into the endpoint identity record.
+    """Save the latest own server token and profile into the endpoint identity record.
 
     The lobby and ``NetworkGameScene`` polling call this on change only, so the setup rating
     card stays current when returning from a match without writing the file every poll.
-    Only the server's own data is stored; the offline profile is never substituted."""
+    Only the token and the profile are cached: the id already lives in the profile and
+    the result only ever lives on the session.  The offline profile is never substituted."""
     endpoint = session.endpoint or ""
     if not endpoint:
         return
     token = session.player_token
-    player_id = session.player_id
-    profile, result = session_profile(session), session_result(session)
+    profile = session_profile(session)
     store = _identity_store(game)
     changed = False
-    for field, value in (("tokens", token), ("player_ids", player_id)):
-        if isinstance(value, str) and value and dict(store[field]).get(endpoint) != value:
-            mapping = dict(store[field])
-            mapping[endpoint] = value
-            store[field] = mapping
-            changed = True
-    for field, value in (("profiles", profile), ("results", result)):
-        if isinstance(value, dict) and store[field].get(endpoint) != value:
-            mapping = dict(store[field])
-            mapping[endpoint] = value
-            store[field] = mapping
-            changed = True
+    if isinstance(token, str) and token and dict(store["tokens"]).get(endpoint) != token:
+        tokens = dict(store["tokens"])
+        tokens[endpoint] = token
+        store["tokens"] = tokens
+        changed = True
+    if isinstance(profile, dict) and store["profiles"].get(endpoint) != profile:
+        profiles = dict(store["profiles"])
+        profiles[endpoint] = profile
+        store["profiles"] = profiles
+        changed = True
     if changed:
         store.save()
 
@@ -183,8 +178,6 @@ class MatchSetupMenu(MatchMenu):
     seat count is chosen, opening multiplayer always works, on valid room defaults.
     Create and join send identity, ``rated`` and the shared faction choice; rejoin
     sends the stored identity only."""
-
-    controls = {"escape": "leave", "tab": "next_field", "return": "join"}
 
     def __init__(self, settings=None) -> None:
         self.settings = settings
@@ -546,8 +539,7 @@ class WarbandLobby(MatchLobby):
         super().update(dt)
         if not _is_online(self.session):
             return
-        seen = (self.session.player_token, self.session.player_id,
-                repr(session_profile(self.session)), repr(session_result(self.session)))
+        seen = (self.session.player_token, repr(session_profile(self.session)))
         if seen != self._identity_saved:
             self._identity_saved = seen
             refresh_online_identity(self.game, self.session)
@@ -708,8 +700,7 @@ class NetworkGameScene(GameScene):
         poll would churn."""
         if not _is_online(self.session):
             return
-        seen = (self.session.player_token, self.session.player_id, repr(session_profile(self.session)),
-                repr(session_result(self.session)))
+        seen = (self.session.player_token, repr(session_profile(self.session)))
         if seen != self._identity_saved:
             self._identity_saved = seen
             refresh_online_identity(self.game, self.session)
@@ -902,10 +893,23 @@ class NetworkResultScene(NetworkMenuScene):
         self.won = won
 
     def on_enter(self):
+        self._decided = self.game_scene.world.winner
+        self._build_panel()
+
+    def update(self, dt):
+        super().update(dt)
+        # An eliminated seat watches on while the others fight: when the match decides under
+        # this same overlay, rebuild once — title, receipt and actions — instead of going stale.
+        if self._decided is not self.game_scene.world.winner:
+            self._decided = self.game_scene.world.winner
+            self._build_panel()
+
+    def _build_panel(self):
         scene = self.game_scene
         decided = scene.world.winner is not None
         title = ("Victory!" if self.won else f"Defeat — {self._winner_name(scene)} prevails" if decided
                  else "You are out — the others fight on")
+        self.ui.clear()
         panel = self.panel(title)
         stats = scene.stats
         panel.add(Label(f"{_clock(scene.world.time)} played · {stats['units_killed']} kills · "
