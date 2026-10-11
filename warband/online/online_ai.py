@@ -16,7 +16,12 @@ then rejoins its reserved seat with the in-memory room code and resume token
 player, the tick before and after, and its own entity ids as continuity
 evidence. ``--require-completion`` turns a duration end with no declared
 winner into a failure. The final ``finished`` event carries the winner the
-server declared.
+server declared. ``--rated`` creates a ranked room, ``--race`` picks the
+seat's race for create or join, and ``--player-name``/``--identity-file``
+give the seat a durable private identity (one token per endpoint, mode
+0600); all four need an identity-capable engine, and a rated ``finished``
+event carries the server's result receipt with the public player id and
+rating profile.
 
 Output is JSON Lines. ``order_submitted`` means queued for the server;
 ``authoritative_state`` reports what the server actually accepted and simulated.
@@ -29,10 +34,14 @@ from __future__ import annotations
 import argparse
 from collections import Counter, deque
 from enum import Enum
+import inspect
 import json
 import math
+import os
 import random
+import tempfile
 import time
+from pathlib import Path
 from typing import Callable
 
 from saga2d import CommandError
@@ -40,7 +49,7 @@ from saga2d.online import OnlineClient, server_endpoint
 from warband.brains.ai import make_brain
 from warband.online.authority import GROUP_ORDERS, ORDERS
 from warband.sim.model import World, tile_center
-from warband.sim.rules import Difficulty, MapTheme
+from warband.sim.rules import Difficulty, MapTheme, Race
 
 POLL_INTERVAL = 0.05
 ORDER_INTERVAL = 0.08  # At most 12.5 orders/s, below the public server's 20/s allowance.
@@ -118,6 +127,81 @@ def _print_event(event):
     print(json.dumps(event, separators=(",", ":"), allow_nan=False), flush=True)
 
 
+IDENTITY_VERSION = 1
+
+
+def _identity_engine():
+    """Whether the installed OnlineClient speaks identity and rated rooms."""
+    try:
+        parameters = inspect.signature(OnlineClient.__init__).parameters
+    except (TypeError, ValueError):
+        return False
+    return "player_token" in parameters
+
+
+def _load_identity(path, endpoint):
+    """The player token kept for *endpoint*, or ``""`` when none was kept.
+
+    The file holds ``{"version": 1, "endpoints": {endpoint: {"player_token": token}}}``
+    and nothing else; a missing file means no identity yet, while an unreadable or
+    misshapen one fails clearly so a broken credential store never silently degrades
+    into a fresh account.
+    """
+    if path is None:
+        return ""
+    try:
+        with open(os.path.expanduser(path), encoding="utf-8") as handle:
+            data = json.load(handle)
+    except FileNotFoundError:
+        return ""
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Cannot read identity file {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"Identity file {path} holds no per-endpoint token store.")
+    endpoints = data.get("endpoints", {})
+    if not isinstance(endpoints, dict):
+        raise ValueError(f"Identity file {path} holds no per-endpoint token store.")
+    entry = endpoints.get(endpoint, {})
+    if not isinstance(entry, dict) or not isinstance(entry.get("player_token", ""), str):
+        raise ValueError(f"Identity file {path} holds no text token for {endpoint}.")
+    return entry.get("player_token", "")
+
+
+def _store_identity(path, endpoint, token):
+    """Persist *token* for *endpoint* atomically with mode 0600; never prints it.
+
+    Other endpoints already in the file are kept; a misshapen file fails instead of
+    being overwritten, so one bad write cannot destroy the surviving identities.
+    """
+    target = Path(os.path.expanduser(path))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(target, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except FileNotFoundError:
+        data = {}
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Cannot read identity file {path}: {exc}") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("endpoints", {}), dict):
+        raise ValueError(f"Identity file {path} holds no per-endpoint token store.")
+    data.setdefault("version", IDENTITY_VERSION)
+    data.setdefault("endpoints", {})[endpoint] = {"player_token": token}
+    fd, tmp = tempfile.mkstemp(dir=str(target.parent), prefix=target.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, separators=(",", ":"), sort_keys=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _own_ids(client):
     """The bot seat's own unit and building ids in its latest authoritative state (public, own fields only)."""
     if client.state is None:
@@ -131,6 +215,7 @@ def _own_ids(client):
 def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=None,
             duration=None, wait_timeout=900.0, report_every=5.0,
             reconnect_after=None, disconnect_for=2.0, require_completion=False,
+            rated=False, player_name=None, identity_file=None, race=None,
             emit: Callable[[dict], None] = _print_event) -> dict:
     """Play the assigned online seat until victory or the wall-clock duration ends.
 
@@ -144,17 +229,47 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
     brain itself is kept: it plans afresh on every authoritative snapshot, so
     the post-rejoin snapshot simply drives its next pass. ``require_completion``
     turns a duration end with no server-declared winner into a failure.
+    ``rated`` creates a ranked room, ``player_name`` names the seat,
+    ``identity_file`` keeps one private player token per endpoint (mode 0600),
+    and ``race`` picks the seat's race through player options; any of these
+    needs an identity-capable engine and fails clearly without one. With none of
+    them the client is constructed exactly as before, so ordinary rooms are
+    untouched. A rated ``finished`` event carries the server's result receipt
+    plus the seat's public player id and rating profile; tokens never appear.
     """
     for name, value in (("duration", duration), ("wait_timeout", wait_timeout), ("report_every", report_every),
                         ("reconnect_after", reconnect_after), ("disconnect_for", disconnect_for)):
         if value is not None and (not math.isfinite(value) or value <= 0):
             raise ValueError(f"{name} must be positive and finite.")
+    if type(rated) is not bool:
+        raise ValueError("rated must be true or false.")
+    if player_name is not None and (not isinstance(player_name, str) or not player_name.strip()):
+        raise ValueError("player_name must be non-empty text.")
+    if race is not None and race not in {item.value for item in Race}:
+        raise ValueError(f"race must be one of {[item.value for item in Race]}.")
+    wants_identity = bool(rated or player_name is not None or identity_file is not None or race is not None)
+    if wants_identity and not _identity_engine():
+        raise CommandError("Ranked rooms, player names, identity files and race choices need an online "
+                           "engine with identity support; the installed engine has none.")
     started = waiting_since = time.monotonic()
     deadline = math.inf if duration is None else started + duration
-    client = OnlineClient("warband-v2", endpoint=endpoint, room=room, options=options)
+    endpoint_key = endpoint or server_endpoint()
+    stored_token = _load_identity(identity_file, endpoint_key) if identity_file else ""
+    identity_kwargs = {}
+    if wants_identity:
+        if stored_token:
+            identity_kwargs["player_token"] = stored_token
+        if player_name is not None:
+            identity_kwargs["player_name"] = player_name
+        if rated:
+            identity_kwargs["rated"] = True
+        if race is not None:
+            identity_kwargs["player_options"] = {"race": race}
+    client = OnlineClient("warband-v2", endpoint=endpoint, room=room, options=options, **identity_kwargs)
     brain = rng = None
-    announced = ever_ready = last_ready = False
-    first_ready_at = reconnected = awaiting_rejoin = False
+    announced = ever_ready = last_ready = conn_waiting = False
+    first_ready_at = None
+    reconnected = awaiting_rejoin = False
     reconnected_player = -1
     before_tick = 0
     before_units: list = []
@@ -169,13 +284,28 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
         while True:
             client.poll()
             now = time.monotonic()
-            if client.closed or (client.error and not client.ready):
+            if client.closed:
                 raise ConnectionError(client.error or "The online connection closed.")
-            if client.error:
+            if client.error and client.ready:
                 emit({"event": "order_rejected", "error": client.error, "revision": client.revision})
                 client.error = ""
                 pending.clear()
+            elif client.error:
+                # The link dropped but the seat is reserved: the client retries on its own,
+                # so report the wait once and keep waiting for it (bounded below by
+                # wait_timeout and duration) instead of killing a recoverable seat.
+                if not conn_waiting:
+                    emit({"event": "connection_wait", "player": client.player, "tick": last_tick,
+                          "error": client.error, "revision": client.revision})
+                    conn_waiting = True
+                client.error = ""
+                pending.clear()
             if client.resume_token and not announced:
+                if identity_file:
+                    minted = getattr(client, "player_token", "")
+                    if minted and minted != stored_token:
+                        _store_identity(identity_file, endpoint_key, minted)
+                        stored_token = minted
                 emit({"event": "joined" if room else "created", "room": client.room,
                       "player": client.player, "difficulty": difficulty.value})
                 announced = True
@@ -183,7 +313,8 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
                 emit({"event": "match_ready" if client.ready else "match_paused", "revision": client.revision})
                 if client.ready:
                     ever_ready = True
-                    if not first_ready_at:
+                    conn_waiting = False
+                    if first_ready_at is None:
                         first_ready_at = now
                 else:
                     waiting_since = now
@@ -219,7 +350,8 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
                 reason = "duration"
                 break
             if (reconnect_after is not None and not reconnected and ever_ready and client.ready
-                    and client.state is not None and now - first_ready_at >= reconnect_after):
+                    and client.state is not None and first_ready_at is not None
+                    and now - first_ready_at >= reconnect_after):
                 if not client.resume_token:
                     raise ConnectionError("Cannot rejoin the reserved seat without a resume token.")
                 reconnected_player = client.player
@@ -228,12 +360,27 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
                 emit({"event": "disconnected", "player": client.player, "revision": client.revision,
                       "tick": last_tick, "units": before_units, "buildings": before_buildings})
                 resume_room, resume_token = client.room, client.resume_token
+                resume_identity = dict(identity_kwargs)
+                live_token = getattr(client, "player_token", "")
+                if live_token or stored_token:
+                    resume_identity["player_token"] = live_token or stored_token
                 pending.clear()
                 client.close()
+                remaining = max(0.0, deadline - time.monotonic())
+                if disconnect_for > remaining:
+                    # No time left to play a rejoined seat: hold the absence to the
+                    # duration and end the run there instead of opening a
+                    # connection it cannot use.
+                    time.sleep(remaining)
+                    if require_completion:
+                        raise TimeoutError("Bot duration expired before the server declared a winner.")
+                    reason = "duration"
+                    break
                 time.sleep(disconnect_for)
-                # The seat stays reserved on the server; rejoin it as any player client would.
-                # (Ordinary construction only: rated/identity arguments arrive with the new engine.)
-                client = OnlineClient("warband-v2", endpoint=endpoint, room=resume_room, resume_token=resume_token)
+                # The seat stays reserved on the server; rejoin it as any player client would,
+                # carrying the same identity and name.
+                client = OnlineClient("warband-v2", endpoint=endpoint, room=resume_room, resume_token=resume_token,
+                                      **resume_identity)
                 pending.clear()
                 reconnected = True
                 awaiting_rejoin = True
@@ -258,11 +405,20 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
                       "revision": client.revision, "tick": last_tick, "command": command})
                 next_order = now + ORDER_INTERVAL
             time.sleep(min(POLL_INTERVAL, max(0.0, deadline - time.monotonic())))
-        emit(_state_evidence(client))
+        if client.state is not None:
+            emit(_state_evidence(client))
         result = {"event": "finished", "reason": reason, "room": client.room, "player": client.player,
                   "elapsed": round(time.monotonic() - started, 3), "tick": last_tick, "winner": winner,
                   "states_received": states, "orders_submitted": submitted,
                   "reconnected": bool(reconnected)}
+        if getattr(client, "rated", False):
+            # A rated room's receipt comes from the server alone; the seat's public
+            # player id and rating profile ride with it, and no token ever does.
+            result["player_id"] = getattr(client, "player_id", "")
+            if getattr(client, "rating", None) is not None:
+                result["profile"] = client.rating
+            result["match_id"] = getattr(client, "match_id", "")
+            result["result"] = getattr(client, "result", None)
         emit(result)
         return result
     finally:
@@ -277,6 +433,15 @@ def main(argv=None) -> int:
     mode.add_argument("--create", action="store_true", help="create a room, play seat zero and immediately print its code")
     parser.add_argument("--seats", type=int, choices=(2, 3, 4), default=2,
                         help="seats in a created room, so a joining bot takes whatever seat is free (default: 2)")
+    parser.add_argument("--rated", action="store_true",
+                        help="create a ranked room (needs a ranked-capable server; joining inherits the room's mode)")
+    parser.add_argument("--player-name", default=None,
+                        help="public name for this seat (needs an identity-capable engine)")
+    parser.add_argument("--identity-file", default=None,
+                        help="private JSON file keeping one player token per endpoint, mode 0600 "
+                             "(needs an identity-capable engine; the bot mints its own identity)")
+    parser.add_argument("--race", choices=[item.value for item in Race], default=None,
+                        help="play this race through player options, for create or join (needs engine support)")
     parser.add_argument("--difficulty", choices=[item.value for item in Difficulty], default="medium")
     parser.add_argument("--duration", type=float, help="maximum wall-clock seconds including the lobby; default runs until victory")
     parser.add_argument("--wait-timeout", type=float, default=900, help="maximum seconds waiting for a partner (default: 900)")
@@ -294,13 +459,16 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if args.room and args.seats != 2:
         parser.error("--seats sets the size of a created room and is ignored when joining one")
+    if args.room and args.rated:
+        parser.error("--rated creates a ranked room; joining inherits the room's mode")
     try:
         run_bot(endpoint=args.server, room=args.room, difficulty=Difficulty(args.difficulty),
                 options={"seed": args.seed, "width": args.width, "height": args.height, "theme": args.theme,
                          "players": args.seats},
                 duration=args.duration, wait_timeout=args.wait_timeout, report_every=args.report_every,
                 reconnect_after=args.reconnect_after, disconnect_for=args.disconnect_for,
-                require_completion=args.require_completion)
+                require_completion=args.require_completion, rated=args.rated, player_name=args.player_name,
+                identity_file=args.identity_file, race=args.race)
     except (CommandError, ConnectionError, TimeoutError, ValueError) as exc:
         _print_event({"event": "error", "error": str(exc)})
         return 1

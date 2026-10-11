@@ -10,17 +10,26 @@ import json
 import os
 from pathlib import Path
 import random
+import socket
+import stat
 import subprocess
 import sys
 import threading
+import time
+from urllib.parse import urlparse
 
 import pytest
 from websockets.sync.client import connect
 
+from saga2d import CommandError
+
 from saga2d.testing.online import command, first_stdout_line, handshake, receive, server_fixture
 from warband.brains.ai import make_brain
 from warband.online.authority import ORDERS, WarbandMatch
-from warband.online.online_ai import _PlanningWorld, main, run_bot
+from warband.online.online_ai import _identity_engine, _load_identity, _PlanningWorld, _store_identity, main, run_bot
+
+_NEEDS_LEGACY_ENGINE = pytest.mark.skipif(
+    _identity_engine(), reason="an identity-capable engine constructs these instead of refusing")
 from warband.records import replay
 from warband.sim.model import tile_center
 from warband.sim.rules import BuildingType, Difficulty, UnitType
@@ -211,6 +220,102 @@ def test_bot_disconnects_once_and_rejoins_its_reserved_seat(server_url):
         assert evidence[-1]["reconnected"] is True
 
 
+def test_identity_file_roundtrip_is_private_per_endpoint(tmp_path):
+    """A stored token loads back for its endpoint only, from a mode 0600 file (fast: no server)."""
+    path = str(tmp_path / "identity.json")
+    _store_identity(path, "ws://one:1", "token-one")
+    _store_identity(path, "ws://two:2", "token-two")
+    assert _load_identity(path, "ws://one:1") == "token-one"
+    assert _load_identity(path, "ws://two:2") == "token-two"
+    assert _load_identity(path, "ws://missing:9") == ""
+    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+
+
+def test_identity_store_narrows_wide_permissions(tmp_path):
+    """A pre-existing world-readable store comes back mode 0600 on write (fast: no server)."""
+    path = tmp_path / "identity.json"
+    path.write_text('{"version": 1, "endpoints": {}}')
+    path.chmod(0o644)
+    _store_identity(str(path), "ws://one:1", "token-one")
+    assert _load_identity(str(path), "ws://one:1") == "token-one"
+    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+
+
+def test_missing_identity_file_means_no_identity_yet(tmp_path):
+    """A bot with no stored identity simply starts without one (fast: no server)."""
+    assert _load_identity(str(tmp_path / "absent.json"), "ws://one:1") == ""
+
+
+@pytest.mark.parametrize("content", ["not json", "[1, 2]", '{"endpoints": 7}', '{"endpoints": {"ws://one:1": 7}}'])
+def test_misshapen_identity_file_fails_clearly(tmp_path, content):
+    """A broken credential store names its path instead of degrading silently (fast: no server)."""
+    path = tmp_path / "identity.json"
+    path.write_text(content)
+    with pytest.raises(ValueError, match="identity"):
+        _load_identity(str(path), "ws://one:1")
+
+
+@pytest.mark.parametrize("content", ["not json", "[1, 2]", '{"endpoints": 7}'])
+def test_unmergeable_identity_file_refuses_storage(tmp_path, content):
+    """A store that cannot be merged is never overwritten (fast: no server)."""
+    path = tmp_path / "identity.json"
+    path.write_text(content)
+    with pytest.raises(ValueError, match="identity"):
+        _store_identity(str(path), "ws://one:1", "token-new")
+
+
+def test_identity_store_heals_one_bad_entry_and_keeps_the_rest(tmp_path):
+    """Storing replaces only its own endpoint entry, preserving the rest (fast: no server)."""
+    path = tmp_path / "identity.json"
+    path.write_text('{"version": 1, "endpoints": {"ws://one:1": 7, "ws://two:2": {"player_token": "token-two"}}}')
+    _store_identity(str(path), "ws://one:1", "token-new")
+    assert _load_identity(str(path), "ws://one:1") == "token-new"
+    assert _load_identity(str(path), "ws://two:2") == "token-two"
+
+
+def test_version_only_identity_file_is_an_empty_store(tmp_path):
+    """A version-only file loads empty and accepts its first identity (fast: no server)."""
+    path = tmp_path / "identity.json"
+    path.write_text('{"version": 1}')
+    assert _load_identity(str(path), "ws://one:1") == ""
+    _store_identity(str(path), "ws://one:1", "token-one")
+    assert _load_identity(str(path), "ws://one:1") == "token-one"
+
+
+@_NEEDS_LEGACY_ENGINE
+@pytest.mark.parametrize("kwargs", [
+    {"rated": True}, {"player_name": "Commander"}, {"identity_file": "ident.json"}, {"race": "orc"},
+])
+def test_identity_flags_demand_an_identity_capable_engine(kwargs):
+    """Ranked rooms, names, identity files and race choices fail clearly on an engine without them.
+
+    The installed engine predates identity support, so the demand fails before connecting
+    (fast: no server); on an identity-capable engine these flags construct the new client.
+    """
+    with pytest.raises(CommandError, match="identity"):
+        run_bot(endpoint="ws://127.0.0.1:1/", room="never", duration=0.5,
+                emit=lambda event: None, **kwargs)
+
+
+@pytest.mark.parametrize("kwargs, error", [
+    ({"rated": "yes"}, "rated must be true or false"),
+    ({"player_name": "  "}, "player_name must be non-empty text"),
+    ({"race": "gnome"}, "race must be one of"),
+])
+def test_identity_arguments_are_validated_before_connecting(kwargs, error):
+    """Malformed ranked/identity arguments are refused before any connection (fast: no server)."""
+    with pytest.raises(ValueError, match=error):
+        run_bot(endpoint="ws://127.0.0.1:1/", room="never", emit=lambda event: None, **kwargs)
+
+
+def test_rated_with_room_is_a_usage_error(capsys):
+    """--rated creates a ranked room, so joining one with it fails before connecting (fast: no server)."""
+    with pytest.raises(SystemExit) as exc:
+        main(["--room", "code", "--rated"])
+    assert exc.value.code == 2
+    assert "--rated creates a ranked room" in capsys.readouterr().err
+
+
 def _handshake_seats(socket, kind, seats, *, game, **fields):
     """Shake hands declaring room-size support: the shared helper speaks for 2-seat clients only."""
     socket.send(json.dumps({"type": kind, "protocol": 1, "game": game, "seats": seats, **fields}))
@@ -288,6 +393,277 @@ def test_creator_seats_option_sizes_the_room(server_url):
         if process.poll() is None:
             process.terminate()
         process.communicate(timeout=5)
+
+
+@pytest.mark.slow
+def test_bot_survives_a_transient_link_drop(server_url):
+    """A severed link mid-match is a wait, not a death: the client retries and play continues.
+
+    A raw TCP proxy carries the bot's traffic and severs it once shortly after the join; a real
+    bot subprocess must report connection_wait, resume the same seat through its automatic
+    retry and play to the duration end: the slow tier."""
+    target = urlparse(server_url)
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(8)
+    listener.settimeout(0.5)
+    proxy_url = f"ws://127.0.0.1:{listener.getsockname()[1]}"
+    stop = threading.Event()
+    pairs = []
+    pairs_lock = threading.Lock()
+
+    def pump(source, dest):
+        try:
+            while not stop.is_set():
+                chunk = source.recv(65536)
+                if not chunk:
+                    break
+                dest.sendall(chunk)
+        except OSError:
+            pass
+
+    def serve():
+        while not stop.is_set():
+            try:
+                downstream, _ = listener.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            try:
+                upstream = socket.create_connection((target.hostname, target.port))
+            except OSError:
+                downstream.close()
+                continue
+            with pairs_lock:
+                pairs.append((downstream, upstream))
+            threading.Thread(target=pump, args=(downstream, upstream), daemon=True).start()
+            threading.Thread(target=pump, args=(upstream, downstream), daemon=True).start()
+
+    def sever():
+        with pairs_lock:
+            dropped, pairs[:] = list(pairs), []
+        for downstream, upstream in dropped:
+            for sock in (downstream, upstream):
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                sock.close()
+
+    def drain(human, stop, errors):
+        try:
+            while not stop.is_set():
+                try:
+                    human.recv(timeout=2)
+                except TimeoutError:
+                    continue
+        except Exception as exc:  # anything else is a real failure, reported below, never swallowed
+            errors.append(exc)
+
+    serve_thread = threading.Thread(target=serve, daemon=True)
+    serve_thread.start()
+    try:
+        with connect(server_url, proxy=None) as human:
+            welcome = handshake(human, game="warband-v2", options={"seed": 3, "width": 48, "height": 40})
+            stop_human = threading.Event()
+            errors = []
+            reader = threading.Thread(target=drain, args=(human, stop_human, errors), daemon=True)
+            reader.start()
+            try:
+                process = subprocess.Popen(
+                    [sys.executable, "-m", "warband.online.online_ai", "--server", proxy_url,
+                     "--room", welcome["room"], "--difficulty", "hard",
+                     "--duration", "24", "--report-every", "0.25"],
+                    cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    text=True, env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
+                )
+                try:
+                    joined = json.loads(first_stdout_line(process, timeout=10))
+                    assert joined["event"] == "joined" and joined["player"] == 1
+                    time.sleep(1.5)
+                    sever()
+                    assert process.wait(timeout=45) == 0, process.stderr.read()
+                    out = process.stdout.read()
+                finally:
+                    if process.poll() is None:
+                        process.terminate()
+                    process.communicate(timeout=5)
+            finally:
+                stop_human.set()
+                reader.join(timeout=5)
+            if errors:
+                raise errors[0]
+    finally:
+        stop.set()
+        listener.close()
+    evidence = [joined] + [json.loads(line) for line in out.splitlines()]
+    waits = [row for row in evidence if row["event"] == "connection_wait"]
+    assert len(waits) == 1 and waits[0]["player"] == 1, "the drop was reported once, never fatal"
+    wait_at = evidence.index(waits[0])
+    assert any(row["event"] == "match_ready" for row in evidence[wait_at + 1:]), "the seat recovered"
+    assert any(row["event"] == "order_submitted" for row in evidence[wait_at + 1:]), \
+        "the bot kept giving brain orders after the recovery"
+    states = [row for row in evidence if row["event"] == "authoritative_state"]
+    assert states[-1]["tick"] > waits[0]["tick"], "authoritative state advanced after the recovery"
+    assert all(row.get("player", 1) == 1 for row in evidence), "the retry kept the same seat"
+    assert evidence[-1]["event"] == "finished" and evidence[-1]["reason"] == "duration"
+    assert "resume_token" not in out and welcome["resume_token"] not in out
+
+
+@pytest.mark.slow
+def test_deliberate_disconnect_is_bounded_by_duration(server_url):
+    """A disconnect longer than the remaining duration ends on time with no rejoin.
+
+    The run has no time left to play a rejoined seat, so it holds the absence to the
+    duration and ends there instead of opening a connection it cannot use. A real bot
+    subprocess schedules its drop near the duration end with a far longer absence:
+    the slow tier."""
+    with connect(server_url, proxy=None) as human:
+        welcome = handshake(human, game="warband-v2", options={"seed": 3, "width": 48, "height": 40})
+        start = time.monotonic()
+        result = subprocess.run(
+            [sys.executable, "-m", "warband.online.online_ai", "--server", server_url,
+             "--room", welcome["room"], "--difficulty", "hard", "--duration", "6",
+             "--report-every", "0.25", "--reconnect-after", "4", "--disconnect-for", "30"],
+            cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=60,
+            env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
+        )
+        elapsed = time.monotonic() - start
+        assert result.returncode == 0, result.stderr + result.stdout
+        evidence = [json.loads(line) for line in result.stdout.splitlines()]
+        assert any(row["event"] == "disconnected" for row in evidence)
+        assert not any(row["event"] == "rejoined" for row in evidence)
+        assert evidence[-1]["event"] == "finished" and evidence[-1]["reason"] == "duration"
+        assert evidence[-1]["reconnected"] is False
+        assert elapsed < 20, f"the absence slipped past the duration: {elapsed:.1f}s"
+        assert "resume_token" not in result.stdout and welcome["resume_token"] not in result.stdout
+
+
+_NEEDS_IDENTITY_ENGINE = pytest.mark.skipif(
+    not _identity_engine(), reason="rated rooms need an identity-capable engine and server")
+
+
+def _create_and_concede(server_url, bot_args):
+    """Launch a creator bot, join over the wire, wait for ready, resign, return evidence.
+
+    Returns (evidence, out, ready_state): the bot's full JSON lines, its raw stdout, and the
+    wire peer's first ready state. The surrender ends the match at once, deciding it.
+    """
+    process = subprocess.Popen(
+        [sys.executable, "-m", "warband.online.online_ai", "--server", server_url, *bot_args],
+        cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
+    )
+    try:
+        announced = json.loads(first_stdout_line(process, timeout=10))
+        assert announced["event"] == "created" and announced["player"] == 0
+        with connect(server_url, proxy=None) as peer:
+            assert handshake(peer, "join", game="warband-v2", room=announced["room"])["player"] == 1
+            for _ in range(20):
+                if json.loads(first_stdout_line(process, timeout=10))["event"] == "match_ready":
+                    break
+            else:
+                pytest.fail("the match never went ready")
+            ready_state = receive(peer, predicate=lambda message: message["ready"])
+            command(peer, {"action": "resign", "args": [1], "kwargs": {}})
+            assert process.wait(timeout=25) == 0, process.stderr.read()
+            out = process.stdout.read()
+    finally:
+        if process.poll() is None:
+            process.terminate()
+        process.communicate(timeout=5)
+    return [json.loads(line) for line in out.splitlines()], out, ready_state
+
+
+@_NEEDS_IDENTITY_ENGINE
+@pytest.mark.slow
+def test_rated_create_settles_receipt_and_reuses_identity(server_url, tmp_path):
+    """A rated bot mints a private identity, takes the server's receipt, and returns as itself.
+
+    A real --rated creator subprocess plays a real rated room to a wire surrender, then a
+    second run with the same identity file proves the same player returns, casually: the
+    slow tier."""
+    identity = str(tmp_path / "identity.json")
+    base = ["--create", "--difficulty", "hard", "--duration", "30", "--report-every", "0.25",
+            "--width", "48", "--height", "40"]
+    evidence, out, ready_state = _create_and_concede(
+        server_url, [*base, "--rated", "--race", "orc", "--player-name", "BotOne",
+                     "--identity-file", identity])
+    assert ready_state["state"]["world"]["players"][0]["race"] == "orc", "the seat plays its chosen race"
+    finished = evidence[-1]
+    assert finished["event"] == "finished" and finished["reason"] == "winner" and finished["winner"] == 0
+    token = _load_identity(identity, server_url)
+    assert token, "the bot minted and kept its own identity"
+    assert stat.S_IMODE(os.stat(identity).st_mode) == 0o600
+    for secret in ("resume_token", "player_token", token):
+        assert secret not in out, "no credential ever reaches the JSON lines"
+    assert finished["player_id"] and finished["match_id"]
+    profile = finished["profile"]
+    assert (profile["player_id"], profile["name"], profile["games"], profile["wins"]) == \
+        (finished["player_id"], "BotOne", 1, 1)
+    receipt = finished["result"]
+    assert receipt["match_id"] == finished["match_id"] and receipt["winner"] == 0
+    ratings = {entry["player_id"]: entry for entry in receipt["ratings"]}
+    assert len(ratings) == 2
+    for entry in ratings.values():
+        assert {key for key in ("player_id", "name", "before", "after", "delta", "games", "wins", "losses")} \
+            <= set(entry)
+    assert ratings[finished["player_id"]]["delta"] > 0
+    assert sum(entry["delta"] for entry in ratings.values()) == 0, "exchanged points sum to zero"
+
+    casual, casual_out, reunion_state = _create_and_concede(server_url, [*base, "--identity-file", identity])
+    reunion = casual[-1]
+    assert reunion["event"] == "finished" and reunion["reason"] == "winner"
+    assert "player_id" not in reunion and "result" not in reunion and "profile" not in reunion, \
+        "a casual run carries no rated receipt"
+    seats = {entry["seat"]: entry["player_id"] for entry in reunion_state["players"] if entry}
+    assert seats[0] == finished["player_id"], "the same account returns, not a new one"
+    assert _load_identity(identity, server_url) == token
+    assert token not in casual_out and "player_token" not in casual_out
+
+
+@_NEEDS_IDENTITY_ENGINE
+@pytest.mark.slow
+def test_join_rated_room_with_own_race(server_url, tmp_path):
+    """Joining a rated room without --rated still rates the seat, with its own race.
+
+    A wire peer creates the rated room; a real bot subprocess joins it casually with a race
+    choice, and the wire surrender settles a receipt for the joiner: the slow tier."""
+    identity = str(tmp_path / "identity.json")
+    with connect(server_url, proxy=None) as peer:
+        welcome = _handshake_seats(peer, "create", 2, game="warband-v2", rated=True,
+                                   options={"seed": 3, "width": 48, "height": 40})
+        assert welcome["rated"] and welcome["player"] == 0
+        process = subprocess.Popen(
+            [sys.executable, "-m", "warband.online.online_ai", "--server", server_url,
+             "--room", welcome["room"], "--race", "dwarf", "--player-name", "BotTwo",
+             "--identity-file", identity, "--difficulty", "hard",
+             "--duration", "30", "--report-every", "0.25"],
+            cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
+        )
+        try:
+            joined = json.loads(first_stdout_line(process, timeout=10))
+            assert joined["event"] == "joined" and joined["player"] == 1
+            ready_state = receive(peer, predicate=lambda message: message["ready"])
+            assert ready_state["state"]["world"]["players"][1]["race"] == "dwarf"
+            command(peer, {"action": "resign", "args": [0], "kwargs": {}})
+            assert process.wait(timeout=25) == 0, process.stderr.read()
+            out = process.stdout.read()
+        finally:
+            if process.poll() is None:
+                process.terminate()
+            process.communicate(timeout=5)
+    evidence = [joined] + [json.loads(line) for line in out.splitlines()]
+    finished = evidence[-1]
+    assert finished["event"] == "finished" and finished["reason"] == "winner" and finished["winner"] == 1
+    assert finished["player_id"] and finished["result"]["winner"] == 1
+    assert finished["profile"]["name"] == "BotTwo"
+    token = _load_identity(identity, server_url)
+    assert token and stat.S_IMODE(os.stat(identity).st_mode) == 0o600
+    for secret in ("resume_token", "player_token", token):
+        assert secret not in out, "no credential ever reaches the JSON lines"
 
 
 @pytest.mark.slow
