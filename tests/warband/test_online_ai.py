@@ -51,28 +51,51 @@ class _DrainedProcess:
         self._seen = 0
         self.stdout_lines = []
         self.stderr_lines = []
+        self.stdout_error = None
+        self.stderr_error = None
         self._pumps = [
-            threading.Thread(target=self._pump, args=(self.process.stdout, self.stdout_lines), daemon=True),
-            threading.Thread(target=self._pump, args=(self.process.stderr, self.stderr_lines), daemon=True),
+            threading.Thread(target=self._pump, args=(self.process.stdout, self.stdout_lines, "stdout"),
+                             daemon=True),
+            threading.Thread(target=self._pump, args=(self.process.stderr, self.stderr_lines, "stderr"),
+                             daemon=True),
         ]
         for pump in self._pumps:
             pump.start()
 
-    def _pump(self, stream, lines):
+    def _pump(self, stream, lines, name):
+        error = None
         try:
             for line in stream:
                 with self._lock:
                     lines.append(line)
                     self._lock.notify_all()
+        except Exception as exc:  # a dead reader fails the test; it never vanishes into a daemon warning
+            error = exc
         finally:
+            stream.close()
             with self._lock:
+                if name == "stdout":
+                    self.stdout_error = self.stdout_error or error
+                else:
+                    self.stderr_error = self.stderr_error or error
                 self._lock.notify_all()
+
+    def _raise_pump_errors(self):
+        error = self.stdout_error or self.stderr_error
+        if error is not None:
+            raise error
+
+    def _drained(self):
+        return self.process.poll() is not None and not any(pump.is_alive() for pump in self._pumps)
 
     def next_stdout_line(self, timeout):
         """The oldest unread stdout line, waiting up to timeout seconds for it."""
         deadline = time.monotonic() + timeout
         with self._lock:
             while self._seen >= len(self.stdout_lines):
+                self._raise_pump_errors()
+                if self._drained():
+                    raise AssertionError("the bot ended without producing the expected stdout line")
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise AssertionError("the bot produced no further stdout line")
@@ -88,16 +111,19 @@ class _DrainedProcess:
     def _join_pumps(self):
         for pump in self._pumps:
             pump.join(timeout=5)
+            assert not pump.is_alive(), "a pipe reader outlived the process it drains"
 
     def stdout_text(self):
         """Every stdout row, including lines already consumed incrementally."""
         self._join_pumps()
         with self._lock:
+            self._raise_pump_errors()
             return "".join(self.stdout_lines)
 
     def stderr_text(self):
         self._join_pumps()
         with self._lock:
+            self._raise_pump_errors()
             return "".join(self.stderr_lines)
 
     def stop(self):
@@ -124,27 +150,55 @@ def test_wait_before_drain_stalls_a_chatty_child():
     """Waiting on a child before draining its pipes stalls once output exceeds the pipe buffer.
 
     Megabytes on both streams fill any OS pipe, so the old wait-then-read pattern never
-    finishes while the two-pump harness completes with every byte intact. A real child
-    process and real pipes, no server: the slow tier for the ten-second stall demonstration.
+    finishes while the two-pump harness completes with every byte intact. The ready line
+    proves the child is past startup and mid-write, so a short stall still proves blockage.
+    A real child process and real pipes, no server: the slow tier.
     """
     script = ("import sys;"
+              "print('ready', flush=True);"
               "sys.stdout.write('o' * 5_000_000); sys.stdout.flush();"
               "sys.stderr.write('e' * 5_000_000); sys.stderr.flush()")
     argv = [sys.executable, "-c", script]
     stalled = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
+        assert stalled.stdout.readline() == "ready\n"
         with pytest.raises(subprocess.TimeoutExpired):
-            stalled.wait(timeout=10)
+            stalled.wait(timeout=3)
     finally:
         stalled.kill()
         stalled.communicate()
     drained = _DrainedProcess(argv)
     try:
+        assert drained.next_stdout_line(10) == "ready\n"
         assert drained.wait(timeout=30) == 0
     finally:
         drained.stop()
-    assert drained.stdout_text() == "o" * 5_000_000
+    assert drained.stdout_text() == "ready\n" + "o" * 5_000_000
     assert drained.stderr_text() == "e" * 5_000_000
+
+
+@pytest.mark.slow
+def test_dead_reader_surfaces_instead_of_partial_output():
+    """A failed pipe reader raises instead of returning a truncated transcript.
+
+    Yanking the owned stdout handle out from under its pump makes the next read fail
+    with the real OS error on every route, never with a silently short transcript.
+    A real child process and a real failed read, no server: the slow tier.
+    """
+    script = ("import sys, time;"
+              "print('ready', flush=True);"
+              "sys.stdout.write('o' * 5_000_000); sys.stdout.flush();"
+              "time.sleep(30)")
+    drained = _DrainedProcess([sys.executable, "-c", script])
+    try:
+        assert drained.next_stdout_line(10) == "ready\n"
+        drained.process.stdout.close()
+        with pytest.raises(ValueError, match="[Cc]losed"):
+            drained.next_stdout_line(10)
+        with pytest.raises(ValueError, match="[Cc]losed"):
+            drained.stdout_text()
+    finally:
+        drained.stop()
 
 
 @pytest.mark.source_only("brains plan on a stand-in for a World; online_ai runs as a program of its own, on the source")

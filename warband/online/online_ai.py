@@ -166,8 +166,9 @@ def _load_identity(path, endpoint):
 def _store_identity(path, endpoint, token):
     """Persist *token* for *endpoint* atomically with mode 0600; never prints it.
 
-    The chmod is best-effort privacy: POSIX keeps 0600, while Windows has no POSIX
-    permission semantics, so there the file relies on the profile directory alone.
+    On POSIX a chmod failure raises instead of passing silently; Windows has no POSIX
+    permission semantics, so there the file inherits its containing directory's ACLs,
+    wherever the --identity-file path points.
 
     Reads share the strict validation, so an invalid store fails before anything is written
     and a failed write leaves every byte; other endpoints in a valid store are preserved.
