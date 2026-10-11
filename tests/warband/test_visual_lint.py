@@ -244,7 +244,7 @@ def test_every_unit_pose_fits_the_unit_canvas() -> None:
                     assert reach + textures.PAD <= textures.DROP_UNIT, (race, unit_type, carrying, frame, reach)
 
 
-SCREENS = ("title", "library", "multiplayer_setup", "multiplayer_lan", "warband_lobby", "warband_lobby_error",
+SCREENS = ("title", "library", "multiplayer_setup", "multiplayer_lan", "warband_lobby", "warband_lobby_error", "network_result_rated", "network_result_ffa_final",
            "new_game_elf", "new_game_orc", "new_game_master", "select_peasant", "select_conditions", "pending_salvage", "select_town_hall", "select_army", "select_60_units", "select_60_archers", "town_at_work", "menu_build_hover", "menu_train_hover",
            "select_mage_tower_chosen", "spell_aim", "spell_bar_nine", "select_summoned",
            "menu_build_at_start", "menu_train_at_start", "menu_upgrade_researched", "menu_upgrade_all_done", "plans", "plan_row", "cancel_mode", "cancel_box",

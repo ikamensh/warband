@@ -412,6 +412,66 @@ def warband_lobby_error(game: Game) -> None:
     ticks(game)
 
 
+def _result_session(**kwargs):
+    """A finished online session's public metadata with an authoritative receipt, without any network.
+
+    Real GameScene world underneath; the session carries only the public contract
+    (endpoint, room, roster, rated flag, result) — never tokens or secrets."""
+    from types import SimpleNamespace
+
+    session = SimpleNamespace(online=True, game_id="warband-v2",
+                              endpoint="wss://lint.invalid/play", room="AB12",
+                              rated=True, rated_grace=60, player_id="p1",
+                              result={"match_id": "m1", "winner": 1,
+                                      "ratings": [{"player_id": "p1", "name": "Al", "before": 1500.0, "after": 1489.5,
+                                                   "delta": -10.5, "games": 5, "wins": 3, "losses": 2}]},
+                              players=[{"seat": 0, "player_id": "p1", "name": "Al",
+                                        "rating": 1500.0, "games": 4, "connected": True},
+                                       {"seat": 1, "player_id": "p2", "name": "Bo",
+                                        "rating": 1489.5, "games": 6, "connected": True}])
+    for key, value in kwargs.items():
+        setattr(session, key, value)
+    return session
+
+
+def _push_result(game: Game, session, *, players: int = 2, winner: int = 1) -> None:
+    """A real match scene carrying *session*, with its finished network result overlay open."""
+    from warband.ui.multiplayer import NetworkResultScene
+    from warband.ui.scene import DEFAULT_SETTINGS, new_game
+
+    scene = new_game(3, players=players, settings=dict(DEFAULT_SETTINGS, tutorial=False, music=0, sfx=0))
+    scene.session = session
+    game.push(scene)
+    ticks(game)
+    scene.world.winner = winner
+    # A decided online match already finished through the network path, so mark the
+    # scene finished exactly as NetworkGameScene._finish would: this keeps the static
+    # offline GameOverScene from firing over the explicitly pushed online overlay.
+    scene._game_over = True
+    game.push(NetworkResultScene(scene, False))
+    ticks(game)
+
+
+@screen
+def network_result_rated(game: Game) -> None:
+    """A rated defeat with the server's fractional receipt: concise before/after/delta."""
+    _push_result(game, _result_session())
+
+
+@screen
+def network_result_ffa_final(game: Game) -> None:
+    """The final free-for-all after elimination: this seat out, the victor named, fractional receipt."""
+    _push_result(game, _result_session(
+        result={"match_id": "m2", "winner": 2,
+                "ratings": [{"player_id": "p1", "name": "Al", "before": 1500.0, "after": 1496.5,
+                             "delta": -3.5, "games": 6, "wins": 3, "losses": 3}]},
+        players=[{"seat": 0, "player_id": "p1", "name": "Al", "rating": 1500.0, "games": 5, "connected": True},
+                 {"seat": 1, "player_id": "p2", "name": "Bo", "rating": 1489.5, "games": 6, "connected": True},
+                 {"seat": 2, "player_id": "p3", "name": "Cy", "rating": 1520.0, "games": 8, "connected": True},
+                 {"seat": 3, "player_id": "p4", "name": "De", "rating": 1470.0, "games": 7, "connected": True}]),
+        players=4, winner=2)
+
+
 @screen
 def match_start(game: Game) -> None:
     match(game)
