@@ -230,6 +230,22 @@ the match. When a battle reaches
 **Victory!** or **Defeat**, choose **Back to title**. For a rematch, create a
 new room and share its new code.
 
+## Check whether the server is up
+
+Before blaming your connection, ask the server how busy it is — no game
+starts, no window opens:
+
+```bash
+warband --server-info              # the usual server, readable lines
+warband --server-info --json       # the same answer as JSON, for scripts
+warband --server-info --server wss://example.com/play --timeout 5
+```
+
+A live server names its players, its ready and total rooms, its capacity and
+how long it keeps rooms. Anything else exits nonzero with the reason on
+standard error: an unreachable server, a refusal, or an answer that is not
+the server's status.
+
 ## If something goes wrong
 
 | What you see | What to do |

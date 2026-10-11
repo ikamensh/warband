@@ -6,6 +6,8 @@ title and starts that map directly, so a seed reproduces a match in one step.
 ``--campaign`` opens the campaign screen; ``--mission ID`` starts that
 mission straight away, with the saved progress's choices, skipping the
 briefing (for looking at one mission; ``--mission list`` names them).
+``--server-info`` asks the room server how busy it is and exits, without
+choosing the simulation or opening a window.
 
 The simulation runs compiled (:func:`warband.league.fastsim.activate_for_game`),
 about ten times faster: a checkout compiles it on the first launch after its
@@ -27,6 +29,11 @@ ICON = Path(__file__).parent / "assets" / "icon.png"  # what the Dock, the taskb
 
 
 def main() -> None:
+    if server_info_requested(sys.argv[1:]):
+        from warband.online import server_info  # headless: no simulation, window, fonts, art, audio or UI
+
+        server_info.run(sys.argv[1:])
+        return
     if not answered_by_the_parser(sys.argv[1:]):
         fastsim.activate_for_game()  # before anything imports the simulation: whatever does from here on gets the compiled one
     from saga2d import Game, add_match_arguments, fonts, match_from_arguments
@@ -53,8 +60,18 @@ def main() -> None:
     parser.add_argument("--campaign", action="store_true", help="open the campaign screen")
     parser.add_argument("--mission", metavar="ID", help="start this campaign mission directly (or 'list')")
     parser.add_argument("--selftest", metavar="PNG", help="start a match in a hidden window, save one frame to PNG and exit (for packaged builds)")
+    parser.add_argument("--server-info", action="store_true", help="ask the room server how busy it is and exit (answered before the game starts)")
+    parser.add_argument("--json", action="store_true", help="print --server-info as JSON")
+    parser.add_argument("--timeout", metavar="SECONDS", type=float, default=None, help="seconds to wait for --server-info")
     add_match_arguments(parser)
     args = parser.parse_args()
+    if args.server_info:  # only via an abbreviation: the flag itself is answered before anything compiles
+        from warband.online import server_info
+
+        server_info.run(sys.argv[1:])
+        return
+    if args.json or args.timeout is not None:
+        parser.error("--json and --timeout need --server-info")
     if args.mission == "list":
         from warband.story.missions import CAMPAIGN
 
@@ -106,12 +123,27 @@ def main() -> None:
                             layout=layout, settings=settings, magic=args.magic))
 
 
+def server_info_requested(argv: list[str]) -> bool:
+    """Whether *argv* carries a server-info flag, answered without the simulation or a window.
+
+    ``--server-info`` (and its malformed extensions, refused clearly), ``--json``
+    and ``--timeout`` all route to the info parser before anything compiles: alone
+    the latter two are mistakes to refuse, not a match to play.  ``--server`` on
+    its own stays a match's endpoint override and plays as before."""
+    for token in argv:
+        word = token.split("=", 1)[0]
+        if word.startswith("--server-info") or word in ("--json", "--timeout"):
+            return True
+    return False
+
+
 def answered_by_the_parser(argv: list[str]) -> bool:
     """Whether *argv* asks for ``--help`` or ``--version``, which the parser answers and exits on (or refuses with the
     usage line): nothing then runs the simulation, which only builds the parser from the source.
 
     A checkout compiles the simulation on its first launch after its sources change, a minute on a Mac and eight on a
-    busy CI runner, which ``--version`` once waited for.  A prefix the parser would expand (``--vers``) counts too."""
+    busy CI runner, which ``--version`` once waited for.  A prefix the parser would expand (``--vers``) counts too.
+    ``--server-info`` answers its own way, but likewise never chooses the simulation."""
     asks = argparse.ArgumentParser(add_help=False, exit_on_error=False)
     asks.add_argument("-h", "--help", action="store_true")
     asks.add_argument("--version", action="store_true")
@@ -119,7 +151,7 @@ def answered_by_the_parser(argv: list[str]) -> bool:
         known = asks.parse_known_args(argv)[0]
     except argparse.ArgumentError:  # --help=x: the parser refuses it with the whole usage line
         return True
-    return known.help or known.version
+    return known.help or known.version or server_info_requested(argv)
 
 
 def lobby_options(args: argparse.Namespace) -> dict[str, Any]:
