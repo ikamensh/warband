@@ -19,7 +19,7 @@ pytestmark = pytest.mark.slow
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools/ci_package.py"
 ONLINE = ("create_join", "authoritative_movement", "foreign_order_rejected", "private_seat_rejoin",
-          "global_production", "automatic_plan_builder", "cancel_plans", "assembly_point")
+          "ranked_identity", "global_production", "automatic_plan_builder", "cancel_plans", "assembly_point")
 
 
 def write_json(path, value):
