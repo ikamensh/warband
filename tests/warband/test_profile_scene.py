@@ -36,20 +36,31 @@ def result(run_id: str, outcome: str, difficulty: Difficulty, when: str) -> Matc
 
 
 def test_the_title_shows_who_is_playing_and_how_they_stand(game):
+    from warband.ui.title import LibraryScene
+
     profile = Profile.load(game.data_dir)
     profile.rename("Ilya")
     game.push(TitleScene())
     game.tick(1 / 60)
-    assert "Ilya" in texts(game) and "Rating 1000 ± 350 · provisional" in texts(game)
-    assert any(t.startswith("No rated matches yet") for t in texts(game))
+    assert "Ilya" in texts(game)
+    assert any("No online matches yet" in t for t in texts(game))
+    assert "Skirmish record and saves live in the Library." in texts(game)
+    press(game, "y")
+    assert isinstance(game.scene, LibraryScene)
+    shown = texts(game)
+    assert "Ilya" in shown and "Skirmish rating 1000 ± 350" in shown and "provisional" in shown
+    assert any(t.startswith("No rated matches yet") for t in shown)
     profile.record(result("a", "victory", Difficulty.HARD, "2026-09-10"))
     profile.record(result("b", "defeat", Difficulty.MASTER, "2026-09-11"))
     game.clear_and_push(TitleScene())
     game.tick(1 / 60)
+    press(game, "y")
+    assert isinstance(game.scene, LibraryScene)
     shown = texts(game)
+    assert "Ilya" in shown
     assert "1 victory · 1 defeat · 0 left early" in shown
     assert any("Defeat · Master · 2 players · 2026-09-11" in t for t in shown)
-    assert any(t.startswith(f"Rating {round(profile.rating.value)} ±") for t in shown)
+    assert any(t.startswith(f"Skirmish rating {round(profile.rating.value)} ±") for t in shown)
 
 
 def test_the_profile_screen_lists_the_matches_and_leads_to_a_replay(game):

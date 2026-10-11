@@ -301,7 +301,7 @@ def test_title_opens_a_usable_host_join_form(tmp_path):
         game.tick(1/30)
         assert isinstance(game.scene, MatchMenu)
         assert game.scene.mode == 'online'
-        lan = next(button for button in game.scene.ui.walk() if getattr(button, 'text', None) == 'LAN')
+        lan = next(button for button in game.scene.ui.walk() if getattr(button, 'text', None) == 'LAN · advanced')
         x, y, w, h = lan.bounds
         game.backend.inject_click(x + w / 2, y + h / 2)
         game.tick(1/30)

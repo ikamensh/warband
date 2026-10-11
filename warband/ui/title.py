@@ -60,7 +60,7 @@ class TitleScene(Scene):
     background_color = (8, 10, 14, 255)
     controls = {"n": "new_game", ("m", "return"): "multiplayer", "a": "campaign", "y": "library",
                 "c": "continue_game", "l": "load_game", "p": "profile_screen", "b": "high_scores",
-                "h": "how_to_play", "q": "quit"}
+                "h": "how_to_play", "f2": "codex", "q": "quit"}
 
     def __init__(self, *, size: str = "Medium", players: int = 2, difficulty: Difficulty = Difficulty.MEDIUM, theme: MapTheme = MapTheme.SUMMER,
                  race: Race = Race.HUMAN, layout: Layout | None = None, settings: dict[str, Any] | None = None, magic: bool = False) -> None:

@@ -519,13 +519,22 @@ def test_every_map_edge_can_be_scrolled_clear_of_the_hud(play) -> None:
 
 
 def test_title_new_game_flow_with_hotkeys(game) -> None:
+    from saga2d import Button
+
+    def click(label: str) -> None:
+        button = next(b for b in game.scene.ui.walk() if isinstance(b, Button) and b.text == label)
+        x, y, width, height = button.bounds
+        game.backend.inject_click(x + width / 2, y + height / 2)
+        game.backend.inject_release(x + width / 2, y + height / 2)
+        game.tick(1 / 60)
+
     game.push(TitleScene())
     game.tick(1 / 60)
     assert "WARBAND" in texts(game)
     press(game, "n")
     assert isinstance(game.scene, NewGameScene)
-    press(game, "s")
-    press(game, "3")
+    click("Small")
+    click("3")
     press(game, "return")
     scene = game.scene
     assert isinstance(scene, GameScene)
