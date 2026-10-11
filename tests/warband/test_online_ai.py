@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 import pytest
 from websockets.sync.client import connect
 
-from saga2d.testing.online import command, first_stdout_line, handshake, receive, server_fixture
+from saga2d.testing.online import command, handshake, receive, server_fixture
 from warband.brains.ai import make_brain
 from warband.online.authority import ORDERS, WarbandMatch
 from warband.online.online_ai import _load_identity, _PlanningWorld, _store_identity, main, run_bot
@@ -30,6 +30,121 @@ from warband.sim.model import tile_center
 from warband.sim.rules import BuildingType, Difficulty, UnitType
 
 server_url = server_fixture('warband.online.authority:ONLINE')
+
+
+class _DrainedProcess:
+    """A subprocess with both pipes pumped on threads from birth.
+
+    Windows anonymous pipes are small: a bot reporting every 0.25 s fills an undrained
+    pipe in under a second and then blocks forever, and an unread stderr does the same on
+    any traceback. One pump thread owns each stream from spawn, so wait() can never
+    deadlock on output; tests read announcement lines incrementally off the collected
+    stdout buffer while the pumps keep every row.
+    """
+
+    def __init__(self, argv):
+        self.process = subprocess.Popen(
+            argv, cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
+        )
+        self._lock = threading.Condition()
+        self._seen = 0
+        self.stdout_lines = []
+        self.stderr_lines = []
+        self._pumps = [
+            threading.Thread(target=self._pump, args=(self.process.stdout, self.stdout_lines), daemon=True),
+            threading.Thread(target=self._pump, args=(self.process.stderr, self.stderr_lines), daemon=True),
+        ]
+        for pump in self._pumps:
+            pump.start()
+
+    def _pump(self, stream, lines):
+        try:
+            for line in stream:
+                with self._lock:
+                    lines.append(line)
+                    self._lock.notify_all()
+        finally:
+            with self._lock:
+                self._lock.notify_all()
+
+    def next_stdout_line(self, timeout):
+        """The oldest unread stdout line, waiting up to timeout seconds for it."""
+        deadline = time.monotonic() + timeout
+        with self._lock:
+            while self._seen >= len(self.stdout_lines):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise AssertionError("the bot produced no further stdout line")
+                self._lock.wait(timeout=remaining)
+            line = self.stdout_lines[self._seen]
+            self._seen += 1
+            return line
+
+    def wait(self, timeout):
+        """wait() cannot deadlock on output: both pipes drain on their threads throughout."""
+        return self.process.wait(timeout=timeout)
+
+    def _join_pumps(self):
+        for pump in self._pumps:
+            pump.join(timeout=5)
+
+    def stdout_text(self):
+        """Every stdout row, including lines already consumed incrementally."""
+        self._join_pumps()
+        with self._lock:
+            return "".join(self.stdout_lines)
+
+    def stderr_text(self):
+        self._join_pumps()
+        with self._lock:
+            return "".join(self.stderr_lines)
+
+    def stop(self):
+        """Terminate a still-running process and reap it without touching the owned pipes."""
+        if self.process.poll() is None:
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(timeout=5)
+        self._join_pumps()
+
+
+def _assert_private_mode(path):
+    """The store is mode 0600 where the platform has POSIX permission semantics."""
+    if os.name != "posix":
+        return  # Windows chmod has no POSIX permission semantics; nothing to claim there
+    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+
+
+@pytest.mark.slow
+def test_wait_before_drain_stalls_a_chatty_child():
+    """Waiting on a child before draining its pipes stalls once output exceeds the pipe buffer.
+
+    Megabytes on both streams fill any OS pipe, so the old wait-then-read pattern never
+    finishes while the two-pump harness completes with every byte intact. A real child
+    process and real pipes, no server: the slow tier for the ten-second stall demonstration.
+    """
+    script = ("import sys;"
+              "sys.stdout.write('o' * 5_000_000); sys.stdout.flush();"
+              "sys.stderr.write('e' * 5_000_000); sys.stderr.flush()")
+    argv = [sys.executable, "-c", script]
+    stalled = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            stalled.wait(timeout=10)
+    finally:
+        stalled.kill()
+        stalled.communicate()
+    drained = _DrainedProcess(argv)
+    try:
+        assert drained.wait(timeout=30) == 0
+    finally:
+        drained.stop()
+    assert drained.stdout_text() == "o" * 5_000_000
+    assert drained.stderr_text() == "e" * 5_000_000
 
 
 @pytest.mark.source_only("brains plan on a stand-in for a World; online_ai runs as a program of its own, on the source")
@@ -121,28 +236,25 @@ def test_headless_creator_announces_a_room_before_a_human_joins(server_url):
     """The remote bot can create seat zero and waits without advancing the lobby world.
 
     The headless client waits in a real lobby for seconds: the slow tier."""
-    process = subprocess.Popen(
+    bot = _DrainedProcess(
         [sys.executable, "-m", "warband.online.online_ai", "--server", server_url, "--create",
          "--difficulty", "hard", "--width", "48", "--height", "40", "--duration", "2"],
-        cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
     try:
-        announced = json.loads(first_stdout_line(process, timeout=5))
+        announced = json.loads(bot.next_stdout_line(5))
         assert announced["event"] == "created" and announced["player"] == 0
         with connect(server_url, proxy=None) as human:
             joined = handshake(human, "join", game="warband-v2", room=announced["room"])
             assert joined["player"] == 1
             state = receive(human, predicate=lambda message: message["state"]["world"]["tick"] >= 22)
             assert not any(unit["player"] == 0 and unit["orders"] for unit in state["state"]["world"]["units"])  # WB-011
-            assert process.wait(timeout=6) == 0, process.stderr.read()
-        evidence = [json.loads(line) for line in process.stdout.read().splitlines()]
+            assert bot.wait(6) == 0, bot.stderr_text()
+        evidence = [json.loads(line) for line in bot.stdout_text().splitlines()]
         assert evidence[-1]["event"] == "finished" and evidence[-1]["player"] == 0
         assert any(row["order_counts"] for row in evidence if row["event"] == "authoritative_state"), "the bot never gave an order"
         assert "resume_token" not in json.dumps([announced, *evidence])
     finally:
-        if process.poll() is None:
-            process.terminate()
-        process.communicate(timeout=5)
+        bot.stop()
 
 
 @pytest.mark.parametrize("flag,value", [
@@ -223,7 +335,7 @@ def test_identity_file_roundtrip_is_private_per_endpoint(tmp_path):
     assert _load_identity(path, "ws://one:1") == "token-one"
     assert _load_identity(path, "ws://two:2") == "token-two"
     assert _load_identity(path, "ws://missing:9") == ""
-    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+    _assert_private_mode(path)
 
 
 def test_identity_store_narrows_wide_permissions(tmp_path):
@@ -233,7 +345,7 @@ def test_identity_store_narrows_wide_permissions(tmp_path):
     path.chmod(0o644)
     _store_identity(str(path), "ws://one:1", "token-one")
     assert _load_identity(str(path), "ws://one:1") == "token-one"
-    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+    _assert_private_mode(path)
 
 
 def test_missing_identity_file_means_no_identity_yet(tmp_path):
@@ -346,30 +458,26 @@ def test_creator_seats_option_sizes_the_room(server_url):
     """A --create --seats 3 room fills with two wire joiners and goes ready.
 
     A real creator subprocess plus two wire peers against a real server: the slow tier."""
-    process = subprocess.Popen(
+    bot = _DrainedProcess(
         [sys.executable, "-m", "warband.online.online_ai", "--server", server_url, "--create",
          "--seats", "3", "--difficulty", "hard", "--width", "64", "--height", "48",
          "--duration", "4", "--report-every", "0.25"],
-        cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-        env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
     )
     try:
-        announced = json.loads(first_stdout_line(process, timeout=10))
+        announced = json.loads(bot.next_stdout_line(10))
         assert announced["event"] == "created" and announced["player"] == 0
         with connect(server_url, proxy=None) as first, connect(server_url, proxy=None) as second:
             assert _handshake_seats(first, "join", 4, game="warband-v2", room=announced["room"])["player"] == 1
             assert _handshake_seats(second, "join", 4, game="warband-v2", room=announced["room"])["player"] == 2
             ready = receive(first, predicate=lambda message: message["ready"])
             assert ready["state"]["world"]["tick"] >= 0
-            assert process.wait(timeout=10) == 0, process.stderr.read()
-        evidence = [json.loads(line) for line in process.stdout.read().splitlines()]
+            assert bot.wait(10) == 0, bot.stderr_text()
+        evidence = [json.loads(line) for line in bot.stdout_text().splitlines()]
         assert evidence[-1]["event"] == "finished" and evidence[-1]["player"] == 0
         assert any(row["event"] == "match_ready" for row in evidence)
         assert "resume_token" not in json.dumps(evidence)
     finally:
-        if process.poll() is None:
-            process.terminate()
-        process.communicate(timeout=5)
+        bot.stop()
 
 
 @pytest.mark.slow
@@ -448,24 +556,20 @@ def test_bot_survives_a_transient_link_drop(server_url):
             reader = threading.Thread(target=drain, args=(human, stop_human, errors), daemon=True)
             reader.start()
             try:
-                process = subprocess.Popen(
+                bot = _DrainedProcess(
                     [sys.executable, "-m", "warband.online.online_ai", "--server", proxy_url,
                      "--room", welcome["room"], "--difficulty", "hard",
                      "--duration", "24", "--report-every", "0.25"],
-                    cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                    text=True, env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
                 )
                 try:
-                    joined = json.loads(first_stdout_line(process, timeout=10))
+                    joined = json.loads(bot.next_stdout_line(10))
                     assert joined["event"] == "joined" and joined["player"] == 1
                     time.sleep(1.5)
                     sever()
-                    assert process.wait(timeout=45) == 0, process.stderr.read()
-                    out = process.stdout.read()
+                    assert bot.wait(45) == 0, bot.stderr_text()
+                    out = bot.stdout_text()
                 finally:
-                    if process.poll() is None:
-                        process.terminate()
-                    process.communicate(timeout=5)
+                    bot.stop()
             finally:
                 stop_human.set()
                 reader.join(timeout=5)
@@ -474,7 +578,8 @@ def test_bot_survives_a_transient_link_drop(server_url):
     finally:
         stop.set()
         listener.close()
-    evidence = [joined] + [json.loads(line) for line in out.splitlines()]
+    evidence = [json.loads(line) for line in out.splitlines()]
+    assert evidence[0]["event"] == "joined" and evidence[0]["player"] == 1
     waits = [row for row in evidence if row["event"] == "connection_wait"]
     assert len(waits) == 1 and waits[0]["player"] == 1, "the drop was reported once, never fatal"
     wait_at = evidence.index(waits[0])
@@ -523,29 +628,25 @@ def _create_and_concede(server_url, bot_args):
     Returns (evidence, out, ready_state): the bot's full JSON lines, its raw stdout, and the
     wire peer's first ready state. The surrender ends the match at once, deciding it.
     """
-    process = subprocess.Popen(
+    bot = _DrainedProcess(
         [sys.executable, "-m", "warband.online.online_ai", "--server", server_url, *bot_args],
-        cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-        env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
     )
     try:
-        announced = json.loads(first_stdout_line(process, timeout=10))
+        announced = json.loads(bot.next_stdout_line(10))
         assert announced["event"] == "created" and announced["player"] == 0
         with connect(server_url, proxy=None) as peer:
             assert handshake(peer, "join", game="warband-v2", room=announced["room"])["player"] == 1
             for _ in range(20):
-                if json.loads(first_stdout_line(process, timeout=10))["event"] == "match_ready":
+                if json.loads(bot.next_stdout_line(10))["event"] == "match_ready":
                     break
             else:
                 pytest.fail("the match never went ready")
             ready_state = receive(peer, predicate=lambda message: message["ready"])
             command(peer, {"action": "resign", "args": [1], "kwargs": {}})
-            assert process.wait(timeout=25) == 0, process.stderr.read()
-            out = process.stdout.read()
+            assert bot.wait(25) == 0, bot.stderr_text()
+            out = bot.stdout_text()
     finally:
-        if process.poll() is None:
-            process.terminate()
-        process.communicate(timeout=5)
+        bot.stop()
     return [json.loads(line) for line in out.splitlines()], out, ready_state
 
 
@@ -567,7 +668,7 @@ def test_rated_create_settles_receipt_and_reuses_identity(server_url, tmp_path):
     assert finished["event"] == "finished" and finished["reason"] == "winner" and finished["winner"] == 0
     token = _load_identity(identity, server_url)
     assert token, "the bot minted and kept its own identity"
-    assert stat.S_IMODE(os.stat(identity).st_mode) == 0o600
+    _assert_private_mode(identity)
     for secret in ("resume_token", "player_token", token):
         assert secret not in out, "no credential ever reaches the JSON lines"
     assert finished["player_id"] and finished["match_id"]
@@ -606,33 +707,31 @@ def test_join_rated_room_with_own_race(server_url, tmp_path):
         welcome = _handshake_seats(peer, "create", 2, game="warband-v2", rated=True,
                                    options={"seed": 3, "width": 48, "height": 40})
         assert welcome["rated"] and welcome["player"] == 0
-        process = subprocess.Popen(
+        bot = _DrainedProcess(
             [sys.executable, "-m", "warband.online.online_ai", "--server", server_url,
              "--room", welcome["room"], "--race", "dwarf", "--player-name", "BotTwo",
              "--identity-file", identity, "--difficulty", "hard",
              "--duration", "30", "--report-every", "0.25"],
-            cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-            env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
         )
         try:
-            joined = json.loads(first_stdout_line(process, timeout=10))
+            joined = json.loads(bot.next_stdout_line(10))
             assert joined["event"] == "joined" and joined["player"] == 1
             ready_state = receive(peer, predicate=lambda message: message["ready"])
             assert ready_state["state"]["world"]["players"][1]["race"] == "dwarf"
             command(peer, {"action": "resign", "args": [0], "kwargs": {}})
-            assert process.wait(timeout=25) == 0, process.stderr.read()
-            out = process.stdout.read()
+            assert bot.wait(25) == 0, bot.stderr_text()
+            out = bot.stdout_text()
         finally:
-            if process.poll() is None:
-                process.terminate()
-            process.communicate(timeout=5)
-    evidence = [joined] + [json.loads(line) for line in out.splitlines()]
+            bot.stop()
+    evidence = [json.loads(line) for line in out.splitlines()]
+    assert evidence[0]["event"] == "joined" and evidence[0]["player"] == 1
     finished = evidence[-1]
     assert finished["event"] == "finished" and finished["reason"] == "winner" and finished["winner"] == 1
     assert finished["player_id"] and finished["result"]["winner"] == 1
     assert finished["profile"]["name"] == "BotTwo"
     token = _load_identity(identity, server_url)
-    assert token and stat.S_IMODE(os.stat(identity).st_mode) == 0o600
+    assert token
+    _assert_private_mode(identity)
     for secret in ("resume_token", "player_token", token):
         assert secret not in out, "no credential ever reaches the JSON lines"
 
@@ -645,13 +744,11 @@ def test_rated_rejoin_keeps_identity_and_seat(server_url, tmp_path):
     against a real server; the token file is stable and the undecided finish still names
     the rated seat without any receipt: the slow tier."""
     identity = str(tmp_path / "identity.json")
-    process = subprocess.Popen(
+    bot = _DrainedProcess(
         [sys.executable, "-m", "warband.online.online_ai", "--server", server_url, "--create",
          "--rated", "--player-name", "BotZero", "--identity-file", identity,
          "--difficulty", "hard", "--width", "48", "--height", "40",
          "--duration", "9", "--report-every", "0.25", "--reconnect-after", "1", "--disconnect-for", "1"],
-        cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-        env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
     )
     def drain(peer, stop, errors):
         try:
@@ -664,7 +761,7 @@ def test_rated_rejoin_keeps_identity_and_seat(server_url, tmp_path):
             errors.append(exc)
 
     try:
-        announced = json.loads(first_stdout_line(process, timeout=10))
+        announced = json.loads(bot.next_stdout_line(10))
         assert announced["event"] == "created" and announced["player"] == 0
         with connect(server_url, proxy=None) as peer:
             assert handshake(peer, "join", game="warband-v2", room=announced["room"])["player"] == 1
@@ -673,24 +770,23 @@ def test_rated_rejoin_keeps_identity_and_seat(server_url, tmp_path):
             reader = threading.Thread(target=drain, args=(peer, stop_peer, errors), daemon=True)
             reader.start()
             try:
-                assert process.wait(timeout=30) == 0, process.stderr.read()
-                out = process.stdout.read()
+                assert bot.wait(30) == 0, bot.stderr_text()
+                out = bot.stdout_text()
             finally:
                 stop_peer.set()
                 reader.join(timeout=5)
             if errors:
                 raise errors[0]
     finally:
-        if process.poll() is None:
-            process.terminate()
-        process.communicate(timeout=5)
+        bot.stop()
     evidence = [json.loads(line) for line in out.splitlines()]
     dropped = [row for row in evidence if row["event"] == "disconnected"]
     rejoined = [row for row in evidence if row["event"] == "rejoined"]
     assert len(dropped) == len(rejoined) == 1
     assert dropped[0]["player"] == rejoined[0]["player"] == 0
     token = _load_identity(identity, server_url)
-    assert token and stat.S_IMODE(os.stat(identity).st_mode) == 0o600
+    assert token
+    _assert_private_mode(identity)
     for secret in ("resume_token", "player_token", token):
         assert secret not in out, "no credential ever reaches the JSON lines"
     finished = evidence[-1]
@@ -728,28 +824,24 @@ def test_declared_winner_is_a_success_carrying_the_server_result(server_url):
     assert "resign" in ORDERS, "the surrender below must stay a valid authority order"
     with connect(server_url, proxy=None) as human:
         welcome = handshake(human, game="warband-v2", options={"seed": 3, "width": 48, "height": 40})
-        process = subprocess.Popen(
+        bot = _DrainedProcess(
             [sys.executable, "-m", "warband.online.online_ai", "--server", server_url,
              "--room", welcome["room"], "--difficulty", "hard",
              "--duration", "30", "--report-every", "0.25",
              "--require-completion", "--reconnect-after", "60"],
-            cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-            env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
         )
         try:
-            assert json.loads(first_stdout_line(process, timeout=10))["event"] == "joined"
+            assert json.loads(bot.next_stdout_line(10))["event"] == "joined"
             for _ in range(20):
-                if json.loads(first_stdout_line(process, timeout=10))["event"] == "match_ready":
+                if json.loads(bot.next_stdout_line(10))["event"] == "match_ready":
                     break
             else:
                 pytest.fail("the match never went ready")
             command(human, {"action": "resign", "args": [0], "kwargs": {}})
-            assert process.wait(timeout=20) == 0, process.stderr.read()
-            out = process.stdout.read()
+            assert bot.wait(20) == 0, bot.stderr_text()
+            out = bot.stdout_text()
         finally:
-            if process.poll() is None:
-                process.terminate()
-            process.communicate(timeout=5)
+            bot.stop()
         evidence = [json.loads(line) for line in out.splitlines()]
         assert evidence[-1]["event"] == "finished" and evidence[-1]["reason"] == "winner"
         assert evidence[-1]["winner"] == 1 and evidence[-1]["player"] == 1
