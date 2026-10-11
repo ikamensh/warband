@@ -360,6 +360,80 @@ def multiplayer_lan(game: Game) -> None:
     ticks(game)
 
 
+def click_button(game: Game, label: str) -> None:
+    """Click the top scene's button reading *label*, on either backend."""
+    from saga2d import Button
+
+    button = next(b for b in game.scene.ui.walk() if isinstance(b, Button) and b.text == label)
+    x, y, width, height = button.bounds
+    cx, cy = x + width / 2, y + height / 2
+    backend = game.backend
+    if hasattr(backend, "inject_click"):
+        backend.inject_click(cx, cy)
+        backend.inject_release(cx, cy)
+    else:
+        from pyglet.window import mouse
+
+        s, height = backend.scale_factor, game.resolution[1]
+        px, py = int(cx * s + backend.offset_x), int((height - cy) * s + backend.offset_y)
+        backend.window.dispatch_event("on_mouse_press", px, py, mouse.LEFT, 0)
+        backend.window.dispatch_event("on_mouse_release", px, py, mouse.LEFT, 0)
+    ticks(game)
+
+
+def _refused_identity_action(game: Game, action: str) -> None:
+    """Setup with a corrupt private identity record and a cached seat, after the
+    refused *action*: transport never constructs, the damaged bytes stay identical,
+    and the one concise account notice shows."""
+    import json
+
+    import saga2d.online as online_mod
+
+    game.data_dir.mkdir(parents=True, exist_ok=True)
+    record = game.data_dir / "online-identity.json"
+    record.write_text("{broken", encoding="utf-8")
+    (game.data_dir / "online-room.json").write_text(json.dumps(
+        {"game_id": "warband-v2", "endpoint": "wss://lint.invalid/play",
+         "room": "AB12", "resume_token": "saved-seat"}), encoding="utf-8")
+    before = record.read_bytes()
+
+    def spy(*args, **kwargs):
+        raise AssertionError("refused actions never construct transport")
+
+    real = online_mod.OnlineClient
+    online_mod.OnlineClient = spy
+    try:
+        game.push(TitleScene())
+        ticks(game)
+        game.scene.multiplayer()
+        ticks(game)
+        if action == "Join room":
+            game.backend.set_clipboard_text("AB12")
+            click_button(game, "Paste invite")
+        click_button(game, action)
+    finally:
+        online_mod.OnlineClient = real
+    assert record.read_bytes() == before, "refused actions never repair the damaged record"
+
+
+@screen
+def multiplayer_identity_create_refused(game: Game) -> None:
+    """A corrupt private record refuses Create on one concise notice that fits 1200×680."""
+    _refused_identity_action(game, "Create room")
+
+
+@screen
+def multiplayer_identity_join_refused(game: Game) -> None:
+    """A corrupt private record refuses Join on one concise notice that fits 1200×680."""
+    _refused_identity_action(game, "Join room")
+
+
+@screen
+def multiplayer_identity_rejoin_refused(game: Game) -> None:
+    """A corrupt private record refuses Rejoin on one concise notice that fits 1200×680."""
+    _refused_identity_action(game, "Rejoin last room · AB12")
+
+
 def _waiting_session(**kwargs):
     """A waiting online session with a rated roster, without any network."""
     from types import SimpleNamespace

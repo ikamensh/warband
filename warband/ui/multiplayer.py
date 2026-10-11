@@ -18,6 +18,8 @@ from warband.ui.view import check_memory
 GAME_ID = "warband-v2"
 ROOM_SEATS = (2, 3, 4)
 IDENTITY_FILE = "online-identity.json"
+IDENTITY_NOTICE = ("Online identity record damaged — the file is kept unchanged. "
+                   "Restore that record before connecting.")
 
 
 IDENTITY_DEFAULTS = {"tokens": {}, "profiles": {}}
@@ -49,8 +51,7 @@ def identity_notice(game) -> str:
     unchanged; restore that record before connecting."""
     probe = Settings(game.data_dir / IDENTITY_FILE, IDENTITY_DEFAULTS)
     if probe.error:
-        return ("Online identity record damaged — the file is kept unchanged. "
-                "Restore that record before connecting.")
+        return IDENTITY_NOTICE
     return ""
 
 
@@ -230,7 +231,10 @@ class MatchSetupMenu(MatchMenu):
         try:
             self._identity_notice = identity_notice(self.game)
             self._stored_profile = stored_online_profile(self.game)
-        except (SettingsError, OSError) as exc:
+        except SettingsError:
+            self._identity_notice = IDENTITY_NOTICE
+            self._stored_profile = None
+        except OSError as exc:
             self._identity_notice = f"Online identity unreadable: {exc}"
             self._stored_profile = None
 
@@ -345,9 +349,21 @@ class MatchSetupMenu(MatchMenu):
     # -- Transport: the base lifecycle, through the game-owned lobby ------------------
 
     # A damaged profile or identity record is already reported on the form; if either
-    # helper still fails here, its domain error lands in the message, never a crash —
-    # and no invented name or token is substituted.
+    # helper still fails here, account damage shows once as the concise notice while
+    # every other domain error lands in the message, never a crash — and no invented
+    # name or token is substituted.
     _TRANSPORT_ERRORS = (OSError, ValueError, SaveError, SettingsError)
+
+    def _surface_refusal(self, exc: Exception) -> None:
+        """Show a refused online action: account damage appears once as the concise
+        notice, so the panel cannot grow a second long error block; every other
+        failure keeps its full text in the message."""
+        if isinstance(exc, SettingsError):
+            self._identity_notice = IDENTITY_NOTICE
+            self._stored_profile = None
+            self.message = ""
+        else:
+            self.message = str(exc)
 
     def host(self):
         try:
@@ -362,7 +378,7 @@ class MatchSetupMenu(MatchMenu):
                                     address=("0.0.0.0", port), token=self.fields[2] or None)
                 self.fields[2] = session.token
         except self._TRANSPORT_ERRORS as exc:
-            self.message = str(exc)
+            self._surface_refusal(exc)
             return
         self.game.push(WarbandLobby(session, lambda connection: self.create_scene(connection, match), title=self.title))
 
@@ -379,7 +395,7 @@ class MatchSetupMenu(MatchMenu):
                     raise ValueError("Enter the host address and room code first.")
                 session = MatchClient(self.game_id, (self.fields[0], port), token=self.fields[2])
         except self._TRANSPORT_ERRORS as exc:
-            self.message = str(exc)
+            self._surface_refusal(exc)
             return
         self.game.push(WarbandLobby(session, lambda connection: self.create_scene(connection, None), title=self.title))
 
@@ -390,7 +406,7 @@ class MatchSetupMenu(MatchMenu):
             session = OnlineClient(self.game_id, endpoint=record["endpoint"], room=record["room"],
                                    resume_token=record["resume_token"], **self._online_kwargs(for_rejoin=True))
         except self._TRANSPORT_ERRORS as exc:
-            self.message = str(exc)
+            self._surface_refusal(exc)
             return
         self.game.push(WarbandLobby(session, lambda connection: self.create_scene(connection, None), title=self.title))
 
