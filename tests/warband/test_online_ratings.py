@@ -170,9 +170,10 @@ def test_casual_match_names_winner_but_rates_nothing():
             decided = receive(host, predicate=lambda message:
                               world_of(message, 0)['winner'] == 0)
             assert decided['result'] is None
-            resume = handshake(host, 'resume', game=GAME, room=welcome['room'],
-                               resume_token=welcome['resume_token'])
-            assert resume['rating']['games'] == 0
+            with connect(url, proxy=None) as back:
+                resume = handshake(back, 'resume', game=GAME, room=welcome['room'],
+                                   resume_token=welcome['resume_token'])
+                assert resume['rating']['games'] == 0
             assert guest_welcome['player_id'] != welcome['player_id']
 
 
