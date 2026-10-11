@@ -531,6 +531,53 @@ def test_lobby_falls_back_to_honest_counts_without_a_roster(tmp_path):
         game.close()
 
 
+@pytest.mark.slow
+@pytest.mark.parametrize("seats, who", [(2, "both"), (3, "all 3")])
+def test_host_share_line_updates_from_creating_to_waiting(server_url, tmp_path, monkeypatch, seats, who):
+    """A real hosted room replaces the creating line with the live share line.
+
+    An actual socket room, host only: the Create press is injected without
+    advancing time and the initial frame renders on tick(0), before the welcome
+    can arrive; then real polls deliver the authoritative welcome and the share
+    line names its seat count — a static label would stay stuck creating."""
+
+    monkeypatch.setenv("SAGA2D_SERVER_URL", server_url)
+    session = None
+    game = open_setup(tmp_path)
+    try:
+        menu = game.scene
+        menu.set_seats(seats)
+        menu.set_size("Small")
+        game.tick(0.1)
+        button = next(b for b in game.scene.ui.walk()
+                      if isinstance(b, Button) and b.text == "Create room")
+        x, y, width, height = button.bounds
+        game.backend.inject_click(x + width / 2, y + height / 2)
+        game.backend.inject_release(x + width / 2, y + height / 2)
+        game.tick(0)
+        assert isinstance(game.scene, WarbandLobby)
+        session = game.scene.session
+        assert "Creating your online room" in texts(game)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            game.tick(1 / 30)
+            if session.state is not None and session.room:
+                break
+            time.sleep(0.01)
+        else:
+            raise AssertionError("hosted room never received its welcome")
+        assert session.seats == seats
+        game.tick(0.1)
+        body = texts(game)
+        assert f"Share this invite. The match starts when {who} players connect." in body
+        assert "Creating your online room" not in body
+        assert session.room in body
+    finally:
+        if session is not None:
+            session.close()
+        game.close()
+
+
 def test_lobby_reports_errors_and_update_required(tmp_path):
     """Cancelled rooms and outdated clients say so plainly, with a way out."""
     game = open_setup(tmp_path)

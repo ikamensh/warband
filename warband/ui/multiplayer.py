@@ -585,24 +585,29 @@ class WarbandLobby(MatchLobby):
         items.append(Button("Cancel", shortcut="Esc", on_click=self.leave, style=GHOST_BUTTON, width=240))
         self.ui.add(Column(*items, width=640, spacing=14, anchor=Anchor.CENTER, style=OVERLAY_STYLE))
 
+    def _share_text(self) -> str:
+        """The share line beneath the room code, from the live session alone.
+
+        A confirmed welcome (``state``) names who must connect from the
+        authoritative seat count; a named room without one is still joining;
+        otherwise the room is still being created."""
+        if self.session.state is not None:
+            seats = self.session.seats
+            who = "both" if seats == 2 else f"all {seats}"
+            return f"Share this invite. The match starts when {who} players connect."
+        if self.session.room:
+            return f"Joining online room {self.session.room}…"
+        return "Creating your online room…"
+
     def _share_block(self) -> list:
         """The room code as a gold banner with one short share line beneath it."""
         from warband.ui.style import GOLD
 
         if not _is_online(self.session) or self.session.incompatible:
             return [Label(lambda: self._instructions(), width=560, wrap=True, text_style="body")]
-        block: list = [Label("Room code", text_style="sub"),
-                       Label(lambda: self.session.room, text_style="title", text_color=GOLD)]
-        if self.session.state is not None:
-            seats = self.session.seats
-            who = "both" if seats == 2 else f"all {seats}"
-            block.append(Label(f"Share this invite. The match starts when {who} players connect.",
-                               width=560, wrap=True, text_style="body"))
-        elif self.session.room:
-            block.append(Label(f"Joining online room {self.session.room}…", text_style="body"))
-        else:
-            block.append(Label("Creating your online room…", text_style="body"))
-        return block
+        return [Label("Room code", text_style="sub"),
+                Label(lambda: self.session.room, text_style="title", text_color=GOLD),
+                Label(lambda: self._share_text(), width=560, wrap=True, text_style="body")]
 
     def _roster_text(self) -> str:
         """Who is here: per-seat lines where the session lists its players in seat order —
