@@ -22,16 +22,17 @@ QUIET = {"music": 0, "sfx": 0, "tutorial": False}
 class Seat:
     """A seat in a casual room without the socket: it is sent its snapshot when the test publishes.
 
-    It carries the whole public client contract an online seat guarantees (the own profile
-    is ``rating``, the authoritative receipt ``result``): a casual seat that never connected
-    says unrated and unknown, never an invented rated result."""
+    The required public metadata fields mirror the client defaults (the own profile is
+    ``rating``, the authoritative receipt ``result``); the fixture supplies the match
+    snapshot but no account metadata, so it stays casual and unknown, never an invented
+    rated result."""
 
     online = True
 
     def __init__(self, match: WarbandMatch, player: int = 0) -> None:
         self.match, self.player, self.room = match, player, "motion"
         self.ready, self.error, self.revision = True, "", 0
-        self.endpoint = "test"
+        self.endpoint = "wss://test.invalid/play"
         self.player_token, self.player_id = "", ""
         self.rating, self.result = None, None
         self.rated, self.rated_grace = False, None

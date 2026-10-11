@@ -322,16 +322,17 @@ def test_the_checkpoint_keeps_who_saw_what_and_how_the_map_began() -> None:
 class RoomSeat:
     """A seat in a casual online room without the socket: it is sent its snapshot whenever the match has moved on.
 
-    It carries the whole public client contract an online seat guarantees (the own profile
-    is ``rating``, the authoritative receipt ``result``): a casual seat that never connected
-    says unrated and unknown, never an invented rated result."""
+    The required public metadata fields mirror the client defaults (the own profile is
+    ``rating``, the authoritative receipt ``result``); the fixture supplies the match
+    snapshot but no account metadata, so it stays casual and unknown, never an invented
+    rated result."""
 
     online = True
 
     def __init__(self, match: WarbandMatch, player: int, room: str = "wb011") -> None:
         self.match, self.player, self.room = match, player, room
         self.ready, self.error, self.revision = True, "", 0
-        self.endpoint = "test"
+        self.endpoint = "wss://test.invalid/play"
         self.player_token, self.player_id = "", ""
         self.rating, self.result = None, None
         self.rated, self.rated_grace = False, None
