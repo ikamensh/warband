@@ -26,7 +26,7 @@ TARGETS = ("windows-x64", "darwin-arm64")
 REGRESSION = ["-m", "pytest", "-q", "--slow"]  # the full regression suite: both tiers (tests/conftest.py)
 PACKAGES = ("numpy", "Pillow", "pyglet", "websockets", "pyinstaller", "pyinstaller-hooks-contrib")
 ONLINE_CHECKS = ("create_join", "authoritative_movement", "foreign_order_rejected", "private_seat_rejoin",
-                 "global_production", "automatic_plan_builder", "cancel_plans", "assembly_point")
+                 "ranked_identity", "global_production", "automatic_plan_builder", "cancel_plans", "assembly_point")
 NATIVE_CHECKS = ("native_multiplayer_input", "native_clipboard_join", "live_match_menu", "native_settlement_planning", "start_after_resize",
                  "compiled_simulation")
 

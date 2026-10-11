@@ -31,14 +31,28 @@ def online_smoke(endpoint: str) -> dict:
         raise AssertionError([(client.ready, client.closed, client.error) for client in clients])
 
     try:
-        creator = OnlineClient("warband-v2", endpoint=endpoint, options={"seed": 3, "width": 48, "height": 40})
+        creator = OnlineClient("warband-v2", endpoint=endpoint, options={"seed": 3, "width": 48, "height": 40},
+                               rated=True, player_name="Host")
         clients.append(creator)
         wait(lambda: bool(creator.room) and creator.state is not None)
         assert creator.resume_token and not creator.ready
-        guest = OnlineClient("warband-v2", endpoint=endpoint, room=creator.room)
+        guest = OnlineClient("warband-v2", endpoint=endpoint, room=creator.room, player_name="Guest")
         clients.append(guest)
         wait(lambda: creator.ready and guest.ready)
         assert (creator.player, guest.player) == (0, 1)
+        # The smoke plays rated: two named accounts hold the seats, each with its own server-issued
+        # token, public id, rating and roster line.
+        wait(lambda: len(creator.players) == 2 and len(guest.players) == 2
+             and all(isinstance(entry, dict) for entry in (*creator.players, *guest.players)))
+        assert creator.player_token and guest.player_token and creator.player_token != guest.player_token
+        assert creator.player_id and guest.player_id and creator.player_id != guest.player_id
+        assert creator.rated and guest.rated
+        for client, name in ((creator, "Host"), (guest, "Guest")):
+            # Fresh accounts on a new authority start at 1500 over no games.
+            assert client.rating["player_id"] == client.player_id and client.rating["name"] == name
+            assert client.rating["rating"] == 1500.0 and client.rating["games"] == 0
+        assert {entry["player_id"] for entry in creator.players} == {creator.player_id, guest.player_id}
+        assert {entry["player_id"] for entry in guest.players} == {creator.player_id, guest.player_id}
         def beside(world, unit):
             return next((unit.x + dx, unit.y + dy) for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2))
                         if world.passable(int(unit.x + dx), int(unit.y + dy)))
@@ -65,13 +79,17 @@ def online_smoke(endpoint: str) -> dict:
         guest.submit({"action": "move", "args": [[own.id], list(beside(theirs, own))]})
         wait(lambda: moved(guest, own))
         assert unit.id not in {item["id"] for item in guest.state["world"]["units"]}, "the creator's worker at home was sent to the guest"
-        room, token = creator.room, creator.resume_token
+        room, token, host_token, host_id = creator.room, creator.resume_token, creator.player_token, creator.player_id
         creator.close()
         wait(lambda: not guest.ready)
-        resumed = OnlineClient("warband-v2", endpoint=endpoint, room=room, resume_token=token)
+        resumed = OnlineClient("warband-v2", endpoint=endpoint, room=room, resume_token=token,
+                               player_token=host_token)
         clients.append(resumed)
         wait(lambda: resumed.ready and guest.ready)
         assert resumed.player == 0 and moved(resumed)
+        assert resumed.player_id == host_id and resumed.player_token == host_token
+        assert resumed.rating["player_id"] == host_id and resumed.rating["name"] == "Host"
+        assert resumed.rating["rating"] == 1500.0 and resumed.rating["games"] == 0
         # Exercise the settlement interface from inside the frozen client too.
         # No worker or producer selection is supplied by either peer.
         resumed.submit({"action": "order_unit", "args": [0, "footman"]})
@@ -92,8 +110,8 @@ def online_smoke(endpoint: str) -> dict:
             resumed.submit({"action": "cancel_plan", "args": [0, plan.id]})
         wait(lambda: not plans())
         return {"create_join": True, "foreign_order_rejected": True, "authoritative_movement": True,
-                "private_seat_rejoin": True, "global_production": True, "automatic_plan_builder": True,
-                "assembly_point": True, "cancel_plans": True}
+                "private_seat_rejoin": True, "ranked_identity": True, "global_production": True,
+                "automatic_plan_builder": True, "assembly_point": True, "cancel_plans": True}
     finally:
         for client in clients:
             client.close()
@@ -144,6 +162,15 @@ def smoke(endpoint: str) -> dict:
 
 def native_smoke(output: Path, endpoint: str) -> dict:
     """Use native clipboard/buttons to create and join a real online match in the package."""
+    return native_journey(output, endpoint, build_info())
+
+
+def native_journey(output: Path, endpoint: str, info: dict) -> dict:
+    """The native online journey with explicitly supplied build metadata.
+
+    The frozen wrapper above passes the app's own receipt, which refuses a source checkout;
+    source regression passes a declared placeholder and runs here in a separate process, with
+    real native inputs against a real loopback authority."""
     if not endpoint:
         raise ValueError("Native multiplayer acceptance requires an explicit --endpoint")
     os.environ["SAGA2D_SILENT"] = "1"
@@ -163,7 +190,6 @@ def native_smoke(output: Path, endpoint: str) -> dict:
     from warband.ui.multiplayer import NetworkGameScene, NetworkMenuScene
     from warband.sim.rules import BuildingType, UnitType
 
-    info = build_info()
     images = []
     with tempfile.TemporaryDirectory(prefix="warband-native-") as profile:
         game = Game("Warband", resolution=(1280, 800), visible=False, save_dir=Path(profile) / "saves", theme=build_theme())
@@ -225,6 +251,9 @@ def native_smoke(output: Path, endpoint: str) -> dict:
             press(key.M)
             assert isinstance(game.scene, MatchMenu)
             capture("-multiplayer")
+            # This single-profile clipboard smoke rejoins its own room from the same saved profile:
+            # a rated room would refuse the second seat as a duplicate account, so the smoke is casual on purpose.
+            click("Casual room")
             click("Create room")
             wait(lambda: isinstance(game.scene, MatchLobby) and game.scene.session.state is not None)
             session = game.scene.session
