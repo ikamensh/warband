@@ -410,6 +410,23 @@ def known_camps(world: World, player: int) -> list:
             if record.player is not None and world.players[record.player].neutral]
 
 
+def camp_standing(world: World, player: int, record: Any) -> bool:
+    """Whether a remembered lair is still a camp to clear: standing where last seen, or remembered with its
+    encounter uncleared.
+
+    A brain online plans on its seat's snapshot, whose honest fog omits every entity it cannot see now: a lair
+    across the map is never in the copy's buildings, though the encounter is remembered and uncleared.  Requiring
+    the live entity would keep the prepared army from ever clearing such a camp, and the hunt from the ground its
+    watch holds.  A cleared encounter stays out either way, by the camp's own cleared flag and the side's memory
+    of it; a record with no encounter behind it stays out too.
+    """
+    if record.id in world.buildings:
+        return True
+    camp = world.camp_for(record.id)
+    return (camp is not None and not camp.cleared
+            and record.id not in world.worker_knowledge[player].cleared_encounters)
+
+
 def camp_worth(world: World, player: int, record: Any) -> float:
     """How much farther a remembered camp is worth walking for, capped at :data:`CAMP_WALK`.
 
@@ -1098,7 +1115,7 @@ class Brain:
             return False
         mine = strength(world, army)
         here = [record for record in known_camps(world, self.player)
-                if record.id in world.buildings and world.time >= self.camp_retry.get(record.id, 0.0)
+                if camp_standing(world, self.player, record) and world.time >= self.camp_retry.get(record.id, 0.0)
                 and mine >= 1.2 * self.camp_failed.get(record.id, 0.0)
                 and mine >= 1.5 * self._camp_strength(world, record, army)]
         if not here:
