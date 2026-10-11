@@ -211,15 +211,42 @@ Press **F10** to open **Match menu**. Choose **Return to match** or press
 **Esc** to close it. **Settings** adjusts music, sound, scrolling and
 fullscreen; **How to play** opens the controls reference.
 
+### Rated or casual
+
+The **Create a room** card offers a **Rated** room by default, or a **Casual
+room** for an unrated game; joining uses the host's choice. There is still no
+account to create: the server issues a private identity that this computer
+saves for that server, and the name others see is your local profile name. A
+rated room counts toward your online rating, which starts at 1500 and is
+separate from the skirmish rating against the computer. When a rated match
+ends, the result screen shows the server's receipt for your seat: rating
+before → after (change), with games played. With 2–4 seats the winner beats
+each other seat, while the other seats count as tied with each other. The
+server averages those results across your opponents to calculate your change.
+A casual room never changes a rating.
+
 A brief connection loss triggers automatic reconnection. The match pauses
-while either player is disconnected. If it does not recover, reopen Warband
+while a needed seat is disconnected. If it does not recover, reopen Warband
 on the **same computer**, choose **Multiplayer**, then **Rejoin last room ·
 CODE**. Use that button for your existing seat rather than entering the code
 as a new guest. Your friend should remain in the room or use their own
 **Rejoin last room** button.
 
-Return promptly: rooms expire after about **15 minutes without both players**,
-as the waiting screen states. When a newer Warband is published, the
+In a rated room, a disconnected player past the server's grace forfeits
+while an opponent stays actively connected: the Match menu names that server's
+seconds (60 s on the usual server), and `warband --server-info` reports the
+same numbers. When
+nobody is connected the wait pauses instead of running anyone's grace down,
+and the first seat back gives the others a fresh window. A forfeit is a
+recorded result: coming back afterwards does not undo it. A casual room
+records no rating, and a suspended seat can rejoin while the server still
+keeps the room. The usual server keeps an idle room about 15 minutes, but
+that time is the server's setting, not a promise — a rated room can be
+decided by forfeit sooner. If eliminated in a 3–4 seat match you may
+**Watch** the rest or leave; the rating receipt waits for the final winner,
+and rejoining later refreshes your own profile.
+
+When a newer Warband is published, the
 Multiplayer screen shows **Update available** with an **Open download page**
 button; both players need the same version.
 Creating or joining a different room replaces the room remembered on that
