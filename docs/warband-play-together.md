@@ -1,24 +1,25 @@
 # Play Warband together: Mac and Windows
 
 One of you creates a room; the other joins with its code. You play against
-each other in a two-player real-time match. Both players need Warband
-**0.2.0-preview.2** and an internet connection. There is no account to create.
+each other in a two-player real-time match. Both players need the same
+current Warband release and an internet connection. There is no account to
+create.
 
 Download the packages from the [Warband page](https://games.tachyon-ai.eu/warband/)
-or the published [0.2.0-preview.2 release](https://github.com/ikamensh/warband/releases/tag/v0.2.0-preview.2).
+or, if that page is unreachable, the [latest releases](https://github.com/ikamensh/warband/releases/latest).
 The website also explains installation, shows the service status and turns an
 invite link into the room code and download for a friend who has nothing installed.
 
 ## 1. Open the game on your Mac
 
-**On Ilya's Mac:** open **Warband** from the Dock or **Finder → Applications →
-Warband**. Updates use the existing `/Applications/Warband.app` location.
-0.2.0-preview.2 is installed and verified there. Quit and reopen Warband if an
-older session is still open; your settings and saved games are preserved.
+**If Warband is already installed:** open **Warband** from the Dock or
+**Finder → Applications → Warband**. Quit and reopen Warband if an older
+session is still open; your settings and saved games are preserved.
 
-For a fresh installation on another **Apple Silicon Mac** (M1 or later):
+For a fresh installation on an **Apple Silicon Mac** (M1 or later):
 
-1. Download the [Mac app](https://github.com/ikamensh/warband/releases/download/v0.2.0-preview.2/Warband-0.2.0-preview.2-darwin-arm64-app.zip).
+1. Download the Mac app from the [Warband page](https://games.tachyon-ai.eu/warband/)
+   (or the [latest releases](https://github.com/ikamensh/warband/releases/latest) if needed).
 2. In Finder, open **Downloads** and double-click the ZIP to extract
    **Warband.app**.
 3. Drag **Warband.app** into **Applications** in the Finder sidebar. Replace
@@ -26,9 +27,9 @@ For a fresh installation on another **Apple Silicon Mac** (M1 or later):
 4. Double-click **Warband.app**. The title screen has a **Multiplayer** button.
    For later sessions, open this installed copy; you can keep it in the Dock.
 
-This preview is not notarized. If macOS blocks the first launch because it
-cannot verify the developer, open **System Settings → Privacy & Security**,
-find the Warband message, choose **Open Anyway**, then confirm **Open**.
+If macOS blocks the first launch because it cannot verify the developer,
+open **System Settings → Privacy & Security**, find the Warband message,
+choose **Open Anyway**, then confirm **Open**.
 This is the app-specific first-launch procedure described by
 [Apple](https://support.apple.com/en-us/102445). An alert saying the app is
 damaged or contains malware is a different problem; see troubleshooting below.
@@ -37,8 +38,9 @@ damaged or contains malware is a different problem; see troubleshooting below.
 
 This download is for a Windows 10/11 PC with x64 application support.
 
-1. Download the [Windows installer](https://github.com/ikamensh/warband/releases/download/v0.2.0-preview.2/Warband-0.2.0-preview.2-windows-x64-setup.exe).
-2. Open the downloaded **Warband-0.2.0-preview.2-windows-x64-setup.exe**.
+1. Download the Windows installer from the [Warband page](https://games.tachyon-ai.eu/warband/)
+   (or the [latest releases](https://github.com/ikamensh/warband/releases/latest) if needed).
+2. Open the downloaded installer.
 3. Follow the installer with its default folder. A desktop shortcut is
    optional. Leave **Play Warband** selected on the last page to open the game.
 4. For later sessions, open Start, type **Warband**, and select it.
@@ -46,9 +48,9 @@ This download is for a Windows 10/11 PC with x64 application support.
 Everything needed to run the game is included. The installer installs for
 your Windows account.
 
-The preview installer is unsigned. If the first launch shows **Windows
-protected your PC**, and you downloaded the file linked above, choose
-**More info → Run anyway**, if offered. Microsoft describes that
+If the first launch shows **Windows protected your PC**, and you downloaded
+the file from the page linked above, choose **More info → Run anyway**, if
+offered. Microsoft describes that
 [SmartScreen prompt](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/publish-first-app).
 If Windows offers no option to proceed, see the separate Smart App Control
 case below.
@@ -282,8 +284,8 @@ same Warband room as the screen.
 | A construction site vanished | A site whose builder falls is cancelled and its cost refunded. A site built from a plan stays planned, and another worker starts it anew. |
 | Text is too small | Open F10 → Settings, use **+** beside **Fullscreen** to set it to **On**, then press Esc to apply it. |
 | Panels overlap even in fullscreen | Send a screenshot and your display size with the report. Resizing the window scales the layout and may not fix an overlap. |
-| The Mac app says damaged, or Windows reports malware | Download a fresh copy from the release linked above. If the alert persists, stop and report its exact wording. |
-| Windows blocks the app with **Smart App Control**, with no Run anyway option | This unsigned preview may be blocked on that PC. [Microsoft confirms there is no per-app exception](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions); report the block so a signed release can address it. |
+| The Mac app says damaged, or Windows reports malware | Download a fresh copy from the [Warband page](https://games.tachyon-ai.eu/warband/). If the alert persists, stop and report its exact wording. |
+| Windows blocks the app with **Smart App Control**, with no Run anyway option | [Microsoft explains there is no per-app exception](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions); report the block with its exact wording and your Warband version. |
 
 If you need help, send the game version, Mac or Windows version, the action
 you took, and the exact error or a screenshot through the
