@@ -395,15 +395,77 @@ def test_match_reports_refresh_the_cached_profile_once(tmp_path, monkeypatch):
         game.close()
 
 
-def test_damaged_identity_record_surfaces_and_still_opens(tmp_path):
-    """A corrupt private record is reported once, and the setup still opens on a fresh one."""
+def test_damaged_identity_record_surfaces_and_still_opens(tmp_path, monkeypatch):
+    """A corrupt private record refuses transport, keeps its bytes and still opens setup.
+
+    The damaged file is never reset, replaced or recovered: the helpers raise
+    ``SettingsError``, the setup stays open with visible account damage, and Create,
+    Join and Rejoin each refuse before ``OnlineClient`` construction. A missing record
+    still starts fresh elsewhere; this path covers corruption only.
+    """
+    import json
+
+    from saga2d.settings import Settings, SettingsError
+
+    import saga2d.online as online_mod
+
+    from warband.ui.multiplayer import IDENTITY_DEFAULTS, IDENTITY_FILE
+
     game = title_game(tmp_path)
     try:
-        (tmp_path / "online-identity.json").write_text("{broken", encoding="utf-8")
-        assert "damaged" in identity_notice(game)
+        path = tmp_path / IDENTITY_FILE
+        path.write_text("{broken", encoding="utf-8")
+        (tmp_path / "online-room.json").write_text(json.dumps(
+            {"game_id": "warband-v2", "endpoint": "wss://test.example/play",
+             "room": "AB12", "resume_token": "saved-seat"}), encoding="utf-8")
+        before = path.read_bytes()
+        # The SDK constructor itself preserves bytes and only reports the error.
+        probe = Settings(path, IDENTITY_DEFAULTS)
+        assert probe.error
+        assert path.read_bytes() == before
+        notice = identity_notice(game)
+        assert "damaged" in notice
+        assert "fresh" not in notice.lower(), "no fresh start is promised"
+        assert path.read_bytes() == before
+        with pytest.raises(SettingsError):
+            online_identity(game)
+        assert path.read_bytes() == before, "helpers never repair the file"
+        with pytest.raises(SettingsError):
+            stored_online_profile(game)
+        assert path.read_bytes() == before
         press(game, "m")
         assert isinstance(game.scene, MatchSetupMenu)
-        assert "damaged" in texts(game)
+        body = texts(game)
+        assert "damaged" in body.lower() or "unreadable" in body.lower()
+        assert "fresh one starts" not in body, "setup promises no fresh start"
+        assert path.read_bytes() == before
+        constructed = []
+
+        def spy(*args, **kwargs):
+            constructed.append((args, kwargs))
+            raise AssertionError("OnlineClient must not be constructed on damaged identity")
+
+        monkeypatch.setattr(online_mod, "OnlineClient", spy)
+        click(game, "Create room")
+        assert isinstance(game.scene, MatchSetupMenu), "no lobby opens on a damaged record"
+        assert game.scene.message != ""
+        assert constructed == []
+        assert path.read_bytes() == before
+        game.backend.set_clipboard_text("AB12")
+        click(game, "Paste invite")
+        assert game.scene.fields[2] == "AB12"
+        click(game, "Join room")
+        assert isinstance(game.scene, MatchSetupMenu), "no lobby opens on a damaged record"
+        assert game.scene.message != ""
+        assert constructed == []
+        assert path.read_bytes() == before
+        click(game, "Rejoin last room · AB12")
+        assert isinstance(game.scene, MatchSetupMenu), "no lobby opens on a damaged record"
+        assert game.scene.message != ""
+        assert constructed == []
+        assert path.read_bytes() == before, "actions never repair the file"
+        assert list(tmp_path.glob("*recovery*")) == [], "no recovery file is written"
+        assert "saved-seat" not in game.scene.message, "no private seat leaks into the message"
     finally:
         game.close()
 

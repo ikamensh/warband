@@ -32,22 +32,25 @@ def _default_endpoint() -> str:
 def _identity_store(game) -> Settings:
     """This computer's private online record: per-endpoint server tokens and the cached own profile.
 
-    A damaged record is preserved as a recovery file and started fresh; callers surface
-    :func:`identity_notice` once so the player hears about it.  The private seat never
-    leaves this computer except through the server's own resume mechanism."""
+    A damaged record raises :class:`SettingsError` with the decode context; the damaged
+    bytes stay unchanged on disk — never reset, replaced, recovered or started fresh here.
+    Callers surface the error once so the player hears about it.  A missing record
+    legitimately starts on defaults.  The private seat never leaves this computer except
+    through the server's own resume mechanism."""
     store = Settings(game.data_dir / IDENTITY_FILE, IDENTITY_DEFAULTS)
     if store.error:
-        store.reset()
+        raise SettingsError(f"Online identity record damaged ({store.error}); "
+                            "the file is kept unchanged.")
     return store
 
 
 def identity_notice(game) -> str:
-    """Non-empty when the private identity record on disk is damaged: the fresh start keeps
-    the damaged file beside it, and rejoin seats may need a new room."""
+    """Non-empty when the private identity record on disk is damaged: the file is kept
+    unchanged; restore that record before connecting."""
     probe = Settings(game.data_dir / IDENTITY_FILE, IDENTITY_DEFAULTS)
     if probe.error:
-        return ("Online identity record damaged — a fresh one starts here, the damaged file "
-                "kept beside it. Rejoin seats may need a new room.")
+        return ("Online identity record damaged — the file is kept unchanged. "
+                "Restore that record before connecting.")
     return ""
 
 
