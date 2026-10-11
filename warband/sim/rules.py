@@ -639,6 +639,7 @@ CHOP_TIME: Final = config.number('CHOP_TIME')
 REPAIR_RATE: Final = config.number('REPAIR_RATE')
 REPAIR_CHUNK: Final = config.integer('REPAIR_CHUNK')
 REPAIR_COST: Final = config.number('REPAIR_COST')
+BUILD_HELP: Final = config.number('BUILD_HELP')  # a site's helpers (repair on one's own site): each adds this share of its builder's rate
 
 
 def repair_cost(info: BuildingInfo, hp_before: int, hp_after: int, max_hp: int) -> Cost:

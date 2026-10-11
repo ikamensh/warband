@@ -2,7 +2,7 @@
 
 import pytest
 
-from saga2d import Game
+from saga2d import Button, Game
 from warband.sim.model import Event, Repair, Salvage, Attack, AttackMove, Build, Harvest, Move, tile_center
 from warband.sim.rules import BUILDINGS, BUILT, PLAYABLE_UNITS, SIM_DT, UNITS, BuildingType, UnitType
 from warband.sim.races import RACES
@@ -53,6 +53,15 @@ def click(game: Game, scene: GameScene, point, button: str = "left", **mods) -> 
     x, y = screen_of(scene, point)
     game.backend.inject_click(x, y, button, **mods)
     game.backend.inject_release(x, y, button, **mods)
+    game.tick(1 / 60)
+
+
+def click_label(game: Game, label: str) -> None:
+    """Click the button of the top scene that reads *label*."""
+    button = game.scene.ui.find(lambda c: isinstance(c, Button) and c.text == label)
+    x, y, width, height = button.bounds
+    game.backend.inject_click(x + width // 2, y + height // 2)
+    game.backend.inject_release(x + width // 2, y + height // 2)
     game.tick(1 / 60)
 
 
@@ -245,6 +254,24 @@ def test_r_then_a_click_on_a_damaged_building_sends_the_peasants_to_repair_it(pl
     assert ("B / R / V", "build / repair / salvage") in scene.hint()
 
 
+def test_a_right_click_on_your_own_site_sends_the_peasants_to_help_raise_it(play) -> None:
+    """The context order on a site under construction is repair, which there means helping its builder."""
+    game, scene = play
+    world = scene.world
+    hall = hall_of(scene)
+    builder, helper = peasants_of(scene)[:2]
+    site = next(spot for spot in ((hall.x + dx, hall.y + dy) for dy in range(4, 8) for dx in range(-4, 8))
+                if world.can_place(BuildingType.FARM, spot, scene.human, builder=builder.id) is None)
+    world.build(builder.id, BuildingType.FARM, site)
+    tick(game, 3.0, 0.1)
+    farm = world.buildings[builder.constructing]
+    scene.select([helper.id])
+    click(game, scene, farm.center, "right")
+    assert isinstance(helper.order, Repair) and helper.order.target == farm.id
+    tick(game, 3.0, 0.1)
+    assert helper.state == "repair" and not farm.done
+
+
 def test_v_then_a_click_on_a_ruin_sends_the_peasants_to_salvage_it(play) -> None:
     """What the rules allow the player must be able to reach: the card's own button, armed, and a refusal that
     reaches the status line instead of throwing in the frame."""
@@ -394,7 +421,7 @@ def test_help_and_settings_overlays(play) -> None:
 
 def test_settings_keyboard_adjusts_the_row_last_clicked(play) -> None:
     """Mouse and keyboard share row focus, preserving the other saved preferences."""
-    from saga2d import Button, Label
+    from saga2d import Label
 
     game, scene = play
     press(game, "escape")
@@ -518,23 +545,14 @@ def test_every_map_edge_can_be_scrolled_clear_of_the_hud(play) -> None:
 # -- Title ---------------------------------------------------------------------------------
 
 
-def test_title_new_game_flow_with_hotkeys(game) -> None:
-    from saga2d import Button
-
-    def click(label: str) -> None:
-        button = next(b for b in game.scene.ui.walk() if isinstance(b, Button) and b.text == label)
-        x, y, width, height = button.bounds
-        game.backend.inject_click(x + width / 2, y + height / 2)
-        game.backend.inject_release(x + width / 2, y + height / 2)
-        game.tick(1 / 60)
-
+def test_title_new_game_flow_clicks_the_settings_and_keys_start(game) -> None:
     game.push(TitleScene())
     game.tick(1 / 60)
     assert "WARBAND" in texts(game)
     press(game, "n")
     assert isinstance(game.scene, NewGameScene)
-    click("Small")
-    click("3")
+    click_label(game, "Small")
+    click_label(game, "3")
     press(game, "return")
     scene = game.scene
     assert isinstance(scene, GameScene)
@@ -606,7 +624,7 @@ def test_the_codex_lists_every_unit_building_and_upgrade(play) -> None:
 
 @pytest.mark.slow
 def test_the_title_offers_every_difficulty_and_saves_keep_it(game) -> None:
-    """Every difficulty key followed by a complete match start/save/title/continue journey needs the slow tier."""
+    """Every difficulty button followed by a complete match start/save/title/continue journey needs the slow tier."""
     from warband.brains.ai import DIFFICULTY_ELO, PROFILES
     from warband.brains.pro_ai import ProBrain
     from warband.sim.rules import Difficulty
@@ -614,11 +632,10 @@ def test_the_title_offers_every_difficulty_and_saves_keep_it(game) -> None:
     game.push(TitleScene())
     game.tick(1 / 60)
     press(game, "n")
-    for key, difficulty in (("e", Difficulty.EASY), ("n", Difficulty.MEDIUM),
-                            ("h", Difficulty.HARD), ("t", Difficulty.MASTER)):
-        press(game, key)
-        assert game.scene.difficulty is difficulty, key
+    for difficulty in (Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD, Difficulty.MASTER):
         assert DIFFICULTY_ELO[difficulty] > 0, "every setting shows a rating"
+        click_label(game, f"{difficulty.value.title()} {DIFFICULTY_ELO[difficulty]}")
+        assert game.scene.difficulty is difficulty
     press(game, "return")
     scene = game.scene
     assert isinstance(scene, GameScene) and scene.difficulty is Difficulty.MASTER

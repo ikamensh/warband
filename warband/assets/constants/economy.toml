@@ -37,11 +37,15 @@ reach = 10.0 # tiles round a finished vault's middle
 # Mending is repair run at REPAIR_COST of a building's price, pro rata over
 # the hit points and charged as the difference of two rounded-up running
 # totals, so a repair costs the same however many chunks it is paid in.
+# Repair on one of your own sites is help instead: free, since the site was
+# paid for when it was placed, and each helper adds `build_help` of its
+# builder's rate.
 
 [repair]
 rate = 8.0 # hit points a peasant mends per second
 chunk = 10 # hit points paid for at a time while repairing
 cost_share = 0.5 # share of a building's price that mending all of its hit points costs
+build_help = 0.5 # seconds of construction each helper at a site adds per second, beside its builder's one
 
 # Salvage is repair run backwards: a peasant tears hit points out of a
 # building and carries the materials home. A ruin nobody holds comes apart at

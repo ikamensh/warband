@@ -36,7 +36,7 @@ from warband.sim.settlement import Plan, Settlement
 from warband.sim.worker_knowledge import WorkerKnowledge
 from warband.sim.rules import (
     AETHER_REACH, AETHER_STORE, AETHER_TICKS, Layout,
-    REPAIR_CHUNK, REPAIR_RATE, repair_cost,
+    BUILD_HELP, REPAIR_CHUNK, REPAIR_RATE, repair_cost,
     SALVAGE_CHUNK, SALVAGE_HELD_RATE, SALVAGE_RATE, salvage_resource, salvage_yield,
     ARMOR_BONUS, ARROWS_BONUS, BLADES_BONUS, BLASTING_POWDER_BONUS, BLESSING_BONUS, BLOODLUST_RAGE, BUFFS, BUILDINGS, CHOP_TIME,
     DEEP_MINING_TRIP, GOLD_PER_TRIP, HIT_VARIANCE, HORSES_BONUS, LEASH, LONGBOWS_BONUS, LUMBER_PER_TRIP, LODE_GOLD, MASTER_WEAPON_BONUS,
@@ -2045,16 +2045,14 @@ class World:
 
     @recorded
     def repair(self, unit_ids: list[int], building_id: int, *, queue: bool = False) -> None:
-        """Peasants among *unit_ids* mend one of their own finished, damaged buildings."""
+        """Peasants among *unit_ids* mend one of their own damaged buildings, or help raise one of their sites."""
         workers = [u for u in self._own_units(unit_ids, queue=queue) if u.is_worker]
         if not workers:
             raise RuleError("Only peasants can repair")
         b = self.buildings.get(building_id)
         if b is None or b.player != workers[0].player or b.info.mine is not None:
             raise RuleError("Peasants repair your own buildings")
-        if not b.done:
-            raise RuleError("Finish building it first")
-        if b.hp >= b.max_hp:
+        if b.done and b.hp >= b.max_hp:
             raise RuleError("Nothing to repair")
         for u in workers:
             self._issue(u, Repair(b.id), queue=queue)
@@ -2259,7 +2257,8 @@ class World:
                 return "move"
             self.attack(unit_ids, target.id, queue=queue)
             return "attack"
-        if workers and isinstance(target, Building) and target.player == player and target.done and target.hp < target.max_hp and target.info.mine is None:
+        if (workers and isinstance(target, Building) and target.player == player and target.info.mine is None
+                and (not target.done or target.hp < target.max_hp)):
             self.repair(workers, target.id, queue=queue)
             if others:
                 self.move(others, point, queue=queue)
@@ -2423,10 +2422,7 @@ class World:
         if not b.done:
             builder = self.units.get(b.builder) if b.builder is not None else None
             if builder is not None and builder.constructing == b.id:
-                b.hp += shell_hp(info, b.progress + dt) - shell_hp(info, b.progress)
-                b.progress = min(info.build_time, b.progress + dt)
-                if b.done:
-                    self._finish_construction(b, builder)
+                self._raise(b, builder, dt)
             return
         delivered = False
         if b.queue:
@@ -2463,6 +2459,14 @@ class World:
         b.auto.append(unit_type)
         self._pay(b.player, self.unit_info(b.player, unit_type).cost)
         b.queue.append(unit_type)
+
+    def _raise(self, b: Building, builder: Unit, seconds: float) -> None:
+        """*seconds* more work on the site *b*: its shell gains hit points at the build rate, and done, *builder* steps out."""
+        info = b.info
+        b.hp += shell_hp(info, b.progress + seconds) - shell_hp(info, b.progress)
+        b.progress = min(info.build_time, b.progress + seconds)
+        if b.done:
+            self._finish_construction(b, builder)
 
     def _finish_construction(self, b: Building, builder: Unit) -> None:
         builder.constructing = None
@@ -3739,7 +3743,7 @@ class World:
 
     def _do_repair(self, u: Unit, order: Repair, dt: float) -> None:
         b = self.buildings.get(order.target)
-        if b is None or not b.done or b.hp >= b.max_hp:
+        if b is None or b.abandoned or (b.done and b.hp >= b.max_hp):
             u.charge = 0.0
             self._finish_order(u)
             return
@@ -3752,6 +3756,11 @@ class World:
         u.path_goal = None
         u.state = "repair"
         self._turn_toward(u, b.center, dt)
+        if not b.done:
+            # Help beside the builder, free: the site was paid for when it was placed.
+            assert b.builder is not None  # a site without its builder is cancelled (WB-048)
+            self._raise(b, self.units[b.builder], BUILD_HELP * dt)
+            return
         u.charge += REPAIR_RATE * dt
         if u.charge < REPAIR_CHUNK:
             return
