@@ -51,7 +51,7 @@ its [retained evidence](evidence/warband-internet-2026-09-08/windows-package/REA
 records the scope. These results do not establish preview.3 acceptance.
 
 Choose **Multiplayer → Create room → Copy room code** and send it to your partner.
-They choose **Multiplayer → Paste code → Join room**. Internet matches use the default
+They choose **Multiplayer → Paste invite → Join room**. Internet matches use the default
 hosted server; no router configuration or incoming firewall rule is needed.
 Use **Rejoin last room** after a disconnect while the room remains available.
 The match continues while its **Match menu** is open; use **Leave match**

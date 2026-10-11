@@ -152,7 +152,7 @@ def test_network_result_has_no_solo_rematch_and_escape_leaves(tmp_path, winner):
 
 # -- Focused title, setup, lobby and identity ---------------------------------------
 
-from warband.ui.scene import CodexScene, HelpScene
+from warband.ui.scene import HelpScene
 from warband.ui.score_scene import HighScoreScene
 
 
