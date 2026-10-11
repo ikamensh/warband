@@ -114,6 +114,18 @@ def _run_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
     if lobby is not None:
         game.run(lobby)
         return
+    if args.campaign or args.mission is not None:
+        from warband.story.campaign_scene import CampaignScene
+        from warband.story.mission_scene import MissionScene, build_world, current_progress
+        from warband.story.missions import CAMPAIGN
+
+        if args.mission is None:
+            game.run(CampaignScene(settings))
+            return
+        progress = current_progress(game, CAMPAIGN, Difficulty(args.difficulty))
+        run = build_world(CAMPAIGN.mission(args.mission), flags=progress.flags)
+        game.run(MissionScene(CAMPAIGN, run, difficulty=progress.difficulty, settings=settings))
+        return
     layout = None if args.layout == "any" else Layout(args.layout)
     refused = mapgen.refusal(*mapgen.dimensions(args.size, args.players), args.players, layout)
     if refused is not None:
@@ -140,29 +152,28 @@ def multiplayer_lobby(args: argparse.Namespace, parser: argparse.ArgumentParser,
     so the command line and the screen wait in the same room; its lifecycle saving
     stays the base's.
     """
-    online = bool(getattr(args, "online_host", False) or getattr(args, "online_join", None)
-                  or getattr(args, "online_resume", False))
-    lan = bool(getattr(args, "host", False) or getattr(args, "join", None))
-    if getattr(args, "rated", False) and not getattr(args, "online_host", False):
+    online = bool(args.online_host or args.online_join or args.online_resume)
+    lan = bool(args.host or args.join)
+    if args.rated and not args.online_host:
         parser.error("--rated needs --online-host: joins follow the host's room, rejoin keeps its room.")
     if online:
         from saga2d.online import OnlineClient
 
         from warband.ui.multiplayer import NetworkGameScene, WarbandLobby, online_identity
 
-        endpoint = getattr(args, "server", None) or None
+        endpoint = args.server or None
         make_scene = lambda connection: NetworkGameScene(connection, None, settings=settings)  # noqa: E731
-        if getattr(args, "online_host", False):
+        if args.online_host:
             try:
                 options = lobby_options(args, players=args.players)
             except ValueError as exc:
                 parser.error(str(exc))
             session = OnlineClient(GAME_ID, endpoint=endpoint, options=options,
                                    **online_identity(game, endpoint),
-                                   rated=bool(getattr(args, "rated", False)),
+                                   rated=args.rated,
                                    player_options={"race": args.race})
             return WarbandLobby(session, make_scene, title="Warband multiplayer")
-        if getattr(args, "online_join", None):
+        if args.online_join:
             session = OnlineClient(GAME_ID, endpoint=endpoint, room=args.online_join,
                                    **online_identity(game, endpoint),
                                    player_options={"race": args.race})
@@ -172,9 +183,9 @@ def multiplayer_lobby(args: argparse.Namespace, parser: argparse.ArgumentParser,
         record = Settings(game.data_dir / LAST_ROOM_FILE, dict(LAST_ROOM_DEFAULTS))
         if (record.error or record["game_id"] != GAME_ID
                 or not record["room"] or not record["resume_token"]
-                or not (getattr(args, "server", None) or record["endpoint"])):
+                or not (args.server or record["endpoint"])):
             parser.error("No saved online room for this game. Create or join a room first.")
-        saved_endpoint = getattr(args, "server", None) or record["endpoint"] or None
+        saved_endpoint = args.server or record["endpoint"] or None
         session = OnlineClient(GAME_ID, endpoint=saved_endpoint, room=record["room"],
                                resume_token=record["resume_token"],
                                **online_identity(game, saved_endpoint))
@@ -192,10 +203,6 @@ def multiplayer_lobby(args: argparse.Namespace, parser: argparse.ArgumentParser,
                                                                          "races": (Race(args.race), None), "layout": layout}),
                                     create_scene=lambda session, match: NetworkGameScene(session, match, settings=settings),
                                     create_options=lambda: lobby_options(args), game=game)
-        if base is None:
-            return None
-        if isinstance(base, WarbandLobby):
-            return base
         return WarbandLobby(base.session, base.make_scene, title="Warband multiplayer")
     return None
 
