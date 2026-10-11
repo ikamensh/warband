@@ -4,15 +4,18 @@ gone (WB-064).  Every difficulty finishes such a match, on what the side itself 
 
 from __future__ import annotations
 
+import json
 import random
 
 import pytest
 
 from warband.brains.ai import HUNT_FLYERS_ALONE, make_brain
 from warband.brains.pro_ai import PRO, ProBrain
+from warband.online.authority import WarbandMatch
+from warband.online.online_ai import _PlanningWorld
 from warband.sim import mapgen
 from warband.sim.model import Move, World
-from warband.sim.rules import SIM_DT, BuildingType, Difficulty, Terrain, UnitType
+from warband.sim.rules import SIM_DT, BuildingType, Difficulty, Race, Terrain, UnitType
 
 WIDTH, HEIGHT = 64, 48
 
@@ -84,6 +87,44 @@ def test_the_flyer_sweeps_first_and_the_fastest_soldiers_join_it() -> None:
     play(world, brain, HUNT_FLYERS_ALONE)
     soldiers = [world.units[i] for i in brain.hunt.party if i != flyer.id]
     assert soldiers and all(u.type is UnitType.KNIGHT for u in soldiers[:2]), [u.type for u in soldiers]
+
+
+@pytest.mark.slow
+def test_a_lost_prepared_army_clears_the_camp_hiding_the_last_peasant() -> None:
+    """Seed 3's wolf den (lair 20) at (25.5, 32.5) watches the pocket where seat 1's last peasant stands at
+    (20.5, 39.5): every camp-safe hunt vantage is out of knight sight, so a won online match ran its 1800 s clock
+    with no winner.  The bot plans on its seat's snapshot, whose honest fog omits the unseen lair, so the prepared
+    army must clear the remembered den all the same; then the hunt finds the peasant.  Slow: a whole endgame
+    through the seat snapshot round-trip, several minutes of simulation."""
+    match = WarbandMatch(seed=3, races=[Race.DWARF, Race.ORC])
+    world = match.world
+    for unit in [u for u in world.units.values() if u.player == 1]:
+        unit.hp = 0  # staged, as other tests raze with hp = 0: seat 1 is down to its last peasant
+    for building in [b for b in world.buildings.values() if b.player == 1]:
+        building.hp = 0
+    # The last peasant first: seat 1 must hold its captured tile before anything steps, or the razing ends the match.
+    world.spawn_unit(1, UnitType.PEASANT, (20.5, 39.5))  # the captured last-unit tile, never seen by seat 0
+    for _ in range(20):
+        match.step()
+    world.reveal_all(0)  # seat 0's late-game memory: the whole map honestly learned, both dens known
+    hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
+    for i in range(12):
+        world.spawn_unit(0, UnitType.KNIGHT, (hall.center[0] + 2 + i % 4, hall.center[1] + 2 + i // 4))
+    world.update_vision()
+    peasant = next(u for u in world.units.values() if u.player == 1)
+    assert not world.is_visible(0, peasant.tile)
+    brain = make_brain(0, Difficulty.HARD, match.seed)
+    rng = random.Random(match.seed)
+    for _ in range(round(900.0 / SIM_DT)):
+        if world.winner is not None:
+            break
+        if world.time >= brain.next_think:
+            planning = _PlanningWorld(json.loads(json.dumps(match.snapshot(0)))["world"])
+            brain.think(planning, rng)
+            for command in planning.commands:
+                match.apply(0, command)
+        match.step()
+    assert world.winner == 0, "the prepared army never cleared the den hiding the last peasant"
 
 
 def test_nobody_hunts_while_the_expedition_still_has_its_guess_to_look_at() -> None:
