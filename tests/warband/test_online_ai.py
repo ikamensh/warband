@@ -666,6 +666,69 @@ def test_join_rated_room_with_own_race(server_url, tmp_path):
         assert secret not in out, "no credential ever reaches the JSON lines"
 
 
+@_NEEDS_IDENTITY_ENGINE
+@pytest.mark.slow
+def test_rated_rejoin_keeps_identity_and_seat(server_url, tmp_path):
+    """A deliberate rejoin in a rated room carries the same identity and seat.
+
+    A real --rated creator subprocess with an identity file drops and rejoins mid-room
+    against a real server; the token file is stable and the undecided finish still names
+    the rated seat without any receipt: the slow tier."""
+    identity = str(tmp_path / "identity.json")
+    process = subprocess.Popen(
+        [sys.executable, "-m", "warband.online.online_ai", "--server", server_url, "--create",
+         "--rated", "--player-name", "BotZero", "--identity-file", identity,
+         "--difficulty", "hard", "--width", "48", "--height", "40",
+         "--duration", "9", "--report-every", "0.25", "--reconnect-after", "1", "--disconnect-for", "1"],
+        cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        env={**os.environ, "DISPLAY": "", "PYTHONUNBUFFERED": "1"},
+    )
+    def drain(peer, stop, errors):
+        try:
+            while not stop.is_set():
+                try:
+                    peer.recv(timeout=2)
+                except TimeoutError:
+                    continue
+        except Exception as exc:  # anything else is a real failure, reported below, never swallowed
+            errors.append(exc)
+
+    try:
+        announced = json.loads(first_stdout_line(process, timeout=10))
+        assert announced["event"] == "created" and announced["player"] == 0
+        with connect(server_url, proxy=None) as peer:
+            assert handshake(peer, "join", game="warband-v2", room=announced["room"])["player"] == 1
+            stop_peer = threading.Event()
+            errors = []
+            reader = threading.Thread(target=drain, args=(peer, stop_peer, errors), daemon=True)
+            reader.start()
+            try:
+                assert process.wait(timeout=30) == 0, process.stderr.read()
+                out = process.stdout.read()
+            finally:
+                stop_peer.set()
+                reader.join(timeout=5)
+            if errors:
+                raise errors[0]
+    finally:
+        if process.poll() is None:
+            process.terminate()
+        process.communicate(timeout=5)
+    evidence = [json.loads(line) for line in out.splitlines()]
+    dropped = [row for row in evidence if row["event"] == "disconnected"]
+    rejoined = [row for row in evidence if row["event"] == "rejoined"]
+    assert len(dropped) == len(rejoined) == 1
+    assert dropped[0]["player"] == rejoined[0]["player"] == 0
+    token = _load_identity(identity, server_url)
+    assert token and stat.S_IMODE(os.stat(identity).st_mode) == 0o600
+    for secret in ("resume_token", "player_token", token):
+        assert secret not in out, "no credential ever reaches the JSON lines"
+    finished = evidence[-1]
+    assert finished["event"] == "finished" and finished["reason"] == "duration"
+    assert finished["player_id"] and finished["match_id"] and finished["result"] is None, \
+        "an undecided rated finish names the seat but invents no receipt"
+
+
 @pytest.mark.slow
 def test_require_completion_fails_a_duration_end_with_no_winner(server_url):
     """A bounded run with --require-completion exits nonzero while the match is still undecided.
