@@ -101,6 +101,8 @@ The standard brain requires 70% health; Pro uses its posture's existing rejoin-h
 Only soldiers within the existing muster breadth fund the same expedition; distant recruits cannot
 arrive alone using an army elsewhere as their strength estimate. Wounded soldiers remain at home.
 Soldiers already fighting a visible rival cannot fund a new camp assault.
+Retreating soldiers finish their walk. At rest, those without regeneration or an alive/queued
+healer return to PvP rather than wait forever; the camp health requirement remains unchanged.
 A genuine base-defense interruption cancels the whole expedition and retains its
 original force for the retry requirement, rather than leaving half the party fighting creatures.
 

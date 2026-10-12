@@ -759,16 +759,19 @@ class ProBrain(_ProBrainEconomy):
         return any(world.can_strike(foe, unit) and dist(foe.pos, unit.pos) < world.strike_range(foe, unit) + 2.0
                    for foe in foes)
 
-    def _withdraw_if_hurt(self, world: World, unit: Unit, foes: Sequence[Unit]) -> bool:
+    def _withdraw_if_hurt(self, world: World, unit: Unit, foes: Sequence[Unit], healing_support: bool) -> bool:
         """Walk a nearly-dead soldier out of reach. A body that lives is damage next fight.
 
         Returns whether the unit is out of the fight, so the caller stops
-        giving it targets.
+        giving it targets. Finish the retreat before rejoining; once idle,
+        a soldier without regeneration or a living/queued healer cannot
+        recover by waiting. Camp preparation still requires healthy troops.
         """
         profile = self.profile
         if unit.id in self._hurt:
             if (unit.hp >= profile.rejoin_hp * unit.max_hp
-                    or (not unit.info.living and not unit.info.regen and not unit.orders)):
+                    or (not unit.info.regen and not unit.orders
+                        and (not unit.info.living or not healing_support))):
                 self._hurt.discard(unit.id)
                 return False
             return True
@@ -813,18 +816,22 @@ class ProBrain(_ProBrainEconomy):
                 self.note(world, f"cast {spell.value} at ({point[0]:.1f}, {point[1]:.1f})")
         if not self.profile.retreat_wounded:
             return
-        army = [u for u in world.player_units(self.player) if not u.is_worker and u.info.soldier and not u.info.blast]
+        units = world.player_units(self.player)
+        army = [u for u in units if not u.is_worker and u.info.soldier and not u.info.blast]
         if not army:
             return
         foes = self._enemies(world)
         foes += [u for u in world.units.values()
                  if u.player == world.neutral and u.hp > 0 and not u.hidden and u.info.damage
                  and world.is_visible(self.player, u.tile)]
+        healing_support = (any(u.hp > 0 and u.info.heal for u in units)
+                           or any(world.unit_info(self.player, kind).heal
+                                  for building in world.player_buildings(self.player) for kind in building.queue))
         self._hurt.intersection_update(unit.id for unit in army)
         for unit in army:
             if unit.id in self.camp_escape:
                 continue  # walking out of an interrupted camp: mustering it elsewhere marches it back through the guards
-            self._withdraw_if_hurt(world, unit, foes)
+            self._withdraw_if_hurt(world, unit, foes, healing_support)
 
 
 def played(profile: ProProfile, *, own_units: bool = True, magic: bool = True, spell: Upgrade | None = None) -> ProProfile:
