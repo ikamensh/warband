@@ -16,7 +16,7 @@ from typing import Final
 from warband.brains.pro_force import _tower_strength, _tower_strength_own, camp_strength, strength
 from warband.brains.pro_profiles import PRO, PRO_PROFILES, PRO_RUSH, PRO_VANGUARD, PRO_WARDEN, ProProfile
 
-from warband.brains.ai import ESCAPE_SECONDS, RAIDERS, answer_flyers, answering, camp_standing, camp_worth, can_reach_point, dodge_camp_slams, known_camps, known_mines, lost_track, prepared_cohort, prune_escapers, push_is_blind, rally_past, reachable_cohort, redirect_searchers, retry_force
+from warband.brains.ai import ESCAPE_SECONDS, RAIDERS, answer_flyers, answering, camp_safe_point, camp_standing, camp_worth, can_reach_point, dodge_camp_slams, escape_warned_marches, known_camps, known_mines, lost_track, prepared_cohort, prune_escapers, push_is_blind, rally_past, reachable_cohort, redirect_searchers, retry_force
 from warband.sim.model import Attack, Build, Building, Move, Point, Repair, Salvage, Unit, World, dist, int_sum, plain_sum, rect_gap, tile_center
 from warband.sim.rules import SPELLS, BuildingType, Layout, Race, UnitType, Upgrade
 
@@ -32,6 +32,14 @@ class ProBrain(_ProBrainEconomy):
         if not world.players[self.player].alive or world.winner is not None:
             return
         prune_escapers(world, self.camp_escape)
+        if self.attacking:
+            escaped = escape_warned_marches(world, self.player, self._army(world),
+                                            self.creep_party | self._hurt | set(self.camp_escape))
+            if escaped:
+                self.camp_escape.update((uid, world.time + ESCAPE_SECONDS) for uid in escaped)
+                self.attacking = False
+                self.regroup_until = max(self.regroup_until, world.time + self.profile.regroup_seconds)
+                self.note(world, "regroup outside newly sighted neutral guards")
         searches = self.scouts + list(self.hunt.party)
         if self.prospector is not None:
             searches.append(self.prospector)
@@ -114,7 +122,8 @@ class ProBrain(_ProBrainEconomy):
                             self.camp_escape[unit.id] = until
                         self.raiders = [i for i in self.raiders if i not in self.camp_escape]
                         middle = camps.centre(world, camp)
-                        dest = rally_past(middle, point) if not outmatched else point
+                        dest = camp_safe_point(world, self.player,
+                                               rally_past(middle, point) if not outmatched else point)
                         # Each soldier at its own speed: a group march walks
                         # at its slowest member, and chasers catch that walk.
                         for u in party:

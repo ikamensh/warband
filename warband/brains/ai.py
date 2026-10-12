@@ -257,6 +257,26 @@ def prepared_cohort(world: World, units: Sequence[Unit], min_hp: float = CAMP_RE
     return max(groups, key=lambda group: strength(world, group))
 
 
+def escape_warned_marches(world: World, player: int, units: Sequence[Unit], excluded: Collection[int]) -> set[int]:
+    """Stop ordinary pushes from crossing newly seen guards before their den is known.
+
+    Partial warning circles can disconnect a march, so the model permits a
+    physical route through them. A brain's unpriced expedition instead walks
+    out of that risk. Assigned camps, ongoing rival fights and protected
+    retreaters remain their own jobs; every escape is a recorded order.
+    """
+    warnings = world.worker_knowledge[player].guard_warnings.values()
+    marching = [unit for unit in units if unit.id not in excluded and not unit.flying
+                and isinstance(unit.order, AttackMove)]
+    if not any(dist(unit.pos, point) < camps.GUARD_WARNING for unit in marching for point in warnings):
+        return set()
+    # Break off the ordinary push as a whole. Recruits still behind the first
+    # sighting must not continue its old destination while its vanguard escapes.
+    for unit in marching:
+        world.move([unit.id], camp_safe_point(world, player, unit.pos))
+    return {unit.id for unit in marching}
+
+
 def redirect_searchers(world: World, player: int, searchers: Sequence[int]) -> None:
     """Reconsider ordinary search destinations as soon as a new encounter is discovered.
 
@@ -1333,7 +1353,8 @@ class Brain:
                         self.raiders = [i for i in self.raiders if i not in self.camp_escape]
                         # Each soldier at its own speed: a group march walks
                         # at its slowest member, and chasers catch that walk.
-                        dest = rally_past(camps.centre(world, interrupted), threat)
+                        dest = camp_safe_point(world, self.player,
+                                               rally_past(camps.centre(world, interrupted), threat))
                         for uid in party:
                             world.move([uid], dest)
                 self.creeping = None
