@@ -3,11 +3,18 @@
 import pytest
 
 from saga2d import Button, Game
+from warband.sim import mapgen
 from warband.sim.model import World
 from warband.sim.rules import Layout
 from warband.ui.scene import DEFAULT_SETTINGS, new_game, next_game
 from warband.ui.style import build_theme
 from warband.ui.title import TitleScene
+
+
+@pytest.fixture(autouse=True)
+def representative_map_seed(monkeypatch):
+    """Option tests need a camp-bearing map; arbitrary fair maps can have no safe camp."""
+    monkeypatch.setattr(mapgen, "fresh_seed", lambda: 7)
 
 
 def click(game, label):
@@ -45,7 +52,8 @@ def test_player_can_choose_wilds_before_starting(tmp_path, enabled, mode):
     """The setup toggle changes the preview and the match actually started by Enter."""
     game = Game("Wilds option", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     try:
-        game.push(TitleScene(settings=dict(DEFAULT_SETTINGS, tutorial=False, music=0, sfx=0)))
+        game.push(TitleScene(layout=Layout.PLAINS,
+                             settings=dict(DEFAULT_SETTINGS, tutorial=False, music=0, sfx=0)))
         game.scene.new_game()
         game.tick(0.1)  # lays the panel out, so its buttons can be clicked
         setup = game.scene
@@ -147,6 +155,7 @@ def test_multiplayer_host_can_switch_wilds_in_room_setup(tmp_path):
         game.scene.multiplayer()
         menu = game.scene
         game.tick(0.1)
+        click(game, "Plains")
         assert menu.create_options()["wilds"] is True
         assert menu.create_match().world.camps
         x, y, w, h = menu.wilds_button.bounds
