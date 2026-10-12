@@ -3863,10 +3863,12 @@ class World:
             return 0 <= x < self.width and 0 <= y < self.height and not grid[y * self.width + x]
         escape: list[Pos] = []
         if not passable(*start):
-            nearest = pathing.nearest_passable(start, passable)
+            if navigation is not None:
+                escape = self._way_out(u, navigation) or []
+                nearest = escape[-1] if escape else None
+            else:
+                nearest = pathing.nearest_passable(start, passable)
             if nearest is not None:
-                if navigation is not None:
-                    escape = self._escape(u, nearest) or []
                 start = nearest
         target = goal
         if not passable(*goal):
@@ -4169,22 +4171,18 @@ class World:
         return grid
 
     def _way_out(self, u: Unit, navigation: bytearray) -> list[Pos] | None:
-        """Escape to the nearest safety-map tile without entering another remembered camp."""
+        """Take the shortest real escape to nearby safety, retaining other remembered camp watches.
+
+        The geometrically nearest safe tile may stand across a tree wall. Search all nearby
+        exits together, so its inaccessible shortcut cannot become the start of a march.
+        """
         width, height = self.width, self.height
-
-        def allowed(x: int, y: int) -> bool:
-            return 0 <= x < width and 0 <= y < height and not navigation[y * width + x]
-        nearest = pathing.nearest_passable(u.tile, allowed)
-        return self._escape(u, nearest) if nearest is not None else None
-
-    def _escape(self, u: Unit, nearest: Pos) -> list[Pos] | None:
-        """Escape mobile danger to *nearest* over this unit's ground and the remaining hard watches."""
-        start = u.tile
-        if self.ground_of(u)[start[1] * self.width + start[0]]:
+        tx, ty = u.tile
+        if self.ground_of(u)[ty * width + tx]:
             return None
-        route = pathing.find_path_grid(start, nearest, self._escape_ground(u), self.width, self.height,
-                                      max_expansions=LOCAL_EXPANSIONS)
-        return route if route and route[-1] == nearest else None
+        goals = {(x, y): 0.0 for y in range(max(0, ty - 12), min(height, ty + 13))
+                 for x in range(max(0, tx - 12), min(width, tx + 13)) if not navigation[y * width + x]}
+        return pathing.find_work_path(u.tile, goals, self._escape_ground(u), width, height)
 
     def _effective_speed(self, u: Unit, *, dressing: bool = False) -> float:
         """How fast *u* walks right now: its own speed, capped to its order's group pace.
