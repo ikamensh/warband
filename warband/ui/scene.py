@@ -733,6 +733,16 @@ class GameScene(Scene):
         if hasattr(self.settings, "save"):
             self.settings.save()
 
+    def _refresh_side_identity(self) -> None:
+        """Repoint the top bar's name, colour and race at the inspected side.
+
+        Played matches never move it; a watcher calls it on every seat switch,
+        so the bar cannot keep showing a side nobody watches.
+        """
+        self.side_name.text = self.player.name
+        self.side_name.style = Style(text_color=rgba(self.player.color))
+        self.side_race.text = self.race.name
+
     @property
     def scheme(self) -> Scheme:
         """The control scheme the settings choose (:mod:`warband.ui.controls`)."""
@@ -834,9 +844,12 @@ class GameScene(Scene):
             icon, label = Icon(name, size=22), Label(reading, text_style="hud", text_color=ink)
             self._resources[name] = (icon, label, label.style)
             self._resource_rows.append((Row(icon, label, spacing=6), hint))
+        # Whose bar this is: a watcher repoints it at every seat switch (see _refresh_side_identity).
+        self.side_name = Label(self.player.name, text_style="title", text_color=rgba(self.player.color))
+        self.side_race = Label(self.race.name, text_style="sub")
         self.ui.add(Panel(anchor=Anchor.TOP_LEFT, margin=12, layout=Layout.HORIZONTAL, spacing=12, style=PANEL_STYLE, blocks_pointer=True, children=[
-            Label(self.player.name, text_style="title", text_color=rgba(self.player.color)),
-            Label(self.race.name, text_style="sub"),
+            self.side_name,
+            self.side_race,
             *(row for row, _hint in self._resource_rows),
             Label(lambda: _clock(self.world.time), text_style="sub"),
             Label(lambda: "Paused" if self.paused else f"×{self.speed:g}" if self.speed != 1 else "", text_style="hud", text_color=BAD),
@@ -2834,19 +2847,27 @@ class GameScene(Scene):
             return 1.0
         return self._acc / SIM_DT
 
+    def _steps_running(self) -> bool:
+        """Whether the fixed-step clock may run: undecided, unpaused, and the player's side still in it."""
+        return not self.paused and not self._game_over and self.world.winner is None and self.player.alive
+
+    def _think_and_step(self) -> None:
+        """One fixed step: every brain's turn, then the world's."""
+        telemetry = self.game.telemetry
+        with telemetry.phase("ai"):
+            for brain in self.brains:
+                brain.think(self.world, self.rng)
+        self.view.before_step()
+        with telemetry.phase("sim"):
+            self.world.step()
+
     def _advance(self, dt: float) -> None:
-        if not self.paused and not self._game_over and self.world.winner is None and self.player.alive:  # a decided match stays frozen
+        if self._steps_running():  # a decided match stays frozen
             self._acc += min(dt, 0.25) * self.speed
             self._behind += max(0.0, dt - 0.25) * self.speed
             steps = 0
-            telemetry = self.game.telemetry
             while self._acc >= SIM_DT and steps < MAX_STEPS_PER_FRAME:
-                with telemetry.phase("ai"):
-                    for brain in self.brains:
-                        brain.think(self.world, self.rng)
-                self.view.before_step()
-                with telemetry.phase("sim"):
-                    self.world.step()
+                self._think_and_step()
                 self._acc -= SIM_DT
                 steps += 1
             if steps == MAX_STEPS_PER_FRAME:
@@ -3354,6 +3375,10 @@ class GameScene(Scene):
             self.draw_circle(x, y, 5, GOLD, space="world")
             self.draw_text("Assembly", x + 7, y + 14, style="caption", color=GOLD, space="world")
 
+    def _idle_line(self, entity) -> str:
+        """What a unit with empty hands is doing: idle — its queue says nothing else."""
+        return "Idle"
+
     def _draw_selection_panel(self) -> None:
         panel = self.selection_panel
         x, y, w, h = panel.bounds
@@ -3409,6 +3434,14 @@ class GameScene(Scene):
             self.draw_rect(px, py + size + 2, size, 4, (0, 0, 0, 160))
             self.draw_rect(px, py + size + 2, size * frac, 4, health_ink(frac))
 
+    def _empty_selection_note(self) -> str:
+        """What the selection panel says with nothing selected."""
+        return "Drag to select units · right-click to order them"
+
+    def _queue_footer_note(self) -> str:
+        """What the production overview says under its portraits."""
+        return "Hover for details · click to go there · right-click to cancel"
+
     def _draw_queue(self, x: float, y: float, w: float) -> None:
         """The production overview where the selection would be: one portrait per item being made or waited for."""
         entries = self._queue_entries()
@@ -3427,7 +3460,7 @@ class GameScene(Scene):
             if self.world.in_bounds(tile) and self.world.is_explored(self.human, tile):
                 text = f"{self.view.terrain_at(tile).value.title()} ({tile[0]}, {tile[1]})"
             self.draw_text(text, x + 16, y + 30, style="heading")
-            self.draw_text("Drag to select units · right-click to order them", x + 16, y + 58, style="sub")
+            self.draw_text(self._empty_selection_note(), x + 16, y + 58, style="sub")
             return
         working = sum(e.state != "waiting" for e in entries)
         waiting = len(entries) - working
@@ -3451,7 +3484,7 @@ class GameScene(Scene):
                 self.tooltip = entry.hint
         if len(shown) < len(entries):
             self.draw_text(f"+{len(entries) - len(shown)}", x + 16 + len(shown) * (size + gap), y + 46 + size / 2, style="body", anchor_y="center")
-        self.draw_text("Hover for details · click to go there · right-click to cancel", x + 16, y + 106, style="sub")
+        self.draw_text(self._queue_footer_note(), x + 16, y + 106, style="sub")
 
     def _endless_line(self, building: Building) -> str:
         """What *building* trains endlessly, the next one first (``World.auto_train_next``)."""
@@ -3602,7 +3635,7 @@ class GameScene(Scene):
             elif order is not None:
                 lines.append(DOING[type(order)])
             else:
-                lines.append("Idle")
+                lines.append(self._idle_line(entity))
         else:
             building = world.buildings.get(entity.id) if own else None  # the player's own, as it is: what it is making, who builds it
             if not entity.done:

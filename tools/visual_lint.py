@@ -323,6 +323,90 @@ def new_game_magic(game: Game) -> None:
 
 
 @screen
+def new_game_observe(game: Game) -> None:
+    """The Observe choice: who plays, the seats watched, and the unrated note."""
+    game.push(TitleScene())
+    ticks(game)
+    game.scene.new_game()
+    ticks(game)
+    game.scene.set_observe(True)
+    ticks(game)
+
+
+@screen
+def observer_match(game: Game) -> None:
+    """A watched AI-only match: the Watching strip, its pace, and no order rows."""
+    from warband.ui.observer import observe_game
+
+    scene = observe_game(3, settings=dict(QUIET))
+    game.push(scene)
+    ticks(game, 30)
+
+
+def _observer_session(state):
+    """A watching session's public contract without any network: no seat, no tokens."""
+    from types import SimpleNamespace
+
+    session = SimpleNamespace(observer=True, online=True, player=None, state=state, revision=0,
+                              ready=True, error="", closed=False, observer_count=1, incompatible=False,
+                              endpoint="wss://lint.invalid/play", room="AB12", seats=2, present=2,
+                              players=[{"seat": 0, "name": "Al", "connected": True},
+                                       {"seat": 1, "name": "Bo", "connected": True}])
+    session.poll = lambda: None
+    session.close = lambda: setattr(session, "closed", True)
+    return session
+
+
+def _observer_scene(game: Game, *, winner: int | None = None):
+    """A network-watched room on the mock backend: a real observer snapshot, no sockets."""
+    from warband.online.authority import WarbandMatch
+    from warband.ui.multiplayer import NetworkObserverScene
+
+    match = WarbandMatch(seed=3)
+    if winner is not None:
+        match.world.resign(1 - winner)
+    scene = NetworkObserverScene(_observer_session(match.observer_snapshot()), settings=dict(QUIET))
+    game.push(scene)
+    ticks(game, 30)
+    return scene
+
+
+@screen
+def observer_lobby(game: Game) -> None:
+    """The waiting room while watching: no partner is waited for, nothing is rated."""
+    from warband.ui.multiplayer import WarbandLobby
+
+    game.push(TitleScene())
+    ticks(game)
+    game.scene.multiplayer()
+    ticks(game)
+    session = _observer_session(None)
+    session.ready, session.state = False, None
+    game.push(WarbandLobby(session, lambda connection: None))
+    ticks(game)
+
+
+@screen
+def observer_network_match(game: Game) -> None:
+    """A watched network room: the Watching strip, live 1× pace, and no order rows."""
+    _observer_scene(game)
+
+
+@screen
+def observer_network_menu(game: Game) -> None:
+    """The watched room's menu: return, settings, help, stop watching, quit — never resign."""
+    scene = _observer_scene(game)
+    scene.open_menu()
+    ticks(game)
+
+
+@screen
+def observer_network_result(game: Game) -> None:
+    """The watched room's result: the winner's name and every side's fate, unrated."""
+    _observer_scene(game, winner=0)
+
+
+@screen
 def multiplayer_magic(game: Game) -> None:
     """Room creators choose magic directly, including after switching to LAN mode."""
     game.push(TitleScene())

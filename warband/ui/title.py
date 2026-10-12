@@ -359,7 +359,7 @@ class NewGameScene(Scene):
     transparent = True
     pause_below = False
     pop_on_cancel = True
-    controls = {("return", "space"): "start"}
+    controls = {("return", "space"): "start", "o": "toggle_observe"}
 
     def __init__(self, title: TitleScene) -> None:
         self.title = title
@@ -370,12 +370,14 @@ class NewGameScene(Scene):
         self.race = title.race
         self.layout = title.layout
         self.magic = title.magic
+        self.observe = False
         self.seed = mapgen.fresh_seed()
         self._preview_world: World | None = None
         self._preview_pil: PilImage.Image | None = None
         self._theme_buttons: dict[MapTheme, Button] = {}
         self._size_buttons: dict[str, Button] = {}
         self._player_buttons: dict[int, Button] = {}
+        self._mode_buttons: dict[bool, Button] = {}
         self._difficulty_buttons: dict[Difficulty, Button] = {}
         self._race_buttons: dict[Race, Button] = {}
         self._layout_buttons: dict[Layout | None, Button] = {}
@@ -409,7 +411,11 @@ class NewGameScene(Scene):
     def _settings_note(self) -> str:
         """What the seat count means, and what the screen moved to keep it playable."""
         width, height = self.dimensions
-        note = f"{self.size} is {width}×{height} tiles here: you and {plural(self.players - 1, 'computer player')}"
+        if self.observe:
+            note = (f"{self.size} is {width}×{height} tiles here: {plural(self.players, 'computer player')} "
+                    "play themselves — you watch, unrated, at 1–3× pace")
+        else:
+            note = f"{self.size} is {width}×{height} tiles here: you and {plural(self.players - 1, 'computer player')}"
         return f"{note}. {self._moved}." if self._moved else f"{note}."
 
     def _difficulty_text(self) -> str:
@@ -419,6 +425,11 @@ class NewGameScene(Scene):
     def _opponents_text(self) -> str:
         if self._preview_world is None:
             return "Opponents: …"
+        if self.observe:
+            races = [RACES[p.race].name for p in self._preview_world.players[:self._preview_world.seats]]
+            tally = {name: races.count(name) for name in dict.fromkeys(races)}
+            shown = races if len(races) <= 4 else [f"{n}× {name}" for name, n in tally.items()]
+            return "Seats: " + ", ".join(shown)
         races = [RACES[p.race].name for p in self._preview_world.players[1:self._preview_world.seats]]  # not the wilds past the seats
         tally = {name: races.count(name) for name in dict.fromkeys(races)}
         # A sixteen-seat list of races would run off the panel, so beyond a handful they are counted.
@@ -501,6 +512,10 @@ class NewGameScene(Scene):
                         Button("Reroll", on_click=self.reroll, style=GHOST_BUTTON, width=OPTION_WIDTH),
                         Button(lambda: "Magic: On" if self.magic else "Magic: Off", on_click=self.toggle_magic,
                                style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
+        for watching in (False, True):
+            self._mode_buttons[watching] = Button(
+                "Play" if not watching else "Observe", hotkey="O" if watching else None,
+                on_click=lambda w=watching: self.set_observe(w), style=GHOST_BUTTON, width=OPTION_WIDTH)
         side = Column(Image(PREVIEW_KEY, width=PREVIEW_BOX[0], height=PREVIEW_BOX[1]),
                       Label(lambda: self._opponents_text(), text_style="sub", width=PREVIEW_BOX[0], wrap=True),
                       Label(lambda: self._settings_note(), text_style="sub", width=PREVIEW_BOX[0], wrap=True),
@@ -508,7 +523,9 @@ class NewGameScene(Scene):
         # The race's character runs under the whole row: beside the preview it would wrap, and the panel must fit a 680 px window.
         race_note = Label(lambda: f"{RACES[self.race].tagline} · {RACES[self.race].passive}", text_style="sub", width=NOTE_WIDTH + 24 + PREVIEW_BOX[0])
         panel = Column(Label("New game", text_style="title"), Row(options, side, spacing=24), race_note,
-                       Row(Button("Start", hotkey="Enter", on_click=self.start, style=ACTION_BUTTON, width=2 * OPTION_WIDTH + 8),
+                       Row(self._mode_buttons[False], self._mode_buttons[True],
+                           Button(lambda: "Watch" if self.observe else "Start", hotkey="Enter", on_click=self.start,
+                                          style=ACTION_BUTTON, width=2 * OPTION_WIDTH + 8),
                            Button("Back", hotkey="Esc", on_click=self.game.pop, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8),
                        spacing=8, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
         self.ui.add(panel)
@@ -519,6 +536,8 @@ class NewGameScene(Scene):
             button.style = ACTION_BUTTON if name == self.size else GHOST_BUTTON
         for count, button in self._player_buttons.items():
             button.style = ACTION_BUTTON if count == self.players else GHOST_BUTTON
+        for watching, button in self._mode_buttons.items():
+            button.style = ACTION_BUTTON if watching == self.observe else GHOST_BUTTON
         for layout, button in self._layout_buttons.items():
             button.enabled = layout is None or layout in mapgen.layouts_for(*self.dimensions, self.players)
         for difficulty, button in self._difficulty_buttons.items():
@@ -611,8 +630,25 @@ class NewGameScene(Scene):
         self.title.sfx("button")
         self._refresh_preview()
 
+    def set_observe(self, watching: bool) -> None:
+        """Watch every seat play itself, or lead one of them; the settings stay."""
+        self.observe = watching
+        self.title.sfx("button")
+        self._restyle()
+
+    def toggle_observe(self) -> None:
+        self.set_observe(not self.observe)
+
     def start(self) -> None:
         self.title.sfx("button")
         width, height = self.dimensions
+        races = [self.race] + [None] * (self.players - 1)
+        if self.observe:
+            from warband.ui.observer import observe_game
+
+            self.game.clear_and_push(observe_game(self.seed, width=width, height=height, players=self.players, difficulty=self.difficulty,
+                                                 theme=self.theme, settings=self.title.settings, races=races,
+                                                 layout=self.layout, magic=self.magic))
+            return
         self.game.clear_and_push(new_game(self.seed, width=width, height=height, players=self.players, difficulty=self.difficulty, theme=self.theme,
-                                          settings=self.title.settings, races=[self.race] + [None] * (self.players - 1), layout=self.layout, magic=self.magic))
+                                          settings=self.title.settings, races=races, layout=self.layout, magic=self.magic))

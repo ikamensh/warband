@@ -245,7 +245,7 @@ def test_every_unit_pose_fits_the_unit_canvas() -> None:
 
 
 SCREENS = ("title", "library", "multiplayer_setup", "multiplayer_lan", "multiplayer_identity_create_refused", "multiplayer_identity_join_refused", "multiplayer_identity_rejoin_refused", "warband_lobby", "warband_lobby_error", "network_result_rated", "network_result_ffa_final",
-           "new_game_elf", "new_game_orc", "new_game_master", "select_peasant", "select_conditions", "pending_salvage", "select_town_hall", "select_army", "select_60_units", "select_60_archers", "town_at_work", "menu_build_hover", "menu_train_hover",
+           "new_game_elf", "new_game_orc", "new_game_master", "new_game_observe", "observer_match", "observer_lobby", "observer_network_match", "observer_network_menu", "observer_network_result", "select_peasant", "select_conditions", "pending_salvage", "select_town_hall", "select_army", "select_60_units", "select_60_archers", "town_at_work", "menu_build_hover", "menu_train_hover",
            "select_mage_tower_chosen", "spell_aim", "spell_bar_nine", "select_summoned",
            "menu_build_at_start", "menu_train_at_start", "menu_upgrade_researched", "menu_upgrade_all_done", "plans", "plan_row", "cancel_mode", "cancel_box",
            "commands_pips", "commands_tags",
@@ -260,7 +260,8 @@ SCREENS = ("title", "library", "multiplayer_setup", "multiplayer_lan", "multipla
 OVERFLOW_CHECKED = ("library", "help", "codex_0", "codex_2", "codex_3", "codex_4", "codex_5", "codex_wilds", "save_browser", "menu_build_at_start", "menu_train_at_start")
 SMALLEST = min(screens.RESOLUTIONS)
 FAST_SCREENS = {"title", "library", "multiplayer_setup", "multiplayer_identity_create_refused", "multiplayer_identity_join_refused", "multiplayer_identity_rejoin_refused", "select_army", "town_at_work", "battle_wood", "menu_build_hover", "help", "mission_raid", "spell_aim", "modes_build", "modes_withdraw",
-                "neutral_ancient", "codex_wilds"}
+                "neutral_ancient", "codex_wilds", "new_game_observe", "observer_match", "observer_lobby",
+                "observer_network_match", "observer_network_menu", "observer_network_result"}
 
 
 @pytest.mark.parametrize("name, resolution", [pytest.param(name, r, id=f"{name}-{r[0]}x{r[1]}",
