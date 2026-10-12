@@ -1,0 +1,163 @@
+{
+  "capture": {
+    "seed": 81,
+    "build": "015f4dc0c482390b96a7",
+    "time": 841.0499999997828,
+    "x": [
+      99,
+      117
+    ],
+    "y": [
+      38,
+      57
+    ],
+    "original_player": 2
+  },
+  "terrain": [
+    "gggggggggggggggtttt",
+    "gggggggggggggggtttt",
+    "ggggggggggwwwggtttt",
+    "gggggggggwwwwwwwwtg",
+    "ggggggggggwwwwggtgt",
+    "ggggggggggggggggtgt",
+    "ggggggggggggggggtgt",
+    "gggggggggggggggtttt",
+    "gggggggtttggrggtttt",
+    "gggrrggtttgrrrgtttt",
+    "gggggggtttggrggtttg",
+    "rggggggggggggggtttg",
+    "wggttttgggwgggggggt",
+    "wwgttttggwwwggggggt",
+    "wggtttgggwwwggggggt",
+    "rgggggggggggggggggt",
+    "rgggggggggggggggggt",
+    "ggggggggggggggggggt",
+    "ggggggggggggggggggt",
+    "ggggggggggggggggggg"
+  ],
+  "known_terrain": [
+    "gggggggggggggggtt??",
+    "gggggggggggggggtt??",
+    "ggggggggggwwwggtt??",
+    "gggggggggwwwwwwwwt?",
+    "ggggggggggwwwwggtg?",
+    "ggggggggggggggggtg?",
+    "ggggggggggggggggtg?",
+    "gggggggggggggggttt?",
+    "gggggggtttggrggtt??",
+    "gggrrggtttgrrrgtt??",
+    "gggggggtttggrggt???",
+    "rggggggggggggggt???",
+    "wggttttgggwggggg???",
+    "wwgttttggwwwgggg???",
+    "wggtttgggwwwggg????",
+    "rggggggggggggg?????",
+    "rgggggggggggg??????",
+    "gggggggggg?????????",
+    "ggggggggggg????????",
+    "gggggggggggg???????"
+  ],
+  "unit": {
+    "id": 2511,
+    "type": "knight",
+    "player": 0,
+    "x": 10.719358346273424,
+    "y": 7.097380879244021,
+    "hp": 94,
+    "facing": 3.03755472789501,
+    "orders": [
+      {
+        "kind": "Move",
+        "target": [
+          3.081325590773176,
+          6.805545713536802
+        ],
+        "pace": null,
+        "offset": null
+      },
+      {
+        "kind": "AttackMove",
+        "target": [
+          6.5,
+          3.5
+        ],
+        "pace": 3.25,
+        "offset": null
+      }
+    ],
+    "cooldown": 0.0,
+    "windup": 0.0,
+    "vx": 0.2162981199302294,
+    "vy": -1.929793523651142,
+    "worker_orders": [],
+    "carrying": null,
+    "carry": 0,
+    "timer": 0.0,
+    "inside": null,
+    "constructing": null,
+    "home": [
+      3.081325590773176,
+      6.805545713536802
+    ],
+    "state": "move",
+    "ease": null,
+    "charge": 0.0,
+    "auto_work": true,
+    "commanded": 827.649999999795,
+    "struck": -1000.0,
+    "conditions": [],
+    "expires": 0,
+    "slam_point": null
+  },
+  "knowledge": {
+    "width": 19,
+    "height": 20,
+    "buildings": [],
+    "encounters": [
+      [
+        119,
+        [
+          6.5,
+          3.5
+        ]
+      ]
+    ],
+    "watches": [
+      [
+        119,
+        [
+          6.5,
+          3.5
+        ]
+      ]
+    ],
+    "cleared_encounters": [],
+    "fallen_guards": [],
+    "guard_warnings": [
+      [
+        68,
+        [
+          12.661522368914973,
+          15.661522368914973
+        ]
+      ]
+    ],
+    "mines": []
+  },
+  "upgrades": [
+    "armor_1",
+    "armor_2",
+    "arrows_1",
+    "arrows_2",
+    "blades_1",
+    "blades_2",
+    "blasting_powder",
+    "deep_mining",
+    "keep",
+    "marksmanship",
+    "siege"
+  ],
+  "time": 841.0499999997828,
+  "tick": 16821,
+  "next_id": 3595
+}

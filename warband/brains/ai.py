@@ -14,17 +14,17 @@ from __future__ import annotations
 
 import math
 import random
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-from warband.sim.model import (MINE_CLEARANCE, RIFT, Attack, AttackMove, Build, Building, Deposit, Harvest, Heal, Move, Point, Pos, Repair, Salvage, Unit,
+from warband.sim.model import (MINE_CLEARANCE, RIFT, Attack, AttackMove, Build, Building, Deposit, Harvest, Heal, Hold, Move, Point, Pos, Repair, Salvage, Unit,
                            World, dist, int_sum, plain_sum, rect_gap, tile_center)
 from warband.sim import camps, mapgen
 from warband.sim.path import nearest_passable
 from warband.sim.races import RACES
-from warband.sim.rules import (BUILDINGS, CAMP_ENCOUNTERS, EXPANSION_GOLD, GOLD_PER_TRIP, MINE_SLOTS, PLAYABLE_UNITS, UPGRADES, BuildingType, Difficulty,
-                               Race, Resource, Terrain, UnitType, Upgrade)
+from warband.sim.rules import (BUILDINGS, CAMP_ENCOUNTERS, CAMP_WATCH, EXPANSION_GOLD, GOLD_PER_TRIP, MINE_SLOTS, PLAYABLE_UNITS, UPGRADES,
+                               BuildingType, Difficulty, Race, Resource, Terrain, UnitType, Upgrade)
 from warband.sim.worker_knowledge import KnownMine
 from warband.brains.unique import Commander
 from warband.brains.pro_force import camp_strength, strength
@@ -162,18 +162,28 @@ CAMP_WALK: Final = 2.0
 #: given anew every pass to a soldier wedged in a crowd restarts its walk, and with it the watchdog that would have walked
 #: it round the bodies in its way: fuzz seed 82 had a footman pressed into its own crowd for good.
 REDIRECT: Final = 2.0
+#: The breadth of the existing three-tile muster: only troops close enough to fight together fund a camp assault.
+CAMP_COHESION: Final = 6.0
+CAMP_READY_HP: Final = 0.7
+
+
+def camp_dangers(world: World, player: int, reach: float = CAMP_REACH) -> list[tuple[Point, float]]:
+    """Ground this seat remembers as guarded, including sightings before a den is found."""
+    dangers = [(point, reach) for _lair, point in camps.defended(world, player)]
+    dangers.extend((point, camps.GUARD_WARNING)
+                   for point in world.worker_knowledge[player].guard_warnings.values())
+    return dangers
 
 
 def camp_safe_point(world: World, player: int, point: Point) -> Point:
-    """Keep ordinary rally and scouting destinations outside remembered camp watches."""
-    knowledge = world.worker_knowledge[player]
-    anchors = [anchor for lair, anchor in knowledge.encounters.items() if lair not in knowledge.cleared_encounters]
-    if all(dist(point, anchor) > CAMP_REACH for anchor in anchors):
+    """Keep ordinary rally and scouting destinations outside remembered camp danger."""
+    dangers = camp_dangers(world, player)
+    if all(dist(point, anchor) > radius for anchor, radius in dangers):
         return point
 
     def safe(x: int, y: int) -> bool:
         return (world.passable(x, y)
-                and all(dist((x + .5, y + .5), anchor) > CAMP_REACH for anchor in anchors))
+                and all(dist((x + .5, y + .5), anchor) > radius for anchor, radius in dangers))
 
     tile = nearest_passable((int(point[0]), int(point[1])), safe, max_radius=max(world.width, world.height))
     if tile is None:
@@ -199,6 +209,52 @@ def can_reach_point(world: World, unit: Unit, point: Point) -> bool:
                             max_radius=max(world.width, world.height), prefer=unit.tile)
     regions = world._regions_of(unit)
     return goal is not None and regions.label(unit.tile) == regions.label(goal)
+
+
+def reachable_cohort(world: World, units: Sequence[Unit], point: Point) -> list[Unit]:
+    """The live members of *units* that can physically walk to *point*.
+
+    An expedition commits only its reachable cohort and leaves isolated
+    troops home; the unreachable never inflate the strength another camp
+    is measured against. Reachability is regions, not orders: the same
+    ground the model's own routes stand on.
+    """
+    return [unit for unit in units if unit.hp > 0 and can_reach_point(world, unit, point)]
+
+
+def fighting_visible_rival(world: World, unit: Unit) -> bool:
+    """The unit's own current attack is busy with a living rival it can see."""
+    order = unit.order
+    if not isinstance(order, (Attack, Hold)) or order.target is None:
+        return False
+    target = world.entity(order.target)
+    if target is None or target.player is None or target.player == unit.player or target.player >= world.seats:
+        return False
+    if isinstance(target, Unit):
+        if target.hidden or not world.is_visible(unit.player, target.tile):
+            return False
+    elif not world.any_visible(unit.player, target.rect):
+        return False
+    return target.hp > 0
+
+
+def prepared_cohort(world: World, units: Sequence[Unit], min_hp: float = CAMP_READY_HP) -> list[Unit]:
+    """The strongest healthy local force, without pricing distant arrivals as present support.
+
+    Call after filtering physical reachability. An ongoing visible rival
+    fight keeps its participants; their own attack orders identify it.
+    A coherent army can march
+    from far away; isolated recruits closer to the camp cannot borrow its
+    strength and arrive ahead of their screen. Six tiles is the breadth of
+    the ordinary three-tile muster, rather than a map-wide force quote.
+    """
+    ready = [unit for unit in units if unit.hp >= min_hp * unit.max_hp
+             and not fighting_visible_rival(world, unit)]
+    if not ready:
+        return []
+    groups = [[unit for unit in ready if dist(unit.pos, anchor.pos) <= CAMP_COHESION]
+              for anchor in ready]
+    return max(groups, key=lambda group: strength(world, group))
 
 
 def redirect_searchers(world: World, player: int, searchers: Sequence[int]) -> None:
@@ -230,10 +286,41 @@ def redirect_searchers(world: World, player: int, searchers: Sequence[int]) -> N
                 world.move([uid], point)
 
 
-def heading_to(unit: Unit, point: Point) -> bool:
-    """Whether *unit* is already attack-moving to within :data:`REDIRECT` of *point*."""
+#: How far past the threat withdrawing soldiers rally before turning to
+#: answer it: past chase range, so arrival does not stop them inside it.
+RALLY_PAST: Final = 4.0
+
+#: How long a soldier walking out of an interrupted camp is sheltered from
+#: other tasking: the walk out takes seconds, and a hunt or commander errand
+#: issued mid-escape marches it straight back through the guards.
+ESCAPE_SECONDS: Final = 30.0
+
+
+def rally_past(middle: Point, point: Point) -> Point:
+    """*point* pushed :data:`RALLY_PAST` further from *middle*: withdrawing
+    past chase range before turning, rather than stopping inside it."""
+    away = dist(point, middle) or 1.0
+    return (middle[0] + (point[0] - middle[0]) / away * (away + RALLY_PAST),
+            middle[1] + (point[1] - middle[1]) / away * (away + RALLY_PAST))
+
+
+def answering(unit: Unit, point: Point) -> bool:
+    """Whether *unit* already answers *point*: attack-moving there, or walking
+    there on a plain move, rally past it included."""
     order = unit.order
-    return isinstance(order, AttackMove) and dist(order.target, point) <= REDIRECT
+    if isinstance(order, AttackMove):
+        return dist(order.target, point) <= REDIRECT
+    return isinstance(order, Move) and dist(order.target, point) <= RALLY_PAST + REDIRECT
+
+
+def prune_escapers(world: World, escape: dict[int, float]) -> None:
+    """Forget soldiers done walking out of an interrupted camp: arrived, dead
+    or out of time. What remains is still mid-escape, and no other tasking
+    may claim it until it gets out."""
+    for uid in [uid for uid, until in escape.items()
+                if uid not in world.units or not any(isinstance(order, Move) for order in world.units[uid].orders)
+                or world.time >= until]:
+        del escape[uid]
 
 
 def dodge_camp_slams(world: World, player: int, army: list[Unit]) -> set[int]:
@@ -371,9 +458,11 @@ class Hunt:
         self.since = -1.0  # when the side lost track; negative while it has not
         self.party: dict[int, int] = {}  # a searcher's id -> the square it was sent to (-1: not sent yet)
 
-    def step(self, world: World, player: int, soldiers: list[Unit], lost: bool) -> set[int]:
+    def step(self, world: World, player: int, soldiers: list[Unit], lost: bool,
+             exclude: Collection[int] = frozenset()) -> set[int]:
         """Look, and while *lost* keep the searchers searching; the ids of the searchers, which the brain's army leaves
-        to the hunt.  *soldiers* are those the brain could spare for it."""
+        to the hunt.  *soldiers* are those the brain could spare for it; *exclude* are walking out of an interrupted
+        camp, and no search may claim them until they get out."""
         squares = self.squares
         squares.look(world, player)
         if not lost:
@@ -382,13 +471,14 @@ class Hunt:
             return set()
         if self.since < 0.0:
             self.since = world.time
-        party = {uid: square for uid, square in self.party.items() if uid in world.units}
+        party = {uid: square for uid, square in self.party.items() if uid in world.units and uid not in exclude}
         for unit in world.player_units(player):
-            if unit.flying and unit.id not in party:
+            if unit.flying and unit.id not in party and unit.id not in exclude:
                 party[unit.id] = -1
         if not any(world.units[uid].flying for uid in party) or world.time - self.since >= HUNT_FLYERS_ALONE:
             walking = int_sum(1 for uid in party if not world.units[uid].flying)
-            spare = sorted((u for u in soldiers if u.id not in party), key=lambda u: (-world.speed_of(u), u.id))
+            spare = sorted((u for u in soldiers if u.id not in party and u.id not in exclude),
+                           key=lambda u: (-world.speed_of(u), u.id))
             for unit in spare[:max(0, HUNT_PARTY - walking)]:
                 party[unit.id] = -1
         taken = {square for square in party.values() if square >= 0}
@@ -425,27 +515,42 @@ def known_camps(world: World, player: int) -> list:
 
 
 def camp_standing(world: World, player: int, record: Any) -> bool:
-    """Whether a remembered lair is still a camp to clear: standing where last seen, or remembered with its
-    encounter uncleared.
+    """Whether this seat still remembers an uncleared encounter.
 
-    A brain online plans on its seat's snapshot, whose honest fog omits every entity it cannot see now: a lair
-    across the map is never in the copy's buildings, though the encounter is remembered and uncleared.  Requiring
-    the live entity would keep the prepared army from ever clearing such a camp, and the hunt from the ground its
-    watch holds.  A cleared encounter stays out either way, by the camp's own cleared flag and the side's memory
-    of it; a record with no encounter behind it stays out too.
+    Hidden completion never changes the answer. Seeing the cleared site or
+    receiving earned payout supplies the completion news, locally and online.
     """
-    if record.id in world.buildings:
-        return True
-    camp = world.camp_for(record.id)
-    return (camp is not None and not camp.cleared
-            and record.id not in world.worker_knowledge[player].cleared_encounters)
+    knowledge = world.worker_knowledge[player]
+    return record.id in knowledge.encounters and record.id not in knowledge.cleared_encounters
+
+
+def retry_force(failed: float, at_launch: float, now: float) -> float:
+    """The force a camp retry must exceed: 1.2x the failed assault, scaled down for guards watched fall since.
+
+    *at_launch* is what the camp priced when the expedition set out,
+    *now* what its surviving roster prices today -- including the guards
+    that fell during the assault itself, before the abort priced them.
+    A camp unchanged still needs the full improvement; a den quartered
+    needs a quarter of it. The scale never exceeds one: a camp cannot
+    reinforce, so a higher estimate today is a worse look, not a
+    stronger camp.
+    """
+    if not failed:
+        return 0.0
+    if at_launch <= 0.0:
+        return 1.2 * failed
+    return 1.2 * failed * min(1.0, now / at_launch)
 
 
 def camp_worth(world: World, player: int, record: Any) -> float:
     """How much farther a remembered camp is worth walking for, capped at :data:`CAMP_WALK`.
 
-    Its public bounty matters even without a deposit. A rich known deposit
-    nearby adds value when it lies nearer our halls than any known rival's.
+    Its public bounty matters even without a deposit. A working deposit
+    nearby adds its expansion value on top when it lies nearer our halls
+    than any known rival's: an endless seam is worth the whole walk, and
+    even a small mine outranks the bounty alone. A worked-out deposit adds
+    nothing. Ask :attr:`~warband.sim.worker_knowledge.KnownMine.has_gold`,
+    never the number: a seam's gold is zero and always was.
     """
     camp = world.camp_for(record.id)
     info = CAMP_ENCOUNTERS.get(camp.encounter) if camp is not None else None
@@ -454,14 +559,15 @@ def camp_worth(world: World, player: int, record: Any) -> float:
     if not guarded:
         return bounty
     deposit = min(guarded, key=lambda m: dist(m.center, record.center))
-    worth = deposit.gold / EXPANSION_GOLD
-    if worth <= 1.0:
+    if not deposit.has_gold:
         return bounty
     halls = [b.center for b in world.player_buildings(player, BuildingType.TOWN_HALL)]
     rivals = [r.center for r in known_enemy_buildings(world, player)]
     if not halls or (rivals and min(dist(deposit.center, c) for c in rivals) < min(dist(deposit.center, c) for c in halls)):
         return bounty  # the bounty remains valuable even if the mine is not ours to take
-    return max(bounty, min(worth, CAMP_WALK))
+    if deposit.endless:
+        return CAMP_WALK
+    return min(bounty + deposit.gold / EXPANSION_GOLD, CAMP_WALK)
 
 
 def guarded(world: World, player: int, point: Point, reach: float = CAMP_REACH) -> bool:
@@ -469,11 +575,11 @@ def guarded(world: World, player: int, point: Point, reach: float = CAMP_REACH) 
 
     A deposit with a lair beside it is not an expansion: a hall put up there is a hall whose peasants
     walk into the guards, and the brain that does that feeds them one at a time for the whole match.
+    Either defended circle holds: the den's and, where the watch stands off it, the mine's.
     Completion news releases that remembered watch; destroying the lair alone does not.
+    A guard sighting also blocks unsafe expansion before its den has been discovered.
     """
-    knowledge = world.worker_knowledge[player]
-    return any(dist(anchor, point) < reach for lair, anchor in knowledge.encounters.items()
-               if lair not in knowledge.cleared_encounters)
+    return any(dist(anchor, point) < radius for anchor, radius in camp_dangers(world, player, reach))
 
 
 _RINGS: Final[dict[tuple[int, int], tuple[tuple[float, int, int], ...]]] = {}
@@ -714,7 +820,9 @@ class Brain:
         self.creep_until = 0.0  # when it gives that camp up whatever it has left
         self.camp_retry: dict[int, float] = {}  # lair id -> when that camp is worth trying again
         self.camp_failed: dict[int, float] = {}  # lair id -> force whose assault failed
-        self.camp_seen: dict[int, float] = {}  # guard power remembered from actual sightings
+        self.camp_at_launch: dict[int, float] = {}  # lair id -> what the camp priced when the assault set out
+        self.camp_seen: dict[int, float] = {}  # remembered guard power, bounding unscouted custom camps
+        self.camp_escape: dict[int, float] = {}  # escaper id -> when its walk out stops sheltering it from tasking
         self.commander = Commander()  # the race's own unit: when to buy it and what it is for
 
     def note(self, world: World, what: str) -> None:
@@ -722,6 +830,7 @@ class Brain:
 
     def think(self, world: World, rng: random.Random) -> None:
         """Act if a think is due; call this every simulation step."""
+        prune_escapers(world, self.camp_escape)
         if world.winner is None and world.players[self.player].alive:
             redirect_searchers(world, self.player, list(self.hunt.party))
         if self.creeping is not None and world.winner is None and world.players[self.player].alive:
@@ -1103,14 +1212,14 @@ class Brain:
             return False  # a push at something real keeps its army; a blind one yields to clearing a known camp
         lair = world.buildings.get(self.creeping) if self.creeping is not None else None
         camp = world.camp_for(self.creeping) if self.creeping is not None else None
-        if self.creeping is not None and (camp is None or camp.cleared):
+        if self.creeping is not None and (camp is None or self.creeping in world.worker_knowledge[self.player].cleared_encounters):
             self.note(world, "camp cleared")
             self.creeping = None
             self.creep_party.clear()
             camp = None
         if camp is not None:
             party = [u for u in army if u.id in self.creep_party]
-            if len(party) < max(2, self.creep_size // 2) or world.time >= self.creep_until:
+            if len(party) < max(1 if self.camp_at_launch.get(camp.lair) == 0 else 2, self.creep_size // 2) or world.time >= self.creep_until:
                 self.camp_retry[camp.lair] = world.time + CREEP_RETRY
                 self.camp_failed[camp.lair] = self.creep_strength
                 self.creeping = None
@@ -1125,28 +1234,43 @@ class Brain:
                 point = self._beside(world, lair.rect, lair.center) if lair is not None else camps.centre(world, camp)
                 world.attack_move(idle, point)
             return True
-        if len(army) < self._required_wave(world):
-            return False
-        mine = strength(world, army)
-        here = [record for record in known_camps(world, self.player)
-                if camp_standing(world, self.player, record) and world.time >= self.camp_retry.get(record.id, 0.0)
-                and mine >= 1.2 * self.camp_failed.get(record.id, 0.0)
-                and mine >= 1.5 * self._camp_strength(world, record, army)]
-        if not here:
-            return False
         hall = self._hall(world)
-        origin = hall.center if hall is not None else army[0].pos
-        worth = {record.id: camp_worth(world, self.player, record) for record in here}
-        target = min(here, key=lambda record: dist(record.center, origin) / worth[record.id])  # the nearest for what it keeps
-        if dist(target.center, origin) > CREEP_REACH * worth[target.id]:
+        origin = hall.center if hall is not None else (army[0].pos if army else None)
+        if origin is None:
             return False
+        wave = self._required_wave(world)
+        options = []
+        for record in known_camps(world, self.player):
+            if not camp_standing(world, self.player, record):
+                continue
+            if world.time < self.camp_retry.get(record.id, 0.0):
+                continue
+            if dist(record.center, origin) > CREEP_REACH * camp_worth(world, self.player, record):
+                continue
+            cohort = prepared_cohort(world, reachable_cohort(world, army, self._beside(world, record.rect, record.center)))
+            now = self._camp_strength(world, record, cohort)
+            if len(cohort) < (1 if now == 0 else wave):
+                continue  # witnessed empty dens need cleanup, not a full combat wave
+            force = strength(world, cohort)
+            if force < retry_force(self.camp_failed.get(record.id, 0.0),
+                                   self.camp_at_launch.get(record.id, 0.0), now):
+                continue
+            if force < 1.5 * now:
+                continue
+            options.append((record, cohort, force, now))
+        if not options:
+            return False
+        worth = {record.id: camp_worth(world, self.player, record) for record, _, _, _ in options}
+        target, cohort, mine, priced = min(  # the nearest for what it keeps
+            options, key=lambda item: dist(item[0].center, origin) / worth[item[0].id])
         self.creeping = target.id
-        self.creep_size = len(army)
+        self.creep_size = len(cohort)
         self.creep_strength = mine
-        self.creep_party = {u.id for u in army}
+        self.camp_at_launch[target.id] = priced
+        self.creep_party = {u.id for u in cohort}
         self.creep_until = world.time + CREEP_PATIENCE
-        world.attack_move([u.id for u in army], self._beside(world, target.rect, target.center))
-        self.note(world, f"clear the camp with {len(army)}")
+        world.attack_move([u.id for u in cohort], self._beside(world, target.rect, target.center))
+        self.note(world, f"clear the camp with {len(cohort)}")
         return True
 
     def _camp_strength(self, world: World, record: Any, army: list[Unit]) -> float:
@@ -1168,20 +1292,58 @@ class Brain:
         if self.profile.harass:
             self._raid(world)
             army = [u for u in army if u.id not in self.raiders]
-        hunting = self.hunt.step(world, self.player, army, lost_track(world, self.player, self._far_guess(world)))
-        hunting |= self.commander.step(world, self.player, [u for u in self._units(world) if u.id not in hunting],
+        hunting = self.hunt.step(world, self.player, army, lost_track(world, self.player, self._far_guess(world)),
+                                 exclude=self.camp_escape)
+        hunting |= self.commander.step(world, self.player,
+                                       [u for u in self._units(world)
+                                        if u.id not in hunting and u.id not in self.camp_escape],
                                        self._push(world, army) if self.attacking else None)
-        army = [u for u in army if u.id not in hunting]
+        army = [u for u in army if u.id not in hunting and u.id not in self.camp_escape]
         threats = self._threats(world)
         if self.profile.creep and not threats and self._creep(world, army):
             return
         if threats:
             threat = self._threat_point(world, threats)
+            if self.creeping is not None:
+                # Defense takes the whole expedition: answering with part of
+                # it while stopped stragglers stand in the roused camp would
+                # auto-acquire guards and feed them untracked, so every
+                # interrupted member marches at the threat before the
+                # responder cap below counts who is already answering it.
+                interrupted = world.camp_for(self.creeping)
+                if interrupted is not None and interrupted.lair not in world.worker_knowledge[self.player].cleared_encounters:
+                    self.camp_retry[interrupted.lair] = world.time + CREEP_RETRY
+                    self.camp_failed[interrupted.lair] = self.creep_strength
+                    # From the whole army, not the filtered one below: troops
+                    # the hunt, the raid or an own-unit errand claimed since
+                    # the expedition set out are still its members, and must
+                    # still withdraw and defend with it.
+                    party = [u.id for u in self._army(world) if u.id in self.creep_party]
+                    if party:
+                        # Walk the whole expedition out blind, past the threat:
+                        # an attack-move back through the roused camp
+                        # auto-acquires its guards, and stopping at the threat
+                        # leaves the vanguard fighting chasers alone. The walk
+                        # out shelters its soldiers from every other errand
+                        # until they arrive: a hunt or commander order issued
+                        # mid-escape marches them back through the guards.
+                        until = world.time + ESCAPE_SECONDS
+                        for uid in party:
+                            self.camp_escape[uid] = until
+                        self.raiders = [i for i in self.raiders if i not in self.camp_escape]
+                        # Each soldier at its own speed: a group march walks
+                        # at its slowest member, and chasers catch that walk.
+                        dest = rally_past(camps.centre(world, interrupted), threat)
+                        for uid in party:
+                            world.move([uid], dest)
+                self.creeping = None
+                self.creep_party.clear()
+                self.note(world, "break off the camp to defend")
             size = len(threats)
             if 2 * size >= len(army):
                 self.attacking = False
                 for unit in army:
-                    if not isinstance(unit.order, Attack) and not heading_to(unit, threat):
+                    if not isinstance(unit.order, Attack) and not answering(unit, threat):
                         world.attack_move([unit.id], threat)
                 if size != self._last_defend:
                     self.note(world, f"defend with {len(army)} against {size}")
@@ -1191,7 +1353,7 @@ class Brain:
             engaged_ids = {u.id for u in army if self._aimed_at(world, u, threat)}
             responders = len(engaged_ids)
             if responders < want:
-                rest = [u for u in army if u.id not in engaged_ids]
+                rest = [u for u in army if u.id not in engaged_ids and not answering(u, threat)]
                 rest.sort(key=lambda u: dist(u.pos, threat))
                 for unit in rest[: want - responders]:
                     world.attack_move([unit.id], threat)
@@ -1251,8 +1413,9 @@ class Brain:
 
     def _raid(self, world: World) -> None:
         """The first two knights go for the enemy's peasants and keep at it."""
-        self.raiders = [i for i in self.raiders if i in world.units]
-        riders = [u for u in self._army(world) if u.type in RAIDERS and u.id not in self.raiders]
+        self.raiders = [i for i in self.raiders if i in world.units and i not in self.camp_escape]
+        riders = [u for u in self._army(world)
+                  if u.type in RAIDERS and u.id not in self.raiders and u.id not in self.camp_escape]
         while len(self.raiders) < 2 and riders:
             self.raiders.append(riders.pop().id)
         idle = [i for i in self.raiders if not world.units[i].orders]

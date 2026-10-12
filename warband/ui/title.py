@@ -29,7 +29,7 @@ from warband.ui.view import NEUTRAL_MINIMAP, MapView, minimap_terrain, to_world
 from warband.ui.version import running_build
 
 OPTION_WIDTH = 180
-SIZE_WIDTH = 86  # six sizes on one row, as wide as three options: a second row of them stood the panel off a 680-pixel screen
+SIZE_WIDTH = 92  # six sizes stay on one row, with room for Medium at native font metrics
 COUNT_WIDTH = 72  # seven seat counts share the width three options take
 RACE_WIDTH = 125
 NOTE_WIDTH = 90 + 8 + 3 * OPTION_WIDTH + 2 * 8  # a note under a row of options spans the row and wraps beside the preview
@@ -63,7 +63,8 @@ class TitleScene(Scene):
                 "h": "how_to_play", "f2": "codex", "q": "quit"}
 
     def __init__(self, *, size: str = "Medium", players: int = 2, difficulty: Difficulty = Difficulty.MEDIUM, theme: MapTheme = MapTheme.SUMMER,
-                 race: Race = Race.HUMAN, layout: Layout | None = None, settings: dict[str, Any] | None = None, magic: bool = False) -> None:
+                 race: Race = Race.HUMAN, layout: Layout | None = None, settings: dict[str, Any] | None = None, magic: bool = False,
+                 wilds: bool = True) -> None:
         """*layout* ``None`` is Any: each seed draws its own."""
         self.size = size
         self.players = players
@@ -72,6 +73,7 @@ class TitleScene(Scene):
         self.race = race
         self.layout = layout
         self.magic = magic
+        self.wilds = wilds
         self.settings = settings
         self.time = 0.0
         self._stop = 0
@@ -370,6 +372,7 @@ class NewGameScene(Scene):
         self.race = title.race
         self.layout = title.layout
         self.magic = title.magic
+        self.wilds = title.wilds
         self.seed = mapgen.fresh_seed()
         self._preview_world: World | None = None
         self._preview_pil: PilImage.Image | None = None
@@ -431,7 +434,8 @@ class NewGameScene(Scene):
             return
         width, height = self.dimensions
         # The screen chose the seed, so a seed that makes no fair map of these settings gives way to the next (WB-046).
-        self.seed, world = fair_map(self.seed, width, height, self.players, theme=self.theme, races=self._preview_races(), layout=self.layout, magic=self.magic)
+        self.seed, world = fair_map(self.seed, width, height, self.players, theme=self.theme, races=self._preview_races(), layout=self.layout, magic=self.magic,
+                                      wilds=self.wilds)
         self._preview_world = world
         image = preview_image(world)
         self._preview_pil = image
@@ -497,10 +501,14 @@ class NewGameScene(Scene):
             self._race_buttons[race] = button
             race_row.add(button)
         options.add(race_row)
-        options.add(Row(Label(lambda: f"Seed {self.seed}", text_style="body", width=90 + 8 + OPTION_WIDTH),
+        # Seed, reroll and both match options share one row: a second row stood a 680 px window off its bottom.
+        options.add(Row(Label(lambda: f"Seed {self.seed}", text_style="body", width=OPTION_WIDTH),
                         Button("Reroll", on_click=self.reroll, style=GHOST_BUTTON, width=OPTION_WIDTH),
                         Button(lambda: "Magic: On" if self.magic else "Magic: Off", on_click=self.toggle_magic,
-                               style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8))
+                               style=GHOST_BUTTON, width=OPTION_WIDTH),
+                        Button(lambda: "Monsters: On" if self.wilds else "Monsters: Off", on_click=self.toggle_wilds,
+                               style=GHOST_BUTTON, width=OPTION_WIDTH,
+                               tooltip="Neutral camps guard mines and shortcuts. Off leaves them off this map."), spacing=8))
         side = Column(Image(PREVIEW_KEY, width=PREVIEW_BOX[0], height=PREVIEW_BOX[1]),
                       Label(lambda: self._opponents_text(), text_style="sub", width=PREVIEW_BOX[0], wrap=True),
                       Label(lambda: self._settings_note(), text_style="sub", width=PREVIEW_BOX[0], wrap=True),
@@ -606,6 +614,13 @@ class NewGameScene(Scene):
         self.title.sfx("button")
         self._refresh_preview()
 
+    def toggle_wilds(self) -> None:
+        """Neutral camps are chosen before the match; the preview uses the same choice."""
+        self.wilds = not self.wilds
+        self.title.wilds = self.wilds
+        self.title.sfx("button")
+        self._refresh_preview()
+
     def reroll(self) -> None:
         self.seed = mapgen.fresh_seed()
         self.title.sfx("button")
@@ -615,4 +630,5 @@ class NewGameScene(Scene):
         self.title.sfx("button")
         width, height = self.dimensions
         self.game.clear_and_push(new_game(self.seed, width=width, height=height, players=self.players, difficulty=self.difficulty, theme=self.theme,
-                                          settings=self.title.settings, races=[self.race] + [None] * (self.players - 1), layout=self.layout, magic=self.magic))
+                                          settings=self.title.settings, races=[self.race] + [None] * (self.players - 1), layout=self.layout, magic=self.magic,
+                                          wilds=self.wilds))

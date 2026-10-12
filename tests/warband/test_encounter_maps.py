@@ -2,6 +2,7 @@
 
 import pytest
 
+from warband.sim import camps as camping
 from warband.sim import mapgen
 from warband.sim.model import dist, tile_center
 from warband.sim.rules import CAMP_ENCOUNTERS, CAMP_WATCH, BuildingType, Layout
@@ -23,7 +24,7 @@ def test_an_ordinary_large_forest_map_offers_a_powerful_optional_encounter() -> 
     """A whole Large Forest map exceeds the fast budget; the Ancient needs no Huge prize map."""
 
     width, height = mapgen.dimensions("Large", 2)
-    world, report = mapgen.build(seed=7, width=width, height=height, layout=Layout.FOREST)
+    world, report = mapgen.build(seed=2, width=width, height=height, layout=Layout.FOREST)
     assert not report["problems"] and report["connected"]
     assert {CAMP_ENCOUNTERS[c.encounter].tier for c in world.camps} == {"Raid", "Stronghold", "Ancient"}
     assert len(world.camps) == 3 * world.seats
@@ -38,10 +39,16 @@ def test_medium_encounters_keep_the_opening_and_a_route_between_players_free(lay
     mines = list(world.mines())
     safe = mines[:world.seats if layout is Layout.KLONDIKE else 2 * world.seats]
     lairs = [world.buildings[c.lair] for c in world.camps]
-    assert all(dist(lair.center, hall.center) >= 14 for lair in lairs for hall in halls)
-    assert all(dist(lair.center, mine.center) >= 10.5 for lair in lairs for mine in safe)
+    # Watches stand on their point — a guard's mine, any other den — so standoff is
+    # watch-based; a guard lair beside its mine is close to ground its watch never taxes.
+    watches = [camping.watch_of(world, camp) for camp in world.camps]
+    assert all(dist(watch, hall.center) >= 14 for watch in watches for hall in halls)
+    # Every safe mouth stands outside every watch: the opening's economy is never taxed.
+    for mine in safe:  # mapgen._deposit_mouths is the generator's own mouth list, checked here
+        for mouth in mapgen._deposit_mouths(world, mine.pos):
+            assert all(dist(tile_center(mouth), watch) >= CAMP_WATCH for watch in watches)
     unsafe = frozenset((x, y) for y in range(world.height) for x in range(world.width)
-                       if any(dist(tile_center((x, y)), lair.center) < CAMP_WATCH for lair in lairs))
+                       if any(dist(tile_center((x, y)), watch) < CAMP_WATCH for watch in watches))
     start = world.free_tile_near(halls[0].rect)
     assert start is not None
     region = mapgen.reachable(world, start, shut=unsafe)
@@ -70,6 +77,31 @@ def test_optional_camps_preserve_map_geometry_and_safe_routes_across_seeds(size:
         assert len(lairs) <= (1 if size == "Small" else 2 if size == "Medium" else 3) * world.seats
         assert all(dist(a.center, b.center) >= 16
                    for i, a in enumerate(lairs) for b in lairs[i + 1:])
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("layout", list(Layout))
+def test_guard_watches_hold_independent_fights(layout: Layout) -> None:
+    """Whole three-seat Large maps exceed the fast budget; their thirds pack close.
+
+    Different encounters never share a fight: every defended circle stands off every other
+    encounter's, dens keeping sixteen tiles like always, mines and cross pairs two watches.
+    Only a guard's own mine-den pair stands closer, four to five tiles by ring.
+    """
+    width, height = mapgen.dimensions("Large", 3)
+    for seed in range(1, 9):
+        try:
+            world, report = mapgen.build(seed, width, height, 3, layout=layout)
+        except mapgen.NoFairMap:
+            continue
+        assert report["connected"] and not report["problems"]
+        defended = [(world.buildings[c.lair].center, camping.watch_of(world, c)) for c in world.camps]
+        for i, (site_a, watch_a) in enumerate(defended):
+            for site_b, watch_b in defended[i + 1:]:
+                assert dist(site_a, site_b) >= 16, (layout, seed)
+                assert dist(watch_a, watch_b) >= 2 * CAMP_WATCH, (layout, seed)
+                assert dist(site_a, watch_b) >= 2 * CAMP_WATCH, (layout, seed)
+                assert dist(watch_a, site_b) >= 2 * CAMP_WATCH, (layout, seed)
 
 
 @pytest.mark.slow

@@ -29,7 +29,8 @@ SPELLS_TOML = Path("spells.toml")
 PLAYABLE = ("peasant", "footman", "archer", "knight", "catapult", "flying_machine", "cleric",
             "gryphon", "sapper", "treant", "rune_golem")  # the last four: each race's own unit (units.toml's ``race``)
 WILDS = ("wolf", "spider", "troll", "golem", "ancient_guardian")
-ENCOUNTERS = ("wolf_den", "spider_nest", "troll_mound", "stone_cairn", "ancient_sanctum")
+ENCOUNTERS = ("wolf_den", "spider_nest", "wolf_outpost", "spider_hollow", "troll_mound", "stone_cairn", "troll_toll",
+              "cairn_watch", "ancient_sanctum")
 BUILDINGS = ("town_hall", "farm", "barracks", "tower", "lumber_mill", "blacksmith", "stables", "workshop", "church", "vault",
              "mage_tower", "gold_mine", "gold_seam", "mother_lode", "lair")
 DEPOSITS = ("gold_mine", "gold_seam", "mother_lode")
@@ -269,7 +270,8 @@ UNIT_SCHEMA = {
     "blast": (_float, 0.0), "blast_units": (_int, 0), "forest": (_bool, False), "regen_in_trees": (_bool, False),
 }
 ENCOUNTER_SCHEMA = {
-    "name": (_str,), "tier": (_enum, ("Raid", "Stronghold", "Ancient")), "roster": (_names, WILDS),
+    "name": (_str,), "tier": (_enum, ("Raid", "Stronghold", "Ancient")), "role": (_enum, ("expansion", "choke", "wilds")),
+    "roster": (_names, WILDS),
     "gold": (_int,), "lumber": (_int,), "lair_hp": (_int,), "hint": (_str,),
 }
 UNIT_TWEAK_SCHEMA = {

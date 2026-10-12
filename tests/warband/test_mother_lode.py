@@ -225,23 +225,24 @@ def camp_world(prize: BuildingType, rival_at: tuple[int, int] | None = None) -> 
 
 def test_a_camp_is_worth_the_walk_the_gold_it_keeps_is_worth_when_that_gold_is_ours_to_take() -> None:
     """A lode's camp is worth twice the ordinary walk (its hundred thousand over an expansion's thirty, capped at
-    ai.CAMP_WALK); a seam's the ordinary walk; and a lode nearer a rival than us is not ours to take yet."""
+    ai.CAMP_WALK); an endless seam is worth that walk too; and a lode nearer a rival than us is not ours to take yet."""
     from warband.brains.ai import CAMP_WALK, camp_worth
 
     world, record = camp_world(BuildingType.MOTHER_LODE)
     assert camp_worth(world, 0, record) == CAMP_WALK == 2.0
     world, record = camp_world(BuildingType.GOLD_SEAM)
-    assert camp_worth(world, 0, record) == 1.0
+    assert camp_worth(world, 0, record) == CAMP_WALK
     world, record = camp_world(BuildingType.MOTHER_LODE, rival_at=(50, 16))
     assert camp_worth(world, 0, record) == 1.0
 
 
 @pytest.mark.slow
-def test_on_the_shipped_sizes_every_deposit_paces_as_a_mine_and_every_camp_is_worth_the_ordinary_walk() -> None:
-    """The brains value a deposit by its pace and its stock, and a camp by the stock it keeps.  On the three shipped
-    sizes every deposit paces as a mine and no camp keeps more than an expansion's thirty thousand, so every one of
-    those values is exactly one and the brains decide there what they decided when the difficulty ratings and the
-    balance league were measured.  Every layout and seat count, several seeds: the slow tier."""
+def test_regular_sizes_keep_standard_deposit_pace_and_stock() -> None:
+    """The regular sizes keep their ordinary deposit pace and capped stock.
+
+    Every layout and seat count across several seeds requires the slow tier.
+    Neutral expedition value separately includes bounty and strategic access.
+    """
     from warband.brains.ai import CAMP_REACH
     from warband.sim.model import dist
     from warband.sim.rules import EXPANSION_GOLD

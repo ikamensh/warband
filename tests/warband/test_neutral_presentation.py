@@ -48,13 +48,20 @@ def test_camp_sighting_roundtrips_the_scouted_reward(game):
 
 
 def test_wilds_codex_is_reachable_with_magic_off(game):
+    """Both catalogue halves remain reachable after the hidden Spells page is skipped."""
     game.push(CodexScene(codex_world(Race.HUMAN), 0, 4, in_match=False))
     game.tick(0.1)
     game.scene.next_page()
     game.tick(0.1)
     assert game.scene.page == 6
+    held = " ".join(str(t["text"]) for t in game.backend.texts)
+    assert all(info.name in held for info in CAMP_ENCOUNTERS.values() if info.role != "wilds")
+    game.scene.show_wilds("wilds")
+    game.tick(0.1)
+    wilds = " ".join(str(t["text"]) for t in game.backend.texts)
+    assert all(info.name in wilds for info in CAMP_ENCOUNTERS.values() if info.role == "wilds")
     for info in CAMP_ENCOUNTERS.values():
-        assert info.name in " ".join(str(t["text"]) for t in game.backend.texts)
+        assert info.name in held + wilds
     game.scene.next_page()
     assert game.scene.page == 0
 

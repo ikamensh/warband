@@ -65,11 +65,13 @@ ONLINE_SIZE = (80, 64)
 
 
 class WarbandMatch:
-    def __init__(self, seed=3, width=48, height=40, theme=MapTheme.SUMMER, races=None, layout=None, players=2, magic=False):
+    def __init__(self, seed=3, width=48, height=40, theme=MapTheme.SUMMER, races=None, layout=None, players=2, magic=False,
+                 wilds=True):
         """*players* humans, two to :data:`ONLINE_SEATS`; *races* names each seat's race, a ``None`` seat drawn from
-        the seed, and so is a ``None`` *layout*."""
+        the seed, and so is a ``None`` *layout*.  *wilds* ``False`` plays the same map with no creature camps."""
         self.seed = seed
-        self.world = mapgen.generate(seed, width, height, players=players, theme=theme, races=races, layout=layout, magic=magic)
+        self.world = mapgen.generate(seed, width, height, players=players, theme=theme, races=races, layout=layout, magic=magic,
+                                     wilds=wilds)
         for player in self.world.players[:self.world.seats]:  # never the wilds: no client sits in that seat
             player.human = True
         self.events = []  # [number, fields] of the recent ones, oldest first
@@ -298,10 +300,13 @@ class WarbandMatch:
 
 def _create(options):
     """Validate resource-bounded creation options before generating any map."""
-    option_keys(options, {'seed', 'width', 'height', 'theme', 'races', 'layout', 'players', 'magic'})
+    option_keys(options, {'seed', 'width', 'height', 'theme', 'races', 'layout', 'players', 'magic', 'wilds'})
     magic = options.get('magic', False)
     if not isinstance(magic, bool):
         raise CommandError('magic must be a boolean.')
+    wilds = options.get('wilds', True)
+    if not isinstance(wilds, bool):
+        raise CommandError('wilds must be a boolean.')
     players = option_int(options, 'players', 2, 2, ONLINE_SEATS)
     races = options.get('races', [None] * players)
     if (not isinstance(races, list) or len(races) != players
@@ -314,7 +319,8 @@ def _create(options):
                             height=option_int(options, 'height', 40, 40, ONLINE_SIZE[1]),
                             theme=MapTheme(option_choice(options, 'theme', 'summer', {t.value for t in MapTheme})),
                             races=[Race(race) if race is not None else None for race in races],
-                            layout=None if layout == 'any' else Layout(layout), players=players, magic=magic)
+                            layout=None if layout == 'any' else Layout(layout), players=players, magic=magic,
+                            wilds=wilds)
     except mapgen.NoFairMap as exc:
         raise CommandError(f'{exc} Choose a larger map or another layout.') from exc
 
@@ -392,10 +398,13 @@ def _configure_player(match, player, options):
     races[player] = wanted
     # The draw streams are seeded apart (layout ^0x1A70, races ^0x5ACE, ground per attempt), so rebuilding
     # with the same seed, the actual layout and every seat's race replays the same ground: the other seats
-    # keep their races and the seeded terrain is preserved.  Build first, swap only after success.
+    # keep their races and the seeded terrain is preserved.  The wilds ride along explicitly: a camps-off
+    # map rebuilds camps-off, even a cramped one whose camps list is empty either way.  Build first, swap
+    # only after success.
     try:
         fresh = WarbandMatch(match.seed, width=world.width, height=world.height, players=world.seats,
-                             theme=world.theme, races=races, layout=world.layout, magic=world.magic)
+                             theme=world.theme, races=races, layout=world.layout, magic=world.magic,
+                             wilds=world.wilds)
     except mapgen.NoFairMap as exc:
         raise CommandError(f'{exc} Choose another race.') from exc
     match.world, match.begun = fresh.world, fresh.begun

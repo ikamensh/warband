@@ -67,7 +67,9 @@ ROUSE_GAP = 3.0
 FLYING = {u.value for u, info in UNITS.items() if info.flying}
 # Compact counterplay fits a lair card's one tactical line; the codex and hover carry its full rule-table hint.
 CAMP_TIPS = {"wolf_den": "Shield archers from wolves", "spider_nest": "Cavalry catches the spiders",
+             "wolf_outpost": "Clear the outpost to mine here", "spider_hollow": "Clear the hollow to mine here",
              "troll_mound": "Focus arrows on the troll", "stone_cairn": "Spread out; dodge slam marks",
+             "troll_toll": "Break the toll or take the long way", "cairn_watch": "Dodge slam marks or go around",
              "ancient_sanctum": "Dodge slams · guards the air"}
 SAVE_VERSION = 2  # 2: the world records its layout
 SAVE_SLOTS = 3
@@ -4203,11 +4205,15 @@ class CodexScene(_Overlay):
     controls = {"1": "page_units", "2": "page_buildings", "3": "page_upgrades", "4": "page_races", "5": "page_tree", "6": "page_spells", "7": "page_wilds",
                 "tab": "next_page", "f2": "close"}
 
-    def __init__(self, world: World, player: int, page: int = 0, *, in_match: bool = True) -> None:
+    def __init__(self, world: World, player: int, page: int = 0, *, in_match: bool = True,
+                 wilds: str = "held") -> None:
         self.world = world
         self.player = player
         self.page = page
         self.in_match = in_match
+        # Which half of the wilds catalogue page 6 shows: the guards and chokes holding ground,
+        # or the open wilds. Nine encounters never fit one small window.
+        self.wilds = wilds
 
     def on_enter(self) -> None:
         race = RACES[self.world.players[self.player].race]
@@ -4247,20 +4253,41 @@ class CodexScene(_Overlay):
 
     def _wilds_table(self) -> Column:
         """The optional encounters, their real rewards, and the decisions each asks an army to make."""
+        # Two halves: nine encounters never fit one small window. The guards and chokes holding
+        # ground come first; the open wilds are one toggle away.
         table = Column(spacing=8)
-        widths = (246, 96, 144, 476)
-        for info in CAMP_ENCOUNTERS.values():
-            names = Counter(UNITS[kind].name for kind in info.roster)
-            roster = " · ".join(f"{count} {name if count == 1 else plural_name(name)}" for name, count in names.items())
-            table.add(Row(Label(info.name, text_style="hud", text_color=GOLD, width=widths[0], wrap=True),
-                          Label(info.tier, text_style="sub", width=widths[1]),
-                          Price([("gold", f"{info.gold:,}", GOLD), ("lumber", f"{info.lumber:,}", LUMBER)],
-                                size=12, text_style="sub", width=widths[2]),
-                          Column(Label(roster, text_style="sub", width=widths[3]),
-                                 Label(info.hint, text_style="sub", width=widths[3], wrap=True), spacing=2, margin=0), spacing=16))
+        held = self.wilds != "wilds"
+        table.add(Row(Button("Guards & chokes", on_click=lambda: self.show_wilds("held"),
+                             style=ACTION_BUTTON if held else GHOST_BUTTON, width=220),
+                      Button("Wilds", on_click=lambda: self.show_wilds("wilds"),
+                             style=GHOST_BUTTON if held else ACTION_BUTTON, width=220), spacing=8))
+        groups = ((("expansion", "Expansion guards hold a contested mine; clear them to work it."),
+                   ("choke", "Choke holders tax a proven shortcut; break them or walk around."))
+                  if held else
+                  (("wilds", "Wilds are side expeditions anywhere."),))
+        for role, header in groups:
+            table.add(Label(header, text_style="hud", text_color=GOLD, width=1010))
+            infos = [info for info in CAMP_ENCOUNTERS.values() if info.role == role]
+            for first in range(0, len(infos) - 1, 2):
+                table.add(Row(self._wilds_card(infos[first]), self._wilds_card(infos[first + 1]), spacing=16))
+            if len(infos) % 2:
+                # The odd card out spans the row: at full width its hint wraps to half the lines.
+                table.add(self._wilds_card(infos[-1], wide=True))
         table.add(Label("Defeat all guards and lair; bounty is shared by damage dealt. Survivors retreat and heal; dead guards stay dead.",
                         text_style="sub", width=1010, wrap=True))
         return table
+
+    def _wilds_card(self, info, wide: bool = False) -> Column:
+        """One encounter: its name, tier and price over its roster and the decision it asks for."""
+        names = Counter(UNITS[kind].name for kind in info.roster)
+        roster = " · ".join(f"{count} {name if count == 1 else plural_name(name)}" for name, count in names.items())
+        width = 950 if wide else 440
+        return Column(Row(Label(info.name, text_style="hud", text_color=GOLD, width=200, wrap=True),
+                          Label(info.tier, text_style="sub", width=90),
+                          Price([("gold", f"{info.gold:,}", GOLD), ("lumber", f"{info.lumber:,}", LUMBER)],
+                                size=12, text_style="sub", width=130), spacing=8),
+                      Label(f"{roster}. {info.hint}", text_style="sub", width=width, wrap=True),
+                      spacing=4, margin=0, width=460 if not wide else 1010)
 
     def _cell(self, cell: str | list[Pair], width: int, *, first: bool, last: bool, muted: bool = False) -> Component:
         """One cell of a page's table: a price as its symbols and numbers, anything else as text — the name of the
@@ -4345,7 +4372,11 @@ class CodexScene(_Overlay):
     def show(self, page: int) -> None:
         if page == 5 and not self.world.magic:
             return
-        self.game.replace(CodexScene(self.world, self.player, page, in_match=self.in_match))
+        self.game.replace(CodexScene(self.world, self.player, page, in_match=self.in_match, wilds=self.wilds))
+
+    def show_wilds(self, group: str) -> None:
+        """The wilds catalogue's other half, rebuilt like any other page turn."""
+        self.game.replace(CodexScene(self.world, self.player, 6, in_match=self.in_match, wilds=group))
 
     def page_units(self) -> None:
         self.show(0)
@@ -4497,23 +4528,25 @@ class GameOverScene(_Overlay):
 
 def new_game(seed: int, width: int = 48, height: int = 40, players: int = 2, *, difficulty: Difficulty = Difficulty.MEDIUM,
              theme: MapTheme = MapTheme.SUMMER, settings: dict[str, Any] | None = None, races: list[Race | None] | None = None,
-             layout: MapLayout | None = None, magic: bool = False) -> GameScene:
-    """*layout* ``None`` draws one from the seed."""
-    return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players, theme=theme, races=races, layout=layout, magic=magic), seed,
-                     difficulty=difficulty, settings=settings)
+             layout: MapLayout | None = None, magic: bool = False, wilds: bool = True) -> GameScene:
+    """*layout* ``None`` draws one from the seed.  *wilds* ``False`` leaves the same map's creature camps out."""
+    return GameScene(mapgen.generate(seed=seed, width=width, height=height, players=players, theme=theme, races=races, layout=layout, magic=magic,
+                                     wilds=wilds), seed, difficulty=difficulty, settings=settings)
 
 
 FAIR_TRIES = 20
 
 
 def fair_map(seed: int, width: int, height: int, players: int, *, theme: MapTheme = MapTheme.SUMMER,
-             races: list[Race | None] | None = None, layout: MapLayout | None = None, magic: bool = False) -> tuple[int, World]:
+             races: list[Race | None] | None = None, layout: MapLayout | None = None, magic: bool = False,
+             wilds: bool = True) -> tuple[int, World]:
     """The first seed from *seed* on that makes a fair map of these settings, and its map: for a seed the game
     chooses. A few seeds in a thousand make none at some settings (WB-046); a seed the player gives goes to
     :func:`mapgen.generate` as given, and fails there."""
     for candidate in range(seed, seed + FAIR_TRIES):
         try:
-            return candidate, mapgen.generate(candidate, width, height, players, theme=theme, races=races, layout=layout, magic=magic)
+            return candidate, mapgen.generate(candidate, width, height, players, theme=theme, races=races, layout=layout, magic=magic,
+                                              wilds=wilds)
         except mapgen.NoFairMap:
             continue
     raise mapgen.NoFairMap(f"No fair map at {width}x{height} for {players} players from any seed of {seed} to {seed + FAIR_TRIES - 1}.")
@@ -4523,7 +4556,8 @@ def next_game(scene: GameScene) -> GameScene:
     """A new match with *scene*'s settings and races on the next seed that makes a fair map."""
     world = scene.world
     seed, fresh = fair_map(scene.seed + 1, world.width, world.height, world.seats, theme=world.theme,
-                           races=[p.race for p in world.players[:world.seats]], layout=world.layout, magic=world.magic)
+                           races=[p.race for p in world.players[:world.seats]], layout=world.layout, magic=world.magic,
+                           wilds=world.wilds)
     return GameScene(fresh, seed, difficulty=scene.difficulty, settings=scene.settings)
 
 

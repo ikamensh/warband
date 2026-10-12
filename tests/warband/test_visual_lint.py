@@ -253,14 +253,14 @@ SCREENS = ("title", "library", "multiplayer_setup", "multiplayer_lan", "multipla
            "alerts", "battle_wood",
            "help", "codex_0", "codex_2", "codex_3", "codex_4", "codex_5", "save_browser", "game_over_won", "high_scores",
            "campaign_fresh", "campaign_under_way", "mission_raid", "mission_choice", "mission_result",
-           "neutral_raid", "neutral_stronghold", "neutral_ancient", "neutral_slam", "neutral_air_defense", "neutral_guardian_reach", "neutral_reward", "neutral_results", "codex_wilds")
+           "neutral_raid", "neutral_stronghold", "neutral_ancient", "neutral_slam", "neutral_air_defense", "neutral_guardian_reach", "neutral_reward", "neutral_results", "codex_wilds", "codex_wilds_open")
 
 
 #: Screens whose every label must hold its text: the overlays' tables, and the catalogues' captions of what an item needs.
-OVERFLOW_CHECKED = ("library", "help", "codex_0", "codex_2", "codex_3", "codex_4", "codex_5", "codex_wilds", "save_browser", "menu_build_at_start", "menu_train_at_start")
+OVERFLOW_CHECKED = ("library", "help", "codex_0", "codex_2", "codex_3", "codex_4", "codex_5", "codex_wilds", "codex_wilds_open", "save_browser", "menu_build_at_start", "menu_train_at_start")
 SMALLEST = min(screens.RESOLUTIONS)
 FAST_SCREENS = {"title", "library", "multiplayer_setup", "multiplayer_identity_create_refused", "multiplayer_identity_join_refused", "multiplayer_identity_rejoin_refused", "select_army", "town_at_work", "battle_wood", "menu_build_hover", "help", "mission_raid", "spell_aim", "modes_build", "modes_withdraw",
-                "neutral_ancient", "codex_wilds"}
+                "neutral_ancient", "codex_wilds", "codex_wilds_open"}
 
 
 @pytest.mark.parametrize("name, resolution", [pytest.param(name, r, id=f"{name}-{r[0]}x{r[1]}",
