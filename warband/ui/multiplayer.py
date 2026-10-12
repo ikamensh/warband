@@ -11,8 +11,9 @@ from warband.sim import mapgen
 from warband.sim.model import Event, RuleError, World
 from warband.sim.races import RACES
 from warband.sim.rules import SIM_DT, Layout, MapTheme, Race
+from warband.ui.observer import WatchScene
 from warband.ui.scene import GameScene, HelpScene, SettingsScene, _Overlay, _clock
-from warband.ui.style import ACTION_BUTTON, GHOST_BUTTON, MENU_BUTTON, OVERLAY_STYLE, PANEL_STYLE, PICKED_BUTTON
+from warband.ui.style import ACTION_BUTTON, GHOST_BUTTON, GOLD, GOOD, MENU_BUTTON, MUTED, OVERLAY_STYLE, PANEL_STYLE, PICKED_BUTTON
 from warband.ui.view import check_memory
 
 GAME_ID = "warband-v2"
@@ -336,6 +337,8 @@ class MatchSetupMenu(MatchMenu):
                             wilds=self.wilds)
 
     def create_scene(self, session, match):
+        if getattr(session, "observer", False):
+            return NetworkObserverScene(session, settings=self.settings)
         return NetworkGameScene(session, match, settings=self.settings)
 
     # -- Seams for the ratings-stream framework -------------------------------------
@@ -382,7 +385,8 @@ class MatchSetupMenu(MatchMenu):
                 port = self._port()
                 match = self.create_match()
                 session = MatchHost(self.game_id, match.apply, match.snapshot,
-                                    address=("0.0.0.0", port), token=self.fields[2] or None)
+                                    address=("0.0.0.0", port), token=self.fields[2] or None,
+                                    observer_snapshot=match.observer_snapshot)
                 self.fields[2] = session.token
         except self._TRANSPORT_ERRORS as exc:
             self._surface_refusal(exc)
@@ -412,6 +416,28 @@ class MatchSetupMenu(MatchMenu):
         try:
             session = OnlineClient(self.game_id, endpoint=record["endpoint"], room=record["room"],
                                    resume_token=record["resume_token"], **self._online_kwargs(for_rejoin=True))
+        except self._TRANSPORT_ERRORS as exc:
+            self._surface_refusal(exc)
+            return
+        self.game.push(WarbandLobby(session, lambda connection: self.create_scene(connection, None), title=self.title))
+
+    def observe(self):
+        """Watch a room without taking a seat: the same code or address the join uses.
+
+        No identity is read, sent or written — watching needs no private seat, so a
+        damaged identity record neither blocks nor changes it (see
+        :class:`NetworkObserverScene`).  Rejoining as a watcher is a fresh Observe."""
+        try:
+            if self.mode == "online":
+                if not self.fields[2]:
+                    raise ValueError("Enter a room code first.")
+                from saga2d.online import OnlineClient
+                session = OnlineClient(self.game_id, room=self.fields[2], observer=True)
+            else:
+                port = self._port()
+                if not self.fields[0] or not self.fields[2]:
+                    raise ValueError("Enter the host address and room code first.")
+                session = MatchClient(self.game_id, (self.fields[0], port), token=self.fields[2], observer=True)
         except self._TRANSPORT_ERRORS as exc:
             self._surface_refusal(exc)
             return
@@ -539,10 +565,13 @@ class MatchSetupMenu(MatchMenu):
         card.add(Row(Button("Paste invite", on_click=self.paste_code, style=GHOST_BUTTON, width=170),
                      Button("Join room", shortcut="Enter", on_click=self.join, style=ACTION_BUTTON, width=170),
                      spacing=16))
+        card.add(Row(Button("Observe room", on_click=self.observe, style=GHOST_BUTTON, width=356),
+                     spacing=16))
         if (self.last_room["game_id"] == self.game_id and self.last_room["room"] and self.last_room["resume_token"]):
             card.add(Button(f"Rejoin last room · {self.last_room['room']}", on_click=self.rejoin,
                             style=MENU_BUTTON, width=356))
-        card.add(Label("Paste a room code or an invite link, then Enter joins.",
+        card.add(Label("Paste a room code or an invite link, then Enter joins. "
+                       "Observe room watches without playing.",
                        text_style="caption", width=356, wrap=True))
         if self.update_check.status == "update":
             latest = self.update_check.latest
@@ -565,7 +594,9 @@ class MatchSetupMenu(MatchMenu):
                                    tooltip="Choose neutral camps for rooms you host. Joining uses the host's choice.")
         card.add(Row(Button("Host room", on_click=self.host, style=ACTION_BUTTON, width=220),
                      Button("Join room", on_click=self.join, style=GHOST_BUTTON, width=220),
-                     self.magic_button, self.wilds_button, spacing=8))
+                     Button("Observe room", on_click=self.observe, style=GHOST_BUTTON, width=220),
+                     spacing=8))
+        card.add(Row(self.magic_button, self.wilds_button, spacing=8))
         card.add(Label("Two seats on one network: the host plays the first. Tab moves between fields; "
                        "your faction, magic and wilds above apply to rooms you host.",
                        text_style="caption", width=900, wrap=True))
@@ -586,6 +617,12 @@ class WarbandLobby(MatchLobby):
         super().__init__(session, make_scene, title=title)
 
     def update(self, dt):
+        if getattr(self.session, "observer", False):
+            # Watching writes nothing: no last-room seat, no identity token or profile.  The base
+            # update would save all three, so observers poll and transfer through their own path —
+            # which still tracks refusal, incompatibility and disconnect presentation like the base.
+            self._update_observer()
+            return
         super().update(dt)
         if not _is_online(self.session):
             return
@@ -616,6 +653,39 @@ class WarbandLobby(MatchLobby):
                 items.append(Row(self.invite_button, self.copy_button, spacing=16))
         items.append(Button("Cancel", shortcut="Esc", on_click=self.leave, style=GHOST_BUTTON, width=240))
         self.ui.add(Column(*items, width=640, spacing=14, anchor=Anchor.CENTER, style=OVERLAY_STYLE))
+
+    def _update_observer(self) -> None:
+        """Poll an observer session and carry it into the match: the base lifecycle, minus
+        every write.  Incompatibility rebuilds the panel, confirmed rooms enable sharing,
+        and only a ready room transfers — a refused or disconnected watch stays put, saying so."""
+        self.session.poll()
+        incompatible = getattr(self.session, "incompatible", False)
+        if incompatible and not self._offered_update:
+            self._offered_update = True
+            self._build()
+        elif not incompatible and _is_online(self.session):
+            confirmed = self.session.state is not None
+            self.invite_button.enabled = self.copy_button.enabled = confirmed and not self.session.closed
+        if self.session.ready:
+            scene = self.make_scene(self.session)
+            self._transferred = True
+            try:
+                self.game.clear_and_push(scene)
+            except BaseException:
+                self.session.close()
+                raise
+
+    def _status(self) -> str:
+        """What the waiting room says while watching: no partner is ever waited for."""
+        if getattr(self.session, "observer", False):
+            if self.session.closed:
+                return super()._status()
+            if _is_online(self.session) and self.session.state is None:
+                return "Joining the room to watch"
+            if not _is_online(self.session) and not self.session.ready:
+                return "Joining the host to watch"
+            return "Watching — the match begins when the room is ready"
+        return super()._status()
 
     def _share_text(self) -> str:
         """The share line beneath the room code, from the live session alone.
@@ -669,6 +739,8 @@ class WarbandLobby(MatchLobby):
 
     def _rating_line(self) -> str:
         """This seat's live online rating, or the honest placeholder while none is known."""
+        if getattr(self.session, "observer", False):
+            return "Watching — nothing here is rated."
         if not _is_online(self.session):
             return ""
         profile = session_profile(self.session)
@@ -700,6 +772,53 @@ def _room_memory(game):
     """What the player had seen of buildings out of sight in the online room they last played.  A room tells a seat
     only what it sees now (WB-011), so rejoining it from the title would otherwise forget the rival's base."""
     return Settings(game.data_dir / 'online-memory.json', {'room': '', 'player': -1, 'seen': {'buildings': []}})
+
+
+def _apply_network_state(scene) -> None:
+    """Carry the session's latest snapshot into *scene*: players and world in place (the view and
+    the HUD hold them), fresh events with battle audio, then selection, card, presentation and pace.
+
+    The one copy both network scenes share: a playing seat and a watcher show the same arrivals
+    the same way.  Only the ends differ, through the scene's own ``_motion_fraction`` (how far to
+    slide) and ``_check_game_over`` (whose fall ends it)."""
+    if scene._revision == scene.session.revision:
+        return
+    scene._revision = scene.session.revision
+    if scene.session.state is None:
+        return  # welcomed, but the first snapshot has not arrived yet
+    if scene._quiet_said:  # word came: the silence is over, and the line must not go on saying it
+        scene.status_timer, scene._quiet_said = 0.0, False
+    gap = scene.clock - scene._snapshot_at
+    drawn = scene.view.drawn_positions() if gap <= STALL else {}  # after a stall or a resume, place; never slide stale motion
+    if gap <= STALL:
+        scene._interval = min(.25, max(.05, .8 * scene._interval + .2 * gap))
+    scene._snapshot_at = scene.clock
+    data = scene.session.state
+    fresh = World.from_dict(data['world'])
+    for old, new in zip(scene.world.players, fresh.players):
+        take_state(old, new)
+    fresh.players = scene.world.players
+    take_state(scene.world, fresh)
+    events = []
+    for index, event in data['events']:
+        if index > scene._event_id:
+            if event['kind'] == 'hit':
+                audio_fields = HIT_AUDIO_FIELDS.intersection(event)
+                if not audio_fields:
+                    event = {**event, 'source_type': 'unknown', 'target_type': 'unknown'}
+                    if not scene._basic_audio_notice:
+                        scene.say('Server uses basic battle audio; update the server for weapon and material sounds.')
+                        scene._basic_audio_notice = True
+                elif audio_fields != HIT_AUDIO_FIELDS:
+                    raise ValueError('Hit event has incomplete battle audio metadata.')
+            events.append(Event(**{**event, 'pos': tuple(event['pos'])}))
+            scene._event_id = index
+    scene._handle_events(events)
+    scene._prune_selection()
+    scene._refresh_card()
+    scene.view.present_from(drawn)
+    scene.view.sync(fraction=scene._motion_fraction())
+    scene._check_game_over()
 
 
 class NetworkGameScene(GameScene):
@@ -793,42 +912,7 @@ class NetworkGameScene(GameScene):
         elif self.clock - self._snapshot_at > QUIET:
             self.say(f'No word from the server for {self.clock - self._snapshot_at:.0f} s — the match goes on when it answers.')
             self._quiet_said = True
-        if self._revision == self.session.revision:
-            return
-        self._revision = self.session.revision
-        if self._quiet_said:  # word came: the silence is over, and the line must not go on saying it
-            self.status_timer, self._quiet_said = 0.0, False
-        gap = self.clock - self._snapshot_at
-        drawn = self.view.drawn_positions() if gap <= STALL else {}  # after a stall or a resume, place; never slide stale motion
-        if gap <= STALL:
-            self._interval = min(.25, max(.05, .8 * self._interval + .2 * gap))
-        self._snapshot_at = self.clock
-        data = self.session.state
-        fresh = World.from_dict(data['world'])
-        for old, new in zip(self.world.players, fresh.players):
-            take_state(old, new)
-        fresh.players = self.world.players
-        take_state(self.world, fresh)
-        events = []
-        for index, event in data['events']:
-            if index > self._event_id:
-                if event['kind'] == 'hit':
-                    audio_fields = HIT_AUDIO_FIELDS.intersection(event)
-                    if not audio_fields:
-                        event = {**event, 'source_type': 'unknown', 'target_type': 'unknown'}
-                        if not self._basic_audio_notice:
-                            self.say('Server uses basic battle audio; update the server for weapon and material sounds.')
-                            self._basic_audio_notice = True
-                    elif audio_fields != HIT_AUDIO_FIELDS:
-                        raise ValueError('Hit event has incomplete battle audio metadata.')
-                events.append(Event(**{**event, 'pos': tuple(event['pos'])}))
-                self._event_id = index
-        self._handle_events(events)
-        self._prune_selection()
-        self._refresh_card()
-        self.view.present_from(drawn)
-        self.view.sync(fraction=self._motion_fraction())
-        self._check_game_over()
+        _apply_network_state(self)
 
     def _motion_fraction(self):
         """How far units have moved on from where they were drawn towards the latest snapshot."""
@@ -868,6 +952,170 @@ class NetworkGameScene(GameScene):
     def load_from(self, slot):
         self.say('Use Multiplayer → Rejoin last room to resume online play.' if _is_online(self.session)
                  else 'Rejoin the host to resume this multiplayer match.')
+
+
+class NetworkObserverScene(WatchScene):
+    """A network room watched read-only: the authority's snapshots at its own pace.
+
+    Arrivals land through the shared :func:`_apply_network_state` seam, exactly as on a
+    playing seat; everything else is :class:`WatchScene`'s read-only seam.  The watched seat
+    is inspection context only — the session holds no seat (``player`` is None), so nothing
+    of it is ever passed to the scene.  No brains (every seat plays itself elsewhere), no
+    local stepping, no saves, no resigning, and no identity or room-memory writes: leaving
+    only closes the session.  Only the room's winner ends the watching.
+    """
+
+    controls = {key: method for key, method in WatchScene.controls.items() if method != "toggle_pause"}
+    #: Snapshots keep coming while nobody watches: background never pauses the room.
+    auto_pause_on_background = False
+
+    def __init__(self, session, *, settings=None):
+        self.session = session
+        self._revision = session.revision
+        self._event_id = 0
+        self._basic_audio_notice = False
+        self._snapshot_at = 0.0  # scene clock of the latest snapshot
+        self._quiet_said = False  # the status line says the room has gone quiet
+        self._interval = SNAPSHOT_INTERVAL  # measured time between snapshots, smoothed
+        data = session.state
+        super().__init__(World.from_dict(data['world']), data['seed'], viewed=0, settings=settings)
+        self.brains = []
+
+    def on_enter(self):
+        super().on_enter()
+        self.every(1 / 60, self._poll_network)
+
+    def on_close(self):
+        self.session.close()
+
+    def _advance(self, dt):
+        pass  # The room advances elsewhere; freezing snapshots locally would desync it.
+
+    def _poll_network(self):
+        """Poll the room and carry its snapshots in: never a seat's writes."""
+        self.session.poll()
+        if self.session.error and self.session.ready:
+            self.say(self.session.error)
+            self.session.error = ""
+        if not self.session.ready:
+            if self.session.error:
+                self.say(self.session.error)
+            else:
+                self.say("Watching paused — waiting for the room to reconnect.")
+        elif self.clock - self._snapshot_at > QUIET:
+            self.say(f"No word from the room for {self.clock - self._snapshot_at:.0f} s — "
+                     "watching resumes when it answers.")
+            self._quiet_said = True
+        _apply_network_state(self)
+
+    def _motion_fraction(self):
+        """How far units have moved on from where they were drawn towards the latest snapshot."""
+        if self._game_over or self.world.winner is not None:
+            return 1.0
+        return min(1.0, (self.clock - self._snapshot_at) / (self._interval * SLACK))
+
+    def _check_game_over(self):
+        if self._game_over or self.world.winner is None:
+            return
+        self._game_over = True
+        self.game.push(NetworkObserverEndScene(self))
+
+    def toggle_pause(self):
+        self.say("Observers watch at the room's pace — nothing to pause.")
+
+    def _idle_peasant_count(self) -> int:
+        return 0  # orders never travel to watchers: no snapshot can call a peasant idle
+
+    def next_idle_peasant(self) -> None:
+        self.say("Idle-unit selection is unavailable while observing.")
+
+    def next_idle_soldier(self) -> None:
+        self.say("Idle-unit selection is unavailable while observing.")
+
+    def _idle_line(self, entity) -> str:
+        """The observed state, not the stripped queue: marching, fighting, hewing, raising — or idle."""
+        return entity.state.capitalize() if entity.state != "idle" else "Idle"
+
+    def pause_menu(self):
+        return NetworkObserverMenuScene(self)
+
+    def _fill_pace(self, strip) -> None:
+        """The room's own pace, read-only: snapshots arrive at authoritative 1x."""
+        strip.add(Label(lambda: "1× live", text_style="hud", width=78))
+
+
+class NetworkObserverMenuScene(_Overlay):
+    """A watched room's menu: the room plays on underneath; leaving only closes the watch."""
+
+    controls = {"s": "settings", "f1": "help", "t": "leave_match", "q": "quit"}
+
+    def __init__(self, game_scene):
+        self.game_scene = game_scene
+
+    def on_enter(self):
+        panel = self.panel("Watching — menu")
+        panel.add(Label("The room plays on while this menu is open. Leaving closes "
+                        "the watch only — nobody resigns.", text_style="body"))
+        panel.add(Button("Return to room", hotkey="Esc", on_click=self.game.pop, style=ACTION_BUTTON, width=280))
+        panel.add(Button("Settings", hotkey="S", on_click=self.settings, style=GHOST_BUTTON, width=280))
+        panel.add(Button("How to play", hotkey="F1", on_click=self.help, style=GHOST_BUTTON, width=280))
+        panel.add(Button("Stop watching", hotkey="T", on_click=self.leave_match, style=GHOST_BUTTON, width=280))
+        panel.add(Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=280))
+
+    def settings(self):
+        self.game.push(SettingsScene(self.game_scene))
+
+    def help(self):
+        self.game.push(HelpScene(self.game_scene.scheme, magic=self.game_scene.world.magic))
+
+    def leave_match(self):
+        from warband.ui.title import TitleScene
+
+        self.game.clear_and_push(TitleScene(settings=self.game_scene.settings))
+
+    def quit(self):
+        self.game.quit()
+
+
+class NetworkObserverEndScene(_Overlay):
+    """A watched room's result: who won, and every side's fate.  Unrated, unclaimed."""
+
+    pause_below = True
+    pop_on_cancel = False
+    controls = {("t", "escape"): "back_to_title", "q": "quit"}
+
+    def __init__(self, scene):
+        self.watch_scene = scene
+
+    def on_enter(self):
+        scene = self.watch_scene
+        world = scene.world
+        winner = world.players[world.winner] if world.winner is not None else None
+        panel = self.panel(f"{winner.name} wins" if winner is not None else "No winner")
+        panel.add(Label(f"{_clock(world.time)} played · {world.width}×{world.height} · "
+                        f"{world.seats} players · {world.theme.value.title()} · Seed {scene.seed}",
+                        text_style="body"))
+        for player in world.players[:world.seats]:
+            status = ("Won" if world.winner == player.id else "Surrendered" if player.surrendered
+                      else "Standing" if player.alive else "Eliminated")
+            colour = GOOD if player.id == world.winner else MUTED
+            stats = player.stats
+            panel.add(Row(Label(f"{player.name} · {RACES[player.race].name}", text_style="body", width=280),
+                          Label(f"{status} · {stats['units_killed']} kills", text_style="body", text_color=colour),
+                          spacing=10))
+        panel.add(Label("Unrated — watching keeps no record, rating or high score.", text_style="body",
+                        text_color=GOLD))
+        panel.add(Row(Button("Back to title", hotkey="T", on_click=self.back_to_title, style=ACTION_BUTTON,
+                             width=210),
+                      Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=190), spacing=12))
+
+    def back_to_title(self):
+        from warband.ui.title import TitleScene
+
+        self.game.clear_and_push(TitleScene(settings=self.watch_scene.settings))
+
+    def quit(self):
+        self.game.quit()
 
 
 class NetworkMenuScene(_Overlay):

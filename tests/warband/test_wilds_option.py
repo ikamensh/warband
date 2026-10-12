@@ -40,7 +40,8 @@ def test_camps_off_is_the_same_map_without_occupants():
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-def test_player_can_choose_wilds_before_starting(tmp_path, enabled):
+@pytest.mark.parametrize("mode", ["play", "observe"])
+def test_player_can_choose_wilds_before_starting(tmp_path, enabled, mode):
     """The setup toggle changes the preview and the match actually started by Enter."""
     game = Game("Wilds option", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     try:
@@ -54,6 +55,8 @@ def test_player_can_choose_wilds_before_starting(tmp_path, enabled):
             click(game, f"Monsters: {'On' if setup.wilds else 'Off'}")
         assert setup.wilds is enabled
         assert bool(setup.preview_world.camps) is enabled
+        if mode == "observe":
+            click(game, "Observe")
         game.backend.inject_key("return")
         game.tick(0.1)
         assert game.scene.world.wilds is enabled
@@ -107,6 +110,18 @@ def test_wilds_option_survives_save_load_and_next_match(enabled):
     loaded = World.from_dict(saved)
     assert loaded.wilds is enabled and loaded.to_dict() == saved
     assert next_game(scene).world.wilds is enabled
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_watched_match_and_watch_again_preserve_the_monsters_choice(enabled):
+    """An AI-only match follows the same map choice when its next fair match starts."""
+    from warband.ui.observer import next_observer, observe_game
+
+    scene = observe_game(seed=7, width=64, height=48, layout=Layout.PLAINS, wilds=enabled)
+    assert bool(scene.world.camps) is enabled
+    following = next_observer(scene)
+    assert following.world.wilds is enabled
+    assert bool(following.world.camps) is enabled
 
 
 def test_old_saves_keep_the_wilds_they_were_played_with():
