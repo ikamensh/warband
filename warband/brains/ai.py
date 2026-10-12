@@ -138,7 +138,7 @@ def answer_flyers(world: World, player: int, army: list[Unit], radius: float) ->
     for flyer in flyers_over(world, player, radius):
         shooters = [u.id for u in army if not u.orders and world.can_strike(u, flyer) and dist(u.pos, flyer.pos) <= 12.0]
         if shooters:
-            world.attack_move(shooters[:3], flyer.pos)
+            world.attack_move(shooters[:3], camp_safe_point(world, player, flyer.pos))
 
 
 def known_enemy_buildings(world: World, player: int) -> list:
