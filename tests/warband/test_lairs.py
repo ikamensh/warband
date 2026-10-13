@@ -49,7 +49,10 @@ def test_a_generated_maps_camps_take_the_dens_they_were_raised_for() -> None:
     world = mapgen.generate(9, 64, 48, 2)
     assert world.camps
     expected = {"wolf_den": LairKind.WOLF, "spider_nest": LairKind.SPIDER,
-                "troll_mound": LairKind.TROLL, "stone_cairn": LairKind.GOLEM}
+                "troll_mound": LairKind.TROLL, "stone_cairn": LairKind.GOLEM,
+                "wolf_outpost": LairKind.WOLF, "spider_hollow": LairKind.SPIDER,
+                "troll_toll": LairKind.TROLL, "cairn_watch": LairKind.TROLL,
+                "ancient_sanctum": LairKind.GOLEM}
     assert any(CAMP_ENCOUNTERS[camp.encounter].tier == "Raid" for camp in world.camps)
     for camp in world.camps:
         assert monsters.lair_kind_for_camp(camp) is expected[camp.encounter]
@@ -57,7 +60,9 @@ def test_a_generated_maps_camps_take_the_dens_they_were_raised_for() -> None:
 
 @pytest.mark.parametrize("encounter,kind", [("wolf_den", LairKind.WOLF), ("spider_nest", LairKind.SPIDER),
                                          ("troll_mound", LairKind.TROLL), ("stone_cairn", LairKind.GOLEM),
-                                         ("ancient_sanctum", LairKind.GOLEM)])
+                                         ("ancient_sanctum", LairKind.GOLEM), ("wolf_outpost", LairKind.WOLF),
+                                         ("spider_hollow", LairKind.SPIDER), ("troll_toll", LairKind.TROLL),
+                                         ("cairn_watch", LairKind.TROLL)])
 def test_every_encounter_has_supported_den_art_and_portrait(encounter: str, kind: LairKind, tmp_path) -> None:
     """All three tiers resolve through playable camp placement to intact/damaged art and a card portrait."""
     world = flat_world()

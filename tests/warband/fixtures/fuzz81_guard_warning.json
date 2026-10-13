@@ -1,0 +1,271 @@
+{
+  "terrain": [
+    "ggggggggggggggggggggggggggggg",
+    "gggggggggggggggggggtttggggggg",
+    "gggggggggggggggggggtttggggggg",
+    "gggggggggggggggggggtttggggggg",
+    "ggggggggggggggggggggggggggggg",
+    "rtggggggggggggggggggggggggggg",
+    "rtggggggggggggggggggggggttggg",
+    "tgggggggggggggggggggggggttggg",
+    "ggggggggggggtgggggggggggttggg",
+    "gggggggggggtttttrgggggggtwggg",
+    "gggggggggggtttttrgggggggtwggg",
+    "gggggggggggtttttggggggggtwggg",
+    "ggggggggggttttgggggggggtttggg",
+    "gggggggtttttttgggggggggtttggg",
+    "ggggggttttttttgggggggggtttggg",
+    "ggggggttttttttggggggggggtgggg",
+    "gggtttttttttttggggggggggggggg",
+    "gttttttgggttttggggggggggggggg",
+    "tttttttgggtttttgggggggggggggg",
+    "ggtttttggggtttgggggggwggggggg",
+    "ggggggggggggggggggggwwwgggttg"
+  ],
+  "units": [
+    {
+      "id": 124,
+      "type": "ancient_guardian",
+      "player": 2,
+      "x": 21.338477631085027,
+      "y": 11.338477631085027,
+      "hp": 3800,
+      "facing": 0.7853981633974483,
+      "orders": [],
+      "cooldown": 0.0,
+      "windup": 0.0,
+      "vx": 0.0,
+      "vy": 0.0,
+      "worker_orders": [],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": null,
+      "state": "idle",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": null,
+      "struck": -1000.0,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    },
+    {
+      "id": 344,
+      "type": "peasant",
+      "player": 0,
+      "x": 23.050717143272436,
+      "y": 16.831798523809084,
+      "hp": 9,
+      "facing": 0.49885492153615196,
+      "orders": [
+        {
+          "kind": "Harvest",
+          "target": 27
+        }
+      ],
+      "cooldown": 0.0,
+      "windup": 0.0,
+      "vx": 1.2554464068728066,
+      "vy": 1.8671781702533963,
+      "worker_orders": [
+        {
+          "index": 0,
+          "auto": true,
+          "placed": true
+        }
+      ],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": null,
+      "state": "move",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": null,
+      "struck": 342.8500000000437,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    }
+  ],
+  "buildings": [
+    {
+      "id": 27,
+      "type": "gold_mine",
+      "player": null,
+      "x": 1,
+      "y": 1,
+      "hp": 0,
+      "max_hp": 0,
+      "progress": 0.0,
+      "queue": [],
+      "train_progress": 0.0,
+      "rally": null,
+      "gold": 29400,
+      "builder": null,
+      "cooldown": 0.0,
+      "research": null,
+      "research_progress": 0.0,
+      "abandoned": false,
+      "auto": []
+    },
+    {
+      "id": 123,
+      "type": "lair",
+      "player": 2,
+      "x": 18,
+      "y": 8,
+      "hp": 900,
+      "max_hp": 900,
+      "progress": 0.0,
+      "queue": [],
+      "train_progress": 0.0,
+      "rally": null,
+      "gold": 6000,
+      "builder": null,
+      "cooldown": 0.0,
+      "research": null,
+      "research_progress": 0.0,
+      "abandoned": false,
+      "auto": []
+    }
+  ],
+  "camps": [
+    {
+      "lair": 123,
+      "kinds": [
+        "ancient_guardian",
+        "golem",
+        "golem"
+      ],
+      "posts": [
+        [
+          21.338477631085027,
+          11.338477631085027
+        ],
+        [
+          17.5,
+          10.5
+        ],
+        [
+          20.17292951726654,
+          6.98859285164842
+        ]
+      ],
+      "guards": [
+        124,
+        125,
+        126
+      ],
+      "origin": [
+        19.5,
+        9.5
+      ],
+      "struck": -1000.0,
+      "roused": false,
+      "quiet_since": 0.25,
+      "encounter": "ancient_sanctum",
+      "gold": 6000,
+      "lumber": 900,
+      "cleared": false,
+      "credit": {}
+    }
+  ],
+  "time": 548.0500000000493,
+  "tick": 10961,
+  "known_terrain": [
+    "ggggggggggggggggggggggggggggg",
+    "gggggggggggggggggggtttggggggg",
+    "gggggggggggggggggggtttggggggg",
+    "gggggggggggggggggggtttggggggg",
+    "?gggggggggggggggggggggggggggg",
+    "??ggggg?ggggggg???ggggggggggg",
+    "?????????ggggg?????gggggttggg",
+    "????????????????????ggggttggg",
+    "?????????????????????gggttggg",
+    "??????????????????????ggtwggg",
+    "?????????????tttrg????ggtwggg",
+    "????????????ttttggg?ggggtwggg",
+    "???????????tttgggggggggtttggg",
+    "???????????tttgggggggggtttggg",
+    "???????????tttgggggggggtttggg",
+    "???????????tttggggggggggtgggg",
+    "???????????tttggggggggggggggg",
+    "???????????tttggggggggggggggg",
+    "??????????tttttgggggggggggggg",
+    "?????????ggtttgggggggwggggggg",
+    "????????ggggggggggggwwwgggttg"
+  ],
+  "knowledge": {
+    "width": 29,
+    "height": 21,
+    "buildings": [
+      {
+        "id": 27,
+        "x": 1,
+        "y": 1,
+        "size": 3,
+        "player": null,
+        "threat_range": 0.0,
+        "ruin": false,
+        "type": "gold_mine"
+      }
+    ],
+    "encounters": [],
+    "cleared_encounters": [],
+    "fallen_guards": [],
+    "guard_warnings": [
+      [
+        124,
+        [
+          21.338477631085027,
+          11.338477631085027
+        ]
+      ]
+    ],
+    "mines": [
+      {
+        "id": 27,
+        "x": 1,
+        "y": 1,
+        "size": 3,
+        "gold": 29400,
+        "trip": 100,
+        "slots": 8,
+        "endless": false
+      }
+    ]
+  },
+  "race": "dwarf",
+  "upgrades": [
+    "armor_1",
+    "arrows_1",
+    "blades_1",
+    "deep_mining",
+    "keep"
+  ],
+  "provenance": {
+    "source_commit": "3e20bc1",
+    "command": "python -u tools/fuzz.py --games 1 --monkey 0 --seed 81",
+    "seed": 81,
+    "captured_time": 548.0500000000493,
+    "crop": [
+      124,
+      70,
+      153,
+      91
+    ],
+    "player_remap": {
+      "4": 0,
+      "6": 2
+    }
+  },
+  "next_id": 1765
+}

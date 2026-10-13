@@ -346,6 +346,7 @@ OWN_UNITS: Final[dict[Race, UnitType]] = {info.race: unit_type for unit_type, in
 class CampInfo:
     name: str
     tier: str
+    role: str  # the map job the generator places it for: expansion, choke or wilds
     roster: tuple[UnitType, ...]
     gold: int
     lumber: int
@@ -354,7 +355,7 @@ class CampInfo:
 
 
 CAMP_ENCOUNTERS: Final[dict[str, CampInfo]] = {
-    key: CampInfo(info["name"], info["tier"], tuple(UnitType(kind) for kind in info["roster"]),
+    key: CampInfo(info["name"], info["tier"], info["role"], tuple(UnitType(kind) for kind in info["roster"]),
                   info["gold"], info["lumber"], info["lair_hp"], info["hint"])
     for key, info in config.current().encounters.items()
 }

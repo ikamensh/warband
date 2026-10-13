@@ -263,10 +263,14 @@ def test_setup_defaults_make_a_valid_room_and_keep_the_wire_contract(tmp_path):
     try:
         menu = game.scene
         assert (menu.rated, menu.seats, menu.size) == (True, 2, "Medium")
+        assert menu.wilds is True  # neutral camps are on unless the host turns them off
         options = menu.create_options()
-        assert set(options) == {"seed", "width", "height", "theme", "players", "races", "layout", "magic"}
+        assert set(options) == {"seed", "width", "height", "theme", "players", "races", "layout", "magic", "wilds"}
         assert _create(options).world.seats == 2
         assert menu.create_match().world.seats == 2
+        menu.toggle_wilds()
+        assert menu.create_options()["wilds"] is False
+        assert _create(menu.create_options()).world.camps == []
     finally:
         game.close()
 

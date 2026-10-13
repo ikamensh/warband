@@ -1,8 +1,11 @@
 # Optional army objectives. Rewards are distributed by contribution after lair AND guards fall.
 # Fallen guards stay dead. The payout buys a meaningful timing window, without permanent stat buffs.
+# `role` names the map job the generator places the encounter for: "expansion" guards a contested
+# mine, "choke" holds an optional shortcut with a bypass, "wilds" is a side expedition anywhere.
 [wolf_den]
 name = "Wolf Pack"
 tier = "Raid"
+role = "wilds"
 roster = ["wolf", "wolf", "wolf", "wolf"]
 gold = 1200
 lumber = 150
@@ -12,15 +15,37 @@ hint = "Shield your ranged troops: the pack hunts exposed archers."
 [spider_nest]
 name = "Venom Brood"
 tier = "Raid"
+role = "wilds"
 roster = ["spider", "spider", "spider", "wolf", "wolf"]
 gold = 1500
 lumber = 200
 lair_hp = 350
 hint = "Close on the spiders with cavalry; they retreat from slow infantry."
 
+[wolf_outpost]
+name = "Wolf Outpost"
+tier = "Raid"
+role = "expansion"
+roster = ["wolf", "wolf"]
+gold = 800
+lumber = 100
+lair_hp = 250
+hint = "Break the outpost before you mine: its pack hunts whoever works this ground."
+
+[spider_hollow]
+name = "Venom Hollow"
+tier = "Raid"
+role = "expansion"
+roster = ["spider", "wolf"]
+gold = 900
+lumber = 120
+lair_hp = 275
+hint = "Close on the spiders with fast troops, then work the mine."
+
 [troll_mound]
 name = "Troll Stronghold"
 tier = "Stronghold"
+role = "wilds"
 roster = ["troll", "wolf", "wolf", "spider"]
 gold = 2800
 lumber = 400
@@ -30,15 +55,37 @@ hint = "Focus arrows on the unarmoured troll; its wounds mend after disengaging.
 [stone_cairn]
 name = "Stone Sentinels"
 tier = "Stronghold"
+role = "wilds"
 roster = ["golem", "spider", "spider"]
 gold = 3200
 lumber = 450
 lair_hp = 600
 hint = "Spread out and leave marked ground before the golem slams."
 
+[troll_toll]
+name = "Troll Toll"
+tier = "Stronghold"
+role = "choke"
+roster = ["troll", "troll", "spider"]
+gold = 3000
+lumber = 450
+lair_hp = 600
+hint = "Two trolls hold the short way: break them or walk around."
+
+[cairn_watch]
+name = "Sentry Cairn"
+tier = "Stronghold"
+role = "choke"
+roster = ["golem", "troll", "spider"]
+gold = 3200
+lumber = 475
+lair_hp = 625
+hint = "Spread out of the marked slam: the cairn watches the pass."
+
 [ancient_sanctum]
 name = "The Ancient Guardian"
 tier = "Ancient"
+role = "wilds"
 roster = ["ancient_guardian", "golem", "golem"]
 gold = 6000
 lumber = 900

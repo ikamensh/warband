@@ -511,14 +511,14 @@ class ObserverEndScene(_Overlay):
 def observe_game(seed: int, width: int = 48, height: int = 40, players: int = 2,
                  *, difficulty: Difficulty = Difficulty.MEDIUM, theme: MapTheme = MapTheme.SUMMER,
                  settings: dict[str, Any] | None = None, races: list[Race | None] | None = None,
-                 layout: MapLayout | None = None, magic: bool = False) -> ObserverScene:
+                 layout: MapLayout | None = None, magic: bool = False, wilds: bool = True) -> ObserverScene:
     """A local AI-only match nobody plays: every seat computer-led, seat 0 watched first.
 
     *layout* ``None`` draws one from the seed.  The world is built with no
     human seat, and gains none: the watcher is not a player.
     """
     return ObserverScene(mapgen.generate(seed, width, height, players, human=None, theme=theme,
-                                         races=races, layout=layout, magic=magic),
+                                         races=races, layout=layout, magic=magic, wilds=wilds),
                          seed, difficulty=difficulty, settings=settings)
 
 
@@ -527,7 +527,7 @@ def next_observer(scene: WatchScene) -> ObserverScene:
     world = scene.world
     seed, fresh = fair_map(scene.seed + 1, world.width, world.height, world.seats, theme=world.theme,
                            races=[p.race for p in world.players[:world.seats]], layout=world.layout,
-                           magic=world.magic)
+                           magic=world.magic, wilds=world.wilds)
     # fair_map builds played matches (seat 0 leads); watching keeps every seat computer-led.
     for player in fresh.players[:fresh.seats]:
         player.human = False

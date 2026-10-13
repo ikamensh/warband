@@ -107,8 +107,8 @@ def _farm_headroom(world, count=3) -> None:
 
 
 def _expansion_world():
-    """Player 0 with a completed hall beside a far neutral mine, plus farm headroom and gold to spare."""
-    world = mapgen.generate(seed=5, players=2, human=None)
+    """A completed, unguarded expansion with farm headroom and gold to spare."""
+    world = mapgen.generate(seed=5, players=2, human=None, wilds=False)
     hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
     home = [b.center for b in world.buildings.values() if b.type is BuildingType.TOWN_HALL]
     candidates = [m for m in world.mines() if all(dist(m.center, h) > 10 for h in home)]

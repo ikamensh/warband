@@ -3,7 +3,7 @@
 import pytest
 
 from warband.sim.model import World
-from warband.sim.rules import Terrain, UnitType
+from warband.sim.rules import SIM_DT, Terrain, UnitType
 
 
 def test_encounters_offer_three_meaningfully_different_commitments():
@@ -133,7 +133,8 @@ def test_pack_hunts_exposed_archers_and_spiders_make_melee_close_the_gap():
     world, camp = camp_world()
     wolf = world.units[camp.guards[0]]
     screen = world.spawn_unit(0, UnitType.FOOTMAN, (wolf.x + 1.5, wolf.y))
-    archer = world.spawn_unit(0, UnitType.ARCHER, (wolf.x + 3.5, wolf.y))
+    # Both intruders crossed the alarm; an uninvolved archer outside it is not a target.
+    archer = world.spawn_unit(0, UnitType.ARCHER, (wolf.x + 2.5, wolf.y))
     world.hold([screen.id, archer.id])
     advance(world, 0.25)
     assert isinstance(wolf.order, Attack) and wolf.order.target == archer.id
@@ -328,3 +329,33 @@ def test_last_hit_cannot_steal_earned_bounty_and_saved_progress_pays_once():
     playback = Playback(replay)
     playback.run()
     assert playback.faithful and playback.world.to_dict() == world.to_dict()
+
+
+def test_online_casualty_memory_travels_only_in_the_watchers_snapshot():
+    """A watched guard death reaches the watcher's own seat through its snapshot and no other seat."""
+    from warband.online.authority import WarbandMatch
+    world, camp = camp_world((UnitType.WOLF, UnitType.WOLF))
+    lair = world.buildings[camp.lair]
+    world.spawn_unit(0, UnitType.FLYING_MACHINE, (lair.center[0], lair.center[1] + 4))
+    slayers = [world.spawn_unit(0, UnitType.KNIGHT, (27.5 + i, 21.5)) for i in range(6)]
+    world.update_vision()
+    assert camp.lair in world.worker_knowledge[0].encounters
+    world.attack([slayer.id for slayer in slayers], camp.guards[0])
+    for _ in range(round(60 / SIM_DT)):
+        world.step()
+        if camp.guards[0] not in world.units:
+            break
+    assert camp.guards[0] not in world.units
+    for slayer in slayers:
+        if slayer.id in world.units:
+            world.units[slayer.id].hp = 0
+    world.step()
+    assert world.worker_knowledge[0].fallen_guards == {camp.lair: {"wolf": 1}}
+    match = WarbandMatch(seed=7)
+    match.world = world
+    match.begun = world.to_dict()["terrain"]
+    zero = World.from_dict(match.snapshot(0)["world"])
+    assert zero.worker_knowledge[0].fallen_guards == {camp.lair: {"wolf": 1}}
+    one = World.from_dict(match.snapshot(1)["world"])
+    assert one.worker_knowledge[0].fallen_guards == {}
+    assert one.worker_knowledge[1].fallen_guards == {}

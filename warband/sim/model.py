@@ -581,6 +581,7 @@ class Camp:
     cleared: bool = False
     credit: dict[int, dict[int, float]] = field(default_factory=dict)  # entity -> seat -> damage still contributed
     origin: Point | None = None  # static anchor, retained when an observed lair falls out of sight
+    watch: Point | None = None  # the watched point: the lair's, or a guard's mine
     struck: float = -1000.0  # most recent actual damage to any part of the encounter
 
 
@@ -733,7 +734,7 @@ class World:
     def __init__(self, width: int, height: int, terrain: list[list[Terrain]], player_count: int, *,
                  human: int | None = 0, rng: random.Random | None = None, theme: MapTheme = MapTheme.SUMMER,
                  races: list[Race] | tuple[Race, ...] | None = None, layout: Layout = Layout.PLAINS,
-                 scripted: bool = False, magic: bool = False) -> None:
+                 scripted: bool = False, magic: bool = False, wilds: bool = True) -> None:
         if len(terrain) != height or any(len(row) != width for row in terrain):
             raise ValueError("terrain must be height rows of width tiles")
         if races is not None and len(races) != player_count:
@@ -744,6 +745,7 @@ class World:
         self.theme = theme
         self.layout = layout
         self.magic = magic  # match option: ley rifts, vaults, towers and spells are opt-in
+        self.wilds = wilds  # match option: neutral creature camps on random maps are opt-out; scripted missions keep theirs
         self.gates: frozenset[Pos] = frozenset()  # Bastion's passable ring openings; a new building must leave a route through each
         #: The ley rifts (WB-063): the top-left tiles of squares the vault's size, laid by the map generator and
         #: fixed for the match.  Ground, not buildings: nobody owns one, units walk over it, and a vault set
@@ -815,7 +817,7 @@ class World:
         self._forest_regions: pathing.Regions | None = None
         self._route_cache: dict[tuple[Pos, int, int], tuple[list[Pos], Pos]] = {}  # march trunks, see _join_march()
         self._camp_routes: dict[tuple[int, bool, tuple[int, ...], float], tuple[int, tuple[tuple[float, float, float], ...], bytearray]] = {}
-        self._camp_views: dict[int, tuple[int, list[tuple[int, Point]]]] = {}
+        self._camp_views: dict[int, tuple[int, list[tuple[int, list[Point]]]]] = {}
         self._camp_path_grids: dict[int, bytearray] = {}  # navigation under which each ordinary walk was planned
         self._camp_route_regions: dict[tuple[int, bool, tuple[int, ...], float], tuple[bytearray, pathing.Regions]] = {}
         self._camp_plain_routes: dict[tuple[int, bool, tuple[int, ...], float], tuple[int, bytearray, pathing.Regions]] = {}
@@ -2484,8 +2486,12 @@ class World:
     def _building_exit(self, b: Building, radius: float, *, prefer: Point | None = None) -> Pos | None:
         """Leave beside a building outside remembered watches, unless its destination chooses a camp."""
         assert b.player is not None
-        excluded = {lair for lair, point in self.worker_knowledge[b.player].encounters.items()
-                    if prefer is not None and dist(prefer, point) <= camps.CAMP_WATCH}
+        grouped: dict[int, list[Point]] = {}
+        for lair, point in camps.defended(self, b.player):
+            grouped.setdefault(lair, []).append(point)
+        excluded = {lair for lair, points in grouped.items()
+                    if prefer is not None
+                    and any(dist(prefer, point) <= camps.CAMP_WATCH for point in points)}
         navigation = camps.navigation(self, b.player, self._blocked, excluded, radius + .5)
         spot = self.free_tile_near(b.rect, prefer=prefer, navigation=navigation)
         if spot is None:
@@ -2773,10 +2779,11 @@ class World:
             return True
         if striker is None:
             return False
-        middle = camps.centre(self, camp)
+        middles = (camps.centre(self, camp), camps.watch_of(self, camp))
         order = self._active_order(striker)
         return ((isinstance(order, Attack) and self.camp_for(order.target) is camp)
-                or (isinstance(order, AttackMove) and dist(order.target, middle) <= camps.CAMP_WATCH))
+                or (isinstance(order, AttackMove)
+                    and any(dist(order.target, middle) <= camps.CAMP_WATCH for middle in middles)))
 
     def _active_order(self, u: Unit) -> Order | None:
         """The current command underneath temporary automatic fighting or healing, never a later queued job."""
@@ -2786,13 +2793,17 @@ class World:
             return order
         return None
 
-    def _chosen_camp(self, u: Unit, lair: int, point: Point) -> bool:
-        """Deliberate encounter movement, or freedom to leave a watch the unit already entered."""
-        if dist(u.pos, point) < camps.CAMP_WATCH:
+    def _chosen_camp(self, u: Unit, lair: int, points: list[Point]) -> bool:
+        """Deliberate encounter movement, or freedom to leave a watch the unit already entered.
+
+        The encounter is its union: standing in, or moving or striking at, either the den or
+        the mine it guards chooses the whole encounter, never one circle of it.
+        """
+        if any(dist(u.pos, point) < camps.CAMP_WATCH for point in points):
             return True
         intent = self._active_order(u)
         if isinstance(intent, (Move, AttackMove)):
-            return dist(intent.target, point) <= camps.CAMP_WATCH
+            return any(dist(intent.target, point) <= camps.CAMP_WATCH for point in points)
         if isinstance(intent, Attack):
             chosen = self.camp_for(intent.target)
             return chosen is not None and chosen.lair == lair
@@ -2802,20 +2813,27 @@ class World:
         """A real displacement must not enter a remembered watch without the unit's active intent."""
         if u.player == self.neutral or u.flying or end == u.pos:
             return True
-        knowledge = self.worker_knowledge[u.player]
         sx, sy = end[0] - u.x, end[1] - u.y
         length2 = sx * sx + sy * sy
-        for lair, point in knowledge.encounters.items():
-            if lair in knowledge.cleared_encounters:
-                continue
+        grouped: dict[int, list[Point]] = {}
+        for lair, point in camps.defended(self, u.player):
+            grouped.setdefault(lair, []).append(point)
+        for lair, points in grouped.items():
             # Tile-level routing can reopen the unit's current tile for escape.
-            # Its accepted segment must still stay outside the actual watch circle.
-            rx, ry = u.x - point[0], u.y - point[1]
-            along = min(1.0, max(0.0, -(rx * sx + ry * sy) / length2))
-            rx, ry = rx + along * sx, ry + along * sy
-            if rx * rx + ry * ry < camps.CAMP_WATCH * camps.CAMP_WATCH and not self._chosen_camp(u, lair, point):
+            # Its accepted segment must still stay outside every actual watch circle.
+            if not any(self._segment_hits(u, sx, sy, length2, point) for point in points):
+                continue
+            if not self._chosen_camp(u, lair, points):
                 return False
         return True
+
+    @staticmethod
+    def _segment_hits(u: Unit, sx: float, sy: float, length2: float, point: Point) -> bool:
+        """Whether the unit's step of (*sx*, *sy*) enters the watch circle at *point*."""
+        rx, ry = u.x - point[0], u.y - point[1]
+        along = min(1.0, max(0.0, -(rx * sx + ry * sy) / length2))
+        rx, ry = rx + along * sx, ry + along * sy
+        return rx * rx + ry * ry < camps.CAMP_WATCH * camps.CAMP_WATCH
 
     def _ease(self, u: Unit, dt: float) -> None:
         """Standing at ease: a unit hemmed in by its neighbours takes a short step away from them now
@@ -3845,10 +3863,12 @@ class World:
             return 0 <= x < self.width and 0 <= y < self.height and not grid[y * self.width + x]
         escape: list[Pos] = []
         if not passable(*start):
-            nearest = pathing.nearest_passable(start, passable)
+            if navigation is not None:
+                escape = self._way_out(u, navigation) or []
+                nearest = escape[-1] if escape else None
+            else:
+                nearest = pathing.nearest_passable(start, passable)
             if nearest is not None:
-                if navigation is not None:
-                    escape = self._escape(u, nearest) or []
                 start = nearest
         target = goal
         if not passable(*goal):
@@ -4021,15 +4041,16 @@ class World:
         knowledge = self.worker_knowledge[u.player]
         view = self._camp_views.get(u.player)
         if view is None or view[0] != knowledge.version:
-            lairs = [(lair, point) for lair, point in knowledge.encounters.items()
-                     if lair not in knowledge.cleared_encounters]
-            view = (knowledge.version, lairs)
+            grouped: dict[int, list[Point]] = {}
+            for lair, point in camps.defended(self, u.player):
+                grouped.setdefault(lair, []).append(point)
+            view = (knowledge.version, list(grouped.items()))
             self._camp_views[u.player] = view
         lairs = view[1]
         intent = self._active_order(u)
         warnings: list[tuple[float, float, float]] = []
         for guard_id, point in knowledge.guard_warnings.items():
-            radius = camps.CAMP_WATCH + camps.CAMP_POST + 1.0
+            radius = camps.GUARD_WARNING
             deliberate = ((isinstance(u.order, Attack) and u.order.target == guard_id)
                           or (isinstance(intent, (Move, AttackMove)) and dist(intent.target, point) <= camps.CAMP_WATCH))
             if not deliberate:
@@ -4038,8 +4059,8 @@ class World:
             return ground
         excluded: set[int] = set()
         margin = u.radius + .5
-        for lair, point in lairs:
-            if self._chosen_camp(u, lair, point):
+        for lair, points in lairs:
+            if self._chosen_camp(u, lair, points):
                 excluded.add(lair)
         key = (u.player, u.forest, tuple(sorted(excluded)), margin)
         observed = tuple(warnings)
@@ -4122,17 +4143,20 @@ class World:
     def _escape_ground(self, u: Unit) -> bytearray:
         """Relax mobile danger for escape while retaining other remembered camp watches.
 
-        A worker fleeing a rival must not cross a separate camp. The watch it
-        has already entered is exempt so leaving remains possible. Padding is
-        relaxed, and its current physical tile is open, allowing a unit just
+        A worker fleeing a rival must not cross a separate camp. A watch it has
+        chosen or already entered is exempt, as in ordinary routing, so another
+        warning cannot block its deliberate encounter. Padding is relaxed, and
+        its current physical tile is open, allowing a unit just
         outside the actual watch to step outward without opening that camp.
         """
         ground = self.ground_of(u)
         if u.player == self.neutral or u.flying:
             return ground
         knowledge = self.worker_knowledge[u.player]
-        excluded = {lair for lair, point in knowledge.encounters.items()
-                    if lair not in knowledge.cleared_encounters and dist(u.pos, point) < camps.CAMP_WATCH}
+        grouped: dict[int, list[Point]] = {}
+        for lair, point in camps.defended(self, u.player):
+            grouped.setdefault(lair, []).append(point)
+        excluded = {lair for lair, points in grouped.items() if self._chosen_camp(u, lair, points)}
         key = (u.player, u.forest, tuple(sorted(excluded)), 0.0)
         cached = self._camp_routes.get(key)
         if cached is None or cached[0] != knowledge.version:
@@ -4147,22 +4171,18 @@ class World:
         return grid
 
     def _way_out(self, u: Unit, navigation: bytearray) -> list[Pos] | None:
-        """Escape to the nearest safety-map tile without entering another remembered camp."""
+        """Take the shortest real escape to nearby safety, retaining other remembered camp watches.
+
+        The geometrically nearest safe tile may stand across a tree wall. Search all nearby
+        exits together, so its inaccessible shortcut cannot become the start of a march.
+        """
         width, height = self.width, self.height
-
-        def allowed(x: int, y: int) -> bool:
-            return 0 <= x < width and 0 <= y < height and not navigation[y * width + x]
-        nearest = pathing.nearest_passable(u.tile, allowed)
-        return self._escape(u, nearest) if nearest is not None else None
-
-    def _escape(self, u: Unit, nearest: Pos) -> list[Pos] | None:
-        """Escape mobile danger to *nearest* over this unit's ground and the remaining hard watches."""
-        start = u.tile
-        if self.ground_of(u)[start[1] * self.width + start[0]]:
+        tx, ty = u.tile
+        if self.ground_of(u)[ty * width + tx]:
             return None
-        route = pathing.find_path_grid(start, nearest, self._escape_ground(u), self.width, self.height,
-                                      max_expansions=LOCAL_EXPANSIONS)
-        return route if route and route[-1] == nearest else None
+        goals = {(x, y): 0.0 for y in range(max(0, ty - 12), min(height, ty + 13))
+                 for x in range(max(0, tx - 12), min(width, tx + 13)) if not navigation[y * width + x]}
+        return pathing.find_work_path(u.tile, goals, self._escape_ground(u), width, height)
 
     def _effective_speed(self, u: Unit, *, dressing: bool = False) -> float:
         """How fast *u* walks right now: its own speed, capped to its order's group pace.
@@ -5183,11 +5203,14 @@ class World:
             self._plunder(target, player, source)
             self._hoard(target, player, source)
         striker = self.units.get(source)
-        if (striker is not None and isinstance(target, Unit) and target.hp > 0 and self._threat(target) == 0 and not target.info.blast
+        if (striker is not None and isinstance(target, Unit) and target.hp > 0
+                and (self._threat(target) == 0 or target.player == self.neutral) and not target.info.blast
                 and self.can_strike(target, striker)):  # a sapper struck keeps its keg for what it was sent at
             current = target.order
             if current is None:
-                target.home = target.pos
+                # A camp owns its guards' pursuit leash; the ordinary sight leash would
+                # discard a distant siege striker before the camp's next collective pass.
+                target.home = None if target.player == self.neutral else target.pos
                 target.orders.append(Attack(striker.id, auto=True))
             elif isinstance(current, Attack) and current.auto:
                 busy_with = self.entity(current.target)
@@ -5256,8 +5279,29 @@ class World:
         self._camp_path_grids.pop(unit.id, None)
         self.events.append(Event("expired", unit.pos, player=unit.player, entity=unit.id, text=unit.type.value))
 
+    def _remember_fallen_guard(self, unit: Unit) -> None:
+        """Credit each seat watching a discovered camp with the guard it just saw fall.
+
+        Casualty counts are witnessed deaths only: the camp's lair must be one
+        the seat discovered, and the death must happen where the seat sees. A
+        missing id proves nothing -- snapshots drop hidden guards and the
+        living move -- so the count is recorded here, once, where the death
+        happens, and survives saves and snapshots with the seat's memory.
+        """
+        if unit.player != self.neutral:
+            return
+        camp = self.camp_for(unit.id)
+        if camp is None or unit.id not in camp.guards:
+            return
+        for seat in range(self.seats):
+            knowledge = self.worker_knowledge[seat]
+            if camp.lair in knowledge.encounters and self.is_visible(seat, unit.tile):
+                kills = knowledge.fallen_guards.setdefault(camp.lair, {})
+                kills[unit.type.value] = kills.get(unit.type.value, 0) + 1
+
     def _remove_unit(self, unit: Unit, *, spent: bool = False) -> None:
         """Take *unit* off the map: fallen, or (*spent*) gone with its own blow, which is no loss and no death."""
+        self._remember_fallen_guard(unit)
         self._leave_mine(unit)
         del self.units[unit.id]
         self._camp_path_grids.pop(unit.id, None)
@@ -5446,6 +5490,7 @@ class World:
     def to_dict(self) -> dict[str, Any]:
         return {
             "width": self.width, "height": self.height, "theme": self.theme.value, "layout": self.layout.value, "magic": self.magic,
+            "wilds": self.wilds,
             "gates": [list(tile) for tile in sorted(self.gates)],
             "rifts": [list(rift) for rift in self.rifts],
             "gate_links": [[list(hall), list(natural)] for hall, natural in self.gate_links],
@@ -5459,7 +5504,8 @@ class World:
                          "assembly": list(p.assembly) if p.assembly is not None else None} for p in self.players],
             "regrowth": [[list(tile), when] for tile, when in self.regrowth],
             "camps": [{"lair": c.lair, "kinds": list(c.kinds), "posts": [list(p) for p in c.posts], "guards": list(c.guards),
-                       "origin": list(c.origin) if c.origin is not None else None, "struck": c.struck,
+                       "origin": list(c.origin) if c.origin is not None else None,
+                       "watch": list(c.watch) if c.watch is not None else None, "struck": c.struck,
                        "roused": c.roused, "quiet_since": c.quiet_since, "encounter": c.encounter, "gold": c.gold, "lumber": c.lumber, "cleared": c.cleared,
                        "credit": {str(entity): {str(seat): amount for seat, amount in shares.items()} for entity, shares in c.credit.items()}} for c in self.camps],
             "units": [_unit_to_dict(u) for u in self.units.values()],
@@ -5480,7 +5526,8 @@ class World:
         seats = [p for p in data["players"] if not p.get("neutral")]
         world = cls(data["width"], data["height"], terrain, len(seats), human=human, theme=MapTheme(data["theme"]),
                     races=[Race(p.get("race", Race.HUMAN.value)) for p in seats], layout=Layout(data["layout"]),
-                    scripted=data.get("scripted", False), magic=data.get("magic", True))  # older saves were played with magic enabled
+                    scripted=data.get("scripted", False), magic=data.get("magic", True),  # older saves were played with magic enabled
+                    wilds=data.get("wilds", True))  # and with the wilds on: camps-off is newer than any old save
         world.gates = frozenset((x, y) for x, y in data.get("gates", []))
         world.lay_rifts((x, y) for x, y in data.get("rifts", []))  # a save from before the ley rifts has none
         world.gate_links = tuple(((hall[0], hall[1]), (natural[0], natural[1])) for hall, natural in data.get("gate_links", []))
@@ -5491,6 +5538,7 @@ class World:
                             gold=c.get("gold", next((b["gold"] for b in data["buildings"] if b["id"] == c["lair"]), 0)),
                             lumber=c.get("lumber", 0), cleared=c.get("cleared", False),
                             origin=(float(c["origin"][0]), float(c["origin"][1])) if c.get("origin") is not None else None,
+                            watch=(float(c["watch"][0]), float(c["watch"][1])) if c.get("watch") is not None else None,
                             struck=c.get("struck", -1000.0),
                             credit={int(entity): {int(seat): float(amount) for seat, amount in shares.items()}
                                     for entity, shares in c.get("credit", {}).items()}) for c in data.get("camps", [])]

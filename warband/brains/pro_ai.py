@@ -16,7 +16,7 @@ from typing import Final
 from warband.brains.pro_force import _tower_strength, _tower_strength_own, camp_strength, strength
 from warband.brains.pro_profiles import PRO, PRO_PROFILES, PRO_RUSH, PRO_VANGUARD, PRO_WARDEN, ProProfile
 
-from warband.brains.ai import RAIDERS, answer_flyers, camp_standing, camp_worth, can_reach_point, dodge_camp_slams, heading_to, known_camps, known_mines, lost_track, push_is_blind, redirect_searchers
+from warband.brains.ai import ESCAPE_SECONDS, RAIDERS, answer_flyers, answering, camp_safe_point, camp_standing, camp_worth, can_reach_point, dodge_camp_slams, escape_warned_marches, known_camps, known_mines, lost_track, prepared_cohort, prune_escapers, push_is_blind, rally_past, reachable_cohort, redirect_searchers, retry_force
 from warband.sim.model import Attack, Build, Building, Move, Point, Repair, Salvage, Unit, World, dist, int_sum, plain_sum, rect_gap, tile_center
 from warband.sim.rules import SPELLS, BuildingType, Layout, Race, UnitType, Upgrade
 
@@ -31,6 +31,15 @@ class ProBrain(_ProBrainEconomy):
     def think(self, world: World, rng: random.Random) -> None:
         if not world.players[self.player].alive or world.winner is not None:
             return
+        prune_escapers(world, self.camp_escape)
+        if self.attacking:
+            escaped = escape_warned_marches(world, self.player, self._army(world),
+                                            self.creep_party | self._hurt | set(self.camp_escape))
+            if escaped:
+                self.camp_escape.update((uid, world.time + ESCAPE_SECONDS) for uid in escaped)
+                self.attacking = False
+                self.regroup_until = max(self.regroup_until, world.time + self.profile.regroup_seconds)
+                self.note(world, "regroup outside newly sighted neutral guards")
         searches = self.scouts + list(self.hunt.party)
         if self.prospector is not None:
             searches.append(self.prospector)
@@ -73,11 +82,14 @@ class ProBrain(_ProBrainEconomy):
         army = self._army(world)
         busy = set(self._raid(world, army))
         busy |= self.hunt.step(world, self.player, [u for u in army if u.id not in busy],
-                               lost_track(world, self.player, self._unexplored_corner(world)))
-        busy |= self.commander.step(world, self.player, [u for u in self._units(world) if u.id not in busy],
+                               lost_track(world, self.player, self._unexplored_corner(world)),
+                               exclude=set(self.camp_escape) | self._hurt)
+        busy |= self.commander.step(world, self.player,
+                                    [u for u in self._units(world)
+                                     if u.id not in busy and u.id not in self.camp_escape and u.id not in self._hurt],
                                     self.target if self.attacking else None)
         self._send_scout(world)
-        army = [u for u in army if u.id not in busy]
+        army = [u for u in army if u.id not in busy and u.id not in self.camp_escape]
         answer_flyers(world, self.player, army, 9.0)
         # A couple of soldiers never leave. Riders picking off peasants cost more
         # than they are worth to chase with an army that is somewhere else, and a
@@ -89,18 +101,42 @@ class ProBrain(_ProBrainEconomy):
             if self.creeping is not None:
                 # Defense takes the whole expedition. An engaged guard attack
                 # must not mask its old camp march while the rest goes home.
+                camp = world.camp_for(self.creeping)
                 self.camp_retry[self.creeping] = world.time + self.profile.creep_retry
                 self.camp_failed[self.creeping] = self.creep_strength
                 party = [u for u in self._army(world) if u.id in self.creep_party]
-                available = {u.id for u in guards + army}
-                army.extend(u for u in party if u.id not in available)
+                outmatched = self._outmatched_at_home(world, guards + army, threats)
+                point = self._fall_back_point(world, threats) if outmatched else None
+                point = point or self._defend_point(world, threats)
                 if party:
-                    world.stop([u.id for u in party])
+                    if camp is not None and camp.lair not in world.worker_knowledge[self.player].cleared_encounters:
+                        # Walk the whole expedition out blind, past the muster
+                        # when answering: stopping or attack-moving inside a
+                        # roused camp auto-acquires its guards, and stopping at
+                        # the muster leaves the vanguard fighting chasers alone.
+                        # The walk out shelters its soldiers from every other
+                        # errand until they arrive: the defence below is fought
+                        # without them, and they rejoin it once they get out.
+                        until = world.time + ESCAPE_SECONDS
+                        for unit in party:
+                            self.camp_escape[unit.id] = until
+                        self.raiders = [i for i in self.raiders if i not in self.camp_escape]
+                        middle = camps.centre(world, camp)
+                        dest = camp_safe_point(world, self.player,
+                                               rally_past(middle, point) if not outmatched else point)
+                        # Each soldier at its own speed: a group march walks
+                        # at its slowest member, and chasers catch that walk.
+                        for u in party:
+                            world.move([u.id], dest)
+                    else:
+                        world.stop([u.id for u in party])
                 self.creeping = None
                 self.creep_party.clear()
                 self.regroup_until = world.time + self.profile.regroup_seconds
                 self.note(world, "break off the camp to defend")
-            if self._outmatched_at_home(world, guards + army, threats):
+            else:
+                outmatched = self._outmatched_at_home(world, guards + army, threats)
+            if outmatched:
                 self._fall_back(world, guards + army, threats)
             else:
                 self._defend(world, guards + army, threats)
@@ -201,7 +237,7 @@ class ProBrain(_ProBrainEconomy):
         if not profile.creep or (self.attacking and not push_is_blind(world, self.player)):
             return False  # a push at something real keeps its army; a blind one yields to clearing a known camp
         camp = world.camp_for(self.creeping) if self.creeping is not None else None
-        if self.creeping is not None and (camp is None or camp.cleared):
+        if self.creeping is not None and (camp is None or self.creeping in world.worker_knowledge[self.player].cleared_encounters):
             self.note(world, "camp cleared")
             self.creeping = None
             self.creep_party.clear()
@@ -212,7 +248,8 @@ class ProBrain(_ProBrainEconomy):
             # The patience is not a nicety: a den the army cannot reach or cannot break would otherwise hold
             # the whole army at it for the rest of the match, and reinforcements keep the strength test from
             # ever tripping.  Fuzz reports that as an army of stalled units.
-            if len(party) < 3 or mine < profile.creep_abort * self.creep_strength or world.time >= self.creep_until:
+            minimum = 1 if self.camp_at_launch.get(camp.lair) == 0 else 3
+            if len(party) < minimum or mine < profile.creep_abort * self.creep_strength or world.time >= self.creep_until:
                 self.camp_retry[camp.lair] = world.time + profile.creep_retry
                 self.camp_failed[camp.lair] = self.creep_strength
                 self.creeping = None
@@ -238,30 +275,45 @@ class ProBrain(_ProBrainEconomy):
             return False
         # Price reward and travel only after filtering for a feasible assault.
         worth = {record.id: camp_worth(world, self.player, record) for record in known_camps(world, self.player)}
-        ready = [u for u in army if u.hp >= profile.rejoin_hp * u.max_hp]
-        mine = strength(world, ready)
-        if len(ready) < profile.creep_army:
+        options = []
+        for record in known_camps(world, self.player):
+            if not camp_standing(world, self.player, record):
+                continue
+            if world.time < self.camp_retry.get(record.id, 0.0):
+                continue
+            if dist(record.center, origin) > profile.creep_reach * worth[record.id]:
+                continue
+            spot = self._standable(world, record.center, expedition=True)
+            cohort = prepared_cohort(world, reachable_cohort(world, army, spot), profile.rejoin_hp)
+            now = self._camp_strength(world, record, cohort)
+            if len(cohort) < (1 if now == 0 else profile.creep_army):
+                continue  # witnessed empty dens need cleanup, not a full combat wave
+            force = strength(world, cohort)
+            if force < retry_force(self.camp_failed.get(record.id, 0.0),
+                                   self.camp_at_launch.get(record.id, 0.0), now):
+                continue
+            if force < profile.creep_ratio * now:
+                continue
+            options.append((record, cohort, force, now, spot))
+        if not options:
             return False
-        here = [record for record in known_camps(world, self.player)
-                if camp_standing(world, self.player, record) and world.time >= self.camp_retry.get(record.id, 0.0)
-                and mine >= 1.2 * self.camp_failed.get(record.id, 0.0)
-                and dist(record.center, origin) <= profile.creep_reach * worth[record.id]
-                and mine >= profile.creep_ratio * self._camp_strength(world, record, ready)]
-        if not here:
-            return False
-        target = min(here, key=lambda record: dist(record.center, origin) / worth[record.id])
-        theirs = self._camp_strength(world, target, ready)
+        target, cohort, mine, theirs, spot = min(
+            options, key=lambda item: dist(item[0].center, origin) / worth[item[0].id])
         self.creeping = target.id
         self.creep_strength = mine
-        self.creep_party = {u.id for u in ready}
+        self.camp_at_launch[target.id] = theirs
+        self.creep_party = {u.id for u in cohort}
         self.creep_until = world.time + profile.creep_patience
-        self.note(world, f"clear the camp with {len(ready)} ({mine:.0f} against {theirs:.0f})")
-        world.attack_move([u.id for u in ready], self._standable(world, target.center, expedition=True))
+        self.note(world, f"clear the camp with {len(cohort)} ({mine:.0f} against {theirs:.0f})")
+        world.attack_move([u.id for u in cohort], spot)
         if hall is not None:
             home = self._home_point(world, hall)
             for unit in army:
-                if unit.id not in self.creep_party:
-                    self._hurt.add(unit.id)
+                # Only the reachable stay home: an isolated soldier ordered
+                # to a muster across the water would stall there for good.
+                if unit.id not in self.creep_party and can_reach_point(world, unit, home):
+                    if unit.hp < profile.rejoin_hp * unit.max_hp:
+                        self._hurt.add(unit.id)
                     world.move([unit.id], self._muster(world, home, unit))
         return True
 
@@ -474,6 +526,11 @@ class ProBrain(_ProBrainEconomy):
         # ground we have not looked at.
         return seen or [self._unexplored_corner(world)]
 
+    def _defend_point(self, world: World, threats: list[Unit]) -> Point:
+        """Whatever is nearest our buildings: where the defence meets the attack."""
+        return min(threats, key=lambda u: min(dist(u.pos, b.center)
+                                              for b in world.player_buildings(self.player))).pos
+
     def _defend(self, world: World, army: list[Unit], threats: list[Unit]) -> None:
         """Send the soldiers at whatever is nearest our buildings. The peasants keep mining.
 
@@ -483,10 +540,9 @@ class ProBrain(_ProBrainEconomy):
         They die, and the economy that would have replaced the soldiers dies
         with them.
         """
-        point = min(threats, key=lambda u: min(dist(u.pos, b.center)
-                                               for b in world.player_buildings(self.player))).pos
+        point = self._defend_point(world, threats)
         self.attacking = False
-        stale = [u.id for u in army if not isinstance(u.order, Attack) and not heading_to(u, point)
+        stale = [u.id for u in army if not isinstance(u.order, Attack) and not answering(u, point)
                  and can_reach_point(world, u, point)]
         if stale:
             world.attack_move(stale, point)
@@ -501,17 +557,23 @@ class ProBrain(_ProBrainEconomy):
         ours = strength(world, army) + _tower_strength_own(world, self.player, hall.center)
         return strength(world, threats) > self.profile.defend_ratio * ours
 
-    def _fall_back(self, world: World, army: list[Unit], threats: list[Unit]) -> None:
-        """Gather behind the hall, away from the attack, rather than walk into it one soldier at a time: the ones
-        the barracks turns out join there, and the defence goes in together once it is a match."""
+    def _fall_back_point(self, world: World, threats: list[Unit]) -> Point | None:
+        """Behind the hall, away from the attack: where an outmatched defence gathers. None with no hall."""
         hall = self._hall(world)
         if hall is None:
-            return
+            return None
         tx = plain_sum(u.x for u in threats) / len(threats)
         ty = plain_sum(u.y for u in threats) / len(threats)
         hx, hy = hall.center
         away = dist((hx, hy), (tx, ty)) or 1.0
-        point = self._standable(world, (hx + (hx - tx) / away * 5.0, hy + (hy - ty) / away * 5.0))
+        return self._standable(world, (hx + (hx - tx) / away * 5.0, hy + (hy - ty) / away * 5.0))
+
+    def _fall_back(self, world: World, army: list[Unit], threats: list[Unit]) -> None:
+        """Gather behind the hall, away from the attack, rather than walk into it one soldier at a time: the ones
+        the barracks turns out join there, and the defence goes in together once it is a match."""
+        point = self._fall_back_point(world, threats)
+        if point is None:
+            return
         self.attacking = False
         for unit in army:
             if dist(unit.pos, point) > 3.0 and not (isinstance(unit.order, Move) and dist(unit.order.target, point) < 4.0):
@@ -695,21 +757,36 @@ class ProBrain(_ProBrainEconomy):
                     self.hunters[i] = prey.id
                 self.note(world, f"hunt peasant {prey.id} with {len(drafted)}")
 
-    def _withdraw_if_hurt(self, world: World, unit: Unit) -> bool:
+    def _threatening(self, world: World, foes: Sequence[Unit], unit: Unit) -> bool:
+        """Whether anything armed is on *unit*: a rival, or a camp guard it can see.
+
+        The PvP-only enemy list leaves guards out, but a wolf on a bleeding
+        soldier kills it just as dead. Only visible guards count, as with
+        every other decision under fog, and only blows that can land: a
+        ground-only guard never threatens a wounded flyer home.
+        """
+        return any(world.can_strike(foe, unit) and dist(foe.pos, unit.pos) < world.strike_range(foe, unit) + 2.0
+                   for foe in foes)
+
+    def _withdraw_if_hurt(self, world: World, unit: Unit, foes: Sequence[Unit], healing_support: bool) -> bool:
         """Walk a nearly-dead soldier out of reach. A body that lives is damage next fight.
 
         Returns whether the unit is out of the fight, so the caller stops
-        giving it targets.
+        giving it targets. Finish the retreat before rejoining; once idle,
+        a soldier without regeneration or a living/queued healer cannot
+        recover by waiting. Camp preparation still requires healthy troops.
         """
         profile = self.profile
         if unit.id in self._hurt:
-            if unit.hp >= profile.rejoin_hp * unit.max_hp:
+            if (unit.hp >= profile.rejoin_hp * unit.max_hp
+                    or (not unit.info.regen and not unit.orders
+                        and (not unit.info.living or not healing_support))):
                 self._hurt.discard(unit.id)
                 return False
             return True
         if unit.hp >= profile.retreat_hp * unit.max_hp:
             return False
-        if not any(e.info.damage and dist(e.pos, unit.pos) < world.range_of(e) + 2.0 for e in self._enemies(world)):
+        if not self._threatening(world, foes, unit):
             return False  # nothing is shooting at it; no reason to leave
         hall = self._hall(world)
         if hall is None:
@@ -723,8 +800,9 @@ class ProBrain(_ProBrainEconomy):
         not just the units lost."""
         if not self.profile.raid:
             return []
-        self.raiders = [i for i in self.raiders if i in world.units]
-        spare = [u for u in army if u.type in RAIDERS and u.id not in self.raiders]
+        self.raiders = [i for i in self.raiders if i in world.units and i not in self.camp_escape and i not in self._hurt]
+        spare = [u for u in army if u.type in RAIDERS and u.id not in self.raiders
+                 and u.id not in self.camp_escape]
         while len(self.raiders) < self.profile.raiders and spare:
             self.raiders.append(spare.pop().id)
         prey = [u.pos for u in self._enemies(world) if u.is_worker]
@@ -747,14 +825,22 @@ class ProBrain(_ProBrainEconomy):
                 self.note(world, f"cast {spell.value} at ({point[0]:.1f}, {point[1]:.1f})")
         if not self.profile.retreat_wounded:
             return
-        army = [u for u in world.player_units(self.player) if not u.is_worker and u.info.soldier and not u.info.blast]
+        units = world.player_units(self.player)
+        army = [u for u in units if not u.is_worker and u.info.soldier and not u.info.blast]
         if not army:
             return
-        if not self._enemies(world):
-            self._hurt.clear()
-            return
+        foes = self._enemies(world)
+        foes += [u for u in world.units.values()
+                 if u.player == world.neutral and u.hp > 0 and not u.hidden and u.info.damage
+                 and world.is_visible(self.player, u.tile)]
+        healing_support = (any(u.hp > 0 and u.info.heal for u in units)
+                           or any(world.unit_info(self.player, kind).heal
+                                  for building in world.player_buildings(self.player) for kind in building.queue))
+        self._hurt.intersection_update(unit.id for unit in army)
         for unit in army:
-            self._withdraw_if_hurt(world, unit)
+            if unit.id in self.camp_escape:
+                continue  # walking out of an interrupted camp: mustering it elsewhere marches it back through the guards
+            self._withdraw_if_hurt(world, unit, foes, healing_support)
 
 
 def played(profile: ProProfile, *, own_units: bool = True, magic: bool = True, spell: Upgrade | None = None) -> ProProfile:

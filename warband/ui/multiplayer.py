@@ -206,6 +206,7 @@ class MatchSetupMenu(MatchMenu):
         self.faction = Race.HUMAN
         self.layout: Layout | None = None
         self.magic = False
+        self.wilds = True
         self._profile_name = "Commander"
         self._profile_error = ""
         self._identity_notice = ""
@@ -305,16 +306,21 @@ class MatchSetupMenu(MatchMenu):
         self.magic = not self.magic
         self._build_form()
 
+    def toggle_wilds(self) -> None:
+        self.wilds = not self.wilds
+        self._build_form()
+
     def create_options(self) -> dict:
         """The room the Create button asks for: a fair map of these settings, the creator first."""
         from warband.ui.scene import fair_map
         width, height = self.room_dimensions()
         layout = self.layout if self.layout in self.room_layouts() else None
         seed, _world = fair_map(mapgen.fresh_seed(), width, height, self.seats, theme=self.theme,
-                                races=[self.faction] + [None] * (self.seats - 1), layout=layout, magic=self.magic)
+                                races=[self.faction] + [None] * (self.seats - 1), layout=layout, magic=self.magic,
+                                wilds=self.wilds)
         return {"seed": seed, "width": width, "height": height, "theme": self.theme.value, "players": self.seats,
                 "races": [self.faction.value] + [None] * (self.seats - 1),
-                "layout": "any" if layout is None else layout.value, "magic": self.magic}
+                "layout": "any" if layout is None else layout.value, "magic": self.magic, "wilds": self.wilds}
 
     def create_match(self):
         """The two-seat match a LAN host plays: this panel's map for two, the host first."""
@@ -326,8 +332,9 @@ class MatchSetupMenu(MatchMenu):
         layouts = mapgen.layouts_for(width, height, 2)
         layout = self.layout if self.layout in layouts else None
         seed, _world = fair_map(mapgen.fresh_seed(), width, height, 2, theme=self.theme,
-                                races=[self.faction, None], layout=layout, magic=self.magic)
-        return WarbandMatch(seed, width, height, self.theme, races=(self.faction, None), layout=layout, magic=self.magic)
+                                races=[self.faction, None], layout=layout, magic=self.magic, wilds=self.wilds)
+        return WarbandMatch(seed, width, height, self.theme, races=(self.faction, None), layout=layout, magic=self.magic,
+                            wilds=self.wilds)
 
     def create_scene(self, session, match):
         if getattr(session, "observer", False):
@@ -505,7 +512,7 @@ class MatchSetupMenu(MatchMenu):
                            Row(self._option("Online" + (" · selected" if self.mode == "online" else ""), self.mode == "online",
                                             lambda: self.set_mode("online"), width=250),
                                self._option("LAN · advanced" + (" · selected" if self.mode == "lan" else ""), self.mode == "lan",
-                                            lambda: self.set_mode("lan"), width=250),
+                                            lambda: self.set_mode("lan"), width=274),
                                Button("Back", shortcut="Esc", on_click=self.leave, style=MENU_BUTTON, width=160),
                                spacing=12),
                            Label(lambda: self.message, width=980, wrap=True, text_style="sub"),
@@ -544,8 +551,11 @@ class MatchSetupMenu(MatchMenu):
         self.magic_button = Button("Magic: On" if self.magic else "Magic: Off", on_click=self.toggle_magic,
                                    style=PICKED_BUTTON if self.magic else GHOST_BUTTON, width=220,
                                    tooltip="Choose magic for rooms you create. Joining uses the host's choice.")
-        card.add(Row(self.magic_button,
-                     Button("Create room", on_click=self.host, style=ACTION_BUTTON, width=220), spacing=8))
+        self.wilds_button = Button("Monsters: On" if self.wilds else "Monsters: Off", on_click=self.toggle_wilds,
+                                   style=PICKED_BUTTON if self.wilds else GHOST_BUTTON, width=220,
+                                   tooltip="Choose neutral camps for rooms you create. Joining uses the host's choice.")
+        card.add(Row(self.magic_button, self.wilds_button, spacing=8))
+        card.add(Row(Button("Create room", on_click=self.host, style=ACTION_BUTTON, width=448), spacing=8))
         return card
 
     def _join_card(self) -> Column:
@@ -579,13 +589,16 @@ class MatchSetupMenu(MatchMenu):
         self.magic_button = Button("Magic: On" if self.magic else "Magic: Off", on_click=self.toggle_magic,
                                    style=PICKED_BUTTON if self.magic else GHOST_BUTTON, width=220,
                                    tooltip="Choose magic for rooms you host. Joining uses the host's choice.")
+        self.wilds_button = Button("Monsters: On" if self.wilds else "Monsters: Off", on_click=self.toggle_wilds,
+                                   style=PICKED_BUTTON if self.wilds else GHOST_BUTTON, width=212,
+                                   tooltip="Choose neutral camps for rooms you host. Joining uses the host's choice.")
         card.add(Row(Button("Host room", on_click=self.host, style=ACTION_BUTTON, width=220),
                      Button("Join room", on_click=self.join, style=GHOST_BUTTON, width=220),
                      Button("Observe room", on_click=self.observe, style=GHOST_BUTTON, width=220),
                      spacing=8))
-        card.add(Row(self.magic_button, spacing=8))
+        card.add(Row(self.magic_button, self.wilds_button, spacing=8))
         card.add(Label("Two seats on one network: the host plays the first. Tab moves between fields; "
-                       "your faction and magic above apply to rooms you host.",
+                       "your faction, magic and wilds above apply to rooms you host.",
                        text_style="caption", width=900, wrap=True))
         return card
 
