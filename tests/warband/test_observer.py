@@ -411,12 +411,27 @@ def test_observer_top_bar_follows_the_viewed_seat(game) -> None:
     assert scene.side_race.text == RACES[first.race].name
 
 
+def pace_button(game: Game) -> Button:
+    """The Watching strip's speed button, found by its tooltip through the public tree."""
+    button = game.scene.ui.find(
+        lambda c: isinstance(c, Button)
+        and getattr(c, "tooltip", None) == "Game speed · click to cycle · PageUp/PageDown")
+    assert button is not None, "the Watching strip shows one speed button"
+    assert isinstance(button, Button)
+    return button
+
+
 def test_observer_hud_watches_without_order_controls(watch) -> None:
     """Watching, pace and seat controls are shown; order rows and the card are gone."""
     _game, scene = watch
     shown = " ".join(texts(watch[0]))
     assert "Watching" in shown
-    assert "×1" in shown  # the pace reads even at 1x
+    assert "1×" in shown  # the pace reads even at 1x
+    pace = pace_button(watch[0])
+    assert pace.text == "1×"
+    assert pace.bounds[2] == 60
+    assert watch[0].scene.ui.find(
+        lambda c: isinstance(c, Button) and c.text in ("+", "-")) is None
     assert scene.settlement_row.visible is False
     assert scene.command_row.visible is False
     assert scene.spell_bar.visible is False
@@ -424,19 +439,37 @@ def test_observer_hud_watches_without_order_controls(watch) -> None:
 
 
 def test_observer_strip_clicks_change_pace(watch) -> None:
-    """The pace buttons beside the seat switcher are clickable, like PgUp/PgDn."""
+    """The speed button beside the seat switcher cycles every pace and wraps, like PgUp/PgDn."""
     game, scene = watch
     assert scene.pace == 1.0
-    click_label(game, "+")
+    assert pace_button(game).text == "1×"
+    for label, pace in (("1×", 1.2), ("1.2×", 1.5), ("1.5×", 2.0), ("2×", 3.0)):
+        click_label(game, label)
+        assert scene.pace == pace
+        assert pace_button(game).text == f"{pace:g}×"
+    click_label(game, "3×")  # wraparound: the fastest pace cycles back to 1x
+    assert scene.pace == 1.0
+    assert pace_button(game).text == "1×"
+    press(game, "pagedown")  # bounded below: keys never leave the table
+    assert scene.pace == 1.0
+    assert pace_button(game).text == "1×"
+    press(game, "pageup")  # keys and the button stay in sync
     assert scene.pace == 1.2
-    click_label(game, "+")
+    assert pace_button(game).text == "1.2×"
+    click_label(game, "1.2×")
     assert scene.pace == 1.5
+    assert pace_button(game).text == "1.5×"
     press(game, "pagedown")
     assert scene.pace == 1.2
-    press(game, "pageup")
-    assert scene.pace == 1.5
-    click_label(game, "-")
-    assert scene.pace == 1.2
+    assert pace_button(game).text == "1.2×"
+    for _ in range(4):  # climb to the top through the public keys
+        press(game, "pageup")
+    assert scene.pace == 3.0
+    assert pace_button(game).text == "3×"
+    press(game, "pageup")  # bounded above: keys stop at 3x while the button wraps
+    assert scene.pace == 3.0
+    click_label(game, "3×")
+    assert scene.pace == 1.0
 
 
 def test_watch_again_stays_computer_led() -> None:
@@ -491,10 +524,23 @@ def test_observe_controls_fit_the_smallest_window(tmp_path) -> None:
         assert left >= 0 and right <= 1200
         assert top >= 0 and bottom <= 680
         click_label(small, "Watch")
+        pace = small.scene.ui.find(
+            lambda c: isinstance(c, Button) and getattr(c, "tooltip", None)
+            == "Game speed · click to cycle · PageUp/PageDown")
+        assert isinstance(pace, Button) and pace.text == "1×"
+        assert pace.bounds[2] == 60
+        x, y, w, h = pace.bounds
+        assert x >= 0 and x + w <= 1200 and y >= 0 and y + h <= 680
         press(small, "pageup")
         assert small.scene.speed == 1.2
-        click_label(small, "+")  # every strip button answers in the small window too
-        assert small.scene.speed == 1.5
+        assert pace.text == "1.2×"
+        for label, speed in (("1.2×", 1.5), ("1.5×", 2.0), ("2×", 3.0)):
+            click_label(small, label)  # every pace answers in the small window too
+            assert small.scene.speed == speed
+            assert pace.text == f"{speed:g}×"
+        click_label(small, "3×")
+        assert small.scene.speed == 1.0
+        assert pace.text == "1×"
         watched = small.scene.viewed
         click_label(small, ">")
         assert small.scene.viewed != watched

@@ -419,9 +419,14 @@ class ObserverScene(WatchScene):
         return [("PageUp / PageDown", "pace"), ("F3", "pause")] + super().hint()
 
     def _fill_pace(self, strip: Row) -> None:
-        strip.add(Label(lambda: f"×{self.pace:g}", text_style="hud", width=52))
-        strip.add(Button("-", on_click=self.slower, style=GHOST_BUTTON, width=40))
-        strip.add(Button("+", on_click=self.faster, style=GHOST_BUTTON, width=40))
+        strip.add(Button(lambda: f"{self.pace:g}×", on_click=self.cycle_pace,
+                         style=GHOST_BUTTON, width=60,
+                         tooltip="Game speed · click to cycle · PageUp/PageDown"))
+
+    def cycle_pace(self) -> None:
+        self.speed_index = (self.speed_index + 1) % len(OBSERVER_SPEEDS)
+        self.speed = OBSERVER_SPEEDS[self.speed_index]
+        self.say(f"{self.pace:g}× pace")
 
     def faster(self) -> None:
         self.speed_index = min(self.speed_index + 1, len(OBSERVER_SPEEDS) - 1)
