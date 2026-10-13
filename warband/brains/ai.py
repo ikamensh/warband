@@ -852,6 +852,13 @@ class Brain:
         """Act if a think is due; call this every simulation step."""
         prune_escapers(world, self.camp_escape)
         if world.winner is None and world.players[self.player].alive:
+            if self.attacking:
+                escaped = escape_warned_marches(world, self.player, self._army(world),
+                                                self.creep_party | set(self.camp_escape))
+                if escaped:
+                    self.camp_escape.update((uid, world.time + ESCAPE_SECONDS) for uid in escaped)
+                    self.attacking = False
+                    self.note(world, "regroup outside newly sighted neutral guards")
             redirect_searchers(world, self.player, list(self.hunt.party))
         if self.creeping is not None and world.winner is None and world.players[self.player].alive:
             dodge_camp_slams(world, self.player, self._army(world))

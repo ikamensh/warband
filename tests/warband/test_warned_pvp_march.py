@@ -1,17 +1,21 @@
-"""Plains1009: an ordinary push must react to armed guards it sees before their den is known."""
+"""Real Plains matches: an ordinary push reacts to guards seen before their den is known."""
 
 import json
 import random
 from pathlib import Path
 
+import pytest
+
+from tools.fuzz import check_progress
+from warband.brains.ai import Brain
 from warband.brains.pro_ai import ProBrain
 from warband.sim.model import Attack, AttackMove, Move, World, dist
 from warband.sim.rules import SIM_DT, Terrain, UnitType
 
 
-def warned_march():
-    """Keep the real terrain, both warnings and all live movement state from the first sighting."""
-    captured = json.loads((Path(__file__).with_name("fixtures") / "plains1009_warned_march.json").read_text())
+def captured_march(filename, player):
+    """Keep the real terrain, remembered dangers and live movement state from the first sighting."""
+    captured = json.loads((Path(__file__).with_name("fixtures") / filename).read_text())
     letters = {terrain.value[0]: terrain for terrain in Terrain}
     rows = [[letters[letter] for letter in row] for row in captured["terrain"]]
     saved = World(len(rows[0]), len(rows), rows, 2, scripted=True).to_dict()
@@ -19,8 +23,8 @@ def warned_march():
         saved[key] = captured[key]
     remembered = [None if letter == "?" else letters[letter].value
                   for row in captured["known_terrain"] for letter in row]
-    saved["worker_knowledge"][0] = dict(captured["knowledge"], terrain=remembered)
-    saved["explored"][0] = bytes(cell is not None for cell in remembered).hex()
+    saved["worker_knowledge"][player] = dict(captured["knowledge"], terrain=remembered)
+    saved["explored"][player] = bytes(cell is not None for cell in remembered).hex()
     world = World.from_dict(saved)
     for actor in captured["actors"]:
         unit = world.units[actor["id"]]
@@ -31,12 +35,72 @@ def warned_march():
         unit.exact = None if actor["exact"] is None else tuple(actor["exact"])
         for key in ("replan_at", "progress", "last_distance"):
             setattr(unit, key, actor[key])
+    return world, captured
+
+
+def warned_march():
+    world, _ = captured_march("plains1009_warned_march.json", 0)
     brain = ProBrain(0)
     brain.attacking = True
     brain.target = (57.5, 34.5)
     brain.commit_strength = 85.0
     brain.next_think = world.time + 100  # guard reaction cannot wait for the next macro pass
     return world, brain
+
+
+def medium_warned_march():
+    world, captured = captured_march("plains1005_medium_warned_march.json", 1)
+    brain = Brain(1)
+    brain.attacking = True
+    brain.wave = captured["brain_state"]["wave"]
+    brain.waves_sent = captured["brain_state"]["waves_sent"]
+    brain.next_think = captured["brain_state"]["next_think"]
+    return world, brain
+
+
+def test_medium_breaks_off_an_unpriced_push_at_its_first_guard_warning():
+    """Plains1005 at164.2s: Medium reacts before its macro pass and keeps its original marchers alive."""
+    world, brain = medium_warned_march()
+    starts = {uid: world.units[uid].pos for uid in (50, 54, 59)}
+    assert not world.worker_knowledge[1].encounters
+    assert brain.next_think > world.time
+    rng = random.Random(11)
+    brain.think(world, rng)
+    assert not brain.attacking
+    assert all(isinstance(world.units[uid].order, Move) for uid in starts)
+    stalled = {}
+    for tick in range(round(35 / SIM_DT)):
+        brain.think(world, rng)
+        world.step()
+        for event in world.take_events():
+            assert not (event.kind == "hit" and event.entity in {16, 17} and event.other in starts)
+        if tick % 20 == 0:
+            check_progress(world, stalled)
+    assert all(uid in world.units and world.units[uid].hp == world.units[uid].max_hp for uid in starts)
+    assert all(dist(world.units[uid].pos, starts[uid]) > 1 for uid in starts)
+    assert not world.camp_for(15).roused
+
+
+@pytest.mark.parametrize("job", ["camp", "rival", "escape"])
+def test_medium_warning_response_keeps_deliberate_fights_and_retreats(job):
+    """The same sighting leaves committed camp attacks, visible rival fights and recorded retreats alone."""
+    world, brain = medium_warned_march()
+    party = [50, 54, 59]
+    if job == "camp":
+        brain.creeping = 15
+        brain.creep_party = set(party)
+        world.attack_move(party, world.camp_for(15).origin)
+    elif job == "rival":
+        enemy = world.spawn_unit(0, UnitType.FOOTMAN, (45.5, 24.5))
+        world.update_vision()
+        world.attack([50], enemy.id)
+    else:
+        world.units[50].hp = 10
+        world.move(party, (52.5, 35.5))
+        brain.camp_escape.update((uid, world.time + 30) for uid in party)
+    expected = {uid: world.units[uid].order for uid in party}
+    brain.think(world, random.Random(11))
+    assert all(world.units[uid].order == order for uid, order in expected.items())
 
 
 def test_a_new_guard_warning_breaks_off_the_unsafe_ordinary_push():
