@@ -7,8 +7,10 @@ rated, recorded, autosaved or scored.
 
 ## Controls
 
-- `PgUp` / `PgDn`, or the `−` / `+` buttons in the Watching strip: pace
-  through 1, 1.2, 1.5, 2 and 3× real time. Played matches stay at 1×.
+- The speed button in the Watching strip reads the pace (`1×`, `1.2×`,
+  `1.5×`, `2×`, `3×`); click it to cycle 1 → 1.2 → 1.5 → 2 → 3 → 1.
+  `PgUp` / `PgDn` step bounded through the same paces without wrapping.
+  Played matches stay at 1×.
 - `[` / `]`, or the `<` / `>` buttons: inspect the previous / next seat. The
   top bar, stores and codex follow the viewed seat; the camera stays put.
   A fallen seat stays watchable; the match ends only at a winner.
