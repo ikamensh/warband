@@ -122,3 +122,54 @@ def test_keeper_focus_keeps_every_current_maw_objective_visible(tmp_path, size):
         assert objective_y + objective_height <= card_y
     finally:
         game.close()
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("size", [(1200, 680), (1280, 800)])
+@pytest.mark.parametrize("mission_id, answer", [
+    ("undertow_weight", None), ("undertow_caravan", None),
+    ("undertow_grove", "cut"), ("undertow_grove", "whole"),
+])
+def test_reached_mission_phases_keep_unfinished_objectives_visible_with_the_keeper(tmp_path, size, mission_id, answer):
+    """Slow: public salvage/parley orders reach real phases, then their keeper cards must leave current work readable."""
+    from warband.sim.rules import Difficulty
+    from warband.story.mission_scene import MissionScene
+    from tools.campaign_phases import reached_keeper_phase
+
+    game = Game("Reached campaign phase", backend="mock", resolution=size,
+                theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        use_real_text_metrics(game)
+        run = reached_keeper_phase(mission_id)
+        scene = MissionScene(UNDERTOW, run, difficulty=Difficulty.MEDIUM)
+        scene.paused = True
+        game.push(scene)
+        for _ in range(250):
+            if isinstance(game.scene, DialogScene):
+                dialog = game.scene
+                dialog.skip()
+                if isinstance(dialog.current, Choice):
+                    dialog.choose(next(option.value for option in dialog.current.options if option.value == answer))
+            game.tick(.1)
+        press(game, "f3")
+        assert scene.selection
+        assert scene.objectives_body.visible
+        rendered = " ".join(item["text"] for item in game.backend.texts)
+        for objective in scene.mission.objectives:
+            if run.state[objective.id] == "open":
+                assert " ".join(objective.text.split()) in rendered
+        assert_text_fits(game)
+        _, objective_y, _, objective_height = scene.objectives.bounds
+        _, card_y, _, _ = scene.card_panel.bounds
+        assert objective_y + objective_height <= card_y
+        state = dict(run.state)
+        scene.select([])
+        game.tick(.1)
+        assert run.state == state
+        # Room returns with no card: completion remains visible and did not become a model mutation.
+        rendered = " ".join(item["text"] for item in game.backend.texts)
+        for objective in scene.mission.objectives:
+            if run.state[objective.id] == "done":
+                assert " ".join(objective.text.split()) in rendered
+    finally:
+        game.close()

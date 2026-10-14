@@ -272,7 +272,16 @@ class MissionScene(GameScene):
         return self.clock >= self._banner_until
 
     def _fold_objectives(self) -> None:
+        # Completion stays on the HUD when it fits. A keeper's card on a short
+        # window needs the current work first; this affects rows, never Run.state.
+        for objective in self.mission.objectives:
+            self._rows[objective.id][0].visible = self.run.state[objective.id] != "hidden"
         super()._fold_objectives()
+        if not self.objectives_body.visible:
+            for objective in self.mission.objectives:
+                if self.run.state[objective.id] == "done":
+                    self._rows[objective.id][0].visible = False
+            super()._fold_objectives()
         # A story notice takes this column briefly; even the finale's full muster stays above the bottom HUD.
         if (self._notice is not None and not self._notice.done
                 and self.toast_top + self._notice.height(self) > self.game.resolution[1] - HINT_BAR - 6):

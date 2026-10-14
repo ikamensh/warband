@@ -1422,6 +1422,27 @@ def _undertow_keeper_objectives(game: Game, *, campaign: Campaign) -> None:
     assert scene.objectives_body.visible
 
 
+def _undertow_reached_keeper(game: Game, *, campaign: Campaign, mission_id: str, answer: str | None = None) -> None:
+    """Real salvage/parley phases leave current work readable beside the selected keeper's card."""
+    from tools.campaign_phases import reached_keeper_phase
+
+    run = reached_keeper_phase(mission_id)
+    scene = MissionScene(campaign, run, difficulty=Difficulty.MEDIUM, settings=dict(QUIET))
+    scene.paused = True
+    game.push(scene)
+    for _ in range(250):
+        if isinstance(game.scene, DialogScene):
+            dialog = game.scene
+            dialog.skip()
+            if isinstance(dialog.current, Choice):
+                assert answer in {option.value for option in dialog.current.options}
+                dialog.choose(answer)
+        ticks(game, 1, .1)
+    scene.focus_keeper()
+    ticks(game)
+    assert scene.objectives_body.visible
+
+
 def _undertow_success(game: Game, *, campaign: Campaign) -> None:
     """The Maw wins through ordinary orders; only earlier campaign completion is a phase fixture."""
     from tools.play_undertow import solve_maw
@@ -1463,6 +1484,10 @@ def campaign_cases(campaign: Campaign) -> dict[str, Screen]:
             "mission_undertow_journal": partial(_undertow_journal, campaign=campaign),
             "mission_undertow_committed": partial(_undertow_committed, campaign=campaign),
             "mission_undertow_keeper_objectives": partial(_undertow_keeper_objectives, campaign=campaign),
+            "mission_undertow_weight_keeper_phase": partial(_undertow_reached_keeper, campaign=campaign, mission_id="undertow_weight"),
+            "mission_undertow_caravan_keeper_phase": partial(_undertow_reached_keeper, campaign=campaign, mission_id="undertow_caravan"),
+            "mission_undertow_grove_cut_keeper_phase": partial(_undertow_reached_keeper, campaign=campaign, mission_id="undertow_grove", answer="cut"),
+            "mission_undertow_grove_whole_keeper_phase": partial(_undertow_reached_keeper, campaign=campaign, mission_id="undertow_grove", answer="whole"),
             "mission_undertow_result": partial(_undertow_success, campaign=campaign),
             "mission_undertow_epilogue": partial(_undertow_epilogue, campaign=campaign),
         })
