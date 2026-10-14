@@ -138,7 +138,7 @@ def test_title_continue_takes_the_newest_save_and_the_browser_lists_them(game) -
     second.save_to("quick")
     game.clear_and_push(TitleScene())
     game.tick(1 / 60)
-    assert any("Continue resumes the quick" in t for t in texts(game))
+    assert any("Continue resumes Quick" in t for t in texts(game))
     press(game, "l")
     assert isinstance(game.scene, SaveBrowserScene)
     press(game, "1")
