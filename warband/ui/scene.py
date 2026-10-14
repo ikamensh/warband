@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import gc
-import inspect
 import itertools
 import math
 import random
@@ -24,7 +23,7 @@ from warband.brains.ai import DIFFICULTY_ELO, auto_site
 from warband.art.effects import Flare, GroundFire, Roots, Scorch, Spray, Stain, UnitDeath, death_outcome
 from warband.ui.icons import Icon, Pair, Price, ResourceFloat, draw_icon, draw_price, hourglass_parts, lock_parts, loop_parts, price_pairs, price_width
 from warband.sim.model import (RIFT, Attack, AttackMove, Build, Building, Deposit, Entity, Event, Harvest, Heal, Hold, Move, Patrol, Pos, Refusal, Repair, Salvage,
-                                RuleError, Unit, World)
+                                RuleError, Unit, World, order_units)
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
 from warband.sim.rules import (AETHER_EVERY, AETHER_STORE, BUFFS, BUILDINGS, CAMP_ENCOUNTERS, DAMAGE_FACTORS, FORMATION_ARMOR, LEVEL_NAMES, SIM_DT, SPELL_FAR, SPELLS,
@@ -33,7 +32,7 @@ from warband.sim.rules import (AETHER_EVERY, AETHER_STORE, BUFFS, BUILDINGS, CAM
 from warband.sim.rules import Layout as MapLayout
 from warband.league import fastsim
 from warband.records.profile import RatingChange, Standing, plural
-from warband.records.replay import ORDERS, Replay
+from warband.records.replay import Replay
 from warband.records.scores import score_breakdown
 from warband.audio.sound import IMPACTS, apply_volumes, impact_sound, play_music, play_sound
 from warband.audio.voices import voiced
@@ -94,10 +93,6 @@ HUD_TOP = 228  # just under the Commands row (which ends at 220): the status lin
 OBJECTIVES_GAP = 6  # between the objectives panel's heading and its body (GameScene.objectives_body)
 PIP = 3.0  # radius of a command's level pip
 TAG_INKS = {"scouting": (150, 205, 255, 255), "harassing": (255, 150, 120, 255), "withdrawing": GOLD}  # a command's tag over a unit
-#: The World orders that name units, by the parameter that does (``unit_ids`` or ``unit_id``): a unit the player gives
-#: one of these leaves any command the adjutant had it on.
-UNIT_PARAMETERS = {name: parameter for name in ORDERS
-                   if (parameter := list(inspect.signature(getattr(World, name)).parameters)[1]) in ("unit_ids", "unit_id")}
 HINT_BAR = 28
 PANEL_MARGIN = (12, HINT_BAR + 10)
 ZOOM_PER_LINE = 1.06
@@ -1459,9 +1454,8 @@ class GameScene(Scene):
         names are in the player's hand now: they leave any command the adjutant had them on."""
         if not self._attempt(action, args, kwargs):
             return False
-        parameter = UNIT_PARAMETERS.get(action)
-        if parameter is not None:
-            ids = args[0] if parameter == "unit_ids" else [args[0]]
+        ids = order_units(action, args, kwargs)  # what the order's own declaration says it commands, never its signature
+        if ids is not None:
             self.adjutant.release(ids)
             self._answer(ids)
         return True

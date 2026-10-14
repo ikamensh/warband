@@ -447,6 +447,29 @@ def test_a_press_with_nothing_to_do_says_why_and_still_counts_toward_the_next_le
     assert all(u.id in scene.world.units for u in footmen)
 
 
+def test_a_hand_order_releases_by_declared_order_metadata_not_parameter_names(game) -> None:
+    """Which orders name units is declared where the order is defined (:data:`ORDER_SPECS`, written by
+    ``@recorded``), never read off the method's parameter names: renaming a Python parameter cannot
+    silently stop a hand-given order from taking its units out of the adjutant's hands, and the scene
+    holds no signature-derived table to fall back on."""
+    import warband.ui.scene as scene_module
+    from warband.sim.model import ORDER_SPECS, order_units
+
+    assert not hasattr(scene_module, "UNIT_PARAMETERS") and not hasattr(scene_module, "inspect")
+    assert dict(ORDER_SPECS["move"].params)["unit_ids"] == "units"
+    assert dict(ORDER_SPECS["build"].params)["unit_id"] == "unit"
+    assert order_units("move", ([7, 8], (1.0, 2.0)), {}) == [7, 8]
+    assert order_units("build", (7,), {}) == [7]
+    assert order_units("train", (3, "peasant"), {}) is None
+    world = staged()
+    flyer, = army(world, UnitType.FLYING_MACHINE)
+    scene = scene_of(game, world)
+    press(game, "scout")
+    assert working(scene, "scout") == {flyer.id}
+    assert scene.attempt("move", [flyer.id], (20.5, 20.5))
+    assert working(scene, "scout") == set()
+
+
 def test_a_unit_its_player_orders_by_hand_leaves_its_command(game) -> None:
     world = staged()
     knights = army(world, UnitType.KNIGHT, UnitType.KNIGHT, UnitType.KNIGHT)

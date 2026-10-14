@@ -2,8 +2,6 @@
 
 import json
 import random
-import re
-from pathlib import Path
 
 import pytest
 
@@ -113,10 +111,14 @@ def test_replays_are_kept_per_match_and_a_damaged_file_is_reported(tmp_path):
 
 
 def test_only_the_decorated_order_methods_are_replayable():
-    """ORDERS is the allowlist a replay file may call, so it must be exactly what `recorded` marked:
-    it once also caught every staticmethod, because a staticmethod carries __wrapped__ of its own."""
-    declared = set(re.findall(r"@recorded\n    def ([a-z_]+)\(", (Path(__file__).resolve().parents[2] / "warband/sim/model.py").read_text()))
-    assert ORDERS == declared and declared
+    """ORDERS is the allowlist a replay file may call, so it must be exactly what `recorded` marked and
+    registered in ORDER_SPECS: it once also caught every staticmethod, because a staticmethod carries
+    __wrapped__ of its own.  The registry, not the methods' signatures, says how a logged order's
+    points and enums are decoded, so the two must name the same orders."""
+    from warband.sim.model import ORDER_SPECS
+
+    declared = {name for name, attr in vars(World).items() if getattr(attr, "is_order", False)}
+    assert ORDERS == declared == set(ORDER_SPECS) and declared
     assert not any(name.startswith("_") for name in ORDERS)
     with pytest.raises(ValueError):
         apply_order(World(8, 8, [[Terrain.GRASS] * 8 for _ in range(8)], 2), "_at_ease", [1], {})

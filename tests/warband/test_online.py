@@ -72,6 +72,30 @@ def test_rooms_and_private_seats_survive_server_restart(tmp_path):
             assert resumed['state']['world']['tick'] >= before['state']['world']['tick'] >= 4
 
 
+def test_a_refused_order_reaches_the_wire_with_its_reason_and_leaves_no_trace():
+    """The authority is the last Warband stop before the wire: saga2d sends ``str(CommandError)`` as the
+    client's error, so the reason the rules refused with must arrive there word for word (and nothing
+    half-applied).  In the simulation the same refusal carries its short resource as data; the pinned
+    framework's error channel is text-only, so that is where the structure stops today."""
+    from saga2d import CommandError
+
+    from warband.sim.model import RuleError
+    from warband.sim.rules import UNITS
+
+    spec = ONLINE[GAME]
+    match = spec.create({'width': 48, 'height': 40})
+    hall = next(building for building in match.world.buildings.values()
+                if building.player == 0 and building.type == BuildingType.TOWN_HALL)
+    match.world.players[0].gold = 0
+    with pytest.raises(CommandError) as sent:
+        match.apply(0, {'action': 'train', 'args': [hall.id, UnitType.PEASANT.value]})
+    assert str(sent.value) == f"Not enough gold ({UNITS[UnitType.PEASANT].cost.gold} needed)"
+    assert hall.queue == [] and match.world.players[0].gold == 0
+    with pytest.raises(RuleError) as refused:
+        match.world.train(hall.id, UnitType.PEASANT)
+    assert refused.value.short_of == "gold" and str(refused.value) == str(sent.value)
+
+
 def test_trusted_checkpoint_keeps_existing_json_and_the_next_real_order():
     """The match resumes exact paid state using its unchanged checkpoint format."""
     spec = ONLINE[GAME]

@@ -1,10 +1,9 @@
 """Authoritative RTS matches and server registration, independent of client scenes."""
-import inspect
 
 from saga2d import CommandError
 from warband.online.snapshot import NO_DICE, observer_world, seat_world, terrain_rows  # NO_DICE re-exported for its readers
 from warband.sim import mapgen
-from warband.sim.model import Unit, World, RuleError, field_values
+from warband.sim.model import ORDER_ENUMS, ORDER_SPECS, Unit, World, RuleError, bind_order, field_values, order_args
 from saga2d.server.games import GameSpec, option_choice, option_int, option_keys, option_seed
 from warband.sim.rules import SPELLS, BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
 
@@ -148,11 +147,11 @@ class WarbandMatch:
         if not isinstance(action, str) or action not in ORDERS or not isinstance(args, list) or not isinstance(kwargs, dict):
             raise CommandError('Invalid Warband order.')
         method = getattr(World, action)
+        kinds = ORDER_SPECS[action].kinds()  # the order's own declaration binds it, never its signature
         try:
-            bound = inspect.signature(method).bind(self.world, *args, **kwargs)
+            values = bind_order(action, args, kwargs)
         except TypeError as exc:
             raise CommandError('Invalid order arguments.') from exc
-        values = bound.arguments
         def own(entity_id, collection):
             entity = collection.get(entity_id) if type(entity_id) is int else None
             if entity is None or entity.player != player:
@@ -176,19 +175,21 @@ class WarbandMatch:
             raise CommandError('plan_if_short must be true or false.')
         if action == 'set_auto_train' and type(values['on']) is not bool:
             raise CommandError('Endless training is switched on or off.')
-        for field in ('target', 'point', 'pos'):
-            if field not in values:
+        for field, kind in kinds.items():
+            if kind not in ('point', 'tile', 'point?') or field not in values:
                 continue
             point = values[field]
-            if point is None and action in ('set_rally', 'set_assembly'):
+            if point is None and kind == 'point?':
                 continue
             if (not isinstance(point, (tuple, list)) or len(point) != 2
                     or any(type(n) not in (int, float) for n in point)
                     or not (0 <= point[0] < self.world.width and 0 <= point[1] < self.world.height)
-                    or (action in ('build', 'plan_building') and any(type(n) is not int for n in point))):
+                    or (kind == 'tile' and any(type(n) is not int for n in point))):
                 raise CommandError('Choose a position inside the map.')
             values[field] = tuple(point)
-        for field in ('target_id', 'building_id', 'plan_id'):
+        for field, kind in kinds.items():
+            if kind not in ('entity', 'building', 'plan'):
+                continue
             if action == 'smart' and field == 'target_id' and values.get(field) is None:
                 continue  # An explicit empty-ground pick must not target a newer unit position.
             if field in values and type(values[field]) is not int:
@@ -201,8 +202,9 @@ class WarbandMatch:
             raise CommandError('No such target')
         if action == 'cancel_train' and type(values.get('index', -1)) is not int:
             raise CommandError('Choose an item in the training queue.')
-        for field, enum in [('building_type', BuildingType), ('unit_type', UnitType), ('upgrade', Upgrade), ('spell', Upgrade)]:
-            if field in values:
+        for field, kind in kinds.items():
+            enum = ORDER_ENUMS.get(kind)
+            if enum is not None and field in values:
                 try:
                     values[field] = enum(values[field])
                 except (ValueError, TypeError) as exc:
@@ -210,8 +212,9 @@ class WarbandMatch:
         # The order goes to the running world: a copy rebuilt from its save would come back without the paths,
         # plan throttles and stuck clocks of every unit on the map.  A world order checks before it changes
         # anything, so one the rules refuse leaves no trace (tests/warband/test_order_atomicity.py).
+        call, given = order_args(action, values)
         try:
-            method(*bound.args, **bound.kwargs)
+            method(self.world, *call, **given)
         except RuleError as exc:
             raise CommandError(str(exc)) from exc
         self._events()

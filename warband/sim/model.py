@@ -225,8 +225,38 @@ def unit_stats(race: Race, unit_type: UnitType) -> UnitInfo:
     return UNITS[unit_type] if unit_type in RACELESS else RACES[race].units[unit_type]
 
 
-def recorded(method):
-    """An order the world takes from a player.
+@dataclass(frozen=True)
+class OrderSpec:
+    """The declared shape of one player order: its parameters in order, each with its kind.
+
+    Kinds name what a value *is* to the match, which is everything a caller outside the simulation
+    needs and nothing it may guess from the method's Python parameter names: ``"units"`` (the unit ids
+    the order commands), ``"unit"`` (one such id), ``"player"`` (a seat), ``"building"``, ``"entity"``
+    and ``"plan"`` (ids of those), ``"point"`` (a float point), ``"tile"`` (an integer tile),
+    ``"point?"`` (a point or None), ``"harvest"`` (a mine's id or a tree tile), the enum kinds
+    ``"building_type"``, ``"unit_type"``, ``"upgrade"`` and ``"spell"`` (carried by value in a log or
+    on the wire), and ``""`` for a plain JSON value.  ``optional`` names parameters a call may omit;
+    keyword-only parameters go in ``keyword``.  The HUD (which units a hand-given order takes over),
+    the replay (how a logged order is decoded) and the online authority (how an order off the wire is
+    bound and checked) all read this one declaration.
+    """
+
+    params: tuple[tuple[str, str], ...]
+    keyword: tuple[tuple[str, str], ...] = ()
+    optional: tuple[str, ...] = ()
+
+    def kinds(self) -> dict[str, str]:
+        """Every parameter's kind by name, positional and keyword-only alike."""
+        return dict(self.params + self.keyword)
+
+
+#: The player orders of the match by name, as `@recorded` declares each: the one registry the HUD,
+#: the replay and the online authority read, written when the World class is defined.
+ORDER_SPECS: Final[dict[str, OrderSpec]] = {}
+
+
+def recorded(*params: tuple[str, str], keyword: tuple[tuple[str, str], ...] = (), optional: tuple[str, ...] = ()):
+    """An order the world takes from a player, declared with its :class:`OrderSpec` parameters.
 
     While :attr:`World.orders` is a list, every call from outside the simulation
     is appended to it as ``[tick, name, args, kwargs]`` in plain JSON values
@@ -235,20 +265,25 @@ def recorded(method):
     stepping or while carrying out another order, are that step's or order's
     own business and are not logged.
     """
-    name = method.__name__
 
-    @functools.wraps(method)
-    def order(self, *args, **kwargs):
-        if self._order_depth == 0 and self.orders is not None:
-            self.orders.append([self.tick, name, _plain(args), _plain(kwargs)])
-        self._order_depth += 1
-        try:
-            return method(self, *args, **kwargs)
-        finally:
-            self._order_depth -= 1
+    def declare(method):
+        name = method.__name__
+        ORDER_SPECS[name] = OrderSpec(params, keyword, optional)
 
-    order.is_order = True  # what :data:`warband.records.replay.ORDERS` is built from; a plain wrapper flag would also match staticmethods
-    return order
+        @functools.wraps(method)
+        def order(self, *args, **kwargs):
+            if self._order_depth == 0 and self.orders is not None:
+                self.orders.append([self.tick, name, _plain(args), _plain(kwargs)])
+            self._order_depth += 1
+            try:
+                return method(self, *args, **kwargs)
+            finally:
+                self._order_depth -= 1
+
+        order.is_order = True  # what the replay's allowlist is checked against; a plain wrapper flag would also match staticmethods
+        return order
+
+    return declare
 
 
 def _plain(value: Any) -> Any:
@@ -288,6 +323,68 @@ class RuleError(Exception):
         self.refusal = refusal if isinstance(refusal, Refusal) else Refusal(refusal)
         self.short_of = self.refusal.short_of
         super().__init__(self.refusal.message)
+
+
+#: The enum each enum kind of :class:`OrderSpec` carries by value in a log or on the wire.
+ORDER_ENUMS: Final = {"building_type": BuildingType, "unit_type": UnitType, "upgrade": Upgrade, "spell": Upgrade}
+
+
+def bind_order(name: str, args: list[Any] | tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
+    """The values of order *name* by parameter, bound by its :class:`OrderSpec` — never by the method's
+    signature.  A TypeError says what does not fit: too many values, an unknown or doubled parameter,
+    or a required one missing.  No defaults are filled in, so a caller can tell what was actually given."""
+    spec = ORDER_SPECS[name]
+    if len(args) > len(spec.params):
+        raise TypeError(f"{name} takes {len(spec.params)} arguments, {len(args)} given")
+    values = {parameter: value for (parameter, _kind), value in zip(spec.params, args)}
+    for parameter, value in kwargs.items():
+        if parameter in values or parameter not in spec.kinds():
+            raise TypeError(f"{name} takes no argument {parameter!r}")
+        values[parameter] = value
+    missing = [parameter for parameter, _kind in spec.params if parameter not in values and parameter not in spec.optional]
+    if missing:
+        raise TypeError(f"{name} lacks {listing(missing)}")
+    return values
+
+
+def order_args(name: str, values: dict[str, Any]) -> tuple[list[Any], dict[str, Any]]:
+    """The ``(args, kwargs)`` to call order *name* with, from *values* as :func:`bind_order` bound them:
+    positional parameters in declaration order, keyword-only ones by name."""
+    spec = ORDER_SPECS[name]
+    return ([values[parameter] for parameter, _kind in spec.params if parameter in values],
+            {parameter: values[parameter] for parameter, _kind in spec.keyword if parameter in values})
+
+
+def _decoded(kind: str, value: Any) -> Any:
+    """*value* of *kind* as an order takes it, from the plain JSON a log holds: a point as a tuple, an enum from its value."""
+    if kind in ("point", "tile", "point?", "harvest") and isinstance(value, list):
+        return tuple(value)
+    enum = ORDER_ENUMS.get(kind)
+    return enum(value) if enum is not None and not isinstance(value, enum) else value
+
+
+def decode_order(name: str, args: list[Any], kwargs: dict[str, Any]) -> tuple[list[Any], dict[str, Any]]:
+    """The ``(args, kwargs)`` to give order *name* as it was logged: bound by its :class:`OrderSpec` and
+    each value decoded by its declared kind (points as tuples, enums by value)."""
+    values = bind_order(name, args, kwargs)
+    kinds = ORDER_SPECS[name].kinds()
+    return order_args(name, {parameter: _decoded(kinds[parameter], value) for parameter, value in values.items()})
+
+
+def order_units(name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> list[int] | None:
+    """The unit ids order *name* commands in *args*/*kwargs*, or None when it commands none: the parameter
+    its :class:`OrderSpec` declares as ``"units"`` or ``"unit"``, wherever it stands."""
+    spec = ORDER_SPECS.get(name)
+    if spec is None:
+        return None
+    for index, (parameter, kind) in enumerate(spec.params):
+        if kind not in ("units", "unit"):
+            continue
+        value = args[index] if index < len(args) else kwargs.get(parameter)
+        if value is None:
+            return None
+        return list(value) if kind == "units" else [value]
+    return None
 
 
 # -- Orders --------------------------------------------------------------------
@@ -1431,7 +1528,7 @@ class World:
             return Refusal(f"{needed}: they hold {cap}, cast it within their reach or {build}", short_of="aether")
         return Refusal(f"{needed}: {'your vaults hold' if near else 'they hold'} {cap}, {build}", short_of="aether")
 
-    @recorded
+    @recorded(("player", "player"), ("spell", "spell"), ("point", "point"))
     def cast(self, player: int, spell: Upgrade, point: Point) -> None:
         """*player* casts *spell* at *point*: pays its aether, starts its cooldown and lands it, now or after its delay.
         What a blow landed now fells is off the map at once, as a step's fallen are at its end: a cast comes between
@@ -1551,7 +1648,7 @@ class World:
         if unit_type not in building.info.trains:
             return self.never_trained(building.player, unit_type) \
                 or f"The {info.name} is trained at the {self.building_info(building.player, info.trained_at).name}"
-        reason = self.foreign_unit(building.player, unit_type) or self.lacks_for(building.player, unit_type) \
+        reason: Refusal | str | None = self.foreign_unit(building.player, unit_type) or self.lacks_for(building.player, unit_type) \
             or self.at_limit(building.player, unit_type)
         if reason is not None:
             return reason
@@ -1660,7 +1757,7 @@ class World:
             return "Training in progress"
         return self.can_afford(building.player, info.cost)
 
-    @recorded
+    @recorded(("building_id", "building"), ("upgrade", "upgrade"))
     def research(self, building_id: int, upgrade: Upgrade) -> None:
         building = self.buildings.get(building_id)
         if building is None:
@@ -1673,7 +1770,7 @@ class World:
         building.research = upgrade
         building.research_progress = 0.0
 
-    @recorded
+    @recorded(("building_id", "building"),)
     def cancel_research(self, building_id: int) -> None:
         building = self.buildings.get(building_id)
         if building is None or building.research is None:
@@ -1850,7 +1947,7 @@ class World:
         """Check a blueprint's ground; resources, prerequisites and workers may arrive later."""
         return self.settlement.can_plan_building(building_type, pos, player)
 
-    @recorded
+    @recorded(("player", "player"), ("building_type", "building_type"), ("pos", "tile"))
     def plan_building(self, player: int, building_type: BuildingType, pos: Pos) -> int:
         """Schedule construction without selecting a worker; pay when construction starts."""
         return self.settlement.plan_building(player, building_type, pos)
@@ -1859,22 +1956,22 @@ class World:
         """Pending settlement requests and active construction, in request order."""
         return self.settlement.player_plans(player)
 
-    @recorded
+    @recorded(("player", "player"), ("unit_type", "unit_type"))
     def order_unit(self, player: int, unit_type: UnitType) -> int:
         """Request a recruit; an available compatible producer is chosen automatically."""
         return self.settlement.order_unit(player, unit_type)
 
-    @recorded
+    @recorded(("player", "player"), ("upgrade", "upgrade"))
     def order_upgrade(self, player: int, upgrade: Upgrade) -> int:
         """Request research; prerequisites, resources and a free researcher may arrive later."""
         return self.settlement.order_upgrade(player, upgrade)
 
-    @recorded
+    @recorded(("player", "player"), ("plan_id", "plan"))
     def cancel_plan(self, player: int, plan_id: int) -> None:
         """Cancel pending work or refund an unfinished planned building at the normal rate."""
         self.settlement.cancel_plan(player, plan_id)
 
-    @recorded
+    @recorded(("player", "player"), ("point", "point?"))
     def set_assembly(self, player: int, point: Point | None) -> None:
         """Set the fallback destination for new combat recruits across the settlement."""
         self.players[player].assembly = self.navigation.clamp(point) if point is not None else None
@@ -1924,7 +2021,7 @@ class World:
         unit.ease = None
         unit.state = "idle"
 
-    @recorded
+    @recorded(("unit_ids", "units"), ("target", "point"), keyword=(("queue", ""),))
     def move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         target = self.navigation.clamp(target)
         units = self._own_units(unit_ids, queue=queue)
@@ -1933,7 +2030,7 @@ class World:
         for unit in units:
             self._issue(unit, Move(target, pace=pace, offset=slots.get(unit.id)), queue=queue)
 
-    @recorded
+    @recorded(("unit_ids", "units"), ("target", "point"), keyword=(("queue", ""),))
     def attack_move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         target = self.navigation.clamp(target)
         units = self._own_units(unit_ids, queue=queue)
@@ -1943,7 +2040,7 @@ class World:
             self._issue(unit, AttackMove(target, pace=pace, offset=slots.get(unit.id)) if not unit.is_worker else Move(target, pace=pace),
                         queue=queue)
 
-    @recorded
+    @recorded(("unit_ids", "units"), ("target", "point"), keyword=(("queue", ""),))
     def patrol(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         """Patrol between where each unit stands and *target*."""
         target = self.navigation.clamp(target)
@@ -1961,7 +2058,7 @@ class World:
                 return self._slot(order) if isinstance(order, (Move, AttackMove)) else unit.pos
         return unit.pos
 
-    @recorded
+    @recorded(("unit_ids", "units"), ("target_id", "entity"), keyword=(("queue", ""),))
     def attack(self, unit_ids: list[int], target_id: int, *, queue: bool = False) -> None:
         target = self.entity(target_id)
         if target is None:
@@ -1982,7 +2079,7 @@ class World:
             else:
                 self._issue(unit, Move(entity_point(target)), queue=queue)  # it cannot strike this one: it follows the fight
 
-    @recorded
+    @recorded(("unit_ids", "units"),)
     def stop(self, unit_ids: list[int]) -> None:
         for unit in self._own_units(unit_ids):
             unit.auto_work = False
@@ -1998,12 +2095,12 @@ class World:
             unit.state = "idle"
             unit.home = None
 
-    @recorded
+    @recorded(("unit_ids", "units"),)
     def hold(self, unit_ids: list[int]) -> None:
         for unit in self._own_units(unit_ids):
             self._issue(unit, Hold())
 
-    @recorded
+    @recorded(("unit_ids", "units"),)
     def release_workers(self, unit_ids: list[int]) -> None:
         """Take peasants off the job they are on and leave the automatic policy to place them again.
 
@@ -2023,7 +2120,7 @@ class World:
             unit.state = "idle"
             unit.commanded = None  # handed back on purpose: the policy places it again at once
 
-    @recorded
+    @recorded(("unit_ids", "units"), ("target", "harvest"), keyword=(("queue", ""),))
     def harvest(self, unit_ids: list[int], target: int | Pos, *, queue: bool = False) -> None:
         if isinstance(target, int):
             mine = self.buildings.get(target)
@@ -2037,7 +2134,7 @@ class World:
         for unit in units:
             self._issue(unit, Harvest(target), queue=queue)
 
-    @recorded
+    @recorded(("unit_id", "unit"), ("building_type", "building_type"), ("pos", "tile"), keyword=(("queue", ""), ("plan_if_short", "")))
     def build(self, unit_id: int, building_type: BuildingType, pos: Pos, *, queue: bool = False, plan_if_short: bool = False) -> None:
         """Send a peasant to put up *building_type* at *pos*; it pays when it gets there.
 
@@ -2058,7 +2155,7 @@ class World:
             raise RuleError(reason)
         self._issue(unit, Build(building_type, pos, plan_if_short=plan_if_short), queue=queue)
 
-    @recorded
+    @recorded(("unit_ids", "units"), ("building_id", "building"), keyword=(("queue", ""),))
     def repair(self, unit_ids: list[int], building_id: int, *, queue: bool = False) -> None:
         """Peasants among *unit_ids* mend one of their own damaged buildings, or help raise one of their sites."""
         workers = [u for u in self._own_units(unit_ids, queue=queue) if u.is_worker]
@@ -2072,7 +2169,7 @@ class World:
         for u in workers:
             self._issue(u, Repair(b.id), queue=queue)
 
-    @recorded
+    @recorded(("unit_ids", "units"), ("building_id", "building"), keyword=(("queue", ""),))
     def salvage(self, unit_ids: list[int], building_id: int, *, queue: bool = False) -> None:
         """Peasants among *unit_ids* tear a ruin, or a rival's standing building, apart for its materials.
 
@@ -2094,7 +2191,7 @@ class World:
         for u in workers:
             self._issue(u, Salvage(b.id), queue=queue)
 
-    @recorded
+    @recorded(("building_id", "building"), ("unit_type", "unit_type"))
     def train(self, building_id: int, unit_type: UnitType) -> None:
         building = self.buildings.get(building_id)
         if building is None:
@@ -2106,7 +2203,7 @@ class World:
         self._pay(building.player, UNITS[unit_type].cost)
         building.queue.append(unit_type)
 
-    @recorded
+    @recorded(("building_id", "building"), ("index", ""), optional=("index",))
     def cancel_train(self, building_id: int, index: int = -1) -> None:
         building = self.buildings.get(building_id)
         if building is None or not building.queue:
@@ -2119,14 +2216,14 @@ class World:
         if index in (0, -len(building.queue) - 1) or not building.queue:
             building.train_progress = 0.0
 
-    @recorded
+    @recorded(("building_id", "building"), ("point", "point?"))
     def set_rally(self, building_id: int, point: Point | None) -> None:
         building = self.buildings.get(building_id)
         if building is None or building.player is None:
             raise RuleError("No such building")
         building.rally = self.navigation.clamp(point) if point is not None else None
 
-    @recorded
+    @recorded(("building_id", "building"), ("unit_type", "unit_type"), ("on", ""))
     def set_auto_train(self, building_id: int, unit_type: UnitType, on: bool) -> None:
         """Have a building train *unit_type* endlessly (*on*), or stop; several types at one building take turns, the
         one switched on last going next.
@@ -2228,7 +2325,7 @@ class World:
             return "Your plans are paid first"
         return None
 
-    @recorded
+    @recorded(("unit_ids", "units"), ("point", "point"), keyword=(("queue", ""), ("target_id", "entity")))
     def smart(self, unit_ids: list[int], point: Point, *, queue: bool = False,
               target_id: int | None | Literal["at_point"] = "at_point") -> str:
         """Resolve a context order; return the verb used.
@@ -2541,7 +2638,7 @@ class World:
             if spot is not None:
                 unit.x, unit.y = tile_center(spot)
 
-    @recorded
+    @recorded(("building_id", "building"),)
     def cancel_building(self, building_id: int) -> None:
         """Tear down an unfinished building; the whole cost comes back."""
         b = self.buildings.get(building_id)
@@ -5304,7 +5401,7 @@ class World:
         return min(candidates, key=lambda pair: (pair[1] is not UnitType.PEASANT,
                    UNITS[pair[1]].cost.gold + UNITS[pair[1]].cost.lumber, pair[0].id)) if candidates else None
 
-    @recorded
+    @recorded(("player", "player"),)
     def assign_workers(self, player: int) -> None:
         """Send *player*'s idle peasants to work now, as the simulation does for everyone once a second.
 
@@ -5335,7 +5432,7 @@ class World:
             return f"{self.players[player].name} is already out"
         return None
 
-    @recorded
+    @recorded(("player", "player"),)
     def resign(self, player: int) -> None:
         """Concede the match: remove everything *player* owns, then eliminate them."""
         reason = self.can_resign(player)

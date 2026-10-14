@@ -13,23 +13,20 @@ Recordings are kept as JSON under ``<data_dir>/replays`` by :class:`ReplayStore`
 from __future__ import annotations
 
 import hashlib
-import inspect
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from saga2d import SaveError, SaveManager
-from warband.sim.model import RuleError, World
-from warband.sim.rules import BuildingType, Difficulty, UnitType, Upgrade
+from warband.sim.model import ORDER_SPECS, RuleError, World, decode_order
+from warband.sim.rules import Difficulty
 
 REPLAY_VERSION = 1
 #: A log row that is not an order: the match continued from a save taken at that tick.
 RELOAD = "reload"
-#: The names :func:`warband.sim.model.recorded` marks: the only calls a replay may make on the world.
-ORDERS = frozenset(name for name, attr in vars(World).items() if getattr(attr, "is_order", False))
-_POINT_FIELDS = ("target", "point", "pos")
-_ENUM_FIELDS = {"building_type": BuildingType, "unit_type": UnitType, "upgrade": Upgrade, "spell": Upgrade}
+#: The orders :func:`warband.sim.model.recorded` declares: the only calls a replay may make on the world.
+ORDERS = frozenset(ORDER_SPECS)
 
 
 def digest(world: World) -> str:
@@ -48,21 +45,16 @@ def digest(world: World) -> str:
 
 
 def apply_order(world: World, name: str, args: list[Any], kwargs: dict[str, Any]) -> None:
-    """Give the logged order *name* to *world* as it was given: points as tuples, enums by value.
+    """Give the logged order *name* to *world* as it was given, decoded by the order's declared
+    :class:`~warband.sim.model.OrderSpec`: points as tuples, enums by value.
 
     A rule error is the same rule error the original order met, so it is not an error of the replay.
     """
     if name not in ORDERS:
         raise ValueError(f"{name!r} is not an order")
-    method = getattr(World, name)
-    bound = inspect.signature(method).bind(world, *args, **kwargs)
-    for parameter, value in bound.arguments.items():
-        if parameter in _POINT_FIELDS and isinstance(value, list):
-            bound.arguments[parameter] = tuple(value)
-        elif parameter in _ENUM_FIELDS:
-            bound.arguments[parameter] = _ENUM_FIELDS[parameter](value)
+    call, given = decode_order(name, args, kwargs)
     try:
-        method(*bound.args, **bound.kwargs)
+        getattr(world, name)(*call, **given)
     except RuleError:
         pass
 
