@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from saga2d import Game, fonts  # noqa: E402
+from warband.story.campaign import Line  # noqa: E402
 from warband.story.campaign_scene import CampaignScene  # noqa: E402
 from warband.story.catalog import DEFAULT_CAMPAIGN, get_campaign  # noqa: E402
 from warband.story.dialog import DialogScene  # noqa: E402
@@ -60,6 +61,13 @@ def main(out: Path, campaign_id: str, size: tuple[int, int], flags: dict) -> Non
                 game.clear_and_push(MissionScene(campaign, run, difficulty=Difficulty.MEDIUM))
                 game.push(DialogScene(mission.briefing, campaign.speakers, run.vars))
                 shot(f"{prefix}-briefing")
+                dialogue = game.scene
+                while isinstance(dialogue.current, Line):
+                    speaker = campaign.speakers.get(dialogue.current.speaker)
+                    if speaker is not None and speaker.portrait is not None:
+                        shot(f"{prefix}-character")
+                        break
+                    dialogue.advance()
                 while isinstance(game.scene, DialogScene):
                     scene = game.scene
                     scene.skip()
