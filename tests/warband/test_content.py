@@ -55,7 +55,7 @@ def refusals(race: Race) -> set[str]:
     said |= {world.can_place(kind, pos, 0) for kind in BUILDINGS for pos in ((1, 1), (23, 23), (-1, 5), (20, 20))}
     said |= {world.can_plan_building(kind, (2, 2), 0) for kind in BUILDINGS}
     said |= {world.auto_train_blocker(b) for b in placed}
-    return {reason for reason in said if reason}
+    return {str(reason) for reason in said if reason}  # the words, whatever structure a refusal also carries
 
 
 @pytest.mark.parametrize("race", list(Race))

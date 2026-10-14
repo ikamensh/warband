@@ -180,7 +180,7 @@ def test_disabled_production_icons_explain_their_name_cost_and_blocker(play) -> 
     game.backend.inject_mouse_move(x + w / 2, y + h / 2)
     game.tick(1 / 60)
     assert worker.name in scene.tooltip and str(worker.cost) in scene.tooltip
-    assert scene.world.can_train(hall, UnitType.PEASANT) in scene.tooltip
+    assert str(scene.world.can_train(hall, UnitType.PEASANT)) in scene.tooltip
     game.backend.inject_click(x + w / 2, y + h / 2)
     game.backend.inject_release(x + w / 2, y + h / 2)
     game.tick(1 / 60)

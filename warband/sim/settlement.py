@@ -146,7 +146,7 @@ class Settlement:
                 world.train(producer.id, plan.type)
                 self.plans.remove(plan)
                 return
-            plan.status = reason
+            plan.status = str(reason)
 
     def order_upgrade(self, player: int, upgrade: Upgrade) -> int:
         from warband.sim.model import RuleError
@@ -185,7 +185,7 @@ class Settlement:
                 world.research(producer.id, plan.type)
                 self.plans.remove(plan)
                 return
-            plan.status = reason
+            plan.status = str(reason)
 
     def _building(self, plan: Plan) -> None:
         from warband.sim.model import Build
@@ -214,7 +214,7 @@ class Settlement:
                 return
             reason = world.can_afford(plan.player, info.cost)
             if reason is not None:
-                plan.status = reason
+                plan.status = str(reason)
                 return
         worker = self._worker(plan)
         if worker is None:
@@ -223,7 +223,7 @@ class Settlement:
         assert building is None, "a site is never without its builder (WB-048)"
         reason = world.can_place(plan.type, plan.pos, plan.player, builder=worker.id)
         if reason is not None:
-            plan.status = reason
+            plan.status = str(reason)
             return
         world.build(worker.id, plan.type, plan.pos)
         plan.worker, plan.status = worker.id, "Builder en route"

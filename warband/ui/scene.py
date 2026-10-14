@@ -23,7 +23,7 @@ from warband.brains.adjutant import COMMANDS, MAX_LEVEL, NAMES as COMMAND_NAMES,
 from warband.brains.ai import DIFFICULTY_ELO, auto_site
 from warband.art.effects import Flare, GroundFire, Roots, Scorch, Spray, Stain, UnitDeath, death_outcome
 from warband.ui.icons import Icon, Pair, Price, ResourceFloat, draw_icon, draw_price, hourglass_parts, lock_parts, loop_parts, price_pairs, price_width
-from warband.sim.model import (RIFT, Attack, AttackMove, Build, Building, Deposit, Entity, Event, Harvest, Heal, Hold, Move, Patrol, Pos, Repair, Salvage,
+from warband.sim.model import (RIFT, Attack, AttackMove, Build, Building, Deposit, Entity, Event, Harvest, Heal, Hold, Move, Patrol, Pos, Refusal, Repair, Salvage,
                                 RuleError, Unit, World)
 from warband.art.production import ProductionButton, ProductionTarget, draw_production_icon, fit, production_image
 from warband.sim.races import RACES, RaceInfo
@@ -82,8 +82,6 @@ CANCEL_FILL = (255, 80, 70, 46)
 PLANS_PRICE = 126  # the price column on the Plans screen: the widest price and a little air
 SUPPLY_WARNING = 2  # units of room left in the farms: from here the supply pair warns before it blocks
 SHORT_FLASH = 1.5  # seconds a resource the purse was short of stays red in the top bar
-SHORT_OF = {"gold": "Not enough gold", "lumber": "Not enough lumber",  # how World.can_afford names each; tests/warband/test_prices.py holds it
-            "aether": "Not enough aether"}  # and World.can_cast (WB-066)
 AIM = "cast:"  # the pending mode of a spell being aimed (WB-066): the next click on the map casts it there
 #: Under a spell's research once its level's choice is made, or while another of its level is being researched.
 CHOICE_CAPTIONS = {"chosen": "Chosen", "closed": "Closed", "waiting": "Waiting"}
@@ -253,7 +251,7 @@ class Command:
     slot: int
     tooltip: str = ""
     cost: Cost | None = None  # what it takes, drawn under the button as symbols and numbers
-    blocked: Callable[[], str | None] = field(default=lambda: None)  # why it cannot be used right now
+    blocked: Callable[[], str | Refusal | None] = field(default=lambda: None)  # why it cannot be used right now
     style: Style = field(default_factory=lambda: CARD_BUTTON)
     target: ProductionTarget | None = None  # a unit, building or upgrade: the button shows its portrait or emblem
     count: Callable[[], int] = field(default=lambda: 0)  # how many are already ordered: shown after the name
@@ -1437,11 +1435,13 @@ class GameScene(Scene):
         self.status = text
         self.status_timer = 3.0
 
-    def warn(self, text: str) -> None:
-        """Say *text* and sound the refusal; one that names a resource the purse is short of also reddens that
-        number in the top bar, so the reason is where the player is looking as well as in the status line."""
-        self.say(text)
-        self.short_of = next((name for name, refusal in SHORT_OF.items() if text.startswith(refusal)), None)
+    def warn(self, text: str | Refusal) -> None:
+        """Say *text* and sound the refusal; a :class:`~warband.sim.model.Refusal` that names a resource the purse
+        is short of also reddens that number in the top bar, so the reason is where the player is looking as well
+        as in the status line.  The resource is the refusal's own ``short_of``, never read out of its words: a
+        plain warning that merely mentions one reddens nothing."""
+        self.say(str(text))
+        self.short_of = text.short_of if isinstance(text, Refusal) else None
         self.short_timer = SHORT_FLASH if self.short_of is not None else 0.0
         self.sfx("error")
 
@@ -1479,7 +1479,7 @@ class GameScene(Scene):
         try:
             self.order(action, *args, **kwargs)
         except RuleError as exc:
-            self.warn(str(exc))
+            self.warn(exc.refusal)
             return False
         return True
 
@@ -2130,7 +2130,7 @@ class GameScene(Scene):
             self.warn(refusal)
         return refusal is not None
 
-    def _refusal(self, command: Command) -> str | None:
+    def _refusal(self, command: Command) -> str | Refusal | None:
         """Why *command* cannot be given now: a prerequisite nobody is making, else its own block."""
         return self._requires(self._lacks(command)) or command.blocked()
 
@@ -2327,7 +2327,7 @@ class GameScene(Scene):
                 instead = world.chosen_instead(player, spell)
                 return "" if instead is None else "closed" if instead[1] else "waiting"
 
-            def blocked(spell: Upgrade = spell, b: Building = building) -> str | None:
+            def blocked(spell: Upgrade = spell, b: Building = building) -> str | Refusal | None:
                 if spell in self.player.upgrades:
                     return f"Chosen: cast it from the spell bar, Alt+{SPELLS[spell].level}"
                 return world.can_research(b, spell)
@@ -3614,7 +3614,7 @@ class GameScene(Scene):
                 lines += [waits for t in building.auto if t is not first and (waits := world.at_limit(self.human, t)) is not None]
                 reason = world.auto_train_blocker(building)  # the first named is the next, and waits for this
                 if reason is not None:
-                    lines.append(reason)
+                    lines.append(str(reason))
             elif building is not None and building.type is BuildingType.VAULT:
                 lines += self._vault_lines(building)
             elif building is not None:

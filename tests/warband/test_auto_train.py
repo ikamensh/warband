@@ -97,7 +97,7 @@ def test_endless_training_waits_for_gold_and_farms_and_says_why() -> None:
     barracks = world.place_building(0, BuildingType.BARRACKS, (8, 2))
     world.set_auto_train(barracks.id, UnitType.FOOTMAN, True)
     run(world, 2.0)
-    assert barracks.queue == [] and world.auto_train_blocker(barracks) == "Not enough gold (600 needed)"
+    assert barracks.queue == [] and str(world.auto_train_blocker(barracks)) == "Not enough gold (600 needed)"
     world.players[0].gold = 600
     run(world, 1.05)
     assert barracks.queue == [UnitType.FOOTMAN] and world.players[0].gold == 0

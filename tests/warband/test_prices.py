@@ -8,10 +8,10 @@ many workers are on each resource.  These hold Warband's cards, codex and top ba
 import pytest
 
 from saga2d import Game
-from warband.sim.model import World
+from warband.sim.model import Refusal, World
 from warband.sim.rules import BUILDINGS, UNITS, BuildingType, Cost, Race, Terrain, UnitType, Upgrade
 from warband.ui.icons import COLORS, ResourceFloat
-from warband.ui.scene import DEFAULT_SETTINGS, SHORT_FLASH, SHORT_OF, CodexScene, GameScene, new_game
+from warband.ui.scene import DEFAULT_SETTINGS, SHORT_FLASH, CodexScene, GameScene, new_game
 from warband.ui.style import BAD, BODY, GOLD, build_theme
 
 from tests.warband.battlefield import field, live_effects
@@ -167,20 +167,34 @@ def test_an_order_refused_for_want_of_gold_reddens_the_gold_in_the_top_bar(game)
     scene.select([hall.id])
     game.tick(1 / 60)
     press(game, UNITS[UnitType.PEASANT].hotkey)
-    assert scene.status.startswith(SHORT_OF["gold"])
+    assert scene.status.startswith("Not enough gold")
     assert top_bar(game, scene, "gold")[1] == BAD and top_bar(game, scene, "lumber")[1] != BAD
     game.tick(SHORT_FLASH)
     game.tick(1 / 60)
     assert top_bar(game, scene, "gold")[1] != BAD
 
 
-def test_the_top_bar_knows_the_words_the_rules_refuse_with(game) -> None:
-    """The flash reads the refusal the simulation wrote; a reword there would quietly end it, so hold the two
-    together here rather than leave a dead feature."""
+def test_a_short_purse_refusal_names_the_resource_itself_not_in_its_words(game) -> None:
+    """The flash must survive a reword of the refusal, so the resource travels as data on the refusal
+    (:attr:`Refusal.short_of`), never as words the HUD parses back out of the message."""
     scene = match(game)
     world = scene.world
-    assert world.can_afford(scene.human, Cost(scene.player.gold + 1)).startswith(SHORT_OF["gold"])
-    assert world.can_afford(scene.human, Cost(0, scene.player.lumber + 1)).startswith(SHORT_OF["lumber"])
+    gold = world.can_afford(scene.human, Cost(scene.player.gold + 1))
+    lumber = world.can_afford(scene.human, Cost(0, scene.player.lumber + 1))
+    assert gold is not None and (gold.short_of, str(gold)) == ("gold", f"Not enough gold ({scene.player.gold + 1} needed)")
+    assert lumber is not None and lumber.short_of == "lumber" and str(lumber).startswith("Not enough lumber")
+
+
+def test_the_top_bar_reddens_for_the_resource_a_refusal_names_not_for_its_wording(game) -> None:
+    """A plain warning that merely reads like a shortage reddens nothing; a refusal whose words never name a
+    resource reddens the one its ``short_of`` names.  The words are for the player, the structure for the bar."""
+    scene = match(game)
+    scene.warn("Not enough gold (400 needed)")
+    game.tick(1 / 60)
+    assert top_bar(game, scene, "gold")[1] != BAD
+    scene.warn(Refusal("The coffers cannot cover this", short_of="lumber"))
+    game.tick(1 / 60)
+    assert top_bar(game, scene, "lumber")[1] == BAD and top_bar(game, scene, "gold")[1] != BAD
 
 
 def test_the_top_bar_says_how_many_peasants_are_on_each_resource(game) -> None:

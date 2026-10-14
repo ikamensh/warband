@@ -262,8 +262,32 @@ def _plain(value: Any) -> Any:
     return value
 
 
+@dataclass(frozen=True)
+class Refusal:
+    """Why the rules refuse an order: the words for the player, and the structure a caller may act on.
+
+    ``message`` is prose and may be reworded freely; nothing may parse it.  What a caller needs to know
+    travels as data: ``short_of`` names the resource the purse lacked (``"gold"``, ``"lumber"`` or
+    ``"aether"``; the top bar reddens that counter), or is None for every other refusal.  The ``can_*``
+    questions answer with a Refusal where the structure matters and plain words where it does not;
+    :class:`RuleError` takes either and carries the Refusal on.
+    """
+
+    message: str
+    short_of: str | None = None
+
+    def __str__(self) -> str:
+        return self.message
+
+
 class RuleError(Exception):
-    """An order the rules forbid.  The message says why."""
+    """An order the rules forbid.  The message says why; :attr:`refusal` carries it as a :class:`Refusal`,
+    so a caller that reacts to *why* (the HUD reddening a resource) reads the structure, never the words."""
+
+    def __init__(self, refusal: Refusal | str) -> None:
+        self.refusal = refusal if isinstance(refusal, Refusal) else Refusal(refusal)
+        self.short_of = self.refusal.short_of
+        super().__init__(self.refusal.message)
 
 
 # -- Orders --------------------------------------------------------------------
@@ -1227,12 +1251,12 @@ class World:
 
     # -- Economy queries -----------------------------------------------------------
 
-    def can_afford(self, player: int, cost: Cost) -> str | None:
+    def can_afford(self, player: int, cost: Cost) -> Refusal | None:
         p = self.players[player]
         if p.gold < cost.gold:
-            return f"Not enough gold ({cost.gold} needed)"
+            return Refusal(f"Not enough gold ({cost.gold} needed)", short_of="gold")
         if p.lumber < cost.lumber:
-            return f"Not enough lumber ({cost.lumber} needed)"
+            return Refusal(f"Not enough lumber ({cost.lumber} needed)", short_of="lumber")
         return None
 
     def _pay(self, player: int, cost: Cost) -> None:
@@ -1365,31 +1389,31 @@ class World:
         known = self.players[player].upgrades
         return [spell for spell in SPELLS if self.magic and spell in known]
 
-    def can_cast(self, player: int, spell: Upgrade, point: Point) -> str | None:
+    def can_cast(self, player: int, spell: Upgrade, point: Point) -> Refusal | None:
         """Why *player* cannot cast *spell* at *point* now, or None.  A point in the fog is a point: the cast is blind."""
         if not self.magic:
-            return "Magic is disabled for this match"
+            return Refusal("Magic is disabled for this match")
         if not 0 <= player < self.seats or not self.players[player].alive:
-            return "This side cannot cast"
+            return Refusal("This side cannot cast")
         info = SPELLS.get(spell)
         if info is None:
-            return f"{self.upgrade_info(player, spell).name} is not a spell"
+            return Refusal(f"{self.upgrade_info(player, spell).name} is not a spell")
         if spell not in self.players[player].upgrades:
-            return f"{info.name} is not researched"
+            return Refusal(f"{info.name} is not researched")
         x, y = point
         if not (0.0 <= x < self.width and 0.0 <= y < self.height):  # NaN fails too
-            return "Choose a point on the map"
+            return Refusal("Choose a point on the map")
         left = self.cooldown_left(player, spell)
         if left:
-            return f"{info.name} is ready in {math.ceil(left * SIM_DT)} s"
+            return Refusal(f"{info.name} is ready in {math.ceil(left * SIM_DT)} s")
         aether, _cooldown = self.cast_price(player, spell, point)
         if self.players[player].aether < aether:
             return self._short_of_aether(player, info, aether, self.in_reach(player, point))
         if info.summons is not None and self._summon_spots(point, info.count) is None:
-            return "No open ground there"
+            return Refusal("No open ground there")
         return None
 
-    def _short_of_aether(self, player: int, info: SpellInfo, aether: int, near: bool) -> str:
+    def _short_of_aether(self, player: int, info: SpellInfo, aether: int, near: bool) -> Refusal:
         """Why *player*'s store cannot pay *aether* for *info*: too little in it yet, or more than their vaults can ever
         hold (:meth:`aether_cap`), which no wait mends; then the refusal says what will: as many more vaults as the
         price takes (each holds AETHER_STORE), or a cast within reach when the plain price fits."""
@@ -1397,14 +1421,15 @@ class World:
             f"Not enough aether ({aether} needed, {SPELL_FAR}x beyond your vaults' reach)"
         cap = self.aether_cap(player)
         if aether <= cap:
-            return needed
+            return Refusal(needed, short_of="aether")
         if not cap:
-            return f"{needed}: no vault of yours holds any, build {an(self.building_info(player, BuildingType.VAULT).name)}"
+            return Refusal(f"{needed}: no vault of yours holds any, build {an(self.building_info(player, BuildingType.VAULT).name)}",
+                           short_of="aether")
         more = -(-aether // AETHER_STORE) - len(self.vaults(player))
         build = "build another" if more == 1 else f"build {more} more"
         if not near and info.aether <= cap:
-            return f"{needed}: they hold {cap}, cast it within their reach or {build}"
-        return f"{needed}: {'your vaults hold' if near else 'they hold'} {cap}, {build}"
+            return Refusal(f"{needed}: they hold {cap}, cast it within their reach or {build}", short_of="aether")
+        return Refusal(f"{needed}: {'your vaults hold' if near else 'they hold'} {cap}, {build}", short_of="aether")
 
     @recorded
     def cast(self, player: int, spell: Upgrade, point: Point) -> None:
@@ -1519,7 +1544,7 @@ class World:
         self._deal(target, damage if info.pierces else max(1, damage - armor), armor, player=player, source=0,
                    source_type=info.key.value, ranged=True, inflicts=None)
 
-    def can_train(self, building: Building, unit_type: UnitType) -> str | None:
+    def can_train(self, building: Building, unit_type: UnitType) -> Refusal | str | None:
         info = self.unit_info(building.player, unit_type)
         if building.player is None or not building.done:
             return "Still under construction"
@@ -1606,7 +1631,7 @@ class World:
             return f"{info.name}: at most {info.limit} at once"
         return None
 
-    def can_research(self, building: Building, upgrade: Upgrade) -> str | None:
+    def can_research(self, building: Building, upgrade: Upgrade) -> Refusal | str | None:
         if not self.magic and upgrade in SPELLS:
             return "Magic is disabled for this match"
         if building.player is None or not building.done:
@@ -2182,7 +2207,7 @@ class World:
         assert player is not None and building.auto
         return next((unit_type for unit_type in building.auto if self.at_limit(player, unit_type) is None), building.auto[0])
 
-    def auto_train_blocker(self, building: Building) -> str | None:
+    def auto_train_blocker(self, building: Building) -> Refusal | str | None:
         """Why *building* cannot start its next endless recruit (:meth:`auto_train_next`) now (None when it can): the
         reasons :meth:`can_train` gives, gold and lumber the player's unpaid orders claim, or research planned here,
         which goes first."""
@@ -3722,7 +3747,7 @@ class World:
             self.events.append(Event("refused", u.pos, player=u.player, entity=u.id, text="Cannot reach the building site"))
             self._finish_order(u)
 
-    def _leave_plan(self, u: Unit, order: Build, short: str) -> bool:
+    def _leave_plan(self, u: Unit, order: Build, short: Refusal) -> bool:
         """Leave the site *u* cannot pay for to the settlement; False when no plan can be made there (plans full,
         or one already on the ground), and the site is refused as any other."""
         try:
