@@ -17,14 +17,16 @@ from saga2d import Anchor, Button, Column, Component, KeyHints, Label, Row, Save
 from saga2d.effects import Banner, Toast
 from warband.sim import mapgen
 from warband.brains.ai import make_brain
-from warband.story.campaign import LEGACY_CAMPAIGN_ID, Campaign, Mission, Progress, ProgressStore, Run, shifted
-from warband.story.dialog import DialogScene
+from warband.story.campaign import LEGACY_CAMPAIGN_ID, Campaign, Mission, Progress, ProgressStore, Run, Speaker, shifted
+from warband.story.dialog import DialogScene, speaker_portrait
 from warband.story.landmarks import LandmarkView
-from warband.sim.model import World
+from warband.sim.model import Event, Unit, World
+from warband.art import textures
+from warband.art.production import fit
 from warband.sim.rules import BuildingType, Difficulty
-from warband.ui.scene import HUD_TOP, OBJECTIVES_GAP, GameScene, PauseScene, _clock, _Overlay, check_save
+from warband.ui.scene import CARD_PANEL_WIDTH, HINT_BAR, HUD_TOP, OBJECTIVES_GAP, GameScene, HelpScene, PauseScene, _clock, _Overlay, check_save
 from warband.ui.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MUTED, PANEL_STYLE, RESULTS_STYLE, TEXT
-from warband.ui.view import rgba, to_world
+from warband.ui.view import Sighting, rgba, to_world
 
 CAMPAIGN_SLOT = "campaign"
 NOTICE_HOLD = 4.0
@@ -102,6 +104,11 @@ class _Notice(Toast):
         self.top = scene.toast_top
         return super().draw_below(scene, below)
 
+    def height(self, scene: Scene) -> int:
+        """Toast's title, padding and unwrapped lines, used to reserve space before it draws."""
+        heading, body = (scene.game.theme.get_text_style(style) for style in ("heading", "body"))
+        return 2 * self.PAD + heading.font_size + 10 + (body.font_size + 8) * len(self.lines)
+
 
 class _Mark(Component):
     """A small square before an objective: hollow while open, a tick when done, a cross when failed."""
@@ -132,6 +139,7 @@ class MissionScene(GameScene):
     """The match with the mission's script on top.  Not ranked: the leaderboard is for skirmishes."""
 
     AUTOSAVE_SLOT = CAMPAIGN_SLOT
+    controls = {**GameScene.controls, "f3": "focus_keeper"}
 
     def __init__(self, campaign: Campaign, run: Run, *, difficulty: Difficulty, settings=None) -> None:
         super().__init__(run.world, run.mission.seed, difficulty=difficulty, settings=settings, ranked=False)
@@ -146,7 +154,7 @@ class MissionScene(GameScene):
         self._rows: dict[str, tuple[Row, _Mark, Label]] = {}
         self._panel_state: dict[str, str] = {}
         self._notices: deque[tuple[str, list[str], tuple[int, int, int, int]]] = deque()  # one toast at a time, so none hides another
-        self._notice_until = -math.inf
+        self._notice: _Notice | None = None
         self._banner_until = -math.inf  # the mission's title has the screen to itself until then
 
     def on_enter(self) -> None:
@@ -158,21 +166,80 @@ class MissionScene(GameScene):
         # The band crosses the window at 40 % of its height, where a short window's objectives panel reaches: the
         # panel and the script's first notices wait for it to pass.
         self._banner_until = self.clock + banner.duration
-        self._notice_until = max(self._notice_until, self._banner_until)
 
     def draw(self) -> None:
         super().draw()
         self.landmarks.draw()
+        self._draw_keeper_labels()
+
+    def _keeper_links(self) -> list[tuple[str, Speaker, Unit]]:
+        """Resolve saved story links afresh: a rescued or loaded keeper can have a different living unit id."""
+        return [(name, speaker, unit) for name, speaker in self.campaign.speakers.items()
+                if (unit := self.run.unit(name.lower())) is not None
+                and unit.player == self.human and unit.hp > 0 and not unit.hidden]
+
+    def entity_name(self, entity: Unit | Sighting) -> str:
+        return next((name for name, _, unit in self._keeper_links() if unit is entity), super().entity_name(entity))
+
+    def _portrait(self, entity: Unit | Sighting, x: float, y: float, size: float) -> None:
+        speaker = next((speaker for _, speaker, unit in self._keeper_links() if unit is entity), None)
+        key = speaker_portrait(self.game, speaker) if speaker is not None else None
+        if key is not None:
+            self.draw_image(key, *fit(self.game, key, x, y, size))
+        else:
+            super()._portrait(entity, x, y, size)
+
+    def focus_keeper(self) -> None:
+        """F3 brings the current keeper into the clear and selects them; an unlinked legacy mission keeps Pause."""
+        links = self._keeper_links()
+        if not links:
+            self.toggle_pause()
+            return
+        _, _, unit = links[0]
+        self.open_catalogue(None)
+        self.select([unit.id])
+        x, y = to_world(self.view.unit_position(unit))
+        sprite = self.view.unit_sprite(unit.id)
+        if sprite is not None:
+            y -= textures.placements[sprite.image].head / 2
+        self.camera.center_on(x, y)
+
+    def hint(self) -> list[tuple[str, str]]:
+        links = self._keeper_links()
+        return [(key, f"focus {links[0][0]}" if key == "F3" and links else text) for key, text in super().hint()]
+
+    def open_help(self) -> None:
+        self.game.push(HelpScene(self.scheme, magic=self.world.magic,
+                                 f3_action="focus keeper" if self._keeper_links() else "pause"))
+
+    def _draw_keeper_labels(self) -> None:
+        if self.clock < self._banner_until:
+            return
+        for index, (name, _, unit) in enumerate(self._keeper_links()):
+            sprite = self.view.unit_sprite(unit.id)
+            if sprite is None or not sprite.visible or not self.world.is_visible(self.human, unit.tile):
+                continue
+            placement = textures.placements[sprite.image]
+            top = sprite.y-placement.drop-placement.head-13/self.camera.zoom
+            self.landmarks.draw_label(name + (" · F3" if index == 0 else ""), (sprite.x, top), color=GOLD[:3], above=True)
+
+    def _handle_events(self, events: list[Event]) -> None:
+        """The script announces departures and victories; an empty future wave is not a defeated faction."""
+        super()._handle_events([event for event in events
+                               if event.kind not in {"eliminated", "surrendered", "exposed"}
+                               and not (event.kind == "resigned" and event.entity is None)])
 
     # -- Objectives panel ---------------------------------------------------------------
 
     def _build_objectives(self) -> Column:
+        # Share the command card's right-hand column, clear of the selection panel even on a short window.
+        width = CARD_PANEL_WIDTH - 2 * PANEL_STYLE.padding
         panel = Column(spacing=OBJECTIVES_GAP, anchor=Anchor.TOP_RIGHT, margin=(12, HUD_TOP), style=PANEL_STYLE, blocks_pointer=True)
-        panel.add(Label(f"{self.campaign.index(self.mission)}. {self.mission.title}", text_style="heading", width=390))
+        panel.add(Label(f"{self.campaign.index(self.mission)}. {self.mission.title}", text_style="heading", width=width))
         self.objectives_body = Column(spacing=6)
         self._rows = {}
         for objective in self.mission.objectives:
-            mark, label = _Mark(), Label(objective.text, text_style="body", width=390 - MARK - 8, wrap=True)
+            mark, label = _Mark(), Label(objective.text, text_style="body", width=width - MARK - 8, wrap=True)
             row = Row(mark, label, spacing=8)
             self._rows[objective.id] = (row, mark, label)
             self.objectives_body.add(row)
@@ -198,6 +265,13 @@ class MissionScene(GameScene):
     def _objectives_shown(self) -> bool:
         return self.clock >= self._banner_until
 
+    def _fold_objectives(self) -> None:
+        super()._fold_objectives()
+        # A story notice takes this column briefly; even the finale's full muster stays above the bottom HUD.
+        if (self._notice is not None and not self._notice.done
+                and self.toast_top + self._notice.height(self) > self.game.resolution[1] - HINT_BAR - 6):
+            self.objectives_body.visible = False
+
     def update(self, dt: float) -> None:
         super().update(dt)
         if not self._game_over:
@@ -215,10 +289,10 @@ class MissionScene(GameScene):
         for title, lines in run.notes:
             self._notices.append((title, lines, GOLD))
         run.notes.clear()
-        if self._notices and self.clock >= self._notice_until:
+        if self._notices and self.clock >= self._banner_until and (self._notice is None or self._notice.done):
             title, lines, accent = self._notices.popleft()
-            self.effects.add(_Notice(title, lines, accent=accent, hold=NOTICE_HOLD))
-            self._notice_until = self.clock + NOTICE_HOLD + 2 * Toast.SLIDE
+            self._notice = _Notice(title, lines, accent=accent, hold=NOTICE_HOLD)
+            self.effects.add(self._notice)
         for point in run.looks:
             wx, wy = to_world(point)
             if self.world.is_explored(self.human, (int(point[0]), int(point[1]))):

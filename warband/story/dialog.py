@@ -24,6 +24,17 @@ PANEL_WIDTH = 980
 BOTTOM = 44
 
 
+def speaker_portrait(game, speaker: Speaker) -> str | None:
+    """Register authored character art once, shared by the dialogue and the linked unit's selection portraits."""
+    if speaker.portrait is None:
+        return None
+    key = f"story.portrait.{speaker.portrait}"
+    if not game.assets.has_image(key):
+        with PILImage.open(Path(__file__).resolve().parents[1] / "assets" / speaker.portrait) as picture:
+            game.assets.image_from_pil(key, picture)
+    return key
+
+
 class DialogScene(Scene):
     transparent = True
     pause_below = True
@@ -75,11 +86,8 @@ class DialogScene(Scene):
                 answers.add(Button(option.label, shortcut=str(number), on_click=lambda value=option.value: self.choose(value),
                                    style=ACTION_BUTTON if number == 1 else GHOST_BUTTON, width=max(180, (text_width - 10 * (len(item.options) - 1)) // len(item.options))))
             column.add(answers)
-        if speaker is not None and speaker.portrait is not None:
-            key = f"story.portrait.{speaker.portrait}"
-            if not self.game.assets.has_image(key):
-                with PILImage.open(Path(__file__).resolve().parents[1] / "assets" / speaker.portrait) as picture:
-                    self.game.assets.image_from_pil(key, picture)
+        key = speaker_portrait(self.game, speaker) if speaker is not None else None
+        if key is not None:
             portrait: Component = Image(key, width=PORTRAIT, height=PORTRAIT)
         else:
             portrait = (ProductionIcon(speaker.subject, speaker.player, speaker.race, size=PORTRAIT) if speaker is not None

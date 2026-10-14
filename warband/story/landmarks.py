@@ -139,12 +139,11 @@ class LandmarkView:
     def draw(self) -> None:
         """Occupation rings lie under units and fog; clear, explored map ground gets a compact nameplate."""
         scene, world = self.scene, self.scene.world
+        # Map labels precede the UI tree; refresh its geometry once before monuments and keeper tags draw.
+        scene.ui.compute_layout(0, 0, *scene.game.resolution)
         records = scene.run.vars.get("landmarks", {})
         if not records:
             return
-        # World overlays draw before the UI tree; refresh its public layout so newly opened
-        # panels protect their space on this first frame as well as later ones.
-        scene.ui.compute_layout(0, 0, *scene.game.resolution)
         left, top, right, bottom = scene.camera.visible_world_rect()
         for id, record in records.items():
             if not self.known(id):
@@ -164,14 +163,26 @@ class LandmarkView:
                                     (*color, 115), 1.4, space="world", layer=RenderLayer.OBJECTS)
             if not world.is_explored(scene.human, (int(x), int(y))):
                 continue
-            sx, sy = scene.camera.world_to_screen(wx, wy+art.DROP+5)
-            name = scene.fit_text(record["name"], 190, font_size=11)
-            width, height = scene.game.backend.measure_text(name, 11, scene.game.theme.font)
-            box = (sx-width/2-7, sy, width+14, height+8)
-            if not self._clear_label(box):
-                continue
-            scene.draw_rect(*box, (18, 29, 34, 208), border_color=(*color, 128), border_width=1, radius=3)
-            scene.draw_text(name, sx, sy+4, font_size=11, color=(238, 234, 214, 255), anchor_x="center", anchor_y="top")
+            self.draw_label(record["name"], (wx, wy+art.DROP+5), color=color)
+
+    def draw_label(self, text: str, point: Point, *, color: tuple[int, int, int], above: bool = False) -> bool:
+        """A compact nameplate at a presented world-pixel point, clipped clear of fog-agnostic HUD geometry.
+
+        Callers decide whether the subject is visible; ``above`` puts the plate's bottom at the point.
+        The same screen-sized plate is used for monuments and named keepers at every zoom.
+        """
+        scene = self.scene
+        sx, sy = scene.camera.world_to_screen(*point)
+        name = scene.fit_text(text, 190, font_size=11)
+        width, height = scene.game.backend.measure_text(name, 11, scene.game.theme.font)
+        if above:
+            sy -= height+8
+        box = (sx-width/2-7, sy, width+14, height+8)
+        if not self._clear_label(box):
+            return False
+        scene.draw_rect(*box, (18, 29, 34, 208), border_color=(*color, 128), border_width=1, radius=3)
+        scene.draw_text(name, sx, sy+4, font_size=11, color=(238, 234, 214, 255), anchor_x="center", anchor_y="top")
+        return True
 
     def _clear_label(self, box: tuple[float, float, float, float]) -> bool:
         """Clip in screen space before Saga2D's strict text-fit check, including the objective and selection panels."""

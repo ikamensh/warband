@@ -2,8 +2,8 @@
 
     uv run python tools/verify_story.py DIR --campaign ID --size 1280x800
 
-Captures the campaign menu, every opening briefing, each playable opening, and
-an unfogged model atlas. Saves use temporary player data. This is presentation
+Captures the campaign menu, every opening briefing, each playable opening,
+linked keeper focus through a real F3 event, and an unfogged model atlas. Saves use temporary player data. This is presentation
 verification; the campaign playthrough tests establish that objectives are
 attainable through actual orders. Keep the display awake with ``caffeinate -u``.
 """
@@ -46,6 +46,10 @@ def main(out: Path, campaign_id: str, size: tuple[int, int], flags: dict) -> Non
             game.backend.capture_frame().save(path)
             print(path)
 
+        def press(symbol: int) -> None:
+            game.backend.window.dispatch_event("on_key_press", symbol, 0)
+            game.backend.window.dispatch_event("on_key_release", symbol, 0)
+
         try:
             game.push(CampaignScene(campaign=campaign))
             shot("00-campaign")
@@ -63,6 +67,14 @@ def main(out: Path, campaign_id: str, size: tuple[int, int], flags: dict) -> Non
                         scene.choose(scene.current.options[0].value)
                 tick(3.2)
                 shot(f"{prefix}-opening")
+                if any(run.unit(name.lower()) is not None for name in campaign.speakers):
+                    from pyglet.window import key
+
+                    press(key.F3)
+                    shot(f"{prefix}-keeper")
+                    if number == len(campaign.missions):
+                        press(key.F1)
+                        shot(f"{prefix}-help")
         finally:
             game.close()
 

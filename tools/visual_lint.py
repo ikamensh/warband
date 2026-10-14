@@ -1359,6 +1359,13 @@ def _catalog_briefing(game: Game, *, campaign: Campaign, mission: Mission) -> No
     ticks(game)
 
 
+def _catalog_objectives(game: Game, *, campaign: Campaign, mission: Mission) -> None:
+    """A conservative layout fixture: show every objective together, including later phases and alternatives."""
+    scene = _catalog_mission(game, campaign=campaign, mission=mission)
+    scene.run.state.update({objective.id: "open" for objective in mission.objectives})
+    ticks(game)
+
+
 def _catalog_result(game: Game, *, campaign: Campaign, mission: Mission) -> None:
     """A synthetic success overlay tests result layout only; it proves nothing about winning the actual mission."""
     scene = _catalog_mission(game, campaign=campaign, mission=mission)
@@ -1367,7 +1374,7 @@ def _catalog_result(game: Game, *, campaign: Campaign, mission: Mission) -> None
 
 
 def campaign_cases(campaign: Campaign) -> dict[str, Screen]:
-    """The campaign page, progress page, each mission's opening and briefing, and one result layout."""
+    """The campaign pages, each mission's opening, briefing and full objective panel, and a result layout."""
     cases = {
         f"campaign_{campaign.id}_fresh": partial(_catalog_campaign, campaign=campaign),
         f"campaign_{campaign.id}_under_way": partial(_catalog_campaign, campaign=campaign, underway=True),
@@ -1375,6 +1382,7 @@ def campaign_cases(campaign: Campaign) -> dict[str, Screen]:
     for mission in campaign.missions:
         cases[f"mission_{campaign.id}_{mission.id}_opening"] = partial(_catalog_opening, campaign=campaign, mission=mission)
         cases[f"mission_{campaign.id}_{mission.id}_briefing"] = partial(_catalog_briefing, campaign=campaign, mission=mission)
+        cases[f"mission_{campaign.id}_{mission.id}_objectives"] = partial(_catalog_objectives, campaign=campaign, mission=mission)
     cases[f"mission_{campaign.id}_result"] = partial(_catalog_result, campaign=campaign, mission=campaign.missions[-1])
     return cases
 

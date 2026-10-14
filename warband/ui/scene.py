@@ -3534,6 +3534,14 @@ class GameScene(Scene):
             if qx <= mx < qx + 30 and qy <= my < qy + 30:
                 self.tooltip = f"Queued {i + 1}: {world.unit_info(building.player, queued).name}"
 
+    def entity_name(self, entity: Unit | Sighting) -> str:
+        """The selection card's caption, including a neutral lair's encounter name."""
+        if isinstance(entity, Sighting) and entity.type is BuildingType.LAIR:
+            from warband.art.monsters import LAIR_NAMES, LairKind
+
+            return CAMP_ENCOUNTERS[entity.camp_encounter].name if entity.camp_encounter else LAIR_NAMES[LairKind(entity.lair_kind)]
+        return entity.info.name if isinstance(entity, Unit) else RACES[entity.race].buildings[entity.type].name
+
     def _draw_entity_card(self, entity: Unit | Sighting, x: float, y: float) -> None:
         """One selected unit or building.  What a rival's unit is ordered to do and what their building is
         making are theirs to know: the card says them of the player's own only."""
@@ -3544,12 +3552,7 @@ class GameScene(Scene):
         tx = x + CARD_TEXT
         abandoned = isinstance(entity, Sighting) and entity.abandoned
         owner = "Abandoned" if abandoned else world.players[entity.player].name if entity.player is not None else "Neutral"
-        if isinstance(entity, Sighting) and entity.type is BuildingType.LAIR:
-            from warband.art.monsters import LAIR_NAMES, LairKind
-
-            name = CAMP_ENCOUNTERS[entity.camp_encounter].name if entity.camp_encounter else LAIR_NAMES[LairKind(entity.lair_kind)]
-        else:
-            name = entity.info.name if isinstance(entity, Unit) else RACES[entity.race].buildings[entity.type].name
+        name = self.entity_name(entity)
         self.draw_text(f"{name}", tx, y + 16, style="heading")
         color = MUTED if abandoned else rgba(world.players[entity.player].color) if entity.player is not None else GOLD
         heading = self.game.theme.get_text_style("heading")  # the name's style: the owner follows wherever the theme ends it
@@ -3937,7 +3940,7 @@ class PauseScene(_Overlay):
         self.game.push(SettingsScene(self.game_scene))
 
     def help(self) -> None:
-        self.game.push(HelpScene(self.game_scene.scheme))
+        self.game_scene.open_help()
 
     def resign(self) -> None:
         scene = self.game_scene
@@ -4136,7 +4139,7 @@ def command_keys(scheme: Scheme, sep: str = "/") -> str:
     return "Ctrl+" + sep.join(shortcut.removeprefix("Ctrl+") for shortcut in shortcuts)
 
 
-def help_keys(scheme: Scheme, *, magic: bool = False) -> list[tuple[str, str]]:
+def help_keys(scheme: Scheme, *, magic: bool = False, f3_action: str = "pause") -> list[tuple[str, str]]:
     """The How to play table for *scheme*: its own keys first, then what every scheme shares."""
     idle = key_label(scheme.keys["idle_soldier"])
     if scheme.modes:
@@ -4153,7 +4156,7 @@ def help_keys(scheme: Scheme, *, magic: bool = False) -> list[tuple[str, str]]:
              "recall / assign / add to a group; " + ("Alt+1-3: aim a spell; " if magic else "") + "Tab: idle worker; comma: idle soldier; Space: alert"),
             ("Click / drag / right-click", "select / box-select / contextual order; selecting keeps the active mode"),
             ("Arrows / edges / wheel", "scroll; middle-drag scrolls too; wheel or + / − zooms"),
-            ("F1 F2 F3 F5 F9 F11", "help, codex, pause, save, load (offline), health bars; F6-F8 camera bookmarks (Ctrl sets)"),
+            ("F1 F2 F3 F5 F9 F11", f"help, codex, {f3_action}, save, load (offline), health bars; F6-F8 camera bookmarks (Ctrl sets)"),
             ("Esc / Right-click", "cancel the target first; Esc then returns home, deselects, and opens the menu"),
         ]
     if scheme.positional:
@@ -4175,7 +4178,7 @@ def help_keys(scheme: Scheme, *, magic: bool = False) -> list[tuple[str, str]]:
         ("1-9 / Ctrl / Shift" + (" / Alt" if magic else ""),
          "recall / assign / add to a control group;  " + ("Alt+1-3: aim that level's spell;  " if magic else "") + "Tab: idle peasant;  Space: alert"),
         ("Arrows / edges / wheel", "scroll (middle-drag too);  wheel or + / −: zoom;  minimap: left-click looks, right-click sends"),
-        ("F1 F2 F3 F5 F9 F11", "help, codex (5: tech tree), pause, save, load (offline), health bars;  F6-F8 bookmarks (Ctrl sets)"),
+        ("F1 F2 F3 F5 F9 F11", f"help, codex (5: tech tree), {f3_action}, save, load (offline), health bars;  F6-F8 bookmarks (Ctrl sets)"),
         ("Esc", "back one level: the order, the catalogue, the selection, then the menu"),
     ]
 
@@ -4188,9 +4191,10 @@ class HelpScene(_Overlay):
 
     pause_below = True
 
-    def __init__(self, scheme: Scheme, *, magic: bool = False) -> None:
+    def __init__(self, scheme: Scheme, *, magic: bool = False, f3_action: str = "pause") -> None:
         self.scheme = scheme
         self.magic = magic
+        self.f3_action = f3_action
 
     def on_enter(self) -> None:
         panel = self.panel(f"How to play · {self.scheme.name} controls")
@@ -4199,7 +4203,7 @@ class HelpScene(_Overlay):
             intro += " A vault on a violet ley rift draws aether for the spells a Mage Tower researches (Alt+1-3)."
         panel.add(Label(intro, text_style="body", width=HELP_KEY_WIDTH + 14 + HELP_TEXT_WIDTH, wrap=True))
         table = Column(spacing=4)
-        for keys, what in help_keys(self.scheme, magic=self.magic):
+        for keys, what in help_keys(self.scheme, magic=self.magic, f3_action=self.f3_action):
             table.add(Row(Label(keys, text_style="hud", width=HELP_KEY_WIDTH, align="right", text_color=GOLD),
                           Label(what, text_style="body", width=HELP_TEXT_WIDTH, wrap=True), spacing=14))
         panel.add(table)

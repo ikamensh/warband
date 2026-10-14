@@ -64,6 +64,10 @@ class CampaignScene(Scene):
     def next_mission(self) -> Mission | None:
         return self.campaign.missions[0] if self.progress is None else self.progress.next_mission(self.campaign)
 
+    @property
+    def has_difficulty(self) -> bool:
+        return any(side.ai is not None for mission in self.campaign.missions for side in mission.sides)
+
     def _resumable(self) -> MissionScene | None:
         """The next mission as the campaign slot saved it, loaded and ready; a save this version cannot play
         (another format, damage) is reported here, and Continue opens the briefing instead."""
@@ -126,14 +130,17 @@ class CampaignScene(Scene):
 
     def _build_fresh(self, panel: Column) -> None:
         acts = len({mission.act for mission in self.campaign.missions})
-        panel.add(Label(f"{len(self.campaign.missions)} missions in {acts} {'act' if acts == 1 else 'acts'}. The difficulty shifts every computer opponent one step; it is set for the whole campaign.",
+        detail = ("The difficulty shifts every computer opponent one step; it is set for the whole campaign."
+                  if self.has_difficulty else "Your choices reshape the final battle.")
+        panel.add(Label(f"{len(self.campaign.missions)} missions in {acts} {'act' if acts == 1 else 'acts'}. {detail}",
                         text_style="body", width=760, wrap=True))
-        row = Row(Label("Difficulty", text_style="body", width=110), spacing=8)
-        for difficulty, key in ((Difficulty.EASY, "E"), (Difficulty.MEDIUM, "N"), (Difficulty.HARD, "H")):
-            button = Button(difficulty.value.title(), hotkey=key, on_click=lambda d=difficulty: self.set_difficulty(d), style=GHOST_BUTTON, width=150)
-            self._difficulty_buttons[difficulty] = button
-            row.add(button)
-        panel.add(row)
+        if self.has_difficulty:
+            row = Row(Label("Difficulty", text_style="body", width=110), spacing=8)
+            for difficulty, key in ((Difficulty.EASY, "E"), (Difficulty.MEDIUM, "N"), (Difficulty.HARD, "H")):
+                button = Button(difficulty.value.title(), hotkey=key, on_click=lambda d=difficulty: self.set_difficulty(d), style=GHOST_BUTTON, width=150)
+                self._difficulty_buttons[difficulty] = button
+                row.add(button)
+            panel.add(row)
         self._restyle()
         first = self.campaign.missions[0]
         panel.add(Row(self._mission_list(), Column(Label(f"1. {first.title}", text_style="heading"), Label(first.act, text_style="sub"),
@@ -146,7 +153,8 @@ class CampaignScene(Scene):
         mission = self.next_mission
         if mission is None:
             panel.add(Row(self._mission_list(), Column(Label("The war is over", text_style="heading"),
-                                                        Label(f"{self.difficulty.value.title()} · every mission complete", text_style="sub"), spacing=8), spacing=24))
+                                                        Label(f"{self.difficulty.value.title()} · every mission complete" if self.has_difficulty
+                                                              else "Every mission complete", text_style="sub"), spacing=8), spacing=24))
             panel.add(Row(Button("Read the epilogue", hotkey="Enter", on_click=self.continue_campaign, style=ACTION_BUTTON, width=300),
                           Button("Start over", on_click=self.start_over, style=GHOST_BUTTON, width=150),
                           Button("Back", hotkey="Esc", on_click=self.back, style=GHOST_BUTTON, width=150), spacing=8))
@@ -213,7 +221,7 @@ class CampaignScene(Scene):
         self.on_enter()
 
     def set_difficulty(self, difficulty: Difficulty) -> None:
-        if self.progress is not None or self.unreadable:
+        if self.progress is not None or self.unreadable or not self.has_difficulty:
             return
         self.difficulty = difficulty
         play_sound("button")
