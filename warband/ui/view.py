@@ -977,7 +977,10 @@ class MapView:
         shade = radius * (0.25 + 0.75 * t)
         self.scene.draw_polygon([(ax + shade * math.cos(i * math.tau / 24), ay + shade * math.sin(i * math.tau / 24))
                                  for i in range(24)], (16, 8, 6, round(60 + 130 * t)), space="world", layer=RenderLayer.EFFECTS)
-        self._ring(ax, ay, radius, radius, METEOR_WARNING, 2.5, layer=RenderLayer.EFFECTS, sides=36)  # wider than a body's
+        # The warning throbs faster and brighter as the rock nears the ground.
+        throb = 0.5 + 0.5 * math.sin(t * math.pi * (4 + 8 * t))
+        self._ring(ax, ay, radius, radius, (*METEOR_WARNING[:3], round(130 + 110 * (t * 0.5 + 0.5 * throb))),
+                   2.5 + 1.5 * t, layer=RenderLayer.EFFECTS, sides=36)  # wider than a body's
 
     def unit_sprite(self, unit_id: int) -> Sprite | None:
         return self._units.get(unit_id)

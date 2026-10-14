@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+import random
 from typing import Callable
 
 from saga2d.effects import Effect, ease_out
@@ -13,6 +14,9 @@ from warband.sim.rules import UnitType
 from warband.art.textures import MOUNTED, placements
 
 Point = tuple[float, float]
+
+#: The ink of the roots that hold an entangled unit (and burst out of the ground where Entangle lands).
+ROOT_INK = (122, 84, 44)
 
 
 class Spray(Effect):
@@ -41,8 +45,8 @@ class Spray(Effect):
 class Flare(Effect):
     """Light going out where it landed: *image* swells from *size* to twice that and fades."""
 
-    def __init__(self, position: Point, image: str, size: float, *, duration: float = 0.22) -> None:
-        super().__init__(duration)
+    def __init__(self, position: Point, image: str, size: float, *, duration: float = 0.22, delay: float = 0.0) -> None:
+        super().__init__(duration, delay)
         self.position, self.image, self.size = position, image, size
 
     def draw(self, scene: Scene) -> None:
@@ -81,6 +85,99 @@ class Stain(Effect):
 
     def finish(self) -> None:
         self.sprite.remove()
+
+
+class Scorch(Effect):
+    """The dark mark a fire spell leaves on the ground: lies a while, then fades.
+
+    Immediate-mode (drawn each frame, no retained sprite): a fire leaves no body to hurry,
+    and casts are rare enough that overlapping marks need no cap.
+    """
+
+    def __init__(self, position: Point, size: float, *, hold: float = 6.0, fade: float = 3.0) -> None:
+        super().__init__(hold + fade)
+        self.position, self.size, self.hold, self.fade = position, size, hold, fade
+
+    def draw(self, scene: Scene) -> None:
+        opacity = 1.0 if self.elapsed < self.hold else max(0.0, 1 - (self.elapsed - self.hold) / self.fade)
+        if opacity <= 0:
+            return
+        scene.draw_image("scorch", self.position[0] - self.size / 2, self.position[1] - self.size / 2,
+                         self.size, self.size, opacity=opacity, space="world", layer=RenderLayer.OBJECTS)
+
+
+class GroundFire(Effect):
+    """Tongues of flame standing on the ground where a fire spell landed: they leap up fast,
+    lick a while, then die down.
+
+    Tongue positions are fixed at the landing (from *rng*, so a scene's seed decides them);
+    the flicker runs on the elapsed clock.  *radius* is in world pixels.
+    """
+
+    def __init__(self, position: Point, radius: float, *, rng: random.Random | None = None,
+                 count: int | None = None, duration: float = 1.6) -> None:
+        super().__init__(duration)
+        rng = rng if rng is not None else random.Random()
+        count = count if count is not None else max(6, int(radius / 6))
+        self.tongues: list[tuple[float, float, float, float, float, float]] = []
+        for _ in range(count):
+            angle = rng.uniform(0, math.tau)
+            distance = radius * math.sqrt(rng.random()) * 0.85
+            self.tongues.append((position[0] + math.cos(angle) * distance,  # x
+                                 position[1] + math.sin(angle) * distance * 0.7,  # y, squashed: an ellipse on the ground
+                                 rng.uniform(10, 18),  # width
+                                 rng.uniform(26, 52),  # height
+                                 rng.uniform(0, math.tau),  # flicker phase
+                                 rng.uniform(9, 14)))  # flicker speed
+
+    def draw(self, scene: Scene) -> None:
+        grow = min(1.0, self.elapsed / 0.15)
+        tail = max(0.0, min(1.0, (self.duration - self.elapsed) / 0.5))
+        envelope = grow * tail
+        if envelope <= 0:
+            return
+        for x, base, width, height, phase, speed in self.tongues:
+            flicker = 0.75 + 0.25 * math.sin(self.elapsed * speed + phase)
+            h = height * (0.6 + 0.4 * grow) * flicker
+            scene.draw_image("flame", x - width / 2, base - h, width, h, opacity=envelope * (0.55 + 0.45 * flicker),
+                             space="world", layer=RenderLayer.EFFECTS)
+
+
+class Roots(Effect):
+    """Thick roots bursting out of the ground where Entangle lands and coiling round what stands
+    there: each tendril grows outward over :attr:`GROW` seconds, holds, then fades.
+
+    Drawn as tapering two-segment lines on the ground, so no sprite is needed.  *radius* is
+    in world pixels.
+    """
+
+    GROW = 0.45
+
+    def __init__(self, position: Point, radius: float, *, rng: random.Random | None = None,
+                 count: int | None = None, duration: float = 2.2) -> None:
+        super().__init__(duration)
+        rng = rng if rng is not None else random.Random()
+        count = count if count is not None else min(16, max(8, int(radius / 8)))
+        self.position = position
+        self.tendrils: list[tuple[float, float, float]] = []  # angle, length, curl
+        for _ in range(count):
+            self.tendrils.append((rng.uniform(0, math.tau), radius * rng.uniform(0.55, 1.0), rng.uniform(-0.45, 0.45)))
+
+    def draw(self, scene: Scene) -> None:
+        growth = ease_out(min(1.0, self.elapsed / self.GROW))
+        fade = max(0.0, min(1.0, (self.duration - self.elapsed) / 0.4))
+        if growth <= 0 or fade <= 0:
+            return
+        ink = (*ROOT_INK, round(255 * fade))
+        base_x, base_y = self.position
+        for angle, length, curl in self.tendrils:
+            dx, dy = math.cos(angle), math.sin(angle) * 0.6  # squashed: they crawl along the ground
+            px, py = -math.sin(angle), math.cos(angle) * 0.6
+            reach = length * growth
+            mid = (base_x + (dx * 0.5 + px * curl * 0.5) * reach, base_y + (dy * 0.5 + py * curl * 0.5) * reach)
+            tip = (base_x + dx * reach, base_y + dy * reach - 8 * growth)  # the tip rears up a little
+            scene.draw_line(base_x, base_y, *mid, ink, 4.0, space="world", layer=RenderLayer.EFFECTS)
+            scene.draw_line(*mid, *tip, ink, 2.5, space="world", layer=RenderLayer.EFFECTS)
 
 
 @dataclass(frozen=True)

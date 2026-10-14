@@ -24,7 +24,7 @@ from warband.audio import bodies, deaths, presence, wreckage
 from warband.sim import mapgen
 from warband.brains.adjutant import COMMANDS, MAX_LEVEL, NAMES as COMMAND_NAMES, TAGS, Adjutant
 from warband.brains.ai import DIFFICULTY_ELO, auto_site, make_brain
-from warband.art.effects import Flare, Spray, Stain, UnitDeath, death_outcome
+from warband.art.effects import Flare, GroundFire, Roots, Scorch, Spray, Stain, UnitDeath, death_outcome
 from warband.ui.icons import Icon, Pair, Price, ResourceFloat, draw_icon, draw_price, hourglass_parts, lock_parts, loop_parts, price_pairs, price_width
 from warband.sim.model import (RIFT, Attack, AttackMove, Build, Building, Deposit, Entity, Event, Harvest, Heal, Hold, Move, Patrol, Pos, Repair, Salvage,
                                 RuleError, Unit, World)
@@ -3128,22 +3128,68 @@ class GameScene(Scene):
 
     def _show_spell(self, e: Event) -> None:
         """A spell lands (WB-066): a burst of its ink over the ground it touches, rings to its edge, its sound; a Meteor
-        shakes the ground and throws up fire and dust."""
+        shakes the ground and throws up fire and dust.
+
+        Flame Strike erupts in a column of embers and leaves licking flames and a scorch mark; a Meteor comes down
+        in a white flash and a fireball, throws embers, debris and smoke, and leaves a crater of scorch; Entangle
+        bursts roots out of the ground with a ring of dust.  The other six spells keep the generic burst and rings.
+        """
         if not self._sees_spell(e):
             return
         spell = Upgrade(e.text)
         info = SPELLS[spell]
         ink = SPELL_INKS[spell.value]
         wx, wy = to_world(e.pos)
-        self.effects.add(Pulse((wx, wy), rgba(ink, 210), radius=(6, info.radius * TILE), rings=2, duration=0.8))
-        self.effects.add(Flare((wx, wy - TILE * 0.3), f"glow.spell.{spell.value}", info.radius * TILE * 1.1, duration=0.5))
-        self.effects.add(Burst((wx, wy), rgba(ink), 10 + int(6 * info.radius), rng=self.fx_rng, size=10, speed=(30, 40 + 40 * info.radius)))
-        if spell is Upgrade.METEOR:
-            self.effects.add(Burst((wx, wy), (255, 150, 60, 255), 30, rng=self.fx_rng, size=16, speed=(60, 220)))
-            self.effects.add(Burst((wx, wy - 12), (70, 64, 60, 220), 16, rng=self.fx_rng, image="smoke", size=34, speed=(10, 70)))
-            self.camera.shake(7, 0.5)
+        radius = info.radius * TILE
+        if spell is Upgrade.FLAME_STRIKE:
+            self._show_flame_strike(wx, wy, radius, ink)
+        elif spell is Upgrade.METEOR:
+            self._show_meteor_land(wx, wy, radius, ink)
+        elif spell is Upgrade.ENTANGLE:
+            self._show_entangle(wx, wy, radius, ink)
+        else:
+            self.effects.add(Pulse((wx, wy), rgba(ink, 210), radius=(6, radius), rings=2, duration=0.8))
+            self.effects.add(Flare((wx, wy - TILE * 0.3), f"glow.spell.{spell.value}", radius * 1.1, duration=0.5))
+            self.effects.add(Burst((wx, wy), rgba(ink), 10 + int(6 * info.radius), rng=self.fx_rng, size=10, speed=(30, 40 + 40 * info.radius)))
         if self._audible(e.pos) or e.player == self.human:
             self.sfx(f"spell_{spell.value}", gap=0.2)
+
+    def _show_flame_strike(self, wx: float, wy: float, radius: float, ink: tuple[int, int, int]) -> None:
+        """Flame Strike lands: a white-hot blink, a fireball swelling in its ink, embers thrown skyward,
+        smoke over it, flames licking the ground it touched and a scorch mark left behind."""
+        self.effects.add(Flare((wx, wy - TILE * 0.3), "fireball", radius * 1.1, duration=0.18))
+        self.effects.add(Flare((wx, wy - TILE * 0.3), "glow.spell.flame_strike", radius * 1.6, duration=0.45, delay=0.08))
+        self.effects.add(Pulse((wx, wy), rgba(ink, 210), radius=(6, radius), rings=3, duration=0.7))
+        self.effects.add(Spray((wx, wy - TILE * 0.2), (0.0, -1.0), "spark", (255, 170, 60), 14, rng=self.fx_rng,
+                               speed=(90, 240), size=(3, 6), spread=32.0, lifetime=(0.3, 0.7)))
+        self.effects.add(Burst((wx, wy - 12), (70, 64, 60, 220), 10, rng=self.fx_rng, image="smoke", size=30,
+                               speed=(10, 60), delay=0.15))
+        self.effects.add(GroundFire((wx, wy), radius, rng=self.fx_rng, duration=1.6))
+        self.effects.add(Scorch((wx, wy), radius * 2.2, hold=6.0, fade=3.0))
+
+    def _show_meteor_land(self, wx: float, wy: float, radius: float, ink: tuple[int, int, int]) -> None:
+        """A Meteor lands: a white flash and a fireball over the ground it strikes, rings to past its edge,
+        embers and debris thrown out, smoke over the crater, flames and a long scorch mark, the ground shaken."""
+        self.effects.add(Flare((wx, wy - TILE * 0.3), "fireball", radius * 1.5, duration=0.22))
+        self.effects.add(Flare((wx, wy - TILE * 0.3), "glow.spell.meteor", radius * 1.8, duration=0.5, delay=0.05))
+        self.effects.add(Pulse((wx, wy), rgba(ink, 210), radius=(8, radius * 1.2), rings=3, duration=1.0))
+        self.effects.add(Burst((wx, wy), (255, 150, 60, 255), 34, rng=self.fx_rng, size=16, speed=(60, 260)))
+        self.effects.add(Burst((wx, wy - TILE * 0.2), (120, 100, 80, 255), 12, rng=self.fx_rng, image="drop", size=10,
+                               speed=(80, 260)))  # clods of earth among the embers
+        self.effects.add(Burst((wx, wy - 12), (70, 64, 60, 220), 18, rng=self.fx_rng, image="smoke", size=38,
+                               speed=(10, 70), delay=0.1))
+        self.effects.add(GroundFire((wx, wy), radius, rng=self.fx_rng, duration=2.0))
+        self.effects.add(Scorch((wx, wy), radius * 2.4, hold=10.0, fade=4.0))
+        self.camera.shake(8, 0.6)
+
+    def _show_entangle(self, wx: float, wy: float, radius: float, ink: tuple[int, int, int]) -> None:
+        """Entangle lands: a ring of dust off the ground, its ink's rings, roots bursting outward and
+        thorn sparks over them."""
+        self.effects.add(Burst((wx, wy), (170, 150, 120, 255), 16, rng=self.fx_rng, size=10, speed=(40, 130)))
+        self.effects.add(Pulse((wx, wy), rgba(ink, 210), radius=(6, radius), rings=2, duration=0.7))
+        self.effects.add(Roots((wx, wy), radius, rng=self.fx_rng, duration=2.2))
+        self.effects.add(Burst((wx, wy - TILE * 0.3), (140, 220, 120, 255), 10, rng=self.fx_rng, size=8,
+                               speed=(50, 150), delay=0.2))
 
     def _shatter(self, e: Event) -> None:
         """A summoned unit is gone (WB-066), its time run out or struck down: it breaks into light, leaving no body."""

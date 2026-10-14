@@ -207,7 +207,7 @@ def test_a_falling_meteor_rings_the_circle_it_will_strike(play) -> None:
     scene.world.cast(scene.human, Upgrade.METEOR, point)
     game.tick(1 / 60)
     cx, cy = to_world(point)
-    ring = [line for line in game.backend.lines if line["color"] == METEOR_WARNING]
+    ring = [line for line in game.backend.lines if line["color"][:3] == METEOR_WARNING[:3]]
     radius = SPELLS[Upgrade.METEOR].radius * TILE
     assert ring and all(math.hypot(line["x1"] - cx, line["y1"] - cy) == pytest.approx(radius) for line in ring)
 
