@@ -305,6 +305,15 @@ def _in_mesa(x: float, y: float) -> bool:
     return MESA[0] <= x <= MESA[2] and MESA[1] <= y <= MESA[3]
 
 
+def _caravan_camp_ready(run: Run) -> bool:
+    return (any(_in_mesa(*hall.pos) for hall in run.buildings(0, B.TOWN_HALL))
+            and sum(_in_mesa(*farm.pos) for farm in run.buildings(0, B.FARM)) >= 3)
+
+
+def _caravan_drovers_ready(run: Run) -> bool:
+    return sum(_in_mesa(worker.x, worker.y) for worker in run.units(0, U.PEASANT)) >= 5
+
+
 def _setup_caravan(run: Run) -> None:
     terrain = _terrain(64, 48)
     _fill(terrain, 30, 0, 33, 47, Terrain.WATER)                       # the Sorrow, running south
@@ -401,34 +410,29 @@ CARAVAN = Mission(
     id="undertow_caravan", title="The Salt Caravan", act=ACT_1,
     sides=(Side("The Saltmarches", Race.ORC), Side("The Open Hand", Race.HUMAN), Side("The Old Camp", Race.ORC)),
     size="Medium", theme=MapTheme.WASTELAND, layout=Layout.CROSSINGS, seed=2202,
-    briefing=(
-        Line("", "The Saltmarches are moving uphill before the bloom does — every herd, every drover, on their own feet."),
-        Line("Brakk", "Strip the Old Camp to its pegs. Everything we are, we carry: across the Sorrow, up the Broken Tooth."),
-        Line("Ugga", "Six drovers, Brakk. Keep five of us breathing and I'll raise you a camp on that rock."),
-        Line("Brakk", "The river has three fords. Use whichever the road allows. Go."),
+    briefing=dialogue.CARAVAN_BRIEFING + (
+        Line("Ugga", "A finished Great Hall trains replacement drovers. Until then, stragglers can join us once. "
+                     "Lose the last drover after that, with no hall to train another, and the caravan is lost."),
     ),
-    debrief=(
-        Line("Brakk", "Captain Renn waits uphill, so hear it from me first. Six years ago a bloom came up this Step at lambing. "
-                      "An officer signed the order that vented it through my sister's camp. Smaller number. Lawful paper."),
-        Line("Brakk", "The officer was Issa Renn. I have carried her signature six years, waiting to meet someone it was smaller to."),
-        Line("Ugga", "And the road-droppers? One of theirs we caught sends word: the name is Sella Voss. She says she's opening the locks "
-                     "before they burst — and she's furious her people didn't warn us sooner."),
-    ),
+    debrief=dialogue.CARAVAN_DEBRIEF,
     setup=_setup_caravan,
     objectives=(
         Objective("strip", "Salvage the Old Camp's four ruins",
                   lambda run: not any(b.player == 2 for b in run.world.buildings.values())),
         Objective("camp", "Mesa: build a Great Hall and three Pig Farms",
-                  lambda run: any(_in_mesa(*h.pos) for h in run.buildings(0, B.TOWN_HALL))
-                  and len([f for f in run.buildings(0, B.FARM) if _in_mesa(*f.pos)]) >= 3,
+                  _caravan_camp_ready,
                   shown=objective_done("strip")),
         Objective("drovers", "Bring five living drovers onto the mesa",
-                  lambda run: len([u for u in run.units(0, U.PEASANT) if _in_mesa(u.x, u.y)]) >= 5,
+                  _caravan_drovers_ready,
                   shown=objective_done("strip")),
         Objective("dam", "Optional: blast the mill-dam; flood the camp",
                   lambda run: bool(run.get("undertow_dam")), optional=True),
-        Objective("brakk", "Brakk must survive", lambda run: False,
+        Objective("brakk", "Brakk must survive", lambda run: bool(run.get("caravan_resolved")),
                   failed=lambda run: run.unit("brakk") is None, optional=True),
+        Objective("builders", "Keep a drover or a finished Great Hall after the stragglers join",
+                  lambda run: bool(run.get("caravan_resolved")),
+                  failed=lambda run: "stragglers" in run.fired and not run.units(0, U.PEASANT)
+                  and run.hall(0) is None, optional=True),
     ),
     triggers=(
         Trigger("rockfall", any_of(lambda run: any(u.x >= 28 for u in run.units(0)), at(240)), _caravan_rockfall),
@@ -440,7 +444,7 @@ CARAVAN = Mission(
         Trigger("harry_2", all_of(at(420), lambda run: run.world.players[1].alive),
                 _wave(1, [U.FOOTMAN] * 4 + [U.ARCHER] * 2, (38.5, 9.5), "ford_east", "harry_2_band")),
         Trigger("stragglers", all_of(at(30), lambda run: len(run.units(0, U.PEASANT)) < 5), _caravan_stragglers),
-        Trigger("resolved", all_of(objective_done("strip"), objective_done("camp"), objective_done("drovers")),
+        Trigger("resolved", all_of(objective_done("strip"), _caravan_camp_ready, _caravan_drovers_ready),
                 _caravan_resolved),
     ),
     win=var("caravan_resolved", True),
